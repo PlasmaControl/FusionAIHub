@@ -1,5 +1,5 @@
 {
- "git": "8b586d94",
+ "git": "da3f6693bdf71af611a8a163648cc59ee4ca45f5",
  "created": "2026-10-03T19:23:52+00:00",
  "run": "cv2",
  "train_record": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/cv/cv2/run.json",
@@ -5387,5 +5387,7 @@
   "group_definition": "Disjoint groups use the complete reviewed annotation of each shot; metrics use only the panel's covered scored bins and spans.",
   "ci_method": "95% percentile bootstrap of physical shots within each group, 1000 replicates, seed 20261003; the same draws are used across methods.",
   "note": "Per-ELM annotations and whole ELMing-period crowds define different occupancy targets across shots; non-crowd spans are not verified onsets."
- }
+ },
+ "generation_git": "8b586d94",
+ "audit_git_meaning": "current code/record audit; historical training provenance remains embedded and is not rewritten"
 }

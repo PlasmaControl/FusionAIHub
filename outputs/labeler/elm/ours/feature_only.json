@@ -1,0 +1,1219 @@
+{
+ "git": "da3f6693bdf71af611a8a163648cc59ee4ca45f5",
+ "name": "elm-feature-only",
+ "feature": "max across FS02-FS04 of within-bin max minus median log10 D-alpha on the existing 0.1ms cell-maximum input grid",
+ "recipe": "one feature, logistic regression C=1; no class weighting, normalization or hyperparameter selection; inner-val F1 threshold",
+ "folds": [
+  {
+   "fold": 0,
+   "train": [
+    185857,
+    185866,
+    185945,
+    186013,
+    186093,
+    186427,
+    186569,
+    186636,
+    186945,
+    187035,
+    187076,
+    187196,
+    189004,
+    189044,
+    189061,
+    189324,
+    189559,
+    189688,
+    189741,
+    189885,
+    190094,
+    190218,
+    190300,
+    190335,
+    190695,
+    190790,
+    191382,
+    191470,
+    191677,
+    192010,
+    192015,
+    192148,
+    192229,
+    192425,
+    192721,
+    192732,
+    192751,
+    192914,
+    193008,
+    193022,
+    193075,
+    194155,
+    194445,
+    194600,
+    194608,
+    195016,
+    195102,
+    195103,
+    195111,
+    195186,
+    195959,
+    196405,
+    196541,
+    198806,
+    198971,
+    199087,
+    199789,
+    199909,
+    200320,
+    200385,
+    200427,
+    200917,
+    200954,
+    200990,
+    201270,
+    201494,
+    201707,
+    201973,
+    201978,
+    203012,
+    203187,
+    203470,
+    203521,
+    203576,
+    203719,
+    203778,
+    203941,
+    204243,
+    204256,
+    204530,
+    204937
+   ],
+   "inner_val": [
+    185961,
+    190177,
+    190991,
+    191326,
+    192432,
+    193276,
+    195024,
+    195786,
+    201395,
+    201447,
+    203132,
+    203764,
+    203959,
+    204233
+   ],
+   "test": [
+    187105,
+    187328,
+    189272,
+    190637,
+    190643,
+    192003,
+    192226,
+    192232,
+    194160,
+    195066,
+    195263,
+    195279,
+    195646,
+    196332,
+    198899,
+    199790,
+    199921,
+    200127,
+    200198,
+    200636,
+    203041,
+    203629,
+    204240,
+    204560
+   ],
+   "threshold": 0.2007302578658463,
+   "val_f1": 0.7647058823529411,
+   "coefficient": 3.926904543423676,
+   "intercept": -2.8674103306672856
+  },
+  {
+   "fold": 1,
+   "train": [
+    185866,
+    186013,
+    186427,
+    186636,
+    187035,
+    187196,
+    187328,
+    189004,
+    189044,
+    189272,
+    189688,
+    189885,
+    190094,
+    190177,
+    190300,
+    190335,
+    190637,
+    190643,
+    190695,
+    190790,
+    190991,
+    191382,
+    191470,
+    191677,
+    192003,
+    192010,
+    192015,
+    192148,
+    192226,
+    192229,
+    192425,
+    192721,
+    192732,
+    192751,
+    192914,
+    193008,
+    193022,
+    193075,
+    193276,
+    194160,
+    194445,
+    194600,
+    195016,
+    195024,
+    195066,
+    195102,
+    195103,
+    195186,
+    195279,
+    195646,
+    195786,
+    195959,
+    196332,
+    198806,
+    198899,
+    199087,
+    199789,
+    199790,
+    199909,
+    199921,
+    200127,
+    200427,
+    200636,
+    200917,
+    200990,
+    201270,
+    201494,
+    201707,
+    201978,
+    203012,
+    203041,
+    203132,
+    203470,
+    203629,
+    203719,
+    203764,
+    203959,
+    204240,
+    204243,
+    204560,
+    204937
+   ],
+   "inner_val": [
+    185961,
+    186569,
+    187105,
+    191326,
+    192232,
+    192432,
+    195263,
+    196405,
+    198971,
+    200198,
+    203521,
+    203576,
+    203941,
+    204530
+   ],
+   "test": [
+    185857,
+    185945,
+    186093,
+    186945,
+    187076,
+    189061,
+    189324,
+    189559,
+    189741,
+    190218,
+    194155,
+    194608,
+    195111,
+    196541,
+    200320,
+    200385,
+    200954,
+    201395,
+    201447,
+    201973,
+    203187,
+    203778,
+    204233,
+    204256
+   ],
+   "threshold": 0.18446560529171402,
+   "val_f1": 0.7192608386638237,
+   "coefficient": 3.5334978521482494,
+   "intercept": -2.6025703727803426
+  },
+  {
+   "fold": 2,
+   "train": [
+    185857,
+    185945,
+    185961,
+    186013,
+    186093,
+    186427,
+    186569,
+    186636,
+    186945,
+    187035,
+    187076,
+    187105,
+    187196,
+    189004,
+    189044,
+    189272,
+    189324,
+    189559,
+    189688,
+    189741,
+    189885,
+    190218,
+    190637,
+    190643,
+    190991,
+    191326,
+    191382,
+    191677,
+    192003,
+    192226,
+    192232,
+    192425,
+    192432,
+    192751,
+    193008,
+    193276,
+    194155,
+    194160,
+    194445,
+    194600,
+    194608,
+    195066,
+    195103,
+    195111,
+    195186,
+    195263,
+    195279,
+    195646,
+    196405,
+    196541,
+    198806,
+    198899,
+    198971,
+    199087,
+    199790,
+    199909,
+    199921,
+    200127,
+    200198,
+    200427,
+    200954,
+    201395,
+    201447,
+    201494,
+    201973,
+    201978,
+    203012,
+    203041,
+    203132,
+    203187,
+    203470,
+    203521,
+    203576,
+    203629,
+    203719,
+    203778,
+    204233,
+    204240,
+    204256,
+    204560,
+    204937
+   ],
+   "inner_val": [
+    187328,
+    189061,
+    190177,
+    190300,
+    190790,
+    192010,
+    192721,
+    192732,
+    195024,
+    195959,
+    196332,
+    200320,
+    200385,
+    200636
+   ],
+   "test": [
+    185866,
+    190094,
+    190335,
+    190695,
+    191470,
+    192015,
+    192148,
+    192229,
+    192914,
+    193022,
+    193075,
+    195016,
+    195102,
+    195786,
+    199789,
+    200917,
+    200990,
+    201270,
+    201707,
+    203764,
+    203941,
+    203959,
+    204243,
+    204530
+   ],
+   "threshold": 0.34020924604771413,
+   "val_f1": 0.7438825448613376,
+   "coefficient": 3.578199646295823,
+   "intercept": -2.3517788652210294
+  },
+  {
+   "fold": 3,
+   "train": [
+    185857,
+    185866,
+    185945,
+    186013,
+    186093,
+    186945,
+    187076,
+    187105,
+    187328,
+    189044,
+    189061,
+    189272,
+    189324,
+    189559,
+    189688,
+    189741,
+    190094,
+    190218,
+    190637,
+    190643,
+    190695,
+    190790,
+    191326,
+    191470,
+    192003,
+    192148,
+    192226,
+    192229,
+    192232,
+    192914,
+    193008,
+    193022,
+    193075,
+    194155,
+    194160,
+    194445,
+    194600,
+    194608,
+    195016,
+    195024,
+    195066,
+    195102,
+    195111,
+    195279,
+    195786,
+    195959,
+    196332,
+    196541,
+    198806,
+    198899,
+    199087,
+    199789,
+    199909,
+    199921,
+    200127,
+    200198,
+    200320,
+    200385,
+    200427,
+    200917,
+    200954,
+    200990,
+    201270,
+    201395,
+    201447,
+    201707,
+    201973,
+    201978,
+    203012,
+    203041,
+    203132,
+    203187,
+    203470,
+    203521,
+    203764,
+    203941,
+    203959,
+    204233,
+    204240,
+    204243,
+    204560
+   ],
+   "inner_val": [
+    186427,
+    190335,
+    192015,
+    192432,
+    195263,
+    195646,
+    198971,
+    199790,
+    200636,
+    203576,
+    203629,
+    203778,
+    204256,
+    204530
+   ],
+   "test": [
+    185961,
+    186569,
+    186636,
+    187035,
+    187196,
+    189004,
+    189885,
+    190177,
+    190300,
+    190991,
+    191382,
+    191677,
+    192010,
+    192425,
+    192721,
+    192732,
+    192751,
+    193276,
+    195103,
+    195186,
+    196405,
+    201494,
+    203719,
+    204937
+   ],
+   "threshold": 0.2788484734118314,
+   "val_f1": 0.7394034536891679,
+   "coefficient": 3.485468086574896,
+   "intercept": -2.562355888907871
+  },
+  {
+   "fold": 4,
+   "train": [
+    185857,
+    185866,
+    185945,
+    185961,
+    186093,
+    186569,
+    186636,
+    186945,
+    187035,
+    187076,
+    187105,
+    187196,
+    187328,
+    189004,
+    189061,
+    189272,
+    189559,
+    189741,
+    189885,
+    190094,
+    190177,
+    190218,
+    190300,
+    190335,
+    190643,
+    190695,
+    190991,
+    191382,
+    191677,
+    192003,
+    192010,
+    192015,
+    192148,
+    192226,
+    192232,
+    192425,
+    192732,
+    192751,
+    192914,
+    193075,
+    193276,
+    194155,
+    194608,
+    195016,
+    195066,
+    195102,
+    195103,
+    195186,
+    195263,
+    195279,
+    195646,
+    195786,
+    196332,
+    198899,
+    199789,
+    199790,
+    199921,
+    200127,
+    200198,
+    200320,
+    200385,
+    200636,
+    200917,
+    200954,
+    200990,
+    201270,
+    201395,
+    201447,
+    201494,
+    201707,
+    201973,
+    203187,
+    203764,
+    203778,
+    203941,
+    203959,
+    204233,
+    204243,
+    204256,
+    204530,
+    204560,
+    204937
+   ],
+   "inner_val": [
+    189324,
+    190637,
+    191470,
+    192229,
+    192721,
+    193022,
+    194160,
+    195111,
+    196405,
+    196541,
+    203041,
+    203629,
+    203719,
+    204240
+   ],
+   "test": [
+    186013,
+    186427,
+    189044,
+    189688,
+    190790,
+    191326,
+    192432,
+    193008,
+    194445,
+    194600,
+    195024,
+    195959,
+    198806,
+    198971,
+    199087,
+    199909,
+    200427,
+    201978,
+    203012,
+    203132,
+    203470,
+    203521,
+    203576
+   ],
+   "threshold": 0.520824668756356,
+   "val_f1": 0.7304526748971193,
+   "coefficient": 3.589760168679733,
+   "intercept": -2.4136727663845754
+  }
+ ],
+ "cohort_test_shots_used": 0,
+ "primary_run": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/cv/cv2/run.json",
+ "primary_run_sha256": "800648123f5d445174436b0b7f9179bbe7890d0dd93fae783721778a632b3e0b",
+ "sets": {
+  "primary": {
+   "bes73": {
+    "n_shots": 73,
+    "bins": 6843,
+    "methods": {
+     "elm-feature-only": {
+      "shots": 73,
+      "counts": {
+       "tp": 2392,
+       "fp": 1565,
+       "fn": 358,
+       "tn": 2528,
+       "crowd_bins": 2662,
+       "crowd_hit": 2328,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
+       "absent_spans": 0,
+       "absent_span_alarm": 0,
+       "crowd_spans": 0,
+       "absent_spans_guard25_eligible": 0,
+       "absent_span_alarm_guard25": 0,
+       "absent_spans_guard25_empty": 0
+      },
+      "point": {
+       "precision": 0.6044983573414203,
+       "recall": 0.8698181818181818,
+       "f1": 0.7132846280005964,
+       "false_alarm_bin_rate": 0.3823601270461764,
+       "crowd_bin_recall": 0.8745304282494365,
+       "non_crowd_span_touch_recall": NaN,
+       "absent_span_alarm_rate": NaN,
+       "absent_span_alarm_rate_guard25": NaN,
+       "absent_span_interior_alarm_rate_guard25": NaN,
+       "auroc": 0.8311048575172689,
+       "auprc": 0.7060824847393635,
+       "prevalence": 0.40187052462370304
+      },
+      "positive_shots": 53,
+      "descriptive_only": false,
+      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": {
+       "precision": [
+        0.504257108304578,
+        0.7070635617626897
+       ],
+       "recall": [
+        0.7861645970080646,
+        0.9354955766066171
+       ],
+       "f1": [
+        0.6281710518548036,
+        0.7882074699448159
+       ],
+       "false_alarm_bin_rate": [
+        0.2823021708608089,
+        0.48418206529689134
+       ],
+       "crowd_bin_recall": [
+        0.7873161312222932,
+        0.9416600352070221
+       ],
+       "non_crowd_span_touch_recall": [
+        NaN,
+        NaN
+       ],
+       "absent_span_alarm_rate": [
+        NaN,
+        NaN
+       ],
+       "absent_span_alarm_rate_guard25": [
+        NaN,
+        NaN
+       ],
+       "absent_span_interior_alarm_rate_guard25": [
+        NaN,
+        NaN
+       ],
+       "auroc": [
+        0.7699606468701039,
+        0.8861141423992926
+       ],
+       "auprc": [
+        0.6033508304187393,
+        0.8188068082690166
+       ]
+      },
+      "bootstrap_draw_counts": {
+       "precision": {
+        "valid": 1000,
+        "undefined": 0
+       },
+       "recall": {
+        "valid": 1000,
+        "undefined": 0
+       },
+       "f1": {
+        "valid": 1000,
+        "undefined": 0
+       },
+       "false_alarm_bin_rate": {
+        "valid": 1000,
+        "undefined": 0
+       },
+       "crowd_bin_recall": {
+        "valid": 1000,
+        "undefined": 0
+       },
+       "non_crowd_span_touch_recall": {
+        "valid": 0,
+        "undefined": 1000
+       },
+       "absent_span_alarm_rate": {
+        "valid": 0,
+        "undefined": 1000
+       },
+       "absent_span_alarm_rate_guard25": {
+        "valid": 0,
+        "undefined": 1000
+       },
+       "absent_span_interior_alarm_rate_guard25": {
+        "valid": 0,
+        "undefined": 1000
+       },
+       "auroc": {
+        "valid": 1000,
+        "undefined": 0
+       },
+       "auprc": {
+        "valid": 1000,
+        "undefined": 0
+       }
+      },
+      "replicates": 1000
+     }
+    }
+   },
+   "all119": {
+    "n_shots": 119,
+    "bins": 12409,
+    "methods": {
+     "elm-feature-only": {
+      "shots": 119,
+      "counts": {
+       "tp": 3831,
+       "fp": 2403,
+       "fn": 833,
+       "tn": 5342,
+       "crowd_bins": 4539,
+       "crowd_hit": 3744,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
+       "absent_spans": 0,
+       "absent_span_alarm": 0,
+       "crowd_spans": 0,
+       "absent_spans_guard25_eligible": 0,
+       "absent_span_alarm_guard25": 0,
+       "absent_spans_guard25_empty": 0
+      },
+      "point": {
+       "precision": 0.6145332050048123,
+       "recall": 0.8213979416809606,
+       "f1": 0.7030647825289044,
+       "false_alarm_bin_rate": 0.3102646868947708,
+       "crowd_bin_recall": 0.8248512888301388,
+       "non_crowd_span_touch_recall": NaN,
+       "absent_span_alarm_rate": NaN,
+       "absent_span_alarm_rate_guard25": NaN,
+       "absent_span_interior_alarm_rate_guard25": NaN,
+       "auroc": 0.8329075112920746,
+       "auprc": 0.6951411975550156,
+       "prevalence": 0.3758562333789991
+      },
+      "positive_shots": 86,
+      "descriptive_only": false,
+      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": {
+       "precision": [
+        0.5332632247339816,
+        0.6855374899724225
+       ],
+       "recall": [
+        0.7489892951869034,
+        0.8888481211725469
+       ],
+       "f1": [
+        0.6401452057821461,
+        0.7580027011885652
+       ],
+       "false_alarm_bin_rate": [
+        0.24441893937184725,
+        0.38627751085271994
+       ],
+       "crowd_bin_recall": [
+        0.7507975097585627,
+        0.8937331107757274
+       ],
+       "non_crowd_span_touch_recall": [
+        NaN,
+        NaN
+       ],
+       "absent_span_alarm_rate": [
+        NaN,
+        NaN
+       ],
+       "absent_span_alarm_rate_guard25": [
+        NaN,
+        NaN
+       ],
+       "absent_span_interior_alarm_rate_guard25": [
+        NaN,
+        NaN
+       ],
+       "auroc": [
+        0.7834832033119935,
+        0.8780425132348159
+       ],
+       "auprc": [
+        0.6059513209601279,
+        0.7787741018318315
+       ]
+      },
+      "bootstrap_draw_counts": {
+       "precision": {
+        "valid": 1000,
+        "undefined": 0
+       },
+       "recall": {
+        "valid": 1000,
+        "undefined": 0
+       },
+       "f1": {
+        "valid": 1000,
+        "undefined": 0
+       },
+       "false_alarm_bin_rate": {
+        "valid": 1000,
+        "undefined": 0
+       },
+       "crowd_bin_recall": {
+        "valid": 1000,
+        "undefined": 0
+       },
+       "non_crowd_span_touch_recall": {
+        "valid": 0,
+        "undefined": 1000
+       },
+       "absent_span_alarm_rate": {
+        "valid": 0,
+        "undefined": 1000
+       },
+       "absent_span_alarm_rate_guard25": {
+        "valid": 0,
+        "undefined": 1000
+       },
+       "absent_span_interior_alarm_rate_guard25": {
+        "valid": 0,
+        "undefined": 1000
+       },
+       "auroc": {
+        "valid": 1000,
+        "undefined": 0
+       },
+       "auprc": {
+        "valid": 1000,
+        "undefined": 0
+       }
+      },
+      "replicates": 1000
+     }
+    }
+   }
+  },
+  "common": {
+   "bes73": {
+    "n_shots": 73,
+    "bins": 6527,
+    "methods": {
+     "elm-feature-only": {
+      "shots": 73,
+      "counts": {
+       "tp": 2375,
+       "fp": 1474,
+       "fn": 344,
+       "tn": 2334,
+       "crowd_bins": 2632,
+       "crowd_hit": 2312,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
+       "absent_spans": 0,
+       "absent_span_alarm": 0,
+       "crowd_spans": 0,
+       "absent_spans_guard25_eligible": 0,
+       "absent_span_alarm_guard25": 0,
+       "absent_spans_guard25_empty": 0
+      },
+      "point": {
+       "precision": 0.6170433878929592,
+       "recall": 0.8734828981243105,
+       "f1": 0.7232034104750305,
+       "false_alarm_bin_rate": 0.3870798319327731,
+       "crowd_bin_recall": 0.878419452887538,
+       "non_crowd_span_touch_recall": NaN,
+       "absent_span_alarm_rate": NaN,
+       "absent_span_alarm_rate_guard25": NaN,
+       "absent_span_interior_alarm_rate_guard25": NaN,
+       "auroc": 0.8292901589653883,
+       "auprc": 0.7123183485514119,
+       "prevalence": 0.4165772943159185
+      },
+      "positive_shots": 53,
+      "descriptive_only": false,
+      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": {
+       "precision": [
+        0.5153090281628195,
+        0.7186460852745075
+       ],
+       "recall": [
+        0.7963360022884205,
+        0.936201299668455
+       ],
+       "f1": [
+        0.6383484234324531,
+        0.7978065985352661
+       ],
+       "false_alarm_bin_rate": [
+        0.28101424562602556,
+        0.491921202342254
+       ],
+       "crowd_bin_recall": [
+        0.7994604500291282,
+        0.9419634195729771
+       ],
+       "non_crowd_span_touch_recall": [
+        NaN,
+        NaN
+       ],
+       "absent_span_alarm_rate": [
+        NaN,
+        NaN
+       ],
+       "absent_span_alarm_rate_guard25": [
+        NaN,
+        NaN
+       ],
+       "absent_span_interior_alarm_rate_guard25": [
+        NaN,
+        NaN
+       ],
+       "auroc": [
+        0.7665491792873681,
+        0.8879170939646784
+       ],
+       "auprc": [
+        0.6088418875598186,
+        0.8245886940867372
+       ]
+      },
+      "bootstrap_draw_counts": {
+       "precision": {
+        "valid": 1000,
+        "undefined": 0
+       },
+       "recall": {
+        "valid": 1000,
+        "undefined": 0
+       },
+       "f1": {
+        "valid": 1000,
+        "undefined": 0
+       },
+       "false_alarm_bin_rate": {
+        "valid": 1000,
+        "undefined": 0
+       },
+       "crowd_bin_recall": {
+        "valid": 1000,
+        "undefined": 0
+       },
+       "non_crowd_span_touch_recall": {
+        "valid": 0,
+        "undefined": 1000
+       },
+       "absent_span_alarm_rate": {
+        "valid": 0,
+        "undefined": 1000
+       },
+       "absent_span_alarm_rate_guard25": {
+        "valid": 0,
+        "undefined": 1000
+       },
+       "absent_span_interior_alarm_rate_guard25": {
+        "valid": 0,
+        "undefined": 1000
+       },
+       "auroc": {
+        "valid": 1000,
+        "undefined": 0
+       },
+       "auprc": {
+        "valid": 1000,
+        "undefined": 0
+       }
+      },
+      "replicates": 1000
+     }
+    }
+   },
+   "all119": {
+    "n_shots": 119,
+    "bins": 11653,
+    "methods": {
+     "elm-feature-only": {
+      "shots": 119,
+      "counts": {
+       "tp": 3774,
+       "fp": 2262,
+       "fn": 782,
+       "tn": 4835,
+       "crowd_bins": 4432,
+       "crowd_hit": 3688,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
+       "absent_spans": 0,
+       "absent_span_alarm": 0,
+       "crowd_spans": 0,
+       "absent_spans_guard25_eligible": 0,
+       "absent_span_alarm_guard25": 0,
+       "absent_spans_guard25_empty": 0
+      },
+      "point": {
+       "precision": 0.6252485089463221,
+       "recall": 0.8283582089552238,
+       "f1": 0.7126132930513596,
+       "false_alarm_bin_rate": 0.3187262223474708,
+       "crowd_bin_recall": 0.8321299638989169,
+       "non_crowd_span_touch_recall": NaN,
+       "absent_span_alarm_rate": NaN,
+       "absent_span_alarm_rate_guard25": NaN,
+       "absent_span_interior_alarm_rate_guard25": NaN,
+       "auroc": 0.8325477396315425,
+       "auprc": 0.703584548092899,
+       "prevalence": 0.3909722818158414
+      },
+      "positive_shots": 86,
+      "descriptive_only": false,
+      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": {
+       "precision": [
+        0.5432919272521352,
+        0.7001117131388219
+       ],
+       "recall": [
+        0.7572892141912774,
+        0.8952222042926314
+       ],
+       "f1": [
+        0.6487321880252159,
+        0.7703163546552831
+       ],
+       "false_alarm_bin_rate": [
+        0.2483071793654613,
+        0.3953891100332279
+       ],
+       "crowd_bin_recall": [
+        0.7588722804747404,
+        0.9001940132314086
+       ],
+       "non_crowd_span_touch_recall": [
+        NaN,
+        NaN
+       ],
+       "absent_span_alarm_rate": [
+        NaN,
+        NaN
+       ],
+       "absent_span_alarm_rate_guard25": [
+        NaN,
+        NaN
+       ],
+       "absent_span_interior_alarm_rate_guard25": [
+        NaN,
+        NaN
+       ],
+       "auroc": [
+        0.7822761340550842,
+        0.8788432444786095
+       ],
+       "auprc": [
+        0.6115437073302956,
+        0.7891344987893522
+       ]
+      },
+      "bootstrap_draw_counts": {
+       "precision": {
+        "valid": 1000,
+        "undefined": 0
+       },
+       "recall": {
+        "valid": 1000,
+        "undefined": 0
+       },
+       "f1": {
+        "valid": 1000,
+        "undefined": 0
+       },
+       "false_alarm_bin_rate": {
+        "valid": 1000,
+        "undefined": 0
+       },
+       "crowd_bin_recall": {
+        "valid": 1000,
+        "undefined": 0
+       },
+       "non_crowd_span_touch_recall": {
+        "valid": 0,
+        "undefined": 1000
+       },
+       "absent_span_alarm_rate": {
+        "valid": 0,
+        "undefined": 1000
+       },
+       "absent_span_alarm_rate_guard25": {
+        "valid": 0,
+        "undefined": 1000
+       },
+       "absent_span_interior_alarm_rate_guard25": {
+        "valid": 0,
+        "undefined": 1000
+       },
+       "auroc": {
+        "valid": 1000,
+        "undefined": 0
+       },
+       "auprc": {
+        "valid": 1000,
+        "undefined": 0
+       }
+      },
+      "replicates": 1000
+     }
+    }
+   }
+  }
+ },
+ "generation_git": "8b586d94",
+ "audit_git_meaning": "current code/record audit; historical training provenance remains embedded and is not rewritten"
+}

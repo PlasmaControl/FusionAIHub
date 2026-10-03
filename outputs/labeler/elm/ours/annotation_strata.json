@@ -1,10 +1,10 @@
 {
- "git": "2bb7a4ad",
+ "git": "da3f6693bdf71af611a8a163648cc59ee4ca45f5",
  "created": "2026-10-03T19:30:17+00:00",
  "source_script": "scripts/labeler/elm_annotation_strata.py",
  "source_script_sha256": "df2192d303ea4e170680c6a3fba7e4f5d1f65520209ddbe95821202c85f6dc01",
  "source_evaluation": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/ours/evaluation.json",
- "source_evaluation_sha256": "385016dd464c9cedb435c26baf4260c1df5d1be992354e7a60b2d01ef3058896",
+ "source_evaluation_sha256": "db18c0082478cb81ec9c56fe63798261d19c9d9ff2aaae5ab15591ee2a282d2e",
  "run": "cv2",
  "annotation_mode_definition": {
   "non_crowd_present_shots": 33,
@@ -3769,7 +3769,7 @@
    "run": "cv2-smoothed",
    "scope": "One five-fold rerun of the frozen primary partitions and recipe, with the same seed; only inner-validation checkpoint selection changes. The canonical cv2 occupancy fit remains frozen.",
    "evaluation_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/ours/smoothed_selection.json",
-   "evaluation_record_sha256": "90a9ce4ed9e3985411d752b38a1363fe773f8d185ef93459746ee24bea861186",
+   "evaluation_record_sha256": "0c0512d40d1588b8cf7f6f1fbf93f33e5d8f6924321d04cad739ce8bd96e9426",
    "status": "available"
   },
   "limitation": "Only the selected best state was saved for each fold. A separate five-fold sensitivity reruns the primary seed rather than reselecting states in the 20 historical folds. Estimates exclude queue time and artifact serialization. The historical diagnostic changes no canonical reported operating point."
@@ -7264,5 +7264,7 @@
     }
    }
   }
- }
+ },
+ "generation_git": "2bb7a4ad",
+ "audit_git_meaning": "current code/record audit; historical training provenance remains embedded and is not rewritten"
 }

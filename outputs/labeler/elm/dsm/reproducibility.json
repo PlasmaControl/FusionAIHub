@@ -1,5 +1,5 @@
 {
- "git": "c124df7ab569e8c0c605b62780a3dd58395241c5",
+ "git": "da3f6693bdf71af611a8a163648cc59ee4ca45f5",
  "script_sha256": "f2d2eeb961e1142efb19b78906dd23aec19b82ff75e2cd740167f59d2e3504d6",
  "verification_scope": "Recompute optimizer-training-only normalization and checkpoint forward passes on every outer-test shot; compare with the serialized score arrays consumed by the new evaluation. No retraining or repeated bootstrap. Historical input-poor rescore proof superseded.",
  "fit_record": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fits.json",
@@ -316,5 +316,7 @@
    "passed": true
   }
  ],
- "passed": true
+ "passed": true,
+ "generation_git": "c124df7ab569e8c0c605b62780a3dd58395241c5",
+ "audit_git_meaning": "current code/record audit; historical training provenance remains embedded and is not rewritten"
 }

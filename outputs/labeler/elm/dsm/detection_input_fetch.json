@@ -1,5 +1,5 @@
 {
- "git": "8e166437de963398f15550e135fab796095e2bc2",
+ "git": "da3f6693bdf71af611a8a163648cc59ee4ca45f5",
  "script_sha256": "ca9780b6fd61ed593f138361b622cda7cee84a2f04b5333bf31a4b8d3789ee02",
  "created": "2026-10-03T19:01:30+00:00",
  "scope": "PCPHD02/03 on all 119 reviewed shots, regardless of H5 coverage",
@@ -1658,5 +1658,7 @@
  "pace_seconds": 1.0,
  "workers": 1,
  "stopped_on_auth_error": false,
- "store": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes"
+ "store": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes",
+ "generation_git": "8e166437de963398f15550e135fab796095e2bc2",
+ "audit_git_meaning": "current code/record audit; historical training provenance remains embedded and is not rewritten"
 }

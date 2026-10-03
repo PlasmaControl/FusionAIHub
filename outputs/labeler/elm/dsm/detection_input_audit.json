@@ -1,5 +1,5 @@
 {
- "git": "23fe399b42df470a6e689ad11d7b7346799a1bc8",
+ "git": "da3f6693bdf71af611a8a163648cc59ee4ca45f5",
  "created": "2026-10-03T19:13:09.003625+00:00",
  "script_sha256": "25a954910744a770845ac115ca4b4ff4cd3521e6c838ff56a6d312429b49e707",
  "shots": [
@@ -796,5 +796,7 @@
    ],
    "row_selection": "usable 50 ms means ending 1000-4500 ms; slow >1e12; finite fast with magnitude <1e16; descriptive scale audit, not calibration"
   }
- }
+ },
+ "generation_git": "23fe399b42df470a6e689ad11d7b7346799a1bc8",
+ "audit_git_meaning": "current code/record audit; historical training provenance remains embedded and is not rewritten"
 }

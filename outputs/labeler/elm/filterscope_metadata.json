@@ -581,5 +581,8 @@
   "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE:PHOTON_FLUX": "The numerical node FLUX_CONSTS contains the eight constants \n[PMT, WAVE, BAND_CENTER, FWHM, INH_NO, LINE_CAL, V_CAL, GAIN_V], where \n\nPMT is the model number of the miniature Hamamatsu photomultiplier assembly, \nWAVE is the wavelength in Angstroms of the given spectra line, \nBAND_CENTER is the central wavelength in Angstroms of the bandpass filter, \nFWHM is the full width at half maximum in Angstroms of the bandpass filters transmission profile, \nINH_NO is the dot product of the Optronics light source intensity and the peak-normalized, filter transmission function \nLINE_CAL is the voltage response of the filterscope during calibration with the in-vessel light source, \nV_CAL is the control voltage at which LINE_CAL is measured, \nGAIN_V is the gain of the photomultiplier at the voltage V_CAL. \n\nThe calibrated photon flux, PHOTON_FLUX, [ (ph/s-ster-cm2)/volt ]\nis related to the photoelectron signal \nPHOTO_EL_SIG by the  relation: \n\nPHOTON_FLUX = ( INH_NO / LINE_CAL ) * GAIN_V * PHOTO_EL_SIG  ",
   "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.NOTES:FLUX_CONSTS": "TreeNODATA: %TREE-E-NODATA, No data available for this node",
   "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.NOTES:GAIN_COEFFS": "TreeNODATA: %TREE-E-NODATA, No data available for this node"
- }
+ },
+ "git": "da3f6693bdf71af611a8a163648cc59ee4ca45f5",
+ "audit_git_meaning": "current code/record audit; historical training provenance remains embedded and is not rewritten",
+ "generation_git": "0ade8ff3aafae5e7006e065c66529da413f09606"
 }

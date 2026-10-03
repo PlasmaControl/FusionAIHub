@@ -1,5 +1,5 @@
 {
- "git": "31d2553fe39ac6b0ba401a5e294e21200825721b",
+ "git": "da3f6693bdf71af611a8a163648cc59ee4ca45f5",
  "script_sha256": "86db33904ff314d7f147e2ebfb88f2d52bc0bdb9ff2b22d0d28d9cdb99413ecc",
  "before_record": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/archive/dsm/evaluation_before_input_repair_bcf3638d953d.json",
  "after_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/evaluation.json",
@@ -4006,5 +4006,7 @@
    "after_bins": 11653
   }
  },
- "before_record_sha256": "bcf3638d953d0627efa7c851ca2f7dcce55ac6824b397c80b5bc03b39be2f9d3"
+ "before_record_sha256": "bcf3638d953d0627efa7c851ca2f7dcce55ac6824b397c80b5bc03b39be2f9d3",
+ "generation_git": "31d2553fe39ac6b0ba401a5e294e21200825721b",
+ "audit_git_meaning": "current code/record audit; historical training provenance remains embedded and is not rewritten"
 }

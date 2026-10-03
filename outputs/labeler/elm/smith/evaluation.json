@@ -1,5 +1,5 @@
 {
- "git": "4a9bad18",
+ "git": "da3f6693bdf71af611a8a163648cc59ee4ca45f5",
  "created": "2026-10-03T19:40:00.081128+00:00",
  "protocol": {
   "git": "3c293c3b",
@@ -13048,5 +13048,7 @@
   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/smith/cv/pred",
   "scope": "1ms benchmark traces on Smith shots from held-out-shot folds; selected-window evaluation only"
  },
- "onset_delivery_reason": "Frozen auxiliary onset F1 at +/-2ms is 0.000; Smith-only CV onset F1 is 0.964. The experimental CV trace is delivered, but physical-onset catalog output remains withheld because selected Smith windows do not validate continuous-discharge false alarms or transfer of the Smith-trained head to the review domain."
+ "onset_delivery_reason": "Frozen auxiliary onset F1 at +/-2ms is 0.000; Smith-only CV onset F1 is 0.964. The experimental CV trace is delivered, but physical-onset catalog output remains withheld because selected Smith windows do not validate continuous-discharge false alarms or transfer of the Smith-trained head to the review domain.",
+ "generation_git": "4a9bad18",
+ "audit_git_meaning": "current code/record audit; historical training provenance remains embedded and is not rewritten"
 }

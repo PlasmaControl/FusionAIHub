@@ -5394,5 +5394,8 @@
         "numerical_bytes_unchanged": true
       }
     }
-  }
+  },
+  "git": "da3f6693bdf71af611a8a163648cc59ee4ca45f5",
+  "audit_git_meaning": "current code/record audit; historical training provenance remains embedded and is not rewritten",
+  "generation_git": "0ade8ff3aafae5e7006e065c66529da413f09606"
 }

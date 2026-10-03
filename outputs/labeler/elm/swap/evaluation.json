@@ -1,5 +1,5 @@
 {
- "git": "5a2d8805",
+ "git": "da3f6693bdf71af611a8a163648cc59ee4ca45f5",
  "created": "2026-10-03T19:27:28+00:00",
  "source_script": "scripts/labeler/elm_reference_swap.py",
  "source_script_sha256": "8b9883f1f2d59ecd49268f45e178dbaa88fb486f555f4f291d9f7a1ba0b562dd",
@@ -49187,5 +49187,7 @@
     }
    }
   }
- }
+ },
+ "generation_git": "5a2d8805",
+ "audit_git_meaning": "current code/record audit; historical training provenance remains embedded and is not rewritten"
 }

@@ -1,5 +1,5 @@
 {
- "git": "206e4c1ddb2677b67d203eac6d4c1078e4cdb52c",
+ "git": "da3f6693bdf71af611a8a163648cc59ee4ca45f5",
  "created": "2026-10-03T19:12:39+00:00",
  "script": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/scripts/labeler/elm_dsm_native.py",
  "script_sha256": "73e4a4507446a1a61d3ecd0982e29087a0181778914d166d9dad2d6ebcab16c4",
@@ -32520,5 +32520,7 @@
    }
   },
   "t_offset_ms": 1.0
- }
+ },
+ "generation_git": "206e4c1ddb2677b67d203eac6d4c1078e4cdb52c",
+ "audit_git_meaning": "current code/record audit; historical training provenance remains embedded and is not rewritten"
 }

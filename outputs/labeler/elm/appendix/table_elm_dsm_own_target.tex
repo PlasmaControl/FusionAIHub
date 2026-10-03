@@ -1,0 +1,15 @@
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{lrrc}
+\toprule
+Forecast horizon & Rows & Positive rows & AUROC \\
+\midrule\multicolumn{4}{l}{\emph{Supplemental: DSM source exposure$^{\ddagger}$}} \\
+5 ms$^{\ddagger}$ & 142,303 & 1,775 & 0.758 {\scriptsize[0.70, 0.81]} \\
+10 ms$^{\ddagger}$ & 141,937 & 3,254 & 0.764 {\scriptsize[0.71, 0.82]} \\
+20 ms$^{\ddagger}$ & 141,210 & 6,100 & 0.770 {\scriptsize[0.72, 0.82]} \\
+50 ms$^{\ddagger}$ & 139,150 & 13,233 & 0.777 {\scriptsize[0.72, 0.83]} \\
+\bottomrule
+\end{tabular}\caption{60-input DSM refit checkpoint, selected after epoch 1 of a 7-epoch run. Its survival target is an ELM within the forecast horizon, queried one ms later. Rows are the source early-stopping validation set (80 physical shots); these are model-selection results, not independent validation of the published 124-input model. Brackets show 95\% physical-shot bootstrap intervals. This supplemental source-exposed evaluation is distinct from the reviewed occupancy benchmark. The DSM and legacy onset table were built on WPQH phases with breakthrough-ELM targets; Finding 1 and low DSM AUROCs partly reflect definition and domain shift (192721: 1 legacy bin versus 17 non-crowd review spans).}
+\label{tab:elm-dsm-own-target}
+\end{table*}

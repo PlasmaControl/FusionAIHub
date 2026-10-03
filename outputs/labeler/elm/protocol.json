@@ -1,54 +1,53 @@
 {
+ "git": "da3f6693",
+ "sources": {
+  "ours": {
+   "path": "ours/evaluation.json",
+   "sha256": "db18c0082478cb81ec9c56fe63798261d19c9d9ff2aaae5ab15591ee2a282d2e"
+  },
+  "dsm": {
+   "path": "dsm/evaluation.json",
+   "sha256": "b8f739a34b679b708a8628ee5f87c6cc833b84039230a32d4a7692377fc91597"
+  },
+  "swap": {
+   "path": "swap/evaluation.json",
+   "sha256": "3d66e07b4e7fd29ec79a7ee43ab146b828ab098cc05e55683d89c080bc398c6b"
+  },
+  "feature": {
+   "path": "ours/feature_only.json",
+   "sha256": "17ca7652e7cb5f7cba99affdb1e4a075d6dba5f6d63414bf819d3aca5fb61a2d"
+  },
+  "strata": {
+   "path": "ours/annotation_strata.json",
+   "sha256": "770b6c5311b4410bb4bcc7419193d48ec79a377ce516eeb403781568c9fd9866"
+  },
+  "smith": {
+   "path": "smith/evaluation.json",
+   "sha256": "7cb9be78d9e060a89662535f5a5df30ff7dcc6eb170c8f76f5e0a8181b3d79fa"
+  },
+  "smoothed": {
+   "path": "ours/smoothed_selection.json",
+   "sha256": "0c0512d40d1588b8cf7f6f1fbf93f33e5d8f6924321d04cad739ce8bd96e9426"
+  }
+ },
+ "artifacts": {
+  "docs/labeler/elm_ours.md": "e8a1729bacca7deeed55d12303ddd1ce6f0cb5ab2ad96059aab91148de72f8fc",
+  "data/events/edge_localized_mode/README.md": "c5301436ba02fbe1ac460b92866e008c8761ce71271ff476b03e27d748c8cbbc",
+  "docs/labeler/elm_benchmark_elmo.md": "0bacaa58df0c1fc051e9f42e69e35d32483caa5c36812e13b754ba0f911d5b32"
+ },
  "metadata": {
-  "elm_ours_parameters": 401714,
+  "reviewed_shots": 119,
+  "reviewed_split_counts": {
+   "val": 50,
+   "train": 69
+  },
   "cohort_split_counts": {
    "train": 400,
    "val": 50,
    "test": 50
   },
-  "reviewed_split_counts": {
-   "train": 69,
-   "val": 50
-  },
-  "cohort_source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/catalog/cohort.csv",
-  "cohort_sha256": "b910527a9a2c7b4100cf5674aa6f57ec19b458f1ee952b23387341f1ed92bbda"
- },
- "sources": {
-  "ours": {
-   "path": "outputs/labeler/elm/ours/evaluation.json",
-   "sha256": "24a89272b1bf28765d49cc234db54363284c4bbd021042156ebfd98235d2d330"
-  },
-  "dsm": {
-   "path": "outputs/labeler/elm/dsm/evaluation.json",
-   "sha256": "bcf3638d953d0627efa7c851ca2f7dcce55ac6824b397c80b5bc03b39be2f9d3"
-  },
-  "swap": {
-   "path": "outputs/labeler/elm/swap/evaluation.json",
-   "sha256": "f6c9490ce5fa6e111cf86fe38944cc9ff55a8f2de2142d2be104f138a56931d1"
-  },
-  "repeats": {
-   "path": "outputs/labeler/elm/ours/seed_repeats.json",
-   "sha256": "5cc854e7761c687e6339da3bf544f62f49a3f988f96b773d90c3654fb026c7e2"
-  },
-  "strata": {
-   "path": "outputs/labeler/elm/ours/annotation_strata.json",
-   "sha256": "3defd14c9d534524e6fb5f806889d119f0073554c9f359de29c62a14094a8dd9"
-  },
-  "filterscopes": {
-   "path": "outputs/labeler/elm/filterscope_metadata.json",
-   "sha256": "e2b29ed97bf9a14b98efd233c711aef2ea93a8720d232e74c380cdcb0245400d"
-  },
-  "native": {
-   "path": "outputs/labeler/elm/dsm/native_evaluation.json",
-   "sha256": "2ab8b4ade688034b4cbc744b8474d9d6c5eb6160f4815392748de9d4633a88dd"
-  },
-  "native_fetch": {
-   "path": "outputs/labeler/elm/dsm/native_fetch.json",
-   "sha256": "3eceb58bb8d72deaa7f9d5e354353925aaf50db5992edfe1ff6df81c1afb4f5a"
-  }
- },
- "artifacts": {
-  "docs/labeler/elm_ours.md": "ebb828ab16d1c94f7de52858065a302c0740a89eac54b919031ace118f3e13e9",
-  "data/events/edge_localized_mode/README.md": "f86fdab747ca28e634fe98b577034d93d02125b7d15bef151b4a22f576ba5b04"
+  "cohort_sha256": "b910527a9a2c7b4100cf5674aa6f57ec19b458f1ee952b23387341f1ed92bbda",
+  "elm_ours_parameters": 401714,
+  "crowd_positive_share": 0.9731989708404802
  }
 }

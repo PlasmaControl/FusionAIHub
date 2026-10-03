@@ -1,5 +1,5 @@
 {
- "git": "206e4c1ddb2677b67d203eac6d4c1078e4cdb52c",
+ "git": "da3f6693bdf71af611a8a163648cc59ee4ca45f5",
  "created": "2026-10-03T19:12:42+00:00",
  "run": "cv2",
  "reference": "expert-reviewed spans (review/labels.csv)",
@@ -29898,5 +29898,7 @@
   "git": "5a2d8805147028c517206e308edea4cc85b0a6b0",
   "script_sha256": "ed5e1425724e965fa98b41bb2f17c24bb7c30a6c7e1e072d8c0b6539bc3b733b",
   "scientific_results_unchanged": true
- }
+ },
+ "generation_git": "206e4c1ddb2677b67d203eac6d4c1078e4cdb52c",
+ "audit_git_meaning": "current code/record audit; historical training provenance remains embedded and is not rewritten"
 }

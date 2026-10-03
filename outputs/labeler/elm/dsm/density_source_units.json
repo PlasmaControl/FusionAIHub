@@ -14,6 +14,8 @@
   "DENV2UF": "%TREE-W-NNF, Node Not Found",
   "DENV3UF": "%TREE-W-NNF, Node Not Found"
  },
- "git": "206e4c1ddb2677b67d203eac6d4c1078e4cdb52c",
- "script_sha256": "25a954910744a770845ac115ca4b4ff4cd3521e6c838ff56a6d312429b49e707"
+ "git": "da3f6693bdf71af611a8a163648cc59ee4ca45f5",
+ "script_sha256": "25a954910744a770845ac115ca4b4ff4cd3521e6c838ff56a6d312429b49e707",
+ "generation_git": "206e4c1ddb2677b67d203eac6d4c1078e4cdb52c",
+ "audit_git_meaning": "current code/record audit; historical training provenance remains embedded and is not rewritten"
 }
