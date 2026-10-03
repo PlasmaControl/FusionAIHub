@@ -22,7 +22,8 @@ from ..labels.store import read_label
 from . import label_figure as lf
 from . import mode_tags as mt
 
-AE_THRESHOLD = 0.7
+# Paper operating point: scripts/labeler/ae_baselines_evaluate.py, SELDnet.
+AE_THRESHOLD = 0.5
 NTM_THRESHOLD = 0.63
 SAWTOOTH_THRESHOLD = 0.6
 ELM_VETO_MS = 5.0
@@ -30,9 +31,7 @@ ECE_MATCH_MS = 3.0
 
 
 def elm_category(row: lf.Row) -> int:
-    """Expert crowd rows encode ELMing periods, not ordinary uncertainty."""
-    if row.crowd == 1 and row.category in (PRESENT, UNCERTAIN):
-        return PRESENT
+    """Crowd identifies the annotation lane; category retains its meaning."""
     return row.category
 
 
@@ -76,7 +75,7 @@ def confinement_track(paths: Paths, shot: int) -> lf.Track:
 
 
 def stored_ae_track(paths: Paths, shot: int) -> lf.Track | None:
-    """Paper ae-ours probabilities, if stored and valid; fixed p>=0.7.
+    """Paper ae-ours probabilities, if stored and valid; paper operating point.
 
     The adapter's bins are causal (t-25ms, t]; convert them to interval rows,
     preserving invalid bins as not observable. Never run a model or fetch.
@@ -107,7 +106,7 @@ def stored_ae_track(paths: Paths, shot: int) -> lf.Track | None:
     spec = next(s for s in lf.TRACKS if s.key == mt.AE)
     source = lf.Source(
         lf.GENERATED,
-        "ae-ours (SELDnet-style), stored CO2 activity, p>=0.7",
+        f"ae-ours (SELDnet-style), stored CO2 activity, p>={AE_THRESHOLD}",
         lambda p: file,
     )
     return lf.Track(spec, source, file, tuple(rows))
@@ -129,7 +128,7 @@ def reviewed_or_stored_ae(
             raise ValueError(f"{predictions}: no AE prediction for shot {shot}")
         source = lf.Source(
             lf.GENERATED,
-            "ae-ours, CO2 activity predictions, p>=0.7",
+            f"ae-ours, CO2 activity predictions, p>={AE_THRESHOLD}",
             lambda p: predictions,
         )
         return lf.Track(spec, source, predictions, rows)
@@ -327,26 +326,15 @@ def crash_times(
 
 
 def sawtooth_track(paths: Paths, shot: int, source: Path, verified_times):
-    """The same physics source as the ticks; no old interval-model phase track."""
+    """Keep physics interval categories; verified crash ticks are separate."""
     file, _, rows, _ = saw_source(source, shot)
     times = np.asarray(verified_times)
-    out = []
-    for row in rows:
-        # Intervals cannot promote unverified or ELM-coincident point events.
-        if row.category == PRESENT:
-            row = replace(row, category=UNCERTAIN)
-        out.append(row)
-    out.extend(lf.Row(float(t - 0.5), float(t + 0.5), PRESENT) for t in times)
     spec = next(s for s in lf.TRACKS if s.key == mt.SAWTOOTH)
-    name = (
-        "ECE-verified sawtooth crashes"
-        if len(times)
-        else "sawtooth detector candidates"
-    )
-    if not len(times):
-        spec = replace(spec, title="sawtooth cand.")
+    name = "physics sawtooth states; independently ECE-verified crash ticks"
     selected = lf.Source(lf.GENERATED, name, lambda p: file)
-    return lf.Track(spec, selected, file, tuple(out))
+    if not rows:
+        rows = tuple(lf.Row(float(t - 0.5), float(t + 0.5), PRESENT) for t in times)
+    return lf.Track(spec, selected, file, rows)
 
 
 def projection_audit(mask, times, frequencies, raw_spans, band):
@@ -367,7 +355,7 @@ def projection_audit(mask, times, frequencies, raw_spans, band):
 
 
 def harmonic_support(n_map, mask, times, frequencies):
-    """Coincident n=1/n=2 ridges consistent with a near-15-kHz harmonic.
+    """Coincident measured n=1/n=2 ridges at a 2:1 frequency ratio.
 
     This is a plotted-frequency inference, not independent island confirmation.
     Require a 2:1 match within 1.2 kHz and at least 50 ms of sampled support.
@@ -376,8 +364,8 @@ def harmonic_support(n_map, mask, times, frequencies):
     result = {
         "frequency_tolerance_khz": 1.2,
         "minimum_support_ms": 50.0,
-        "n1_band_khz": [6, 10],
-        "n2_band_khz": [12, 18],
+        "caption_frequency_step_khz": 5.0,
+        "ridge_rule": "per-column pixel-weighted frequency of each measured n",
         "support_ms": 0.0,
     }
     if n_map is None:
@@ -385,13 +373,11 @@ def harmonic_support(n_map, mask, times, frequencies):
     means, counts = [], []
     for mode in (1, 2):
         measured = mask & (np.asarray(n_map) == mode)
-        lo, hi = (6, 10) if mode == 1 else (12, 18)
-        measured &= ((f >= lo) & (f <= hi))[:, None]
         count = measured.sum(axis=0)
         counts.append(count)
         means.append((measured * f[:, None]).sum(axis=0) / np.maximum(count, 1))
     f1, f2 = means
-    common = (counts[0] > 0) & (counts[1] > 0) & (f2 >= 12) & (f2 <= 18)
+    common = (counts[0] > 0) & (counts[1] > 0) & (f1 > 0)
     common &= np.abs(f2 - 2 * f1) <= 1.2
     dt = float(np.median(np.diff(t))) if len(t) > 1 else 0
     result["support_ms"] = float(common.sum() * dt)
@@ -413,6 +399,8 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
         ("confinement", "regime"),
         ("edge_localized_mode", "ELMs"),
     ):
+        if key == mt.SAWTOOTH and key not in records:
+            continue
         record = records.get(key)
         if record is None:
             description = "unassessed"
@@ -426,14 +414,17 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
                 if record["what"].startswith("ae-ours")
                 else "interferometer frame detector"
             )
+            if record["what"].startswith("ae-ours"):
+                description += f" (p≥{AE_THRESHOLD})"
+            elif record.get("decision_threshold") is not None:
+                description += f" (p≥{record['decision_threshold']})"
         elif key == mt.NTM:
-            description = "magnetic detector"
+            bars = record.get("primary_bars") or {}
+            failed = any(v is False for v in bars.values())
+            description = "unverified magnetic suggestion (shared inputs"
+            description += "; failed acceptance)" if failed else ")"
         elif key == mt.SAWTOOTH:
-            description = (
-                "ECE-verified crashes"
-                if drawn["sawtooth_strip_shown"]
-                else "physics detector candidates"
-            )
+            description = "physics detector states"
         elif key == "confinement":
             description = "D-alpha transition detector"
             if drawn.get("regimes_shown") == []:
@@ -444,38 +435,39 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
             name = record["title"]
         sources.append(f"{name}: {description}")
     sentences = [
-        f"DIII-D shot {shot}: raw signals, TokEye processing and aligned labels.",
-        (
-            "The frequency resolution changes at 55 kHz; measured toroidal n is shown "
-            "below 30 kHz, with unmeasured mask pixels white."
-        ),
-        (
-            "Pink AE highlights above 60 kHz and orange NTM outlines below 60 kHz "
-            "show temporal coincidence, not independent identification."
-        ),
+        "TokEye is a U-Net that segments coherent modes in the spectrogram.",
+        f"DIII-D shot {shot}: "
+        + drawn.get("view_description", "follow aligned signals, modes and intervals")
+        + ".",
         "; ".join(sources) + ".",
-        "Hatching means uncertainty; blank means unassessed.",
+        (
+            "AE tint (≥60 kHz) and NTM outlines (<60 kHz) indicate time/band coincidence; "
+            "n is measured only below 30 kHz."
+        ),
     ]
-    elm = records.get("edge_localized_mode")
-    if elm and elm["tier"] == lf.SILVER and drawn.get("elm_crowd_spans_ms"):
-        sentences.append("Marked solid ELM bars are expert-reviewed periods.")
-    if drawn.get("elm_peaks_in_label", 0):
-        sentences.append("Triangles mark D-alpha peaks at the figure threshold.")
-    ntm = records.get(mt.NTM)
-    if ntm and ntm["tier"] == lf.GENERATED:
-        bars = ntm.get("primary_bars") or {}
-        failed = bars.get("all") is False or any(v is False for v in bars.values())
+    harmonic = drawn.get("harmonic_support", {})
+    if harmonic.get("support_ms", 0) >= harmonic.get("minimum_support_ms", 50):
+        # "Near" is a coarse ridge description, not a precision frequency
+        # measurement. Apply the same recorded 5-kHz rounding on every shot.
+        step = harmonic.get("caption_frequency_step_khz", 5.0)
+        frequency = round(harmonic["n2_median_khz"] / step) * step
         sentences.append(
-            "The NTM detector shares the displayed magnetic inputs"
-            + (" and failed its primary acceptance check." if failed else ".")
+            f"The n=2 ridge near {frequency:.0f} kHz is consistent with a second "
+            "harmonic of the n=1 ridge."
         )
-    if drawn.get("n2_island_harmonic"):
+    if drawn.get("n3_unoutlined"):
+        sentences.append("n=3 is unoutlined: the NTM rule requires dominant n=1/2.")
+    if drawn.get("sawtooth_omission_reason") == "ECE density guard":
         sentences.append(
-            "Under an island interpretation, outlined n=2 near 15 kHz is a harmonic "
-            "of the same island."
+            "Sawtooth is not assessed here because ECE is cut off in ELMy H-mode "
+            "(density guard)."
         )
-    if drawn["sawtooth_strip_shown"]:
+    if drawn.get("sawtooth_strip_shown"):
         sentences.append("Ticks exclude crashes within 5 ms of D-alpha peaks.")
+    sentences.append(
+        "Hatching: uncertain; blank: unassessed / unobservable; "
+        "circles: expert crowd intervals; triangles: D-alpha peaks."
+    )
     text = " ".join(sentences)
     if len(text.split()) > 150:
         raise ValueError(f"caption exceeds 150 words: {len(text.split())}")

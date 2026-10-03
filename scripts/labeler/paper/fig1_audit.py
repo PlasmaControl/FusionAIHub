@@ -1,32 +1,44 @@
-"""Audit the six Figure 1 records and emit a train/val-only ranked shortlist.
+"""Audit Figure 1 records, source hashes, print layout and optional rebuild.
 
-Descriptive counts are reproducible from committed render records. Ranking
-uses the controller/reviewers' visual criteria, not a fitted quality score.
+Counts describe the displayed train/val shots, not classification performance.
+All checks use recorded sources and pixel audits; no training or fetching.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 from pathlib import Path
 
 from labeler.config import sha256_of
+from labeler.paper.figure_sources import AE_THRESHOLD
 
 SHOTS = (201978, 201973, 203187, 186636, 191376, 191782)
-RANKING = {
-    201978: "Clearest AE cascade and persistent n=1/n=2 low-frequency mode; "
-    "local corpus CO2 supports paper-model inference, D-alpha and NBI. "
-    "Retain for AE plus low-frequency structure; no verified sawtooth survives.",
-    201973: "Strongest visual alternate: clear AE cascade, low-frequency mode, "
-    "D-alpha and NBI with paper-model CO2 inference; current physics export "
-    "does not supply verified sawtooth crashes in the window.",
-    203187: "AE and low-frequency structure with local CO2/D-alpha/NBI; "
-    "cascade is less distinct than the first two, and no verified crash survives.",
-    186636: "Reviewed ELM intervals and imported NTM archive improve provenance; "
-    "weaker AE structure, earlier interferometer frame detector, no definite "
-    "confinement shading or verified sawtooth crash in this window.",
-}
+
+
+def rebuild_primary(record):
+    """Rebuild with the recorded sources and verify identical PDF/PNG bytes."""
+    files = [Path(p) for p in record["drawn"]["figure"]]
+    before = {str(p): sha256_of(p) for p in files}
+    cmd = [
+        "pixi", "run", "--frozen", "--no-install", "--manifest-path",
+        "/scratch/gpfs/nc1514/FusionAIHub/pyproject.toml", "-e", "labelmaker",
+        "python", "scripts/labeler/paper/fig_interpreter_tokeye.py",
+        "--shot", "201978", "--tmin", str(record["window_ms"][0]),
+        "--tmax", str(record["window_ms"][1]), "--out", str(files[0].parent),
+    ]  # fmt: skip
+    ae = record["ae_ours_lookup"]["supplied_predictions"]
+    if ae:
+        cmd.extend(["--ae-labels", ae])
+    source = record["drawn"]["sawtooth_crashes"]["source"]
+    if Path(source).exists():
+        cmd.extend(["--sawtooth-source", source])
+    subprocess.run(cmd, check=True)
+    after = {str(p): sha256_of(p) for p in files}
+    assert before == after, "primary rebuild changed PDF/PNG bytes"
+    return {"command": cmd, "before": before, "after": after, "identical": True}
 
 
 def main():
@@ -37,35 +49,35 @@ def main():
         default=Path("outputs/labeler/paper/fig_interpreter_tokeye"),
     )
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--baseline", default="e5a56995")
+    parser.add_argument("--rebuild-primary", action="store_true")
     args = parser.parse_args()
-    audited = []
+    audited, checked_sources, labels = [], {}, set()
     for shot in SHOTS:
         file = args.records / f"{shot}.json"
         record = json.loads(file.read_text())
-        baseline_file = (
-            Path("outputs/labeler/paper/fig_interpreter_tokeye") / f"{shot}.json"
-        )
-        previous = json.loads(
-            subprocess.check_output(
-                ["git", "show", f"{args.baseline}:{baseline_file}"], text=True
-            )
-        )
         assert record["split"] in ("train", "val"), f"blind shot {shot}"
         drawn = record["drawn"]
         for band in drawn["projection_audit"].values():
             for event in band.values():
                 assert event["outside_present"] == event["outside_band"] == 0
+        for band in drawn["ntm_measured_pixel_audit"].values():
+            assert band["outside_measured_n"] == band["above_n_view_band"] == 0
+        assert drawn["ae_boxes_ms_khz"] == []
         crashes = drawn["sawtooth_crashes"]
         shown = crashes["drawn_times_ms"]
         assert not set(shown) & set(crashes["rejected_elm_times_ms"])
         assert set(shown) <= set(crashes["ece_times_ms"])
         assert drawn["sawtooth_strip_shown"] == bool(shown)
+        if shot == 201978:
+            assert record["window_ms"] == [1500, 3300]
+            assert not drawn["sawtooth_track_shown"]
         for t in drawn["elm_peak_times_ms"]:
             assert not any(a <= t < b for a, b in drawn["elm_uncertain_spans_ms"])
         caption_file = args.records / f"{shot}.caption.tex"
         caption = caption_file.read_text()
-        words = len(caption.split())
+        # Count prose, excluding TeX wrapper and standalone math delimiters.
+        prose = caption.split("\\label")[0].removeprefix("\\caption{").rstrip("}\n")
+        words = len(prose.replace(r"$\geq$", "≥").replace("$", "").split())
         assert words <= 150
         assert not any(
             s in caption
@@ -75,19 +87,51 @@ def main():
                 "dalpha_lh",
                 "MPI66M",
                 "PRESENT",
+                "cand.",
             )
         )
+        label = re.search(r"\\label\{([^}]+)\}", caption)[1]
+        assert label not in labels
+        assert (label == "fig:interpreter") == (shot == 201978)
+        labels.add(label)
         assert sha256_of(caption_file) == record["caption"]["sha256"]
         layout = record["print_layout"]
         assert layout["width_in"] == 6.75 and layout["minimum_font_pt"] >= 7
-        assert record["decision_thresholds"] == {
-            "ae": 0.7,
-            "ntm": 0.63,
-            "sawtooth": 0.6,
-            "tokeye": 0.2,
-            "sawtooth_elm_veto_ms": 5.0,
-            "ece_crash_match_ms": 3.0,
+        assert layout["height_in"] <= 5.5
+        assert record["decision_thresholds"]["ae"] == AE_THRESHOLD
+        external = Path(record["caption"]["path"]).parent / "fig_interpreter.json"
+        assert external.read_bytes() == file.read_bytes()
+        assert Path(record["caption"]["path"]).read_bytes() == caption_file.read_bytes()
+        sources = [*crashes["files"], *drawn["stores"].values()]
+        for track in record["tracks"].values():
+            if track:
+                sources.append({"path": track["path"], "sha256": track["sha256"]})
+                if track.get("metadata"):
+                    sources.append(
+                        {
+                            "path": track["metadata"],
+                            "sha256": track["metadata_sha256"],
+                        }
+                    )
+        sources.append(record["tokeye"])
+        # The checkpoint key differs from ordinary source records.
+        sources[-1] = {
+            "path": sources[-1]["checkpoint"],
+            "sha256": sources[-1]["sha256"],
         }
+        for source in sources:
+            if not source or not source.get("sha256"):
+                continue
+            path, digest = source["path"], source["sha256"]
+            if path not in checked_sources:
+                assert sha256_of(Path(path)) == digest, f"changed source {path}"
+                checked_sources[path] = digest
+            assert checked_sources[path] == digest
+        pdf = Path(drawn["figure"][0])
+        info = subprocess.check_output(["pdfinfo", str(pdf)], text=True)
+        size = re.search(r"Page size:\s+([\d.]+) x ([\d.]+)", info)
+        width, height = (float(v) / 72 for v in size.groups())
+        assert width == 6.75 and height <= 5.5
         audited.append(
             {
                 "shot": shot,
@@ -101,36 +145,33 @@ def main():
                 "elm_peak_count": drawn["elm_peaks_in_label"],
                 "caption_words": words,
                 "projection_violations": 0,
+                "unmeasured_ntm_pixels": 0,
                 "regimes_shown": drawn["regimes_shown"],
-                "baseline_commit": args.baseline,
-                "baseline_crash_ticks": len(
-                    previous["drawn"]["sawtooth_crashes"]["drawn_times_ms"]
-                ),
+                "harmonic_support": drawn["harmonic_support"],
+                "pdf_size_in": [width, height],
+                "figure_sha256": {p: sha256_of(Path(p)) for p in drawn["figure"]},
             }
         )
-    shortlist = [
-        {
-            "rank": i + 1,
-            **next(r for r in audited if r["shot"] == shot),
-            "reason": reason,
-        }
-        for i, (shot, reason) in enumerate(RANKING.items())
-    ]
+    primary = json.loads((args.records / "201978.json").read_text())
+    reproducibility = rebuild_primary(primary) if args.rebuild_primary else None
     args.out.write_text(
         json.dumps(
             {
                 "primary_shot": 201978,
-                "selection_rule": "retain primary if AE and low-frequency mode persist; "
-                "verified sawtooth preferred, never required by fabrication",
-                "ranked_shortlist": shortlist,
+                "ae_threshold": AE_THRESHOLD,
+                "ae_threshold_source": "scripts/labeler/ae_baselines_evaluate.py, SELDnet",
                 "renders": audited,
+                "checked_sources": checked_sources,
                 "blind_test_shots_used": 0,
+                "reproducibility": reproducibility,
             },
             indent=1,
         )
         + "\n"
     )
     print(f"Audited {len(audited)} non-blind renders; zero projection violations")
+    if reproducibility:
+        print("Primary PDF and PNG rebuild identically byte-for-byte")
 
 
 if __name__ == "__main__":

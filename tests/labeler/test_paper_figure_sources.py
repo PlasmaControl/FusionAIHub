@@ -65,9 +65,10 @@ def test_stored_ae_uses_valid_causal_windows_and_paper_threshold(tmp_path):
     track = fs.stored_ae_track(p, 42)
     assert track.source.what.startswith("ae-ours")
     assert [(r.t_start, r.t_end, r.category) for r in track.rows] == [
-        (0, 50, 0),
+        (0, 25, 0),
+        (25, 50, 1),
         (50, 75, 3),
-        (75, 100, 0),
+        (75, 100, 1),
     ]
     assert fs.stored_ae_track(p, 43) is None
 
@@ -144,7 +145,7 @@ def test_physics_crashes_require_ece_evidence_and_reject_elm_neighbours(tmp_path
     assert not times.size
 
 
-def test_physics_interval_track_cannot_reintroduce_rejected_crashes(tmp_path):
+def test_physics_interval_categories_are_preserved_independently_of_ticks(tmp_path):
     import json
 
     path = tmp_path / "42.json"
@@ -161,8 +162,8 @@ def test_physics_interval_track_cannot_reintroduce_rejected_crashes(tmp_path):
         )
     )
     track = fs.sawtooth_track(Paths(root=tmp_path), 42, path, [])
-    assert all(r.category != fs.PRESENT for r in track.rows)
-    assert "candidate" in track.source.what
+    assert [r.category for r in track.rows] == [fs.PRESENT, fs.UNCERTAIN]
+    assert track.spec.title == "sawtooth"
 
 
 def test_independent_projection_audit_detects_an_end_boundary_leak(monkeypatch):
@@ -192,19 +193,31 @@ def test_caption_follows_sources_and_actual_acceptance_bars(tier):
     if tier == fs.lf.GENERATED:
         records[fs.mt.NTM]["primary_bars"] = {"N1": False, "all": False}
     text = fs.caption(
-        42, records, {"sawtooth_strip_shown": False, "n2_island_harmonic": True}
+        42,
+        records,
+        {
+            "sawtooth_strip_shown": False,
+            "harmonic_support": {
+                "support_ms": 100,
+                "minimum_support_ms": 50,
+                "n1_median_khz": 7.5,
+                "n2_median_khz": 15,
+            },
+        },
     )
     assert len(text.split()) <= 150
     assert "regime:" in text
     assert "Ticks" not in text
     assert ("failed" in text) == (tier == fs.lf.GENERATED)
-    assert "harmonic of the same island" in text
+    assert "consistent with a second harmonic" in text
+    assert "near 15 kHz" in text
     for internal in ("ntm_frames", "dalpha_lh", "MPI66M", "N1", "S1", "PRESENT"):
         assert internal not in text
 
 
-def test_expert_crowd_period_is_distinct_from_ordinary_uncertainty():
-    assert fs.elm_category(fs.lf.Row(100, 200, fs.UNCERTAIN, crowd=1)) == fs.PRESENT
+def test_expert_crowd_lane_does_not_promote_uncertain_category():
+    assert fs.elm_category(fs.lf.Row(100, 200, fs.UNCERTAIN, crowd=1)) == fs.UNCERTAIN
+    assert fs.elm_category(fs.lf.Row(100, 200, fs.PRESENT, crowd=1)) == fs.PRESENT
     assert fs.elm_category(fs.lf.Row(200, 300, fs.UNCERTAIN)) == fs.UNCERTAIN
 
 
@@ -290,3 +303,14 @@ def test_harmonic_requires_coincident_frequency_ratio_not_just_n_numbers():
     mask[0, 1] = False
     mask[1, 0] = False
     assert fs.harmonic_support(n, mask, [0, 100], [7.5, 15])["support_ms"] == 0
+
+
+def test_harmonic_support_follows_ridges_outside_the_primary_shots_bands():
+    n = np.array([[1, 1], [2, 2]])
+    got = fs.harmonic_support(n, np.ones((2, 2), bool), [0, 100], [11, 22])
+    assert got["support_ms"] == 200
+    assert got["n1_median_khz"] == 11
+    assert got["n2_median_khz"] == 22
+    text = fs.caption(42, {}, {"harmonic_support": got, "sawtooth_strip_shown": False})
+    assert "near 20 kHz" in text  # recorded 5-kHz prose precision
+    assert "near 15 kHz" not in text

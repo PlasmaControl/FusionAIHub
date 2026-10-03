@@ -222,7 +222,7 @@ def tag_blobs(
     return out
 
 
-def tag_mask(found, event, shape, t_ms, f_khz, spans) -> np.ndarray:
+def tag_mask(found, event, shape, t_ms, f_khz, spans, *, n_map=None) -> np.ndarray:
     """Only tagged component pixels inside PRESENT times AND the event band.
 
     A component crossing 60 kHz is split at pixel level; a component crossing
@@ -236,6 +236,9 @@ def tag_mask(found, event, shape, t_ms, f_khz, spans) -> np.ndarray:
     lo, hi = BANDS[event]
     out &= present_columns(t_ms, spans)[None, :]
     out &= ((f_khz >= lo) & (f_khz < hi))[:, None]
+    if event == NTM:
+        # A dominant n cannot extend measured evidence to an entire component.
+        out &= np.isfinite(n_map) if n_map is not None else False
     return out
 
 

@@ -110,7 +110,9 @@ def test_a_short_overlap_tags_only_the_pixels_inside_the_label():
     spans = {mt.NTM: [(30.0, 80.0)]}
     found = mt.tag_blobs(mt.blobs(lit, t, f), spans, t, f, np.ones(lit.shape))
     assert found[0].tags == (mt.NTM,)
-    mask = mt.tag_mask(found, mt.NTM, lit.shape, t, f, spans[mt.NTM])
+    mask = mt.tag_mask(
+        found, mt.NTM, lit.shape, t, f, spans[mt.NTM], n_map=np.ones(lit.shape)
+    )
     assert mask.sum() == 40
     assert not mask[:, :30].any()
 
@@ -144,7 +146,9 @@ def test_projection_clips_absent_gaps_and_both_sides_of_60_khz():
     spans = {mt.AE: [(2.0, 8.0), (12.0, 18.0)], mt.NTM: [(4.0, 16.0)]}
     found = mt.tag_blobs(mt.blobs(lit, t, f), spans, t, f, np.ones(lit.shape))
     ae = mt.tag_mask(found, mt.AE, lit.shape, t, f, spans[mt.AE])
-    ntm = mt.tag_mask(found, mt.NTM, lit.shape, t, f, spans[mt.NTM])
+    ntm = mt.tag_mask(
+        found, mt.NTM, lit.shape, t, f, spans[mt.NTM], n_map=np.ones(lit.shape)
+    )
     assert ae.sum() == 48  # four rows >=60, twelve present columns
     assert ntm.sum() == 120  # ten rows 55-59.5, twelve present columns
     assert not ae[f < 60].any()
@@ -204,3 +208,17 @@ def test_tied_n_one_and_three_are_ambiguous_not_a_tearing_mode():
     (blob,) = mt.tag_blobs(mt.blobs(lit, t, f), {mt.NTM: [(0, 4)]}, t, f, n)
     assert blob.dominant_n is None
     assert blob.tags == ()
+
+
+def test_ntm_projection_stops_at_unmeasured_pixels_inside_a_component():
+    f, t = _grid(4)
+    lit = np.zeros((ROWS, 4), bool)
+    lit[50:80] = True  # one component, 25–39.5 kHz
+    n = np.full(lit.shape, np.nan)
+    n[50:61, :2] = 1  # n-map coverage through 30 kHz, with a temporal gap
+    spans = {mt.NTM: [(0, 4)]}
+    found = mt.tag_blobs(mt.blobs(lit, t, f), spans, t, f, n)
+    shown = mt.tag_mask(found, mt.NTM, lit.shape, t, f, spans[mt.NTM], n_map=n)
+    assert shown.sum() == 22
+    assert not shown[f > 30].any()
+    assert not shown[:, 2:].any()
