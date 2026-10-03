@@ -94,7 +94,10 @@ def render_experts(lines, validation, validation_path):
             )
     lines += [
         "",
-        source(validation_path, "expert.by_shot.<shot>.new; expert.by_shot.<shot>.old"),
+        source(
+            validation_path,
+            "expert.by_shot[0:3].new; expert.by_shot[0:3].old (shot-ordered)",
+        ),
         "",
         (
             "Observable scores use the same expert-known core-ECE denominator for "

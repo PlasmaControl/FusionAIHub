@@ -1,0 +1,8 @@
+{
+  "requested_shots": 500,
+  "native_clock_valid_shots": 500,
+  "errors": {},
+  "cached_time_mismatches": [],
+  "method": "Exact sample_native checks on real xdata; virtual zero channel avoids ydata IO. No physical input or labels modified.",
+  "source_details": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix/clock_audit.json"
+}

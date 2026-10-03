@@ -404,11 +404,18 @@
         204937
       ],
       "shot_count": 400,
-      "crashes": 30528,
-      "intervals": 3136,
-      "positive_shots": 361,
-      "mirnov_available_shots": 400,
-      "ip_available_shots": 400
+      "processed_count": 400,
+      "crashes": 5449,
+      "present_intervals": 147,
+      "uncertain_intervals": 10100,
+      "positive_shots": 79,
+      "uncertain_shots": 365,
+      "state_seconds": {
+        "present": 28.542899324802534,
+        "absent": 1557.1367631651,
+        "uncertain": 290.29819313284173,
+        "unassessed": 246.58049416700726
+      }
     },
     "val": {
       "shots": [
@@ -464,11 +471,18 @@
         204530
       ],
       "shot_count": 50,
-      "crashes": 4009,
-      "intervals": 386,
-      "positive_shots": 46,
-      "mirnov_available_shots": 50,
-      "ip_available_shots": 50
+      "processed_count": 50,
+      "crashes": 796,
+      "present_intervals": 16,
+      "uncertain_intervals": 1446,
+      "positive_shots": 6,
+      "uncertain_shots": 46,
+      "state_seconds": {
+        "present": 3.498399917243489,
+        "absent": 176.5796958229133,
+        "uncertain": 44.829198939541406,
+        "unassessed": 39.92259905560969
+      }
     },
     "test": {
       "shots": [
@@ -524,11 +538,18 @@
         204232
       ],
       "shot_count": 50,
-      "crashes": 6470,
-      "intervals": 690,
-      "positive_shots": 49,
-      "mirnov_available_shots": 50,
-      "ip_available_shots": 2
+      "processed_count": 50,
+      "crashes": 494,
+      "present_intervals": 9,
+      "uncertain_intervals": 1010,
+      "positive_shots": 4,
+      "uncertain_shots": 47,
+      "state_seconds": {
+        "present": 1.2705999699432808,
+        "absent": 195.53739537445892,
+        "uncertain": 29.012099313703335,
+        "unassessed": 40.17589904961773
+      }
     }
   }
 }

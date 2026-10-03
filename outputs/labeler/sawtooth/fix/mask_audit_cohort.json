@@ -1,0 +1,16 @@
+{
+  "assessment_policy": "finite_core_and_four_profile_channels_uncertain_filter_support",
+  "requested_shots": 500,
+  "audited_shots": 500,
+  "original_errors": {},
+  "violations": {
+    "state_partition_samples": 0,
+    "observable_state_samples": 0,
+    "assessed_state_samples": 0,
+    "observable_under_four_finite_channels": 0,
+    "unobservable_crashes": 0,
+    "assessed_uncertain_crashes": 0,
+    "train_crosses_observability_gap": 0
+  },
+  "source_details": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix/mask_audit_cohort.json"
+}

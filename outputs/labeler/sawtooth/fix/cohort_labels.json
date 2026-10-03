@@ -1,5 +1,6 @@
 {
   "scope": "cohort_plus_review",
+  "cached_records_only": true,
   "requested_shots": [
     185805,
     185835,
@@ -1006,25 +1007,34 @@
     204937
   ],
   "errors": {},
-  "crashes": 41007,
-  "intervals": 4212,
-  "positive_shots": 456,
+  "crashes": 6739,
+  "crash_state_counts": {
+    "present": 730,
+    "uncertain": 6009
+  },
+  "exported_point_state_counts": {
+    "present": 678,
+    "uncertain": 6061
+  },
+  "intervals": 172,
+  "positive_shots": 89,
   "qmin_shots": 452,
   "geometry_counts": {
     "unavailable": 500
   },
   "sxr_shots": 499,
   "rejected": {
-    "coincidence": 122187,
-    "holdoff": 31788,
-    "qmin_above_one": 36146,
-    "significance": 52553,
-    "redistribution": 24758,
-    "rise_block": 8798,
-    "edge_only_proxy": 13710,
-    "drop_block": 265,
-    "low_plasma_current": 1916,
-    "coverage": 2
+    "coincidence": 123589,
+    "unobservable_core": 26812,
+    "significance": 77561,
+    "edge_only_proxy": 7314,
+    "rise_block": 7766,
+    "elm_edge_only": 8049,
+    "central_relative_drop": 50001,
+    "redistribution": 23083,
+    "holdoff": 7219,
+    "drop_block": 140,
+    "low_plasma_current": 1266
   },
   "split_counts": {
     "train": 400,
@@ -1041,12 +1051,19 @@
     "maximum_net": 0.9,
     "minimum_block": 2,
     "pulse_reach": 6,
-    "minimum_period_ms": 5.0,
+    "minimum_period_ms": 20.0,
     "maximum_period_ms": 250.0,
     "period_ratio": 2.5,
     "minimum_train": 3,
     "qmin_margin": 0.05,
-    "radius_tolerance": 0.15
+    "radius_tolerance": 0.15,
+    "central_relative_drop": 0.05,
+    "te_floor_kev": 0.5,
+    "inversion_spread_channels": 2.0,
+    "minimum_ip_ma": 0.3,
+    "neutron_relative_drop": 0.02,
+    "mirnov_burst_z": 6.0,
+    "dalpha_burst_z": 6.0
   },
   "adaptations": {
     "core_proxy_channels": [
@@ -1073,11 +1090,24 @@
       100
     ],
     "model_and_detector_sample_rate_hz": 10000,
-    "first_ece_sampling_hz": 50000,
+    "native_rate_antialiasing": "FIR polyphase, chunks with full halos",
     "radius_units": "sqrt(normalized poloidal flux), only if calibrated",
-    "sxr_use": "optional corroboration, not independent crash labels"
+    "sxr_use": "coverage recorded only; no corroboration claim"
   },
   "seconds": 0.6,
-  "source_records": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/shots",
-  "signals": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/signals"
+  "source_records": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix/shots",
+  "signals": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix/signals",
+  "state_seconds": {
+    "present": 33.311899211989285,
+    "absent": 1929.253854362472,
+    "uncertain": 364.1394913860865,
+    "unassessed": 326.6789922722343
+  },
+  "uncertain_intervals": 12556,
+  "neutron_shots": 500,
+  "mirnov_shots": 371,
+  "q_sources": {
+    "EFIT01": 452,
+    "unavailable": 48
+  }
 }

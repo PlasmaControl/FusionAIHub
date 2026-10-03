@@ -1,0 +1,1139 @@
+{
+  "seed": 20261004,
+  "development_shots": [
+    185945,
+    186640,
+    189008,
+    190992,
+    192761,
+    193024,
+    193148,
+    195956,
+    195989,
+    196375,
+    199908,
+    201707,
+    203629,
+    203876,
+    203959,
+    204225
+  ],
+  "excluded_experts": [
+    186636,
+    189324,
+    190637
+  ],
+  "split": "train",
+  "rule": {
+    "sigma_ms": 0.25,
+    "frame_ms": 10.3,
+    "posr_threshold": 6.0,
+    "coincidence_ms": 0.5,
+    "minimum_channels": 2,
+    "significance": 0.02,
+    "maximum_net": 0.9,
+    "minimum_block": 2,
+    "pulse_reach": 6,
+    "minimum_period_ms": 20.0,
+    "maximum_period_ms": 250.0,
+    "period_ratio": 2.5,
+    "minimum_train": 3,
+    "qmin_margin": 0.05,
+    "radius_tolerance": 0.15,
+    "central_relative_drop": 0.05,
+    "te_floor_kev": 0.5,
+    "inversion_spread_channels": 2.0,
+    "minimum_ip_ma": 0.3,
+    "neutron_relative_drop": 0.02,
+    "mirnov_burst_z": 6.0,
+    "dalpha_burst_z": 6.0
+  },
+  "amplitude_selection": {
+    "formula": "floor(100 * clip(train candidate q10, 0.05, 0.15))/100",
+    "candidate_count": 157,
+    "quantiles": [
+      0.023195490924402564,
+      0.02756191549946305,
+      0.15035292889213742,
+      0.305639492393842
+    ],
+    "selected": 0.05
+  },
+  "guards": {
+    "sigma_ms": {
+      "value": 0.25,
+      "shots": [
+        185945,
+        186640,
+        189008,
+        190992,
+        192761,
+        193024,
+        193148,
+        195956,
+        195989,
+        196375,
+        199908,
+        201707,
+        203629,
+        203876,
+        203959,
+        204225
+      ],
+      "origin": "literature/review prior, checked and frozen on TRAIN"
+    },
+    "frame_ms": {
+      "value": 10.3,
+      "shots": [
+        185945,
+        186640,
+        189008,
+        190992,
+        192761,
+        193024,
+        193148,
+        195956,
+        195989,
+        196375,
+        199908,
+        201707,
+        203629,
+        203876,
+        203959,
+        204225
+      ],
+      "origin": "literature/review prior, checked and frozen on TRAIN"
+    },
+    "posr_threshold": {
+      "value": 6.0,
+      "shots": [
+        185945,
+        186640,
+        189008,
+        190992,
+        192761,
+        193024,
+        193148,
+        195956,
+        195989,
+        196375,
+        199908,
+        201707,
+        203629,
+        203876,
+        203959,
+        204225
+      ],
+      "origin": "literature/review prior, checked and frozen on TRAIN"
+    },
+    "coincidence_ms": {
+      "value": 0.5,
+      "shots": [
+        185945,
+        186640,
+        189008,
+        190992,
+        192761,
+        193024,
+        193148,
+        195956,
+        195989,
+        196375,
+        199908,
+        201707,
+        203629,
+        203876,
+        203959,
+        204225
+      ],
+      "origin": "literature/review prior, checked and frozen on TRAIN"
+    },
+    "minimum_channels": {
+      "value": 2,
+      "shots": [
+        185945,
+        186640,
+        189008,
+        190992,
+        192761,
+        193024,
+        193148,
+        195956,
+        195989,
+        196375,
+        199908,
+        201707,
+        203629,
+        203876,
+        203959,
+        204225
+      ],
+      "origin": "literature/review prior, checked and frozen on TRAIN"
+    },
+    "significance": {
+      "value": 0.02,
+      "shots": [
+        185945,
+        186640,
+        189008,
+        190992,
+        192761,
+        193024,
+        193148,
+        195956,
+        195989,
+        196375,
+        199908,
+        201707,
+        203629,
+        203876,
+        203959,
+        204225
+      ],
+      "origin": "literature/review prior, checked and frozen on TRAIN"
+    },
+    "maximum_net": {
+      "value": 0.9,
+      "shots": [
+        185945,
+        186640,
+        189008,
+        190992,
+        192761,
+        193024,
+        193148,
+        195956,
+        195989,
+        196375,
+        199908,
+        201707,
+        203629,
+        203876,
+        203959,
+        204225
+      ],
+      "origin": "literature/review prior, checked and frozen on TRAIN"
+    },
+    "minimum_block": {
+      "value": 2,
+      "shots": [
+        185945,
+        186640,
+        189008,
+        190992,
+        192761,
+        193024,
+        193148,
+        195956,
+        195989,
+        196375,
+        199908,
+        201707,
+        203629,
+        203876,
+        203959,
+        204225
+      ],
+      "origin": "literature/review prior, checked and frozen on TRAIN"
+    },
+    "pulse_reach": {
+      "value": 6,
+      "shots": [
+        185945,
+        186640,
+        189008,
+        190992,
+        192761,
+        193024,
+        193148,
+        195956,
+        195989,
+        196375,
+        199908,
+        201707,
+        203629,
+        203876,
+        203959,
+        204225
+      ],
+      "origin": "literature/review prior, checked and frozen on TRAIN"
+    },
+    "minimum_period_ms": {
+      "value": 20.0,
+      "shots": [
+        185945,
+        186640,
+        189008,
+        190992,
+        192761,
+        193024,
+        193148,
+        195956,
+        195989,
+        196375,
+        199908,
+        201707,
+        203629,
+        203876,
+        203959,
+        204225
+      ],
+      "origin": "literature/review prior, checked and frozen on TRAIN"
+    },
+    "maximum_period_ms": {
+      "value": 250.0,
+      "shots": [
+        185945,
+        186640,
+        189008,
+        190992,
+        192761,
+        193024,
+        193148,
+        195956,
+        195989,
+        196375,
+        199908,
+        201707,
+        203629,
+        203876,
+        203959,
+        204225
+      ],
+      "origin": "literature/review prior, checked and frozen on TRAIN"
+    },
+    "period_ratio": {
+      "value": 2.5,
+      "shots": [
+        185945,
+        186640,
+        189008,
+        190992,
+        192761,
+        193024,
+        193148,
+        195956,
+        195989,
+        196375,
+        199908,
+        201707,
+        203629,
+        203876,
+        203959,
+        204225
+      ],
+      "origin": "literature/review prior, checked and frozen on TRAIN"
+    },
+    "minimum_train": {
+      "value": 3,
+      "shots": [
+        185945,
+        186640,
+        189008,
+        190992,
+        192761,
+        193024,
+        193148,
+        195956,
+        195989,
+        196375,
+        199908,
+        201707,
+        203629,
+        203876,
+        203959,
+        204225
+      ],
+      "origin": "literature/review prior, checked and frozen on TRAIN"
+    },
+    "qmin_margin": {
+      "value": 0.05,
+      "shots": [
+        185945,
+        186640,
+        189008,
+        190992,
+        192761,
+        193024,
+        193148,
+        195956,
+        195989,
+        196375,
+        199908,
+        201707,
+        203629,
+        203876,
+        203959,
+        204225
+      ],
+      "origin": "literature/review prior, checked and frozen on TRAIN"
+    },
+    "radius_tolerance": {
+      "value": 0.15,
+      "shots": [
+        185945,
+        186640,
+        189008,
+        190992,
+        192761,
+        193024,
+        193148,
+        195956,
+        195989,
+        196375,
+        199908,
+        201707,
+        203629,
+        203876,
+        203959,
+        204225
+      ],
+      "origin": "literature/review prior, checked and frozen on TRAIN"
+    },
+    "central_relative_drop": {
+      "value": 0.05,
+      "shots": [
+        185945,
+        186640,
+        189008,
+        190992,
+        192761,
+        193024,
+        193148,
+        195956,
+        195989,
+        196375,
+        199908,
+        201707,
+        203629,
+        203876,
+        203959,
+        204225
+      ],
+      "origin": "literature/review prior, checked and frozen on TRAIN"
+    },
+    "te_floor_kev": {
+      "value": 0.5,
+      "shots": [
+        185945,
+        186640,
+        189008,
+        190992,
+        192761,
+        193024,
+        193148,
+        195956,
+        195989,
+        196375,
+        199908,
+        201707,
+        203629,
+        203876,
+        203959,
+        204225
+      ],
+      "origin": "literature/review prior, checked and frozen on TRAIN"
+    },
+    "inversion_spread_channels": {
+      "value": 2.0,
+      "shots": [
+        185945,
+        186640,
+        189008,
+        190992,
+        192761,
+        193024,
+        193148,
+        195956,
+        195989,
+        196375,
+        199908,
+        201707,
+        203629,
+        203876,
+        203959,
+        204225
+      ],
+      "origin": "literature/review prior, checked and frozen on TRAIN"
+    },
+    "minimum_ip_ma": {
+      "value": 0.3,
+      "shots": [
+        185945,
+        186640,
+        189008,
+        190992,
+        192761,
+        193024,
+        193148,
+        195956,
+        195989,
+        196375,
+        199908,
+        201707,
+        203629,
+        203876,
+        203959,
+        204225
+      ],
+      "origin": "literature/review prior, checked and frozen on TRAIN"
+    },
+    "neutron_relative_drop": {
+      "value": 0.02,
+      "shots": [
+        185945,
+        186640,
+        189008,
+        190992,
+        192761,
+        193024,
+        193148,
+        195956,
+        195989,
+        196375,
+        199908,
+        201707,
+        203629,
+        203876,
+        203959,
+        204225
+      ],
+      "origin": "literature/review prior, checked and frozen on TRAIN"
+    },
+    "mirnov_burst_z": {
+      "value": 6.0,
+      "shots": [
+        185945,
+        186640,
+        189008,
+        190992,
+        192761,
+        193024,
+        193148,
+        195956,
+        195989,
+        196375,
+        199908,
+        201707,
+        203629,
+        203876,
+        203959,
+        204225
+      ],
+      "origin": "literature/review prior, checked and frozen on TRAIN"
+    },
+    "dalpha_burst_z": {
+      "value": 6.0,
+      "shots": [
+        185945,
+        186640,
+        189008,
+        190992,
+        192761,
+        193024,
+        193148,
+        195956,
+        195989,
+        196375,
+        199908,
+        201707,
+        203629,
+        203876,
+        203959,
+        204225
+      ],
+      "origin": "literature/review prior, checked and frozen on TRAIN"
+    }
+  },
+  "reader_guards": {
+    "core_proxy_channels": [
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35
+    ],
+    "ece_valid_range_kev": [
+      0,
+      100
+    ],
+    "density_quantile": 0.9,
+    "density_cutoff_margin": 0.9,
+    "density_no_bt_guard_m3": 8e+19,
+    "fir_half_length_decimation_factors": 10,
+    "sample_rate_hz": 10000,
+    "shots": [
+      185945,
+      186640,
+      189008,
+      190992,
+      192761,
+      193024,
+      193148,
+      195956,
+      195989,
+      196375,
+      199908,
+      201707,
+      203629,
+      203876,
+      203959,
+      204225
+    ],
+    "cutoff_note": "density/B proxy; frequency/radius calibration unavailable"
+  },
+  "profile_and_support_guards": {
+    "shots": [
+      185945,
+      186640,
+      189008,
+      190992,
+      192761,
+      193024,
+      193148,
+      195956,
+      195989,
+      196375,
+      199908,
+      201707,
+      203629,
+      203876,
+      203959,
+      204225
+    ],
+    "channel_fractional_sign": 0.005,
+    "uncalibrated_hot_slack_channels": 2,
+    "uncalibrated_hot_block_fraction": 0.7,
+    "pre_post_windows_ms": [
+      [
+        -1.5,
+        -0.3
+      ],
+      [
+        0.3,
+        1.5
+      ]
+    ],
+    "minimum_valid_profile_channels": 4,
+    "minimum_analysis_samples": 1000,
+    "minimum_finite_ece_fraction": 0.1,
+    "population_ip_extent_peak_fraction": 0.1,
+    "auxiliary_near_ms": 2,
+    "auxiliary_background_ms": 25,
+    "origin": "fixed priors audited solely on development TRAIN shots"
+  },
+  "train_audit": [
+    {
+      "shot": 185945,
+      "crashes": 0,
+      "intervals": 0,
+      "error": null,
+      "density_guard": {
+        "status": "Thomson_90percentile_and_local_bt",
+        "cutoff_proxy": true,
+        "high_density_samples": 25267,
+        "density_samples": 61351,
+        "fixed_density_guard_m3": 8e+19,
+        "margin": 0.9
+      },
+      "rejected": {
+        "coincidence": 286,
+        "unobservable_core": 219,
+        "significance": 158,
+        "rise_block": 10,
+        "elm_edge_only": 10,
+        "edge_only_proxy": 13,
+        "redistribution": 75,
+        "central_relative_drop": 45
+      }
+    },
+    {
+      "shot": 186640,
+      "crashes": 14,
+      "intervals": 0,
+      "error": null,
+      "density_guard": {
+        "status": "Thomson_90percentile_and_local_bt",
+        "cutoff_proxy": true,
+        "high_density_samples": 0,
+        "density_samples": 61351,
+        "fixed_density_guard_m3": 8e+19,
+        "margin": 0.9
+      },
+      "rejected": {
+        "coincidence": 229,
+        "significance": 158,
+        "redistribution": 97,
+        "central_relative_drop": 187,
+        "edge_only_proxy": 14,
+        "elm_edge_only": 10,
+        "rise_block": 17,
+        "holdoff": 8
+      }
+    },
+    {
+      "shot": 189008,
+      "crashes": 3,
+      "intervals": 0,
+      "error": null,
+      "density_guard": {
+        "status": "Thomson_90percentile_fixed_density_guard_bt_missing",
+        "cutoff_proxy": true,
+        "high_density_samples": 0,
+        "density_samples": 61361,
+        "fixed_density_guard_m3": 8e+19,
+        "margin": 0.9
+      },
+      "rejected": {
+        "coincidence": 320,
+        "unobservable_core": 4,
+        "significance": 217,
+        "holdoff": 9,
+        "rise_block": 48,
+        "elm_edge_only": 22,
+        "central_relative_drop": 348,
+        "redistribution": 10,
+        "drop_block": 1,
+        "edge_only_proxy": 3
+      }
+    },
+    {
+      "shot": 190992,
+      "crashes": 4,
+      "intervals": 0,
+      "error": null,
+      "density_guard": {
+        "status": "Thomson_90percentile_fixed_density_guard_bt_missing",
+        "cutoff_proxy": true,
+        "high_density_samples": 0,
+        "density_samples": 61361,
+        "fixed_density_guard_m3": 8e+19,
+        "margin": 0.9
+      },
+      "rejected": {
+        "coincidence": 235,
+        "unobservable_core": 1,
+        "central_relative_drop": 57,
+        "redistribution": 222,
+        "significance": 164,
+        "rise_block": 41,
+        "elm_edge_only": 22,
+        "edge_only_proxy": 14,
+        "holdoff": 6
+      }
+    },
+    {
+      "shot": 192761,
+      "crashes": 4,
+      "intervals": 0,
+      "error": null,
+      "density_guard": {
+        "status": "Thomson_90percentile_fixed_density_guard_bt_missing",
+        "cutoff_proxy": true,
+        "high_density_samples": 0,
+        "density_samples": 55590,
+        "fixed_density_guard_m3": 8e+19,
+        "margin": 0.9
+      },
+      "rejected": {
+        "coincidence": 258,
+        "unobservable_core": 8,
+        "significance": 202,
+        "edge_only_proxy": 46,
+        "redistribution": 41,
+        "rise_block": 6,
+        "central_relative_drop": 18,
+        "drop_block": 1
+      }
+    },
+    {
+      "shot": 193024,
+      "crashes": 0,
+      "intervals": 0,
+      "error": null,
+      "density_guard": {
+        "status": "Thomson_90percentile_fixed_density_guard_bt_missing",
+        "cutoff_proxy": true,
+        "high_density_samples": 5753,
+        "density_samples": 56100,
+        "fixed_density_guard_m3": 8e+19,
+        "margin": 0.9
+      },
+      "rejected": {
+        "unobservable_core": 113,
+        "coincidence": 252,
+        "central_relative_drop": 81,
+        "edge_only_proxy": 18,
+        "significance": 255,
+        "holdoff": 11,
+        "redistribution": 133,
+        "elm_edge_only": 12,
+        "rise_block": 2
+      }
+    },
+    {
+      "shot": 193148,
+      "crashes": 0,
+      "intervals": 0,
+      "error": null,
+      "density_guard": {
+        "status": "Thomson_90percentile_fixed_density_guard_bt_missing",
+        "cutoff_proxy": true,
+        "high_density_samples": 0,
+        "density_samples": 61351,
+        "fixed_density_guard_m3": 8e+19,
+        "margin": 0.9
+      },
+      "rejected": {
+        "coincidence": 405,
+        "unobservable_core": 6,
+        "significance": 205,
+        "central_relative_drop": 117,
+        "redistribution": 171,
+        "rise_block": 18,
+        "holdoff": 3,
+        "edge_only_proxy": 29,
+        "elm_edge_only": 29,
+        "drop_block": 1
+      }
+    },
+    {
+      "shot": 195956,
+      "crashes": 0,
+      "intervals": 0,
+      "error": null,
+      "density_guard": {
+        "status": "Thomson_90percentile_fixed_density_guard_bt_missing",
+        "cutoff_proxy": true,
+        "high_density_samples": 20771,
+        "density_samples": 44780,
+        "fixed_density_guard_m3": 8e+19,
+        "margin": 0.9
+      },
+      "rejected": {
+        "coincidence": 247,
+        "unobservable_core": 240,
+        "significance": 41,
+        "redistribution": 5,
+        "central_relative_drop": 18,
+        "rise_block": 7,
+        "edge_only_proxy": 1
+      }
+    },
+    {
+      "shot": 195989,
+      "crashes": 9,
+      "intervals": 0,
+      "error": null,
+      "density_guard": {
+        "status": "Thomson_90percentile_fixed_density_guard_bt_missing",
+        "cutoff_proxy": true,
+        "high_density_samples": 0,
+        "density_samples": 50550,
+        "fixed_density_guard_m3": 8e+19,
+        "margin": 0.9
+      },
+      "rejected": {
+        "unobservable_core": 27,
+        "coincidence": 226,
+        "significance": 89,
+        "redistribution": 24,
+        "drop_block": 2,
+        "rise_block": 9,
+        "elm_edge_only": 18,
+        "central_relative_drop": 235,
+        "edge_only_proxy": 69,
+        "holdoff": 7
+      }
+    },
+    {
+      "shot": 196375,
+      "crashes": 59,
+      "intervals": 1,
+      "error": null,
+      "density_guard": {
+        "status": "Thomson_90percentile_fixed_density_guard_bt_missing",
+        "cutoff_proxy": true,
+        "high_density_samples": 0,
+        "density_samples": 61351,
+        "fixed_density_guard_m3": 8e+19,
+        "margin": 0.9
+      },
+      "rejected": {
+        "coincidence": 209,
+        "unobservable_core": 5,
+        "significance": 161,
+        "holdoff": 23,
+        "edge_only_proxy": 4,
+        "rise_block": 14,
+        "redistribution": 15,
+        "elm_edge_only": 8,
+        "central_relative_drop": 16
+      }
+    },
+    {
+      "shot": 199908,
+      "crashes": 32,
+      "intervals": 0,
+      "error": null,
+      "density_guard": {
+        "status": "Thomson_90percentile_fixed_density_guard_bt_missing",
+        "cutoff_proxy": true,
+        "high_density_samples": 1489,
+        "density_samples": 28990,
+        "fixed_density_guard_m3": 8e+19,
+        "margin": 0.9
+      },
+      "rejected": {
+        "coincidence": 86,
+        "unobservable_core": 41,
+        "significance": 13,
+        "central_relative_drop": 2,
+        "holdoff": 12,
+        "redistribution": 13,
+        "rise_block": 1
+      }
+    },
+    {
+      "shot": 201707,
+      "crashes": 3,
+      "intervals": 0,
+      "error": null,
+      "density_guard": {
+        "status": "Thomson_90percentile_fixed_density_guard_bt_missing",
+        "cutoff_proxy": true,
+        "high_density_samples": 76,
+        "density_samples": 58960,
+        "fixed_density_guard_m3": 8e+19,
+        "margin": 0.9
+      },
+      "rejected": {
+        "coincidence": 208,
+        "unobservable_core": 12,
+        "significance": 147,
+        "central_relative_drop": 145,
+        "holdoff": 4,
+        "rise_block": 255
+      }
+    },
+    {
+      "shot": 203629,
+      "crashes": 5,
+      "intervals": 0,
+      "error": null,
+      "density_guard": {
+        "status": "Thomson_90percentile_fixed_density_guard_bt_missing",
+        "cutoff_proxy": true,
+        "high_density_samples": 10618,
+        "density_samples": 61371,
+        "fixed_density_guard_m3": 8e+19,
+        "margin": 0.9
+      },
+      "rejected": {
+        "coincidence": 306,
+        "unobservable_core": 136,
+        "edge_only_proxy": 9,
+        "significance": 86,
+        "holdoff": 44,
+        "redistribution": 90,
+        "rise_block": 32,
+        "central_relative_drop": 139,
+        "drop_block": 3,
+        "elm_edge_only": 4
+      }
+    },
+    {
+      "shot": 203876,
+      "crashes": 0,
+      "intervals": 0,
+      "error": null,
+      "density_guard": {
+        "status": "Thomson_90percentile_and_local_bt",
+        "cutoff_proxy": true,
+        "high_density_samples": 107,
+        "density_samples": 45700,
+        "fixed_density_guard_m3": 8e+19,
+        "margin": 0.9
+      },
+      "rejected": {
+        "coincidence": 248,
+        "unobservable_core": 11,
+        "significance": 190,
+        "elm_edge_only": 22,
+        "edge_only_proxy": 6,
+        "redistribution": 61,
+        "central_relative_drop": 51,
+        "rise_block": 24,
+        "holdoff": 6
+      }
+    },
+    {
+      "shot": 203959,
+      "crashes": 0,
+      "intervals": 0,
+      "error": null,
+      "density_guard": {
+        "status": "Thomson_90percentile_fixed_density_guard_bt_missing",
+        "cutoff_proxy": true,
+        "high_density_samples": 0,
+        "density_samples": 61361,
+        "fixed_density_guard_m3": 8e+19,
+        "margin": 0.9
+      },
+      "rejected": {
+        "coincidence": 382,
+        "unobservable_core": 7,
+        "significance": 262,
+        "central_relative_drop": 80,
+        "elm_edge_only": 24,
+        "redistribution": 59,
+        "rise_block": 57,
+        "edge_only_proxy": 29,
+        "drop_block": 3,
+        "holdoff": 1
+      }
+    },
+    {
+      "shot": 204225,
+      "crashes": 24,
+      "intervals": 0,
+      "error": null,
+      "density_guard": {
+        "status": "Thomson_90percentile_fixed_density_guard_bt_missing",
+        "cutoff_proxy": true,
+        "high_density_samples": 0,
+        "density_samples": 39741,
+        "fixed_density_guard_m3": 8e+19,
+        "margin": 0.9
+      },
+      "rejected": {
+        "coincidence": 138,
+        "unobservable_core": 10,
+        "significance": 39,
+        "holdoff": 17,
+        "low_plasma_current": 3,
+        "redistribution": 3
+      }
+    }
+  ],
+  "prior_pilot_correction": {
+    "shot_count": 94,
+    "shots": [
+      185805,
+      185835,
+      185838,
+      185857,
+      185866,
+      185943,
+      185945,
+      185953,
+      185961,
+      185978,
+      185993,
+      185996,
+      186013,
+      186025,
+      186093,
+      186226,
+      186254,
+      186287,
+      186427,
+      186431,
+      186496,
+      186500,
+      186530,
+      186532,
+      186561,
+      186569,
+      186575,
+      186610,
+      186636,
+      186640,
+      186747,
+      186901,
+      186939,
+      186945,
+      186981,
+      187019,
+      187025,
+      187035,
+      187043,
+      187066,
+      187072,
+      187076,
+      187100,
+      187105,
+      187116,
+      187144,
+      187154,
+      187196,
+      187201,
+      187301,
+      187327,
+      187328,
+      189004,
+      189008,
+      189044,
+      189046,
+      189051,
+      189061,
+      189085,
+      189138,
+      189272,
+      189284,
+      189311,
+      189324,
+      189325,
+      189361,
+      189365,
+      189369,
+      189370,
+      189500,
+      189501,
+      189513,
+      189514,
+      189538,
+      189540,
+      189541,
+      189547,
+      189559,
+      189570,
+      189577,
+      189578,
+      189580,
+      189684,
+      189688,
+      189732,
+      189741,
+      189872,
+      189873,
+      189879,
+      189885,
+      189886,
+      189990,
+      189998,
+      190010
+    ],
+    "split_counts": {
+      "train": 69,
+      "val": 15,
+      "test": 10
+    },
+    "expert_shots_in_pilot": [
+      186636,
+      189324
+    ],
+    "statement": "Prior train-only pilot claim withdrawn; mixed pilot cannot establish leakage-free calibration. All fix-round guards refrozen using only listed TRAIN shots."
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "scope": "all cached cohort and expert shots",
+  "audited_shots": 500,
+  "core16_sufficient_shots": 500,
+  "full48_fallback_shots": [],
+  "mismatching_mask_samples": 0,
+  "proof": "Per-channel filtering is independent. Core16 finite counts lower-bound full48 counts. If core16 has four finite channels throughout every Gaussian support overlapping old observability, full48 has four too; both final masks equal old observability. Otherwise reread full48.",
+  "empty_support_fastpath": "Preserve exact existing all-unassessed partition only when observable/assessed support and all event lists are empty, with no cached signal to rewrite.",
+  "refit": false,
+  "criteria_changed": false,
+  "synthetic_checks": {
+    "two_core_channels_with_four_outer_requires_full48": true,
+    "bad_core_neighbor_inside_filter_halo_requires_full48": true,
+    "empty_observable_support_certificate": true
+  },
+  "source_details": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix/mask_optimization.json"
+}
