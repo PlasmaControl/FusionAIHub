@@ -388,6 +388,18 @@ def validate(args):
             for r in rows.itertuples()
             if r.category in (0, 1)
         ]
+        # Ordinary absent/present boundaries do not break observable coverage.
+        # Split predictions only at genuinely unassessed gaps, never at truth
+        # transitions: otherwise span IoU would depend on artificial fragments.
+        known_windows = []
+        for start, end in sorted(known):
+            if known_windows and start <= known_windows[-1][1]:
+                known_windows[-1] = (
+                    known_windows[-1][0],
+                    max(end, known_windows[-1][1]),
+                )
+            else:
+                known_windows.append((start, end))
         mask = spans_at(t, known)
         truth = spans_at(t, positive)[mask]
         found = spans_at(t, [(r["start_s"], r["end_s"]) for r in record["intervals"]])[
@@ -403,7 +415,7 @@ def validate(args):
         estimates = [
             (max(lo, start, r["start_s"]), min(hi, end, r["end_s"]))
             for r in record["intervals"]
-            for start, end in known
+            for start, end in known_windows
             if max(lo, start, r["start_s"]) < min(hi, end, r["end_s"])
         ]
         references = [
