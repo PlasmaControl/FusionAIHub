@@ -25,12 +25,12 @@ intervals, the order each reference gives, and whether the order changes. The le
 table covers few reviewed shots, so every interval is wide; the JSON says so with the
 numbers.
 
-**5. Proxy references (not independent).** The same swap on all the reviewed shots with
-an onset-only reference built from a detector's onsets by the same conversion: the ELM
-clock's (the reviewers started from it, so it is not independent of the review) and
-ELM-O's (73 shots). A detector is not scored against its own reference. They show how
-an onset-only reference reorders methods when the shots are many; they are not legacy
-annotations.
+**5. Proxy references (not independent).** The same swap on many shots with a
+reference built from a detector's output: the bins the ELM clock's ELMy spans touch (all
+119 shots; the reviewers started from the clock, so it is not independent of the review)
+and the bins holding an ELM-O onset (73 shots, the legacy table's convention). A
+detector is not scored against its own reference. They show how a detector-made
+reference reorders methods when the shots are many; they are not legacy annotations.
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ import numpy as np
 import pandas as pd
 
 from labeler.config import Paths, git_sha
-from labeler.elm import compare, dsm, methods, score, swap, train
+from labeler.elm import compare, dsm, labels, methods, score, swap, train
 
 REPO = Path(__file__).resolve().parents[2]
 OUT = REPO / "outputs" / "labeler" / "elm" / "swap"
@@ -156,6 +156,31 @@ def flips(a: dict, b: dict) -> dict:
     return out
 
 
+def compare_references(a: dict, b: dict) -> dict:
+    """Whether the order of methods changes between two references, per metric, and how
+    `elm-ours`' paired differences from every other method move."""
+    changes = {
+        m: a["ranking"][m] != b["ranking"][m] for m in a["ranking"] if m in b["ranking"]
+    }
+    moves = {}
+    for key, va in a["paired"].items():
+        vb = b["paired"].get(key)
+        if vb is None:
+            continue
+        moves[key] = {
+            "first": va["value"],
+            "second": vb["value"],
+            "same_sign": va["value"] * vb["value"] > 0,
+            "first_ci_excludes_zero": va["ci95"][0] > 0 or va["ci95"][1] < 0,
+            "second_ci_excludes_zero": vb["ci95"][0] > 0 or vb["ci95"][1] < 0,
+        }
+    return {
+        "order_changes": changes,
+        "order_flips": flips(a, b),
+        "paired_differences": moves,
+    }
+
+
 def agreement(parts_ref, legacy, shots, boot) -> dict:
     """Finding 1 from per-shot counts of the legacy marks against the review."""
     rows = [
@@ -265,14 +290,13 @@ def main(argv=None) -> int:
         ref_parts = parts[NAME["ours"]]
         res["finding_1"] = agreement(ref_parts, legacy, sel, boot)
         res["finding_1"]["as_methods"] = oracle_rows(ref_parts, legacy, sel, boot)
-        res["ranking_changes"] = res["reviewed"]["ranking"] != res["legacy"]["ranking"]
-        res["order_flips"] = flips(res["reviewed"], res["legacy"])
+        res["comparison"] = compare_references(res["reviewed"], res["legacy"])
         record["swap"][tag] = res
 
     # --- proxy references on all the reviewed shots (not independent)
-    for tag, key, base, spans, own in (
-        ("clock_onsets", "all119", sets["all119"], clock_spans, NAME["clock"]),
-        ("elmo_onsets", "bes73", sets["bes73"], elmo_spans, NAME["elmo"]),
+    for tag, key, base, found, own, how in (
+        ("clock_spans", "all119", sets["all119"], clock_spans, NAME["clock"], "spans"),
+        ("elmo_onsets", "bes73", sets["bes73"], elmo_spans, NAME["elmo"], "onsets"),
     ):
         parts, bins_of = compare.common_parts(
             base, data, oof, dscores, elmo_spans, clock_spans
@@ -280,22 +304,36 @@ def main(argv=None) -> int:
         boot = score.draws(len(base.shots))
         proxy = {}
         for s in base.shots:
-            sp = spans.get(s)
-            onsets = sp.t_start_ms.to_numpy(float) if sp is not None else []
-            proxy[s] = swap.onset_truth(onsets, bins_of[s])
+            sp = found.get(s)
+            if sp is None:
+                sp = methods.span_frame([], [])
+            if how == "onsets":
+                proxy[s] = swap.onset_truth(sp.t_start_ms.to_numpy(float), bins_of[s])
+            else:
+                sp = sp.sort_values("t_start_ms")
+                proxy[s] = labels.hard_hits(
+                    sp.t_start_ms.to_numpy(float),
+                    sp.t_end_ms.to_numpy(float),
+                    bins_of[s],
+                ).astype(np.int8)
         review = {s: bins_of[s].truth.astype(np.int8) for s in base.shots}
         res = {
             "set": key,
             "shots": len(base.shots),
             "reference_producer_excluded": own,
-            "note": "NOT independent: an onset-only reference made from a detector's "
-            "onsets by the same conversion; the producing detector is not scored "
-            "against it",
+            "label": f"{own} onset bins" if how == "onsets" else f"{own} span bins",
+            "conversion": (
+                "a bin is present when a detected ELM onset falls in it"
+                if how == "onsets"
+                else "a bin is present when a detected ELMy span touches it (the "
+                "clock's category-1 rows are spans, one per ELMy period, not onsets)"
+            ),
+            "note": "NOT independent: a reference made from a detector's output; the "
+            "producing detector is not scored against it",
             "reviewed": score_reference(parts, review, boot, skip=(own,)),
             "proxy": score_reference(parts, proxy, boot, skip=(own,)),
         }
-        res["ranking_changes"] = res["reviewed"]["ranking"] != res["proxy"]["ranking"]
-        res["order_flips"] = flips(res["reviewed"], res["proxy"])
+        res["comparison"] = compare_references(res["reviewed"], res["proxy"])
         record["proxy"][tag] = res
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
@@ -316,7 +354,7 @@ def main(argv=None) -> int:
             "  ranking legacy  ",
             r["legacy"]["ranking"],
             "changes:",
-            r["ranking_changes"],
+            r["comparison"]["order_changes"],
         )
     for tag, r in record["proxy"].items():
         print(tag, "reviewed", r["reviewed"]["ranking"], "proxy", r["proxy"]["ranking"])

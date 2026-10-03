@@ -160,11 +160,36 @@ def evaluate_set(sdef, data, oof, dscores, elmo_spans, clock_spans, boot) -> dic
             )
         horizons[f"risk_{int(h)}ms"] = methods.areas_summary(alt, boot)
     out["published_horizons"] = horizons
+    out["by_co2_served"] = by_co2(sdef, parts, dscores)
     if sdef.has_elmo:
         out["note_elmo"] = (
             "elm-elmo's AUROC/AUPRC (threshold sweep) are not restricted to these "
             "bins; its hard-call metrics are"
         )
+    return out
+
+
+def by_co2(sdef, parts, dscores) -> dict:
+    """The DSM methods and `elm-ours` on the shots whose CO2 density was served and on
+    those where it was not (mean-filled), the model's most informative missing input."""
+    served = [
+        i
+        for i, s in enumerate(sdef.shots)
+        if not any(m.startswith("co2") for m in dscores.rows[s].missing)
+    ]
+    out = {}
+    for tag, idx in (
+        ("co2_served", served),
+        ("co2_missing", [i for i in range(len(sdef.shots)) if i not in set(served)]),
+    ):
+        if len(idx) < 2:
+            continue
+        boot = score.draws(len(idx))
+        out[tag] = {"shots": len(idx)}
+        for name in (NAME["ours"], NAME["dsm"], NAME["detect"]):
+            sub = [parts[name][i] for i in idx]
+            res = score.summarise(sub, boot)
+            out[tag][name] = {"point": res["point"], "ci95": res["ci95"]}
     return out
 
 

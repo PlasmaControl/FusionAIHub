@@ -121,7 +121,7 @@ def full_table(res: dict, record: dict, source: str) -> str:
     lines.append(
         f"expert (oracle) & 1.000 & 1.000 & 1.000 & {lp['recall']:.3f} & "
         f"{lp['precision']:.3f} & "
-        f"{cell(_f1(lp['recall'], lp['precision']), None, 3, 3)} \\\\"
+        f"{cell(_f1(lp['recall'], lp['precision']), leg_vs_rev['ci95']['f1'], 3, 3)} \\\\"
     )
     lines += [
         "\\midrule",
@@ -166,12 +166,11 @@ def write(
                 full_table(res, record, source)
             )
     for tag, res in record["proxy"].items():
-        own = res["reference_producer_excluded"]
         text = benchmark_table(
             res,
             "reviewed",
             "proxy",
-            ("dense labels", f"onsets of {own}"),
+            ("dense labels", res["label"]),
             record,
             source,
         )
