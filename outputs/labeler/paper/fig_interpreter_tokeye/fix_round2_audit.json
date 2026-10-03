@@ -1,0 +1,265 @@
+{
+ "primary_shot": 201978,
+ "selection_rule": "retain primary if AE and low-frequency mode persist; verified sawtooth preferred, never required by fabrication",
+ "ranked_shortlist": [
+  {
+   "rank": 1,
+   "shot": 201978,
+   "split": "train",
+   "window_ms": [
+    1400.0,
+    4900.0
+   ],
+   "record": "outputs/labeler/paper/fig_interpreter_tokeye/201978.json",
+   "record_sha256": "cf304e696d966c66b07a8f6c008b634ab243cc09cca2fefc3df3c1a975033bcf",
+   "ae_source": "ae-ours, CO2 activity predictions, p>=0.7",
+   "tag_counts": {
+    "alfven_eigenmode": 389,
+    "neoclassical_tearing_mode": 21,
+    "sawtooth_oscillation": 0
+   },
+   "verified_crashes": 0,
+   "elm_peak_count": 80,
+   "caption_words": 119,
+   "projection_violations": 0,
+   "regimes_shown": [
+    "H-mode"
+   ],
+   "baseline_commit": "e5a56995",
+   "baseline_crash_ticks": 52,
+   "reason": "Clearest AE cascade and persistent n=1/n=2 low-frequency mode; local corpus CO2 supports paper-model inference, D-alpha and NBI. Retain for AE plus low-frequency structure; no verified sawtooth survives."
+  },
+  {
+   "rank": 2,
+   "shot": 201973,
+   "split": "val",
+   "window_ms": [
+    1600.0,
+    3350.0
+   ],
+   "record": "outputs/labeler/paper/fig_interpreter_tokeye/201973.json",
+   "record_sha256": "a33544f6ab184321c0bc74bdb1de45a39da4066cd9ae5c5437000988c618b172",
+   "ae_source": "ae-ours, CO2 activity predictions, p>=0.7",
+   "tag_counts": {
+    "alfven_eigenmode": 178,
+    "neoclassical_tearing_mode": 14,
+    "sawtooth_oscillation": 0
+   },
+   "verified_crashes": 0,
+   "elm_peak_count": 65,
+   "caption_words": 119,
+   "projection_violations": 0,
+   "regimes_shown": [
+    "H-mode"
+   ],
+   "baseline_commit": "e5a56995",
+   "baseline_crash_ticks": 1,
+   "reason": "Strongest visual alternate: clear AE cascade, low-frequency mode, D-alpha and NBI with paper-model CO2 inference; current physics export does not supply verified sawtooth crashes in the window."
+  },
+  {
+   "rank": 3,
+   "shot": 203187,
+   "split": "train",
+   "window_ms": [
+    1700.0,
+    3150.0
+   ],
+   "record": "outputs/labeler/paper/fig_interpreter_tokeye/203187.json",
+   "record_sha256": "8f2886eb98313f6b6506eec8a1e5478ebb731e286a99ebf8700c8f7ea38b3d8f",
+   "ae_source": "ae-ours, CO2 activity predictions, p>=0.7",
+   "tag_counts": {
+    "alfven_eigenmode": 287,
+    "neoclassical_tearing_mode": 8,
+    "sawtooth_oscillation": 0
+   },
+   "verified_crashes": 0,
+   "elm_peak_count": 6,
+   "caption_words": 96,
+   "projection_violations": 0,
+   "regimes_shown": [
+    "H-mode"
+   ],
+   "baseline_commit": "e5a56995",
+   "baseline_crash_ticks": 1,
+   "reason": "AE and low-frequency structure with local CO2/D-alpha/NBI; cascade is less distinct than the first two, and no verified crash survives."
+  },
+  {
+   "rank": 4,
+   "shot": 186636,
+   "split": "val",
+   "window_ms": [
+    1300.0,
+    3900.0
+   ],
+   "record": "outputs/labeler/paper/fig_interpreter_tokeye/186636.json",
+   "record_sha256": "ca28b79ad80849b7798c6478be676192906d36a9852cf7dea6675c6090713692",
+   "ae_source": "the AE frame model (v2) run on the shot's CO2, the raw cache's CO2",
+   "tag_counts": {
+    "alfven_eigenmode": 358,
+    "neoclassical_tearing_mode": 5,
+    "sawtooth_oscillation": 0
+   },
+   "verified_crashes": 0,
+   "elm_peak_count": 32,
+   "caption_words": 107,
+   "projection_violations": 0,
+   "regimes_shown": [],
+   "baseline_commit": "e5a56995",
+   "baseline_crash_ticks": 1,
+   "reason": "Reviewed ELM intervals and imported NTM archive improve provenance; weaker AE structure, earlier interferometer frame detector, no definite confinement shading or verified sawtooth crash in this window."
+  }
+ ],
+ "renders": [
+  {
+   "shot": 201978,
+   "split": "train",
+   "window_ms": [
+    1400.0,
+    4900.0
+   ],
+   "record": "outputs/labeler/paper/fig_interpreter_tokeye/201978.json",
+   "record_sha256": "cf304e696d966c66b07a8f6c008b634ab243cc09cca2fefc3df3c1a975033bcf",
+   "ae_source": "ae-ours, CO2 activity predictions, p>=0.7",
+   "tag_counts": {
+    "alfven_eigenmode": 389,
+    "neoclassical_tearing_mode": 21,
+    "sawtooth_oscillation": 0
+   },
+   "verified_crashes": 0,
+   "elm_peak_count": 80,
+   "caption_words": 119,
+   "projection_violations": 0,
+   "regimes_shown": [
+    "H-mode"
+   ],
+   "baseline_commit": "e5a56995",
+   "baseline_crash_ticks": 52
+  },
+  {
+   "shot": 201973,
+   "split": "val",
+   "window_ms": [
+    1600.0,
+    3350.0
+   ],
+   "record": "outputs/labeler/paper/fig_interpreter_tokeye/201973.json",
+   "record_sha256": "a33544f6ab184321c0bc74bdb1de45a39da4066cd9ae5c5437000988c618b172",
+   "ae_source": "ae-ours, CO2 activity predictions, p>=0.7",
+   "tag_counts": {
+    "alfven_eigenmode": 178,
+    "neoclassical_tearing_mode": 14,
+    "sawtooth_oscillation": 0
+   },
+   "verified_crashes": 0,
+   "elm_peak_count": 65,
+   "caption_words": 119,
+   "projection_violations": 0,
+   "regimes_shown": [
+    "H-mode"
+   ],
+   "baseline_commit": "e5a56995",
+   "baseline_crash_ticks": 1
+  },
+  {
+   "shot": 203187,
+   "split": "train",
+   "window_ms": [
+    1700.0,
+    3150.0
+   ],
+   "record": "outputs/labeler/paper/fig_interpreter_tokeye/203187.json",
+   "record_sha256": "8f2886eb98313f6b6506eec8a1e5478ebb731e286a99ebf8700c8f7ea38b3d8f",
+   "ae_source": "ae-ours, CO2 activity predictions, p>=0.7",
+   "tag_counts": {
+    "alfven_eigenmode": 287,
+    "neoclassical_tearing_mode": 8,
+    "sawtooth_oscillation": 0
+   },
+   "verified_crashes": 0,
+   "elm_peak_count": 6,
+   "caption_words": 96,
+   "projection_violations": 0,
+   "regimes_shown": [
+    "H-mode"
+   ],
+   "baseline_commit": "e5a56995",
+   "baseline_crash_ticks": 1
+  },
+  {
+   "shot": 186636,
+   "split": "val",
+   "window_ms": [
+    1300.0,
+    3900.0
+   ],
+   "record": "outputs/labeler/paper/fig_interpreter_tokeye/186636.json",
+   "record_sha256": "ca28b79ad80849b7798c6478be676192906d36a9852cf7dea6675c6090713692",
+   "ae_source": "the AE frame model (v2) run on the shot's CO2, the raw cache's CO2",
+   "tag_counts": {
+    "alfven_eigenmode": 358,
+    "neoclassical_tearing_mode": 5,
+    "sawtooth_oscillation": 0
+   },
+   "verified_crashes": 0,
+   "elm_peak_count": 32,
+   "caption_words": 107,
+   "projection_violations": 0,
+   "regimes_shown": [],
+   "baseline_commit": "e5a56995",
+   "baseline_crash_ticks": 1
+  },
+  {
+   "shot": 191376,
+   "split": "train",
+   "window_ms": [
+    1500.0,
+    2900.0
+   ],
+   "record": "outputs/labeler/paper/fig_interpreter_tokeye/191376.json",
+   "record_sha256": "3e75402ffb6d176b64ce31151c627c46363be31125cd1b6c5597653fa7238833",
+   "ae_source": "the AE frame model (v2) run on the shot's CO2, the raw cache's CO2",
+   "tag_counts": {
+    "alfven_eigenmode": 0,
+    "neoclassical_tearing_mode": 0,
+    "sawtooth_oscillation": 0
+   },
+   "verified_crashes": 0,
+   "elm_peak_count": 2,
+   "caption_words": 94,
+   "projection_violations": 0,
+   "regimes_shown": [
+    "H-mode",
+    "L-mode"
+   ],
+   "baseline_commit": "e5a56995",
+   "baseline_crash_ticks": 6
+  },
+  {
+   "shot": 191782,
+   "split": "train",
+   "window_ms": [
+    1800.0,
+    3700.0
+   ],
+   "record": "outputs/labeler/paper/fig_interpreter_tokeye/191782.json",
+   "record_sha256": "66f50d0245d4bc73062a4f8ad60999880b0e53f1f0db0c62d7694ff042cd5c6a",
+   "ae_source": "the AE frame model (v2) run on the shot's CO2, the raw cache's CO2",
+   "tag_counts": {
+    "alfven_eigenmode": 0,
+    "neoclassical_tearing_mode": 0,
+    "sawtooth_oscillation": 0
+   },
+   "verified_crashes": 0,
+   "elm_peak_count": 0,
+   "caption_words": 86,
+   "projection_violations": 0,
+   "regimes_shown": [
+    "H-mode",
+    "L-mode"
+   ],
+   "baseline_commit": "e5a56995",
+   "baseline_crash_ticks": 1
+  }
+ ],
+ "blind_test_shots_used": 0
+}
