@@ -15,22 +15,22 @@
     "confidence",
     "attrs"
   ],
-  "coverage": "Bins where at least two of the three indicators (Afrac, Prad,div, TangTV front) are valid. Time with no row was not assessed; it is not attached. 4 (uncertain) includes conflicting compatible votes, insufficient support, candidate MARFE, lower_shelf_window pending owner sign-off, unknown ELM coverage and the Afrac+Prad-only weak tier. The interval attrs tier and bin tier preserve those distinctions.",
+  "coverage": "Exploratory labels; no independent benchmark. In practice, coverage is two indicators: Prad,div and TangTV; the uncalibrated Jsat proxy can also cast provisional lower-shelf votes. Assessed bins have at least two valid measurements on eligible shots (at least 20 assessed bins and 20 valid bins per contributing indicator). Certainty requires upper-shelf TangTV plus f_div corroboration. Time with no row was not assessed; it is not attached. 4 (uncertain) includes conflicting compatible votes, insufficient support, candidate MARFE, lower_shelf_window pending owner sign-off, unknown ELM coverage and the Afrac+Prad-only weak tier. The interval attrs tier and bin tier preserve those distinctions.",
   "diagnostic_only": false,
   "diagnostic_posterior_threshold": 0.7,
   "fit_excluded_split": "test",
   "label_model_structure": "independent",
   "labeler": "rule",
-  "made_at": "2026-10-03T21:06:41+00:00",
+  "made_at": "2026-10-03T22:38:53+00:00",
   "made_by": "scripts/labeler/detach_label.py",
   "made_from": [
     {
-      "git_sha": "c1304db9",
+      "git_sha": "c0dd07fd",
       "producer": "detach_vote"
     }
   ],
   "n_requested_shots": 36,
-  "n_rows": 391,
+  "n_rows": 298,
   "n_shots": 36,
   "per_shot_files": {
     "axis_order": [

@@ -47,7 +47,7 @@
   },
   "labels_record": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/labels_bins.csv.gz",
-    "sha256": "83f2a636696c30969fc37a3cd0aa8ac9187306b3b6a32c7d20496008d222681b"
+    "sha256": "913ae93738f8366042a94c271f1570f2a6613f5ea552ddac8d2ecfae572f53c4"
   },
   "bin_directory": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins",
   "matching": "Only the half-open bin [start_ms, start_ms+bin_ms) containing each published instant; no nearest-bin fallback or duration inference.",
@@ -104,7 +104,7 @@
           "vote": 0,
           "vote_name": "abstain",
           "measurement_valid": false,
-          "value": 0.15144464373588562,
+          "value": 0.15428920090198517,
           "reason": "elm"
         },
         "tangtv": {
@@ -119,7 +119,7 @@
       "bin_ms": 50.0,
       "bins_source": {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/180257.npz",
-        "sha256": "3438eaa0d8851803d2eaad2e573c4ae281873bf29db30c8b6550ae350783ec64"
+        "sha256": "9aaa2eac8f2a4da6135e82748547556ca3fee9a935aa9bbbd13466285f652f67"
       },
       "gate_diagnostics": {
         "aux_greenwald_fraction": null,
@@ -170,7 +170,7 @@
           "vote": 1,
           "vote_name": "attached",
           "measurement_valid": true,
-          "value": 0.18838512897491455,
+          "value": 0.17065681517124176,
           "reason": ""
         },
         "tangtv": {
@@ -185,7 +185,7 @@
       "bin_ms": 50.0,
       "bins_source": {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/180257.npz",
-        "sha256": "3438eaa0d8851803d2eaad2e573c4ae281873bf29db30c8b6550ae350783ec64"
+        "sha256": "9aaa2eac8f2a4da6135e82748547556ca3fee9a935aa9bbbd13466285f652f67"
       },
       "gate_diagnostics": {
         "aux_greenwald_fraction": null,
@@ -236,7 +236,7 @@
           "vote": 2,
           "vote_name": "detached",
           "measurement_valid": true,
-          "value": 0.535411536693573,
+          "value": 0.5310018658638,
           "reason": ""
         },
         "tangtv": {
@@ -251,7 +251,7 @@
       "bin_ms": 50.0,
       "bins_source": {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/199166.npz",
-        "sha256": "6a56040e1d87e518fbbd02b0b250a0cbf28a1e8d4c9a7ffd29a909c3183e8976"
+        "sha256": "9dac4fe30ac4a59b7b9c71c3fee99d63ad086a6579bcf128d2c0b87f0f200978"
       },
       "gate_diagnostics": {
         "aux_greenwald_fraction": 0.7211474947025647,
@@ -448,6 +448,12 @@
         "replicates": 1000,
         "seed": 42,
         "n_shots": 2,
+        "reference_classes": [
+          "attached",
+          "detached",
+          "marfe"
+        ],
+        "missing_class_support": "class F1 undefined; macro requires every frozen class",
         "warning": "Only two reference shots; intervals are descriptive and cannot support population-accuracy claims.",
         "ci95": {
           "vote_coverage": {
@@ -477,7 +483,7 @@
               0.0,
               0.0
             ],
-            "valid_replicates": 1000
+            "valid_replicates": 494
           },
           "f1_attached": {
             "interval": [
@@ -693,6 +699,12 @@
         "replicates": 1000,
         "seed": 42,
         "n_shots": 2,
+        "reference_classes": [
+          "attached",
+          "detached",
+          "marfe"
+        ],
+        "missing_class_support": "class F1 undefined; macro requires every frozen class",
         "warning": "Only two reference shots; intervals are descriptive and cannot support population-accuracy claims.",
         "ci95": {
           "vote_coverage": {
@@ -722,7 +734,7 @@
               0.0,
               0.0
             ],
-            "valid_replicates": 1000
+            "valid_replicates": 494
           },
           "f1_attached": {
             "interval": [
@@ -886,7 +898,7 @@
           "kappa_on_cast_votes": 0.0,
           "f1_with_abstentions_as_false_negatives": {
             "attached": null,
-            "detached": 0.0,
+            "detached": null,
             "marfe": 0.0
           },
           "macro_f1_supported_states": 0.0,
@@ -938,6 +950,12 @@
         "replicates": 1000,
         "seed": 42,
         "n_shots": 2,
+        "reference_classes": [
+          "attached",
+          "detached",
+          "marfe"
+        ],
+        "missing_class_support": "class F1 undefined; macro requires every frozen class",
         "warning": "Only two reference shots; intervals are descriptive and cannot support population-accuracy claims.",
         "ci95": {
           "vote_coverage": {
@@ -973,7 +991,7 @@
               0.0,
               0.0
             ],
-            "valid_replicates": 1000
+            "valid_replicates": 494
           },
           "f1_attached": {
             "interval": [
@@ -987,7 +1005,7 @@
               0.0,
               0.0
             ],
-            "valid_replicates": 1000
+            "valid_replicates": 746
           },
           "f1_marfe": {
             "interval": [
@@ -1189,6 +1207,12 @@
         "replicates": 1000,
         "seed": 42,
         "n_shots": 2,
+        "reference_classes": [
+          "attached",
+          "detached",
+          "marfe"
+        ],
+        "missing_class_support": "class F1 undefined; macro requires every frozen class",
         "warning": "Only two reference shots; intervals are descriptive and cannot support population-accuracy claims.",
         "ci95": {
           "vote_coverage": {
@@ -1218,7 +1242,7 @@
               0.0,
               0.0
             ],
-            "valid_replicates": 1000
+            "valid_replicates": 494
           },
           "f1_attached": {
             "interval": [
@@ -1275,7 +1299,7 @@
         "inversion_source_sav": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189057.sav",
         "bins": {
           "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/189057.npz",
-          "sha256": "a462bb406df29311e6810753850b38be88e7a661d0f6dd1a18003f166f7a3868"
+          "sha256": "9546e1a0cfd0134c3aab150a8c66be9d3560ef0e1d1b2e2c28a3ddc8b67499b9"
         },
         "n_manual_frame_points": 171,
         "time_assignment": "By inversion-frame index; exact equal frame counts required."

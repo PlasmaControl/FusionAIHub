@@ -1,9 +1,25 @@
 # Detachment protocol
 
-Paper-facing result: **exploratory agreement and coverage**. The primary label is
-an unverified compatibility rule with TangTV required. A small reference assembled
-from explicit published statements is reported separately; it does not establish
-campaign-wide physical accuracy. Expert review and owner sign-off remain pending.
+<!-- SUMMARY -->
+
+**Exploratory coverage and indicator agreement; no independent benchmark.** Certain labels use two indicators in practice: upper-shelf C-III front height and local Prad,div/P_in corroboration. They do not establish physical state accuracy.
+
+The export has 1,737 assessed bins on 36 shots, including 307 certain bins on 16 shots: 0 attached on 0 shots, 300 detached on 16 shots, and 7 MARFE on 1 shot(s). No shot has both certain attached and detached bins; the export cannot support a study of attached-to-detached transitions.
+
+Afrac is not reproduced: EFIT flux maps cover 42 shots versus 404 positioned-probe files; 33,044 bins have unknown probe flux. No upper-shelf SOL probe passes the position/flux gate (0 bins). The local Jsat proxy is uncalibrated and casts votes on 235 bins only (99 lower-shelf, 136 without TangTV). Its former 3000 ms minimum-reference gate had no source and was removed. The Snorkel model is vestigial: no three-source upper-shelf anchors identify its accuracies, and it never decides certainty.
+
+Upper-shelf Prad–TangTV agreement uses 356 cast pairs on 17 shots: three-state κ 0.000 [0.000, 0.000]; binary attached/not-attached κ 0.000 [0.000, 0.000]. The 95% intervals resample shots. Raw agreement is 0.843 [0.628, 0.973]. Prad casts only 'detached' on the upper shelf, so κ is zero by construction and agreement cannot establish discrimination between states; its 105 attached votes all fall on bins without TangTV, so none can make an attached label certain. In the 49 pairs where TangTV votes attached, Prad votes detached in 49 (100%). Lower-shelf measurements are reported separately as provisional.
+
+Normalising Prad,div and P_in over a centered 250 ms window (instead of the 50 ms bin) and repairing the missing-data and negative-radiation gates moved the certain set from 321 bins (11 attached on 3 shots, 298 detached, 12 MARFE) to 307 (0 attached, 300 detached, 7 MARFE). None of the earlier attached bins survives. The change combines all repairs; it is not an isolated ablation.
+
+The certain composition is set by the Prad cutoffs: attached/detached/MARFE bins are 0/499/23 at -0.10, 0/465/23 at -0.05, 0/300/7 as exported, 38/80/0 at +0.05 and 241/2/0 at +0.10. Certainty therefore means a TangTV vote plus f_div on the same side of one local, single-shot-derived cutoff; it is not a threshold-independent state.
+
+MARFE bins are **single-shot MARFE candidates within threshold uncertainty** on 199172: fG=0.804–0.866 against a 0.8 cue and f_div=0.501–0.511 against 0.50. Chord-based fG has about 10–20% geometric uncertainty. The published MARFE on 199166 (3.705 s) is missed: its onset bin fails the spatial gate and fG=0.721 is below the 0.8 cue. Shifting the fG cue by ±0.1 changes the MARFE bins from 7 to 17 (0.70) or 0 (0.90); no threshold is selected from this.
+
+The Prad cutoffs 0.36/0.50 come from one worked example in Chen 2026 (shot 201081; Chen reports 4 MW NBI, while 4.4 MW total heating was assumed here and is unsourced). The 201081 `pinj` fetch failure is a PTDATA client configuration error, not missing data.
+
+<!-- /SUMMARY -->
+
 The fixed 500-shot cohort's test split is excluded from fitting, threshold
 selection, surrogate selection and bin-policy analysis.
 
@@ -48,12 +64,13 @@ abstains; private-flux current cannot corroborate detachment.
 
 The retained indicator is an **uncalibrated Jsat ratio (local proxy)**: inter-ELM
 current times P_SOL^(3/7), divided by relative density squared, then normalized
-to its own shot's 90th-percentile reference. At least 3 s of eligible SOL-side
-samples are needed for that reference. This follows Eldon's density/power scaling,
+to its own shot's 90th-percentile reference. A reference requires eligible
+SOL-side samples; no arbitrary minimum duration is imposed. This follows Eldon's
+density/power scaling,
 but it does not
 reproduce a separately fitted attached pre-puff L/H reference or identify attached
-current in an entirely detached shot. The inactive fit against TangTV-attached bins
-has been removed, preserving independence of the current construction from TangTV.
+current in an entirely detached shot. Current construction does not fit against
+TangTV-attached bins, preserving independence of the current construction from TangTV.
 Ratio ≥0.75 votes attached, ≤0.5 detached, and the transition band abstains.
 It cannot distinguish detached from MARFE. `afrac_method=local_proxy` preserves the
 historical field name without claiming the published Afrac setting was reproduced.
@@ -61,10 +78,26 @@ historical field name without claiming the published Afrac setting was reproduce
 ### Divertor radiation
 
 `f_div = PRAD_DIVL / P_in` uses calibrated lower-divertor radiation and beam,
-ECH and ohmic heating. It votes attached at ≤0.36, detached at ≥0.50, and abstains
+ECH and ohmic heating. The numerator and denominator are averaged over the same
+centered **250 ms** window before taking their ratio, to avoid interpreting
+beam blips as attached states. Heating coverage must be complete, and radiation
+uses covered inter-ELM samples. D-alpha availability must cover the full 250 ms
+radiation window, including samples outside the native 50 ms label bin;
+`aux_prad_elm_window_known` records that gate. Radiation below −0.05 MW in either the native
+50 ms label-bin mean or the 250 ms mean is invalid; a tolerated 250 ms mean between
+−0.05 MW and zero is clipped to zero in the ratio. That tolerance is an
+operational allowance,
+not a calibrated error bar. Missing beam samples remain unknown, never zero power.
+The ratio votes attached at ≤0.36, detached at ≥0.50, and abstains
 between. Eldon 2019 supplies the diagnostic construction, not universal state
 thresholds. These thresholds are fixed local settings motivated by Chen's 201081
-worked example. Their check uses external development inversion shots; the fixed
+worked example. Chen reports **4 MW NBI** and radiation of 1.6 → 2.2 MW. The
+local thresholds instead assumed **4.4 MW total heating**: 1.6/4.4≈0.36 and
+2.2/4.4=0.50. The extra 0.4 MW is not independently sourced, so these are
+exploratory local settings, not published calibrated thresholds. The failed
+201081 `pinj` fetch reports `PTSERVER/ptserver` absent from `/etc/services`, a
+PTDATA client configuration error; it does not establish absent experimental
+data. Their check uses external development inversion shots; the fixed
 cohort-train subset has **zero usable upper-shelf reference bins**. These checks
 measure agreement with the imaging indicator. Input power must be ≥0.5 MW with
 valid samples
@@ -97,7 +130,8 @@ H–L back-transition within 200 ms or fG≥0.8. Density units must be confirmed
 source metadata: `fG = nbar_e / nG`, `nG = Ip(MA)/(pi*a(m)^2)` in 10²⁰ m⁻³.
 The V2 line integral uses its confirmed `m/cm3` units, converted to m⁻²;
 an elliptical chord length at R=1.94 m estimates the line average. This neglects
-triangularity and is approximate, so fG is a corroborating cue, not MARFE truth.
+triangularity and has about 10–20% geometric uncertainty, so fG is a corroborating
+cue, not MARFE truth.
 A missing or unit-ambiguous density cannot produce that cue. The provenance and
 explicit check of Chen's published MARFE on 199166 at 3.705 s appear below.
 A surrogate without a spatial inversion cannot confirm MARFE.
@@ -112,12 +146,12 @@ an inversion-surrogate error, not detachment accuracy.
 
 Prad and Jsat use their own **±2 ms** D-alpha ELM masks and inter-ELM samples.
 TangTV accepts the 30 Hz ELM-integrated exposures, matching the measurement choice
-in Chen 2026; it does not apply the former −17/+50 ms camera window to itself or
-the faster diagnostics. Integrated camera emission can still differ from the
+in Chen 2026. Integrated camera emission can still differ from the
 inter-ELM target state, so redundancy and conflict abstention remain necessary.
 All three require known filterscope time coverage. FS01–FS04 are fetched for
 shots lacking corpus filterscopes when possible. Missing ELM information is
-`elm_unknown`, never clean. `aux_elm_share` remains NaN when unknown and is
+`elm_unknown`, never clean. A covered group containing a complete missing
+50 ms window also remains unknown. `aux_elm_share` remains NaN when unknown and is
 counted explicitly in the audit. An unknown-coverage bin cannot be certain.
 
 ## Primary rule and diagnostic model
@@ -129,12 +163,12 @@ current/radiation detached votes are compatible with a TangTV MARFE. Afrac+Prad
 alone are `low_confidence_pair`, exported uncertain. Abstentions do not supply
 support. Lower-shelf results remain provisional regardless of agreement.
 
-The Snorkel-style exact-enumeration model is **only a diagnostic**. Its source
+The Snorkel-style exact-enumeration model is **vestigial, only a diagnostic**. Its source
 weights, posterior threshold sweep, shot-grouped structure comparison and agreement
 with the rule are recorded; fitted posterior values never promote a primary bin.
 Weights and posteriors are uncalibrated and do not identify physical accuracy.
-The current model/rule agreement is reported below, rather than treating identical
-outputs as extra validation. Primary labels are unsmoothed. Neighbor-fill suggestions
+Model/rule agreement supplies no extra physical validation because both use the
+defining votes. Primary labels are unsmoothed. Neighbor-fill suggestions
 may cross validity boundaries and cannot become observed certainty.
 
 | Tier | Primary state | Meaning |
@@ -152,110 +186,155 @@ may cross validity boundaries and cannot become observed certainty.
 
 <!-- RESULTS -->
 
-**Exploratory agreement and coverage.** The primary rule exports 1,648 assessed bins/36 shots: 11 attached, 298 detached, 12 MARFE, 1,327 uncertain. Its 321 certain bins cover 23 shots. The full discharge population is 50,032 bins/470 shots.
+Full discharge extraction: 50,032 bins/470 shots. Eligibility requires **20 valid bins per indicator for at least two indicators and 20 jointly assessed bins per shot**. This one-second minimum narrows the requested every-shot coverage; shorter overlaps are not exported.
 
-The fixed 500-shot cohort contains **43 certain bins** on 1 validation shot(s); train has 0 and test has 0. Restored ELM coverage on 189061 supersedes the reviewed export's zero-cohort count. True TangTV inversions exist on only 41 shots; the surrogate supplies 0 valid bins. Current certainty totals 16.05 s; 46/98 certain intervals are single 50 ms bins. The reviewed pre-fix export had 56/113 single-bin intervals and 17.2 s total; those historical counts are superseded. [Before/after population record](results/detachment_round2.json).
+Certain coverage: 15.35 s/42 intervals; 11 are single 50 ms bins. Fixed-cohort certain bins: train 0, validation 50, test 0. True inversions exist on 41 shots; surrogate valid bins: 0.
 
-The corpus survey has 16,909 shots with usable TangTV 7,233, bolometer 13,846, Langmuir 6,239, IRTV 250 (time length >1; group presence alone is insufficient). Candidate selection is the fixed 474-shot union described in the fix audit.
+| Certain state | Bins | Shots | Shot IDs | Single-bin intervals |
+|---|---|---|---|---|
+| attached | 0 | 0 | — | 0 |
+| detached | 300 | 16 | 189057, 189061, 189062, 189081, 189088, 189090, 189093, 189094, 190109, 190110, 190113, 190115, 190116, 199166, 199172, 200977 | 11 |
+| marfe | 7 | 1 | 199172 | 0 |
 
-| Indicator, full discharge population | Valid measurement bins / shots | Cast vote bins |
-|---|---:|---:|
-| SOL Jsat local proxy | 0 / 0 | 0 |
-| Local f_div | 41,718 / 460 | 33,983 |
-| Inversion DZ | 1,791 / 41 | 1,520 |
+Certain composition by shot (zeros denote absent state support):
 
-Strict SOL selection leaves no valid Jsat votes: positioned current is sparse and lacks the required 3 s normalization reference. Current certain bins therefore depend on Prad and TangTV. The model has no three-indicator anchors; its dependence parameters are unidentifiable from this population.
-
-| Exported tier | Bins |
-|---|---:|
-| `insufficient_support` | 653 |
-| `lower_shelf_window` | 459 |
-| `certain` | 321 |
-| `candidate_marfe` | 95 |
-| `no_vote` | 61 |
-| `conflict` | 59 |
-
-Lower shelf is reported separately: 500 valid DZ measurements on 13 shots; 459 assessed bins have `tier=lower_shelf_window`, all uncertain in the primary export. Provisional state counts are {'4': 350, '1': 68, '2': 37, '3': 4}. Pending owner sign-off.
-
-| ELM coverage population | Finite bins | NaN bins |
-|---|---:|---:|
-| discharge | 49802 | 230 |
-| assessed | 1648 | 0 |
-| certain | 321 | 0 |
-
-Unknown masks are counted explicitly. All primary certainty, conflict, geometry and MARFE audit violations are zero; integrated TangTV frames are allowed to overlap ELMs. The masks for Prad and Jsat are ±2 ms.
-
-Chen H-mode campaign coverage below uses all discharge bins on the specified inversion shots 189057–189101, before export eligibility: 1425 bins/12 shots. It is a measurement coverage comparison; the exact per-shot counts are in the round-two record.
-
-| Indicator | Before valid bins / contributing shots | After valid bins / contributing shots |
-|---|---:|---:|
-| tangtv | 9 / 2 | 566 / 11 |
-| prad | 390 / 12 | 1315 / 12 |
-| afrac | 0 / 0 | 0 / 0 |
-
-| Pairwise vote agreement, eligible-shot population | Both vote bins / shots | κ [95% shot CI] | Valid κ replicates / 1000 |
-|---|---:|---|---:|
-| afrac / prad | 0 / 0 | N/A | 0 |
-| afrac / tangtv | 0 / 0 | N/A | 0 |
-| prad / tangtv | 519 / 35 | 0.477 [0.139, 0.704] | 1000 |
-
-| κ matrix [95% shot CI] | Jsat | Prad | TangTV |
+| Shot | Attached bins | Detached bins | MARFE bins |
 |---|---|---|---|
-| afrac | — | N/A | N/A |
-| prad | N/A | — | 0.477 [0.139, 0.704] |
-| tangtv | N/A | 0.477 [0.139, 0.704] | — |
+| 189057 | 0 | 32 | 0 |
+| 189061 | 0 | 50 | 0 |
+| 189062 | 0 | 37 | 0 |
+| 189081 | 0 | 2 | 0 |
+| 189088 | 0 | 30 | 0 |
+| 189090 | 0 | 51 | 0 |
+| 189093 | 0 | 2 | 0 |
+| 189094 | 0 | 34 | 0 |
+| 190109 | 0 | 25 | 0 |
+| 190110 | 0 | 9 | 0 |
+| 190113 | 0 | 2 | 0 |
+| 190115 | 0 | 14 | 0 |
+| 190116 | 0 | 2 | 0 |
+| 199166 | 0 | 6 | 0 |
+| 199172 | 0 | 3 | 7 |
+| 200977 | 0 | 1 | 0 |
 
-This is the unselected pairwise matrix. The following LOO reference is **bins where the other two indicators agree**. It selects compatible valid other votes and favors agreement; it is not expert truth. TangTV-withheld bins use the weak Jsat/Prad pair. All CIs resample shots 1000 times. Undefined κ is null, with valid replicate counts retained.
+Survey checks time length >1 on 16,909 shots: usable TangTV 7,233, bolometer 13,846, Langmuir 6,239, IRTV 250. Group presence alone is insufficient.
 
-| Indicator | Reference bins | Cast comparison bins / shots | Binary κ [95% CI] |
-|---|---:|---:|---|
-| afrac | 414 | 0 / 0 | N/A |
-| prad | 0 | 0 / 0 | N/A |
-| tangtv | 0 | 0 / 0 | N/A |
+| Indicator, full discharge | Valid bins / shots | Cast vote bins |
+|---|---|---|
+| Local f_div | 38,631 / 449 | 31377 |
+| Inversion DZ | 1,791 / 41 | 1520 |
 
-The fitted Snorkel diagnostic and primary rule agree on 99.272% of 1648 assessed bins. The model uses 0 inversion-only anchors/0 shots, with uncalibrated weights/posteriors. This diagnostic does not confer extra certainty. The compatibility rule is the primary labeler. [Model record](../../data/events/detachment/extend_detach_vote/records/label_model.json).
+| Primary export tier | Bins |
+|---|---|
+| insufficient_support | 708 |
+| lower_shelf_window | 459 |
+| certain | 307 |
+| candidate_marfe | 84 |
+| conflict | 69 |
+| no_vote | 67 |
+| low_confidence_pair | 43 |
 
-Prad local-threshold development check: 325 cast pairs/25 upper-shelf development shots, binary κ 0.200 [-0.018, 0.482]; cohort-train has 0 usable reference bins. Thresholds were fixed before the check. This is not independent validation.
-The lower-shelf check is provisional: 417 valid reference bins, including 40 cohort-train bins, are reported separately pending owner sign-off.
+Pairwise cast votes are compared before consensus selection and stratified by accepted `tangtv_tier`. The upper shelf is the paper population; lower-shelf primary bins remain uncertain.
 
-| CNN, shot-held-out reference | Scored bins / shots | Accuracy [95% CI] | κ [95% CI] |
-|---|---:|---|---|
-| detach-ours: primary combined label | 233 / 21 | 0.781 [0.582, 0.947] | 0.092 [-0.097, 0.586] |
-| detach-ours: other two agree, inversion shots | 0 / 0 | N/A | N/A |
-| detach-ours: other two agree, all sources | 0 / 0 | N/A | N/A |
-| detach-ours: other two agree, fixed test | 0 / 0 | N/A | N/A |
-| detach-victor: primary combined label | 93 / 11 | 0.871 [0.625, 1.000] | 0.000 [0.000, 0.000] |
-| detach-victor: other two agree, inversion shots | 0 / 0 | N/A | N/A |
-| detach-victor: other two agree, all sources | 0 / 0 | N/A | N/A |
-| detach-victor: other two agree, fixed test | 0 / 0 | N/A | N/A |
+| TangTV tier | Pair | Cast pairs / shots | Agreement [95% shot CI] | Three-state κ [95% shot CI] | Binary κ [95% shot CI] |
+|---|---|---|---|---|---|
+| lower_shelf_window | afrac / prad | 19 / 6 | 0.737 [0.250, 0.963] | 0.481 [-0.358, 0.917] | 0.481 [-0.358, 0.917] |
+| lower_shelf_window | afrac / tangtv | 55 / 7 | 0.836 [0.480, 0.971] | 0.671 [0.000, 0.941] | 0.671 [0.000, 0.941] |
+| lower_shelf_window | prad / tangtv | 114 / 9 | 0.825 [0.533, 0.957] | 0.642 [0.101, 0.879] | 0.707 [0.121, 0.956] |
+| none | afrac / prad | 63 / 7 | 0.683 [0.434, 0.864] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] |
+| upper_shelf | prad / tangtv | 356 / 17 | 0.843 [0.628, 0.973] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] |
 
-Ours uses complete finite input windows and no missingness channels or imputation. CNN epochs and architecture are fixed, folds group by shot, and normalization uses training-fold data. These weak-reference scores cannot establish gold-test accuracy. The reviewed Victor test-LOO result was 0/28 correct bins on one shot; the current test row above supersedes it after regeneration.
+On the upper shelf, Prad votes detached in 49 of 49 cast pairs where TangTV votes attached. There are 416 such bins with valid Prad measurements; Prad abstains in 367. Every upper-shelf cast Prad vote is detached. Radiation corroboration cannot establish a physical classifier.
 
-The independently sourced state reference has 3 points on 2 shots, selected from explicit published statements before scoring. It includes the published MARFE on 199166 at 3.705 s. Per-shot labels, indicator abstentions, agreement and coverage are in [the reference record](results/detachment_reference.json). These few statements are not an expert-reviewed population reference. The owner's manual fronts supply a separate DZ check, not state truth.
-**The primary consensus abstains on all 3/3 published points: zero reference coverage, 0/3 strict agreement, and undefined accuracy among cast votes.** This external check provides no positive state validation.
+Across 1144 upper-shelf bins with both measurements valid, f_div has median 0.484 and 5th–95th percentiles 0.398–0.564. Local cutoff placement therefore affects which imaging states receive radiation corroboration.
 
-199166 at 3705.0 ms: primary **uncertain, candidate_marfe** (scored as abstention); TangTV abstain, Jsat abstain, Prad detached. DZ=1.238; fG=0.721 fails the unchanged 0.8 cue, with no H–L back-transition. Spatial evidence also fails at the onset bin; it passes at 3750/3800 ms but fG remains below 0.8. The published MARFE is missed despite available EFIT01 maps and confirmed density units. The threshold was not retuned to this reference. All gates/provenance are in the bin and reference records; nearby witness bins are in [the physics record](results/detachment_physics.json).
+Threshold margins in the certain set:
 
-| Published reference shot / method | Reference points | Cast votes | Correct votes |
-|---|---:|---:|---:|
-| 180257 / consensus | 2 | 0 | 0 |
-| 199166 / consensus | 1 | 0 | 0 |
-| 180257 / afrac | 2 | 0 | 0 |
-| 199166 / afrac | 1 | 0 | 0 |
-| 180257 / prad | 2 | 1 | 0 |
-| 199166 / prad | 1 | 1 | 0 |
-| 180257 / tangtv | 2 | 0 | 0 |
-| 199166 / tangtv | 1 | 0 | 0 |
+| State | Bins | f_div range | Margin Q25 / median | Within .05 | Within .1 |
+|---|---|---|---|---|---|
+| detached | 300 | 0.500–0.618 | 0.015 / 0.028 | 220 | 298 |
+| marfe | 7 | 0.501–0.511 | 0.002 / 0.008 | 7 | 7 |
 
-Manual front check: 49 paired valid bins/1 shot(s); DZ MAE 0.016896024825269283 on 58 annotated bins. Its manual points reuse the same imaging modality and do not independently validate detachment states.
+Prad margins are signed distances from 0.36 for attached and 0.50 for detached/MARFE. Sensitivity shifts both Prad cutoffs together. Greenwald changes recompute the complete adjacent-bin spatial/cue MARFE gate and retain the H–L cue. Measurement gates stay fixed. Only non-test eligible shots enter this descriptive analysis.
 
-| Sensitivity width (ms), non-test shots | Assessed bins / shots | Certain bins / shots |
-|---|---:|---:|
-| 20 | 2875 / 27 | 676 / 25 |
-| 50 | 1189 / 27 | 321 / 23 |
-| 100 | 613 / 27 | 161 / 16 |
+| Family | Shift | Cutoffs / cue | Attached | Detached | MARFE | Certain bins / shots |
+|---|---|---|---|---|---|---|
+| prad | -0.10 | 0.26 / 0.40 | 0 | 499 | 23 | 522 / 22 |
+| prad | -0.05 | 0.31 / 0.45 | 0 | 465 | 23 | 488 / 22 |
+| prad | +0.00 | 0.36 / 0.50 | 0 | 300 | 7 | 307 / 16 |
+| prad | +0.05 | 0.41 / 0.55 | 38 | 80 | 0 | 118 / 10 |
+| prad | +0.10 | 0.46 / 0.60 | 241 | 2 | 0 | 243 / 17 |
+| greenwald | -0.10 | fG≥0.70 | 0 | 300 | 17 | 317 / 16 |
+| greenwald | +0.00 | fG≥0.80 | 0 | 300 | 7 | 307 / 16 |
+| greenwald | +0.10 | fG≥0.90 | 0 | 300 | 0 | 300 / 16 |
 
-The sensitivity is descriptive; no fixed test shot selects bin width. [Benchmark](results/detachment_benchmark.json), [fix audit](results/detachment_fix.json), [width record](results/detachment_bin_sensitivity.json), [F1 input](figure2_detach.json), [separate coverage populations](results/detachment_figure2.json).
+The certain composition is set by the Prad cutoffs: attached/detached/MARFE bins are 0/499/23 at -0.10, 0/465/23 at -0.05, 0/300/7 as exported, 38/80/0 at +0.05 and 241/2/0 at +0.10. Certainty therefore means a TangTV vote plus f_div on the same side of one local, single-shot-derived cutoff; it is not a threshold-independent state.
+
+Bin-width sensitivity (descriptive; non-test shots with a TangTV-eligible grid):
+
+| Bin width (ms) | Assessed bins / shots | Certain bins / shots |
+|---|---|---|
+| 20 | 2854 / 27 | 744 / 16 |
+| 50 | 1144 / 27 | 307 / 16 |
+| 100 | 586 / 27 | 156 / 14 |
+
+The vestigial Snorkel diagnostic has 0 three-source anchors on 7 shots. Its uncalibrated model/rule agreement supplies no physical validation.
+
+| Held-shot diagnostic / control | Bins / shots | Accuracy [95% shot CI] | κ [95% shot CI] | Fixed-class macro-F1 [95% shot CI] |
+|---|---|---|---|---|
+| detach-ours (ours population) | 231 / 12 | 0.835 [0.549, 1.000] | -0.052 [-0.170, 0.000] | 0.455 [0.335, 0.493] |
+| Fold majority (ours population) | 231 / 12 | 0.970 [0.877, 1.000] | 0.000 [0.000, 0.000] | 0.492 [0.464, 0.494] |
+| detach-victor (victor population) | 69 / 8 | 0.899 [0.631, 1.000] | 0.000 [0.000, 0.000] | 0.473 [0.377, 0.483] |
+| Fold majority (victor population) | 69 / 8 | 0.899 [0.631, 1.000] | 0.000 [0.000, 0.000] | 0.473 [0.377, 0.483] |
+
+Class support in each scored population:
+
+| CNN | Reference class | Bins | Shots |
+|---|---|---|---|
+| detach-ours | attached | 0 | 0 |
+| detach-ours | detached | 224 | 12 |
+| detach-ours | marfe | 7 | 1 |
+| detach-victor | attached | 0 | 0 |
+| detach-victor | detached | 62 | 8 |
+| detach-victor | marfe | 7 | 1 |
+
+detach-ours, ours population: rows are reference, columns prediction (attached: no reference bins, never predicted).
+
+| Reference | detached | marfe |
+|---|---|---|
+| detached | 193 | 31 |
+| marfe | 7 | 0 |
+
+Fold majority, ours population: rows are reference, columns prediction (attached: no reference bins, never predicted).
+
+| Reference | detached | marfe |
+|---|---|---|
+| detached | 224 | 0 |
+| marfe | 7 | 0 |
+
+detach-victor, victor population: rows are reference, columns prediction (attached: no reference bins, never predicted).
+
+| Reference | detached | marfe |
+|---|---|---|
+| detached | 62 | 0 |
+| marfe | 7 | 0 |
+
+Fold majority, victor population: rows are reference, columns prediction (attached: no reference bins, never predicted).
+
+| Reference | detached | marfe |
+|---|---|---|
+| detached | 62 | 0 |
+| marfe | 7 | 0 |
+
+These CNNs predict weak rule labels, so their scores are exploratory agreement diagnostics. Neither establishes learning beyond the adjacent fold-majority control. The fold holding the sole MARFE shot has no MARFE training examples; **MARFE transfer is unsupported**. Epochs and architecture are fixed, folds group by shot, and normalization uses training-fold data. Macro-F1 keeps the population's class set fixed across draws; draws missing a required class are excluded and counted in the JSON. Ours uses complete finite windows without heating inputs, missingness channels or imputation. The scored populations differ and cannot rank model quality.
+
+The independent published reference has 3 points on 2 shots. The primary rule abstains on all three points, including 199166 MARFE at 3.705 s; no positive independent state validation is available.
+
+199166/3705 ms: DZ=1.238; fG=0.721 fails the fixed 0.8 cue, and no H–L back-transition occurs. Spatial evidence fails at onset; nearby bins pass spatial evidence but still fail fG. The primary state is uncertain/candidate_marfe despite usable EFIT01 maps and confirmed density units. The cue was not retuned.
+
+Manual front check: 49 valid paired bins/1 shot(s), DZ MAE 0.017 on 58 annotated bins. These points reuse the imaging modality and do not independently validate states.
+
+Sources: [current coverage/margins](results/detachment_round3.json), [tier-stratified agreement](results/detachment_benchmark.json), [published reference](results/detachment_reference.json), [ours CNN](results/detachment_ours.json) and [Victor CNN](results/detachment_victor.json). These are exploratory records; **no independent benchmark** is available.
 
 <!-- /RESULTS -->
 
@@ -271,19 +350,22 @@ is a diagnostic row, not a spatial inversion. The timeline plots the voted
 `f_div` and DZ with their thresholds, and legends identify selected-time markers.
 PDFs are vector and PNGs 150 dpi.
 
-Figure 2 uses `docs/labeler/figure2_detach.json`: local single-indicator and
-held-shot `detach-victor` F1 against the primary label, with shot-bootstrap CIs.
-Published settings that were not reproduced are unavailable. These F1 comparisons
-include scored indicators in the reference and are circular agreement diagnostics.
-`results/detachment_figure2.json` separately records measurement, vote and consensus
-coverage on explicit populations. The F1 panel is 3.25 inches with ≥7 pt text.
-No corpus-wide physical classification accuracy is asserted.
+Figure 2 uses upper-shelf indicator coverage/agreement with an explicit **no
+independent benchmark** annotation. `docs/labeler/figure2_detach.json` and
+`results/detachment_figure2.json` record the selected population and agreement
+source; the lower shelf remains a separate provisional stratum. No detector
+ranking or corpus-wide physical classification accuracy is asserted.
 
-Regenerate with `detach_bins.py`, `detach_label.py`, `detach_benchmark.py`,
-`detach_reference.py`, `detach_fix_records.py`, `detach_round2_records.py`,
-`detach_sensitivity.py`, `detach_ours.py`, `detach_victor.py`, `detach_figure.py`,
-`detach_paper_panel.py`, and `detach_protocol.py`. Full outputs remain under
-`$LABELER_ROOT/round4/detach/`; the external `HANDOFF.md` documents additive fields.
+Regenerate in order with `detach_bins.py` (full 50 ms extraction) and
+`detach_regenerate_widths.py` (20/50/100 ms grids; its 50 ms arrays must equal the
+primary ones), `detach_label.py`, then `detach_reference.py`,
+`detach_round2_records.py`, `detach_physics_audit.py`, `detach_sensitivity.py`,
+`detach_benchmark.py`, `detach_fix_records.py` and `detach_round3_records.py`;
+`detach_ours.py prep`/`refresh` and `detach_victor.py prep`/`refresh` (retrain on a
+GPU only if the prepared arrays change), `detach_figure.py`, `detach_paper_panel.py`,
+`detach_handoff.py`, `detach_protocol.py` and `detach_validate_outputs.py`. Full
+outputs remain under `$LABELER_ROOT/round4/detach/`; the external `HANDOFF.md`
+documents additive fields and per-shot diagnostic availability.
 Fetches use the allowed login-node fdp path, ≤3 workers, one-second pacing and a
 shared authentication-stop flag. No remote fetch continues after an auth failure.
 

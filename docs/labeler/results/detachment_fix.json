@@ -10,7 +10,7 @@
   "marfe_without_spatial_or_second_cue": 0,
   "tangtv_valid_short_or_missing_aux_leg": 0,
   "surrogate_valid_outside_envelope": 0,
-  "temporal_imputations": 54
+  "temporal_imputations": 12
  },
  "elm_coverage": {
   "all_discharge": {
@@ -20,16 +20,16 @@
    "majority_bins": 11427
   },
   "assessed": {
-   "bins": 1648,
-   "finite_bins": 1648,
+   "bins": 1737,
+   "finite_bins": 1737,
    "nan_bins": 0,
-   "majority_bins": 291
+   "majority_bins": 296
   },
   "certain": {
-   "bins": 321,
-   "finite_bins": 321,
+   "bins": 307,
+   "finite_bins": 307,
    "nan_bins": 0,
-   "majority_bins": 91
+   "majority_bins": 95
   },
   "tangtv_valid": {
    "bins": 1791,
@@ -39,7 +39,7 @@
   }
  },
  "population": {
-  "bins": 1648,
+  "bins": 1737,
   "shots": 36,
   "shot_ids": [
    189057,
@@ -81,8 +81,8 @@
   ]
  },
  "certain": {
-  "bins": 321,
-  "shots": 23,
+  "bins": 307,
+  "shots": 16,
   "shot_ids": [
    189057,
    189061,
@@ -92,30 +92,24 @@
    189090,
    189093,
    189094,
-   189100,
-   189101,
-   189448,
-   189451,
    190109,
    190110,
    190113,
-   190114,
    190115,
    190116,
    199166,
    199172,
-   199352,
-   199353,
-   199354
+   200977
   ]
  },
  "tiers": {
-  "insufficient_support": 653,
+  "insufficient_support": 708,
   "lower_shelf_window": 459,
-  "certain": 321,
-  "candidate_marfe": 95,
-  "no_vote": 61,
-  "conflict": 59
+  "certain": 307,
+  "candidate_marfe": 84,
+  "conflict": 69,
+  "no_vote": 67,
+  "low_confidence_pair": 43
  },
  "marfe_by_source_envelope": {
   "inversion_inside": {
@@ -154,7 +148,7 @@
    "valid_bins": 1183,
    "candidate_bins": 89,
    "marfe_votes": 23,
-   "marfe_labels": 12
+   "marfe_labels": 7
   },
   "inversion_outside": {
    "bins": 2802,
@@ -1567,9 +1561,17 @@
   "changed_bins": 0,
   "anchor_by_source": {
    "inversion": {
-    "bins": 0,
-    "shots": 0,
-    "shot_ids": []
+    "bins": 99,
+    "shots": 7,
+    "shot_ids": [
+     206879,
+     206880,
+     206886,
+     206891,
+     206892,
+     206893,
+     206894
+    ]
    },
    "surrogate": {
     "bins": 0,
@@ -1599,28 +1601,28 @@
     "anchor_bins": 0,
     "accuracies": {
      "afrac": {
-      "acc_weight": 1.0,
+      "acc_weight": 1.2974938549057586,
       "at_weight_bound": false,
       "physical_accuracy_identified": false,
       "calibrated": false,
-      "propensity_weight": 0.0,
-      "implied_accuracy": 0.731058578630005
+      "propensity_weight": -0.6937429525927348,
+      "implied_accuracy": 0.7854129007919418
      },
      "prad": {
-      "acc_weight": 1.778746570177799,
+      "acc_weight": 1.9082653922094461,
       "at_weight_bound": false,
       "physical_accuracy_identified": false,
       "calibrated": false,
-      "propensity_weight": -2.463147529580362,
-      "implied_accuracy": 0.8555420237067122
+      "propensity_weight": -2.5485059339712395,
+      "implied_accuracy": 0.8708241482549364
      },
      "tangtv": {
-      "acc_weight": 3.989868448403699,
-      "at_weight_bound": false,
+      "acc_weight": 4.0,
+      "at_weight_bound": true,
       "physical_accuracy_identified": false,
       "calibrated": false,
-      "propensity_weight": -2.360983257869958,
-      "implied_accuracy": 0.9643161594988732
+      "propensity_weight": -2.3137588962290128,
+      "implied_accuracy": 0.9646631559719039
      }
     }
    },
@@ -1628,28 +1630,28 @@
     "anchor_bins": 0,
     "accuracies": {
      "afrac": {
-      "acc_weight": 1.0,
+      "acc_weight": 1.2974938549057586,
       "at_weight_bound": false,
       "physical_accuracy_identified": false,
       "calibrated": false,
-      "propensity_weight": 0.0,
-      "implied_accuracy": 0.731058578630005
+      "propensity_weight": -0.6937429525927348,
+      "implied_accuracy": 0.7854129007919418
      },
      "prad": {
-      "acc_weight": 1.778746570177799,
+      "acc_weight": 1.9082653922094461,
       "at_weight_bound": false,
       "physical_accuracy_identified": false,
       "calibrated": false,
-      "propensity_weight": -2.463147529580362,
-      "implied_accuracy": 0.8555420237067122
+      "propensity_weight": -2.5485059339712395,
+      "implied_accuracy": 0.8708241482549364
      },
      "tangtv": {
-      "acc_weight": 3.989868448403699,
-      "at_weight_bound": false,
+      "acc_weight": 4.0,
+      "at_weight_bound": true,
       "physical_accuracy_identified": false,
       "calibrated": false,
-      "propensity_weight": -2.360983257869958,
-      "implied_accuracy": 0.9643161594988732
+      "propensity_weight": -2.3137588962290128,
+      "implied_accuracy": 0.9646631559719039
      }
     }
    }
@@ -1663,7 +1665,7 @@
   "source": "Local Chen 201081 worked example; Eldon 2019 supplies sensor definition, not these thresholds.",
   "selection": "Fixed thresholds, no optimisation; fixed cohort train plus external upper-shelf inversion development shots, excluding val and test. Lower-shelf windows are reported separately pending sign-off. External shots are development training inputs to the label fit, not blind evaluation.",
   "provisional_lower_shelf_valid_reference": {
-   "bins": 417,
+   "bins": 415,
    "shots": 13,
    "shot_ids": [
     195952,
@@ -1682,7 +1684,7 @@
    ]
   },
   "provisional_lower_shelf_cohort_train_reference": {
-   "bins": 40,
+   "bins": 38,
    "shots": 3,
    "shot_ids": [
     195952,
@@ -1691,7 +1693,7 @@
    ]
   },
   "valid_reference": {
-   "bins": 921,
+   "bins": 899,
    "shots": 26,
    "shot_ids": [
     189057,
@@ -1728,7 +1730,7 @@
    "shot_ids": []
   },
   "external_development_valid_reference": {
-   "bins": 921,
+   "bins": 899,
    "shots": 26,
    "shot_ids": [
     189057,
@@ -1760,8 +1762,8 @@
    ]
   },
   "voting_reference": {
-   "bins": 325,
-   "shots": 25,
+   "bins": 299,
+   "shots": 16,
    "shot_ids": [
     189057,
     189062,
@@ -1771,46 +1773,37 @@
     189093,
     189094,
     189097,
-    189100,
-    189101,
-    189448,
-    189451,
     190109,
     190110,
     190113,
-    190114,
     190115,
     190116,
     199166,
-    199171,
     199172,
-    199351,
-    199352,
-    199353,
-    199354
+    200977
    ]
   },
   "confusion_ref_by_vote": [
    [
-    11,
-    51
+    0,
+    49
    ],
    [
-    8,
-    255
+    0,
+    250
    ]
   ],
-  "binary_kappa": 0.2000083441111434,
+  "binary_kappa": 0.0,
   "kappa_ci95": [
-   -0.017659232557930865,
-   0.48180841940971636
+   0.0,
+   0.0
   ],
   "kappa_valid_bootstrap_replicates": 1000,
   "bootstrap_replicates_requested": 1000,
-  "agreement": 0.8184615384615385,
+  "agreement": 0.8361204013377926,
   "power_range_mw": [
-   0.9391559362411499,
-   10.627243041992188
+   0.9684014916419983,
+   9.911478996276855
   ],
   "temperature_check": "withdrawn; unlocalised DTS cannot validate detachment"
  },
@@ -1891,83 +1884,83 @@
    ]
   },
   "provisional_states": {
-   "4": 350,
-   "1": 68,
+   "4": 333,
+   "1": 85,
    "2": 37,
    "3": 4
   },
   "loo_other_indicators": {
    "afrac": {
     "n_bins": {
-     "value": 0.0,
+     "value": 15.0,
      "ci95": [
-      0.0,
-      0.0
+      2.0,
+      30.0
      ],
      "valid_replicates": 1000,
      "replicates": 1000
     },
     "vote_rate": {
-     "value": null,
+     "value": 0.75,
      "ci95": [
-      null,
-      null
+      0.5,
+      1.0
      ],
-     "valid_replicates": 0,
+     "valid_replicates": 991,
      "replicates": 1000
     },
     "valid_rate": {
-     "value": 0.0,
+     "value": 0.19230769230769232,
      "ci95": [
-      0.0,
-      0.0
+      0.0285515873015873,
+      0.44843260188087763
      ],
      "valid_replicates": 1000,
      "replicates": 1000
     },
     "agreement": {
-     "value": null,
+     "value": 0.9333333333333333,
      "ci95": [
-      null,
-      null
+      0.5,
+      1.0
      ],
-     "valid_replicates": 0,
+     "valid_replicates": 991,
      "replicates": 1000
     },
     "compatible_agreement": {
-     "value": null,
+     "value": 0.9333333333333333,
      "ci95": [
-      null,
-      null
+      0.5,
+      1.0
      ],
-     "valid_replicates": 0,
+     "valid_replicates": 991,
      "replicates": 1000
     },
     "kappa": {
-     "value": null,
+     "value": 0.8648648648648649,
      "ci95": [
-      null,
-      null
+      0.0,
+      1.0
      ],
-     "valid_replicates": 0,
+     "valid_replicates": 869,
      "replicates": 1000
     },
     "f1_attached": {
-     "value": null,
+     "value": 0.9230769230769231,
      "ci95": [
-      null,
-      null
+      0.8,
+      1.0
      ],
-     "valid_replicates": 0,
+     "valid_replicates": 653,
      "replicates": 1000
     },
     "f1_detached": {
-     "value": null,
+     "value": 0.9411764705882353,
      "ci95": [
-      null,
-      null
+      0.0,
+      1.0
      ],
-     "valid_replicates": 0,
+     "valid_replicates": 969,
      "replicates": 1000
     },
     "f1_marfe": {
@@ -1980,116 +1973,125 @@
      "replicates": 1000
     },
     "macro_f1": {
-     "value": null,
+     "value": 0.9321266968325792,
      "ci95": [
-      null,
-      null
+      0.42857142857142855,
+      1.0
      ],
-     "valid_replicates": 0,
+     "valid_replicates": 631,
      "replicates": 1000
     },
     "binary_f1_attached": {
-     "value": null,
+     "value": 0.9230769230769231,
      "ci95": [
-      null,
-      null
+      0.8,
+      1.0
      ],
-     "valid_replicates": 0,
+     "valid_replicates": 653,
      "replicates": 1000
     },
     "binary_f1_not_attached": {
-     "value": null,
+     "value": 0.9411764705882353,
      "ci95": [
-      null,
-      null
+      0.0,
+      1.0
      ],
-     "valid_replicates": 0,
+     "valid_replicates": 969,
      "replicates": 1000
     },
     "binary_kappa": {
-     "value": null,
+     "value": 0.8648648648648649,
      "ci95": [
-      null,
-      null
+      0.0,
+      1.0
      ],
-     "valid_replicates": 0,
+     "valid_replicates": 869,
      "replicates": 1000
     },
-    "n_shots": 0,
-    "reference_certain_bins": 118,
-    "valid_reference_bins": 0
+    "binary_agreement": {
+     "value": 0.9333333333333333,
+     "ci95": [
+      0.5,
+      1.0
+     ],
+     "valid_replicates": 991,
+     "replicates": 1000
+    },
+    "n_shots": 4,
+    "reference_certain_bins": 104,
+    "valid_reference_bins": 20
    },
    "prad": {
     "n_bins": {
-     "value": 0.0,
+     "value": 17.0,
      "ci95": [
-      0.0,
-      0.0
+      4.0,
+      31.024999999999977
      ],
      "valid_replicates": 1000,
      "replicates": 1000
     },
     "vote_rate": {
-     "value": null,
+     "value": 0.3695652173913043,
      "ci95": [
-      null,
-      null
+      0.17857142857142858,
+      1.0
      ],
-     "valid_replicates": 0,
+     "valid_replicates": 999,
      "replicates": 1000
     },
     "valid_rate": {
-     "value": 0.0,
+     "value": 1.0,
      "ci95": [
-      0.0,
-      0.0
+      1.0,
+      1.0
      ],
      "valid_replicates": 1000,
      "replicates": 1000
     },
     "agreement": {
-     "value": null,
+     "value": 0.8235294117647058,
      "ci95": [
-      null,
-      null
+      0.0,
+      1.0
      ],
-     "valid_replicates": 0,
+     "valid_replicates": 999,
      "replicates": 1000
     },
     "compatible_agreement": {
-     "value": null,
+     "value": 0.8235294117647058,
      "ci95": [
-      null,
-      null
+      0.0,
+      1.0
      ],
-     "valid_replicates": 0,
+     "valid_replicates": 999,
      "replicates": 1000
     },
     "kappa": {
-     "value": null,
+     "value": 0.6530612244897959,
      "ci95": [
-      null,
-      null
+      0.0,
+      1.0
      ],
-     "valid_replicates": 0,
+     "valid_replicates": 960,
      "replicates": 1000
     },
     "f1_attached": {
-     "value": null,
+     "value": 0.8,
      "ci95": [
-      null,
-      null
+      0.631578947368421,
+      1.0
      ],
-     "valid_replicates": 0,
+     "valid_replicates": 653,
      "replicates": 1000
     },
     "f1_detached": {
-     "value": null,
+     "value": 0.8421052631578947,
      "ci95": [
-      null,
-      null
+      0.0,
+      1.0
      ],
-     "valid_replicates": 0,
+     "valid_replicates": 990,
      "replicates": 1000
     },
     "f1_marfe": {
@@ -2102,116 +2104,125 @@
      "replicates": 1000
     },
     "macro_f1": {
-     "value": null,
+     "value": 0.8210526315789474,
      "ci95": [
-      null,
-      null
+      0.375,
+      1.0
      ],
-     "valid_replicates": 0,
+     "valid_replicates": 644,
      "replicates": 1000
     },
     "binary_f1_attached": {
-     "value": null,
+     "value": 0.8,
      "ci95": [
-      null,
-      null
+      0.631578947368421,
+      1.0
      ],
-     "valid_replicates": 0,
+     "valid_replicates": 653,
      "replicates": 1000
     },
     "binary_f1_not_attached": {
-     "value": null,
+     "value": 0.8421052631578947,
      "ci95": [
-      null,
-      null
+      0.0,
+      1.0
      ],
-     "valid_replicates": 0,
+     "valid_replicates": 990,
      "replicates": 1000
     },
     "binary_kappa": {
-     "value": null,
+     "value": 0.6530612244897959,
      "ci95": [
-      null,
-      null
+      0.0,
+      1.0
      ],
-     "valid_replicates": 0,
+     "valid_replicates": 960,
      "replicates": 1000
     },
-    "n_shots": 0,
-    "reference_certain_bins": 0,
-    "valid_reference_bins": 0
+    "binary_agreement": {
+     "value": 0.8235294117647058,
+     "ci95": [
+      0.0,
+      1.0
+     ],
+     "valid_replicates": 999,
+     "replicates": 1000
+    },
+    "n_shots": 5,
+    "reference_certain_bins": 46,
+    "valid_reference_bins": 46
    },
    "tangtv": {
     "n_bins": {
-     "value": 0.0,
+     "value": 14.0,
      "ci95": [
       0.0,
-      0.0
+      29.0
      ],
      "valid_replicates": 1000,
      "replicates": 1000
     },
     "vote_rate": {
-     "value": null,
+     "value": 1.0,
      "ci95": [
-      null,
-      null
+      1.0,
+      1.0
      ],
-     "valid_replicates": 0,
+     "valid_replicates": 967,
      "replicates": 1000
     },
     "valid_rate": {
-     "value": 0.0,
+     "value": 0.24561403508771928,
      "ci95": [
       0.0,
-      0.0
+      0.5001811594202897
      ],
      "valid_replicates": 1000,
      "replicates": 1000
     },
     "agreement": {
-     "value": null,
+     "value": 1.0,
      "ci95": [
-      null,
-      null
+      1.0,
+      1.0
      ],
-     "valid_replicates": 0,
+     "valid_replicates": 967,
      "replicates": 1000
     },
     "compatible_agreement": {
-     "value": null,
+     "value": 1.0,
      "ci95": [
-      null,
-      null
+      1.0,
+      1.0
      ],
-     "valid_replicates": 0,
+     "valid_replicates": 967,
      "replicates": 1000
     },
     "kappa": {
-     "value": null,
+     "value": 1.0,
      "ci95": [
-      null,
-      null
+      1.0,
+      1.0
      ],
-     "valid_replicates": 0,
+     "valid_replicates": 572,
      "replicates": 1000
     },
     "f1_attached": {
-     "value": null,
+     "value": 1.0,
      "ci95": [
-      null,
-      null
+      1.0,
+      1.0
      ],
-     "valid_replicates": 0,
+     "valid_replicates": 653,
      "replicates": 1000
     },
     "f1_detached": {
-     "value": null,
+     "value": 1.0,
      "ci95": [
-      null,
-      null
+      1.0,
+      1.0
      ],
-     "valid_replicates": 0,
+     "valid_replicates": 886,
      "replicates": 1000
     },
     "f1_marfe": {
@@ -2224,44 +2235,53 @@
      "replicates": 1000
     },
     "macro_f1": {
-     "value": null,
+     "value": 1.0,
      "ci95": [
-      null,
-      null
+      1.0,
+      1.0
      ],
-     "valid_replicates": 0,
+     "valid_replicates": 572,
      "replicates": 1000
     },
     "binary_f1_attached": {
-     "value": null,
+     "value": 1.0,
      "ci95": [
-      null,
-      null
+      1.0,
+      1.0
      ],
-     "valid_replicates": 0,
+     "valid_replicates": 653,
      "replicates": 1000
     },
     "binary_f1_not_attached": {
-     "value": null,
+     "value": 1.0,
      "ci95": [
-      null,
-      null
+      1.0,
+      1.0
      ],
-     "valid_replicates": 0,
+     "valid_replicates": 886,
      "replicates": 1000
     },
     "binary_kappa": {
-     "value": null,
+     "value": 1.0,
      "ci95": [
-      null,
-      null
+      1.0,
+      1.0
      ],
-     "valid_replicates": 0,
+     "valid_replicates": 572,
      "replicates": 1000
     },
-    "n_shots": 0,
-    "reference_certain_bins": 0,
-    "valid_reference_bins": 0
+    "binary_agreement": {
+     "value": 1.0,
+     "ci95": [
+      1.0,
+      1.0
+     ],
+     "valid_replicates": 967,
+     "replicates": 1000
+    },
+    "n_shots": 3,
+    "reference_certain_bins": 57,
+    "valid_reference_bins": 14
    }
   },
   "te_check": "withdrawn, no geometrically localised processed DTS"
@@ -2601,22 +2621,22 @@
    "shots": 470
   },
   "assessed": {
-   "bins": 1648,
+   "bins": 1737,
    "shots": 36
   },
   "certain": {
-   "bins": 321,
-   "shots": 23,
-   "seconds": 16.05,
-   "intervals": 98,
-   "single_50ms_intervals": 46,
+   "bins": 307,
+   "shots": 16,
+   "seconds": 15.350000000000001,
+   "intervals": 42,
+   "single_50ms_intervals": 11,
    "by_split": {
     "train": {
      "bins": 0,
      "shots": 0
     },
     "val": {
-     "bins": 43,
+     "bins": 50,
      "shots": 1
     },
     "test": {
@@ -2624,24 +2644,24 @@
      "shots": 0
     },
     "outside": {
-     "bins": 278,
-     "shots": 22
+     "bins": 257,
+     "shots": 15
     }
    }
   },
   "states": {
-   "4": 1327,
-   "2": 298,
-   "3": 12,
-   "1": 11
+   "4": 1430,
+   "2": 300,
+   "3": 7
   },
   "tiers": {
-   "insufficient_support": 653,
+   "insufficient_support": 708,
    "lower_shelf_window": 459,
-   "certain": 321,
-   "candidate_marfe": 95,
-   "no_vote": 61,
-   "conflict": 59
+   "certain": 307,
+   "candidate_marfe": 84,
+   "conflict": 69,
+   "no_vote": 67,
+   "low_confidence_pair": 43
   },
   "corpus_survey": {
    "shots": 16909,
@@ -2660,16 +2680,16 @@
     "majority": 11427
    },
    "assessed": {
-    "bins": 1648,
-    "finite": 1648,
+    "bins": 1737,
+    "finite": 1737,
     "nan": 0,
-    "majority": 291
+    "majority": 296
    },
    "certain": {
-    "bins": 321,
-    "finite": 321,
+    "bins": 307,
+    "finite": 307,
     "nan": 0,
-    "majority": 91
+    "majority": 95
    }
   },
   "chen_hmode": {
@@ -2683,8 +2703,8 @@
      "shots": 11
     },
     "prad": {
-     "valid_bins": 1315,
-     "voting_bins": 812,
+     "valid_bins": 1235,
+     "voting_bins": 742,
      "shots": 12
     },
     "afrac": {
@@ -2697,84 +2717,84 @@
     "189057": {
      "bins": 122,
      "tangtv": 49,
-     "prad": 111,
+     "prad": 102,
      "afrac": 0,
      "elm_nan_bins": 0
     },
     "189061": {
      "bins": 122,
      "tangtv": 57,
-     "prad": 117,
+     "prad": 108,
      "afrac": 0,
      "elm_nan_bins": 0
     },
     "189062": {
      "bins": 121,
      "tangtv": 37,
-     "prad": 120,
+     "prad": 106,
      "afrac": 0,
      "elm_nan_bins": 0
     },
     "189081": {
      "bins": 136,
      "tangtv": 57,
-     "prad": 129,
+     "prad": 116,
      "afrac": 0,
      "elm_nan_bins": 0
     },
     "189085": {
      "bins": 118,
      "tangtv": 0,
-     "prad": 113,
+     "prad": 111,
      "afrac": 0,
      "elm_nan_bins": 0
     },
     "189088": {
      "bins": 108,
      "tangtv": 41,
-     "prad": 104,
+     "prad": 100,
      "afrac": 0,
      "elm_nan_bins": 0
     },
     "189090": {
      "bins": 113,
      "tangtv": 58,
-     "prad": 103,
+     "prad": 95,
      "afrac": 0,
      "elm_nan_bins": 0
     },
     "189093": {
      "bins": 124,
      "tangtv": 55,
-     "prad": 97,
+     "prad": 91,
      "afrac": 0,
      "elm_nan_bins": 0
     },
     "189094": {
      "bins": 121,
      "tangtv": 49,
-     "prad": 114,
+     "prad": 112,
      "afrac": 0,
      "elm_nan_bins": 0
     },
     "189097": {
      "bins": 126,
      "tangtv": 57,
-     "prad": 101,
+     "prad": 92,
      "afrac": 0,
      "elm_nan_bins": 0
     },
     "189100": {
      "bins": 106,
      "tangtv": 47,
-     "prad": 102,
+     "prad": 100,
      "afrac": 0,
      "elm_nan_bins": 0
     },
     "189101": {
      "bins": 108,
      "tangtv": 59,
-     "prad": 104,
+     "prad": 102,
      "afrac": 0,
      "elm_nan_bins": 0
     }

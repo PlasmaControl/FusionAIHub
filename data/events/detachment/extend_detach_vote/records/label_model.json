@@ -3,39 +3,39 @@
  "posterior_threshold": 0.7,
  "fit": {
   "n_shots": 36,
-  "n_bins": 1648,
+  "n_bins": 1737,
   "excluded_split": "test",
   "method": "anchored: accuracies from the bins where every indicator is valid, class balance fixed at attached 1/2, detached 1/4, marfe 1/4, propensities from all bins; if fewer than 300 anchors, all-bin fallback (unidentified)",
   "used_anchor": false,
   "physical_accuracy_identified": false,
   "anchor_bins": 0,
-  "anchor_shots": 0,
+  "anchor_shots": 7,
   "anchor_source": "inversion_only",
   "posterior_calibrated": false,
   "all_bins_fit_for_comparison": {
    "afrac": {
-    "acc_weight": 1.0,
+    "acc_weight": 1.2974938549057586,
     "at_weight_bound": false,
     "physical_accuracy_identified": false,
     "calibrated": false,
-    "propensity_weight": 0.0,
-    "implied_accuracy": 0.731058578630005
+    "propensity_weight": -0.6937429525927348,
+    "implied_accuracy": 0.7854129007919418
    },
    "prad": {
-    "acc_weight": 1.778746570177799,
+    "acc_weight": 1.9082653922094461,
     "at_weight_bound": false,
     "physical_accuracy_identified": false,
     "calibrated": false,
-    "propensity_weight": -2.463147529580362,
-    "implied_accuracy": 0.8555420237067122
+    "propensity_weight": -2.5485059339712395,
+    "implied_accuracy": 0.8708241482549364
    },
    "tangtv": {
-    "acc_weight": 3.989868448403699,
-    "at_weight_bound": false,
+    "acc_weight": 4.0,
+    "at_weight_bound": true,
     "physical_accuracy_identified": false,
     "calibrated": false,
-    "propensity_weight": -2.360983257869958,
-    "implied_accuracy": 0.9643161594988732
+    "propensity_weight": -2.3137588962290128,
+    "implied_accuracy": 0.9646631559719039
    }
   }
  },
@@ -44,53 +44,53 @@
   "rule": "simplest structure within one standard error of the best",
   "candidates": {
    "independent": {
-    "mean_heldout_loglik_per_bin": -2.0112096456963693,
+    "mean_heldout_loglik_per_bin": -2.0758246690205007,
     "folds": [
-     -1.8971551537806979,
-     -1.950437427561805,
-     -2.0529442289597992,
-     -2.4137807117305585,
-     -1.741730706448986
+     -1.9680288298712398,
+     -1.922368554922253,
+     -2.2065638944153134,
+     -2.471873166081382,
+     -1.8102888998123148
     ]
    },
    "prad_tangtv": {
-    "mean_heldout_loglik_per_bin": -2.0121810929489126,
+    "mean_heldout_loglik_per_bin": -2.0758194062999893,
     "folds": [
-     -1.8971548870634252,
-     -1.9504364105208134,
-     -2.0578082228770724,
-     -2.413774880202219,
-     -1.7417310640810335
+     -1.9680314834080628,
+     -1.9223670692078922,
+     -2.2065625071208688,
+     -2.4718694487528317,
+     -1.810266523010291
     ]
    },
    "afrac_tangtv": {
-    "mean_heldout_loglik_per_bin": -2.0112096456963693,
+    "mean_heldout_loglik_per_bin": -2.077973717032678,
     "folds": [
-     -1.8971551537806979,
-     -1.950437427561805,
-     -2.0529442289597992,
-     -2.4137807117305585,
-     -1.741730706448986
+     -1.9680325221603692,
+     -1.9225894386408355,
+     -2.215522953432681,
+     -2.473427131754848,
+     -1.810296539174657
     ]
    },
    "afrac_prad": {
-    "mean_heldout_loglik_per_bin": -2.0112096456963693,
+    "mean_heldout_loglik_per_bin": -2.0818787886328645,
     "folds": [
-     -1.8971551537806979,
-     -1.950437427561805,
-     -2.0529442289597992,
-     -2.4137807117305585,
-     -1.741730706448986
+     -2.002858067348125,
+     -1.9167931201286919,
+     -2.202308987564332,
+     -2.4811042748669645,
+     -1.8063294932562075
     ]
    },
    "all_pairs": {
-    "mean_heldout_loglik_per_bin": -2.0121810929489192,
+    "mean_heldout_loglik_per_bin": -2.0837064482113563,
     "folds": [
-     -1.8971548870634256,
-     -1.9504364105208127,
-     -2.057808222877066,
-     -2.413774880202258,
-     -1.7417310640810335
+     -2.0015523653603866,
+     -1.9159390917449737,
+     -2.2081224253126703,
+     -2.4872814313215,
+     -1.8056369273172497
     ]
    }
   }
@@ -104,77 +104,77 @@
   ],
   "corr": [],
   "theta": [
-   0.9599033551343419,
-   1.5143348799812095,
-   -3.3307379835577695,
-   0.0,
-   -2.463147529580362,
-   -2.360983257869958,
-   1.0,
-   1.778746570177799,
-   3.989868448403699
+   1.8020345892286087,
+   2.156621409587563,
+   -2.646817171074186,
+   -0.6937429525927348,
+   -2.5485059339712395,
+   -2.3137588962290128,
+   1.2974938549057586,
+   1.9082653922094461,
+   4.0
   ],
   "theta_layout": "prior(3), propensity(J), accuracy(J), correlation(P)"
  },
  "prior_logit": [
-  0.9599033551343419,
-  1.5143348799812095,
-  -3.3307379835577695
+  1.8020345892286087,
+  2.156621409587563,
+  -2.646817171074186
  ],
  "labelling_functions": {
   "afrac": {
-   "acc_weight": 1.0,
+   "acc_weight": 1.2974938549057586,
    "at_weight_bound": false,
    "physical_accuracy_identified": false,
    "calibrated": false,
-   "propensity_weight": 0.0,
-   "implied_accuracy": 0.731058578630005
+   "propensity_weight": -0.6937429525927348,
+   "implied_accuracy": 0.7854129007919418
   },
   "prad": {
-   "acc_weight": 1.778746570177799,
+   "acc_weight": 1.9082653922094461,
    "at_weight_bound": false,
    "physical_accuracy_identified": false,
    "calibrated": false,
-   "propensity_weight": -2.463147529580362,
-   "implied_accuracy": 0.8555420237067122
+   "propensity_weight": -2.5485059339712395,
+   "implied_accuracy": 0.8708241482549364
   },
   "tangtv": {
-   "acc_weight": 3.989868448403699,
-   "at_weight_bound": false,
+   "acc_weight": 4.0,
+   "at_weight_bound": true,
    "physical_accuracy_identified": false,
    "calibrated": false,
-   "propensity_weight": -2.360983257869958,
-   "implied_accuracy": 0.9643161594988732
+   "propensity_weight": -2.3137588962290128,
+   "implied_accuracy": 0.9646631559719039
   }
  },
  "state_counts_bins": {
   "label_model": {
-   "attached": 11,
-   "detached": 298,
+   "attached": 0,
+   "detached": 300,
    "marfe": 0,
-   "uncertain": 1339
+   "uncertain": 1437
   },
   "rule": {
-   "attached": 11,
-   "detached": 298,
-   "marfe": 12,
-   "uncertain": 1327
+   "attached": 0,
+   "detached": 300,
+   "marfe": 7,
+   "uncertain": 1430
   }
  },
  "rule_vs_label_model": {
-  "bins": 1648,
-  "agreement": 0.9927184466019418,
-  "kappa": 0.9767375659608105,
+  "bins": 1737,
+  "agreement": 0.9959700633275763,
+  "kappa": 0.986060332997424,
   "rows_rule_columns_label_model": {
    "attached": {
-    "attached": 11,
+    "attached": 0,
     "detached": 0,
     "marfe": 0,
     "uncertain": 0
    },
    "detached": {
     "attached": 0,
-    "detached": 298,
+    "detached": 300,
     "marfe": 0,
     "uncertain": 0
    },
@@ -182,56 +182,57 @@
     "attached": 0,
     "detached": 0,
     "marfe": 0,
-    "uncertain": 12
+    "uncertain": 7
    },
    "uncertain": {
     "attached": 0,
     "detached": 0,
     "marfe": 0,
-    "uncertain": 1327
+    "uncertain": 1430
    }
   }
  },
  "uncertain_by_threshold": {
   "0.5": {
-   "attached": 11,
-   "detached": 298,
+   "attached": 0,
+   "detached": 300,
    "marfe": 0,
-   "uncertain": 1339
+   "uncertain": 1437
   },
   "0.6": {
-   "attached": 11,
-   "detached": 298,
+   "attached": 0,
+   "detached": 300,
    "marfe": 0,
-   "uncertain": 1339
+   "uncertain": 1437
   },
   "0.7": {
-   "attached": 11,
-   "detached": 298,
+   "attached": 0,
+   "detached": 300,
    "marfe": 0,
-   "uncertain": 1339
+   "uncertain": 1437
   },
   "0.8": {
-   "attached": 11,
-   "detached": 298,
+   "attached": 0,
+   "detached": 300,
    "marfe": 0,
-   "uncertain": 1339
+   "uncertain": 1437
   },
   "0.9": {
-   "attached": 11,
-   "detached": 298,
+   "attached": 0,
+   "detached": 300,
    "marfe": 0,
-   "uncertain": 1339
+   "uncertain": 1437
   }
  },
  "primary_labeler": "rule",
  "state_lm_column": "legacy alias of primary rule; model is state_model_diagnostic",
  "tier_counts": {
-  "insufficient_support": 653,
+  "insufficient_support": 708,
   "lower_shelf_window": 459,
-  "certain": 321,
-  "candidate_marfe": 95,
-  "no_vote": 61,
-  "conflict": 59
+  "certain": 307,
+  "candidate_marfe": 84,
+  "conflict": 69,
+  "no_vote": 67,
+  "low_confidence_pair": 43
  }
 }

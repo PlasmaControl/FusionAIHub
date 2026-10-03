@@ -2,39 +2,39 @@
  "n_shots_with_bins": 470,
  "n_bins": 50032,
  "afrac": {
-  "valid_bins": 0,
-  "shots_with_valid_bins": 0,
-  "shots_with_20_valid_bins": 0,
+  "valid_bins": 235,
+  "shots_with_valid_bins": 8,
+  "shots_with_20_valid_bins": 5,
   "invalid_reason_bins": {
    "probe_flux_unknown": 33044,
    "no_positioned_probes": 12135,
    "probe_far_from_strike": 2327,
    "probe_not_sol": 1926,
-   "short_reference": 235,
    "elm_unknown": 230,
    "no_power": 130,
    "ramp": 5
   },
   "votes": {
-   "attached": 0,
-   "detached": 0,
+   "attached": 122,
+   "detached": 43,
    "marfe": 0
   }
  },
  "prad": {
-  "valid_bins": 41718,
-  "shots_with_valid_bins": 460,
-  "shots_with_20_valid_bins": 453,
+  "valid_bins": 38631,
+  "shots_with_valid_bins": 449,
+  "shots_with_20_valid_bins": 442,
   "invalid_reason_bins": {
-   "low_power": 3568,
+   "no_input_power": 6436,
    "elm": 2970,
-   "no_input_power": 1313,
+   "low_power": 1347,
+   "elm_unknown": 252,
    "no_bolometer": 233,
-   "elm_unknown": 230
+   "negative_radiation": 163
   },
   "votes": {
-   "attached": 30336,
-   "detached": 3647,
+   "attached": 28558,
+   "detached": 2819,
    "marfe": 0
   }
  },
@@ -44,8 +44,8 @@
   "shots_with_20_valid_bins": 37,
   "invalid_reason_bins": {
    "no_inversion": 20530,
-   "surrogate_domain": 19192,
-   "efit_gap": 6055,
+   "surrogate_domain": 19017,
+   "efit_gap": 6230,
    "no_frames": 2462,
    "efit_missing": 2
   },
