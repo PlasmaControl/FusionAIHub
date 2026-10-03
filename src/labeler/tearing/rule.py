@@ -19,7 +19,10 @@ alone do not establish an island's poloidal number or distinguish every MHD fami
 
 Frequency drops alone are `locked_candidate`, with `lock_time_ms`. Only independent
 locked-mode confirmation truncates the rotating interval and sets `locked`; without
-frequency its end/locking status is unknown. Observed onsets are points (iscrowd 0),
+frequency its end/locking status is unknown. A confirmed lock (n=1 radial-field
+voltage >= 5 V for 20 ms) leaves the time after it uncertain until the field stays
+below 5 V for `lock_release_ms` (200 ms; a shorter dip is no release) or the window
+ends; an abrupt collapse nobody confirms stays uncertain to the window end. Observed onsets are points (iscrowd 0),
 present intervals spans (iscrowd 1). Acquisition gaps remain NaN and are unobservable.
 """
 
@@ -463,6 +466,23 @@ class ShotLabel:
     uncertain: tuple[tuple[float, float, str, int], ...] = ()
 
 
+def _lock_release_ms(amp, t, dt, high, threshold, hold_ms, window_end) -> float:
+    """When the radial field of a lock that began at sample `high` fell for good (ms).
+
+    A release is the first sample from which the measured field stays below
+    `threshold` for `hold_ms`. A dip shorter than that, a fall cut off by missing
+    data or the window, and a field that never falls are no release: the locked phase
+    then runs to `window_end`. The field is a radial-field voltage, so the hold is a
+    debounce of a noisy trace, not a calibrated decay time.
+    """
+    need = max(1, int(np.ceil(hold_ms / dt - 1e-9)))
+    below = np.isfinite(amp) & (amp < threshold) & (np.arange(len(t)) > high)
+    for lo, hi in zip(*_runs(below), strict=True):
+        if hi - lo >= need:
+            return min(window_end, float(t[lo]))
+    return window_end
+
+
 def label_shot(
     shot: int,
     t_ms,
@@ -480,6 +500,7 @@ def label_shot(
     screened=None,
     lock_amplitude=None,
     lock_threshold_v: float = 5.0,
+    lock_release_ms: float = 200.0,
     rules=RULES,
     gap_ms: float = 0.0,
     m_of=None,
@@ -618,11 +639,9 @@ def label_shot(
                         confirmed = True
                         break
                 if high is not None:
-                    after = (t > t[high]) & (amp < lock_threshold_v)
-                    for lo, hi in zip(*_runs(after), strict=True):
-                        if (hi - lo) * dt >= 20.0:
-                            tail_end = min(w1, float(t[lo]))
-                            break
+                    tail_end = _lock_release_ms(
+                        amp, t, dt, high, lock_threshold_v, lock_release_ms, w1
+                    )
             if confirmed:
                 earliest_confirmed = (
                     time

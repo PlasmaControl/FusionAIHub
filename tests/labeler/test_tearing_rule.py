@@ -514,6 +514,55 @@ def test_brief_radial_spike_and_missing_release_do_not_confirm_decay():
     assert table[(table.t_start < 2600) & (table.t_end > 2500)].category.eq(2).all()
 
 
+def _locked_collapse(amplitude):
+    y = np.full(T.shape, 0.2)
+    y[1000:1500] = 25.0
+    label = rule.label_shot(
+        1,
+        T,
+        y,
+        None,
+        (0, 2999),
+        coherent={1: np.ones(T.shape, bool)},
+        lock_ms={1: []},
+        lock_amplitude={1: amplitude},
+    )
+    return label, rule.shot_table(label)
+
+
+def _category_at(table, time):
+    return int(table[(table.t_start <= time) & (table.t_end > time)].category.max())
+
+
+def test_a_dip_in_the_radial_field_shorter_than_the_release_hold_is_no_release():
+    amplitude = np.zeros(T.shape)
+    amplitude[1500:2000] = 15.0
+    amplitude[2054:2600] = 15.0
+    label, table = _locked_collapse(amplitude)
+    assert label.intervals[0].locked
+    for time in (2020, 2100, 2500):
+        assert _category_at(table, time) == rule.UNCERTAIN
+    assert _category_at(table, 2800) == rule.ABSENT
+
+
+def test_a_sustained_fall_of_the_radial_field_releases_the_lock_at_its_start():
+    amplitude = np.zeros(T.shape)
+    amplitude[1500:2000] = 15.0
+    _, table = _locked_collapse(amplitude)
+    assert _category_at(table, 1900) == rule.UNCERTAIN
+    assert _category_at(table, 2100) == rule.ABSENT
+
+
+def test_a_measured_fall_shorter_than_the_hold_then_missing_data_is_no_release():
+    amplitude = np.zeros(T.shape)
+    amplitude[1500:2000] = 15.0
+    amplitude[2000:2100] = 1.0
+    amplitude[2100:] = np.nan
+    _, table = _locked_collapse(amplitude)
+    assert _category_at(table, 2050) == rule.UNCERTAIN
+    assert _category_at(table, 2500) == rule.UNCERTAIN
+
+
 def test_n1_radial_confirmation_cannot_establish_n2_lock():
     y = np.full(T.shape, 0.2)
     y[1000:1500] = 15.0
