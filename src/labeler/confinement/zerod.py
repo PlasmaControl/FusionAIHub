@@ -134,7 +134,7 @@ def read_d_alpha(
 def read_beams(
     shot: int, raw_dir: Path, zerod_dir: Path, corpus: Path = CORPUS
 ) -> tuple[np.ndarray, np.ndarray] | None:
-    """Time (ms) and the eight beams' power ``(8, n)`` in watts (15L, 15R, ...), or None.
+    """Time (ms) and the beams' power ``(8, n)`` in watts (15L, 15R, ...), or None.
 
     The corpus is tried first, then the raw cache, then the 0D fetch's own pinj record.
     """

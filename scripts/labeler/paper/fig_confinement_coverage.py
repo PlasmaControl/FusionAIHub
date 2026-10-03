@@ -12,7 +12,8 @@ at or above 700 kW and the 150R beam at or below 200 kW, the gate the BES classi
 Gill et al. (2024) is trained under (blank where the shot has no beam record). The two
 squares left of a row say whether the corpus holds the shot's BES (500 kHz) and whether
 the native 1 MHz BES was fetched. The bars underneath add the labelled regime time of
-each band of 5 000 shot numbers.
+each band of 5 000 shot numbers (left) and of each 0.2 s of shot time (right, aligned
+with the time axes above).
 """
 
 from __future__ import annotations
@@ -54,6 +55,7 @@ BES_NATIVE = "#9a9a9a"
 T_MAX_S = 8.4
 BAND = 5000
 BEAM_GRID_MS = 5.0
+TIME_BIN_S = 0.2
 STYLE = {
     "font.size": FONT_PT,
     "axes.labelsize": FONT_PT,
@@ -187,8 +189,43 @@ def draw_bands(ax, bands: list[dict]) -> None:
     ax.set_xticks(x, [f"{b['band'] // 1000}" for b in bands])
     ax.set_xlim(-0.7, len(bands) - 0.3)
     ax.set_ylim(0, bottom.max() * 1.16)
-    ax.set_xlabel("shot number / 1000 (band of 5 000; count of shots above each bar)")
+    ax.set_xlabel("shot number / 1000 (bands of 5 000; shots above)")
     ax.set_ylabel("labelled time (s)")
+    ax.tick_params(length=2, pad=1.5)
+
+
+def time_table(rows: list[dict]) -> np.ndarray:
+    """Labelled shot-seconds per regime in each ``TIME_BIN_S`` bin of shot time,
+    ``(len(COLOURS), n_bins)``."""
+    edges = np.arange(0.0, T_MAX_S + TIME_BIN_S, TIME_BIN_S)
+    out = np.zeros((len(COLOURS), len(edges) - 1))
+    for row in rows:
+        for regime, start, length in row["segments"]:
+            lo = np.clip(edges[:-1], start, start + length)
+            hi = np.clip(edges[1:], start, start + length)
+            out[list(COLOURS).index(regime)] += hi - lo
+    return out
+
+
+def draw_time(ax, rows: list[dict]) -> None:
+    table = time_table(rows)
+    edges = np.arange(0.0, T_MAX_S + TIME_BIN_S, TIME_BIN_S)
+    bottom = np.zeros(table.shape[1])
+    for (regime, colour), h in zip(COLOURS.items(), table, strict=True):
+        ax.bar(
+            edges[:-1],
+            h,
+            TIME_BIN_S,
+            bottom=bottom,
+            align="edge",
+            color=colour,
+            linewidth=0,
+        )
+        bottom += h
+    ax.set_xlim(-0.75, T_MAX_S)
+    ax.set_xticks(np.arange(0, 9, 2))
+    ax.set_xlabel("time in shot (s)")
+    ax.set_ylabel("labelled time, all shots (s)")
     ax.tick_params(length=2, pad=1.5)
 
 
@@ -199,8 +236,10 @@ def make_figure(rows: list[dict]) -> Figure:
     right = fig.add_axes((0.55, 0.19, 0.43, 0.77))
     draw_panel(left, rows[:half], half)
     draw_panel(right, rows[half:], half)  # same row pitch as the left panel
-    bands = fig.add_axes((0.065, 0.045, 0.915, 0.09))
+    bands = fig.add_axes((0.065, 0.045, 0.43, 0.09))
     draw_bands(bands, band_table(rows))
+    marginal = fig.add_axes((0.55, 0.045, 0.43, 0.09))
+    draw_time(marginal, rows)
     handles = [Patch(color=c, label=NAMES[r]) for r, c in COLOURS.items()] + [
         Patch(color=INK, label="beam gate"),
         Patch(color=BES_CORPUS, label="BES, 500 kHz corpus"),

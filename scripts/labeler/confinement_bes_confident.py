@@ -15,9 +15,9 @@ that boundary is the one the experts mark least sharply.
 
 A flagged interval is a candidate for review, not a correction: the classifier sees BES
 alone, and a window it calls L inside a labelled H interval may be a real dither. As a
-second opinion that shares no input with it, the held-out 0D segmenter (``confine-ours``,
-which never sees BES) is read over the same interval: an interval that both put mostly
-outside the labelled class is the strongest candidate.
+second opinion that shares no input with it, the held-out 0D segmenter
+(``confine-ours``, which never sees BES) is read over the same interval: an interval
+that both put mostly outside the labelled class is the strongest candidate.
 
 Writes ``confident_<row>.json`` (summary and the flagged list) next to the ablation
 record, and the verdict on every interval to ``$LABELER_ROOT/round4/conf/confident/``.

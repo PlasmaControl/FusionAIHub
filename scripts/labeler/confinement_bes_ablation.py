@@ -110,8 +110,8 @@ def _chain() -> dict[str, Row]:
         "r": replace(base, name="r", label="+ paper rows (first six)", rows=(0, 6)),
         "g": replace(base, name="g", label="+ native 1 MHz", data="1m"),
         "f": replace(base, name="f", label="+ paper split protocol", protocol="paper"),
-        # the extra shots exist only as native 1 MHz fetches, so e is tested together with g
-        # (compare ``only_g``)
+        # the extra shots exist only as native 1 MHz fetches, so e is tested together
+        # with g (compare ``only_g``)
         "ge": replace(
             base,
             name="ge",
@@ -150,8 +150,8 @@ def _chain() -> dict[str, Row]:
         label="+ paper split protocol (500 kHz, corpus shots)",
         protocol="paper",
     )
-    # the same pipeline with a within-shot split: how far the score rises when test windows
-    # share shots with training windows (a leaky diagnostic, not a benchmark number)
+    # the same pipeline with a within-shot split: how far the score rises when test
+    # windows share shots with training windows (a leaky diagnostic, not a benchmark)
     rows["leak_abcdr"] = replace(
         rows["cum_abcdr"],
         name="leak_abcdr",

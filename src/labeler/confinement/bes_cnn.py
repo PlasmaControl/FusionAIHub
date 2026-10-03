@@ -88,8 +88,8 @@ class Features:
     the rows of channels ``rows`` are kept, in memory, for the windows in ``index``. A
     small set lives on the GPU, a large one in RAM and is gathered by a background
     thread. Callers address a kept row by its ``ids`` entry (by default its row in
-    ``array``). The per-channel ``offset`` (``bes_features.standardising_offset``) is added
-    on the GPU.
+    ``array``). The per-channel ``offset`` (``bes_features.standardising_offset``) is
+    added on the GPU.
     """
 
     def __init__(
