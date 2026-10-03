@@ -415,6 +415,47 @@ def summarize(args: argparse.Namespace) -> None:
         )
 
 
+def _ci(entry: dict) -> str:
+    lo, hi = entry["ci95"]["macro_f1"]
+    return f"{entry['macro_f1']:.3f} [{lo:.2f}, {hi:.2f}]"
+
+
+def markdown(args: argparse.Namespace) -> None:
+    """The ablation record as Markdown tables (for docs/labeler/confinement_*.md)."""
+    record = json.loads((args.out_dir / "ablation.json").read_text())
+    rows = record["rows"]
+    print(
+        "| Row | Configuration | Shots | Windows | Macro F1 [95 % CI], own windows | "
+        "Macro F1 on the paper's windows | F1 L / H / QH / WPQH (own) |"
+    )
+    print("|---|---|---|---|---|---|---|")
+    for name, res in rows.items():
+        own, crit = res["own_population"], res["paper_criteria_population"]
+        per = " / ".join(
+            f"{own['classes'][c]['f1']:.2f}" if own["classes"][c]["f1"] else "-"
+            for c in bp.CLASSES
+        )
+        print(
+            f"| `{name}` | {res['row']['label']} | {own['shots']} | {own['windows']:,} "
+            f"| {_ci(own)} | {_ci(crit)} | {per} |"
+        )
+    print()
+    print("| Row | " + " | ".join(f"{int(m)} ms" for m in MARGINS_MS) + " |")
+    print("|---|" + "---|" * len(MARGINS_MS))
+    for name, res in rows.items():
+        cells = [_ci(res["margin_sensitivity"][f"{int(m)}"]) for m in MARGINS_MS]
+        print(f"| `{name}` | " + " | ".join(cells) + " |")
+    for name, res in rows.items():
+        if "ranking" in res:
+            r = res["ranking"]
+            print(
+                f"\n`{name}`: macro AUROC {r['auroc']['macro']:.3f} "
+                f"[{r['ci95']['auroc'][0]:.3f}, {r['ci95']['auroc'][1]:.3f}], "
+                f"macro AUPRC {r['auprc']['macro']:.3f} "
+                f"[{r['ci95']['auprc'][0]:.3f}, {r['ci95']['auprc'][1]:.3f}]"
+            )
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--out-dir", type=Path, default=DEFAULT_OUT)
@@ -430,6 +471,7 @@ def main(argv: list[str] | None = None) -> int:
         "--steps", type=int, default=None, help="cap the steps (smoke tests)"
     )
     r.add_argument("--runs-dir", type=Path, default=None, help="write predictions here")
+    sub.add_parser("table", help="print ablation.json as Markdown")
     s = sub.add_parser("summarize")
     s.add_argument(
         "--rank",
@@ -440,6 +482,8 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     if args.stage == "consolidate":
         consolidate(args)
+    elif args.stage == "table":
+        markdown(args)
     elif args.stage == "run":
         for name in args.rows:
             run_row(ROWS[name], args)

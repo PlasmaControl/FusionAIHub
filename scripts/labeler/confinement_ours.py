@@ -8,11 +8,13 @@ that never saw it, and applies the five models to the roster.
 
 Stages (``--help`` of each)::
 
-    build     the 1 ms grids of the roster and curated shots (CPU) train     5 folds on
-    the GPU: models, predictions of the held-out shots score     per-bin and per-shot
-    (segmental F1, edit) scores, the comparison with confine-cnn on the shots both saw
-    -> outputs/labeler/confinement/ours/scores.json apply     segment every roster shot
-    -> data/events/confinement/extend_confine_ours/
+    build     the 1 ms grids of the roster and curated shots (CPU)
+    train     5 folds on the GPU: models, and the predictions of the held-out shots
+    score     per-bin and per-shot (segmental F1, edit) scores, and the comparison with
+              confine-cnn on the shots both saw
+              -> outputs/labeler/confinement/ours/scores.json
+    apply     segment every roster shot
+              -> data/events/confinement/extend_confine_ours/
 
 Large files (grids, models, probabilities) live under ``$LABELER_ROOT/round4/conf``;
 only the small CSV and JSON records are written into the repository.
