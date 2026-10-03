@@ -440,18 +440,20 @@ def markdown(args: argparse.Namespace) -> None:
     rows = record["rows"]
     print(
         "| Row | Configuration | Shots | Windows | Macro F1 [95 % CI], own windows | "
-        "Macro F1 on the paper's windows | F1 L / H / QH / WPQH (own) |"
+        "Macro F1 on the paper's windows | F1 L / H / QH / WPQH (own) | "
+        "Shots L / H / QH / WPQH (own) |"
     )
-    print("|---|---|---|---|---|---|---|")
+    print("|---|---|---|---|---|---|---|---|")
     for name, res in rows.items():
         own, crit = res["own_population"], res["paper_criteria_population"]
         per = " / ".join(
             f"{own['classes'][c]['f1']:.2f}" if own["classes"][c]["f1"] else "-"
             for c in bp.CLASSES
         )
+        n_shots = " / ".join(str(own["classes"][c]["shots"]) for c in bp.CLASSES)
         print(
             f"| `{name}` | {res['row']['label']} | {own['shots']} | {own['windows']:,} "
-            f"| {_ci(own)} | {_ci(crit)} | {per} |"
+            f"| {_ci(own)} | {_ci(crit)} | {per} | {n_shots} |"
         )
     print()
     print("| Row | " + " | ".join(f"{int(m)} ms" for m in MARGINS_MS) + " |")
