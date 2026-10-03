@@ -22,6 +22,39 @@ N_FRAMES = RECORD_MS // FRAME_MS
 SPLIT_SEED = 20261003
 BOOTSTRAP_SEED = 20261004
 METRICS = ("auroc", "auprc", "f1")
+CONVERGENCE_RULE = {
+    "applies_to": "every ae-ours record of every arm and seed, uniformly",
+    "training": {
+        "monitor": "combined loss on the 20 selection shots",
+        "max_epochs": 30,
+        "patience": 5,
+        "patience_start_epoch": 10,
+        "min_delta": 1e-6,
+        "statement": (
+            "Early stopping counts non-improving epochs only from zero-based "
+            "epoch 10, so a plateau in the first ten epochs cannot end a run."
+        ),
+        "conformance": (
+            "A record conforms when replaying this rule on its recorded "
+            "selection-loss history stops it at the recorded final epoch; a "
+            "record that stopped earlier is rerun with the same seed."
+        ),
+    },
+    "screen": {
+        "within_shot_sd_min": 0.005,
+        "selection_auroc_min_exclusive": 0.5,
+        "scope": "selected checkpoint, selection shots, its own activity target",
+        "sd_statistic": "mean over selection shots of the population SD of the score",
+        "statement": (
+            "A record whose selected checkpoint is constant (within-shot SD below "
+            "0.005) or does not rank its own target above chance (selection "
+            "AUROC at most 0.5) is excluded and replaced by the arm's next unused "
+            "seed, starting at 3, which is trained under the same training rule "
+            "and screened again."
+        ),
+    },
+}
+EPOCH_LIMIT = CONVERGENCE_RULE["training"]["max_epochs"]
 
 
 def sha256(path: Path) -> str:
@@ -194,6 +227,93 @@ def _number(value: float) -> float | None:
     return float(value) if np.isfinite(value) else None
 
 
+def replay_early_stop(
+    losses: list[float],
+    patience: int = CONVERGENCE_RULE["training"]["patience"],
+    start: int = CONVERGENCE_RULE["training"]["patience_start_epoch"],
+    min_delta: float = CONVERGENCE_RULE["training"]["min_delta"],
+    max_epochs: int = EPOCH_LIMIT,
+) -> dict:
+    """Replay the declared early-stopping rule on a recorded selection-loss trace.
+
+    Mirrors ``ae_train.next_bad_count``: epochs before ``start`` never count.
+    """
+    best, best_epoch, bad = np.inf, -1, 0
+    for epoch, loss in enumerate(losses[:max_epochs]):
+        if loss < best - min_delta:
+            best, best_epoch, bad = loss, epoch, 0
+        elif epoch >= start:
+            bad += 1
+            if bad >= patience:
+                return {"best_epoch": best_epoch, "final_epoch": epoch, "stopped": True}
+    return {
+        "best_epoch": best_epoch,
+        "final_epoch": min(len(losses), max_epochs) - 1,
+        "stopped": False,
+    }
+
+
+def training_conformance(losses: list[float], **rule) -> dict:
+    """True when the declared rule would have ended this history where it ended."""
+    replay = replay_early_stop(losses, **rule)
+    limit = rule.get("max_epochs", EPOCH_LIMIT)
+    ended = replay["stopped"] or len(losses) >= limit
+    conforms = ended and replay["final_epoch"] == len(losses) - 1
+    return {**replay, "epochs_recorded": len(losses), "conforms": bool(conforms)}
+
+
+def convergence_screen(parts: list[tuple]) -> dict:
+    """Reject constant or non-discriminating selection outputs uniformly."""
+    rule = CONVERGENCE_RULE["screen"]
+    sd = float(np.mean([np.std(score) for score, _ in parts]))
+    auc = ShotMetric(parts, 0.5).values(np.ones(len(parts)))[0]
+    passed = (
+        sd >= rule["within_shot_sd_min"] and auc > rule["selection_auroc_min_exclusive"]
+    )
+    return {
+        "passed": bool(passed),
+        "mean_within_shot_sd": sd,
+        "selection_auroc": _number(auc),
+        "n_shots": len(parts),
+    }
+
+
+def clock_prior(states: np.ndarray) -> np.ndarray:
+    """Input-free per-bin rate on caller-supplied training/selection shots."""
+    states = np.asarray(states)
+    if states.ndim != 2 or states.shape[1] != N_FRAMES or not states.shape[0]:
+        raise ValueError("clock needs shots by 200 frame states")
+    observed = np.isin(states, (ABSENT, PRESENT)).sum(axis=0)
+    if (observed == 0).any():
+        raise ValueError("every clock bin needs an observed training frame")
+    return (states == PRESENT).sum(axis=0) / observed
+
+
+def within_shot_scores(
+    parts: list[tuple], replicates: int = 1000, seed: int = BOOTSTRAP_SEED
+) -> dict:
+    """Median shot AUROC/AP, restricted to two-class shots, with shot CIs."""
+    values = [
+        ShotMetric([part], 0.5).values(np.ones(1))[:2]
+        for part in parts
+        if np.any(part[1]) and not np.all(part[1])
+    ]
+    result = {"n_two_class_shots": len(values), "statistic": "median across shots"}
+    if not values:
+        return {**result, **{m: {"value": None, "ci95": None} for m in METRICS[:2]}}
+    values = np.asarray(values)
+    rng = np.random.default_rng(seed)
+    samples = np.median(
+        values[rng.integers(len(values), size=(replicates, len(values)))], axis=1
+    )
+    for i, metric in enumerate(METRICS[:2]):
+        result[metric] = {
+            "value": float(np.median(values[:, i])),
+            "ci95": np.percentile(samples[:, i], [2.5, 97.5]).tolist(),
+        }
+    return result
+
+
 def paired_scores(
     methods: dict[str, tuple[list[tuple], float]],
     replicates: int = 1000,
@@ -260,7 +380,7 @@ def paired_scores(
             raise ValueError("paired groups must have matching seed counts")
         n_seeds = max(counts, default=1)
         seed_draws = rng.integers(n_seeds, size=(replicates, n_seeds))
-        group_point, group_boot = {}, {}
+        group_point, group_boot, group_shot = {}, {}, {}
         for name, members in groups.items():
             values = np.array([point[m] for m in members])
             samples = np.stack([boot[m] for m in members], axis=1)
@@ -271,13 +391,19 @@ def paired_scores(
             group_boot[name] = samples[np.arange(replicates)[:, None], seed_draws].mean(
                 axis=1
             )
+            # Every seed kept in every draw: uncertainty from the shots alone.
+            group_shot[name] = samples.mean(axis=1)
 
-        def seed_summary(values, samples, count):
+        def seed_summary(values, samples, shot_samples, count):
             summary = summarize(values.mean(axis=0), samples)
             for i, metric in enumerate(METRICS):
                 summary[metric]["mean"] = summary[metric].pop("value")
                 summary[metric]["sd"] = (
                     _number(values[:, i].std(ddof=1)) if count > 1 else None
+                )
+                finite = shot_samples[:, i][np.isfinite(shot_samples[:, i])]
+                summary[metric]["ci95_shot"] = (
+                    np.percentile(finite, [2.5, 97.5]).tolist() if len(finite) else None
                 )
             return summary
 
@@ -292,15 +418,23 @@ def paired_scores(
                 "statistic": "mean of per-seed pooled-frame metrics",
                 "pairing": "identical shot draws and seed indices across arms",
                 "baseline": "singleton saved models have no training-seed resampling",
+                "ci95": "resamples shots and the observed seed IDs",
+                "ci95_shot": "resamples shots only; every seed kept in each draw",
             },
             "methods": {
-                name: seed_summary(group_point[name], group_boot[name], len(members))
+                name: seed_summary(
+                    group_point[name],
+                    group_boot[name],
+                    group_shot[name],
+                    len(members),
+                )
                 for name, members in groups.items()
             },
             "paired_differences": {
                 f"{a} minus {b}": seed_summary(
                     group_point[a] - group_point[b],
                     group_boot[a] - group_boot[b],
+                    group_shot[a] - group_shot[b],
                     max(len(groups[a]), len(groups[b])),
                 )
                 for i, a in enumerate(group_names)

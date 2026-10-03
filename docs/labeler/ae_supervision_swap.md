@@ -4,6 +4,29 @@ The three activity-supervision arms completed three seeds each under clean 100/2
 
 Source for every result below: [evaluation.json](../../outputs/labeler/ae/supervision_swap/evaluation.json). It embeds the completed run records, execution IDs, selected epochs, thresholds, per-seed scores and paired differences. [manifest.json](../../outputs/labeler/ae/supervision_swap/manifest.json) contains the exact shot lists and frozen input hashes; [verification.json](../../outputs/labeler/ae/supervision_swap/verification.json) checks target equality and split isolation.
 
+## Convergence rule (declared 2026-10-03, before the convergence reruns)
+
+Fix round 1 found that legacy seed 2 never left the constant-output plateau: its
+selection loss was lowest at epoch 2, patience 5 ended it at epoch 7, and its
+selected checkpoint outputs one value (within-shot SD 0.001). One rule, declared
+here and in `CONVERGENCE_RULE` (`src/labeler/ae/supervision.py`) before any rerun,
+applies to all nine records of all three arms:
+
+1. Early stopping counts non-improving epochs only from zero-based epoch 10
+   (maximum 30 epochs, patience 5, minimum improvement 1e-6, monitored on the 20
+   selection shots). A record conforms when replaying this rule on its recorded
+   selection-loss history stops it at the epoch where it stopped; one that stopped
+   earlier is archived and rerun with the same seed.
+2. A conforming record is screened on the selection shots only: it is excluded when
+   its selected checkpoint is constant (mean within-shot SD of the score below
+   0.005) or ranks its own target no better than chance (selection AUROC at most
+   0.5). An excluded seed is replaced by the arm's next unused seed, starting at 3,
+   trained under rule 1 and screened again.
+
+An earlier draft of the rule (the screen alone, without rule 1) was applied by the
+previous implementer to selection-only outputs and is archived as
+`convergence_draft0.json`; this two-part rule supersedes it before any rerun.
+
 ## Frozen protocol
 
 The current dense snapshot has 877 CSV rows, 371 present intervals and 180 shots. Its SHA256 is `b4308ff52d766779f33a92e9441a916bb07c854dcc1a98a2f61109bb6431e93a`. These observed counts differ from the brief's anticipated interval count. No source table was edited.

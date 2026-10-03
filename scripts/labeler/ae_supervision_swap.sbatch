@@ -13,7 +13,10 @@
 
 set -euo pipefail
 REPO=/scratch/gpfs/nc1514/FusionAIHub-r4-aeswap
-export TMPDIR=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/aeswap
+# Short on purpose: DataLoader workers add /pymp-*/listener-* to TMPDIR and an
+# AF_UNIX socket path must stay under 108 bytes.
+export TMPDIR=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/ae-sw
+mkdir -p "$TMPDIR"
 export LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker
 export LABELER_LABEL_TABLES=/scratch/gpfs/nc1514/FusionAIHub/data/events
 export LABELER_NO_FETCH=1
@@ -24,11 +27,17 @@ cd "$REPO"
 trap 'bash "$LABELER_ROOT/scratch/bin/tmpsweep.sh"' EXIT
 
 # Three tasks per seed, at most three concurrent jobs. Freeze seeds 0, 1, 2
-# in the manifest before submission.
+# in the manifest before submission. AESWAP_RUNS="legacy:2 dense:1" instead maps
+# array task i to the i-th listed arm:seed (used for convergence-rule reruns).
 TASK=${SLURM_ARRAY_TASK_ID:-0}
 SEED=$((TASK / 3))
 ARMS=(legacy dense threeway)
 ARM=${ARMS[$((TASK % 3))]}
+if [[ -n ${AESWAP_RUNS:-} ]]; then
+    read -ra RUNS <<< "$AESWAP_RUNS"
+    ARM=${RUNS[$TASK]%%:*}
+    SEED=${RUNS[$TASK]##*:}
+fi
 echo "job ${SLURM_ARRAY_JOB_ID:-local}_${TASK} ${ARM} seed ${SEED} on $(hostname) at $(date -Is)"
 if [[ -n ${AESWAP_PIXI_ENV:-} ]]; then
     srun pixi run --frozen --no-install \

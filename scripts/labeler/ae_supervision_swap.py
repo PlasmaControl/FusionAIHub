@@ -16,7 +16,6 @@ import os
 import platform
 import subprocess
 import sys
-import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -33,15 +32,22 @@ from ae_baselines_evaluate import AE_CLASSES, check_order, load_older, nearest_b
 
 from labeler.ae.supervision import (
     BOOTSTRAP_SEED,
+    CONVERGENCE_RULE,
     N_FRAMES,
+    RECORD_MS,
     SPLIT_SEED,
+    ShotMetric,
     clean_split,
+    clock_prior,
+    convergence_screen,
     dense_states,
     frame_mean,
     paired_scores,
     selection_threshold,
     sha256,
+    training_conformance,
     validate_split,
+    within_shot_scores,
 )
 from labeler.events.catalog.states import ABSENT, PRESENT
 from labeler.events.review.labels import read_labels
@@ -281,6 +287,14 @@ def run_dir(out: Path, supervision: str, seed: int) -> Path:
     return out / "models" / supervision / f"seed-{seed}"
 
 
+def accepted_seeds(out: Path, manifest: dict) -> dict[str, list[int]]:
+    """Seeds of each arm that count: the frozen list until a convergence plan exists."""
+    path = out / "convergence.json"
+    if path.exists():
+        return json.loads(path.read_text())["accepted_seeds"]
+    return {arm: list(manifest["seeds"]) for arm in SUPERVISIONS}
+
+
 def extend_seeds(args) -> None:
     """Expand an untrained manifest without changing frozen inputs or shots."""
     path = args.out_dir / "manifest.json"
@@ -374,26 +388,10 @@ def probe(args) -> None:
 
 
 def train(args) -> None:
-    # multiprocessing adds /pymp-*/listener-* to TMPDIR; the prescribed scratch
-    # path exceeds AF_UNIX's 108-byte limit. Actual files still live in TMPDIR.
-    scratch = Path(os.environ["TMPDIR"]).resolve()
-    alias = REPO / ".aeswap-tmp"
-    if alias.is_symlink():
-        if alias.resolve() != scratch:
-            raise ValueError("temporary-directory alias points outside TMPDIR")
-    elif not alias.exists():
-        try:
-            alias.symlink_to(scratch, target_is_directory=True)
-        except FileExistsError:
-            if not alias.is_symlink() or alias.resolve() != scratch:
-                raise
-    else:
-        raise ValueError("temporary-directory alias is not a symlink")
-    tempfile.tempdir = str(alias)
     manifest_path = args.out_dir / "manifest.json"
     manifest = load_manifest(manifest_path)
-    if args.seed not in manifest["seeds"]:
-        raise ValueError("seed not specified in the frozen manifest")
+    if args.seed not in accepted_seeds(args.out_dir, manifest)[args.supervision]:
+        raise ValueError("seed is not in the frozen manifest or convergence plan")
     out = run_dir(args.out_dir, args.supervision, args.seed)
     out.mkdir(parents=True, exist_ok=True)
     if (out / "run.json").exists():
@@ -404,6 +402,7 @@ def train(args) -> None:
         "supervision": args.supervision,
         "seed": args.seed,
         "manifest_sha256": sha256(manifest_path),
+        "training_rule": CONVERGENCE_RULE["training"],
         "environment": {
             "torch": torch.__version__,
             "cuda": torch.cuda.is_available(),
@@ -441,6 +440,10 @@ def train(args) -> None:
             str(args.seed),
             "--tag",
             tag,
+            "--patience",
+            str(CONVERGENCE_RULE["training"]["patience"]),
+            "--patience-start",
+            str(CONVERGENCE_RULE["training"]["patience_start_epoch"]),
             "--num-workers",
             "8",
             "--device",
@@ -493,46 +496,283 @@ def train(args) -> None:
     print(json.dumps(record, indent=2))
 
 
-def evaluate(args) -> None:
+def selection_parts(manifest_path: Path, arm: str, arrays: dict) -> list[tuple]:
+    records, _ = ae_train.load_swap_labels(manifest_path, arm)
+    parts = []
+    for rec in records:
+        if rec.split != "valid":
+            continue
+        share = frame_mean(rec.w)
+        keep = share >= 0.5
+        target = frame_mean(rec.y) / np.maximum(share, 1e-12)
+        parts.append((arrays[int(rec.shot)][keep], target[keep] >= 0.5))
+    return parts
+
+
+def archive_run(out: Path, arm: str, seed: int) -> tuple[Path, int]:
+    """Move a superseded run aside; its files are kept and never reused."""
+    source = run_dir(out, arm, seed)
+    n = 1
+    while (target := source.with_name(f"seed-{seed}-superseded{n}")).exists():
+        n += 1
+    source.rename(target)
+    return target, n
+
+
+def audit_convergence(args) -> None:
+    """Apply the declared rule to every record; freeze the rule before reading any."""
+    path = args.out_dir / "convergence.json"
     manifest_path = args.out_dir / "manifest.json"
     manifest = load_manifest(manifest_path)
-    refs = references(manifest)
-    sources, scores, thresholds, missing, attempts, runs = {}, {}, {}, [], {}, {}
-    for supervision in SUPERVISIONS:
-        for seed in manifest["seeds"]:
-            name = f"ae-ours-{supervision}-seed{seed}"
-            path = run_dir(args.out_dir, supervision, seed) / "run.json"
-            if not path.exists():
-                missing.append(name)
-                attempt = path.with_name("attempt.json")
-                if attempt.exists():
-                    attempts[name] = {
-                        "path": str(attempt),
-                        "sha256": sha256(attempt),
-                        "record": json.loads(attempt.read_text()),
-                    }
+    if path.exists():
+        plan = json.loads(path.read_text())
+        if plan["rule"] != CONVERGENCE_RULE:
+            raise ValueError("declared convergence rule cannot change")
+    else:
+        plan = {
+            "declared": provenance(),
+            "rule": CONVERGENCE_RULE,
+            "manifest_sha256": sha256(manifest_path),
+            "accepted_seeds": {arm: list(manifest["seeds"]) for arm in SUPERVISIONS},
+            "audit": {},
+            "superseded": {},
+            "replacements": {},
+        }
+        write_json(path, plan)  # the rule is on disk before any checkpoint is read
+    training_rule = CONVERGENCE_RULE["training"]
+    for arm in SUPERVISIONS:
+        seeds = plan["accepted_seeds"][arm]
+        for seed in seeds[:]:
+            name = f"ae-ours-{arm}-seed{seed}"
+            run_path = run_dir(args.out_dir, arm, seed) / "run.json"
+            if not run_path.exists():
                 continue
-            run = json.loads(path.read_text())
-            if run["status"] != "finished" or run["manifest_sha256"] != sha256(
-                manifest_path
-            ):
-                raise ValueError(f"run {name} is unfinished or uses another manifest")
-            training_path = Path(run["training"]["path"])
-            if sha256(training_path) != run["training"]["sha256"]:
-                raise ValueError(f"training metadata changed for {name}")
-            training = json.loads(training_path.read_text())
-            runs[name] = {
-                **run,
-                "training_environment": training["environment"],
-                "epochs_completed": len(training["history"]),
+            run = json.loads(run_path.read_text())
+            training = json.loads(Path(run["training"]["path"]).read_text())
+            losses = [row["valid_val_loss"] for row in training["history"]]
+            conformance = training_conformance(
+                losses,
+                patience=training_rule["patience"],
+                start=training_rule["patience_start_epoch"],
+                min_delta=training_rule["min_delta"],
+            )
+            entry = {
+                "training_rule": conformance,
+                "run_sha256": sha256(run_path),
+                "selected_epoch": run["selected_epoch"],
             }
+            if not conformance["conforms"]:
+                target, n = archive_run(args.out_dir, arm, seed)
+                entry["status"] = "superseded: rerun with the same seed"
+                entry["archived_to"] = str(target)
+                plan["superseded"][f"{name}-superseded{n}"] = entry
+                plan["audit"].pop(name, None)
+                continue
             source = Path(run["probabilities"]["path"])
             if sha256(source) != run["probabilities"]["sha256"]:
                 raise ValueError(f"probabilities changed for {name}")
             with np.load(source) as z:
-                scores[name] = {int(k): z[k].copy() for k in z.files}
-            thresholds[name] = run["threshold"]
-            sources[name] = {"path": str(path), "sha256": sha256(path)}
+                arrays = {s: z[str(s)].copy() for s in manifest["split"]["selection"]}
+            entry["screen"] = convergence_screen(
+                selection_parts(manifest_path, arm, arrays)
+            )
+            entry["status"] = "accepted" if entry["screen"]["passed"] else "excluded"
+            plan["audit"][name] = entry
+            if not entry["screen"]["passed"]:
+                used = {int(k.rsplit("seed", 1)[1]) for k in plan["audit"]}
+                replacement = max(seeds + manifest["seeds"] + [2] + list(used)) + 1
+                seeds[seeds.index(seed)] = replacement
+                plan["replacements"][name] = f"ae-ours-{arm}-seed{replacement}"
+    pending = [
+        f"ae-ours-{arm}-seed{seed}"
+        for arm in SUPERVISIONS
+        for seed in plan["accepted_seeds"][arm]
+        if not (run_dir(args.out_dir, arm, seed) / "run.json").exists()
+    ]
+    plan["pending_runs"] = pending
+    write_json(path, plan)
+    print(json.dumps(plan, indent=2))
+
+
+def load_run(directory: Path, manifest_path: Path) -> tuple[dict, dict, dict]:
+    """A finished run read from its own directory and verified by recorded hashes."""
+    run = json.loads((directory / "run.json").read_text())
+    if run["status"] != "finished" or run["manifest_sha256"] != sha256(manifest_path):
+        raise ValueError(f"run in {directory} is unfinished or uses another manifest")
+    training_path = directory / Path(run["training"]["path"]).name
+    if sha256(training_path) != run["training"]["sha256"]:
+        raise ValueError(f"training metadata changed in {directory}")
+    probabilities = directory / "probabilities.npz"
+    if sha256(probabilities) != run["probabilities"]["sha256"]:
+        raise ValueError(f"probabilities changed in {directory}")
+    with np.load(probabilities) as z:
+        scores = {int(k): z[k].copy() for k in z.files}
+    return run, json.loads(training_path.read_text()), scores
+
+
+def reference_parts(refs: dict, shots: list[int], reference: str, prediction: dict):
+    """(score, truth) per shot on the frames the reference can score."""
+    parts = []
+    for shot in shots:
+        states = refs[shot][reference]
+        keep = np.isin(states, (ABSENT, PRESENT))
+        if prediction[shot].shape != (N_FRAMES,):
+            raise ValueError(f"wrong frame shape for shot {shot}")
+        parts.append((prediction[shot][keep], states[keep] == PRESENT))
+    return parts
+
+
+def matched_threshold(refs, shots, reference, prediction) -> dict:
+    """Max-F1 threshold on selection shots against the reference being scored."""
+    parts = reference_parts(refs, shots, reference, prediction)
+    result = selection_threshold(
+        np.concatenate([p[0] for p in parts]), np.concatenate([p[1] for p in parts])
+    )
+    return {**result, "shots": list(shots), "reference": reference}
+
+
+def clock_models(refs: dict, manifest: dict) -> tuple[dict, dict]:
+    """Input-free baselines: per-10 ms positive rate over train + selection shots."""
+    split = manifest["split"]
+    shots = split["train"] + split["selection"]
+    priors, scores = {}, {}
+    for reference, name in (("legacy", "clock-annotation"), ("dense", "clock-dense")):
+        states = np.stack(
+            [
+                np.where(refs[s][reference] == PRESENT, PRESENT, ABSENT)
+                if reference == "legacy"
+                else refs[s][reference]
+                for s in shots
+            ]
+        )
+        priors[name] = {
+            "reference": reference,
+            "shots": len(shots),
+            "prior": clock_prior(states).tolist(),
+        }
+        prior = np.asarray(priors[name]["prior"])
+        scores[name] = {
+            int(s): prior.copy() for s in split["selection"] + split["evaluation"]
+        }
+    return priors, scores
+
+
+def dense_prevalence(manifest: dict, refs: dict) -> dict:
+    """Reconcile the dense table's counts and prevalence with the paper's wording."""
+    owner = read_labels(Path(manifest["inputs"]["dense"]["snapshot"]))
+    split = manifest["split"]
+    groups = {
+        "train_selection_120": split["train"] + split["selection"],
+        "train_100": split["train"],
+        "evaluation_60": split["evaluation"],
+    }
+    out = {"crowd_present_rows": manifest["dense_counts"]["present_intervals"]}
+    for name, shots in groups.items():
+        seconds, frames, scorable = 0.0, 0, 0
+        for shot in shots:
+            label = owner[shot]
+            union = np.zeros(RECORD_MS, bool)
+            for start, stop, category in label.intervals:
+                if category == PRESENT:
+                    union[int(max(start, 0)) : int(min(stop, RECORD_MS))] = True
+            seconds += union.sum() / 1000
+            states = refs[shot]["dense"]
+            frames += int((states == PRESENT).sum())
+            scorable += int(np.isin(states, (ABSENT, PRESENT)).sum())
+        out[name] = {
+            "shots": len(shots),
+            "present_seconds_union": seconds,
+            "prevalence_by_duration": seconds / (RECORD_MS / 1000 * len(shots)),
+            "prevalence_any_touch_frames": frames / scorable,
+        }
+    return out
+
+
+def band_confound(manifest: dict) -> dict:
+    """How much annotated time is BAE-only, and is it inside the model's band?"""
+    masks = Path(manifest["dataset_dir"]).parent / "masks"
+    split = manifest["split"]
+    groups = {
+        "train_selection_120": split["train"] + split["selection"],
+        "train_100": split["train"],
+        "evaluation_60": split["evaluation"],
+        "fair_19": manifest["older"]["fair_evaluation"],
+    }
+    out = {
+        "model_band_khz": [80.56649, 250.00024],
+        "columns": "native annotation columns; classes 1-4 are BAE, EAE, RSAE, TAE",
+        "source": f"{masks}/<shot>_<split>_clean.npz frame_labels, dataset active",
+    }
+    for name, shots in groups.items():
+        annotated = bae = bae_active = other = other_active = 0
+        for shot in shots:
+            item = manifest["dataset"][str(shot)]
+            with np.load(masks / f"{shot}_{item['split']}_clean.npz") as z:
+                labels = z["frame_labels"].astype(bool)
+            with np.load(item["path"]) as z:
+                active = z["active"].astype(bool)
+            ann = labels[1:5].any(axis=0)
+            only = labels[1] & ~labels[2:5].any(axis=0)
+            annotated += int(ann.sum())
+            bae += int(only.sum())
+            bae_active += int((only & active).sum())
+            other += int((ann & ~only).sum())
+            other_active += int((ann & ~only & active).sum())
+        out[name] = {
+            "annotated_columns": annotated,
+            "bae_only_share": bae / annotated,
+            "in_band_active_share_bae_only": bae_active / bae if bae else None,
+            "in_band_active_share_other": other_active / other,
+        }
+    return out
+
+
+def pooled_block(refs, shots, reference, methods, thresholds, groups, replicates):
+    """Paired pooled scores plus within-shot medians for one cohort and reference."""
+    packed = {
+        name: (
+            reference_parts(refs, shots, reference, pred),
+            thresholds[name]["threshold"],
+        )
+        for name, pred in methods.items()
+    }
+    result = paired_scores(packed, replicates, BOOTSTRAP_SEED, groups=groups)
+    result["within_shot"] = {
+        name: within_shot_scores(parts, replicates)
+        for name, (parts, _) in packed.items()
+    }
+    return result, packed
+
+
+def evaluate(args) -> None:
+    manifest_path = args.out_dir / "manifest.json"
+    manifest = load_manifest(manifest_path)
+    refs = references(manifest)
+    plan = json.loads((args.out_dir / "convergence.json").read_text())
+    if plan["rule"] != CONVERGENCE_RULE:
+        raise ValueError("convergence plan declares another rule")
+    split = manifest["split"]
+    scores, own, matched, missing, runs, v100 = {}, {}, {}, [], {}, {}
+    for arm in SUPERVISIONS:
+        for seed in plan["accepted_seeds"][arm]:
+            name = f"ae-ours-{arm}-seed{seed}"
+            directory = run_dir(args.out_dir, arm, seed)
+            if not (directory / "run.json").exists():
+                missing.append(name)
+                continue
+            run, training, scores[name] = load_run(directory, manifest_path)
+            audit = plan["audit"].get(name)
+            if audit is None or audit["status"] != "accepted":
+                raise ValueError(f"{name} is not an accepted record of the plan")
+            runs[name] = {
+                **run,
+                "training_environment": training["environment"],
+                "epochs_completed": len(training["history"]),
+                "audit": audit,
+            }
+            own[name] = run["threshold"]["threshold"]
+            if "V100" in training["environment"]["gpu"] and seed != 0:
+                v100.setdefault(arm, []).append(name)
     source = Path(manifest["older"]["probabilities"]["path"])
     if sha256(source) != manifest["older"]["probabilities"]["sha256"]:
         raise ValueError("saved older probabilities changed")
@@ -543,77 +783,164 @@ def evaluate(args) -> None:
                 for k in z.files
                 if k.startswith(model + "_")
             }
-    thresholds.update(manifest["older"]["thresholds"])
-    blocks = {}
+    for name, item in manifest["older"]["thresholds"].items():
+        own[name] = item["threshold"]
+    priors, clock_scores = clock_models(refs, manifest)
+    scores.update(clock_scores)
+    selection_shots = {
+        name: (
+            manifest["older"]["selection_available"]
+            if name in ("ae-rcn", "ae-lstm")
+            else split["selection"]
+        )
+        for name in scores
+    }
+    for name, prediction in scores.items():
+        matched[name] = {
+            reference: matched_threshold(
+                refs, selection_shots[name], reference, prediction
+            )
+            for reference in ("dense", "legacy")
+        }
+    arms = {
+        f"ae-ours-{arm}": [
+            f"ae-ours-{arm}-seed{seed}" for seed in plan["accepted_seeds"][arm]
+        ]
+        for arm in SUPERVISIONS
+    }
+    complete = not missing
+    blocks, sensitivity = {}, {}
     for group, shots in (
-        ("all_60", manifest["split"]["evaluation"]),
+        ("all_60", split["evaluation"]),
         ("fair_19", manifest["older"]["fair_evaluation"]),
     ):
-        blocks[group] = {"shots": shots, "references": {}}
-        eligible = {name: p for name, p in scores.items() if set(shots) <= set(p)}
-        blocks[group]["unavailable"] = sorted(set(scores) - set(eligible)) + missing
+        eligible = {n: p for n, p in scores.items() if set(shots) <= set(p)}
+        blocks[group] = {
+            "shots": shots,
+            "unavailable": sorted(set(scores) - set(eligible)) + missing,
+            "references": {},
+        }
+        seed_groups = {
+            **(arms if complete else {}),
+            **{n: [n] for n in eligible if not n.startswith("ae-ours-")},
+        }
         for reference in ("dense", "legacy"):
-            methods = {}
-            for name, prediction in eligible.items():
-                parts = []
-                for shot in shots:
-                    states = refs[shot][reference]
-                    keep = np.isin(states, (ABSENT, PRESENT))
-                    if prediction[shot].shape != (N_FRAMES,):
-                        raise ValueError(f"wrong frame shape for {name}, {shot}")
-                    parts.append((prediction[shot][keep], states[keep] == PRESENT))
-                methods[name] = (parts, thresholds[name]["threshold"])
-            blocks[group]["references"][reference] = (
-                paired_scores(
-                    methods,
+            result, packed = pooled_block(
+                refs,
+                shots,
+                reference,
+                eligible,
+                {n: matched[n][reference] for n in eligible},
+                seed_groups if complete else None,
+                args.replicates,
+            )
+            result["calibration"] = {
+                n: {
+                    k: matched[n][reference][k]
+                    for k in ("threshold", "f1", "n_frames", "n_positive", "shots")
+                }
+                for n in eligible
+            }
+            result["f1_own_target_threshold"] = {
+                n: ShotMetric(packed[n][0], own[n]).values(np.ones(len(shots)))[2]
+                for n in eligible
+                if n in own
+            }
+            blocks[group]["references"][reference] = result
+        if complete and all(len(v100.get(arm, [])) == 2 for arm in SUPERVISIONS):
+            keep = [n for arm in SUPERVISIONS for n in v100[arm]]
+            sensitivity[group] = {"runs": v100, "references": {}}
+            for reference in ("dense", "legacy"):
+                subset = {n: eligible[n] for n in keep}
+                subset.update(
+                    {n: p for n, p in eligible.items() if n in ("ae-rcn", "ae-lstm")}
+                )
+                packed = {
+                    n: (
+                        reference_parts(refs, shots, reference, p),
+                        matched[n][reference]["threshold"],
+                    )
+                    for n, p in subset.items()
+                }
+                sensitivity[group]["references"][reference] = paired_scores(
+                    packed,
                     args.replicates,
                     BOOTSTRAP_SEED,
                     groups={
-                        **{
-                            f"ae-ours-{arm}": [
-                                f"ae-ours-{arm}-seed{seed}"
-                                for seed in manifest["seeds"]
-                            ]
-                            for arm in SUPERVISIONS
-                            if all(
-                                f"ae-ours-{arm}-seed{s}" in methods
-                                for s in manifest["seeds"]
-                            )
-                        },
-                        **{
-                            name: [name]
-                            for name in ("ae-rcn", "ae-lstm")
-                            if name in methods
-                        },
+                        **{f"ae-ours-{arm}": v100[arm] for arm in SUPERVISIONS},
+                        **{n: [n] for n in subset if not n.startswith("ae-ours-")},
                     },
+                )["seed_summary"]
+    excluded = {}
+    candidates = {
+        name: Path(entry["archived_to"]) for name, entry in plan["superseded"].items()
+    }
+    for name, entry in plan["audit"].items():
+        if entry["status"] == "excluded":
+            arm, seed = name.split("-")[2], int(name.rsplit("seed", 1)[1])
+            candidates[name] = run_dir(args.out_dir, arm, seed)
+    for name, directory in candidates.items():
+        run, training, prediction = load_run(directory, manifest_path)
+        row = {
+            "directory": str(directory),
+            "selected_epoch": run["selected_epoch"],
+            "epochs_completed": len(training["history"]),
+            "gpu": training["environment"]["gpu"],
+            "plan": plan["superseded"].get(name) or plan["audit"][name],
+            "results": {},
+        }
+        thr = {
+            ref: matched_threshold(refs, split["selection"], ref, prediction)
+            for ref in ("dense", "legacy")
+        }
+        for group, shots in (
+            ("all_60", split["evaluation"]),
+            ("fair_19", manifest["older"]["fair_evaluation"]),
+        ):
+            row["results"][group] = {}
+            for reference in ("dense", "legacy"):
+                parts = reference_parts(refs, shots, reference, prediction)
+                scored = paired_scores(
+                    {name: (parts, thr[reference]["threshold"])},
+                    args.replicates,
+                    BOOTSTRAP_SEED,
                 )
-                if methods
-                else None
-            )
+                row["results"][group][reference] = {
+                    **scored["methods"][name],
+                    "within_shot": within_shot_scores(parts, args.replicates),
+                }
+        excluded[name] = row
     record = {
         **provenance(),
-        "status": "finished" if not missing else "incomplete",
+        "status": "finished" if complete else "incomplete",
         "missing_runs": missing,
-        "attempts": attempts,
         "manifest": {"path": str(manifest_path), "sha256": sha256(manifest_path)},
-        "sources": sources,
+        "convergence": plan,
         "runs": runs,
-        "thresholds": thresholds,
+        "excluded_runs": excluded,
+        "thresholds": {
+            "calibration": (
+                "every method: maximum 10 ms F1 on its selection shots (20; six for "
+                "ae-rcn and ae-lstm) against the reference being scored"
+            ),
+            "own_target": own,
+        },
+        "clock": priors,
         "results": blocks,
+        "sensitivity_v100_seeds_1_2": sensitivity,
+        "band_confound": band_confound(manifest),
+        "dense_prevalence": dense_prevalence(manifest, refs),
         "dense_counts": manifest["dense_counts"],
         "inputs": manifest["inputs"],
         "protocol": manifest["protocol"],
-        "split": manifest["split"],
+        "split": split,
         "limitations": [
             "Older detectors have no saved predictions for 41/60 evaluation shots.",
-            "Older thresholds use only available, older-held-out selection shots.",
+            "Older calibration uses only the six selection shots they did not train on.",
+            "Three seeds per arm give limited precision for training variability.",
             (
-                "Pooled intervals resample shots and the three observed seed IDs; "
-                "three seeds give limited precision for training variability."
-            ),
-            (
-                "GPU types differ across runs; actual capability and precision "
-                "policy are recorded in gpu_probe.json and runtime metadata."
+                "Runs used A100 (legacy and dense seed 0) and V100S GPUs; a V100-only "
+                "sensitivity analysis is recorded."
             ),
         ],
     }
@@ -626,78 +953,11 @@ def evaluate(args) -> None:
         }
     write_json(args.out_dir / "evaluation.json", record)
     write_json(args.record, record)
-    lines = [
-        r"\begin{tabular}{llrrrr}",
-        r"\toprule",
-        r"Model & Supervision & Dense AUROC & Dense F1 & Legacy AUROC & Legacy F1 \\",
-        r"\midrule",
-    ]
-    block = blocks["fair_19"]["references"]
-
-    def cell(name, reference, metric):
-        result = block[reference]
-        if result is None or name not in result["methods"]:
-            return r"\textemdash"
-        m = result["methods"][name][metric]
-        if m["value"] is None:
-            return r"\textemdash"
-        lo, hi = m["ci95"]
-        return f"{m['value']:.3f} [{lo:.3f}, {hi:.3f}]"
-
-    for supervision in SUPERVISIONS:
-        for seed in manifest["seeds"]:
-            name = f"ae-ours-{supervision}-seed{seed}"
-            cells = [
-                cell(name, r, m) for r in ("dense", "legacy") for m in ("auroc", "f1")
-            ]
-            lines.append(
-                f"ae-ours & {supervision} (seed {seed}) & " + " & ".join(cells) + r" \\"
-            )
-    for name in ("ae-rcn", "ae-lstm"):
-        cells = [cell(name, r, m) for r in ("dense", "legacy") for m in ("auroc", "f1")]
-        lines.append(f"{name} & legacy (Garcia saved) & " + " & ".join(cells) + r" \\")
-    for supervision in SUPERVISIONS:
-        name = f"ae-ours-{supervision}"
-        cells = []
-        for reference in ("dense", "legacy"):
-            summary = (
-                (block[reference] or {}).get("seed_summary", {}).get("methods", {})
-            )
-            for metric in ("auroc", "f1"):
-                if name not in summary:
-                    cells.append(r"\textemdash")
-                    continue
-                m = summary[name][metric]
-                lo, hi = m["ci95"]
-                cells.append(
-                    f"{m['mean']:.3f} $\\pm$ {m['sd']:.3f} [{lo:.3f}, {hi:.3f}]"
-                )
-        lines.append(
-            f"ae-ours & {supervision} (seed mean) & " + " & ".join(cells) + r" \\"
-        )
-    lines += [
-        r"\bottomrule",
-        r"\end{tabular}",
-        "% Fair held-out shots, 10 ms frames, 95% shot-bootstrap intervals.",
-        "% Seed mean: mean +/- sample SD; CI resamples paired shots and seeds.",
-        "% Individual-seed CIs resample shots only. Booktabs required.",
-    ]
-    (args.out_dir / "table_supervision_swap.tex").write_text("\n".join(lines) + "\n")
-    if not missing:
+    if complete:
         from ae_supervision_swap_report import render_report
 
         render_report(record, manifest, args.out_dir, REPO)
-    print(
-        json.dumps(
-            {
-                "status": record["status"],
-                "missing": missing,
-                "thresholds": thresholds,
-                "results": blocks,
-            },
-            indent=2,
-        )
-    )
+    print(json.dumps({"status": record["status"], "missing": missing}, indent=2))
 
 
 def main(argv=None) -> None:
@@ -722,6 +982,7 @@ def main(argv=None) -> None:
     fit.add_argument("--seed", type=int, default=0)
     commands.add_parser("verify")
     commands.add_parser("probe")
+    commands.add_parser("audit-convergence")
     score = commands.add_parser("evaluate")
     score.add_argument("--replicates", type=int, default=1000)
     score.add_argument(
@@ -736,6 +997,7 @@ def main(argv=None) -> None:
         "train": train,
         "verify": verify,
         "probe": probe,
+        "audit-convergence": audit_convergence,
         "evaluate": evaluate,
     }[args.command](args)
 

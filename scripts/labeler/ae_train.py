@@ -418,6 +418,13 @@ def atomic_write_json(path: Path, payload: dict) -> None:
 # --------------------------------------------------------------------------
 
 
+def next_bad_count(bad: int, improved: bool, epoch: int, patience_start: int) -> int:
+    """Early-stopping counter: epochs before ``patience_start`` never count."""
+    if improved:
+        return 0
+    return bad + 1 if epoch >= patience_start else bad
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
@@ -439,6 +446,15 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--weight-decay", type=float, default=1e-4)
     p.add_argument("--min-lr", type=float, default=1e-6)
     p.add_argument("--patience", type=int, default=5)
+    p.add_argument(
+        "--patience-start",
+        type=int,
+        default=0,
+        help=(
+            "zero-based epoch from which non-improving epochs count toward "
+            "--patience (0 keeps the original rule); the supervision swap uses 10"
+        ),
+    )
     p.add_argument("--lambda-f", type=float, default=1.0)
     p.add_argument("--alpha", type=float, default=1.0)
     p.add_argument("--beta", type=float, default=0.5)
@@ -480,7 +496,9 @@ def main(argv: list[str] | None = None) -> int:
     device = torch.device(args.device if torch.cuda.is_available() or args.device == "cpu" else "cpu")
     amp_dtype = torch.bfloat16
     if args.swap_manifest and device.type == "cuda":
-        # V100 fallback: autocast float32 disables AMP, avoiding unsupported bf16.
+        # Default support counts emulation, so a V100 also autocasts to bf16 here
+        # (is_bf16_supported(including_emulation=False) is False on it); float32
+        # is only chosen on a device with no bf16 path at all.
         if not torch.cuda.is_bf16_supported():
             amp_dtype = torch.float32
         total = torch.cuda.get_device_properties(device).total_memory
@@ -512,6 +530,10 @@ def main(argv: list[str] | None = None) -> int:
     print("label stats:", label_stats, flush=True)
 
     dataset = ShotWindows(train, args.window_frames, args.windows_per_shot, seed=args.seed)
+    # Behaviour of every run so far, kept as is: with persistent workers each
+    # worker holds the epoch-0 copy of this dataset, so the parent's set_epoch()
+    # never reaches it and every epoch re-draws the SAME windows_per_shot windows
+    # per shot (only the shot order is reshuffled).
     shots_per_batch = max(1, args.batch_windows // args.windows_per_shot)
     loader = DataLoader(
         dataset,
@@ -638,7 +660,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             tmp.replace(ckpt_path)
         else:
-            bad += 1
+            bad = next_bad_count(bad, False, epoch, args.patience_start)
             if bad >= args.patience:
                 stopped_early = True
                 print(f"early stop at epoch {epoch} (patience {args.patience})", flush=True)

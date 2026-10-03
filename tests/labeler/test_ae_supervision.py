@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -16,6 +19,7 @@ from labeler.ae.supervision import (
     selection_threshold,
     validate_split,
 )
+from labeler.events.catalog.states import PRESENT
 from labeler.events.review.labels import Label
 from labeler.scoring.frames import Assessment, frame_states
 
@@ -195,3 +199,106 @@ def test_seed_groups_refuse_mismatched_seed_counts():
             10,
             groups={"x": ["a", "b"], "y": ["c", "d", "e"]},
         )
+
+
+def test_convergence_screen_uses_selection_variation_and_discrimination():
+    from labeler.ae.supervision import convergence_screen
+
+    truth = np.tile([False, True], 100)
+    good = [(np.where(truth, 0.8, 0.2), truth)] * 2
+    assert convergence_screen(good)["passed"]
+    constant = [(np.where(truth, 0.081, 0.080), truth)] * 2
+    assert not convergence_screen(constant)["passed"]
+    assert not convergence_screen([(1 - s, y) for s, y in good])["passed"]
+
+
+def test_clock_prior_masks_unknown_and_refuses_unobserved_bins():
+    from labeler.ae.supervision import clock_prior
+
+    states = np.zeros((2, 200), dtype=int)
+    states[0, :100] = PRESENT
+    states[1, :100] = 2  # unknown is not a negative
+    prior = clock_prior(states)
+    np.testing.assert_array_equal(prior[:100], 1)
+    np.testing.assert_array_equal(prior[100:], 0)
+    with pytest.raises(ValueError, match="observed"):
+        clock_prior(np.full((2, 200), 2))
+
+
+def test_within_shot_scores_exclude_one_class_and_bootstrap_shots():
+    from labeler.ae.supervision import within_shot_scores
+
+    parts = [
+        (np.array([0.1, 0.9]), np.array([False, True])),
+        (np.array([0.9, 0.1]), np.array([False, True])),
+        (np.array([0.2, 0.3]), np.array([False, False])),
+    ]
+    result = within_shot_scores(parts, replicates=100)
+    assert result["n_two_class_shots"] == 2
+    assert result["auroc"]["value"] == 0.5
+    assert result["auroc"]["ci95"] == [0.0, 1.0]
+
+
+LEGACY_SEED2 = [2.211, 1.675, 1.645, 1.655, 1.657, 1.647, 1.662, 1.66]
+DENSE_SEED1 = [2.856, 2.25, 2.163, 1.76, 1.552, 1.382, 1.357, 1.366, 1.398, 1.371]
+DENSE_SEED1 += [1.367, 1.37]
+
+
+def test_declared_patience_rule_flags_runs_that_stopped_inside_the_plateau():
+    from labeler.ae.supervision import training_conformance
+
+    first = training_conformance(LEGACY_SEED2)
+    assert not first["conforms"] and not first["stopped"]
+    assert first["best_epoch"] == 2
+    second = training_conformance(DENSE_SEED1)
+    assert not second["conforms"]
+    # the same trace continued until five post-epoch-9 misses conforms
+    longer = DENSE_SEED1 + [1.37, 1.372, 1.4]
+    third = training_conformance(longer)
+    assert third["conforms"] and third["final_epoch"] == 14
+    # a best epoch of 9 or later behaves exactly as the plain patience-5 rule
+    late = [2.0, 1.5, 1.4, 1.3, 1.2, 1.1, 1.0, 0.9, 0.8, 0.7] + [0.71] * 5
+    assert training_conformance(late)["conforms"]
+    assert training_conformance(late[:-1])["conforms"] is False
+
+
+def test_training_loop_counter_matches_replayed_rule():
+    import importlib
+
+    from labeler.ae.supervision import replay_early_stop
+
+    scripts = Path(__file__).resolve().parents[2] / "scripts/labeler"
+    sys.path.insert(0, str(scripts))
+    try:
+        trainer = importlib.import_module("ae_train")
+    finally:
+        sys.path.remove(str(scripts))
+    rng = np.random.default_rng(7)
+    for _ in range(200):
+        losses = (2.0 - np.cumsum(rng.uniform(-0.05, 0.12, 30))).tolist()
+        best, bad, stop = float("inf"), 0, None
+        for epoch, loss in enumerate(losses):
+            improved = loss < best - 1e-6
+            if improved:
+                best = loss
+            bad = trainer.next_bad_count(bad, improved, epoch, 10)
+            if not improved and bad >= 5:
+                stop = epoch
+                break
+        replay = replay_early_stop(losses)
+        assert (replay["final_epoch"] if replay["stopped"] else None) == stop
+
+
+def test_seed_group_shot_interval_ignores_seed_resampling():
+    parts = [
+        (np.array([0.2, 0.8]), np.array([0, 1], bool)),
+        (np.array([0.4, 0.3, 0.9]), np.array([0, 1, 1], bool)),
+        (np.array([0.1, 0.6]), np.array([0, 1], bool)),
+    ]
+    methods = {f"a{i}": (parts, 0.5) for i in range(2)}
+    result = paired_scores(methods, 200, groups={"a": ["a0", "a1"]})
+    for metric in ("auroc", "auprc", "f1"):
+        got = result["seed_summary"]["methods"]["a"][metric]
+        # identical seeds: seed resampling adds nothing, so both intervals agree
+        np.testing.assert_allclose(got["ci95"], got["ci95_shot"])
+        assert got["sd"] == 0
