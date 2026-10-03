@@ -3,11 +3,13 @@
 
     python scripts/labeler/detach_bins.py --shots-file shots.txt --workers 6
 
-Reads the corpus, the fetch cache (`detach_fetch.py`) and the packed TangTV
-inversions (`detach_inversions.py`); never fetches. One file per shot,
-`$LABELER_ROOT/round4/detach/bins/<shot>.npz`, holds on the shot's 50 ms grid
-(`start_ms`, the bin starts): for each indicator `<name>_value`, `<name>_valid`,
-`<name>_reason`, `<name>_vote`; plus the quantities behind them (`aux_*`) and the
+Reads the corpus, the fetch cache (`detach_fetch.py`), the packed TangTV
+inversions (`detach_inversions.py`) and, where a shot has no inversion, the front
+heights regressed from its raw frames (`detach_tv_surrogate.py`); never fetches.
+One file per shot, `$LABELER_ROOT/round4/detach/bins/<shot>.npz`, holds on the
+shot's 50 ms grid (`start_ms`, the bin starts): for each indicator `<name>_value`,
+`<name>_valid`, `<name>_reason`, `<name>_vote`, and `tangtv_source` (`inversion`,
+`surrogate` or `none`); plus the quantities behind them (`aux_*`) and the
 independent divertor Thomson Te (`aux_te_div`), which is NOT an indicator.
 
 The grid is the discharge only: bins where EFIT's plasma current is under
@@ -45,37 +47,56 @@ def load_inversion(shot: int):
         return {k: npz[k] for k in ("frames", "times_ms", "radii", "elevation")}
 
 
+def load_surrogate(shot: int):
+    """Front heights regressed from the raw frames (`detach_tv_surrogate.py`), or None."""
+    path = root() / "tv_surrogate" / f"{shot}.npz"
+    if not path.is_file():
+        return None
+    with np.load(path) as npz:
+        return {"times_ms": npz["times_ms"], "ze": npz["ze"]}
+
+
 def tangtv_for(shot, edges, cache):
-    """The TangTV indicator, or an all-invalid one saying why."""
+    """The TangTV indicator and where its front height came from.
+
+    The inversion when the shot has one, else the regression from the raw frames,
+    else an all-invalid indicator saying why. The source is `inversion`, `surrogate`
+    or `none`.
+    """
     n = len(edges) - 1
-    inversion = load_inversion(shot)
-    if inversion is None:
+
+    def invalid(why):
         return core.assemble(
             "tangtv",
             np.full(n, np.nan),
             np.zeros(n, bool),
-            np.full(n, "no_inversion", dtype=object),
+            np.full(n, why, dtype=object),
             np.zeros(n),
         )
+
+    inversion = load_inversion(shot)
+    surrogate = None if inversion is not None else load_surrogate(shot)
+    if inversion is None and surrogate is None:
+        return invalid("no_inversion"), "none"
     need = ("rvsod", "zvsod", "rxpt1", "zxpt1")
     if any(k not in cache for k in need):
-        return core.assemble(
-            "tangtv",
-            np.full(n, np.nan),
-            np.zeros(n, bool),
-            np.full(n, "efit_missing", dtype=object),
-            np.zeros(n),
-        )
+        return invalid("efit_missing"), "none"
     et = cache["rxpt1"][0]
-    ft = inversion["times_ms"].astype(float)
-    near = np.abs(et[None, :] - ft[:, None]).argmin(axis=1)
-    ze = tangtv.outer_leg_ze(
-        inversion["frames"].astype(np.float32),
-        inversion["radii"],
-        inversion["elevation"],
-        np.asarray(cache["rxpt1"][1])[near],
-    )
-    return tangtv.tangtv_indicator(
+    if inversion is not None:
+        ft = inversion["times_ms"].astype(float)
+        near = np.abs(et[None, :] - ft[:, None]).argmin(axis=1)
+        ze = tangtv.outer_leg_ze(
+            inversion["frames"].astype(np.float32),
+            inversion["radii"],
+            inversion["elevation"],
+            np.asarray(cache["rxpt1"][1])[near],
+        )
+        source = "inversion"
+    else:
+        ft = surrogate["times_ms"].astype(float)
+        ze = surrogate["ze"].astype(float)
+        source = "surrogate"
+    indicator = tangtv.tangtv_indicator(
         edges,
         ft,
         ze,
@@ -85,6 +106,7 @@ def tangtv_for(shot, edges, cache):
         cache["rxpt1"][1],
         cache["zxpt1"][1],
     )
+    return indicator, source
 
 
 def process(
@@ -131,7 +153,7 @@ def process(
         elm_t,
         elm_flag,
     )
-    tangtv_ind = tangtv_for(shot, edges, cache)
+    tangtv_ind, tangtv_source = tangtv_for(shot, edges, cache)
 
     out: dict[str, np.ndarray] = {"start_ms": starts}
     for ind in (afrac_ind, prad_ind, tangtv_ind):
@@ -139,6 +161,7 @@ def process(
         out[f"{ind.name}_valid"] = ind.valid
         out[f"{ind.name}_reason"] = ind.reason.astype(str)
         out[f"{ind.name}_vote"] = ind.vote
+    out["tangtv_source"] = np.full(n, tangtv_source)
     # the quantities behind the indicators, for the figure and the failure analysis
     out["aux_ip_a"] = core.bin_median(t_ip, ip, edges)[0].astype(np.float32)
     if p_t is not None:

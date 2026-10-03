@@ -49,9 +49,11 @@ from labeler.events.interval_tables import (
     write_interval_table,
     write_label_grid,
 )
+from labeler.events.rosters import ROSTER_COLUMNS, validate_roster
 
 REPO = Path(__file__).resolve().parents[2]
 OUT = REPO / "data" / "events" / "detachment" / "extend_detach_vote"
+ROSTER = REPO / "data" / "events" / "detachment" / "shots.csv"
 LIST_NAME = "detach_shots"
 MIN_VALID_BINS = 20  # one second of 50 ms bins
 POSTERIOR_THRESHOLD = 0.7
@@ -334,6 +336,35 @@ def write_indicator_csvs(frame: pd.DataFrame, out_dir: Path) -> int:
     return int(frame.shot.nunique())
 
 
+def write_roster(frame: pd.DataFrame, path: Path = ROSTER) -> int:
+    """The review roster: labelled shots with at least `MIN_VALID_BINS` camera bins.
+
+    Unverified, nobody has reviewed them; `holdout` follows the cohort's test split
+    (a held-out shot is for final evaluation only). The note says where the shot's
+    TangTV front height came from, since the review video is the check on it.
+    """
+    split = cohort_split(frame.shot.unique())
+    rows = []
+    for shot, group in frame.groupby("shot"):
+        valid = group[group.tangtv_valid.to_numpy().astype(bool)]
+        if len(valid) < MIN_VALID_BINS:
+            continue
+        source = valid.tangtv_source.mode().iloc[0] if "tangtv_source" in valid else ""
+        rows.append(
+            [
+                int(shot),
+                "unverified",
+                "true" if split[int(shot)] == "test" else "false",
+                "",
+                "",
+                f"tangtv {source}" if source else "",
+            ]
+        )
+    roster = validate_roster(pd.DataFrame(rows, columns=list(ROSTER_COLUMNS)))
+    roster.sort_values("shot").to_csv(path, index=False)
+    return len(roster)
+
+
 def confusion(a: np.ndarray, b: np.ndarray) -> dict:
     keys = (1, 2, 3, 4)
     return {
@@ -391,6 +422,7 @@ def main() -> None:
     parser.add_argument("--bins-dir", default=str(root() / "bins"))
     parser.add_argument("--list-name", default=LIST_NAME)
     parser.add_argument("--no-grids", action="store_true")
+    parser.add_argument("--no-roster", action="store_true")
     parser.add_argument("--threshold", type=float, default=POSTERIOR_THRESHOLD)
     parser.add_argument(
         "--primary", choices=("label_model", "rule"), default="label_model"
@@ -533,8 +565,10 @@ def main() -> None:
         else write_grids(labelled, primary_column, OUT / args.list_name)
     )
     write_indicator_csvs(labelled[labelled.assessed], root() / "indicators")
+    n_roster = 0 if args.no_roster else write_roster(labelled[labelled.assessed])
     print(
-        f"{len(eligible)} eligible shots, {len(table)} intervals, {n_grid} grids; "
+        f"{len(eligible)} eligible shots, {len(table)} intervals, {n_grid} grids, "
+        f"{n_roster} roster shots; "
         f"structure {best}; implied accuracies "
         + ", ".join(
             f"{k} {v['implied_accuracy']:.2f}" for k, v in model.accuracies().items()

@@ -26,7 +26,8 @@ indicator's vote withheld (leave-one-out): a state is certain only where both
 others are valid. The label model was fitted on non-test shots only; metrics are
 given on every shot, on the fitting shots and on the cohort's test split alone.
 
-Failure analysis follows: where the indicators go wrong, by ELM share and heating
+The label is also checked against divertor Thomson Te (`divertor_te_check`), which
+no indicator reads. Failure analysis follows: where the indicators go wrong, by ELM share and heating
 power, and the known limits of each (see `docs/labeler/detachment.md`).
 """
 
@@ -217,6 +218,51 @@ def auroc_ci(frame, name, reference, rng) -> dict:
     }
 
 
+#: Divertor electron temperature (eV) under which the plasma at the plate is cold
+#: enough to be detached (the physical definition, Description in the README).
+TE_DETACHED_EV = 5.0
+
+
+def te_check(frame: pd.DataFrame, lm_state: np.ndarray, rng) -> dict:
+    """The label against divertor Thomson Te, which no indicator reads.
+
+    `aux_te_div` is the highest of the divertor Thomson real-time points in the
+    bin (a plate cooler than 5 eV everywhere has none above it). Per state: the
+    bins with a Te, its quartiles and the share below `TE_DETACHED_EV`; and the
+    AUROC of Te (low = detached) for detached against attached bins, with a shot
+    bootstrap. A weak, independent check: the real-time points are sparse and the
+    peak over them is not the strike-point Te.
+    """
+    te = frame.aux_te_div.to_numpy(dtype=float)
+    out = {"threshold_ev": TE_DETACHED_EV, "by_state": {}}
+    for state in (*STATES, core.UNCERTAIN):
+        x = te[(lm_state == state) & np.isfinite(te)]
+        if len(x):
+            out["by_state"][core.STATE_NAMES[state]] = {
+                "n_bins": len(x),
+                "te_quartiles_ev": [float(v) for v in np.percentile(x, [25, 50, 75])],
+                "share_below_threshold": float(np.mean(x < TE_DETACHED_EV)),
+            }
+    ok = np.isfinite(te) & np.isin(lm_state, (core.ATTACHED, core.DETACHED))
+    score, positive = -te[ok], lm_state[ok] == core.DETACHED
+    shots = frame.shot.to_numpy()[ok]
+    by_shot = {s: np.flatnonzero(shots == s) for s in np.unique(shots)}
+    keys = list(by_shot)
+    draws = []
+    for _ in range(REPLICATES):
+        pick = rng.integers(0, len(keys), len(keys))
+        idx = np.concatenate([by_shot[keys[j]] for j in pick])
+        draws.append(auroc(score[idx], positive[idx]))
+    lo, hi = np.nanpercentile(draws, [2.5, 97.5])
+    out["auroc_detached_vs_attached"] = {
+        "value": auroc(score, positive),
+        "ci95": [float(lo), float(hi)],
+        "n_bins": int(ok.sum()),
+        "n_shots": len(keys),
+    }
+    return out
+
+
 def failure_analysis(frame, lm_state) -> dict:
     """Where each indicator goes wrong; every number is a count or a fraction."""
     out = {}
@@ -382,6 +428,8 @@ def main() -> None:
                 entry["n_shots"] = int(sub.shot.nunique())
                 result["indicators"][name].setdefault(ref_name, {})[subset] = entry
     result["failure_analysis"] = failure_analysis(frame, lm_state)
+    if "aux_te_div" in frame:
+        result["divertor_te_check"] = te_check(frame, lm_state, rng)
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(json.dumps(result, indent=1))
     for name in LF_NAMES:
