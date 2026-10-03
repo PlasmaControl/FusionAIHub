@@ -11,8 +11,8 @@ described in `labeler.elm.dsm`:
    validation rows (upstream calls them test),
    split, AUROC at 5, 10, 20 and 50 ms of "an ELM within `h` ms" with 95 % shot
    intervals; the point values are checked against the training record's.
-2. **DSM refit, limited inputs (60 of the original 124)**: its 50 ms risk before a bin,
-   score ("an ELM starts in the next 50 ms"). The model is not retrained; the hard call
+2. **elm-dsm refit**: an offline 50 ms forward-risk score with 25 ms centered-NBI
+   lookahead, not a causal forecast. The model is not retrained; the hard call
    uses the threshold that maximises F1 on the fold's inner-validation shots (the same
    shots `elm-ours` used), applied to the fold's held-out shots.
 3. **elm-dsm-detect, objective changed to detection**: the same inputs and embedding
@@ -165,7 +165,7 @@ def evaluate_set(
     for name, row in out["methods"].items():
         row["display_name"] = compare.DISPLAY_NAME.get(name, name)
         if row["point"].get("recall", 0) >= 0.99:
-            row["f1_degenerate_high_recall"] = True
+            row["high_recall"] = True
     out["risk_quantiles_scored_forecast_bins"] = dsm.risk_quantiles(
         np.concatenate(
             [
@@ -257,6 +257,8 @@ def provenance(paths, work, oof, rows):
         "script": Path(__file__),
         "dsm_library": REPO / "src/labeler/elm/dsm.py",
         "compare_library": REPO / "src/labeler/elm/compare.py",
+        "methods_library": REPO / "src/labeler/elm/methods.py",
+        "score_library": REPO / "src/labeler/elm/score.py",
         "review_labels": paths.label_tables / "edge_localized_mode/review/labels.csv",
         "cohort": paths.catalog / "cohort.csv",
         "refit_checkpoint": paths.models / dsm.SLUG / spec.ARTIFACTS[0],
@@ -438,10 +440,17 @@ def main(argv=None) -> int:
         action="store_true",
         help="correct original-refit phase IDs and own-target intervals without fitting",
     )
+    ap.add_argument(
+        "--refresh-report",
+        action="store_true",
+        help="rescore saved fits with updated disclosures and span metrics",
+    )
     args = ap.parse_args(argv)
     paths = Paths.from_env()
     if args.refresh_own_target:
         return refresh_own_target(paths, args.out_dir)
+    if args.refresh_report and not args.rescore:
+        ap.error("--refresh-report requires --rescore")
     annotate_prefetch_record()
     work = paths.root / "round4" / "elm" / "dsm"
     torch.set_num_threads(4)
@@ -508,14 +517,30 @@ def main(argv=None) -> int:
         "display_name": dsm.DISPLAY_NAME,
         "method_display_names": compare.DISPLAY_NAME,
         "provenance": fits.get("provenance"),
+        "evaluation_provenance": provenance(paths, work, oof, rows),
+        "evaluation_role": "saved-score rescore" if args.rescore else "fresh fit",
         "own_target_correction": fits.get("own_target_correction"),
         "prefetch_evaluation": str(OUT / "prefetch_evaluation.json"),
         "model_context": {
             "original_input_columns": 124,
             "refit_input_columns": dsm.N_COLUMNS,
             "photodiode_columns": "pcphd02 and pcphd03 mean-filled on every shot",
-            "legacy_training_source": "Hiro ELM survival/onset labels on its original split",
-            "serving_changes": "25 ms rows, mean-filled missing inputs, |z| clipped at 10",
+            "legacy_training_source": "wpqh_elm_hiro legacy onset/survival labels",
+            "serving_changes": "50 ms-mean serving on a 25 ms grid of a 1 ms-trained "
+            "model; no D-alpha input (pcphd02/03 mean-filled); CO2 missing on 75/119; "
+            "|z| clipped at 10",
+            "training_resolution_note": "1 ms refers to the source survival fit; "
+            "detection heads are refitted on reviewed 50 ms-mean rows.",
+            "serving": dsm.SERVING,
+            "preprocessing_exposure": dsm.PREPROCESSING_EXPOSURE,
+            "temporal_interpretation": "Offline risk score with 25 ms centered-NBI "
+            "lookahead (not a causal forecast)",
+            "normalization_exposure": "EVERY DSM variant uses upstream normalization "
+            "constants computed before the upstream split, including blind-cohort "
+            "source shots 190646 and 190532. This is feature-statistics exposure; "
+            "reviewed-label detector folds exclude cohort test shots.",
+            "normalization_source": "/projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/"
+            "data_processing.ipynb:4406 (normalization before upstream split)",
             "scope": "limited-input refit; no original 124-input checkpoint evaluated",
         },
         "own_target": own,
@@ -536,7 +561,7 @@ def main(argv=None) -> int:
     trained_record = args.out_dir / "evaluation_trained.json"
     if not args.rescore:
         trained_record.write_text(json.dumps(record, indent=1))
-    elif trained_record.exists():
+    elif trained_record.exists() and not args.refresh_report:
         repeated = verify_rescore(json.loads(trained_record.read_text()), record)
         repeated["fit_record"] = str(trained_record)
         repeated["rescore_record"] = str(args.out_dir / "evaluation.json")

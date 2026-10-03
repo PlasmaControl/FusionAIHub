@@ -11,6 +11,7 @@ review table, to `$LABELER_ROOT/round4/elm/inputs`.
 from __future__ import annotations
 
 import argparse
+import json
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
@@ -40,6 +41,9 @@ def _one(job: tuple[int, Path, Path]) -> tuple[int, int]:
     shot, source, target = job
     x = inputs.read_channels(source)
     np.save(target, x)
+    target.with_suffix(".metadata.json").write_text(
+        json.dumps(inputs.read_metadata(source), indent=2) + "\n"
+    )
     return shot, x.shape[1]
 
 

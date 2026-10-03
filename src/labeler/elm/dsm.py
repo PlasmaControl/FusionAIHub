@@ -2,17 +2,17 @@
 
 The model is Deep Survival Machines (auton-survival, LogNormal, three components, a
 128-unit ReLU6 embedding with dropout 0.2) fitted by the labeler on the ELM survival
-rows of the `wpqh_elm_hiro` project: 60 non-BES columns on a 25 ms grid, risk of an
-ELM within 5, 10, 20 and 50 ms. Three things are done with it here.
+rows of the `wpqh_elm_hiro` project: 60 non-BES columns trained on 1 ms rows,
+served as 50 ms means on a 25 ms grid. Three things are done with it here.
 
 * **Own target** (`legacy_own_target`): the limited-input refit on its original
   early-stopping validation rows (upstream calls them test), the time to the next ELM,
   AUROC at each horizon with 95 % physical-shot-bootstrap intervals. Upstream split
   identifiers name phases, and phases of one physical shot can occur on both sides.
-* **Survival refit on the reviewed bins**: the model served from the corpus as
+* **elm-dsm refit on the reviewed bins**: the model served from the corpus as
   `labeler.models.d3d_elm_time_to_event_dsm` serves it (`shot_rows`), its 50 ms risk at
-  a bin's start read as the bin's score: "will an ELM start in the next 50 ms",
-  asked before the bin begins.
+  a bin's start read as the bin's score. This is an offline risk score: centered
+  NBI smoothing incorporates a row 25 ms later, so it is not a causal forecast.
 * **Detection** (`Detector`, `fit_fold`): the same inputs and embedding with a single
   logit in place of the survival heads, trained with cross-entropy to say whether the
   50 ms ending at a row's time stamp is present (ELMy) or absent in the review: the
@@ -24,12 +24,17 @@ ELM within 5, 10, 20 and 50 ms. Three things are done with it here.
 `[t - 50, t)` mean), so the row at a bin's end summarises the bin and the row at its
 start the bin before it.
 
-This is **DSM refit, limited inputs (60 of the original 124)**, not the original
+This is **elm-dsm refit, 60 of the original 124 inputs**, not the original
 124-input checkpoint. Missing `ip` and `bt` can be fetched into the isolated round-four
 store by `elm_dsm_fetch.py`; no corpus or production feature file is changed. Remaining
 missing columns, including the two photodiodes (`pcphd02/03`) on every shot, are filled
 at the training mean. Inputs outside the refit's row filter are clipped rather than
 dropped; the evaluation records missingness, filter failures and the risk scale.
+
+All three variants (elm-dsm refit, elm-dsm detection, elm-dsm detection init)
+use upstream feature means and standard deviations computed before its split.
+They inherit feature-statistics exposure to blind-cohort shots 190532 and 190646;
+this is not reviewed-label leakage. We disclose it rather than retrain preprocessing.
 """
 
 from __future__ import annotations
@@ -60,7 +65,30 @@ SPLIT_PKL = Path("/projects/EKOLEMEN/wpqh_elm_hiro/data/train_test_split_model10
 HORIZONS_MS = spec.HORIZONS_MS
 T_OFFSET_MS = spec.T_OFFSET_MS
 N_COLUMNS = len(spec.COLUMNS)
-DISPLAY_NAME = "DSM refit, limited inputs (60 of the original 124)"
+DISPLAY_NAME = "elm-dsm refit"
+SERVING = {
+    "interpretation": "offline risk score, not a causal forecast",
+    "source_refit_trained_row_ms": 1.0,
+    "detection_trained_window_ms": spec.SERVING_WINDOW_MS,
+    "training_note": (
+        "survival refit trained on source 1 ms rows; detection variants refitted "
+        "on reviewed 50 ms-mean rows"
+    ),
+    "serving_window_ms": spec.SERVING_WINDOW_MS,
+    "serving_grid_ms": spec.DT_S * 1000.0,
+    "nbi_boxcar_ms": spec.NBI_BOXCAR_MS,
+    "nbi_lookahead_ms": spec.NBI_LOOKAHEAD_MS,
+    "dalpha_input": "none; pcphd02/03 always mean-filled",
+}
+PREPROCESSING_EXPOSURE = {
+    "applies_to": ["elm-dsm refit", "elm-dsm detection", "elm-dsm detection init"],
+    "scope": "upstream feature means/std computed before source split",
+    "normalization_physical_shots": len(spec.NORMALIZATION_SHOTS),
+    "blind_cohort_shots": spec.MEMBERSHIP["blind_cohort_normalization_shots"],
+    "source": spec.MEMBERSHIP["normalization_source"],
+    "role": "feature-statistics exposure, independent of reviewed-label CV",
+    "decision": "disclose existing preprocessing; no retraining",
+}
 ROWS_SCHEMA = 2
 ROW_T_MS = ns.GRID_S * 1000.0
 WINDOW_MS = methods.WINDOW_MS
@@ -345,6 +373,8 @@ def row_diagnostics(rows: dict[int, Rows], risk: dict[int, np.ndarray]) -> dict:
         "display_name": DISPLAY_NAME,
         "input_columns": N_COLUMNS,
         "original_input_columns": 124,
+        "serving": SERVING,
+        "preprocessing_exposure": PREPROCESSING_EXPOSURE,
         "usable_rows": usable,
         "outside_training_filter_usable_rows": outside,
         "outside_training_filter_usable_row_share": outside / usable

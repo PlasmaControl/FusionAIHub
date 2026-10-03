@@ -2,7 +2,6 @@
 language: en
 license: other
 library_name: pytorch
-pipeline_tag: time-series-forecasting
 tags:
   - diii-d
   - tokamak
@@ -13,7 +12,7 @@ datasets:
 metrics:
   - concordance_index
 model-index:
-  - name: d3d-elm-time-to-event-dsm
+  - name: elm-dsm
     results: []
 labelmaker:
   status: implemented
@@ -22,6 +21,31 @@ labelmaker:
   framework: dsm_pickle
   time_step_ms: 25.0
   ensemble_n: 1
+  display_name: elm-dsm refit
+  membership:
+    source: training_membership.json
+    physical_training_shots: 300
+    physical_early_stopping_shots: 80
+    physical_normalization_shots: 365
+    physical_shots_shared_by_training_and_early_stopping: 15
+    exposed_physical_shots: 365
+    blind_cohort_normalization_shots: [190532, 190646]
+    validation_policy: >-
+      adapter.training_shots includes weight-training, early-stopping and
+      pre-split normalization exposure. General validation's in_training subset
+      means source-exposed for this adapter; no exposed shot is held_out.
+  serving:
+    interpretation: offline risk score, not a causal forecast
+    trained_row_ms: 1.0
+    serving_window_ms: 50.0
+    serving_grid_ms: 25.0
+    centered_nbi_lookahead_ms: 25.0
+  preprocessing_exposure:
+    applies_to: [elm-dsm refit, elm-dsm detection, elm-dsm detection init]
+    scope: upstream means and standard deviations computed before the source split
+    blind_cohort_shots: [190532, 190646]
+    role: feature-statistics exposure, independent of reviewed-label CV
+    decision: disclose existing preprocessing; no retraining
   upstream:
     path: /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/d3d_elm_time_to_event_dsm
     artifacts:
@@ -116,9 +140,8 @@ labelmaker:
       fetch. Chord order r0/v1/v2/v3 confirmed by rank: on shot 199421 the
       corpus chords order v1 > v2 > r0 > v3, which is upstream's own ordering of
       those four columns' training means."
-    - "the grid: upstream's rows are 1 ms means, labeler's are 25 ms means
-      (the archive's 50 ms boxcar ending at t). A sampling change, not a model
-      change - no weight and no normalisation constant differs."
+    - "the serving inputs are 50 ms means ending at each timestamp on a 25 ms
+      grid; the refit was trained on upstream's 1 ms rows."
     - "upstream's 100 ms boxcar on the raw pinj and tinj columns (NBI is
       modulated) is reproduced as a 4-tap centred moving average on the 25 ms
       grid."
@@ -127,22 +150,24 @@ labelmaker:
     - "2026-09-06: and the order of the SPLIT PICKLE is new_diagnostic_order, measured to 1.2e-12; see upstream.notes"
     - "2026-09-05: the embedding does bake in its own normalisation in the Keras graphs; labeler's own fit uses upstream's normalizations dict instead, written to normalization.json"
     - "2026-09-05: the graph is structurally identical to d3d_tearing_time_to_event_dsm, so runners/dsm_pickle.survival() applies verbatim"
-    - "2026-09-06: the aggregation from the 1 ms training grid to labeler's 25 ms grid is a sampling change; the risk is read at h + 1 ms"
+    - "The 1 ms-trained refit is served with 50 ms means on a 25 ms grid; risk is read at h + 1 ms. Centered NBI smoothing includes the row 25 ms later, so scores are offline."
     - "2026-09-06: the DSM head becomes a label series as 1 - S(h + 1) at four horizons, not as an expected time to event"
     - "2026-09-06: BES is droppable after all - with the columns identified correctly the 60-column fit BEATS the 124-column one"
   blocked_on:
     - "the fit is a one-epoch model at lr 1e-3 and at lr 1e-4 alike; a model worth trusting numerically needs sub-epoch checkpointing (validate every N minibatches), which no run has done yet"
     - "pcphd02 / pcphd03 have no corpus group, so 2 of 60 columns are mean-filled on every row of every shot; serving them would need an fdp/toksearch PTDATA fetch of the two photodiodes"
     - "labeler's own validation (adapter fidelity, reconstruction fidelity, label quality) has not been run for this slug; the numbers below are upstream-population numbers only"
-    - "the training-shot list is not committed, so `validate` reports every pool shot as held out"
     - "corpus coverage: only 6 of the 24 sampled corpus shots have all 11 inputs, so 18 produce labels with no valid row at all. co2 is corpus:SignalAbsent below shot 198279 (12 of 24) and pinj_total/tinj_total have no fdp source in namespace.py, only archive+corpus (11 of 24). Serving the corpus properly needs an fdp NBI fetch and a decision about pre-198279 CO2"
 ---
 
-# plasmacontrol/d3d-elm-time-to-event-dsm
+# elm-dsm refit
 
-**Status: implemented.** Probability that an ELM occurs within 5, 10, 20 and
-50 ms, on labeler's 25 ms grid, from a Deep Survival Machines model
-labeler fitted itself.
+**Status: implemented.** Offline ELM risk scores at 5, 10, 20 and 50 ms, from a
+Deep Survival Machines refit. Serving uses 50 ms means on a 25 ms grid for a
+model trained on 1 ms rows. The centered NBI boxcar incorporates the row 25 ms
+later, so these scores do not support causal forecasting claims. The paper's
+short names are `elm-dsm refit`, `elm-dsm detection` and `elm-dsm detection init`;
+the existing adapter slug remains `d3d_elm_time_to_event_dsm` for compatibility.
 
 ## Model details
 
@@ -234,6 +259,23 @@ slug, are upstream-population numbers only.
 4. **One-epoch model.** See Evaluation.
 5. **Never validated on labeler's own pool.** `validate` has not been run
    for this slug, so nothing here says how these labels behave on corpus shots.
+6. **Pre-split feature exposure in every DSM variant.** The normalization
+   constants were computed over all 365 source physical shots before the
+   upstream split, including blind-cohort shots 190532 and 190646. The refit,
+   scratch detection model and initialized detection model all use them. This
+   is feature-statistics exposure, independent of reviewed-label CV. Existing
+   scores retain these constants and disclose the exposure; preprocessing has
+   not been retrained within folds.
+
+`training_membership.json` records source hashes and separate physical-shot
+roles: 300 weight-training shots, 80 early-stopping shots, 15 physical shots on
+both sides, and 365 normalization-exposed shots. These IDs are decoded from
+upstream `<shot>_<phase>` identifiers. General validation's `in_training` subset
+uses the union of all three roles, so source-exposed shots are never labelled
+held out. The refit overlaps reviewed labels on shots 190637, 190643, 192721,
+192751 and 196541; comparisons on those shots are in sample for the survival
+weights and labels. The normalization source is `compiled_model10.pkl`, with
+`model10_norms` computed over `final_x` in `data_processing.ipynb` before split.
 
 ## Training details
 
@@ -241,7 +283,11 @@ Rows are upstream's: 1 ms samples inside wide-pedestal QH phases, `t` is ms to
 the next ELM as a sawtooth and `e = 1` at an ELM; NaN to 0, CO2 outside
 `[0, 1e15]` dropped, a 100 ms boxcar on `pinj` and `tinj`, and `|z| > 10` rows
 dropped on every column except the two photodiodes. The split is upstream's own
-by-shot 80/20 at seed 0, read as-is and never re-split.
+phase-record 80/20 at seed 0, read as-is and never re-split. It is not a disjoint
+physical-shot split: 15 physical shots have phases on both sides. Its test rows
+were used for early stopping and model/input-set selection, so evaluation on
+them is selection-informed validation evidence. Normalization was computed
+before this split.
 
 Two upstream defects worth knowing: `train_elm_model.py` has train and test
 **swapped** (it trains on the last 10% of shots), and an earlier version of

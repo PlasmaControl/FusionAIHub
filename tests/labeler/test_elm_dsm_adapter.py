@@ -60,6 +60,22 @@ def test_the_card_matches_the_spec_and_the_model_is_implemented():
     assert registry.card_discrepancies("d3d_elm_time_to_event_dsm") == []
 
 
+def test_exposed_physical_shots_cannot_be_reported_as_held_out():
+    # 190643 is both an upstream training and early-stop physical shot;
+    # 190532 and 190646 are blind-cohort shots exposed to source statistics.
+    assert len(elm.TRAINING_SHOTS) == 300
+    assert len(elm.EARLY_STOPPING_SHOTS) == 80
+    assert len(elm.NORMALIZATION_SHOTS) == 365
+    assert 190643 in elm.TRAINING_SHOTS & elm.EARLY_STOPPING_SHOTS
+    assert {190532, 190646} <= elm.ADAPTER.training_shots
+    assert elm.ADAPTER.training_shots == (
+        elm.TRAINING_SHOTS | elm.EARLY_STOPPING_SHOTS | elm.NORMALIZATION_SHOTS
+    )
+    provenance = registry.read_card(elm.SLUG)["labelmaker"]["membership"]
+    assert provenance["exposed_physical_shots"] == len(elm.ADAPTER.training_shots)
+    assert provenance["blind_cohort_normalization_shots"] == [190532, 190646]
+
+
 def _norm(mean=0.0, std=1.0):
     return {"columns": list(COLUMNS),
             "mean": [float(mean)] * len(COLUMNS),
@@ -177,6 +193,9 @@ def test_predict_is_one_minus_survival_at_the_horizon_plus_one_millisecond(
     assert attrs["queried_at_ms"] == "21.0"
     assert attrs["mean_filled_columns"] == "pcphd02_downsampled,pcphd03_downsampled"
     assert attrs["trained_grid_ms"] == "1.0"
+    assert attrs["serving_window_ms"] == "50.0"
+    assert attrs["nbi_lookahead_ms"] == "25.0"
+    assert attrs["score_interpretation"] == "offline risk score"
 
 
 def test_predict_narrows_the_validity_mask_in_place(tmp_path, monkeypatch):

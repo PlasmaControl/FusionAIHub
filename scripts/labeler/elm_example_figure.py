@@ -27,13 +27,13 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from labeler.config import Paths, git_sha
-from labeler.elm import compare, inputs, methods, train
+from labeler.config import Paths, git_sha, sha256_of
+from labeler.elm import compare, inputs, methods, prepare, train
 
 WINDOW_MS = 1500.0
 LEAD_MS = 100.0
 #: Okabe-Ito colours: crowd, non-crowd, absent, probability, ELM-O, clock.
-CROWD, NON_CROWD, ABSENT = "#E69F00", "#0072B2", "#999999"
+CROWD, NON_CROWD, ABSENT = "#E69F00", "#CC79A7", "#999999"
 PROB, ELMO, CLOCK = "#009E73", "#CC79A7", "#56B4E9"
 
 
@@ -146,6 +146,8 @@ def draw_shot(axes, shot, data, sets, oof, elmo, clock, panel) -> dict:
         "window_ms": [t0, t1],
         "dalpha_limits_log10_au": list(ax.get_ylim()),
         "probability_limits": list(bx.get_ylim()),
+        "fold": int(oof.fold_of[shot]),
+        "inner_validation_threshold": float(oof.threshold[shot]),
     }
     if shot == 200427 and t0 <= 2690.0 and t1 >= 2760.0:
         text = "Reviewed non-crowd present span\n2690–2760 ms; D-alpha drop"
@@ -190,6 +192,15 @@ def main(argv: list[str] | None = None) -> int:
         panels.append(
             draw_shot(axes[:, i], shot, data, sets, oof, elmo, clock, "ab"[i])
         )
+        fold = oof.fold_of[shot]
+        panels[-1]["records"] = {
+            role: {"path": str(path), "sha256": sha256_of(path)}
+            for role, path in {
+                "input": prepare.inputs_dir(paths) / f"{shot}.npy",
+                "prediction": oof.dir / "pred" / f"{shot}.npz",
+                "fold_threshold": oof.dir / f"fold{fold}" / "fold.json",
+            }.items()
+        }
     handles = [
         plt.Rectangle((0, 0), 1, 1, color=CROWD, alpha=0.25, lw=0),
         plt.Rectangle((0, 0), 1, 1, color=NON_CROWD, alpha=0.5, lw=0),
@@ -206,13 +217,13 @@ def main(argv: list[str] | None = None) -> int:
         "elm-ours probability",
         "CV threshold",
         "ELM-O detections (ticks)",
-        "ELM clock present spans",
+        "elm-clock present spans",
     ]
     fig.legend(
         handles[:3],
         names[:3],
         loc="lower center",
-        bbox_to_anchor=(0.5, 0.07),
+        bbox_to_anchor=(0.5, 0.08),
         ncol=3,
         fontsize=7.5,
         frameon=False,
@@ -223,19 +234,21 @@ def main(argv: list[str] | None = None) -> int:
         handles[3:],
         names[3:],
         loc="lower center",
-        bbox_to_anchor=(0.5, 0.01),
+        bbox_to_anchor=(0.5, 0.03),
         ncol=4,
         fontsize=7.5,
         frameon=False,
         columnspacing=1.0,
         handlelength=1.4,
     )
-    fig.tight_layout(rect=(0, 0.16, 1, 1))
+    fig.tight_layout(rect=(0, 0.1, 1, 1))
     for ext in ("pdf", "png"):
         fig.savefig(out_dir / f"fig_elm_examples.{ext}", dpi=150)
     info.update(
         {
             "git": git_sha(),
+            "source_sha256": sha256_of(Path(__file__)),
+            "run_record_sha256": sha256_of(oof.dir / "run.json"),
             "run": args.run,
             "shots": [int(s) for s in shots],
             "figure": str(out_dir / "fig_elm_examples.pdf"),
@@ -245,6 +258,11 @@ def main(argv: list[str] | None = None) -> int:
             "minimum_font_pt_at_placement": 7.0,
             "png_dpi": 150,
             "panels": panels,
+            "source_records": {
+                str(s): inputs.read_metadata(prepare.signals_dir(paths) / f"{s}.npz")
+                for s in shots
+            },
+            "plotted_heads": ["occupancy"],
             "axes": {
                 "x": "time in shot (ms)",
                 "dalpha": "FS02 log10 a.u.; source physical units unconfirmed",
@@ -266,9 +284,15 @@ def main(argv: list[str] | None = None) -> int:
                 "units are unconfirmed. Shading marks reviewed crowd, non-crowd "
                 "present and absent spans. Non-crowd spans are not verified "
                 "isolated ELMs. Bottom: out-of-fold elm-ours event probability "
-                "and the threshold selected on inner-validation shots, ELM-O "
+                "and the threshold selected on inner-validation shots. "
+                f"Panel (a) uses fold {panels[0]['fold']} and threshold "
+                f"{panels[0]['inner_validation_threshold']:.3f}; panel (b) uses "
+                f"fold {panels[1]['fold']} and threshold "
+                f"{panels[1]['inner_validation_threshold']:.3f}. They differ "
+                "because each held-out fold has its own inner-validation set. "
+                "Also shown are ELM-O "
                 "detections (short detections drawn as ticks), and the original "
-                "ELM clock present spans. The review began from that clock and "
+                "elm-clock present spans. The review began from that clock and "
                 "is not independent of it. Each window begins 100 ms before the "
                 "first reviewed present span, clipped to input coverage, and "
                 "lasts up to 1500 ms. The annotated 2690–2760 ms span on shot "

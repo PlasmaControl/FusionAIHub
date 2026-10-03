@@ -21,7 +21,7 @@ keeps its height), the interferometers the mean.
   an additive step in it whatever the shot's gain.
 * `fs02_c`, `fs03_c`, `fs04_c`: that channel minus its running median over
   `BASELINE_S` (0.5 s), the contrast against the shot's own baseline.
-* `ne2f`, `ne3f`: the line density in units of 1e14 m^-2, clipped to
+* `ne2f`, `ne3f`: the fast chord's native ordinate divided by 1e14, clipped to
   `[-3, 12]`. A chord whose median magnitude exceeds `BAD_DENSITY` is a failed
   digitiser (194445 reads 1e18) and is set to zero.
 * `ne2f_hp`, `ne3f_hp`: ten times the density minus its running mean over
@@ -29,14 +29,22 @@ keeps its height), the interferometers the mean.
 * `valid`: 1 where both records have samples in the cell.
 
 A cell without samples is zero in every row but `valid`.
+
+The fetched legacy NPZ records do not retain source ordinate-unit metadata, so
+the physical density unit is unverified. The 1e14 divisor is an input scale, not
+an SI conversion; no numerical rescaling is justified from the signal magnitude.
+`read_metadata` preserves source metadata when available and records that gap.
 """
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import numpy as np
 from scipy.ndimage import median_filter, uniform_filter1d
+
+from ..config import sha256_of
 
 GRID0_MS = -50.0
 DT_MS = 0.1
@@ -70,6 +78,8 @@ FS_CONTRAST = (3, 4, 5)
 DENSITY = (6, 7)
 DENSITY_HP = (8, 9)
 VALID = 10
+INTERFEROMETER = (r"\BCI::DENV2F", r"\BCI::DENV3F")
+FILTERSCOPES = tuple(rf"\SPECTROSCOPY::FS{i:02d}" for i in (2, 3, 4))
 
 
 def block_reduce(
@@ -175,6 +185,38 @@ def read_channels(path: Path) -> np.ndarray:
         return channels(
             z["t_fs_ms"], z["filterscopes"], z["t_int_ms"], z["interferometer"]
         )
+
+
+def read_metadata(path: Path) -> dict:
+    """Retained source metadata and numerical-scale provenance of a cached record.
+
+    Legacy files lack ordinate metadata. Do not infer units from magnitudes or
+    from the separate slow CO2 diagnostic; preserve the uncertainty explicitly.
+    This function never transforms samples or changes `read_channels`.
+    """
+    path = Path(path)
+    with np.load(path, allow_pickle=False) as z:
+        source = json.loads(str(z["source_metadata"])) if "source_metadata" in z else {}
+    out = dict(source)
+    out["source_record"] = {"path": str(path), "sha256": sha256_of(path)}
+    for name, tree, points in (
+        ("interferometer", "bci", INTERFEROMETER),
+        ("filterscopes", "SPECTROSCOPY", FILTERSCOPES),
+    ):
+        attrs = dict(out.get(name, {}))
+        attrs.setdefault("tree", tree)
+        attrs.setdefault("channels", list(points))
+        attrs.setdefault("time_units", "ms")
+        attrs.setdefault("ordinate_units", [None] * len(points))
+        verified = all(unit for unit in attrs["ordinate_units"])
+        attrs["unit_status"] = (
+            "retained from source metadata" if verified
+            else "unverified: source ordinate metadata absent"
+        )
+        out[name] = attrs
+    out["interferometer"]["input_divisor_native_units"] = DENSITY_UNIT
+    out["interferometer"]["physical_rescaling_applied"] = False
+    return out
 
 
 def valid_intervals(valid: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
