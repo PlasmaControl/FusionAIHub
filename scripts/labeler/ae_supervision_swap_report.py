@@ -22,6 +22,43 @@ def metric_cell(metric: dict, *, latex: bool = False) -> str:
 def interpretation(record: dict) -> list[str]:
     """Describe supervision effects and clean-selection rankings from saved scores."""
     lines = ["", "## Interpretation", ""]
+    fair = record["results"]["fair_19"]["references"]
+    for baseline in ("ae-rcn", "ae-lstm"):
+        key = f"ae-ours-threeway minus {baseline}"
+        dense = fair["dense"]["seed_summary"]["paired_differences"][key]["auroc"]
+        legacy = fair["legacy"]["seed_summary"]["paired_differences"][key]["auroc"]
+        resolved = dense["ci95"][0] > 0 and legacy["ci95"][1] < 0
+        conclusion = (
+            "The clean-selection AUROC ranking reversal is supported by both "
+            "paired intervals."
+            if resolved
+            else "The paired intervals do not resolve an AUROC ranking reversal."
+        )
+        lines += [
+            f"On the shared 19 shots, threeway ae-ours minus {baseline} is "
+            f"{metric_cell(dense)} against dense and {metric_cell(legacy)} "
+            f"against legacy. {conclusion}",
+            "",
+        ]
+    for cohort, label in (("all_60", "60 shots"), ("fair_19", "shared 19 shots")):
+        metrics = record["results"][cohort]["references"]["dense"]["seed_summary"][
+            "paired_differences"
+        ]["ae-ours-dense minus ae-ours-threeway"]
+        unresolved = all(m["ci95"][0] <= 0 <= m["ci95"][1] for m in metrics.values())
+        conclusion = (
+            "None of these paired intervals resolves an improvement over threeway."
+            if unresolved
+            else "Interpret each improvement using its paired interval."
+        )
+        lines += [
+            f"Dense-supervised minus threeway ae-ours on the {label}, against dense: "
+            + "; ".join(
+                f"{m.upper()} {metric_cell(metrics[m])}"
+                for m in ("auroc", "auprc", "f1")
+            )
+            + f". {conclusion}",
+            "",
+        ]
     for cohort, label in (("all_60", "60 shots"), ("fair_19", "shared 19 shots")):
         for reference, result in record["results"][cohort]["references"].items():
             summary = result["seed_summary"]
@@ -45,7 +82,6 @@ def interpretation(record: dict) -> list[str]:
                 f"against {reference}: " + "; ".join(effects) + ".",
                 "",
             ]
-    fair = record["results"]["fair_19"]["references"]
     for reference, result in fair.items():
         methods = result["seed_summary"]["methods"]
         for metric in ("auroc", "auprc", "f1"):
@@ -62,6 +98,15 @@ def interpretation(record: dict) -> list[str]:
                 "",
             ]
     lines += [
+        (
+            "Legacy supervision has substantial observed training variability. "
+            "Its seed 2 selected epoch 2 under the unchanged combined-loss rule; "
+            "all completed seeds remain in the mean, SD and pooled intervals. "
+            "The contrasts estimate behavior under this frozen training and "
+            "selection recipe, including early stopping and target-specific "
+            "calibration, rather than the best achievable legacy-trained model."
+        ),
+        "",
         (
             "These rankings use clean selection for every ae-ours arm. Their "
             "paired intervals above determine which gaps remain uncertain; a "
@@ -192,7 +237,7 @@ def render_report(record: dict, manifest: dict, out: Path, repo: Path) -> None:
             "the observed across-seed SD includes environment variation."
         ),
     ]
-    doc += ["", "Older selection thresholds:"]
+    doc += ["", "Older selection thresholds:", ""]
     for name in ("ae-rcn", "ae-lstm"):
         threshold = record["thresholds"][name]
         doc.append(
