@@ -44,6 +44,10 @@ def main():
     end = subprocess.check_output(
         ["git", "rev-parse", "--short", "HEAD"], cwd=REPO, text=True
     ).strip()
+    test_tail = "\n".join(
+        Path(validation["covering_test_log"]).read_text().splitlines()[-8:]
+    )
+    lint_tail = "\n".join(Path(validation["lint_log"]).read_text().splitlines()[-8:])
     lines = [
         "",
         "## Fix round 2",
@@ -291,6 +295,10 @@ def main():
         + ". Long jobs used timeout and logs; "
         "tmpsweep ran after jobs. Only covering tests ran. Required CPU commands "
         "used pixi --frozen --no-install; CUDA jobs used assigned GPU 1.",
+        "",
+        "Test output tail:\n\n```text\n" + test_tail + "\n```",
+        "",
+        "Lint/format output tail:\n\n```text\n" + lint_tail + "\n```",
         "",
         (
             "UI paths and core schemas are stable. HANDOFF.md lists additive "

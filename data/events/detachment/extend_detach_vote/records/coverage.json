@@ -2,65 +2,64 @@
  "n_shots_with_bins": 470,
  "n_bins": 50032,
  "afrac": {
-  "valid_bins": 3590,
-  "shots_with_valid_bins": 45,
-  "shots_with_20_valid_bins": 45,
+  "valid_bins": 0,
+  "shots_with_valid_bins": 0,
+  "shots_with_20_valid_bins": 0,
   "invalid_reason_bins": {
-   "probe_far_from_strike": 21857,
-   "no_attached_regime_reference": 11763,
-   "no_probes": 5378,
-   "elm": 5321,
-   "short_reference": 1260,
-   "low_power": 509,
-   "ramp": 276,
-   "no_power": 63,
-   "no_density": 15
+   "probe_flux_unknown": 33044,
+   "no_positioned_probes": 12135,
+   "probe_far_from_strike": 2327,
+   "probe_not_sol": 1926,
+   "short_reference": 235,
+   "elm_unknown": 230,
+   "no_power": 130,
+   "ramp": 5
   },
   "votes": {
-   "attached": 1500,
-   "detached": 1305,
+   "attached": 0,
+   "detached": 0,
    "marfe": 0
   }
  },
  "prad": {
-  "valid_bins": 21408,
-  "shots_with_valid_bins": 456,
-  "shots_with_20_valid_bins": 370,
+  "valid_bins": 41718,
+  "shots_with_valid_bins": 460,
+  "shots_with_20_valid_bins": 453,
   "invalid_reason_bins": {
-   "elm": 24167,
-   "low_power": 3133,
-   "no_input_power": 1091,
-   "no_bolometer": 233
+   "low_power": 3568,
+   "elm": 2970,
+   "no_input_power": 1313,
+   "no_bolometer": 233,
+   "elm_unknown": 230
   },
   "votes": {
-   "attached": 15459,
-   "detached": 1745,
+   "attached": 30336,
+   "detached": 3647,
    "marfe": 0
   }
  },
  "tangtv": {
-  "valid_bins": 1096,
-  "shots_with_valid_bins": 28,
-  "shots_with_20_valid_bins": 24,
+  "valid_bins": 1791,
+  "shots_with_valid_bins": 41,
+  "shots_with_20_valid_bins": 37,
   "invalid_reason_bins": {
    "no_inversion": 20530,
-   "elm_majority": 13964,
-   "surrogate_domain": 8360,
-   "efit_gap": 3840,
-   "no_frames": 2062,
-   "elm_frame": 180
+   "surrogate_domain": 19192,
+   "efit_gap": 6055,
+   "no_frames": 2462,
+   "efit_missing": 2
   },
   "votes": {
-   "attached": 370,
-   "detached": 507,
-   "marfe": 0
+   "attached": 601,
+   "detached": 892,
+   "marfe": 27
   }
  },
- "n_eligible_shots": 53,
+ "n_eligible_shots": 36,
  "eligible_by_split": {
-  "train": 25,
-  "val": 3,
-  "test": 2,
-  "outside": 23
+  "train": 1,
+  "val": 1,
+  "test": 0,
+  "outside": 34
  }
 }

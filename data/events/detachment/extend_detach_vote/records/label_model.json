@@ -2,40 +2,40 @@
  "bin_ms": 50.0,
  "posterior_threshold": 0.7,
  "fit": {
-  "n_shots": 51,
-  "n_bins": 3719,
+  "n_shots": 36,
+  "n_bins": 1648,
   "excluded_split": "test",
   "method": "anchored: accuracies from the bins where every indicator is valid, class balance fixed at attached 1/2, detached 1/4, marfe 1/4, propensities from all bins; if fewer than 300 anchors, all-bin fallback (unidentified)",
-  "used_anchor": true,
+  "used_anchor": false,
   "physical_accuracy_identified": false,
-  "anchor_bins": 730,
-  "anchor_shots": 15,
+  "anchor_bins": 0,
+  "anchor_shots": 0,
   "anchor_source": "inversion_only",
   "posterior_calibrated": false,
   "all_bins_fit_for_comparison": {
    "afrac": {
-    "acc_weight": 0.3893695915845581,
+    "acc_weight": 1.0,
     "at_weight_bound": false,
     "physical_accuracy_identified": false,
     "calibrated": false,
-    "propensity_weight": 0.3657558579528452,
-    "implied_accuracy": 0.5961309320978888
+    "propensity_weight": 0.0,
+    "implied_accuracy": 0.731058578630005
    },
    "prad": {
-    "acc_weight": 4.0,
-    "at_weight_bound": true,
-    "physical_accuracy_identified": false,
-    "calibrated": false,
-    "propensity_weight": -3.5658363031116775,
-    "implied_accuracy": 0.9820137900379085
-   },
-   "tangtv": {
-    "acc_weight": 1.9511255863568433,
+    "acc_weight": 1.778746570177799,
     "at_weight_bound": false,
     "physical_accuracy_identified": false,
     "calibrated": false,
-    "propensity_weight": -0.8791800905662104,
-    "implied_accuracy": 0.77867790530103
+    "propensity_weight": -2.463147529580362,
+    "implied_accuracy": 0.8555420237067122
+   },
+   "tangtv": {
+    "acc_weight": 3.989868448403699,
+    "at_weight_bound": false,
+    "physical_accuracy_identified": false,
+    "calibrated": false,
+    "propensity_weight": -2.360983257869958,
+    "implied_accuracy": 0.9643161594988732
    }
   }
  },
@@ -44,53 +44,53 @@
   "rule": "simplest structure within one standard error of the best",
   "candidates": {
    "independent": {
-    "mean_heldout_loglik_per_bin": -2.4696293066209907,
+    "mean_heldout_loglik_per_bin": -2.0112096456963693,
     "folds": [
-     -2.5290296416499216,
-     -2.386745474317573,
-     -2.457259917853251,
-     -2.3849784602340773,
-     -2.5901330390501296
+     -1.8971551537806979,
+     -1.950437427561805,
+     -2.0529442289597992,
+     -2.4137807117305585,
+     -1.741730706448986
     ]
    },
    "prad_tangtv": {
-    "mean_heldout_loglik_per_bin": -2.469628382439121,
+    "mean_heldout_loglik_per_bin": -2.0121810929489126,
     "folds": [
-     -2.5290288784682637,
-     -2.3867436528911172,
-     -2.4572587503625494,
-     -2.384978230234424,
-     -2.5901324002392503
+     -1.8971548870634252,
+     -1.9504364105208134,
+     -2.0578082228770724,
+     -2.413774880202219,
+     -1.7417310640810335
     ]
    },
    "afrac_tangtv": {
-    "mean_heldout_loglik_per_bin": -2.469828893414462,
+    "mean_heldout_loglik_per_bin": -2.0112096456963693,
     "folds": [
-     -2.5283007707337393,
-     -2.3867463789184455,
-     -2.457269633958307,
-     -2.384977588902534,
-     -2.5918500945592844
+     -1.8971551537806979,
+     -1.950437427561805,
+     -2.0529442289597992,
+     -2.4137807117305585,
+     -1.741730706448986
     ]
    },
    "afrac_prad": {
-    "mean_heldout_loglik_per_bin": -2.531855365769022,
+    "mean_heldout_loglik_per_bin": -2.0112096456963693,
     "folds": [
-     -2.5566215353859505,
-     -2.425229695431868,
-     -2.65358177957065,
-     -2.466075459192571,
-     -2.55776835926407
+     -1.8971551537806979,
+     -1.950437427561805,
+     -2.0529442289597992,
+     -2.4137807117305585,
+     -1.741730706448986
     ]
    },
    "all_pairs": {
-    "mean_heldout_loglik_per_bin": -2.530103301343481,
+    "mean_heldout_loglik_per_bin": -2.0121810929489192,
     "folds": [
-     -2.5461191144990694,
-     -2.4252401005713975,
-     -2.6536084290880413,
-     -2.466098323668758,
-     -2.559450538890138
+     -1.8971548870634256,
+     -1.9504364105208127,
+     -2.057808222877066,
+     -2.413774880202258,
+     -1.7417310640810335
     ]
    }
   }
@@ -104,77 +104,77 @@
   ],
   "corr": [],
   "theta": [
-   -0.6931471805599453,
-   -1.3862943611198906,
-   -1.3862943611198906,
-   0.12029338024762709,
-   -0.816843137067794,
-   -2.7138549372440752,
-   0.7723972598801887,
-   0.9391534677367039,
-   4.0
+   0.9599033551343419,
+   1.5143348799812095,
+   -3.3307379835577695,
+   0.0,
+   -2.463147529580362,
+   -2.360983257869958,
+   1.0,
+   1.778746570177799,
+   3.989868448403699
   ],
   "theta_layout": "prior(3), propensity(J), accuracy(J), correlation(P)"
  },
  "prior_logit": [
-  -0.6931471805599453,
-  -1.3862943611198906,
-  -1.3862943611198906
+  0.9599033551343419,
+  1.5143348799812095,
+  -3.3307379835577695
  ],
  "labelling_functions": {
   "afrac": {
-   "acc_weight": 0.7723972598801887,
+   "acc_weight": 1.0,
    "at_weight_bound": false,
    "physical_accuracy_identified": false,
    "calibrated": false,
-   "propensity_weight": 0.12029338024762709,
-   "implied_accuracy": 0.6840392408954645
+   "propensity_weight": 0.0,
+   "implied_accuracy": 0.731058578630005
   },
   "prad": {
-   "acc_weight": 0.9391534677367039,
+   "acc_weight": 1.778746570177799,
    "at_weight_bound": false,
    "physical_accuracy_identified": false,
    "calibrated": false,
-   "propensity_weight": -0.816843137067794,
-   "implied_accuracy": 0.7189286301328771
+   "propensity_weight": -2.463147529580362,
+   "implied_accuracy": 0.8555420237067122
   },
   "tangtv": {
-   "acc_weight": 4.0,
-   "at_weight_bound": true,
+   "acc_weight": 3.989868448403699,
+   "at_weight_bound": false,
    "physical_accuracy_identified": false,
    "calibrated": false,
-   "propensity_weight": -2.7138549372440752,
-   "implied_accuracy": 0.9646631559719039
+   "propensity_weight": -2.360983257869958,
+   "implied_accuracy": 0.9643161594988732
   }
  },
  "state_counts_bins": {
   "label_model": {
-   "attached": 165,
-   "detached": 179,
+   "attached": 11,
+   "detached": 298,
    "marfe": 0,
-   "uncertain": 3518
+   "uncertain": 1339
   },
   "rule": {
-   "attached": 165,
-   "detached": 179,
-   "marfe": 0,
-   "uncertain": 3518
+   "attached": 11,
+   "detached": 298,
+   "marfe": 12,
+   "uncertain": 1327
   }
  },
  "rule_vs_label_model": {
-  "bins": 3862,
-  "agreement": 1.0,
-  "kappa": 1.0,
+  "bins": 1648,
+  "agreement": 0.9927184466019418,
+  "kappa": 0.9767375659608105,
   "rows_rule_columns_label_model": {
    "attached": {
-    "attached": 165,
+    "attached": 11,
     "detached": 0,
     "marfe": 0,
     "uncertain": 0
    },
    "detached": {
     "attached": 0,
-    "detached": 179,
+    "detached": 298,
     "marfe": 0,
     "uncertain": 0
    },
@@ -182,55 +182,56 @@
     "attached": 0,
     "detached": 0,
     "marfe": 0,
-    "uncertain": 0
+    "uncertain": 12
    },
    "uncertain": {
     "attached": 0,
     "detached": 0,
     "marfe": 0,
-    "uncertain": 3518
+    "uncertain": 1327
    }
   }
  },
  "uncertain_by_threshold": {
   "0.5": {
-   "attached": 165,
-   "detached": 179,
+   "attached": 11,
+   "detached": 298,
    "marfe": 0,
-   "uncertain": 3518
+   "uncertain": 1339
   },
   "0.6": {
-   "attached": 165,
-   "detached": 179,
+   "attached": 11,
+   "detached": 298,
    "marfe": 0,
-   "uncertain": 3518
+   "uncertain": 1339
   },
   "0.7": {
-   "attached": 165,
-   "detached": 179,
+   "attached": 11,
+   "detached": 298,
    "marfe": 0,
-   "uncertain": 3518
+   "uncertain": 1339
   },
   "0.8": {
-   "attached": 165,
-   "detached": 179,
+   "attached": 11,
+   "detached": 298,
    "marfe": 0,
-   "uncertain": 3518
+   "uncertain": 1339
   },
   "0.9": {
-   "attached": 165,
-   "detached": 179,
+   "attached": 11,
+   "detached": 298,
    "marfe": 0,
-   "uncertain": 3518
+   "uncertain": 1339
   }
  },
- "primary_labeler": "label_model",
+ "primary_labeler": "rule",
+ "state_lm_column": "legacy alias of primary rule; model is state_model_diagnostic",
  "tier_counts": {
-  "low_posterior": 1380,
-  "conflict": 950,
-  "low_confidence_pair": 924,
-  "certain": 344,
-  "no_vote": 154,
-  "candidate_marfe": 110
+  "insufficient_support": 653,
+  "lower_shelf_window": 459,
+  "certain": 321,
+  "candidate_marfe": 95,
+  "no_vote": 61,
+  "conflict": 59
  }
 }

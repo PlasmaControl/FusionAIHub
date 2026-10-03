@@ -1,0 +1,552 @@
+{
+ "task": "detachment",
+ "metric": "macro F1 over reference states present in each population",
+ "bin_ms": 50.0,
+ "reference": "unverified compatible diagnostic consensus; certain state_lm (primary rule alias); non-test shots",
+ "interpretation": "Diagnostic agreement only. Single indicators share votes with consensus; camera CNN shares its diagnostic. No independent physical validation or confirmed MARFE accuracy.",
+ "bootstrap": {
+  "unit": "shot",
+  "replicates": 1000,
+  "ci": 0.95,
+  "seed": 7
+ },
+ "results": {
+  "legacy": {
+   "detach-afrac": {
+    "model": "detach-afrac",
+    "paper": "Eldon 2021/2022",
+    "setting": "Fitted attached pre-puff current reference, separate L/H",
+    "reason": "No independently fitted attached-current reference",
+    "status": "unavailable",
+    "reproduced": false,
+    "reproduction_status": "unavailable",
+    "f1": null,
+    "ci95": {
+     "f1": [
+      null,
+      null
+     ]
+    },
+    "valid_replicates": {
+     "f1": 0
+    },
+    "replicates": 1000
+   },
+   "detach-prad": {
+    "model": "detach-prad",
+    "paper": "Eldon 2019",
+    "setting": "Calibrated lower-divertor radiation sensor",
+    "reason": "Published measurement has no universal state threshold; local thresholds are a proxy setting",
+    "status": "unavailable",
+    "reproduced": false,
+    "reproduction_status": "unavailable",
+    "f1": null,
+    "ci95": {
+     "f1": [
+      null,
+      null
+     ]
+    },
+    "valid_replicates": {
+     "f1": 0
+    },
+    "replicates": 1000
+   },
+   "detach-tangtv": {
+    "model": "detach-tangtv",
+    "paper": "Chen 2026",
+    "setting": "Published upper-shelf C-III SSA/DZ front setting",
+    "reason": "SSA extraction partially reused; local quality, transition and MARFE gates modify the published setting",
+    "status": "unavailable",
+    "reproduced": false,
+    "reproduction_status": "partial",
+    "f1": null,
+    "ci95": {
+     "f1": [
+      null,
+      null
+     ]
+    },
+    "valid_replicates": {
+     "f1": 0
+    },
+    "replicates": 1000
+   },
+   "detach-victor": {
+    "model": "detach-victor",
+    "paper": "Victor and Scotti 2024",
+    "setting": "Published binary hand-labelled divertor-camera CNN",
+    "reason": "Local CNN uses three consensus targets and different camera data; published hand-labelled setting unavailable",
+    "status": "unavailable",
+    "reproduced": false,
+    "reproduction_status": "unavailable",
+    "f1": null,
+    "ci95": {
+     "f1": [
+      null,
+      null
+     ]
+    },
+    "valid_replicates": {
+     "f1": 0
+    },
+    "replicates": 1000
+   }
+  },
+  "Tokamak-SI": {
+   "detach-jsat-proxy": {
+    "status": "unavailable",
+    "f1": null,
+    "ci95": {
+     "f1": [
+      null,
+      null
+     ]
+    },
+    "valid_replicates": {
+     "f1": 0
+    },
+    "replicates": 1000,
+    "n_bins": 0,
+    "n_shots": 0,
+    "shot_ids": [],
+    "state_counts": {
+     "attached": 0,
+     "detached": 0,
+     "marfe": 0
+    },
+    "per_state": {
+     "attached": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "detached": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "marfe": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     }
+    },
+    "setting": "Uncalibrated local Jsat ratio; attached-current fit unavailable",
+    "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/labels_bins.csv.gz",
+    "key": "afrac_vote versus state_lm; valid votes, certain, split!=test",
+    "reference_certain_population": {
+     "bins": 321,
+     "shots": 23,
+     "shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190114,
+      190115,
+      190116,
+      199166,
+      199172,
+      199352,
+      199353,
+      199354
+     ]
+    }
+   },
+   "detach-prad-proxy": {
+    "status": "available",
+    "f1": 0.6600877192982456,
+    "ci95": {
+     "f1": [
+      0.4926815784742614,
+      1.0
+     ]
+    },
+    "valid_replicates": {
+     "f1": 1000
+    },
+    "replicates": 1000,
+    "n_bins": 321,
+    "n_shots": 23,
+    "shot_ids": [
+     189057,
+     189061,
+     189062,
+     189081,
+     189088,
+     189090,
+     189093,
+     189094,
+     189100,
+     189101,
+     189448,
+     189451,
+     190109,
+     190110,
+     190113,
+     190114,
+     190115,
+     190116,
+     199166,
+     199172,
+     199352,
+     199353,
+     199354
+    ],
+    "state_counts": {
+     "attached": 11,
+     "detached": 298,
+     "marfe": 12
+    },
+    "per_state": {
+     "attached": {
+      "value": 1.0,
+      "ci95": [
+       1.0,
+       1.0
+      ],
+      "valid_replicates": 960,
+      "replicates": 1000
+     },
+     "detached": {
+      "value": 0.9802631578947368,
+      "ci95": [
+       0.9299542497568094,
+       1.0
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "marfe": {
+      "value": 0.0,
+      "ci95": [
+       0.0,
+       0.0
+      ],
+      "valid_replicates": 673,
+      "replicates": 1000
+     }
+    },
+    "setting": "Local Prad,div/P_in thresholds 0.36 / 0.50",
+    "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/labels_bins.csv.gz",
+    "key": "prad_vote versus state_lm; valid votes, certain, split!=test",
+    "reference_certain_population": {
+     "bins": 321,
+     "shots": 23,
+     "shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190114,
+      190115,
+      190116,
+      199166,
+      199172,
+      199352,
+      199353,
+      199354
+     ]
+    }
+   },
+   "detach-tangtv-local": {
+    "status": "available",
+    "f1": 1.0,
+    "ci95": {
+     "f1": [
+      1.0,
+      1.0
+     ]
+    },
+    "valid_replicates": {
+     "f1": 1000
+    },
+    "replicates": 1000,
+    "n_bins": 321,
+    "n_shots": 23,
+    "shot_ids": [
+     189057,
+     189061,
+     189062,
+     189081,
+     189088,
+     189090,
+     189093,
+     189094,
+     189100,
+     189101,
+     189448,
+     189451,
+     190109,
+     190110,
+     190113,
+     190114,
+     190115,
+     190116,
+     199166,
+     199172,
+     199352,
+     199353,
+     199354
+    ],
+    "state_counts": {
+     "attached": 11,
+     "detached": 298,
+     "marfe": 12
+    },
+    "per_state": {
+     "attached": {
+      "value": 1.0,
+      "ci95": [
+       1.0,
+       1.0
+      ],
+      "valid_replicates": 947,
+      "replicates": 1000
+     },
+     "detached": {
+      "value": 1.0,
+      "ci95": [
+       1.0,
+       1.0
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "marfe": {
+      "value": 1.0,
+      "ci95": [
+       1.0,
+       1.0
+      ],
+      "valid_replicates": 646,
+      "replicates": 1000
+     }
+    },
+    "setting": "Upper-shelf C-III front with local transition band, quality and MARFE gates",
+    "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/labels_bins.csv.gz",
+    "key": "tangtv_vote versus state_lm; valid votes, certain, split!=test",
+    "reference_certain_population": {
+     "bins": 321,
+     "shots": 23,
+     "shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190114,
+      190115,
+      190116,
+      199166,
+      199172,
+      199352,
+      199353,
+      199354
+     ]
+    }
+   },
+   "detach-victor": {
+    "status": "available",
+    "f1": 0.46551724137931033,
+    "ci95": {
+     "f1": [
+      0.38453947368421054,
+      1.0
+     ]
+    },
+    "valid_replicates": {
+     "f1": 1000
+    },
+    "replicates": 1000,
+    "n_bins": 93,
+    "n_shots": 11,
+    "shot_ids": [
+     190109,
+     190110,
+     190113,
+     190114,
+     190115,
+     190116,
+     199166,
+     199172,
+     199352,
+     199353,
+     199354
+    ],
+    "state_counts": {
+     "attached": 0,
+     "detached": 81,
+     "marfe": 12
+    },
+    "per_state": {
+     "attached": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "detached": {
+      "value": 0.9310344827586207,
+      "ci95": [
+       0.7690789473684211,
+       1.0
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "marfe": {
+      "value": 0.0,
+      "ci95": [
+       0.0,
+       0.0
+      ],
+      "valid_replicates": 669,
+      "replicates": 1000
+     }
+    },
+    "setting": "Local camera CNN, 5-fold shot-grouped CV; non-test training and held-out predictions",
+    "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/victor/predictions.npz",
+    "key": "shot-held-out prob argmax versus state_lm; certain, split!=test"
+   }
+  }
+ },
+ "rows": [
+  {
+   "panel": "detachment",
+   "series": "detach-afrac",
+   "group": "legacy",
+   "metric": "macro F1",
+   "value": null,
+   "ci_lo": null,
+   "ci_hi": null,
+   "source": "docs/labeler/figure2_detach.json",
+   "key": "results.legacy.detach-afrac.f1"
+  },
+  {
+   "panel": "detachment",
+   "series": "detach-prad",
+   "group": "legacy",
+   "metric": "macro F1",
+   "value": null,
+   "ci_lo": null,
+   "ci_hi": null,
+   "source": "docs/labeler/figure2_detach.json",
+   "key": "results.legacy.detach-prad.f1"
+  },
+  {
+   "panel": "detachment",
+   "series": "detach-tangtv",
+   "group": "legacy",
+   "metric": "macro F1",
+   "value": null,
+   "ci_lo": null,
+   "ci_hi": null,
+   "source": "docs/labeler/figure2_detach.json",
+   "key": "results.legacy.detach-tangtv.f1"
+  },
+  {
+   "panel": "detachment",
+   "series": "detach-victor",
+   "group": "legacy",
+   "metric": "macro F1",
+   "value": null,
+   "ci_lo": null,
+   "ci_hi": null,
+   "source": "docs/labeler/figure2_detach.json",
+   "key": "results.legacy.detach-victor.f1"
+  },
+  {
+   "panel": "detachment",
+   "series": "detach-jsat-proxy",
+   "group": "Tokamak-SI",
+   "metric": "macro F1",
+   "value": null,
+   "ci_lo": null,
+   "ci_hi": null,
+   "source": "docs/labeler/figure2_detach.json",
+   "key": "results.Tokamak-SI.detach-jsat-proxy.f1"
+  },
+  {
+   "panel": "detachment",
+   "series": "detach-prad-proxy",
+   "group": "Tokamak-SI",
+   "metric": "macro F1",
+   "value": 0.6600877192982456,
+   "ci_lo": 0.4926815784742614,
+   "ci_hi": 1.0,
+   "source": "docs/labeler/figure2_detach.json",
+   "key": "results.Tokamak-SI.detach-prad-proxy.f1"
+  },
+  {
+   "panel": "detachment",
+   "series": "detach-tangtv-local",
+   "group": "Tokamak-SI",
+   "metric": "macro F1",
+   "value": 1.0,
+   "ci_lo": 1.0,
+   "ci_hi": 1.0,
+   "source": "docs/labeler/figure2_detach.json",
+   "key": "results.Tokamak-SI.detach-tangtv-local.f1"
+  },
+  {
+   "panel": "detachment",
+   "series": "detach-victor",
+   "group": "Tokamak-SI",
+   "metric": "macro F1",
+   "value": 0.46551724137931033,
+   "ci_lo": 0.38453947368421054,
+   "ci_hi": 1.0,
+   "source": "docs/labeler/figure2_detach.json",
+   "key": "results.Tokamak-SI.detach-victor.f1"
+  }
+ ]
+}

@@ -1,0 +1,4 @@
+reference_id,shot,time_ms,truth,primary_state,cohort_split,bin_start_ms,consensus,afrac,prad,tangtv
+eldon2021_180257_attached,180257,2400.0,attached,unassessed,external_development,2400.0,abstain,abstain,abstain,abstain
+eldon2021_180257_detached,180257,4800.0,detached,unassessed,external_development,4800.0,abstain,abstain,attached,abstain
+chen2026_199166_marfe,199166,3705.0,marfe,uncertain,external_development,3700.0,abstain,abstain,detached,abstain

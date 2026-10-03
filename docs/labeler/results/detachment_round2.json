@@ -1,0 +1,385 @@
+{
+ "before": {
+  "sources": {
+   "bins": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins",
+   "labels": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/labels_bins.csv.gz",
+   "intervals": "/scratch/gpfs/nc1514/FusionAIHub-r4-detach/data/events/detachment/extend_detach_vote/detach_shots.csv",
+   "survey": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/survey/corpus_survey.csv"
+  },
+  "population": {
+   "bins": 50032,
+   "shots": 470
+  },
+  "assessed": {
+   "bins": 3862,
+   "shots": 53
+  },
+  "certain": {
+   "bins": 344,
+   "shots": 23,
+   "seconds": 17.2,
+   "intervals": 113,
+   "single_50ms_intervals": 56,
+   "by_split": {
+    "train": {
+     "bins": 0,
+     "shots": 0
+    },
+    "val": {
+     "bins": 0,
+     "shots": 0
+    },
+    "test": {
+     "bins": 0,
+     "shots": 0
+    },
+    "outside": {
+     "bins": 344,
+     "shots": 23
+    }
+   }
+  },
+  "states": {
+   "4": 3518,
+   "2": 179,
+   "1": 165
+  },
+  "tiers": {
+   "low_posterior": 1380,
+   "conflict": 950,
+   "low_confidence_pair": 924,
+   "certain": 344,
+   "no_vote": 154,
+   "candidate_marfe": 110
+  },
+  "corpus_survey": {
+   "shots": 16909,
+   "tangtv": 7233,
+   "bolo": 13846,
+   "langmuir": 6239,
+   "irtv": 250
+  },
+  "inversion_shots": 41,
+  "surrogate_valid_bins": 0,
+  "elm_coverage": {
+   "discharge": {
+    "bins": 50032,
+    "finite": 48867,
+    "nan": 1165,
+    "majority": 25979
+   },
+   "assessed": {
+    "bins": 3862,
+    "finite": 3192,
+    "nan": 670,
+    "majority": 29
+   },
+   "certain": {
+    "bins": 344,
+    "finite": 222,
+    "nan": 122,
+    "majority": 0
+   }
+  },
+  "chen_hmode": {
+   "selection": "All discharge bins on cached inversion shots 189057--189101; no new H-mode inference or threshold selection.",
+   "bins": 1425,
+   "shots": 12,
+   "indicators": {
+    "tangtv": {
+     "valid_bins": 9,
+     "voting_bins": 9,
+     "shots": 2
+    },
+    "prad": {
+     "valid_bins": 390,
+     "voting_bins": 281,
+     "shots": 12
+    },
+    "afrac": {
+     "valid_bins": 0,
+     "voting_bins": 0,
+     "shots": 0
+    }
+   },
+   "per_shot": {
+    "189057": {
+     "bins": 122,
+     "tangtv": 7,
+     "prad": 33,
+     "afrac": 0,
+     "elm_nan_bins": 0
+    },
+    "189061": {
+     "bins": 122,
+     "tangtv": 0,
+     "prad": 35,
+     "afrac": 0,
+     "elm_nan_bins": 0
+    },
+    "189062": {
+     "bins": 121,
+     "tangtv": 0,
+     "prad": 33,
+     "afrac": 0,
+     "elm_nan_bins": 0
+    },
+    "189081": {
+     "bins": 136,
+     "tangtv": 0,
+     "prad": 43,
+     "afrac": 0,
+     "elm_nan_bins": 0
+    },
+    "189085": {
+     "bins": 118,
+     "tangtv": 0,
+     "prad": 44,
+     "afrac": 0,
+     "elm_nan_bins": 0
+    },
+    "189088": {
+     "bins": 108,
+     "tangtv": 0,
+     "prad": 24,
+     "afrac": 0,
+     "elm_nan_bins": 0
+    },
+    "189090": {
+     "bins": 113,
+     "tangtv": 0,
+     "prad": 27,
+     "afrac": 0,
+     "elm_nan_bins": 0
+    },
+    "189093": {
+     "bins": 124,
+     "tangtv": 0,
+     "prad": 32,
+     "afrac": 0,
+     "elm_nan_bins": 0
+    },
+    "189094": {
+     "bins": 121,
+     "tangtv": 0,
+     "prad": 32,
+     "afrac": 0,
+     "elm_nan_bins": 0
+    },
+    "189097": {
+     "bins": 126,
+     "tangtv": 0,
+     "prad": 37,
+     "afrac": 0,
+     "elm_nan_bins": 0
+    },
+    "189100": {
+     "bins": 106,
+     "tangtv": 2,
+     "prad": 25,
+     "afrac": 0,
+     "elm_nan_bins": 0
+    },
+    "189101": {
+     "bins": 108,
+     "tangtv": 0,
+     "prad": 25,
+     "afrac": 0,
+     "elm_nan_bins": 0
+    }
+   }
+  }
+ },
+ "after": {
+  "sources": {
+   "bins": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins",
+   "labels": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/labels_bins.csv.gz",
+   "intervals": "/scratch/gpfs/nc1514/FusionAIHub-r4-detach/data/events/detachment/extend_detach_vote/detach_shots.csv",
+   "survey": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/survey/corpus_survey.csv"
+  },
+  "population": {
+   "bins": 50032,
+   "shots": 470
+  },
+  "assessed": {
+   "bins": 1648,
+   "shots": 36
+  },
+  "certain": {
+   "bins": 321,
+   "shots": 23,
+   "seconds": 16.05,
+   "intervals": 98,
+   "single_50ms_intervals": 46,
+   "by_split": {
+    "train": {
+     "bins": 0,
+     "shots": 0
+    },
+    "val": {
+     "bins": 43,
+     "shots": 1
+    },
+    "test": {
+     "bins": 0,
+     "shots": 0
+    },
+    "outside": {
+     "bins": 278,
+     "shots": 22
+    }
+   }
+  },
+  "states": {
+   "4": 1327,
+   "2": 298,
+   "3": 12,
+   "1": 11
+  },
+  "tiers": {
+   "insufficient_support": 653,
+   "lower_shelf_window": 459,
+   "certain": 321,
+   "candidate_marfe": 95,
+   "no_vote": 61,
+   "conflict": 59
+  },
+  "corpus_survey": {
+   "shots": 16909,
+   "tangtv": 7233,
+   "bolo": 13846,
+   "langmuir": 6239,
+   "irtv": 250
+  },
+  "inversion_shots": 41,
+  "surrogate_valid_bins": 0,
+  "elm_coverage": {
+   "discharge": {
+    "bins": 50032,
+    "finite": 49802,
+    "nan": 230,
+    "majority": 11427
+   },
+   "assessed": {
+    "bins": 1648,
+    "finite": 1648,
+    "nan": 0,
+    "majority": 291
+   },
+   "certain": {
+    "bins": 321,
+    "finite": 321,
+    "nan": 0,
+    "majority": 91
+   }
+  },
+  "chen_hmode": {
+   "selection": "All discharge bins on cached inversion shots 189057--189101; no new H-mode inference or threshold selection.",
+   "bins": 1425,
+   "shots": 12,
+   "indicators": {
+    "tangtv": {
+     "valid_bins": 566,
+     "voting_bins": 512,
+     "shots": 11
+    },
+    "prad": {
+     "valid_bins": 1315,
+     "voting_bins": 812,
+     "shots": 12
+    },
+    "afrac": {
+     "valid_bins": 0,
+     "voting_bins": 0,
+     "shots": 0
+    }
+   },
+   "per_shot": {
+    "189057": {
+     "bins": 122,
+     "tangtv": 49,
+     "prad": 111,
+     "afrac": 0,
+     "elm_nan_bins": 0
+    },
+    "189061": {
+     "bins": 122,
+     "tangtv": 57,
+     "prad": 117,
+     "afrac": 0,
+     "elm_nan_bins": 0
+    },
+    "189062": {
+     "bins": 121,
+     "tangtv": 37,
+     "prad": 120,
+     "afrac": 0,
+     "elm_nan_bins": 0
+    },
+    "189081": {
+     "bins": 136,
+     "tangtv": 57,
+     "prad": 129,
+     "afrac": 0,
+     "elm_nan_bins": 0
+    },
+    "189085": {
+     "bins": 118,
+     "tangtv": 0,
+     "prad": 113,
+     "afrac": 0,
+     "elm_nan_bins": 0
+    },
+    "189088": {
+     "bins": 108,
+     "tangtv": 41,
+     "prad": 104,
+     "afrac": 0,
+     "elm_nan_bins": 0
+    },
+    "189090": {
+     "bins": 113,
+     "tangtv": 58,
+     "prad": 103,
+     "afrac": 0,
+     "elm_nan_bins": 0
+    },
+    "189093": {
+     "bins": 124,
+     "tangtv": 55,
+     "prad": 97,
+     "afrac": 0,
+     "elm_nan_bins": 0
+    },
+    "189094": {
+     "bins": 121,
+     "tangtv": 49,
+     "prad": 114,
+     "afrac": 0,
+     "elm_nan_bins": 0
+    },
+    "189097": {
+     "bins": 126,
+     "tangtv": 57,
+     "prad": 101,
+     "afrac": 0,
+     "elm_nan_bins": 0
+    },
+    "189100": {
+     "bins": 106,
+     "tangtv": 47,
+     "prad": 102,
+     "afrac": 0,
+     "elm_nan_bins": 0
+    },
+    "189101": {
+     "bins": 108,
+     "tangtv": 59,
+     "prad": 104,
+     "afrac": 0,
+     "elm_nan_bins": 0
+    }
+   }
+  }
+ }
+}

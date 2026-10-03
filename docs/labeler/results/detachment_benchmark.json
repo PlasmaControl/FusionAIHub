@@ -1,419 +1,719 @@
 {
  "bin_ms": 50.0,
  "replicates": 1000,
- "n_shots": 53,
+ "n_shots": 36,
  "n_shots_by_split": {
-  "train": 25,
-  "val": 3,
-  "test": 2,
-  "outside": 23
+  "train": 1,
+  "val": 1,
+  "test": 0,
+  "outside": 34
  },
- "n_assessed_bins": 3862,
- "reference_note": "combined = label-model state including the indicator scored (circular, an upper bound); loo = the same model with its vote withheld; two compatible votes, both valid. TangTV LOO uses the low-confidence proxy pair and is diagnostic agreement, not expert truth",
+ "n_assessed_bins": 1648,
+ "reference_note": "combined = diagnostic consensus including the indicator scored (circular); loo = bins where the other two indicators agree, with the scored vote withheld and compatibility/posterior gates. Selection favors agreement. TangTV's reference is the low-confidence Afrac/Prad proxy pair; neither reference is independently reviewed truth.",
+ "reference_labels": {
+  "combined": "compatible diagnostic consensus (circular)",
+  "loo": "bins where the other two indicators agree"
+ },
  "indicators": {
   "afrac": {
    "combined": {
     "all": {
      "n_bins": {
-      "value": 263.0,
+      "value": 0.0,
       "ci95": [
-       124.0,
-       413.025
-      ]
+       0.0,
+       0.0
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "vote_rate": {
-      "value": 0.9669117647058824,
+      "value": null,
       "ci95": [
-       0.9261258116883117,
-       0.9921290361960569
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "valid_rate": {
-      "value": 0.7906976744186046,
+      "value": 0.0,
       "ci95": [
-       0.5377147435897436,
-       0.9437150319707697
-      ]
+       0.0,
+       0.0
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "agreement": {
-      "value": 1.0,
+      "value": null,
       "ci95": [
-       1.0,
-       1.0
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "compatible_agreement": {
-      "value": 1.0,
+      "value": null,
       "ci95": [
-       1.0,
-       1.0
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "kappa": {
-      "value": 1.0,
+      "value": null,
       "ci95": [
-       1.0,
-       1.0
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "f1_attached": {
-      "value": 1.0,
+      "value": null,
       "ci95": [
-       1.0,
-       1.0
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "f1_detached": {
-      "value": 1.0,
+      "value": null,
       "ci95": [
-       1.0,
-       1.0
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "f1_marfe": {
       "value": null,
       "ci95": [
        null,
        null
-      ]
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "macro_f1": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "binary_f1_attached": {
-      "value": 1.0,
+      "value": null,
       "ci95": [
-       1.0,
-       1.0
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "binary_f1_not_attached": {
-      "value": 1.0,
+      "value": null,
       "ci95": [
-       1.0,
-       1.0
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "binary_kappa": {
-      "value": 1.0,
+      "value": null,
       "ci95": [
-       1.0,
-       1.0
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "auroc_attached_vs_not": {
-      "value": 0.9998342175066313,
+      "value": null,
       "ci95": [
-       0.9990980959335897,
-       1.0
+       null,
+       null
       ],
-      "n_bins": 272,
-      "n_not_attached": 116,
-      "n_shots": 15
+      "n_bins": 0,
+      "n_not_attached": 0,
+      "n_shots": 0,
+      "valid_replicates": 0,
+      "replicates": 1000
      },
-     "population_shots": 53,
-     "n_shots": 15,
-     "reference_certain_bins": 344,
-     "valid_reference_bins": 272
+     "population_shots": 36,
+     "n_shots": 0,
+     "population_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190114,
+      190115,
+      190116,
+      195952,
+      195954,
+      199166,
+      199171,
+      199172,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      206879,
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "scored_shot_ids": [],
+     "reference_certain_bins": 321,
+     "valid_reference_bins": 0
     },
     "fit_shots": {
      "n_bins": {
-      "value": 263.0,
+      "value": 0.0,
       "ci95": [
-       134.975,
-       416.07499999999993
-      ]
+       0.0,
+       0.0
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "vote_rate": {
-      "value": 0.9669117647058824,
+      "value": null,
       "ci95": [
-       0.9348427404282587,
-       0.9911787182121757
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "valid_rate": {
-      "value": 0.7906976744186046,
+      "value": 0.0,
       "ci95": [
-       0.5959339932954564,
-       0.9409870616338405
-      ]
+       0.0,
+       0.0
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "agreement": {
-      "value": 1.0,
+      "value": null,
       "ci95": [
-       1.0,
-       1.0
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "compatible_agreement": {
-      "value": 1.0,
+      "value": null,
       "ci95": [
-       1.0,
-       1.0
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "kappa": {
-      "value": 1.0,
+      "value": null,
       "ci95": [
-       1.0,
-       1.0
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "f1_attached": {
-      "value": 1.0,
+      "value": null,
       "ci95": [
-       1.0,
-       1.0
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "f1_detached": {
-      "value": 1.0,
+      "value": null,
       "ci95": [
-       1.0,
-       1.0
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "f1_marfe": {
       "value": null,
       "ci95": [
        null,
        null
-      ]
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "macro_f1": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "binary_f1_attached": {
-      "value": 1.0,
+      "value": null,
       "ci95": [
-       1.0,
-       1.0
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "binary_f1_not_attached": {
-      "value": 1.0,
+      "value": null,
       "ci95": [
-       1.0,
-       1.0
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "binary_kappa": {
-      "value": 1.0,
+      "value": null,
       "ci95": [
-       1.0,
-       1.0
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "auroc_attached_vs_not": {
-      "value": 0.9998342175066313,
+      "value": null,
       "ci95": [
-       0.9989853106689638,
-       1.0
+       null,
+       null
       ],
-      "n_bins": 272,
-      "n_not_attached": 116,
-      "n_shots": 15
+      "n_bins": 0,
+      "n_not_attached": 0,
+      "n_shots": 0,
+      "valid_replicates": 0,
+      "replicates": 1000
      },
-     "population_shots": 51,
-     "n_shots": 15,
-     "reference_certain_bins": 344,
-     "valid_reference_bins": 272
+     "population_shots": 36,
+     "n_shots": 0,
+     "population_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190114,
+      190115,
+      190116,
+      195952,
+      195954,
+      199166,
+      199171,
+      199172,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      206879,
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "scored_shot_ids": [],
+     "reference_certain_bins": 321,
+     "valid_reference_bins": 0
     }
    },
    "loo": {
     "all": {
      "n_bins": {
-      "value": 62.0,
+      "value": 0.0,
       "ci95": [
-       17.975,
-       121.0
-      ]
+       0.0,
+       0.0
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "vote_rate": {
-      "value": 0.8732394366197183,
+      "value": null,
       "ci95": [
-       0.6363636363636364,
-       0.9687620192307692
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "valid_rate": {
-      "value": 0.4965034965034965,
+      "value": 0.0,
       "ci95": [
-       0.22263518161805174,
-       0.8091299085529854
-      ]
+       0.0,
+       0.0
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "agreement": {
-      "value": 0.9032258064516129,
+      "value": null,
       "ci95": [
-       0.6922619047619047,
-       1.0
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "compatible_agreement": {
-      "value": 0.9032258064516129,
+      "value": null,
       "ci95": [
-       0.6922619047619047,
-       1.0
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "kappa": {
-      "value": 0.7654476670870113,
+      "value": null,
       "ci95": [
-       0.16115416841223285,
-       1.0
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "f1_attached": {
-      "value": 0.8333333333333334,
+      "value": null,
       "ci95": [
-       0.36363636363636365,
-       1.0
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "f1_detached": {
-      "value": 0.9318181818181818,
+      "value": null,
       "ci95": [
-       0.7332926829268293,
-       1.0
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "f1_marfe": {
       "value": null,
       "ci95": [
        null,
        null
-      ]
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "macro_f1": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "binary_f1_attached": {
-      "value": 0.8333333333333334,
+      "value": null,
       "ci95": [
-       0.36363636363636365,
-       1.0
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "binary_f1_not_attached": {
-      "value": 0.9318181818181818,
+      "value": null,
       "ci95": [
-       0.7332926829268293,
-       1.0
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "binary_kappa": {
-      "value": 0.7654476670870113,
+      "value": null,
       "ci95": [
-       0.16115416841223285,
-       1.0
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "auroc_attached_vs_not": {
-      "value": 0.9159919028340081,
+      "value": null,
       "ci95": [
-       0.727734375,
-       0.9958501344086022
+       null,
+       null
       ],
-      "n_bins": 71,
-      "n_not_attached": 52,
-      "n_shots": 10
+      "n_bins": 0,
+      "n_not_attached": 0,
+      "n_shots": 0,
+      "valid_replicates": 0,
+      "replicates": 1000
      },
-     "population_shots": 53,
-     "n_shots": 9,
-     "reference_certain_bins": 143,
-     "valid_reference_bins": 71
+     "population_shots": 36,
+     "n_shots": 0,
+     "population_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190114,
+      190115,
+      190116,
+      195952,
+      195954,
+      199166,
+      199171,
+      199172,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      206879,
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "scored_shot_ids": [],
+     "reference_certain_bins": 414,
+     "valid_reference_bins": 0
     },
     "fit_shots": {
      "n_bins": {
-      "value": 62.0,
+      "value": 0.0,
       "ci95": [
-       17.0,
-       126.02499999999998
-      ]
+       0.0,
+       0.0
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "vote_rate": {
-      "value": 0.8732394366197183,
+      "value": null,
       "ci95": [
-       0.6666666666666666,
-       0.9722317351598173
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "valid_rate": {
-      "value": 0.4965034965034965,
+      "value": 0.0,
       "ci95": [
-       0.20581341911764706,
-       0.8109789972899729
-      ]
+       0.0,
+       0.0
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "agreement": {
-      "value": 0.9032258064516129,
+      "value": null,
       "ci95": [
-       0.6817940038684719,
-       1.0
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "compatible_agreement": {
-      "value": 0.9032258064516129,
+      "value": null,
       "ci95": [
-       0.6817940038684719,
-       1.0
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "kappa": {
-      "value": 0.7654476670870113,
+      "value": null,
       "ci95": [
-       0.29194980694980704,
-       1.0
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "f1_attached": {
-      "value": 0.8333333333333334,
+      "value": null,
       "ci95": [
-       0.5214975845410628,
-       1.0
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "f1_detached": {
-      "value": 0.9318181818181818,
+      "value": null,
       "ci95": [
-       0.7367137355584081,
-       1.0
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "f1_marfe": {
       "value": null,
       "ci95": [
        null,
        null
-      ]
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "macro_f1": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "binary_f1_attached": {
-      "value": 0.8333333333333334,
+      "value": null,
       "ci95": [
-       0.5214975845410628,
-       1.0
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "binary_f1_not_attached": {
-      "value": 0.9318181818181818,
+      "value": null,
       "ci95": [
-       0.7367137355584081,
-       1.0
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "binary_kappa": {
-      "value": 0.7654476670870113,
+      "value": null,
       "ci95": [
-       0.29194980694980704,
-       1.0
-      ]
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
      },
      "auroc_attached_vs_not": {
-      "value": 0.9159919028340081,
+      "value": null,
       "ci95": [
-       0.689834536173209,
-       0.9946714248971193
+       null,
+       null
       ],
-      "n_bins": 71,
-      "n_not_attached": 52,
-      "n_shots": 10
+      "n_bins": 0,
+      "n_not_attached": 0,
+      "n_shots": 0,
+      "valid_replicates": 0,
+      "replicates": 1000
      },
-     "population_shots": 51,
-     "n_shots": 9,
-     "reference_certain_bins": 143,
-     "valid_reference_bins": 71
+     "population_shots": 36,
+     "n_shots": 0,
+     "population_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190114,
+      190115,
+      190116,
+      195952,
+      195954,
+      199166,
+      199171,
+      199172,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      206879,
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "scored_shot_ids": [],
+     "reference_certain_bins": 414,
+     "valid_reference_bins": 0
     }
    }
   },
@@ -421,405 +721,399 @@
    "combined": {
     "all": {
      "n_bins": {
-      "value": 137.0,
+      "value": 321.0,
       "ci95": [
-       65.975,
-       217.0
-      ]
+       174.95,
+       482.0
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "vote_rate": {
-      "value": 0.39825581395348836,
+      "value": 1.0,
       "ci95": [
-       0.23600657654366095,
-       0.5700223880597014
-      ]
+       1.0,
+       1.0
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "valid_rate": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "agreement": {
-      "value": 1.0,
+      "value": 0.9626168224299065,
       "ci95": [
-       1.0,
+       0.8690789648307897,
        1.0
-      ]
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "compatible_agreement": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "kappa": {
-      "value": 1.0,
+      "value": 0.6345351043643263,
       "ci95": [
-       1.0,
+       0.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 982,
+      "replicates": 1000
      },
      "f1_attached": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 949,
+      "replicates": 1000
      },
      "f1_detached": {
-      "value": 1.0,
+      "value": 0.9802631578947368,
       "ci95": [
-       1.0,
+       0.926800951446047,
        1.0
-      ]
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "f1_marfe": {
-      "value": null,
+      "value": 0.0,
       "ci95": [
-       null,
-       null
-      ]
+       0.0,
+       0.0
+      ],
+      "valid_replicates": 655,
+      "replicates": 1000
+     },
+     "macro_f1": {
+      "value": 0.6600877192982456,
+      "ci95": [
+       0.4915014164305949,
+       1.0
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "binary_f1_attached": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 949,
+      "replicates": 1000
      },
      "binary_f1_not_attached": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "binary_kappa": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 949,
+      "replicates": 1000
      },
      "auroc_attached_vs_not": {
-      "value": 0.8828847130523109,
+      "value": 1.0,
       "ci95": [
-       0.7722935229366277,
-       0.9584032815385973
+       1.0,
+       1.0
       ],
-      "n_bins": 344,
-      "n_not_attached": 179,
-      "n_shots": 23
+      "n_bins": 321,
+      "n_not_attached": 310,
+      "n_shots": 23,
+      "valid_replicates": 965,
+      "replicates": 1000
      },
-     "population_shots": 53,
-     "n_shots": 18,
-     "reference_certain_bins": 344,
-     "valid_reference_bins": 344
+     "population_shots": 36,
+     "n_shots": 23,
+     "population_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190114,
+      190115,
+      190116,
+      195952,
+      195954,
+      199166,
+      199171,
+      199172,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      206879,
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "scored_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190114,
+      190115,
+      190116,
+      199166,
+      199172,
+      199352,
+      199353,
+      199354
+     ],
+     "reference_certain_bins": 321,
+     "valid_reference_bins": 321
     },
     "fit_shots": {
      "n_bins": {
-      "value": 137.0,
+      "value": 321.0,
       "ci95": [
-       69.975,
-       221.0
-      ]
+       161.95,
+       482.04999999999995
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "vote_rate": {
-      "value": 0.39825581395348836,
+      "value": 1.0,
       "ci95": [
-       0.24556534907198882,
-       0.5724023740651897
-      ]
+       1.0,
+       1.0
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "valid_rate": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "agreement": {
-      "value": 1.0,
+      "value": 0.9626168224299065,
       "ci95": [
-       1.0,
+       0.8625822584890761,
        1.0
-      ]
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "compatible_agreement": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "kappa": {
-      "value": 1.0,
+      "value": 0.6345351043643263,
       "ci95": [
-       1.0,
+       0.08118945296811012,
        1.0
-      ]
+      ],
+      "valid_replicates": 989,
+      "replicates": 1000
      },
      "f1_attached": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 967,
+      "replicates": 1000
      },
      "f1_detached": {
-      "value": 1.0,
+      "value": 0.9802631578947368,
       "ci95": [
-       1.0,
+       0.9224137931034483,
        1.0
-      ]
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "f1_marfe": {
-      "value": null,
-      "ci95": [
-       null,
-       null
-      ]
-     },
-     "binary_f1_attached": {
-      "value": 1.0,
-      "ci95": [
-       1.0,
-       1.0
-      ]
-     },
-     "binary_f1_not_attached": {
-      "value": 1.0,
-      "ci95": [
-       1.0,
-       1.0
-      ]
-     },
-     "binary_kappa": {
-      "value": 1.0,
-      "ci95": [
-       1.0,
-       1.0
-      ]
-     },
-     "auroc_attached_vs_not": {
-      "value": 0.8828847130523109,
-      "ci95": [
-       0.74210083297216,
-       0.9590566095644265
-      ],
-      "n_bins": 344,
-      "n_not_attached": 179,
-      "n_shots": 23
-     },
-     "population_shots": 51,
-     "n_shots": 18,
-     "reference_certain_bins": 344,
-     "valid_reference_bins": 344
-    }
-   },
-   "loo": {
-    "all": {
-     "n_bins": {
-      "value": 66.0,
-      "ci95": [
-       20.0,
-       130.02499999999998
-      ]
-     },
-     "vote_rate": {
-      "value": 0.24175824175824176,
-      "ci95": [
-       0.113204739442947,
-       0.36972482357144987
-      ]
-     },
-     "valid_rate": {
-      "value": 1.0,
-      "ci95": [
-       1.0,
-       1.0
-      ]
-     },
-     "agreement": {
-      "value": 0.8484848484848485,
-      "ci95": [
-       0.5787593984962406,
-       0.9603960396039604
-      ]
-     },
-     "compatible_agreement": {
-      "value": 0.8484848484848485,
-      "ci95": [
-       0.5787593984962406,
-       0.9603960396039604
-      ]
-     },
-     "kappa": {
-      "value": 0.641304347826087,
+      "value": 0.0,
       "ci95": [
        0.0,
-       0.8809767697091642
-      ]
+       0.0
+      ],
+      "valid_replicates": 630,
+      "replicates": 1000
      },
-     "f1_attached": {
-      "value": 0.75,
+     "macro_f1": {
+      "value": 0.6600877192982456,
       "ci95": [
-       0.2496323529411765,
-       0.9090909090909091
-      ]
-     },
-     "f1_detached": {
-      "value": 0.8913043478260869,
-      "ci95": [
-       0.6376482213438734,
-       0.9753754655773159
-      ]
-     },
-     "f1_marfe": {
-      "value": null,
-      "ci95": [
-       null,
-       null
-      ]
+       0.6274509803921569,
+       1.0
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "binary_f1_attached": {
-      "value": 0.75,
-      "ci95": [
-       0.2496323529411765,
-       0.9090909090909091
-      ]
-     },
-     "binary_f1_not_attached": {
-      "value": 0.8913043478260869,
-      "ci95": [
-       0.6376482213438734,
-       0.9753754655773159
-      ]
-     },
-     "binary_kappa": {
-      "value": 0.641304347826087,
-      "ci95": [
-       0.0,
-       0.8809767697091642
-      ]
-     },
-     "auroc_attached_vs_not": {
-      "value": 0.7453381882378903,
-      "ci95": [
-       0.49477202603514653,
-       0.8931461235653897
-      ],
-      "n_bins": 273,
-      "n_not_attached": 114,
-      "n_shots": 15
-     },
-     "population_shots": 53,
-     "n_shots": 12,
-     "reference_certain_bins": 273,
-     "valid_reference_bins": 273
-    },
-    "fit_shots": {
-     "n_bins": {
-      "value": 66.0,
-      "ci95": [
-       22.975,
-       125.04999999999995
-      ]
-     },
-     "vote_rate": {
-      "value": 0.24175824175824176,
-      "ci95": [
-       0.12545492298399274,
-       0.36905138637733576
-      ]
-     },
-     "valid_rate": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
-     },
-     "agreement": {
-      "value": 0.8484848484848485,
-      "ci95": [
-       0.5909090909090909,
-       0.952949422759758
-      ]
-     },
-     "compatible_agreement": {
-      "value": 0.8484848484848485,
-      "ci95": [
-       0.5909090909090909,
-       0.952949422759758
-      ]
-     },
-     "kappa": {
-      "value": 0.641304347826087,
-      "ci95": [
-       0.05072425399947053,
-       0.8648837318994387
-      ]
-     },
-     "f1_attached": {
-      "value": 0.75,
-      "ci95": [
-       0.3071428571428572,
-       0.8947822141560798
-      ]
-     },
-     "f1_detached": {
-      "value": 0.8913043478260869,
-      "ci95": [
-       0.6468823529411765,
-       0.9696969696969697
-      ]
-     },
-     "f1_marfe": {
-      "value": null,
-      "ci95": [
-       null,
-       null
-      ]
-     },
-     "binary_f1_attached": {
-      "value": 0.75,
-      "ci95": [
-       0.3071428571428572,
-       0.8947822141560798
-      ]
+      ],
+      "valid_replicates": 967,
+      "replicates": 1000
      },
      "binary_f1_not_attached": {
-      "value": 0.8913043478260869,
+      "value": 1.0,
       "ci95": [
-       0.6468823529411765,
-       0.9696969696969697
-      ]
+       1.0,
+       1.0
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "binary_kappa": {
-      "value": 0.641304347826087,
+      "value": 1.0,
       "ci95": [
-       0.05072425399947053,
-       0.8648837318994387
-      ]
+       1.0,
+       1.0
+      ],
+      "valid_replicates": 967,
+      "replicates": 1000
      },
      "auroc_attached_vs_not": {
-      "value": 0.7453381882378903,
+      "value": 1.0,
       "ci95": [
-       0.5087250803960955,
-       0.8845114927385259
+       1.0,
+       1.0
       ],
-      "n_bins": 273,
-      "n_not_attached": 114,
-      "n_shots": 15
+      "n_bins": 321,
+      "n_not_attached": 310,
+      "n_shots": 23,
+      "valid_replicates": 962,
+      "replicates": 1000
      },
-     "population_shots": 51,
-     "n_shots": 12,
-     "reference_certain_bins": 273,
-     "valid_reference_bins": 273
+     "population_shots": 36,
+     "n_shots": 23,
+     "population_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190114,
+      190115,
+      190116,
+      195952,
+      195954,
+      199166,
+      199171,
+      199172,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      206879,
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "scored_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190114,
+      190115,
+      190116,
+      199166,
+      199172,
+      199352,
+      199353,
+      199354
+     ],
+     "reference_certain_bins": 321,
+     "valid_reference_bins": 321
     }
    }
   },
@@ -827,88 +1121,121 @@
    "combined": {
     "all": {
      "n_bins": {
-      "value": 344.0,
+      "value": 321.0,
       "ci95": [
-       209.975,
-       491.0
-      ]
+       182.0,
+       477.0
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "vote_rate": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "valid_rate": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "agreement": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "compatible_agreement": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "kappa": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 983,
+      "replicates": 1000
      },
      "f1_attached": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 962,
+      "replicates": 1000
      },
      "f1_detached": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "f1_marfe": {
-      "value": null,
+      "value": 1.0,
       "ci95": [
-       null,
-       null
-      ]
+       1.0,
+       1.0
+      ],
+      "valid_replicates": 640,
+      "replicates": 1000
+     },
+     "macro_f1": {
+      "value": 1.0,
+      "ci95": [
+       1.0,
+       1.0
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "binary_f1_attached": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 962,
+      "replicates": 1000
      },
      "binary_f1_not_attached": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "binary_kappa": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 962,
+      "replicates": 1000
      },
      "auroc_attached_vs_not": {
       "value": 1.0,
@@ -916,99 +1243,197 @@
        1.0,
        1.0
       ],
-      "n_bins": 344,
-      "n_not_attached": 179,
-      "n_shots": 23
+      "n_bins": 321,
+      "n_not_attached": 310,
+      "n_shots": 23,
+      "valid_replicates": 963,
+      "replicates": 1000
      },
-     "population_shots": 53,
+     "population_shots": 36,
      "n_shots": 23,
-     "reference_certain_bins": 344,
-     "valid_reference_bins": 344
+     "population_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190114,
+      190115,
+      190116,
+      195952,
+      195954,
+      199166,
+      199171,
+      199172,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      206879,
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "scored_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190114,
+      190115,
+      190116,
+      199166,
+      199172,
+      199352,
+      199353,
+      199354
+     ],
+     "reference_certain_bins": 321,
+     "valid_reference_bins": 321
     },
     "fit_shots": {
      "n_bins": {
-      "value": 344.0,
+      "value": 321.0,
       "ci95": [
-       212.95,
-       482.0
-      ]
+       174.975,
+       477.0
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "vote_rate": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "valid_rate": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "agreement": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "compatible_agreement": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "kappa": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 984,
+      "replicates": 1000
      },
      "f1_attached": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 956,
+      "replicates": 1000
      },
      "f1_detached": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "f1_marfe": {
-      "value": null,
+      "value": 1.0,
       "ci95": [
-       null,
-       null
-      ]
+       1.0,
+       1.0
+      ],
+      "valid_replicates": 620,
+      "replicates": 1000
+     },
+     "macro_f1": {
+      "value": 1.0,
+      "ci95": [
+       1.0,
+       1.0
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "binary_f1_attached": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 956,
+      "replicates": 1000
      },
      "binary_f1_not_attached": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "binary_kappa": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 956,
+      "replicates": 1000
      },
      "auroc_attached_vs_not": {
       "value": 1.0,
@@ -1016,99 +1441,197 @@
        1.0,
        1.0
       ],
-      "n_bins": 344,
-      "n_not_attached": 179,
-      "n_shots": 23
+      "n_bins": 321,
+      "n_not_attached": 310,
+      "n_shots": 23,
+      "valid_replicates": 947,
+      "replicates": 1000
      },
-     "population_shots": 51,
+     "population_shots": 36,
      "n_shots": 23,
-     "reference_certain_bins": 344,
-     "valid_reference_bins": 344
+     "population_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190114,
+      190115,
+      190116,
+      195952,
+      195954,
+      199166,
+      199171,
+      199172,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      206879,
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "scored_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190114,
+      190115,
+      190116,
+      199166,
+      199172,
+      199352,
+      199353,
+      199354
+     ],
+     "reference_certain_bins": 321,
+     "valid_reference_bins": 321
     },
     "source_inversion": {
      "n_bins": {
-      "value": 344.0,
+      "value": 321.0,
       "ci95": [
-       251.975,
-       453.04999999999995
-      ]
+       171.9,
+       486.04999999999995
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "vote_rate": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "valid_rate": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "agreement": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "compatible_agreement": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "kappa": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 988,
+      "replicates": 1000
      },
      "f1_attached": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 967,
+      "replicates": 1000
      },
      "f1_detached": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "f1_marfe": {
-      "value": null,
+      "value": 1.0,
       "ci95": [
-       null,
-       null
-      ]
+       1.0,
+       1.0
+      ],
+      "valid_replicates": 622,
+      "replicates": 1000
+     },
+     "macro_f1": {
+      "value": 1.0,
+      "ci95": [
+       1.0,
+       1.0
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "binary_f1_attached": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 967,
+      "replicates": 1000
      },
      "binary_f1_not_attached": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
      },
      "binary_kappa": {
       "value": 1.0,
       "ci95": [
        1.0,
        1.0
-      ]
+      ],
+      "valid_replicates": 967,
+      "replicates": 1000
      },
      "auroc_attached_vs_not": {
       "value": 1.0,
@@ -1116,559 +1639,124 @@
        1.0,
        1.0
       ],
-      "n_bins": 344,
-      "n_not_attached": 179,
-      "n_shots": 23
+      "n_bins": 321,
+      "n_not_attached": 310,
+      "n_shots": 23,
+      "valid_replicates": 958,
+      "replicates": 1000
      },
-     "population_shots": 23,
+     "population_shots": 36,
      "n_shots": 23,
-     "reference_certain_bins": 344,
-     "valid_reference_bins": 344
-    }
-   },
-   "loo": {
-    "all": {
-     "n_bins": {
-      "value": 63.0,
-      "ci95": [
-       19.0,
-       129.0
-      ]
-     },
-     "vote_rate": {
-      "value": 0.65625,
-      "ci95": [
-       0.3739587277546384,
-       0.9014275872627067
-      ]
-     },
-     "valid_rate": {
-      "value": 0.0947680157946693,
-      "ci95": [
-       0.0341811793461656,
-       0.1742821535683282
-      ]
-     },
-     "agreement": {
-      "value": 0.8888888888888888,
-      "ci95": [
-       0.6201314508276533,
-       1.0
-      ]
-     },
-     "compatible_agreement": {
-      "value": 0.8888888888888888,
-      "ci95": [
-       0.6201314508276533,
-       1.0
-      ]
-     },
-     "kappa": {
-      "value": 0.7360861759425493,
-      "ci95": [
-       0.23121387283236983,
-       1.0
-      ]
-     },
-     "f1_attached": {
-      "value": 0.8108108108108109,
-      "ci95": [
-       0.36363636363636365,
-       1.0
-      ]
-     },
-     "f1_detached": {
-      "value": 0.9213483146067416,
-      "ci95": [
-       0.6842105263157895,
-       1.0
-      ]
-     },
-     "f1_marfe": {
-      "value": null,
-      "ci95": [
-       null,
-       null
-      ]
-     },
-     "binary_f1_attached": {
-      "value": 0.8108108108108109,
-      "ci95": [
-       0.36363636363636365,
-       1.0
-      ]
-     },
-     "binary_f1_not_attached": {
-      "value": 0.9213483146067416,
-      "ci95": [
-       0.6842105263157895,
-       1.0
-      ]
-     },
-     "binary_kappa": {
-      "value": 0.7360861759425493,
-      "ci95": [
-       0.23121387283236983,
-       1.0
-      ]
-     },
-     "auroc_attached_vs_not": {
-      "value": 0.9626373626373627,
-      "ci95": [
-       0.8515492648672371,
-       1.0
-      ],
-      "n_bins": 96,
-      "n_not_attached": 70,
-      "n_shots": 10
-     },
-     "population_shots": 53,
-     "n_shots": 10,
-     "reference_certain_bins": 1013,
-     "valid_reference_bins": 96
-    },
-    "fit_shots": {
-     "n_bins": {
-      "value": 63.0,
-      "ci95": [
-       19.0,
-       124.02499999999998
-      ]
-     },
-     "vote_rate": {
-      "value": 0.65625,
-      "ci95": [
-       0.3777083333333333,
-       0.8800588235294117
-      ]
-     },
-     "valid_rate": {
-      "value": 0.09856262833675565,
-      "ci95": [
-       0.03702154418197725,
-       0.1859586874974353
-      ]
-     },
-     "agreement": {
-      "value": 0.8888888888888888,
-      "ci95": [
-       0.5830357142857143,
-       1.0
-      ]
-     },
-     "compatible_agreement": {
-      "value": 0.8888888888888888,
-      "ci95": [
-       0.5830357142857143,
-       1.0
-      ]
-     },
-     "kappa": {
-      "value": 0.7360861759425493,
-      "ci95": [
-       0.21192052980132456,
-       1.0
-      ]
-     },
-     "f1_attached": {
-      "value": 0.8108108108108109,
-      "ci95": [
-       0.35230179028132996,
-       1.0
-      ]
-     },
-     "f1_detached": {
-      "value": 0.9213483146067416,
-      "ci95": [
-       0.6666666666666666,
-       1.0
-      ]
-     },
-     "f1_marfe": {
-      "value": null,
-      "ci95": [
-       null,
-       null
-      ]
-     },
-     "binary_f1_attached": {
-      "value": 0.8108108108108109,
-      "ci95": [
-       0.35230179028132996,
-       1.0
-      ]
-     },
-     "binary_f1_not_attached": {
-      "value": 0.9213483146067416,
-      "ci95": [
-       0.6666666666666666,
-       1.0
-      ]
-     },
-     "binary_kappa": {
-      "value": 0.7360861759425493,
-      "ci95": [
-       0.21192052980132456,
-       1.0
-      ]
-     },
-     "auroc_attached_vs_not": {
-      "value": 0.9626373626373627,
-      "ci95": [
-       0.8614245014245014,
-       1.0
-      ],
-      "n_bins": 96,
-      "n_not_attached": 70,
-      "n_shots": 10
-     },
-     "population_shots": 51,
-     "n_shots": 10,
-     "reference_certain_bins": 974,
-     "valid_reference_bins": 96
-    },
-    "test_shots": {
-     "n_bins": {
-      "value": 0.0,
-      "ci95": [
-       0.0,
-       0.0
-      ]
-     },
-     "vote_rate": {
-      "value": null,
-      "ci95": [
-       null,
-       null
-      ]
-     },
-     "valid_rate": {
-      "value": 0.0,
-      "ci95": [
-       0.0,
-       0.0
-      ]
-     },
-     "agreement": {
-      "value": null,
-      "ci95": [
-       null,
-       null
-      ]
-     },
-     "compatible_agreement": {
-      "value": null,
-      "ci95": [
-       null,
-       null
-      ]
-     },
-     "kappa": {
-      "value": null,
-      "ci95": [
-       null,
-       null
-      ]
-     },
-     "f1_attached": {
-      "value": null,
-      "ci95": [
-       null,
-       null
-      ]
-     },
-     "f1_detached": {
-      "value": null,
-      "ci95": [
-       null,
-       null
-      ]
-     },
-     "f1_marfe": {
-      "value": null,
-      "ci95": [
-       null,
-       null
-      ]
-     },
-     "binary_f1_attached": {
-      "value": null,
-      "ci95": [
-       null,
-       null
-      ]
-     },
-     "binary_f1_not_attached": {
-      "value": null,
-      "ci95": [
-       null,
-       null
-      ]
-     },
-     "binary_kappa": {
-      "value": null,
-      "ci95": [
-       null,
-       null
-      ]
-     },
-     "auroc_attached_vs_not": {
-      "value": null,
-      "ci95": [
-       null,
-       null
-      ],
-      "n_bins": 0,
-      "n_not_attached": 0
-     },
-     "population_shots": 2,
-     "n_shots": 0,
-     "reference_certain_bins": 39,
-     "valid_reference_bins": 0
-    },
-    "source_inversion": {
-     "n_bins": {
-      "value": 63.0,
-      "ci95": [
-       21.0,
-       117.0
-      ]
-     },
-     "vote_rate": {
-      "value": 0.65625,
-      "ci95": [
-       0.3845505617977528,
-       0.8831168831168831
-      ]
-     },
-     "valid_rate": {
-      "value": 0.4304932735426009,
-      "ci95": [
-       0.284911351644941,
-       0.5414764475889033
-      ]
-     },
-     "agreement": {
-      "value": 0.8888888888888888,
-      "ci95": [
-       0.5908422459893048,
-       1.0
-      ]
-     },
-     "compatible_agreement": {
-      "value": 0.8888888888888888,
-      "ci95": [
-       0.5908422459893048,
-       1.0
-      ]
-     },
-     "kappa": {
-      "value": 0.7360861759425493,
-      "ci95": [
-       0.22921146953405028,
-       1.0
-      ]
-     },
-     "f1_attached": {
-      "value": 0.8108108108108109,
-      "ci95": [
-       0.4,
-       1.0
-      ]
-     },
-     "f1_detached": {
-      "value": 0.9213483146067416,
-      "ci95": [
-       0.65,
-       1.0
-      ]
-     },
-     "f1_marfe": {
-      "value": null,
-      "ci95": [
-       null,
-       null
-      ]
-     },
-     "binary_f1_attached": {
-      "value": 0.8108108108108109,
-      "ci95": [
-       0.4,
-       1.0
-      ]
-     },
-     "binary_f1_not_attached": {
-      "value": 0.9213483146067416,
-      "ci95": [
-       0.65,
-       1.0
-      ]
-     },
-     "binary_kappa": {
-      "value": 0.7360861759425493,
-      "ci95": [
-       0.22921146953405028,
-       1.0
-      ]
-     },
-     "auroc_attached_vs_not": {
-      "value": 0.9626373626373627,
-      "ci95": [
-       0.868171368861024,
-       1.0
-      ],
-      "n_bins": 96,
-      "n_not_attached": 70,
-      "n_shots": 10
-     },
-     "population_shots": 23,
-     "n_shots": 10,
-     "reference_certain_bins": 223,
-     "valid_reference_bins": 96
-    },
-    "source_surrogate": {
-     "n_bins": {
-      "value": 0.0,
-      "ci95": [
-       0.0,
-       0.0
-      ]
-     },
-     "vote_rate": {
-      "value": null,
-      "ci95": [
-       null,
-       null
-      ]
-     },
-     "valid_rate": {
-      "value": 0.0,
-      "ci95": [
-       0.0,
-       0.0
-      ]
-     },
-     "agreement": {
-      "value": null,
-      "ci95": [
-       null,
-       null
-      ]
-     },
-     "compatible_agreement": {
-      "value": null,
-      "ci95": [
-       null,
-       null
-      ]
-     },
-     "kappa": {
-      "value": null,
-      "ci95": [
-       null,
-       null
-      ]
-     },
-     "f1_attached": {
-      "value": null,
-      "ci95": [
-       null,
-       null
-      ]
-     },
-     "f1_detached": {
-      "value": null,
-      "ci95": [
-       null,
-       null
-      ]
-     },
-     "f1_marfe": {
-      "value": null,
-      "ci95": [
-       null,
-       null
-      ]
-     },
-     "binary_f1_attached": {
-      "value": null,
-      "ci95": [
-       null,
-       null
-      ]
-     },
-     "binary_f1_not_attached": {
-      "value": null,
-      "ci95": [
-       null,
-       null
-      ]
-     },
-     "binary_kappa": {
-      "value": null,
-      "ci95": [
-       null,
-       null
-      ]
-     },
-     "auroc_attached_vs_not": {
-      "value": null,
-      "ci95": [
-       null,
-       null
-      ],
-      "n_bins": 0,
-      "n_not_attached": 0
-     },
-     "population_shots": 15,
-     "n_shots": 0,
-     "reference_certain_bins": 415,
-     "valid_reference_bins": 0
+     "population_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190114,
+      190115,
+      190116,
+      195952,
+      195954,
+      199166,
+      199171,
+      199172,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      206879,
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "scored_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190114,
+      190115,
+      190116,
+      199166,
+      199172,
+      199352,
+      199353,
+      199354
+     ],
+     "reference_certain_bins": 321,
+     "valid_reference_bins": 321
     }
    }
   }
  },
  "model_accuracies": {
   "afrac": {
-   "acc_weight": 0.7723972598801887,
+   "acc_weight": 1.0,
    "at_weight_bound": false,
    "physical_accuracy_identified": false,
    "calibrated": false,
-   "propensity_weight": 0.12029338024762709,
-   "implied_accuracy": 0.6840392408954645
+   "propensity_weight": 0.0,
+   "implied_accuracy": 0.731058578630005
   },
   "prad": {
-   "acc_weight": 0.9391534677367039,
+   "acc_weight": 1.778746570177799,
    "at_weight_bound": false,
    "physical_accuracy_identified": false,
    "calibrated": false,
-   "propensity_weight": -0.816843137067794,
-   "implied_accuracy": 0.7189286301328771
+   "propensity_weight": -2.463147529580362,
+   "implied_accuracy": 0.8555420237067122
   },
   "tangtv": {
-   "acc_weight": 4.0,
-   "at_weight_bound": true,
+   "acc_weight": 3.989868448403699,
+   "at_weight_bound": false,
    "physical_accuracy_identified": false,
    "calibrated": false,
-   "propensity_weight": -2.7138549372440752,
-   "implied_accuracy": 0.9646631559719039
+   "propensity_weight": -2.360983257869958,
+   "implied_accuracy": 0.9643161594988732
   }
  },
  "failure_analysis": {
   "prad_votes_detached_where_tangtv_attached": {
-   "tangtv_attached_bins_with_valid_prad": 327,
-   "fraction_prad_detached": 0.039755351681957186,
-   "median_f_div": 0.4353105
+   "tangtv_attached_bins_with_valid_prad": 536,
+   "fraction_prad_detached": 0.09514925373134328,
+   "median_f_div": 0.43954187499999997
   },
   "afrac_in_shots_detached_most_of_the_time": {
-   "n_shots": 2,
-   "afrac_attached_vote_share": 0.3854166666666667
+   "n_shots": 8,
+   "afrac_attached_vote_share": 0.0
   },
   "by_elm_share": {
    "afrac": {
     "0-0.2": {
-     "n_bins": 14,
-     "binary_agreement": 0.7857142857142857
+     "n_bins": 0,
+     "binary_agreement": null
     },
     "0.2-0.5": {
      "n_bins": 0,
@@ -1681,8 +1769,8 @@
    },
    "prad": {
     "0-0.2": {
-     "n_bins": 16,
-     "binary_agreement": 0.6875
+     "n_bins": 0,
+     "binary_agreement": null
     },
     "0.2-0.5": {
      "n_bins": 0,
@@ -1697,58 +1785,612 @@
   "by_input_power_mw": {
    "afrac": {
     "0-2": {
-     "n_bins": 14,
-     "binary_agreement": 0.7857142857142857
+     "n_bins": 0,
+     "binary_agreement": null
     },
     "2-5": {
      "n_bins": 0,
      "binary_agreement": null
     },
     "5-1000": {
-     "n_bins": 48,
-     "binary_agreement": 0.9375
+     "n_bins": 0,
+     "binary_agreement": null
     }
    },
    "prad": {
     "0-2": {
-     "n_bins": 16,
-     "binary_agreement": 0.6875
+     "n_bins": 0,
+     "binary_agreement": null
     },
     "2-5": {
      "n_bins": 0,
      "binary_agreement": null
     },
     "5-1000": {
-     "n_bins": 50,
-     "binary_agreement": 0.9
+     "n_bins": 0,
+     "binary_agreement": null
     }
    }
   },
   "invalid_reasons": {
    "afrac": {
-    "probe_far_from_strike": 152,
-    "no_attached_regime_reference": 149
+    "probe_not_sol": 1238,
+    "probe_far_from_strike": 311,
+    "short_reference": 99
    },
    "prad": {},
-   "tangtv": {
-    "surrogate_domain": 1136,
-    "no_inversion": 1131,
-    "no_frames": 551,
-    "elm_frame": 11,
-    "elm_majority": 2
-   }
+   "tangtv": {}
   },
-  "afrac_worst_shots_binary_agreement": [
-   {
-    "shot": 206894,
-    "agreement": 1.0
-   }
-  ]
+  "afrac_worst_shots_binary_agreement": []
  },
  "rule_conflicts_resolved_by_model": {
   "bins": 0,
   "with_tangtv_vote": 0,
   "model_state_equals_tangtv_vote": 0
+ },
+ "pairwise_agreement": {
+  "all_eligible_bins": {
+   "afrac__prad": {
+    "population_bins": 3994,
+    "population_shots": 36,
+    "population_shot_ids": [
+     189057,
+     189061,
+     189062,
+     189081,
+     189088,
+     189090,
+     189093,
+     189094,
+     189097,
+     189100,
+     189101,
+     189448,
+     189451,
+     190109,
+     190110,
+     190113,
+     190114,
+     190115,
+     190116,
+     195952,
+     195954,
+     199166,
+     199171,
+     199172,
+     199351,
+     199352,
+     199353,
+     199354,
+     200977,
+     206879,
+     206880,
+     206886,
+     206891,
+     206892,
+     206893,
+     206894
+    ],
+    "both_valid_bins": 0,
+    "both_vote_bins": 0,
+    "both_vote_shots": 0,
+    "both_vote_shot_ids": [],
+    "agreement": {
+     "value": null,
+     "ci95": [
+      null,
+      null
+     ],
+     "valid_replicates": 0,
+     "replicates": 1000
+    },
+    "kappa": {
+     "value": null,
+     "ci95": [
+      null,
+      null
+     ],
+     "valid_replicates": 0,
+     "replicates": 1000
+    },
+    "counts": [
+     [
+      0,
+      0,
+      0
+     ],
+     [
+      0,
+      0,
+      0
+     ],
+     [
+      0,
+      0,
+      0
+     ]
+    ]
+   },
+   "afrac__tangtv": {
+    "population_bins": 3994,
+    "population_shots": 36,
+    "population_shot_ids": [
+     189057,
+     189061,
+     189062,
+     189081,
+     189088,
+     189090,
+     189093,
+     189094,
+     189097,
+     189100,
+     189101,
+     189448,
+     189451,
+     190109,
+     190110,
+     190113,
+     190114,
+     190115,
+     190116,
+     195952,
+     195954,
+     199166,
+     199171,
+     199172,
+     199351,
+     199352,
+     199353,
+     199354,
+     200977,
+     206879,
+     206880,
+     206886,
+     206891,
+     206892,
+     206893,
+     206894
+    ],
+    "both_valid_bins": 0,
+    "both_vote_bins": 0,
+    "both_vote_shots": 0,
+    "both_vote_shot_ids": [],
+    "agreement": {
+     "value": null,
+     "ci95": [
+      null,
+      null
+     ],
+     "valid_replicates": 0,
+     "replicates": 1000
+    },
+    "kappa": {
+     "value": null,
+     "ci95": [
+      null,
+      null
+     ],
+     "valid_replicates": 0,
+     "replicates": 1000
+    },
+    "counts": [
+     [
+      0,
+      0,
+      0
+     ],
+     [
+      0,
+      0,
+      0
+     ],
+     [
+      0,
+      0,
+      0
+     ]
+    ]
+   },
+   "prad__tangtv": {
+    "population_bins": 3994,
+    "population_shots": 36,
+    "population_shot_ids": [
+     189057,
+     189061,
+     189062,
+     189081,
+     189088,
+     189090,
+     189093,
+     189094,
+     189097,
+     189100,
+     189101,
+     189448,
+     189451,
+     190109,
+     190110,
+     190113,
+     190114,
+     190115,
+     190116,
+     195952,
+     195954,
+     199166,
+     199171,
+     199172,
+     199351,
+     199352,
+     199353,
+     199354,
+     200977,
+     206879,
+     206880,
+     206886,
+     206891,
+     206892,
+     206893,
+     206894
+    ],
+    "both_valid_bins": 1648,
+    "both_vote_bins": 519,
+    "both_vote_shots": 35,
+    "both_vote_shot_ids": [
+     189057,
+     189061,
+     189062,
+     189081,
+     189088,
+     189090,
+     189093,
+     189094,
+     189097,
+     189100,
+     189101,
+     189448,
+     189451,
+     190109,
+     190110,
+     190113,
+     190114,
+     190115,
+     190116,
+     195952,
+     195954,
+     199166,
+     199171,
+     199172,
+     199351,
+     199352,
+     199353,
+     199354,
+     206879,
+     206880,
+     206886,
+     206891,
+     206892,
+     206893,
+     206894
+    ],
+    "agreement": {
+     "value": 0.7976878612716763,
+     "ci95": [
+      0.6629714006708647,
+      0.8921982487416108
+     ],
+     "valid_replicates": 1000,
+     "replicates": 1000
+    },
+    "kappa": {
+     "value": 0.4770404491147258,
+     "ci95": [
+      0.13875562044439882,
+      0.7041465260202586
+     ],
+     "valid_replicates": 1000,
+     "replicates": 1000
+    },
+    "counts": [
+     [
+      79,
+      38,
+      0
+     ],
+     [
+      51,
+      335,
+      16
+     ],
+     [
+      0,
+      0,
+      0
+     ]
+    ]
+   }
+  },
+  "fit_bins_train_val_outside": {
+   "afrac__prad": {
+    "population_bins": 1648,
+    "population_shots": 36,
+    "population_shot_ids": [
+     189057,
+     189061,
+     189062,
+     189081,
+     189088,
+     189090,
+     189093,
+     189094,
+     189097,
+     189100,
+     189101,
+     189448,
+     189451,
+     190109,
+     190110,
+     190113,
+     190114,
+     190115,
+     190116,
+     195952,
+     195954,
+     199166,
+     199171,
+     199172,
+     199351,
+     199352,
+     199353,
+     199354,
+     200977,
+     206879,
+     206880,
+     206886,
+     206891,
+     206892,
+     206893,
+     206894
+    ],
+    "both_valid_bins": 0,
+    "both_vote_bins": 0,
+    "both_vote_shots": 0,
+    "both_vote_shot_ids": [],
+    "agreement": {
+     "value": null,
+     "ci95": [
+      null,
+      null
+     ],
+     "valid_replicates": 0,
+     "replicates": 1000
+    },
+    "kappa": {
+     "value": null,
+     "ci95": [
+      null,
+      null
+     ],
+     "valid_replicates": 0,
+     "replicates": 1000
+    },
+    "counts": [
+     [
+      0,
+      0,
+      0
+     ],
+     [
+      0,
+      0,
+      0
+     ],
+     [
+      0,
+      0,
+      0
+     ]
+    ]
+   },
+   "afrac__tangtv": {
+    "population_bins": 1648,
+    "population_shots": 36,
+    "population_shot_ids": [
+     189057,
+     189061,
+     189062,
+     189081,
+     189088,
+     189090,
+     189093,
+     189094,
+     189097,
+     189100,
+     189101,
+     189448,
+     189451,
+     190109,
+     190110,
+     190113,
+     190114,
+     190115,
+     190116,
+     195952,
+     195954,
+     199166,
+     199171,
+     199172,
+     199351,
+     199352,
+     199353,
+     199354,
+     200977,
+     206879,
+     206880,
+     206886,
+     206891,
+     206892,
+     206893,
+     206894
+    ],
+    "both_valid_bins": 0,
+    "both_vote_bins": 0,
+    "both_vote_shots": 0,
+    "both_vote_shot_ids": [],
+    "agreement": {
+     "value": null,
+     "ci95": [
+      null,
+      null
+     ],
+     "valid_replicates": 0,
+     "replicates": 1000
+    },
+    "kappa": {
+     "value": null,
+     "ci95": [
+      null,
+      null
+     ],
+     "valid_replicates": 0,
+     "replicates": 1000
+    },
+    "counts": [
+     [
+      0,
+      0,
+      0
+     ],
+     [
+      0,
+      0,
+      0
+     ],
+     [
+      0,
+      0,
+      0
+     ]
+    ]
+   },
+   "prad__tangtv": {
+    "population_bins": 1648,
+    "population_shots": 36,
+    "population_shot_ids": [
+     189057,
+     189061,
+     189062,
+     189081,
+     189088,
+     189090,
+     189093,
+     189094,
+     189097,
+     189100,
+     189101,
+     189448,
+     189451,
+     190109,
+     190110,
+     190113,
+     190114,
+     190115,
+     190116,
+     195952,
+     195954,
+     199166,
+     199171,
+     199172,
+     199351,
+     199352,
+     199353,
+     199354,
+     200977,
+     206879,
+     206880,
+     206886,
+     206891,
+     206892,
+     206893,
+     206894
+    ],
+    "both_valid_bins": 1648,
+    "both_vote_bins": 519,
+    "both_vote_shots": 35,
+    "both_vote_shot_ids": [
+     189057,
+     189061,
+     189062,
+     189081,
+     189088,
+     189090,
+     189093,
+     189094,
+     189097,
+     189100,
+     189101,
+     189448,
+     189451,
+     190109,
+     190110,
+     190113,
+     190114,
+     190115,
+     190116,
+     195952,
+     195954,
+     199166,
+     199171,
+     199172,
+     199351,
+     199352,
+     199353,
+     199354,
+     206879,
+     206880,
+     206886,
+     206891,
+     206892,
+     206893,
+     206894
+    ],
+    "agreement": {
+     "value": 0.7976878612716763,
+     "ci95": [
+      0.6497617675947264,
+      0.8879717539189589
+     ],
+     "valid_replicates": 1000,
+     "replicates": 1000
+    },
+    "kappa": {
+     "value": 0.4770404491147258,
+     "ci95": [
+      0.12838626928425026,
+      0.7127548032857303
+     ],
+     "valid_replicates": 1000,
+     "replicates": 1000
+    },
+    "counts": [
+     [
+      79,
+      38,
+      0
+     ],
+     [
+      51,
+      335,
+      16
+     ],
+     [
+      0,
+      0,
+      0
+     ]
+    ]
+   }
+  }
  },
  "divertor_te_check": {
   "status": "withdrawn",
@@ -1756,7 +2398,7 @@
  },
  "indicator_names": {
   "afrac": "uncalibrated Jsat ratio (local proxy)",
-  "prad": "Prad,div/P_in (development-validated local thresholds)",
-  "tangtv": "Chen C-III front with geometry and MARFE gates"
+  "prad": "Prad,div/P_in (local development thresholds)",
+  "tangtv": "C-III front (local geometry, quality and MARFE gates)"
  }
 }

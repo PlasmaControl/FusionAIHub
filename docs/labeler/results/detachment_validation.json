@@ -1,0 +1,33 @@
+{
+ "status": "passed",
+ "producer": "scripts/labeler/detach_validate_outputs.py",
+ "labels_sha256": "83f2a636696c30969fc37a3cd0aa8ac9187306b3b6a32c7d20496008d222681b",
+ "assessed_bins": 1648,
+ "intervals": 391,
+ "trace_rows": 1648,
+ "grids_checked": 36,
+ "certain_bins": 321,
+ "certain_bins_by_split": {
+  "train": 0,
+  "val": 43,
+  "test": 0,
+  "outside": 278
+ },
+ "sol_current_voting_bins": 0,
+ "reference_points": 3,
+ "finite_json_files_checked": 15,
+ "bootstrap_valid_count_fields_checked": 399,
+ "covering_tests_passed": 79,
+ "covering_test_log": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/detach/round2-covering-tests.log",
+ "lint_log": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/detach/round2-ruff.log",
+ "checks": [
+  "rule reproduction and legacy alias",
+  "valid assessed bins and abstention encoding",
+  "upper-shelf/known-ELM certainty and explicit cohort counts",
+  "SOL position and flux margins",
+  "exact interval, sparse-grid and trace reconstruction; no stale shots",
+  "reference and figure source checksums match current labels",
+  "diagnostic metadata does not claim primary-rule grids",
+  "strict finite JSON and bootstrap replicate counts"
+ ]
+}

@@ -214,8 +214,8 @@
  "deployment_note": "Unverified camera/filter metadata abstains; brightness and saturation filter exposure changes.",
  "loso_sav": {
   "n_frames": 1720,
-  "ze_mae_cm": 1.2338007750925237,
-  "dz_mae": 0.07072604822118185,
+  "ze_mae_cm": 1.233800775092524,
+  "dz_mae": 0.07072604822118188,
   "frames_voting_in_both": 1362,
   "vote_agreement": 0.9779735682819384,
   "vote_kappa": 0.950991680819828,
@@ -224,8 +224,8 @@
   "marfe_recall": null,
   "ci95": {
    "ze_mae_cm": [
-    0.8231465683321132,
-    1.8276018712455282
+    0.8231465683321134,
+    1.8276018712455293
    ],
    "vote_agreement": [
     0.9530114706471648,
@@ -234,12 +234,19 @@
    "vote_kappa": [
     0.8605499878617996,
     0.9912039161202035
-   ]
-  }
+   ],
+   "valid_replicates": {
+    "ze_mae_cm": 1000,
+    "vote_agreement": 1000,
+    "vote_kappa": 1000
+   },
+   "replicates": 1000
+  },
+  "rescore_source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/tv_surrogate/loso_sav.csv.gz"
  },
  "loso_corpus": {
   "n_frames": 210,
-  "ze_mae_cm": 3.3965009962722124,
+  "ze_mae_cm": 3.396500996272213,
   "dz_mae": 0.1744777241475053,
   "frames_voting_in_both": 131,
   "vote_agreement": 0.916030534351145,
@@ -249,8 +256,8 @@
   "marfe_recall": null,
   "ci95": {
    "ze_mae_cm": [
-    3.3965009962722124,
-    3.3965009962722124
+    3.396500996272213,
+    3.396500996272213
    ],
    "vote_agreement": [
     0.916030534351145,
@@ -259,11 +266,18 @@
    "vote_kappa": [
     0.0,
     0.0
-   ]
+   ],
+   "valid_replicates": {
+    "ze_mae_cm": 1000,
+    "vote_agreement": 1000,
+    "vote_kappa": 1000
+   },
+   "replicates": 1000
   },
   "shots": [
    201081
-  ]
+  ],
+  "rescore_source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/tv_surrogate/loso_corpus.csv.gz"
  },
  "predicted": {
   "180257": "no_frames",
