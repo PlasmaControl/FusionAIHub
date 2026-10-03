@@ -40,9 +40,9 @@
   },
   "hole_area_px": 10,
   "components": "scipy.ndimage.label, 8-connected (3x3 structure)",
-  "tag_rule": "component AND PRESENT time pixels AND event band; NTM dominant measured n in {1,2} AND measured n pixel <=30 kHz; sawtooth crash ticks, no mode tag",
+  "tag_rule": "component AND PRESENT time pixels AND event band; NTM dominant measured n in {1,2} AND pixel n in {1,2} <=30 kHz; sawtooth crash ticks, no mode tag",
   "ae_highlight_rule": "pixel tint only; no component bounding boxes",
-  "outline_display_rule": "max pool at 150-dpi axes resolution; erode for edge, expand one print pixel inward; re-intersect native measured-pixel mask; clip to raw time/band spans",
+  "outline_display_rule": "max pool at 150-dpi axes resolution; one print pixel inner edge, alpha 0.45; re-intersect native n=1/2 mask; clip to raw time/band spans",
   "projection_audit_rule": "enumerate projected coordinates against raw, end-exclusive intervals; independent of present_columns",
   "n_palette": {
    "1": "#0072B2",
@@ -81,6 +81,7 @@
    "decision_threshold": 0.7,
    "crowd_semantics": null,
    "primary_bars": null,
+   "temporal_bin_ms": 10,
    "metadata": null,
    "metadata_sha256": null,
    "states": {
@@ -92,6 +93,7 @@
     {
      "start_ms": 1800.0,
      "end_ms": 3700.0,
+     "category": 0,
      "state": "absent"
     }
    ],
@@ -113,6 +115,7 @@
     "N2": true,
     "all": false
    },
+   "temporal_bin_ms": null,
    "metadata": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/ntm_frames/v2/neoclassical_tearing_mode_suggest_ntm_frames_v2.meta.json",
    "metadata_sha256": "e1a6455f423bd6ed126b231aa49228c36193c3a82d3dafb72cae980d4ef8afa8",
    "states": {
@@ -124,6 +127,7 @@
     {
      "start_ms": 1800.0,
      "end_ms": 3700.0,
+     "category": 0,
      "state": "absent"
     }
    ],
@@ -141,6 +145,7 @@
    "decision_threshold": null,
    "crowd_semantics": null,
    "primary_bars": null,
+   "temporal_bin_ms": null,
    "metadata": null,
    "metadata_sha256": null,
    "states": {
@@ -154,262 +159,314 @@
     {
      "start_ms": 1800.0,
      "end_ms": 2127.0,
-     "state": "uncertain"
+     "category": 2,
+     "state": "L-mode"
     },
     {
      "start_ms": 2168.0,
      "end_ms": 2189.955,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 2200.072,
      "end_ms": 2239.955,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 2250.072,
      "end_ms": 2289.955,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 2300.072,
      "end_ms": 2339.955,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 2350.072,
      "end_ms": 2389.955,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 2400.072,
      "end_ms": 2439.955,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 2450.072,
      "end_ms": 2482.0,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 2482.0,
      "end_ms": 2489.955,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 2489.955,
      "end_ms": 2500.072,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 2500.072,
      "end_ms": 2539.955,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 2539.955,
      "end_ms": 2550.072,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 2550.072,
      "end_ms": 2589.955,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 2589.955,
      "end_ms": 2600.072,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 2600.072,
      "end_ms": 2639.955,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 2639.955,
      "end_ms": 2650.072,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 2650.072,
      "end_ms": 2689.955,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 2689.955,
      "end_ms": 2700.072,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 2700.072,
      "end_ms": 2739.955,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 2739.955,
      "end_ms": 2750.072,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 2750.072,
      "end_ms": 2789.955,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 2789.955,
      "end_ms": 2800.072,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 2800.072,
      "end_ms": 2839.955,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 2839.955,
      "end_ms": 2850.072,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 2850.072,
      "end_ms": 2889.955,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 2889.955,
      "end_ms": 2900.072,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 2900.072,
      "end_ms": 2939.955,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 2939.955,
      "end_ms": 2950.072,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 2950.072,
      "end_ms": 2989.955,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 2989.955,
      "end_ms": 3010.069,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 3010.069,
      "end_ms": 3039.955,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 3039.955,
      "end_ms": 3050.071,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 3050.071,
      "end_ms": 3089.955,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 3089.955,
      "end_ms": 3100.072,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 3100.072,
      "end_ms": 3139.955,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 3139.955,
      "end_ms": 3150.072,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 3150.072,
      "end_ms": 3178.0,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 3178.0,
      "end_ms": 3188.0,
-     "state": "present"
+     "category": 1,
+     "state": "H-mode"
     },
     {
      "start_ms": 3351.0,
      "end_ms": 3389.954,
-     "state": "uncertain"
+     "category": 2,
+     "state": "L-mode"
     },
     {
      "start_ms": 3389.954,
      "end_ms": 3400.072,
-     "state": "uncertain"
+     "category": 2,
+     "state": "L-mode"
     },
     {
      "start_ms": 3400.072,
      "end_ms": 3439.954,
-     "state": "uncertain"
+     "category": 2,
+     "state": "L-mode"
     },
     {
      "start_ms": 3439.954,
      "end_ms": 3450.072,
-     "state": "uncertain"
+     "category": 2,
+     "state": "L-mode"
     },
     {
      "start_ms": 3450.072,
      "end_ms": 3489.954,
-     "state": "uncertain"
+     "category": 2,
+     "state": "L-mode"
     },
     {
      "start_ms": 3489.954,
      "end_ms": 3500.072,
-     "state": "uncertain"
+     "category": 2,
+     "state": "L-mode"
     },
     {
      "start_ms": 3500.072,
      "end_ms": 3539.954,
-     "state": "uncertain"
+     "category": 2,
+     "state": "L-mode"
     },
     {
      "start_ms": 3539.954,
      "end_ms": 3550.072,
-     "state": "uncertain"
+     "category": 2,
+     "state": "L-mode"
     },
     {
      "start_ms": 3550.072,
      "end_ms": 3589.954,
-     "state": "uncertain"
+     "category": 2,
+     "state": "L-mode"
     },
     {
      "start_ms": 3589.954,
      "end_ms": 3600.072,
-     "state": "uncertain"
+     "category": 2,
+     "state": "L-mode"
     },
     {
      "start_ms": 3600.072,
      "end_ms": 3639.954,
-     "state": "uncertain"
+     "category": 2,
+     "state": "L-mode"
     },
     {
      "start_ms": 3639.954,
      "end_ms": 3650.072,
-     "state": "uncertain"
+     "category": 2,
+     "state": "L-mode"
     },
     {
      "start_ms": 3650.072,
      "end_ms": 3689.954,
-     "state": "uncertain"
+     "category": 2,
+     "state": "L-mode"
     },
     {
      "start_ms": 3689.954,
      "end_ms": 3700.0,
-     "state": "uncertain"
+     "category": 2,
+     "state": "L-mode"
     }
    ],
    "density_guard": null,
@@ -580,6 +637,7 @@
     "E3": true,
     "all": false
    },
+   "temporal_bin_ms": null,
    "metadata": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/elm_frames/v2/edge_localized_mode_suggest_elm_frames_v2.meta.json",
    "metadata_sha256": "ba4e660688292c0668b7750debeeb50aaca5f232bfb212a4f43fa03a9b37da7d",
    "states": {
@@ -591,6 +649,7 @@
     {
      "start_ms": 1800.0,
      "end_ms": 3700.0,
+     "category": 0,
      "state": "absent"
     }
    ],
@@ -613,6 +672,7 @@
    "decision_threshold": 0.6,
    "crowd_semantics": null,
    "primary_bars": null,
+   "temporal_bin_ms": null,
    "metadata": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/191782.meta.json",
    "metadata_sha256": "9301ff6da16cd2161ea6508d2de7b5ecb9791c210fef8b7aa6ad172ad36bff5f",
    "states": {
@@ -624,6 +684,7 @@
     {
      "start_ms": 1800.0,
      "end_ms": 3700.0,
+     "category": 2,
      "state": "uncertain"
     }
    ],
@@ -641,7 +702,13 @@
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/191782.json",
      "sha256": "dbd834e3fbfb0b583335e9740e3b5debb409bac0d03d33c3572fe7f05b4e94a5"
     }
-   ]
+   ],
+   "display_intervals_ms": [],
+   "display_merge": {
+    "minimum_duration_ms": 10.0,
+    "rule": "shortest sliver first, merge into longer touching neighbour; ties prefer earlier; source unchanged; crash ticks unchanged",
+    "changes": []
+   }
   }
  },
  "ae_co2": {
@@ -663,7 +730,7 @@
  },
  "caption": {
   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191782/caption.tex",
-  "sha256": "22b74af31fd0d7748c597b90d4f9ad395d831fb5d5ca2618a8fc00f0ed0e5fbc"
+  "sha256": "e930da4bccf58036d758184032fe9d437af42c69f5a9bb56d7c320908f78773b"
  },
  "drawn": {
   "figure": [
@@ -671,8 +738,8 @@
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191782/fig_interpreter.png"
   ],
   "figure_sha256": {
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191782/fig_interpreter.pdf": "b03f5e3b48f8c252f3b12304f4e58575a8ade8b000e31d880c75e4c6c0113189",
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191782/fig_interpreter.png": "3d3fc341c4863c53a4285251e8446969c1a6cf2a6826edd6c9ccc463ac7ac347"
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191782/fig_interpreter.pdf": "ec3c9df88e20e15a9cae225f985b372865eebf306f8673faafca55f0b1c2cc8e",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191782/fig_interpreter.png": "6aea1d3720a9d81960cc58e4af6cb5ce4982ddb97455c7afb3c0429e61f8cb35"
   },
   "blobs": {
    "wide_above_fold": 339,
@@ -689,7 +756,146 @@
   "elm_uncertain_spans_ms": [],
   "elm_crowd_spans_ms": [],
   "sawtooth_strip_shown": false,
-  "sawtooth_track_shown": true,
+  "sawtooth_track_shown": false,
+  "sawtooth_visibility_rule": "row only if source has positive PRESENT duration in the displayed window",
+  "display_state_keys": [
+   "absent",
+   "blank"
+  ],
+  "layout": {
+   "n_panel_height_units": 1.3,
+   "n_panel_height_in": 0.856494945298435,
+   "n_panel_band_khz": [
+    0.0,
+    30.0
+   ],
+   "processed_omitted_band_khz": [
+    30.0,
+    55.0
+   ],
+   "legend_labels": [
+    "TokEye mask,\nn not measured",
+    "n=1",
+    "n=2",
+    "n=3",
+    "other n",
+    "absent",
+    "blank: unassessed / unobservable"
+   ],
+   "present_chip_colours": [],
+   "heading_and_legend_text_bounds": [
+    {
+     "text": "Raw signals: magnetics spectrogram (Mirnov probe)",
+     "font_pt": 7.0,
+     "bounds": [
+      0.14,
+      0.9570000000000001,
+      0.5755555555555556,
+      0.975792021780303
+     ]
+    },
+    {
+     "text": "TokEye-processed: measured n and label\u2013mode coincidence",
+     "font_pt": 7.0,
+     "bounds": [
+      0.14,
+      0.6371620274200249,
+      0.6358564814814814,
+      0.655954049200328
+     ]
+    },
+    {
+     "text": "mask \u2192 remove small objects / fill holes \u2192 components \u2192 time/band tags",
+     "font_pt": 7.0,
+     "bounds": [
+      0.14,
+      0.6131620274200249,
+      0.6744907407407408,
+      0.631954049200328
+     ]
+    },
+    {
+     "text": "Labels; source at right",
+     "font_pt": 7.0,
+     "bounds": [
+      0.14,
+      0.23095582329317269,
+      0.32666666666666666,
+      0.24974784507347572
+     ]
+    },
+    {
+     "text": "TokEye mask,\nn not measured",
+     "font_pt": 7.0,
+     "bounds": [
+      0.810724279835391,
+      0.5955003718013381,
+      0.924474279835391,
+      0.640162027420025
+     ]
+    },
+    {
+     "text": "n=1",
+     "font_pt": 7.0,
+     "bounds": [
+      0.810724279835391,
+      0.4652794364664772,
+      0.8403539094650206,
+      0.4829562041432448
+     ]
+    },
+    {
+     "text": "n=2",
+     "font_pt": 7.0,
+     "bounds": [
+      0.810724279835391,
+      0.43764903084779033,
+      0.8403539094650206,
+      0.45532579852455796
+     ]
+    },
+    {
+     "text": "n=3",
+     "font_pt": 7.0,
+     "bounds": [
+      0.810724279835391,
+      0.4100186252291035,
+      0.8403539094650206,
+      0.4276953929058711
+     ]
+    },
+    {
+     "text": "other n",
+     "font_pt": 7.0,
+     "bounds": [
+      0.810724279835391,
+      0.38238821961041664,
+      0.8625761316872429,
+      0.4011802413907196
+     ]
+    },
+    {
+     "text": "absent",
+     "font_pt": 7.0,
+     "bounds": [
+      0.345432098765432,
+      0.015909090909090907,
+      0.39432098765432094,
+      0.03470111268939394
+     ]
+    },
+    {
+     "text": "blank: unassessed / unobservable",
+     "font_pt": 7.0,
+     "bounds": [
+      0.45913580246913577,
+      0.015909090909090907,
+      0.7020987654320987,
+      0.03470111268939394
+     ]
+    }
+   ]
+  },
   "catalog_sawtooth_frame_model_shown": false,
   "late_untagged_high_frequency": null,
   "n2_harmonic_consistent": false,
@@ -701,7 +907,7 @@
    "support_ms": 0.0
   },
   "n3_components_unoutlined": 0,
-  "n3_outline_rule": "dominant n=3 does not meet the NTM n=1/2 rule",
+  "n3_outline_rule": "both dominant n and each outlined pixel must be n=1/2",
   "n_map": {
    "kept_share": 0.0931,
    "keys": [
@@ -825,10 +1031,11 @@
    }
   }
  },
- "git": "9ce61a15",
+ "git": "21e72826",
+ "render_started_from_clean_head": true,
  "render_code_sha256": {
-  "scripts/labeler/paper/fig_interpreter_tokeye.py": "23aa578f595ab038c90a7647e31841cc9f840debbd9c84d579ef8695b5bca459",
-  "src/labeler/paper/figure_sources.py": "dccae4fa232274b3fae8691b7901c06e6a3d52606728d0b700631fad5d8c2f1b",
-  "src/labeler/paper/mode_tags.py": "4c0c545f1e8bc3ebe262c6c02800e1d84fbf27d55e74fe1839d6e93a76b32d41"
+  "scripts/labeler/paper/fig_interpreter_tokeye.py": "09140ca2bc4f72929a86265033353973c64113f67785ef06bd4af2fd3602fa3b",
+  "src/labeler/paper/figure_sources.py": "bbd4fe838935328e4ccf31bdb2c7323b022cb2e3f6d39168494eda4808a14f29",
+  "src/labeler/paper/mode_tags.py": "936d0db4f2fae613018d0c6d73f9d88eb808106663ed1f780e67be3bc616bfb2"
  }
 }
