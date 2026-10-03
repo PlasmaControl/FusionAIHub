@@ -3,7 +3,7 @@
 confinement intervals does the signal disagree with?
 
     PYTHONPATH=src pixi run --frozen --no-install -e labelmaker \
-        python scripts/labeler/confinement_bes_confident.py [--row cum_abcdr]
+        python scripts/labeler/confinement_bes_confident.py [--row base]
 
 Reads the shot-grouped 5-fold predictions of one ablation row (every shot is predicted
 by a model that never saw it), runs confident learning (Northcutt et al. 2021, written
@@ -177,7 +177,7 @@ def git_sha() -> str:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--row", default="cum_abcdr")
+    ap.add_argument("--row", default="base")
     ap.add_argument("--runs-dir", type=Path, default=WORK / "ablation")
     ap.add_argument("--out-dir", type=Path, default=DEFAULT_OUT)
     ap.add_argument("--limit", type=int, default=60)
