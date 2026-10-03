@@ -11,8 +11,8 @@
 #SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix/population_%A_%a.log
 #SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix/population_%A_%a.log
 
-# Four disjoint resumable population shards; run labels --population afterward
-# to aggregate their per-shot records into one population JSON/CSV export.
+# Four disjoint resumable population shards. Repair diagnostic masks afterward,
+# then run labels --population --records-only for the final JSON/CSV export.
 set -euo pipefail
 export TMPDIR=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/saw
 export LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker

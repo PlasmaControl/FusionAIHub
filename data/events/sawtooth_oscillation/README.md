@@ -31,13 +31,13 @@ rises in the outer ones; the 1/1 precursor is visible on magnetics at 2-20 kHz.
 ## Models
 **stable**: none
 
-**latest**: saw-ours (research candidate; weak independent validation)
+**latest**: saw-ours (research candidate; four-state physics supervision, weak expert validation)
 
 **all**:
 - ece_sawtooth | 2026_09_12 (rule; omnimode inversion test, envelope-once port)
-- saw_physics | 2026_10_03 (Gude-inspired additive ECE candidate labels; SXR corroboration)
-- saw-hl3 | 2026_10_03 (paper-based CNN + bidirectional LSTM; DIII-D input/timing adaptations)
-- saw-ours | 2026_10_03 (PhaseNet-style multichannel ECE crash picker and train-presence head)
+- saw_physics | 2026_10_03 (Gude multichannel inversion plus Muscatello central-drop/train criteria; q conflicts abstain)
+- saw-hl3 | 2026_10_03 (OuYang HL-3 CNN + bidirectional LSTM external baseline; GPU fit, DIII-D input/timing adaptations)
+- saw-ours | 2026_10_03 (PhaseNet-style multichannel ECE crash picker and train-presence head; GPU fit)
 
 ## Inputs
 **ece_sawtooth**:
@@ -69,22 +69,32 @@ finite channels that took part, and `attrs["inversion_channel_lo"]`,
 Crash-by-crash agreement with the omnimode reference is checked by
 [`sawtooth_reference_check.py`](../../../scripts/labeler/sawtooth_reference_check.py)
 and its committed reference record.
+On shot 198658 it finds 45 sawtooth with a median period of 76 ms.
 
-`labeler.sawtooth.physics.detect` adds Gaussian edge filtering, locally adaptive
-POSR significance, multichannel coincidence, a contiguous loss/gain inversion
-profile, and quasi-periodic trains of at least three crashes. Local q-min above
-1.05 vetoes candidates. Calibrated ECE psi and EFIT q profiles support a q=1
-radius test in library code; those inputs were unavailable in this run, so
-physical inversion radii remain null. The CSV shards in `extend_saw_physics/`
-contain both point candidates (`crowd=False`) and train spans (`crowd=True`).
-They are additive research labels and do not replace production labels.
+`labeler.sawtooth.physics.detect` combines Gude-style Gaussian edge filtering,
+multichannel coincidence and a contiguous core-loss/outer-gain inversion profile
+with Muscatello's central relative-temperature drop and plausible, stable trains.
+Native-rate filtering precedes decimation. Valid core ECE defines observability;
+missing ECE, low temperature and detected cutoff yield `unassessed`, and trains
+split at observability gaps. Isolated profiles and q/ECE conflicts yield
+`uncertain`. Magnetics-only EFIT01 q-min never rejects a crash or teaches absence.
+Where local neutron-rate and Mirnov data exist, their drop/burst flags provide
+optional corroboration. No SXR corroboration is claimed without verified
+core/edge spatial pairing. Calibrated ECE psi and trusted equilibrium profiles
+support a direction-aware radius test; unavailable mapping produces null radii.
+The untracked exports in `extend_saw_physics/` hold four-state spans and crash
+points. They are additive research labels and do not replace production labels.
 
 Both learned models use shot-grouped cross-validation on the fixed training
-cohort, with fixed validation shots for checkpoint and crash-threshold choice.
+cohort, with inner training-split selection shots for checkpoint and threshold
+choice. CUDA training stops on inner-selection loss patience.
 All expert-reviewed shots and the blind test split are excluded from training
-and tuning. Expert tables contain spans, so true expert crash recall/precision
-cannot be measured. Independent span validation is weak; no stable model is
-recommended. See [method, adaptations and reproduction](../../../docs/labeler/sawtooth_physics.md)
+and tuning. `saw-hl3` receives four adapted inputs while `saw-ours` receives the
+full ECE array, so their comparison includes input information as well as
+architecture. Expert tables contain spans, so true expert crash recall/precision
+cannot be measured; results are reported per shot without small-sample CIs.
+Expert validation remains weak, and no stable model is recommended.
+See [method, adaptations and reproduction](../../../docs/labeler/sawtooth_physics.md)
 and [JSON-backed result tables](../../../docs/labeler/sawtooth_results.md).
 
 ## Alias
