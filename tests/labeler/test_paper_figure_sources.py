@@ -206,9 +206,9 @@ def test_caption_follows_sources_and_actual_acceptance_bars(tier):
         },
     )
     assert len(text.split()) <= 150
-    assert "regime:" in text
+    assert "Regime:" in text
     assert "Ticks" not in text
-    assert ("unverified" in text) == (tier == fs.lf.GENERATED)
+    assert ("below acceptance bar" in text) == (tier == fs.lf.GENERATED)
     assert "harmonic" not in text
     assert "n=1/2" not in text
     for internal in ("ntm_frames", "dalpha_lh", "MPI66M", "N1", "S1", "PRESENT"):
@@ -377,11 +377,31 @@ def test_tokeye_fingerprints_change_with_waveform_or_inference_code(tmp_path):
 def test_hidden_sawtooth_and_preinterval_spike_are_disclosed():
     text = fs.caption(
         42,
-        {fs.mt.SAWTOOTH: {}},
-        {"sawtooth_track_shown": False, "first_large_peak_before_expert_ms": 11.5},
+        {
+            fs.mt.SAWTOOTH: {
+                "what": "physics sawtooth states",
+                "display_intervals_ms": [],
+                "state_intervals_ms": [
+                    {"start_ms": 1500, "end_ms": 2332, "state": "uncertain"},
+                    {"start_ms": 2332, "end_ms": 3300, "state": "unassessed"},
+                ],
+                "density_guard": {"cutoff_proxy": True},
+            }
+        },
+        {
+            "sawtooth_track_shown": False,
+            "first_large_peak_before_expert_ms": 11.5,
+            "largest_dalpha_peak_ms": 2296.5,
+            "expert_elm_start_ms": 2308,
+        },
     )
-    assert "sawtooth: no present time in this window" in text.lower()
-    assert "the first large spike precedes the expert interval" in text.lower()
+    assert "Sawtooth: uncertain 832 ms, unassessed 968 ms" in text
+    assert "physics labels" in text and "ECE density proxy" in text
+    assert "; row omitted" in text and "no present time" not in text
+    assert (
+        "The largest D-alpha spike (2297 ms) precedes the expert ELM interval "
+        "(from 2308 ms)" in text
+    )
 
 
 def test_harmonic_caption_requires_minimum_sampled_support():
@@ -402,16 +422,14 @@ def test_sawtooth_caption_uses_window_states_and_qualified_proxy():
         "density_guard": {"cutoff_proxy": True, "status": "fixed_bt_missing"},
     }
     text = fs.sawtooth_caption(record)
-    assert "absent to 2.29 s" in text
-    assert "uncertain" in text
-    assert "unassessed from 2.31 s" in text
-    assert "conservative density proxy" in text
-    assert "Bt not in the local corpus" in text
+    assert "absent 799 ms, uncertain 10 ms, unassessed 991 ms" in text
+    assert "ECE density proxy" in text
+    assert "Bt unavailable" in text
     assert "is cut off" not in text
     record["state_intervals_ms"] = [
         {"start_ms": 1500, "end_ms": 3300, "state": "absent"}
     ]
-    assert fs.sawtooth_caption(record) == "Sawtooth absent throughout."
+    assert fs.sawtooth_caption(record).startswith("Sawtooth: absent 1800 ms")
 
 
 def test_sawtooth_summary_keeps_present_intervals_between_uncertain_and_blank():
@@ -424,8 +442,8 @@ def test_sawtooth_summary_keeps_present_intervals_between_uncertain_and_blank():
         "density_guard": {"cutoff_proxy": True, "status": "density_and_local_bt"},
     }
     text = fs.sawtooth_caption(record)
-    assert "present intervals" in text
-    assert "unassessed from 2.02 s" in text
+    assert "present 20 ms" in text
+    assert "uncertain 500 ms, unassessed 1280 ms" in text
     assert "no Bt" not in text
 
 
@@ -524,7 +542,7 @@ def test_caption_omits_absent_highlights_and_expert_elm_claims():
     assert "Pink" not in text and "NTM outlines" not in text
     assert "ELMs: detector" in text
     assert "circles" not in text and "expert ELM" not in text
-    assert "triangles" in text
+    assert "Triangles:" in text
     assert "frame model not shown" not in text
 
 
@@ -541,6 +559,13 @@ def test_caption_discloses_ae_bins_and_data_derived_late_band():
     assert "detector band ≥80 kHz" in text
     assert "25 ms bins" in text
     assert "105–125 kHz" in text
+    assert "neural detector on CO2 interferometer data" in text
+    primary = fs.caption(
+        201978,
+        {fs.mt.AE: record},
+        {"late_untagged_high_frequency": {"band_khz": [80, 250]}},
+    )
+    assert "Evenly spaced magnetics-only lines after 2.8 s remain unlabelled" in primary
     assert "170–250" not in text
 
 
@@ -560,3 +585,36 @@ def test_caption_uses_the_fallback_detectors_recorded_bin_duration():
     )
     assert "10 ms bins" in text
     assert "25 ms bins" not in text
+
+
+def test_caption_discloses_elm_hmode_conflicts_and_inferred_lmode():
+    text = fs.caption(
+        201973,
+        {},
+        {
+            "elm_hmode_conflicts_ms": [[3013, 3045], [3077, 3124]],
+            "lmode_inferred": True,
+        },
+    )
+    assert "Expert ELM intervals overlap H-mode-detector absent time" in text
+    assert "L-mode (inferred)" in text
+
+
+def test_raster_ae_audit_detects_leaks_in_final_pixels():
+    rgb = np.zeros((20, 20, 3))
+    rgb[4, 5] = [0.87, 0.66, 0.78]
+    rgb[4, 16] = [0.87, 0.66, 0.78]  # Outside PRESENT time.
+    rgb[18, 5] = [0.87, 0.66, 0.78]  # Below the AE band.
+    got = fs.raster_ae_audit(rgb, [0, 0, 1, 1], [0, 200], [55, 250], [(40, 80)])
+    assert got["pink_pixels"] == 3
+    assert got["outside_present"] == 1
+    assert got["below_detector_band"] == 1
+
+
+def test_raster_ae_audit_accepts_no_ae_tint():
+    got = fs.raster_ae_audit(
+        np.zeros((20, 20, 3)), [0, 0, 1, 1], [0, 200], [55, 250], []
+    )
+    assert (
+        got["pink_pixels"] == got["outside_present"] == got["below_detector_band"] == 0
+    )

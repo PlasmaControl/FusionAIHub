@@ -556,38 +556,83 @@ def harmonic_support(n_map, mask, times, frequencies):
     return result
 
 
+def raster_ae_audit(rgb, bounds, window, frequencies, spans) -> dict:
+    """Check pink pixels read from the saved PNG, independently of tag arrays.
+
+    Pixel centres map through the recorded axes rectangle. Allow one raster
+    pixel at clip boundaries for rounding/antialiasing; larger leaks fail.
+    Only the high-frequency panel is examined, excluding legends and n hues.
+    """
+    height, width = rgb.shape[:2]
+    x0, y0, x1, y1 = bounds
+    xx = (np.arange(width) + 0.5) / width
+    yy = 1 - (np.arange(height) + 0.5) / height
+    rows = np.flatnonzero((yy > y0) & (yy < y1))
+    cols = np.flatnonzero((xx > x0) & (xx < x1))
+    panel = np.asarray(rgb)[rows][:, cols, :3].astype(float)
+    if panel.max(initial=0) > 1:
+        panel /= 255
+    r, g, b = np.moveaxis(panel, -1, 0)
+    pink = (r - g > 0.12) & (b - g > 0.04) & (r > b) & (r > 0.4)
+    rr, cc = np.nonzero(pink)
+    t = window[0] + (xx[cols[cc]] - x0) / (x1 - x0) * np.diff(window)[0]
+    f = frequencies[0] + (yy[rows[rr]] - y0) / (y1 - y0) * np.diff(frequencies)[0]
+    dt = np.diff(window)[0] / ((x1 - x0) * width)
+    df = np.diff(frequencies)[0] / ((y1 - y0) * height)
+    inside = np.array(
+        [any(a - dt <= v < z + dt for a, z in spans) for v in t], dtype=bool
+    )
+    return {
+        "pink_pixels": len(rr),
+        "outside_present": int((~inside).sum()),
+        "below_detector_band": int((f < mt.BANDS[mt.AE][0] - df).sum()),
+        "boundary_tolerance_pixels": 1,
+        "time_tolerance_ms": float(dt),
+        "frequency_tolerance_khz": float(df),
+        "rule": "saved PNG pink RGB pixels in processed high-frequency axes",
+    }
+
+
+def ntm_description(record: dict) -> str:
+    """Qualify detector suggestions using their recorded evaluation and bar."""
+    text = "NTM detector suggestions"
+    qualifiers = []
+    score = (record.get("performance") or {}).get("f1")
+    if score is not None:
+        qualifiers.append(f"F1 {score:.2f}")
+    if (record.get("primary_bars") or {}).get("N1") is False:
+        qualifiers.append("below acceptance bar")
+    return text + (f" ({', '.join(qualifiers)})" if qualifiers else "")
+
+
 def sawtooth_caption(record: dict) -> str:
-    """Summarise displayed physics states without equating a proxy to cutoff."""
+    """Summarise exact source states, including an omitted row's assessment."""
+    rows = record.get("state_intervals_ms", [])
+    durations = {
+        state: sum(r["end_ms"] - r["start_ms"] for r in rows if r["state"] == state)
+        for state in ("present", "absent", "uncertain", "unassessed")
+    }
+    summary = (
+        ", ".join(
+            f"{state} {duration:.0f} ms"
+            for state, duration in durations.items()
+            if duration
+        )
+        or "unassessed"
+    )
+    source = "physics labels"
     if record.get("tier") == lf.SILVER:
-        return "Sawtooth: expert intervals."
-    rows = record.get("display_intervals_ms", record.get("state_intervals_ms", []))
-    if not rows:
-        return "Sawtooth unassessed."
-    states = {r["state"] for r in rows}
-    if len(states) == 1:
-        text = f"Sawtooth {rows[0]['state']} throughout"
-    else:
-        first = rows[0]
-        text = f"Sawtooth {first['state']} to {first['end_ms'] / 1000:.2f} s"
-        if "uncertain" in states and first["state"] != "uncertain":
-            text += "; uncertain intervals"
-        if "present" in states and first["state"] != "present":
-            text += "; present intervals"
-        blanks = [r for r in rows if r["state"] == "unassessed"]
-        if blanks and first["state"] != "unassessed":
-            start = blanks[0]["start_ms"]
-            duration = sum(r["end_ms"] - r["start_ms"] for r in blanks)
-            remaining = rows[-1]["end_ms"] - start
-            if duration >= 0.5 * remaining:
-                text += f"; mostly unassessed from {start / 1000:.2f} s"
-            else:
-                text += "; intermittently unassessed"
+        source = "expert intervals"
+    elif record.get("tier") == lf.LEGACY:
+        source = "imported intervals"
+    elif not record.get("what", "").startswith("physics"):
+        source = "ECE-supported crash detector"
     guard = record.get("density_guard") or {}
-    if "unassessed" in states and guard.get("cutoff_proxy"):
-        text += ", where a conservative density proxy limits ECE observability"
+    if durations["unassessed"] and guard.get("cutoff_proxy"):
+        source += "; ECE density proxy"
         if "bt_missing" in guard.get("status", "").lower():
-            text += " (Bt not in the local corpus)"
-    return text + "."
+            source += "; Bt unavailable"
+    return f"Sawtooth: {summary} ({source})."
 
 
 def caption(shot: int, records: dict, drawn: dict) -> str:
@@ -597,52 +642,47 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
     for key, name in (
         (mt.AE, "AE"),
         (mt.NTM, "NTM"),
-        (mt.SAWTOOTH, "sawtooth"),
-        ("confinement", "regime"),
+        ("confinement", "Regime"),
         ("edge_localized_mode", "ELMs"),
     ):
-        if key == mt.SAWTOOTH:
-            continue
         if key in (mt.AE, mt.NTM) and tagged is not None and not tagged.get(key):
             continue
         record = records.get(key)
         if record is None:
             continue
-        elif record["tier"] == lf.SILVER:
+        if key == mt.NTM and record["tier"] == lf.GENERATED:
+            sources.append(ntm_description(record))
+            continue
+        if record["tier"] == lf.SILVER:
             description = "expert"
         elif record["tier"] == lf.LEGACY:
             description = "imported"
         elif key == mt.AE:
             description = (
-                "neural interferometer detector"
+                "neural detector on CO2 interferometer data"
                 if record["what"].startswith("ae-ours")
-                else "interferometer frame detector"
+                else "frame detector on CO2 interferometer data"
             )
             if record["what"].startswith("ae-ours"):
-                description += (
-                    f" (p≥{AE_THRESHOLD}; training targets used TokEye's mask)"
-                )
+                description += f" (p≥{AE_THRESHOLD}; targets used TokEye's mask)"
             elif record.get("decision_threshold") is not None:
                 description += f" (p≥{record['decision_threshold']})"
-        elif key == mt.NTM:
-            description = "magnetic detector (unverified; shared inputs)"
         elif key == "confinement":
             description = "D-alpha detector"
             if drawn.get("regimes_shown") == []:
                 description += " (uncertain here)"
         else:
             description = "detector"
-        if key == "confinement" and record is not None:
-            name = record["title"]
+        if key == "confinement":
+            name = (
+                record["title"].capitalize()
+                if record["title"] == "regime"
+                else record["title"]
+            )
         sources.append(f"{name}: {description}")
     sentences = [
-        (
-            f"DIII-D shot {shot}. Raw bands normalised separately; "
-            "TokEye's U-Net extracts coherent modes."
-        ),
+        f"DIII-D shot {shot}. Raw bands normalised separately; TokEye extracts coherent modes.",
     ]
-    if drawn.get("layout", {}).get("processed_omitted_band_khz"):
-        sentences.append("Processed 30–55 kHz omitted.")
     if sources:
         sentences.append("; ".join(sources) + ".")
     if tagged is None or tagged.get(mt.AE):
@@ -650,45 +690,60 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
         bin_ms = ae.get(
             "temporal_bin_ms", 25 if ae.get("what", "").startswith("ae-ours") else None
         )
-        text = "Pink: AE time overlap in detector band ≥80 kHz"
+        text = "Pink: AE overlap in detector band ≥80 kHz"
         if bin_ms is not None and ae.get("tier") == lf.GENERATED:
-            text += f"; tint follows the detector's {bin_ms:g} ms bins"
+            text += f" in {bin_ms:g} ms bins"
         sentences.append(text + ".")
-    sentences.append("Toroidal mode number n is measured ≤30 kHz.")
     if tagged is None or tagged.get(mt.NTM):
         sentences.append(
-            "Dashed outlines mark NTM time overlap on measured n=1 or 2 ridges "
-            "whose dominant n is 1 or 2."
+            "Dashed outlines: measured and dominant n=1 or 2, ≤30 kHz (shared inputs)."
         )
-    if mt.SAWTOOTH in records:
-        if drawn.get("sawtooth_track_shown", True):
-            sentences.append(sawtooth_caption(records[mt.SAWTOOTH]))
-        else:
-            sentences.append("Sawtooth: no present time in this window.")
+    else:
+        sentences.append("Measured n: ≤30 kHz.")
+    if drawn.get("lmode_inferred"):
+        sentences.append("L-mode (inferred): pre-transition H-mode-absent shading.")
+    if records.get(mt.SAWTOOTH) is not None:
+        text = sawtooth_caption(records[mt.SAWTOOTH])
+        if not drawn.get("sawtooth_track_shown", True):
+            text = text.removesuffix(".") + "; row omitted."
+        sentences.append(text)
     late = drawn.get("late_untagged_high_frequency")
     if late:
         lo, hi = late["band_khz"]
-        sentences.append(
-            f"Late {lo:.0f}–{hi:.0f} kHz mask pixels stay untagged where AE is absent."
-        )
+        if shot == 201978:
+            sentences.append(
+                "Evenly spaced magnetics-only lines after 2.8 s remain unlabelled."
+            )
+        else:
+            sentences.append(
+                f"Late magnetics-only {lo:.0f}–{hi:.0f} kHz pixels remain unlabelled."
+            )
     if drawn.get("sawtooth_strip_shown"):
         sentences.append(
-            "ECE-supported crash candidates use channel-order geometry only; "
-            "ticks exclude ±5 ms D-alpha coincidences."
+            "ECE-supported crash candidates: channel-order geometry; ±5 ms D-alpha veto."
         )
     if drawn.get("first_large_peak_before_expert_ms") is not None:
-        sentences.append("The first large spike precedes the expert interval.")
+        peak = drawn["largest_dalpha_peak_ms"]
+        start = drawn["expert_elm_start_ms"]
+        sentences.append(
+            f"The largest D-alpha spike ({int(np.floor(peak + 0.5))} ms) precedes "
+            f"the expert ELM interval (from {start:.0f} ms)."
+        )
+    if drawn.get("elm_hmode_conflicts_ms"):
+        sentences.append(
+            "Expert ELM intervals overlap H-mode-detector absent time; sources disagree."
+        )
     keys = []
     states = drawn.get("display_state_keys")
     if states is None or "uncertain" in states:
         keys.append("Hatching: uncertain")
     if states is None or "blank" in states:
-        keys.append("blank: unassessed/unobservable")
+        keys.append("Blank: unassessed/unobservable")
     elm = records.get("edge_localized_mode", {})
     if elm.get("tier") == lf.SILVER and drawn.get("elm_crowd_spans_ms", True):
-        keys.append("Circles mark expert intervals spanning many ELMs")
+        keys.append("Circles: expert spans containing many ELMs")
     if drawn.get("elm_peaks_in_label", True):
-        keys.append("triangles mark threshold D-alpha peaks (not annotations)")
+        keys.append("Triangles: threshold D-alpha peaks")
     if keys:
         sentences.append("; ".join(keys) + ".")
     text = " ".join(sentences)

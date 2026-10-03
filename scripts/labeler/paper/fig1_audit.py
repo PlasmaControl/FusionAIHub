@@ -16,6 +16,7 @@ from pathlib import Path
 
 import fig_interpreter_tokeye as renderer
 import numpy as np
+from PIL import Image
 
 from labeler.config import Paths, sha256_of
 from labeler.paper import figure_sources as fs
@@ -30,7 +31,7 @@ def rebuild_primary(record):
     """Rebuild with the recorded sources and verify identical PDF/PNG bytes."""
     files = [Path(p) for p in record["drawn"]["figure"]]
     before = {str(p): sha256_of(p) for p in files}
-    rebuild_dir = Path(os.environ["TMPDIR"]) / "audit6-primary-rebuild"
+    rebuild_dir = Path(os.environ["TMPDIR"]) / "audit7-primary-rebuild"
     rebuild_dir.mkdir(parents=True, exist_ok=True)
     cmd = [
         "pixi", "run", "--frozen", "--no-install", "--manifest-path",
@@ -73,6 +74,7 @@ def main():
     args = parser.parse_args()
     manifest_file = args.records / "sawtooth_source_manifest.json"
     manifest = json.loads(manifest_file.read_text())
+    assert manifest["source_commit"] == "ad0ca40f1a7e85c22a88ffcf71ba7ee7456c13e2"
     complete = Path(manifest["completion_snapshot_path"])
     assert sha256_of(complete) == manifest["completion_sha256"]
     completion = json.loads(complete.read_text())
@@ -83,6 +85,16 @@ def main():
         path = source["snapshot_path"]
         assert sha256_of(Path(path)) == source["sha256"]
         snapshot_hashes[path] = source["sha256"]
+    catalog_comparison = manifest["catalog_comparison"]
+    for source in catalog_comparison:
+        assert sha256_of(Path(source["path"])) == source["sha256"]
+        spec = next(s for s in lf.TRACKS if s.key == mt.SAWTOOTH)
+        raw = lf.read_rows(Path(source["path"]))
+        for shot in SHOTS:
+            record = json.loads((args.records / f"{shot}.json").read_text())
+            assert source["shots"][str(shot)] == fs.state_intervals(
+                lf.Track(spec, rows=raw.get(shot, ())), record["window_ms"]
+            )
     audited, checked_sources, labels = [], {}, set()
     render_commits = set()
     for shot in SHOTS:
@@ -183,9 +195,18 @@ def main():
             assert row["state"] == state
         geometry = drawn["layout"]
         assert geometry["n_panel_height_units"] >= 0.8
-        assert geometry["n_panel_height_in"] >= 0.8
+        assert geometry["n_panel_height_in"] >= 0.75
         assert geometry["n_panel_band_khz"] == [0, 30]
-        assert geometry["processed_omitted_band_khz"] == [30, 55]
+        assert geometry["processed_omitted_band_khz"] == []
+        assert geometry["processed_restored_strip_khz"] == [30, 55]
+        panels = geometry["frequency_panels"]
+        for part, limits in (("hi", [55, 250]), ("mid", [30, 55]), ("lo", [0, 30])):
+            raw_panel, processed = panels[f"raw_{part}"], panels[f"pr_{part}"]
+            assert raw_panel["band_khz"] == processed["band_khz"] == limits
+            assert abs(raw_panel["height_in"] - processed["height_in"]) < 1e-9
+            assert raw_panel["ticks_khz"] == processed["ticks_khz"]
+        assert 55 in panels["pr_mid"]["ticks_khz"]
+        assert not geometry["ae_fixed_callout_shown"]
         for text in geometry["heading_and_legend_text_bounds"]:
             assert text["font_pt"] >= 7
             x0, y0, x1, y1 = text["bounds"]
@@ -193,7 +214,26 @@ def main():
         legend = [label.replace("\n", " ") for label in geometry["legend_labels"]]
         tags = drawn["blobs"]["tagged"]
         assert ("AE (detector band ≥80 kHz)" in legend) == bool(tags[mt.AE])
-        assert ("NTM (n=1 or 2, ≤30 kHz)" in legend) == bool(tags[mt.NTM])
+        ntm_key = (
+            "NTM suggestions"
+            if record["tracks"][mt.NTM]["tier"] == lf.GENERATED
+            else "NTM labels"
+        )
+        assert (f"{ntm_key} (n=1 or 2, ≤30 kHz)" in legend) == bool(tags[mt.NTM])
+        assert geometry["ntm_key_black_swatch"] == bool(tags[mt.NTM])
+        png = Path(drawn["figure"][1])
+        with Image.open(png) as native:
+            assert all(abs(dpi - 150) < 0.1 for dpi in native.info["dpi"])
+            rgb = np.asarray(native.convert("RGB"))
+        raster_ae = fs.raster_ae_audit(
+            rgb,
+            panels["pr_hi"]["bounds"],
+            record["window_ms"],
+            panels["pr_hi"]["band_khz"],
+            record["tracks"][mt.AE]["present_spans_ms"],
+        )
+        assert raster_ae["outside_present"] == raster_ae["below_detector_band"] == 0
+        assert bool(raster_ae["pink_pixels"]) == bool(tags[mt.AE])
         if confine["title"] == "regime":
             assert set(drawn["regimes_shown"]) <= set(legend)
         elm_expert = record["tracks"]["edge_localized_mode"]["tier"] == lf.SILVER
@@ -230,15 +270,38 @@ def main():
                 "ECE-verified",
             )
         )
+        assert "no present time" not in caption.lower()
+        expected_saw = fs.sawtooth_caption(saw).removesuffix(".")
+        assert expected_saw in caption
         if not present_saw:
-            assert "sawtooth: no present time in this window" in caption.lower()
+            assert "; row omitted" in caption
         if shown:
             assert "ECE-supported crash candidates" in caption
             assert "channel-order geometry" in caption
         if drawn["first_large_peak_before_expert_ms"] is not None:
+            peak = int(np.floor(drawn["largest_dalpha_peak_ms"] + 0.5))
+            start = drawn["expert_elm_start_ms"]
             assert (
-                "the first large spike precedes the expert interval" in caption.lower()
+                f"The largest D-alpha spike ({peak} ms) precedes the expert ELM "
+                f"interval (from {start:.0f} ms)" in caption
             )
+        if drawn["lmode_inferred"]:
+            assert "L-mode (inferred)" in caption
+        if drawn["elm_hmode_conflicts_ms"]:
+            assert "Expert ELM intervals overlap H-mode-detector absent time" in caption
+        ntm = record["tracks"][mt.NTM]
+        if ntm["tier"] == lf.GENERATED and tags[mt.NTM]:
+            assert fs.ntm_description(ntm) in caption
+            evaluation = json.loads(Path(ntm["performance"]["evaluation"]).read_text())
+            assert ntm["performance"]["f1"] == evaluation["scores"]["ntm_frames"]["f1"]
+        if shot == 201978:
+            assert "neural detector on CO2 interferometer data" in caption
+            assert (
+                "Evenly spaced magnetics-only lines after 2.8 s remain unlabelled"
+                in caption
+            )
+        if shot in (191376, 191782):
+            assert record["publication_suitability"]["suitable_alternate"] is False
         label = re.search(r"\\label\{([^}]+)\}", caption)[1]
         assert label not in labels
         assert label == f"fig:interpreter-{shot}"
@@ -260,6 +323,13 @@ def main():
                         {
                             "path": track["metadata"],
                             "sha256": track["metadata_sha256"],
+                        }
+                    )
+                if track.get("performance"):
+                    sources.append(
+                        {
+                            "path": track["performance"]["evaluation"],
+                            "sha256": track["performance"]["evaluation_sha256"],
                         }
                     )
         sources.append(record["tokeye"])
@@ -307,6 +377,7 @@ def main():
                 "elm_peak_count": drawn["elm_peaks_in_label"],
                 "caption_words": words,
                 "projection_violations": 0,
+                "raster_ae_audit": raster_ae,
                 "unmeasured_ntm_pixels": 0,
                 "measured_n3_outline_pixels": 0,
                 "layout": geometry,
@@ -321,6 +392,10 @@ def main():
                     "first_large_peak_before_expert_ms"
                 ],
                 "largest_dalpha_peak_ms": drawn["largest_dalpha_peak_ms"],
+                "expert_elm_start_ms": drawn["expert_elm_start_ms"],
+                "lmode_inferred": drawn["lmode_inferred"],
+                "ntm_performance": ntm["performance"],
+                "publication_suitability": record["publication_suitability"],
                 "elm_hmode_conflicts_ms": drawn["elm_hmode_conflicts_ms"],
                 "render_source_commit": record["git"],
                 "sawtooth_source": crashes["files"],
@@ -371,6 +446,9 @@ def main():
                     "original_source": manifest["original_source"],
                     "snapshot_source": manifest["snapshot_source"],
                     "completion_sha256": manifest["completion_sha256"],
+                    "source_commit": manifest["source_commit"],
+                    "validation_status": manifest["validation_status"],
+                    "catalog_comparison": catalog_comparison,
                 },
                 "reproducibility": reproducibility,
             },
@@ -378,7 +456,9 @@ def main():
         )
         + "\n"
     )
-    print(f"Audited {len(audited)} non-blind renders; zero projection violations")
+    print(
+        f"Audited {len(audited)} non-blind renders; zero array/raster AE clipping violations"
+    )
     if reproducibility:
         print("Primary PDF and PNG rebuild identically byte-for-byte")
 

@@ -622,6 +622,224 @@ def track_bars(ax, track: lf.Track, colour: str, regimes=None, bar=BAR) -> None:
             )
 
 
+def draw_frequency_panels(ax, low: Band, high: Band) -> None:
+    """Identical raw/processed frequency mapping, with one fold at 55 kHz."""
+    for prefix in ("raw", "pr"):
+        hi, mid, lo = (f"{prefix}_{part}" for part in ("hi", "mid", "lo"))
+        for name, limits, ticks in (
+            (hi, (FOLD_KHZ, TOP_KHZ), [100, 150, 200, 250]),
+            (mid, (N_VIEW_KHZ, FOLD_KHZ), [40, 55]),
+            (lo, (0, N_VIEW_KHZ), [0, 10, 20, 30]),
+        ):
+            ax[name].set_ylim(*limits)
+            ax[name].set_yticks(ticks)
+            ax[name].tick_params(bottom=False)
+        ax[hi].set_ylabel("kHz", labelpad=2)
+        ax[lo].set_ylabel("kHz", labelpad=2)
+        ax[hi].spines["bottom"].set_visible(False)
+        ax[mid].spines["bottom"].set_visible(False)
+        # The 30 kHz seam is contiguous; only the 55 kHz fold gets markers.
+        for x in (0, 1):
+            for panel, y in ((hi, 0), (mid, 1)):
+                ax[panel].plot(
+                    [x - 0.007, x + 0.007],
+                    [y - 0.035, y + 0.035],
+                    transform=ax[panel].transAxes,
+                    color=INK,
+                    lw=0.7,
+                    clip_on=False,
+                    zorder=10,
+                )
+        painter = draw_raw if prefix == "raw" else draw_processed
+        painter(ax[hi], high)
+        painter(ax[mid], low)
+        painter(ax[lo], low)
+
+
+def draw_legends(
+    fig,
+    ax,
+    display_tracks,
+    by_key,
+    projected,
+    crashes,
+    n_handles,
+    visible,
+    peaks,
+    shown,
+    regime_names,
+    t0,
+    t1,
+):
+    """Source-aware signal/event keys and aligned label-state keys."""
+    da = ax["da_pr"]
+    elm_key = "edge_localized_mode"
+    pos = ax["h_proc"].get_position()
+    event_handles = [
+        Patch(fc="white", ec=INK, lw=0.5, label="TokEye mask,\nn not measured")
+    ]
+    if projected["wide"][mode_tags.AE].any():
+        event_handles.append(
+            Patch(
+                fc=EVENT_COLOURS[mode_tags.AE],
+                alpha=0.65,
+                label="AE (detector band\n≥80 kHz)",
+            )
+        )
+    if projected["zoom"][mode_tags.NTM].any():
+        ntm_label = (
+            "NTM suggestions"
+            if by_key[mode_tags.NTM].source.tier == lf.GENERATED
+            else "NTM labels"
+        )
+        event_handles.append(
+            (
+                Patch(fc="black", label=f"{ntm_label}\n(n=1 or 2, ≤30 kHz)"),
+                Line2D([], [], color=NTM_CONTOUR_COLOUR, ls="--", lw=NTM_CONTOUR_LW),
+            )
+        )
+    legend_options = {
+        "loc": "upper left",
+        "ncols": 1,
+        "frameon": False,
+        "fontsize": FONT,
+        "handlelength": 1.0,
+        "handletextpad": 0.3,
+        "borderpad": 0,
+        "borderaxespad": 0,
+    }
+    fig.legend(
+        handles=event_handles,
+        labels=[
+            h[0].get_label() if isinstance(h, tuple) else h.get_label()
+            for h in event_handles
+        ],
+        handler_map={tuple: HandlerTuple(ndivide=1)},
+        bbox_to_anchor=(0.792, pos.y1 - 0.025),
+        **legend_options,
+    )
+    if len(crashes):
+        fig.legend(
+            handles=[
+                Line2D(
+                    [],
+                    [],
+                    color=EVENT_COLOURS[mode_tags.SAWTOOTH],
+                    ls=":",
+                    label="ECE-supported\ncrash candidates",
+                )
+            ],
+            bbox_to_anchor=(0.792, ax["nbi"].get_position().y1),
+            **legend_options,
+        )
+    if n_handles:
+        fig.legend(
+            handles=n_handles,
+            bbox_to_anchor=(0.792, ax["pr_lo"].get_position().y1 - 0.005),
+            **{
+                **legend_options,
+                "ncols": 2,
+                "columnspacing": 0.4,
+                "handlelength": 0.7,
+                "labelspacing": 0.25,
+            },
+        )
+    elm_handles = []
+    if visible:
+        elm_handles.append(Patch(fc="none", ec=INK, lw=0.8, label="ELM intervals"))
+    if len(peaks):
+        elm_handles.append(
+            Line2D([], [], color=INK, marker="v", ls="", ms=3, label="D-alpha peaks")
+        )
+    if elm_handles:
+        fig.legend(
+            handles=elm_handles,
+            bbox_to_anchor=(0.792, da.get_position().y1),
+            **legend_options,
+        )
+    if by_key["confinement"].spec.title == "regime" and shown:
+        fig.legend(
+            handles=[
+                Patch(fc=REGIME_GREYS[c], lw=0, label=regime_names[c])
+                for c in sorted(shown)
+            ],
+            bbox_to_anchor=(0.792, ax["h_lab"].get_position().y1),
+            **legend_options,
+        )
+
+    colours = [
+        EVENT_COLOURS[t.spec.key]
+        for t in display_tracks
+        if t.spec.key in EVENT_COLOURS and figure_sources.has_present_time(t, (t0, t1))
+    ]
+    display_states = [
+        r for t in display_tracks for r in figure_sources.state_intervals(t, (t0, t1))
+    ]
+    display_keys = []
+    handles = []
+    if colours:
+        handles.append(tuple(Patch(fc=c, lw=0) for c in colours))
+        display_keys.append("present")
+    if any(r["state"] == "uncertain" for r in display_states):
+        handles.append(Patch(fc="white", ec=INK, hatch="//////", lw=0.4))
+        display_keys.append("uncertain")
+    if any(r["state"] == "absent" for r in display_states):
+        handles.append(Patch(fc=ABSENT_GREY, lw=0))
+        display_keys.append("absent")
+    has_blank = any(
+        t.source is None
+        or sum(
+            r["end_ms"] - r["start_ms"]
+            for r in figure_sources.state_intervals(t, (t0, t1))
+            if r["state"] != "unassessed"
+        )
+        < t1 - t0 - 1e-6
+        for t in display_tracks
+    )
+    if has_blank:
+        handles.append(Patch(fc="white", ec="#999999", lw=0.5))
+        display_keys.append("blank")
+    fig.legend(
+        handles,
+        ["blank: unassessed / unobservable" if k == "blank" else k
+         for k in display_keys],
+        handler_map={tuple: HandlerTuple(ndivide=None, pad=0)},
+        loc="lower center", ncols=len(handles), frameon=False, fontsize=FONT,
+        bbox_to_anchor=(0.5, 0.0), columnspacing=1.2, handlelength=2.5,
+    )  # fmt: skip
+    expert_crowd = (
+        by_key[elm_key].source is not None
+        and (by_key[elm_key].source.tier == lf.SILVER)
+        and any(
+            r.crowd == 1
+            and r.category in (PRESENT, UNCERTAIN)
+            and r.t_start < t1
+            and r.t_end > t0
+            for r in by_key[elm_key].rows
+        )
+    )
+    if expert_crowd:
+        fig.legend(
+            handles=[
+                Line2D(
+                    [],
+                    [],
+                    color=INK,
+                    lw=3,
+                    marker="o",
+                    ms=3,
+                    markerfacecolor="white",
+                    label="expert ELM interval (one span for many ELMs)",
+                )
+            ],
+            loc="lower center",
+            frameon=False,
+            fontsize=FONT,
+            bbox_to_anchor=(0.5, 0.034),
+        )
+    return colours, display_keys
+
+
 def draw(
     paths: Paths,
     candidate: lf.Candidate,
@@ -720,9 +938,10 @@ def draw(
     n_read, n_kept = roster.gated(n_sig.rows[0], gate) if n_sig.rows else (None, None)
 
     layout = {
-        "h_raw": 0.32, "raw_hi": 0.80, "raw_lo": 0.62, "g1": 0.1, "da_raw": 0.38,
+        "h_raw": 0.32, "raw_hi": 0.85, "raw_mid": 0.25, "raw_lo": 1.35,
+        "g1": 0.1, "da_raw": 0.38,
         "g2": 0.07, "nbi": 0.38, "h_proc": 0.52,
-        "pr_hi": 0.95, "pr_lo": 1.30,
+        "pr_hi": 0.85, "pr_mid": 0.25, "pr_lo": 1.35,
         "crashes": 0.16 if len(crashes) else 0.001,
         "g3": 0.1, "da_pr": 0.52, "h_lab": 0.36,
     }  # fmt: skip
@@ -749,10 +968,12 @@ def draw(
         track_axes = [ax[f"track{i}"] for i in range(len(display_tracks))]
         for n in (
             "raw_hi",
+            "raw_mid",
             "raw_lo",
             "da_raw",
             "nbi",
             "pr_hi",
+            "pr_mid",
             "pr_lo",
             "da_pr",
             "crashes",
@@ -764,29 +985,7 @@ def draw(
             style_axes(a)
 
         # ---- raw
-        for hi, lo, band in (("raw_hi", "raw_lo", None), ("pr_hi", "pr_lo", None)):
-            ax[hi].set_ylim(FOLD_KHZ, TOP_KHZ)
-            ax[lo].set_ylim(0, FOLD_KHZ if lo == "raw_lo" else N_VIEW_KHZ)
-            ax[hi].set_yticks([100, 150, 200, 250])
-            ax[lo].set_yticks([0, 20, 40, 55] if lo == "raw_lo" else [0, 10, 20, 30])
-            ax[hi].spines["bottom"].set_visible(False)
-            ax[hi].tick_params(bottom=False)
-            ax[hi].set_ylabel("kHz", labelpad=2)
-            ax[lo].set_ylabel("kHz", labelpad=2)
-            # Break markers on both edges make the change of scale explicit.
-            for x in (0, 1):
-                for panel, y in ((hi, 0), (lo, 1)):
-                    ax[panel].plot(
-                        [x - 0.007, x + 0.007],
-                        [y - 0.035, y + 0.035],
-                        transform=ax[panel].transAxes,
-                        color=INK,
-                        lw=0.7,
-                        clip_on=False,
-                        zorder=10,
-                    )
-        draw_raw(ax["raw_hi"], high)
-        draw_raw(ax["raw_lo"], low)
+        draw_frequency_panels(ax, low, high)
         ax["raw_hi"].text(
             1.02,
             0.85,
@@ -797,7 +996,7 @@ def draw(
             va="top",
             color=INK,
         )
-        leader(ax["raw_lo"], "0–55 kHz,\nfiner resolution", (t1, 45), y=0.75)
+        leader(ax["raw_mid"], "0–55 kHz,\nfiner resolution", (t1, 45), y=0.75)
         if da_sig.rows:
             trace(ax["da_raw"], da_sig.rows[0])
         ax["da_raw"].set_ylabel(
@@ -814,8 +1013,6 @@ def draw(
         ax["nbi"].set_ylim(bottom=0)
 
         # ---- processed: binary coherent mask, with measured n below 30 kHz
-        draw_processed(ax["pr_hi"], high)
-        draw_processed(ax["pr_lo"], low)
         keys = []
         if n_read is not None:
             names = n_read.meta["modes"]["n"]
@@ -839,21 +1036,6 @@ def draw(
                 edge=True,
             )
         # Leaders identify representative structures, never claim seeding.
-        if projected["wide"][mode_tags.AE].any():
-            ax["pr_hi"].text(
-                0.98,
-                0.08,
-                "AE detector"
-                if by_key[mode_tags.AE].source.tier == lf.GENERATED
-                else "AE interval",
-                transform=ax["pr_hi"].transAxes,
-                ha="right",
-                va="bottom",
-                fontsize=FONT,
-                color="white",
-                zorder=9,
-                bbox={"fc": "black", "ec": "none", "pad": 0.2},
-            )
         ntm_n1 = [b for b in blobs_low if mode_tags.NTM in b.tags and b.dominant_n == 1]
         if ntm_n1:
             b = max(ntm_n1, key=lambda b: b.n_pix)
@@ -862,13 +1044,25 @@ def draw(
             if low.n_map is not None:
                 keep &= low.n_map[rr, cc] == 1
             if keep.any():
-                i = np.flatnonzero(keep)[len(np.flatnonzero(keep)) // 2]
+                # Rightmost support shortens the leader across the n panel.
+                support = np.flatnonzero(keep)
+                i = support[np.argmax(low.t[cc[support]])]
+                description = figure_sources.ntm_description(
+                    track_record(by_key[mode_tags.NTM])
+                )
+                description = description.replace(
+                    "NTM detector suggestions", "NTM detector\nsuggestions"
+                )
+                description = description.replace(" (", "\n(").replace(
+                    ", below acceptance bar", ", below\nacceptance bar"
+                )
                 leader(
                     ax["pr_lo"],
-                    "n=1; NTM detector"
+                    description
                     if by_key[mode_tags.NTM].source.tier == lf.GENERATED
                     else "n=1 mode; NTM label",
                     (low.t[cc[i]], low.all_f[rr[i]]),
+                    y=0.23,
                 )
         strip = ax["crashes"]
         strip.set_facecolor("#222222")
@@ -896,6 +1090,7 @@ def draw(
         elm_spans = present_spans(by_key[elm_key])
         largest_dalpha_peak_ms = None
         first_large_peak_before_expert_ms = None
+        expert_elm_start_ms = None
         if da_sig.rows:
             read = da_sig.rows[0]
             cols = np.flatnonzero((read.centres >= t0) & (read.centres < t1))
@@ -903,6 +1098,7 @@ def draw(
                 i = cols[np.argmax(read.values[1][0, cols])]
                 largest_dalpha_peak_ms = float(read.centres[i])
                 starts = [a for a, b in elm_spans if a < t1 and b > t0]
+                expert_elm_start_ms = min(starts) if starts else None
                 if (
                     starts
                     and by_key[elm_key].source.tier == lf.SILVER
@@ -974,9 +1170,11 @@ def draw(
         )
         regime_names = {1: "H-mode", 2: "L-mode", 3: "QH-mode", 4: "WPQH-mode"}
         shown = set()
+        lmode_inferred = False
         regime_texts = []
         for r in by_key["confinement"].rows:
             category = r.category
+            label = regime_names.get(category)
             # The L-H detector's pre-transition interval is explicitly a low
             # confinement cue; retain its binary H-mode categories in the track.
             if by_key["confinement"].spec.title == "H-mode" and category == ABSENT:
@@ -986,18 +1184,22 @@ def draw(
                 )
                 if later_h:
                     category = 2
+                    label = "L-mode (inferred)"
+                    lmode_inferred |= r.t_end > t0 and r.t_start < t1
             if category in regime_names:
                 da.axvspan(r.t_start, r.t_end, color=REGIME_GREYS[category],
                            alpha=0.2, lw=0, zorder=0)  # fmt: skip
                 if r.t_end > t0 and r.t_start < t1 and category not in shown:
                     shown.add(category)
                     regime_texts.append(
-                        da.text(max(r.t_start, t0) + 20, 0.94, regime_names[category],
+                        da.text(max(r.t_start, t0) + 20, 0.94, label,
                                 transform=da.get_xaxis_transform(), fontsize=FONT,
                                 color="#444444", va="top", ha="left")
                     )  # fmt: skip
         if elm_chip is not None and regime_texts:
             clear_of(elm_chip, regime_texts)
+        for i, text in enumerate(regime_texts):
+            clear_of(text, regime_texts[i + 1:])
 
         # ---- label tracks
         titles = {
@@ -1011,7 +1213,7 @@ def draw(
             a.set_ylabel(titles[key], rotation=0, ha="right", va="center", labelpad=3)
             tier = "" if track.source is None else TIER_NAMES[track.source.tier]
             if key == mode_tags.NTM and tier == "detector":
-                tier = "detector (unverified)"
+                tier = "detector suggestions"
             a.text(1.008, 0.5, tier, transform=a.transAxes, fontsize=FONT,
                    va="center", ha="left", color="#444444")  # fmt: skip
         track_axes[-1].tick_params(labelbottom=True, bottom=True)
@@ -1023,173 +1225,43 @@ def draw(
             pos = ax[name].get_position()
             for i, text in enumerate(lines):
                 bold = "bold" if text == lines[0] else "normal"
-                y = pos.y1 - 0.028 - i * 0.024
+                y = pos.y1 - (i + 1) * pos.height / (len(lines) + 1)
                 fig.text(pos.x0, y, text, fontsize=FONT, fontweight=bold,
-                         va="bottom", ha="left")  # fmt: skip
+                         va="center", ha="left")  # fmt: skip
 
-        pos = ax["h_proc"].get_position()
-        event_handles = [
-            Patch(fc="white", ec=INK, lw=0.5, label="TokEye mask,\nn not measured")
-        ]
-        if projected["wide"][mode_tags.AE].any():
-            event_handles.append(
-                Patch(
-                    fc=EVENT_COLOURS[mode_tags.AE],
-                    alpha=0.65,
-                    label="AE (detector band\n≥80 kHz)",
-                )
-            )
-        if projected["zoom"][mode_tags.NTM].any():
-            event_handles.append(
-                Line2D(
-                    [],
-                    [],
-                    color=NTM_CONTOUR_COLOUR,
-                    ls="--",
-                    lw=NTM_CONTOUR_LW,
-                    path_effects=NTM_CONTOUR_EFFECTS,
-                    label="NTM (n=1 or 2,\n≤30 kHz)",
-                )
-            )
-        legend_options = {
-            "loc": "upper left",
-            "ncols": 1,
-            "frameon": False,
-            "fontsize": FONT,
-            "handlelength": 1.0,
-            "handletextpad": 0.3,
-            "borderpad": 0,
-            "borderaxespad": 0,
-        }
-        fig.legend(
-            handles=event_handles,
-            bbox_to_anchor=(0.792, pos.y1 - 0.025),
-            **legend_options,
+        colours, display_keys = draw_legends(
+            fig,
+            ax,
+            display_tracks,
+            by_key,
+            projected,
+            crashes,
+            n_handles,
+            visible,
+            peaks,
+            shown,
+            regime_names,
+            t0,
+            t1,
         )
-        if len(crashes):
-            fig.legend(
-                handles=[
-                    Line2D(
-                        [],
-                        [],
-                        color=EVENT_COLOURS[mode_tags.SAWTOOTH],
-                        ls=":",
-                        label="ECE-supported\ncrash candidates",
-                    )
-                ],
-                bbox_to_anchor=(0.792, ax["nbi"].get_position().y1),
-                **legend_options,
-            )
-        if n_handles:
-            fig.legend(
-                handles=n_handles,
-                bbox_to_anchor=(0.792, ax["pr_lo"].get_position().y1 - 0.005),
-                **legend_options,
-            )
-        elm_handles = []
-        if visible:
-            elm_handles.append(Patch(fc="none", ec=INK, lw=0.8, label="ELM intervals"))
-        if len(peaks):
-            elm_handles.append(
-                Line2D(
-                    [], [], color=INK, marker="v", ls="", ms=3, label="D-alpha peaks"
-                )
-            )
-        if elm_handles:
-            fig.legend(
-                handles=elm_handles,
-                bbox_to_anchor=(0.792, da.get_position().y1),
-                **legend_options,
-            )
-        if by_key["confinement"].spec.title == "regime" and shown:
-            fig.legend(
-                handles=[
-                    Patch(fc=REGIME_GREYS[c], lw=0, label=regime_names[c])
-                    for c in sorted(shown)
-                ],
-                bbox_to_anchor=(0.792, ax["h_lab"].get_position().y1),
-                **legend_options,
-            )
-
-        colours = [
-            EVENT_COLOURS[t.spec.key]
-            for t in display_tracks
-            if t.spec.key in EVENT_COLOURS
-            and figure_sources.has_present_time(t, (t0, t1))
-        ]
-        display_states = [
-            r
-            for t in display_tracks
-            for r in figure_sources.state_intervals(t, (t0, t1))
-        ]
-        display_keys = []
-        handles = []
-        if colours:
-            handles.append(tuple(Patch(fc=c, lw=0) for c in colours))
-            display_keys.append("present")
-        if any(r["state"] == "uncertain" for r in display_states):
-            handles.append(Patch(fc="white", ec=INK, hatch="//////", lw=0.4))
-            display_keys.append("uncertain")
-        if any(r["state"] == "absent" for r in display_states):
-            handles.append(Patch(fc=ABSENT_GREY, lw=0))
-            display_keys.append("absent")
-        has_blank = any(
-            t.source is None
-            or sum(
-                r["end_ms"] - r["start_ms"]
-                for r in figure_sources.state_intervals(t, (t0, t1))
-                if r["state"] != "unassessed"
-            )
-            < t1 - t0 - 1e-6
-            for t in display_tracks
-        )
-        if has_blank:
-            handles.append(Patch(fc="white", ec="#999999", lw=0.5))
-            display_keys.append("blank")
-        fig.legend(
-            handles,
-            ["blank: unassessed / unobservable" if k == "blank" else k
-             for k in display_keys],
-            handler_map={tuple: HandlerTuple(ndivide=None, pad=0)},
-            loc="lower center", ncols=len(handles), frameon=False, fontsize=FONT,
-            bbox_to_anchor=(0.5, 0.0), columnspacing=1.2, handlelength=2.5,
-        )  # fmt: skip
-        expert_crowd = (
-            by_key[elm_key].source is not None
-            and (by_key[elm_key].source.tier == lf.SILVER)
-            and any(
-                r.crowd == 1
-                and r.category in (PRESENT, UNCERTAIN)
-                and r.t_start < t1
-                and r.t_end > t0
-                for r in by_key[elm_key].rows
-            )
-        )
-        if expert_crowd:
-            fig.legend(
-                handles=[
-                    Line2D(
-                        [],
-                        [],
-                        color=INK,
-                        lw=3,
-                        marker="o",
-                        ms=3,
-                        markerfacecolor="white",
-                        label="expert ELM interval (one span for many ELMs)",
-                    )
-                ],
-                loc="lower center",
-                frameon=False,
-                fontsize=FONT,
-                bbox_to_anchor=(0.5, 0.034),
-            )
         fig.draw_without_rendering()
         layout_record = {
             "n_panel_height_units": layout["pr_lo"],
             "n_panel_height_in": ax["pr_lo"].get_position().height * HEIGHT_IN,
             "n_panel_band_khz": list(ax["pr_lo"].get_ylim()),
-            "processed_omitted_band_khz": [N_VIEW_KHZ, FOLD_KHZ],
+            "processed_omitted_band_khz": [],
+            "processed_restored_strip_khz": [N_VIEW_KHZ, FOLD_KHZ],
+            "frequency_panels": {
+                name: {
+                    "band_khz": list(ax[name].get_ylim()),
+                    "height_in": ax[name].get_position().height * HEIGHT_IN,
+                    "bounds": list(ax[name].get_position().extents),
+                    "ticks_khz": ax[name].get_yticks().tolist(),
+                }
+                for name in ("raw_hi", "raw_mid", "raw_lo", "pr_hi", "pr_mid", "pr_lo")
+            },
+            "ntm_key_black_swatch": bool(projected["zoom"][mode_tags.NTM].any()),
+            "ae_fixed_callout_shown": False,
             "legend_labels": [t.get_text() for key in fig.legends for t in key.texts],
             "present_chip_colours": colours,
             "heading_and_legend_text_bounds": [
@@ -1258,6 +1330,8 @@ def draw(
         "elm_peak_times_ms": peaks.tolist(),
         "first_large_peak_before_expert_ms": first_large_peak_before_expert_ms,
         "largest_dalpha_peak_ms": largest_dalpha_peak_ms,
+        "expert_elm_start_ms": expert_elm_start_ms,
+        "lmode_inferred": lmode_inferred,
         "elm_hmode_conflicts_ms": [
             [max(a, r.t_start, t0), min(b, r.t_end, t1)]
             for a, b in elm_spans
@@ -1387,7 +1461,7 @@ def n_key(read) -> list[Patch]:
     return [
         Patch(fc=N_COLOURS[modes["n"][i]], lw=0, label=f"n={modes['n'][i]}")
         for i in n_seen(read)
-    ] + [Line2D([], [], color=N_OTHER, marker="D", ls="", ms=4, label="other n")]
+    ] + [Patch(fc=N_OTHER, lw=0, label="other n")]
 
 
 def save_figure(fig: Figure, stem: Path, png_dpi: int = DPI_PNG) -> list[Path]:
@@ -1430,8 +1504,21 @@ def track_record(track: lf.Track, window=None) -> dict | None:
         model = "CO2 xpower frame model (80-250 kHz)"
         ae_threshold = Model.load(Path(track.file), {}).threshold
         ae_bin_ms = FRAME_MS
+    performance = None
+    if track.spec.key == mode_tags.NTM and track.source.tier == lf.GENERATED:
+        evaluation = Path(meta["evaluation"])
+        evaluated = json.loads(evaluation.read_text())
+        performance = {
+            **evaluated["scores"][meta["method"]],
+            "evaluation": str(evaluation),
+            "evaluation_sha256": sha256_of(evaluation),
+            "bin_ms": evaluated["bin_ms"],
+            "pool": evaluated["pool"],
+            "bar_criteria": evaluated["bar_criteria"],
+        }
     return {
         "tier": track.source.tier,
+        "performance": performance,
         "title": track.spec.title,
         "what": track.source.what,
         "path": str(track.file),
@@ -1575,6 +1662,16 @@ def main(argv=None) -> int:
         "year": candidate.year,
         "window_ms": [t0, t1],
         "split": split,
+        "publication_suitability": {
+            "suitable_alternate": args.shot not in (191376, 191782),
+            "role": "primary"
+            if args.shot == 201978
+            else (
+                "unsuitable diagnostic: no AE and n=1 mode with NTM absent"
+                if args.shot in (191376, 191782)
+                else "alternate with source caveats"
+            ),
+        },
         "decision_thresholds": {
             "ae": figure_sources.AE_THRESHOLD,
             "ntm": figure_sources.NTM_THRESHOLD,
