@@ -708,7 +708,7 @@ def draw_legends(
         "borderpad": 0,
         "borderaxespad": 0,
     }
-    fig.legend(
+    event_key = fig.legend(
         handles=event_handles,
         labels=[
             h[0].get_label() if isinstance(h, tuple) else h.get_label()
@@ -733,9 +733,12 @@ def draw_legends(
             **legend_options,
         )
     if n_handles:
+        fig.draw_without_rendering()
+        key_bottom = event_key.get_window_extent().y0 / fig.bbox.height
+        n_top = min(ax["pr_lo"].get_position().y1 - 0.005, key_bottom - 0.01)
         fig.legend(
             handles=n_handles,
-            bbox_to_anchor=(0.792, ax["pr_lo"].get_position().y1 - 0.005),
+            bbox_to_anchor=(0.792, n_top),
             **{
                 **legend_options,
                 "ncols": 2,
@@ -763,7 +766,7 @@ def draw_legends(
                 Patch(fc=REGIME_GREYS[c], lw=0, label=regime_names[c])
                 for c in sorted(shown)
             ],
-            bbox_to_anchor=(0.792, ax["h_lab"].get_position().y1),
+            bbox_to_anchor=(0.792, ax["pr_lo"].get_position().y0 + 0.10),
             **legend_options,
         )
 
@@ -1227,7 +1230,7 @@ def draw(
             pos = ax[name].get_position()
             for i, text in enumerate(lines):
                 bold = "bold" if text == lines[0] else "normal"
-                y = pos.y1 - (i + 1) * pos.height / (len(lines) + 1)
+                y = pos.y1 - (i + 0.5) * pos.height / len(lines)
                 fig.text(pos.x0, y, text, fontsize=FONT, fontweight=bold,
                          va="center", ha="left")  # fmt: skip
 

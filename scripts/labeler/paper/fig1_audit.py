@@ -211,6 +211,13 @@ def main():
             assert text["font_pt"] >= 7
             x0, y0, x1, y1 = text["bounds"]
             assert 0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1, text["text"]
+        text_bounds = geometry["heading_and_legend_text_bounds"]
+        for i, left in enumerate(text_bounds):
+            for right in text_bounds[i + 1 :]:
+                a, b = left["bounds"], right["bounds"]
+                width = min(a[2], b[2]) - max(a[0], b[0])
+                height = min(a[3], b[3]) - max(a[1], b[1])
+                assert width <= 0 or height <= 0, (left["text"], right["text"])
         legend = [label.replace("\n", " ") for label in geometry["legend_labels"]]
         tags = drawn["blobs"]["tagged"]
         assert ("AE (detector band ≥80 kHz)" in legend) == bool(tags[mt.AE])
