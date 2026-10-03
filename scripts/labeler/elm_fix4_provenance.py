@@ -68,7 +68,9 @@ def main():
             sensitivity["evaluation_record_sha256"] = sha256_of(
                 Path(sensitivity["evaluation_record"])
             )
-        path.write_text(json.dumps(record, indent=1) + "\n")
+        # Keep the existing density metadata's formatting for a small audit diff.
+        indent = 2 if name == "density_units.json" else 1
+        path.write_text(json.dumps(record, indent=indent) + "\n")
         audit["records"][name] = {"sha256": sha256_of(path), "git": revision}
     figure = Paths.from_env().root / "round4/elm/figures/fig_elm_examples.json"
     record = json.loads(figure.read_text())
