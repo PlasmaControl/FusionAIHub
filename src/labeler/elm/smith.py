@@ -1,8 +1,10 @@
 """Independent Smith-window targets and one-to-one ELM-onset evaluation.
 
 Smith's short hand-labelled regions define positive time only inside their chosen
-windows. Outside those windows is unknown. Whole 1 ms cells are scored, with any
-region overlap defining presence; overlapping windows are pooled once per shot.
+windows. Outside those windows is unknown. A scored 1 ms cell must lie wholly
+inside at least one individual window; eligible cells are deduplicated per shot,
+with any region overlap defining presence. This conservatively excludes cells
+covered only by stitching across neighboring window edges.
 These targets differ from the reviewed 50 ms ELMing-period occupancy benchmark.
 """
 

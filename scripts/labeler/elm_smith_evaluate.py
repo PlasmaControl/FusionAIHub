@@ -217,7 +217,7 @@ def run_prepare(paths, args):
         "independence": audit(paths, d),
         "frozen_source": str(paths.root / "round4/elm/cv" / args.run),
         "input_recipe": "Identical FS02-FS04/DENV2F-3F preprocessing; no BES for our models.",
-        "occupancy": "Whole 1 ms cells inside union of chosen Smith windows; any hand region overlap is positive; overlapping windows counted once. Not the review's 50 ms crowd occupancy target.",
+        "occupancy": "Deduplicated union of 1ms cells wholly inside at least one individual Smith window; any hand region overlap is positive. Cells covered only by stitching across neighboring window edges are excluded conservatively. Not the review's 50ms crowd occupancy target.",
         "event_truth": "Hand-labelled region start, not D-alpha maximum.",
         "event_matching": "Maximum-cardinality one-to-one chronological matching at +/-2 and +/-5 ms; ties minimize absolute timing error; predictions counted only in known Smith time.",
         "frozen_ensemble": "Original cv2 five checkpoints: mean probability / each existing fold threshold, call >=1. No fitting, selection, threshold adjustment or Smith-informed changes. Auxiliary onset head normalized by its frozen fold thresholds likewise.",
@@ -462,6 +462,9 @@ def run_evaluate(paths, args):
         json.loads(path.read_text())
         for path in sorted((directory / "records").glob("*.audit.json"))
     ]
+    protocol["occupancy"] = (
+        "Deduplicated union of 1ms cells wholly inside at least one individual Smith window; any hand region overlap is positive. Cells covered only by stitching across neighboring window edges are excluded conservatively. Not the review's 50ms crowd occupancy target."
+    )
     protocol["onset_postprocessing"] = (
         "Local maxima at 1 ms output resolution, minimum separation 10 ms, scored in whole Smith-window cells; thresholds frozen for elm-ours and chosen only on inner validation for elm-ours-onset."
     )
@@ -487,6 +490,8 @@ def run_evaluate(paths, args):
         "unsupported_windows": [],
         "hand_onset_cells_outside_whole_scored_window": 0,
         "hand_regions_without_scored_positive_cell": 0,
+        "cells_excluded_vs_merged_window_union": 0,
+        "shots_with_cells_excluded_vs_merged_window_union": [],
         "definition": "Every 1ms input cell touching the complete Smith window has both FS and interferometer samples; fully covered comparisons use the same windows and all methods. Nine edge onsets can lack a whole scored-window cell, but every truth remains in event denominators and may match an adjacent supported peak within tolerance.",
     }
     per_shot = []
@@ -495,6 +500,20 @@ def run_evaluate(paths, args):
         p = dict(np.load(directory / "frozen" / f"{shot}.npz"))
         on = np.load(directory / "cv/pred" / f"{shot}.npz")["onset"]
         mask = z["mask"]
+        rows_of_shot = window_table[window_table.shot == shot]
+        starts, stops = labels.merge_intervals(
+            rows_of_shot.t0_ms.to_numpy(float), rows_of_shot.end_ms.to_numpy(float)
+        )
+        edge = inputs.GRID0_MS + np.arange(len(mask))
+        merged_known = np.zeros(len(mask), dtype=bool)
+        for a, b in zip(starts, stops):
+            merged_known |= (edge >= a) & (edge + 1 <= b)
+        omitted = int((merged_known & z["input_valid"] & ~mask).sum())
+        coverage_audit["cells_excluded_vs_merged_window_union"] += omitted
+        if omitted:
+            coverage_audit["shots_with_cells_excluded_vs_merged_window_union"].append(
+                {"shot": shot, "cells": omitted}
+            )
         for row in window_table[window_table.shot == shot].itertuples():
             a = int(np.floor(row.t0_ms - inputs.GRID0_MS))
             b = int(np.ceil(row.end_ms - inputs.GRID0_MS))

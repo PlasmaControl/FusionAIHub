@@ -23,6 +23,21 @@ def test_target_union_never_double_counts_overlapping_windows():
     assert target[2] > 0.9 and target[7] > 0.9
 
 
+def test_windows_do_not_stitch_partly_known_output_cells():
+    rows = pd.DataFrame(
+        {
+            "t0_ms": [0.2, 3.4],
+            "end_ms": [3.6, 7.2],
+            "label_t0_ms": [1.1, 5.1],
+            "label_t1_ms": [1.5, 5.5],
+        }
+    )
+    _, _, mask = smith.targets(rows, 10, grid0=0.0)
+    assert np.flatnonzero(mask).tolist() == [1, 2, 4, 5, 6]
+    # The window union covers [3,4), but neither individual window does.
+    assert not mask[3]
+
+
 def test_matching_maximizes_matches_and_keeps_signed_error():
     # Greedy nearest matching would consume the event needed by the second truth.
     result = smith.match_events(np.array([0.0, 2.0]), np.array([1.1, 3.0]), 1.5)
