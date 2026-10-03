@@ -135,3 +135,63 @@ def test_single_class_auc_and_ap_are_explicitly_unavailable():
     result = paired_scores({"a": (parts, 0.5)}, 10)
     assert result["methods"]["a"]["auroc"]["value"] is None
     assert result["methods"]["a"]["auprc"]["ci95"] is None
+
+
+def test_seed_groups_pool_paired_shot_and_seed_draws_with_sample_sd():
+    methods = {}
+    for seed in range(3):
+        parts = [
+            (np.array([0.2 + 0.3 * seed, 0.8 - 0.2 * seed]), np.array([0, 1], bool)),
+            (np.array([0.1, 0.9 - 0.35 * seed]), np.array([0, 1], bool)),
+        ]
+        methods[f"a{seed}"] = (parts, 0.5)
+        methods[f"b{seed}"] = (parts, 0.5)
+    groups = {"a": ["a0", "a1", "a2"], "b": ["b0", "b1", "b2"]}
+    result = paired_scores(methods, 100, seed=23, groups=groups)
+    points = np.array(
+        [
+            _brute(
+                np.concatenate([p[0] for p in methods[name][0]]),
+                np.concatenate([p[1] for p in methods[name][0]]),
+                0.5,
+            )
+            for name in groups["a"]
+        ]
+    )
+    rng = np.random.default_rng(23)
+    shots = rng.integers(2, size=(100, 2))
+    seeds = rng.integers(3, size=(100, 3))
+    samples = []
+    for selected_shots, selected_seeds in zip(shots, seeds, strict=True):
+        values = []
+        for seed in selected_seeds:
+            parts = [methods[f"a{seed}"][0][i] for i in selected_shots]
+            values.append(
+                _brute(
+                    np.concatenate([p[0] for p in parts]),
+                    np.concatenate([p[1] for p in parts]),
+                    0.5,
+                )
+            )
+        samples.append(np.mean(values, axis=0))
+    for i, metric in enumerate(("auroc", "auprc", "f1")):
+        got = result["seed_summary"]["methods"]["a"][metric]
+        assert got["mean"] == pytest.approx(points[:, i].mean())
+        assert got["sd"] == pytest.approx(points[:, i].std(ddof=1))
+        np.testing.assert_allclose(
+            got["ci95"], np.percentile(np.array(samples)[:, i], [2.5, 97.5])
+        )
+        diff = result["seed_summary"]["paired_differences"]["a minus b"][metric]
+        assert diff["mean"] == 0
+        assert diff["sd"] == 0
+        assert diff["ci95"] == [0, 0]
+
+
+def test_seed_groups_refuse_mismatched_seed_counts():
+    parts = [(np.array([0.2, 0.8]), np.array([0, 1], bool))]
+    with pytest.raises(ValueError, match="seed counts"):
+        paired_scores(
+            {k: (parts, 0.5) for k in "abcde"},
+            10,
+            groups={"x": ["a", "b"], "y": ["c", "d", "e"]},
+        )

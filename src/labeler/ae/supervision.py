@@ -198,6 +198,7 @@ def paired_scores(
     methods: dict[str, tuple[list[tuple], float]],
     replicates: int = 1000,
     seed: int = BOOTSTRAP_SEED,
+    groups: dict[str, list[str]] | None = None,
 ) -> dict:
     """95% shot-bootstrap CIs and all paired differences on identical frames.
 
@@ -240,7 +241,7 @@ def paired_scores(
     for i, a in enumerate(names):
         for b in names[i + 1 :]:
             pairs[f"{a} minus {b}"] = summarize(point[a] - point[b], boot[a] - boot[b])
-    return {
+    result = {
         "n_shots": n,
         "n_frames": engines[names[0]].n_frames,
         "n_positive": engines[names[0]].n_positive,
@@ -248,3 +249,62 @@ def paired_scores(
         "methods": {name: summarize(point[name], boot[name]) for name in names},
         "paired_differences": pairs,
     }
+    if groups:
+        if any(
+            not members or not set(members).issubset(engines)
+            for members in groups.values()
+        ):
+            raise ValueError("seed groups need nonempty, available members")
+        counts = {len(members) for members in groups.values()} - {1}
+        if len(counts) > 1:
+            raise ValueError("paired groups must have matching seed counts")
+        n_seeds = max(counts, default=1)
+        seed_draws = rng.integers(n_seeds, size=(replicates, n_seeds))
+        group_point, group_boot = {}, {}
+        for name, members in groups.items():
+            values = np.array([point[m] for m in members])
+            samples = np.stack([boot[m] for m in members], axis=1)
+            if len(members) == 1:
+                values = np.repeat(values, n_seeds, axis=0)
+                samples = np.repeat(samples, n_seeds, axis=1)
+            group_point[name] = values
+            group_boot[name] = samples[np.arange(replicates)[:, None], seed_draws].mean(
+                axis=1
+            )
+
+        def seed_summary(values, samples, count):
+            summary = summarize(values.mean(axis=0), samples)
+            for i, metric in enumerate(METRICS):
+                summary[metric]["mean"] = summary[metric].pop("value")
+                summary[metric]["sd"] = (
+                    _number(values[:, i].std(ddof=1)) if count > 1 else None
+                )
+            return summary
+
+        group_names = list(groups)
+        result["seed_summary"] = {
+            "groups": groups,
+            "bootstrap": {
+                "replicates": replicates,
+                "seed": seed,
+                "unit": "shot and training seed",
+                "n_training_seeds": n_seeds,
+                "statistic": "mean of per-seed pooled-frame metrics",
+                "pairing": "identical shot draws and seed indices across arms",
+                "baseline": "singleton saved models have no training-seed resampling",
+            },
+            "methods": {
+                name: seed_summary(group_point[name], group_boot[name], len(members))
+                for name, members in groups.items()
+            },
+            "paired_differences": {
+                f"{a} minus {b}": seed_summary(
+                    group_point[a] - group_point[b],
+                    group_boot[a] - group_boot[b],
+                    max(len(groups[a]), len(groups[b])),
+                )
+                for i, a in enumerate(group_names)
+                for b in group_names[i + 1 :]
+            },
+        }
+    return result

@@ -1963,8 +1963,25 @@
     "threeway": "original native annotation AND TokEye; disagreement ignored",
     "threshold": "maximum 10 ms selection F1 for own activity target"
   },
+  "seed_extension": {
+    "code_sha256": {
+      "scripts/labeler/ae_supervision_swap.py": "69e85af2a1c5e8df6c6ed9f5c3020beae72c76e0df9da9228a5096a001393d2c",
+      "scripts/labeler/ae_train.py": "3a66eec91ee51fd98a1a0d7e03aea28ea3c79ea67d1c66ac84943e9476693ccf",
+      "src/labeler/ae/model.py": "9789ed80721a87b7bfb0e07927d2d1469b3c3b51deb65edea5d33860c99c235f",
+      "src/labeler/ae/supervision.py": "c0c4ae93d7d8597db6883af4b1a1010ce01e58e46c0895a45026f73c2d2884f3"
+    },
+    "generated": "2026-10-03T12:46:57.779838+00:00",
+    "git": "f9bcab188e89522b318ee14907031a7aa21b30e4",
+    "previous_manifest_sha256": "d2c10dce3e2161fd3ec3f3b6fc39dcdd4712b00c9c9dc6a78fbe3a20ec2b4e40",
+    "previous_seeds": [
+      0
+    ],
+    "reason": "authorized GPU rerun with three seeds; inputs and split unchanged"
+  },
   "seeds": [
-    0
+    0,
+    1,
+    2
   ],
   "split": {
     "evaluation": [

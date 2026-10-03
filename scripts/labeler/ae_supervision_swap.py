@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 """Prepare, train and score the AE supervision swap without evaluation selection.
 
-Run through Pixi with LABELER_NO_FETCH=1. ``prepare`` freezes current inputs and
+Use CUDA phase-3 Python for training, Pixi for CPU work, and LABELER_NO_FETCH=1.
+``prepare`` freezes current inputs and
 the 100/20/60 split. ``train`` reuses ae_train's architecture and full recipe.
 ``evaluate`` reports completed arms and saved Garcia predictions; unavailable
 arms remain explicitly missing. No threshold is selected on evaluation shots.
@@ -15,6 +16,7 @@ import os
 import platform
 import subprocess
 import sys
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -278,6 +280,30 @@ def run_dir(out: Path, supervision: str, seed: int) -> Path:
     return out / "models" / supervision / f"seed-{seed}"
 
 
+def extend_seeds(args) -> None:
+    """Expand an untrained manifest without changing frozen inputs or shots."""
+    path = args.out_dir / "manifest.json"
+    manifest = load_manifest(path)
+    if list((args.out_dir / "models").glob("**/run.json")):
+        raise ValueError("cannot change the manifest after a completed run")
+    if not set(manifest["seeds"]).issubset(args.seeds):
+        raise ValueError("existing seeds must be retained")
+    if len(set(args.seeds)) != len(args.seeds):
+        raise ValueError("seeds must be unique")
+    archive = args.out_dir / "run1_manifest.json"
+    if not archive.exists():
+        archive.write_bytes(path.read_bytes())
+    manifest["seed_extension"] = {
+        **provenance(),
+        "previous_manifest_sha256": sha256(path),
+        "previous_seeds": manifest["seeds"],
+        "reason": "authorized GPU rerun with three seeds; inputs and split unchanged",
+    }
+    manifest["seeds"] = args.seeds
+    write_json(path, manifest)
+    print(json.dumps(manifest["seed_extension"], indent=2))
+
+
 def verify(args) -> None:
     """Exercise all real-data label loaders without needing CUDA or training."""
     path = args.out_dir / "manifest.json"
@@ -327,6 +353,22 @@ def verify(args) -> None:
 
 
 def train(args) -> None:
+    # multiprocessing adds /pymp-*/listener-* to TMPDIR; the prescribed scratch
+    # path exceeds AF_UNIX's 108-byte limit. Actual files still live in TMPDIR.
+    scratch = Path(os.environ["TMPDIR"]).resolve()
+    alias = REPO / ".aeswap-tmp"
+    if alias.is_symlink():
+        if alias.resolve() != scratch:
+            raise ValueError("temporary-directory alias points outside TMPDIR")
+    elif not alias.exists():
+        try:
+            alias.symlink_to(scratch, target_is_directory=True)
+        except FileExistsError:
+            if not alias.is_symlink() or alias.resolve() != scratch:
+                raise
+    else:
+        raise ValueError("temporary-directory alias is not a symlink")
+    tempfile.tempdir = str(alias)
     manifest_path = args.out_dir / "manifest.json"
     manifest = load_manifest(manifest_path)
     if args.seed not in manifest["seeds"]:
@@ -342,11 +384,16 @@ def train(args) -> None:
         "seed": args.seed,
         "manifest_sha256": sha256(manifest_path),
         "environment": {"torch": torch.__version__, "cuda": torch.cuda.is_available()},
+        "execution": {
+            "python": sys.executable,
+            "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
+            "slurm_array_job_id": os.environ.get("SLURM_ARRAY_JOB_ID"),
+            "slurm_array_task_id": os.environ.get("SLURM_ARRAY_TASK_ID"),
+            "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
+        },
     }
     if not torch.cuda.is_available():
-        record.update(
-            status="blocked", reason="required Pixi environment has no CUDA torch"
-        )
+        record.update(status="blocked", reason="training interpreter has no CUDA torch")
         write_json(out / "attempt.json", record)
         raise SystemExit(record["reason"])
     write_json(out / "attempt.json", {**record, "status": "running"})
@@ -479,7 +526,29 @@ def evaluate(args) -> None:
                     parts.append((prediction[shot][keep], states[keep] == PRESENT))
                 methods[name] = (parts, thresholds[name]["threshold"])
             blocks[group]["references"][reference] = (
-                paired_scores(methods, args.replicates, BOOTSTRAP_SEED)
+                paired_scores(
+                    methods,
+                    args.replicates,
+                    BOOTSTRAP_SEED,
+                    groups={
+                        **{
+                            f"ae-ours-{arm}": [
+                                f"ae-ours-{arm}-seed{seed}"
+                                for seed in manifest["seeds"]
+                            ]
+                            for arm in SUPERVISIONS
+                            if all(
+                                f"ae-ours-{arm}-seed{s}" in methods
+                                for s in manifest["seeds"]
+                            )
+                        },
+                        **{
+                            name: [name]
+                            for name in ("ae-rcn", "ae-lstm")
+                            if name in methods
+                        },
+                    },
+                )
                 if methods
                 else None
             )
@@ -499,7 +568,8 @@ def evaluate(args) -> None:
         "limitations": [
             "Older detectors have no saved predictions for 41/60 evaluation shots.",
             "Older thresholds use only available, older-held-out selection shots.",
-            "A missing supervision arm cannot establish a clean ranking reversal.",
+            "Pooled intervals resample shots and the three observed seed IDs; "
+            "three seeds give limited precision for training variability.",
         ],
     }
     write_json(args.out_dir / "evaluation.json", record)
@@ -534,11 +604,31 @@ def evaluate(args) -> None:
     for name in ("ae-rcn", "ae-lstm"):
         cells = [cell(name, r, m) for r in ("dense", "legacy") for m in ("auroc", "f1")]
         lines.append(f"{name} & legacy (Garcia saved) & " + " & ".join(cells) + r" \\")
+    for supervision in SUPERVISIONS:
+        name = f"ae-ours-{supervision}"
+        cells = []
+        for reference in ("dense", "legacy"):
+            summary = (
+                (block[reference] or {}).get("seed_summary", {}).get("methods", {})
+            )
+            for metric in ("auroc", "f1"):
+                if name not in summary:
+                    cells.append(r"\textemdash")
+                    continue
+                m = summary[name][metric]
+                lo, hi = m["ci95"]
+                cells.append(
+                    f"{m['mean']:.3f} $\\pm$ {m['sd']:.3f} [{lo:.3f}, {hi:.3f}]"
+                )
+        lines.append(
+            f"ae-ours & {supervision} (seed mean) & " + " & ".join(cells) + r" \\"
+        )
     lines += [
         r"\bottomrule",
         r"\end{tabular}",
         "% Fair held-out shots, 10 ms frames, 95% shot-bootstrap intervals.",
-        "% Missing retrains are unavailable, not zero scores. Booktabs required.",
+        "% Seed mean: mean +/- sample SD; CI resamples paired shots and seeds.",
+        "% Individual-seed CIs resample shots only. Booktabs required.",
     ]
     (args.out_dir / "table_supervision_swap.tex").write_text("\n".join(lines) + "\n")
     print(
@@ -569,6 +659,8 @@ def main(argv=None) -> None:
     )
     prep.add_argument("--seeds", nargs="+", type=int, default=[0])
     prep.add_argument("--split-seed", type=int, default=SPLIT_SEED)
+    extend = commands.add_parser("extend-seeds")
+    extend.add_argument("--seeds", nargs="+", type=int, required=True)
     fit = commands.add_parser("train")
     fit.add_argument("--supervision", choices=SUPERVISIONS, required=True)
     fit.add_argument("--seed", type=int, default=0)
@@ -581,9 +673,13 @@ def main(argv=None) -> None:
         default=REPO / "outputs/labeler/ae/supervision_swap/evaluation.json",
     )
     args = parser.parse_args(argv)
-    {"prepare": prepare, "train": train, "verify": verify, "evaluate": evaluate}[
-        args.command
-    ](args)
+    {
+        "prepare": prepare,
+        "extend-seeds": extend_seeds,
+        "train": train,
+        "verify": verify,
+        "evaluate": evaluate,
+    }[args.command](args)
 
 
 if __name__ == "__main__":
