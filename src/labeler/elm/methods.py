@@ -160,14 +160,17 @@ def trace_part(shot_spans, shot, bins, cover, trace, thr) -> score.ShotScore:
     return score.ShotScore(shot, bins.truth, bins.kind, s >= thr, s, spans)
 
 
-def row_part(shot_spans, shot, bins, cover, row_t_ms, row_score, thr, *, lag_rows=0):
+def row_part(
+    shot_spans, shot, bins, cover, row_t_ms, row_score, thr, *, lag_rows=0, ahead=False
+):
     """A row method's part.
 
-    `row_t_ms` are the rows' time stamps (each row summarises the `WINDOW_MS` before
-    it); a bin's score is the row `lag_rows` rows after its end (0: the row summarising
-    the bin itself) and `-WINDOW_MS / ROW_MS` rows is the row ending at its start.
-    Bins with no such row are dropped from the part: the caller must give every
-    method the same bins, so it passes bins already restricted to the rows.
+    `row_t_ms` are the rows' time stamps. A bin's score is the row `lag_rows` rows after
+    its end: 0 is the row summarising the bin itself (each row summarises the
+    `WINDOW_MS` before its stamp), `-WINDOW_MS / ROW_MS` the row ending at the bin's
+    start. A row at or above `thr` marks the `WINDOW_MS` it summarises as detected, or,
+    with `ahead` (a forecast), the `WINDOW_MS` after its stamp. Bins with no such row
+    are an error: the caller gives every method the same bins, restricted to the rows.
     """
     end = bins.t0 + WINDOW_MS + lag_rows * ROW_MS
     k = np.rint((end - row_t_ms[0]) / ROW_MS).astype(int)
@@ -175,23 +178,24 @@ def row_part(shot_spans, shot, bins, cover, row_t_ms, row_score, thr, *, lag_row
         raise ValueError("a scored bin has no row; restrict the bins first")
     s = np.asarray(row_score, dtype=float)[k]
     on = np.asarray(row_score) >= thr
-    run0, run1 = _row_runs(row_t_ms, on)
+    run0, run1 = _row_runs(row_t_ms, on, ahead)
     spans = span_counts(span_frame(run0, run1), cover, shot_spans)
     return score.ShotScore(shot, bins.truth, bins.kind, s >= thr, s, spans)
 
 
-def _row_runs(row_t_ms, on):
-    """Merged `[t - WINDOW_MS, t)` of the rows that are on."""
+def _row_runs(row_t_ms, on, ahead=False):
+    """Merged windows of the rows that are on: `[t - WINDOW_MS, t)`, or `[t, t + W)`."""
     t = np.asarray(row_t_ms, dtype=float)[np.asarray(on, dtype=bool)]
     out0: list[float] = []
     out1: list[float] = []
     for e in t:
-        a = e - WINDOW_MS
+        a = e if ahead else e - WINDOW_MS
+        b = a + WINDOW_MS
         if out1 and a <= out1[-1]:
-            out1[-1] = max(out1[-1], e)
+            out1[-1] = max(out1[-1], b)
         else:
             out0.append(a)
-            out1.append(e)
+            out1.append(b)
     return np.array(out0), np.array(out1)
 
 
@@ -209,6 +213,41 @@ def restrict_bins(bins: labels.Bins, keep: np.ndarray) -> labels.Bins:
     return labels.Bins(
         bins.t0[keep], bins.truth[keep], bins.kind[keep], bins.span[keep]
     )
+
+
+def intersect(a0, a1, b0, b1) -> tuple[np.ndarray, np.ndarray]:
+    """The intersection of two sets of intervals, each sorted and not overlapping."""
+    a0, a1, b0, b1 = (np.asarray(v, dtype=float) for v in (a0, a1, b0, b1))
+    out0: list[float] = []
+    out1: list[float] = []
+    i = j = 0
+    while i < len(a0) and j < len(b0):
+        lo, hi = max(a0[i], b0[j]), min(a1[i], b1[j])
+        if hi > lo:
+            out0.append(lo)
+            out1.append(hi)
+        if a1[i] < b1[j]:
+            i += 1
+        else:
+            j += 1
+    return np.array(out0), np.array(out1)
+
+
+def areas(parts: list[score.ShotScore], index) -> tuple[float, float]:
+    """AUROC and AUPRC of the pooled bin scores of the shots `index`."""
+    truth, sc = score._pool(parts, index)
+    return score.roc_auc(truth, sc), score.average_precision(truth, sc)
+
+
+def areas_summary(parts: list[score.ShotScore], boot: np.ndarray) -> dict:
+    """AUROC and AUPRC of a continuous score, with shot-bootstrap intervals."""
+    point = areas(parts, range(len(parts)))
+    reps = np.array([areas(parts, d) for d in boot])
+    return {
+        "auroc": point[0],
+        "auprc": point[1],
+        "ci95": {"auroc": score._ci(reps[:, 0]), "auprc": score._ci(reps[:, 1])},
+    }
 
 
 PAIRED_METRICS = (

@@ -48,17 +48,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import elmo_benchmark as elmo
 
 from labeler.config import Paths, git_sha
-from labeler.elm import inputs, labels, methods, onset, prepare, score, train
+from labeler.elm import compare, inputs, methods, onset, score, train
 
 REPO = Path(__file__).resolve().parents[2]
 OUT = REPO / "outputs" / "labeler" / "elm" / "ours"
 PUBLISHED_ELMO = {"tp": 2322, "fp": 443, "fn": 428, "tn": 3650}
-NAMES = {"ours": "elm-ours", "elmo": "elm-elmo", "clock": "elm-clock"}
-
-
-def areas(parts, draw) -> tuple[float, float]:
-    truth, sc = score._pool(parts, draw)
-    return score.roc_auc(truth, sc), score.average_precision(truth, sc)
+NAMES = compare.NAME
 
 
 def sweep_areas_boot(counts: np.ndarray, boot: np.ndarray):
@@ -129,7 +124,7 @@ def evaluate_set(
         elmo_res["ci95"]["auroc"] = score._ci(reps[:, 0])
         elmo_res["ci95"]["auprc"] = score._ci(reps[:, 1])
         elmo_res["score_source"] = "eta threshold sweep (elmo_benchmark.sweep_counts)"
-        ours_reps = np.array([areas(parts["ours"], d) for d in boot])
+        ours_reps = np.array([methods.areas(parts["ours"], d) for d in boot])
         for i, metric in enumerate(("auroc", "auprc")):
             ours_point = out["methods"][NAMES["ours"]]["point"][metric]
             paired[f"{NAMES['ours']} - {NAMES['elmo']}: {metric}"] = {
@@ -159,46 +154,9 @@ def main(argv: list[str] | None = None) -> int:
     if missing:
         raise SystemExit(f"shots without out-of-fold predictions: {missing}")
 
-    own_cover = {}
-    for s in shots_all:
-        c0, c1 = inputs.valid_intervals(
-            np.load(prepare.inputs_dir(paths) / f"{s}.npy")[inputs.VALID]
-        )
-        own_cover[s] = methods.cover_frame(*labels.merge_intervals(c0, c1))
-    own_bins = {s: data[s].bins for s in shots_all}
-
-    cover = pd.read_csv(elmo.DEFAULT_WORK / "review_coverage.csv")
-    shots_bes = sorted(int(s) for s in cover.shot.unique())
-    elmo_cover = {
-        s: methods.cover_frame(
-            *labels.merge_intervals(
-                *(g.sort_values("t_start_ms")[c] for c in ("t_start_ms", "t_end_ms"))
-            )
-        )
-        for s, g in cover.groupby("shot")
-    }
-    elmo_bins = {
-        s: labels.scored_bins(
-            data[s].spans,
-            elmo_cover[s].t_start_ms.to_numpy(float),
-            elmo_cover[s].t_end_ms.to_numpy(float),
-        )
-        for s in shots_bes
-    }
-    found = pd.read_csv(elmo.DEFAULT_WORK / "review_elms.csv")
-    found = found[found.variant == "paper"]
-    elmo_spans = {
-        int(s): g[["t_start_ms", "t_end_ms"]].reset_index(drop=True)
-        for s, g in found.groupby("shot")
-    }
-    clock = pd.read_csv(elmo.ELM_CLOCK)
-    clock = clock[clock.category == 1].rename(
-        columns={"t_start": "t_start_ms", "t_end": "t_end_ms"}
-    )
-    clock_spans = {
-        int(s): g[["t_start_ms", "t_end_ms"]].reset_index(drop=True)
-        for s, g in clock.groupby("shot")
-    }
+    sets = compare.load_sets(paths, data)
+    elmo_spans, clock_spans = compare.load_detected(paths)
+    bes, full = sets["bes73"], sets["all119"]
 
     record = {
         "git": git_sha(),
@@ -217,21 +175,29 @@ def main(argv: list[str] | None = None) -> int:
         "config": oof.record["config"],
         "sets": {},
     }
-    boot_bes = score.draws(len(shots_bes))
+    boot_bes = score.draws(len(bes.shots))
     record["sets"]["bes73"] = evaluate_set(
         "bes73",
-        shots_bes,
+        bes.shots,
         data,
-        elmo_bins,
-        elmo_cover,
+        bes.bins,
+        bes.cover,
         oof,
         elmo_spans,
         clock_spans,
         boot_bes,
     )
-    boot_all = score.draws(len(shots_all))
+    boot_all = score.draws(len(full.shots))
     record["sets"]["all119"] = evaluate_set(
-        "all119", shots_all, data, own_bins, own_cover, oof, None, clock_spans, boot_all
+        "all119",
+        full.shots,
+        data,
+        full.bins,
+        full.cover,
+        oof,
+        None,
+        clock_spans,
+        boot_all,
     )
     args.out_dir.mkdir(parents=True, exist_ok=True)
     (args.out_dir / "evaluation.json").write_text(json.dumps(record, indent=1))
