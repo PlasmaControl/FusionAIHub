@@ -1,121 +1,118 @@
 # Detachment
 
-## Description
-Divertor detachment is the state in which the plasma at the divertor target has cooled to a few eV (T_e,target <~ 5 eV) so that volumetric losses, including radiation, charge exchange, recombination, dissipate most of the parallel heat and particle flux before it reaches the plate. The signature is a roll-over: as upstream density rises, the target ion saturation current and heat flux first grow and then FALL, the pressure along the field line is no longer conserved (p_target << p_upstream), and the radiation front moves from the target toward the X-point. Partial (outer strike point only) and full detachment are distinguished; a MARFE is the extreme case where the front moves onto the confined plasma edge.
-
-First studied systematically in the 1990s (JET Mark I, DIII-D, ASDEX Upgrade) as
-the route to tolerable divertor heat loads.
-
-Typically found via divertor Langmuir probes (j_sat roll-over), divertor Thomson
-scattering (T_e), bolometry (radiation front) and, visible divertor cameras.
+A redundant lower-divertor diagnostic state: attached, detached, MARFE, or
+uncertain. This is an **unverified weak label**, awaiting expert review.
+Missing intervals are unassessed. Posteriors are uncalibrated; TangTV's
+model-implied accuracy, including any bound solution, is not physical accuracy.
 
 ## Data Provenance
+
 ### Dataset 1
 
-**Dataset File(s)**: `raw/emission_structure_*.sav`, `raw/emission_structure_*_raw.sav` (41 shots; packed by `scripts/labeler/detach_inversions.py`)
+**Dataset File(s)**: `raw/emission_structure_*.sav` and matching `_raw.sav`
+inputs; packed inversions are outside git under
+`$LABELER_ROOT/round4/detach/inversions/`.
 
-**Author**: Nathaniel Chen (plasma_tv)
+**Author**: Nathaniel Chen (plasma_tv).
 
-**Description**: TangTV tomographic inversions: the C-III (465 nm) emissivity on the lower-divertor plane per camera frame, from which the front height ZE and `DZ = 1 - (ZX - ZE)/(ZX - ZS)` are read (Chen 2026). They exist for 28 lower-shelf shots (2018-2019 and 2021) and 13 floor-strike shots (195952 to 195963, 206879 to 206894; outside the indicator's gate). The `_raw.sav` files hold the camera video (`VID`), which equals the corpus `tangtv` channel 2.
+**Description**: C-III TangTV inversions on the upper and lower shelves.
+The upper shelf is Z≈−1.25 m, R≥1.37 m; the lower shelf is
+Z≈−1.363 m, R<1.37 m. Lower-shelf inversion heights use plasma_tv's 2026
+`r_max=1.37 m` window and the lower-shelf strike point. The raw SAV video
+provides camera examples. The surrogate is evaluated with nested shot holdouts
+and intensity normalization; deployment abstains when camera/filter/exposure
+provenance is unverified.
 
-**Publications**: Chen et al., Nucl. Fusion 66, 036014 (2026).
+**Publications**: Chen et al., Nuclear Fusion 66, 036014 (2026).
 
 ### Dataset 2
 
-**Dataset File(s)**: none; read from the corpus and fetched with `scripts/labeler/detach_fetch.py` into `$LABELER_ROOT/round4/detach/cache`
+**Dataset File(s)**: read-only corpus diagnostics and fetched records under
+`$LABELER_ROOT/round4/detach/{cache,processed_probes,geometry02,efit}/`.
 
-**Author**:
+**Author**: DIII-D diagnostic teams.
 
-**Description**: The corpus `langmuir`, `filterscopes`, `pinj`, `tangtv` and `bolo` groups, and from DIII-D (login node, `fdp run`): `\BOLOM::PRAD_*`, the EFIT01 `aeqdsk` scalars, the CO2 line density, `ECHPWR`, `\NB::PINJ`, and the divertor Thomson Te points `TSSDIVTE00-05` (the independent check, read by no indicator). The EFIT01 flux maps for the appendix figure are fetched by `detach_fetch_efit.py`.
+**Description**: Processed LANGMUIR Jsat, probe R/Z and millisecond time;
+bolometric lower-divertor radiation; beams, ECH, ohmic power, line density,
+D-alpha and EFIT geometry/flux/LIM. EFIT02 camera geometry matches plasma_tv;
+missing or sparse geometry has a named EFIT01 fallback for inversions only.
+Confinement cues use Jalal Butt's tracked source labels. Real-time Thomson
+points are not geometrically localized and all old temperature-validation
+claims are withdrawn. IRTV heat flux was explicitly probed and returned NODATA;
+usable bolometer chord geometry was unavailable.
 
-**Publications**:
+**Publications**: Eldon et al., NME 18, 285 (2019); NME 27, 100963 (2021);
+PPCF 64, 075002 (2022).
 
 ### Dataset 3
 
-**Dataset File(s)**:
+**Dataset File(s)**: none received.
 
-**Author**: Cheolsik Byun (contact)
+**Author**: Cheolsik Byun (detachment reference contact).
 
-**Description**: Cheolsik Byun has worked on detachment algorithms; no table has arrived, so there is no hand-made reference label. The `detach_vote` label is unverified until `detach-ui` reviews it.
-
-**Publications**:
+**Description**: No independent expert table is available. `shots.csv` is an
+unverified review roster, not a gold reference.
 
 ## Models
-**stable**: none
 
-**latest**: detach_vote | 2026_10_03 (unverified)
+**stable**: none.
+
+**latest**: detach_vote | 2026_10_03 (unverified).
 
 **all**:
-- detach_vote | 2026_10_03 (label model over the Afrac, Prad,div and TangTV votes, 50 ms bins, 259 shots; `extend_detach_vote/`; 28 % attached, 9 % detached, 5 % MARFE, 58 % uncertain)
-- detach_rule | 2026_10_03 (the fallback: the valid votes agree, else uncertain; 45 / 12 / 1 / 43 %; `$LABELER_ROOT/round4/detach/labels_rule.csv`)
-- detach-ours | 2026_10_03 | accuracy: 0.75 | kappa: 0.50 | macro F1: 0.64 (1-D CNN on 0-D signals, scored against `detach_vote` by shot; majority accuracy 0.66; 26 test shots: accuracy 0.84, kappa 0.65)
-- detach-victor | 2026_10_03 | accuracy: 0.73 | kappa: 0.56 | macro F1: 0.68 (CNN on one raw TangTV frame after Victor and Scotti 2024, three states, scored against `detach_vote` by shot; majority accuracy 0.55; below the majority predictor where TangTV did not vote)
 
-Scores are against the `detach_vote` label, not against truth. Single indicators against the label with their own vote withheld: Afrac kappa 0.20, Prad,div 0.16, TangTV 0.35 (`docs/labeler/results/detachment_benchmark.json`).
+<!-- MODELS -->
+
+- detach_vote | 2026_10_03: 3862 assessed bins/53 shots; 344 certain/23 shots; 0 confirmed MARFE.
+- detach_rule | 2026_10_03: the same observed states with transparent compatible-vote support.
+- detach-ours | 2026_10_03: CV 344 bins/23 shots; agreement accuracy 0.762 [0.658, 0.857]; kappa 0.522 [0.279, 0.709]. Reference: unverified combined label, all inversion-sourced.
+- detach-victor | 2026_10_03: CV 213 bins/14 shots; agreement accuracy 0.756 [0.484, 0.978]; kappa 0.527 [0.116, 0.950]. Reference: unverified combined label, all inversion-sourced.
+
+These are weak-reference agreement scores. LOO and source-specific results, bootstrap intervals and exact denominators are in the protocol. No primary blind-test or MARFE accuracy is available.
+
+<!-- /MODELS -->
 
 ## Inputs
-**detach_vote**, **detach_rule**:
-- `langmuir` (raw swept probes; Jsat decoded, Afrac)
-- `filterscopes` (divertor D-alpha, the ELM mask)
-- `pinj`, `ECHPWR`, `\BOLOM::PRAD_DIVL` (Prad,div over the heating power)
-- `tangtv` channel 2 (raw lower-divertor frames; the front height is regressed on them where there is no inversion) and the 41 inversions
-- EFIT01 `aeqdsk` strike points and X-point (the lower-shelf gate)
-- `Ip`, CO2 line density (bin start, Afrac normalisation)
 
-**detach-ours**:
-- `Ip`, heating power, line density, divertor D-alpha, ELM share, EFIT scalars (`betan`, `wmhd`, `q95`, `kappa`, `bcentr`, X-point and strike-point positions)
+`detach_vote` and `detach_rule` use processed or raw target-current traces,
+Prad,div/heating power, true TangTV inversions (or strictly gated surrogate
+predictions), EFIT strike/X geometry, filterscope ELM masks, gas-flow timing,
+line density, Ip and explicit L/H labels. A self-referenced target-current
+trace is named **uncalibrated Jsat ratio (local proxy)**. Separate pre-puff
+L/H attached references, when available, are flagged `eldon_pre_puff_LH`.
 
-**detach-victor**:
-- `tangtv` channel 2 (30 x 90 block means)
+`detach-ours` reads current, heating power, relative line density and D-alpha,
+ELM share, and five global EFIT scalars. It excludes strike/X geometry,
+Langmuir currents, bolometry and camera pixels. `detach-victor` reads a raw
+TangTV frame; its intensity normalization is fitted within each training fold.
 
 ## Method
-Divertor detachment is a state of the lower divertor, so the label is a redundant,
-non-binary one: attached (1), detached (2), MARFE (3) or uncertain (4), per 50 ms bin
-(0 = not assessed), the coding `detach-ui` uses. Three indicators vote:
 
-- **Afrac** (Eldon 2021, 2022): the divertor Jsat over the value an attached divertor
-  would carry at the same density and power, `1 / DOD`. Attached at or above 0.75,
-  detached at or below 0.5. Uncalibrated, decoded from raw probes, self-referenced.
-- **Prad,div** (Eldon 2019): the lower-divertor radiated power over the heating power.
-  Attached at or below 0.35, detached at or above 0.5. A radiation measure; never votes
-  MARFE.
-- **TangTV front height** (Chen 2026): `DZ`, attached below 0.35, detached 0.5 to 1.0,
-  MARFE above 1.0. Valid only on the lower shelf (EFIT gate); never emits a state on the
-  floor-strike shots or any other geometry.
+Each 50 ms bin carries indicator values, validity/reasons and compatible votes.
+A certain state needs valid in-domain TangTV agreeing with another cast vote,
+no compatible-state conflict, and the chosen state's posterior ≥0.7. The
+Afrac+Prad-only agreement is exported as uncertain with
+`tier=low_confidence_pair`. Other uncertain tiers distinguish conflict,
+low posterior, insufficient votes and candidate MARFE. Invalid geometry never
+supplies a cast vote.
 
-Each indicator also reports a validity mask with the reason. The votes are combined by a
-Snorkel-style label model (Ratner et al. 2017: accuracies from agreement, exact
-enumeration, accuracies learned where all three are valid, class balance attached 1/2,
-detached 1/4, MARFE 1/4, posterior at least 0.7) and by a transparent rule (agreeing
-votes, else uncertain). A bin is labelled where at least two indicators are valid. Result:
-the three agree little (Afrac with Prad,div kappa 0.01), the model trusts TangTV (implied
-accuracy 0.96) and leaves most bins where only Afrac or Prad,div speak uncertain.
-Details, thresholds with sources and the failure analysis: `docs/labeler/detachment.md`.
+Target-current thresholds are ratio ≥0.75 attached / ≤0.5 detached. The
+radiation thresholds ≤0.36 attached / ≥0.50 detached are local settings,
+validated on cohort-training and external-development inversion bins; Eldon publishes the sensor,
+not these universal thresholds. TangTV requires a ≥10 cm leg and valid shelf
+geometry; DZ<0.35 votes attached, 0.5≤DZ<1.2 detached. A high front alone is
+candidate MARFE. MARFE requires DZ≥1.2 for two adjacent bins, accepted-frame
+inversion-peak psiN<1 near/above X, and an independent density-limit or H–L cue.
+Unknown density units do not create a Greenwald cue.
 
-## Alias
-detachment, detach, detached, divertor detachment
+The camera ELM mask includes integration and recovery; ELM share >50% invalidates
+TangTV. Primary states are unsmoothed. Temporal neighbour-fill suggestions are
+separate exports and may not be promoted to observed certainty. Interval
+`attrs` includes `tier`; the full bin table has a `tier` column. Confidence is
+not calibrated. The rule uses the same compatibility and support conditions.
 
-## Future Implementations
-- Expert review in `detach-ui` is the next step; until then the label is unverified.
-- A floor-strike model: TangTV is invalid on the floor shots (195952 to 195963, 206879 to 206894) and there is no replacement indicator there.
-- IRTV heat flux (the corpus group is a stub) and the bolometer geometry (not in the corpus or the `\BOLOM` tree) would add a fourth voter and a bolometer image.
-- A calibrated Afrac needs the probe positions and a Jsat calibration, which the corpus lacks.
-
-## Reference
-- S. I. Krasheninnikov and A. S. Kukushkin, "Physics of ultimate detachment of a
-  tokamak divertor plasma", J. Plasma Phys. 83, 155830501 (2017).
-- A. Loarte et al., "Plasma detachment in JET Mark I divertor experiments",
-  Nucl. Fusion 38, 331 (1998).
-- A. Ratner et al., "Snorkel: rapid training data creation with weak supervision",
-  PVLDB 11(3), 2017.
-- N. Chen et al., "Regulation compliant AI for fusion: explainable image-based feedback
-  control of divertor detachment in DIII-D tokamak", Nucl. Fusion 66, 036014 (2026).
-- D. Eldon et al., Nucl. Mater. Energy 18, 285 (2019); 27, 100963 (2021); Plasma Phys.
-  Control. Fusion 64, 075002 (2022).
-- B. S. Victor and F. Scotti, "Identifying divertor detachment using a machine learning
-  model trained on divertor camera images from DIII-D", Rev. Sci. Instrum. 95, 083503
-  (2024).
-
-## Contact
-- **Cheolsik Byun**: csbyun [at] princeton [dot] edu
-- **Nathaniel Chen**: nathaniel [at] princeton [dot] edu
+See [the current protocol](../../../docs/labeler/detachment.md) for complete
+gates, fitting, exact contributing populations, source sensitivity, published
+settings, results and limitations. Figure 2 coverage input is
+`docs/labeler/results/detachment_figure2.json`; figures and `HANDOFF.md` stay
+under `$LABELER_ROOT/round4/detach/`.

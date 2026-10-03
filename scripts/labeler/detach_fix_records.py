@@ -190,7 +190,7 @@ def development_validation(bins):
         "kappa_ci95": np.nanpercentile(draws, [2.5, 97.5]).tolist() if draws else None,
         "agreement": float(np.trace(table) / table.sum()) if table.sum() else None,
         "power_range_mw": np.nanpercentile(
-            bins.loc[common, "aux_p_in_w"], [0, 100]
+            bins.loc[common, "aux_p_in_w"] / 1e6, [0, 100]
         ).tolist()
         if common.any()
         else None,

@@ -12,23 +12,24 @@
     "category",
     "t_start",
     "t_end",
-    "confidence"
+    "confidence",
+    "attrs"
   ],
-  "coverage": "Bins where at least two of the three indicators (Afrac, Prad,div, TangTV front) are valid. Time with no row was not assessed; it is not attached. 4 (uncertain) is an assessed bin where the labeler is below its confidence threshold or every valid indicator abstains.",
+  "coverage": "Bins where at least two of the three indicators (Afrac, Prad,div, TangTV front) are valid. Time with no row was not assessed; it is not attached. 4 (uncertain) includes conflicting compatible votes, low posterior, candidate MARFE and the Afrac+Prad-only weak tier. The interval attrs tier and bin tier preserve those distinctions.",
   "fit_excluded_split": "test",
   "label_model_structure": "independent",
   "labeler": "label_model",
-  "made_at": "2026-10-03T17:19:45+00:00",
+  "made_at": "2026-10-03T19:32:15+00:00",
   "made_by": "scripts/labeler/detach_label.py",
   "made_from": [
     {
-      "git_sha": "41f91865",
+      "git_sha": "0c96886e",
       "producer": "detach_vote"
     }
   ],
-  "n_requested_shots": 259,
-  "n_rows": 2413,
-  "n_shots": 259,
+  "n_requested_shots": 53,
+  "n_rows": 1310,
+  "n_shots": 53,
   "per_shot_files": {
     "axis_order": [
       "time",
@@ -76,7 +77,7 @@
   "producer": "detach_vote",
   "schema_version": 6,
   "shot_list": "detach_shots.csv",
-  "shot_list_sha256": "8ef3a4ca2788b869511ff63693b56ce9b161f721636c3331e526494128f261f6",
+  "shot_list_sha256": "b7acf9b7d7166e00a4eb33f2ffcc38401f70437b7e753897646957a3757e57a4",
   "table_kind": "intervals",
   "time_units": "ms"
 }

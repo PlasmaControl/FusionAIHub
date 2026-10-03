@@ -1,0 +1,78 @@
+{
+ "task": "detachment",
+ "bin_ms": 50,
+ "reference": "unverified redundant diagnostic consensus; no expert truth",
+ "legacy": [
+  {
+   "indicator": "Afrac (Eldon 2021/2022)",
+   "setting": "nearest outer-target processed Jsat; attached pre-puff C, separate L/H; DOD=1/Afrac",
+   "reproduced": false,
+   "coverage_kind": "valid measurements with fitted attached L/H reference",
+   "coverage": {
+    "bins": 0,
+    "shots": 0
+   }
+  },
+  {
+   "indicator": "Prad,div (Eldon 2019)",
+   "setting": "published calibrated multi-chord lower-divertor sensor; no universal published state threshold",
+   "reproduced": false,
+   "coverage_kind": "published state classification; no universal thresholds available",
+   "coverage": {
+    "bins": 0,
+    "shots": 0
+   }
+  },
+  {
+   "indicator": "TangTV (Chen 2026)",
+   "setting": "C-III SSA height; DZ cliff about 0.5; upper shelf; height>1 is candidate MARFE",
+   "reproduced": true,
+   "coverage_kind": "valid upper-shelf SSA/DZ measurements, including transition-band abstentions; not expert state labels",
+   "coverage": {
+    "bins": 694,
+    "shots": 19
+   }
+  }
+ ],
+ "Tokamak-SI": {
+  "coverage_kind": "certain compatible diagnostic consensus; unverified",
+  "setting": "compatible redundant votes plus posterior>=0.7, TangTV support, geometry/ELM gates, MARFE spatial+persistent+second cue; proxy pair uncertain",
+  "assessed": {
+   "bins": 3862,
+   "shots": 53
+  },
+  "certain": {
+   "bins": 344,
+   "shots": 23
+  },
+  "state_counts": {
+   "attached": 165,
+   "detached": 179,
+   "marfe": 0,
+   "uncertain": 3518
+  },
+  "tier_counts": {
+   "low_posterior": 1380,
+   "conflict": 950,
+   "low_confidence_pair": 924,
+   "certain": 344,
+   "no_vote": 154,
+   "candidate_marfe": 110
+  }
+ },
+ "local_proxies": {
+  "jsat": {
+   "bins": 3590,
+   "shots": 45
+  },
+  "prad": {
+   "bins": 21408,
+   "shots": 456
+  }
+ },
+ "sources": [
+  "detachment_fix.json",
+  "detachment_benchmark.json",
+  "../data/events/detachment/extend_detach_vote/records/label_model.json"
+ ]
+}

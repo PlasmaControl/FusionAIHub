@@ -2,64 +2,65 @@
  "n_shots_with_bins": 470,
  "n_bins": 50032,
  "afrac": {
-  "valid_bins": 22305,
-  "shots_with_valid_bins": 219,
-  "shots_with_20_valid_bins": 219,
+  "valid_bins": 3590,
+  "shots_with_valid_bins": 45,
+  "shots_with_20_valid_bins": 45,
   "invalid_reason_bins": {
-   "no_probes": 22221,
-   "low_power": 1807,
-   "short_reference": 1490,
-   "ramp": 1332,
-   "no_power": 426,
-   "no_density": 233,
-   "elm": 218
+   "probe_far_from_strike": 21857,
+   "no_attached_regime_reference": 11763,
+   "no_probes": 5378,
+   "elm": 5321,
+   "short_reference": 1260,
+   "low_power": 509,
+   "ramp": 276,
+   "no_power": 63,
+   "no_density": 15
   },
   "votes": {
-   "attached": 6905,
-   "detached": 10291,
+   "attached": 1500,
+   "detached": 1305,
    "marfe": 0
   }
  },
  "prad": {
-  "valid_bins": 44059,
-  "shots_with_valid_bins": 461,
-  "shots_with_20_valid_bins": 455,
+  "valid_bins": 21408,
+  "shots_with_valid_bins": 456,
+  "shots_with_20_valid_bins": 370,
   "invalid_reason_bins": {
-   "low_power": 3700,
-   "no_input_power": 1336,
-   "elm": 704,
+   "elm": 24167,
+   "low_power": 3133,
+   "no_input_power": 1091,
    "no_bolometer": 233
   },
   "votes": {
-   "attached": 31540,
-   "detached": 3760,
+   "attached": 15459,
+   "detached": 1745,
    "marfe": 0
   }
  },
  "tangtv": {
-  "valid_bins": 5942,
-  "shots_with_valid_bins": 101,
-  "shots_with_20_valid_bins": 84,
+  "valid_bins": 1096,
+  "shots_with_valid_bins": 28,
+  "shots_with_20_valid_bins": 24,
   "invalid_reason_bins": {
    "no_inversion": 20530,
-   "strike_on_floor": 13754,
-   "efit_missing": 5661,
-   "no_frames": 2462,
-   "strike_not_on_shelf": 1103,
-   "efit_gap": 337,
-   "dz_unphysical": 243
+   "elm_majority": 13964,
+   "surrogate_domain": 8360,
+   "efit_gap": 3840,
+   "no_frames": 2062,
+   "elm_frame": 180
   },
   "votes": {
-   "attached": 2192,
-   "detached": 1848,
-   "marfe": 1271
+   "attached": 370,
+   "detached": 507,
+   "marfe": 0
   }
  },
- "n_eligible_shots": 259,
+ "n_eligible_shots": 53,
  "eligible_by_split": {
-  "train": 182,
-  "val": 23,
-  "test": 26,
-  "outside": 28
+  "train": 25,
+  "val": 3,
+  "test": 2,
+  "outside": 23
  }
 }
