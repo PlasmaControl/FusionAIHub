@@ -9,7 +9,7 @@ import numpy as np
 
 from ...config import sha256_of
 from .. import panels
-from . import geometry, panel_rows, producer, video
+from . import geometry, panel_rows, producer, recipe, video
 from .rows import Grid
 
 
@@ -32,6 +32,14 @@ def context_sources(shot, paths):
         key: {"path": str(path), "sha256": sha256_of(path) if path.is_file() else None}
         for key, path in sources.items()
     }
+    fingerprints.update(
+        {
+            f"recipe_{key}": value
+            for key, value in recipe.load(producer.source_path(paths))[
+                "sources"
+            ].items()
+        }
+    )
     if panels.detachment.plasma_window(shot, paths) is None:
         window = geometry.current_window(shot, paths)
         fingerprints["plasma_window"] = {

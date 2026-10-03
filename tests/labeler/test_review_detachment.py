@@ -304,7 +304,7 @@ def test_actual_detach_bin_schema_keeps_gates_and_dimensionless_ratios(
         assert np.isnan(panel.y[0, 1])
         assert panel.ylabel == "dimensionless"
         assert panel.legend and "schema" in panel.metadata
-    assert "fraction" in result[1].title
+    assert "f_div" in result[1].title
     assert "DZ" in result[2].title
 
 

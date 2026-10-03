@@ -861,7 +861,7 @@ function render() {
 }
 
 const categoryColour = (c) => (S.event === "detachment" && S.categories[c] === "detached" ? "#0072b2" :
-  S.categories[c] === "uncertain" ? CATEGORY_COLOURS[5] :
+  S.event === "detachment" && S.categories[c] === "uncertain" ? CATEGORY_COLOURS[5] :
   c === 1 ? T.label : CATEGORY_COLOURS[c] || T.muted);
 
 function drawRows() {
@@ -1696,6 +1696,7 @@ function clearVideo() {
 }
 
 function buildVideo() {
+  $("start-blank").hidden = S.event !== "detachment";
   if (S.event !== "detachment" || !S.meta?.video || S.api < 9) return;
   const cards = [];
   for (const camera of S.meta.video.cameras) {
@@ -1708,6 +1709,7 @@ function buildVideo() {
     const card = { camera, figure, note, channel, key: "", seq: 0 };
     figure.append(caption);
     if (!card.channel) {
+      figure.classList.add("unavailable");
       note.textContent = `No frames for this camera: ${camera.reason}`;
     } else {
       const select = document.createElement("select");
@@ -1734,12 +1736,14 @@ function buildVideo() {
       figure.append(card.img);
     }
     figure.append(note);
-    const spectral = document.createElement("small");
-    spectral.textContent = camera.spectral_note || "Filter/emission line is not recorded.";
-    if (camera.sampling_note || camera.name === "tangtv")
-      spectral.textContent += " " + (camera.sampling_note ||
-        "Corpus 50 Hz linearly resampled frames (blend of adjacent exposures); preview ≤20 fps.");
-    figure.append(spectral);
+    if (card.channel) {
+      const details = document.createElement("details"), summary = document.createElement("summary");
+      summary.textContent = "Camera details";
+      const spectral = document.createElement("small");
+      spectral.textContent = [camera.name === "tangtv" ? camera.spectral_note : "",
+        camera.sampling_note].filter(Boolean).join(" ");
+      details.append(summary, spectral); figure.append(details);
+    }
     cards.push(card);
   }
   S.video = { cards, times: [], timer: null, playing: false, epoch: 0, seekSeq: 0 };
@@ -1840,11 +1844,16 @@ function producerAt(data, time) {
 
 const PRODUCER_LANES = [
   ["state_lm", "Producer"], ["state_rule", "Rule"],
-  ["afrac", "Afrac vote"], ["prad", "Prad,div vote"], ["tangtv", "TangTV vote"],
+  ["afrac", "Afrac vote"], ["prad", "f_div vote"], ["tangtv", "TangTV vote"],
 ];
 
 function buildProducerStrips() {
   const data = S.meta?.params?.detachment_producer;
+  const recipe = data?.recipe;
+  $("detachment-machine-help").textContent = recipe?.reason ||
+    [recipe?.documentation, recipe?.record && Object.keys(recipe.record).length ?
+      JSON.stringify(recipe.record, null, 2) : ""].filter(Boolean).join("\n\n") ||
+    "Producer interpretation record unavailable; inspect the stored votes and reasons.";
   $("detachment-strips").hidden = false;
   $("detachment-lanes").replaceChildren(...PRODUCER_LANES.map(([key, title]) => {
     const canvas = document.createElement("canvas");
@@ -1885,10 +1894,10 @@ function drawProducerStrips() {
   const stateName = c => c === null ? "label not published" :
     c === 0 ? "unassessed" : S.categories[c] || "unavailable";
   const voteName = v => !v.valid ? `invalid (${v.reason || "reason unavailable"})` :
-    v.vote === -1 ? "abstains (transition band)" : stateName(v.vote);
+    v.vote === -1 ? `abstains (${v.reason || "producer evidence gates; see stored recipe"})` : stateName(v.vote);
   $("detachment-reading").textContent = at ?
     `At ${S.video.time.toFixed(1)} ms: producer ${stateName(at.state)} · rule ${stateName(at.rule)} · ` +
-    Object.entries(at.votes).map(([name, vote]) => `${name}: ${voteName(vote)}`).join(" · ") +
+    Object.entries(at.votes).map(([name, vote]) => `${name === "prad" ? "f_div" : name}: ${voteName(vote)}`).join(" · ") +
     (at.tangtv_source === "surrogate" ? " · TangTV source: surrogate regression (model estimate)" :
       at.tangtv_source === "inversion" ? " · TangTV source: tomographic inversion" : "") :
     data?.reason || "No producer bin at this time (unassessed)";
@@ -2257,6 +2266,7 @@ function wire() {
     seekVideo(requested);
   });
   $("video-play").addEventListener("click", playVideo);
+  $("start-blank").addEventListener("click", () => edit(S.label.window, []));
   $("top").addEventListener("scroll", showVideoCursor);
   window.addEventListener("pointerup", endDrag);
   window.addEventListener("pointercancel", endDrag);

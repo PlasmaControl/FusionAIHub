@@ -27,11 +27,50 @@ import pandas as pd
 
 from labeler.config import Paths, git_sha, sha256_of
 from labeler.events import rosters
-from labeler.events.review import build, detachment, geometry, labels, rows, video
+from labeler.events.review import (
+    build,
+    detachment,
+    geometry,
+    labels,
+    recipe,
+    rows,
+    video,
+)
 from labeler.events.review import producer as producer_review
 
 REPO = Path(__file__).resolve().parents[2]
 SUMMARY = REPO / "docs/labeler/results/detachment_review_queue.json"
+
+
+def write_recipe_help(labels_path):
+    """Update the docs' machine block from the same read-only interpretation."""
+    document = REPO / "docs/labeler/detachment_review.md"
+    if not document.is_file():
+        return
+    before, separator, rest = document.read_text().partition(
+        "<!-- MACHINE_RECIPE_START -->"
+    )
+    if not separator:
+        return
+    _, end, after = rest.partition("<!-- MACHINE_RECIPE_END -->")
+    if not end:
+        raise ValueError("missing machine-recipe end marker")
+    frozen = recipe.load(labels_path)
+    text = frozen["documentation"] or json.dumps(frozen["record"], indent=2)
+    sources = "\n".join(
+        f"- `{key}`: `{value['sha256']}`"
+        for key, value in frozen["sources"].items()
+        if value["sha256"]
+    )
+    block = (
+        "\n<details>\n<summary>Producer wording (generated recipe snapshot)</summary>\n\n"
+        "````text\n"
+        + text
+        + "\n````\n\nSource SHA256:\n\n"
+        + sources
+        + "\n\n</details>\n"
+    )
+    document.write_text(before + separator + block + end + after)
 
 
 def label_keys(keys):
@@ -185,7 +224,12 @@ def producer_snapshot(roots, roster_path=None):
 
 
 def snapshot_suggestions(
-    source_path, queue_shots, event_dir, reserved_shots=(), indicator_root=None
+    source_path,
+    queue_shots,
+    event_dir,
+    reserved_shots=(),
+    indicator_root=None,
+    windows=None,
 ):
     """Freeze primary 50 ms producer labels for the isolated Source lane.
 
@@ -271,8 +315,29 @@ def snapshot_suggestions(
             "t_start": start,
             "t_end": start + 50.0,
             "confidence": selected.get("confidence", np.nan),
+            "attrs": [
+                json.dumps(
+                    {
+                        "producer_bin_start_ms": float(value),
+                        "producer_bin_end_ms": float(value + 50.0),
+                    }
+                )
+                for value in start
+            ],
         }
     ).sort_values(["shot", "t_start"])
+    windows = windows or {}
+    for shot, window in windows.items():
+        if window is None:
+            continue
+        mask = suggestions.shot.eq(shot)
+        suggestions.loc[mask, "t_start"] = suggestions.loc[mask, "t_start"].clip(
+            lower=window[0]
+        )
+        suggestions.loc[mask, "t_end"] = suggestions.loc[mask, "t_end"].clip(
+            upper=window[1]
+        )
+    suggestions = suggestions[suggestions.t_end > suggestions.t_start]
     path = event_dir / "review/suggestions.csv"
     path.parent.mkdir(parents=True, exist_ok=True)
     suggestions.to_csv(path, index=False)
@@ -303,6 +368,7 @@ def snapshot_suggestions(
         "shots": sorted(suggestions.shot.unique().astype(int).tolist()),
         "explicit_test_shots": sorted(explicit_blind),
         "reserved_shots": sorted(reserved_shots),
+        "synchronized_windows_ms": {str(k): v for k, v in windows.items()},
         **consistency,
     }
 
@@ -610,6 +676,7 @@ def build_store(record, paths, indicators, resume=False):
     store = paths.spectrogram_file("detachment", record["shot"])
     current = build.current(store, "detachment")
     desired_sources = detachment.context_sources(record["shot"], paths)
+    refreshed_recipe = False
     if resume and current:
         with h5py.File(store, "r") as source:
             previous_sources = json.loads(source.attrs.get("params", "{}")).get(
@@ -621,6 +688,34 @@ def build_store(record, paths, indicators, resume=False):
             current = not any(v["sha256"] for v in desired_sources.values())
         else:
             current = previous_sources == desired_sources
+            without_recipe = lambda values: {
+                k: v for k, v in values.items() if not k.startswith("recipe_")
+            }
+            if not current and without_recipe(previous_sources) == without_recipe(
+                desired_sources
+            ):
+                # Interpretation-only updates do not change any stored pixels
+                # or diagnostic values. Refresh the help and guides in place.
+                frozen = recipe.load(producer_review.source_path(paths))
+                with h5py.File(store, "r+") as source:
+                    params = json.loads(source.attrs["params"])
+                    params["detachment_producer"]["recipe"] = frozen
+                    params["detachment_producer"]["definitions"] = frozen["record"].get(
+                        "definitions", {}
+                    )
+                    params["context_sources"] = desired_sources
+                    for name, panel in params.get("panel_metadata", {}).items():
+                        if "indicator" not in panel:
+                            continue
+                        panel["recipe_sources"] = frozen["sources"]
+                        group = source[f"rows/{name}"]
+                        meta = json.loads(group.attrs["meta"])
+                        meta["hlines"] = recipe.guides(
+                            frozen["record"], panel["indicator"]
+                        )
+                        group.attrs["meta"] = json.dumps(meta)
+                    source.attrs["params"] = json.dumps(params)
+                current = refreshed_recipe = True
     rebuild = not (resume and current)
     store = build.build("detachment", record["shot"], paths, force=rebuild)
     manifest, row_metadata = video.meta(store), rows.meta(store)["rows"]
@@ -659,7 +754,11 @@ def build_store(record, paths, indicators, resume=False):
         "store": str(store),
         "bytes": store.stat().st_size,
         "seconds": time.monotonic() - started,
-        "action": "rebuilt" if rebuild else "kept current store",
+        "action": "rebuilt"
+        if rebuild
+        else "refreshed recipe"
+        if refreshed_recipe
+        else "kept current store",
         **context,
         "context_sources": desired_sources,
         "store_range_ms": store_range,
@@ -745,6 +844,7 @@ def main():
     os.environ["LABELER_DETACHMENT_INDICATORS"] = str(indicators)
     os.environ["LABELER_DETACHMENT_LABELS"] = str(producer_labels)
     os.environ["LABELER_DETACHMENT_CACHE_ROOT"] = str(producer_root / "cache")
+    write_recipe_help(producer_labels)
     cohort_path, scan_path = (
         REPO / "data/events/catalog/cohort.csv",
         args.out / "corpus_scan.json",
@@ -800,6 +900,7 @@ def main():
         isolated.parent,
         reserved_shots=reserved_shots,
         indicator_root=indicators,
+        windows={r["shot"]: r["window_ms"] for r in queue},
     )
     cohort_copy = args.out / "tables/catalog/cohort.csv"
     cohort_copy.parent.mkdir(parents=True, exist_ok=True)
@@ -821,6 +922,9 @@ def main():
         "camera_available": len(camera_shots),
         "camera_and_geometry_eligible": sum(
             r["camera_geometry_eligible"] for r in records
+        ),
+        "camera_with_any_shelf_sample_scan": sum(
+            r["geometry"]["shelf_gate_samples"] > 0 for r in queue
         ),
         "missing_efit": sum(r["geometry_reason"] == "efit_missing" for r in records),
         "unreadable_efit": sum(
@@ -945,11 +1049,19 @@ def main():
                 source_bins.update(item["tangtv_valid_source_bins"])
             record["summary"][f"tangtv_valid_source_bins_{name}"] = dict(source_bins)
         record["summary"]["stores_built"] = len(built)
+        record["summary"]["camera_with_any_shelf_sample"] = sum(
+            r["geometry_shelf_gate_samples"] > 0
+            for r in built
+            if r["shot"] in set(record["queue_shots"])
+        )
         record["summary"]["stores_rebuilt"] = sum(
             r["action"] == "rebuilt" for r in built
         )
         record["summary"]["stores_kept_current"] = sum(
-            r["action"] != "rebuilt" for r in built
+            r["action"] == "kept current store" for r in built
+        )
+        record["summary"]["stores_refreshed_recipe"] = sum(
+            r["action"] == "refreshed recipe" for r in built
         )
         record["summary"]["outside_store_frames"] = sum(
             a["outside_store_frames"] for r in built for a in r["video_audit"]
@@ -964,6 +1076,8 @@ def main():
             REPO / "src/labeler/events/review/video.py",
             REPO / "src/labeler/events/panels/detachment.py",
             REPO / "src/labeler/events/review/detachment.py",
+            REPO / "src/labeler/events/review/producer.py",
+            REPO / "src/labeler/events/review/recipe.py",
         )
         record["source_sha256"].update(
             {str(p.relative_to(REPO)): sha256_of(p) for p in source_files}

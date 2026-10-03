@@ -1,0 +1,381 @@
+{
+  "script": {
+    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-detach-ui/scripts/labeler/detachment_review_export.py",
+    "bytes": 29570,
+    "sha256": "7bc467cba1ab7d56d9fb40dedc3aacd2b6e860eb6b5c19394b08a1ab51100ec2"
+  },
+  "git_sha": "bf4fd51cb98a35dcd525d686afbcbef83e5a5bec",
+  "git_dirty": true,
+  "command": [
+    "python",
+    "scripts/labeler/detachment_review_export.py",
+    "--shot",
+    "190212",
+    "--evidence",
+    "docs/labeler/results/detachment_ui_fix4_export_190212.json"
+  ],
+  "shot": 190212,
+  "inversion_example_audit": [],
+  "split": "train",
+  "sources": {
+    "cohort": {
+      "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-detach-ui/data/events/catalog/cohort.csv",
+      "bytes": 86022,
+      "sha256": "b910527a9a2c7b4100cf5674aa6f57ec19b458f1ee952b23387341f1ed92bbda"
+    },
+    "bins": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/190212.npz",
+      "bytes": 10247,
+      "sha256": "16eec089346adbfbbea9c497a3a6c72b3fa394e8acb94ce58d2fc3fdbde6a04c"
+    },
+    "primary_labels": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/labels_bins.csv.gz",
+      "bytes": 194992,
+      "sha256": "9f1f075da9ec8973ed9b9d7acb3b1780d96156211cb1cf62e244a69afc512065"
+    },
+    "corpus": {
+      "path": "/scratch/gpfs/EKOLEMEN/foundation_model/190212_processed.h5",
+      "bytes": 4956575228
+    },
+    "camera_store": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui/spectrograms/detachment/190212.h5",
+      "bytes": 23714022,
+      "sha256": "0ee4b6214f4dda71c1d4f0f613c1d2cd0672e73fc8149c650b2f214df1d8c445"
+    },
+    "producer_thresholds": {
+      "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-detach/src/labeler/events/detachment/thresholds.py",
+      "bytes": 4952,
+      "sha256": "ef8a3427d7d108204c35ebc45a07279fb4e9bac8d7ece0480c7f6685b9e8a5b0"
+    },
+    "producer_handoff": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/HANDOFF.md",
+      "bytes": 3318,
+      "sha256": "8471bd1b9d2aed61ae971e177a6e54e55d634b66e0fb50309530aa4dc360eb58"
+    },
+    "producer_method": {
+      "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-detach/docs/labeler/detachment.md",
+      "bytes": 20979,
+      "sha256": "92effb514af488b8fd1224e4305243fa81786abce82a4b23af8358d4c02df388"
+    }
+  },
+  "camera": {
+    "source_kind": "review_store",
+    "group": "tangtv",
+    "channel": 2,
+    "view": "LODIV_240RM1:PERP:STANDARD",
+    "grayscale_limits": [
+      21.671594619750977,
+      114.88286605835114
+    ],
+    "scale_percentiles": [
+      1.0,
+      99.5
+    ],
+    "sampling": "50 Hz corpus linear blends; review-store previews at most 20 fps",
+    "selection": "middle of longest camera-covered run of each present label state (up to three); unpublished shots use three coverage times",
+    "frames": [
+      {
+        "requested_ms": 109.73842442035675,
+        "displayed_ms": 109.73842442035675,
+        "preview_index": 1,
+        "corpus_index": 12,
+        "raw_pixel_sha256": "fe94fc024dc2170ba2404cea587a49bd30210f9d255eb6562b2c7edc75d42509",
+        "display_pixel_sha256": "5eb01dce0051db56400d99433abb231e813f3da45b148ec225f62d3dab249b3a",
+        "pixel_match_to_corpus": true,
+        "bin_start_ms": 100.0,
+        "confidence": null,
+        "indicators": {
+          "afrac": {
+            "value": null,
+            "valid": false,
+            "reason": "probe_far_from_strike",
+            "vote": -1
+          },
+          "prad": {
+            "value": 0.04069007933139801,
+            "valid": true,
+            "reason": "",
+            "vote": 1
+          },
+          "tangtv": {
+            "value": null,
+            "valid": false,
+            "reason": "efit_gap",
+            "vote": -1,
+            "source": "surrogate"
+          }
+        },
+        "producer_state": 0
+      },
+      {
+        "requested_ms": 2929.7385215759277,
+        "displayed_ms": 2929.7385215759277,
+        "preview_index": 48,
+        "corpus_index": 153,
+        "raw_pixel_sha256": "b906dd9eea64424b9c0f95fef0eb9923d3a40510268be889052c7ff76fd7db31",
+        "display_pixel_sha256": "c7bf1fa6e5280150eeb1da8b280cb7cd751fd3e6a285071d7e3df7fc93db9f72",
+        "pixel_match_to_corpus": true,
+        "bin_start_ms": 2900.0,
+        "confidence": null,
+        "indicators": {
+          "afrac": {
+            "value": null,
+            "valid": false,
+            "reason": "no_attached_regime_reference",
+            "vote": -1
+          },
+          "prad": {
+            "value": 0.2874067723751068,
+            "valid": true,
+            "reason": "",
+            "vote": 1
+          },
+          "tangtv": {
+            "value": null,
+            "valid": false,
+            "reason": "surrogate_domain",
+            "vote": -1,
+            "source": "surrogate"
+          }
+        },
+        "producer_state": 0
+      },
+      {
+        "requested_ms": 5749.7382164001465,
+        "displayed_ms": 5749.7382164001465,
+        "preview_index": 95,
+        "corpus_index": 294,
+        "raw_pixel_sha256": "144c034fcf6251df06794fd9b767d79979af907adb19146e39986cf9c5850c96",
+        "display_pixel_sha256": "72a04e82105a64193c5e81c83c2a9b94f60a5fd69737b501ded5464723a573b6",
+        "pixel_match_to_corpus": true,
+        "bin_start_ms": 5700.0,
+        "confidence": null,
+        "indicators": {
+          "afrac": {
+            "value": null,
+            "valid": false,
+            "reason": "probe_far_from_strike",
+            "vote": -1
+          },
+          "prad": {
+            "value": -0.18818864226341248,
+            "valid": false,
+            "reason": "low_power",
+            "vote": -1
+          },
+          "tangtv": {
+            "value": null,
+            "valid": false,
+            "reason": "efit_gap",
+            "vote": -1,
+            "source": "surrogate"
+          }
+        },
+        "producer_state": 0
+      }
+    ]
+  },
+  "definitions": {
+    "label_states": {
+      "0": "unassessed",
+      "1": "attached",
+      "2": "detached",
+      "3": "MARFE",
+      "4": "uncertain"
+    },
+    "recipe": {
+      "record": {
+        "categories": {
+          "0": "absent",
+          "1": "attached",
+          "2": "detached",
+          "3": "marfe",
+          "4": "uncertain"
+        },
+        "category": "detachment",
+        "columns": [
+          "shot",
+          "category",
+          "t_start",
+          "t_end",
+          "confidence",
+          "attrs"
+        ],
+        "coverage": "Bins where at least two of the three indicators (Afrac, Prad,div, TangTV front) are valid. Time with no row was not assessed; it is not attached. 4 (uncertain) includes conflicting compatible votes, low posterior, candidate MARFE and the Afrac+Prad-only weak tier. The interval attrs tier and bin tier preserve those distinctions.",
+        "fit_excluded_split": "test",
+        "label_model_structure": "independent",
+        "labeler": "rule",
+        "made_at": "2026-10-03T19:32:15+00:00",
+        "made_by": "scripts/labeler/detach_label.py",
+        "made_from": [
+          {
+            "git_sha": "0c96886e",
+            "producer": "detach_vote"
+          }
+        ],
+        "n_requested_shots": 53,
+        "n_rows": 1310,
+        "n_shots": 53,
+        "per_shot_files": {
+          "axis_order": [
+            "time",
+            "rho"
+          ],
+          "classes": {
+            "0": "absent",
+            "1": "attached",
+            "2": "detached",
+            "3": "marfe",
+            "4": "uncertain"
+          },
+          "encoding": "sparse_sampled_integer_grid",
+          "label_origin": "rule on the bin's indicator votes",
+          "path": "detach_shots/<shot>.npz",
+          "radial_mapping": "broadcast each scalar label across all 20 rho bins",
+          "rho_edges": [
+            0.0,
+            0.05,
+            0.1,
+            0.15000000000000002,
+            0.2,
+            0.25,
+            0.30000000000000004,
+            0.35000000000000003,
+            0.4,
+            0.45,
+            0.5,
+            0.55,
+            0.6000000000000001,
+            0.65,
+            0.7000000000000001,
+            0.75,
+            0.8,
+            0.8500000000000001,
+            0.9,
+            0.9500000000000001,
+            1.0
+          ],
+          "sample_interval_ms": 50.0,
+          "time_grid": "50 ms bin starts from 0 ms to the shot's last assessed bin, at least 0..5950 ms",
+          "unknown": "unknown_indices: bins not assessed; not 0"
+        },
+        "posterior_threshold": 0.7,
+        "producer": "detach_vote",
+        "schema_version": 6,
+        "shot_list": "detach_shots.csv",
+        "shot_list_sha256": "b7acf9b7d7166e00a4eb33f2ffcc38401f70437b7e753897646957a3757e57a4",
+        "table_kind": "intervals",
+        "time_units": "ms"
+      },
+      "documentation": "# Detachment protocol\n\nThis is an **unverified diagnostic consensus**, awaiting the detachment review\nstream. It is suitable for studying agreement and coverage; its posterior and\nmodel weights are not calibrated physical probabilities or diagnostic accuracy.\nThe fixed cohort's test shots are excluded from fitting, threshold validation,\nsurrogate selection and bin-policy analysis.\n\n## Definitions and export\n\nThe scalar lower-divertor state is attached (1), detached (2), MARFE (3), or\nuncertain (4). Absence (0 internally) means not assessed; missing time is never\ninterpreted as attached. Attached means the accepted diagnostics support a\nlow radiation front and an attached target. Detached means the front has lifted\nand another compatible indicator supports reduced target current or enhanced\ndivertor radiation. MARFE means a persistent high front with localized emission\ninside the separatrix near/above the X-point and a separate operational cue.\nThese definitions express the protocol, not independently established truth.\n\nBins are 50 ms, following the catalog grid and published diagnostic response\nscales. A full TangTV camera frame is approximately 30 Hz; the corpus 50 fps\nresampling does not create independent frames. Thus a bin holds roughly 1.5\nindependent camera frames, and a median alone cannot reject ELM contamination.\n\n`data/events/detachment/extend_detach_vote/detach_shots.csv` contains assessed\nintervals with the standard shot/category/start/end/confidence fields. Its\n`attrs` JSON includes `tier`. The large `labels_bins.csv.gz` has an explicit\n`tier` column, indicator value/valid/reason/vote columns, source and geometry\nprovenance, posterior columns, and a separate `state_temporal_imputation`.\nThe owned `shots.csv` is an unverified camera-review roster, not a gold table.\nThe interval table, sparse grids and per-shot indicator CSVs derive from the\nsame observed bin labels. Time bases are milliseconds in these outputs; corpus\nHDF5 time bases are converted from seconds.\n\n## Indicators and validity\n\n### Target current\n\nThe processed path reads `LANGMUIR::TOP.PROBE_*:{R,Z,JSAT,TIME}`. Invalid/zero\npositions are excluded. It uses the probe nearest the EFIT outer strike point,\nwith a maximum distance of 2 cm, and inter-ELM bin medians of processed Jsat\n(amps/cm\u00b2). Following the Eldon 2021 density-only DOD construction, the attached\nreference is `C ne\u00b2`, fitted separately for explicit L and H confinement labels\nin an attached pre-puff window. The window ends at the first corpus total-gas\nrise exceeding 10% of its shot excursion above the tenth-percentile floor.\nIt needs six quality-valid bins with an attached, valid TangTV vote per regime.\nUnknown confinement, missing gas timing, bad geometry, low power, ramping or\nELM contamination cannot fit C. This operational pre-puff recipe is explicit\nand should be checked by a human before interpreting C as a physical reference.\n\nIf that reference is unavailable, the output is **uncalibrated Jsat ratio\n(local proxy)**. Positioned processed traces use a nearest-probe density-scaled\nwhole-shot 90th-percentile reference; missing processed traces use the original\nraw swept-probe maximum with density and power scaling. Neither self-reference\nestablishes a wholly detached shot's attached current. The `afrac_method` field\nseparates `eldon_pre_puff_LH` from `local_proxy`; benchmark terminology defaults\nto the local proxy. It votes attached at ratio \u22650.75, detached at \u22640.5, and\nabstains between. It cannot vote MARFE. The nearest-probe quality and geometry\ngates still apply to the processed fallback.\n\n### Divertor radiation\n\n`f_div = PRAD_DIVL / P_in` uses calibrated lower-divertor bolometry and heating\npower (beams, ECH and ohmic power). It votes attached at \u22640.36 and detached at\n\u22650.50, abstaining between, and never votes MARFE. Eldon 2019 supplies the\nsensor definition, **not universal state thresholds**. These fixed thresholds\ncome from the local Chen 201081 worked example and are checked on cohort training and external development\nshots with true inversions; they are not optimized on that check.\nThe validation counts and binary kappa are reported below. Validity requires\ninput power \u22650.5 MW and acceptable samples/ELM share. The processed-target path\nuses density-only scaling; the legacy raw proxy uses P_SOL = P_in \u2212 dW/dt,\nwithout subtracting core radiation, another limitation of that fallback.\n\n### TangTV front\n\nC-III emissivity inversions give the SSA height ZE and\n`DZ = 1 \u2212 (ZX \u2212 ZE)/(ZX \u2212 ZS)`. The **upper shelf** is near Z=\u22121.25 m with\nouter strike R\u22651.37 m. The **lower shelf** is near Z=\u22121.363 m with R<1.37 m.\nLower-shelf inversions use plasma_tv's 2026 window `RX \u2264 R < SHELF_WALL_R`\n(`r_max=1.37 m`) and the actual lower-shelf strike height, excluding upper-shelf\nemission. All local lower-shelf inversion shots are attempted and checked\nagainst the other indicators below; unlocalized Thomson temperatures are not\nused as confirmation.\n\nBoth sources require lower-single-null geometry, a positive outer leg of at\nleast 10 cm, a valid shelf strike, finite emission, DZ\u2265\u22120.25, and a nearest\nEFIT slice within 40 ms. Camera geometry preferentially uses EFIT02, matching\nplasma_tv. Missing or single-slice EFIT02 records have an explicit EFIT01\nfallback for inversions, with source exported; the surrogate rejects this\nfallback. Heating/current calculations retain their original EFIT01 source.\nA bin requires at least half its camera frames to pass its frame gates.\n\nThe surrogate is a ridge regression of block-averaged raw frames to inversion\nZE. Features subtract the black level, take square-root block means and apply\nper-frame mean-zero/unit-standard-deviation normalization (ZE_Norm), plus RX.\nDeployment requires leg length, outer strike R and X-point R inside the\naccepted inversion training envelope, training-range brightness, less than 1%\nsaturation, and verified camera/filter provenance. Camera provenance is verified\nonly on matching SAV/corpus training shots. Predictions on other shots abstain:\nthere is no warranted exposure/camera transfer claim. Alpha selection is nested\nby shot: each outer held-out shot is excluded from three grouped inner folds,\nthen evaluated after a fit on the outer training shots. Final deployment alpha\nis selected on development data only. The reported error is a surrogate-to-\ninversion error, not detachment or MARFE accuracy.\n\nTangTV votes attached for DZ<0.35 and detached for 0.5\u2264DZ<1.2. The transition\nband abstains. DZ\u22651.2 alone is a **candidate MARFE**. A MARFE vote needs at least\ntwo consecutive bins satisfying high DZ, accepted-frame spatial evidence and\na second cue. Spatial evidence requires the inversion's global emission peak\nto have `0<psiN<1`, within 30 cm radially of X and between ZX\u22122 cm and ZX+30 cm,\nusing an EFIT02 flux map within 40 ms. Only frames accepted for DZ contribute;\nan excluded ELM frame cannot supply spatial evidence. The second cue is a\nrecorded H\u2013L back-transition within 200 ms, or fG\u22650.8 from unit-confirmed line\ndensity and Ip. Cached UF density lacks confirmed units, so it supplies no\nGreenwald cue. The implemented future SI-density chord approximation is not\nused to invent present fG values. Surrogate fronts lack spatial inversions and\ncannot confirm MARFE. The spatial window is an operational candidate test,\nnot proof of a localized instability or an expert MARFE label.\n\n### ELM mask\n\nRobust divertor D-alpha spikes are widened by 17 ms before and 50 ms after,\ncovering half a 30 Hz integration plus a conservative post-ELM recovery window.\nAccepted TangTV frames exclude this mask; bins with ELM share >50% are invalid\nand cannot become certain through TangTV. Target-current and radiation bins\nretain their explicit quality masks. The fixed recovery window is a conservative\nprotocol assumption and merits shot-specific development validation.\n\n## Redundancy, model and tiers\n\nThe label model exactly enumerates three states and indicator propensities,\nweights and optional pair correlations. Correlation structure uses shot-grouped\ndevelopment folds and the simplest structure within one standard error of the\nbest held-out marginal likelihood. The primary weight fit requests true\ninversion anchors with all three indicators valid and a fixed 1/2, 1/4, 1/4\nclass prior. With fewer than 300 anchors it uses an all-bin fallback, explicitly\nunidentified. Weight saturation is recorded. In either case TangTV's physical\naccuracy is **not identified**, and all posteriors are **uncalibrated**.\n\nAfter the posterior, a certain state requires at least two valid cast votes,\na valid in-domain TangTV vote agreeing with another indicator, no incompatible\nvote, a posterior-selected state compatible with those votes, and that state's\nposterior \u22650.7. `COMPATIBLE` treats a detached target-current/radiation vote as\ncompatible with a TangTV MARFE vote; an attached vote conflicts with either\nnot-attached state. Invalid votes do not participate. Thus all available cast\nvotes must have a common compatible state. Afrac plus Prad alone never produce\na certain state, even when both agree or the posterior is high.\n\n| Tier | Exported state | Meaning |\n|---|---|---|\n| `certain` | 1/2/3 | All certainty and physical gates pass |\n| `low_confidence_pair` | 4 | Target-current/radiation agreement without TangTV support |\n| `candidate_marfe` | 4 | High front without the full MARFE evidence/certainty chain |\n| `conflict` | 4 | Cast votes have no common compatible state |\n| `low_posterior` | 4 | Insufficient compatible vote support or posterior below threshold |\n| `no_vote` | 4 | No sufficient supported state |\n| `not_assessed` | absent | Fewer than two valid indicators |\n\nCandidate MARFE takes precedence in the tier field; indicator votes still reveal\nany conflict. The transparent `detach_rule` uses the same compatibility and\nphysical support conditions without fitted confidence. Primary states are\n**not smoothed**. A one-bin neighbour-fill suggestion is exported separately;\nit may cross a validity/confidence boundary and must never be promoted to an\nobserved certain label. Its count is audited separately.",
+      "sources": {
+        "recipe": {
+          "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/review_recipe.json",
+          "sha256": null
+        },
+        "label_metadata": {
+          "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/labels_rule.meta.json",
+          "sha256": "ad5645cbb07064c7452180d8645a536cbbfe469ece305b8502a641774ae448ed"
+        },
+        "method_record": {
+          "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-detach/docs/labeler/detachment.md",
+          "sha256": "92effb514af488b8fd1224e4305243fa81786abce82a4b23af8358d4c02df388"
+        }
+      }
+    },
+    "unassessed": "absent row in primary label table; never assumed attached",
+    "missing_indicator": "valid=False; vote=-1; reason from producer",
+    "valid_abstention": "valid=True; vote=-1; producer reason/evidence gates apply",
+    "prad": "f_div = Prad,div / P_in",
+    "surrogate": "ridge model estimate of front height from raw camera frames, not a tomographic measurement"
+  },
+  "bin_width_ms": 50,
+  "total_bins": 113,
+  "label_available": false,
+  "assessed_bins": 0,
+  "f_div_above_one_bins": [
+    {
+      "start_ms": 3050.0,
+      "end_ms": 3100.0,
+      "value": 1.1615341901779175
+    },
+    {
+      "start_ms": 5050.0,
+      "end_ms": 5100.0,
+      "value": 1.8849987983703613
+    },
+    {
+      "start_ms": 5100.0,
+      "end_ms": 5150.0,
+      "value": 1.2638200521469116
+    }
+  ],
+  "label_counts": {
+    "unassessed": 113,
+    "attached": 0,
+    "detached": 0,
+    "MARFE": 0,
+    "uncertain": 0
+  },
+  "indicator_counts": {
+    "afrac": {
+      "valid": 0,
+      "missing": 113,
+      "valid_abstentions": 0,
+      "votes": {
+        "attached": 0,
+        "detached": 0,
+        "MARFE": 0
+      }
+    },
+    "prad": {
+      "valid": 92,
+      "missing": 21,
+      "valid_abstentions": 20,
+      "votes": {
+        "attached": 57,
+        "detached": 15,
+        "MARFE": 0
+      }
+    },
+    "tangtv": {
+      "valid": 0,
+      "missing": 113,
+      "valid_abstentions": 0,
+      "votes": {
+        "attached": 0,
+        "detached": 0,
+        "MARFE": 0
+      }
+    }
+  },
+  "figure": {
+    "pdf": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui/detachment_review_190212_paper.pdf",
+    "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui/detachment_review_190212_paper.png",
+    "width_inches": 6.75,
+    "height_inches": 5.6,
+    "intended_use": "ICML two-column width (6.75 inches), without further scaling",
+    "minimum_font_pt": 7.0,
+    "legend_to_afrac_gap_pt": 6.78871875000003,
+    "minimum_gap_between_traces_pt": 5.803210288836465,
+    "state_colors": {
+      "0": "#ffffff",
+      "1": "#0e8a8c",
+      "2": "#0072b2",
+      "3": "#cc79a7",
+      "4": "#d55e00"
+    },
+    "png_dpi": 150,
+    "pdf_vector_elements": "all labels, traces, guides, vote/label strips and cursors",
+    "pdf_raster_elements": "real corpus camera frames only",
+    "tangtv_display": "TangTV DZ: no valid front-height bins",
+    "caption": "Real corpus views and producer suggestions, not expert state examples. The raw view does not visibly separate the states. f_div = Prad,div / P_in; orange points flag f_div > 1, a possible heating-power denominator problem. Grey votes abstain; hatching marks invalid votes; blank label bins are unassessed.",
+    "pdf_sha256": "466b0662444f684da4f049a7c8df11a9fa34f56a198b381bcf8d194236674f02",
+    "png_sha256": "105df148c8de8c723687aefd87c3c394fb8ff7ec03beec2aae515e788fe1ef03"
+  },
+  "network_fetch": false,
+  "source_writes": false,
+  "verification": {
+    "all_selected_frames_match_corpus": true
+  }
+}

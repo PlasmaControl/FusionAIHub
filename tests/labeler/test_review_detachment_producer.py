@@ -2,11 +2,44 @@
 
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pandas as pd
 
 from labeler.config import Paths
 from labeler.events.review import producer, video
+
+
+def test_recipe_metadata_is_frozen_and_invalidates_resume(tmp_path):
+    from labeler.events.review import detachment
+
+    root = tmp_path / "round4/detach"
+    root.mkdir(parents=True)
+    table(root / "labels_bins.csv.gz")
+    path = root / "review_recipe.json"
+    recipe = {
+        "method": "compatible consensus",
+        "thresholds": {"tangtv": {"marfe_min": 1.23}},
+        "evidence_gates": {"marfe": ["sustained bins", "inside separatrix"]},
+        "definitions": {"uncertain": "evidence gates fail"},
+    }
+    path.write_text(json.dumps(recipe))
+    paths = Paths(root=tmp_path)
+    result = producer.load(170815, paths)
+    assert result["recipe"]["record"] == recipe
+    before = detachment.context_sources(170815, paths)
+    recipe["thresholds"]["tangtv"]["marfe_min"] = 1.34
+    path.write_text(json.dumps(recipe))
+    assert detachment.context_sources(170815, paths) != before
+    assert producer.load(170815, paths)["recipe"]["record"] == recipe
+
+
+def test_suppression_is_structured_for_unreadable_source(tmp_path):
+    path = tmp_path / "round4/detach/labels_bins.csv.gz"
+    path.parent.mkdir(parents=True)
+    path.write_text("broken gzip")
+    assert producer.load(170815, Paths(root=tmp_path))["source_suppressed"] is True
 
 
 def table(path, *, split="train"):
@@ -47,9 +80,7 @@ def test_labels_and_votes_are_clipped_by_overlap_without_reclassification(tmp_pa
     assert result["votes"]["afrac"]["valid"][-2:] == [True, False]
     assert result["votes"]["afrac"]["reason"][-1] == "no_samples"
     assert result["tangtv_source"][:3] == ["inversion", "surrogate", "surrogate"]
-    assert result["definitions"]["attached"] == (
-        "the strike point carries the full heat and particle flux"
-    )
+    assert "recipe" in result
 
 
 def test_producer_labels_default_and_override_never_offer_test_rows(

@@ -345,15 +345,13 @@ def test_inconsistent_detachment_source_is_hidden_and_human_review_is_preserved(
             event="detachment", intervals=[[100, 150, 4]],
         ))
         assert response.status_code == 200
-    reason = (
-        "Producer label table unreadable: producer labels incomplete "
-        "for assessed vote bins"
-    )
     with h5py.File(path, "a") as store:
-        store.attrs["params"] = json.dumps({"detachment_producer": {"reason": reason}})
+        store.attrs["params"] = json.dumps({"detachment_producer": {
+            "reason": "Snapshot differs", "source_suppressed": True,
+        }})
     body = client.get("/api/shot?event=detachment&shot=170815").json()
     assert body["source"] is None
-    assert body["params"]["detachment_producer"]["reason"] == reason
+    assert body["params"]["detachment_producer"]["source_suppressed"] is True
     if human_saved:
         assert body["saved"]["intervals"] == [[100, 150, 4]]
         assert body["state"] == "changed"

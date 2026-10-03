@@ -282,9 +282,7 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
             if band is not None and "band" in row:
                 row["band"] = list(band)
         producer = described.get("params", {}).get("detachment_producer", {})
-        suppress_source = event == "detachment" and producer.get("reason", "").startswith(
-            "Producer label table unreadable:"
-        )
+        suppress_source = event == "detachment" and producer.get("source_suppressed", False)
         return {
             "event": event,
             "shot": shot,

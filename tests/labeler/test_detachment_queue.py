@@ -28,6 +28,22 @@ def roster_module():
     return module
 
 
+def test_delivered_source_clips_to_window_and_retains_original_bin_bounds(tmp_path):
+    source = tmp_path / "labels.csv"
+    pd.DataFrame(
+        {"shot": [202205, 202205], "start_ms": [3100, 3150], "state_lm": [2, 2]}
+    ).to_csv(source, index=False)
+    event = tmp_path / "delivery/tables/detachment"
+    result = roster_module().snapshot_suggestions(
+        source, [202205], event, windows={202205: [120, 3134]}
+    )
+    frame = pd.read_csv(result["table"])
+    assert frame.t_end.tolist() == [3134]
+    attrs = json.loads(frame["attrs"].iloc[0])
+    assert attrs["producer_bin_start_ms"] == 3100
+    assert attrs["producer_bin_end_ms"] == 3150
+
+
 @pytest.mark.parametrize("compressed", [False, True])
 @pytest.mark.parametrize("flag,value", [("split", "test"), ("holdout", "true")])
 def test_per_shot_csv_preserves_blind_flags(tmp_path, compressed, flag, value):
@@ -114,6 +130,29 @@ def camera(paths, shot, live=True):
         group.create_dataset("xdata", data=[0.1, 0.2] if live else [0.1])
         frames = np.arange(96).reshape(3, 2, 4, 4)
         group.create_dataset("ydata", data=frames if live else frames[:, :1])
+
+
+def test_resume_refreshes_only_recipe_metadata_without_reencoding_frames(tmp_path):
+    paths = Paths(root=tmp_path / "root", corpus=tmp_path / "corpus")
+    camera(paths, 190001)
+    record = {"shot": 190001, "split": "train"}
+    module = roster_module()
+    first = module.build_store(record, paths, tmp_path / "bins", resume=True)
+    with h5py.File(first["store"]) as source:
+        before = source["videos/tangtv/2/frames"][:]
+    recipe_path = paths.root / "round4/detach/review_recipe.json"
+    recipe_path.parent.mkdir(parents=True)
+    recipe_path.write_text(json.dumps({"method": "updated producer gates"}))
+    second = module.build_store(record, paths, tmp_path / "bins", resume=True)
+    assert second["action"] == "refreshed recipe"
+    with h5py.File(second["store"]) as source:
+        np.testing.assert_array_equal(source["videos/tangtv/2/frames"][:], before)
+        params = json.loads(source.attrs["params"])
+        assert params["detachment_producer"]["recipe"]["record"] == {
+            "method": "updated producer gates"
+        }
+    third = module.build_store(record, paths, tmp_path / "bins", resume=True)
+    assert third["action"] == "kept current store"
 
 
 def test_camera_scan_does_not_hide_missing_efit(tmp_path, monkeypatch):

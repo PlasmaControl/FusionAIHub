@@ -36,11 +36,16 @@
     <p id="video-context">Target: lower outer divertor leg. <span id="video-geometry"></span></p>
     <div id="video-cameras"></div>
     <div id="detachment-strips" hidden aria-label="Producer labels and indicator votes">
-      <p class="strip-legend">Unverified producer: <span style="color:#0e8a8c">■ attached</span> · <span style="color:#0072b2">■ detached</span> · <span style="color:#cc79a7">■ MARFE</span> · <span style="color:#d55e00">■ uncertain</span> · grey abstains · hatched invalid · blank unassessed</p>
       <div id="detachment-lanes"></div>
-      <p id="detachment-reading"></p>
     </div>
-    <p id="detachment-caveats">Afrac = 1/DOD: ≥0.75 attached, ≤0.5 detached. Uncalibrated, self-referenced to this shot’s 0.90 quantile; a weak review aid. TangTV surrogate values are regression estimates, not measurements.</p>
+    <details id="detachment-details">
+      <summary>Producer reading and diagnostic details (unverified)</summary>
+      <div class="detail-scroll">
+        <p class="strip-legend"><span style="color:#0e8a8c">■ attached</span> · <span style="color:#0072b2">■ detached</span> · <span style="color:#cc79a7">■ MARFE</span> · <span style="color:#d55e00">■ uncertain</span> · grey abstains · hatched invalid · blank unassessed</p>
+        <p id="detachment-reading"></p>
+        <p id="detachment-caveats">Check the stored producer recipe in help. Uncalibrated local proxies are weak review aids. TangTV surrogate values are regression estimates.</p>
+      </div>
+    </details>
   </section>
   <div id="rows"></div>
   <canvas id="axis-row" aria-hidden="true"></canvas>
@@ -63,6 +68,7 @@
     <button id="save" class="primary" type="button">Save <kbd>S</kbd></button>
     <button id="next" type="button">Next <span id="next-shot"></span> <kbd>K</kbd></button>
     <button id="revert" type="button">Revert <kbd>R</kbd></button>
+    <button id="start-blank" type="button" hidden title="Clear the editable lane; Source remains visible. Undo restores your draft.">Start blank</button>
     <button id="show-versions" type="button" hidden>History <kbd>H</kbd></button>
   </div>
   <nav id="queue" aria-label="Shots"></nav>
@@ -99,13 +105,15 @@
     <h3>Detachment: lower outer divertor leg</h3>
     <p>Review the lower outer leg using the producer’s EFIT shelf gate. Without DRSEP, the shelf gate does not establish magnetic topology. TangTV corpus images are 50 Hz linear resamples: blends of adjacent exposures, previewed at ≤20 fps.</p>
     <dl>
-      <dt>Attached</dt><dd>the strike point carries the full heat and particle flux</dd>
-      <dt>Detached</dt><dd>the radiating front has left the plate (partial or full)</dd>
-      <dt>MARFE</dt><dd>the front has moved above the X-point onto the confined plasma</dd>
-      <dt>Uncertain</dt><dd>indicators disagree, or all valid ones sit in a transition band</dd>
-      <dt>Absent (unassessed)</dt><dd>fewer than two indicators were valid: nothing can be said</dd>
+      <dt>Attached</dt><dd>Emission peaked at the target strike point.</dd>
+      <dt>Detached</dt><dd>Emission peak lifted off the target along the leg toward the X-point, with target D-alpha or Te rollover.</dd>
+      <dt>MARFE</dt><dd>Localized bright radiation at or above the X-point, or on the inner wall.</dd>
+      <dt>Uncertain</dt><dd>The reviewer cannot decide: view blocked, shelf gate invalid, or evidence conflicts.</dd>
+      <dt>Unmarked</dt><dd>Not reviewed.</dd>
     </dl>
-    <p>These are the producer’s state definitions verbatim. MARFE is also physically detached, but has its own exclusive stage. Missing data is never attachment. Afrac = 1/DOD: high Afrac (≥0.75) supports attached, falling Afrac (≤0.5) supports detached; 0.5–0.75 abstains. Afrac is uncalibrated and self-referenced to this shot’s 0.90 quantile, so an always-detached shot can appear attached in its top tail; treat it as a weak indicator. Prad,div ≤0.35 supports attached and ≥0.50 detached; it measures radiation, not detachment. TangTV DZ &lt;0.35 supports attached, 0.5–1.0 detached and &gt;1.0 MARFE, only inside the producer’s shelf gate. A surrogate DZ is a regression estimate. A valid abstention is grey; invalid bins are hatched with their reason at the shared time. The primary label model and fallback rule are unverified suggestions.</p>
+    <p>The Individual lane starts from the producer label: reviewers correct suggestions. Start blank clears that lane while keeping Source visible; this is not blind review. MARFE has its own exclusive stage. Missing evidence never means attached. Grey means valid abstention; hatching means invalid evidence.</p>
+    <h3>What the machine label means</h3>
+    <pre id="detachment-machine-help">Open a shot to read its stored producer recipe.</pre>
   </section>
   <form method="dialog"><button>Close</button></form>
 </dialog>

@@ -22,6 +22,7 @@ import numpy as np
 import pandas as pd
 
 from labeler.config import git_dirty, git_sha, sha256_of
+from labeler.events.review import recipe
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -41,28 +42,6 @@ STATE_NAMES = {
     4: "uncertain",
 }
 COLORS = {0: "#ffffff", 1: "#0e8a8c", 2: "#0072b2", 3: "#cc79a7", 4: "#d55e00"}
-PRODUCER_STATE_DEFINITIONS = {
-    0: {
-        "state": "absent",
-        "meaning": "fewer than two indicators were valid: nothing can be said",
-    },
-    1: {
-        "state": "attached",
-        "meaning": "the strike point carries the full heat and particle flux",
-    },
-    2: {
-        "state": "detached",
-        "meaning": "the radiating front has left the plate (partial or full)",
-    },
-    3: {
-        "state": "marfe",
-        "meaning": "the front has moved above the X-point onto the confined plasma",
-    },
-    4: {
-        "state": "uncertain",
-        "meaning": "indicators disagree, or all valid ones sit in a transition band",
-    },
-}
 INDICATORS = ("afrac", "prad", "tangtv")
 WIDTH_IN = 6.75
 HEIGHT_IN = 5.6
@@ -80,8 +59,8 @@ def file_record(path: Path, *, hash_file: bool = True) -> dict:
 def read_inputs(bins_path: Path, labels_path: Path, cohort_path: Path, shot: int):
     cohort = pd.read_csv(cohort_path)
     cohort_shot = cohort[cohort.shot == shot]
-    if cohort_shot.empty or cohort_shot.split.iloc[0] not in ("train", "val"):
-        raise ValueError("paper example must be a train/val cohort shot")
+    if not cohort_shot.empty and cohort_shot.split.iloc[0] not in ("train", "val"):
+        raise ValueError("paper example cannot be a blind test cohort shot")
     with np.load(bins_path, allow_pickle=False) as data:
         bins = {key: data[key].copy() for key in data.files}
     starts = np.asarray(bins["start_ms"], dtype=float)
@@ -89,16 +68,27 @@ def read_inputs(bins_path: Path, labels_path: Path, cohort_path: Path, shot: int
         raise ValueError("expected the producer's contiguous 50 ms bin grid")
     labels = pd.read_csv(labels_path, low_memory=False)
     labels = labels[labels.shot == shot].sort_values("start_ms")
-    if labels.empty or labels.start_ms.duplicated().any():
-        raise ValueError("missing or duplicate producer labels for the example")
-    if set(labels.split) != {str(cohort_shot.split.iloc[0])}:
+    if labels.start_ms.duplicated().any():
+        raise ValueError("duplicate producer labels for the example")
+    if labels.split.astype(str).str.lower().eq("test").any() or (
+        "holdout" in labels
+        and labels.holdout.astype(str).str.lower().isin(["1", "true", "yes"]).any()
+    ):
+        raise ValueError("producer blind test shot cannot be a paper example")
+    if (
+        not labels.empty
+        and not cohort_shot.empty
+        and set(labels.split) != {str(cohort_shot.split.iloc[0])}
+    ):
         raise ValueError("producer and cohort split disagree")
     assessed = np.sum([bins[f"{name}_valid"] for name in INDICATORS], axis=0) >= 2
     indexed = labels.set_index("start_ms")
     # The producer table contains assessed bins only. Its absent rows stay unknown.
-    if set(indexed.index) != set(starts[assessed]):
+    if not labels.empty and set(indexed.index) != set(starts[assessed]):
         raise ValueError("label rows disagree with the producer validity mask")
     for name in INDICATORS:
+        if labels.empty:
+            break
         for suffix in ("valid", "vote"):
             field = f"{name}_{suffix}"
             if not np.array_equal(
@@ -116,7 +106,7 @@ def read_inputs(bins_path: Path, labels_path: Path, cohort_path: Path, shot: int
             equal_nan=True,
         ):
             raise ValueError(f"producer bins and full label table disagree: {field}")
-    if not np.array_equal(
+    if not labels.empty and not np.array_equal(
         indexed.loc[starts[assessed], "tangtv_source"],
         bins["tangtv_source"][assessed],
     ):
@@ -126,13 +116,16 @@ def read_inputs(bins_path: Path, labels_path: Path, cohort_path: Path, shot: int
     bins["state_rule"] = aligned.state_rule.fillna(0).to_numpy(dtype=np.int8)
     bins["confidence"] = aligned.confidence.to_numpy(dtype=float)
     bins["assessed"] = assessed
+    bins["label_available"] = not labels.empty
     if not set(bins["state_lm"]) <= set(STATE_NAMES):
         raise ValueError("producer has an unsupported label state")
     for name in INDICATORS:
         valid, vote = bins[f"{name}_valid"], bins[f"{name}_vote"]
         if np.any(~valid & (vote != -1)) or not set(vote) <= {-1, 1, 2, 3}:
             raise ValueError(f"invalid producer vote coding: {name}")
-    return bins, str(cohort_shot.split.iloc[0])
+    return bins, str(
+        cohort_shot.split.iloc[0]
+    ) if not cohort_shot.empty else "producer_external"
 
 
 def camera_clock(store_path: Path, corpus_path: Path, channel: int):
@@ -154,16 +147,21 @@ def camera_clock(store_path: Path, corpus_path: Path, channel: int):
     return times, "corpus"
 
 
-def choose_times(bins: dict, frame_times: np.ndarray) -> list[float]:
+def choose_times(
+    bins: dict, frame_times: np.ndarray, *, inversion_only=False
+) -> list[float]:
     """One frame in each present certain state, from its longest camera-covered run."""
     starts, states = bins["start_ms"], bins["state_lm"]
     bin_index = np.searchsorted(starts, frame_times, side="right") - 1
     inside = (bin_index >= 0) & (frame_times < starts[-1] + 50)
     safe_index = np.clip(bin_index, 0, len(starts) - 1)
     chosen = []
-    for state in (1, 2, 3):
+    for state in (1, 2, 3, 4):
         runs = []
-        boundaries = np.flatnonzero(np.diff(np.r_[False, states == state, False]))
+        eligible = states == state
+        if inversion_only:
+            eligible &= bins["tangtv_valid"] & (bins["tangtv_source"] == "inversion")
+        boundaries = np.flatnonzero(np.diff(np.r_[False, eligible, False]))
         for lo, hi in zip(boundaries[::2], boundaries[1::2], strict=True):
             available = np.flatnonzero(inside & (safe_index >= lo) & (safe_index < hi))
             if len(available):
@@ -172,9 +170,60 @@ def choose_times(bins: dict, frame_times: np.ndarray) -> list[float]:
                 runs.append((hi - lo, -lo, float(frame_times[nearest])))
         if runs:
             chosen.append(max(runs)[2])
+    if not chosen and not inversion_only:
+        covered = frame_times[inside]
+        chosen = (
+            [float(covered[i]) for i in np.linspace(0, len(covered) - 1, 3).astype(int)]
+            if len(covered)
+            else []
+        )
     if not chosen:
-        raise ValueError("no camera frames coincide with certain producer labels")
-    return sorted(chosen)
+        raise ValueError(
+            "no camera frames coincide with the requested producer evidence"
+        )
+    return sorted(chosen[:3])
+
+
+def inversion_example(args):
+    """Audit queued train/val examples; never select from the blind test split."""
+    roster = args.store_root.parents[1] / "tables/detachment/shots.csv"
+    queued = set(pd.read_csv(roster).shot) if roster.is_file() else {args.shot}
+    cohort = pd.read_csv(args.cohort)
+    audit, candidates = [], []
+    blind = set(cohort.loc[cohort.split.eq("test"), "shot"])
+    for shot in sorted(queued - blind):
+        path = args.producer_root / f"bins/{shot}.npz"
+        if not path.is_file():
+            continue
+        with np.load(path, allow_pickle=False) as source:
+            count = int(
+                np.sum(
+                    source["tangtv_valid"] & (source["tangtv_source"] == "inversion")
+                )
+            )
+        if not count:
+            continue
+        entry = {"shot": int(shot), "valid_inversion_bins": count}
+        try:
+            bins, _ = read_inputs(
+                path, args.producer_root / "labels_bins.csv.gz", args.cohort, int(shot)
+            )
+            times, _ = camera_clock(
+                args.store_root / f"{shot}.h5",
+                args.corpus_root / f"{shot}_processed.h5",
+                args.channel,
+            )
+            selected = choose_times(bins, times, inversion_only=True)
+            entry["label_states_with_inversion_frames"] = len(selected)
+            if len(selected) >= 2:
+                candidates.append((len(selected), count, -int(shot), selected))
+        except (ValueError, OSError, KeyError) as error:
+            entry["excluded_reason"] = str(error)
+        audit.append(entry)
+    if candidates:
+        _, _, negative_shot, times = max(candidates)
+        return -negative_shot, times, audit
+    return args.shot, None, audit
 
 
 def read_frames(store_path, corpus_path, channel, times, requested, source_kind):
@@ -241,24 +290,24 @@ def read_frames(store_path, corpus_path, channel, times, requested, source_kind)
 
 def stripe(ax, starts, codes, y, *, valid=None):
     for start, code, index in zip(starts, codes, range(len(starts)), strict=True):
-        missing = (valid is None and code == 0) or (
-            valid is not None and not valid[index]
-        )
+        invalid = valid is not None and not valid[index]
         abstain = valid is not None and valid[index] and code == -1
         ax.add_patch(
             Rectangle(
                 (start, y - 0.34),
                 50,
                 0.68,
-                facecolor="#eeeeee" if missing else COLORS.get(int(code), "white"),
-                edgecolor="#666666" if missing or abstain else "none",
-                linewidth=0.25 if missing or abstain else 0,
-                hatch="xx" if missing else ("///" if abstain else None),
+                facecolor="#d3d8d5"
+                if invalid or abstain
+                else COLORS.get(int(code), "white"),
+                edgecolor="#69736e" if invalid else "none",
+                linewidth=0.25 if invalid else 0,
+                hatch="///" if invalid else None,
             )
         )
 
 
-def plot_figure(bins, frames, frame_records, shot, channel, out):
+def plot_figure(bins, frames, frame_records, shot, channel, out, interpretation):
     plt.rcParams.update(
         {
             "font.size": 8,
@@ -298,7 +347,7 @@ def plot_figure(bins, frames, frame_records, shot, channel, out):
         ax.text(
             0,
             -0.05,
-            f"Producer label: {STATE_NAMES[int(state)]}",
+            f"Producer label: {STATE_NAMES[int(state)] if bins['label_available'] else 'not published'}",
             transform=ax.transAxes,
             fontsize=7,
             va="top",
@@ -313,7 +362,7 @@ def plot_figure(bins, frames, frame_records, shot, channel, out):
     names = [
         "Producer label\n(unverified)",
         "Afrac vote",
-        "Prad,div vote",
+        "f_div vote",
         "TangTV vote",
     ]
     stripe(lane, starts, bins["state_lm"], 3)
@@ -324,36 +373,55 @@ def plot_figure(bins, frames, frame_records, shot, channel, out):
     lane.tick_params(axis="both", length=0, labelbottom=False)
     timeline_axes = [lane]
     trace_specs = [
-        ("afrac", 0.365, "Afrac", [(0.5, "0.50"), (0.75, "0.75")]),
-        ("prad", 0.26, "f_div", [(0.35, "0.35"), (0.5, "0.50")]),
-        ("tangtv", 0.152, "TangTV DZ", [(0.35, "0.35"), (0.5, "0.50"), (1.0, "1.00")]),
+        ("afrac", 0.365, "Afrac"),
+        ("prad", 0.26, "f_div"),
+        ("tangtv", 0.152, "TangTV DZ"),
     ]
     sources = set(bins["tangtv_source"][bins["tangtv_valid"]])
     source_text = {
+        frozenset(): "TangTV DZ: no valid front-height bins",
         frozenset({"surrogate"}): "TangTV DZ: ridge model estimate from raw frames",
         frozenset({"inversion"}): "TangTV DZ: tomographic inversion",
     }.get(
         frozenset(sources),
         "TangTV DZ: inversion (solid) / ridge model estimate (dashed)",
     )
-    for name, bottom, ylabel, guides in trace_specs:
+    for name, bottom, ylabel in trace_specs:
         ax = fig.add_axes([0.20, bottom, 0.76, 0.085], sharex=lane)
         value = np.where(bins[f"{name}_valid"], bins[f"{name}_value"], np.nan)
         edges = np.r_[starts, starts[-1] + 50]
         if name == "tangtv":
             for source, style in (("inversion", "-"), ("surrogate", "--")):
                 y = np.where(bins["tangtv_source"] == source, value, np.nan)
-                ax.stairs(y, edges, color="#222222", linewidth=0.8, linestyle=style)
+                ax.stairs(
+                    y,
+                    edges,
+                    baseline=None,
+                    color="#222222",
+                    linewidth=0.8,
+                    linestyle=style,
+                )
         else:
-            ax.stairs(value, edges, color="#222222", linewidth=0.8)
-        for threshold, _ in guides:
+            ax.stairs(value, edges, baseline=None, color="#222222", linewidth=0.8)
+        for threshold in recipe.guides(interpretation["record"], name):
             ax.axhline(threshold, color="#777777", linestyle=":", linewidth=0.6)
-        if name == "afrac":
-            ylabel += "\nguides: 0.50, 0.75"
-        elif name == "prad":
-            ylabel += "\nguides: 0.35, 0.50"
-        elif name == "tangtv":
-            ylabel += "\nguides: 0.35, 0.50\nand 1.00"
+        if not np.isfinite(value).any():
+            ax.set_yticks([])
+            ax.text(
+                0.5,
+                0.5,
+                "No valid bins",
+                transform=ax.transAxes,
+                ha="center",
+                va="center",
+                fontsize=7,
+                color="#69736e",
+            )
+        if name == "prad":
+            above = np.isfinite(value) & (value > 1)
+            ax.plot(
+                starts[above] + 25, value[above], "o", color="#d55e00", markersize=3
+            )
         ax.set_ylabel(ylabel, rotation=0, ha="right", va="center", labelpad=15)
         ax.yaxis.label.set_fontsize(7)
         ax.tick_params(axis="both", length=2, labelbottom=name == "tangtv")
@@ -380,24 +448,23 @@ def plot_figure(bins, frames, frame_records, shot, channel, out):
     legend.extend(
         [
             Patch(
-                facecolor="white",
-                edgecolor="#666666",
-                hatch="///",
+                facecolor="#d3d8d5",
                 label="valid abstention",
             ),
             Patch(
-                facecolor="#eeeeee",
-                edgecolor="#666666",
-                hatch="xx",
-                label="missing / unassessed",
+                facecolor="#d3d8d5",
+                edgecolor="#69736e",
+                hatch="///",
+                label="invalid",
             ),
+            Patch(facecolor="white", edgecolor="#cccccc", label="unassessed"),
         ]
     )
     legend_artist = fig.legend(
         handles=legend,
         loc="upper center",
         bbox_to_anchor=(0.5, 0.535),
-        ncol=3,
+        ncol=4,
         frameon=False,
         columnspacing=1.5,
         handlelength=1.7,
@@ -406,14 +473,14 @@ def plot_figure(bins, frames, frame_records, shot, channel, out):
     fig.text(
         0.04,
         0.078,
-        "Afrac: uncalibrated probes; within-shot 0.90-quantile reference.",
+        "f_div = Prad,div / P_in; orange points >1: check heating-power denominator.",
         fontsize=7,
     )
-    fig.text(0.04, 0.055, source_text + "; valid only on the lower shelf.", fontsize=7)
+    fig.text(0.04, 0.055, source_text + "; producer validity gates apply.", fontsize=7)
     fig.text(
         0.04,
         0.032,
-        "Label: producer label model; strips and traces: 50 ms producer bins; no expert verification.",
+        "Unverified producer labels; raw views do not visibly separate states; no expert verification.",
         fontsize=7,
     )
     fig.canvas.draw()
@@ -463,6 +530,13 @@ def plot_figure(bins, frames, frame_records, shot, channel, out):
         "pdf_vector_elements": "all labels, traces, guides, vote/label strips and cursors",
         "pdf_raster_elements": "real corpus camera frames only",
         "tangtv_display": source_text,
+        "caption": (
+            "Real corpus views and producer suggestions, not expert state examples. "
+            "The raw view does not visibly separate the states. "
+            "f_div = Prad,div / P_in; orange points flag f_div > 1, a possible "
+            "heating-power denominator problem. Grey votes abstain; hatching "
+            "marks invalid votes; blank label bins are unassessed."
+        ),
     }
 
 
@@ -488,6 +562,7 @@ def main():
     )
     parser.add_argument("--producer-worktree", type=Path, default=PRODUCER)
     parser.add_argument("--channel", type=int, default=2)
+    parser.add_argument("--prefer-inversion", action="store_true")
     parser.add_argument(
         "--times-ms",
         type=float,
@@ -503,14 +578,13 @@ def main():
     if args.times_ms is not None and not 1 <= len(args.times_ms) <= 3:
         parser.error("--times-ms takes one to three times")
     args.out.mkdir(parents=True, exist_ok=True)
+    inversion_audit = []
+    if args.prefer_inversion and args.times_ms is None:
+        args.shot, args.times_ms, inversion_audit = inversion_example(args)
     producer_method = args.producer_worktree / "docs/labeler/detachment.md"
-    method_text = producer_method.read_text()
-    for code, definition in PRODUCER_STATE_DEFINITIONS.items():
-        row = f"| {code} | {definition['state']} | {definition['meaning']} |"
-        if row not in method_text:
-            raise ValueError("export state definitions differ from the producer method")
     bins_path = args.producer_root / "bins" / f"{args.shot}.npz"
     labels_path = args.producer_root / "labels_bins.csv.gz"
+    interpretation = recipe.load(labels_path)
     store_path = args.store_root / f"{args.shot}.h5"
     corpus_path = args.corpus_root / f"{args.shot}_processed.h5"
     bins, split = read_inputs(bins_path, labels_path, args.cohort, args.shot)
@@ -544,7 +618,9 @@ def main():
                 "vote": int(bins[f"{name}_vote"][index]),
             }
         frame["indicators"]["tangtv"]["source"] = str(bins["tangtv_source"][index])
-    figure = plot_figure(bins, frames, frame_records, args.shot, args.channel, args.out)
+    figure = plot_figure(
+        bins, frames, frame_records, args.shot, args.channel, args.out, interpretation
+    )
     script = Path(__file__).resolve()
     record = {
         "script": file_record(script),
@@ -552,6 +628,7 @@ def main():
         "git_dirty": git_dirty(),
         "command": ["python", str(script.relative_to(REPO)), *os.sys.argv[1:]],
         "shot": args.shot,
+        "inversion_example_audit": inversion_audit,
         "split": split,
         "sources": {
             "cohort": file_record(args.cohort),
@@ -577,25 +654,31 @@ def main():
             "grayscale_limits": scale,
             "scale_percentiles": [1.0, 99.5],
             "sampling": "50 Hz corpus linear blends; review-store previews at most 20 fps",
-            "selection": "explicit requested times"
+            "selection": "explicit requested times or selected inversion states"
             if args.times_ms
-            else "middle of longest camera-covered run of each present certain label state, sorted by time",
+            else "middle of longest camera-covered run of each present label state (up to three); unpublished shots use three coverage times",
             "frames": frame_records,
         },
         "definitions": {
             "label_states": STATE_NAMES,
-            "producer_state_definitions_verbatim": PRODUCER_STATE_DEFINITIONS,
-            "unassessed": "fewer than two valid indicators; absent row in primary label table; never assumed attached",
+            "recipe": interpretation,
+            "unassessed": "absent row in primary label table; never assumed attached",
             "missing_indicator": "valid=False; vote=-1; reason from producer",
-            "valid_abstention": "valid=True; vote=-1; transition band, not missing",
-            "afrac": "attached >=0.75; detached <=0.50; uncalibrated within-shot 0.90-quantile reference",
-            "prad": "f_div=Prad_div_lower/P_in; attached <=0.35; detached >=0.50",
-            "tangtv": "DZ=1-(ZX-ZE)/(ZX-ZS); attached <0.35; detached 0.50<=DZ<=1.00; MARFE >1.00; producer geometry/validity gate applies",
+            "valid_abstention": "valid=True; vote=-1; producer reason/evidence gates apply",
+            "prad": "f_div = Prad,div / P_in",
             "surrogate": "ridge model estimate of front height from raw camera frames, not a tomographic measurement",
         },
         "bin_width_ms": 50,
         "total_bins": len(bins["start_ms"]),
+        "label_available": bins["label_available"],
         "assessed_bins": int(bins["assessed"].sum()),
+        "f_div_above_one_bins": [
+            {"start_ms": float(t), "end_ms": float(t + 50), "value": float(v)}
+            for t, v, valid in zip(
+                bins["start_ms"], bins["prad_value"], bins["prad_valid"], strict=True
+            )
+            if valid and v > 1
+        ],
         "label_counts": {
             STATE_NAMES[k]: int(np.count_nonzero(bins["state_lm"] == k))
             for k in STATE_NAMES

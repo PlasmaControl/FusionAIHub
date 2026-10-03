@@ -1317,14 +1317,20 @@ async function detachmentCameras(shot = 170815, demo = false) {
     !$("detachment-strips").hidden && $("detachment-lanes").children.length === 5 &&
     S.meta.params.detachment_producer.state_lm.length > 0 &&
     Array.from($("detachment-lanes").children).every(c => c.width > 0 && c.height > 0)`));
-  check("Afrac help follows 1/DOD and exposes calibration limits", await js(`
-    $("detachment-help").textContent.includes("≥0.75") &&
-    $("detachment-help").textContent.includes("≤0.5") &&
-    $("detachment-caveats").textContent.includes("Uncalibrated") &&
-    $("detachment-caveats").textContent.includes("0.90 quantile")`));
+  check("human camera protocol and stored machine recipe are separate", await js(`
+    $("detachment-help").textContent.includes("target strike point") &&
+    $("detachment-help").textContent.includes("Te rollover") &&
+    $("detachment-help").textContent.includes("Not reviewed") &&
+    $("detachment-machine-help").textContent.length > 0 &&
+    $("detachment-caveats").textContent.includes("Uncalibrated")`));
   if (demo) {
-    check("Afrac trace has both producer thresholds", await js(`
-      S.meta.rows.some(row => row.title === "Afrac" && same(row.hlines, [0.5,0.75]))`));
+    check("threshold guides come only from the stored recipe", await js(`
+      S.meta.rows.filter(row => S.meta.params.panel_metadata[row.name]?.indicator).every(row => {
+        const name = S.meta.params.panel_metadata[row.name].indicator;
+        const values = S.meta.params.detachment_producer.recipe.record.thresholds?.[name] || {};
+        const expected = [...new Set(Object.values(values).filter(v => typeof v === "number"))].sort((a,b) => a-b);
+        return same(row.hlines || [], expected);
+      })`));
     check("real-shot density uses line-density context before local Thomson", await js(`
       S.meta.rows.some(row => row.title.includes("CO2") && row.title.includes("density")) &&
       !S.meta.rows.some(row => row.title.includes("Thomson core local density"))`));
@@ -1377,16 +1383,54 @@ async function detachmentCameras(shot = 170815, demo = false) {
       c.note.textContent.includes(c.channel.view_name))`));
   check("detached and uncertain use distinct colour-blind-safe blue and orange", await js(`
     categoryColour(2) === "#0072b2" && categoryColour(4) === "#d55e00"`));
+  check("start blank clears suggestions and undo restores the editable lane", await js(`(() => {
+    const before = JSON.stringify(S.label), source = JSON.stringify(S.meta.source);
+    $("start-blank").click();
+    const cleared = !S.label.intervals.length && JSON.stringify(S.meta.source) === source;
+    undo(); return cleared && JSON.stringify(S.label) === before;
+  })()`));
+  for (const [width, height] of [[1366,768], [1400,900]]) {
+    await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });
+    await js(`$("top").scrollTop = 0; $("detachment-details").open = false;`);
+    await sleep(100);
+    const layout = await js(`(() => {
+      const rect = id => $(id).getBoundingClientRect();
+      const panel = rect("video-panel"), axis = rect("axis-row"), main = rect("top");
+      const camera = S.video.cards.find(c => c.channel).img.getBoundingClientRect();
+      const row = $("rows").children[0].getBoundingClientRect();
+      const controls = rect("controls"), annotations = rect("label-track");
+      return { panel: panel.height, main: main.height, row: row.height,
+        cameraVisible: camera.top >= main.top && camera.bottom <= panel.bottom,
+        diagnosticVisible: row.top >= panel.bottom - 1 && row.bottom <= axis.top + 1,
+        axisVisible: axis.top >= panel.bottom && axis.bottom <= main.bottom,
+        annotationVisible: annotations.top >= main.bottom && controls.bottom <= innerHeight };
+    })()`);
+    check(`camera, full diagnostic, time axis and annotations fit at ${width}x${height}`,
+      layout.cameraVisible && layout.diagnosticVisible && layout.axisVisible && layout.annotationVisible, layout);
+    if (demo && CASE) {
+      const screenshot = await send("Page.captureScreenshot", {format: "png"});
+      writeFileSync(CASE.replace(/\.png$/, `-${width}x${height}.png`), Buffer.from(screenshot.data, "base64"));
+    }
+    await js(`$("detachment-details").open = true;`);
+    await sleep(50);
+    check(`expanded details leave a diagnostic row at ${width}x${height}`, await js(`
+      $("top").clientHeight - $("video-panel").offsetHeight - $("axis-row").offsetHeight >=
+        $("rows").children[0].clientHeight`));
+    await js(`$("detachment-details").open = false;`);
+  }
   if (!demo) {
     await send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 2600, deviceScaleFactor: 1, mobile: false });
     await sleep(100);
     await js(`window.rowHeightBefore = $("rows").children[0].clientHeight;
       window.panelHeightBefore = $("video-panel").style.height;
+      window.panelMaxBefore = $("video-panel").style.maxHeight;
+      $("video-panel").style.maxHeight = "none";
       $("video-panel").style.height = ($("video-panel").clientHeight + 60) + "px";`);
     await sleep(100);
     check("rows resize when the video panel grows after delivery", await js(`
       $("rows").children[0].clientHeight < window.rowHeightBefore`));
-    await js(`$("video-panel").style.height = window.panelHeightBefore`);
+    await js(`$("video-panel").style.height = window.panelHeightBefore;
+      $("video-panel").style.maxHeight = window.panelMaxBefore;`);
     await send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
     await sleep(50);
   }

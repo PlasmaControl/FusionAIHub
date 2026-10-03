@@ -64,12 +64,12 @@ CSV_INDICATORS = (
 )
 BIN_INDICATORS = (
     ("afrac", "Afrac", "dimensionless"),
-    ("prad", "Lower-divertor radiation fraction", "dimensionless"),
+    ("prad", "f_div = Prad,div / P_in", "dimensionless"),
     ("tangtv", "TangTV normalized front DZ", "dimensionless"),
 )
 AFRAC_CAVEAT = (
-    "Uncalibrated raw swept probes, referenced to this shot's own 0.90 quantile. "
-    "A shot detached throughout may be miscalled attached in its upper tail; "
+    "Uncalibrated local proxies may use a within-shot reference. Check the "
+    "producer recipe and per-bin method before interpreting Afrac; "
     "do not use this indicator alone."
 )
 CO2_CAVEAT = (
@@ -116,6 +116,15 @@ def indicator_panels(shot, paths, t_range=None):
     Configure LABELER_DETACHMENT_INDICATORS, otherwise prefer producer bins and
     fall back to its original indicator CSVs.
     """
+    from ..review import recipe
+
+    labels = Path(
+        os.environ.get(
+            "LABELER_DETACHMENT_LABELS",
+            str(paths.root / "round4/detach/labels_bins.csv.gz"),
+        )
+    )
+    interpretation = recipe.load(labels)
     path = indicator_path(shot, paths)
     if not path.is_file():
         return []
@@ -179,16 +188,15 @@ def indicator_panels(shot, paths, t_range=None):
                     if values.shape != x.shape:
                         raise ValueError(f"{key}: shape disagrees with clock")
                     metadata[suffix] = values[keep].tolist()
-            hlines = ()
+            hlines = recipe.guides(interpretation["record"], indicator)
+            metadata["recipe_sources"] = interpretation["sources"]
             if indicator == "afrac":
-                hlines = (0.5, 0.75)
+                if "afrac_method" in data:
+                    metadata["afrac_method"] = data["afrac_method"][keep].tolist()
                 metadata.update(
                     {
                         "caveat": AFRAC_CAVEAT,
-                        "interpretation": (
-                            "Falling Afrac supports detachment: <=0.5 detached, "
-                            ">=0.75 attached; transition band abstains."
-                        ),
+                        "interpretation": "See the stored producer recipe and bin votes.",
                     }
                 )
             if indicator == "tangtv":
@@ -400,6 +408,7 @@ def panels(shot, *, t_range=None, paths=None):
                 t_range,
                 positive=name == "co2",
                 positive_chords=name == "filterscopes",
+                preplasma_baseline=name == "gas_flow",
             )
             if panel is not None:
                 panel.metadata.update({"source": str(path), "corpus_group": name})
@@ -481,6 +490,7 @@ def _context_panel(
     positive=False,
     positive_chords=False,
     max_channels=None,
+    preplasma_baseline=False,
 ):
     """Reduce a local context trace, rejecting stubs and empty plasma windows."""
     if "xdata" not in group or "ydata" not in group:
@@ -505,6 +515,13 @@ def _context_panel(
     if stop <= start or not ids:
         return None
     bx, y, fraction = _block_means(data, x, ids, start, stop, step, positive=positive)
+    offsets = np.full(len(ids), np.nan)
+    if preplasma_baseline:
+        before = int(np.searchsorted(x, 0.0))
+        if before:
+            _, means, _ = _block_means(data, x, ids, 0, before, before)
+            offsets = means[:, 0]
+        y -= np.where(np.isfinite(offsets), offsets, 0)[:, None]
     live = np.isfinite(y).any(axis=1)
     if positive_chords:
         # Suppress empty/negative-offset chords, without asserting a calibrated
@@ -527,6 +544,14 @@ def _context_panel(
         metadata["missing_policy"] = (
             "nonfinite and nonpositive native samples masked before block means"
         )
+    if preplasma_baseline:
+        metadata["preplasma_baseline"] = [
+            float(offsets[c]) if np.isfinite(offsets[c]) else None for c in selected
+        ]
+        metadata["baseline_policy"] = (
+            "Subtract each channel's finite native-sample mean over t < 0; "
+            "without pre-plasma samples the offset is uncorrected."
+        )
     if positive_chords:
         metadata["channel_policy"] = (
             "retain finite chords with positive median block mean in the displayed "
@@ -536,7 +561,15 @@ def _context_panel(
         title=title,
         x=bx,
         y=y[selected],
-        legend=[f"{names[ids[c]]} ({unit})" for c in selected],
+        legend=[
+            f"{names[ids[c]]} ({unit})"
+            + (
+                " · offset uncorrected"
+                if preplasma_baseline and not np.isfinite(offsets[c])
+                else ""
+            )
+            for c in selected
+        ],
         ylabel=unit,
         metadata=metadata,
     )

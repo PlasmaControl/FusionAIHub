@@ -32,6 +32,30 @@ def _corpus(paths, groups):
     return path
 
 
+def test_gas_subtracts_finite_preplasma_channel_means_without_a_threshold(tmp_path):
+    paths = _paths(tmp_path)
+    _corpus(
+        paths,
+        {
+            "gas_flow": (
+                [-0.002, -0.001, 0, 0.001, 0.002],
+                [[150, 164, 157, 157, 157], [10, 14, 12, 32, 12]],
+            )
+        },
+    )
+    panel = detachment.panels(170815, paths=paths)[0]
+    np.testing.assert_allclose(panel.y, [[0, 0, 0], [0, 20, 0]])
+    assert panel.metadata["preplasma_baseline"] == [157, 12]
+
+
+def test_gas_without_preplasma_samples_is_flagged_as_uncorrected(tmp_path):
+    paths = _paths(tmp_path)
+    _corpus(paths, {"gas_flow": ([0, 0.001], [[157, 157]])})
+    panel = detachment.panels(170815, paths=paths)[0]
+    assert "offset uncorrected" in panel.legend[0]
+    assert panel.metadata["preplasma_baseline"] == [None]
+
+
 def test_default_bins_keep_invalid_votes_and_afrac_guidance(tmp_path, monkeypatch):
     monkeypatch.delenv("LABELER_DETACHMENT_INDICATORS", raising=False)
     paths = _paths(tmp_path)
@@ -50,10 +74,9 @@ def test_default_bins_keep_invalid_votes_and_afrac_guidance(tmp_path, monkeypatc
     assert len(built) == 2  # Invalidity is still useful when there is no trace.
     afrac, prad = built
     np.testing.assert_allclose(afrac.y, [[0.4, 0.6, np.nan]], equal_nan=True)
-    assert list(afrac.hlines) == [0.5, 0.75]
+    assert list(afrac.hlines) == []  # No thresholds invented without a recipe.
     assert "uncalibrated" in afrac.metadata["caveat"].lower()
-    assert "0.90" in afrac.metadata["caveat"]
-    assert "falling" in afrac.metadata["interpretation"].lower()
+    assert "recipe" in afrac.metadata["interpretation"].lower()
     assert afrac.metadata["source"] == str(path)
     assert afrac.metadata["indicator"] == "afrac"
     assert afrac.metadata["valid"] == [True, True, False]

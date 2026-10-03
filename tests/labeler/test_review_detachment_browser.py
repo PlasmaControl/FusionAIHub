@@ -90,6 +90,32 @@ def test_video_slider_playback_clicks_and_labels(
     )
     assert result.returncode == 0, result.stdout + result.stderr[-2000:]
     checks = json.loads(result.stdout.splitlines()[-1])
-    assert not [c for c in checks if not c["ok"]], checks
+    expected = {
+        "detachment": (
+            30,
+            {
+                "human camera protocol and stored machine recipe are separate",
+                "camera, full diagnostic, time axis and annotations fit at 1366x768",
+                "camera, full diagnostic, time axis and annotations fit at 1400x900",
+                "start blank clears suggestions and undo restores the editable lane",
+                "detached labels are saved on the usual timeline",
+                "no script error",
+            },
+        ),
+        "detachment-atomic": (
+            9,
+            {
+                "Play stays disabled before the first complete camera transaction",
+                "pause between deliveries discards staged images and preserves both captions and clock",
+                "all cameras and the shared clock publish together after resume",
+                "no script error",
+            },
+        ),
+    }
+    count, names = expected[scenario]
+    assert len(checks) == count, checks
+    assert names <= {c["name"] for c in checks}, checks
+    failed = [c for c in checks if not c["ok"]]
+    assert not failed, failed
     if scenario == "detachment":
         assert any(c == 2 for _, _, c in labels.read_saved(event)[170815].intervals)

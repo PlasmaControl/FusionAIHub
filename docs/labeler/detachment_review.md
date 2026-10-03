@@ -1,47 +1,235 @@
 # Detachment camera review
 
 The review page offers **1 attached, 2 detached, 3 MARFE, 4 uncertain** on an
-exclusive state track. Unmarked time is unassessed. The producer label model is
+exclusive state track. Unmarked time is not reviewed. The producer label model is
 an **unverified suggestion**, with its fallback rule and three indicator votes
 shown directly below the video. Review edits remain in the usual annotation
-lanes; the Source lane is seeded from a nonblind snapshot of the producer label.
+lanes. The Individual lane initially copies the producer label: reviewers correct
+suggestions. **Start blank** clears the editable lane and supports Undo; Source
+stays visible, so this option does not constitute blind review.
 Binary agreement scoring refuses this multiclass editor.
 
-## Producer definitions and interpretation
+## Human camera review protocol
 
-These meanings are copied **verbatim** from the producer's
-`docs/labeler/detachment.md`:
+Use the camera together with diagnostics and geometry to mark what you can decide:
 
 | Code | State | Meaning |
 | --- | --- | --- |
-| 0 | absent | fewer than two indicators were valid: nothing can be said |
-| 1 | attached | the strike point carries the full heat and particle flux |
-| 2 | detached | the radiating front has left the plate (partial or full) |
-| 3 | marfe | the front has moved above the X-point onto the confined plasma |
-| 4 | uncertain | indicators disagree, or all valid ones sit in a transition band |
+| 1 | attached | Emission peaked at the target strike point. |
+| 2 | detached | Emission peak lifted off the target along the leg toward the X-point, with target D-alpha or Te rollover. |
+| 3 | MARFE | Localized bright radiation at or above the X-point, or on the inner wall. |
+| 4 | uncertain | The reviewer cannot decide: view blocked, shelf gate invalid, or evidence conflicts. |
+| — | unmarked | Not reviewed. |
 
 MARFE is physically detached but has a distinct stage in this exclusive track.
 Partial and full detachment share code 2. Missing evidence never means attached.
 The votes and label states are read directly; the page does not reclassify them.
 
-**Afrac = 1/DOD:** high Afrac **≥0.75 supports attached**, falling Afrac
-**≤0.5 supports detached**; 0.5–0.75 is a valid abstention. The trace draws both
-threshold lines. This producer decodes uncalibrated swept probes without probe
-positions and references the shot to its own 0.90 quantile. A shot detached
-throughout can be called attached in its top tail. This is a weak, uncalibrated
-review aid that cannot establish a label alone; the caveat is visible beside
-its trace and in the video help.
+## What the machine label means
 
-Prad,div is calibrated lower-divertor radiation divided by heating power:
-≤0.35 attached, ≥0.50 detached, otherwise abstain. It is a radiation measure
-and never votes MARFE. TangTV normalized front DZ is attached below 0.35,
-detached from 0.5 through 1.0, and MARFE above 1.0, subject to the producer's
-geometry/validity gate. **Tomographic inversion** and **surrogate regression
+The page help renders the recipe frozen into that shot's store at build time.
+`review_recipe.json` in the producer output directory is preferred (override:
+`LABELER_DETACHMENT_RECIPE`). Its object is preserved verbatim, including method,
+thresholds, definitions and evidence gates. Without that file, the producer's
+exported `labels_rule.meta.json` and method record `docs/labeler/detachment.md`
+are frozen, with their paths and hashes; the latter includes the definitions,
+methods, numeric thresholds, MARFE persistence, spatial/separatrix and independent
+corroboration requirements. `LABELER_DETACHMENT_METHOD` can override that record.
+Missing interpretation is explicitly unavailable. No UI-authored numeric threshold
+is inserted into help. Optional guides use only a structured recipe's
+`thresholds.<indicator>` numeric entries; without those, the traces have no guides.
+Read the machine block and each bin's vote/reason together: high DZ alone does
+not establish MARFE. A valid abstention can reflect evidence gates as well as a
+transition band; the readout preserves the producer reason and does not infer one.
+
+<!-- MACHINE_RECIPE_START -->
+<details>
+<summary>Producer wording (generated recipe snapshot)</summary>
+
+````text
+# Detachment protocol
+
+This is an **unverified diagnostic consensus**, awaiting the detachment review
+stream. It is suitable for studying agreement and coverage; its posterior and
+model weights are not calibrated physical probabilities or diagnostic accuracy.
+The fixed cohort's test shots are excluded from fitting, threshold validation,
+surrogate selection and bin-policy analysis.
+
+## Definitions and export
+
+The scalar lower-divertor state is attached (1), detached (2), MARFE (3), or
+uncertain (4). Absence (0 internally) means not assessed; missing time is never
+interpreted as attached. Attached means the accepted diagnostics support a
+low radiation front and an attached target. Detached means the front has lifted
+and another compatible indicator supports reduced target current or enhanced
+divertor radiation. MARFE means a persistent high front with localized emission
+inside the separatrix near/above the X-point and a separate operational cue.
+These definitions express the protocol, not independently established truth.
+
+Bins are 50 ms, following the catalog grid and published diagnostic response
+scales. A full TangTV camera frame is approximately 30 Hz; the corpus 50 fps
+resampling does not create independent frames. Thus a bin holds roughly 1.5
+independent camera frames, and a median alone cannot reject ELM contamination.
+
+`data/events/detachment/extend_detach_vote/detach_shots.csv` contains assessed
+intervals with the standard shot/category/start/end/confidence fields. Its
+`attrs` JSON includes `tier`. The large `labels_bins.csv.gz` has an explicit
+`tier` column, indicator value/valid/reason/vote columns, source and geometry
+provenance, posterior columns, and a separate `state_temporal_imputation`.
+The owned `shots.csv` is an unverified camera-review roster, not a gold table.
+The interval table, sparse grids and per-shot indicator CSVs derive from the
+same observed bin labels. Time bases are milliseconds in these outputs; corpus
+HDF5 time bases are converted from seconds.
+
+## Indicators and validity
+
+### Target current
+
+The processed path reads `LANGMUIR::TOP.PROBE_*:{R,Z,JSAT,TIME}`. Invalid/zero
+positions are excluded. It uses the probe nearest the EFIT outer strike point,
+with a maximum distance of 2 cm, and inter-ELM bin medians of processed Jsat
+(amps/cm²). Following the Eldon 2021 density-only DOD construction, the attached
+reference is `C ne²`, fitted separately for explicit L and H confinement labels
+in an attached pre-puff window. The window ends at the first corpus total-gas
+rise exceeding 10% of its shot excursion above the tenth-percentile floor.
+It needs six quality-valid bins with an attached, valid TangTV vote per regime.
+Unknown confinement, missing gas timing, bad geometry, low power, ramping or
+ELM contamination cannot fit C. This operational pre-puff recipe is explicit
+and should be checked by a human before interpreting C as a physical reference.
+
+If that reference is unavailable, the output is **uncalibrated Jsat ratio
+(local proxy)**. Positioned processed traces use a nearest-probe density-scaled
+whole-shot 90th-percentile reference; missing processed traces use the original
+raw swept-probe maximum with density and power scaling. Neither self-reference
+establishes a wholly detached shot's attached current. The `afrac_method` field
+separates `eldon_pre_puff_LH` from `local_proxy`; benchmark terminology defaults
+to the local proxy. It votes attached at ratio ≥0.75, detached at ≤0.5, and
+abstains between. It cannot vote MARFE. The nearest-probe quality and geometry
+gates still apply to the processed fallback.
+
+### Divertor radiation
+
+`f_div = PRAD_DIVL / P_in` uses calibrated lower-divertor bolometry and heating
+power (beams, ECH and ohmic power). It votes attached at ≤0.36 and detached at
+≥0.50, abstaining between, and never votes MARFE. Eldon 2019 supplies the
+sensor definition, **not universal state thresholds**. These fixed thresholds
+come from the local Chen 201081 worked example and are checked on cohort training and external development
+shots with true inversions; they are not optimized on that check.
+The validation counts and binary kappa are reported below. Validity requires
+input power ≥0.5 MW and acceptable samples/ELM share. The processed-target path
+uses density-only scaling; the legacy raw proxy uses P_SOL = P_in − dW/dt,
+without subtracting core radiation, another limitation of that fallback.
+
+### TangTV front
+
+C-III emissivity inversions give the SSA height ZE and
+`DZ = 1 − (ZX − ZE)/(ZX − ZS)`. The **upper shelf** is near Z=−1.25 m with
+outer strike R≥1.37 m. The **lower shelf** is near Z=−1.363 m with R<1.37 m.
+Lower-shelf inversions use plasma_tv's 2026 window `RX ≤ R < SHELF_WALL_R`
+(`r_max=1.37 m`) and the actual lower-shelf strike height, excluding upper-shelf
+emission. All local lower-shelf inversion shots are attempted and checked
+against the other indicators below; unlocalized Thomson temperatures are not
+used as confirmation.
+
+Both sources require lower-single-null geometry, a positive outer leg of at
+least 10 cm, a valid shelf strike, finite emission, DZ≥−0.25, and a nearest
+EFIT slice within 40 ms. Camera geometry preferentially uses EFIT02, matching
+plasma_tv. Missing or single-slice EFIT02 records have an explicit EFIT01
+fallback for inversions, with source exported; the surrogate rejects this
+fallback. Heating/current calculations retain their original EFIT01 source.
+A bin requires at least half its camera frames to pass its frame gates.
+
+The surrogate is a ridge regression of block-averaged raw frames to inversion
+ZE. Features subtract the black level, take square-root block means and apply
+per-frame mean-zero/unit-standard-deviation normalization (ZE_Norm), plus RX.
+Deployment requires leg length, outer strike R and X-point R inside the
+accepted inversion training envelope, training-range brightness, less than 1%
+saturation, and verified camera/filter provenance. Camera provenance is verified
+only on matching SAV/corpus training shots. Predictions on other shots abstain:
+there is no warranted exposure/camera transfer claim. Alpha selection is nested
+by shot: each outer held-out shot is excluded from three grouped inner folds,
+then evaluated after a fit on the outer training shots. Final deployment alpha
+is selected on development data only. The reported error is a surrogate-to-
+inversion error, not detachment or MARFE accuracy.
+
+TangTV votes attached for DZ<0.35 and detached for 0.5≤DZ<1.2. The transition
+band abstains. DZ≥1.2 alone is a **candidate MARFE**. A MARFE vote needs at least
+two consecutive bins satisfying high DZ, accepted-frame spatial evidence and
+a second cue. Spatial evidence requires the inversion's global emission peak
+to have `0<psiN<1`, within 30 cm radially of X and between ZX−2 cm and ZX+30 cm,
+using an EFIT02 flux map within 40 ms. Only frames accepted for DZ contribute;
+an excluded ELM frame cannot supply spatial evidence. The second cue is a
+recorded H–L back-transition within 200 ms, or fG≥0.8 from unit-confirmed line
+density and Ip. Cached UF density lacks confirmed units, so it supplies no
+Greenwald cue. The implemented future SI-density chord approximation is not
+used to invent present fG values. Surrogate fronts lack spatial inversions and
+cannot confirm MARFE. The spatial window is an operational candidate test,
+not proof of a localized instability or an expert MARFE label.
+
+### ELM mask
+
+Robust divertor D-alpha spikes are widened by 17 ms before and 50 ms after,
+covering half a 30 Hz integration plus a conservative post-ELM recovery window.
+Accepted TangTV frames exclude this mask; bins with ELM share >50% are invalid
+and cannot become certain through TangTV. Target-current and radiation bins
+retain their explicit quality masks. The fixed recovery window is a conservative
+protocol assumption and merits shot-specific development validation.
+
+## Redundancy, model and tiers
+
+The label model exactly enumerates three states and indicator propensities,
+weights and optional pair correlations. Correlation structure uses shot-grouped
+development folds and the simplest structure within one standard error of the
+best held-out marginal likelihood. The primary weight fit requests true
+inversion anchors with all three indicators valid and a fixed 1/2, 1/4, 1/4
+class prior. With fewer than 300 anchors it uses an all-bin fallback, explicitly
+unidentified. Weight saturation is recorded. In either case TangTV's physical
+accuracy is **not identified**, and all posteriors are **uncalibrated**.
+
+After the posterior, a certain state requires at least two valid cast votes,
+a valid in-domain TangTV vote agreeing with another indicator, no incompatible
+vote, a posterior-selected state compatible with those votes, and that state's
+posterior ≥0.7. `COMPATIBLE` treats a detached target-current/radiation vote as
+compatible with a TangTV MARFE vote; an attached vote conflicts with either
+not-attached state. Invalid votes do not participate. Thus all available cast
+votes must have a common compatible state. Afrac plus Prad alone never produce
+a certain state, even when both agree or the posterior is high.
+
+| Tier | Exported state | Meaning |
+|---|---|---|
+| `certain` | 1/2/3 | All certainty and physical gates pass |
+| `low_confidence_pair` | 4 | Target-current/radiation agreement without TangTV support |
+| `candidate_marfe` | 4 | High front without the full MARFE evidence/certainty chain |
+| `conflict` | 4 | Cast votes have no common compatible state |
+| `low_posterior` | 4 | Insufficient compatible vote support or posterior below threshold |
+| `no_vote` | 4 | No sufficient supported state |
+| `not_assessed` | absent | Fewer than two valid indicators |
+
+Candidate MARFE takes precedence in the tier field; indicator votes still reveal
+any conflict. The transparent `detach_rule` uses the same compatibility and
+physical support conditions without fitted confidence. Primary states are
+**not smoothed**. A one-bin neighbour-fill suggestion is exported separately;
+it may cross a validity/confidence boundary and must never be promoted to an
+observed certain label. Its count is audited separately.
+````
+
+Source SHA256:
+
+- `label_metadata`: `ad5645cbb07064c7452180d8645a536cbbfe469ece305b8502a641774ae448ed`
+- `method_record`: `92effb514af488b8fd1224e4305243fa81786abce82a4b23af8358d4c02df388`
+
+</details>
+<!-- MACHINE_RECIPE_END -->
+
+**f_div = Prad,div / P_in** names the lower-divertor radiation fraction throughout
+the page and figure. It measures radiation, rather than directly observing
+detachment. Figure points above one are flagged for a heating-power denominator
+check. **Tomographic inversion** and **surrogate regression
 (model estimate)** are named in the row title and preserved per bin. A
 surrogate is never presented as a measurement. Legacy height CSVs without
 provenance explicitly lack a recorded source.
 
-The strips show the primary label model, fallback rule, Afrac, Prad,div and
+The strips show the primary label model, fallback rule, Afrac, f_div and
 TangTV votes on exact half-open bins. Codes 1–4 have the same colours as the
 annotation lane. Blank label bins are unassessed; grey votes are **valid
 abstentions** (`valid=True, vote=-1`); hatched votes are **invalid**
@@ -70,7 +258,11 @@ complete transaction while awaiting new frames. Pause, seek, view changes and
 navigation cancel outstanding requests and discard staged frames. Slow delivery
 slows playback; at most one active request per camera is allowed. Hover time is
 independent of the committed video cursor. The sticky video panel remains
-visible while the diagnostic rows scroll.
+visible while the diagnostic rows scroll. Its height leaves at least one full
+diagnostic row and the time axis available at 1366×768 and 1400×900, with
+annotation controls below. Unavailable cameras occupy one line. Camera metadata
+and producer details are collapsible; expanded details scroll within a bounded
+area.
 
 Corpus clocks are seconds; stores and APIs use milliseconds. TangTV corpus
 images are **50 Hz linear resamples blending adjacent exposures**, produced by
@@ -87,7 +279,7 @@ Camera identities follow active `input_key` order in
 `src/tokamak_foundation_model/data/config/modalities/modalities.yaml`.
 **Default TangTV channel 2**, the producer's lower-divertor perpendicular view,
 then channel 0 if 2 is unavailable. Other available views remain selectable.
-Filter/emission line is not recorded; PAR/PERP are node names.
+The filter/emission-line note applies to TangTV only; PAR/PERP are node names.
 
 | TangTV channel | View node | Region |
 | --- | --- | --- |
@@ -127,7 +319,10 @@ missing. Filterscopes FS01–FS08 have separate scales and calibrated
 Dead/nonpositive-median chords are omitted by an explicit availability screen:
 retain finite chords with positive median block mean in the displayed window.
 This screen does not assert a noise-floor calibration. Gas channels GASA–GASE,
-LOB1–LOB2, PFX1–PFX3 and UOB use Torr L/s. Raw probe-sweep medians and raw
+LOB1–LOB2, PFX1–PFX3 and UOB use Torr L/s, after subtracting each channel's
+finite native-sample mean over **t < 0**. There is no tuned flatness threshold.
+If pre-plasma samples are absent, the legend says **offset uncorrected** and
+metadata records a null baseline. Raw probe-sweep medians and raw
 bolometer-voltage medians are omitted.
 
 Context uses contiguous native-sample block means, approximately 1 ms (actual
@@ -169,9 +364,13 @@ training-facing, not a review-only blind-test queue.
 
 The primary Source lane is frozen to
 `tables/detachment/review/suggestions.csv`; `review/source.json` records its
-pointer, producer table/hash, `state_lm` column and bin width. Later producer
+pointer, producer table/hash, `state_lm` column and bin width. Delivered spans
+are clipped to the synchronized plasma window, with original bin start/end
+bounds retained in each row's `attrs` provenance. Later producer
 files require rerunning the script to refresh this snapshot. Inputs are read
-only. Resume compares source hashes for labels, bins, density cache and EFIT.
+only. Resume compares source hashes for labels, bins, density cache, EFIT and
+all interpretation records, including absent recipe files so their appearance
+invalidates an older store.
 The recipe change invalidates old stores even without force. Retained stores
 outside the queue remain inaccessible through this server's roster.
 
@@ -194,21 +393,25 @@ export LABELER_LABEL_TABLES=/scratch/gpfs/nc1514/FusionAIHub/data/events
 export LABELER_NO_FETCH=1 PYTHONPATH="$PWD/src" OMP_NUM_THREADS=4
 pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \
   -e labelmaker python scripts/labeler/detachment_review_roster.py \
-  --out "$LABELER_ROOT/round4/detach-ui" --build --rebuild-existing --workers 4
-# Repeat separately for 190010 and 190102; --verify once runs covering checks.
+  --out "$LABELER_ROOT/round4/detach-ui" --build --rebuild-existing --resume-build --workers 4
+# The command above is the idempotent controller rebuild after producer changes.
 pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \
-  -e labelmaker python scripts/labeler/detachment_review_demo.py --shot 190212 \
-  --out "$LABELER_ROOT/round4/detach-ui/browser-190212" --verify
+  -e labelmaker python scripts/labeler/detachment_review_demo.py --shot 200977 \
+  --out "$LABELER_ROOT/round4/detach-ui/browser-fix4-200977" --verify
 pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \
   -e labelmaker python scripts/labeler/detachment_review_export.py \
-  --evidence docs/labeler/results/detachment_ui_fix3_export.json
+  --prefer-inversion --evidence docs/labeler/results/detachment_ui_fix4_export.json
 ```
 
-The static appendix figure is `detachment_review_190212_paper.pdf` (vector) and
+The current static appendix figure is `detachment_review_200977_paper.pdf` (vector) and
 `.png` (150 dpi), under the delivery root: real channel-2 frames, primary label,
 three vote strips and Afrac/radiation/DZ traces share marked frame times. Fonts
 are ≥7 pt at the intended **6.75-inch two-column width without further scaling**.
-It identifies the surrogate regression and uncalibrated Afrac. Frame timestamps
+It uses a nonblind producer-external development shot with inversion-sourced DZ.
+The current producer labels shown are attached, uncertain and detached; the
+caption explicitly says the raw view does not visibly separate the states.
+The earlier 190212 figure is regenerated with its now-unpublished label lane
+blank. Frame timestamps
 and pixels are checked against the corpus, and JSON records all sources/hashes.
 This replaces the earlier crop that omitted diagnostics and had empty labels.
 
@@ -229,6 +432,6 @@ LABELER_NO_FETCH=1 pixi run --frozen --no-install \
 Open `#detachment/190212` on the printed token URL. Existing owner servers are
 untouched. Browser evidence uses the installed Playwright Chromium through the
 repository's DevTools driver; each free-port server stops after checking.
-Fresh queue, covering tests/lint, three real-shot browser checks and export
-records are in `docs/labeler/results/detachment_*fix3*.json` and
-`detachment_review_queue.json`; historical contradictory records were removed.
+Fresh queue, covering tests/lint, browser checks and export records are in
+`docs/labeler/results/detachment_*fix4*.json` and `detachment_review_queue.json`.
+The fix3 records describe a superseded producer snapshot.

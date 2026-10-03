@@ -24,7 +24,7 @@ import uvicorn
 from detachment_review_roster import snapshot_suggestions
 
 from labeler.config import Paths, git_dirty, git_sha, sha256_of
-from labeler.events.review import build, rows, video
+from labeler.events.review import build, detachment, rows, video
 from labeler.events.ui.app import create_app
 
 REPO = Path(__file__).resolve().parents[2]
@@ -61,10 +61,12 @@ NEW_PYTHON = [
     "scripts/labeler/detachment_review_roster.py",
     "src/labeler/events/review/geometry.py",
     "src/labeler/events/review/producer.py",
+    "src/labeler/events/review/recipe.py",
     "tests/labeler/test_review_detachment_producer.py",
     "tests/labeler/test_detachment_diagnostics.py",
     "tests/labeler/test_detachment_queue.py",
     "scripts/labeler/detachment_review_export.py",
+    "scripts/labeler/detachment_review_audit.py",
     "tests/labeler/test_review_detachment_geometry.py",
 ]
 CHANGED_PYTHON = NEW_PYTHON + [
@@ -182,9 +184,13 @@ def main():
     cohort_path = REPO / "data/events/catalog/cohort.csv"
     cohort = pd.read_csv(cohort_path)
     match = cohort[cohort.shot == args.shot]
-    if match.empty or match.split.iloc[0] == "test":
-        raise ValueError("demo must use a train/val cohort shot")
+    if not match.empty and match.split.iloc[0] == "test":
+        raise ValueError("demo cannot use a blind test cohort shot")
     original = Paths.from_env()
+    if match.empty:
+        audited = original.root / "round4/detach-ui/tables/detachment/shots.csv"
+        if not audited.is_file() or args.shot not in set(pd.read_csv(audited).shot):
+            raise ValueError("external demo must belong to the nonblind delivery queue")
     os.environ["LABELER_DETACHMENT_INDICATORS"] = str(
         args.indicator_root or original.root / "round4/detach/bins"
     )
@@ -198,6 +204,8 @@ def main():
         "LABELER_DETACHMENT_CACHE_ROOT", str(original.root / "round4/detach/cache")
     )
     paths = Paths(root=out, corpus=original.corpus, label_tables=out / "tables")
+    split = "producer_external" if match.empty else str(match.split.iloc[0])
+    window = detachment.plasma_window(args.shot, original)
     event = paths.label_tables / "detachment"
     event.mkdir(parents=True, exist_ok=True)
     roster = event / "shots.csv"
@@ -218,6 +226,7 @@ def main():
         event,
         reserved_shots=reserved,
         indicator_root=os.environ["LABELER_DETACHMENT_INDICATORS"],
+        windows={args.shot: list(window) if window else None},
     )
     source_shapes = {}
     with h5py.File(paths.corpus_file(args.shot), "r") as source:
@@ -234,7 +243,7 @@ def main():
     record = {
         **provenance(),
         "shot": args.shot,
-        "split": str(match.split.iloc[0]),
+        "split": split,
         "cohort": str(cohort_path),
         "corpus": str(paths.corpus_file(args.shot)),
         "indicator_root": os.environ["LABELER_DETACHMENT_INDICATORS"],
@@ -313,11 +322,22 @@ def main():
             json.loads(result.stdout.splitlines()[-1]) if result.stdout.strip() else []
         )
         record["screenshot"] = str(png) if png.is_file() else None
+        record["layout_screenshots"] = {
+            size: str(png.with_name(f"{png.stem}-{size}.png"))
+            for size in ("1366x768", "1400x900")
+        }
         record["browser_stderr_tail"] = result.stderr[-2000:]
         evidence.write_text(json.dumps(record, indent=2) + "\n")
         if (
             result.returncode
-            or not record["browser_checks"]
+            or len(record["browser_checks"])
+            != (28 + 2 * any(len(c["channels"]) > 1 for c in manifest["cameras"]))
+            or not {
+                "camera, full diagnostic, time axis and annotations fit at 1366x768",
+                "camera, full diagnostic, time axis and annotations fit at 1400x900",
+                "no script error",
+            }
+            <= {c["name"] for c in record["browser_checks"]}
             or any(not c["ok"] for c in record["browser_checks"])
         ):
             raise RuntimeError(f"browser check failed: see {evidence}")

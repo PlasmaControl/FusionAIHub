@@ -251,7 +251,11 @@ def meta(path) -> dict:
                     "channels": channels,
                     "reason": str(group.attrs["reason"]),
                     "default_channel": default["channel"] if default else None,
-                    "spectral_note": "Filter/emission line is not recorded in the corpus.",
+                    "spectral_note": (
+                        "Filter/emission line is not recorded in the corpus."
+                        if camera == "tangtv"
+                        else ""
+                    ),
                     "sampling_note": (
                         TANGTV_SAMPLING_NOTE
                         if camera == "tangtv"

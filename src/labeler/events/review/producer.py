@@ -1,7 +1,6 @@
 """Read-only detachment label/vote strips from the producer's final bin table.
 
-Codes and definitions are the producer's vocabulary, copied verbatim from
-docs/labeler/detachment.md. No threshold, vote or label is computed here. The
+Interpretation is frozen from producer-owned records. No vote is computed here. The
 final labels_bins.csv.gz interface uses 50 ms bins; zero means not assessed.
 Test rows are never suggestions for this training-facing review page.
 """
@@ -17,15 +16,9 @@ import numpy as np
 import pandas as pd
 
 from ..panels.detachment import indicator_path
+from . import recipe
 
 BIN_MS = 50.0
-DEFINITIONS = {
-    "absent": "fewer than two indicators were valid: nothing can be said",
-    "attached": "the strike point carries the full heat and particle flux",
-    "detached": "the radiating front has left the plate (partial or full)",
-    "marfe": "the front has moved above the X-point onto the confined plasma",
-    "uncertain": "indicators disagree, or all valid ones sit in a transition band",
-}
 
 
 def source_path(paths) -> Path:
@@ -94,10 +87,13 @@ def _verify_snapshot(frame, bins):
 def load(shot, paths, window_ms=None):
     """JSON-ready strips, with validity distinct from valid abstention (-1)."""
     path = source_path(paths)
+    interpretation = recipe.load(path)
     result = {
         "source": str(path),
         "bin_width_ms": BIN_MS,
-        "definitions": DEFINITIONS,
+        "definitions": interpretation["record"].get("definitions", {}),
+        "recipe": interpretation,
+        "source_suppressed": False,
         "bin_start_ms": [],
         "bin_end_ms": [],
         "state_lm": [],
@@ -109,6 +105,7 @@ def load(shot, paths, window_ms=None):
         "note": "Unverified producer suggestions; label model primary, rule fallback.",
     }
     if not path.is_file():
+        result["source_suppressed"] = True
         result["reason"] = "Producer label table unavailable"
         return result
     try:
@@ -123,12 +120,14 @@ def load(shot, paths, window_ms=None):
             result["reason"] = "Shot has no producer label bins"
             return result
         if "split" in frame and frame.split.astype(str).str.lower().eq("test").any():
+            result["source_suppressed"] = True
             result["reason"] = "Producer blind test shot excluded from suggestions"
             return result
         if (
             "holdout" in frame
             and frame.holdout.astype(str).str.lower().isin(["true", "1", "yes"]).any()
         ):
+            result["source_suppressed"] = True
             result["reason"] = "Producer blind test shot excluded from suggestions"
             return result
         if bins_path.is_file() and bins_path.suffix == ".npz":
@@ -185,6 +184,11 @@ def load(shot, paths, window_ms=None):
         result["tangtv_source"] = (
             frame.tangtv_source.astype(str).to_numpy()[keep].tolist()
         )
+        result["evidence"] = {
+            field: frame[field].fillna("").to_numpy()[keep].tolist()
+            for field in frame.columns
+            if field in ("tier", "afrac_method") or "marfe_" in field
+        }
         confidence = pd.to_numeric(frame.confidence, errors="coerce").to_numpy()
         result["confidence"] = [
             float(value) if np.isfinite(value) else None for value in confidence[keep]
@@ -205,6 +209,7 @@ def load(shot, paths, window_ms=None):
             state_rule=[],
             votes={},
             label_available=False,
+            source_suppressed=True,
         )
         result["reason"] = f"Producer label table unreadable: {error}"
         return result

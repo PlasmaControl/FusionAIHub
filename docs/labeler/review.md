@@ -495,7 +495,9 @@ to use overlapping annotations.
 ## Detachment cameras
 
 The `detachment` editor offers spans **1 attached, 2 detached, 3 marfe,
-4 uncertain**; unmarked time is unassessed. Drag **Time (ms)** or click the
+4 uncertain**; unmarked time is not reviewed. The Individual lane starts from
+the producer label, so reviewers correct suggestions. **Start blank** clears
+the editable lane while keeping Source visible. Drag **Time (ms)** or click the
 timeline to seek the nearest camera frame and move the cursor across all
 panels. The video panel stays visible while scrolling. **Play/Pause** waits for
 decoded frames before advancing. All selected camera images, physical views,
@@ -505,19 +507,26 @@ seeking shows a loading state. Labels still use the
 usual timeline lanes, saves and history.
 
 Each available `bolo`, `tangtv` or `irtv` image channel uses a fixed per-shot
-grayscale scale. Missing/stub cameras have an explicit unavailable card.
-Selectors name the source views; live lower-divertor TangTV 0/2 is the default.
-The filter/emission line is not recorded. Raw Langmuir/bolometer medians are
+grayscale scale. Missing/stub cameras have a one-line unavailable card.
+Selectors name the source views; the default is lower-divertor TangTV channel
+**2, then 0** if 2 is unavailable. The TangTV filter/emission line is not recorded.
+Raw Langmuir/bolometer medians are
 omitted; filterscope, density and gas-flow context uses block means over the
 plasma window. Optional producer files add validity-gated Afrac, lower-divertor
 radiation fraction and normalized TangTV DZ. Movies stay in the per-shot store;
 the page requests one frame at a time. Camera controls require server API 9.
 The state track is exclusive: MARFE can physically coexist with detachment,
-and partial detachment has no separate state. `detachment/shots.csv` is the
-real queue: LSN-gated live-camera train/validation cohort shots plus producer
-labelled shots, excluding blind test shots. The page shows EFIT configuration
-and lower outer strike-point validity. See `detachment_review.md` and page help
-for operational state definitions and source limitations.
+and partial detachment has no separate state. The queue is the delivery overlay
+`round4/detach-ui/tables/detachment/shots.csv`, gated on camera availability,
+separately from the EFIT shelf gate. The reviewed 247-shot snapshot has **87**
+camera-and-shelf eligible shots and **94** with any valid shelf sample; those
+counts describe different checks. Regenerated counts are recorded in
+`results/detachment_review_queue.json`. Blind test and reserved shots are excluded.
+When DRSEP is absent, the page says **topology unavailable**, alongside the
+lower outer strike-point gate. See the
+[human camera protocol](detachment_review.md#human-camera-review-protocol) and
+the page's separate **What the machine label means** block, generated from the
+producer recipe stored with the shot.
 
 See [Detachment camera review](detachment_review.md) for data contracts,
 launch commands and the isolated real-shot screenshot check.
