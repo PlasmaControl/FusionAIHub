@@ -110,6 +110,15 @@ def _chain() -> dict[str, Row]:
         "r": replace(base, name="r", label="+ paper rows (first six)", rows=(0, 6)),
         "g": replace(base, name="g", label="+ native 1 MHz", data="1m"),
         "f": replace(base, name="f", label="+ paper split protocol", protocol="paper"),
+        # the extra shots exist only as native 1 MHz fetches, so e is tested together with g
+        # (compare ``only_g``)
+        "ge": replace(
+            base,
+            name="ge",
+            label="+ native 1 MHz and every fetched shot",
+            data="1m",
+            shots="all",
+        ),
     }
     rows = {
         "base": base,
