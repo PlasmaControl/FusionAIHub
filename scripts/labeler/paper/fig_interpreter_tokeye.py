@@ -669,7 +669,7 @@ def draw(
 
     layout = {
         "h_raw": 0.32, "raw_hi": 1.0, "raw_lo": 0.8, "g1": 0.1, "da_raw": 0.42,
-        "g2": 0.07, "nbi": 0.42, "h_proc": 1.45 if len(crashes) else 1.18,
+        "g2": 0.07, "nbi": 0.42, "h_proc": 1.21 if len(crashes) else 0.94,
         "pr_hi": 1.0, "pr_lo": 0.8,
         "crashes": 0.16 if len(crashes) else 0.001,
         "g3": 0.1, "da_pr": 0.62, "h_lab": 0.40,
@@ -677,7 +677,7 @@ def draw(
     names = [*layout, *[f"track{i}" for i in range(len(tracks))]]
     heights = [
         *layout.values(),
-        *[0.32 if t.spec.key == mode_tags.NTM else 0.16 for t in tracks],
+        *[0.18 for t in tracks],
     ]
     with style():
         fig = Figure(figsize=(PAGE_IN, HEIGHT_IN))
@@ -687,7 +687,7 @@ def draw(
             height_ratios=heights,
             hspace=0.0,
             left=0.14,
-            right=0.915,
+            right=0.895,
             top=0.985,
             bottom=0.12,
         )
@@ -919,14 +919,11 @@ def draw(
         for a, track in zip(track_axes, tracks, strict=True):
             key = track.spec.key
             track_bars(a, track, EVENT_COLOURS.get(key, "#888888"),
-                       REGIME_GREYS if key == "confinement" else None,
-                       (0.46, 0.48) if key == mode_tags.NTM else BAR)  # fmt: skip
+                       REGIME_GREYS if key == "confinement" else None)  # fmt: skip
             a.set_ylabel(titles[key], rotation=0, ha="right", va="center", labelpad=3)
             tier = "" if track.source is None else TIER_NAMES[track.source.tier]
             if key == mode_tags.NTM and tier == "detector":
-                tier = "unverified\nsuggestion"
-                a.text(0.5, 0.12, "detector", transform=a.transAxes, fontsize=FONT,
-                       va="center", ha="center", color="#444444")  # fmt: skip
+                tier = "unverified"  # The caption explains the magnetic suggestion.
             a.text(1.008, 0.5, tier, transform=a.transAxes, fontsize=FONT,
                    va="center", ha="left", color="#444444")  # fmt: skip
         track_axes[-1].tick_params(labelbottom=True, bottom=True)
