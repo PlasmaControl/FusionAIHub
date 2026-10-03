@@ -17,8 +17,8 @@ AFRAC_ATTACHED_MIN = 0.75
 #: calls detaching, and the operating point Eldon 2022 controls to. Between 0.5 and
 #: 0.75 the strike point is partially detached: the indicator abstains.
 AFRAC_DETACHED_MAX = 0.5
-#: The uncalibrated probes (no gain, no position on disk) cannot give Eldon's
-#: absolute C. The attached reference is the shot's own: this quantile of the
+#: Positioned processed currents still lack an independently identified attached
+#: reference for Eldon's C. The local reference is the shot's own quantile of the
 #: model-normalised Jsat over its valid bins (the detachment only ever lowers the
 #: ratio, so the upper tail is the attached level). A shot detached throughout is
 #: therefore mis-called attached in its top tail: a stated limitation of this
@@ -31,8 +31,8 @@ AFRAC_MIN_MS = 3000.0
 #: Local Prad,div,L/P_in thresholds initially motivated by Chen 2026 shot
 #: 201081 (1.6/4.4=0.36 attached; 2.2/4.4=0.50 detached). Eldon 2019
 #: defines the sensor, not universal classification thresholds. These are
-#: validated on fixed cohort TRAIN inversion bins by detach_fix_records.py;
-#: no test shot enters validation. They are not "Prad per Eldon" settings.
+#: exploratory local thresholds; no cohort-train inversion reference exists.
+#: They are not "Prad per Eldon" settings and are not independently validated.
 PRAD_ATTACHED_MAX = 0.36
 PRAD_DETACHED_MIN = 0.50
 #: Below this input power the ratio is noise (the bolometer offset, ~0.05 MW, is a
@@ -83,5 +83,18 @@ ELM_MIN_REL_RISE = 0.5
 #: A bin with more than this fraction of its samples inside an ELM is invalid; the
 #: samples inside ELMs are dropped from the rest (so a bin keeps its inter-ELM time).
 MAX_ELM_FRACTION = 0.8
+#: Local inter-ELM mask: +/-2 ms around the D-alpha excursion. Camera exposures
+#: integrate ELMs as in Chen 2026 and do not reuse this mask as an overlap veto.
+ELM_MASK_HALF_WIDTH_MS = 2.0
+#: Conservative local EFIT strike-position uncertainty guard (5 mm), not a
+#: diagnostic calibration. A positioned outer-target probe must be outboard by
+#: at least this amount and inside the 2 cm spatial selection window.
+PROBE_STRIKE_MARGIN_M = 0.005
+PROBE_MAX_DISTANCE_M = 0.02
+#: Local flux uncertainty guard: exclude private flux and the separatrix band.
+PROBE_SOL_PSI_N_MIN = 1.01
+#: Density-limit corroboration only; local conservative cue, not a universal
+#: MARFE boundary. Spatial evidence and sustained height remain mandatory.
+GREENWALD_CUE_MIN = 0.8
 #: |dIp/dt| above this (MA/s) is a ramp: Afrac's model is not valid (Eldon 2022).
 RAMP_DIP_MAX_MA_PER_S = 1.0

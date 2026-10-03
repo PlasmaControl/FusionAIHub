@@ -1,7 +1,7 @@
-"""Uncalibrated Jsat ratio (local proxy), with optional Eldon calibration.
+"""Uncalibrated Jsat ratio (local proxy), not published Eldon Afrac.
 
-The original raw fallback is not published Afrac. The processed path below
-selects the probe nearest EFIT and fits separate attached pre-puff references.
+The bin exporter requires a positioned SOL-side processed probe. Its attached
+reference remains a whole-shot quantile, independent of the camera votes.
 
 The Afrac indicator: divertor ion saturation current against its attached value.
 
@@ -10,15 +10,18 @@ saturation current at the outer strike point over the value the two-point model
 predicts for an attached divertor with the same upstream density and power; it is
 1 / DOD of Eldon 2021 (attached 1, detached below 0.5).
 
-What is different here, and why. The corpus holds raw swept-probe records with no
-calibration and no probe positions (`langmuir.py`), so:
+The bin exporter selects a positioned processed SOL-side probe before calling
+this numerical helper. Unpositioned corpus sweeps cannot establish that provenance
+and do not vote. Differences from published Afrac remain:
 
-* Jsat is the PEAK over the live probes of each bin's median inter-ELM ion current (the
-  strike point moves along the array; the probe that sees it carries the maximum).
-  Between two probes the peak under-reads: a source of false "detached" votes.
-* `C` is not Eldon's absolute constant but the shot's own attached level, the
+* The exporter supplies the nearest qualified SOL-side probe's median inter-ELM
+  current. This helper can also accept a probe array, using its per-bin peak;
+  such an array must have passed independent position/flux selection upstream.
+  A finite probe spacing can under-read the current and bias detached votes.
+* `C` is not Eldon's fitted attached-current constant but a local proxy level, the
   `AFRAC_REFERENCE_QUANTILE` of the model-normalised Jsat over its valid bins.
-  A shot detached throughout is mis-called attached in its top tail.
+  At least 3 s of eligible samples are needed. A shot detached throughout can
+  be mis-called attached in its top tail.
 * `<ne>` is the line-integrated CO2 density (V2 chord) and `P_SOL` is the heating
   power minus dW/dt, core radiation not subtracted; both enter only as ratios.
 
@@ -40,6 +43,7 @@ from .core import (
     bin_fraction,
     bin_median,
     elm_at,
+    elm_bin_known,
 )
 
 
@@ -88,11 +92,14 @@ def afrac_indicator(
     ip_a: np.ndarray | None = None,
     elm_t_ms: np.ndarray | None = None,
     elm_flag: np.ndarray | None = None,
+    *,
+    pre_masked: bool = False,
 ) -> Indicator:
     """Afrac indicator on a bin grid.
 
     Reasons on an invalid bin: `no_probes`, `no_density`, `no_power`, `low_power`,
-    `ramp`, `elm`, `no_samples`, `short_reference` (under AFRAC_MIN_MS of valid bins
+    `ramp`, `elm`, `elm_unknown`, `no_samples`, `short_reference` (under
+    AFRAC_MIN_MS of valid bins
     to set the attached level on).
     """
     n = len(edges) - 1
@@ -109,8 +116,9 @@ def afrac_indicator(
         return assemble("afrac", value, nothing, reason, np.zeros(n))
 
     # sweeps inside an ELM are dropped: the bin's median is the inter-ELM level
-    in_elm = elm_at(probe_t_ms, elm_t_ms, elm_flag)
-    jsat = np.where(in_elm[None, :], np.nan, jsat)
+    if not pre_masked:
+        in_elm = elm_at(probe_t_ms, elm_t_ms, elm_flag)
+        jsat = np.where(in_elm[None, :], np.nan, jsat)
     peak, _ = peak_jsat(edges, probe_t_ms, jsat)
     density = bin_median(ne_t_ms, ne, edges)[0]
     p_sol = bin_median(power_t_ms, p_sol_w, edges)[0]
@@ -132,6 +140,7 @@ def afrac_indicator(
     reason[np.nan_to_num(ramp) > th.RAMP_DIP_MAX_MA_PER_S] = "ramp"
     reason[np.nan_to_num(elm_share) > th.MAX_ELM_FRACTION] = "elm"
     reason[(reason == "") & ~(np.nan_to_num(peak) > 0)] = "no_samples"
+    reason[~elm_bin_known(edges, elm_t_ms, elm_flag)] = "elm_unknown"
     ok = (reason == "") & np.isfinite(raw)
     if ok.sum() * float(edges[1] - edges[0]) < th.AFRAC_MIN_MS:
         reason[ok] = "short_reference"
@@ -141,30 +150,27 @@ def afrac_indicator(
     return assemble("afrac", value, ok, reason, afrac_vote(value))
 
 
-def calibrated_ratio(
-    jsat, positions, strike, scaling, reference, regime, min_reference_bins=6
-):
-    """Nearest processed probe (<=2 cm), separate attached L/H C fits.
+def select_sol_probe(jsat, positions, strike, psi_n):
+    """Nearest finite positive outer-target current safely on the SOL side.
 
-    `jsat` is (probe,bin); `scaling` is the Eldon attached-density model.
-    reference requires an attached pre-puff bin. Unknown regime never fits C.
-    Returns ratio, validity, selected probe index; no extrapolated reference.
+    Require R_probe - R_strike >= 5 mm, distance <= 2 cm and psiN >= 1.01.
+    The local position/flux guard bands are explicit uncertainty margins, not
+    a claim that the EFIT/probe positions were independently calibrated.
+    Returns selected index (-1 if none), validity and the abstention reason.
     """
-    distance = np.linalg.norm(
-        np.asarray(positions)[:, None, :] - np.asarray(strike)[None, :, :], axis=2
-    )
-    distance = np.where(np.isfinite(distance), distance, np.inf)
-    which = distance.argmin(axis=0)
-    chosen = np.asarray(jsat)[which, np.arange(len(which))]
-    with np.errstate(invalid="ignore", divide="ignore"):
-        raw = chosen / np.asarray(scaling)
-    good = (distance.min(axis=0) <= 0.02) & np.isfinite(raw) & (raw > 0)
-    value = np.full(len(which), np.nan)
-    valid = np.zeros(len(which), bool)
-    for mode in (1, 2):
-        fit = good & np.asarray(reference) & (np.asarray(regime) == mode)
-        use = good & (np.asarray(regime) == mode)
-        if fit.sum() >= min_reference_bins:
-            value[use] = raw[use] / np.median(raw[fit])
-            valid[use] = True
-    return value, valid, which
+    positions, strike = np.asarray(positions), np.asarray(strike)
+    psi_n, jsat = np.asarray(psi_n), np.asarray(jsat)
+    distance = np.linalg.norm(positions[:, None, :] - strike[None, :, :], axis=2)
+    close = np.isfinite(distance) & (distance <= th.PROBE_MAX_DISTANCE_M)
+    sol = positions[:, None, 0] - strike[None, :, 0] >= th.PROBE_STRIKE_MARGIN_M
+    sol &= np.isfinite(psi_n) & (psi_n >= th.PROBE_SOL_PSI_N_MIN)
+    usable = close & sol & np.isfinite(jsat) & (jsat > 0)
+    ranked = np.where(usable, distance, np.inf)
+    valid = usable.any(axis=0)
+    which = np.where(valid, ranked.argmin(axis=0), -1)
+    reason = np.full(len(which), "", object)
+    reason[~valid] = "no_probe_samples"
+    reason[~(close & sol).any(axis=0)] = "probe_not_sol"
+    reason[~(close & np.isfinite(psi_n)).any(axis=0)] = "probe_flux_unknown"
+    reason[~close.any(axis=0)] = "probe_far_from_strike"
+    return which, valid, reason

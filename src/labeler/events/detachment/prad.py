@@ -21,6 +21,7 @@ from .core import (
     bin_fraction,
     bin_mean,
     elm_at,
+    elm_bin_known,
 )
 
 
@@ -50,7 +51,7 @@ def prad_indicator(
     Bolometer samples inside an ELM are dropped before the bin mean (a mean, not a
     median: it is a power); a bin whose samples are mostly in ELMs is invalid. The
     reason on an invalid bin is one of `no_bolometer`, `no_input_power`,
-    `low_power`, `elm`, `no_samples`.
+    `low_power`, `elm`, `elm_unknown`, `no_samples`.
     """
     n = len(edges) - 1
     value = np.full(n, np.nan)
@@ -74,5 +75,6 @@ def prad_indicator(
     reason[np.isfinite(p_in) & (p_in < th.MIN_INPUT_POWER_W)] = "low_power"
     reason[np.nan_to_num(elm_share) > th.MAX_ELM_FRACTION] = "elm"
     reason[(count == 0) & (reason == "")] = "no_samples"
+    reason[~elm_bin_known(edges, elm_t_ms, elm_flag)] = "elm_unknown"
     valid = (reason == "") & np.isfinite(value)
     return assemble("prad", value, valid, reason, fdiv_vote(value))

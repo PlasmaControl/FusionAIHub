@@ -158,22 +158,131 @@ def line_density(cache):
     return None
 
 
-def elm_mask(shot: int):
+def density_line_si(y, units):
+    """Line density in m^-2 only from explicit units, never from magnitude.
+
+    DIII-D ELECTRONS::TOP.BCI.MAIN:DENV2 commonly uses `m/cm3`: path in
+    metres times density in cm^-3 (also documented in shot_design.flags.rules).
+    Multiplication by 1e6 converts that mixed convention to m^-2.
+    """
+    unit = str(units).lower().replace(" ", "").replace("**", "^")
+    factors = {
+        "m/cm3": 1e6,
+        "m/cm^3": 1e6,
+        "cm^-2": 1e4,
+        "cm-2": 1e4,
+        "1/cm2": 1e4,
+        "m^-2": 1.0,
+        "m-2": 1.0,
+        "1/m2": 1.0,
+    }
+    if unit not in factors:
+        return None
+    return np.asarray(y, dtype=float) * factors[unit]
+
+
+def greenwald_fraction(edges, cache):
+    """Unit-confirmed V2 line-average / nG, using nG=|Ip[MA]|/(pi*a^2).
+
+    The elliptical chord at R=1.94 m ignores triangularity and is approximate
+    (about 10-20 percent per the existing Shot Designer method). It is a
+    corroborating density-limit cue, not independent MARFE truth.
+    """
+    from .core import bin_median
+
+    # AEQDSK R0 is the geometric centre; ROUT is another quantity and is not
+    # an axis major radius (it can be near 0.1 on these shots).
+    required = ("density_v2_si", "aminor", "kappa", "r0", "ipmeas")
+    if any(k not in cache for k in required):
+        return np.full(len(edges) - 1, np.nan)
+    density, a, kappa, axis, ip = [bin_median(*cache[k], edges)[0] for k in required]
+    with np.errstate(invalid="ignore", divide="ignore"):
+        length = 2 * kappa * np.sqrt(a * a - (1.94 - axis) ** 2)
+        n_g = np.abs(ip) / 1e6 / (np.pi * a * a)
+        fraction = density / length / 1e20 / n_g
+    good = (density > 0) & (a > 0) & (kappa > 0) & (n_g > 0)
+    return np.where(good & np.isfinite(fraction), fraction, np.nan)
+
+
+def load_flux_map(shot):
+    """Usable multi-slice EFIT01 or EFIT02 flux map, with its source retained."""
+    path = labeler_root() / "round4/detach/efit" / f"{shot}.npz"
+    if not path.exists():
+        return None
+    with np.load(path) as f:
+        if len(f["gtime_ms"]) < 2 or str(f.get("source", "EFIT01")) not in (
+            "EFIT01",
+            "EFIT02",
+        ):
+            return None
+        return {k: f[k] for k in f.files}
+
+
+def flux_at_positions(maps, t_ms, positions, max_gap_ms=40.0):
+    """psiN at fixed (R,Z) probe positions from close multi-slice EFIT maps.
+
+    Both EFIT01 and EFIT02 are accepted; a single equilibrium cannot describe
+    an evolving discharge. Return (probe,time), with NaN outside coverage.
+    """
+    from scipy.interpolate import RegularGridInterpolator
+
+    t_ms, positions = np.asarray(t_ms), np.asarray(positions)
+    out = np.full((len(positions), len(t_ms)), np.nan)
+    if maps is None or len(maps["gtime_ms"]) < 2:
+        return out
+    mt = maps["gtime_ms"]
+    near = np.abs(mt[:, None] - t_ms[None, :]).argmin(axis=0)
+    close = np.abs(mt[near] - t_ms) <= max_gap_ms
+    for k in np.unique(near[close]):
+        scale = maps["ssibry"][k] - maps["ssimag"][k]
+        if not np.isfinite(scale) or scale == 0:
+            continue
+        psin = (maps["psirz"][k] - maps["ssimag"][k]) / scale
+        interp = RegularGridInterpolator(
+            (maps["z"], maps["r"]), psin, bounds_error=False, fill_value=np.nan
+        )
+        out[:, close & (near == k)] = interp(positions[:, ::-1])[:, None]
+    return out
+
+
+def elm_mask(shot: int, cache=None):
     """`(t_ms, flag)` at 10 kHz: True where the divertor D-alpha is inside an ELM.
 
     The median over the live corpus filterscope rows FS01-FS08 (each divided by its
     own median), against a 50 ms running median; a sample is in an ELM when it
     exceeds that baseline by `ELM_SIGMA` robust standard deviations of the residual
-    (MAD x 1.4826) and by `ELM_MIN_REL_RISE` of the baseline, widened by 17 ms before (half a 30 Hz integration) and 50 ms after
-    (integration plus conservative post-ELM recovery). None if the corpus has no record.
+    (MAD x 1.4826) and by `ELM_MIN_REL_RISE` of the baseline, widened by +/-2 ms.
+    Prad and Jsat use this inter-ELM mask. Camera frames integrate ELMs as in
+    Chen 2026, so TangTV requires coverage but applies no overlap veto.
+    Cached FS01-FS04 supplement a missing corpus record; None if neither home
+    holds a live D-alpha channel.
     """
     from scipy.ndimage import maximum_filter1d, median_filter
 
     from labeler.events.detachment import thresholds
 
     got = corpus_group(shot, "filterscopes", channels=range(8))
+    if got is not None and not any(
+        np.isfinite(row).mean() > 0.9 and np.nanmedian(row) > 0 for row in got[1]
+    ):
+        got = None
     if got is None:
-        return None
+        cache = load_cache(shot) if cache is None else cache
+        records = []
+        for name in ("fs01", "fs02", "fs03", "fs04"):
+            if name not in cache:
+                continue
+            tc, yc = cache[name]
+            if len(tc) > 1 and np.isfinite(yc).mean() > 0.9 and np.nanmedian(yc) > 0:
+                records.append((tc, yc))
+        if not records:
+            return None
+        # Intersect the live records; do not extrapolate unknown D-alpha time.
+        start, stop = max(t[0] for t, _ in records), min(t[-1] for t, _ in records)
+        if stop <= start:
+            return None
+        t = np.arange(start, stop + 0.05, 0.1)
+        got = t, np.vstack([np.interp(t, tc, yc) for tc, yc in records])
     t, y = got
     live = [r for r in y if np.isfinite(r).mean() > 0.9 and np.nanmedian(r) > 0]
     if not live:
@@ -186,11 +295,10 @@ def elm_mask(shot: int):
     flag = (resid > thresholds.ELM_SIGMA * max(sigma, 1e-9)) & (
         resid > thresholds.ELM_MIN_REL_RISE * base
     )
-    before, after = round(17.0 / step), round(50.0 / step)
+    half = round(thresholds.ELM_MASK_HALF_WIDTH_MS / step)
     widened = maximum_filter1d(
         flag.astype(np.uint8),
-        size=before + after + 1,
-        origin=(after - before) // 2,
+        size=2 * half + 1,
         mode="constant",
     )
     return t, widened.astype(bool)

@@ -132,7 +132,18 @@ def make_run(gate_ok=True, ze=-1.1):
     zv = np.full(3, -1.25 if gate_ok else -1.363)
     rx = np.full(3, 1.3)
     zx = np.full(3, -1.0)
-    return tangtv.tangtv_indicator(edges, ft, np.full(8, ze), et, rv, zv, rx, zx)
+    return tangtv.tangtv_indicator(
+        edges,
+        ft,
+        np.full(8, ze),
+        et,
+        rv,
+        zv,
+        rx,
+        zx,
+        elm_t_ms=np.arange(201.0),
+        elm_flag=np.zeros(201, bool),
+    )
 
 
 def test_indicator_votes_on_the_shelf():
@@ -177,7 +188,7 @@ def test_marfe_requires_persistence_spatial_and_second_cue():
     assert candidate.tolist() == [True, True, False, True, True]
 
 
-def test_tangtv_elm_majority_abstains():
+def test_tangtv_accepts_elm_integrated_frames_with_known_coverage():
     edges = np.array([0.0, 50.0, 100.0])
     t = np.array([10.0, 30.0, 60.0, 80.0])
     et = np.array([0.0, 50.0, 100.0])
@@ -190,9 +201,45 @@ def test_tangtv_elm_majority_abstains():
         np.full(3, -1.25),
         np.full(3, 1.3),
         np.full(3, -1.1),
-        elm_t_ms=np.arange(100.0),
-        elm_flag=np.ones(100, bool),
+        elm_t_ms=np.arange(101.0),
+        elm_flag=np.ones(101, bool),
+    )
+    assert ind.valid.all()
+    assert (ind.vote == core.ATTACHED).all()
+
+
+def test_tangtv_abstains_when_elm_coverage_is_unknown():
+    ind = tangtv.tangtv_indicator(
+        np.array([0.0, 50.0]),
+        np.array([10.0]),
+        np.array([-1.2]),
+        np.array([10.0]),
+        np.array([1.5]),
+        np.array([-1.25]),
+        np.array([1.3]),
+        np.array([-1.1]),
     )
     assert not ind.valid.any()
-    assert set(ind.reason) == {"elm_majority"}
+    assert set(ind.reason) == {"elm_unknown"}
     assert (ind.vote == core.ABSTAIN).all()
+
+
+def test_elm_coverage_rejects_missing_records_and_internal_gaps():
+    edges = np.array([0.0, 50.0, 100.0])
+    assert not core.elm_bin_known(edges, None, None).any()
+    t = np.r_[np.arange(51.0), np.arange(80.0, 101.0)]
+    assert core.elm_bin_known(edges, t, np.zeros(len(t), bool)).tolist() == [
+        True,
+        False,
+    ]
+
+
+def test_tangtv_tier_is_per_bin_and_mixed_geometry_is_not_upper_shelf():
+    tier = tangtv.shelf_tier(
+        np.array([0.0, 50.0, 100.0, 150.0]),
+        np.array([10.0, 60.0, 110.0, 130.0]),
+        np.array([1.5, 1.3, 1.5, 1.3]),
+        np.array([-1.25, -1.36, -1.25, -1.36]),
+        np.ones(4, bool),
+    )
+    assert tier.tolist() == ["upper_shelf", "lower_shelf_window", "mixed_shelf"]

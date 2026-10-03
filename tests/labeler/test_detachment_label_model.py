@@ -213,3 +213,54 @@ def test_low_posterior_cannot_become_certain():
     state, tier = lm.redundant_decide(np.array([[0.6, 0.3, 0.1]]), votes, votes > 0)
     assert state.tolist() == [4]
     assert tier.tolist() == ["low_posterior"]
+
+
+def test_primary_compatibility_requires_upper_shelf_and_known_elm():
+    votes = np.array([[2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 3], [1, 2, 2]])
+    valid = votes > 0
+    state, tier = lm.compatibility_decide(
+        votes,
+        valid,
+        tangtv_tier=np.array(
+            [
+                "upper_shelf",
+                "lower_shelf_window",
+                "upper_shelf",
+                "upper_shelf",
+                "upper_shelf",
+            ]
+        ),
+        elm_known=np.array([True, True, False, True, True]),
+    )
+    assert state.tolist() == [2, 4, 4, 3, 4]
+    assert tier.tolist() == [
+        "certain",
+        "lower_shelf_window",
+        "elm_unknown",
+        "certain",
+        "conflict",
+    ]
+
+
+def test_primary_compatibility_ignores_invalid_votes_and_requires_redundancy():
+    votes = np.array([[2, 2, 3], [2, 2, -1], [-1, -1, 2], [-1, -1, -1]])
+    valid = np.array([[1, 1, 0], [1, 1, 0], [0, 0, 1], [1, 1, 0]], bool)
+    state, tier = lm.compatibility_decide(
+        votes, valid, tangtv_tier=np.full(4, "upper_shelf"), elm_known=np.ones(4, bool)
+    )
+    assert state.tolist() == [4, 4, 0, 4]
+    assert tier.tolist() == [
+        "low_confidence_pair",
+        "low_confidence_pair",
+        "not_assessed",
+        "no_vote",
+    ]
+
+
+def test_primary_compatibility_requires_explicit_upper_shelf_provenance():
+    votes = np.array([[2, 2, 2]])
+    state, tier = lm.compatibility_decide(
+        votes, votes > 0, tangtv_tier=np.array(["unknown"]), elm_known=np.ones(1, bool)
+    )
+    assert state.tolist() == [4]
+    assert tier.tolist() == ["geometry_unknown"]

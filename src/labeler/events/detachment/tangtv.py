@@ -130,6 +130,23 @@ def dz_vote(dz: np.ndarray) -> np.ndarray:
     return vote
 
 
+def shelf_tier(edges, frame_t_ms, rvsod, zvsod, accepted):
+    """Geometry provenance of accepted frames; mixed bins cannot be upper tier."""
+    from .core import bin_mean
+
+    upper = (np.asarray(rvsod) >= th.SHELF_WALL_R) & (
+        np.abs(np.asarray(zvsod) - th.SHELF_Z) <= th.SHELF_Z_TOL
+    )
+    lower = (np.asarray(rvsod) < th.SHELF_WALL_R) & (np.asarray(zvsod) < -1.30)
+    upper_share, count = bin_mean(frame_t_ms, upper, edges, keep=accepted)
+    lower_share, _ = bin_mean(frame_t_ms, lower, edges, keep=accepted)
+    tier = np.full(len(edges) - 1, "none", dtype="U24")
+    tier[(count > 0) & (upper_share == 1)] = "upper_shelf"
+    tier[(count > 0) & (lower_share == 1)] = "lower_shelf_window"
+    tier[(upper_share > 0) & (lower_share > 0)] = "mixed_shelf"
+    return tier
+
+
 def tangtv_indicator(
     edges: np.ndarray,
     frame_t_ms: np.ndarray,
@@ -141,7 +158,7 @@ def tangtv_indicator(
     zxpt1: np.ndarray,
     *,
     max_efit_gap_ms: float = 40.0,
-    lower_shelf: bool = False,
+    lower_shelf: bool | np.ndarray = False,
     frame_valid: np.ndarray | None = None,
     elm_t_ms: np.ndarray | None = None,
     elm_flag: np.ndarray | None = None,
@@ -181,7 +198,7 @@ def tangtv_indicator(
 
     rv, zv, rx, zx = take(rvsod), take(zvsod), take(rxpt1), take(zxpt1)
     gate, why = shelf_gate(rv, zv, rx, zx)
-    if lower_shelf:
+    if np.any(lower_shelf):
         lower = (
             _is_real(rv, 0.8, th.SHELF_WALL_R)
             & _is_real(zv, -1.45, -1.30)
@@ -189,19 +206,26 @@ def tangtv_indicator(
             & _is_real(zx, -1.3, th.LSN_ZX_MAX)
             & (zx - zv >= th.MIN_LEG_M)
         )
-        gate = lower
-        why = np.where(lower, "", "lower_shelf_geometry")
+        use_lower = np.broadcast_to(lower_shelf, gate.shape)
+        gate = np.where(use_lower, lower, gate)
+        why = np.where(use_lower, np.where(lower, "", "lower_shelf_geometry"), why)
     if frame_valid is not None:
         why = np.where(~frame_valid, "surrogate_domain", why)
         gate &= frame_valid
 
     why = np.where(have, why, "efit_gap")
     dz = front_dz(ze, zx, zv)
-    from .core import bin_fraction, elm_at
+    from .core import elm_bin_known
 
-    contaminated = elm_at(frame_t_ms, elm_t_ms, elm_flag)
-    why = np.where(contaminated, "elm_frame", why)
-    gate &= ~contaminated
+    # Chen 2026's 30 Hz exposures integrate ELMs. Keep their emission fronts;
+    # ELM coverage is nevertheless required to distinguish known from missing.
+    known = elm_bin_known(edges, elm_t_ms, elm_flag)
+    index = np.searchsorted(edges, frame_t_ms, side="right") - 1
+    frame_known = np.zeros(len(frame_t_ms), bool)
+    inside = (index >= 0) & (index < n)
+    frame_known[inside] = known[index[inside]]
+    why = np.where(~frame_known & gate, "elm_unknown", why)
+    gate &= frame_known
     ok = gate & np.isfinite(dz) & (dz >= th.DZ_UNPHYSICAL_MIN)
     why = np.where(gate & ~np.isfinite(dz), "no_emission", why)
     why = np.where(gate & np.isfinite(dz) & ~ok, "dz_unphysical", why)
@@ -211,17 +235,11 @@ def tangtv_indicator(
     good = count > 0
     valid = good & (count * 2 >= total)
     reason = np.full(n, "no_frames", dtype=object)
-    index = np.searchsorted(edges, frame_t_ms, side="right") - 1
     for b in np.unique(index[(index >= 0) & (index < n)]):
         reasons = [r for r in why[index == b] if r]
         reason[b] = (
             max(set(reasons), key=reasons.count) if reasons else "minority_valid"
         )
-    if elm_t_ms is not None:
-        share = bin_fraction(elm_t_ms, elm_flag, edges)
-        bad = share > 0.5
-        valid &= ~bad
-        reason[bad] = "elm_majority"
     vote = dz_vote(value)
     result = assemble("tangtv", value, valid, reason, vote)
     return (result, ok) if return_frame_mask else result

@@ -8,8 +8,9 @@
     python scripts/labeler/detach_sensitivity.py --shots-file shots.txt
 
 Writes `docs/labeler/results/detachment_bin_sensitivity.json`. For every width, the
-SAME fitted label model (`detach_label.py`'s record; nothing is refitted per width)
-labels the bins of the listed shots, and the script reports:
+SAME compatibility rule labels the bins of the listed shots, with the fitted
+diagnostic model retained only for auxiliary fields (nothing is refitted per
+width), and the script reports:
 
 * the share of bins assessed (at least two indicators valid) and the share of the
   assessed bins that are uncertain;
@@ -19,8 +20,8 @@ labels the bins of the listed shots, and the script reports:
 * `vs_50ms`: the agreement and kappa of the certain states with the 50 ms labels,
   each bin read at the 50 ms bin that holds its centre.
 
-The shots are the ones the owner's plasma_tv inversions cover (the only shots with
-all three indicators); the cohort's test split is not used for anything here.
+The selected non-test shots include the owner's plasma_tv inversions and original
+development subset; the cohort's test split is excluded.
 """
 
 from __future__ import annotations

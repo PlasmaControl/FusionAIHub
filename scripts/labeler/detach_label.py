@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Fit the label model, label every eligible shot and write the records.
+"""Apply the compatibility rule and fit a diagnostic label model.
 
     python scripts/labeler/detach_label.py
 
@@ -40,6 +40,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from detach_json import dumps
 
 from labeler.events.detachment import core, label_model
 from labeler.events.detachment.label_model import LF_NAMES
@@ -120,7 +121,9 @@ def cohen_kappa(a: np.ndarray, b: np.ndarray) -> float:
     n = table.sum()
     observed = np.trace(table) / n
     expected = float(table.sum(axis=1) @ table.sum(axis=0)) / n**2
-    return float((observed - expected) / (1 - expected)) if expected < 1 else 1.0
+    return (
+        float((observed - expected) / (1 - expected)) if expected < 1 else float("nan")
+    )
 
 
 def pairwise_agreement(votes, valid) -> dict:
@@ -226,28 +229,43 @@ def smooth_segments(
 
 
 def label_frame(frame, model, threshold, width_ms=core.BIN_MS):
-    """Both labelers' states on every bin of `frame`."""
+    """Observed rule and separately named model diagnostic on the same bins.
+
+    ``state_lm`` is retained as the UI's historical canonical-state column; it
+    now aliases ``state_rule``. Model output is ``state_model_diagnostic``.
+    """
     votes, valid = matrices(frame)
     assessed = valid.sum(axis=1) >= 2
     resolves = votes[:, LF_NAMES.index("tangtv")] > 0
     posterior = label_model.pool_marfe(model.posterior(votes), resolves)
-    state_rule = label_model.rule(votes, valid)
-    state_rule[~assessed] = core.ABSENT
+    elm_share = frame.get("aux_elm_share", pd.Series(np.nan, index=frame.index))
+    known = np.isfinite(elm_share.to_numpy(float))
+    camera_tier = frame.get(
+        "tangtv_tier", pd.Series("unknown", index=frame.index)
+    ).to_numpy()
+    state_rule, tier = label_model.compatibility_decide(
+        votes, valid, tangtv_tier=camera_tier, elm_known=known
+    )
     out = frame[["shot", "start_ms"]].copy()
     out["assessed"] = assessed
     out["post_attached"], out["post_detached"], out["post_marfe"] = posterior.T
-    out["state_lm"], out["tier"] = label_model.redundant_decide(
-        posterior, votes, valid, threshold
+    diagnostic, _ = label_model.redundant_decide(posterior, votes, valid, threshold)
+    diagnostic[assessed & ~np.isin(tier, ("certain",))] = core.UNCERTAIN
+    out["state_model_diagnostic"] = diagnostic
+    out["state_lm"], out["tier"] = state_rule, tier
+    provisional, _ = label_model.compatibility_decide(
+        votes, valid, tangtv_tier=np.full(len(frame), "upper_shelf"), elm_known=known
+    )
+    out["state_lower_shelf_window"] = np.where(
+        camera_tier == "lower_shelf_window", provisional, core.ABSENT
     )
     candidate = frame.get("tangtv_marfe_candidate", pd.Series(False, index=frame.index))
-    out.loc[candidate.to_numpy(bool) & (out.state_lm == core.UNCERTAIN), "tier"] = (
-        "candidate_marfe"
-    )
-    # The same certainty gates apply to the transparent rule.
-    support_state, _ = label_model.redundant_decide(
-        np.eye(3)[np.clip(state_rule - 1, 0, 2)], votes, valid, 0
-    )
-    state_rule = support_state
+    out.loc[
+        candidate.to_numpy(bool)
+        & (out.state_lm == core.UNCERTAIN)
+        & ~out.tier.isin(("lower_shelf_window", "elm_unknown", "geometry_unknown")),
+        "tier",
+    ] = "candidate_marfe"
     out["state_rule"] = state_rule
     # Temporal suggestions are separate; they never alter observed labels.
     out["state_temporal_imputation"] = out["state_lm"]
@@ -341,18 +359,29 @@ def write_indicator_csvs(frame: pd.DataFrame, out_dir: Path) -> int:
                 "t_ms": group.start_ms.to_numpy() + core.BIN_MS / 2,
                 "tier": group.tier.to_numpy(),
                 "state": group.state_lm.to_numpy(),
+                "state_lower_shelf_window": group.state_lower_shelf_window.to_numpy(),
+                "elm_known": np.isfinite(group.aux_elm_share.to_numpy()).astype(int),
+                "elm_share": group.aux_elm_share.to_numpy(),
                 "tangtv_source": group.tangtv_source.to_numpy(),
                 "afrac_method": group.afrac_method.to_numpy(),
                 "afrac": group["afrac_value"].to_numpy(),
                 "afrac_valid": group["afrac_valid"].to_numpy().astype(int),
                 "prad_div": group["prad_value"].to_numpy(dtype=float) * p_in / 1e6,
                 "prad_div_valid": group["prad_valid"].to_numpy().astype(int),
+                "prad_fraction": group["prad_value"].to_numpy(),
+                "tangtv_dz": dz,
                 "tangtv_front_height": zx - (1.0 - dz) * (zx - zs),
                 "tangtv_front_height_valid": group["tangtv_valid"]
                 .to_numpy()
                 .astype(int),
             }
         )
+        for key in group.columns:
+            if key.startswith("aux_jsat_") or key in (
+                "afrac_probe_position_valid",
+                "afrac_efit_source",
+            ):
+                table[key] = group[key].to_numpy()
         target = out_dir / f"{int(shot)}.csv"
         pending = target.with_suffix(".pending")
         table.to_csv(pending, index=False, float_format="%.5g")
@@ -404,7 +433,7 @@ def confusion(a: np.ndarray, b: np.ndarray) -> dict:
 
 
 def table_meta(args, best, eligible, labeler, producer) -> dict:
-    return {
+    metadata = {
         "category": "detachment",
         "categories": category_labels("detachment"),
         "made_at": datetime.now(UTC).isoformat(timespec="seconds"),
@@ -421,11 +450,19 @@ def table_meta(args, best, eligible, labeler, producer) -> dict:
             "Bins where at least two of the three indicators (Afrac, Prad,div, "
             "TangTV front) are valid. Time with no row was not assessed; it is not "
             "attached. 4 (uncertain) includes conflicting compatible votes, "
-            "low posterior, candidate MARFE and the Afrac+Prad-only weak tier. "
+            "insufficient support, candidate MARFE, lower_shelf_window pending "
+            "owner sign-off, unknown ELM coverage and the Afrac+Prad-only weak tier. "
             "The interval attrs tier and bin tier preserve those distinctions."
         ),
         "labeler": labeler,
-        "posterior_threshold": args.threshold,
+        "posterior_threshold": args.threshold if labeler == "label_model" else None,
+        "diagnostic_posterior_threshold": args.threshold,
+        "primary_method": (
+            "Snorkel diagnostic only"
+            if labeler == "label_model"
+            else "compatibility rule with TangTV required"
+        ),
+        "diagnostic_only": labeler == "label_model",
         "label_model_structure": best,
         "fit_excluded_split": "test",
         "per_shot_files": {
@@ -444,6 +481,10 @@ def table_meta(args, best, eligible, labeler, producer) -> dict:
             "label_origin": f"{labeler} on the bin's indicator votes",
         },
     }
+    if labeler == "label_model":
+        # Only the primary rule writes the shared per-shot grids.
+        metadata.pop("per_shot_files")
+    return metadata
 
 
 def main() -> None:
@@ -454,7 +495,10 @@ def main() -> None:
     parser.add_argument("--no-roster", action="store_true")
     parser.add_argument("--threshold", type=float, default=POSTERIOR_THRESHOLD)
     parser.add_argument(
-        "--primary", choices=("label_model", "rule"), default="label_model"
+        "--primary",
+        choices=("label_model", "rule"),
+        default="rule",
+        help="legacy option; primary export always uses the compatibility rule",
     )
     args = parser.parse_args()
 
@@ -482,7 +526,7 @@ def main() -> None:
         s: sum(1 for e in eligible if split[e] == s)
         for s in ("train", "val", "test", "outside")
     }
-    (records / "coverage.json").write_text(json.dumps(cov, indent=1))
+    (records / "coverage.json").write_text(dumps(cov, indent=1))
 
     shots_fit = work.shot.to_numpy()[fit_mask]
     structure = cv_structure(votes[fit_mask], valid[fit_mask], shots_fit)
@@ -495,25 +539,22 @@ def main() -> None:
     for key in work.columns:
         if key.startswith(("aux_", "afrac_", "prad_", "tangtv_")) or key == "split":
             labelled[key] = work[key].to_numpy()
-    # Confidence is the uncalibrated posterior of the gated observed state.
-    post = labelled[["post_attached", "post_detached", "post_marfe"]].to_numpy()
-    final = labelled.state_lm.to_numpy()
-    certain = np.isin(final, core.VOTE_STATES)
-    labelled["confidence"] = np.where(
-        certain, post[np.arange(len(post)), np.clip(final - 1, 0, 2)], np.nan
-    )
+    # Preserve the optional field, without attributing fitted confidence to a rule.
+    labelled["confidence"] = np.full(len(labelled), np.nan)
     pending = root() / "labels_bins.pending"
     labelled[labelled.assessed].to_csv(pending, index=False, compression="gzip")
     pending.replace(root() / "labels_bins.csv.gz")
 
-    lm_state = labelled.state_lm.to_numpy()
+    lm_state = labelled.state_model_diagnostic.to_numpy()
     rule_state = labelled.state_rule.to_numpy()
     both = (lm_state != core.ABSENT) & (rule_state != core.ABSENT)
-    posterior = labelled[["post_attached", "post_detached", "post_marfe"]].to_numpy()
     by_threshold = {
         str(t): {
             core.STATE_NAMES[k]: int(
-                np.sum(label_model.redundant_decide(posterior, votes, valid, t)[0] == k)
+                np.sum(
+                    label_frame(work, model, t)[0].state_model_diagnostic.to_numpy()
+                    == k
+                )
             )
             for k in (1, 2, 3, 4)
         }
@@ -576,7 +617,10 @@ def main() -> None:
             ),
         },
         "uncertain_by_threshold": by_threshold,
-        "primary_labeler": args.primary,
+        "primary_labeler": "rule",
+        "state_lm_column": (
+            "legacy alias of primary rule; model is state_model_diagnostic"
+        ),
     }
     report["tier_counts"] = {
         str(k): int(v)
@@ -586,19 +630,20 @@ def main() -> None:
         labelled.state_temporal_imputation != labelled.state_lm,
         ["shot", "start_ms", "state_lm", "state_temporal_imputation", "tier"],
     ].to_csv(root() / "temporal_imputations.csv", index=False)
-    (records / "label_model.json").write_text(json.dumps(report, indent=1))
+    (records / "label_model.json").write_text(dumps(report, indent=1))
     agreement = {
         "all_eligible_bins": pairwise_agreement(votes, valid),
         "fit_bins_train_val_outside": pairwise_agreement(
             votes[fit_mask], valid[fit_mask]
         ),
     }
-    (records / "agreement.json").write_text(json.dumps(agreement, indent=1))
+    (records / "agreement.json").write_text(dumps(agreement, indent=1))
 
     OUT.mkdir(parents=True, exist_ok=True)
-    lm_primary = args.primary == "label_model"
-    primary_column = "state_lm" if lm_primary else "state_rule"
-    table = intervals(labelled, primary_column, "confidence" if lm_primary else None)
+    args.primary = "rule"
+    lm_primary = False
+    primary_column = "state_rule"
+    table = intervals(labelled, primary_column)
     write_interval_table(
         table,
         OUT / f"{args.list_name}.csv",
@@ -606,9 +651,15 @@ def main() -> None:
     )
     other_name = "rule" if lm_primary else "label_model"
     write_interval_table(
-        intervals(labelled, "state_rule" if lm_primary else "state_lm"),
+        intervals(labelled, "state_model_diagnostic"),
         root() / f"labels_{other_name}.csv",
         table_meta(args, best, eligible, other_name, "detach_vote"),
+    )
+    # Stable legacy path consumed by review tools.
+    write_interval_table(
+        table,
+        root() / "labels_rule.csv",
+        table_meta(args, best, eligible, "rule", "detach_vote"),
     )
     n_grid = (
         0

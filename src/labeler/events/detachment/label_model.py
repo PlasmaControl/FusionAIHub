@@ -361,6 +361,45 @@ def redundant_decide(posterior, votes, valid, threshold=0.7):
     return state, tier
 
 
+def compatibility_decide(votes, valid, *, tangtv_tier, elm_known):
+    """Primary observed label: compatible redundant votes with TangTV required.
+
+    This rule uses no fitted posterior. Lower-shelf window measurements remain
+    provisional, pending owner sign-off, and unknown ELM coverage never supplies
+    certainty. ``redundant_decide`` is retained only as a model diagnostic.
+    """
+    valid = np.asarray(valid, bool)
+    votes = np.where(valid, votes, ABSTAIN)
+    assessed = valid.sum(axis=1) >= 2
+    fallback = rule(votes, valid)
+    cast = votes > 0
+    support = cast.sum(axis=1) >= 2
+    conflict = (fallback == UNCERTAIN) & cast.any(axis=1)
+    tv = votes[:, LF_NAMES.index("tangtv")]
+    permitted = assessed & support & (tv > 0) & ~conflict
+    state = np.where(permitted, fallback, UNCERTAIN).astype(np.int8)
+    tier = np.full(len(state), "insufficient_support", dtype=object)
+    tier[permitted] = "certain"
+    tier[(tv <= 0) & support & ~conflict] = "low_confidence_pair"
+    tier[conflict] = "conflict"
+    tier[~cast.any(axis=1)] = "no_vote"
+    geometry = np.asarray(tangtv_tier)
+    lower = valid[:, 2] & (geometry == "lower_shelf_window")
+    state[lower] = UNCERTAIN
+    tier[lower] = "lower_shelf_window"
+    unknown_geometry = valid[:, 2] & ~np.isin(
+        geometry, ("upper_shelf", "lower_shelf_window")
+    )
+    state[unknown_geometry] = UNCERTAIN
+    tier[unknown_geometry] = "geometry_unknown"
+    unknown = ~np.asarray(elm_known, bool)
+    state[unknown] = UNCERTAIN
+    tier[unknown] = "elm_unknown"
+    state[~assessed] = ABSENT
+    tier[~assessed] = "not_assessed"
+    return state, tier
+
+
 def despeckle(state: np.ndarray, min_run: int = 2) -> np.ndarray:
     """Give a run shorter than `min_run` bins the state of its neighbours when both
     sides agree (a one-bin dither between two bins of the same state is not an event).

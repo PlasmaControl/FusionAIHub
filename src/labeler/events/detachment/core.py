@@ -14,8 +14,8 @@ not a state).
 **The bin grid** is `BIN_MS` wide. 50 ms was chosen over 10 or 20 ms because it is
 the catalog's own label grid (`events.yaml`: `sample_interval_ms: 50`), because the
 slowest input, the TangTV inversion, arrives every 17-33 ms and EFIT every 20 ms
-(30 Hz full camera frames give about 1.5 independent frames per bin; the corpus
-50 fps grid is resampled, so explicit widened ELM masks are essential), and
+(30 Hz full camera frames give about 1.5 independent frames per bin; Chen's
+camera integrates ELMs, while current and radiation use narrow ELM masks), and
 because the published low-pass constants (Eldon 2022: 10-50 ms; Chen 2026: Prad
 leads DZ by about 50 ms) are of that order, so a finer grid would resolve nothing
 the indicators can see.
@@ -144,16 +144,49 @@ def bin_mean(
 
 
 def elm_at(t_ms: np.ndarray, elm_t_ms, elm_flag) -> np.ndarray:
-    """ELM flag of the nearest D-alpha sample for every time in `t_ms`."""
+    """Nearest D-alpha ELM flag; unknown times are conservatively masked.
+
+    Consumers also use `elm_bin_known` to distinguish an ELM from unknown
+    coverage, rather than labelling missing D-alpha as verified clean time.
+    """
     t_ms = np.asarray(t_ms, dtype=float)
-    if elm_t_ms is None:
-        return np.zeros(len(t_ms), dtype=bool)
+    if elm_t_ms is None or elm_flag is None or len(elm_t_ms) < 2:
+        return np.ones(len(t_ms), dtype=bool)
     elm_t_ms = np.asarray(elm_t_ms, dtype=float)
+    if len(elm_flag) != len(elm_t_ms):
+        return np.ones(len(t_ms), dtype=bool)
     after = np.clip(np.searchsorted(elm_t_ms, t_ms), 0, len(elm_t_ms) - 1)
     before = np.clip(after - 1, 0, len(elm_t_ms) - 1)
     nearer_before = np.abs(elm_t_ms[before] - t_ms) <= np.abs(elm_t_ms[after] - t_ms)
     index = np.where(nearer_before, before, after)
-    return np.asarray(elm_flag, dtype=bool)[index]
+    known = np.isfinite(t_ms) & (t_ms >= elm_t_ms[0]) & (t_ms <= elm_t_ms[-1])
+    return ~known | np.asarray(elm_flag, dtype=bool)[index]
+
+
+def elm_bin_known(edges, elm_t_ms, elm_flag) -> np.ndarray:
+    """Complete D-alpha coverage of each bin, including internal record gaps.
+
+    Half a native sample at each boundary is allowed. Gaps longer than two
+    samples (at least 2 ms) make every bin they intersect unknown.
+    """
+    n = len(edges) - 1
+    if elm_t_ms is None or elm_flag is None:
+        return np.zeros(n, bool)
+    t = np.asarray(elm_t_ms, dtype=float)
+    flag = np.asarray(elm_flag)
+    if (
+        len(t) < 2
+        or len(flag) != len(t)
+        or not np.isfinite(t).all()
+        or not np.isfinite(flag).all()
+        or np.any(np.diff(t) <= 0)
+    ):
+        return np.zeros(n, bool)
+    step = float(np.median(np.diff(t)))
+    known = (edges[:-1] >= t[0] - step / 2) & (edges[1:] <= t[-1] + step / 2)
+    for i in np.flatnonzero(np.diff(t) > max(2 * step, 2.0)):
+        known &= ~((edges[:-1] < t[i + 1]) & (edges[1:] > t[i]))
+    return known
 
 
 def bin_fraction(t_ms: np.ndarray, flag: np.ndarray, edges: np.ndarray) -> np.ndarray:

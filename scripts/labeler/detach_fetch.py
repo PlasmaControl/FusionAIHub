@@ -56,6 +56,7 @@ MDS_NODES: tuple[tuple[str, str, str], ...] = (
             "wmhd",
             "aminor",
             "rout",
+            "r0",
             "kappa",
             "betan",
             "ipmeas",
@@ -94,6 +95,10 @@ AUTH_WORDS = ("auth", "token", "login", "credential", "401", "403", "permission"
 def cache_dir() -> Path:
     root = Path(os.environ["LABELER_ROOT"])
     return root / "round4" / "detach" / "cache"
+
+
+def auth_stop_file() -> Path:
+    return cache_dir().parent / "fetch_auth_stop"
 
 
 def is_auth_error(text: str) -> bool:
@@ -147,6 +152,8 @@ def fetch_shot(shot: int, out: Path) -> dict:
             status = json.loads(str(old["status"]))
     auth = False
     for name, tree, expr in mds_nodes(shot):
+        if auth_stop_file().exists():
+            return {"shot": shot, "auth": True, "status": status}
         if f"{name}__y" in arrays:
             continue
         try:
@@ -161,7 +168,12 @@ def fetch_shot(shot: int, out: Path) -> dict:
             text = f"{type(error).__name__}: {str(error)[:160]}"
             status[name] = "error " + text
             auth = auth or is_auth_error(text)
+            if auth:
+                auth_stop_file().touch()
+                return {"shot": shot, "auth": True, "status": status}
     for name in PTDATA_NODES:
+        if auth_stop_file().exists():
+            return {"shot": shot, "auth": True, "status": status}
         key = name.lower()
         if f"{key}__y" in arrays:
             continue
@@ -178,6 +190,9 @@ def fetch_shot(shot: int, out: Path) -> dict:
             text = f"{type(error).__name__}: {str(error)[:160]}"
             status[key] = "error " + text
             auth = auth or is_auth_error(text)
+            if auth:
+                auth_stop_file().touch()
+                return {"shot": shot, "auth": True, "status": status}
     if auth:
         return {"shot": shot, "auth": True, "status": status}
     tmp = out.with_name(f".{out.name}.tmp.npz")
@@ -198,6 +213,8 @@ def is_complete(shot: int, path: Path) -> bool:
 
 def worker(args: tuple[int, float]) -> dict:
     shot, pace = args
+    if auth_stop_file().exists():
+        return {"shot": shot, "auth": True}
     out = cache_dir() / f"{shot}.npz"
     if is_complete(shot, out):
         return {"shot": shot, "skipped": True, "auth": False}
@@ -207,6 +224,7 @@ def worker(args: tuple[int, float]) -> dict:
     except Exception as error:  # noqa: BLE001  one bad shot must not stop the run
         result = {"shot": shot, "auth": False, "fatal": str(error)[:200]}
         if is_auth_error(str(error)):
+            auth_stop_file().touch()
             result["auth"] = True
     result["seconds"] = round(time.monotonic() - started, 1)
     time.sleep(pace)

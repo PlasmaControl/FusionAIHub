@@ -102,7 +102,8 @@ def _with_surrogate(bins, monkeypatch, ze):
 def test_surrogate_front_height_votes_on_the_shelf(bins, monkeypatch):
     edges = _with_surrogate(bins, monkeypatch, ze=-1.2)
     cache = _cache(rvsod=1.5, zvsod=-1.25, rxpt1=1.3, zxpt1=-1.1)
-    indicator, source = bins.tangtv_for(1, edges, cache)
+    elm = (np.arange(401.0), np.zeros(401, bool))
+    indicator, source = bins.tangtv_for(1, edges, cache, elm)
     assert source == "surrogate"
     assert indicator.valid.all()
     assert np.all(indicator.vote == core.ATTACHED)  # DZ = 1 - 0.1 / 0.15 = 0.33
@@ -162,7 +163,7 @@ def test_spatial_evidence_excludes_rejected_camera_frames(bins, monkeypatch, tmp
     monkeypatch.setattr(bins, "load_inversion", lambda shot: inv)
     np.savez(
         tmp_path / "efit/1.npz",
-        source="EFIT02",
+        source="EFIT01",
         gtime_ms=ft,
         r=inv["radii"],
         z=inv["elevation"],
@@ -171,57 +172,70 @@ def test_spatial_evidence_excludes_rejected_camera_frames(bins, monkeypatch, tmp
         psirz=np.tile([[0.5, 1.2], [1.2, 1.2]], (4, 1, 1)),
     )
     geo = {"rxpt1": (ft, np.full(4, 1.3)), "zxpt1": (ft, np.full(4, -1.1))}
+    with np.load(tmp_path / "efit/1.npz") as f:
+        maps = {k: f[k] for k in f.files}
+    monkeypatch.setattr(bins.signals, "load_flux_map", lambda shot: maps)
     spatial = bins.spatial_evidence(
         1, np.array([0.0, 50.0, 100.0]), geo, np.array([False, True, False, True])
     )
     assert not spatial.any()
+    inside = bins.spatial_evidence(
+        1, np.array([0.0, 50.0, 100.0]), geo, np.array([True, False, True, False])
+    )
+    assert inside.all()
 
 
-def test_processed_reference_excludes_quality_failures_and_keeps_method_name(
+def test_processed_local_proxy_excludes_quality_failures_and_private_flux(
     bins, monkeypatch, tmp_path
 ):
     monkeypatch.setattr(bins, "root", lambda: tmp_path)
     (tmp_path / "processed_probes").mkdir()
-    edges = np.arange(0.0, 550.0, 50.0)
+    edges = np.arange(0.0, 5050.0, 50.0)
     t = core.bin_centres(edges)
     np.savez(
         tmp_path / "processed_probes/1.npz",
         p1_t_ms=t,
-        p1_jsat=np.ones(10),
-        p1_rz=np.array([1.5, -1.25]),
+        p1_jsat=np.full(100, 1000.0),
+        p1_rz=np.array([1.495, -1.25]),
+        p2_t_ms=t,
+        p2_jsat=np.ones(100),
+        p2_rz=np.array([1.512, -1.25]),
     )
-    geo = _cache(1.5, -1.25, 1.3, -1.1)
-    monkeypatch.setattr(bins.signals, "tangtv_geometry", lambda *args: (geo, "EFIT02"))
-    monkeypatch.setattr(bins.signals, "line_density", lambda cache: (t, np.ones(10)))
-    monkeypatch.setattr(
-        bins.signals, "heating_power", lambda *args: (t, np.ones(10), np.ones(10))
-    )
+    maps = {
+        "source": np.array("EFIT01"),
+        "gtime_ms": t,
+        "rvsod": np.full(100, 1.5),
+        "zvsod": np.full(100, -1.25),
+        "r": np.array([1.48, 1.52]),
+        "z": np.array([-1.26, -1.24]),
+        "ssimag": np.zeros(100),
+        "ssibry": np.ones(100),
+        "psirz": np.tile([[0.95, 1.05], [0.95, 1.05]], (100, 1, 1)),
+    }
+    monkeypatch.setattr(bins.signals, "load_flux_map", lambda shot: maps)
+    monkeypatch.setattr(bins.signals, "line_density", lambda cache: (t, np.ones(100)))
     monkeypatch.setattr(
         bins.signals,
-        "corpus_group",
-        lambda *args: (t, np.array([[0.0] * 7 + [10.0] * 3])),
+        "heating_power",
+        lambda *args: (t, np.full(100, 4e6), np.full(100, 4e6)),
     )
-    monkeypatch.setattr(
-        bins, "confinement", lambda *args: (np.ones(10, int), np.zeros(10, bool))
+    base = core.assemble(
+        "afrac", np.ones(100), np.ones(100, bool), np.full(100, ""), np.ones(100)
     )
-    reason = np.array(["ramp"] * 6 + [""] * 4)
-    base = core.assemble("afrac", np.ones(10), reason == "", reason, np.ones(10))
-    monkeypatch.setattr(bins.afrac, "afrac_indicator", lambda *args: base)
-    tv = core.assemble(
-        "tangtv", np.zeros(10), np.ones(10, bool), np.full(10, ""), np.ones(10)
+    ti = np.arange(5001.0)
+    ip = np.where(ti < 1000, 1e6 + 2000 * ti, 3e6)
+    flag = (ti >= 1000) & (ti < 1100)
+    indicator, method, provenance = bins.processed_ratio(
+        1, edges, {"ipmeas": (ti, ip)}, base, (ti, flag)
     )
-    seen = {}
-
-    def calibrate(jsat, positions, strike, scaling, attached, regime):
-        seen["attached"] = attached
-        return np.ones(10), np.ones(10, bool), np.zeros(10, int)
-
-    monkeypatch.setattr(bins.afrac, "calibrated_ratio", calibrate)
-    _, method = bins.processed_ratio(
-        1, edges, {"ipmeas": (t, np.ones(10))}, base, tv, None
+    assert not indicator.valid[:22].any()
+    assert indicator.valid[23:].all()
+    assert indicator.value[indicator.valid] == pytest.approx(
+        np.ones(indicator.valid.sum())
     )
-    assert not seen["attached"][:6].any()
-    assert method[-1] == "eldon_pre_puff_LH"
+    assert set(method) == {"local_proxy"}
+    assert set(provenance["aux_jsat_selected_probe"][indicator.valid]) == {2}
+    assert (provenance["aux_jsat_selected_psin"][indicator.valid] > 1.01).all()
 
 
 def test_surrogate_training_rejects_stale_efit_geometry(surrogate, monkeypatch):
@@ -262,3 +276,23 @@ def test_aux_geometry_uses_accepted_slice_even_outside_bin(bins, monkeypatch):
     value, known = out["aux_zvsod"]
     assert known.tolist() == [True]
     assert value[0] == pytest.approx(-1.363)
+
+
+def test_surrogate_kappa_is_undefined_for_a_perfect_single_class(surrogate):
+    assert np.isnan(surrogate.kappa(np.ones(4), np.ones(4)))
+
+
+def test_surrogate_bootstrap_reports_no_valid_degenerate_kappa(surrogate):
+    import pandas as pd
+
+    rows = pd.DataFrame(
+        {
+            "shot": [1, 1, 2, 2], "ze_pred": [-1.2] * 4, "ze": [-1.2] * 4,
+            "zx": [-1.1] * 4, "zs": [-1.25] * 4,
+            "vote_true": [1] * 4, "vote_pred": [1] * 4,
+        }
+    )
+    result = surrogate.bootstrap(rows, np.random.default_rng(0), n=10)
+    assert result["vote_kappa"] == [None, None]
+    assert result["valid_replicates"]["vote_kappa"] == 0
+    assert result["valid_replicates"]["vote_agreement"] == 10

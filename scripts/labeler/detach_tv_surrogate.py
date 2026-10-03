@@ -196,7 +196,7 @@ def _kappa(a, b):
         return float("nan")
     po = np.mean(a == b)
     pe = sum(np.mean(a == k) * np.mean(b == k) for k in labels)
-    return (po - pe) / (1 - pe) if pe < 1 else 1.0
+    return (po - pe) / (1 - pe) if pe < 1 else float("nan")
 
 
 def scores(rows: pd.DataFrame) -> dict:
@@ -233,15 +233,20 @@ def bootstrap(rows: pd.DataFrame, rng, n=BOOTSTRAPS) -> dict:
     by_shot = {s: g for s, g in rows.groupby("shot")}
     keys = list(by_shot)
     stats = {"ze_mae_cm": [], "vote_agreement": [], "vote_kappa": []}
-    for _ in range(n):
+    for _ in range(n if keys else 0):
         pick = rng.choice(len(keys), size=len(keys))
         sample = pd.concat([by_shot[keys[i]] for i in pick], ignore_index=True)
         s = scores(sample)
         for k, values in stats.items():
             values.append(s[k])
+    finite = {k: np.asarray(v)[np.isfinite(v)] for k, v in stats.items()}
     return {
-        k: [float(np.nanpercentile(v, 2.5)), float(np.nanpercentile(v, 97.5))]
-        for k, v in stats.items()
+        **{
+            k: np.percentile(v, [2.5, 97.5]).tolist() if len(v) else [None, None]
+            for k, v in finite.items()
+        },
+        "valid_replicates": {k: len(v) for k, v in finite.items()},
+        "replicates": n,
     }
 
 
@@ -473,15 +478,34 @@ def predict_only(args) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--shots-file", required=True)
+    parser.add_argument("--shots-file")
     parser.add_argument("--out", default=str(RESULT))
     parser.add_argument("--no-predict", action="store_true")
+    parser.add_argument(
+        "--rescore-only", action="store_true",
+        help="refresh saved LOSO metrics/undefined kappa without refitting",
+    )
     parser.add_argument(
         "--predict-only",
         action="store_true",
         help="skip the CV: refit with the alpha recorded in --out and predict",
     )
     args = parser.parse_args()
+    if args.rescore_only:
+        path = Path(args.out)
+        record = json.loads(path.read_text())
+        rng = np.random.default_rng(0)
+        for name in ("sav", "corpus"):
+            rows = pd.read_csv(root() / "tv_surrogate" / f"loso_{name}.csv.gz")
+            old = record[f"loso_{name}"]
+            old.update(scores(rows))
+            old["ci95"] = bootstrap(rows, rng)
+            old["rescore_source"] = str(root() / "tv_surrogate" / f"loso_{name}.csv.gz")
+        path.write_text(dumps(record, indent=1))
+        print("rescored saved nested LOSO rows; model/predictions unchanged")
+        return
+    if not args.shots_file:
+        parser.error("--shots-file is required unless --rescore-only is used")
     if args.predict_only:
         predict_only(args)
         return

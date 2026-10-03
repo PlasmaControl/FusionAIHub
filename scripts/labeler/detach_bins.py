@@ -29,6 +29,7 @@ from pathlib import Path
 import numpy as np
 
 from labeler.events.detachment import afrac, core, langmuir, prad, signals, tangtv
+from labeler.events.detachment import thresholds as th
 
 #: Bins with less plasma current than this are not part of the discharge.
 MIN_IP_A = 0.3e6
@@ -169,14 +170,24 @@ def tangtv_for(shot, edges, cache, elm=None, *, with_frame_mask=False):
     if inversion is not None:
         ft = inversion["times_ms"].astype(float)
         near = np.abs(et[None, :] - ft[:, None]).argmin(axis=1)
-        lower = float(np.nanmedian(cache["zvsod"][1])) < -1.30
+        rv = np.asarray(cache["rvsod"][1])[near]
+        zv = np.asarray(cache["zvsod"][1])[near]
+        lower = (rv < th.SHELF_WALL_R) & (zv < -1.30)
         ze = tangtv.outer_leg_ze(
             inversion["frames"].astype(np.float32),
             inversion["radii"],
             inversion["elevation"],
             np.asarray(cache["rxpt1"][1])[near],
-            r_max=1.37 if lower else None,
         )
+        if lower.any():
+            lower_ze = tangtv.outer_leg_ze(
+                inversion["frames"],
+                inversion["radii"],
+                inversion["elevation"],
+                np.asarray(cache["rxpt1"][1])[near],
+                r_max=th.SHELF_WALL_R,
+            )
+            ze = np.where(lower, lower_ze, ze)
         source = "inversion"
     else:
         ft = surrogate["times_ms"].astype(float)
@@ -205,25 +216,9 @@ def tangtv_for(shot, edges, cache, elm=None, *, with_frame_mask=False):
 
 
 def greenwald_cue(edges, cache):
-    """Conservative fG>=0.8 cue, only with explicitly confirmed density units.
-
-    UF PTDATA records on disk have no units. Do not infer Greenwald fraction from
-    their magnitude. A future fetch may supply density_v2_si with m^-2 units;
-    use an elliptical V2 chord at R=1.94 m (shot_design geometry), flag its
-    approximation. Missing unit-confirmed density produces no cue.
-    """
-    n = len(edges) - 1
-    if "density_v2_si" not in cache:
-        return np.zeros(n, bool), np.full(n, np.nan)
-    density = core.bin_median(*cache["density_v2_si"], edges)[0]
-    a, kappa, axis, ip = [
-        core.bin_median(*cache[k], edges)[0]
-        for k in ("aminor", "kappa", "rout", "ipmeas")
-    ]
-    with np.errstate(invalid="ignore", divide="ignore"):
-        length = 2 * kappa * np.sqrt(a * a - (1.94 - axis) ** 2)
-        fraction = density / length / 1e20 / (np.abs(ip) / 1e6 / (np.pi * a * a))
-    return np.isfinite(fraction) & (fraction >= 0.8), fraction
+    """Conservative fG>=0.8 cue from unit-confirmed V2 and elliptical path."""
+    fraction = signals.greenwald_fraction(edges, cache)
+    return np.isfinite(fraction) & (fraction >= th.GREENWALD_CUE_MIN), fraction
 
 
 def spatial_evidence(shot, edges, geo, frame_quality=None):
@@ -233,12 +228,11 @@ def spatial_evidence(shot, edges, geo, frame_quality=None):
     n = len(edges) - 1
     result = np.zeros(n, bool)
     inv = load_inversion(shot)
-    path = root() / "efit" / f"{shot}.npz"
-    if inv is None or not path.exists() or frame_quality is None:
+    maps = signals.load_flux_map(shot)
+    if inv is None or maps is None or frame_quality is None:
         return result
-    with np.load(path) as f:
-        if str(f.get("source", "EFIT01")) != "EFIT02":
-            return result
+    if maps is not None:
+        f = maps
         ft = inv["times_ms"]
         flags = np.zeros(len(ft), bool)
         for j, t in enumerate(ft):
@@ -246,6 +240,8 @@ def spatial_evidence(shot, edges, geo, frame_quality=None):
                 continue
             k = np.argmin(np.abs(f["gtime_ms"] - t))
             if abs(f["gtime_ms"][k] - t) > 40:
+                continue
+            if not np.isfinite(inv["frames"][j]).any():
                 continue
             iz, ir = np.unravel_index(
                 np.nanargmax(inv["frames"][j]), inv["frames"][j].shape
@@ -255,8 +251,8 @@ def spatial_evidence(shot, edges, geo, frame_quality=None):
             psi = RegularGridInterpolator(
                 (f["z"], f["r"]), psin, bounds_error=False, fill_value=np.nan
             )((z, r))
-            rx = np.interp(t, *geo["rxpt1"])
-            zx = np.interp(t, *geo["zxpt1"])
+            rx = f["rxpt1"][k] if "rxpt1" in f else np.interp(t, *geo["rxpt1"])
+            zx = f["zxpt1"][k] if "zxpt1" in f else np.interp(t, *geo["zxpt1"])
             flags[j] = bool(
                 0 < psi < 1 and zx - 0.02 <= z <= zx + 0.30 and abs(r - rx) <= 0.30
             )
@@ -298,21 +294,57 @@ def confinement(shot, edges):
     return mode, back
 
 
-def processed_ratio(shot, edges, cache, base, tv, elm):
-    """Use positioned processed Jsat; calibrate only attached pre-puff L/H bins.
+def processed_ratio(shot, edges, cache, base, elm):
+    """Local Jsat proxy from a positioned SOL probe; no camera-dependent fit.
 
-    If the attached/regime reference is absent, export a local ratio with a
-    whole-shot 90th percentile reference, explicitly marked local_proxy.
+    The probe and strike point use the same close EFIT map. A whole-shot
+    model-normalised 90th percentile is only a local reference, not Eldon C.
     """
     n = len(edges) - 1
     modes = np.full(n, "local_proxy", dtype="U32")
+    provenance = {
+        "aux_jsat_selected_probe": np.full(n, -1, np.int16),
+        "afrac_efit_source": np.full(n, "none", dtype="U16"),
+        "afrac_probe_position_valid": np.zeros(n, bool),
+        **{
+            f"aux_jsat_{name}": np.full(n, np.nan, np.float32)
+            for name in (
+                "selected_r_m",
+                "selected_z_m",
+                "selected_psin",
+                "strike_r_m",
+                "strike_z_m",
+                "selected_distance_m",
+                "radial_margin_m",
+            )
+        },
+    }
+
+    def invalid(reason):
+        why = np.full(n, reason, object)
+        why[~core.elm_bin_known(edges, *(elm or (None, None)))] = "elm_unknown"
+        return (
+            core.assemble(
+                "afrac",
+                np.full(n, np.nan),
+                np.zeros(n, bool),
+                why,
+                np.full(n, core.ABSTAIN),
+            ),
+            modes,
+            provenance,
+        )
+
     path = root() / "processed_probes" / f"{shot}.npz"
     if not path.exists():
-        return base, modes
+        return invalid("no_positioned_probes")
     with np.load(path) as f:
-        keys = [k[:-5] for k in f.files if k.endswith("_jsat")]
+        keys = sorted(
+            [k[:-5] for k in f.files if k.endswith("_jsat")],
+            key=lambda k: int(k[1:]),
+        )
         if not keys:
-            return base, modes
+            return invalid("no_positioned_probes")
         per_probe = []
         for key in keys:
             t, y = f[key + "_t_ms"], f[key + "_jsat"]
@@ -320,67 +352,59 @@ def processed_ratio(shot, edges, cache, base, tv, elm):
             per_probe.append(core.bin_median(t, y, edges, keep=~flags)[0])
         jsat = np.vstack(per_probe)
         positions = np.array([f[k + "_rz"] for k in keys])
-    geo, _ = signals.tangtv_geometry(shot, cache)
-    if any(k not in geo for k in ("rvsod", "zvsod")):
-        return base, modes
-    strike = np.stack(
-        [core.bin_median(*geo[k], edges)[0] for k in ("rvsod", "zvsod")], axis=1
-    )
+    maps = signals.load_flux_map(shot)
+    if maps is None or any(k not in maps for k in ("rvsod", "zvsod")):
+        return invalid("probe_flux_unknown")
+    centres = core.bin_centres(edges)
+    near = np.abs(maps["gtime_ms"][:, None] - centres[None, :]).argmin(axis=0)
+    close = np.abs(maps["gtime_ms"][near] - centres) <= 40
+    strike = np.stack([maps[k][near] for k in ("rvsod", "zvsod")], axis=1)
+    strike[~close] = np.nan
+    psi_n = signals.flux_at_positions(maps, centres, positions)
+    which, usable, probe_reason = afrac.select_sol_probe(jsat, positions, strike, psi_n)
+    index = np.maximum(which, 0)
+    selected = np.where(usable, jsat[index, np.arange(n)], np.nan)
+    provenance["afrac_efit_source"][:] = str(maps.get("source", "EFIT01"))
+    provenance["afrac_probe_position_valid"] = usable
+    provenance["aux_jsat_strike_r_m"] = strike[:, 0].astype(np.float32)
+    provenance["aux_jsat_strike_z_m"] = strike[:, 1].astype(np.float32)
+    provenance["aux_jsat_selected_probe"][usable] = np.array(
+        [int(k[1:]) for k in keys]
+    )[which[usable]]
+    selected_positions = np.where(usable[:, None], positions[index], np.nan)
+    provenance["aux_jsat_selected_r_m"] = selected_positions[:, 0].astype(np.float32)
+    provenance["aux_jsat_selected_z_m"] = selected_positions[:, 1].astype(np.float32)
+    provenance["aux_jsat_selected_psin"] = np.where(
+        usable, psi_n[index, np.arange(n)], np.nan
+    ).astype(np.float32)
+    provenance["aux_jsat_selected_distance_m"] = np.linalg.norm(
+        selected_positions - strike, axis=1
+    ).astype(np.float32)
+    provenance["aux_jsat_radial_margin_m"] = (
+        selected_positions[:, 0] - strike[:, 0]
+    ).astype(np.float32)
     density = signals.line_density(cache)
     power = signals.heating_power(shot, cache)
     if density is None or power is None:
-        return base, modes
+        return invalid("no_density" if density is None else "no_power")
     base = afrac.afrac_indicator(
         edges,
-        core.bin_centres(edges),
-        jsat,
+        centres,
+        selected[None, :],
         *density,
         power[0],
         power[2],
         *cache["ipmeas"],
         *(elm or (None, None)),
+        pre_masked=True,
     )
-    ne = core.bin_median(*density, edges)[0]
-    # Eldon 2021 DOD uses C*n^2 (no power scaling); attached C is fitted by regime.
-    scaling = ne**2
-    regime, _ = confinement(shot, edges)
-    gas = signals.corpus_group(shot, "gas_flow")
-    pre = np.zeros(n, bool)
-    if gas is not None:
-        t, y = gas
-        g = core.bin_mean(t, np.nansum(np.maximum(y, 0), axis=0), edges)[0]
-        finite = np.isfinite(g)
-        if finite.any():
-            floor = np.nanpercentile(g, 10)
-            onset = np.flatnonzero(finite & (g > floor + 0.1 * (np.nanmax(g) - floor)))
-            if len(onset):
-                pre = np.arange(n) < onset[0]
-    value, valid, which = afrac.calibrated_ratio(
-        jsat,
-        positions,
-        strike,
-        scaling,
-        pre
-        & tv.valid
-        & (tv.vote == core.ATTACHED)
-        & np.isin(base.reason, ("", "short_reference")),
-        regime,
+    reason = np.where(~usable, probe_reason, base.reason)
+    reason[~core.elm_bin_known(edges, *(elm or (None, None)))] = "elm_unknown"
+    return (
+        core.assemble("afrac", base.value, base.valid & usable, reason, base.vote),
+        modes,
+        provenance,
     )
-    valid &= np.isin(base.reason, ("", "short_reference"))
-    value[~valid] = np.nan
-    modes[valid] = "eldon_pre_puff_LH"
-    # A fallback is a local proxy, even with calibrated current: its attached
-    # reference has not been identified. Preserve geometry and quality gates.
-    nearest = np.linalg.norm(positions[which] - strike, axis=1) <= 0.02
-    raw = jsat[which, np.arange(n)] / (ne**2)
-    usable = nearest & np.isfinite(raw) & (raw > 0) & base.valid
-    if usable.sum() * float(edges[1] - edges[0]) >= 3000:
-        fallback = usable & ~valid
-        value[fallback] = raw[fallback] / np.quantile(raw[usable], 0.9)
-        valid |= fallback
-    reason = np.where(valid, "", "no_attached_regime_reference")
-    reason[~nearest] = "probe_far_from_strike"
-    return core.assemble("afrac", value, valid, reason, afrac.afrac_vote(value)), modes
 
 
 def process(
@@ -400,7 +424,7 @@ def process(
 
     power = signals.heating_power(shot, cache)
     p_t, p_in, p_sol = (None, None, None) if power is None else power
-    elm = signals.elm_mask(shot)
+    elm = signals.elm_mask(shot, cache)
     elm_t, elm_flag = (None, None) if elm is None else elm
     density = signals.line_density(cache)
     n_t, n_y = (None, None) if density is None else density
@@ -432,16 +456,12 @@ def process(
     )
     geo, geo_source = signals.tangtv_geometry(shot, cache)
     # Spatial evidence exists only for true inversions with a close flux map.
-    spatial = (
-        spatial_evidence(shot, edges, geo, frame_quality)
-        if geo_source == "EFIT02"
-        else np.zeros(n, bool)
-    )
+    spatial = spatial_evidence(shot, edges, geo, frame_quality)
     second, fg = greenwald_cue(edges, cache)
     _, back_transition = confinement(shot, edges)
     second |= back_transition
-    afrac_ind, afrac_mode = processed_ratio(
-        shot, edges, cache, afrac_ind, tangtv_ind, elm
+    afrac_ind, afrac_mode, probe_provenance = processed_ratio(
+        shot, edges, cache, afrac_ind, elm
     )
     vote, candidate = tangtv.evidence_votes(
         tangtv_ind.value, tangtv_ind.valid, spatial, second
@@ -457,12 +477,23 @@ def process(
         out[f"{ind.name}_reason"] = ind.reason.astype(str)
         out[f"{ind.name}_vote"] = ind.vote
     out["afrac_method"] = afrac_mode
+    out.update(probe_provenance)
     out["tangtv_source"] = np.full(n, tangtv_source)
     out["tangtv_efit_source"] = np.full(n, geo_source)
     out["tangtv_marfe_candidate"] = candidate
     out["tangtv_marfe_spatial"] = spatial
     out["tangtv_marfe_second_cue"] = second
+    maps = signals.load_flux_map(shot)
+    out["tangtv_marfe_efit_source"] = np.full(
+        n, "none" if maps is None else str(maps.get("source", "EFIT01"))
+    )
     out["aux_greenwald_fraction"] = fg
+    out["greenwald_source"] = np.full(
+        n,
+        "BCI_DENV2_unit_confirmed_ellipse"
+        if "density_v2_si" in cache
+        else "none",
+    )
     # the quantities behind the indicators, for the figure and the failure analysis
     out["aux_ip_a"] = core.bin_median(t_ip, ip, edges)[0].astype(np.float32)
     if p_t is not None:
@@ -473,16 +504,26 @@ def process(
         peak, which = afrac.peak_jsat(edges, probes["t_ms"], probes["jsat"])
         out["aux_jsat_peak"] = peak.astype(np.float32)
         out["aux_jsat_probe"] = probes["probe"][which].astype(np.int16)
+    out["aux_elm_known"] = core.elm_bin_known(edges, elm_t, elm_flag)
+    out["aux_elm_share"] = np.full(n, np.nan, np.float32)
     if elm_t is not None:
-        out["aux_elm_share"] = core.bin_fraction(elm_t, elm_flag, edges).astype(
-            np.float32
-        )
+        share = core.bin_fraction(elm_t, elm_flag, edges)
+        out["aux_elm_share"][out["aux_elm_known"]] = share[out["aux_elm_known"]]
     # Unlocalised real-time DTS is deliberately excluded from all claims.
     out.update(geometry_aux(geo, edges))
     for key, (value, keep) in frame_geometry_aux(
         shot, edges, geo, frame_quality
     ).items():
         out[key][keep] = value[keep]
+    rec = load_inversion(shot) if tangtv_source == "inversion" else load_surrogate(shot)
+    out["tangtv_tier"] = np.full(n, "none", dtype="U24")
+    if rec is not None and frame_quality is not None:
+        ft = rec["times_ms"]
+        et = geo["rxpt1"][0]
+        near = np.abs(et[None, :] - ft[:, None]).argmin(axis=1)
+        out["tangtv_tier"] = tangtv.shelf_tier(
+            edges, ft, geo["rvsod"][1][near], geo["zvsod"][1][near], frame_quality
+        )
     add_envelope(out)
     target = (out_dir or root() / "bins") / f"{shot}.npz"
     target.parent.mkdir(parents=True, exist_ok=True)
