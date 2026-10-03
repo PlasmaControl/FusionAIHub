@@ -35,6 +35,15 @@ def main():
     assert frame.confidence.isna().all()
     assert (valid.sum(axis=1) >= 2).all()
     assert (votes[~valid] == core.ABSTAIN).all()
+    assert frame.loc[frame.prad_valid, "aux_prad_divl_w"].ge(
+        -thresholds.RADIATION_NEGATIVE_TOL_W
+    ).all()
+    assert frame.loc[frame.prad_valid, "aux_prad_divl_native_w"].ge(
+        -thresholds.RADIATION_NEGATIVE_TOL_W
+    ).all()
+    assert frame.loc[frame.prad_valid, "aux_p_in_w"].notna().all()
+    assert frame.loc[frame.prad_valid, "aux_prad_elm_window_known"].all()
+    assert frame.prad_averaging_ms.eq(250.0).all()
     certain = frame.state_rule.isin(core.VOTE_STATES)
     assert frame.loc[certain, "tangtv_tier"].eq("upper_shelf").all()
     assert np.isfinite(frame.loc[certain, "aux_elm_share"]).all()
@@ -133,10 +142,10 @@ def main():
     for path in json_paths:
         record = json.loads(path.read_text(), parse_constant=reject_nonfinite)
         check_replicates(record)
-    log = Path(os.environ["TMPDIR"]) / "round2-covering-tests.log"
+    log = ROOT / "logs/round3-covering-tests.log"
     tests = re.search(r"(\d+) passed", log.read_text())
     assert tests, "Covering test success absent"
-    lint_log = Path(os.environ["TMPDIR"]) / "round2-ruff.log"
+    lint_log = ROOT / "logs/round3-ruff.log"
     assert "All checks passed!" in lint_log.read_text()
     assert "would reformat" not in lint_log.read_text()
     record = {
@@ -159,6 +168,7 @@ def main():
         "checks": [
             "rule reproduction and legacy alias",
             "valid assessed bins and abstention encoding",
+            "native and 250 ms radiation offset gates and covered heating windows",
             "upper-shelf/known-ELM certainty and explicit cohort counts",
             "SOL position and flux margins",
             "exact interval, sparse-grid and trace reconstruction; no stale shots",

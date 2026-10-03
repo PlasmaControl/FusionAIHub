@@ -4,6 +4,7 @@
     python scripts/labeler/detach_ours.py prep            # environment labelmaker
     CUDA_VISIBLE_DEVICES=1 $LABELER_ROOT/envs/phase3/bin/python \\
         scripts/labeler/detach_ours.py train               # torch, one GPU
+    python scripts/labeler/detach_ours.py refresh          # unchanged arrays only
 
 A small 1-D CNN reads a 2 s window (41 bins of 50 ms) of plasma current, line
 density, divertor D-alpha, the ELM share and the EFIT scalars, and predicts the
@@ -28,6 +29,8 @@ are under `$LABELER_ROOT/round4/detach/ours/`.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
 from pathlib import Path
 
@@ -61,6 +64,34 @@ CLASS_NAMES = tuple(core.STATE_NAMES[k + 1] for k in range(3))
 
 def root() -> Path:
     return Path(os.environ["LABELER_ROOT"]) / "round4" / "detach"
+
+
+def dataset_fingerprint(data) -> str:
+    """Hash array contents, so NPZ archive timestamps cannot change identity."""
+    digest = hashlib.sha256()
+    for name in sorted(data.files):
+        array = np.ascontiguousarray(data[name])
+        digest.update(name.encode())
+        digest.update(array.dtype.str.encode())
+        digest.update(str(array.shape).encode())
+        digest.update(array.tobytes())
+    return digest.hexdigest()
+
+
+def label_source(data) -> dict:
+    """Verify prepared targets and splits against the current label table."""
+    path = root() / "labels_bins.csv.gz"
+    labels = pd.read_csv(path).set_index(["shot", "start_ms"])
+    keys = list(zip(data["shot"], data["start_ms"], strict=True))
+    rows = labels.loc[keys]
+    expected = np.where(
+        rows.state_lm.isin((1, 2, 3)), rows.state_lm.to_numpy(int) - 1, -1
+    )
+    if not np.array_equal(data["y"], expected) or not np.array_equal(
+        data["split"], rows.split.to_numpy()
+    ):
+        raise ValueError("Rerun prep: prepared targets or splits differ from labels")
+    return {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
 
 
 def shot_channels(shot: int) -> np.ndarray | None:
@@ -351,6 +382,67 @@ def baseline_strata(data, pred, rng):
     return out
 
 
+def refresh(model: str) -> None:
+    """Rescore saved predictions only when all prepared arrays are unchanged."""
+    out = root() / model
+    result_path = RESULT.with_name(f"detachment_{model}.json")
+    result = json.loads(result_path.read_text())
+    with np.load(out / "dataset.npz") as data, np.load(out / "predictions.npz") as p:
+        fingerprint = dataset_fingerprint(data)
+        previous = result.get("dataset_fingerprint")
+        if previous is None:
+            raise ValueError("Rerun train: saved result lacks an input fingerprint")
+        if previous != fingerprint:
+            raise ValueError("Rerun train: prepared input arrays or targets changed")
+        for name in ("y", "shot", "start_ms", "split"):
+            if not np.array_equal(data[name], p[name]):
+                raise ValueError(f"Rerun train: prediction {name} differs from dataset")
+        source = label_source(data)
+        y, shot, split = p["y"], p["shot"], p["split"]
+        pred, majority, prob = p["pred"], p["majority_pred"], p["prob"]
+        cv = (split != "test") & (y >= 0) & (pred >= 0)
+        boot = np.random.default_rng(1)
+        result["cv_shots"] = with_ci(y[cv], pred[cv], shot[cv], boot)
+        result["cv_majority"] = metrics(y[cv], majority[cv])
+        result["cv_majority_ci"] = with_ci(
+            y[cv], majority[cv], shot[cv], np.random.default_rng(1)
+        )
+        records = []
+        for old in result["fold_records"]:
+            held = old["heldout_shot_ids"]
+            held_mask = np.isin(shot, held)
+            train_mask = (split != "test") & (y >= 0) & ~held_mask
+            records.append(
+                fold_record(
+                    old["fold"], held, train_mask, held_mask, y, shot, prob, majority
+                )
+            )
+        result["fold_records"] = records
+        result["marfe_transfer"] = marfe_transfer(y, shot, split, records)
+        result["stratified"] = baseline_strata(data, pred, boot)
+        final = (split == "test") & (y >= 0) & (pred >= 0)
+        if final.any():
+            result["test_shots"] = with_ci(
+                y[final], pred[final], shot[final], np.random.default_rng(1)
+            )
+            result["test_majority"] = metrics(y[final], majority[final])
+            result["test_majority_ci"] = with_ci(
+                y[final], majority[final], shot[final], np.random.default_rng(1)
+            )
+        result["dataset_fingerprint"] = fingerprint
+        result["label_source"] = source
+        result["bootstrap_comparison"] = (
+            "model and majority use identical shot resamples with seed 1 "
+            "within each population"
+        )
+        result["prediction_refresh"] = (
+            "saved predictions rescored after verifying prepared array contents, "
+            "targets and splits; no new model fit"
+        )
+    result_path.write_text(dumps(result, indent=1))
+    print(dumps(result["cv_shots"], indent=1))
+
+
 def train() -> None:
     import torch
     from torch import nn
@@ -359,6 +451,7 @@ def train() -> None:
     x, y, shot, split = data["x"], data["y"], data["shot"], data["split"]
     if tuple(data["channels"].tolist()) != CHANNELS:
         raise ValueError("Rerun prep: detach-ours input channel set has changed")
+    source = label_source(data)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     rng = np.random.default_rng(SEED)
 
@@ -468,8 +561,14 @@ def train() -> None:
         "eligibility": str(root() / "ours" / "eligibility.json"),
         "cv_shots": with_ci(y[cv], pred[cv], shot[cv], boot),
         "cv_majority": metrics(y[cv], majority_pred[cv]),
-        "cv_majority_ci": with_ci(y[cv], majority_pred[cv], shot[cv], boot),
+        "cv_majority_ci": with_ci(
+            y[cv], majority_pred[cv], shot[cv], np.random.default_rng(1)
+        ),
         "marfe_transfer": marfe_transfer(y, shot, split, fold_records),
+        "dataset_fingerprint": dataset_fingerprint(data),
+        "label_source": source,
+        "bootstrap_comparison": "model and majority use identical shot "
+        "resamples with seed 1 within each population",
         "evaluation_scope": "exploratory agreement with constructed labels; "
         "no independent physical benchmark or established learning beyond majority",
     }
@@ -478,10 +577,12 @@ def train() -> None:
     result["stratified"] = baseline_strata(data, pred, boot)
     final = final[(y[final] >= 0) & scored[final]]
     if len(final):
-        result["test_shots"] = with_ci(y[final], pred[final], shot[final], boot)
+        result["test_shots"] = with_ci(
+            y[final], pred[final], shot[final], np.random.default_rng(1)
+        )
         result["test_majority"] = metrics(y[final], majority_pred[final])
         result["test_majority_ci"] = with_ci(
-            y[final], majority_pred[final], shot[final], boot
+            y[final], majority_pred[final], shot[final], np.random.default_rng(1)
         )
         result["n_test_shots"] = len(np.unique(shot[final]))
     out = root() / "ours"
@@ -502,9 +603,9 @@ def train() -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("step", choices=("prep", "train"))
+    parser.add_argument("step", choices=("prep", "train", "refresh"))
     args = parser.parse_args()
-    {"prep": prep, "train": train}[args.step]()
+    {"prep": prep, "train": train, "refresh": lambda: refresh("ours")}[args.step]()
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@
     python scripts/labeler/detach_victor.py prep           # environment labelmaker
     CUDA_VISIBLE_DEVICES=1 $LABELER_ROOT/envs/phase3/bin/python \\
         scripts/labeler/detach_victor.py train              # torch, one GPU
+    python scripts/labeler/detach_victor.py refresh         # unchanged arrays only
 
 The model of Victor and Scotti (2024), a small CNN on raw divertor camera frames
 (two 3 x 3 convolutions, 2 x 2 max pool, dropout 0.25, flatten, a hidden linear layer,
@@ -104,7 +105,9 @@ def train() -> None:
     import torch
     from detach_ours import (
         baseline_strata,
+        dataset_fingerprint,
         fold_record,
+        label_source,
         marfe_transfer,
         metrics,
         with_ci,
@@ -113,6 +116,7 @@ def train() -> None:
 
     data = np.load(root() / "victor" / "dataset.npz")
     x, y, shot, split = data["x"], data["y"], data["shot"], data["split"]
+    source = label_source(data)
     voted = data["tangtv_voted"]
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -212,8 +216,14 @@ def train() -> None:
         "unscored_frames": int((~scored).sum()),
         "cv_shots": with_ci(y[cv], pred[cv], shot[cv], boot),
         "cv_majority": metrics(y[cv], majority_pred[cv]),
-        "cv_majority_ci": with_ci(y[cv], majority_pred[cv], shot[cv], boot),
+        "cv_majority_ci": with_ci(
+            y[cv], majority_pred[cv], shot[cv], np.random.default_rng(1)
+        ),
         "marfe_transfer": marfe_transfer(y, shot, split, fold_records),
+        "dataset_fingerprint": dataset_fingerprint(data),
+        "label_source": source,
+        "bootstrap_comparison": "model and majority use identical shot "
+        "resamples with seed 1 within each population",
         "evaluation_scope": "exploratory agreement with constructed labels; "
         "no independent physical benchmark or established learning beyond majority",
     }
@@ -241,10 +251,12 @@ def train() -> None:
             "no-camera consensus accuracy reference is supplied.",
         }
     if len(final):
-        result["test_shots"] = with_ci(y[final], pred[final], shot[final], boot)
+        result["test_shots"] = with_ci(
+            y[final], pred[final], shot[final], np.random.default_rng(1)
+        )
         result["test_majority"] = metrics(y[final], np.full(len(final), major))
         result["test_majority_ci"] = with_ci(
-            y[final], majority_pred[final], shot[final], boot
+            y[final], majority_pred[final], shot[final], np.random.default_rng(1)
         )
         result["n_test_shots"] = len(np.unique(shot[final]))
     out = root() / "victor"
@@ -265,9 +277,14 @@ def train() -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("step", choices=("prep", "train"))
+    parser.add_argument("step", choices=("prep", "train", "refresh"))
     args = parser.parse_args()
-    {"prep": prep, "train": train}[args.step]()
+    if args.step == "refresh":
+        from detach_ours import refresh
+
+        refresh("victor")
+    else:
+        {"prep": prep, "train": train}[args.step]()
 
 
 if __name__ == "__main__":
