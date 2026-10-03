@@ -195,8 +195,15 @@ def onset_agreement_audit(paths, table, data, shots) -> dict:
                 "matched": int(hit),
                 "spans": int(n),
                 "share": float(hit / n) if n else float("nan"),
-                "ci95": score._ci(share),
+                **score.bootstrap_summary(
+                    {"share": share},
+                    n_shots=len(shots),
+                    positive_shots=int((counts[:, 1] > 0).sum()),
+                ),
             }
+            row = summary[key][kind]
+            row["ci95"] = row["ci95"]["share"]
+            row["bootstrap_draw_counts"] = row["bootstrap_draw_counts"]["share"]
     return {
         "definition": "Legacy onset within inclusive +/-k ms of each reviewed "
         "present span start. Proximity per annotation, not one-to-one ELM recall; "
@@ -324,12 +331,18 @@ def compare_references(a: dict, b: dict) -> dict:
         vb = b["paired"].get(key)
         if vb is None:
             continue
+
+        def excludes_zero(interval):
+            return (
+                interval[0] > 0 or interval[1] < 0 if interval is not None else None
+            )
+
         moves[key] = {
             "first": va["value"],
             "second": vb["value"],
             "same_sign": va["value"] * vb["value"] > 0,
-            "first_ci_excludes_zero": va["ci95"][0] > 0 or va["ci95"][1] < 0,
-            "second_ci_excludes_zero": vb["ci95"][0] > 0 or vb["ci95"][1] < 0,
+            "first_ci_excludes_zero": excludes_zero(va["ci95"]),
+            "second_ci_excludes_zero": excludes_zero(vb["ci95"]),
         }
     return {
         "order_changes": changes,
@@ -388,10 +401,133 @@ def oracle_rows(parts_ref, legacy, shots, boot) -> dict:
     }
 
 
+def all_covered_comparison(
+    table,
+    data,
+    shots,
+    base,
+    oof,
+    dscores,
+    elmo_spans,
+    clock_spans,
+    elmo_sweep,
+    *,
+    include_detection=False,
+) -> dict:
+    """Finding 2 on all known legacy-covered majority bins, without reselection."""
+    parts, legacy, reviewed = {}, {}, {}
+    row_validity, excluded_bins = {}, []
+    for shot in shots:
+        full, target, _ = swap.coverage_bins(table, shot, data[shot].spans)
+        known = full.truth >= 0
+        bins = methods.restrict_bins(full, known)
+        detection_indices = dsm.row_index(bins, 0)
+        has_row = (detection_indices >= 0) & (detection_indices < len(dsm.ROW_T_MS))
+        if include_detection:
+            excluded_bins.extend(
+                {
+                    "shot": shot,
+                    "t_start_ms": float(t),
+                    "t_end_ms": float(t + labels.BIN_MS),
+                    "reason": "No saved DSM detection row at the bin's end; "
+                    "serving grid stops at 5975 ms.",
+                }
+                for t in bins.t0[~has_row]
+            )
+            target = target[known][has_row]
+            bins = methods.restrict_bins(bins, has_row)
+        else:
+            target = target[known]
+        legacy[shot], reviewed[shot] = target, bins.truth
+        cover = base.cover[shot]
+        one = {
+            NAME["ours"]: methods.trace_part(
+                data[shot].spans,
+                shot,
+                bins,
+                cover,
+                oof.trace(shot)[0],
+                oof.threshold[shot],
+            ),
+            NAME["clock"]: methods.span_part(
+                data[shot].spans,
+                shot,
+                bins,
+                cover,
+                clock_spans.get(shot, methods.span_frame([], [])),
+            ),
+        }
+        keys = ("dsm", "detect", "exposed", "init") if include_detection else ("dsm",)
+        for key in keys:
+            name = NAME[key]
+            lag = compare.FORECAST_LAG_ROWS if key == "dsm" else 0
+            scores = (
+                dscores.risk[shot][:, -1]
+                if key == "dsm"
+                else dscores.scores[name][shot]
+            )
+            one[name] = methods.row_part(
+                data[shot].spans,
+                shot,
+                bins,
+                cover,
+                dsm.ROW_T_MS,
+                scores,
+                dscores.threshold[name][shot],
+                lag_rows=lag,
+                ahead=key == "dsm",
+            )
+        indices = dsm.row_index(bins, 0)
+        available = (indices >= 0) & (indices < len(dsm.ROW_T_MS))
+        row_validity[str(shot)] = {
+            "bins": len(bins.t0),
+            "dsm_available_detection_rows": int(available.sum()),
+            "dsm_usable_detection_rows": int(
+                dscores.rows[shot].usable[indices[available]].sum()
+            ),
+        }
+        if base.has_elmo:
+            one[NAME["elmo"]] = methods.span_part(
+                data[shot].spans,
+                shot,
+                bins,
+                cover,
+                elmo_spans.get(shot, methods.span_frame([], [])),
+            )
+            one[NAME["elmo"]].score = swap.sweep_bin_scores(
+                elmo_sweep[elmo_sweep.shot == shot], bins
+            )
+        for name, part in one.items():
+            parts.setdefault(name, []).append(part)
+    boot = score.draws(len(shots))
+    review_result = score_reference(parts, reviewed, boot)
+    legacy_result = score_reference(parts, legacy, boot)
+    return {
+        "definition": "All known majority-occupancy bins in the legacy-covered "
+        "review window, including boundary bins; predictions and thresholds "
+        "unchanged. No interior-bin, DSM-usability or diagnostic restriction. "
+        "Saved DSM row scores remain available even where serving inputs were "
+        "mean-filled. Unknown review-majority bins are excluded.",
+        "detection_row_restriction": include_detection,
+        "excluded_bins": excluded_bins,
+        "detection_scope": "Detection variants are included only in the common "
+        "bin panel that excludes cells without a saved bin-end row. Full-bin "
+        "rankings include only methods with outputs on every bin.",
+        "shots": shots,
+        "n_shots": len(shots),
+        "has_elmo": base.has_elmo,
+        "row_validity": row_validity,
+        "reviewed": review_result,
+        "legacy": legacy_result,
+        "comparison": compare_references(review_result, legacy_result),
+    }
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--run", required=True)
     ap.add_argument("--out-dir", type=Path, default=OUT)
+    ap.add_argument("--no-tables", action="store_true")
     args = ap.parse_args(argv)
     annotate_prefetch_swap()
     paths = Paths.from_env()
@@ -507,6 +643,7 @@ def main(argv=None) -> int:
         },
         "onset_agreement": onset_agreement_audit(paths, table, data, shots_over),
         "swap": {},
+        "all_covered_swap": {},
         "proxy": {},
     }
 
@@ -574,6 +711,24 @@ def main(argv=None) -> int:
             }
         record["swap"][tag] = res
 
+    for tag, base in (("overlap", sets["all119"]), ("overlap_bes", sets["bes73"])):
+        sel = [shot for shot in base.shots if shot in set(shots_over)]
+        record["all_covered_swap"][tag] = all_covered_comparison(
+            table, data, sel, base, oof, dscores, elmo_spans, clock_spans, elmo_sweep
+        )
+        record["all_covered_swap"][tag + "_detection_common"] = all_covered_comparison(
+            table,
+            data,
+            sel,
+            base,
+            oof,
+            dscores,
+            elmo_spans,
+            clock_spans,
+            elmo_sweep,
+            include_detection=True,
+        )
+
     # --- proxy references on all the reviewed shots (not independent)
     for tag, key, base, found, own, how in (
         ("clock_spans", "all119", sets["all119"], clock_spans, NAME["clock"], "spans"),
@@ -621,7 +776,8 @@ def main(argv=None) -> int:
     (args.out_dir / "evaluation.json").write_text(json.dumps(record, indent=1))
     from labeler.elm import swap_tex
 
-    swap_tex.write(record, args.out_dir)
+    if not args.no_tables:
+        swap_tex.write(record, args.out_dir)
     print("overlap shots:", shots_over)
     for tag, r in record["swap"].items():
         if "finding_1" not in r:

@@ -6,8 +6,8 @@ The compiler counts original 1 ms onset labels in 50 ms bins, assigns category 1
 to nonzero counts, deduplicates matching WPQH subsets, and compresses consecutive
 equal bins into half-open intervals (data/events/README.md). It covers 8 of 119 reviewed
 shots. The coverage audit uses per-bin majority occupancy over all legacy-covered
-bins in the review window. Detector comparisons use the stricter benchmark bins;
-that restriction is a deviation from the AE audit.
+bins in the review window. Detector comparisons report both the stricter benchmark
+bins and the known all-covered majority bins used by the AE-style audit.
 
 **Conversion.** A scored bin is the cell `[50k, 50k + 50)` of the shot's clock; the
 table's bins are the same cells, so a bin takes the category of the table row that
@@ -144,6 +144,38 @@ def coverage_bins(
         legacy.astype(np.int8),
         status,
     )
+
+
+def review_positive_intervals(spans, gap_ms: float) -> pd.DataFrame:
+    """Merge non-crowd spans across reviewed absent gaps of at most ``gap_ms``.
+
+    Crowd, uncertain, not-observable and unlabelled time are barriers. This
+    changes the occupancy definition only; it never treats crowd starts as ELM
+    onsets or expands a positive interval beyond its first and last annotation.
+    """
+    if gap_ms < 0:
+        raise ValueError("occupancy gap must be nonnegative")
+    known = spans[spans.kind.isin(("absent", "non_crowd"))]
+    c0, c1 = labels.merge_intervals(known.t_start, known.t_end, tol=0)
+    positive = spans[spans.kind == "non_crowd"]
+    starts, stops = [], []
+    for a, b in zip(c0, c1, strict=True):
+        inside = positive[(positive.t_start < b) & (positive.t_end > a)]
+        s, e = labels.merge_intervals(
+            np.maximum(inside.t_start, a), np.minimum(inside.t_end, b), tol=gap_ms
+        )
+        starts.extend(s)
+        stops.extend(e)
+    return pd.DataFrame({"t_start": starts, "t_end": stops})
+
+
+def review_merged_truth(spans, bins: labels.Bins, gap_ms: float) -> np.ndarray:
+    """Fixed known bins with >=25 ms merged non-crowd occupancy made present."""
+    out = bins.truth.copy()
+    merged = review_positive_intervals(spans, gap_ms)
+    hit = _occupancy(bins.t0, merged) >= BIN_MS / 2
+    out[(out >= 0) & hit] = 1
+    return out
 
 
 def start_agreement(spans, onsets_ms, tolerance_ms: float) -> dict:
@@ -286,7 +318,14 @@ def agreement_summary(per_shot: np.ndarray, boot: np.ndarray) -> dict:
     total = per_shot.sum(axis=0)
     point = agreement_rates(total)
     reps = [agreement_rates(per_shot[d].sum(axis=0)) for d in boot]
-    ci = {k: score._ci(np.array([r[k] for r in reps])) for k in point}
+    audit = score.bootstrap_summary(
+        {k: np.asarray([r[k] for r in reps]) for k in point},
+        n_shots=len(per_shot),
+        positive_shots=min(
+            int(((per_shot[:, 0] + per_shot[:, index]) > 0).sum())
+            for index in (1, 2)
+        ),
+    )
     counts = dict(zip(AGREEMENT_NAMES, (int(v) for v in total), strict=True))
     return {
         "counts": counts,
@@ -294,7 +333,8 @@ def agreement_summary(per_shot: np.ndarray, boot: np.ndarray) -> dict:
         "P": counts["fp"],
         "bins": int(counts["tp"] + counts["fp"] + counts["fn"] + counts["tn"]),
         "point": point,
-        "ci95": ci,
+        "replicates": len(boot),
+        **audit,
     }
 
 

@@ -15,8 +15,8 @@ from pathlib import Path
 
 import numpy as np
 
-from labeler.config import Paths, sha256_of
-from labeler.elm import compare, dsm, labels, methods, train
+from labeler.config import Paths, git_sha, sha256_of
+from labeler.elm import compare, dsm, labels, methods, score, swap, train
 
 REPO = Path(__file__).resolve().parents[2]
 OUT = REPO / "outputs/labeler/elm/ours"
@@ -171,6 +171,131 @@ def checkpoint_audit(paths, runs):
     }
 
 
+def reference_sensitivities(paths, run):
+    """Fixed OOF predictions under review merging, plus clock boundary identity."""
+    data = train.load(paths)
+    sets = compare.load_sets(paths, data)
+    elmo, clock = compare.load_detected(paths)
+    sweep = compare.load_elmo_sweep(paths)
+    oof = methods.Oof(paths.root / "round4/elm/cv" / run)
+    crowd_records = []
+    for shot, datum in data.items():
+        found = clock.get(shot, methods.span_frame([], []))
+        for span in datum.spans[datum.spans.kind == "crowd"].itertuples():
+            starts = np.abs(found.t_start_ms.to_numpy(float) - span.t_start)
+            ends = np.abs(found.t_end_ms.to_numpy(float) - span.t_end)
+            near_start = bool(np.any(starts <= 1.0))
+            near_end = bool(np.any(ends <= 1.0))
+            crowd_records.append(
+                {
+                    "shot": shot,
+                    "t_start_ms": float(span.t_start),
+                    "t_end_ms": float(span.t_end),
+                    "start_within_1ms": near_start,
+                    "end_within_1ms": near_end,
+                    "both_within_1ms": near_start and near_end,
+                    "same_clock_span_both_within_1ms": bool(
+                        np.any((starts <= 1.0) & (ends <= 1.0))
+                    ),
+                }
+            )
+    n_spans = len(crowd_records)
+    identity = {
+        "definition": "Category-1 crowd review spans, inclusive 1 ms proximity "
+        "to original elm-clock present-span starts/ends; all 119 review shots. "
+        "The clock seeded the review, so this is dependence, not validation.",
+        "clock_source": str(paths.root / compare.CLOCK_CSV),
+        "clock_source_sha256": sha256_of(paths.root / compare.CLOCK_CSV),
+        "crowd_spans": n_spans,
+        "counts": {
+            key: sum(row[key] for row in crowd_records)
+            for key in (
+                "start_within_1ms",
+                "end_within_1ms",
+                "both_within_1ms",
+                "same_clock_span_both_within_1ms",
+            )
+        },
+        "per_span": crowd_records,
+    }
+    identity["shares"] = {
+        key: value / n_spans for key, value in identity["counts"].items()
+    }
+    sensitivity = {
+        "definition": "Fixed interior-bin universe, OOF predictions and "
+        "review-tuned thresholds. Merge non-crowd review spans across fully "
+        "reviewed absent gaps <=tau (0, 100, 200, 300 ms); crowd, uncertain, "
+        "not-observable and unlabelled time are barriers. At least 25 ms merged "
+        "occupancy makes an originally absent bin present. No retraining or "
+        "threshold selection; event counts are not inferred from crowds.",
+        "sets": {},
+    }
+    for panel, sdef in sets.items():
+        parts = {"elm-ours": [], "elm-clock": []}
+        if sdef.has_elmo:
+            parts["elm-elmo"] = []
+        for shot in sdef.shots:
+            datum, bins, cover = data[shot], sdef.bins[shot], sdef.cover[shot]
+            parts["elm-ours"].append(
+                methods.trace_part(
+                    datum.spans,
+                    shot,
+                    bins,
+                    cover,
+                    oof.trace(shot)[0],
+                    oof.threshold[shot],
+                )
+            )
+            parts["elm-clock"].append(
+                methods.span_part(
+                    datum.spans,
+                    shot,
+                    bins,
+                    cover,
+                    clock.get(shot, methods.span_frame([], [])),
+                )
+            )
+            if sdef.has_elmo:
+                part = methods.span_part(
+                    datum.spans,
+                    shot,
+                    bins,
+                    cover,
+                    elmo.get(shot, methods.span_frame([], [])),
+                )
+                part.score = swap.sweep_bin_scores(sweep[sweep.shot == shot], bins)
+                parts["elm-elmo"].append(part)
+        boot = score.draws(len(sdef.shots))
+        rows = {}
+        for gap in (0, *swap.OCCUPANCY_GAPS_MS):
+            targets = {
+                shot: swap.review_merged_truth(data[shot].spans, sdef.bins[shot], gap)
+                for shot in sdef.shots
+            }
+            rows[f"gap_{gap}ms"] = {
+                "gap_ms": gap,
+                "positive_bins": sum(int(t.sum()) for t in targets.values()),
+                "added_positive_bins": sum(
+                    int(((targets[shot] == 1) & (sdef.bins[shot].truth == 0)).sum())
+                    for shot in sdef.shots
+                ),
+                "methods": {
+                    name: score.summarise(
+                        [swap.retruth(part, targets[part.shot]) for part in values],
+                        boot,
+                    )
+                    for name, values in parts.items()
+                },
+            }
+        sensitivity["sets"][panel] = {
+            "shots": sdef.shots,
+            "n_shots": len(sdef.shots),
+            "bins": sum(len(sdef.bins[shot].truth) for shot in sdef.shots),
+            "by_gap": rows,
+        }
+    return identity, sensitivity
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--evaluation", type=Path, default=OUT / "evaluation.json")
@@ -181,7 +306,9 @@ def main(argv=None):
     evaluation = json.loads(args.evaluation.read_text())
     paths = Paths.from_env()
     clipping, bin_coverage = coverage_audit(paths, args.run)
+    identity, merging = reference_sensitivities(paths, args.run)
     result = {
+        "git": git_sha(),
         "created": datetime.now(UTC).isoformat(timespec="seconds"),
         "source_script": str(Path(__file__).relative_to(REPO)),
         "source_script_sha256": sha256_of(Path(__file__)),
@@ -203,6 +330,8 @@ def main(argv=None):
         },
         "coverage_clipping_audit": clipping,
         "checkpoint_selection_audit": checkpoint_audit(paths, args.runs),
+        "clock_boundary_identity": identity,
+        "review_non_crowd_merge_sensitivity": merging,
     }
     for panel, values in result["sets"].items():
         for group in values["annotation_modes"].values():

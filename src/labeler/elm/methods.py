@@ -144,9 +144,18 @@ def onset_summary(per_shot: np.ndarray, boot: np.ndarray) -> dict:
 
     point = rates(per_shot.sum(axis=0))
     reps = [rates(per_shot[d].sum(axis=0)) for d in boot]
-    ci = {k: score._ci(np.array([r[k] for r in reps])) for k in point}
+    audit = score.bootstrap_summary(
+        {k: np.asarray([r[k] for r in reps]) for k in point},
+        n_shots=len(per_shot),
+        positive_shots=int(((per_shot[:, 0] + per_shot[:, 2]) > 0).sum()),
+    )
     tp, fp, fn = (int(v) for v in per_shot.sum(axis=0))
-    return {"counts": {"tp": tp, "fp": fp, "fn": fn}, "point": point, "ci95": ci}
+    return {
+        "counts": {"tp": tp, "fp": fp, "fn": fn},
+        "point": point,
+        "replicates": len(boot),
+        **audit,
+    }
 
 
 class Oof:
@@ -265,7 +274,11 @@ def areas_summary(parts: list[score.ShotScore], boot: np.ndarray) -> dict:
     return {
         "auroc": point[0],
         "auprc": point[1],
-        "ci95": {"auroc": score._ci(reps[:, 0]), "auprc": score._ci(reps[:, 1])},
+        **score.bootstrap_summary(
+            {"auroc": reps[:, 0], "auprc": reps[:, 1]},
+            n_shots=len(parts),
+            positive_shots=sum(bool(np.any(p.truth == 1)) for p in parts),
+        ),
     }
 
 
@@ -297,10 +310,18 @@ def kind_summary(parts: list[score.ShotScore], boot: np.ndarray) -> dict:
         np.divide(numerator, denominator, out=values, where=denominator > 0)
         out[metric] = {
             "point": float(hit / count) if count else float("nan"),
-            "ci95": score._ci(values),
             "numerator": int(hit),
             "denominator": int(count),
+            **score.bootstrap_summary(
+                {metric: values},
+                n_shots=len(parts),
+                positive_shots=int((per[:, 2 * i + 1] > 0).sum()),
+            ),
         }
+        out[metric]["ci95"] = out[metric]["ci95"][metric]
+        out[metric]["bootstrap_draw_counts"] = out[metric]["bootstrap_draw_counts"][
+            metric
+        ]
     return out
 
 
@@ -349,6 +370,9 @@ def annotation_summary(
                     summary[field]["no_present_false_positive_fraction"] = summary[
                         field
                     ]["false_alarm_bin_rate"]
+                summary["bootstrap_draw_counts"][
+                    "no_present_false_positive_fraction"
+                ] = summary["bootstrap_draw_counts"]["false_alarm_bin_rate"]
         out[group] = {
             "shots": [first[i].shot for i in indices],
             "n_shots": len(indices),

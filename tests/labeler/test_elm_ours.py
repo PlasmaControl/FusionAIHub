@@ -183,7 +183,7 @@ def _part(shot, truth, sc, thr=0.5, spans=None):
     return score.ShotScore(shot, truth, kind, sc >= thr, sc, spans or {})
 
 
-def test_summarise_counts_rates_and_interval_shape():
+def test_summarise_counts_rates_and_tiny_subset_interval_suppression():
     a = _part(1, [1, 1, 0, 0], [0.9, 0.2, 0.1, 0.8])
     b = _part(2, [1, 0, 0, 0], [0.7, 0.1, 0.2, 0.3])
     out = score.summarise([a, b], score.draws(2, 50))
@@ -191,15 +191,17 @@ def test_summarise_counts_rates_and_interval_shape():
     assert out["counts"]["fn"] == 1 and out["counts"]["tn"] == 4
     assert out["point"]["precision"] == pytest.approx(2 / 3)
     assert out["point"]["crowd_bin_recall"] == pytest.approx(2 / 3)
-    lo, hi = out["ci95"]["f1"]
-    assert lo <= hi and out["replicates"] == 50
+    assert out["ci95"]["f1"] is None and out["replicates"] == 50
+    assert out["descriptive_only"] and out["positive_shots"] == 2
+    assert out["bootstrap_draw_counts"]["f1"] == {"valid": 50, "undefined": 0}
 
 
 def test_paired_difference_needs_the_same_shots_and_is_zero_against_itself():
     a = [_part(1, [1, 0], [0.9, 0.1]), _part(2, [1, 0], [0.2, 0.6])]
     boot = score.draws(2, 30)
     d = score.paired_difference(a, a, boot, "auroc")
-    assert d["value"] == 0.0 and d["ci95"] == [0.0, 0.0]
+    assert d["value"] == 0.0 and d["ci95"] is None
+    assert d["bootstrap_draw_counts"] == {"valid": 30, "undefined": 0}
     with pytest.raises(ValueError):
         score.paired_difference(a, a[:1], boot, "f1")
 

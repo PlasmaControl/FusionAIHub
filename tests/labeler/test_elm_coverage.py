@@ -93,11 +93,12 @@ def test_annotation_strata_use_full_review_and_keep_shots_in_one_group():
     }
     absent = result["no_present"]["methods"]["elm-ours"]
     assert absent["point"]["no_present_false_positive_fraction"] == 0.5
-    assert absent["ci95"]["no_present_false_positive_fraction"] == [0.5, 0.5]
+    assert absent["ci95"]["no_present_false_positive_fraction"] is None
+    assert absent["descriptive_only"]
     assert result["crowd_only"]["methods"]["elm-ours"]["replicates"] == 20
 
 
-def test_per_kind_summary_has_bin_and_span_recall_with_shot_intervals():
+def test_per_kind_summary_has_bin_and_span_recall_with_tiny_subset_audit():
     part = score.ShotScore(
         1,
         np.array([1, 1, 1, 0], np.int8),
@@ -108,12 +109,14 @@ def test_per_kind_summary_has_bin_and_span_recall_with_shot_intervals():
 
     out = methods.kind_summary([part], score.draws(1, replicates=20))
 
-    assert out["crowd_bin_recall"] == {
-        "point": 0.5,
-        "ci95": [0.5, 0.5],
-        "numerator": 1,
-        "denominator": 2,
+    assert out["crowd_bin_recall"]["point"] == 0.5
+    assert out["crowd_bin_recall"]["ci95"] is None
+    assert out["crowd_bin_recall"]["numerator"] == 1
+    assert out["crowd_bin_recall"]["denominator"] == 2
+    assert out["crowd_bin_recall"]["bootstrap_draw_counts"] == {
+        "valid": 20,
+        "undefined": 0,
     }
     assert out["non_crowd_bin_recall"]["point"] == 1.0
     assert out["non_crowd_span_touch_recall"]["point"] == pytest.approx(3 / 4)
-    assert out["non_crowd_span_touch_recall"]["ci95"] == [0.75, 0.75]
+    assert out["non_crowd_span_touch_recall"]["ci95"] is None

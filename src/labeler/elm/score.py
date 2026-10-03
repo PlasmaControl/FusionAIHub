@@ -32,6 +32,7 @@ import numpy as np
 
 REPLICATES = 1000
 SEED = 20261003
+MIN_POSITIVE_SHOTS_FOR_CI = 5
 SPAN_KEYS = (
     "non_crowd_spans",
     "non_crowd_span_hit",
@@ -187,13 +188,44 @@ def _ci(values: np.ndarray) -> list[float]:
     return [float(np.percentile(v, 2.5)), float(np.percentile(v, 97.5))]
 
 
+def bootstrap_summary(
+    values: dict[str, np.ndarray], *, n_shots: int, positive_shots: int
+) -> dict[str, object]:
+    """Audit every draw; tiny positive-bearing shot sets are descriptive only.
+
+    An undefined draw remains in the audit denominator. Percentile intervals
+    otherwise use finite draws, so their conditioning is visible rather than
+    silently discarding resamples without an applicable denominator or class.
+    """
+    descriptive = n_shots < 5 or positive_shots < MIN_POSITIVE_SHOTS_FOR_CI
+    return {
+        "positive_shots": positive_shots,
+        "descriptive_only": descriptive,
+        "interval_policy": "No population-level 95% CI when fewer than five "
+        "physical shots carry positives; otherwise percentile intervals over "
+        "finite shot-bootstrap draws, with valid/undefined counts reported.",
+        "ci95": {
+            key: None if descriptive else _ci(np.asarray(draws))
+            for key, draws in values.items()
+        },
+        "bootstrap_draw_counts": {
+            key: {
+                "valid": int(np.isfinite(draws).sum()),
+                "undefined": int((~np.isfinite(draws)).sum()),
+            }
+            for key, draws in values.items()
+        },
+    }
+
+
 def summarise(
     parts: Sequence[ShotScore], boot: np.ndarray | None = None
 ) -> dict[str, object]:
-    """Point estimates and 95 % shot-bootstrap intervals of every metric.
+    """Point estimates, applicable intervals and valid/undefined draw counts.
 
     `boot` is `draws(len(parts))`; with none, the intervals are omitted. The
-    AUROC and AUPRC are given when every part has a `score`.
+    AUROC and AUPRC are given when every part has a `score`. Intervals are null
+    for fewer than five positive-bearing shots, including all two-shot panels.
     """
     per = np.stack([counts(p) for p in parts])
     out: dict[str, object] = {
@@ -220,14 +252,20 @@ def summarise(
             r["auprc"] = average_precision(truth, score)
         for k, values in reps.items():
             values.append(r[k])
-    out["ci95"] = {k: _ci(np.array(v)) for k, v in reps.items()}
+    out.update(
+        bootstrap_summary(
+            {k: np.asarray(v) for k, v in reps.items()},
+            n_shots=len(parts),
+            positive_shots=sum(bool(np.any(p.truth == 1)) for p in parts),
+        )
+    )
     out["replicates"] = len(boot)
     return out
 
 
 def paired_difference(
     a: Sequence[ShotScore], b: Sequence[ShotScore], boot: np.ndarray, metric: str
-) -> dict[str, float | list[float]]:
+) -> dict[str, object]:
     """`metric(a) - metric(b)` on the same shots (same order), with its interval."""
     if [p.shot for p in a] != [p.shot for p in b]:
         raise ValueError("the two methods must be scored on the same shots")
@@ -243,4 +281,13 @@ def paired_difference(
     all_idx = np.arange(len(a))
     point = value(a, all_idx) - value(b, all_idx)
     reps = np.array([value(a, d) - value(b, d) for d in boot])
-    return {"value": float(point), "ci95": _ci(reps)}
+    audit = bootstrap_summary(
+        {metric: reps},
+        n_shots=len(a),
+        positive_shots=min(
+            sum(bool(np.any(p.truth == 1)) for p in parts) for parts in (a, b)
+        ),
+    )
+    audit["ci95"] = audit["ci95"][metric]
+    audit["bootstrap_draw_counts"] = audit["bootstrap_draw_counts"][metric]
+    return {"value": float(point), "replicates": len(boot), **audit}
