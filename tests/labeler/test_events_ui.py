@@ -330,6 +330,39 @@ def test_a_built_shot_opens_with_its_grid_its_rows_and_its_labels(
     )
 
 
+@pytest.mark.parametrize("human_saved", [False, True])
+def test_inconsistent_detachment_source_is_hidden_and_human_review_is_preserved(
+    client, paths, tables, human_saved
+):
+    import h5py
+
+    directory = tables / "detachment"
+    (directory / "format").mkdir()
+    (directory / "format/detachment_format_test.csv").write_text(SOURCE)
+    path = _built(paths, event="detachment")
+    if human_saved:
+        response = client.post("/api/label", json=_label(
+            event="detachment", intervals=[[100, 150, 4]],
+        ))
+        assert response.status_code == 200
+    reason = (
+        "Producer label table unreadable: producer labels incomplete "
+        "for assessed vote bins"
+    )
+    with h5py.File(path, "a") as store:
+        store.attrs["params"] = json.dumps({"detachment_producer": {"reason": reason}})
+    body = client.get("/api/shot?event=detachment&shot=170815").json()
+    assert body["source"] is None
+    assert body["params"]["detachment_producer"]["reason"] == reason
+    if human_saved:
+        assert body["saved"]["intervals"] == [[100, 150, 4]]
+        assert body["state"] == "changed"
+    else:
+        assert body["saved"] is None and body["state"] == "unreviewed"
+    queue = client.get("/api/queue?event=detachment").json()
+    assert queue["shots"][0]["shot"] == 170815
+
+
 def _one_trace(event, shot, paths):
     """A builder standing in for the panel builder: one 10 ms trace."""
     trace = TraceRow("p0", "Trace", np.zeros((2, 1, 10), dtype="float32"))

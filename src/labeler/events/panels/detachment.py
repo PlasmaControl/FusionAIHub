@@ -20,7 +20,7 @@ from ._shared import plasma_window
 
 log = logging.getLogger(__name__)
 # Channel order from modalities.yaml. Calibrated spectroscopy units are recorded
-# by the raw source and configs/shot_design/ignite_modalities.yaml. Corpus HDF5
+# by the raw source and configs/shot_design/signals.yaml (dalpha). Corpus HDF5
 # strips chord locations, so do not assign upper/lower/midplane from an index.
 TRACES = (
     (
@@ -30,7 +30,13 @@ TRACES = (
         "ph/(sr cm2 s)",
         1.0,
     ),
-    ("co2", "CO2 R0 line-averaged density", ["R0 DENUF"], "cm^-3", 1.0),
+    (
+        "co2",
+        "CO2 R0 density proxy (corpus DENUF)",
+        ["R0 DENUF"],
+        "native units (unverified)",
+        1.0,
+    ),
     (
         "gas_flow",
         "Gas flow",
@@ -61,6 +67,45 @@ BIN_INDICATORS = (
     ("prad", "Lower-divertor radiation fraction", "dimensionless"),
     ("tangtv", "TangTV normalized front DZ", "dimensionless"),
 )
+AFRAC_CAVEAT = (
+    "Uncalibrated raw swept probes, referenced to this shot's own 0.90 quantile. "
+    "A shot detached throughout may be miscalled attached in its upper tail; "
+    "do not use this indicator alone."
+)
+CO2_CAVEAT = (
+    "CO2 UF density input is a line integral without a chord-length division; "
+    "native UF units are unverified. It is upstream density context, not a "
+    "calibrated line-average or local Thomson measurement."
+)
+
+
+def indicator_path(shot, paths):
+    """Prefer producer bins, retaining the original indicator interchange."""
+    override = os.environ.get("LABELER_DETACHMENT_INDICATORS")
+    roots = (
+        [Path(override)]
+        if override
+        else [
+            paths.root / "round4/detach/bins",
+            paths.root / "round4/detach/indicators",
+        ]
+    )
+    for root in roots:
+        for suffix in (".npz", ".csv"):
+            path = root / f"{int(shot)}{suffix}"
+            if path.is_file():
+                return path
+    return roots[0] / f"{int(shot)}.npz"
+
+
+def density_cache_path(shot, paths):
+    """Local producer CO2 cache; this adapter never fetches missing signals."""
+    root = Path(
+        os.environ.get(
+            "LABELER_DETACHMENT_CACHE_ROOT", str(paths.root / "round4/detach/cache")
+        )
+    )
+    return root / f"{int(shot)}.npz"
 
 
 def indicator_panels(shot, paths, t_range=None):
@@ -68,16 +113,10 @@ def indicator_panels(shot, paths, t_range=None):
 
     Producer values are Afrac, Prad_divL/P_in, and normalized DZ, NOT MW and
     metres. Preserve its validity gates, reasons and votes; never recompute them.
-    Configure LABELER_DETACHMENT_INDICATORS, otherwise use a generic local root.
+    Configure LABELER_DETACHMENT_INDICATORS, otherwise prefer producer bins and
+    fall back to its original indicator CSVs.
     """
-    root = Path(
-        os.environ.get(
-            "LABELER_DETACHMENT_INDICATORS", str(paths.root / "indicators/detachment")
-        )
-    )
-    path = root / f"{int(shot)}.npz"
-    if not path.is_file():
-        path = root / f"{int(shot)}.csv"
+    path = indicator_path(shot, paths)
     if not path.is_file():
         return []
     try:
@@ -123,7 +162,16 @@ def indicator_panels(shot, paths, t_range=None):
             if y.shape != x.shape or valid.shape != x.shape:
                 raise ValueError(f"{name}: value/valid shape disagrees with clock")
             y[~valid] = np.nan
-            metadata = {"source": str(path), "schema": schema, **bin_metadata}
+            indicator = {"prad_div": "prad", "tangtv_front_height": "tangtv"}.get(
+                name, name
+            )
+            metadata = {
+                "source": str(path),
+                "schema": schema,
+                "indicator": indicator,
+                "valid": valid[keep].tolist(),
+                **bin_metadata,
+            }
             for suffix in ("reason", "vote"):
                 key = f"{name}_{suffix}"
                 if key in data:
@@ -131,7 +179,91 @@ def indicator_panels(shot, paths, t_range=None):
                     if values.shape != x.shape:
                         raise ValueError(f"{key}: shape disagrees with clock")
                     metadata[suffix] = values[keep].tolist()
-            if np.isfinite(y[keep]).any():
+            hlines = ()
+            if indicator == "afrac":
+                hlines = (0.5, 0.75)
+                metadata.update(
+                    {
+                        "caveat": AFRAC_CAVEAT,
+                        "interpretation": (
+                            "Falling Afrac supports detachment: <=0.5 detached, "
+                            ">=0.75 attached; transition band abstains."
+                        ),
+                    }
+                )
+            if indicator == "tangtv":
+                sources = np.asarray(data.get("tangtv_source", ["unknown"] * len(x)))
+                if sources.shape != x.shape:
+                    raise ValueError("tangtv_source: shape disagrees with clock")
+                metadata["tangtv_source"] = sources[keep].astype(str).tolist()
+                # Legacy CSVs omit provenance, so never infer an inversion from
+                # their height column. Bin titles visibly identify every source.
+                title = _tangtv_title(title, metadata["tangtv_source"])
+            if keep.any() and (np.isfinite(y[keep]).any() or "vote" in metadata):
+                built.append(
+                    Panel(
+                        title=title,
+                        x=x[keep],
+                        y=y[None, keep],
+                        ylabel=unit,
+                        legend=[f"{title} ({unit})"],
+                        hlines=hlines,
+                        metadata=metadata,
+                    )
+                )
+        if bins:
+            for name, title, unit in (
+                (
+                    "aux_ne",
+                    "CO2 density proxy (producer aux_ne)",
+                    "native units (unverified)",
+                ),
+                (
+                    "aux_te_div",
+                    "Divertor Thomson Te (independent check; per-bin peak)",
+                    "eV",
+                ),
+            ):
+                if name not in data:
+                    continue
+                y = np.asarray(data[name], dtype=float).copy()
+                if y.shape != x.shape:
+                    raise ValueError(f"{name}: shape disagrees with clock")
+                y[~np.isfinite(y) | (y <= 0)] = np.nan
+                if not np.isfinite(y[keep]).any():
+                    continue
+                metadata = {
+                    "source": str(path),
+                    "schema": schema,
+                    "quantity": name,
+                    "missing_policy": "nonfinite and nonpositive values are missing",
+                    **bin_metadata,
+                }
+                if name == "aux_ne":
+                    metadata.update(
+                        {
+                            "context_quantity": "density",
+                            "measurement": "CO2 line-integrated density proxy",
+                            "source_selection": (
+                                "Producer selects V2 (DENV2UF), then R0 (DENR0UF), "
+                                "then V3 (DENV3UF); chosen chord not recorded in bins"
+                            ),
+                            "caveat": CO2_CAVEAT,
+                        }
+                    )
+                else:
+                    metadata.update(
+                        {
+                            "independent_check": True,
+                            "measurement": (
+                                "Peak over divertor Thomson channel bin medians"
+                            ),
+                            "caveat": (
+                                "Independent temperature check; not an indicator. "
+                                "Zero is a failed Thomson fit and is missing."
+                            ),
+                        }
+                    )
                 built.append(
                     Panel(
                         title=title,
@@ -148,13 +280,27 @@ def indicator_panels(shot, paths, t_range=None):
         return []
 
 
-def _block_means(data, x, ids, start, stop, step):
+def _tangtv_title(title, sources):
+    """Identify model readings, including traces whose source changes by bin."""
+    have = set(sources)
+    descriptions = []
+    if "inversion" in have:
+        descriptions.append("tomographic inversion")
+    if "surrogate" in have:
+        descriptions.append("surrogate regression (model estimate)")
+    if have - {"inversion", "surrogate", "none"}:
+        descriptions.append("source not recorded")
+    return f"{title} ({' + '.join(descriptions) or 'no front-height source'})"
+
+
+def _block_means(data, x, ids, start, stop, step, *, positive=False):
     """Average contiguous native samples, including a final partial block.
 
     HDF5 reads are bounded to ~262k samples per channel. Float32 clocks use the
     span for spacing, avoiding quantized median-diff aliases at late shot times.
     """
     xs, ys = [], []
+    valid_counts = np.zeros(len(ids), dtype=np.int64)
     chunk = max(1, 262144 // step) * step
     for lo in range(start, stop, chunk):
         hi = min(stop, lo + chunk)
@@ -162,13 +308,68 @@ def _block_means(data, x, ids, start, stop, step):
         counts = np.minimum(step, hi - lo - starts)
         native = np.asarray(data[ids, lo:hi], dtype=np.float64)
         finite = np.isfinite(native)
+        if positive:
+            finite &= native > 0
         sums = np.add.reduceat(np.where(finite, native, 0), starts, axis=1)
         ns = np.add.reduceat(finite.astype(np.int32), starts, axis=1)
+        valid_counts += ns.sum(axis=1)
         mean = np.full(sums.shape, np.nan)
         np.divide(sums, ns, out=mean, where=ns > 0)
         xs.append(np.add.reduceat(x[lo:hi], starts) / counts)
         ys.append(mean)
-    return np.concatenate(xs), np.concatenate(ys, axis=1)
+    return (
+        np.concatenate(xs),
+        np.concatenate(ys, axis=1),
+        valid_counts / (stop - start),
+    )
+
+
+def _cached_density(shot, paths, t_range):
+    """Use the producer's cached R0 input before corpus/local-density fallbacks."""
+    path = density_cache_path(shot, paths)
+    if not path.is_file():
+        return None
+    try:
+        with np.load(path, allow_pickle=False) as data:
+            if not {"denr0uf__t", "denr0uf__y"}.issubset(data.files):
+                return None
+            x = np.asarray(data["denr0uf__t"], dtype=float)
+            y = np.asarray(data["denr0uf__y"], dtype=float).copy()
+        if (
+            x.ndim != 1
+            or len(x) < 2
+            or y.shape != x.shape
+            or not np.isfinite(x).all()
+            or np.any(np.diff(x) <= 0)
+        ):
+            raise ValueError("DENR0UF clock/value shapes must agree and increase")
+        keep = np.ones(len(x), dtype=bool)
+        if t_range is not None:
+            keep = (x >= t_range[0]) & (x <= t_range[1])
+        y[~np.isfinite(y) | (y <= 0)] = np.nan
+        if not np.isfinite(y[keep]).any():
+            return None
+        title = "CO2 R0 density proxy (cached DENR0UF)"
+        unit = "native units (unverified)"
+        return Panel(
+            title=title,
+            x=x[keep],
+            y=y[None, keep],
+            ylabel=unit,
+            legend=[f"DENR0UF ({unit})"],
+            metadata={
+                "source": str(path),
+                "node": "DENR0UF",
+                "context_quantity": "density",
+                "measurement": "CO2 line-integrated density proxy",
+                "source_selection": "Cached R0; producer aux_ne unavailable",
+                "missing_policy": "nonfinite and nonpositive values are missing",
+                "caveat": CO2_CAVEAT,
+            },
+        )
+    except (ValueError, KeyError, OSError) as error:
+        log.warning("shot %s: cannot read cached CO2 density: %s", shot, error)
+        return None
 
 
 def panels(shot, *, t_range=None, paths=None):
@@ -177,18 +378,35 @@ def panels(shot, *, t_range=None, paths=None):
     if t_range is None:
         t_range = plasma_window(int(shot), paths)
     built = indicator_panels(shot, paths, t_range)
+    have_density = any(p.metadata.get("context_quantity") == "density" for p in built)
+    if not have_density:
+        panel = _cached_density(shot, paths, t_range)
+        if panel is not None:
+            built.append(panel)
+            have_density = True
     path = paths.corpus_file(int(shot))
     if not path.is_file():
         return built
     with h5py.File(path, "r") as source:
-        have_density = False
         for name, title, names, unit, spacing in TRACES:
-            if name not in source:
+            if name not in source or (name == "co2" and have_density):
                 continue
-            panel = _context_panel(source[name], title, names, unit, spacing, t_range)
+            panel = _context_panel(
+                source[name],
+                title,
+                names,
+                unit,
+                spacing,
+                t_range,
+                positive=name == "co2",
+                positive_chords=name == "filterscopes",
+            )
             if panel is not None:
+                panel.metadata.update({"source": str(path), "corpus_group": name})
                 if name == "filterscopes":
-                    for y, legend in zip(panel.y, panel.legend, strict=True):
+                    for c, (y, legend) in enumerate(
+                        zip(panel.y, panel.legend, strict=True)
+                    ):
                         chord = legend.split()[0]
                         built.append(
                             Panel(
@@ -199,17 +417,29 @@ def panels(shot, *, t_range=None, paths=None):
                                 ylabel=unit,
                                 metadata={
                                     **panel.metadata,
+                                    "valid_fraction": [
+                                        panel.metadata["valid_fraction"][c]
+                                    ],
                                     "node": f"\\SPECTROSCOPY::{chord}",
                                     "location": "not recorded in corpus",
                                     "units_source": (
                                         "SPECTROSCOPY FS units; "
-                                        "configs/shot_design/ignite_modalities.yaml"
+                                        "configs/shot_design/signals.yaml (dalpha)"
                                     ),
                                     "layout": "one calibrated chord per row",
                                 },
                             )
                         )
                 else:
+                    if name == "co2":
+                        panel.metadata.update(
+                            {
+                                "context_quantity": "density",
+                                "measurement": "CO2 line-integrated density proxy",
+                                "source_selection": "Corpus R0 chord",
+                                "caveat": CO2_CAVEAT,
+                            }
+                        )
                     built.append(panel)
                 have_density |= name == "co2"
         if not have_density and "ts_core_density" in source:
@@ -220,24 +450,38 @@ def panels(shot, *, t_range=None, paths=None):
                 "m^-3",
                 1.0,
                 t_range,
+                positive=True,
+                max_channels=8,
             )
             if panel is not None:
-                # Show a spread of local channels without assigning absent radii.
-                ids = np.linspace(0, len(panel.y) - 1, min(8, len(panel.y)), dtype=int)
-                panel.y = panel.y[ids]
-                panel.legend = [panel.legend[i] for i in ids]
                 panel.metadata.update(
                     {
-                        "fallback_for": "CO2 R0 unavailable in plasma window",
+                        "source": str(path),
+                        "corpus_group": "ts_core_density",
+                        "fallback_for": "CO2 density unavailable in plasma window",
                         "measurement": "local Thomson channels; not line-averaged",
-                        "channel_selection": "up to eight evenly spaced live channels",
+                        "channel_selection": (
+                            "up to eight channels ranked by positive native-sample "
+                            "valid fraction; ties retain channel order"
+                        ),
                     }
                 )
                 built.append(panel)
     return built
 
 
-def _context_panel(group, title, names, unit, spacing, t_range):
+def _context_panel(
+    group,
+    title,
+    names,
+    unit,
+    spacing,
+    t_range,
+    *,
+    positive=False,
+    positive_chords=False,
+    max_channels=None,
+):
     """Reduce a local context trace, rejecting stubs and empty plasma windows."""
     if "xdata" not in group or "ydata" not in group:
         return None
@@ -260,19 +504,39 @@ def _context_panel(group, title, names, unit, spacing, t_range):
     ids = list(range(min(len(names), data.shape[0])))
     if stop <= start or not ids:
         return None
-    bx, y = _block_means(data, x, ids, start, stop, step)
+    bx, y, fraction = _block_means(data, x, ids, start, stop, step, positive=positive)
     live = np.isfinite(y).any(axis=1)
+    if positive_chords:
+        # Suppress empty/negative-offset chords, without asserting a calibrated
+        # noise floor. The explicit policy describes this availability screen.
+        live[live] &= np.nanmedian(y[live], axis=1) > 0
     if not live.any():
         return None
+    selected = np.flatnonzero(live)
+    if max_channels is not None:
+        selected = selected[
+            np.argsort(-fraction[selected], kind="stable")[:max_channels]
+        ]
+    metadata = {
+        "reduction": "block mean",
+        "samples_per_block": step,
+        "block_ms": step * dt,
+        "valid_fraction": fraction[selected].tolist(),
+    }
+    if positive:
+        metadata["missing_policy"] = (
+            "nonfinite and nonpositive native samples masked before block means"
+        )
+    if positive_chords:
+        metadata["channel_policy"] = (
+            "retain finite chords with positive median block mean in the displayed "
+            "window; availability screen, not a calibration or noise-floor test"
+        )
     return Panel(
         title=title,
         x=bx,
-        y=y[live],
-        legend=[f"{names[c]} ({unit})" for c, ok in zip(ids, live, strict=True) if ok],
+        y=y[selected],
+        legend=[f"{names[ids[c]]} ({unit})" for c in selected],
         ylabel=unit,
-        metadata={
-            "reduction": "block mean",
-            "samples_per_block": step,
-            "block_ms": step * dt,
-        },
+        metadata=metadata,
     )

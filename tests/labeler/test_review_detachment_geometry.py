@@ -48,20 +48,21 @@ def test_shelf_gate_matches_producer_bounds_and_sentinels():
 
 def test_topology_does_not_guess_double_null_or_limited():
     config = geometry.configurations(
-        [1.4, 1.4, 1.4, 1.4, 1.4, -9.99, 1.4],
-        [-1.0, 1.0, -1.0, -1.0, -1.0, -9.99, -1.0],
-        [-9.99, -9.99, 1.4, 1.4, 1.4, -9.99, 1.4],
-        [-9.99, -9.99, 1.0, 1.0, 1.0, -9.99, 1.0],
-        [np.nan, np.nan, np.nan, 0.005, 0.03, np.nan, 0.4],
+        [1.4, 1.4, 1.4, 1.4, 1.4, -9.99, 1.4, 1.4],
+        [-1.0, -1.0, -1.0, -1.0, -1.0, -9.99, -1.0, -1.0],
+        [-9.99, 1.4, 1.4, 1.4, 1.4, -9.99, 1.4, -9.99],
+        [-9.99, 1.0, 1.0, 1.0, 1.0, -9.99, 1.0, -9.99],
+        [np.nan, np.nan, -0.03, 0.005, 0.03, -0.03, 0.4, 0.005],
     )
     assert config.tolist() == [
+        None,
+        None,
         "LSN",
-        "USN",
-        "unknown",
         "DN",
-        "LSN",
-        "unknown",
-        "unknown",
+        "USN",
+        None,
+        None,
+        None,
     ]
 
 
@@ -90,11 +91,11 @@ def test_geometry_load_and_camera_gate_use_local_clock(tmp_path, monkeypatch):
     meta = geometry.load(190109, paths, [50, 250])
     assert meta["total_samples"] == 2
     assert meta["shelf_gate_samples"] == 1
-    assert meta["counts"]["LSN"] == 2
-    assert meta["counts"]["limited"] == 0
+    assert meta["counts"]["missing"] == 2
+    assert meta["configuration_available"] is False
     configurations, valid = geometry.at_times(meta, [100, 140, 150, 200, 250])
     assert valid.tolist() == [True, True, False, False, False]
-    assert configurations.tolist() == ["LSN", "LSN", "unknown", "LSN", "unknown"]
+    assert configurations.tolist() == [None, None, None, None, None]
     assert geometry.load(190110, paths)["reason"] == "efit_missing"
     paths.corpus.mkdir()
     with h5py.File(paths.corpus_file(190109), "w") as source:
@@ -115,6 +116,24 @@ def test_geometry_load_and_camera_gate_use_local_clock(tmp_path, monkeypatch):
     assert refreshed[0]["lower_channels"]
 
 
+def test_default_cache_supplies_geometry_without_an_environment_override(
+    tmp_path, monkeypatch
+):
+    monkeypatch.delenv("LABELER_DETACHMENT_GEOMETRY_ROOT", raising=False)
+    root = tmp_path / "round4/detach/cache"
+    root.mkdir(parents=True)
+    np.savez(
+        root / "190001.npz",
+        ipmeas__t=[0, 100],
+        ipmeas__y=[600000, 600000],
+        zxpt1__t=[0, 100],
+        zxpt1__y=[-1, -1],
+    )
+    paths = Paths(root=tmp_path)
+    assert geometry.current_window(190001, paths) == (0.0, 100.0)
+    assert geometry.load(190001, paths)["total_samples"] == 2
+
+
 def test_queue_union_excludes_cohort_and_explicit_producer_test():
     module = roster_module()
     cohort = pd.DataFrame(
@@ -133,7 +152,9 @@ def test_queue_union_excludes_cohort_and_explicit_producer_test():
         "shots": [190001, 190002, 190003, 190004, 190005],
         "explicit_test_shots": [190005],
     }
-    queue, excluded = module.queue_records(records, producer, cohort)
+    queue, excluded = module.queue_records(
+        records, producer, cohort, include_no_video=True
+    )
     assert [r["shot"] for r in queue] == [190001, 190002, 190004]
     assert queue[-1]["split"] == "producer_external"
     assert len(queue[0]["queue_sources"]) == 2
@@ -196,10 +217,9 @@ def test_context_sources_fingerprint_existing_inputs(tmp_path, monkeypatch):
     root.mkdir()
     monkeypatch.setenv("LABELER_DETACHMENT_INDICATORS", str(root))
     monkeypatch.setenv("LABELER_DETACHMENT_GEOMETRY_ROOT", str(root))
-    assert all(
-        value["sha256"] is None
-        for value in detachment.context_sources(190001, paths).values()
-    )
+    initial = detachment.context_sources(190001, paths)
+    assert initial["geometry"]["sha256"] is None
+    assert initial["indicators"]["sha256"] is None
     np.savez(root / "190001.npz", start_ms=[0, 50])
     initial = detachment.context_sources(190001, paths)
     assert initial["geometry"]["sha256"] == initial["indicators"]["sha256"]

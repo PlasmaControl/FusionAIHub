@@ -303,7 +303,7 @@ function say(message, error = false) {
 
 function readTokens() {
   const style = getComputedStyle(document.documentElement);
-  const names = ["panel", "ink", "muted", "rule", "label", "changed", "veil", "mask", "rejected", "tokeye"];
+  const names = ["panel", "ink", "muted", "rule", "label", "changed", "veil", "mask", "rejected", "tokeye", "unreviewed"];
   T = Object.fromEntries(names.map((name) => [name, style.getPropertyValue(`--${name}`).trim()]));
 }
 
@@ -807,7 +807,12 @@ async function save(next) {
 // -- drawing
 
 function buildRows() {
-  $("rows").replaceChildren(...S.meta.rows.map(() => document.createElement("canvas")));
+  $("rows").replaceChildren(...S.meta.rows.map(row => {
+    const canvas = document.createElement("canvas");
+    const metadata = S.meta.params?.panel_metadata?.[row.name];
+    canvas.title = metadata?.caveat || "";
+    return canvas;
+  }));
   sizeCanvases();
 }
 
@@ -848,6 +853,7 @@ function render() {
     drawRows();
     drawAxis();
     drawTrack($("source-track"), S.meta.source, false);
+    drawProducerStrips();
     drawTrack($("label-track"), S.label, true, S.api >= 8 ? 0 : undefined);
     if (S.api >= 8) drawTrack($("crowd-track"), S.label, true, 1);
     showVideoCursor();
@@ -878,6 +884,10 @@ function drawRows() {
     if (row.kind === "image") drawTokeye(g, row, w, h, false);
     g.restore();
     drawGutter(g, row, range, h);
+    if (S.event === "detachment" && row.title === "Afrac") {
+      g.font = FONT; g.fillStyle = T.muted;
+      g.fillText("Uncalibrated; self-reference (0.90 quantile)", GUTTER + 5, 13);
+    }
     g.fillStyle = T.rule;
     g.fillRect(0, h - 1, w, 1);
   });
@@ -1736,6 +1746,7 @@ function buildVideo() {
   videoTimes();
   $("video-cameras").replaceChildren(...cards.map((card) => card.figure));
   $("video-panel").hidden = false;
+  buildProducerStrips();
   const slider = $("video-time");
   [slider.min, slider.max] = S.meta.t_range;
   slider.disabled = !S.video.times.length;
@@ -1765,6 +1776,7 @@ async function seekVideo(t, playbackEpoch = null) {
     $("video-clock").textContent = `${time.toFixed(1)} ms`;
     $("video-play").disabled = !v.times.length;
     showVideoGeometry(time);
+    drawProducerStrips();
     showVideoCursor();
   };
   const cards = v.cards.filter(c => c.channel);
@@ -1804,14 +1816,82 @@ function showVideoGeometry(time) {
   const sample = samples.reduce((best, item) => !best ||
     Math.abs(item.time_ms - time) < Math.abs(best.time_ms - time) ? item : best, null);
   const nearby = sample && Math.abs(sample.time_ms - time) <= 40;
-  const configuration = nearby ? sample.configuration : "unknown";
+  const configuration = nearby ? sample.configuration : null;
   const names = { LSN: "LSN (lower single null)", USN: "USN (upper single null)",
-    DN: "DN (double null)", limited: "limited", unknown: "unknown" };
-  line.textContent = `Magnetic configuration: ${names[configuration] || configuration}` +
-    (nearby ? ` · lower outer strike-point gate ${sample.shelf_gate ? "valid" : "invalid"}` :
-      " · EFIT unavailable at this time");
+    DN: "DN (double null)" };
+  line.textContent = (configuration ? `Magnetic configuration: ${names[configuration]} · ` : "") +
+    (nearby ? `Lower outer strike-point gate ${sample.shelf_gate ? "valid" : "invalid"}` :
+      "EFIT shelf gate unavailable at this time") +
+    (nearby && !configuration ? " · topology unavailable (DRSEP required)" : "");
   line.title = nearby ? `${sample.time_ms.toFixed(1)} ms: ${sample.reason || geometry.note}` :
     (geometry?.note || "No local EFIT geometry source; use uncertain when geometry is required.");
+}
+
+/** Exact half-open producer bins; an uncovered time has no inferred state. */
+function producerAt(data, time) {
+  const i = data?.bin_start_ms?.findIndex((start, i) => start <= time && time < data.bin_end_ms[i]) ?? -1;
+  if (i < 0) return null;
+  return { state: data.label_available === false ? null : data.state_lm[i],
+    rule: data.label_available === false ? null : data.state_rule[i],
+    tangtv_source: data.tangtv_source[i], confidence: data.confidence[i],
+    votes: Object.fromEntries(Object.entries(data.votes).map(([name, vote]) =>
+      [name, { vote: vote.vote[i], valid: vote.valid[i], reason: vote.reason[i] }])) };
+}
+
+const PRODUCER_LANES = [
+  ["state_lm", "Producer"], ["state_rule", "Rule"],
+  ["afrac", "Afrac vote"], ["prad", "Prad,div vote"], ["tangtv", "TangTV vote"],
+];
+
+function buildProducerStrips() {
+  const data = S.meta?.params?.detachment_producer;
+  $("detachment-strips").hidden = false;
+  $("detachment-lanes").replaceChildren(...PRODUCER_LANES.map(([key, title]) => {
+    const canvas = document.createElement("canvas");
+    canvas.dataset.producerLane = key;
+    canvas.setAttribute("aria-label", title);
+    canvas.addEventListener("click", event => { pauseVideo(); seekVideo(timeAt(event.clientX)); });
+    return canvas;
+  }));
+  $("detachment-strips").title = data?.source || "Producer label source unavailable";
+}
+
+function drawProducerStrips() {
+  if (S.event !== "detachment" || !S.video) return;
+  const data = S.meta?.params?.detachment_producer;
+  const canvases = $("detachment-lanes").children;
+  PRODUCER_LANES.forEach(([key, title], lane) => {
+    const canvas = canvases[lane];
+    if (!canvas) return;
+    const g = context(canvas), h = canvas.clientHeight, w = canvas.clientWidth;
+    g.font = FONT; g.fillStyle = T.muted;
+    g.fillText(title, 8, h / 2 + 4);
+    g.save(); g.beginPath(); g.rect(GUTTER, 0, w - GUTTER - RIGHT, h); g.clip();
+    (data?.bin_start_ms || []).forEach((start, i) => {
+      const a = px(start), b = px(data.bin_end_ms[i]);
+      const vote = data.votes[key];
+      const code = vote ? vote.vote[i] : data[key][i];
+      if (code === 0 && !vote) return;
+      g.fillStyle = code > 0 ? categoryColour(code) : T.unreviewed;
+      g.fillRect(a, 3, b - a, h - 6);
+      if (vote && !vote.valid[i]) hatch(g, a, 3, b - a, h - 6);
+    });
+    if (Number.isFinite(S.video.time)) {
+      g.fillStyle = T.ink; g.fillRect(px(S.video.time), 0, 1, h);
+    }
+    g.restore();
+  });
+  const at = producerAt(data, S.video.time);
+  const stateName = c => c === null ? "label not published" :
+    c === 0 ? "unassessed" : S.categories[c] || "unavailable";
+  const voteName = v => !v.valid ? `invalid (${v.reason || "reason unavailable"})` :
+    v.vote === -1 ? "abstains (transition band)" : stateName(v.vote);
+  $("detachment-reading").textContent = at ?
+    `At ${S.video.time.toFixed(1)} ms: producer ${stateName(at.state)} · rule ${stateName(at.rule)} · ` +
+    Object.entries(at.votes).map(([name, vote]) => `${name}: ${voteName(vote)}`).join(" · ") +
+    (at.tangtv_source === "surrogate" ? " · TangTV source: surrogate regression (model estimate)" :
+      at.tangtv_source === "inversion" ? " · TangTV source: tomographic inversion" : "") :
+    data?.reason || "No producer bin at this time (unassessed)";
 }
 
 function loadVideoFrame(card, time, current, playback) {
@@ -2237,7 +2317,7 @@ function wire() {
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { ms, paint, runs, normalise, diffRuns, versionChanges, niceStep, hitTest, hasOverlaps, regionAt, lut, modeLut };
+  module.exports = { ms, paint, runs, normalise, diffRuns, versionChanges, niceStep, hitTest, hasOverlaps, regionAt, lut, modeLut, producerAt };
 } else {
   boot();
 }

@@ -175,7 +175,7 @@ def test_panel_sampling_and_indicator_validity(tmp_path, monkeypatch):
     built = panels.panels(170815, paths=paths)
     by_title = {p.title: p for p in built}
     assert np.isnan(by_title["Afrac"].y[0, 1])
-    assert np.isnan(by_title["TangTV front height"].y[0, 1])
+    assert np.isnan(by_title["TangTV front height (source not recorded)"].y[0, 1])
     assert "Divertor radiated power" not in by_title  # no validity mask
     assert not any(
         "Langmuir" in title or "Bolometer raw" in title for title in by_title
@@ -231,7 +231,8 @@ def test_usable_co2_density_keeps_the_line_average_instead_of_thomson(tmp_path):
             group["xdata"] = [0.0, 0.1, 0.2]
             group["ydata"] = np.ones((channels, 3))
     density = [p for p in panels.panels(170815, paths=paths) if "density" in p.title]
-    assert [p.title for p in density] == ["CO2 R0 line-averaged density"]
+    assert [p.title for p in density] == ["CO2 R0 density proxy (corpus DENUF)"]
+    assert density[0].ylabel == "native units (unverified)"
 
 
 @pytest.mark.parametrize("width", [20.0, 50.0, 100.0])

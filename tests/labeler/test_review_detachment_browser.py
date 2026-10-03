@@ -14,6 +14,7 @@ from labeler.events.review import build, labels
 
 from .test_review_browser import DRIVER, NODE, SHELLS, TOKEN, served  # noqa: F401
 from .test_review_detachment import corpus
+from .test_review_detachment_producer import table
 
 pytestmark = pytest.mark.skipif(
     NODE is None or not SHELLS, reason="needs node and a headless Chromium"
@@ -66,6 +67,11 @@ def test_video_slider_playback_clicks_and_labels(
         signals[f"{name}__y"] = np.full(13, value)
     np.savez(geometry / "170815.npz", **signals)
     monkeypatch.setenv("LABELER_DETACHMENT_GEOMETRY_ROOT", str(geometry))
+    producer_labels = tmp_path / "producer.csv.gz"
+    frame = table(producer_labels)
+    frame["start_ms"] -= 100
+    frame.to_csv(producer_labels, index=False)
+    monkeypatch.setenv("LABELER_DETACHMENT_LABELS", str(producer_labels))
     build.build("detachment", 170815, paths)
     result = subprocess.run(
         [

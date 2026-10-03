@@ -19,17 +19,13 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import h5py
-import matplotlib
 import pandas as pd
 import uvicorn
+from detachment_review_roster import snapshot_suggestions
 
 from labeler.config import Paths, git_dirty, git_sha, sha256_of
 from labeler.events.review import build, rows, video
 from labeler.events.ui.app import create_app
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-from PIL import Image
 
 REPO = Path(__file__).resolve().parents[2]
 TESTS = [
@@ -38,6 +34,9 @@ TESTS = [
         "review_detachment",
         "review_detachment_browser",
         "review_detachment_geometry",
+        "review_detachment_producer",
+        "detachment_diagnostics",
+        "detachment_queue",
         "review_agreement",
         "review_build",
         "review_rows",
@@ -61,15 +60,22 @@ NEW_PYTHON = [
     "scripts/labeler/detachment_review_demo.py",
     "scripts/labeler/detachment_review_roster.py",
     "src/labeler/events/review/geometry.py",
+    "src/labeler/events/review/producer.py",
+    "tests/labeler/test_review_detachment_producer.py",
+    "tests/labeler/test_detachment_diagnostics.py",
+    "tests/labeler/test_detachment_queue.py",
+    "scripts/labeler/detachment_review_export.py",
     "tests/labeler/test_review_detachment_geometry.py",
 ]
 CHANGED_PYTHON = NEW_PYTHON + [
+    "tests/labeler/test_review_page.py",
     "src/labeler/events/review/panel_rows.py",
     "tests/labeler/test_review_panel_rows.py",
     "src/labeler/events/interval_tables.py",
     "src/labeler/events/panels/__init__.py",
     "src/labeler/events/review/build.py",
     "src/labeler/events/review/rows.py",
+    "src/labeler/events/review/labels.py",
     "src/labeler/events/ui/app.py",
     "src/labeler/events/review/agreement.py",
     "tests/labeler/test_review_build.py",
@@ -156,96 +162,12 @@ def verify(out):
         raise RuntimeError(f"verification failed: see {out / 'verification.json'}")
 
 
-def paper_export(screenshot, out, shot):
-    """Annotate a cropped live-page image with vector, column-readable text."""
-    layout_path = Path(str(screenshot) + ".paper.json")
-    crop_path = Path(str(screenshot) + ".paper.png")
-    layout = json.loads(layout_path.read_text())
-    with Image.open(crop_path) as image:
-        pixels = image.copy()
-    # 16 px page text at this width is >=7 pt at the final 3.25 inch width.
-    width = 3.25
-    page_height = width * pixels.height / pixels.width
-    fig = plt.figure(figsize=(width, page_height + 0.9), facecolor="white")
-    ax = fig.add_axes(
-        [0, 0.35 / (page_height + 0.9), 1, page_height / (page_height + 0.9)]
-    )
-    ax.imshow(pixels)
-    ax.set_axis_off()
-    fig.text(
-        0.02,
-        1 - 0.12 / (page_height + 0.9),
-        f"Shot {shot} · TangTV lower-divertor review",
-        fontsize=8,
-        va="top",
-    )
-    fig.text(0.02, 1 - 0.30 / (page_height + 0.9), layout["view"], fontsize=8, va="top")
-    fig.text(
-        0.02,
-        1 - 0.46 / (page_height + 0.9),
-        f"Corpus image {layout['frame_ms']:.1f} ms · 50 Hz linear blend",
-        fontsize=7.5,
-        va="top",
-    )
-    for letter, key in (
-        ("A", "camera"),
-        ("B", "timestamp"),
-        ("C", "cursor"),
-        ("D", "labels"),
-    ):
-        box = layout[key]
-        x = max(12, min(pixels.width - 12, box["x"] + 12))
-        y = max(12, min(pixels.height - 12, box["y"] + 12))
-        if letter == "B":
-            x = box["x"] - 14
-        elif letter == "C":
-            y += 28
-        elif letter == "D":
-            x = box["x"] + box["width"] - 20
-        ax.text(
-            x,
-            y,
-            letter,
-            fontsize=8,
-            weight="bold",
-            va="center",
-            ha="center",
-            bbox={"boxstyle": "circle,pad=0.2", "fc": "white", "ec": "#0072b2"},
-        )
-    fig.text(
-        0.02,
-        0.20 / (page_height + 0.9),
-        "A Camera · B Shared time · C Cursor · D State controls",
-        fontsize=7,
-        va="center",
-    )
-    fig.text(
-        0.02,
-        0.06 / (page_height + 0.9),
-        "Cropped live review page; annotations added for readability.",
-        fontsize=7,
-        va="center",
-    )
-    base = out / f"detachment_review_{shot}_paper"
-    fig.savefig(base.with_suffix(".pdf"))
-    fig.savefig(base.with_suffix(".png"), dpi=150)
-    plt.close(fig)
-    return {
-        "pdf": str(base.with_suffix(".pdf")),
-        "png": str(base.with_suffix(".png")),
-        "dpi": 150,
-        "width_inches": width,
-        "minimum_annotation_font_pt": 7,
-        "layout": str(layout_path),
-        "page_crop": str(crop_path),
-    }
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--shot", type=int, default=190102)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--indicator-root", type=Path)
+    parser.add_argument("--producer-labels", type=Path)
     parser.add_argument("--capture-time-ms", type=float)
     parser.add_argument(
         "--verify",
@@ -269,6 +191,12 @@ def main():
     os.environ.setdefault(
         "LABELER_DETACHMENT_GEOMETRY_ROOT", str(original.root / "round4/detach/cache")
     )
+    os.environ["LABELER_DETACHMENT_LABELS"] = str(
+        args.producer_labels or original.root / "round4/detach/labels_bins.csv.gz"
+    )
+    os.environ.setdefault(
+        "LABELER_DETACHMENT_CACHE_ROOT", str(original.root / "round4/detach/cache")
+    )
     paths = Paths(root=out, corpus=original.corpus, label_tables=out / "tables")
     event = paths.label_tables / "detachment"
     event.mkdir(parents=True, exist_ok=True)
@@ -281,6 +209,16 @@ def main():
             "shot,tier,holdout,reviewers,verified_on,notes\n"
             f"{args.shot},unverified,false,,,isolated UI demonstration\n"
         )
+    overlay = pd.read_csv(roster, dtype=str, keep_default_na=False)
+    reserved = set(cohort.loc[cohort.split.eq("test"), "shot"].astype(int))
+    reserved.update(overlay.loc[overlay.holdout.eq("true"), "shot"].astype(int))
+    producer_snapshot = snapshot_suggestions(
+        os.environ["LABELER_DETACHMENT_LABELS"],
+        overlay.shot.astype(int),
+        event,
+        reserved_shots=reserved,
+        indicator_root=os.environ["LABELER_DETACHMENT_INDICATORS"],
+    )
     source_shapes = {}
     with h5py.File(paths.corpus_file(args.shot), "r") as source:
         for name in (*video.CAMERAS, "filterscopes", "langmuir", "gas_flow", "co2"):
@@ -300,6 +238,7 @@ def main():
         "cohort": str(cohort_path),
         "corpus": str(paths.corpus_file(args.shot)),
         "indicator_root": os.environ["LABELER_DETACHMENT_INDICATORS"],
+        "producer_snapshot": producer_snapshot,
         "neutral_reviewer": "Reviewer",
         "source_shapes": source_shapes,
         "store": str(store),
@@ -315,7 +254,7 @@ def main():
         "label_writes": False,
         "browser_checks": [],
     }
-    evidence = out / "demo.json"
+    evidence = out / f"demo_{args.shot}.json"
     evidence.write_text(json.dumps(record, indent=2) + "\n")
     node = shutil.which("node")
     shells = sorted(
@@ -324,7 +263,7 @@ def main():
         )
     )
     if not node or not shells:
-        raise RuntimeError("no existing headless browser; render a matplotlib mock")
+        raise RuntimeError("no existing Playwright Chromium; browser evidence required")
     token = "detachment-local-demonstration"
     server = uvicorn.Server(
         uvicorn.Config(
@@ -382,7 +321,6 @@ def main():
             or any(not c["ok"] for c in record["browser_checks"])
         ):
             raise RuntimeError(f"browser check failed: see {evidence}")
-        record["paper_export"] = paper_export(png, out, args.shot)
     finally:
         server.should_exit = True
         thread.join(10)

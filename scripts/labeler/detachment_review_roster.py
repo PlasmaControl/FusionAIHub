@@ -1,9 +1,8 @@
 """Write the real detachment review queue using local, read-only evidence.
 
-Union nonblind train/val cohort shots with a live lower TangTV preview coincident
-with the producer's EFIT shelf gate, and every shot with a producer label/vote
-already on disk. Re-running refreshes producer outputs and geometry. Retained
-curation fields are preserved; corpus and producer inputs are never written.
+Consume the producer-owned roster and label outputs, checking camera availability
+independently of EFIT. The delivery overlay excludes blind shots and, by default,
+shots without live lower-divertor video. Producer inputs are never written.
 """
 
 from __future__ import annotations
@@ -16,6 +15,7 @@ import os
 import shutil
 import subprocess
 import time
+from collections import Counter
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import UTC, datetime
 from pathlib import Path
@@ -27,7 +27,8 @@ import pandas as pd
 
 from labeler.config import Paths, git_sha, sha256_of
 from labeler.events import rosters
-from labeler.events.review import build, detachment, geometry, rows, video
+from labeler.events.review import build, detachment, geometry, labels, rows, video
+from labeler.events.review import producer as producer_review
 
 REPO = Path(__file__).resolve().parents[2]
 SUMMARY = REPO / "docs/labeler/results/detachment_review_queue.json"
@@ -42,7 +43,34 @@ def label_keys(keys):
     )
 
 
-def producer_snapshot(roots):
+def blind_flags(table, size):
+    """Per-row split/holdout flags, with scalar NPZ flags applied to all rows."""
+    blind = np.zeros(size, dtype=bool)
+    for key, reserved in (("split", {"test"}), ("holdout", {"true", "1", "yes"})):
+        if key not in table:
+            continue
+        values = np.asarray(table[key]).astype(str).ravel()
+        if values.size == 1:
+            values = np.repeat(values, size)
+        if values.size != size:
+            raise ValueError(f"{key} flag count does not match shot count")
+        blind |= np.isin(np.char.lower(np.char.strip(values)), list(reserved))
+    return blind
+
+
+def input_files(roots, pattern):
+    """Accept explicit files or directories, without discovering unrelated runs."""
+    return sorted(
+        {
+            path
+            for root in map(Path, roots)
+            for path in ([root] if root.is_file() else root.rglob(pattern))
+            if path.is_file()
+        }
+    )
+
+
+def producer_snapshot(roots, roster_path=None):
     """Read completed local label/vote files, retaining an exact input manifest.
 
     A producer can still be running: partial/unreadable files are recorded and
@@ -50,9 +78,9 @@ def producer_snapshot(roots):
     rosters carry no label/vote field and do not count.
     """
     shots, explicit_test, sources, errors = set(), set(), [], []
-    csvs = sorted({p for root in roots if root.is_dir() for p in root.rglob("*.csv*")})
+    csvs = input_files(roots, "*.csv*")
     for path in csvs:
-        if path.suffix not in (".csv", ".gz"):
+        if not path.name.endswith((".csv", ".csv.gz")):
             continue
         try:
             payload = path.read_bytes()
@@ -60,20 +88,25 @@ def producer_snapshot(roots):
             columns = pd.read_csv(
                 io.BytesIO(payload), nrows=0, compression=compression
             ).columns
-            if "shot" in columns and label_keys(columns):
-                usecols = ["shot"] + (["split"] if "split" in columns else [])
+            if not label_keys(columns):
+                continue
+            usecols = [key for key in ("shot", "split", "holdout") if key in columns]
+            filename_shot = path.name.removesuffix(".gz").removesuffix(".csv")
+            if "shot" in columns:
                 table = pd.read_csv(
                     io.BytesIO(payload), usecols=usecols, compression=compression
                 )
                 values = pd.to_numeric(table.shot, errors="coerce")
                 valid = values.notna() & (values % 1 == 0) & (values >= 100000)
                 found = set(values[valid].astype(int))
-                if "split" in table:
-                    explicit_test.update(
-                        values[valid & table.split.eq("test")].astype(int)
-                    )
-            elif path.stem.isdigit() and label_keys(columns):
-                found = {int(path.stem)}
+                explicit_test.update(
+                    values[valid & blind_flags(table, len(table))].astype(int)
+                )
+            elif filename_shot.isdigit() and int(filename_shot) >= 100000:
+                table = pd.read_csv(io.BytesIO(payload), compression=compression)
+                found = {int(filename_shot)}
+                if blind_flags(table, len(table)).any():
+                    explicit_test.update(found)
             else:
                 continue
             shots.update(found)
@@ -86,8 +119,10 @@ def producer_snapshot(roots):
             )
         except (OSError, ValueError, pd.errors.ParserError, EOFError) as error:
             errors.append({"path": str(path), "error": str(error)})
-    npzs = sorted({p for root in roots if root.is_dir() for p in root.rglob("*.npz")})
+    npzs = input_files(roots, "*.npz")
     for path in npzs:
+        if path.suffix != ".npz":
+            continue
         try:
             with path.open("rb") as stream, np.load(stream, allow_pickle=False) as grid:
                 if not label_keys(grid.files):
@@ -100,17 +135,22 @@ def producer_snapshot(roots):
                     values = np.asarray(grid["shot"], dtype=float).ravel()
                     valid = np.isfinite(values) & (values % 1 == 0) & (values >= 100000)
                     found = set(values[valid].astype(int).tolist())
-                    if "split" in grid:
-                        split = np.asarray(grid["split"]).astype(str).ravel()
-                        if split.shape == values.shape:
-                            explicit_test.update(
-                                values[valid & (split == "test")].astype(int).tolist()
-                            )
+                    explicit_test.update(
+                        values[valid & blind_flags(grid, len(values))]
+                        .astype(int)
+                        .tolist()
+                    )
                 elif path.stem.isdigit() and int(path.stem) >= 100000:
                     found = {int(path.stem)}
-                    if "split" in grid and np.any(
-                        np.asarray(grid["split"]).astype(str) == "test"
-                    ):
+                    size = max(
+                        (
+                            np.asarray(grid[k]).size
+                            for k in ("split", "holdout")
+                            if k in grid
+                        ),
+                        default=1,
+                    )
+                    if blind_flags(grid, size).any():
                         explicit_test.update(found)
                 else:
                     continue
@@ -124,12 +164,178 @@ def producer_snapshot(roots):
             )
         except (OSError, ValueError, BadZipFile, EOFError) as error:
             errors.append({"path": str(path), "error": str(error)})
+    roster, roster_shots = None, []
+    if roster_path is not None:
+        frame = rosters.read_roster(roster_path)
+        roster_shots = frame.shot.astype(int).tolist()
+        explicit_test.update(frame.loc[frame.holdout.eq("true"), "shot"].astype(int))
+        roster = {
+            "path": str(roster_path),
+            "sha256": sha256_of(roster_path),
+            "shots": roster_shots,
+        }
     return {
         "shots": sorted(shots),
+        "roster_shots": sorted(roster_shots),
+        "roster": roster,
         "explicit_test_shots": sorted(explicit_test),
         "sources": sources,
         "errors": errors,
     }
+
+
+def snapshot_suggestions(
+    source_path, queue_shots, event_dir, reserved_shots=(), indicator_root=None
+):
+    """Freeze primary 50 ms producer labels for the isolated Source lane.
+
+    Category zero preserves the assessed window while remaining an empty span in
+    the review reader. Missing/unassessed bins never become attached labels.
+    """
+    source_path, event_dir = Path(source_path), Path(event_dir)
+    payload = source_path.read_bytes()
+    fingerprint = hashlib.sha256(payload).hexdigest()
+    frame = pd.read_csv(
+        io.BytesIO(payload),
+        keep_default_na=False,
+        low_memory=False,
+        compression="gzip" if source_path.name.endswith(".gz") else None,
+    )
+    required = {"shot", "start_ms", "state_lm"}
+    if not required <= set(frame.columns):
+        raise ValueError(f"producer label table requires {sorted(required)}")
+    values = pd.to_numeric(frame.shot, errors="coerce")
+    valid_shot = values.notna() & (values % 1 == 0) & (values >= 100000)
+    explicit_blind = set(
+        values[valid_shot & blind_flags(frame, len(frame))].astype(int)
+    )
+    blind = explicit_blind | set(reserved_shots)
+    selected = frame[valid_shot & values.isin(set(queue_shots) - blind)].copy()
+    selected["shot"] = values[selected.index].astype(int)
+    state = pd.to_numeric(selected.state_lm, errors="coerce")
+    start = pd.to_numeric(selected.start_ms, errors="coerce")
+    if not (state.isin(range(5)) & np.isfinite(start)).all():
+        raise ValueError("producer label bins need finite starts and states 0..4")
+    if selected.duplicated(["shot", "start_ms"]).any():
+        raise ValueError("duplicate producer label bin")
+    indicator_fingerprints, inconsistencies = {}, []
+    if indicator_root is not None:
+        indicator_root = Path(indicator_root)
+        for shot, shot_rows in selected.groupby("shot", sort=True):
+            bins_path = indicator_root / f"{int(shot)}.npz"
+            indicator_fingerprints[str(shot)] = {
+                "path": str(bins_path),
+                "sha256": None,
+            }
+            if not bins_path.is_file():
+                continue
+            try:
+                bins_payload = bins_path.read_bytes()
+                bins_fingerprint = hashlib.sha256(bins_payload).hexdigest()
+                indicator_fingerprints[str(shot)]["sha256"] = bins_fingerprint
+                with np.load(io.BytesIO(bins_payload), allow_pickle=False) as bins:
+                    if not set(shot_rows.start_ms).issubset(set(bins["start_ms"])):
+                        raise ValueError("producer labels and vote bin clocks disagree")
+                    producer_review._verify_snapshot(shot_rows, bins)
+            except (
+                OSError,
+                ValueError,
+                KeyError,
+                AttributeError,
+                BadZipFile,
+                EOFError,
+                IndexError,
+                TypeError,
+            ) as error:
+                inconsistencies.append(
+                    {
+                        "shot": int(shot),
+                        "reason": f"Producer snapshot inconsistent: {error}",
+                        "producer_sha256": fingerprint,
+                        "indicator": indicator_fingerprints[str(shot)],
+                    }
+                )
+        excluded = {item["shot"] for item in inconsistencies}
+        selected = selected[~selected.shot.isin(excluded)]
+        state, start = state[selected.index], start[selected.index]
+    consistency = {
+        "indicator_root": str(indicator_root) if indicator_root is not None else None,
+        "indicator_fingerprints": indicator_fingerprints,
+        "excluded_inconsistent_shots": [item["shot"] for item in inconsistencies],
+        "inconsistencies": inconsistencies,
+    }
+    suggestions = pd.DataFrame(
+        {
+            "shot": selected.shot,
+            "category": state.astype(int),
+            "t_start": start,
+            "t_end": start + 50.0,
+            "confidence": selected.get("confidence", np.nan),
+        }
+    ).sort_values(["shot", "t_start"])
+    path = event_dir / "review/suggestions.csv"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    suggestions.to_csv(path, index=False)
+    entry = labels.write_pointer(
+        event_dir,
+        path,
+        method="detach_vote unverified producer suggestions",
+        version=fingerprint,
+    )
+    entry.update(
+        producer_table=str(source_path),
+        producer_sha256=fingerprint,
+        state_column="state_lm",
+        bin_ms=50,
+        category_zero="not assessed",
+        **consistency,
+    )
+    labels.pointer_path(event_dir).write_text(json.dumps(entry, indent=2) + "\n")
+    return {
+        "producer_table": str(source_path),
+        "producer_sha256": fingerprint,
+        "table": str(path),
+        "sha256": sha256_of(path),
+        "pointer": str(labels.pointer_path(event_dir)),
+        "state_column": "state_lm",
+        "bin_ms": 50,
+        "rows": len(suggestions),
+        "shots": sorted(suggestions.shot.unique().astype(int).tolist()),
+        "explicit_test_shots": sorted(explicit_blind),
+        "reserved_shots": sorted(reserved_shots),
+        **consistency,
+    }
+
+
+def delivery_holdouts(roster_path):
+    """Retain UI reservations after reserved rows leave the review queue.
+
+    The registry is delivery-owned; no producer table is changed. Reservations
+    persist across regenerations until explicitly removed from the registry.
+    """
+    roster_path = Path(roster_path)
+    registry = roster_path.parent / "review/holdouts.json"
+    retained = (
+        set(json.loads(registry.read_text())["shots"]) if registry.is_file() else set()
+    )
+    current = set()
+    if roster_path.is_file():
+        frame = rosters.read_roster(roster_path)
+        current = set(frame.loc[frame.holdout.eq("true"), "shot"].astype(int))
+    shots = retained | current
+    if any(not isinstance(shot, int) or shot < 100000 for shot in shots):
+        raise ValueError("delivery holdouts must be physical integer shot numbers")
+    record = {
+        "path": str(registry),
+        "shots": sorted(shots),
+        "overlay": str(roster_path),
+        "overlay_sha256": sha256_of(roster_path) if roster_path.is_file() else None,
+        "overlay_holdout_shots": sorted(current),
+        "retained_holdout_shots": sorted(retained),
+    }
+    registry.parent.mkdir(parents=True, exist_ok=True)
+    registry.write_text(json.dumps(record, indent=2) + "\n")
+    return {**record, "sha256": sha256_of(registry)}
 
 
 def original_candidates(out, original_roster=None):
@@ -170,21 +376,27 @@ def original_candidates(out, original_roster=None):
 
 
 def scan(paths, cohort, previous=None):
-    """Refresh live previews at EFIT-valid, in-plasma times on every invocation.
+    """Refresh live in-plasma previews independently of EFIT availability.
 
     Accept the older caller's ``previous`` argument without reusing its negative
     decisions: a prior scan may have used an older camera-layout reader.
     """
     records = []
-    selected = cohort[cohort.split.isin(["train", "val"])].sort_values("queue_rank")
+    selected = cohort[~cohort.split.eq("test")].sort_values("queue_rank")
     for row in selected.itertuples(index=False):
         path = paths.corpus_file(int(row.shot))
         record = {
             "shot": int(row.shot),
             "split": row.split,
             "corpus": str(path),
-            "window_ms": [int(row.window_start_ms), int(row.window_end_ms)],
+            "window_ms": (
+                [float(row.window_start_ms), float(row.window_end_ms)]
+                if np.isfinite(row.window_start_ms) and np.isfinite(row.window_end_ms)
+                else None
+            ),
             "lower_channels": [],
+            "camera_available": False,
+            "camera_geometry_eligible": False,
             "reason": "corpus missing",
         }
         record["geometry"] = geometry.load(row.shot, paths, record["window_ms"])
@@ -192,10 +404,10 @@ def scan(paths, cohort, previous=None):
         record["geometry_sha256"] = (
             sha256_of(geometry_path) if geometry_path.is_file() else None
         )
+        record["geometry_reason"] = record["geometry"].get("reason") or (
+            "" if record["geometry"]["shelf_gate_samples"] else "no shelf-gate sample"
+        )
         records.append(record)
-        if not record["geometry"]["shelf_gate_samples"]:
-            record["reason"] = "no EFIT-valid lower-null shelf sample in plasma window"
-            continue
         if not path.is_file():
             continue
         try:
@@ -205,23 +417,31 @@ def scan(paths, cohort, previous=None):
                     continue
                 t, data, channels = video._layout(source["tangtv"])
                 record["source_shape"] = list(data.shape)
+                if len(t) < 2:
+                    record["reason"] = "tangtv one-sample stub"
+                    continue
                 indices = video.frame_indices(t)
-                indices = indices[
-                    (t[indices] * 1000 >= row.window_start_ms)
-                    & (t[indices] * 1000 <= row.window_end_ms)
-                ]
+                if record["window_ms"]:
+                    indices = indices[
+                        (t[indices] * 1000 >= row.window_start_ms)
+                        & (t[indices] * 1000 <= row.window_end_ms)
+                    ]
                 _, valid_geometry = geometry.at_times(
                     record["geometry"], t[indices] * 1000
                 )
-                indices = indices[valid_geometry]
-                record["geometry_valid_preview_times"] = len(indices)
+                record["geometry_valid_preview_times"] = int(valid_geometry.sum())
                 record["preview_indices_checked"] = {}
-                for channel in (0, 2):
+                for channel in (2, 0):
                     if channel >= channels:
                         continue
-                    checked, order = 0, list(indices)
+                    checked, order = 0, list(indices[valid_geometry])
+                    gate_indices = set(order)
                     if order:
                         order.insert(0, order.pop(len(order) // 2))
+                    remainder = [i for i in indices if i not in gate_indices]
+                    if not order and remainder:
+                        remainder.insert(0, remainder.pop(len(remainder) // 2))
+                    order.extend(remainder)
                     for index in order:
                         checked += 1
                         frame = video._frame(
@@ -239,12 +459,13 @@ def scan(paths, cohort, previous=None):
                                     "max": float(finite.max()),
                                 }
                             )
+                            if index in indices[valid_geometry]:
+                                record["camera_geometry_eligible"] = True
                             break
                     record["preview_indices_checked"][str(channel)] = checked
+                record["camera_available"] = bool(record["lower_channels"])
                 record["reason"] = (
-                    ""
-                    if record["lower_channels"]
-                    else "no live lower TangTV preview coincident with EFIT shelf gate"
+                    "" if record["camera_available"] else "no live lower TangTV preview"
                 )
         except (ValueError, OSError) as error:
             record["reason"] = str(error)
@@ -252,52 +473,78 @@ def scan(paths, cohort, previous=None):
     return records
 
 
-def queue_records(records, producer, cohort):
-    """Deterministic union, excluding blind shots after both branches combine."""
+def queue_records(records, producer, cohort, include_no_video=False, reserved_shots=()):
+    """Source union with blind exclusions and a camera-first review overlay."""
     cohort_rows = {int(r.shot): r for r in cohort.itertuples(index=False)}
     blind = {int(r.shot) for r in cohort_rows.values() if r.split == "test"}
     blind.update(producer["explicit_test_shots"])
+    blind.update(reserved_shots)
+    scanned = {r["shot"]: r for r in records}
     eligible = {r["shot"]: dict(r) for r in records if r["lower_channels"]}
     labelled = set(producer["shots"])
+    rostered = set(producer.get("roster_shots", []))
+    candidates = set(eligible) | labelled | rostered
     queue = []
-    for shot in sorted(set(eligible) | labelled):
+    for shot in sorted(candidates):
         if shot in blind:
             continue
         row = cohort_rows.get(shot)
-        record = eligible.get(shot) or {
-            "shot": shot,
-            "split": row.split if row else "producer_external",
-            "lower_channels": [],
-            "window_ms": [int(row.window_start_ms), int(row.window_end_ms)]
-            if row
-            else None,
-        }
+        record = dict(
+            scanned.get(shot)
+            or {
+                "shot": shot,
+                "split": row.split if row else "producer_external",
+                "lower_channels": [],
+                "window_ms": [int(row.window_start_ms), int(row.window_end_ms)]
+                if row
+                else None,
+            }
+        )
+        record["camera_available"] = bool(record["lower_channels"])
+        if not record["camera_available"] and not include_no_video:
+            continue
         record["queue_sources"] = (
-            ["cohort_camera_geometry"] if shot in eligible else []
-        ) + (["producer_labels_or_votes"] if shot in labelled else [])
+            (["cohort_camera"] if shot in eligible and row is not None else [])
+            + (["producer_roster"] if shot in rostered else [])
+            + (["producer_labels_or_votes"] if shot in labelled else [])
+        )
         queue.append(record)
-    return queue, sorted(blind & (set(eligible) | labelled))
+    queue.sort(key=lambda record: (not record["camera_available"], record["shot"]))
+    return queue, sorted(blind & candidates)
 
 
-def roster_frame(queue, roster_path):
-    """Keep real retained curation fields, replacing the example-only roster."""
+def roster_frame(queue, roster_path, producer_roster=None):
+    """Keep producer curation and retained UI edits in the delivery overlay."""
     old = {}
-    if roster_path.is_file():
-        old = {
-            int(r.shot): r
-            for r in rosters.read_roster(roster_path).itertuples(index=False)
-            if int(r.shot) >= 100000 and "EXAMPLE" not in r.notes
-        }
+    for path in (producer_roster, roster_path):
+        if path is not None and Path(path).is_file():
+            old.update(
+                {
+                    int(r.shot): r
+                    for r in rosters.read_roster(path).itertuples(index=False)
+                    if int(r.shot) >= 100000 and "EXAMPLE" not in r.notes
+                }
+            )
     output = []
     for record in queue:
         shot = record["shot"]
         note = f"{record['split']}; " + "; ".join(record["queue_sources"])
+        note += (
+            "; camera available"
+            if record.get("camera_available", False)
+            else "; NO LOWER-DIVERTOR VIDEO"
+        )
         if "geometry" in record:
             g = record["geometry"]
+            if g.get("reason", "").startswith("efit_"):
+                note += "; EFIT missing or unreadable"
             note += (
                 f"; EFIT shelf {g['shelf_gate_samples']}/{g['total_samples']} samples"
             )
-            note += "; config " + "/".join(k for k, v in g["counts"].items() if v)
+            if g.get("configuration_available"):
+                note += "; config " + "/".join(
+                    k for k, v in g["counts"].items() if v and k != "missing"
+                )
         if shot in old:
             r = old[shot]
             base = (
@@ -308,6 +555,54 @@ def roster_frame(queue, roster_path):
         else:
             output.append([shot, "unverified", "false", "", "", "queue: " + note])
     return pd.DataFrame(output, columns=rosters.ROSTER_COLUMNS)
+
+
+def context_summary(panel_metadata, producer):
+    """Audit the density hierarchy, independent Te and front-height provenance."""
+    panels = list(panel_metadata.values())
+    density = "unavailable"
+    for key, value, name in (
+        ("quantity", "aux_ne", "aux_ne"),
+        ("node", "DENR0UF", "cached_DENR0UF"),
+        ("corpus_group", "co2", "corpus_CO2"),
+        ("corpus_group", "ts_core_density", "Thomson"),
+    ):
+        if any(panel.get(key) == value for panel in panels):
+            density = name
+            break
+    tangtv = next((p for p in panels if p.get("indicator") == "tangtv"), {})
+    source_bins = Counter(
+        source
+        for source, valid in zip(
+            tangtv.get("tangtv_source", []), tangtv.get("valid", []), strict=True
+        )
+        if valid
+    )
+    return {
+        "density_source": density,
+        "divertor_te_available": any(p.get("quantity") == "aux_te_div" for p in panels),
+        "tangtv_valid_source_bins": dict(source_bins),
+        "producer_strip_bins": len(producer.get("bin_start_ms", [])),
+        "producer_strip_reason": producer.get("reason"),
+        "producer_label_available": producer.get("label_available", False),
+        "producer_state_bins": dict(Counter(producer.get("state_lm", []))),
+    }
+
+
+def build_targets(queue, cohort, blind, store_root, rebuild_existing=False):
+    """Select queue/prior stores only after every holdout source is combined."""
+    targets = {
+        record["shot"]: record for record in queue if record["shot"] not in blind
+    }
+    if rebuild_existing:
+        split = dict(zip(cohort.shot, cohort.split, strict=True))
+        for store in Path(store_root).glob("*.h5"):
+            if store.stem.isdigit() and int(store.stem) not in blind:
+                shot = int(store.stem)
+                targets.setdefault(
+                    shot, {"shot": shot, "split": split.get(shot, "producer_external")}
+                )
+    return targets
 
 
 def build_store(record, paths, indicators, resume=False):
@@ -353,18 +648,10 @@ def build_store(record, paths, indicators, resume=False):
                 }
             )
     with h5py.File(store, "r") as source:
-        stored_geometry = json.loads(source.attrs.get("params", "{}")).get(
-            "detachment_geometry", {}
-        )
-    titles = [r["title"] for r in row_metadata if "density" in r["title"].lower()]
-    density = (
-        "CO2"
-        if any("CO2" in t for t in titles)
-        else "Thomson"
-        if any("Thomson" in t for t in titles)
-        else "aux_ne"
-        if titles
-        else "unavailable"
+        params = json.loads(source.attrs.get("params", "{}"))
+    stored_geometry = params.get("detachment_geometry", {})
+    context = context_summary(
+        params.get("panel_metadata", {}), params.get("detachment_producer", {})
     )
     return {
         "shot": record["shot"],
@@ -373,7 +660,7 @@ def build_store(record, paths, indicators, resume=False):
         "bytes": store.stat().st_size,
         "seconds": time.monotonic() - started,
         "action": "rebuilt" if rebuild else "kept current store",
-        "density_source": density,
+        **context,
         "context_sources": desired_sources,
         "store_range_ms": store_range,
         "plasma_window_ms": list(plasma_window) if plasma_window else None,
@@ -406,6 +693,27 @@ def main():
     parser.add_argument("--geometry-root", type=Path)
     parser.add_argument("--producer-root", type=Path)
     parser.add_argument("--producer-tables", type=Path)
+    parser.add_argument(
+        "--producer-roster",
+        type=Path,
+        help="read-only producer roster (default: producer tables/shots.csv)",
+    )
+    parser.add_argument(
+        "--producer-labels",
+        type=Path,
+        help="primary full-bin labels (default: producer root/labels_bins.csv.gz)",
+    )
+    parser.add_argument(
+        "--label-source",
+        type=Path,
+        action="append",
+        help="additional read-only label/vote file or directory; repeatable",
+    )
+    parser.add_argument(
+        "--include-no-video",
+        action="store_true",
+        help="keep explicitly flagged no-video producer shots at the end",
+    )
     parser.add_argument("--record", type=Path, default=SUMMARY)
     parser.add_argument(
         "--original-roster",
@@ -421,11 +729,22 @@ def main():
         args.producer_tables
         or REPO.with_name("FusionAIHub-r4-detach") / "data/events/detachment"
     )
+    producer_roster = args.producer_roster or producer_tables / "shots.csv"
+    producer_labels = args.producer_labels or producer_root / "labels_bins.csv.gz"
+    producer_inputs = [
+        producer_labels,
+        producer_root / "labels_rule.csv",
+        producer_root / "bins",
+        *(args.label_source or []),
+    ]
     geometry_root, indicators = (
         args.geometry_root or producer_root / "cache",
         args.indicator_root or producer_root / "bins",
     )
     os.environ["LABELER_DETACHMENT_GEOMETRY_ROOT"] = str(geometry_root)
+    os.environ["LABELER_DETACHMENT_INDICATORS"] = str(indicators)
+    os.environ["LABELER_DETACHMENT_LABELS"] = str(producer_labels)
+    os.environ["LABELER_DETACHMENT_CACHE_ROOT"] = str(producer_root / "cache")
     cohort_path, scan_path = (
         REPO / "data/events/catalog/cohort.csv",
         args.out / "corpus_scan.json",
@@ -437,15 +756,51 @@ def main():
             raise ValueError("cohort changed since scan")
         previous = previous_scan["records"]
     started = time.monotonic()
-    records = scan(original, cohort, previous)
-    producer = producer_snapshot([producer_root, producer_tables])
-    queue, excluded = queue_records(records, producer, cohort)
-    roster_path = REPO / "data/events/detachment/shots.csv"
-    rosters.write_roster(roster_frame(queue, roster_path), roster_path, keep_order=True)
-    (REPO / "data/events/detachment/shots_review.csv").unlink(missing_ok=True)
+    producer = producer_snapshot(producer_inputs, producer_roster)
     isolated = args.out / "tables/detachment/shots.csv"
+    if isolated.resolve() == producer_roster.resolve():
+        raise ValueError("review overlay cannot replace the producer-owned roster")
+    reservations = delivery_holdouts(isolated)
+    reserved_shots = set(reservations["shots"])
+    blind = (
+        set(cohort.loc[cohort.split.eq("test"), "shot"].astype(int))
+        | set(producer["explicit_test_shots"])
+        | reserved_shots
+    )
+    candidate_cohort = cohort[~cohort.shot.isin(blind)].reset_index(drop=True)
+    external = (
+        (set(producer["shots"]) | set(producer["roster_shots"]))
+        - set(cohort.shot)
+        - blind
+    )
+    for rank, shot in enumerate(sorted(external), start=len(cohort) + 1):
+        window = geometry.current_window(shot, original)
+        candidate_cohort.loc[len(candidate_cohort)] = {
+            "shot": shot,
+            "split": "producer_external",
+            "queue_rank": rank,
+            "window_start_ms": window[0] if window else np.nan,
+            "window_end_ms": window[1] if window else np.nan,
+        }
+    records = scan(original, candidate_cohort, previous)
+    queue, excluded = queue_records(
+        records,
+        producer,
+        cohort,
+        include_no_video=args.include_no_video,
+        reserved_shots=reserved_shots,
+    )
     isolated.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(roster_path, isolated)
+    rosters.write_roster(
+        roster_frame(queue, isolated, producer_roster), isolated, keep_order=True
+    )
+    suggestions = snapshot_suggestions(
+        producer_labels,
+        [r["shot"] for r in queue],
+        isolated.parent,
+        reserved_shots=reserved_shots,
+        indicator_root=indicators,
+    )
     cohort_copy = args.out / "tables/catalog/cohort.csv"
     cohort_copy.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(cohort_path, cohort_copy)
@@ -454,15 +809,31 @@ def main():
         population_copy = args.out / "catalog/population.csv"
         population_copy.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(population, population_copy)
-    camera_shots = [
-        r["shot"] for r in queue if "cohort_camera_geometry" in r["queue_sources"]
-    ]
+    camera_shots = [r["shot"] for r in queue if r["camera_available"]]
     producer_shots = [
         r["shot"] for r in queue if "producer_labels_or_votes" in r["queue_sources"]
     ]
     summary = {
-        "scanned_train_val": len(records),
-        "camera_and_geometry_eligible": len(camera_shots),
+        "scanned_train_val": sum(r["split"] in ("train", "val") for r in records),
+        "scanned_producer_external": sum(
+            r["split"] == "producer_external" for r in records
+        ),
+        "camera_available": len(camera_shots),
+        "camera_and_geometry_eligible": sum(
+            r["camera_geometry_eligible"] for r in records
+        ),
+        "missing_efit": sum(r["geometry_reason"] == "efit_missing" for r in records),
+        "unreadable_efit": sum(
+            r["geometry_reason"].startswith("efit_unreadable") for r in records
+        ),
+        "no_video_excluded": sum(
+            not r["camera_available"]
+            and r["shot"] in (set(producer["shots"]) | set(producer["roster_shots"]))
+            for r in records
+        )
+        if not args.include_no_video
+        else 0,
+        "producer_roster_nonblind": len(set(producer["roster_shots"]) - blind),
         "producer_labels_or_votes_nonblind": len(producer_shots),
         "overlap": len(set(camera_shots) & set(producer_shots)),
         "queue": len(queue),
@@ -471,28 +842,48 @@ def main():
             for s in ("train", "val", "producer_external")
         },
         "blind_cohort_not_scanned": int((cohort.split == "test").sum()),
-        "producer_blind_excluded": excluded,
+        "producer_blind_excluded": sorted(set(excluded) - reserved_shots),
+        "delivery_holdout_excluded": sorted(reserved_shots),
     }
     record = {
         "made_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "git_sha": git_sha(full=True),
         "source_sha256": {
-            str(p.relative_to(REPO)): sha256_of(p)
+            str(p.relative_to(Path(__file__).resolve().parents[2])): sha256_of(p)
             for p in (Path(__file__), REPO / "src/labeler/events/review/geometry.py")
+            if p.is_file()
         },
         "cohort": str(cohort_path),
         "cohort_sha256": sha256_of(cohort_path),
         "population": str(population) if population.is_file() else None,
         "population_sha256": sha256_of(population) if population.is_file() else None,
-        "policy": "union: train/val with finite spatially nonconstant lower TangTV corpus preview inside plasma window and coincident with producer EFIT shelf gate (nearest <=40 ms), plus producer labelled or draft-vote shots; exclude every cohort or explicit producer test shot",
+        "policy": (
+            "union of producer roster, labels/votes and cohort live lower TangTV "
+            "previews inside the plasma window; exclude cohort test, explicit "
+            "split=test, producer holdout=true and retained UI holdout shots; "
+            "camera availability is separate "
+            "from EFIT shelf gate; camera shots first; "
+            + (
+                "flag no-video shots last"
+                if args.include_no_video
+                else "exclude no-video shots"
+            )
+        ),
         "geometry_thresholds": geometry.THRESHOLDS,
         "geometry_root": str(geometry_root),
-        "producer_roots": [str(producer_root), str(producer_tables)],
+        "producer_roots": [str(p) for p in producer_inputs],
+        "producer_roster": str(producer_roster),
+        "producer_roster_after_sha256": sha256_of(producer_roster),
         "producer_snapshot": producer,
-        "roster": str(roster_path),
-        "roster_sha256": sha256_of(roster_path),
+        "roster": str(isolated),
+        "roster_sha256": sha256_of(isolated),
+        "suggestions": suggestions,
+        "delivery_holdouts": reservations,
         "summary": summary,
-        "camera_geometry_shots": camera_shots,
+        "camera_shots": camera_shots,
+        "camera_geometry_shots": [
+            r["shot"] for r in queue if r["camera_geometry_eligible"]
+        ],
         "producer_labelled_or_vote_shots": producer_shots,
         "queue_shots": [r["shot"] for r in queue],
         "original_camera_candidates": original_camera,
@@ -504,19 +895,13 @@ def main():
         paths = Paths(
             root=args.out, corpus=original.corpus, label_tables=args.out / "tables"
         )
-        targets = {r["shot"]: r for r in queue}
-        blind = set(cohort[cohort.split.eq("test")].shot) | set(
-            producer["explicit_test_shots"]
+        targets = build_targets(
+            queue,
+            cohort,
+            blind,
+            args.out / "spectrograms/detachment",
+            rebuild_existing=args.rebuild_existing,
         )
-        if args.rebuild_existing:
-            split = dict(zip(cohort.shot, cohort.split, strict=True))
-            for store in (args.out / "spectrograms/detachment").glob("*.h5"):
-                if store.stem.isdigit() and int(store.stem) not in blind:
-                    shot = int(store.stem)
-                    targets.setdefault(
-                        shot,
-                        {"shot": shot, "split": split.get(shot, "producer_external")},
-                    )
         built = []
         with ProcessPoolExecutor(max_workers=args.workers) as pool:
             pending = [
@@ -538,8 +923,27 @@ def main():
         ):
             record["summary"][f"density_sources_{name}"] = {
                 s: sum(r["density_source"] == s for r in subset)
-                for s in ("CO2", "Thomson", "aux_ne", "unavailable")
+                for s in (
+                    "aux_ne",
+                    "cached_DENR0UF",
+                    "corpus_CO2",
+                    "Thomson",
+                    "unavailable",
+                )
             }
+            record["summary"][f"divertor_te_available_{name}"] = sum(
+                r["divertor_te_available"] for r in subset
+            )
+            record["summary"][f"producer_strip_available_{name}"] = sum(
+                r["producer_strip_bins"] > 0 for r in subset
+            )
+            record["summary"][f"producer_label_available_{name}"] = sum(
+                r["producer_label_available"] for r in subset
+            )
+            source_bins = Counter()
+            for item in subset:
+                source_bins.update(item["tangtv_valid_source_bins"])
+            record["summary"][f"tangtv_valid_source_bins_{name}"] = dict(source_bins)
         record["summary"]["stores_built"] = len(built)
         record["summary"]["stores_rebuilt"] = sum(
             r["action"] == "rebuilt" for r in built

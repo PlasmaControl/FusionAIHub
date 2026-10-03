@@ -3,15 +3,13 @@
 from __future__ import annotations
 
 import math
-import os
-from pathlib import Path
 
 import h5py
 import numpy as np
 
 from ...config import sha256_of
 from .. import panels
-from . import geometry, panel_rows, video
+from . import geometry, panel_rows, producer, video
 from .rows import Grid
 
 
@@ -24,15 +22,12 @@ def plasma_window(shot, paths):
 
 def context_sources(shot, paths):
     """Exact local inputs for safe resume when the producer writes more outputs."""
-    root = Path(
-        os.environ.get(
-            "LABELER_DETACHMENT_INDICATORS", str(paths.root / "indicators/detachment")
-        )
-    )
-    indicator = root / f"{int(shot)}.npz"
-    if not indicator.is_file():
-        indicator = root / f"{int(shot)}.csv"
-    sources = {"geometry": geometry.source_path(shot, paths), "indicators": indicator}
+    sources = {
+        "geometry": geometry.source_path(shot, paths),
+        "indicators": panels.detachment.indicator_path(shot, paths),
+        "density_cache": panels.detachment.density_cache_path(shot, paths),
+        "labels": producer.source_path(paths),
+    }
     fingerprints = {
         key: {"path": str(path), "sha256": sha256_of(path) if path.is_file() else None}
         for key, path in sources.items()
@@ -100,6 +95,7 @@ def build(event, shot, paths):
                 ),
                 "camera_max_fps": video.MAX_FPS,
                 "detachment_geometry": geometry.load(shot, paths, window),
+                "detachment_producer": producer.load(shot, paths, window),
                 "context_sources": context_sources(shot, paths),
                 "panel_metadata": {
                     f"p{i}": p.metadata for i, p in enumerate(built) if p.metadata

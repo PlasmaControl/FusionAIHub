@@ -2,8 +2,8 @@
 
 The shelf gate reproduces the producer's physical bounds. Magnetic configuration
 is reported separately: two real opposite X-points do not establish double null
-without a separatrix-balance measurement, and missing X-points do not establish a
-limited plasma. Such cases remain unknown.
+without a separatrix-balance measurement. Missing configuration is represented
+by null, so the display can show the shelf gate without guessing topology.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ NODES = ("rvsod", "zvsod", "rxpt1", "zxpt1", "rxpt2", "zxpt2", "drsep")
 def source_path(shot, paths) -> Path:
     """A portable local cache root; reading this module never fetches."""
     root = os.environ.get("LABELER_DETACHMENT_GEOMETRY_ROOT")
-    root = Path(root) if root else paths.root / "indicators" / "detachment"
+    root = Path(root) if root else paths.root / "round4" / "detach" / "cache"
     return root / f"{int(shot)}.npz"
 
 
@@ -118,28 +118,25 @@ def nearest(times_ms, values, at_ms, max_gap_ms=MAX_GAP_MS):
 
 
 def configurations(rx1, zx1, rx2, zx2, drsep):
-    """Conservative topology from X-points and, when available, DRSEP.
+    """Topology from EFIT's lower/upper X-points and DIII-D DRSEP sign.
 
-    A sole primary X-point identifies LSN/USN. Two opposite X-points need DRSEP
-    to distinguish a balanced DN from the primary single null. The cache does not
-    carry a verified limiter-status field, so missing points stay unknown.
+    XPT1 is the lower point and XPT2 the upper point, not primary/secondary.
+    Negative DRSEP selects the lower null, positive selects the upper null, and
+    a balanced value establishes DN only with both real opposite X-points.
+    Without a physical DRSEP measurement the configuration remains missing.
     """
     rx1, zx1, rx2, zx2, drsep = np.broadcast_arrays(
         *(np.asarray(v, dtype=float) for v in (rx1, zx1, rx2, zx2, drsep))
     )
-    primary = real(rx1, 0.8, 2.5) & real(zx1, -1.6, 1.6)
-    secondary = real(rx2, 0.8, 2.5) & real(zx2, -1.6, 1.6)
-    lower, upper = primary & (zx1 < -0.5), primary & (zx1 > 0.5)
-    opposite = (lower & secondary & (zx2 > 0.5)) | (upper & secondary & (zx2 < -0.5))
+    lower = real(rx1, 0.8, 2.5) & real(zx1, -1.6, -0.5)
+    upper = real(rx2, 0.8, 2.5) & real(zx2, 0.5, 1.6)
     # +-0.4 m is EFIT's saturated DRSEP search, not a balance measurement.
     balance = np.isfinite(drsep) & (abs(drsep) < 0.399)
-    unambiguous = ~opposite | balance
-    result = np.full(rx1.shape, "unknown", dtype=object)
-    result[lower & unambiguous] = "LSN"
-    result[upper & unambiguous] = "USN"
-    result[
-        opposite & balance & (abs(drsep) <= THRESHOLDS["double_null_drsep_tolerance_m"])
-    ] = "DN"
+    tolerance = THRESHOLDS["double_null_drsep_tolerance_m"]
+    result = np.full(rx1.shape, None, dtype=object)
+    result[lower & balance & (drsep < -tolerance)] = "LSN"
+    result[upper & balance & (drsep > tolerance)] = "USN"
+    result[lower & upper & balance & (abs(drsep) <= tolerance)] = "DN"
     return result
 
 
@@ -151,11 +148,12 @@ def load(shot, paths, window_ms=None):
         "window_ms": list(window_ms) if window_ms else None,
         "thresholds": THRESHOLDS,
         "note": (
-            "EFIT primary/secondary X-points; DN needs DRSEP balance. Missing "
-            "X-points do not prove limited geometry. Shelf gate is the producer's "
-            "primary lower-null/outer-strike-point test, separate from topology."
+            "EFIT XPT1 is lower and XPT2 upper. DRSEP < 0 selects LSN, > 0 "
+            "selects USN; DN needs both points and DRSEP balance. Without DRSEP "
+            "show the producer's lower-X-point/outer-strike-point shelf gate only."
         ),
-        "counts": dict.fromkeys(("LSN", "USN", "DN", "limited", "unknown"), 0),
+        "counts": dict.fromkeys(("LSN", "USN", "DN", "missing"), 0),
+        "configuration_available": False,
         "shelf_gate_samples": 0,
         "total_samples": 0,
         "samples": [],
@@ -185,13 +183,19 @@ def load(shot, paths, window_ms=None):
         return result
     valid, reasons = shelf_gate(*(values[k] for k in NODES[:4]))
     config = configurations(*(values[k] for k in NODES[2:]))
-    result["counts"] = {k: int(np.sum(config == k)) for k in result["counts"]}
+    result["counts"] = {
+        k: int(np.sum(config == (None if k == "missing" else k)))
+        for k in result["counts"]
+    }
+    result["configuration_available"] = any(
+        result["counts"][key] for key in ("LSN", "USN", "DN")
+    )
     result["shelf_gate_samples"] = int(valid.sum())
     result["total_samples"] = len(times)
     for i, time in enumerate(times):
         sample = {
             "time_ms": float(time),
-            "configuration": str(config[i]),
+            "configuration": config[i],
             "shelf_gate": bool(valid[i]),
             "reason": str(reasons[i]),
         }
@@ -202,12 +206,12 @@ def load(shot, paths, window_ms=None):
 
 
 def at_times(metadata, times_ms):
-    """Configuration and shelf gate at camera/cursor times; gaps remain unknown."""
+    """Configuration and shelf gate at camera/cursor times; gaps remain missing."""
     at = np.asarray(times_ms, dtype=float)
     samples = metadata["samples"]
     source = np.asarray([s["time_ms"] for s in samples])
     index = nearest(source, np.arange(len(source), dtype=float), at)
-    configuration = np.full(at.shape, "unknown", dtype=object)
+    configuration = np.full(at.shape, None, dtype=object)
     gate = np.zeros(at.shape, dtype=bool)
     for i in np.flatnonzero(np.isfinite(index)):
         sample = samples[int(index[i])]

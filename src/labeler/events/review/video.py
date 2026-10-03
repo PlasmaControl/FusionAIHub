@@ -228,7 +228,7 @@ def meta(path) -> dict:
                         "scale": [float(frames.attrs[n]) for n in ("z_lo", "z_hi")],
                     }
                 )
-            preferred = {"tangtv": (0, 2), "irtv": (2, 3)}.get(camera, ())
+            preferred = {"tangtv": (2, 0), "irtv": (2, 3)}.get(camera, ())
             in_window = [
                 ch for ch in channels if any(lo <= t <= hi for t in ch["times_ms"])
             ]

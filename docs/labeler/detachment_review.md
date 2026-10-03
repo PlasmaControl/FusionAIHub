@@ -1,59 +1,95 @@
 # Detachment camera review
 
-The `detachment` editor offers **1 attached, 2 detached, 3 marfe, 4 uncertain**.
-Unmarked time is unassessed. This is an exclusive state track: MARFE takes its
-own state even though MARFE and divertor detachment can physically coexist.
-There is no partial-detachment state. Do not interpret these labels as a
-complete taxonomy of divertor physics; the paper must state these limits.
-Detached uses blue and uncertain orange (distinct colour-blind-safe hues).
-Binary agreement
-scoring refuses both multiclass editors.
+The review page offers **1 attached, 2 detached, 3 MARFE, 4 uncertain** on an
+exclusive state track. Unmarked time is unassessed. The producer label model is
+an **unverified suggestion**, with its fallback rule and three indicator votes
+shown directly below the video. Review edits remain in the usual annotation
+lanes; the Source lane is seeded from a nonblind snapshot of the producer label.
+Binary agreement scoring refuses this multiclass editor.
 
-## Operational state definitions
+## Producer definitions and interpretation
 
-The target is the **lower outer divertor leg**, interpreted with EFIT magnetic
-configuration and the outer strike point. The page help contains these same
-definitions. Upper-single-null (USN), double-null (DN), limited or unknown
-geometry can make a lower-camera diagnosis unsuitable; inspect the shown
-configuration and gate at the cursor time and use uncertain when needed.
+These meanings are copied **verbatim** from the producer's
+`docs/labeler/detachment.md`:
 
-| State | Visual and supporting indicator evidence |
-| --- | --- |
-| Attached | Emission concentrated near the lower outer target/strike point, without a sustained upstream front. Low valid Afrac and low upstream radiation/front displacement support attachment; target ion saturation current supports it when available. |
-| Detached | Sustained emission/radiation front lifts from the target along the lower outer leg, with reduced target emission and, when available, reduced target ion saturation current. Increasing valid Afrac, lower-divertor radiation fraction and normalized TangTV front displacement support detachment. Partial lifting and pronounced lifting toward the X-point share this state; no depth grade is encoded. |
-| MARFE | Localized radiating blob near the X-point or inner wall, often associated with high density and a density-limit precursor. Distinguish the localized shape from an extended detached leg and seek corroborating radiation/density evidence. A bright blob alone does not establish a density limit. |
-| Uncertain | Missing/saturated images, invalid indicators, unsuitable/unknown geometry, transitions or conflicting evidence prevent a reliable state. Missing evidence does not establish attachment. |
+| Code | State | Meaning |
+| --- | --- | --- |
+| 0 | absent | fewer than two indicators were valid: nothing can be said |
+| 1 | attached | the strike point carries the full heat and particle flux |
+| 2 | detached | the radiating front has left the plate (partial or full) |
+| 3 | marfe | the front has moved above the X-point onto the confined plasma |
+| 4 | uncertain | indicators disagree, or all valid ones sit in a transition band |
 
-The exclusive track cannot represent coexisting MARFE and detachment. Use
-uncertain when choosing one state would conceal material conflicting evidence.
-Producer drafts and indicators assist review; these are operational definitions,
-not new fitted thresholds or a claim that image brightness alone measures Isat.
+MARFE is physically detached but has a distinct stage in this exclusive track.
+Partial and full detachment share code 2. Missing evidence never means attached.
+The votes and label states are read directly; the page does not reclassify them.
 
-The sticky video panel stays visible while scrolling the diagnostics. Drag
-**Time (ms)** or click the diagnostic rows/axis to seek. The requested time
-pins a cursor after delivery; a separate hover cursor still reads other times.
-Manual seeking shows **Loading** and hides old pixels until decoding finishes.
-During playback the previous committed views stay visible while all cameras
-decode into staging objects. One synchronous update publishes every image,
-caption and the shared clock/cursor. **Play/Pause** waits for all selected
-cameras with at most one active request per camera. Pausing, seeking, changing
-views or navigating aborts pending requests and discards staged pixels/URLs.
-Slow delivery slows playback. Navigation cancels requests and stops playback.
-Outside coverage, the nearest endpoint has an explicit note; unavailable
-cameras never prevent annotation.
+**Afrac = 1/DOD:** high Afrac **≥0.75 supports attached**, falling Afrac
+**≤0.5 supports detached**; 0.5–0.75 is a valid abstention. The trace draws both
+threshold lines. This producer decodes uncalibrated swept probes without probe
+positions and references the shot to its own 0.90 quantile. A shot detached
+throughout can be called attached in its top tail. This is a weak, uncalibrated
+review aid that cannot establish a label alone; the caveat is visible beside
+its trace and in the video help.
 
-## Physical camera identities
+Prad,div is calibrated lower-divertor radiation divided by heating power:
+≤0.35 attached, ≥0.50 detached, otherwise abstain. It is a radiation measure
+and never votes MARFE. TangTV normalized front DZ is attached below 0.35,
+detached from 0.5 through 1.0, and MARFE above 1.0, subject to the producer's
+geometry/validity gate. **Tomographic inversion** and **surrogate regression
+(model estimate)** are named in the row title and preserved per bin. A
+surrogate is never presented as a measurement. Legacy height CSVs without
+provenance explicitly lack a recorded source.
 
-Names and source nodes follow the active `input_key` order in
-`src/tokamak_foundation_model/data/config/modalities/modalities.yaml`. The
-manifest includes unavailable views as well as live channels; selectors name
-the view, region and availability. The frame caption/alt text identifies the
-delivered view. **Filter/emission line is not recorded in the corpus**; PAR
-and PERP are node names, not inferred spectral filters.
+The strips show the primary label model, fallback rule, Afrac, Prad,div and
+TangTV votes on exact half-open bins. Codes 1–4 have the same colours as the
+annotation lane. Blank label bins are unassessed; grey votes are **valid
+abstentions** (`valid=True, vote=-1`); hatched votes are **invalid**
+(`valid=False, vote=-1`). The reading at the committed camera time gives each
+vote's validity/reason and the TangTV source. Published labels are aligned to
+the producer NPZ grid, preserving votes where fewer than two indicators were
+valid. Missing assessed rows within a published shot, or disagreement with its
+vote snapshot, fail explicitly. The producer also requires at least 20 jointly
+assessed bins per shot before publishing labels. Shots with no published label
+retain their votes, blank primary/rule strips and a **label not published**
+readout; their bins are not called unassessed. No interpolation or threshold
+fitting is performed.
 
-TangTV nodes have prefix `\TANGTV::TOP.TANGTV:` and suffix `:VIDEO_IMAGES`:
+An inconsistent published CSV/NPZ pair is excluded from the Source snapshot,
+with its reason and both hashes recorded. The API also suppresses an obsolete
+Source baseline when its store reports that mismatch; saved human reviews
+remain available. Camera shots remain queued for independent inspection.
 
-| Index | View node | Region |
+## Video and shared time
+
+Drag **Time (ms)** or click a diagnostic row, strip or axis to seek. Play/Pause
+steps through stored previews. Every view, caption, committed clock and strip
+cursor updates in one transaction after all selected camera frames decode.
+Manual seeking hides old pixels while loading. Playback retains the previous
+complete transaction while awaiting new frames. Pause, seek, view changes and
+navigation cancel outstanding requests and discard staged frames. Slow delivery
+slows playback; at most one active request per camera is allowed. Hover time is
+independent of the committed video cursor. The sticky video panel remains
+visible while the diagnostic rows scroll.
+
+Corpus clocks are seconds; stores and APIs use milliseconds. TangTV corpus
+images are **50 Hz linear resamples blending adjacent exposures**, produced by
+`prepare_data.py`'s `interp1d(kind="linear")`; they are not native exposures.
+Previews retain exact corpus times, decimated to at most 20 fps inside the
+plasma window, with fixed per-shot/channel 1st–99.5th percentile grayscale.
+Area reduction uses one spatial stride for both axes and actual finite counts.
+Limits are bolo 80×120, TangTV 240×720 and IRTV 256×320. `/api/frame` reads one
+PNG; ties choose the earlier frame. Pixels are never embedded in shot JSON.
+Flattened IRTV arrays and trace-shaped bolometer arrays receive explicit
+unavailable cards; no image geometry is invented.
+
+Camera identities follow active `input_key` order in
+`src/tokamak_foundation_model/data/config/modalities/modalities.yaml`.
+**Default TangTV channel 2**, the producer's lower-divertor perpendicular view,
+then channel 0 if 2 is unavailable. Other available views remain selectable.
+Filter/emission line is not recorded; PAR/PERP are node names.
+
+| TangTV channel | View node | Region |
 | --- | --- | --- |
 | 0 | LODIV_240RM1:PAR:INTENSIFIED | Lower divertor |
 | 1 | LODIV_240RM1:PAR:STANDARD | Lower divertor |
@@ -63,159 +99,93 @@ TangTV nodes have prefix `\TANGTV::TOP.TANGTV:` and suffix `:VIDEO_IMAGES`:
 | 5 | UPDIV_225RP1:PAR:STANDARD | Upper divertor |
 | 6 | UPDIV_0RP1:PAR:STANDARD | Upper divertor |
 
-Default to live channel 0, then live channel 2. The review queue requires at
-least one of these lower-divertor views. Other shots can still open their
-available views, explicitly named; an upper-divertor image is not evidence
-about the lower divertor.
+TangTV nodes use prefix `\TANGTV::TOP.TANGTV:` and suffix `:VIDEO_IMAGES`.
+IRTV has six active nodes, despite seven declared output slots: BIAS_105RM1,
+LOCEN_315RM1, LODIV_165RP2, LODIV_60RP2, UPCEN_300RP1, UPDIV_225RM2. Slot 6 is
+unmapped. PERI75R0 is commented out and has no active index; it must not shift
+UPCEN/UPDIV. IRTV suffix is `:DIGITAL_CAM:DIGITAL_RAW`.
 
-IRTV nodes have prefix `\IRTV::TOP.IRTV:` and suffix
-`:DIGITAL_CAM:DIGITAL_RAW`:
+## Diagnostic context and geometry
 
-| Active index | View node | Region |
-| --- | --- | --- |
-| 0 | BIAS_105RM1 | Bias view |
-| 1 | LOCEN_315RM1 | Lower central |
-| 2 | LODIV_165RP2 | Lower divertor |
-| 3 | LODIV_60RP2 | Lower divertor |
-| 4 | UPCEN_300RP1 | Upper central |
-| 5 | UPDIV_225RM2 | Upper divertor |
-| 6 | Unmapped padded slot | Unknown |
-| Commented out | PERI75R0 | Inactive; no index assigned |
+Density priority is **producer `aux_ne` → cached `denr0uf` → corpus CO2 →
+local Thomson core density**. This provides the producer's CO2 upstream-density
+context before the local fallback. The producer's `signals.line_density` calls
+its CO2 input a **line integral in arbitrary/native units** and selects V2,
+then R0, then V3; bins do not record the chosen chord. No chord-length division
+or verified UF unit is available. CO2 rows therefore say **density proxy,
+native units (unverified)**; calling these a calibrated line average in cm⁻³
+would exceed the source evidence. Local Thomson is explicitly not
+line-averaged and retains m⁻³ units. **All ne ≤0 is missing before block means**;
+Thomson channels are ranked by positive native-sample valid fraction (up to eight,
+stable channel-order ties). No local trace is renamed as a line average.
 
-The YAML declares seven IRTV output slots but lists only six active nodes.
-The corpus preparation code preserves active list order and pads extra slots.
-Do not insert the commented PERI75R0 node at index 4 and shift the other names.
-The manifest records its full inactive node and the mapping caveat. A future
-source with different ordering needs explicit provenance before relabelling.
+Divertor Thomson Te (`aux_te_div`, eV, per-bin peak over channel medians) is shown
+as an **independent check**, not a fourth voter; zero is a failed fit and is
+missing. Filterscopes FS01–FS08 have separate scales and calibrated
+**ph/(sr cm² s)** units from the local SPECTROSCOPY source and
+`configs/shot_design/signals.yaml` (`dalpha`). Chord locations are not recorded.
+Dead/nonpositive-median chords are omitted by an explicit availability screen:
+retain finite chords with positive median block mean in the displayed window.
+This screen does not assert a noise-floor calibration. Gas channels GASA–GASE,
+LOB1–LOB2, PFX1–PFX3 and UOB use Torr L/s. Raw probe-sweep medians and raw
+bolometer-voltage medians are omitted.
 
-## Previews and diagnostic context
+Context uses contiguous native-sample block means, approximately 1 ms (actual
+width is recorded, e.g. 1.024 ms for a 256 µs clock), clipped to the catalog
+plasma window. For external producer shots, the cached |Ip| ≥300 kA first/last
+samples supply the producer's window. Missing windows never imply attachment.
 
-Corpus image arrays are `(C,T,H,W)` or `(T,H,W)`, with seconds in `xdata`.
-TangTV corpus images are **50 Hz linearly resampled frames**, a blend of adjacent
-exposures produced by `prepare_data.py`'s `interp1d(kind="linear")`. They are not
-individual exposures. Store their corpus sample times in milliseconds and
-decimate previews to no more than 20 fps, within the plasma window. One spatial
-stride (the larger of the strides needed by either axis) is used for both
-axes, with area means before quantization. This preserves IRTV pixel aspect.
-Limits are bolo 80×120, TangTV 240×720 and IRTV 256×320. Grayscale uses fixed
-per-shot/channel 1st–99.5th percentiles of deterministic pixel samples from
-retained frames. Authenticated `/api/frame` reads one PNG; ties choose earlier
-frames. Images are never embedded in the shot JSON.
+The shelf gate copies the producer's real RVSOD/ZVSOD/RXPT1/ZXPT1 bounds,
+excluding EFIT sentinels -0.89/-9.99/0: ZXPT1 <−0.5 m, RVSOD ≥1.37 m,
+|ZVSOD+1.25 m| ≤0.05 m, nearest EFIT within 40 ms. It is **separate from
+magnetic topology**. XPT1 is the lower point, XPT2 the upper. Valid DRSEP <−1 cm
+names LSN, >+1 cm USN; a balanced ±1 cm interval names DN only with both
+opposite X-points. Saturated DRSEP is not balance evidence. Without DRSEP the
+page shows only the shelf gate and says topology unavailable. Unknown
+configuration is a missing value (`null`), never a physical state.
 
-Some real IRTV arrays are flattened `(C,T,N,1)` records. Their two-dimensional
-image geometry is unavailable, so they receive an explicit unavailable card;
-no height/width is guessed from N. Area reduction uses actual pixels and
-finite counts without padding very narrow arrays to enormous squares.
+## Read-only producer integration and queue ownership
 
-Context traces are clipped to the cohort's plasma window (population window
-as fallback). For external producer shots without a catalogued window, use the
-first/last cached samples with |Ip| ≥ 300 kA, exactly the producer's fixed
-`detach_bins.py` rule. The chosen source and boundaries are recorded in store
-metadata. The review grid uses those exact boundaries; diagnostic tails do not
-extend the default view. With no valid catalog or cached-current window, use
-nonnegative context and available movie coverage. A wholly missing shot gets a
-blank 10 s track.
-Context uses contiguous block means of every native sample, with approximately
-1 ms blocks, timestamped at the mean sample time. Actual block width is stored
-in panel metadata: a 256 µs native clock produces **1.024 ms**, not 1 ms.
+**Only `r4-detach` owns `data/events/detachment/shots.csv`.** This branch restores
+that file to its pre-stream `21183f0` version and never writes it. The queue
+script reads the producer roster and outputs and writes only the delivery
+`--out/tables/detachment/shots.csv` overlay, preserving curation and review
+metadata. Producer defaults are the sibling worktree's
+`data/events/detachment/shots.csv`, `$LABELER_ROOT/round4/detach/labels_bins.csv.gz`,
+`labels_rule.csv` and `bins/`. Paths are configurable with `--producer-roster`,
+`--producer-labels`, `--producer-root`, `--producer-tables`, `--label-source`.
 
-Legends name FS01–FS08 with calibrated photon-radiance units
-**ph/(sr cm² s)**, as recorded by the local raw spectroscopy cache and
-`configs/shot_design/signals.yaml`. Every chord has its own row and scale,
-so divertor chords are never overlaid with upper/midplane chords. The local
-corpus/raw caches do not record a trustworthy FS01–FS08 sightline-location
-map; the page says **location not recorded**, rather than guessing a divertor
-assignment. An authoritative shot-dependent chord map remains needed to name
-those locations. Density uses CO2 R0 DENUF (cm^-3, line-averaged) first, then
-Thomson core **local density (not line-averaged)** in m^-3 when CO2 is a stub or
-has no finite plasma-window samples. The fallback preserves separate sampled
-core channels; no local signal is relabelled as a line average. Gas legends name
-GASA, GASB, GASC, GASD, GASE, LOB1,
-LOB2, PFX1, PFX2, PFX3, UOB (Torr L/s). No arbitrary channel numbers or
-"corpus units" are used. **Raw TPLANG sweeps are omitted**: averaging their
-cross-probe median would still not isolate ion saturation current. **Raw
-bolometer medians are omitted**: the 48 voltage chords neither share a useful
-radiation median nor supply calibrated divertor power. The bolo video card
-explains that these corpus arrays are traces, not tomographic images. Use the
-producer's validity-gated indicators for calibrated diagnostic evidence.
+The camera-first union uses producer roster/label/vote shots plus live cohort
+camera shots. **No-video shots are excluded by default**, with their count in
+the scan; `--include-no-video` explicitly flags and places them last. Camera
+availability is checked before and independently of the EFIT shelf gate.
+Missing/unreadable EFIT counts are reported separately. Fixed cohort test shots
+and all input `split=test` or `holdout=true` shots are excluded before corpus
+reads. Manual delivery `holdout=true` reservations are also excluded and retained
+in `tables/detachment/review/holdouts.json` so regeneration cannot re-admit them.
+The CSV scanner reads flags even for filename-based `<shot>.csv` and
+`<shot>.csv.gz`; NPZ scalar/per-row flags are checked too. The delivery is
+training-facing, not a review-only blind-test queue.
 
-## Producer indicators and roster
+The primary Source lane is frozen to
+`tables/detachment/review/suggestions.csv`; `review/source.json` records its
+pointer, producer table/hash, `state_lm` column and bin width. Later producer
+files require rerunning the script to refresh this snapshot. Inputs are read
+only. Resume compares source hashes for labels, bins, density cache and EFIT.
+The recipe change invalidates old stores even without force. Retained stores
+outside the queue remain inaccessible through this server's roster.
 
-Set `LABELER_DETACHMENT_INDICATORS` to the producer directory. The portable
-library default is `$LABELER_ROOT/indicators/detachment`; round paths belong
-in run configuration. The detach stream currently emits
-`$LABELER_ROOT/round4/detach/bins/<shot>.npz` through `detach_bins.py`. Its
-handoff still describes eventual labels/posteriors under `labels/`, pending.
-The adapter reads the files that exist now, with `allow_pickle=False`:
+Library defaults require no detachment-specific environment settings for the
+normal `$LABELER_ROOT`: indicators `round4/detach/bins` (legacy
+`round4/detach/indicators` fallback), geometry/density `round4/detach/cache`,
+labels `round4/detach/labels_bins.csv.gz`. Overrides are
+`LABELER_DETACHMENT_INDICATORS`, `LABELER_DETACHMENT_GEOMETRY_ROOT`,
+`LABELER_DETACHMENT_CACHE_ROOT`, and `LABELER_DETACHMENT_LABELS`. An isolated
+server root must explicitly name the producer paths below.
 
-| Field | Meaning shown | Unit |
-| --- | --- | --- |
-| start_ms | Bin start; width inferred from median diff(start_ms), including 20/50/100 ms grids | ms |
-| afrac_value | Afrac | dimensionless |
-| prad_value | Prad_divL / P_in radiation fraction | dimensionless |
-| tangtv_value | Normalized emission-front DZ | dimensionless |
-| *_valid | Required producer validity gate; invalid values become gaps | boolean |
-| *_reason, *_vote | Preserved in panel metadata, without changing decisions | producer codes |
+## Reproduction and appendix export
 
-This schema is also accepted as CSV. It is not the MW/metre CSV schema.
-Bins are drawn as steps over their full start/end intervals, clipped to the
-plasma window. Invalid bins remain gaps, and isolated valid bins remain visible;
-values are never linearly interpolated between indicator bins. A single start
-without an explicit second start cannot establish bin width and is rejected.
-The original interchange CSV remains a fallback: `t_ms`, `afrac`,
-`afrac_valid`, `prad_div` (MW), `prad_div_valid`, `tangtv_front_height` (m),
-`tangtv_front_height_valid`. Missing files, missing validity columns, all-invalid
-signals and missing cameras are acceptable. Force-rebuild when new producer
-files arrive; validity is never inferred from a value or a vote.
-
-`data/events/detachment/shots.csv` is the real review queue, without placeholder
-rows. The committed `detachment_review_roster.py` writes the union of live
-lower-divertor TangTV train/validation cohort shots passing the producer's EFIT
-lower-null/outer-strike-point shelf gate and every producer-labelled shot that
-is not in the blind test split. It snapshots the producer's current outputs
-under both the detach stream's output root and its worktree tables; rerunning
-at integration incorporates newly written labels. Blind test shots are excluded
-before corpus reads. Existing review metadata is preserved when rerunning.
-The isolated server consumes a copy at `tables/detachment/shots.csv`.
-
-The gate uses real EFIT RVSOD/ZVSOD/RXPT1/ZXPT1, excluding -0.89/-9.99/0
-sentinels; primary ZXPT1 < -0.5 m, RVSOD ≥ 1.37 m and
-|ZVSOD + 1.25 m| ≤ 0.05 m. EFIT is matched within 40 ms. This reproduces the
-producer gate rather than tuning a new detachment threshold. Configuration
-is shown separately at the cursor: LSN/USN from an unambiguous primary X-point,
-DN only with separatrix-balance evidence. Opposite X-points without DRSEP and
-missing points without verified limiter status stay **unknown**; missing points
-are not labelled limited. Producer-labelled shots may fail the camera/geometry
-gate and remain in the queue for honest uncertain/unavailable review.
-Set `LABELER_DETACHMENT_GEOMETRY_ROOT` to the local producer cache; the portable
-default is `$LABELER_ROOT/indicators/detachment`. No production store is written.
-
-### Fix-round coverage snapshot
-
-The final local snapshot at **2026-10-03 15:01:35 UTC**, written by the committed
-roster script, is recorded in
-[`results/detachment_review_queue.json`](results/detachment_review_queue.json).
-It scans **450 train/validation** cohort shots and excludes **50 blind test**
-shots before reading their corpus. **21** have live lower TangTV at a
-producer-gate-valid time. The producer already has **202** nonblind label/vote
-shots, including those 21, so the union is **202**: **141 train, 20 validation,
-41 producer-external**. Producer-external shots are outside the fixed cohort;
-they carry no invented cohort split. The record lists every included/excluded
-shot and each snapshotted producer file/hash. The producer is still running;
-the controller must rerun the script at integration.
-
-Density now covers **226 of the original 229 camera candidates**: **113 CO2,
-113 Thomson, 3 unavailable**. In the current queue, **191 of 202** have density:
-**10 CO2, 181 Thomson, 11 unavailable**. All **394** repaired isolated stores
-(current queue plus retained earlier nonblind candidates) are audited:
-**123 CO2, 257 Thomson, 14 unavailable**. No aux_ne substitution is used.
-Every store has a catalog or producer-current plasma window; the audit reports
-**zero** frames outside either plasma or store bounds. The detailed per-shot
-row/channel/window audit is
-`$LABELER_ROOT/round4/detach-ui/roster_build.json`. Counts describe display
-coverage, not model performance or a detachment prevalence estimate.
-
-From this worktree, using the shared installed environment and scratch TMPDIR:
+From this worktree:
 
 ```bash
 export TMPDIR=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/detach-ui
@@ -225,33 +195,40 @@ export LABELER_NO_FETCH=1 PYTHONPATH="$PWD/src" OMP_NUM_THREADS=4
 pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \
   -e labelmaker python scripts/labeler/detachment_review_roster.py \
   --out "$LABELER_ROOT/round4/detach-ui" --build --rebuild-existing --workers 4
+# Repeat separately for 190010 and 190102; --verify once runs covering checks.
 pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \
   -e labelmaker python scripts/labeler/detachment_review_demo.py --shot 190212 \
-  --capture-time-ms 600 \
-  --out "$LABELER_ROOT/round4/detach-ui" --verify
+  --out "$LABELER_ROOT/round4/detach-ui/browser-190212" --verify
+pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \
+  -e labelmaker python scripts/labeler/detachment_review_export.py \
+  --evidence docs/labeler/results/detachment_ui_fix3_export.json
 ```
 
-The demo uses a neutral `Reviewer` name, delays frame delivery by 180 ms,
-asserts decoded-frame consistency and bounded playback, captures an actual
-Chromium screenshot of a lower-divertor view, and stops its temporary free-port
-server. JSON records include source hashes and command output. Existing owner
-servers are untouched. A separate real two-camera browser regression holds
-IRTV delivery after TangTV decoding and pauses between them; it verifies that
-both images/captions/clock retain their prior time, then advance together on
-resume. The demo also exports a cropped live-page PDF and 150-dpi PNG at
-3.25-inch column width with readable camera identity, timestamp, cursor and
-state controls, retaining the desktop evidence screenshot. To open the scanned
-stores on a free port:
+The static appendix figure is `detachment_review_190212_paper.pdf` (vector) and
+`.png` (150 dpi), under the delivery root: real channel-2 frames, primary label,
+three vote strips and Afrac/radiation/DZ traces share marked frame times. Fonts
+are ≥7 pt at the intended **6.75-inch two-column width without further scaling**.
+It identifies the surrogate regression and uncalibrated Afrac. Frame timestamps
+and pixels are checked against the corpus, and JSON records all sources/hashes.
+This replaces the earlier crop that omitted diagnostics and had empty labels.
+
+Launch a review on a free port:
 
 ```bash
 LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui \
 LABELER_LABEL_TABLES=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui/tables \
 LABELER_DETACHMENT_INDICATORS=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins \
+LABELER_DETACHMENT_GEOMETRY_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/cache \
+LABELER_DETACHMENT_CACHE_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/cache \
+LABELER_DETACHMENT_LABELS=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/labels_bins.csv.gz \
 LABELER_NO_FETCH=1 pixi run --frozen --no-install \
   --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e labelmaker \
   python -m labeler.events.ui --port 8812
 ```
 
-Open `#detachment/190212` on the printed token URL. Camera controls require
-server API 9. Rebuild after indicator delivery; the store recipe version also
-invalidates earlier scalar/stride previews.
+Open `#detachment/190212` on the printed token URL. Existing owner servers are
+untouched. Browser evidence uses the installed Playwright Chromium through the
+repository's DevTools driver; each free-port server stops after checking.
+Fresh queue, covering tests/lint, three real-shot browser checks and export
+records are in `docs/labeler/results/detachment_*fix3*.json` and
+`detachment_review_queue.json`; historical contradictory records were removed.

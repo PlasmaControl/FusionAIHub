@@ -281,13 +281,17 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
         for row in described["rows"]:
             if band is not None and "band" in row:
                 row["band"] = list(band)
+        producer = described.get("params", {}).get("detachment_producer", {})
+        suppress_source = event == "detachment" and producer.get("reason", "").startswith(
+            "Producer label table unreadable:"
+        )
         return {
             "event": event,
             "shot": shot,
             "tier": tier,
             **described,
             **({"video": video.meta(path)} if event == "detachment" else {}),
-            **labels.shot_labels(directory, shot),
+            **labels.shot_labels(directory, shot, suppress_source=suppress_source),
             "reviewers": reviewers.shot_reviewers(directory, shot),
             **({"onsets": rwm.onsets(shot, paths)}
                if event == "resistive_wall_mode" else {}),

@@ -430,11 +430,11 @@ def resume(shots: list[dict], history: list[dict]) -> int | None:
     return last if last in order else order[0]
 
 
-def shot_labels(event_dir, shot: int) -> dict:
+def shot_labels(event_dir, shot: int, *, suppress_source=False) -> dict:
     shot = int(shot)
     event = Path(event_dir).name
     saved = offered(event, read_saved(event_dir).get(shot))
-    source = offered(event, read_source(event_dir).get(shot))
+    source = None if suppress_source else offered(event, read_source(event_dir).get(shot))
     history = read_history(event_dir)
     last = next((entry for entry in reversed(history) if entry["shot"] == shot), None)
     return {

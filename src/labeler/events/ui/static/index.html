@@ -35,6 +35,12 @@
     </div>
     <p id="video-context">Target: lower outer divertor leg. <span id="video-geometry"></span></p>
     <div id="video-cameras"></div>
+    <div id="detachment-strips" hidden aria-label="Producer labels and indicator votes">
+      <p class="strip-legend">Unverified producer: <span style="color:#0e8a8c">■ attached</span> · <span style="color:#0072b2">■ detached</span> · <span style="color:#cc79a7">■ MARFE</span> · <span style="color:#d55e00">■ uncertain</span> · grey abstains · hatched invalid · blank unassessed</p>
+      <div id="detachment-lanes"></div>
+      <p id="detachment-reading"></p>
+    </div>
+    <p id="detachment-caveats">Afrac = 1/DOD: ≥0.75 attached, ≤0.5 detached. Uncalibrated, self-referenced to this shot’s 0.90 quantile; a weak review aid. TangTV surrogate values are regression estimates, not measurements.</p>
   </section>
   <div id="rows"></div>
   <canvas id="axis-row" aria-hidden="true"></canvas>
@@ -91,14 +97,15 @@
   </table>
   <section id="detachment-help" hidden>
     <h3>Detachment: lower outer divertor leg</h3>
-    <p>Review the active lower outer leg using the magnetic configuration and strike-point gate. Upper-single-null, double-null, limited or unknown geometry can make a lower-camera state uncertain. TangTV corpus images are 50 Hz linear resamples: blends of adjacent exposures, previewed at ≤20 fps.</p>
+    <p>Review the lower outer leg using the producer’s EFIT shelf gate. Without DRSEP, the shelf gate does not establish magnetic topology. TangTV corpus images are 50 Hz linear resamples: blends of adjacent exposures, previewed at ≤20 fps.</p>
     <dl>
-      <dt>Attached</dt><dd>Emission remains concentrated near the lower outer target/strike point, without a sustained upstream front. Valid low Afrac and low upstream radiation/front displacement support attachment; target ion saturation current supports it when available.</dd>
-      <dt>Detached</dt><dd>A sustained emission/radiation front lifts from the target along the lower outer leg, with reduced target emission and, when available, reduced target ion saturation current. Increasing valid Afrac, lower-divertor radiation fraction and TangTV front displacement support this state. Partial lifting and pronounced lifting toward the X-point share this label; this track does not grade detachment depth.</dd>
-      <dt>MARFE</dt><dd>A localized radiating blob near the X-point or inner wall, often associated with high density and a density-limit precursor. Distinguish its localized shape from an extended detached leg; radiation/density evidence should corroborate the image. A bright blob alone does not establish a density limit.</dd>
-      <dt>Uncertain</dt><dd>Missing or saturated images, invalid indicators, unsuitable or unknown geometry, transitions, or conflicting evidence prevent a reliable state. Do not infer attachment from absent diagnostics.</dd>
+      <dt>Attached</dt><dd>the strike point carries the full heat and particle flux</dd>
+      <dt>Detached</dt><dd>the radiating front has left the plate (partial or full)</dd>
+      <dt>MARFE</dt><dd>the front has moved above the X-point onto the confined plasma</dd>
+      <dt>Uncertain</dt><dd>indicators disagree, or all valid ones sit in a transition band</dd>
+      <dt>Absent (unassessed)</dt><dd>fewer than two indicators were valid: nothing can be said</dd>
     </dl>
-    <p>The state track is exclusive. It cannot encode coexisting MARFE and detachment; use uncertain when one state would conceal material conflicting evidence. Producer drafts and valid indicators are review aids, not ground truth.</p>
+    <p>These are the producer’s state definitions verbatim. MARFE is also physically detached, but has its own exclusive stage. Missing data is never attachment. Afrac = 1/DOD: high Afrac (≥0.75) supports attached, falling Afrac (≤0.5) supports detached; 0.5–0.75 abstains. Afrac is uncalibrated and self-referenced to this shot’s 0.90 quantile, so an always-detached shot can appear attached in its top tail; treat it as a weak indicator. Prad,div ≤0.35 supports attached and ≥0.50 detached; it measures radiation, not detachment. TangTV DZ &lt;0.35 supports attached, 0.5–1.0 detached and &gt;1.0 MARFE, only inside the producer’s shelf gate. A surrogate DZ is a regression estimate. A valid abstention is grey; invalid bins are hatched with their reason at the shared time. The primary label model and fallback rule are unverified suggestions.</p>
   </section>
   <form method="dialog"><button>Close</button></form>
 </dialog>

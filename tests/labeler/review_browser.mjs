@@ -1309,17 +1309,40 @@ async function detachmentCameras(shot = 170815, demo = false) {
   await until(`S.video && S.video.cards.some(c => c.img?.naturalWidth > 0)`);
   check("detachment offers all four states", same(await js("S.categories"),
     {1: "attached", 2: "detached", 3: "marfe", 4: "uncertain"}));
-  if (!demo) check("magnetic configuration and active lower-outer-leg gate are visible", await js(`
-    $("video-geometry").textContent.includes("LSN (lower single null)") &&
+  if (!demo) check("shelf gate is visible without inventing topology from missing DRSEP", await js(`
+    !$("video-geometry").textContent.includes("Magnetic configuration:") &&
+    $("video-geometry").textContent.includes("topology unavailable") &&
     $("video-geometry").textContent.includes("strike-point gate valid")`));
+  check("producer label, fallback rule and three vote strips are visible", await js(`
+    !$("detachment-strips").hidden && $("detachment-lanes").children.length === 5 &&
+    S.meta.params.detachment_producer.state_lm.length > 0 &&
+    Array.from($("detachment-lanes").children).every(c => c.width > 0 && c.height > 0)`));
+  check("Afrac help follows 1/DOD and exposes calibration limits", await js(`
+    $("detachment-help").textContent.includes("≥0.75") &&
+    $("detachment-help").textContent.includes("≤0.5") &&
+    $("detachment-caveats").textContent.includes("Uncalibrated") &&
+    $("detachment-caveats").textContent.includes("0.90 quantile")`));
+  if (demo) {
+    check("Afrac trace has both producer thresholds", await js(`
+      S.meta.rows.some(row => row.title === "Afrac" && same(row.hlines, [0.5,0.75]))`));
+    check("real-shot density uses line-density context before local Thomson", await js(`
+      S.meta.rows.some(row => row.title.includes("CO2") && row.title.includes("density")) &&
+      !S.meta.rows.some(row => row.title.includes("Thomson core local density"))`));
+    check("TangTV front trace preserves its source identity", await js(`
+      S.meta.rows.some(row => row.title.includes("TangTV") &&
+        (row.title.includes("regression") || row.title.includes("inversion")))`));
+    check("draft Source lane is connected to producer labels", await js(`
+      S.meta.source && S.meta.source.intervals.length > 0`));
+  }
   check("cameras have small manifests and lazy pixels", await js(`
     S.meta.video.cameras.every(c => c.channels.every(ch => !ch.frames)) &&
     S.video.cards.some(c => c.img?.src.startsWith("blob:"))`));
   check("missing cameras explain their absence", await js(`
     S.video.cards.filter(c => !c.channel).every(c => c.note.textContent.includes("No frames"))`));
-  check("selectors name physical views and default to a live lower divertor", await js(`
+  check("selectors prefer producer channel 2 when live and name the physical view", await js(`
     S.video.cards.filter(c => c.channel && c.camera.name === "tangtv").every(c =>
       [0,2].includes(c.channel.channel) &&
+      (!c.camera.channels.some(ch => ch.channel === 2) || c.channel.channel === 2) &&
       c.figure.querySelector("select").selectedOptions[0].textContent.includes("lower divertor"))`));
   await js(`window.realVideoFetch = window.fetch.bind(window);
     window.frameActive = 0; window.framePeak = 0;
@@ -1369,7 +1392,8 @@ async function detachmentCameras(shot = 170815, demo = false) {
   }
   const [hoverX, hoverY] = await js(`(() => {
     const r = $("rows").querySelector("canvas")?.getBoundingClientRect() || $("axis-row").getBoundingClientRect();
-    return [r.left + px(S.video.times[0]), r.top + r.height/2];
+    return [r.left + px(S.video.times[0]),
+      Math.min(r.top + 12, $("top").getBoundingClientRect().bottom - 4)];
   })()`);
   await mouse("mouseMoved", hoverX, hoverY);
   check("detachment hover reads time independently of the pinned video cursor", await js(`
@@ -1386,7 +1410,7 @@ async function detachmentCameras(shot = 170815, demo = false) {
   if (channelCard >= 0) {
     await js(`(() => {
       const card = S.video.cards[${channelCard}], select = card.figure.querySelector("select");
-      select.value = card.camera.channels.at(-1).channel;
+      select.value = card.camera.channels.find(c => c.channel !== card.channel.channel).channel;
       select.dispatchEvent(new Event("change", {bubbles: true}));
     })()`);
     check("changing views hides pixels until their channel identity is delivered", await js(`
@@ -1464,44 +1488,6 @@ async function detachmentCameras(shot = 170815, demo = false) {
     await sleep(100);
     const screenshot = await send("Page.captureScreenshot", {format: "png"});
     writeFileSync(CASE, Buffer.from(screenshot.data, "base64"));
-    // A separate crop for paper use, from the same live page and delivered data.
-    await send("Emulation.setDeviceMetricsOverride", { width: 500, height: 780, deviceScaleFactor: 1, mobile: false });
-    await js(`(() => {
-      S.video.cards.find(c => c.camera.name === "tangtv").figure.classList.add("paper-camera");
-      const style = document.createElement("style");
-      style.textContent = ":root {font-size:16px} .camera {display:none} .paper-camera {display:block}" +
-        "#video-cameras {display:block} .camera select {font-size:16px}" +
-        ".camera small, #video-context, #bar, #queue, #contributors, #resolution-control," +
-        "#next, #revert, #show-versions {display:none!important}" +
-        "#cursor-time, kbd {font-size:16px} #hover-cursor {display:none!important}" +
-        "#controls {padding:0 8px} #swatches {flex-wrap:wrap} #bottom {max-height:none}" +
-        "#rows canvas {display:none} body {width:500px;height:auto;grid-template-rows:auto auto auto}" +
-        "#top, #bottom {min-width:0} #swatches {flex:1 1 100%;min-width:0}" +
-        "#top {overflow:visible} #video-controls {flex-wrap:wrap} .camera img {height:180px}";
-      document.head.append(style); $("top").scrollTop = 0;
-      sizeCanvases(); render();
-    })()`);
-    await sleep(150);
-    const layout = await js(`(() => {
-      const box = e => { const r = e.getBoundingClientRect();
-        return {x:r.x,y:r.y,width:r.width,height:r.height}; };
-      const card = S.video.cards.find(c => c.camera.name === "tangtv");
-      return {shot:S.shot,view:card.channel.view_name,region:card.channel.region,
-        clock_ms:S.video.time,frame_ms:Number(card.img.dataset.frameTime),
-        configuration:$("video-geometry").textContent, viewport:{width:500,height:780},
-        camera:box(card.img),timestamp:box($("video-clock")),cursor:box($("cursor")),
-        labels:box($("swatches")),save:box($("save")), crop_bottom:$("controls").getBoundingClientRect().bottom+8};
-    })()`);
-    check("paper crop retains readable camera pixels, cursor and all four label controls", await js(`
-      S.video.cards.find(c => c.camera.name === "tangtv").img.naturalWidth > 0 &&
-      !$("cursor").hidden && $("swatches").children.length === 4 &&
-      $("controls").getBoundingClientRect().bottom < innerHeight &&
-      $("save").getBoundingClientRect().right <= innerWidth &&
-      $("video-clock").getBoundingClientRect().right <= innerWidth`));
-    writeFileSync(CASE + ".paper.json", JSON.stringify(layout, null, 2) + "\n");
-    const paper = await send("Page.captureScreenshot", {format:"png",clip:{x:0,y:0,width:500,
-      height:Math.ceil(layout.crop_bottom),scale:1}});
-    writeFileSync(CASE + ".paper.png", Buffer.from(paper.data, "base64"));
     return;
   }
   await press("2");
@@ -1563,6 +1549,7 @@ async function atomicDetachmentPlayback() {
     window.atomicBefore = S.video.cards.filter(c => c.channel).map(c =>
       [c.img.src, c.img.dataset.frameTime, c.note.textContent]);
     window.atomicTime = S.video.time;
+    window.atomicReading = $("detachment-reading").textContent;
     window.atomicSlowRelease = null;
     window.realVideoFetch = window.fetch.bind(window);
     window.fetch = async (input, options) => {
@@ -1579,7 +1566,8 @@ async function atomicDetachmentPlayback() {
   await until(`S.video.cards.find(c => c.camera.name === "tangtv").staged != null ||
     S.video.cards.find(c => c.camera.name === "tangtv").img.src !== window.atomicBefore[0][0]`);
   check("unequal camera deliveries keep both published images and clock at the old time", await js(`
-    S.video.time === window.atomicTime && S.video.cards.filter(c => c.channel).every((c,i) =>
+    S.video.time === window.atomicTime && $("detachment-reading").textContent === window.atomicReading &&
+    S.video.cards.filter(c => c.channel).every((c,i) =>
       c.img.src === window.atomicBefore[i][0] && c.img.dataset.frameTime === window.atomicBefore[i][1] &&
       c.note.textContent === window.atomicBefore[i][2])`));
   await js(`pauseVideo(); window.atomicSlowRelease();`);
@@ -1593,6 +1581,7 @@ async function atomicDetachmentPlayback() {
     window.playStart = S.video.time; $("video-play").click();`);
   await until(`S.video.time > window.playStart`);
   check("all cameras and the shared clock publish together after resume", await js(`
+    $("detachment-reading").textContent.startsWith("At " + S.video.time.toFixed(1) + " ms:") &&
     S.video.cards.filter(c => c.channel).every(c =>
       Math.abs(Number(c.img.dataset.frameTime) - S.video.time) < 0.01 &&
       c.note.textContent.startsWith(Number(c.img.dataset.frameTime).toFixed(1)))`));
