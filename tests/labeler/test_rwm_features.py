@@ -109,7 +109,7 @@ def _signals(n=1000):
 
 def test_slice_table_has_the_features_in_order_and_the_derived_ones():
     table = f.slice_table(_signals())
-    assert list(table.columns) == ["t_ms", *f.FEATURES]
+    assert list(table.columns) == ["t_ms", *f.FEATURES, "time_since_flattop_ms"]
     assert table.t_ms.min() >= 100 and table.t_ms.max() <= 900
     row = table.iloc[20]
     assert row.betan_over_li == pytest.approx(2.5)
@@ -138,4 +138,19 @@ def test_slice_table_reads_rotation_and_the_locked_mode_when_present():
 def test_slice_table_without_a_current_is_empty():
     t = np.arange(0.0, 100.0)
     table = f.slice_table({"ip": (t, np.full_like(t, np.nan))})
-    assert table.empty and list(table.columns) == ["t_ms", *f.FEATURES]
+    assert table.empty and list(table.columns) == [
+        "t_ms",
+        *f.FEATURES,
+        "time_since_flattop_ms",
+    ]
+
+
+def test_elapsed_time_uses_a_fixed_current_crossing_without_future_peak():
+    t = np.arange(0.0, 100.0)
+    ip = np.where(t < 20, 1e4, 0.6e6)
+    grid = np.array([10.0, 20.0, 30.0, 40.0])
+    base = f.time_since_flattop(t, ip, grid)
+    ip[60:] = 3e6
+    assert np.isnan(base[0])
+    assert base[1:].tolist() == [0.0, 10.0, 20.0]
+    assert np.array_equal(base, f.time_since_flattop(t, ip, grid), equal_nan=True)

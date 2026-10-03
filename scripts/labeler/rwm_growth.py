@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 """How the n = 1 magnetics and beta_N behave around Jeremy Hanson's RWM onsets.
 
-The label's growth window (`labeler.rwm.labels.GROWTH_MS`) is justified here, from the
-data and not from the wall time alone: for every listed onset the 5 ms mean of the n = 1
-RMS is compared with its value a lag earlier, the same ratio is taken at random flat-top
-times of the same shots (no onset within 150 ms either side) as a control, and the largest
-trailing 20 ms growth rate around the onset is read off. beta_N is followed from 100 ms
-before the onset to 40 ms after. Writes `outputs/labeler/rwm/growth.json` and a
+The 20 ms label window is a tau_w convention, not a measured growth interval.
+For every onset the 5 ms mean N1RMS is compared with its value a lag earlier.
+The SAME maximum trailing-slope search is applied around onsets and random flat-top
+times on n=1 Hanson shots (no onset within 170 ms either side). N1RMS is not an
+RWM-specific sensor; these search maxima do not measure the mode's growth time.
+Writes `outputs/labeler/rwm/growth.json` and a
 per-onset table under `$LABELER_ROOT/round4/rwm/`.
 
     python scripts/labeler/rwm_growth.py
@@ -31,8 +31,9 @@ from labeler.rwm import data, features, labels
 
 LAGS_MS = (10, 20, 40, 80, 150)
 CONTROLS_PER_SHOT = 300
-CONTROL_EXCLUSION_MS = 150.0
+CONTROL_EXCLUSION_MS = 170.0  # 150 ms search lookback + 20 ms trailing fit
 SEED = 0
+SEARCH_OFFSETS_MS = np.arange(-150.0, 30.0, 2.0)
 
 
 def _quartiles(values) -> dict:
@@ -57,12 +58,27 @@ def _controls(signals, onsets_ms, rng):
     window = features.flattop_window(*signals["ip"], 0.5)
     if window is None:
         return np.array([])
-    lo, hi = window[0] + 200.0, window[1]
+    lo, hi = window[0] + 200.0, window[1] - 30.0
     times = rng.uniform(lo, hi, CONTROLS_PER_SHOT) if hi > lo else np.array([])
     near = np.zeros(len(times), dtype=bool)
     for onset in onsets_ms:
-        near |= np.abs(times - onset) < CONTROL_EXCLUSION_MS
+        near |= np.abs(times - onset) <= CONTROL_EXCLUSION_MS
     return times[~near]
+
+
+def _search_slopes(t, y, centres):
+    """Identical 90-offset trailing slope search at each centre."""
+    grid = np.asarray(centres)[:, None] + SEARCH_OFFSETS_MS[None, :]
+    # trailing_log_slope vectorises arbitrary grid order via source searchsorted.
+    slopes = features.trailing_log_slope(
+        t, y, grid.ravel(), features.GROWTH_WINDOW_MS, features.LOG_FLOOR_G
+    ).reshape(grid.shape)
+    valid = np.isfinite(slopes).any(axis=1)
+    best = np.argmax(np.where(np.isfinite(slopes), slopes, -np.inf), axis=1)
+    maxima = slopes[np.arange(len(best)), best]
+    return np.where(valid, maxima, np.nan), np.where(
+        valid, SEARCH_OFFSETS_MS[best], np.nan
+    )
 
 
 def main() -> None:
@@ -82,6 +98,7 @@ def main() -> None:
     rows, ratios = [], {lag: [] for lag in LAGS_MS}
     controls = {lag: [] for lag in LAGS_MS}
     control_slopes = []
+    control_maxima, control_rows = [], []
     for shot, group in table.groupby("shot"):
         try:
             signals = data.load_signals(int(shot), paths)
@@ -91,8 +108,11 @@ def main() -> None:
         t, y = signals["n1rms"]
         tb, betan = signals["betan"]
         all_onsets = group.t_ms.to_numpy()
-        times = _controls(signals, all_onsets, rng)
-        slope_times = np.arange(-150.0, 30.0, 2.0)
+        times = (
+            _controls(signals, all_onsets, rng)
+            if group.ntor.eq(1).any()
+            else np.array([])
+        )
         for lag in LAGS_MS:
             controls[lag].extend(_log_ratio(t, y, times, lag))
         control_slopes.extend(
@@ -100,23 +120,25 @@ def main() -> None:
                 t, y, times, features.GROWTH_WINDOW_MS, features.LOG_FLOOR_G
             )
         )
+        maxima, offsets = _search_slopes(t, y, times)
+        control_maxima.extend(maxima)
+        control_rows.extend(
+            {
+                "shot": int(shot),
+                "centre_ms": float(c),
+                "max_growth_per_s": float(m),
+                "max_growth_at_ms": float(o),
+            }
+            for c, m, o in zip(times, maxima, offsets)
+        )
         for onset, ntor in zip(group.t_ms, group.ntor):
-            slope = features.trailing_log_slope(
-                t,
-                y,
-                onset + slope_times,
-                features.GROWTH_WINDOW_MS,
-                features.LOG_FLOOR_G,
-            )
-            best = int(np.nanargmax(slope)) if np.isfinite(slope).any() else None
+            maximum, offset = _search_slopes(t, y, [onset])
             row = {
                 "shot": int(shot),
                 "onset_ms": float(onset),
                 "ntor": int(ntor),
-                "max_growth_per_s": float(slope[best]) if best is not None else np.nan,
-                "max_growth_at_ms": float(slope_times[best])
-                if best is not None
-                else np.nan,
+                "max_growth_per_s": float(maximum[0]),
+                "max_growth_at_ms": float(offset[0]),
                 "slope_at_onset_per_s": float(
                     features.trailing_log_slope(
                         t, y, [onset], features.GROWTH_WINDOW_MS, features.LOG_FLOOR_G
@@ -133,6 +155,7 @@ def main() -> None:
             rows.append(row)
     frame = pd.DataFrame(rows)
     frame.to_csv(out_dir / "growth_onsets.csv", index=False)
+    pd.DataFrame(control_rows).to_csv(out_dir / "growth_controls.csv", index=False)
     n1 = frame[frame.ntor == 1]
     result = {
         "script": "scripts/labeler/rwm_growth.py",
@@ -143,20 +166,32 @@ def main() -> None:
             "shots": int(frame.shot.nunique()),
         },
         "growth_window_ms": labels.GROWTH_MS,
+        "annotation_status": "20 ms tau_w convention; not a measured growth interval",
+        "search": {
+            "offsets_ms": SEARCH_OFFSETS_MS.tolist(),
+            "same_search_at_controls": True,
+            "onsets_csv": str(out_dir / "growth_onsets.csv"),
+            "controls_csv": str(out_dir / "growth_controls.csv"),
+        },
         "trailing_window_ms": features.GROWTH_WINDOW_MS,
         "controls": {
             "per_shot": CONTROLS_PER_SHOT,
             "exclusion_ms": CONTROL_EXCLUSION_MS,
             "seed": SEED,
             "n": len(control_slopes),
+            "shots": int(table.loc[table.ntor == 1, "shot"].nunique()),
         },
         "max_growth_per_s_n1": _quartiles(n1.max_growth_per_s),
-        "efold_ms_n1": _quartiles(
+        "search_max_efold_ms_n1": _quartiles(
             1000.0 / n1.max_growth_per_s[n1.max_growth_per_s > 0]
         ),
         "max_growth_at_ms_n1": _quartiles(n1.max_growth_at_ms),
         "slope_at_onset_per_s_n1": _quartiles(n1.slope_at_onset_per_s),
         "control_slope_per_s": _quartiles(control_slopes),
+        "control_max_growth_per_s_n1": _quartiles(control_maxima),
+        "control_search_max_efold_ms": _quartiles(
+            1000.0 / np.asarray(control_maxima)[np.asarray(control_maxima) > 0]
+        ),
         "log_ratio_n1": {},
         "betan": {
             "m100": _quartiles(n1.betan_m100),

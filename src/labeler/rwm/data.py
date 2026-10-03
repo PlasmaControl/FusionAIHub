@@ -46,20 +46,21 @@ def shot_table(
     onsets_ms=(),
     *,
     other_onsets_ms=(),
-    examined: bool = False,
+    hanson: bool = False,
     step_ms: float = features.STEP_MS,
 ) -> pd.DataFrame:
     """The causal feature rows of one shot with their labels.
 
-    `label` is `labels.slice_labels` over the listed onsets; on a shot that was not
-    `examined` every slice is `UNLABELLED` (-2) instead, since an absent onset there
-    is not a negative. `other_onsets_ms` (the n = 2 onsets, for an n = 1 target) leave
+    `label` is `labels.slice_labels` over the listed onsets, with negatives assumed
+    absent on Hanson shots. Complete reviewed coverage has not been established.
+    On a comparison shot every slice is `UNLABELLED` (-2).
+    `other_onsets_ms` (the n = 2 onsets, for an n = 1 target) leave
     their slices out of both classes.
     """
     signals = load_signals(shot, paths)
     table = features.slice_table(signals, step_ms=step_ms)
     table.insert(0, "shot", int(shot))
-    if examined:
+    if hanson:
         table["label"] = labels.slice_labels(
             table.t_ms.to_numpy(), onsets_ms, other_onsets_ms=other_onsets_ms
         )

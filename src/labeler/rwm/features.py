@@ -7,7 +7,9 @@ DIII-D stores betaN, l_i, q95, W_MHD and the ZIPFIT rotation on the EFIT and
 ZIPFIT cadence (20 ms or slower) and the n = 1 and n = 2 magnetic RMS at 1 kHz,
 so this module builds one row per grid time from what a real-time system would
 have seen by then: a value is held from its last sample (and dropped when that
-is too old), a rate is a trailing window, nothing looks ahead.
+is too old), a rate is a trailing window. ZIPFIT's upstream time smoothing is
+mildly acausal; holding its samples cannot remove that smoothing. The high-current
+analysis window also uses the whole-shot peak and is retrospective.
 
 Every function takes plain arrays (time in milliseconds) and is vectorised.
 """
@@ -32,6 +34,7 @@ ROTATION_RHO = (0.25, 0.625)
 NO_WALL_FACTOR = 4.0
 #: A growth rate needs this floor so an RMS of exactly zero stays finite.
 LOG_FLOOR_G = 0.05
+TIME_COLUMN = "time_since_flattop_ms"
 
 FEATURES = (
     "betan",
@@ -168,6 +171,20 @@ def flattop_window(t_ms, ip, fraction):
     return best
 
 
+def time_since_flattop(t_ms, ip, grid_ms, threshold_a=0.5e6):
+    """Causal elapsed time from the first |Ip| >= 0.5 MA sample, in ms.
+
+    This fixed crossing is an operational proxy for flat-top start, independent of
+    the future peak used to select the analysis window. Before crossing it is NaN.
+    """
+    t, level, grid = (np.asarray(v, dtype=float) for v in (t_ms, ip, grid_ms))
+    crossed = np.flatnonzero(np.isfinite(level) & (np.abs(level) >= threshold_a))
+    if not len(crossed):
+        return np.full(len(grid), np.nan)
+    elapsed = grid - t[crossed[0]]
+    return np.where(elapsed >= 0, elapsed, np.nan)
+
+
 def slice_table(signals, *, step_ms=STEP_MS, ip_fraction=0.5):
     """One causal feature row per grid time, over the shot's high-current window.
 
@@ -179,7 +196,7 @@ def slice_table(signals, *, step_ms=STEP_MS, ip_fraction=0.5):
     ip_t, ip_y = signals["ip"]
     window = flattop_window(ip_t, ip_y, ip_fraction)
     if window is None:
-        return pd.DataFrame(columns=["t_ms", *FEATURES])
+        return pd.DataFrame(columns=["t_ms", *FEATURES, TIME_COLUMN])
     grid = np.arange(np.ceil(window[0] / step_ms) * step_ms, window[1] + 1e-9, step_ms)
     nan = np.full(len(grid), np.nan)
 
@@ -229,4 +246,5 @@ def slice_table(signals, *, step_ms=STEP_MS, ip_fraction=0.5):
         table["lock_v"] = trailing_mean(t, np.abs(y), grid, RMS_WINDOW_MS)
     else:
         table["lock_v"] = nan
-    return pd.DataFrame(table, columns=["t_ms", *FEATURES])
+    table[TIME_COLUMN] = time_since_flattop(ip_t, ip_y, grid)
+    return pd.DataFrame(table, columns=["t_ms", *FEATURES, TIME_COLUMN])

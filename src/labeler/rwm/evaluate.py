@@ -2,8 +2,8 @@
 
 The unit of everything here is the shot: folds, thresholds and the bootstrap never
 split one. A slice table (`data.shot_table`, all shots stacked) carries a `role`
-(`hanson`: examined, labelled; `comparison`: unlabelled, scored as negative only as an
-upper bound on false alarms) and a `label` for the chosen horizon. For each outer fold
+(`hanson`: onset-derived weak positives and assumed negatives; `comparison`:
+unlabelled) and a `label` for the chosen horizon. For each outer fold
 the model, the slice cutoff (the ROC point nearest (0, 1), as the paper does) and the
 hysteresis alarm rule are all chosen on out-of-fold scores of the *training* shots, an
 inner cross-validation, so a held-out shot never sets a threshold that scores it.
@@ -39,10 +39,14 @@ def relabel(table, onsets, other_onsets, horizon_ms, post_ms=labels.POST_MS):
 
     `onsets` and `other_onsets` map a shot to its target and other-kind onset times
     (ms). A `comparison` shot is `UNLABELLED` whatever its onsets; a `hanson` shot is
-    labelled from its target onsets.
+    labelled from its target onsets under the assumption of complete onset listing.
+    `label_broad` retains post-last-onset negatives for sensitivity scoring only.
+    High-beta p95 uses the whole analysis window to define an evaluation stratum,
+    never a model feature or an alarm threshold.
     """
     table = table.copy()
     label = np.full(len(table), labels.UNLABELLED, dtype=np.int8)
+    broad = label.copy()
     for shot, index in table.groupby("shot").indices.items():
         if table.role.iloc[index[0]] != "hanson":
             continue
@@ -53,7 +57,19 @@ def relabel(table, onsets, other_onsets, horizon_ms, post_ms=labels.POST_MS):
             post_ms=post_ms,
             other_onsets_ms=other_onsets.get(int(shot), []),
         )
+        broad[index] = labels.slice_labels(
+            table.t_ms.to_numpy()[index],
+            onsets.get(int(shot), []),
+            horizon_ms=horizon_ms,
+            post_ms=post_ms,
+            other_onsets_ms=other_onsets.get(int(shot), []),
+            negative_scope="broad",
+        )
     table["label"] = label
+    table["label_broad"] = broad
+    p95 = table.groupby("shot").betan.transform(lambda v: v.quantile(0.95))
+    table["high_beta"] = table.betan >= 0.8 * p95
+    table["above_proxy"] = table.betan_over_li > features.NO_WALL_FACTOR
     return table
 
 
@@ -80,14 +96,16 @@ class Brf:
     `use_comparison` adds the unlabelled comparison slices as assumed negatives.
     """
 
-    def __init__(self, columns, use_comparison=True, seed=0, **forest):
+    def __init__(self, columns, use_comparison=False, seed=0, **forest):
         self.columns, self.use_comparison = tuple(columns), use_comparison
         self.seed, self.forest = seed, forest
 
     def fit(self, train):
-        kept = train.label.isin([labels.POSITIVE, labels.NEGATIVE])
+        kept = (train.role == "hanson") & train.label.isin(
+            [labels.POSITIVE, labels.NEGATIVE]
+        )
         if self.use_comparison:
-            kept |= train.label == labels.UNLABELLED
+            kept |= (train.role == "comparison") & (train.label == labels.UNLABELLED)
         rows = train[kept]
         self.imputer = Imputer().fit(rows, self.columns)
         y = (rows.label == labels.POSITIVE).to_numpy().astype(float)
@@ -101,10 +119,11 @@ class Brf:
 
 
 class Nnpu:
-    """The same features under the non-negative PU risk; only positives are labelled.
+    """Development-only PU experiment; excluded from formal comparisons.
 
     `prior_scale` multiplies the class prior estimated from the training slices (the
-    share of positive slices among all training slices), for the sensitivity runs.
+    share of positive slices among all training slices). That does not identify
+    the positive prior among unlabelled slices; this is not a validated PNU setup.
     """
 
     def __init__(self, columns, prior_scale=1.0, seed=0, **network):
@@ -173,24 +192,28 @@ def shot_traces(table, scores):
     return out
 
 
-def score_alarms(traces, onsets, rule):
+def score_alarms(traces, target_onsets, rule, *, explanation_onsets=None):
     """Alarm outcomes per shot for a `(k_low, k_high, hold_ms)` rule.
 
     Returns `{shot: {"alarms": [...], "warning_ms": [per onset or None],
     "false": [unmatched alarm times]}}`.
     """
     k_low, k_high, hold = rule
+    explanation_onsets = (
+        target_onsets if explanation_onsets is None else explanation_onsets
+    )
     out = {}
     for shot, (t, s) in traces.items():
         times = alarm.hysteresis_alarms(
             t, s, k_low, k_high, hold, max_gap_ms=MAX_GAP_MS
         )
-        per_onset, unmatched = alarm.match_alarms(times, onsets.get(shot, []))
+        per_onset, _ = alarm.match_alarms(times, target_onsets.get(shot, []))
+        _, unmatched = alarm.match_alarms(times, explanation_onsets.get(shot, []))
         out[shot] = {"alarms": times, "warning_ms": per_onset, "false": unmatched}
     return out
 
 
-def choose_rule(traces, onsets, negative_scores):
+def choose_rule(traces, target_onsets, negative_scores, *, explanation_onsets=None):
     """The `(k_low, k_high, hold_ms)` maximising shot-level detection minus false alarms.
 
     The objective is the share of onsets warned in time minus the share of shots with
@@ -207,7 +230,12 @@ def choose_rule(traces, onsets, negative_scores):
     )
     for k_high, fraction, hold in itertools.product(highs, LOW_FRACTIONS, HOLD_MS):
         k_low = float(finite.min() + fraction * (k_high - finite.min()))
-        outcome = score_alarms(traces, onsets, (k_low, k_high, float(hold)))
+        outcome = score_alarms(
+            traces,
+            target_onsets,
+            (k_low, k_high, float(hold)),
+            explanation_onsets=explanation_onsets,
+        )
         warned = [w is not None for o in outcome.values() for w in o["warning_ms"]]
         false = [bool(o["false"]) for o in outcome.values()]
         value = (np.mean(warned) if warned else 0.0) - (
@@ -233,8 +261,9 @@ def _fit_score(make_model, train, test, seed):
 def cross_validate(
     table,
     make_model,
-    all_onsets,
+    target_onsets,
     *,
+    explanation_onsets=None,
     outer=OUTER_FOLDS,
     inner=INNER_FOLDS,
     seed=0,
@@ -242,13 +271,15 @@ def cross_validate(
     """Out-of-fold scores, slice calls and alarms for every shot of `table`.
 
     `make_model(seed)` returns a fresh model with `fit(table)` and `score(table)`.
-    `all_onsets` maps every shot to all its onset times (both mode numbers); it explains
-    alarms and sets the per-onset warning list. Returns `(oof, alarms, rules)` where
+    `target_onsets` is the headline n=1 set, used for tuning and detection.
+    `explanation_onsets` may also contain n=2 events: they can explain alarms but
+    never reward detection. Comparison shots never tune primary thresholds or rules.
+    Returns `(oof, alarms, rules)` where
     `oof` is the table's rows with `score`, `fold` and `called` columns, `alarms` the
     `{shot: outcome}` map and `rules` the per-fold `(cutoff, rule)` choices.
     """
     if getattr(make_model(0), "binary", False):
-        return _fixed_call(table, make_model(0), all_onsets)
+        return _fixed_call(table, make_model(0), target_onsets, explanation_onsets)
     shots = np.array(sorted(table.shot.unique()))
     info = table.drop_duplicates("shot").set_index("shot").loc[shots]
     strata = (info.role + "_" + info.campaign.astype(str)).to_numpy()
@@ -283,13 +314,14 @@ def cross_validate(
             (train.label[labelled] == labels.POSITIVE).to_numpy(),
         )
         negatives = inner_scores[
-            (train.label != labels.POSITIVE).to_numpy()
-            & (train.label != labels.EXCLUDED).to_numpy()
+            ((train.role == "hanson") & (train.label == labels.NEGATIVE)).to_numpy()
         ]
+        known = (train.role == "hanson").to_numpy()
         rule = choose_rule(
-            shot_traces(train, inner_scores),
-            {s: all_onsets.get(s, []) for s in train_shots},
+            shot_traces(train[known], inner_scores[known]),
+            target_onsets,
             negatives,
+            explanation_onsets=explanation_onsets,
         )
         scores = _fit_score(
             make_model, train, test, seed + 1000 * (fold_number + 1) + 999
@@ -300,24 +332,25 @@ def cross_validate(
         alarms.update(
             score_alarms(
                 shot_traces(piece, piece.score.to_numpy()),
-                {int(s): all_onsets.get(int(s), []) for s in test_shots},
+                target_onsets,
                 rule,
+                explanation_onsets=explanation_onsets,
             )
         )
         rules.append({"fold": fold_number, "cutoff": float(cutoff), "rule": list(rule)})
     return pd.concat(pieces, ignore_index=True), alarms, rules
 
 
-def _fixed_call(table, model, all_onsets):
+def _fixed_call(table, model, target_onsets, explanation_onsets):
     """A binary rule needs no folds: its call is the score, its alarm the first call."""
     scores = model.score(table)
     piece = table.assign(score=scores, fold=0)
     piece["called"] = piece.score >= 0.5
-    shots = sorted(piece.shot.unique())
     alarms = score_alarms(
         shot_traces(piece, scores),
-        {int(s): all_onsets.get(int(s), []) for s in shots},
+        target_onsets,
         (0.5, 0.5, 0.0),
+        explanation_onsets=explanation_onsets,
     )
     return piece, alarms, [{"fold": 0, "cutoff": 0.5, "rule": [0.5, 0.5, 0.0]}]
 
@@ -325,7 +358,7 @@ def _fixed_call(table, model, all_onsets):
 # ---- scoring the pooled out-of-fold predictions ------------------------------------
 
 
-def shot_records(oof, alarms, target_onsets, all_onsets):
+def shot_records(oof, alarms, target_onsets, all_onsets=None):
     """Per-shot records for the bootstrap: `{"hanson": [...], "comparison": [...]}`.
 
     A record holds the shot's labelled slices (`score`, `label`, `called`) and its
@@ -335,17 +368,18 @@ def shot_records(oof, alarms, target_onsets, all_onsets):
     for shot, index in oof.groupby("shot").indices.items():
         rows = oof.iloc[index]
         outcome = alarms[int(shot)]
-        every = all_onsets.get(int(shot), [])
-        target = set(target_onsets.get(int(shot), []))
-        warnings = [
-            w for onset, w in zip(every, outcome["warning_ms"]) if onset in target
-        ]
+        warnings = outcome["warning_ms"]
+        if len(warnings) != len(target_onsets.get(int(shot), [])):
+            raise ValueError("alarm warning list must match the target onset set")
         groups[rows.role.iloc[0]].append(
             {
                 "shot": int(shot),
                 "campaign": int(rows.campaign.iloc[0]),
                 "score": rows.score.to_numpy(),
                 "label": rows.label.to_numpy(),
+                "label_broad": rows.get("label_broad", rows.label).to_numpy(),
+                "high_beta": rows.high_beta.to_numpy(),
+                "above_proxy": rows.above_proxy.to_numpy(),
                 "called": rows.called.to_numpy(),
                 "warning_ms": warnings,
                 "false_alarms": len(outcome["false"]),
@@ -382,11 +416,11 @@ def _stack(records, key):
     return np.concatenate([r[key] for r in records]) if records else np.array([])
 
 
-def statistic(groups, *, mixed=True):
+def statistic(groups):
     """Every reported number of one configuration, from per-shot records.
 
-    `mixed=False` leaves out the three scores that stack the comparison shots' slices
-    (they are the slow ones); it is for the paired bootstraps.
+    Slice metrics use only Hanson shots, conditional on assumed negative coverage.
+    Broad scoring changes the mask, not the trained model or its predictions.
     """
     hanson, comparison = groups.get("hanson", []), groups.get("comparison", [])
     score, label, called = (_stack(hanson, k) for k in ("score", "label", "called"))
@@ -396,6 +430,21 @@ def statistic(groups, *, mixed=True):
         "slice_auroc": metrics.auroc(score[keep], y),
         "slice_auprc": metrics.auprc(score[keep], y),
     }
+    for name, mask, target in (
+        (
+            "broad",
+            np.isin(_stack(hanson, "label_broad"), [0, 1]),
+            _stack(hanson, "label_broad"),
+        ),
+        ("high_beta", keep & _stack(hanson, "high_beta").astype(bool), label),
+        ("above_proxy", keep & _stack(hanson, "above_proxy").astype(bool), label),
+    ):
+        out[f"{name}_auroc"] = metrics.auroc(
+            score[mask], target[mask] == labels.POSITIVE
+        )
+        out[f"{name}_auprc"] = metrics.auprc(
+            score[mask], target[mask] == labels.POSITIVE
+        )
     called_k = called[keep].astype(bool)
     tp, fp = int((called_k & y).sum()), int((called_k & ~y).sum())
     fn, tn = int((~called_k & y).sum()), int((~called_k & ~y).sum())
@@ -403,41 +452,27 @@ def statistic(groups, *, mixed=True):
     out["slice_fpr"] = fp / (fp + tn) if fp + tn else np.nan
     out["slice_precision"] = tp / (tp + fp) if tp + fp else np.nan
     out["slice_f1"] = 2 * tp / (2 * tp + fp + fn) if tp + fp + fn else np.nan
-    if mixed:
-        # Comparison slices scored as negatives: a lower bound, they may hold unlisted
-        # RWMs.
-        score_c = _stack(comparison, "score")
-        s_all = np.concatenate([score[keep], score_c])
-        y_all = np.concatenate([y, np.zeros(len(score_c), dtype=bool)])
-        out["mixed_auroc"] = metrics.auroc(s_all, y_all)
-        out["mixed_auprc"] = metrics.auprc(s_all, y_all)
-        called_c = _stack(comparison, "called").astype(bool)
-        out["mixed_fpr"] = (
-            (fp + int(called_c.sum())) / (fp + tn + len(called_c))
-            if fp + tn + len(called_c)
-            else np.nan
-        )
     # The paper's per-shot scoring.
     warnings = [w for r in hanson for w in r["warning_ms"]]
     detected = [w for w in warnings if w is not None]
     out["onset_detection_rate"] = len(detected) / len(warnings) if warnings else np.nan
+    out["uniform_alarm_reference"] = chance_detection(hanson)
+    out["detection_minus_uniform_reference"] = (
+        out["onset_detection_rate"] - out["uniform_alarm_reference"]
+    )
     out["warning_ms_mean"] = float(np.mean(detected)) if detected else np.nan
     out["warning_ms_median"] = float(np.median(detected)) if detected else np.nan
-    out["hanson_false_alarm_shot_rate"] = (
+    out["hanson_unexplained_alarm_incidence"] = (
         float(np.mean([r["false_alarms"] > 0 for r in hanson])) if hanson else np.nan
     )
-    out["hanson_false_alarms_per_shot"] = (
+    out["hanson_unexplained_alarms_per_shot"] = (
         float(np.mean([r["false_alarms"] for r in hanson])) if hanson else np.nan
     )
-    out["comparison_false_alarm_shot_rate"] = (
-        float(np.mean([r["false_alarms"] > 0 for r in comparison]))
-        if comparison
-        else np.nan
+    out["comparison_alarm_incidence"] = (
+        float(np.mean([r["alarms"] > 0 for r in comparison])) if comparison else np.nan
     )
-    out["comparison_false_alarms_per_shot"] = (
-        float(np.mean([r["false_alarms"] for r in comparison]))
-        if comparison
-        else np.nan
+    out["comparison_alarms_per_shot"] = (
+        float(np.mean([r["alarms"] for r in comparison])) if comparison else np.nan
     )
     return out
 
@@ -447,7 +482,7 @@ def counts(groups):
     hanson, comparison = groups["hanson"], groups["comparison"]
     label = _stack(hanson, "label")
     warnings = [w for r in hanson for w in r["warning_ms"]]
-    return {
+    out = {
         "hanson_shots": len(hanson),
         "comparison_shots": len(comparison),
         "positive_slices": int((label == labels.POSITIVE).sum()),
@@ -456,11 +491,29 @@ def counts(groups):
         "comparison_slices": len(_stack(comparison, "score")),
         "target_onsets": len(warnings),
         "onsets_warned": sum(w is not None for w in warnings),
-        "hanson_shots_with_a_false_alarm": sum(r["false_alarms"] > 0 for r in hanson),
-        "comparison_shots_with_an_alarm": sum(
-            r["false_alarms"] > 0 for r in comparison
+        "hanson_shots_with_an_unexplained_alarm": sum(
+            r["false_alarms"] > 0 for r in hanson
         ),
+        "comparison_shots_with_an_alarm": sum(r["alarms"] > 0 for r in comparison),
     }
+    primary = np.isin(label, [labels.POSITIVE, labels.NEGATIVE])
+    for name, mask, target in (
+        (
+            "broad",
+            np.isin(_stack(hanson, "label_broad"), [0, 1]),
+            _stack(hanson, "label_broad"),
+        ),
+        ("high_beta", primary & _stack(hanson, "high_beta").astype(bool), label),
+        ("above_proxy", primary & _stack(hanson, "above_proxy").astype(bool), label),
+    ):
+        pos = int((target[mask] == labels.POSITIVE).sum())
+        neg = int((target[mask] == labels.NEGATIVE).sum())
+        out[f"{name}_positive_slices"] = pos
+        out[f"{name}_negative_slices"] = neg
+        out[f"{name}_prevalence"] = pos / (pos + neg) if pos + neg else np.nan
+    total = out["positive_slices"] + out["negative_slices"]
+    out["prevalence"] = out["positive_slices"] / total if total else np.nan
+    return out
 
 
 def single_feature_auroc(table, columns=features.FEATURES):

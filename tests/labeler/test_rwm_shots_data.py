@@ -102,15 +102,15 @@ def test_a_shot_without_a_required_signal_raises(tmp_path):
         data.load_signals(8, p)
 
 
-def test_shot_table_labels_an_examined_shot_and_leaves_the_rest_unlabelled(tmp_path):
+def test_shot_table_labels_a_hanson_shot_and_leaves_the_rest_unlabelled(tmp_path):
     p = tree.paths(tmp_path)
     _write_shot(p, 7)
-    examined = data.shot_table(7, p, [600.0], examined=True)
+    examined = data.shot_table(7, p, [600.0], hanson=True)
     assert set(examined.label) == {labels.NEGATIVE, labels.POSITIVE, labels.EXCLUDED}
     positive = examined.t_ms[examined.label == labels.POSITIVE]
     assert positive.min() >= 500.0 and positive.max() < 600.0
     assert (examined.shot == 7).all()
-    other = data.shot_table(7, p, [600.0], examined=False)
+    other = data.shot_table(7, p, [600.0], hanson=False)
     assert (other.label == labels.UNLABELLED).all()
     assert len(other) == len(examined)
 

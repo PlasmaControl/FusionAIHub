@@ -10,17 +10,23 @@
     "category",
     "t_start",
     "t_end",
-    "confidence"
+    "confidence",
+    "attrs"
   ],
-  "coverage": "Hanson shots only for categories 0 and 1; category 2 is the rwm_candidates screen on the matched comparison shots, which are unlabelled and not negatives. A shot absent from the table was not examined.",
-  "made_at": "2026-10-03T12:53:27+00:00",
+  "coverage": "Hanson shots only for categories 0 and 1; category 2 is the rwm_candidates screen on the matched comparison shots, which are unlabelled and not negatives. Only the raw onset points are verified; reviewed negative coverage is unknown even on Hanson shots.",
+  "made_at": "2026-10-03T14:09:49+00:00",
   "made_by": "scripts/labeler/rwm_build.py",
   "n_rows": 266,
   "n_shots": 70,
   "rules": {
-    "present": "the 20 ms before each listed onset, of either mode number (a growth window; see outputs/labeler/rwm/growth.json)",
-    "absent": "the high-current window (Ip at least half its peak) outside [onset - 100, onset + 100] ms of every listed onset; the precursor before a growth window and the aftermath carry no row (not assessed)",
+    "present": "the 20 ms before each listed onset, of either mode number (conventional weak annotation motivated by tau_w, not a measured growth interval; see outputs/labeler/rwm/growth.json)",
+    "absent": "the high-current window (Ip at least half its peak) outside [onset - 100, onset + 100] ms of every listed onset; the precursor before a growth window and the aftermath carry no row (not assessed). Assumed absent: assumes complete onset listing on Hanson shots, without verified negative coverage",
     "uncertain": "rwm_candidates screen spans, comparison shots only"
+  },
+  "evidence_tiers": {
+    "conventional_weak": "20 ms pre-onset convention, not expert-verified extent",
+    "assumed_absent": "Hanson time away from onsets; completeness assumption",
+    "unlabelled_screen": "screen candidates on comparison shots; not negatives"
   },
   "source": "data/events/resistive_wall_mode/raw/rwm_onsets_{2017,2024}.csv",
   "summary": "outputs/labeler/rwm/shots.json"

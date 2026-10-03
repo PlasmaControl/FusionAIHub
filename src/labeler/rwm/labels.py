@@ -3,16 +3,16 @@
 An onset is a point in time. Two labels are made from it, and they are different
 things:
 
-* the **growth window** `[onset - GROWTH_MS, onset]`, the catalog's "RWM present"
-  interval (category 1), short because the mode grows on the wall time;
+* the **conventional weak window** `[onset - GROWTH_MS, onset]` (category 1),
+  a wall-time convention, not a verified physical instability interval;
 * the **forecast target** of the baseline, as Piccione et al. 2022 define their
   stability label: a time slice is positive when an onset follows within
-  `HORIZON_MS` (100 ms there), negative otherwise. Slices just after an onset,
-  while the mode is acting, are excluded from both classes.
+  `HORIZON_MS` (100 ms there). Primary negatives are earlier than the last target
+  onset. Slices after it are excluded; a broader negative set is a sensitivity.
 
-Only a shot that was examined can have a negative. The onset tables list onsets and
-say nothing about shots they omit, so a comparison shot is unlabelled; the labels
-of its slices stay `UNLABELLED` and the baselines treat them as such.
+Only the listed onset points are verified evidence. Negatives on Hanson shots are
+assumed absent, conditional on the onset list being complete, not reviewed coverage.
+Comparison shots are unlabelled; their slices stay `UNLABELLED`.
 """
 
 from __future__ import annotations
@@ -24,13 +24,9 @@ HORIZON_MS = 100.0
 #: Slices from an onset to this long after it are neither stable nor about to go
 #: unstable; the mode is already acting, so they leave the training and scoring sets.
 POST_MS = 100.0
-#: Length of the catalog's "RWM present" window before an onset. DIII-D's wall time
-#: tau_w is a few ms, so a mode growing on it gains a factor e per few ms: 20 ms is
-#: two to four e-foldings. The measured largest trailing 20 ms growth rate of the
-#: n = 1 RMS around the 48 distinct n = 1 onsets has a median e-folding time of 9 ms
-#: (quartiles 5.8 and 11.0 ms; `outputs/labeler/rwm/growth.json`), which is 2.2
-#: e-foldings (1.8 to 3.5) in 20 ms. The 1 kHz RMS itself cannot place the start of the
-#: growth more sharply, so this length rests on the wall time and is a convention.
+#: Conventional weak pre-onset interval motivated by the millisecond wall time
+#: tau_w. Its extent is not a measurement of growth: N1RMS is not RWM-specific and
+#: an identical slope search at random flat-top times gives similar maxima.
 GROWTH_MS = 20.0
 
 #: Listed onsets this close are one event.
@@ -45,27 +41,44 @@ PRESENT, ABSENT, UNCERTAIN = 1, 0, 2
 
 
 def slice_labels(
-    t_ms, onsets_ms, *, horizon_ms=HORIZON_MS, post_ms=POST_MS, other_onsets_ms=()
+    t_ms,
+    onsets_ms,
+    *,
+    horizon_ms=HORIZON_MS,
+    post_ms=POST_MS,
+    other_onsets_ms=(),
+    negative_scope="piccione",
 ):
     """Per-slice label: 1 an onset within the next `horizon_ms`, 0 none, -1 excluded.
 
     A slice at `t` is positive when some onset `o` has `o - horizon <= t < o`. It is
     excluded when some onset has `o <= t < o + post` and it is not positive (an onset
     that follows soon after another keeps its own positive slices). Every other slice
-    is negative. With no onset every slice is negative; the caller decides whether
-    that means "examined" or "unlabelled".
+    before the last target onset is an assumed negative. With no target onset every
+    slice is excluded: an n=2-only Hanson shot is not a verified n=1-stable shot.
+    This extends Piccione's single-onset label to multiple onsets using the last
+    target onset as the end of negative coverage, with earlier aftermath excluded.
+    `negative_scope="broad"` retains the former post-last-onset negatives solely
+    for sensitivity scoring. A comparison shot must be assigned UNLABELLED by its
+    caller regardless of this function's result.
 
     `other_onsets_ms` are onsets of a different kind (an n = 2 RWM when the target is
     n = 1): their slices from `o - horizon` to `o + post` are excluded, never
     positive and never negative, unless a target onset makes them positive.
     """
     t = np.asarray(t_ms, dtype=float)
+    if negative_scope not in ("piccione", "broad"):
+        raise ValueError("negative_scope must be 'piccione' or 'broad'")
     label = np.zeros(t.shape, dtype=np.int8)
     for other in np.asarray(other_onsets_ms, dtype=float):
         label[(t >= other - horizon_ms) & (t < other + post_ms)] = EXCLUDED
     onsets = np.sort(np.asarray(onsets_ms, dtype=float))
     if not len(onsets):
-        return label
+        return (
+            np.full(t.shape, EXCLUDED, dtype=np.int8)
+            if negative_scope == "piccione"
+            else label
+        )
     # First onset strictly after each slice time, and last at or before it.
     after = np.searchsorted(onsets, t, side="right")
     before = after - 1
@@ -74,6 +87,8 @@ def slice_labels(
     )
     last_gap = np.where(before >= 0, t - onsets[np.maximum(before, 0)], np.inf)
     label[last_gap < post_ms] = EXCLUDED
+    if negative_scope == "piccione":
+        label[t >= onsets[-1]] = EXCLUDED
     label[next_gap <= horizon_ms] = POSITIVE
     return label
 
@@ -126,23 +141,24 @@ def window_rows(
     onsets_ms,
     flattop,
     *,
-    examined,
+    assumed_absent,
     growth_ms=GROWTH_MS,
     horizon_ms=HORIZON_MS,
     post_ms=POST_MS,
 ):
     """Interval-table rows `(shot, category, t_start, t_end)` for one shot.
 
-    Category 1 is each growth window. For an `examined` shot (one with listed onsets)
+    Category 1 is each conventional weak window. With `assumed_absent=True`
     category 0 is the shot's flat-top `flattop = (start, end)` ms outside every
     `[onset - horizon, onset + post]`; the precursor stretch before a growth window
     and the aftermath of an onset carry no row, which the interval-table convention
-    reads as not assessed. An unexamined shot has no category 0 row at all.
+    reads as not assessed. Category 0 assumes the onset list is complete on Hanson
+    shots; it never denotes verified coverage. Comparison shots have no such row.
     """
     rows = [
         (shot, PRESENT, a, b) for a, b in growth_windows(onsets_ms, growth_ms=growth_ms)
     ]
-    if examined and flattop is not None:
+    if assumed_absent and flattop is not None:
         holes = [(o - horizon_ms, o + post_ms) for o in onsets_ms]
         rows += [(shot, ABSENT, a, b) for a, b in _subtract(flattop, holes)]
     return sorted(rows, key=lambda r: (r[2], r[3]))

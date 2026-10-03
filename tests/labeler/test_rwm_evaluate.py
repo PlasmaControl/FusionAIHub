@@ -138,7 +138,7 @@ def test_a_binary_rule_is_scored_without_folds():
     assert alarms[20]["false"] == [520.0]  # a comparison shot with no onset
     stats = ev.statistic(ev.shot_records(oof, alarms, onsets, onsets))
     assert stats["onset_detection_rate"] == 1.0
-    assert stats["comparison_false_alarm_shot_rate"] == 1.0
+    assert stats["comparison_alarm_incidence"] == 1.0
 
 
 def test_single_feature_auroc_reads_the_direction():
@@ -184,3 +184,71 @@ def test_shot_records_carry_the_alarm_count_and_scored_span():
     record = groups["hanson"][0]
     assert record["alarms"] == 0
     assert record["span_ms"] == pytest.approx(790.0)
+
+
+def test_primary_fit_ignores_comparison_slices_and_their_feature_values():
+    table, _ = _table()
+    kwargs = {"seed": 3, "n_estimators": 10}
+    first = ev.Brf(["betan_over_li"], **kwargs).fit(table).score(table)
+    changed = table.copy()
+    changed.loc[changed.role == "comparison", "betan_over_li"] = 1e6
+    second = ev.Brf(["betan_over_li"], **kwargs).fit(changed).score(table)
+    assert np.array_equal(first, second)
+
+
+def test_comparison_scores_cannot_tune_primary_thresholds_or_alarm_rules():
+    table, onsets = _table()
+    changed = table.copy()
+    changed.loc[changed.role == "comparison", "betan_over_li"] = 1e6
+
+    def factory(seed):
+        return ev.Rule("betan_over_li")
+
+    _, _, original = ev.cross_validate(table, factory, onsets, outer=3, inner=2)
+    _, _, modified = ev.cross_validate(changed, factory, onsets, outer=3, inner=2)
+    assert original == modified
+
+
+def test_alarm_targets_and_explanations_are_separate():
+    t = np.array([0.0, 100.0, 200.0, 300.0])
+    traces = {7: (t, np.array([0.0, 1.0, 0.0, 0.0]))}
+    targets = {7: [1000.0]}
+    explanations = {7: [200.0, 1000.0]}  # n=2 can explain but not reward
+    outcome = ev.score_alarms(
+        traces, targets, (0.5, 0.5, 0.0), explanation_onsets=explanations
+    )
+    assert outcome[7]["warning_ms"] == [None]
+    assert outcome[7]["false"] == []
+    chosen = ev.choose_rule(
+        traces, targets, np.array([0.1, 0.8]), explanation_onsets=explanations
+    )
+    assert chosen[2] == 0.0  # no spurious detection reward from n=2
+
+
+def test_conditional_metrics_and_broad_sensitivity_use_their_own_masks():
+    frame = pd.DataFrame(
+        {
+            "shot": [7] * 5,
+            "role": ["hanson"] * 5,
+            "campaign": [2014] * 5,
+            "t_ms": [0.0, 100.0, 200.0, 300.0, 400.0],
+            "label": [0, 0, 1, -1, -1],
+            "label_broad": [0, 0, 1, -1, 0],
+            "betan": [1.0, 4.0, 4.0, 0.0, 0.0],
+            "betan_over_li": [1.0, 5.0, 6.0, 0.0, 0.0],
+            "high_beta": [False, True, True, False, False],
+            "above_proxy": [False, True, True, False, False],
+            "score": [0.9, 0.8, 0.7, 0.1, 0.2],
+            "called": [True] * 5,
+        }
+    )
+    alarms = {7: {"warning_ms": [None], "false": [], "alarms": []}}
+    groups = ev.shot_records(frame, alarms, {7: [250.0]}, {7: [250.0]})
+    stats = ev.statistic(groups)
+    assert stats["slice_auroc"] == 0.0
+    assert stats["broad_auroc"] == pytest.approx(1 / 3)
+    assert stats["high_beta_auroc"] == 0.0
+    assert stats["above_proxy_auprc"] == 0.5
+    sizes = ev.counts(groups)
+    assert sizes["high_beta_positive_slices"] == 1
+    assert sizes["high_beta_negative_slices"] == 1

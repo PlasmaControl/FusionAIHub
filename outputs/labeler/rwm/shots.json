@@ -1,6 +1,6 @@
 {
   "script": "scripts/labeler/rwm_build.py",
-  "made_at": "2026-10-03T12:53:27+00:00",
+  "made_at": "2026-10-03T14:09:49+00:00",
   "pool": {
     "shots": 208,
     "usable": 207,
@@ -13,7 +13,8 @@
     "shots_without_inputs": [],
     "listed_onsets": 56,
     "n1_events": 48,
-    "n2_events": 6
+    "n2_events": 6,
+    "n1_shots": 30
   },
   "comparison": {
     "per_hanson": 4,
@@ -318,8 +319,8 @@
   "slices": {
     "rows": 82925,
     "labels": {
-      "0": 13848,
-      "-1": 591,
+      "-1": 9184,
+      "0": 5255,
       "1": 480
     },
     "unlabelled_comparison_rows": 68006
@@ -327,11 +328,88 @@
   "windows": {
     "csv": "data/events/resistive_wall_mode/extend_rwm_growth/rwm_windows.csv",
     "rows": 266,
-    "present_growth_windows": 54,
-    "absent_spans": 84,
+    "conventional_weak_windows": 54,
+    "assumed_absent_spans": 84,
+    "verified_absent_spans": 0,
     "candidate_spans_on_comparison_shots": 128,
     "growth_ms": 20.0,
     "horizon_ms": 100.0,
     "post_ms": 100.0
+  },
+  "evidence": {
+    "verified": "Hanson listed onset points only; no verified negative coverage",
+    "windows": "20 ms tau_w convention, not measured growth intervals",
+    "negative_assumption": "onset listing is complete on Hanson shots",
+    "primary_scoring": "before last n=1 onset only; n=2-only shots excluded",
+    "comparison": "unlabelled, never primary supervised negatives"
+  },
+  "input_audit": {
+    "dusbradial_zero_2014_shots": 79,
+    "dusbradial_corrupted_shot_range": [
+      176030,
+      176912
+    ],
+    "dusbradial_by_role_campaign": {
+      "comparison_2014": {
+        "shots": 80,
+        "zero_only_shots": 64,
+        "nonzero_shots": 16,
+        "missing_shots": 0
+      },
+      "comparison_2018": {
+        "shots": 52,
+        "zero_only_shots": 0,
+        "nonzero_shots": 52,
+        "missing_shots": 0
+      },
+      "hanson_2014": {
+        "shots": 20,
+        "zero_only_shots": 15,
+        "nonzero_shots": 5,
+        "missing_shots": 0
+      },
+      "hanson_2018": {
+        "shots": 13,
+        "zero_only_shots": 0,
+        "nonzero_shots": 13,
+        "missing_shots": 0
+      }
+    },
+    "dusbradial_2014_nonzero_shots": [
+      158018,
+      158019,
+      158020,
+      158021,
+      158022,
+      158023,
+      158928,
+      158929,
+      158930,
+      158931,
+      158932,
+      158933,
+      158934,
+      158935,
+      158936,
+      158937,
+      158938,
+      158939,
+      158940,
+      158941,
+      158942
+    ],
+    "corruption_source": "src/labeler/features/namespace.py (Fu et al. 2020 note)",
+    "dusbradial_in_primary_model": false,
+    "fetch_specs": [
+      "co2",
+      "ece",
+      "filterscopes",
+      "ip",
+      "pcphd03",
+      "pinj"
+    ],
+    "low_frequency_n1_rwm_sensor_specs": [],
+    "low_frequency_sensor_fetch_attempted": false,
+    "low_frequency_sensor_status": "not available through approved FETCH_SPECS or feature namespace; no validated saddle-loop/Bp n=1 amplitude locator; no guessed fetch"
   }
 }

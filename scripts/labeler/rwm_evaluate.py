@@ -1,16 +1,11 @@
 #!/usr/bin/env python
-"""Score the RWM baselines by nested shot-grouped cross-validation with shot bootstraps.
+"""Score a Hanson-only RWM forest and fixed rules with shot-bootstrap intervals.
 
-Reads the slice table written by ``rwm_build.py`` and scores each configuration of
-`CONFIGS`: `rwm-brf` (Piccione et al. 2022's balanced random forest, adapted), `rwm-nnpu`
-(the same features under a non-negative positive-unlabelled risk), the beta_N / l_i
-ranking and the `rwm_candidates` screen as rule baselines, feature-group ablations, and the
-horizon and prior sensitivities. Every number carries a 95 % interval from 1000 shot
-bootstraps (`labeler.rwm.metrics.shot_bootstrap`, Hanson and comparison shots resampled
-as separate strata); the thresholds are chosen on inner out-of-fold scores of the
-training shots only. Writes `outputs/labeler/rwm/evaluation.json`.
-
-    python scripts/labeler/rwm_evaluate.py [--replicates 1000] [--workers 6]
+Primary labels follow Piccione's pre-onset negative definition, extended to the last
+n=1 onset for shots with multiple events. Negatives remain assumed, not verified.
+Broader Hanson negatives and two conditional regimes are scored on the same OOF
+predictions. Comparison shots are unlabelled and contribute only alarm incidence.
+nnPU is excluded because its earlier development used an outer evaluation fold.
 """
 
 from __future__ import annotations
@@ -33,126 +28,28 @@ from labeler.events import rwm
 from labeler.rwm import evaluate as ev
 from labeler.rwm import features, labels, metrics
 
-#: The locked-mode detector (DUSBRADIAL) is exactly zero on every 2014 shot and nonzero on
-#: the 2018 ones, so as an input it tags the campaign; it is fetched and stored but kept
-#: out of the model, and `rwm-brf-with-locked-mode` shows what it does when it is let in.
+# DUSBRADIAL is zero on most 2014 traces and flagged corrupted on 2018 Hanson shots.
 ALL = tuple(f for f in features.FEATURES if f != "lock_v")
-EQUILIBRIUM = (
-    "betan",
-    "li",
-    "q95",
-    "qmin",
-    "wmhd_mj",
-    "betan_over_li",
-    "betan_minus_4li",
-    "ip_ma",
-)
-MAGNETICS = ("n1rms_g", "n1rms_max_g", "n1rms_growth_per_s", "n2rms_g")
-#: Small and regularised: a few hundred positive slices from 48 events overfit a wide
-#: network (train AUROC 0.98 against 0.7 held out in a trial fold). The logistic loss
-#: replaces Kiryo et al.'s sigmoid loss, which saturates at a class prior of 0.006.
-NETWORK = {
-    "hidden": (32, 32),
-    "epochs": 15,
-    "batch_p": 64,
-    "batch_u": 512,
-    "weight_decay": 1e-3,
-    "loss": "logistic",
-}
 FOREST = {"n_estimators": 300, "max_depth": 8, "min_leaf": 5}
 SEED = 0
-
-#: name -> (model, horizon_ms, options). `training` and `target` are written to the JSON.
 CONFIGS = {
-    "rwm-brf": {"kind": "brf", "columns": ALL, "comparison": True, "horizon": 100.0},
-    "rwm-brf-hanson-only": {
-        "kind": "brf",
-        "columns": ALL,
-        "comparison": False,
-        "horizon": 100.0,
-    },
-    "rwm-brf-equilibrium-only": {
-        "kind": "brf",
-        "columns": EQUILIBRIUM,
-        "comparison": True,
-        "horizon": 100.0,
-    },
-    "rwm-brf-magnetics-only": {
-        "kind": "brf",
-        "columns": MAGNETICS,
-        "comparison": True,
-        "horizon": 100.0,
-    },
-    "rwm-brf-no-rotation": {
-        "kind": "brf",
-        "columns": tuple(c for c in ALL if not c.startswith("rot_")),
-        "comparison": True,
-        "horizon": 100.0,
-    },
-    "rwm-brf-with-locked-mode": {
-        "kind": "brf",
-        "columns": tuple(features.FEATURES),
-        "comparison": True,
-        "horizon": 100.0,
-    },
-    "rwm-brf-horizon-50": {
-        "kind": "brf",
-        "columns": ALL,
-        "comparison": True,
-        "horizon": 50.0,
-    },
-    "rwm-brf-horizon-200": {
-        "kind": "brf",
-        "columns": ALL,
-        "comparison": True,
-        "horizon": 200.0,
-    },
-    "rwm-brf-all-modes": {
-        "kind": "brf",
-        "columns": ALL,
-        "comparison": True,
-        "horizon": 100.0,
-        "all_modes": True,
-    },
-    "rwm-nnpu": {"kind": "nnpu", "columns": ALL, "horizon": 100.0, "prior_scale": 1.0},
-    "rwm-nnpu-prior-x0.5": {
-        "kind": "nnpu",
-        "columns": ALL,
-        "horizon": 100.0,
-        "prior_scale": 0.5,
-    },
-    "rwm-nnpu-prior-x2": {
-        "kind": "nnpu",
-        "columns": ALL,
-        "horizon": 100.0,
-        "prior_scale": 2.0,
-    },
-    "rule-betan-over-li": {"kind": "rule", "column": "betan_over_li", "horizon": 100.0},
+    "rwm-brf": {"kind": "brf", "columns": ALL, "comparison": False},
+    "rule-time-since-flattop": {"kind": "rule", "column": features.TIME_COLUMN},
+    "rule-betan": {"kind": "rule", "column": "betan"},
+    "rule-betan-over-li": {"kind": "rule", "column": "betan_over_li"},
     "rule-rwm-candidates": {
         "kind": "rule",
         "column": "rule_candidate",
         "binary": True,
-        "horizon": 100.0,
     },
 }
-#: Fold seeds for the split-sensitivity rerun of the headline configuration.
 SPLIT_SEEDS = (1, 2, 3, 4)
-#: Configurations whose per-shot alarm outcomes are written out (the paper's table).
-PER_SHOT = ("rwm-brf", "rwm-nnpu", "rule-betan-over-li")
-#: Pairs of configurations compared on shared shot resamples: `(first, second)` reports
-#: first - second.
-PAIRS = (
-    ("rwm-brf", "rule-betan-over-li"),
-    ("rwm-nnpu", "rule-betan-over-li"),
-    ("rwm-brf", "rwm-nnpu"),
-    ("rwm-brf", "rwm-brf-hanson-only"),
-    ("rwm-brf", "rwm-brf-equilibrium-only"),
-    ("rwm-brf", "rwm-brf-no-rotation"),
-)
+PAIRS = tuple(("rwm-brf", n) for n in CONFIGS if n != "rwm-brf")
+_STATE: dict = {}
 
 
 def clean(value):
-    """The value with NaN and infinity as None, which JSON can hold."""
+    """Replace NaN/infinity with JSON null."""
     if isinstance(value, dict):
         return {k: clean(v) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
@@ -163,25 +60,14 @@ def clean(value):
 
 
 def factory(config):
-    kind = config["kind"]
-    if kind == "brf":
+    if config["kind"] == "brf":
         return lambda seed: ev.Brf(
-            config["columns"], use_comparison=config["comparison"], seed=seed, **FOREST
-        )
-    if kind == "nnpu":
-        return lambda seed: ev.Nnpu(
-            config["columns"], prior_scale=config["prior_scale"], seed=seed, **NETWORK
+            config["columns"], use_comparison=False, seed=seed, **FOREST
         )
     return lambda seed: ev.Rule(config["column"], binary=config.get("binary", False))
 
 
-_STATE: dict = {}
-
-
 def _init(slices_path, replicates):
-    import torch
-
-    torch.set_num_threads(1)
     paths = Paths.from_env()
     table = rwm.onset_table(paths)
     onsets, other = {}, {}
@@ -196,56 +82,53 @@ def _init(slices_path, replicates):
         onsets=onsets,
         other=other,
         replicates=replicates,
+        out_dir=paths.root / "round4" / "rwm",
     )
 
 
 def run_config(args):
     name, config, seed = args
-    slices, onsets, other = _STATE["slices"], _STATE["onsets"], _STATE["other"]
-    target = (
-        {
-            s: sorted(onsets.get(s, []) + other.get(s, []))
-            for s in set(onsets) | set(other)
-        }
-        if config.get("all_modes")
-        else onsets
-    )
-    excluded = {} if config.get("all_modes") else other
-    table = ev.relabel(slices, target, excluded, config["horizon"])
+    slices, target, other = _STATE["slices"], _STATE["onsets"], _STATE["other"]
     every = {
-        s: sorted(onsets.get(s, []) + other.get(s, []))
-        for s in set(onsets) | set(other)
+        s: sorted(target.get(s, []) + other.get(s, []))
+        for s in set(target) | set(other)
     }
-    oof, alarms, rules = ev.cross_validate(table, factory(config), every, seed=seed)
-    groups = ev.shot_records(oof, alarms, target, every)
+    table = ev.relabel(slices, target, other, labels.HORIZON_MS)
+    oof, alarms, rules = ev.cross_validate(
+        table, factory(config), target, explanation_onsets=every, seed=seed
+    )
+    groups = ev.shot_records(oof, alarms, target)
+    oof_path = _STATE["out_dir"] / f"predictions_{name}_seed{seed}.parquet"
+    oof.to_parquet(oof_path, index=False)
     result = {
-        "model": config["kind"],
-        "horizon_ms": config["horizon"],
-        "options": {k: v for k, v in config.items() if k not in ("kind", "horizon")},
+        "model": name,
+        "kind": config["kind"],
+        "horizon_ms": labels.HORIZON_MS,
+        "options": config,
         "fold_seed": seed,
         "counts": ev.counts(groups),
         "rules_by_fold": rules,
+        "predictions": str(oof_path),
+        "chance_detection": ev.chance_detection(groups["hanson"]),
     }
     if seed == SEED:
-        if name in PER_SHOT:
-            result["per_shot"] = sorted(
-                (
-                    {
-                        "shot": r["shot"],
-                        "role": role,
-                        "campaign": r["campaign"],
-                        "onsets": len(r["warning_ms"]),
-                        "warning_ms": r["warning_ms"],
-                        "false_alarms": r["false_alarms"],
-                        "alarms": r["alarms"],
-                        "span_ms": r["span_ms"],
-                    }
-                    for role, records in groups.items()
-                    for r in records
-                ),
-                key=lambda r: r["shot"],
-            )
-        result["chance_detection"] = ev.chance_detection(groups["hanson"])
+        result["per_shot"] = sorted(
+            (
+                {
+                    "shot": r["shot"],
+                    "role": role,
+                    "campaign": r["campaign"],
+                    "onsets": len(r["warning_ms"]),
+                    "warning_ms": r["warning_ms"],
+                    "unexplained_alarms": r["false_alarms"],
+                    "alarms": r["alarms"],
+                    "span_ms": r["span_ms"],
+                }
+                for role, records in groups.items()
+                for r in records
+            ),
+            key=lambda r: r["shot"],
+        )
         result["metrics"] = metrics.shot_bootstrap(
             groups, ev.statistic, replicates=_STATE["replicates"], seed=SEED
         )
@@ -259,33 +142,34 @@ def run_config(args):
             }
     else:
         result["metrics"] = ev.statistic(groups)
-    kept = groups if seed == SEED and name in {n for p in PAIRS for n in p} else None
-    return name, seed, clean(json.loads(json.dumps(result, default=float))), kept
+    print(f"completed {name} seed={seed}", flush=True)
+    return name, seed, clean(result), groups if seed == SEED else None
 
 
 def run_pair(args):
-    """One paired bootstrap, `(first, second, groups_first, groups_second)`."""
     first, second, groups_first, groups_second = args
     interval = metrics.paired_bootstrap(
         groups_first,
         groups_second,
-        lambda g: ev.statistic(g, mixed=False),
+        ev.statistic,
         replicates=_STATE["replicates"],
         seed=SEED,
     )
-    return f"{first} - {second}", clean(json.loads(json.dumps(interval, default=float)))
+    return f"{first} - {second}", clean(interval)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--slices", type=Path)
     parser.add_argument("--replicates", type=int, default=1000)
-    parser.add_argument("--workers", type=int, default=6)
-    parser.add_argument("--only", nargs="*", help="configuration names to run")
+    parser.add_argument("--workers", type=int, default=5)
+    parser.add_argument("--only", nargs="*", choices=list(CONFIGS))
     parser.add_argument(
         "--out", type=Path, default=REPO / "outputs/labeler/rwm/evaluation.json"
     )
     args = parser.parse_args()
+    if not 1 <= args.workers <= 8:
+        parser.error("workers must be between 1 and 8")
     paths = Paths.from_env()
     slices_path = args.slices or paths.root / "round4" / "rwm" / "slices.parquet"
     names = args.only or list(CONFIGS)
@@ -299,18 +183,10 @@ def main() -> None:
         kept = {n: g for n, s, _, g in done if g is not None}
         pairs = [(a, b, kept[a], kept[b]) for a, b in PAIRS if a in kept and b in kept]
         paired = dict(pool.map(run_pair, pairs, chunksize=1))
-    results: dict = {}
-    earlier: dict = {}
-    if args.only and args.out.is_file():
-        earlier = json.loads(args.out.read_text())
-        results = earlier.get("configs", {})
+    results = {n: r for n, s, r, _ in done if s == SEED}
     for name, seed, result, _ in done:
-        if seed == SEED:
-            results[name] = result
-        else:
-            results[name].setdefault("split_seeds", {})[str(seed)] = result["metrics"]
-    _init(slices_path, 1)
-    slices = _STATE["slices"]
+        if seed != SEED:
+            results[name].setdefault("split_seeds", {})[str(seed)] = result
     record = {
         "script": "scripts/labeler/rwm_evaluate.py",
         "protocol": {
@@ -318,23 +194,33 @@ def main() -> None:
             "inner_folds": ev.INNER_FOLDS,
             "fold_seed": SEED,
             "bootstrap_replicates": args.replicates,
+            "bootstrap_strata": ["hanson", "comparison"],
             "forest": FOREST,
-            "network": {
-                k: list(v) if isinstance(v, tuple) else v for k, v in NETWORK.items()
-            },
+            "step_ms": features.STEP_MS,
+            "primary_training": "Hanson positives and assumed negatives only",
+            "primary_scoring": "Hanson only, before last n=1 onset; no verified negatives",
+            "broad_sensitivity": "same predictions; post-last-onset and n=2-only negatives added",
+            "high_beta": "beta_N >= 0.8 times each shot's whole-window p95 (evaluation only)",
+            "above_proxy": "beta_N/l_i > 4 (evaluation only)",
+            "time_baseline": "elapsed since first |Ip| >= 0.5 MA; fixed causal start proxy",
+            "alarm_targets": "merged n=1 onsets only",
+            "alarm_explanations": "merged n=1 and n=2 onsets",
+            "alarm_tuning": (
+                "threshold grid from primary negatives; alarm objective over full "
+                "inner-OOF Hanson traces; comparison shots never tune alarms"
+            ),
             "alarm_grid": {
                 "high_quantiles": ev.HIGH_QUANTILES,
                 "low_fractions": ev.LOW_FRACTIONS,
                 "hold_ms": ev.HOLD_MS,
             },
-            "step_ms": features.STEP_MS,
-            "split": "shot-grouped; shots.json cohort_overlap counts the shots in the frozen cohort",
+            "split": "shot-grouped; no frozen cohort overlap (shots.json/cohort_overlap)",
+            "nnpu": "excluded: outer-fold-informed development and unidentified U prior",
+            "rotation_claim": "removed; no isolated rotation benefit claimed",
+            "interval_scope": "shot sampling at fixed fitted OOF predictions; split sensitivity separate",
         },
         "configs": results,
-        "paired": {**earlier.get("paired", {}), **paired},
-        "single_feature_auroc": ev.single_feature_auroc(
-            ev.relabel(slices, _STATE["onsets"], _STATE["other"], 100.0)
-        ),
+        "paired": paired,
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(

@@ -13,9 +13,9 @@ def test_slice_labels_follow_the_papers_horizon():
     positive = t[out == lab.POSITIVE]
     assert positive.min() == 100.0 and positive.max() == 190.0  # [o - 100, o)
     excluded = t[out == lab.EXCLUDED]
-    assert excluded.min() == 200.0 and excluded.max() == 240.0  # [o, o + post)
+    assert excluded.min() == 200.0 and excluded.max() == 390.0
     assert (out[t < 100] == lab.NEGATIVE).all()
-    assert (out[t >= 250] == lab.NEGATIVE).all()
+    assert (out[t >= 200] == lab.EXCLUDED).all()
 
 
 def test_a_second_onset_keeps_its_positive_slices_over_the_first_aftermath():
@@ -26,8 +26,22 @@ def test_a_second_onset_keeps_its_positive_slices_over_the_first_aftermath():
     assert (out[(t >= 150) & (t < 200)] == lab.EXCLUDED).all()
 
 
-def test_no_onsets_means_all_negative():
-    assert (lab.slice_labels(np.arange(5.0), []) == lab.NEGATIVE).all()
+def test_no_n1_onsets_means_no_primary_negatives():
+    assert (lab.slice_labels(np.arange(5.0), []) == lab.EXCLUDED).all()
+
+
+def test_broad_sensitivity_includes_post_last_onset_time():
+    t = np.array([0.0, 100.0, 200.0, 300.0, 400.0])
+    primary = lab.slice_labels(t, [200.0])
+    broad = lab.slice_labels(t, [200.0], negative_scope="broad")
+    assert primary.tolist() == [0, 1, -1, -1, -1]
+    assert broad.tolist() == [0, 1, -1, 0, 0]
+
+
+def test_primary_negative_time_ends_at_last_target_onset():
+    t = np.array([0.0, 200.0, 350.0, 500.0, 600.0, 1000.0])
+    out = lab.slice_labels(t, [200.0, 600.0])
+    assert out.tolist() == [0, -1, 0, 1, -1, -1]
 
 
 def test_growth_windows_merge_overlaps_and_keep_separate_ones():
@@ -42,7 +56,7 @@ def test_window_rows_mark_growth_present_and_only_examined_shots_absent():
         7,
         [300.0],
         (100.0, 800.0),
-        examined=True,
+        assumed_absent=True,
         growth_ms=20.0,
         horizon_ms=100.0,
         post_ms=100.0,
@@ -53,7 +67,7 @@ def test_window_rows_mark_growth_present_and_only_examined_shots_absent():
         (7, lab.ABSENT, 400.0, 800.0),
     ]
     # An unexamined shot carries no absent row, and no onset means no present row.
-    assert lab.window_rows(8, [], (100.0, 800.0), examined=False) == []
+    assert lab.window_rows(8, [], (100.0, 800.0), assumed_absent=False) == []
 
 
 def test_window_rows_drop_a_hole_wider_than_the_flattop():
@@ -61,7 +75,7 @@ def test_window_rows_drop_a_hole_wider_than_the_flattop():
         7,
         [150.0],
         (100.0, 200.0),
-        examined=True,
+        assumed_absent=True,
         growth_ms=20.0,
         horizon_ms=100.0,
         post_ms=100.0,
@@ -72,7 +86,12 @@ def test_window_rows_drop_a_hole_wider_than_the_flattop():
 def test_other_onsets_are_excluded_but_never_positive():
     t = np.arange(0.0, 400.0, 10.0)
     out = lab.slice_labels(
-        t, [], horizon_ms=40.0, post_ms=20.0, other_onsets_ms=[200.0]
+        t,
+        [],
+        horizon_ms=40.0,
+        post_ms=20.0,
+        other_onsets_ms=[200.0],
+        negative_scope="broad",
     )
     assert (out[(t >= 160) & (t < 220)] == lab.EXCLUDED).all()
     assert (out[(t < 160) | (t >= 220)] == lab.NEGATIVE).all()

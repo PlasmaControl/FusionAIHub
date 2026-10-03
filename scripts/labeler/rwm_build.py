@@ -11,8 +11,8 @@ Reads the candidate pool (`labeler.rwm.shots.choose`, written by
    used up), and records how well the matching balanced the two sets;
 3. stacks the causal slice features of the chosen shots (`labeler.rwm.data`) with the
    `rwm_candidates` screen's call, into ``$LABELER_ROOT/round4/rwm/slices.parquet``;
-4. writes the label windows: the growth window before every listed onset (category 1)
-   and the flat-top outside the precursor and aftermath of a listed onset (category 0)
+4. writes conventional weak windows before listed onsets (category 1)
+   and assumed-absent time outside the precursor and aftermath (category 0)
    on the Hanson shots, and the screen's uncertain spans (category 2) on the comparison
    shots, which are unlabelled.
 
@@ -36,7 +36,7 @@ if str(REPO / "src") not in sys.path:
     sys.path.insert(0, str(REPO / "src"))
 
 from labeler.config import Paths
-from labeler.events import rwm
+from labeler.events import raw, rwm
 from labeler.events.interval_tables import validate_intervals
 from labeler.rwm import data, features, labels, shots
 
@@ -128,13 +128,13 @@ def main() -> None:
     pieces, spans_by_shot = [], {}
     for row in selected.itertuples():
         shot = int(row.shot)
-        examined = row.role == "hanson"
+        hanson = row.role == "hanson"
         frame = data.shot_table(
             shot,
             paths,
             onsets.get(shot, []),
             other_onsets_ms=other.get(shot, []),
-            examined=examined,
+            hanson=hanson,
         )
         found = rwm.detect(shot, paths)
         spans = [(a, b) for a, b, _ in found.spans]
@@ -159,7 +159,7 @@ def main() -> None:
                 shot,
                 every,
                 (row.flattop_start_ms, row.flattop_end_ms),
-                examined=True,
+                assumed_absent=True,
             )
         else:
             rows += [
@@ -169,6 +169,16 @@ def main() -> None:
     windows = pd.DataFrame(rows, columns=["shot", "category", "t_start", "t_end"])
     windows[["t_start", "t_end"]] = windows[["t_start", "t_end"]].round(3)
     windows["confidence"] = ""
+    tiers = windows.category.map(
+        {
+            labels.PRESENT: "conventional_weak",
+            labels.ABSENT: "assumed_absent",
+            labels.UNCERTAIN: "unlabelled_screen",
+        }
+    )
+    windows["attrs"] = tiers.map(
+        lambda tier: json.dumps({"evidence_tier": tier, "coverage_verified": False})
+    )
     windows = windows.sort_values(["shot", "t_start", "t_end"], ignore_index=True)
     validate_intervals(windows)
     LABEL_DIR.mkdir(parents=True, exist_ok=True)
@@ -211,6 +221,7 @@ def main() -> None:
             "listed_onsets": len(table),
             "n1_events": int(sum(len(v) for v in onsets.values())),
             "n2_events": int(sum(len(v) for v in other.values())),
+            "n1_shots": len(onsets),
         },
         "comparison": {
             "per_hanson": args.per_hanson,
@@ -249,10 +260,11 @@ def main() -> None:
         "windows": {
             "csv": str((LABEL_DIR / f"{STEM}.csv").relative_to(REPO)),
             "rows": len(windows),
-            "present_growth_windows": int(
+            "conventional_weak_windows": int(
                 (hanson_rows.category == labels.PRESENT).sum()
             ),
-            "absent_spans": int((hanson_rows.category == labels.ABSENT).sum()),
+            "assumed_absent_spans": int((hanson_rows.category == labels.ABSENT).sum()),
+            "verified_absent_spans": 0,
             "candidate_spans_on_comparison_shots": int(
                 (windows.category == labels.UNCERTAIN).sum()
             ),
@@ -260,15 +272,78 @@ def main() -> None:
             "horizon_ms": labels.HORIZON_MS,
             "post_ms": labels.POST_MS,
         },
+        "evidence": {
+            "verified": "Hanson listed onset points only; no verified negative coverage",
+            "windows": "20 ms tau_w convention, not measured growth intervals",
+            "negative_assumption": "onset listing is complete on Hanson shots",
+            "primary_scoring": "before last n=1 onset only; n=2-only shots excluded",
+            "comparison": "unlabelled, never primary supervised negatives",
+        },
+        "input_audit": {
+            "dusbradial_zero_2014_shots": int(
+                slices[slices.campaign == 2014]
+                .groupby("shot")
+                .lock_v.apply(lambda v: v.notna().any() and v.dropna().eq(0).all())
+                .sum()
+            ),
+            "dusbradial_corrupted_shot_range": [176030, 176912],
+            "dusbradial_by_role_campaign": {
+                f"{role}_{year}": {
+                    "shots": int(group.shot.nunique()),
+                    "zero_only_shots": int(
+                        group.groupby("shot")
+                        .lock_v.apply(
+                            lambda v: v.notna().any() and v.dropna().eq(0).all()
+                        )
+                        .sum()
+                    ),
+                    "nonzero_shots": int(
+                        group.groupby("shot")
+                        .lock_v.apply(
+                            lambda v: v.notna().any() and v.dropna().gt(0).any()
+                        )
+                        .sum()
+                    ),
+                    "missing_shots": int(
+                        group.groupby("shot")
+                        .lock_v.apply(lambda v: v.isna().all())
+                        .sum()
+                    ),
+                }
+                for (role, year), group in slices.groupby(["role", "campaign"])
+            },
+            "dusbradial_2014_nonzero_shots": [
+                int(s)
+                for s, v in slices[slices.campaign == 2014].groupby("shot").lock_v
+                if v.dropna().gt(0).any()
+            ],
+            "corruption_source": "src/labeler/features/namespace.py (Fu et al. 2020 note)",
+            "dusbradial_in_primary_model": False,
+            "fetch_specs": sorted(raw.FETCH_SPECS),
+            "low_frequency_n1_rwm_sensor_specs": [],
+            "low_frequency_sensor_fetch_attempted": False,
+            "low_frequency_sensor_status": (
+                "not available through approved FETCH_SPECS or feature namespace; "
+                "no validated saddle-loop/Bp n=1 amplitude locator; no guessed fetch"
+            ),
+        },
     }
     meta = {
         "categories": {"0": "absent", "1": "present", "2": "uncertain"},
         "category": "resistive_wall_mode",
-        "columns": ["shot", "category", "t_start", "t_end", "confidence"],
+        "columns": [
+            "shot",
+            "category",
+            "t_start",
+            "t_end",
+            "confidence",
+            "attrs",
+        ],
         "coverage": (
             "Hanson shots only for categories 0 and 1; category 2 is the rwm_candidates "
             "screen on the matched comparison shots, which are unlabelled and not "
-            "negatives. A shot absent from the table was not examined."
+            "negatives. Only the raw onset points are verified; reviewed negative "
+            "coverage is unknown even on Hanson shots."
         ),
         "made_at": summary["made_at"],
         "made_by": "scripts/labeler/rwm_build.py",
@@ -277,15 +352,22 @@ def main() -> None:
         "rules": {
             "present": (
                 f"the {labels.GROWTH_MS:g} ms before each listed onset, of either mode "
-                "number (a growth window; see outputs/labeler/rwm/growth.json)"
+                "number (conventional weak annotation motivated by tau_w, not a "
+                "measured growth interval; see outputs/labeler/rwm/growth.json)"
             ),
             "absent": (
                 f"the high-current window (Ip at least half its peak) outside "
                 f"[onset - {labels.HORIZON_MS:g}, onset + {labels.POST_MS:g}] ms of every "
                 "listed onset; the precursor before a growth window and the aftermath "
-                "carry no row (not assessed)"
+                "carry no row (not assessed). Assumed absent: assumes complete "
+                "onset listing on Hanson shots, without verified negative coverage"
             ),
             "uncertain": "rwm_candidates screen spans, comparison shots only",
+        },
+        "evidence_tiers": {
+            "conventional_weak": "20 ms pre-onset convention, not expert-verified extent",
+            "assumed_absent": "Hanson time away from onsets; completeness assumption",
+            "unlabelled_screen": "screen candidates on comparison shots; not negatives",
         },
         "source": "data/events/resistive_wall_mode/raw/rwm_onsets_{2017,2024}.csv",
         "summary": "outputs/labeler/rwm/shots.json",
