@@ -93,19 +93,27 @@ the longer length), averaged over shots):
 
 **Beside `confine-cnn`**, on the BES windows both scored: each BES window carries its
 interval label and centre time, `confine-ours` is read at the bin that holds that time, and
-both are held out by shot. The population is the 117 curated shots the corpus holds BES for
-(the 119 of the BES benchmark less the two blind shots). The rows of `confine-cnn` are those
-of [the ablation](confinement_bes_benchmark.md#the-gap-to-the-published-score-an-ablation):
+both are held out by shot. The first rows use the 117 curated shots the corpus holds BES for
+(the 119 of the BES benchmark less the two blind shots); the last three use the 444 shots
+fetched at 1 MHz, of which 400 are also `confine-ours` shots (those with a D-alpha record).
+The rows of `confine-cnn` are those of
+[the ablation](confinement_bes_benchmark.md#the-gap-to-the-published-score-an-ablation), scored on
+the windows that row keeps for its test shots (`score_ok`):
 
 | `confine-cnn` row | Windows scored (shots) | `confine-cnn` macro F1 | `confine-ours` macro F1 | Paired difference ours minus cnn |
 |---|---|---|---|---|
 | `base`, first retrain: every window of the shot | 65,052 (117) | 0.717 [0.63, 0.78] | 0.860 [0.79, 0.91] | +0.143 [+0.056, +0.231] |
 | `cum_abcdr`, the paper's recipe, on the windows it keeps (beam gate, 20 ms inside intervals, 100 ms after L-mode, channel check) | 37,045 (80) | 0.433 [0.31, 0.57] | 0.794 [0.67, 0.88] | +0.360 [+0.244, +0.467] |
+| `only_ge`, no gate, every fetched shot at 1 MHz | 385,113 (400) | 0.839 [0.80, 0.87] | 0.934 [0.91, 0.96] | +0.095 [+0.058, +0.132] |
+| `cum_abcdrge`, the paper's recipe, every fetched shot at 1 MHz | 203,073 (276) | 0.727 [0.66, 0.79] | 0.852 [0.78, 0.91] | +0.125 [+0.066, +0.184] |
+| `cum_abcdrgef`, the paper's recipe and split (five random splits by shot) | 130,591 (127) | 0.702 [0.58, 0.80] | 0.838 [0.70, 0.96] | +0.136 [+0.058, +0.236] |
 
 The paired intervals draw the same shots for both models. Per-class F1 on the second row,
 `confine-cnn` against `confine-ours`: L 0.23 against 0.95 (16 shots), H 0.93 against 0.98,
-QH 0.38 against 0.80 (11 shots), WPQH 0.19 against 0.45 (6 shots). Further rows
-(`cum_abcdrg`, 1 MHz) are in the record.
+QH 0.38 against 0.80 (11 shots), WPQH 0.19 against 0.45 (6 shots); on the fourth row, with
+444 shots to learn from, L 0.83 against 0.95, H 0.92 against 0.98, QH 0.86 against 0.93, WPQH
+0.74 against 0.87. Further rows (`cum_abcdrg`, and each row's windows with no gate) are in the
+record.
 
 ## Reading them
 
@@ -117,12 +125,14 @@ QH 0.38 against 0.80 (11 shots), WPQH 0.19 against 0.45 (6 shots). Further rows
   at a transition. The roster labels are written with the filter (21 bins, minimum segment
   20 ms), so the 0.88-0.90 figures are the ones that describe them.
 - **It beats `confine-cnn` on shared shots, by 0.14 against the first retrain and by 0.36
-  against the paper's recipe on the windows that recipe keeps**, and the paired intervals
-  exclude zero. That is a statement about these two models on these labels, not about BES
-  against 0D signals: the segmenter reads a 1.8 s context of the signals the labelling experts
-  looked at (D-alpha, density, beta_N, stored energy, beam power), while the BES network sees
-  one 2 ms window of fluctuations and nothing else, and has 117 shots to learn from, 6 to 16 of
-  them for the rarer regimes under the paper's gate.
+  against the paper's recipe on the windows that recipe keeps** (117 shots to learn from), and
+  by 0.095 [0.058, 0.132] against the same network trained on all 444 fetched shots; the paired
+  intervals exclude zero in every row. The gap narrows as the BES network gets data (0.36 to
+  0.13 against the paper's recipe), so most of it was the 117 shots, not the signals. It is a
+  statement about these two models on these labels, not about BES against 0D signals: the
+  segmenter reads a 1.8 s context of the signals the labelling experts looked at (D-alpha,
+  density, beta_N, stored energy, beam power), while the BES network sees one 1 or 2 ms window
+  of fluctuations and nothing else.
 - **Circularity.** The curated intervals were set by experts reading the same 0D traces (a
   D-alpha level and its ELM pattern separate L from H; steady D-alpha and density with no ELMs
   mark QH), so the 0.93 measures how well the network reproduces the labelling rule from the

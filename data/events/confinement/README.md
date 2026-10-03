@@ -68,10 +68,33 @@ diagnostic eligibility and frozen detector results. The
 [model card](../../../docs/labeler/confinement_model_card.md) documents training,
 no-BES inference, the measured limits and commands. Merged complementary H/L
 exports are under `runs/labeler/confinement/v1/format/`; trained models and
-their evaluation are in that same run directory. The BES classifier that serves
-as the benchmark for these labels is in
-[confinement_bes_benchmark.md](../../../docs/labeler/confinement_bes_benchmark.md)
-with its published per-class scores. The original is not on disk, so it was rebuilt
-from the paper's description and trained here on the 119 labelled shots that have BES
-in the corpus: macro F1 0.68 on held-out shots (the paper's is 0.94), 0.93 when
-windows of the same shots are split instead.
+their evaluation are in that same run directory.
+
+## Models
+
+**stable**: confine-ours
+
+**latest**: confine-ours
+
+**all**:
+- confine-ours | 2026_10_03 | AUROC: 0.976 | AUPRC: 0.950 | F1: 0.934
+- confine-cnn | 2026_10_03 | AUROC: 0.942 | AUPRC: 0.740 | F1: 0.716
+- confine-cnn | 2026_10_01 | AUROC: 0.926 | AUPRC: 0.701 | F1: 0.678
+
+Scores are macro means over the four classes (L, H, QH, WPQH), per window or bin, out of
+sample by shot, with 95 % shot-bootstrap intervals in the records. **confine-ours** (a 1D U-Net
+over 0D signals, no BES; labels the whole roster, see
+[confinement_ours.md](../../../docs/labeler/confinement_ours.md)) is scored per 1 ms bin on 401
+curated shots in 5-fold shot-grouped cross-validation: F1 0.934 [0.909, 0.955]; its roster labels
+are `extend_confine_ours/roster.csv`. **confine-cnn** is the BES network of Gill et al. (2024),
+rebuilt from the paper's description (its code is not on disk) and retrained on our labels. The
+2026_10_03 line is the protocol-matched score: the paper's data selection (beam gate, margins,
+optimiser, channel check) and its split by discharge, on every curated shot with BES at 1 MHz
+(444), held out by shot: F1 0.716 [0.61, 0.81], against the paper's 0.94 on its own 44-shot
+test set. The 2026_10_01 line is the first retrain, with none of that protocol, on the 119 shots
+the corpus holds BES for at 500 kHz; the same network on every window of all 444 shots with no
+beam gate scores F1 0.828 [0.80, 0.86]. Protocols, the
+ablation of the gap to 0.94 and the confident-learning list of doubtful intervals:
+[confinement_bes_benchmark.md](../../../docs/labeler/confinement_bes_benchmark.md). The
+curated intervals (the merged tables of Gill and Butt) are the reference for every score. A model
+that reads the traces the experts used (`confine-ours`) is not independent of them.
