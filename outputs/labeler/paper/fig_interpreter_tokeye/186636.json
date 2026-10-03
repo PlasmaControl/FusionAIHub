@@ -6,6 +6,10 @@
   3900.0
  ],
  "split": "val",
+ "publication_suitability": {
+  "suitable_alternate": true,
+  "role": "alternate with source caveats"
+ },
  "decision_thresholds": {
   "ae": 0.5,
   "ntm": 0.63,
@@ -101,6 +105,7 @@
  "tracks": {
   "alfven_eigenmode": {
    "tier": "generated: automated labeler",
+   "performance": null,
    "title": "AE",
    "what": "the AE frame model (v2) run on the shot's CO2, the raw cache's CO2",
    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/ae_xpower/v2/band80-mhd10/model.pt",
@@ -330,6 +335,7 @@
   },
   "neoclassical_tearing_mode": {
    "tier": "legacy: imported table",
+   "performance": null,
    "title": "NTM",
    "what": "the tearing-mode archive",
    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/neoclassical_tearing_mode/format/neoclassical_tearing_mode_format_2026_v1.csv",
@@ -375,6 +381,7 @@
   },
   "confinement": {
    "tier": "generated: automated labeler",
+   "performance": null,
    "title": "H-mode",
    "what": "D-alpha L-H transition detector (dalpha_lh)",
    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/dalpha_lh/v1/confinement_suggest_dalpha_lh_v1.csv",
@@ -407,6 +414,7 @@
   },
   "edge_localized_mode": {
    "tier": "silver: expert review",
+   "performance": null,
    "title": "ELMs",
    "what": "the expert's review",
    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/edge_localized_mode/review/labels.csv",
@@ -443,6 +451,7 @@
   },
   "sawtooth_oscillation": {
    "tier": "silver: expert review",
+   "performance": null,
    "title": "sawtooth",
    "what": "the expert's review",
    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/sawtooth_oscillation/review/labels.csv",
@@ -559,7 +568,7 @@
  },
  "caption": {
   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_186636/caption.tex",
-  "sha256": "5f80f26556a5f096c0957144a7dcfd6dd4e5a250baff2f68d725154b38e1a1c9"
+  "sha256": "8c0213601b1b190be1a643775324f55bcaa5ac75cadf0bee4f446f5576dcdc9e"
  },
  "drawn": {
   "figure": [
@@ -567,8 +576,8 @@
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_186636/fig_interpreter.png"
   ],
   "figure_sha256": {
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_186636/fig_interpreter.pdf": "646a804560b92415142104658bad97fc390dd964684195bf952fcffdadc7707b",
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_186636/fig_interpreter.png": "4a3a0b7020e916c8738755f70f70d8dca8c16bbfa6471ac96765555eaef12e9c"
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_186636/fig_interpreter.pdf": "35d546c6c01033adfbc7d2dc35ba9929578e7bbe36bf6ae4020d8ae9ef35da1d",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_186636/fig_interpreter.png": "d77d6f714352a2c4313f4a1c7a2659263793b4086a10d817053d5c6dd94764ef"
   },
   "blobs": {
    "wide_above_fold": 929,
@@ -584,7 +593,10 @@
   "elm_peak_times_ms": [],
   "first_large_peak_before_expert_ms": null,
   "largest_dalpha_peak_ms": 3616.86110496521,
+  "expert_elm_start_ms": null,
+  "lmode_inferred": false,
   "elm_hmode_conflicts_ms": [],
+  "ae_physical_review_caveat": "Persistent pink lines may be pickup.",
   "elm_uncertain_spans_ms": [
    [
     1394.0,
@@ -610,20 +622,135 @@
    "blank"
   ],
   "layout": {
-   "n_panel_height_units": 1.3,
-   "n_panel_height_in": 0.8334119390917661,
+   "n_panel_height_units": 1.6,
+   "n_panel_height_in": 0.8318216588351005,
    "n_panel_band_khz": [
     0.0,
     30.0
    ],
-   "processed_omitted_band_khz": [
+   "processed_omitted_band_khz": [],
+   "processed_restored_strip_khz": [
     30.0,
     55.0
    ],
+   "frequency_panels": {
+    "raw_hi": {
+     "band_khz": [
+      55.0,
+      250.0
+     ],
+     "height_in": 0.4419052562561472,
+     "bounds": [
+      0.14,
+      0.8744055294503332,
+      0.78,
+      0.9547519396787236
+     ],
+     "ticks_khz": [
+      100,
+      150,
+      200,
+      250
+     ]
+    },
+    "raw_mid": {
+     "band_khz": [
+      30.0,
+      55.0
+     ],
+     "height_in": 0.12997213419298403,
+     "bounds": [
+      0.14,
+      0.8507742323243361,
+      0.78,
+      0.8744055294503332
+     ],
+     "ticks_khz": [
+      40,
+      55
+     ]
+    },
+    "raw_lo": {
+     "band_khz": [
+      0.0,
+      30.0
+     ],
+     "height_in": 0.8318216588351005,
+     "bounds": [
+      0.14,
+      0.6995339307179542,
+      0.78,
+      0.8507742323243361
+     ],
+     "ticks_khz": [
+      0,
+      10,
+      20,
+      30
+     ]
+    },
+    "pr_hi": {
+     "band_khz": [
+      55.0,
+      250.0
+     ],
+     "height_in": 0.4419052562561466,
+     "bounds": [
+      0.14,
+      0.48212599715878024,
+      0.78,
+      0.5624724073871705
+     ],
+     "ticks_khz": [
+      100,
+      150,
+      200,
+      250
+     ]
+    },
+    "pr_mid": {
+     "band_khz": [
+      30.0,
+      55.0
+     ],
+     "height_in": 0.12997213419298465,
+     "bounds": [
+      0.14,
+      0.45849470003278303,
+      0.78,
+      0.48212599715878024
+     ],
+     "ticks_khz": [
+      40,
+      55
+     ]
+    },
+    "pr_lo": {
+     "band_khz": [
+      0.0,
+      30.0
+     ],
+     "height_in": 0.8318216588351005,
+     "bounds": [
+      0.14,
+      0.3072543984264011,
+      0.78,
+      0.45849470003278303
+     ],
+     "ticks_khz": [
+      0,
+      10,
+      20,
+      30
+     ]
+    }
+   },
+   "ntm_key_black_swatch": true,
+   "ae_fixed_callout_shown": false,
    "legend_labels": [
     "TokEye mask,\nn not measured",
     "AE (detector band\n\u226580 kHz)",
-    "NTM (n=1 or 2,\n\u226430 kHz)",
+    "NTM labels\n(n=1 or 2, \u226430 kHz)",
     "n=1",
     "n=2",
     "n=3",
@@ -646,9 +773,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.14,
-      0.9570000000000001,
+      0.9604799589492102,
       0.23777777777777778,
-      0.975792021780303
+      0.9792719807295134
      ]
     },
     {
@@ -656,9 +783,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.14,
-      0.6457818353321656,
+      0.5899412200135747,
       0.5677083333333334,
-      0.6645738571124686
+      0.6087332417938777
      ]
     },
     {
@@ -666,9 +793,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.14,
-      0.6217818353321656,
+      0.5653646710025376,
       0.6744907407407408,
-      0.6405738571124686
+      0.5841566927828405
      ]
     },
     {
@@ -676,9 +803,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.14,
-      0.25052311009297945,
+      0.22214371154455473,
       0.32666666666666666,
-      0.2693151318732825
+      0.24093573332485774
      ]
     },
     {
@@ -686,9 +813,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.810724279835391,
-      0.6041201797134789,
+      0.541963849790558,
       0.924474279835391,
-      0.6487818353321657
+      0.5866255054092449
      ]
     },
     {
@@ -696,59 +823,59 @@
      "font_pt": 7.0,
      "bounds": [
       0.810724279835391,
-      0.5506201402564082,
+      0.48846381033348724,
       0.9425761316872429,
-      0.595281795875095
+      0.5331254659521741
      ]
     },
     {
-     "text": "NTM (n=1 or 2,\n\u226430 kHz)",
+     "text": "NTM labels\n(n=1 or 2, \u226430 kHz)",
      "font_pt": 7.0,
      "bounds": [
       0.810724279835391,
-      0.4971201007993375,
-      0.9203539094650206,
-      0.5417817564180243
+      0.4349637708764165,
+      0.9559094650205762,
+      0.47962542649510337
      ]
     },
     {
      "text": "n=1",
      "font_pt": 7.0,
      "bounds": [
-      0.810724279835391,
-      0.47864498131900973,
-      0.8403539094650206,
-      0.4963217489957774
+      0.8064032921810699,
+      0.4061717490961134,
+      0.8360329218106995,
+      0.42384851677288105
      ]
     },
     {
      "text": "n=2",
      "font_pt": 7.0,
      "bounds": [
-      0.810724279835391,
-      0.45101457570032294,
-      0.8403539094650206,
-      0.46869134337709056
+      0.8064032921810699,
+      0.38296053539661845,
+      0.8360329218106995,
+      0.4006373030733861
      ]
     },
     {
      "text": "n=3",
      "font_pt": 7.0,
      "bounds": [
-      0.810724279835391,
-      0.4233841700816361,
-      0.8403539094650206,
-      0.4410609377584037
+      0.8561975308641975,
+      0.4061717490961134,
+      0.885827160493827,
+      0.42384851677288105
      ]
     },
     {
      "text": "other n",
      "font_pt": 7.0,
      "bounds": [
-      0.810724279835391,
-      0.3957537644629492,
-      0.8625761316872429,
-      0.4145457862432522
+      0.8561975308641975,
+      0.38296053539661845,
+      0.9080493827160493,
+      0.4017525571769215
      ]
     },
     {
@@ -756,9 +883,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.810724279835391,
-      0.32034286570116854,
+      0.27891533260719525,
       0.9099835390946502,
-      0.3391348874814716
+      0.2977073543874983
      ]
     },
     {
@@ -862,14 +989,14 @@
   },
   "ae_boxes_ms_khz": [],
   "sawtooth_crashes": {
-   "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots",
+   "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots",
    "files": [
     {
-     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/186636.json",
-     "sha256": "1f1f5a4a5ca8513e75c69f8e9dfef34ecc7b7bd934a4282113096a4016dcb318"
+     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/186636.json",
+     "sha256": "f05b196d23c4348ab73a430df971f678860c623b2cd0725fd567d8d00b202a6a"
     }
    ],
-   "sha256": "1f1f5a4a5ca8513e75c69f8e9dfef34ecc7b7bd934a4282113096a4016dcb318",
+   "sha256": "f05b196d23c4348ab73a430df971f678860c623b2cd0725fd567d8d00b202a6a",
    "evidence_source": null,
    "physics_point_match_ms": 0.5,
    "verified": true,
@@ -946,11 +1073,11 @@
    }
   }
  },
- "git": "d3c0519a",
+ "git": "990d3ebe",
  "render_started_from_clean_head": true,
  "render_code_sha256": {
-  "scripts/labeler/paper/fig_interpreter_tokeye.py": "7aaa20200cff13bc8a6c25d1af94ff5e9dfe6e63dcf254203cd12cd2c61ad1e1",
-  "src/labeler/paper/figure_sources.py": "b8298e8a429caee5035883471600c645f1f891edfb7189e16cab5e4063dc1f8d",
+  "scripts/labeler/paper/fig_interpreter_tokeye.py": "8d0bcd3586252fb22404b0650f1afdd65b1b25ca91b495b3305d2a33046f0c2c",
+  "src/labeler/paper/figure_sources.py": "2fc92bed24322cf6ae04b38d50788b4f87594d83c9e9b2592c94a430ad3365f6",
   "src/labeler/paper/mode_tags.py": "936d0db4f2fae613018d0c6d73f9d88eb808106663ed1f780e67be3bc616bfb2"
  }
 }

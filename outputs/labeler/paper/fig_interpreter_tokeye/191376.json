@@ -6,6 +6,10 @@
   2900.0
  ],
  "split": "train",
+ "publication_suitability": {
+  "suitable_alternate": false,
+  "role": "unsuitable diagnostic: no AE and n=1 mode with NTM absent"
+ },
  "decision_thresholds": {
   "ae": 0.5,
   "ntm": 0.63,
@@ -101,6 +105,7 @@
  "tracks": {
   "alfven_eigenmode": {
    "tier": "generated: automated labeler",
+   "performance": null,
    "title": "AE",
    "what": "the AE frame model (v2) run on the shot's CO2, the raw cache's CO2",
    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/ae_xpower/v2/band80-mhd10/model.pt",
@@ -140,6 +145,48 @@
   },
   "neoclassical_tearing_mode": {
    "tier": "generated: automated labeler",
+   "performance": {
+    "shots": 761,
+    "cells": [
+     675,
+     941,
+     660,
+     99466
+    ],
+    "precision": 0.4176980198019802,
+    "recall": 0.5056179775280899,
+    "f1": 0.4574720433751271,
+    "evaluation": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/ntm_frames/v2/evaluation.json",
+    "evaluation_sha256": "0e3060f6d5459d6a9047d48f242ba79860707c47cdad25b138bc728d79aab80f",
+    "bin_ms": 50.0,
+    "pool": "mean",
+    "bar_criteria": {
+     "N1": [
+      [
+       "f1",
+       ">=",
+       0.7
+      ],
+      [
+       "precision",
+       ">=",
+       0.6
+      ],
+      [
+       "recall",
+       ">=",
+       0.6
+      ]
+     ],
+     "N2": [
+      [
+       "lo(f1 - always)",
+       ">",
+       0.0
+      ]
+     ]
+    }
+   },
    "title": "NTM",
    "what": "the tearing-mode frame model",
    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/ntm_frames/v2/neoclassical_tearing_mode_suggest_ntm_frames_v2.csv",
@@ -174,6 +221,7 @@
   },
   "confinement": {
    "tier": "legacy: imported table",
+   "performance": null,
    "title": "regime",
    "what": "Gill's and Butt's curated regime intervals",
    "path": "/scratch/gpfs/nc1514/FusionAIHub/runs/labeler/confinement/v1/merged_intervals.csv",
@@ -243,6 +291,7 @@
   },
   "edge_localized_mode": {
    "tier": "generated: automated labeler",
+   "performance": null,
    "title": "ELMs",
    "what": "the ELM frame model",
    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/elm_frames/v2/edge_localized_mode_suggest_elm_frames_v2.csv",
@@ -311,18 +360,19 @@
   },
   "sawtooth_oscillation": {
    "tier": "generated: automated labeler",
+   "performance": null,
    "title": "sawtooth",
    "what": "physics sawtooth states; separate ECE-supported crash candidates",
-   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/191376.json",
-   "sha256": "ed10cf833e6c0552aa4d65452abf24637704a60f7c6ba0c1461df000c86caced",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/191376.json",
+   "sha256": "1cbb956f214bef3b443ab5c2589710f8d9543e7dfe31661866ad806732257d60",
    "rows": 9,
-   "model": "physics sawtooth interval states",
+   "model": "physics sawtooth states; separate ECE-supported crash candidates",
    "decision_threshold": 0.6,
    "crowd_semantics": null,
    "primary_bars": null,
    "temporal_bin_ms": null,
-   "metadata": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/191376.meta.json",
-   "metadata_sha256": "bed985ee7eb313bf51b23e51ae213e1fce8c84f27b2f13e7ac2096ae7bd929ce",
+   "metadata": null,
+   "metadata_sha256": null,
    "states": {
     "1": "present",
     "2": "uncertain",
@@ -356,8 +406,8 @@
    ],
    "source_files": [
     {
-     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/191376.json",
-     "sha256": "ed10cf833e6c0552aa4d65452abf24637704a60f7c6ba0c1461df000c86caced"
+     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/191376.json",
+     "sha256": "1cbb956f214bef3b443ab5c2589710f8d9543e7dfe31661866ad806732257d60"
     }
    ],
    "display_intervals_ms": [],
@@ -387,7 +437,7 @@
  },
  "caption": {
   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191376/caption.tex",
-  "sha256": "88ba01b04dcdecb65f3546760d29f60f82934fc1f4eee4d3ff67849be331965f"
+  "sha256": "8b228f3b5b102cecf849652bf9001171310bd3dd978dfffb00f898a4dfff1ca8"
  },
  "drawn": {
   "figure": [
@@ -395,8 +445,8 @@
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191376/fig_interpreter.png"
   ],
   "figure_sha256": {
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191376/fig_interpreter.pdf": "2e1647e8cad2d45993d401bc34ed46d4a2aeeaaab76dab28cafcebf270f7c376",
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191376/fig_interpreter.png": "208a937826db95014a9444038fc3853926adbd92815724d6ba8bf2cc04f30538"
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191376/fig_interpreter.pdf": "62be98fb3d1b7a395fe3600889c4694e39c2d79e38ea9b2da5ed309f35b8e3a9",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191376/fig_interpreter.png": "875b2e0c10dca3a9973e7583b7810b3e7a321b662b6eb52a08fef7f1b39e4952"
   },
   "blobs": {
    "wide_above_fold": 323,
@@ -415,7 +465,10 @@
   ],
   "first_large_peak_before_expert_ms": null,
   "largest_dalpha_peak_ms": 2696.8133449554443,
+  "expert_elm_start_ms": 2100.0,
+  "lmode_inferred": false,
   "elm_hmode_conflicts_ms": [],
+  "ae_physical_review_caveat": null,
   "elm_uncertain_spans_ms": [],
   "elm_crowd_spans_ms": [],
   "sawtooth_strip_shown": false,
@@ -427,16 +480,131 @@
    "blank"
   ],
   "layout": {
-   "n_panel_height_units": 1.3,
-   "n_panel_height_in": 0.856494945298435,
+   "n_panel_height_units": 1.6,
+   "n_panel_height_in": 0.8504077756675232,
    "n_panel_band_khz": [
     0.0,
     30.0
    ],
-   "processed_omitted_band_khz": [
+   "processed_omitted_band_khz": [],
+   "processed_restored_strip_khz": [
     30.0,
     55.0
    ],
+   "frequency_panels": {
+    "raw_hi": {
+     "band_khz": [
+      55.0,
+      250.0
+     ],
+     "height_in": 0.4517791308233722,
+     "bounds": [
+      0.14,
+      0.8719344207351133,
+      0.78,
+      0.9540760808848173
+     ],
+     "ticks_khz": [
+      100,
+      150,
+      200,
+      250
+     ]
+    },
+    "raw_mid": {
+     "band_khz": [
+      30.0,
+      55.0
+     ],
+     "height_in": 0.13287621494805035,
+     "bounds": [
+      0.14,
+      0.8477751089263769,
+      0.78,
+      0.8719344207351133
+     ],
+     "ticks_khz": [
+      40,
+      55
+     ]
+    },
+    "raw_lo": {
+     "band_khz": [
+      0.0,
+      30.0
+     ],
+     "height_in": 0.8504077756675239,
+     "bounds": [
+      0.14,
+      0.6931555133504634,
+      0.78,
+      0.8477751089263769
+     ],
+     "ticks_khz": [
+      0,
+      10,
+      20,
+      30
+     ]
+    },
+    "pr_hi": {
+     "band_khz": [
+      55.0,
+      250.0
+     ],
+     "height_in": 0.45177913082337157,
+     "bounds": [
+      0.14,
+      0.4708898447100881,
+      0.78,
+      0.553031504859792
+     ],
+     "ticks_khz": [
+      100,
+      150,
+      200,
+      250
+     ]
+    },
+    "pr_mid": {
+     "band_khz": [
+      30.0,
+      55.0
+     ],
+     "height_in": 0.13287621494805035,
+     "bounds": [
+      0.14,
+      0.4467305329013517,
+      0.78,
+      0.4708898447100881
+     ],
+     "ticks_khz": [
+      40,
+      55
+     ]
+    },
+    "pr_lo": {
+     "band_khz": [
+      0.0,
+      30.0
+     ],
+     "height_in": 0.8504077756675232,
+     "bounds": [
+      0.14,
+      0.29211093732543836,
+      0.78,
+      0.4467305329013517
+     ],
+     "ticks_khz": [
+      0,
+      10,
+      20,
+      30
+     ]
+    }
+   },
+   "ntm_key_black_swatch": false,
+   "ae_fixed_callout_shown": false,
    "legend_labels": [
     "TokEye mask,\nn not measured",
     "n=1",
@@ -460,9 +628,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.14,
-      0.9570000000000001,
+      0.9601420295522571,
       0.23777777777777778,
-      0.975792021780303
+      0.9789340513325603
      ]
     },
     {
@@ -470,9 +638,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.14,
-      0.6371620274200249,
+      0.5813240203912694,
       0.5677083333333334,
-      0.655954049200328
+      0.6001160421715724
      ]
     },
     {
@@ -480,9 +648,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.14,
-      0.6131620274200249,
+      0.5561983361101834,
       0.6744907407407408,
-      0.631954049200328
+      0.5749903578904864
      ]
     },
     {
@@ -490,9 +658,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.14,
-      0.23095582329317269,
+      0.2053084914000952,
       0.32666666666666666,
-      0.24974784507347572
+      0.2241005131803982
      ]
     },
     {
@@ -500,49 +668,49 @@
      "font_pt": 7.0,
      "bounds": [
       0.810724279835391,
-      0.5955003718013381,
+      0.5336212178032771,
       0.924474279835391,
-      0.640162027420025
+      0.5782828734219639
      ]
     },
     {
      "text": "n=1",
      "font_pt": 7.0,
      "bounds": [
-      0.810724279835391,
-      0.4652794364664772,
-      0.8403539094650206,
-      0.4829562041432448
+      0.8064032921810699,
+      0.4229385111210487,
+      0.8360329218106995,
+      0.4406152787978163
      ]
     },
     {
      "text": "n=2",
      "font_pt": 7.0,
      "bounds": [
-      0.810724279835391,
-      0.43764903084779033,
-      0.8403539094650206,
-      0.45532579852455796
+      0.8064032921810699,
+      0.3997272974215537,
+      0.8360329218106995,
+      0.41740406509832134
      ]
     },
     {
      "text": "n=3",
      "font_pt": 7.0,
      "bounds": [
-      0.810724279835391,
-      0.4100186252291035,
-      0.8403539094650206,
-      0.4276953929058711
+      0.8561975308641975,
+      0.4229385111210487,
+      0.885827160493827,
+      0.4406152787978163
      ]
     },
     {
      "text": "other n",
      "font_pt": 7.0,
      "bounds": [
-      0.810724279835391,
-      0.38238821961041664,
-      0.8625761316872429,
-      0.4011802413907196
+      0.8561975308641975,
+      0.3997272974215537,
+      0.9080493827160493,
+      0.4185193192018567
      ]
     },
     {
@@ -550,9 +718,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.810724279835391,
-      0.30245434298911944,
+      0.2635585535744058,
       0.9099835390946502,
-      0.3212463647694225
+      0.2823505753547088
      ]
     },
     {
@@ -560,9 +728,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.810724279835391,
-      0.2748239373704326,
+      0.23592814795571893,
       0.9159094650205762,
-      0.2936159591507356
+      0.25472016973602196
      ]
     },
     {
@@ -570,9 +738,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.810724279835391,
-      0.24016380151286967,
+      0.3733189155451353,
       0.8699835390946503,
-      0.2589558232931727
+      0.39211093732543834
      ]
     },
     {
@@ -580,9 +748,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.810724279835391,
-      0.2125333958941828,
+      0.34568850992644845,
       0.8667659465020577,
-      0.23132541767448583
+      0.36448053170675143
      ]
     },
     {
@@ -653,14 +821,14 @@
   },
   "ae_boxes_ms_khz": [],
   "sawtooth_crashes": {
-   "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots",
+   "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots",
    "files": [
     {
-     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/191376.json",
-     "sha256": "ed10cf833e6c0552aa4d65452abf24637704a60f7c6ba0c1461df000c86caced"
+     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/191376.json",
+     "sha256": "1cbb956f214bef3b443ab5c2589710f8d9543e7dfe31661866ad806732257d60"
     }
    ],
-   "sha256": "ed10cf833e6c0552aa4d65452abf24637704a60f7c6ba0c1461df000c86caced",
+   "sha256": "1cbb956f214bef3b443ab5c2589710f8d9543e7dfe31661866ad806732257d60",
    "evidence_source": null,
    "physics_point_match_ms": 0.5,
    "verified": true,
@@ -779,11 +947,11 @@
    }
   }
  },
- "git": "d3c0519a",
+ "git": "990d3ebe",
  "render_started_from_clean_head": true,
  "render_code_sha256": {
-  "scripts/labeler/paper/fig_interpreter_tokeye.py": "7aaa20200cff13bc8a6c25d1af94ff5e9dfe6e63dcf254203cd12cd2c61ad1e1",
-  "src/labeler/paper/figure_sources.py": "b8298e8a429caee5035883471600c645f1f891edfb7189e16cab5e4063dc1f8d",
+  "scripts/labeler/paper/fig_interpreter_tokeye.py": "8d0bcd3586252fb22404b0650f1afdd65b1b25ca91b495b3305d2a33046f0c2c",
+  "src/labeler/paper/figure_sources.py": "2fc92bed24322cf6ae04b38d50788b4f87594d83c9e9b2592c94a430ad3365f6",
   "src/labeler/paper/mode_tags.py": "936d0db4f2fae613018d0c6d73f9d88eb808106663ed1f780e67be3bc616bfb2"
  }
 }

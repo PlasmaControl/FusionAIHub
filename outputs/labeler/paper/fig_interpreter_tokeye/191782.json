@@ -6,6 +6,10 @@
   3700.0
  ],
  "split": "train",
+ "publication_suitability": {
+  "suitable_alternate": false,
+  "role": "unsuitable diagnostic: no AE and n=1 mode with NTM absent"
+ },
  "decision_thresholds": {
   "ae": 0.5,
   "ntm": 0.63,
@@ -101,6 +105,7 @@
  "tracks": {
   "alfven_eigenmode": {
    "tier": "generated: automated labeler",
+   "performance": null,
    "title": "AE",
    "what": "the AE frame model (v2) run on the shot's CO2, the raw cache's CO2",
    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/ae_xpower/v2/band80-mhd10/model.pt",
@@ -131,6 +136,48 @@
   },
   "neoclassical_tearing_mode": {
    "tier": "generated: automated labeler",
+   "performance": {
+    "shots": 761,
+    "cells": [
+     675,
+     941,
+     660,
+     99466
+    ],
+    "precision": 0.4176980198019802,
+    "recall": 0.5056179775280899,
+    "f1": 0.4574720433751271,
+    "evaluation": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/ntm_frames/v2/evaluation.json",
+    "evaluation_sha256": "0e3060f6d5459d6a9047d48f242ba79860707c47cdad25b138bc728d79aab80f",
+    "bin_ms": 50.0,
+    "pool": "mean",
+    "bar_criteria": {
+     "N1": [
+      [
+       "f1",
+       ">=",
+       0.7
+      ],
+      [
+       "precision",
+       ">=",
+       0.6
+      ],
+      [
+       "recall",
+       ">=",
+       0.6
+      ]
+     ],
+     "N2": [
+      [
+       "lo(f1 - always)",
+       ">",
+       0.0
+      ]
+     ]
+    }
+   },
    "title": "NTM",
    "what": "the tearing-mode frame model",
    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/ntm_frames/v2/neoclassical_tearing_mode_suggest_ntm_frames_v2.csv",
@@ -165,6 +212,7 @@
   },
   "confinement": {
    "tier": "legacy: imported table",
+   "performance": null,
    "title": "regime",
    "what": "Gill's and Butt's curated regime intervals",
    "path": "/scratch/gpfs/nc1514/FusionAIHub/runs/labeler/confinement/v1/merged_intervals.csv",
@@ -652,6 +700,7 @@
   },
   "edge_localized_mode": {
    "tier": "generated: automated labeler",
+   "performance": null,
    "title": "ELMs",
    "what": "the ELM frame model",
    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/elm_frames/v2/edge_localized_mode_suggest_elm_frames_v2.csv",
@@ -692,18 +741,19 @@
   },
   "sawtooth_oscillation": {
    "tier": "generated: automated labeler",
+   "performance": null,
    "title": "sawtooth",
    "what": "physics sawtooth states; separate ECE-supported crash candidates",
-   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/191782.json",
-   "sha256": "dbd834e3fbfb0b583335e9740e3b5debb409bac0d03d33c3572fe7f05b4e94a5",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/191782.json",
+   "sha256": "b520fd9a76e37784c12cbc4af441d6385663d4e8ca292cc389b04ea97c63d76e",
    "rows": 7,
-   "model": "physics sawtooth interval states",
+   "model": "physics sawtooth states; separate ECE-supported crash candidates",
    "decision_threshold": 0.6,
    "crowd_semantics": null,
    "primary_bars": null,
    "temporal_bin_ms": null,
-   "metadata": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/191782.meta.json",
-   "metadata_sha256": "9301ff6da16cd2161ea6508d2de7b5ecb9791c210fef8b7aa6ad172ad36bff5f",
+   "metadata": null,
+   "metadata_sha256": null,
    "states": {
     "1": "present",
     "2": "uncertain",
@@ -728,8 +778,8 @@
    "present_spans_ms": [],
    "source_files": [
     {
-     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/191782.json",
-     "sha256": "dbd834e3fbfb0b583335e9740e3b5debb409bac0d03d33c3572fe7f05b4e94a5"
+     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/191782.json",
+     "sha256": "b520fd9a76e37784c12cbc4af441d6385663d4e8ca292cc389b04ea97c63d76e"
     }
    ],
    "display_intervals_ms": [],
@@ -759,7 +809,7 @@
  },
  "caption": {
   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191782/caption.tex",
-  "sha256": "2b3915b35cc46cdd1045a22aefd0d273325d02b946c86776de18ca439fa4019d"
+  "sha256": "b61845f54a45aa6a5b3cb943dd1efc3b4ac429090502d41c3b0215bb5e3e50bd"
  },
  "drawn": {
   "figure": [
@@ -767,8 +817,8 @@
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191782/fig_interpreter.png"
   ],
   "figure_sha256": {
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191782/fig_interpreter.pdf": "b6440c0c781227d4f034d1596cdf1bf93f12d6668cc8cae0f33971134763dd7d",
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191782/fig_interpreter.png": "b9bbd7e2b34fed4c076ed80e30c0b37793103788f37089b8bbec27399e791647"
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191782/fig_interpreter.pdf": "986b7bc4bbb215b967cfa015614ab01837f6dbe7deaf85de64feb3afcc096443",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191782/fig_interpreter.png": "8cdddd4c6da8602d0c00175007d94b179164ed8c1ffe9b46eec032ebfae33967"
   },
   "blobs": {
    "wide_above_fold": 339,
@@ -784,7 +834,10 @@
   "elm_peak_times_ms": [],
   "first_large_peak_before_expert_ms": null,
   "largest_dalpha_peak_ms": 3215.717077255249,
+  "expert_elm_start_ms": null,
+  "lmode_inferred": false,
   "elm_hmode_conflicts_ms": [],
+  "ae_physical_review_caveat": null,
   "elm_uncertain_spans_ms": [],
   "elm_crowd_spans_ms": [],
   "sawtooth_strip_shown": false,
@@ -795,16 +848,131 @@
    "blank"
   ],
   "layout": {
-   "n_panel_height_units": 1.3,
-   "n_panel_height_in": 0.856494945298435,
+   "n_panel_height_units": 1.6,
+   "n_panel_height_in": 0.8504077756675232,
    "n_panel_band_khz": [
     0.0,
     30.0
    ],
-   "processed_omitted_band_khz": [
+   "processed_omitted_band_khz": [],
+   "processed_restored_strip_khz": [
     30.0,
     55.0
    ],
+   "frequency_panels": {
+    "raw_hi": {
+     "band_khz": [
+      55.0,
+      250.0
+     ],
+     "height_in": 0.4517791308233722,
+     "bounds": [
+      0.14,
+      0.8719344207351133,
+      0.78,
+      0.9540760808848173
+     ],
+     "ticks_khz": [
+      100,
+      150,
+      200,
+      250
+     ]
+    },
+    "raw_mid": {
+     "band_khz": [
+      30.0,
+      55.0
+     ],
+     "height_in": 0.13287621494805035,
+     "bounds": [
+      0.14,
+      0.8477751089263769,
+      0.78,
+      0.8719344207351133
+     ],
+     "ticks_khz": [
+      40,
+      55
+     ]
+    },
+    "raw_lo": {
+     "band_khz": [
+      0.0,
+      30.0
+     ],
+     "height_in": 0.8504077756675239,
+     "bounds": [
+      0.14,
+      0.6931555133504634,
+      0.78,
+      0.8477751089263769
+     ],
+     "ticks_khz": [
+      0,
+      10,
+      20,
+      30
+     ]
+    },
+    "pr_hi": {
+     "band_khz": [
+      55.0,
+      250.0
+     ],
+     "height_in": 0.45177913082337157,
+     "bounds": [
+      0.14,
+      0.4708898447100881,
+      0.78,
+      0.553031504859792
+     ],
+     "ticks_khz": [
+      100,
+      150,
+      200,
+      250
+     ]
+    },
+    "pr_mid": {
+     "band_khz": [
+      30.0,
+      55.0
+     ],
+     "height_in": 0.13287621494805035,
+     "bounds": [
+      0.14,
+      0.4467305329013517,
+      0.78,
+      0.4708898447100881
+     ],
+     "ticks_khz": [
+      40,
+      55
+     ]
+    },
+    "pr_lo": {
+     "band_khz": [
+      0.0,
+      30.0
+     ],
+     "height_in": 0.8504077756675232,
+     "bounds": [
+      0.14,
+      0.29211093732543836,
+      0.78,
+      0.4467305329013517
+     ],
+     "ticks_khz": [
+      0,
+      10,
+      20,
+      30
+     ]
+    }
+   },
+   "ntm_key_black_swatch": false,
+   "ae_fixed_callout_shown": false,
    "legend_labels": [
     "TokEye mask,\nn not measured",
     "n=1",
@@ -823,9 +991,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.14,
-      0.9570000000000001,
+      0.9601420295522571,
       0.23777777777777778,
-      0.975792021780303
+      0.9789340513325603
      ]
     },
     {
@@ -833,9 +1001,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.14,
-      0.6371620274200249,
+      0.5813240203912694,
       0.5677083333333334,
-      0.655954049200328
+      0.6001160421715724
      ]
     },
     {
@@ -843,9 +1011,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.14,
-      0.6131620274200249,
+      0.5561983361101834,
       0.6744907407407408,
-      0.631954049200328
+      0.5749903578904864
      ]
     },
     {
@@ -853,9 +1021,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.14,
-      0.23095582329317269,
+      0.2053084914000952,
       0.32666666666666666,
-      0.24974784507347572
+      0.2241005131803982
      ]
     },
     {
@@ -863,49 +1031,49 @@
      "font_pt": 7.0,
      "bounds": [
       0.810724279835391,
-      0.5955003718013381,
+      0.5336212178032771,
       0.924474279835391,
-      0.640162027420025
+      0.5782828734219639
      ]
     },
     {
      "text": "n=1",
      "font_pt": 7.0,
      "bounds": [
-      0.810724279835391,
-      0.4652794364664772,
-      0.8403539094650206,
-      0.4829562041432448
+      0.8064032921810699,
+      0.4229385111210487,
+      0.8360329218106995,
+      0.4406152787978163
      ]
     },
     {
      "text": "n=2",
      "font_pt": 7.0,
      "bounds": [
-      0.810724279835391,
-      0.43764903084779033,
-      0.8403539094650206,
-      0.45532579852455796
+      0.8064032921810699,
+      0.3997272974215537,
+      0.8360329218106995,
+      0.41740406509832134
      ]
     },
     {
      "text": "n=3",
      "font_pt": 7.0,
      "bounds": [
-      0.810724279835391,
-      0.4100186252291035,
-      0.8403539094650206,
-      0.4276953929058711
+      0.8561975308641975,
+      0.4229385111210487,
+      0.885827160493827,
+      0.4406152787978163
      ]
     },
     {
      "text": "other n",
      "font_pt": 7.0,
      "bounds": [
-      0.810724279835391,
-      0.38238821961041664,
-      0.8625761316872429,
-      0.4011802413907196
+      0.8561975308641975,
+      0.3997272974215537,
+      0.9080493827160493,
+      0.4185193192018567
      ]
     },
     {
@@ -913,9 +1081,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.810724279835391,
-      0.24016380151286967,
+      0.3733189155451353,
       0.8699835390946503,
-      0.2589558232931727
+      0.39211093732543834
      ]
     },
     {
@@ -923,9 +1091,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.810724279835391,
-      0.2125333958941828,
+      0.34568850992644845,
       0.8667659465020577,
-      0.23132541767448583
+      0.36448053170675143
      ]
     },
     {
@@ -986,14 +1154,14 @@
   },
   "ae_boxes_ms_khz": [],
   "sawtooth_crashes": {
-   "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots",
+   "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots",
    "files": [
     {
-     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/191782.json",
-     "sha256": "dbd834e3fbfb0b583335e9740e3b5debb409bac0d03d33c3572fe7f05b4e94a5"
+     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/191782.json",
+     "sha256": "b520fd9a76e37784c12cbc4af441d6385663d4e8ca292cc389b04ea97c63d76e"
     }
    ],
-   "sha256": "dbd834e3fbfb0b583335e9740e3b5debb409bac0d03d33c3572fe7f05b4e94a5",
+   "sha256": "b520fd9a76e37784c12cbc4af441d6385663d4e8ca292cc389b04ea97c63d76e",
    "evidence_source": null,
    "physics_point_match_ms": 0.5,
    "verified": true,
@@ -1089,11 +1257,11 @@
    }
   }
  },
- "git": "d3c0519a",
+ "git": "990d3ebe",
  "render_started_from_clean_head": true,
  "render_code_sha256": {
-  "scripts/labeler/paper/fig_interpreter_tokeye.py": "7aaa20200cff13bc8a6c25d1af94ff5e9dfe6e63dcf254203cd12cd2c61ad1e1",
-  "src/labeler/paper/figure_sources.py": "b8298e8a429caee5035883471600c645f1f891edfb7189e16cab5e4063dc1f8d",
+  "scripts/labeler/paper/fig_interpreter_tokeye.py": "8d0bcd3586252fb22404b0650f1afdd65b1b25ca91b495b3305d2a33046f0c2c",
+  "src/labeler/paper/figure_sources.py": "2fc92bed24322cf6ae04b38d50788b4f87594d83c9e9b2592c94a430ad3365f6",
   "src/labeler/paper/mode_tags.py": "936d0db4f2fae613018d0c6d73f9d88eb808106663ed1f780e67be3bc616bfb2"
  }
 }

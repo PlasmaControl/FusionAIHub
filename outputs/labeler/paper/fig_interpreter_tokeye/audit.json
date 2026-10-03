@@ -1,0 +1,4240 @@
+{
+ "primary_shot": 201978,
+ "ae_threshold": 0.5,
+ "ae_threshold_source": "scripts/labeler/ae_baselines_evaluate.py, SELDnet",
+ "renders": [
+  {
+   "shot": 201978,
+   "split": "train",
+   "window_ms": [
+    1500.0,
+    3300.0
+   ],
+   "record": "outputs/labeler/paper/fig_interpreter_tokeye/201978.json",
+   "record_sha256": "2084fe5beb1a93f1732072c70dfb1bd049513d873ba57fc297a6be06d55ee70a",
+   "ae_source": "ae-ours, CO2 activity predictions, p>=0.5",
+   "tag_counts": {
+    "alfven_eigenmode": 319,
+    "neoclassical_tearing_mode": 11,
+    "sawtooth_oscillation": 0
+   },
+   "verified_crashes": 0,
+   "elm_peak_count": 49,
+   "caption_words": 114,
+   "projection_violations": 0,
+   "raster_ae_audit": {
+    "pink_pixels": 4880,
+    "outside_present": 0,
+    "below_detector_band": 0,
+    "boundary_tolerance_pixels": 1,
+    "time_tolerance_ms": 2.779150197628458,
+    "frequency_tolerance_khz": 2.877512287100863,
+    "rule": "saved PNG pink RGB pixels in processed high-frequency axes"
+   },
+   "unmeasured_ntm_pixels": 0,
+   "measured_n3_outline_pixels": 0,
+   "layout": {
+    "n_panel_height_units": 1.6,
+    "n_panel_height_in": 0.8504077756675232,
+    "n_panel_band_khz": [
+     0.0,
+     30.0
+    ],
+    "processed_omitted_band_khz": [],
+    "processed_restored_strip_khz": [
+     30.0,
+     55.0
+    ],
+    "frequency_panels": {
+     "raw_hi": {
+      "band_khz": [
+       55.0,
+       250.0
+      ],
+      "height_in": 0.4517791308233722,
+      "bounds": [
+       0.14,
+       0.8719344207351133,
+       0.78,
+       0.9540760808848173
+      ],
+      "ticks_khz": [
+       100,
+       150,
+       200,
+       250
+      ]
+     },
+     "raw_mid": {
+      "band_khz": [
+       30.0,
+       55.0
+      ],
+      "height_in": 0.13287621494805035,
+      "bounds": [
+       0.14,
+       0.8477751089263769,
+       0.78,
+       0.8719344207351133
+      ],
+      "ticks_khz": [
+       40,
+       55
+      ]
+     },
+     "raw_lo": {
+      "band_khz": [
+       0.0,
+       30.0
+      ],
+      "height_in": 0.8504077756675239,
+      "bounds": [
+       0.14,
+       0.6931555133504634,
+       0.78,
+       0.8477751089263769
+      ],
+      "ticks_khz": [
+       0,
+       10,
+       20,
+       30
+      ]
+     },
+     "pr_hi": {
+      "band_khz": [
+       55.0,
+       250.0
+      ],
+      "height_in": 0.45177913082337157,
+      "bounds": [
+       0.14,
+       0.4708898447100881,
+       0.78,
+       0.553031504859792
+      ],
+      "ticks_khz": [
+       100,
+       150,
+       200,
+       250
+      ]
+     },
+     "pr_mid": {
+      "band_khz": [
+       30.0,
+       55.0
+      ],
+      "height_in": 0.13287621494805035,
+      "bounds": [
+       0.14,
+       0.4467305329013517,
+       0.78,
+       0.4708898447100881
+      ],
+      "ticks_khz": [
+       40,
+       55
+      ]
+     },
+     "pr_lo": {
+      "band_khz": [
+       0.0,
+       30.0
+      ],
+      "height_in": 0.8504077756675232,
+      "bounds": [
+       0.14,
+       0.29211093732543836,
+       0.78,
+       0.4467305329013517
+      ],
+      "ticks_khz": [
+       0,
+       10,
+       20,
+       30
+      ]
+     }
+    },
+    "ntm_key_black_swatch": true,
+    "ae_fixed_callout_shown": false,
+    "legend_labels": [
+     "TokEye mask,\nn not measured",
+     "AE (detector band\n\u226580 kHz)",
+     "NTM suggestions\n(n=1 or 2, \u226430 kHz)",
+     "n=1",
+     "n=2",
+     "n=3",
+     "other n",
+     "ELM intervals",
+     "D-alpha peaks",
+     "present",
+     "absent",
+     "expert ELM interval (one span for many ELMs)"
+    ],
+    "present_chip_colours": [
+     "#CC79A7",
+     "#E69F00",
+     "#333333"
+    ],
+    "heading_and_legend_text_bounds": [
+     {
+      "text": "Raw signals",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.9601420295522571,
+       0.23777777777777778,
+       0.9789340513325603
+      ]
+     },
+     {
+      "text": "TokEye-processed: modes overlapping event labels",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.5813240203912694,
+       0.5677083333333334,
+       0.6001160421715724
+      ]
+     },
+     {
+      "text": "mask \u2192 remove small objects / fill holes \u2192 components \u2192 time/band tags",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.5561983361101834,
+       0.6744907407407408,
+       0.5749903578904864
+      ]
+     },
+     {
+      "text": "Labels; source at right",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.2053084914000952,
+       0.32666666666666666,
+       0.2241005131803982
+      ]
+     },
+     {
+      "text": "TokEye mask,\nn not measured",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.5336212178032771,
+       0.924474279835391,
+       0.5782828734219639
+      ]
+     },
+     {
+      "text": "AE (detector band\n\u226580 kHz)",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.4801211783462063,
+       0.9425761316872429,
+       0.5247828339648932
+      ]
+     },
+     {
+      "text": "NTM suggestions\n(n=1 or 2, \u226430 kHz)",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.4266211388891356,
+       0.9559094650205762,
+       0.47128279450782246
+      ]
+     },
+     {
+      "text": "n=1",
+      "font_pt": 7.0,
+      "bounds": [
+       0.8064032921810699,
+       0.3978291171088325,
+       0.8360329218106995,
+       0.41550588478560013
+      ]
+     },
+     {
+      "text": "n=2",
+      "font_pt": 7.0,
+      "bounds": [
+       0.8064032921810699,
+       0.37461790340933754,
+       0.8360329218106995,
+       0.39229467108610516
+      ]
+     },
+     {
+      "text": "n=3",
+      "font_pt": 7.0,
+      "bounds": [
+       0.8561975308641975,
+       0.3978291171088325,
+       0.885827160493827,
+       0.41550588478560013
+      ]
+     },
+     {
+      "text": "other n",
+      "font_pt": 7.0,
+      "bounds": [
+       0.8561975308641975,
+       0.37461790340933754,
+       0.9080493827160493,
+       0.3934099251896406
+      ]
+     },
+     {
+      "text": "ELM intervals",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.2635585535744058,
+       0.9099835390946502,
+       0.2823505753547088
+      ]
+     },
+     {
+      "text": "D-alpha peaks",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.23592814795571893,
+       0.9159094650205762,
+       0.25472016973602196
+      ]
+     },
+     {
+      "text": "present",
+      "font_pt": 7.0,
+      "bounds": [
+       0.43966820987654326,
+       0.015909090909090907,
+       0.494158950617284,
+       0.03358585858585859
+      ]
+     },
+     {
+      "text": "absent",
+      "font_pt": 7.0,
+      "bounds": [
+       0.5589737654320988,
+       0.015909090909090907,
+       0.6078626543209876,
+       0.03470111268939394
+      ]
+     },
+     {
+      "text": "expert ELM interval (one span for many ELMs)",
+      "font_pt": 7.0,
+      "bounds": [
+       0.3506622942386831,
+       0.04990909090909092,
+       0.6896669238683127,
+       0.06870111268939394
+      ]
+     }
+    ]
+   },
+   "regimes_shown": [
+    "H-mode",
+    "L-mode"
+   ],
+   "harmonic_support": {
+    "frequency_ratio_tolerance": 0.1,
+    "minimum_support_ms": 50.0,
+    "caption_frequency_step_khz": 1.0,
+    "ridge_rule": "per-column pixel-weighted frequency of each measured n",
+    "support_ms": 325.6319853984378,
+    "joint_support_ms": 700.4159685928662,
+    "joint_columns": 684,
+    "passing_columns": 318,
+    "passing_fraction": 0.4649122807017544,
+    "n1_median_khz": 9.09634334969907,
+    "n2_median_khz": 18.46139555610238
+   },
+   "tokeye_cache": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/cache/tokeye_201978_1300_5000.npz",
+    "sha256": "f63e81f5fa115c3b085db16d59d4d058823f04f67eb8aea8a7ef27bcf05653a5",
+    "fingerprints": {
+     "waveform": {
+      "group": "mirnov",
+      "row": 15,
+      "samples": 5079038,
+      "dtype": "float32",
+      "sample_sha256": "182a8a63ec763ea2ddfd81fbc086e9286b25cea21f3ad1bc3e67cfc6cd4c9f75",
+      "fs_hz": 500000.02242047864,
+      "start_s": -1.4999991655349731,
+      "end_s": 8.658074378967285
+     },
+     "preprocessing": {
+      "code_sha256": {
+       "labeler/events/masks.py": "db4d3fc03cc367de6e536d4dff57083b03973152b825d634f15803a465650e3f",
+       "labeler/events/unet.py": "ea5e374c5811777df7c9696e19106df91eb5554e3617dc2f134ae8be993cd4ab",
+       "labeler/ae/transform.py": "971819c5fc3a612cdf2282f9d7b686ac7476f59d788844010261f84f3a62bf2d",
+       "labeler/ae/labels.py": "ffd73c485fd75725403b7ad27a54da0471cb2b2f813cdd718f694739449dcfdc"
+      },
+      "runtime_versions": {
+       "numpy": "1.26.4",
+       "scipy": "1.17.1",
+       "torch": "2.14.0+cpu"
+      },
+      "inference_sha256": "51c98c6edd781f0fd3187603d2bf5e46d0ac655c901be6a2cb08eb0a3cbb23e8",
+      "zoom_decimation": 4,
+      "row_lit_threshold": 0.2
+     }
+    }
+   },
+   "first_large_peak_before_expert_ms": 11.45616340637207,
+   "largest_dalpha_peak_ms": 2296.543836593628,
+   "expert_elm_start_ms": 2308.0,
+   "lmode_inferred": true,
+   "ae_physical_review_caveat": null,
+   "ntm_performance": {
+    "shots": 761,
+    "cells": [
+     675,
+     941,
+     660,
+     99466
+    ],
+    "precision": 0.4176980198019802,
+    "recall": 0.5056179775280899,
+    "f1": 0.4574720433751271,
+    "evaluation": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/ntm_frames/v2/evaluation.json",
+    "evaluation_sha256": "0e3060f6d5459d6a9047d48f242ba79860707c47cdad25b138bc728d79aab80f",
+    "bin_ms": 50.0,
+    "pool": "mean",
+    "bar_criteria": {
+     "N1": [
+      [
+       "f1",
+       ">=",
+       0.7
+      ],
+      [
+       "precision",
+       ">=",
+       0.6
+      ],
+      [
+       "recall",
+       ">=",
+       0.6
+      ]
+     ],
+     "N2": [
+      [
+       "lo(f1 - always)",
+       ">",
+       0.0
+      ]
+     ]
+    }
+   },
+   "publication_suitability": {
+    "suitable_alternate": true,
+    "role": "primary"
+   },
+   "elm_hmode_conflicts_ms": [],
+   "render_source_commit": "990d3ebe",
+   "sawtooth_source": [
+    {
+     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/201978.json",
+     "sha256": "61cea2aa20aed751bafda1d03b948de3c8f524593060492d9ef89f78d2250449"
+    }
+   ],
+   "sawtooth_interval_source": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/201978.json",
+    "sha256": "61cea2aa20aed751bafda1d03b948de3c8f524593060492d9ef89f78d2250449",
+    "tier": "generated: automated labeler"
+   },
+   "sawtooth_states": [
+    {
+     "start_ms": 1500.0,
+     "end_ms": 2309.0999434491773,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 2309.0999434491773,
+     "end_ms": 2329.3999429689698,
+     "category": 3,
+     "state": "unassessed"
+    },
+    {
+     "start_ms": 2329.3999429689698,
+     "end_ms": 2334.8999428388643,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 2334.8999428388643,
+     "end_ms": 3196.1999224643546,
+     "category": 3,
+     "state": "unassessed"
+    },
+    {
+     "start_ms": 3196.1999224643546,
+     "end_ms": 3207.199922204144,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 3207.199922204144,
+     "end_ms": 3234.799921551251,
+     "category": 3,
+     "state": "unassessed"
+    },
+    {
+     "start_ms": 3234.799921551251,
+     "end_ms": 3241.2999213974904,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 3241.2999213974904,
+     "end_ms": 3300.0,
+     "category": 3,
+     "state": "unassessed"
+    }
+   ],
+   "sawtooth_track_shown": false,
+   "sawtooth_display_intervals_ms": [],
+   "sawtooth_display_merge": {
+    "minimum_duration_ms": 10.0,
+    "rule": "shortest sliver first, merge into longer touching neighbour; ties prefer earlier; source unchanged; crash ticks unchanged",
+    "changes": []
+   },
+   "confinement_intervals_ms": [
+    {
+     "start_ms": 1500.0,
+     "end_ms": 1799.0,
+     "category": 0,
+     "state": "absent"
+    },
+    {
+     "start_ms": 1799.0,
+     "end_ms": 3300.0,
+     "category": 1,
+     "state": "present"
+    }
+   ],
+   "sawtooth_state_duration_ms": {
+    "present": 0,
+    "absent": 0,
+    "uncertain": 832.0999429051008,
+    "unassessed": 967.9000570948992
+   },
+   "sawtooth_density_proxy": {
+    "status": "Thomson_90percentile_fixed_density_guard_bt_missing",
+    "cutoff_proxy": true,
+    "high_density_samples": 20174,
+    "density_samples": 53880,
+    "fixed_density_guard_m3": 8e+19,
+    "margin": 0.9
+   },
+   "late_untagged_high_frequency": {
+    "band_khz": [
+     80.07812859077978,
+     249.5117299383443
+    ],
+    "pixels": 126086,
+    "columns": 1946,
+    "first_time_ms": 2800.0326416474845,
+    "last_time_ms": 3299.744619239921,
+    "rule": "all coherent pixels in the AE detector band during late ABSENT times after the last PRESENT AE interval; no duration cutoff",
+    "reason": "AE detector absent; time coincidence is required"
+   },
+   "pdf_size_in": [
+    6.75,
+    5.5
+   ],
+   "figure_sha256": {
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.pdf": "cddbc5f7be5c989aba5aa057fb620294fd9a8877d20aa21f335c5c9fd4587c5c",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.png": "12f353f9e303d023d02aef3c8c8f16fa5a723669e6f9b675c20971ed92bdb2a7"
+   }
+  },
+  {
+   "shot": 201973,
+   "split": "val",
+   "window_ms": [
+    1600.0,
+    3350.0
+   ],
+   "record": "outputs/labeler/paper/fig_interpreter_tokeye/201973.json",
+   "record_sha256": "4d3c89618224efce859b486a8c6e2255db31ce35f24dec18207516b72514a444",
+   "ae_source": "ae-ours, CO2 activity predictions, p>=0.5",
+   "tag_counts": {
+    "alfven_eigenmode": 154,
+    "neoclassical_tearing_mode": 14,
+    "sawtooth_oscillation": 0
+   },
+   "verified_crashes": 3,
+   "elm_peak_count": 65,
+   "caption_words": 121,
+   "projection_violations": 0,
+   "raster_ae_audit": {
+    "pink_pixels": 3142,
+    "outside_present": 0,
+    "below_detector_band": 0,
+    "boundary_tolerance_pixels": 1,
+    "time_tolerance_ms": 2.7019515810276675,
+    "frequency_tolerance_khz": 2.992921393465422,
+    "rule": "saved PNG pink RGB pixels in processed high-frequency axes"
+   },
+   "unmeasured_ntm_pixels": 0,
+   "measured_n3_outline_pixels": 0,
+   "layout": {
+    "n_panel_height_units": 1.6,
+    "n_panel_height_in": 0.8176154672395279,
+    "n_panel_band_khz": [
+     0.0,
+     30.0
+    ],
+    "processed_omitted_band_khz": [],
+    "processed_restored_strip_khz": [
+     30.0,
+     55.0
+    ],
+    "frequency_panels": {
+     "raw_hi": {
+      "band_khz": [
+       55.0,
+       250.0
+      ],
+      "height_in": 0.4343582169709989,
+      "bounds": [
+       0.14,
+       0.8762943071965628,
+       0.78,
+       0.9552685284640171
+      ],
+      "ticks_khz": [
+       100,
+       150,
+       200,
+       250
+      ]
+     },
+     "raw_mid": {
+      "band_khz": [
+       30.0,
+       55.0
+      ],
+      "height_in": 0.12775241675617593,
+      "bounds": [
+       0.14,
+       0.8530665950590762,
+       0.78,
+       0.8762943071965628
+      ],
+      "ticks_khz": [
+       40,
+       55
+      ]
+     },
+     "raw_lo": {
+      "band_khz": [
+       0.0,
+       30.0
+      ],
+      "height_in": 0.8176154672395279,
+      "bounds": [
+       0.14,
+       0.7044092373791621,
+       0.78,
+       0.8530665950590762
+      ],
+      "ticks_khz": [
+       0,
+       10,
+       20,
+       30
+      ]
+     },
+     "pr_hi": {
+      "band_khz": [
+       55.0,
+       250.0
+      ],
+      "height_in": 0.4343582169709995,
+      "bounds": [
+       0.14,
+       0.49071428571428544,
+       0.78,
+       0.5696885069817399
+      ],
+      "ticks_khz": [
+       100,
+       150,
+       200,
+       250
+      ]
+     },
+     "pr_mid": {
+      "band_khz": [
+       30.0,
+       55.0
+      ],
+      "height_in": 0.12775241675617593,
+      "bounds": [
+       0.14,
+       0.4674865735767989,
+       0.78,
+       0.49071428571428544
+      ],
+      "ticks_khz": [
+       40,
+       55
+      ]
+     },
+     "pr_lo": {
+      "band_khz": [
+       0.0,
+       30.0
+      ],
+      "height_in": 0.8176154672395279,
+      "bounds": [
+       0.14,
+       0.31882921589688473,
+       0.78,
+       0.4674865735767989
+      ],
+      "ticks_khz": [
+       0,
+       10,
+       20,
+       30
+      ]
+     }
+    },
+    "ntm_key_black_swatch": true,
+    "ae_fixed_callout_shown": false,
+    "legend_labels": [
+     "TokEye mask,\nn not measured",
+     "AE (detector band\n\u226580 kHz)",
+     "NTM suggestions\n(n=1 or 2, \u226430 kHz)",
+     "ECE-supported\ncrash candidates",
+     "n=1",
+     "n=2",
+     "n=3",
+     "other n",
+     "ELM intervals",
+     "D-alpha peaks",
+     "present",
+     "uncertain",
+     "absent",
+     "blank: unassessed / unobservable",
+     "expert ELM interval (one span for many ELMs)"
+    ],
+    "present_chip_colours": [
+     "#CC79A7",
+     "#E69F00",
+     "#333333",
+     "#D55E00"
+    ],
+    "heading_and_legend_text_bounds": [
+     {
+      "text": "Raw signals",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.9607382533418569,
+       0.23777777777777778,
+       0.9795302751221601
+      ]
+     },
+     {
+      "text": "TokEye-processed: modes overlapping event labels",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.5965277270260674,
+       0.5677083333333334,
+       0.6153197488063703
+      ]
+     },
+     {
+      "text": "mask \u2192 remove small objects / fill holes \u2192 components \u2192 time/band tags",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.5723709064030814,
+       0.6744907407407408,
+       0.5911629281833843
+      ]
+     },
+     {
+      "text": "Labels; source at right",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.22023879039878466,
+       0.32666666666666666,
+       0.23903081217908767
+      ]
+     },
+     {
+      "text": "TokEye mask,\nn not measured",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.5483404926090252,
+       0.924474279835391,
+       0.593002148227712
+      ]
+     },
+     {
+      "text": "AE (detector band\n\u226580 kHz)",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.4948404531519544,
+       0.9425761316872429,
+       0.5395021087706413
+      ]
+     },
+     {
+      "text": "NTM suggestions\n(n=1 or 2, \u226430 kHz)",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.4413404136948837,
+       0.9559094650205762,
+       0.4860020693135706
+      ]
+     },
+     {
+      "text": "ECE-supported\ncrash candidates",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.6086466150580048,
+       0.9351687242798354,
+       0.6533082706766916
+      ]
+     },
+     {
+      "text": "n=1",
+      "font_pt": 7.0,
+      "bounds": [
+       0.8064032921810699,
+       0.4125483919145806,
+       0.8360329218106995,
+       0.4302251595913482
+      ]
+     },
+     {
+      "text": "n=2",
+      "font_pt": 7.0,
+      "bounds": [
+       0.8064032921810699,
+       0.3893371782150856,
+       0.8360329218106995,
+       0.40701394589185325
+      ]
+     },
+     {
+      "text": "n=3",
+      "font_pt": 7.0,
+      "bounds": [
+       0.8561975308641975,
+       0.4125483919145806,
+       0.885827160493827,
+       0.4302251595913482
+      ]
+     },
+     {
+      "text": "other n",
+      "font_pt": 7.0,
+      "bounds": [
+       0.8561975308641975,
+       0.3893371782150856,
+       0.9080493827160493,
+       0.40812919999538866
+      ]
+     },
+     {
+      "text": "ELM intervals",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.27588037349359573,
+       0.9099835390946502,
+       0.2946723952738987
+      ]
+     },
+     {
+      "text": "D-alpha peaks",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.24824996787490886,
+       0.9159094650205762,
+       0.26704198965521186
+      ]
+     },
+     {
+      "text": "present",
+      "font_pt": 7.0,
+      "bounds": [
+       0.21855709876543206,
+       0.015909090909090907,
+       0.2730478395061728,
+       0.03358585858585859
+      ]
+     },
+     {
+      "text": "uncertain",
+      "font_pt": 7.0,
+      "bounds": [
+       0.3378626543209876,
+       0.015909090909090907,
+       0.4074922839506172,
+       0.03470111268939394
+      ]
+     },
+     {
+      "text": "absent",
+      "font_pt": 7.0,
+      "bounds": [
+       0.47230709876543214,
+       0.015909090909090907,
+       0.5211959876543211,
+       0.03470111268939394
+      ]
+     },
+     {
+      "text": "blank: unassessed / unobservable",
+      "font_pt": 7.0,
+      "bounds": [
+       0.5860108024691358,
+       0.015909090909090907,
+       0.8289737654320989,
+       0.03470111268939394
+      ]
+     },
+     {
+      "text": "expert ELM interval (one span for many ELMs)",
+      "font_pt": 7.0,
+      "bounds": [
+       0.3506622942386831,
+       0.04990909090909092,
+       0.6896669238683127,
+       0.06870111268939394
+      ]
+     }
+    ]
+   },
+   "regimes_shown": [
+    "H-mode",
+    "L-mode"
+   ],
+   "harmonic_support": {
+    "frequency_ratio_tolerance": 0.1,
+    "minimum_support_ms": 50.0,
+    "caption_frequency_step_khz": 1.0,
+    "ridge_rule": "per-column pixel-weighted frequency of each measured n",
+    "support_ms": 221.18400825169738,
+    "joint_support_ms": 818.1760305236398,
+    "joint_columns": 799,
+    "passing_columns": 216,
+    "passing_fraction": 0.27033792240300375,
+    "n1_median_khz": 6.549541522483164,
+    "n2_median_khz": 13.183593258159664
+   },
+   "tokeye_cache": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/cache/tokeye_201973_1500_3450.npz",
+    "sha256": "12b9a6c0e8be99843f7bdf3998332c4fac4ed3477ec355ce6dcd1d665dba4b1c",
+    "fingerprints": {
+     "waveform": {
+      "group": "mirnov",
+      "row": 15,
+      "samples": 5079038,
+      "dtype": "float32",
+      "sample_sha256": "34d6b1514e635c23452482f81fdd437aa3d034415a7a05ab5428cf56ee728447",
+      "fs_hz": 499999.9813464998,
+      "start_s": -1.4999990463256836,
+      "end_s": 8.658075332641602
+     },
+     "preprocessing": {
+      "code_sha256": {
+       "labeler/events/masks.py": "db4d3fc03cc367de6e536d4dff57083b03973152b825d634f15803a465650e3f",
+       "labeler/events/unet.py": "ea5e374c5811777df7c9696e19106df91eb5554e3617dc2f134ae8be993cd4ab",
+       "labeler/ae/transform.py": "971819c5fc3a612cdf2282f9d7b686ac7476f59d788844010261f84f3a62bf2d",
+       "labeler/ae/labels.py": "ffd73c485fd75725403b7ad27a54da0471cb2b2f813cdd718f694739449dcfdc"
+      },
+      "runtime_versions": {
+       "numpy": "1.26.4",
+       "scipy": "1.17.1",
+       "torch": "2.14.0+cpu"
+      },
+      "inference_sha256": "51c98c6edd781f0fd3187603d2bf5e46d0ac655c901be6a2cb08eb0a3cbb23e8",
+      "zoom_decimation": 4,
+      "row_lit_threshold": 0.2
+     }
+    }
+   },
+   "first_large_peak_before_expert_ms": null,
+   "largest_dalpha_peak_ms": 2091.465711593628,
+   "expert_elm_start_ms": 2075.0,
+   "lmode_inferred": true,
+   "ae_physical_review_caveat": null,
+   "ntm_performance": {
+    "shots": 761,
+    "cells": [
+     675,
+     941,
+     660,
+     99466
+    ],
+    "precision": 0.4176980198019802,
+    "recall": 0.5056179775280899,
+    "f1": 0.4574720433751271,
+    "evaluation": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/ntm_frames/v2/evaluation.json",
+    "evaluation_sha256": "0e3060f6d5459d6a9047d48f242ba79860707c47cdad25b138bc728d79aab80f",
+    "bin_ms": 50.0,
+    "pool": "mean",
+    "bar_criteria": {
+     "N1": [
+      [
+       "f1",
+       ">=",
+       0.7
+      ],
+      [
+       "precision",
+       ">=",
+       0.6
+      ],
+      [
+       "recall",
+       ">=",
+       0.6
+      ]
+     ],
+     "N2": [
+      [
+       "lo(f1 - always)",
+       ">",
+       0.0
+      ]
+     ]
+    }
+   },
+   "publication_suitability": {
+    "suitable_alternate": true,
+    "role": "alternate with source caveats"
+   },
+   "elm_hmode_conflicts_ms": [
+    [
+     3013.0,
+     3045.0
+    ],
+    [
+     3077.0,
+     3124.0
+    ],
+    [
+     3313.0,
+     3350.0
+    ]
+   ],
+   "render_source_commit": "990d3ebe",
+   "sawtooth_source": [
+    {
+     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/201973.json",
+     "sha256": "51ef465dee33362a43361971605c04203015d794c11445d0067bd352ea299a4d"
+    }
+   ],
+   "sawtooth_interval_source": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/201973.json",
+    "sha256": "51ef465dee33362a43361971605c04203015d794c11445d0067bd352ea299a4d",
+    "tier": "generated: automated labeler"
+   },
+   "sawtooth_states": [
+    {
+     "start_ms": 1600.0,
+     "end_ms": 2093.5999485469442,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 2093.5999485469442,
+     "end_ms": 3037.4999262184874,
+     "category": 3,
+     "state": "unassessed"
+    },
+    {
+     "start_ms": 3037.4999262184874,
+     "end_ms": 3193.099922537687,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 3193.099922537687,
+     "end_ms": 3259.199920974056,
+     "category": 1,
+     "state": "present"
+    },
+    {
+     "start_ms": 3259.199920974056,
+     "end_ms": 3323.4999194530055,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 3323.4999194530055,
+     "end_ms": 3350.0,
+     "category": 3,
+     "state": "unassessed"
+    }
+   ],
+   "sawtooth_track_shown": true,
+   "sawtooth_display_intervals_ms": [
+    {
+     "start_ms": 1600.0,
+     "end_ms": 2093.5999485469442,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 2093.5999485469442,
+     "end_ms": 3037.4999262184874,
+     "category": 3,
+     "state": "unassessed"
+    },
+    {
+     "start_ms": 3037.4999262184874,
+     "end_ms": 3193.099922537687,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 3193.099922537687,
+     "end_ms": 3259.199920974056,
+     "category": 1,
+     "state": "present"
+    },
+    {
+     "start_ms": 3259.199920974056,
+     "end_ms": 3323.4999194530055,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 3323.4999194530055,
+     "end_ms": 3350.0,
+     "category": 3,
+     "state": "unassessed"
+    }
+   ],
+   "sawtooth_display_merge": {
+    "minimum_duration_ms": 10.0,
+    "rule": "shortest sliver first, merge into longer touching neighbour; ties prefer earlier; source unchanged; crash ticks unchanged",
+    "changes": []
+   },
+   "confinement_intervals_ms": [
+    {
+     "start_ms": 1600.0,
+     "end_ms": 1793.0,
+     "category": 0,
+     "state": "absent"
+    },
+    {
+     "start_ms": 1793.0,
+     "end_ms": 2224.0,
+     "category": 1,
+     "state": "present"
+    },
+    {
+     "start_ms": 2224.0,
+     "end_ms": 3013.0,
+     "category": 5,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 3013.0,
+     "end_ms": 3350.0,
+     "category": 0,
+     "state": "absent"
+    }
+   ],
+   "sawtooth_state_duration_ms": {
+    "present": 66.09999843636933,
+    "absent": 0,
+    "uncertain": 713.499943345093,
+    "unassessed": 970.4000582185377
+   },
+   "sawtooth_density_proxy": {
+    "status": "Thomson_90percentile_fixed_density_guard_bt_missing",
+    "cutoff_proxy": true,
+    "high_density_samples": 9649,
+    "density_samples": 33680,
+    "fixed_density_guard_m3": 8e+19,
+    "margin": 0.9
+   },
+   "late_untagged_high_frequency": {
+    "band_khz": [
+     89.35546541641548,
+     249.5117094414662
+    ],
+    "pixels": 69106,
+    "columns": 2499,
+    "first_time_ms": 2450.081101039958,
+    "last_time_ms": 3349.92113461029,
+    "rule": "all coherent pixels in the AE detector band during late ABSENT times after the last PRESENT AE interval; no duration cutoff",
+    "reason": "AE detector absent; time coincidence is required"
+   },
+   "pdf_size_in": [
+    6.75,
+    5.5
+   ],
+   "figure_sha256": {
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/fig_interpreter.pdf": "9e36476cde3d2b561281eff2f67a60f3d9e59b15f4ec6dfe491916ce4894c1ab",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/fig_interpreter.png": "f199e75cdc1c8ef98093b340e865919bf8e7665966f547bf260bddd91f3193e9"
+   }
+  },
+  {
+   "shot": 203187,
+   "split": "train",
+   "window_ms": [
+    1700.0,
+    3150.0
+   ],
+   "record": "outputs/labeler/paper/fig_interpreter_tokeye/203187.json",
+   "record_sha256": "e32a1ed35585c91bc8a8acd983de913d422d586cdce1754c7db50047c567e46e",
+   "ae_source": "ae-ours, CO2 activity predictions, p>=0.5",
+   "tag_counts": {
+    "alfven_eigenmode": 262,
+    "neoclassical_tearing_mode": 8,
+    "sawtooth_oscillation": 0
+   },
+   "verified_crashes": 0,
+   "elm_peak_count": 6,
+   "caption_words": 117,
+   "projection_violations": 0,
+   "raster_ae_audit": {
+    "pink_pixels": 4914,
+    "outside_present": 0,
+    "below_detector_band": 0,
+    "boundary_tolerance_pixels": 1,
+    "time_tolerance_ms": 2.238759881422925,
+    "frequency_tolerance_khz": 2.877512287100863,
+    "rule": "saved PNG pink RGB pixels in processed high-frequency axes"
+   },
+   "unmeasured_ntm_pixels": 0,
+   "measured_n3_outline_pixels": 0,
+   "layout": {
+    "n_panel_height_units": 1.6,
+    "n_panel_height_in": 0.8504077756675232,
+    "n_panel_band_khz": [
+     0.0,
+     30.0
+    ],
+    "processed_omitted_band_khz": [],
+    "processed_restored_strip_khz": [
+     30.0,
+     55.0
+    ],
+    "frequency_panels": {
+     "raw_hi": {
+      "band_khz": [
+       55.0,
+       250.0
+      ],
+      "height_in": 0.4517791308233722,
+      "bounds": [
+       0.14,
+       0.8719344207351133,
+       0.78,
+       0.9540760808848173
+      ],
+      "ticks_khz": [
+       100,
+       150,
+       200,
+       250
+      ]
+     },
+     "raw_mid": {
+      "band_khz": [
+       30.0,
+       55.0
+      ],
+      "height_in": 0.13287621494805035,
+      "bounds": [
+       0.14,
+       0.8477751089263769,
+       0.78,
+       0.8719344207351133
+      ],
+      "ticks_khz": [
+       40,
+       55
+      ]
+     },
+     "raw_lo": {
+      "band_khz": [
+       0.0,
+       30.0
+      ],
+      "height_in": 0.8504077756675239,
+      "bounds": [
+       0.14,
+       0.6931555133504634,
+       0.78,
+       0.8477751089263769
+      ],
+      "ticks_khz": [
+       0,
+       10,
+       20,
+       30
+      ]
+     },
+     "pr_hi": {
+      "band_khz": [
+       55.0,
+       250.0
+      ],
+      "height_in": 0.45177913082337157,
+      "bounds": [
+       0.14,
+       0.4708898447100881,
+       0.78,
+       0.553031504859792
+      ],
+      "ticks_khz": [
+       100,
+       150,
+       200,
+       250
+      ]
+     },
+     "pr_mid": {
+      "band_khz": [
+       30.0,
+       55.0
+      ],
+      "height_in": 0.13287621494805035,
+      "bounds": [
+       0.14,
+       0.4467305329013517,
+       0.78,
+       0.4708898447100881
+      ],
+      "ticks_khz": [
+       40,
+       55
+      ]
+     },
+     "pr_lo": {
+      "band_khz": [
+       0.0,
+       30.0
+      ],
+      "height_in": 0.8504077756675232,
+      "bounds": [
+       0.14,
+       0.29211093732543836,
+       0.78,
+       0.4467305329013517
+      ],
+      "ticks_khz": [
+       0,
+       10,
+       20,
+       30
+      ]
+     }
+    },
+    "ntm_key_black_swatch": true,
+    "ae_fixed_callout_shown": false,
+    "legend_labels": [
+     "TokEye mask,\nn not measured",
+     "AE (detector band\n\u226580 kHz)",
+     "NTM suggestions\n(n=1 or 2, \u226430 kHz)",
+     "n=1",
+     "n=2",
+     "n=3",
+     "other n",
+     "ELM intervals",
+     "D-alpha peaks",
+     "present",
+     "absent",
+     "blank: unassessed / unobservable"
+    ],
+    "present_chip_colours": [
+     "#CC79A7",
+     "#E69F00",
+     "#333333"
+    ],
+    "heading_and_legend_text_bounds": [
+     {
+      "text": "Raw signals",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.9601420295522571,
+       0.23777777777777778,
+       0.9789340513325603
+      ]
+     },
+     {
+      "text": "TokEye-processed: modes overlapping event labels",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.5813240203912694,
+       0.5677083333333334,
+       0.6001160421715724
+      ]
+     },
+     {
+      "text": "mask \u2192 remove small objects / fill holes \u2192 components \u2192 time/band tags",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.5561983361101834,
+       0.6744907407407408,
+       0.5749903578904864
+      ]
+     },
+     {
+      "text": "Labels; source at right",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.2053084914000952,
+       0.32666666666666666,
+       0.2241005131803982
+      ]
+     },
+     {
+      "text": "TokEye mask,\nn not measured",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.5336212178032771,
+       0.924474279835391,
+       0.5782828734219639
+      ]
+     },
+     {
+      "text": "AE (detector band\n\u226580 kHz)",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.4801211783462063,
+       0.9425761316872429,
+       0.5247828339648932
+      ]
+     },
+     {
+      "text": "NTM suggestions\n(n=1 or 2, \u226430 kHz)",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.4266211388891356,
+       0.9559094650205762,
+       0.47128279450782246
+      ]
+     },
+     {
+      "text": "n=1",
+      "font_pt": 7.0,
+      "bounds": [
+       0.8064032921810699,
+       0.3978291171088325,
+       0.8360329218106995,
+       0.41550588478560013
+      ]
+     },
+     {
+      "text": "n=2",
+      "font_pt": 7.0,
+      "bounds": [
+       0.8064032921810699,
+       0.37461790340933754,
+       0.8360329218106995,
+       0.39229467108610516
+      ]
+     },
+     {
+      "text": "n=3",
+      "font_pt": 7.0,
+      "bounds": [
+       0.8561975308641975,
+       0.3978291171088325,
+       0.885827160493827,
+       0.41550588478560013
+      ]
+     },
+     {
+      "text": "other n",
+      "font_pt": 7.0,
+      "bounds": [
+       0.8561975308641975,
+       0.37461790340933754,
+       0.9080493827160493,
+       0.3934099251896406
+      ]
+     },
+     {
+      "text": "ELM intervals",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.2635585535744058,
+       0.9099835390946502,
+       0.2823505753547088
+      ]
+     },
+     {
+      "text": "D-alpha peaks",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.23592814795571893,
+       0.9159094650205762,
+       0.25472016973602196
+      ]
+     },
+     {
+      "text": "present",
+      "font_pt": 7.0,
+      "bounds": [
+       0.28577932098765424,
+       0.015909090909090907,
+       0.340270061728395,
+       0.03358585858585859
+      ]
+     },
+     {
+      "text": "absent",
+      "font_pt": 7.0,
+      "bounds": [
+       0.4050848765432098,
+       0.015909090909090907,
+       0.4539737654320987,
+       0.03470111268939394
+      ]
+     },
+     {
+      "text": "blank: unassessed / unobservable",
+      "font_pt": 7.0,
+      "bounds": [
+       0.5187885802469137,
+       0.015909090909090907,
+       0.7617515432098767,
+       0.03470111268939394
+      ]
+     }
+    ]
+   },
+   "regimes_shown": [
+    "H-mode",
+    "L-mode"
+   ],
+   "harmonic_support": {
+    "frequency_ratio_tolerance": 0.1,
+    "minimum_support_ms": 50.0,
+    "caption_frequency_step_khz": 1.0,
+    "ridge_rule": "per-column pixel-weighted frequency of each measured n",
+    "support_ms": 44.032000235739815,
+    "joint_support_ms": 203.77600109098194,
+    "joint_columns": 199,
+    "passing_columns": 43,
+    "passing_fraction": 0.21608040201005024,
+    "n1_median_khz": 2.8442382660219985,
+    "n2_median_khz": 5.4931640330896965
+   },
+   "tokeye_cache": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/cache/tokeye_203187_1600_3250.npz",
+    "sha256": "fe66d65ed3a28f49a0e69e66be8af34414e50549ddf0842ffbd8d22679504c44",
+    "fingerprints": {
+     "waveform": {
+      "group": "mirnov",
+      "row": 15,
+      "samples": 5079037,
+      "dtype": "float32",
+      "sample_sha256": "aef8350c4bc4fc115933bd89de430826493e5a2ab3c50f9aba156fe616e64ce6",
+      "fs_hz": 499999.9973230088,
+      "start_s": -0.7999988198280334,
+      "end_s": 9.358073234558105
+     },
+     "preprocessing": {
+      "code_sha256": {
+       "labeler/events/masks.py": "db4d3fc03cc367de6e536d4dff57083b03973152b825d634f15803a465650e3f",
+       "labeler/events/unet.py": "ea5e374c5811777df7c9696e19106df91eb5554e3617dc2f134ae8be993cd4ab",
+       "labeler/ae/transform.py": "971819c5fc3a612cdf2282f9d7b686ac7476f59d788844010261f84f3a62bf2d",
+       "labeler/ae/labels.py": "ffd73c485fd75725403b7ad27a54da0471cb2b2f813cdd718f694739449dcfdc"
+      },
+      "runtime_versions": {
+       "numpy": "1.26.4",
+       "scipy": "1.17.1",
+       "torch": "2.14.0+cpu"
+      },
+      "inference_sha256": "51c98c6edd781f0fd3187603d2bf5e46d0ac655c901be6a2cb08eb0a3cbb23e8",
+      "zoom_decimation": 4,
+      "row_lit_threshold": 0.2
+     }
+    }
+   },
+   "first_large_peak_before_expert_ms": 274.509126663208,
+   "largest_dalpha_peak_ms": 2257.490873336792,
+   "expert_elm_start_ms": 2532.0,
+   "lmode_inferred": true,
+   "ae_physical_review_caveat": "AE suggestions persist after NBI turns off.",
+   "ntm_performance": {
+    "shots": 761,
+    "cells": [
+     675,
+     941,
+     660,
+     99466
+    ],
+    "precision": 0.4176980198019802,
+    "recall": 0.5056179775280899,
+    "f1": 0.4574720433751271,
+    "evaluation": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/ntm_frames/v2/evaluation.json",
+    "evaluation_sha256": "0e3060f6d5459d6a9047d48f242ba79860707c47cdad25b138bc728d79aab80f",
+    "bin_ms": 50.0,
+    "pool": "mean",
+    "bar_criteria": {
+     "N1": [
+      [
+       "f1",
+       ">=",
+       0.7
+      ],
+      [
+       "precision",
+       ">=",
+       0.6
+      ],
+      [
+       "recall",
+       ">=",
+       0.6
+      ]
+     ],
+     "N2": [
+      [
+       "lo(f1 - always)",
+       ">",
+       0.0
+      ]
+     ]
+    }
+   },
+   "publication_suitability": {
+    "suitable_alternate": true,
+    "role": "alternate with source caveats"
+   },
+   "elm_hmode_conflicts_ms": [
+    [
+     2793.0,
+     2856.0
+    ],
+    [
+     3036.0,
+     3080.0
+    ]
+   ],
+   "render_source_commit": "990d3ebe",
+   "sawtooth_source": [
+    {
+     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/203187.json",
+     "sha256": "8011656a9ea4d577b5606099a23c0ec225a021f12f327201a63d72a624da5b64"
+    }
+   ],
+   "sawtooth_interval_source": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/203187.json",
+    "sha256": "8011656a9ea4d577b5606099a23c0ec225a021f12f327201a63d72a624da5b64",
+    "tier": "generated: automated labeler"
+   },
+   "sawtooth_states": [
+    {
+     "start_ms": 1700.0,
+     "end_ms": 3052.799925856558,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 3052.799925856558,
+     "end_ms": 3114.099924406474,
+     "category": 3,
+     "state": "unassessed"
+    }
+   ],
+   "sawtooth_track_shown": false,
+   "sawtooth_display_intervals_ms": [],
+   "sawtooth_display_merge": {
+    "minimum_duration_ms": 10.0,
+    "rule": "shortest sliver first, merge into longer touching neighbour; ties prefer earlier; source unchanged; crash ticks unchanged",
+    "changes": []
+   },
+   "confinement_intervals_ms": [
+    {
+     "start_ms": 1700.0,
+     "end_ms": 2270.0,
+     "category": 0,
+     "state": "absent"
+    },
+    {
+     "start_ms": 2270.0,
+     "end_ms": 2793.0,
+     "category": 1,
+     "state": "present"
+    },
+    {
+     "start_ms": 2793.0,
+     "end_ms": 3114.0,
+     "category": 0,
+     "state": "absent"
+    }
+   ],
+   "sawtooth_state_duration_ms": {
+    "present": 0,
+    "absent": 0,
+    "uncertain": 1352.7999258565578,
+    "unassessed": 61.29999854991638
+   },
+   "sawtooth_density_proxy": {
+    "status": "Thomson_90percentile_fixed_density_guard_bt_missing",
+    "cutoff_proxy": true,
+    "high_density_samples": 0,
+    "density_samples": 31080,
+    "fixed_density_guard_m3": 8e+19,
+    "margin": 0.9
+   },
+   "late_untagged_high_frequency": null,
+   "pdf_size_in": [
+    6.75,
+    5.5
+   ],
+   "figure_sha256": {
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_203187/fig_interpreter.pdf": "372706956ddc05553838d0403633b42dd644ff38fe6131671198bf8f72c84692",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_203187/fig_interpreter.png": "5103bdd6852e48f3919df3469224a93dc3cc46bd30ef530027273e3cf0d5c25e"
+   }
+  },
+  {
+   "shot": 186636,
+   "split": "val",
+   "window_ms": [
+    1300.0,
+    3900.0
+   ],
+   "record": "outputs/labeler/paper/fig_interpreter_tokeye/186636.json",
+   "record_sha256": "57da3191cea59c5121565e6c437e370553ccd6670f83045453bdb97f68d0be9c",
+   "ae_source": "the AE frame model (v2) run on the shot's CO2, the raw cache's CO2",
+   "tag_counts": {
+    "alfven_eigenmode": 307,
+    "neoclassical_tearing_mode": 4,
+    "sawtooth_oscillation": 0
+   },
+   "verified_crashes": 0,
+   "elm_peak_count": 0,
+   "caption_words": 84,
+   "projection_violations": 0,
+   "raster_ae_audit": {
+    "pink_pixels": 1675,
+    "outside_present": 0,
+    "below_detector_band": 0,
+    "boundary_tolerance_pixels": 1,
+    "time_tolerance_ms": 4.0143280632411065,
+    "frequency_tolerance_khz": 2.94180705387778,
+    "rule": "saved PNG pink RGB pixels in processed high-frequency axes"
+   },
+   "unmeasured_ntm_pixels": 0,
+   "measured_n3_outline_pixels": 0,
+   "layout": {
+    "n_panel_height_units": 1.6,
+    "n_panel_height_in": 0.8318216588351005,
+    "n_panel_band_khz": [
+     0.0,
+     30.0
+    ],
+    "processed_omitted_band_khz": [],
+    "processed_restored_strip_khz": [
+     30.0,
+     55.0
+    ],
+    "frequency_panels": {
+     "raw_hi": {
+      "band_khz": [
+       55.0,
+       250.0
+      ],
+      "height_in": 0.4419052562561472,
+      "bounds": [
+       0.14,
+       0.8744055294503332,
+       0.78,
+       0.9547519396787236
+      ],
+      "ticks_khz": [
+       100,
+       150,
+       200,
+       250
+      ]
+     },
+     "raw_mid": {
+      "band_khz": [
+       30.0,
+       55.0
+      ],
+      "height_in": 0.12997213419298403,
+      "bounds": [
+       0.14,
+       0.8507742323243361,
+       0.78,
+       0.8744055294503332
+      ],
+      "ticks_khz": [
+       40,
+       55
+      ]
+     },
+     "raw_lo": {
+      "band_khz": [
+       0.0,
+       30.0
+      ],
+      "height_in": 0.8318216588351005,
+      "bounds": [
+       0.14,
+       0.6995339307179542,
+       0.78,
+       0.8507742323243361
+      ],
+      "ticks_khz": [
+       0,
+       10,
+       20,
+       30
+      ]
+     },
+     "pr_hi": {
+      "band_khz": [
+       55.0,
+       250.0
+      ],
+      "height_in": 0.4419052562561466,
+      "bounds": [
+       0.14,
+       0.48212599715878024,
+       0.78,
+       0.5624724073871705
+      ],
+      "ticks_khz": [
+       100,
+       150,
+       200,
+       250
+      ]
+     },
+     "pr_mid": {
+      "band_khz": [
+       30.0,
+       55.0
+      ],
+      "height_in": 0.12997213419298465,
+      "bounds": [
+       0.14,
+       0.45849470003278303,
+       0.78,
+       0.48212599715878024
+      ],
+      "ticks_khz": [
+       40,
+       55
+      ]
+     },
+     "pr_lo": {
+      "band_khz": [
+       0.0,
+       30.0
+      ],
+      "height_in": 0.8318216588351005,
+      "bounds": [
+       0.14,
+       0.3072543984264011,
+       0.78,
+       0.45849470003278303
+      ],
+      "ticks_khz": [
+       0,
+       10,
+       20,
+       30
+      ]
+     }
+    },
+    "ntm_key_black_swatch": true,
+    "ae_fixed_callout_shown": false,
+    "legend_labels": [
+     "TokEye mask,\nn not measured",
+     "AE (detector band\n\u226580 kHz)",
+     "NTM labels\n(n=1 or 2, \u226430 kHz)",
+     "n=1",
+     "n=2",
+     "n=3",
+     "other n",
+     "ELM intervals",
+     "present",
+     "uncertain",
+     "absent",
+     "blank: unassessed / unobservable",
+     "expert ELM interval (one span for many ELMs)"
+    ],
+    "present_chip_colours": [
+     "#CC79A7",
+     "#E69F00",
+     "#D55E00"
+    ],
+    "heading_and_legend_text_bounds": [
+     {
+      "text": "Raw signals",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.9604799589492102,
+       0.23777777777777778,
+       0.9792719807295134
+      ]
+     },
+     {
+      "text": "TokEye-processed: modes overlapping event labels",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.5899412200135747,
+       0.5677083333333334,
+       0.6087332417938777
+      ]
+     },
+     {
+      "text": "mask \u2192 remove small objects / fill holes \u2192 components \u2192 time/band tags",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.5653646710025376,
+       0.6744907407407408,
+       0.5841566927828405
+      ]
+     },
+     {
+      "text": "Labels; source at right",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.22214371154455473,
+       0.32666666666666666,
+       0.24093573332485774
+      ]
+     },
+     {
+      "text": "TokEye mask,\nn not measured",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.541963849790558,
+       0.924474279835391,
+       0.5866255054092449
+      ]
+     },
+     {
+      "text": "AE (detector band\n\u226580 kHz)",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.48846381033348724,
+       0.9425761316872429,
+       0.5331254659521741
+      ]
+     },
+     {
+      "text": "NTM labels\n(n=1 or 2, \u226430 kHz)",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.4349637708764165,
+       0.9559094650205762,
+       0.47962542649510337
+      ]
+     },
+     {
+      "text": "n=1",
+      "font_pt": 7.0,
+      "bounds": [
+       0.8064032921810699,
+       0.4061717490961134,
+       0.8360329218106995,
+       0.42384851677288105
+      ]
+     },
+     {
+      "text": "n=2",
+      "font_pt": 7.0,
+      "bounds": [
+       0.8064032921810699,
+       0.38296053539661845,
+       0.8360329218106995,
+       0.4006373030733861
+      ]
+     },
+     {
+      "text": "n=3",
+      "font_pt": 7.0,
+      "bounds": [
+       0.8561975308641975,
+       0.4061717490961134,
+       0.885827160493827,
+       0.42384851677288105
+      ]
+     },
+     {
+      "text": "other n",
+      "font_pt": 7.0,
+      "bounds": [
+       0.8561975308641975,
+       0.38296053539661845,
+       0.9080493827160493,
+       0.4017525571769215
+      ]
+     },
+     {
+      "text": "ELM intervals",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.27891533260719525,
+       0.9099835390946502,
+       0.2977073543874983
+      ]
+     },
+     {
+      "text": "present",
+      "font_pt": 7.0,
+      "bounds": [
+       0.21855709876543206,
+       0.015909090909090907,
+       0.2730478395061728,
+       0.03358585858585859
+      ]
+     },
+     {
+      "text": "uncertain",
+      "font_pt": 7.0,
+      "bounds": [
+       0.3378626543209876,
+       0.015909090909090907,
+       0.4074922839506172,
+       0.03470111268939394
+      ]
+     },
+     {
+      "text": "absent",
+      "font_pt": 7.0,
+      "bounds": [
+       0.47230709876543214,
+       0.015909090909090907,
+       0.5211959876543211,
+       0.03470111268939394
+      ]
+     },
+     {
+      "text": "blank: unassessed / unobservable",
+      "font_pt": 7.0,
+      "bounds": [
+       0.5860108024691358,
+       0.015909090909090907,
+       0.8289737654320989,
+       0.03470111268939394
+      ]
+     },
+     {
+      "text": "expert ELM interval (one span for many ELMs)",
+      "font_pt": 7.0,
+      "bounds": [
+       0.3506622942386831,
+       0.04990909090909092,
+       0.6896669238683127,
+       0.06870111268939394
+      ]
+     }
+    ]
+   },
+   "regimes_shown": [],
+   "harmonic_support": {
+    "frequency_ratio_tolerance": 0.1,
+    "minimum_support_ms": 50.0,
+    "caption_frequency_step_khz": 1.0,
+    "ridge_rule": "per-column pixel-weighted frequency of each measured n",
+    "support_ms": 41.98400058090647,
+    "joint_support_ms": 144.3840019977515,
+    "joint_columns": 141,
+    "passing_columns": 41,
+    "passing_fraction": 0.2907801418439716,
+    "n1_median_khz": 9.526791648077122,
+    "n2_median_khz": 18.920898175707485
+   },
+   "tokeye_cache": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/cache/tokeye_186636_1200_4000.npz",
+    "sha256": "ece32c587a4905cd30006c29712f0d4c1a35fd7f104829b53dac39c8b7f11cbd",
+    "fingerprints": {
+     "waveform": {
+      "group": "mirnov",
+      "row": 15,
+      "samples": 5079038,
+      "dtype": "float32",
+      "sample_sha256": "6ec179116903ecb9d464a8b2d8a7c42c6a464b33db35943077e5bb5a05040a16",
+      "fs_hz": 499999.99308192165,
+      "start_s": -2.879040002822876,
+      "end_s": 7.27903413772583
+     },
+     "preprocessing": {
+      "code_sha256": {
+       "labeler/events/masks.py": "db4d3fc03cc367de6e536d4dff57083b03973152b825d634f15803a465650e3f",
+       "labeler/events/unet.py": "ea5e374c5811777df7c9696e19106df91eb5554e3617dc2f134ae8be993cd4ab",
+       "labeler/ae/transform.py": "971819c5fc3a612cdf2282f9d7b686ac7476f59d788844010261f84f3a62bf2d",
+       "labeler/ae/labels.py": "ffd73c485fd75725403b7ad27a54da0471cb2b2f813cdd718f694739449dcfdc"
+      },
+      "runtime_versions": {
+       "numpy": "1.26.4",
+       "scipy": "1.17.1",
+       "torch": "2.14.0+cpu"
+      },
+      "inference_sha256": "51c98c6edd781f0fd3187603d2bf5e46d0ac655c901be6a2cb08eb0a3cbb23e8",
+      "zoom_decimation": 4,
+      "row_lit_threshold": 0.2
+     }
+    }
+   },
+   "first_large_peak_before_expert_ms": null,
+   "largest_dalpha_peak_ms": 3616.86110496521,
+   "expert_elm_start_ms": null,
+   "lmode_inferred": false,
+   "ae_physical_review_caveat": "Persistent pink lines may be pickup.",
+   "ntm_performance": null,
+   "publication_suitability": {
+    "suitable_alternate": true,
+    "role": "alternate with source caveats"
+   },
+   "elm_hmode_conflicts_ms": [],
+   "render_source_commit": "990d3ebe",
+   "sawtooth_source": [
+    {
+     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/186636.json",
+     "sha256": "f05b196d23c4348ab73a430df971f678860c623b2cd0725fd567d8d00b202a6a"
+    }
+   ],
+   "sawtooth_interval_source": {
+    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/sawtooth_oscillation/review/labels.csv",
+    "sha256": "dd602f56b59a6c20621ee7975d65ea5a47637c98ebf06455839aeb128e36345a",
+    "tier": "silver: expert review"
+   },
+   "sawtooth_states": [
+    {
+     "start_ms": 1300.0,
+     "end_ms": 1635.0,
+     "category": 0,
+     "state": "absent"
+    },
+    {
+     "start_ms": 1635.0,
+     "end_ms": 1736.0,
+     "category": 1,
+     "state": "present"
+    },
+    {
+     "start_ms": 1736.0,
+     "end_ms": 2117.0,
+     "category": 0,
+     "state": "absent"
+    },
+    {
+     "start_ms": 2117.0,
+     "end_ms": 3900.0,
+     "category": 1,
+     "state": "present"
+    }
+   ],
+   "sawtooth_track_shown": true,
+   "sawtooth_display_intervals_ms": [
+    {
+     "start_ms": 1300.0,
+     "end_ms": 1635.0,
+     "category": 0,
+     "state": "absent"
+    },
+    {
+     "start_ms": 1635.0,
+     "end_ms": 1736.0,
+     "category": 1,
+     "state": "present"
+    },
+    {
+     "start_ms": 1736.0,
+     "end_ms": 2117.0,
+     "category": 0,
+     "state": "absent"
+    },
+    {
+     "start_ms": 2117.0,
+     "end_ms": 3900.0,
+     "category": 1,
+     "state": "present"
+    }
+   ],
+   "sawtooth_display_merge": {
+    "minimum_duration_ms": 10.0,
+    "rule": "shortest sliver first, merge into longer touching neighbour; ties prefer earlier; source unchanged; crash ticks unchanged",
+    "changes": []
+   },
+   "confinement_intervals_ms": [
+    {
+     "start_ms": 1300.0,
+     "end_ms": 3900.0,
+     "category": 5,
+     "state": "uncertain"
+    }
+   ],
+   "sawtooth_state_duration_ms": {
+    "present": 1884.0,
+    "absent": 716.0,
+    "uncertain": 0,
+    "unassessed": 0
+   },
+   "sawtooth_density_proxy": null,
+   "late_untagged_high_frequency": {
+    "band_khz": [
+     80.07812389202651,
+     249.51171529771676
+    ],
+    "pixels": 10561,
+    "columns": 269,
+    "first_time_ms": 3830.208090007332,
+    "last_time_ms": 3899.8400909707716,
+    "rule": "all coherent pixels in the AE detector band during late ABSENT times after the last PRESENT AE interval; no duration cutoff",
+    "reason": "AE detector absent; time coincidence is required"
+   },
+   "pdf_size_in": [
+    6.75,
+    5.5
+   ],
+   "figure_sha256": {
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_186636/fig_interpreter.pdf": "35d546c6c01033adfbc7d2dc35ba9929578e7bbe36bf6ae4020d8ae9ef35da1d",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_186636/fig_interpreter.png": "d77d6f714352a2c4313f4a1c7a2659263793b4086a10d817053d5c6dd94764ef"
+   }
+  },
+  {
+   "shot": 191376,
+   "split": "train",
+   "window_ms": [
+    1500.0,
+    2900.0
+   ],
+   "record": "outputs/labeler/paper/fig_interpreter_tokeye/191376.json",
+   "record_sha256": "3810c7901191fd8275c08fc1155920e4aa4a7e692ebec1eb0f4770f117bd24a8",
+   "ae_source": "the AE frame model (v2) run on the shot's CO2, the raw cache's CO2",
+   "tag_counts": {
+    "alfven_eigenmode": 0,
+    "neoclassical_tearing_mode": 0,
+    "sawtooth_oscillation": 0
+   },
+   "verified_crashes": 0,
+   "elm_peak_count": 2,
+   "caption_words": 33,
+   "projection_violations": 0,
+   "raster_ae_audit": {
+    "pink_pixels": 0,
+    "outside_present": 0,
+    "below_detector_band": 0,
+    "boundary_tolerance_pixels": 1,
+    "time_tolerance_ms": 2.1615612648221343,
+    "frequency_tolerance_khz": 2.877512287100863,
+    "rule": "saved PNG pink RGB pixels in processed high-frequency axes"
+   },
+   "unmeasured_ntm_pixels": 0,
+   "measured_n3_outline_pixels": 0,
+   "layout": {
+    "n_panel_height_units": 1.6,
+    "n_panel_height_in": 0.8504077756675232,
+    "n_panel_band_khz": [
+     0.0,
+     30.0
+    ],
+    "processed_omitted_band_khz": [],
+    "processed_restored_strip_khz": [
+     30.0,
+     55.0
+    ],
+    "frequency_panels": {
+     "raw_hi": {
+      "band_khz": [
+       55.0,
+       250.0
+      ],
+      "height_in": 0.4517791308233722,
+      "bounds": [
+       0.14,
+       0.8719344207351133,
+       0.78,
+       0.9540760808848173
+      ],
+      "ticks_khz": [
+       100,
+       150,
+       200,
+       250
+      ]
+     },
+     "raw_mid": {
+      "band_khz": [
+       30.0,
+       55.0
+      ],
+      "height_in": 0.13287621494805035,
+      "bounds": [
+       0.14,
+       0.8477751089263769,
+       0.78,
+       0.8719344207351133
+      ],
+      "ticks_khz": [
+       40,
+       55
+      ]
+     },
+     "raw_lo": {
+      "band_khz": [
+       0.0,
+       30.0
+      ],
+      "height_in": 0.8504077756675239,
+      "bounds": [
+       0.14,
+       0.6931555133504634,
+       0.78,
+       0.8477751089263769
+      ],
+      "ticks_khz": [
+       0,
+       10,
+       20,
+       30
+      ]
+     },
+     "pr_hi": {
+      "band_khz": [
+       55.0,
+       250.0
+      ],
+      "height_in": 0.45177913082337157,
+      "bounds": [
+       0.14,
+       0.4708898447100881,
+       0.78,
+       0.553031504859792
+      ],
+      "ticks_khz": [
+       100,
+       150,
+       200,
+       250
+      ]
+     },
+     "pr_mid": {
+      "band_khz": [
+       30.0,
+       55.0
+      ],
+      "height_in": 0.13287621494805035,
+      "bounds": [
+       0.14,
+       0.4467305329013517,
+       0.78,
+       0.4708898447100881
+      ],
+      "ticks_khz": [
+       40,
+       55
+      ]
+     },
+     "pr_lo": {
+      "band_khz": [
+       0.0,
+       30.0
+      ],
+      "height_in": 0.8504077756675232,
+      "bounds": [
+       0.14,
+       0.29211093732543836,
+       0.78,
+       0.4467305329013517
+      ],
+      "ticks_khz": [
+       0,
+       10,
+       20,
+       30
+      ]
+     }
+    },
+    "ntm_key_black_swatch": false,
+    "ae_fixed_callout_shown": false,
+    "legend_labels": [
+     "TokEye mask,\nn not measured",
+     "n=1",
+     "n=2",
+     "n=3",
+     "other n",
+     "ELM intervals",
+     "D-alpha peaks",
+     "H-mode",
+     "L-mode",
+     "present",
+     "absent",
+     "blank: unassessed / unobservable"
+    ],
+    "present_chip_colours": [
+     "#333333"
+    ],
+    "heading_and_legend_text_bounds": [
+     {
+      "text": "Raw signals",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.9601420295522571,
+       0.23777777777777778,
+       0.9789340513325603
+      ]
+     },
+     {
+      "text": "TokEye-processed: modes overlapping event labels",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.5813240203912694,
+       0.5677083333333334,
+       0.6001160421715724
+      ]
+     },
+     {
+      "text": "mask \u2192 remove small objects / fill holes \u2192 components \u2192 time/band tags",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.5561983361101834,
+       0.6744907407407408,
+       0.5749903578904864
+      ]
+     },
+     {
+      "text": "Labels; source at right",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.2053084914000952,
+       0.32666666666666666,
+       0.2241005131803982
+      ]
+     },
+     {
+      "text": "TokEye mask,\nn not measured",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.5336212178032771,
+       0.924474279835391,
+       0.5782828734219639
+      ]
+     },
+     {
+      "text": "n=1",
+      "font_pt": 7.0,
+      "bounds": [
+       0.8064032921810699,
+       0.4229385111210487,
+       0.8360329218106995,
+       0.4406152787978163
+      ]
+     },
+     {
+      "text": "n=2",
+      "font_pt": 7.0,
+      "bounds": [
+       0.8064032921810699,
+       0.3997272974215537,
+       0.8360329218106995,
+       0.41740406509832134
+      ]
+     },
+     {
+      "text": "n=3",
+      "font_pt": 7.0,
+      "bounds": [
+       0.8561975308641975,
+       0.4229385111210487,
+       0.885827160493827,
+       0.4406152787978163
+      ]
+     },
+     {
+      "text": "other n",
+      "font_pt": 7.0,
+      "bounds": [
+       0.8561975308641975,
+       0.3997272974215537,
+       0.9080493827160493,
+       0.4185193192018567
+      ]
+     },
+     {
+      "text": "ELM intervals",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.2635585535744058,
+       0.9099835390946502,
+       0.2823505753547088
+      ]
+     },
+     {
+      "text": "D-alpha peaks",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.23592814795571893,
+       0.9159094650205762,
+       0.25472016973602196
+      ]
+     },
+     {
+      "text": "H-mode",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.3733189155451353,
+       0.8699835390946503,
+       0.39211093732543834
+      ]
+     },
+     {
+      "text": "L-mode",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.34568850992644845,
+       0.8667659465020577,
+       0.36448053170675143
+      ]
+     },
+     {
+      "text": "present",
+      "font_pt": 7.0,
+      "bounds": [
+       0.28577932098765424,
+       0.015909090909090907,
+       0.340270061728395,
+       0.03358585858585859
+      ]
+     },
+     {
+      "text": "absent",
+      "font_pt": 7.0,
+      "bounds": [
+       0.4050848765432098,
+       0.015909090909090907,
+       0.4539737654320987,
+       0.03470111268939394
+      ]
+     },
+     {
+      "text": "blank: unassessed / unobservable",
+      "font_pt": 7.0,
+      "bounds": [
+       0.5187885802469137,
+       0.015909090909090907,
+       0.7617515432098767,
+       0.03470111268939394
+      ]
+     }
+    ]
+   },
+   "regimes_shown": [
+    "H-mode",
+    "L-mode"
+   ],
+   "harmonic_support": {
+    "frequency_ratio_tolerance": 0.1,
+    "minimum_support_ms": 50.0,
+    "caption_frequency_step_khz": 1.0,
+    "ridge_rule": "per-column pixel-weighted frequency of each measured n",
+    "support_ms": 0.0,
+    "joint_support_ms": 0.0,
+    "joint_columns": 0,
+    "passing_columns": 0,
+    "passing_fraction": null
+   },
+   "tokeye_cache": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/cache/tokeye_191376_1400_3000.npz",
+    "sha256": "6612f38418bea81c98fa66df53bdc7017835bf8628fb4936cf8ceaf79e44b862",
+    "fingerprints": {
+     "waveform": {
+      "group": "mirnov",
+      "row": 15,
+      "samples": 5079038,
+      "dtype": "float32",
+      "sample_sha256": "81a2ad085f0079d2f84f5b66439f3aa2446ca15287636064f73841826e5849da",
+      "fs_hz": 499999.99308192165,
+      "start_s": -1.5790393352508545,
+      "end_s": 8.579034805297852
+     },
+     "preprocessing": {
+      "code_sha256": {
+       "labeler/events/masks.py": "db4d3fc03cc367de6e536d4dff57083b03973152b825d634f15803a465650e3f",
+       "labeler/events/unet.py": "ea5e374c5811777df7c9696e19106df91eb5554e3617dc2f134ae8be993cd4ab",
+       "labeler/ae/transform.py": "971819c5fc3a612cdf2282f9d7b686ac7476f59d788844010261f84f3a62bf2d",
+       "labeler/ae/labels.py": "ffd73c485fd75725403b7ad27a54da0471cb2b2f813cdd718f694739449dcfdc"
+      },
+      "runtime_versions": {
+       "numpy": "1.26.4",
+       "scipy": "1.17.1",
+       "torch": "2.14.0+cpu"
+      },
+      "inference_sha256": "51c98c6edd781f0fd3187603d2bf5e46d0ac655c901be6a2cb08eb0a3cbb23e8",
+      "zoom_decimation": 4,
+      "row_lit_threshold": 0.2
+     }
+    }
+   },
+   "first_large_peak_before_expert_ms": null,
+   "largest_dalpha_peak_ms": 2696.8133449554443,
+   "expert_elm_start_ms": 2100.0,
+   "lmode_inferred": false,
+   "ae_physical_review_caveat": null,
+   "ntm_performance": {
+    "shots": 761,
+    "cells": [
+     675,
+     941,
+     660,
+     99466
+    ],
+    "precision": 0.4176980198019802,
+    "recall": 0.5056179775280899,
+    "f1": 0.4574720433751271,
+    "evaluation": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/ntm_frames/v2/evaluation.json",
+    "evaluation_sha256": "0e3060f6d5459d6a9047d48f242ba79860707c47cdad25b138bc728d79aab80f",
+    "bin_ms": 50.0,
+    "pool": "mean",
+    "bar_criteria": {
+     "N1": [
+      [
+       "f1",
+       ">=",
+       0.7
+      ],
+      [
+       "precision",
+       ">=",
+       0.6
+      ],
+      [
+       "recall",
+       ">=",
+       0.6
+      ]
+     ],
+     "N2": [
+      [
+       "lo(f1 - always)",
+       ">",
+       0.0
+      ]
+     ]
+    }
+   },
+   "publication_suitability": {
+    "suitable_alternate": false,
+    "role": "unsuitable diagnostic: no AE and n=1 mode with NTM absent"
+   },
+   "elm_hmode_conflicts_ms": [],
+   "render_source_commit": "990d3ebe",
+   "sawtooth_source": [
+    {
+     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/191376.json",
+     "sha256": "1cbb956f214bef3b443ab5c2589710f8d9543e7dfe31661866ad806732257d60"
+    }
+   ],
+   "sawtooth_interval_source": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/191376.json",
+    "sha256": "1cbb956f214bef3b443ab5c2589710f8d9543e7dfe31661866ad806732257d60",
+    "tier": "generated: automated labeler"
+   },
+   "sawtooth_states": [
+    {
+     "start_ms": 1500.0,
+     "end_ms": 2900.0,
+     "category": 2,
+     "state": "uncertain"
+    }
+   ],
+   "sawtooth_track_shown": false,
+   "sawtooth_display_intervals_ms": [],
+   "sawtooth_display_merge": {
+    "minimum_duration_ms": 10.0,
+    "rule": "shortest sliver first, merge into longer touching neighbour; ties prefer earlier; source unchanged; crash ticks unchanged",
+    "changes": []
+   },
+   "confinement_intervals_ms": [
+    {
+     "start_ms": 1500.0,
+     "end_ms": 2058.0,
+     "category": 2,
+     "state": "L-mode"
+    },
+    {
+     "start_ms": 2058.0,
+     "end_ms": 2065.0,
+     "category": 2,
+     "state": "L-mode"
+    },
+    {
+     "start_ms": 2065.0,
+     "end_ms": 2219.0,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2219.0,
+     "end_ms": 2503.0,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2503.0,
+     "end_ms": 2670.0,
+     "category": 1,
+     "state": "H-mode"
+    }
+   ],
+   "sawtooth_state_duration_ms": {
+    "present": 0,
+    "absent": 0,
+    "uncertain": 1400.0,
+    "unassessed": 0
+   },
+   "sawtooth_density_proxy": {
+    "status": "Thomson_90percentile_fixed_density_guard_bt_missing",
+    "cutoff_proxy": true,
+    "high_density_samples": 0,
+    "density_samples": 53420,
+    "fixed_density_guard_m3": 8e+19,
+    "margin": 0.9
+   },
+   "late_untagged_high_frequency": null,
+   "pdf_size_in": [
+    6.75,
+    5.5
+   ],
+   "figure_sha256": {
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191376/fig_interpreter.pdf": "62be98fb3d1b7a395fe3600889c4694e39c2d79e38ea9b2da5ed309f35b8e3a9",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191376/fig_interpreter.png": "875b2e0c10dca3a9973e7583b7810b3e7a321b662b6eb52a08fef7f1b39e4952"
+   }
+  },
+  {
+   "shot": 191782,
+   "split": "train",
+   "window_ms": [
+    1800.0,
+    3700.0
+   ],
+   "record": "outputs/labeler/paper/fig_interpreter_tokeye/191782.json",
+   "record_sha256": "eb5e54fd947787f642d59be54230f0fa1552ad58e71b8dd04a30264de711d6f6",
+   "ae_source": "the AE frame model (v2) run on the shot's CO2, the raw cache's CO2",
+   "tag_counts": {
+    "alfven_eigenmode": 0,
+    "neoclassical_tearing_mode": 0,
+    "sawtooth_oscillation": 0
+   },
+   "verified_crashes": 0,
+   "elm_peak_count": 0,
+   "caption_words": 29,
+   "projection_violations": 0,
+   "raster_ae_audit": {
+    "pink_pixels": 0,
+    "outside_present": 0,
+    "below_detector_band": 0,
+    "boundary_tolerance_pixels": 1,
+    "time_tolerance_ms": 2.933547430830039,
+    "frequency_tolerance_khz": 2.877512287100863,
+    "rule": "saved PNG pink RGB pixels in processed high-frequency axes"
+   },
+   "unmeasured_ntm_pixels": 0,
+   "measured_n3_outline_pixels": 0,
+   "layout": {
+    "n_panel_height_units": 1.6,
+    "n_panel_height_in": 0.8504077756675232,
+    "n_panel_band_khz": [
+     0.0,
+     30.0
+    ],
+    "processed_omitted_band_khz": [],
+    "processed_restored_strip_khz": [
+     30.0,
+     55.0
+    ],
+    "frequency_panels": {
+     "raw_hi": {
+      "band_khz": [
+       55.0,
+       250.0
+      ],
+      "height_in": 0.4517791308233722,
+      "bounds": [
+       0.14,
+       0.8719344207351133,
+       0.78,
+       0.9540760808848173
+      ],
+      "ticks_khz": [
+       100,
+       150,
+       200,
+       250
+      ]
+     },
+     "raw_mid": {
+      "band_khz": [
+       30.0,
+       55.0
+      ],
+      "height_in": 0.13287621494805035,
+      "bounds": [
+       0.14,
+       0.8477751089263769,
+       0.78,
+       0.8719344207351133
+      ],
+      "ticks_khz": [
+       40,
+       55
+      ]
+     },
+     "raw_lo": {
+      "band_khz": [
+       0.0,
+       30.0
+      ],
+      "height_in": 0.8504077756675239,
+      "bounds": [
+       0.14,
+       0.6931555133504634,
+       0.78,
+       0.8477751089263769
+      ],
+      "ticks_khz": [
+       0,
+       10,
+       20,
+       30
+      ]
+     },
+     "pr_hi": {
+      "band_khz": [
+       55.0,
+       250.0
+      ],
+      "height_in": 0.45177913082337157,
+      "bounds": [
+       0.14,
+       0.4708898447100881,
+       0.78,
+       0.553031504859792
+      ],
+      "ticks_khz": [
+       100,
+       150,
+       200,
+       250
+      ]
+     },
+     "pr_mid": {
+      "band_khz": [
+       30.0,
+       55.0
+      ],
+      "height_in": 0.13287621494805035,
+      "bounds": [
+       0.14,
+       0.4467305329013517,
+       0.78,
+       0.4708898447100881
+      ],
+      "ticks_khz": [
+       40,
+       55
+      ]
+     },
+     "pr_lo": {
+      "band_khz": [
+       0.0,
+       30.0
+      ],
+      "height_in": 0.8504077756675232,
+      "bounds": [
+       0.14,
+       0.29211093732543836,
+       0.78,
+       0.4467305329013517
+      ],
+      "ticks_khz": [
+       0,
+       10,
+       20,
+       30
+      ]
+     }
+    },
+    "ntm_key_black_swatch": false,
+    "ae_fixed_callout_shown": false,
+    "legend_labels": [
+     "TokEye mask,\nn not measured",
+     "n=1",
+     "n=2",
+     "n=3",
+     "other n",
+     "H-mode",
+     "L-mode",
+     "absent",
+     "blank: unassessed / unobservable"
+    ],
+    "present_chip_colours": [],
+    "heading_and_legend_text_bounds": [
+     {
+      "text": "Raw signals",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.9601420295522571,
+       0.23777777777777778,
+       0.9789340513325603
+      ]
+     },
+     {
+      "text": "TokEye-processed: modes overlapping event labels",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.5813240203912694,
+       0.5677083333333334,
+       0.6001160421715724
+      ]
+     },
+     {
+      "text": "mask \u2192 remove small objects / fill holes \u2192 components \u2192 time/band tags",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.5561983361101834,
+       0.6744907407407408,
+       0.5749903578904864
+      ]
+     },
+     {
+      "text": "Labels; source at right",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.2053084914000952,
+       0.32666666666666666,
+       0.2241005131803982
+      ]
+     },
+     {
+      "text": "TokEye mask,\nn not measured",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.5336212178032771,
+       0.924474279835391,
+       0.5782828734219639
+      ]
+     },
+     {
+      "text": "n=1",
+      "font_pt": 7.0,
+      "bounds": [
+       0.8064032921810699,
+       0.4229385111210487,
+       0.8360329218106995,
+       0.4406152787978163
+      ]
+     },
+     {
+      "text": "n=2",
+      "font_pt": 7.0,
+      "bounds": [
+       0.8064032921810699,
+       0.3997272974215537,
+       0.8360329218106995,
+       0.41740406509832134
+      ]
+     },
+     {
+      "text": "n=3",
+      "font_pt": 7.0,
+      "bounds": [
+       0.8561975308641975,
+       0.4229385111210487,
+       0.885827160493827,
+       0.4406152787978163
+      ]
+     },
+     {
+      "text": "other n",
+      "font_pt": 7.0,
+      "bounds": [
+       0.8561975308641975,
+       0.3997272974215537,
+       0.9080493827160493,
+       0.4185193192018567
+      ]
+     },
+     {
+      "text": "H-mode",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.3733189155451353,
+       0.8699835390946503,
+       0.39211093732543834
+      ]
+     },
+     {
+      "text": "L-mode",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.34568850992644845,
+       0.8667659465020577,
+       0.36448053170675143
+      ]
+     },
+     {
+      "text": "absent",
+      "font_pt": 7.0,
+      "bounds": [
+       0.345432098765432,
+       0.015909090909090907,
+       0.39432098765432094,
+       0.03470111268939394
+      ]
+     },
+     {
+      "text": "blank: unassessed / unobservable",
+      "font_pt": 7.0,
+      "bounds": [
+       0.45913580246913577,
+       0.015909090909090907,
+       0.7020987654320987,
+       0.03470111268939394
+      ]
+     }
+    ]
+   },
+   "regimes_shown": [
+    "H-mode",
+    "L-mode"
+   ],
+   "harmonic_support": {
+    "frequency_ratio_tolerance": 0.1,
+    "minimum_support_ms": 50.0,
+    "caption_frequency_step_khz": 1.0,
+    "ridge_rule": "per-column pixel-weighted frequency of each measured n",
+    "support_ms": 0.0,
+    "joint_support_ms": 0.0,
+    "joint_columns": 0,
+    "passing_columns": 0,
+    "passing_fraction": null
+   },
+   "tokeye_cache": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/cache/tokeye_191782_1700_3800.npz",
+    "sha256": "8f4bdeace66e202ed2ebb25740f86120747d1c1c1d8ed046e6b294e2e69f3a1e",
+    "fingerprints": {
+     "waveform": {
+      "group": "mirnov",
+      "row": 15,
+      "samples": 5079038,
+      "dtype": "float32",
+      "sample_sha256": "2568db8c5410e6938933d1f234444d6f92b99e127c2ba484e695b135956cf566",
+      "fs_hz": 500000.0106850554,
+      "start_s": -1.5790389776229858,
+      "end_s": 8.579034805297852
+     },
+     "preprocessing": {
+      "code_sha256": {
+       "labeler/events/masks.py": "db4d3fc03cc367de6e536d4dff57083b03973152b825d634f15803a465650e3f",
+       "labeler/events/unet.py": "ea5e374c5811777df7c9696e19106df91eb5554e3617dc2f134ae8be993cd4ab",
+       "labeler/ae/transform.py": "971819c5fc3a612cdf2282f9d7b686ac7476f59d788844010261f84f3a62bf2d",
+       "labeler/ae/labels.py": "ffd73c485fd75725403b7ad27a54da0471cb2b2f813cdd718f694739449dcfdc"
+      },
+      "runtime_versions": {
+       "numpy": "1.26.4",
+       "scipy": "1.17.1",
+       "torch": "2.14.0+cpu"
+      },
+      "inference_sha256": "51c98c6edd781f0fd3187603d2bf5e46d0ac655c901be6a2cb08eb0a3cbb23e8",
+      "zoom_decimation": 4,
+      "row_lit_threshold": 0.2
+     }
+    }
+   },
+   "first_large_peak_before_expert_ms": null,
+   "largest_dalpha_peak_ms": 3215.717077255249,
+   "expert_elm_start_ms": null,
+   "lmode_inferred": false,
+   "ae_physical_review_caveat": null,
+   "ntm_performance": {
+    "shots": 761,
+    "cells": [
+     675,
+     941,
+     660,
+     99466
+    ],
+    "precision": 0.4176980198019802,
+    "recall": 0.5056179775280899,
+    "f1": 0.4574720433751271,
+    "evaluation": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/ntm_frames/v2/evaluation.json",
+    "evaluation_sha256": "0e3060f6d5459d6a9047d48f242ba79860707c47cdad25b138bc728d79aab80f",
+    "bin_ms": 50.0,
+    "pool": "mean",
+    "bar_criteria": {
+     "N1": [
+      [
+       "f1",
+       ">=",
+       0.7
+      ],
+      [
+       "precision",
+       ">=",
+       0.6
+      ],
+      [
+       "recall",
+       ">=",
+       0.6
+      ]
+     ],
+     "N2": [
+      [
+       "lo(f1 - always)",
+       ">",
+       0.0
+      ]
+     ]
+    }
+   },
+   "publication_suitability": {
+    "suitable_alternate": false,
+    "role": "unsuitable diagnostic: no AE and n=1 mode with NTM absent"
+   },
+   "elm_hmode_conflicts_ms": [],
+   "render_source_commit": "990d3ebe",
+   "sawtooth_source": [
+    {
+     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/191782.json",
+     "sha256": "b520fd9a76e37784c12cbc4af441d6385663d4e8ca292cc389b04ea97c63d76e"
+    }
+   ],
+   "sawtooth_interval_source": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/191782.json",
+    "sha256": "b520fd9a76e37784c12cbc4af441d6385663d4e8ca292cc389b04ea97c63d76e",
+    "tier": "generated: automated labeler"
+   },
+   "sawtooth_states": [
+    {
+     "start_ms": 1800.0,
+     "end_ms": 3700.0,
+     "category": 2,
+     "state": "uncertain"
+    }
+   ],
+   "sawtooth_track_shown": false,
+   "sawtooth_display_intervals_ms": [],
+   "sawtooth_display_merge": {
+    "minimum_duration_ms": 10.0,
+    "rule": "shortest sliver first, merge into longer touching neighbour; ties prefer earlier; source unchanged; crash ticks unchanged",
+    "changes": []
+   },
+   "confinement_intervals_ms": [
+    {
+     "start_ms": 1800.0,
+     "end_ms": 2127.0,
+     "category": 2,
+     "state": "L-mode"
+    },
+    {
+     "start_ms": 2168.0,
+     "end_ms": 2189.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2200.072,
+     "end_ms": 2239.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2250.072,
+     "end_ms": 2289.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2300.072,
+     "end_ms": 2339.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2350.072,
+     "end_ms": 2389.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2400.072,
+     "end_ms": 2439.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2450.072,
+     "end_ms": 2482.0,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2482.0,
+     "end_ms": 2489.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2489.955,
+     "end_ms": 2500.072,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2500.072,
+     "end_ms": 2539.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2539.955,
+     "end_ms": 2550.072,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2550.072,
+     "end_ms": 2589.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2589.955,
+     "end_ms": 2600.072,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2600.072,
+     "end_ms": 2639.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2639.955,
+     "end_ms": 2650.072,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2650.072,
+     "end_ms": 2689.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2689.955,
+     "end_ms": 2700.072,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2700.072,
+     "end_ms": 2739.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2739.955,
+     "end_ms": 2750.072,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2750.072,
+     "end_ms": 2789.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2789.955,
+     "end_ms": 2800.072,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2800.072,
+     "end_ms": 2839.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2839.955,
+     "end_ms": 2850.072,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2850.072,
+     "end_ms": 2889.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2889.955,
+     "end_ms": 2900.072,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2900.072,
+     "end_ms": 2939.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2939.955,
+     "end_ms": 2950.072,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2950.072,
+     "end_ms": 2989.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2989.955,
+     "end_ms": 3010.069,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 3010.069,
+     "end_ms": 3039.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 3039.955,
+     "end_ms": 3050.071,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 3050.071,
+     "end_ms": 3089.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 3089.955,
+     "end_ms": 3100.072,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 3100.072,
+     "end_ms": 3139.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 3139.955,
+     "end_ms": 3150.072,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 3150.072,
+     "end_ms": 3178.0,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 3178.0,
+     "end_ms": 3188.0,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 3351.0,
+     "end_ms": 3389.954,
+     "category": 2,
+     "state": "L-mode"
+    },
+    {
+     "start_ms": 3389.954,
+     "end_ms": 3400.072,
+     "category": 2,
+     "state": "L-mode"
+    },
+    {
+     "start_ms": 3400.072,
+     "end_ms": 3439.954,
+     "category": 2,
+     "state": "L-mode"
+    },
+    {
+     "start_ms": 3439.954,
+     "end_ms": 3450.072,
+     "category": 2,
+     "state": "L-mode"
+    },
+    {
+     "start_ms": 3450.072,
+     "end_ms": 3489.954,
+     "category": 2,
+     "state": "L-mode"
+    },
+    {
+     "start_ms": 3489.954,
+     "end_ms": 3500.072,
+     "category": 2,
+     "state": "L-mode"
+    },
+    {
+     "start_ms": 3500.072,
+     "end_ms": 3539.954,
+     "category": 2,
+     "state": "L-mode"
+    },
+    {
+     "start_ms": 3539.954,
+     "end_ms": 3550.072,
+     "category": 2,
+     "state": "L-mode"
+    },
+    {
+     "start_ms": 3550.072,
+     "end_ms": 3589.954,
+     "category": 2,
+     "state": "L-mode"
+    },
+    {
+     "start_ms": 3589.954,
+     "end_ms": 3600.072,
+     "category": 2,
+     "state": "L-mode"
+    },
+    {
+     "start_ms": 3600.072,
+     "end_ms": 3639.954,
+     "category": 2,
+     "state": "L-mode"
+    },
+    {
+     "start_ms": 3639.954,
+     "end_ms": 3650.072,
+     "category": 2,
+     "state": "L-mode"
+    },
+    {
+     "start_ms": 3650.072,
+     "end_ms": 3689.954,
+     "category": 2,
+     "state": "L-mode"
+    },
+    {
+     "start_ms": 3689.954,
+     "end_ms": 3700.0,
+     "category": 2,
+     "state": "L-mode"
+    }
+   ],
+   "sawtooth_state_duration_ms": {
+    "present": 0,
+    "absent": 0,
+    "uncertain": 1900.0,
+    "unassessed": 0
+   },
+   "sawtooth_density_proxy": {
+    "status": "Thomson_90percentile_fixed_density_guard_bt_missing",
+    "cutoff_proxy": true,
+    "high_density_samples": 0,
+    "density_samples": 56230,
+    "fixed_density_guard_m3": 8e+19,
+    "margin": 0.9
+   },
+   "late_untagged_high_frequency": null,
+   "pdf_size_in": [
+    6.75,
+    5.5
+   ],
+   "figure_sha256": {
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191782/fig_interpreter.pdf": "986b7bc4bbb215b967cfa015614ab01837f6dbe7deaf85de64feb3afcc096443",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191782/fig_interpreter.png": "8cdddd4c6da8602d0c00175007d94b179164ed8c1ffe9b46eec032ebfae33967"
+   }
+  }
+ ],
+ "checked_sources": {
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/201978.json": "61cea2aa20aed751bafda1d03b948de3c8f524593060492d9ef89f78d2250449",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/edge_localized_mode/201978.h5": "89ec0aea7414faeb1111127e2c93d050e0dbf6783ac1b623a23f2bc59821c217",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/neoclassical_tearing_mode/201978.h5": "5fc8a98f5bc32f398afdea3327090b416fc36465b3d4b7ec3823f3682a16e50f",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/high_confinement_mode/201978.h5": "703e87454e3b0e6a3542f4b80419a0e9efa3b611dcd551f89eaf14239d54f74b",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/sawtooth_oscillation/201978.h5": "776611e08d884fe08a3d5e2cbecc4b6d082a64feaa0c3dee26fb11dedb539a4d",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/ae_ours.csv": "ea4e80d6cb4cfefa6f959b9065489fabf5b4225cfb90f0bef2eeaa9da55e58e1",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/ae_ours.meta.json": "abf8eee386a55866a2866e4a82d519da2ac5be06c3d0be6080c80d491024cf1f",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/ntm_frames/v2/neoclassical_tearing_mode_suggest_ntm_frames_v2.csv": "5440c7cd5a3747656169d9b271ac7ff2879aaa22388d986fc828525cc4ab4957",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/ntm_frames/v2/neoclassical_tearing_mode_suggest_ntm_frames_v2.meta.json": "e1a6455f423bd6ed126b231aa49228c36193c3a82d3dafb72cae980d4ef8afa8",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/ntm_frames/v2/evaluation.json": "0e3060f6d5459d6a9047d48f242ba79860707c47cdad25b138bc728d79aab80f",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/dalpha_lh/v1/confinement_suggest_dalpha_lh_v1.csv": "31dfaccbda8fabcb8ac503dba0a405af1e420b8687004cde6e6957c7dfdd58af",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/dalpha_lh/v1/confinement_suggest_dalpha_lh_v1.meta.json": "17cf7be88e2deac4213a5d42bb92d78855207b3166850d6661f5230dfaac8663",
+  "/scratch/gpfs/nc1514/FusionAIHub/data/events/edge_localized_mode/review/labels.csv": "6ae3497e921eadd134959b248aab93c6ca06511e7689041a52270e58cfdae380",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/tokeye/big_tf_unet_251210.pt": "4afc3948ba53af40cb2787441b251757f8c77e764784e0aaa2602af0471229a9",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/cache/tokeye_201978_1300_5000.npz": "f63e81f5fa115c3b085db16d59d4d058823f04f67eb8aea8a7ef27bcf05653a5",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/201973.json": "51ef465dee33362a43361971605c04203015d794c11445d0067bd352ea299a4d",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/edge_localized_mode/201973.h5": "ea62fb08cc8e35d7ca04db770c4416a3d2b2860730ed452b616d17622e2d35b2",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/neoclassical_tearing_mode/201973.h5": "a7ec797ef9b07fa26061a2387285165c09d1d5a6b22c495270335874d3c848c9",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/high_confinement_mode/201973.h5": "e89d9a6e1d292e0a47eada17b23b7e8da3a8b59b87af0a884516a4eca1e3d4cb",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/sawtooth_oscillation/201973.h5": "cbdf1d4ce3b8e3c8939bf4f0fdc6cbf8b663bff7998825bf720ef6a83cb56ff7",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/cache/tokeye_201973_1500_3450.npz": "12b9a6c0e8be99843f7bdf3998332c4fac4ed3477ec355ce6dcd1d665dba4b1c",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/203187.json": "8011656a9ea4d577b5606099a23c0ec225a021f12f327201a63d72a624da5b64",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/edge_localized_mode/203187.h5": "1d168f8353b0b7e730ff6698cb784dd4c6cd39f6e6530bbf623b2ccd43b44d78",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/neoclassical_tearing_mode/203187.h5": "e5c673e43d90719edcdeb98c397b62064d9bcbceb898e5f7c3c1a0452cd02e8a",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/high_confinement_mode/203187.h5": "c29fe940892d74af82bc2a69c80d942ee5b686f6de0b115366478d1b6c917ddb",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/sawtooth_oscillation/203187.h5": "c16003d7e8283e9d6123836c812147b3b34c8890b8601394e59b7a25bcb1e589",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/cache/tokeye_203187_1600_3250.npz": "fe66d65ed3a28f49a0e69e66be8af34414e50549ddf0842ffbd8d22679504c44",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/186636.json": "f05b196d23c4348ab73a430df971f678860c623b2cd0725fd567d8d00b202a6a",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/edge_localized_mode/186636.h5": "ecc2d9c351fd2fc3ab6900bac6397b882c6a9fee2bbba8907ad8d22a927d19a6",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/neoclassical_tearing_mode/186636.h5": "337edc7722fd979309b6aae7157e71e98534e9ff2ebd29162bbd3224b538e15d",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/high_confinement_mode/186636.h5": "56d4ce16f5c6e238ef0de0991142f833151b1c1851c6dbadf17890f778ef88ff",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/sawtooth_oscillation/186636.h5": "540b305c313ad4eb271657d10985143de9e6fe313a30b93ca3f86dea116a8f9b",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/ae_xpower/v2/band80-mhd10/model.pt": "f4693f8304365ce39766360511155131c43a5b5a9ea4924bdb9ab764359d9024",
+  "/scratch/gpfs/nc1514/FusionAIHub/data/events/neoclassical_tearing_mode/format/neoclassical_tearing_mode_format_2026_v1.csv": "f6d09fb6ccdffc8c8c84bd18698d612079bbb2d72b3e3313a657b0b815495a7b",
+  "/scratch/gpfs/nc1514/FusionAIHub/data/events/neoclassical_tearing_mode/format/neoclassical_tearing_mode_format_2026_v1.meta.json": "f9d40a20b1177379c4f8b25ac810784204e2ef529cae63aee49f3c5c53eebe82",
+  "/scratch/gpfs/nc1514/FusionAIHub/data/events/sawtooth_oscillation/review/labels.csv": "dd602f56b59a6c20621ee7975d65ea5a47637c98ebf06455839aeb128e36345a",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/cache/tokeye_186636_1200_4000.npz": "ece32c587a4905cd30006c29712f0d4c1a35fd7f104829b53dac39c8b7f11cbd",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/191376.json": "1cbb956f214bef3b443ab5c2589710f8d9543e7dfe31661866ad806732257d60",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/edge_localized_mode/191376.h5": "3cf057bc629e5aef16ec9c5e2682f43dcdd63e12e747dbe9aae6d91a1a90b542",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/neoclassical_tearing_mode/191376.h5": "bd9ed005a162815566c6451aac25aac054e10fc038653c9af7e41614b502f2b1",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/high_confinement_mode/191376.h5": "34d865089ce3bbc6d96619bd24f9fb6c622dd7d66b1c7c808e46bb714fd63cde",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/sawtooth_oscillation/191376.h5": "f919adf0dec3a882cb24f63bae24245b92b6b47bda1dcb14e7beb3388d99b162",
+  "/scratch/gpfs/nc1514/FusionAIHub/runs/labeler/confinement/v1/merged_intervals.csv": "72de466aeae391cb06852d0cfcf6a322d185fe2557d6f5b3c36d6ff690f663f2",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/elm_frames/v2/edge_localized_mode_suggest_elm_frames_v2.csv": "b63b93485b2320a6d27849a2f2d6b1e04b7c6a8c65373d55b3d2413dfc01de85",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/elm_frames/v2/edge_localized_mode_suggest_elm_frames_v2.meta.json": "ba4e660688292c0668b7750debeeb50aaca5f232bfb212a4f43fa03a9b37da7d",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/cache/tokeye_191376_1400_3000.npz": "6612f38418bea81c98fa66df53bdc7017835bf8628fb4936cf8ceaf79e44b862",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/191782.json": "b520fd9a76e37784c12cbc4af441d6385663d4e8ca292cc389b04ea97c63d76e",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/edge_localized_mode/191782.h5": "4795671f52f609b9f0932faa788ec2f0b54e5d4bfbfa99be90b2cc7b2dba2926",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/neoclassical_tearing_mode/191782.h5": "f38b1cc609ec3e08e83c30cd53da5397c3eb5a66cc970676d9cb0a1b085f900b",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/high_confinement_mode/191782.h5": "243535cafa7653ec39e7b263a44221a9909c11e7cc20df7e760db076afa21eed",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/sawtooth_oscillation/191782.h5": "f7d5c543ff7349ede001c8311108357d47e5872d8501a775ac00f6e131fada60",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/cache/tokeye_191782_1700_3800.npz": "8f4bdeace66e202ed2ebb25740f86120747d1c1c1d8ed046e6b294e2e69f3a1e"
+ },
+ "blind_test_shots_used": 0,
+ "sawtooth_source_manifest": {
+  "path": "outputs/labeler/paper/fig_interpreter_tokeye/sawtooth_source_manifest.json",
+  "sha256": "c8cf422397d049e4a03c922fe58fff791220c3893e5bc2c2b66ef80b4ae9d4da",
+  "original_source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/shots",
+  "snapshot_source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots",
+  "completion_sha256": "fde6ec2ac7eea37cfd524128a1cae241e5e13a44b43f70c0b3460415c6076f28",
+  "source_commit": "ad0ca40f1a7e85c22a88ffcf71ba7ee7456c13e2",
+  "validation_status": "unvalidated_research_labels_owner_away",
+  "catalog_comparison": [
+   {
+    "model": "ece_sawtooth",
+    "version": "v3",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/ece_sawtooth/v3/sawtooth_oscillation_suggest_ece_sawtooth_v3.csv",
+    "sha256": "05c995be4de317eeed4b45591d0b803e9147906bd4674ed8c7b84ab477b8d38c",
+    "shots": {
+     "201978": [
+      {
+       "start_ms": 1500,
+       "end_ms": 2291.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 2291.0,
+       "end_ms": 3300,
+       "category": 1,
+       "state": "present"
+      }
+     ],
+     "201973": [
+      {
+       "start_ms": 1600,
+       "end_ms": 3350,
+       "category": 0,
+       "state": "absent"
+      }
+     ],
+     "203187": [
+      {
+       "start_ms": 1700,
+       "end_ms": 3114.0,
+       "category": 0,
+       "state": "absent"
+      }
+     ],
+     "186636": [
+      {
+       "start_ms": 1300,
+       "end_ms": 3799.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 3799.0,
+       "end_ms": 3900,
+       "category": 1,
+       "state": "present"
+      }
+     ],
+     "191376": [
+      {
+       "start_ms": 1500,
+       "end_ms": 1719.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 1719.0,
+       "end_ms": 2731.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 2731.0,
+       "end_ms": 2900,
+       "category": 0,
+       "state": "absent"
+      }
+     ],
+     "191782": [
+      {
+       "start_ms": 1800,
+       "end_ms": 2414.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 2414.0,
+       "end_ms": 2757.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 2757.0,
+       "end_ms": 3169.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 3169.0,
+       "end_ms": 3343.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 3343.0,
+       "end_ms": 3700,
+       "category": 0,
+       "state": "absent"
+      }
+     ]
+    }
+   },
+   {
+    "model": "sawtooth_frames",
+    "version": "v2",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/sawtooth_frames/v2/sawtooth_oscillation_suggest_sawtooth_frames_v2.csv",
+    "sha256": "a445f034fc90ce6eb8311f9c9331df7e6f206c05376cf48d900516f2d05b469f",
+    "shots": {
+     "201978": [
+      {
+       "start_ms": 1500,
+       "end_ms": 2290.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 2290.0,
+       "end_ms": 2890.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 2890.0,
+       "end_ms": 2900.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 2900.0,
+       "end_ms": 2940.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 2940.0,
+       "end_ms": 2960.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 2960.0,
+       "end_ms": 3300,
+       "category": 1,
+       "state": "present"
+      }
+     ],
+     "201973": [
+      {
+       "start_ms": 1600,
+       "end_ms": 2100.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 2100.0,
+       "end_ms": 2110.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 2110.0,
+       "end_ms": 2190.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 2190.0,
+       "end_ms": 2200.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 2200.0,
+       "end_ms": 2700.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 2700.0,
+       "end_ms": 2720.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 2720.0,
+       "end_ms": 2750.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 2750.0,
+       "end_ms": 2780.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 2780.0,
+       "end_ms": 2790.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 2790.0,
+       "end_ms": 2810.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 2810.0,
+       "end_ms": 2860.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 2860.0,
+       "end_ms": 2880.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 2880.0,
+       "end_ms": 2910.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 2910.0,
+       "end_ms": 2950.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 2950.0,
+       "end_ms": 2960.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 2960.0,
+       "end_ms": 2970.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 2970.0,
+       "end_ms": 2990.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 2990.0,
+       "end_ms": 3050.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 3050.0,
+       "end_ms": 3060.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 3060.0,
+       "end_ms": 3070.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 3070.0,
+       "end_ms": 3080.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 3080.0,
+       "end_ms": 3130.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 3130.0,
+       "end_ms": 3140.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 3140.0,
+       "end_ms": 3210.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 3210.0,
+       "end_ms": 3220.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 3220.0,
+       "end_ms": 3230.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 3230.0,
+       "end_ms": 3280.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 3280.0,
+       "end_ms": 3290.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 3290.0,
+       "end_ms": 3300.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 3300.0,
+       "end_ms": 3310.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 3310.0,
+       "end_ms": 3350,
+       "category": 0,
+       "state": "absent"
+      }
+     ],
+     "203187": [
+      {
+       "start_ms": 1700,
+       "end_ms": 2250.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 2250.0,
+       "end_ms": 2700.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 2700.0,
+       "end_ms": 2750.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 2750.0,
+       "end_ms": 2760.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 2760.0,
+       "end_ms": 2770.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 2770.0,
+       "end_ms": 2780.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 2780.0,
+       "end_ms": 3110.0,
+       "category": 0,
+       "state": "absent"
+      }
+     ],
+     "186636": [
+      {
+       "start_ms": 1300,
+       "end_ms": 3900,
+       "category": 0,
+       "state": "absent"
+      }
+     ],
+     "191376": [
+      {
+       "start_ms": 1500,
+       "end_ms": 1690.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 1690.0,
+       "end_ms": 1700.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 1700.0,
+       "end_ms": 1710.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 1710.0,
+       "end_ms": 2040.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 2040.0,
+       "end_ms": 2050.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 2050.0,
+       "end_ms": 2460.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 2460.0,
+       "end_ms": 2470.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 2470.0,
+       "end_ms": 2500.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 2500.0,
+       "end_ms": 2520.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 2520.0,
+       "end_ms": 2540.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 2540.0,
+       "end_ms": 2550.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 2550.0,
+       "end_ms": 2640.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 2640.0,
+       "end_ms": 2650.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 2650.0,
+       "end_ms": 2660.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 2660.0,
+       "end_ms": 2900,
+       "category": 0,
+       "state": "absent"
+      }
+     ],
+     "191782": [
+      {
+       "start_ms": 1800,
+       "end_ms": 2490.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 2490.0,
+       "end_ms": 2500.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 2500.0,
+       "end_ms": 2510.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 2510.0,
+       "end_ms": 2530.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 2530.0,
+       "end_ms": 2560.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 2560.0,
+       "end_ms": 2600.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 2600.0,
+       "end_ms": 2610.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 2610.0,
+       "end_ms": 2630.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 2630.0,
+       "end_ms": 2650.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 2650.0,
+       "end_ms": 2660.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 2660.0,
+       "end_ms": 2680.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 2680.0,
+       "end_ms": 2690.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 2690.0,
+       "end_ms": 3150.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 3150.0,
+       "end_ms": 3170.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 3170.0,
+       "end_ms": 3180.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 3180.0,
+       "end_ms": 3190.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 3190.0,
+       "end_ms": 3210.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 3210.0,
+       "end_ms": 3290.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 3290.0,
+       "end_ms": 3300.0,
+       "category": 0,
+       "state": "absent"
+      },
+      {
+       "start_ms": 3300.0,
+       "end_ms": 3310.0,
+       "category": 1,
+       "state": "present"
+      },
+      {
+       "start_ms": 3310.0,
+       "end_ms": 3700,
+       "category": 0,
+       "state": "absent"
+      }
+     ]
+    }
+   }
+  ]
+ },
+ "reproducibility": {
+  "command": [
+   "pixi",
+   "run",
+   "--frozen",
+   "--no-install",
+   "--manifest-path",
+   "/scratch/gpfs/nc1514/FusionAIHub/pyproject.toml",
+   "-e",
+   "labelmaker",
+   "python",
+   "scripts/labeler/paper/fig_interpreter_tokeye.py",
+   "--shot",
+   "201978",
+   "--tmin",
+   "1500.0",
+   "--tmax",
+   "3300.0",
+   "--out",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/fig1/audit7-primary-rebuild",
+   "--ae-labels",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/ae_ours.csv",
+   "--sawtooth-source",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots"
+  ],
+  "before": {
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.pdf": "cddbc5f7be5c989aba5aa057fb620294fd9a8877d20aa21f335c5c9fd4587c5c",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.png": "12f353f9e303d023d02aef3c8c8f16fa5a723669e6f9b675c20971ed92bdb2a7"
+  },
+  "after": {
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.pdf": "cddbc5f7be5c989aba5aa057fb620294fd9a8877d20aa21f335c5c9fd4587c5c",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.png": "12f353f9e303d023d02aef3c8c8f16fa5a723669e6f9b675c20971ed92bdb2a7"
+  },
+  "identical": true,
+  "rebuild_files": [
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/fig1/audit7-primary-rebuild/fig_interpreter.pdf",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/fig1/audit7-primary-rebuild/fig_interpreter.png"
+  ]
+ }
+}
