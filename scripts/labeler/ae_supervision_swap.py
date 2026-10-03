@@ -688,6 +688,25 @@ def dense_prevalence(manifest: dict, refs: dict) -> dict:
     return out
 
 
+def dense_history(manifest: dict) -> dict:
+    """Who wrote the dense table and how many intervals its history holds."""
+    path = Path(manifest["inputs"]["dense"]["path"]).parent / "history.jsonl"
+    entries = [json.loads(line) for line in path.read_text().splitlines() if line]
+    latest = {entry["shot"]: entry for entry in entries}
+    return {
+        "path": str(path),
+        "sha256": sha256(path),
+        "entries": len(entries),
+        "shots": len(latest),
+        "reviewers": sorted({str(entry["reviewer"]) for entry in entries}),
+        "sources": sorted({str(entry["source"]) for entry in entries}),
+        "latest_intervals_per_shot_total": sum(
+            len(entry["intervals"]) for entry in latest.values()
+        ),
+        "all_entry_intervals_total": sum(len(entry["intervals"]) for entry in entries),
+    }
+
+
 def band_confound(manifest: dict) -> dict:
     """How much annotated time is BAE-only, and is it inside the model's band?"""
     masks = Path(manifest["dataset_dir"]).parent / "masks"
@@ -725,6 +744,34 @@ def band_confound(manifest: dict) -> dict:
             "in_band_active_share_other": other_active / other,
         }
     return out
+
+
+def campaign_overlap(manifest: dict) -> dict:
+    """How close the scored shots sit to each model's training shots (run blocks)."""
+    split = manifest["split"]
+    garcia = np.array(sorted(manifest["older"]["trained_on"]))
+    fair = manifest["older"]["fair_evaluation"]
+
+    def blocks(shots):
+        counts: dict[str, int] = {}
+        for shot in shots:
+            counts[str(shot // 100)] = counts.get(str(shot // 100), 0) + 1
+        return dict(sorted(counts.items()))
+
+    ours = split["train"] + split["selection"]
+    return {
+        "block": "shot // 100 (shots of one run day sit in a block or two)",
+        "garcia_training_shots": len(garcia),
+        "evaluation_in_garcia_training": len(set(split["evaluation"]) & set(garcia)),
+        "fair_nearest_garcia_training_shot_distance": sorted(
+            int(np.abs(garcia - s).min()) for s in fair
+        ),
+        "ae_ours_training_shots": len(split["train"]),
+        "ae_ours_training_by_block": blocks(split["train"]),
+        "ae_ours_train_selection_in_garcia_training": len(set(ours) & set(garcia)),
+        "evaluation_by_block": blocks(split["evaluation"]),
+        "fair_by_block": blocks(fair),
+    }
 
 
 def pooled_block(refs, shots, reference, methods, thresholds, groups, replicates):
@@ -887,6 +934,13 @@ def evaluate(args) -> None:
             "epochs_completed": len(training["history"]),
             "gpu": training["environment"]["gpu"],
             "plan": plan["superseded"].get(name) or plan["audit"][name],
+            "screen": convergence_screen(
+                selection_parts(
+                    manifest_path,
+                    name.split("-")[2],
+                    {s: prediction[s] for s in split["selection"]},
+                )
+            ),
             "results": {},
         }
         thr = {
@@ -929,7 +983,9 @@ def evaluate(args) -> None:
         "results": blocks,
         "sensitivity_v100_seeds_1_2": sensitivity,
         "band_confound": band_confound(manifest),
+        "campaign_overlap": campaign_overlap(manifest),
         "dense_prevalence": dense_prevalence(manifest, refs),
+        "dense_history": dense_history(manifest),
         "dense_counts": manifest["dense_counts"],
         "inputs": manifest["inputs"],
         "protocol": manifest["protocol"],
