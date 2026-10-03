@@ -8,13 +8,13 @@
 \midrule
 Model / rule & \shortstack{Phase-controlled\\AUROC} & \shortstack{Primary AUROC\\phase-confounded} & \shortstack{Broad\\AUROC} & \shortstack{Primary\\AUPRC} & \shortstack{Primary\\F1} & \shortstack{Slice\\TPR} & \shortstack{Slice\\FPR} \\
 \midrule
-\texttt{rwm-brf} & \shortstack{$0.534$\\{\scriptsize $[0.438, 0.624]$}} & \shortstack{$0.760$\\{\scriptsize $[0.706, 0.809]$}} & \shortstack{$0.740$\\{\scriptsize $[0.668, 0.799]$}} & \shortstack{$0.163$\\{\scriptsize $[0.123, 0.220]$}} & \shortstack{$0.275$\\{\scriptsize $[0.227, 0.337]$}} & \shortstack{$0.756$\\{\scriptsize $[0.646, 0.869]$}} & \shortstack{$0.342$\\{\scriptsize $[0.261, 0.421]$}} \\
+\texttt{rwm-brf} & \shortstack{$0.534$\\{\scriptsize $[0.436, 0.625]$}} & \shortstack{$0.760$\\{\scriptsize $[0.706, 0.809]$}} & \shortstack{$0.740$\\{\scriptsize $[0.668, 0.799]$}} & \shortstack{$0.163$\\{\scriptsize $[0.123, 0.220]$}} & \shortstack{$0.275$\\{\scriptsize $[0.227, 0.337]$}} & \shortstack{$0.756$\\{\scriptsize $[0.646, 0.869]$}} & \shortstack{$0.342$\\{\scriptsize $[0.261, 0.421]$}} \\
 \addlinespace[1.5pt]
-Elapsed time & \shortstack{$0.522$\\{\scriptsize $[0.520, 0.549]$}} & \shortstack{$0.759$\\{\scriptsize $[0.712, 0.815]$}} & \shortstack{$0.390$\\{\scriptsize $[0.333, 0.440]$}} & \shortstack{$0.228$\\{\scriptsize $[0.212, 0.307]$}} & \shortstack{$0.267$\\{\scriptsize $[0.217, 0.331]$}} & \shortstack{$0.692$\\{\scriptsize $[0.525, 0.830]$}} & \shortstack{$0.318$\\{\scriptsize $[0.244, 0.368]$}} \\
+Elapsed time & \shortstack{$0.522$\\{\scriptsize $[0.511, 0.536]$}} & \shortstack{$0.759$\\{\scriptsize $[0.712, 0.815]$}} & \shortstack{$0.390$\\{\scriptsize $[0.333, 0.440]$}} & \shortstack{$0.228$\\{\scriptsize $[0.212, 0.307]$}} & \shortstack{$0.267$\\{\scriptsize $[0.217, 0.331]$}} & \shortstack{$0.692$\\{\scriptsize $[0.525, 0.830]$}} & \shortstack{$0.318$\\{\scriptsize $[0.244, 0.368]$}} \\
 \addlinespace[1.5pt]
-$\beta_N$ & \shortstack{$0.529$\\{\scriptsize $[0.417, 0.634]$}} & \shortstack{$0.707$\\{\scriptsize $[0.639, 0.772]$}} & \shortstack{$0.715$\\{\scriptsize $[0.641, 0.776]$}} & \shortstack{$0.166$\\{\scriptsize $[0.128, 0.246]$}} & \shortstack{$0.246$\\{\scriptsize $[0.194, 0.312]$}} & \shortstack{$0.750$\\{\scriptsize $[0.619, 0.865]$}} & \shortstack{$0.397$\\{\scriptsize $[0.323, 0.454]$}} \\
+$\beta_N$ & \shortstack{$0.529$\\{\scriptsize $[0.410, 0.638]$}} & \shortstack{$0.707$\\{\scriptsize $[0.639, 0.772]$}} & \shortstack{$0.715$\\{\scriptsize $[0.641, 0.776]$}} & \shortstack{$0.166$\\{\scriptsize $[0.128, 0.246]$}} & \shortstack{$0.246$\\{\scriptsize $[0.194, 0.312]$}} & \shortstack{$0.750$\\{\scriptsize $[0.619, 0.865]$}} & \shortstack{$0.397$\\{\scriptsize $[0.323, 0.454]$}} \\
 \addlinespace[1.5pt]
-$\beta_N/l_i$ & \shortstack{$0.588$\\{\scriptsize $[0.476, 0.691]$}} & \shortstack{$0.723$\\{\scriptsize $[0.664, 0.784]$}} & \shortstack{$0.752$\\{\scriptsize $[0.688, 0.815]$}} & \shortstack{$0.159$\\{\scriptsize $[0.127, 0.232]$}} & \shortstack{$0.261$\\{\scriptsize $[0.212, 0.328]$}} & \shortstack{$0.735$\\{\scriptsize $[0.602, 0.847]$}} & \shortstack{$0.356$\\{\scriptsize $[0.269, 0.427]$}} \\
+$\beta_N/l_i$ & \shortstack{$0.588$\\{\scriptsize $[0.471, 0.690]$}} & \shortstack{$0.723$\\{\scriptsize $[0.664, 0.784]$}} & \shortstack{$0.752$\\{\scriptsize $[0.688, 0.815]$}} & \shortstack{$0.159$\\{\scriptsize $[0.127, 0.232]$}} & \shortstack{$0.261$\\{\scriptsize $[0.212, 0.328]$}} & \shortstack{$0.735$\\{\scriptsize $[0.602, 0.847]$}} & \shortstack{$0.356$\\{\scriptsize $[0.269, 0.427]$}} \\
 \addlinespace[1.5pt]
 \midrule
 \multicolumn{8}{@{}l}{Legacy (Piccione et al., NSTX): not comparable} \\
@@ -23,6 +23,6 @@ $\beta_N/l_i$ & \shortstack{$0.588$\\{\scriptsize $[0.476, 0.691]$}} & \shortsta
 \multicolumn{8}{@{}l}{Detected unstable shots: 10/11; stable shots with false alarms: 2/17} \\
 \bottomrule
 \end{tabular}
-\caption{Within-RWM-shot timing with assumed negatives; no established skill beyond phase. Phase control compares pairs within campaign and 100 ms bins (at least 5 slices); elapsed time measures the residual-phase floor. Primary negatives end at the last target onset; broad adds later Hanson time. Cutoffs use inner-fold primary slices. Brackets: exploratory shot-bootstrap intervals at fixed predictions, unadjusted for multiplicity. Legacy differs in machine, inputs and validation.}
+\caption{Within-RWM-shot timing with assumed negatives. Phase-controlled AUROC 0.53--0.63 over 5 splits (seed 0 lowest); above the elapsed-time floor on every split, CI excluding zero on 1 of 5; never distinguishable from $\beta_N/l_i$ alone. Phase control compares pairs within campaign and 100 ms bins (at least 5 slices); elapsed time measures the residual-phase floor. Primary negatives end at the last target onset: 480 positive / 5,255 assumed-negative slices (prevalence 8.37\%). Broad adds later Hanson time and 1,349 negatives from $n=2$-only shots. Cutoffs use inner-fold primary slices. Brackets: exploratory shot-bootstrap intervals at fixed predictions, unadjusted for multiplicity. Legacy differs in machine, inputs and validation.}
 \label{tab:rwm-baseline}
 \end{table*}

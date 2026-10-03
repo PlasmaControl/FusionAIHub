@@ -1,6 +1,6 @@
 {
   "script": "scripts/labeler/rwm_rotation_ablation.py",
-  "made_at": "2026-10-03T21:38:10+00:00",
+  "made_at": "2026-10-03T22:20:07+00:00",
   "status": "completed",
   "model": "rwm-brf-no-rotation",
   "options": {
@@ -358,8 +358,8 @@
     },
     "phase_controlled_auroc": {
       "estimate": -0.005191249037337031,
-      "low": -0.04640144432369085,
-      "high": 0.03283883218681317
+      "low": -0.04685352664484354,
+      "high": 0.03465379601891497
     }
   },
   "counts": {
@@ -810,8 +810,8 @@
   },
   "phase_controlled_auroc": {
     "estimate": 0.5285661313785334,
-    "low": 0.43183048361637266,
-    "high": 0.6264817726683628
+    "low": 0.429602986574745,
+    "high": 0.6296383439341459
   },
   "phase_bin_width_sensitivity": {
     "50": 0.5313740150687295,

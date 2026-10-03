@@ -1,6 +1,6 @@
 {
   "script": "scripts/labeler/rwm_comparison_sensitivity.py",
-  "made_at": "2026-10-03T21:38:11+00:00",
+  "made_at": "2026-10-03T22:20:08+00:00",
   "status": "completed",
   "model": "rwm-brf-comparison-negative",
   "options": {
@@ -204,8 +204,8 @@
   },
   "reference_phase_controlled_auroc": {
     "estimate": 0.5337573804158704,
-    "low": 0.43832175011536373,
-    "high": 0.6236245643079941
+    "low": 0.4359065321793412,
+    "high": 0.6248589220201699
   },
   "paired_change": {
     "slice_auroc": {
@@ -365,8 +365,8 @@
     },
     "phase_controlled_auroc": {
       "estimate": 0.05339570438403829,
-      "low": -0.02810127282584765,
-      "high": 0.12730641205686505
+      "low": -0.03028980093236386,
+      "high": 0.126503608281077
     }
   },
   "counts": {
@@ -417,8 +417,8 @@
   },
   "phase_controlled_auroc": {
     "estimate": 0.5871530847999087,
-    "low": 0.5049740830784525,
-    "high": 0.659986503331889
+    "low": 0.5063988114267441,
+    "high": 0.664505457611437
   },
   "phase_bin_width_sensitivity": {
     "50": 0.5870477943290965,
@@ -1071,8 +1071,8 @@
   },
   "external_details": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/comparison_sensitivity_details.json",
-    "sha256": "1d40e44d63f5b5a5375d43dc17173c07531fffbca6a31b8d49fbc8fea49d72a7",
-    "bytes": 106539,
+    "sha256": "e4fe22bc494ae7829eae57665803f74f96a15c39e38e99c9a3ac24108f9db879",
+    "bytes": 106536,
     "omitted_keys": [
       "per_shot",
       "shots",

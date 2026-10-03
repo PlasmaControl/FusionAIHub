@@ -4,7 +4,7 @@ Source: outputs/labeler/rwm/evaluation.json. Brackets report 95% shot-bootstrap 
 
 | Hanson primary score | baseline | sensitivity | paired change |
 |---|---|---|---|
-| Phase-controlled AUROC | 0.534 [0.438, 0.624] | 0.587 [0.505, 0.660] | 0.053 [-0.028, 0.127] |
+| Phase-controlled AUROC | 0.534 [0.436, 0.625] | 0.587 [0.506, 0.665] | 0.053 [-0.030, 0.127] |
 | Pooled AUROC (phase-confounded) | 0.760 [0.706, 0.809] | 0.769 [0.729, 0.811] | 0.008 [-0.025, 0.040] |
 
 Source: outputs/labeler/rwm/comparison_sensitivity.json. Comparisons enter training as label-noisy negatives. Headline scoring and cutoff tuning use primary Hanson slices; alarm tuning keeps the original Hanson trace scope. Identical outer shots, inner splits and seeds; 5×3 nested shot-grouped CV. Paired change is sensitivity minus baseline, with 95% basic shot intervals. The paired change includes zero; whether verified stable-shot negatives would help is untested. Comparison shots alarmed: 3/132; onsets warned: 5/48. Comparisons are not verified stable shots; this sensitivity does not replace the baseline.
@@ -94,10 +94,21 @@ Forest minus elapsed time; 95% basic paired shot-bootstrap intervals condition o
 
 | model / rule | AUROC (95% percentile shot CI) |
 |---|---|
-| rwm-brf | 0.534 [0.438, 0.624] |
-| Elapsed time | 0.522 [0.520, 0.549] |
-| βN | 0.529 [0.417, 0.634] |
-| βN/li | 0.588 [0.476, 0.691] |
+| rwm-brf | 0.534 [0.436, 0.625] |
+| Elapsed time | 0.522 [0.511, 0.536] |
+| βN | 0.529 [0.410, 0.638] |
+| βN/li | 0.588 [0.471, 0.690] |
+
+### Phase split sensitivity — five seeds and run-record holdout
+
+| Evaluation | Forest phase AUROC | Forest − elapsed time | Forest − βN/li |
+|---|---|---|---|
+| Seed 0 | 0.534 [0.436, 0.625] | 0.012 [-0.081, 0.113] | -0.054 [-0.172, 0.061] |
+| Seed 1 | 0.592 [0.510, 0.680] | 0.070 [-0.017, 0.160] | 0.004 [-0.106, 0.111] |
+| Seed 2 | 0.580 [0.497, 0.666] | 0.058 [-0.029, 0.143] | -0.008 [-0.133, 0.104] |
+| Seed 3 | 0.629 [0.549, 0.706] | 0.107 [0.030, 0.189] | 0.041 [-0.071, 0.151] |
+| Seed 4 | 0.598 [0.506, 0.691] | 0.076 [-0.017, 0.171] | 0.010 [-0.112, 0.128] |
+| Run-record holdout | 0.593 [0.517, 0.679] | 0.071 [-0.013, 0.149] | 0.005 [-0.119, 0.102] |
 
 ### Phase-bin-width sensitivity — primary mask, campaign control retained
 
@@ -114,9 +125,9 @@ Forest minus elapsed time; 95% basic paired shot-bootstrap intervals condition o
 
 | forest minus scalar | AUROC difference (95% basic paired shot CI) |
 |---|---|
-| rwm-brf - Elapsed time | 0.012 [-0.069, 0.122] |
-| rwm-brf - βN | 0.005 [-0.115, 0.131] |
-| rwm-brf - βN/li | -0.054 [-0.169, 0.062] |
+| rwm-brf - Elapsed time | 0.012 [-0.081, 0.113] |
+| rwm-brf - βN | 0.005 [-0.123, 0.133] |
+| rwm-brf - βN/li | -0.054 [-0.172, 0.061] |
 
 ### Comparison pool — reference forest alarms by run title
 

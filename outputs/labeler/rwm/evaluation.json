@@ -1,6 +1,6 @@
 {
   "script": "scripts/labeler/rwm_evaluate.py",
-  "made_at": "2026-10-03T21:37:04+00:00",
+  "made_at": "2026-10-03T22:18:37+00:00",
   "protocol": {
     "outer_folds": 5,
     "inner_folds": 3,
@@ -28,7 +28,7 @@
     "primary_scoring": "Hanson only, before last n=1 onset; no verified negatives",
     "within_shot_auroc": "primary and broad Hanson masks, fixed score orientation; equal-shot mean/median over shots with both classes; per-shot class counts include excluded one-class shots",
     "paired_within_shot_auroc": "forest minus each continuous scalar, primary and broad masks; equal-shot mean of per-shot AUROCs over shared two-class Hanson shots; 95% basic paired shot-bootstrap intervals, seed 0",
-    "phase_controlled_auroc": "primary Hanson slices; positive-negative pairs restricted to campaign x floor(elapsed_ms/100), bins [100*k,100*(k+1)); pair-count-weighted cell AUROC; omit cells with fewer than 5 slices or one class and missing time; 1000 campaign-stratified shot resamples, seed 0; individual percentile and forest-minus-scalar basic paired intervals",
+    "phase_controlled_auroc": "primary Hanson slices; positive-negative pairs restricted to campaign x floor(elapsed_ms/100), bins [100*k,100*(k+1)); pair-count-weighted cell AUROC; omit cells with fewer than 5 slices or one class and missing time; 1000 campaign-stratified shot resamples, seed 0; individual percentile and forest-minus-scalar basic paired intervals; within-copy or different-shot pairs only, no same-shot cross-copy pairs",
     "phase_bin_ms": 100.0,
     "phase_min_slices": 5,
     "phase_bin_width_sensitivity": "50/100/200/400/800 ms and no time-bin control; primary Hanson mask, campaign control retained, same minimum cell size; point estimates only, no tuning or selection",
@@ -144,8 +144,8 @@
       },
       "phase_controlled_auroc": {
         "estimate": 0.5337573804158704,
-        "low": 0.43832175011536373,
-        "high": 0.6236245643079941
+        "low": 0.4359065321793412,
+        "high": 0.6248589220201699
       },
       "phase_bin_width_sensitivity": {
         "50": 0.5360326680853511,
@@ -796,6 +796,17 @@
           "alarm_incidence": 0.09565217391304348
         }
       },
+      "first_onset_only": {
+        "scope": "primary Hanson slices strictly before first merged n=1 onset; unchanged saved scores",
+        "n_positive": 300,
+        "n_negative": 4429,
+        "n_shots": 30,
+        "pooled_auroc": {
+          "estimate": 0.7748995258523369,
+          "low": 0.7219690733462165,
+          "high": 0.8266630778689578
+        }
+      },
       "full_trace_alarm_sensitivity": {
         "counts": {
           "hanson_shots": 33,
@@ -845,8 +856,8 @@
         },
         "phase_controlled_auroc": {
           "estimate": 0.5337573804158704,
-          "low": 0.43832175011536373,
-          "high": 0.6236245643079941
+          "low": 0.4359065321793412,
+          "high": 0.6248589220201699
         },
         "phase_bin_width_sensitivity": {
           "50": 0.5360326680853511,
@@ -1575,8 +1586,8 @@
           },
           "phase_controlled_auroc": {
             "estimate": 0.5922302404518098,
-            "low": 0.507715802422647,
-            "high": 0.6788838604475894
+            "low": 0.509658562421827,
+            "high": 0.679910641220516
           },
           "phase_bin_width_sensitivity": {
             "50": 0.5957324437798355,
@@ -2303,8 +2314,8 @@
           },
           "phase_controlled_auroc": {
             "estimate": 0.5796371830343136,
-            "low": 0.49631464050682966,
-            "high": 0.6639430543468902
+            "low": 0.4967997484226588,
+            "high": 0.6661975203593852
           },
           "phase_bin_width_sensitivity": {
             "50": 0.5810087996779203,
@@ -3031,8 +3042,8 @@
           },
           "phase_controlled_auroc": {
             "estimate": 0.6290538806012721,
-            "low": 0.5484163810092441,
-            "high": 0.705318196143478
+            "low": 0.548928091412632,
+            "high": 0.7062312483648875
           },
           "phase_bin_width_sensitivity": {
             "50": 0.6328866394432622,
@@ -3759,8 +3770,8 @@
           },
           "phase_controlled_auroc": {
             "estimate": 0.5977637696454549,
-            "low": 0.5049982596086692,
-            "high": 0.6899216793725853
+            "low": 0.5062144811209105,
+            "high": 0.6908722839157221
           },
           "phase_bin_width_sensitivity": {
             "50": 0.5973428423534825,
@@ -4473,8 +4484,8 @@
       },
       "phase_controlled_auroc": {
         "estimate": 0.521991500042785,
-        "low": 0.520015148266446,
-        "high": 0.5489396110602781
+        "low": 0.5106637385486236,
+        "high": 0.5363999718687644
       },
       "phase_bin_width_sensitivity": {
         "50": 0.518347040892621,
@@ -5125,6 +5136,17 @@
           "alarm_incidence": 0.9826086956521739
         }
       },
+      "first_onset_only": {
+        "scope": "primary Hanson slices strictly before first merged n=1 onset; unchanged saved scores",
+        "n_positive": 300,
+        "n_negative": 4429,
+        "n_shots": 30,
+        "pooled_auroc": {
+          "estimate": 0.7729558967411756,
+          "low": 0.7283950705413383,
+          "high": 0.8316959929162171
+        }
+      },
       "top_score_concentration": {
         "slices": 60
       },
@@ -5177,8 +5199,8 @@
         },
         "phase_controlled_auroc": {
           "estimate": 0.521991500042785,
-          "low": 0.520015148266446,
-          "high": 0.5489396110602781
+          "low": 0.5106637385486236,
+          "high": 0.5363999718687644
         },
         "phase_bin_width_sensitivity": {
           "50": 0.518347040892621,
@@ -5891,8 +5913,8 @@
       },
       "phase_controlled_auroc": {
         "estimate": 0.5287515331298668,
-        "low": 0.41720693889290306,
-        "high": 0.634488570270699
+        "low": 0.40953604152001644,
+        "high": 0.6375200323867469
       },
       "phase_bin_width_sensitivity": {
         "50": 0.5286133317996204,
@@ -6592,8 +6614,8 @@
         },
         "phase_controlled_auroc": {
           "estimate": 0.5287515331298668,
-          "low": 0.41720693889290306,
-          "high": 0.634488570270699
+          "low": 0.40953604152001644,
+          "high": 0.6375200323867469
         },
         "phase_bin_width_sensitivity": {
           "50": 0.5286133317996204,
@@ -7306,8 +7328,8 @@
       },
       "phase_controlled_auroc": {
         "estimate": 0.5879089534784221,
-        "low": 0.4762407853780383,
-        "high": 0.6910579613427574
+        "low": 0.4713608649179918,
+        "high": 0.6895454861349805
       },
       "phase_bin_width_sensitivity": {
         "50": 0.588428135963651,
@@ -8007,8 +8029,8 @@
         },
         "phase_controlled_auroc": {
           "estimate": 0.5879089534784221,
-          "low": 0.4762407853780383,
-          "high": 0.6910579613427574
+          "low": 0.4713608649179918,
+          "high": 0.6895454861349805
         },
         "phase_bin_width_sensitivity": {
           "50": 0.588428135963651,
@@ -10180,8 +10202,8 @@
       },
       "phase_controlled_auroc": {
         "estimate": 0.011765880373085347,
-        "low": -0.06924226650639081,
-        "high": 0.12217107707534618
+        "low": -0.08107908276559098,
+        "high": 0.11288083028107676
       }
     },
     "rwm-brf - rwm-rule-betan": {
@@ -10356,8 +10378,8 @@
       },
       "phase_controlled_auroc": {
         "estimate": 0.005005847286003617,
-        "low": -0.11478871880319125,
-        "high": 0.1309557352325516
+        "low": -0.12298802684429339,
+        "high": 0.13305122541288827
       }
     },
     "rwm-brf - rwm-rule-betan-over-li": {
@@ -10532,8 +10554,8 @@
       },
       "phase_controlled_auroc": {
         "estimate": -0.054151573062551694,
-        "low": -0.16922257008732436,
-        "high": 0.062374992869305756
+        "low": -0.17224543605318704,
+        "high": 0.06149765739374102
       }
     }
   },
@@ -10587,8 +10609,8 @@
     },
     "phase_controlled_auroc": {
       "estimate": 0.5927721840326307,
-      "low": 0.5172325009320239,
-      "high": 0.6754871495344622
+      "low": 0.5166916537679644,
+      "high": 0.6794383094006398
     },
     "phase_bin_width_sensitivity": {
       "50": 0.5954161154885834,
@@ -11404,6 +11426,18 @@
           "low": -0.1494037351677402,
           "high": 0.028215882847894724
         }
+      }
+    },
+    "paired_phase": {
+      "rwm-rule-elapsed-time": {
+        "estimate": 0.0707806839898456,
+        "low": -0.013343274249616288,
+        "high": 0.14946262816063643
+      },
+      "rwm-rule-betan-over-li": {
+        "estimate": 0.004863230554208564,
+        "low": -0.11939576220901602,
+        "high": 0.10201992223825054
       }
     },
     "predictions": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_leave_run_record_out.parquet",
@@ -12320,6 +12354,121 @@
             "high": 0.09237172329369406
           }
         }
+      }
+    },
+    "phase_controlled_auroc": {
+      "by_seed": {
+        "0": {
+          "estimate": 0.5337573804158704,
+          "low": 0.4359065321793412,
+          "high": 0.6248589220201699
+        },
+        "1": {
+          "estimate": 0.5922302404518098,
+          "low": 0.509658562421827,
+          "high": 0.679910641220516
+        },
+        "2": {
+          "estimate": 0.5796371830343136,
+          "low": 0.4967997484226588,
+          "high": 0.6661975203593852
+        },
+        "3": {
+          "estimate": 0.6290538806012721,
+          "low": 0.548928091412632,
+          "high": 0.7062312483648875
+        },
+        "4": {
+          "estimate": 0.5977637696454549,
+          "low": 0.5062144811209105,
+          "high": 0.6908722839157221
+        }
+      },
+      "min": 0.5337573804158704,
+      "max": 0.6290538806012721,
+      "lowest_seed": "0",
+      "holdout": {
+        "estimate": 0.5927721840326307,
+        "low": 0.5166916537679644,
+        "high": 0.6794383094006398
+      }
+    },
+    "paired_phase": {
+      "rwm-rule-elapsed-time": {
+        "by_seed": {
+          "0": {
+            "estimate": 0.011765880373085347,
+            "low": -0.08107908276559098,
+            "high": 0.11288083028107676
+          },
+          "1": {
+            "estimate": 0.07023874040902478,
+            "low": -0.016505093124356884,
+            "high": 0.16026787489138047
+          },
+          "2": {
+            "estimate": 0.0576456829915285,
+            "low": -0.029348414675192808,
+            "high": 0.14336612284197117
+          },
+          "3": {
+            "estimate": 0.10706238055848705,
+            "low": 0.029912557957055025,
+            "high": 0.1888657925848116
+          },
+          "4": {
+            "estimate": 0.0757722696026698,
+            "low": -0.01667162249726395,
+            "high": 0.17089153480148112
+          }
+        },
+        "holdout": {
+          "estimate": 0.0707806839898456,
+          "low": -0.013343274249616288,
+          "high": 0.14946262816063643
+        },
+        "min": 0.011765880373085347,
+        "max": 0.10706238055848705,
+        "positive_estimates": 5,
+        "cis_excluding_zero": 1
+      },
+      "rwm-rule-betan-over-li": {
+        "by_seed": {
+          "0": {
+            "estimate": -0.054151573062551694,
+            "low": -0.17224543605318704,
+            "high": 0.06149765739374102
+          },
+          "1": {
+            "estimate": 0.004321286973387739,
+            "low": -0.10608092969371857,
+            "high": 0.1105116598776675
+          },
+          "2": {
+            "estimate": -0.00827177044410854,
+            "low": -0.13348020666184776,
+            "high": 0.10441551200932178
+          },
+          "3": {
+            "estimate": 0.041144927122850006,
+            "low": -0.0710116322478068,
+            "high": 0.1510002551593267
+          },
+          "4": {
+            "estimate": 0.009854816167032765,
+            "low": -0.1117527541409129,
+            "high": 0.12819959478087767
+          }
+        },
+        "holdout": {
+          "estimate": 0.004863230554208564,
+          "low": -0.11939576220901602,
+          "high": 0.10201992223825054
+        },
+        "min": -0.054151573062551694,
+        "max": 0.041144927122850006,
+        "positive_estimates": 3,
+        "cis_excluding_zero": 0
       }
     },
     "alarm_ranges": {
@@ -13405,10 +13554,35 @@
       }
     }
   },
+  "forecast_label_audit": {
+    "scope": "primary Hanson 10 ms slices; after first merged n=1 onset",
+    "negative_after_first": 826,
+    "positive_before_repeats": 180,
+    "n_positive": 480,
+    "n_negative": 5255,
+    "broad_n2_only_negatives": 1349,
+    "efit_missing": {
+      "scope": "at least one missing beta_N/li/q95/qmin/W_MHD input",
+      "positive": 27,
+      "negative": 123,
+      "positive_fraction": 0.05625,
+      "negative_fraction": 0.02340627973358706
+    },
+    "rotation_raw": {
+      "rot_core_khz": {
+        "median": 75.29354858398438,
+        "max": 174.20616149902344
+      },
+      "rot_mid_khz": {
+        "median": 32.010658264160156,
+        "max": 184.8701629638672
+      }
+    }
+  },
   "external_details": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/evaluation_details.json",
-    "sha256": "051ac0d92df523087c82cfc1aa31529ed86afb97e66b543bc4ec14964531a329",
-    "bytes": 1861814,
+    "sha256": "5914f12f0767f5dc6de7d703fa0a4cc8795b1fd04d96bbf74e0a53bfe35bd236",
+    "bytes": 1867016,
     "omitted_keys": [
       "per_shot",
       "shots",

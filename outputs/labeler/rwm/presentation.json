@@ -1,7 +1,7 @@
 {
   "script": "scripts/labeler/rwm_tables.py",
   "source": "outputs/labeler/rwm/evaluation.json",
-  "source_sha256": "a5ef2c01b976d6707bbe3c775ae16f1da3f78168f424b7183152b142fe881a5f",
+  "source_sha256": "945d26751726372328a8992a72222ecb352e041360e834ce7ad4ac700d721370",
   "latex": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm.tex",
     "source_path": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/table_rwm.tex",
@@ -46,8 +46,8 @@
         "phase_controlled_auroc": {
           "json_path": "configs.rwm-brf.phase_controlled_auroc",
           "estimate": 0.5337573804158704,
-          "low": 0.43832175011536373,
-          "high": 0.6236245643079941
+          "low": 0.4359065321793412,
+          "high": 0.6248589220201699
         }
       },
       "rwm-rule-elapsed-time": {
@@ -90,8 +90,8 @@
         "phase_controlled_auroc": {
           "json_path": "configs.rwm-rule-elapsed-time.phase_controlled_auroc",
           "estimate": 0.521991500042785,
-          "low": 0.520015148266446,
-          "high": 0.5489396110602781
+          "low": 0.5106637385486236,
+          "high": 0.5363999718687644
         }
       },
       "rwm-rule-betan": {
@@ -134,8 +134,8 @@
         "phase_controlled_auroc": {
           "json_path": "configs.rwm-rule-betan.phase_controlled_auroc",
           "estimate": 0.5287515331298668,
-          "low": 0.41720693889290306,
-          "high": 0.634488570270699
+          "low": 0.40953604152001644,
+          "high": 0.6375200323867469
         }
       },
       "rwm-rule-betan-over-li": {
@@ -178,13 +178,13 @@
         "phase_controlled_auroc": {
           "json_path": "configs.rwm-rule-betan-over-li.phase_controlled_auroc",
           "estimate": 0.5879089534784221,
-          "low": 0.4762407853780383,
-          "high": 0.6910579613427574
+          "low": 0.4713608649179918,
+          "high": 0.6895454861349805
         }
       }
     },
-    "caption": "Within-RWM-shot timing with assumed negatives; no established skill beyond phase. Phase control compares pairs within campaign and 100 ms bins (at least 5 slices); elapsed time measures the residual-phase floor. Primary negatives end at the last target onset; broad adds later Hanson time. Cutoffs use inner-fold primary slices. Brackets: exploratory shot-bootstrap intervals at fixed predictions, unadjusted for multiplicity. Legacy differs in machine, inputs and validation.",
-    "caption_words": 65,
+    "caption": "Within-RWM-shot timing with assumed negatives. Phase-controlled AUROC 0.53--0.63 over 5 splits (seed 0 lowest); above the elapsed-time floor on every split, CI excluding zero on 1 of 5; never distinguishable from $\\beta_N/l_i$ alone. Phase control compares pairs within campaign and 100 ms bins (at least 5 slices); elapsed time measures the residual-phase floor. Primary negatives end at the last target onset: 480 positive / 5,255 assumed-negative slices (prevalence 8.37\\%). Broad adds later Hanson time and 1,349 negatives from $n=2$-only shots. Cutoffs use inner-fold primary slices. Brackets: exploratory shot-bootstrap intervals at fixed predictions, unadjusted for multiplicity. Legacy differs in machine, inputs and validation.",
+    "caption_words": 102,
     "legacy": {
       "source": "/scratch/gpfs/nc1514/FusionAIHub/.tmp/label_papers/Piccione_2022_Nucl._Fusion_62_036002.md",
       "cells": {
@@ -224,8 +224,123 @@
     "split_summary": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_split_summary.tex",
       "source_path": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/table_rwm_split_summary.tex",
-      "caption": "Forest scores and forest-minus-elapsed-time differences. Ranges are point estimates across seeds 0--4, not confidence intervals. Brackets: exploratory 95\\% shot-bootstrap intervals, unadjusted for multiplicity, at fixed predictions; individual scores use percentile intervals, paired differences use basic intervals. High-$\\beta$: $\\beta_N\\geq0.8$ shot p95; above-proxy: $\\beta_N/l_i>4$. Holdout retains four records across three dates; broad paired intervals are available for seed 0 and holdout only. The primary seed-3 lower bound rounds to $-0.000$; its unrounded value is negative.",
+      "caption": "Phase-controlled scores and paired phase differences (top); pooled forest scores and forest-minus-elapsed-time differences (bottom). Phase-controlled AUROC 0.53--0.63 over 5 splits (seed 0 lowest); above the elapsed-time floor on every split, CI excluding zero on 1 of 5; never distinguishable from $\\beta_N/l_i$ alone. Ranges are point estimates across seeds 0--4, not confidence intervals. Brackets: exploratory 95\\% shot-bootstrap intervals, unadjusted for multiplicity, at fixed predictions; individual scores use percentile intervals, paired differences use basic intervals. High-$\\beta$: $\\beta_N\\geq0.8$ shot p95; above-proxy: $\\beta_N/l_i>4$. Holdout retains four records across three dates; broad paired intervals are available for seed 0 and holdout only. The primary seed-3 lower bound rounds to $-0.000$; its unrounded value is negative.",
       "source": {
+        "split_sensitivity.phase_controlled_auroc": {
+          "by_seed": {
+            "0": {
+              "estimate": 0.5337573804158704,
+              "low": 0.4359065321793412,
+              "high": 0.6248589220201699
+            },
+            "1": {
+              "estimate": 0.5922302404518098,
+              "low": 0.509658562421827,
+              "high": 0.679910641220516
+            },
+            "2": {
+              "estimate": 0.5796371830343136,
+              "low": 0.4967997484226588,
+              "high": 0.6661975203593852
+            },
+            "3": {
+              "estimate": 0.6290538806012721,
+              "low": 0.548928091412632,
+              "high": 0.7062312483648875
+            },
+            "4": {
+              "estimate": 0.5977637696454549,
+              "low": 0.5062144811209105,
+              "high": 0.6908722839157221
+            }
+          },
+          "min": 0.5337573804158704,
+          "max": 0.6290538806012721,
+          "lowest_seed": "0",
+          "holdout": {
+            "estimate": 0.5927721840326307,
+            "low": 0.5166916537679644,
+            "high": 0.6794383094006398
+          }
+        },
+        "split_sensitivity.paired_phase": {
+          "rwm-rule-elapsed-time": {
+            "by_seed": {
+              "0": {
+                "estimate": 0.011765880373085347,
+                "low": -0.08107908276559098,
+                "high": 0.11288083028107676
+              },
+              "1": {
+                "estimate": 0.07023874040902478,
+                "low": -0.016505093124356884,
+                "high": 0.16026787489138047
+              },
+              "2": {
+                "estimate": 0.0576456829915285,
+                "low": -0.029348414675192808,
+                "high": 0.14336612284197117
+              },
+              "3": {
+                "estimate": 0.10706238055848705,
+                "low": 0.029912557957055025,
+                "high": 0.1888657925848116
+              },
+              "4": {
+                "estimate": 0.0757722696026698,
+                "low": -0.01667162249726395,
+                "high": 0.17089153480148112
+              }
+            },
+            "holdout": {
+              "estimate": 0.0707806839898456,
+              "low": -0.013343274249616288,
+              "high": 0.14946262816063643
+            },
+            "min": 0.011765880373085347,
+            "max": 0.10706238055848705,
+            "positive_estimates": 5,
+            "cis_excluding_zero": 1
+          },
+          "rwm-rule-betan-over-li": {
+            "by_seed": {
+              "0": {
+                "estimate": -0.054151573062551694,
+                "low": -0.17224543605318704,
+                "high": 0.06149765739374102
+              },
+              "1": {
+                "estimate": 0.004321286973387739,
+                "low": -0.10608092969371857,
+                "high": 0.1105116598776675
+              },
+              "2": {
+                "estimate": -0.00827177044410854,
+                "low": -0.13348020666184776,
+                "high": 0.10441551200932178
+              },
+              "3": {
+                "estimate": 0.041144927122850006,
+                "low": -0.0710116322478068,
+                "high": 0.1510002551593267
+              },
+              "4": {
+                "estimate": 0.009854816167032765,
+                "low": -0.1117527541409129,
+                "high": 0.12819959478087767
+              }
+            },
+            "holdout": {
+              "estimate": 0.004863230554208564,
+              "low": -0.11939576220901602,
+              "high": 0.10201992223825054
+            },
+            "min": -0.054151573062551694,
+            "max": 0.041144927122850006,
+            "positive_estimates": 3,
+            "cis_excluding_zero": 0
+          }
+        },
         "split_sensitivity.auroc_ranges": {
           "pooled": {
             "slice_auroc": {
@@ -1238,23 +1353,23 @@
         "phase_controlled_auroc": {
           "rwm-brf": {
             "estimate": 0.5337573804158704,
-            "low": 0.43832175011536373,
-            "high": 0.6236245643079941
+            "low": 0.4359065321793412,
+            "high": 0.6248589220201699
           },
           "rwm-rule-elapsed-time": {
             "estimate": 0.521991500042785,
-            "low": 0.520015148266446,
-            "high": 0.5489396110602781
+            "low": 0.5106637385486236,
+            "high": 0.5363999718687644
           },
           "rwm-rule-betan": {
             "estimate": 0.5287515331298668,
-            "low": 0.41720693889290306,
-            "high": 0.634488570270699
+            "low": 0.40953604152001644,
+            "high": 0.6375200323867469
           },
           "rwm-rule-betan-over-li": {
             "estimate": 0.5879089534784221,
-            "low": 0.4762407853780383,
-            "high": 0.6910579613427574
+            "low": 0.4713608649179918,
+            "high": 0.6895454861349805
           },
           "rwm-rule-rwm-candidates": {
             "estimate": 0.5,
@@ -1265,18 +1380,18 @@
         "paired_phase_controlled_auroc": {
           "rwm-brf - rwm-rule-elapsed-time": {
             "estimate": 0.011765880373085347,
-            "low": -0.06924226650639081,
-            "high": 0.12217107707534618
+            "low": -0.08107908276559098,
+            "high": 0.11288083028107676
           },
           "rwm-brf - rwm-rule-betan": {
             "estimate": 0.005005847286003617,
-            "low": -0.11478871880319125,
-            "high": 0.1309557352325516
+            "low": -0.12298802684429339,
+            "high": 0.13305122541288827
           },
           "rwm-brf - rwm-rule-betan-over-li": {
             "estimate": -0.054151573062551694,
-            "low": -0.16922257008732436,
-            "high": 0.062374992869305756
+            "low": -0.17224543605318704,
+            "high": 0.06149765739374102
           }
         },
         "configs.rwm-brf.within_shot_auroc": {
@@ -1731,7 +1846,7 @@
     "alarms": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_alarms.tex",
       "source_path": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/table_rwm_alarms.tex",
-      "caption": "Forest alarms across all five splits and the run-record holdout. D/E/M: Detected/Early/Missed among 30 target shots. The first considered alarm decides the primary shot category; any-warning precedence is a sensitivity. Per-onset counts retain all alarms. Brackets: 95\\% percentile shot-bootstrap intervals, including detection-minus-reference, conditional on fixed fitted predictions and unadjusted for multiplicity. Between-model differences elsewhere use basic paired intervals. No improvement over the approximate rate-matched random reference was established: all five difference intervals include zero; equivalence is not established. Warning medians condition on detected onsets. All continuous scalar rules were compared on the reference split only; their alarm results were not replayed over other split seeds. Comparison and Hanson incidences are unlabelled-shot incidences, not verified false-positive rates. Warning medians are conditional on the matching window; the reference-split median is $356$ {\\scriptsize $[286, 389]$} ms, near the 400 ms limit.",
+      "caption": "Forest alarms across all five splits and the run-record holdout. D/E/M: Detected/Early/Missed among 30 target shots. The first considered alarm decides the primary shot category; any-warning precedence is a sensitivity. Per-onset counts retain all alarms. Brackets: 95\\% percentile shot-bootstrap intervals, including detection-minus-reference, conditional on fixed fitted predictions and unadjusted for multiplicity. Between-model differences elsewhere use basic paired intervals. No improvement over the approximate rate-matched random reference was established: all five difference intervals include zero; equivalence is not established. Comparison and Hanson incidences are unlabelled-shot incidences, not verified false-positive rates. Warning medians are conditional on the matching window; the reference-split median is $356$ {\\scriptsize $[286, 389]$} ms, near the 400 ms limit.",
       "source": {
         "configs.rwm-brf": {
           "0": {
@@ -4905,6 +5020,7 @@
     "Within-shot AUROC \u2014 primary and broad Hanson masks (reference split, seed 0)",
     "Paired within-shot mean AUROC differences (95% basic shot CIs)",
     "Phase-controlled primary AUROC \u2014 within campaign and 100 ms time bins",
+    "Phase split sensitivity \u2014 five seeds and run-record holdout",
     "Phase-bin-width sensitivity \u2014 primary mask, campaign control retained",
     "Paired phase-controlled AUROC \u2014 forest minus scalar",
     "Comparison pool \u2014 reference forest alarms by run title",
@@ -4943,7 +5059,7 @@
   "documentation": {
     "doc": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/docs/labeler/rwm_baseline.md",
     "readme": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/data/events/resistive_wall_mode/README.md",
-    "words": 2637,
+    "words": 3019,
     "warning_distribution": {
       "n": 9,
       "min_ms": 32.0,
@@ -4960,16 +5076,20 @@
   },
   "rotation_ablation_source": {
     "path": "outputs/labeler/rwm/rotation_ablation.json",
-    "sha256": "ae686b2306f298e5538bec5ef04c17c94dc7164f7d2f9a2e3a6aebbee012d00e"
+    "sha256": "fc73cdb2ea1694a1f8951cc7235dd9030ebd658064757e75ba0e0f4c63749592"
   },
   "comparison_sensitivity_source": {
     "path": "outputs/labeler/rwm/comparison_sensitivity.json",
-    "sha256": "412e0de2ba3f6a6cc94a212b49d8ad88ae81726250bd7a95845db4a22728ee80"
+    "sha256": "0b1d01387ef626288ee7ace3be2fe5bb3f09ce4186b4ed7c52c7bf08d08859ac"
+  },
+  "growth_source": {
+    "path": "outputs/labeler/rwm/growth.json",
+    "sha256": "c54d6f3a5af0aa6b40ae3a6676a8e3bd6c14e426f3c31e0a54e636dd86d1d903"
   },
   "external_evaluation_details": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/evaluation_details.json",
-    "sha256": "051ac0d92df523087c82cfc1aa31529ed86afb97e66b543bc4ec14964531a329",
-    "bytes": 1861814,
+    "sha256": "5914f12f0767f5dc6de7d703fa0a4cc8795b1fd04d96bbf74e0a53bfe35bd236",
+    "bytes": 1867016,
     "omitted_keys": [
       "per_shot",
       "shots",
@@ -4987,37 +5107,37 @@
     "main": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm.pdf",
-        "sha256": "2d57a976b13588e4258b0f6f62bbea2dc10d010095bbcb123e1e7b56e8daf6d9"
+        "sha256": "a765daaf8e66d5c9056ed0336c7cbd2dd01476d87d9faecb3f7b591fbd37be11"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm-1.png",
-        "sha256": "9b5d160b8be6663add08053d77d8bf463bc7aa69a3247763472ca5403fb5c84c"
+        "sha256": "e95c30e924f79d708578cec78d6b1791b9e769db1d7cdce052bd5802c9ccd3bd"
       }
     ],
     "split_summary": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_split_summary.pdf",
-        "sha256": "4c3e6bf042b9e892e72eaa181c1658ff63f97a44a234933063600ee0493e682a"
+        "sha256": "4484121fb265fb8d0d775a685b83116866490939435f1dec2212239c22911339"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_split_summary-1.png",
-        "sha256": "5fa82a7bbc9d9f239e22151f2d3176c5799832a59eb3ce4a8abe71d71eac49ae"
+        "sha256": "7f06efdee971d6f633f52b0cd0e75ec988b35e2cc7853f7aaa8bae32bdaa1b40"
       }
     ],
     "within_shot": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_within_shot.pdf",
-        "sha256": "17a62b010f53516ef6348009d721782478d2ea758f118ce16239c5570b874df4"
+        "sha256": "5ff220353ed358c6c867d718b5b8f29bfc730cc80e0db688e3772709e5270b76"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_within_shot-1.png",
-        "sha256": "3109950d93cdb09bfbd59610feca721fe8a1b7c8833bccdfd5a7f305144e4ba9"
+        "sha256": "305ef5a1ee068e346bcc18ae642064498e9872468022488b4d3d01ae3e841b0f"
       }
     ],
     "campaign_pairs": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_campaign_pairs.pdf",
-        "sha256": "f206eb3e98a3f57391575e85d11fc5e470f2b9ae2a569ef32a9e90fee74dd332"
+        "sha256": "f9aa11bfdf5ad063e235f9028983c9542c09d0e6a17d0345128b90f9f23da03e"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_campaign_pairs-1.png",
@@ -5027,17 +5147,17 @@
     "alarms": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_alarms.pdf",
-        "sha256": "8b98a1467a9830dbb7aaaf941014f091588612f00e1ffe20c6ee19611834f4d6"
+        "sha256": "78a80e51d36ea0de36457b9091ac557b3881b215bac5db8b61955a96b209a842"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_alarms-1.png",
-        "sha256": "197189cf34c10f5f1d2ce352dceb612fd64409d5da581ba6b1b881b5cfa8028e"
+        "sha256": "7a4a129abab30a6f61cabdb5ceb3af4c09158e115e16daeda26133c2904889ac"
       }
     ],
     "onset_actual": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_actual.pdf",
-        "sha256": "fd462da8dec5284869223dc1f39b8790d5b9c9b75a44bd32f6523111669f5467"
+        "sha256": "5d8e062b2bb45c5e57fdbe0cf9977548f79a0924c4e4467fdd13d0466615fe8a"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_actual-1.png",
@@ -5047,7 +5167,7 @@
     "onset_window": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_window.pdf",
-        "sha256": "a47d433f9fe4e4c2f089bc5e96bb0489670659ab83ff3fa5c0fe184b12a16574"
+        "sha256": "c71dca7907d47d0bf88e7dade3414a895b86b3748a27092410545822701d6a23"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_window-1.png",
@@ -5057,52 +5177,60 @@
   },
   "supplied_check_logs": {
     "covering_tests": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix10-covering-tests.log",
-      "output": "........................................................................ [ 64%]\n.......................................                                  [100%]\n111 passed in 6.75s"
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix11-covering-tests.log",
+      "output": ".......................................................................  [100%]\n71 passed in 5.15s"
     },
     "ruff_check": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix10-ruff.log",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix11-ruff.log",
       "output": "All checks passed!"
     },
     "python_format": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix10-format.log",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix11-format.log",
       "output": "7 files already formatted"
     },
     "table_and_record_validation": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix10-validation.log",
-      "output": "PASS: 15 baseline/split/full-trace/holdout records independently reproduce all phase widths; counts, pooled/alarm metrics and fold rules unchanged\nPASS: comparison-negative and no-rotation phase scores and paired points reproduce independently\nPASS: all three forest-minus-scalar phase differences use regenerated points\nPASS: 612 rows / 165 shots; all non-attribute export columns unchanged; all 56 original mode/time/source tuples preserved; six n=2 present intervals identified directly\nPASS: every saved prediction checksum unchanged; no refit/tuning guards passed all three replays\nPASS: caption 65 words; doc 2637 words; screen absent from forecasting tables; causal/unhedged claims removed\nPASS: external-detail checksums verified on load"
-    },
-    "empty_warning_generation": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix10-empty-green.log",
-      "output": "PASS: zero-warning saved evaluation regenerates documentation with unavailable warning distribution"
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix11-validation.log",
+      "output": "evaluation nonphase metrics/counts/folds/rules preserved\ncomparison_sensitivity nonphase metrics/counts/folds/rules preserved\nrotation_ablation nonphase metrics/counts/folds/rules preserved\n6 forest phase points and both paired differences independently reproduced; 18 duplicate-shot draws agree with direct allowed-pair enumeration\nfirst-onset pooled scores reproduced: 300 positives / 4429 negatives\ngrowth/mask/split counts, table copies and external record hashes validated"
     },
     "latex_compile": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix10-latex.log",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix11-latex.log",
       "output": "table_rwm: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_alarms: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_campaign_pairs: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_onset_actual: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_onset_window: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_split_summary: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_within_shot: compiled twice and rendered at 150 dpi\nPages:           1"
     },
     "visual_inspection": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix10-visual.log",
-      "output": "Viewed all eight regenerated 150-dpi PNGs using view_image: table_rwm-1.png, table_rwm_alarms-1.png, table_rwm_within_shot-1.png, table_rwm_campaign_pairs-1.png, table_rwm_split_summary-1.png, table_rwm_onset_actual-1.png, table_rwm_onset_window-1.png and rwm_onset_scores.png under $LABELER_ROOT/round4/rwm/.\nFinal alarm-table image was viewed again after spacing/range-row repair. All nine columns visible, warning and incidence brackets legible, no overlap/clipping; paired tables and onset rows legible. Main caption compact, within-shot point column absent. All final LaTeX compilation outputs are warning-free; all seven tables one page. Score figure keeps vector PDF and legible column-width labels."
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix11-visual.log",
+      "output": "Viewed all eight regenerated 150-dpi PNGs with view_image at original resolution:\n- table_rwm-1.png: revised phase CIs, five-split headline and 480/5,255 denominator/1,349 n=2-only addition readable.\n- table_rwm_split_summary-1.png: separate phase panel for seeds 0\u20134 and holdout; forest-minus-time and forest-minus-beta intervals readable; pooled evidence retained below.\n- table_rwm_alarms-1.png: shortened caption, one conditional-warning-median point, no absent-row sentence; no clipping.\n- table_rwm_within_shot-1.png: regenerated phase and paired intervals readable.\n- table_rwm_campaign_pairs-1.png: readable, unchanged nonphase values.\n- table_rwm_onset_actual-1.png and table_rwm_onset_window-1.png: all 48 rows visible; actual/window distinction and missing-EFIT categories legible.\n- rwm_onset_scores.png: six Hanson/two comparison panels, distinct axes/legend and onset bands legible; no title/version labels or clipping.\nAll eight artifacts under /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/. Corresponding vector PDFs retained. LaTeX compile log reports seven single-page tables and no layout warnings."
     },
     "baseline_saved_replay": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix10-rescore.log",
-      "output": "completed rwm-rule-rwm-candidates seed=0\ncompleted rwm-rule-elapsed-time seed=0\ncompleted rwm-rule-betan seed=0\ncompleted rwm-rule-betan-over-li seed=0\ncompleted rwm-brf seed=0\ncompleted rwm-brf seed=1\ncompleted rwm-brf seed=2\ncompleted rwm-brf seed=3\ncompleted rwm-brf seed=4\ncompleted leave-one-run-record-out\nwrote /scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/evaluation.json\nPASS: no fit or tuning call during saved rescoring"
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix11-rescore.log",
+      "output": "completed rwm-rule-rwm-candidates seed=0\ncompleted rwm-rule-elapsed-time seed=0\ncompleted rwm-rule-betan-over-li seed=0\ncompleted rwm-rule-betan seed=0\ncompleted rwm-brf seed=0\ncompleted rwm-brf seed=1\ncompleted rwm-brf seed=2\ncompleted rwm-brf seed=3\ncompleted rwm-brf seed=4\ncompleted leave-one-run-record-out\nwrote /scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/evaluation.json"
     },
     "comparison_saved_replay": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix10-comparison-replay.log",
-      "output": "wrote /scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/comparison_sensitivity.json\nPASS: no fit or tuning call during saved rescoring"
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix11-comparison-replay.log",
+      "output": "wrote /scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/comparison_sensitivity.json"
     },
     "rotation_saved_replay": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix10-rotation-replay.log",
-      "output": "wrote /scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/rotation_ablation.json\nPASS: no fit or tuning call during saved rescoring"
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix11-rotation-replay.log",
+      "output": "wrote /scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/rotation_ablation.json"
+    },
+    "growth_regeneration": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix11-growth.log",
+      "output": "{\n  \"script\": \"scripts/labeler/rwm_growth.py\",\n  \"onsets\": {\n    \"listed\": 56,\n    \"n1\": 48,\n    \"n2\": 6,\n    \"shots\": 33\n  },\n  \"onset_window_ms\": 20.0,\n  \"annotation_status\": \"20 ms tau_w convention; not a measured growth interval\",\n  \"search\": {\n    \"offsets_ms\": [\n      -150.0,\n      -148.0,\n      -146.0,\n      -144.0,\n      -142.0,\n      -140.0,\n      -138.0,\n      -136.0,\n      -134.0,\n      -132.0,\n      -130.0,\n      -128.0,\n      -126.0,\n      -124.0,\n      -122.0,\n      -120.0,\n      -118.0,\n      -116.0,\n      -114.0,\n      -112.0,\n      -110.0,\n      -108.0,\n      -106.0,\n      -104.0,\n      -102.0,\n      -100.0,\n      -98.0,\n      -96.0,\n      -94.0,\n      -92.0,\n      -90.0,\n      -88.0,\n      -86.0,\n      -84.0,\n      -82.0,\n      -80.0,\n      -78.0,\n      -76.0,\n      -74.0,\n      -72.0,\n      -70.0,\n      -68.0,\n      -66.0,\n      -64.0,\n      -62.0,\n      -60.0,\n      -58.0,\n      -56.0,\n      -54.0,\n      -52.0,\n      -50.0,\n      -48.0,\n      -46.0,\n      -44.0,\n      -42.0,\n      -40.0,\n      -38.0,\n      -36.0,\n      -34.0,\n      -32.0,\n      -30.0,\n      -28.0,\n      -26.0,\n      -24.0,\n      -22.0,\n      -20.0,\n      -18.0,\n      -16.0,\n      -14.0,\n      -12.0,\n      -10.0,\n      -8.0,\n      -6.0,\n      -4.0,\n      -2.0,\n      0.0,\n      2.0,\n      4.0,\n      6.0,\n      8.0,\n      10.0,\n      12.0,\n      14.0,\n      16.0,\n      18.0,\n      20.0,\n      22.0,\n      24.0,\n      26.0,\n      28.0\n    ],\n    \"same_search_at_controls\": true,\n    \"onsets_csv\": \"/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/growth_onsets.csv\",\n    \"controls_csv\": \"/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/growth_controls.csv\"\n  },\n  \"trailing_window_ms\": 20.0,\n  \"controls\": {\n    \"per_shot\": 300,\n    \"exclusion_ms\": 170.0,\n    \"seed\": 0,\n    \"n\": 7704,\n    \"shots\": 30\n  },\n  \"max_growth_per_s_n1\": {\n    \"n\": 48,\n    \"q1\": 90.72956220408226,\n    \"median\": 111.71038802003883,\n    \"q3\": 173.7079858243532\n  },\n  \"search_max_efold_ms_n1\": {\n    \"n\": 48,\n    \"q1\": 5.756811318850975,\n    \"median\": 8.951917726438296,\n    \"q3\": 11.023510304614344\n  },\n  \"max_growth_at_ms_n1\": {\n    \"n\": 48,\n    \"q1\": -103.5,\n    \"median\": -39.0,\n    \"q3\": 0.0\n  },\n  \"slope_at_onset_per_s_n1\": {\n    \"n\": 48,\n    \"q1\": -47.561383158780885,\n    \"median\": -1.7455352889133646,\n    \"q3\": 25.322174320293527\n  },\n  \"control_slope_per_s\": {\n    \"n\": 7704,\n    \"q1\": -19.504226936035312,\n    \"median\": 1.935240641607814e-08,\n    \"q3\": 21.611437207384434\n  },\n  \"control_max_growth_per_s_n1\": {\n    \"n\": 7704,\n    \"q1\": 66.15973340810169,\n    \"median\": 109.82952529635003,\n    \"q3\": 170.10962510580248\n  },\n  \"control_search_max_efold_ms\": {\n    \"n\": 7704,\n    \"q1\": 5.878562525332289,\n    \"median\": 9.105019777712114,\n    \"q3\": 15.114933940733557\n  },\n  \"log_ratio_n1\": {\n    \"10\": {\n      \"onset\": {\n        \"n\": 48,\n        \"q1\": -0.3087392727308337,\n        \"median\": -0.004225189312686787,\n        \"q3\": 0.31195313303736044\n      },\n      \"control\": {\n        \"n\": 7704,\n        \"q1\": -0.2803509678238022,\n        \"median\": 0.0,\n        \"q3\": 0.29806341930163727\n      },\n      \"control_p90\": 0.8552014585846496,\n      \"fraction_of_onsets_above_control_p90\": 0.14583333333333334\n    },\n    \"20\": {\n      \"onset\": {\n        \"n\": 48,\n        \"q1\": -0.25132874607588807,\n        \"median\": 0.07877096418003995,\n        \"q3\": 0.6625697708436384\n      },\n      \"control\": {\n        \"n\": 7704,\n        \"q1\": -0.3250926369177873,\n        \"median\": 0.0,\n        \"q3\": 0.35139387201515015\n      },\n      \"control_p90\": 0.9426730429012918,\n      \"fraction_of_onsets_above_control_p90\": 0.14583333333333334\n    },\n    \"40\": {\n      \"onset\": {\n        \"n\": 48,\n        \"q1\": -0.5735470678921812,\n        \"median\": -0.0005846799216346829,\n        \"q3\": 0.5023268579922899\n      },\n      \"control\": {\n        \"n\": 7704,\n        \"q1\": -0.40786825175002034,\n        \"median\": 0.0,\n        \"q3\": 0.4210431935468536\n      },\n      \"control_p90\": 1.1800506177145307,\n      \"fraction_of_onsets_above_control_p90\": 0.125\n    },\n    \"80\": {\n      \"onset\": {\n        \"n\": 48,\n        \"q1\": -0.5433754302480741,\n        \"median\": 0.23547043524787098,\n        \"q3\": 0.7125633728939589\n      },\n      \"control\": {\n        \"n\": 7704,\n        \"q1\": -0.47603009349655095,\n        \"median\": 0.0042862723603499416,\n        \"q3\": 0.5980877946900987\n      },\n      \"control_p90\": 1.391850488253651,\n      \"fraction_of_onsets_above_control_p90\": 0.1875\n    },\n    \"150\": {\n      \"onset\": {\n        \"n\": 48,\n        \"q1\": -0.750224840059082,\n        \"median\": 0.10410176700756255,\n        \"q3\": 0.6915066465501547\n      },\n      \"control\": {\n        \"n\": 7704,\n        \"q1\": -0.5481233227994615,\n        \"median\": 0.04988447447838988,\n        \"q3\": 0.757868358850843\n      },\n      \"control_p90\": 1.7708976799587124,\n      \"fraction_of_onsets_above_control_p90\": 0.08333333333333333\n    }\n  },\n  \"betan\": {\n    \"interpolation\": \"finite bracketing samples only; no extrapolation\",\n    \"max_bracket_gap_ms\": 50.0,\n    \"collapse_scope\": \"merged n=1 onsets with finite beta at o-100 and o+40 ms\",\n    \"eligible_onsets\": 43,\n    \"unknown_onsets\": 5,\n    \"dropping_onsets\": 26,\n    \"m100\": {\n      \"n\": 45,\n      \"q1\": 2.5836085081100464,\n      \"median\": 2.7750233787298204,\n      \"q3\": 3.009746414422989\n    },\n    \"at_onset\": {\n      \"n\": 44,\n      \"q1\": 2.5636970624327664,\n      \"median\": 2.716927877664568,\n      \"q3\": 2.9081169724464444\n    },\n    \"p40\": {\n      \"n\": 46,\n      \"q1\": 1.1269126644730594,\n      \"median\": 1.9339821206033245,\n      \"q3\": 2.3504022568464267\n    },\n    \"fraction_dropping_20pct_by_p40\": 0.6046511627906976\n  }\n}"
+    },
+    "empty_efit_generation": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix11-empty-efit-green.log",
+      "output": "{\n  \"script\": \"scripts/labeler/rwm_growth.py\",\n  \"onsets\": {\n    \"listed\": 1,\n    \"n1\": 1,\n    \"n2\": 0,\n    \"shots\": 1\n  },\n  \"onset_window_ms\": 20.0,\n  \"annotation_status\": \"20 ms tau_w convention; not a measured growth interval\",\n  \"search\": {\n    \"offsets_ms\": [\n      -150.0,\n      -148.0,\n      -146.0,\n      -144.0,\n      -142.0,\n      -140.0,\n      -138.0,\n      -136.0,\n      -134.0,\n      -132.0,\n      -130.0,\n      -128.0,\n      -126.0,\n      -124.0,\n      -122.0,\n      -120.0,\n      -118.0,\n      -116.0,\n      -114.0,\n      -112.0,\n      -110.0,\n      -108.0,\n      -106.0,\n      -104.0,\n      -102.0,\n      -100.0,\n      -98.0,\n      -96.0,\n      -94.0,\n      -92.0,\n      -90.0,\n      -88.0,\n      -86.0,\n      -84.0,\n      -82.0,\n      -80.0,\n      -78.0,\n      -76.0,\n      -74.0,\n      -72.0,\n      -70.0,\n      -68.0,\n      -66.0,\n      -64.0,\n      -62.0,\n      -60.0,\n      -58.0,\n      -56.0,\n      -54.0,\n      -52.0,\n      -50.0,\n      -48.0,\n      -46.0,\n      -44.0,\n      -42.0,\n      -40.0,\n      -38.0,\n      -36.0,\n      -34.0,\n      -32.0,\n      -30.0,\n      -28.0,\n      -26.0,\n      -24.0,\n      -22.0,\n      -20.0,\n      -18.0,\n      -16.0,\n      -14.0,\n      -12.0,\n      -10.0,\n      -8.0,\n      -6.0,\n      -4.0,\n      -2.0,\n      0.0,\n      2.0,\n      4.0,\n      6.0,\n      8.0,\n      10.0,\n      12.0,\n      14.0,\n      16.0,\n      18.0,\n      20.0,\n      22.0,\n      24.0,\n      26.0,\n      28.0\n    ],\n    \"same_search_at_controls\": true,\n    \"onsets_csv\": \"/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix11-empty-efit-fixture/round4/rwm/growth_onsets.csv\",\n    \"controls_csv\": \"/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix11-empty-efit-fixture/round4/rwm/growth_controls.csv\"\n  },\n  \"trailing_window_ms\": 20.0,\n  \"controls\": {\n    \"per_shot\": 300,\n    \"exclusion_ms\": 170.0,\n    \"seed\": 0,\n    \"n\": 273,\n    \"shots\": 1\n  },\n  \"max_growth_per_s_n1\": {\n    \"n\": 1,\n    \"q1\": 0.0,\n    \"median\": 0.0,\n    \"q3\": 0.0\n  },\n  \"search_max_efold_ms_n1\": {\n    \"n\": 0\n  },\n  \"max_growth_at_ms_n1\": {\n    \"n\": 1,\n    \"q1\": -150.0,\n    \"median\": -150.0,\n    \"q3\": -150.0\n  },\n  \"slope_at_onset_per_s_n1\": {\n    \"n\": 1,\n    \"q1\": 0.0,\n    \"median\": 0.0,\n    \"q3\": 0.0\n  },\n  \"control_slope_per_s\": {\n    \"n\": 273,\n    \"q1\": 0.0,\n    \"median\": 0.0,\n    \"q3\": 0.0\n  },\n  \"control_max_growth_per_s_n1\": {\n    \"n\": 273,\n    \"q1\": 0.0,\n    \"median\": 0.0,\n    \"q3\": 0.0\n  },\n  \"control_search_max_efold_ms\": {\n    \"n\": 0\n  },\n  \"log_ratio_n1\": {\n    \"10\": {\n      \"onset\": {\n        \"n\": 1,\n        \"q1\": 0.0,\n        \"median\": 0.0,\n        \"q3\": 0.0\n      },\n      \"control\": {\n        \"n\": 273,\n        \"q1\": 0.0,\n        \"median\": 0.0,\n        \"q3\": 0.0\n      },\n      \"control_p90\": 0.0,\n      \"fraction_of_onsets_above_control_p90\": 0.0\n    },\n    \"20\": {\n      \"onset\": {\n        \"n\": 1,\n        \"q1\": 0.0,\n        \"median\": 0.0,\n        \"q3\": 0.0\n      },\n      \"control\": {\n        \"n\": 273,\n        \"q1\": 0.0,\n        \"median\": 0.0,\n        \"q3\": 0.0\n      },\n      \"control_p90\": 0.0,\n      \"fraction_of_onsets_above_control_p90\": 0.0\n    },\n    \"40\": {\n      \"onset\": {\n        \"n\": 1,\n        \"q1\": 0.0,\n        \"median\": 0.0,\n        \"q3\": 0.0\n      },\n      \"control\": {\n        \"n\": 273,\n        \"q1\": 0.0,\n        \"median\": 0.0,\n        \"q3\": 0.0\n      },\n      \"control_p90\": 0.0,\n      \"fraction_of_onsets_above_control_p90\": 0.0\n    },\n    \"80\": {\n      \"onset\": {\n        \"n\": 1,\n        \"q1\": 0.0,\n        \"median\": 0.0,\n        \"q3\": 0.0\n      },\n      \"control\": {\n        \"n\": 273,\n        \"q1\": 0.0,\n        \"median\": 0.0,\n        \"q3\": 0.0\n      },\n      \"control_p90\": 0.0,\n      \"fraction_of_onsets_above_control_p90\": 0.0\n    },\n    \"150\": {\n      \"onset\": {\n        \"n\": 1,\n        \"q1\": 0.0,\n        \"median\": 0.0,\n        \"q3\": 0.0\n      },\n      \"control\": {\n        \"n\": 273,\n        \"q1\": 0.0,\n        \"median\": 0.0,\n        \"q3\": 0.0\n      },\n      \"control_p90\": 0.0,\n      \"fraction_of_onsets_above_control_p90\": 0.0\n    }\n  },\n  \"betan\": {\n    \"interpolation\": \"finite bracketing samples only; no extrapolation\",\n    \"max_bracket_gap_ms\": 50.0,\n    \"collapse_scope\": \"merged n=1 onsets with finite beta at o-100 and o+40 ms\",\n    \"eligible_onsets\": 0,\n    \"unknown_onsets\": 1,\n    \"dropping_onsets\": 0,\n    \"m100\": {\n      \"n\": 0\n    },\n    \"at_onset\": {\n      \"n\": 0\n    },\n    \"p40\": {\n      \"n\": 0\n    },\n    \"fraction_dropping_20pct_by_p40\": null\n  }\n}\nPASS: zero eligible EFIT pairs serialize as unknown with null fraction"
     },
     "final_code_review": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix10-review.log",
-      "output": "Read-only fresh reviewer: no Critical or Important issues. Independently verified all nonphase metrics/counts/options/fold rules against base, 612 identical non-attribute rows, all 56 source onset tuples, six phase widths across 17 records, external detail hashes, one fold per shot, 55 focused tests, source/caption limits, and both paper tables legible.\nMinor valid-zero-warning crash: reproduced in fix10-empty-red.log, guarded nullable distribution/range, and fixed by fix10-empty-green.log. Current nine-warning results unchanged.\nTransient rendered-artifact hash mismatch while rendering: final presentation regeneration and fix10-artifact-hashes.log verify actual final artifacts.\nNo remaining actionable findings. Operational false-positive performance, verified stable-negative effects, sensor semantics/timing remain out of scope and untested. Root independently verifies every saved prediction against its pre-round SHA-256 snapshot."
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix11-review.log",
+      "output": "RWM fix round 11 independent read-only review against HEAD 4333c56b\nReviewed both round-11 reviews, binding implementer rules, temporary plan, changed library/scorer/growth/table source, tests, JSON diffs, README/doc and LaTeX sources.\nCritical: none.\nImportant: none.\nMinor: scripts/labeler/rwm_growth.py:212-214 wraps the empty-eligible None branch in float(), raising TypeError when no onset has finite reference brackets. Move float inside the eligible branch; actual 43-eligible corpus results are unaffected. Reported to implementer for correction.\nEvidence: 100 randomized explicit positive-negative pair enumerations agree with revised phase AUROC with repeated copies, ties, multiple campaigns, exclusions and small/one-class cells. Additional independent checks passed exact first-onset boundary with otherwise class-eligible labels, repeat onsets, missing onset targets, wholly missing EFIT data, and finite bracket widths 50 versus 51 ms. Commands used prescribed pixi environment, no fetching and no bytecode writes.\nCoverage: all seeds 0-4 and run-record holdout phase scores and both paired differences are carried into split_sensitivity and rendered together; headline distinguishes split-dependent elapsed-time margin from inconclusive beta_N/li differences. First-onset counts (826 negatives, 180 positives removed; 300/4429 retained), missingness caveat, raw rotation ambiguity, 26/43 eligible collapse plus five unknown, main-table denominators/n=2 addition and trimmed alarm caption address the prior review findings. Saved replay code retains fit/write guards; prediction-preservation log records all 17 files OK.\nDeclined to judge: physical TROTFIT unit identity, actual mode identity/growth duration, online timing validity and true negative coverage remain unresolved scientific questions explicitly documented. No owner PDFs, network, full suite or refitting used. Root retains PNG inspection, full artifact validation and final test/lint execution; this review assessed table source organization, not rendered font sizing.\nAssessment: suitable to complete after correcting the one empty-eligible guard and completing root's artifact/visual validation. No blocker for the reported fixed-corpus results.\n\nRoot resolution: fixed the zero-eligible EFIT guard by moving float() inside the eligible branch. The isolated all-missing-EFIT fixture failed with TypeError before the patch (fix11-empty-efit-red.log), then passed and serialized 0 eligible / 1 unknown with a null collapse fraction (fix11-empty-efit-green.log). No deferred review findings."
+    },
+    "saved_prediction_preservation": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix11-predictions.log",
+      "output": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf-comparison-negative_seed0.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf-no-rotation_seed0.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_full_trace.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_leave_run_record_out.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_seed0.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_seed1.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_seed2.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_seed3.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_seed4.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-betan-over-li_full_trace.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-betan-over-li_seed0.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-betan_full_trace.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-betan_seed0.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-elapsed-time_full_trace.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-elapsed-time_seed0.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-rwm-candidates_full_trace.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-rwm-candidates_seed0.parquet: OK"
     },
     "artifact_hashes": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix10-artifact-hashes.log",
-      "output": "PASS: all 14 final table PDF/PNG artifact hashes and E/C/A source hashes match\nPASS: all eight PNGs inspected after final layout; zero final LaTeX warnings\nPASS: caption words 65 doc words 2637"
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix11-artifact-hashes.log",
+      "output": "table_rwm.pdf SHA-256 OK\ntable_rwm-1.png SHA-256 OK\ntable_rwm_split_summary.pdf SHA-256 OK\ntable_rwm_split_summary-1.png SHA-256 OK\ntable_rwm_within_shot.pdf SHA-256 OK\ntable_rwm_within_shot-1.png SHA-256 OK\ntable_rwm_campaign_pairs.pdf SHA-256 OK\ntable_rwm_campaign_pairs-1.png SHA-256 OK\ntable_rwm_alarms.pdf SHA-256 OK\ntable_rwm_alarms-1.png SHA-256 OK\ntable_rwm_onset_actual.pdf SHA-256 OK\ntable_rwm_onset_actual-1.png SHA-256 OK\ntable_rwm_onset_window.pdf SHA-256 OK\ntable_rwm_onset_window-1.png SHA-256 OK\nE/C/A/G source hashes and 14 rendered table artifact hashes verified"
     }
   }
 }

@@ -2,6 +2,18 @@
 \centering
 \small
 \setlength{\tabcolsep}{2pt}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Evaluation & Forest phase AUROC & Forest $-$ elapsed time & Forest $-$ $\beta_N/l_i$ \\
+\midrule
+Seed 0 & $0.534$ {\scriptsize $[0.436, 0.625]$} & $0.012$ {\scriptsize $[-0.081, 0.113]$} & $-0.054$ {\scriptsize $[-0.172, 0.061]$} \\
+Seed 1 & $0.592$ {\scriptsize $[0.510, 0.680]$} & $0.070$ {\scriptsize $[-0.017, 0.160]$} & $0.004$ {\scriptsize $[-0.106, 0.111]$} \\
+Seed 2 & $0.580$ {\scriptsize $[0.497, 0.666]$} & $0.058$ {\scriptsize $[-0.029, 0.143]$} & $-0.008$ {\scriptsize $[-0.133, 0.104]$} \\
+Seed 3 & $0.629$ {\scriptsize $[0.549, 0.706]$} & $0.107$ {\scriptsize $[0.030, 0.189]$} & $0.041$ {\scriptsize $[-0.071, 0.151]$} \\
+Seed 4 & $0.598$ {\scriptsize $[0.506, 0.691]$} & $0.076$ {\scriptsize $[-0.017, 0.171]$} & $0.010$ {\scriptsize $[-0.112, 0.128]$} \\
+Run-record holdout & $0.593$ {\scriptsize $[0.517, 0.679]$} & $0.071$ {\scriptsize $[-0.013, 0.149]$} & $0.005$ {\scriptsize $[-0.119, 0.102]$} \\
+\bottomrule
+\end{tabular}\par\vspace{5pt}
 \begin{tabular}{@{}llcccc@{}}
 \toprule
 Scope & Evaluation & \shortstack{Primary\\AUROC} & \shortstack{Broad\\AUROC} & \shortstack{High-$\beta$ conditional\\AUROC} & \shortstack{Above-proxy conditional\\AUROC} \\
@@ -21,5 +33,5 @@ Pooled difference & Five-split range & $0.001$ to $0.047$ & -- & $-0.040$ to $0.
 Pooled difference & Run-record holdout & $0.020$ {\scriptsize $[-0.033, 0.080]$} & $0.362$ {\scriptsize $[0.304, 0.428]$} & $-0.021$ {\scriptsize $[-0.097, 0.069]$} & $-0.017$ {\scriptsize $[-0.123, 0.105]$} \\
 \bottomrule
 \end{tabular}
-\caption{Forest scores and forest-minus-elapsed-time differences. Ranges are point estimates across seeds 0--4, not confidence intervals. Brackets: exploratory 95\% shot-bootstrap intervals, unadjusted for multiplicity, at fixed predictions; individual scores use percentile intervals, paired differences use basic intervals. High-$\beta$: $\beta_N\geq0.8$ shot p95; above-proxy: $\beta_N/l_i>4$. Holdout retains four records across three dates; broad paired intervals are available for seed 0 and holdout only. The primary seed-3 lower bound rounds to $-0.000$; its unrounded value is negative.}
+\caption{Phase-controlled scores and paired phase differences (top); pooled forest scores and forest-minus-elapsed-time differences (bottom). Phase-controlled AUROC 0.53--0.63 over 5 splits (seed 0 lowest); above the elapsed-time floor on every split, CI excluding zero on 1 of 5; never distinguishable from $\beta_N/l_i$ alone. Ranges are point estimates across seeds 0--4, not confidence intervals. Brackets: exploratory 95\% shot-bootstrap intervals, unadjusted for multiplicity, at fixed predictions; individual scores use percentile intervals, paired differences use basic intervals. High-$\beta$: $\beta_N\geq0.8$ shot p95; above-proxy: $\beta_N/l_i>4$. Holdout retains four records across three dates; broad paired intervals are available for seed 0 and holdout only. The primary seed-3 lower bound rounds to $-0.000$; its unrounded value is negative.}
 \end{table*}

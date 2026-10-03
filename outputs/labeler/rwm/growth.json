@@ -238,24 +238,30 @@
     }
   },
   "betan": {
+    "interpolation": "finite bracketing samples only; no extrapolation",
+    "max_bracket_gap_ms": 50.0,
+    "collapse_scope": "merged n=1 onsets with finite beta at o-100 and o+40 ms",
+    "eligible_onsets": 43,
+    "unknown_onsets": 5,
+    "dropping_onsets": 26,
     "m100": {
-      "n": 48,
-      "q1": 2.550734955072403,
-      "median": 2.744566243886948,
-      "q3": 3.0052198067307474
+      "n": 45,
+      "q1": 2.5836085081100464,
+      "median": 2.7750233787298204,
+      "q3": 3.009746414422989
     },
     "at_onset": {
-      "n": 48,
-      "q1": 2.5510920837521556,
-      "median": 2.6768839657306684,
-      "q3": 2.85098880454898
+      "n": 44,
+      "q1": 2.5636970624327664,
+      "median": 2.716927877664568,
+      "q3": 2.9081169724464444
     },
     "p40": {
-      "n": 48,
-      "q1": 1.0869773513078715,
+      "n": 46,
+      "q1": 1.1269126644730594,
       "median": 1.9339821206033245,
-      "q3": 2.3601011592149734
+      "q3": 2.3504022568464267
     },
-    "fraction_dropping_20pct_by_p40": 0.5625
+    "fraction_dropping_20pct_by_p40": 0.6046511627906976
   }
 }
