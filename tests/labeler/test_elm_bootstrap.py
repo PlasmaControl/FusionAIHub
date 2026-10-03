@@ -49,6 +49,21 @@ def test_positive_shot_count_controls_intervals_even_in_a_large_negative_set():
     assert sum(result["bootstrap_draw_counts"]["auroc"].values()) == 30
 
 
+def test_negative_only_shots_keep_false_alarm_intervals():
+    parts = [_part(shot, [0, 0]) for shot in range(30)]
+    for part in parts:
+        part.call = np.array([True, False])
+        part.spans = {"absent_spans": 2, "absent_span_alarm": 1}
+    boot = score.draws(30, 30)
+    result = score.summarise(parts, boot)
+    assert result["ci95"]["false_alarm_bin_rate"] == [0.5, 0.5]
+    assert result["ci95"]["absent_span_alarm_rate"] == [0.5, 0.5]
+    assert result["ci95"]["recall"] is None
+    assert result["ci95"]["auroc"] is None
+    paired = score.paired_difference(parts, parts, boot, "false_alarm_bin_rate")
+    assert paired["ci95"] == [0.0, 0.0]
+
+
 def test_onset_bootstrap_counts_eventless_draws_as_undefined_f1():
     boot = np.array([[0, 0], [0, 1], [1, 1]])
     per_shot = np.array([[1, 1, 1], [0, 0, 0]])

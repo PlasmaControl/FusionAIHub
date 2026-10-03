@@ -189,23 +189,34 @@ def _ci(values: np.ndarray) -> list[float]:
 
 
 def bootstrap_summary(
-    values: dict[str, np.ndarray], *, n_shots: int, positive_shots: int
+    values: dict[str, np.ndarray],
+    *,
+    n_shots: int,
+    positive_shots: int,
+    endpoint_shots: dict[str, int] | None = None,
 ) -> dict[str, object]:
-    """Audit every draw; tiny positive-bearing shot sets are descriptive only.
+    """Audit every draw; eligibility uses shots bearing each endpoint's denominator.
 
     An undefined draw remains in the audit denominator. Percentile intervals
     otherwise use finite draws, so their conditioning is visible rather than
     silently discarding resamples without an applicable denominator or class.
     """
-    descriptive = n_shots < 5 or positive_shots < MIN_POSITIVE_SHOTS_FOR_CI
+    support = {key: (endpoint_shots or {}).get(key, positive_shots) for key in values}
+    eligible = {
+        key: n_shots >= 5 and count >= MIN_POSITIVE_SHOTS_FOR_CI
+        for key, count in support.items()
+    }
     return {
         "positive_shots": positive_shots,
-        "descriptive_only": descriptive,
-        "interval_policy": "No population-level 95% CI when fewer than five "
-        "physical shots carry positives; otherwise percentile intervals over "
+        "descriptive_only": not any(eligible.values()),
+        "endpoint_shots": support,
+        "interval_eligible": eligible,
+        "interval_policy": "At least five denominator-bearing physical shots "
+        "per endpoint; positive-bearing shots for positive-class/ranking metrics, "
+        "negative-bearing shots for false-alarm rates. Percentile intervals use "
         "finite shot-bootstrap draws, with valid/undefined counts reported.",
         "ci95": {
-            key: None if descriptive else _ci(np.asarray(draws))
+            key: _ci(np.asarray(draws)) if eligible[key] else None
             for key, draws in values.items()
         },
         "bootstrap_draw_counts": {
@@ -218,6 +229,24 @@ def bootstrap_summary(
     }
 
 
+def _endpoint_shots(parts: Sequence[ShotScore]) -> dict[str, int]:
+    """Denominator support for endpoints that do not use all positive bins."""
+    spans = {
+        "non_crowd_span_touch_recall": "non_crowd_spans",
+        "absent_span_alarm_rate": "absent_spans",
+        "absent_span_alarm_rate_guard25": "absent_spans",
+        "absent_span_interior_alarm_rate_guard25": "absent_spans_guard25_eligible",
+    }
+    return {
+        "false_alarm_bin_rate": sum(bool(np.any(p.truth == 0)) for p in parts),
+        "crowd_bin_recall": sum(bool(np.any(p.kind == "crowd")) for p in parts),
+        **{
+            metric: sum(p.spans.get(key, 0) > 0 for p in parts)
+            for metric, key in spans.items()
+        },
+    }
+
+
 def summarise(
     parts: Sequence[ShotScore], boot: np.ndarray | None = None
 ) -> dict[str, object]:
@@ -225,7 +254,7 @@ def summarise(
 
     `boot` is `draws(len(parts))`; with none, the intervals are omitted. The
     AUROC and AUPRC are given when every part has a `score`. Intervals are null
-    for fewer than five positive-bearing shots, including all two-shot panels.
+    for fewer than five denominator-bearing shots for that endpoint.
     """
     per = np.stack([counts(p) for p in parts])
     out: dict[str, object] = {
@@ -257,6 +286,7 @@ def summarise(
             {k: np.asarray(v) for k, v in reps.items()},
             n_shots=len(parts),
             positive_shots=sum(bool(np.any(p.truth == 1)) for p in parts),
+            endpoint_shots=_endpoint_shots(parts),
         )
     )
     out["replicates"] = len(boot)
@@ -294,6 +324,10 @@ def paired_difference(
         positive_shots=min(
             sum(bool(np.any(p.truth == 1)) for p in parts) for parts in (a, b)
         ),
+        endpoint_shots={
+            key: min(value, _endpoint_shots(b)[key])
+            for key, value in _endpoint_shots(a).items()
+        },
     )
     audit["ci95"] = audit["ci95"][metric]
     audit["bootstrap_draw_counts"] = audit["bootstrap_draw_counts"][metric]
