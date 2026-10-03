@@ -48,10 +48,10 @@ NAME = {
 DISPLAY_NAME = {
     NAME["ours"]: "elm-ours",
     NAME["dsm"]: dsm.DISPLAY_NAME,
-    NAME["detect"]: dsm.DISPLAY_NAME + ", detection objective",
-    NAME["init"]: dsm.DISPLAY_NAME + ", detection objective, refit initialization",
+    NAME["detect"]: "elm-dsm detection",
+    NAME["init"]: "elm-dsm detection init",
     NAME["elmo"]: "ELM-O",
-    NAME["clock"]: "ELM clock",
+    NAME["clock"]: "elm-clock",
 }
 
 

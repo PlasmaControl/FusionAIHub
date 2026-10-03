@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""The reference swap for ELMs: score the ELM methods against two references.
+"""ELM reference swap: unchanged predictions under onset/occupancy references.
 
     python scripts/labeler/elm_reference_swap.py --run cv2 [--out-dir DIR]
 
@@ -7,19 +7,22 @@ Needs `elm_ours_evaluate.py`'s predictions (`train` run `--run`) and
 `elm_dsm_evaluate.py`'s scores (`$LABELER_ROOT/round4/elm/dsm/`).
 
 **1. Overlap, stated first.** Which reviewed shots each legacy ELM reference covers:
-Hiro's table of 50 ms onset bins, the shot-level `elm_all_ground_truth`, D. Smith's
+The compiled legacy 50 ms onset table, the shot-level `elm_all_ground_truth`, D. Smith's
 labelled windows.
 
-**2. Conversion.** Hiro's table is converted to the scored bins as described in
+**2. Conversion.** The legacy table is converted as described in
 `labeler.elm.swap`; the bins are those of `elm_dsm_evaluate.py` (50 ms bins wholly
 inside one reviewed absent, non-crowd or crowd span, in analysed time, with the DSM's
 rows), so every method sits on the same bins under both references.
+Onset bins and occupancy sensitivities (covered gaps <=100/200/300 ms) are all
+reported. No predictions or thresholds are selected again. Missing coverage is
+never bridged. A three-shot subset excludes original DSM fitting/selection shots.
 
 **3. Finding 1.** What the legacy table misses: `|M|` (review-present bins it marks
 absent), `|P|` (legacy-present bins the review marks absent), and its recall and
 precision against the review.
 
-**4. Finding 2.** `elm-ours`, `elm-dsm` (DSM refit, limited inputs (60 of the original 124) and as a detector), `elm-elmo`
+**4. Finding 2.** `elm-ours`, the `elm-dsm` refit and detection variants, `elm-elmo`
 and `elm-clock` against both references: AUROC and F1 with 95 % shot-bootstrap
 intervals, the order each reference gives, and whether the order changes. The legacy
 table covers few reviewed shots, so every interval is wide; the JSON says so with the
@@ -78,13 +81,13 @@ def annotate_prefetch_swap():
     path.write_text(json.dumps(record, indent=1))
 
 
-def interval_coverage_audit(table, data, shots) -> dict:
+def interval_coverage_audit(table, data, shots, gap_ms=None) -> dict:
     """AE-style all-covered-bin audit, explicitly partitioning unknown review time."""
     rows, per_shot, excluded = [], {}, []
     total_bins = total_positive = 0
     for shot in shots:
         spans = data[shot].spans
-        bins, legacy, status = swap.coverage_bins(table, shot, spans)
+        bins, legacy, status = swap.coverage_bins(table, shot, spans, gap_ms=gap_ms)
         known = bins.truth >= 0
         c = swap.agreement_counts(bins.truth[known], bins.kind[known], legacy[known])
         rows.append(c)
@@ -99,7 +102,7 @@ def interval_coverage_audit(table, data, shots) -> dict:
             for t, st, lp in zip(bins.t0[~known], status[~known], legacy[~known])
         ]
         excluded.extend(unknown)
-        positive = table[(table.shot == shot) & (table.category == 1)]
+        positive = swap.positive_intervals(table, shot, gap_ms)
         per_shot[str(shot)] = {
             "review_window_ms": [float(spans.t_start.min()), float(spans.t_end.max())],
             "legacy_covered_bins": len(bins.t0),
@@ -127,7 +130,9 @@ def interval_coverage_audit(table, data, shots) -> dict:
     return {
         "definition": "All legacy-covered 50 ms bins intersecting the review "
         "window; >=25 ms majority rule, no DSM/diagnostic restriction. M/P compare "
-        "onset-bin presence with reviewed interval occupancy, not physical ELM omissions.",
+        "legacy onset bins or merged occupancy with reviewed interval occupancy, "
+        "not physical ELM omissions.",
+        "gap_ms": gap_ms,
         "n_shots": len(shots),
         "shots": shots,
         "legacy_covered_bins": total_bins,
@@ -265,7 +270,7 @@ def score_reference(parts, truths, boot, skip=()) -> dict:
             res["ci95"].pop("auroc", None)
         out["methods"][name] = res
         res["display_name"] = compare.DISPLAY_NAME.get(name, name)
-        res["degenerate_f1"] = bool(res["point"]["recall"] >= 0.99)
+        res["high_recall"] = bool(res["point"]["recall"] >= 0.99)
     out["bins"] = int(sum(len(p.truth) for p in kept[ALWAYS]))
     out["prevalence"] = float(np.concatenate([p.truth for p in kept[ALWAYS]]).mean())
     out["ranking"] = swap.rankings(
@@ -416,6 +421,9 @@ def main(argv=None) -> int:
     over["shot_level_ground_truth"]["reviewed_present_spans"] = reviewed_present
     dsm_record = json.loads((OUT.parent / "dsm" / "evaluation.json").read_text())
     dsm_source = dsm_record["own_target"]
+    source_overlap = dsm_source["reviewed_shot_ids_in_published_split"]
+    trained = set(source_overlap["train"])
+    source_used = trained | set(source_overlap["test"])
 
     record = {
         "git": git_sha(),
@@ -424,13 +432,46 @@ def main(argv=None) -> int:
         "cohort_test_shots_used": 0,
         "cohort_test_shots_used_scope": "reviewed-label detector training/tuning; "
         "the fixed DSM refit and initialized detector inherit prior pretraining "
-        "overlap, recorded separately in legacy_trained_method",
+        "overlap. EVERY DSM variant uses upstream normalization computed before "
+        "the source split, including blind-cohort source shots 190646 and 190532; "
+        "this is feature-statistics exposure, not reviewed-label leakage.",
+        "method_display_names": compare.DISPLAY_NAME,
+        "fixed_prediction_provenance": {
+            "note": "Saved predictions and selected thresholds are read only; "
+            "reference conversion never refits a model or selects a threshold.",
+            "input_sha256": {
+                str(p): hashlib.sha256(p.read_bytes()).hexdigest()
+                for p in (
+                    paths.label_tables / swap.LEGACY_TABLE,
+                    oof.dir / "run.json",
+                    *(oof.dir / f"fold{k}" / "fold.json" for k in range(5)),
+                    *(oof.dir / "pred" / f"{s}.npz" for s in shots_all),
+                    *(
+                        work / name
+                        for name in (
+                            "published_risk.npz",
+                            "scores_elm-dsm-detect.npz",
+                            "scores_elm-dsm-detect-init.npz",
+                            "thresholds.json",
+                        )
+                    ),
+                    paths.root / compare.ELMO_DIR / "review_elms.csv",
+                    paths.root / compare.ELMO_DIR / "review_sweep.csv.gz",
+                    paths.root / compare.CLOCK_CSV,
+                )
+            },
+            "thresholds_by_shot": {
+                NAME["ours"]: oof.threshold,
+                **dscores.threshold,
+            },
+        },
         "overlap": over,
         "conversion": swap.__doc__,
         "legacy_trained_method": {
             "id": NAME["dsm"],
             "display_name": compare.DISPLAY_NAME[NAME["dsm"]],
-            "training_label_source": "Hiro's onsets via elm_survival_labels.pkl "
+            "training_label_source": "Original 1 ms legacy onset labels via "
+            "elm_survival_labels.pkl "
             "and the wpqh_elm_hiro survival-row split; same source as legacy onset table",
             "ae_analogue": "legacy-trained RCN/LSTM",
             "reviewed_source_overlap": dsm_source[
@@ -438,16 +479,43 @@ def main(argv=None) -> int:
             ],
             "cohort_source_overlap": dsm_source["cohort_physical_shot_overlap"],
             "own_target_selection_role": dsm_source["selection_role"],
+            "swap_training_shots": sorted(trained & set(shots_over)),
+            "swap_source_heldout_shots": sorted(set(shots_over) - source_used),
+        },
+        "dsm_serving_conditions": {
+            "applies_to": [NAME[k] for k in ("dsm", "detect", "init")],
+            "inputs": "60 of 124 original inputs; no D-alpha: pcphd02/pcphd03 "
+            "are mean-filled on every shot; CO2 missing on 75/119 shots",
+            "time_resolution": "50 ms-mean serving inputs on a 25 ms grid; "
+            "the source refit was trained on 1 ms rows",
+            "temporal_interpretation": "offline risk score; centered NBI "
+            "smoothing uses a row 25 ms later, so this is not a causal forecast",
+            "normalization": "EVERY variant applies upstream normalization "
+            "computed before the original source split, including blind-cohort "
+            "source shots 190646 and 190532 (feature-statistics exposure)",
         },
         "interval_audit": interval_coverage_audit(table, data, shots_over),
+        "interval_audit_occupancy": {
+            f"gap_{gap}ms": interval_coverage_audit(table, data, shots_over, gap)
+            for gap in swap.OCCUPANCY_GAPS_MS
+        },
         "onset_agreement": onset_agreement_audit(paths, table, data, shots_over),
         "swap": {},
         "proxy": {},
     }
 
     # --- the legacy table: the overlap shots; ELM-O on those with BES
-    for tag, base in (("overlap", sets["all119"]), ("overlap_bes", sets["bes73"])):
-        sel = [s for s in base.shots if s in set(shots_over)]
+    for tag, base, heldout in (
+        ("overlap", sets["all119"], False),
+        ("overlap_bes", sets["bes73"], False),
+        ("overlap_dsm_heldout", sets["all119"], True),
+        ("overlap_bes_dsm_heldout", sets["bes73"], True),
+    ):
+        sel = [
+            s
+            for s in base.shots
+            if s in set(shots_over) and (not heldout or s not in source_used)
+        ]
         sdef = compare.SetDef(
             tag,
             sel,
@@ -467,8 +535,17 @@ def main(argv=None) -> int:
         res = {
             "shots": [int(s) for s in sel],
             "n_shots": len(sel),
+            "has_elmo": base.has_elmo,
+            "dsm_refit_training_shots": sorted(set(sel) & trained),
+            "dsm_source_heldout_shots": sorted(set(sel) - source_used),
+            "dsm_refit_evaluation_scope": (
+                "outside original DSM fitting and early-stopping shot sets; "
+                "upstream normalization exposure is retained"
+                if heldout
+                else "includes original DSM fitting shots (in-sample)"
+            ),
             "restriction_deviation": "Ranking uses bins wholly inside one known "
-            "review span and analysed time, with DSM forecast/detection rows; "
+            "review span and analysed time, with DSM offline-risk/detection rows; "
             "unlike the AE all-frame audit. Full majority counts are interval_audit.",
             "reviewed": score_reference(parts, review, boot),
             "legacy": score_reference(parts, legacy, boot),
@@ -477,6 +554,18 @@ def main(argv=None) -> int:
         res["finding_1"] = agreement(ref_parts, legacy, sel, boot)
         res["finding_1"]["as_methods"] = oracle_rows(ref_parts, legacy, sel, boot)
         res["comparison"] = compare_references(res["reviewed"], res["legacy"])
+        res["occupancy"] = {}
+        for gap in swap.OCCUPANCY_GAPS_MS:
+            truth = {s: swap.table_truth(table, s, bins_of[s], gap_ms=gap) for s in sel}
+            converted = score_reference(parts, truth, boot)
+            finding = agreement(ref_parts, truth, sel, boot)
+            finding["as_methods"] = oracle_rows(ref_parts, truth, sel, boot)
+            res["occupancy"][f"gap_{gap}ms"] = {
+                "gap_ms": gap,
+                "legacy": converted,
+                "finding_1": finding,
+                "comparison": compare_references(res["reviewed"], converted),
+            }
         record["swap"][tag] = res
 
     # --- proxy references on all the reviewed shots (not independent)
@@ -542,6 +631,22 @@ def main(argv=None) -> int:
             "changes:",
             r["comparison"]["order_changes"],
         )
+        for key, converted in r["occupancy"].items():
+            finding = converted["finding_1"]
+            print(
+                " ",
+                key,
+                "M",
+                finding["M"],
+                "P",
+                finding["P"],
+                "recall",
+                finding["point"]["recall"],
+                "rankings",
+                converted["legacy"]["ranking"],
+                "changes",
+                converted["comparison"]["order_changes"],
+            )
     for tag, r in record["proxy"].items():
         print(tag, "reviewed", r["reviewed"]["ranking"], "proxy", r["proxy"]["ranking"])
     return 0

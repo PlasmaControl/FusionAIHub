@@ -19,18 +19,9 @@ NAME = compare.NAME
 ROWS = (
     (NAME["ours"], "elm-ours"),
     (NAME["elmo"], "ELM-O"),
-    (
-        NAME["dsm"],
-        r"\shortstack[l]{DSM refit, limited inputs\\(60 of the original 124)}",
-    ),
-    (
-        NAME["detect"],
-        r"\shortstack[l]{DSM refit, limited inputs\\(60 of the original 124), detection}",
-    ),
-    (
-        NAME["init"],
-        r"\shortstack[l]{DSM refit, limited inputs\\(60 of the original 124), detection init}",
-    ),
+    (NAME["dsm"], "elm-dsm refit"),
+    (NAME["detect"], "elm-dsm detection"),
+    (NAME["init"], "elm-dsm detection init"),
     (NAME["clock"], "elm-clock"),
 )
 ALWAYS = "always present"
@@ -48,9 +39,25 @@ def cell(point: float, ci, digits=3, ci_digits=2) -> str:
 def metric_cell(res: dict, metric: str) -> str:
     if metric not in res["point"]:
         return "--"
+    out = cell(res["point"][metric], res.get("ci95", {}).get(metric))
     if metric == "f1" and res["point"].get("recall", 0) >= 0.99:
-        return r"\textit{degenerate}"
-    return cell(res["point"][metric], res.get("ci95", {}).get(metric))
+        out += r"$^{\dagger}$"
+    return out
+
+
+def f1_with_pr(res: dict) -> str:
+    """Numerical F1 and interval, with precision/recall beneath when available."""
+    out = metric_cell(res, "f1")
+    p = res["point"]
+    if "precision" in p and "recall" in p:
+        out = (
+            r"\shortstack{"
+            + out
+            + r"\\{\scriptsize "
+            + f"P={p['precision']:.3f}, R={p['recall']:.3f}"
+            + "}}"
+        )
+    return out
 
 
 def header(record: dict, source: str) -> str:
@@ -80,15 +87,17 @@ def benchmark_table(res: dict, ref_a: str, ref_b: str, labels, record, source) -
         if key not in a["methods"]:
             continue
         ra, rb = a["methods"][key], b["methods"][key]
+        if key in (NAME["dsm"], NAME["init"]) and res.get("dsm_refit_training_shots"):
+            label += r"$^{\ddagger}$"
         lines.append(
-            f"{label} & {metric_cell(ra, 'auroc')} & {metric_cell(ra, 'f1')} & "
-            f"{metric_cell(rb, 'auroc')} & {metric_cell(rb, 'f1')} \\\\"
+            f"{label} & {metric_cell(ra, 'auroc')} & {f1_with_pr(ra)} & "
+            f"{metric_cell(rb, 'auroc')} & {f1_with_pr(rb)} \\\\"
         )
     lines.append("\\midrule")
     ra, rb = a["methods"][ALWAYS], b["methods"][ALWAYS]
     lines.append(
-        f"{ALWAYS} & {ra['point']['auroc']:.3f} & {metric_cell(ra, 'f1')} & "
-        f"{rb['point']['auroc']:.3f} & {metric_cell(rb, 'f1')} \\\\"
+        f"{ALWAYS} & {ra['point']['auroc']:.3f} & {f1_with_pr(ra)} & "
+        f"{rb['point']['auroc']:.3f} & {f1_with_pr(rb)} \\\\"
     )
     lines += ["\\bottomrule", "\\end{tabular}", ""]
     return "\n".join(lines)
@@ -99,16 +108,54 @@ def prf(res: dict) -> str:
     return f"{p['precision']:.3f} & {p['recall']:.3f} & {metric_cell(res, 'f1')}"
 
 
-def full_table(res: dict, record: dict, source: str) -> str:
+def main_table(res: dict, record: dict, source: str) -> str:
+    """Reviewed, onset and 200 ms occupancy metrics on the same bins."""
+    refs = [res["reviewed"], res["legacy"], res["occupancy"]["gap_200ms"]["legacy"]]
+    lines = [
+        header(record, source) + r"\setlength{\tabcolsep}{1.5pt}",
+        r"\begin{tabular}{lcccccc}",
+        r"\toprule",
+        (
+            r"& \multicolumn{2}{c}{Reviewed occupancy} & "
+            r"\multicolumn{2}{c}{Legacy onset bins} & "
+            r"\multicolumn{2}{c}{Legacy occupancy ($\tau=200$ ms)} \\"
+        ),
+        r"\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}",
+        r"Method & AUROC & F1 & AUROC & F1 & AUROC & F1 \\",
+        r"\midrule",
+    ]
+    for key, label in (*ROWS, (ALWAYS, ALWAYS)):
+        if key not in refs[0]["methods"]:
+            continue
+        if key == ALWAYS:
+            lines.append(r"\midrule")
+        if key in (NAME["dsm"], NAME["init"]) and res.get("dsm_refit_training_shots"):
+            label += r"$^{\ddagger}$"
+        values = []
+        for reference in refs:
+            result = reference["methods"][key]
+            values.append(metric_cell(result, "auroc"))
+            values.append(
+                f1_with_pr(result)
+                if result["point"]["recall"] >= 0.99
+                else metric_cell(result, "f1")
+            )
+        lines.append(label + " & " + " & ".join(values) + r" \\")
+    lines += [r"\bottomrule", r"\end{tabular}", ""]
+    return "\n".join(lines)
+
+
+def full_table(res: dict, record: dict, source: str, legacy_label=None) -> str:
     a, b = res["reviewed"], res["legacy"]
     f1 = res["finding_1"]
     leg_vs_rev = f1["as_methods"]["legacy_table_vs_reviewed"]
+    legacy_label = legacy_label or "legacy onset table"
     lines = [
         header(record, source) + "\\begin{tabular}{lcccccc}",
         "\\toprule",
         (
             "& \\multicolumn{3}{c}{Reference: expert dense labels} & "
-            "\\multicolumn{3}{c}{Reference: legacy onset table} \\\\"
+            f"\\multicolumn{{3}}{{c}}{{Reference: {legacy_label}}} \\\\"
         ),
         "\\cmidrule(lr){2-4}\\cmidrule(lr){5-7}",
         "Method & P & R & F1 & P & R & F1 \\\\",
@@ -116,12 +163,19 @@ def full_table(res: dict, record: dict, source: str) -> str:
     ]
     for key, label in ROWS:
         if key in a["methods"]:
+            if key in (NAME["dsm"], NAME["init"]) and res.get(
+                "dsm_refit_training_shots"
+            ):
+                label += r"$^{\ddagger}$"
             lines.append(
                 f"{label} & {prf(a['methods'][key])} & {prf(b['methods'][key])} \\\\"
             )
     lines.append("\\midrule")
     lp = leg_vs_rev["point"]
-    lines.append(f"legacy onset table & {prf(leg_vs_rev)} & 1.000 & 1.000 & 1.000 \\\\")
+    identity = r"1.000 {\scriptsize[1.00, 1.00]}$^{\dagger}$"
+    lines.append(
+        f"{legacy_label} & {prf(leg_vs_rev)} & 1.000 & 1.000 & {identity} \\\\"
+    )
     lines.append(
         f"{ALWAYS} & {prf(a['methods'][ALWAYS])} & {prf(b['methods'][ALWAYS])} \\\\"
     )
@@ -129,7 +183,7 @@ def full_table(res: dict, record: dict, source: str) -> str:
     # precision against the review is the expert's recall against the legacy table
     oracle_f1 = cell(_f1(lp["recall"], lp["precision"]), leg_vs_rev["ci95"]["f1"], 3, 3)
     lines.append(
-        f"expert (oracle) & 1.000 & 1.000 & 1.000 & {lp['recall']:.3f} & "
+        f"expert (oracle) & 1.000 & 1.000 & {identity} & {lp['recall']:.3f} & "
         f"{lp['precision']:.3f} & {oracle_f1} \\\\"
     )
     lines += [
@@ -163,6 +217,8 @@ def write(
     for tag, name in (
         ("overlap", "table_elm_swap_all.tex"),
         ("overlap_bes", "table_elm_swap_bes.tex"),
+        ("overlap_dsm_heldout", "table_elm_swap_dsm_heldout.tex"),
+        ("overlap_bes_dsm_heldout", "table_elm_swap_bes_dsm_heldout.tex"),
     ):
         res = record["swap"].get(tag)
         if not res or "finding_1" not in res:
@@ -170,7 +226,8 @@ def write(
         caption = swap_caption(res)
         (out_dir / name).write_text(
             wrap_table(
-                benchmark_table(res, "reviewed", "legacy", labels, record, source),
+                panel_heading(res)
+                + benchmark_table(res, "reviewed", "legacy", labels, record, source),
                 caption,
                 f"tab:elm-swap-{tag}",
             )
@@ -184,6 +241,30 @@ def write(
                     "tab:elm-swap-full",
                 )
             )
+        for converted in res.get("occupancy", {}).values():
+            merged = {**res, **converted}
+            gap = converted["gap_ms"]
+            label = f"legacy occupancy, $\\tau={gap}$ ms"
+            (out_dir / f"table_elm_swap_{tag}_occupancy_{gap}ms.tex").write_text(
+                wrap_table(
+                    panel_heading(res)
+                    + benchmark_table(
+                        merged, "reviewed", "legacy", (labels[0], label), record, source
+                    ),
+                    swap_caption(res) + occupancy_caption(gap),
+                    f"tab:elm-swap-{tag}-occupancy-{gap}ms",
+                )
+            )
+            if tag == "overlap":
+                (out_dir / f"table_elm_swap_full_occupancy_{gap}ms.tex").write_text(
+                    wrap_table(
+                        full_table(merged, record, source, label),
+                        swap_caption(res)
+                        + occupancy_caption(gap)
+                        + " Identity-reference rows agree by definition.",
+                        f"tab:elm-swap-full-occupancy-{gap}ms",
+                    )
+                )
     for tag, res in record["proxy"].items():
         text = benchmark_table(
             res,
@@ -206,11 +287,9 @@ def write(
     descriptions = []
     for tag in ("overlap", "overlap_bes"):
         res = record["swap"][tag]
-        panels.append(
-            benchmark_table(res, "reviewed", "legacy", labels, record, source)
-        )
+        panels.append(panel_heading(res) + main_table(res, record, source))
         descriptions.append(
-            f"{'All overlap' if tag == 'overlap' else 'BES subset'}: "
+            f"{'All overlap' if tag == 'overlap' else 'BES subset, ELM-O chunks'}: "
             f"{res['n_shots']} shots/{res['reviewed']['bins']} bins"
         )
     audit = record["interval_audit"]
@@ -219,7 +298,8 @@ def write(
     caption = (
         "ELM reference swap, " + "; ".join(descriptions) + ". "
         "Identical predictions and thresholds under reviewed interval occupancy "
-        "and legacy onset-bin presence; bins lie wholly inside one known review "
+        "and legacy onset-bin presence or 200 ms-gap occupancy; bins lie wholly "
+        "inside one known review "
         "span and analysed time with DSM rows. This restriction deviates from "
         "the AE audit. All-covered majority audit: "
         f"{audit['legacy_covered_bins']} bins, {full['bins']} known-review bins, "
@@ -230,10 +310,173 @@ def write(
         "mixed-review bins "
         "are also excluded from known-review counts. "
         "M/P measure occupancy/onset-bin disagreement, not verified omitted ELMs. "
+        "The occupancy sensitivity table reports covered-gap thresholds "
+        "$\\tau=100,200,300$ ms alongside the original onset bins. "
+        "Companion full tables give precision and recall for every row. "
+        + dsm_scope_caption(record["swap"]["overlap"])
         + interval_caption()
     )
     (out_dir / "table_elm_swap.tex").write_text(
         wrap_table("\n\\medskip\n".join(panels), caption, "tab:elm-swap")
+    )
+    for gap in (100, 200, 300):
+        panels = []
+        for tag in ("overlap", "overlap_bes"):
+            res = record["swap"][tag]
+            merged = {**res, **res["occupancy"][f"gap_{gap}ms"]}
+            panels.append(
+                panel_heading(res)
+                + benchmark_table(
+                    merged,
+                    "reviewed",
+                    "legacy",
+                    (labels[0], f"legacy occupancy, $\\tau={gap}$ ms"),
+                    record,
+                    source,
+                )
+            )
+        (out_dir / f"table_elm_swap_occupancy_{gap}ms.tex").write_text(
+            wrap_table(
+                "\n\\medskip\n".join(panels),
+                swap_caption(record["swap"]["overlap"]) + occupancy_caption(gap),
+                f"tab:elm-swap-occupancy-{gap}ms",
+            )
+        )
+    (out_dir / "table_elm_swap_sensitivity.tex").write_text(
+        wrap_table(
+            sensitivity_table(record, source),
+            "Legacy-reference occupancy sensitivity, beside the original onset-bin "
+            "reference. All-covered counts use >=25 ms majority occupancy; strict "
+            "sets use identical benchmark bins. $|M|$ and $|P|$ are disagreement "
+            "counts against the reviewed occupancy. Positive legacy intervals "
+            "merge across covered gaps of at most $\\tau$; missing legacy coverage "
+            "is never bridged and no threshold is selected again. "
+            + interval_caption(),
+            "tab:elm-swap-sensitivity",
+        )
+    )
+    ranking_tables = []
+    for metric in ("auroc", "f1"):
+        text = wrap_table(
+            ranking_table(record, source, metric),
+            f"{metric.upper()} point-metric rankings under reviewed occupancy, "
+            "original legacy onset bins and all occupancy sensitivities on identical "
+            "bins. No method predictions or thresholds change. The always-present "
+            "control is included in metric tables and omitted from these detector "
+            "rankings. "
+            + dsm_scope_caption(record["swap"]["overlap"])
+            + interval_caption(),
+            f"tab:elm-swap-rankings-{metric}",
+        )
+        ranking_tables.append(text)
+        (out_dir / f"table_elm_swap_rankings_{metric}.tex").write_text(text)
+    (out_dir / "table_elm_swap_rankings.tex").write_text("\n".join(ranking_tables))
+
+
+def panel_heading(res: dict) -> str:
+    if res.get("has_elmo"):
+        text = f"{res['n_shots']} BES shots, ELM-O chunks"
+    else:
+        text = f"All {res['n_shots']} overlap shots"
+    if not res.get("dsm_refit_training_shots"):
+        text += "; outside original DSM fitting/selection sets"
+    return f"\\textbf{{{text}: {res['reviewed']['bins']} bins}}\\par\\smallskip\n"
+
+
+def sensitivity_table(record: dict, source: str) -> str:
+    lines = [
+        header(record, source) + r"\begin{tabular}{lrrrrrr}",
+        r"\toprule",
+        r"Legacy reference & Bins & $|M|$ & $|P|$ & P & R & F1 \\",
+        r"\midrule",
+    ]
+    audits = [("all-covered", record["interval_audit"]["known_review_majority"])]
+    for key, audit in record["interval_audit_occupancy"].items():
+        audits.append((key, audit["known_review_majority"]))
+    groups = [("All-covered majority (8 shots)", audits)]
+    for tag, res in record["swap"].items():
+        refs = [("onset", res["finding_1"])] + [
+            (key, value["finding_1"]) for key, value in res["occupancy"].items()
+        ]
+        scope = (
+            f"{res['n_shots']} BES shots, ELM-O chunks"
+            if res["has_elmo"]
+            else f"All {res['n_shots']} overlap shots"
+        )
+        if "heldout" in tag:
+            scope += ", elm-dsm source held out"
+        groups.append((scope, refs))
+    for scope, refs in groups:
+        lines.append(r"\multicolumn{7}{l}{\textbf{" + scope + r"}} \\")
+        for key, result in refs:
+            label = (
+                "onset bins"
+                if key in ("onset", "all-covered")
+                else ("$\\tau=" + key.removeprefix("gap_").removesuffix("ms") + "$ ms")
+            )
+            p = result["point"]
+            lines.append(
+                f"{label} & {result['bins']} & {result['M']} & "
+                f"{result['P']} & {p['precision']:.3f} & "
+                f"{metric_cell(result, 'recall')} & {metric_cell(result, 'f1')} \\\\"
+            )
+        lines.append(r"\midrule")
+    lines[-1] = r"\bottomrule"
+    lines += [r"\end{tabular}", ""]
+    return "\n".join(lines)
+
+
+def ranking_table(record: dict, source: str, metric: str) -> str:
+    display_names = dict(ROWS)
+    lines = [
+        header(record, source) + r"\begin{tabular}{lp{0.74\textwidth}}",
+        r"\toprule",
+        f"Reference & {metric.upper()}: methods, best first " + r"\\",
+        r"\midrule",
+    ]
+    for tag in ("overlap", "overlap_bes"):
+        res = record["swap"][tag]
+        refs = [("reviewed", res["reviewed"]), ("onset bins", res["legacy"])] + [
+            (f"$\\tau={r['gap_ms']}$ ms", r["legacy"])
+            for r in res["occupancy"].values()
+        ]
+        scope = (
+            f"{res['n_shots']} BES shots, ELM-O chunks"
+            if res["has_elmo"]
+            else f"All {res['n_shots']} overlap shots"
+        )
+        lines.append(r"\multicolumn{2}{l}{\textbf{" + scope + r"}} \\")
+        for name, reference in refs:
+            order = " $>$ ".join(display_names[n] for n in reference["ranking"][metric])
+            lines.append(f"{name} & {order} " + r"\\")
+        lines.append(r"\midrule")
+    lines[-1] = r"\bottomrule"
+    lines += [r"\end{tabular}", ""]
+    return "\n".join(lines)
+
+
+def occupancy_caption(gap: int) -> str:
+    return (
+        f" Occupancy conversion merges legacy positive intervals separated by "
+        f"covered gaps $\\leq{gap}$ ms; missing coverage is never bridged. "
+        "The original onset bins and all three gap sensitivities are retained; "
+        "predictions and thresholds are identical under every reference."
+    )
+
+
+def dsm_scope_caption(res: dict) -> str:
+    trained = res.get("dsm_refit_training_shots", [])
+    if trained:
+        return (
+            "$^{\\ddagger}$ In-sample original-refit exposure on "
+            + ", ".join(map(str, trained))
+            + "; detection init retains this embedding. "
+            "Separate rows report the three shots outside original fitting and "
+            "early-stopping sets (189885, 192732, 200385). "
+        )
+    return (
+        "These shots lie outside the original DSM fitting and early-stopping "
+        "sets; upstream normalization exposure remains. "
     )
 
 
@@ -242,11 +485,21 @@ def interval_caption() -> str:
         "Brackets are 95\\% percentile intervals from 1,000 shot-bootstrap "
         "resamples, shared across methods and references. ELM-O AUROC uses the "
         "saved nested eta sweep on these exact bins; the clock has hard calls only. "
-        "DSM refit, limited inputs (60 of the original 124), was trained on "
-        "Hiro's legacy onset source with reviewed and cohort-test shot overlap; "
-        "detection heads "
-        "use reviewed spans, with the initialized variant retaining that embedding. "
-        "Detector/rule F1 is marked degenerate when recall $\\geq0.99$."
+        "The legacy onset table uses Hiro Farre Josep Kaga annotations, compiled "
+        "by labels\\_format.py and the category formatter (source\\_formatters). "
+        "It counts original "
+        "1 ms onsets in 50 ms bins, "
+        "assigns category 1 for nonzero counts, deduplicates matching WPQH subsets, "
+        "and compresses equal adjacent bins into half-open intervals. "
+        "All elm-dsm variants use 60 of 124 inputs, no D-alpha input "
+        "(pcphd02/03 mean-filled), 50 ms-mean serving of the 1 ms-trained source "
+        "refit, and CO2 missing on 75/119 shots. Scores are offline: centered NBI "
+        "smoothing adds 25 ms lookahead, so the refit is not a causal forecast. "
+        "Every DSM variant uses upstream normalization computed before the source "
+        "split, including blind-cohort source shots 190646 and 190532 "
+        "(feature-statistics exposure). Detection heads use reviewed spans, and "
+        "detection init retains the refit embedding. Numerical F1 and its interval "
+        "are always shown; $^{\\dagger}$ denotes recall $\\geq0.99$, with P/R shown."
     )
 
 
@@ -256,6 +509,7 @@ def swap_caption(res: dict) -> str:
         "identical 50 ms bins wholly inside known review spans and analysed time, "
         "with DSM rows. Reviewed interval occupancy differs from legacy onset-bin "
         "presence; this restriction deviates from the AE all-frame audit. "
+        + dsm_scope_caption(res)
         + interval_caption()
     )
 

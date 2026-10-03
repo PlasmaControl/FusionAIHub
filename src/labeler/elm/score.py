@@ -12,6 +12,9 @@ ELM clock's in `outputs/labeler/elm/elmo/evaluation.json`:
 * `non_crowd_span_touch_recall`, the share of non-crowd present spans the method
   touches anywhere (the ELM-O rule: a detected span overlapping the labelled one);
 * `absent_span_alarm_rate`, the share of absent spans it touches;
+* `absent_span_alarm_rate_guard25`, the share of the same spans touched after
+  removing 25 ms from each edge; empty interiors are counted separately, with
+  `absent_span_interior_alarm_rate_guard25` restricted to nonempty interiors;
 * AUROC and AUPRC of the continuous score over the pooled bins (ties averaged;
   AUPRC is the average precision), for methods that have one.
 
@@ -35,15 +38,18 @@ SPAN_KEYS = (
     "absent_spans",
     "absent_span_alarm",
     "crowd_spans",
+    "absent_spans_guard25_eligible",
+    "absent_span_alarm_guard25",
+    "absent_spans_guard25_empty",
 )
 
 
 def roc_auc(truth: np.ndarray, score: np.ndarray) -> float:
-    """Rank AUROC with ties given half credit; NaN when a class is empty."""
+    """Rank AUROC; NaN for an empty class or any nonfinite score."""
     truth = np.asarray(truth).astype(bool)
     score = np.asarray(score, dtype=np.float64)
     pos, neg = int(truth.sum()), int((~truth).sum())
-    if not pos or not neg:
+    if not pos or not neg or not np.isfinite(score).all():
         return float("nan")
     order = np.argsort(score, kind="mergesort")
     s = score[order]
@@ -57,11 +63,11 @@ def roc_auc(truth: np.ndarray, score: np.ndarray) -> float:
 
 
 def average_precision(truth: np.ndarray, score: np.ndarray) -> float:
-    """Average precision (the step sum over distinct score thresholds)."""
+    """Average precision; NaN for no positives or any nonfinite score."""
     truth = np.asarray(truth).astype(bool)
     score = np.asarray(score, dtype=np.float64)
     pos = int(truth.sum())
-    if not pos:
+    if not pos or not np.isfinite(score).all():
         return float("nan")
     order = np.argsort(-score, kind="mergesort")
     s, t = score[order], truth[order]
@@ -79,10 +85,11 @@ def best_threshold(truth: np.ndarray, score: np.ndarray) -> tuple[float, float]:
     Candidates are the midpoints between distinct sorted scores plus the extremes, so
     the returned threshold separates the bins it counts as called. Ties go to the
     higher threshold.
+    Nonfinite scores cannot define an operating point and return two NaNs.
     """
     truth = np.asarray(truth).astype(bool)
     score = np.asarray(score, dtype=np.float64)
-    if not truth.any():
+    if not truth.any() or not np.isfinite(score).all():
         return float("nan"), float("nan")
     order = np.argsort(-score, kind="mergesort")
     s, t = score[order], truth[order]
@@ -151,6 +158,12 @@ def rates(total: np.ndarray) -> dict[str, float]:
             c["non_crowd_span_hit"], c["non_crowd_spans"]
         ),
         "absent_span_alarm_rate": _ratio(c["absent_span_alarm"], c["absent_spans"]),
+        "absent_span_alarm_rate_guard25": _ratio(
+            c["absent_span_alarm_guard25"], c["absent_spans"]
+        ),
+        "absent_span_interior_alarm_rate_guard25": _ratio(
+            c["absent_span_alarm_guard25"], c["absent_spans_guard25_eligible"]
+        ),
     }
 
 

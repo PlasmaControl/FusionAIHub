@@ -29,6 +29,7 @@ from . import inputs, labels, onset, score
 
 ROW_MS = 25.0
 WINDOW_MS = 50.0
+EDGE_GUARD_MS = 25.0
 
 
 def cover_frame(cov0, cov1) -> pd.DataFrame:
@@ -60,6 +61,10 @@ def span_counts(
     and not overlapping; `shot_spans` the shot's review rows. A labelled span with less
     than half its length analysed (`cover`) is skipped; an non-crowd or absent span
     counts as hit when any detected span touches it.
+
+    Guarded alarms require a touch in [start + 25, end - 25). The guarded
+    share retains the raw denominator; spans without an interior are counted
+    separately, and an additional rate uses only nonempty interiors.
     """
     starts = spans.t_start_ms.to_numpy(float)
     stops = spans.t_end_ms.to_numpy(float)
@@ -86,6 +91,14 @@ def span_counts(
         if row.kind == "absent":
             out["absent_spans"] += 1
             out["absent_span_alarm"] += int(hit)
+            lo, hi = row.t_start + EDGE_GUARD_MS, row.t_end - EDGE_GUARD_MS
+            if hi > lo:
+                out["absent_spans_guard25_eligible"] += 1
+                out["absent_span_alarm_guard25"] += int(
+                    _touches(starts, stops, np.array([lo]), np.array([hi]))[0]
+                )
+            else:
+                out["absent_spans_guard25_empty"] += 1
         elif row.kind == "crowd":
             out["crowd_spans"] += 1
         else:
@@ -169,7 +182,8 @@ def row_part(
     its end: 0 is the row summarising the bin itself (each row summarises the
     `WINDOW_MS` before its stamp), `-WINDOW_MS / ROW_MS` the row ending at the bin's
     start. A row at or above `thr` marks the `WINDOW_MS` it summarises as detected, or,
-    with `ahead` (a forecast), the `WINDOW_MS` after its stamp. Bins with no such row
+    with `ahead` (an offline forward-risk score), the `WINDOW_MS` after its stamp.
+    Centered upstream preprocessing can include later inputs. Bins with no such row
     are an error: the caller gives every method the same bins, restricted to the rows.
     """
     end = bins.t0 + WINDOW_MS + lag_rows * ROW_MS
@@ -258,6 +272,7 @@ PAIRED_METRICS = (
     "crowd_bin_recall",
     "non_crowd_span_touch_recall",
     "absent_span_alarm_rate",
+    "absent_span_alarm_rate_guard25",
 )
 
 
@@ -275,7 +290,7 @@ def summarise_methods(
     for name, plist in parts.items():
         out["methods"][name] = score.summarise(plist, boot)
         out["methods"][name]["display_name"] = DISPLAY_NAME.get(name, name)
-        out["methods"][name]["degenerate_f1"] = bool(
+        out["methods"][name]["high_recall"] = bool(
             out["methods"][name]["point"]["recall"] >= 0.99
         )
     rule_parts = []
@@ -283,6 +298,9 @@ def summarise_methods(
         spans = dict(p.spans)
         spans["non_crowd_span_hit"] = spans.get("non_crowd_spans", 0)
         spans["absent_span_alarm"] = spans.get("absent_spans", 0)
+        spans["absent_span_alarm_guard25"] = spans.get(
+            "absent_spans_guard25_eligible", 0
+        )
         rule_parts.append(
             score.ShotScore(
                 p.shot,
@@ -295,7 +313,7 @@ def summarise_methods(
         )
     out["methods"]["always present"] = score.summarise(rule_parts, boot)
     out["methods"]["always present"]["display_name"] = "Always-present rule"
-    out["methods"]["always present"]["degenerate_f1"] = True
+    out["methods"]["always present"]["high_recall"] = True
     ref = parts[reference]
     for name, plist in parts.items():
         if name == reference:

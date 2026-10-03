@@ -1,9 +1,10 @@
-"""The reference swap for ELMs: the same bins scored against two references.
+"""The ELM reference swap: fixed predictions under onset and occupancy references.
 
 The review's dense ELM spans are the reference this package scores against. The lab's
-older ELM annotation is Hiro's table of 50 ms bins (`edge_localized_mode/format`, one
-row per run of bins, `category` 1 where at least one ELM *onset* falls in the bin and 0
-where none does). It marks onsets, not ELMy time, and covers 8 of the 119 reviewed
+older ELM annotation is the compiled legacy onset table (`edge_localized_mode/format`).
+The compiler counts original 1 ms onset labels in 50 ms bins, assigns category 1
+to nonzero counts, deduplicates matching WPQH subsets, and compresses consecutive
+equal bins into half-open intervals (data/events/README.md). It covers 8 of 119 reviewed
 shots. The coverage audit uses per-bin majority occupancy over all legacy-covered
 bins in the review window. Detector comparisons use the stricter benchmark bins;
 that restriction is a deviation from the AE audit.
@@ -14,6 +15,10 @@ contains its midpoint. A bin the table does not cover has no legacy value and is
 dropped from the comparison. The legacy reference marks a bin present exactly when an
 onset falls in it; the review marks interval occupancy. Interior-bin scoring
 usually excludes span starts, so agreement does not measure missed physical ELMs.
+Occupancy sensitivities merge positive intervals separated by covered gaps of at
+most 100, 200 or 300 ms. Merging never crosses missing legacy coverage, and never
+extends beyond the first or last positive interval. No tolerance is selected from
+the scores. The onset reference remains available alongside every sensitivity.
 `start_agreement` separately asks whether a legacy onset is near each span start;
 these starts are not independently verified millisecond ELM onset labels.
 
@@ -39,19 +44,46 @@ LEGACY_TABLE = (
     Path("edge_localized_mode") / "format" / "edge_localized_mode_format_2026_v1.csv"
 )
 BIN_MS = labels.BIN_MS
+OCCUPANCY_GAPS_MS = (100, 200, 300)
 
 
 def legacy_table(path: str | Path) -> pd.DataFrame:
     return pd.read_csv(path)
 
 
-def table_truth(table: pd.DataFrame, shot: int, bins: labels.Bins) -> np.ndarray:
-    """The legacy table's category of each scored bin: 0, 1, or -1 where not covered."""
+def positive_intervals(table, shot: int, gap_ms: float | None = None) -> pd.DataFrame:
+    """Legacy positive intervals, merging short gaps only inside continuous coverage."""
+    rows = table[table.shot == shot]
+    positive = rows[rows.category == 1]
+    if gap_ms is None:
+        return positive
+    if gap_ms < 0:
+        raise ValueError("occupancy gap must be nonnegative")
+    cov0, cov1 = labels.merge_intervals(rows.t_start, rows.t_end, tol=0)
+    starts, stops = [], []
+    for a, b in zip(cov0, cov1, strict=True):
+        inside = positive[(positive.t_start < b) & (positive.t_end > a)]
+        s, e = labels.merge_intervals(
+            np.maximum(inside.t_start, a), np.minimum(inside.t_end, b), tol=gap_ms
+        )
+        starts.extend(s)
+        stops.extend(e)
+    return pd.DataFrame({"t_start": starts, "t_end": stops})
+
+
+def table_truth(
+    table: pd.DataFrame, shot: int, bins: labels.Bins, gap_ms: float | None = None
+) -> np.ndarray:
+    """Legacy onset/merged-occupancy truth: 0, 1, or -1 where not covered."""
     out = np.full(len(bins.t0), -1, dtype=np.int8)
     mid = bins.t0 + 0.5 * BIN_MS
     for r in table[table.shot == shot].itertuples():
         inside = (mid >= r.t_start) & (mid < r.t_end)
         out[inside] = int(r.category)
+    if gap_ms is not None:
+        for r in positive_intervals(table, shot, gap_ms).itertuples():
+            inside = (out >= 0) & (mid >= r.t_start) & (mid < r.t_end)
+            out[inside] = 1
     return out
 
 
@@ -74,7 +106,7 @@ def _occupancy(t0, spans) -> np.ndarray:
 
 
 def coverage_bins(
-    table, shot: int, spans
+    table, shot: int, spans, gap_ms: float | None = None
 ) -> tuple[labels.Bins, np.ndarray, np.ndarray]:
     """All legacy-covered grid cells intersecting the review window.
 
@@ -90,7 +122,7 @@ def coverage_bins(
     legacy_spans = table[table.shot == shot]
     keep = _occupancy(t0, legacy_spans) >= BIN_MS / 2
     t0 = t0[keep]
-    legacy = _occupancy(t0, legacy_spans[legacy_spans.category == 1]) >= BIN_MS / 2
+    legacy = _occupancy(t0, positive_intervals(table, shot, gap_ms)) >= BIN_MS / 2
     status = np.full(len(t0), "mixed_or_unlabelled", dtype=object)
     truth = np.full(len(t0), -1, dtype=np.int8)
     kind = np.full(len(t0), "unknown", dtype=object)

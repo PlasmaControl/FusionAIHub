@@ -208,6 +208,59 @@ def test_table_truth_onset_truth_and_retruth():
     assert re.kind.tolist() == ["absent", "absent", "present", "absent"]
 
 
+@pytest.mark.parametrize(
+    ("gap_ms", "expected"),
+    [
+        (100, [1, 0, 0, 1, -1, 0]),
+        (200, [1, 1, 0, 1, -1, 0]),
+        (300, [1, 1, 1, 1, -1, 0]),
+    ],
+)
+def test_legacy_occupancy_merges_only_short_covered_gaps(gap_ms, expected):
+    table = pd.DataFrame(
+        {
+            "shot": [1] * 12 + [2],
+            "t_start": [0, 50, 150, 200, 350, 400, 650, 700, 750, 850, 900, 1000, 0],
+            "t_end": [
+                50,
+                150,
+                200,
+                350,
+                400,
+                650,
+                700,
+                750,
+                800,
+                900,
+                1000,
+                1050,
+                1050,
+            ],
+            "category": [1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 0, 1],
+        }
+    )
+    bins = _bins([50, 200, 400, 700, 800, 900], [1] * 6, ["crowd"] * 6)
+    got = swap.table_truth(table, 1, bins, gap_ms=gap_ms)
+    assert got.tolist() == expected
+    # The missing 800--850 ms cell must remain unknown even at tau=300 ms.
+    assert swap.table_truth(table, 1, bins).tolist() == [0, 0, 0, 0, -1, 0]
+
+
+def test_legacy_occupancy_majority_audit_keeps_original_coverage():
+    table = pd.DataFrame(
+        {
+            "shot": [1, 1, 1, 1],
+            "t_start": [0, 50, 150, 250],
+            "t_end": [50, 150, 200, 300],
+            "category": [1, 0, 1, 1],
+        }
+    )
+    spans = _spans([(0, 300, "crowd")])
+    bins, occupancy, _ = swap.coverage_bins(table, 1, spans, gap_ms=100)
+    assert bins.t0.tolist() == [0, 50, 100, 150, 250]
+    assert occupancy.tolist() == [1, 1, 1, 1, 1]
+
+
 def test_agreement_counts_missed_and_false_bins():
     review = np.array([1, 1, 1, 0, 0, 0], dtype=np.int8)
     kind = np.array(
@@ -264,3 +317,13 @@ def test_swap_table_cells_and_layout():
     assert table.count("\\\\") >= 4 and "elm-ours & 0.900" in table
     assert "(60\\% present)" in table and "(20\\% present)" in table
     assert "always present & 0.500 & 0.750 & 0.500 & 0.750" in table
+
+
+def test_swap_f1_cell_shows_precision_recall_and_high_recall_number():
+    result = {
+        "point": {"f1": 0.446, "precision": 0.287, "recall": 1.0},
+        "ci95": {"f1": [0.33, 0.57]},
+    }
+    text = swap_tex.f1_with_pr(result)
+    assert "0.446" in text and "[0.33, 0.57]" in text
+    assert r"\dagger" in text and "P=0.287" in text and "R=1.000" in text

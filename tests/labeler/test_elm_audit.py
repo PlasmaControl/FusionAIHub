@@ -96,10 +96,11 @@ def test_sweep_bin_scores_preserve_rank_auc_and_empty_setting():
     assert score.roc_auc(bins.truth, ranked) == pytest.approx(0.875)
 
 
-def test_table_marks_high_recall_f1_as_degenerate():
+def test_table_preserves_high_recall_f1_and_interval_with_a_dagger():
     from labeler.elm import swap_tex
 
     result = {"point": {"recall": 0.99, "f1": 0.4}, "ci95": {"f1": [0.2, 0.5]}}
-    assert swap_tex.metric_cell(result, "f1") == r"\textit{degenerate}"
+    text = swap_tex.metric_cell(result, "f1")
+    assert "0.400" in text and "[0.20, 0.50]" in text and r"\dagger" in text
     result["point"]["recall"] = 0.989
-    assert "0.400" in swap_tex.metric_cell(result, "f1")
+    assert r"\dagger" not in swap_tex.metric_cell(result, "f1")

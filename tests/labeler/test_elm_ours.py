@@ -314,9 +314,26 @@ def test_span_counts_follow_the_benchmark_rule():
         "absent_spans": 1,
         "absent_span_alarm": 1,
         "crowd_spans": 1,
+        "absent_spans_guard25_eligible": 1,
+        "absent_span_alarm_guard25": 1,
+        "absent_spans_guard25_empty": 0,
     }
     none = methods.span_counts(methods.span_frame([], []), cover, review)
     assert none["non_crowd_span_hit"] == 0 and none["absent_span_alarm"] == 0
+
+
+def test_guarded_alarm_excludes_boundary_touches_and_counts_empty_interiors():
+    review = _review([(0.0, 100.0, "absent"), (100.0, 140.0, "absent")])
+    cover = methods.cover_frame([0.0], [140.0])
+    spans = methods.span_frame([0.0, 110.0], [25.0, 120.0])
+    got = methods.span_counts(spans, cover, review)
+    assert got["absent_span_alarm"] == 2
+    assert got["absent_span_alarm_guard25"] == 0
+    assert got["absent_spans_guard25_eligible"] == 1
+    assert got["absent_spans_guard25_empty"] == 1
+    spans = methods.span_frame([24.0], [26.0])
+    got = methods.span_counts(spans, cover, review)
+    assert got["absent_span_alarm_guard25"] == 1
 
 
 def test_row_part_reads_the_row_that_summarises_the_bin():
