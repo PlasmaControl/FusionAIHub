@@ -32,6 +32,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from scipy.ndimage import uniform_filter1d
 
 from . import inputs
 
@@ -199,3 +200,23 @@ def hard_hits(starts: np.ndarray, stops: np.ndarray, bins: Bins) -> np.ndarray:
     starts, stops = np.asarray(starts, float), np.asarray(stops, float)
     i = np.minimum(np.searchsorted(stops, bins.t0, side="right"), len(starts) - 1)
     return (stops[i] > bins.t0) & (starts[i] < bins.t0 + BIN_MS)
+
+
+def runs_of(
+    fine: np.ndarray, threshold: float, width_ms: int = int(BIN_MS)
+) -> tuple[np.ndarray, np.ndarray]:
+    """Where the `width_ms` moving mean of a 1 ms trace is at or above `threshold`.
+
+    The scored bins' score is this mean at the bins' own offsets; here it is taken
+    at every millisecond, so a detected span is the stretch of shot time the same
+    score and threshold call present. Returns `(starts, stops)` in ms of the shot's
+    clock (`inputs.GRID0_MS` is the trace's first edge).
+    """
+    smooth = uniform_filter1d(
+        np.asarray(fine, dtype=np.float64), width_ms, mode="nearest"
+    )
+    on = np.r_[False, smooth >= threshold, False].astype(np.int8)
+    edge = np.flatnonzero(np.diff(on))
+    return inputs.GRID0_MS + edge[0::2].astype(float), inputs.GRID0_MS + edge[
+        1::2
+    ].astype(float)

@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from labeler.elm import inputs, labels, net, onset, score, train
+from labeler.elm import inputs, labels, methods, net, onset, score, train
 
 
 def test_block_reduce_max_and_mean_with_empty_cell():
@@ -153,6 +153,17 @@ def test_bin_scores_mean_and_hard_hits():
     assert hits.tolist() == [True, True, False]
 
 
+def test_runs_of_the_moving_mean():
+    fine = np.zeros(300)
+    fine[100:200] = 1.0
+    starts, stops = labels.runs_of(fine, 0.5)
+    g0 = inputs.GRID0_MS
+    assert len(starts) == 1
+    assert starts[0] - g0 == pytest.approx(100, abs=26)
+    assert stops[0] - g0 == pytest.approx(200, abs=26)
+    assert labels.runs_of(fine, 1.5)[0].size == 0
+
+
 def test_roc_and_ap_known_values():
     truth = np.array([1, 1, 0, 0, 1, 0])
     s = np.array([0.9, 0.8, 0.7, 0.3, 0.6, 0.1])
@@ -279,3 +290,75 @@ def test_crop_loss_masks_ignored_time():
     b["state"][:] = labels.IGNORE
     _, ev, _ = train.loss_of(logits, b)
     assert float(ev) == 0.0
+
+
+def _review(rows):
+    return pd.DataFrame(rows, columns=["t_start", "t_end", "kind"])
+
+
+def test_span_counts_follow_the_benchmark_rule():
+    review = _review(
+        [
+            (0.0, 100.0, "absent"),
+            (100.0, 130.0, "individual"),
+            (130.0, 400.0, "crowd"),
+            (400.0, 500.0, "absent"),  # nothing analysed here
+        ]
+    )
+    cover = methods.cover_frame([0.0], [400.0])
+    spans = methods.span_frame([20.0, 110.0], [30.0, 120.0])
+    got = methods.span_counts(spans, cover, review)
+    assert got == {
+        "individual_spans": 1,
+        "individual_span_hit": 1,
+        "absent_spans": 1,
+        "absent_span_alarm": 1,
+        "crowd_spans": 1,
+    }
+    none = methods.span_counts(methods.span_frame([], []), cover, review)
+    assert none["individual_span_hit"] == 0 and none["absent_span_alarm"] == 0
+
+
+def test_row_part_reads_the_row_that_summarises_the_bin():
+    t = np.arange(
+        0, 400.0, 25.0
+    )  # rows at 0, 25, ...; each summarises the 50 ms before
+    s = np.zeros(t.size)
+    s[6] = 1.0  # the row at 150 ms covers [100, 150)
+    bins = labels.Bins(
+        np.array([100.0, 150.0]),
+        np.array([1, 0], dtype=np.int8),
+        np.array(["crowd", "absent"], dtype=object),
+        np.array([0, 1]),
+    )
+    review = _review([(0.0, 400.0, "crowd")])
+    cover = methods.cover_frame([0.0], [400.0])
+    now = methods.row_part(review, 1, bins, cover, t, s, 0.5)
+    assert now.score.tolist() == [1.0, 0.0] and now.call.tolist() == [True, False]
+    ahead = methods.row_part(review, 1, bins, cover, t, s, 0.5, lag_rows=-2)
+    assert ahead.score.tolist() == [0.0, 1.0]  # the rows at each bin's start: 100, 150
+    with pytest.raises(ValueError):
+        far = labels.Bins(
+            np.array([1000.0]),
+            np.zeros(1, np.int8),
+            np.array(["absent"], object),
+            np.zeros(1, int),
+        )
+        methods.row_part(review, 1, far, cover, t, s, 0.5)
+
+
+def test_trace_part_calls_bins_at_the_threshold():
+    fine = np.zeros(400)
+    fine[100:200] = 0.9
+    bins = labels.Bins(
+        np.array([inputs.GRID0_MS + 100.0, inputs.GRID0_MS + 300.0]),
+        np.array([1, 0], dtype=np.int8),
+        np.array(["crowd", "absent"], dtype=object),
+        np.array([0, 1]),
+    )
+    review = _review([(50.0, 100.0, "absent"), (100.0, 200.0, "crowd")])
+    # the review is on the shot clock: crowd 100-200 ms is cells 150-250, shifted by GRID0
+    cover = methods.cover_frame([0.0], [350.0])
+    part = methods.trace_part(review, 3, bins, cover, fine, 0.5)
+    assert part.call.tolist() == [True, False]
+    assert part.spans["crowd_spans"] == 1
