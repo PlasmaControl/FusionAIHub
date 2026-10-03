@@ -558,6 +558,11 @@ def queue_records(records, producer, cohort, include_no_video=False, reserved_sh
             }
         )
         record["camera_available"] = bool(record["lower_channels"])
+        record["cohort_queue_rank"] = (
+            int(row.queue_rank)
+            if row is not None and hasattr(row, "queue_rank")
+            else None
+        )
         if not record["camera_available"] and not include_no_video:
             continue
         record["queue_sources"] = (
@@ -570,6 +575,9 @@ def queue_records(records, producer, cohort, include_no_video=False, reserved_sh
         key=lambda record: (
             not record["camera_available"],
             not record.get("camera_geometry_eligible", False),
+            record["cohort_queue_rank"]
+            if record["cohort_queue_rank"] is not None
+            else float("inf"),
             record["shot"],
         )
     )
@@ -631,7 +639,11 @@ def reorder_frozen_queue(out, record_path):
     frame = rosters.read_roster(roster_path)
     before = sha256_of(roster_path)
     records = {int(r["shot"]): r for r in scan["records"]}
-    blind = set(pd.read_csv(cohort_path).query("split == 'test'").shot)
+    cohort = pd.read_csv(cohort_path)
+    blind = set(cohort.query("split == 'test'").shot)
+    ranks = (
+        cohort.set_index("shot").queue_rank.to_dict() if "queue_rank" in cohort else {}
+    )
     if set(frame.shot) & blind:
         raise ValueError("delivered queue contains blind cohort shots")
     frame = frame.assign(
@@ -639,11 +651,16 @@ def reorder_frozen_queue(out, record_path):
         _shelf=[
             records[int(s)].get("camera_geometry_eligible", False) for s in frame.shot
         ],
-    ).sort_values(["_camera", "_shelf", "shot"], ascending=[False, False, True])
+        _rank=[ranks.get(int(s), float("inf")) for s in frame.shot],
+    ).sort_values(
+        ["_camera", "_shelf", "_rank", "shot"], ascending=[False, False, True, True]
+    )
     covered = frame.loc[frame._shelf, "shot"].astype(int).tolist()
     order = frame.shot.astype(int).tolist()
     rosters.write_roster(
-        frame.drop(columns=["_camera", "_shelf"]), roster_path, keep_order=True
+        frame.drop(columns=["_camera", "_shelf", "_rank"]),
+        roster_path,
+        keep_order=True,
     )
     record = {
         "mode": "frozen queue order only; producer not reread; stores unchanged",

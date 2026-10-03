@@ -10,10 +10,13 @@ from pathlib import Path
 import h5py
 import numpy as np
 import pandas as pd
+import pytest
 
 from labeler.config import Paths
 from labeler.events import rosters
 from labeler.events.review import detachment, geometry
+
+pytestmark = pytest.mark.usefixtures("detachment_inputs")
 
 
 def roster_module():
@@ -121,7 +124,7 @@ def test_default_cache_supplies_geometry_without_an_environment_override(
 ):
     monkeypatch.delenv("LABELER_DETACHMENT_GEOMETRY_ROOT", raising=False)
     root = tmp_path / "round4/detach/cache"
-    root.mkdir(parents=True)
+    root.mkdir(parents=True, exist_ok=True)
     np.savez(
         root / "190001.npz",
         ipmeas__t=[0, 100],
@@ -172,7 +175,7 @@ def test_producer_discovery_includes_draft_votes_and_ignores_rosters(tmp_path):
     pd.DataFrame({"shot": [1, 2, 3], "tier": ["gold"] * 3}).to_csv(
         tmp_path / "shots.csv", index=False
     )
-    snapshot = module.producer_snapshot([tmp_path])
+    snapshot = module.producer_snapshot([tmp_path / "bins", tmp_path / "labels.csv"])
     assert snapshot["shots"] == [190001, 190002, 190003]
     assert snapshot["explicit_test_shots"] == [190003]
     assert len(snapshot["sources"]) == 2

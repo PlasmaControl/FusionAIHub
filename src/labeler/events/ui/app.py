@@ -56,7 +56,8 @@ BAD_TOKEN = "bad token"
 #: 6 the exact RWM onset annotations, 7 individual/group annotation resolution,
 #: 8 independent, overlapping individual and crowd annotation lanes,
 #: 9 detachment camera manifests and lazy frame requests.
-API_VERSION = 9
+#: 10 saved suggestion exposure and producer-prefill provenance.
+API_VERSION = 10
 
 log = logging.getLogger(__name__)
 
@@ -71,6 +72,8 @@ class LabelIn(BaseModel):
     iscrowd: list[object] | None = Field(default=None, max_length=1000)
     overlap_edit: bool = False
     name: str | None = Field(default=None, max_length=versions.NAME_MAX)
+    suggestions_shown: bool | None = None
+    prefilled: bool | None = None
 
 
 class MaskIn(BaseModel):
@@ -114,6 +117,12 @@ class Builds:
                 return None, f"{type(error).__name__}: {error}"
             if review_build.current(path, event):
                 return path, None
+            if event == "detachment" and path.is_file():
+                return None, (
+                    f"Stale frozen detachment store: {path}. Opening a shot never "
+                    "overwrites it. The controller must run the documented "
+                    "resume-build after the producer is final."
+                )
             self.running[key] = self.pool.submit(
                 review_build.build, event, shot, self.paths
             )
@@ -372,6 +381,8 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
                 name=name,
                 source_sha256=sha256_of(table) if table else None,
                 crowd_edit=body.iscrowd is not None,
+                suggestions_shown=body.suggestions_shown,
+                prefilled=body.prefilled,
             )
         except labels.SaveRefused as error:
             raise HTTPException(409, str(error)) from None

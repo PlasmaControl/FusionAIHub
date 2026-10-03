@@ -22,12 +22,18 @@ BIN_MS = 50.0
 
 
 def source_path(paths) -> Path:
-    return Path(
+    path = Path(
         os.environ.get(
             "LABELER_DETACHMENT_LABELS",
             str(paths.root / "round4/detach/labels_bins.csv.gz"),
         )
     )
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"Detachment producer labels missing: {path}. "
+            "Set LABELER_DETACHMENT_LABELS to the final producer table."
+        )
+    return path
 
 
 @lru_cache(maxsize=2)

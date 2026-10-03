@@ -12,6 +12,9 @@ rules key on it, so it is never taken from the client. `name` is the
 reviewer's name as the page sent it (picked from its list, or typed on an older
 server), or null: an attribution, not an authentication. Lines written before names existed have no `name` key and
 read as null.
+
+Suggestion exposure and producer-prefill flags also read as null for historical
+lines that predate them, preserving unknown provenance without rewriting history.
 """
 
 from __future__ import annotations
@@ -67,6 +70,8 @@ def shot_versions(event_dir, shot: int) -> list[dict]:
                 "intervals": [list(span) for span in entry["intervals"]],
                 **({"iscrowd": list(entry["iscrowd"])} if "iscrowd" in entry else {}),
                 "source": entry.get("source"),
+                "suggestions_shown": entry.get("suggestions_shown"),
+                "prefilled": entry.get("prefilled"),
             }
         )
     return found

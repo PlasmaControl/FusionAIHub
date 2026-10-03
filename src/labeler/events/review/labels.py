@@ -314,6 +314,8 @@ def save(
     name: str | None = None,
     source_sha256: str | None = None,
     crowd_edit: bool = False,
+    suggestions_shown: bool | None = None,
+    prefilled: bool | None = None,
 ) -> dict:
     """Replace one shot's rows in `labels.csv` and append the save to history.
 
@@ -332,6 +334,10 @@ def save(
     `source_sha256` is that table's sha256 when it was made, kept in the history
     line when given (see `agreement`: a save without one is matched to the table
     by name).
+
+    `suggestions_shown` and `prefilled` record producer exposure and anchoring
+    for each saved version. None preserves unknown provenance from old clients;
+    it must never be interpreted as an independent blind review.
     """
     with _write_lock:
         path = labels_path(event_dir)
@@ -380,6 +386,8 @@ def save(
             "saved_at": datetime.now(UTC).isoformat(timespec="seconds"),
             **label.as_json(),
             "source": source,
+            "suggestions_shown": suggestions_shown,
+            "prefilled": prefilled,
         }
         if source_sha256 is not None:
             entry["source_sha256"] = source_sha256

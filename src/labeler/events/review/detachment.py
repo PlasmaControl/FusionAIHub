@@ -52,6 +52,9 @@ def context_sources(shot, paths):
 
 def build(event, shot, paths):
     window = plasma_window(shot, paths)
+    producer_context = producer.load(shot, paths, window)
+    if producer_context["source_suppressed"]:
+        raise ValueError(producer_context["reason"])
     built = panels.build(event, shot, paths=paths, t_range=window)
     clocks = []
     corpus = paths.corpus_file(shot)
@@ -83,7 +86,9 @@ def build(event, shot, paths):
         # A missing-camera shot can still be labelled on a blank 10 s timeline.
         grid = Grid(0.0, 50.0, 200)
     rows = [
-        panel_rows._trace(f"p{i}", p, np.asarray(p.x), grid)
+        (panel_rows._image if p.kind == "heatmap" else panel_rows._trace)(
+            f"p{i}", p, np.asarray(p.x), grid
+        )
         for i, p in enumerate(built)
         if len(p.x)
     ]
@@ -103,7 +108,7 @@ def build(event, shot, paths):
                 ),
                 "camera_max_fps": video.MAX_FPS,
                 "detachment_geometry": geometry.load(shot, paths, window),
-                "detachment_producer": producer.load(shot, paths, window),
+                "detachment_producer": producer_context,
                 "context_sources": context_sources(shot, paths),
                 "panel_metadata": {
                     f"p{i}": p.metadata for i, p in enumerate(built) if p.metadata

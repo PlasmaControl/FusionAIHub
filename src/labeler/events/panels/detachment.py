@@ -1,7 +1,8 @@
 """Local detachment context and validity-gated producer indicators.
 
-Raw TPLANG sweeps and medians of uncalibrated bolometer voltages are omitted:
-neither measures Isat nor radiated power. This view never fetches or votes.
+Raw TPLANG sweeps are omitted. Bolo raw voltages are chord/time context, never
+radiated power; producer Jsat peaks retain probe ids. This view never fetches
+or votes.
 """
 
 from __future__ import annotations
@@ -34,7 +35,7 @@ TRACES = (
         "co2",
         "CO2 R0 density proxy (corpus DENUF)",
         ["R0 DENUF"],
-        "native units (unverified)",
+        "m·cm⁻³",
         1.0,
     ),
     (
@@ -74,7 +75,8 @@ AFRAC_CAVEAT = (
 )
 CO2_CAVEAT = (
     "CO2 UF density input is a line integral without a chord-length division; "
-    "native UF units are unverified. It is upstream density context, not a "
+    "BCI units are m·cm⁻³ (configs/shot_design/signals.yaml). "
+    "It is upstream density context, not a "
     "calibrated line-average or local Thomson measurement."
 )
 
@@ -95,6 +97,11 @@ def indicator_path(shot, paths):
             path = root / f"{int(shot)}{suffix}"
             if path.is_file():
                 return path
+    if not any(root.is_dir() for root in roots):
+        raise FileNotFoundError(
+            f"Detachment producer indicator directory missing: {roots[0]}. "
+            "Set LABELER_DETACHMENT_INDICATORS to the producer bins directory."
+        )
     return roots[0] / f"{int(shot)}.npz"
 
 
@@ -105,6 +112,11 @@ def density_cache_path(shot, paths):
             "LABELER_DETACHMENT_CACHE_ROOT", str(paths.root / "round4/detach/cache")
         )
     )
+    if not root.is_dir():
+        raise FileNotFoundError(
+            f"Detachment producer density cache missing: {root}. "
+            "Set LABELER_DETACHMENT_CACHE_ROOT to the producer cache."
+        )
     return root / f"{int(shot)}.npz"
 
 
@@ -230,12 +242,17 @@ def indicator_panels(shot, paths, t_range=None):
                 (
                     "aux_ne",
                     "CO2 density proxy (producer aux_ne)",
-                    "native units (unverified)",
+                    "m·cm⁻³",
                 ),
                 (
                     "aux_te_div",
                     "Divertor Thomson Te (independent check; per-bin peak)",
                     "eV",
+                ),
+                (
+                    "aux_jsat_peak",
+                    "Langmuir Jsat peak (probe may change by bin)",
+                    "producer units (uncalibrated)",
                 ),
             ):
                 if name not in data:
@@ -265,6 +282,28 @@ def indicator_panels(shot, paths, t_range=None):
                             "caveat": CO2_CAVEAT,
                         }
                     )
+                elif name == "aux_jsat_peak":
+                    probes = np.asarray(
+                        data.get("aux_jsat_probe", np.full(len(x), -1)), dtype=float
+                    )
+                    if probes.shape != x.shape:
+                        raise ValueError("aux_jsat_probe: shape disagrees with clock")
+                    metadata.update(
+                        independent_check=True,
+                        probe_id=[
+                            int(p)
+                            if np.isfinite(v) and np.isfinite(p) and p >= 0
+                            else None
+                            for v, p in zip(y[keep], probes[keep], strict=True)
+                        ],
+                        caveat=(
+                            "Per-bin peak over available Langmuir probes; probe "
+                            "identity can change. Uncalibrated producer units; "
+                            "not necessarily the target/SOL-selected probe. "
+                            "Probe switching alone cannot establish rollover. "
+                            "Confirm target location and compare the same probe."
+                        ),
+                    )
                 else:
                     metadata.update(
                         {
@@ -290,8 +329,9 @@ def indicator_panels(shot, paths, t_range=None):
                 )
         return built
     except (ValueError, KeyError, OSError) as error:
-        log.warning("shot %s: cannot read detachment indicators: %s", shot, error)
-        return []
+        raise ValueError(
+            f"shot {shot}: detachment indicators unreadable at {path}: {error}"
+        ) from error
 
 
 def _tangtv_title(title, sources):
@@ -364,7 +404,7 @@ def _cached_density(shot, paths, t_range):
         if not np.isfinite(y[keep]).any():
             return None
         title = "CO2 R0 density proxy (cached DENR0UF)"
-        unit = "native units (unverified)"
+        unit = "m·cm⁻³"
         return Panel(
             title=title,
             x=x[keep],
@@ -402,6 +442,33 @@ def panels(shot, *, t_range=None, paths=None):
     if not path.is_file():
         return built
     with h5py.File(path, "r") as source:
+        if "bolo" in source:
+            panel = _context_panel(
+                source["bolo"],
+                "Bolometer raw chord voltages (uncalibrated)",
+                [f"chord {i}" for i in range(48)],
+                "V",
+                1.0,
+                t_range,
+            )
+            if panel is not None:
+                count = min(48, source["bolo/ydata"].shape[0])
+                voltage = np.full((count, len(panel.x)), np.nan)
+                voltage[panel.metadata["channel_indices"]] = panel.y
+                panel.z, panel.y = voltage, np.arange(count)
+                panel.kind = "heatmap"
+                panel.ylabel = "chord index"
+                panel.metadata.update(
+                    source=str(path),
+                    corpus_group="bolo",
+                    units="V",
+                    caveat=(
+                        "Raw chord voltages, not radiated power or a camera. "
+                        "No chord geometry or calibration is recorded; "
+                        "this row alone cannot localize or establish a MARFE."
+                    ),
+                )
+                built.append(panel)
         for name, title, names, unit, spacing in TRACES:
             if name not in source or (name == "co2" and have_density):
                 continue
@@ -546,6 +613,7 @@ def _context_panel(
         ]
     metadata = {
         "reduction": "block mean",
+        "channel_indices": [ids[c] for c in selected],
         "samples_per_block": step,
         "block_ms": step * dt,
         "valid_fraction": fraction[selected].tolist(),

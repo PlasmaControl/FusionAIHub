@@ -108,6 +108,8 @@ def _built(paths, event="alfven_eigenmode", shot=170815):
         path, Grid(0.0, 1.0, 2000), [image, trace], event=event,
         **({"panel_version": review_build.PANEL_VERSIONS[event]}
            if event == "detachment" else {}),
+        **({"panel_revision": review_build.PANEL_REVISIONS[event]}
+           if event == "detachment" else {}),
     )
     return path
 

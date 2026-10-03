@@ -229,7 +229,9 @@ const S = {
   shot: null,
   meta: null, // what /api/shot said: grid, t_range, rows, source, saved, state, last_save
   video: null, // camera cards, selected time and playback; detachment only
-  blind: false, // hide producer context; Start blank separately clears suggestions
+  blind: false, // independent detachment review: no producer-derived drawings
+  suggestionsShown: false,
+  prefilled: false,
   label: null, // the label being edited, always normalised
   selected: -1,
   view: [0, 1], // the ms on screen
@@ -261,7 +263,8 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const sleep = (delay) => new Promise((done) => setTimeout(done, delay));
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const known = () => Object.keys(S.categories).map(Number);
-const draftKey = (shot) => `labeler:${S.event}:${shot}`;
+const draftKey = (shot) => `labeler:${S.event}:${shot}${S.event === "detachment" ? ":independent" : ""}`;
+const exposureKey = (shot) => `${draftKey(shot)}:exposure`;
 
 function stored(key) {
   try {
@@ -351,12 +354,32 @@ function emptyLabel() {
   return { window: [lo, Math.min(ms(S.meta.t_range[1]), lo + LONGEST_WINDOW_MS)], intervals: [] };
 }
 
-const baseline = () => S.meta.saved || S.meta.source || emptyLabel();
+const independent = () => S.event === "detachment";
+const isBlind = () => independent() && S.blind;
+const baseline = () => S.meta.saved || (independent() ? emptyLabel() : S.meta.source || emptyLabel());
 const dirty = () => Boolean(S.meta) && !same(S.label, baseline());
+
+function keepExposure() {
+  if (independent() && S.meta) store(exposureKey(S.shot), JSON.stringify({
+    suggestions_shown: S.suggestionsShown, prefilled: S.prefilled,
+  }));
+}
+
+const mergeExposure = (a, b) => a === true || b === true ? true :
+  a == null || b == null ? null : false;
+
+function previousExposure(shot) {
+  try { return JSON.parse(stored(exposureKey(shot)) || "null"); }
+  catch { return null; }
+}
 
 function draft(shot) {
   try {
     const label = JSON.parse(stored(draftKey(shot)));
+    if (independent() && label) {
+      S.suggestionsShown = mergeExposure(S.suggestionsShown, label.suggestions_shown);
+      S.prefilled = mergeExposure(S.prefilled, label.prefilled);
+    }
     return label && normalise(label.window, label.intervals, known(), label.iscrowd);
   } catch {
     return null;
@@ -382,9 +405,11 @@ function edit(window, intervals, iscrowd) {
 /** Keep the draft until it is saved or reverted, and mark the shot unsaved. */
 function touch() {
   if (stillOpening()) return;
+  keepExposure();
   const saving = S.saving && S.saving.event === S.event && S.saving.shot === S.shot;
   const keep = dirty() || (saving && !same(S.label, S.saving.label));
-  store(draftKey(S.shot), keep ? JSON.stringify(S.label) : null);
+  store(draftKey(S.shot), keep ? JSON.stringify({ ...S.label,
+    ...(independent() ? { suggestions_shown: S.suggestionsShown, prefilled: S.prefilled } : {}) }) : null);
   $("dirty").hidden = !dirty();
   renderQueue();
   render();
@@ -407,7 +432,16 @@ function undo() {
 function revert() {
   if (stillOpening()) return;
   if (!S.meta) return;
+  if (isBlind()) return;
   const source = S.meta.source || emptyLabel();
+  if (independent()) {
+    const keep = source.intervals.map((_, i) => i).filter(i => [1, 2, 3].includes(source.intervals[i][2]));
+    S.prefilled = mergeExposure(S.prefilled, keep.length > 0);
+    S.suggestionsShown = true;
+    S.selected = -1;
+    edit(source.window, keep.map(i => source.intervals[i]), source.iscrowd && keep.map(i => source.iscrowd[i]));
+    return;
+  }
   S.selected = -1;
   edit(source.window, source.intervals, source.iscrowd);
 }
@@ -644,7 +678,24 @@ async function openShot(shot) {
     }
     Object.assign(S, { shot, meta, data: null, overview: null, asked: "", undo: [], selected: -1, masks: null,
       tokeye: null });
-    S.label = draft(shot) || baseline();
+    // Confirmed BCI units also apply to frozen stores whose old UI called
+    // the CO2 line integral's native units unverified; preserve store bytes.
+    if (independent()) for (const row of meta.rows) {
+      const metadata = meta.params?.panel_metadata?.[row.name];
+      if (!metadata?.measurement?.includes("CO2 line-integrated")) continue;
+      row.y_units = "m·cm⁻³";
+      row.legend = row.legend.map(text => text.replace("native units (unverified)", "m·cm⁻³"));
+      metadata.caveat = "BCI line integral in m·cm⁻³ (configs/shot_design/signals.yaml); no chord-length division. Upstream density context, not a line average or local Thomson measurement.";
+    }
+    const exposure = independent() ? previousExposure(shot) : null;
+    S.suggestionsShown = independent() ? mergeExposure(exposure ? exposure.suggestions_shown : false,
+      meta.saved ? meta.last_save?.suggestions_shown ?? null : false) : true;
+    S.prefilled = independent() ? mergeExposure(exposure ? exposure.prefilled : false,
+      meta.saved ? meta.last_save?.prefilled ?? null : false) : Boolean(meta.source && !meta.saved);
+    const pending = draft(shot);
+    S.label = isBlind() ? baseline() : pending || baseline();
+    if (independent() && !S.blind) S.suggestionsShown = true;
+    keepExposure();
     buildRows();
     arrive();
     fit();
@@ -777,18 +828,27 @@ async function save(next) {
   const resolution = S.api >= 7
     ? { iscrowd: label.iscrowd || label.intervals.map(() => null) } : {};
   const overlap = S.api >= 8 ? { overlap_edit: true } : {};
+  if (independent() && S.api < 10) {
+    S.saving = false;
+    return say("Restart the server before saving detachment exposure flags", true);
+  }
+  const exposure = S.api >= 10
+    ? { suggestions_shown: S.suggestionsShown, prefilled: S.prefilled } : {};
   try {
     const response = await api("/api/label", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ event, shot, ...label, ...resolution, ...overlap, ...name }),
+      body: JSON.stringify({ event, shot, ...label, ...resolution, ...overlap, ...name, ...exposure }),
     });
     const body = await response.json();
     const saved = S.savedRows.get(event) || new Map();
     saved.set(shot, { count: ++S.saveCount, row: body.row });
     S.savedRows.set(event, saved);
     try {
-      if (same(JSON.parse(stored(key)), label)) store(key, null);
+      const pendingDraft = JSON.parse(stored(key));
+      const pendingLabel = pendingDraft && normalise(pendingDraft.window, pendingDraft.intervals,
+        undefined, pendingDraft.iscrowd);
+      if (same(pendingLabel, label)) store(key, null);
     } catch {
       // A malformed draft does not prevent the completed save from being shown.
     }
@@ -829,7 +889,8 @@ function buildRows() {
 /** Each row at its own height, or taller when the rows would not fill the view. */
 function sizeRows() {
   if (!S.meta) return;
-  const base = S.meta.rows.map((row) => (row.kind === "image" ? IMAGE_H : TRACE_H));
+  const base = S.meta.rows.map((row) => (isBlind() && S.meta.params?.panel_metadata?.[row.name]?.indicator
+    ? 0 : row.kind === "image" ? IMAGE_H : TRACE_H));
   const room = $("top").clientHeight - $("axis-row").offsetHeight - $("video-panel").offsetHeight;
   const scale = Math.max(1, room / (base.reduce((a, b) => a + b, 0) || 1));
   [...$("rows").children].forEach((canvas, i) => {
@@ -862,7 +923,7 @@ function render() {
     S.frame = 0;
     drawRows();
     drawAxis();
-    drawTrack($("source-track"), S.meta.source, false);
+    drawTrack($("source-track"), isBlind() ? null : S.meta.source, false);
     drawProducerStrips();
     drawTrack($("label-track"), S.label, true, S.api >= 8 ? 0 : undefined);
     if (S.api >= 8) drawTrack($("crowd-track"), S.label, true, 1);
@@ -880,6 +941,7 @@ function drawRows() {
     const canvas = canvases[i];
     const [w, h] = [canvas.clientWidth, canvas.clientHeight];
     const g = context(canvas);
+    if (isBlind() && S.meta.params?.panel_metadata?.[row.name]?.indicator) return;
     const values = S.data && S.data.rows[i];
     const range = row.kind === "image" ? imageRange(row) : values && traceRange(row, values);
     g.save();
@@ -1027,7 +1089,20 @@ function traceGuides(row) {
 /** Report stored Afrac methods verbatim; never invent their calibration recipe. */
 function indicatorNote(row, time) {
   const metadata = S.meta.params?.panel_metadata?.[row.name];
-  if (metadata?.indicator === "prad") return "f_div > 1: check heating-power denominator and radiation estimate";
+  if (metadata?.quantity === "aux_jsat_peak") {
+    const i = metadata.bin_start_ms?.findIndex((start, i) => start <= time && time < metadata.bin_end_ms[i]) ?? -1;
+    return `Jsat peak probe: ${metadata.probe_id?.[i] ?? "unavailable at cursor"} · probe switching cannot establish rollover`;
+  }
+  if (metadata?.indicator === "prad") {
+    const values = S.data?.rows[S.meta.rows.indexOf(row)];
+    if (!values) return "";
+    const step = (S.data.t1 - S.data.t0) / S.data.n;
+    const exceeds = Array.from(values).some((value, i) => {
+      const j = i % S.data.n, t0 = S.data.t0 + j * step;
+      return Number.isFinite(value) && value > 1 && t0 < S.view[1] && t0 + step > S.view[0];
+    });
+    return exceeds ? "f_div > 1: check heating-power denominator and radiation estimate" : "";
+  }
   if (metadata?.indicator !== "afrac") return "";
   const i = metadata.bin_start_ms?.findIndex((start, i) => start <= time && time < metadata.bin_end_ms[i]) ?? -1;
   return `Afrac method: ${metadata.afrac_method?.[i] || "not recorded at cursor"}`;
@@ -1274,9 +1349,11 @@ function drawTrack(canvas, label, editable, lane) {
     g.fillStyle = T.ink;
     g.fillRect(px(lo), h - HANDLE_BAND / 2 - 0.5, px(hi) - px(lo), 1);
     for (const t of label.window) g.fillRect(px(t) - 2, h - HANDLE_BAND, 4, HANDLE_BAND);
-    const source = S.meta.source || { window: label.window, intervals: [] };
-    g.fillStyle = T.changed;
-    for (const [a, b] of diffRuns(source, label)) g.fillRect(px(a), 0, Math.max(1, px(b) - px(a)), 3);
+    if (!isBlind()) {
+      const source = S.meta.source || { window: label.window, intervals: [] };
+      g.fillStyle = T.changed;
+      for (const [a, b] of diffRuns(source, label)) g.fillRect(px(a), 0, Math.max(1, px(b) - px(a)), 3);
+    }
   } else {
     g.strokeStyle = T.ink;
     g.lineWidth = 1;
@@ -1318,8 +1395,9 @@ function showHeader() {
   const row = S.queue.find((r) => r.shot === S.shot) || {};
   const last = S.meta?.last_save;
   $("tier").textContent = row.tier || "";
-  $("state").textContent = S.queueEvent !== S.event ? "the queue is still loading" : row.state || "";
-  $("state").className = `pill ${row.state || ""}`;
+  const state = isBlind() && row.state && row.state !== "unreviewed" ? "reviewed" : row.state;
+  $("state").textContent = S.queueEvent !== S.event ? "the queue is still loading" : state || "";
+  $("state").className = `pill ${state || ""}`;
   $("saved").textContent = last ? `saved ${when(last.saved_at)}${last.name ? ` by ${last.name}` : ""}` : "";
   $("dirty").hidden = !dirty();
   showContributors();
@@ -1379,7 +1457,8 @@ function renderQueue() {
   }
   S.queue.forEach((row, i) => {
     const chip = nav.children[i];
-    const marks = [row.state, row.shot === S.shot && "current", stored(draftKey(row.shot)) && "dirty"];
+    const state = isBlind() && row.state !== "unreviewed" ? "reviewed" : row.state;
+    const marks = [state, row.shot === S.shot && "current", stored(draftKey(row.shot)) && "dirty"];
     chip.className = ["chip", ...marks.filter(Boolean)].join(" ");
     chip.title = row.tier;
   });
@@ -2034,6 +2113,14 @@ function showBlindMode() {
   $("blind-mode").checked = S.blind;
   for (const id of ["source-lane", "detachment-strips", "detachment-details", "detachment-machine-help"])
     $(id).hidden = active;
+  $("revert").disabled = active || !S.meta;
+  $("revert").textContent = independent() ? "Use Source (1–3)" : "Revert";
+  $("detachment-reading").textContent = active ? "" : $("detachment-reading").textContent;
+  for (const [i, canvas] of Array.from($("rows").children).entries())
+    canvas.hidden = active && Boolean(S.meta?.params?.panel_metadata?.[S.meta.rows[i]?.name]?.indicator);
+  if (active) for (const canvas of [$("source-track"), ...$("detachment-lanes").children]) {
+    canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+  }
 }
 
 async function playVideo() {
@@ -2194,7 +2281,7 @@ async function toggleVersions() {
 }
 
 function renderVersions() {
-  const changes = versionChanges(S.versions, S.meta.source);
+  const changes = versionChanges(S.versions, isBlind() ? null : S.meta.source);
   const items = S.versions.map((version, i) => {
     const item = document.createElement("li");
     const who = version.name || "no name";
@@ -2225,6 +2312,11 @@ function restoreVersion(number) {
   closeDialog($("versions"));
   const label = normalise(found.window, found.intervals, known(), found.iscrowd);
   if (!label) return say(`version ${number} does not fit this event's categories`, true);
+  if (independent()) {
+    S.suggestionsShown = mergeExposure(S.suggestionsShown, found.suggestions_shown);
+    S.prefilled = mergeExposure(S.prefilled, found.prefilled);
+    keepExposure();
+  }
   if (same(label, S.label)) return say(`version ${number} is already the current label`);
   const replaced = dirty() ? "; replaced an unsaved edit; Ctrl+Z brings it back" : "";
   S.selected = -1;
@@ -2337,7 +2429,10 @@ function wire() {
   $("blind-mode").addEventListener("change", () => {
     S.blind = $("blind-mode").checked;
     store("labeler:detachment-blind", String(S.blind));
-    showBlindMode(); sizeCanvases(); render();
+    if (S.blind) { startBlank(); S.undo = []; }
+    else S.suggestionsShown = true;
+    keepExposure();
+    showBlindMode(); showHeader(); renderQueue(); sizeCanvases(); render();
   });
   $("top").addEventListener("scroll", showVideoCursor);
   window.addEventListener("pointerup", endDrag);

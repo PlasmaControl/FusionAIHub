@@ -14,6 +14,8 @@ from PIL import Image
 from labeler.config import Paths
 from labeler.events.panels import detachment as panels
 from labeler.events.review import build, labels, rows, video
+
+pytestmark = pytest.mark.usefixtures("detachment_inputs")
 from labeler.events.review.rows import Grid
 from labeler.events.ui.app import COOKIE, create_app
 
@@ -189,9 +191,7 @@ def test_panel_sampling_and_indicator_validity(tmp_path, monkeypatch):
         by_title["TangTV normalized front DZ (source not recorded)"].y[0, 1]
     )
     assert "f_div = Prad,div / P_in" not in by_title  # no validity mask
-    assert not any(
-        "Langmuir" in title or "Bolometer raw" in title for title in by_title
-    )
+    assert not any("Langmuir" in title for title in by_title)
     assert np.min(by_title["Gas flow"].x) >= 0
 
 
@@ -203,6 +203,7 @@ def test_context_block_means_do_not_alias_fast_signal(tmp_path):
         group["xdata"] = np.arange(40) * 0.000256
         group["ydata"] = np.tile([0, 2], (8, 20))
     built = panels.panels(170815, paths=paths, t_range=(0, 10))
+    built = [p for p in built if p.metadata.get("corpus_group") == "filterscopes"]
     assert len(built) == 8  # Unknown chord locations must not share one scale.
     for i, panel in enumerate(built, 1):
         np.testing.assert_allclose(panel.y[:, :9], 1)
@@ -244,7 +245,7 @@ def test_usable_co2_density_keeps_the_line_average_instead_of_thomson(tmp_path):
             group["ydata"] = np.ones((channels, 3))
     density = [p for p in panels.panels(170815, paths=paths) if "density" in p.title]
     assert [p.title for p in density] == ["CO2 R0 density proxy (corpus DENUF)"]
-    assert density[0].ylabel == "native units (unverified)"
+    assert density[0].ylabel == "m·cm⁻³"
 
 
 @pytest.mark.parametrize("width", [20.0, 50.0, 100.0])
@@ -385,7 +386,7 @@ def test_frame_endpoint_auth_roster_missing_cameras_and_detachment_save(tmp_path
     )
     corpus(paths)
     event = paths.label_tables / "detachment"
-    event.mkdir(parents=True)
+    event.mkdir(parents=True, exist_ok=True)
     (event / "shots.csv").write_text(
         "shot,tier,holdout,reviewers,verified_on,notes\n170815,unverified,false,,,\n"
     )

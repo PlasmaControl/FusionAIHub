@@ -510,18 +510,19 @@ Each available `bolo`, `tangtv` or `irtv` image channel uses a fixed per-shot
 grayscale scale. Missing/stub cameras have a one-line unavailable card.
 Selectors name the source views; the default is lower-divertor TangTV channel
 **2, then 0** if 2 is unavailable. The TangTV filter/emission line is not recorded.
-Raw Langmuir/bolometer medians are
-omitted; filterscope, density and gas-flow context uses block means over the
+Raw Langmuir sweeps are omitted; bolo raw chord voltages have a
+qualitative chord×time context row, and optional Jsat peaks show probe ids; filterscope, density and gas-flow context uses block means over the
 plasma window. Optional producer files add validity-gated Afrac, lower-divertor
 radiation fraction and normalized TangTV DZ. Movies stay in the per-shot store;
 the page requests one frame at a time. Camera controls require server API 9.
 The state track is exclusive: MARFE can physically coexist with detachment,
 and partial detachment has no separate state. The queue is the delivery overlay
 `round4/detach-ui/tables/detachment/shots.csv`, gated on camera availability,
-separately from the EFIT shelf gate. The reviewed 247-shot snapshot has **87**
-camera-and-shelf eligible shots and **94** with any valid shelf sample; those
-counts describe different checks. Regenerated counts are recorded in
-`results/detachment_review_queue.json`. Blind test and reserved shots are excluded.
+separately from the EFIT shelf gate. Frozen delivery counts are recorded in
+[the fix-five delivery record](results/detachment_ui_fix5_delivery.json): 247
+queued shots, 87 with camera/shelf coverage. The earlier “94” shelf-sample count
+is superseded. `results/detachment_review_queue.json` is a future controller
+rebuild output; it is not present evidence. Blind test and reserved shots are excluded.
 When DRSEP is absent, the page says **topology unavailable**, alongside the
 lower outer strike-point gate. See the
 [human camera protocol](detachment_review.md#human-camera-review-protocol) and

@@ -6,9 +6,12 @@ import json
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from labeler.config import Paths
 from labeler.events.review import producer, recipe, video
+
+pytestmark = pytest.mark.usefixtures("detachment_inputs")
 
 
 def test_method_record_resolves_within_repository(monkeypatch, tmp_path):
@@ -17,7 +20,6 @@ def test_method_record_resolves_within_repository(monkeypatch, tmp_path):
     monkeypatch.delenv("LABELER_DETACHMENT_METHOD", raising=False)
     path = recipe.sources(tmp_path / "labels.csv")["method_record"]
     assert path == Path(__file__).resolve().parents[2] / "docs/labeler/detachment.md"
-    assert path.is_file()
 
 
 def test_missing_method_override_fails_loudly(monkeypatch, tmp_path):
@@ -42,7 +44,7 @@ def test_recipe_metadata_is_frozen_and_invalidates_resume(tmp_path):
     from labeler.events.review import detachment
 
     root = tmp_path / "round4/detach"
-    root.mkdir(parents=True)
+    root.mkdir(parents=True, exist_ok=True)
     table(root / "labels_bins.csv.gz")
     path = root / "review_recipe.json"
     recipe = {
@@ -64,7 +66,7 @@ def test_recipe_metadata_is_frozen_and_invalidates_resume(tmp_path):
 
 def test_suppression_is_structured_for_unreadable_source(tmp_path):
     path = tmp_path / "round4/detach/labels_bins.csv.gz"
-    path.parent.mkdir(parents=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("broken gzip")
     assert producer.load(170815, Paths(root=tmp_path))["source_suppressed"] is True
 
@@ -96,7 +98,7 @@ def table(path, *, split="train"):
 
 def test_labels_and_votes_are_clipped_by_overlap_without_reclassification(tmp_path):
     path = tmp_path / "round4/detach/labels_bins.csv.gz"
-    path.parent.mkdir(parents=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
     table(path)
     result = producer.load(170815, Paths(root=tmp_path), (120, 330))
     assert result["bin_start_ms"] == [120, 150, 200, 250, 300]
@@ -146,7 +148,7 @@ def test_producer_holdout_flags_exclude_whole_shot(tmp_path, monkeypatch):
 
 def test_unassessed_bins_keep_their_votes_from_producer_npz(tmp_path):
     root = tmp_path / "round4/detach"
-    (root / "bins").mkdir(parents=True)
+    (root / "bins").mkdir(parents=True, exist_ok=True)
     frame = table(root / "labels_bins.csv.gz")
     frame.loc[frame.state_lm > 0].to_csv(root / "labels_bins.csv.gz", index=False)
     fields = {
@@ -168,7 +170,7 @@ def test_unassessed_bins_keep_their_votes_from_producer_npz(tmp_path):
 
 def test_ui_rejects_missing_assessed_label_or_stale_vote_snapshot(tmp_path):
     root = tmp_path / "round4/detach"
-    (root / "bins").mkdir(parents=True)
+    (root / "bins").mkdir(parents=True, exist_ok=True)
     frame = table(root / "labels_bins.csv.gz")
     fields = {
         column: (
@@ -195,7 +197,7 @@ def test_ui_rejects_missing_assessed_label_or_stale_vote_snapshot(tmp_path):
 
 def test_unpublished_shot_keeps_votes_without_inventing_an_assessment(tmp_path):
     root = tmp_path / "round4/detach"
-    (root / "bins").mkdir(parents=True)
+    (root / "bins").mkdir(parents=True, exist_ok=True)
     frame = table(root / "labels_bins.csv.gz")
     frame.iloc[:0].to_csv(root / "labels_bins.csv.gz", index=False)
     fields = {

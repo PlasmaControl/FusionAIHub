@@ -1307,8 +1307,13 @@ async function overlappingAnnotations() {
 async function detachmentCameras(shot = 170815, demo = false) {
   if (!demo) await visit("detachment", shot);
   await until(`S.video && S.video.cards.some(c => c.img?.naturalWidth > 0)`);
+  check("fresh detachment review starts empty despite Source suggestions", await js(`
+    S.meta.source.intervals.length > 0 && S.label.intervals.length === 0 && !dirty()`));
   check("detachment offers all four states", same(await js("S.categories"),
     {1: "attached", 2: "detached", 3: "marfe", 4: "uncertain"}));
+  check("CO2 rows display confirmed BCI line-integral units", await js(`
+    S.meta.rows.filter(row => S.meta.params.panel_metadata?.[row.name]?.measurement?.includes("CO2 line-integrated"))
+      .every(row => row.y_units === "m·cm⁻³")`));
   if (!demo) check("shelf gate is visible without inventing topology from missing DRSEP", await js(`
     !$("video-geometry").textContent.includes("Magnetic configuration:") &&
     $("video-geometry").textContent.includes("topology unavailable") &&
@@ -1407,19 +1412,77 @@ async function detachmentCameras(shot = 170815, demo = false) {
       notes[1].includes("eldon_pre_puff_LH") && !notes[1].includes("local_proxy") &&
       drawn.length === 1 && drawn[0].align === "left" && drawn[0].x > GUTTER;
   })()`));
-  check("f_div has a physical reference at one and a visible denominator caveat", await js(`(() => {
+  check("f_div warning appears only for valid values above one in view", await js(`(() => {
     const row = S.meta.rows.find(row => S.meta.params.panel_metadata?.[row.name]?.indicator === "prad");
-    return Boolean(row) && traceGuides(row).includes(1) && indicatorNote(row).includes("f_div > 1");
+    const original = S.view;
+    const metadata = S.meta.params.panel_metadata[row.name];
+    const full = indicatorNote(row);
+    S.view = [S.meta.t_range[1] + 100, S.meta.t_range[1] + 200];
+    const outside = indicatorNote(row); S.view = original;
+    return traceGuides(row).includes(1) && !outside &&
+      (${demo} ? !full : full.includes("f_div > 1"));
   })()`));
   await js(`S.video.cards.find(c => c.channel).img.click()`);
   check("camera opens an enlarged view of the same frame", await js(`
     $("camera-enlarged").open && $("camera-enlarged-image").src === S.video.cards.find(c => c.channel).img.src &&
     $("camera-enlarged-caption").textContent === S.video.cards.find(c => c.channel).note.textContent`));
+  check("explicit producer prefill excludes state four and records anchoring", await js(`(() => {
+    revert(); return S.prefilled && S.suggestionsShown &&
+      S.label.intervals.length > 0 && S.label.intervals.every(s => s[2] !== 4);
+  })()`));
   await js(`$("camera-enlarged").close(); window.beforeBlind = JSON.stringify(S.label); $("blind-mode").click()`);
-  check("blind mode hides Source, producer strips, reading and recipe without changing labels", await js(`
+  check("blind mode implies Start blank and hides producer context", await js(`
     $("source-lane").hidden && $("detachment-strips").hidden && $("detachment-details").hidden &&
-    $("detachment-machine-help").hidden && JSON.stringify(S.label) === window.beforeBlind`));
+    $("detachment-machine-help").hidden && S.label.intervals.length === 0`));
+  check("blind canvas pixels contain no Source diff feedback even after edits", await js(`(() => {
+    const clean = () => {
+      drawTrack($("label-track"), S.label, true, 0);
+      const c = $("label-track"), g = c.getContext("2d");
+      const probe = document.createElement("canvas").getContext("2d");
+      probe.fillStyle = T.changed; probe.fillRect(0,0,1,1);
+      const colour = probe.getImageData(0,0,1,1).data;
+      const pixels = g.getImageData(GUTTER,0,c.width-GUTTER,3).data;
+      for (let i=0;i<pixels.length;i+=4)
+        if (pixels[i] === colour[0] && pixels[i+1] === colour[1] &&
+            pixels[i+2] === colour[2] && pixels[i+3]) return false;
+      return true;
+    };
+    const blank = clean(), before = S.label;
+    const [lo,hi] = S.label.window;
+    edit(S.label.window, [[lo,(lo+hi)/2,2]], [0]); const edited = clean();
+    edit(S.label.window, [[lo,(lo+hi)/2,4]], [0]); const uncertain = clean();
+    S.label = before; S.undo = []; touch();
+    return blank && edited && uncertain;
+  })()`));
+  await js(`openShot(${shot})`);
+  check("reopening blind cannot erase earlier suggestion exposure", await js(`S.suggestionsShown === true`));
+  // A separate clean reviewer session must be blind before the first render.
+  await js(`localStorage.clear(); localStorage.setItem("labeler:detachment-blind", "true")`);
+  await send("Page.navigate", { url: "about:blank" });
+  await until(`location.href === "about:blank"`);
+  await send("Page.navigate", { url: `${BASE}/#detachment/${shot}` });
+  await opened(shot);
+  await until(`S.video && S.video.cards.some(c => c.img?.naturalWidth > 0)`);
+  check("fresh blind load stays empty and records no producer exposure", await js(`
+    S.blind && S.label.intervals.length === 0 && !S.suggestionsShown && !S.prefilled &&
+    $("revert").disabled`));
+  if (demo) {
+    await sleep(100);
+    const blindScreenshot = await send("Page.captureScreenshot", {format: "png"});
+    writeFileSync(CASE.replace(/\.png$/, "_blind.png"), Buffer.from(blindScreenshot.data, "base64"));
+  }
   await js(`$("blind-mode").click()`);
+  await js(`window.realVideoFetch = window.fetch.bind(window);
+    window.frameActive = 0; window.framePeak = 0;
+    window.fetch = async (input, options) => {
+      if (!String(input).startsWith("/api/frame?")) return window.realVideoFetch(input, options);
+      window.framePeak = Math.max(window.framePeak, ++window.frameActive);
+      try {
+        const result = await window.realVideoFetch(input, options);
+        await new Promise(done => setTimeout(done, 150));
+        return result;
+      } finally { window.frameActive--; }
+    }; seekVideo(${middle});`);
   check("leaving blind mode restores producer context", await js(`
     !$("source-lane").hidden && !$("detachment-strips").hidden && !$("detachment-details").hidden`));
   check("detached and uncertain use distinct colour-blind-safe blue and orange", await js(`
@@ -1575,6 +1638,10 @@ async function detachmentCameras(shot = 170815, demo = false) {
     await sleep(100);
     const screenshot = await send("Page.captureScreenshot", {format: "png"});
     writeFileSync(CASE, Buffer.from(screenshot.data, "base64"));
+    await send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 2400, deviceScaleFactor: 1, mobile: false });
+    await sleep(100);
+    const tall = await send("Page.captureScreenshot", {format: "png"});
+    writeFileSync(CASE.replace(/\.png$/, "_diagnostics.png"), Buffer.from(tall.data, "base64"));
     return;
   }
   await press("2");
@@ -1583,6 +1650,14 @@ async function detachmentCameras(shot = 170815, demo = false) {
   await until("!S.saving && !dirty()");
   check("detached labels are saved on the usual timeline", await js(`
     S.meta.saved.intervals.some(([a,b,c]) => c === 2 && Math.abs(a-80) <= 2 && Math.abs(b-160) <= 2)`));
+  check("detachment save versions record exposure without producer prefill", await js(`
+    S.meta.last_save.suggestions_shown === true && S.meta.last_save.prefilled === false`));
+  check("saving removes exposure-bearing drafts", await js(`stored(draftKey(S.shot)) === null`));
+  await js(`window.humanSaved = JSON.stringify(S.meta.saved); revert();
+    $("blind-mode").click(); openShot(${shot});`);
+  check("blind reopening uses saved human review instead of Source-prefilled draft", await js(`
+    JSON.stringify(S.label) === window.humanSaved`));
+  await js(`$("blind-mode").click()`);
   await js(`$("video-play").click()`);
   await visit("alfven_eigenmode", 170815);
   check("navigation clears playback, previews and pinned cursor", await js(`
@@ -1706,7 +1781,7 @@ try {
     // Every scenario but the first open has picked its name already (API 1 has no list).
     await send("Page.enable");
     await send("Page.addScriptToEvaluateOnNewDocument", { source: `
-      sessionStorage.setItem("labeler:who", ${JSON.stringify(SCENARIO === "detachment-demo" ? "Reviewer" : "Grace Hopper")});
+      if (location.protocol === "http:") sessionStorage.setItem("labeler:who", ${JSON.stringify(SCENARIO === "detachment-demo" ? "Reviewer" : "Grace Hopper")});
     ` });
   }
   const demoShot = Number(process.env.DETACHMENT_DEMO_SHOT || 190010);

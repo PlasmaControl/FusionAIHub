@@ -39,6 +39,7 @@ TESTS = [
         "review_detachment_producer",
         "detachment_diagnostics",
         "detachment_queue",
+        "detachment_fix6",
         "review_agreement",
         "review_build",
         "review_rows",
@@ -54,6 +55,8 @@ TESTS = [
     )
 ]
 NEW_PYTHON = [
+    "scripts/labeler/detachment_review_archive.py",
+    "tests/labeler/test_detachment_fix6.py",
     "src/labeler/events/review/video.py",
     "src/labeler/events/review/detachment.py",
     "src/labeler/events/panels/detachment.py",
@@ -72,6 +75,7 @@ NEW_PYTHON = [
     "tests/labeler/test_review_detachment_geometry.py",
 ]
 CHANGED_PYTHON = NEW_PYTHON + [
+    "tests/labeler/conftest.py",
     "tests/labeler/test_review_page.py",
     "src/labeler/events/review/panel_rows.py",
     "tests/labeler/test_review_panel_rows.py",
@@ -101,7 +105,6 @@ def provenance():
                 "src/labeler/events/ui/static/style.css",
                 "src/labeler/events/ui/static/index.html",
                 "tests/labeler/review_browser.mjs",
-                "docs/labeler/detachment.md",
                 "docs/labeler/detachment_review.md",
             ]
         },
@@ -395,7 +398,7 @@ def main():
         if (
             result.returncode
             or len(record["browser_checks"])
-            != (34 + 2 * any(len(c["channels"]) > 1 for c in manifest["cameras"]))
+            != (40 + 2 * any(len(c["channels"]) > 1 for c in manifest["cameras"]))
             or not {
                 "camera, full diagnostic, time axis and annotations fit at 1366x768",
                 "camera, full diagnostic, time axis and annotations fit at 1400x900",

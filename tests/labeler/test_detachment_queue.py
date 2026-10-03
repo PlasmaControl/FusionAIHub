@@ -16,6 +16,8 @@ from labeler.config import Paths
 from labeler.events import rosters
 from labeler.events.review import labels
 
+pytestmark = pytest.mark.usefixtures("detachment_inputs")
+
 
 def roster_module():
     path = (
@@ -26,6 +28,29 @@ def roster_module():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def test_queue_uses_cohort_rank_within_priority_groups():
+    records = [
+        {"shot": shot, "lower_channels": [{}], "camera_geometry_eligible": gate}
+        for shot, gate in [
+            (190001, True),
+            (200977, True),
+            (190002, False),
+            (200978, False),
+        ]
+    ]
+    cohort = pd.DataFrame(
+        {
+            "shot": [190001, 200977, 190002, 200978],
+            "split": ["train"] * 4,
+            "queue_rank": [3, 2, 1, 0],
+        }
+    )
+    queue, _ = roster_module().queue_records(
+        records, {"shots": [], "explicit_test_shots": []}, cohort
+    )
+    assert [r["shot"] for r in queue] == [200977, 190001, 200978, 190002]
 
 
 def test_queue_prioritizes_camera_shelf_coverage_over_shot_number():
@@ -59,11 +84,11 @@ def test_reordering_frozen_queue_preserves_curation_and_does_not_read_producer(
     module = roster_module()
     repo = tmp_path / "repo"
     cohort = repo / "data/events/catalog/cohort.csv"
-    cohort.parent.mkdir(parents=True)
+    cohort.parent.mkdir(parents=True, exist_ok=True)
     cohort.write_text("shot,split\n190001,train\n200977,val\n")
     monkeypatch.setattr(module, "REPO", repo)
     event = tmp_path / "out/tables/detachment"
-    event.mkdir(parents=True)
+    event.mkdir(parents=True, exist_ok=True)
     (event / "shots.csv").write_text(
         "shot,tier,holdout,reviewers,verified_on,notes\n"
         "190001,unverified,false,Alice,2026-10-03,keep this note\n"
@@ -209,7 +234,7 @@ def test_resume_refreshes_only_recipe_metadata_without_reencoding_frames(tmp_pat
     with h5py.File(first["store"]) as source:
         before = source["videos/tangtv/2/frames"][:]
     recipe_path = paths.root / "round4/detach/review_recipe.json"
-    recipe_path.parent.mkdir(parents=True)
+    recipe_path.parent.mkdir(parents=True, exist_ok=True)
     recipe_path.write_text(json.dumps({"method": "updated producer gates"}))
     second = module.build_store(record, paths, tmp_path / "bins", resume=True)
     assert second["action"] == "refreshed recipe"
@@ -225,6 +250,7 @@ def test_resume_refreshes_only_recipe_metadata_without_reencoding_frames(tmp_pat
 
 def test_camera_scan_does_not_hide_missing_efit(tmp_path, monkeypatch):
     module = roster_module()
+    (tmp_path / "cache").mkdir()
     monkeypatch.setenv("LABELER_DETACHMENT_GEOMETRY_ROOT", str(tmp_path / "cache"))
     paths = Paths(root=tmp_path, corpus=tmp_path / "corpus")
     camera(paths, 190001)
@@ -368,7 +394,7 @@ def test_main_writes_overlay_without_changing_producer_roster(
     module = roster_module()
     repo = tmp_path / "repo"
     cohort_path = repo / "data/events/catalog/cohort.csv"
-    cohort_path.parent.mkdir(parents=True)
+    cohort_path.parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(
         {
             "shot": [190001, 190002, 190003],
@@ -380,6 +406,8 @@ def test_main_writes_overlay_without_changing_producer_roster(
     ).to_csv(cohort_path, index=False)
     root = tmp_path / "producer"
     root.mkdir()
+    (root / "cache").mkdir()
+    (root / "bins").mkdir()
     roster = root / "shots.csv"
     roster.write_text(
         "shot,tier,holdout,reviewers,verified_on,notes\n"
@@ -411,7 +439,7 @@ def test_main_writes_overlay_without_changing_producer_roster(
     out = tmp_path / "delivery"
     if manual_holdout:
         overlay = out / "tables/detachment/shots.csv"
-        overlay.parent.mkdir(parents=True)
+        overlay.parent.mkdir(parents=True, exist_ok=True)
         overlay.write_text(
             "shot,tier,holdout,reviewers,verified_on,notes\n"
             "190001,gold,false,expert,2026-10-03,UI curation\n"

@@ -33,6 +33,11 @@ def source_path(shot, paths) -> Path:
     """A portable local cache root; reading this module never fetches."""
     root = os.environ.get("LABELER_DETACHMENT_GEOMETRY_ROOT")
     root = Path(root) if root else paths.root / "round4" / "detach" / "cache"
+    if not root.is_dir():
+        raise FileNotFoundError(
+            f"Detachment producer geometry cache missing: {root}. "
+            "Set LABELER_DETACHMENT_GEOMETRY_ROOT to the producer cache."
+        )
     return root / f"{int(shot)}.npz"
 
 

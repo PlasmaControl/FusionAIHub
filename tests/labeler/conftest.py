@@ -38,6 +38,22 @@ with warnings.catch_warnings():
 LIVE_ENV = "LABELER_FDP"
 
 
+@pytest.fixture
+def detachment_inputs(tmp_path, monkeypatch):
+    """Explicit synthetic producer context; never borrow producer-owned docs."""
+    import gzip
+    from pathlib import Path
+
+    method = Path(__file__).parent / "fixtures/detachment_method.md"
+    monkeypatch.setenv("LABELER_DETACHMENT_METHOD", str(method))
+    for base in (tmp_path, tmp_path / "root"):
+        root = base / "round4/detach"
+        (root / "bins").mkdir(parents=True, exist_ok=True)
+        (root / "cache").mkdir(exist_ok=True)
+        with gzip.open(root / "labels_bins.csv.gz", "wt") as stream:
+            stream.write("shot,start_ms,state_lm,state_rule,confidence\n")
+
+
 def pytest_addoption(parser) -> None:
     parser.addoption(
         "--run-live",

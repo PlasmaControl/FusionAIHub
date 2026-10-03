@@ -37,6 +37,9 @@ def test_radiation_export_note_only_warns_for_valid_ratios_above_one(
     assert ("orange points >1" in note) is warn
 
 
+pytestmark = pytest.mark.usefixtures("detachment_inputs")
+
+
 def _paths(tmp_path):
     return Paths(root=tmp_path / "root", corpus=tmp_path / "corpus")
 
@@ -131,7 +134,7 @@ def test_legacy_csv_indicators_have_ratio_units(tmp_path, monkeypatch):
     monkeypatch.delenv("LABELER_DETACHMENT_INDICATORS", raising=False)
     paths = _paths(tmp_path)
     path = paths.root / "round4/detach/indicators/170815.csv"
-    path.parent.mkdir(parents=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         "t_ms,prad_div,prad_div_valid,tangtv_front_height,tangtv_front_height_valid\n"
         "0,0.2,1,0.4,1\n50,1.2,1,0.8,1\n"
@@ -199,7 +202,7 @@ def test_aux_density_precedes_other_sources_and_te_is_independent(
     density = [p for p in built if "density" in p.title.lower()]
     assert len(density) == 1
     assert "producer aux_ne" in density[0].title
-    assert density[0].ylabel == "native units (unverified)"
+    assert density[0].ylabel == "m·cm⁻³"
     assert density[0].metadata["source"] == str(path)
     assert density[0].metadata["measurement"] == "CO2 line-integrated density proxy"
     assert "V2" in density[0].metadata["source_selection"]
@@ -263,7 +266,7 @@ def test_corpus_co2_masks_nonpositive_samples_and_discloses_native_units(tmp_pat
     panel = detachment.panels(170815, paths=paths, t_range=(0.0, 2.0))[0]
     np.testing.assert_allclose(panel.y, [[3e14, np.nan]], equal_nan=True)
     assert "R0 density proxy" in panel.title
-    assert panel.ylabel == "native units (unverified)"
+    assert panel.ylabel == "m·cm⁻³"
     assert panel.metadata["source"] == str(path)
     assert "line integral" in panel.metadata["caveat"]
 

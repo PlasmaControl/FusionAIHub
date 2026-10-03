@@ -16,9 +16,12 @@ from .test_review_browser import DRIVER, NODE, SHELLS, TOKEN, served  # noqa: F4
 from .test_review_detachment import corpus
 from .test_review_detachment_producer import table
 
-pytestmark = pytest.mark.skipif(
-    NODE is None or not SHELLS, reason="needs node and a headless Chromium"
-)
+pytestmark = [
+    pytest.mark.usefixtures("detachment_inputs"),
+    pytest.mark.skipif(
+        NODE is None or not SHELLS, reason="needs node and a headless Chromium"
+    ),
+]
 
 
 @pytest.mark.parametrize("scenario", ["detachment", "detachment-atomic"])
@@ -118,7 +121,7 @@ def test_video_slider_playback_clicks_and_labels(
     checks = json.loads(result.stdout.splitlines()[-1])
     expected = {
         "detachment": (
-            36,
+            45,
             {
                 "human camera protocol and stored machine recipe are separate",
                 "camera, full diagnostic, time axis and annotations fit at 1366x768",

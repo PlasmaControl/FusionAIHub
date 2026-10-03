@@ -4,13 +4,21 @@ The review page offers **1 attached, 2 detached, 3 MARFE, 4 uncertain** on an
 exclusive state track. Unmarked time is not reviewed. The primary producer
 suggestion is **unverified**, with its rule comparison and three indicator votes
 shown directly below the video. Review edits remain in the usual annotation
-lanes. The default Individual lane starts from the primary producer suggestion.
-**Start blank** resets selection and clears only Individual/unspecified spans;
-Crowd spans and their flags are preserved, and Undo restores the draft.
-**Blind mode** hides Source, producer strips, reading and recipe. It does not
-clear the initial suggestion: use Start blank separately for an independent
-review. Prior exposure and a suggested baseline can bias human/producer agreement;
-agreement collected with the default lane is not an independent validation.
+lanes. The Individual lane starts **empty** unless a saved human review exists.
+Source state 4 is a machine abstention and is never copied into the human lane.
+**Use Source (1–3)** is an explicit, exposed prefill action; it copies only states
+1–3. **Start blank** clears Individual/unspecified spans and preserves Crowd
+spans. **Blind mode** implies Start blank, disables Use Source and clears Undo,
+and suppresses Source, producer strips, reading, recipe, indicator plots,
+Source comparison bars, and Source-based queue/history comparisons until unblinded.
+A fresh blind load without saved human labels starts empty, including when an
+old producer-prefilled browser draft exists. Saved human reviews remain available.
+Each saved version records `suggestions_shown` (any exposure during this review
+or inherited exposure in the saved/draft version) and `prefilled` (producer
+prefill used in its lineage). Prior exposure is never cleared by Start blank,
+Blind mode or Undo. Old saves/clients without flags retain null (unknown), never
+false. Split agreement by these flags; exposed or prefilled labels do not establish
+independent human validation. New detachment clients require API 10 for saving.
 Binary agreement scoring refuses this multiclass editor.
 
 ## Human camera review protocol
@@ -27,6 +35,13 @@ Use the camera together with diagnostics and geometry to mark what you can decid
 
 MARFE is physically detached but has a distinct stage in this exclusive track.
 Partial and full detachment share code 2. Missing evidence never means attached.
+If target ion-flux/temperature evidence is absent or its target location cannot
+be established, a camera lift alone is **uncertain**, not detached. Leave time
+unmarked until actually reviewed; use state 4 after assessing the missing evidence.
+For attached, “emission peaked at target” is filter dependent: TangTV's filter is
+not recorded, and a D-alpha filter can show target recombination emission during
+detachment. Target-bright images alone cannot establish attachment; check target
+evidence, front position and diagnostic consistency, otherwise use uncertain.
 D-alpha chord locations are not recorded; do not infer a target view from the
 channel number. The shelf gate is a producer DZ requirement, not a human
 uncertainty rule. The votes and label states are read directly; the page does
@@ -44,13 +59,13 @@ methods, numeric thresholds, MARFE persistence, spatial/separatrix and independe
 corroboration requirements. `LABELER_DETACHMENT_METHOD` can override that record.
 The method record resolves inside this repository, never a sibling worktree.
 A missing method record raises FileNotFoundError with its path; restore the file
-or use the environment override. The bundled method text is a producer-owned
-snapshot; the controller brings its final record across when the producer lands.
+or use the environment override. This branch does not own or ship that method document. The controller integrates
+the producer-owned copy from r4-detach; tests use a synthetic method fixture.
 No UI-authored numeric threshold is inserted into help. Optional guides use only
 a structured recipe's `thresholds.<indicator>` numeric entries; without those,
 the traces have no classification guides. The physical f_div=1
-reference is always drawn, with orange marks above one and a caveat to check the
-heating-power denominator and radiation estimate. Afrac text at the cursor
+reference is always drawn. Orange marks and the denominator warning appear
+only when valid values above one are in the displayed window. Afrac text at the cursor
 reports the stored bin afrac_method verbatim, without an invented calibration claim.
 Read the machine block and each bin's vote/reason together: high DZ alone does
 not establish MARFE. A valid abstention can reflect evidence gates as well as a
@@ -147,12 +162,11 @@ UPCEN/UPDIV. IRTV suffix is `:DIGITAL_CAM:DIGITAL_RAW`.
 
 Density priority is **producer `aux_ne` → cached `denr0uf` → corpus CO2 →
 local Thomson core density**. This provides the producer's CO2 upstream-density
-context before the local fallback. The producer's `signals.line_density` calls
-its CO2 input a **line integral in arbitrary/native units** and selects V2,
-then R0, then V3; bins do not record the chosen chord. No chord-length division
-or verified UF unit is available. CO2 rows therefore say **density proxy,
-native units (unverified)**; calling these a calibrated line average in cm⁻³
-would exceed the source evidence. Local Thomson is explicitly not
+context before the local fallback. It selects V2, then R0, then V3; older bins
+may omit the chosen chord. BCI units are **m·cm⁻³**, a mixed-unit line integral,
+per `configs/shot_design/signals.yaml:36–45`; no chord-length division is applied.
+CO2 rows keep these line-integral units and never claim a calibrated line average.
+Local Thomson is explicitly not
 line-averaged and retains m⁻³ units. **All ne ≤0 is missing before block means**;
 Thomson channels are ranked by positive native-sample valid fraction (up to eight,
 stable channel-order ties). No local trace is renamed as a line average.
@@ -169,8 +183,19 @@ LOB1–LOB2, PFX1–PFX3 and UOB use Torr L/s, after subtracting each channel's
 finite native-sample median over **t < 0**, reducing prefill-puff bias. There is
 no tuned flatness threshold.
 If pre-plasma samples are absent, the legend says **offset uncorrected** and
-metadata records a null baseline. Raw probe-sweep medians and raw
-bolometer-voltage medians are omitted.
+metadata records a null baseline. Raw probe-sweep medians are omitted.
+
+Where present, `aux_jsat_peak` is shown with the per-bin `aux_jsat_probe` id at
+the cursor. This is the producer's peak over available probes in uncalibrated
+producer units, not necessarily its target/SOL-selected probe. A changing peak
+probe can imitate rollover. Confirm target location and compare the same probe;
+without this corroboration the peak alone cannot establish detachment.
+
+The corpus `bolo` group is (48, T) raw chord voltages, not a camera. A chord×time
+heatmap displays approximately 1 ms block means in V with a shared within-shot
+percentile scale. Chord geometry and calibration are not recorded: it is a
+qualitative radiation-context row, not Prad,div and not MARFE localization.
+The requested bolometer camera is therefore unavailable in this corpus.
 
 Context uses contiguous native-sample block means, approximately 1 ms (actual
 width is recorded, e.g. 1.024 ms for a 256 µs clock), clipped to the catalog
@@ -202,7 +227,9 @@ camera shots. **No-video shots are excluded by default**, with their count in
 the scan; `--include-no-video` explicitly flags and places them last. Camera
 availability is checked before and independently of the EFIT shelf gate.
 Shots with camera/shelf coverage sort first (87 in the frozen scan), then the
-remaining camera shots; shot number breaks ties. The human can review either
+remaining camera shots; cohort `queue_rank` orders each priority group.
+Producer-external shots without a cohort rank follow ranked shots in their group,
+with shot number as the final deterministic tie break. The human can review either
 group. Missing/unreadable EFIT counts are reported separately. Fixed cohort test shots
 and all input `split=test` or `holdout=true` shots are excluded before corpus
 reads. Manual delivery `holdout=true` reservations are also excluded and retained
@@ -220,7 +247,9 @@ files require rerunning the script to refresh this snapshot. Inputs are read
 only. Resume compares source hashes for labels, bins, density cache, EFIT and
 all interpretation records, including absent recipe files so their appearance
 invalidates an older store.
-The recipe change invalidates old stores even without force. Retained stores
+The recipe change invalidates old stores. Opening a stale detachment shot fails
+with the store path and controller resume instruction; it never rebuilds or
+overwrites that frozen store. Explicit controller resume is the rebuild authority. Retained stores
 outside the queue remain inaccessible through this server's roster.
 
 Library defaults require no detachment-specific environment settings for the
@@ -229,13 +258,17 @@ normal `$LABELER_ROOT`: indicators `round4/detach/bins` (legacy
 labels `round4/detach/labels_bins.csv.gz`. Overrides are
 `LABELER_DETACHMENT_INDICATORS`, `LABELER_DETACHMENT_GEOMETRY_ROOT`,
 `LABELER_DETACHMENT_CACHE_ROOT`, and `LABELER_DETACHMENT_LABELS`. An isolated
-server root needs those overrides only when building missing stores; retained
-stores contain frozen producer context. Run the controller build before serving
-normal review so this server cannot build against an unfinished producer.
+server root must set these four overrides as shown below. A missing producer
+label table or bins/cache directory raises FileNotFoundError naming the path and
+its override. Within an existing producer directory, a shot without a bins/cache
+file means unavailable shot evidence, not a missing installation; that absence is
+frozen in context fingerprints. Unreadable indicators or suppressed producer
+snapshots abort a build before writing. Run the controller build before serving
+normal review; stale stores stay intact until that explicit action.
 
 ## Reproduction and controller resume
 
-The producer is in its own fix round. No delivery stores were rebuilt for fix 5.
+The producer is in its own fix round. No delivery stores were rebuilt for fixes 5 or 6.
 After its code, method document and outputs land, run this one command from the
 integrated repository (replace `$PWD` only if using a different checkout):
 
@@ -248,13 +281,32 @@ pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/
   -e labelmaker python scripts/labeler/detachment_review_roster.py \
   --out /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui \
   --producer-roster /scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/shots.csv \
-  --build --rebuild-existing --resume-build --workers 4
+  --build --rebuild-existing --resume-build --workers 4 \
+  --record docs/labeler/results/detachment_review_queue.json
 ```
 
 Resume preserves saved human reviews and rebuilds stores with old panel recipes
 or changed producer fingerprints. It regenerates the Source snapshot, queue order
 and `--out/producer_recipe.md`. A method-only metadata refresh keeps the physical
 f_div=1 reference. No sibling worktree is needed after integration.
+
+Controller checklist (run only after final producer integration):
+
+1. Confirm final labels, bins, cache, method document and recipe hashes form one
+   coherent producer snapshot; use the integrated producer document.
+2. Record hashes of `tables/detachment/review/labels.csv` and `history.jsonl`
+   before resume; back up the delivery under its archive directory.
+3. Run the command above, then the committed `detachment_review_audit.py` and
+   record results; verify all retained stores have recipe 6, `panel_revision=1`
+   (Jsat/bolo context), and final input hashes. Early recipe-6 files without the
+   revision stamp also require resume; opening them never overwrites them.
+4. Confirm Source matches producer states/bounds, all test/reserved shots stay
+   excluded, queue priority groups follow cohort queue_rank, and both human-review
+   files retain their hashes. `detachment_review_queue.json` is a **future rebuild
+   output**, not evidence for the frozen fix-five counts.
+5. Generate fresh 200977 browser evidence without `--frozen-from`; check 40 ms
+   previews, pre-plasma median gas baselines, target evidence and blind canvas
+   pixels. Inspect the PNGs, refresh the delivery audit and report before launch.
 
 For UI-only verification while the producer changes, copy and serve the existing
 frozen example. This prohibits every store build and preserves its bytes:
@@ -266,15 +318,17 @@ export LABELER_LABEL_TABLES=/scratch/gpfs/nc1514/FusionAIHub/data/events
 export LABELER_NO_FETCH=1 PYTHONPATH="$PWD/src" OMP_NUM_THREADS=4
 pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \
   -e labelmaker python scripts/labeler/detachment_review_demo.py --shot 200977 \
-  --frozen-from "$LABELER_ROOT/round4/detach-ui/browser-fix4-200977" \
-  --out "$LABELER_ROOT/round4/detach-ui/browser-fix5-200977" --verify
+  --frozen-from "$LABELER_ROOT/round4/detach-ui/archive/browser-fix5-200977" \
+  --out "$LABELER_ROOT/round4/detach-ui/browser-fix6-200977" --verify
 ```
 
 The raw review-page figure is **excluded from the paper**. The producer's views
 figure with EFIT separatrix and X-point overlays is the appendix figure. Keep
-`browser-fix5-200977/detachment_review_200977.png` (1366×768) as the sole current
+`browser-fix6-200977/detachment_review_200977.png` (1366×768) as the sole current
 review-tool illustration. It shows unverified suggestions, not independent human
-validation. The 190212 figure has been deleted and earlier 200977 exports archived.
+validation. All previous browser folders, including 190212, are archived under
+`$LABELER_ROOT/round4/detach-ui/archive/`. A separate blind PNG and a tall
+UI screenshot make the suppressed layer and full diagnostics inspectable.
 The optional diagnostic exporter uses `_diagnostic` filenames and adds its
 f_div > 1 footnote only when valid plotted bins actually exceed one.
 
@@ -283,6 +337,10 @@ After the resume build, launch on a free port:
 ```bash
 LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui \
 LABELER_LABEL_TABLES=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui/tables \
+LABELER_DETACHMENT_LABELS=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/labels_bins.csv.gz \
+LABELER_DETACHMENT_INDICATORS=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins \
+LABELER_DETACHMENT_GEOMETRY_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/cache \
+LABELER_DETACHMENT_CACHE_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/cache \
 LABELER_NO_FETCH=1 PYTHONPATH="$PWD/src" pixi run --frozen --no-install \
   --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e labelmaker \
   python -m labeler.events.ui --port 8812
@@ -291,6 +349,7 @@ LABELER_NO_FETCH=1 PYTHONPATH="$PWD/src" pixi run --frozen --no-install \
 Open `#detachment/200977` on the printed token URL. Existing owner servers are
 untouched. The installed Chromium/DevTools driver checks the actual browser and
 stops its own free-port server. Current evidence is in
-`docs/labeler/results/detachment_ui_fix5_*.json`; previous snapshots are in
-`docs/labeler/results/archive/`. `HANDOFF.md` and the current-state report clearly
+`docs/labeler/results/detachment_ui_fix6_*.json`; frozen delivery counts remain
+in `detachment_ui_fix5_delivery.json`. Superseded bulk JSON lives in
+`$LABELER_ROOT/round4/detach-ui/archive/results/`. `HANDOFF.md` and the current-state report clearly
 separate frozen delivery counts from the pending controller rebuild.

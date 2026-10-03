@@ -29,7 +29,9 @@ def frozen_delivery(out, record_path, write_handoff=False):
     pointer = json.loads((event / "review/source.json").read_text())
     scan = json.loads((out / "corpus_scan.json").read_text())
     cohort_path = REPO / "data/events/catalog/cohort.csv"
-    blind = set(pd.read_csv(cohort_path).query("split == 'test'").shot)
+    cohort = pd.read_csv(cohort_path)
+    blind = set(cohort.query("split == 'test'").shot)
+    ranks = cohort.set_index("shot").queue_rank.to_dict()
     covered = {r["shot"] for r in scan["records"] if r.get("camera_geometry_eligible")}
     queue = roster.shot.astype(int).tolist()
     versions = Counter()
@@ -44,7 +46,9 @@ def frozen_delivery(out, record_path, write_handoff=False):
         "queue_shots": len(queue),
         "queue_order": queue,
         "shelf_covered_shots": sum(s in covered for s in queue),
-        "shelf_covered_first": sorted(queue, key=lambda s: (s not in covered, s))
+        "shelf_covered_first": sorted(
+            queue, key=lambda s: (s not in covered, ranks.get(s, float("inf")), s)
+        )
         == queue,
         "suggestion_rows": len(suggestions),
         "suggestion_shots": int(suggestions.shot.nunique()),
@@ -55,19 +59,23 @@ def frozen_delivery(out, record_path, write_handoff=False):
         "stored_panel_versions": dict(versions),
         "required_panel_version": build.PANEL_VERSIONS["detachment"],
         "store_rebuilds": 0,
-        "producer_method_sha256": sha256_of(REPO / "docs/labeler/detachment.md"),
+        "producer_method_sha256": (
+            sha256_of(REPO / "docs/labeler/detachment.md")
+            if (REPO / "docs/labeler/detachment.md").is_file()
+            else None
+        ),
         "paper_figure": "producer views figure with EFIT overlays",
         "review_illustration": str(
-            out / "browser-fix5-200977/detachment_review_200977.png"
+            out / "browser-fix6-200977/detachment_review_200977.png"
         ),
     }
     record_path.parent.mkdir(parents=True, exist_ok=True)
     record_path.write_text(json.dumps(record, indent=2) + "\n")
     if write_handoff:
         text = (
-            "# detach-ui — Fix round 5 handoff\n\n"
+            "# detach-ui — Fix round 6 handoff\n\n"
             "Code is on `r4-detach-ui` in `/scratch/gpfs/nc1514/FusionAIHub-r4-detach-ui`. "
-            "Read **Fix round 5** in the stream report and "
+            "Read **Fix round 6** in the stream report and "
             "`docs/labeler/detachment_review.md` for the finding map and commands.\n\n"
             f"Frozen delivery: {record['queue_shots']} nonblind camera shots, "
             f"{record['shelf_covered_shots']} with camera/shelf coverage placed first; "
@@ -81,11 +89,12 @@ def frozen_delivery(out, record_path, write_handoff=False):
             "After the producer lands, run the one-command resume build in the docs. "
             "It preserves human reviews, refreshes suggestions/recipe/queue, and rebuilds "
             "outdated stores. Do not launch normal review against the old stores yet.\n\n"
-            "The default Individual lane copies the primary producer suggestion. "
+            "The default Individual lane starts empty unless saved human labels exist. "
             "Start blank clears Individual/unspecified annotations and resets selection; "
-            "Crowd is retained and Undo restores the draft. Blind mode hides Source and "
-            "producer context; Start blank is separately needed to remove the initial "
-            "suggestion. Prior exposure biases agreement.\n\n"
+            "Crowd is retained. Blind mode implies Start blank and suppresses Source "
+            "and every producer comparison/indicator drawing. Use Source copies only "
+            "states 1–3. Each version records exposure and prefill; null means unknown. "
+            "Prior exposure biases agreement and cannot be erased by going blind.\n\n"
             "Afrac text reports stored per-bin methods, without UI-authored calibration "
             "claims. f_div has a line at 1 and a denominator/radiation caveat. D-alpha "
             "chord locations and TangTV filters are not recorded; missing DRSEP does "
@@ -93,11 +102,12 @@ def frozen_delivery(out, record_path, write_handoff=False):
             "snaps to the selected TangTV frame time.\n\n"
             "The producer's views figure with EFIT overlays is the appendix figure. "
             "The raw review-page figure is excluded from the paper. The sole current "
-            "review-tool illustration is `browser-fix5-200977/detachment_review_200977.png` "
+            "review-tool illustration is `browser-fix6-200977/detachment_review_200977.png` "
             "at 1366×768, served from a byte-identical frozen store copy. "
-            "The 190212 figure was deleted; prior 200977 exports are archived.\n\n"
-            "Current evidence: `docs/labeler/results/detachment_ui_fix5_*.json`. "
-            "Historical fix-3/fix-4 records live in `docs/labeler/results/archive/`; "
+            "All older browser folders are archived, with no store rebuild.\n\n"
+            "Current evidence: `docs/labeler/results/detachment_ui_fix6_*.json`. "
+            "Frozen fix-five counts remain in detachment_ui_fix5_delivery.json. "
+            "Historical bulk JSON lives in `$LABELER_ROOT/round4/detach-ui/archive/results/`; "
             "superseded reports in the report archive. "
             f"This handoff's source JSON is `{record_path}`.\n"
         )
