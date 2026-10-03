@@ -570,7 +570,7 @@ def track_bars(ax, track: lf.Track, colour: str, regimes=None, bar=BAR) -> None:
             span,
             bar,
             facecolor=face if hatch is None else "white",
-            edgecolor=face,
+            edgecolor=INK if hatch else face,
             hatch=hatch,
             lw=0.4 if hatch else 0,
         )
@@ -1066,7 +1066,8 @@ def draw(
                 if r.category == ABSENT
             ],
         )
-    late_pixels = high.lit & (high.f >= 170)[:, None] & late_absent[None, :]
+    late_band = (high.f >= 170) & (high.f <= TOP_KHZ)
+    late_pixels = high.lit & late_band[:, None] & late_absent[None, :]
     return {
         "tracks": track_records,
         "figure": [str(p) for p in paths_out],

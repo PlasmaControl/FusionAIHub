@@ -403,6 +403,8 @@ def sawtooth_caption(record: dict) -> str:
         text = f"Sawtooth {first['state']} to {first['end_ms'] / 1000:.2f} s"
         if "uncertain" in states and first["state"] != "uncertain":
             text += "; uncertain intervals"
+        if "present" in states and first["state"] != "present":
+            text += "; present intervals"
         blanks = [r for r in rows if r["state"] == "unassessed"]
         if blanks and first["state"] != "unassessed":
             start = blanks[0]["start_ms"]
@@ -412,8 +414,6 @@ def sawtooth_caption(record: dict) -> str:
                 text += f"; mostly unassessed from {start / 1000:.2f} s"
             else:
                 text += "; intermittently unassessed"
-        elif "present" in states and first["state"] != "present":
-            text += "; later present"
     guard = record.get("density_guard") or {}
     if "unassessed" in states and guard.get("cutoff_proxy"):
         text += ", where a conservative density proxy limits ECE observability"

@@ -353,3 +353,18 @@ def test_sawtooth_caption_uses_window_states_and_qualified_proxy():
         {"start_ms": 1500, "end_ms": 3300, "state": "absent"}
     ]
     assert fs.sawtooth_caption(record) == "Sawtooth absent throughout."
+
+
+def test_sawtooth_summary_keeps_present_intervals_between_uncertain_and_blank():
+    record = {
+        "state_intervals_ms": [
+            {"start_ms": 1500, "end_ms": 2000, "state": "uncertain"},
+            {"start_ms": 2000, "end_ms": 2020, "state": "present"},
+            {"start_ms": 2020, "end_ms": 3300, "state": "unassessed"},
+        ],
+        "density_guard": {"cutoff_proxy": True, "status": "density_and_local_bt"},
+    }
+    text = fs.sawtooth_caption(record)
+    assert "present intervals" in text
+    assert "unassessed from 2.02 s" in text
+    assert "no Bt" not in text
