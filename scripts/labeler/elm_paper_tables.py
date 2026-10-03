@@ -54,8 +54,8 @@ def benchmark_table(ours, dsm, feature=None) -> str:
     caption = (
         "Reviewed 50 ms occupancy, 97\\% crowd positives; brackets: eligible "
         "shot-bootstrap intervals. Inputs: ours, FS02--04/fast density; ELM-O, "
-        "BES/FS/density (BES only); DSM, 60 diagnostics including PCPHD02/03 "
-        "on all 119 shots and DENV2F/3F on 115 (four mean-filled); clock, "
+        "BES/FS/density (BES only); DSM, 60 diagnostics including PCPHD02/03 photodiodes "
+        "on all 119 shots and DENV2F/3F on 115 each (four each mean-filled); clock, "
         "D-alpha/phase gate; "
         "always-present, none; feature-only, log D-alpha max-minus-median. "
         "Clock boundary identity within 1 ms: 56\\% starts, 44\\% ends, "
@@ -352,8 +352,9 @@ frozen original recipe. A trailing-three-epoch selection after warm-up is report
 as a sensitivity, not selected on its held-out performance. Feature-only uses one
 within-bin FS02--04 log D-alpha max-minus-median feature and L2 logistic regression
 on identical folds. The revised isolated DSM detector has training-only
-normalization and random initialization; photodiodes are observed when available,
-with explicit FS substitutes otherwise. DENV2F/3F means fill v2/v3; numerical
+normalization and random initialization; real photodiodes cover all 119 shots,
+with no FS substitutes. DENV2F/3F means fill v2/v3 on 115 shots per chord;
+four rejected shots per chord are mean-filled. Numerical
 scales are checked against paired slow CO2 and training columns, but physical
 calibration remains unresolved. Legacy survival and source-exposed fits stay
 supplemental; 50 ms means and centered NBI lookahead differ from native training.
@@ -370,8 +371,11 @@ Smith's independent hand-labelled windows test the frozen review ensemble and
 shot-grouped Smith-trained onset head separately. Window occupancy uses 1 ms
 cells, so it is not comparable to the crowd-dominated 50 ms review target.
 Event metrics use one-to-one onset matching at 2 and 5 ms and report timing errors;
-ELM-O uses its published fixed setting. The onset output is not delivered if that
-validation remains poor. Run-day overlap is reported separately from shot overlap.
+ELM-O uses its published fixed setting. Frozen occupancy transfer fails against
+Smith event regions, and the frozen auxiliary onset output is not delivered.
+The Smith-trained onset head succeeds on selected windows and remains an
+experimental CV trace; catalog physical-onset output is withheld. Run-day overlap
+is reported separately from shot overlap.
 
 Finding 1 uses all-covered known 50 ms cells with at least 25 ms reviewed present;
 unknown time stays unknown. Finding 2 includes both strict interior and known

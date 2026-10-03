@@ -337,6 +337,36 @@ def main():
         "definition and domain shift (192721: 1 legacy bin versus 17 non-crowd "
         "review spans)."
     )
+    smith = records.get("smith")
+    if smith:
+        frozen = smith["methods"]["elm-ours"]
+        head = smith["methods"]["elm-ours-onset"]
+        smith_result = (
+            "Frozen transfer fails on Smith's event-region target: occupancy AUROC "
+            + metric(frozen["occupancy_1ms"], "auroc")
+            + ", F1 "
+            + metric(frozen["occupancy_1ms"], "f1")
+            + "; frozen auxiliary onset F1 "
+            + metric(frozen["events"]["2"], "f1")
+            + " at ±2 ms and "
+            + metric(frozen["events"]["5"], "f1")
+            + " at ±5 ms. The original elm-ours delivers occupancy only. "
+            "The Smith-trained experimental head succeeds: event precision "
+            + metric(head["events"]["2"], "precision")
+            + ", recall "
+            + metric(head["events"]["2"], "recall")
+            + ", F1 "
+            + metric(head["events"]["2"], "f1")
+            + " at both tolerances; median absolute matched timing error "
+            + f"{head['events']['2']['timing_error_ms']['median_absolute']:.3f} ms. "
+            "Its shot-CV traces are benchmark outputs; catalog physical-onset "
+            "output is withheld because selected-window negatives do not validate "
+            "continuous-discharge false alarms. All 2,316 windows have complete "
+            "input-record coverage, with conservative whole-cell edge exclusions. "
+            "Smith and review have zero overlapping shots and run days."
+        )
+    else:
+        smith_result = "Smith evaluation is pending."
     lines = [
         "# ELM occupancy and onset evaluation",
         "",
@@ -404,12 +434,19 @@ def main():
                     f"AUPRC: {cells[1]} | F1: {cells[2]} "
                     f"({subset['n_shots']} shots / {subset['bins']:,} common bins)"
                 )
+    if smith:
+        model_lines.append(
+            "- elm-ours-onset | 2026_10_03 | Event F1 ±2/5 ms: "
+            + metric(head["events"]["2"], "f1")
+            + " (211 Smith shots; experimental shot-CV trace, selected windows)"
+        )
     lines += [
         "",
         (
             "Inputs are explicit in the main caption. The revised isolated DSM "
-            "detector uses real PCPHD02/03 where available (otherwise labelled FS "
-            "substitutes), and native DENV2F/3F means for CO2 v2/v3. Its remaining "
+            "detector uses real PCPHD02/03 on all 119 shots, with no FS substitutes, "
+            "and native DENV2F/3F means for CO2 v2/v3 (115 shots per chord; four "
+            "per chord rejected and mean-filled). Its remaining "
             "60-column inputs are actuator, magnetic, slow CO2 and ECE diagnostics, "
             "with fold-training-only normalization and mean fill. Native density "
             "physical calibration remains unresolved; scale/paired-unit checks and "
@@ -438,6 +475,8 @@ def main():
         ),
         "",
         "## Independent Smith evaluation",
+        "",
+        smith_result,
         "",
         (
             "`smith/evaluation.json` records 2,316 hand-labelled windows on 211 "
@@ -506,6 +545,20 @@ def main():
             "or blind-test splits are modified."
         ),
     ]
+    if "smoothed" in records:
+        sensitivity = records["smoothed"]["sets"]["all119"]["methods"]["elm-ours"]
+        lines += [
+            "",
+            "The separate smoothed-selection sensitivity scores AUROC "
+            + metric(sensitivity, "auroc")
+            + ", AUPRC "
+            + metric(sensitivity, "auprc")
+            + ", F1 "
+            + metric(sensitivity, "f1")
+            + " on original review bins. It does not replace frozen cv2 or "
+            "support independent transfer claims.",
+            "",
+        ]
     (REPO / "docs/labeler/elm_ours.md").write_text("\n".join(lines))
     readme = REPO / "data/events/edge_localized_mode/README.md"
     text = readme.read_text()
@@ -518,8 +571,11 @@ def main():
         "substitutes with unresolved calibration. Historical source-exposed "
         "DSM variants remain supplemental. The independent Smith onset and "
         "occupancy evaluation, run-day overlap and limitations are in "
-        "[elm_ours.md](../../../docs/labeler/elm_ours.md); poor physical-onset "
-        "validation means no onset output is delivered. " + domain
+        "[elm_ours.md](../../../docs/labeler/elm_ours.md). Frozen elm-ours performs "
+        "poorly on Smith event regions (AUROC 0.505), so its auxiliary onset "
+        "output is not delivered. The successful Smith-trained head is an "
+        "experimental selected-window CV trace; catalog physical-onset output "
+        "remains withheld. " + domain
     )
     section = [
         "## Models",

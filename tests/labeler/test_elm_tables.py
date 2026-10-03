@@ -28,6 +28,7 @@ def test_compact_ranking_marks_refit_and_omits_historical_initializations():
     text = swap_tex.ranking_table(data, "evaluation.json", "auroc")
     assert r"elm-dsm refit$^{\ddagger}$" in text
     assert "elm-dsm detection init" not in text
+    assert "_detection_common" not in text
 
 
 def test_bes_point_order_crossing_distinguishes_a_stable_order():

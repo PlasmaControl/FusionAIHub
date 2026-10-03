@@ -360,7 +360,12 @@ def ranking_table(record: dict, source: str, metric: str) -> str:
         )
         scope += f"; {res['reviewed']['bins']} bins"
         if tag.startswith("all-covered"):
-            scope = tag + ": " + scope
+            label = (
+                "Known majority, detection coverage"
+                if "detection_common" in tag
+                else "Known majority, complete scores"
+            )
+            scope = label + ": " + scope
         lines.append(r"\multicolumn{2}{l}{\textbf{" + scope + r"}} \\")
         for name, reference in refs:
             # Historical initialization variants have their own numerical appendix.

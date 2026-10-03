@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from elm_ours_evaluate import main as evaluate
@@ -66,6 +67,16 @@ def main():
                 out / "evaluation.json",
             )
         },
+    }
+    gpu_log = root.parent / "smoothed_train.log"
+    log = gpu_log.read_text()
+    peak = re.search(r"max_allocated_bytes (\d+)", log)
+    record["gpu"] = {
+        "visible_device": 1,
+        "allocator_cap_fraction": 0.28,
+        "max_allocated_bytes": int(peak[1]),
+        "log": str(gpu_log),
+        "log_sha256": sha256_of(gpu_log),
     }
     path = REPO / "outputs/labeler/elm/ours/smoothed_selection.json"
     path.write_text(json.dumps(record, indent=1) + "\n")
