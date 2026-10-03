@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Benchmark each single detachment indicator against the combined label.
+"""Record exploratory indicator agreement; no independent benchmark is available.
 
     python scripts/labeler/detach_benchmark.py
 
@@ -7,36 +7,21 @@ Reads `$LABELER_ROOT/round4/detach/labels_bins.csv.gz` (written by
 `detach_label.py`: every assessed bin with the votes, the values and both labelers'
 states) and writes `docs/labeler/results/detachment_benchmark.json`.
 
-For each indicator (Afrac, Prad,div, TangTV front height), on the bins where it
-is valid and the reference is a certain state (attached, detached or marfe):
+Pairwise cast votes are compared before consensus selection, separately for each
+``tangtv_tier``. The paper population is the upper-shelf Prad--TangTV pair.
+Cohen's kappa and binary attached/not-attached kappa use 1000 shot-bootstrap
+replicates. Lower-shelf measurements remain provisional. An indicator scored
+against a consensus containing its own vote cannot establish detector accuracy,
+so that comparison is intentionally absent from this record.
 
-* strict agreement and Cohen's kappa of its vote against the reference (bins where
-  it abstains are counted in `vote_rate`, not in the agreement);
-* `compatible_agreement`: the vote is consistent with the reference state (a
-  "detached" vote from an indicator that cannot see the X-point is right when the
-  reference is detached or marfe);
-* per-state F1 (attached / detached / marfe), and the binary attached versus
-  not-attached F1 and kappa, the scale Afrac and Prad can be judged on;
-* AUROC of the continuous value for attached versus not attached (no threshold);
-* 1000-replicate shot-bootstrap 95% intervals on all of them.
-
-Two references. `combined` is the consensus state, which includes the indicator
-being scored (circular diagnostic agreement). `loo` means "bins where the other
-two indicators agree", with the scored vote withheld and compatibility gates
-applied. This selects easier bins and is not independent physical truth. The
-label model was fitted on non-test shots only; metrics are
-given on every shot, on the fitting shots and on the cohort's test split alone, and
-for TangTV also by where its front height came from (`source_inversion`,
-`source_surrogate`: the owner's inversion or the regression from the raw frame).
-
-The label is also checked against divertor Thomson Te (`divertor_te_check`), which
-no indicator reads. Failure analysis follows: where the indicators go wrong, by ELM share and heating
-power, and the known limits of each (see `docs/labeler/detachment.md`).
+The historical filename is retained for consumers of the reproducible records.
+Shared metric/model helpers below also support the exploratory CNN scripts.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import itertools
 import json
 import os
@@ -87,12 +72,18 @@ def kappa_from(table: np.ndarray) -> float:
 def f1_from(table: np.ndarray, k: int) -> float:
     tp = table[k, k]
     pred, true = table[:, k].sum(), table[k, :].sum()
-    if pred + true == 0:
+    if true == 0:
         return float("nan")
     return float(2 * tp / (pred + true))
 
 
-def metrics(table: np.ndarray, name: str, n_valid: float, n_ref: float) -> dict:
+def metrics(
+    table: np.ndarray,
+    name: str,
+    n_valid: float,
+    n_ref: float,
+    reference_classes: tuple[int, ...] = STATES,
+) -> dict:
     """All scalar metrics from a (ref, vote) confusion table of 1..3 states."""
     total = table.sum()
     compat = sum(
@@ -107,7 +98,8 @@ def metrics(table: np.ndarray, name: str, n_valid: float, n_ref: float) -> dict:
             [table[1:, 0].sum(), table[1:, 1:].sum()],
         ]
     )
-    present = np.flatnonzero(table.sum(axis=1) > 0)
+    # A bootstrap draw cannot redefine the estimand by dropping its absent class.
+    supported = all(table[k - 1].sum() > 0 for k in reference_classes)
     return {
         "n_bins": float(total),
         "vote_rate": float(total / n_ref) if n_ref else float("nan"),
@@ -118,12 +110,13 @@ def metrics(table: np.ndarray, name: str, n_valid: float, n_ref: float) -> dict:
         "f1_attached": f1_from(table, 0),
         "f1_detached": f1_from(table, 1),
         "f1_marfe": f1_from(table, 2),
-        "macro_f1": float(np.mean([f1_from(table, k) for k in present]))
-        if len(present)
+        "macro_f1": float(np.mean([f1_from(table, k - 1) for k in reference_classes]))
+        if reference_classes and supported
         else float("nan"),
         "binary_f1_attached": f1_from(merged, 0),
         "binary_f1_not_attached": f1_from(merged, 1),
         "binary_kappa": kappa_from(merged),
+        "binary_agreement": float(np.trace(merged) / total) if total else float("nan"),
     }
 
 
@@ -184,18 +177,30 @@ def per_shot_tables(frame, name, reference) -> tuple[np.ndarray, list, np.ndarra
 
 def bootstrap(tables, counts, name, rng):
     """Point estimate and 95% shot-bootstrap interval of every metric."""
+    reference_classes = tuple(
+        int(k + 1) for k in np.flatnonzero(tables.sum(axis=0).sum(axis=1) > 0)
+    )
     point = metrics(
         tables.sum(axis=0),
         name,
         counts[:, 0].sum() / max(counts[:, 1].sum(), 1),
         counts[:, 0].sum(),
+        reference_classes,
     )
     draws = []
     n = len(tables)
     for _ in range(REPLICATES if n else 0):
         pick = rng.integers(0, n, n)
         c = counts[pick].sum(axis=0)
-        draws.append(metrics(tables[pick].sum(axis=0), name, c[0] / max(c[1], 1), c[0]))
+        draws.append(
+            metrics(
+                tables[pick].sum(axis=0),
+                name,
+                c[0] / max(c[1], 1),
+                c[0],
+                reference_classes,
+            )
+        )
     out = {}
     for key, value in point.items():
         sample = np.array([d[key] for d in draws], dtype=float)
@@ -250,7 +255,7 @@ def pairwise_ci(frame: pd.DataFrame, rng) -> dict:
         both = frame[f"{a}_valid"].to_numpy(bool) & frame[f"{b}_valid"].to_numpy(bool)
         cast = both & (frame[f"{a}_vote"] > 0) & (frame[f"{b}_vote"] > 0)
         tables = []
-        for _, rows in frame.groupby("shot"):
+        for _, rows in frame.loc[cast].groupby("shot"):
             keep = cast[rows.index]
             table = np.zeros((3, 3))
             np.add.at(
@@ -277,6 +282,11 @@ def pairwise_ci(frame: pd.DataFrame, rng) -> dict:
             ),
             "agreement": scores["agreement"],
             "kappa": scores["kappa"],
+            "binary_kappa": scores["binary_kappa"],
+            "binary_agreement": scores["binary_agreement"],
+            "count_labels": ["attached", "detached", "marfe"],
+            "count_rows": a,
+            "count_columns": b,
             "counts": tables.sum(axis=0).astype(int).tolist(),
         }
     return out
@@ -438,11 +448,39 @@ def failure_analysis(frame, references) -> dict:
     return out
 
 
+def tier_agreement(frame: pd.DataFrame, rng) -> dict:
+    """Every pairwise comparison retains its accepted TangTV geometry tier."""
+    return {
+        str(tier): pairwise_ci(rows.reset_index(drop=True), rng)
+        for tier, rows in frame.groupby("tangtv_tier", sort=True)
+    }
+
+
+def attached_conflict(frame: pd.DataFrame) -> dict:
+    """Radiation can remain high while an accepted imaging front is attached."""
+    selected = (
+        frame.tangtv_valid.to_numpy(bool)
+        & frame.prad_valid.to_numpy(bool)
+        & frame.tangtv_vote.eq(core.ATTACHED).to_numpy()
+    )
+    detached = selected & frame.prad_vote.eq(core.DETACHED).to_numpy()
+    cast = selected & frame.prad_vote.gt(core.ABSTAIN).to_numpy()
+    return {
+        "tangtv_attached_bins_with_valid_prad": int(selected.sum()),
+        "tangtv_attached_bins_with_cast_prad": int(cast.sum()),
+        "prad_detached_bins": int(detached.sum()),
+        "prad_abstain_bins": int((selected & ~cast).sum()),
+        "shot_ids": sorted(int(s) for s in frame.loc[selected, "shot"].unique()),
+        "fraction_prad_detached": float(detached.sum() / selected.sum())
+        if selected.any()
+        else None,
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--bins", default=str(root() / "labels_bins.csv.gz"))
     parser.add_argument("--bins-dir", type=Path, default=root() / "bins")
-    parser.add_argument("--threshold", type=float, default=0.7)
     parser.add_argument("--out", default=str(RESULT))
     args = parser.parse_args()
 
@@ -451,12 +489,6 @@ def main() -> None:
         frame[f"{name}_valid"] = frame[f"{name}_valid"].astype(bool)
     rng = np.random.default_rng(0)
     fit_mask = (frame.split != "test").to_numpy()
-    lm_state = frame.state_lm.to_numpy()
-    subsets = {
-        "all": np.ones(len(frame), bool),
-        "fit_shots": fit_mask,
-        "test_shots": ~fit_mask,
-    }
     result = {
         "bin_ms": core.BIN_MS,
         "replicates": REPLICATES,
@@ -466,64 +498,71 @@ def main() -> None:
             for s in ("train", "val", "test", "outside")
         },
         "n_assessed_bins": len(frame),
+        "scope": "exploratory coverage and indicator agreement",
+        "sources": {
+            "labels": str(args.bins),
+            "labels_sha256": hashlib.sha256(Path(args.bins).read_bytes()).hexdigest(),
+            "bins_dir": str(args.bins_dir),
+            "script": "scripts/labeler/detach_benchmark.py",
+        },
+        "independent_benchmark": False,
         "reference_note": (
-            "combined = diagnostic consensus including the indicator scored "
-            "(circular); loo = bins where the other two indicators agree, with "
-            "the scored vote withheld and compatibility/posterior gates. "
-            "Selection favors agreement. TangTV's reference is the low-confidence "
-            "Afrac/Prad proxy pair; neither reference is independently reviewed truth."
+            "No independent benchmark. Pairwise cast votes are compared before "
+            "consensus selection and stratified by tangtv_tier. The paper "
+            "population is upper-shelf Prad/TangTV only; lower-shelf votes are "
+            "provisional. Agreement does not establish physical state accuracy."
         ),
-        "reference_labels": {
-            "combined": "compatible diagnostic consensus (circular)",
-            "loo": "bins where the other two indicators agree",
+        "bootstrap": {
+            "unit": "shot with at least one compared vote pair",
+            "seed": 0,
+            "replicates": REPLICATES,
+            "ci": "percentile 95%; undefined draws excluded and counted",
         },
     }
-    model = load_model()
-    loo = {name: loo_state(frame, name, model, args.threshold) for name in LF_NAMES}
-    result["indicators"] = {name: {} for name in LF_NAMES}
-    result["model_accuracies"] = model.accuracies()
-    for name in LF_NAMES:
-        for ref_name, reference in (("combined", lm_state), ("loo", loo[name])):
-            masks = dict(subsets)
-            if name == "tangtv" and "tangtv_source" in frame:
-                for source in ("inversion", "surrogate"):
-                    masks[f"source_{source}"] = (
-                        frame.tangtv_source == source
-                    ).to_numpy()
-            for subset, mask in masks.items():
-                sub = frame[mask].reset_index(drop=True)
-                ref = reference[mask]
-                if not np.isin(ref, STATES).any():
-                    continue
-                tables, shot_ids, counts = per_shot_tables(sub, name, ref)
-                entry = bootstrap(tables, counts, name, rng)
-                entry["auroc_attached_vs_not"] = auroc_ci(sub, name, ref, rng)
-                entry["population_shots"] = int(sub.shot.nunique())
-                entry["n_shots"] = int(np.sum(tables.sum(axis=(1, 2)) > 0))
-                entry["population_shot_ids"] = [int(s) for s in shot_ids]
-                entry["scored_shot_ids"] = [
-                    int(s)
-                    for s, n in zip(shot_ids, tables.sum(axis=(1, 2)), strict=True)
-                    if n > 0
-                ]
-                entry["reference_certain_bins"] = int(np.isin(ref, STATES).sum())
-                entry["valid_reference_bins"] = int(counts[:, 0].sum())
-                result["indicators"][name].setdefault(ref_name, {})[subset] = entry
-    result["failure_analysis"] = failure_analysis(frame, loo)
     result["rule_conflicts_resolved_by_model"] = conflicts_resolved(frame)
     # Match agreement.json's eligible-shot population, including unassessed bins.
     from detach_label import load_all
 
     eligible = load_all(args.bins_dir)
     eligible = eligible[eligible.shot.isin(frame.shot.unique())].reset_index(drop=True)
-    fit_shots = frame.loc[frame.split != "test", "shot"].unique()
+    fit_shots = frame.loc[fit_mask, "shot"].unique()
     valid = eligible[[f"{n}_valid" for n in LF_NAMES]].to_numpy(bool)
     fitting = eligible.shot.isin(fit_shots).to_numpy() & (valid.sum(axis=1) >= 2)
+    all_tiers = tier_agreement(eligible, rng)
+    fit_tiers = tier_agreement(eligible[fitting].reset_index(drop=True), rng)
     result["pairwise_agreement"] = {
-        "all_eligible_bins": pairwise_ci(eligible, rng),
-        "fit_bins_train_val_outside": pairwise_ci(
-            eligible[fitting].reset_index(drop=True), rng
+        "schema_note": (
+            "all_eligible_bins and fit_bins_train_val_outside now nest "
+            "tangtv_tier then indicator pair. No cross-tier agreement rollup "
+            "is emitted. by_tangtv_tier and fit_by_tangtv_tier are named aliases."
         ),
+        "all_eligible_bins": all_tiers,
+        "fit_bins_train_val_outside": fit_tiers,
+        "by_tangtv_tier": all_tiers,
+        "fit_by_tangtv_tier": fit_tiers,
+    }
+    result["paper_agreement"] = (
+        result["pairwise_agreement"]["by_tangtv_tier"]
+        .get("upper_shelf", {})
+        .get("prad__tangtv")
+    )
+    result["failure_analysis"] = {
+        "prad_detached_where_tangtv_attached_by_tier": {
+            str(tier): attached_conflict(rows)
+            for tier, rows in eligible.groupby("tangtv_tier")
+        },
+        "invalid_reasons_by_tier": {
+            str(tier): {
+                name: {
+                    str(k): int(v)
+                    for k, v in rows.loc[~rows[f"{name}_valid"], f"{name}_reason"]
+                    .value_counts()
+                    .items()
+                }
+                for name in LF_NAMES
+            }
+            for tier, rows in eligible.groupby("tangtv_tier")
+        },
     }
     result["divertor_te_check"] = {
         "status": "withdrawn",
@@ -536,16 +575,13 @@ def main() -> None:
     }
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(dumps(result, indent=1))
-    for name in LF_NAMES:
-        for ref_name in ("combined", "loo"):
-            e = result["indicators"][name].get(ref_name, {}).get("all")
-            if e:
+    for tier, pairs in result["pairwise_agreement"]["by_tangtv_tier"].items():
+        for pair, entry in pairs.items():
+            if entry["both_vote_bins"]:
                 print(
-                    f"{name:7s} vs {ref_name:8s} agree {e['agreement']['value']:.2f} "
-                    f"kappa {e['kappa']['value']:.2f} "
-                    f"binF1(att) {e['binary_f1_attached']['value']:.2f} "
-                    f"auroc {e['auroc_attached_vs_not']['value']:.2f} "
-                    f"bins {e['n_bins']['value']:.0f}"
+                    f"{tier} {pair}: {entry['both_vote_bins']} bins/"
+                    f"{entry['both_vote_shots']} shots; "
+                    f"kappa={entry['kappa']['value']:.3f}"
                 )
 
 

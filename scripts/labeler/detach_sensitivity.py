@@ -151,6 +151,7 @@ def main() -> None:
         mine = out.state_lm.to_numpy()
         both = np.isin(mine, (1, 2, 3)) & np.isin(theirs, (1, 2, 3))
         result[f"{width}ms"]["vs_50ms"] = {
+            "tangtv_tier": "upper_shelf",
             "bins_certain_in_both": int(both.sum()),
             "agreement": float(np.mean(mine[both] == theirs[both])),
             "kappa": dl.cohen_kappa(mine[both], theirs[both]),

@@ -636,17 +636,24 @@ def main() -> None:
         ["shot", "start_ms", "state_lm", "state_temporal_imputation", "tier"],
     ].to_csv(root() / "temporal_imputations.csv", index=False)
     (records / "label_model.json").write_text(dumps(report, indent=1))
+    by_tier = {
+        str(t): pairwise_agreement(
+            votes[work.tangtv_tier.eq(t)], valid[work.tangtv_tier.eq(t)]
+        )
+        for t in sorted(work.tangtv_tier.unique())
+    }
+    fit_by_tier = {
+        str(t): pairwise_agreement(
+            votes[fit_mask & work.tangtv_tier.eq(t)],
+            valid[fit_mask & work.tangtv_tier.eq(t)],
+        )
+        for t in sorted(work.tangtv_tier.unique())
+    }
     agreement = {
-        "all_eligible_bins": pairwise_agreement(votes, valid),
-        "fit_bins_train_val_outside": pairwise_agreement(
-            votes[fit_mask], valid[fit_mask]
-        ),
-        "by_tangtv_tier": {
-            str(t): pairwise_agreement(
-                votes[work.tangtv_tier.eq(t)], valid[work.tangtv_tier.eq(t)]
-            )
-            for t in sorted(work.tangtv_tier.unique())
-        },
+        "all_eligible_bins": {"by_tangtv_tier": by_tier},
+        "fit_bins_train_val_outside": {"by_tangtv_tier": fit_by_tier},
+        "by_tangtv_tier": by_tier,
+        "fit_by_tangtv_tier": fit_by_tier,
         "paper_tier": "upper_shelf",
         "scope": "exploratory indicator agreement; no independent benchmark",
     }
