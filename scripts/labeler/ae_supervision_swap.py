@@ -69,7 +69,19 @@ def provenance() -> dict:
         text=True,
         check=True,
     ).stdout.strip()
-    return {"generated": datetime.now(UTC).isoformat(), "git": git}
+    return {
+        "generated": datetime.now(UTC).isoformat(),
+        "git": git,
+        "code_sha256": {
+            str(path.relative_to(REPO)): sha256(path)
+            for path in (
+                Path(__file__),
+                REPO / "scripts/labeler/ae_train.py",
+                REPO / "src/labeler/ae/supervision.py",
+                REPO / "src/labeler/ae/model.py",
+            )
+        },
+    }
 
 
 def load_manifest(path: Path) -> dict:
@@ -266,6 +278,53 @@ def run_dir(out: Path, supervision: str, seed: int) -> Path:
     return out / "models" / supervision / f"seed-{seed}"
 
 
+def verify(args) -> None:
+    """Exercise all real-data label loaders without needing CUDA or training."""
+    path = args.out_dir / "manifest.json"
+    manifest = load_manifest(path)
+    results, reference_frequency = {}, {}
+    for supervision in SUPERVISIONS:
+        records, _ = ae_train.load_swap_labels(path, supervision)
+        results[supervision] = {}
+        for group, split in (("train", "train"), ("selection", "valid")):
+            selected = [rec for rec in records if rec.split == split]
+            results[supervision][group] = {
+                "shots": [int(rec.shot) for rec in selected],
+                "native_columns": sum(rec.y.size for rec in selected),
+                "weighted_columns": int(sum(rec.w.sum() for rec in selected)),
+                "positive_columns": int(sum((rec.y * rec.w).sum() for rec in selected)),
+                "frequency_columns": int(sum(rec.fw.sum() for rec in selected)),
+            }
+        for rec in records:
+            if supervision == "legacy":
+                reference_frequency[rec.shot] = (rec.ft.copy(), rec.fw.copy())
+            else:
+                for actual, frozen in zip(
+                    (rec.ft, rec.fw), reference_frequency[rec.shot], strict=True
+                ):
+                    if not np.array_equal(actual, frozen):
+                        raise ValueError("frequency supervision differs across arms")
+            if supervision == "threeway":
+                original = ae_train.build_targets(
+                    rec.active, rec.annotated, rec.freq_khz, "threeway"
+                )
+                for actual, expected in zip(
+                    (rec.y, rec.w, rec.ft, rec.fw), original, strict=True
+                ):
+                    if not np.array_equal(actual, expected):
+                        raise ValueError("threeway differs from the original recipe")
+    record = {
+        **provenance(),
+        "manifest_sha256": sha256(path),
+        "status": "passed",
+        "frequency_supervision_identical": True,
+        "threeway_matches_original_recipe": True,
+        "results": results,
+    }
+    write_json(args.out_dir / "verification.json", record)
+    print(json.dumps(record, indent=2))
+
+
 def train(args) -> None:
     manifest_path = args.out_dir / "manifest.json"
     manifest = load_manifest(manifest_path)
@@ -361,13 +420,20 @@ def evaluate(args) -> None:
     manifest_path = args.out_dir / "manifest.json"
     manifest = load_manifest(manifest_path)
     refs = references(manifest)
-    sources, scores, thresholds, missing = {}, {}, {}, []
+    sources, scores, thresholds, missing, attempts = {}, {}, {}, [], {}
     for supervision in SUPERVISIONS:
         for seed in manifest["seeds"]:
             name = f"ae-ours-{supervision}-seed{seed}"
             path = run_dir(args.out_dir, supervision, seed) / "run.json"
             if not path.exists():
                 missing.append(name)
+                attempt = path.with_name("attempt.json")
+                if attempt.exists():
+                    attempts[name] = {
+                        "path": str(attempt),
+                        "sha256": sha256(attempt),
+                        "record": json.loads(attempt.read_text()),
+                    }
                 continue
             run = json.loads(path.read_text())
             if run["status"] != "finished" or run["manifest_sha256"] != sha256(
@@ -420,6 +486,7 @@ def evaluate(args) -> None:
         **provenance(),
         "status": "finished" if not missing else "incomplete",
         "missing_runs": missing,
+        "attempts": attempts,
         "manifest": {"path": str(manifest_path), "sha256": sha256(manifest_path)},
         "sources": sources,
         "thresholds": thresholds,
@@ -504,6 +571,7 @@ def main(argv=None) -> None:
     fit = commands.add_parser("train")
     fit.add_argument("--supervision", choices=SUPERVISIONS, required=True)
     fit.add_argument("--seed", type=int, default=0)
+    commands.add_parser("verify")
     score = commands.add_parser("evaluate")
     score.add_argument("--replicates", type=int, default=1000)
     score.add_argument(
@@ -512,7 +580,9 @@ def main(argv=None) -> None:
         default=REPO / "outputs/labeler/ae/supervision_swap/evaluation.json",
     )
     args = parser.parse_args(argv)
-    {"prepare": prepare, "train": train, "evaluate": evaluate}[args.command](args)
+    {"prepare": prepare, "train": train, "verify": verify, "evaluate": evaluate}[
+        args.command
+    ](args)
 
 
 if __name__ == "__main__":

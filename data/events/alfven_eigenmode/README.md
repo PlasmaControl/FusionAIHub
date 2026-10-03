@@ -43,6 +43,14 @@ Typically found via magnetics (Mirnov / MHR probes), CO2 interferometer chords, 
 - d3d_ae_co2_lstm | 2022_10_04 | AUROC: 0.714 | AUPRC: 0.842 | F1: 0.715
 - d3d_ae_co2_rcn_xpow | 2023_03_03 | AUROC: 0.767 | AUPRC: 0.886 | F1: 0.725
 - d3d_ae_co2_lstm_xpow | 2022_11_21 | AUROC: 0.699 | AUPRC: 0.825 | F1: 0.700
+- ae-ours | legacy supervision | clean 100/20 selection retrain pending
+- ae-ours | dense supervision | clean 100/20 selection retrain pending
+- ae-ours | threeway supervision | clean 100/20 selection retrain pending
+
+The supervision-swap entries are planned experiments; their SLURM attempts
+failed because the required Pixi environment has CPU-only PyTorch. Current
+saved-baseline scores, input hashes, and continuation commands are in
+[ae_supervision_swap.md](../../../docs/labeler/ae_supervision_swap.md).
 
 Scores are against the owner-reviewed labels, on 10 ms frames of the 19 validation shots the older detectors did not train on (SELDnet at 0.5, RCN at 0.10, LSTM at 0.15; each chord or chord pair a sample). On all 60 validation shots the SELDnet scores AUROC 0.980, AUPRC 0.992, F1 0.951. Against the raw Heidbrink annotation, which under-counts, the order reverses: AUROC 0.68 for the SELDnet and 0.86 to 0.90 for the older detectors. Protocol, caveats and the older detectors' files: [ae_baselines_benchmark.md](../../../docs/labeler/ae_baselines_benchmark.md).
 
