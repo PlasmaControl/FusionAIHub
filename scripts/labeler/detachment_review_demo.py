@@ -32,6 +32,7 @@ TESTS = [
     for name in (
         "review_detachment",
         "review_detachment_browser",
+        "review_agreement",
         "review_build",
         "review_rows",
         "review_panel_rows",
@@ -52,6 +53,7 @@ NEW_PYTHON = [
     "tests/labeler/test_review_detachment.py",
     "tests/labeler/test_review_detachment_browser.py",
     "scripts/labeler/detachment_review_demo.py",
+    "scripts/labeler/detachment_review_roster.py",
 ]
 CHANGED_PYTHON = NEW_PYTHON + [
     "src/labeler/events/interval_tables.py",
@@ -59,9 +61,11 @@ CHANGED_PYTHON = NEW_PYTHON + [
     "src/labeler/events/review/build.py",
     "src/labeler/events/review/rows.py",
     "src/labeler/events/ui/app.py",
+    "src/labeler/events/review/agreement.py",
     "tests/labeler/test_review_build.py",
     "tests/labeler/test_events_ui.py",
     "tests/labeler/test_review_versions.py",
+    "tests/labeler/test_review_agreement.py",
 ]
 
 
@@ -74,6 +78,8 @@ def provenance():
             for name in CHANGED_PYTHON
             + [
                 "src/labeler/events/ui/static/app.js",
+                "src/labeler/events/ui/static/style.css",
+                "src/labeler/events/ui/static/index.html",
                 "tests/labeler/review_browser.mjs",
             ]
         },
@@ -144,6 +150,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--shot", type=int, default=190010)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--indicator-root", type=Path)
     parser.add_argument(
         "--verify",
         action="store_true",
@@ -160,13 +167,21 @@ def main():
     if match.empty or match.split.iloc[0] == "test":
         raise ValueError("demo must use a train/val cohort shot")
     original = Paths.from_env()
+    os.environ["LABELER_DETACHMENT_INDICATORS"] = str(
+        args.indicator_root or original.root / "round4/detach/bins"
+    )
     paths = Paths(root=out, corpus=original.corpus, label_tables=out / "tables")
     event = paths.label_tables / "detachment"
     event.mkdir(parents=True, exist_ok=True)
-    (event / "shots.csv").write_text(
-        "shot,tier,holdout,reviewers,verified_on,notes\n"
-        f"{args.shot},unverified,false,,,isolated UI demonstration\n"
-    )
+    roster = event / "shots.csv"
+    if roster.is_file():
+        if args.shot not in set(pd.read_csv(roster).shot):
+            raise ValueError("demo shot is not in the isolated scanned roster")
+    else:
+        roster.write_text(
+            "shot,tier,holdout,reviewers,verified_on,notes\n"
+            f"{args.shot},unverified,false,,,isolated UI demonstration\n"
+        )
     source_shapes = {}
     with h5py.File(paths.corpus_file(args.shot), "r") as source:
         for name in (*video.CAMERAS, "filterscopes", "langmuir", "gas_flow", "co2"):
@@ -185,6 +200,8 @@ def main():
         "split": str(match.split.iloc[0]),
         "cohort": str(cohort_path),
         "corpus": str(paths.corpus_file(args.shot)),
+        "indicator_root": os.environ["LABELER_DETACHMENT_INDICATORS"],
+        "neutral_reviewer": "Reviewer",
         "source_shapes": source_shapes,
         "store": str(store),
         "store_bytes": store.stat().st_size,

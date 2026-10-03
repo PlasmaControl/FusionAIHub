@@ -1314,14 +1314,57 @@ async function detachmentCameras(shot = 170815, demo = false) {
     S.video.cards.some(c => c.img?.src.startsWith("blob:"))`));
   check("missing cameras explain their absence", await js(`
     S.video.cards.filter(c => !c.channel).every(c => c.note.textContent.includes("No frames"))`));
+  check("selectors name physical views and default to a live lower divertor", await js(`
+    S.video.cards.filter(c => c.channel && c.camera.name === "tangtv").every(c =>
+      [0,2].includes(c.channel.channel) &&
+      c.figure.querySelector("select").selectedOptions[0].textContent.includes("lower divertor"))`));
+  await js(`window.realVideoFetch = window.fetch.bind(window);
+    window.frameActive = 0; window.framePeak = 0;
+    window.fetch = async (input, options) => {
+      if (!String(input).startsWith("/api/frame?")) return window.realVideoFetch(input, options);
+      window.framePeak = Math.max(window.framePeak, ++window.frameActive);
+      try {
+        const result = await window.realVideoFetch(input, options);
+        await new Promise(ok => setTimeout(ok, 180));
+        return result;
+      } finally { window.frameActive--; }
+    };
+    window.oldFrames = S.video.cards.filter(c => c.channel).map(c => c.img.dataset.frameTime);`);
   const middle = await js(`S.video.times[Math.floor(S.video.times.length / 2)]`);
   await js(`$("video-time").value = ${middle};
     $("video-time").dispatchEvent(new Event("input", {bubbles: true}));`);
+  check("delayed seek hides old pixels and keeps their time until decoded", await js(`
+    S.video.cards.filter(c => c.channel).every((c,i) =>
+      c.figure.getAttribute("aria-busy") === "true" &&
+      c.img.dataset.frameTime === window.oldFrames[i] &&
+      getComputedStyle(c.img).visibility === "hidden" && c.note.textContent.includes("Loading"))`));
   await until(`S.video.cards.filter(c => c.channel).every(c =>
     Math.abs(Number(c.img.dataset.frameTime) - Number(c.note.textContent.split(" ")[0])) <= 0.06 && c.img.complete)`);
   check("slider seeks the native camera clock and persistent timeline cursor", await js(`
     Math.abs(S.video.time - ${middle}) < 0.01 && !$("cursor").hidden &&
     Math.abs(parseFloat($("cursor").style.left) - ($("axis-row").getBoundingClientRect().left + px(S.video.time))) < 1`));
+  check("decoded image, physical identity and caption time agree", await js(`
+    S.video.cards.filter(c => c.channel).every(c =>
+      c.img.dataset.channel === String(c.channel.channel) &&
+      c.img.alt.includes(c.channel.view_name) &&
+      c.figure.getAttribute("aria-busy") === "false" &&
+      c.note.textContent.includes(c.channel.view_name))`));
+  check("uncertain shares confinement's orange colour", await js(`categoryColour(4) === "#d55e00"`));
+  const [hoverX, hoverY] = await js(`(() => {
+    const r = $("rows").querySelector("canvas")?.getBoundingClientRect() || $("axis-row").getBoundingClientRect();
+    return [r.left + px(S.video.times[0]), r.top + r.height/2];
+  })()`);
+  await mouse("mouseMoved", hoverX, hoverY);
+  check("detachment hover reads time independently of the pinned video cursor", await js(`
+    !$('hover-cursor').hidden && $('hover-time').textContent !== $('cursor-time').textContent &&
+    Math.abs(S.video.time - ${middle}) < 0.01`));
+  await js(`$("top").scrollTop = 10000`);
+  await sleep(50);
+  check("video stays visible and cursor starts below the sticky panel while scrolling", await js(`
+    Math.abs($("video-panel").getBoundingClientRect().top - $("top").getBoundingClientRect().top) < 1 &&
+    parseFloat($("cursor").style.top) >= $("video-panel").getBoundingClientRect().bottom - 1`));
+  await js(`$("top").scrollTop = 0`);
+  await sleep(50);
   const channelCard = await js(`S.video.cards.findIndex(c => c.camera.channels.length > 1)`);
   if (channelCard >= 0) {
     await js(`(() => {
@@ -1329,8 +1372,10 @@ async function detachmentCameras(shot = 170815, demo = false) {
       select.value = card.camera.channels.at(-1).channel;
       select.dispatchEvent(new Event("change", {bubbles: true}));
     })()`);
+    check("changing views hides pixels until their channel identity is delivered", await js(`
+      getComputedStyle(S.video.cards[${channelCard}].img).visibility === "hidden"`));
     await until(`S.video.cards[${channelCard}].img.complete &&
-      S.video.cards[${channelCard}].channel === S.video.cards[${channelCard}].camera.channels.at(-1)`);
+      S.video.cards[${channelCard}].img.dataset.channel === String(S.video.cards[${channelCard}].channel.channel)`);
     check("camera channel selectors retain the shared time", await js(`Math.abs(S.video.time - ${middle}) < 0.01`));
   }
   const target = await js(`S.video.times[Math.floor(S.video.times.length / 3)]`);
@@ -1343,14 +1388,25 @@ async function detachmentCameras(shot = 170815, demo = false) {
   await mouse("mouseReleased", x, y, {buttons: 0});
   check("clicking a timeline seeks without changing labels", await js(`
     Math.abs(S.video.time - ${target}) < 2 && !dirty()`));
+  await until(`S.video.cards.filter(c => c.channel).every(c => c.figure.getAttribute("aria-busy") === "false")`);
+  await js(`window.playStart = S.video.time; window.playFrames = S.video.cards.filter(c => c.channel).map(c => c.img.src);
+    window.framePeak = 0;`);
   await js(`$("video-play").click()`);
+  await sleep(100);
+  check("playback waits for frames delayed beyond their cadence", await js(`S.video.time === window.playStart`));
   await until(`S.video.time > ${target} + 0.1`);
+  check("playback delivers new pixels before advancing and bounds requests", await js(`
+    S.video.cards.filter(c => c.channel).every((c,i) =>
+      c.img.src !== window.playFrames[i] &&
+      Math.abs(Number(c.img.dataset.frameTime)-S.video.time) <= 65) &&
+    window.framePeak <= S.video.cards.filter(c => c.channel).length`));
   await js(`$("video-play").click()`);
   const paused = await js("S.video.time");
   await sleep(150);
   check("play steps forward and pause stops the clock", await js(`
     S.video.timer === null && S.video.time === ${paused} &&
     $("video-play").getAttribute("aria-pressed") === "false"`));
+  await js("window.fetch = window.realVideoFetch");
   // Fast seeks must finish on the latest request, even when an older fetch arrives late.
   await js(`window.realVideoFetch = window.fetch.bind(window);
     window.fetch = async (input, options) => {
@@ -1383,6 +1439,9 @@ async function detachmentCameras(shot = 170815, demo = false) {
   await visit("alfven_eigenmode", 170815);
   check("navigation clears playback, previews and pinned cursor", await js(`
     S.video === null && $("video-panel").hidden && $("video-cameras").children.length === 0`));
+  await js(`$("top").scrollTop = 10000; showCursor($("axis-row").getBoundingClientRect().left + px(100));`);
+  check("other events clamp the cursor top to the visible rows viewport", await js(`
+    parseFloat($("cursor").style.top) >= $("top").getBoundingClientRect().top`));
 }
 
 try {
@@ -1416,7 +1475,7 @@ try {
     // Every scenario but the first open has picked its name already (API 1 has no list).
     await send("Page.enable");
     await send("Page.addScriptToEvaluateOnNewDocument", { source: `
-      sessionStorage.setItem("labeler:who", "Grace Hopper");
+      sessionStorage.setItem("labeler:who", ${JSON.stringify(SCENARIO === "detachment-demo" ? "Reviewer" : "Grace Hopper")});
     ` });
   }
   const demoShot = Number(process.env.DETACHMENT_DEMO_SHOT || 190010);

@@ -19,6 +19,43 @@ from PIL import Image
 CAMERAS = {"bolo": (80, 120), "tangtv": (240, 720), "irtv": (256, 320)}
 MAX_FPS = 20.0
 PERCENTILES = (1.0, 99.5)
+# Active input_key order in data/config/modalities/modalities.yaml. IRTV declares
+# seven output slots but only SIX active nodes; PERI75R0 is commented out. Do not
+# shift UPCEN/UPDIV to manufacture a seventh mapping.
+VIEW_NODES = {
+    "tangtv": [
+        ("LODIV_240RM1:PAR:INTENSIFIED", "lower divertor"),
+        ("LODIV_240RM1:PAR:STANDARD", "lower divertor"),
+        ("LODIV_240RM1:PERP:STANDARD", "lower divertor"),
+        ("UPDIV_225RP1:PERP:STANDARD", "upper divertor"),
+        ("UPDIV_0RP1:PERP:STANDARD", "upper divertor"),
+        ("UPDIV_225RP1:PAR:STANDARD", "upper divertor"),
+        ("UPDIV_0RP1:PAR:STANDARD", "upper divertor"),
+    ],
+    "irtv": [
+        ("BIAS_105RM1", "bias view"),
+        ("LOCEN_315RM1", "lower central"),
+        ("LODIV_165RP2", "lower divertor"),
+        ("LODIV_60RP2", "lower divertor"),
+        ("UPCEN_300RP1", "upper central"),
+        ("UPDIV_225RM2", "upper divertor"),
+        ("unmapped padded slot", "unknown"),
+    ],
+}
+
+
+def view(camera, channel):
+    """Physical identity, without guessing unrecorded spectral filters."""
+    nodes = VIEW_NODES.get(camera, [])
+    name, region = (
+        nodes[channel] if channel < len(nodes) else (f"image {channel}", "unknown")
+    )
+    node = None
+    if camera in VIEW_NODES and name != "unmapped padded slot":
+        prefix = camera.upper()
+        suffix = "VIDEO_IMAGES" if camera == "tangtv" else "DIGITAL_CAM:DIGITAL_RAW"
+        node = f"\\{prefix}::TOP.{prefix}:{name}:{suffix}"
+    return {"channel": channel, "view_name": name, "region": region, "node": node}
 
 
 def frame_indices(times, max_fps=MAX_FPS) -> np.ndarray:
@@ -56,18 +93,36 @@ def _layout(group):
     axis = 1 if data.ndim == 4 else 0
     if data.shape[axis] != len(times) or min(data.shape[-2:]) < 1:
         raise ValueError("camera shape and clock disagree")
+    if min(data.shape[-2:]) == 1:
+        raise ValueError("flattened camera array; image geometry is unavailable")
     return times, data, data.shape[0] if data.ndim == 4 else 1
 
 
 def _frame(data, channel, index, shape):
-    sy, sx = [
+    stride = max(
         max(1, math.ceil(n / limit))
         for n, limit in zip(data.shape[-2:], shape, strict=True)
-    ]
-    key = (channel, index) if data.ndim == 4 else (index,)
-    return np.asarray(
-        data[(*key, slice(None, None, sy), slice(None, None, sx))], dtype=np.float32
     )
+    key = (channel, index) if data.ndim == 4 else (index,)
+    frame = np.asarray(data[key], dtype=np.float32)
+    if stride == 1:
+        return frame
+    h, w = frame.shape
+    # Reduce actual pixels without padding a narrow image to a huge square.
+    # Partial edge blocks use their actual finite count; aspect uses one stride.
+    starts_y, starts_x = np.arange(0, h, stride), np.arange(0, w, stride)
+    finite = np.isfinite(frame)
+
+    def area(values):
+        return np.add.reduceat(
+            np.add.reduceat(values, starts_y, axis=0), starts_x, axis=1
+        )
+
+    sums = area(np.where(finite, frame, 0))
+    counts = area(finite.astype(np.int32))
+    mean = np.full(sums.shape, np.nan, dtype=np.float32)
+    np.divide(sums, counts, out=mean, where=counts > 0)
+    return mean
 
 
 def write(store, corpus) -> None:
@@ -146,6 +201,8 @@ def meta(path) -> dict:
     with h5py.File(path, "r") as store:
         if "videos" not in store:
             return {"cameras": []}
+        lo = float(store.attrs["t0_ms"])
+        hi = lo + float(store.attrs["dt_ms"]) * int(store.attrs["n"])
         for camera in CAMERAS:
             group = store["videos"][camera]
             channels = []
@@ -153,17 +210,44 @@ def meta(path) -> dict:
                 frames = group[key]
                 channels.append(
                     {
-                        "channel": int(key),
+                        **view(camera, int(key)),
                         "times_ms": frames["times_ms"][:].tolist(),
                         "shape": list(frames["frames"].shape[1:]),
                         "scale": [float(frames.attrs[n]) for n in ("z_lo", "z_hi")],
                     }
                 )
+            preferred = {"tangtv": (0, 2), "irtv": (2, 3)}.get(camera, ())
+            in_window = [
+                ch for ch in channels if any(lo <= t <= hi for t in ch["times_ms"])
+            ]
+            default = next(
+                (ch for c in preferred for ch in in_window if ch["channel"] == c), None
+            )
+            if default is None:
+                default = next(
+                    (ch for c in preferred for ch in channels if ch["channel"] == c),
+                    None,
+                )
+            if default is None:
+                default = next(iter(in_window or channels), None)
             cameras.append(
                 {
                     "name": camera,
+                    "views": [
+                        view(camera, c) for c in range(len(VIEW_NODES.get(camera, [])))
+                    ],
                     "channels": channels,
                     "reason": str(group.attrs["reason"]),
+                    "default_channel": default["channel"] if default else None,
+                    "spectral_note": "Filter/emission line is not recorded in the corpus.",
+                    **(
+                        {
+                            "inactive_node": "\\IRTV::TOP.IRTV:PERI75R0:DIGITAL_CAM:DIGITAL_RAW",
+                            "mapping_note": "Six active nodes; slot 6 has no configured node. PERI75R0 is commented out.",
+                        }
+                        if camera == "irtv"
+                        else {}
+                    ),
                 }
             )
     return {"cameras": cameras, "max_fps": MAX_FPS}

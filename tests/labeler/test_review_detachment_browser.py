@@ -30,6 +30,10 @@ def test_video_slider_playback_clicks_and_labels(served, tmp_path):  # noqa: F81
         store["tangtv/ydata"][1] = np.broadcast_to(
             np.arange(13)[:, None, None], (13, 4, 6)
         )
+        for name, channels in (("filterscopes", 8), ("gas_flow", 11), ("co2", 4)):
+            group = store.create_group(name)
+            group["xdata"] = np.arange(13) * 0.02
+            group["ydata"] = np.broadcast_to(np.arange(13), (channels, 13))
     event = paths.label_tables / "detachment"
     (event / "format").mkdir(parents=True)
     (event / "shots.csv").write_text(

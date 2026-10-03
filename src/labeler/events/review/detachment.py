@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import h5py
 import numpy as np
 
@@ -11,7 +13,8 @@ from .rows import Grid
 
 
 def build(event, shot, paths):
-    built = panels.build(event, shot, paths=paths)
+    window = panels.detachment.plasma_window(shot, paths)
+    built = panels.build(event, shot, paths=paths, t_range=window)
     clocks = []
     corpus = paths.corpus_file(shot)
     if corpus.is_file():
@@ -25,9 +28,18 @@ def build(event, shot, paths):
                 except ValueError:
                     continue
                 if len(indices):
-                    clocks.append(times[indices] * 1000)
+                    clock = times[indices] * 1000
+                    if window:
+                        clock = clock[(clock >= window[0]) & (clock <= window[1])]
+                    if len(clock):
+                        clocks.append(clock)
     xs = [np.asarray(p.x, dtype=float) for p in built if len(p.x)]
-    if xs or clocks:
+    if window:
+        # Exact window boundaries; do not extend to post-plasma diagnostic tails.
+        base = panel_rows._grid(xs + clocks) if xs or clocks else Grid(0, 50, 1)
+        n = max(1, math.ceil((window[1] - window[0]) / base.dt_ms))
+        grid = Grid(window[0], (window[1] - window[0]) / n, n)
+    elif xs or clocks:
         grid = panel_rows._grid(xs + clocks)
     else:
         # A missing-camera shot can still be labelled on a blank 10 s timeline.
@@ -43,6 +55,7 @@ def build(event, shot, paths):
         {
             "params": {
                 "context_only": True,
+                "plasma_window_ms": window,
                 "camera_max_fps": video.MAX_FPS,
                 "panel_metadata": {
                     f"p{i}": p.metadata for i, p in enumerate(built) if p.metadata

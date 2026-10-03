@@ -1,8 +1,7 @@
-"""Local detachment context, with optional independently extracted indicators.
+"""Local detachment context and validity-gated producer indicators.
 
-The corpus's uncalibrated Langmuir/bolometer channels are explicitly raw
-context; their median is neither Afrac nor divertor radiated power. Nothing
-in this view fetches diagnostics or infers a detachment state.
+Raw TPLANG sweeps and medians of uncalibrated bolometer voltages are omitted:
+neither measures Isat nor radiated power. This view never fetches or votes.
 """
 
 from __future__ import annotations
@@ -17,53 +16,105 @@ import pandas as pd
 
 from ...config import Paths
 from ..verify import Panel
+from ._shared import plasma_window
 
 log = logging.getLogger(__name__)
-# group, title, channels (None means a median across channels), spacing in ms.
+# Channel order from modalities.yaml. FS calibration is absent from the corpus.
 TRACES = (
-    ("filterscopes", "D-alpha filterscopes (corpus)", range(8), 1.0),
-    ("co2", "CO2 R0 line-averaged density (corpus)", [0], 1.0),
-    ("gas_flow", "Gas flow (corpus channels)", range(11), 1.0),
-    ("langmuir", "Langmuir raw channel median (10 ms samples)", None, 10.0),
-    ("bolo", "Bolometer raw channel median (1 ms samples)", None, 1.0),
+    (
+        "filterscopes",
+        "D-alpha filterscopes",
+        [f"FS{i:02d}" for i in range(1, 9)],
+        "a.u.",
+        1.0,
+    ),
+    ("co2", "CO2 R0 line-averaged density", ["R0 DENUF"], "cm^-3", 1.0),
+    (
+        "gas_flow",
+        "Gas flow",
+        [
+            "GASA",
+            "GASB",
+            "GASC",
+            "GASD",
+            "GASE",
+            "LOB1",
+            "LOB2",
+            "PFX1",
+            "PFX2",
+            "PFX3",
+            "UOB",
+        ],
+        "Torr L/s",
+        1.0,
+    ),
 )
-INDICATORS = (
-    ("afrac", "Afrac", ""),
+CSV_INDICATORS = (
+    ("afrac", "Afrac", "dimensionless"),
     ("prad_div", "Divertor radiated power", "MW"),
     ("tangtv_front_height", "TangTV front height", "m"),
+)
+BIN_INDICATORS = (
+    ("afrac", "Afrac", "dimensionless"),
+    ("prad", "Lower-divertor radiation fraction", "dimensionless"),
+    ("tangtv", "TangTV normalized front DZ", "dimensionless"),
 )
 
 
 def indicator_panels(shot, paths, t_range=None):
-    """Optional CSV: t_ms, indicator, indicator_valid (0/1), in named units.
+    """Read detach_bins' 50 ms NPZ/CSV, or the original CSV interchange.
 
-    An explicit validity mask is required: invalid geometry/uncalibrated
-    quantities must not appear as measured detachment evidence.
+    Producer values are Afrac, Prad_divL/P_in, and normalized DZ, NOT MW and
+    metres. Preserve its validity gates, reasons and votes; never recompute them.
+    Configure LABELER_DETACHMENT_INDICATORS, otherwise use a generic local root.
     """
     root = Path(
         os.environ.get(
-            "LABELER_DETACHMENT_INDICATORS",
-            str(paths.root / "round4/detach/indicators"),
+            "LABELER_DETACHMENT_INDICATORS", str(paths.root / "indicators/detachment")
         )
     )
-    path = root / f"{int(shot)}.csv"
+    path = root / f"{int(shot)}.npz"
+    if not path.is_file():
+        path = root / f"{int(shot)}.csv"
     if not path.is_file():
         return []
     try:
-        data = pd.read_csv(path)
-        x = pd.to_numeric(data.t_ms).to_numpy(dtype=float)
-        if not np.isfinite(x).all() or np.any(np.diff(x) <= 0):
+        if path.suffix == ".npz":
+            with np.load(path, allow_pickle=False) as source:
+                data = {name: source[name] for name in source.files}
+        else:
+            data = {
+                name: series.to_numpy() for name, series in pd.read_csv(path).items()
+            }
+        bins = "start_ms" in data
+        # detach_bins.py uses fixed 50 ms bins, including when plasma gaps exist.
+        x = np.asarray(data["start_ms" if bins else "t_ms"], dtype=float)
+        if bins:
+            x = x + 25.0
+        if x.ndim != 1 or not np.isfinite(x).all() or np.any(np.diff(x) <= 0):
             raise ValueError("indicator clock must be finite and increasing")
         keep = np.ones(len(x), dtype=bool)
         if t_range is not None:
             keep = (x >= t_range[0]) & (x <= t_range[1])
         built = []
-        for name, title, unit in INDICATORS:
-            if name not in data or f"{name}_valid" not in data:
+        schema = "detach_bins_50ms" if bins else "indicator_csv"
+        for name, title, unit in BIN_INDICATORS if bins else CSV_INDICATORS:
+            value = f"{name}_value" if bins else name
+            if value not in data or f"{name}_valid" not in data:
                 continue
-            y = pd.to_numeric(data[name]).to_numpy(dtype=float, copy=True)
-            valid = pd.to_numeric(data[f"{name}_valid"]).to_numpy() == 1
+            y = np.asarray(data[value], dtype=float).copy()
+            valid = np.asarray(data[f"{name}_valid"], dtype=float) == 1
+            if y.shape != x.shape or valid.shape != x.shape:
+                raise ValueError(f"{name}: value/valid shape disagrees with clock")
             y[~valid] = np.nan
+            metadata = {"source": str(path), "schema": schema}
+            for suffix in ("reason", "vote"):
+                key = f"{name}_{suffix}"
+                if key in data:
+                    values = np.asarray(data[key])
+                    if values.shape != x.shape:
+                        raise ValueError(f"{key}: shape disagrees with clock")
+                    metadata[suffix] = values[keep].tolist()
             if np.isfinite(y[keep]).any():
                 built.append(
                     Panel(
@@ -71,24 +122,50 @@ def indicator_panels(shot, paths, t_range=None):
                         x=x[keep],
                         y=y[None, keep],
                         ylabel=unit,
-                        metadata={"source": str(path)},
+                        legend=[f"{title} ({unit})"],
+                        metadata=metadata,
                     )
                 )
         return built
-    except (ValueError, KeyError, AttributeError, OSError) as error:
+    except (ValueError, KeyError, OSError) as error:
         log.warning("shot %s: cannot read detachment indicators: %s", shot, error)
         return []
 
 
+def _block_means(data, x, ids, start, stop, step):
+    """Average contiguous native samples, including a final partial block.
+
+    HDF5 reads are bounded to ~262k samples per channel. Float32 clocks use the
+    span for spacing, avoiding quantized median-diff aliases at late shot times.
+    """
+    xs, ys = [], []
+    chunk = max(1, 262144 // step) * step
+    for lo in range(start, stop, chunk):
+        hi = min(stop, lo + chunk)
+        starts = np.arange(0, hi - lo, step)
+        counts = np.minimum(step, hi - lo - starts)
+        native = np.asarray(data[ids, lo:hi], dtype=np.float64)
+        finite = np.isfinite(native)
+        sums = np.add.reduceat(np.where(finite, native, 0), starts, axis=1)
+        ns = np.add.reduceat(finite.astype(np.int32), starts, axis=1)
+        mean = np.full(sums.shape, np.nan)
+        np.divide(sums, ns, out=mean, where=ns > 0)
+        xs.append(np.add.reduceat(x[lo:hi], starts) / counts)
+        ys.append(mean)
+    return np.concatenate(xs), np.concatenate(ys, axis=1)
+
+
 def panels(shot, *, t_range=None, paths=None):
-    """Read bounded, sampled scalar context directly from the read-only corpus."""
+    """Block-mean context over the catalog plasma window, when available."""
     paths = Paths.from_env() if paths is None else paths
+    if t_range is None:
+        t_range = plasma_window(int(shot), paths)
     built = indicator_panels(shot, paths, t_range)
     path = paths.corpus_file(int(shot))
     if not path.is_file():
         return built
     with h5py.File(path, "r") as source:
-        for name, title, channels, spacing in TRACES:
+        for name, title, names, unit, spacing in TRACES:
             if name not in source:
                 continue
             group = source[name]
@@ -105,33 +182,33 @@ def panels(shot, *, t_range=None, paths=None):
                 or np.any(np.diff(x) <= 0)
             ):
                 continue
-            dt = float(np.median(np.diff(x)))
-            step = max(1, int(np.ceil(spacing / dt)))
-            # Drop pre-shot baselines from the default discharge view.
+            dt = float((x[-1] - x[0]) / (len(x) - 1))
+            step = max(1, int(np.ceil(spacing / dt - 1e-6)))
             lo, hi = t_range if t_range is not None else (0.0, x[-1])
-            start, stop = np.searchsorted(x, [lo, hi], side="left")
-            selection = slice(int(start), int(stop), step)
-            x = x[selection]
-            if not len(x):
+            start = int(np.searchsorted(x, lo))
+            stop = int(np.searchsorted(x, hi, side="right"))
+            ids = list(range(min(len(names), data.shape[0])))
+            if stop <= start or not ids:
                 continue
-            ids = (
-                list(range(data.shape[0]))
-                if channels is None
-                else [c for c in channels if c < data.shape[0]]
-            )
-            if not ids:
-                continue
-            y = np.asarray(data[ids, selection], dtype=np.float32)
+            bx, y = _block_means(data, x, ids, start, stop, step)
             live = np.isfinite(y).any(axis=1)
-            y = y[live]
-            if not len(y):
+            if not live.any():
                 continue
-            legend = [f"ch {c}" for c, ok in zip(ids, live, strict=True) if ok]
-            if channels is None:
-                y = np.ma.median(np.ma.masked_invalid(y), axis=0).filled(np.nan)
-                y = y[None, :]
-                legend = ["raw channel median"]
+            legend = [
+                f"{names[c]} ({unit})" for c, ok in zip(ids, live, strict=True) if ok
+            ]
             built.append(
-                Panel(title=title, x=x, y=y, legend=legend, ylabel="corpus units")
+                Panel(
+                    title=title,
+                    x=bx,
+                    y=y[live],
+                    legend=legend,
+                    ylabel=unit,
+                    metadata={
+                        "reduction": "block mean",
+                        "samples_per_block": step,
+                        "block_ms": step * dt,
+                    },
+                )
             )
     return built

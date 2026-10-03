@@ -854,7 +854,8 @@ function render() {
   });
 }
 
-const categoryColour = (c) => (c === 1 ? T.label : CATEGORY_COLOURS[c] || T.muted);
+const categoryColour = (c) => (S.categories[c] === "uncertain" ? CATEGORY_COLOURS[5] :
+  c === 1 ? T.label : CATEGORY_COLOURS[c] || T.muted);
 
 function drawRows() {
   const canvases = $("rows").children;
@@ -1625,16 +1626,18 @@ function onWheel(event, zoomAlways) {
   zoomAt(timeAt(event.clientX), Math.exp(dy * 0.002));
 }
 
-function showCursor(clientX) {
-  const cursor = $("cursor");
+function showCursor(clientX, hover = false) {
+  const cursor = $(hover ? "hover-cursor" : "cursor");
   const axis = $("axis-row").getBoundingClientRect();
   const x = clientX - axis.left;
   cursor.hidden = !S.meta || x < GUTTER || x > axis.width - RIGHT;
   if (cursor.hidden) return;
-  const top = $("rows").getBoundingClientRect().top;
+  const viewport = $("top").getBoundingClientRect();
+  const videoBottom = S.video ? $("video-panel").getBoundingClientRect().bottom : viewport.top;
+  const top = Math.max(viewport.top, videoBottom, $("rows").getBoundingClientRect().top);
   const bottom = $(S.api >= 8 ? "crowd-track" : "label-track").getBoundingClientRect().bottom;
   Object.assign(cursor.style, { left: `${clientX}px`, top: `${top}px`, height: `${bottom - top}px` });
-  $("cursor-time").textContent = `${Math.round(timeAt(clientX))} ms`;
+  $(hover ? "hover-time" : "cursor-time").textContent = `${Math.round(timeAt(clientX))} ms`;
 }
 
 // -- detachment cameras: small manifests, one lazy frame per camera
@@ -1643,6 +1646,8 @@ function pauseVideo() {
   if (S.video) {
     clearTimeout(S.video.timer);
     S.video.timer = null;
+    S.video.playing = false;
+    S.video.epoch++;
   }
   $("video-play").textContent = "Play";
   $("video-play").setAttribute("aria-pressed", "false");
@@ -1658,6 +1663,7 @@ function clearVideo() {
   $("video-panel").hidden = true;
   $("video-cameras").replaceChildren();
   $("cursor").hidden = true;
+  $("hover-cursor").hidden = true;
 }
 
 function buildVideo() {
@@ -1670,23 +1676,29 @@ function buildVideo() {
     const caption = document.createElement("figcaption");
     caption.textContent = camera.name;
     const note = document.createElement("p");
-    const card = { camera, figure, note, channel: camera.channels[0], key: "", seq: 0 };
+    const channel = camera.channels.find(c => c.channel === camera.default_channel) || camera.channels[0];
+    const card = { camera, figure, note, channel, key: "", seq: 0 };
     figure.append(caption);
     if (!card.channel) {
       note.textContent = `No frames for this camera: ${camera.reason}`;
     } else {
       const select = document.createElement("select");
       select.setAttribute("aria-label", `${camera.name} channel`);
-      for (const channel of camera.channels) {
+      const views = camera.views?.length ? camera.views : camera.channels;
+      for (const channel of views) {
         const option = document.createElement("option");
         option.value = channel.channel;
-        option.textContent = `ch ${channel.channel}`;
+        option.textContent = `${channel.channel}: ${channel.view_name || "unknown view"} · ${channel.region || "unknown"}`;
+        option.disabled = !camera.channels.some(c => c.channel === channel.channel);
+        if (option.disabled) option.textContent += " · unavailable";
         select.append(option);
-        clocks.push(...channel.times_ms);
       }
+      select.value = card.channel.channel;
+      clocks.push(...card.channel.times_ms);
       select.addEventListener("change", () => {
+        pauseVideo();
         card.channel = camera.channels.find((c) => c.channel === Number(select.value));
-        card.key = "";
+        videoTimes();
         seekVideo(S.video.time);
       });
       caption.append(select);
@@ -1695,57 +1707,122 @@ function buildVideo() {
       figure.append(card.img);
     }
     figure.append(note);
+    const spectral = document.createElement("small");
+    spectral.textContent = camera.spectral_note || "Filter/emission line is not recorded.";
+    figure.append(spectral);
     cards.push(card);
   }
-  S.video = { cards, times: [...new Set(clocks)].sort((a, b) => a - b), timer: null };
+  S.video = { cards, times: [], timer: null, playing: false, epoch: 0, seekSeq: 0 };
+  videoTimes();
   $("video-cameras").replaceChildren(...cards.map((card) => card.figure));
   $("video-panel").hidden = false;
   const slider = $("video-time");
   [slider.min, slider.max] = S.meta.t_range;
-  slider.disabled = !clocks.length;
-  $("video-play").disabled = !clocks.length;
+  slider.disabled = !S.video.times.length;
+  $("video-play").disabled = !S.video.times.length;
   sizeCanvases();
-  seekVideo(clocks.length ? S.video.times[0] : S.meta.t_range[0]);
+  seekVideo(S.video.times[0] ?? S.meta.t_range[0]);
 }
 
-function seekVideo(t) {
-  if (!S.video || pendingNavigation()) return;
-  S.video.time = clamp(Number(t), ...S.meta.t_range);
-  $("video-time").value = S.video.time;
-  $("video-clock").textContent = `${S.video.time.toFixed(1)} ms`;
-  for (const card of S.video.cards) if (card.channel) loadVideoFrame(card);
-  showVideoCursor();
+function videoTimes() {
+  const [lo, hi] = S.meta.t_range;
+  S.video.times = [...new Set(S.video.cards.flatMap(c => c.channel?.times_ms || []))]
+    .filter(t => t >= lo && t <= hi).sort((a, b) => a - b);
 }
 
-async function loadVideoFrame(card) {
+async function seekVideo(t, playbackEpoch = null) {
+  const v = S.video;
+  if (!v || pendingNavigation()) return false;
+  if (playbackEpoch == null && v.playing) pauseVideo();
+  const seq = ++v.seekSeq;
+  const time = clamp(Number(t), ...S.meta.t_range);
+  const current = () => S.video === v && seq === v.seekSeq &&
+    (playbackEpoch == null || (v.playing && v.epoch === playbackEpoch));
+  const commit = () => {
+    v.time = time;
+    $("video-time").value = time;
+    $("video-clock").textContent = `${time.toFixed(1)} ms`;
+    showVideoCursor();
+  };
+  if (playbackEpoch == null) commit();
+  const delivered = await Promise.all(v.cards.filter(c => c.channel)
+    .map(card => loadVideoFrame(card, time, current)));
+  if (!current() || delivered.some(ok => !ok)) return false;
+  // Playback publishes its clock only after all selected cameras decoded.
+  if (playbackEpoch != null) commit();
+  return true;
+}
+
+function loadVideoFrame(card, time, current) {
   const { channel, times_ms: times } = card.channel;
-  let right = times.findIndex((t) => t >= S.video.time);
+  let right = times.findIndex((t) => t >= time);
   if (right < 0) right = times.length - 1;
-  if (right && Math.abs(S.video.time - times[right - 1]) <= Math.abs(times[right] - S.video.time)) right--;
+  if (right && Math.abs(time - times[right - 1]) <= Math.abs(times[right] - time)) right--;
   const key = `${channel}/${right}`;
-  const outside = S.video.time < times[0] || S.video.time > times.at(-1);
-  card.note.textContent = `${times[right].toFixed(1)} ms · nearest frame${outside ? " · outside camera coverage" : ""}`;
-  if (card.key === key) return;
-  card.key = key;
+  const outside = time < times[0] || time > times.at(-1);
+  const view = `${card.channel.view_name} · ${card.channel.region}`;
+  const note = `${times[right].toFixed(1)} ms · ${view} · nearest frame${outside ? " · outside camera coverage" : ""}`;
+  card.current = current;
+  card.targetNote = note;
+  if (card.pendingKey === key) return card.pending;
   card.abort?.abort();
+  if (card.key === key) {
+    card.seq++;
+    card.pendingKey = "";
+    card.img.style.visibility = "visible";
+    card.figure.setAttribute("aria-busy", "false");
+    card.note.textContent = card.renderedNote = note;
+    return Promise.resolve(true);
+  }
   card.abort = new AbortController();
   const seq = ++card.seq, ticket = S.ticket;
+  card.pendingKey = key;
+  card.img.style.visibility = "hidden";
+  card.figure.setAttribute("aria-busy", "true");
+  card.note.textContent = `Loading ${view} at ${times[right].toFixed(1)} ms…`;
   const query = new URLSearchParams({ event: S.event, shot: S.shot,
     camera: card.camera.name, channel, t_ms: times[right] });
-  try {
-    const response = await api(`/api/frame?${query}`, { signal: card.abort.signal });
-    const blob = await response.blob();
-    if (ticket !== S.ticket || seq !== card.seq || !S.video) return;
-    const url = URL.createObjectURL(blob);
-    if (card.url) URL.revokeObjectURL(card.url);
-    card.url = url;
-    card.img.src = url;
-    card.img.dataset.frameTime = response.headers.get("X-Frame-Time-Ms");
-  } catch (error) {
-    if (error.name === "AbortError" || ticket !== S.ticket || seq !== card.seq) return;
-    card.key = "";
-    card.note.textContent = `Frame unavailable: ${error.message}`;
-  }
+  card.pending = (async () => {
+    let url;
+    try {
+      const response = await api(`/api/frame?${query}`, { signal: card.abort.signal });
+      url = URL.createObjectURL(await response.blob());
+      const img = new Image();
+      img.src = url;
+      await img.decode();
+      if (ticket !== S.ticket || seq !== card.seq || !card.current()) return false;
+      const header = response.headers.get("X-Frame-Time-Ms");
+      const actual = Number(header);
+      if (header == null || !Number.isFinite(actual)) throw new Error("frame timestamp missing");
+      img.alt = `${card.camera.name}: ${view} at ${actual.toFixed(1)} ms`;
+      img.dataset.frameTime = actual;
+      img.dataset.channel = channel;
+      card.img.replaceWith(img);
+      card.img = img;
+      if (card.url) URL.revokeObjectURL(card.url);
+      card.url = url;
+      url = null;
+      card.key = key;
+      card.note.textContent = card.renderedNote = card.targetNote.replace(times[right].toFixed(1), actual.toFixed(1));
+      return true;
+    } catch (error) {
+      if (ticket === S.ticket && seq === card.seq && error.name !== "AbortError") {
+        card.note.textContent = `Frame unavailable: ${error.message}`;
+        card.failed = true;
+      }
+      return false;
+    } finally {
+      if (url) URL.revokeObjectURL(url);
+      if (seq === card.seq) {
+        card.pendingKey = "";
+        card.figure.setAttribute("aria-busy", "false");
+        if (!card.current() && card.renderedNote) card.note.textContent = card.renderedNote;
+        card.img.style.visibility = card.failed ? "hidden" : "visible";
+        card.failed = false;
+      }
+    }
+  })();
+  return card.pending;
 }
 
 function showVideoCursor() {
@@ -1754,18 +1831,29 @@ function showVideoCursor() {
   showCursor(axis.left + px(S.video.time));
 }
 
-function playVideo() {
+async function playVideo() {
   if (!S.video || !S.video.times.length) return;
-  if (S.video.timer != null) return pauseVideo();
-  if (S.video.time >= S.video.times.at(-1)) seekVideo(S.video.times[0]);
+  if (S.video.playing) return pauseVideo();
+  const v = S.video;
+  v.playing = true;
+  const epoch = ++v.epoch;
   $("video-play").textContent = "Pause";
   $("video-play").setAttribute("aria-pressed", "true");
+  const active = () => S.video === v && v.playing && v.epoch === epoch;
+  const ready = await seekVideo(v.time >= v.times.at(-1) ? v.times[0] : v.time, epoch);
+  if (!active()) return;
+  if (!ready) return pauseVideo();
   const step = () => {
-    if (!S.video || pendingNavigation()) return pauseVideo();
-    const next = S.video.times.find((t) => t > S.video.time + 0.001);
+    if (!active() || pendingNavigation()) return;
+    const next = v.times.find((t) => t > v.time + 0.001);
     if (next == null) return pauseVideo();
-    const delay = Math.max(50, next - S.video.time);
-    S.video.timer = setTimeout(() => { seekVideo(next); step(); }, delay);
+    const delay = Math.max(50, next - v.time);
+    v.timer = setTimeout(async () => {
+      const ready = await seekVideo(next, epoch);
+      if (!active()) return;
+      if (!ready) return pauseVideo();
+      step();
+    }, delay);
   };
   step();
 }
@@ -2020,12 +2108,18 @@ function wire() {
   }
   window.addEventListener("pointermove", (event) => {
     if (S.drag) dragTo(event.clientX);
-    if (S.video) return showVideoCursor();
+    if (S.video) {
+      showVideoCursor();
+      if (S.drag || event.target.closest?.("#rows, .track, #axis-row")) showCursor(event.clientX, true);
+      else $("hover-cursor").hidden = true;
+      return;
+    }
     if (S.drag || event.target.closest?.("#top, .track")) showCursor(event.clientX);
     else $("cursor").hidden = true;
   });
   window.addEventListener("hashchange", followHash);
   document.documentElement.addEventListener("pointerleave", () => {
+    $("hover-cursor").hidden = true;
     if (!S.video) $("cursor").hidden = true;
   });
   $("video-time").addEventListener("input", () => { pauseVideo(); seekVideo($("video-time").value); });

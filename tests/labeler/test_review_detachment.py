@@ -111,6 +111,19 @@ def test_three_dimensional_bolo_images_are_downsampled(tmp_path):
     assert video.meta(path)["cameras"][0]["channels"][0]["shape"] == [80, 120]
 
 
+def test_flattened_irtv_has_no_known_image_geometry(tmp_path):
+    source = tmp_path / "flat.h5"
+    with h5py.File(source, "w") as f:
+        group = f.create_group("irtv")
+        group["xdata"] = [0, 0.1]
+        group["ydata"] = np.ones((7, 2, 24, 1))
+    path = tmp_path / "review.h5"
+    rows.write(path, Grid(0, 100, 2), [], video_corpus=source)
+    camera = video.meta(path)["cameras"][2]
+    assert not camera["channels"]
+    assert "flattened" in camera["reason"] and "geometry" in camera["reason"]
+
+
 def test_panel_sampling_and_indicator_validity(tmp_path, monkeypatch):
     paths = Paths(root=tmp_path, corpus=tmp_path / "corpus")
     source = corpus(paths)
@@ -134,10 +147,96 @@ def test_panel_sampling_and_indicator_validity(tmp_path, monkeypatch):
     assert np.isnan(by_title["Afrac"].y[0, 1])
     assert np.isnan(by_title["TangTV front height"].y[0, 1])
     assert "Divertor radiated power" not in by_title  # no validity mask
-    probes = by_title["Langmuir raw channel median (10 ms samples)"]
-    assert np.min(np.diff(probes.x)) >= 10
-    assert np.all(probes.y == 2)
-    assert np.min(by_title["Gas flow (corpus channels)"].x) >= 0
+    assert not any(
+        "Langmuir" in title or "Bolometer raw" in title for title in by_title
+    )
+    assert np.min(by_title["Gas flow"].x) >= 0
+
+
+def test_context_block_means_do_not_alias_fast_signal(tmp_path):
+    paths = Paths(root=tmp_path, corpus=tmp_path / "corpus")
+    source = corpus(paths)
+    with h5py.File(source, "a") as store:
+        group = store.create_group("filterscopes")
+        group["xdata"] = np.arange(40) * 0.000256
+        group["ydata"] = np.tile([0, 2], (8, 20))
+    panel = panels.panels(170815, paths=paths, t_range=(0, 10))[0]
+    np.testing.assert_allclose(panel.y[:, :9], 1)
+    np.testing.assert_allclose(np.diff(panel.x[:9]), 1.024)
+    assert panel.legend == [f"FS{i:02d} (a.u.)" for i in range(1, 9)]
+    assert panel.ylabel == "a.u."  # no calibration units recorded in corpus
+    assert panel.x[-1] <= 10
+
+
+def test_actual_detach_bin_schema_keeps_gates_and_dimensionless_ratios(
+    tmp_path, monkeypatch
+):
+    np.savez(
+        tmp_path / "170815.npz",
+        start_ms=[100, 150, 200],
+        afrac_value=[0.1, 99, 0.2],
+        afrac_valid=[1, 0, 1],
+        prad_value=[0.3, 99, 0.4],
+        prad_valid=[1, 0, 1],
+        tangtv_value=[0.5, 99, 0.6],
+        tangtv_valid=[1, 0, 1],
+        tangtv_reason=["", "strike_on_floor", ""],
+        tangtv_vote=[1, 0, 2],
+    )
+    monkeypatch.setenv("LABELER_DETACHMENT_INDICATORS", str(tmp_path))
+    result = panels.indicator_panels(170815, Paths(root=tmp_path))
+    assert len(result) == 3
+    for panel in result:
+        np.testing.assert_allclose(panel.x, [125, 175, 225])
+        assert np.isnan(panel.y[0, 1])
+        assert panel.ylabel == "dimensionless"
+        assert panel.legend and "schema" in panel.metadata
+    assert "fraction" in result[1].title
+    assert "DZ" in result[2].title
+
+
+def test_irtv_area_average_preserves_aspect(tmp_path):
+    with h5py.File(tmp_path / "camera.h5", "w") as f:
+        data = f.create_dataset("frames", data=np.tile([0, 2], (2, 512, 160)))
+        frame = video._frame(data, 0, 0, (256, 320))
+        assert frame.shape == (256, 160)
+        np.testing.assert_allclose(frame, 1)
+
+
+def test_manifest_names_views_including_unavailable_channels(tmp_path):
+    paths = Paths(root=tmp_path, corpus=tmp_path / "corpus")
+    corpus(paths)
+    manifest = video.meta(build.build("detachment", 170815, paths))
+    tangtv = manifest["cameras"][1]
+    assert len(tangtv["views"]) == 7
+    assert "LODIV_240RM1" in tangtv["channels"][0]["view_name"]
+    assert tangtv["channels"][0]["region"] == "lower divertor"
+    assert tangtv["default_channel"] == 0
+    assert "not recorded" in tangtv["spectral_note"]
+
+
+def test_manifest_prefers_lower_view_with_frames_in_plasma_window(tmp_path):
+    paths = Paths(root=tmp_path, corpus=tmp_path / "corpus")
+    source = corpus(paths)
+    with h5py.File(source, "a") as f:
+        del f["tangtv/ydata"]
+        data = np.full((7, 13, 4, 6), np.nan)
+        data[0, 0] = np.arange(24).reshape(4, 6)  # pre-plasma only
+        data[2, 6] = np.arange(24).reshape(4, 6)  # inside plasma
+        data[4, 6] = np.arange(24).reshape(4, 6)  # upper divertor
+        f["tangtv/ydata"] = data
+    path = paths.spectrogram_file("detachment", 170815)
+    rows.write(path, Grid(100, 20, 3), [], video_corpus=source)
+    assert video.meta(path)["cameras"][1]["default_channel"] == 2
+
+
+def test_detachment_grid_and_context_clip_to_plasma_window(tmp_path, monkeypatch):
+    paths = Paths(root=tmp_path, corpus=tmp_path / "corpus")
+    corpus(paths)
+    monkeypatch.setattr(panels, "plasma_window", lambda *_: (40, 160))
+    grid, _, _ = build.detachment.build("detachment", 170815, paths)
+    assert grid.t0_ms == 40
+    assert grid.t0_ms + grid.dt_ms * grid.n == pytest.approx(160)
 
 
 def test_frame_endpoint_auth_roster_missing_cameras_and_detachment_save(tmp_path):

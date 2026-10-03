@@ -107,7 +107,8 @@ canvas { display: block; width: 100%; }
 #rows canvas { cursor: grab; }
 #rows canvas:active { cursor: grabbing; }
 
-#video-panel { padding: 8px 12px; border-bottom: 1px solid var(--rule); }
+#video-panel { position: sticky; top: 0; z-index: 2; background: var(--panel);
+  padding: 8px 12px; border-bottom: 1px solid var(--rule); }
 #video-panel[hidden] { display: none; }
 #video-controls { display: flex; align-items: center; gap: 10px; }
 #video-time { flex: 1; min-width: 60px; padding: 0; }
@@ -115,6 +116,8 @@ canvas { display: block; width: 100%; }
 #video-cameras { display: flex; gap: 12px; margin-top: 8px; }
 .camera { flex: 1; min-width: 0; margin: 0; }
 .camera figcaption { display: flex; align-items: center; gap: 6px; }
+.camera select { min-width: 0; max-width: 100%; flex: 1; font-size: 11px; }
+.camera small { display: block; color: var(--muted); }
 .camera img { display: block; width: 100%; height: 180px; object-fit: contain; background: #000; }
 .camera p { color: var(--muted); margin: 4px 0; }
 body.busy #video-panel { opacity: 0.35; pointer-events: none; }
@@ -198,14 +201,14 @@ button.primary { background: var(--label); border-color: var(--label); color: #f
   background: var(--unsaved);
 }
 
-#cursor {
+#cursor, #hover-cursor {
   position: fixed;
   width: 1px;
   background: var(--ink);
   opacity: 0.5;
   pointer-events: none;
 }
-#cursor-time {
+#cursor-time, #hover-time {
   position: absolute;
   top: 2px;
   left: 5px;

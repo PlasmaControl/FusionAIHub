@@ -497,15 +497,22 @@ to use overlapping annotations.
 The `detachment` editor offers spans **1 attached, 2 detached, 3 marfe,
 4 uncertain**; unmarked time is unassessed. Drag **Time (ms)** or click the
 timeline to seek the nearest camera frame and move the cursor across all
-panels. **Play/Pause** steps through the stored frames. Labels still use the
+panels. The video panel stays visible while scrolling. **Play/Pause** waits for
+decoded frames before advancing. Pixels, physical view and actual frame time
+update together; seeking shows a loading state. Labels still use the
 usual timeline lanes, saves and history.
 
 Each available `bolo`, `tangtv` or `irtv` image channel uses a fixed per-shot
 grayscale scale. Missing/stub cameras have an explicit unavailable card.
-The corpus's raw bolometer traces are context, not images or calibrated
-radiated power. Optional indicator files add validity-gated Afrac, divertor
-radiated power and TangTV front height. Movies stay in the per-shot store;
+Selectors name the source views; live lower-divertor TangTV 0/2 is the default.
+The filter/emission line is not recorded. Raw Langmuir/bolometer medians are
+omitted; filterscope, density and gas-flow context uses block means over the
+plasma window. Optional producer files add validity-gated Afrac, lower-divertor
+radiation fraction and normalized TangTV DZ. Movies stay in the per-shot store;
 the page requests one frame at a time. Camera controls require server API 9.
+The state track is exclusive: MARFE can physically coexist with detachment,
+and partial detachment has no separate state. Candidate availability goes in
+`detachment/shots_review.csv`; `shots.csv` keeps its curation/history semantics.
 
 See [Detachment camera review](detachment_review.md) for data contracts,
 launch commands and the isolated real-shot screenshot check.
