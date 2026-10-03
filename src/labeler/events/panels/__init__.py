@@ -16,6 +16,7 @@ from ...config import Paths
 from ..verify import Panel
 from . import (
     _generic,
+    detachment,
     edge_localized_mode,
     fishbone,
     high_confinement_mode,
@@ -28,6 +29,7 @@ from . import (
 
 BUILDERS = {
     "confinement": high_confinement_mode,
+    "detachment": detachment,
     "edge_localized_mode": edge_localized_mode,
     "fishbone": fishbone,
     "high_confinement_mode": high_confinement_mode,

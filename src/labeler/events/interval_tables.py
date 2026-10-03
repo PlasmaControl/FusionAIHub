@@ -32,6 +32,16 @@ QMIN_CATEGORY_IDS = {
     "qmin_high": 4,
 }
 
+#: Detachment's states, as the review page offers them. Time marked none of them
+#: is category 0 (absent: not assessed), as for confinement.
+DETACHMENT_STATES = {
+    "0": "absent",
+    "1": "attached",
+    "2": "detached",
+    "3": "marfe",
+    "4": "uncertain",
+}
+
 
 def category_labels(category: str) -> dict[str, str]:
     """Names shared by CSV sidecars, sampled grids, and event documentation."""
@@ -44,6 +54,8 @@ def category_labels(category: str) -> dict[str, str]:
         # The four regimes and uncertain; time marked none of them is category 0.
         return {"0": "absent", "1": "high", "2": "low", "3": "qh", "4": "wpqh",
                 "5": "uncertain"}
+    if category == "detachment":
+        return dict(DETACHMENT_STATES)
     if category == "poloidal_beta":
         return {str(k): v for k, v in STATE_NAMES.items()}
     if category == "resistive_wall_mode":

@@ -25,11 +25,11 @@ def fake(event, shot, paths):
 
 
 def test_build_writes_the_rows_and_their_provenance(tmp_path, monkeypatch):
-    monkeypatch.setitem(review_build.BUILDERS, "detachment", fake)
-    path = review_build.build("detachment", 1, Paths(root=tmp_path))
-    assert path == tmp_path / "spectrograms" / "detachment" / "1.h5"
+    monkeypatch.setitem(review_build.BUILDERS, "fishbone", fake)
+    path = review_build.build("fishbone", 1, Paths(root=tmp_path))
+    assert path == tmp_path / "spectrograms" / "fishbone" / "1.h5"
     with h5py.File(path, "r") as f:
-        assert f.attrs["event"] == "detachment" and f.attrs["shot"] == 1
+        assert f.attrs["event"] == "fishbone" and f.attrs["shot"] == 1
         assert f.attrs["builder"] == "test_review_build"
         assert json.loads(f.attrs["params"]) == {"k": 1}
         assert f.attrs["git_sha"] and f.attrs["made_at"]
@@ -42,19 +42,19 @@ class _Fixed(datetime):
 
 
 def test_out_none_is_todays_build_byte_for_byte(tmp_path, monkeypatch):
-    monkeypatch.setitem(review_build.BUILDERS, "detachment", fake)
+    monkeypatch.setitem(review_build.BUILDERS, "fishbone", fake)
     monkeypatch.setattr(review_build, "git_sha", lambda: "0123abc")
     monkeypatch.setattr(review_build, "datetime", _Fixed)
-    path = review_build.build("detachment", 1, Paths(root=tmp_path / "a"))
-    assert path == tmp_path / "a" / "spectrograms" / "detachment" / "1.h5"
+    path = review_build.build("fishbone", 1, Paths(root=tmp_path / "a"))
+    assert path == tmp_path / "a" / "spectrograms" / "fishbone" / "1.h5"
     # Today's build, as `build` wrote it before `out` and `force`.
     today = tmp_path / "today.h5"
-    grid, built, info = fake("detachment", 1, None)
+    grid, built, info = fake("fishbone", 1, None)
     rows.write(
         today,
         grid,
         built,
-        event="detachment",
+        event="fishbone",
         shot=1,
         builder="test_review_build",
         **info,
@@ -64,7 +64,7 @@ def test_out_none_is_todays_build_byte_for_byte(tmp_path, monkeypatch):
     assert path.read_bytes() == today.read_bytes()
     # The same file wherever `out` puts it.
     elsewhere = review_build.build(
-        "detachment", 1, Paths(root=tmp_path / "b"), out=tmp_path / "out"
+        "fishbone", 1, Paths(root=tmp_path / "b"), out=tmp_path / "out"
     )
     assert elsewhere.read_bytes() == today.read_bytes()
 
@@ -76,12 +76,12 @@ def test_an_existing_file_is_rebuilt_only_when_forced(tmp_path, monkeypatch):
         calls.append(shot)
         return fake(event, shot, paths)
 
-    monkeypatch.setitem(review_build.BUILDERS, "detachment", counted)
+    monkeypatch.setitem(review_build.BUILDERS, "fishbone", counted)
     paths = Paths(root=tmp_path)
-    review_build.build("detachment", 1, paths)
-    review_build.build("detachment", 1, paths)
+    review_build.build("fishbone", 1, paths)
+    review_build.build("fishbone", 1, paths)
     assert calls == [1]
-    review_build.build("detachment", 1, paths, force=True)
+    review_build.build("fishbone", 1, paths, force=True)
     assert calls == [1, 1]
 
 
@@ -113,12 +113,12 @@ def test_updated_diagnostic_views_rebuild_old_rows_once(
 def test_the_command_builds_what_is_missing_and_reports_failures(
     tmp_path, monkeypatch, capsys
 ):
-    monkeypatch.setitem(review_build.BUILDERS, "detachment", fake)
+    monkeypatch.setitem(review_build.BUILDERS, "fishbone", fake)
     monkeypatch.setattr(review_build, "ProcessPoolExecutor", ThreadPoolExecutor)
     monkeypatch.setenv("LABELER_ROOT", str(tmp_path))
-    assert review_build.main(["--event", "detachment", "--shots", "1", "2"]) == 1
+    assert review_build.main(["--event", "fishbone", "--shots", "1", "2"]) == 1
     out = capsys.readouterr().out
-    assert "detachment: 2 of 2 shots to build" in out
+    assert "fishbone: 2 of 2 shots to build" in out
     assert "NoDataError: no co2" in out
-    assert review_build.main(["--event", "detachment", "--shots", "1"]) == 0
-    assert "detachment: 0 of 1 shots to build" in capsys.readouterr().out
+    assert review_build.main(["--event", "fishbone", "--shots", "1"]) == 0
+    assert "fishbone: 0 of 1 shots to build" in capsys.readouterr().out

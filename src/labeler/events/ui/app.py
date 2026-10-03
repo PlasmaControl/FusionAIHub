@@ -39,7 +39,7 @@ from ...ae.seg.pseudo import PseudoMask
 from ...config import Paths, sha256_of
 from .. import raw, rosters, rwm
 from ..review import build as review_build
-from ..review import labels, reviewers, rows, versions
+from ..review import labels, reviewers, rows, versions, video
 
 STATIC = Path(__file__).parent / "static"
 COOKIE = "labeler_verify_token"
@@ -54,8 +54,9 @@ BAD_TOKEN = "bad token"
 #: name and hides the history instead of failing every save. 3 added the masks,
 #: 4 the whole-shot TokEye layer, 5 the list of names the page asks from,
 #: 6 the exact RWM onset annotations, 7 individual/group annotation resolution,
-#: 8 independent, overlapping individual and crowd annotation lanes.
-API_VERSION = 8
+#: 8 independent, overlapping individual and crowd annotation lanes,
+#: 9 detachment camera manifests and lazy frame requests.
+API_VERSION = 9
 
 log = logging.getLogger(__name__)
 
@@ -285,6 +286,7 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
             "shot": shot,
             "tier": tier,
             **described,
+            **({"video": video.meta(path)} if event == "detachment" else {}),
             **labels.shot_labels(directory, shot),
             "reviewers": reviewers.shot_reviewers(directory, shot),
             **({"onsets": rwm.onsets(shot, paths)}
@@ -313,6 +315,30 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
             media_type="application/octet-stream",
             headers={"X-Grid": json.dumps(grid)},
         )
+
+    @app.get("/api/frame")
+    def frame_view(
+        event: str, shot: int, camera: str,
+        channel: Annotated[int, Query(ge=0, le=255)] = 0,
+        t_ms: float = 0.0,
+    ):
+        directory = require_event(event, paths)
+        roster_tier(_roster(directory), shot)
+        if event != "detachment":
+            raise HTTPException(404, "this event has no camera previews")
+        path = paths.spectrogram_file(event, shot)
+        if not path.is_file():
+            raise HTTPException(404, f"shot {shot} has no previews yet: open it first")
+        try:
+            data, frame = video.read_frame(path, camera, channel, t_ms)
+        except KeyError:
+            raise HTTPException(404, "no frames for this camera/channel") from None
+        except ValueError as error:
+            raise HTTPException(400, str(error)) from None
+        return Response(data, media_type="image/png", headers={
+            "X-Frame-Time-Ms": str(frame["time_ms"]),
+            "X-Frame-Index": str(frame["index"]),
+        })
 
     @app.post("/api/label")
     def save_label(body: LabelIn):

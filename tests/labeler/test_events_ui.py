@@ -104,7 +104,11 @@ def _built(paths, event="alfven_eigenmode", shot=170815):
         "p1", "Density", np.stack([np.zeros((1, 2000)), np.ones((1, 2000))])
     )
     path = paths.spectrogram_file(event, shot)
-    review_rows.write(path, Grid(0.0, 1.0, 2000), [image, trace], event=event)
+    review_rows.write(
+        path, Grid(0.0, 1.0, 2000), [image, trace], event=event,
+        **({"panel_version": review_build.PANEL_VERSIONS[event]}
+           if event == "detachment" else {}),
+    )
     return path
 
 
@@ -266,7 +270,8 @@ def test_events_lists_each_roster_and_how_much_of_it_is_reviewed(client, source)
             {"event": "alfven_eigenmode", "n_shots": 2, "n_reviewed": 0,
              "categories": states},
             {"event": "detachment", "n_shots": 1, "n_reviewed": 0,
-             "categories": {"1": "present"}},
+             "categories": {"1": "attached", "2": "detached", "3": "marfe",
+                            "4": "uncertain"}},
         ]
     }
 

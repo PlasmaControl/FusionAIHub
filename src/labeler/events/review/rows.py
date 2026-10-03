@@ -107,7 +107,7 @@ def pool(values: np.ndarray, level: int, kind: str) -> np.ndarray:
     return np.stack([low, high])
 
 
-def write(path, grid: Grid, rows, **info) -> None:
+def write(path, grid: Grid, rows, *, video_corpus=None, **info) -> None:
     """Write one shot's rows; `info` becomes file attributes (JSON if not scalar)."""
     with atomic_path(path) as tmp, h5py.File(tmp, "w") as f:
         f.attrs.update(
@@ -139,6 +139,10 @@ def write(path, grid: Grid, rows, **info) -> None:
                     compression="gzip",
                     compression_opts=1,
                 )
+        if video_corpus is not None:
+            from . import video
+
+            video.write(f, video_corpus)
 
 
 def meta(path, hide=frozenset()) -> dict:

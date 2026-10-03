@@ -19,15 +19,17 @@ from pathlib import Path
 
 from ...config import Paths, git_sha
 from .. import rosters
-from . import alfven, panel_rows, rows
+from . import alfven, detachment, panel_rows, rows
 
-BUILDERS = {"alfven_eigenmode": alfven.build}
+BUILDERS = {"alfven_eigenmode": alfven.build, "detachment": detachment.build}
 # Rows an older build wrote that the review no longer shows, until it is rebuilt.
 HIDDEN = {"alfven_eigenmode": alfven.DROPPED}
 # The band an event's image rows show, whatever band the stored rows were built with.
 BANDS = {"alfven_eigenmode": alfven.BAND_KHZ}
 # Changes to these diagnostic recipes replace earlier cached review rows.
-PANEL_VERSIONS = {"edge_localized_mode": 3, "sawtooth_oscillation": 1}
+PANEL_VERSIONS = {
+    "edge_localized_mode": 3, "sawtooth_oscillation": 1, "detachment": 1,
+}
 
 
 def current(path: Path, event: str) -> bool:
