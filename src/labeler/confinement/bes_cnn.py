@@ -87,7 +87,8 @@ class Features:
     ``array`` is the ``(n, 2, 64, 128)`` float16 features (a memory map is fine); only
     the rows of channels ``rows`` are kept, in memory, for the windows in ``index``. A
     small set lives on the GPU, a large one in RAM and is gathered by a background
-    thread. The per-channel ``offset`` (``bes_features.standardising_offset``) is added
+    thread. Callers address a kept row by its ``ids`` entry (by default its row in
+    ``array``). The per-channel ``offset`` (``bes_features.standardising_offset``) is added
     on the GPU.
     """
 
@@ -99,10 +100,12 @@ class Features:
         offset: np.ndarray,
         device,
         gpu_gb: float = 4.0,
+        ids: np.ndarray | None = None,
     ):
         self.rows = rows[1] - rows[0]
         self.device = device
-        self.slot = {int(i): k for k, i in enumerate(index)}
+        # ``ids`` name the kept rows to the caller (default: their rows in ``array``)
+        self.slot = {int(i): k for k, i in enumerate(index if ids is None else ids)}
         block = slice(rows[0] * COLUMNS, rows[1] * COLUMNS)
         out = np.empty((len(index), 2, self.rows * COLUMNS, FREQS), dtype=np.float16)
         for lo in range(0, len(index), 8192):

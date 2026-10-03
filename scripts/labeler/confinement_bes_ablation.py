@@ -74,7 +74,8 @@ class Row:
     name: str
     label: str
     data: str = "500k"  # sampling rate of the features: 500k (corpus) or 1m (native)
-    # corpus: the shots the corpus holds BES for; all: every fetched shot
+    # corpus: the shots the corpus holds BES for; both: those of them fetched at 1 MHz
+    # too (the matched set of the 500 kHz / 1 MHz comparison); all: every fetched shot
     shots: str = "corpus"
     # rows [lo, hi) of the 8 x 8 array: the first retrain used rows 1-6
     rows: tuple[int, int] = (1, 7)
@@ -135,6 +136,31 @@ def _chain() -> dict[str, Row]:
         label="+ paper split protocol (500 kHz, corpus shots)",
         protocol="paper",
     )
+    # the native-rate question on the shots that exist at both rates, so that the two rows
+    # train on the same shots
+    matched = replace(base, shots="both")
+    rows["base_m"] = replace(
+        matched, name="base_m", label="first retrain, shots at both rates"
+    )
+    rows["only_g_m"] = replace(
+        matched,
+        name="only_g_m",
+        label="+ native 1 MHz (shots at both rates)",
+        data="1m",
+    )
+    chain = rows["cum_abcdr"]
+    rows["cum_abcdr_m"] = replace(
+        chain,
+        name="cum_abcdr_m",
+        label="+ a, b, c, d, r (shots at both rates)",
+        shots="both",
+    )
+    rows["cum_abcdrg_m"] = replace(
+        rows["cum_abcdr_m"],
+        name="cum_abcdrg_m",
+        label="+ native 1 MHz (shots at both rates)",
+        data="1m",
+    )
     return rows
 
 
@@ -160,15 +186,19 @@ def consolidate(args: argparse.Namespace) -> None:
     )
 
 
+def fetched_shots(directory: Path) -> set[int]:
+    return {int(f.stem) for f in directory.glob("*.npz") if "tmp" not in f.name}
+
+
 def load(row: Row):
     """Window table, memory-mapped features, channel power and the row's index into the
     dataset, all restricted to the row's shot set."""
     table, feats, power = bw.open_dataset(dataset_dir(row.data))
-    if row.shots == "corpus":
-        corpus = {
-            int(f.stem) for f in (WORK / "bes500k").glob("*.npz") if "tmp" not in f.name
-        }
-        keep = table.shot.isin(corpus).to_numpy()
+    if row.shots in ("corpus", "both"):
+        allowed = fetched_shots(WORK / "bes500k")
+        if row.shots == "both":
+            allowed &= fetched_shots(WORK / "bes1mhz")
+        keep = table.shot.isin(allowed).to_numpy()
         index = np.flatnonzero(keep)
         table = table.iloc[index].reset_index(drop=True)
         power = power[index]
@@ -227,7 +257,14 @@ def run_row(row: Row, args: argparse.Namespace) -> None:
         offset = bf.standardising_offset(
             power[train][:, row.rows[0] * 8 : row.rows[1] * 8]
         )
-        data = cnn.Features(feats, index_map, row.rows, offset, device)
+        data = cnn.Features(
+            feats,
+            index_map,
+            row.rows,
+            offset,
+            device,
+            ids=np.arange(len(index_map)),  # the table's positions, as the splits use
+        )
         run_cfg = replace(cfg, seed=SEED + i)
         print(
             f"{row.name} {name}: {len(train)} train, {len(val)} val, "

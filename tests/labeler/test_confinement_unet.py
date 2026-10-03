@@ -116,6 +116,16 @@ def test_bes_net_shape_and_feature_standardisation_path():
         2, 2, 2, 8, cnn.FREQS
     )
     assert torch.equal(got, expect)
+    # the same rows addressed by the positions of a restricted table
+    by_position = cnn.Features(
+        array,
+        index,
+        (1, 3),
+        np.zeros(16, dtype=np.float32),
+        torch.device("cpu"),
+        ids=np.arange(3),
+    )
+    assert torch.equal(by_position.get(np.array([1, 0])), expect)
 
 
 def test_bes_training_loop_runs_and_keeps_a_checkpoint():
