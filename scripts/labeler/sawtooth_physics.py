@@ -153,7 +153,7 @@ def local_scalar(shot, name, paths):
 
 
 def local_q(shot, paths):
-    """Prefer explicitly MSE-constrained local equilibrium, never infer from MSE data."""
+    """Prefer explicitly MSE-constrained equilibrium, not MSE data presence."""
     from labeler.events import raw
     from labeler.features.store import read_feature
 
@@ -193,6 +193,8 @@ def process_shot(job):
     signal = work / "signals" / f"{shot}.npz"
     if record.exists() and (not keep_signal or signal.exists()):
         previous = json.loads(record.read_text())
+        if previous.get("rule") != asdict(rule):
+            raise ValueError(f"cached rule differs from freeze for shot {shot}")
         if "error" not in previous:
             return previous
     started = time.monotonic()
@@ -364,25 +366,51 @@ def process_shot(job):
     return result
 
 
+def export_rows(record):
+    """Export the state partition without conflicting broad train annotations."""
+    states = record.get("states", [])
+    starts = np.array([span["start_s"] for span in states])
+    for point in record["crashes"]:
+        attrs = dict(point["attrs"])
+        if states:
+            index = int(np.searchsorted(starts, point["time_s"], side="right") - 1)
+            state = (
+                states[index]["state"]
+                if index >= 0 and point["time_s"] < states[index]["end_s"]
+                else "unassessed"
+            )
+            if state in ("uncertain", "unassessed") and attrs["state"] != state:
+                attrs["candidate_state"] = attrs["state"]
+                attrs["state"] = state
+                attrs["uncertainty_reasons"] = sorted(
+                    set(
+                        attrs.get("uncertainty_reasons", [])
+                        + ["overlapping_assessment_uncertainty"]
+                    )
+                )
+        yield (
+            point["time_s"],
+            point["time_s"],
+            False,
+            point["confidence"],
+            attrs,
+        )
+    if states:
+        for span in states:
+            yield span["start_s"], span["end_s"], True, 1.0, {"state": span["state"]}
+    else:
+        for span in record["intervals"]:
+            yield span["start_s"], span["end_s"], True, 1.0, span["attrs"]
+
+
 def export_csv(records, destination, *, compact=False, prefix="labels"):
     destination.mkdir(parents=True, exist_ok=True)
     columns = ["shot", "category", "t_start", "t_end", "crowd", "confidence", "attrs"]
     part, bytes_used, handle = 0, 0, None
+    written = set()
     try:
         for record in records:
-            rows = [
-                (r["time_s"], r["time_s"], False, r["confidence"], r["attrs"])
-                for r in record["crashes"]
-            ]
-            rows += [
-                (r["start_s"], r["end_s"], True, 1.0, r["attrs"])
-                for r in record["intervals"]
-            ]
-            rows += [
-                (r["start_s"], r["end_s"], True, 1.0, {"state": r["state"]})
-                for r in record.get("states", [])
-            ]
-            for start, end, crowd, confidence, attrs in rows:
+            for start, end, crowd, confidence, attrs in export_rows(record):
                 if compact:
                     attrs = {
                         key: attrs[key]
@@ -393,15 +421,17 @@ def export_csv(records, destination, *, compact=False, prefix="labels"):
                             "state",
                             "central_relative_drop",
                             "q_conflict",
+                            "candidate_state",
+                            "uncertainty_reasons",
                         )
                         if key in attrs
                     }
                 if handle is None or bytes_used > 1_400_000:
                     if handle is not None:
                         handle.close()
-                    handle = (destination / f"{prefix}-{part:03d}.csv").open(
-                        "w", newline=""
-                    )
+                    path = destination / f"{prefix}-{part:03d}.csv"
+                    written.add(path)
+                    handle = path.open("w", newline="")
                     writer = csv.writer(handle)
                     writer.writerow(columns)
                     part, bytes_used = part + 1, 0
@@ -426,6 +456,9 @@ def export_csv(records, destination, *, compact=False, prefix="labels"):
     finally:
         if handle is not None:
             handle.close()
+    for path in destination.glob(f"{prefix}-[0-9][0-9][0-9].csv"):
+        if path not in written:
+            path.unlink()
     # Remove only obsolete shards made by this writer, after successful export.
     for path in destination.glob(f"{prefix}-*.csv"):
         if int(path.stem.split("-")[-1]) >= part:
@@ -459,16 +492,30 @@ def labels(args):
     ]
     begun = time.monotonic()
     records = []
-    with ProcessPoolExecutor(max_workers=args.workers) as pool:
-        for i, record in enumerate(pool.map(process_shot, jobs, chunksize=1)):
-            records.append(record)
-            if i % 50 == 0:
-                print(
-                    f"{i + 1}/{len(jobs)} shot {record['shot']} crashes {len(record['crashes'])} error {record.get('error', '')}",
-                    flush=True,
-                )
+    if args.records_only:
+        records = records_at(args.work, shots)
+        if len(records) != len(shots):
+            raise ValueError("records-only consolidation requires every requested shot")
+        expected_rule = asdict(frozen_rule(args.work))
+        for record in records:
+            if record["rule"] != expected_rule:
+                raise ValueError(f"cached rule mismatch for shot {record['shot']}")
+            if "error" not in record and not record.get("assessment_policy"):
+                raise ValueError(f"pending mask repair for shot {record['shot']}")
+    else:
+        with ProcessPoolExecutor(max_workers=args.workers) as pool:
+            for i, record in enumerate(pool.map(process_shot, jobs, chunksize=1)):
+                records.append(record)
+                if i % 50 == 0:
+                    print(
+                        f"{i + 1}/{len(jobs)} shot {record['shot']} "
+                        f"crashes {len(record['crashes'])} "
+                        f"error {record.get('error', '')}",
+                        flush=True,
+                    )
     summary = {
         "scope": "population" if args.population else "cohort_plus_review",
+        "cached_records_only": args.records_only,
         "requested_shots": shots,
         "requested_count": len(shots),
         "processed_shots": [r["shot"] for r in records if "error" not in r],
@@ -479,6 +526,14 @@ def labels(args):
                 point["attrs"]["state"]
                 for record in records
                 for point in record["crashes"]
+            )
+        ),
+        "exported_point_state_counts": dict(
+            Counter(
+                attrs["state"]
+                for record in records
+                for _, _, crowd, _, attrs in export_rows(record)
+                if not crowd
             )
         ),
         "intervals": sum(len(r["intervals"]) for r in records),
@@ -600,6 +655,7 @@ def main():
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--population", action="store_true")
     parser.add_argument("--skip-cohort", action="store_true")
+    parser.add_argument("--records-only", action="store_true")
     parser.add_argument("--shots", nargs="+", type=int)
     parser.add_argument("--shard", type=int, default=0)
     parser.add_argument("--shards", type=int, default=1)

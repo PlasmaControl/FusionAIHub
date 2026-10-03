@@ -66,15 +66,24 @@ def clipped_interval(t, run, start, end, padding):
     )
 
 
+def profile_support(t, y, rule):
+    """Four finite profile channels throughout the Gaussian filter support."""
+    dt = float(np.median(np.diff(t)))
+    radius = int(np.ceil(3.5 * rule.sigma_ms / 1000 / dt))
+    bad = np.isfinite(y).sum(axis=0) < 4
+    return maximum_filter1d(bad.astype(np.uint8), 2 * radius + 1) == 0
+
+
+def subset_sufficient(t, core, old_observable, rule):
+    """A core subset is an exact lower-bound certificate for the full profile."""
+    return not (old_observable & ~profile_support(t, core, rule)).any()
+
+
 def repair_record(record, t, y, old_observable, rule):
     """Rebuild train support while retaining every accepted crash's amplitude."""
     before = copy.deepcopy(record)
     dt = float(np.median(np.diff(t)))
-    bad_profile = np.isfinite(y).sum(axis=0) < 4
-    radius = int(np.ceil(3.5 * rule.sigma_ms / 1000 / dt))
-    observable = old_observable & (
-        maximum_filter1d(bad_profile.astype(np.uint8), 2 * radius + 1) == 0
-    )
+    observable = old_observable & profile_support(t, y, rule)
     support_runs = runs(observable)
     run_id = np.full(len(t), -1, dtype=np.int32)
     for index, (lo, hi) in enumerate(support_runs):
@@ -256,9 +265,53 @@ def repair_shot(job):
         return dict(audit, shot=shot, skipped="already_repaired")
     if "error" in record:
         return {"shot": shot, "skipped": "original_error", "error": record["error"]}
+    # A stricter profile or clock guard cannot add assessed truth to the exact
+    # existing all-unassessed partition, so it needs no further waveform read.
+    if (
+        not record.get("observable_spans")
+        and not record.get("assessed_spans")
+        and record.get("states")
+        and all(span["state"] == "unassessed" for span in record["states"])
+        and not any(
+            record.get(key) for key in ("crashes", "intervals", "uncertain_intervals")
+        )
+        and not (work / "signals" / f"{shot}.npz").exists()
+    ):
+        backup = work / "mask_repair_before" / f"{shot}.json"
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        if not backup.exists():
+            shutil.copyfile(path, backup)
+        record["assessment_policy"] = POLICY
+        record.setdefault(
+            "q_source", "EFIT01" if record.get("qmin_available") else "unavailable"
+        )
+        changes = {
+            "shot": shot,
+            "changed_observable_samples": 0,
+            "changed_observable_seconds": 0.0,
+            "widened_uncertain_trains": 0,
+            "split_trains": 0,
+            "removed_unobservable_crashes": 0,
+            "removed_fragment_crashes": 0,
+            "crashes_before": 0,
+            "crashes_after": 0,
+            "present_intervals_before": 0,
+            "present_intervals_after": 0,
+            "uncertain_intervals_before": 0,
+            "uncertain_intervals_after": 0,
+            "population": population,
+            "cached_signal": False,
+            "native_error": None,
+            "state_seconds": record["state_seconds"],
+            "profile_support_read": "none; exact all-unassessed partition preserved",
+        }
+        save_json(path, record)
+        save_json(work / "mask_repair_audit" / f"{shot}.json", changes)
+        return changes
     rule = Rule(**json.loads((work / "freeze.json").read_text())["rule"])
     signal = work / "signals" / f"{shot}.npz"
     cached = None
+    read_scope = "cached_full_profile"
     if signal.exists():
         with np.load(signal) as data:
             cached = {key: data[key] for key in data.files}
@@ -268,12 +321,25 @@ def repair_shot(job):
             with h5py.File(
                 Paths.from_env().corpus_file(shot), "r", locking=False
             ) as file:
-                t, y = sample_native(file["ece"])
-            y[(y < 0) | (y > 100)] = np.nan
-            lo, hi = record["window_s"]
-            keep = (t >= lo) & (t <= hi)
-            t, y = t[keep], y[:, keep]
-            old_observable = support_from_spans(t, record.get("observable_spans", []))
+                t, y = sample_native(file["ece"], rows=slice(20, 36))
+                y[(y < 0) | (y > 100)] = np.nan
+                lo, hi = record["window_s"]
+                keep = (t >= lo) & (t <= hi)
+                t, y = t[keep], y[:, keep]
+                old_observable = support_from_spans(
+                    t, record.get("observable_spans", [])
+                )
+                if subset_sufficient(t, y, old_observable, rule):
+                    read_scope = "core16_exact_lower_bound"
+                else:
+                    t, y = sample_native(file["ece"])
+                    y[(y < 0) | (y > 100)] = np.nan
+                    keep = (t >= lo) & (t <= hi)
+                    t, y = t[keep], y[:, keep]
+                    old_observable = support_from_spans(
+                        t, record.get("observable_spans", [])
+                    )
+                    read_scope = "full48_after_insufficient_core_lower_bound"
         except (OSError, KeyError, ValueError) as error:
             # A failed native clock cannot contribute assessed absence.
             lo, hi = record["window_s"]
@@ -281,6 +347,7 @@ def repair_shot(job):
             y = np.full((4, len(t)), np.nan, dtype=np.float32)
             old_observable = support_from_spans(t, record.get("observable_spans", []))
             record["mask_repair_native_error"] = f"{type(error).__name__}: {error}"
+            read_scope = "failed_native_clock_all_unassessed"
     backup = work / "mask_repair_before" / f"{shot}.json"
     backup.parent.mkdir(parents=True, exist_ok=True)
     if not backup.exists():
@@ -298,6 +365,7 @@ def repair_shot(job):
         cached_signal=cached is not None,
         native_error=record.get("mask_repair_native_error"),
         state_seconds=record["state_seconds"],
+        profile_support_read=read_scope,
     )
     save_json(work / "mask_repair_audit" / f"{shot}.json", changes)
     return changes
@@ -385,6 +453,86 @@ def audit_cohort(work, workers):
     print(json.dumps(small), flush=True)
 
 
+def audit_optimization_shot(job):
+    shot, work = job
+    with np.load(Path(work) / "signals" / f"{shot}.npz") as data:
+        t, y, old = data["t"], data["y"], data["observable"]
+    rule = Rule(**json.loads((Path(work) / "freeze.json").read_text())["rule"])
+    full = old & profile_support(t, y, rule)
+    core = y[20:36]
+    sufficient = subset_sufficient(t, core, old, rule)
+    optimized = old & profile_support(t, core if sufficient else y, rule)
+    return {
+        "shot": shot,
+        "core16_sufficient": sufficient,
+        "samples": len(t),
+        "observable_samples": int(old.sum()),
+        "mismatching_mask_samples": int((full != optimized).sum()),
+    }
+
+
+def audit_optimization(work, workers):
+    jobs = [(shot, str(work)) for shot in sorted(cohort_shots())]
+    with ProcessPoolExecutor(max_workers=workers) as pool:
+        rows = list(pool.map(audit_optimization_shot, jobs, chunksize=1))
+    rule = Rule(**json.loads((Path(work) / "freeze.json").read_text())["rule"])
+    synthetic_t = np.arange(400) * 0.0001
+    synthetic_y = np.full((48, len(synthetic_t)), np.nan)
+    synthetic_y[:4] = 1.0
+    synthetic_y[20:22] = 1.0
+    synthetic_old = np.ones(len(synthetic_t), dtype=bool)
+    fallback_verified = not subset_sufficient(
+        synthetic_t, synthetic_y[20:36], synthetic_old, rule
+    ) and bool(profile_support(synthetic_t, synthetic_y, rule).all())
+    synthetic_y[20:36] = 1.0
+    synthetic_y[23:36, 201] = np.nan
+    synthetic_old[:] = False
+    synthetic_old[200] = True
+    halo_verified = not subset_sufficient(
+        synthetic_t, synthetic_y[20:36], synthetic_old, rule
+    )
+    synthetic_old[:] = False
+    empty_verified = subset_sufficient(
+        synthetic_t, synthetic_y[20:36], synthetic_old, rule
+    )
+    summary = {
+        "scope": "all cached cohort and expert shots",
+        "audited_shots": len(rows),
+        "core16_sufficient_shots": sum(row["core16_sufficient"] for row in rows),
+        "full48_fallback_shots": [
+            row["shot"] for row in rows if not row["core16_sufficient"]
+        ],
+        "mismatching_mask_samples": sum(
+            row["mismatching_mask_samples"] for row in rows
+        ),
+        "proof": (
+            "Per-channel filtering is independent. Core16 finite counts "
+            "lower-bound full48 counts. If core16 has four finite channels "
+            "throughout every Gaussian support overlapping old observability, "
+            "full48 has four too; both final masks equal old observability. "
+            "Otherwise reread full48."
+        ),
+        "empty_support_fastpath": (
+            "Preserve exact existing all-unassessed partition only when "
+            "observable/assessed support and all event lists are empty, "
+            "with no cached signal to rewrite."
+        ),
+        "refit": False,
+        "criteria_changed": False,
+        "synthetic_checks": {
+            "two_core_channels_with_four_outer_requires_full48": fallback_verified,
+            "bad_core_neighbor_inside_filter_halo_requires_full48": halo_verified,
+            "empty_observable_support_certificate": empty_verified,
+        },
+        "by_shot": rows,
+    }
+    save_json(work / "mask_optimization.json", summary)
+    small = {key: value for key, value in summary.items() if key != "by_shot"}
+    small["source_details"] = str(work / "mask_optimization.json")
+    save_json(OUTPUT / "mask_optimization.json", small)
+    print(json.dumps(small), flush=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--work", type=Path, default=WORK)
@@ -392,6 +540,7 @@ def main():
     parser.add_argument("--population", action="store_true")
     parser.add_argument("--existing-only", action="store_true")
     parser.add_argument("--audit-only", action="store_true")
+    parser.add_argument("--audit-optimization", action="store_true")
     parser.add_argument("--shard", type=int, default=0)
     parser.add_argument("--shards", type=int, default=1)
     args = parser.parse_args()
@@ -399,6 +548,9 @@ def main():
         parser.error("workers must be 1..4 and shard must be within shards")
     if args.audit_only:
         audit_cohort(args.work, args.workers)
+        return
+    if args.audit_optimization:
+        audit_optimization(args.work, args.workers)
         return
     cohort = cohort_shots()
     if args.population:
@@ -426,7 +578,8 @@ def main():
             rows.append(row)
             if i % 50 == 0:
                 print(
-                    f"{i + 1}/{len(jobs)} shot {row['shot']} {row.get('skipped', 'repaired')}",
+                    f"{i + 1}/{len(jobs)} shot {row['shot']} "
+                    f"{row.get('skipped', 'repaired')}",
                     flush=True,
                 )
     changed = [row for row in rows if "skipped" not in row]

@@ -93,7 +93,9 @@ def main():
                 "fir_half_length_decimation_factors": 10,
                 "sample_rate_hz": 10000,
                 "shots": shots,
-                "cutoff_note": "density/B proxy; frequency/radius calibration unavailable",
+                "cutoff_note": (
+                    "density/B proxy; frequency/radius calibration unavailable"
+                ),
             },
             "profile_and_support_guards": {
                 "shots": shots,
@@ -125,7 +127,11 @@ def main():
                 "shots": prior_shots,
                 "split_counts": prior_splits,
                 "expert_shots_in_pilot": sorted(set(prior_shots) & experts),
-                "statement": "Prior train-only pilot claim withdrawn; mixed pilot cannot establish leakage-free calibration. All fix-round guards refrozen using only listed TRAIN shots.",
+                "statement": (
+                    "Prior train-only pilot claim withdrawn; mixed pilot cannot "
+                    "establish leakage-free calibration. All fix-round guards "
+                    "refrozen using only listed TRAIN shots."
+                ),
             },
         }
         save_json(args.work / "freeze.json", frozen)

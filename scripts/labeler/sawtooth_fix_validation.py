@@ -100,7 +100,16 @@ def expert_score(record, old, rows):
         "assessment_fraction": float(assessed.sum() / max(1, observable.sum())),
     }
     for name, rec in [("new", record), ("old", old)]:
-        prediction = spans_at(bins, intervals(rec))
+        estimate_spans = (
+            [
+                (span["start_s"], span["end_s"])
+                for span in rec["states"]
+                if span["state"] == "present"
+            ]
+            if name == "new"
+            else intervals(rec)
+        )
+        prediction = spans_at(bins, estimate_spans)
         hist = score_histogram(truth[assessed], prediction[assessed].astype(float))
         all_hist = score_histogram(
             truth[observable], prediction[observable].astype(float)
@@ -108,9 +117,9 @@ def expert_score(record, old, rows):
         # bin_times returns centers; construct half-open 2ms cells from left edges.
         supports = mask_spans(bins - 0.001, assessed) if len(bins) else []
         observable_supports = mask_spans(bins - 0.001, observable) if len(bins) else []
-        cells = masked_interval_cells(positive, intervals(rec), supports, 0.1)
+        cells = masked_interval_cells(positive, estimate_spans, supports, 0.1)
         observable_cells = masked_interval_cells(
-            positive, intervals(rec), observable_supports, 0.1
+            positive, estimate_spans, observable_supports, 0.1
         )
         pts = points(rec)
         covered = spans_at(pts, record["observable_spans"]) & spans_at(pts, known)
@@ -151,7 +160,7 @@ def expert_score(record, old, rows):
             "true_crash_f1": None,
             "histogram": hist.tolist(),
         }
-    # New four-state predictions retain possible positives instead of calling them absent.
+    # Preserve possible positives as uncertainty rather than assessed absence.
     uncertain = spans_at(
         bins,
         [(r["start_s"], r["end_s"]) for r in record.get("uncertain_intervals", [])],
@@ -202,7 +211,9 @@ def main():
                 "crashes": sum(len(r["crashes"]) for r in old),
                 "rule": "labeler.events.heuristics.sawtooth_events, unchanged defaults",
                 "input": "native read-only corpus ECE; original 1ms envelope",
-                "span_adapter": "same frozen period/train grouping, no new amplitude/q guards",
+                "span_adapter": (
+                    "same frozen period/train grouping, no new amplitude/q guards"
+                ),
             },
         )
         return
@@ -253,9 +264,20 @@ def main():
         "expert": {
             "by_shot": experts,
             "bootstrap": False,
-            "mask": "primary: identical expert-known & core-observable for both rules and models; conditional: also exclude new algorithm uncertainty for both rules",
-            "observable_abstention_policy": "Only explicit present spans are positive decisions; uncertainty remains a four-state label and counts as no positive decision in unconditional expert sensitivity. Coverage and conditional assessed metrics are reported separately.",
-            "limitation": "Only span annotations supplied; true crash scores unavailable",
+            "mask": (
+                "primary: identical expert-known & core-observable for both "
+                "rules and models; conditional: also exclude new algorithm "
+                "uncertainty for both rules"
+            ),
+            "observable_abstention_policy": (
+                "Only explicit present spans are positive decisions; "
+                "uncertainty remains a four-state label and counts as no "
+                "positive decision in unconditional expert sensitivity. "
+                "Coverage and conditional assessed metrics are reported separately."
+            ),
+            "limitation": (
+                "Only span annotations supplied; true crash scores unavailable"
+            ),
         },
         "legacy_agreement": aggregate(agreement),
         "agreement_by_shot": by_shot,
@@ -282,7 +304,8 @@ def main():
         }
         if exists:
             raise RuntimeError(
-                "reference shot became available; run detector and extract published windows before reporting"
+                "reference shot became available; run detector and extract "
+                "published windows before reporting"
             )
         result["status"] = "unavailable; no fetching authorized"
         references.append(result)

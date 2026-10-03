@@ -53,6 +53,8 @@ def test_dense_loss_and_gradients_ignore_unassessed_bins():
 def test_targets_exclude_uncertain_crashes_and_intervals():
     t = np.arange(10) * 0.001
     rec = {
+        "observable_spans": [[0.0, 0.01]],
+        "assessed_spans": [[0.0, 0.005], [0.009, 0.01]],
         "intervals": [
             {"start_s": 0.0, "end_s": 0.003, "attrs": {"period_ms": 60}},
             {
@@ -71,6 +73,35 @@ def test_targets_exclude_uncertain_crashes_and_intervals():
     assert pick[7] == 0
     assert presence.tolist() == [1, 1, 1, 0, 0, 0, 0, 0, 0, 0]
     assert classes[6] == 0
+
+
+def test_uncertain_crash_center_cannot_leak_gaussian_into_assessed_bins():
+    t = np.arange(200) * 0.0001
+    rec = {
+        "observable_spans": [[0.0, 0.02]],
+        "assessed_spans": [[0.0, 0.004], [0.005, 0.02]],
+        "intervals": [],
+        "crashes": [{"time_s": 0.0042, "attrs": {"state": "present"}}],
+    }
+    pick, _, _ = benchmark.targets(t, rec, 50)
+    assessed = benchmark.spans_at(t, rec["assessed_spans"])
+    # The old Gaussian reaches t=5 ms, outside the uncertain interval, even
+    # though its center is unknown. A masked loss alone does not remove it.
+    assert not np.any(pick[assessed] > 0)
+
+
+def test_target_center_eligibility_uses_nearest_native_bin():
+    t = np.arange(200) * 0.0001
+    rec = {
+        "observable_spans": [[0.0, 0.02]],
+        "assessed_spans": [[0.0, 0.004], [0.005, 0.02]],
+        "intervals": [],
+        # This time lies before assessed support, but its nearest native bin
+        # is t=5 ms, which is assessed. It must match assessed_points semantics.
+        "crashes": [{"time_s": 0.00496, "attrs": {"state": "present"}}],
+    }
+    pick, _, _ = benchmark.targets(t, rec, 50)
+    assert pick[50] == pytest.approx(np.exp(-0.5 * (0.00004 / 0.0005) ** 2))
 
 
 def test_masked_points_exclude_missing_uncertain_and_out_of_coverage():

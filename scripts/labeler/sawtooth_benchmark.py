@@ -37,7 +37,10 @@ MODELS = ("saw-hl3", "saw-ours")
 THRESHOLDS = np.arange(1, 20) / 20
 DERIVATIVE_Z = tuple(range(2, 11))
 LEGACY = {
-    "source": "OuYang et al. PPCF 67 (2025) 105004, doi:10.1088/1361-6587/ae0786; local digest",
+    "source": (
+        "OuYang et al. PPCF 67 (2025) 105004, "
+        "doi:10.1088/1361-6587/ae0786; local digest"
+    ),
     "real_time": {
         "accuracy_stated": 0.922,
         "accuracy_abstract": 0.925,
@@ -61,7 +64,10 @@ LEGACY = {
         "class_2_precision": 0.941,
         "class_2_recall": 0.751,
     },
-    "limitation": "Published three-regime window classification, no crash score or CIs; counts disagree with stated accuracy; split grouping unspecified.",
+    "limitation": (
+        "Published three-regime window classification, no crash score or CIs; "
+        "counts disagree with stated accuracy; split grouping unspecified."
+    ),
 }
 
 
@@ -143,10 +149,19 @@ def period_boundary(work, shots):
 
 
 def targets(t, rec, boundary):
+    """Build point truth only from centers eligible on the supplied native grid."""
     intervals = present_rows(rec, "intervals")
     spans = [(r["start_s"], r["end_s"]) for r in intervals]
     presence = spans_at(t, spans).astype(np.float32)
-    picks = soft_crash_target(t, [r["time_s"] for r in present_rows(rec, "crashes")])
+    signal = {
+        "t": t,
+        "observable": spans_at(t, rec["observable_spans"]),
+        "assessed": spans_at(t, rec["assessed_spans"]),
+    }
+    centers = assessed_points(
+        signal, [r["time_s"] for r in present_rows(rec, "crashes")]
+    )
+    picks = soft_crash_target(t, centers)
     classes = np.zeros(len(t), dtype=np.int64)
     for r in intervals:
         classes[(t >= r["start_s"]) & (t < r["end_s"])] = 1 + int(
@@ -526,7 +541,8 @@ def train(args):
                     }
                 )
                 print(
-                    f"{name} fold {fold} epoch {epoch}: train {np.mean(losses):.4f} val {validation_loss:.4f}",
+                    f"{name} fold {fold} epoch {epoch}: "
+                    f"train {np.mean(losses):.4f} val {validation_loss:.4f}",
                     flush=True,
                 )
                 if not np.isfinite(validation_loss):
@@ -612,7 +628,10 @@ def train(args):
                     if name == "saw-hl3"
                     else [f"ECE channel {i}" for i in range(48)]
                 ),
-                "unknown_truth": "observable & assessed masks exclude unavailable, cutoff, low-Te and uncertain bins",
+                "unknown_truth": (
+                    "observable & assessed masks exclude unavailable, "
+                    "cutoff, low-Te and uncertain bins"
+                ),
                 "seconds": round(time.monotonic() - begun, 1),
                 "parameters": sum(p.numel() for p in model.parameters()),
             }
@@ -628,17 +647,38 @@ def evaluate(args):
         "legacy": LEGACY,
         "Tokamak-SI": {},
         "protocol": {
-            "primary": "three-fold out-of-fold on fixed train; 20% whole-shot inner selection from each outer training fold",
+            "primary": (
+                "three-fold out-of-fold on fixed train; 20% whole-shot inner "
+                "selection from each outer training fold"
+            ),
             "bin_ms": 2,
-            "interval_threshold": "selected independently per fold on inner selection shots, grid 0.05..0.95 step 0.05",
+            "interval_threshold": (
+                "selected independently per fold on inner selection shots, "
+                "grid 0.05..0.95 step 0.05"
+            ),
             "crash_tolerances_ms": [1, 2],
             "fixed_validation_split": "excluded from fitting and selection",
             "test_split": "excluded, never loaded",
-            "expert": "reviewed shots excluded from fitting and selection; per-shot results without bootstrap",
-            "bootstrap": "1000 OOF shot resamples, seed 20261003; 512 probability bins for AUROC/AP",
+            "expert": (
+                "reviewed shots excluded from fitting and selection; "
+                "per-shot results without bootstrap"
+            ),
+            "bootstrap": (
+                "1000 OOF shot resamples, seed 20261003; "
+                "512 probability bins for AUROC/AP"
+            ),
             "gaussian_target_sigma_ms": 0.5,
-            "assessment": "OOF pseudolabel scores intersect observable & assessed. Primary expert scores intersect known expert spans & observable, because independent expert truth resolves algorithm uncertainty; conditional algorithm-assessed scores also reported.",
-            "input_parity": "saw-hl3: two ECE averages (20-27, 8-15), Mirnov mean 0-1 and Ip; saw-ours: all 48 ECE channels. Adapted HL-3 ECE inputs replace published SXR; architecture and input access differ.",
+            "assessment": (
+                "OOF pseudolabel scores intersect observable & assessed. "
+                "Primary expert scores intersect known expert spans & observable, "
+                "because independent expert truth resolves algorithm uncertainty; "
+                "conditional algorithm-assessed scores also reported."
+            ),
+            "input_parity": (
+                "saw-hl3: two ECE averages (20-27, 8-15), Mirnov mean 0-1 and Ip; "
+                "saw-ours: all 48 ECE channels. Adapted HL-3 ECE inputs replace "
+                "published SXR; architecture and input access differ."
+            ),
         },
     }
     review = pd.read_csv(REVIEW)
@@ -852,7 +892,9 @@ def evaluate(args):
                         (spans_at(bins, positive) & observable).sum()
                     ),
                     "assessment_mask": "known expert spans & observable",
-                    "conditional_assessment_mask": "known expert spans & observable & assessed",
+                    "conditional_assessment_mask": (
+                        "known expert spans & observable & assessed"
+                    ),
                     "assessed_picks": int(known_picks.sum()),
                     "supported_picks": int(supported.sum()),
                     "span_supported_pick_fraction": float(
@@ -889,11 +931,24 @@ def evaluate(args):
                 "assessed_picks": assessed,
                 "supported_picks": supported,
             },
-            "note": "Three-fold ensemble; thresholds are means of inner selections. Per-shot scores without bootstrap because n=3. Expert review has spans, no point crash times.",
+            "note": (
+                "Three-fold ensemble; thresholds are means of inner selections. "
+                "Per-shot scores without bootstrap because n=3. "
+                "Expert review has spans, no point crash times."
+            ),
         }
         output["Tokamak-SI"][name] = score
-    save_json(OUTPUT / "benchmark.json", output)
     save_json(args.work / "benchmark.json", output)
+    summary = dict(output)
+    summary["Tokamak-SI"] = {}
+    for name, result in output["Tokamak-SI"].items():
+        summary["Tokamak-SI"][name] = {
+            **{key: value for key, value in result.items() if key != "by_shot"},
+            "by_shot_count": len(result["by_shot"]),
+            "out_of_fold_shots": [row["shot"] for row in result["by_shot"]],
+            "by_shot_details": str(args.work / "benchmark.json"),
+        }
+    save_json(OUTPUT / "benchmark.json", summary)
     print(
         json.dumps(
             {

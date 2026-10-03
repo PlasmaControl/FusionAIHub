@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import csv
+import hashlib
 import json
 import re
 from collections import Counter
@@ -9,7 +11,15 @@ from itertools import pairwise
 
 import numpy as np
 import pandas as pd
-from sawtooth_physics import OUTPUT, REPO, REVIEW, WORK, records_at, save_json
+from sawtooth_physics import (
+    OUTPUT,
+    REPO,
+    REVIEW,
+    WORK,
+    export_rows,
+    records_at,
+    save_json,
+)
 
 from labeler.config import Paths
 
@@ -34,6 +44,9 @@ def population_audit(frozen):
     )
     counters = Counter()
     policies, q_sources = Counter(), Counter()
+    export_counts = Counter()
+    cohort = set(pd.read_csv(REPO / "data/events/catalog/cohort.csv").shot)
+    cohort |= set(pd.read_csv(REVIEW).shot)
     for shot in shots:
         record_path = WORK / "shots" / f"{shot}.json"
         assert record_path.exists(), f"missing population record {shot}"
@@ -45,6 +58,11 @@ def population_audit(frozen):
             assert not row["crashes"] and not row["intervals"]
             continue
         counters["usable_records"] += 1
+        for _, _, crowd, _, attrs in export_rows(row):
+            kind = "spans" if crowd else "points"
+            export_counts[("population", shot, kind, attrs["state"])] += 1
+            if shot in cohort:
+                export_counts[("cohort", shot, kind, attrs["state"])] += 1
         policies[row.get("assessment_policy", "missing")] += 1
         q_sources[row.get("q_source", "missing")] += 1
         assert row.get("assessment_policy") == (
@@ -55,14 +73,14 @@ def population_audit(frozen):
         assert states[-1]["end_s"] > row["window_s"][1]
         assert all(span["start_s"] < span["end_s"] for span in states)
         assert all(
-            left["end_s"] == right["start_s"]
-            for left, right in pairwise(states)
+            left["end_s"] == right["start_s"] for left, right in pairwise(states)
         ), f"nonpartitioned states {shot}"
-        assert merged_support(states, {"present", "absent", "uncertain"}) == (
-            row["observable_spans"]
+        assert (
+            merged_support(states, {"present", "absent", "uncertain"})
+            == (row["observable_spans"])
         ), f"observable support mismatch {shot}"
-        assert merged_support(states, {"present", "absent"}) == (
-            row["assessed_spans"]
+        assert (
+            merged_support(states, {"present", "absent"}) == (row["assessed_spans"])
         ), f"assessment support mismatch {shot}"
         if row.get("mask_repair_native_error"):
             counters["repair_native_clock_errors_unassessed"] += 1
@@ -89,15 +107,18 @@ def population_audit(frozen):
             ), f"span crosses unobservability {shot}"
             attrs = span["attrs"]
             if attrs.get("period_ms") is not None:
-                assert attrs["inversion_channel_spread"] <= (
-                    frozen["rule"]["inversion_spread_channels"]
+                assert (
+                    attrs["inversion_channel_spread"]
+                    <= (frozen["rule"]["inversion_spread_channels"])
                 )
-                assert frozen["rule"]["minimum_period_ms"] <= attrs["period_ms"] <= (
-                    frozen["rule"]["maximum_period_ms"]
+                assert (
+                    frozen["rule"]["minimum_period_ms"]
+                    <= attrs["period_ms"]
+                    <= (frozen["rule"]["maximum_period_ms"])
                 )
         for state in ("present", "absent", "uncertain", "unassessed"):
             counters[f"{state}_seconds"] += row["state_seconds"][state]
-    return {
+    summary = {
         "requested_shots": len(shots),
         "counts": dict(counters),
         "assessment_policies": dict(policies),
@@ -106,6 +127,53 @@ def population_audit(frozen):
         "q_conflicted_absent": 0,
         "spans_crossing_unobservability": 0,
         "source_records": str(WORK / "shots"),
+    }
+    return summary, export_counts
+
+
+def csv_audit(expected):
+    destination = REPO / "data/events/sawtooth_oscillation/extend_saw_physics"
+    counts = Counter()
+    by_shot = Counter()
+    files = []
+    for path in sorted(destination.glob("*.csv")):
+        counterpart = WORK / "labels" / path.name
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        assert counterpart.exists()
+        assert hashlib.sha256(counterpart.read_bytes()).hexdigest() == digest
+        with path.open() as handle:
+            for row in csv.DictReader(handle):
+                attrs = json.loads(row["attrs"])
+                state = attrs["state"]
+                assert (
+                    int(row["category"])
+                    == {
+                        "absent": 0,
+                        "present": 1,
+                        "uncertain": 2,
+                        "unassessed": 3,
+                    }[state]
+                )
+                kind = "spans" if row["crowd"] == "True" else "points"
+                scope = path.name.split("-")[0]
+                counts[f"{scope}_{kind}_{state}"] += 1
+                by_shot[(scope, int(row["shot"]), kind, state)] += 1
+                if kind == "spans":
+                    assert float(row["t_start"]) < float(row["t_end"])
+                else:
+                    assert row["t_start"] == row["t_end"]
+        files.append({"name": path.name, "sha256": digest})
+    assert {key[0] for key in by_shot} == {"cohort", "population"}
+    assert by_shot == expected, "CSV rows or shots differ from repaired records"
+    return {
+        "row_counts": dict(counts),
+        "shot_counts": {
+            scope: len({key[1] for key in by_shot if key[0] == scope})
+            for scope in ("cohort", "population")
+        },
+        "rows_and_shots_match_records": True,
+        "copies_identical": True,
+        "files": files,
     }
 
 
@@ -187,12 +255,13 @@ def main():
                     )
                 }
             )
-    files = list(OUTPUT.glob("*.json"))
+    files = [path for path in OUTPUT.glob("*.json") if path.name != "audit.json"]
     size = sum(p.stat().st_size for p in files)
     tests = (WORK / "tests.log").read_text()
     count = int(re.search(r"(\d+) passed", tests).group(1))
     lint = (WORK / "lint.log").read_text()
     assert "All checks passed!" in lint
+    population, expected_export = population_audit(frozen)
     result = {
         "development_shots": sorted(dev),
         "development_split": "train",
@@ -215,7 +284,8 @@ def main():
         "q_conflicted_crashes": len(q_conflicted),
         "q_conflicted_absent": 0,
         "spans_crossing_unobservability": missing_crossings,
-        "population": population_audit(frozen),
+        "population": population,
+        "csv_export": csv_audit(expected_export),
         "models": models,
         "covering_tests_passed": count,
         "lint_tail": lint.strip().splitlines()[-1],
@@ -232,6 +302,7 @@ def main():
         },
     }
     save_json(OUTPUT / "audit.json", result)
+    assert size + (OUTPUT / "audit.json").stat().st_size < 2_000_000
     print(
         {k: v for k, v in result.items() if k not in ("models", "label_csvs")},
         flush=True,
