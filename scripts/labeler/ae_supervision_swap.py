@@ -316,6 +316,7 @@ def verify(args) -> None:
     record = {
         **provenance(),
         "manifest_sha256": sha256(path),
+        "split": manifest["split"],
         "status": "passed",
         "frequency_supervision_identical": True,
         "threeway_matches_original_recipe": True,

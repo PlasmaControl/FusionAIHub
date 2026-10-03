@@ -8,6 +8,8 @@ supervision experiment cannot yet establish whether the detector ranking reverse
 
 Records: [evaluation.json](../../outputs/labeler/ae/supervision_swap/evaluation.json)
 and [manifest.json](../../outputs/labeler/ae/supervision_swap/manifest.json).
+Real-data target checks are recorded in
+[verification.json](../../outputs/labeler/ae/supervision_swap/verification.json).
 They include the exact shot lists, input hashes, thresholds, attempted runs,
 and paired differences. External artifacts and logs are under
 `/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/aeswap/`.

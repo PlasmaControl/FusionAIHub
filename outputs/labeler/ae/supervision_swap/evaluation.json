@@ -1,0 +1,632 @@
+{
+  "attempts": {
+    "ae-ours-dense-seed0": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/aeswap/models/dense/seed-0/attempt.json",
+      "record": {
+        "environment": {
+          "cuda": false,
+          "torch": "2.14.0+cpu"
+        },
+        "generated": "2026-10-03T12:23:58.599261+00:00",
+        "git": "5c994ccaee06e5f147d120184947930c2e13ab0d",
+        "manifest_sha256": "d2c10dce3e2161fd3ec3f3b6fc39dcdd4712b00c9c9dc6a78fbe3a20ec2b4e40",
+        "model": "ae-ours",
+        "reason": "required Pixi environment has no CUDA torch",
+        "seed": 0,
+        "status": "blocked",
+        "supervision": "dense"
+      },
+      "sha256": "34a6f4aef85f29896ca8765f7190dbf993d8018856938b1ed72f546a69314c90"
+    },
+    "ae-ours-legacy-seed0": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/aeswap/models/legacy/seed-0/attempt.json",
+      "record": {
+        "environment": {
+          "cuda": false,
+          "torch": "2.14.0+cpu"
+        },
+        "generated": "2026-10-03T12:23:58.599292+00:00",
+        "git": "5c994ccaee06e5f147d120184947930c2e13ab0d",
+        "manifest_sha256": "d2c10dce3e2161fd3ec3f3b6fc39dcdd4712b00c9c9dc6a78fbe3a20ec2b4e40",
+        "model": "ae-ours",
+        "reason": "required Pixi environment has no CUDA torch",
+        "seed": 0,
+        "status": "blocked",
+        "supervision": "legacy"
+      },
+      "sha256": "605b81c1dd4235b6e448be9cd7fe3d7b5416b2641e660b497fb458ce1aa95e56"
+    },
+    "ae-ours-threeway-seed0": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/aeswap/models/threeway/seed-0/attempt.json",
+      "record": {
+        "environment": {
+          "cuda": false,
+          "torch": "2.14.0+cpu"
+        },
+        "generated": "2026-10-03T12:24:24.475474+00:00",
+        "git": "5c994ccaee06e5f147d120184947930c2e13ab0d",
+        "manifest_sha256": "d2c10dce3e2161fd3ec3f3b6fc39dcdd4712b00c9c9dc6a78fbe3a20ec2b4e40",
+        "model": "ae-ours",
+        "reason": "required Pixi environment has no CUDA torch",
+        "seed": 0,
+        "status": "blocked",
+        "supervision": "threeway"
+      },
+      "sha256": "bb727d8b32868e78f0b14d7ffad488496195d295b760bd3b345e44b9bac9f40d"
+    }
+  },
+  "code_sha256": {
+    "scripts/labeler/ae_supervision_swap.py": "7f70d66230708308771fdeed6a20401504410f25a7423a2e034e5f73b7faee85",
+    "scripts/labeler/ae_train.py": "3a66eec91ee51fd98a1a0d7e03aea28ea3c79ea67d1c66ac84943e9476693ccf",
+    "src/labeler/ae/model.py": "9789ed80721a87b7bfb0e07927d2d1469b3c3b51deb65edea5d33860c99c235f",
+    "src/labeler/ae/supervision.py": "c0c4ae93d7d8597db6883af4b1a1010ce01e58e46c0895a45026f73c2d2884f3"
+  },
+  "dense_counts": {
+    "category_counts": {
+      "0": 506,
+      "1": 371
+    },
+    "present_intervals": 371,
+    "rows": 877,
+    "shots": 180
+  },
+  "generated": "2026-10-03T12:32:43.482492+00:00",
+  "git": "16c4aef6d511ef359f241d8619cdad3e4deed7e2",
+  "inputs": {
+    "cohort": {
+      "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/catalog/cohort.csv",
+      "sha256": "b910527a9a2c7b4100cf5674aa6f57ec19b458f1ee952b23387341f1ed92bbda",
+      "snapshot": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/aeswap/inputs/cohort.csv"
+    },
+    "dense": {
+      "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/alfven_eigenmode/review/labels.csv",
+      "sha256": "b4308ff52d766779f33a92e9441a916bb07c854dcc1a98a2f61109bb6431e93a",
+      "snapshot": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/aeswap/inputs/dense.csv"
+    }
+  },
+  "limitations": [
+    "Older detectors have no saved predictions for 41/60 evaluation shots.",
+    "Older thresholds use only available, older-held-out selection shots.",
+    "A missing supervision arm cannot establish a clean ranking reversal."
+  ],
+  "manifest": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/aeswap/manifest.json",
+    "sha256": "d2c10dce3e2161fd3ec3f3b6fc39dcdd4712b00c9c9dc6a78fbe3a20ec2b4e40"
+  },
+  "missing_runs": [
+    "ae-ours-legacy-seed0",
+    "ae-ours-dense-seed0",
+    "ae-ours-threeway-seed0"
+  ],
+  "protocol": {
+    "dense": "catalog any-touch; only present/absent frames scored",
+    "evaluation_hard_call": "mean native probability >= frozen threshold",
+    "frame_ms": 10,
+    "frequency": "identical native annotation&active finite-frequency weights",
+    "legacy": "audit: >= half annotated columns; classes 1-4, LFM excluded",
+    "native_columns": 7820,
+    "recipe": "ae_train defaults: SCE, 710 frames, 8 windows/shot, batch 16, 30 epochs, AdamW 1e-4, weight decay 1e-4, cosine min lr 1e-6",
+    "record_ms": [
+      0,
+      2000
+    ],
+    "selection": "minimum own-target loss on 20 selection shots, patience 5",
+    "threeway": "original native annotation AND TokEye; disagreement ignored",
+    "threshold": "maximum 10 ms selection F1 for own activity target"
+  },
+  "results": {
+    "all_60": {
+      "references": {
+        "dense": null,
+        "legacy": null
+      },
+      "shots": [
+        170659,
+        170660,
+        170661,
+        170662,
+        170663,
+        170664,
+        170665,
+        170666,
+        170667,
+        170669,
+        170671,
+        170672,
+        170675,
+        170677,
+        170678,
+        170679,
+        170714,
+        170715,
+        170716,
+        170717,
+        170718,
+        170719,
+        170720,
+        170721,
+        170722,
+        170724,
+        170725,
+        170727,
+        170729,
+        170730,
+        170790,
+        170791,
+        170792,
+        170793,
+        170794,
+        170795,
+        170797,
+        170798,
+        170799,
+        170801,
+        170803,
+        170805,
+        170806,
+        170807,
+        170808,
+        170809,
+        170810,
+        170811,
+        170813,
+        170814,
+        175239,
+        175240,
+        175241,
+        175244,
+        175245,
+        175250,
+        175251,
+        175252,
+        178872,
+        178879
+      ],
+      "unavailable": [
+        "ae-lstm",
+        "ae-rcn",
+        "ae-ours-legacy-seed0",
+        "ae-ours-dense-seed0",
+        "ae-ours-threeway-seed0"
+      ]
+    },
+    "fair_19": {
+      "references": {
+        "dense": {
+          "bootstrap": {
+            "replicates": 1000,
+            "seed": 20261004,
+            "unit": "shot"
+          },
+          "methods": {
+            "ae-lstm": {
+              "auprc": {
+                "ci95": [
+                  0.8353375950936256,
+                  0.8846517340313376
+                ],
+                "valid_replicates": 1000,
+                "value": 0.8552595419521589
+              },
+              "auroc": {
+                "ci95": [
+                  0.6539987840104382,
+                  0.8021877920626187
+                ],
+                "valid_replicates": 1000,
+                "value": 0.7364857410116806
+              },
+              "f1": {
+                "ci95": [
+                  0.2604176813052111,
+                  0.5206061875829318
+                ],
+                "valid_replicates": 1000,
+                "value": 0.3818014140793114
+              }
+            },
+            "ae-rcn": {
+              "auprc": {
+                "ci95": [
+                  0.9062782022548846,
+                  0.9550440245207767
+                ],
+                "valid_replicates": 1000,
+                "value": 0.9298744880038119
+              },
+              "auroc": {
+                "ci95": [
+                  0.8102098178379594,
+                  0.9067733812897969
+                ],
+                "valid_replicates": 1000,
+                "value": 0.8616768602243382
+              },
+              "f1": {
+                "ci95": [
+                  0.24399954022068654,
+                  0.4657416146545091
+                ],
+                "valid_replicates": 1000,
+                "value": 0.34984126984126984
+              }
+            }
+          },
+          "n_frames": 3800,
+          "n_positive": 2595,
+          "n_shots": 19,
+          "paired_differences": {
+            "ae-rcn minus ae-lstm": {
+              "auprc": {
+                "ci95": [
+                  0.045492072278600595,
+                  0.09629137662785314
+                ],
+                "valid_replicates": 1000,
+                "value": 0.07461494605165298
+              },
+              "auroc": {
+                "ci95": [
+                  0.05848570326408431,
+                  0.20024549782758655
+                ],
+                "valid_replicates": 1000,
+                "value": 0.12519111921265758
+              },
+              "f1": {
+                "ci95": [
+                  -0.07934897434388208,
+                  0.015662351006715407
+                ],
+                "valid_replicates": 1000,
+                "value": -0.031960144238041555
+              }
+            }
+          }
+        },
+        "legacy": {
+          "bootstrap": {
+            "replicates": 1000,
+            "seed": 20261004,
+            "unit": "shot"
+          },
+          "methods": {
+            "ae-lstm": {
+              "auprc": {
+                "ci95": [
+                  0.5089104880078062,
+                  0.7788321954012825
+                ],
+                "valid_replicates": 1000,
+                "value": 0.6679036799658802
+              },
+              "auroc": {
+                "ci95": [
+                  0.8535539508426692,
+                  0.9304900233081479
+                ],
+                "valid_replicates": 1000,
+                "value": 0.8982048223808791
+              },
+              "f1": {
+                "ci95": [
+                  0.43492406425226393,
+                  0.7176259062671891
+                ],
+                "valid_replicates": 1000,
+                "value": 0.6024759284731774
+              }
+            },
+            "ae-rcn": {
+              "auprc": {
+                "ci95": [
+                  0.5539981288601658,
+                  0.7976586479625897
+                ],
+                "valid_replicates": 1000,
+                "value": 0.6905550540373119
+              },
+              "auroc": {
+                "ci95": [
+                  0.8775130129753947,
+                  0.9386987382213242
+                ],
+                "valid_replicates": 1000,
+                "value": 0.9111095172935249
+              },
+              "f1": {
+                "ci95": [
+                  0.43862619317149526,
+                  0.6603932678586418
+                ],
+                "valid_replicates": 1000,
+                "value": 0.5714285714285714
+              }
+            }
+          },
+          "n_frames": 3800,
+          "n_positive": 796,
+          "n_shots": 19,
+          "paired_differences": {
+            "ae-rcn minus ae-lstm": {
+              "auprc": {
+                "ci95": [
+                  -0.0635309768898919,
+                  0.10933286343639748
+                ],
+                "valid_replicates": 1000,
+                "value": 0.022651374071431696
+              },
+              "auroc": {
+                "ci95": [
+                  -0.011955889651594956,
+                  0.0389713182078397
+                ],
+                "valid_replicates": 1000,
+                "value": 0.012904694912645787
+              },
+              "f1": {
+                "ci95": [
+                  -0.10161126715008062,
+                  0.06599811439574922
+                ],
+                "valid_replicates": 1000,
+                "value": -0.03104735704460604
+              }
+            }
+          }
+        }
+      },
+      "shots": [
+        170660,
+        170661,
+        170663,
+        170666,
+        170669,
+        170677,
+        170678,
+        170718,
+        170725,
+        170729,
+        170730,
+        170792,
+        170793,
+        170798,
+        170801,
+        170803,
+        175241,
+        175245,
+        178879
+      ],
+      "unavailable": [
+        "ae-ours-legacy-seed0",
+        "ae-ours-dense-seed0",
+        "ae-ours-threeway-seed0"
+      ]
+    }
+  },
+  "sources": {},
+  "split": {
+    "evaluation": [
+      170659,
+      170660,
+      170661,
+      170662,
+      170663,
+      170664,
+      170665,
+      170666,
+      170667,
+      170669,
+      170671,
+      170672,
+      170675,
+      170677,
+      170678,
+      170679,
+      170714,
+      170715,
+      170716,
+      170717,
+      170718,
+      170719,
+      170720,
+      170721,
+      170722,
+      170724,
+      170725,
+      170727,
+      170729,
+      170730,
+      170790,
+      170791,
+      170792,
+      170793,
+      170794,
+      170795,
+      170797,
+      170798,
+      170799,
+      170801,
+      170803,
+      170805,
+      170806,
+      170807,
+      170808,
+      170809,
+      170810,
+      170811,
+      170813,
+      170814,
+      175239,
+      175240,
+      175241,
+      175244,
+      175245,
+      175250,
+      175251,
+      175252,
+      178872,
+      178879
+    ],
+    "selection": [
+      172000,
+      172001,
+      175963,
+      175964,
+      175972,
+      175984,
+      176011,
+      176013,
+      176032,
+      176039,
+      176044,
+      176046,
+      176048,
+      176053,
+      176061,
+      176519,
+      176521,
+      176540,
+      176548,
+      176551
+    ],
+    "train": [
+      170815,
+      170816,
+      171998,
+      171999,
+      172002,
+      172005,
+      172007,
+      172008,
+      172009,
+      172010,
+      172011,
+      172012,
+      172013,
+      172017,
+      172018,
+      172019,
+      172024,
+      172025,
+      172028,
+      175955,
+      175956,
+      175957,
+      175958,
+      175960,
+      175962,
+      175965,
+      175967,
+      175970,
+      175971,
+      175973,
+      175975,
+      175976,
+      175977,
+      175978,
+      175979,
+      175980,
+      175981,
+      175982,
+      175983,
+      175985,
+      175986,
+      175987,
+      176003,
+      176005,
+      176006,
+      176007,
+      176009,
+      176010,
+      176012,
+      176014,
+      176031,
+      176033,
+      176035,
+      176036,
+      176037,
+      176038,
+      176040,
+      176041,
+      176042,
+      176043,
+      176045,
+      176047,
+      176049,
+      176050,
+      176052,
+      176054,
+      176055,
+      176056,
+      176057,
+      176058,
+      176060,
+      176517,
+      176518,
+      176520,
+      176522,
+      176524,
+      176526,
+      176528,
+      176529,
+      176531,
+      176532,
+      176533,
+      176537,
+      176541,
+      176543,
+      176544,
+      176547,
+      176549,
+      178630,
+      178631,
+      178632,
+      178633,
+      178634,
+      178635,
+      178636,
+      178637,
+      178639,
+      178640,
+      178641,
+      178642
+    ]
+  },
+  "status": "incomplete",
+  "thresholds": {
+    "ae-lstm": {
+      "f1": 0.584717607973422,
+      "n_frames": 1200,
+      "n_positive": 175,
+      "reference": "legacy",
+      "rule": "maximum selection F1; ties choose the highest threshold",
+      "shots": [
+        172000,
+        176039,
+        176044,
+        176053,
+        176548,
+        176551
+      ],
+      "threshold": 0.5118714645504951
+    },
+    "ae-rcn": {
+      "f1": 0.616822429906542,
+      "n_frames": 1200,
+      "n_positive": 175,
+      "reference": "legacy",
+      "rule": "maximum selection F1; ties choose the highest threshold",
+      "shots": [
+        172000,
+        176039,
+        176044,
+        176053,
+        176548,
+        176551
+      ],
+      "threshold": 0.5281208929558328
+    }
+  }
+}
