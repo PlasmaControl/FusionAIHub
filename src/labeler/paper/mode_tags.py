@@ -7,20 +7,18 @@ zoom pass), in four steps:
 
 1. `mode_mask`: the coherent channel at `PROB_THRESHOLD` or above, and not the
    transient channel: a mode, not an ELM or a sawtooth burst crossing it.
-2. `bridge_pickup` and `clean`: a row lit for most of the record is receiver
-   pickup, a line at one frequency (`tracks.PICKUP_ROW_FRACTION` is the event
-   layer's 0.8; the figure's looser `PICKUP_SHARE` catches the lines of a short
-   window); it is dropped where a row above and below it is not lit, so a mode
+2. `bridge_pickup` and `clean`: a row lit for over 80% of the record is a
+   persistent-line candidate, not a physical identification of pickup. It is
+   dropped where a row above and below it is not lit, so a mode
    crossing it stays whole. Then `skimage.morphology.remove_small_objects` and
    `remove_small_holes`.
 3. `tracks.components`: the 8-connected blobs of what is left.
-4. `tag_components`: a blob is tagged by each event whose label is present over
-   at least `COVER` of its time and whose band holds its frequency centroid:
-   AE above `SPLIT_KHZ`, the tearing mode and the sawtooth below it.
+4. `tag_blobs` / `tag_mask`: intersect component pixels with PRESENT label
+   times and the fixed event band. NTM requires dominant measured n=1 or n=2.
+   Sawtooth crashes are point events, never rotating-mode tags.
 
 The tag says that a mode and a label coincide in time and band: it is the
-label's, not a second classification of the mode. Two events in one band (a
-tearing mode and a sawtooth, both labelled present) both tag the blob.
+label's, not a second classification of the mode.
 """
 
 from __future__ import annotations
@@ -38,18 +36,16 @@ AE = "alfven_eigenmode"
 NTM = "neoclassical_tearing_mode"
 SAWTOOTH = "sawtooth_oscillation"
 #: The band (kHz, lower edge included, upper edge excluded) each event's tag
-#: needs the blob's frequency centroid in: AEs above 60 kHz, the tearing mode
-#: and the sawtooth below it.
+#: contains every highlighted pixel: AE >=60 kHz, NTM/sawtooth <60 kHz.
 SPLIT_KHZ = 60.0
 BANDS = {
     AE: (SPLIT_KHZ, math.inf),
     NTM: (0.0, SPLIT_KHZ),
     SAWTOOTH: (0.0, SPLIT_KHZ),
 }
-#: The share of a blob's time a label must be present over to tag it.
-COVER = 0.5
-#: A row lit for more than this share of the record is pickup (`bridge_pickup`).
-PICKUP_SHARE = 0.4
+#: Temporal persistence alone does not establish receiver pickup. The old
+#: 0.4 cutoff removed real n=2 rows at 15 and ~30 kHz; retain those rows.
+PERSISTENT_ROW_SHARE = 0.8
 #: `remove_small_objects`' size, pixels, by pass: the zoom pass has four times
 #: the wide pass's columns per ms, so its blobs are larger.
 MIN_SIZE = {"zoom": 40, "wide": 30}
@@ -65,7 +61,7 @@ def mode_mask(
 
 
 def bridge_pickup(
-    lit: np.ndarray, row_share: np.ndarray, share: float = PICKUP_SHARE
+    lit: np.ndarray, row_share: np.ndarray, share: float = PERSISTENT_ROW_SHARE
 ) -> np.ndarray:
     """`lit` with each pickup row (`row_share` above `share`) set to what lies
     on both sides of it: lit only where the nearest rows above and below that
@@ -122,6 +118,7 @@ class Blob:
     f1_khz: float
     f_khz: float
     tags: tuple[str, ...] = ()
+    dominant_n: int | None = None
 
     @property
     def n_pix(self) -> int:
@@ -166,31 +163,49 @@ def blobs(
     return out
 
 
+def present_columns(t_ms: np.ndarray, spans: Sequence[tuple[float, float]]):
+    """Half-open PRESENT spans on a time grid; absent gaps stay false."""
+    t = np.asarray(t_ms)
+    keep = np.zeros(t.shape, bool)
+    for a, b in spans:
+        keep |= (t >= a) & (t < b)
+    return keep
+
+
 def tag_blobs(
     found: Sequence[Blob],
     spans: Mapping[str, Sequence[tuple[float, float]]],
+    t_ms: np.ndarray,
+    f_khz: np.ndarray,
+    n_map: np.ndarray | None = None,
     bands: Mapping[str, tuple[float, float]] = BANDS,
-    cover: float = COVER,
 ) -> list[Blob]:
-    """`found` with each blob's tags: the events (by `bands`' order) whose
-    present `spans` (ms) cover at least `cover` of the blob's time and whose
-    band holds its frequency centroid. A blob of one column is covered when its
-    time lies in a span."""
-    merged = {event: union(s) for event, s in spans.items()}
+    """Tag components with any eligible pixels; drawing must use `tag_mask`.
+
+    NTM requires the most common finite n among a component's measured pixels
+    to be 1 or 2. Unknown n (including outside the n map's support) never
+    supplies evidence. Sawtooth is deliberately excluded from mode tags.
+    """
+    columns = {event: present_columns(t_ms, s) for event, s in spans.items()}
     out = []
     for blob in found:
+        rr, cc = blob.component.rows, blob.component.cols
+        dominant = None
+        if n_map is not None:
+            values = n_map[rr, cc]
+            values = values[np.isfinite(values)].astype(int)
+            if values.size:
+                ns, counts = np.unique(values, return_counts=True)
+                if np.count_nonzero(counts == counts.max()) == 1:
+                    dominant = int(ns[np.argmax(counts)])
         tags = []
         for event, (lo, hi) in bands.items():
-            if event not in merged or not lo <= blob.f_khz < hi:
+            if event not in columns or event == SAWTOOTH:
                 continue
-            length = blob.t1_ms - blob.t0_ms
-            if length > 0:
-                share = overlap_ms(blob.t0_ms, blob.t1_ms, merged[event]) / length
-            else:
-                share = float(
-                    overlap_ms(blob.t0_ms, blob.t0_ms + 1e-9, merged[event]) > 0
-                )
-            if share >= cover:
+            if event == NTM and dominant not in (1, 2):
+                continue
+            eligible = columns[event][cc] & (f_khz[rr] >= lo) & (f_khz[rr] < hi)
+            if eligible.any():
                 tags.append(event)
         out.append(
             Blob(
@@ -201,6 +216,46 @@ def tag_blobs(
                 blob.f1_khz,
                 blob.f_khz,
                 tuple(tags),
+                dominant,
             )
         )
+    return out
+
+
+def tag_mask(found, event, shape, t_ms, f_khz, spans) -> np.ndarray:
+    """Only tagged component pixels inside PRESENT times AND the event band.
+
+    A component crossing 60 kHz is split at pixel level; a component crossing
+    an absent interval is split in time, regardless of its overall coverage.
+    The 55 kHz display fold has no role in this decision.
+    """
+    out = np.zeros(shape, bool)
+    for blob in found:
+        if event in blob.tags:
+            out[blob.component.rows, blob.component.cols] = True
+    lo, hi = BANDS[event]
+    out &= present_columns(t_ms, spans)[None, :]
+    out &= ((f_khz >= lo) & (f_khz < hi))[:, None]
+    return out
+
+
+def sample_n_map(codes, ns, map_t, map_f, t_ms, f_khz) -> np.ndarray:
+    """Decode the nearest n-map cell on a spectrogram grid, NaN outside support.
+
+    Codes carry brightness in their quotient and n in their remainder. Level
+    zero is no measured mode. No extrapolation beyond the map's cell edges.
+    """
+    map_t, map_f = np.asarray(map_t), np.asarray(map_f)
+    out = np.full((len(f_khz), len(t_ms)), np.nan, dtype=np.float32)
+    if len(map_t) < 2 or len(map_f) < 2:
+        return out
+    dt, df = np.median(np.diff(map_t)), np.median(np.diff(map_f))
+    tc = (t_ms >= map_t[0] - dt / 2) & (t_ms < map_t[-1] + dt / 2)
+    fr = (f_khz >= map_f[0] - df / 2) & (f_khz < map_f[-1] + df / 2)
+    ci = np.clip(np.rint((t_ms[tc] - map_t[0]) / dt).astype(int), 0, len(map_t) - 1)
+    ri = np.clip(np.rint((f_khz[fr] - map_f[0]) / df).astype(int), 0, len(map_f) - 1)
+    chosen = np.asarray(codes)[np.ix_(ri, ci)].astype(int)
+    decoded = np.asarray(ns)[chosen % len(ns)].astype(np.float32)
+    decoded[chosen < len(ns)] = np.nan
+    out[np.ix_(fr, tc)] = decoded
     return out

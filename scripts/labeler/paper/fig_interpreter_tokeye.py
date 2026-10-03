@@ -12,9 +12,10 @@ One non-blind cohort shot over a few seconds, in three groups on one time axis:
   `labeler.paper.mode_tags`: transient burst removed, pickup removed,
   `skimage.morphology.remove_small_objects` and small-hole filling, connected
   components), the toroidal-n view (the review page's n map, gated by the same
-  mask) in place of the 0-30 kHz band, and each component tagged by the event
-  whose label is present over it: AEs above 60 kHz, the tearing mode and the
-  sawtooth below. D-alpha carries the ELM label's span and the D-alpha peaks in
+  mask) in place of the 0-30 kHz band. Highlights intersect PRESENT label
+  times with AE >=60 kHz or NTM <60 kHz; NTM requires dominant measured n=1/2.
+  Sawtooth is shown as detector crash-time ticks on a thin strip. D-alpha
+  carries the ELM label's span and the D-alpha peaks in
   it, and the confinement regimes shade it;
 - **labels**: one track per event on the shot's time axis, from the best tier
   that holds the shot (`labeler.paper.label_figure.TRACKS`): present, absent or
@@ -26,6 +27,12 @@ under `--cache`. Writes `fig_interpreter.pdf` and `.png` (150 dpi) and the
 record `fig_interpreter.json` beside them; `--record` copies the record where
 the repo keeps it. A tag says that a mode and a label coincide in time and band,
 not that the mode is that event.
+
+CONFINEMENT_RUN_DIR defaults to runs/labeler/confinement/v1 in the checkout
+containing LABELER_LABEL_TABLES. Missing required curated/fallback tables are
+errors. Curated four-class regimes win; otherwise the D-alpha L-H table is
+used, never the H-mode frame model. --sawtooth-crashes accepts shot,t_ms CSV;
+--sawtooth-labels independently replaces the interval-label CSV.
 """
 
 from __future__ import annotations
@@ -40,7 +47,9 @@ import numpy as np
 from matplotlib.colors import to_rgb
 from matplotlib.figure import Figure
 from matplotlib.legend_handler import HandlerTuple
+from matplotlib.lines import Line2D
 from matplotlib.patches import Patch, Rectangle
+from matplotlib.path import Path as PlotPath
 from scipy import ndimage, signal
 
 from labeler.config import Paths, atomic_path, git_sha, sha256_of
@@ -52,9 +61,8 @@ from labeler.events.verify import (
     NoDataError,
     corpus_path,
     corpus_signal,
-    mode_palette,
 )
-from labeler.paper import PAGE_IN, mode_tags, roster, style
+from labeler.paper import PAGE_IN, figure_sources, mode_tags, roster, style
 from labeler.paper import label_figure as lf
 
 STEM = "fig_interpreter"
@@ -82,7 +90,10 @@ IMAGE_COLUMNS = 3000
 ELM_WINDOW = 25
 ELM_MADS = 4.0
 #: A run of a label's blobs this close in time is one box, ms.
-BOX_GAP_MS = 200.0
+AE_BOX_MIN_MS = 100.0
+#: Blue, cyan and blue-green (no event pink/orange/yellow); other n are grey.
+N_COLOURS = {1: "#0072B2", 2: "#56B4E9", 3: "#009E73"}
+N_OTHER = "#999999"
 EVENT_COLOURS = {
     mode_tags.AE: "#CC79A7",
     mode_tags.NTM: "#E69F00",
@@ -102,10 +113,10 @@ ABSENT_GREY = "#e4e4e4"
 HEADINGS = {
     "h_raw": ("Raw signals",),
     "h_proc": (
-        "TokEye-processed, and tagged by the labels",
+        "TokEye-processed: label–mode coincidence; toroidal n below 30 kHz",
         (
-            "TokEye mask → remove small objects, fill holes → connected components → "
-            "tagged by the event label over them"
+            "mask → remove small objects / fill holes → components → "
+            "clip to label times and band"
         ),
     ),
     "h_lab": ("Labels; source at right: expert review, legacy table or detector",),
@@ -195,17 +206,38 @@ def ae_rows_raw(paths: Paths, candidate: lf.Candidate) -> tuple[lf.Row, ...]:
 
 
 def shot_tracks(
-    paths: Paths, candidate: lf.Candidate
+    paths: Paths, candidate: lf.Candidate, sawtooth_labels: Path | None = None
 ) -> tuple[tuple[lf.Track, ...], Path | None]:
     """The catalog's tracks on `candidate`: `label_figure`'s, the AE generated
     from the corpus CO2, else from the raw cache; and the CO2 file the
     generated AE track ran over (None where the AE track is not generated)."""
-    read = lf.read_sources(paths)
-    read = lf.generate(paths, [candidate], read)  # a shot without corpus CO2: none
-    tracks = lf.tracks_of(candidate.shot, read)
+    chosen_ae = figure_sources.reviewed_or_stored_ae(paths, candidate.shot)
+    confinement = figure_sources.confinement_track(paths, candidate.shot)
+    specs = tuple(
+        s
+        for s in lf.TRACKS
+        if s.key != "confinement" and (chosen_ae is None or s.key != mode_tags.AE)
+    )
+    read = lf.read_sources(paths, specs)
+    read = lf.generate(paths, [candidate], read, specs)
+    selected = {t.spec.key: t for t in lf.tracks_of(candidate.shot, read, specs)}
+    selected["confinement"] = confinement
+    if chosen_ae is not None:
+        selected[mode_tags.AE] = chosen_ae
+    tracks = tuple(selected[s.key] for s in lf.TRACKS)
     co2 = None
     out = []
     for track in tracks:
+        if track.spec.key == mode_tags.SAWTOOTH and sawtooth_labels is not None:
+            rows = lf.read_rows(sawtooth_labels).get(candidate.shot)
+            if not rows:
+                raise ValueError(f"{sawtooth_labels}: no shot {candidate.shot}")
+            source = lf.Source(
+                lf.GENERATED,
+                "replacement sawtooth interval labels",
+                lambda p: sawtooth_labels,
+            )
+            track = lf.Track(track.spec, source, sawtooth_labels, rows)
         if track.spec.key == mode_tags.AE and track.source is None:
             source = replace(
                 lf.TRACKS[0].sources[1],
@@ -271,7 +303,6 @@ class Band:
             z[f"{name}_row_lit"],
             mode_tags.MIN_SIZE[name],
         )
-        lit[~rows] = False
         self.lit_all = lit
         self.lit = lit[rows][:, cols]
         self.lit_full = lit[:, cols]  # 512 rows: `tracks.components` wants them all
@@ -293,18 +324,34 @@ class Band:
             self.f[-1] + df / 2,
         )
 
-    def blobs(self, spans: dict) -> list[mode_tags.Blob]:
+    def blobs(self, spans: dict, n_read=None) -> list[mode_tags.Blob]:
         """The blobs of this band's mask, tagged by `spans`' events."""
         found = mode_tags.blobs(self.lit_full, self.t, self.all_f)
-        return mode_tags.tag_blobs(found, spans)
+        # Keep whole components for dominant-n evidence across the display fold.
+        found = [b for b in found if (self.rows[b.component.rows]).any()]
+        n = None
+        if n_read is not None:
+            f = n_read.meta["y0"] + np.arange(n_read.meta["n_y"]) * n_read.meta["dy"]
+            n = mode_tags.sample_n_map(
+                n_read.values,
+                n_read.meta["modes"]["n"],
+                n_read.centres,
+                f,
+                self.t,
+                self.all_f,
+            )
+        self.n_map = n
+        bands = {
+            e: (max(lo, self.f[0]), min(hi, self.f[-1] + 1e-6))
+            for e, (lo, hi) in mode_tags.BANDS.items()
+        }
+        return mode_tags.tag_blobs(found, spans, self.t, self.all_f, n, bands)
 
-    def tag_image(self, blobs: list[mode_tags.Blob], event: str) -> np.ndarray:
+    def tag_image(self, blobs: list[mode_tags.Blob], event: str, spans) -> np.ndarray:
         """`event`'s tagged blobs as a boolean image like `lit`."""
-        img = np.zeros(self.lit.shape, bool)
-        for b in blobs:
-            if event in b.tags:
-                img[b.component.rows - self.row0, b.component.cols] = True
-        return img
+        return mode_tags.tag_mask(
+            blobs, event, self.lit_full.shape, self.t, self.all_f, spans
+        )[self.rows]
 
 
 # ----------------------------------------------------------------------- draw
@@ -331,19 +378,11 @@ def draw_raw(ax, band: Band, cmap: str = "viridis") -> None:
     )
 
 
-def draw_processed(ax, band: Band, tagged: list[mode_tags.Blob], fill=()) -> None:
-    """The mask times the spectrogram in grey; the blobs `fill` names the tags
-    of are tinted in their event's colour (the first of `fill` that tags one)."""
+def draw_processed(ax, band: Band) -> None:
+    """The filtered mask times the spectrogram, in grey."""
     base = 0.25 + 0.75 * band.norm
     rgb = np.zeros((*band.lit.shape, 3), np.float32)
     rgb[band.lit] = base[band.lit][:, None]
-    for b in tagged:
-        for event in fill:
-            if event in b.tags:
-                rr, cc = b.component.rows - band.row0, b.component.cols
-                tint = np.array(to_rgb(EVENT_COLOURS[event]), np.float32)
-                rgb[rr, cc] = tint * (0.4 + 0.6 * base[rr, cc][:, None])
-                break
     k = band.k
     n = rgb.shape[1] // k * k
     img = rgb[:, :n].reshape(rgb.shape[0], n // k, k, 3).max(2)
@@ -356,32 +395,64 @@ def draw_processed(ax, band: Band, tagged: list[mode_tags.Blob], fill=()) -> Non
     )
 
 
-def outline(ax, band: Band, mask: np.ndarray, colour: str, grow: int, lw=0.7) -> None:
-    """The edge of `mask` (a boolean image like the band's), grown `grow` pixels."""
+def event_clip(ax, spans, event):
+    """A compound path: PRESENT times intersected with the fixed event band.
+
+    The clip also cuts the half-cell/line-width at a boundary, so pooling,
+    stroke widths and native pixel extents cannot bleed into an absent span.
+    """
+    lo, hi = mode_tags.BANDS[event]
+    lo, hi = max(lo, ax.get_ylim()[0]), min(hi, ax.get_ylim()[1])
+    rects = []
+    for a, b in spans:
+        a, b = max(a, ax.get_xlim()[0]), min(b, ax.get_xlim()[1])
+        if b > a and hi > lo:
+            rects.append(
+                PlotPath(
+                    [(a, lo), (b, lo), (b, hi), (a, hi), (a, lo)],
+                    [1, 2, 2, 2, 79],
+                )
+            )
+    return PlotPath.make_compound_path(*rects) if rects else PlotPath(np.empty((0, 2)))
+
+
+def project(ax, band, mask, event, spans, edge=False):
+    """Native-grid tint or inner outline; no dilation or temporal pooling."""
     if not mask.any():
         return
-    grown = ndimage.binary_dilation(mask, iterations=grow)
-    pooled = pool(grown.astype(np.float32), band.k, "max")
-    t = pooled_axis(band.t, band.k)
-    ax.contour(t, band.f, pooled, levels=[0.5], colors=[colour], linewidths=lw)
+    shown = mask & ~ndimage.binary_erosion(mask, iterations=2) if edge else mask
+    rgba = np.zeros((*mask.shape, 4), np.float32)
+    rgba[..., :3] = to_rgb(EVENT_COLOURS[event])
+    rgba[..., 3] = shown * (1.0 if edge else 0.65)
+    artist = ax.imshow(
+        rgba,
+        origin="lower",
+        aspect="auto",
+        extent=band.extent(),
+        interpolation="nearest",
+        zorder=4,
+    )
+    artist.set_clip_path(event_clip(ax, spans, event), ax.transData)
 
 
-def merged_boxes(blobs: list[mode_tags.Blob], event: str) -> list[tuple]:
-    """`event`'s blobs in runs closer than `BOX_GAP_MS`: each run's
-    `(t0, t1, f0, f1)`."""
-    mine = sorted((b for b in blobs if event in b.tags), key=lambda b: b.t0_ms)
-    runs: list[list] = []
-    for b in mine:
-        if runs and b.t0_ms - runs[-1][1] <= BOX_GAP_MS:
-            runs[-1] = [
-                runs[-1][0],
-                max(runs[-1][1], b.t1_ms),
-                min(runs[-1][2], b.f0_khz),
-                max(runs[-1][3], b.f1_khz),
-            ]
-        else:
-            runs.append([b.t0_ms, b.t1_ms, b.f0_khz, b.f1_khz])
-    return [tuple(r) for r in runs]
+def ae_boxes(band, mask, spans):
+    """One box per >=100ms PRESENT interval with AE pixels; never bridge gaps."""
+    boxes = []
+    for a, b in mode_tags.union(spans):
+        if b - a < AE_BOX_MIN_MS:
+            continue
+        pixels = mask & mode_tags.present_columns(band.t, [(a, b)])[None, :]
+        rr, cc = np.nonzero(pixels)
+        if len(rr):
+            boxes.append(
+                (
+                    max(a, float(band.t[cc].min())),
+                    min(b, float(band.t[cc].max())),
+                    max(60.0, float(band.f[rr].min()) - 2),
+                    min(TOP_KHZ, float(band.f[rr].max()) + 2),
+                )
+            )
+    return boxes
 
 
 def chip(ax, x, y, text, colour, **kw):
@@ -409,27 +480,40 @@ def clear_of(fixed, moved: list) -> None:
             text.set_x(inv.transform((box.x1, box.y0))[0] + 15.0)
 
 
-def draw_boxes(ax, boxes, event, ylim, chip_y) -> None:
-    """Dashed boxes round `boxes` (padded, kept in `ylim`) and one chip naming
-    `event` at the left of the largest, at height `chip_y`."""
+def draw_boxes(ax, boxes, spans) -> None:
+    """AE dashed boxes: clipped to PRESENT times and >=60kHz, no chips."""
+    event = mode_tags.AE
     colour = EVENT_COLOURS[event]
     for t0, t1, f0, f1 in boxes:
-        lo, hi = max(f0 - 2.0, ylim[0] + 0.5), min(f1 + 2.0, ylim[1] - 0.5)
-        ax.add_patch(
-            Rectangle(
-                (t0 - 8.0, lo),
-                t1 - t0 + 16.0,
-                hi - lo,
-                fill=False,
-                ec=colour,
-                lw=0.9,
-                ls=(0, (3, 1.5)),
-                zorder=5,
-            )
+        patch = Rectangle(
+            (t0, f0),
+            t1 - t0,
+            f1 - f0,
+            fill=False,
+            ec=colour,
+            lw=0.9,
+            ls=(0, (3, 1.5)),
+            zorder=5,
         )
-    if boxes:
-        t0, _, _, _ = max(boxes, key=lambda b: (b[1] - b[0]) * (b[3] - b[2]))
-        chip(ax, t0 - 8.0, chip_y, EVENT_NAMES[event], colour, ha="left", va="center")
+        ax.add_patch(patch)
+        patch.set_clip_path(event_clip(ax, spans, event), ax.transData)
+
+
+def leader(ax, text, xy, position, colour):
+    ax.annotate(
+        text,
+        xy=xy,
+        xytext=position,
+        textcoords="axes fraction",
+        fontsize=FONT,
+        color="white",
+        ha="left",
+        va="center",
+        bbox={"fc": "black", "ec": "none", "alpha": 0.8, "pad": 1.2},
+        arrowprops={"arrowstyle": "-", "color": colour, "lw": 0.8},
+        zorder=9,
+        annotation_clip=False,
+    )
 
 
 def trace(ax, read, colour=INK, lw=0.5):
@@ -493,6 +577,7 @@ def draw(
     t1: float,
     stem: Path,
     png_dpi: int = DPI_PNG,
+    crash_source: Path | None = None,
 ) -> dict:
     """The figure for `candidate` over `t0`-`t1` ms; returns what the record holds."""
     by_key = {t.spec.key: t for t in tracks}
@@ -502,12 +587,24 @@ def draw(
 
     low = Band(z, "zoom", 0.0, FOLD_KHZ, t0, t1)
     high = Band(z, "wide", FOLD_KHZ, TOP_KHZ + 1, t0, t1)
-    spans_low = {
-        e: present_spans(by_key[e]) for e in (mode_tags.NTM, mode_tags.SAWTOOTH)
+    spans = {
+        e: present_spans(by_key[e])
+        for e in (mode_tags.AE, mode_tags.NTM, mode_tags.SAWTOOTH)
     }
-    spans_high = {mode_tags.AE: present_spans(by_key[mode_tags.AE])}
-    blobs_low = low.blobs(spans_low)
-    blobs_high = high.blobs(spans_high)
+    n_original = n_sig.rows[0] if n_sig.rows else None
+    blobs_low = low.blobs(spans, n_original)
+    blobs_high = high.blobs(spans, n_original)
+    projected = {
+        band.name: {
+            e: band.tag_image(bs, e, spans[e]) for e in (mode_tags.AE, mode_tags.NTM)
+        }
+        for band, bs in ((low, blobs_low), (high, blobs_high))
+    }
+    crashes, crash_record = figure_sources.crash_times(
+        paths, candidate.shot, spans[mode_tags.SAWTOOTH], crash_source
+    )
+    crashes = crashes[(crashes >= t0) & (crashes < t1)]
+    boxes = ae_boxes(high, projected["wide"][mode_tags.AE], spans[mode_tags.AE])
 
     # the n map, gated by the same filtered mask on the zoom pass
     gate = roster.Gate(
@@ -520,7 +617,8 @@ def draw(
 
     layout = {
         "h_raw": 0.2, "raw_hi": 1.0, "raw_lo": 0.8, "g1": 0.1, "da_raw": 0.42,
-        "g2": 0.07, "nbi": 0.42, "h_proc": 0.56, "pr_hi": 1.0, "pr_lo": 0.8,
+        "g2": 0.07, "nbi": 0.42, "h_proc": 0.72, "pr_hi": 1.0, "pr_lo": 0.8,
+        "crashes": 0.12,
         "g3": 0.1, "da_pr": 0.55, "h_lab": 0.2,
     }  # fmt: skip
     names = [*layout, *[f"track{i}" for i in range(len(tracks))]]
@@ -541,7 +639,16 @@ def draw(
         for n in ("h_raw", "g1", "g2", "h_proc", "g3", "h_lab"):
             ax[n].set_visible(False)
         track_axes = [ax[f"track{i}"] for i in range(len(tracks))]
-        for n in ("raw_hi", "raw_lo", "da_raw", "nbi", "pr_hi", "pr_lo", "da_pr"):
+        for n in (
+            "raw_hi",
+            "raw_lo",
+            "da_raw",
+            "nbi",
+            "pr_hi",
+            "pr_lo",
+            "da_pr",
+            "crashes",
+        ):
             ax[n].set_xlim(t0, t1)
             style_axes(ax[n])
         for a in track_axes:
@@ -553,17 +660,29 @@ def draw(
             ax[hi].set_ylim(FOLD_KHZ, TOP_KHZ)
             ax[lo].set_ylim(0, FOLD_KHZ)
             ax[hi].set_yticks([100, 150, 200, 250])
-            ax[lo].set_yticks([0, 20, 40])
+            ax[lo].set_yticks([0, 20, 40, 55])
             ax[hi].spines["bottom"].set_visible(False)
             ax[hi].tick_params(bottom=False)
             ax[hi].set_ylabel("kHz", labelpad=2)
             ax[lo].set_ylabel("kHz", labelpad=2)
+            # Break markers on both edges make the change of scale explicit.
+            for x in (0, 1):
+                for panel, y in ((hi, 0), (lo, 1)):
+                    ax[panel].plot(
+                        [x - 0.007, x + 0.007],
+                        [y - 0.035, y + 0.035],
+                        transform=ax[panel].transAxes,
+                        color=INK,
+                        lw=0.7,
+                        clip_on=False,
+                        zorder=10,
+                    )
         draw_raw(ax["raw_hi"], high)
         draw_raw(ax["raw_lo"], low)
         label_box = {"fc": "black", "alpha": 0.5, "ec": "none", "pad": 1.0}
         for name, text in (
             ("raw_hi", "magnetics spectrogram (Mirnov probe)"),
-            ("raw_lo", "same, 0-55 kHz expanded"),
+            ("raw_lo", "0-55 kHz, finer resolution"),
         ):
             ax[name].text(
                 0.006, 0.94, text, transform=ax[name].transAxes, color="white",
@@ -585,45 +704,94 @@ def draw(
         ax["nbi"].set_ylim(bottom=0)
 
         # ---- processed: the mask times the spectrogram, the n view below 30 kHz
-        draw_processed(ax["pr_hi"], high, blobs_high, fill=(mode_tags.AE,))
-        draw_processed(ax["pr_lo"], low, blobs_low)
-        wash = [
-            Patch(fc=EVENT_COLOURS[e], lw=0, label=EVENT_NAMES[e])
-            for e in (mode_tags.NTM, mode_tags.SAWTOOTH)
-            if any(e in b.tags for b in blobs_low)
-        ]
-        for e, grow in ((mode_tags.SAWTOOTH, 3), (mode_tags.NTM, 1)):
-            outline(ax["pr_lo"], low, low.tag_image(blobs_low, e),
-                    EVENT_COLOURS[e], grow, lw=0.5)  # fmt: skip
-        if wash:
-            key = ax["pr_lo"].legend(
-                handles=wash, loc="upper left", ncols=len(wash), frameon=True,
-                facecolor="black", edgecolor="none", framealpha=0.6, fontsize=FONT,
-                handlelength=1.0, columnspacing=1.0, borderaxespad=0.2,
-                labelcolor="white", title="label over the mode", title_fontsize=FONT,
-                alignment="left", labelspacing=0.2,
-            )  # fmt: skip
-            key.get_title().set_color("white")
+        draw_processed(ax["pr_hi"], high)
+        draw_processed(ax["pr_lo"], low)
         keys = []
         if n_read is not None:
             names = n_read.meta["modes"]["n"]
             keys = [f"n={names[i]}" for i in draw_n_view(ax["pr_lo"], n_read)]
         n_handles = n_key(n_read) if n_read is not None else []
-        # the tags: the AE blobs tinted and boxed; a wash behind the others
-        draw_boxes(
-            ax["pr_hi"], merged_boxes(blobs_high, mode_tags.AE), mode_tags.AE,
-            (FOLD_KHZ, TOP_KHZ), TOP_KHZ - 12,
-        )  # fmt: skip
+        for panel, band in (("pr_hi", high), ("pr_lo", low)):
+            project(
+                ax[panel],
+                band,
+                projected[band.name][mode_tags.AE],
+                mode_tags.AE,
+                spans[mode_tags.AE],
+            )
+            project(
+                ax[panel],
+                band,
+                projected[band.name][mode_tags.NTM],
+                mode_tags.NTM,
+                spans[mode_tags.NTM],
+                edge=True,
+            )
+        draw_boxes(ax["pr_hi"], boxes, spans[mode_tags.AE])
+        # Leaders identify representative structures, never claim seeding.
+        if boxes:
+            b = max(boxes, key=lambda b: b[1] - b[0])
+            leader(
+                ax["pr_hi"],
+                "AE cascade"
+                if candidate.shot in (201978, 201973)
+                else "AE coincidence",
+                ((b[0] + b[1]) / 2, (b[2] + b[3]) / 2),
+                (0.55, 0.86),
+                EVENT_COLOURS[mode_tags.AE],
+            )
+        ntm_n1 = [b for b in blobs_low if mode_tags.NTM in b.tags and b.dominant_n == 1]
+        if ntm_n1:
+            b = max(ntm_n1, key=lambda b: b.n_pix)
+            rr, cc = b.component.rows, b.component.cols
+            keep = mode_tags.present_columns(low.t[cc], spans[mode_tags.NTM])
+            if low.n_map is not None:
+                keep &= low.n_map[rr, cc] == 1
+            if keep.any():
+                i = np.flatnonzero(keep)[len(np.flatnonzero(keep)) // 2]
+                leader(
+                    ax["pr_lo"],
+                    "n=1 tearing mode",
+                    (low.t[cc[i]], low.all_f[rr[i]]),
+                    (0.56, 0.78),
+                    EVENT_COLOURS[mode_tags.NTM],
+                )
+        strip = ax["crashes"]
+        strip.set_facecolor("#222222")
+        strip.set_ylim(0, 1)
+        strip.set_yticks([])
+        strip.tick_params(bottom=False)
+        for side in strip.spines.values():
+            side.set_visible(False)
+        strip.vlines(
+            crashes,
+            0.08,
+            0.92,
+            color=EVENT_COLOURS[mode_tags.SAWTOOTH],
+            lw=0.7,
+            linestyle="dotted",
+        )
+        strip.set_ylabel("crashes", rotation=0, ha="right", va="center", labelpad=3)
+        if len(crashes):
+            crash_x = (crashes[0] - t0) / (t1 - t0)
+            leader(
+                ax["pr_lo"],
+                "sawtooth crashes",
+                (crashes[0], -3),
+                (max(0.01, min(0.75, crash_x - 0.08)), 0.36),
+                EVENT_COLOURS[mode_tags.SAWTOOTH],
+            )
 
         # D-alpha: the ELM label's span and spikes, the confinement regimes
         elm_key = "edge_localized_mode"
         elm_spans = labelled_spans(by_key[elm_key])
         peaks = np.array([])
+        elm_chip = None
         da = ax["da_pr"]
         if da_sig.rows:
             trace(da, da_sig.rows[0])
             top = float(np.max(da_sig.rows[0].values[1]))
-            da.set_ylim(0, top * 1.35)
+            da.set_ylim(0, top * 1.65)
             peaks = elm_peaks(da_sig.rows[0], elm_spans)
             if len(peaks):
                 da.plot(peaks, np.full(len(peaks), top * 1.14), "v",
@@ -635,7 +803,7 @@ def draw(
                 )  # fmt: skip
             if elm_spans:
                 a, b = max(elm_spans, key=lambda s: s[1] - s[0])
-                elm_chip = chip(da, min(b, t1) - 20, top * 1.3, "ELMs", "#cccccc",
+                elm_chip = chip(da, min(b, t1) - 20, top * 1.6, "ELMs", "#cccccc",
                                 ha="right", va="top")  # fmt: skip
         da.set_yticks([])
         da.set_ylabel("D-alpha", rotation=0, ha="right", va="center", labelpad=3)
@@ -653,13 +821,13 @@ def draw(
                                 transform=da.get_xaxis_transform(), fontsize=FONT,
                                 color="#444444", va="top", ha="left")
                     )  # fmt: skip
-        if elm_spans and regime_texts:
+        if elm_chip is not None and regime_texts:
             clear_of(elm_chip, regime_texts)
 
         # ---- label tracks
         titles = {
             mode_tags.AE: "AE", mode_tags.NTM: "NTM", mode_tags.SAWTOOTH: "sawtooth",
-            elm_key: "ELMs", "confinement": "confinement",
+            elm_key: "ELMs", "confinement": by_key["confinement"].spec.title,
         }  # fmt: skip
         for a, track in zip(track_axes, tracks, strict=True):
             key = track.spec.key
@@ -678,20 +846,31 @@ def draw(
             pos = ax[name].get_position()
             for i, text in enumerate(reversed(lines)):
                 bold = "bold" if text == lines[0] else "normal"
-                y = pos.y0 + pos.height * 0.12 + i * 0.019
+                y = pos.y1 - 0.019 - (len(lines) - 1 - i) * 0.024
                 fig.text(pos.x0, y, text, fontsize=FONT, fontweight=bold,
                          va="bottom", ha="left")  # fmt: skip
 
-        if n_handles:
-            pos = ax["h_proc"].get_position()
-            fig.legend(
-                [Patch(fc="none", lw=0), *n_handles],
-                ["toroidal n, below 30 kHz:", *[h.get_label() for h in n_handles]],
-                loc="lower right", ncols=len(n_handles) + 1, frameon=False,
-                fontsize=FONT, handlelength=0.9, columnspacing=0.9,
-                handletextpad=0.4, borderpad=0, borderaxespad=0,
-                bbox_to_anchor=(0.915, pos.y0 + pos.height * 0.12 + 0.019 - 0.004),
-            )  # fmt: skip
+        pos = ax["h_proc"].get_position()
+        event_handles = [
+            Line2D([], [], color=EVENT_COLOURS[mode_tags.AE], ls="--", label="AE ≥60"),
+            Line2D([], [], color=EVENT_COLOURS[mode_tags.NTM], ls="-", label="NTM <60"),
+            Line2D(
+                [], [], color=EVENT_COLOURS[mode_tags.SAWTOOTH], ls=":", label="crashes"
+            ),
+        ]
+        fig.legend(
+            handles=[*n_handles, *event_handles],
+            loc="lower left",
+            ncols=len(n_handles) + len(event_handles),
+            frameon=False,
+            fontsize=FONT,
+            handlelength=1.0,
+            columnspacing=0.9,
+            handletextpad=0.3,
+            borderpad=0,
+            borderaxespad=0,
+            bbox_to_anchor=(pos.x0, pos.y0 + 0.005),
+        )
         colours = [
             EVENT_COLOURS[e] for e in (mode_tags.AE, mode_tags.NTM, mode_tags.SAWTOOTH)
         ]
@@ -724,7 +903,50 @@ def draw(
             "untagged": sum(not b.tags for b in blobs_high + blobs_low),
         },
         "elm_peaks_in_label": len(peaks),
-        "n_map": None if n_read is None else {"kept_share": n_kept, "keys": keys},
+        "n_map": None
+        if n_read is None
+        else {
+            "kept_share": n_kept,
+            "keys": [*keys, "other n"],
+            "support_khz": list(n_read.extent[2:]),
+            "outside_support": "unknown; cannot supply dominant n evidence",
+        },
+        "ntm_dominant_n": {
+            str(n): sum(
+                mode_tags.NTM in b.tags and b.dominant_n == n
+                for b in blobs_high + blobs_low
+            )
+            for n in (1, 2)
+        },
+        "ae_boxes_ms_khz": boxes,
+        "sawtooth_crashes": {**crash_record, "drawn_times_ms": crashes.tolist()},
+        "projection_audit": {
+            band.name: {
+                e: {
+                    "pixels": int(projected[band.name][e].sum()),
+                    "outside_present": int(
+                        (
+                            projected[band.name][e]
+                            & ~mode_tags.present_columns(band.t, spans[e])[None, :]
+                        ).sum()
+                    ),
+                    "outside_band": int(
+                        (
+                            projected[band.name][e]
+                            & ~(
+                                (band.f >= mode_tags.BANDS[e][0])
+                                & (band.f < mode_tags.BANDS[e][1])
+                            )[:, None]
+                        ).sum()
+                    ),
+                    "pixels_55_to_60": int(
+                        projected[band.name][e][(band.f >= 55) & (band.f < 60)].sum()
+                    ),
+                }
+                for e in (mode_tags.AE, mode_tags.NTM)
+            }
+            for band in (low, high)
+        },
         "regimes_shown": sorted(regime_names[c] for c in shown),
         "stores": {
             e: None if p is None else {"path": str(p), "sha256": sha256_of(p)}
@@ -734,16 +956,16 @@ def draw(
 
 
 def draw_n_view(ax, read) -> list[int]:
-    """The gated n map over 0-30 kHz, in its palette, in place of the band; the
-    indices of the n it keys (`n_seen`)."""
+    """Accessible remap over 0-30 kHz; every unkeyed n is grey."""
     modes = read.meta["modes"]
-    colours = dict(zip(modes["n"], modes["colours"], strict=True))
-    palette = np.array([to_rgb(c) for c in mode_palette(colours)])
-    codes = np.minimum(read.values.astype(np.int64), len(palette) - 1)
+    palette = np.array([to_rgb(N_COLOURS.get(n, N_OTHER)) for n in modes["n"]])
+    codes = read.values.astype(np.int64)
     t0, t1, f0, f1 = read.extent
     keep = round((min(f1, N_VIEW_KHZ) - f0) / (f1 - f0) * codes.shape[0])
     lit = codes[:keep] >= len(modes["n"])  # level 0: no mode, left clear
-    rgba = np.concatenate([palette[codes[:keep]], lit[..., None]], axis=-1)
+    brightness = 0.3 + 0.7 * (codes[:keep] // len(palette)) / (modes["levels"] - 1)
+    rgb = palette[codes[:keep] % len(palette)] * brightness[..., None]
+    rgba = np.concatenate([rgb, lit[..., None]], axis=-1)
     ax.imshow(
         rgba,
         origin="lower",
@@ -756,22 +978,21 @@ def draw_n_view(ax, read) -> list[int]:
 
 
 def n_seen(read) -> list[int]:
-    """The indices of the n a map lights in `roster.KEY_MIN_SHARE` of its lit
-    pixels (the page's key rule)."""
+    """Every coloured n drawn, however small its share; all others are grey."""
     modes = read.meta["modes"]
     k = len(modes["n"])
     codes = read.values.astype(np.int64)
     lit = codes[codes >= k] % k
-    share = np.bincount(lit, minlength=k) / max(lit.size, 1)
-    return [int(i) for i in np.flatnonzero(share >= roster.KEY_MIN_SHARE)]
+    seen = set(lit.tolist())
+    return [i for i, n in enumerate(modes["n"]) if n in N_COLOURS and i in seen]
 
 
 def n_key(read) -> list[Patch]:
     modes = read.meta["modes"]
     return [
-        Patch(fc=modes["colours"][i], lw=0, label=f"n={modes['n'][i]}")
+        Patch(fc=N_COLOURS[modes["n"][i]], lw=0, label=f"n={modes['n'][i]}")
         for i in n_seen(read)
-    ]
+    ] + [Patch(fc=N_OTHER, lw=0, label="other n")]
 
 
 def save_figure(fig: Figure, stem: Path, png_dpi: int = DPI_PNG) -> list[Path]:
@@ -792,17 +1013,133 @@ def track_record(track: lf.Track) -> dict | None:
     if track.source is None:
         return None
     present = present_spans(track)
+    metadata = Path(track.file).with_suffix(".meta.json")
+    meta = json.loads(metadata.read_text()) if metadata.is_file() else {}
+    model = meta.get("method", track.source.what)
+    if track.spec.key == mode_tags.AE and track.source.run is not None:
+        model = "CO2 xpower frame model (80-250 kHz)"
     return {
         "tier": track.source.tier,
         "what": track.source.what,
         "path": str(track.file),
         "sha256": sha256_of(track.file) if Path(track.file).is_file() else None,
         "rows": len(track.rows),
+        "model": model,
+        "primary_bars": meta.get("bar"),
+        "metadata": str(metadata) if metadata.is_file() else None,
+        "metadata_sha256": sha256_of(metadata) if metadata.is_file() else None,
+        "states": track.spec.states,
         "present_spans_ms": [[round(a, 1), round(b, 1)] for a, b in present],
     }
 
 
+def draft_caption(shot: int, tracks, crash_record) -> str:
+    """Honest per-shot caption, including shared inputs and failed primary bars."""
+    by_key = {t.spec.key: t for t in tracks}
+    ae = by_key[mode_tags.AE]
+    if ae.source is None:
+        ae_model = "no assessed AE intervals (CO2 input unavailable)"
+    elif ae.source.tier == lf.SILVER:
+        ae_model = "expert-reviewed AE intervals"
+    elif ae.source and ae.source.what.startswith("ae-ours"):
+        ae_model = "ae-ours (SELDnet-style), from stored CO2 activity predictions"
+    else:
+        ae_model = (
+            "the earlier CO2 xpower frame model (80--250 kHz input band); "
+            "no valid ae-ours (SELDnet-style) predictions were available for this shot"
+        )
+    reviewed = [t.spec.title for t in tracks if t.source and t.source.tier == lf.SILVER]
+    expert = ", ".join(reviewed) or "none"
+    ntm = by_key[mode_tags.NTM]
+    saw = by_key[mode_tags.SAWTOOTH]
+    ntm_model = (
+        "no assessed NTM intervals"
+        if ntm.source is None
+        else (
+            "expert-reviewed NTM intervals"
+            if ntm.source and ntm.source.tier == lf.SILVER
+            else (
+                r"ntm\_frames"
+                if ntm.source and ntm.source.tier == lf.GENERATED
+                else "the imported tearing-mode archive"
+            )
+        )
+    )
+    saw_model = (
+        "no assessed sawtooth intervals"
+        if saw.source is None
+        else (
+            "a replacement sawtooth interval table"
+            if saw.source and saw.source.what.startswith("replacement")
+            else (
+                r"sawtooth\_frames"
+                if saw.source and saw.source.tier == lf.GENERATED
+                else "expert-reviewed sawtooth intervals"
+            )
+        )
+    )
+    conf = by_key["confinement"]
+    conf_model = (
+        r"the D-alpha L--H transition detector (dalpha\_lh)"
+        if conf.source.tier == lf.GENERATED
+        else "curated four-class confinement intervals"
+    )
+    elm = by_key["edge_localized_mode"]
+    elm_model = (
+        "no assessed ELM intervals"
+        if elm.source is None
+        else (
+            "expert review"
+            if elm.source and elm.source.tier == lf.SILVER
+            else (
+                r"elm\_frames"
+                if elm.source and elm.source.tier == lf.GENERATED
+                else "the imported ELM onset table"
+            )
+        )
+    )
+    crash_model = (
+        r"ece\_sawtooth ECE/SXR crash-detector event times"
+        if "implementation" in crash_record
+        else "event times from the replacement crash-time table"
+    )
+    return (
+        rf"\caption{{From raw signals to label--mode coincidence in DIII-D shot {shot}. "
+        "Top: the raw Mirnov-probe spectrogram, D-alpha and neutral-beam power. "
+        "The broken frequency axis uses 0--55 kHz at finer resolution and "
+        "55--250 kHz from the wide pass. Middle: TokEye's coherent mask, cleaned "
+        "by removing small objects and filling small holes, then split into "
+        "8-connected components; the toroidal-$n$ view replaces 0--30 kHz "
+        "(blue/cyan/green for $n=1,2,3$, all other $n$ grey). "
+        "Pink dashed AE boxes and tint are clipped to PRESENT times and "
+        r"$f\geq60$ kHz; boxes omit intervals shorter than 100 ms. "
+        "Solid orange NTM outlines require dominant measured $n=1$ or 2 and "
+        "$f<60$ kHz, clipped to PRESENT times. Yellow dotted ticks on the thin "
+        f"strip are {crash_model} inside the "
+        "sawtooth PRESENT intervals, including where NTM is outlined; they are "
+        "not rotating-mode labels or evidence of NTM seeding. "
+        "D-alpha shows ELM intervals/peak markers and confinement shading; "
+        "the bottom tracks share the time axis. "
+        f"AE uses {ae_model}; NTM uses {ntm_model}; sawtooth uses {saw_model}; "
+        f"confinement uses {conf_model}; ELMs use {elm_model}. "
+        f"Expert-reviewed tracks: {expert}. "
+        r"The ntm\_frames detector reads the same MPI66M322D Mirnov probe and "
+        "MPI66M toroidal-$n$ map as TokEye/the displayed $n$ view, so its "
+        r"coincidence is partly built in. The ntm\_frames and sawtooth\_frames "
+        "interval detectors fail their primary acceptance bars (N1 and S1). "
+        "A tag means coincidence of a label in time and a mode in a fixed band, "
+        "not an independent classification. Steady untagged magnetic lines "
+        "remain unclassified coherent activity; the core-CO2 AE label does "
+        "not establish their identity. Grey on an H-mode track means H-mode "
+        "absent, not established L-mode; hatching means uncertainty, and blank "
+        "means unassessed.}\n\\label{fig:interpreter}\n"
+    )
+
+
 def main(argv=None) -> int:
+    import torch
+
+    torch.set_num_threads(8)
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--shot", type=int, default=201978)
     parser.add_argument("--tmin", type=float, help="ms; the shot's preset window")
@@ -813,6 +1150,12 @@ def main(argv=None) -> int:
     parser.add_argument("--cache-only", action="store_true", help="TokEye, no figure")
     parser.add_argument("--png-dpi", type=int, default=DPI_PNG, help="the PNG's dpi")
     parser.add_argument("--record", type=Path, help="also write the record here")
+    parser.add_argument(
+        "--sawtooth-crashes", type=Path, help="replacement crash-time CSV: shot,t_ms"
+    )
+    parser.add_argument(
+        "--sawtooth-labels", type=Path, help="replacement interval-label CSV"
+    )
     args = parser.parse_args(argv)
 
     paths = Paths.from_env()
@@ -839,9 +1182,23 @@ def main(argv=None) -> int:
     print(f"TokEye: {cache_file}")
     if args.cache_only:
         return 0
-    tracks, co2 = shot_tracks(paths, candidate)
+    tracks, co2 = shot_tracks(paths, candidate, args.sawtooth_labels)
     out.mkdir(parents=True, exist_ok=True)
-    drawn = draw(paths, candidate, tracks, z, t0, t1, out / STEM, args.png_dpi)
+    drawn = draw(
+        paths,
+        candidate,
+        tracks,
+        z,
+        t0,
+        t1,
+        out / STEM,
+        args.png_dpi,
+        args.sawtooth_crashes,
+    )
+    caption = draft_caption(args.shot, tracks, drawn["sawtooth_crashes"])
+    caption_file = out / "caption.tex"
+    with atomic_path(caption_file) as tmp:
+        Path(tmp).write_text(caption)
     checkpoint = roster.tokeye_file(paths)
     record = {
         "shot": args.shot,
@@ -859,11 +1216,15 @@ def main(argv=None) -> int:
         },
         "filter": {
             "mask": "coherent >= threshold and not transient >= threshold",
-            "pickup_row_share": mode_tags.PICKUP_SHARE,
+            "persistent_line_candidate_row_share": mode_tags.PERSISTENT_ROW_SHARE,
             "min_size_px": mode_tags.MIN_SIZE,
             "hole_area_px": mode_tags.HOLE_AREA,
-            "components": "skimage connectivity 2 (8-connected)",
-            "tag_cover": mode_tags.COVER,
+            "components": "scipy.ndimage.label, 8-connected (3x3 structure)",
+            "tag_rule": "component AND PRESENT time pixels AND event band; "
+            "NTM dominant measured n in {1,2}; sawtooth crash ticks, no mode tag",
+            "ae_box_min_span_ms": AE_BOX_MIN_MS,
+            "n_palette": N_COLOURS,
+            "unkeyed_n_colour": N_OTHER,
             "bands_khz": {
                 k: [lo, None if math.isinf(hi) else hi]
                 for k, (lo, hi) in mode_tags.BANDS.items()
@@ -876,6 +1237,17 @@ def main(argv=None) -> int:
         "ae_co2": None
         if co2 is None
         else {"path": str(co2), "sha256": sha256_of(co2) if co2.is_file() else None},
+        "ae_ours_lookup": {
+            "path": str(paths.labels_file(args.shot)),
+            "exists": paths.labels_file(args.shot).is_file(),
+            "selected": any(
+                t.spec.key == mode_tags.AE
+                and t.source
+                and t.source.what.startswith("ae-ours")
+                for t in tracks
+            ),
+        },
+        "caption": {"path": str(caption_file), "sha256": sha256_of(caption_file)},
         "drawn": drawn,
         "git": git_sha(),
     }
@@ -885,6 +1257,8 @@ def main(argv=None) -> int:
         args.record.parent.mkdir(parents=True, exist_ok=True)
         with atomic_path(args.record) as tmp:
             Path(tmp).write_text(json.dumps(record, indent=1) + "\n")
+        with atomic_path(args.record.with_suffix(".caption.tex")) as tmp:
+            Path(tmp).write_text(caption)
     print(json.dumps(drawn["blobs"]))
     return 0
 

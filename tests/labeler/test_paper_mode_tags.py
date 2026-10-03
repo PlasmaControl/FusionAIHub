@@ -82,38 +82,50 @@ def test_a_blob_is_tagged_by_the_label_over_it_in_its_band():
     lit[20:24, 10:40] = True  # ~10 kHz, 10-39 ms
     found = mt.blobs(lit, t, f)
     spans = {mt.AE: [(0.0, 50.0)], mt.NTM: [(0.0, 50.0)]}
-    tagged = {round(b.f_khz): b.tags for b in mt.tag_blobs(found, spans)}
+    tagged = {
+        round(b.f_khz): b.tags
+        for b in mt.tag_blobs(found, spans, t, f, n_map=np.ones(lit.shape))
+    }
     assert tagged == {101: (mt.AE,), 11: (mt.NTM,)}  # AE only above 60 kHz
 
 
-def test_two_labels_in_one_band_both_tag_the_blob():
+def test_sawtooth_is_not_a_rotating_mode_tag():
     f, t = _grid(100)
     lit = np.zeros((ROWS, 100), bool)
     lit[20:24, 10:40] = True
     (blob,) = mt.tag_blobs(
         mt.blobs(lit, t, f),
         {mt.SAWTOOTH: [(0.0, 100.0)], mt.NTM: [(5.0, 60.0)]},
+        t,
+        f,
+        n_map=np.ones(lit.shape),
     )
-    assert blob.tags == (mt.NTM, mt.SAWTOOTH)
+    assert blob.tags == (mt.NTM,)
 
 
-def test_a_label_over_under_half_the_blob_does_not_tag_it():
+def test_a_short_overlap_tags_only_the_pixels_inside_the_label():
     f, t = _grid(100)
     lit = np.zeros((ROWS, 100), bool)
     lit[20:24, 0:40] = True  # 0-39 ms
-    (blob,) = mt.tag_blobs(mt.blobs(lit, t, f), {mt.NTM: [(30.0, 80.0)]})
-    assert blob.tags == ()  # 10 of 39 ms
-    (blob,) = mt.tag_blobs(mt.blobs(lit, t, f), {mt.NTM: [(15.0, 80.0)]})
-    assert blob.tags == (mt.NTM,)  # 24 of 39 ms
+    spans = {mt.NTM: [(30.0, 80.0)]}
+    found = mt.tag_blobs(mt.blobs(lit, t, f), spans, t, f, np.ones(lit.shape))
+    assert found[0].tags == (mt.NTM,)
+    mask = mt.tag_mask(found, mt.NTM, lit.shape, t, f, spans[mt.NTM])
+    assert mask.sum() == 40
+    assert not mask[:, :30].any()
 
 
 def test_a_blob_of_one_column_is_tagged_when_its_time_is_in_a_span():
     f, t = _grid(100)
     lit = np.zeros((ROWS, 100), bool)
     lit[20:24, 50] = True
-    (blob,) = mt.tag_blobs(mt.blobs(lit, t, f), {mt.NTM: [(40.0, 60.0)]})
+    (blob,) = mt.tag_blobs(
+        mt.blobs(lit, t, f), {mt.NTM: [(40.0, 60.0)]}, t, f, np.ones(lit.shape)
+    )
     assert blob.tags == (mt.NTM,)
-    (blob,) = mt.tag_blobs(mt.blobs(lit, t, f), {mt.NTM: [(0.0, 10.0)]})
+    (blob,) = mt.tag_blobs(
+        mt.blobs(lit, t, f), {mt.NTM: [(0.0, 10.0)]}, t, f, np.ones(lit.shape)
+    )
     assert blob.tags == ()
 
 
@@ -123,3 +135,72 @@ def test_spans_are_merged_where_they_touch():
         (20.0, 30.0),
     ]
     assert mt.overlap_ms(4.0, 25.0, [(0.0, 9.0), (20.0, 30.0)]) == 10.0
+
+
+def test_projection_clips_absent_gaps_and_both_sides_of_60_khz():
+    f, t = _grid(20)
+    lit = np.zeros((ROWS, 20), bool)
+    lit[110:124, :] = True  # 55-61.5 kHz: crosses both fold and tag boundary
+    spans = {mt.AE: [(2.0, 8.0), (12.0, 18.0)], mt.NTM: [(4.0, 16.0)]}
+    found = mt.tag_blobs(mt.blobs(lit, t, f), spans, t, f, np.ones(lit.shape))
+    ae = mt.tag_mask(found, mt.AE, lit.shape, t, f, spans[mt.AE])
+    ntm = mt.tag_mask(found, mt.NTM, lit.shape, t, f, spans[mt.NTM])
+    assert ae.sum() == 48  # four rows >=60, twelve present columns
+    assert ntm.sum() == 120  # ten rows 55-59.5, twelve present columns
+    assert not ae[f < 60].any()
+    assert not ae[:, 8:12].any()
+    assert not ae[:, 18:].any()  # end is exclusive
+    assert not ntm[f >= 60].any()
+    assert not ntm[:, :4].any()
+
+
+def test_ntm_requires_dominant_n_one_or_two_and_measured_support():
+    f, t = _grid(20)
+    lit = np.zeros((ROWS, 20), bool)
+    for row in (10, 30, 50, 70):
+        lit[row : row + 3, :] = True
+    n = np.full(lit.shape, np.nan)
+    n[10:13] = 1
+    n[30:33] = 2
+    n[50:53] = 3
+    n[50, :3] = 1  # a small n=1 minority must not admit n=3
+    found = mt.tag_blobs(mt.blobs(lit, t, f), {mt.NTM: [(0, 20)]}, t, f, n)
+    assert [b.tags for b in found] == [(mt.NTM,), (mt.NTM,), (), ()]
+
+
+def test_persistent_physical_rows_are_kept_at_fifteen_and_thirty_khz():
+    lit = np.zeros((ROWS, 20), bool)
+    lit[30, :13] = True  # 65%: real n=2 near 15 kHz
+    lit[60, :11] = True  # 55%: its ~30 kHz harmonic
+    out = mt.bridge_pickup(lit, lit.mean(axis=1))
+    assert out[30, :13].all()
+    assert out[60, :11].all()
+
+
+def test_n_sampling_decodes_brightness_and_does_not_extrapolate():
+    codes = np.array([[2, 0], [5, 4]])  # ns=[1,2], level 0 means unknown
+    sampled = mt.sample_n_map(
+        codes,
+        [1, 2],
+        [0.0, 2.0],
+        [0.0, 10.0],
+        np.array([0.0, 2.0, 4.0]),
+        np.array([0.0, 10.0, 55.0]),
+    )
+    assert sampled[0, 0] == 1
+    assert np.isnan(sampled[0, 1])
+    assert sampled[1, :2].tolist() == [2, 1]
+    assert np.isnan(sampled[2]).all()
+    assert np.isnan(sampled[:, 2]).all()
+
+
+def test_tied_n_one_and_three_are_ambiguous_not_a_tearing_mode():
+    f, t = _grid(4)
+    lit = np.zeros((ROWS, 4), bool)
+    lit[10:13] = True
+    n = np.full(lit.shape, np.nan)
+    n[10:13, :2] = 1
+    n[10:13, 2:] = 3
+    (blob,) = mt.tag_blobs(mt.blobs(lit, t, f), {mt.NTM: [(0, 4)]}, t, f, n)
+    assert blob.dominant_n is None
+    assert blob.tags == ()
