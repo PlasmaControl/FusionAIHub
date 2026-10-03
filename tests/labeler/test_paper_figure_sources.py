@@ -205,13 +205,13 @@ def test_caption_follows_sources_and_actual_acceptance_bars(tier):
             },
         },
     )
-    assert len(text.split()) <= 150
+    assert len(text.split()) <= fs.CAPTION_MAX_WORDS
     sources = fs.appendix_notes(42, records, {})
     assert "Regime:" in sources
     assert "Ticks" not in text
-    assert ("below bar" in text) == (tier == fs.lf.GENERATED)
-    assert "harmonic" not in text
-    assert "n=1/2" not in text
+    assert ("below its bar" in text) == (tier == fs.lf.GENERATED)
+    assert "the n=2 ridge is consistent with a harmonic of the n=1 mode" in text
+    assert ("the NTM detector (" in text) == (tier == fs.lf.GENERATED)
     for internal in ("ntm_frames", "dalpha_lh", "MPI66M", "N1", "S1", "PRESENT"):
         assert internal not in text
 
@@ -313,7 +313,7 @@ def test_harmonic_support_follows_ridges_outside_the_primary_shots_bands():
     assert got["n1_median_khz"] == 11
     assert got["n2_median_khz"] == 22
     text = fs.caption(42, {}, {"harmonic_support": got, "sawtooth_strip_shown": False})
-    assert "harmonic" not in text
+    assert "the n=2 ridge is consistent with a harmonic of the n=1 mode" in text
 
 
 @pytest.mark.parametrize(
@@ -399,10 +399,8 @@ def test_sawtooth_states_and_preinterval_spike_are_disclosed_in_appendix():
     assert "Sawtooth: uncertain 832 ms, unassessed 968 ms" in text
     assert "physics labels" in text and "ECE density proxy" in text
     assert "row omitted" not in text and "no present time" not in text
-    assert (
-        "The largest D-alpha spike (2297 ms) precedes the expert ELM interval "
-        "(from 2308 ms)" in text
-    )
+    assert "The largest D-alpha spike (2297 ms) precedes the expert span" in text
+    assert "(from 2308 ms)" in text
 
 
 def test_harmonic_caption_requires_minimum_sampled_support():
@@ -599,42 +597,192 @@ def test_caption_discloses_elm_hmode_conflicts_and_inferred_lmode():
     assert "L-mode (inferred)" in text
 
 
-def test_primary_caption_explains_visible_timing_and_source_dependence():
-    records = {
-        fs.mt.AE: {"tier": fs.lf.GENERATED, "what": "ae-ours", "title": "AE"},
+def _primary_records(ae="ae-ours"):
+    return {
+        fs.mt.AE: {
+            "tier": fs.lf.GENERATED,
+            "what": ae,
+            "title": "AE",
+            "temporal_bin_ms": 25 if ae == "ae-ours" else 10,
+        },
         fs.mt.NTM: {
             "tier": fs.lf.GENERATED,
             "what": "detector",
             "title": "NTM",
-            "performance": {"f1": 0.457472},
+            "performance": {
+                "f1": 0.457472,
+                "shots": 761,
+                "bar_criteria": {"N1": [["f1", ">=", 0.7], ["recall", ">=", 0.6]]},
+            },
             "primary_bars": {"N1": False},
         },
         "confinement": {"tier": fs.lf.GENERATED, "what": "D-alpha", "title": "H-mode"},
         "edge_localized_mode": {"tier": fs.lf.SILVER, "what": "expert"},
         fs.mt.SAWTOOTH: {"tier": fs.lf.GENERATED, "what": "physics states"},
     }
-    text = fs.caption(
-        201978,
-        records,
-        {
-            "first_large_peak_before_expert_ms": 11,
-            "largest_dalpha_peak_ms": 2297,
-            "expert_elm_start_ms": 2308,
-            "late_untagged_high_frequency": {"first_time_ms": 2800},
-        },
+
+
+_HARMONIC = {"support_ms": 326.0, "minimum_support_ms": 50.0}
+
+
+def test_primary_caption_describes_the_figure_and_its_highlights():
+    drawn = {
+        "harmonic_support": {**_HARMONIC, "n1_median_khz": 9.1, "n2_median_khz": 18.5},
+        "harmonic3_support": {**_HARMONIC, "n3_median_khz": 23.0},
+        "first_large_peak_before_expert_ms": 11,
+        "largest_dalpha_peak_ms": 2297,
+        "late_untagged_high_frequency": {"first_time_ms": 2800},
+    }
+    text = fs.caption(201978, _primary_records(), drawn)
+    assert text == (
+        "DIII-D shot 201978. Top: raw Mirnov spectrogram (axis split at 30 and 55 "
+        "kHz; bands normalised separately), D-alpha, NBI power. Middle: TokEye "
+        "coherent-mode mask after small-object removal; below 30 kHz coloured by "
+        "toroidal mode number n (Mirnov array). Pink: mask pixels ≥80 kHz while "
+        "the CO2 AE detector is positive (25 ms bins). Orange outlines: n=1/2 "
+        "pixels while the NTM detector (held-out F1 0.46, below our 0.7 bar) is "
+        "positive. Highlights mark time/band coincidence only; n=2 and n=3 "
+        "ridges are consistent with harmonics of the n=1 mode. Bottom: label "
+        "tracks with sources."
     )
-    assert len(text.split()) <= 95
-    assert "raw signals → TokEye-processed modes → event labels" in text
-    assert "raw bands normalised separately" in text
-    assert "Toroidal mode number n: Mirnov array" in text
-    assert "time coincidence only (including 3–5 kHz fragments)" in text
-    assert "Orange" in text and "Pink" in text
-    assert "detector F1 0.46, below bar" in text
-    assert "25 ms timing" in text and "untagged after 2.8 s" in text
-    assert "first ELM (2297 ms) precedes the expert span" in text
-    assert "AE targets used TokEye's mask (circularity)" in text
-    assert "four-state notation only" in text
-    assert all(s not in text for s in ("row omitted", "Circles:", "Triangles:"))
+    for shorthand in ("below bar", "circularity", "four-state", "first ELM"):
+        assert shorthand not in text
+
+
+def test_caption_has_no_shot_specific_branches():
+    drawn = {
+        "first_large_peak_before_expert_ms": 11,
+        "largest_dalpha_peak_ms": 2297,
+        "expert_elm_start_ms": 2308,
+    }
+    records = _primary_records()
+    assert fs.caption(201978, records, drawn).replace("201978", "7") == fs.caption(
+        7, records, drawn
+    )
+    assert fs.appendix_notes(201978, records, drawn).replace(
+        "201978", "7"
+    ) == fs.appendix_notes(7, records, drawn)
+
+
+def test_harmonic_clause_follows_the_recorded_support_of_each_ridge():
+    one = {"harmonic_support": _HARMONIC}
+    both = {**one, "harmonic3_support": _HARMONIC}
+    weak = {"support_ms": 20.0, "minimum_support_ms": 50.0}
+    assert "the n=2 ridge is consistent with a harmonic" in fs.caption(1, {}, one)
+    assert "n=2 and n=3 ridges are consistent with harmonics" in fs.caption(1, {}, both)
+    assert "harmonic" not in fs.caption(1, {}, {"harmonic_support": weak})
+    third = {"harmonic_support": weak, "harmonic3_support": _HARMONIC}
+    assert "the n=3 ridge is consistent with a harmonic" in fs.caption(1, {}, third)
+
+
+def test_harmonic_support_accepts_a_three_to_one_ridge():
+    n = np.array([[1, 1], [3, 3]])
+    got = fs.harmonic_support(n, np.ones((2, 2), bool), [0, 100], [8, 24], order=3)
+    assert got["support_ms"] == 200
+    assert got["n3_median_khz"] == 24
+    off = fs.harmonic_support(n, np.ones((2, 2), bool), [0, 100], [8, 20], order=3)
+    assert off["support_ms"] == 0
+
+
+def test_alternate_captions_carry_their_recorded_qualifications():
+    drawn = {
+        "elm_hmode_conflicts_ms": [[3013, 3045]],
+        "ae_physical_review_caveat": "Persistent pink lines may be pickup.",
+    }
+    text = fs.caption(186636, _primary_records(), drawn)
+    assert "Expert ELM intervals and the H-mode detector disagree" in text
+    assert text.endswith("Persistent pink lines may be pickup.")
+    assert "disagree" not in fs.caption(186636, _primary_records(), {})
+
+
+def test_ae_text_follows_the_ae_source():
+    ours = fs.appendix_notes(1, _primary_records(), {})
+    frame = fs.appendix_notes(1, _primary_records("the AE frame model"), {})
+    assert "AE targets used TokEye's mask" in ours
+    assert "AE targets used TokEye's mask" not in frame
+    assert "matches the ae-ours input band" in ours
+    assert "ae-ours" not in frame
+    assert "frame detector's input band" in frame
+    assert "trained on the owner's reviewed AE labels" in frame
+    assert "up-weights its MHD-absent frames" in frame
+    assert "CO2 neural detector" in ours and "CO2 frame detector" in frame
+    assert "10 ms bins" in frame
+
+
+def test_thresholds_are_listed_only_for_detector_tracks():
+    records = _primary_records()
+    assert (
+        "Operating probability thresholds: TokEye 0.2; AE 0.5; NTM 0.63."
+        in fs.appendix_notes(1, records, {})
+    )
+    records[fs.mt.NTM] = {"tier": fs.lf.LEGACY, "what": "archive", "title": "NTM"}
+    records[fs.mt.AE]["tier"] = fs.lf.SILVER
+    text = fs.appendix_notes(1, records, {})
+    assert "Operating probability thresholds: TokEye 0.2." in text
+    assert "NTM 0.63" not in text and "AE 0.5" not in text
+    assert "NTM detector" not in text and "AE highlights" not in text
+
+
+def test_appendix_states_the_persistent_row_step_and_its_effect():
+    quiet = fs.appendix_notes(1, {}, {"persistent_line_rows": {"wide": 0, "zoom": 0}})
+    assert "persistent-row step" in quiet and "not an identified pickup line" in quiet
+    assert "No row reached the persistent share" in quiet
+    busy = fs.appendix_notes(1, {}, {"persistent_line_rows": {"wide": 3, "zoom": 1}})
+    assert "3 wide-pass and 1 zoom-pass rows" in busy
+    assert "persistent-row step" in fs.appendix_notes(1, {}, {})
+
+
+def test_appendix_states_the_ntm_outline_display_rule_and_harmonic_numbers():
+    drawn = {
+        "ntm_outline_display": {"min_px": 100, "omitted_fragments": 9},
+        "harmonic_support": {
+            **_HARMONIC,
+            "n1_median_khz": 9.1,
+            "n2_median_khz": 18.5,
+        },
+        "harmonic3_support": {**_HARMONIC, "n3_median_khz": 23.0},
+    }
+    text = fs.appendix_notes(1, _primary_records(), drawn)
+    assert "fewer than 100 print pixels are not drawn (9 fragments omitted" in text
+    assert "n=1 9.1 kHz, n=2 18.5 kHz" in text
+    assert "n=3 ridge sits near three times it (23.0 kHz" in text
+    assert "not separate islands" in text
+
+
+def test_ntm_source_text_names_the_bar_from_the_evaluation():
+    record = _primary_records()[fs.mt.NTM]
+    assert fs.ntm_qualification(record) == "held-out F1 0.46, below our 0.7 bar"
+    assert fs.ntm_description(record) == (
+        "detector (suggestions; held-out F1 0.46 on 761 shots, below our 0.7 bar)"
+    )
+    assert fs.ntm_description({}) == "detector (suggestions)"
+    record["primary_bars"] = {"N1": True}
+    assert fs.ntm_qualification(record).endswith("meets our 0.7 bar")
+
+
+def test_sawtooth_row_source_names_why_it_is_blank():
+    rows = [{"state": "uncertain"}, {"state": "unassessed"}]
+    guard = {"cutoff_proxy": True}
+    assert fs.sawtooth_row_source(rows, guard) == (
+        "physics labels\nblank: not assessable\n(ECE cut-off)"
+    )
+    assert fs.sawtooth_row_source(rows, None) == "physics labels"
+    assert fs.sawtooth_row_source([{"state": "absent"}], guard) == "physics labels"
+
+
+def test_sawtooth_appendix_says_when_no_sawtooth_is_present():
+    records = _primary_records()
+    records[fs.mt.SAWTOOTH]["what"] = "physics sawtooth states"
+    records[fs.mt.SAWTOOTH]["state_intervals_ms"] = [
+        {"start_ms": 0, "end_ms": 10, "state": "uncertain"}
+    ]
+    text = fs.appendix_notes(1, records, {})
+    assert "No sawtooth is labelled present in this window" in text
+    assert "four-state" not in text
+    records[fs.mt.SAWTOOTH]["state_intervals_ms"].append(
+        {"start_ms": 10, "end_ms": 20, "state": "present"}
+    )
+    assert "No sawtooth is labelled present" not in fs.appendix_notes(1, records, {})
 
 
 def test_raster_ae_audit_detects_leaks_in_final_pixels():

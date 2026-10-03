@@ -32,7 +32,7 @@ def rebuild_primary(record):
     """Rebuild with the recorded sources and verify identical PDF/PNG bytes."""
     files = [Path(p) for p in record["drawn"]["figure"]]
     before = {str(p): sha256_of(p) for p in files}
-    rebuild_dir = Path(os.environ["TMPDIR"]) / "fix9-primary-rebuild"
+    rebuild_dir = Path(os.environ["TMPDIR"]) / "fix10-primary-rebuild"
     rebuild_dir.mkdir(parents=True, exist_ok=True)
     cmd = [
         "pixi", "run", "--frozen", "--no-install", "--manifest-path",
@@ -132,8 +132,17 @@ def main():
                     k: v for k, v in baseline["tracks"][key].items() if k not in display
                 }
                 assert source == old, (shot, "changed source track", key)
-            presentation = {"figure", "figure_sha256", "layout", "display_state_keys"}
-            for key in record["drawn"].keys() - presentation:
+            presentation = {
+                "figure",
+                "figure_sha256",
+                "layout",
+                "display_state_keys",
+                "ntm_outline_display",
+                "ntm_measured_pixel_audit",
+            }
+            # Records added after the baseline; each is checked below.
+            added = {"harmonic3_support", "persistent_line_rows"}
+            for key in record["drawn"].keys() - presentation - added:
                 assert record["drawn"][key] == baseline["drawn"][key], (
                     shot,
                     "changed scientific drawing record",
@@ -280,15 +289,48 @@ def main():
                 "peak triangles touch box",
             )
         assert geometry["ae_in_panel_label"] is None
-        if shot == 201978:
+        anchor = record["annotations"]["shot"].get("ae_label")
+        if anchor:
             label = geometry["ae_margin_label"]
-            assert label["leader_anchor_ms_khz"] == [2775, 180]
+            assert label["leader_anchor_ms_khz"] == [
+                anchor["time_ms"],
+                anchor["frequency_khz"],
+            ]
             assert label["bounds"][0] > panels["pr_hi"]["bounds"][2]
+            # The anchor sits on an early cascade line, before the late
+            # detector-negative lines that the leader should not point at.
+            spans = record["tracks"][mt.AE]["present_spans_ms"]
+            assert any(a <= anchor["time_ms"] < b for a, b in spans)
+            late_start = (drawn["late_untagged_high_frequency"] or {}).get(
+                "first_time_ms"
+            )
+            assert late_start is None or anchor["time_ms"] < late_start - 500
         n_key = geometry["n_key_bounds"]
         if n_key is not None:
             panel = panels["pr_lo"]["bounds"]
             assert n_key[0] > panel[2]
             assert panel[1] <= n_key[1] < n_key[3] <= panel[3]
+        sources_text = {t["track"]: t for t in geometry["track_source_text_bounds"]}
+        panel_right = panels["pr_hi"]["bounds"][2]
+        for t in sources_text.values():
+            x0, y0, x1, y1 = t["bounds"]
+            assert panel_right < x0 < x1 <= 1 and 0 <= y0 < y1 <= 1, t["text"]
+        ordered = sorted(sources_text.values(), key=lambda t: t["bounds"][1])
+        for lower, upper in pairwise(ordered):
+            assert lower["bounds"][3] <= upper["bounds"][1] + 1e-6, (
+                shot,
+                lower["text"],
+                upper["text"],
+            )
+        ntm_source = record["tracks"][mt.NTM]
+        if ntm_source["tier"] == lf.GENERATED:
+            assert sources_text[mt.NTM]["text"] == "detector (suggestions)"
+        saw_row = sources_text[mt.SAWTOOTH]["text"].replace("\n", " ")
+        if saw["tier"] == lf.GENERATED:
+            expected = fs.sawtooth_row_source(
+                saw["display_intervals_ms"], saw["density_guard"]
+            )
+            assert saw_row == expected.replace("\n", " ")
         assert geometry["scale_note"].replace("-\n", "-").replace("\n", " ") == (
             "0–55 kHz: higher-resolution spectrogram; 0–30 stretched, 30–55 compressed"
         )
@@ -355,7 +397,7 @@ def main():
         # Count prose, excluding TeX wrapper and standalone math delimiters.
         prose = caption.split("\\label")[0].removeprefix("\\caption{").rstrip("}\n")
         words = len(prose.replace(r"$\geq$", "≥").replace("$", "").split())
-        assert words <= 95
+        assert words <= fs.CAPTION_MAX_WORDS
         assert not any(
             s in caption
             for s in (
@@ -365,53 +407,93 @@ def main():
                 "MPI66M",
                 "PRESENT",
                 "cand.",
-                "n=1/2",
                 "second harmonic",
                 "ECE-verified",
+                "below bar",
+                "circularity",
+                "four-state",
+                "first ELM",
             )
         )
         assert "no present time" not in caption.lower()
-        assert (
-            "raw signals" in caption
-            and "TokEye-processed modes" in caption
-            and "event labels" in caption
-        )
-        assert "raw bands normalised separately" in caption
-        assert "Toroidal mode number $n$: Mirnov array" in caption
+        assert caption.startswith(f"\\caption{{DIII-D shot {shot}. Top: raw Mirnov ")
+        assert "bands normalised separately), D-alpha, NBI power." in caption
+        assert "Middle: TokEye coherent-mode mask after small-object removal" in caption
+        assert "toroidal mode number $n$ (Mirnov array)" in caption
+        assert "Bottom: label tracks with sources." in caption
         assert "row omitted" not in caption and "shared inputs" not in caption
         assert "Circles:" not in caption and "Triangles:" not in caption
         appendix_file = args.records / f"{shot}.appendix.txt"
         appendix = appendix_file.read_text()
         assert appendix.strip() == fs.appendix_notes(shot, record["tracks"], drawn)
         assert fs.sawtooth_caption(saw) in appendix
-        ae_threshold = record["tracks"][mt.AE]["decision_threshold"] or AE_THRESHOLD
-        assert f"TokEye 0.2; AE {ae_threshold:g}; NTM 0.63" in appendix
+        thresholds = ["TokEye 0.2"]
+        for key, name in ((mt.AE, "AE"), (mt.NTM, "NTM")):
+            if record["tracks"][key]["tier"] == lf.GENERATED:
+                value = record["tracks"][key]["decision_threshold"]
+                thresholds.append(f"{name} {(value or AE_THRESHOLD):g}")
+        assert ("Operating probability thresholds: " + "; ".join(thresholds)) in (
+            appendix
+        )
+        # Detector-only thresholds: an imported NTM table has none to list.
+        assert ("NTM 0.63" in appendix) == (
+            record["tracks"][mt.NTM]["tier"] == lf.GENERATED
+        )
+        ae_ours = record["tracks"][mt.AE]["what"].startswith("ae-ours")
+        assert ("AE targets used TokEye's mask" in appendix) == ae_ours
+        assert ("matches the ae-ours input band" in appendix) == ae_ours
+        if not ae_ours:
+            assert "trained on the owner's reviewed AE labels" in appendix
+        assert "persistent-row step" in appendix
+        assert "not an identified pickup line" in appendix
+        with np.load(record["tokeye"]["cache"]) as cache:
+            for name in ("wide", "zoom"):
+                share = np.asarray(cache[f"{name}_row_lit"])
+                assert drawn["persistent_line_rows"][name] == int(
+                    (share > mt.PERSISTENT_ROW_SHARE).sum()
+                )
+        display = drawn["ntm_outline_display"]
+        assert display["min_px"] == renderer.NTM_OUTLINE_MIN_PX
+        omitted = [
+            size
+            for band in display["bands"].values()
+            for size in band.get("omitted_sizes_px", [])
+        ]
+        assert display["omitted_fragments"] == len(omitted)
+        assert all(size < display["min_px"] for size in omitted)
+        assert (
+            f"fewer than {display['min_px']} print pixels are not drawn" in appendix
+        ) == (record["tracks"][mt.NTM] is not None)
         assert "shorter than 10 ms, with no state smoothing" in appendix
         assert "magnetics-only" not in appendix
         assert "Bt unavailable" not in appendix
         if shown:
             assert "ECE-supported crash candidates" in appendix
         if drawn["first_large_peak_before_expert_ms"] is not None:
-            assert "precedes the expert ELM interval" in appendix
+            assert "precedes the expert span" in appendix
         if drawn["elm_hmode_conflicts_ms"]:
             assert "sources disagree" in appendix
         ntm = record["tracks"][mt.NTM]
         if ntm["tier"] == lf.GENERATED and tags[mt.NTM]:
-            qualification = fs.ntm_description(ntm).partition(" (")[2].rstrip(")")
-            assert qualification in caption
+            assert fs.ntm_qualification(ntm) in caption
+            assert "held-out F1" in caption
             evaluation = json.loads(Path(ntm["performance"]["evaluation"]).read_text())
             assert ntm["performance"]["f1"] == evaluation["scores"]["ntm_frames"]["f1"]
         if shot == 201978:
             assert "CO2 neural detector" in appendix
             assert (
-                "AE tags inherit the CO2 detector's 25 ms timing: the same lines "
-                "stay untagged after 2.8 s, where it is negative" in caption
+                "Pink: mask pixels $\\geq$80 kHz while the CO2 AE detector is "
+                "positive (25 ms bins)." in caption
             )
-            assert "first ELM (2297 ms) precedes the expert span" in caption
-            assert "55–80 kHz stays white" in caption
-            assert "time coincidence only (including 3–5 kHz fragments)" in caption
-            assert "AE targets used TokEye's mask (circularity)" in caption
-            assert "four-state notation only" in caption
+            assert "(held-out F1 0.46, below our 0.7 bar) is positive." in caption
+            assert (
+                "Highlights mark time/band coincidence only; $n=2$ and $n=3$ "
+                "ridges are consistent with harmonics of the $n=1$ mode." in caption
+            )
+            assert "The largest D-alpha spike (2297 ms) precedes the expert span" in (
+                appendix
+            )
+            assert "No sawtooth is labelled present in this window" in appendix
             assert "detector F1" not in " ".join(legend)
             for key in (mt.AE, mt.NTM):
                 training = record["detector_training"][key]

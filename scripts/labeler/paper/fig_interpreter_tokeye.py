@@ -117,6 +117,8 @@ REGIME_GREYS = {1: "#3c3c3c", 2: "#929292", 3: "#6e6e6e", 4: "#8a8a8a", 5: "#d0d
 ABSENT_GREY = "#e4e4e4"
 NTM_CONTOUR_COLOUR = EVENT_COLOURS[mode_tags.NTM]
 NTM_CONTOUR_LW = 0.9
+#: Outlines enclosing fewer print pixels (150 dpi) than this are not drawn.
+NTM_OUTLINE_MIN_PX = 100
 HEADINGS = {
     "h_raw": ("Raw signals",),
     "h_proc": (
@@ -460,8 +462,13 @@ def event_clip(ax, spans, event):
     return PlotPath.make_compound_path(*rects) if rects else PlotPath(np.empty((0, 2)))
 
 
-def project(ax, band, mask, event, spans, edge=False):
-    """Opaque event tint or a solid outer contour around pooled support."""
+def project(ax, band, mask, event, spans, edge=False, record=None):
+    """Opaque event tint or a solid outer contour around pooled support.
+
+    A contour is drawn only around regions of at least `NTM_OUTLINE_MIN_PX`
+    print pixels (display only: tags, counts and the tag arrays are unchanged);
+    `record` receives the rule and how many regions it left unoutlined.
+    """
     if not mask.any():
         return mask
     if edge:
@@ -477,6 +484,18 @@ def project(ax, band, mask, event, spans, edge=False):
         ci = np.linspace(0, mask.shape[1], nt, endpoint=False).astype(int)
         display = np.maximum.reduceat(np.maximum.reduceat(mask, ri, axis=0), ci, axis=1)
         display = ndimage.binary_fill_holes(display)
+        regions, count = ndimage.label(display, structure=np.ones((3, 3)))
+        sizes = np.bincount(regions.ravel(), minlength=count + 1)
+        small = np.flatnonzero(sizes < NTM_OUTLINE_MIN_PX)
+        small = small[small > 0]
+        if record is not None:
+            record.update(
+                min_px=NTM_OUTLINE_MIN_PX,
+                regions=int(count),
+                omitted_fragments=int(small.size),
+                omitted_sizes_px=sorted(int(sizes[i]) for i in small),
+            )
+        display &= ~np.isin(regions, small)
         x0, x1, y0, y1 = band.extent()
         # Pad with zero so contours also close at the view's edges.
         x = x0 + (np.arange(-1, nt + 1) + 0.5) * (x1 - x0) / nt
@@ -494,7 +513,10 @@ def project(ax, band, mask, event, spans, edge=False):
         artist.set_clip_path(event_clip(ax, spans, event), ax.transData)
         # Audit the measured support of the outlined region; a contour stroke
         # borders that region and does not assign n to its surrounding pixels.
-        return mask & ~ndimage.binary_erosion(mask)
+        keep = display[
+            (np.searchsorted(ri, np.arange(mask.shape[0]), side="right") - 1).clip(0)
+        ][:, (np.searchsorted(ci, np.arange(mask.shape[1]), side="right") - 1).clip(0)]
+        return mask & ~ndimage.binary_erosion(mask) & keep
     shown = mask
     rgba = np.zeros((*shown.shape, 4), np.float32)
     rgba[..., :3] = to_rgb(EVENT_COLOURS[event])
@@ -880,6 +902,9 @@ def draw(
     if saw is not None:
         by_key[mode_tags.SAWTOOTH] = saw
     show_sawtooth = saw is not None
+    saw_guard = None
+    if saw is not None and saw.file and Path(saw.file).suffix == ".json":
+        saw_guard = json.loads(Path(saw.file).read_text()).get("density_guard")
     display_saw, saw_changes = (
         figure_sources.sawtooth_display(saw, (t0, t1))
         if saw is not None
@@ -908,6 +933,14 @@ def draw(
         low.lit & mode_tags.present_columns(low.t, spans[mode_tags.NTM])[None, :],
         low.t,
         low.f,
+    )
+
+    harmonic3 = figure_sources.harmonic_support(
+        low.n_map[low.rows] if low.n_map is not None else None,
+        low.lit & mode_tags.present_columns(low.t, spans[mode_tags.NTM])[None, :],
+        low.t,
+        low.f,
+        order=3,
     )
 
     # the n map, gated by the same filtered mask on the zoom pass
@@ -1006,6 +1039,7 @@ def draw(
             keys = [f"n={names[i]}" for i in draw_n_view(ax["pr_lo"], n_read)]
         n_handles = n_key(n_read) if n_read is not None else []
         rendered_ntm = {}
+        ntm_outline_regions = {}
         for panel, band in (("pr_hi", high), ("pr_lo", low)):
             project(
                 ax[panel],
@@ -1021,6 +1055,7 @@ def draw(
                 mode_tags.NTM,
                 spans[mode_tags.NTM],
                 edge=True,
+                record=ntm_outline_regions.setdefault(band.name, {}),
             )
         ae_annotation = (annotations or {}).get("ae_label")
         strip = ax["crashes"]
@@ -1198,6 +1233,7 @@ def draw(
                 clear_of(text, [elm_chip])
 
         # ---- label tracks
+        track_source_texts = []
         titles = {
             mode_tags.AE: "AE", mode_tags.NTM: "NTM", mode_tags.SAWTOOTH: "sawtooth",
             elm_key: "ELMs", "confinement": by_key["confinement"].spec.title,
@@ -1209,15 +1245,24 @@ def draw(
             a.set_ylabel(titles[key], rotation=0, ha="right", va="center", labelpad=3)
             tier = "" if track.source is None else TIER_NAMES[track.source.tier]
             if key == mode_tags.NTM and tier == "detector":
-                tier = "candidate suggestions"
+                tier = "detector (suggestions)"
             if (
                 key == mode_tags.SAWTOOTH
                 and track.source is not None
                 and track.source.what.startswith("physics")
             ):
-                tier = "physics labels"
-            a.text(1.008, 0.5, tier, transform=a.transAxes, fontsize=FONT,
-                   va="center", ha="left", color="#444444")  # fmt: skip
+                tier = figure_sources.sawtooth_row_source(
+                    figure_sources.state_intervals(track, (t0, t1)), saw_guard
+                )
+            # Extra lines hang below the row; the first stays on its centre.
+            line_px = FONT * DPI_PNG / 72
+            row_px = a.get_position().height * HEIGHT_IN * DPI_PNG
+            source_text = a.text(
+                1.008, 0.5 + 0.5 * line_px / row_px * (tier.count("\n") > 0),
+                tier, transform=a.transAxes, fontsize=FONT, linespacing=1.0,
+                va="top" if "\n" in tier else "center", ha="left", color="#444444",
+            )  # fmt: skip
+            track_source_texts.append((key, source_text))
         track_axes[-1].tick_params(labelbottom=True, bottom=True)
         track_axes[-1].spines["bottom"].set_visible(True)
         track_axes[-1].set_xlabel("time (ms)", labelpad=1)
@@ -1323,6 +1368,18 @@ def draw(
                     ],
                 }
                 for text, a, b in regime_texts
+            ],
+            "track_source_text_bounds": [
+                {
+                    "track": key,
+                    "text": text.get_text(),
+                    "bounds": list(
+                        text.get_window_extent()
+                        .transformed(fig.transFigure.inverted())
+                        .extents
+                    ),
+                }
+                for key, text in track_source_texts
             ],
             "ntm_key_black_swatch": bool(projected["zoom"][mode_tags.NTM].any()),
             "n_key_bounds": None
@@ -1473,6 +1530,25 @@ def draw(
         "n2_harmonic_consistent": harmonic["support_ms"]
         >= harmonic["minimum_support_ms"],
         "harmonic_support": harmonic,
+        "harmonic3_support": harmonic3,
+        "persistent_line_rows": {
+            name: int(
+                (
+                    np.asarray(z[f"{name}_row_lit"]) > mode_tags.PERSISTENT_ROW_SHARE
+                ).sum()
+            )
+            for name in ("wide", "zoom")
+        },
+        "ntm_outline_display": {
+            "rule": "display only: an outlined region needs at least min_px "
+            "print pixels (150 dpi, after max pooling and hole filling); "
+            "smaller regions are left unoutlined; tags and counts unchanged",
+            "min_px": NTM_OUTLINE_MIN_PX,
+            "omitted_fragments": sum(
+                r.get("omitted_fragments", 0) for r in ntm_outline_regions.values()
+            ),
+            "bands": ntm_outline_regions,
+        },
         "n3_components_unoutlined": sum(b.dominant_n == 3 for b in blobs_low),
         "n3_outline_rule": "both dominant n and outlined support must be n=1 or 2",
         "n_map": None
@@ -1667,7 +1743,7 @@ def track_record(track: lf.Track, window=None) -> dict | None:
 def draft_caption(shot: int, records, drawn) -> str:
     text = figure_sources.caption(shot, records, drawn)
     text = re.sub(r"\bn=([0-9/]+)", r"$n=\1$", text)
-    text = text.replace("mode number n:", "mode number $n$:")
+    text = text.replace("mode number n ", "mode number $n$ ")
     text = text.replace("≥", r"$\geq$").replace("≤", r"$\leq$")
     text = text.replace("→", r"$\rightarrow$")
     text = text.replace("<60", "$<60$")
@@ -1874,8 +1950,10 @@ def main(argv=None) -> int:
             "ae_highlight_rule": "pixel tint only; no component bounding boxes",
             "outline_display_rule": "max pool measured n=1 or 2 support at "
             "150-dpi axes resolution; fill holes; solid orange #E69F00 outer "
-            "contour, 0.9 pt; clip to raw time/band spans; "
-            "pixel audit covers outlined region support, not contour stroke",
+            "contour, 0.9 pt; clip to raw time/band spans; display only: regions "
+            f"under {NTM_OUTLINE_MIN_PX} print pixels are not outlined, tags "
+            "unchanged; pixel audit covers outlined region support, not contour "
+            "stroke",
             "projection_audit_rule": "enumerate projected coordinates against "
             "raw, end-exclusive intervals; independent of present_columns",
             "n_palette": N_COLOURS,

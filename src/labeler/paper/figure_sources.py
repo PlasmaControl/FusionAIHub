@@ -31,6 +31,8 @@ SAWTOOTH_THRESHOLD = 0.6
 ELM_VETO_MS = 5.0
 ECE_MATCH_MS = 3.0
 SAWTOOTH_DISPLAY_MIN_MS = 0.0
+HARMONIC_MIN_SUPPORT_MS = 50.0
+CAPTION_MAX_WORDS = 120
 
 
 def tokeye_fingerprints(paths, shot, group, row, inference_code) -> dict:
@@ -464,16 +466,18 @@ def projection_audit(mask, times, frequencies, raw_spans, band):
     }
 
 
-def harmonic_support(n_map, mask, times, frequencies):
-    """Coincident measured n=1/n=2 ridges at a 2:1 frequency ratio.
+def harmonic_support(n_map, mask, times, frequencies, order=2):
+    """Coincident measured n=1 and n=`order` ridges at an `order`:1 frequency ratio.
 
     This is a plotted-frequency inference, not independent island confirmation.
-    Require |f2/f1 - 2| <= 0.1 and at least 50 ms of sampled support.
+    Require |f_n/f_1 - order| <= 0.05 * order and at least 50 ms of sampled
+    support (the 2:1 tolerance is the 0.1 recorded since the first version).
     """
     t, f = np.asarray(times), np.asarray(frequencies)
+    tolerance = 0.05 * order
     result = {
-        "frequency_ratio_tolerance": 0.1,
-        "minimum_support_ms": 50.0,
+        "frequency_ratio_tolerance": tolerance,
+        "minimum_support_ms": HARMONIC_MIN_SUPPORT_MS,
         "caption_frequency_step_khz": 1.0,
         "ridge_rule": "per-column pixel-weighted frequency of each measured n",
         "support_ms": 0.0,
@@ -485,16 +489,16 @@ def harmonic_support(n_map, mask, times, frequencies):
     if n_map is None:
         return result
     means, counts = [], []
-    for mode in (1, 2):
+    for mode in (1, order):
         measured = mask & (np.asarray(n_map) == mode)
         count = measured.sum(axis=0)
         counts.append(count)
         means.append((measured * f[:, None]).sum(axis=0) / np.maximum(count, 1))
-    f1, f2 = means
+    f1, fn = means
     common = (counts[0] > 0) & (counts[1] > 0) & (f1 > 0)
-    ratio = np.divide(f2, f1, out=np.zeros_like(f1), where=common)
+    ratio = np.divide(fn, f1, out=np.zeros_like(f1), where=common)
     result["joint_columns"] = int(common.sum())
-    common &= np.abs(ratio - 2) <= 0.1
+    common &= np.abs(ratio - order) <= tolerance
     dt = float(np.median(np.diff(t))) if len(t) > 1 else 0
     result["support_ms"] = float(common.sum() * dt)
     result["joint_support_ms"] = result["joint_columns"] * dt
@@ -502,10 +506,8 @@ def harmonic_support(n_map, mask, times, frequencies):
     if result["joint_columns"]:
         result["passing_fraction"] = result["passing_columns"] / result["joint_columns"]
     if common.any():
-        result.update(
-            n1_median_khz=float(np.median(f1[common])),
-            n2_median_khz=float(np.median(f2[common])),
-        )
+        result["n1_median_khz"] = float(np.median(f1[common]))
+        result[f"n{order}_median_khz"] = float(np.median(fn[common]))
     return result
 
 
@@ -546,16 +548,48 @@ def raster_ae_audit(rgb, bounds, window, frequencies, spans) -> dict:
     }
 
 
-def ntm_description(record: dict) -> str:
-    """Qualify detector suggestions using their recorded evaluation and bar."""
-    text = "NTM candidate suggestions"
-    qualifiers = []
-    score = (record.get("performance") or {}).get("f1")
+def _f1_bar(performance: dict) -> float | None:
+    """The F1 level of the detector's acceptance bar, from its evaluation."""
+    for name, relation, value in (performance.get("bar_criteria") or {}).get("N1", []):
+        if name == "f1" and relation == ">=":
+            return float(value)
+    return None
+
+
+def ntm_qualification(record: dict, shots: bool = False) -> str:
+    """The detector's held-out score against its bar, for a caption.
+
+    The score is the detector's own held-out test shots' (its evaluation.json),
+    not the cohort's blind split and not its validation shots.
+    """
+    performance = record.get("performance") or {}
+    parts = []
+    score = performance.get("f1")
     if score is not None:
-        qualifiers.append(f"detector F1 {score:.2f}")
-    if (record.get("primary_bars") or {}).get("N1") is False:
-        qualifiers.append("below bar")
-    return text + (f" ({', '.join(qualifiers)})" if qualifiers else "")
+        text = f"held-out F1 {score:.2f}"
+        if shots and performance.get("shots"):
+            text += f" on {performance['shots']} shots"
+        parts.append(text)
+    met = (record.get("primary_bars") or {}).get("N1")
+    if met is not None:
+        bar = _f1_bar(performance)
+        target = f"our {bar:g} bar" if bar else "its bar"
+        parts.append(("meets " if met else "below ") + target)
+    return ", ".join(parts)
+
+
+def ntm_description(record: dict) -> str:
+    """The NTM track's source text: detector suggestions and their score."""
+    detail = ntm_qualification(record, shots=True)
+    return "detector (suggestions" + (f"; {detail})" if detail else ")")
+
+
+def sawtooth_row_source(rows: list[dict], guard: dict | None) -> str:
+    """The physics sawtooth row's source text; blank time is named, not left silent."""
+    unassessed = any(r["state"] == "unassessed" for r in rows)
+    if unassessed and (guard or {}).get("cutoff_proxy"):
+        return "physics labels\nblank: not assessable\n(ECE cut-off)"
+    return "physics labels"
 
 
 def sawtooth_caption(record: dict) -> str:
@@ -588,57 +622,129 @@ def sawtooth_caption(record: dict) -> str:
     return f"Sawtooth: {summary} ({source})."
 
 
+def _has_present(record: dict | None) -> bool:
+    rows = (record or {}).get("state_intervals_ms", [])
+    return any(r["state"] == "present" for r in rows)
+
+
+def harmonic_clause(drawn: dict) -> str:
+    """Name the ridges whose recorded support puts them at multiples of n=1."""
+    ridges = []
+    for n, key in ((2, "harmonic_support"), (3, "harmonic3_support")):
+        support = drawn.get(key) or {}
+        floor = support.get("minimum_support_ms", HARMONIC_MIN_SUPPORT_MS)
+        if support.get("support_ms", 0) >= floor:
+            ridges.append(n)
+    if ridges == [2, 3]:
+        return "n=2 and n=3 ridges are consistent with harmonics of the n=1 mode"
+    if ridges:
+        return f"the n={ridges[0]} ridge is consistent with a harmonic of the n=1 mode"
+    return ""
+
+
 def caption(shot: int, records: dict, drawn: dict) -> str:
-    """Explain visible timing and colour choices; full sources are in the appendix."""
+    """Describe what is drawn; sources, thresholds and caveats are in the appendix.
+
+    Shot-specific qualifications are not coded here: they arrive in `drawn` from
+    the recorded annotations and measurements (conflicts, review caveats,
+    harmonic support).
+    """
     tagged = drawn.get("blobs", {}).get("tagged")
     ae = tagged is None or bool(tagged.get(mt.AE))
     ntm = tagged is None or bool(tagged.get(mt.NTM))
-    sentences = [
-        (
-            f"DIII-D shot {shot}: raw signals → TokEye-processed modes → event labels; "
-            "raw bands normalised separately."
-        ),
-        "Toroidal mode number n: Mirnov array.",
-    ]
     ae_record = records.get(mt.AE) or {}
+    ntm_record = records.get(mt.NTM) or {}
+    sentences = [
+        f"DIII-D shot {shot}.",
+        (
+            "Top: raw Mirnov spectrogram (axis split at 30 and 55 kHz; bands "
+            "normalised separately), D-alpha, NBI power."
+        ),
+        (
+            "Middle: TokEye coherent-mode mask after small-object removal; below "
+            "30 kHz coloured by toroidal mode number n (Mirnov array)."
+        ),
+    ]
     if ae:
         if ae_record.get("tier") == lf.GENERATED:
             bin_ms = ae_record.get("temporal_bin_ms") or 25
-            timing = f"Pink AE tags inherit the CO2 detector's {bin_ms:g} ms timing"
-            late = drawn.get("late_untagged_high_frequency")
-            if shot == 201978 and late and late.get("first_time_ms") is not None:
-                timing += (
-                    ": the same lines stay untagged after "
-                    f"{round(late['first_time_ms'] / 1000, 2):g} s, "
-                    "where it is negative"
-                )
-            sentences.append(timing + ".")
+            sentences.append(
+                "Pink: mask pixels ≥80 kHz while the CO2 AE detector is "
+                f"positive ({bin_ms:g} ms bins)."
+            )
         else:
-            sentences.append("Pink AE: time/band coincidence with source labels.")
-        sentences.append("AE floor: 80 kHz input band; 55–80 kHz stays white.")
-    if shot == 201978 and drawn.get("first_large_peak_before_expert_ms") is not None:
-        peak = int(np.floor(drawn["largest_dalpha_peak_ms"] + 0.5))
-        sentences.append(f"The first ELM ({peak} ms) precedes the expert span.")
+            sentences.append("Pink: mask pixels ≥80 kHz inside labelled AE time.")
     if ntm:
-        text = "Orange NTM outlines: time coincidence only"
-        if shot == 201978:
-            text += " (including 3–5 kHz fragments)"
-        record = records.get(mt.NTM) or {}
-        if record.get("tier") == lf.GENERATED:
-            qualification = ntm_description(record).partition(" (")[2].rstrip(")")
+        if ntm_record.get("tier") == lf.GENERATED:
+            detector = "the NTM detector"
+            qualification = ntm_qualification(ntm_record)
             if qualification:
-                text += f"; {qualification}"
-        sentences.append(text + ".")
-    if ae and ae_record.get("tier") == lf.GENERATED:
-        sentences.append("AE targets used TokEye's mask (circularity).")
-    saw = records.get(mt.SAWTOOTH)
-    if saw is not None and not any(
-        r["state"] == "present" for r in saw.get("state_intervals_ms", [])
-    ):
-        sentences.append("Sawtooth: four-state notation only in this window.")
+                detector += f" ({qualification})"
+            sentences.append(
+                f"Orange outlines: n=1/2 pixels while {detector} is positive."
+            )
+        else:
+            sentences.append("Orange outlines: n=1/2 pixels inside labelled NTM time.")
+    if ae or ntm:
+        text = "Highlights mark time/band coincidence only"
+        clause = harmonic_clause(drawn) if ntm else ""
+        sentences.append(text + (f"; {clause}." if clause else "."))
+    sentences.append("Bottom: label tracks with sources.")
+    if drawn.get("elm_hmode_conflicts_ms"):
+        sentences.append(
+            "Expert ELM intervals and the H-mode detector disagree in parts of "
+            "this window."
+        )
+    if drawn.get("ae_physical_review_caveat"):
+        sentences.append(drawn["ae_physical_review_caveat"])
     text = " ".join(sentences)
-    if len(text.split()) > 95:
-        raise ValueError(f"caption exceeds 95 words: {len(text.split())}")
+    if len(text.split()) > CAPTION_MAX_WORDS:
+        raise ValueError(
+            f"caption exceeds {CAPTION_MAX_WORDS} words: {len(text.split())}"
+        )
+    return text
+
+
+def _source_name(key: str, record: dict) -> str:
+    tier = record.get("tier")
+    if tier == lf.SILVER:
+        return "expert"
+    if tier == lf.LEGACY:
+        return "imported labels"
+    if key == mt.SAWTOOTH and record.get("what", "").startswith("physics"):
+        return "physics labels"
+    if key == mt.NTM:
+        return ntm_description(record)
+    if key == mt.AE:
+        if record.get("what", "").startswith("ae-ours"):
+            return "CO2 neural detector"
+        return "CO2 frame detector"
+    if key == "confinement":
+        return "D-alpha detector"
+    return "detector"
+
+
+def _chain_note(drawn: dict) -> str:
+    """The mask chain's steps, with the persistent-row step and what it did."""
+    share = round(mt.PERSISTENT_ROW_SHARE * 100)
+    text = (
+        f"The mask chain is: TokEye coherent mask at ≥{mt.PROB_THRESHOLD:g} and not "
+        f"transient; persistent-row step (a row lit for over {share} % of the record "
+        "is a persistent-line candidate, not an identified pickup line, and is "
+        "kept only where the rows above and below are both lit); removal of objects "
+        f"under {mt.MIN_SIZE['wide']} (wide pass) or {mt.MIN_SIZE['zoom']} (zoom "
+        f"pass) pixels; filling of holes under {mt.HOLE_AREA} pixels; components; "
+        "time/band tags."
+    )
+    rows = drawn.get("persistent_line_rows")
+    if rows is not None:
+        if not any(rows.values()):
+            text += " No row reached the persistent share in this shot's record."
+        else:
+            text += (
+                f" {rows['wide']} wide-pass and {rows['zoom']} zoom-pass rows "
+                "reached the persistent share in this shot's record."
+            )
     return text
 
 
@@ -651,6 +757,7 @@ def appendix_notes(shot: int, records: dict, drawn: dict) -> str:
             "The 0–30 kHz range is vertically expanded; 30–55 kHz is compressed. "
             "Both use the higher-resolution spectrogram."
         ),
+        _chain_note(drawn),
     ]
     sources = []
     for key, name in (
@@ -663,58 +770,54 @@ def appendix_notes(shot: int, records: dict, drawn: dict) -> str:
         record = records.get(key)
         if record is None:
             continue
-        tier = record.get("tier")
-        if tier == lf.SILVER:
-            source = "expert"
-        elif tier == lf.LEGACY:
-            source = "imported labels"
-        elif key == mt.SAWTOOTH and record.get("what", "").startswith("physics"):
-            source = "physics labels"
-        elif key == mt.NTM:
-            source = ntm_description(record).removeprefix("NTM ")
-        elif key == mt.AE:
-            source = (
-                "CO2 neural detector"
-                if record.get("what", "").startswith("ae-ours")
-                else "CO2 frame detector"
-            )
-        elif key == "confinement":
-            source = "D-alpha detector"
-        else:
-            source = "detector"
         if key == "confinement":
             name = record.get("title", name).capitalize()
-        sources.append(f"{name}: {source}")
+        sources.append(f"{name}: {_source_name(key, record)}")
     if sources:
         notes.append("Tracks: " + "; ".join(sources) + ".")
-    notes.append(
-        "Operating probability thresholds (for detector sources): "
-        f"TokEye {mt.PROB_THRESHOLD:g}; "
-        f"AE {(records.get(mt.AE) or {}).get('decision_threshold') or AE_THRESHOLD:g}; "
-        f"NTM {(records.get(mt.NTM) or {}).get('decision_threshold') or NTM_THRESHOLD:g}."
-    )
     ae = records.get(mt.AE) or {}
-    if ae.get("tier") == lf.GENERATED:
-        bin_ms = ae.get(
-            "temporal_bin_ms", 25 if ae.get("what", "").startswith("ae-ours") else None
-        )
+    ntm = records.get(mt.NTM) or {}
+    ae_detector = ae.get("tier") == lf.GENERATED
+    ae_ours = ae.get("what", "").startswith("ae-ours")
+    thresholds = [f"TokEye {mt.PROB_THRESHOLD:g}"]
+    if ae_detector:
+        thresholds.append(f"AE {ae.get('decision_threshold') or AE_THRESHOLD:g}")
+    if ntm.get("tier") == lf.GENERATED:
+        thresholds.append(f"NTM {ntm.get('decision_threshold') or NTM_THRESHOLD:g}")
+    notes.append("Operating probability thresholds: " + "; ".join(thresholds) + ".")
+    if ae_detector:
+        bin_ms = ae.get("temporal_bin_ms", 25 if ae_ours else None)
         text = (
             "AE highlights intersect detector-positive time and detector band ≥80 kHz"
         )
         if bin_ms is not None:
             text += f" in {bin_ms:g} ms bins"
         notes.append(text + ".")
+        if ae_ours:
+            notes.append(
+                "The 80 kHz AE floor matches the ae-ours input band (80–250 kHz); "
+                "55–80 kHz cascade lines stay white even during detector-positive "
+                "time."
+            )
+            notes.append(
+                "AE targets used TokEye's mask; highlights are not independent "
+                "physical confirmation."
+            )
+        else:
+            notes.append(
+                "The 80 kHz AE floor matches the frame detector's input band "
+                "(80–250 kHz); 55–80 kHz cascade lines stay white even during "
+                "detector-positive time."
+            )
+            notes.append(
+                "The frame detector was trained on the owner's reviewed AE labels; "
+                "TokEye's mask only up-weights its MHD-absent frames. Highlights "
+                "mark coincidence, not independent physical confirmation."
+            )
+    if ntm.get("tier") == lf.GENERATED:
         notes.append(
-            "The 80 kHz AE floor matches the ae-ours input band (80–250 kHz); "
-            "55–80 kHz cascade lines stay white even during detector-positive time."
-        )
-        notes.append(
-            "AE targets used TokEye's mask; highlights are not independent "
-            "physical confirmation."
-        )
-    if records.get(mt.NTM, {}).get("tier") == lf.GENERATED:
-        notes.append(
-            ntm_description(records[mt.NTM])
+            "NTM detector: "
+            + ntm_qualification(ntm)
             + "; shared magnetic inputs, not independent confirmation."
         )
     if records.get(mt.NTM) is not None:
@@ -722,23 +825,48 @@ def appendix_notes(shot: int, records: dict, drawn: dict) -> str:
             "NTM outlines require measured and dominant n=1 or 2 at ≤30 kHz. "
             "They mark time coincidence only; they do not establish a 2/1 island."
         )
-        if shot == 201978:
-            notes.append("These outlines also include small 3–5 kHz fragments.")
+        display = drawn.get("ntm_outline_display")
+        if display:
+            notes.append(
+                f"Display only: outlines enclosing fewer than {display['min_px']} "
+                "print pixels are not drawn "
+                f"({display['omitted_fragments']} fragments omitted here); "
+                "tags, counts and audits are unchanged."
+            )
+        support = drawn.get("harmonic_support") or {}
+        if support.get("support_ms", 0) >= support.get("minimum_support_ms", 50):
+            text = (
+                f"The n=2 ridge sits near twice the n=1 frequency (n=1 "
+                f"{support['n1_median_khz']:.1f} kHz, n=2 "
+                f"{support['n2_median_khz']:.1f} kHz, {support['support_ms']:.0f} ms "
+                "of joint support)"
+            )
+            third = drawn.get("harmonic3_support") or {}
+            if third.get("support_ms", 0) >= third.get("minimum_support_ms", 50):
+                text += (
+                    f"; the n=3 ridge sits near three times it "
+                    f"({third['n3_median_khz']:.1f} kHz, "
+                    f"{third['support_ms']:.0f} ms)"
+                )
+            notes.append(
+                text + ". These are consistent with harmonics of the n=1 mode, "
+                "not separate islands."
+            )
     if drawn.get("lmode_inferred"):
         notes.append(
             "L-mode (inferred) uses pre-transition H-mode-detector absent shading."
         )
     if records.get(mt.SAWTOOTH) is not None:
-        notes.append(sawtooth_caption(records[mt.SAWTOOTH]))
+        saw = records[mt.SAWTOOTH]
+        notes.append(sawtooth_caption(saw))
         notes.append(
             "The sawtooth row preserves all source intervals, including those "
             "shorter than 10 ms, with no state smoothing. Hatching marks "
             "uncertainty; blank marks unassessed time."
         )
-        if shot == 201978:
+        if saw.get("what", "").startswith("physics") and not _has_present(saw):
             notes.append(
-                "Here the sawtooth row shows only the four-state notation, "
-                "with no present sawtooth events in this window; these physics "
+                "No sawtooth is labelled present in this window; these physics "
                 "labels remain unvalidated."
             )
     late = drawn.get("late_untagged_high_frequency")
@@ -765,7 +893,7 @@ def appendix_notes(shot: int, records: dict, drawn: dict) -> str:
         start = drawn["expert_elm_start_ms"]
         notes.append(
             f"The largest D-alpha spike ({int(np.floor(peak + 0.5))} ms) precedes "
-            f"the expert ELM interval (from {start:.0f} ms)."
+            f"the expert span (from {start:.0f} ms)."
         )
     if drawn.get("elm_hmode_conflicts_ms"):
         notes.append(
