@@ -197,8 +197,15 @@ def refine_records(args):
                     "reason_samples_before_phase_refinement",
                     dict(diagnostics["reason_samples"]),
                 )
-                diagnostics["reason_samples"]["tested_absence"] = None
-            diagnostics["reason_samples"]["core_relaxation_phase"] = None
+                diagnostics["reason_samples"]["tested_absence"] = round(
+                    sum(hi - lo for lo, hi in new_absence) * 10000
+                )
+            diagnostics["reason_samples"]["core_relaxation_phase"] = round(
+                sum(p["end_s"] - p["start_s"] for p in phases) * 10000
+            )
+            diagnostics["reason_samples_resolution"] = (
+                "reconstructed at documented 10kHz when waveform cache absent"
+            )
         merged = []
         for span in states:
             if (

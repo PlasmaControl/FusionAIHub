@@ -30,6 +30,20 @@ VERMILION = "#D55E00"
 GREEN = "#009E73"
 ORANGE = "#E69F00"
 GRAY = "#999999"
+ORIGINAL_GALLERY_SHOTS = [
+    186532,
+    196405,
+    192148,
+    204261,
+    203563,
+    202206,
+    201978,
+    196020,
+    192149,
+    191326,
+    195064,
+    193024,
+]
 
 
 def mean_trace(values):
@@ -101,67 +115,98 @@ def proxy_groups(record):
     )
 
 
-def trace_legend(record):
+def trace_legend(record, window=None):
     core, outer = proxy_groups(record)
-    core_text = ",".join(str(i) for i in core)
-    outer_text = ",".join(str(i) for i in outer)
-    return [
-        Line2D([], [], color=BLUE, lw=1, label=f"Core ECE proxy ({core_text})"),
-        Line2D([], [], color=VERMILION, lw=1, label=f"Outer ECE proxy ({outer_text})"),
-        Line2D(
-            [],
-            [],
-            color=GREEN,
-            lw=1,
-            marker="o",
-            markersize=3,
-            label="Present crash candidate",
-        ),
-        Line2D(
-            [],
-            [],
-            color=ORANGE,
-            lw=1,
-            marker="o",
-            markersize=3,
-            label="Uncertain crash candidate",
-        ),
-        Patch(facecolor=GREEN, alpha=0.12, label="Present bin span"),
-        Patch(facecolor=ORANGE, alpha=0.12, label="Uncertain bin span"),
-        Patch(facecolor=GRAY, alpha=0.3, label="Unassessed: core ECE invalid"),
+    handles = [
+        Line2D([], [], color=color, lw=1, label=group_label(record, channels, name))
+        for channels, color, name in (
+            (core, BLUE, "Core"),
+            (outer, VERMILION, "Outer LFS"),
+        )
+        if channels
     ]
+    return handles + state_legend(record, window)
+
+
+def state_legend(record, window=None):
+    handles = []
+    shown = {
+        state
+        for lo, hi, state in state_spans(record)
+        if window is None or (lo < window[1] and hi > window[0])
+    }
+    for state, color in (
+        ("present", GREEN),
+        ("absent", "#FFFFFF"),
+        ("uncertain", ORANGE),
+        ("unassessed", GRAY),
+    ):
+        if state in shown:
+            handles.append(
+                Patch(
+                    facecolor=color,
+                    edgecolor="0.7",
+                    alpha=0.25,
+                    label=state.capitalize(),
+                )
+            )
+    return handles
+
+
+def group_label(record, channels, name):
+    if not channels:
+        return f"{name}: unavailable"
+    rho = record.get("core_geometry", {}).get("nominal_rho_median", [])
+    values = [rho[c] for c in channels if c < len(rho) and rho[c] is not None]
+    if values:
+        lo, hi = min(values), max(values)
+        value = f"{lo:.2f}" if hi - lo < 0.02 else f"{lo:.2f}–{hi:.2f}"
+        return f"{name}: nominal ρ={value}"
+    return f"{name}: ch {min(channels)}–{max(channels)}"
 
 
 def overview(shot, record, t, y, observable, destination):
     fig, axes = plt.subplots(3, 1, figsize=(3.5, 5.4), sharex=True)
-    fig.subplots_adjust(left=0.17, right=0.97, bottom=0.08, top=0.70, hspace=0.28)
+    fig.subplots_adjust(left=0.17, right=0.97, bottom=0.08, top=0.79, hspace=0.28)
     fig.suptitle(f"DIII-D {shot}: whole-shot overview", y=0.99, fontsize=8)
-    qreference = 1 + Rule().qmin_margin
+    qreference = 1 + record.get("rule", {}).get("qmin_margin", Rule().qmin_margin)
+    qmin = local_scalar(shot, "qmin", Paths.from_env())
     handles = trace_legend(record) + [
-        Line2D([], [], color="0.25", lw=0.7, label="EFIT01 q-min (magnetics only)"),
         Line2D(
             [],
             [],
             color="0.25",
             ls=":",
             lw=0.7,
-            label=f"q = {qreference:g}: soft conflict reference",
+            label=f"q = {qreference:g}: conflict",
         ),
     ]
+    if qmin is not None:
+        handles.append(Line2D([], [], color="0.25", lw=0.7, label="EFIT01 q-min"))
     fig.legend(
         handles=handles,
         loc="upper center",
         bbox_to_anchor=(0.5, 0.965),
-        ncol=1,
+        ncol=2,
         frameon=False,
         handlelength=1.5,
         labelspacing=0.15,
+        columnspacing=0.8,
     )
     stride = max(1, len(t) // 4500)
     core, outer = proxy_groups(record)
     for rows, color in ((core, BLUE), (outer, VERMILION)):
         trace = mean_trace(y[rows])
         axes[0].plot(t[::stride] * 1000, trace[::stride], color=color, lw=0.6)
+    if not outer:
+        axes[0].text(
+            0.02,
+            0.93,
+            "Nominal outer LFS group unavailable",
+            transform=axes[0].transAxes,
+            va="top",
+            fontsize=7,
+        )
     for axis in axes:
         shade_states(axis, t, observable, record)
         axis.grid(axis="y", color="0.9", lw=0.4)
@@ -171,31 +216,53 @@ def overview(shot, record, t, y, observable, destination):
             crash["time_s"] * 1000, color=marker_color(crash), lw=0.4, alpha=0.35
         )
     axes[0].set_ylabel("ECE Te (keV)")
+    calibrated = any(r["attrs"].get("inversion_rho") is not None for r in crashes)
+    rho_key = "inversion_rho" if calibrated else "inversion_nominal_rho"
+    q1_key = "q1_rho" if calibrated else "q1_nominal_rho"
+    use_rho = any(r["attrs"].get(rho_key) is not None for r in crashes)
     for state in ("present", "uncertain"):
         picks = [r for r in crashes if crash_state(r) == state]
         axes[1].scatter(
             [r["time_s"] * 1000 for r in picks],
-            [r["attrs"].get("inversion_channel", np.nan) for r in picks],
+            [
+                r["attrs"].get(rho_key if use_rho else "inversion_channel")
+                if r["attrs"].get(rho_key if use_rho else "inversion_channel")
+                is not None
+                else np.nan
+                for r in picks
+            ],
             s=5,
             color=GREEN if state == "present" else ORANGE,
         )
-    axes[1].set_ylabel("Inversion channel")
-    axes[1].set_ylim(-0.5, 47.5)
-    axes[1].set_yticks([0, 16, 32, 47])
-    axes[1].set_title("Channel boundary; calibrated radius unavailable", fontsize=7)
-    qmin = local_scalar(shot, "qmin", Paths.from_env())
+    if use_rho:
+        q1 = [r for r in crashes if r["attrs"].get(q1_key) is not None]
+        if q1:
+            axes[1].scatter(
+                [r["time_s"] * 1000 for r in q1],
+                [r["attrs"][q1_key] for r in q1],
+                marker="x",
+                s=6,
+                color="0.25",
+                label="EFIT q = 1",
+            )
+            axes[1].legend(loc="upper right", frameon=False)
+        axes[1].set_ylabel("Inversion ρ" if calibrated else "Nominal inversion ρ")
+        axes[1].set_ylim(0, 1)
+    else:
+        axes[1].set_ylabel("Inversion channel")
+        axes[1].set_ylim(-0.5, 47.5)
+        axes[1].set_yticks([0, 16, 32, 47])
+        axes[1].set_title(
+            "No crash candidates"
+            if not crashes
+            else "Nominal inversion radius unavailable",
+            fontsize=7,
+        )
     if qmin is not None:
         axes[2].plot(qmin[0] * 1000, qmin[1], color="0.25", lw=0.6)
     axes[2].axhline(qreference, color="0.25", ls=":", lw=0.7)
     axes[2].set_ylabel("EFIT01 q-min")
-    qlimit = 2.5
-    if qmin is not None:
-        visible_q = np.asarray(qmin[1])[
-            (qmin[0] >= t[0]) & (qmin[0] <= t[-1]) & np.isfinite(qmin[1])
-        ]
-        if len(visible_q):
-            qlimit = max(qlimit, float(visible_q.max()) * 1.03)
-    axes[2].set_ylim(0, qlimit)
+    axes[2].set_ylim(0, 4)
     axes[2].set_xlim(float(t[0] * 1000), float(t[-1] * 1000))
     axes[2].set_xlabel("Time (ms)")
     return save_figure(fig, destination / f"shot_{shot}_overview")
@@ -252,8 +319,8 @@ def crash_window(shot, record, t, y, observable, destination):
         if gain_start is not None and gain_stop is not None
         else proxy_groups(record)[1]
     )
-    fig, axes = plt.subplots(2, 1, figsize=(3.5, 5.1))
-    fig.subplots_adjust(left=0.17, right=0.97, bottom=0.10, top=0.66, hspace=1.20)
+    fig, axes = plt.subplots(2, 1, figsize=(3.5, 4.3))
+    fig.subplots_adjust(left=0.17, right=0.97, bottom=0.10, top=0.77, hspace=0.75)
     state_kind = (
         "Crash candidate state" if selection == "Detected crash" else "Bin state"
     )
@@ -263,33 +330,32 @@ def crash_window(shot, record, t, y, observable, destination):
         y=0.99,
         fontsize=8,
     )
-    handles = trace_legend(record)
-    handles[0] = Line2D(
-        [], [], color=BLUE, lw=1, label=f"Central ECE proxy (channel {central})"
-    )
-    gain_label = (
-        f"Gain-block ECE mean ({gain_start}–{gain_stop - 1})"
-        if gain_start is not None and gain_stop is not None
-        else "Outer ECE proxy mean (" + ",".join(map(str, gain_channels)) + ")"
-    )
-    handles[1] = Line2D(
-        [],
-        [],
-        color=VERMILION,
-        lw=1,
-        label=gain_label,
-    )
+    handles = [
+        Line2D(
+            [], [], color=BLUE, lw=1, label=group_label(record, [central], "Central")
+        )
+    ]
+    if gain_channels:
+        handles.append(
+            Line2D(
+                [],
+                [],
+                color=VERMILION,
+                lw=1,
+                label=group_label(record, gain_channels, "Gain block"),
+            )
+        )
+    handles += state_legend(record, window=(time - 0.03, time + 0.03))
     if selection != "Detected crash":
-        handles += [
-            Line2D([], [], color="0.25", lw=0.8, label="Diagnostic-window centre")
-        ]
+        handles += [Line2D([], [], color="0.25", lw=0.8, label="Window centre")]
     fig.legend(
         handles=handles,
         loc="upper center",
-        bbox_to_anchor=(0.5, 0.935),
+        bbox_to_anchor=(0.5, 0.895),
         frameon=False,
-        ncol=1,
+        ncol=2,
         labelspacing=0.15,
+        columnspacing=0.6,
     )
     axes[0].plot(t[near] * 1000, y[central, near], color=BLUE, lw=0.8)
     axes[0].plot(
@@ -322,10 +388,14 @@ def crash_window(shot, record, t, y, observable, destination):
             label="Inversion boundary",
         )
     axes[1].legend(
-        loc="lower center", bbox_to_anchor=(0.5, 1.05), frameon=False, ncol=1
+        loc="center",
+        bbox_to_anchor=(0.72, 0.40),
+        bbox_transform=fig.transFigure,
+        frameon=False,
+        ncol=1,
     )
     axes[1].set_xlim(-0.5, 47.5)
-    axes[1].set_xlabel("ECE channel (spatial mapping unavailable)")
+    axes[1].set_xlabel("ECE channel")
     axes[1].set_ylabel("ECE Te (keV)")
     for axis in axes:
         axis.grid(axis="y", color="0.9", lw=0.4)
@@ -355,16 +425,102 @@ def save_figure(fig, stem):
     return paths
 
 
+def failed_support_panels(shot, record, destination):
+    """Retain sampled shots without inventing a usable core or crash label."""
+    import h5py
+
+    from labeler.sawtooth.preprocessing import sample_native
+
+    source = Paths.from_env().corpus_file(shot)
+    with h5py.File(source, "r", locking=False) as file:
+        t, y = sample_native(file["ece"])
+    lo, hi = record["window_s"]
+    keep = (t >= lo) & (t <= hi)
+    t, y = t[keep], y[:, keep]
+    trace = mean_trace(y[:40])
+    stride = max(1, len(t) // 4500)
+    error = record["error"].split(": ", 1)[-1]
+    fig, axes = plt.subplots(2, 1, figsize=(3.5, 4.3), sharex=True)
+    fig.subplots_adjust(left=0.17, right=0.97, bottom=0.10, top=0.82, hspace=0.25)
+    fig.suptitle(f"DIII-D {shot}: sensor support diagnostic", y=0.98, fontsize=8)
+    fig.text(0.5, 0.92, "Unassessed: usable core unavailable", ha="center", fontsize=7)
+    axes[0].plot(t[::stride] * 1000, trace[::stride], color=BLUE, lw=0.6)
+    axes[0].set_ylabel("Raw ECE mean (keV)")
+    axes[0].text(
+        0.02,
+        0.95,
+        "Channels 0–39; no spatial mask",
+        transform=axes[0].transAxes,
+        va="top",
+        fontsize=7,
+    )
+    qmin = local_scalar(shot, "qmin", Paths.from_env())
+    if qmin is not None:
+        axes[1].plot(qmin[0] * 1000, qmin[1], color="0.25", lw=0.6)
+    axes[1].set(
+        xlabel="Time (ms)",
+        ylabel="EFIT01 q-min",
+        ylim=(0, 4),
+        xlim=(lo * 1000, hi * 1000),
+    )
+    for axis in axes:
+        axis.grid(axis="y", color="0.9", lw=0.4)
+    figures = save_figure(fig, destination / f"shot_{shot}_overview")
+    center = float((lo + hi) / 2)
+    near = (t >= center - 0.03) & (t <= center + 0.03)
+    before = (t >= center - 0.002) & (t < center - 0.0005)
+    after = (t >= center + 0.0005) & (t < center + 0.002)
+    fig, axes = plt.subplots(2, 1, figsize=(3.5, 4.3))
+    fig.subplots_adjust(left=0.17, right=0.97, bottom=0.10, top=0.80, hspace=0.65)
+    fig.suptitle(f"DIII-D {shot}: sensor diagnostic; no label", y=0.98, fontsize=8)
+    fig.text(0.5, 0.92, "Unassessed: usable core unavailable", ha="center", fontsize=7)
+    axes[0].plot(t[near] * 1000, trace[near], color=BLUE, lw=0.8)
+    axes[0].set(xlabel="Time (ms)", ylabel="Raw ECE mean (keV)")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        pre, post = (
+            np.nanmedian(y[:, before], axis=1),
+            np.nanmedian(y[:, after], axis=1),
+        )
+    axes[1].plot(
+        np.arange(len(y)), pre, color=BLUE, lw=0.8, label="Before (−2 to −0.5 ms)"
+    )
+    axes[1].plot(
+        np.arange(len(y)), post, color=VERMILION, lw=0.8, label="After (+0.5 to +2 ms)"
+    )
+    axes[1].legend(
+        loc="center",
+        bbox_to_anchor=(0.72, 0.40),
+        bbox_transform=fig.transFigure,
+        frameon=False,
+    )
+    axes[1].set(xlabel="ECE channel", ylabel="Raw ECE Te (keV)", xlim=(-0.5, 47.5))
+    for axis in axes:
+        axis.grid(axis="y", color="0.9", lw=0.4)
+    figures.extend(save_figure(fig, destination / f"shot_{shot}_crash"))
+    return figures, {
+        "shot": shot,
+        "selection": "Sensor diagnostic; no label",
+        "state": "unassessed",
+        "bin_state": "unassessed",
+        "center_s": center,
+        "window_ms": 60,
+        "reader_or_support_error": error,
+        "raw_signal_source": str(source),
+        "raw_signal_processing": "Native ECE FIR antialias to 10kHz; no spatial mask",
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--work", type=Path, default=WORK)
     parser.add_argument(
-        "--output", type=Path, default=REPO / "outputs/labeler/sawtooth/fix2"
+        "--output", type=Path, default=REPO / "outputs/labeler/sawtooth/fix3"
     )
     parser.add_argument(
         "--selection",
         type=Path,
-        default=REPO / "outputs/labeler/sawtooth/fix/gallery.json",
+        default=REPO / "outputs/labeler/sawtooth/fix3/gallery.json",
     )
     parser.add_argument(
         "--confirm-inspection",
@@ -375,6 +531,11 @@ def main():
     if args.confirm_inspection:
         path = args.output / "gallery.json"
         record = json.loads(path.read_text())
+        if any(
+            hashlib.sha256(Path(source).read_bytes()).hexdigest() != value
+            for source, value in record["source_sha256"].items()
+        ):
+            raise ValueError("gallery inputs changed; regenerate and inspect again")
         paths = [Path(value) for value in record["figures"] if value.endswith(".png")]
         record["png_inspection"] = {
             "complete": True,
@@ -390,15 +551,10 @@ def main():
     expert = set(pd.read_csv(REVIEW).shot)
     train = set(cohort.loc[cohort.split == "train", "shot"]) - expert
     previous = json.loads(args.selection.read_text()) if args.selection.exists() else {}
-    shots = previous.get("shots", [])
-    if len(shots) != 12 or not set(shots) <= train:
-        eligible = sorted(
-            s for s in train if (args.work / "signals" / f"{s}.npz").exists()
-        )
-        shots = (
-            np.random.default_rng(SEED)
-            .choice(eligible, size=12, replace=False)
-            .tolist()
+    shots = previous.get("shots", ORIGINAL_GALLERY_SHOTS)
+    if shots != ORIGINAL_GALLERY_SHOTS or not set(shots) <= train:
+        raise ValueError(
+            "retain the original 12 nonexpert train shots without resampling"
         )
     destination = args.work / "gallery"
     destination.mkdir(parents=True, exist_ok=True)
@@ -410,9 +566,17 @@ def main():
             "ytick.labelsize": 7,
         }
     )
-    figures, windows = [], []
+    figures, windows, sources = [], [], []
     for shot in shots:
         record = json.loads((args.work / "shots" / f"{shot}.json").read_text())
+        sources.append(args.work / "shots" / f"{shot}.json")
+        if "error" in record:
+            panels, window = failed_support_panels(shot, record, destination)
+            figures.extend(panels)
+            windows.append(window)
+            sources.append(Paths.from_env().corpus_file(shot))
+            continue
+        sources.append(args.work / "signals" / f"{shot}.npz")
         with np.load(args.work / "signals" / f"{shot}.npz") as data:
             t, y = data["t"], data["y"].astype(float)
             observable = data["observable"].astype(bool)
@@ -428,14 +592,23 @@ def main():
             "seed": SEED,
             "shots": shots,
             "sampling": (
-                "Original uniform random usable nonexpert train-shot sample retained"
+                "Original uniform random usable nonexpert train-shot sample retained; "
+                "current support failures remain represented as unassessed"
             ),
             "figures": figures,
+            "source_sha256": {
+                str(path): hashlib.sha256(path.read_bytes()).hexdigest()
+                for path in sources
+            },
             "crash_windows": windows,
             "geometry_note": (
-                "Verified spatial pairing unavailable; channel order is not radius."
+                "Nominal geometric rho=abs(R-axis)/(LCFS_outer_R-axis), not "
+                "calibrated flux. Outer proxy is on the low-field side."
             ),
-            "q_note": "EFIT01 q-min is a soft conflict flag; it never defines absence.",
+            "q_note": (
+                "EFIT01 q-min is magnetics-only. Soft conflict and conservative "
+                "strong-q absence follow the frozen rule; display range 0–4."
+            ),
             "marker_note": (
                 "Crash markers show diagnostic candidate state; shaded spans show "
                 "canonical bin state. Crash points and sustained-presence spans "

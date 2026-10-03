@@ -441,7 +441,7 @@ def _equilibrium_radius(shot, t_s, channels, path, fixed_grid=None):
 def load_radius_geometry(
     shot, t_s, channels, paths, *, archive_root=None, metadata_root=None
 ):
-    """Read local frequency/Bt/EFIT-axis metadata; never invoke a resolver."""
+    """Read archived or cached ECE/EFIT metadata without fetching data."""
     archive_info, fixed_grid = None, None
     if archive_root is not None:
         fixed_grid = _verified_archive_grid(str(archive_root))

@@ -311,12 +311,16 @@ def main():
                 "reference shot became available; run detector and extract "
                 "published windows before reporting"
             )
-        result["status"] = "unavailable; no fetching authorized"
+        result["status"] = (
+            "absent from read-only corpus; essential fetching authorized; "
+            "reference check uses sawtooth_geometry_fix3.py reference"
+        )
         references.append(result)
-    save_json(
-        OUTPUT / "muscatello_reference.json",
-        {"by_shot": references, "digest": "Muscatello_ST.md"},
-    )
+    if not (OUTPUT / "muscatello_reference.json").exists():
+        save_json(
+            OUTPUT / "muscatello_reference.json",
+            {"by_shot": references, "digest": "Muscatello_ST.md"},
+        )
     print({"agreement_shots": len(agreement), "experts": experts}, flush=True)
 
 
