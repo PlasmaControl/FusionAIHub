@@ -370,6 +370,21 @@ def main() -> None:
             {
                 "shot": args.shot,
                 "chosen_times_ms": times,
+                "observed_states": {
+                    k: STATE_NAME[
+                        int(
+                            group.iloc[
+                                np.argmin(np.abs(group.start_ms + 25 - t))
+                            ].state_lm
+                        )
+                    ]
+                    for k, t in times.items()
+                },
+                "column_roles": {
+                    1: "attached front",
+                    2: "detached front",
+                    3: "highest front; not a MARFE claim",
+                },
                 "width_in": 6.75,
                 "min_font_pt": 7,
                 "bolometer_row": "omitted: no chord endpoints/calibration in BOLOM node survey or local plasma_tv resources",
@@ -383,7 +398,7 @@ def main() -> None:
     )
     for note in sorted(set(notes)):
         print("note:", note)
-    print("chosen times (ms):", {STATE_NAME[s]: t for s, t in times.items()})
+    print("chosen times (ms), front examples:", times)
     print("wrote", out / "fig_detachment_views.pdf")
 
 

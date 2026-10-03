@@ -39,6 +39,58 @@ def root() -> Path:
     return Path(os.environ["LABELER_ROOT"]) / "round4" / "detach"
 
 
+def geometry_aux(geo, edges):
+    """Finite physical EFIT bin medians; sentinels never describe a camera leg."""
+    out = {}
+    bounds = {
+        "rvsod": (0.8, 2.5),
+        "rxpt1": (0.8, 2.5),
+        "zvsod": (-1.6, -0.9),
+        "zxpt1": (-1.6, 1.6),
+    }
+    for key, (lo, hi) in bounds.items():
+        if key not in geo:
+            out[f"aux_{key}"] = np.full(len(edges) - 1, np.nan, np.float32)
+            continue
+        t, y = geo[key]
+        keep = tangtv._is_real(y, lo, hi)
+        out[f"aux_{key}"] = core.bin_median(t, y, edges, keep=keep)[0].astype(
+            np.float32
+        )
+    return out
+
+
+def add_envelope(out):
+    record = (
+        Path(__file__).resolve().parents[2]
+        / "docs/labeler/results/detachment_tangtv_surrogate.json"
+    )
+    domain = json.loads(record.read_text())["domain"]
+    envelope = np.ones(len(out["start_ms"]), bool)
+    for key, values in (
+        ("leg", out["aux_zxpt1"] - out["aux_zvsod"]),
+        ("rv", out["aux_rvsod"]),
+        ("rx", out["aux_rxpt1"]),
+    ):
+        lo, hi = domain[key]
+        envelope &= (values >= lo) & (values <= hi)
+    out["tangtv_in_envelope"] = envelope
+
+
+def refresh_geometry(directory, width):
+    """Refresh auxiliary medians/envelope from cached EFIT, leaving votes intact."""
+    for path in sorted(directory.glob("*.npz")):
+        with np.load(path) as f:
+            out = {k: f[k] for k in f.files}
+        edges = np.r_[out["start_ms"], out["start_ms"][-1] + width]
+        geo, _ = signals.tangtv_geometry(int(path.stem))
+        out.update(geometry_aux(geo, edges))
+        add_envelope(out)
+        tmp = path.with_name(f".{path.name}.tmp.npz")
+        np.savez_compressed(tmp, **out)
+        tmp.replace(path)
+
+
 def load_inversion(shot: int):
     path = root() / "inversions" / f"{shot}.npz"
     if not path.is_file():
@@ -397,26 +449,8 @@ def process(
             np.float32
         )
     # Unlocalised real-time DTS is deliberately excluded from all claims.
-    for key in ("rvsod", "zvsod", "rxpt1", "zxpt1"):
-        out[f"aux_{key}"] = (
-            core.bin_median(*geo[key], edges)[0].astype(np.float32)
-            if key in geo
-            else np.full(n, np.nan, np.float32)
-        )
-    domain_record = (
-        Path(__file__).resolve().parents[2]
-        / "docs/labeler/results/detachment_tangtv_surrogate.json"
-    )
-    domain = json.loads(domain_record.read_text())["domain"]
-    envelope = np.ones(n, bool)
-    for key, values in (
-        ("leg", out["aux_zxpt1"] - out["aux_zvsod"]),
-        ("rv", out["aux_rvsod"]),
-        ("rx", out["aux_rxpt1"]),
-    ):
-        lo, hi = domain[key]
-        envelope &= (values >= lo) & (values <= hi)
-    out["tangtv_in_envelope"] = envelope
+    out.update(geometry_aux(geo, edges))
+    add_envelope(out)
     target = (out_dir or root() / "bins") / f"{shot}.npz"
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_name(f".{target.name}.tmp.npz")
@@ -439,12 +473,20 @@ def main() -> int:
     parser.add_argument("--shots-file", required=True)
     parser.add_argument("--workers", type=int, default=6)
     parser.add_argument("--redo", action="store_true", help="recompute existing bins")
+    parser.add_argument(
+        "--refresh-geometry",
+        action="store_true",
+        help="only refresh cached auxiliary geometry and envelope; keep votes",
+    )
     parser.add_argument("--width-ms", type=float, default=core.BIN_MS)
     parser.add_argument(
         "--out-dir", default=None, help="default: $LABELER_ROOT/round4/detach/bins"
     )
     args = parser.parse_args()
     out_dir = Path(args.out_dir) if args.out_dir else root() / "bins"
+    if args.refresh_geometry:
+        refresh_geometry(out_dir, args.width_ms)
+        return 0
     shots = [int(s) for s in Path(args.shots_file).read_text().split()]
     if not args.redo:
         shots = [s for s in shots if not (out_dir / f"{s}.npz").is_file()]

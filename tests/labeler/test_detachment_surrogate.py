@@ -231,3 +231,15 @@ def test_surrogate_training_rejects_stale_efit_geometry(surrogate, monkeypatch):
     )
     *_, valid = surrogate.geometry(1, np.array([100.0, 600.0]))
     assert valid.tolist() == [True, False]
+
+
+def test_exported_camera_geometry_excludes_efit_sentinels(bins):
+    t = np.array([5.0, 15.0, 25.0])
+    geo = {
+        "rvsod": (t, np.full(3, 1.3)),
+        "zvsod": (t, np.array([-1.363, -0.89, -0.89])),
+        "rxpt1": (t, np.full(3, 1.2)),
+        "zxpt1": (t, np.full(3, -1.11)),
+    }
+    out = bins.geometry_aux(geo, np.array([0.0, 50.0]))
+    assert out["aux_zxpt1"][0] - out["aux_zvsod"][0] == pytest.approx(0.253)
