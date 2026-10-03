@@ -242,8 +242,8 @@ def runs_of(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Where the `width_ms` moving mean of a 1 ms trace is at or above `threshold`.
 
-    The scored bins' score is this mean at the bins' own offsets; here it is taken
-    at every millisecond, so a detected span is the stretch of shot time the same
+    Bin scores average each complete bin. Here the moving mean is centered at
+    each millisecond, so a detected span is the stretch of shot time the
     score and threshold call present. Returns `(starts, stops)` in ms of the shot's
     clock (`inputs.GRID0_MS` is the trace's first edge).
     """

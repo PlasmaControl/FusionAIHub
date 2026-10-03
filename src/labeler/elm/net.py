@@ -10,7 +10,7 @@ bottom is `STRIDE ** DEPTH` ms (256 ms) times the kernel, enough to see a whole
 ELM train and the baseline it rises from.
 
 Two logits per millisecond: `event`, ELMy time (the review's present spans,
-crowds included), and `onset`, the start of an individual ELM. `forward`
+crowds included), and `onset`, the start of a non-crowd present span. `forward`
 returns `(batch, 2, n_ms)`. The input length must be a multiple of
 `CELLS_PER_MS * STRIDE ** DEPTH`; `pad_to` gives the padded length.
 """

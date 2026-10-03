@@ -56,6 +56,28 @@ ORACLE = "expert dense labels"
 LEGACY = "legacy table"
 
 
+def annotate_prefetch_swap():
+    """Keep historical scores, adding accurate method names and archive scope."""
+    path = OUT / "prefetch_evaluation.json"
+    if not path.exists():
+        return
+    record = json.loads(path.read_text())
+    record["method_display_names"] = compare.DISPLAY_NAME
+    record["record_note"] = (
+        "Archived pre-Ip/Bt-fetch scores and ranking pairs, unchanged. Historical "
+        "individual-kind fields mean non-crowd present spans. Historical conversion "
+        "and interpretation are superseded by the current evaluation.json."
+    )
+    for collection in ("swap", "proxy"):
+        for result in record[collection].values():
+            for reference in ("reviewed", "legacy", "proxy"):
+                if reference not in result:
+                    continue
+                for name, row in result[reference]["methods"].items():
+                    row["display_name"] = compare.DISPLAY_NAME.get(name, name)
+    path.write_text(json.dumps(record, indent=1))
+
+
 def interval_coverage_audit(table, data, shots) -> dict:
     """AE-style all-covered-bin audit, explicitly partitioning unknown review time."""
     rows, per_shot, excluded = [], {}, []
@@ -84,7 +106,9 @@ def interval_coverage_audit(table, data, shots) -> dict:
             "legacy_present_bins": int(legacy.sum()),
             "counts": dict(zip(swap.AGREEMENT_NAMES, map(int, c), strict=True)),
             "excluded_review_bins": unknown,
-            "review_spans": spans[["t_start", "t_end", "kind"]].to_dict("records"),
+            "review_spans": spans[["t_start", "t_end", "kind", "crowd"]].to_dict(
+                "records"
+            ),
             "legacy_positive_extent_ms": [
                 float(positive.t_start.min()),
                 float(positive.t_end.max()),
@@ -336,23 +360,23 @@ def agreement(parts_ref, legacy, shots, boot) -> dict:
 def oracle_rows(parts_ref, legacy, shots, boot) -> dict:
     """The review and the legacy table as methods against the other reference."""
     ref = [
-        swap.as_method(s, p.truth.astype(bool), p.truth, p.kind)
-        for p, s in zip(parts_ref, shots, strict=True)
-    ]
-    leg = [
-        swap.as_method(s, legacy[s] == 1, p.truth, p.kind)
-        for p, s in zip(parts_ref, shots, strict=True)
-    ]
-    legacy_ref = [
         swap.as_method(
             s,
-            np.ones(len(p.truth), bool),
-            (legacy[s] == 1).astype(np.int8),
-            p.kind,
+            p.truth[legacy[s] >= 0].astype(bool),
+            p.truth[legacy[s] >= 0],
+            p.kind[legacy[s] >= 0],
         )
         for p, s in zip(parts_ref, shots, strict=True)
     ]
-    del legacy_ref
+    leg = [
+        swap.as_method(
+            s,
+            legacy[s][legacy[s] >= 0] == 1,
+            p.truth[legacy[s] >= 0],
+            p.kind[legacy[s] >= 0],
+        )
+        for p, s in zip(parts_ref, shots, strict=True)
+    ]
     return {
         "legacy_table_vs_reviewed": score.summarise(leg, boot),
         "expert_vs_reviewed": score.summarise(ref, boot),
@@ -364,6 +388,7 @@ def main(argv=None) -> int:
     ap.add_argument("--run", required=True)
     ap.add_argument("--out-dir", type=Path, default=OUT)
     args = ap.parse_args(argv)
+    annotate_prefetch_swap()
     paths = Paths.from_env()
     work = paths.root / "round4" / "elm" / "dsm"
     data = train.load(paths)

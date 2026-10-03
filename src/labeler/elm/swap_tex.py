@@ -87,8 +87,8 @@ def benchmark_table(res: dict, ref_a: str, ref_b: str, labels, record, source) -
     lines.append("\\midrule")
     ra, rb = a["methods"][ALWAYS], b["methods"][ALWAYS]
     lines.append(
-        f"{ALWAYS} & {ra['point']['auroc']:.3f} & {ra['point']['f1']:.3f} & "
-        f"{rb['point']['auroc']:.3f} & {rb['point']['f1']:.3f} \\\\"
+        f"{ALWAYS} & {ra['point']['auroc']:.3f} & {metric_cell(ra, 'f1')} & "
+        f"{rb['point']['auroc']:.3f} & {metric_cell(rb, 'f1')} \\\\"
     )
     lines += ["\\bottomrule", "\\end{tabular}", ""]
     return "\n".join(lines)
@@ -178,7 +178,10 @@ def write(
         if tag == "overlap":
             (out_dir / "table_elm_swap_full.tex").write_text(
                 wrap_table(
-                    full_table(res, record, source), caption, "tab:elm-swap-full"
+                    full_table(res, record, source),
+                    caption
+                    + " Identity-reference rows show exact agreement by definition.",
+                    "tab:elm-swap-full",
                 )
             )
     for tag, res in record["proxy"].items():
@@ -220,12 +223,15 @@ def write(
         "span and analysed time with DSM rows. This restriction deviates from "
         "the AE audit. All-covered majority audit: "
         f"{audit['legacy_covered_bins']} bins, {full['bins']} known-review bins, "
-        f"$|M|={full['M']}$/, $|P|={full['P']}$/; "
+        f"$|M|={full['M']}$, $|P|={full['P']}$; "
         f"{uncertain['bins']} review-uncertain bins "
         f"({uncertain['legacy_present_bins']} legacy-positive), reported separately. "
+        f"{audit['excluded_review_states']['mixed_or_unlabelled']['bins']} "
+        "mixed-review bins "
+        "are also excluded from known-review counts. "
         "M/P measure occupancy/onset-bin disagreement, not verified omitted ELMs. "
         + interval_caption()
-    ).replace("$/", "$")
+    )
     (out_dir / "table_elm_swap.tex").write_text(
         wrap_table("\n\\medskip\n".join(panels), caption, "tab:elm-swap")
     )
@@ -237,8 +243,9 @@ def interval_caption() -> str:
         "resamples, shared across methods and references. ELM-O AUROC uses the "
         "saved nested eta sweep on these exact bins; the clock has hard calls only. "
         "DSM refit, limited inputs (60 of the original 124), was trained on "
-        "Hiro's legacy onset source; detection variants use reviewed spans. "
-        "F1 is marked degenerate when recall $\\geq0.99$."
+        "Hiro's legacy onset source with reviewed-shot overlap; detection heads "
+        "use reviewed spans, with the initialized variant retaining that embedding. "
+        "Detector/rule F1 is marked degenerate when recall $\\geq0.99$."
     )
 
 
