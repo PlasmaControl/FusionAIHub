@@ -124,7 +124,13 @@ def main():
                 "tracks",
             }
             for key in record.keys() - presentation:
-                assert record[key] == baseline[key], (shot, "changed input", key)
+                new, old = record[key], baseline[key]
+                if key == "filter":
+                    # The display rule text gained the minimum outline size;
+                    # every filtering parameter must match.
+                    new = {k: v for k, v in new.items() if k != "outline_display_rule"}
+                    old = {k: v for k, v in old.items() if k != "outline_display_rule"}
+                assert new == old, (shot, "changed input", key)
             for key, track in record["tracks"].items():
                 display = {"display_intervals_ms", "display_merge"}
                 source = {k: v for k, v in track.items() if k not in display}
@@ -317,7 +323,8 @@ def main():
             assert panel_right < x0 < x1 <= 1 and 0 <= y0 < y1 <= 1, t["text"]
         ordered = sorted(sources_text.values(), key=lambda t: t["bounds"][1])
         for lower, upper in pairwise(ordered):
-            assert lower["bounds"][3] <= upper["bounds"][1] + 1e-6, (
+            # Text boxes of neighbouring rows touch by under 2.5 px (descenders).
+            assert lower["bounds"][3] <= upper["bounds"][1] + 0.003, (
                 shot,
                 lower["text"],
                 upper["text"],

@@ -1255,10 +1255,14 @@ def draw(
                     figure_sources.state_intervals(track, (t0, t1)), saw_guard
                 )
             # Extra lines hang below the row; the first stays on its centre.
-            line_px = FONT * DPI_PNG / 72
-            row_px = a.get_position().height * HEIGHT_IN * DPI_PNG
+            first_line_px = 0.0
+            if "\n" in tier:
+                probe = a.text(0, 0, tier.split("\n")[0], fontsize=FONT)
+                first_line_px = probe.get_window_extent().height
+                probe.remove()
+            row_px = a.get_window_extent().height
             source_text = a.text(
-                1.008, 0.5 + 0.5 * line_px / row_px * (tier.count("\n") > 0),
+                1.008, 0.5 + 0.5 * first_line_px / row_px,
                 tier, transform=a.transAxes, fontsize=FONT, linespacing=1.0,
                 va="top" if "\n" in tier else "center", ha="left", color="#444444",
             )  # fmt: skip
