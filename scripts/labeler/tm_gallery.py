@@ -1,13 +1,13 @@
 #!/usr/bin/env python
-"""A gallery of the tearing-mode interval labels: Mirnov spectrogram and n = 1 / n = 2 RMS.
+"""A gallery of the tearing-mode interval labels: spectrogram and n = 1 / n = 2 RMS.
 
 Each shot is three rows on one time axis: a strip with its intervals (one colour per
 toroidal number, a triangle at each onset, a hatch where the interval ended by locking),
-the 0-50 kHz spectrogram of a toroidal-array Mirnov probe (MPI66M322D, corpus `mirnov` row
-15, in dB above each frequency's own floor over the plasma, the review editor's scale),
-and the n = 1 and n = 2 RMS (log gauss) with the onset threshold and, per interval, the
-release level it was cut at. The Mirnov record is used because the corpus' `mhr` group
-holds only the first 4.2 s of a pulse.
+the 0-50 kHz spectrogram of a toroidal-array Mirnov probe (MPI66M322D, corpus `mirnov`
+row 15, in dB above each frequency's own floor over the plasma, the review editor's
+scale), and the n = 1 and n = 2 RMS (log gauss) with the onset threshold and, per
+interval, the release level it was cut at. The Mirnov record is used because the
+corpus' `mhr` group holds only the first 4.2 s of a pulse.
 
     PYTHONPATH=$PWD/src pixi run --frozen --no-install -e labelmaker python \\
         scripts/labeler/tm_gallery.py --n 12 --seed 3 --out <stem>
@@ -193,7 +193,8 @@ def main(argv=None) -> int:
     labelled = sorted(
         set(table.shot) & {int(p.stem) for p in args.signals_dir.glob("*.npz")}
     )
-    # The rule is frozen on the training and validation shots; a drawn shot is never a test shot.
+    # The rule is frozen on the training and validation shots; a drawn shot is never a
+    # test shot.
     eligible = (
         [s for s in labelled if cohort.loc[s, "split"] != "test"]
         if set(labelled) <= set(cohort.index)
@@ -209,7 +210,7 @@ def main(argv=None) -> int:
     columns = args.columns
     rows = int(np.ceil(len(shots) / columns))
     plt.rcParams.update({"font.size": FONT, "axes.linewidth": 0.5})
-    fig = plt.figure(figsize=(7.3, 1.75 * rows))
+    fig = plt.figure(figsize=(7.3, 1.75 * rows + 0.25))
     grid = fig.add_gridspec(
         rows,
         columns,
@@ -218,7 +219,7 @@ def main(argv=None) -> int:
         left=0.06,
         right=0.995,
         top=0.975,
-        bottom=0.05,
+        bottom=0.09 if rows < 4 else 0.065,
     )
     for k, shot in enumerate(shots):
         row = cohort.loc[shot]
@@ -253,7 +254,7 @@ def main(argv=None) -> int:
         ncol=5,
         fontsize=FONT,
         frameon=False,
-        bbox_to_anchor=(0.5, -0.005),
+        bbox_to_anchor=(0.5, 0.0),
     )
     args.out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(args.out.with_suffix(".pdf"))

@@ -4,12 +4,12 @@
 ``\\MHD::N1RMS`` and ``\\MHD::N2RMS`` (tree ``mhd``, gauss, 1 kHz) are the traces the
 lab's tearing-mode labels are written on (Fu 2020: n = 1 RMS above 10 G for 50 ms;
 Farre-Kaga 2025: above 12 G for 50 ms); ``\\MHD::N1FREQ`` and ``\\MHD::N2FREQ`` (kHz)
-give each mode's frequency, which falls to zero as it locks (``--which freq``). The corpus
-holds none of them, so they come from MDSplus. Each shot's file, ``<shot>.npz`` under the
-output directory, holds the whole records (``t_ms`` and the two traces, float64 /
-float32). A shot fdp says has no such record gets ``<shot>.missing.json`` and is not
-retried; a fetch that failed otherwise is tried again on the next run. It stops at the
-first authentication error.
+give each mode's frequency, which falls to zero as it locks (``--which freq``). The
+corpus holds none of them, so they come from MDSplus. Each shot's file, ``<shot>.npz``
+under the output directory, holds the whole records (``t_ms`` and the two traces,
+float64 / float32). A shot fdp says has no such record gets ``<shot>.missing.json`` and
+is not retried; a fetch that failed otherwise is tried again on the next run. It stops
+at the first authentication error.
 
 Needs fdp, so run it on the login node while logged in::
 
