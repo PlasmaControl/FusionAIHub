@@ -42,7 +42,8 @@ MIN_INPUT_POWER_W = 0.5e6
 PRAD_AVERAGING_MS = 250.0
 #: Operational offset tolerance, not a measured calibration uncertainty: 0.05 MW,
 #: consistent with the offset scale used above for the input-power floor. More
-#: negative averaged radiation is invalid; small negative offsets are clipped to 0.
+#: negative native-bin OR 250 ms averaged radiation is invalid, so smoothing
+#: cannot hide a bad bin. Small negative offsets are clipped to 0 in the vote.
 RADIATION_NEGATIVE_TOL_W = 0.05e6
 
 # --- TangTV DZ (Chen 2026) ---------------------------------------------------------

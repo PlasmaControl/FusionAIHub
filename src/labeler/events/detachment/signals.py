@@ -87,7 +87,8 @@ def window_mean(t_src, y_src, t_dst, width_ms, *, keep=None):
 
     A keep mask removes measured ELM samples from radiation means. It does not
     turn missing source samples into measurements. Gaps/boundaries are checked
-    before reduction, independently of the mask.
+    before reduction, independently of the mask. Both endpoints are included
+    in the reduction and in its availability check.
     """
     from .core import sample_windows_known
 
@@ -101,7 +102,7 @@ def window_mean(t_src, y_src, t_dst, width_ms, *, keep=None):
     lo = np.searchsorted(t_src, starts, side="left")
     hi = np.searchsorted(t_src, stops, side="right")
     n = counts[hi] - counts[lo]
-    known = sample_windows_known(t_src, good, starts, stops)
+    known = sample_windows_known(t_src, good, starts, stops, closed_right=True)
     with np.errstate(invalid="ignore", divide="ignore"):
         return np.where(known & (n > 0), (csum[hi] - csum[lo]) / n, np.nan)
 

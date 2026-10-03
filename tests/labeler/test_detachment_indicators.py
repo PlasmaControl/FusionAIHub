@@ -17,7 +17,7 @@ def series(value, dt=10.0, t1=5000.0):
 
 
 def clean_elm():
-    t = np.arange(5001.0)
+    t = np.arange(-150.0, 5151.0)
     return t, np.zeros(len(t), bool)
 
 
@@ -357,6 +357,14 @@ def test_power_window_preserves_nan_and_internal_gaps():
     assert np.isnan(signals.window_mean(t[keep], y[keep], [50.0], 50.0)[0])
 
 
+def test_power_window_checks_missing_upper_endpoint_in_its_closed_mean():
+    t = np.arange(101.0)
+    y = t.copy()
+    assert signals.window_mean(t, y, [50.0], 20.0)[0] == 50.0
+    y[t == 60.0] = np.nan
+    assert np.isnan(signals.window_mean(t, y, [50.0], 20.0)[0])
+
+
 def test_heating_missing_beam_samples_are_not_zero(monkeypatch):
     t = np.arange(0.0, 401.0, 10.0)
     beam = np.full((2, len(t)), 1e6)
@@ -409,6 +417,40 @@ def test_prad_rejects_large_negative_offset_and_uncovered_power():
         edges, t, np.full(len(t), 0.5e6), t, p, t, np.zeros(len(t))
     )
     assert not ind.valid[0] and ind.reason[0] == "no_input_power"
+
+
+def test_prad_smoothing_cannot_hide_negative_radiation_in_label_bin():
+    t = np.arange(1001.0)
+    radiation = np.where((t >= 500) & (t < 550), -0.1e6, 1e6)
+    ind = prad.prad_indicator(
+        np.array([500.0, 550.0]),
+        t,
+        radiation,
+        t,
+        np.full(len(t), 2e6),
+        t,
+        np.zeros(len(t)),
+    )
+    assert ind.value[0] > 0.0  # Positive smoothed value is not measurement validity.
+    assert not ind.valid[0]
+    assert ind.reason[0] == "negative_radiation"
+    assert ind.vote[0] == core.ABSTAIN
+
+
+def test_prad_averaging_window_requires_elm_availability_outside_native_bin():
+    t = np.arange(0.0, 1001.0)
+    radiation = np.where((t >= 500.0) & (t < 550.0), 0.3e6, 1.0e6)
+    power = np.full(t.shape, 1.0e6)
+    edges = np.array([500.0, 550.0])
+    covered = prad.prad_indicator(edges, t, radiation, t, power, t, np.zeros(t.shape))
+    assert covered.valid[0] and covered.vote[0] == core.DETACHED
+    elm_t = np.arange(500.0, 551.0)
+    unknown = prad.prad_indicator(
+        edges, t, radiation, t, power, elm_t, np.zeros(elm_t.shape)
+    )
+    assert not unknown.valid[0]
+    assert unknown.reason[0] == "elm_unknown"
+    assert unknown.vote[0] == core.ABSTAIN
 
 
 def test_input_power_gate_constants_are_ordered():

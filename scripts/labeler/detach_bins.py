@@ -408,7 +408,11 @@ def processed_ratio(shot, edges, cache, base, elm):
 
 
 def process(
-    shot: int, width_ms: float = core.BIN_MS, out_dir: Path | None = None
+    shot: int,
+    width_ms: float = core.BIN_MS,
+    out_dir: Path | None = None,
+    *,
+    raw_probe_diagnostics: bool = True,
 ) -> dict:
     """Compute and save one shot's bins; return a one-line status."""
     cache = signals.load_cache(shot)
@@ -428,7 +432,9 @@ def process(
     elm_t, elm_flag = (None, None) if elm is None else elm
     density = signals.line_density(cache)
     n_t, n_y = (None, None) if density is None else density
-    probes = langmuir.read_shot(shot)
+    # Unpositioned raw sweeps supply diagnostics only; processed_ratio below
+    # always replaces their votes with independently positioned SOL-side current.
+    probes = langmuir.read_shot(shot) if raw_probe_diagnostics else None
 
     prad_ind = prad.prad_indicator(
         edges,
@@ -519,7 +525,14 @@ def process(
             np.maximum(div, 0.0) / total,
             np.nan,
         )
+    out["aux_prad_divl_native_w"] = np.full(n, np.nan, np.float32)
+    if "prad_divl" in cache:
+        rt, ry = cache["prad_divl"]
+        out["aux_prad_divl_native_w"] = core.bin_mean(
+            rt, ry, edges, keep=~core.elm_at(rt, elm_t, elm_flag)
+        )[0].astype(np.float32)
     out["prad_averaging_ms"] = np.full(n, th.PRAD_AVERAGING_MS, np.float32)
+    out["aux_prad_elm_window_known"] = prad.elm_window_known(edges, elm_t, elm_flag)
     if n_t is not None:
         out["aux_ne"] = core.bin_median(n_t, n_y, edges)[0].astype(np.float32)
     if probes is not None:

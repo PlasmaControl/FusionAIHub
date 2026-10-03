@@ -23,6 +23,7 @@ from .core import (
     bin_mean,
     elm_at,
     elm_bin_known,
+    sample_windows_known,
 )
 
 
@@ -38,6 +39,21 @@ def fdiv_vote(f: np.ndarray) -> np.ndarray:
     return vote
 
 
+def elm_window_known(edges, elm_t_ms, elm_flag) -> np.ndarray:
+    """D-alpha availability over the centered radiation averaging windows."""
+    if elm_t_ms is None or elm_flag is None:
+        return np.zeros(len(edges) - 1, bool)
+    centres = bin_centres(edges)
+    half = th.PRAD_AVERAGING_MS / 2
+    return sample_windows_known(
+        elm_t_ms,
+        np.isfinite(elm_flag),
+        centres - half,
+        centres + half,
+        closed_right=True,
+    )
+
+
 def prad_indicator(
     edges: np.ndarray,
     prad_t_ms: np.ndarray | None,
@@ -51,10 +67,13 @@ def prad_indicator(
 
     Radiation and heating use centered 250 ms means (an acausal local tau_E-scale
     choice). Radiation drops measured ELM samples; uncovered heating/radiation
-    windows stay invalid. A bin mostly in ELMs is invalid. Reasons include
+    windows stay invalid. D-alpha availability must cover the entire radiation
+    averaging window as well as the native bin. A bin mostly in ELMs is invalid.
+    Reasons include
     `no_bolometer`, `no_input_power`, `low_power`, `elm`, `elm_unknown`,
     `no_samples`, `negative_radiation`. Negative radiation below the documented
-    0.05 MW offset tolerance is rejected; smaller negative offsets become zero.
+    0.05 MW offset tolerance in either the native label bin or the smoothed
+    window is rejected; smaller negative offsets become zero.
     """
     n = len(edges) - 1
     value = np.full(n, np.nan)
@@ -69,10 +88,8 @@ def prad_indicator(
     from .signals import window_mean
 
     centres = bin_centres(edges)
-    prad = window_mean(
-        prad_t_ms, prad_w, centres, th.PRAD_AVERAGING_MS, keep=~in_elm
-    )
-    _, count = bin_mean(prad_t_ms, prad_w, edges, keep=~in_elm)
+    prad = window_mean(prad_t_ms, prad_w, centres, th.PRAD_AVERAGING_MS, keep=~in_elm)
+    native_prad, count = bin_mean(prad_t_ms, prad_w, edges, keep=~in_elm)
     p_in = window_mean(power_t_ms, p_in_w, centres, th.PRAD_AVERAGING_MS)
     elm_share = (
         bin_fraction(prad_t_ms, in_elm, edges) if elm_t_ms is not None else np.zeros(n)
@@ -86,9 +103,15 @@ def prad_indicator(
     reason[~np.isfinite(p_in)] = "no_input_power"
     reason[np.isfinite(p_in) & (p_in < th.MIN_INPUT_POWER_W)] = "low_power"
     reason[~np.isfinite(prad) & (reason == "")] = "no_samples"
-    reason[prad < -th.RADIATION_NEGATIVE_TOL_W] = "negative_radiation"
+    reason[
+        (prad < -th.RADIATION_NEGATIVE_TOL_W)
+        | (native_prad < -th.RADIATION_NEGATIVE_TOL_W)
+    ] = "negative_radiation"
     reason[np.nan_to_num(elm_share) > th.MAX_ELM_FRACTION] = "elm"
     reason[(count == 0) & (reason == "")] = "no_samples"
-    reason[~elm_bin_known(edges, elm_t_ms, elm_flag)] = "elm_unknown"
+    elm_known = elm_bin_known(edges, elm_t_ms, elm_flag) & elm_window_known(
+        edges, elm_t_ms, elm_flag
+    )
+    reason[~elm_known] = "elm_unknown"
     valid = (reason == "") & np.isfinite(value)
     return assemble("prad", value, valid, reason, fdiv_vote(value))

@@ -167,9 +167,13 @@ def elm_at(t_ms: np.ndarray, elm_t_ms, elm_flag) -> np.ndarray:
     return ~known | (flags[index] > 0)
 
 
-def sample_windows_known(t_ms, available, starts, stops) -> np.ndarray:
+def sample_windows_known(
+    t_ms, available, starts, stops, *, closed_right=False
+) -> np.ndarray:
     """Complete sample availability in half-open windows, without extrapolation.
 
+    Native bins are half-open; centered means use closed_right=True to include
+    the upper endpoint in both availability and the reduction.
     Half a native sample is allowed at record boundaries. A missing sample or
     an internal gap longer than two native samples invalidates intersecting
     windows. Availability is independent of whether a measured value is zero.
@@ -188,7 +192,7 @@ def sample_windows_known(t_ms, available, starts, stops) -> np.ndarray:
     step = float(np.median(np.diff(t)))
     known = (starts >= t[0] - step / 2) & (stops <= t[-1] + step / 2)
     lo = np.searchsorted(t, starts, side="left")
-    hi = np.searchsorted(t, stops, side="left")
+    hi = np.searchsorted(t, stops, side="right" if closed_right else "left")
     missing = np.r_[0, np.cumsum(~available)]
     known &= (hi > lo) & (missing[hi] == missing[lo])
     for i in np.flatnonzero(np.diff(t) > max(2 * step, 2.0)):
@@ -205,9 +209,7 @@ def elm_bin_known(edges, elm_t_ms, elm_flag) -> np.ndarray:
     n = len(edges) - 1
     if elm_t_ms is None or elm_flag is None:
         return np.zeros(n, bool)
-    return sample_windows_known(
-        elm_t_ms, np.isfinite(elm_flag), edges[:-1], edges[1:]
-    )
+    return sample_windows_known(elm_t_ms, np.isfinite(elm_flag), edges[:-1], edges[1:])
 
 
 def bin_fraction(t_ms: np.ndarray, flag: np.ndarray, edges: np.ndarray) -> np.ndarray:
