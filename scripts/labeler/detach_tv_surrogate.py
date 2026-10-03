@@ -37,6 +37,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 import pandas as pd
+from detach_json import dumps
 from scipy.io import readsav
 from scipy.linalg import solve
 
@@ -467,7 +468,7 @@ def predict_only(args) -> None:
     model.camera_verified = [s for s, d in data.items() if d["corpus"]]
     shots = [int(s) for s in Path(args.shots_file).read_text().split()]
     record["predicted"] = predict_shots(model, shots, skip=set(inverted))
-    Path(args.out).write_text(json.dumps(record, indent=1))
+    Path(args.out).write_text(dumps(record, indent=1))
 
 
 def main() -> None:
@@ -534,12 +535,8 @@ def main() -> None:
         shots = [int(s) for s in Path(args.shots_file).read_text().split()]
         result["predicted"] = predict_shots(model, shots, skip=set(inverted))
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-    Path(args.out).write_text(json.dumps(result, indent=1))
-    print(
-        json.dumps(
-            {k: result[k] for k in ("alpha", "loso_sav", "loso_corpus")}, indent=1
-        )
-    )
+    Path(args.out).write_text(dumps(result, indent=1))
+    print(dumps({k: result[k] for k in ("alpha", "loso_sav", "loso_corpus")}, indent=1))
 
 
 if __name__ == "__main__":

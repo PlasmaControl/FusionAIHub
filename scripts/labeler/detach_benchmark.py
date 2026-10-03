@@ -43,6 +43,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from detach_json import dumps
 from scipy.stats import rankdata
 
 from labeler.events.detachment import core, label_model
@@ -444,7 +445,7 @@ def main() -> None:
         "tangtv": "Chen C-III front with geometry and MARFE gates",
     }
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-    Path(args.out).write_text(json.dumps(result, indent=1))
+    Path(args.out).write_text(dumps(result, indent=1))
     for name in LF_NAMES:
         for ref_name in ("combined", "loo"):
             e = result["indicators"][name].get(ref_name, {}).get("all")

@@ -26,7 +26,12 @@ def main():
             "pdf.fonttype": 42,
         }
     )
-    labels = ["Afrac (Eldon)", "Prad,div (Eldon)", "TangTV (Chen)", "Redundant label"]
+    labels = [
+        "Afrac (Eldon)",
+        "Prad,div (Eldon)",
+        "TangTV SSA (Chen)",
+        "Redundant label",
+    ]
     coverage = [r["coverage"] for r in data["legacy"]] + [data["Tokamak-SI"]["certain"]]
     fig, ax = plt.subplots(figsize=(6.75, 2.4))
     for i, (label, c) in enumerate(zip(labels, coverage, strict=True)):
@@ -42,7 +47,7 @@ def main():
         )
     ax.set_yticks(range(4), labels)
     ax.invert_yaxis()
-    ax.set_xlabel("Covered bins (50 ms)")
+    ax.set_xlabel("Valid diagnostic / certain consensus bins (50 ms)")
     ax.set_xlim(0, max(v["bins"] for v in coverage) * 1.85)
     ax.spines[["top", "right"]].set_visible(False)
     fig.subplots_adjust(left=0.25, right=0.985, top=0.97, bottom=0.24)

@@ -25,12 +25,12 @@ are under `$LABELER_ROOT/round4/detach/ours/`.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from detach_json import dumps
 
 from labeler.events.detachment import core, signals
 
@@ -338,8 +338,8 @@ def train() -> None:
         out / "predictions.npz", prob=prob, y=y, shot=shot, start_ms=data["start_ms"]
     )
     RESULT.parent.mkdir(parents=True, exist_ok=True)
-    RESULT.write_text(json.dumps(result, indent=1))
-    print(json.dumps(result["cv_shots"], indent=1))
+    RESULT.write_text(dumps(result, indent=1))
+    print(dumps(result["cv_shots"], indent=1))
 
 
 def main() -> None:

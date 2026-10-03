@@ -192,7 +192,7 @@ def timeline(fig, spec, group: pd.DataFrame, times: dict[int, float]) -> None:
         axes[6].plot(
             centre[ok], zx[ok], color="#666666", lw=0.7, ls=":", label="X-point"
         )
-        axes[6].legend(loc="center right", frameon=False)
+        axes[6].legend(loc="lower left", frameon=False)
     lo, hi = start.min(), start.max() + core.BIN_MS
     for ax in axes:
         ax.set_xlim(lo, hi)
@@ -257,16 +257,16 @@ def main() -> None:
         times = dict(zip((1, 2, 3), args.times, strict=True))
     inv = np.load(root() / "inversions" / f"{args.shot}.npz")
     video = read_video(args.shot)
-    fig = plt.figure(figsize=(6.75, 3.8), constrained_layout=False)
+    fig = plt.figure(figsize=(6.75, 4.2), constrained_layout=False)
     outer = fig.add_gridspec(
         2,
         3,
         height_ratios=[0.8, 1.7],
         left=0.09,
         right=0.99,
-        top=0.91,
+        top=0.81,
         bottom=0.13,
-        hspace=0.48,
+        hspace=0.35,
         wspace=0.34,
     )
     notes = []
@@ -336,7 +336,7 @@ def main() -> None:
                 row.aux_zxpt1 - row.aux_zvsod
             )
             ax.axhline(ze, color="#F0E442", lw=0.8, ls="--")
-        ax.set_xlim(radii[0], radii[-1])
+        ax.set_xlim(max(radii[0], 1.0), min(radii[-1], 1.8))
         ax.set_ylim(elev[0], VIEW_ZMAX)
         ax.set_xlabel("R (m)")
         if col == 0:
@@ -352,7 +352,7 @@ def main() -> None:
         2,
         1,
         height_ratios=[3.5, 1],
-        left=0.14,
+        left=0.18,
         right=0.985,
         top=0.98,
         bottom=0.13,

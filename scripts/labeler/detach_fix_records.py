@@ -12,6 +12,7 @@ import detach_benchmark as bench
 import detach_label as dl
 import numpy as np
 import pandas as pd
+from detach_json import dumps
 
 from labeler.events.detachment import core, label_model, thresholds
 
@@ -60,7 +61,7 @@ def snapshot_legacy_populations():
             **population(frame, contributes),
             "test": population(frame, contributes & (frame.split.to_numpy() == "test")),
         }
-    path.write_text(json.dumps(populations, indent=1))
+    path.write_text(dumps(populations, indent=1))
     return populations
 
 
@@ -132,7 +133,9 @@ def current_sensitivity(frame):
 
 
 def development_validation(bins):
-    train = (bins.split == "train").to_numpy()
+    # The local inversion campaigns are external development training data.
+    # They are used for the label fit, not reserved as blind cohort evaluation.
+    train = bins.split.isin(("train", "outside")).to_numpy()
     tv = bins.tangtv_vote.to_numpy()
     pv = bins.prad_vote.to_numpy()
     common = (
@@ -173,8 +176,14 @@ def development_validation(bins):
             "detached_min": thresholds.PRAD_DETACHED_MIN,
         },
         "source": "Local Chen 201081 worked example; Eldon 2019 supplies sensor definition, not these thresholds.",
-        "selection": "Fixed thresholds, no optimisation; validate only fixed cohort train inversion bins, not test/val/outside.",
+        "selection": "Fixed thresholds, no optimisation; fixed cohort train plus external inversion development shots, excluding val and test. External shots are development training inputs to the label fit, not blind evaluation.",
         "valid_reference": population(bins, common),
+        "cohort_train_valid_reference": population(
+            bins, common & bins.split.eq("train").to_numpy()
+        ),
+        "external_development_valid_reference": population(
+            bins, common & bins.split.eq("outside").to_numpy()
+        ),
         "voting_reference": population(bins, voting),
         "confusion_ref_by_vote": table.tolist(),
         "binary_kappa": bench.kappa_from(table),
@@ -322,6 +331,15 @@ def main():
         lower_checks[name] = bench.bootstrap(
             tables, counts, name, np.random.default_rng(0)
         )
+        lower_checks[name].update(
+            {
+                "n_shots": int(np.sum(tables.sum(axis=(1, 2)) > 0)),
+                "reference_certain_bins": int(
+                    np.isin(references[name], (1, 2, 3)).sum()
+                ),
+                "valid_reference_bins": int(counts[:, 0].sum()),
+            }
+        )
     records = {
         "audit": audit,
         "population": population(frame, np.ones(len(frame), bool)),
@@ -349,7 +367,7 @@ def main():
         "fetch": fetch_audit(),
     }
     RESULTS.mkdir(exist_ok=True)
-    (RESULTS / "detachment_fix.json").write_text(json.dumps(records, indent=1))
+    (RESULTS / "detachment_fix.json").write_text(dumps(records, indent=1))
     paper = {
         "task": "detachment",
         "bin_ms": 50,
@@ -359,6 +377,7 @@ def main():
                 "indicator": "Afrac (Eldon 2021/2022)",
                 "setting": "nearest outer-target processed Jsat; attached pre-puff C, separate L/H; DOD=1/Afrac",
                 "reproduced": bool((bins.afrac_method == "eldon_pre_puff_LH").any()),
+                "coverage_kind": "valid measurements with fitted attached L/H reference",
                 "coverage": population(
                     bins, bins.afrac_valid & bins.afrac_method.eq("eldon_pre_puff_LH")
                 ),
@@ -367,12 +386,14 @@ def main():
                 "indicator": "Prad,div (Eldon 2019)",
                 "setting": "published calibrated multi-chord lower-divertor sensor; no universal published state threshold",
                 "reproduced": False,
+                "coverage_kind": "published state classification; no universal thresholds available",
                 "coverage": {"bins": 0, "shots": 0},
             },
             {
                 "indicator": "TangTV (Chen 2026)",
                 "setting": "C-III SSA height; DZ cliff about 0.5; upper shelf; height>1 is candidate MARFE",
                 "reproduced": True,
+                "coverage_kind": "valid upper-shelf SSA/DZ measurements, including transition-band abstentions; not expert state labels",
                 "coverage": population(
                     bins,
                     bins.tangtv_valid & bins.tangtv_source.eq("inversion") & ~lower,
@@ -380,6 +401,7 @@ def main():
             },
         ],
         "Tokamak-SI": {
+            "coverage_kind": "certain compatible diagnostic consensus; unverified",
             "setting": "compatible redundant votes plus posterior>=0.7, TangTV support, geometry/ELM gates, MARFE spatial+persistent+second cue; proxy pair uncertain",
             "assessed": population(frame, np.ones(len(frame), bool)),
             "certain": population(frame, certain),
@@ -409,9 +431,9 @@ def main():
             return [trim(v) for v in x]
         return x
 
-    (RESULTS / "detachment_figure2.json").write_text(json.dumps(trim(paper), indent=1))
+    (RESULTS / "detachment_figure2.json").write_text(dumps(trim(paper), indent=1))
     print(
-        json.dumps(
+        dumps(
             {
                 "audit": audit,
                 "population": records["population"],

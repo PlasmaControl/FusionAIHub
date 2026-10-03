@@ -33,6 +33,7 @@ from pathlib import Path
 import detach_label as dl
 import numpy as np
 import pandas as pd
+from detach_json import dumps
 
 from labeler.events.detachment import core, label_model
 
@@ -102,10 +103,15 @@ def main() -> None:
         votes, valid = dl.matrices(frame)
         out, _, _ = dl.label_frame(frame, model, dl.POSTERIOR_THRESHOLD, float(width))
         assessed = out.assessed.to_numpy()
+        certain = out.state_lm.isin((1, 2, 3)).to_numpy()
         labelled[width] = out
         result[f"{width}ms"] = {
             "n_shots": int(frame.shot.nunique()),
             "n_bins": len(frame),
+            "n_assessed_bins": int(assessed.sum()),
+            "n_assessed_shots": int(frame.loc[assessed, "shot"].nunique()),
+            "n_certain_bins": int(certain.sum()),
+            "n_certain_shots": int(frame.loc[certain, "shot"].nunique()),
             "assessed_share": float(assessed.mean()),
             "uncertain_share_of_assessed": float(
                 np.mean(out.state_lm.to_numpy()[assessed] == core.UNCERTAIN)
@@ -143,7 +149,7 @@ def main() -> None:
             "kappa": dl.cohen_kappa(mine[both], theirs[both]),
         }
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-    Path(args.out).write_text(json.dumps(result, indent=1))
+    Path(args.out).write_text(dumps(result, indent=1))
     for width in WIDTHS:
         r = result[f"{width}ms"]
         print(
