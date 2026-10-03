@@ -34,15 +34,46 @@ def test_the_edge_where_q_diverges_is_not_read():
     assert surface.candidate_m(1, q, RHO) == [2]
 
 
-def test_m_is_given_only_when_one_surface_is_possible_over_the_interval():
+def test_q_alone_cannot_identify_m_even_with_only_one_candidate():
     t = np.arange(0.0, 3000.0, 25.0)
     q = np.stack([profile(1.2, 2.8)] * len(t), axis=1)
-    assert surface.supported_m(1, t, q, RHO, 500.0, 1500.0) == 2
-    assert surface.supported_m(2, t, q, RHO, 500.0, 1500.0) is None  # 3, 4 or 5
+    assert surface.supported_m(1, t, q, RHO, 500.0, 1500.0) is None
+    assert surface.supported_m(2, t, q, RHO, 500.0, 1500.0) is None
     wide = np.stack([profile(1.1, 5.2)] * len(t), axis=1)
     assert surface.supported_m(1, t, wide, RHO, 500.0, 1500.0) is None
     # an interval with no q sample in it has no m
     assert surface.supported_m(1, t, q, RHO, 10_000.0, 11_000.0) is None
+
+
+def test_m_uses_q_at_the_island_radius_rather_than_all_candidate_surfaces():
+    t = np.array([0.0, 25.0, 50.0])
+    rho = np.array([0.0, 0.5, 0.9, 1.0])
+    q = np.tile(np.array([1.2, 1.5, 3.0, 10.0])[:, None], (1, 3))
+    assert surface.supported_m(2, t, q, rho, 0, 50, island_rho=0.5) == 3
+    assert surface.supported_m(1, t, q, rho, 0, 50, island_rho=0.5) is None
+    assert surface.supported_m(2, t, q, rho, 0, 50, island_rho=0.98) is None
+    assert surface.supported_m(2, t, q, rho, 100, 200, island_rho=0.5) is None
+
+
+def test_m_is_empty_without_finite_q_at_an_observed_island_radius():
+    t = np.array([0.0, 25.0])
+    rho = np.array([0.0, 0.5, 0.9])
+    q = np.full((3, 2), np.nan)
+    assert surface.supported_m(2, t, q, rho, 0, 25, island_rho=0.5) is None
+
+
+def test_an_m_hook_returning_none_leaves_both_onset_and_span_unattributed():
+    t = np.arange(3000.0)
+    n1 = np.full(t.shape, 0.2)
+    n1[1000:1500] = 30.0
+    label = rule.label_shot(
+        1, t, n1, None, (5.0, 2900.0), m_of=lambda n, start, end: None
+    )
+    present = rule.shot_table(label).query("category == 1")
+    assert len(present) == 2
+    attrs = [parse_attrs(a) for a in present["attrs"].tolist()]
+    assert {a["iscrowd"] for a in attrs} == {0, 1}
+    assert all("m" not in a and "efit_tree" not in a for a in attrs)
 
 
 def test_a_label_carries_m_and_its_efit_tree_when_the_hook_gives_one():

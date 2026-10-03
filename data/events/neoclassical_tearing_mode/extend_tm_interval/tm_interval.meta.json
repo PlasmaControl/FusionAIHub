@@ -29,23 +29,23 @@
     "n_intervals": 273,
     "n_locked": 84,
     "n_onset_points": 271,
-    "n_with_m": 11,
+    "n_with_m": 0,
     "n_without_observed_onset": 2,
     "shots_with_not_observable": 39,
     "shots_with_ramp_up_uncertain": 0
   },
   "crowd": "span rows iscrowd 1 (the whole interval), onset point rows iscrowd 0; t_start == t_end marks a point",
-  "git_sha": "536aa28",
+  "git_sha": "cc9927b3",
   "locked": {
     "intervals_without_a_frequency_record_shots": [],
     "rule": "labeler.tearing.rule.frequency_locks / apply_locking: the mode's frequency falls to <= 1 kHz for 20 ms after >= 1.5 kHz, within the interval's last 150 ms or 100 ms after it; set only when true",
     "signal": "\\MHD::N1FREQ, \\MHD::N2FREQ (kHz)"
   },
   "m": {
-    "rule": "labeler.tearing.surface.supported_m: m is recorded (with efit_tree efit01) only when the interval's median q profile inside rho 0.95 has exactly one rational surface m / n with m > n; otherwise m is left empty (no radial evidence, ECE or the poloidal array, is used)",
+    "rule": "labeler.tearing.surface.supported_m requires an independently observed island radius to evaluate m = n*q there. No ECE island radius is resolved here, so m is empty; q alone is insufficient.",
     "signal": "qpsi_EFIT01 (the shot's feature file), offline EFIT01"
   },
-  "made_at": "2026-10-03T14:36:07+00:00",
+  "made_at": "2026-10-03T18:36:31+00:00",
   "made_by": "scripts/labeler/tm_label.py",
   "missing_signal_shots": [],
   "n_labelled_shots": 500,

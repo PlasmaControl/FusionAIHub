@@ -160,12 +160,16 @@ def main(argv=None) -> int:
     # Intervals can only be compared where the labels were made.
     labelled = set(intervals.shot) | set(table.shot)
     refs = [r for r in refs if r.shot in labelled]
-    both = {}
+    both, strict = {}, {}
     for name, ns in (("n1", (1,)), ("any_n", None)):
         onsets, compared = agreement.compare_onsets(
             refs, intervals, tol_ms=args.tol_ms, ns=ns
         )
         both[name] = agreement.summarize(onsets, compared, refs)
+        strict_onsets, strict_intervals = agreement.compare_onsets(
+            refs, intervals, tol_ms=0.0, ns=ns
+        )
+        strict[name] = agreement.summarize(strict_onsets, strict_intervals, refs)
         if name == "n1" and len(onsets):
             onsets["reason"] = miss_reasons(
                 onsets, intervals, table, OUT_ROOT / "signals"
@@ -189,6 +193,8 @@ def main(argv=None) -> int:
         "intervals_table": str(full),
         **notes,
         "agreement": both,
+        "agreement_strict": strict,
+        "agreement_strict_tolerance_ms": 0.0,
     }
     path = (
         OUT_ROOT

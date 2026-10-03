@@ -73,7 +73,8 @@ def surface_hook(shot: int, roots):
     """`m_of(n, start_ms, end_ms)` from the shot's EFIT q in its features, or None.
 
     `roots` are the `Paths` to look in, in order; the first holding the shot's feature
-    file with a `qpsi` record is used.
+    file with a `qpsi` record is used. No ECE island radius has been resolved by
+    this pipeline, so `supported_m` leaves m empty even for a unique candidate.
     """
     for paths in roots:
         path = paths.features_file(shot)
@@ -193,10 +194,9 @@ def meta_for(which, frame, labels, missing, unlocked, shots, rules, extra=None):
         },
         "m": {
             "signal": "qpsi_EFIT01 (the shot's feature file), offline EFIT01",
-            "rule": "labeler.tearing.surface.supported_m: m is recorded (with "
-            "efit_tree efit01) only when the interval's median q profile inside "
-            "rho 0.95 has exactly one rational surface m / n with m > n; otherwise "
-            "m is left empty (no radial evidence, ECE or the poloidal array, is used)",
+            "rule": "labeler.tearing.surface.supported_m requires an independently "
+            "observed island radius to evaluate m = n*q there. No ECE island "
+            "radius is resolved here, so m is empty; q alone is insufficient.",
         },
         **(extra or {}),
     }

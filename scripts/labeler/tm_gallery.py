@@ -3,11 +3,11 @@
 
 Each shot is three rows on one time axis: a strip with its intervals (one colour per
 toroidal number, a triangle at each onset, a hatch where the interval ended by locking),
-the 0-50 kHz spectrogram of a toroidal-array Mirnov probe (MPI66M322D, corpus `mirnov`
-row 15, in dB above each frequency's own floor over the plasma, the review editor's
-scale), and the n = 1 and n = 2 RMS (log gauss) with the onset threshold and, per
-interval, the release level it was cut at. The Mirnov record is used because the
-corpus' `mhr` group holds only the first 4.2 s of a pulse.
+the 0-50 kHz MHR spectrogram (corpus `mhr` row 0, in dB above each frequency's
+own floor over the plasma), and the n = 1 and n = 2 RMS (log gauss) with the onset
+threshold and, per interval, the release level it was cut at. MHR often covers only
+part of a pulse; its uncovered times are grey. `--diagnostic mirnov` gives a second
+gallery with the longer MPI66M322D record (corpus `mirnov` row 15).
 
     PYTHONPATH=$PWD/src pixi run --frozen --no-install -e labelmaker python \\
         scripts/labeler/tm_gallery.py --n 12 --seed 3 --out <stem>
@@ -16,6 +16,7 @@ corpus' `mhr` group holds only the first 4.2 s of a pulse.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
@@ -67,10 +68,15 @@ def intervals_of(frame: pd.DataFrame):
     return spans, onsets
 
 
-def spectrogram(shot: int, window):
+def spectrogram(shot: int, window, diagnostic="mhr"):
     """`(t_s, f_khz, db)` of the probe's 0-50 kHz power over the window, or None."""
     try:
-        array = corpus_signal(shot, "mirnov", channels=[PROBE_ROW], t_range=window)
+        array = corpus_signal(
+            shot,
+            diagnostic,
+            channels=[PROBE_ROW if diagnostic == "mirnov" else 0],
+            t_range=window,
+        )
     except (NoDataError, KeyError, OSError):
         return None
     t_ms, f_hz, spec = stft(
@@ -81,7 +87,7 @@ def spectrogram(shot: int, window):
     return t_ms / 1000.0, f_hz / 1000.0, above_floor_db(power, 0.2, columns=columns)
 
 
-def draw_shot(fig, grid, shot, window, signals, frame, thresholds):
+def draw_shot(fig, grid, shot, window, signals, frame, thresholds, diagnostic):
     """The three rows of one shot in its cell of the figure."""
     sub = grid.subgridspec(3, 1, height_ratios=[0.35, 2.2, 1.6], hspace=0.08)
     strip, spec_ax, rms_ax = (fig.add_subplot(sub[i]) for i in range(3))
@@ -114,12 +120,13 @@ def draw_shot(fig, grid, shot, window, signals, frame, thresholds):
     for side in ("top", "right", "left"):
         strip.spines[side].set_visible(False)
     strip.set_title(f"{shot}", fontsize=FONT, loc="left", pad=2)
-    got = spectrogram(shot, window)
+    got = spectrogram(shot, window, diagnostic)
+    spec_ax.set_facecolor("0.85")
     if got is None:
         spec_ax.text(
             0.5,
             0.5,
-            "no Mirnov record",
+            f"no {diagnostic.upper()} record",
             ha="center",
             va="center",
             transform=spec_ax.transAxes,
@@ -139,7 +146,11 @@ def draw_shot(fig, grid, shot, window, signals, frame, thresholds):
             rasterized=True,
         )
         spec_ax.set_xlim(w0, w1)
-        spec_ax.set_ylim(0, 50)
+    spec_ax.set_ylim(0, 50)
+    for t0, t1, n, _ in spans:
+        spec_ax.axvspan(t0 / 1000, t1 / 1000, color=COLOUR[n], alpha=0.12, lw=0)
+        for edge in (t0, t1):
+            spec_ax.axvline(edge / 1000, color=COLOUR[n], lw=0.6, ls="--")
     spec_ax.set_ylabel("kHz", fontsize=FONT, labelpad=1)
     spec_ax.set_xticklabels([])
     t_ms, n1, n2 = signals
@@ -162,7 +173,7 @@ def draw_shot(fig, grid, shot, window, signals, frame, thresholds):
     rms_ax.set_xlabel("time (s)", fontsize=FONT, labelpad=1)
     for ax in (spec_ax, rms_ax):
         ax.tick_params(labelsize=FONT, length=2, pad=1)
-    return strip, spec_ax, rms_ax
+    return None if got is None else [float(got[0][0]), float(got[0][-1])]
 
 
 def main(argv=None) -> int:
@@ -185,6 +196,7 @@ def main(argv=None) -> int:
         "--shots", type=int, nargs="+", help="these shots instead of a draw"
     )
     ap.add_argument("--columns", type=int, default=3)
+    ap.add_argument("--diagnostic", choices=("mhr", "mirnov"), default="mhr")
     args = ap.parse_args(argv)
 
     cohort = pd.read_csv(COHORT).set_index("shot")
@@ -207,6 +219,8 @@ def main(argv=None) -> int:
     shots = args.shots or sorted(
         rng.choice(eligible, size=min(args.n, len(eligible)), replace=False).tolist()
     )
+    if any(s not in eligible for s in shots):
+        raise SystemExit("gallery shots must be eligible development shots")
     columns = args.columns
     rows = int(np.ceil(len(shots) / columns))
     plt.rcParams.update({"font.size": FONT, "axes.linewidth": 0.5})
@@ -221,6 +235,7 @@ def main(argv=None) -> int:
         top=0.975,
         bottom=0.09 if rows < 4 else 0.065,
     )
+    coverage = {}
     for k, shot in enumerate(shots):
         row = cohort.loc[shot]
         window = (float(row.window_start_ms), float(row.window_end_ms))
@@ -238,8 +253,15 @@ def main(argv=None) -> int:
             )
             for r in full[full.shot == shot].itertuples(index=False)
         ]
-        draw_shot(
-            fig, grid[k // columns, k % columns], shot, window, signals, frame, items
+        coverage[shot] = draw_shot(
+            fig,
+            grid[k // columns, k % columns],
+            shot,
+            window,
+            signals,
+            frame,
+            items,
+            args.diagnostic,
         )
     handles = [
         plt.Line2D([], [], color=COLOUR[1], lw=1.5, label="n = 1"),
@@ -259,6 +281,24 @@ def main(argv=None) -> int:
     args.out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(args.out.with_suffix(".pdf"))
     fig.savefig(args.out.with_suffix(".png"), dpi=150)
+    args.out.with_suffix(".json").write_text(
+        json.dumps(
+            {
+                "made_by": "scripts/labeler/tm_gallery.py",
+                "diagnostic": args.diagnostic,
+                "seed": args.seed,
+                "shots": shots,
+                "split": "development (train and validation); blind test excluded",
+                "spectrogram_coverage_s": coverage,
+                "labels": str(args.labels),
+                "frequency_khz": [0, 50],
+                "dpi": 150,
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     print(f"{args.out}: shots {shots}")
     return 0
 

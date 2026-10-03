@@ -231,7 +231,12 @@ def run_legacy_cnn(args) -> None:
 
     paths = Paths.from_env()
     table = pd.read_csv(CATALOG / f"{args.set}.csv")
-    shots = [int(s) for s in table.shot if (INPUTS / CNN / f"{int(s)}.npz").is_file()]
+    blind = set(pd.read_csv(CATALOG / "cohort.csv").query("split == 'test'").shot)
+    shots = [
+        int(s)
+        for s in table.shot
+        if s not in blind and (INPUTS / CNN / f"{int(s)}.npz").is_file()
+    ]
     score, y, valid, used, skipped = {}, {}, {}, [], {}
     for shot in shots:
         truth, label, why = seo_rows(shot, paths)
@@ -273,6 +278,9 @@ def run_legacy_cnn(args) -> None:
                 "archive is its training store, so these are an upper bound"
             ),
             "shots": used,
+            "blind_test_excluded": True,
+            "segmental_f1": None,
+            "segmental_reason": "the legacy target marks growth-phase rows, not spans",
             "skipped": {str(k): v for k, v in skipped.items()},
             "metrics": res,
         },
@@ -312,6 +320,8 @@ def run_legacy_dsm(args) -> None:
             for s in pd.read_csv(CATALOG / f"{name}.csv").shot
         }
     )
+    blind = set(pd.read_csv(CATALOG / "cohort.csv").query("split == 'test'").shot)
+    pool = [s for s in pool if s not in blind]
     have = [s for s in pool if (INPUTS / DSM / f"{s}.npz").is_file()]
     onsets = survival_onsets(have)
     held = [s for s in have if s in onsets and s not in training]
@@ -354,6 +364,9 @@ def run_legacy_dsm(args) -> None:
                     "covers"
                 ),
                 "shots": held,
+                "blind_test_excluded": True,
+                "segmental_f1": None,
+                "segmental_reason": "the legacy target is a forecast, not a TM span",
                 "n_shots_with_inputs": len(have),
                 "n_in_training_dropped": int(sum(s in training for s in have)),
                 "shots_with_an_onset": [s for s in held if np.isfinite(onsets[s])],
