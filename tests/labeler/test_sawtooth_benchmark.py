@@ -552,6 +552,7 @@ def test_evaluation_exports_peer_baselines_fixed_holdout_and_excluded_picks(
             central_channel=12,
             observable=observable,
             assessed=assessed,
+            q_prior=(t >= 0.1) & (t < 0.15),
         )
         (work / "shots" / f"{shot}.json").write_text(
             json.dumps(
@@ -593,11 +594,15 @@ def test_evaluation_exports_peer_baselines_fixed_holdout_and_excluded_picks(
                         "heldout_shots": [
                             s for s in (1, 2, 3) if split["folds"][s] == fold
                         ],
+                        "fold": fold,
                         "presence_threshold": 0.5,
                         "period_boundary_ms": 50,
                         "selected_crash_threshold": {"threshold": 0.99, "z": 20},
                         "derivative_baseline": {"z": 20, "presence_z": 20},
                         "majority_class": 0,
+                        "best_epoch": 3,
+                        "epochs_completed": 8,
+                        "seconds": 1.0,
                     }
                 )
             )
@@ -631,6 +636,15 @@ def test_evaluation_exports_peer_baselines_fixed_holdout_and_excluded_picks(
     assert scores["saw-hl3"]["crash_metric_label"] == "derivative picker gated by HL-3"
     assert scores["saw-ours"]["assessment_totals"]["observable_picks"] == 6
     assert scores["saw-ours"]["assessment_totals"]["excluded_picks"] == 3
+    sensitivity = scores["saw-ours"]["old_negatives_sensitivity"]
+    assert (
+        sensitivity["assessment_totals"]["assessed_bins"]
+        > scores["saw-ours"]["assessment_totals"]["assessed_bins"]
+    )
+    assert "crash_tolerance_2ms" in sensitivity
+    points = scores["saw-ours"]["operating_points"]
+    assert [row["fold"] for row in points["by_fold"]] == [0, 1, 2]
+    assert points["presence_threshold_range"] == 0.0
     derivative_classes = scores["saw-derivative"]["three_class"]
     assert derivative_classes["windows"] == scores["saw-hl3"]["three_class"]["windows"]
     assert derivative_classes["unclassified_windows"] > 0
