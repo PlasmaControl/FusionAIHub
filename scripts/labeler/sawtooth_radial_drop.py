@@ -19,6 +19,10 @@ The verdict rule is written here, before any shot is read, and is not tuned:
   (within 0.02) outward over rho 0.3-0.9 to <= -0.15 at the outermost channel;
 * otherwise indeterminate.
 
+Events come from the expert-positive spans of the reviewed shots (186636, 189324,
+190637). Shot 186532 has no reviewed span, so all of its accepted crash points
+and periodic core edges are used.
+
 Cutoff is a separate question: the fraction of the expert-positive span that is
 observable after the density and ECE-validity guards is reported beside it.
 """
@@ -227,13 +231,18 @@ def span_support(prof, spans):
 def cutoff_profile(prof):
     """Median pre-event Te against R for the first and last event: the step."""
     clock, y, radius = prof["clock"], prof["y"], prof["radius"]
+    mapped = [
+        (stamp, align_q([stamp], radius.time_s, radius.R_m)[:40, 0])
+        for stamp in prof["times"]
+    ]
+    mapped = [(stamp, R) for stamp, R in mapped if np.isfinite(R).any()]
     rows = []
-    for stamp in prof["times"][:: max(1, len(prof["times"]) // 3)][:3]:
+    for stamp, R in mapped[:: max(1, len(mapped) // 3)][:3]:
         a = slice(*np.searchsorted(clock, [stamp - 0.0015, stamp - 0.0003]))
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", RuntimeWarning)
             te = np.nanmedian(y[:40, a], axis=1)
-        rows.append((stamp, align_q([stamp], radius.time_s, radius.R_m)[:40, 0], te))
+        rows.append((stamp, R, te))
     return rows
 
 
@@ -325,9 +334,11 @@ def main():
         spans = [(r.t_start / 1000, r.t_end / 1000) for r in rows.itertuples()]
         source = "expert-positive spans"
         if not spans:
+            # No reviewed span (186532 was named in the brief, not reviewed):
+            # every accepted crash point and periodic core edge of the record.
             record = json.loads((args.work / "shots" / f"{shot}.json").read_text())
-            spans = [(e["start_s"], e["end_s"]) for e in record["intervals"]]
-            source = "rule-present trains (no reviewed span)"
+            spans = [(0.0, float(record["window_s"][1]))]
+            source = "no reviewed span: all rule crash points and periodic core edges"
         prof = profile(args.work, shot, spans)
         result = verdict(prof["rho"], prof["median"])
         report["shots"][str(shot)] = {

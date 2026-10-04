@@ -1062,7 +1062,15 @@ def prior_spatial_diagnostic(args, record, plt):
         axis.spines[["top", "right"]].set_visible(False)
     axes[-1].set(xlabel="Time (ms)", xlim=(lo * 1000, hi * 1000))
     axes[-1].xaxis.set_major_locator(MaxNLocator(nbins=4, prune="both"))
-    axes[0].text(0.01, 0.97, f"DIII-D {shot}", transform=axes[0].transAxes, va="top")
+    axes[0].text(
+        0.01,
+        0.97,
+        f"DIII-D {shot}",
+        transform=axes[0].transAxes,
+        va="top",
+        zorder=10,
+        bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.85, "pad": 1.5},
+    )
     labels = [
         channel_label(record, [core], "Core"),
         channel_label(record, auxiliary, "Aux HFS") + " (excluded)",
@@ -1483,7 +1491,13 @@ def legacy_comparison(args):
         axes[-1].set(xlabel="Time (ms)", xlim=(lo * 1000, hi * 1000))
         axes[-1].xaxis.set_major_locator(MaxNLocator(nbins=4, prune="both"))
         axes[0].text(
-            0.01, 0.97, f"DIII-D {shot}", transform=axes[0].transAxes, va="top"
+            0.01,
+            0.97,
+            f"DIII-D {shot}",
+            transform=axes[0].transAxes,
+            va="top",
+            zorder=10,
+            bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.85, "pad": 1.5},
         )
         labels = [
             channel_label(record, [core], "Core"),
