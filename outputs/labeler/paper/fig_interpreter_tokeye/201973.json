@@ -3849,7 +3849,7 @@
   "unkeyed_n_colour": "#8C6BB1",
   "bands_khz": {
    "alfven_eigenmode": [
-    80.0,
+    60.0,
     null
    ],
    "neoclassical_tearing_mode": [
@@ -3861,7 +3861,7 @@
     60.0
    ]
   },
-  "fold_khz": 55.0,
+  "fold_khz": 60.0,
   "elm_peaks": "D-alpha less a 25-sample running median, over 4.0 MADs"
  },
  "tracks": {
@@ -4301,11 +4301,11 @@
  },
  "caption": {
   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/caption.tex",
-  "sha256": "6b8899eee1418fbcbd14ff203f477eb9883d06beb476220788e602df3134f15f"
+  "sha256": "d6d0cc633bb2d62cbee414a5db690d6376bc31ae0caadc5560eb039599a1b905"
  },
  "appendix": {
   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/appendix.txt",
-  "sha256": "e912fd96e0819d95ebd5ba3d40bd0f3253c4b27ccf7197cff6f659c76ee877c4"
+  "sha256": "e547fb93b172716469ad0b8955ecca996e5c5dc0c1b64be446f89b97f7e8088a"
  },
  "drawn": {
   "figure": [
@@ -4313,18 +4313,18 @@
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/fig_interpreter.png"
   ],
   "figure_sha256": {
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/fig_interpreter.pdf": "8b53c74f302e10dc184d731bcc658dc9379134739a258cfa72021cfbbec63d54",
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/fig_interpreter.png": "b5dce8812f3d70636bab5b765272cb7a429e2720bcd0cfcc80535ee62db81d5c"
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/fig_interpreter.pdf": "523bc97c16fdf495736ef0f43a17f19a1e8ba388ff20ba13969b2d8f08702e07",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/fig_interpreter.png": "ac554175484ec65cae169ac295d0c8a2fd936d3fc0f0b378dca473808e35be55"
   },
   "blobs": {
-   "wide_above_fold": 297,
+   "wide_above_fold": 281,
    "zoom_below_fold": 106,
    "tagged": {
-    "alfven_eigenmode": 154,
+    "alfven_eigenmode": 178,
     "neoclassical_tearing_mode": 14,
     "sawtooth_oscillation": 0
    },
-   "untagged": 235
+   "untagged": 195
   },
   "elm_peaks_in_label": 65,
   "elm_peak_times_ms": [
@@ -4434,34 +4434,39 @@
   ],
   "layout": {
    "n_panel_height_units": 1.35,
-   "n_panel_height_in": 0.6122616777883703,
+   "n_panel_height_in": 0.6047669491525425,
    "n_panel_band_khz": [
     0.0,
     30.0
    ],
-   "scale_note": "0\u201355 kHz: higher-\nresolution spectrogram;\n0\u201330 stretched,\n30\u201355 compressed",
+   "scale_note": "0\u201350 kHz: higher-\nresolution spectrogram;\n0\u201330 stretched,\n30\u201360 compressed",
    "processed_omitted_band_khz": [],
    "processed_restored_strip_khz": [
     30.0,
-    55.0
+    60.0
    ],
    "frequency_scale_breaks_khz": [
     30.0,
-    55.0
+    60.0
+   ],
+   "zoom_pass_top_khz": 50.0,
+   "wide_pass_strip_khz": [
+    50.0,
+    60.0
    ],
    "ece_candidate_key_placement": "in strip",
    "frequency_panels": {
     "raw_hi": {
      "band_khz": [
-      55.0,
+      60.0,
       250.0
      ],
-     "height_in": 0.5442326024785518,
+     "height_in": 0.5017325800376647,
      "bounds": [
       0.14,
-      0.8596615824594851,
+      0.8677118644067796,
       0.78,
-      0.9586129647283127
+      0.9589359698681732
      ],
      "ticks_khz": [
       100,
@@ -4473,18 +4478,18 @@
     "raw_mid": {
      "band_khz": [
       30.0,
-      55.0
+      60.0
      ],
-     "height_in": 0.3174690181124879,
+     "height_in": 0.3494209039548023,
      "bounds": [
       0.14,
-      0.8019399428026691,
+      0.8041807909604519,
       0.78,
-      0.8596615824594851
+      0.8677118644067796
      ],
      "ticks_khz": [
       40,
-      55
+      60
      ]
     },
     "raw_lo": {
@@ -4492,12 +4497,12 @@
       0.0,
       30.0
      ],
-     "height_in": 0.6122616777883703,
+     "height_in": 0.6047669491525425,
      "bounds": [
       0.14,
-      0.6906196377502382,
+      0.6942231638418078,
       0.78,
-      0.8019399428026691
+      0.8041807909604519
      ],
      "ticks_khz": [
       0,
@@ -4508,15 +4513,15 @@
     },
     "pr_hi": {
      "band_khz": [
-      55.0,
+      60.0,
       250.0
      ],
-     "height_in": 0.5442326024785512,
+     "height_in": 0.5017325800376647,
      "bounds": [
       0.14,
-      0.4721020019065775,
+      0.47430790960451963,
       0.78,
-      0.571053384175405
+      0.5655320150659132
      ],
      "ticks_khz": [
       100,
@@ -4528,18 +4533,18 @@
     "pr_mid": {
      "band_khz": [
       30.0,
-      55.0
+      60.0
      ],
-     "height_in": 0.3174690181124879,
+     "height_in": 0.3494209039548023,
      "bounds": [
       0.14,
-      0.4143803622497615,
+      0.41077683615819194,
       0.78,
-      0.4721020019065775
+      0.47430790960451963
      ],
      "ticks_khz": [
       40,
-      55
+      60
      ]
     },
     "pr_lo": {
@@ -4547,12 +4552,12 @@
       0.0,
       30.0
      ],
-     "height_in": 0.6122616777883703,
+     "height_in": 0.6047669491525425,
      "bounds": [
       0.14,
-      0.30306005719733053,
+      0.30081920903954784,
       0.78,
-      0.4143803622497615
+      0.41077683615819194
      ],
      "ticks_khz": [
       0,
@@ -4568,54 +4573,54 @@
       "text": "0",
       "bounds": [
        0.12390946502057615,
-       0.67965797029443,
+       0.6832614963859998,
        0.13279835390946504,
-       0.6973347379711977
+       0.7009382640627675
       ]
      },
      {
       "text": "10",
       "bounds": [
        0.11502057613168726,
-       0.7167647386452403,
+       0.719914038758881,
        0.13279835390946504,
-       0.734441506322008
+       0.7375908064356488
       ]
      },
      {
       "text": "20",
       "bounds": [
        0.11502057613168726,
-       0.7538715069960507,
+       0.7565665811317626,
        0.13279835390946504,
-       0.7715482746728184
+       0.7742433488085302
       ]
      },
      {
       "text": "30",
       "bounds": [
        0.11502057613168726,
-       0.7909782753468609,
+       0.7932191235046439,
        0.13279835390946504,
-       0.8086550430236287
+       0.8108958911814116
       ]
      },
      {
       "text": "40",
       "bounds": [
        0.11502057613168726,
-       0.8140669312095874,
+       0.8143961479867531,
        0.13279835390946504,
-       0.8317436988863551
+       0.8320729156635208
       ]
      },
      {
-      "text": "55",
+      "text": "60",
       "bounds": [
        0.11502057613168726,
-       0.8486999150036769,
+       0.8567501969509714,
        0.13279835390946504,
-       0.8663766826804447
+       0.8744269646277392
       ]
      }
     ],
@@ -4624,54 +4629,54 @@
       "text": "0",
       "bounds": [
        0.12390946502057615,
-       0.2920983897415224,
+       0.2898575415837397,
        0.13279835390946504,
-       0.3097751574182901
+       0.3075343092605074
       ]
      },
      {
       "text": "10",
       "bounds": [
        0.11502057613168726,
-       0.32920515809233275,
+       0.3265100839566211,
        0.13279835390946504,
-       0.34688192576910043
+       0.3441868516333888
       ]
      },
      {
       "text": "20",
       "bounds": [
        0.11502057613168726,
-       0.3663119264431431,
+       0.36316262632950247,
        0.13279835390946504,
-       0.38398869411991077
+       0.3808393940062702
       ]
      },
      {
       "text": "30",
       "bounds": [
        0.11502057613168726,
-       0.40341869479395337,
+       0.3998151687023838,
        0.13279835390946504,
-       0.4210954624707211
+       0.4174919363791515
       ]
      },
      {
       "text": "40",
       "bounds": [
        0.11502057613168726,
-       0.4265073506566798,
+       0.42099219318449305,
        0.13279835390946504,
-       0.4441841183334475
+       0.4386689608612608
       ]
      },
      {
-      "text": "55",
+      "text": "60",
       "bounds": [
        0.11502057613168726,
-       0.46114033445076935,
+       0.46334624214871156,
        0.13279835390946504,
-       0.47881710212753703
+       0.48102300982547924
       ]
      }
     ]
@@ -4681,9 +4686,9 @@
      "text": "L\ninferred",
      "bounds": [
       0.1466918915343916,
-      0.23061985205968144,
+      0.2287326945300461,
       0.20389096560846567,
-      0.27416625357483293
+      0.2722790960451976
      ],
      "region_x_bounds": [
       0.1400000000000001,
@@ -4694,9 +4699,9 @@
      "text": "H-mode",
      "bounds": [
       0.2597646560846561,
-      0.25537423179452995,
+      0.2534870742648946,
       0.31902391534391533,
-      0.27416625357483293
+      0.2722790960451976
      ],
      "region_x_bounds": [
       0.2105828571428572,
@@ -4710,9 +4715,9 @@
      "text": "detector",
      "bounds": [
       0.78512,
-      0.18537515286323655,
+      0.18446670090737866,
       0.8473422222222222,
-      0.20305192054000423
+      0.20214346858414636
      ]
     },
     {
@@ -4720,9 +4725,9 @@
      "text": "detector (suggestions)",
      "bounds": [
       0.78512,
-      0.16888325581843197,
+      0.168176682074987,
       0.9495644444444444,
-      0.18656002349519968
+      0.1858534497517547
      ]
     },
     {
@@ -4730,9 +4735,9 @@
      "text": "detector",
      "bounds": [
       0.78512,
-      0.15239135877362736,
+      0.15188666324259534,
       0.8473422222222222,
-      0.17006812645039504
+      0.16956343091936302
      ]
     },
     {
@@ -4740,67 +4745,67 @@
      "text": "expert",
      "bounds": [
       0.78512,
-      0.1358994617288228,
+      0.13559664441020366,
       0.8322727777777778,
-      0.1535762294055905
+      0.15327341208697134
      ]
     },
     {
      "track": "sawtooth_oscillation",
-     "text": "physics labels\nblank: not assessable\n(ECE cut-off)",
+     "text": "physics; blank: ECE cut-off",
      "bounds": [
       0.78512,
-      0.08461165638225056,
-      0.9406755555555555,
-      0.13764195941255358
+      0.11930662557781199,
+      0.9794718518518518,
+      0.13698339325457967
      ]
     }
    ],
    "ntm_key_black_swatch": true,
    "n_key_bounds": [
     0.792,
-    0.3072962792320847,
+    0.30369275314051514,
     0.9679722222222222,
-    0.3983803622497615
+    0.3947768361581919
    ],
    "ae_in_panel_label": null,
    "ae_margin_label": null,
    "elm_box_bounds": [
     [
      0.3137142857142858,
-     0.2321448999046709,
+     0.23077212806026348,
      0.32907428571428576,
-     0.2528697171909753
+     0.2512432517263024
     ],
     [
      0.3466285714285714,
-     0.2321448999046709,
+     0.23077212806026348,
      0.55984,
-     0.2528697171909753
+     0.2512432517263024
     ],
     [
      0.6498057142857143,
-     0.2321448999046709,
+     0.23077212806026348,
      0.6684571428571429,
-     0.2528697171909753
+     0.2512432517263024
     ],
     [
      0.6801600000000001,
-     0.2321448999046709,
+     0.23077212806026348,
      0.6973485714285715,
-     0.2528697171909753
+     0.2512432517263024
     ],
     [
      0.7664685714285715,
-     0.2321448999046709,
+     0.23077212806026348,
      0.7821942857142857,
-     0.2528697171909753
+     0.2512432517263024
     ]
    ],
-   "dalpha_peak_box_gap_pt": 1.0470085795996034,
+   "dalpha_peak_box_gap_pt": 1.0158305084745778,
    "legend_labels": [
     "TokEye mask,\nn not measured",
-    "AE (detector-positive\ntime; detector band\n\u226580 kHz)",
+    "AE (detector-positive\ntime; mask \u226560 kHz)",
     "NTM candidate\nsuggestions\n(n=1 or 2, \u226430 kHz)",
     "n=1",
     "n=2",
@@ -4826,9 +4831,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.14,
-      0.9624104714740048,
+      0.9625719740439349,
       0.23777777777777778,
-      0.981202493254308
+      0.9813639958242382
      ]
     },
     {
@@ -4836,9 +4841,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.14,
-      0.5938165725226223,
+      0.5879015408989255,
       0.5677083333333334,
-      0.6126085943029252
+      0.6066935626792285
      ]
     },
     {
@@ -4846,9 +4851,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.14,
-      0.5723771063643764,
+      0.5667245164168164,
       0.6744907407407408,
-      0.5911691281446795
+      0.5855165381971194
      ]
     },
     {
@@ -4856,19 +4861,19 @@
      "font_pt": 7.0,
      "bounds": [
       0.14,
-      0.20790618167419528,
+      0.2067151002209594,
       0.32666666666666666,
-      0.22669820345449831
+      0.2255071220012624
      ]
     },
     {
-     "text": "0\u201355 kHz: higher-\nresolution spectrogram;\n0\u201330 stretched,\n30\u201355 compressed",
+     "text": "0\u201350 kHz: higher-\nresolution spectrogram;\n0\u201330 stretched,\n30\u201360 compressed",
      "font_pt": 7.0,
      "bounds": [
-      0.7845354456115399,
-      0.8005695169265942,
+      0.784543884348036,
+      0.8071674404265109,
       0.9669666666666666,
-      0.8898928281639679
+      0.8964907516638846
      ]
     },
     {
@@ -4876,19 +4881,19 @@
      "font_pt": 7.0,
      "bounds": [
       0.810724279835391,
-      0.54427066087321,
+      0.5382244084114449,
       0.924474279835391,
-      0.5889323164918968
+      0.5828860640301318
      ]
     },
     {
-     "text": "AE (detector-positive\ntime; detector band\n\u226580 kHz)",
+     "text": "AE (detector-positive\ntime; mask \u226560 kHz)",
      "font_pt": 7.0,
      "bounds": [
       0.810724279835391,
-      0.47197514714214933,
-      0.9653539094650206,
-      0.5389676305701796
+      0.4882597224897277,
+      0.9662798353909465,
+      0.5329213781084146
      ]
     },
     {
@@ -4896,9 +4901,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.810724279835391,
-      0.39967963341108875,
+      0.4159642087586671,
       0.9559094650205762,
-      0.46667211683911897
+      0.48295669218669735
      ]
     },
     {
@@ -4906,9 +4911,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.8363647119341564,
-      0.33050749293157966,
+      0.3269039668400101,
       0.8659943415637861,
-      0.3481842606083473
+      0.34458073451677773
      ]
     },
     {
@@ -4916,9 +4921,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.8363647119341564,
-      0.3072962792320847,
+      0.30369275314051514,
       0.8659943415637861,
-      0.3249730469088523
+      0.32136952081728276
      ]
     },
     {
@@ -4926,9 +4931,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.8861589506172839,
-      0.33050749293157966,
+      0.3269039668400101,
       0.9157885802469136,
-      0.3481842606083473
+      0.34458073451677773
      ]
     },
     {
@@ -4936,9 +4941,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.8861589506172839,
-      0.3072962792320847,
+      0.30369275314051514,
       0.9380108024691358,
-      0.3260883010123877
+      0.3224847749208181
      ]
     },
     {
@@ -4946,9 +4951,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.810724279835391,
-      0.25623181044085974,
+      0.25433415524417896,
       0.9099835390946502,
-      0.2750238322211628
+      0.27312617702448194
      ]
     },
     {
@@ -4956,9 +4961,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.810724279835391,
-      0.2321367583575264,
+      0.23023910316084556,
       0.9159094650205762,
-      0.25092878013782943
+      0.2490311249411486
      ]
     },
     {
@@ -5016,9 +5021,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.792,
-      0.35371870663107463,
+      0.3501151805395051,
       0.9679722222222222,
-      0.3983803622497615
+      0.3947768361581919
      ]
     }
    ]
@@ -5026,17 +5031,18 @@
   "catalog_sawtooth_frame_model_shown": false,
   "late_untagged_high_frequency": {
    "band_khz": [
-    89.35546541641548,
+    60.05859150939402,
     249.5117094414662
    ],
-   "pixels": 69106,
-   "columns": 2499,
+   "pixels": 70239,
+   "columns": 2540,
    "first_time_ms": 2450.081101039958,
    "last_time_ms": 3349.92113461029,
    "rule": "all coherent pixels in the AE detector band during late ABSENT times after the last PRESENT AE interval; no duration cutoff",
    "reason": "AE detector absent; time coincidence is required"
   },
-  "n2_harmonic_consistent": true,
+  "n2_harmonic_consistent": false,
+  "n3_harmonic_consistent": false,
   "harmonic_support": {
    "frequency_ratio_tolerance": 0.1,
    "minimum_support_ms": 50.0,
@@ -5070,24 +5076,24 @@
   "ntm_outline_display": {
    "rule": "display only: an outlined region needs at least min_px print pixels (150 dpi, after max pooling and hole filling); smaller regions are left unoutlined; tags and counts unchanged",
    "min_px": 100,
-   "omitted_fragments": 9,
+   "omitted_fragments": 6,
+   "dashed_rule": "a thin dashed outline of the rest of a tagged component's measured n=1/2 support (all time, NTM band) where the detector-positive clip cuts it; display only",
+   "dashed_regions": 0,
    "bands": {
     "wide": {},
     "zoom": {
      "min_px": 100,
-     "regions": 13,
-     "omitted_fragments": 9,
+     "regions": 11,
+     "omitted_fragments": 6,
      "omitted_sizes_px": [
-      2,
-      2,
       8,
-      11,
-      12,
+      15,
       17,
       20,
-      23,
-      50
-     ]
+      24,
+      51
+     ],
+     "dashed_regions": 0
     }
    }
   },
@@ -5154,28 +5160,24 @@
     "alfven_eigenmode": {
      "pixels": 0,
      "outside_present": 0,
-     "outside_band": 0,
-     "pixels_55_to_60": 0
+     "outside_band": 0
     },
     "neoclassical_tearing_mode": {
      "pixels": 29311,
      "outside_present": 0,
-     "outside_band": 0,
-     "pixels_55_to_60": 0
+     "outside_band": 0
     }
    },
    "wide": {
     "alfven_eigenmode": {
-     "pixels": 204561,
+     "pixels": 215482,
      "outside_present": 0,
-     "outside_band": 0,
-     "pixels_55_to_60": 0
+     "outside_band": 0
     },
     "neoclassical_tearing_mode": {
      "pixels": 0,
      "outside_present": 0,
-     "outside_band": 0,
-     "pixels_55_to_60": 0
+     "outside_band": 0
     }
    }
   },
@@ -5183,7 +5185,7 @@
    "zoom": {
     "outside_measured_n": 0,
     "above_n_view_band": 0,
-    "rendered_outline_pixels": 6590,
+    "rendered_outline_pixels": 6627,
     "measured_n3_outline_pixels": 0
    },
    "wide": {
@@ -5216,11 +5218,11 @@
    }
   }
  },
- "git": "c89ec51f",
+ "git": "34937d65",
  "render_started_from_clean_head": true,
  "render_code_sha256": {
-  "scripts/labeler/paper/fig_interpreter_tokeye.py": "2287666733c6935519f9a8ed359ef2f56a17596a6ade5fd006ec5122b0be009c",
-  "src/labeler/paper/figure_sources.py": "fb49db075681dfeb44d32d3201ba3d8a91ce12bba174c529f45beac8fb2dfb1c",
-  "src/labeler/paper/mode_tags.py": "936d0db4f2fae613018d0c6d73f9d88eb808106663ed1f780e67be3bc616bfb2"
+  "scripts/labeler/paper/fig_interpreter_tokeye.py": "8c0b6e43fdfc76fac705ed6c7690ae4b47849351d62284a21277bc395df0014c",
+  "src/labeler/paper/figure_sources.py": "a9156ebb011449e7f4a3c2697cc85ac11861332e50f82f8941cdde45e7b4e0c0",
+  "src/labeler/paper/mode_tags.py": "25489cacc8b082ed4a4a9e561e5874d8010af5ef88c4a004d8e92b10e5794c15"
  }
 }
