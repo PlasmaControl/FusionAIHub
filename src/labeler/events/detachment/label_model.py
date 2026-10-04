@@ -373,7 +373,9 @@ def redundant_decide(posterior, votes, valid, threshold=0.7):
 SECOND_VOTERS = ("afrac",)
 
 
-def compatibility_decide(votes, valid, *, tangtv_tier, elm_known, second=SECOND_VOTERS):
+def compatibility_decide(
+    votes, valid, *, tangtv_tier, elm_known, second=SECOND_VOTERS, regime=None
+):
     """Primary observed label: the geometry-gated TangTV state, with a second vote.
 
     The label set is "geometry-gated TangTV state, validated by divertor Thomson
@@ -391,6 +393,12 @@ def compatibility_decide(votes, valid, *, tangtv_tier, elm_known, second=SECOND_
       indicator casts a vote (each abstains or is invalid). The state is TangTV's.
     * `conflict`: a second indicator votes against TangTV's attached or detached
       vote; the state is uncertain.
+    * `tangtv_only_lmode`: TangTV's DETACHED vote (0.5 <= DZ < 1.2) on a bin of a
+      known L-mode phase (`regime == "L"`). The DZ cutoffs were read off an H-mode
+      shot (201081), and Chen 2026's outboard-of-X-point window excludes the
+      inner SOL only in H-mode, so the cutoff is not known to hold in L-mode. The
+      state is uncertain; the gate is a priori, not retuned on Te. An unknown
+      regime keeps the plain rule (`regime` None gates nothing).
     * `candidate_marfe`: TangTV's MARFE vote (sustained front above the X-point,
       emission inside the separatrix, density cue). The state is uncertain, never
       MARFE: the density cue (fG >= 0.8) has no literature source (Dong 2025 gives
@@ -417,7 +425,9 @@ def compatibility_decide(votes, valid, *, tangtv_tier, elm_known, second=SECOND_
     tv = votes[:, j_tv]
     assessed = (valid.sum(axis=1) >= 2) | (tv > 0)
     fallback = rule(np.where(ballot[None, :], votes, ABSTAIN), valid & ballot[None, :])
-    leaning = (tv == ATTACHED) | (tv == DETACHED)
+    lmode = np.zeros(n, bool) if regime is None else np.asarray(regime) == "L"
+    lmode_detached = (tv == DETACHED) & lmode
+    leaning = ((tv == ATTACHED) | (tv == DETACHED)) & ~lmode_detached
     agree = np.zeros(n, bool)
     clash = np.zeros(n, bool)
     for j in others:
@@ -440,6 +450,7 @@ def compatibility_decide(votes, valid, *, tangtv_tier, elm_known, second=SECOND_
     tier[leaning & clash] = "conflict"
     tier[certain] = "certain"
     tier[silver] = "tangtv_only"
+    tier[lmode_detached] = "tangtv_only_lmode"
     tier[tv == MARFE] = "candidate_marfe"
     geometry = np.asarray(tangtv_tier)
     lower = geometry == "lower_shelf_window"

@@ -488,7 +488,7 @@ def process(
         if p_t is None
         else signals.window_mean(p_t, p_in, centres, th.PRAD_AVERAGING_MS)
     )
-    ratio = prad.relative_fdiv(prad_ind.value, prad_ind.valid, p_in_window)
+    ratio = prad.relative_fdiv(prad_ind.value, prad_ind.valid, p_in_window, width_ms)
     prad_abs_vote, prad_abs_valid = prad_ind.vote.copy(), prad_ind.valid.copy()
     prad_ind = prad.with_relative_vote(prad_ind, ratio)
     regime, regime_source = signals.regime(shot, centres)
@@ -507,7 +507,7 @@ def process(
         shot, edges, cache, elm, regime == "L", afrac_window
     )
     vote, candidate = tangtv.evidence_votes(
-        tangtv_ind.value, tangtv_ind.valid, spatial, second
+        tangtv_ind.value, tangtv_ind.valid, spatial, second, width_ms
     )
     tangtv_ind = core.assemble(
         "tangtv", tangtv_ind.value, tangtv_ind.valid, tangtv_ind.reason, vote

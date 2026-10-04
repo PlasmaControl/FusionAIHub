@@ -259,6 +259,40 @@ def test_primary_compatibility_requires_upper_shelf_and_known_elm():
     ]
 
 
+def test_detached_vote_on_a_known_lmode_bin_is_its_own_uncertain_tier():
+    # DZ cutoffs come from an H-mode shot: a TangTV detached vote on a known L-mode
+    # bin is not exported as detached; unknown regime and H-mode keep the rule, and
+    # an attached vote is not gated
+    votes = np.array([[2, 2, 2], [-1, -1, 2], [-1, -1, 2], [1, 1, 1], [-1, -1, 2]])
+    valid = votes > 0
+    regime = np.array(["L", "L", "H", "L", "unknown"])
+    kwargs = {
+        "tangtv_tier": np.full(5, "upper_shelf"),
+        "elm_known": np.ones(5, bool),
+    }
+    state, tier = lm.compatibility_decide(votes, valid, regime=regime, **kwargs)
+    assert state.tolist() == [4, 4, 2, 1, 2]
+    assert tier.tolist() == [
+        "tangtv_only_lmode",
+        "tangtv_only_lmode",
+        "tangtv_only",
+        "certain",
+        "tangtv_only",
+    ]
+    # without a regime nothing is gated
+    state, tier = lm.compatibility_decide(votes, valid, **kwargs)
+    assert state.tolist() == [2, 2, 2, 1, 2]
+    # the geometry and ELM tiers still take precedence over the regime gate
+    state, tier = lm.compatibility_decide(
+        votes[:2],
+        valid[:2],
+        regime=regime[:2],
+        tangtv_tier=np.array(["lower_shelf_window", "upper_shelf"]),
+        elm_known=np.array([True, False]),
+    )
+    assert tier.tolist() == ["lower_shelf_window", "elm_unknown"]
+
+
 def test_lower_shelf_tier_holds_even_where_tangtv_is_invalid():
     # the lower-shelf TangTV is marked invalid; the geometry tier still names the bin
     votes = np.array([[2, 2, -1], [-1, -1, -1]])

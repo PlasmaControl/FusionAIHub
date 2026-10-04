@@ -13,9 +13,11 @@ not a state).
 
 **The bin grid** is `BIN_MS` wide. 50 ms was chosen over 10 or 20 ms because it is
 the catalog's own label grid (`events.yaml`: `sample_interval_ms: 50`), because the
-slowest input, the TangTV inversion, arrives every 17-33 ms and EFIT every 20 ms
-(30 Hz full camera frames give about 1.5 independent frames per bin; Chen's
-camera integrates ELMs, while current and radiation use narrow ELM masks), and
+slowest input, the TangTV inversion, arrives every 16.7 ms on disk (Chen 2026's
+camera records 60 Hz interlaced fields as 30 Hz full frames, and the inversions are
+60 Hz; the corpus's resampled raw frames are 20 ms apart) and EFIT every 20 ms, so
+a 50 ms bin holds about 3 inversions (2.5 raw frames; Chen's camera integrates
+ELMs, while current and radiation use narrow ELM masks), and
 because the published low-pass constants (Eldon 2022: 10-50 ms; Chen 2026: Prad
 leads DZ by about 50 ms) are of that order, so a finer grid would resolve nothing
 the indicators can see.

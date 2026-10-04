@@ -156,14 +156,46 @@ def test_afrac_probe_reasons():
         ind, which, _ = afrac_run(jsat, psi)
         assert set(ind.reason) == {reason}, reason
         assert not ind.valid.any() and (which == -1).all()
-    # a reference needs AFRAC_REFERENCE_MIN_BINS bins near the separatrix
+    # a reference needs AFRAC_REFERENCE_MIN_MS of bins near the separatrix: 20 bins
+    # on this 50 ms grid
+    need = th.min_bins(th.AFRAC_REFERENCE_MIN_MS, 50.0)
+    assert need == 20
     psi = np.full(N, 1.05)
-    psi[: th.AFRAC_REFERENCE_MIN_BINS - 1] = 1.0
+    psi[: need - 1] = 1.0
     ind, *_ = afrac_run(ok, psi)
     assert "short_reference" in set(ind.reason) and not ind.valid.any()
-    psi[: th.AFRAC_REFERENCE_MIN_BINS] = 1.0
+    psi[:need] = 1.0
     ind, *_ = afrac_run(ok, psi)
-    assert ind.valid[: th.AFRAC_REFERENCE_MIN_BINS].all()
+    assert ind.valid[:need].all()
+
+
+def test_afrac_reference_length_is_a_duration_not_a_bin_count():
+    # the same second of near-separatrix time defines a reference at any width
+    tn, ne = series(1e14)
+    tp, psol = series(4e6)
+    elm_t, elm_flag = clean_elm()
+    for width in (20.0, 50.0, 100.0):
+        edges = core.bin_edges(0.0, 5000.0, width)
+        n = len(edges) - 1
+        need = th.min_bins(th.AFRAC_REFERENCE_MIN_MS, width)
+        assert need * width == pytest.approx(1000.0)
+        valid = []
+        for near in (need - 1, need):
+            psi = np.full((1, n), 1.05)
+            psi[0, :near] = 1.0
+            ind, *_ = afrac.afrac_indicator(
+                edges,
+                np.ones((1, n)),
+                psi,
+                tn,
+                ne,
+                tp,
+                psol,
+                elm_t_ms=elm_t,
+                elm_flag=elm_flag,
+            )
+            valid.append(bool(ind.valid.any()))
+        assert valid == [False, True]
 
 
 def test_afrac_invalid_without_inputs():
@@ -518,8 +550,21 @@ def test_relative_fdiv_reads_the_change_from_the_shots_own_baseline():
 
 
 def test_relative_fdiv_needs_a_baseline():
-    f = np.full(th.PRAD_BASELINE_MIN_BINS - 1, 0.3)
+    need = th.min_bins(th.PRAD_BASELINE_MIN_MS, 50.0)
+    assert need == 40
+    f = np.full(need - 1, 0.3)
     assert np.isnan(prad.relative_fdiv(f, np.ones(len(f), bool))).all()
+    # the baseline length is a duration: 100 bins at 20 ms, 20 at 100 ms
+    for width, count in ((20.0, 100), (100.0, 20)):
+        assert th.min_bins(th.PRAD_BASELINE_MIN_MS, width) == count
+        short = np.full(count - 1, 0.3)
+        long = np.full(count, 0.3)
+        assert np.isnan(
+            prad.relative_fdiv(short, np.ones(count - 1, bool), None, width)
+        ).all()
+        assert np.isfinite(
+            prad.relative_fdiv(long, np.ones(count, bool), None, width)
+        ).all()
     f = np.full(60, 0.3)
     valid = np.zeros(60, bool)
     valid[:10] = True
@@ -559,7 +604,8 @@ def test_reported_probe_names_the_nearest_known_probe_on_invalid_bins():
 
 def test_afrac_window_is_one_decision_not_a_fitted_number():
     assert th.AFRAC_PSI_WINDOW == pytest.approx(0.01)
-    assert th.AFRAC_REFERENCE_MIN_BINS == 20
+    assert th.AFRAC_REFERENCE_MIN_MS == pytest.approx(1000.0)
+    assert th.min_bins(th.AFRAC_REFERENCE_MIN_MS, 50.0) == 20
 
 
 def test_regime_prefers_the_table_then_the_hmode_detector(monkeypatch, tmp_path):

@@ -26,6 +26,7 @@ from . import thresholds as th
 from .core import (
     ABSTAIN,
     ATTACHED,
+    BIN_MS,
     DETACHED,
     Indicator,
     assemble,
@@ -58,13 +59,16 @@ def fdiv_vote(
 
 
 def relative_fdiv(
-    f: np.ndarray, valid: np.ndarray, p_in_w: np.ndarray | None = None
+    f: np.ndarray,
+    valid: np.ndarray,
+    p_in_w: np.ndarray | None = None,
+    width_ms: float = BIN_MS,
 ) -> np.ndarray:
     """f_div over the shot's own baseline, NaN where invalid or without a baseline.
 
     The baseline is the `PRAD_BASELINE_QUANTILE` of the shot's valid f_div (its
     unseeded level: seeding and heating only raise the ratio), and needs at least
-    `PRAD_BASELINE_MIN_BINS` valid bins. When `p_in_w` is given, the baseline uses
+    `PRAD_BASELINE_MIN_MS` of valid bins at `width_ms`. When `p_in_w` is given, the baseline uses
     only the bins at the shot's flat-top input power (at least
     `PRAD_BASELINE_POWER_FRACTION` of its 90th percentile), so the beam ramp-up,
     where the ratio is low for want of power, is not read as the unseeded level.
@@ -80,7 +84,7 @@ def relative_fdiv(
         if valid.any() and np.isfinite(p_in_w[valid]).any():
             top = np.nanquantile(p_in_w[valid], 0.9)
             basis = valid & (p_in_w >= th.PRAD_BASELINE_POWER_FRACTION * top)
-    if basis.sum() < th.PRAD_BASELINE_MIN_BINS:
+    if basis.sum() < th.min_bins(th.PRAD_BASELINE_MIN_MS, width_ms):
         return out
     base = float(np.quantile(f[basis], th.PRAD_BASELINE_QUANTILE))
     if base <= 0:

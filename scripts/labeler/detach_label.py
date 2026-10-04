@@ -6,10 +6,11 @@
 Inputs: the per-shot bins of `detach_bins.py` (`$LABELER_ROOT/round4/detach/bins`)
 and the cohort split (`data/events/catalog/cohort.csv`). A bin is ASSESSED when at
 least two indicators are valid on it; a shot is ELIGIBLE when at least two
-indicators are each valid on at least `MIN_VALID_BINS` bins and it has that many
-assessed bins. The label model is fitted on eligible shots of the cohort's `train`
-and `val` splits and on shots outside the cohort; the `test` split is never used to
-fit or select anything (it is labelled with the fitted model like any other shot).
+indicators are each valid on at least `MIN_VALID_MS` of bins (`MIN_VALID_BINS`
+at the exported width) and it has that much assessed time. The label model is
+fitted on eligible shots of the cohort's `train` and `val` splits and on shots
+outside the cohort; the `test` split is never used to fit or select anything (it is
+labelled with the fitted model like any other shot).
 
 Outputs:
 
@@ -43,6 +44,7 @@ import pandas as pd
 from detach_json import dumps
 
 from labeler.events.detachment import core, label_model
+from labeler.events.detachment import thresholds as th
 from labeler.events.detachment.label_model import LF_NAMES
 from labeler.events.interval_tables import (
     SAMPLE_MS,
@@ -56,7 +58,10 @@ REPO = Path(__file__).resolve().parents[2]
 OUT = REPO / "data" / "events" / "detachment" / "extend_detach_vote"
 ROSTER = REPO / "data" / "events" / "detachment" / "shots.csv"
 LIST_NAME = "detach_shots"
-MIN_VALID_BINS = 20  # one second of 50 ms bins
+#: Eligibility asks for this much valid time (ms), not a bin count: the exported
+#: 50 ms grid needs 20 bins, a different width the same second.
+MIN_VALID_MS = 1000.0
+MIN_VALID_BINS = th.min_bins(MIN_VALID_MS, core.BIN_MS)
 #: The code that makes the labels: the tables record the commit they were made from
 #: and the validator checks these paths are unchanged between it and HEAD.
 PRODUCER_PATHS = (
@@ -280,8 +285,9 @@ def label_frame(frame, model, threshold, width_ms=core.BIN_MS):
     camera_tier = frame.get(
         "tangtv_tier", pd.Series("unknown", index=frame.index)
     ).to_numpy()
+    regime = frame["regime"].to_numpy() if "regime" in frame else None
     state_rule, tier = label_model.compatibility_decide(
-        votes, valid, tangtv_tier=camera_tier, elm_known=known
+        votes, valid, tangtv_tier=camera_tier, elm_known=known, regime=regime
     )
     out = frame[["shot", "start_ms"]].copy()
     out["assessed"] = assessed
@@ -308,6 +314,7 @@ def label_frame(frame, model, threshold, width_ms=core.BIN_MS):
                 tangtv_tier=camera_tier,
                 elm_known=known,
                 second=("afrac", "prad"),
+                regime=regime,
             )
         )
     candidate = frame.get("tangtv_marfe_candidate", pd.Series(False, index=frame.index))
@@ -603,7 +610,11 @@ def main() -> None:
     )
     labelled, votes, valid = label_frame(work, model, args.threshold)
     for key in work.columns:
-        if key.startswith(("aux_", "afrac_", "prad_", "tangtv_")) or key == "split":
+        if key.startswith(("aux_", "afrac_", "prad_", "tangtv_")) or key in (
+            "split",
+            "regime",
+            "regime_source",
+        ):
             labelled[key] = work[key].to_numpy()
     # Preserve the optional field, without attributing fitted confidence to a rule.
     labelled["confidence"] = np.full(len(labelled), np.nan)

@@ -15,6 +15,7 @@ from . import thresholds as th
 from .core import (
     ABSTAIN,
     ATTACHED,
+    BIN_MS,
     DETACHED,
     MARFE,
     Indicator,
@@ -239,7 +240,7 @@ def tangtv_indicator(
     dz = front_dz(ze, zx, zv)
     from .core import elm_bin_known
 
-    # Chen 2026's 30 Hz exposures integrate ELMs. Keep their emission fronts;
+    # Chen 2026's camera exposures integrate ELMs. Keep their emission fronts;
     # ELM coverage is nevertheless required to distinguish known from missing.
     known = elm_bin_known(edges, elm_t_ms, elm_flag)
     index = np.searchsorted(edges, frame_t_ms, side="right") - 1
@@ -267,17 +268,18 @@ def tangtv_indicator(
     return (result, ok) if return_frame_mask else result
 
 
-def evidence_votes(dz, valid, spatial, second_cue):
+def evidence_votes(dz, valid, spatial, second_cue, width_ms=BIN_MS):
     """MARFE vote: DZ>=1.2, a psiN<1 emission peak and the density cue, together on
-    at least `MARFE_MIN_BINS` adjacent valid bins; otherwise the DZ vote. Returns
-    the votes and the DZ>=1.2 candidate mask."""
+    at least `MARFE_MIN_MS` of adjacent valid bins (at `width_ms`); otherwise the DZ
+    vote. Returns the votes and the DZ>=1.2 candidate mask."""
     dz = np.asarray(dz)
     candidate = np.asarray(valid) & (dz >= th.DZ_MARFE_MIN)
     evidence = candidate & np.asarray(spatial) & np.asarray(second_cue)
     edges = np.flatnonzero(np.r_[True, evidence[1:] != evidence[:-1], True])
     sustained = np.zeros(len(dz), bool)
+    need = th.min_bins(th.MARFE_MIN_MS, width_ms)
     for start, end in itertools.pairwise(edges):
-        if evidence[start] and end - start >= th.MARFE_MIN_BINS:
+        if evidence[start] and end - start >= need:
             sustained[start:end] = True
     vote = dz_vote(dz)
     vote[sustained] = MARFE

@@ -4,7 +4,19 @@ Nothing here was fitted to a score. Each number is read off a published worked
 example or a physical definition; the digests cited are in
 `.tmp/label_papers/` and the DOIs are in `docs/labeler/detachment.md`. A number
 that is a judgement call says so.
+
+Durations that are counted in bins (the length of a reference, of a baseline, of a
+persistence) are stated in ms here and converted with `min_bins`, so the bin width
+changes the resolution and not how much data a statistic is asked to rest on.
 """
+
+import math
+
+
+def min_bins(duration_ms: float, width_ms: float) -> int:
+    """Bins needed to cover `duration_ms` at `width_ms` (at least one)."""
+    return max(1, math.ceil(duration_ms / width_ms - 1e-9))
+
 
 # --- Afrac (Eldon 2022, PPCF 64 075002; Eldon 2021, NME 27 100963) -----------------
 #: Afrac = Jsat / (C <ne>^2 q_par^(-3/7)) = 1 / DOD.  Eldon 2021 reference shot
@@ -31,9 +43,11 @@ AFRAC_REFERENCE_QUANTILE = 0.90
 #: are swept in `docs/labeler/results/detachment_afrac_check.json`. Wider windows
 #: admit probes whose psiN is mis-mapped by the EFIT strike-point error.
 AFRAC_PSI_WINDOW = 0.01
-#: A probe needs at least this many near-separatrix bins to define its reference
-#: (one second of 50 ms bins).
-AFRAC_REFERENCE_MIN_BINS = 20
+#: A probe needs at least this much near-separatrix time to define its reference,
+#: in ms; the bin count is `min_bins(AFRAC_REFERENCE_MIN_MS, width_ms)`, so a finer
+#: or coarser grid asks for the same duration (the bin width is a resolution, not
+#: a change in how much data a reference needs).
+AFRAC_REFERENCE_MIN_MS = 1000.0
 
 
 # --- Prad,div (Eldon 2019, NME 18 285; Chen 2026 NF 66 036014) ---------------------
@@ -91,11 +105,12 @@ PRAD_ATTACHED_MAX, PRAD_DETACHED_MIN = prad_cutoffs()
 #: (`PRAD_BAND_MW` / attached MW) either side. This is the f_div vote the data
 #: carry (`prad_vote`); the exported label does not use it (it ranks the bins of one
 #: shot but is at or below chance pooled over shots). A shot without a baseline (fewer than
-#: `PRAD_BASELINE_MIN_BINS` flat-top bins) has no f_div vote: the bin is invalid,
+#: `PRAD_BASELINE_MIN_MS` of flat-top bins) has no f_div vote: the bin is invalid,
 #: reason `no_baseline`.
 PRAD_BASELINE_QUANTILE = 0.10
-#: A shot needs this many valid bins for a baseline to mean anything.
-PRAD_BASELINE_MIN_BINS = 40
+#: A shot needs this much valid time (ms) for a baseline to mean anything; the
+#: bin count is `min_bins(PRAD_BASELINE_MIN_MS, width_ms)`.
+PRAD_BASELINE_MIN_MS = 2000.0
 #: The baseline bins are those at the flat-top input power: at least this fraction
 #: of the shot's 90th-percentile P_in (the beam ramps are excluded).
 PRAD_BASELINE_POWER_FRACTION = 0.9
@@ -134,7 +149,7 @@ RADIATION_NEGATIVE_TOL_W = 0.05e6
 DZ_ATTACHED_MAX = 0.35
 DZ_DETACHED_MIN = 0.5
 #: Candidate MARFE margin above the X-point. A MARFE vote additionally requires
-#: persistence over at least `MARFE_MIN_BINS` adjacent valid bins, psiN<1 at the
+#: persistence over at least `MARFE_MIN_MS` of adjacent valid bins, psiN<1 at the
 #: inversion peak near/above the X-point, and the density cue
 #: (`GREENWALD_CUE_MIN`). Prad,div and Afrac do not corroborate a MARFE.
 DZ_MARFE_MIN = 1.2
@@ -179,7 +194,8 @@ ELM_MASK_HALF_WIDTH_MS = 2.0
 #: Density-limit cue of a MARFE; local conservative cue, not a universal MARFE
 #: boundary. Spatial evidence and sustained height remain mandatory.
 GREENWALD_CUE_MIN = 0.8
-#: Adjacent valid 50 ms bins over which the MARFE evidence must persist (100 ms).
-MARFE_MIN_BINS = 2
+#: Time (ms) over which the MARFE evidence must persist, as adjacent valid bins:
+#: `min_bins(MARFE_MIN_MS, width_ms)`, two bins at the exported 50 ms width.
+MARFE_MIN_MS = 100.0
 #: |dIp/dt| above this (MA/s) is a ramp: Afrac's model is not valid (Eldon 2022).
 RAMP_DIP_MAX_MA_PER_S = 1.0

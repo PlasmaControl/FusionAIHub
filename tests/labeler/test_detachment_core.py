@@ -188,6 +188,20 @@ def test_marfe_requires_persistence_spatial_and_second_cue():
     assert candidate.tolist() == [True, True, False, True, True]
 
 
+def test_marfe_persistence_is_a_duration_not_a_bin_count():
+    dz = np.full(4, 1.3)
+    ok = np.ones(4, bool)
+    # 100 ms of evidence: two bins at 50 ms, four at 25 ms, one at 100 ms
+    for width, sustained in ((50.0, True), (25.0, True), (100.0, True)):
+        vote, _ = tangtv.evidence_votes(dz, ok, ok, ok, width)
+        assert (vote == core.MARFE).all() == sustained
+    two = np.array([True, True, False, False])
+    vote, _ = tangtv.evidence_votes(dz, ok, two, ok, 25.0)
+    assert (vote == core.MARFE).sum() == 0  # 50 ms of evidence is not 100 ms
+    vote, _ = tangtv.evidence_votes(dz, ok, two, ok, 50.0)
+    assert (vote == core.MARFE).sum() == 2
+
+
 def test_tangtv_accepts_elm_integrated_frames_with_known_coverage():
     edges = np.array([0.0, 50.0, 100.0])
     t = np.array([10.0, 30.0, 60.0, 80.0])

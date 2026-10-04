@@ -19,7 +19,7 @@ remove that dependence:
   its own model-normalised current over the bins where it is within
   `AFRAC_PSI_WINDOW` of the separatrix (and ELM-, ramp- and L-mode-free), so a
   probe's position and calibration cancel; a probe with fewer than
-  `AFRAC_REFERENCE_MIN_BINS` such bins has no reference and does not vote;
+  `AFRAC_REFERENCE_MIN_MS` of such bins has no reference and does not vote;
 * the probe read on a bin is the one nearest the separatrix in flux
   (`|psiN - 1|` smallest) among those with a reference, inside the same window,
   rather than the largest current. The strike-point probe is the one that shows
@@ -110,7 +110,7 @@ def afrac_indicator(
     lmode: np.ndarray | None = None,
     *,
     window: float = th.AFRAC_PSI_WINDOW,
-    min_bins: int = th.AFRAC_REFERENCE_MIN_BINS,
+    min_bins: int | None = None,
 ) -> tuple[Indicator, np.ndarray, np.ndarray]:
     """Afrac indicator on a bin grid: `(indicator, probe index per bin, references)`.
 
@@ -128,8 +128,12 @@ def afrac_indicator(
     `no_probe_samples` (some are, none has a current in the bin) and
     `short_reference` (a probe is in the window with a current, but none has
     `min_bins` bins to define its reference).
+    `min_bins` defaults to `AFRAC_REFERENCE_MIN_MS` of bins at the grid's own width.
     """
     n = len(edges) - 1
+    if min_bins is None:
+        width_ms = float(np.median(np.diff(edges)))
+        min_bins = th.min_bins(th.AFRAC_REFERENCE_MIN_MS, width_ms)
     value = np.full(n, np.nan)
     nothing = np.zeros(n, dtype=bool)
     none_read = np.full(n, -1)
