@@ -288,6 +288,7 @@ def main(argv=None):
     }
     criteria = {
         "made_by": audit["made_by"],
+        "git_sha": audit["git_sha"],
         "policy": __doc__,
         "source_sha256": audit["source_sha256"],
     }

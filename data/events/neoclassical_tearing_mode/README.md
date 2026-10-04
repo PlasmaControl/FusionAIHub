@@ -144,7 +144,10 @@ field that is already high or ramps slowly confirms nothing. Candidates are chec
 and for rejected ones. A sustained rise (100 ms above the quiet median plus 5, with a
 step at its start) in otherwise-absent flat-top time is uncertain with reason
 `locked_unseeded`: a field event with no mode seen. Coverage is recorded in the label metadata; shots with no
-`DUSBRADIAL` record keep an unknown lock status. The onset is a point event
+`DUSBRADIAL` record keep an unknown lock status. `locked_known` is true only for a
+confirmed lock (the interval is then also `locked`); false says that none was
+confirmed (no record, no step, or n = 2), not that the lock was checked and found
+absent. The onset is a point event
 (`iscrowd` 0, at the interval's start) with an `onset_window_ms` attribute (the start
 of the preceding same-n weak track), the interval a span (`iscrowd` 1); both carry
 `n`. `m` requires EFIT q at an independently observed island radius, such as an ECE

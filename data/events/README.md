@@ -168,6 +168,11 @@ category-0 absent spans cover only gaps outside their combined coverage.
 the distance from the magnetic axis along the ECE's midplane line of sight,
 in metres. It is neither the major radius R nor a normalised radius.
 
+`locked_known` (tearing mode) means "lock confirmed": true only where an
+independent locked-mode signal confirmed the lock (such an interval is also
+`locked`). False says that none was confirmed (no record, no step, or n = 2, which
+has no confirmation), not that the lock status was checked and found absent.
+
 `review/points.csv` holds point events with these columns:
 
 ```csv
