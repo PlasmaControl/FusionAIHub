@@ -5,21 +5,22 @@ There is no independent detachment benchmark. The label set is the geometry-gate
 TangTV state, validated by the divertor Thomson Te (a temperature none of the three
 indicators uses). The panel shows
 
-* the coverage of the exported label by tier (certain: TangTV plus an agreeing
-  second indicator; TangTV only, silver; the `candidate_marfe` tier; every other
-  uncertain bin), bins and shots;
+* the coverage of the exported label by tier (certain: TangTV plus an agreeing Afrac
+  vote; TangTV only, silver; the `candidate_marfe` tier; every other uncertain bin),
+  bins and shots;
 * the agreement of the TangTV state with Te: the AUROC of -Te for a detached against
   an attached vote, pooled over shots with a 95% shot-bootstrap interval, for the
-  TangTV vote alone, the certain tier, the TangTV-only tier and the two other
-  indicators' votes. Whether the second vote improves the Te agreement is the
-  `second_vote_effect` of the Te record, copied into the panel source;
-* the agreement of the per-shot relative f_div with the TangTV vote on the upper
-  shelf (AUROC and Spearman rho of the f_div value; the binary kappa of the cast
-  votes where defined).
+  TangTV vote alone, the certain tier, the TangTV-only tier and the two indicators'
+  votes (f_div is drawn for reference, it is not a vote of the label). Whether the
+  second vote improves the Te agreement is the `second_vote_effect` of the Te
+  record, copied into the panel source;
+* f_div as a within-shot corroborator: its AUROC against the TangTV vote and against
+  Te, pooled over shots (filled) and the mean over shots (open), for the per-shot
+  relative value and the absolute ratio, with the shot counts.
 
 Every number is read from `docs/labeler/results/detachment_benchmark.json`,
-`detachment_te_check.json` and the exported bins. The panel source is
-`docs/labeler/figure2_detach.json`; there is no second copy.
+`detachment_te_check.json`, `detachment_fdiv_check.json` and the exported bins. The
+panel source is `docs/labeler/figure2_detach.json`; there is no second copy.
 """
 
 from __future__ import annotations
@@ -47,6 +48,8 @@ RESULTS = REPO / "docs" / "labeler" / "results"
 PANEL_JSON = REPO / "docs" / "labeler" / "figure2_detach.json"
 AGREEMENT_JSON = RESULTS / "detachment_benchmark.json"
 TE_JSON = RESULTS / "detachment_te_check.json"
+FDIV_JSON = RESULTS / "detachment_fdiv_check.json"
+FIG_HEIGHT_IN = 5.4
 LF_NAMES = ("afrac", "prad", "tangtv")
 #: Okabe-Ito colours of the exported classes; silver (TangTV only) is the tint.
 CLASS_COLOUR = {
@@ -68,9 +71,9 @@ CLASS_LABEL = {
 SETTINGS = {
     "afrac": "Jsat ratio against the probe's own attached reference, probe nearest "
     "the separatrix within 0.01 in psiN, L-mode bins abstain, uncalibrated",
-    "prad": "Prad,div,L over P_in, 250 ms inter-ELM means, over the shot's own "
-    "baseline (per-shot relative); 201081-anchored absolute cutoffs are a "
-    "sensitivity",
+    "prad": "Prad,div,L over P_in, 250 ms inter-ELM means; a within-shot "
+    "corroborator, not a vote of the label (its relative and 201081-anchored "
+    "absolute votes are sensitivities)",
     "tangtv": "C-III front height with shelf geometry, quality and MARFE gates",
 }
 PAPER_TIER = "upper_shelf"
@@ -253,7 +256,7 @@ def te_rows(te: dict) -> list[dict]:
         ("afrac_vote", "Afrac vote", te["indicator_votes"]["afrac"]),
         (
             "f_div_vote",
-            r"$f_{\mathrm{div}}$ rel. vote",
+            r"$f_{\mathrm{div}}$ votes (unused)",
             te["indicator_votes"]["prad"],
         ),
     )
@@ -278,6 +281,43 @@ def te_rows(te: dict) -> list[dict]:
     return rows
 
 
+def fdiv_rows(record: dict) -> list[dict]:
+    """f_div AUROC against TangTV and Te: pooled over shots and mean per shot."""
+    rows = []
+    for family in ("relative", "absolute"):
+        for reference, name in (("tangtv", "TangTV"), ("te", "Te")):
+            entry = record["summary"][family][reference]
+            pooled, within = entry["pooled"], entry["within_shot"]
+
+            def finite(x):
+                return x is not None and np.isfinite(x)
+
+            rows.append(
+                {
+                    "key": f"fdiv_{family}_vs_{reference}",
+                    "label": f"{family} vs {name}",
+                    "chance": 0.5,
+                    "pooled": {
+                        "value": pooled["value"] if finite(pooled["value"]) else None,
+                        "ci95": [float(x) for x in pooled["ci95"]]
+                        if finite(pooled["value"])
+                        else None,
+                        "n_bins": pooled["n_bins"],
+                        "n_shots": pooled["n_shots"],
+                    },
+                    "within_shot": {
+                        "value": within["mean"] if finite(within["mean"]) else None,
+                        "ci95": [float(x) for x in within["mean_ci95"]]
+                        if finite(within["mean"])
+                        else None,
+                        "n_shots": within["n_shots"],
+                        "shots_above_chance": within["shots_above_chance"],
+                    },
+                }
+            )
+    return rows
+
+
 def build() -> dict:
     source = root() / "labels_bins.csv.gz"
     digest = hashlib.sha256(source.read_bytes()).hexdigest()
@@ -298,6 +338,7 @@ def build() -> dict:
     pair = pair.get("prad__tangtv", {})
     rows = agreement_rows(benchmark)
     te = json.loads(TE_JSON.read_text())
+    fdiv = json.loads(FDIV_JSON.read_text())
     result = {
         "schema": "detachment_coverage_agreement",
         "task": "detachment",
@@ -311,10 +352,11 @@ def build() -> dict:
         },
         "label_set": "geometry-gated TangTV state, validated by divertor Thomson Te",
         "interpretation": "Certain labels are the TangTV vote with an agreeing "
-        "second indicator; TangTV only labels (silver) are the TangTV vote alone. "
-        "Neither is independent truth. Agreement does not establish accuracy.",
+        "Afrac vote; TangTV only labels (silver) are the TangTV vote with Afrac "
+        "abstaining or invalid. Neither is independent truth. Agreement does not "
+        "establish accuracy.",
         "bin_ms": core.BIN_MS,
-        "figure": {"width_in": 3.25, "height_in": 4.6, "min_font_pt": 7},
+        "figure": {"width_in": 3.25, "height_in": FIG_HEIGHT_IN, "min_font_pt": 7},
         "population": "all exported assessed eligible-shot bins, every split",
         "paper_tier": PAPER_TIER,
         "agreement_population": {
@@ -336,17 +378,19 @@ def build() -> dict:
         "coverage": coverage,
         "te_agreement": te_rows(te),
         "second_vote_effect": te["by_tier"]["second_vote_effect"],
+        "fdiv_corroborator": fdiv_rows(fdiv),
+        "fdiv_source": str(FDIV_JSON),
         "te_source": str(TE_JSON),
         "agreement": rows,
         "coverage_table": indicator_coverage(labels),
         "definitions": {
             "assessed": "at least two valid measurements on an eligible shot, or a "
             "TangTV vote",
-            "certain": "assessed bin where the TangTV vote and an agreeing second "
-            "indicator (relative f_div or Afrac) state attached or detached and "
-            "none disagrees",
-            "tangtv_only": "assessed bin where TangTV votes and every other "
-            "indicator abstains or is invalid (silver)",
+            "certain": "assessed bin where the TangTV vote and an agreeing valid "
+            "Afrac vote state attached or detached",
+            "tangtv_only": "assessed bin where TangTV votes and Afrac abstains or "
+            "is invalid (silver)",
+            "conflict": "TangTV and Afrac vote against each other; uncertain",
             "candidate_marfe": "uncertain bin with a sustained TangTV high front; "
             "no MARFE state is exported",
             "uncertain": "every other assessed bin; the tier says why",
@@ -371,10 +415,10 @@ def build() -> dict:
         "thresholds": {
             "prad_relative_cutoffs": list(thresholds.prad_relative_cutoffs()),
             "prad_absolute_cutoffs_global": list(thresholds.prad_cutoffs()),
-            "prad_cutoffs_note": "the exported f_div vote is the per-shot relative "
-            "one (f_div over the shot baseline); the absolute cutoffs are global "
-            "(one pair for every shot), anchored on 201081, and a sensitivity: "
-            "docs/labeler/results/detachment_prad_anchor.json",
+            "prad_cutoffs_note": "f_div is not a vote of the label. Its relative "
+            "votes (f_div over the shot baseline) and its absolute votes (global "
+            "cutoffs, one pair for every shot, anchored on 201081) are "
+            "sensitivities: docs/labeler/results/detachment_prad_anchor.json",
             "afrac_window_psin": thresholds.AFRAC_PSI_WINDOW,
             "afrac_votes": [
                 thresholds.AFRAC_DETACHED_MAX,
@@ -388,6 +432,7 @@ def build() -> dict:
             "labels_sha256": digest,
             "benchmark": str(AGREEMENT_JSON),
             "te_check": str(TE_JSON),
+            "fdiv_check": str(FDIV_JSON),
         },
     }
     PANEL_JSON.write_text(dumps(result, indent=1))
@@ -425,7 +470,10 @@ def draw(data: dict, out: Path) -> None:
         }
     )
     fig, (coverage_ax, te_ax, agreement_ax) = plt.subplots(
-        3, 1, figsize=(3.25, 4.8), gridspec_kw={"height_ratios": [0.8, 1.0, 1.35]}
+        3,
+        1,
+        figsize=(3.25, FIG_HEIGHT_IN),
+        gridspec_kw={"height_ratios": [0.8, 1.0, 1.7]},
     )
     coverage = data["coverage"]
     groups = (
@@ -489,23 +537,55 @@ def draw(data: dict, out: Path) -> None:
     interval_plot(te_ax, te_rows_drawn, te_colour)
     te_ax.set_xlim(0.2, 1.02)
     te_ax.set_xlabel(r"AUROC of $-T_e$, detached vs attached" "\n(shots in brackets)")
-    rows = [row for row in data["agreement"] if row["drawn"]]
-    lows = [row["ci95"][0] for row in rows if row["ci95"]]
-    highs = [row["ci95"][1] for row in rows if row["ci95"]]
-
-    def agreement_colour(row):
-        colour = "#222222" if row["kind"] == "threshold_free" else "#777777"
-        return colour, (colour if row["kind"] == "threshold_free" else "white")
-
-    interval_plot(agreement_ax, rows, agreement_colour)
-    low = min([0.0, *lows]) - 0.05 if lows else -0.05
-    high = max([*highs, 1.0]) if highs else 1.0
-    agreement_ax.set_xlim(low, min(high + 0.02, 1.02))
-    agreement_ax.set_xlabel(
-        r"relative $f_{\mathrm{div}}$ vs TangTV, 95% shot CI"
-        "\n(shots in brackets)"
+    rows = data["fdiv_corroborator"]
+    for y, row in enumerate(rows):
+        agreement_ax.plot(
+            [row["chance"]], [y], marker="|", ms=7, color=".6", mew=0.8, zorder=1
+        )
+        for part, dy, marker, face in (
+            ("pooled", -0.16, "o", "#222222"),
+            ("within_shot", 0.16, "s", "white"),
+        ):
+            entry = row[part]
+            if entry["value"] is None:
+                continue
+            agreement_ax.plot(
+                entry["value"],
+                y + dy,
+                marker,
+                ms=3.6,
+                color="#222222",
+                mfc=face,
+                zorder=3,
+            )
+            if entry["ci95"] and all(np.isfinite(entry["ci95"])):
+                agreement_ax.hlines(y + dy, *entry["ci95"], color="#222222", lw=1)
+    agreement_ax.set_yticks(
+        range(len(rows)),
+        [
+            f"{row['label']}\n({row['pooled']['n_shots']} / "
+            f"{row['within_shot']['n_shots']} shots)"
+            for row in rows
+        ],
     )
-    fig.subplots_adjust(left=0.4, right=0.97, top=0.85, bottom=0.1, hspace=1.0)
+    agreement_ax.set_ylim(len(rows) - 0.4, -0.6)
+    agreement_ax.spines[["top", "right"]].set_visible(False)
+    lows = [
+        r[p]["ci95"][0] for r in rows for p in ("pooled", "within_shot") if r[p]["ci95"]
+    ]
+    highs = [
+        r[p]["ci95"][1] for r in rows for p in ("pooled", "within_shot") if r[p]["ci95"]
+    ]
+    agreement_ax.set_xlim(
+        min([0.5, *lows]) - 0.03 if lows else 0.0,
+        min(max([*highs, 0.6]) + 0.02, 1.02),
+    )
+    agreement_ax.set_xlabel(
+        r"AUROC of $f_{\mathrm{div}}$"
+        "\nfilled: pooled, open: per shot"
+        "\n(shots: pooled / per shot)"
+    )
+    fig.subplots_adjust(left=0.4, right=0.97, top=0.85, bottom=0.15, hspace=1.0)
     out.mkdir(parents=True, exist_ok=True)
     fig.savefig(out / "fig_detachment_figure2.pdf", metadata={"CreationDate": None})
     fig.savefig(out / "fig_detachment_figure2.png", dpi=150)

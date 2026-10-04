@@ -84,7 +84,17 @@ def main():
     )
     assert np.array_equal(frame.state_rule, rule)
     assert np.array_equal(frame.state_lm, frame.state_rule)
-    # the sensitivity column is the same rule with the absolute f_div votes
+    # the sensitivity columns are the same rule with f_div added as a second voter,
+    # on the relative votes and on the absolute ones
+    extra = ("afrac", "prad")
+    relative, _ = label_model.compatibility_decide(
+        votes,
+        valid,
+        tangtv_tier=frame.tangtv_tier.to_numpy(),
+        elm_known=np.isfinite(frame.aux_elm_share),
+        second=extra,
+    )
+    assert np.array_equal(frame.state_rule_relative_prad, relative)
     absolute_votes, absolute_valid = votes.copy(), valid.copy()
     absolute_votes[:, 1] = frame.prad_abs_vote.to_numpy()
     absolute_valid[:, 1] = frame.prad_abs_valid.to_numpy(bool)
@@ -93,12 +103,13 @@ def main():
         absolute_valid,
         tangtv_tier=frame.tangtv_tier.to_numpy(),
         elm_known=np.isfinite(frame.aux_elm_share),
+        second=extra,
     )
     assert np.array_equal(frame.state_rule_absolute_prad, absolute)
     # the lower-shelf column is not a label column and is not in any handoff file
     assert not [c for c in frame.columns if "lower_shelf" in c and c != "tangtv_tier"]
-    # the exported f_div vote is the per-shot relative one; the absolute one is a
-    # global-cutoff sensitivity
+    # f_div is not a vote of the label; its relative vote (per-shot baseline) and its
+    # absolute one (global cutoffs) are sensitivities
     relative_cut = thresholds.prad_relative_cutoffs()
     prad_cast = frame.prad_valid.to_numpy(bool)
     expected_prad = prad.fdiv_vote(frame.prad_rel_value.to_numpy(float), *relative_cut)
@@ -133,23 +144,24 @@ def main():
     assert (labelled == (certain | silver)).all()
     assert not frame.state_rule.eq(core.MARFE).any(), "no certain MARFE is exported"
     assert frame.loc[labelled, "tangtv_tier"].eq("upper_shelf").all()
-    # certain: TangTV votes the state, a second valid indicator casts a compatible
-    # vote and no valid indicator votes against it; tangtv_only: nothing else votes
+    # certain: TangTV votes the state and a valid Afrac vote is compatible with it;
+    # tangtv_only: Afrac casts no vote; f_div is not consulted
     compatible = label_model.COMPATIBLE
     for state in (core.ATTACHED, core.DETACHED):
         rows = frame.state_rule.eq(state)
         assert votes[rows, 2].tolist() == [state] * int(rows.sum())
         for tier_rows, need_second in ((rows & certain, True), (rows & silver, False)):
-            others = votes[tier_rows.to_numpy()][:, :2]
-            casts = others > 0
+            afrac_votes = votes[tier_rows.to_numpy()][:, 0]
             if need_second:
-                assert casts.any(axis=1).all()
-            else:
-                assert not casts.any()
-            for j, name in enumerate(("afrac", "prad")):
+                assert (afrac_votes > 0).all()
                 for vote in (core.ATTACHED, core.DETACHED):
-                    if (others[:, j] == vote).any():
-                        assert state in compatible[name][vote]
+                    if (afrac_votes == vote).any():
+                        assert state in compatible["afrac"][vote]
+            else:
+                assert not (afrac_votes > 0).any()
+    conflict = frame.tier.eq("conflict")
+    assert frame.loc[conflict, "state_rule"].eq(core.UNCERTAIN).all()
+    assert (votes[conflict.to_numpy(), 0] > 0).all()
     candidate = frame.tier.eq("candidate_marfe")
     assert frame.loc[candidate, "state_rule"].eq(core.UNCERTAIN).all()
     assert (
@@ -273,8 +285,26 @@ def main():
     te = json.loads((RESULTS / "detachment_te_check.json").read_text())
     assert te["bins_assessed"] == len(frame)
     sensitivity = json.loads((RESULTS / "detachment_prad_sensitivity.json").read_text())
-    assert sensitivity["variants"]["primary_relative"]["reproduces_exported_labels"]
+    assert sensitivity["variants"]["primary"]["reproduces_exported_labels"]
+    assert sensitivity["second_voters"] == list(label_model.SECOND_VOTERS)
     assert sensitivity["n_assessed_bins"] == len(frame)
+    # f_div is reported per shot as a corroborator, and Figure 2 draws that record
+    fdiv_check = json.loads((RESULTS / "detachment_fdiv_check.json").read_text())
+    assert fdiv_check["role"].endswith("not a vote")
+    assert len(panel["fdiv_corroborator"]) == 4
+    for row in panel["fdiv_corroborator"]:
+        family, against = row["key"].split("_vs_")
+        within = fdiv_check["summary"][family.removeprefix("fdiv_")][against][
+            "within_shot"
+        ]
+        assert row["within_shot"]["n_shots"] == within["n_shots"]
+    # the learned baselines are scored on these labels, or the docs call them stale
+    docs = (dl.REPO / "docs/labeler/detachment.md").read_text()
+    baseline_block = docs.split("<!-- BASELINES -->")[1].split("<!-- /BASELINES -->")[0]
+    for name in ("ours", "victor"):
+        record = json.loads((RESULTS / f"detachment_{name}.json").read_text())
+        current = record["label_source"]["sha256"] == sha
+        assert current != ("stale" in baseline_block), f"detach-{name} baseline status"
     model = json.loads((dl.OUT / "records/label_model.json").read_text())
     assert "used_anchor" in model["fit"]
     assert model["fit"]["anchor_bins"] == int(valid.all(axis=1).sum()) or (
@@ -346,8 +376,9 @@ def main():
             "valid assessed bins and abstention encoding",
             "native and 250 ms radiation offset gates and covered heating windows",
             (
-                "tiers: certain needs TangTV plus a compatible second vote and no "
-                "clash; tangtv_only is TangTV alone; no MARFE state; upper shelf only"
+                "tiers: certain needs TangTV plus a compatible valid Afrac vote; "
+                "tangtv_only has no Afrac vote; conflict is TangTV against Afrac; "
+                "f_div is not consulted; no MARFE state; upper shelf only"
             ),
             (
                 "Afrac inside the flux window with a per-probe reference; no valid "
@@ -359,7 +390,10 @@ def main():
             "exact interval, sparse-grid and trace reconstruction; no stale shots",
             "reference, figure, Figure 2 and current-state checksums match the labels",
             "candidate_marfe never carries a state",
-            "relative f_div vote and the absolute sensitivity column reproduce",
+            (
+                "f_div relative and absolute sensitivity columns (f_div added as a "
+                "second voter) reproduce; the f_div check feeds Figure 2"
+            ),
             "no lower-shelf column in labels, traces or handoff; one Figure 2 record",
             "paper D9 decision recomputed from the labels",
             "diagnostic metadata does not claim primary-rule grids",

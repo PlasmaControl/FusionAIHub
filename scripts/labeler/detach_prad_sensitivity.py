@@ -1,19 +1,21 @@
 #!/usr/bin/env python
-"""Label composition under the Prad,div cutoff family: relative (primary), absolute.
+"""Label composition when f_div is added to the rule: relative and absolute cutoffs.
 
-The exported f_div vote is the per-shot RELATIVE one: f_div over the shot's own
-baseline (`prad_rel_value`, `thresholds.prad_relative_cutoffs`). The ABSOLUTE
-cutoffs anchored on shot 201081 (`thresholds.prad_cutoffs`: the midpoint of its
-measured attached and detached Prad,div,L plus or minus `PRAD_BAND_MW`, over its
-measured P_in) are the sensitivity alternative, kept as exported columns
-(`prad_abs_valid`, `prad_abs_vote`) because they do not carry over from the anchor
-shot (Opus review 5, I1). This script recomputes the compatibility rule from the
-exported bins under every variant (the band swept from 0.025 to 0.3 MW for both
-families, plus the published 1.6/2.2 MW values for the anchor; two variants drop the
-Afrac vote) and records, per variant, the certain and tangtv_only bins by state, the
-shots and cohort shots they sit on and whether the three-state criterion below
-holds. Nothing is selected from it: the variants only show how much the composition
-moves.
+The exported rule has two voting indicators, TangTV and Afrac
+(`label_model.SECOND_VOTERS`); f_div (Prad,div,L over the heating power) is a
+within-shot corroborator and creates no conflict (owner decision 2026-10-04, after
+Opus review 5, I1: its relative vote is at or below chance pooled over shots). This
+script recomputes the compatibility rule from the exported bins with f_div ADDED as a
+second voter, under the per-shot RELATIVE cutoffs (`prad_vote`,
+`thresholds.prad_relative_cutoffs`) and under the ABSOLUTE cutoffs anchored on shot
+201081 (`prad_abs_vote`, `thresholds.prad_cutoffs`: the midpoint of its measured
+attached and detached Prad,div,L plus or minus `PRAD_BAND_MW`, over its measured
+P_in), the band swept from 0.025 to 0.3 MW for both families, plus the published
+1.6/2.2 MW values for the anchor. It also records the exported rule itself
+(`primary`, which must reproduce the exported labels) and TangTV alone (`tangtv_alone`).
+Per variant: the certain and tangtv_only bins by state, the shots and cohort shots they
+sit on and whether the three-state criterion below holds. Nothing is selected from
+it: the variants only show how much the composition moves.
 
 It also records, per shot, the range of f_div (absolute and relative) in TangTV
 attached and detached bins, so the per-shot dependence is visible, and the published
@@ -83,12 +85,13 @@ def criterion(frame, hit_by_state, split) -> dict:
     }
 
 
-def composition(frame, votes, valid) -> dict:
+def composition(frame, votes, valid, second) -> dict:
     state, tier = label_model.compatibility_decide(
         votes,
         valid,
         tangtv_tier=frame.tangtv_tier.to_numpy(),
         elm_known=np.isfinite(frame.aux_elm_share.to_numpy(float)),
+        second=second,
     )
     # the same relabel as `detach_label.py`: an uncertain bin with a persistent
     # high-front candidate is the tier `candidate_marfe` (the state stays uncertain)
@@ -299,17 +302,17 @@ def main() -> int:
 
     variants = {}
 
-    def add(name, vote, valid, cutoffs, family, drop_afrac=False):
+    def add(name, vote, valid, cutoffs, family, second):
+        """One variant: `second` names the indicators that vote beside TangTV."""
         votes, valid_matrix = matrices(frame, vote, valid)
-        if drop_afrac:
-            # The Jsat-ratio proxy casts no vote (it stays a valid measurement).
-            votes[:, label_model.LF_NAMES.index("afrac")] = core.ABSTAIN
         prad_votes = vote[valid]
-        block, state, tier = composition(frame, votes, valid_matrix)
+        block, state, tier = composition(frame, votes, valid_matrix, second)
         variants[name] = {
             "family": family,
-            "afrac_votes_removed": drop_afrac,
-            "cutoffs": [float(cutoffs[0]), float(cutoffs[1])],
+            "second_voters": list(second),
+            "cutoffs": None
+            if cutoffs is None
+            else [float(cutoffs[0]), float(cutoffs[1])],
             "prad_votes": {
                 "attached": int((prad_votes == core.ATTACHED).sum()),
                 "detached": int((prad_votes == core.DETACHED).sum()),
@@ -320,40 +323,48 @@ def main() -> int:
         return state, tier
 
     relative_cut = th.prad_relative_cutoffs()
+    absolute_cut = th.prad_cutoffs()
+    plain = relative_vote(*relative_cut)  # a bystander in the exported rule
     state, tier = add(
-        "primary_relative",
-        relative_vote(*relative_cut),
-        relative_valid,
-        relative_cut,
-        "relative",
+        "primary", plain, relative_valid, None, "none", label_model.SECOND_VOTERS
     )
-    variants["primary_relative"]["reproduces_exported_labels"] = bool(
+    variants["primary"]["reproduces_exported_labels"] = bool(
         np.array_equal(state, frame.state_rule.to_numpy())
         and np.array_equal(tier, frame.tier.to_numpy())
     )
-    absolute_cut = th.prad_cutoffs()
+    add("tangtv_alone", plain, relative_valid, None, "none", ())
+    both = ("afrac", "prad")
     add(
-        "absolute",
-        absolute_vote(*absolute_cut),
-        absolute_valid,
-        absolute_cut,
-        "absolute",
-    )
-    add(
-        "primary_relative_afrac_abstains",
+        "with_relative_fdiv",
         relative_vote(*relative_cut),
         relative_valid,
         relative_cut,
         "relative",
-        drop_afrac=True,
+        both,
     )
     add(
-        "absolute_afrac_abstains",
+        "with_absolute_fdiv",
         absolute_vote(*absolute_cut),
         absolute_valid,
         absolute_cut,
         "absolute",
-        drop_afrac=True,
+        both,
+    )
+    add(
+        "with_relative_fdiv_afrac_abstains",
+        relative_vote(*relative_cut),
+        relative_valid,
+        relative_cut,
+        "relative",
+        ("prad",),
+    )
+    add(
+        "with_absolute_fdiv_afrac_abstains",
+        absolute_vote(*absolute_cut),
+        absolute_valid,
+        absolute_cut,
+        "absolute",
+        ("prad",),
     )
     mid = 0.5 * (th.PRAD_ANCHOR_ATTACHED_MW + th.PRAD_ANCHOR_DETACHED_MW)
     published = (
@@ -363,31 +374,35 @@ def main() -> int:
         / th.PRAD_ANCHOR_P_IN_MW,
     )
     add(
-        "absolute_published_anchor_values",
+        "with_absolute_fdiv_published_anchor_values",
         absolute_vote(*published),
         absolute_valid,
         published,
         "absolute",
+        both,
     )
     for band in BANDS_MW:
         cut = th.prad_relative_cutoffs(band_mw=band)
         add(
-            f"relative_band_{band:g}_mw",
+            f"with_relative_fdiv_band_{band:g}_mw",
             relative_vote(*cut),
             relative_valid,
             cut,
             "relative",
+            both,
         )
         cut = th.prad_cutoffs(band_mw=band)
         add(
-            f"absolute_band_{band:g}_mw",
+            f"with_absolute_fdiv_band_{band:g}_mw",
             absolute_vote(*cut),
             absolute_valid,
             cut,
             "absolute",
+            both,
         )
     record = {
-        "primary": "relative",
+        "primary": "TangTV and Afrac vote; f_div is not a vote",
+        "second_voters": list(label_model.SECOND_VOTERS),
         "anchor": {
             "shot": th.PRAD_ANCHOR_SHOT,
             "attached_mw": th.PRAD_ANCHOR_ATTACHED_MW,
@@ -413,10 +428,10 @@ def main() -> int:
     }
     OUT.write_text(dumps(record, indent=1) + "\n")
     for name in (
-        "primary_relative",
-        "absolute",
-        "primary_relative_afrac_abstains",
-        "absolute_afrac_abstains",
+        "primary",
+        "tangtv_alone",
+        "with_relative_fdiv",
+        "with_absolute_fdiv",
     ):
         v = variants[name]
         print(name, v["certain"]["bins"], v["tangtv_only"]["bins"])

@@ -21,7 +21,7 @@ RESULTS = REPO / "docs/labeler/results"
 DOC = REPO / "docs/labeler/detachment.md"
 README = REPO / "data/events/detachment/README.md"
 FIGURE2 = REPO / "docs/labeler/figure2_detach.json"
-MODEL_DATE = "2026_10_03"
+MODEL_DATE = "2026_10_04"
 AUROC = "auroc_neg_te_detached_vs_attached"
 
 
@@ -63,6 +63,7 @@ class Records:
         self.bench = load("benchmark")
         self.te = load("te_check")
         self.sens = load("prad_sensitivity")
+        self.fdiv = load("fdiv_check")
         self.afrac = load("afrac_check")
         self.ref = load("reference")
         self.anchor = load("prad_anchor")
@@ -78,6 +79,9 @@ class Records:
 
     def tf(self, tier: str, pair: str) -> dict:
         return self.bench["threshold_free_agreement"][tier][pair]
+
+    def fdiv_summary(self, family: str, reference: str) -> dict:
+        return self.fdiv["summary"][family][reference]
 
     def te_group(self, name: str) -> dict:
         return self.te["by_tier"][name]
@@ -146,6 +150,24 @@ def fdiv_ranges(rec: Records) -> dict:
     return out
 
 
+def fdiv_within(rec: Records, family: str, reference: str) -> str:
+    """`mean [lo, hi] over k shots (j above 0.5)` of f_div's within-shot AUROC."""
+    w = rec.fdiv_summary(family, reference)["within_shot"]
+    if not w["n_shots"]:
+        return "undefined (no shot has both classes)"
+    lo, hi = w["mean_ci95"]
+    return (
+        f"{w['mean']:.2f} [{lo:.2f}, {hi:.2f}] over {w['n_shots']} shots "
+        f"({w['shots_above_chance']} above 0.5)"
+    )
+
+
+def fdiv_pooled(rec: Records, family: str, reference: str) -> str:
+    """`value [lo, hi] (bins, shots)` of f_div's pooled AUROC."""
+    e = rec.fdiv_summary(family, reference)["pooled"]
+    return f"{metric(e)} on {e['n_bins']:,} bins, {e['n_shots']} shots"
+
+
 def cohort_text(rec: Records) -> str:
     splits = rec.cur["population"]["by_split"]
     cohort = {k: v for k, v in splits.items() if k != "outside"}
@@ -177,8 +199,6 @@ def summary(rec: Records) -> str:
     )
     sv = second_vote(rec)
     fdiv_vote = rec.te["indicator_votes"]["prad"][AUROC]["pooled"]
-    free = rec.tf("upper_shelf", "prad__tangtv")
-    free_abs = rec.tf("upper_shelf", "prad_abs__tangtv")
     free_afrac = rec.tf("upper_shelf", "afrac__tangtv")
     dec = afrac_decision(rec)
     primary = f"{rec.afrac['primary_window_psin']}"
@@ -190,26 +210,37 @@ def summary(rec: Records) -> str:
     cover = {r["indicator"]: r for r in rec.fig["coverage_table"]}
     regime = rec.afrac["regime_gate"]["totals"]
     ranges = fdiv_ranges(rec)
-    within_free = within_text({AUROC: {"within_shot": free["within_shot"]["auroc"]}})
     pub = rec.sens["published_point_180257_4800_ms"]
     marfe = cur["marfe"]
     published = marfe["published_marfe_199166"]
     r81 = reference_201081(rec)
     all_afrac = cover["afrac"]["valid_measurement"]
     extracted = rec.fig["coverage_table"][0]["population_counts"]
+    as_vote = rec.variant("with_relative_fdiv")
+    ce_note = (
+        "; the interval is uninformative on so few shots"
+        if (ce["ci95"][1] - ce["ci95"][0]) > 0.3
+        else ""
+    )
+    as_vote_certain = sum(as_vote["certain"]["bins"].values())
+    rel_min_bins = rec.fdiv_summary("relative", "tangtv")["within_shot"][
+        "min_class_bins"
+    ]
+    labelled = cur["afrac"]["afrac_in_labelled_bins"]
     paragraphs = [
         (
             "**Label set: the geometry-gated TangTV state, validated by divertor "
             "Thomson Te. Exploratory; no gold-standard benchmark.** Each 50 ms bin "
             "on an eligible shot is attached, detached or uncertain; MARFE is never "
-            "a state. Three indicators vote: the target-current ratio (Afrac "
-            "proxy: a probe's Jsat over that probe's own attached level, the probe "
-            "nearest the separatrix, known L-mode bins abstain), the lower-divertor "
-            "radiated fraction f_div = Prad,div,L / P_in over the shot's own "
-            "baseline, and the TangTV C-III front height DZ. A bin is `certain` "
-            "when TangTV votes and a second indicator (relative f_div or Afrac) "
-            "agrees with it and none disagrees; it is `tangtv_only` (silver) when "
-            "TangTV votes and every other indicator abstains or is invalid; every "
+            "a state. Two indicators vote: the TangTV C-III front height DZ and the "
+            "target-current ratio (Afrac proxy: a probe's Jsat over that probe's "
+            "own attached level, the probe nearest the separatrix, known L-mode "
+            "bins abstain). The lower-divertor radiated fraction f_div = "
+            "Prad,div,L / P_in is measured on every bin but is not a vote: it "
+            "corroborates within a shot and creates no conflicts (below). A bin is "
+            "`certain` when TangTV votes and a valid Afrac vote agrees with it; "
+            "`tangtv_only` (silver) when TangTV votes and Afrac abstains or is "
+            "invalid; `conflict` when TangTV and Afrac vote differently; every "
             "other assessed bin is uncertain, with the reason in the `tier` "
             "column. Certain labels measure indicator agreement, not physical "
             "accuracy."
@@ -224,7 +255,11 @@ def summary(rec: Records) -> str:
             f"{state_c['detached']['shots']} shots). TangTV only: "
             f"{pop['tangtv_only']['bins']} bins on {pop['tangtv_only']['shots']} "
             f"shots (attached {state_s['attached']['bins']}, detached "
-            f"{state_s['detached']['bins']}). The other "
+            f"{state_s['detached']['bins']}); in "
+            f"{labelled['tangtv_only_afrac_invalid']} of them Afrac is invalid "
+            f"(no reference yet, known L-mode, probe off the separatrix) and in "
+            f"{labelled['tangtv_only_afrac_valid_between_cutoffs']} it sits "
+            "between its cutoffs. The other "
             f"{pop['by_state']['uncertain']['bins']:,} bins are uncertain; "
             f"{pop['by_tier']['conflict']['bins']} of them are `conflict`. "
             f"{cohort_text(rec)}"
@@ -234,16 +269,16 @@ def summary(rec: Records) -> str:
             "attached vote (pooled, with shot-bootstrap 95% intervals): TangTV "
             f"alone {metric(tv)} ({tv['n_bins']} bins, {tv['n_shots']} shots), "
             f"certain tier {metric(ce)} ({ce['n_bins']} bins, {ce['n_shots']} "
-            f"shots), TangTV-only tier {metric(so)} ({so['n_bins']} bins, "
+            f"shots{ce_note}), TangTV-only tier {metric(so)} ({so['n_bins']} bins, "
             f"{so['n_shots']} shots). Within shots: TangTV alone "
             f"{within_text(rec.te_group('tangtv_vote_alone'))}, certain "
             f"{within_text(rec.te_group('certain'))}, TangTV only "
             f"{within_text(rec.te_group('tangtv_only'))}. **The second vote does "
             "not improve the Te agreement of the TangTV state**: certain minus "
             f"TangTV alone is {sv['difference']:+.3f} [{sv['ci'][0]:+.3f}, "
-            f"{sv['ci'][1]:+.3f}] over {sv['n_shots']} shots ({sv['reading']}); "
-            "the point estimate is lower for the certain tier. What the second "
-            "vote buys is agreement between indicators, not a better match to Te."
+            f"{sv['ci'][1]:+.3f}] over {sv['n_shots']} shots ({sv['reading']}). "
+            "What the second vote buys is agreement between two indicators, not "
+            "a better match to Te."
         ),
         (
             "**Afrac proxy rebuilt.** The earlier proxy read the peak-current "
@@ -259,8 +294,8 @@ def summary(rec: Records) -> str:
             f"{free_afrac['auroc_pooled']['n_shots']} shots); against Te "
             f"{dec['auroc_vote_based']:.2f} by vote [{te_vote['ci95'][0]:.2f}, "
             f"{te_vote['ci95'][1]:.2f}] and {dec['auroc_value_based']:.2f} by "
-            f"value. It stays in the vote (rule: removed below "
-            f"{dec['keep_min_auroc']}), but only as a weak second indicator: it "
+            f"value. It stays the second vote (rule: removed below "
+            f"{dec['keep_min_auroc']}), but only as a weak one: it "
             f"is valid on {all_afrac['bins']} of {extracted['bins']:,} extracted "
             f"bins ({all_afrac['shots']} of {extracted['shots']} shots), the Te "
             "interval includes 0.5, the regime "
@@ -271,29 +306,38 @@ def summary(rec: Records) -> str:
             f"value-based AUROC at {wide_value:.2f}, below the removal bound."
         ),
         (
-            "**f_div is per shot.** The exported f_div vote is the shot-relative "
-            f"one (f_div over the shot's own baseline, cutoffs {rel[0]:.3f} / "
-            f"{rel[1]:.3f}). The 201081-anchored absolute cutoffs "
-            f"({absolute[0]:.3f} / {absolute[1]:.3f}, one pair for every shot; "
-            f"P_in {anchor['p_in_mw']:.3f} MW) are a sensitivity row. Per-shot "
+            "**f_div is a within-shot corroborator, not a vote.** Pooled over "
+            "shots its level moves with the shot, not with the state: per-shot "
             "medians of the absolute f_div in TangTV-attached bins run from "
             f"{ranges['attached']['min']:.2f} to {ranges['attached']['max']:.2f} "
             f"({ranges['attached']['shots']} shots) and in TangTV-detached bins "
             f"from {ranges['detached']['min']:.2f} to "
             f"{ranges['detached']['max']:.2f} ({ranges['detached']['shots']} "
             f"shots), with P_in from {ranges['p_in']['min']:.1f} to "
-            f"{ranges['p_in']['max']:.1f} MW: the two classes overlap across "
-            "shots, so no single cutoff pair fits. The relative vote does not "
-            f"rank TangTV states across shots (AUROC {metric(free['auroc_pooled'])} "
-            f"pooled, {free['auroc_pooled']['n_bins']:,} bins on "
-            f"{free['auroc_pooled']['n_shots']} shots) but does within shots "
-            f"({within_free}). The absolute "
-            f"f_div ranks better pooled ({metric(free_abs['auroc_pooled'])}) "
-            "but its cutoffs vote detached on most of the TangTV-attached bins where "
-            "it votes. Against Te the relative f_div vote has AUROC "
-            f"{metric(fdiv_vote)}, i.e. no Te support pooled. The published "
-            "detached point 180257 at 4800 ms is not assessed (TangTV has no valid "
-            f"geometry, the relative f_div has no baseline, Afrac reads "
+            f"{ranges['p_in']['max']:.1f} MW, so no cutoff pair carries over "
+            "between shots. Counted as a second vote (shot-relative cutoffs "
+            f"{rel[0]:.3f} / {rel[1]:.3f}) it would give "
+            f"{as_vote_certain} certain bins but "
+            f"{as_vote['tier_counts']['conflict']} conflicts, against "
+            f"{pop['certain']['bins']} and {pop['by_tier']['conflict']['bins']}; "
+            "it is a sensitivity row. As a corroborator, per shot with at least "
+            f"{rel_min_bins} bins of each class: the relative f_div ranks TangTV-detached above "
+            "TangTV-attached bins with a within-shot AUROC of "
+            f"{fdiv_within(rec, 'relative', 'tangtv')}, and cold above warm "
+            f"divertor Thomson Te with {fdiv_within(rec, 'relative', 'te')}; "
+            "pooled over shots the same scores give "
+            f"{fdiv_pooled(rec, 'relative', 'tangtv')} against TangTV and "
+            f"{fdiv_pooled(rec, 'relative', 'te')} against Te, i.e. no support "
+            "once the shots are mixed. The absolute f_div (201081-anchored "
+            f"cutoffs {absolute[0]:.3f} / {absolute[1]:.3f}, P_in "
+            f"{anchor['p_in_mw']:.3f} MW) ranks the same bins within a shot and "
+            f"better pooled (against TangTV "
+            f"{fdiv_pooled(rec, 'absolute', 'tangtv')}), but its cutoffs vote "
+            "detached on most TangTV-attached bins where it votes. Counting only "
+            "the relative votes it casts, their AUROC against Te is "
+            f"{metric(fdiv_vote)} pooled. The published detached point 180257 at "
+            "4800 ms is not assessed (TangTV has no valid geometry, the relative "
+            "f_div has no baseline, Afrac reads "
             f"`{pub['afrac_reason']}`); the absolute cutoffs would call it "
             f"attached (f_div {pub['f_div_absolute']:.2f} at P_in "
             f"{pub['p_in_mw']:.1f} MW), a miss of that published point."
@@ -378,7 +422,9 @@ def coverage_tables(rec: Records) -> list[str]:
             ["Indicator", "Measurement", "Valid", "Vote", "In a certain label"],
             [
                 [
-                    r["indicator"],
+                    "prad (f_div, not a vote of the label)"
+                    if r["indicator"] == "prad"
+                    else r["indicator"],
                     pop(r["measurement"]),
                     pop(r["valid_measurement"]),
                     pop(r["vote"]),
@@ -389,31 +435,33 @@ def coverage_tables(rec: Records) -> list[str]:
         ),
         (
             f"\nCells are bins / shots over {first['bins']:,} extracted bins on "
-            f"{first['shots']} shots."
+            f"{first['shots']} shots. For f_div the Vote column counts its "
+            "relative votes (a sensitivity: the label does not use them) and the "
+            "last column the certain bins in which it casts one."
         ),
     ]
 
 
 def second_indicator_table(rec: Records) -> list[str]:
     c = rec.cur["afrac"]["afrac_in_labelled_bins"]
+    reasons = c["tangtv_only_afrac_invalid_reasons"]
+    rows = [
+        ["certain bins (TangTV vote and an agreeing Afrac vote)", c["certain_bins"]],
+        ["TangTV-only bins", c["tangtv_only_bins"]],
+        [
+            "  Afrac valid, between its cutoffs (abstains)",
+            c["tangtv_only_afrac_valid_between_cutoffs"],
+        ],
+        ["  Afrac invalid", c["tangtv_only_afrac_invalid"]],
+    ] + [[f"    reason `{k}`", v] for k, v in reasons.items()]
     return [
-        "\n### What corroborates the certain bins\n",
-        table(
-            ["Certain bins", "Count"],
-            [
-                ["all", c["certain_bins"]],
-                ["relative f_div casts a vote", c["certain_bins_with_f_div_cast"]],
-                ["Afrac casts a vote", c["certain_bins_with_afrac_cast"]],
-                [
-                    "corroborated by f_div only",
-                    c["certain_bins_corroborated_by_f_div_only"],
-                ],
-                [
-                    "corroborated by Afrac only",
-                    c["certain_bins_corroborated_by_afrac_only"],
-                ],
-                ["corroborated by both", c["certain_bins_corroborated_by_both"]],
-            ],
+        "\n### What supports the labelled bins\n",
+        table(["Labelled bins", "Count"], rows),
+        (
+            "\nA TangTV-only bin keeps TangTV's state because Afrac does not "
+            "vote there; it is not evidence against it. Most of these bins have "
+            "no Afrac because the probe's reference is too short, the shot is in "
+            "L-mode or no probe sits near the separatrix."
         ),
     ]
 
@@ -437,7 +485,7 @@ def te_tables(rec: Records) -> list[str]:
         q = e["te_ev_quantiles_10_50_90"]
         rows.append(
             [
-                label.replace("prad vote", "relative f_div vote").replace(
+                label.replace("prad vote", "relative f_div vote (unused)").replace(
                     "afrac vote", "Afrac vote"
                 ),
                 f"{e['n_bins']} / {e['n_shots']}",
@@ -454,7 +502,7 @@ def te_tables(rec: Records) -> list[str]:
             te["by_tier"]["tangtv_vote_in_conflict_bins"],
         ),
         ("Afrac vote", te["indicator_votes"]["afrac"]),
-        ("relative f_div vote", te["indicator_votes"]["prad"]),
+        ("relative f_div votes (unused)", te["indicator_votes"]["prad"]),
     ]
     auroc_rows = []
     for name, group in sources:
@@ -480,8 +528,8 @@ def te_tables(rec: Records) -> list[str]:
         (
             "The processed divertor Thomson Te (`\\ELECTRONS::TSTE_DIV`, 14 or 16 "
             "chords at R = 1.485 m, about 20 ms) is a temperature that none of "
-            "the three indicators uses. A bin's Te is the median of the valid "
-            "samples of the chords "
+            "the three indicators (TangTV, Afrac, f_div) uses. A bin's Te is the "
+            "median of the valid samples of the chords "
             f"{te['chord_selection']['above_shelf_m'][0] * 100:.1f} to "
             f"{te['chord_selection']['above_shelf_m'][1] * 100:.0f} cm above the "
             f"outer shelf (Z = {te['chord_selection']['shelf_z_m']} m) that lie on "
@@ -562,7 +610,7 @@ def agreement_tables(rec: Records) -> list[str]:
     pair_rows = []
     for tier in ("upper_shelf", "lower_shelf_window"):
         for pair, name in (
-            ("prad__tangtv", "relative f_div against TangTV"),
+            ("prad__tangtv", "relative f_div against TangTV (corroborator)"),
             ("prad_abs__tangtv", "absolute f_div against TangTV (sensitivity)"),
             ("afrac__tangtv", "Afrac against TangTV"),
             ("prad__afrac", "relative f_div against Afrac"),
@@ -585,13 +633,16 @@ def agreement_tables(rec: Records) -> list[str]:
                 ]
             )
     return [
-        "\n### Indicator agreement, upper shelf\n",
+        "\n### f_div and the indicator pairs, upper shelf\n",
         table(
             ["Statistic", "Value [95% shot CI]", "Chance", "Bins", "Shots"], stat_rows
         ),
         (
-            "\nAUROC is the probability that a TangTV-detached bin has a larger "
-            "relative f_div than a TangTV-attached bin. Intervals resample shots "
+            "\nAgreement diagnostics; none of them decides a label. AUROC is the "
+            "probability that a TangTV-detached (or TangTV-MARFE-vote) bin has a "
+            "larger relative f_div than a TangTV-attached bin; the per-shot f_div "
+            "corroborator table below counts the detached votes alone. Intervals "
+            "resample shots "
             f"({rec.bench['replicates']} replicates, seed 0). Kappa is null, and "
             "not drawn, where either rater used one class. The within-shot rows "
             "average over the few shots that have enough bins of both classes "
@@ -732,6 +783,83 @@ def afrac_tables(rec: Records) -> list[str]:
     ]
 
 
+def fdiv_corroborator_tables(rec: Records) -> list[str]:
+    f = rec.fdiv
+    names = {
+        ("relative", "tangtv"): "relative f_div against TangTV",
+        ("relative", "te"): "relative f_div against Te",
+        ("absolute", "tangtv"): "absolute f_div against TangTV (sensitivity)",
+        ("absolute", "te"): "absolute f_div against Te (sensitivity)",
+    }
+    summary_rows = []
+    for (family, reference), name in names.items():
+        e = rec.fdiv_summary(family, reference)
+        w, pooled = e["within_shot"], e["pooled"]
+        summary_rows.append(
+            [
+                name,
+                metric({"value": w["mean"], "ci95": w["mean_ci95"]})
+                if w["n_shots"]
+                else "undefined",
+                w["n_shots"],
+                w["shots_above_chance"],
+                metric(pooled),
+                f"{pooled['n_bins']:,} / {pooled['n_shots']}",
+            ]
+        )
+    shot_rows = []
+    for shot, e in f["per_shot"].items():
+        a, b = e["relative"]["tangtv"], e["relative"]["te"]
+        if a["auroc"] is None and b["auroc"] is None:
+            continue
+
+        def cell(x):
+            if x["auroc"] is None:
+                return "-"
+            return f"{x['auroc']:.2f} ({x['n_detached']} / {x['n_attached']})"
+
+        shot_rows.append([shot, e["split"], cell(a), cell(b)])
+    ms = f["summary"]["relative"]["tangtv"]["within_shot"]["min_class_bins"]
+    return [
+        "\n### f_div as a within-shot corroborator\n",
+        (
+            "f_div is not a vote, so it creates no conflicts and no certain bins. "
+            "It is scored as a ranking: per shot, the AUROC of f_div for the "
+            "TangTV-detached bins against the TangTV-attached ones (upper shelf), "
+            "and for the divertor-Thomson-cold bins (Te <= "
+            f"{rec.te['bands_ev']['detached_max']:.0f} eV) against the warm ones "
+            f"(>= {rec.te['bands_ev']['attached_min']:.0f} eV); a shot counts "
+            f"when each class has at least {ms} bins; the mean is over those "
+            "shots, with a shot-bootstrap interval, and the pooled AUROC mixes "
+            "the shots. The relative f_div is the ratio over the shot's own "
+            "baseline, valid where the baseline exists; the absolute ranks the "
+            "bins of one shot the same way (it differs by a per-shot constant) "
+            "and is the 201081-anchored sensitivity. Record: "
+            "`docs/labeler/results/detachment_fdiv_check.json`.\n"
+        ),
+        table(
+            [
+                "Score against reference",
+                "Within-shot mean [CI]",
+                "Shots",
+                "Shots above 0.5",
+                "Pooled AUROC [CI]",
+                "Pooled bins / shots",
+            ],
+            summary_rows,
+        ),
+        (
+            "\nPer shot (relative f_div; cells are AUROC with the detached or "
+            "cold / attached or warm bin counts in brackets; shots with fewer "
+            f"than {ms} bins in a class are left out of a column):\n"
+        ),
+        table(
+            ["Shot", "Split", "Against TangTV", "Against Te"],
+            shot_rows,
+        ),
+    ]
+
+
 def fdiv_tables(rec: Records) -> list[str]:
     s = rec.sens
     shots = s["per_shot_f_div"]["shots"]
@@ -779,7 +907,7 @@ def fdiv_tables(rec: Records) -> list[str]:
     anchor_level = anchor["attached_mw"] / anchor["p_in_mw"]
     pub = s["published_point_180257_4800_ms"]
     return [
-        "\n### f_div per shot\n",
+        "\n### f_div per shot, the absolute cutoffs\n",
         (
             "Per-shot f_div in the TangTV-attached and TangTV-detached upper-shelf "
             f"bins of the {len(both)} shots that have both (table), with the bins "
@@ -824,9 +952,9 @@ def fdiv_tables(rec: Records) -> list[str]:
         (
             "\nThe relative f_div measures change within a shot, not the state: "
             "a shot detached throughout has a detached baseline and reads about "
-            "1, so across shots the relative vote misses it (pooled AUROC below "
+            "1, so across shots the relative scores miss it (pooled AUROC below "
             "chance), while the absolute value ranks the states across shots "
-            "but with cutoffs that fit one shot.\n"
+            "but with cutoffs that fit one shot. Neither is used by the label.\n"
             f"\nPublished detached point {pub['shot']} at "
             f"{pub['published_time_ms']:.0f} ms: P_in {pub['p_in_mw']:.1f} MW, "
             f"absolute f_div {pub['f_div_absolute']:.3f}, which the absolute "
@@ -847,38 +975,51 @@ def composition_tables(rec: Records) -> list[str]:
     rows = []
     for name, v in rec.sens["variants"].items():
         c, t = v["certain"], v["tangtv_only"]
+        cutoffs = v["cutoffs"]
         rows.append(
             [
                 name,
-                f"{v['cutoffs'][0]:.3f} / {v['cutoffs'][1]:.3f}",
+                ", ".join(v["second_voters"]) or "none",
+                "-" if cutoffs is None else f"{cutoffs[0]:.3f} / {cutoffs[1]:.3f}",
                 triple(c),
                 f"{c['shots']['attached']} / {c['shots']['detached']}",
                 triple(t),
+                v.get("tier_counts", {}).get("conflict", 0),
                 v["uncertain_bins"],
             ]
         )
     d9 = rec.cur["paper_criterion_d9"]
     return [
-        "\n### Composition under the f_div cutoffs\n",
+        "\n### Composition under other second voters\n",
         table(
             [
                 "Variant",
-                "Cutoffs",
+                "Second voters",
+                "f_div cutoffs",
                 "Certain bins (att / det)",
                 "Certain shots (att / det)",
                 "TangTV-only bins (att / det)",
+                "Conflict bins",
                 "Uncertain bins",
             ],
             rows,
         ),
         (
-            "\n`primary_relative` is the exported label: the per-shot relative "
-            "f_div, cutoffs scaling the shot baseline. `absolute` uses the "
-            "201081-anchored global cutoffs (the midpoint of the measured "
-            "attached and detached Prad,div,L over its P_in; one pair for "
-            "every shot). `band_X` sets the half-width of the uncertain band to "
-            "X MW (the primary keeps 0.1 MW). `afrac_abstains` removes the Afrac "
-            "vote. `published_anchor_values` uses the published 1.6 / 2.2 MW."
+            "\n`primary` is the exported label: Afrac is the only second voter. "
+            "`tangtv_alone` has no second voter, so every TangTV vote is TangTV "
+            "only. The `with_*` rows add f_div as a second voter next to Afrac "
+            "(`with_relative_fdiv` reproduces the label of the earlier build, "
+            "where f_div was a vote: it makes many more certain bins and many "
+            "more conflicts); `relative` takes cutoffs that scale the shot "
+            "baseline, `absolute` the 201081-anchored global cutoffs (the "
+            "midpoint of the measured attached and detached Prad,div,L over its "
+            "P_in; one pair for every shot). `band_X` sets the half-width of the "
+            "uncertain band to X MW (the primary keeps 0.1 MW). "
+            "`afrac_abstains` leaves f_div as the only second voter. "
+            "`published_anchor_values` uses the published 1.6 / 2.2 MW. A two-"
+            "voter variant also has the tier `low_confidence_pair` (the two "
+            "second voters agree and TangTV casts none), folded here into the "
+            "uncertain bins."
         ),
         (
             f"\nDecision criterion: {d9['criterion']}. Certain attached and "
@@ -892,6 +1033,17 @@ def composition_tables(rec: Records) -> list[str]:
             "as a three-state label set."
         ),
     ]
+
+
+def uncast_points(rec: Records) -> str:
+    """The published points the label does not state, each with its tier."""
+    named = [
+        f"{r['shot']} at {r['reference_time_ms']:.0f} ms "
+        f"({r['gate_diagnostics'].get('consensus_tier') or r['primary_state']})"
+        for r in rec.ref["rows"]
+        if r["primary_state"] not in ("attached", "detached")
+    ]
+    return ", ".join(named)
 
 
 def reference_tables(rec: Records) -> list[str]:
@@ -934,8 +1086,8 @@ def reference_tables(rec: Records) -> list[str]:
                 "Time, ms",
                 "Published",
                 "Afrac",
-                "f_div rel.",
-                "f_div abs.",
+                "f_div rel. (unused)",
+                "f_div abs. (unused)",
                 "TangTV",
                 "Label",
                 "Tier",
@@ -949,9 +1101,9 @@ def reference_tables(rec: Records) -> list[str]:
             f"check, not a benchmark: the label casts {cons['n_cast_votes']} votes "
             f"of {cons['n_reference_points']} points, and "
             f"{cons['agreement_on_cast_votes']:.0%} of those agree with the "
-            "publication. The uncast points are 180257 (not assessed) and the "
-            "MARFE on 199166 (uncertain) and the conflict bin on 201081. A vote "
-            "of `abstain` means the indicator does not vote in that bin."
+            f"publication. The uncast points are {uncast_points(rec)}. A vote "
+            "of `abstain` means the indicator does not vote in that bin; the f_div "
+            "columns are shown for reference, the label does not use them."
         ),
     ]
 
@@ -1000,8 +1152,12 @@ def width_marfe_tables(rec: Records) -> list[str]:
             "from the coverage table above; the widths are comparable with each "
             "other). The certain tier depends on the width: 20 ms gives "
             f"{certain_text(rec, '20ms')}, 50 ms {certain_text(rec, '50ms')} and "
-            f"100 ms {certain_text(rec, '100ms')}. The second indicator votes on "
-            "fewer of the wider bins, so the TangTV-only tier takes over. Where "
+            f"100 ms {certain_text(rec, '100ms')}; the certain share of the "
+            "labelled bins is "
+            + ", ".join(
+                f"{certain_share(rec, k):.2f} at {k}" for k in ("20ms", "50ms", "100ms")
+            )
+            + " and the TangTV-only tier takes over. Where "
             "two widths both label a bin the states agree: "
             + ", ".join(
                 f"{rec.widths[k]['vs_50ms']['agreement']:.3f} at {k} "
@@ -1036,6 +1192,12 @@ def width_marfe_tables(rec: Records) -> list[str]:
     ]
 
 
+def certain_share(rec: Records, key: str) -> float:
+    """Certain bins over certain plus TangTV-only bins at one bin width."""
+    w = rec.widths[key]
+    return w["n_certain_bins"] / (w["n_certain_bins"] + w["n_tangtv_only_bins"])
+
+
 def certain_text(rec: Records, key: str) -> str:
     w = rec.widths[key]["certain_by_state"]
     return (
@@ -1051,6 +1213,7 @@ def results(rec: Records) -> str:
         + te_tables(rec)
         + agreement_tables(rec)
         + afrac_tables(rec)
+        + fdiv_corroborator_tables(rec)
         + fdiv_tables(rec)
         + reference_tables(rec)
         + composition_tables(rec)
@@ -1060,32 +1223,84 @@ def results(rec: Records) -> str:
 
 
 def baselines(rec: Records) -> str:
-    sha = rec.ours["label_source"]["sha256"]
+    """The learned baselines, quoted only when scored on the current labels."""
+    current = rec.cur["labels_sha256"]
+    stale = [
+        name
+        for name, record in (("detach-ours", rec.ours), ("detach-victor", rec.victor))
+        if record["label_source"]["sha256"] != current
+    ]
+    if stale:
+        return (
+            f"The learned baselines {', '.join(f'`{n}`' for n in stale)} were "
+            "scored against an earlier build of the labels (sha256 "
+            f"`{rec.ours['label_source']['sha256'][:12]}`; the current labels are "
+            f"`{current[:12]}`). They are stale: no score of either is quoted and "
+            "they are not listed among the dataset's models or any paper-facing "
+            "table until they are retrained "
+            "(`scripts/labeler/detach_ours.py`, `detach_victor.py`)."
+        )
+    rows = []
+    for name, record in (("detach-ours", rec.ours), ("detach-victor", rec.victor)):
+        model, majority = record["cv_shots"], record["cv_majority_ci"]
+        for label, e in ((name, model), (f"{name} fold-majority control", majority)):
+            rows.append(
+                [
+                    label,
+                    f"{model['n_bins']} / {model['n_shots']}",
+                    metric(e["accuracy"], 2),
+                    metric(e["kappa"], 2),
+                    metric(e["macro_f1"], 2),
+                ]
+            )
     return (
-        "Two learned baselines, `detach-ours` (windows of current, density, "
-        "D-alpha, ELM share and EFIT scalars) and `detach-victor` (raw camera "
-        "frames), were trained on an earlier build of the labels "
-        f"(labels sha256 `{sha[:12]}`), before the Afrac proxy, the per-shot "
-        "f_div vote and the tier names changed. They have not been retrained on "
-        "the labels described here, so no score of either is quoted: a score "
-        "against a different label set would not describe this one. They are not "
-        "listed among the dataset's models and are not paper-facing results. "
-        "Their records (`docs/labeler/results/detachment_ours.json` and "
-        "`detachment_victor.json`, scripts `detach_ours.py` and `detach_victor.py`) "
-        "stay in the repository for the earlier build; retraining them is open "
-        "work."
+        "Two learned baselines, retrained on the labels described here (labels "
+        f"sha256 `{current[:12]}`; the architecture and epochs are unchanged), "
+        "predict the labelled states, certain and TangTV only together "
+        f"({rec.cur['population']['labelled_certain_or_tangtv_only']['bins']:,} "
+        "bins), with 5-fold shot-grouped cross-validation over the non-test "
+        "shots; test shots are never fitted or scored here. `detach-ours` reads "
+        "windows of 0-D signals (current, density, D-alpha, ELM share, EFIT "
+        "scalars) and `detach-victor` raw TangTV frames. Scores are agreement "
+        "with constructed labels, not physical accuracy: `detach-victor` reads "
+        "the same camera that sets the TangTV state, so its agreement partly "
+        "reproduces the label from its own input. The fold-majority control "
+        "predicts each held-out fold's bins as the majority class of the "
+        "training fold; with shot-grouped folds that class is often the "
+        "minority of the held-out shots, so the control scores below 0.5 and "
+        "kappa 0 (a constant class) is the plainer reference. Intervals are "
+        "shot-bootstrap (1000 replicates); bins are those with complete inputs "
+        "or a camera frame, and the interval of `detach-ours` has a lower kappa "
+        "end near 0.\n\n"
+        + table(
+            [
+                "Model",
+                "Bins / shots",
+                "Accuracy [95% shot CI]",
+                "Kappa [95% shot CI]",
+                "Macro-F1 [95% shot CI]",
+            ],
+            rows,
+        )
+        + "\n\nMARFE transfer is unsupported (no MARFE label exists). Records: "
+        "`docs/labeler/results/detachment_ours.json` and `detachment_victor.json`; "
+        "scripts `detach_ours.py` and `detach_victor.py`. They are not listed "
+        "among the dataset's models: they are a comparison of what 0-D signals "
+        "and TangTV frames can reproduce of the constructed labels."
     )
 
 
 def models(rec: Records) -> str:
     cur = rec.cur["population"]
     c, s = cur["by_state_certain"], cur["by_state_tangtv_only"]
-    tv = metric(rec.te_auroc("tangtv_vote_alone"))
-    ce = metric(rec.te_auroc("certain"))
+    tv_e, ce_e = rec.te_auroc("tangtv_vote_alone"), rec.te_auroc("certain")
+    tv = f"{metric(tv_e)} on {tv_e['n_shots']} shots"
+    ce = f"{metric(ce_e)} on {ce_e['n_shots']} shots"
     return (
         f"- detach_vote | {MODEL_DATE}: exploratory geometry-gated TangTV state "
-        "validated by divertor Thomson Te; per-shot relative f_div and a "
-        f"per-probe Afrac proxy as second indicators; {cur['assessed']['bins']:,} "
+        "validated by divertor Thomson Te; a per-probe Afrac proxy is the "
+        "second vote and f_div a within-shot corroborator; "
+        f"{cur['assessed']['bins']:,} "
         f"assessed bins/{cur['assessed']['shots']} shots; certain "
         f"{cur['certain']['bins']} bins/{cur['certain']['shots']} shots "
         f"(attached {c['attached']['bins']}, detached {c['detached']['bins']}); "

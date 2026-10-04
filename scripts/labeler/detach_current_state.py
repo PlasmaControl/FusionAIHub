@@ -8,13 +8,14 @@ by `detach_label.py`) and the extracted per-shot grids in `bins/`, and writes
 `docs/labeler/results/detachment_current.json`:
 
 * the population by state, split and tier (`certain`: TangTV vote plus an agreeing
-  second indicator; `tangtv_only`: TangTV vote alone, silver);
+  Afrac vote; `tangtv_only`: TangTV vote with Afrac abstaining or invalid, silver;
+  `conflict`: TangTV and Afrac disagree);
 * Afrac: coverage on the upper shelf, the reasons a bin had no valid probe, and the
   provenance of the probe that voted (psiN, its attached reference, how many probes
   were inside the window), and the L/H gate's abstentions;
-* Prad,div: vote counts by tier with the invalid reasons (relative vote, the exported
-  one, and the absolute sensitivity vote), and the upper-shelf vote tables against
-  TangTV;
+* Prad,div (f_div, a within-shot corroborator, not a vote): vote counts by tier with
+  the invalid reasons (the relative vote and the absolute one, both sensitivities),
+  and the upper-shelf vote tables against TangTV;
 * MARFE: the evidence chain counted bin by bin (TangTV MARFE vote, the spatial cue,
   the density cue, persistence), `candidate_marfe` (no MARFE state is exported) and
   the recall on the one published MARFE (199166 at 3705 ms);
@@ -126,8 +127,9 @@ def afrac_block(bins: pd.DataFrame, labels: pd.DataFrame) -> dict:
     vote = valid[valid.afrac_vote > 0]
     labelled = labels.state_rule.isin((core.ATTACHED, core.DETACHED))
     certain = labels.tier.eq("certain")
-    cast = labels.afrac_valid.astype(bool) & (labels.afrac_vote > 0)
-    prad_cast = labels.prad_valid.astype(bool) & (labels.prad_vote > 0)
+    silver = labels.tier.eq("tangtv_only")
+    valid_afrac = labels.afrac_valid.astype(bool)
+    cast = valid_afrac & (labels.afrac_vote > 0)
     return {
         "population": "every extracted 50 ms bin on a fetched shot, TangTV upper shelf",
         "method": "per_probe_reference",
@@ -194,15 +196,13 @@ def afrac_block(bins: pd.DataFrame, labels: pd.DataFrame) -> dict:
             "labelled_bins_certain_or_tangtv_only": int(labelled.sum()),
             "certain_bins": int(certain.sum()),
             "certain_bins_with_afrac_cast": int((certain & cast).sum()),
-            "certain_bins_with_f_div_cast": int((certain & prad_cast).sum()),
-            "certain_bins_corroborated_by_afrac_only": int(
-                (certain & cast & ~prad_cast).sum()
+            "tangtv_only_bins": int(silver.sum()),
+            "tangtv_only_afrac_valid_between_cutoffs": int(
+                (silver & valid_afrac & ~cast).sum()
             ),
-            "certain_bins_corroborated_by_f_div_only": int(
-                (certain & prad_cast & ~cast).sum()
-            ),
-            "certain_bins_corroborated_by_both": int(
-                (certain & cast & prad_cast).sum()
+            "tangtv_only_afrac_invalid": int((silver & ~valid_afrac).sum()),
+            "tangtv_only_afrac_invalid_reasons": counts(
+                labels.afrac_reason[silver & ~valid_afrac]
             ),
         },
     }
@@ -210,7 +210,8 @@ def afrac_block(bins: pd.DataFrame, labels: pd.DataFrame) -> dict:
 
 def prad_block(bins: pd.DataFrame, labels: pd.DataFrame) -> dict:
     out = {
-        "exported_vote": "relative f_div over the shot baseline",
+        "role": "within-shot corroborator, not a vote: the relative and absolute "
+        "votes below are sensitivities",
         "by_tier": {},
         "absolute_sensitivity_by_tier": {},
     }

@@ -16,9 +16,9 @@ front-height line at
 the interval's median DZ, and under them the PRAD_DIVL and PRAD_TOT traces with the
 three intervals marked. A 2D bolometer emissivity does not exist in the corpus or in
 the BOLOM tree (`detachment_bolometer_availability.json`), so the radiation row is
-the divertor and total radiated-power traces. The timeline adds the three
-indicators' votes, f_div and DZ with their cutoffs and, where fetched, the divertor
-Thomson Te at the SOL chords. Both figures use the full 6.75 inch text width
+the divertor and total radiated-power traces. The timeline adds the label and
+the Afrac and TangTV votes, f_div (a corroborator, not a vote) and DZ with their
+cutoffs and, where fetched, the divertor Thomson Te at the SOL chords. Both figures use the full 6.75 inch text width
 (minimum 7 pt); vector PDF plus 150-dpi PNG. Every number comes from the exported
 labels and parked signals; omissions are recorded in figure.json.
 """
@@ -278,8 +278,8 @@ def strip(ax, start_ms, state, label) -> None:
 
 def timeline(fig, spec, group: pd.DataFrame, intervals: list[dict], te, cliffs) -> None:
     """Votes, f_div, DZ and (when fetched) the SOL divertor Te against time."""
-    n_rows = 7 if te is not None else 6
-    ratios = [0.35, 0.35, 0.35, 0.35, 1.4, 1.4] + ([1.4] if te is not None else [])
+    n_rows = 6 if te is not None else 5
+    ratios = [0.35, 0.35, 0.35, 1.4, 1.4] + ([1.4] if te is not None else [])
     sub = spec.subgridspec(n_rows, 1, height_ratios=ratios, hspace=0.28)
     axes = [fig.add_subplot(sub[i]) for i in range(n_rows)]
     start = group.start_ms.to_numpy()
@@ -287,16 +287,15 @@ def timeline(fig, spec, group: pd.DataFrame, intervals: list[dict], te, cliffs) 
     votes = {
         "label": group.state_rule.to_numpy() + SILVER_OFFSET * silver,
         "Afrac": np.where(group.afrac_valid, group.afrac_vote, 0),
-        r"$f_{\mathrm{div}}$ rel.": np.where(group.prad_valid, group.prad_vote, 0),
         "TangTV": np.where(group.tangtv_valid, group.tangtv_vote, 0),
     }
-    for ax, (name, state) in zip(axes[:4], votes.items(), strict=True):
+    for ax, (name, state) in zip(axes[:3], votes.items(), strict=True):
         strip(ax, start, state, name)
     centre = start + core.BIN_MS / 2
     dz = group.tangtv_value.to_numpy(float)
     series = [
         (
-            r"$f_{\mathrm{div}}$ / baseline",
+            "$f_{\\mathrm{div}}$ / base.\n(not a vote)",
             np.where(group.prad_valid, group.prad_rel_value, np.nan),
             (
                 (thresholds.PRAD_REL_ATTACHED_MAX, "--"),
@@ -315,7 +314,7 @@ def timeline(fig, spec, group: pd.DataFrame, intervals: list[dict], te, cliffs) 
     ]
     if te is not None:
         series.append(("$T_e$ (eV)", te, ((5.0, ":"), (10.0, "--"))))
-    for ax, (name, y, lines) in zip(axes[4:], series, strict=True):
+    for ax, (name, y, lines) in zip(axes[3:], series, strict=True):
         ax.plot(centre, y, color=INK, lw=0.9, marker=".", ms=2.5)
         for level, dash in lines:
             ax.axhline(level, color="#666666", lw=0.6, ls=dash)
@@ -325,15 +324,15 @@ def timeline(fig, spec, group: pd.DataFrame, intervals: list[dict], te, cliffs) 
                 0.5, 0.55, "no valid measurement", transform=ax.transAxes, ha="center"
             )
         ax.grid(axis="y", color="0.9", lw=0.4)
-    axes[4].set_ylim(bottom=0)
-    axes[5].set_ylim(bottom=min(0, np.nanmin(dz) if np.isfinite(dz).any() else 0))
+    axes[3].set_ylim(bottom=0)
+    axes[4].set_ylim(bottom=min(0, np.nanmin(dz) if np.isfinite(dz).any() else 0))
     if te is not None:
-        axes[6].set_yscale("log")
-        axes[6].set_ylim(0.5, 60)
+        axes[5].set_yscale("log")
+        axes[5].set_ylim(0.5, 60)
     lo, hi = start.min(), start.max() + core.BIN_MS
     for ax in axes:
         ax.set_xlim(lo, hi)
-        for r in intervals if ax in axes[4:] else ():
+        for r in intervals if ax in axes[3:] else ():
             ax.axvspan(
                 r["start_ms"],
                 r["end_ms"],
@@ -975,9 +974,10 @@ def main() -> None:
                     "docs/labeler/results/detachment_bolometer_availability.json"
                 ),
                 "timeline_rows": (
-                    "label (silver = TangTV only), Afrac, relative f_div and TangTV "
-                    "vote strips; f_div over its shot baseline and DZ with the "
-                    "cutoffs (dashed attached, dotted detached, dash-dot MARFE); "
+                    "label (silver = TangTV only), Afrac and TangTV vote strips; "
+                    "f_div over its shot baseline (a corroborator, not a vote) and "
+                    "DZ with the cutoffs (dashed attached, dotted detached, "
+                    "dash-dot MARFE); "
                     "divertor Thomson Te at the SOL chords near the target with the "
                     "5 and 10 eV bands when fetched (log axis)"
                 ),
