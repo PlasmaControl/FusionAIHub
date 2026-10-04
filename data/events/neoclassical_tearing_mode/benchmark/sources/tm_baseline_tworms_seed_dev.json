@@ -1,5 +1,5 @@
 {
-  "git_sha": "6feeb53c",
+  "git_sha": "90f07b1a",
   "labels": "data/events/neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv",
   "bin_ms": 10.0,
   "shots_without_features": [],
@@ -908,7 +908,7 @@
     204840,
     204937
   ],
-  "labels_sha256": "b92cad8eee2b384975fdb81ecc0b95c5c6ea497b5b926bef64ffc039181fdb52",
+  "labels_sha256": "0cf0fe502baa219e75db447ee7a08b8ab92879070391e4e1bafc5aca7647f328",
   "input_mask_policy": "zero only nonfinite feature rows; target uncertainty masks loss and evaluation, never model input context",
   "split": "dev",
   "shots": [
@@ -2408,9 +2408,9 @@
         204242,
         204840
       ],
-      "validation_bins_scored": 14325,
+      "validation_bins_scored": 14361,
       "validation_bins_positive": 1469,
-      "validation_bins_negative": 12856,
+      "validation_bins_negative": 12892,
       "validation_shots_positive": [
         195035,
         196332,
@@ -2422,13 +2422,13 @@
       "threshold_status": "positive-bearing inner-validation F1 optimum",
       "validation_score_quantiles": [
         -3.7652625193942795,
-        -2.660890105654699,
+        -2.662199006186006,
         -1.6996087344193729,
-        0.027443954009083272,
+        0.027305651095085426,
         0.6344300945154158
       ],
-      "threshold": -0.5135435894623724,
-      "threshold_native": 0.3065183016329329
+      "threshold": -0.4841798348230156,
+      "threshold_native": 0.32795946190412667
     },
     {
       "fold": 1,
@@ -3018,9 +3018,9 @@
         204687,
         204689
       ],
-      "validation_bins_scored": 12666,
+      "validation_bins_scored": 12778,
       "validation_bins_positive": 920,
-      "validation_bins_negative": 11746,
+      "validation_bins_negative": 11858,
       "validation_shots_positive": [
         186226,
         186901,
@@ -3033,13 +3033,13 @@
       "threshold_status": "positive-bearing inner-validation F1 optimum",
       "validation_score_quantiles": [
         -3.778151250383644,
-        -2.8935008446303305,
-        -1.820670422325888,
-        -0.08923530465226329,
+        -2.8953962933403123,
+        -1.8222915111714557,
+        -0.09376778934852914,
         0.4904594669072282
       ],
-      "threshold": -0.4617727877382593,
-      "threshold_native": 0.3453243573506673
+      "threshold": -0.4440004270116777,
+      "threshold_native": 0.3597489814393171
     },
     {
       "fold": 2,
@@ -3629,9 +3629,9 @@
         204324,
         204531
       ],
-      "validation_bins_scored": 11146,
-      "validation_bins_positive": 1244,
-      "validation_bins_negative": 9902,
+      "validation_bins_scored": 11335,
+      "validation_bins_positive": 1245,
+      "validation_bins_negative": 10090,
       "validation_shots_positive": [
         186569,
         192003,
@@ -3644,13 +3644,13 @@
       "threshold_status": "positive-bearing inner-validation F1 optimum",
       "validation_score_quantiles": [
         -3.573560139223024,
-        -2.897259713917954,
-        -1.7814880229069234,
-        0.04072127869966227,
+        -2.891315156061591,
+        -1.7826697342367643,
+        0.034316453857553324,
         0.5849886787598901
       ],
-      "threshold": -0.5062352564574512,
-      "threshold_native": 0.31172005453224927
+      "threshold": -0.5272624062093694,
+      "threshold_native": 0.2969871055929517
     },
     {
       "fold": 3,
@@ -4240,9 +4240,9 @@
         204652,
         204937
       ],
-      "validation_bins_scored": 13040,
-      "validation_bins_positive": 1280,
-      "validation_bins_negative": 11760,
+      "validation_bins_scored": 13246,
+      "validation_bins_positive": 1283,
+      "validation_bins_negative": 11963,
       "validation_shots_positive": [
         186530,
         187196,
@@ -4255,13 +4255,13 @@
       "threshold_status": "positive-bearing inner-validation F1 optimum",
       "validation_score_quantiles": [
         -3.778151250383644,
-        -2.8493178188797743,
-        -1.9051226519147648,
-        -0.08505556286301248,
+        -2.8474599234588185,
+        -1.9131717114196831,
+        -0.08858512928783563,
         0.38374049645117236
       ],
-      "threshold": -0.5876723284262412,
-      "threshold_native": 0.2584209219637582
+      "threshold": -0.5940213556433348,
+      "threshold_native": 0.25467050199064056
     },
     {
       "fold": 4,
@@ -4851,9 +4851,9 @@
         204225,
         204244
       ],
-      "validation_bins_scored": 11203,
+      "validation_bins_scored": 11229,
       "validation_bins_positive": 1069,
-      "validation_bins_negative": 10134,
+      "validation_bins_negative": 10160,
       "validation_shots_positive": [
         189085,
         189501,
@@ -4867,13 +4867,13 @@
       "threshold_status": "positive-bearing inner-validation F1 optimum",
       "validation_score_quantiles": [
         -3.728129718089651,
-        -2.7172451504215336,
-        -1.763547262280336,
-        0.05592815019387021,
+        -2.7276873402821398,
+        -1.7694763855003868,
+        0.05559557572376218,
         0.5254433947100654
       ],
-      "threshold": -0.5370930201005976,
-      "threshold_native": 0.29034007180517524
+      "threshold": -0.6662209628777191,
+      "threshold_native": 0.21566468586088647
     }
   ],
   "threshold_is": "the rule's seed levels: n = 1 at 12 G or n = 2 at 6 G",
@@ -4881,39 +4881,39 @@
     "n_shots": 450,
     "replicates": 1000,
     "auroc": {
-      "value": 0.998494247563814,
-      "lo": 0.9979437046920374,
-      "hi": 0.9989711514309814,
+      "value": 0.9984909195998706,
+      "lo": 0.9979289543941604,
+      "hi": 0.9989608644499051,
       "valid_replicates": 1000
     },
     "auprc": {
-      "value": 0.9858981706860306,
-      "lo": 0.9803695076307126,
-      "hi": 0.9902877750488428,
+      "value": 0.985620380420433,
+      "lo": 0.9799489124651426,
+      "hi": 0.9900635930451409,
       "valid_replicates": 1000
     },
     "f1": {
-      "value": 0.6448760758124441,
-      "lo": 0.5720463520737794,
-      "hi": 0.716607737814049,
+      "value": 0.6451188574650004,
+      "lo": 0.5726974369139614,
+      "hi": 0.7169268718195944,
       "valid_replicates": 1000
     },
     "precision": {
-      "value": 0.9976717112922002,
-      "lo": 0.9959785205589299,
-      "hi": 0.9988655780629612,
+      "value": 0.9975301467383408,
+      "lo": 0.9957746271860446,
+      "hi": 0.9988131651642715,
       "valid_replicates": 1000
     },
     "recall": {
-      "value": 0.4764088666527691,
-      "lo": 0.40112351498293136,
-      "hi": 0.5588350793241397,
+      "value": 0.4767062417551899,
+      "lo": 0.40173085335562864,
+      "hi": 0.5592594905516551,
       "valid_replicates": 1000
     },
     "prevalence": {
-      "value": 0.08965964101254151,
-      "lo": 0.06862636939879525,
-      "hi": 0.1129516944042663,
+      "value": 0.08844878408253501,
+      "lo": 0.06779088311818855,
+      "hi": 0.11096388553890607,
       "valid_replicates": 1000
     },
     "segf1_0.3": {
@@ -4923,9 +4923,9 @@
       "valid_replicates": 1000
     },
     "segf1_0.5": {
-      "value": 0.46534653465346537,
-      "lo": 0.3529088558500324,
-      "hi": 0.5900168393782383,
+      "value": 0.4752475247524752,
+      "lo": 0.36358800773694394,
+      "hi": 0.6000224215246637,
       "valid_replicates": 1000
     },
     "segf1_0.7": {
@@ -4935,10 +4935,10 @@
       "valid_replicates": 1000
     },
     "shots_without_a_scored_bin": [],
-    "bins_scored": 160507,
-    "bins_positive": 14391,
+    "bins_scored": 162840,
+    "bins_positive": 14403,
     "bin_ms": 10.0,
-    "scored_seconds": 1605.07,
+    "scored_seconds": 1628.4,
     "segment_missing_data_policy": "unavailable label or score bins are hard barriers to merging; excluded from IoU"
   },
   "threshold_estimation": {

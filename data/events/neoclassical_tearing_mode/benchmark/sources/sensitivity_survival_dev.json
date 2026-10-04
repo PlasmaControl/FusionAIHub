@@ -3,9 +3,9 @@
   "shots": "cohort split != test",
   "n_shots": 450,
   "not_in_reference": 275,
-  "git_sha": "6feeb53c",
-  "rule_sha256": "4f92e664d53031033898ab235fe65f5c854a4a2b538f722036d0755c0193bc8c",
-  "frozen_label_sha256": "b92cad8eee2b384975fdb81ecc0b95c5c6ea497b5b926bef64ffc039181fdb52",
+  "git_sha": "7c7de9f0",
+  "rule_sha256": "46d6c6c8a3dc6e5d438a8d1f2edc017aea84b90484aaa792f914f7634930c2ab",
+  "frozen_label_sha256": "0cf0fe502baa219e75db447ee7a08b8ab92879070391e4e1bafc5aca7647f328",
   "caveat": "Survival shares N1RMS, 12 G / 50 ms and 10%-of-peak onset; agreement is near-circular, not independent physics validation. Variants are sensitivity checks only and do not choose the frozen rule.",
   "variants": [
     {
@@ -52,7 +52,7 @@
       },
       "intervals": 46,
       "shots_with_an_interval": 43,
-      "median_duration_ms": 979.0000000000003,
+      "median_duration_ms": 993.0000000000001,
       "reference_onsets": 67,
       "matched_fraction": 0.14925373134328357,
       "within_50ms_of_matched": 0.8,

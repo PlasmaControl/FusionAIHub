@@ -453,45 +453,45 @@
     204840,
     204937
   ],
-  "labels_sha256": "b92cad8eee2b384975fdb81ecc0b95c5c6ea497b5b926bef64ffc039181fdb52",
+  "labels_sha256": "0cf0fe502baa219e75db447ee7a08b8ab92879070391e4e1bafc5aca7647f328",
   "policy": "category 2 (uncertain) scored as negative, category 3 (not observable) still excluded; the same fitted models and the same inner-validation thresholds as the primary row, so interval boundaries and the weak-line margin are scored too",
   "metrics": {
     "n_shots": 286,
     "replicates": 1000,
     "auroc": {
-      "value": 0.9002185704296359,
-      "lo": 0.8643936367763457,
-      "hi": 0.9322177698377233,
+      "value": 0.9002444608505389,
+      "lo": 0.8644511783583935,
+      "hi": 0.9322182212624409,
       "valid_replicates": 1000
     },
     "auprc": {
-      "value": 0.412175237570243,
-      "lo": 0.2812167234882984,
-      "hi": 0.5707685250991649,
+      "value": 0.412333917432649,
+      "lo": 0.2813645784102018,
+      "hi": 0.5707922652992743,
       "valid_replicates": 1000
     },
     "f1": {
-      "value": 0.5164481820430373,
-      "lo": 0.39592626342262194,
-      "hi": 0.6252033105821067,
+      "value": 0.5164427594164674,
+      "lo": 0.3961977146130037,
+      "hi": 0.6251755061543233,
       "valid_replicates": 1000
     },
     "precision": {
-      "value": 0.4779490309781779,
+      "value": 0.47810163283992063,
       "lo": 0.3413881444785161,
-      "hi": 0.6202278923437853,
+      "hi": 0.6206421933720574,
       "valid_replicates": 1000
     },
     "recall": {
-      "value": 0.5616929698708751,
-      "lo": 0.42555735283915963,
-      "hi": 0.6906175974900717,
+      "value": 0.5614695340501792,
+      "lo": 0.425603520965805,
+      "hi": 0.690340699721283,
       "valid_replicates": 1000
     },
     "prevalence": {
-      "value": 0.0943405803231537,
-      "lo": 0.06341938546537212,
-      "hi": 0.1271330939922716,
+      "value": 0.09440825649268252,
+      "lo": 0.0634878817384739,
+      "hi": 0.12723637056292791,
       "valid_replicates": 1000
     },
     "segf1_0.3": {
@@ -679,7 +679,7 @@
       204261
     ],
     "bins_scored": 59105,
-    "bins_positive": 5576,
+    "bins_positive": 5580,
     "bin_ms": 10.0,
     "scored_seconds": 591.05,
     "segment_missing_data_policy": "unavailable label or score bins are hard barriers to merging; excluded from IoU"

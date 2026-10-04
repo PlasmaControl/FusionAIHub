@@ -364,63 +364,63 @@
     204840,
     204937
   ],
-  "labels_sha256": "b92cad8eee2b384975fdb81ecc0b95c5c6ea497b5b926bef64ffc039181fdb52",
+  "labels_sha256": "0cf0fe502baa219e75db447ee7a08b8ab92879070391e4e1bafc5aca7647f328",
   "policy": "category 2 (uncertain) scored as negative, category 3 (not observable) still excluded; the same fitted models and the same inner-validation thresholds as the primary row, so interval boundaries and the weak-line margin are scored too",
   "metrics": {
     "n_shots": 252,
     "replicates": 1000,
     "auroc": {
-      "value": 0.7117731968555369,
-      "lo": 0.6218855846450505,
-      "hi": 0.7950316429462967,
+      "value": 0.7115540543303303,
+      "lo": 0.621763123363335,
+      "hi": 0.7946996231096763,
       "valid_replicates": 1000
     },
     "auprc": {
-      "value": 0.15653777853316933,
-      "lo": 0.09851829617994258,
-      "hi": 0.22803817715664237,
+      "value": 0.15651623939176454,
+      "lo": 0.09846482448329283,
+      "hi": 0.22793440616490776,
       "valid_replicates": 1000
     },
     "f1": {
-      "value": 0.2508335954702737,
-      "lo": 0.1662930226388129,
-      "hi": 0.32929760917969403,
+      "value": 0.2515146758750589,
+      "lo": 0.16599615518824257,
+      "hi": 0.33010705224832654,
       "valid_replicates": 1000
     },
     "precision": {
-      "value": 0.1597419768420209,
-      "lo": 0.1022763738386662,
-      "hi": 0.22068203199343325,
+      "value": 0.16012471020864977,
+      "lo": 0.10235234162967033,
+      "hi": 0.2211433057160144,
       "valid_replicates": 1000
     },
     "recall": {
-      "value": 0.5836627140974967,
-      "lo": 0.43765910791293355,
-      "hi": 0.7229456053715633,
+      "value": 0.5859295012432353,
+      "lo": 0.4374165930063896,
+      "hi": 0.7264199864559401,
       "valid_replicates": 1000
     },
     "prevalence": {
-      "value": 0.08338623046875,
-      "lo": 0.05643936807690954,
-      "hi": 0.11263658243074384,
+      "value": 0.08345947265625,
+      "lo": 0.05650231550222138,
+      "hi": 0.11262782915749281,
       "valid_replicates": 1000
     },
     "segf1_0.3": {
       "value": 0.20278330019880716,
-      "lo": 0.10460324325994357,
-      "hi": 0.309051776038531,
+      "lo": 0.10461322850397183,
+      "hi": 0.3091069991954947,
       "valid_replicates": 1000
     },
     "segf1_0.5": {
       "value": 0.16699801192842942,
-      "lo": 0.07099133261105094,
-      "hi": 0.2713638145643437,
+      "lo": 0.07094326931725306,
+      "hi": 0.2708167173594682,
       "valid_replicates": 1000
     },
     "segf1_0.7": {
-      "value": 0.1312127236580517,
-      "lo": 0.0402354124748491,
-      "hi": 0.2360006211180124,
+      "value": 0.13518886679920478,
+      "lo": 0.043553414640655444,
+      "hi": 0.23831176311153274,
       "valid_replicates": 1000
     },
     "shots_without_a_scored_bin": [
@@ -535,7 +535,7 @@
       204261
     ],
     "bins_scored": 81920,
-    "bins_positive": 6831,
+    "bins_positive": 6837,
     "bin_ms": 10.0,
     "scored_seconds": 819.2,
     "segment_missing_data_policy": "unavailable label or score bins are hard barriers to merging; excluded from IoU"

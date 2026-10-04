@@ -3,9 +3,9 @@
   "slug": "d3d_tearing_time_to_event_dsm",
   "setting": "tokamak-si, unretrained published outputs",
   "split": "dev",
-  "git_sha": "6feeb53c",
+  "git_sha": "90f07b1a",
   "labels": "data/events/neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv",
-  "labels_sha256": "b92cad8eee2b384975fdb81ecc0b95c5c6ea497b5b926bef64ffc039181fdb52",
+  "labels_sha256": "0cf0fe502baa219e75db447ee7a08b8ab92879070391e4e1bafc5aca7647f328",
   "score": "risk, horizon 500ms",
   "score_shift_ms": 0.0,
   "threshold": null,
@@ -1188,9 +1188,9 @@
         204687,
         204689
       ],
-      "validation_bins_scored": 4552,
+      "validation_bins_scored": 4630,
       "validation_bins_positive": 489,
-      "validation_bins_negative": 4063,
+      "validation_bins_negative": 4141,
       "validation_shots_positive": [
         186226,
         200219,
@@ -1201,12 +1201,12 @@
       "threshold_status": "positive-bearing inner-validation F1 optimum",
       "validation_score_quantiles": [
         1.1124260845818412e-08,
-        2.6353018827585106e-06,
-        0.0011361832840740653,
-        0.09856173911075589,
+        3.040619530407834e-06,
+        0.0011465155431984791,
+        0.09808548927702954,
         0.2784222366458543
       ],
-      "threshold": 0.047
+      "threshold": 0.045
     },
     {
       "fold": 2,
@@ -1789,9 +1789,9 @@
         204324,
         204531
       ],
-      "validation_bins_scored": 5217,
-      "validation_bins_positive": 913,
-      "validation_bins_negative": 4304,
+      "validation_bins_scored": 5265,
+      "validation_bins_positive": 914,
+      "validation_bins_negative": 4351,
       "validation_shots_positive": [
         186569,
         192003,
@@ -1803,9 +1803,9 @@
       "threshold_status": "positive-bearing inner-validation F1 optimum",
       "validation_score_quantiles": [
         6.962813881017379e-10,
-        4.84150709640029e-06,
-        0.003443053650776129,
-        0.16174109319789684,
+        4.939239015264731e-06,
+        0.00334808907288889,
+        0.16167771349065407,
         0.24386642030485217
       ],
       "threshold": 0.04
@@ -2387,9 +2387,9 @@
         204652,
         204937
       ],
-      "validation_bins_scored": 4533,
-      "validation_bins_positive": 897,
-      "validation_bins_negative": 3636,
+      "validation_bins_scored": 4548,
+      "validation_bins_positive": 900,
+      "validation_bins_negative": 3648,
       "validation_shots_positive": [
         186530,
         187196,
@@ -2401,9 +2401,9 @@
       "threshold_status": "positive-bearing inner-validation F1 optimum",
       "validation_score_quantiles": [
         4.74532724226151e-10,
-        8.307625609660362e-09,
-        0.0009124035707641111,
-        0.0483482025543591,
+        8.321172237923946e-09,
+        0.0008994869635301939,
+        0.048263136024054416,
         0.1991404747503418
       ],
       "threshold": 0.008
@@ -2988,9 +2988,9 @@
         204225,
         204244
       ],
-      "validation_bins_scored": 4155,
+      "validation_bins_scored": 4230,
       "validation_bins_positive": 621,
-      "validation_bins_negative": 3534,
+      "validation_bins_negative": 3609,
       "validation_shots_positive": [
         189085,
         189501,
@@ -3002,9 +3002,9 @@
       "threshold_status": "positive-bearing inner-validation F1 optimum",
       "validation_score_quantiles": [
         7.717815275753988e-10,
-        2.6440564549190524e-06,
-        0.004543670492494035,
-        0.11561669675728063,
+        2.8356984136546106e-06,
+        0.004387393080062434,
+        0.11071582305348132,
         0.20314260673079232
       ],
       "threshold": 0.005
@@ -4373,57 +4373,57 @@
     "n_shots": 336,
     "replicates": 1000,
     "auroc": {
-      "value": 0.7656080838155261,
-      "lo": 0.6945992471242749,
-      "hi": 0.827766756906827,
+      "value": 0.7654004013972042,
+      "lo": 0.6949660877288053,
+      "hi": 0.8277290945015526,
       "valid_replicates": 1000
     },
     "auprc": {
-      "value": 0.39266830485427723,
-      "lo": 0.2845767697957976,
-      "hi": 0.5073832602185708,
+      "value": 0.39082258513615353,
+      "lo": 0.28267452410710703,
+      "hi": 0.5057618719287902,
       "valid_replicates": 1000
     },
     "f1": {
-      "value": 0.41573926868044514,
-      "lo": 0.31509910892748516,
-      "hi": 0.5076658836447621,
+      "value": 0.41498002370812664,
+      "lo": 0.3152733433512078,
+      "hi": 0.5050829376989758,
       "valid_replicates": 1000
     },
     "precision": {
-      "value": 0.35132109270040307,
-      "lo": 0.2562182842446435,
-      "hi": 0.4420242718392267,
+      "value": 0.3494269870609982,
+      "lo": 0.2549657184536835,
+      "hi": 0.4405491432647211,
       "valid_replicates": 1000
     },
     "recall": {
-      "value": 0.509085009733939,
-      "lo": 0.38645293949071774,
-      "hi": 0.6323847678737039,
+      "value": 0.5108084738434933,
+      "lo": 0.38748782063123927,
+      "hi": 0.6348917600042966,
       "valid_replicates": 1000
     },
     "prevalence": {
-      "value": 0.15996539792387543,
-      "lo": 0.11952364168136313,
-      "hi": 0.20327519733529792,
+      "value": 0.15914955103725875,
+      "lo": 0.11891165369395335,
+      "hi": 0.20204175446230188,
       "valid_replicates": 1000
     },
     "segf1_0.3": {
-      "value": 0.2751540041067762,
-      "lo": 0.17701388109402477,
-      "hi": 0.3862135598867233,
+      "value": 0.2729124236252546,
+      "lo": 0.17390902515470547,
+      "hi": 0.3840153846153846,
       "valid_replicates": 1000
     },
     "segf1_0.5": {
-      "value": 0.2546201232032854,
-      "lo": 0.1562221567085954,
-      "hi": 0.3677151416122004,
+      "value": 0.2525458248472505,
+      "lo": 0.15414303122797865,
+      "hi": 0.3657289377289377,
       "valid_replicates": 1000
     },
     "segf1_0.7": {
-      "value": 0.22176591375770022,
-      "lo": 0.12581276688631496,
-      "hi": 0.33336267605633796,
+      "value": 0.2240325865580448,
+      "lo": 0.13039556252801437,
+      "hi": 0.33524818214064017,
       "valid_replicates": 1000
     },
     "shots_without_a_scored_bin": [
@@ -4542,25 +4542,25 @@
       204242,
       204261
     ],
-    "bins_scored": 57800,
-    "bins_positive": 9246,
+    "bins_scored": 58134,
+    "bins_positive": 9252,
     "bin_ms": 10.0,
-    "scored_seconds": 578.0,
+    "scored_seconds": 581.34,
     "segment_missing_data_policy": "unavailable label or score bins are hard barriers to merging; excluded from IoU"
   },
   "metrics_fixed_published": {
     "n_shots": 336,
     "replicates": 1000,
     "auroc": {
-      "value": 0.7656080838155261,
-      "lo": 0.6945992471242749,
-      "hi": 0.827766756906827,
+      "value": 0.7654004013972042,
+      "lo": 0.6949660877288053,
+      "hi": 0.8277290945015526,
       "valid_replicates": 1000
     },
     "auprc": {
-      "value": 0.39266830485427723,
-      "lo": 0.2845767697957976,
-      "hi": 0.5073832602185708,
+      "value": 0.39082258513615353,
+      "lo": 0.28267452410710703,
+      "hi": 0.5057618719287902,
       "valid_replicates": 1000
     },
     "f1": {
@@ -4582,9 +4582,9 @@
       "valid_replicates": 1000
     },
     "prevalence": {
-      "value": 0.15996539792387543,
-      "lo": 0.11952364168136313,
-      "hi": 0.20327519733529792,
+      "value": 0.15914955103725875,
+      "lo": 0.11891165369395335,
+      "hi": 0.20204175446230188,
       "valid_replicates": 1000
     },
     "segf1_0.3": {
@@ -4721,10 +4721,10 @@
       204242,
       204261
     ],
-    "bins_scored": 57800,
-    "bins_positive": 9246,
+    "bins_scored": 58134,
+    "bins_positive": 9252,
     "bin_ms": 10.0,
-    "scored_seconds": 578.0,
+    "scored_seconds": 581.34,
     "segment_missing_data_policy": "unavailable label or score bins are hard barriers to merging; excluded from IoU"
   },
   "shots_in_training": [
@@ -4823,15 +4823,15 @@
       "n_shots": 247,
       "replicates": 1000,
       "auroc": {
-        "value": 0.7791851133192005,
-        "lo": 0.6892066856594985,
-        "hi": 0.8522698540470796,
+        "value": 0.7792805849468005,
+        "lo": 0.6905894054236291,
+        "hi": 0.8520343584161888,
         "valid_replicates": 1000
       },
       "auprc": {
-        "value": 0.406832409218464,
-        "lo": 0.2855103614888304,
-        "hi": 0.529721941965164,
+        "value": 0.4054896962054772,
+        "lo": 0.2851202637207215,
+        "hi": 0.5283664528919327,
         "valid_replicates": 1000
       },
       "f1": {
@@ -4853,9 +4853,9 @@
         "valid_replicates": 1000
       },
       "prevalence": {
-        "value": 0.15726586241827056,
-        "lo": 0.10603023469130034,
-        "hi": 0.20804568534909226,
+        "value": 0.15652472527472527,
+        "lo": 0.10539070429756436,
+        "hi": 0.2071283516529506,
         "valid_replicates": 1000
       },
       "segf1_0.3": {
@@ -4992,67 +4992,67 @@
         204242,
         204261
       ],
-      "bins_scored": 43436,
-      "bins_positive": 6831,
+      "bins_scored": 43680,
+      "bins_positive": 6837,
       "bin_ms": 10.0,
-      "scored_seconds": 434.36,
+      "scored_seconds": 436.8,
       "segment_missing_data_policy": "unavailable label or score bins are hard barriers to merging; excluded from IoU"
     },
     "cv_tuned": {
       "n_shots": 247,
       "replicates": 1000,
       "auroc": {
-        "value": 0.7791851133192005,
-        "lo": 0.6892066856594985,
-        "hi": 0.8522698540470796,
+        "value": 0.7792805849468005,
+        "lo": 0.6905894054236291,
+        "hi": 0.8520343584161888,
         "valid_replicates": 1000
       },
       "auprc": {
-        "value": 0.406832409218464,
-        "lo": 0.2855103614888304,
-        "hi": 0.529721941965164,
+        "value": 0.4054896962054772,
+        "lo": 0.2851202637207215,
+        "hi": 0.5283664528919327,
         "valid_replicates": 1000
       },
       "f1": {
-        "value": 0.4421157684630739,
-        "lo": 0.3280377362325036,
-        "hi": 0.5346226817657436,
+        "value": 0.4422365733841144,
+        "lo": 0.3267347560803595,
+        "hi": 0.5342848287898504,
         "valid_replicates": 1000
       },
       "precision": {
-        "value": 0.35582329317269074,
-        "lo": 0.25239866437950503,
-        "hi": 0.4516273288402658,
+        "value": 0.35514184397163123,
+        "lo": 0.2526874220377059,
+        "hi": 0.45053375969724196,
         "valid_replicates": 1000
       },
       "recall": {
-        "value": 0.5836627140974967,
-        "lo": 0.4280466429661982,
-        "hi": 0.7284410169418025,
+        "value": 0.5859295012432353,
+        "lo": 0.4291914771228631,
+        "hi": 0.7307781003398252,
         "valid_replicates": 1000
       },
       "prevalence": {
-        "value": 0.15726586241827056,
-        "lo": 0.10603023469130034,
-        "hi": 0.20804568534909226,
+        "value": 0.15652472527472527,
+        "lo": 0.10539070429756436,
+        "hi": 0.2071283516529506,
         "valid_replicates": 1000
       },
       "segf1_0.3": {
-        "value": 0.3076923076923077,
-        "lo": 0.18181818181818182,
-        "hi": 0.4373040594855306,
+        "value": 0.30526315789473685,
+        "lo": 0.1799891640866873,
+        "hi": 0.434550644028103,
         "valid_replicates": 1000
       },
       "segf1_0.5": {
-        "value": 0.28116710875331563,
-        "lo": 0.160208944281525,
-        "hi": 0.4063598966377569,
+        "value": 0.2789473684210526,
+        "lo": 0.15742935988411538,
+        "hi": 0.4031194096601073,
         "valid_replicates": 1000
       },
       "segf1_0.7": {
-        "value": 0.2493368700265252,
-        "lo": 0.1279986531986532,
-        "hi": 0.37530238640078456,
+        "value": 0.25263157894736843,
+        "lo": 0.13170398333767253,
+        "hi": 0.3803774952678847,
         "valid_replicates": 1000
       },
       "shots_without_a_scored_bin": [
@@ -5171,10 +5171,10 @@
         204242,
         204261
       ],
-      "bins_scored": 43436,
-      "bins_positive": 6831,
+      "bins_scored": 43680,
+      "bins_positive": 6837,
       "bin_ms": 10.0,
-      "scored_seconds": 434.36,
+      "scored_seconds": 436.8,
       "segment_missing_data_policy": "unavailable label or score bins are hard barriers to merging; excluded from IoU"
     }
   },

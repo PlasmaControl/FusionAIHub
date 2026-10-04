@@ -3,9 +3,9 @@
   "slug": "d3d_tearing_onset_cnn1d",
   "setting": "tokamak-si, unretrained published outputs",
   "split": "dev",
-  "git_sha": "6feeb53c",
+  "git_sha": "90f07b1a",
   "labels": "data/events/neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv",
-  "labels_sha256": "b92cad8eee2b384975fdb81ecc0b95c5c6ea497b5b926bef64ffc039181fdb52",
+  "labels_sha256": "0cf0fe502baa219e75db447ee7a08b8ab92879070391e4e1bafc5aca7647f328",
   "score": "tm_prob",
   "score_shift_ms": 25.0,
   "threshold": null,
@@ -1173,9 +1173,9 @@
         204687,
         204689
       ],
-      "validation_bins_scored": 2411,
+      "validation_bins_scored": 2489,
       "validation_bins_positive": 326,
-      "validation_bins_negative": 2085,
+      "validation_bins_negative": 2163,
       "validation_shots_positive": [
         186226,
         200219,
@@ -1186,9 +1186,9 @@
       "threshold_status": "positive-bearing inner-validation F1 optimum",
       "validation_score_quantiles": [
         0.00010195625278709953,
-        0.0002118580592062148,
-        0.0024404840273058617,
-        0.2221437500042246,
+        0.00021183206370945328,
+        0.0023653726224329985,
+        0.22132286160083944,
         0.8665576252008231
       ],
       "threshold": 0.017
@@ -1768,9 +1768,9 @@
         204324,
         204531
       ],
-      "validation_bins_scored": 2558,
+      "validation_bins_scored": 2563,
       "validation_bins_positive": 504,
-      "validation_bins_negative": 2054,
+      "validation_bins_negative": 2059,
       "validation_shots_positive": [
         186569,
         192003,
@@ -1782,9 +1782,9 @@
       "threshold_status": "positive-bearing inner-validation F1 optimum",
       "validation_score_quantiles": [
         0.0001150635807738103,
-        0.0004277954604696035,
-        0.00372559484761784,
-        0.8627748539870728,
+        0.00042812760422226216,
+        0.0036778447892926924,
+        0.8624669470027284,
         0.9764483303704801
       ],
       "threshold": 0.15
@@ -2363,9 +2363,9 @@
         204652,
         204937
       ],
-      "validation_bins_scored": 2539,
-      "validation_bins_positive": 651,
-      "validation_bins_negative": 1888,
+      "validation_bins_scored": 2554,
+      "validation_bins_positive": 654,
+      "validation_bins_negative": 1900,
       "validation_shots_positive": [
         186530,
         187196,
@@ -2377,9 +2377,9 @@
       "threshold_status": "positive-bearing inner-validation F1 optimum",
       "validation_score_quantiles": [
         4.596675967744357e-05,
-        0.00024277463460476754,
-        0.0028608143217909074,
-        0.807007881004342,
+        0.0002429967285128017,
+        0.0028249594577809496,
+        0.7999751350256654,
         0.9764483303704801
       ],
       "threshold": 0.061
@@ -2956,9 +2956,9 @@
         204225,
         204244
       ],
-      "validation_bins_scored": 1854,
+      "validation_bins_scored": 1888,
       "validation_bins_positive": 425,
-      "validation_bins_negative": 1429,
+      "validation_bins_negative": 1463,
       "validation_shots_positive": [
         189085,
         189514,
@@ -2968,9 +2968,9 @@
       "threshold_status": "positive-bearing inner-validation F1 optimum",
       "validation_score_quantiles": [
         0.00011149590754902816,
-        0.00028056990705104315,
-        0.0012493018069433357,
-        0.868041308757816,
+        0.00028357097960724946,
+        0.0012067406096919599,
+        0.8674532386716008,
         0.9534863549473782
       ],
       "threshold": 0.014
@@ -4339,57 +4339,57 @@
     "n_shots": 278,
     "replicates": 1000,
     "auroc": {
-      "value": 0.9742564695412512,
-      "lo": 0.9585285555375338,
-      "hi": 0.9867186583687673,
+      "value": 0.9743048772588075,
+      "lo": 0.9586808193083728,
+      "hi": 0.9868057384412802,
       "valid_replicates": 1000
     },
     "auprc": {
-      "value": 0.9031357250234068,
-      "lo": 0.8380098086825726,
-      "hi": 0.9480287286793534,
+      "value": 0.9029336056377336,
+      "lo": 0.8379706384259867,
+      "hi": 0.9478944971794165,
       "valid_replicates": 1000
     },
     "f1": {
-      "value": 0.7794801433036055,
-      "lo": 0.68990560640125,
-      "hi": 0.8485234678783494,
+      "value": 0.7789025039957379,
+      "lo": 0.6893136712263456,
+      "hi": 0.8483247890270976,
       "valid_replicates": 1000
     },
     "precision": {
-      "value": 0.6778470104732864,
-      "lo": 0.5557948378413581,
-      "hi": 0.7864581150932936,
+      "value": 0.6769413943643339,
+      "lo": 0.5554707856899307,
+      "hi": 0.7854188597337702,
       "valid_replicates": 1000
     },
     "recall": {
-      "value": 0.9169655667144907,
-      "lo": 0.8727826283688797,
-      "hi": 0.9529327467537813,
+      "value": 0.9170250896057348,
+      "lo": 0.8729491243214609,
+      "hi": 0.9529646741678519,
       "valid_replicates": 1000
     },
     "prevalence": {
-      "value": 0.18077484195169397,
-      "lo": 0.12436734103331194,
-      "hi": 0.24106083099902867,
+      "value": 0.1801336475449527,
+      "lo": 0.12398766240824595,
+      "hi": 0.24012228633301216,
       "valid_replicates": 1000
     },
     "segf1_0.3": {
-      "value": 0.6305084745762712,
-      "lo": 0.5131978713110789,
-      "hi": 0.7256335746951219,
+      "value": 0.6283783783783784,
+      "lo": 0.5112765096597996,
+      "hi": 0.7237670233463035,
       "valid_replicates": 1000
     },
     "segf1_0.5": {
-      "value": 0.6169491525423729,
-      "lo": 0.5059179950484298,
-      "hi": 0.7142952380952381,
+      "value": 0.6148648648648649,
+      "lo": 0.5037177147890648,
+      "hi": 0.7125075692041523,
       "valid_replicates": 1000
     },
     "segf1_0.7": {
-      "value": 0.5898305084745763,
-      "lo": 0.4723221607216072,
-      "hi": 0.6951219512195121,
+      "value": 0.5878378378378378,
+      "lo": 0.47218137254901965,
+      "hi": 0.693405070754717,
       "valid_replicates": 1000
     },
     "shots_without_a_scored_bin": [
@@ -4566,49 +4566,49 @@
       204242,
       204261
     ],
-    "bins_scored": 30845,
-    "bins_positive": 5576,
+    "bins_scored": 30977,
+    "bins_positive": 5580,
     "bin_ms": 10.0,
-    "scored_seconds": 308.45,
+    "scored_seconds": 309.77,
     "segment_missing_data_policy": "unavailable label or score bins are hard barriers to merging; excluded from IoU"
   },
   "metrics_fixed_published": {
     "n_shots": 278,
     "replicates": 1000,
     "auroc": {
-      "value": 0.9742564695412512,
-      "lo": 0.9585285555375338,
-      "hi": 0.9867186583687673,
+      "value": 0.9743048772588075,
+      "lo": 0.9586808193083728,
+      "hi": 0.9868057384412802,
       "valid_replicates": 1000
     },
     "auprc": {
-      "value": 0.9031357250234068,
-      "lo": 0.8380098086825726,
-      "hi": 0.9480287286793534,
+      "value": 0.9029336056377336,
+      "lo": 0.8379706384259867,
+      "hi": 0.9478944971794165,
       "valid_replicates": 1000
     },
     "f1": {
-      "value": 0.7083568924573108,
-      "lo": 0.5816719897722943,
-      "hi": 0.8085978976283567,
+      "value": 0.7081026104644592,
+      "lo": 0.5816437944981455,
+      "hi": 0.8082895668594359,
       "valid_replicates": 1000
     },
     "precision": {
-      "value": 0.9586776859504132,
-      "lo": 0.9222282422112356,
-      "hi": 0.9854846465761542,
+      "value": 0.9583970633221168,
+      "lo": 0.9217106022150439,
+      "hi": 0.9852824266875831,
       "valid_replicates": 1000
     },
     "recall": {
-      "value": 0.5616929698708751,
-      "lo": 0.4236684794513243,
-      "hi": 0.6972486271890769,
+      "value": 0.5614695340501792,
+      "lo": 0.4232512083382579,
+      "hi": 0.6973116924173045,
       "valid_replicates": 1000
     },
     "prevalence": {
-      "value": 0.18077484195169397,
-      "lo": 0.12436734103331194,
-      "hi": 0.24106083099902867,
+      "value": 0.1801336475449527,
+      "lo": 0.12398766240824595,
+      "hi": 0.24012228633301216,
       "valid_replicates": 1000
     },
     "segf1_0.3": {
@@ -4618,9 +4618,9 @@
       "valid_replicates": 1000
     },
     "segf1_0.5": {
-      "value": 0.5775401069518716,
-      "lo": 0.3968221172766627,
-      "hi": 0.7378579234972676,
+      "value": 0.5882352941176471,
+      "lo": 0.4160221583040376,
+      "hi": 0.7459995873736331,
       "valid_replicates": 1000
     },
     "segf1_0.7": {
@@ -4803,10 +4803,10 @@
       204242,
       204261
     ],
-    "bins_scored": 30845,
-    "bins_positive": 5576,
+    "bins_scored": 30977,
+    "bins_positive": 5580,
     "bin_ms": 10.0,
-    "scored_seconds": 308.45,
+    "scored_seconds": 309.77,
     "segment_missing_data_policy": "unavailable label or score bins are hard barriers to merging; excluded from IoU"
   },
   "shots_in_training": [],
