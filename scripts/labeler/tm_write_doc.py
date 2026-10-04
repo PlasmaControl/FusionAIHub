@@ -1048,11 +1048,11 @@ def main():
                     )
                 )
             for name, difference in block["differences"].items():
-                a, b = name.split("_minus_")
+                left, right = name.split("_minus_")
                 rows.append(
                     (
                         f"{target}, {scope}",
-                        f"Difference, {a} − {b}",
+                        f"Difference, {left} − {right}",
                         count,
                         *[metric(difference[k]) for k, _ in METRICS],
                     )
