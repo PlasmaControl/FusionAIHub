@@ -92,6 +92,7 @@ def composition(frame, votes, valid, second) -> dict:
         tangtv_tier=frame.tangtv_tier.to_numpy(),
         elm_known=np.isfinite(frame.aux_elm_share.to_numpy(float)),
         second=second,
+        regime=frame["regime"].to_numpy() if "regime" in frame else None,
     )
     # the same relabel as `detach_label.py`: an uncertain bin with a persistent
     # high-front candidate is the tier `candidate_marfe` (the state stays uncertain)

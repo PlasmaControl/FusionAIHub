@@ -52,35 +52,17 @@ def check_provenance(meta: dict) -> dict:
     }
 
 
-def attach_regime(frame: pd.DataFrame) -> pd.DataFrame:
-    """The confinement regime of each bin, read from the per-shot bin arrays."""
-    parts = []
-    for shot in sorted(frame.shot.unique()):
-        with np.load(ROOT / "bins" / f"{int(shot)}.npz") as npz:
-            parts.append(
-                pd.DataFrame(
-                    {
-                        "shot": int(shot),
-                        "start_ms": npz["start_ms"],
-                        "regime": npz["regime"].astype(str),
-                    }
-                )
-            )
-    merged = frame.merge(
-        pd.concat(parts, ignore_index=True), on=["shot", "start_ms"], how="left"
-    )
-    assert len(merged) == len(frame) and merged.regime.notna().all()
-    return merged
-
-
 def main():
-    frame = attach_regime(pd.read_csv(ROOT / "labels_bins.csv.gz"))
+    frame = pd.read_csv(ROOT / "labels_bins.csv.gz")
+    assert frame.regime.notna().all()
+    regime = frame.regime.to_numpy()
     votes, valid = dl.matrices(frame)
     rule, _ = label_model.compatibility_decide(
         votes,
         valid,
         tangtv_tier=frame.tangtv_tier.to_numpy(),
         elm_known=np.isfinite(frame.aux_elm_share),
+        regime=regime,
     )
     assert np.array_equal(frame.state_rule, rule)
     assert np.array_equal(frame.state_lm, frame.state_rule)
@@ -93,6 +75,7 @@ def main():
         tangtv_tier=frame.tangtv_tier.to_numpy(),
         elm_known=np.isfinite(frame.aux_elm_share),
         second=extra,
+        regime=regime,
     )
     assert np.array_equal(frame.state_rule_relative_prad, relative)
     absolute_votes, absolute_valid = votes.copy(), valid.copy()
@@ -104,6 +87,7 @@ def main():
         tangtv_tier=frame.tangtv_tier.to_numpy(),
         elm_known=np.isfinite(frame.aux_elm_share),
         second=extra,
+        regime=regime,
     )
     assert np.array_equal(frame.state_rule_absolute_prad, absolute)
     # the lower-shelf column is not a label column and is not in any handoff file
@@ -143,6 +127,13 @@ def main():
     silver = frame.tier.eq("tangtv_only")
     assert (labelled == (certain | silver)).all()
     assert not frame.state_rule.eq(core.MARFE).any(), "no certain MARFE is exported"
+    # the a-priori L-mode gate: a DETACHED TangTV vote on a known L-mode bin is its
+    # own uncertain tier and no detached state is exported on a known L-mode bin
+    gated = frame.tier.eq("tangtv_only_lmode")
+    assert frame.loc[gated, "state_rule"].eq(core.UNCERTAIN).all()
+    assert frame.loc[gated, "regime"].eq("L").all()
+    assert frame.loc[gated, "tangtv_vote"].eq(core.DETACHED).all()
+    assert not (frame.regime.eq("L") & frame.state_rule.eq(core.DETACHED)).any()
     assert frame.loc[labelled, "tangtv_tier"].eq("upper_shelf").all()
     # certain: TangTV votes the state and a valid Afrac vote is compatible with it;
     # tangtv_only: Afrac casts no vote; f_div is not consulted
@@ -390,6 +381,10 @@ def main():
             "exact interval, sparse-grid and trace reconstruction; no stale shots",
             "reference, figure, Figure 2 and current-state checksums match the labels",
             "candidate_marfe never carries a state",
+            (
+                "tangtv_only_lmode: a detached TangTV vote on a known L-mode bin is "
+                "uncertain, and no detached state sits on a known L-mode bin"
+            ),
             (
                 "f_div relative and absolute sensitivity columns (f_div added as a "
                 "second voter) reproduce; the f_div check feeds Figure 2"
