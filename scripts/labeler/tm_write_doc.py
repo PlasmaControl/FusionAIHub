@@ -162,9 +162,17 @@ def seed_level_report(full):
         f"time excluded, {difference_clauses(ex, OURS, SEED, THRESHOLD_METRICS)})."
     )
     if behind:
+        gap = un["differences"][pair]
+        sure = [x for k, x in behind.items() if gap[k]["excludes_zero"]]
+        open_ = [x for k, x in behind.items() if not gap[k]["excludes_zero"]]
+        detail = "; ".join(
+            f"{names(group)} {word}"
+            for group, word in ((sure, "resolved"), (open_, "not resolved"))
+            if group
+        )
         text += (
             " With uncertain time scored as negative the seed-level rule has the "
-            f"higher {names(behind.values())}"
+            f"higher {names(behind.values())} ({detail})"
         )
         if "segf1_0.5" in behind and un["differences"][tuned]["segf1_0.5"]["value"] > 0:
             text += (
