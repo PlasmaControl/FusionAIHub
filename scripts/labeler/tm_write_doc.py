@@ -24,10 +24,30 @@ SOURCES = "../../data/events/neoclassical_tearing_mode/benchmark/sources"
 LOCK_EXAMPLES = ("n = 1 decaying", "n = 1 locking")
 
 
+def three(x, sign=False):
+    """Three decimals; a value that rounds to zero carries no sign."""
+    text = f"{x:+.3f}" if sign else f"{x:.3f}"
+    return text.lstrip("+-") if float(text) == 0.0 else text
+
+
 def metric(value):
     if value is None:
         return "—"
-    return "{value:.3f} [{lo:.3f},{hi:.3f}]".format(**value)
+    return f"{three(value['value'])} [{three(value['lo'])},{three(value['hi'])}]"
+
+
+def signed(d):
+    """A paired difference as `+0.031 [+0.002, +0.059]`."""
+    return f"{three(d['value'], True)} [{three(d['lo'], True)}, {three(d['hi'], True)}]"
+
+
+def resolved(d):
+    """Whether a paired interval excludes 0, and on which side."""
+    if d["lo"] > 0:
+        return "above 0"
+    if d["hi"] < 0:
+        return "below 0"
+    return "spanning 0"
 
 
 def pct(x, digits=1):
@@ -229,11 +249,7 @@ def main():
     paired = b["paired_common_shots"]
     like = b["like_for_like"]
     two = paired["differences"]["tm-ours_minus_tm-rms-2line"]
-    pair_text = (
-        f"{two['auroc']['value']:+.3f} AUROC [{two['auroc']['lo']:+.3f}, "
-        f"{two['auroc']['hi']:+.3f}] and {two['auprc']['value']:+.3f} AUPRC "
-        f"[{two['auprc']['lo']:+.3f}, {two['auprc']['hi']:+.3f}]"
-    )
+    pair_text = f"{signed(two['auroc'])} AUROC and {signed(two['auprc'])} AUPRC"
     un_pair = paired["uncertain_negative"]
     un_diff = un_pair["differences"]["tm-ours_minus_tm-rms-2line"]["auprc"]
     if un_diff["hi"] < 0:
@@ -242,11 +258,17 @@ def main():
         un_verdict = "so the order holds: the interval excludes 0"
     else:
         un_verdict = "an interval that spans 0, so the order is not resolved"
+    un_cnn = un_pair["differences"]["tm-ours_minus_tm-onsetcnn-retrained"]
+    un_two = un_pair["differences"]["tm-ours_minus_tm-rms-2line"]
     un_text = (
         f"the paired AUPRC difference on the {len(un_pair['shots'])} shots and "
         f"{un_pair['bins_scored']} bins all three models score is "
-        f"{un_diff['value']:+.3f} [{un_diff['lo']:+.3f}, {un_diff['hi']:+.3f}], "
-        f"{un_verdict}"
+        f"{signed(un_diff)}, {un_verdict}. In that group `tm-ours` minus the "
+        f"retrained CNN is {signed(un_cnn['auprc'])} AUPRC (interval "
+        f"{resolved(un_cnn['auprc'])}) and {signed(un_cnn['f1'])} F1 (interval "
+        f"{resolved(un_cnn['f1'])}); `tm-ours` minus the two-line baseline is "
+        f"{signed(un_two['f1'])} F1 (interval {resolved(un_two['f1'])}), at each "
+        "model's own inner-validation threshold"
     )
     onset_error = {ref: agreement[ref]["error_ms"] for ref in ("seo", "survival")}
     window_text = {
@@ -858,9 +880,12 @@ def main():
             for label, name in (
                 (
                     "published_at_published_threshold",
-                    block["published_model"] + " at thr.",
+                    block["published_model"] + " (published threshold)",
                 ),
-                ("published_at_tuned_threshold", block["published_model"] + " tuned"),
+                (
+                    "published_at_tuned_threshold",
+                    block["published_model"] + " (tuned threshold)",
+                ),
                 ("retrained", block["retrained_model"]),
             ):
                 m = cell["metrics"][label]
