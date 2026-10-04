@@ -1,0 +1,2105 @@
+{
+ "git": "702c0c5ff437ebf7629f098028e0aed2b28c7dd1",
+ "created": "2026-10-03T14:40:56+00:00",
+ "display_name": "DSM refit, limited inputs (60 of the original 124)",
+ "shots": [
+  185857,
+  185866,
+  185945,
+  185961,
+  186013,
+  186093,
+  186427,
+  186569,
+  186636,
+  186945,
+  187035,
+  187076,
+  187105,
+  187196,
+  187328,
+  189004,
+  189044,
+  189061,
+  189272,
+  189324,
+  189559,
+  189688,
+  189741,
+  189885,
+  190094,
+  190177,
+  190218,
+  190300,
+  190335,
+  190637,
+  190643,
+  190695,
+  190790,
+  190991,
+  191326,
+  191382,
+  191470,
+  191677,
+  192003,
+  192010,
+  192015,
+  192148,
+  192226,
+  192229,
+  192232,
+  192425,
+  192432,
+  192721,
+  192732,
+  192751,
+  192914,
+  193008,
+  193022,
+  193075,
+  193276,
+  194155,
+  194160,
+  194445,
+  194600,
+  194608,
+  195016,
+  195024,
+  195066,
+  195102,
+  195103,
+  195111,
+  195186,
+  195263,
+  195279,
+  195646,
+  195786,
+  195959,
+  196332,
+  196405,
+  196541,
+  198806,
+  198899,
+  198971,
+  199087,
+  199789,
+  199790,
+  199909,
+  199921,
+  200127,
+  200198,
+  200320,
+  200385,
+  200427,
+  200636,
+  200917,
+  200954,
+  200990,
+  201270,
+  201395,
+  201447,
+  201494,
+  201707,
+  201973,
+  201978,
+  203012,
+  203041,
+  203132,
+  203187,
+  203470,
+  203521,
+  203576,
+  203629,
+  203719,
+  203764,
+  203778,
+  203941,
+  203959,
+  204233,
+  204240,
+  204243,
+  204256,
+  204530,
+  204560,
+  204937
+ ],
+ "workers": 1,
+ "pace_seconds": 1.0,
+ "cohort_test_shots_used": 0,
+ "store": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features",
+ "source": "DIII-D PTDATA via canonical fdp resolver",
+ "rows": [
+  {
+   "shot": 185857,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 185866,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 185945,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 185961,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 186013,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 186093,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 186427,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 186569,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 186636,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 186945,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 187035,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 187076,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 187105,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 187196,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 187328,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 189004,
+   "already_served": []
+  },
+  {
+   "shot": 189044,
+   "already_served": []
+  },
+  {
+   "shot": 189061,
+   "already_served": []
+  },
+  {
+   "shot": 189272,
+   "already_served": []
+  },
+  {
+   "shot": 189324,
+   "already_served": []
+  },
+  {
+   "shot": 189559,
+   "already_served": []
+  },
+  {
+   "shot": 189688,
+   "already_served": []
+  },
+  {
+   "shot": 189741,
+   "already_served": []
+  },
+  {
+   "shot": 189885,
+   "already_served": []
+  },
+  {
+   "shot": 190094,
+   "already_served": []
+  },
+  {
+   "shot": 190177,
+   "already_served": []
+  },
+  {
+   "shot": 190218,
+   "already_served": []
+  },
+  {
+   "shot": 190300,
+   "already_served": []
+  },
+  {
+   "shot": 190335,
+   "already_served": []
+  },
+  {
+   "shot": 190637,
+   "already_served": []
+  },
+  {
+   "shot": 190643,
+   "already_served": []
+  },
+  {
+   "shot": 190695,
+   "already_served": []
+  },
+  {
+   "shot": 190790,
+   "already_served": []
+  },
+  {
+   "shot": 190991,
+   "already_served": []
+  },
+  {
+   "shot": 191326,
+   "already_served": []
+  },
+  {
+   "shot": 191382,
+   "already_served": []
+  },
+  {
+   "shot": 191470,
+   "already_served": []
+  },
+  {
+   "shot": 191677,
+   "already_served": []
+  },
+  {
+   "shot": 192003,
+   "already_served": []
+  },
+  {
+   "shot": 192010,
+   "already_served": []
+  },
+  {
+   "shot": 192015,
+   "already_served": []
+  },
+  {
+   "shot": 192148,
+   "already_served": []
+  },
+  {
+   "shot": 192226,
+   "already_served": []
+  },
+  {
+   "shot": 192229,
+   "already_served": []
+  },
+  {
+   "shot": 192232,
+   "already_served": []
+  },
+  {
+   "shot": 192425,
+   "already_served": []
+  },
+  {
+   "shot": 192432,
+   "already_served": []
+  },
+  {
+   "shot": 192721,
+   "already_served": []
+  },
+  {
+   "shot": 192732,
+   "already_served": []
+  },
+  {
+   "shot": 192751,
+   "already_served": []
+  },
+  {
+   "shot": 192914,
+   "already_served": []
+  },
+  {
+   "shot": 193008,
+   "already_served": []
+  },
+  {
+   "shot": 193022,
+   "already_served": []
+  },
+  {
+   "shot": 193075,
+   "already_served": []
+  },
+  {
+   "shot": 193276,
+   "already_served": []
+  },
+  {
+   "shot": 194155,
+   "already_served": []
+  },
+  {
+   "shot": 194160,
+   "already_served": []
+  },
+  {
+   "shot": 194445,
+   "already_served": []
+  },
+  {
+   "shot": 194600,
+   "already_served": []
+  },
+  {
+   "shot": 194608,
+   "already_served": []
+  },
+  {
+   "shot": 195016,
+   "already_served": []
+  },
+  {
+   "shot": 195024,
+   "already_served": []
+  },
+  {
+   "shot": 195066,
+   "already_served": []
+  },
+  {
+   "shot": 195102,
+   "already_served": []
+  },
+  {
+   "shot": 195103,
+   "already_served": []
+  },
+  {
+   "shot": 195111,
+   "already_served": []
+  },
+  {
+   "shot": 195186,
+   "already_served": []
+  },
+  {
+   "shot": 195263,
+   "already_served": []
+  },
+  {
+   "shot": 195279,
+   "already_served": []
+  },
+  {
+   "shot": 195646,
+   "already_served": []
+  },
+  {
+   "shot": 195786,
+   "already_served": []
+  },
+  {
+   "shot": 195959,
+   "already_served": []
+  },
+  {
+   "shot": 196332,
+   "already_served": []
+  },
+  {
+   "shot": 196405,
+   "already_served": []
+  },
+  {
+   "shot": 196541,
+   "already_served": []
+  },
+  {
+   "shot": 198806,
+   "already_served": []
+  },
+  {
+   "shot": 198899,
+   "already_served": []
+  },
+  {
+   "shot": 198971,
+   "already_served": []
+  },
+  {
+   "shot": 199087,
+   "already_served": []
+  },
+  {
+   "shot": 199789,
+   "already_served": []
+  },
+  {
+   "shot": 199790,
+   "already_served": []
+  },
+  {
+   "shot": 199909,
+   "already_served": []
+  },
+  {
+   "shot": 199921,
+   "already_served": []
+  },
+  {
+   "shot": 200127,
+   "already_served": []
+  },
+  {
+   "shot": 200198,
+   "already_served": []
+  },
+  {
+   "shot": 200320,
+   "already_served": []
+  },
+  {
+   "shot": 200385,
+   "already_served": []
+  },
+  {
+   "shot": 200427,
+   "already_served": []
+  },
+  {
+   "shot": 200636,
+   "already_served": []
+  },
+  {
+   "shot": 200917,
+   "already_served": []
+  },
+  {
+   "shot": 200954,
+   "already_served": []
+  },
+  {
+   "shot": 200990,
+   "already_served": []
+  },
+  {
+   "shot": 201270,
+   "already_served": []
+  },
+  {
+   "shot": 201395,
+   "already_served": []
+  },
+  {
+   "shot": 201447,
+   "already_served": []
+  },
+  {
+   "shot": 201494,
+   "already_served": []
+  },
+  {
+   "shot": 201707,
+   "already_served": []
+  },
+  {
+   "shot": 201973,
+   "already_served": []
+  },
+  {
+   "shot": 201978,
+   "already_served": []
+  },
+  {
+   "shot": 203012,
+   "already_served": []
+  },
+  {
+   "shot": 203041,
+   "already_served": []
+  },
+  {
+   "shot": 203132,
+   "already_served": []
+  },
+  {
+   "shot": 203187,
+   "already_served": []
+  },
+  {
+   "shot": 203470,
+   "already_served": []
+  },
+  {
+   "shot": 203521,
+   "already_served": []
+  },
+  {
+   "shot": 203576,
+   "already_served": []
+  },
+  {
+   "shot": 203629,
+   "already_served": []
+  },
+  {
+   "shot": 203719,
+   "already_served": []
+  },
+  {
+   "shot": 203764,
+   "already_served": []
+  },
+  {
+   "shot": 203778,
+   "already_served": []
+  },
+  {
+   "shot": 203941,
+   "already_served": []
+  },
+  {
+   "shot": 203959,
+   "already_served": []
+  },
+  {
+   "shot": 204233,
+   "already_served": []
+  },
+  {
+   "shot": 204240,
+   "already_served": []
+  },
+  {
+   "shot": 204243,
+   "already_served": []
+  },
+  {
+   "shot": 204256,
+   "already_served": []
+  },
+  {
+   "shot": 204530,
+   "already_served": []
+  },
+  {
+   "shot": 204560,
+   "already_served": []
+  },
+  {
+   "shot": 204937,
+   "already_served": []
+  },
+  {
+   "shot": 189004,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/189004.npz",
+   "sha256": "147a0a00534bb9a3fcde273c6a22eb500fb9ecdd7fd3e5ba8071ede6e889bd49"
+  },
+  {
+   "shot": 189044,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/189044.npz",
+   "sha256": "4afe672376f015114692222cbae14dafa8449c0b36440e30bcc6ad54285fbb92"
+  },
+  {
+   "shot": 189061,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/189061.npz",
+   "sha256": "d421386da218187d2e7201971cb7c2b50e08b9696a8faae4d405c22912a7a4a4"
+  },
+  {
+   "shot": 189272,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/189272.npz",
+   "sha256": "c6b8c2fe5c7813ec0e520381e60c4619498f62696949650dd8cc517ea3ad23bd"
+  },
+  {
+   "shot": 189324,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/189324.npz",
+   "sha256": "308d71a6714cc8f734284586eea8615c17370e058e674930b318c42b88665d49"
+  },
+  {
+   "shot": 189559,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/189559.npz",
+   "sha256": "607f2a92cdbf4430d3c1a6b4c2c08d55ac3b76e54b3604c74894d099fa23b066"
+  },
+  {
+   "shot": 189688,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/189688.npz",
+   "sha256": "f774a2a68f9c67f7f3e3104b1a9206c345e5103904b8d86e77c1c4d09a9e0156"
+  },
+  {
+   "shot": 189741,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/189741.npz",
+   "sha256": "da2b83ca6fc4d61e8d2137403bfec10417746fe8d73b8f7cfe6bbc3250f48661"
+  },
+  {
+   "shot": 189885,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/189885.npz",
+   "sha256": "c5781ae99ff4589d01dbcd8538d3e5a883612d0b08254074c48e8ed4b4411032"
+  },
+  {
+   "shot": 190094,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/190094.npz",
+   "sha256": "5168dc7e7dfde5d45ab949e897d80c7e128f56a991d4aa9b4d2c1577a0980fa6"
+  },
+  {
+   "shot": 190177,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/190177.npz",
+   "sha256": "5bfa308ae9629c0582239753adcd14414d516bb55e15597f0e3f6b720c9e9a25"
+  },
+  {
+   "shot": 190218,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/190218.npz",
+   "sha256": "0b5d46b1891110b60a1f741ad916b8bde774392465a12f7c02d5f4380d140243"
+  },
+  {
+   "shot": 190300,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/190300.npz",
+   "sha256": "01a5e90bb8118fb3f779f4218e8257317c2abb6ad8da428d9449e46434268caf"
+  },
+  {
+   "shot": 190335,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/190335.npz",
+   "sha256": "798460575685b272ff57589af1ec87077f77ad8ddbc2a582adb3584569cfdd98"
+  },
+  {
+   "shot": 190637,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/190637.npz",
+   "sha256": "a9cbd075235bb89b91791469d39b0bdb7e1f84d8f4ed92e08351bcdb56caa446"
+  },
+  {
+   "shot": 190643,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/190643.npz",
+   "sha256": "cfec415d922c9f8fc1fec61747aea42f3b707d1ea6dea79208491f1c00c54d2e"
+  },
+  {
+   "shot": 190695,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/190695.npz",
+   "sha256": "f412fd4b9661d52e93a74ec093c48a14f3cad1d9e3ff8985e3a502260588cdd1"
+  },
+  {
+   "shot": 190790,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/190790.npz",
+   "sha256": "29337f5d8c72268295172473a17ebda605142c1a8ad4ef778b4910518a862827"
+  },
+  {
+   "shot": 190991,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/190991.npz",
+   "sha256": "cb75e867a09fd2bfd5a831c1e6c96d20f9e51169907113329a06a9e7165df452"
+  },
+  {
+   "shot": 191326,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/191326.npz",
+   "sha256": "a3807a86f32a634ad8de2a389768da9ae57a88d37705e936d489195652189c4e"
+  },
+  {
+   "shot": 191382,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/191382.npz",
+   "sha256": "7a8feaf3083c4249911a302e730dfa8cb9a998a0e1c71a6d01538a6ae68e62ad"
+  },
+  {
+   "shot": 191470,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/191470.npz",
+   "sha256": "bc82ca95de9265856f7c40166926ba8fc854d4e1645fb781e21753d3890c11b1"
+  },
+  {
+   "shot": 191677,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/191677.npz",
+   "sha256": "3d7a6e2fb325931b2a0386a48bd9e32adb3e4e033fd66516761e06e5566a42fa"
+  },
+  {
+   "shot": 192003,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/192003.npz",
+   "sha256": "d0d1a98fa209fbea2da49c1d678f75551825b515e34be5d6e79c4aa28f7b8b76"
+  },
+  {
+   "shot": 192010,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/192010.npz",
+   "sha256": "b12de27a268ac5d0db2aa47ba77e9610912b8e50a12490f228dafa79976abbe0"
+  },
+  {
+   "shot": 192015,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/192015.npz",
+   "sha256": "eac2f878c9b7d9d61cdf949d8640db721cb4e6b95684c3d69042acc6d69b7583"
+  },
+  {
+   "shot": 192148,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/192148.npz",
+   "sha256": "5ace67a6dc088793063466493b5261e943bd66da5cbfb6e4719d5dd008a0c57c"
+  },
+  {
+   "shot": 192226,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/192226.npz",
+   "sha256": "bd2fb8ce9aac44fd41f0241e487b9dc9e4e8b1546eba414fefa5b6f30cfa00af"
+  },
+  {
+   "shot": 192229,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/192229.npz",
+   "sha256": "5445d1001f704551092da2850b04b5fcf9f12b259eb19d15da890a26e3902d36"
+  },
+  {
+   "shot": 192232,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/192232.npz",
+   "sha256": "6958ab641951acc35baf1fca7ec0842dac4c144999f59b0f6ec1f17d5a82bc39"
+  },
+  {
+   "shot": 192425,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/192425.npz",
+   "sha256": "de70bbac26b7bd8ea09b69ee7b3cabfb79e4c977cce814c1718623e38caf048a"
+  },
+  {
+   "shot": 192432,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/192432.npz",
+   "sha256": "4c6c609e1e2a0b8bf95c8a90046c2b851932afcbba9fba4f841ed1fec04eef67"
+  },
+  {
+   "shot": 192721,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/192721.npz",
+   "sha256": "a7178ea5f3e098231d83669d98cd67cc7213e243f17416a557fca819a7662124"
+  },
+  {
+   "shot": 192732,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/192732.npz",
+   "sha256": "55f2f99704f209dbf433289e624208406275aca9f318b8d459b14f5d4b2b7449"
+  },
+  {
+   "shot": 192751,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/192751.npz",
+   "sha256": "f16ce8c19a467b1a93e0b54a121c85336ccf13d4007872f0b3314a0172335faf"
+  },
+  {
+   "shot": 192914,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/192914.npz",
+   "sha256": "2c3731c76adf02b11ba0c8d288f0b7b82997ac9a44bfa9828e1b3bb905dfcf89"
+  },
+  {
+   "shot": 193008,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/193008.npz",
+   "sha256": "0b7ee8befbfb80cb891dcfb22374df2b527d03b823691fd6ceff21e740fe4f21"
+  },
+  {
+   "shot": 193022,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/193022.npz",
+   "sha256": "add51d36316c0250e50c84dcc3c16196c7c1544cdeba0401e55468a8e0a9f8c7"
+  },
+  {
+   "shot": 193075,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/193075.npz",
+   "sha256": "aebded7d5dade37d92d7ae0903b0775a4f4a747e2d3adc5fd9aad15851c2dc32"
+  },
+  {
+   "shot": 193276,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/193276.npz",
+   "sha256": "d2bf2ced015d7d01fecc1867872fc936058d43ed74c922760f81f224d3f7d963"
+  },
+  {
+   "shot": 194155,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/194155.npz",
+   "sha256": "c5760a7c94d4807bad9417e4e71ece670337f6661ca03ad707ee17143d41daf6"
+  },
+  {
+   "shot": 194160,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/194160.npz",
+   "sha256": "07615524ed798674992726dd8ab32a52e1f7f28eccd2194311491be89a2c00c0"
+  },
+  {
+   "shot": 194445,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/194445.npz",
+   "sha256": "cda70a58a2589c05cdf0a7a1b7db91e83035debbecf1e4839387d5d98f86d830"
+  },
+  {
+   "shot": 194600,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/194600.npz",
+   "sha256": "483dcfa1ccdb401caafa4228a32f9b53c6aec08121591021b8468c27c1c21eab"
+  },
+  {
+   "shot": 194608,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/194608.npz",
+   "sha256": "31559142d79fd96a83f5b8d76da3b0dc8709f7f9b83d0c350a774e2b09c031c9"
+  },
+  {
+   "shot": 195016,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/195016.npz",
+   "sha256": "b805643be463456563d417ca75f126b099da8070ef0beb1f352b09f55bbadc49"
+  },
+  {
+   "shot": 195024,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/195024.npz",
+   "sha256": "504988f4fc439b133f1564e15d4d5f790aa4f30629e70c89d5f64dbaf4b75548"
+  },
+  {
+   "shot": 195066,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/195066.npz",
+   "sha256": "2df83465f4828cafb8efc14f66a6b2df070b889a0ed4b05e63a0fa9a9fa120fd"
+  },
+  {
+   "shot": 195102,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/195102.npz",
+   "sha256": "f83d5bd8b9bfb4259caf44cb210d53148f8a96449008712412f4a683a205fd0f"
+  },
+  {
+   "shot": 195103,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/195103.npz",
+   "sha256": "3aa1b4fc4bfafbba35f77917f96fc0101f7cdfdac6105abc9b3b92c8df512e77"
+  },
+  {
+   "shot": 195111,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/195111.npz",
+   "sha256": "f0ce279c51a643270c3dd216a792dafb42cf6e9ebd372ddea5fd870d3ccfdcab"
+  },
+  {
+   "shot": 195186,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/195186.npz",
+   "sha256": "366510885e034fcc859837f9f32779bcf858fcef9ac0d4e8a9ada01975ef18b3"
+  },
+  {
+   "shot": 195263,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/195263.npz",
+   "sha256": "dcb3ddcc48ce52e421fe89dca1cce0966d1286d7d829a437da1f162dd8d527c2"
+  },
+  {
+   "shot": 195279,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/195279.npz",
+   "sha256": "3b432bc49461a49bb256d9099f0afcbfcf604071ef3c9c0aaae1702ace494a20"
+  },
+  {
+   "shot": 195646,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/195646.npz",
+   "sha256": "11b8400a83f739d6811b60f9b4d7f3e73f1520c7537b9f757cc67964b503e2c9"
+  },
+  {
+   "shot": 195786,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/195786.npz",
+   "sha256": "695a93f357d7574b61c9dc0737abd535d7c230f90c90565d7a0e63315e3a119e"
+  },
+  {
+   "shot": 195959,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/195959.npz",
+   "sha256": "659a8612c26306741b72375cccb5b02bd40ca69a68b5aadaf6e681fbe0f9cd0b"
+  },
+  {
+   "shot": 196332,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/196332.npz",
+   "sha256": "123371c240b60db3f50d9b65c62214086cc6d9985c244ff1279d8e70f39e1cf4"
+  },
+  {
+   "shot": 196405,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/196405.npz",
+   "sha256": "78654a6ccfc9f822df94643896657297658154f7eb2a49c99e62947ec99017a2"
+  },
+  {
+   "shot": 196541,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/196541.npz",
+   "sha256": "395596e7feb01dec4bd5d46f9dbc110d5ec395b7c3350ba8ae577aee4018cb91"
+  },
+  {
+   "shot": 198806,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/198806.npz",
+   "sha256": "c90e87ad9590f2c0b8cd2e0cba57efc96c65a2f747a187e39bba090ec617b91f"
+  },
+  {
+   "shot": 198899,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/198899.npz",
+   "sha256": "68cdfd72854bc8e6f819c96ae4202d7f212a694b41d57fbceb04e24bd9dbea00"
+  },
+  {
+   "shot": 198971,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/198971.npz",
+   "sha256": "984e68db62a7b416498be399fb9a598f4e58ba005ef0d54c0b7c1494e23c9e46"
+  },
+  {
+   "shot": 199087,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/199087.npz",
+   "sha256": "c45c6ba1a26c2bd13b9bacab65210e395cf19545d75001f4111f5367db38338b"
+  },
+  {
+   "shot": 199789,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/199789.npz",
+   "sha256": "b4395f9ba490e2dcabe67e93259ce3234ae0c39a55384bf10836ed69de91f4e5"
+  },
+  {
+   "shot": 199790,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/199790.npz",
+   "sha256": "9ca5f158903a5497603844d53ca9edd232163f22629e59e451b541840d327727"
+  },
+  {
+   "shot": 199909,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/199909.npz",
+   "sha256": "e682fdd98550a88037c8fa703939f3e68ad26e865b12c5bafc839a88c100a1d7"
+  },
+  {
+   "shot": 199921,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/199921.npz",
+   "sha256": "56b559ff6c6589f80e6cabfba53f566d810b7ede9f4f1c36ae28bd01d1ce8609"
+  },
+  {
+   "shot": 200127,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/200127.npz",
+   "sha256": "58414d9f19b0a2d2274cf806984ee0b3194312089c16439e73a082fba9df9876"
+  },
+  {
+   "shot": 200198,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/200198.npz",
+   "sha256": "a4552a8e5bed9f2d34150514feb19e1cf164fda850750365e74dccdc9a5961c3"
+  },
+  {
+   "shot": 200320,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/200320.npz",
+   "sha256": "1b81eb0230ce145fb46f139b830c7b700548a923f45d1d3318c8c64e1e029788"
+  },
+  {
+   "shot": 200385,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/200385.npz",
+   "sha256": "a179db47be69e296737c858668f626a170b70af918d5c9b18d72894350c512b5"
+  },
+  {
+   "shot": 200427,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/200427.npz",
+   "sha256": "db0f1676465dacc184ee843508771651e1736162ee90e121868c77427d8ddc85"
+  },
+  {
+   "shot": 200636,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/200636.npz",
+   "sha256": "68ffd77738feb3144419b4295dc3fa72c0f81e1f4a8e4fcfc078af80f668b19b"
+  },
+  {
+   "shot": 200917,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/200917.npz",
+   "sha256": "6428f14eb7b4cfb0aa308257c8869986c8b76246a29101e3fba6c1244dd6c58f"
+  },
+  {
+   "shot": 200954,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/200954.npz",
+   "sha256": "32ca6905c9375c715b8c5728cc9b58860dce124a62f686430e7de31aad158cf1"
+  },
+  {
+   "shot": 200990,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/200990.npz",
+   "sha256": "fb2712e642b6ed447c8597583cb50fdc0ef1865f3fe4397c0651f027d31708e9"
+  },
+  {
+   "shot": 201270,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/201270.npz",
+   "sha256": "1bd96e50df4c6b44e6e2daaab12c19404c7772d55cb823143c7817a8d33bda12"
+  },
+  {
+   "shot": 201395,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/201395.npz",
+   "sha256": "a1ec353a4147639247de0153c5d9566c46b7532760d14ea4729edae83d40c275"
+  },
+  {
+   "shot": 201447,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/201447.npz",
+   "sha256": "ebb1b261cdbfe8712a429f397e4162331d4b3dfeebb3b145d4a656abc1e663ad"
+  }
+ ],
+ "stopped_on_auth_error": false,
+ "requested_shots": 104,
+ "code_provenance": {
+  "recorded_at_fetch_git": "702c0c5ff437ebf7629f098028e0aed2b28c7dd1",
+  "mapped_committed_revision": "808a48163654940a0c07e4e0e5408519def7bde6",
+  "script_sha256": "3870bbf98a8a5bccfca9684c3809926d159304d900cf196b21c6cfefd9728d3e",
+  "fetch_functions_sha256": "7f4b371c5288312c0d32bf282118292cd869cca5361cc0d5ee1e9cc5df8e7eec",
+  "hashes_captured_after_fetch": true,
+  "note": "Fetch script and the three fetched-feature resolver functions were unchanged from each successful fetch launch through mapped commit; this is an honest retrospective producing-code mapping, not an at-launch hash. The first part began from an uncommitted working tree at its recorded base git. The resumed second part ran the committed source."
+ },
+ "completion_note": "Externally terminated by SIGTERM (exit 143); no authentication or signal-fetch error seen. Existing feature files preserved; remaining gaps fetched by part 2."
+}

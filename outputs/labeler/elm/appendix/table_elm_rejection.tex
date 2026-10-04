@@ -1,0 +1,15 @@
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Chord & Screen shots & Screen bins & Clipping shots & Clipping bins \\
+FS02 & 0 & 0 & 67 & 1363 \\
+FS03 & 0 & 0 & 71 & 1267 \\
+FS04 & 0 & 0 & 54 & 1472 \\
+DENV2F & 4 & 463 & 16 & 20 \\
+DENV3F & 5 & 523 & 9 & 174 \\
+\bottomrule
+\end{tabular}\caption{Per-chord preprocessing on all119 (119 shots/12,409 primary bins). The density screen zeroes chords with median absolute native magnitude $>10^{16}$; FS02--04 have no such screen. FS clipping floors native values at $10^{12}$ before the logarithm. Density divided by $10^{14}$ is clipped to $[-3,12]$; ten times its high-pass to $[-10,10]$. Clipping counts exclude screened chords and mark any affected cell; clipping discards no bins. Disabling only the screen, using frozen weights/thresholds and raw chords under the same clipping, changes AUROC -0.00516, AUPRC -0.00819, F1 -0.00704; 6 shots change inputs. This does not validate physical calibration or diagnostic failure.}
+\label{tab:elm-rejection}
+\end{table*}

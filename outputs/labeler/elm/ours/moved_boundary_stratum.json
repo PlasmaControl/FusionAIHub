@@ -1,0 +1,614 @@
+{
+ "git": "2a3ff77536dcf8b9f1959d718fdb0cdab8693bd8",
+ "created": "2026-10-03T23:30:15+00:00",
+ "script_sha256": "360d8fb0798bf59bca102e2609750cc89faff2658be2d420110ede95528b8fa8",
+ "run": "cv2",
+ "clock_source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/elm_clock/v1/edge_localized_mode_suggest_elm_clock_v1.csv",
+ "near_ms": 1.0,
+ "definition": "The D-alpha clock seeded the review: many reviewed crowd starts and ends sit within 1 ms of a clock boundary. The reviewer's own contribution is clearest where both boundaries of a span lie more than 1 ms from the clock's. This script scores `elm-ours`, `elm-clock` and (on the BES subset) ELM-O on exactly those spans' bins. A span is `moved` when no boundary of it lies within 1 ms of a clock boundary of the same role: a present span's start against the clock's span starts and its end against the clock's ends; an absent span's start against the clock's ends and its end against the clock's starts (an absent span is the gap between clock spans). Two strata, both on the primary interior bins of each set, saved predictions and thresholds:",
+ "strata": {
+  "moved_spans": "bins of moved present and moved absent spans",
+  "moved_present_all_absent": "bins of moved present spans and every absent bin"
+ },
+ "cohort_test_shots_used": 0,
+ "sets": {
+  "bes73": {
+   "n_shots_in_set": 73,
+   "strata": {
+    "moved_spans": {
+     "definition": "bins of moved present and moved absent spans",
+     "bins": 4125,
+     "positive_bins": 1429,
+     "present_spans": 43,
+     "absent_spans": 117,
+     "shots_with_bins": 57,
+     "shots_with_positive_bins": 30,
+     "methods": {
+      "elm-ours": {
+       "point": {
+        "auroc": 0.9381620232031281,
+        "auprc": 0.8355673864628952,
+        "f1": 0.8373535492763611,
+        "precision": 0.824847250509165,
+        "recall": 0.8502449265220434,
+        "false_alarm_bin_rate": 0.0956973293768546
+       },
+       "ci95": {
+        "auroc": [
+         0.874753105550107,
+         0.9803096334957345
+        ],
+        "auprc": [
+         0.629008744250639,
+         0.9720500564036955
+        ],
+        "f1": [
+         0.7383236081313975,
+         0.9096184119103107
+        ],
+        "precision": [
+         0.6893200093558196,
+         0.9205464680954321
+        ],
+        "recall": [
+         0.721495008818399,
+         0.9502641257971115
+        ],
+        "false_alarm_bin_rate": [
+         0.043112386896227664,
+         0.16849761207639655
+        ]
+       }
+      },
+      "elm-clock": {
+       "point": {
+        "auroc": null,
+        "auprc": null,
+        "f1": 0.515702479338843,
+        "precision": 0.6296670030272452,
+        "recall": 0.4366689993002099,
+        "false_alarm_bin_rate": 0.13612759643916914
+       },
+       "ci95": {
+        "auroc": null,
+        "auprc": null,
+        "f1": [
+         0.29664051226551225,
+         0.682137288188279
+        ],
+        "precision": [
+         0.4148690356419051,
+         0.7979231699508252
+        ],
+        "recall": [
+         0.2155498960124011,
+         0.6659280650674092
+        ],
+        "false_alarm_bin_rate": [
+         0.06054606242908472,
+         0.22462992613981983
+        ]
+       }
+      },
+      "elm-elmo": {
+       "point": {
+        "auroc": 0.9344310208421153,
+        "auprc": 0.8164451576797345,
+        "f1": 0.8215652173913044,
+        "precision": 0.8167358229598893,
+        "recall": 0.8264520643806857,
+        "false_alarm_bin_rate": 0.09829376854599406
+       },
+       "ci95": {
+        "auroc": [
+         0.8942043003322694,
+         0.9651586283685722
+        ],
+        "auprc": [
+         0.6882306901626182,
+         0.9087789605491975
+        ],
+        "f1": [
+         0.7303871107098728,
+         0.883866293184593
+        ],
+        "precision": [
+         0.6815352602745521,
+         0.9105722777098203
+        ],
+        "recall": [
+         0.7543574968673344,
+         0.8827885154144641
+        ],
+        "false_alarm_bin_rate": [
+         0.048061291739894554,
+         0.16270968809993344
+        ]
+       }
+      }
+     },
+     "paired_ours_minus": {
+      "elm-ours - elm-clock: f1": {
+       "value": 0.32165106993751813,
+       "ci95": [
+        0.17139369807033034,
+        0.5232773658628145
+       ]
+      },
+      "elm-ours - elm-clock: precision": {
+       "value": 0.19518024748191976,
+       "ci95": [
+        0.08348086096562143,
+        0.34282612740167856
+       ]
+      },
+      "elm-ours - elm-clock: recall": {
+       "value": 0.4135759272218335,
+       "ci95": [
+        0.200575221238938,
+        0.622861333891543
+       ]
+      },
+      "elm-ours - elm-clock: false_alarm_bin_rate": {
+       "value": -0.040430267062314534,
+       "ci95": [
+        -0.10220942073181609,
+        0.020714568419603514
+       ]
+      },
+      "elm-ours - elm-elmo: f1": {
+       "value": 0.015788331885056683,
+       "ci95": [
+        -0.05527842732714097,
+        0.08319818234399141
+       ]
+      },
+      "elm-ours - elm-elmo: precision": {
+       "value": 0.00811142754927563,
+       "ci95": [
+        -0.0507214295318523,
+        0.0666379041331987
+       ]
+      },
+      "elm-ours - elm-elmo: recall": {
+       "value": 0.023792862141357674,
+       "ci95": [
+        -0.08701086948749448,
+        0.1367460961032017
+       ]
+      },
+      "elm-ours - elm-elmo: false_alarm_bin_rate": {
+       "value": -0.0025964391691394584,
+       "ci95": [
+        -0.03836266399724811,
+        0.033254299181139854
+       ]
+      },
+      "elm-ours - elm-elmo: auroc": {
+       "value": 0.0037310023610128695,
+       "ci95": [
+        -0.0337450770497647,
+        0.037412326815119024
+       ]
+      },
+      "elm-ours - elm-elmo: auprc": {
+       "value": 0.019122228783160722,
+       "ci95": [
+        -0.0976249710051124,
+        0.15048860696514352
+       ]
+      }
+     }
+    },
+    "moved_present_all_absent": {
+     "definition": "bins of moved present spans and every absent bin",
+     "bins": 5522,
+     "positive_bins": 1429,
+     "present_spans": 43,
+     "absent_spans": 176,
+     "shots_with_bins": 73,
+     "shots_with_positive_bins": 30,
+     "methods": {
+      "elm-ours": {
+       "point": {
+        "auroc": 0.9367995367331653,
+        "auprc": 0.787834999386662,
+        "f1": 0.7724094087730451,
+        "precision": 0.7076295864880606,
+        "recall": 0.8502449265220434,
+        "false_alarm_bin_rate": 0.12264842413877351
+       },
+       "ci95": {
+        "auroc": [
+         0.8888117115774686,
+         0.973432377734952
+        ],
+        "auprc": [
+         0.5811932608629354,
+         0.9385947459193634
+        ],
+        "f1": [
+         0.6543332770514441,
+         0.8602391340592256
+        ],
+        "precision": [
+         0.5613323134372656,
+         0.8234123207971914
+        ],
+        "recall": [
+         0.721495008818399,
+         0.9502641257971115
+        ],
+        "false_alarm_bin_rate": [
+         0.0712555720487201,
+         0.18401519131783964
+        ]
+       }
+      },
+      "elm-clock": {
+       "point": {
+        "auroc": null,
+        "auprc": null,
+        "f1": 0.5148514851485149,
+        "precision": 0.6271356783919598,
+        "recall": 0.4366689993002099,
+        "false_alarm_bin_rate": 0.09064256046909358
+       },
+       "ci95": {
+        "auroc": null,
+        "auprc": null,
+        "f1": [
+         0.29664051226551225,
+         0.6803651896941555
+        ],
+        "precision": [
+         0.41356196589224353,
+         0.7959098586590965
+        ],
+        "recall": [
+         0.2155498960124011,
+         0.6659280650674092
+        ],
+        "false_alarm_bin_rate": [
+         0.038875865936425925,
+         0.14627979393783824
+        ]
+       }
+      },
+      "elm-elmo": {
+       "point": {
+        "auroc": 0.92627780930319,
+        "auprc": 0.7162614986569302,
+        "f1": 0.7736652472977399,
+        "precision": 0.7272167487684729,
+        "recall": 0.8264520643806857,
+        "false_alarm_bin_rate": 0.10823356950891766
+       },
+       "ci95": {
+        "auroc": [
+         0.8926897938173728,
+         0.9528643045540754
+        ],
+        "auprc": [
+         0.5720366007523995,
+         0.8256782885999305
+        ],
+        "f1": [
+         0.6759693760836063,
+         0.8435457836231482
+        ],
+        "precision": [
+         0.5852691645133506,
+         0.8310178916314707
+        ],
+        "recall": [
+         0.7543574968673344,
+         0.8827885154144641
+        ],
+        "false_alarm_bin_rate": [
+         0.06832796902059918,
+         0.1562950801106996
+        ]
+       }
+      }
+     },
+     "paired_ours_minus": {
+      "elm-ours - elm-clock: f1": {
+       "value": 0.2575579236245302,
+       "ci95": [
+        0.09898167334154455,
+        0.45374981400000775
+       ]
+      },
+      "elm-ours - elm-clock: precision": {
+       "value": 0.0804939080961008,
+       "ci95": [
+        -0.070002329053844,
+        0.23980933027865797
+       ]
+      },
+      "elm-ours - elm-clock: recall": {
+       "value": 0.4135759272218335,
+       "ci95": [
+        0.200575221238938,
+        0.622861333891543
+       ]
+      },
+      "elm-ours - elm-clock: false_alarm_bin_rate": {
+       "value": 0.03200586366967993,
+       "ci95": [
+        -0.025296954040576792,
+        0.09506687468730066
+       ]
+      },
+      "elm-ours - elm-elmo: f1": {
+       "value": -0.0012558385246947967,
+       "ci95": [
+        -0.08499478302336967,
+        0.06836313861382216
+       ]
+      },
+      "elm-ours - elm-elmo: precision": {
+       "value": -0.01958716228041224,
+       "ci95": [
+        -0.10283534935705324,
+        0.047016381383045494
+       ]
+      },
+      "elm-ours - elm-elmo: recall": {
+       "value": 0.023792862141357674,
+       "ci95": [
+        -0.08701086948749448,
+        0.1367460961032017
+       ]
+      },
+      "elm-ours - elm-elmo: false_alarm_bin_rate": {
+       "value": 0.014414854629855853,
+       "ci95": [
+        -0.019487152283919815,
+        0.06000733353117814
+       ]
+      },
+      "elm-ours - elm-elmo: auroc": {
+       "value": 0.010521727429975258,
+       "ci95": [
+        -0.023684132627581123,
+        0.04252480230967898
+       ]
+      },
+      "elm-ours - elm-elmo: auprc": {
+       "value": 0.07157350072973179,
+       "ci95": [
+        -0.059995577935868225,
+        0.21223790792278602
+       ]
+      }
+     }
+    }
+   },
+   "present_spans_with_bins": 84,
+   "present_spans_moved": 43
+  },
+  "all119": {
+   "n_shots_in_set": 119,
+   "strata": {
+    "moved_spans": {
+     "definition": "bins of moved present and moved absent spans",
+     "bins": 6822,
+     "positive_bins": 1790,
+     "present_spans": 60,
+     "absent_spans": 183,
+     "shots_with_bins": 92,
+     "shots_with_positive_bins": 42,
+     "methods": {
+      "elm-ours": {
+       "point": {
+        "auroc": 0.9423243753941256,
+        "auprc": 0.8063602540439148,
+        "f1": 0.7980295566502463,
+        "precision": 0.7445573294629898,
+        "recall": 0.8597765363128491,
+        "false_alarm_bin_rate": 0.10492845786963434
+       },
+       "ci95": {
+        "auroc": [
+         0.892155646194145,
+         0.9755755616046673
+        ],
+        "auprc": [
+         0.591860321475473,
+         0.9548530338528692
+        ],
+        "f1": [
+         0.6762793682733953,
+         0.8727154404263663
+        ],
+        "precision": [
+         0.5959051982982364,
+         0.8500798834521591
+        ],
+        "recall": [
+         0.7430769507803121,
+         0.9393891068888339
+        ],
+        "false_alarm_bin_rate": [
+         0.05939122645032316,
+         0.15546892255989933
+        ]
+       }
+      },
+      "elm-clock": {
+       "point": {
+        "auroc": null,
+        "auprc": null,
+        "f1": 0.5251868703282417,
+        "precision": 0.6278166278166278,
+        "recall": 0.45139664804469276,
+        "false_alarm_bin_rate": 0.09519077901430843
+       },
+       "ci95": {
+        "auroc": null,
+        "auprc": null,
+        "f1": [
+         0.32235049095914564,
+         0.6646214193450346
+        ],
+        "precision": [
+         0.42095473459790367,
+         0.7688921133279129
+        ],
+        "recall": [
+         0.24860379098746377,
+         0.6449254770544047
+        ],
+        "false_alarm_bin_rate": [
+         0.049114125608269235,
+         0.1516392846078571
+        ]
+       }
+      }
+     },
+     "paired_ours_minus": {
+      "elm-ours - elm-clock: f1": {
+       "value": 0.2728426863220046,
+       "ci95": [
+        0.13026082663863586,
+        0.4423597468139628
+       ]
+      },
+      "elm-ours - elm-clock: precision": {
+       "value": 0.11674070164636197,
+       "ci95": [
+        -0.00810005669887874,
+        0.2597277320816516
+       ]
+      },
+      "elm-ours - elm-clock: recall": {
+       "value": 0.40837988826815635,
+       "ci95": [
+        0.20044723264222736,
+        0.6057997476822977
+       ]
+      },
+      "elm-ours - elm-clock: false_alarm_bin_rate": {
+       "value": 0.009737678855325907,
+       "ci95": [
+        -0.04916902416798819,
+        0.06543852998463182
+       ]
+      }
+     }
+    },
+    "moved_present_all_absent": {
+     "definition": "bins of moved present spans and every absent bin",
+     "bins": 9535,
+     "positive_bins": 1790,
+     "present_spans": 60,
+     "absent_spans": 291,
+     "shots_with_bins": 118,
+     "shots_with_positive_bins": 42,
+     "methods": {
+      "elm-ours": {
+       "point": {
+        "auroc": 0.9469023807033552,
+        "auprc": 0.7673212797349465,
+        "f1": 0.7325083293669681,
+        "precision": 0.6380597014925373,
+        "recall": 0.8597765363128491,
+        "false_alarm_bin_rate": 0.11271788250484184
+       },
+       "ci95": {
+        "auroc": [
+         0.9094195128023354,
+         0.9724051187329915
+        ],
+        "auprc": [
+         0.5490348048871767,
+         0.9137936018625314
+        ],
+        "f1": [
+         0.6024901679431605,
+         0.8151565515088406
+        ],
+        "precision": [
+         0.48987951276548036,
+         0.7474120426962845
+        ],
+        "recall": [
+         0.7430769507803121,
+         0.9393891068888339
+        ],
+        "false_alarm_bin_rate": [
+         0.0748831989780186,
+         0.15179345482547688
+        ]
+       }
+      },
+      "elm-clock": {
+       "point": {
+        "auroc": null,
+        "auprc": null,
+        "f1": 0.5239948119325551,
+        "precision": 0.624420401854714,
+        "recall": 0.45139664804469276,
+        "false_alarm_bin_rate": 0.06275016139444803
+       },
+       "ci95": {
+        "auroc": null,
+        "auprc": null,
+        "f1": [
+         0.3205698948370781,
+         0.6630247862184455
+        ],
+        "precision": [
+         0.4177639092607989,
+         0.7674595172662496
+        ],
+        "recall": [
+         0.24860379098746377,
+         0.6449254770544047
+        ],
+        "false_alarm_bin_rate": [
+         0.032321406955395544,
+         0.10047542599716909
+        ]
+       }
+      }
+     },
+     "paired_ours_minus": {
+      "elm-ours - elm-clock: f1": {
+       "value": 0.20851351743441293,
+       "ci95": [
+        0.05500728112745677,
+        0.38066156948572205
+       ]
+      },
+      "elm-ours - elm-clock: precision": {
+       "value": 0.013639299637823288,
+       "ci95": [
+        -0.13033209443314483,
+        0.1609453724966339
+       ]
+      },
+      "elm-ours - elm-clock: recall": {
+       "value": 0.40837988826815635,
+       "ci95": [
+        0.20044723264222736,
+        0.6057997476822977
+       ]
+      },
+      "elm-ours - elm-clock: false_alarm_bin_rate": {
+       "value": 0.04996772111039381,
+       "ci95": [
+        0.0036423996226150664,
+        0.09425468059799981
+       ]
+      }
+     }
+    }
+   },
+   "present_spans_with_bins": 133,
+   "present_spans_moved": 60
+  }
+ }
+}

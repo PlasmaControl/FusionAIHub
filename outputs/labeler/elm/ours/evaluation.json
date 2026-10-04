@@ -1,0 +1,6608 @@
+{
+ "git": "a64369c3",
+ "created": "2026-10-03T22:10:27+00:00",
+ "run": "cv2",
+ "train_record": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/cv/cv2/run.json",
+ "reference": "expert-reviewed spans (review/labels.csv)",
+ "cohort_test_shots_used": 0,
+ "folds": [
+  [
+   187105,
+   187328,
+   189272,
+   190637,
+   190643,
+   192003,
+   192226,
+   192232,
+   194160,
+   195066,
+   195263,
+   195279,
+   195646,
+   196332,
+   198899,
+   199790,
+   199921,
+   200127,
+   200198,
+   200636,
+   203041,
+   203629,
+   204240,
+   204560
+  ],
+  [
+   185857,
+   185945,
+   186093,
+   186945,
+   187076,
+   189061,
+   189324,
+   189559,
+   189741,
+   190218,
+   194155,
+   194608,
+   195111,
+   196541,
+   200320,
+   200385,
+   200954,
+   201395,
+   201447,
+   201973,
+   203187,
+   203778,
+   204233,
+   204256
+  ],
+  [
+   185866,
+   190094,
+   190335,
+   190695,
+   191470,
+   192015,
+   192148,
+   192229,
+   192914,
+   193022,
+   193075,
+   195016,
+   195102,
+   195786,
+   199789,
+   200917,
+   200990,
+   201270,
+   201707,
+   203764,
+   203941,
+   203959,
+   204243,
+   204530
+  ],
+  [
+   185961,
+   186569,
+   186636,
+   187035,
+   187196,
+   189004,
+   189885,
+   190177,
+   190300,
+   190991,
+   191382,
+   191677,
+   192010,
+   192425,
+   192721,
+   192732,
+   192751,
+   193276,
+   195103,
+   195186,
+   196405,
+   201494,
+   203719,
+   204937
+  ],
+  [
+   186013,
+   186427,
+   189044,
+   189688,
+   190790,
+   191326,
+   192432,
+   193008,
+   194445,
+   194600,
+   195024,
+   195959,
+   198806,
+   198971,
+   199087,
+   199909,
+   200427,
+   201978,
+   203012,
+   203132,
+   203470,
+   203521,
+   203576
+  ]
+ ],
+ "event_thresholds": {
+  "0": 0.46430716186761856,
+  "1": 0.2991714844107628,
+  "2": 0.7612139040231705,
+  "3": 0.1704022791981697,
+  "4": 0.3914299350976944
+ },
+ "config": {
+  "epochs": 25,
+  "iters": 40,
+  "batch": 16,
+  "lr": 0.002,
+  "weight_decay": 0.01,
+  "dropout": 0.1,
+  "crop_ms": 4096,
+  "level_shift": 0.4,
+  "seed": 20261003
+ },
+ "label_audit": {
+  "definition": "category 1, iscrowd 0: non-crowd present spans",
+  "spans": 120,
+  "length_ms": {
+   "min": 1.0,
+   "p25": 42.0,
+   "median": 54.5,
+   "p75": 98.25,
+   "p90": 205.3,
+   "max": 497.0
+  },
+  "longer_than_100ms": 30,
+  "longer_than_200ms": 14,
+  "possible_bins": 125,
+  "possible_bins_from_longer_than_100ms": 108,
+  "spans_with_possible_bins": 47,
+  "per_span": [
+   {
+    "shot": 185866,
+    "start_ms": 5566.0,
+    "end_ms": 5599.0,
+    "length_ms": 33.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 187196,
+    "start_ms": 2405.0,
+    "end_ms": 2453.0,
+    "length_ms": 48.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 189044,
+    "start_ms": 1561.0,
+    "end_ms": 1657.0,
+    "length_ms": 96.0,
+    "possible_bins": 1
+   },
+   {
+    "shot": 189885,
+    "start_ms": 1197.0,
+    "end_ms": 1665.0,
+    "length_ms": 468.0,
+    "possible_bins": 9
+   },
+   {
+    "shot": 189885,
+    "start_ms": 1843.0,
+    "end_ms": 2051.0,
+    "length_ms": 208.0,
+    "possible_bins": 4
+   },
+   {
+    "shot": 190094,
+    "start_ms": 1168.0,
+    "end_ms": 1195.0,
+    "length_ms": 27.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190177,
+    "start_ms": 2638.0,
+    "end_ms": 2658.0,
+    "length_ms": 20.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190177,
+    "start_ms": 4385.0,
+    "end_ms": 4414.0,
+    "length_ms": 29.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190177,
+    "start_ms": 4499.0,
+    "end_ms": 4542.0,
+    "length_ms": 43.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190177,
+    "start_ms": 4631.0,
+    "end_ms": 4652.0,
+    "length_ms": 21.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190177,
+    "start_ms": 4701.0,
+    "end_ms": 4744.0,
+    "length_ms": 43.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190177,
+    "start_ms": 5344.0,
+    "end_ms": 5400.0,
+    "length_ms": 56.0,
+    "possible_bins": 1
+   },
+   {
+    "shot": 190637,
+    "start_ms": 1210.0,
+    "end_ms": 1274.0,
+    "length_ms": 64.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190637,
+    "start_ms": 1321.0,
+    "end_ms": 1374.0,
+    "length_ms": 53.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190637,
+    "start_ms": 1421.0,
+    "end_ms": 1469.0,
+    "length_ms": 48.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190637,
+    "start_ms": 1514.0,
+    "end_ms": 1568.0,
+    "length_ms": 54.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190637,
+    "start_ms": 1712.0,
+    "end_ms": 1774.0,
+    "length_ms": 62.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190637,
+    "start_ms": 1877.0,
+    "end_ms": 1944.0,
+    "length_ms": 67.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190637,
+    "start_ms": 2018.0,
+    "end_ms": 2073.0,
+    "length_ms": 55.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190637,
+    "start_ms": 2179.0,
+    "end_ms": 2220.0,
+    "length_ms": 41.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190637,
+    "start_ms": 2255.0,
+    "end_ms": 2312.0,
+    "length_ms": 57.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190637,
+    "start_ms": 2341.0,
+    "end_ms": 2374.0,
+    "length_ms": 33.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190637,
+    "start_ms": 2413.0,
+    "end_ms": 2460.0,
+    "length_ms": 47.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190637,
+    "start_ms": 2528.0,
+    "end_ms": 2586.0,
+    "length_ms": 58.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190637,
+    "start_ms": 2619.0,
+    "end_ms": 2651.0,
+    "length_ms": 32.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190637,
+    "start_ms": 2695.0,
+    "end_ms": 2754.0,
+    "length_ms": 59.0,
+    "possible_bins": 1
+   },
+   {
+    "shot": 190637,
+    "start_ms": 2786.0,
+    "end_ms": 2820.0,
+    "length_ms": 34.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190637,
+    "start_ms": 2871.0,
+    "end_ms": 2946.0,
+    "length_ms": 75.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190637,
+    "start_ms": 3003.0,
+    "end_ms": 3052.0,
+    "length_ms": 49.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190637,
+    "start_ms": 3116.0,
+    "end_ms": 3162.0,
+    "length_ms": 46.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190637,
+    "start_ms": 3207.0,
+    "end_ms": 3250.0,
+    "length_ms": 43.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190637,
+    "start_ms": 3335.0,
+    "end_ms": 3409.0,
+    "length_ms": 74.0,
+    "possible_bins": 1
+   },
+   {
+    "shot": 190637,
+    "start_ms": 3473.0,
+    "end_ms": 3531.0,
+    "length_ms": 58.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190637,
+    "start_ms": 3582.0,
+    "end_ms": 3638.0,
+    "length_ms": 56.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190637,
+    "start_ms": 3687.0,
+    "end_ms": 3747.0,
+    "length_ms": 60.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190637,
+    "start_ms": 3790.0,
+    "end_ms": 3832.0,
+    "length_ms": 42.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190637,
+    "start_ms": 3911.0,
+    "end_ms": 3970.0,
+    "length_ms": 59.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190637,
+    "start_ms": 4005.0,
+    "end_ms": 4057.0,
+    "length_ms": 52.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190637,
+    "start_ms": 4117.0,
+    "end_ms": 4160.0,
+    "length_ms": 43.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190637,
+    "start_ms": 4257.0,
+    "end_ms": 4318.0,
+    "length_ms": 61.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190637,
+    "start_ms": 4349.0,
+    "end_ms": 4403.0,
+    "length_ms": 54.0,
+    "possible_bins": 1
+   },
+   {
+    "shot": 190637,
+    "start_ms": 4458.0,
+    "end_ms": 4515.0,
+    "length_ms": 57.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190637,
+    "start_ms": 4576.0,
+    "end_ms": 4624.0,
+    "length_ms": 48.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190637,
+    "start_ms": 4700.0,
+    "end_ms": 4753.0,
+    "length_ms": 53.0,
+    "possible_bins": 1
+   },
+   {
+    "shot": 190637,
+    "start_ms": 4826.0,
+    "end_ms": 4875.0,
+    "length_ms": 49.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190637,
+    "start_ms": 4962.0,
+    "end_ms": 5012.0,
+    "length_ms": 50.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190637,
+    "start_ms": 5046.0,
+    "end_ms": 5097.0,
+    "length_ms": 51.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190637,
+    "start_ms": 5123.0,
+    "end_ms": 5194.0,
+    "length_ms": 71.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190643,
+    "start_ms": 2107.0,
+    "end_ms": 2153.0,
+    "length_ms": 46.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190643,
+    "start_ms": 2297.0,
+    "end_ms": 2350.0,
+    "length_ms": 53.0,
+    "possible_bins": 1
+   },
+   {
+    "shot": 190643,
+    "start_ms": 2638.0,
+    "end_ms": 2677.0,
+    "length_ms": 39.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190643,
+    "start_ms": 3049.0,
+    "end_ms": 3122.0,
+    "length_ms": 73.0,
+    "possible_bins": 1
+   },
+   {
+    "shot": 190643,
+    "start_ms": 3843.0,
+    "end_ms": 3925.0,
+    "length_ms": 82.0,
+    "possible_bins": 1
+   },
+   {
+    "shot": 190643,
+    "start_ms": 4649.0,
+    "end_ms": 4725.0,
+    "length_ms": 76.0,
+    "possible_bins": 1
+   },
+   {
+    "shot": 190643,
+    "start_ms": 5033.0,
+    "end_ms": 5128.0,
+    "length_ms": 95.0,
+    "possible_bins": 1
+   },
+   {
+    "shot": 190695,
+    "start_ms": 1294.0,
+    "end_ms": 1481.0,
+    "length_ms": 187.0,
+    "possible_bins": 3
+   },
+   {
+    "shot": 190695,
+    "start_ms": 1700.0,
+    "end_ms": 1760.0,
+    "length_ms": 60.0,
+    "possible_bins": 1
+   },
+   {
+    "shot": 190695,
+    "start_ms": 5022.0,
+    "end_ms": 5112.0,
+    "length_ms": 90.0,
+    "possible_bins": 1
+   },
+   {
+    "shot": 190695,
+    "start_ms": 5580.0,
+    "end_ms": 5634.0,
+    "length_ms": 54.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 190790,
+    "start_ms": 1781.0,
+    "end_ms": 1968.0,
+    "length_ms": 187.0,
+    "possible_bins": 3
+   },
+   {
+    "shot": 190991,
+    "start_ms": 3042.0,
+    "end_ms": 3232.0,
+    "length_ms": 190.0,
+    "possible_bins": 3
+   },
+   {
+    "shot": 190991,
+    "start_ms": 3423.0,
+    "end_ms": 3688.0,
+    "length_ms": 265.0,
+    "possible_bins": 4
+   },
+   {
+    "shot": 192226,
+    "start_ms": 836.0,
+    "end_ms": 948.0,
+    "length_ms": 112.0,
+    "possible_bins": 1
+   },
+   {
+    "shot": 192432,
+    "start_ms": 1291.0,
+    "end_ms": 1462.0,
+    "length_ms": 171.0,
+    "possible_bins": 3
+   },
+   {
+    "shot": 192721,
+    "start_ms": 1847.0,
+    "end_ms": 1856.0,
+    "length_ms": 9.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 192721,
+    "start_ms": 1960.0,
+    "end_ms": 1976.0,
+    "length_ms": 16.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 192721,
+    "start_ms": 2100.0,
+    "end_ms": 2119.0,
+    "length_ms": 19.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 192721,
+    "start_ms": 2225.0,
+    "end_ms": 2257.0,
+    "length_ms": 32.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 192721,
+    "start_ms": 2346.0,
+    "end_ms": 2451.0,
+    "length_ms": 105.0,
+    "possible_bins": 2
+   },
+   {
+    "shot": 192721,
+    "start_ms": 2520.0,
+    "end_ms": 2560.0,
+    "length_ms": 40.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 192721,
+    "start_ms": 2644.0,
+    "end_ms": 2695.0,
+    "length_ms": 51.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 192721,
+    "start_ms": 2759.0,
+    "end_ms": 2793.0,
+    "length_ms": 34.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 192721,
+    "start_ms": 2847.0,
+    "end_ms": 2917.0,
+    "length_ms": 70.0,
+    "possible_bins": 1
+   },
+   {
+    "shot": 192721,
+    "start_ms": 2959.0,
+    "end_ms": 2993.0,
+    "length_ms": 34.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 192721,
+    "start_ms": 3234.0,
+    "end_ms": 3267.0,
+    "length_ms": 33.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 192721,
+    "start_ms": 3376.0,
+    "end_ms": 3515.0,
+    "length_ms": 139.0,
+    "possible_bins": 2
+   },
+   {
+    "shot": 192721,
+    "start_ms": 3684.0,
+    "end_ms": 3715.0,
+    "length_ms": 31.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 192721,
+    "start_ms": 3774.0,
+    "end_ms": 3815.0,
+    "length_ms": 41.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 192721,
+    "start_ms": 4122.0,
+    "end_ms": 4163.0,
+    "length_ms": 41.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 192721,
+    "start_ms": 4223.0,
+    "end_ms": 4258.0,
+    "length_ms": 35.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 192721,
+    "start_ms": 4584.0,
+    "end_ms": 4627.0,
+    "length_ms": 43.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 192914,
+    "start_ms": 2567.0,
+    "end_ms": 2702.0,
+    "length_ms": 135.0,
+    "possible_bins": 2
+   },
+   {
+    "shot": 193008,
+    "start_ms": 810.0,
+    "end_ms": 1030.0,
+    "length_ms": 220.0,
+    "possible_bins": 3
+   },
+   {
+    "shot": 193075,
+    "start_ms": 1299.0,
+    "end_ms": 1324.0,
+    "length_ms": 25.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 193075,
+    "start_ms": 2032.0,
+    "end_ms": 2034.0,
+    "length_ms": 2.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 193276,
+    "start_ms": 2502.0,
+    "end_ms": 2558.0,
+    "length_ms": 56.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 193276,
+    "start_ms": 2638.0,
+    "end_ms": 2692.0,
+    "length_ms": 54.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 193276,
+    "start_ms": 2723.0,
+    "end_ms": 2773.0,
+    "length_ms": 50.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 194608,
+    "start_ms": 3898.0,
+    "end_ms": 3939.0,
+    "length_ms": 41.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 195263,
+    "start_ms": 1541.0,
+    "end_ms": 1959.0,
+    "length_ms": 418.0,
+    "possible_bins": 8
+   },
+   {
+    "shot": 195263,
+    "start_ms": 2610.0,
+    "end_ms": 2815.0,
+    "length_ms": 205.0,
+    "possible_bins": 3
+   },
+   {
+    "shot": 195959,
+    "start_ms": 563.0,
+    "end_ms": 763.0,
+    "length_ms": 200.0,
+    "possible_bins": 3
+   },
+   {
+    "shot": 196541,
+    "start_ms": 4379.0,
+    "end_ms": 4619.0,
+    "length_ms": 240.0,
+    "possible_bins": 4
+   },
+   {
+    "shot": 199790,
+    "start_ms": 1616.0,
+    "end_ms": 1617.0,
+    "length_ms": 1.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 200198,
+    "start_ms": 1371.0,
+    "end_ms": 1610.0,
+    "length_ms": 239.0,
+    "possible_bins": 4
+   },
+   {
+    "shot": 200198,
+    "start_ms": 1851.0,
+    "end_ms": 1857.0,
+    "length_ms": 6.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 200385,
+    "start_ms": 4895.0,
+    "end_ms": 5007.0,
+    "length_ms": 112.0,
+    "possible_bins": 2
+   },
+   {
+    "shot": 200427,
+    "start_ms": 2689.0,
+    "end_ms": 2765.0,
+    "length_ms": 76.0,
+    "possible_bins": 1
+   },
+   {
+    "shot": 200427,
+    "start_ms": 3521.0,
+    "end_ms": 3525.0,
+    "length_ms": 4.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 201270,
+    "start_ms": 1889.0,
+    "end_ms": 2242.0,
+    "length_ms": 353.0,
+    "possible_bins": 6
+   },
+   {
+    "shot": 201270,
+    "start_ms": 3867.0,
+    "end_ms": 3882.0,
+    "length_ms": 15.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 201395,
+    "start_ms": 1448.0,
+    "end_ms": 1750.0,
+    "length_ms": 302.0,
+    "possible_bins": 6
+   },
+   {
+    "shot": 201395,
+    "start_ms": 3364.0,
+    "end_ms": 3511.0,
+    "length_ms": 147.0,
+    "possible_bins": 2
+   },
+   {
+    "shot": 201973,
+    "start_ms": 2075.0,
+    "end_ms": 2117.0,
+    "length_ms": 42.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 201973,
+    "start_ms": 2994.0,
+    "end_ms": 3045.0,
+    "length_ms": 51.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 201973,
+    "start_ms": 3077.0,
+    "end_ms": 3124.0,
+    "length_ms": 47.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 201973,
+    "start_ms": 3313.0,
+    "end_ms": 3356.0,
+    "length_ms": 43.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 203187,
+    "start_ms": 2532.0,
+    "end_ms": 2856.0,
+    "length_ms": 324.0,
+    "possible_bins": 6
+   },
+   {
+    "shot": 203187,
+    "start_ms": 3036.0,
+    "end_ms": 3080.0,
+    "length_ms": 44.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 203941,
+    "start_ms": 4321.0,
+    "end_ms": 4522.0,
+    "length_ms": 201.0,
+    "possible_bins": 3
+   },
+   {
+    "shot": 203941,
+    "start_ms": 4865.0,
+    "end_ms": 5362.0,
+    "length_ms": 497.0,
+    "possible_bins": 9
+   },
+   {
+    "shot": 203941,
+    "start_ms": 5586.0,
+    "end_ms": 6012.0,
+    "length_ms": 426.0,
+    "possible_bins": 8
+   },
+   {
+    "shot": 204256,
+    "start_ms": 3427.0,
+    "end_ms": 3524.0,
+    "length_ms": 97.0,
+    "possible_bins": 1
+   },
+   {
+    "shot": 204560,
+    "start_ms": 2001.0,
+    "end_ms": 2142.0,
+    "length_ms": 141.0,
+    "possible_bins": 1
+   },
+   {
+    "shot": 204560,
+    "start_ms": 2185.0,
+    "end_ms": 2298.0,
+    "length_ms": 113.0,
+    "possible_bins": 1
+   },
+   {
+    "shot": 204560,
+    "start_ms": 2507.0,
+    "end_ms": 2591.0,
+    "length_ms": 84.0,
+    "possible_bins": 0
+   },
+   {
+    "shot": 204560,
+    "start_ms": 2719.0,
+    "end_ms": 2836.0,
+    "length_ms": 117.0,
+    "possible_bins": 1
+   },
+   {
+    "shot": 204560,
+    "start_ms": 3177.0,
+    "end_ms": 3289.0,
+    "length_ms": 112.0,
+    "possible_bins": 1
+   },
+   {
+    "shot": 204560,
+    "start_ms": 3653.0,
+    "end_ms": 3755.0,
+    "length_ms": 102.0,
+    "possible_bins": 1
+   },
+   {
+    "shot": 204560,
+    "start_ms": 4095.0,
+    "end_ms": 4181.0,
+    "length_ms": 86.0,
+    "possible_bins": 1
+   }
+  ]
+ },
+ "onset_head": "Dropped from paper outputs: reviewed span starts are not verified physical ELM onsets and the auxiliary head has weak agreement. Existing checkpoints retain it; no onset retraining was performed.",
+ "span_alarm_definition": {
+  "raw": "Any detected-span touch inside panel coverage on a sufficiently analysed absent span. Detections are intersected with panel coverage before raw and guarded span metrics.",
+  "guard25": "Touch in [start+25ms,end-25ms), with the same raw denominator; empty interiors counted separately. A conditional nonempty-interior rate is also reported.",
+  "mechanism": "The centered 50ms elm-ours moving mean can extend detected runs across annotation edges; short inter-ELM gaps are often touched."
+ },
+ "sets": {
+  "bes73": {
+   "shots": [
+    185857,
+    185866,
+    185945,
+    185961,
+    186013,
+    186636,
+    187035,
+    187328,
+    189272,
+    189324,
+    189741,
+    190637,
+    190643,
+    190695,
+    190790,
+    191382,
+    191677,
+    192003,
+    192010,
+    192015,
+    192425,
+    192432,
+    192721,
+    192732,
+    192751,
+    192914,
+    193008,
+    193022,
+    193075,
+    194155,
+    194160,
+    194445,
+    195016,
+    195024,
+    195066,
+    195102,
+    195103,
+    195111,
+    195263,
+    195279,
+    195646,
+    195959,
+    196332,
+    196405,
+    196541,
+    198806,
+    198899,
+    198971,
+    199789,
+    199790,
+    199909,
+    199921,
+    200198,
+    200385,
+    200427,
+    200636,
+    201270,
+    201494,
+    201707,
+    201973,
+    201978,
+    203012,
+    203041,
+    203132,
+    203187,
+    203470,
+    203629,
+    203941,
+    203959,
+    204233,
+    204240,
+    204243,
+    204256
+   ],
+   "n_shots": 73,
+   "bins": 6843,
+   "methods": {
+    "elm-ours": {
+     "shots": 73,
+     "counts": {
+      "tp": 2377,
+      "fp": 502,
+      "fn": 373,
+      "tn": 3591,
+      "crowd_bins": 2662,
+      "crowd_hit": 2334,
+      "non_crowd_spans": 93,
+      "non_crowd_span_hit": 65,
+      "absent_spans": 218,
+      "absent_span_alarm": 133,
+      "crowd_spans": 52,
+      "absent_spans_guard25_eligible": 194,
+      "absent_span_alarm_guard25": 95,
+      "absent_spans_guard25_empty": 24
+     },
+     "point": {
+      "precision": 0.8256339006599513,
+      "recall": 0.8643636363636363,
+      "f1": 0.8445549831231125,
+      "false_alarm_bin_rate": 0.12264842413877351,
+      "crowd_bin_recall": 0.8767843726521413,
+      "non_crowd_span_touch_recall": 0.6989247311827957,
+      "absent_span_alarm_rate": 0.6100917431192661,
+      "absent_span_alarm_rate_guard25": 0.43577981651376146,
+      "absent_span_interior_alarm_rate_guard25": 0.4896907216494845,
+      "auroc": 0.9413442906958666,
+      "auprc": 0.8752273777121873,
+      "prevalence": 0.40187052462370304
+     },
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "precision": 53,
+      "recall": 53,
+      "f1": 53,
+      "false_alarm_bin_rate": 72,
+      "crowd_bin_recall": 45,
+      "non_crowd_span_touch_recall": 22,
+      "absent_span_alarm_rate": 72,
+      "absent_span_alarm_rate_guard25": 72,
+      "absent_span_interior_alarm_rate_guard25": 72,
+      "auroc": 53,
+      "auprc": 53
+     },
+     "interval_eligible": {
+      "precision": true,
+      "recall": true,
+      "f1": true,
+      "false_alarm_bin_rate": true,
+      "crowd_bin_recall": true,
+      "non_crowd_span_touch_recall": true,
+      "absent_span_alarm_rate": true,
+      "absent_span_alarm_rate_guard25": true,
+      "absent_span_interior_alarm_rate_guard25": true,
+      "auroc": true,
+      "auprc": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": {
+      "precision": [
+       0.7395457197632742,
+       0.8961176991683061
+      ],
+      "recall": [
+       0.7901741866205585,
+       0.9336388778515702
+      ],
+      "f1": [
+       0.7856667623548219,
+       0.8961734938617731
+      ],
+      "false_alarm_bin_rate": [
+       0.0712555720487201,
+       0.18401519131783964
+      ],
+      "crowd_bin_recall": [
+       0.8051002111479382,
+       0.9416690672687636
+      ],
+      "non_crowd_span_touch_recall": [
+       0.276543596161869,
+       0.8706140699523053
+      ],
+      "absent_span_alarm_rate": [
+       0.4523617511520737,
+       0.7415118152524168
+      ],
+      "absent_span_alarm_rate_guard25": [
+       0.3508431272355646,
+       0.5107613733905579
+      ],
+      "absent_span_interior_alarm_rate_guard25": [
+       0.3693018171344784,
+       0.6099129517277763
+      ],
+      "auroc": [
+       0.8977795482939129,
+       0.9721534073218661
+      ],
+      "auprc": [
+       0.7514780169503263,
+       0.9606530716814174
+      ]
+     },
+     "bootstrap_draw_counts": {
+      "precision": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "f1": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "false_alarm_bin_rate": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "crowd_bin_recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "non_crowd_span_touch_recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_alarm_rate": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_alarm_rate_guard25": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_interior_alarm_rate_guard25": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "auroc": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "auprc": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     },
+     "replicates": 1000,
+     "display_name": "elm-ours",
+     "high_recall": false
+    },
+    "elm-clock": {
+     "shots": 73,
+     "counts": {
+      "tp": 1709,
+      "fp": 371,
+      "fn": 1041,
+      "tn": 3722,
+      "crowd_bins": 2662,
+      "crowd_hit": 1673,
+      "non_crowd_spans": 93,
+      "non_crowd_span_hit": 20,
+      "absent_spans": 218,
+      "absent_span_alarm": 24,
+      "crowd_spans": 52,
+      "absent_spans_guard25_eligible": 194,
+      "absent_span_alarm_guard25": 23,
+      "absent_spans_guard25_empty": 24
+     },
+     "point": {
+      "precision": 0.8216346153846154,
+      "recall": 0.6214545454545455,
+      "f1": 0.7076604554865424,
+      "false_alarm_bin_rate": 0.09064256046909358,
+      "crowd_bin_recall": 0.6284748309541698,
+      "non_crowd_span_touch_recall": 0.21505376344086022,
+      "absent_span_alarm_rate": 0.11009174311926606,
+      "absent_span_alarm_rate_guard25": 0.10550458715596331,
+      "absent_span_interior_alarm_rate_guard25": 0.11855670103092783
+     },
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "precision": 53,
+      "recall": 53,
+      "f1": 53,
+      "false_alarm_bin_rate": 72,
+      "crowd_bin_recall": 45,
+      "non_crowd_span_touch_recall": 22,
+      "absent_span_alarm_rate": 72,
+      "absent_span_alarm_rate_guard25": 72,
+      "absent_span_interior_alarm_rate_guard25": 72
+     },
+     "interval_eligible": {
+      "precision": true,
+      "recall": true,
+      "f1": true,
+      "false_alarm_bin_rate": true,
+      "crowd_bin_recall": true,
+      "non_crowd_span_touch_recall": true,
+      "absent_span_alarm_rate": true,
+      "absent_span_alarm_rate_guard25": true,
+      "absent_span_interior_alarm_rate_guard25": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": {
+      "precision": [
+       0.7195219234302184,
+       0.9144994290718339
+      ],
+      "recall": [
+       0.48847123910178747,
+       0.7569010047338591
+      ],
+      "f1": [
+       0.6022869457539355,
+       0.79988257241337
+      ],
+      "false_alarm_bin_rate": [
+       0.038875865936425925,
+       0.14627979393783824
+      ],
+      "crowd_bin_recall": [
+       0.49183326567204577,
+       0.7705392570665561
+      ],
+      "non_crowd_span_touch_recall": [
+       0.09008783783783783,
+       0.6308503836317132
+      ],
+      "absent_span_alarm_rate": [
+       0.05327868852459016,
+       0.18813934388830586
+      ],
+      "absent_span_alarm_rate_guard25": [
+       0.050505050505050504,
+       0.18185193519351933
+      ],
+      "absent_span_interior_alarm_rate_guard25": [
+       0.05962149177569079,
+       0.19736842105263158
+      ]
+     },
+     "bootstrap_draw_counts": {
+      "precision": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "f1": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "false_alarm_bin_rate": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "crowd_bin_recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "non_crowd_span_touch_recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_alarm_rate": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_alarm_rate_guard25": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_interior_alarm_rate_guard25": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     },
+     "replicates": 1000,
+     "display_name": "elm-clock",
+     "high_recall": false
+    },
+    "elm-elmo": {
+     "shots": 73,
+     "counts": {
+      "tp": 2322,
+      "fp": 443,
+      "fn": 428,
+      "tn": 3650,
+      "crowd_bins": 2662,
+      "crowd_hit": 2269,
+      "non_crowd_spans": 93,
+      "non_crowd_span_hit": 59,
+      "absent_spans": 218,
+      "absent_span_alarm": 96,
+      "crowd_spans": 52,
+      "absent_spans_guard25_eligible": 194,
+      "absent_span_alarm_guard25": 67,
+      "absent_spans_guard25_empty": 24
+     },
+     "point": {
+      "precision": 0.8397830018083182,
+      "recall": 0.8443636363636363,
+      "f1": 0.842067089755213,
+      "false_alarm_bin_rate": 0.10823356950891766,
+      "crowd_bin_recall": 0.8523666416228399,
+      "non_crowd_span_touch_recall": 0.6344086021505376,
+      "absent_span_alarm_rate": 0.44036697247706424,
+      "absent_span_alarm_rate_guard25": 0.3073394495412844,
+      "absent_span_interior_alarm_rate_guard25": 0.34536082474226804,
+      "auroc": 0.918402283277436,
+      "auprc": 0.8326756912456157,
+      "prevalence": 0.40187052462370304
+     },
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "precision": 53,
+      "recall": 53,
+      "f1": 53,
+      "false_alarm_bin_rate": 72,
+      "crowd_bin_recall": 45,
+      "non_crowd_span_touch_recall": 22,
+      "absent_span_alarm_rate": 72,
+      "absent_span_alarm_rate_guard25": 72,
+      "absent_span_interior_alarm_rate_guard25": 72,
+      "auroc": 53,
+      "auprc": 53
+     },
+     "interval_eligible": {
+      "precision": true,
+      "recall": true,
+      "f1": true,
+      "false_alarm_bin_rate": true,
+      "crowd_bin_recall": true,
+      "non_crowd_span_touch_recall": true,
+      "absent_span_alarm_rate": true,
+      "absent_span_alarm_rate_guard25": true,
+      "absent_span_interior_alarm_rate_guard25": true,
+      "auroc": true,
+      "auprc": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": {
+      "precision": [
+       0.7675314518788678,
+       0.8992787261655186
+      ],
+      "recall": [
+       0.7785412578843305,
+       0.892024288020887
+      ],
+      "f1": [
+       0.7893921176916634,
+       0.8849678307534709
+      ],
+      "false_alarm_bin_rate": [
+       0.06832796902059918,
+       0.1562950801106996
+      ],
+      "crowd_bin_recall": [
+       0.7878092204796188,
+       0.9006113568544136
+      ],
+      "non_crowd_span_touch_recall": [
+       0.2665573770491803,
+       0.8592592592592593
+      ],
+      "absent_span_alarm_rate": [
+       0.3006319695599759,
+       0.6234773067865553
+      ],
+      "absent_span_alarm_rate_guard25": [
+       0.1999800796812749,
+       0.4438209757856155
+      ],
+      "absent_span_interior_alarm_rate_guard25": [
+       0.24037893700787402,
+       0.467771550938582
+      ],
+      "auroc": [
+       0.8772004932548915,
+       0.9506421020958974
+      ],
+      "auprc": [
+       0.753311824432465,
+       0.8899523849577735
+      ]
+     },
+     "bootstrap_draw_counts": {
+      "precision": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "f1": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "false_alarm_bin_rate": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "crowd_bin_recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "non_crowd_span_touch_recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_alarm_rate": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_alarm_rate_guard25": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_interior_alarm_rate_guard25": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "auroc": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "auprc": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     },
+     "replicates": 1000,
+     "display_name": "ELM-O",
+     "high_recall": false,
+     "score_source": "largest eta whose saved detections touch the bin"
+    },
+    "always present": {
+     "shots": 73,
+     "counts": {
+      "tp": 2750,
+      "fp": 4093,
+      "fn": 0,
+      "tn": 0,
+      "crowd_bins": 2662,
+      "crowd_hit": 2662,
+      "non_crowd_spans": 93,
+      "non_crowd_span_hit": 93,
+      "absent_spans": 218,
+      "absent_span_alarm": 218,
+      "crowd_spans": 52,
+      "absent_spans_guard25_eligible": 194,
+      "absent_span_alarm_guard25": 194,
+      "absent_spans_guard25_empty": 24
+     },
+     "point": {
+      "precision": 0.40187052462370304,
+      "recall": 1.0,
+      "f1": 0.5733347232356927,
+      "false_alarm_bin_rate": 1.0,
+      "crowd_bin_recall": 1.0,
+      "non_crowd_span_touch_recall": 1.0,
+      "absent_span_alarm_rate": 1.0,
+      "absent_span_alarm_rate_guard25": 0.8899082568807339,
+      "absent_span_interior_alarm_rate_guard25": 1.0,
+      "auroc": 0.5,
+      "auprc": 0.40187052462370304,
+      "prevalence": 0.40187052462370304
+     },
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "precision": 53,
+      "recall": 53,
+      "f1": 53,
+      "false_alarm_bin_rate": 72,
+      "crowd_bin_recall": 45,
+      "non_crowd_span_touch_recall": 22,
+      "absent_span_alarm_rate": 72,
+      "absent_span_alarm_rate_guard25": 72,
+      "absent_span_interior_alarm_rate_guard25": 72,
+      "auroc": 53,
+      "auprc": 53
+     },
+     "interval_eligible": {
+      "precision": true,
+      "recall": true,
+      "f1": true,
+      "false_alarm_bin_rate": true,
+      "crowd_bin_recall": true,
+      "non_crowd_span_touch_recall": true,
+      "absent_span_alarm_rate": true,
+      "absent_span_alarm_rate_guard25": true,
+      "absent_span_interior_alarm_rate_guard25": true,
+      "auroc": true,
+      "auprc": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": {
+      "precision": [
+       0.3249898292891919,
+       0.4792399287713274
+      ],
+      "recall": [
+       1.0,
+       1.0
+      ],
+      "f1": [
+       0.4905544498343821,
+       0.6479542597736443
+      ],
+      "false_alarm_bin_rate": [
+       1.0,
+       1.0
+      ],
+      "crowd_bin_recall": [
+       1.0,
+       1.0
+      ],
+      "non_crowd_span_touch_recall": [
+       1.0,
+       1.0
+      ],
+      "absent_span_alarm_rate": [
+       1.0,
+       1.0
+      ],
+      "absent_span_alarm_rate_guard25": [
+       0.7884558823529412,
+       0.9821454987320372
+      ],
+      "absent_span_interior_alarm_rate_guard25": [
+       1.0,
+       1.0
+      ],
+      "auroc": [
+       0.5,
+       0.5
+      ],
+      "auprc": [
+       0.3249898292891919,
+       0.4792399287713274
+      ]
+     },
+     "bootstrap_draw_counts": {
+      "precision": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "f1": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "false_alarm_bin_rate": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "crowd_bin_recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "non_crowd_span_touch_recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_alarm_rate": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_alarm_rate_guard25": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_interior_alarm_rate_guard25": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "auroc": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "auprc": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     },
+     "replicates": 1000,
+     "display_name": "Always-present rule",
+     "high_recall": true
+    }
+   },
+   "paired": {
+    "elm-ours - elm-clock: f1": {
+     "value": 0.13689452763657006,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "f1": 53
+     },
+     "interval_eligible": {
+      "f1": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": [
+      0.048235845859991196,
+      0.23295650654495076
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "elm-ours - elm-clock: precision": {
+     "value": 0.003999285275335995,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "precision": 53
+     },
+     "interval_eligible": {
+      "precision": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": [
+      -0.08931644270431226,
+      0.0870015262365005
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "elm-ours - elm-clock: recall": {
+     "value": 0.24290909090909085,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "recall": 53
+     },
+     "interval_eligible": {
+      "recall": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": [
+      0.11334588123987742,
+      0.3700605023108849
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "elm-ours - elm-clock: false_alarm_bin_rate": {
+     "value": 0.03200586366967993,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "false_alarm_bin_rate": 72
+     },
+     "interval_eligible": {
+      "false_alarm_bin_rate": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": [
+      -0.025296954040576792,
+      0.09506687468730066
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "elm-ours - elm-clock: crowd_bin_recall": {
+     "value": 0.24830954169797148,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "crowd_bin_recall": 45
+     },
+     "interval_eligible": {
+      "crowd_bin_recall": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": [
+      0.11438810126582284,
+      0.3797981034759462
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "elm-ours - elm-clock: non_crowd_span_touch_recall": {
+     "value": 0.4838709677419355,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "non_crowd_span_touch_recall": 22
+     },
+     "interval_eligible": {
+      "non_crowd_span_touch_recall": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": [
+      -0.2908770161290322,
+      0.7704187925170068
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "elm-ours - elm-clock: absent_span_alarm_rate": {
+     "value": 0.5,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "absent_span_alarm_rate": 72
+     },
+     "interval_eligible": {
+      "absent_span_alarm_rate": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": [
+      0.2856943335993615,
+      0.6666970802919708
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "elm-ours - elm-clock: absent_span_alarm_rate_guard25": {
+     "value": 0.3302752293577982,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "absent_span_alarm_rate_guard25": 72
+     },
+     "interval_eligible": {
+      "absent_span_alarm_rate_guard25": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": [
+      0.20706196581196584,
+      0.43166143141824564
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "elm-ours - elm-elmo: f1": {
+     "value": 0.002487893367899452,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "f1": 53
+     },
+     "interval_eligible": {
+      "f1": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": [
+      -0.05198977705946881,
+      0.0584588923306623
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "elm-ours - elm-elmo: precision": {
+     "value": -0.014149101148366872,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "precision": 53
+     },
+     "interval_eligible": {
+      "precision": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": [
+      -0.07132251715699703,
+      0.030883284908492903
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "elm-ours - elm-elmo: recall": {
+     "value": 0.020000000000000018,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "recall": 53
+     },
+     "interval_eligible": {
+      "recall": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": [
+      -0.0597732070138565,
+      0.10771815622800848
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "elm-ours - elm-elmo: false_alarm_bin_rate": {
+     "value": 0.014414854629855853,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "false_alarm_bin_rate": 72
+     },
+     "interval_eligible": {
+      "false_alarm_bin_rate": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": [
+      -0.019487152283919815,
+      0.06000733353117814
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "elm-ours - elm-elmo: crowd_bin_recall": {
+     "value": 0.024417731029301337,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "crowd_bin_recall": 45
+     },
+     "interval_eligible": {
+      "crowd_bin_recall": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": [
+      -0.05325614049440771,
+      0.1104917758711458
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "elm-ours - elm-elmo: non_crowd_span_touch_recall": {
+     "value": 0.06451612903225812,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "non_crowd_span_touch_recall": 22
+     },
+     "interval_eligible": {
+      "non_crowd_span_touch_recall": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": [
+      -0.37175824175824174,
+      0.4462612612612612
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "elm-ours - elm-elmo: absent_span_alarm_rate": {
+     "value": 0.16972477064220182,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "absent_span_alarm_rate": 72
+     },
+     "interval_eligible": {
+      "absent_span_alarm_rate": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": [
+      -0.12745057490280418,
+      0.412927240274498
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "elm-ours - elm-elmo: absent_span_alarm_rate_guard25": {
+     "value": 0.12844036697247707,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "absent_span_alarm_rate_guard25": 72
+     },
+     "interval_eligible": {
+      "absent_span_alarm_rate_guard25": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": [
+      -0.04221201880693508,
+      0.2674459547985588
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "elm-ours - elm-elmo: auroc": {
+     "value": 0.022942007418430554,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "auroc": 53
+     },
+     "interval_eligible": {
+      "auroc": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": [
+      -0.014337545899778315,
+      0.06723434640902332
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "elm-ours - elm-elmo: auprc": {
+     "value": 0.04255168646657159,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "auprc": 53
+     },
+     "interval_eligible": {
+      "auprc": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": [
+      -0.057514888098725514,
+      0.12926710880861497
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    }
+   },
+   "fold_auroc_sensitivity": {
+    "per_fold": [
+     {
+      "fold": 0,
+      "shots": [
+       187328,
+       189272,
+       190637,
+       190643,
+       192003,
+       194160,
+       195066,
+       195263,
+       195279,
+       195646,
+       196332,
+       198899,
+       199790,
+       199921,
+       200198,
+       200636,
+       203041,
+       203629,
+       204240
+      ],
+      "auroc": 0.9638783367424884
+     },
+     {
+      "fold": 1,
+      "shots": [
+       185857,
+       185945,
+       189324,
+       189741,
+       194155,
+       195111,
+       196541,
+       200385,
+       201973,
+       203187,
+       204233,
+       204256
+      ],
+      "auroc": 0.9869590913762977
+     },
+     {
+      "fold": 2,
+      "shots": [
+       185866,
+       190695,
+       192015,
+       192914,
+       193022,
+       193075,
+       195016,
+       195102,
+       199789,
+       201270,
+       201707,
+       203941,
+       203959,
+       204243
+      ],
+      "auroc": 0.9287770113793505
+     },
+     {
+      "fold": 3,
+      "shots": [
+       185961,
+       186636,
+       187035,
+       191382,
+       191677,
+       192010,
+       192425,
+       192721,
+       192732,
+       192751,
+       195103,
+       196405,
+       201494
+      ],
+      "auroc": 0.9649665121071612
+     },
+     {
+      "fold": 4,
+      "shots": [
+       186013,
+       190790,
+       192432,
+       193008,
+       194445,
+       195024,
+       195959,
+       198806,
+       198971,
+       199909,
+       200427,
+       201978,
+       203012,
+       203132,
+       203470
+      ],
+      "auroc": 0.9706708884595232
+     }
+    ],
+    "mean": 0.9630503680129643,
+    "definition": "Unweighted mean of within-fold AUROCs; saved scores, unchanged thresholds, no fitting or selection."
+   },
+   "per_kind": {
+    "elm-ours": {
+     "crowd_bin_recall": {
+      "point": 0.8767843726521413,
+      "numerator": 2334,
+      "denominator": 2662,
+      "positive_shots": 45,
+      "descriptive_only": false,
+      "endpoint_shots": {
+       "crowd_bin_recall": 45
+      },
+      "interval_eligible": {
+       "crowd_bin_recall": true
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": [
+       0.8051002111479382,
+       0.9416690672687636
+      ],
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     },
+     "non_crowd_bin_recall": {
+      "point": 0.48863636363636365,
+      "numerator": 43,
+      "denominator": 88,
+      "positive_shots": 18,
+      "descriptive_only": false,
+      "endpoint_shots": {
+       "non_crowd_bin_recall": 18
+      },
+      "interval_eligible": {
+       "non_crowd_bin_recall": true
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": [
+       0.3083676012461059,
+       0.7358954531394988
+      ],
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     },
+     "non_crowd_span_touch_recall": {
+      "point": 0.6989247311827957,
+      "numerator": 65,
+      "denominator": 93,
+      "positive_shots": 22,
+      "descriptive_only": false,
+      "endpoint_shots": {
+       "non_crowd_span_touch_recall": 22
+      },
+      "interval_eligible": {
+       "non_crowd_span_touch_recall": true
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": [
+       0.276543596161869,
+       0.8706140699523053
+      ],
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     }
+    },
+    "elm-clock": {
+     "crowd_bin_recall": {
+      "point": 0.6284748309541698,
+      "numerator": 1673,
+      "denominator": 2662,
+      "positive_shots": 45,
+      "descriptive_only": false,
+      "endpoint_shots": {
+       "crowd_bin_recall": 45
+      },
+      "interval_eligible": {
+       "crowd_bin_recall": true
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": [
+       0.49183326567204577,
+       0.7705392570665561
+      ],
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     },
+     "non_crowd_bin_recall": {
+      "point": 0.4090909090909091,
+      "numerator": 36,
+      "denominator": 88,
+      "positive_shots": 18,
+      "descriptive_only": false,
+      "endpoint_shots": {
+       "non_crowd_bin_recall": 18
+      },
+      "interval_eligible": {
+       "non_crowd_bin_recall": true
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": [
+       0.22340425531914893,
+       0.7333962264150943
+      ],
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     },
+     "non_crowd_span_touch_recall": {
+      "point": 0.21505376344086022,
+      "numerator": 20,
+      "denominator": 93,
+      "positive_shots": 22,
+      "descriptive_only": false,
+      "endpoint_shots": {
+       "non_crowd_span_touch_recall": 22
+      },
+      "interval_eligible": {
+       "non_crowd_span_touch_recall": true
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": [
+       0.09008783783783783,
+       0.6308503836317132
+      ],
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     }
+    },
+    "elm-elmo": {
+     "crowd_bin_recall": {
+      "point": 0.8523666416228399,
+      "numerator": 2269,
+      "denominator": 2662,
+      "positive_shots": 45,
+      "descriptive_only": false,
+      "endpoint_shots": {
+       "crowd_bin_recall": 45
+      },
+      "interval_eligible": {
+       "crowd_bin_recall": true
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": [
+       0.7878092204796188,
+       0.9006113568544136
+      ],
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     },
+     "non_crowd_bin_recall": {
+      "point": 0.6022727272727273,
+      "numerator": 53,
+      "denominator": 88,
+      "positive_shots": 18,
+      "descriptive_only": false,
+      "endpoint_shots": {
+       "non_crowd_bin_recall": 18
+      },
+      "interval_eligible": {
+       "non_crowd_bin_recall": true
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": [
+       0.38233957219251336,
+       0.730813953488372
+      ],
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     },
+     "non_crowd_span_touch_recall": {
+      "point": 0.6344086021505376,
+      "numerator": 59,
+      "denominator": 93,
+      "positive_shots": 22,
+      "descriptive_only": false,
+      "endpoint_shots": {
+       "non_crowd_span_touch_recall": 22
+      },
+      "interval_eligible": {
+       "non_crowd_span_touch_recall": true
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": [
+       0.2665573770491803,
+       0.8592592592592593
+      ],
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     }
+    }
+   },
+   "annotation_modes": {
+    "crowd_only": {
+     "shots": [
+      185857,
+      185945,
+      185961,
+      186013,
+      187035,
+      189272,
+      189741,
+      191677,
+      192010,
+      192015,
+      192425,
+      192732,
+      193022,
+      195016,
+      195024,
+      195066,
+      195102,
+      195111,
+      195279,
+      195646,
+      196332,
+      196405,
+      198806,
+      198899,
+      198971,
+      200636,
+      201978,
+      203012,
+      203041,
+      203132,
+      203470,
+      203629,
+      203959
+     ],
+     "n_shots": 33,
+     "bins": 3551,
+     "applicable_metrics": [
+      "precision",
+      "recall",
+      "f1",
+      "auroc",
+      "auprc"
+     ],
+     "methods": {
+      "elm-ours": {
+       "shots": 33,
+       "counts": {
+        "tp": 2053,
+        "fp": 299,
+        "fn": 164,
+        "tn": 1035,
+        "crowd_bins": 2217,
+        "crowd_hit": 2053,
+        "non_crowd_spans": 0,
+        "non_crowd_span_hit": 0,
+        "absent_spans": 66,
+        "absent_span_alarm": 41,
+        "crowd_spans": 38,
+        "absent_spans_guard25_eligible": 65,
+        "absent_span_alarm_guard25": 31,
+        "absent_spans_guard25_empty": 1
+       },
+       "point": {
+        "precision": 0.872874149659864,
+        "recall": 0.9260261614794768,
+        "f1": 0.898664915736485,
+        "false_alarm_bin_rate": 0.22413793103448276,
+        "crowd_bin_recall": 0.9260261614794768,
+        "non_crowd_span_touch_recall": NaN,
+        "absent_span_alarm_rate": 0.6212121212121212,
+        "absent_span_alarm_rate_guard25": 0.4696969696969697,
+        "absent_span_interior_alarm_rate_guard25": 0.47692307692307695,
+        "auroc": 0.9082042199468602,
+        "auprc": 0.895793432654566,
+        "prevalence": 0.6243311743170937
+       },
+       "positive_shots": 33,
+       "descriptive_only": false,
+       "endpoint_shots": {
+        "precision": 33,
+        "recall": 33,
+        "f1": 33,
+        "false_alarm_bin_rate": 32,
+        "crowd_bin_recall": 33,
+        "non_crowd_span_touch_recall": 0,
+        "absent_span_alarm_rate": 32,
+        "absent_span_alarm_rate_guard25": 32,
+        "absent_span_interior_alarm_rate_guard25": 32,
+        "auroc": 33,
+        "auprc": 33
+       },
+       "interval_eligible": {
+        "precision": true,
+        "recall": true,
+        "f1": true,
+        "false_alarm_bin_rate": true,
+        "crowd_bin_recall": true,
+        "non_crowd_span_touch_recall": false,
+        "absent_span_alarm_rate": true,
+        "absent_span_alarm_rate_guard25": true,
+        "absent_span_interior_alarm_rate_guard25": true,
+        "auroc": true,
+        "auprc": true
+       },
+       "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+       "ci95": {
+        "precision": [
+         0.7803116686990571,
+         0.9455352845334011
+        ],
+        "recall": [
+         0.8574243317071388,
+         0.9835764488849986
+        ],
+        "f1": [
+         0.8373521696531085,
+         0.943465162800026
+        ],
+        "false_alarm_bin_rate": [
+         0.10953054316288648,
+         0.3505074558734023
+        ],
+        "crowd_bin_recall": [
+         0.8574243317071388,
+         0.9835764488849986
+        ],
+        "non_crowd_span_touch_recall": null,
+        "absent_span_alarm_rate": [
+         0.47056595365418896,
+         0.7727272727272727
+        ],
+        "absent_span_alarm_rate_guard25": [
+         0.33823011599005803,
+         0.6060606060606061
+        ],
+        "absent_span_interior_alarm_rate_guard25": [
+         0.34328358208955223,
+         0.6191017316017315
+        ],
+        "auroc": [
+         0.8123296375557965,
+         0.9765911467241336
+        ],
+        "auprc": [
+         0.7405769725291967,
+         0.9862993688659083
+        ]
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auprc": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
+       "replicates": 1000
+      },
+      "elm-clock": {
+       "shots": 33,
+       "counts": {
+        "tp": 1508,
+        "fp": 191,
+        "fn": 709,
+        "tn": 1143,
+        "crowd_bins": 2217,
+        "crowd_hit": 1508,
+        "non_crowd_spans": 0,
+        "non_crowd_span_hit": 0,
+        "absent_spans": 66,
+        "absent_span_alarm": 12,
+        "crowd_spans": 38,
+        "absent_spans_guard25_eligible": 65,
+        "absent_span_alarm_guard25": 12,
+        "absent_spans_guard25_empty": 1
+       },
+       "point": {
+        "precision": 0.8875809299587993,
+        "recall": 0.6801984663960307,
+        "f1": 0.7701736465781409,
+        "false_alarm_bin_rate": 0.1431784107946027,
+        "crowd_bin_recall": 0.6801984663960307,
+        "non_crowd_span_touch_recall": NaN,
+        "absent_span_alarm_rate": 0.18181818181818182,
+        "absent_span_alarm_rate_guard25": 0.18181818181818182,
+        "absent_span_interior_alarm_rate_guard25": 0.18461538461538463
+       },
+       "positive_shots": 33,
+       "descriptive_only": false,
+       "endpoint_shots": {
+        "precision": 33,
+        "recall": 33,
+        "f1": 33,
+        "false_alarm_bin_rate": 32,
+        "crowd_bin_recall": 33,
+        "non_crowd_span_touch_recall": 0,
+        "absent_span_alarm_rate": 32,
+        "absent_span_alarm_rate_guard25": 32,
+        "absent_span_interior_alarm_rate_guard25": 32
+       },
+       "interval_eligible": {
+        "precision": true,
+        "recall": true,
+        "f1": true,
+        "false_alarm_bin_rate": true,
+        "crowd_bin_recall": true,
+        "non_crowd_span_touch_recall": false,
+        "absent_span_alarm_rate": true,
+        "absent_span_alarm_rate_guard25": true,
+        "absent_span_interior_alarm_rate_guard25": true
+       },
+       "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+       "ci95": {
+        "precision": [
+         0.7764578627767189,
+         0.9717138842960573
+        ],
+        "recall": [
+         0.525251564166883,
+         0.8234789606723077
+        ],
+        "f1": [
+         0.6532999937044138,
+         0.8676046105210481
+        ],
+        "false_alarm_bin_rate": [
+         0.034045744353971424,
+         0.28194547020029764
+        ],
+        "crowd_bin_recall": [
+         0.525251564166883,
+         0.8234789606723077
+        ],
+        "non_crowd_span_touch_recall": null,
+        "absent_span_alarm_rate": [
+         0.06153846153846154,
+         0.3235294117647059
+        ],
+        "absent_span_alarm_rate_guard25": [
+         0.06153846153846154,
+         0.3235294117647059
+        ],
+        "absent_span_interior_alarm_rate_guard25": [
+         0.0625,
+         0.3333333333333333
+        ]
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
+       "replicates": 1000
+      },
+      "elm-elmo": {
+       "shots": 33,
+       "counts": {
+        "tp": 1954,
+        "fp": 245,
+        "fn": 263,
+        "tn": 1089,
+        "crowd_bins": 2217,
+        "crowd_hit": 1954,
+        "non_crowd_spans": 0,
+        "non_crowd_span_hit": 0,
+        "absent_spans": 66,
+        "absent_span_alarm": 46,
+        "crowd_spans": 38,
+        "absent_spans_guard25_eligible": 65,
+        "absent_span_alarm_guard25": 30,
+        "absent_spans_guard25_empty": 1
+       },
+       "point": {
+        "precision": 0.8885857207821737,
+        "recall": 0.8813712223725756,
+        "f1": 0.884963768115942,
+        "false_alarm_bin_rate": 0.18365817091454273,
+        "crowd_bin_recall": 0.8813712223725756,
+        "non_crowd_span_touch_recall": NaN,
+        "absent_span_alarm_rate": 0.696969696969697,
+        "absent_span_alarm_rate_guard25": 0.45454545454545453,
+        "absent_span_interior_alarm_rate_guard25": 0.46153846153846156,
+        "auroc": 0.8985997528975702,
+        "auprc": 0.8934107429683836,
+        "prevalence": 0.6243311743170937
+       },
+       "positive_shots": 33,
+       "descriptive_only": false,
+       "endpoint_shots": {
+        "precision": 33,
+        "recall": 33,
+        "f1": 33,
+        "false_alarm_bin_rate": 32,
+        "crowd_bin_recall": 33,
+        "non_crowd_span_touch_recall": 0,
+        "absent_span_alarm_rate": 32,
+        "absent_span_alarm_rate_guard25": 32,
+        "absent_span_interior_alarm_rate_guard25": 32,
+        "auroc": 33,
+        "auprc": 33
+       },
+       "interval_eligible": {
+        "precision": true,
+        "recall": true,
+        "f1": true,
+        "false_alarm_bin_rate": true,
+        "crowd_bin_recall": true,
+        "non_crowd_span_touch_recall": false,
+        "absent_span_alarm_rate": true,
+        "absent_span_alarm_rate_guard25": true,
+        "absent_span_interior_alarm_rate_guard25": true,
+        "auroc": true,
+        "auprc": true
+       },
+       "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+       "ci95": {
+        "precision": [
+         0.8035433924725766,
+         0.9504348940186239
+        ],
+        "recall": [
+         0.835223629902598,
+         0.9179829680788445
+        ],
+        "f1": [
+         0.8331232268734448,
+         0.9244697779021528
+        ],
+        "false_alarm_bin_rate": [
+         0.09192118290776446,
+         0.29039828642955795
+        ],
+        "crowd_bin_recall": [
+         0.835223629902598,
+         0.9179829680788445
+        ],
+        "non_crowd_span_touch_recall": null,
+        "absent_span_alarm_rate": [
+         0.5714285714285714,
+         0.80556592039801
+        ],
+        "absent_span_alarm_rate_guard25": [
+         0.3333333333333333,
+         0.5735851158645275
+        ],
+        "absent_span_interior_alarm_rate_guard25": [
+         0.3384615384615385,
+         0.5806451612903226
+        ],
+        "auroc": [
+         0.8449449841151614,
+         0.9458393684072395
+        ],
+        "auprc": [
+         0.8205401647654541,
+         0.9493802838131451
+        ]
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auprc": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
+       "replicates": 1000
+      }
+     }
+    },
+    "non_crowd_only": {
+     "shots": [
+      190637,
+      190695,
+      190790,
+      192432,
+      192721,
+      193075,
+      199790,
+      200385,
+      201270,
+      203187
+     ],
+     "n_shots": 10,
+     "bins": 700,
+     "applicable_metrics": [
+      "precision",
+      "recall",
+      "f1",
+      "auroc",
+      "auprc"
+     ],
+     "methods": {
+      "elm-ours": {
+       "shots": 10,
+       "counts": {
+        "tp": 24,
+        "fp": 67,
+        "fn": 10,
+        "tn": 599,
+        "crowd_bins": 0,
+        "crowd_hit": 0,
+        "non_crowd_spans": 67,
+        "non_crowd_span_hit": 55,
+        "absent_spans": 78,
+        "absent_span_alarm": 59,
+        "crowd_spans": 0,
+        "absent_spans_guard25_eligible": 60,
+        "absent_span_alarm_guard25": 36,
+        "absent_spans_guard25_empty": 18
+       },
+       "point": {
+        "precision": 0.26373626373626374,
+        "recall": 0.7058823529411765,
+        "f1": 0.384,
+        "false_alarm_bin_rate": 0.1006006006006006,
+        "crowd_bin_recall": NaN,
+        "non_crowd_span_touch_recall": 0.8208955223880597,
+        "absent_span_alarm_rate": 0.7564102564102564,
+        "absent_span_alarm_rate_guard25": 0.46153846153846156,
+        "absent_span_interior_alarm_rate_guard25": 0.6,
+        "auroc": 0.9177265500794912,
+        "auprc": 0.24431097600953103,
+        "prevalence": 0.04857142857142857
+       },
+       "positive_shots": 8,
+       "descriptive_only": false,
+       "endpoint_shots": {
+        "precision": 8,
+        "recall": 8,
+        "f1": 8,
+        "false_alarm_bin_rate": 10,
+        "crowd_bin_recall": 0,
+        "non_crowd_span_touch_recall": 10,
+        "absent_span_alarm_rate": 10,
+        "absent_span_alarm_rate_guard25": 10,
+        "absent_span_interior_alarm_rate_guard25": 10,
+        "auroc": 8,
+        "auprc": 8
+       },
+       "interval_eligible": {
+        "precision": true,
+        "recall": true,
+        "f1": true,
+        "false_alarm_bin_rate": true,
+        "crowd_bin_recall": false,
+        "non_crowd_span_touch_recall": true,
+        "absent_span_alarm_rate": true,
+        "absent_span_alarm_rate_guard25": true,
+        "absent_span_interior_alarm_rate_guard25": true,
+        "auroc": true,
+        "auprc": true
+       },
+       "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+       "ci95": {
+        "precision": [
+         0.11289754656974102,
+         0.6719531249999999
+        ],
+        "recall": [
+         0.46875,
+         0.914345238095238
+        ],
+        "f1": [
+         0.1904611211573237,
+         0.6739256825075834
+        ],
+        "false_alarm_bin_rate": [
+         0.018865709983169457,
+         0.20973138514299
+        ],
+        "crowd_bin_recall": null,
+        "non_crowd_span_touch_recall": [
+         0.29411764705882354,
+         0.9285714285714286
+        ],
+        "absent_span_alarm_rate": [
+         0.30303030303030304,
+         0.8811588103254769
+        ],
+        "absent_span_alarm_rate_guard25": [
+         0.25,
+         0.5417119565217391
+        ],
+        "absent_span_interior_alarm_rate_guard25": [
+         0.25925925925925924,
+         0.8
+        ],
+        "auroc": [
+         0.8158195126404618,
+         0.9821716692019404
+        ],
+        "auprc": [
+         0.1010923508559808,
+         0.7954326582184982
+        ]
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auprc": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
+       "replicates": 1000
+      },
+      "elm-clock": {
+       "shots": 10,
+       "counts": {
+        "tp": 22,
+        "fp": 53,
+        "fn": 12,
+        "tn": 613,
+        "crowd_bins": 0,
+        "crowd_hit": 0,
+        "non_crowd_spans": 67,
+        "non_crowd_span_hit": 10,
+        "absent_spans": 78,
+        "absent_span_alarm": 5,
+        "crowd_spans": 0,
+        "absent_spans_guard25_eligible": 60,
+        "absent_span_alarm_guard25": 4,
+        "absent_spans_guard25_empty": 18
+       },
+       "point": {
+        "precision": 0.29333333333333333,
+        "recall": 0.6470588235294118,
+        "f1": 0.4036697247706422,
+        "false_alarm_bin_rate": 0.07957957957957958,
+        "crowd_bin_recall": NaN,
+        "non_crowd_span_touch_recall": 0.14925373134328357,
+        "absent_span_alarm_rate": 0.0641025641025641,
+        "absent_span_alarm_rate_guard25": 0.05128205128205128,
+        "absent_span_interior_alarm_rate_guard25": 0.06666666666666667
+       },
+       "positive_shots": 8,
+       "descriptive_only": false,
+       "endpoint_shots": {
+        "precision": 8,
+        "recall": 8,
+        "f1": 8,
+        "false_alarm_bin_rate": 10,
+        "crowd_bin_recall": 0,
+        "non_crowd_span_touch_recall": 10,
+        "absent_span_alarm_rate": 10,
+        "absent_span_alarm_rate_guard25": 10,
+        "absent_span_interior_alarm_rate_guard25": 10
+       },
+       "interval_eligible": {
+        "precision": true,
+        "recall": true,
+        "f1": true,
+        "false_alarm_bin_rate": true,
+        "crowd_bin_recall": false,
+        "non_crowd_span_touch_recall": true,
+        "absent_span_alarm_rate": true,
+        "absent_span_alarm_rate_guard25": true,
+        "absent_span_interior_alarm_rate_guard25": true
+       },
+       "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+       "ci95": {
+        "precision": [
+         0.11841751556310129,
+         1.0
+        ],
+        "recall": [
+         0.34615384615384615,
+         0.9189459459459459
+        ],
+        "f1": [
+         0.19044401544401543,
+         0.7474835309617919
+        ],
+        "false_alarm_bin_rate": [
+         0.0,
+         0.19676398595767974
+        ],
+        "crowd_bin_recall": null,
+        "non_crowd_span_touch_recall": [
+         0.04516129032258064,
+         0.7860714285714282
+        ],
+        "absent_span_alarm_rate": [
+         0.0,
+         0.2941721132897603
+        ],
+        "absent_span_alarm_rate_guard25": [
+         0.0,
+         0.23076923076923078
+        ],
+        "absent_span_interior_alarm_rate_guard25": [
+         0.0,
+         0.24003448275862066
+        ]
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
+       "replicates": 1000
+      },
+      "elm-elmo": {
+       "shots": 10,
+       "counts": {
+        "tp": 15,
+        "fp": 59,
+        "fn": 19,
+        "tn": 607,
+        "crowd_bins": 0,
+        "crowd_hit": 0,
+        "non_crowd_spans": 67,
+        "non_crowd_span_hit": 40,
+        "absent_spans": 78,
+        "absent_span_alarm": 10,
+        "crowd_spans": 0,
+        "absent_spans_guard25_eligible": 60,
+        "absent_span_alarm_guard25": 7,
+        "absent_spans_guard25_empty": 18
+       },
+       "point": {
+        "precision": 0.20270270270270271,
+        "recall": 0.4411764705882353,
+        "f1": 0.2777777777777778,
+        "false_alarm_bin_rate": 0.08858858858858859,
+        "crowd_bin_recall": NaN,
+        "non_crowd_span_touch_recall": 0.5970149253731343,
+        "absent_span_alarm_rate": 0.1282051282051282,
+        "absent_span_alarm_rate_guard25": 0.08974358974358974,
+        "absent_span_interior_alarm_rate_guard25": 0.11666666666666667,
+        "auroc": 0.6879747394453277,
+        "auprc": 0.1640305283217146,
+        "prevalence": 0.04857142857142857
+       },
+       "positive_shots": 8,
+       "descriptive_only": false,
+       "endpoint_shots": {
+        "precision": 8,
+        "recall": 8,
+        "f1": 8,
+        "false_alarm_bin_rate": 10,
+        "crowd_bin_recall": 0,
+        "non_crowd_span_touch_recall": 10,
+        "absent_span_alarm_rate": 10,
+        "absent_span_alarm_rate_guard25": 10,
+        "absent_span_interior_alarm_rate_guard25": 10,
+        "auroc": 8,
+        "auprc": 8
+       },
+       "interval_eligible": {
+        "precision": true,
+        "recall": true,
+        "f1": true,
+        "false_alarm_bin_rate": true,
+        "crowd_bin_recall": false,
+        "non_crowd_span_touch_recall": true,
+        "absent_span_alarm_rate": true,
+        "absent_span_alarm_rate_guard25": true,
+        "absent_span_interior_alarm_rate_guard25": true,
+        "auroc": true,
+        "auprc": true
+       },
+       "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+       "ci95": {
+        "precision": [
+         0.06054018445322794,
+         0.47748376623376604
+        ],
+        "recall": [
+         0.21047149122807016,
+         0.6857589285714285
+        ],
+        "f1": [
+         0.0952193475815523,
+         0.5001050420168066
+        ],
+        "false_alarm_bin_rate": [
+         0.03026280670537554,
+         0.15980556526273165
+        ],
+        "crowd_bin_recall": null,
+        "non_crowd_span_touch_recall": [
+         0.08476443768996962,
+         0.8833333333333333
+        ],
+        "absent_span_alarm_rate": [
+         0.06080569205569206,
+         0.359
+        ],
+        "absent_span_alarm_rate_guard25": [
+         0.030533187488363433,
+         0.3076923076923077
+        ],
+        "absent_span_interior_alarm_rate_guard25": [
+         0.04597437519772224,
+         0.32
+        ],
+        "auroc": [
+         0.5195264817150064,
+         0.8363142989710486
+        ],
+        "auprc": [
+         0.05163882717283185,
+         0.3904227896594883
+        ]
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auprc": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
+       "replicates": 1000
+      }
+     }
+    },
+    "mixed": {
+     "shots": [
+      185866,
+      190643,
+      192914,
+      193008,
+      195263,
+      195959,
+      196541,
+      200198,
+      200427,
+      201973,
+      203941,
+      204256
+     ],
+     "n_shots": 12,
+     "bins": 1104,
+     "applicable_metrics": [
+      "precision",
+      "recall",
+      "f1",
+      "auroc",
+      "auprc"
+     ],
+     "methods": {
+      "elm-ours": {
+       "shots": 12,
+       "counts": {
+        "tp": 300,
+        "fp": 19,
+        "fn": 199,
+        "tn": 586,
+        "crowd_bins": 445,
+        "crowd_hit": 281,
+        "non_crowd_spans": 26,
+        "non_crowd_span_hit": 10,
+        "absent_spans": 47,
+        "absent_span_alarm": 19,
+        "crowd_spans": 14,
+        "absent_spans_guard25_eligible": 43,
+        "absent_span_alarm_guard25": 14,
+        "absent_spans_guard25_empty": 4
+       },
+       "point": {
+        "precision": 0.9404388714733543,
+        "recall": 0.6012024048096193,
+        "f1": 0.7334963325183375,
+        "false_alarm_bin_rate": 0.03140495867768595,
+        "crowd_bin_recall": 0.6314606741573033,
+        "non_crowd_span_touch_recall": 0.38461538461538464,
+        "absent_span_alarm_rate": 0.40425531914893614,
+        "absent_span_alarm_rate_guard25": 0.2978723404255319,
+        "absent_span_interior_alarm_rate_guard25": 0.32558139534883723,
+        "auroc": 0.919553155898574,
+        "auprc": 0.8843828754747115,
+        "prevalence": 0.4519927536231884
+       },
+       "positive_shots": 12,
+       "descriptive_only": false,
+       "endpoint_shots": {
+        "precision": 12,
+        "recall": 12,
+        "f1": 12,
+        "false_alarm_bin_rate": 12,
+        "crowd_bin_recall": 12,
+        "non_crowd_span_touch_recall": 12,
+        "absent_span_alarm_rate": 12,
+        "absent_span_alarm_rate_guard25": 12,
+        "absent_span_interior_alarm_rate_guard25": 12,
+        "auroc": 12,
+        "auprc": 12
+       },
+       "interval_eligible": {
+        "precision": true,
+        "recall": true,
+        "f1": true,
+        "false_alarm_bin_rate": true,
+        "crowd_bin_recall": true,
+        "non_crowd_span_touch_recall": true,
+        "absent_span_alarm_rate": true,
+        "absent_span_alarm_rate_guard25": true,
+        "absent_span_interior_alarm_rate_guard25": true,
+        "auroc": true,
+        "auprc": true
+       },
+       "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+       "ci95": {
+        "precision": [
+         0.8760906993560829,
+         0.9936733506841752
+        ],
+        "recall": [
+         0.39984974958263775,
+         0.7917961150953805
+        ],
+        "f1": [
+         0.5579040799390875,
+         0.857181311286291
+        ],
+        "false_alarm_bin_rate": [
+         0.003526413474057453,
+         0.06144400267407901
+        ],
+        "crowd_bin_recall": [
+         0.42598081012231837,
+         0.8225969371130661
+        ],
+        "non_crowd_span_touch_recall": [
+         0.1362878787878788,
+         0.7144285714285713
+        ],
+        "absent_span_alarm_rate": [
+         0.15380434782608696,
+         0.6889285714285713
+        ],
+        "absent_span_alarm_rate_guard25": [
+         0.12278562259306804,
+         0.4888888888888889
+        ],
+        "absent_span_interior_alarm_rate_guard25": [
+         0.12764268828098616,
+         0.5714285714285714
+        ],
+        "auroc": [
+         0.8630520677705767,
+         0.9703075839542407
+        ],
+        "auprc": [
+         0.7978041355245111,
+         0.9674237040790757
+        ]
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auprc": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
+       "replicates": 1000
+      },
+      "elm-clock": {
+       "shots": 12,
+       "counts": {
+        "tp": 179,
+        "fp": 44,
+        "fn": 320,
+        "tn": 561,
+        "crowd_bins": 445,
+        "crowd_hit": 165,
+        "non_crowd_spans": 26,
+        "non_crowd_span_hit": 10,
+        "absent_spans": 47,
+        "absent_span_alarm": 3,
+        "crowd_spans": 14,
+        "absent_spans_guard25_eligible": 43,
+        "absent_span_alarm_guard25": 3,
+        "absent_spans_guard25_empty": 4
+       },
+       "point": {
+        "precision": 0.8026905829596412,
+        "recall": 0.3587174348697395,
+        "f1": 0.49584487534626037,
+        "false_alarm_bin_rate": 0.07272727272727272,
+        "crowd_bin_recall": 0.3707865168539326,
+        "non_crowd_span_touch_recall": 0.38461538461538464,
+        "absent_span_alarm_rate": 0.06382978723404255,
+        "absent_span_alarm_rate_guard25": 0.06382978723404255,
+        "absent_span_interior_alarm_rate_guard25": 0.06976744186046512
+       },
+       "positive_shots": 12,
+       "descriptive_only": false,
+       "endpoint_shots": {
+        "precision": 12,
+        "recall": 12,
+        "f1": 12,
+        "false_alarm_bin_rate": 12,
+        "crowd_bin_recall": 12,
+        "non_crowd_span_touch_recall": 12,
+        "absent_span_alarm_rate": 12,
+        "absent_span_alarm_rate_guard25": 12,
+        "absent_span_interior_alarm_rate_guard25": 12
+       },
+       "interval_eligible": {
+        "precision": true,
+        "recall": true,
+        "f1": true,
+        "false_alarm_bin_rate": true,
+        "crowd_bin_recall": true,
+        "non_crowd_span_touch_recall": true,
+        "absent_span_alarm_rate": true,
+        "absent_span_alarm_rate_guard25": true,
+        "absent_span_interior_alarm_rate_guard25": true
+       },
+       "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+       "ci95": {
+        "precision": [
+         0.6206071964017992,
+         1.0
+        ],
+        "recall": [
+         0.17538027011310822,
+         0.5945384807804552
+        ],
+        "f1": [
+         0.2973759408976861,
+         0.660022491349481
+        ],
+        "false_alarm_bin_rate": [
+         0.0,
+         0.2189420177908454
+        ],
+        "crowd_bin_recall": [
+         0.15856005730195588,
+         0.6359987557254659
+        ],
+        "non_crowd_span_touch_recall": [
+         0.15997727272727272,
+         0.7777777777777778
+        ],
+        "absent_span_alarm_rate": [
+         0.0,
+         0.20466437632135298
+        ],
+        "absent_span_alarm_rate_guard25": [
+         0.0,
+         0.20466437632135298
+        ],
+        "absent_span_interior_alarm_rate_guard25": [
+         0.0,
+         0.22514423076923065
+        ]
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
+       "replicates": 1000
+      },
+      "elm-elmo": {
+       "shots": 12,
+       "counts": {
+        "tp": 353,
+        "fp": 72,
+        "fn": 146,
+        "tn": 533,
+        "crowd_bins": 445,
+        "crowd_hit": 315,
+        "non_crowd_spans": 26,
+        "non_crowd_span_hit": 19,
+        "absent_spans": 47,
+        "absent_span_alarm": 27,
+        "crowd_spans": 14,
+        "absent_spans_guard25_eligible": 43,
+        "absent_span_alarm_guard25": 20,
+        "absent_spans_guard25_empty": 4
+       },
+       "point": {
+        "precision": 0.8305882352941176,
+        "recall": 0.7074148296593187,
+        "f1": 0.7640692640692641,
+        "false_alarm_bin_rate": 0.11900826446280992,
+        "crowd_bin_recall": 0.7078651685393258,
+        "non_crowd_span_touch_recall": 0.7307692307692307,
+        "absent_span_alarm_rate": 0.574468085106383,
+        "absent_span_alarm_rate_guard25": 0.425531914893617,
+        "absent_span_interior_alarm_rate_guard25": 0.46511627906976744,
+        "auroc": 0.8288775898905248,
+        "auprc": 0.7888339024829611,
+        "prevalence": 0.4519927536231884
+       },
+       "positive_shots": 12,
+       "descriptive_only": false,
+       "endpoint_shots": {
+        "precision": 12,
+        "recall": 12,
+        "f1": 12,
+        "false_alarm_bin_rate": 12,
+        "crowd_bin_recall": 12,
+        "non_crowd_span_touch_recall": 12,
+        "absent_span_alarm_rate": 12,
+        "absent_span_alarm_rate_guard25": 12,
+        "absent_span_interior_alarm_rate_guard25": 12,
+        "auroc": 12,
+        "auprc": 12
+       },
+       "interval_eligible": {
+        "precision": true,
+        "recall": true,
+        "f1": true,
+        "false_alarm_bin_rate": true,
+        "crowd_bin_recall": true,
+        "non_crowd_span_touch_recall": true,
+        "absent_span_alarm_rate": true,
+        "absent_span_alarm_rate_guard25": true,
+        "absent_span_interior_alarm_rate_guard25": true,
+        "auroc": true,
+        "auprc": true
+       },
+       "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+       "ci95": {
+        "precision": [
+         0.6858866206753154,
+         0.9307282999400919
+        ],
+        "recall": [
+         0.47310201276721414,
+         0.8875599105010474
+        ],
+        "f1": [
+         0.5867674946737528,
+         0.8879639511443139
+        ],
+        "false_alarm_bin_rate": [
+         0.045376645839952,
+         0.21393122157504182
+        ],
+        "crowd_bin_recall": [
+         0.4604049693116451,
+         0.8997779043280182
+        ],
+        "non_crowd_span_touch_recall": [
+         0.5,
+         0.875
+        ],
+        "absent_span_alarm_rate": [
+         0.3559048660470202,
+         0.8372250157133878
+        ],
+        "absent_span_alarm_rate_guard25": [
+         0.2291193181818182,
+         0.6511627906976745
+        ],
+        "absent_span_interior_alarm_rate_guard25": [
+         0.249890350877193,
+         0.7143772893772893
+        ],
+        "auroc": [
+         0.6671235547822688,
+         0.9524931393064727
+        ],
+        "auprc": [
+         0.6255182488188908,
+         0.929290303962718
+        ]
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auprc": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
+       "replicates": 1000
+      }
+     }
+    },
+    "no_present": {
+     "shots": [
+      186636,
+      187328,
+      189324,
+      191382,
+      192003,
+      192751,
+      194155,
+      194160,
+      194445,
+      195103,
+      199789,
+      199909,
+      199921,
+      201494,
+      201707,
+      204233,
+      204240,
+      204243
+     ],
+     "n_shots": 18,
+     "bins": 1488,
+     "applicable_metrics": [
+      "no_present_false_positive_fraction"
+     ],
+     "methods": {
+      "elm-ours": {
+       "shots": 18,
+       "counts": {
+        "tp": 0,
+        "fp": 117,
+        "fn": 0,
+        "tn": 1371,
+        "crowd_bins": 0,
+        "crowd_hit": 0,
+        "non_crowd_spans": 0,
+        "non_crowd_span_hit": 0,
+        "absent_spans": 27,
+        "absent_span_alarm": 14,
+        "crowd_spans": 0,
+        "absent_spans_guard25_eligible": 26,
+        "absent_span_alarm_guard25": 14,
+        "absent_spans_guard25_empty": 1
+       },
+       "point": {
+        "precision": 0.0,
+        "recall": NaN,
+        "f1": 0.0,
+        "false_alarm_bin_rate": 0.07862903225806452,
+        "crowd_bin_recall": NaN,
+        "non_crowd_span_touch_recall": NaN,
+        "absent_span_alarm_rate": 0.5185185185185185,
+        "absent_span_alarm_rate_guard25": 0.5185185185185185,
+        "absent_span_interior_alarm_rate_guard25": 0.5384615384615384,
+        "auroc": NaN,
+        "auprc": NaN,
+        "prevalence": 0.0,
+        "no_present_false_positive_fraction": 0.07862903225806452
+       },
+       "positive_shots": 0,
+       "descriptive_only": false,
+       "endpoint_shots": {
+        "precision": 0,
+        "recall": 0,
+        "f1": 0,
+        "false_alarm_bin_rate": 18,
+        "crowd_bin_recall": 0,
+        "non_crowd_span_touch_recall": 0,
+        "absent_span_alarm_rate": 18,
+        "absent_span_alarm_rate_guard25": 18,
+        "absent_span_interior_alarm_rate_guard25": 18,
+        "auroc": 0,
+        "auprc": 0
+       },
+       "interval_eligible": {
+        "precision": false,
+        "recall": false,
+        "f1": false,
+        "false_alarm_bin_rate": true,
+        "crowd_bin_recall": false,
+        "non_crowd_span_touch_recall": false,
+        "absent_span_alarm_rate": true,
+        "absent_span_alarm_rate_guard25": true,
+        "absent_span_interior_alarm_rate_guard25": true,
+        "auroc": false,
+        "auprc": false
+       },
+       "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+       "ci95": {
+        "precision": null,
+        "recall": null,
+        "f1": null,
+        "false_alarm_bin_rate": [
+         0.019790700980210383,
+         0.16104211322657924
+        ],
+        "crowd_bin_recall": null,
+        "non_crowd_span_touch_recall": null,
+        "absent_span_alarm_rate": [
+         0.3333333333333333,
+         0.7083333333333334
+        ],
+        "absent_span_alarm_rate_guard25": [
+         0.3333333333333333,
+         0.7083333333333334
+        ],
+        "absent_span_interior_alarm_rate_guard25": [
+         0.34615384615384615,
+         0.7083333333333334
+        ],
+        "auroc": null,
+        "auprc": null,
+        "no_present_false_positive_fraction": [
+         0.019790700980210383,
+         0.16104211322657924
+        ]
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "auprc": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "no_present_false_positive_fraction": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
+       "replicates": 1000
+      },
+      "elm-clock": {
+       "shots": 18,
+       "counts": {
+        "tp": 0,
+        "fp": 83,
+        "fn": 0,
+        "tn": 1405,
+        "crowd_bins": 0,
+        "crowd_hit": 0,
+        "non_crowd_spans": 0,
+        "non_crowd_span_hit": 0,
+        "absent_spans": 27,
+        "absent_span_alarm": 4,
+        "crowd_spans": 0,
+        "absent_spans_guard25_eligible": 26,
+        "absent_span_alarm_guard25": 4,
+        "absent_spans_guard25_empty": 1
+       },
+       "point": {
+        "precision": 0.0,
+        "recall": NaN,
+        "f1": 0.0,
+        "false_alarm_bin_rate": 0.05577956989247312,
+        "crowd_bin_recall": NaN,
+        "non_crowd_span_touch_recall": NaN,
+        "absent_span_alarm_rate": 0.14814814814814814,
+        "absent_span_alarm_rate_guard25": 0.14814814814814814,
+        "absent_span_interior_alarm_rate_guard25": 0.15384615384615385,
+        "no_present_false_positive_fraction": 0.05577956989247312
+       },
+       "positive_shots": 0,
+       "descriptive_only": false,
+       "endpoint_shots": {
+        "precision": 0,
+        "recall": 0,
+        "f1": 0,
+        "false_alarm_bin_rate": 18,
+        "crowd_bin_recall": 0,
+        "non_crowd_span_touch_recall": 0,
+        "absent_span_alarm_rate": 18,
+        "absent_span_alarm_rate_guard25": 18,
+        "absent_span_interior_alarm_rate_guard25": 18
+       },
+       "interval_eligible": {
+        "precision": false,
+        "recall": false,
+        "f1": false,
+        "false_alarm_bin_rate": true,
+        "crowd_bin_recall": false,
+        "non_crowd_span_touch_recall": false,
+        "absent_span_alarm_rate": true,
+        "absent_span_alarm_rate_guard25": true,
+        "absent_span_interior_alarm_rate_guard25": true
+       },
+       "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+       "ci95": {
+        "precision": null,
+        "recall": null,
+        "f1": null,
+        "false_alarm_bin_rate": [
+         0.0,
+         0.14678300516871962
+        ],
+        "crowd_bin_recall": null,
+        "non_crowd_span_touch_recall": null,
+        "absent_span_alarm_rate": [
+         0.0,
+         0.3333333333333333
+        ],
+        "absent_span_alarm_rate_guard25": [
+         0.0,
+         0.3333333333333333
+        ],
+        "absent_span_interior_alarm_rate_guard25": [
+         0.0,
+         0.3448275862068966
+        ],
+        "no_present_false_positive_fraction": [
+         0.0,
+         0.14678300516871962
+        ]
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 879,
+         "undefined": 121
+        },
+        "recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "f1": {
+         "valid": 879,
+         "undefined": 121
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "no_present_false_positive_fraction": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
+       "replicates": 1000
+      },
+      "elm-elmo": {
+       "shots": 18,
+       "counts": {
+        "tp": 0,
+        "fp": 67,
+        "fn": 0,
+        "tn": 1421,
+        "crowd_bins": 0,
+        "crowd_hit": 0,
+        "non_crowd_spans": 0,
+        "non_crowd_span_hit": 0,
+        "absent_spans": 27,
+        "absent_span_alarm": 13,
+        "crowd_spans": 0,
+        "absent_spans_guard25_eligible": 26,
+        "absent_span_alarm_guard25": 10,
+        "absent_spans_guard25_empty": 1
+       },
+       "point": {
+        "precision": 0.0,
+        "recall": NaN,
+        "f1": 0.0,
+        "false_alarm_bin_rate": 0.04502688172043011,
+        "crowd_bin_recall": NaN,
+        "non_crowd_span_touch_recall": NaN,
+        "absent_span_alarm_rate": 0.48148148148148145,
+        "absent_span_alarm_rate_guard25": 0.37037037037037035,
+        "absent_span_interior_alarm_rate_guard25": 0.38461538461538464,
+        "auroc": NaN,
+        "auprc": NaN,
+        "prevalence": 0.0,
+        "no_present_false_positive_fraction": 0.04502688172043011
+       },
+       "positive_shots": 0,
+       "descriptive_only": false,
+       "endpoint_shots": {
+        "precision": 0,
+        "recall": 0,
+        "f1": 0,
+        "false_alarm_bin_rate": 18,
+        "crowd_bin_recall": 0,
+        "non_crowd_span_touch_recall": 0,
+        "absent_span_alarm_rate": 18,
+        "absent_span_alarm_rate_guard25": 18,
+        "absent_span_interior_alarm_rate_guard25": 18,
+        "auroc": 0,
+        "auprc": 0
+       },
+       "interval_eligible": {
+        "precision": false,
+        "recall": false,
+        "f1": false,
+        "false_alarm_bin_rate": true,
+        "crowd_bin_recall": false,
+        "non_crowd_span_touch_recall": false,
+        "absent_span_alarm_rate": true,
+        "absent_span_alarm_rate_guard25": true,
+        "absent_span_interior_alarm_rate_guard25": true,
+        "auroc": false,
+        "auprc": false
+       },
+       "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+       "ci95": {
+        "precision": null,
+        "recall": null,
+        "f1": null,
+        "false_alarm_bin_rate": [
+         0.011617010757919525,
+         0.1026492201093711
+        ],
+        "crowd_bin_recall": null,
+        "non_crowd_span_touch_recall": null,
+        "absent_span_alarm_rate": [
+         0.31995454545454544,
+         0.6800454545454545
+        ],
+        "absent_span_alarm_rate_guard25": [
+         0.22723607038123167,
+         0.5384615384615384
+        ],
+        "absent_span_interior_alarm_rate_guard25": [
+         0.24,
+         0.5416666666666666
+        ],
+        "auroc": null,
+        "auprc": null,
+        "no_present_false_positive_fraction": [
+         0.011617010757919525,
+         0.1026492201093711
+        ]
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "auprc": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "no_present_false_positive_fraction": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
+       "replicates": 1000
+      }
+     }
+    }
+   },
+   "elmo_counts_match_published": true,
+   "non_crowd_bin_audit": {
+    "scored_bins": 88,
+    "spans_with_scored_bins": 32,
+    "span_starts_inside_scored_bins": 2
+   }
+  },
+  "all119": {
+   "shots": [
+    185857,
+    185866,
+    185945,
+    185961,
+    186013,
+    186093,
+    186427,
+    186569,
+    186636,
+    186945,
+    187035,
+    187076,
+    187105,
+    187196,
+    187328,
+    189004,
+    189044,
+    189061,
+    189272,
+    189324,
+    189559,
+    189688,
+    189741,
+    189885,
+    190094,
+    190177,
+    190218,
+    190300,
+    190335,
+    190637,
+    190643,
+    190695,
+    190790,
+    190991,
+    191326,
+    191382,
+    191470,
+    191677,
+    192003,
+    192010,
+    192015,
+    192148,
+    192226,
+    192229,
+    192232,
+    192425,
+    192432,
+    192721,
+    192732,
+    192751,
+    192914,
+    193008,
+    193022,
+    193075,
+    193276,
+    194155,
+    194160,
+    194445,
+    194600,
+    194608,
+    195016,
+    195024,
+    195066,
+    195102,
+    195103,
+    195111,
+    195186,
+    195263,
+    195279,
+    195646,
+    195786,
+    195959,
+    196332,
+    196405,
+    196541,
+    198806,
+    198899,
+    198971,
+    199087,
+    199789,
+    199790,
+    199909,
+    199921,
+    200127,
+    200198,
+    200320,
+    200385,
+    200427,
+    200636,
+    200917,
+    200954,
+    200990,
+    201270,
+    201395,
+    201447,
+    201494,
+    201707,
+    201973,
+    201978,
+    203012,
+    203041,
+    203132,
+    203187,
+    203470,
+    203521,
+    203576,
+    203629,
+    203719,
+    203764,
+    203778,
+    203941,
+    203959,
+    204233,
+    204240,
+    204243,
+    204256,
+    204530,
+    204560,
+    204937
+   ],
+   "n_shots": 119,
+   "bins": 12409,
+   "methods": {
+    "elm-ours": {
+     "shots": 119,
+     "counts": {
+      "tp": 3929,
+      "fp": 873,
+      "fn": 735,
+      "tn": 6872,
+      "crowd_bins": 4539,
+      "crowd_hit": 3864,
+      "non_crowd_spans": 120,
+      "non_crowd_span_hit": 82,
+      "absent_spans": 342,
+      "absent_span_alarm": 204,
+      "crowd_spans": 86,
+      "absent_spans_guard25_eligible": 313,
+      "absent_span_alarm_guard25": 146,
+      "absent_spans_guard25_empty": 29
+     },
+     "point": {
+      "precision": 0.8182007496876301,
+      "recall": 0.842409948542024,
+      "f1": 0.8301288823156561,
+      "false_alarm_bin_rate": 0.11271788250484184,
+      "crowd_bin_recall": 0.8512888301387971,
+      "non_crowd_span_touch_recall": 0.6833333333333333,
+      "absent_span_alarm_rate": 0.5964912280701754,
+      "absent_span_alarm_rate_guard25": 0.4269005847953216,
+      "absent_span_interior_alarm_rate_guard25": 0.46645367412140576,
+      "auroc": 0.9411310567211514,
+      "auprc": 0.8770972997900133,
+      "prevalence": 0.3758562333789991
+     },
+     "positive_shots": 86,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "precision": 86,
+      "recall": 86,
+      "f1": 86,
+      "false_alarm_bin_rate": 118,
+      "crowd_bin_recall": 76,
+      "non_crowd_span_touch_recall": 33,
+      "absent_span_alarm_rate": 119,
+      "absent_span_alarm_rate_guard25": 119,
+      "absent_span_interior_alarm_rate_guard25": 118,
+      "auroc": 86,
+      "auprc": 86
+     },
+     "interval_eligible": {
+      "precision": true,
+      "recall": true,
+      "f1": true,
+      "false_alarm_bin_rate": true,
+      "crowd_bin_recall": true,
+      "non_crowd_span_touch_recall": true,
+      "absent_span_alarm_rate": true,
+      "absent_span_alarm_rate_guard25": true,
+      "absent_span_interior_alarm_rate_guard25": true,
+      "auroc": true,
+      "auprc": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": {
+      "precision": [
+       0.7495159608852175,
+       0.8771511125786182
+      ],
+      "recall": [
+       0.7804735180057296,
+       0.8949298872565407
+      ],
+      "f1": [
+       0.7778083334360725,
+       0.87137111165181
+      ],
+      "false_alarm_bin_rate": [
+       0.0748831989780186,
+       0.15179345482547688
+      ],
+      "crowd_bin_recall": [
+       0.7886745018405341,
+       0.902639143546046
+      ],
+      "non_crowd_span_touch_recall": [
+       0.3787776412776413,
+       0.8343161574021873
+      ],
+      "absent_span_alarm_rate": [
+       0.477800131728639,
+       0.6889661323515798
+      ],
+      "absent_span_alarm_rate_guard25": [
+       0.34335911487236404,
+       0.49511479712849055
+      ],
+      "absent_span_interior_alarm_rate_guard25": [
+       0.3657673017247601,
+       0.5509028382862757
+      ],
+      "auroc": [
+       0.9059641156290614,
+       0.9670334677878331
+      ],
+      "auprc": [
+       0.7742874201622371,
+       0.9492208894338952
+      ]
+     },
+     "bootstrap_draw_counts": {
+      "precision": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "f1": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "false_alarm_bin_rate": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "crowd_bin_recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "non_crowd_span_touch_recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_alarm_rate": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_alarm_rate_guard25": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_interior_alarm_rate_guard25": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "auroc": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "auprc": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     },
+     "replicates": 1000,
+     "display_name": "elm-ours",
+     "high_recall": false
+    },
+    "elm-clock": {
+     "shots": 119,
+     "counts": {
+      "tp": 3139,
+      "fp": 486,
+      "fn": 1525,
+      "tn": 7259,
+      "crowd_bins": 4539,
+      "crowd_hit": 3086,
+      "non_crowd_spans": 120,
+      "non_crowd_span_hit": 28,
+      "absent_spans": 342,
+      "absent_span_alarm": 36,
+      "crowd_spans": 86,
+      "absent_spans_guard25_eligible": 313,
+      "absent_span_alarm_guard25": 33,
+      "absent_spans_guard25_empty": 29
+     },
+     "point": {
+      "precision": 0.8659310344827587,
+      "recall": 0.6730274442538593,
+      "f1": 0.7573893111352394,
+      "false_alarm_bin_rate": 0.06275016139444803,
+      "crowd_bin_recall": 0.6798854373209958,
+      "non_crowd_span_touch_recall": 0.23333333333333334,
+      "absent_span_alarm_rate": 0.10526315789473684,
+      "absent_span_alarm_rate_guard25": 0.09649122807017543,
+      "absent_span_interior_alarm_rate_guard25": 0.10543130990415335
+     },
+     "positive_shots": 86,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "precision": 86,
+      "recall": 86,
+      "f1": 86,
+      "false_alarm_bin_rate": 118,
+      "crowd_bin_recall": 76,
+      "non_crowd_span_touch_recall": 33,
+      "absent_span_alarm_rate": 119,
+      "absent_span_alarm_rate_guard25": 119,
+      "absent_span_interior_alarm_rate_guard25": 118
+     },
+     "interval_eligible": {
+      "precision": true,
+      "recall": true,
+      "f1": true,
+      "false_alarm_bin_rate": true,
+      "crowd_bin_recall": true,
+      "non_crowd_span_touch_recall": true,
+      "absent_span_alarm_rate": true,
+      "absent_span_alarm_rate_guard25": true,
+      "absent_span_interior_alarm_rate_guard25": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": {
+      "precision": [
+       0.7881797667757062,
+       0.9297161094224924
+      ],
+      "recall": [
+       0.5747416798065339,
+       0.7787257647841497
+      ],
+      "f1": [
+       0.6802863478641,
+       0.8268300529629479
+      ],
+      "false_alarm_bin_rate": [
+       0.032321406955395544,
+       0.10047542599716909
+      ],
+      "crowd_bin_recall": [
+       0.5806443975315209,
+       0.7886305714510763
+      ],
+      "non_crowd_span_touch_recall": [
+       0.12159526547824422,
+       0.5206024283935242
+      ],
+      "absent_span_alarm_rate": [
+       0.06267027147142698,
+       0.16775985663082438
+      ],
+      "absent_span_alarm_rate_guard25": [
+       0.05625639386189258,
+       0.15412733810462262
+      ],
+      "absent_span_interior_alarm_rate_guard25": [
+       0.06401952516865594,
+       0.16129846855653307
+      ]
+     },
+     "bootstrap_draw_counts": {
+      "precision": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "f1": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "false_alarm_bin_rate": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "crowd_bin_recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "non_crowd_span_touch_recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_alarm_rate": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_alarm_rate_guard25": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_interior_alarm_rate_guard25": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     },
+     "replicates": 1000,
+     "display_name": "elm-clock",
+     "high_recall": false
+    },
+    "always present": {
+     "shots": 119,
+     "counts": {
+      "tp": 4664,
+      "fp": 7745,
+      "fn": 0,
+      "tn": 0,
+      "crowd_bins": 4539,
+      "crowd_hit": 4539,
+      "non_crowd_spans": 120,
+      "non_crowd_span_hit": 120,
+      "absent_spans": 342,
+      "absent_span_alarm": 342,
+      "crowd_spans": 86,
+      "absent_spans_guard25_eligible": 313,
+      "absent_span_alarm_guard25": 313,
+      "absent_spans_guard25_empty": 29
+     },
+     "point": {
+      "precision": 0.3758562333789991,
+      "recall": 1.0,
+      "f1": 0.5463597493117789,
+      "false_alarm_bin_rate": 1.0,
+      "crowd_bin_recall": 1.0,
+      "non_crowd_span_touch_recall": 1.0,
+      "absent_span_alarm_rate": 1.0,
+      "absent_span_alarm_rate_guard25": 0.9152046783625731,
+      "absent_span_interior_alarm_rate_guard25": 1.0,
+      "auroc": 0.5,
+      "auprc": 0.3758562333789991,
+      "prevalence": 0.3758562333789991
+     },
+     "positive_shots": 86,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "precision": 86,
+      "recall": 86,
+      "f1": 86,
+      "false_alarm_bin_rate": 118,
+      "crowd_bin_recall": 76,
+      "non_crowd_span_touch_recall": 33,
+      "absent_span_alarm_rate": 119,
+      "absent_span_alarm_rate_guard25": 119,
+      "absent_span_interior_alarm_rate_guard25": 118,
+      "auroc": 86,
+      "auprc": 86
+     },
+     "interval_eligible": {
+      "precision": true,
+      "recall": true,
+      "f1": true,
+      "false_alarm_bin_rate": true,
+      "crowd_bin_recall": true,
+      "non_crowd_span_touch_recall": true,
+      "absent_span_alarm_rate": true,
+      "absent_span_alarm_rate_guard25": true,
+      "absent_span_interior_alarm_rate_guard25": true,
+      "auroc": true,
+      "auprc": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": {
+      "precision": [
+       0.3221066083680579,
+       0.42966989317156895
+      ],
+      "recall": [
+       1.0,
+       1.0
+      ],
+      "f1": [
+       0.4872626630767489,
+       0.6010756621634965
+      ],
+      "false_alarm_bin_rate": [
+       1.0,
+       1.0
+      ],
+      "crowd_bin_recall": [
+       1.0,
+       1.0
+      ],
+      "non_crowd_span_touch_recall": [
+       1.0,
+       1.0
+      ],
+      "absent_span_alarm_rate": [
+       1.0,
+       1.0
+      ],
+      "absent_span_alarm_rate_guard25": [
+       0.8450925901112154,
+       0.9763543322734499
+      ],
+      "absent_span_interior_alarm_rate_guard25": [
+       1.0,
+       1.0
+      ],
+      "auroc": [
+       0.5,
+       0.5
+      ],
+      "auprc": [
+       0.3221066083680579,
+       0.42966989317156895
+      ]
+     },
+     "bootstrap_draw_counts": {
+      "precision": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "f1": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "false_alarm_bin_rate": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "crowd_bin_recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "non_crowd_span_touch_recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_alarm_rate": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_alarm_rate_guard25": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_interior_alarm_rate_guard25": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "auroc": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "auprc": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     },
+     "replicates": 1000,
+     "display_name": "Always-present rule",
+     "high_recall": true
+    }
+   },
+   "paired": {
+    "elm-ours - elm-clock: f1": {
+     "value": 0.07273957118041663,
+     "replicates": 1000,
+     "positive_shots": 86,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "f1": 86
+     },
+     "interval_eligible": {
+      "f1": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": [
+      -0.003370729716784301,
+      0.15139108898917794
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "elm-ours - elm-clock: precision": {
+     "value": -0.04773028479512853,
+     "replicates": 1000,
+     "positive_shots": 86,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "precision": 86
+     },
+     "interval_eligible": {
+      "precision": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": [
+      -0.11992278512973138,
+      0.02481009575043852
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "elm-ours - elm-clock: recall": {
+     "value": 0.1693825042881647,
+     "replicates": 1000,
+     "positive_shots": 86,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "recall": 86
+     },
+     "interval_eligible": {
+      "recall": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": [
+      0.05398490859685413,
+      0.2820844397884729
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "elm-ours - elm-clock: false_alarm_bin_rate": {
+     "value": 0.04996772111039381,
+     "replicates": 1000,
+     "positive_shots": 86,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "false_alarm_bin_rate": 118
+     },
+     "interval_eligible": {
+      "false_alarm_bin_rate": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": [
+      0.0036423996226150664,
+      0.09425468059799981
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "elm-ours - elm-clock: crowd_bin_recall": {
+     "value": 0.17140339281780126,
+     "replicates": 1000,
+     "positive_shots": 86,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "crowd_bin_recall": 76
+     },
+     "interval_eligible": {
+      "crowd_bin_recall": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": [
+      0.05126318705301676,
+      0.28640467160779093
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "elm-ours - elm-clock: non_crowd_span_touch_recall": {
+     "value": 0.45,
+     "replicates": 1000,
+     "positive_shots": 86,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "non_crowd_span_touch_recall": 33
+     },
+     "interval_eligible": {
+      "non_crowd_span_touch_recall": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": [
+      -0.08041935483870967,
+      0.6894353518821603
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "elm-ours - elm-clock: absent_span_alarm_rate": {
+     "value": 0.49122807017543857,
+     "replicates": 1000,
+     "positive_shots": 86,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "absent_span_alarm_rate": 119
+     },
+     "interval_eligible": {
+      "absent_span_alarm_rate": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": [
+      0.3447135955831608,
+      0.6039829939893983
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "elm-ours - elm-clock: absent_span_alarm_rate_guard25": {
+     "value": 0.33040935672514615,
+     "replicates": 1000,
+     "positive_shots": 86,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "absent_span_alarm_rate_guard25": 119
+     },
+     "interval_eligible": {
+      "absent_span_alarm_rate_guard25": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": [
+      0.22073463268365814,
+      0.41441819971231736
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    }
+   },
+   "fold_auroc_sensitivity": {
+    "per_fold": [
+     {
+      "fold": 0,
+      "shots": [
+       187105,
+       187328,
+       189272,
+       190637,
+       190643,
+       192003,
+       192226,
+       192232,
+       194160,
+       195066,
+       195263,
+       195279,
+       195646,
+       196332,
+       198899,
+       199790,
+       199921,
+       200127,
+       200198,
+       200636,
+       203041,
+       203629,
+       204240,
+       204560
+      ],
+      "auroc": 0.9656224436087841
+     },
+     {
+      "fold": 1,
+      "shots": [
+       185857,
+       185945,
+       186093,
+       186945,
+       187076,
+       189061,
+       189324,
+       189559,
+       189741,
+       190218,
+       194155,
+       194608,
+       195111,
+       196541,
+       200320,
+       200385,
+       200954,
+       201395,
+       201447,
+       201973,
+       203187,
+       203778,
+       204233,
+       204256
+      ],
+      "auroc": 0.9881411621498066
+     },
+     {
+      "fold": 2,
+      "shots": [
+       185866,
+       190094,
+       190335,
+       190695,
+       191470,
+       192015,
+       192148,
+       192229,
+       192914,
+       193022,
+       193075,
+       195016,
+       195102,
+       195786,
+       199789,
+       200917,
+       200990,
+       201270,
+       201707,
+       203764,
+       203941,
+       203959,
+       204243,
+       204530
+      ],
+      "auroc": 0.9288167192996606
+     },
+     {
+      "fold": 3,
+      "shots": [
+       185961,
+       186569,
+       186636,
+       187035,
+       187196,
+       189004,
+       189885,
+       190177,
+       190300,
+       190991,
+       191382,
+       191677,
+       192010,
+       192425,
+       192721,
+       192732,
+       192751,
+       193276,
+       195103,
+       195186,
+       196405,
+       201494,
+       203719,
+       204937
+      ],
+      "auroc": 0.9077489759994584
+     },
+     {
+      "fold": 4,
+      "shots": [
+       186013,
+       186427,
+       189044,
+       189688,
+       190790,
+       191326,
+       192432,
+       193008,
+       194445,
+       194600,
+       195024,
+       195959,
+       198806,
+       198971,
+       199087,
+       199909,
+       200427,
+       201978,
+       203012,
+       203132,
+       203470,
+       203521,
+       203576
+      ],
+      "auroc": 0.9765999499111729
+     }
+    ],
+    "mean": 0.9533858501937764,
+    "definition": "Unweighted mean of within-fold AUROCs; saved scores, unchanged thresholds, no fitting or selection."
+   },
+   "per_kind": {
+    "elm-ours": {
+     "crowd_bin_recall": {
+      "point": 0.8512888301387971,
+      "numerator": 3864,
+      "denominator": 4539,
+      "positive_shots": 76,
+      "descriptive_only": false,
+      "endpoint_shots": {
+       "crowd_bin_recall": 76
+      },
+      "interval_eligible": {
+       "crowd_bin_recall": true
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": [
+       0.7886745018405341,
+       0.902639143546046
+      ],
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     },
+     "non_crowd_bin_recall": {
+      "point": 0.52,
+      "numerator": 65,
+      "denominator": 125,
+      "positive_shots": 25,
+      "descriptive_only": false,
+      "endpoint_shots": {
+       "non_crowd_bin_recall": 25
+      },
+      "interval_eligible": {
+       "non_crowd_bin_recall": true
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": [
+       0.32114839486925095,
+       0.7277850877192982
+      ],
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     },
+     "non_crowd_span_touch_recall": {
+      "point": 0.6833333333333333,
+      "numerator": 82,
+      "denominator": 120,
+      "positive_shots": 33,
+      "descriptive_only": false,
+      "endpoint_shots": {
+       "non_crowd_span_touch_recall": 33
+      },
+      "interval_eligible": {
+       "non_crowd_span_touch_recall": true
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": [
+       0.3787776412776413,
+       0.8343161574021873
+      ],
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     }
+    },
+    "elm-clock": {
+     "crowd_bin_recall": {
+      "point": 0.6798854373209958,
+      "numerator": 3086,
+      "denominator": 4539,
+      "positive_shots": 76,
+      "descriptive_only": false,
+      "endpoint_shots": {
+       "crowd_bin_recall": 76
+      },
+      "interval_eligible": {
+       "crowd_bin_recall": true
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": [
+       0.5806443975315209,
+       0.7886305714510763
+      ],
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     },
+     "non_crowd_bin_recall": {
+      "point": 0.424,
+      "numerator": 53,
+      "denominator": 125,
+      "positive_shots": 25,
+      "descriptive_only": false,
+      "endpoint_shots": {
+       "non_crowd_bin_recall": 25
+      },
+      "interval_eligible": {
+       "non_crowd_bin_recall": true
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": [
+       0.2641261171797418,
+       0.6271321673278039
+      ],
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     },
+     "non_crowd_span_touch_recall": {
+      "point": 0.23333333333333334,
+      "numerator": 28,
+      "denominator": 120,
+      "positive_shots": 33,
+      "descriptive_only": false,
+      "endpoint_shots": {
+       "non_crowd_span_touch_recall": 33
+      },
+      "interval_eligible": {
+       "non_crowd_span_touch_recall": true
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": [
+       0.12159526547824422,
+       0.5206024283935242
+      ],
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     }
+    }
+   },
+   "annotation_modes": {
+    "crowd_only": {
+     "shots": [
+      185857,
+      185945,
+      185961,
+      186013,
+      186427,
+      186569,
+      186945,
+      187035,
+      187076,
+      189004,
+      189061,
+      189272,
+      189559,
+      189741,
+      190300,
+      190335,
+      191470,
+      191677,
+      192010,
+      192015,
+      192232,
+      192425,
+      192732,
+      193022,
+      195016,
+      195024,
+      195066,
+      195102,
+      195111,
+      195279,
+      195646,
+      196332,
+      196405,
+      198806,
+      198899,
+      198971,
+      199087,
+      200127,
+      200320,
+      200636,
+      200917,
+      200990,
+      201447,
+      201978,
+      203012,
+      203041,
+      203132,
+      203470,
+      203521,
+      203629,
+      203719,
+      203764,
+      203778,
+      203959,
+      204530,
+      204937
+     ],
+     "n_shots": 56,
+     "bins": 6434,
+     "applicable_metrics": [
+      "precision",
+      "recall",
+      "f1",
+      "auroc",
+      "auprc"
+     ],
+     "methods": {
+      "elm-ours": {
+       "shots": 56,
+       "counts": {
+        "tp": 3297,
+        "fp": 424,
+        "fn": 350,
+        "tn": 2363,
+        "crowd_bins": 3647,
+        "crowd_hit": 3297,
+        "non_crowd_spans": 0,
+        "non_crowd_span_hit": 0,
+        "absent_spans": 117,
+        "absent_span_alarm": 64,
+        "crowd_spans": 61,
+        "absent_spans_guard25_eligible": 115,
+        "absent_span_alarm_guard25": 44,
+        "absent_spans_guard25_empty": 2
+       },
+       "point": {
+        "precision": 0.8860521365224402,
+        "recall": 0.9040307101727447,
+        "f1": 0.8949511400651465,
+        "false_alarm_bin_rate": 0.15213491209185503,
+        "crowd_bin_recall": 0.9040307101727447,
+        "non_crowd_span_touch_recall": NaN,
+        "absent_span_alarm_rate": 0.5470085470085471,
+        "absent_span_alarm_rate_guard25": 0.37606837606837606,
+        "absent_span_interior_alarm_rate_guard25": 0.3826086956521739,
+        "auroc": 0.9387331345373447,
+        "auprc": 0.920164332448996,
+        "prevalence": 0.5668324525955859
+       },
+       "positive_shots": 56,
+       "descriptive_only": false,
+       "endpoint_shots": {
+        "precision": 56,
+        "recall": 56,
+        "f1": 56,
+        "false_alarm_bin_rate": 56,
+        "crowd_bin_recall": 56,
+        "non_crowd_span_touch_recall": 0,
+        "absent_span_alarm_rate": 56,
+        "absent_span_alarm_rate_guard25": 56,
+        "absent_span_interior_alarm_rate_guard25": 56,
+        "auroc": 56,
+        "auprc": 56
+       },
+       "interval_eligible": {
+        "precision": true,
+        "recall": true,
+        "f1": true,
+        "false_alarm_bin_rate": true,
+        "crowd_bin_recall": true,
+        "non_crowd_span_touch_recall": false,
+        "absent_span_alarm_rate": true,
+        "absent_span_alarm_rate_guard25": true,
+        "absent_span_interior_alarm_rate_guard25": true,
+        "auroc": true,
+        "auprc": true
+       },
+       "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+       "ci95": {
+        "precision": [
+         0.8189222156553717,
+         0.9436447042783143
+        ],
+        "recall": [
+         0.8397655381096845,
+         0.9512229917815482
+        ],
+        "f1": [
+         0.8477784588375316,
+         0.9305897023193478
+        ],
+        "false_alarm_bin_rate": [
+         0.08074215756453446,
+         0.22529681985332356
+        ],
+        "crowd_bin_recall": [
+         0.8397655381096845,
+         0.9512229917815482
+        ],
+        "non_crowd_span_touch_recall": null,
+        "absent_span_alarm_rate": [
+         0.4322033898305085,
+         0.6579003598740442
+        ],
+        "absent_span_alarm_rate_guard25": [
+         0.2792538190364277,
+         0.47368421052631576
+        ],
+        "absent_span_interior_alarm_rate_guard25": [
+         0.28205128205128205,
+         0.4789915966386555
+        ],
+        "auroc": [
+         0.8866480020703026,
+         0.9788042742126789
+        ],
+        "auprc": [
+         0.820061170017938,
+         0.9845864635009597
+        ]
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auprc": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
+       "replicates": 1000
+      },
+      "elm-clock": {
+       "shots": 56,
+       "counts": {
+        "tp": 2560,
+        "fp": 235,
+        "fn": 1087,
+        "tn": 2552,
+        "crowd_bins": 3647,
+        "crowd_hit": 2560,
+        "non_crowd_spans": 0,
+        "non_crowd_span_hit": 0,
+        "absent_spans": 117,
+        "absent_span_alarm": 17,
+        "crowd_spans": 61,
+        "absent_spans_guard25_eligible": 115,
+        "absent_span_alarm_guard25": 17,
+        "absent_spans_guard25_empty": 2
+       },
+       "point": {
+        "precision": 0.9159212880143113,
+        "recall": 0.7019468055936386,
+        "f1": 0.7947842285004657,
+        "false_alarm_bin_rate": 0.0843200574094008,
+        "crowd_bin_recall": 0.7019468055936386,
+        "non_crowd_span_touch_recall": NaN,
+        "absent_span_alarm_rate": 0.1452991452991453,
+        "absent_span_alarm_rate_guard25": 0.1452991452991453,
+        "absent_span_interior_alarm_rate_guard25": 0.14782608695652175
+       },
+       "positive_shots": 56,
+       "descriptive_only": false,
+       "endpoint_shots": {
+        "precision": 56,
+        "recall": 56,
+        "f1": 56,
+        "false_alarm_bin_rate": 56,
+        "crowd_bin_recall": 56,
+        "non_crowd_span_touch_recall": 0,
+        "absent_span_alarm_rate": 56,
+        "absent_span_alarm_rate_guard25": 56,
+        "absent_span_interior_alarm_rate_guard25": 56
+       },
+       "interval_eligible": {
+        "precision": true,
+        "recall": true,
+        "f1": true,
+        "false_alarm_bin_rate": true,
+        "crowd_bin_recall": true,
+        "non_crowd_span_touch_recall": false,
+        "absent_span_alarm_rate": true,
+        "absent_span_alarm_rate_guard25": true,
+        "absent_span_interior_alarm_rate_guard25": true
+       },
+       "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+       "ci95": {
+        "precision": [
+         0.8483066928925462,
+         0.9740378652409251
+        ],
+        "recall": [
+         0.5759847291532484,
+         0.8091157055789967
+        ],
+        "f1": [
+         0.7037565901476532,
+         0.8629763988114458
+        ],
+        "false_alarm_bin_rate": [
+         0.026321424443601055,
+         0.15529351326984756
+        ],
+        "crowd_bin_recall": [
+         0.5759847291532484,
+         0.8091157055789967
+        ],
+        "non_crowd_span_touch_recall": null,
+        "absent_span_alarm_rate": [
+         0.06086956521739131,
+         0.23394524617996595
+        ],
+        "absent_span_alarm_rate_guard25": [
+         0.06086956521739131,
+         0.23394524617996595
+        ],
+        "absent_span_interior_alarm_rate_guard25": [
+         0.06140350877192982,
+         0.23942577030812315
+        ]
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
+       "replicates": 1000
+      }
+     }
+    },
+    "non_crowd_only": {
+     "shots": [
+      189885,
+      190637,
+      190695,
+      190790,
+      192432,
+      192721,
+      193075,
+      194608,
+      199790,
+      200385,
+      201270,
+      203187,
+      204560
+     ],
+     "n_shots": 13,
+     "bins": 1003,
+     "applicable_metrics": [
+      "precision",
+      "recall",
+      "f1",
+      "auroc",
+      "auprc"
+     ],
+     "methods": {
+      "elm-ours": {
+       "shots": 13,
+       "counts": {
+        "tp": 37,
+        "fp": 87,
+        "fn": 16,
+        "tn": 863,
+        "crowd_bins": 0,
+        "crowd_hit": 0,
+        "non_crowd_spans": 77,
+        "non_crowd_span_hit": 59,
+        "absent_spans": 92,
+        "absent_span_alarm": 66,
+        "crowd_spans": 0,
+        "absent_spans_guard25_eligible": 73,
+        "absent_span_alarm_guard25": 41,
+        "absent_spans_guard25_empty": 19
+       },
+       "point": {
+        "precision": 0.29838709677419356,
+        "recall": 0.6981132075471698,
+        "f1": 0.4180790960451977,
+        "false_alarm_bin_rate": 0.09157894736842105,
+        "crowd_bin_recall": NaN,
+        "non_crowd_span_touch_recall": 0.7662337662337663,
+        "absent_span_alarm_rate": 0.717391304347826,
+        "absent_span_alarm_rate_guard25": 0.44565217391304346,
+        "absent_span_interior_alarm_rate_guard25": 0.5616438356164384,
+        "auroc": 0.9157497517378351,
+        "auprc": 0.266954157750611,
+        "prevalence": 0.05284147557328016
+       },
+       "positive_shots": 10,
+       "descriptive_only": false,
+       "endpoint_shots": {
+        "precision": 10,
+        "recall": 10,
+        "f1": 10,
+        "false_alarm_bin_rate": 13,
+        "crowd_bin_recall": 0,
+        "non_crowd_span_touch_recall": 13,
+        "absent_span_alarm_rate": 13,
+        "absent_span_alarm_rate_guard25": 13,
+        "absent_span_interior_alarm_rate_guard25": 13,
+        "auroc": 10,
+        "auprc": 10
+       },
+       "interval_eligible": {
+        "precision": true,
+        "recall": true,
+        "f1": true,
+        "false_alarm_bin_rate": true,
+        "crowd_bin_recall": false,
+        "non_crowd_span_touch_recall": true,
+        "absent_span_alarm_rate": true,
+        "absent_span_alarm_rate_guard25": true,
+        "absent_span_interior_alarm_rate_guard25": true,
+        "auroc": true,
+        "auprc": true
+       },
+       "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+       "ci95": {
+        "precision": [
+         0.1319878706199461,
+         0.548854079058032
+        ],
+        "recall": [
+         0.3955965909090909,
+         0.9125135869565217
+        ],
+        "f1": [
+         0.2086996336996337,
+         0.6268917042693509
+        ],
+        "false_alarm_bin_rate": [
+         0.030935127619362762,
+         0.1738300804132495
+        ],
+        "crowd_bin_recall": null,
+        "non_crowd_span_touch_recall": [
+         0.3103448275862069,
+         0.9136690647482014
+        ],
+        "absent_span_alarm_rate": [
+         0.3333333333333333,
+         0.8627576671694319
+        ],
+        "absent_span_alarm_rate_guard25": [
+         0.24477551020408164,
+         0.5484029095509171
+        ],
+        "absent_span_interior_alarm_rate_guard25": [
+         0.25580158337456704,
+         0.7681260064412238
+        ],
+        "auroc": [
+         0.8407575265912663,
+         0.9695574444796374
+        ],
+        "auprc": [
+         0.12202568483259267,
+         0.695391059628673
+        ]
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auprc": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
+       "replicates": 1000
+      },
+      "elm-clock": {
+       "shots": 13,
+       "counts": {
+        "tp": 32,
+        "fp": 53,
+        "fn": 21,
+        "tn": 897,
+        "crowd_bins": 0,
+        "crowd_hit": 0,
+        "non_crowd_spans": 77,
+        "non_crowd_span_hit": 13,
+        "absent_spans": 92,
+        "absent_span_alarm": 5,
+        "crowd_spans": 0,
+        "absent_spans_guard25_eligible": 73,
+        "absent_span_alarm_guard25": 4,
+        "absent_spans_guard25_empty": 19
+       },
+       "point": {
+        "precision": 0.3764705882352941,
+        "recall": 0.6037735849056604,
+        "f1": 0.463768115942029,
+        "false_alarm_bin_rate": 0.05578947368421053,
+        "crowd_bin_recall": NaN,
+        "non_crowd_span_touch_recall": 0.16883116883116883,
+        "absent_span_alarm_rate": 0.05434782608695652,
+        "absent_span_alarm_rate_guard25": 0.043478260869565216,
+        "absent_span_interior_alarm_rate_guard25": 0.0547945205479452
+       },
+       "positive_shots": 10,
+       "descriptive_only": false,
+       "endpoint_shots": {
+        "precision": 10,
+        "recall": 10,
+        "f1": 10,
+        "false_alarm_bin_rate": 13,
+        "crowd_bin_recall": 0,
+        "non_crowd_span_touch_recall": 13,
+        "absent_span_alarm_rate": 13,
+        "absent_span_alarm_rate_guard25": 13,
+        "absent_span_interior_alarm_rate_guard25": 13
+       },
+       "interval_eligible": {
+        "precision": true,
+        "recall": true,
+        "f1": true,
+        "false_alarm_bin_rate": true,
+        "crowd_bin_recall": false,
+        "non_crowd_span_touch_recall": true,
+        "absent_span_alarm_rate": true,
+        "absent_span_alarm_rate_guard25": true,
+        "absent_span_interior_alarm_rate_guard25": true
+       },
+       "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+       "ci95": {
+        "precision": [
+         0.1574074074074074,
+         1.0
+        ],
+        "recall": [
+         0.3599622641509434,
+         0.8077830188679245
+        ],
+        "f1": [
+         0.2361111111111111,
+         0.7474794675729256
+        ],
+        "false_alarm_bin_rate": [
+         0.0,
+         0.13636751473782188
+        ],
+        "crowd_bin_recall": null,
+        "non_crowd_span_touch_recall": [
+         0.0625,
+         0.6522157190635451
+        ],
+        "absent_span_alarm_rate": [
+         0.0,
+         0.20454545454545456
+        ],
+        "absent_span_alarm_rate_guard25": [
+         0.0,
+         0.15916769041769036
+        ],
+        "absent_span_interior_alarm_rate_guard25": [
+         0.0,
+         0.17073170731707318
+        ]
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
+       "replicates": 1000
+      }
+     }
+    },
+    "mixed": {
+     "shots": [
+      185866,
+      187196,
+      189044,
+      190094,
+      190177,
+      190643,
+      190991,
+      192226,
+      192914,
+      193008,
+      193276,
+      195263,
+      195959,
+      196541,
+      200198,
+      200427,
+      201395,
+      201973,
+      203941,
+      204256
+     ],
+     "n_shots": 20,
+     "bins": 2110,
+     "applicable_metrics": [
+      "precision",
+      "recall",
+      "f1",
+      "auroc",
+      "auprc"
+     ],
+     "methods": {
+      "elm-ours": {
+       "shots": 20,
+       "counts": {
+        "tp": 595,
+        "fp": 99,
+        "fn": 369,
+        "tn": 1047,
+        "crowd_bins": 892,
+        "crowd_hit": 567,
+        "non_crowd_spans": 43,
+        "non_crowd_span_hit": 23,
+        "absent_spans": 85,
+        "absent_span_alarm": 47,
+        "crowd_spans": 25,
+        "absent_spans_guard25_eligible": 79,
+        "absent_span_alarm_guard25": 35,
+        "absent_spans_guard25_empty": 6
+       },
+       "point": {
+        "precision": 0.8573487031700289,
+        "recall": 0.6172199170124482,
+        "f1": 0.7177322074788902,
+        "false_alarm_bin_rate": 0.08638743455497382,
+        "crowd_bin_recall": 0.6356502242152466,
+        "non_crowd_span_touch_recall": 0.5348837209302325,
+        "absent_span_alarm_rate": 0.5529411764705883,
+        "absent_span_alarm_rate_guard25": 0.4117647058823529,
+        "absent_span_interior_alarm_rate_guard25": 0.4430379746835443,
+        "auroc": 0.9172627323615244,
+        "auprc": 0.8945385625035545,
+        "prevalence": 0.45687203791469194
+       },
+       "positive_shots": 20,
+       "descriptive_only": false,
+       "endpoint_shots": {
+        "precision": 20,
+        "recall": 20,
+        "f1": 20,
+        "false_alarm_bin_rate": 20,
+        "crowd_bin_recall": 20,
+        "non_crowd_span_touch_recall": 20,
+        "absent_span_alarm_rate": 20,
+        "absent_span_alarm_rate_guard25": 20,
+        "absent_span_interior_alarm_rate_guard25": 20,
+        "auroc": 20,
+        "auprc": 20
+       },
+       "interval_eligible": {
+        "precision": true,
+        "recall": true,
+        "f1": true,
+        "false_alarm_bin_rate": true,
+        "crowd_bin_recall": true,
+        "non_crowd_span_touch_recall": true,
+        "absent_span_alarm_rate": true,
+        "absent_span_alarm_rate_guard25": true,
+        "absent_span_interior_alarm_rate_guard25": true,
+        "auroc": true,
+        "auprc": true
+       },
+       "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+       "ci95": {
+        "precision": [
+         0.7420903830884836,
+         0.9498102657742876
+        ],
+        "recall": [
+         0.49494685931888227,
+         0.7643340410474169
+        ],
+        "f1": [
+         0.6248902117962399,
+         0.8190174600768142
+        ],
+        "false_alarm_bin_rate": [
+         0.02884516944497493,
+         0.16758778008778008
+        ],
+        "crowd_bin_recall": [
+         0.5102883360228592,
+         0.7855770861087561
+        ],
+        "non_crowd_span_touch_recall": [
+         0.2682520325203252,
+         0.8049941927990708
+        ],
+        "absent_span_alarm_rate": [
+         0.3332386363636364,
+         0.7789542036910457
+        ],
+        "absent_span_alarm_rate_guard25": [
+         0.23168386491557225,
+         0.5972341954022988
+        ],
+        "absent_span_interior_alarm_rate_guard25": [
+         0.2417383820998279,
+         0.6586272247857613
+        ],
+        "auroc": [
+         0.8679938180551293,
+         0.9592814005112297
+        ],
+        "auprc": [
+         0.8211299828885181,
+         0.953107871906416
+        ]
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auprc": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
+       "replicates": 1000
+      },
+      "elm-clock": {
+       "shots": 20,
+       "counts": {
+        "tp": 547,
+        "fp": 49,
+        "fn": 417,
+        "tn": 1097,
+        "crowd_bins": 892,
+        "crowd_hit": 526,
+        "non_crowd_spans": 43,
+        "non_crowd_span_hit": 15,
+        "absent_spans": 85,
+        "absent_span_alarm": 6,
+        "crowd_spans": 25,
+        "absent_spans_guard25_eligible": 79,
+        "absent_span_alarm_guard25": 6,
+        "absent_spans_guard25_empty": 6
+       },
+       "point": {
+        "precision": 0.9177852348993288,
+        "recall": 0.5674273858921162,
+        "f1": 0.7012820512820512,
+        "false_alarm_bin_rate": 0.04275741710296684,
+        "crowd_bin_recall": 0.5896860986547086,
+        "non_crowd_span_touch_recall": 0.3488372093023256,
+        "absent_span_alarm_rate": 0.07058823529411765,
+        "absent_span_alarm_rate_guard25": 0.07058823529411765,
+        "absent_span_interior_alarm_rate_guard25": 0.0759493670886076
+       },
+       "positive_shots": 20,
+       "descriptive_only": false,
+       "endpoint_shots": {
+        "precision": 20,
+        "recall": 20,
+        "f1": 20,
+        "false_alarm_bin_rate": 20,
+        "crowd_bin_recall": 20,
+        "non_crowd_span_touch_recall": 20,
+        "absent_span_alarm_rate": 20,
+        "absent_span_alarm_rate_guard25": 20,
+        "absent_span_interior_alarm_rate_guard25": 20
+       },
+       "interval_eligible": {
+        "precision": true,
+        "recall": true,
+        "f1": true,
+        "false_alarm_bin_rate": true,
+        "crowd_bin_recall": true,
+        "non_crowd_span_touch_recall": true,
+        "absent_span_alarm_rate": true,
+        "absent_span_alarm_rate_guard25": true,
+        "absent_span_interior_alarm_rate_guard25": true
+       },
+       "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+       "ci95": {
+        "precision": [
+         0.7714100985221676,
+         0.997636073196842
+        ],
+        "recall": [
+         0.360416150990099,
+         0.7430001103978
+        ],
+        "f1": [
+         0.5160607852950544,
+         0.8259166351129623
+        ],
+        "false_alarm_bin_rate": [
+         0.0008360507246376811,
+         0.12829151323450727
+        ],
+        "crowd_bin_recall": [
+         0.3672955131771966,
+         0.7772508646779075
+        ],
+        "non_crowd_span_touch_recall": [
+         0.19289927404718693,
+         0.6060606060606061
+        ],
+        "absent_span_alarm_rate": [
+         0.01110805860805861,
+         0.15855044345898003
+        ],
+        "absent_span_alarm_rate_guard25": [
+         0.01110805860805861,
+         0.15855044345898003
+        ],
+        "absent_span_interior_alarm_rate_guard25": [
+         0.012044606999426277,
+         0.1733478260869565
+        ]
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
+       "replicates": 1000
+      }
+     }
+    },
+    "no_present": {
+     "shots": [
+      186093,
+      186636,
+      187105,
+      187328,
+      189324,
+      189688,
+      190218,
+      191326,
+      191382,
+      192003,
+      192148,
+      192229,
+      192751,
+      194155,
+      194160,
+      194445,
+      194600,
+      195103,
+      195186,
+      195786,
+      199789,
+      199909,
+      199921,
+      200954,
+      201494,
+      201707,
+      203576,
+      204233,
+      204240,
+      204243
+     ],
+     "n_shots": 30,
+     "bins": 2862,
+     "applicable_metrics": [
+      "no_present_false_positive_fraction"
+     ],
+     "methods": {
+      "elm-ours": {
+       "shots": 30,
+       "counts": {
+        "tp": 0,
+        "fp": 263,
+        "fn": 0,
+        "tn": 2599,
+        "crowd_bins": 0,
+        "crowd_hit": 0,
+        "non_crowd_spans": 0,
+        "non_crowd_span_hit": 0,
+        "absent_spans": 48,
+        "absent_span_alarm": 27,
+        "crowd_spans": 0,
+        "absent_spans_guard25_eligible": 46,
+        "absent_span_alarm_guard25": 26,
+        "absent_spans_guard25_empty": 2
+       },
+       "point": {
+        "precision": 0.0,
+        "recall": NaN,
+        "f1": 0.0,
+        "false_alarm_bin_rate": 0.09189378057302586,
+        "crowd_bin_recall": NaN,
+        "non_crowd_span_touch_recall": NaN,
+        "absent_span_alarm_rate": 0.5625,
+        "absent_span_alarm_rate_guard25": 0.5416666666666666,
+        "absent_span_interior_alarm_rate_guard25": 0.5652173913043478,
+        "auroc": NaN,
+        "auprc": NaN,
+        "prevalence": 0.0,
+        "no_present_false_positive_fraction": 0.09189378057302586
+       },
+       "positive_shots": 0,
+       "descriptive_only": false,
+       "endpoint_shots": {
+        "precision": 0,
+        "recall": 0,
+        "f1": 0,
+        "false_alarm_bin_rate": 29,
+        "crowd_bin_recall": 0,
+        "non_crowd_span_touch_recall": 0,
+        "absent_span_alarm_rate": 30,
+        "absent_span_alarm_rate_guard25": 30,
+        "absent_span_interior_alarm_rate_guard25": 29,
+        "auroc": 0,
+        "auprc": 0
+       },
+       "interval_eligible": {
+        "precision": false,
+        "recall": false,
+        "f1": false,
+        "false_alarm_bin_rate": true,
+        "crowd_bin_recall": false,
+        "non_crowd_span_touch_recall": false,
+        "absent_span_alarm_rate": true,
+        "absent_span_alarm_rate_guard25": true,
+        "absent_span_interior_alarm_rate_guard25": true,
+        "auroc": false,
+        "auprc": false
+       },
+       "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+       "ci95": {
+        "precision": null,
+        "recall": null,
+        "f1": null,
+        "false_alarm_bin_rate": [
+         0.03560192308440447,
+         0.16655840829943463
+        ],
+        "crowd_bin_recall": null,
+        "non_crowd_span_touch_recall": null,
+        "absent_span_alarm_rate": [
+         0.3783633633633634,
+         0.7241379310344828
+        ],
+        "absent_span_alarm_rate_guard25": [
+         0.3486689106487148,
+         0.7084821428571427
+        ],
+        "absent_span_interior_alarm_rate_guard25": [
+         0.358974358974359,
+         0.7291666666666666
+        ],
+        "auroc": null,
+        "auprc": null,
+        "no_present_false_positive_fraction": [
+         0.03560192308440447,
+         0.16655840829943463
+        ]
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "auprc": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "no_present_false_positive_fraction": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
+       "replicates": 1000
+      },
+      "elm-clock": {
+       "shots": 30,
+       "counts": {
+        "tp": 0,
+        "fp": 149,
+        "fn": 0,
+        "tn": 2713,
+        "crowd_bins": 0,
+        "crowd_hit": 0,
+        "non_crowd_spans": 0,
+        "non_crowd_span_hit": 0,
+        "absent_spans": 48,
+        "absent_span_alarm": 8,
+        "crowd_spans": 0,
+        "absent_spans_guard25_eligible": 46,
+        "absent_span_alarm_guard25": 6,
+        "absent_spans_guard25_empty": 2
+       },
+       "point": {
+        "precision": 0.0,
+        "recall": NaN,
+        "f1": 0.0,
+        "false_alarm_bin_rate": 0.052061495457721874,
+        "crowd_bin_recall": NaN,
+        "non_crowd_span_touch_recall": NaN,
+        "absent_span_alarm_rate": 0.16666666666666666,
+        "absent_span_alarm_rate_guard25": 0.125,
+        "absent_span_interior_alarm_rate_guard25": 0.13043478260869565,
+        "no_present_false_positive_fraction": 0.052061495457721874
+       },
+       "positive_shots": 0,
+       "descriptive_only": false,
+       "endpoint_shots": {
+        "precision": 0,
+        "recall": 0,
+        "f1": 0,
+        "false_alarm_bin_rate": 29,
+        "crowd_bin_recall": 0,
+        "non_crowd_span_touch_recall": 0,
+        "absent_span_alarm_rate": 30,
+        "absent_span_alarm_rate_guard25": 30,
+        "absent_span_interior_alarm_rate_guard25": 29
+       },
+       "interval_eligible": {
+        "precision": false,
+        "recall": false,
+        "f1": false,
+        "false_alarm_bin_rate": true,
+        "crowd_bin_recall": false,
+        "non_crowd_span_touch_recall": false,
+        "absent_span_alarm_rate": true,
+        "absent_span_alarm_rate_guard25": true,
+        "absent_span_interior_alarm_rate_guard25": true
+       },
+       "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+       "ci95": {
+        "precision": null,
+        "recall": null,
+        "f1": null,
+        "false_alarm_bin_rate": [
+         0.0007264604334524628,
+         0.11977042893800618
+        ],
+        "crowd_bin_recall": null,
+        "non_crowd_span_touch_recall": null,
+        "absent_span_alarm_rate": [
+         0.046511627906976744,
+         0.2916666666666667
+        ],
+        "absent_span_alarm_rate_guard25": [
+         0.022210144927536233,
+         0.24391598915989157
+        ],
+        "absent_span_interior_alarm_rate_guard25": [
+         0.023255813953488372,
+         0.25
+        ],
+        "no_present_false_positive_fraction": [
+         0.0007264604334524628,
+         0.11977042893800618
+        ]
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 988,
+         "undefined": 12
+        },
+        "recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "f1": {
+         "valid": 988,
+         "undefined": 12
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "no_present_false_positive_fraction": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
+       "replicates": 1000
+      }
+     }
+    }
+   },
+   "non_crowd_bin_audit": {
+    "scored_bins": 125,
+    "spans_with_scored_bins": 47,
+    "span_starts_inside_scored_bins": 2
+   }
+  }
+ },
+ "annotation_modes": {
+  "non_crowd_present_shots": 33,
+  "crowd_present_shots": 76,
+  "group_definition": "Disjoint groups use the complete reviewed annotation of each shot; metrics use only the panel's covered scored bins and spans.",
+  "ci_method": "95% percentile bootstrap of physical shots within each group, 1000 replicates, seed 20261003; the same draws are used across methods.",
+  "note": "Per-ELM annotations and whole ELMing-period crowds define different occupancy targets across shots; non-crowd starts are annotation boundaries without independently verified physical-onset truth."
+ }
+}

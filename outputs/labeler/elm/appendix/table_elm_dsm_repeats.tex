@@ -1,0 +1,18 @@
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{lccc}
+\toprule
+Fit & AUROC & AUPRC & F1 \\
+\midrule
+\multicolumn{4}{l}{elm-dsm-detect (60-input $1\times128$): 119 shots/11,653 bins} \\
+reported fit, raw selection & 0.845 & 0.748 & 0.742 \\
+post-warm-up repeats, mean (range) & 0.865 (0.857--0.870) & 0.740 (0.722--0.751) & 0.755 (0.749--0.763) \\
+\midrule
+\multicolumn{4}{l}{elm-dsm-native-detect (124-input [100,1000]): 37 shots/3,576 bins} \\
+reported fit, raw selection & 0.734 & 0.598 & 0.664 \\
+post-warm-up repeats, mean (range) & 0.715 (0.707--0.725) & 0.598 (0.595--0.600) & 0.626 (0.603--0.642) \\
+\bottomrule
+\end{tabular}\caption{DSM detection baselines retrained with post-warm-up checkpoint selection. Each repeat refits the detector with the same outer folds and recipe for three new seeds, choosing the epoch that ends the best three-epoch mean inner-validation AUPRC window lying wholly at or after the warm-up (epoch 6 of 40 for the 60-input adaptation, 4 of 25 for the native refit); the reported fit takes the raw best epoch, which can fall in the first epochs. Selected epochs span 8--37 (60-input) and 6--24 (native); thresholds span 0.0008--0.363 and 0.0002--1.000, so the native operating point is erratic. Ranges are over seeds, not intervals. These DSM rows are lower bounds on DSM detection skill under our recipe, not the best achievable DSM performance.}
+\label{tab:elm-dsm-repeats}
+\end{table*}

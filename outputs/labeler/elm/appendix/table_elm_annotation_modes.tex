@@ -1,0 +1,47 @@
+\begin{table*}[t]
+\centering
+\small
+\textbf{All reviewed shots}\par\smallskip
+\begin{tabular}{lrrcc}
+\toprule
+Annotation mode & Shots & Bins & F1 & AUROC \\
+\midrule
+Crowd only & 56 & 6,434 & 0.895 {\scriptsize[0.848, 0.931]} & 0.939 {\scriptsize[0.887, 0.979]} \\
+Non-crowd only & 13 & 1,003 & 0.418 {\scriptsize[0.209, 0.627]} & 0.916 {\scriptsize[0.841, 0.970]} \\
+Mixed crowd/non-crowd & 20 & 2,110 & 0.718 {\scriptsize[0.625, 0.819]} & 0.917 {\scriptsize[0.868, 0.959]} \\
+No reviewed present span & 30 & 2,862 & -- & -- \\
+\bottomrule
+\end{tabular}\par\smallskip
+\begin{tabular}{lccc}
+\toprule
+Annotation mode & Precision & Recall & Absent-bin FP fraction \\
+\midrule
+Crowd only & 0.886 {\scriptsize[0.819, 0.944]} & 0.904 {\scriptsize[0.840, 0.951]} & -- \\
+Non-crowd only & 0.298 {\scriptsize[0.132, 0.549]} & 0.698 {\scriptsize[0.396, 0.913]} & -- \\
+Mixed crowd/non-crowd & 0.857 {\scriptsize[0.742, 0.950]} & 0.617 {\scriptsize[0.495, 0.764]} & -- \\
+No reviewed present span & -- & -- & 0.092 {\scriptsize[0.036, 0.167]} \\
+\bottomrule
+\end{tabular}\par\medskip
+\textbf{BES, elm-elmo chunks}\par\smallskip
+\begin{tabular}{lrrcc}
+\toprule
+Annotation mode & Shots & Bins & F1 & AUROC \\
+\midrule
+Crowd only & 33 & 3,551 & 0.899 {\scriptsize[0.837, 0.943]} & 0.908 {\scriptsize[0.812, 0.977]} \\
+Non-crowd only & 10 & 700 & 0.384 {\scriptsize[0.190, 0.674]} & 0.918 {\scriptsize[0.816, 0.982]} \\
+Mixed crowd/non-crowd & 12 & 1,104 & 0.733 {\scriptsize[0.558, 0.857]} & 0.920 {\scriptsize[0.863, 0.970]} \\
+No reviewed present span & 18 & 1,488 & -- & -- \\
+\bottomrule
+\end{tabular}\par\smallskip
+\begin{tabular}{lccc}
+\toprule
+Annotation mode & Precision & Recall & Absent-bin FP fraction \\
+\midrule
+Crowd only & 0.873 {\scriptsize[0.780, 0.946]} & 0.926 {\scriptsize[0.857, 0.984]} & -- \\
+Non-crowd only & 0.264 {\scriptsize[0.113, 0.672]} & 0.706 {\scriptsize[0.469, 0.914]} & -- \\
+Mixed crowd/non-crowd & 0.940 {\scriptsize[0.876, 0.994]} & 0.601 {\scriptsize[0.400, 0.792]} & -- \\
+No reviewed present span & -- & -- & 0.079 {\scriptsize[0.020, 0.161]} \\
+\bottomrule
+\end{tabular}\par\medskip\caption{elm-ours occupancy performance by mutually exclusive annotation mode. Membership uses each shot's complete reviewed annotations; scoring uses the panel's covered interior bins. Mixed shots contain both crowd and individual-span annotations. No-present shots report the fraction of absent bins called present; positive-class metrics are undefined. Shot counts include members with no scored bins. Brackets show 95\% shot-bootstrap intervals. These occupancy scores do not validate individual ELM onsets.}
+\label{tab:elm-annotation-modes}
+\end{table*}

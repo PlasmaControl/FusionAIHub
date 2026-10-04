@@ -7,6 +7,8 @@ filterscopes only as a 10 kHz resampling and not the fast chords at all, so both
 MDSplus: ``\\BCI::DENV2F`` and ``\\BCI::DENV3F`` (tree ``bci``), ``\\SPECTROSCOPY::FS02``-``04``.
 Each shot's file, ``<shot>.npz`` under the output directory, holds the whole records
 (``t_int_ms``, ``interferometer`` (2, T), ``t_fs_ms``, ``filterscopes`` (3, T), float32).
+New records also retain ``source_metadata`` as JSON. The shared fetch wrapper
+currently exposes time units only; unknown ordinate units remain explicit nulls.
 A shot fdp says has no such record gets ``<shot>.missing.json`` and is not retried;
 a fetch that failed otherwise is tried again on the next run.
 
@@ -74,6 +76,24 @@ def fetch_shot(shot: int) -> dict[str, np.ndarray]:
                 "interferometer": np.asarray(inter.y, dtype=np.float32),
                 "t_fs_ms": np.asarray(fil.x, dtype=np.float64),
                 "filterscopes": np.asarray(fil.y, dtype=np.float32),
+                "source_metadata": np.asarray(json.dumps({
+                    "interferometer": {
+                        "tree": "bci",
+                        "channels": list(INTERFEROMETER),
+                        "time_units": "ms",
+                        "ordinate_units": [None, None],
+                        "source_attrs": dict(inter.attrs),
+                    },
+                    "filterscopes": {
+                        "tree": "SPECTROSCOPY",
+                        "channels": list(FILTERSCOPES),
+                        "time_units": "ms",
+                        "ordinate_units": [None, None, None],
+                        "source_attrs": dict(fil.attrs),
+                    },
+                    "producer": "scripts/labeler/elmo_fetch.py",
+                    "unit_note": "fdp_signal exposes no source ordinate units",
+                })),
             }
         except NoDataError:
             if attempt == 2:

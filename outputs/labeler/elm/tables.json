@@ -1,0 +1,172 @@
+{
+ "git": "b5468d41",
+ "sources": {
+  "ours": {
+   "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/ours/evaluation.json",
+   "sha256": "69e25a98a136b8f0f34f15fd5f882fb7c1cde29c84e4788e84f2e0690000e636"
+  },
+  "dsm": {
+   "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/evaluation.json",
+   "sha256": "d2c86b42c3c8a1986deb7e6ad2f1723f523627d367e62d3388211d53bb6a5c38"
+  },
+  "swap": {
+   "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/swap/evaluation.json",
+   "sha256": "635e44bb0947021927242f6c3a81ea76ab2a7f00500e6729f74dc6a1d7ec7a78"
+  },
+  "feature": {
+   "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/ours/feature_only.json",
+   "sha256": "37bfc63c483660eb685764d92dd4d77b4675448dc06d000d24a613b12ce6ee31"
+  },
+  "strata": {
+   "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/ours/annotation_strata.json",
+   "sha256": "770b6c5311b4410bb4bcc7419193d48ec79a377ce516eeb403781568c9fd9866"
+  },
+  "offsets": {
+   "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/review_start_offsets.json",
+   "sha256": "f863000745b8a6085f9d7a9daf0e35964386b34c56cad566cca5f887baec6487"
+  },
+  "density": {
+   "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/density_units.json",
+   "sha256": "a3da0c5d9afe8719a4fe592af279ce34307685433445f50720a428172397e12c"
+  },
+  "filterscope": {
+   "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/filterscope_metadata.json",
+   "sha256": "74c8efd8602145f6584c21804ad5161f3a45c6bce7affbc5591e11ec4b3ee739"
+  },
+  "history": {
+   "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/training_history.json",
+   "sha256": "b276bf9bd1b618dc6b6be5f32d22dacb148800d79905b9774f3a1bbb26cdbc80"
+  },
+  "native_detection": {
+   "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/native_detection.json",
+   "sha256": "9ccd92f5a375ab521480c5bfea72835af76f57cc004e9975f9502f0709167281"
+  },
+  "rejection": {
+   "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/ours/rejection_sensitivity.json",
+   "sha256": "7790ae334fb8a28058730e321a04b9ef98a0f6e03f310dc5ee1a0df3ec3579a1"
+  },
+  "seeds": {
+   "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/ours/seed_repeats.json",
+   "sha256": "5cc854e7761c687e6339da3bf544f62f49a3f988f96b773d90c3654fb026c7e2"
+  },
+  "native": {
+   "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/native_evaluation.json",
+   "sha256": "88ff35bf41794ed988ee0c15acc500574553c6791db324e1959368c5b775f963"
+  },
+  "smith": {
+   "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/smith/evaluation.json",
+   "sha256": "95a745f4786fef2897e03729c7af8f85e51756b5ac282929f5f8bf4d9b70dcf3"
+  },
+  "moved": {
+   "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/ours/moved_boundary_stratum.json",
+   "sha256": "53763cbda39c0c3f70d5f7c6e8fbebc54f25eac24eeae2a9132058a2c05ec147"
+  },
+  "tiled": {
+   "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/ours/tiled_inference.json",
+   "sha256": "f0e84d6800c07f55589fa7dd98d18fc9d7c33945d71b23f5b9170674923f67e1"
+  },
+  "run_day": {
+   "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/ours/run_day_cv.json",
+   "sha256": "d1b1f96e169595d1a4572c83623c738d6529b9ce8564696c9a23172af885d542"
+  },
+  "dsm_seeds": {
+   "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/baseline_seeds.json",
+   "sha256": "60dd339bed0bbdb05ef9cc948e41009da473b566ae90f7a53b2617d675ab5fac"
+  },
+  "density_range": {
+   "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/density_range.json",
+   "sha256": "73ab181eda8c6020643b79ff899be7b94aaa7ca580971c79c3937a8c9b88f711"
+  },
+  "photodiode": {
+   "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/swap_photodiode_agreement.json",
+   "sha256": "35502f9e318da772045fd4b2add1c89fd24e113a1225c27ee23af89fded5e286"
+  }
+ },
+ "tables": {
+  "table_elm_annotation_modes.tex": "09c999ab02a30bc9eb58c2d400d0146f1806d37b8782360371ca234e3b172da4",
+  "table_elm_benchmark.tex": "348c652e354e6d5e02dddbfd6c8251c266487b9269c702dd7a914881ae680dc1",
+  "table_elm_common_control.tex": "b3408b4bf599df1f03fe3925363e637c6a66f2abf47ee625ba4ec7e07d84bccc",
+  "table_elm_dsm_native.tex": "8968b4ed0e8463f30b989f3c80a5af8ed93b5e4a0adc818038f8120bdf3cda28",
+  "table_elm_dsm_own_target.tex": "4e92508dbe61a23d3c7dba5f80a8cee86c511f8633144559616131d80a486d8c",
+  "table_elm_dsm_repeats.tex": "addc81f8103101906b40da516e70823c06c81554553a6cef97705bde12fb3841",
+  "table_elm_native_detection.tex": "6e266e03d367154fcfe274c529be95e5458e375684d0635ec6a736de5f6a60f5",
+  "table_elm_per_kind.tex": "0822e0acdf6384f0c6760e3243bed7ddccf96dfa0082a418809e364e140b93e5",
+  "table_elm_rejection.tex": "6da0d616ad3d78318143e545c3df2fa5867e651ac63fbc889345b000b8092d42",
+  "table_elm_smith.tex": "c61052970d85cfad0b601854c70738a1d31041d2fafc2883bc78e5d22dfeeb3b",
+  "table_elm_supplemental.tex": "2667362b1819e985c098471da835952c5b66ed51373928ed2c398803616b5b3c",
+  "table_elm_swap.tex": "fa8d39f517630ed760003af09d21129db1c8399eb93c8087ebc2ee844dba8c93",
+  "table_elm_swap_full.tex": "aa65b377bf62a192dfad9166627dc9b39e049f60edb4a7da16f537fc07ec0859",
+  "table_elm_swap_rankings.tex": "7df4d2767469b18ee9927c6587f365f656684cccde0fd40cfe4b1c5c4dda41f6",
+  "table_elm_swap_sensitivity.tex": "de8ee925e7a94497a5a7382170ac8405e7e394c2956fd370ee27ab8529332f98"
+ },
+ "caption_word_counts": {
+  "table_elm_annotation_modes.tex": [
+   66
+  ],
+  "table_elm_benchmark.tex": [
+   120
+  ],
+  "table_elm_common_control.tex": [
+   159
+  ],
+  "table_elm_dsm_native.tex": [
+   107
+  ],
+  "table_elm_dsm_own_target.tex": [
+   96
+  ],
+  "table_elm_dsm_repeats.tex": [
+   118
+  ],
+  "table_elm_native_detection.tex": [
+   166
+  ],
+  "table_elm_per_kind.tex": [
+   46
+  ],
+  "table_elm_rejection.tex": [
+   96
+  ],
+  "table_elm_smith.tex": [
+   130
+  ],
+  "table_elm_supplemental.tex": [
+   35
+  ],
+  "table_elm_swap.tex": [
+   169
+  ],
+  "table_elm_swap_full.tex": [
+   80
+  ],
+  "table_elm_swap_rankings.tex": [
+   60
+  ],
+  "table_elm_swap_sensitivity.tex": [
+   72
+  ]
+ },
+ "shared_notes": {
+  "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/elm_table_notes.tex",
+  "sha256": "07fca34fa42daa1f3465cb9989640f66294b6448f710986708ad3d090e334435"
+ },
+ "benchmark_json_paths": [
+  "ours/evaluation.json:sets.all119.methods",
+  "ours/evaluation.json:sets.bes73.methods",
+  "dsm/evaluation.json:sets.all119.methods",
+  "dsm/evaluation.json:sets.bes73.methods"
+ ],
+ "stratified_json_paths": [
+  "ours/evaluation.json:sets.all119.annotation_modes",
+  "ours/evaluation.json:sets.all119.per_kind",
+  "ours/evaluation.json:sets.bes73.annotation_modes",
+  "ours/evaluation.json:sets.bes73.per_kind"
+ ],
+ "own_target_json_path": "dsm/evaluation.json:own_target",
+ "native_json_path": "dsm/native_evaluation.json",
+ "swap_json_paths": [
+  "swap/evaluation.json:swap.overlap",
+  "swap/evaluation.json:swap.overlap_bes",
+  "swap/evaluation.json:interval_audit"
+ ]
+}

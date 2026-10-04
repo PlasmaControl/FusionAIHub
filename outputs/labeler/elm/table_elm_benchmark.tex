@@ -1,0 +1,29 @@
+\begin{table*}[t]
+\centering
+\small
+\footnotesize\setlength{\tabcolsep}{2.5pt}
+\begin{tabular}{lcccccc}
+\toprule
+Method & AUROC & AUPRC & F1 & Absent-bin FPR & Absent-span alarm & Alarm, guard25 \\
+\midrule
+\multicolumn{7}{l}{All reviewed: 119 shots/12,409 primary bins} \\
+elm-ours & 0.941 {\scriptsize[0.906, 0.967]} & 0.877 {\scriptsize[0.774, 0.949]} & 0.830 {\scriptsize[0.778, 0.871]} & 0.113 {\scriptsize[0.075, 0.152]} & 0.596 {\scriptsize[0.478, 0.689]} & 0.427 {\scriptsize[0.343, 0.495]} \\
+elm-clock & -- & -- & 0.757 {\scriptsize[0.680, 0.827]} & 0.063 {\scriptsize[0.032, 0.100]} & 0.105 {\scriptsize[0.063, 0.168]} & 0.096 {\scriptsize[0.056, 0.154]} \\
+always-present & 0.500 {\scriptsize[0.500, 0.500]} & 0.376 {\scriptsize[0.322, 0.430]} & 0.546 {\scriptsize[0.487, 0.601]}$^{\dagger}$ & 1.000 {\scriptsize[1.000, 1.000]} & 1.000 {\scriptsize[1.000, 1.000]} & 0.915 {\scriptsize[0.845, 0.976]} \\
+elm-feature & 0.833 {\scriptsize[0.783, 0.878]} & 0.695 {\scriptsize[0.606, 0.779]} & 0.703 {\scriptsize[0.640, 0.758]} & 0.310 {\scriptsize[0.244, 0.386]} & -- & -- \\
+\midrule
+\multicolumn{7}{l}{BES subset: 73 shots/6,843 primary bins} \\
+elm-ours & 0.941 {\scriptsize[0.898, 0.972]} & 0.875 {\scriptsize[0.751, 0.961]} & 0.845 {\scriptsize[0.786, 0.896]} & 0.123 {\scriptsize[0.071, 0.184]} & 0.610 {\scriptsize[0.452, 0.742]} & 0.436 {\scriptsize[0.351, 0.511]} \\
+elm-elmo & 0.918 {\scriptsize[0.877, 0.951]} & 0.833 {\scriptsize[0.753, 0.890]} & 0.842 {\scriptsize[0.789, 0.885]} & 0.108 {\scriptsize[0.068, 0.156]} & 0.440 {\scriptsize[0.301, 0.623]} & 0.307 {\scriptsize[0.200, 0.444]} \\
+elm-clock & -- & -- & 0.708 {\scriptsize[0.602, 0.800]} & 0.091 {\scriptsize[0.039, 0.146]} & 0.110 {\scriptsize[0.053, 0.188]} & 0.106 {\scriptsize[0.051, 0.182]} \\
+always-present & 0.500 {\scriptsize[0.500, 0.500]} & 0.402 {\scriptsize[0.325, 0.479]} & 0.573 {\scriptsize[0.491, 0.648]}$^{\dagger}$ & 1.000 {\scriptsize[1.000, 1.000]} & 1.000 {\scriptsize[1.000, 1.000]} & 0.890 {\scriptsize[0.788, 0.982]} \\
+elm-feature & 0.831 {\scriptsize[0.770, 0.886]} & 0.706 {\scriptsize[0.603, 0.819]} & 0.713 {\scriptsize[0.628, 0.788]} & 0.382 {\scriptsize[0.282, 0.484]} & -- & -- \\
+\midrule
+\multicolumn{7}{l}{BES subset, boundaries moved $>1$ ms from the clock: 43 present and 117 absent spans/4,125 bins} \\
+elm-ours & 0.938 {\scriptsize[0.875, 0.980]} & 0.836 {\scriptsize[0.629, 0.972]} & 0.837 {\scriptsize[0.738, 0.910]} & 0.096 {\scriptsize[0.043, 0.168]} & -- & -- \\
+elm-elmo & 0.934 {\scriptsize[0.894, 0.965]} & 0.816 {\scriptsize[0.688, 0.909]} & 0.822 {\scriptsize[0.730, 0.884]} & 0.098 {\scriptsize[0.048, 0.163]} & -- & -- \\
+elm-clock & -- & -- & 0.516 {\scriptsize[0.297, 0.682]} & 0.136 {\scriptsize[0.061, 0.225]} & -- & -- \\
+\bottomrule
+\end{tabular}\caption{Primary reviewed-occupancy benchmark: developmental shot-grouped CV on the 119 reviewed shots; there is no blind-split score. The target is ELMy-period occupancy, not onsets: 97\% of positive bins come from crowd spans and only interior 50 ms bins are scored (12,409 all119; 6,843 bes73). Review was seeded by the D-alpha clock (33\% of crowd spans match its boundaries within 1 ms), which favours D-alpha-input models over elm-elmo. Paired elm-ours minus elm-elmo on bes73: AUROC +0.023 [-0.014, +0.067], AUPRC +0.043 [-0.058, +0.129], F1 +0.002 [-0.052, +0.058]; every interval includes zero, so no difference is detected. Alarm: absent spans touched by a detection (guard25: 25 ms trimmed from each edge). Brackets: 95\% shot-bootstrap intervals; $^{\dagger}$ recall $\geq0.99$; definitions in the ELM evaluation notes.}
+\label{tab:elm-benchmark}
+\end{table*}

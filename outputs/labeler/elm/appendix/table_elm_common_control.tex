@@ -1,0 +1,25 @@
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{lccc}
+\toprule
+Method & AUROC & AUPRC & F1 \\
+\midrule
+\multicolumn{4}{l}{All reviewed: 119 shots/11,653 common bins} \\
+elm-ours & 0.939 {\scriptsize[0.901, 0.966]} & 0.878 {\scriptsize[0.775, 0.951]} & 0.834 {\scriptsize[0.782, 0.875]} \\
+elm-dsm-detect (60-input $1\times128$) & 0.845 {\scriptsize[0.796, 0.893]} & 0.748 {\scriptsize[0.651, 0.832]} & 0.742 {\scriptsize[0.681, 0.798]} \\
+elm-clock & -- & -- & 0.759 {\scriptsize[0.683, 0.829]} \\
+always-present & 0.500 {\scriptsize[0.500, 0.500]} & 0.391 {\scriptsize[0.332, 0.450]} & 0.562 {\scriptsize[0.499, 0.621]}$^{\dagger}$ \\
+elm-feature & 0.833 {\scriptsize[0.782, 0.879]} & 0.704 {\scriptsize[0.612, 0.789]} & 0.713 {\scriptsize[0.649, 0.770]} \\
+\midrule
+\multicolumn{4}{l}{BES subset: 73 shots/6,527 common bins} \\
+elm-ours & 0.939 {\scriptsize[0.893, 0.972]} & 0.876 {\scriptsize[0.752, 0.962]} & 0.848 {\scriptsize[0.790, 0.899]} \\
+elm-elmo & 0.914 {\scriptsize[0.869, 0.948]} & 0.833 {\scriptsize[0.755, 0.892]} & 0.841 {\scriptsize[0.786, 0.885]} \\
+elm-dsm-detect (60-input $1\times128$) & 0.840 {\scriptsize[0.777, 0.892]} & 0.731 {\scriptsize[0.612, 0.836]} & 0.783 {\scriptsize[0.711, 0.842]} \\
+elm-clock & -- & -- & 0.714 {\scriptsize[0.610, 0.806]} \\
+always-present & 0.500 {\scriptsize[0.500, 0.500]} & 0.417 {\scriptsize[0.336, 0.500]} & 0.588 {\scriptsize[0.502, 0.666]}$^{\dagger}$ \\
+elm-feature & 0.829 {\scriptsize[0.767, 0.888]} & 0.712 {\scriptsize[0.609, 0.825]} & 0.723 {\scriptsize[0.638, 0.798]} \\
+\bottomrule
+\end{tabular}\caption{Secondary common-bin control, requiring valid DSM rows for every method (11,653 all119; 6,527 bes73 bins). The elm-dsm-detect (60-input $1\times128$) row is a detection adaptation on 50 ms input means, not the native architecture; its reported fit is fragile (selected epochs 35, 31, 2, 24, 0; thresholds 0.021--0.482). Three further seeds with post-warm-up selection (DSM repeats table) give mean (range) AUROC 0.865 (0.857--0.870) for the 60-input $1\times128$ adaptation (119 shots) and 0.715 (0.707--0.725) for the native 124-input refit (37 shots). These DSM rows are lower bounds on DSM detection skill under our recipe, not the best achievable DSM performance. Paired elm-ours minus elm-dsm-detect, all119: AUROC +0.094 [+0.055, +0.132], AUPRC +0.131 [+0.068, +0.195], F1 +0.091 [+0.040, +0.139]; bes73: AUROC +0.099 [+0.058, +0.147], AUPRC +0.146 [+0.075, +0.227], F1 +0.066 [+0.009, +0.126]. Paired elm-ours minus elm-elmo on bes73: AUROC +0.025 [-0.013, +0.071], AUPRC +0.044 [-0.056, +0.131], F1 +0.007 [-0.044, +0.063]; the latter intervals include zero and equivalence is untested. Brackets: 95\% shot-bootstrap intervals.}
+\label{tab:elm-common-control}
+\end{table*}

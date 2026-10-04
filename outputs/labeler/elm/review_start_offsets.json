@@ -1,0 +1,872 @@
+{
+ "created": "2026-10-03T21:16:57+00:00",
+ "git": "a2a483d5",
+ "script": {
+  "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/scripts/labeler/elm_review_start_offsets.py",
+  "sha256": "14208521358b2a070d52f3f09d8a1776cbb6773c0e7e0c2b15c170e4915382fb"
+ },
+ "sources": {
+  "canonical_bes73": {
+   "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/evaluation.json",
+   "sha256": "17b07ef490c776adb949f2ae798bf9f4841ab9094fcf88121cf471a0d8820328"
+  },
+  "reviewed_spans": {
+   "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/edge_localized_mode/review/labels.csv",
+   "sha256": "6ae3497e921eadd134959b248aab93c6ca06511e7689041a52270e58cfdae380"
+  },
+  "elmo_onsets": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/review_elms.csv",
+   "sha256": "87e9942dfc79ef10f0579734a9d686de573add768f883a136785df4015d8cac0"
+  },
+  "cohort": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/catalog/cohort.csv",
+   "sha256": "b910527a9a2c7b4100cf5674aa6f57ec19b458f1ee952b23387341f1ed92bbda"
+  }
+ },
+ "protocol": {
+  "population": "All category-1 iscrowd-0 reviewed spans on bes73; not restricted to spans contributing whole 50 ms occupancy bins.",
+  "elmo_setting": "paper",
+  "elmo_onset_column": "t_start_ms",
+  "difference": "review_start_ms minus nearest_elmo_onset_ms",
+  "tolerance_ms": 50.0,
+  "matching": "Independent nearest onset per reviewed start in the same shot; inclusive tolerance; earlier onset wins exact-distance ties; many reviewed starts may match the same ELM-O onset.",
+  "quantiles": "Unweighted matched-span quantiles, linear interpolation.",
+  "limitation": "Describes the matched annotation subset relative to ELM-O BES detections; unmatched starts omitted from timing quantiles; neither reference establishes independently verified physical onsets."
+ },
+ "shots": [
+  185857,
+  185866,
+  185945,
+  185961,
+  186013,
+  186636,
+  187035,
+  187328,
+  189272,
+  189324,
+  189741,
+  190637,
+  190643,
+  190695,
+  190790,
+  191382,
+  191677,
+  192003,
+  192010,
+  192015,
+  192425,
+  192432,
+  192721,
+  192732,
+  192751,
+  192914,
+  193008,
+  193022,
+  193075,
+  194155,
+  194160,
+  194445,
+  195016,
+  195024,
+  195066,
+  195102,
+  195103,
+  195111,
+  195263,
+  195279,
+  195646,
+  195959,
+  196332,
+  196405,
+  196541,
+  198806,
+  198899,
+  198971,
+  199789,
+  199790,
+  199909,
+  199921,
+  200198,
+  200385,
+  200427,
+  200636,
+  201270,
+  201494,
+  201707,
+  201973,
+  201978,
+  203012,
+  203041,
+  203132,
+  203187,
+  203470,
+  203629,
+  203941,
+  203959,
+  204233,
+  204240,
+  204243,
+  204256
+ ],
+ "n_shots": 73,
+ "n_shots_with_non_crowd_spans": 22,
+ "n_starts": 93,
+ "n_matched": 63,
+ "n_unmatched": 30,
+ "n_matched_shots": 15,
+ "n_unique_matched_elmo_onsets": 63,
+ "offset_ms": {
+  "median": -20.15201612287092,
+  "p25": -28.197015312298618,
+  "p75": -12.056011003532376,
+  "iqr": 16.14100430876624,
+  "min": -41.78001753201306,
+  "max": 47.75192822376266
+ },
+ "per_start": [
+  {
+   "shot": 185866,
+   "review_start_ms": 5566.0,
+   "review_end_ms": 5599.0,
+   "nearest_elmo_onset_ms": 5598.128027707276,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -32.12802770727558
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 1210.0,
+   "review_end_ms": 1274.0,
+   "nearest_elmo_onset_ms": 1248.3180077822312,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -38.318007782231234
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 1321.0,
+   "review_end_ms": 1374.0,
+   "nearest_elmo_onset_ms": 1355.2600082720971,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -34.26000827209714
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 1421.0,
+   "review_end_ms": 1469.0,
+   "nearest_elmo_onset_ms": 1445.3480086847603,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -24.348008684760316
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 1514.0,
+   "review_end_ms": 1568.0,
+   "nearest_elmo_onset_ms": 1538.916009113365,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -24.916009113364908
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 1712.0,
+   "review_end_ms": 1774.0,
+   "nearest_elmo_onset_ms": 1750.9360100845583,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -38.93601008455835
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 1877.0,
+   "review_end_ms": 1944.0,
+   "nearest_elmo_onset_ms": 1913.6940108300992,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -36.69401083009916
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 2018.0,
+   "review_end_ms": 2073.0,
+   "nearest_elmo_onset_ms": 2042.0740114181651,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -24.074011418165128
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 2179.0,
+   "review_end_ms": 2220.0,
+   "nearest_elmo_onset_ms": 2190.7440120991737,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -11.744012099173688
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 2255.0,
+   "review_end_ms": 2312.0,
+   "nearest_elmo_onset_ms": 2282.8760125212,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -27.87601252120021
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 2341.0,
+   "review_end_ms": 2374.0,
+   "nearest_elmo_onset_ms": 2282.8760125212,
+   "matched_within_50ms": false,
+   "review_minus_elmo_ms": null
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 2413.0,
+   "review_end_ms": 2460.0,
+   "nearest_elmo_onset_ms": 2436.3860132243785,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -23.38601322437853
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 2528.0,
+   "review_end_ms": 2586.0,
+   "nearest_elmo_onset_ms": 2559.2920137873707,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -31.292013787370706
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 2619.0,
+   "review_end_ms": 2651.0,
+   "nearest_elmo_onset_ms": 2631.8840141198907,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -12.884014119890708
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 2695.0,
+   "review_end_ms": 2754.0,
+   "nearest_elmo_onset_ms": 2725.008014546461,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -30.0080145464608
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 2786.0,
+   "review_end_ms": 2820.0,
+   "nearest_elmo_onset_ms": 2795.084014867456,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -9.084014867456062
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 2871.0,
+   "review_end_ms": 2946.0,
+   "nearest_elmo_onset_ms": 2907.5560153826527,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -36.55601538265273
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 3003.0,
+   "review_end_ms": 3052.0,
+   "nearest_elmo_onset_ms": 3029.2580159401296,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -26.258015940129553
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 3116.0,
+   "review_end_ms": 3162.0,
+   "nearest_elmo_onset_ms": 3145.282016471597,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -29.282016471597217
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 3207.0,
+   "review_end_ms": 3250.0,
+   "nearest_elmo_onset_ms": 3223.684016830731,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -16.684016830730798
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 3335.0,
+   "review_end_ms": 3409.0,
+   "nearest_elmo_onset_ms": 3376.780017532013,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -41.78001753201306
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 3473.0,
+   "review_end_ms": 3531.0,
+   "nearest_elmo_onset_ms": 3501.518018103397,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -28.518018103397026
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 3582.0,
+   "review_end_ms": 3638.0,
+   "nearest_elmo_onset_ms": 3604.9580185772215,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -22.958018577221537
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 3687.0,
+   "review_end_ms": 3747.0,
+   "nearest_elmo_onset_ms": 3721.464019110897,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -34.46401911089697
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 3790.0,
+   "review_end_ms": 3832.0,
+   "nearest_elmo_onset_ms": 3815.8600195432937,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -25.860019543293674
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 3911.0,
+   "review_end_ms": 3970.0,
+   "nearest_elmo_onset_ms": 3938.7880201063854,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -27.788020106385375
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 4005.0,
+   "review_end_ms": 4057.0,
+   "nearest_elmo_onset_ms": 4026.236020506957,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -21.236020506957175
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 4117.0,
+   "review_end_ms": 4160.0,
+   "nearest_elmo_onset_ms": 4136.860021013689,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -19.86002101368922
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 4257.0,
+   "review_end_ms": 4318.0,
+   "nearest_elmo_onset_ms": 4284.524021690089,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -27.524021690089285
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 4349.0,
+   "review_end_ms": 4403.0,
+   "nearest_elmo_onset_ms": 4379.730022126197,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -30.730022126196673
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 4458.0,
+   "review_end_ms": 4515.0,
+   "nearest_elmo_onset_ms": 4484.854022607735,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -26.854022607734805
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 4576.0,
+   "review_end_ms": 4624.0,
+   "nearest_elmo_onset_ms": 4597.3520231230505,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -21.352023123050458
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 4700.0,
+   "review_end_ms": 4753.0,
+   "nearest_elmo_onset_ms": 4715.960023666356,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -15.960023666356392
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 4826.0,
+   "review_end_ms": 4875.0,
+   "nearest_elmo_onset_ms": 4842.302024245086,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -16.302024245085704
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 4962.0,
+   "review_end_ms": 5012.0,
+   "nearest_elmo_onset_ms": 4982.384024886756,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -20.38402488675638
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 5046.0,
+   "review_end_ms": 5097.0,
+   "nearest_elmo_onset_ms": 4982.384024886756,
+   "matched_within_50ms": false,
+   "review_minus_elmo_ms": null
+  },
+  {
+   "shot": 190637,
+   "review_start_ms": 5123.0,
+   "review_end_ms": 5194.0,
+   "nearest_elmo_onset_ms": 4982.384024886756,
+   "matched_within_50ms": false,
+   "review_minus_elmo_ms": null
+  },
+  {
+   "shot": 190643,
+   "review_start_ms": 2107.0,
+   "review_end_ms": 2153.0,
+   "nearest_elmo_onset_ms": 2121.6340117826035,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -14.634011782603466
+  },
+  {
+   "shot": 190643,
+   "review_start_ms": 2297.0,
+   "review_end_ms": 2350.0,
+   "nearest_elmo_onset_ms": 2307.3520126333165,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -10.352012633316463
+  },
+  {
+   "shot": 190643,
+   "review_start_ms": 2638.0,
+   "review_end_ms": 2677.0,
+   "nearest_elmo_onset_ms": 2643.456014172898,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -5.456014172897994
+  },
+  {
+   "shot": 190643,
+   "review_start_ms": 3049.0,
+   "review_end_ms": 3122.0,
+   "nearest_elmo_onset_ms": 3069.152016122871,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -20.15201612287092
+  },
+  {
+   "shot": 190643,
+   "review_start_ms": 3843.0,
+   "review_end_ms": 3925.0,
+   "nearest_elmo_onset_ms": 3860.238019746575,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -17.23801974657499
+  },
+  {
+   "shot": 190643,
+   "review_start_ms": 4649.0,
+   "review_end_ms": 4725.0,
+   "nearest_elmo_onset_ms": 4665.222023433941,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -16.222023433941104
+  },
+  {
+   "shot": 190643,
+   "review_start_ms": 5033.0,
+   "review_end_ms": 5128.0,
+   "nearest_elmo_onset_ms": 5324.818026455333,
+   "matched_within_50ms": false,
+   "review_minus_elmo_ms": null
+  },
+  {
+   "shot": 190695,
+   "review_start_ms": 1294.0,
+   "review_end_ms": 1481.0,
+   "nearest_elmo_onset_ms": 1299.3580080160286,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -5.358008016028634
+  },
+  {
+   "shot": 190695,
+   "review_start_ms": 1700.0,
+   "review_end_ms": 1760.0,
+   "nearest_elmo_onset_ms": 1712.368009907891,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -12.368009907891064
+  },
+  {
+   "shot": 190695,
+   "review_start_ms": 5022.0,
+   "review_end_ms": 5112.0,
+   "nearest_elmo_onset_ms": 5599.824027715044,
+   "matched_within_50ms": false,
+   "review_minus_elmo_ms": null
+  },
+  {
+   "shot": 190695,
+   "review_start_ms": 5580.0,
+   "review_end_ms": 5634.0,
+   "nearest_elmo_onset_ms": 5599.824027715044,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -19.824027715044394
+  },
+  {
+   "shot": 190790,
+   "review_start_ms": 1781.0,
+   "review_end_ms": 1968.0,
+   "nearest_elmo_onset_ms": 2290.1960125547303,
+   "matched_within_50ms": false,
+   "review_minus_elmo_ms": null
+  },
+  {
+   "shot": 192432,
+   "review_start_ms": 1291.0,
+   "review_end_ms": 1462.0,
+   "nearest_elmo_onset_ms": 1296.7279824576583,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -5.7279824576583
+  },
+  {
+   "shot": 192721,
+   "review_start_ms": 1847.0,
+   "review_end_ms": 1856.0,
+   "nearest_elmo_onset_ms": 1427.8019790222722,
+   "matched_within_50ms": false,
+   "review_minus_elmo_ms": null
+  },
+  {
+   "shot": 192721,
+   "review_start_ms": 1960.0,
+   "review_end_ms": 1976.0,
+   "nearest_elmo_onset_ms": 1427.8019790222722,
+   "matched_within_50ms": false,
+   "review_minus_elmo_ms": null
+  },
+  {
+   "shot": 192721,
+   "review_start_ms": 2100.0,
+   "review_end_ms": 2119.0,
+   "nearest_elmo_onset_ms": 1427.8019790222722,
+   "matched_within_50ms": false,
+   "review_minus_elmo_ms": null
+  },
+  {
+   "shot": 192721,
+   "review_start_ms": 2225.0,
+   "review_end_ms": 2257.0,
+   "nearest_elmo_onset_ms": 1427.8019790222722,
+   "matched_within_50ms": false,
+   "review_minus_elmo_ms": null
+  },
+  {
+   "shot": 192721,
+   "review_start_ms": 2346.0,
+   "review_end_ms": 2451.0,
+   "nearest_elmo_onset_ms": 1427.8019790222722,
+   "matched_within_50ms": false,
+   "review_minus_elmo_ms": null
+  },
+  {
+   "shot": 192721,
+   "review_start_ms": 2520.0,
+   "review_end_ms": 2560.0,
+   "nearest_elmo_onset_ms": 1427.8019790222722,
+   "matched_within_50ms": false,
+   "review_minus_elmo_ms": null
+  },
+  {
+   "shot": 192721,
+   "review_start_ms": 2644.0,
+   "review_end_ms": 2695.0,
+   "nearest_elmo_onset_ms": 1427.8019790222722,
+   "matched_within_50ms": false,
+   "review_minus_elmo_ms": null
+  },
+  {
+   "shot": 192721,
+   "review_start_ms": 2759.0,
+   "review_end_ms": 2793.0,
+   "nearest_elmo_onset_ms": 1427.8019790222722,
+   "matched_within_50ms": false,
+   "review_minus_elmo_ms": null
+  },
+  {
+   "shot": 192721,
+   "review_start_ms": 2847.0,
+   "review_end_ms": 2917.0,
+   "nearest_elmo_onset_ms": 1427.8019790222722,
+   "matched_within_50ms": false,
+   "review_minus_elmo_ms": null
+  },
+  {
+   "shot": 192721,
+   "review_start_ms": 2959.0,
+   "review_end_ms": 2993.0,
+   "nearest_elmo_onset_ms": 1427.8019790222722,
+   "matched_within_50ms": false,
+   "review_minus_elmo_ms": null
+  },
+  {
+   "shot": 192721,
+   "review_start_ms": 3234.0,
+   "review_end_ms": 3267.0,
+   "nearest_elmo_onset_ms": 1427.8019790222722,
+   "matched_within_50ms": false,
+   "review_minus_elmo_ms": null
+  },
+  {
+   "shot": 192721,
+   "review_start_ms": 3376.0,
+   "review_end_ms": 3515.0,
+   "nearest_elmo_onset_ms": 5184.735880554854,
+   "matched_within_50ms": false,
+   "review_minus_elmo_ms": null
+  },
+  {
+   "shot": 192721,
+   "review_start_ms": 3684.0,
+   "review_end_ms": 3715.0,
+   "nearest_elmo_onset_ms": 5184.735880554854,
+   "matched_within_50ms": false,
+   "review_minus_elmo_ms": null
+  },
+  {
+   "shot": 192721,
+   "review_start_ms": 3774.0,
+   "review_end_ms": 3815.0,
+   "nearest_elmo_onset_ms": 5184.735880554854,
+   "matched_within_50ms": false,
+   "review_minus_elmo_ms": null
+  },
+  {
+   "shot": 192721,
+   "review_start_ms": 4122.0,
+   "review_end_ms": 4163.0,
+   "nearest_elmo_onset_ms": 5184.735880554854,
+   "matched_within_50ms": false,
+   "review_minus_elmo_ms": null
+  },
+  {
+   "shot": 192721,
+   "review_start_ms": 4223.0,
+   "review_end_ms": 4258.0,
+   "nearest_elmo_onset_ms": 5184.735880554854,
+   "matched_within_50ms": false,
+   "review_minus_elmo_ms": null
+  },
+  {
+   "shot": 192721,
+   "review_start_ms": 4584.0,
+   "review_end_ms": 4627.0,
+   "nearest_elmo_onset_ms": 5184.735880554854,
+   "matched_within_50ms": false,
+   "review_minus_elmo_ms": null
+  },
+  {
+   "shot": 192914,
+   "review_start_ms": 2567.0,
+   "review_end_ms": 2702.0,
+   "nearest_elmo_onset_ms": 2570.421949074756,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -3.4219490747559576
+  },
+  {
+   "shot": 193008,
+   "review_start_ms": 810.0,
+   "review_end_ms": 1030.0,
+   "nearest_elmo_onset_ms": 821.049994924948,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -11.04999492494801
+  },
+  {
+   "shot": 193075,
+   "review_start_ms": 1299.0,
+   "review_end_ms": 1324.0,
+   "nearest_elmo_onset_ms": 2811.951942744372,
+   "matched_within_50ms": false,
+   "review_minus_elmo_ms": null
+  },
+  {
+   "shot": 193075,
+   "review_start_ms": 2032.0,
+   "review_end_ms": 2034.0,
+   "nearest_elmo_onset_ms": 2811.951942744372,
+   "matched_within_50ms": false,
+   "review_minus_elmo_ms": null
+  },
+  {
+   "shot": 195263,
+   "review_start_ms": 1541.0,
+   "review_end_ms": 1959.0,
+   "nearest_elmo_onset_ms": 1545.6720091443117,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -4.672009144311687
+  },
+  {
+   "shot": 195263,
+   "review_start_ms": 2610.0,
+   "review_end_ms": 2815.0,
+   "nearest_elmo_onset_ms": 2615.974014047012,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -5.974014047012133
+  },
+  {
+   "shot": 195959,
+   "review_start_ms": 563.0,
+   "review_end_ms": 763.0,
+   "nearest_elmo_onset_ms": 1729.8820099881168,
+   "matched_within_50ms": false,
+   "review_minus_elmo_ms": null
+  },
+  {
+   "shot": 196541,
+   "review_start_ms": 4379.0,
+   "review_end_ms": 4619.0,
+   "nearest_elmo_onset_ms": null,
+   "matched_within_50ms": false,
+   "review_minus_elmo_ms": null
+  },
+  {
+   "shot": 199790,
+   "review_start_ms": 1616.0,
+   "review_end_ms": 1617.0,
+   "nearest_elmo_onset_ms": 1953.5080110124736,
+   "matched_within_50ms": false,
+   "review_minus_elmo_ms": null
+  },
+  {
+   "shot": 200198,
+   "review_start_ms": 1371.0,
+   "review_end_ms": 1610.0,
+   "nearest_elmo_onset_ms": 1375.8540132942774,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -4.854013294277365
+  },
+  {
+   "shot": 200198,
+   "review_start_ms": 1851.0,
+   "review_end_ms": 1857.0,
+   "nearest_elmo_onset_ms": 1883.2220312403176,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -32.22203124031762
+  },
+  {
+   "shot": 200385,
+   "review_start_ms": 4895.0,
+   "review_end_ms": 5007.0,
+   "nearest_elmo_onset_ms": 5037.384018220185,
+   "matched_within_50ms": false,
+   "review_minus_elmo_ms": null
+  },
+  {
+   "shot": 200427,
+   "review_start_ms": 2689.0,
+   "review_end_ms": 2765.0,
+   "nearest_elmo_onset_ms": 2667.744015892822,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": 21.255984107177937
+  },
+  {
+   "shot": 200427,
+   "review_start_ms": 3521.0,
+   "review_end_ms": 3525.0,
+   "nearest_elmo_onset_ms": 3558.336081143352,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -37.3360811433522
+  },
+  {
+   "shot": 201270,
+   "review_start_ms": 1889.0,
+   "review_end_ms": 2242.0,
+   "nearest_elmo_onset_ms": 1894.033954813684,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -5.033954813683977
+  },
+  {
+   "shot": 201270,
+   "review_start_ms": 3867.0,
+   "review_end_ms": 3882.0,
+   "nearest_elmo_onset_ms": 4023.367909091424,
+   "matched_within_50ms": false,
+   "review_minus_elmo_ms": null
+  },
+  {
+   "shot": 201973,
+   "review_start_ms": 2075.0,
+   "review_end_ms": 2117.0,
+   "nearest_elmo_onset_ms": 2091.0860385926453,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -16.08603859264531
+  },
+  {
+   "shot": 201973,
+   "review_start_ms": 2994.0,
+   "review_end_ms": 3045.0,
+   "nearest_elmo_onset_ms": 3013.332071213275,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -19.332071213274958
+  },
+  {
+   "shot": 201973,
+   "review_start_ms": 3077.0,
+   "review_end_ms": 3124.0,
+   "nearest_elmo_onset_ms": 3029.2480717762373,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": 47.75192822376266
+  },
+  {
+   "shot": 201973,
+   "review_start_ms": 3313.0,
+   "review_end_ms": 3356.0,
+   "nearest_elmo_onset_ms": 3333.8320825496344,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -20.83208254963438
+  },
+  {
+   "shot": 203187,
+   "review_start_ms": 2532.0,
+   "review_end_ms": 2856.0,
+   "nearest_elmo_onset_ms": 2564.212013809907,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -32.21201380990715
+  },
+  {
+   "shot": 203187,
+   "review_start_ms": 3036.0,
+   "review_end_ms": 3080.0,
+   "nearest_elmo_onset_ms": 3055.430016060015,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -19.430016060015078
+  },
+  {
+   "shot": 203941,
+   "review_start_ms": 4321.0,
+   "review_end_ms": 4522.0,
+   "nearest_elmo_onset_ms": 4334.296117936902,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -13.296117936902192
+  },
+  {
+   "shot": 203941,
+   "review_start_ms": 4865.0,
+   "review_end_ms": 5362.0,
+   "nearest_elmo_onset_ms": 4879.844137233401,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -14.844137233400943
+  },
+  {
+   "shot": 203941,
+   "review_start_ms": 5586.0,
+   "review_end_ms": 6012.0,
+   "nearest_elmo_onset_ms": 5583.704162129531,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": 2.2958378704688585
+  },
+  {
+   "shot": 204256,
+   "review_start_ms": 3427.0,
+   "review_end_ms": 3524.0,
+   "nearest_elmo_onset_ms": 3431.642017783318,
+   "matched_within_50ms": true,
+   "review_minus_elmo_ms": -4.642017783317897
+  }
+ ]
+}

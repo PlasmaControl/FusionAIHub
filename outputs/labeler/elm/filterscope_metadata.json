@@ -1,0 +1,588 @@
+{
+ "producer": "scripts/labeler/elm_filterscope_metadata.py",
+ "script_sha256": "59cf7c91ec3f3350f91ff8997789bb624ef10ac64145d9bc7cddb0294ed84fee",
+ "review_source": "/scratch/gpfs/nc1514/FusionAIHub/data/events/edge_localized_mode/review/labels.csv",
+ "review_source_sha256": "6ae3497e921eadd134959b248aab93c6ca06511e7689041a52270e58cfdae380",
+ "fs01_corpus_availability": {
+  "185857": {
+   "finite_samples": 0,
+   "samples": 80001
+  },
+  "185866": {
+   "finite_samples": 0,
+   "samples": 80001
+  },
+  "185945": {
+   "finite_samples": 0,
+   "samples": 80001
+  },
+  "185961": {
+   "finite_samples": 0,
+   "samples": 80001
+  },
+  "186013": {
+   "finite_samples": 0,
+   "samples": 80001
+  },
+  "186093": {
+   "finite_samples": 0,
+   "samples": 80001
+  },
+  "186427": {
+   "finite_samples": 0,
+   "samples": 80001
+  },
+  "186569": {
+   "finite_samples": 0,
+   "samples": 80001
+  },
+  "186636": {
+   "finite_samples": 0,
+   "samples": 80001
+  },
+  "186945": {
+   "finite_samples": 0,
+   "samples": 80001
+  },
+  "187035": {
+   "finite_samples": 0,
+   "samples": 80001
+  },
+  "187076": {
+   "finite_samples": 0,
+   "samples": 80001
+  },
+  "187105": {
+   "finite_samples": 0,
+   "samples": 80001
+  },
+  "187196": {
+   "finite_samples": 0,
+   "samples": 80001
+  },
+  "187328": {
+   "finite_samples": 0,
+   "samples": 80001
+  },
+  "189004": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "189044": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "189061": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "189272": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "189324": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "189559": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "189688": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "189741": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "189885": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "190094": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "190177": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "190218": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "190300": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "190335": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "190637": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "190643": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "190695": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "190790": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "190991": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "191326": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "191382": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "191470": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "191677": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "192003": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "192010": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "192015": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "192148": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "192226": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "192229": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "192232": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "192425": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "192432": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "192721": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "192732": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "192751": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "192914": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "193008": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "193022": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "193075": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "193276": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "194155": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "194160": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "194445": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "194600": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "194608": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "195016": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "195024": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "195066": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "195102": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "195103": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "195111": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "195186": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "195263": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "195279": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "195646": {
+   "finite_samples": 79999,
+   "samples": 80001
+  },
+  "195786": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "195959": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "196332": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "196405": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "196541": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "198806": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "198899": {
+   "finite_samples": 69999,
+   "samples": 70001
+  },
+  "198971": {
+   "finite_samples": 74999,
+   "samples": 75001
+  },
+  "199087": {
+   "finite_samples": 74999,
+   "samples": 75001
+  },
+  "199789": {
+   "finite_samples": 74999,
+   "samples": 75001
+  },
+  "199790": {
+   "finite_samples": 74999,
+   "samples": 75001
+  },
+  "199909": {
+   "finite_samples": 74999,
+   "samples": 75001
+  },
+  "199921": {
+   "finite_samples": 74999,
+   "samples": 75001
+  },
+  "200127": {
+   "finite_samples": 74999,
+   "samples": 75001
+  },
+  "200198": {
+   "finite_samples": 74999,
+   "samples": 75001
+  },
+  "200320": {
+   "finite_samples": 74999,
+   "samples": 75001
+  },
+  "200385": {
+   "finite_samples": 74999,
+   "samples": 75001
+  },
+  "200427": {
+   "finite_samples": 74999,
+   "samples": 75001
+  },
+  "200636": {
+   "finite_samples": 74999,
+   "samples": 75001
+  },
+  "200917": {
+   "finite_samples": 74999,
+   "samples": 75001
+  },
+  "200954": {
+   "finite_samples": 74999,
+   "samples": 75001
+  },
+  "200990": {
+   "finite_samples": 74999,
+   "samples": 75001
+  },
+  "201270": {
+   "finite_samples": 89999,
+   "samples": 90001
+  },
+  "201395": {
+   "finite_samples": 75499,
+   "samples": 75501
+  },
+  "201447": {
+   "finite_samples": 75499,
+   "samples": 75501
+  },
+  "201494": {
+   "finite_samples": 75499,
+   "samples": 75501
+  },
+  "201707": {
+   "finite_samples": 100499,
+   "samples": 100501
+  },
+  "201973": {
+   "finite_samples": 75499,
+   "samples": 75501
+  },
+  "201978": {
+   "finite_samples": 75499,
+   "samples": 75501
+  },
+  "203012": {
+   "finite_samples": 75499,
+   "samples": 75501
+  },
+  "203041": {
+   "finite_samples": 75499,
+   "samples": 75501
+  },
+  "203132": {
+   "finite_samples": 90000,
+   "samples": 90001
+  },
+  "203187": {
+   "finite_samples": 90000,
+   "samples": 90001
+  },
+  "203470": {
+   "finite_samples": 80000,
+   "samples": 80001
+  },
+  "203521": {
+   "finite_samples": 90000,
+   "samples": 90001
+  },
+  "203576": {
+   "finite_samples": 90000,
+   "samples": 90001
+  },
+  "203629": {
+   "finite_samples": 90000,
+   "samples": 90001
+  },
+  "203719": {
+   "finite_samples": 90000,
+   "samples": 90001
+  },
+  "203764": {
+   "finite_samples": 90000,
+   "samples": 90001
+  },
+  "203778": {
+   "finite_samples": 90000,
+   "samples": 90001
+  },
+  "203941": {
+   "finite_samples": 90000,
+   "samples": 90001
+  },
+  "203959": {
+   "finite_samples": 90000,
+   "samples": 90001
+  },
+  "204233": {
+   "finite_samples": 90000,
+   "samples": 90001
+  },
+  "204240": {
+   "finite_samples": 90000,
+   "samples": 90001
+  },
+  "204243": {
+   "finite_samples": 90000,
+   "samples": 90001
+  },
+  "204256": {
+   "finite_samples": 90000,
+   "samples": 90001
+  },
+  "204530": {
+   "finite_samples": 95000,
+   "samples": 95001
+  },
+  "204560": {
+   "finite_samples": 95000,
+   "samples": 95001
+  },
+  "204937": {
+   "finite_samples": 100000,
+   "samples": 100001
+  }
+ },
+ "fs01_finite_shots": 104,
+ "used_channels": [
+  "FS02",
+  "FS03",
+  "FS04"
+ ],
+ "fs01_exclusion": "The original native-rate ELM-O cache contains FS02-FS04 only. Existing U-Net fits inherited that cache; FS01 was not trained or evaluated. Corpus availability is reported separately and does not justify declaring FS01 universally unavailable.",
+ "metadata_shot": 190643,
+ "metadata_tree": "D3D",
+ "metadata": {
+  "FS01": {
+   "alias_fullpath": "\\SPECTROSCOPY::TOP.FILTERSCOPE.PMT10:PHOTON_FLUX",
+   "fullpath": "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.PMT10",
+   "parent": "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.PMT10",
+   "members": [
+    "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.PMT10:CALIB_ERROR",
+    "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.PMT10:PHOTON_FLUX",
+    "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.PMT10:PHOTO_EL_SIG",
+    "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.PMT10:CALIB_ERROR",
+    "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.PMT10:PHOTON_FLUX",
+    "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.PMT10:PHOTO_EL_SIG"
+   ],
+   "text_members": {},
+   "descendant_usages": {}
+  },
+  "FS02": {
+   "alias_fullpath": "\\SPECTROSCOPY::TOP.FILTERSCOPE.PMT11:PHOTON_FLUX",
+   "fullpath": "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.PMT11",
+   "parent": "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.PMT11",
+   "members": [
+    "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.PMT11:CALIB_ERROR",
+    "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.PMT11:PHOTON_FLUX",
+    "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.PMT11:PHOTO_EL_SIG",
+    "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.PMT11:CALIB_ERROR",
+    "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.PMT11:PHOTON_FLUX",
+    "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.PMT11:PHOTO_EL_SIG"
+   ],
+   "text_members": {},
+   "descendant_usages": {}
+  },
+  "FS03": {
+   "alias_fullpath": "\\SPECTROSCOPY::TOP.FILTERSCOPE.PMT12:PHOTON_FLUX",
+   "fullpath": "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.PMT12",
+   "parent": "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.PMT12",
+   "members": [
+    "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.PMT12:CALIB_ERROR",
+    "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.PMT12:PHOTON_FLUX",
+    "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.PMT12:PHOTO_EL_SIG",
+    "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.PMT12:CALIB_ERROR",
+    "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.PMT12:PHOTON_FLUX",
+    "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.PMT12:PHOTO_EL_SIG"
+   ],
+   "text_members": {},
+   "descendant_usages": {}
+  },
+  "FS04": {
+   "alias_fullpath": "\\SPECTROSCOPY::TOP.FILTERSCOPE.PMT13:PHOTON_FLUX",
+   "fullpath": "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.PMT13",
+   "parent": "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.PMT13",
+   "members": [
+    "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.PMT13:CALIB_ERROR",
+    "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.PMT13:PHOTON_FLUX",
+    "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.PMT13:PHOTO_EL_SIG",
+    "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.PMT13:CALIB_ERROR",
+    "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.PMT13:PHOTON_FLUX",
+    "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.PMT13:PHOTO_EL_SIG"
+   ],
+   "text_members": {},
+   "descendant_usages": {}
+  }
+ },
+ "views": {
+  "FS01": {
+   "pmt": "PMT10",
+   "view": null,
+   "status": "divertor versus midplane not identified in accessible metadata"
+  },
+  "FS02": {
+   "pmt": "PMT11",
+   "view": null,
+   "status": "divertor versus midplane not identified in accessible metadata"
+  },
+  "FS03": {
+   "pmt": "PMT12",
+   "view": null,
+   "status": "divertor versus midplane not identified in accessible metadata"
+  },
+  "FS04": {
+   "pmt": "PMT13",
+   "view": null,
+   "status": "divertor versus midplane not identified in accessible metadata"
+  }
+ },
+ "view_limit": "The filterscope metadata nodes expose calibration and photon-flux signals, not a sightline/location field. Neither corpus attributes nor retained native-rate cache metadata identify divertor/midplane views. PMT mappings are verified tree aliases, not inferred geometry.",
+ "auth_stopped": false,
+ "filterscope_text_nodes": {
+  "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE:GAIN_CALIB": "The numerical node GAIN_COEFFS contains the array \n[a1, b1, a2, b2, a2, b3, a4, b4] , where \neach pair of constants \"a\" and \"b\" are \nthe fit coefficients in the power law G = a V^b \nover the voltage ranges [.15-.35, .35-.50, .50-.70, .70-.90], respectively.\n\nIn the power law above, G is photomultiplier gain \nand V is dynode voltage. \n\nThe gain-corrected signal PHOTO_EL-SIG is related \nto the raw signal PMTxxyy by the relation: \n\nPHOTO_EL_SIG = PMTxxyy / G. ",
+  "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE:PHOTON_FLUX": "The numerical node FLUX_CONSTS contains the eight constants \n[PMT, WAVE, BAND_CENTER, FWHM, INH_NO, LINE_CAL, V_CAL, GAIN_V], where \n\nPMT is the model number of the miniature Hamamatsu photomultiplier assembly, \nWAVE is the wavelength in Angstroms of the given spectra line, \nBAND_CENTER is the central wavelength in Angstroms of the bandpass filter, \nFWHM is the full width at half maximum in Angstroms of the bandpass filters transmission profile, \nINH_NO is the dot product of the Optronics light source intensity and the peak-normalized, filter transmission function \nLINE_CAL is the voltage response of the filterscope during calibration with the in-vessel light source, \nV_CAL is the control voltage at which LINE_CAL is measured, \nGAIN_V is the gain of the photomultiplier at the voltage V_CAL. \n\nThe calibrated photon flux, PHOTON_FLUX, [ (ph/s-ster-cm2)/volt ]\nis related to the photoelectron signal \nPHOTO_EL_SIG by the  relation: \n\nPHOTON_FLUX = ( INH_NO / LINE_CAL ) * GAIN_V * PHOTO_EL_SIG  ",
+  "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.NOTES:FLUX_CONSTS": "TreeNODATA: %TREE-E-NODATA, No data available for this node",
+  "\\D3D::TOP.SPECTROSCOPY.FILTERSCOPE.NOTES:GAIN_COEFFS": "TreeNODATA: %TREE-E-NODATA, No data available for this node"
+ },
+ "git": "da3f6693bdf71af611a8a163648cc59ee4ca45f5",
+ "audit_git_meaning": "current code/record audit; historical training provenance remains embedded and is not rewritten",
+ "generation_git": "0ade8ff3aafae5e7006e065c66529da413f09606"
+}

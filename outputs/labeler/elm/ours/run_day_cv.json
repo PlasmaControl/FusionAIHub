@@ -1,0 +1,358 @@
+{
+ "git": "2a3ff77536dcf8b9f1959d718fdb0cdab8693bd8",
+ "created": "2026-10-03T23:30:17+00:00",
+ "script_sha256": "360db3ebad5e783c2a12b598c4171ad81a70cbd4068b8ec2848f76a54d2acb37",
+ "run": "cv2_runday",
+ "source_evaluation": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/run_day_cv/eval/evaluation.json",
+ "source_evaluation_sha256": "d1948fc3123472f0aeffc3c581f5602002405af140a2dbd57a1c472a3123d7cd",
+ "fold_grouping": "run_day",
+ "protocol": "Same recipe, seed and scoring as the headline cv2 run; only the fold dealing differs: every cohort run day lies wholly in one test fold (greedy balance by shot count, no stratification by annotation kind). Sensitivity beside the headline, not a replacement.",
+ "cohort_test_shots_used": 0,
+ "run_days": 94,
+ "run_days_spanning_multiple_folds": 0,
+ "folds": [
+  {
+   "fold": 0,
+   "test_shots": 24,
+   "run_days": 19,
+   "threshold": 0.44681812316179276,
+   "shots_with_non_crowd_spans": 3,
+   "shots_with_crowd_spans": 19
+  },
+  {
+   "fold": 1,
+   "test_shots": 24,
+   "run_days": 19,
+   "threshold": 0.39793921142816546,
+   "shots_with_non_crowd_spans": 4,
+   "shots_with_crowd_spans": 14
+  },
+  {
+   "fold": 2,
+   "test_shots": 24,
+   "run_days": 19,
+   "threshold": 0.39088488787412645,
+   "shots_with_non_crowd_spans": 6,
+   "shots_with_crowd_spans": 16
+  },
+  {
+   "fold": 3,
+   "test_shots": 24,
+   "run_days": 19,
+   "threshold": 0.20236282244324685,
+   "shots_with_non_crowd_spans": 8,
+   "shots_with_crowd_spans": 14
+  },
+  {
+   "fold": 4,
+   "test_shots": 23,
+   "run_days": 18,
+   "threshold": 0.71877670109272,
+   "shots_with_non_crowd_spans": 12,
+   "shots_with_crowd_spans": 13
+  }
+ ],
+ "sets": {
+  "bes73": {
+   "n_shots": 73,
+   "bins": 6843,
+   "methods": {
+    "elm-ours": {
+     "point": {
+      "auroc": 0.932699464718033,
+      "auprc": 0.8782562583615074,
+      "f1": 0.8545300592718036,
+      "precision": 0.7996830427892234,
+      "recall": 0.9174545454545454,
+      "false_alarm_bin_rate": 0.1544099682384559
+     },
+     "ci95": {
+      "auroc": [
+       0.8940694725866705,
+       0.9662218144530424
+      ],
+      "auprc": [
+       0.7887394109466852,
+       0.9471191634941122
+      ],
+      "f1": [
+       0.7920184893497643,
+       0.9069617346152397
+      ],
+      "precision": [
+       0.7067122341965478,
+       0.8794806654345362
+      ],
+      "recall": [
+       0.8571276654513313,
+       0.9669948398676314
+      ],
+      "false_alarm_bin_rate": [
+       0.0871920793183233,
+       0.2261812709675605
+      ]
+     }
+    },
+    "elm-clock": {
+     "point": {
+      "auroc": null,
+      "auprc": null,
+      "f1": 0.7076604554865424,
+      "precision": 0.8216346153846154,
+      "recall": 0.6214545454545455,
+      "false_alarm_bin_rate": 0.09064256046909358
+     },
+     "ci95": {
+      "auroc": null,
+      "auprc": null,
+      "f1": [
+       0.6022869457539355,
+       0.79988257241337
+      ],
+      "precision": [
+       0.7195219234302184,
+       0.9144994290718339
+      ],
+      "recall": [
+       0.48847123910178747,
+       0.7569010047338591
+      ],
+      "false_alarm_bin_rate": [
+       0.038875865936425925,
+       0.14627979393783824
+      ]
+     }
+    },
+    "elm-elmo": {
+     "point": {
+      "auroc": 0.918402283277436,
+      "auprc": 0.8326756912456157,
+      "f1": 0.842067089755213,
+      "precision": 0.8397830018083182,
+      "recall": 0.8443636363636363,
+      "false_alarm_bin_rate": 0.10823356950891766
+     },
+     "ci95": {
+      "auroc": [
+       0.8772004932548915,
+       0.9506421020958974
+      ],
+      "auprc": [
+       0.753311824432465,
+       0.8899523849577735
+      ],
+      "f1": [
+       0.7893921176916634,
+       0.8849678307534709
+      ],
+      "precision": [
+       0.7675314518788678,
+       0.8992787261655186
+      ],
+      "recall": [
+       0.7785412578843305,
+       0.892024288020887
+      ],
+      "false_alarm_bin_rate": [
+       0.06832796902059918,
+       0.1562950801106996
+      ]
+     }
+    },
+    "always present": {
+     "point": {
+      "auroc": 0.5,
+      "auprc": 0.40187052462370304,
+      "f1": 0.5733347232356927,
+      "precision": 0.40187052462370304,
+      "recall": 1.0,
+      "false_alarm_bin_rate": 1.0
+     },
+     "ci95": {
+      "auroc": [
+       0.5,
+       0.5
+      ],
+      "auprc": [
+       0.3249898292891919,
+       0.4792399287713274
+      ],
+      "f1": [
+       0.4905544498343821,
+       0.6479542597736443
+      ],
+      "precision": [
+       0.3249898292891919,
+       0.4792399287713274
+      ],
+      "recall": [
+       1.0,
+       1.0
+      ],
+      "false_alarm_bin_rate": [
+       1.0,
+       1.0
+      ]
+     }
+    }
+   },
+   "paired": {
+    "elm-ours - elm-clock: f1": {
+     "value": 0.14686960378526115,
+     "ci95": [
+      0.05637371002630449,
+      0.24452863906321384
+     ]
+    },
+    "elm-ours - elm-elmo: f1": {
+     "value": 0.012462969516590539,
+     "ci95": [
+      -0.03726106967512131,
+      0.06310754879241276
+     ]
+    },
+    "elm-ours - elm-elmo: auroc": {
+     "value": 0.014297181440596995,
+     "ci95": [
+      -0.030269568033134724,
+      0.059985614400222174
+     ]
+    },
+    "elm-ours - elm-elmo: auprc": {
+     "value": 0.04558056711589176,
+     "ci95": [
+      -0.04111525336101274,
+      0.1151539223430327
+     ]
+    }
+   },
+   "headline_elm_ours": {
+    "auroc": 0.9413442906958666,
+    "auprc": 0.8752273777121873,
+    "f1": 0.8445549831231125
+   }
+  },
+  "all119": {
+   "n_shots": 119,
+   "bins": 12409,
+   "methods": {
+    "elm-ours": {
+     "point": {
+      "auroc": 0.9436017482645253,
+      "auprc": 0.8962273939425336,
+      "f1": 0.8601110882534458,
+      "precision": 0.8266113088177145,
+      "recall": 0.8964408233276158,
+      "false_alarm_bin_rate": 0.11323434473854099
+     },
+     "ci95": {
+      "auroc": [
+       0.9159513082492597,
+       0.9639154127791086
+      ],
+      "auprc": [
+       0.8314232613359603,
+       0.9405233000588621
+      ],
+      "f1": [
+       0.8114227784604857,
+       0.8997769004985358
+      ],
+      "precision": [
+       0.7562925249867362,
+       0.8880093445999244
+      ],
+      "recall": [
+       0.8411186651488322,
+       0.9395436947528806
+      ],
+      "false_alarm_bin_rate": [
+       0.07218665537998802,
+       0.15852604514574012
+      ]
+     }
+    },
+    "elm-clock": {
+     "point": {
+      "auroc": null,
+      "auprc": null,
+      "f1": 0.7573893111352394,
+      "precision": 0.8659310344827587,
+      "recall": 0.6730274442538593,
+      "false_alarm_bin_rate": 0.06275016139444803
+     },
+     "ci95": {
+      "auroc": null,
+      "auprc": null,
+      "f1": [
+       0.6802863478641,
+       0.8268300529629479
+      ],
+      "precision": [
+       0.7881797667757062,
+       0.9297161094224924
+      ],
+      "recall": [
+       0.5747416798065339,
+       0.7787257647841497
+      ],
+      "false_alarm_bin_rate": [
+       0.032321406955395544,
+       0.10047542599716909
+      ]
+     }
+    },
+    "always present": {
+     "point": {
+      "auroc": 0.5,
+      "auprc": 0.3758562333789991,
+      "f1": 0.5463597493117789,
+      "precision": 0.3758562333789991,
+      "recall": 1.0,
+      "false_alarm_bin_rate": 1.0
+     },
+     "ci95": {
+      "auroc": [
+       0.5,
+       0.5
+      ],
+      "auprc": [
+       0.3221066083680579,
+       0.42966989317156895
+      ],
+      "f1": [
+       0.4872626630767489,
+       0.6010756621634965
+      ],
+      "precision": [
+       0.3221066083680579,
+       0.42966989317156895
+      ],
+      "recall": [
+       1.0,
+       1.0
+      ],
+      "false_alarm_bin_rate": [
+       1.0,
+       1.0
+      ]
+     }
+    }
+   },
+   "paired": {
+    "elm-ours - elm-clock: f1": {
+     "value": 0.1027217771182064,
+     "ci95": [
+      0.030774541788627444,
+      0.1865962727209767
+     ]
+    }
+   },
+   "headline_elm_ours": {
+    "auroc": 0.9411310567211514,
+    "auprc": 0.8770972997900133,
+    "f1": 0.8301288823156561
+   }
+  }
+ }
+}

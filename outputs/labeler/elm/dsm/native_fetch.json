@@ -1,0 +1,554 @@
+{
+ "rows": [
+  {
+   "shot": 185857,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/185857_pcphd02.npz",
+   "samples": 142497,
+   "sha256": "45b03d7894779d8c1bc9b9a10a2602dcdc684e8c10efc60f5e930404e9e05182"
+  },
+  {
+   "shot": 185857,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/185857_pcphd03.npz",
+   "samples": 142497,
+   "sha256": "043c060075219e67af67e8087181d2aac452d94bdf54793c9137e3e6f95c1c80"
+  },
+  {
+   "shot": 185866,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/185866_pcphd02.npz",
+   "samples": 142497,
+   "sha256": "d966a0a6e4b2249672980f9670df2abf58dfd2067b5f8e945b8a9dd297ab82bf"
+  },
+  {
+   "shot": 185866,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/185866_pcphd03.npz",
+   "samples": 142497,
+   "sha256": "5cc5696768af6e93525abc17c19839a5773e3d4b61bb03922e6df1a30f2c5d75"
+  },
+  {
+   "shot": 185945,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/185945_pcphd02.npz",
+   "samples": 142495,
+   "sha256": "5c54763af3b48955716ed3c23c208c72b3ca7102d484ab23ce99e1301c7d0bda"
+  },
+  {
+   "shot": 185945,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/185945_pcphd03.npz",
+   "samples": 142495,
+   "sha256": "49554f61121561df099fbdb0a6b16682dbd7d9ff22091da42c44a77a93c72ba9"
+  },
+  {
+   "shot": 185961,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/185961_pcphd02.npz",
+   "samples": 142497,
+   "sha256": "7c201b6bcb1d8857114426862c2aa0ce427d461e03dda79267aa1dfcd1f43c30"
+  },
+  {
+   "shot": 185961,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/185961_pcphd03.npz",
+   "samples": 142497,
+   "sha256": "34c588352bdfaada083878bb88c91eaae676e17d931e08c684aa4e2535fa52f7"
+  },
+  {
+   "shot": 186013,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/186013_pcphd02.npz",
+   "samples": 142495,
+   "sha256": "4fe0238929901a68eae62a8dc46e584bc582cf02500d0c98d1661637c0f61562"
+  },
+  {
+   "shot": 186013,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/186013_pcphd03.npz",
+   "samples": 142495,
+   "sha256": "6612885e673d2cc11beb706bfb3508c5268a67cbf4f551e690b248b7138e57c1"
+  },
+  {
+   "shot": 186636,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/186636_pcphd02.npz",
+   "samples": 162495,
+   "sha256": "4cb74fb64665595121e41f157a45b0b582ceec4ecdc196c337659237009af36f"
+  },
+  {
+   "shot": 186636,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/186636_pcphd03.npz",
+   "samples": 162495,
+   "sha256": "90e5f002bc5bad5ba21382afda850c42b7384a61774eb2226b38184b89d4838c"
+  },
+  {
+   "shot": 187035,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/187035_pcphd02.npz",
+   "samples": 162497,
+   "sha256": "acd2deb9b1731a391d0b0953cdfd2b5278ace0fdd0edb7bcd914fcc0b24a8bc2"
+  },
+  {
+   "shot": 187035,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/187035_pcphd03.npz",
+   "samples": 162497,
+   "sha256": "594ef72ddaeaaef1e1250e27a3028183bcb817cc3d7183562a73fb0b18594287"
+  },
+  {
+   "shot": 187328,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/187328_pcphd02.npz",
+   "samples": 142497,
+   "sha256": "6ca7467a8cd2694c461cb8c60fe41a5d7b9ce0be80e6c3014d0c6c22882e332d"
+  },
+  {
+   "shot": 187328,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/187328_pcphd03.npz",
+   "samples": 142497,
+   "sha256": "29400ccbaa70a958c7aa633c1099d2467112d3faa91eb9840bdb5b22e17ad8bf"
+  },
+  {
+   "shot": 189272,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/189272_pcphd02.npz",
+   "samples": 142496,
+   "sha256": "465b1209f837e4c4d937b6579fe1b3f7bb192a41644235c28432b372c0adf8d3"
+  },
+  {
+   "shot": 189272,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/189272_pcphd03.npz",
+   "samples": 142496,
+   "sha256": "5bb9208a1c5e3103ae7570b7b9f7f3a513ad5c86b3d16ab88ab9f9257204472e"
+  },
+  {
+   "shot": 189324,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/189324_pcphd02.npz",
+   "samples": 142497,
+   "sha256": "75882f1d4722903a6f579fe1e43c8311225120672056594535155f9fdc15ba35"
+  },
+  {
+   "shot": 189324,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/189324_pcphd03.npz",
+   "samples": 142497,
+   "sha256": "c0fe2b751c53d16e8ae478634bb57142cf6fcf82ac62f7d3eda30fbaf62cd6ee"
+  },
+  {
+   "shot": 189741,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/189741_pcphd02.npz",
+   "samples": 142495,
+   "sha256": "d12089dc49cf2a3be2f27a506074b67fec0342e3b2a55e40aa07639f47c1fff4"
+  },
+  {
+   "shot": 189741,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/189741_pcphd03.npz",
+   "samples": 142495,
+   "sha256": "3718287dbaf9e29dfc3c524fab2e4fc18792c6bad267d845d4dd1860ef4e864f"
+  },
+  {
+   "shot": 190695,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/190695_pcphd02.npz",
+   "samples": 142499,
+   "sha256": "68db2f69124ec504cff17cca3068840e6a7d0b93281edecc81576826a1552e81"
+  },
+  {
+   "shot": 190695,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/190695_pcphd03.npz",
+   "samples": 142499,
+   "sha256": "fbed8f82a9f430353df45db197eabb1435f92b229991399522d64da6c47aad0d"
+  },
+  {
+   "shot": 190790,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/190790_pcphd02.npz",
+   "samples": 142499,
+   "sha256": "2b57ee6fce49273a4781012df945f67f3f7a0a226eb488f6b0cb6812982c4672"
+  },
+  {
+   "shot": 190790,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/190790_pcphd03.npz",
+   "samples": 142499,
+   "sha256": "fa02e16fd4822dfc33aeeee7e3d77632dcfcde792720e0840d4a042f6f195301"
+  },
+  {
+   "shot": 191382,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/191382_pcphd02.npz",
+   "samples": 142499,
+   "sha256": "d0fe6a4f083d2591b2d5d8102af8437f2ba4df7a258dfe9448822e2455b88837"
+  },
+  {
+   "shot": 191382,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/191382_pcphd03.npz",
+   "samples": 142499,
+   "sha256": "e8d4f12a60bdd3cdb96a9fb1d37d23d4bcd7cbdfe79dc70f0d082906637a80d7"
+  },
+  {
+   "shot": 191677,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/191677_pcphd02.npz",
+   "samples": 142495,
+   "sha256": "37730c4cc80a3d109dfeab905c7a4869b17d5bde7061df0194ebec7a6787fe7f"
+  },
+  {
+   "shot": 191677,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/191677_pcphd03.npz",
+   "samples": 142495,
+   "sha256": "4be63d05e456bbd227bbaa6a2644e490c601429b3ea01e4d9e8b683e4063817e"
+  },
+  {
+   "shot": 192003,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/192003_pcphd02.npz",
+   "samples": 142495,
+   "sha256": "77b85999f6b1b0f03cd0c42f6c9e6ad2cd3d3e9f29b6cd4fb1e3f1f617dd3596"
+  },
+  {
+   "shot": 192003,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/192003_pcphd03.npz",
+   "samples": 142495,
+   "sha256": "8bba85b65e4190ae628c33a90a54fe1870df3fda39f031f61ced676e93ce1d8b"
+  },
+  {
+   "shot": 192010,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/192010_pcphd02.npz",
+   "samples": 142497,
+   "sha256": "b32dd5ac6021ab3bd34916bcc19defaaa71333b27264ab1943062e43e54d24cd"
+  },
+  {
+   "shot": 192010,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/192010_pcphd03.npz",
+   "samples": 142497,
+   "sha256": "a5c030bbcac590e1a3907f1302f2b7aeac77a8bbfd7a802ef38212800c076245"
+  },
+  {
+   "shot": 192015,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/192015_pcphd02.npz",
+   "samples": 142497,
+   "sha256": "b625e74d664c30138a295afadd46ce391795ee0bd44464b53467d3703269c274"
+  },
+  {
+   "shot": 192015,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/192015_pcphd03.npz",
+   "samples": 142497,
+   "sha256": "232b6cb264d294cd6337c5767a39aca148be0986d61b747f323dd2117865ef84"
+  },
+  {
+   "shot": 192425,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/192425_pcphd02.npz",
+   "samples": 142497,
+   "sha256": "2b7cf9e9ef921474d6bc462b7f8c93d0ab85f49901d9c846dc72b47f5d3b6147"
+  },
+  {
+   "shot": 192425,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/192425_pcphd03.npz",
+   "samples": 142497,
+   "sha256": "488c4a9df462589078e285a427afa2cc3477828d3d8aa46298881237c28b1c5c"
+  },
+  {
+   "shot": 192432,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/192432_pcphd02.npz",
+   "samples": 142497,
+   "sha256": "e0c12bdab9f877050221ac266a058fa32c51d6b1ead08be0ccbc6a0967155b0e"
+  },
+  {
+   "shot": 192432,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/192432_pcphd03.npz",
+   "samples": 142497,
+   "sha256": "73a6f41fe79a2a48ce0004db84ce66fcfbb96889176fcc751c65878baa5a7938"
+  },
+  {
+   "shot": 192914,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/192914_pcphd02.npz",
+   "samples": 162497,
+   "sha256": "bb6554b113cbb3975d7d99ddfd62d1b3169c368fa1bbe54d92cf630bde9fd3b3"
+  },
+  {
+   "shot": 192914,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/192914_pcphd03.npz",
+   "samples": 162497,
+   "sha256": "66b03b9e6f01b634e3632d47208fde321a81bf0604f6e8608f9781a951c38765"
+  },
+  {
+   "shot": 193008,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/193008_pcphd02.npz",
+   "samples": 142499,
+   "sha256": "f69c43ce492df13b2d510f276569c4611ad403288777796b69cb36f3bb3b870c"
+  },
+  {
+   "shot": 193008,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/193008_pcphd03.npz",
+   "samples": 142499,
+   "sha256": "d4b55676e5ee62a2c897bcae09092e730e8e4a3facbbb5ccd4b43bc296d46800"
+  },
+  {
+   "shot": 193022,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/193022_pcphd02.npz",
+   "samples": 142501,
+   "sha256": "7c0ebecceea45c844a9ef0c139049ecbca88cbd0a3166834abbf55b2b74286d8"
+  },
+  {
+   "shot": 193022,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/193022_pcphd03.npz",
+   "samples": 142501,
+   "sha256": "21b0c73c6a5dd0e1c26ef8e3a7a849b7d79d8f8a1244fd4449c107df8172644d"
+  },
+  {
+   "shot": 193075,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/193075_pcphd02.npz",
+   "samples": 142498,
+   "sha256": "e84ebcbde841255983d4992bda80bf741b2ccc9986b9c6d8065b6c693ba5224a"
+  },
+  {
+   "shot": 193075,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/193075_pcphd03.npz",
+   "samples": 142498,
+   "sha256": "bfdb6575c34dbb55bb5501dab0704f3d3e1dea1ae4d6ad376068d67d88c80ea0"
+  },
+  {
+   "shot": 194155,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/194155_pcphd02.npz",
+   "samples": 142499,
+   "sha256": "999ad3e0884e4296ea8c27f5f2c98a772252ee924b831b75f583618406534ed1"
+  },
+  {
+   "shot": 194155,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/194155_pcphd03.npz",
+   "samples": 142499,
+   "sha256": "4790406d4381571e42f1a1abcf227bd8583ff40b11845fd3b008dbdb85c56778"
+  },
+  {
+   "shot": 194160,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/194160_pcphd02.npz",
+   "samples": 142504,
+   "sha256": "85fc588dda120f20264d06fff1a5cb9aa1cb3af731425aac5ef671ee15ad1f7c"
+  },
+  {
+   "shot": 194160,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/194160_pcphd03.npz",
+   "samples": 142504,
+   "sha256": "2bb82ead8cdff3a98f6dff0cc09de90a68120e5f8bf4c20d9d78e76cecb0c155"
+  },
+  {
+   "shot": 194445,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/194445_pcphd02.npz",
+   "samples": 142499,
+   "sha256": "386c4aa02a796ed7dd11a55c363facdc89a20422a8216fd0b3954504fe9334dd"
+  },
+  {
+   "shot": 194445,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/194445_pcphd03.npz",
+   "samples": 142499,
+   "sha256": "0dc5e43a1fc0de47354dd1046f9b6477ba22baeacbb53c3dac616dfddc5501c9"
+  },
+  {
+   "shot": 195016,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/195016_pcphd02.npz",
+   "samples": 143382,
+   "sha256": "92e6d7906865d46727b8669eb4a57f46d302a6461ea75cfacbe82118a9213972"
+  },
+  {
+   "shot": 195016,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/195016_pcphd03.npz",
+   "samples": 143382,
+   "sha256": "bc0808dc4833483887558111fca7766581562f75499ebe27c7376981f1b7609f"
+  },
+  {
+   "shot": 195024,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/195024_pcphd02.npz",
+   "samples": 144552,
+   "sha256": "88243c4a1acaa76d01dc4162561c0f11f3d576efdeee231441658eafecc1e62c"
+  },
+  {
+   "shot": 195024,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/195024_pcphd03.npz",
+   "samples": 144552,
+   "sha256": "66a5b129cf5315a00f330d35cb4b95c75db0eb9890c34b07ca165ac2b4b96e46"
+  },
+  {
+   "shot": 195066,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/195066_pcphd02.npz",
+   "samples": 145676,
+   "sha256": "f9ab5d3dbbc9fd12ca85d92a46993df69c6b2f740574697b95260dc2ec4b0d5b"
+  },
+  {
+   "shot": 195066,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/195066_pcphd03.npz",
+   "samples": 145676,
+   "sha256": "bb92070948efd453ebdd4e81c429c1f79709ef21e55a5d95bc03df908dc1f6ff"
+  },
+  {
+   "shot": 195102,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/195102_pcphd02.npz",
+   "samples": 142588,
+   "sha256": "e83a8f57c986debce9bf1311cb0770d027f86fddb74a2e38bb666b9e481b5c59"
+  },
+  {
+   "shot": 195102,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/195102_pcphd03.npz",
+   "samples": 142588,
+   "sha256": "f0b4f3e27d9488be29b7dee59ecab97a8a69f63c0b3725be5e47729329271df6"
+  },
+  {
+   "shot": 195103,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/195103_pcphd02.npz",
+   "samples": 143000,
+   "sha256": "6bf7afba9f1c8d0fe6a2aab7da514011098e266d96816f3ec7e42a41faa8c90f"
+  },
+  {
+   "shot": 195103,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/195103_pcphd03.npz",
+   "samples": 143000,
+   "sha256": "23204b71b827db3183229b2d5267c7c02c6d63dda62d8aa3e3dcd32cc765ad4a"
+  },
+  {
+   "shot": 195111,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/195111_pcphd02.npz",
+   "samples": 144366,
+   "sha256": "9f3712e757db90fb98ee2f8075c58de08eb64b3a5d6dcb496d017eaa1f7d6443"
+  },
+  {
+   "shot": 195111,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/195111_pcphd03.npz",
+   "samples": 144366,
+   "sha256": "75f4fde251db99d9b95f68fb268ad0127734edc4e5942328756aa32419e1d6af"
+  },
+  {
+   "shot": 195263,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/195263_pcphd02.npz",
+   "samples": 145691,
+   "sha256": "6eb79cb4cded5be86b889f55c0f14471309f781286f8befc68cd40a7137fb452"
+  },
+  {
+   "shot": 195263,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/195263_pcphd03.npz",
+   "samples": 145691,
+   "sha256": "0be655ecf0b360e35812a3c66d49561f8d5183dad43101b7bc10f867e5ff2ebb"
+  },
+  {
+   "shot": 195279,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/195279_pcphd02.npz",
+   "samples": 144755,
+   "sha256": "aae5fa3918e0b26aee9d91d56413a1653ce6b02968253cd9d32ad0019695002e"
+  },
+  {
+   "shot": 195279,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/195279_pcphd03.npz",
+   "samples": 144755,
+   "sha256": "ebd057b4222c921b1bf5a266d4ec18ddb84a5f0c1d9c2c7422adacefac7daacc"
+  },
+  {
+   "shot": 195646,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/195646_pcphd02.npz",
+   "samples": 176099,
+   "sha256": "8b9a7084d1140bc6f5e7c7b59d61a16b9ae563866024ce37d3372943ca76e7c7"
+  },
+  {
+   "shot": 195646,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/195646_pcphd03.npz",
+   "samples": 176099,
+   "sha256": "a7856e3c6a30518cc7a6967c9fca1c83e08e0e6ce936f5cfbc788c1b35f1a701"
+  },
+  {
+   "shot": 195959,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/195959_pcphd02.npz",
+   "samples": 154103,
+   "sha256": "023a8d3a41d04584451fe448de68419b85ccef400f5310052d14b05d4bd1c144"
+  },
+  {
+   "shot": 195959,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/195959_pcphd03.npz",
+   "samples": 154103,
+   "sha256": "9f27958cdcd8b14ace4ad64674052032ecb3227a076ed00f9d3d998dfc2e87a2"
+  },
+  {
+   "shot": 196332,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/196332_pcphd02.npz",
+   "samples": 142498,
+   "sha256": "129a05c11f084fdba1b1c3ca32502021d4d95c5ef85d97e583715d681a8f553b"
+  },
+  {
+   "shot": 196332,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/196332_pcphd03.npz",
+   "samples": 142498,
+   "sha256": "cc6844f633c4aa73f79f259cd7416ad097c235eeebd2541bd70afffa7207384e"
+  },
+  {
+   "shot": 196405,
+   "column": "pcphd02",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/196405_pcphd02.npz",
+   "samples": 142499,
+   "sha256": "720cfa20b0c612ed7a7884fdbb57cb80475d754fb7459784e101c35d1e925c0c"
+  },
+  {
+   "shot": 196405,
+   "column": "pcphd03",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/196405_pcphd03.npz",
+   "samples": 142499,
+   "sha256": "4368e71b8d8ea3cf53d88903e197b529e31beef532f4efe7b5991894ff5e29c1"
+  }
+ ],
+ "pace_seconds": 1.0,
+ "workers": 1,
+ "stopped_on_auth_error": false,
+ "store": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes"
+}

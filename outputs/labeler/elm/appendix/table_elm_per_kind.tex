@@ -1,0 +1,19 @@
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{lccc}
+\toprule
+Method & Crowd-bin recall & Non-crowd bin recall & Non-crowd span recall \\
+\midrule
+\multicolumn{4}{l}{All reviewed shots} \\
+elm-ours & 0.851 {\scriptsize[0.789, 0.903]} & 0.520 {\scriptsize[0.321, 0.728]} & 0.683 {\scriptsize[0.379, 0.834]} \\
+elm-clock & 0.680 {\scriptsize[0.581, 0.789]} & 0.424 {\scriptsize[0.264, 0.627]} & 0.233 {\scriptsize[0.122, 0.521]} \\
+\midrule
+\multicolumn{4}{l}{BES, elm-elmo chunks} \\
+elm-ours & 0.877 {\scriptsize[0.805, 0.942]} & 0.489 {\scriptsize[0.308, 0.736]} & 0.699 {\scriptsize[0.277, 0.871]} \\
+elm-elmo & 0.852 {\scriptsize[0.788, 0.901]} & 0.602 {\scriptsize[0.382, 0.731]} & 0.634 {\scriptsize[0.267, 0.859]} \\
+elm-clock & 0.628 {\scriptsize[0.492, 0.771]} & 0.409 {\scriptsize[0.223, 0.733]} & 0.215 {\scriptsize[0.090, 0.631]} \\
+\bottomrule
+\end{tabular}\caption{Occupancy recall separated by reviewed annotation kind. Crowd and non-crowd bin recall use positive interior bins; non-crowd span recall credits any detection touching a sufficiently covered individual span, after clipping detections to analyzed coverage. Brackets show 95\% shot-bootstrap intervals. Span-touch recall does not measure onset timing.}
+\label{tab:elm-per-kind}
+\end{table*}

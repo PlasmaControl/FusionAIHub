@@ -1,14 +1,16 @@
-"""d3d_elm_time_to_event_dsm - probability of an ELM within 5, 10, 20 and 50 ms,
+"""elm-dsm-survival - offline ELM risk scores at 5, 10, 20 and 50 ms,
 from a Deep Survival Machines model labeler fitted itself.
 
 The weights are **not** upstream's. Upstream's Keras graphs take 124 inputs and
 64 of them are BES, which the FAITH corpus fills on 2 of 24 sampled shots, so a
-model that needs BES cannot be served at corpus scale. Task 8a therefore fitted
-the same architecture (`hiro_scripts/model.cfg`: k=3, layers=[128], LogNormal,
+model that needs BES cannot be served at corpus scale. The native source uses
+124 inputs, [100, 1000] embedding layers and 1 ms rows. Task 8a instead fitted
+a smaller 128-unit embedding (`hiro_scripts/model.cfg`: k=3, layers=[128], LogNormal,
 lr 1e-3, batch 1024, dropout 0.2, seed 0) on upstream's own split,
 `/projects/EKOLEMEN/wpqh_elm_hiro/data/train_test_split_model10.pkl`, read as-is
 and never re-split, twice: once on all 124 columns and once on the 60 that are
-not BES. The 60-column fit is what this adapter serves
+not BES. This is a reduced-input architectural adaptation. The 60-column fit is
+what this adapter serves
 (`elm_dsm_no_bes.pkl`), and it is the BETTER of the two - see the card.
 
 Column order was the whole difficulty and it is settled by measurement rather
@@ -57,8 +59,14 @@ is in both the corpus and the staged `<shot>_slow.h5` store upstream read:
   spread between those two;
 * `gas`, `ece`, `co2_<chord>`: same instrument, same channel order, measured
   against the staged groups - see each feature's note in `namespace.py`;
-* the grid: upstream's rows are 1 ms means, labeler's are 25 ms. That is a
-  sampling change, not a model change; the card says so.
+* serving uses 50 ms means ending at each timestamp on a 25 ms grid, whereas
+  training used 1 ms rows. The centered four-tap NBI boxcar includes the row
+  25 ms later. These are offline risk scores, not causal forecasts.
+
+Source means and standard deviations were computed before the upstream split.
+All DSM variants using them inherit feature-statistics exposure, including blind
+cohort shots 190532 and 190646. This is independent of reviewed-label CV. The
+adapter excludes every source-exposed physical shot from held-out validation.
 """
 from __future__ import annotations
 
@@ -88,6 +96,13 @@ ARTIFACTS = ("elm_dsm_no_bes.pkl", "normalization.json")
 COLUMN_SET = "no_bes"
 COLUMNS: tuple[str, ...] = COLUMN_SETS[COLUMN_SET]
 DT_S = ns.STEP_S
+SERVING_WINDOW_MS = 50.0
+NBI_LOOKAHEAD_MS = 25.0
+MEMBERSHIP = json.loads(Path(__file__).with_name("training_membership.json").read_text())
+TRAINING_SHOTS = frozenset(MEMBERSHIP["training_shots"])
+EARLY_STOPPING_SHOTS = frozenset(MEMBERSHIP["early_stopping_shots"])
+NORMALIZATION_SHOTS = frozenset(MEMBERSHIP["normalization_shots"])
+EXPOSED_SHOTS = TRAINING_SHOTS | EARLY_STOPPING_SHOTS | NORMALIZATION_SHOTS
 HORIZONS_MS = (5.0, 10.0, 20.0, 50.0)
 #: Upstream fits on `t + 1` (`new_train_elm_model.py`), so a real horizon `h`
 #: is queried at `h + 1` ms. Recorded in every `training.json` as well.
@@ -233,6 +248,11 @@ def load(model_dir: Path) -> Callable[[BuiltInputs], np.ndarray]:
                 ("queried_at_ms", str(HORIZONS_MS[f.column] + T_OFFSET_MS)),
                 ("mean_filled_columns", ",".join(ALWAYS_MEAN_FILLED)),
                 ("trained_grid_ms", "1.0"),
+                ("serving_window_ms", str(SERVING_WINDOW_MS)),
+                ("nbi_lookahead_ms", str(NBI_LOOKAHEAD_MS)),
+                ("score_interpretation", "offline risk score"),
+                ("normalization_scope", "upstream pre-split feature statistics"),
+                ("source_exposed_physical_shots", str(len(EXPOSED_SHOTS))),
             ),
         )
         for f in OUTPUT_SPEC.fields
@@ -251,10 +271,8 @@ ADAPTER = ModelAdapter(
     output_spec=OUTPUT_SPEC,
     load=load,
     ensemble_n=1,
-    # The split's own `train_final_shots_list` holds 327 shots, but they are
-    # wide-pedestal-QH shots from a different era than the FAITH corpus and
-    # none of labeler's pool is in it. Left empty rather than half-written:
-    # `validate` then reports every shot as held out, which is the honest
-    # reading until the list is actually extracted and committed.
-    training_shots=frozenset(),
+    # General validation has only an in_training/held_out distinction. Include
+    # weight fitting, checkpoint selection and pre-split normalization exposure;
+    # training_membership.json retains their separate roles and source hashes.
+    training_shots=EXPOSED_SHOTS,
 )
