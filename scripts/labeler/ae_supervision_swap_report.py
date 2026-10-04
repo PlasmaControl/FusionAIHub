@@ -6,6 +6,7 @@ each comparison is chosen from the intervals, so a changed result changes the pr
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 ARMS = ("legacy", "dense", "threeway")
@@ -26,7 +27,7 @@ CLOCKS = {
     "clock-dense": "clock from dense relabel",
 }
 CLOCK_TRAINING = "input-free, 120 shots"
-SAVED_TRAINING = "UCI ±125 ms windows, 801 shots (saved)"
+SAVED_TRAINING = "saved predictions, UCI ±125 ms windows, 801 shots"
 MODEL_NOTE = {
     "legacy": "legacy annotation",
     "dense": "dense relabel",
@@ -147,6 +148,11 @@ def pretty(name: str) -> str:
 
 TEX_PM = r"$\pm$"
 SAVED_TRAINING_TEX = r"UCI $\pm$125\,ms windows, 801 shots (saved)"
+
+
+def tex_minus(text: str) -> str:
+    """A hyphen that is a minus sign before a number becomes a TeX minus sign."""
+    return re.sub(r"(?<![\w$])-(?=\d)", "$-$", text)
 
 
 def tex(value: str) -> str:
@@ -283,7 +289,7 @@ def one_table(record: dict, reference: str, name: str, label: str) -> str:
 
 def paper_table(record: dict) -> str:
     """Two table* environments (one per reference); needs booktabs and array."""
-    return (
+    return tex_minus(
         "% Needs booktabs and array. Written by ae_supervision_swap_report.py from\n"
         "% evaluation.json; the dense table comes first, the annotation table second.\n"
         + one_table(record, "dense", "dense relabel", "tab:ae_supervision_swap_dense")
@@ -419,7 +425,7 @@ def main_table(record: dict) -> str:
         r"\end{tabular}",
         r"\end{table*}",
     ]
-    return (
+    return tex_minus(
         "% Needs booktabs. Written by ae_supervision_swap_report.py from\n"
         "% evaluation.json: the main-text table (19 shared held-out shots).\n"
         + "\n".join(lines)
@@ -483,7 +489,7 @@ def methods_rows(record: dict, group: str, reference: str, f1: bool = False):
 def paired_rows(record: dict, group: str, reference: str) -> list[str]:
     summary = record["results"][group]["references"][reference]["seed_summary"]
     rows = []
-    for name, metrics in summary["paired_differences"].items():
+    for name, metrics in sorted(summary["paired_differences"].items()):
         rows.append(
             f"| {pretty(name)} | "
             + " | ".join(diff_text(metrics[m]) for m in ("auroc", "auprc", "f1"))
@@ -550,7 +556,7 @@ def convergence_section(record: dict) -> list[str]:
         auc = f3(extra["selection_auroc"]) if extra else "n/a"
         lines.append(
             f"| {name} (first attempt) | {tr['final_epoch']} | "
-            f"{entry['selected_epoch']} | stopped inside the plateau | {sd} | "
+            f"{entry['selected_epoch']} | stopped before the rule allowed | {sd} | "
             f"{auc} | superseded: rerun with the same seed |"
         )
     lines += [""]
@@ -560,7 +566,7 @@ def convergence_section(record: dict) -> list[str]:
     lines += [
         (
             f"Of the nine first-generation records, {9 - len(superseded)} conformed "
-            f"to rule 1 as they stood; {len(superseded)} stopped inside the plateau "
+            f"to rule 1 as they stood; {len(superseded)} stopped before the rule allowed "
             f"({', '.join(superseded) if superseded else 'none'}) and were rerun "
             "with the same seed. After rerunning, "
             f"{passing} of the {len(plan['audit'])} final records pass rule 2"
@@ -593,6 +599,7 @@ def float32_screen_note(record: dict) -> str:
     ]
     sds = [sc["mean_within_shot_sd"] for sc in shots]
     aucs = [sc["selection_auroc"] for sc in shots]
+    failing = len(passing) - sum(passing)
     return (
         "The table above and the decisions it records used the bfloat16 outputs; "
         "every score below is a float32 re-inference of the same checkpoints. "
@@ -602,8 +609,11 @@ def float32_screen_note(record: dict) -> str:
         f"{max(aucs):.3f}); no record changes status."
         if all(passing)
         else "Re-screened on the float32 selection scores, "
-        f"{len(passing) - sum(passing)} accepted records fail rule 2 "
-        "(`fp32_screen` in evaluation.json)."
+        + (
+            f"{failing} accepted record{'' if failing == 1 else 's'} "
+            f"{'fails' if failing == 1 else 'fail'} rule 2 "
+        )
+        + "(`fp32_screen` in evaluation.json)."
     )
 
 
@@ -640,6 +650,39 @@ def garcia_text(record: dict) -> str:
     )
 
 
+def utc(stamp: str) -> str:
+    """An ISO timestamp as 'YYYY-MM-DD HH:MM:SS UTC' (the stored times are UTC)."""
+    return stamp[:19].replace("T", " ") + " UTC"
+
+
+def band_source(record: dict) -> str:
+    """Where the review-display date comes from, and what supports it."""
+    band = record["dense_reconciliation"]["display_band_change"]
+    text = band["source"]
+    parts = []
+    if band.get("file_modified_utc"):
+        parts.append(
+            "the main checkout's copy of that file was last modified "
+            f"{utc(band['file_modified_utc'])}, which fits the date"
+        )
+    if band.get("commit"):
+        garcia = record.get("dense_history", {}).get("by_name", {}).get("Alvin Garcia")
+        late = (
+            garcia is not None
+            and garcia["last_change"] is not None
+            and band["commit_utc"] > garcia["last_change"]
+        )
+        parts.append(
+            f"the change was committed in {band['commit']} on {utc(band['commit_utc'])}"
+            + (", after A. Garcia's saves" if late else "")
+        )
+    if parts:
+        text += (
+            "; " + ", and ".join(parts) + "; what the browser showed was not checked"
+        )
+    return text
+
+
 def band_text(record: dict) -> str:
     rec = record["dense_reconciliation"]
     shots = rec["differing_shots"]
@@ -651,9 +694,10 @@ def band_text(record: dict) -> str:
         f"**Band.** The model reads the CO2 spectrogram from 80.57 to 250.00 kHz "
         f"(348 bins, four chords). The review display the dense labels were drawn on "
         f"read {band['before']} until {band['date']} and {band['after']} afterwards "
-        f"({band['source']}). The {len(ts)} training and selection shots that differ "
-        f"from the paper's snapshot were changed with the {band['after']} display "
-        f"({late} of {len(ts)}; {early} of them also carry an earlier change made "
+        f"({band_source(record)}). The {len(ts)} training and selection shots that "
+        f"differ from the paper's snapshot were changed with the {band['after']} "
+        f"display ({late} of {len(ts)}; {early} of them also "
+        f"{'carries' if early == 1 else 'carry'} an earlier change made "
         f"with the {band['before']} display), so present frames added to them can "
         "rest on activity between 60 and 80.6 kHz that ae-ours cannot see. "
         "Among the reviewers, "
@@ -853,6 +897,14 @@ def runs_section(record: dict) -> list[str]:
     return lines
 
 
+def where_text(where: str) -> str:
+    """'run, cohort key, reference key reference' as it reads in prose."""
+    run, group, reference = (part.strip() for part in where.split(","))
+    cohort = {key: short for key, short, _ in GROUPS}[group]
+    names = dict(REFS)
+    return f"{run}, {cohort}, {names[reference.removesuffix(' reference')]} reference"
+
+
 def precision_section(record: dict) -> list[str]:
     """How much the float32 re-inference moved the scores."""
     check = record["precision_check"]
@@ -876,8 +928,9 @@ def precision_section(record: dict) -> list[str]:
             "minus bfloat16 (`precision_check` in evaluation.json): the largest "
             "change of any run in any cohort and reference is "
             f"{worst['auroc']['value']:.4f} "
-            f"AUROC ({worst['auroc']['where']}) and {worst['auprc']['value']:.4f} "
-            f"AUPRC ({worst['auprc']['where']}). Seed-mean change per arm "
+            f"AUROC ({where_text(worst['auroc']['where'])}) and "
+            f"{worst['auprc']['value']:.4f} "
+            f"AUPRC ({where_text(worst['auprc']['where'])}). Seed-mean change per arm "
             "(AUROC / AUPRC):"
         ),
         "",
@@ -1069,6 +1122,26 @@ def vs(label: str, other: str, dense: dict, annotation: dict) -> str:
     )
 
 
+def lstm_seed_note(record: dict) -> str:
+    """How many seeds resolve the legacy-minus-ae-lstm lead, and the seed interval."""
+    dense = record["results"]["fair_19"]["references"]["dense"]
+    try:
+        seeds = record["convergence"]["accepted_seeds"]["legacy"]
+        per_seed_ci = [
+            dense["paired_differences"][f"ae-ours-legacy-seed{seed} minus ae-lstm"][
+                "auroc"
+            ]["ci95"]
+            for seed in seeds
+        ]
+        seed_ci = rel(dense, "ae-ours-legacy", "ae-lstm")["ci95"]
+    except KeyError:
+        return ""
+    note = f"{sum(low > 0 for low, _ in per_seed_ci)} of {len(seeds)} seeds"
+    if seed_ci[0] <= 0:
+        note += "; not resolved once seed variance is included"
+    return note
+
+
 def findings(record: dict) -> dict:
     """The comparisons the summary and the interpretation both state."""
     fair = record["results"]["fair_19"]["references"]
@@ -1092,6 +1165,7 @@ def findings(record: dict) -> dict:
     out["lstm_resolved"] = verdict(lstm_d) == "leads" and verdict(lstm_a) == "trails"
     #: The dense interval's lower end sits within rounding of zero.
     out["lstm_marginal"] = out["lstm_resolved"] and lstm_d["ci95_shot"][0] < 0.005
+    out["lstm_seeds"] = lstm_seed_note(record)
     out["lead_with_new"] = any(
         rel(fair["dense"], f"ae-ours-{arm}", "ae-rcn")["ci95_shot"][0] > 0
         for arm in ("dense", "threeway")
@@ -1114,6 +1188,12 @@ def profile(prior: list[float]) -> str:
         f"{sum(prior) / len(prior):.2f} over the 0 to 2 s record and {edge:.2f} over "
         "its first and last 100 ms"
     )
+
+
+def seed_sd_multiple(gap: float, sd: float) -> str:
+    """A gap in units of the seed SD, as prose."""
+    ratio = gap / sd if sd else 0.0
+    return "within roughly 1 seed SD" if ratio <= 1.5 else f"about {ratio:.0f} seed SD"
 
 
 def selection_text(record: dict) -> str:
@@ -1145,6 +1225,7 @@ def selection_text(record: dict) -> str:
         for (group, metric), (gap, sd) in gaps.items()
     )
     g60 = {m: max(gaps[("all_60", m)][0], 0.0) for m in ("auroc", "auprc")}
+    spread = {m: seed_sd_multiple(g60[m], gaps[("all_60", m)][1]) for m in g60}
     precision = record["precision_check"]["max_abs_seed_mean_change"]["threeway"]
     return (
         "**Selection.** The reviewers' objection was that the published model "
@@ -1169,9 +1250,11 @@ def selection_text(record: dict) -> str:
         )
         + "The comparison also changes the training data: the retrain uses 100 "
         "training shots, the published model 120. Selection on the validation "
-        "block and the 20 extra training shots together therefore account for at "
-        f"most about {g60['auroc']:.3f} AUROC and {g60['auprc']:.3f} AUPRC on the "
-        "60 shots (the published scores are rounded to three decimals, and were "
+        "block and the 20 extra training shots together therefore account for "
+        f"about {g60['auroc']:.3f} AUROC ({spread['auroc']}) and "
+        f"{g60['auprc']:.3f} AUPRC ({spread['auprc']}) on the 60 shots; these "
+        "are point estimates, not bounds, because the published model is one seed "
+        "(its scores are rounded to three decimals, and were "
         "scored under the original bfloat16 inference; float32 moves the retrain's "
         f"seed means by at most {precision['auroc']:.4f} AUROC and "
         f"{precision['auprc']:.4f} AUPRC). The recipe itself (symmetric cross "
@@ -1249,7 +1332,9 @@ def interpretation(record: dict) -> list[str]:
         vs("The same model", "ae-lstm", *f["legacy_lstm"])
         + ". "
         + (
-            "The reversal against ae-lstm persists: ae-ours trained on the legacy "
+            "The reversal against ae-lstm persists"
+            + (f" ({f['lstm_seeds']})" if f["lstm_seeds"] else "")
+            + ": ae-ours trained on the legacy "
             "annotation is above it on the dense reference and below it on the "
             "legacy annotation."
             + (
@@ -1444,15 +1529,23 @@ def provenance_text(record: dict) -> str:
     hist = record["dense_history"]
     rec = record["dense_reconciliation"]
     people = "; ".join(
-        f"{name} {item['entries']} entries on {item['shots_saved']} shots"
+        f"{'unnamed' if name == '(unnamed)' else name} {item['saves']} saves on "
+        f"{item['shots_saved']} shots"
+        + (
+            f" and {item['confirmation_entries']} confirmation entries"
+            if item["confirmation_entries"]
+            else ""
+        )
         for name, item in hist["by_name"].items()
     )
     notes = "; ".join(f'"{note}" ({n} entries)' for note, n in hist["notes"].items())
+    times = hist["confirmation_times"]
+    batch = f", all written at {utc(times[0])}" if len(times) == 1 else ""
     unnamed = hist["by_name"].get("(unnamed)")
     named_from = min(
         item["first_saved"]
         for name, item in hist["by_name"].items()
-        if name != "(unnamed)"
+        if name != "(unnamed)" and item["first_saved"] is not None
     )
     garcia = hist["by_name"]["Alvin Garcia"]
     edits = garcia["changed_shots"]
@@ -1476,11 +1569,13 @@ def provenance_text(record: dict) -> str:
             if unnamed
             else ""
         )
-        + f". The confirmation note reads {notes}. The source of every entry is "
+        + f". The confirmation note reads {notes}{batch}. The source of every entry is "
         f"`{'`, `'.join(hist['sources'])}`: the review was pre-filled from the "
         "annotation's source table. A. Garcia, the author of ae-rcn and ae-lstm, "
         "therefore helped make the dense labels the training arms learn from: "
-        f"he saved all {garcia['shots_saved']} shots, and the "
+        f"a confirmation in his name was recorded for all "
+        f"{garcia['shots_confirmed']} shots at the owner's request; his own "
+        f"{garcia['saves']} saves cover {garcia['shots_saved']} shots, and the "
         f"{garcia['interval_changing_saves']} saves that changed intervals "
         f"({when}) cover {edits['train']} training, {edits['selection']} selection "
         f"and {edits['evaluation']} evaluation shots. "
@@ -1533,6 +1628,35 @@ def legacy_limits_text(record: dict) -> str:
     )
 
 
+def frame_sensitivity_text(record: dict) -> str:
+    """Which arm the bfloat16/float32 frame-level disagreement sits in."""
+    seeds = record["convergence"]["accepted_seeds"]
+    over = {
+        arm: [
+            record["runs"][f"ae-ours-{arm}-seed{seed}"]["fp32"][
+                "frame_probability_difference"
+            ]["evaluation_shots_over_0.1"]
+            for seed in seeds[arm]
+        ]
+        for arm in ARMS
+    }
+    worst = max(over, key=lambda arm: max(over[arm]))
+    rest = max(n for arm in ARMS if arm != worst for n in over[arm])
+    counts = ", ".join(map(str, over[worst][:-1])) + f" and {over[worst][-1]}"
+    return (
+        f"The frame-level disagreement between the two precisions sits in the {worst} "
+        f"arm: its three seeds have {counts} of the 60 evaluation shots with a "
+        f"single-frame difference above 0.1, against at most {rest} in any other "
+        "arm's runs."
+        + (
+            " The legacy epochs were selected under bfloat16, which is one more "
+            "reason that arm is not the best achievable legacy-trained model."
+            if worst == "legacy"
+            else ""
+        )
+    )
+
+
 def limitations_section(record: dict) -> list[str]:
     grid = record["frame_grid"]
     fp32 = record["precision_check"]["max_abs_change_per_run"]
@@ -1561,7 +1685,8 @@ def limitations_section(record: dict) -> list[str]:
             "- **Precision.** Epochs were selected during training under bfloat16 "
             "autocast; only the reported scores, thresholds and intervals are "
             f"float32. The largest change of a run's pooled AUROC is "
-            f"{fp32['auroc']['value']:.4f} (Inference precision)."
+            f"{fp32['auroc']['value']:.4f} (Inference precision). "
+            + frame_sensitivity_text(record)
         ),
         (
             "- **Dense reference.** It is temporally coarse, so within-shot AUROC "
@@ -1592,11 +1717,34 @@ def limitations_section(record: dict) -> list[str]:
     ]
 
 
+def interrupted_lines(record: dict) -> list[str]:
+    """One line per launch that died before it finished (never scored)."""
+    lines = []
+    for name, item in sorted(record.get("interrupted_runs", {}).items()):
+        again = (
+            f" and the first {item['epochs_recorded']} epochs of the completed run "
+            "reproduce its validation losses exactly"
+            if item["first_epochs_match_completed_run"]
+            else ""
+        )
+        lines += [
+            f"`{name}` (`{item['completed_run']}-interrupted`) is not in the table "
+            "and was never scored: a first launch "
+            f"of the same seed that stopped after {item['epochs_recorded']} recorded "
+            f"epochs (its attempt record still reads `{item['attempt_status']}`"
+            + ("" if item["has_run_json"] else " and it has no `run.json`")
+            + f"); the seed was trained again from scratch in "
+            f"`{item['completed_run']}`{again}.",
+            "",
+        ]
+    return lines
+
+
 def excluded_section(record: dict) -> list[str]:
     runs = record["excluded_runs"]
     lines = ["## Excluded and superseded records", ""]
     if not runs:
-        return lines + ["None.", ""]
+        return lines + ["None.", "", *interrupted_lines(record)]
     lines += [
         (
             "These records are not in any mean, SD or interval above. They are scored "
@@ -1621,7 +1769,7 @@ def excluded_section(record: dict) -> list[str]:
                 f"{screen['mean_within_shot_sd']:.3f} | "
                 f"{f3(screen['selection_auroc'])} |"
             )
-    lines += [""]
+    lines += ["", *interrupted_lines(record)]
     return lines
 
 
@@ -1732,7 +1880,8 @@ def summary(record: dict) -> str:
         + "; "
         + (
             "the reversal against ae-lstm persists"
-            + (" (marginally on the dense reference)" if f["lstm_marginal"] else "")
+            + (f" ({f['lstm_seeds']})" if f["lstm_seeds"] else "")
+            + (", marginally on the dense reference" if f["lstm_marginal"] else "")
             if f["lstm_resolved"]
             else "the reversal against ae-lstm persists in sign but is not resolved "
             "on the dense reference"
@@ -1824,7 +1973,7 @@ def render_report(record: dict, manifest: dict, out: Path, repo: Path) -> None:
             "",
             (
                 "`audit-convergence` applies the declared rule to every record, archives "
-                "any record that stopped inside the plateau, and lists the runs still to "
+                "any record that stopped before the rule allowed, and lists the runs still to "
                 "train. Completed runs are never overwritten. The launchers use a short "
                 "TMPDIR (`$LABELER_ROOT/scratch/ae-sw`) because DataLoader workers add "
                 "`/pymp-*/listener-*` to it and a socket path must stay under 108 bytes."

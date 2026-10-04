@@ -814,7 +814,73 @@ def dense_prevalence(manifest: dict, refs: dict) -> dict:
 
 
 BAND_CHANGE_DATE = "2026-09-30"  # the review display read 80-250 kHz until then
+ALFVEN_REVIEW = "src/labeler/events/review/alfven.py"
 GROUP_NAMES = ("train", "selection", "evaluation")
+
+
+def band_change_provenance() -> dict:
+    """When the checkout's review-band file changed and when git recorded it.
+
+    The date above rests on a code comment; the checkout's file modification
+    time supports it, and the commit that holds the 60 kHz band shows when it
+    entered the history (the review pages read the file from the checkout).
+    """
+    path = TABLES.parents[1] / ALFVEN_REVIEW
+    out: dict = {"file_modified_utc": None, "commit": None, "commit_utc": None}
+    if not path.exists():
+        return out
+    out["file_modified_utc"] = datetime.fromtimestamp(
+        path.stat().st_mtime, UTC
+    ).isoformat(timespec="seconds")
+    log = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(path.parent),
+            "log",
+            "-1",
+            "--format=%h %cI",
+            "-SBAND_KHZ = (60.0",
+            "--",
+            path.name,
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout.split()
+    if len(log) == 2:
+        out["commit"] = log[0]
+        out["commit_utc"] = (
+            datetime.fromisoformat(log[1]).astimezone(UTC).isoformat(timespec="seconds")
+        )
+    return out
+
+
+def interrupted_runs(out_dir: Path) -> dict:
+    """First launches that died and were restarted from scratch with the same seed.
+
+    A directory ``models/<arm>/seed-<n>-interrupted`` holds the files of such a
+    launch (its attempt record still says ``running``); the completed run of
+    that seed sits in ``seed-<n>``. Nothing here enters a score.
+    """
+    found = {}
+    for path in sorted(out_dir.glob("models/*/seed-*-interrupted")):
+        attempt = json.loads((path / "attempt.json").read_text())
+        arm, seed = attempt["supervision"], attempt["seed"]
+        part = json.loads(next(path.glob("training_*.json")).read_text())
+        done = run_dir(out_dir, arm, seed)
+        final = json.loads(next(done.glob("training_*.json")).read_text())
+        losses = [row["valid_val_loss"] for row in part["history"]]
+        again = [row["valid_val_loss"] for row in final["history"]][: len(losses)]
+        found[f"ae-ours-{arm}-seed{seed}-interrupted"] = {
+            "attempt_status": attempt["status"],
+            "has_run_json": (path / "run.json").exists(),
+            "epochs_recorded": len(losses),
+            "attempt_started_utc": attempt["generated"],
+            "completed_run": str(done.relative_to(out_dir)),
+            "first_epochs_match_completed_run": losses == again,
+        }
+    return found
 
 
 def history_entries(manifest: dict) -> tuple[Path, list[dict]]:
@@ -836,13 +902,19 @@ def dense_history(manifest: dict) -> dict:
     by_name = {}
     for key in sorted({entry.get("name") or unnamed for entry in entries}):
         mine = [e for e in entries if (e.get("name") or unnamed) == key]
+        # An entry with a note is the batch confirmation, not a save by that person.
+        saves = [e for e in mine if not e.get("note")]
+        confirmed = [e for e in mine if e.get("note")]
         edits = [c for c in changes if (c["name"] or unnamed) == key]
         shots = sorted({c["shot"] for c in edits})
         by_name[key] = {
             "entries": len(mine),
-            "shots_saved": len({e["shot"] for e in mine}),
-            "first_saved": min(e["saved_at"] for e in mine),
-            "last_saved": max(e["saved_at"] for e in mine),
+            "saves": len(saves),
+            "shots_saved": len({e["shot"] for e in saves}),
+            "confirmation_entries": len(confirmed),
+            "shots_confirmed": len({e["shot"] for e in confirmed}),
+            "first_saved": min((e["saved_at"] for e in saves), default=None),
+            "last_saved": max((e["saved_at"] for e in saves), default=None),
             "interval_changing_saves": len(edits),
             "first_change": min((c["saved_at"] for c in edits), default=None),
             "last_change": max((c["saved_at"] for c in edits), default=None),
@@ -864,6 +936,9 @@ def dense_history(manifest: dict) -> dict:
         "login_meaning": "the login of the review server's process, not the person",
         "by_name": by_name,
         "notes": notes,
+        "confirmation_times": sorted(
+            {entry["saved_at"] for entry in entries if entry.get("note")}
+        ),
         "sources": sorted({str(entry["source"]) for entry in entries}),
         "interval_changing_saves": (
             "saves whose window or intervals differ from the shot's previous save"
@@ -947,7 +1022,8 @@ def dense_reconciliation(manifest: dict, refs: dict) -> dict:
             "date": BAND_CHANGE_DATE,
             "before": "80-250 kHz",
             "after": "60-250 kHz",
-            "source": "BAND_KHZ comment in src/labeler/events/review/alfven.py",
+            "source": f"BAND_KHZ comment in {ALFVEN_REVIEW}",
+            **band_change_provenance(),
         },
     }
 
@@ -1343,6 +1419,7 @@ def evaluate(args) -> None:
         "campaign_overlap": campaign_overlap(manifest),
         "dense_prevalence": dense_prevalence(manifest, refs),
         "dense_history": dense_history(manifest),
+        "interrupted_runs": interrupted_runs(args.out_dir),
         "dense_reconciliation": dense_reconciliation(manifest, refs),
         "dense_reference_coarseness": reference_coarseness(manifest),
         "frame_grid": frame_grid(manifest),
