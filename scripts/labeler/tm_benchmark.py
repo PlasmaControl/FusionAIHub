@@ -148,6 +148,7 @@ def uncertain_negative_records(cohort):
             TM / "results" / f"{stem}.json",
             {
                 "made_by": "scripts/labeler/tm_benchmark.py",
+                "git_sha": git_sha(),
                 "model": model,
                 "shots": shots,
                 "labels_sha256": hashlib.sha256(LABELS.read_bytes()).hexdigest(),
@@ -514,12 +515,13 @@ def coverage(cohort):
     return out
 
 
-def _paired_block(shots, y, valid, scores, thresholds):
+def _paired_block(shots, y, valid, scores, thresholds, pairs):
     """Metrics of every model and the paired differences on one shot and bin set.
 
     Each model is scored at its own thresholds on the same shots and bins; the shot
     bootstrap draws one set of weights per replicate and applies it to every model, so
-    each difference carries a paired interval.
+    each difference (`pairs`: name to the two models it subtracts) carries a paired
+    interval.
     """
     shots = [s for s in shots if valid[s].any()]
     results, stats = {}, {}
@@ -544,10 +546,6 @@ def _paired_block(shots, y, valid, scores, thresholds):
             for s in shots
         ]
     keys = ("auroc", "auprc", "f1", "segf1_0.5")
-    pairs = {
-        "tm-ours_minus_tm-onsetcnn-retrained": ("tm-ours", "tm-onsetcnn-retrained"),
-        "tm-ours_minus_tm-rms-2line": ("tm-ours", "tm-rms-2line"),
-    }
     rng = np.random.default_rng(0)
     draws = []
     for _ in range(1000):
@@ -577,74 +575,108 @@ def _paired_block(shots, y, valid, scores, thresholds):
                 "hi": hi,
                 "excludes_zero": bool(lo > 0 or hi < 0),
             }
+    first = next(iter(results.values()))
     return {
         "shots": shots,
-        "bins_scored": results["tm-ours"]["bins_scored"],
-        "scored_seconds": results["tm-ours"]["scored_seconds"],
+        "bins_scored": first["bins_scored"],
+        "scored_seconds": first["scored_seconds"],
         "metrics": results,
         "differences": differences,
     }
 
 
 def paired_common_shots(cohort):
-    """tm-ours, the retrained CNN and the two-line baseline on identical shots and bins.
+    """tm-ours against the two-line baseline, and against the retrained CNN, paired.
 
-    Same shots, same available 10 ms bins, each model at its own inner-validation
-    thresholds; the shot bootstrap resamples the same shots for every difference. The
-    primary block excludes uncertain time; `uncertain_negative` repeats the comparison
-    with uncertain time scored as negative (same scores, same thresholds), on the shots
-    and bins all three models score.
+    Each comparison uses the shots and the available 10 ms bins that BOTH of its models
+    score, each model at its own inner-validation thresholds, and one shot bootstrap
+    whose draws are shared by the two models, so a difference carries a paired
+    interval. `full_set` pairs tm-ours with the two-line baseline: neither needs
+    anything but the Mirnov features, so it holds every development shot and bin.
+    `cnn_subset` pairs tm-ours with the retrained CNN, whose inputs exist on fewer
+    shots (the baseline adds no restriction there); it is the only set a CNN
+    comparison may use. Each comparison has a primary block (uncertain time excluded)
+    and an `uncertain_negative` block (uncertain time scored as negative on the same
+    scores and thresholds).
     """
     dev = sorted(int(s) for s in cohort.query("split != 'test'").shot)
     ours, _ = tm_ours.load(dev, False)
     cnn, _ = tm_prior_retrain.load("cnn", dev)
     base, _ = tm_ours.load_baseline(dev)
-    shots = sorted(set(ours) & set(cnn) & set(base))
-    models = {
-        "tm-ours": ("tm_ours_magnetics_cv", "oof_tm_ours_magnetics"),
-        "tm-onsetcnn-retrained": (
-            "tm_prior_retrained_tm-onsetcnn_cv",
-            "oof_tm_prior_retrained_tm-onsetcnn",
-        ),
-    }
-    scores, thresholds = {}, {}
-    for model, (stem, probability) in models.items():
-        record = read(TM / "results" / f"{stem}.json")
-        fold_thresholds = {i["fold"]: i["threshold"] for i in record["fold_info"]}
-        thresholds[model] = {s: fold_thresholds[record["folds"][str(s)]] for s in shots}
-        with np.load(TM / "results" / f"{probability}.npz") as z:
-            scores[model] = {s: z[f"s{s}"] for s in shots}
-    record = read(TM / "results/tm_baseline_tworms_cv_tuned_dev.json")
-    scores["tm-rms-2line"] = tm_ours.run_baseline(base, shots, "tworms")
-    thresholds["tm-rms-2line"] = {
-        s: record["thresholds_by_shot"][str(s)] for s in shots
-    }
     table = pd.read_csv(LABELS)
     by_shot = {s: g for s, g in table.groupby("shot")}
-    y, valid = {}, {}
-    y_un, valid_un = {}, {}
-    for s in shots:
-        assert np.array_equal(ours[s][0], cnn[s]["centres"]), s
-        assert np.array_equal(ours[s][2], cnn[s]["y_bins"]), s
-        finite = np.ones(len(ours[s][0]), bool)
-        for model in scores:
-            finite &= np.isfinite(scores[model][s])
-        y[s] = ours[s][2]
-        valid[s] = ours[s][3] & cnn[s]["valid_bins"] & finite
-        y_un[s], label_valid = scoring.label_bins(
-            by_shot.get(s, table.iloc[:0]), ours[s][0], uncertain_negative=True
-        )
-        valid_un[s] = label_valid & finite & np.isfinite(ours[s][1]).all(axis=1)
-    primary = _paired_block(shots, y, valid, scores, thresholds)
-    negative = _paired_block(shots, y_un, valid_un, scores, thresholds)
+
+    def fold_scores(stem, probability, shots):
+        record = read(TM / "results" / f"{stem}.json")
+        level = {i["fold"]: i["threshold"] for i in record["fold_info"]}
+        with np.load(TM / "results" / f"{probability}.npz") as z:
+            scores = {s: z[f"s{s}"] for s in shots}
+        return scores, {s: level[record["folds"][str(s)]] for s in shots}
+
+    def block_for(models, shots, pair, mask):
+        """Primary and uncertain-negative blocks of `models` on their common bins."""
+        scores = {m: models[m][0] for m in models}
+        thresholds = {m: models[m][1] for m in models}
+        y, valid, y_un, valid_un = {}, {}, {}, {}
+        for s in shots:
+            assert np.array_equal(ours[s][0], cnn[s]["centres"]), s
+            assert np.array_equal(ours[s][2], cnn[s]["y_bins"]), s
+            finite = np.ones(len(ours[s][0]), bool)
+            for model in scores:
+                finite &= np.isfinite(scores[model][s])
+            y[s] = ours[s][2]
+            valid[s] = ours[s][3] & mask(s) & finite
+            y_un[s], label_valid = scoring.label_bins(
+                by_shot.get(s, table.iloc[:0]), ours[s][0], uncertain_negative=True
+            )
+            valid_un[s] = label_valid & finite & np.isfinite(ours[s][1]).all(axis=1)
+        pairs = {f"{pair[0]}_minus_{pair[1]}": pair}
+        return {
+            "primary": _paired_block(shots, y, valid, scores, thresholds, pairs),
+            "uncertain_negative": _paired_block(
+                shots, y_un, valid_un, scores, thresholds, pairs
+            ),
+        }
+
+    shots = sorted(set(ours) & set(base))
+    record = read(TM / "results/tm_baseline_tworms_cv_tuned_dev.json")
+    tuned = record["thresholds_by_shot"]
+    ours_models = fold_scores("tm_ours_magnetics_cv", "oof_tm_ours_magnetics", shots)
+    baseline = (
+        tm_ours.run_baseline(base, shots, "tworms"),
+        {s: tuned[str(s)] for s in shots},
+    )
+    full = block_for(
+        {"tm-ours": ours_models, "tm-rms-2line": baseline},
+        shots,
+        ("tm-ours", "tm-rms-2line"),
+        lambda s: True,
+    )
+    shots = sorted(set(ours) & set(cnn))
+    ours_models = fold_scores("tm_ours_magnetics_cv", "oof_tm_ours_magnetics", shots)
+    twin = fold_scores(
+        "tm_prior_retrained_tm-onsetcnn_cv",
+        "oof_tm_prior_retrained_tm-onsetcnn",
+        shots,
+    )
+    subset = block_for(
+        {"tm-ours": ours_models, "tm-onsetcnn-retrained": twin},
+        shots,
+        ("tm-ours", "tm-onsetcnn-retrained"),
+        lambda s: cnn[s]["valid_bins"],
+    )
     return {
-        **primary,
-        "uncertain_negative": negative,
+        "full_set": full,
+        "cnn_subset": subset,
         "policy": (
-            "same shots, same observable label and score bins; each model at its "
-            "own fold thresholds; paired 1000-draw shot bootstrap; the "
-            "uncertain_negative block scores uncertain time as negative on the same "
-            "scores and thresholds"
+            "each comparison scores the shots and available 10 ms bins both of its "
+            "models have, each model at its own fold thresholds, on one paired "
+            "1000-draw shot bootstrap; full_set (tm-ours, two-line baseline) holds "
+            "every development shot and is the set for any comparison with the "
+            "baseline; cnn_subset (tm-ours, retrained CNN) is restricted to the shots "
+            "and bins where the CNN has inputs and is used only for comparisons with "
+            "the CNN; the uncertain_negative blocks score uncertain time as negative "
+            "on the same scores and thresholds"
         ),
     }
 
@@ -1215,8 +1247,9 @@ def main(argv=None):
             "meaning": (
                 "A lock is confirmed by a step of the n=1 radial field (|DUSBRADIAL|, "
                 "native ptdata units): the median over 20 to 120 ms after a candidate "
-                "time (an interval start, a frequency drop or collapse, an interval "
-                "end) exceeds the median over 200 to 20 ms before it by at least 5. "
+                "time (a frequency drop at least 50 ms after the seed starts, a "
+                "collapse, an interval end) exceeds the median over 200 to 20 ms "
+                "before it by at least 5. "
                 "A field that is already high and drifting is not a step. Unknown "
                 "locking status is not a negative; time after a collapse stays "
                 "uncertain until a measured release or the discharge end."
@@ -1286,7 +1319,10 @@ def main(argv=None):
             for k, v in calibration.items()
             if k not in ("definition", "reference_shots")
         },
-        "inner_split_plan": "data/events/neoclassical_tearing_mode/benchmark/sources/inner_splits_fix4.json",
+        "inner_split_plan": (
+            "data/events/neoclassical_tearing_mode/benchmark/sources/"
+            "inner_splits_fix4.json"
+        ),
         "agreement": agreements,
         "coverage": cov,
         "label_counts": {
@@ -1369,40 +1405,47 @@ def main(argv=None):
     )
     keys = ("auroc", "auprc", "f1", "segf1_0.5")
     paired_rows = []
-    for setting, block in (
-        ("Tokamak-SI", paired),
-        (UN, paired["uncertain_negative"]),
+    for target, mode in (
+        ("uncertain time excluded", "primary"),
+        ("uncertain time scored as negative", "uncertain_negative"),
     ):
-        count = f"{len(block['shots'])} / {compact(block['bins_scored'])}"
-        paired_rows += [
-            {
-                "model": model,
-                "setting": setting,
-                "metrics": metrics,
-                "shots_text": count,
-            }
-            for model, metrics in block["metrics"].items()
-        ]
-        for name, diff in block["differences"].items():
-            a, b = name.split("_minus_")
-            paired_rows.append(
+        for comparison, scope in (
+            ("full_set", "tm-ours and the two-line baseline, all development shots"),
+            ("cnn_subset", "tm-ours and the retrained CNN, shots where it has inputs"),
+        ):
+            setting = f"{target[0].upper()}{target[1:]}: {scope}"
+            block = paired[comparison][mode]
+            count = f"{len(block['shots'])} / {compact(block['bins_scored'])}"
+            paired_rows += [
                 {
-                    "model": f"Difference, {a} $-$ {b}",
+                    "model": model,
                     "setting": setting,
-                    "metrics": {k: diff[k] for k in keys},
+                    "metrics": metrics,
                     "shots_text": count,
                 }
-            )
+                for model, metrics in block["metrics"].items()
+            ]
+            for name, diff in block["differences"].items():
+                a, b = name.split("_minus_")
+                paired_rows.append(
+                    {
+                        "model": f"Difference, {a} $-$ {b}",
+                        "setting": setting,
+                        "metrics": {k: diff[k] for k in keys},
+                        "shots_text": count,
+                    }
+                )
     (DOCS / "table_tm_paired.tex").write_text(
         table_tex(
             paired_rows,
-            "Models on identical development shots and available 10 ms bins (shot "
-            "and bin counts in the second column), with uncertain time excluded "
-            "(upper block) and scored as negative (lower block); each model keeps "
-            "its inner-validation threshold. Difference rows are paired "
-            "shot-bootstrap intervals (1,000 draws); a difference whose interval "
-            "spans zero is not resolved. Unavailable bins are hard barriers for "
-            "segmental IoU 0.5.",
+            "Paired comparisons on development shots, with uncertain time excluded "
+            "(upper two blocks) and scored as negative (lower two). Each comparison "
+            "uses the shots and available 10 ms bins both of its models score (shot "
+            "and bin counts in the second column). Each model keeps its "
+            "inner-validation threshold. Difference rows are paired shot-bootstrap "
+            "intervals (1,000 draws); a difference whose interval spans zero is not "
+            "resolved. "
+            "Unavailable bins are hard barriers for segmental IoU 0.5.",
             "tab:tm-paired",
         )
     )
@@ -1556,6 +1599,11 @@ FIGURE2_SCHEMA = {
     "rows[].like_for_like": "published model and retrained twin on one target, mask and "
     "shot set: primary and uncertain_negative, each with the published model at its "
     "published and tuned thresholds and the retrained model",
+    "paired_common_shots": "full_set (tm-ours and the two-line baseline, every "
+    "development shot) and cnn_subset (tm-ours and the retrained CNN, the shots and "
+    "bins where the CNN has inputs), each with a primary block (uncertain time "
+    "excluded) and an uncertain_negative block; every block has the shots, bins, the "
+    "models' metrics and the paired differences with their 95% intervals",
     "metric cells": "{value, lo, hi}, 95% shot-bootstrap, 1000 draws",
 }
 
