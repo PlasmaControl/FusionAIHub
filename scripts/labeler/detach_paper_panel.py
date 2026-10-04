@@ -1,11 +1,17 @@
 #!/usr/bin/env python
-"""Write exploratory detachment coverage and indicator-agreement sources.
+"""Write the detachment Figure 2 panel: per-state coverage and indicator agreement.
 
-There is no independent detachment benchmark. No indicator or learned model is
-scored against the compatible label that its measurements help define. The
-agreement population instead includes every exported bin where Prad and TangTV
-both cast valid votes, stratified by TangTV geometry tier, without selecting
-certain labels. Only upper-shelf agreement is drawn in the paper panel.
+There is no independent detachment benchmark. The agreement shown is between two
+indicators, Prad,div/P_in and the TangTV C-III front, on the upper-shelf bins where
+both cast a vote: threshold-free (AUROC of the f_div value against the TangTV
+attached versus not-attached vote; Spearman rho of f_div against DZ), pooled over
+shots and within shots, each with a 95% shot-bootstrap interval, and the binary
+kappa of the cast votes where it is defined. A kappa on a table in which either
+indicator used a single class is undefined and is not drawn.
+
+Every number is read from `docs/labeler/results/detachment_benchmark.json` (one
+bootstrap, written by `detach_benchmark.py`) and the exported bins. The panel
+source is `docs/labeler/figure2_detach.json`; there is no second copy.
 """
 
 from __future__ import annotations
@@ -33,14 +39,15 @@ RESULTS = REPO / "docs" / "labeler" / "results"
 PANEL_JSON = REPO / "docs" / "labeler" / "figure2_detach.json"
 AGREEMENT_JSON = RESULTS / "detachment_benchmark.json"
 LF_NAMES = ("afrac", "prad", "tangtv")
-BOOTSTRAPS = 1000
-SEED = 7
 STATE_COLOUR = {1: "#0072B2", 2: "#E69F00", 3: "#CC79A7", 4: "#999999"}
+STATE_LABEL = {1: "attached", 2: "detached", 3: "MARFE", 4: "uncertain"}
 SETTINGS = {
-    "afrac": "Uncalibrated local Jsat ratio; attached-current fit unavailable",
-    "prad": "Local Prad,div/P_in thresholds with heating and radiation smoothing",
-    "tangtv": "C-III front with upper-shelf geometry, quality and MARFE gates",
+    "afrac": "Jsat ratio at the peak SOL-side target probe, uncalibrated",
+    "prad": "Prad,div,L over P_in, 250 ms inter-ELM means, absolute cutoffs "
+    "anchored on 201081",
+    "tangtv": "C-III front height with shelf geometry, quality and MARFE gates",
 }
+PAPER_TIER = "upper_shelf"
 
 
 def root() -> Path:
@@ -70,90 +77,6 @@ def coverage_group(frame: pd.DataFrame) -> dict:
                 "certain": population(frame, certain & frame.state_lm.eq(state)),
             }
             for state in (1, 2, 3, 4)
-        },
-    }
-
-
-def kappa(table: np.ndarray) -> float:
-    total = table.sum()
-    if not total:
-        return float("nan")
-    expected = float(table.sum(axis=0) @ table.sum(axis=1)) / total**2
-    if 1 - expected <= np.finfo(float).eps:
-        return float("nan")
-    return float((np.trace(table) / total - expected) / (1 - expected))
-
-
-def agreement_metrics(table: np.ndarray) -> dict:
-    """Prad rows, TangTV columns; binary merges MARFE with detached on both axes."""
-    binary = np.array(
-        [[table[0, 0], table[0, 1:].sum()], [table[1:, 0].sum(), table[1:, 1:].sum()]]
-    )
-    return {
-        "kappa_3class": kappa(table),
-        "kappa_binary": kappa(binary),
-        "agreement_3class": float(np.trace(table) / table.sum())
-        if table.sum()
-        else float("nan"),
-        "agreement_binary": float(np.trace(binary) / binary.sum())
-        if binary.sum()
-        else float("nan"),
-    }
-
-
-def paired_agreement(frame: pd.DataFrame) -> dict:
-    """Bootstrap whole shots, including all paired bins on each sampled shot."""
-    both_valid = frame.prad_valid.to_numpy(bool) & frame.tangtv_valid.to_numpy(bool)
-    keep = (
-        both_valid
-        & frame.prad_vote.isin(core.VOTE_STATES).to_numpy()
-        & frame.tangtv_vote.isin(core.VOTE_STATES).to_numpy()
-    )
-    paired = frame.loc[keep]
-    shots = sorted(int(s) for s in paired.shot.unique())
-    tables = np.zeros((len(shots), 3, 3), dtype=int)
-    for i, shot in enumerate(shots):
-        rows = paired[paired.shot == shot]
-        np.add.at(
-            tables[i],
-            (rows.prad_vote.to_numpy(int) - 1, rows.tangtv_vote.to_numpy(int) - 1),
-            1,
-        )
-    table = tables.sum(axis=0)
-    point = agreement_metrics(table)
-    rng = np.random.default_rng(SEED)
-    draws = [
-        agreement_metrics(tables[rng.integers(0, len(shots), len(shots))].sum(axis=0))
-        for _ in range(BOOTSTRAPS if shots else 0)
-    ]
-    result = {}
-    for key, value in point.items():
-        samples = np.array([draw[key] for draw in draws], float)
-        samples = samples[np.isfinite(samples)]
-        limits = np.percentile(samples, [2.5, 97.5]) if len(samples) else [np.nan] * 2
-        result[key] = {
-            "value": value,
-            "ci95": [float(x) for x in limits],
-            "valid_replicates": len(samples),
-            "replicates": BOOTSTRAPS,
-        }
-    return {
-        "both_valid": population(frame, both_valid),
-        "both_vote": population(frame, keep),
-        "state_order": ["attached", "detached", "marfe"],
-        "table_axes": {"rows": "prad_vote", "columns": "tangtv_vote"},
-        "confusion_counts": table.tolist(),
-        "metrics": result,
-        "conflicts": {
-            "tangtv_attached_prad_detached": population(
-                frame, keep & frame.tangtv_vote.eq(1) & frame.prad_vote.eq(2)
-            ),
-            "tangtv_attached_all_prad_votes": population(
-                frame, keep & frame.tangtv_vote.eq(1)
-            ),
-            "tangtv_attached_prad_valid": population(
-                frame, both_valid & frame.tangtv_vote.eq(1)
-            ),
         },
     }
 
@@ -189,6 +112,96 @@ def indicator_coverage(labels: pd.DataFrame) -> list[dict]:
     return table
 
 
+def agreement_rows(benchmark: dict) -> list[dict]:
+    """The drawn agreement statistics, each with its interval and sample."""
+    free = benchmark["threshold_free_agreement"].get(PAPER_TIER, {}).get("prad__tangtv")
+    pair = benchmark["pairwise_agreement"]["by_tangtv_tier"].get(PAPER_TIER, {})
+    pair = pair.get("prad__tangtv", {})
+    rows = []
+
+    def add(key, label, chance, value, ci, n_bins, n_shots, kind):
+        finite = value is not None and np.isfinite(value)
+        rows.append(
+            {
+                "key": key,
+                "label": label,
+                "kind": kind,
+                "chance": chance,
+                "value": value if finite else None,
+                "ci95": [float(x) for x in ci] if finite and ci else None,
+                "n_bins": n_bins,
+                "n_shots": n_shots,
+                "drawn": bool(finite),
+                "undefined_reason": None
+                if finite
+                else "undefined: one indicator cast a single class",
+            }
+        )
+
+    if free:
+        a = free["auroc_pooled"]
+        add(
+            "auroc_pooled",
+            "AUROC pooled",
+            0.5,
+            a["value"],
+            a["ci95"],
+            a["n_bins"],
+            a["n_shots"],
+            "threshold_free",
+        )
+        w = free["within_shot"]["auroc"]
+        add(
+            "auroc_within_shot",
+            "AUROC per shot",
+            0.5,
+            w["mean"],
+            w["mean_ci95"],
+            None,
+            w["n_shots"],
+            "threshold_free",
+        )
+        r = free["spearman_pooled"]
+        add(
+            "spearman_pooled",
+            r"$\rho$ pooled",
+            0.0,
+            r["value"],
+            r["ci95"],
+            r["n_bins"],
+            r["n_shots"],
+            "threshold_free",
+        )
+        w = free["within_shot"]["spearman"]
+        add(
+            "spearman_within_shot",
+            r"$\rho$ per shot",
+            0.0,
+            w["mean"],
+            w["mean_ci95"],
+            None,
+            w["n_shots"],
+            "threshold_free",
+        )
+    if pair:
+        for key, label, field in (
+            ("kappa_binary", r"$\kappa$ binary", "binary_kappa"),
+            ("kappa_3class", r"$\kappa$ 3-class", "kappa"),
+        ):
+            k = pair[field]
+            add(
+                key,
+                label,
+                0.0,
+                k["value"],
+                k["ci95"],
+                pair["both_vote_bins"],
+                pair["both_vote_shots"],
+                "kappa",
+            )
+    return rows
+
+
 def build() -> dict:
     source = root() / "labels_bins.csv.gz"
     digest = hashlib.sha256(source.read_bytes()).hexdigest()
@@ -205,84 +218,9 @@ def build() -> dict:
         str(split): coverage_group(group)
         for split, group in labels.groupby("split", dropna=False)
     }
-    agreement = {
-        "population": "every exported eligible-shot bin where Prad and TangTV "
-        "both cast valid votes, without conditioning on the exported state",
-        "binary_mapping": {
-            "attached": "attached",
-            "detached": "detached",
-            "marfe": "detached",
-        },
-        "by_tangtv_tier": {
-            str(tier): paired_agreement(group)
-            for tier, group in labels.groupby("tangtv_tier", dropna=False)
-        },
-        "paper_tier": "upper_shelf",
-        "bootstrap_source": str(AGREEMENT_JSON),
-    }
-    # One published bootstrap record: independently reconstruct its population
-    # and count table before using its intervals, so stale inputs cannot mix.
-    metric_keys = {
-        "kappa_3class": "kappa",
-        "kappa_binary": "binary_kappa",
-        "agreement_3class": "agreement",
-        "agreement_binary": "binary_agreement",
-    }
-    for tier, entry in agreement["by_tangtv_tier"].items():
-        published = benchmark["pairwise_agreement"]["by_tangtv_tier"][tier][
-            "prad__tangtv"
-        ]
-        if (
-            published["counts"] != entry["confusion_counts"]
-            or published["both_vote_shot_ids"] != entry["both_vote"]["shot_ids"]
-            or published["both_valid_bins"] != entry["both_valid"]["bins"]
-        ):
-            raise ValueError(f"Pairwise population differs for TangTV tier {tier}")
-        for key, published_key in metric_keys.items():
-            value = published[published_key]["value"]
-            own = entry["metrics"][key]["value"]
-            if value is not None and not np.isclose(value, own):
-                raise ValueError(f"Pairwise metric differs: {tier}, {key}")
-            entry["metrics"][key] = published[published_key]
-    upper = agreement["by_tangtv_tier"].get("upper_shelf", paired_agreement(labels[:0]))
-    rows = []
-    for name in ("assessed", "certain"):
-        entry = coverage[name]
-        rows.append(
-            {
-                "panel": "detachment",
-                "kind": "coverage",
-                "series": name,
-                "group": "Exploratory coverage",
-                "metric": "bins",
-                "value": entry["bins"],
-                "n_shots": entry["shots"],
-                "seconds": entry["seconds"],
-                "ci_lo": None,
-                "ci_hi": None,
-                "source": "docs/labeler/figure2_detach.json",
-                "key": f"coverage.{name}.bins",
-            }
-        )
-    for metric in ("kappa_3class", "kappa_binary"):
-        entry = upper["metrics"][metric]
-        rows.append(
-            {
-                "panel": "detachment",
-                "kind": "agreement",
-                "series": metric,
-                "group": "Upper-shelf indicator agreement",
-                "metric": "kappa",
-                "value": entry["value"],
-                "ci_lo": entry["ci95"][0],
-                "ci_hi": entry["ci95"][1],
-                "n_bins": upper["both_vote"]["bins"],
-                "n_shots": upper["both_vote"]["shots"],
-                "source": "docs/labeler/figure2_detach.json",
-                "key": f"indicator_agreement.by_tangtv_tier.upper_shelf."
-                f"metrics.{metric}.value",
-            }
-        )
+    pair = benchmark["pairwise_agreement"]["by_tangtv_tier"].get(PAPER_TIER, {})
+    pair = pair.get("prad__tangtv", {})
+    rows = agreement_rows(benchmark)
     result = {
         "schema": "detachment_coverage_agreement",
         "task": "detachment",
@@ -290,52 +228,69 @@ def build() -> dict:
         "no independent benchmark",
         "independent_benchmark": {
             "status": "unavailable",
-            "reason": "No independent physical state reference with evaluable coverage.",
+            "reason": "No independent physical state reference with evaluable "
+            "coverage; the divertor Thomson check is in "
+            "docs/labeler/results/detachment_te_check.json.",
         },
-        "interpretation": "Certain labels require compatible indicator votes; "
-        "they are not independent truth. Agreement does not establish accuracy. "
-        "MARFE candidates come from one shot and remain within cue uncertainty.",
+        "interpretation": "Certain labels require compatible indicator votes; they "
+        "are not independent truth. Agreement does not establish accuracy.",
         "bin_ms": core.BIN_MS,
-        "figure": {"width_in": 3.25, "height_in": 3.4, "min_font_pt": 7},
+        "figure": {"width_in": 3.25, "height_in": 3.5, "min_font_pt": 7},
         "population": "all exported assessed eligible-shot bins, every split",
+        "paper_tier": PAPER_TIER,
+        "agreement_population": {
+            "both_valid_bins": pair.get("both_valid_bins"),
+            "both_vote_bins": pair.get("both_vote_bins"),
+            "both_vote_shots": pair.get("both_vote_shots"),
+            "both_vote_shot_ids": pair.get("both_vote_shot_ids"),
+            "vote_table_prad_rows_tangtv_columns": pair.get("counts"),
+        },
         "bootstrap": {
             "unit": "shot",
-            "replicates": BOOTSTRAPS,
+            "replicates": benchmark["replicates"],
             "ci": 0.95,
             "seed": benchmark["bootstrap"]["seed"],
             "method": "percentile",
-            "undefined_draws": "excluded; valid_replicates reported",
-            "source": str(AGREEMENT_JSON),
+            "undefined_draws": "excluded; valid_replicates in the benchmark record",
+            "source": "docs/labeler/results/detachment_benchmark.json",
         },
         "coverage": coverage,
-        "indicator_agreement": agreement,
+        "agreement": rows,
         "coverage_table": indicator_coverage(labels),
         "definitions": {
             "assessed": "at least two valid measurements on an eligible shot",
-            "certain": "assessed compatible primary state attached/detached/marfe",
+            "certain": "assessed bin with a certain primary state "
+            "(attached, detached or MARFE)",
+            "uncertain": "every other assessed bin; the tier says why",
             "seconds": "bin count times bin_ms / 1000; disjoint bins, not spans",
             "shots": "unique contributing shots; state shot counts may overlap",
             "measurement": "finite scalar before indicator validity gates",
             "valid_measurement": "passes the indicator validity gates",
             "vote": "valid attached/detached/marfe vote, excluding abstentions",
-            "certain_label": "vote bin also has a certain exported primary state",
+            "certain_label": "vote bin that also has a certain exported state",
+            "auroc": "P(f_div of a TangTV not-attached bin > f_div of a TangTV "
+            "attached bin); 0.5 is chance",
+            "spearman": "rank correlation of f_div with DZ, both larger when more "
+            "detached; 0 is chance",
+            "within_shot": "mean over shots of the per-shot statistic, shots with "
+            "enough bins of both classes",
+            "kappa_binary": "Cohen's kappa of attached versus not attached "
+            "(MARFE merged with detached); undefined, not drawn, when either "
+            "indicator cast one class",
         },
         "thresholds": {
-            "prad_attached_max": thresholds.PRAD_ATTACHED_MAX,
-            "prad_detached_min": thresholds.PRAD_DETACHED_MIN,
+            "prad_cutoffs_mw_over_p_in": "per shot from the 201081 anchor: see "
+            "docs/labeler/results/detachment_prad_anchor.json",
             "prad_averaging_ms": thresholds.PRAD_AVERAGING_MS,
         },
         "sources": {
             "labels": str(source),
             "bins": str(root() / "bins"),
             "labels_sha256": digest,
-            "pairwise_agreement": str(AGREEMENT_JSON),
+            "benchmark": str(AGREEMENT_JSON),
         },
-        "rows": rows,
     }
     PANEL_JSON.write_text(dumps(result, indent=1))
-    RESULTS.mkdir(parents=True, exist_ok=True)
-    (RESULTS / "detachment_figure2.json").write_text(dumps(result, indent=1))
     return result
 
 
@@ -351,91 +306,79 @@ def draw(data: dict, out: Path) -> None:
         }
     )
     fig, (coverage_ax, agreement_ax) = plt.subplots(
-        2, 1, figsize=(3.25, 3.4), gridspec_kw={"height_ratios": [1.0, 1.05]}
+        2, 1, figsize=(3.25, 3.5), gridspec_kw={"height_ratios": [0.8, 1.5]}
     )
     coverage = data["coverage"]
+    drawn_states = set()
     for y, kind in enumerate(("assessed", "certain")):
         left = 0
         for state in (1, 2, 3, 4):
             count = coverage["by_state"][core.STATE_NAMES[state]][kind]["bins"]
-            coverage_ax.barh(
-                y, count, left=left, color=STATE_COLOUR[state], height=0.52
-            )
+            if count:
+                coverage_ax.barh(
+                    y, count, left=left, color=STATE_COLOUR[state], height=0.6
+                )
+                drawn_states.add(state)
             left += count
-        entry = coverage[kind]
-        coverage_ax.text(
-            left + max(coverage["assessed"]["bins"] * 0.02, 1),
-            y,
-            f"{left:,} bins\n{entry['shots']} shots; {entry['seconds']:.2f} s",
-            va="center",
-            fontsize=7,
-        )
     coverage_ax.set_yticks([0, 1], ["Assessed", "Certain"])
     coverage_ax.invert_yaxis()
-    coverage_ax.set_xlim(0, max(coverage["assessed"]["bins"], 1) * 1.75)
-    coverage_ax.set_xlabel("50 ms bins")
-    coverage_ax.legend(
-        [Patch(facecolor=STATE_COLOUR[s]) for s in (1, 2, 3, 4)],
-        ["attached", "detached", "MARFE cand.", "uncertain"],
-        ncol=2,
-        frameon=False,
-        loc="upper right",
-        bbox_to_anchor=(1.0, 1.63),
-        fontsize=7,
-    )
-    upper = data["indicator_agreement"]["by_tangtv_tier"].get("upper_shelf")
-    interval_limits = [0.0, 1.0]
-    for y, key in enumerate(("kappa_3class", "kappa_binary")):
-        entry = upper["metrics"][key] if upper else {}
-        value, ci = entry.get("value"), entry.get("ci95", [None, None])
-        if value is not None and np.isfinite(value):
-            agreement_ax.plot(value, y, "o", ms=4, color="#0072B2")
-            if all(v is not None and np.isfinite(v) for v in ci):
-                interval_limits.extend(ci)
-                agreement_ax.hlines(y, ci[0], ci[1], color="#0072B2", lw=1)
-                agreement_ax.text(
-                    0.99,
-                    y + 0.25,
-                    f"{value:.2f} [{ci[0]:.2f}, {ci[1]:.2f}]",
-                    ha="right",
-                    fontsize=7,
-                )
+    coverage_ax.set_xlim(0, max(coverage["assessed"]["bins"], 1))
+    for y, kind in enumerate(("assessed", "certain")):
+        entry = coverage[kind]
+        text = f"{entry['bins']:,} bins, {entry['shots']} shots"
+        if kind == "assessed":
+            coverage_ax.text(
+                coverage["assessed"]["bins"] * 0.985,
+                y,
+                text,
+                ha="right",
+                va="center",
+                fontsize=7,
+                color="black",
+            )
         else:
-            agreement_ax.text(0.5, y, "undefined", ha="center", fontsize=7)
-    agreement_ax.set_yticks([0, 1], ["3 class", "Binary"])
-    agreement_ax.set_ylim(1.55, -0.45)
-    xmin = min(-0.1, min(interval_limits) - 0.05)
-    agreement_ax.set_xlim(xmin, max(1.02, max(interval_limits) + 0.02))
-    ticks = [-0.5, 0, 0.5, 1] if xmin < -0.3 else [-0.2, 0, 0.5, 1]
-    agreement_ax.set_xticks([value for value in ticks if value >= xmin])
-    agreement_ax.axvline(0, color=".65", lw=0.6, ls="--")
-    agreement_ax.set_xlabel(r"Prad–TangTV $\kappa$ (95% shot CI)")
-    if upper:
-        count = upper["both_vote"]
-        prad_counts = np.asarray(upper["confusion_counts"]).sum(axis=1)
-        constant_vote = np.flatnonzero(prad_counts)
-        note = (
-            "\nPrad votes: " + core.STATE_NAMES[int(constant_vote[0]) + 1] + " only"
-            if len(constant_vote) == 1
-            else ""
+            coverage_ax.text(
+                entry["bins"] + coverage["assessed"]["bins"] * 0.03,
+                y,
+                text,
+                ha="left",
+                va="center",
+                fontsize=7,
+            )
+    coverage_ax.set_xlabel("50 ms bins")
+    fig.legend(
+        [Patch(facecolor=STATE_COLOUR[s]) for s in sorted(drawn_states)],
+        [STATE_LABEL[s] for s in sorted(drawn_states)],
+        ncol=len(drawn_states),
+        frameon=False,
+        loc="upper center",
+        bbox_to_anchor=(0.5, 1.0),
+        fontsize=7,
+        handlelength=1,
+        columnspacing=0.9,
+        handletextpad=0.4,
+    )
+    rows = [row for row in data["agreement"] if row["drawn"]]
+    lows = [row["ci95"][0] for row in rows if row["ci95"]]
+    highs = [row["ci95"][1] for row in rows if row["ci95"]]
+    for y, row in enumerate(rows):
+        agreement_ax.plot(
+            [row["chance"]], [y], marker="|", ms=7, color=".6", mew=0.8, zorder=1
         )
-        agreement_ax.set_title(
-            f"Upper shelf: {count['bins']} bins / {count['shots']} shots" + note,
-            fontsize=7.5,
-        )
+        colour = "#222222" if row["kind"] == "threshold_free" else "#777777"
+        face = colour if row["kind"] == "threshold_free" else "white"
+        agreement_ax.plot(row["value"], y, "o", ms=4, color=colour, mfc=face, zorder=3)
+        if row["ci95"] and all(np.isfinite(row["ci95"])):
+            agreement_ax.hlines(y, *row["ci95"], color=colour, lw=1, zorder=2)
+    agreement_ax.set_yticks(range(len(rows)), [row["label"] for row in rows])
+    agreement_ax.set_ylim(len(rows) - 0.4, -0.6)
+    low = min([0.0, *lows]) - 0.05 if lows else -0.05
+    high = max([*highs, 1.0]) if highs else 1.0
+    agreement_ax.set_xlim(low, min(high + 0.02, 1.02))
+    agreement_ax.set_xlabel("Prad,div vs TangTV, 95% shot CI")
     for ax in (coverage_ax, agreement_ax):
         ax.spines[["top", "right"]].set_visible(False)
-    fig.text(
-        0.5, 0.985, "Exploratory detachment labels", va="top", ha="center", fontsize=8
-    )
-    fig.text(
-        0.5,
-        0.035,
-        "No independent benchmark\nBinary: MARFE merged with detached",
-        ha="center",
-        fontsize=7,
-    )
-    fig.subplots_adjust(left=0.24, right=0.97, top=0.77, bottom=0.22, hspace=1.1)
+    fig.subplots_adjust(left=0.31, right=0.97, top=0.9, bottom=0.12, hspace=0.75)
     out.mkdir(parents=True, exist_ok=True)
     fig.savefig(out / "fig_detachment_figure2.pdf", metadata={"CreationDate": None})
     fig.savefig(out / "fig_detachment_figure2.png", dpi=150)

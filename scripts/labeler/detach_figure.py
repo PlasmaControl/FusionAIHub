@@ -1,18 +1,23 @@
 #!/usr/bin/env python
-"""Appendix camera/inversion views and a separate indicator timeline.
+"""Appendix views of the detachment states on one transition shot, an indicator
+timeline and the MARFE witness.
 
-    python scripts/labeler/detach_figure.py --shot 189057 \\
+    python scripts/labeler/detach_figure.py --shot 201081 \
         --out-dir $LABELER_ROOT/round4/detach/figure
 
-Both figures require full-textwidth placement at 6.75 inches (minimum 7 pt),
-with vector PDF plus 150-dpi PNG. Three columns show low/high C-III fronts;
-headers give the actual exploratory label. A separate witness figure juxtaposes
-the single-shot 199172 MARFE candidate with the missed published 199166 onset.
-Inversions include EFIT flux surfaces and the g-file LIM wall.
-The bolometer row shows parked raw-voltage chord profiles; no spatial inversion
-or fabricated chord geometry is implied.
-The recorded IRTV heat-flux attempt returned NODATA. Every number comes from
-the exported labels and parked signals; omissions are recorded in figure.json.
+The views figure shows the attached, detached and re-attached phases of one shot in
+time order. Each column is a sustained interval (a run of at least `MIN_RUN_BINS`
+consecutive 50 ms bins of one certain state, the longest such run before, at and
+after the detached phase), never a single bin: the raw TangTV frame and the C-III
+inversion with EFIT flux surfaces at the interval centre, the front-height line at
+the interval's median DZ, and under them the PRAD_DIVL and PRAD_TOT traces with the
+three intervals marked. A 2D bolometer emissivity does not exist in the corpus or in
+the BOLOM tree (`detachment_bolometer_availability.json`), so the radiation row is
+the divertor and total radiated-power traces. The timeline adds the three
+indicators' votes, f_div and DZ with their cutoffs and, where fetched, the divertor
+Thomson Te at the SOL chords. Both figures use the full 6.75 inch text width
+(minimum 7 pt); vector PDF plus 150-dpi PNG. Every number comes from the exported
+labels and parked signals; omissions are recorded in figure.json.
 """
 
 from __future__ import annotations
@@ -39,9 +44,10 @@ STATE_NAME = {1: "attached", 2: "detached", 3: "MARFE", 4: "uncertain"}
 INK = "#222222"
 #: Top of the plotted inversion window (m): the divertor view, not the whole frame.
 VIEW_ZMAX = -0.85
-# modalities.yaml lists lower-fan channels first: L11 is array index 10, not 11.
-BOLO_DEAD_INDEX = 10
-BOLO_DEAD_CHANNEL = "BOL_L11_V"
+#: A sustained interval: consecutive bins of one state (250 ms is about 7 frames).
+MIN_RUN_BINS = 5
+#: Published Te-cliff times of the transition shot (Chen 2026, from the digest).
+PUBLISHED_CLIFFS_MS = {201081: (2650.0, 4450.0)}
 
 
 def root() -> Path:
@@ -52,93 +58,91 @@ def load_labels() -> pd.DataFrame:
     return pd.read_csv(root() / "labels_bins.csv.gz")
 
 
-def pick_times(frame: pd.DataFrame, shot: int) -> dict[int, float]:
-    """One bin centre per observed state, chosen near its median time.
+def upper_shelf(group: pd.DataFrame) -> pd.DataFrame:
+    return group[
+        group.tangtv_valid
+        & (group.aux_rvsod >= thresholds.SHELF_WALL_R)
+        & (abs(group.aux_zvsod - thresholds.SHELF_Z) <= thresholds.SHELF_Z_TOL)
+    ]
 
-    State 3 falls back to the deepest detached bin (largest DZ) when the shot has
-    no MARFE bin, so the third column is always populated.
+
+def runs(group: pd.DataFrame, column: str, state: int) -> list[dict]:
+    """Maximal runs of consecutive 50 ms bins whose `column` equals `state`."""
+    group = group.sort_values("start_ms")
+    hit = (group[column] == state).to_numpy()
+    start = group.start_ms.to_numpy(float)
+    out, k = [], 0
+    while k < len(group):
+        if not hit[k]:
+            k += 1
+            continue
+        e = k
+        while (
+            e + 1 < len(group) and hit[e + 1] and start[e + 1] - start[e] == core.BIN_MS
+        ):
+            e += 1
+        out.append(
+            {
+                "state": state,
+                "start_ms": float(start[k]),
+                "end_ms": float(start[e] + core.BIN_MS),
+                "n_bins": e - k + 1,
+                "basis": column,
+            }
+        )
+        k = e + 1
+    return [r for r in out if r["n_bins"] >= MIN_RUN_BINS]
+
+
+def longest(candidates: list[dict]) -> dict | None:
+    return max(candidates, key=lambda r: r["n_bins"]) if candidates else None
+
+
+def sustained_intervals(group: pd.DataFrame) -> list[dict]:
+    """The attached, detached and re-attached intervals of a shot in time order.
+
+    The detached interval is the longest run of certain detached bins. The attached
+    intervals are the longest certain attached run ending before it and the longest
+    one starting after it. A state with no certain run falls back to the TangTV
+    vote runs, so the column says which it is (`basis`).
     """
-    group = frame[
-        (frame.shot == shot)
-        & frame.tangtv_valid
-        & (frame.aux_rvsod >= thresholds.SHELF_WALL_R)
-        & (abs(frame.aux_zvsod - thresholds.SHELF_Z) <= thresholds.SHELF_Z_TOL)
-    ].copy()
-    out: dict[int, float] = {}
-    for state in (1, 2, 3):
-        rows = group[group.state_lm == state]
-        if not len(rows):
-            rows = group[group.tangtv_vote == state]
-        if len(rows):
-            centre = rows.start_ms.median()
-            best = rows.iloc[np.argmin(abs(rows.start_ms - centre))]
-            out[state] = float(best.start_ms) + core.BIN_MS / 2
-    if 3 not in out:
-        rows = group
-        if len(rows):
-            best = rows.sort_values("tangtv_value", ascending=False).iloc[0]
-            out[3] = float(best.start_ms) + core.BIN_MS / 2
-    return out
+    upper = upper_shelf(group)
+
+    def best(state, keep):
+        for column in ("state_rule", "tangtv_vote"):
+            found = longest([r for r in runs(upper, column, state) if keep(r)])
+            if found:
+                return found
+        return None
+
+    detached = best(core.DETACHED, lambda r: True)
+    if detached is None:
+        return []
+    before = best(core.ATTACHED, lambda r: r["end_ms"] <= detached["start_ms"])
+    after = best(core.ATTACHED, lambda r: r["start_ms"] >= detached["end_ms"])
+    chosen = [r for r in (before, detached, after) if r]
+    for r in chosen:
+        r["centre_ms"] = 0.5 * (r["start_ms"] + r["end_ms"])
+    return sorted(chosen, key=lambda r: r["start_ms"])
 
 
 def choose_shot(frame: pd.DataFrame) -> int:
-    """Prefer both certain states; otherwise show an honest front-vote example."""
-    candidates, front_examples = [], []
+    """The transition shot: 201081 when assessed, otherwise the shot with the
+    longest attached-detached-attached sequence of sustained certain intervals."""
+    if (frame.shot == 201081).any() and len(
+        sustained_intervals(frame[frame.shot == 201081])
+    ) == 3:
+        return 201081
+    best = (0, 0, 0)
     for shot, group in frame.groupby("shot"):
-        upper = group[
-            group.tangtv_valid
-            & (group.aux_rvsod >= thresholds.SHELF_WALL_R)
-            & (abs(group.aux_zvsod - thresholds.SHELF_Z) <= thresholds.SHELF_Z_TOL)
-        ]
-        states = set(upper.state_lm)
         if not (root() / "inversions" / f"{shot}.npz").is_file():
             continue
-        power = upper.aux_p_in_w.median()
-        if {1, 2}.issubset(states):
-            candidates.append((3 in states, float(power), len(upper), int(shot)))
-        counts = upper.tangtv_vote.value_counts()
-        if {1, 2}.issubset(counts.index):
-            support = int(upper.state_lm.isin((1, 2, 3)).sum())
-            balance = min(int(counts[1]), int(counts[2]))
-            front_examples.append((support * balance, balance, float(power), int(shot)))
-    if candidates:
-        return max(candidates)[-1]
-    if front_examples:
-        return max(front_examples)[-1]
-    raise SystemExit("no upper-shelf shot has attached and detached front votes")
-
-
-def bolo_profiles(shot: int, times: dict[int, float]):
-    """Median raw chord voltage over 50 ms, relative to the pre-plasma baseline.
-
-    The corpus modalities.yaml identifies BOL_L01_V..L24_V then U01_V..U24_V.
-    These are voltages, not calibrated radiation or a bolometer inversion.
-    """
-    import h5py
-
-    path = Path("/scratch/gpfs/EKOLEMEN/foundation_model") / f"{shot}_processed.h5"
-    if not path.is_file():
-        return {}, "no corpus file"
-    out = {}
-    with h5py.File(path, "r") as handle:
-        if "bolo" not in handle:
-            return {}, "no bolo group"
-        group = handle["bolo"]
-        t = group["xdata"][:] * 1000
-        data = group["ydata"]
-        if len(t) < 2 or data.shape[0] != 48:
-            return {}, "bolo stub or unexpected channel count"
-        stop = int(np.searchsorted(t, 0))
-        if stop < 10:
-            return {}, "no pre-plasma voltage baseline"
-        baseline = np.nanmedian(data[:, :stop], axis=1)
-        for role, time in times.items():
-            lo, hi = np.searchsorted(t, [time - 25, time + 25])
-            if hi > lo:
-                profile = np.nanmedian(data[:, lo:hi], axis=1) - baseline
-                profile[BOLO_DEAD_INDEX] = np.nan
-                out[role] = profile
-    return out, str(path)
+        found = sustained_intervals(group)
+        score = (len(found), sum(r["n_bins"] for r in found), int(shot))
+        best = max(best, score)
+    if not best[0]:
+        raise SystemExit("no shot has a sustained detached interval with inversions")
+    return best[2]
 
 
 def read_video(shot: int):
@@ -226,22 +230,24 @@ def strip(ax, start_ms, state, label) -> None:
     ax.tick_params(axis="x", length=0, labelbottom=False)
 
 
-def timeline(fig, spec, group: pd.DataFrame, times: dict[int, float]) -> None:
-    sub = spec.subgridspec(
-        5, 1, height_ratios=[0.35, 0.35, 0.35, 1.4, 1.4], hspace=0.28
-    )
-    axes = [fig.add_subplot(sub[i]) for i in range(5)]
+def timeline(fig, spec, group: pd.DataFrame, intervals: list[dict], te, cliffs) -> None:
+    """Votes, f_div, DZ and (when fetched) the SOL divertor Te against time."""
+    n_rows = 7 if te is not None else 6
+    ratios = [0.35, 0.35, 0.35, 0.35, 1.4, 1.4] + ([1.4] if te is not None else [])
+    sub = spec.subgridspec(n_rows, 1, height_ratios=ratios, hspace=0.28)
+    axes = [fig.add_subplot(sub[i]) for i in range(n_rows)]
     start = group.start_ms.to_numpy()
     votes = {
-        "label": group.state_lm.to_numpy(),
+        "label": group.state_rule.to_numpy(),
+        "Afrac": np.where(group.afrac_valid, group.afrac_vote, 0),
         "Prad,div": np.where(group.prad_valid, group.prad_vote, 0),
         "TangTV": np.where(group.tangtv_valid, group.tangtv_vote, 0),
     }
-    for ax, (name, state) in zip(axes[:3], votes.items(), strict=True):
+    for ax, (name, state) in zip(axes[:4], votes.items(), strict=True):
         strip(ax, start, state, name)
     centre = start + core.BIN_MS / 2
     dz = group.tangtv_value.to_numpy(float)
-    series = (
+    series = [
         (
             r"$f_{\mathrm{div}}$",
             np.where(group.prad_valid, group.prad_value, np.nan),
@@ -259,8 +265,10 @@ def timeline(fig, spec, group: pd.DataFrame, times: dict[int, float]) -> None:
                 (thresholds.DZ_MARFE_MIN, "-."),
             ),
         ),
-    )
-    for ax, (name, y, lines) in zip(axes[3:], series, strict=True):
+    ]
+    if te is not None:
+        series.append(("$T_e$ (eV)", te, ((5.0, ":"), (10.0, "--"))))
+    for ax, (name, y, lines) in zip(axes[4:], series, strict=True):
         ax.plot(centre, y, color=INK, lw=0.9, marker=".", ms=2.5)
         for level, dash in lines:
             ax.axhline(level, color="#666666", lw=0.6, ls=dash)
@@ -270,28 +278,38 @@ def timeline(fig, spec, group: pd.DataFrame, times: dict[int, float]) -> None:
                 0.5, 0.55, "no valid measurement", transform=ax.transAxes, ha="center"
             )
         ax.grid(axis="y", color="0.9", lw=0.4)
-    axes[3].set_ylim(bottom=0)
-    axes[4].set_ylim(bottom=min(0, np.nanmin(dz) if np.isfinite(dz).any() else 0))
+    axes[4].set_ylim(bottom=0)
+    axes[5].set_ylim(bottom=min(0, np.nanmin(dz) if np.isfinite(dz).any() else 0))
+    if te is not None:
+        axes[6].set_yscale("log")
+        axes[6].set_ylim(0.5, 60)
     lo, hi = start.min(), start.max() + core.BIN_MS
     for ax in axes:
         ax.set_xlim(lo, hi)
-        for t in times.values():
-            observed = int(group.iloc[np.argmin(np.abs(centre - t))].state_lm)
-            ax.axvline(t, color=STATE_COLOUR[observed], lw=1.0, alpha=0.9)
-    for letter, time in zip("abc", times.values(), strict=False):
-        axes[0].text(time, 1.2, letter, ha="center", va="bottom", fontsize=8)
-    for ax in axes[3:4]:
+        for r in intervals if ax in axes[4:] else ():
+            ax.axvspan(
+                r["start_ms"],
+                r["end_ms"],
+                color=STATE_COLOUR[r["state"]],
+                alpha=0.14,
+                lw=0,
+            )
+        for t in cliffs:
+            ax.axvline(t, color=INK, lw=0.8, ls=(0, (1, 1.5)))
+    for letter, r in zip("abc", intervals, strict=False):
+        axes[0].text(r["centre_ms"], 1.2, letter, ha="center", va="bottom", fontsize=8)
+    for ax in axes[:-1]:
         ax.tick_params(axis="x", labelbottom=False)
     for ax in axes:
         ax.yaxis.set_label_coords(-0.11, 0.5)
-    axes[4].set_xlabel("time (ms)")
+    axes[-1].set_xlabel("time (ms)")
 
 
 def summary(ax, frame: pd.DataFrame, shot: int) -> dict:
     """Per-shot fractions of assessed bins by state, one column per shot."""
-    assessed = frame[frame.assessed & frame.state_lm.isin((1, 2, 3, 4))]
+    assessed = frame[frame.assessed & frame.state_rule.isin((1, 2, 3, 4))]
     table = (
-        assessed.groupby(["shot", "state_lm"])
+        assessed.groupby(["shot", "state_rule"])
         .size()
         .unstack(fill_value=0)
         .reindex(columns=[1, 2, 3, 4], fill_value=0)
@@ -414,8 +432,8 @@ def witness_inversion(ax, shot: int, time: float, row: pd.Series) -> dict:
 
 def marfe_witness(frame: pd.DataFrame, out: Path) -> dict:
     """Juxtapose a single-shot exploratory candidate and a missed published onset."""
-    rows = frame[(frame.shot == 199172) & (frame.state_lm == core.MARFE)]
-    selection = "median-time exported MARFE candidate"
+    rows = frame[(frame.shot == 199172) & (frame.state_rule == core.MARFE)]
+    selection = "median-time certain MARFE bin"
     if rows.empty:
         rows = frame[(frame.shot == 199172) & frame.tangtv_vote.eq(core.MARFE)]
         selection = "median-time TangTV MARFE vote; exported state shown"
@@ -437,11 +455,11 @@ def marfe_witness(frame: pd.DataFrame, out: Path) -> dict:
             199172,
             float(candidate.start_ms + core.BIN_MS / 2),
             candidate,
-            "199172: single-shot MARFE candidate",
+            "199172: MARFE evidence on one shot",
         ),
         (199166, published_onset, missed, "199166: published MARFE onset, 3705 ms"),
     ]
-    fig = plt.figure(figsize=(6.75, 4.25))
+    fig = plt.figure(figsize=(6.75, 3.9))
     grid = fig.add_gridspec(
         2,
         2,
@@ -449,7 +467,7 @@ def marfe_witness(frame: pd.DataFrame, out: Path) -> dict:
         left=0.08,
         right=0.98,
         top=0.90,
-        bottom=0.20,
+        bottom=0.12,
         hspace=0.44,
         wspace=0.28,
     )
@@ -458,7 +476,7 @@ def marfe_witness(frame: pd.DataFrame, out: Path) -> dict:
         ax = fig.add_subplot(grid[0, col])
         provenance = witness_inversion(ax, shot, time, row)
         ax.set_title(title, fontsize=8)
-        state = STATE_NAME[int(row.state_lm)]
+        state = STATE_NAME[int(row.state_rule)]
         spatial = bool(row.tangtv_marfe_spatial)
         cue = bool(row.tangtv_marfe_second_cue)
         text_ax = fig.add_subplot(grid[1, col])
@@ -469,10 +487,9 @@ def marfe_witness(frame: pd.DataFrame, out: Path) -> dict:
             f"Exported label: {state}; tier: {row.tier}\n"
             f"Bin: {row.start_ms:.0f}–{row.start_ms + core.BIN_MS:.0f} ms\n"
             f"DZ = {row.tangtv_value:.3f}; "
-            f"$f_{{\\mathrm{{div}}}}$ = {row.prad_value:.3f}; "
             f"$f_G$ = {row.aux_greenwald_fraction:.3f}\n"
             f"Inside-separatrix cue: {'passes' if spatial else 'fails'}; "
-            f"second cue: {'passes' if cue else 'fails'}",
+            f"density cue: {'passes' if cue else 'fails'}",
             transform=text_ax.transAxes,
             ha="left",
             va="top",
@@ -495,7 +512,7 @@ def marfe_witness(frame: pd.DataFrame, out: Path) -> dict:
             "greenwald_fraction": float(row.aux_greenwald_fraction),
             "persistent_height_candidate": bool(row.tangtv_marfe_candidate),
             "inside_separatrix_cue": spatial,
-            "second_cue": cue,
+            "density_cue": cue,
         }
     fig.legend(
         [
@@ -506,31 +523,9 @@ def marfe_witness(frame: pd.DataFrame, out: Path) -> dict:
         ],
         [r"EFIT $\psi_N$ and wall", "X-point", "outer strike point", "C-III height"],
         loc="lower center",
-        bbox_to_anchor=(0.5, 0.12),
+        bbox_to_anchor=(0.5, 0.0),
         ncol=4,
         frameon=False,
-    )
-    fig.text(
-        0.5,
-        0.095,
-        "Local cues: DZ ≥ 1.20; $f_G$ ≥ 0.80 (or H–L cue); $f_{\\mathrm{div}}$ ≥ 0.50",
-        ha="center",
-        fontsize=7,
-    )
-    fig.text(
-        0.5,
-        0.055,
-        "199172 candidates remain within cue uncertainty; "
-        "199166 published onset is missed without retuning.",
-        ha="center",
-        fontsize=7,
-    )
-    fig.text(
-        0.5,
-        0.013,
-        "Exploratory MARFE candidates; no independent benchmark",
-        ha="center",
-        fontsize=7,
     )
     fig.savefig(
         out / "fig_detachment_marfe_witness.pdf", metadata={"CreationDate": None}
@@ -539,7 +534,7 @@ def marfe_witness(frame: pd.DataFrame, out: Path) -> dict:
     plt.close(fig)
     record = {
         "status": "available",
-        "scope": "exploratory single-shot candidate and missed published onset; "
+        "scope": "MARFE evidence on one shot and a missed published onset; "
         "no independent benchmark",
         "independent_benchmark": "unavailable",
         "candidate_selection": selection,
@@ -548,10 +543,11 @@ def marfe_witness(frame: pd.DataFrame, out: Path) -> dict:
         "thresholds": {
             "dz_candidate_min": thresholds.DZ_MARFE_MIN,
             "greenwald_cue_min": thresholds.GREENWALD_CUE_MIN,
-            "prad_corroboration_min": thresholds.PRAD_DETACHED_MIN,
+            "persistence_min_bins": thresholds.MARFE_MIN_BINS,
+            "prad_div_and_afrac": "not MARFE corroborators",
         },
         "width_in": 6.75,
-        "height_in": 4.25,
+        "height_in": 3.9,
         "min_font_pt": 7,
         "selections": records,
         "flux_legend": "blue: EFIT psi_N/wall; white x: X-point; white o: "
@@ -565,90 +561,95 @@ def marfe_witness(frame: pd.DataFrame, out: Path) -> dict:
     return record
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--shot", type=int, default=None)
-    parser.add_argument("--times", type=float, nargs=3, default=None)
-    parser.add_argument("--out-dir", default=str(root() / "figure"))
-    args = parser.parse_args()
-    style()
-    frame = load_labels()
-    if args.shot is None:
-        args.shot = choose_shot(frame)
-    group = frame[frame.shot == args.shot].sort_values("start_ms")
-    if group.empty:
-        raise SystemExit(f"shot {args.shot} is not in labels_bins.csv.gz")
-    upper = group[
-        group.tangtv_valid
-        & (group.aux_rvsod >= thresholds.SHELF_WALL_R)
-        & (abs(group.aux_zvsod - thresholds.SHELF_Z) <= thresholds.SHELF_Z_TOL)
+def draw_inversion(ax, shot, group, run, inv, efit_t) -> dict:
+    """The inversion nearest the interval centre with EFIT, X-point, strike point
+    and the front-height line at the interval's median DZ."""
+    j = int(np.argmin(np.abs(inv["times_ms"] - run["centre_ms"])))
+    radii, elev = inv["radii"], inv["elevation"]
+    shown = inv["frames"][j].astype(float)
+    ax.imshow(
+        shown,
+        origin="lower",
+        extent=(radii[0], radii[-1], elev[0], elev[-1]),
+        cmap="magma",
+        vmin=0,
+        vmax=max(float(np.percentile(shown, 99.8)), 0.001),
+        aspect="equal",
+    )
+    efit = efit_slice(shot, efit_t)
+    inside = group[
+        (group.start_ms >= run["start_ms"]) & (group.start_ms < run["end_ms"])
     ]
-    upper_counts = {
-        "n_valid_measurement_bins": len(upper),
-        "vote_bins": {
-            STATE_NAME[state]: int((upper.tangtv_vote == state).sum())
-            for state in (1, 2, 3)
-        },
-        "certain_state_bins": {
-            STATE_NAME[state]: int((upper.state_lm == state).sum())
-            for state in (1, 2, 3)
-        },
+    row = inside.iloc[
+        np.argmin(np.abs(inside.start_ms + core.BIN_MS / 2 - run["centre_ms"]))
+    ]
+    if efit is not None:
+        ax.contour(
+            efit["r"],
+            efit["z"],
+            efit["psin"],
+            levels=[1.0],
+            colors="#56B4E9",
+            linewidths=1.0,
+        )
+        ax.contour(
+            efit["r"],
+            efit["z"],
+            efit["psin"],
+            levels=[0.98, 1.02, 1.05, 1.1],
+            colors="#56B4E9",
+            linewidths=0.4,
+        )
+        if efit["lim"] is not None:
+            ax.plot(efit["lim"][:, 0], efit["lim"][:, 1], color="#56B4E9", lw=1.0)
+    if np.isfinite(row.aux_rxpt1):
+        ax.plot(row.aux_rxpt1, row.aux_zxpt1, "x", color="white", ms=4)
+    if np.isfinite(row.aux_rvsod):
+        ax.plot(row.aux_rvsod, row.aux_zvsod, "o", mfc="none", mec="white", ms=4)
+    dz = float(np.nanmedian(inside.tangtv_value))
+    if np.isfinite(dz) and np.isfinite(row.aux_zxpt1):
+        height = row.aux_zxpt1 - (1 - dz) * (row.aux_zxpt1 - row.aux_zvsod)
+        ax.axhline(height, color="#E69F00", lw=0.8, ls="--")
+    ax.set_xlim(max(radii[0], 1.0), min(radii[-1], 1.8))
+    ax.set_ylim(elev[0], VIEW_ZMAX)
+    ax.set_xticks([1.0, 1.2, 1.4, 1.6])
+    ax.set_xlabel("R (m)")
+    return {
+        "inversion_time_ms": float(inv["times_ms"][j]),
+        "efit_time_ms": efit["t_ms"] if efit else None,
+        "efit_source": efit["source"] if efit else None,
+        "median_dz": dz,
+        "strike_r_m": float(row.aux_rvsod),
+        "strike_z_m": float(row.aux_zvsod),
     }
-    times = pick_times(frame, args.shot)
-    if args.times:
-        times = dict(zip((1, 2, 3), args.times, strict=True))
-    if len(times) != 3:
-        raise SystemExit("the selected shot needs an upper-shelf frame for all columns")
-    inv = np.load(root() / "inversions" / f"{args.shot}.npz")
-    video = read_video(args.shot)
-    profiles, bolo_source = bolo_profiles(args.shot, times)
-    fig = plt.figure(figsize=(6.75, 5.45), constrained_layout=False)
+
+
+def views_figure(shot, group, intervals, out) -> dict:
+    inv = np.load(root() / "inversions" / f"{shot}.npz")
+    video = read_video(shot)
+    fig = plt.figure(figsize=(6.75, 6.0), constrained_layout=False)
     outer = fig.add_gridspec(
         3,
         3,
-        height_ratios=[1, 1.15, 0.9],
+        height_ratios=[1, 1.15, 0.95],
         left=0.095,
         right=0.965,
         top=0.93,
-        bottom=0.2,
-        hspace=0.42,
+        bottom=0.17,
+        hspace=0.46,
         wspace=0.42,
     )
-    notes = []
     selections = {}
-    profile_values = (
-        np.concatenate(list(profiles.values())) if profiles else np.array([])
-    )
-    ylim = (
-        (float(np.nanmin(profile_values)), float(np.nanmax(profile_values)))
-        if len(profile_values) and np.isfinite(profile_values).any()
-        else (-1, 1)
-    )
-    padding = max((ylim[1] - ylim[0]) * 0.08, 0.005)
-    for col, state in enumerate((1, 2, 3)):
-        if state not in times:
-            continue
-        t = times[state]
-        label = "label: " + STATE_NAME[state]
-        selected = group.iloc[int(np.argmin(np.abs(group.start_ms + 25 - t)))]
-        if not bool(selected.tangtv_valid) or not (
-            selected.aux_rvsod >= thresholds.SHELF_WALL_R
-            and abs(selected.aux_zvsod - thresholds.SHELF_Z) <= thresholds.SHELF_Z_TOL
-        ):
-            raise SystemExit(f"selected time {t} ms is not a valid upper-shelf frame")
-        if int(selected.state_lm) != state:
-            label = {1: "low C-III front", 2: "high C-III front", 3: "highest front"}[
-                state
-            ]
-            label += "\nlabel: " + STATE_NAME[int(selected.state_lm)]
-        elif state == 3:
-            label = "MARFE candidate"
-        # raw frame
+    for col, run in enumerate(intervals):
+        state = run["state"]
+        span = f"{run['start_ms']:.0f}–{run['end_ms']:.0f} ms"
         ax = fig.add_subplot(outer[0, col])
-        ax.set_title(f"({chr(97 + col)}) {label}, {t:.0f} ms")
+        ax.set_title(f"({chr(97 + col)}) {STATE_NAME[state]}, {span}")
+        raw_time = None
         if video is not None:
             vt, vid = video
-            k = int(np.argmin(np.abs(vt - t)))
+            k = int(np.argmin(np.abs(vt - run["centre_ms"])))
+            raw_time = float(vt[k])
             top = float(np.percentile(vid[k], 99.5))
             ax.imshow(vid[k], cmap="gray", vmin=0, vmax=max(top, 1.0), aspect="auto")
             if col == 0:
@@ -659,90 +660,64 @@ def main() -> None:
             )
         ax.set_xticks([])
         ax.set_yticks([])
-        # inversion with EFIT
         ax = fig.add_subplot(outer[1, col])
-        j = int(np.argmin(np.abs(inv["times_ms"] - t)))
-        radii, elev = inv["radii"], inv["elevation"]
-        shown = inv["frames"][j].astype(float)
-        ax.imshow(
-            shown,
-            origin="lower",
-            extent=(radii[0], radii[-1], elev[0], elev[-1]),
-            cmap="magma",
-            vmin=0,
-            vmax=float(np.percentile(shown, 99.8)),
-            aspect="equal",
-        )
-        efit = efit_slice(args.shot, t)
-        row = group.iloc[int(np.argmin(np.abs(group.start_ms + 25 - t)))]
-        if efit is not None:
-            ax.contour(
-                efit["r"],
-                efit["z"],
-                efit["psin"],
-                levels=[1.0],
-                colors="#56B4E9",
-                linewidths=1.0,
-            )
-            ax.contour(
-                efit["r"],
-                efit["z"],
-                efit["psin"],
-                levels=[0.98, 1.02, 1.05, 1.1],
-                colors="#56B4E9",
-                linewidths=0.4,
-            )
-            if efit["lim"] is not None:
-                lim = efit["lim"]
-                ax.plot(lim[:, 0], lim[:, 1], color="#56B4E9", lw=1.0)
-        else:
-            notes.append("EFIT flux map not parked")
-        if np.isfinite(row.aux_rxpt1):
-            ax.plot(row.aux_rxpt1, row.aux_zxpt1, "x", color="white", ms=4)
-        if np.isfinite(row.aux_rvsod):
-            ax.plot(row.aux_rvsod, row.aux_zvsod, "o", mfc="none", mec="white", ms=4)
-        if np.isfinite(row.tangtv_value) and np.isfinite(row.aux_zxpt1):
-            ze = row.aux_zxpt1 - (1 - row.tangtv_value) * (
-                row.aux_zxpt1 - row.aux_zvsod
-            )
-            ax.axhline(ze, color="#E69F00", lw=0.8, ls="--")
-        ax.set_xlim(max(radii[0], 1.0), min(radii[-1], 1.8))
-        ax.set_ylim(elev[0], VIEW_ZMAX)
-        ax.set_xticks([1.0, 1.2, 1.4, 1.6])
-        ax.set_xlabel("R (m)")
+        info = draw_inversion(ax, shot, group, run, inv, run["centre_ms"])
         if col == 0:
             ax.set_ylabel("Z (m)")
-        ax.set_title(f"C-III inversion ({inv['times_ms'][j]:.0f} ms)")
-        selections[state] = {
-            "bin_centre_ms": t,
-            "bin_start_ms": float(selected.start_ms),
-            "state": STATE_NAME[int(selected.state_lm)],
-            "tangtv_dz": float(selected.tangtv_value),
-            "prad_div_fraction": float(selected.prad_value),
-            "strike_r_m": float(selected.aux_rvsod),
-            "strike_z_m": float(selected.aux_zvsod),
-            "inversion_time_ms": float(inv["times_ms"][j]),
-            "raw_time_ms": float(vt[k]) if video is not None else None,
-            "efit_time_ms": efit["t_ms"] if efit is not None else None,
-            "efit_source": efit["source"] if efit is not None else None,
+        ax.set_title(f"C-III inversion ({info['inversion_time_ms']:.0f} ms)")
+        selections[chr(97 + col)] = {
+            **run,
+            "state": STATE_NAME[state],
+            "raw_time_ms": raw_time,
+            **info,
         }
-        # Chord index is the only honest coordinate without endpoint calibration.
-        ax = fig.add_subplot(outer[2, col])
-        if state in profiles:
-            lower, upper = profiles[state][:24], profiles[state][24:]
-            ax.plot(np.arange(1, 25), lower, color="#0072B2", lw=0.8, label="lower fan")
-            ax.plot(np.arange(1, 25), upper, color="#D55E00", lw=0.8, label="upper fan")
-            ax.set_ylim(ylim[0] - padding, ylim[1] + padding)
-            selections[state]["bolo_delta_v_by_channel"] = profiles[state].tolist()
-        else:
-            ax.text(0.5, 0.5, "no usable chords", transform=ax.transAxes, ha="center")
-            notes.append("bolo profile unavailable: " + bolo_source)
-        ax.set_xlim(1, 24)
-        ax.set_xticks([1, 8, 16, 24])
-        ax.set_xlabel("chord index within fan")
-        if col == 0:
-            ax.set_ylabel("bolometer\n" + r"$\Delta V$ (V)")
-            ax.legend(loc="best", frameon=False, fontsize=7)
+    ax = fig.add_subplot(outer[2, :])
+    centre = group.start_ms.to_numpy(float) + core.BIN_MS / 2
+    divl = group.aux_prad_divl_w.to_numpy(float) / 1e6
+    total = group.aux_prad_tot_w.to_numpy(float) / 1e6
+    ax.plot(centre, total, color="#0072B2", lw=1.0, label=r"$P_{\mathrm{rad,tot}}$")
+    ax.plot(centre, divl, color="#D55E00", lw=1.0, label=r"$P_{\mathrm{rad,div,L}}$")
+    for col, run in enumerate(intervals):
+        ax.axvspan(
+            run["start_ms"],
+            run["end_ms"],
+            color=STATE_COLOUR[run["state"]],
+            alpha=0.18,
+            lw=0,
+        )
+        ax.text(
+            run["centre_ms"],
+            1.02,
+            chr(97 + col),
+            transform=ax.get_xaxis_transform(),
+            ha="center",
+            va="bottom",
+            fontsize=8,
+        )
+    cliffs = PUBLISHED_CLIFFS_MS.get(shot, ())
+    for t in cliffs:
+        ax.axvline(t, color=INK, lw=0.8, ls=(0, (1, 1.5)))
+    ax.set_xlim(centre.min(), centre.max())
+    ax.set_ylim(bottom=0)
+    ax.set_xlabel("time (ms)")
+    ax.set_ylabel("radiated power (MW)")
+    ax.grid(axis="y", color="0.9", lw=0.4)
+    handles, labels = ax.get_legend_handles_labels()
+    if cliffs:
+        handles.append(Line2D([], [], color=INK, lw=0.8, ls=(0, (1, 1.5))))
+        labels.append("Te cliffs (Chen 2026)")
+    handles += [
+        plt.Rectangle((0, 0), 1, 1, color=STATE_COLOUR[s], alpha=0.35) for s in (1, 2)
+    ]
+    labels += ["attached interval", "detached interval"]
+    ax.legend(
+        handles,
+        labels,
+        ncol=3,
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.32),
+        frameon=False,
+    )
     fig.legend(
         [
             Line2D([], [], color="#56B4E9", lw=1),
@@ -752,139 +727,107 @@ def main() -> None:
         ],
         [r"EFIT $\psi_N$ and wall", "X-point", "outer strike point", "C-III height"],
         loc="lower center",
-        bbox_to_anchor=(0.5, 0.045),
+        bbox_to_anchor=(0.5, 0.0),
         ncol=4,
         frameon=False,
     )
-    fig.text(
-        0.5,
-        0.012,
-        "Exploratory views and labels; no independent benchmark",
-        ha="center",
-        fontsize=7,
-    )
-    out = Path(args.out_dir)
-    out.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out / "fig_detachment_views.pdf")
+    fig.savefig(out / "fig_detachment_views.pdf", metadata={"CreationDate": None})
     fig.savefig(out / "fig_detachment_views.png", dpi=150)
     plt.close(fig)
-    fig = plt.figure(figsize=(6.75, 5.2))
+    return selections
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser.add_argument("--shot", type=int, default=None)
+    parser.add_argument("--out-dir", default=str(root() / "figure"))
+    args = parser.parse_args()
+    style()
+    frame = load_labels()
+    if args.shot is None:
+        args.shot = choose_shot(frame)
+    group = frame[frame.shot == args.shot].sort_values("start_ms")
+    if group.empty:
+        raise SystemExit(f"shot {args.shot} is not in labels_bins.csv.gz")
+    intervals = sustained_intervals(group)
+    if not intervals:
+        raise SystemExit("the shot has no sustained detached interval")
+    out = Path(args.out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    selections = views_figure(args.shot, group, intervals, out)
+    from detach_te_check import attach_te
+
+    with_te = attach_te(group.reset_index(drop=True))
+    te = with_te.te_ev.to_numpy(float) if np.isfinite(with_te.te_ev).any() else None
+    cliffs = PUBLISHED_CLIFFS_MS.get(args.shot, ())
+    fig = plt.figure(figsize=(6.75, 6.2))
     grid = fig.add_gridspec(
         2,
         1,
-        height_ratios=[4, 0.8],
+        height_ratios=[4.6, 0.8],
         left=0.18,
         right=0.985,
         top=0.955,
-        bottom=0.17,
-        hspace=0.25,
+        bottom=0.14,
+        hspace=0.28,
     )
-    timeline(fig, grid[0], group, times)
+    timeline(fig, grid[0], group, intervals, te, cliffs)
     summary_record = summary(fig.add_subplot(grid[1]), frame, args.shot)
-    fig.text(
-        0.5,
-        0.015,
-        "Exploratory coverage and indicator agreement; no independent benchmark",
-        ha="center",
-        fontsize=7,
-    )
-    fig.savefig(out / "fig_detachment_timeline.pdf")
+    fig.savefig(out / "fig_detachment_timeline.pdf", metadata={"CreationDate": None})
     fig.savefig(out / "fig_detachment_timeline.png", dpi=150)
     plt.close(fig)
     witness_record = marfe_witness(frame, out)
+    labels_path = root() / "labels_bins.csv.gz"
     (out / "figure.json").write_text(
         dumps(
             {
-                "scope": "exploratory coverage, indicator agreement and "
-                "candidate views; no independent benchmark",
+                "scope": "exploratory coverage, indicator agreement and views; "
+                "no independent benchmark",
                 "independent_benchmark": "unavailable",
-                "figure_captions": {
-                    "views": "Exploratory views and labels; no independent benchmark",
-                    "timeline": "Exploratory coverage and indicator agreement; "
-                    "no independent benchmark",
-                    "marfe_witness": "Exploratory MARFE candidates; "
-                    "no independent benchmark",
-                },
                 "shot": args.shot,
-                "labels_source": str(root() / "labels_bins.csv.gz"),
-                "labels_sha256": hashlib.sha256(
-                    (root() / "labels_bins.csv.gz").read_bytes()
-                ).hexdigest(),
-                "chosen_times_ms": times,
-                "timeline_markers": (
-                    "Vertical lines a, b, c mark the selected times of the "
-                    "corresponding camera, inversion and bolometer-profile columns."
+                "labels_source": str(labels_path),
+                "labels_sha256": hashlib.sha256(labels_path.read_bytes()).hexdigest(),
+                "min_run_bins": MIN_RUN_BINS,
+                "intervals": selections,
+                "interval_rule": (
+                    "longest run of consecutive certain-detached bins; longest "
+                    "certain-attached run before and after it; the TangTV vote "
+                    "run when a state has no certain run (basis)"
                 ),
-                "example_upper_shelf_counts": upper_counts,
-                "example_selection": (
-                    "Prefer a shot with both certain attached and detached labels. "
-                    "If unavailable, select an upper-shelf front-vote transition "
-                    "with consensus support; every column displays its actual "
-                    "exported label."
-                ),
-                "selection_values": selections,
+                "published_te_cliffs_ms": list(cliffs),
+                "published_te_cliffs_source": ".tmp/label_papers/"
+                "Chen_2026_Nucl._Fusion_66_036014.md (shot 201081)",
                 "multi_shot_summary": summary_record,
                 "marfe_witness": witness_record,
-                "observed_states": {
-                    k: STATE_NAME[
-                        int(
-                            group.iloc[
-                                np.argmin(np.abs(group.start_ms + 25 - t))
-                            ].state_lm
-                        )
-                    ]
-                    for k, t in times.items()
-                },
-                "column_roles": {
-                    1: "low C-III front; actual exploratory label shown",
-                    2: "high C-III front; actual exploratory label shown",
-                    3: "MARFE candidate if exported, otherwise highest upper-shelf front",
-                },
                 "width_in": 6.75,
                 "min_font_pt": 7,
                 "placement": (
                     "Full textwidth at 6.75 inches. Do not shrink to a single "
                     "column; minimum 7 pt is guaranteed only at the declared size."
                 ),
-                "bolometer_row": (
-                    "48 raw-voltage channels, 50 ms median minus per-channel "
-                    "pre-plasma median; lower and upper fans plotted by chord "
-                    "index, without invented spatial geometry or radiation "
-                    "calibration."
+                "radiation_row": (
+                    "PRAD_DIVL (lower-divertor) and PRAD_TOT traces, 250 ms "
+                    "inter-ELM means as used by f_div. A 2D bolometer emissivity "
+                    "to overlay with EFIT does not exist: see "
+                    "docs/labeler/results/detachment_bolometer_availability.json"
                 ),
-                "bolometer_source": bolo_source,
-                "bolometer_channel_order": (
-                    "modalities.yaml: BOL_L01_V..L24_V, BOL_U01_V..U24_V"
+                "timeline_rows": (
+                    "label, Afrac, Prad,div and TangTV vote strips; f_div and DZ with the "
+                    "primary cutoffs (dashed attached, dotted detached, dash-dot "
+                    "MARFE); divertor Thomson Te at the SOL chords near the target "
+                    "with the 5 and 10 eV bands when fetched (log axis)"
                 ),
-                "bolometer_masked_channel": {
-                    "name": BOLO_DEAD_CHANNEL,
-                    "zero_based_index": BOLO_DEAD_INDEX,
-                    "fan_chord_index": 11,
-                    "reason": "dead lower-fan voltage channel; omitted from profiles",
-                    "order_source": "src/tokamak_foundation_model/data/config/"
-                    "modalities/modalities.yaml",
-                },
-                "timeline_values": (
-                    "Voted smoothed Prad,div/P_in with 0.36/0.50 thresholds, "
-                    "and voted DZ with 0.35/0.50/1.20 thresholds. Pale strips are "
-                    "unassessed or have no valid vote (invalid measurements or "
-                    "abstention); darker grey means assessed uncertainty."
-                ),
-                "timeline_omissions": {
-                    "jsat": "no valid votes; empty state strip and log panel omitted",
-                    "valid_jsat_bins_in_example": int(group.afrac_valid.sum()),
-                },
-                "irtv_row": "omitted: IRTV HEATFLUX attempt on 189057 returned NODATA; no heat-flux record obtained for the selected shot",
+                "timeline_te": "shown"
+                if te is not None
+                else "no Thomson Te for this shot",
+                "irtv_row": "omitted: the IRTV HEATFLUX attempt returned NODATA",
                 "raw_overlay": "no camera projection calibration available",
                 "efit_source": "EFIT02, or explicitly recorded EFIT01 fallback",
-                "notes": notes,
             },
             indent=1,
         )
     )
-    for note in sorted(set(notes)):
-        print("note:", note)
-    print("chosen times (ms), front examples:", times)
+    print("intervals:", [(r["state"], r["start_ms"], r["end_ms"]) for r in intervals])
     print("wrote", out / "fig_detachment_views.pdf")
 
 
