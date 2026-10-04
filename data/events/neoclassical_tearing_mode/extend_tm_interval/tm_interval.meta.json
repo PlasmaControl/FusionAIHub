@@ -34,9 +34,9 @@
     "n_locked_candidates": 29,
     "n_locked_known": 12,
     "n_onset_points": 81,
-    "n_onset_rows_flagged_degenerate": 10,
+    "n_onset_rows_flagged_degenerate": 11,
     "n_onset_windows": 70,
-    "n_onset_windows_at_most_5_ms": 10,
+    "n_onset_windows_at_most_5_ms": 11,
     "n_uncertain_rows": 1400,
     "n_with_m": 0,
     "n_without_observed_onset": 0,
@@ -54,13 +54,14 @@
     }
   },
   "crowd": "span rows iscrowd 1 (the whole interval), onset point rows iscrowd 0; t_start == t_end marks a point",
-  "generator_sha256": "d86d523a3c7cb7b92dadfa0a98db93c1e0b055583db98f27de23ce5464a77170",
-  "git_sha": "751d5ee9",
+  "generator_sha256": "a27d941335b0e3a2049f10d10e0e50b57c1a31277c963f37adc6e04f7f005d6c",
+  "git_sha": "97b8e90f",
   "locked": {
     "intervals_without_a_frequency_record_shots": [],
-    "rule": "Frequency <=1 kHz for 20 ms after >=1.5 kHz is only a locked_candidate, storing earliest lock_time_ms and every in-span drop in lock_candidates_ms (plus <=100 ms after the RMS end). An abrupt raw >seed to <release collapse within <=5 ms never counts as decay: unknown unless |DUSBRADIAL| steps at a candidate time: its median over the 20 to 120 ms after the time is >=5 above its median over the 200 to 20 ms before it (each window needs 50 ms measured, the baseline is not read before the plasma start). The candidate times are every frequency drop, the collapse, every interval's end and the end of each rejected candidate. Post-lock time is uncertain until |DUSBRADIAL| stays <5 above that local baseline for 200 ms (shorter dips are no release) or the discharge ends; an absent diagnostic leaves an unconfirmed collapse's tail uncertain. A step of 5 followed by 100 ms above the quiet level in flat-top time no interval or lock tail covers is uncertain `locked_unseeded`. Without frequency: ended=unknown and locked_known=false per row.",
+    "locked_known": "true when a lock was confirmed (then locked is true too); false only says none was confirmed: no radial-field record, no step, or n = 2, which has no confirmation",
+    "rule": "Frequency <=1 kHz for 20 ms after >=1.5 kHz is only a locked_candidate, storing earliest lock_time_ms and every in-span drop in lock_candidates_ms (plus <=100 ms after the RMS end). An abrupt raw >seed to <release collapse within <=5 ms never counts as decay: unknown unless |DUSBRADIAL| steps at a candidate time: its median over the 20 to 120 ms after the time is >=5 above its median over the 200 to 20 ms before it (each window needs 50 ms measured, the baseline is not read before the plasma start). The candidate times are the frequency drops at least 50 ms after the seed starts, the collapse, every interval's end and the end of each rejected candidate. Post-lock time is uncertain until |DUSBRADIAL| stays <5 above that local baseline for 200 ms (shorter dips are no release) or the discharge ends; an absent diagnostic leaves an unconfirmed collapse's tail uncertain. A step of 5 followed by 100 ms above the quiet level in flat-top time no interval or lock tail covers is uncertain `locked_unseeded`. Without frequency: ended=unknown and locked_known=false per row.",
     "signal": "\\MHD::N1FREQ, \\MHD::N2FREQ (kHz); PTDATA DUSBRADIAL (native ptdata units, treated as gauss by disruption-py)",
-    "unknown_locking_shots": [
+    "unconfirmed_lock_shots": [
       185943,
       185945,
       185961,
@@ -133,7 +134,7 @@
     "rule": "labeler.tearing.surface.supported_m requires an independently observed island radius to evaluate m = n*q there. No ECE island radius is resolved here, so m is empty; q alone is insufficient.",
     "signal": "qpsi_EFIT01 (the shot's feature file), offline EFIT01"
   },
-  "made_at": "2026-10-04T04:46:46+00:00",
+  "made_at": "2026-10-04T13:24:52+00:00",
   "made_by": "scripts/labeler/tm_label.py",
   "missing_signal_shots": [],
   "n_labelled_shots": 450,
@@ -173,7 +174,7 @@
     }
   },
   "rule_doc": "docs/labeler/tearing_detection.md; labeler.tearing.rule",
-  "rule_sha256": "42d556dbdc8d117e99257e1e586de0ed547fc9981ffec3a16f100f81f846a2b7",
+  "rule_sha256": "e9e7434fb9714a0a5ab54441179bbf4c9774da09fcc7a1d7f9191b8faee3e1d5",
   "schema_version": 6,
   "screening_missing": "All requested shots exclude blind cohort IDs before input reads; unavailable line screening at RMS above frozen weak_g is uncertain even without positive coherent-line evidence.",
   "shots": "cohort",

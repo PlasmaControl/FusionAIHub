@@ -72,7 +72,7 @@ shot,category,t_start,t_end,confidence,attrs
 185961,2,650.000000000000,665.000000000000,,"{""n"": 2, ""reason"": ""coherent_sub_seed""}"
 185961,2,655.000000000000,665.000000000000,,"{""n"": 1, ""reason"": ""coherent_line_unconfirmed_or_above_30khz""}"
 185961,2,660.000000000000,665.000000000000,,"{""n"": 1, ""reason"": ""coherent_sub_seed""}"
-185961,1,665.000000000000,665.000000000000,,"{""ended"": ""decay"", ""iscrowd"": 0, ""locked_known"": false, ""n"": 1, ""onset_window_ms"": [660.0, 665.0]}"
+185961,1,665.000000000000,665.000000000000,,"{""ended"": ""decay"", ""iscrowd"": 0, ""locked_known"": false, ""n"": 1, ""onset_window_degenerate"": true, ""onset_window_ms"": [660.0, 665.0]}"
 185961,1,665.000000000000,5579.000000000000,,"{""ended"": ""decay"", ""iscrowd"": 1, ""locked_known"": false, ""n"": 1}"
 185961,2,5579.000000000000,5602.000000000000,,"{""n"": 1, ""reason"": ""coherent_line_unconfirmed_or_above_30khz""}"
 185961,2,5579.000000000000,5610.000000000000,,"{""n"": 1, ""reason"": ""coherent_sub_seed""}"
