@@ -69,26 +69,48 @@ def mask_spans(t, mask):
     ]
 
 
-STATES = ("present", "absent", "absent_q_prior", "uncertain", "unassessed")
+STATES = (
+    "present",
+    "absent",
+    "q_prior_ece_contradicted",
+    "q_prior_untested",
+    "uncertain",
+    "unassessed",
+)
 
 
-def state_spans(t, observable, present, uncertain, *, absent=None, q_prior=None):
-    """Five states; only an explicit ECE absence test supplies negatives.
+def state_spans(
+    t,
+    observable,
+    present,
+    uncertain,
+    *,
+    absent=None,
+    q_prior=None,
+    q_prior_contradicted=None,
+):
+    """Six states; only an explicit ECE absence test supplies negatives.
 
     Observable bins without an accepted train or a tested absence remain
     uncertain. ``absent`` is a sample mask, typically ``Detection.absent_mask``.
-    ``q_prior`` marks time only a sustained EFIT01 q prior calls quiet: state
-    ``absent_q_prior``, not assessed and never a negative. A tested absence or
-    an uncertain interval overrides it. Missing diagnostic support overrides
-    every assessment.
+    ``q_prior`` marks time only a sustained EFIT01 q prior calls quiet. It is
+    never a negative and never assessed: state ``q_prior_untested``, or
+    ``q_prior_ece_contradicted`` where ``q_prior_contradicted`` (a subset of
+    ``q_prior``) marks the part inside the absence-test context of a periodic
+    edge or profile candidate. A tested absence or an uncertain interval
+    overrides it. Missing diagnostic support overrides every assessment.
     """
     from .metrics import spans_at
 
     observable = np.asarray(observable, dtype=bool)
     if observable.shape != np.shape(t):
         raise ValueError("observability must have one boolean per sample")
-    states = np.full(len(t), "uncertain", dtype="U14")
-    for mask, label in ((q_prior, "absent_q_prior"), (absent, "absent")):
+    states = np.full(len(t), "uncertain", dtype="U24")
+    for mask, label in (
+        (q_prior, "q_prior_untested"),
+        (q_prior_contradicted, "q_prior_ece_contradicted"),
+        (absent, "absent"),
+    ):
         if mask is None:
             continue
         mask = np.asarray(mask, dtype=bool)

@@ -110,7 +110,31 @@ def test_q_prior_time_is_its_own_unassessed_state_and_never_a_negative():
         t, np.ones(10, dtype=bool), [], [(0.004, 0.005)], absent=absent, q_prior=q_prior
     )
     states = {(r["start_s"], r["state"]) for r in spans}
-    assert (0.002, "absent_q_prior") in states
+    assert (0.002, "q_prior_untested") in states
     assert (0.006, "absent") in states
     assert (0.004, "uncertain") in states  # uncertain overrides the prior
     assert assessed.tolist() == [False] * 6 + [True] * 2 + [False] * 2
+
+
+def test_q_prior_inside_the_ece_context_is_the_contradicted_state():
+    t = np.arange(10) * 0.001
+    q_prior = np.zeros(10, dtype=bool)
+    q_prior[1:9] = True
+    contradicted = np.zeros(10, dtype=bool)
+    contradicted[1:4] = True
+    spans, assessed = state_spans(
+        t,
+        np.ones(10, dtype=bool),
+        [],
+        [],
+        q_prior=q_prior,
+        q_prior_contradicted=contradicted,
+    )
+    assert [r["state"] for r in spans] == [
+        "uncertain",
+        "q_prior_ece_contradicted",
+        "q_prior_untested",
+        "uncertain",
+    ]
+    assert [r["start_s"] for r in spans] == pytest.approx([0.0, 0.001, 0.004, 0.009])
+    assert not assessed.any()

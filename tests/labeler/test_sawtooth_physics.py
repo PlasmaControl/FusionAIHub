@@ -309,3 +309,21 @@ def test_calibrated_radius_acceptance_and_q1_conflicts(surface, reason):
     else:
         assert not found.crashes
         assert found.rejected[reason] == 4
+
+
+def test_rejected_events_and_accepted_times_follow_the_gates():
+    t, y = synthetic()
+    found = detect(t, y, shot=1)
+    assert sum(found.rejected.values()) == len(found.rejected_events)
+    assert all(  # only noise clusters are turned down, none at a crash
+        np.min(np.abs(np.array([0.08, 0.16, 0.24, 0.32]) - stamp)) > 0.002
+        for stamp, _ in found.rejected_events
+    )
+    assert found.accepted_times_s == pytest.approx([0.08, 0.16, 0.24, 0.32], abs=5e-4)
+    y[5:7] = 2  # no outer rise: every cluster is turned down by the profile gate
+    found = detect(t, y, shot=1)
+    assert found.accepted_times_s == []
+    assert sum(found.rejected.values()) == len(found.rejected_events)
+    stamps = np.array([stamp for stamp, _ in found.rejected_events])
+    assert all(np.min(np.abs(stamps - c)) < 0.002 for c in (0.08, 0.16, 0.24, 0.32))
+    assert {gate for _, gate in found.rejected_events} <= set(found.rejected)

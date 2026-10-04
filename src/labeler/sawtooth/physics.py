@@ -8,6 +8,7 @@ an inversion boundary but does not establish its physical radius or q=1 proximit
 from __future__ import annotations
 
 import json
+import warnings
 from dataclasses import asdict, dataclass
 from itertools import pairwise
 from pathlib import Path
@@ -63,7 +64,7 @@ class Rule:
     # Tested absence: no periodic POSR edge on any valid channel inside this
     # nominal geometric rho, and no isolated one within this context.
     quiet_core_max_rho: float = 0.5
-    isolated_edge_context_ms: float = 5.15
+    isolated_edge_context_ms: float = 50.0
 
 
 DEFAULT_RULE = Rule(
@@ -82,13 +83,66 @@ class Detection:
     absent_mask: np.ndarray
     absence_diagnostics: dict
     # Sustained high EFIT01 q_min without an ECE quiet-core test. This is a
-    # prior, never a tested negative: it is exported as uncertain.
+    # prior, never a tested negative: it is exported as uncertain. The part of
+    # it inside the absence-test context of a periodic edge or a profile
+    # candidate is ECE-contradicted; the rest was not tested by the ECE.
     q_prior_mask: np.ndarray | None = None
+    q_prior_contradicted_mask: np.ndarray | None = None
+    # Tested absence with only the frame-holdoff isolated-edge veto: the superset
+    # from which any longer isolated-edge context follows (``apply_edge_context``).
+    absent_holdoff_mask: np.ndarray | None = None
+    # Where each candidate edge cluster was turned down, as (time_s, gate), and
+    # the times of the clusters that passed every gate before the train test.
+    rejected_events: list[tuple[float, str]] | None = None
+    accepted_times_s: list[float] | None = None
 
 
 def _runs(mask):
     ends = np.flatnonzero(np.diff(np.r_[False, mask, False]))
     return list(zip(ends[::2], ends[1::2], strict=True))
+
+
+def edge_proximity(t, times, reach_s):
+    """Samples within ``reach_s`` of any edge time, both boundary samples included."""
+    near = np.zeros(len(t), dtype=bool)
+    for time in times:
+        lo, hi = np.searchsorted(t, [time - reach_s, time + reach_s])
+        near[lo : min(len(t), hi + 1)] = True
+    return near
+
+
+def apply_edge_context(t, absent_holdoff, edge_times_s, context_ms):
+    """Tested absence under an isolated-edge veto of +/- ``context_ms``.
+
+    ``absent_holdoff`` is the tested-absence mask made with only the frame-holdoff
+    veto and ``edge_times_s`` the qualified edge times of the shot. Every other
+    absence condition is independent of the veto length, so a longer veto only
+    removes the samples within ``context_ms`` of an edge.
+    """
+    return np.asarray(absent_holdoff, dtype=bool) & ~edge_proximity(
+        t, edge_times_s, context_ms / 1000
+    )
+
+
+def dead_channels(values, rule=DEFAULT_RULE):
+    """Channels that carry no electron-temperature information for the record.
+
+    A channel is dead when its median over the record is below the 0.5 keV
+    observability floor, or when it shows no fluctuation at all (spread
+    below 0.1% of its level). A dead channel is low or flat on both sides of
+    its neighbours; a density-cutoff step is one-sided, so dead channels are
+    left out of the cutoff-validity test rather than read as a step.
+    """
+    values = np.asarray(values, dtype=np.float32)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        level = np.nanmedian(values, axis=1)
+        spread = np.nanstd(values, axis=1)
+    live = np.isfinite(level)
+    floor = rule.te_floor_kev
+    low = ~(level >= floor)
+    flat = spread <= 1e-3 * np.maximum(np.where(live, level, 0.0), floor)
+    return live & (low | flat)
 
 
 def _smooth_finite(values, width):
@@ -112,7 +166,9 @@ def ece_validity(values, t, rule=DEFAULT_RULE, *, radius=None):
     reading below ``ece_axis_to_max`` of the profile maximum. A condition must
     hold for at least ``ece_validity_sustain_ms`` to remove time. Edge channels
     are excluded from the step test because a pedestal can legitimately exceed
-    a factor of two per channel. Without nominal geometry nothing is tested.
+    a factor of two per channel, and dead channels (``dead_channels``) are
+    excluded from both tests because a dead channel is low on both sides.
+    Without nominal geometry nothing is tested.
     """
     values = np.asarray(values, dtype=np.float32)
     flag = np.zeros(len(t), dtype=bool)
@@ -133,7 +189,9 @@ def ece_validity(values, t, rule=DEFAULT_RULE, *, radius=None):
     width = max(1, round(rule.ece_validity_smooth_ms / 1000 / dt)) | 1
     stop = min(40, len(values))
     smooth = _smooth_finite(values[:stop], width)
-    valid = np.isfinite(smooth) & (smooth > 0)
+    dead = dead_channels(values[:stop], rule)
+    valid = np.isfinite(smooth) & (smooth > 0) & ~dead[:, None]
+    info["dead_channels"] = np.flatnonzero(dead).tolist()
     rho = np.asarray(radius.nominal_rho)[:stop]
     pair = valid[:-1] & valid[1:]
     pair &= (rho[:-1] < rule.ece_step_max_rho) & (rho[1:] < rule.ece_step_max_rho)
@@ -632,18 +690,15 @@ def _absence_evidence(t, observable, edges, support, candidates, rule, sigma):
         == 0
     )
 
-    def proximity(times, reach=horizon):
-        near = np.zeros(len(t), dtype=bool)
-        for time in times:
-            lo, hi = np.searchsorted(t, [time - reach, time + reach])
-            # Include both boundary samples in the exclusion window.
-            near[lo : min(len(t), hi + 1)] = True
-        return near
-
-    profile_near = proximity(candidates)
-    periodic_near = proximity(periodic)
-    core_edge_near = proximity(
-        ambiguous_core_times, rule.isolated_edge_context_ms / 1000
+    profile_near = edge_proximity(t, candidates, horizon)
+    periodic_near = edge_proximity(t, periodic, horizon)
+    # Any qualified edge vetoes absence within the isolated-edge context. The
+    # frame holdoff is the shortest meaningful veto; longer contexts only remove
+    # more, which is what ``apply_edge_context`` reproduces from ``holdoff``.
+    holdoff_ms = min(rule.isolated_edge_context_ms, rule.frame_ms / 2)
+    core_edge_holdoff = edge_proximity(t, ambiguous_core_times, holdoff_ms / 1000)
+    core_edge_near = edge_proximity(
+        t, ambiguous_core_times, rule.isolated_edge_context_ms / 1000
     )
     observable_spans = [
         (float(t[lo]), float(t[hi]) if hi < len(t) else float(t[-1] + dt))
@@ -662,67 +717,77 @@ def _absence_evidence(t, observable, edges, support, candidates, rule, sigma):
     for phase in phase_spans:
         lo, hi = np.searchsorted(t, [phase["start_s"], phase["end_s"]])
         phase_support[lo:hi] = True
-    absent = (
+    absent_holdoff = (
         observable
         & complete
         & noise_resolved
         & ~profile_near
         & ~periodic_near
-        & ~core_edge_near
+        & ~core_edge_holdoff
         & ~phase_support
     )
-    return absent, {
-        "policy": "complete_quiet_core_context",
-        "validation_status": "unvalidated_research_policy",
-        "context_radius_ms": horizon * 1000,
-        "profile_passing_candidates": len(candidates),
-        "core_relaxation_test": {
-            "method": "per_channel_POSR_qualified_negative_fractional_edges",
-            "aggregation": "union_over_supported_channels",
-            "supported_channels": len(edges),
-            "minimum_relative_edge": rule.significance,
-            "posr_threshold": rule.posr_threshold,
-            "minimum_period_ms": rule.minimum_period_ms,
-            "maximum_period_ms": rule.maximum_period_ms,
-            "minimum_train": rule.minimum_train,
-            "candidate_edges": int(sum(len(x) for x in channel_times)),
-            "ambiguous_edges": len(ambiguous_core_times),
-            "ambiguous_edge_times_s": ambiguous_core_times,
-            "periodic_edges": len(periodic),
-            "periodic_edge_times_s": periodic,
-            "phase_spans": phase_spans,
-            "phase_grouping": {
-                "edge_source": "per_channel_POSR_qualified_edge_times_s",
+    absent = absent_holdoff & ~core_edge_near
+    masks = {
+        "profile_near": profile_near,
+        "periodic_near": periodic_near,
+        "absent_holdoff": absent_holdoff,
+    }
+    return (
+        absent,
+        masks,
+        {
+            "policy": "complete_quiet_core_context",
+            "validation_status": "unvalidated_research_policy",
+            "context_radius_ms": horizon * 1000,
+            "profile_passing_candidates": len(candidates),
+            "core_relaxation_test": {
+                "method": "per_channel_POSR_qualified_negative_fractional_edges",
+                "aggregation": "union_over_supported_channels",
+                "supported_channels": len(edges),
+                "minimum_relative_edge": rule.significance,
                 "posr_threshold": rule.posr_threshold,
-                "minimum_train": rule.relaxation_minimum_edges,
-                "period_ratio": rule.period_ratio,
-                "minimum_period_ms": rule.relaxation_minimum_period_ms,
-                "maximum_period_ms": None,
-                "context_radius_ms": horizon * 1000,
-                "null_alpha": rule.periodicity_null_alpha,
-                "null_replicates": rule.periodicity_null_replicates,
-            },
-            "positive_train_period_bounds": {
                 "minimum_period_ms": rule.minimum_period_ms,
                 "maximum_period_ms": rule.maximum_period_ms,
+                "minimum_train": rule.minimum_train,
+                "candidate_edges": int(sum(len(x) for x in channel_times)),
+                "ambiguous_edges": len(ambiguous_core_times),
+                "ambiguous_edge_times_s": ambiguous_core_times,
+                "periodic_edges": len(periodic),
+                "periodic_edge_times_s": periodic,
+                "phase_spans": phase_spans,
+                "phase_grouping": {
+                    "edge_source": "per_channel_POSR_qualified_edge_times_s",
+                    "posr_threshold": rule.posr_threshold,
+                    "minimum_train": rule.relaxation_minimum_edges,
+                    "period_ratio": rule.period_ratio,
+                    "minimum_period_ms": rule.relaxation_minimum_period_ms,
+                    "maximum_period_ms": None,
+                    "context_radius_ms": horizon * 1000,
+                    "null_alpha": rule.periodicity_null_alpha,
+                    "null_replicates": rule.periodicity_null_replicates,
+                },
+                "positive_train_period_bounds": {
+                    "minimum_period_ms": rule.minimum_period_ms,
+                    "maximum_period_ms": rule.maximum_period_ms,
+                },
+                "noise_method": (
+                    "per_channel_maximum_period_block_relative_edge_MAD; "
+                    f"at least {rule.minimum_channels} resolving channels"
+                ),
+                "noise_windows": noise_rows,
             },
-            "noise_method": (
-                "per_channel_maximum_period_block_relative_edge_MAD; "
-                f"at least {rule.minimum_channels} resolving channels"
-            ),
-            "noise_windows": noise_rows,
+            "reason_samples": {
+                "unobservable": int((~observable).sum()),
+                "incomplete_context": int((observable & ~complete).sum()),
+                "unresolved_core_noise": int((observable & ~noise_resolved).sum()),
+                "near_profile_candidate": int((observable & profile_near).sum()),
+                "periodic_core_relaxation": int((observable & periodic_near).sum()),
+                "core_edge_ambiguous": int((observable & core_edge_near).sum()),
+                "core_relaxation_phase": int((observable & phase_support).sum()),
+                "tested_absence": int(absent.sum()),
+            },
         },
-        "reason_samples": {
-            "unobservable": int((~observable).sum()),
-            "incomplete_context": int((observable & ~complete).sum()),
-            "unresolved_core_noise": int((observable & ~noise_resolved).sum()),
-            "near_profile_candidate": int((observable & profile_near).sum()),
-            "periodic_core_relaxation": int((observable & periodic_near).sum()),
-            "core_edge_ambiguous": int((observable & core_edge_near).sum()),
-            "core_relaxation_phase": int((observable & phase_support).sum()),
-            "tested_absence": int(absent.sum()),
-        },
-    }
+    )
 
 
 def _burst(trace, crash, threshold, *, absolute=False):
@@ -916,20 +981,22 @@ def detect(
         else:
             clusters[-1].append(vote)
     rejected, accepted, profile_candidates = {}, [], []
+    rejected_events = []
 
-    def reject(reason):
+    def reject(reason, index):
         rejected[reason] = rejected.get(reason, 0) + 1
+        rejected_events.append((float(t[index]), reason))
 
     for cluster in clusters:
         if len({v[1] for v in cluster}) < rule.minimum_channels:
-            reject("coincidence")
+            reject("coincidence", cluster[0][0])
             continue
         k = round(np.average([v[0] for v in cluster], weights=[v[2] for v in cluster]))
         if not observable[k]:
-            reject("unobservable_core")
+            reject("unobservable_core", k)
             continue
         if accepted and t[k] - accepted[-1][0] < rule.coincidence_ms / 1000:
-            reject("holdoff")
+            reject("holdoff", k)
             continue
         profile = np.where(bad[:, k], np.nan, step[:, k])
         level = clean[:, max(0, k - half) : k + half + 1].mean(axis=1)
@@ -937,7 +1004,7 @@ def detect(
             profile, level, rule, core_level=float(core_level[k])
         )
         if verdict != "accept":
-            reject(verdict)
+            reject(verdict, k)
             continue
         profile_candidates.append(float(t[k]))
         attrs["uncertainty_reasons"] = []
@@ -952,15 +1019,15 @@ def detect(
         elm = _burst(dalpha, t[k], rule.dalpha_burst_z)
         attrs["dalpha_coincident"] = elm
         if elm and not attrs["core_moves"]:
-            reject("elm_edge_only")
+            reject("elm_edge_only", k)
             continue
         if not attrs["core_moves"] and (geometry is None or geometry.psi is None):
-            reject("edge_only_proxy")
+            reject("edge_only_proxy", k)
             continue
         if ip is not None:
             current = align_q([t[k]], ip[0], np.atleast_2d(ip[1]))[0, 0]
             if np.isfinite(current) and abs(current) < rule.minimum_ip_ma * 1e6:
-                reject("low_plasma_current")
+                reject("low_plasma_current", k)
                 continue
         attrs["qmin"] = None
         attrs["q_source"] = q_source if qmin is not None else None
@@ -1011,7 +1078,7 @@ def detect(
                 wrong_loss = np.isfinite(psi[losses]) & (psi[losses] > surface)
                 wrong_gain = np.isfinite(psi[gains]) & (psi[gains] < surface)
                 if wrong_loss.any() or wrong_gain.any():
-                    reject("calibrated_direction")
+                    reject("calibrated_direction", k)
                     continue
                 if (
                     inner_loss.sum() < rule.minimum_channels
@@ -1057,7 +1124,7 @@ def detect(
         )
         usable = central[np.isfinite(pre[central]) & np.isfinite(post[central])]
         if not len(usable):
-            reject("unobservable_central_channel")
+            reject("unobservable_central_channel", k)
             continue
         central_selection = "hottest_available_core_proxy"
         if radius_geometry is not None:
@@ -1088,7 +1155,7 @@ def detect(
             central_relative_drop=amplitude,
         )
         if pre[central] < rule.te_floor_kev or amplitude < rule.central_relative_drop:
-            reject("central_relative_drop")
+            reject("central_relative_drop", k)
             continue
         attrs["sxr_corroboration"] = None
         attrs["sxr_geometry_status"] = (
@@ -1246,7 +1313,7 @@ def detect(
             out=edges[index],
             where=core_support[channel] & (channel_level > 0),
         )
-    absent_mask, absence_diagnostics = _absence_evidence(
+    absent_mask, absence_masks, absence_diagnostics = _absence_evidence(
         t, observable, edges, core_support[rows], profile_candidates, rule, sigma
     )
     absence_diagnostics["profile_passing_candidate_times_s"] = profile_candidates
@@ -1288,6 +1355,13 @@ def detect(
     # high q neither makes nor is required for tested absence. Time it alone
     # supports is a separate state, exported as uncertain and never a negative.
     q_prior = high_q & ~absent_mask
+    # The ECE contradicts the prior inside the context of a periodic edge or a
+    # profile candidate (the evidence that blocks tested absence): there the
+    # quiet-core test failed on ECE evidence. The rest was not tested by the ECE
+    # (incomplete context, unresolved noise, an isolated edge, a relaxation phase).
+    q_prior_contradicted = q_prior & (
+        absence_masks["profile_near"] | absence_masks["periodic_near"]
+    )
     absence_diagnostics["qmin_absence_test"] = {
         "threshold": rule.qmin_absence,
         "sustain_ms": rule.qmin_sustain_ms,
@@ -1305,6 +1379,8 @@ def detect(
         tested_absence_with_high_q=int((absent_mask & high_q).sum()),
         tested_absence_without_high_q=int((absent_mask & ~high_q).sum()),
         q_prior_only=int(q_prior.sum()),
+        q_prior_ece_contradicted=int(q_prior_contradicted.sum()),
+        q_prior_untested=int((q_prior & ~q_prior_contradicted).sum()),
     )
     return Detection(
         crashes,
@@ -1316,4 +1392,8 @@ def detect(
         absent_mask,
         absence_diagnostics,
         q_prior,
+        q_prior_contradicted,
+        absence_masks["absent_holdoff"],
+        rejected_events,
+        times,
     )
