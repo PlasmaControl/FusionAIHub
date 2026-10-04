@@ -579,7 +579,11 @@ def audit_convergence(args) -> None:
             entry["status"] = "accepted" if entry["screen"]["passed"] else "excluded"
             plan["audit"][name] = entry
             if not entry["screen"]["passed"]:
-                used = {int(k.rsplit("seed", 1)[1]) for k in plan["audit"]}
+                used = {
+                    int(k.rsplit("seed", 1)[1])
+                    for k in plan["audit"]
+                    if k.startswith(f"ae-ours-{arm}-")
+                }
                 replacement = max(seeds + manifest["seeds"] + [2] + list(used)) + 1
                 seeds[seeds.index(seed)] = replacement
                 plan["replacements"][name] = f"ae-ours-{arm}-seed{replacement}"

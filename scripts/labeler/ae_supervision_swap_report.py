@@ -463,10 +463,12 @@ def protocol_section(record: dict, manifest: dict) -> list[str]:
         "",
         (
             "**Band.** The model reads the CO2 spectrogram from 80.57 to 250.00 kHz "
-            '(348 bins, four chords). "Absent" for ae-ours, and in the targets it '
-            "trains on, means absent within that band; it says nothing about activity "
-            "below 80.6 kHz, which the annotation can mark. The saved UCI detectors "
-            "read 20 to 250 kHz."
+            "(348 bins, four chords), and the dense review display covered 80 to "
+            '250 kHz. "Absent" in the dense labels, and in every target ae-ours '
+            "trains on, means absent within that observed band; it says nothing "
+            "about activity below 80.6 kHz, which the annotation can mark and which "
+            "can therefore be labelled absent. The saved UCI detectors read 20 to "
+            "250 kHz."
         ),
         "",
         (
@@ -513,18 +515,19 @@ def runs_section(record: dict) -> list[str]:
         "## Completed runs",
         "",
         (
-            "Epochs are zero-based. All seeds were trained with `--patience-start 10` "
-            "unless noted; the seven first-generation records that conformed were "
-            "trained before the flag existed and are shown by the audit above to be "
-            "what the rule produces."
+            "Epochs are zero-based. The patience column is the epoch from which "
+            "non-improving epochs count: records trained after the rule was declared "
+            "use 10, earlier records counted from 0 and the audit above shows that "
+            "the rule gives them the same stopping epoch."
         ),
         "",
         (
-            "| Supervision | Seed | Selected epoch | Epochs run | Own-target threshold | "
-            "Execution | GPU |"
+            "| Supervision | Seed | Selected epoch | Epochs run | Patience from | "
+            "Own-target threshold | Execution | GPU |"
         ),
-        "|---|---:|---:|---:|---:|---|---|",
+        "|---|---:|---:|---:|---:|---:|---|---|",
     ]
+    on_a100 = []
     for name, run in sorted(record["runs"].items()):
         ex = run["execution"]
         job = ex["slurm_job_id"] or "head node"
@@ -533,20 +536,25 @@ def runs_section(record: dict) -> list[str]:
                 f"{ex['slurm_array_job_id']}_{ex['slurm_array_task_id']} "
                 f"(job {ex['slurm_job_id']})"
             )
+        gpu = run["training_environment"]["gpu"]
+        if "A100" in gpu:
+            on_a100.append(name)
+        start = run.get("training_rule", {}).get("patience_start_epoch", 0)
         lines.append(
             f"| {run['supervision']} | {run['seed']} | {run['selected_epoch']} | "
-            f"{run['epochs_completed']} | {run['threshold']['threshold']:.4f} | "
-            f"{job} | {run['training_environment']['gpu']} |"
+            f"{run['epochs_completed']} | {start} | "
+            f"{run['threshold']['threshold']:.4f} | {job} | {gpu} |"
         )
     lines += [
         "",
         (
-            "Legacy and dense seed 0 ran on A100 GPUs; every other record ran on "
-            "the head node's V100S. This Torch build reports V100 bfloat16 support "
-            "through emulation, so the unchanged trainer autocasts to bfloat16 on "
-            "both (gpu_probe.json). Hardware is therefore a nuisance variable of "
-            "the supervision comparison, and the V100-only sensitivity analysis "
-            "below uses the V100 runs of seeds 1 and 2 only."
+            f"{', '.join(on_a100) or 'No record'} ran on A100 GPUs; every other "
+            "record ran on the head node's V100S. This Torch build reports V100 "
+            "bfloat16 support through emulation, so the unchanged trainer autocasts "
+            "to bfloat16 on both (gpu_probe.json). Hardware is therefore a nuisance "
+            "variable of the supervision comparison; the V100-only sensitivity "
+            "analysis below restricts every arm to its V100 runs of seeds other "
+            "than 0."
         ),
         "",
     ]
@@ -710,10 +718,14 @@ def findings(record: dict) -> dict:
             rel(fair["legacy"], "ae-ours-legacy", "ae-lstm"),
         ),
     }
-    out["no_reversal_rcn"] = all(d["mean"] < 0 for d in out["legacy_rcn"])
-    out["lstm_reverses"] = (
-        out["legacy_lstm"][0]["mean"] > 0 > out["legacy_lstm"][1]["mean"]
+    rcn_d, rcn_a = out["legacy_rcn"]
+    lstm_d, lstm_a = out["legacy_lstm"]
+    out["no_reversal_rcn"] = (
+        verdict(rcn_d) != "leads" and rcn_d["mean"] < 0 and rcn_a["mean"] < 0
     )
+    out["rcn_resolved"] = verdict(rcn_d) == "trails" and verdict(rcn_a) == "trails"
+    out["lstm_sign"] = lstm_d["mean"] > 0 > lstm_a["mean"]
+    out["lstm_resolved"] = verdict(lstm_d) == "leads" and verdict(lstm_a) == "trails"
     out["lead_with_new"] = any(
         rel(fair["dense"], f"ae-ours-{arm}", "ae-rcn")["ci95_shot"][0] > 0
         for arm in ("dense", "threeway")
@@ -772,8 +784,16 @@ def interpretation(record: dict) -> list[str]:
         vs("Legacy-supervised ae-ours", "ae-rcn", *f["legacy_rcn"])
         + ". "
         + (
-            "It trails ae-rcn on both references: there is no reversal against "
-            "ae-rcn when ae-ours is trained on legacy-type supervision."
+            (
+                "It trails ae-rcn on both references: there is no reversal "
+                "against ae-rcn when ae-ours is trained on legacy-type supervision."
+                if f["rcn_resolved"]
+                else "Its point estimate is below ae-rcn's on both references, "
+                "resolved on the annotation but with an interval that includes "
+                "zero on the dense reference; it does not lead ae-rcn there, so "
+                "there is no reversal against ae-rcn when ae-ours is trained on "
+                "legacy-type supervision."
+            )
             if f["no_reversal_rcn"]
             else "The reversal against ae-rcn is not excluded by this comparison."
         ),
@@ -782,7 +802,11 @@ def interpretation(record: dict) -> list[str]:
         + (
             "The reversal against ae-lstm persists: legacy-supervised ae-ours is "
             "above it on the dense reference and below it on the annotation."
-            if f["lstm_reverses"]
+            if f["lstm_resolved"]
+            else "The reversal against ae-lstm persists in sign (above on the "
+            "dense reference, below on the annotation) but is resolved only on "
+            "the annotation; the dense interval includes zero."
+            if f["lstm_sign"]
             else "The reversal against ae-lstm does not persist in both signs."
         ),
     ]
@@ -1131,15 +1155,23 @@ def summary(record: dict) -> str:
         + ", ".join(f"{arm} {seed_mean('legacy', arm)}" for arm in ARMS)
         + ". Legacy-supervised ae-ours "
         + (
-            "trails ae-rcn on both references, so the reversal against ae-rcn "
-            "needs dense or agreement supervision"
+            (
+                "trails ae-rcn on both references"
+                if f["rcn_resolved"]
+                else "is below ae-rcn on both references in point estimate (resolved "
+                "on the annotation only)"
+            )
+            + ", so the reversal against ae-rcn needs dense or agreement supervision"
             if f["no_reversal_rcn"] and f["lead_with_new"]
             else "does not trail ae-rcn on both references"
         )
         + "; "
         + (
             "the reversal against ae-lstm persists"
-            if f["lstm_reverses"]
+            if f["lstm_resolved"]
+            else "the reversal against ae-lstm persists in sign but is not resolved "
+            "on the dense reference"
+            if f["lstm_sign"]
             else "the reversal against ae-lstm does not persist in both signs"
         )
         + f". An input-free clock reaches {f['margin_rcn']:.0%} of ae-rcn's AUROC "
