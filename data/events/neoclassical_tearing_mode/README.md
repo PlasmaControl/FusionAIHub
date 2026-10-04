@@ -121,7 +121,9 @@ over bins whose n = 2 line sits at twice the n = 1 frequency and whose Mirnov be
 toroidal number there is 2: the harmonics of a rotating, non-sinusoidal n = 1 mode
 carry n = 2. Toroidal phase cannot separate such a harmonic from a co-rotating,
 frequency-coupled n = 2 mode (a 3/2 mode locked to the 2/1), so **the veto is a
-heuristic and may also remove real 3/2 modes**; <!-- gen:veto -->x<!-- /gen:veto -->.
+heuristic and may also remove real 3/2 modes**; <!-- gen:veto -->it removes 9 of 86 n = 2 seeds on the development shots; the finished rule has 20 n = 2
+intervals, 19 without the veto, because a removed seed can change how its neighbours
+merge (net effect on intervals +1)<!-- /gen:veto -->.
 Unsupported seeds, high-frequency or chirping bursts, and sustained coherent sub-seed lines are category 2 (uncertain).
 Weak uncertainty tracks require a continuous 100 ms coherent core above the frozen
 development quiet-amplitude p95, then follow that line down to this amplitude
@@ -170,7 +172,18 @@ it as negative. A lock is confirmed from `DUSBRADIAL`, which is on file for 327 
 450 development shots (12 confirmed locks); the rest keep an unknown lock status. The blind split carries no tearing-mode labels: its 50 shots are never opened
 for labels, features or scores. The benchmark tests recovery of a magnetic rule, not
 superiority as a TM detector, and the untrained two-line RMS baseline is the reference
-it is paired with: <!-- gen:paired -->x<!-- /gen:paired --> No TM coverage gain is
+it is paired with: <!-- gen:paired -->On all 450 development shots, which both models score on identical bins, the paired
+difference `tm-ours` minus the two-line baseline is, with uncertain time excluded
+(162840 bins), AUROC 0.000 [-0.001, +0.001] (not resolved); AUPRC +0.009 [+0.003,
++0.015] (`tm-ours` ahead); F1 +0.020 [-0.011, +0.046] (not resolved); segmental F1
++0.215 [+0.111, +0.309] (`tm-ours` ahead); with uncertain time scored as negative
+(246801 bins, 450 shots), AUROC -0.015 [-0.029, -0.003] (the two-line baseline ahead);
+AUPRC -0.120 [-0.222, -0.019] (the two-line baseline ahead); F1 -0.084 [-0.104, -0.065]
+(the two-line baseline ahead); segmental F1 +0.038 [+0.010, +0.068] (`tm-ours` ahead).
+The order reverses between the groups on AUPRC (`tm-ours` ahead with uncertain time
+excluded, the two-line baseline ahead with it scored as negative); `tm-ours` is ahead in
+both groups on segmental F1; the order is not resolved in at least one group on AUROC
+and F1.<!-- /gen:paired --> No TM coverage gain is
 claimed: on the survival-matched shots the interval labels cover 464.4 s against
 799.3 s for the legacy labels.
 Population weak screening uses the same criteria where inputs exist; unscreened time
