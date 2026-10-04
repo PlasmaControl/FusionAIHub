@@ -2,32 +2,34 @@
  "n_shots_with_bins": 470,
  "n_bins": 50032,
  "afrac": {
-  "valid_bins": 2970,
-  "shots_with_valid_bins": 42,
-  "shots_with_20_valid_bins": 37,
+  "valid_bins": 909,
+  "shots_with_valid_bins": 14,
+  "shots_with_20_valid_bins": 14,
   "invalid_reason_bins": {
-   "probe_flux_unknown": 34135,
+   "probe_flux_unknown": 33742,
    "no_positioned_probes": 12135,
-   "probe_beyond_sol_window": 363,
+   "l_mode": 852,
+   "probe_off_separatrix": 842,
+   "short_reference": 671,
+   "low_power": 328,
    "elm_unknown": 230,
-   "no_probe_samples": 60,
-   "low_power": 52,
-   "elm": 31,
-   "ramp": 25,
-   "probe_not_sol": 22,
-   "no_power": 9
+   "ramp": 159,
+   "elm": 71,
+   "no_power": 54,
+   "no_probe_samples": 39
   },
   "votes": {
-   "attached": 977,
-   "detached": 1404,
+   "attached": 434,
+   "detached": 288,
    "marfe": 0
   }
  },
  "prad": {
-  "valid_bins": 39061,
-  "shots_with_valid_bins": 454,
-  "shots_with_20_valid_bins": 447,
+  "valid_bins": 23421,
+  "shots_with_valid_bins": 241,
+  "shots_with_20_valid_bins": 241,
   "invalid_reason_bins": {
+   "no_baseline": 15640,
    "no_input_power": 5952,
    "elm": 3006,
    "low_power": 1364,
@@ -36,33 +38,34 @@
    "negative_radiation": 164
   },
   "votes": {
-   "attached": 31064,
-   "detached": 5540,
+   "attached": 9544,
+   "detached": 8411,
    "marfe": 0
   }
  },
  "tangtv": {
-  "valid_bins": 1791,
-  "shots_with_valid_bins": 41,
-  "shots_with_20_valid_bins": 37,
+  "valid_bins": 1291,
+  "shots_with_valid_bins": 28,
+  "shots_with_20_valid_bins": 28,
   "invalid_reason_bins": {
    "no_inversion": 20530,
-   "surrogate_domain": 19192,
-   "efit_gap": 6055,
+   "surrogate_domain": 19103,
+   "efit_gap": 6144,
    "no_frames": 2462,
+   "lower_shelf_window": 500,
    "efit_missing": 2
   },
   "votes": {
-   "attached": 601,
-   "detached": 892,
-   "marfe": 27
+   "attached": 473,
+   "detached": 602,
+   "marfe": 23
   }
  },
- "n_eligible_shots": 37,
+ "n_eligible_shots": 32,
  "eligible_by_split": {
-  "train": 1,
+  "train": 0,
   "val": 1,
   "test": 0,
-  "outside": 35
+  "outside": 31
  }
 }

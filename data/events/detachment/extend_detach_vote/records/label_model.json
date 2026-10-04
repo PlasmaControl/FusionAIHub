@@ -2,41 +2,41 @@
  "bin_ms": 50.0,
  "posterior_threshold": 0.7,
  "fit": {
-  "n_shots": 37,
-  "n_bins": 2873,
+  "n_shots": 32,
+  "n_bins": 1742,
   "excluded_split": "test",
   "method": "anchored: accuracies from the bins where every indicator is valid, class balance fixed at attached 1/2, detached 1/4, marfe 1/4, propensities from all bins; if fewer than 300 anchors, all-bin fallback (unidentified)",
-  "used_anchor": true,
+  "used_anchor": false,
   "min_anchor_bins": 300,
   "physical_accuracy_identified": false,
-  "anchor_bins": 1659,
-  "anchor_shots": 37,
+  "anchor_bins": 241,
+  "anchor_shots": 7,
   "anchor_source": "inversion_only",
   "posterior_calibrated": false,
   "all_bins_fit_for_comparison": {
    "afrac": {
-    "acc_weight": 0.16081347993069273,
+    "acc_weight": 1.756280771884139,
     "at_weight_bound": false,
     "physical_accuracy_identified": false,
     "calibrated": false,
-    "propensity_weight": 0.6156310883936934,
-    "implied_accuracy": 0.5401169519313707
+    "propensity_weight": -0.5277848135542617,
+    "implied_accuracy": 0.8527432409679081
    },
    "prad": {
-    "acc_weight": 0.6372248206308354,
+    "acc_weight": 0.0,
     "at_weight_bound": false,
     "physical_accuracy_identified": false,
     "calibrated": false,
-    "propensity_weight": 0.4659925049730577,
-    "implied_accuracy": 0.654125858385172
+    "propensity_weight": -0.2615874345826263,
+    "implied_accuracy": 0.5
    },
    "tangtv": {
-    "acc_weight": 4.0,
-    "at_weight_bound": true,
+    "acc_weight": 3.7511983426012585,
+    "at_weight_bound": false,
     "physical_accuracy_identified": false,
     "calibrated": false,
-    "propensity_weight": -2.3253558458244457,
-    "implied_accuracy": 0.9646631559719039
+    "propensity_weight": -1.9035204898023361,
+    "implied_accuracy": 0.9551288482193371
    }
   }
  },
@@ -45,53 +45,53 @@
   "rule": "simplest structure within one standard error of the best",
   "candidates": {
    "independent": {
-    "mean_heldout_loglik_per_bin": -2.8831716195754615,
+    "mean_heldout_loglik_per_bin": -2.35009992508328,
     "folds": [
-     -2.869644495203454,
-     -2.937107889333404,
-     -2.8163943988298237,
-     -2.878915848971412,
-     -2.9137954655392138
+     -2.2457009834882595,
+     -2.2592482155419233,
+     -2.298185686224714,
+     -2.4554443607475496,
+     -2.4919203794139526
     ]
    },
    "prad_tangtv": {
-    "mean_heldout_loglik_per_bin": -2.8803406330223225,
+    "mean_heldout_loglik_per_bin": -2.3501148253079767,
     "folds": [
-     -2.85542975717793,
-     -2.937107477141329,
-     -2.816417818341534,
-     -2.878937064468505,
-     -2.9138110479823145
+     -2.245674114211745,
+     -2.2592661667690783,
+     -2.298274200536385,
+     -2.4554427410334134,
+     -2.49191690398926
     ]
    },
    "afrac_tangtv": {
-    "mean_heldout_loglik_per_bin": -2.876597502992219,
+    "mean_heldout_loglik_per_bin": -2.3592641611891763,
     "folds": [
-     -2.837031278923245,
-     -2.935947599845591,
-     -2.8163753274325405,
-     -2.878937719295396,
-     -2.914695589464323
+     -2.245975716949156,
+     -2.259137282992046,
+     -2.2980628509039445,
+     -2.4778855105886675,
+     -2.5152594445120693
     ]
    },
    "afrac_prad": {
-    "mean_heldout_loglik_per_bin": -2.889605921652376,
+    "mean_heldout_loglik_per_bin": -2.309556507096735,
     "folds": [
-     -2.889930822111955,
-     -2.926495313539151,
-     -2.837392252427916,
-     -2.8825352794124255,
-     -2.9116759407704347
+     -2.1704575114102016,
+     -2.2094268668823362,
+     -2.24082719436146,
+     -2.4318874080040027,
+     -2.4951835548256747
     ]
    },
    "all_pairs": {
-    "mean_heldout_loglik_per_bin": -2.889680317959308,
+    "mean_heldout_loglik_per_bin": -2.318677176385015,
     "folds": [
-     -2.887449144308776,
-     -2.9264933662344452,
-     -2.8373924549838536,
-     -2.8830091801874733,
-     -2.914057444081992
+     -2.1704381748455277,
+     -2.2090610203576504,
+     -2.2408365155566186,
+     -2.4540234428371757,
+     -2.5190267283281047
     ]
    }
   }
@@ -105,135 +105,136 @@
   ],
   "corr": [],
   "theta": [
-   -0.6931471805599453,
-   -1.3862943611198906,
-   -1.3862943611198906,
-   0.6524274882928179,
-   0.37992281883928813,
-   -2.3253831887292904,
-   0.0915973142467318,
-   0.766014076296466,
-   4.0
+   3.23444604866612,
+   3.2230373230087457,
+   -5.33383825707864,
+   -0.5277848135542617,
+   -0.2615874345826263,
+   -1.9035204898023361,
+   1.756280771884139,
+   0.0,
+   3.7511983426012585
   ],
   "theta_layout": "prior(3), propensity(J), accuracy(J), correlation(P)"
  },
  "prior_logit": [
-  -0.6931471805599453,
-  -1.3862943611198906,
-  -1.3862943611198906
+  3.23444604866612,
+  3.2230373230087457,
+  -5.33383825707864
  ],
  "labelling_functions": {
   "afrac": {
-   "acc_weight": 0.0915973142467318,
+   "acc_weight": 1.756280771884139,
    "at_weight_bound": false,
    "physical_accuracy_identified": false,
    "calibrated": false,
-   "propensity_weight": 0.6524274882928179,
-   "implied_accuracy": 0.5228833314063323
+   "propensity_weight": -0.5277848135542617,
+   "implied_accuracy": 0.8527432409679081
   },
   "prad": {
-   "acc_weight": 0.766014076296466,
+   "acc_weight": 0.0,
    "at_weight_bound": false,
    "physical_accuracy_identified": false,
    "calibrated": false,
-   "propensity_weight": 0.37992281883928813,
-   "implied_accuracy": 0.6826580283517993
+   "propensity_weight": -0.2615874345826263,
+   "implied_accuracy": 0.5
   },
   "tangtv": {
-   "acc_weight": 4.0,
-   "at_weight_bound": true,
+   "acc_weight": 3.7511983426012585,
+   "at_weight_bound": false,
    "physical_accuracy_identified": false,
    "calibrated": false,
-   "propensity_weight": -2.3253831887292904,
-   "implied_accuracy": 0.9646631559719039
+   "propensity_weight": -1.9035204898023361,
+   "implied_accuracy": 0.9551288482193371
   }
  },
  "state_counts_bins": {
   "label_model": {
-   "attached": 78,
-   "detached": 370,
-   "marfe": 23,
-   "uncertain": 2402
+   "attached": 132,
+   "detached": 143,
+   "marfe": 0,
+   "uncertain": 1504
   },
   "rule": {
-   "attached": 78,
-   "detached": 370,
-   "marfe": 23,
-   "uncertain": 2402
+   "attached": 351,
+   "detached": 322,
+   "marfe": 0,
+   "uncertain": 1106
   }
  },
  "rule_vs_label_model": {
-  "bins": 2873,
-  "agreement": 1.0,
-  "kappa": 1.0,
+  "bins": 1779,
+  "agreement": 0.7762788083192805,
+  "kappa": 0.4975000691960975,
   "rows_rule_columns_label_model": {
    "attached": {
-    "attached": 78,
+    "attached": 132,
     "detached": 0,
     "marfe": 0,
-    "uncertain": 0
+    "uncertain": 219
    },
    "detached": {
     "attached": 0,
-    "detached": 370,
+    "detached": 143,
     "marfe": 0,
-    "uncertain": 0
+    "uncertain": 179
    },
    "marfe": {
     "attached": 0,
     "detached": 0,
-    "marfe": 23,
+    "marfe": 0,
     "uncertain": 0
    },
    "uncertain": {
     "attached": 0,
     "detached": 0,
     "marfe": 0,
-    "uncertain": 2402
+    "uncertain": 1106
    }
   }
  },
  "uncertain_by_threshold": {
   "0.5": {
-   "attached": 78,
-   "detached": 370,
-   "marfe": 23,
-   "uncertain": 2402
+   "attached": 132,
+   "detached": 143,
+   "marfe": 0,
+   "uncertain": 1504
   },
   "0.6": {
-   "attached": 78,
-   "detached": 370,
-   "marfe": 23,
-   "uncertain": 2402
+   "attached": 132,
+   "detached": 143,
+   "marfe": 0,
+   "uncertain": 1504
   },
   "0.7": {
-   "attached": 78,
-   "detached": 370,
-   "marfe": 23,
-   "uncertain": 2402
+   "attached": 132,
+   "detached": 143,
+   "marfe": 0,
+   "uncertain": 1504
   },
   "0.8": {
-   "attached": 78,
-   "detached": 370,
-   "marfe": 23,
-   "uncertain": 2402
+   "attached": 132,
+   "detached": 143,
+   "marfe": 0,
+   "uncertain": 1504
   },
   "0.9": {
-   "attached": 78,
-   "detached": 370,
-   "marfe": 23,
-   "uncertain": 2402
+   "attached": 132,
+   "detached": 143,
+   "marfe": 0,
+   "uncertain": 1504
   }
  },
  "primary_labeler": "rule",
  "state_lm_column": "legacy alias of primary rule; model is state_model_diagnostic",
  "tier_counts": {
-  "conflict": 1056,
-  "certain": 471,
-  "lower_shelf_window": 459,
-  "insufficient_support": 401,
-  "low_confidence_pair": 364,
-  "candidate_marfe": 84,
-  "no_vote": 38
+  "conflict": 447,
+  "tangtv_only": 398,
+  "lower_shelf_window": 325,
+  "certain": 275,
+  "insufficient_support": 163,
+  "candidate_marfe": 70,
+  "low_confidence_pair": 67,
+  "no_vote": 34
  }
 }

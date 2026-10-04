@@ -15,23 +15,24 @@
     "confidence",
     "attrs"
   ],
-  "coverage": "Exploratory labels; no independent benchmark. A bin is assessed when at least two indicators are valid on it, on shots with at least 20 assessed bins and 20 valid bins from each of two indicators. Attached and detached are certain when upper-shelf TangTV votes and at least one other indicator casts a compatible vote with no conflict. MARFE is certain on the TangTV MARFE vote (DZ >= 1.2, an emission peak inside the separatrix near the X-point and the density cue, over at least two adjacent bins) unless another indicator votes attached; Prad,div and Afrac do not corroborate it. Time with no row was not assessed; it is not attached. 4 (uncertain) is every other assessed bin: conflicting votes, insufficient support, candidate_marfe, lower_shelf_window, elm_unknown, geometry_unknown. The tier in each interval's attrs says which.",
+  "coverage": "Geometry-gated TangTV state, validated by divertor Thomson Te; no independent benchmark. A bin is assessed when at least two indicators are valid on it, or TangTV votes alone, on shots with at least 20 assessed bins and 20 valid bins from each of two indicators. Attached and detached are certain when upper-shelf TangTV votes and at least one other indicator (per-shot relative f_div, or Afrac) casts a compatible vote with no conflict; they are tangtv_only (silver) when TangTV votes and every other indicator abstains or is invalid. MARFE is never a state: a sustained TangTV MARFE vote is the uncertain tier candidate_marfe. Time with no row was not assessed; it is not attached. 4 (uncertain) is every other assessed bin: conflict, insufficient_support, candidate_marfe, lower_shelf_window, elm_unknown, geometry_unknown. The tier in each interval's attrs says which.",
   "diagnostic_only": false,
   "diagnostic_posterior_threshold": 0.7,
   "fit_excluded_split": "test",
   "label_model_structure": "independent",
   "labeler": "rule",
-  "made_at": "2026-10-03T23:37:39+00:00",
+  "made_at": "2026-10-04T03:39:56+00:00",
   "made_by": "scripts/labeler/detach_label.py",
   "made_from": [
     {
-      "git_sha": "178cc884",
+      "code_dirty": false,
+      "git_sha": "c6924ca3",
       "producer": "detach_vote"
     }
   ],
-  "n_requested_shots": 37,
-  "n_rows": 679,
-  "n_shots": 37,
+  "n_requested_shots": 32,
+  "n_rows": 407,
+  "n_shots": 32,
   "per_shot_files": {
     "axis_order": [
       "time",
@@ -80,7 +81,7 @@
   "producer": "detach_vote",
   "schema_version": 6,
   "shot_list": "detach_shots.csv",
-  "shot_list_sha256": "daede4e7b1796da95f6c61ddf191d0e8a52357ae7d290a0bfbbd05913b481827",
+  "shot_list_sha256": "b64957c37172701f0a1291dd8e2975f9c20011f11b38087ffc762d9df0f99f63",
   "table_kind": "intervals",
   "time_units": "ms"
 }
