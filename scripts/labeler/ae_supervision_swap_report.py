@@ -406,7 +406,7 @@ def main_table(record: dict) -> str:
         caption,
         r"\label{tab:ae_supervision_swap_main}",
         r"\centering\scriptsize",
-        r"\setlength{\tabcolsep}{3pt}",
+        r"\setlength{\tabcolsep}{2.5pt}",
         r"\begin{tabular}{@{}l cc cc cc@{}}",
         r"\toprule",
         (
