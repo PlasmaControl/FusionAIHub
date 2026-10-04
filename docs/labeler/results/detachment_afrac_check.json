@@ -1,0 +1,1305 @@
+{
+ "script": "scripts/labeler/detach_afrac_check.py",
+ "method": [
+  "Does the Afrac proxy measure detachment or the probe it happened to read?",
+  "Opus re-review 5 (C1) found that the earlier Afrac read 0.79 near the separatrix and\n0.10 further out for the same TangTV state: it measured the selected probe's flux\nposition. The proxy was rebuilt (`src/labeler/events/detachment/afrac.py`): each\nprobe has its own attached reference, the probe nearest the separatrix inside\n`AFRAC_PSI_WINDOW` is read, and bins in a known L-mode stretch abstain. This script\nscores the rebuilt proxy and writes `docs/labeler/results/detachment_afrac_check.json`:"
+ ],
+ "shots": [
+  189057,
+  189061,
+  189062,
+  189081,
+  189088,
+  189090,
+  189093,
+  189094,
+  189097,
+  189100,
+  189101,
+  189448,
+  189451,
+  190109,
+  190110,
+  190113,
+  190114,
+  190115,
+  190116,
+  195952,
+  195954,
+  199166,
+  199171,
+  199172,
+  199351,
+  199352,
+  199353,
+  199354,
+  200977,
+  201081,
+  206879,
+  206880,
+  206886,
+  206891,
+  206892,
+  206893,
+  206894
+ ],
+ "n_shots": 37,
+ "primary_window_psin": 0.01,
+ "reference_quantile": 0.9,
+ "reference_min_bins": 20,
+ "votes_cutoffs": {
+  "attached_min": 0.75,
+  "detached_max": 0.5
+ },
+ "cause_of_the_earlier_failure": "The earlier proxy read the peak-current probe among those with psiN in (1.000, 1.05] and at least 5 mm outboard of the outer strike point, against one whole-shot reference. The strike-point probe, which shows the rollover, was excluded, and which probe was read followed millimetre-scale strike-point motion; probe spacing (1.1 to 4.4 cm) is wider than the current peak, so a fixed-psiN interpolation was not an alternative. The proxy then varied with the read probe's flux position, not with the plasma state.",
+ "before_after": {
+  "before": {
+   "source": "$LABELER_ROOT/round4/detach/fix_round5_before/labels_bins.csv.gz (the round-4 labels, assessed bins)",
+   "valid_bins": 2859,
+   "valid_shots": 37,
+   "by_psin": {
+    "(1, 1.005]": {
+     "n_bins": 761,
+     "n_shots": 37,
+     "median_afrac": 0.7927092,
+     "share_attached_vote": 0.5519053876478318,
+     "share_detached_vote": 0.23653088042049936
+    },
+    "(1.005, 1.01]": {
+     "n_bins": 561,
+     "n_shots": 37,
+     "median_afrac": 0.8241581,
+     "share_attached_vote": 0.5900178253119429,
+     "share_detached_vote": 0.1889483065953654
+    },
+    "(1.01, 1.02]": {
+     "n_bins": 1019,
+     "n_shots": 37,
+     "median_afrac": 0.44754866,
+     "share_attached_vote": 0.18940137389597644,
+     "share_detached_vote": 0.5711481844946026
+    },
+    "(1.02, 1.03]": {
+     "n_bins": 347,
+     "n_shots": 26,
+     "median_afrac": 0.17350107,
+     "share_attached_vote": 0.008645533141210375,
+     "share_detached_vote": 0.9193083573487032
+    },
+    "(1.03, 1.05]": {
+     "n_bins": 171,
+     "n_shots": 19,
+     "median_afrac": 0.17726856,
+     "share_attached_vote": 0.005847953216374269,
+     "share_detached_vote": 0.9064327485380117
+    }
+   },
+   "by_psin_tangtv_attached": {
+    "(1, 1.005]": {
+     "n_bins": 209,
+     "n_shots": 15,
+     "median_afrac": 0.6869312,
+     "share_attached_vote": 0.4354066985645933,
+     "share_detached_vote": 0.31100478468899523
+    },
+    "(1.005, 1.01]": {
+     "n_bins": 74,
+     "n_shots": 10,
+     "median_afrac": 0.8305648999999999,
+     "share_attached_vote": 0.6486486486486487,
+     "share_detached_vote": 0.05405405405405406
+    },
+    "(1.01, 1.02]": {
+     "n_bins": 114,
+     "n_shots": 13,
+     "median_afrac": 0.5012883699999999,
+     "share_attached_vote": 0.2719298245614035,
+     "share_detached_vote": 0.49122807017543857
+    },
+    "(1.02, 1.03]": {
+     "n_bins": 37,
+     "n_shots": 8,
+     "median_afrac": 0.33785117,
+     "share_attached_vote": 0.0,
+     "share_detached_vote": 0.8918918918918919
+    },
+    "(1.03, 1.05]": {
+     "n_bins": 16,
+     "n_shots": 3,
+     "median_afrac": 0.253888165,
+     "share_attached_vote": 0.0,
+     "share_detached_vote": 1.0
+    }
+   },
+   "by_psin_tangtv_detached": {
+    "(1, 1.005]": {
+     "n_bins": 107,
+     "n_shots": 18,
+     "median_afrac": 0.71525574,
+     "share_attached_vote": 0.42990654205607476,
+     "share_detached_vote": 0.24299065420560748
+    },
+    "(1.005, 1.01]": {
+     "n_bins": 118,
+     "n_shots": 14,
+     "median_afrac": 0.874033025,
+     "share_attached_vote": 0.6949152542372882,
+     "share_detached_vote": 0.0847457627118644
+    },
+    "(1.01, 1.02]": {
+     "n_bins": 310,
+     "n_shots": 17,
+     "median_afrac": 0.489166915,
+     "share_attached_vote": 0.2161290322580645,
+     "share_detached_vote": 0.5258064516129032
+    },
+    "(1.02, 1.03]": {
+     "n_bins": 28,
+     "n_shots": 10,
+     "median_afrac": 0.14736736,
+     "share_attached_vote": 0.0,
+     "share_detached_vote": 0.9285714285714286
+    },
+    "(1.03, 1.05]": {
+     "n_bins": 34,
+     "n_shots": 5,
+     "median_afrac": 0.07821676,
+     "share_attached_vote": 0.0,
+     "share_detached_vote": 1.0
+    }
+   },
+   "dependence_tangtv_attached": {
+    "tangtv_state": "attached",
+    "n_bins": 450,
+    "n_shots": 19,
+    "spearman_afrac_vs_psin": -0.4853624288095214,
+    "median_afrac_psin_at_most_1.005": 0.6869312,
+    "n_bins_psin_at_most_1.005": 209,
+    "median_afrac_psin_above_1.01": 0.39147434,
+    "n_bins_psin_above_1.01": 167
+   },
+   "dependence_tangtv_detached": {
+    "tangtv_state": "detached",
+    "n_bins": 597,
+    "n_shots": 23,
+    "spearman_afrac_vs_psin": -0.605074434205237,
+    "median_afrac_psin_at_most_1.005": 0.71525574,
+    "n_bins_psin_at_most_1.005": 107,
+    "median_afrac_psin_above_1.01": 0.45027627000000003,
+    "n_bins_psin_above_1.01": 372
+   },
+   "sentinel_strikes": {
+    "bins_with_a_strike_point": 2872,
+    "bins_with_a_sentinel_strike_point": 8,
+    "shots": [
+     195952,
+     199166,
+     199171,
+     199172,
+     199351,
+     199352,
+     199354,
+     200977
+    ]
+   }
+  },
+  "after": {
+   "source": "$LABELER_ROOT/round4/detach/bins (every extracted bin of the same 37 shots)",
+   "valid_bins": 909,
+   "valid_shots": 14,
+   "by_psin": {
+    "(0.98, 0.995]": {
+     "n_bins": 46,
+     "n_shots": 10,
+     "median_afrac": 0.28357023000717163,
+     "share_attached_vote": 0.2608695652173913,
+     "share_detached_vote": 0.6521739130434783
+    },
+    "(0.995, 1]": {
+     "n_bins": 285,
+     "n_shots": 13,
+     "median_afrac": 0.7163299322128296,
+     "share_attached_vote": 0.4666666666666667,
+     "share_detached_vote": 0.3649122807017544
+    },
+    "(1, 1.005]": {
+     "n_bins": 439,
+     "n_shots": 14,
+     "median_afrac": 0.7804383635520935,
+     "share_attached_vote": 0.5398633257403189,
+     "share_detached_vote": 0.25740318906605925
+    },
+    "(1.005, 1.01]": {
+     "n_bins": 139,
+     "n_shots": 14,
+     "median_afrac": 0.6849177479743958,
+     "share_attached_vote": 0.37410071942446044,
+     "share_detached_vote": 0.2949640287769784
+    }
+   },
+   "by_psin_tangtv_attached": {
+    "(0.98, 0.995]": {
+     "n_bins": 5,
+     "n_shots": 1,
+     "median_afrac": 0.0412227027118206,
+     "share_attached_vote": 0.0,
+     "share_detached_vote": 1.0
+    },
+    "(0.995, 1]": {
+     "n_bins": 30,
+     "n_shots": 4,
+     "median_afrac": 0.9469037055969238,
+     "share_attached_vote": 0.7666666666666667,
+     "share_detached_vote": 0.2
+    },
+    "(1, 1.005]": {
+     "n_bins": 51,
+     "n_shots": 5,
+     "median_afrac": 0.8246500492095947,
+     "share_attached_vote": 0.5686274509803921,
+     "share_detached_vote": 0.0784313725490196
+    },
+    "(1.005, 1.01]": {
+     "n_bins": 37,
+     "n_shots": 4,
+     "median_afrac": 0.6756374835968018,
+     "share_attached_vote": 0.21621621621621623,
+     "share_detached_vote": 0.13513513513513514
+    }
+   },
+   "by_psin_tangtv_detached": {
+    "(0.98, 0.995]": {
+     "n_bins": 9,
+     "n_shots": 3,
+     "median_afrac": 0.07664766162633896,
+     "share_attached_vote": 0.0,
+     "share_detached_vote": 1.0
+    },
+    "(0.995, 1]": {
+     "n_bins": 54,
+     "n_shots": 4,
+     "median_afrac": 0.22867026925086975,
+     "share_attached_vote": 0.0,
+     "share_detached_vote": 0.9259259259259259
+    },
+    "(1, 1.005]": {
+     "n_bins": 30,
+     "n_shots": 4,
+     "median_afrac": 0.2566249668598175,
+     "share_attached_vote": 0.03333333333333333,
+     "share_detached_vote": 0.8333333333333334
+    },
+    "(1.005, 1.01]": {
+     "n_bins": 12,
+     "n_shots": 4,
+     "median_afrac": 0.8171912431716919,
+     "share_attached_vote": 0.6666666666666666,
+     "share_detached_vote": 0.25
+    }
+   },
+   "dependence_tangtv_attached": {
+    "tangtv_state": "attached",
+    "n_bins": 123,
+    "n_shots": 6,
+    "spearman_afrac_vs_psin": -0.1376610646064155,
+    "median_afrac_psin_at_most_1.005": 0.8676729202270508,
+    "n_bins_psin_at_most_1.005": 86,
+    "median_afrac_psin_above_1.01": null,
+    "n_bins_psin_above_1.01": 0
+   },
+   "dependence_tangtv_detached": {
+    "tangtv_state": "detached",
+    "n_bins": 105,
+    "n_shots": 5,
+    "spearman_afrac_vs_psin": 0.4975741239892183,
+    "median_afrac_psin_at_most_1.005": 0.22342947125434875,
+    "n_bins_psin_at_most_1.005": 93,
+    "median_afrac_psin_above_1.01": null,
+    "n_bins_psin_above_1.01": 0
+   },
+   "sentinel_strikes": {
+    "bins_with_a_strike_point": 3086,
+    "bins_with_a_sentinel_strike_point": 0,
+    "shots": []
+   }
+  }
+ },
+ "windows": {
+  "0.01": {
+   "bins_valid": 909,
+   "shots_valid": 14,
+   "reasons_invalid": {
+    "l_mode": 780,
+    "probe_off_separatrix": 770,
+    "short_reference": 635,
+    "probe_flux_unknown": 492,
+    "low_power": 270,
+    "ramp": 140,
+    "no_power": 53,
+    "no_probe_samples": 39,
+    "elm": 36
+   },
+   "vs_tangtv": {
+    "population": "upper-shelf bins where Afrac is valid and TangTV votes attached or detached",
+    "auroc_neg_afrac_tangtv_detached_vs_attached": {
+     "value": 0.862175764614789,
+     "ci95": [
+      0.6893701909375891,
+      0.9509331401686262
+     ],
+     "n_bins": 228,
+     "n_not_attached": 105,
+     "n_shots": 7,
+     "valid_replicates": 1000,
+     "replicates": 1000
+    },
+    "vote_table": {
+     "tangtv_attached": {
+      "afrac_attached": 60,
+      "afrac_detached": 20
+     },
+     "tangtv_detached": {
+      "afrac_attached": 9,
+      "afrac_detached": 87
+     }
+    },
+    "vote_agreement": {
+     "bins": 176,
+     "shots": 7,
+     "agreement": 0.8352272727272727,
+     "kappa": 0.6638566912539514
+    }
+   },
+   "vs_te": {
+    "bands_ev": {
+     "cold_max": 5.0,
+     "warm_min": 10.0
+    },
+    "votes_attached_and_detached": {
+     "attached": {
+      "n_bins": 90,
+      "te_ev_quantiles_10_50_90": [
+       2.1934346854686737,
+       12.531534910202026,
+       21.407397937774657
+      ],
+      "share_in_band": 0.6777777777777778,
+      "share_between_bands": 0.16666666666666666,
+      "n_shots": 7,
+      "shot_ids": [
+       189057,
+       189081,
+       189088,
+       189090,
+       189093,
+       189097,
+       201081
+      ]
+     },
+     "detached": {
+      "n_bins": 104,
+      "te_ev_quantiles_10_50_90": [
+       1.3497025132179261,
+       2.96285343170166,
+       18.104220390319824
+      ],
+      "share_in_band": 0.5769230769230769,
+      "share_between_bands": 0.15384615384615385,
+      "n_shots": 7,
+      "shot_ids": [
+       189057,
+       189081,
+       189090,
+       189093,
+       189097,
+       201081,
+       206894
+      ]
+     },
+     "auroc_neg_te_detached_vs_attached": {
+      "pooled": {
+       "value": 0.7462606837606838,
+       "ci95": [
+        0.4502092309701005,
+        0.8621486615308658
+       ],
+       "n_bins": 194,
+       "n_not_attached": 104,
+       "n_shots": 8,
+       "valid_replicates": 1000,
+       "replicates": 1000
+      },
+      "within_shot": {
+       "min_class_bins": 5,
+       "n_shots": 4,
+       "mean": 0.7086532454691764,
+       "mean_ci95": [
+        0.4840694669791479,
+        0.9010449168642787
+       ]
+      }
+     }
+    },
+    "value_cold_vs_warm_te": {
+     "note": "threshold-free in Afrac: AUROC of -Afrac for Te <= 5 eV against Te >= 10 eV, every valid Afrac bin with such a Te",
+     "value": 0.7606286337209303,
+     "ci95": [
+      0.4307211548380442,
+      0.8774992695025224
+     ],
+     "n_bins": 214,
+     "n_not_attached": 86,
+     "n_shots": 8,
+     "valid_replicates": 1000,
+     "replicates": 1000,
+     "cold_shots": 8
+    }
+   },
+   "shot_201081_phase_medians": {
+    "attached_early": {
+     "time_ms": [
+      1900.0,
+      2500.0
+     ],
+     "n_bins": 12,
+     "median_afrac": 1.054526925086975,
+     "probes": [
+      17
+     ]
+    },
+    "detached": {
+     "time_ms": [
+      2800.0,
+      4300.0
+     ],
+     "n_bins": 30,
+     "median_afrac": 0.21025961637496948,
+     "probes": [
+      17
+     ]
+    },
+    "reattached": {
+     "time_ms": [
+      4600.0,
+      5400.0
+     ],
+     "n_bins": 16,
+     "median_afrac": 0.889185905456543,
+     "probes": [
+      17
+     ]
+    }
+   }
+  },
+  "0.015": {
+   "bins_valid": 1367,
+   "shots_valid": 23,
+   "reasons_invalid": {
+    "l_mode": 780,
+    "probe_off_separatrix": 629,
+    "probe_flux_unknown": 492,
+    "short_reference": 335,
+    "low_power": 270,
+    "ramp": 140,
+    "no_power": 53,
+    "elm": 36,
+    "no_probe_samples": 22
+   },
+   "vs_tangtv": {
+    "population": "upper-shelf bins where Afrac is valid and TangTV votes attached or detached",
+    "auroc_neg_afrac_tangtv_detached_vs_attached": {
+     "value": 0.7351954204500593,
+     "ci95": [
+      0.5790670607192198,
+      0.8554098081330511
+     ],
+     "n_bins": 468,
+     "n_not_attached": 298,
+     "n_shots": 15,
+     "valid_replicates": 1000,
+     "replicates": 1000
+    },
+    "vote_table": {
+     "tangtv_attached": {
+      "afrac_attached": 101,
+      "afrac_detached": 34
+     },
+     "tangtv_detached": {
+      "afrac_attached": 61,
+      "afrac_detached": 192
+     }
+    },
+    "vote_agreement": {
+     "bins": 388,
+     "shots": 15,
+     "agreement": 0.7551546391752577,
+     "kappa": 0.48444668233187865
+    }
+   },
+   "vs_te": {
+    "bands_ev": {
+     "cold_max": 5.0,
+     "warm_min": 10.0
+    },
+    "votes_attached_and_detached": {
+     "attached": {
+      "n_bins": 178,
+      "te_ev_quantiles_10_50_90": [
+       1.7798479914665222,
+       10.595741868019104,
+       20.31131715774537
+      ],
+      "share_in_band": 0.5280898876404494,
+      "share_between_bands": 0.15168539325842698,
+      "n_shots": 12,
+      "shot_ids": [
+       189057,
+       189061,
+       189062,
+       189081,
+       189088,
+       189090,
+       189093,
+       189094,
+       189097,
+       190109,
+       190116,
+       201081
+      ]
+     },
+     "detached": {
+      "n_bins": 171,
+      "te_ev_quantiles_10_50_90": [
+       1.376297950744629,
+       2.713444232940674,
+       17.273578643798828
+      ],
+      "share_in_band": 0.6081871345029239,
+      "share_between_bands": 0.1871345029239766,
+      "n_shots": 13,
+      "shot_ids": [
+       189057,
+       189061,
+       189062,
+       189081,
+       189088,
+       189090,
+       189093,
+       189094,
+       189097,
+       190109,
+       190116,
+       201081,
+       206894
+      ]
+     },
+     "auroc_neg_te_detached_vs_attached": {
+      "pooled": {
+       "value": 0.6966949208226559,
+       "ci95": [
+        0.49940936070048414,
+        0.830147940165704
+       ],
+       "n_bins": 349,
+       "n_not_attached": 171,
+       "n_shots": 13,
+       "valid_replicates": 1000,
+       "replicates": 1000
+      },
+      "within_shot": {
+       "min_class_bins": 5,
+       "n_shots": 9,
+       "mean": 0.6387629536881343,
+       "mean_ci95": [
+        0.5260843879274605,
+        0.7521806928069827
+       ]
+      }
+     }
+    },
+    "value_cold_vs_warm_te": {
+     "note": "threshold-free in Afrac: AUROC of -Afrac for Te <= 5 eV against Te >= 10 eV, every valid Afrac bin with such a Te",
+     "value": 0.6700487651407897,
+     "ci95": [
+      0.4470276681572488,
+      0.8134299723424723
+     ],
+     "n_bins": 358,
+     "n_not_attached": 195,
+     "n_shots": 12,
+     "valid_replicates": 1000,
+     "replicates": 1000,
+     "cold_shots": 12
+    }
+   },
+   "shot_201081_phase_medians": {
+    "attached_early": {
+     "time_ms": [
+      1900.0,
+      2500.0
+     ],
+     "n_bins": 12,
+     "median_afrac": 1.0552809238433838,
+     "probes": [
+      17
+     ]
+    },
+    "detached": {
+     "time_ms": [
+      2800.0,
+      4300.0
+     ],
+     "n_bins": 30,
+     "median_afrac": 0.21040993928909302,
+     "probes": [
+      17
+     ]
+    },
+    "reattached": {
+     "time_ms": [
+      4600.0,
+      5400.0
+     ],
+     "n_bins": 16,
+     "median_afrac": 0.8898217082023621,
+     "probes": [
+      17
+     ]
+    }
+   }
+  },
+  "0.02": {
+   "bins_valid": 1750,
+   "shots_valid": 28,
+   "reasons_invalid": {
+    "l_mode": 780,
+    "probe_flux_unknown": 492,
+    "probe_off_separatrix": 485,
+    "low_power": 270,
+    "ramp": 140,
+    "short_reference": 109,
+    "no_power": 53,
+    "elm": 36,
+    "no_probe_samples": 9
+   },
+   "vs_tangtv": {
+    "population": "upper-shelf bins where Afrac is valid and TangTV votes attached or detached",
+    "auroc_neg_afrac_tangtv_detached_vs_attached": {
+     "value": 0.6830675778283979,
+     "ci95": [
+      0.5601104306918921,
+      0.796652653822294
+     ],
+     "n_bins": 664,
+     "n_not_attached": 439,
+     "n_shots": 20,
+     "valid_replicates": 1000,
+     "replicates": 1000
+    },
+    "vote_table": {
+     "tangtv_attached": {
+      "afrac_attached": 127,
+      "afrac_detached": 51
+     },
+     "tangtv_detached": {
+      "afrac_attached": 128,
+      "afrac_detached": 250
+     }
+    },
+    "vote_agreement": {
+     "bins": 556,
+     "shots": 20,
+     "agreement": 0.6780575539568345,
+     "kappa": 0.33636509121946023
+    }
+   },
+   "vs_te": {
+    "bands_ev": {
+     "cold_max": 5.0,
+     "warm_min": 10.0
+    },
+    "votes_attached_and_detached": {
+     "attached": {
+      "n_bins": 259,
+      "te_ev_quantiles_10_50_90": [
+       1.5979527831077576,
+       8.6895112991333,
+       19.543031883239745
+      ],
+      "share_in_band": 0.4517374517374517,
+      "share_between_bands": 0.14285714285714285,
+      "n_shots": 20,
+      "shot_ids": [
+       189057,
+       189061,
+       189062,
+       189081,
+       189088,
+       189090,
+       189093,
+       189094,
+       189097,
+       189100,
+       189101,
+       189448,
+       189451,
+       190109,
+       190110,
+       190113,
+       190114,
+       190115,
+       190116,
+       201081
+      ]
+     },
+     "detached": {
+      "n_bins": 275,
+      "te_ev_quantiles_10_50_90": [
+       1.280003809928894,
+       2.569939970970154,
+       15.182555389404296
+      ],
+      "share_in_band": 0.6254545454545455,
+      "share_between_bands": 0.17454545454545456,
+      "n_shots": 21,
+      "shot_ids": [
+       189057,
+       189061,
+       189062,
+       189081,
+       189088,
+       189090,
+       189093,
+       189094,
+       189097,
+       189100,
+       189101,
+       189448,
+       189451,
+       190109,
+       190110,
+       190113,
+       190114,
+       190115,
+       190116,
+       201081,
+       206894
+      ]
+     },
+     "auroc_neg_te_detached_vs_attached": {
+      "pooled": {
+       "value": 0.6638539838539839,
+       "ci95": [
+        0.5166198439979296,
+        0.7806901424334323
+       ],
+       "n_bins": 534,
+       "n_not_attached": 275,
+       "n_shots": 21,
+       "valid_replicates": 1000,
+       "replicates": 1000
+      },
+      "within_shot": {
+       "min_class_bins": 5,
+       "n_shots": 15,
+       "mean": 0.5966911872324346,
+       "mean_ci95": [
+        0.5046230724281654,
+        0.6861647231570612
+       ]
+      }
+     }
+    },
+    "value_cold_vs_warm_te": {
+     "note": "threshold-free in Afrac: AUROC of -Afrac for Te <= 5 eV against Te >= 10 eV, every valid Afrac bin with such a Te",
+     "value": 0.6381496466833827,
+     "ci95": [
+      0.4960705893675046,
+      0.7601128738782094
+     ],
+     "n_bins": 542,
+     "n_not_attached": 328,
+     "n_shots": 21,
+     "valid_replicates": 1000,
+     "replicates": 1000,
+     "cold_shots": 18
+    }
+   },
+   "shot_201081_phase_medians": {
+    "attached_early": {
+     "time_ms": [
+      1900.0,
+      2500.0
+     ],
+     "n_bins": 12,
+     "median_afrac": 1.0564138889312744,
+     "probes": [
+      17
+     ]
+    },
+    "detached": {
+     "time_ms": [
+      2800.0,
+      4300.0
+     ],
+     "n_bins": 30,
+     "median_afrac": 0.21063584089279175,
+     "probes": [
+      17
+     ]
+    },
+    "reattached": {
+     "time_ms": [
+      4600.0,
+      5400.0
+     ],
+     "n_bins": 16,
+     "median_afrac": 0.890777051448822,
+     "probes": [
+      17
+     ]
+    }
+   }
+  }
+ },
+ "regime_gate": {
+  "rule": "bins in a known L-mode stretch abstain (reason l_mode) and enter no reference; a bin whose regime is unknown is not gated",
+  "source_order": [
+   "confinement suggestion table (category 2 low = L; 1, 3, 4 = H)",
+   "D-alpha H-mode detector (L = measured time outside every H or uncertain span)",
+   "unknown"
+  ],
+  "per_shot": {
+   "189057": {
+    "bins": 122,
+    "bins_L": 0,
+    "bins_H": 0,
+    "bins_unknown": 122,
+    "source": [
+     "none"
+    ],
+    "afrac_l_mode_abstentions": 0,
+    "afrac_valid": 53
+   },
+   "189061": {
+    "bins": 122,
+    "bins_L": 0,
+    "bins_H": 72,
+    "bins_unknown": 50,
+    "source": [
+     "regime_table"
+    ],
+    "afrac_l_mode_abstentions": 0,
+    "afrac_valid": 0
+   },
+   "189062": {
+    "bins": 121,
+    "bins_L": 0,
+    "bins_H": 0,
+    "bins_unknown": 121,
+    "source": [
+     "none"
+    ],
+    "afrac_l_mode_abstentions": 0,
+    "afrac_valid": 0
+   },
+   "189081": {
+    "bins": 136,
+    "bins_L": 0,
+    "bins_H": 0,
+    "bins_unknown": 136,
+    "source": [
+     "none"
+    ],
+    "afrac_l_mode_abstentions": 0,
+    "afrac_valid": 42
+   },
+   "189088": {
+    "bins": 108,
+    "bins_L": 0,
+    "bins_H": 0,
+    "bins_unknown": 108,
+    "source": [
+     "none"
+    ],
+    "afrac_l_mode_abstentions": 0,
+    "afrac_valid": 31
+   },
+   "189090": {
+    "bins": 113,
+    "bins_L": 0,
+    "bins_H": 0,
+    "bins_unknown": 113,
+    "source": [
+     "none"
+    ],
+    "afrac_l_mode_abstentions": 0,
+    "afrac_valid": 30
+   },
+   "189093": {
+    "bins": 124,
+    "bins_L": 0,
+    "bins_H": 0,
+    "bins_unknown": 124,
+    "source": [
+     "none"
+    ],
+    "afrac_l_mode_abstentions": 0,
+    "afrac_valid": 51
+   },
+   "189094": {
+    "bins": 121,
+    "bins_L": 0,
+    "bins_H": 0,
+    "bins_unknown": 121,
+    "source": [
+     "none"
+    ],
+    "afrac_l_mode_abstentions": 0,
+    "afrac_valid": 0
+   },
+   "189097": {
+    "bins": 126,
+    "bins_L": 0,
+    "bins_H": 0,
+    "bins_unknown": 126,
+    "source": [
+     "none"
+    ],
+    "afrac_l_mode_abstentions": 0,
+    "afrac_valid": 40
+   },
+   "189100": {
+    "bins": 106,
+    "bins_L": 0,
+    "bins_H": 0,
+    "bins_unknown": 106,
+    "source": [
+     "none"
+    ],
+    "afrac_l_mode_abstentions": 0,
+    "afrac_valid": 0
+   },
+   "189101": {
+    "bins": 108,
+    "bins_L": 0,
+    "bins_H": 0,
+    "bins_unknown": 108,
+    "source": [
+     "none"
+    ],
+    "afrac_l_mode_abstentions": 0,
+    "afrac_valid": 0
+   },
+   "189448": {
+    "bins": 110,
+    "bins_L": 0,
+    "bins_H": 0,
+    "bins_unknown": 110,
+    "source": [
+     "none"
+    ],
+    "afrac_l_mode_abstentions": 0,
+    "afrac_valid": 0
+   },
+   "189451": {
+    "bins": 109,
+    "bins_L": 0,
+    "bins_H": 0,
+    "bins_unknown": 109,
+    "source": [
+     "none"
+    ],
+    "afrac_l_mode_abstentions": 0,
+    "afrac_valid": 0
+   },
+   "190109": {
+    "bins": 109,
+    "bins_L": 0,
+    "bins_H": 0,
+    "bins_unknown": 109,
+    "source": [
+     "none"
+    ],
+    "afrac_l_mode_abstentions": 0,
+    "afrac_valid": 0
+   },
+   "190110": {
+    "bins": 80,
+    "bins_L": 0,
+    "bins_H": 0,
+    "bins_unknown": 80,
+    "source": [
+     "none"
+    ],
+    "afrac_l_mode_abstentions": 0,
+    "afrac_valid": 0
+   },
+   "190113": {
+    "bins": 83,
+    "bins_L": 0,
+    "bins_H": 0,
+    "bins_unknown": 83,
+    "source": [
+     "none"
+    ],
+    "afrac_l_mode_abstentions": 0,
+    "afrac_valid": 0
+   },
+   "190114": {
+    "bins": 77,
+    "bins_L": 0,
+    "bins_H": 0,
+    "bins_unknown": 77,
+    "source": [
+     "none"
+    ],
+    "afrac_l_mode_abstentions": 0,
+    "afrac_valid": 0
+   },
+   "190115": {
+    "bins": 106,
+    "bins_L": 0,
+    "bins_H": 0,
+    "bins_unknown": 106,
+    "source": [
+     "none"
+    ],
+    "afrac_l_mode_abstentions": 0,
+    "afrac_valid": 0
+   },
+   "190116": {
+    "bins": 110,
+    "bins_L": 0,
+    "bins_H": 0,
+    "bins_unknown": 110,
+    "source": [
+     "none"
+    ],
+    "afrac_l_mode_abstentions": 0,
+    "afrac_valid": 0
+   },
+   "195952": {
+    "bins": 84,
+    "bins_L": 38,
+    "bins_H": 0,
+    "bins_unknown": 46,
+    "source": [
+     "dalpha_detector"
+    ],
+    "afrac_l_mode_abstentions": 33,
+    "afrac_valid": 0
+   },
+   "195954": {
+    "bins": 86,
+    "bins_L": 0,
+    "bins_H": 0,
+    "bins_unknown": 86,
+    "source": [
+     "none"
+    ],
+    "afrac_l_mode_abstentions": 0,
+    "afrac_valid": 0
+   },
+   "199166": {
+    "bins": 112,
+    "bins_L": 92,
+    "bins_H": 20,
+    "bins_unknown": 0,
+    "source": [
+     "dalpha_detector"
+    ],
+    "afrac_l_mode_abstentions": 86,
+    "afrac_valid": 0
+   },
+   "199171": {
+    "bins": 108,
+    "bins_L": 89,
+    "bins_H": 19,
+    "bins_unknown": 0,
+    "source": [
+     "dalpha_detector"
+    ],
+    "afrac_l_mode_abstentions": 82,
+    "afrac_valid": 0
+   },
+   "199172": {
+    "bins": 108,
+    "bins_L": 93,
+    "bins_H": 15,
+    "bins_unknown": 0,
+    "source": [
+     "dalpha_detector"
+    ],
+    "afrac_l_mode_abstentions": 82,
+    "afrac_valid": 0
+   },
+   "199351": {
+    "bins": 112,
+    "bins_L": 112,
+    "bins_H": 0,
+    "bins_unknown": 0,
+    "source": [
+     "dalpha_detector"
+    ],
+    "afrac_l_mode_abstentions": 100,
+    "afrac_valid": 0
+   },
+   "199352": {
+    "bins": 112,
+    "bins_L": 112,
+    "bins_H": 0,
+    "bins_unknown": 0,
+    "source": [
+     "dalpha_detector"
+    ],
+    "afrac_l_mode_abstentions": 98,
+    "afrac_valid": 0
+   },
+   "199353": {
+    "bins": 110,
+    "bins_L": 110,
+    "bins_H": 0,
+    "bins_unknown": 0,
+    "source": [
+     "dalpha_detector"
+    ],
+    "afrac_l_mode_abstentions": 97,
+    "afrac_valid": 0
+   },
+   "199354": {
+    "bins": 112,
+    "bins_L": 112,
+    "bins_H": 0,
+    "bins_unknown": 0,
+    "source": [
+     "dalpha_detector"
+    ],
+    "afrac_l_mode_abstentions": 98,
+    "afrac_valid": 0
+   },
+   "200977": {
+    "bins": 121,
+    "bins_L": 110,
+    "bins_H": 11,
+    "bins_unknown": 0,
+    "source": [
+     "dalpha_detector"
+    ],
+    "afrac_l_mode_abstentions": 104,
+    "afrac_valid": 0
+   },
+   "201081": {
+    "bins": 130,
+    "bins_L": 0,
+    "bins_H": 0,
+    "bins_unknown": 130,
+    "source": [
+     "none"
+    ],
+    "afrac_l_mode_abstentions": 0,
+    "afrac_valid": 94
+   },
+   "206879": {
+    "bins": 124,
+    "bins_L": 0,
+    "bins_H": 0,
+    "bins_unknown": 124,
+    "source": [
+     "none"
+    ],
+    "afrac_l_mode_abstentions": 0,
+    "afrac_valid": 82
+   },
+   "206880": {
+    "bins": 128,
+    "bins_L": 0,
+    "bins_H": 0,
+    "bins_unknown": 128,
+    "source": [
+     "none"
+    ],
+    "afrac_l_mode_abstentions": 0,
+    "afrac_valid": 82
+   },
+   "206886": {
+    "bins": 124,
+    "bins_L": 0,
+    "bins_H": 0,
+    "bins_unknown": 124,
+    "source": [
+     "none"
+    ],
+    "afrac_l_mode_abstentions": 0,
+    "afrac_valid": 82
+   },
+   "206891": {
+    "bins": 118,
+    "bins_L": 0,
+    "bins_H": 0,
+    "bins_unknown": 118,
+    "source": [
+     "none"
+    ],
+    "afrac_l_mode_abstentions": 0,
+    "afrac_valid": 77
+   },
+   "206892": {
+    "bins": 120,
+    "bins_L": 0,
+    "bins_H": 0,
+    "bins_unknown": 120,
+    "source": [
+     "none"
+    ],
+    "afrac_l_mode_abstentions": 0,
+    "afrac_valid": 81
+   },
+   "206893": {
+    "bins": 114,
+    "bins_L": 0,
+    "bins_H": 0,
+    "bins_unknown": 114,
+    "source": [
+     "none"
+    ],
+    "afrac_l_mode_abstentions": 0,
+    "afrac_valid": 82
+   },
+   "206894": {
+    "bins": 110,
+    "bins_L": 0,
+    "bins_H": 0,
+    "bins_unknown": 110,
+    "source": [
+     "none"
+    ],
+    "afrac_l_mode_abstentions": 0,
+    "afrac_valid": 82
+   }
+  },
+  "totals": {
+   "bins": 4124,
+   "bins_regime_known": 1005,
+   "bins_L": 868,
+   "bins_H": 137,
+   "bins_unknown": 3119,
+   "shots": 37,
+   "shots_with_known_regime": 10,
+   "afrac_l_mode_abstentions": 780,
+   "by_source": {
+    "none": 3023,
+    "dalpha_detector": 979,
+    "regime_table": 122
+   }
+  }
+ },
+ "decision": {
+  "rule": "Afrac stays in the vote unless its AUROC against Te is below 0.65 (the lower of the vote-based and the value-based point estimates at the primary window)",
+  "keep_min_auroc": 0.65,
+  "auroc_vote_based": 0.7462606837606838,
+  "auroc_value_based": 0.7606286337209303,
+  "statistic": 0.7462606837606838,
+  "keep_afrac_in_vote": true
+ }
+}

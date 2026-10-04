@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 """Score the detachment states against divertor Thomson Te near the outer target.
 
-The processed divertor Thomson Te (`\\ELECTRONS::TSTE_DIV`, 14 or 16 chords at R = 1.485 m,
-20 ms, fetched by `detach_fetch_round4.py --stage dts`) is a temperature
+The processed divertor Thomson Te (`\\ELECTRONS::TSTE_DIV`, 14 or 16 chords at
+R = 1.485 m, 20 ms, fetched by `detach_fetch_round4.py --stage dts`) is a temperature
 measurement that none of the three indicators uses, so it checks them where the
 label cannot: the cold-target criterion that the literature itself uses.
 
@@ -18,11 +18,15 @@ label cannot: the cold-target criterion that the literature itself uses.
   The bands were fixed from those digests before scoring.
 * A bin's Te is the median of the selected chords' valid samples inside it.
 
-Reported per primary state and per indicator vote: how many bins and shots carry a
-Te, the Te quantiles, the share inside the band, and a threshold-free AUROC of
--Te for the detached against the attached bins (pooled and within shots, with
-shot-bootstrap intervals). Shot 201081's two cliff times are read from the data and
-set beside the published ones. No threshold is fitted here.
+Reported per primary state, per label tier and per indicator vote: how many bins and
+shots carry a Te, the Te quantiles, the share inside the band, and a threshold-free
+AUROC of -Te for the detached against the attached bins (pooled and within shots,
+with shot-bootstrap intervals; the number of shots behind each within-shot figure is
+beside it). The tiers are `certain` (TangTV plus an agreeing second indicator),
+`tangtv_only` (TangTV alone, silver), both together (the exported attached and
+detached bins) and the TangTV vote alone; a paired shot bootstrap says whether the
+second vote improves the agreement with Te. Shot 201081's two cliff times are read
+from the data and set beside the published ones. No threshold is fitted here.
 
     pixi run --frozen -e labelmaker python scripts/labeler/detach_te_check.py
 """
@@ -175,6 +179,104 @@ def score_states(frame, state_column, rng, mask=None) -> dict:
     return out
 
 
+def te_subset(frame: pd.DataFrame, state: pd.Series, mask) -> tuple:
+    """(score, positive, shots) for the attached/detached bins of `state` in `mask`
+    that carry a Te: the score is -Te and the positive class is detached."""
+    keep = (
+        np.asarray(mask, bool)
+        & np.isfinite(frame.te_ev).to_numpy()
+        & state.isin((core.ATTACHED, core.DETACHED)).to_numpy()
+    )
+    rows = frame[keep]
+    return (
+        -rows.te_ev.to_numpy(float),
+        (state[keep] == core.DETACHED).to_numpy(),
+        rows.shot.to_numpy(),
+    )
+
+
+def paired_difference(a: tuple, b: tuple, rng) -> dict:
+    """AUROC(-Te) of subset `a` minus that of subset `b`, one shot bootstrap that
+    resamples the shots of both subsets together (so shared shots stay paired)."""
+    shots = np.unique(np.concatenate([a[2], b[2]]))
+    if not len(shots):
+        return {"difference": None, "ci95": [None, None], "n_shots": 0}
+    index = [{s: np.flatnonzero(x[2] == s) for s in shots} for x in (a, b)]
+    full = bench.auroc(a[0], a[1]) - bench.auroc(b[0], b[1])
+    draws = []
+    for _ in range(bench.REPLICATES):
+        pick = shots[rng.integers(0, len(shots), len(shots))]
+        values = []
+        for x, ind in zip((a, b), index, strict=True):
+            rows = np.concatenate([ind[s] for s in pick])
+            values.append(bench.auroc(x[0][rows], x[1][rows]))
+        if np.isfinite(values).all():
+            draws.append(values[0] - values[1])
+    return {
+        "difference": float(full) if np.isfinite(full) else None,
+        "ci95": bench.interval(draws),
+        "n_shots": len(shots),
+        "valid_replicates": len(draws),
+    }
+
+
+def second_vote_verdict(difference: dict) -> str:
+    """Plain reading of a paired difference: better, worse or not distinguishable."""
+    lo, hi = difference["ci95"]
+    if difference["difference"] is None or lo is None or not np.isfinite(lo):
+        return "not estimable"
+    if lo > 0:
+        return "better"
+    if hi < 0:
+        return "worse"
+    return "not distinguishable"
+
+
+def tier_scores(frame: pd.DataFrame, rng) -> dict:
+    """Te agreement per label tier, TangTV alone, and the second vote's effect."""
+    tangtv = frame.tangtv_vote.where(
+        frame.tangtv_valid.astype(bool) & frame.tangtv_tier.eq("upper_shelf"),
+        core.ABSTAIN,
+    )
+    frame = frame.assign(tangtv_alone=tangtv)
+    certain = frame.tier.eq("certain").to_numpy()
+    silver = frame.tier.eq("tangtv_only").to_numpy()
+    conflict = frame.tier.eq("conflict").to_numpy() & tangtv.isin((1, 2)).to_numpy()
+    everywhere = np.ones(len(frame), bool)
+    out = {
+        "certain": score_states(frame, "state_rule", rng, mask=certain),
+        "tangtv_only": score_states(frame, "state_rule", rng, mask=silver),
+        "certain_or_tangtv_only": score_states(frame, "state_rule", rng),
+        "tangtv_vote_alone": score_states(frame, "tangtv_alone", rng),
+        "tangtv_vote_in_conflict_bins": score_states(
+            frame, "tangtv_alone", rng, mask=conflict
+        ),
+    }
+    state = frame.state_rule
+    a = te_subset(frame, state, certain)
+    b = te_subset(frame, tangtv, everywhere)
+    c = te_subset(frame, tangtv, silver | conflict)
+    difference = paired_difference(a, b, rng)
+    against_rest = paired_difference(a, c, rng)
+    out["second_vote_effect"] = {
+        "question": "does requiring an agreeing second indicator improve the "
+        "agreement of the TangTV state with divertor Thomson Te?",
+        "certain_minus_tangtv_alone": {
+            **difference,
+            "reading": second_vote_verdict(difference),
+            "note": "AUROC(-Te) of the certain bins minus that of every TangTV "
+            "attached/detached vote on the upper shelf that has a Te; the certain "
+            "bins are a subset of them",
+        },
+        "certain_minus_tangtv_where_second_vote_missing_or_clashing": {
+            **against_rest,
+            "reading": second_vote_verdict(against_rest),
+            "note": "against the TangTV votes that are tangtv_only or in conflict",
+        },
+    }
+    return out
+
+
 def cliffs(frame: pd.DataFrame, shot: int) -> dict | None:
     """Te-cliff times of one shot read from the data: the first and last bin in
     its flat top where the Te median of 3 bins crosses the 5-10 eV gap."""
@@ -231,6 +333,7 @@ def main() -> int:
         "bins_with_te": int(np.isfinite(frame.te_ev).sum()),
         "bins_assessed": len(frame),
         "primary_state": score_states(frame, "state_rule", rng),
+        "by_tier": tier_scores(frame, rng),
         "indicator_votes": {
             name: score_states(
                 frame.assign(

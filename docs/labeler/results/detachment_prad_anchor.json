@@ -20,10 +20,12 @@
   "windows_from": "published Te-cliff times, not TangTV"
  },
  "p_in_mw": {
-  "median_flat_top": 4.284255775360542,
-  "beams_median": 4.08654801940918,
-  "poh_median": 0.21127445770245323,
-  "ech_median": 6.752684482534774e-05,
+  "anchor_value_used": "measured_anchor.p_in_mw below: the median of the 250 ms-averaged P_in over the 32 attached-window bins, the one P_in number the cutoffs and the documents use",
+  "components_flat_top_median_mw_not_p_in": {
+   "beams": 4.08654801940918,
+   "poh": 0.21127445770245323,
+   "ech": 6.752684482534774e-05
+  },
   "beam_source": "PTDATA BMSPINJ (corpus pinj is a stub on this shot)"
  },
  "phases": {

@@ -7,7 +7,11 @@ detached) and about 4450 ms (back to attached). This script measures, from the
 cached bolometer, beam, EFIT ohmic and ECH records and the same 250 ms ELM-masked
 averaging the labels use:
 
-* P_in = beams + EFIT POH + ECH over the flat top, the denominator of f_div;
+* P_in = beams + EFIT POH + ECH, the denominator of f_div. ONE number is used: the
+  median of the 250 ms-averaged P_in over the 50 ms bins of the attached window
+  (`measured_anchor.p_in_mw`, 4.274 MW on 32 bins). No other P_in total is
+  recorded; the beam, ohmic and ECH components are flat-top medians given only to
+  say what P_in is made of;
 * Prad,div,L medians in windows defined by the published Te-cliff times, never by
   TangTV: attached before the first cliff and after the second, detached between.
 
@@ -107,10 +111,14 @@ def main() -> int:
             "windows_from": "published Te-cliff times, not TangTV",
         },
         "p_in_mw": {
-            "median_flat_top": median_mw(p_in_mw, in_top),
-            "beams_median": median_mw(beam, in_top),
-            "poh_median": median_mw(poh / 1e6, in_top),
-            "ech_median": median_mw(ech, in_top),
+            "anchor_value_used": "measured_anchor.p_in_mw below: the median of the "
+            "250 ms-averaged P_in over the 32 attached-window bins, the one P_in "
+            "number the cutoffs and the documents use",
+            "components_flat_top_median_mw_not_p_in": {
+                "beams": median_mw(beam, in_top),
+                "poh": median_mw(poh / 1e6, in_top),
+                "ech": median_mw(ech, in_top),
+            },
             "beam_source": "PTDATA BMSPINJ (corpus pinj is a stub on this shot)",
         },
         "phases": {},
