@@ -51,8 +51,17 @@ METRICS = (
     ("segf1_0.5", "segmental F1"),
 )
 OURS, BASELINE, TWIN = "tm-ours", "tm-rms-2line", "tm-onsetcnn-retrained"
+#: The two-line baseline at its seed levels: the same score, no tuning.
+SEED = "tm-rms-2line (seed levels)"
+#: The metrics a threshold moves (AUROC and AUPRC are the baseline's, whatever level).
+THRESHOLD_METRICS = (("f1", "F1"), ("segf1_0.5", "segmental F1"))
 #: How a model reads in running text.
-SAY = {OURS: "`tm-ours`", BASELINE: "the two-line baseline", TWIN: "the retrained CNN"}
+SAY = {
+    OURS: "`tm-ours`",
+    BASELINE: "the two-line baseline",
+    SEED: "the seed-level rule",
+    TWIN: "the retrained CNN",
+}
 
 
 def ahead(d, a, b):
@@ -70,12 +79,12 @@ def verdict(d, a, b):
     return f"{SAY[who]} ahead" if who else "not resolved"
 
 
-def difference_clauses(block, a, b):
+def difference_clauses(block, a, b, metrics=METRICS):
     """`AUROC +0.001 [+0.000, +0.002] (`tm-ours` ahead); AUPRC ...` for one block."""
     diff = block["differences"][f"{a}_minus_{b}"]
     return "; ".join(
         f"{label} {signed(diff[key])} ({verdict(diff[key], a, b)})"
-        for key, label in METRICS
+        for key, label in metrics
     )
 
 
@@ -126,6 +135,46 @@ def ranking_across_groups(comparison, a, b):
     return text[0].upper() + text[1:] + "."
 
 
+def seed_level_report(full):
+    """One sentence: the untuned seed-level rule against `tm-ours`, from `full_set`.
+
+    The rule at its seed levels is the same score as the tuned baseline at a fixed
+    threshold, so AUROC and AUPRC are the baseline's; only F1 and segmental F1 move.
+    The sentence says where the seed-level rule has the higher point value and, if
+    `tm-ours`'s segmental-F1 lead over the tuned baseline does not carry over to it,
+    that the lead holds only against the tuned baseline.
+    """
+    ex, un = full["primary"], full["uncertain_negative"]
+    pair, tuned = f"{OURS}_minus_{SEED}", f"{OURS}_minus_{BASELINE}"
+    ours, seed = un["metrics"][OURS], un["metrics"][SEED]
+    behind = {
+        key: label
+        for key, label in THRESHOLD_METRICS
+        if un["differences"][pair][key]["value"] < 0
+    }
+    text = (
+        "The untuned seed-level rule (the same score at its seed levels, no "
+        "training, no tuning) has, with uncertain time scored as negative, F1 "
+        f"{metric(seed['f1'])} and segmental F1 {metric(seed['segf1_0.5'])} against "
+        f"{metric(ours['f1'])} and {metric(ours['segf1_0.5'])} for `tm-ours` (paired "
+        "difference `tm-ours` minus the seed-level rule: "
+        f"{difference_clauses(un, OURS, SEED, THRESHOLD_METRICS)}; with uncertain "
+        f"time excluded, {difference_clauses(ex, OURS, SEED, THRESHOLD_METRICS)})."
+    )
+    if behind:
+        text += (
+            " With uncertain time scored as negative the seed-level rule has the "
+            f"higher {names(behind.values())}"
+        )
+        if "segf1_0.5" in behind and un["differences"][tuned]["segf1_0.5"]["value"] > 0:
+            text += (
+                ", so the segmental-F1 lead of `tm-ours` holds only against the "
+                "tuned baseline"
+            )
+        text += "."
+    return text
+
+
 def paired_report(paired):
     """The baseline and CNN comparisons as running text, from the benchmark record.
 
@@ -141,7 +190,7 @@ def paired_report(paired):
         f"{difference_clauses(ex, OURS, BASELINE)}; with uncertain time scored as "
         f"negative ({un['bins_scored']} bins, {len(un['shots'])} shots), "
         f"{difference_clauses(un, OURS, BASELINE)}. "
-        f"{ranking_across_groups(full, OURS, BASELINE)}"
+        f"{ranking_across_groups(full, OURS, BASELINE)} {seed_level_report(full)}"
     )
     twin = (
         f"On the {len(cex['shots'])} shots ({cex['bins_scored']} bins; "
@@ -658,6 +707,15 @@ def main():
                 "population has the same limitation on shots with no record."
             ),
             "",
+            (
+                "The attribute `locked_known` is true only where a lock was "
+                "confirmed (such an interval is also `locked`). False says that "
+                "none was confirmed: there is no record, no step at a candidate "
+                "time, or the mode is n = 2, which has no independent "
+                "confirmation. It does not say the lock status was checked and "
+                "found absent."
+            ),
+            "",
         ]
     )
     rows = []
@@ -842,6 +900,25 @@ def main():
             ),
             "",
             (
+                "**`tm-ours`.** The detector reads 33 features of each 10 ms bin "
+                "from the six midplane Mirnov probes (a short-time Fourier "
+                "transform of 1,024 samples at 100 kHz, hop 256, up to 30 kHz): "
+                "the array-mean power in eight bands, absolute and above the "
+                "shot's quiet level; the amplitude of the coherent lines whose "
+                "phases fit n = 1, 2 and 3 in four bands; and the frequency, "
+                "prominence and n = 1, 2, 3 phase fit of the strongest line. It "
+                "does not read N1RMS or N2RMS, which the labels are drawn from "
+                "(`tm-ours-rms` adds them). The model is a three-layer dilated "
+                "1-D convolutional network (32 channels, kernel 5, dilations 1, "
+                "2 and 4) with a 1×1 head over the shot's bins. Its context is "
+                "centred and not causal: 14 bins either side, ±140 ms, 29 bins "
+                "(about 0.29 s) in all, so it is an offline detector. Three seeds "
+                "are averaged, bins the label calls uncertain or not observable "
+                "are left out of the loss, and the threshold is chosen on inner "
+                "validation shots."
+            ),
+            "",
+            (
                 "Targets use absolute 10 ms bins; legacy rows use their native 25 ms "
                 "bins. Each row has its own shot set, listed in the appendix table and "
                 "its source JSON. In the primary group categories 2 and 3 and "
@@ -910,12 +987,13 @@ def main():
             ),
             "",
             (
-                "**Reading the table.** The two-line RMS baseline is the rule "
-                "restated as a score, with no training. A model that reaches it "
-                "has recovered the magnetic rule; one that exceeds it uses "
-                f"information the rule does not. {baseline_text} `tm-ours` is "
-                "therefore reported as recovering the magnetic rule, not as a better "
-                "detector."
+                "**Reading the table.** The two-line RMS baseline restates the "
+                "rule's seed levels as a score, without the rule's hysteresis, "
+                "span extension or screens. Matching or exceeding it is consistent "
+                "with learning those parts of the rule (and `tm-ours`'s centred "
+                "context of about 0.29 s), not with information beyond the rule. "
+                f"{baseline_text} `tm-ours` is therefore reported as recovering the "
+                "magnetic rule, not as a better detector."
             ),
             "",
             "### Paired comparison",
@@ -942,9 +1020,9 @@ def main():
         ]
     )
     rows = []
-    for comparison, scope, pair in (
-        ("full_set", "tm-ours, two-line RMS (all shots)", (OURS, BASELINE)),
-        ("cnn_subset", "tm-ours, retrained CNN (CNN shots)", (OURS, TWIN)),
+    for comparison, scope in (
+        ("full_set", "tm-ours, two-line RMS tuned and at seed levels (all shots)"),
+        ("cnn_subset", "tm-ours, retrained CNN (CNN shots)"),
     ):
         for target, mode in (
             ("uncertain excluded", "primary"),
@@ -961,17 +1039,16 @@ def main():
                         *[metric(m[k]) for k, _ in METRICS],
                     )
                 )
-            rows.append(
-                (
-                    f"{target}, {scope}",
-                    f"Difference, {pair[0]} − {pair[1]}",
-                    count,
-                    *[
-                        metric(block["differences"][f"{pair[0]}_minus_{pair[1]}"][k])
-                        for k, _ in METRICS
-                    ],
+            for name, difference in block["differences"].items():
+                a, b = name.split("_minus_")
+                rows.append(
+                    (
+                        f"{target}, {scope}",
+                        f"Difference, {a} − {b}",
+                        count,
+                        *[metric(difference[k]) for k, _ in METRICS],
+                    )
                 )
-            )
     lines.extend(
         table(
             [

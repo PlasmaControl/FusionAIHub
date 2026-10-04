@@ -114,6 +114,8 @@ def rule_audit_bundle():
 
 
 BASELINE_NAMES = {"n1rms": "tm-rms", "tworms": "tm-rms-2line"}
+#: The two-line baseline at its seed levels (no tuning), as the paired block names it.
+SEED_LEVELS = "tm-rms-2line (seed levels)"
 UNCERTAIN_NEGATIVE_POLICY = (
     "category 2 (uncertain) scored as negative, category 3 (not observable) still "
     "excluded; the same fitted models and the same inner-validation thresholds as the "
@@ -593,7 +595,8 @@ def paired_common_shots(cohort):
     Each comparison uses the shots and the available 10 ms bins that BOTH of its models
     score, each model at its own inner-validation thresholds, and one shot bootstrap
     whose draws are shared by the two models, so a difference carries a paired
-    interval. `full_set` pairs tm-ours with the two-line baseline: neither needs
+    interval. `full_set` pairs tm-ours with the two-line baseline, at its tuned
+    threshold and at its seed levels (no tuning, the same scores): neither needs
     anything but the Mirnov features, so it holds every development shot and bin.
     `cnn_subset` pairs tm-ours with the retrained CNN, whose inputs exist on fewer
     shots (the baseline adds no restriction there); it is the only set a CNN
@@ -615,7 +618,7 @@ def paired_common_shots(cohort):
             scores = {s: z[f"s{s}"] for s in shots}
         return scores, {s: level[record["folds"][str(s)]] for s in shots}
 
-    def block_for(models, shots, pair, mask):
+    def block_for(models, shots, pairs, mask):
         """Primary and uncertain-negative blocks of `models` on their common bins."""
         scores = {m: models[m][0] for m in models}
         thresholds = {m: models[m][1] for m in models}
@@ -632,7 +635,7 @@ def paired_common_shots(cohort):
                 by_shot.get(s, table.iloc[:0]), ours[s][0], uncertain_negative=True
             )
             valid_un[s] = label_valid & finite & np.isfinite(ours[s][1]).all(axis=1)
-        pairs = {f"{pair[0]}_minus_{pair[1]}": pair}
+        pairs = {f"{a}_minus_{b}": (a, b) for a, b in pairs}
         return {
             "primary": _paired_block(shots, y, valid, scores, thresholds, pairs),
             "uncertain_negative": _paired_block(
@@ -648,10 +651,11 @@ def paired_common_shots(cohort):
         tm_ours.run_baseline(base, shots, "tworms"),
         {s: tuned[str(s)] for s in shots},
     )
+    seed = (baseline[0], {s: tm_ours.BASELINES["tworms"][1] for s in shots})
     full = block_for(
-        {"tm-ours": ours_models, "tm-rms-2line": baseline},
+        {"tm-ours": ours_models, "tm-rms-2line": baseline, SEED_LEVELS: seed},
         shots,
-        ("tm-ours", "tm-rms-2line"),
+        [("tm-ours", "tm-rms-2line"), ("tm-ours", SEED_LEVELS)],
         lambda s: True,
     )
     shots = sorted(set(ours) & set(cnn))
@@ -664,7 +668,7 @@ def paired_common_shots(cohort):
     subset = block_for(
         {"tm-ours": ours_models, "tm-onsetcnn-retrained": twin},
         shots,
-        ("tm-ours", "tm-onsetcnn-retrained"),
+        [("tm-ours", "tm-onsetcnn-retrained")],
         lambda s: cnn[s]["valid_bins"],
     )
     return {
@@ -673,12 +677,12 @@ def paired_common_shots(cohort):
         "policy": (
             "each comparison scores the shots and available 10 ms bins both of its "
             "models have, each model at its own fold thresholds, on one paired "
-            "1000-draw shot bootstrap; full_set (tm-ours, two-line baseline) holds "
-            "every development shot and is the set for any comparison with the "
-            "baseline; cnn_subset (tm-ours, retrained CNN) is restricted to the shots "
-            "and bins where the CNN has inputs and is used only for comparisons with "
-            "the CNN; the uncertain_negative blocks score uncertain time as negative "
-            "on the same scores and thresholds"
+            "1000-draw shot bootstrap; full_set (tm-ours, the two-line baseline tuned "
+            "and at its seed levels) holds every development shot and is the set for "
+            "any comparison with the baseline; cnn_subset (tm-ours, retrained CNN) "
+            "is restricted to the shots and bins where the CNN has inputs and is "
+            "used only for comparisons with the CNN; the uncertain_negative blocks "
+            "score uncertain time as negative on the same scores and thresholds"
         ),
     }
 
@@ -910,7 +914,8 @@ SETTING_ORDER = (
     "Tokamak-SI, uncertain = negative, fixed",
 )
 SHOTS = {
-    "legacy_cnn": "development shots whose Seo archive rows the row match places",
+    "legacy_cnn": "development shots with exported CNN inputs whose Seo archive rows "
+    "lie on the model's time grid",
     "legacy_dsm": "development shots outside the DSM training list that the "
     "survival labels cover",
     "si_published": "development shots with exported detector inputs",
@@ -1238,8 +1243,8 @@ def main(argv=None):
             "with_frequency": len(mode_shots & frequencies),
             "without_frequency": sorted(int(s) for s in mode_shots - frequencies),
             "intervals_locked_known": int(known.sum()),
-            "intervals_locked_unknown": int((~known).sum()),
-            "shots_with_unknown_locking_intervals": sorted(
+            "intervals_unconfirmed_lock": int((~known).sum()),
+            "shots_with_unconfirmed_lock_intervals": sorted(
                 int(s) for s in intervals.loc[~known, "shot"].unique()
             ),
             "confirmed_locked_intervals": int(
@@ -1252,9 +1257,12 @@ def main(argv=None):
                 "time (a frequency drop at least 50 ms after the seed starts, a "
                 "collapse, an interval end) exceeds the median over 200 to 20 ms "
                 "before it by at least 5. "
-                "A field that is already high and drifting is not a step. Unknown "
-                "locking status is not a negative; time after a collapse stays "
-                "uncertain until a measured release or the discharge end."
+                "A field that is already high and drifting is not a step. "
+                "`locked_known` is true only for a confirmed lock; false says none "
+                "was confirmed (no record, no step, or n = 2, which has no "
+                "confirmation), not that the field was checked and found quiet. "
+                "Time after a collapse stays uncertain until a measured release or "
+                "the discharge end."
             ),
         }
     sizes = {
@@ -1373,8 +1381,9 @@ def main(argv=None):
         "F1 uses inner-validation thresholds. Uncertain time "
         f"({100 * uncertain_share:.1f}\\% of observable catalog-window time) is "
         "excluded in the "
-        "upper block and scored as negative in the lower; boundary placement is "
-        "scored only by the lower. tm-rms-2line is max(n=1/12 G, n=2/6 G), no "
+        "middle block and scored as negative in the bottom block; the top block "
+        "scores the legacy targets. Boundary placement is scored only by the "
+        "bottom block. tm-rms-2line is max(n=1/12 G, n=2/6 G), no "
         f"training. Published models saw thousands of shots, retrained ones "
         f"{train_per_fold} per fold. $\\dagger$: training overlap unknown. Brackets: "
         "95\\% shot-bootstrap intervals. Shot sets: appendix."
@@ -1412,7 +1421,10 @@ def main(argv=None):
         ("uncertain time scored as negative", "uncertain_negative"),
     ):
         for comparison, scope in (
-            ("full_set", "tm-ours and the two-line baseline, all development shots"),
+            (
+                "full_set",
+                "tm-ours and the two-line baseline (tuned, seed levels), all shots",
+            ),
             ("cnn_subset", "tm-ours and the retrained CNN, shots where it has inputs"),
         ):
             setting = f"{target[0].upper()}{target[1:]}: {scope}"
@@ -1444,9 +1456,10 @@ def main(argv=None):
             "(upper two blocks) and scored as negative (lower two). Each comparison "
             "uses the shots and available 10 ms bins both of its models score (shot "
             "and bin counts in the second column). Each model keeps its "
-            "inner-validation threshold. Difference rows are paired shot-bootstrap "
-            "intervals (1,000 draws); a difference whose interval spans zero is not "
-            "resolved. "
+            "inner-validation threshold; the seed-level baseline is the same score "
+            "at its fixed threshold, with no tuning. Brackets are 95\\% "
+            "shot-bootstrap intervals (1,000 draws); in difference rows they are "
+            "paired, and a difference whose interval spans zero is not resolved. "
             "Unavailable bins are hard barriers for segmental IoU 0.5.",
             "tab:tm-paired",
         )

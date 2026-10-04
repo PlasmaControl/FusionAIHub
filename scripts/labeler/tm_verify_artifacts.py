@@ -124,15 +124,28 @@ def main():
                     assert cell["excludes_zero"] == (cell["lo"] > 0 or cell["hi"] < 0)
     # the baseline comparison is on every development shot, and each model's value
     # there is the value of its own row in the main table (same bins, same thresholds)
-    by_key = {(r["model"], r["setting"], r["variant"]): r for r in benchmark["rows"]}
+    by_key = {
+        (r["model"], r["setting"], r["variant"]): r
+        for r in benchmark["appendix_rows"] + benchmark["rows"]
+    }
+    seed_levels = "tm-rms-2line (seed levels)"
     for block, setting in (
         (paired["full_set"]["primary"], "Tokamak-SI"),
         (paired["full_set"]["uncertain_negative"], "Tokamak-SI, uncertain = negative"),
     ):
         assert block["shots"] == dev, setting
-        assert set(block["metrics"]) == {"tm-ours", "tm-rms-2line"}
+        assert set(block["metrics"]) == {"tm-ours", "tm-rms-2line", seed_levels}
+        assert set(block["differences"]) == {
+            "tm-ours_minus_tm-rms-2line",
+            f"tm-ours_minus_{seed_levels}",
+        }
         for model, metrics in block["metrics"].items():
-            row = by_key[(model, setting, "")]["metrics"]
+            row_key = (
+                ("tm-rms-2line", setting, "seed levels")
+                if model == seed_levels
+                else (model, setting, "")
+            )
+            row = by_key[row_key]["metrics"]
             assert row["bins_scored"] == block["bins_scored"], (model, setting)
             for key in ("auroc", "auprc", "f1", "segf1_0.5"):
                 assert abs(metrics[key]["value"] - row[key]["value"]) < 1e-6, (
@@ -150,6 +163,10 @@ def main():
         committed(source["git_sha"], name)
     calibration = read(LOCAL / "sources/calibration_dev_fix4.json")
     committed(calibration["git_sha"], "calibration")
+    # the criterion-support table the document quotes names the commit that made it
+    committed(
+        read(LOCAL / "sources/criterion_support_fix4.json")["git_sha"], "criterion"
+    )
     # the rule's hard-coded harmonic level is the calibration's rounded-up percentile
     assert rule.N2_RULE.harmonic_ratio == calibration["harmonic_ratio"]
     assert (
@@ -241,6 +258,8 @@ def main():
         ]
     ]
     assert sum(flagged) == meta["n_onset_rows_flagged_degenerate"] > 0
+    # every onset window of at most 5 ms is flagged (a window of exactly 5 ms too)
+    assert sum(flagged) == meta["n_onset_windows_at_most_5_ms"]
     # hand-typed numbers of the README against the record they come from
     counts = benchmark["label_counts"]["cohort"]["counts"]
     assert (
