@@ -236,7 +236,9 @@ def main():
     frame = pd.read_csv(labels)
     flagged = [
         bool(parse_attrs(a).get("onset_window_degenerate"))
-        for a in frame[(frame.category == 1) & (frame.t_end == frame.t_start)].attrs
+        for a in frame.loc[
+            (frame.category == 1) & (frame.t_end == frame.t_start), "attrs"
+        ]
     ]
     assert sum(flagged) == meta["n_onset_rows_flagged_degenerate"] > 0
     # hand-typed numbers of the README against the record they come from
@@ -249,16 +251,17 @@ def main():
         ref: benchmark["agreement"][f"{ref}_dev"]["agreement"]["n1"]
         for ref in ("seo", "survival")
     }
+    flat = " ".join(readme.split())
     for ref, label in (("seo", "Seo"), ("survival", "survival")):
         a = agreement[ref]
-        assert f"{label} **{a['matched']}/{a['reference_onsets']}**" in readme, ref
-    assert f"{counts['n_locked']} confirmed locks" in readme
+        assert f"{label} **{a['matched']}/{a['reference_onsets']}**" in flat, ref
+    assert f"{counts['n_locked']} confirmed locks" in flat
     share = benchmark["rule_diagnostics"]["uncertain_fraction"]["after"]["window"]
-    assert f"{100 * share['pooled_fraction']:.1f}% of the observable" in readme
+    assert f"{100 * share['pooled_fraction']:.1f}% of the observable" in flat
     on_file = benchmark["rule_diagnostics"]["lock_records"]
     assert (
         f"on file for {on_file['dev_shots_with_record']} of the {on_file['dev_shots']}"
-    ) in readme
+    ) in flat
     assert "**latest**: none" in readme or "**latest**: tm-ours" not in readme
     assert "no tearing-mode labels" in readme  # the blind split carries none
     text = (REPO / doc["document"]).read_text()
