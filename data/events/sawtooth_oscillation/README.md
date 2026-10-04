@@ -36,7 +36,7 @@ rises in the outer ones; the 1/1 precursor is visible on magnetics at 2-20 kHz.
 
 **all**:
 - ece_sawtooth | 2026_09_12 (rule; omnimode inversion test, envelope-once port)
-- saw_physics | 2026_10_03 (Gude multichannel inversion plus Muscatello central-drop/train criteria; q conflicts abstain)
+- saw_physics | 2026_10_03 (Gude multichannel inversion plus Muscatello central-drop/train criteria; nominal geometry and bias-aware q evidence)
 - saw-hl3 | 2026_10_03 (OuYang HL-3 CNN + bidirectional LSTM external baseline; GPU fit, DIII-D input/timing adaptations)
 - saw-ours | 2026_10_03 (PhaseNet-style multichannel ECE crash picker and train-presence head; GPU fit)
 
@@ -51,12 +51,12 @@ rises in the outer ones; the 1/1 precursor is visible on magnetics at 2-20 kHz.
 - `SXR` (optional)
 
 **saw-hl3**:
-- Per-shot physical-channel-screened core and adjacent outer ECE means
-  (uncalibrated proxies where actual RF channel frequencies are unavailable)
-- Mirnov 0–1 mean, cached Ip in MA (optional; missing values use training means)
+- EFIT-axis core ECE and low-field-side outer ECE at nominal geometric ρ=0.4–0.65
+- Mirnov 0–1 mean and Ip in MA; missing values use fitting-shot means
 
 **saw-ours**:
-- All 48 ECE channels, 100 ms context at 10 kHz
+- The physical first-40-channel ECE array, 100 ms context at 10 kHz; unverified
+  channels 40–47 and third-harmonic overlap samples are masked
 
 ## Method
 `ece_sawtooth` (`labeler.events.heuristics.sawtooth_events`), a port of the
@@ -73,57 +73,66 @@ Crash-by-crash agreement with the omnimode reference is checked by
 and its committed reference record.
 On shot 198658 it finds 45 sawtooth with a median period of 76 ms.
 
-`labeler.sawtooth.physics.detect` combines Gude-style Gaussian edge filtering,
-multichannel coincidence and a contiguous core-loss/outer-gain inversion profile
-with Muscatello's central relative-temperature drop and plausible, stable trains.
-Native-rate filtering precedes decimation. Valid core ECE defines observability;
-missing ECE, low temperature and detected cutoff yield `unassessed`, and trains
-split at observability gaps. Isolated profiles and q/ECE conflicts yield
-`uncertain`. Magnetics-only EFIT01 q-min never rejects a crash or teaches absence.
-Where local neutron-rate and Mirnov data exist, their drop/burst flags provide
-optional corroboration. No SXR corroboration is claimed without verified
-core/edge spatial pairing. Calibrated ECE psi and trusted equilibrium profiles
-support a direction-aware radius test; unavailable mapping produces null radii.
-Absence requires complete candidate-free context and a noise-resolved core
-relaxation test. Stable significant negative core edges protect their entire
-phase without period bounds; ambiguous observable support remains uncertain.
-The untracked exports in `extend_saw_physics/` hold four-state spans and crash
-points. They are additive research labels and do not replace production labels.
+## Physics-rule labels and validation
 
-Both learned models use shot-grouped cross-validation on the fixed training
-cohort, with inner training-split selection shots for checkpoint and threshold
-choice. CUDA training stops on inner-selection loss patience.
-All expert-reviewed shots and the blind test split are excluded from training
-and tuning. `saw-hl3` receives four adapted inputs while `saw-ours` receives the
-full ECE array, so their comparison includes input information as well as
-architecture. Expert tables contain spans, so true expert crash recall/precision
-cannot be measured; results are reported per shot without small-sample CIs.
-The span annotations for three expert shots were drawn while viewing the old
-`ece_sawtooth`
-suggestions, so they are anchored rather than independent validation. The
-190637 span may include edge-originated relaxations. No blind crash-time truth
-is available; every detector/model accuracy claim is unvalidated, and no model
-is recommended as latest or stable.
-See [method, adaptations and reproduction](../../../docs/labeler/sawtooth_physics.md)
-and [JSON-backed result tables](../../../docs/labeler/sawtooth_results.md).
+These are **physics-rule labels validated only by the checks described** in the
+[current-state report](../../../docs/labeler/sawtooth_results.md). The rule uses
+Gude-style POSR, multichannel coincidence, core loss / outer gain, central drop,
+stable trains and nominal EFIT localization. It screens harmonic overlap and
+uses EFIT01 bias-aware q-min conflicts and sustained high-q absence evidence.
+POSR-qualified phase edges require ≥10 ms periods and a shuffled-time null that
+repeats the same group search. Geometry is nominal, with no flux calibration.
+Present/absent/uncertain/unassessed states remain distinct. Production labels
+are not replaced. Old `ece_sawtooth` disagreement and its reader audit are in
+the report; the retained legacy rule and current catalog detector differ.
+Valid core ECE defines observability: missing ECE, low temperature and detected
+cutoff yield `unassessed`, and trains split at observability gaps. Native-rate
+antialiasing precedes decimation to 10 kHz. Where local neutron-rate and Mirnov
+data exist, their drop/burst flags give optional corroboration; no SXR
+corroboration is claimed without verified core/edge spatial pairing. Absence
+requires complete candidate-free context with a noise-resolved core relaxation
+test, or sustained EFIT01 q-min ≥ 1.5; ambiguous observable support remains
+uncertain. The untracked exports in `extend_saw_physics/` hold four-state spans
+and crash points; they are additive research labels.
+
+Complete population label shards are at
+`$LABELER_ROOT/round4/saw/fix3/labels/`. Verify with `sha256sum -c SHA256SUMS`
+from that directory. The `SHA256SUMS` file has sha256
+`3c70d44325cf98a0d4e9cb92efd3f6219e2c3fd13bf4f4bd7c57ee52d24168c3`; individual CSV hashes are in
+`outputs/labeler/sawtooth/fix3/label_manifest.json`. Cohort shards are a separate
+bundle at `$LABELER_ROOT/round4/saw/fix3/cohort_labels/`; `extend_saw_physics/`
+is the untracked integration copy. Git does not carry the large label store.
+
+Both learned models use three whole-shot TRAIN folds with inner-shot selection
+of checkpoint, hyperparameters and thresholds; CUDA training stops on
+inner-selection loss patience. The trivial derivative and always-present
+baselines use the same folds. The three reviewed shots and the blind test split
+are excluded from training and tuning. `saw-hl3` receives adapted inputs
+(EFIT-axis core ECE, low-field-side outer ECE, Mirnov, Ip) while `saw-ours`
+receives the first 40 ECE channels, so comparisons include input information as
+well as architecture. The second held-out set is the 47 nonexpert
+fixed-validation shots. Headline scores are **conditional agreement with the
+physics rule on assessed bins** and include excluded-pick counts and paired
+shot-bootstrap comparisons. HL-3 crash timing is **derivative picker gated by
+HL-3**, an adapted baseline, rather than a learned crash head. Reviewed spans
+were anchored to old suggestions and used in previous rule revisions; they
+are exploratory and provide no independent crash-time precision/recall; the
+190637 span may include edge-originated relaxations.
 
 ## Blind crash-time annotation queue
 
-`review/crash_time_queue.csv` lists 15 held-out nonexpert validation shots
-stratified by recorded heating and predicted period regimes, with predicted crash
-support; no test shot is included. Jalal Butt's cached confinement table covers
-no fixed-validation shots here, so physical H/L regimes remain unknown. For
-blind marking, show the owner only shot
-and time window in a shuffled order, with native-rate core and outer ECE and
-available auxiliary traces; hide the queue's `why` column, all model/detector
-picks, suggestions and state shading. Mark each confidently identified
-core-loss/adjacent-outer-gain crash time, its timing tolerance, and the observable
-span; mark edge-originated or otherwise ambiguous relaxations separately and
-explicitly mark observable crash-free spans. Preserve ambiguous/missing support
-as unknown. Lock the annotations before revealing predictions, then score both
-rules and both frozen models with one-to-one timing matches and 1,000 shot
-bootstrap replicates; do not use these shots to retune this benchmark. The owner
-is away and the queue is pending, so no blind expert results are reported.
+The prediction-free input pack is
+`$LABELER_ROOT/round4/saw/fix3/annotation_pack/`. It contains sensor windows,
+observable masks, nominal geometry and blank annotation targets. Random windows
+are frozen before prediction access. Candidate-free, model-negative, uncertain
+and disagreement cases supplement the primary probability sample. Keep the
+private `selection_audit/` directory and every detector/model prediction hidden.
+Mark crash times, timing tolerances, positive/negative observable spans and
+ambiguity masks; lock annotations before revealing picks. Use preregistered
+sampling weights and whole-shot bootstrap intervals. Approximately 97
+independent positive events give a worst-case 95% recall half-width of 0.1;
+shot clustering reduces the effective count. The owner is away: annotation is
+pending and physical accuracy remains unvalidated. No model is recommended.
 
 ## Alias
 sawtooth, sawtooth, sawtooth oscillation, sawtooth crash, st crash, sawtooth-free
