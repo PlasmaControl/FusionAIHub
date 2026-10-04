@@ -98,7 +98,7 @@ def test_a_few_training_steps_lower_the_loss_on_separable_data():
 
 
 def test_bes_net_shape_and_feature_standardisation_path():
-    net = cnn.BesNet(rows=2)
+    net = cnn.BesNet(rows=2, padding=cnn.PADDED)  # two rows leave none unpadded
     assert net(torch.randn(3, 2, 2, 8, cnn.FREQS)).shape == (3, 4)
     array = (
         (np.arange(5 * 2 * 64 * cnn.FREQS) % 97)
