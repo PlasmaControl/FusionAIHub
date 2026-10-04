@@ -18,6 +18,7 @@ import time
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import asdict
+from functools import lru_cache
 from pathlib import Path
 
 import h5py
@@ -31,20 +32,29 @@ from labeler.events.panels import ece_geometry
 from labeler.events.schema import Event
 from labeler.events.verify import NoDataError
 from labeler.sawtooth.geometry import (
+    axis_field_T,
     load_radius_geometry,
     nominal_frequencies,
     radius_evidence,
     select_core,
+    x2_cutoff_density,
 )
 from labeler.sawtooth.physics import Rule, detect, noise_calibration
-from labeler.sawtooth.preprocessing import mask_spans, sample_native, state_spans
+from labeler.sawtooth.preprocessing import (
+    STATES,
+    mask_spans,
+    sample_native,
+    state_spans,
+)
 
 REPO = Path(__file__).resolve().parents[2]
-WORK = Paths.from_env().root / "round4/saw/fix3"
-OUTPUT = REPO / "outputs/labeler/sawtooth/fix3"
+WORK = Paths.from_env().root / "round4/saw/fix4"
+OUTPUT = REPO / "outputs/labeler/sawtooth/fix4"
 READER_POLICY = (
     "native_FIR_fixed_grid_harmonic_mask_axis_core_bias_aware_q_POSR_phase_null_q_veto"
+    "_local_field_cutoff_ece_validity_tested_absence_q_prior_state"
 )
+PRIOR_INPUTS = "prior_inputs/fix2_inputs.json"
 ECE_GEOMETRY_ARCHIVE = Path(
     os.environ.get("LABELER_ECE_GEOMETRY_ROOT", str(REPO.parent / "omnimode/data"))
 )
@@ -127,16 +137,24 @@ def mean_finite(values):
     )
 
 
-def density_support(file, t, shot, paths, rule):
-    """Conservative second-harmonic X-mode cutoff proxy, never a radius claim."""
+def density_support(file, t, shot, paths, rule, *, radius=None, frequency_hz=None):
+    """Second-harmonic X-mode cutoff proxy from the Thomson density, no radius claim.
+
+    The cutoff density uses the local field at the resonance, B0*R0/R at the
+    EFIT axis (``axis_field_T``), not Bt at R0. Where the axis field is
+    unmapped the reference field is used. Returns the observability mask, the
+    mask the superseded reference-field guard would have given (accounting
+    only, to measure what the change removes) and a record.
+    """
     support = np.ones(len(t), dtype=bool)
+    reference_support = support.copy()
     info = {"status": "density_unavailable", "cutoff_proxy": True}
     if "ts_core_density" not in file:
-        return support, info
+        return support, reference_support, info
     g = file["ts_core_density"]
     tx, y = np.asarray(g["xdata"]), np.asarray(g["ydata"])
     if len(tx) < 2:
-        return support, info
+        return support, reference_support, info
     y[y <= 0] = np.nan
     good = np.isfinite(y).any(axis=0)
     ne = np.full(len(tx), np.nan)
@@ -153,12 +171,25 @@ def density_support(file, t, shot, paths, rule):
             bt = a.x, a.y[0]
     if bt is not None:
         b = ece_geometry.align_q(t, bt[0], np.atleast_2d(bt[1]))[0]
-        cutoff = 0.9 * 2 * (27.992e9 * np.abs(b) / 8.98) ** 2
-        info["status"] = "Thomson_90percentile_and_local_bt"
+        reference = x2_cutoff_density(b)
+        axis_field = axis_field_T(radius, frequency_hz)
+        if axis_field is not None:
+            cutoff = np.where(
+                np.isfinite(axis_field), x2_cutoff_density(axis_field), reference
+            )
+            info["status"] = "Thomson_90percentile_and_local_axis_field"
+            info["axis_field_samples"] = int(np.isfinite(axis_field).sum())
+        else:
+            cutoff = reference
+            info["status"] = "Thomson_90percentile_and_reference_bt_axis_unmapped"
+        old = np.isfinite(density) & (density >= reference)
+        reference_support[old] = False
+        info["high_density_samples_reference_field"] = int(old.sum())
     else:
         # A train-frozen conservative high-density guard when Bt is unavailable.
         cutoff = np.full(len(t), 8e19)
         info["status"] = "Thomson_90percentile_fixed_density_guard_bt_missing"
+        reference_support = None
     high = np.isfinite(density) & (density >= cutoff)
     support[high] = False
     info.update(
@@ -166,8 +197,11 @@ def density_support(file, t, shot, paths, rule):
         density_samples=int(np.isfinite(density).sum()),
         fixed_density_guard_m3=8e19,
         margin=0.9,
+        cutoff_field="local field at the EFIT axis resonance (F/R_axis)",
     )
-    return support, info
+    if reference_support is None:
+        reference_support = support.copy()
+    return support, reference_support, info
 
 
 def interpolate(t, tx, y):
@@ -226,29 +260,43 @@ def enrich_radius_evidence(detected, radius, flux):
         )
 
 
-def preserve_unverified_candidates(detected, t, prior_path, rule, shot):
-    """Retain old terminal-dependent candidates as uncertainty, never truth."""
-    if not prior_path.exists():
-        return 0
-    previous = json.loads(prior_path.read_text())
+@lru_cache(maxsize=4)
+def _prior_inputs(path):
+    """The hashed snapshot of the fix2 values the rule reads (see ``snapshot``)."""
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(
+            f"missing prior-input snapshot {path}; run sawtooth_physics.py snapshot"
+        )
+    data = json.loads(path.read_text())
+    return {
+        "times": {int(k): v for k, v in data["terminal_candidate_times_s"].items()},
+        "failed": set(data["failed_shots"]),
+    }
+
+
+def prior_inputs(work):
+    """Snapshot beside the labels of ``work``, else of the default label store."""
+    own = Path(work) / "labels" / PRIOR_INPUTS
+    return _prior_inputs(str(own if own.exists() else WORK / "labels" / PRIOR_INPUTS))
+
+
+def preserve_unverified_candidates(detected, t, prior_times, rule, shot):
+    """Retain old terminal-dependent candidates as uncertainty, never truth.
+
+    ``prior_times`` are the candidate times of the superseded rule that depended
+    on terminal channels, from the hashed snapshot rather than a live directory.
+    """
     qualified = np.asarray([event.t0_s for event in detected.crashes])
     count = 0
-    for point in previous.get("crashes", []):
-        attrs = point["attrs"]
-        terminal = (
-            any(attrs.get(key, 0) > 40 for key in ("drop_stop", "rise_stop"))
-            or attrs.get("inversion_channel", 0) > 39
-        )
-        if not terminal:
-            continue
-        time = point["time_s"]
+    for candidate in prior_times:
         if (
             len(qualified)
-            and np.min(abs(qualified - time)) <= rule.coincidence_ms / 1000
+            and np.min(abs(qualified - candidate)) <= rule.coincidence_ms / 1000
         ):
             continue  # New spatially screened evidence independently passes.
         half = rule.frame_ms / 2000
-        a, b = np.searchsorted(t, [time - half, time + half])
+        a, b = np.searchsorted(t, [candidate - half, candidate + half])
         mask = np.zeros(len(t), dtype=bool)
         mask[a:b] = detected.observable[a:b]
         for lo, hi in mask_spans(t, mask):
@@ -268,16 +316,19 @@ def preserve_unverified_candidates(detected, t, prior_path, rule, shot):
                         "state": "uncertain",
                         "crowd": True,
                         "uncertainty_reasons": ["prior_unverified_spatial_adjacency"],
-                        "candidate_time_s": time,
-                        "prior_record": str(prior_path),
+                        "candidate_time_s": candidate,
+                        "prior_record": PRIOR_INPUTS,
                     },
                 )
             )
         detected.absent_mask[mask] = False
+        if detected.q_prior_mask is not None:
+            detected.q_prior_mask[mask] = False
         count += 1
-    detected.absence_diagnostics["reason_samples"]["tested_absence"] = int(
-        detected.absent_mask.sum()
-    )
+    reasons = detected.absence_diagnostics["reason_samples"]
+    reasons["tested_absence"] = int(detected.absent_mask.sum())
+    if detected.q_prior_mask is not None:
+        reasons["q_prior_only"] = int(detected.q_prior_mask.sum())
     return count
 
 
@@ -285,8 +336,7 @@ def process_shot(job):
     shot, work, keep_signal, window, *options = job
     work, paths = Path(work), Paths.from_env()
     rule = frozen_rule(work)
-    prior = paths.root / "round4/saw/fix2/shots" / f"{shot}.json"
-    prior_failed = prior.exists() and bool(json.loads(prior.read_text()).get("error"))
+    prior_failed = shot in prior_inputs(work)["failed"]
     if ("wait_geometry" in options or "wait_height" in options) and not prior_failed:
         # Fetch workers and label workers share an ordered shot queue. A node
         # inventory is written only after the per-shot HDF5 writer closes.
@@ -470,8 +520,14 @@ def process_shot(job):
                 except ValueError as error:
                     result["nbi_error"] = str(error)
             result["nbi_available"] = nbi is not None
-            observable, result["density_guard"] = density_support(
-                file, t, shot, paths, rule
+            observable, observable_reference, result["density_guard"] = density_support(
+                file,
+                t,
+                shot,
+                paths,
+                rule,
+                radius=radius,
+                frequency_hz=result["radius_geometry"].get("frequency_hz"),
             )
         ip = local_scalar(shot, "ip", paths)
         if nbi is None:
@@ -524,6 +580,7 @@ def process_shot(job):
             core_channels=core.core_channels,
             ip=ip,
             observability=observable,
+            observability_reference=observable_reference,
             neutron=neutron,
             mirnov=mirnov,
             nbi=nbi,
@@ -542,7 +599,7 @@ def process_shot(job):
             preserve_unverified_candidates(
                 detected,
                 t,
-                paths.root / "round4/saw/fix2/shots" / f"{shot}.json",
+                prior_inputs(work)["times"].get(int(shot), []),
                 rule,
                 shot,
             )
@@ -571,16 +628,18 @@ def process_shot(job):
             [(r["start_s"], r["end_s"]) for r in result["intervals"]],
             [(r["start_s"], r["end_s"]) for r in result["uncertain_intervals"]],
             absent=detected.absent_mask,
+            q_prior=detected.q_prior_mask,
         )
         result.update(
             states=states,
             observable_spans=mask_spans(t, detected.observable),
             assessed_spans=mask_spans(t, assessed),
             absent_evidence_spans=mask_spans(t, detected.absent_mask),
+            q_prior_spans=mask_spans(t, detected.q_prior_mask & ~detected.absent_mask),
         )
         result["state_seconds"] = {
             state: sum(r["end_s"] - r["start_s"] for r in states if r["state"] == state)
-            for state in ("present", "absent", "uncertain", "unassessed")
+            for state in STATES
         }
         if keep_signal:
             signal.parent.mkdir(parents=True, exist_ok=True)
@@ -592,6 +651,7 @@ def process_shot(job):
                 observable=detected.observable,
                 assessed=assessed,
                 absent_evidence=detected.absent_mask,
+                q_prior=detected.q_prior_mask & ~detected.absent_mask,
                 core_channels=core.core_channels,
                 outer_channels=core.outer_channels,
                 central_channel=core.info["central_channel"],
@@ -621,11 +681,11 @@ def process_shot(job):
                     "reason": result["error_kind"],
                 }],
                 state_seconds={
-                    "present": 0, "absent": 0, "uncertain": 0,
+                    **dict.fromkeys(STATES, 0),
                     "unassessed": end - start,
                 },
                 observable_spans=[], assessed_spans=[],
-                absent_evidence_spans=[],
+                absent_evidence_spans=[], q_prior_spans=[],
             )
     result["elapsed_s"] = round(time.monotonic() - started, 3)
     save_json(record, result)
@@ -645,6 +705,8 @@ def export_rows(record):
                 if index >= 0 and point["time_s"] < states[index]["end_s"]
                 else "unassessed"
             )
+            if state == "absent_q_prior":
+                state = "uncertain"
             if state in ("uncertain", "unassessed") and attrs["state"] != state:
                 attrs["candidate_state"] = attrs["state"]
                 attrs["state"] = state
@@ -663,6 +725,16 @@ def export_rows(record):
         )
     if states:
         for span in states:
+            if span["state"] == "absent_q_prior":
+                # Prior-only quiet time is exported as uncertain, never absent.
+                yield (
+                    span["start_s"],
+                    span["end_s"],
+                    True,
+                    1.0,
+                    {"state": "uncertain", "reason": "q_prior_only"},
+                )
+                continue
             if span["state"] != "present":
                 yield (
                     span["start_s"],
@@ -906,11 +978,33 @@ def labels(args):
     }
     summary["state_seconds"] = {
         state: sum(r.get("state_seconds", {}).get(state, 0) for r in records)
-        for state in ("present", "absent", "uncertain", "unassessed")
+        for state in STATES
     }
     summary["uncertain_intervals"] = sum(
         len(r.get("uncertain_intervals", [])) for r in records
     )
+    diagnostics = [r["absence_diagnostics"] for r in records if "error" not in r]
+    summary["sample_period_s"] = 1 / FS
+    summary["absent_composition_samples"] = {
+        key: sum(d["reason_samples"].get(key, 0) for d in diagnostics)
+        for key in (
+            "tested_absence",
+            "tested_absence_with_high_q",
+            "tested_absence_without_high_q",
+            "q_prior_only",
+            "sustained_high_q",
+        )
+    }
+    summary["guard_accounting_samples"] = {
+        key: sum(d.get("guard_accounting", {}).get(key, 0) for d in diagnostics)
+        for key in (
+            "core_observable_samples",
+            "removed_by_reference_density_guard",
+            "removed_by_density_guard",
+            "removed_by_ece_validity",
+            "observable_samples_after_guards",
+        )
+    }
     summary["neutron_shots"] = sum(r.get("neutron_available", False) for r in records)
     summary["mirnov_shots"] = sum(r.get("mirnov_available", False) for r in records)
     summary["nbi_shots"] = sum(r.get("nbi_available", False) for r in records)
@@ -1214,6 +1308,72 @@ def geometry_audit(args):
     )
 
 
+def snapshot(args):
+    """Freeze the fix2 values the rule reads into the hashed labels directory.
+
+    The rule keeps superseded terminal-dependent candidates as uncertainty, and
+    the q audit uses the superseded TRAIN conflicts. Both are read here, once,
+    from the fix2 shot records; labels and audits read only this file.
+    """
+    source = Paths.from_env().root / "round4/saw/fix2/shots"
+    cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
+    train = set(map(int, cohort.loc[cohort.split == "train", "shot"]))
+    times, failed, conflicts, listed = {}, [], {}, 0
+    for path in sorted(source.glob("*.json")):
+        old, shot = json.loads(path.read_text()), int(path.stem)
+        listed += 1
+        if old.get("error"):
+            failed.append(shot)
+            continue
+        terminal = [
+            point["time_s"]
+            for point in old.get("crashes", [])
+            if any(point["attrs"].get(key, 0) > 40 for key in ("drop_stop", "rise_stop"))
+            or point["attrs"].get("inversion_channel", 0) > 39
+        ]
+        if terminal:
+            times[str(shot)] = [round(float(x), 6) for x in terminal]
+        if shot in train:
+            q = [
+                point["attrs"]["qmin"]
+                for point in old.get("crashes", [])
+                if point["attrs"].get("uncertainty_reasons") == ["qmin_conflict"]
+                and point["attrs"].get("qmin") is not None
+            ]
+            if q:
+                conflicts[str(shot)] = [round(float(x), 4) for x in q]
+    record = {
+        "purpose": (
+            "inputs the label rule and the q audit read from the superseded rule "
+            "outputs, frozen here so regenerating or deleting them cannot change "
+            "the labels"
+        ),
+        "source": str(source),
+        "source_records": listed,
+        "terminal_candidate_definition": (
+            "superseded candidate with drop_stop or rise_stop above 40, or "
+            "inversion_channel above 39 (terminal ECE channels)"
+        ),
+        "terminal_candidate_times_s": times,
+        "terminal_candidate_count": sum(map(len, times.values())),
+        "failed_shots": failed,
+        "train_qmin_conflict_candidates": conflicts,
+        "train_qmin_conflict_selection": "sole prior uncertainty reason qmin_conflict",
+    }
+    for destination in (args.work / "labels" / PRIOR_INPUTS, OUTPUT / PRIOR_INPUTS):
+        save_json(destination, record)
+    print(
+        json.dumps(
+            {
+                k: v
+                for k, v in record.items()
+                if not isinstance(v, (dict, list))
+            }
+        ),
+        flush=True,
+    )
+
+
 def validate(args):
     import subprocess
     import sys
@@ -1248,7 +1408,7 @@ def gallery(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "stage", choices=["labels", "validate", "gallery", "geometry-audit"]
+        "stage", choices=["labels", "snapshot", "validate", "gallery", "geometry-audit"]
     )
     parser.add_argument("--work", type=Path, default=WORK)
     parser.add_argument("--workers", type=int, default=8)
@@ -1270,6 +1430,8 @@ def main():
         parser.error("shard must lie in 0..shards-1; sharding is population-only")
     if args.stage == "labels":
         labels(args)
+    elif args.stage == "snapshot":
+        snapshot(args)
     elif args.stage == "validate":
         validate(args)
     elif args.stage == "geometry-audit":
