@@ -358,10 +358,10 @@ def failure_blocks(
     """The (shot, class) blocks a classifier gets almost entirely wrong.
 
     A block is the windows of one true class on one shot; it is listed when it has at
-    least ``min_windows`` windows (150 windows are 0.15 s of labelled time at 1 MHz, a
-    stride of 1.02 ms) and fewer than ``below`` of them are called right. Columns: shot,
-    label, windows, correct, share_correct, called (the class most of the windows were
-    called, by index) and called_share.
+    least ``min_windows`` windows (consecutive windows start 2,048 samples apart, 2.05
+    ms at 1 MHz, so 150 windows span about 0.31 s) and fewer than ``below`` of them are
+    called right. Columns: shot, label, windows, correct, share_correct, called (the
+    class most of the windows were called, by index) and called_share.
     """
     guess, truth, shots = map(np.asarray, (guess, truth, shots))
     if mask is not None:

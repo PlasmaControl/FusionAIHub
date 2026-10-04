@@ -1027,6 +1027,33 @@ def markdown_populations(args: argparse.Namespace) -> None:
         for y in years:
             cells = [_cell(by_year[n].get(y)) for n in names]
             print(f"| {y} | " + " | ".join(cells) + " |")
+        table3 = by_year.get("full_cum_abcdrgef")
+        if table3:
+            print()
+            print(
+                "| Year of the shot | `full_cum_abcdrgef`: shots | windows | "
+                + " | ".join(bp.CLASSES)
+                + " |"
+            )
+            print("|---|---|---|" + "---|" * len(bp.CLASSES))
+            for y, e in table3.items():
+                cells = [
+                    "-"
+                    if e["f1"][c] is None
+                    else f"{e['f1'][c]:.2f} ({e['shots_per_class'][c]})"
+                    for c in bp.CLASSES
+                ]
+                print(
+                    f"| {y} | {e['shots']} | {e['windows']:,} | "
+                    + " | ".join(cells)
+                    + " |"
+                )
+            print()
+            print(
+                "F1 per class (shots holding the class). The macro F1 is the mean of "
+                "the F1 of the classes the year holds, so a class carried by one shot "
+                "counts for a half (two classes) to a quarter (four) of it."
+            )
     audit_path = args.out_dir / "validation_audit.json"
     if audit_path.exists():
         audit = json.loads(audit_path.read_text())
@@ -1053,6 +1080,58 @@ LAYOUT_ROWS_DISPLACED = 8
 #: A kept shot whose block has at most this many rows covering the pedestal: the block
 #: lies in the scrape-off layer.
 SOL_ROWS_COVERING_MAX = 1
+#: A failure block "matches the shot's placement" when, over its own windows, the
+#: block's outermost channel has psi_N within this of the shot median's and the number
+#: of block channels in the pedestal band is within ``PLACEMENT_CHANNELS_TOL`` of it.
+#: Fixed before the comparison was made; a reading convention, not a test.
+PLACEMENT_PSIN_TOL = 0.05
+PLACEMENT_CHANNELS_TOL = 3
+#: Centre of a 1,024-sample window at 1 MHz from its start (ms).
+WINDOW_CENTRE_MS = 0.512
+
+
+def block_placement(shot: int, at_ms: np.ndarray, blocks: pd.DataFrame) -> dict:
+    """Where the shot's 6 x 8 block looked over the times ``at_ms`` (a failure block's
+    windows): the outermost channel's median psi_N and the block's channels in the
+    pedestal band, beside the same two numbers over all of the shot's labelled
+    windows (``geometry_blocks.csv``)."""
+    from labeler.confinement import bes_geometry as geo
+
+    with np.load(GEOMETRY / f"{shot}.npz") as d:
+        times, psin = d["gtime_ms"], d["psin"]
+    grid = geo.shot_median_psin(times, psin, at_ms).reshape(geo.ROWS, geo.COLUMNS)
+    shot_row = blocks.loc[shot]
+    start = int(shot_row.start)
+    block = grid[start : start + geo.BLOCK_ROWS]
+    lo, hi = geo.PEDESTAL_BAND
+    outer = float(np.nanmax(block))
+    n_band = int(((block >= lo) & (block <= hi)).sum())
+    return {
+        "outer_psin_block": outer,
+        "channels_in_band_block": n_band,
+        "outer_psin_shot": float(shot_row.outer_psin),
+        "channels_in_band_shot": int(shot_row.channels_in_band),
+        "outer_psin_matches_shot": bool(
+            abs(outer - shot_row.outer_psin) <= PLACEMENT_PSIN_TOL
+        ),
+        "placement_matches_shot": bool(
+            abs(outer - shot_row.outer_psin) <= PLACEMENT_PSIN_TOL
+            and abs(n_band - shot_row.channels_in_band) <= PLACEMENT_CHANNELS_TOL
+        ),
+    }
+
+
+#: The classes of the three-class reading (WPQH, the thinnest, left out of the mean).
+THREE_CLASSES = ("L", "H", "QH")
+
+
+def _lhqh(summary: dict) -> float | None:
+    """The mean F1 of L, H and QH in the four-class scoring: WPQH windows still count
+    as errors of the other classes, but its own F1 (often one or two shots) is not
+    averaged in."""
+    f1 = [summary["classes"][c]["f1"] for c in THREE_CLASSES]
+    f1 = [v for v in f1 if v is not None]
+    return float(np.mean(f1)) if f1 else None
 
 
 def _compact(summary: dict) -> dict:
@@ -1061,6 +1140,7 @@ def _compact(summary: dict) -> dict:
         "windows": summary["windows"],
         "shots": summary["shots"],
         "macro_f1": summary["macro_f1"],
+        "macro_f1_lhqh": _lhqh(summary),
         "ci95_macro_f1": summary["ci95"]["macro_f1"],
         "f1": {c: v["f1"] for c, v in summary["classes"].items()},
         "shots_per_class": {c: v["shots"] for c, v in summary["classes"].items()},
@@ -1245,9 +1325,17 @@ def failures(args: argparse.Namespace) -> None:
     flagged = json.loads((args.out_dir / f"confident_{FAILURE_ROW}.json").read_text())[
         "flagged"
     ]["all_flagged"]
-    spans, marks = [], []
+    spans, marks, place = [], [], []
+    geometry_blocks = load_blocks()
     for b in blocks.itertuples():
         m = (shots == b.shot) & (truth == b.label)
+        place.append(
+            block_placement(
+                int(b.shot),
+                sc.start_ms.to_numpy()[m] + WINDOW_CENTRE_MS,
+                geometry_blocks,
+            )
+        )
         ivs = intervals[
             (intervals.shot == b.shot) & intervals.interval.isin(sc.interval[m])
         ]
@@ -1267,6 +1355,7 @@ def failures(args: argparse.Namespace) -> None:
         ],
         intervals_ms=spans,
         confident_learning_ms=marks,
+        **pd.DataFrame(place).to_dict(orient="list"),
     )
     n_scored = len(shots)
     record = {
@@ -1289,6 +1378,39 @@ def failures(args: argparse.Namespace) -> None:
         "blocks_overlapping_confident_learning": int(
             (blocks.confident_learning_ms != "").sum()
         ),
+        "placement": {
+            "rule": (
+                f"outermost block channel's median psi_N within {PLACEMENT_PSIN_TOL} "
+                f"and block channels in the pedestal band within "
+                f"{PLACEMENT_CHANNELS_TOL} of the shot's (all its labelled windows); "
+                "psi_N over the block's own windows"
+            ),
+            "blocks_matching_shot": int(blocks.placement_matches_shot.sum()),
+            "blocks_matching_outer_psin": int(blocks.outer_psin_matches_shot.sum()),
+            "blocks": len(blocks),
+            "exceptions": blocks[~blocks.placement_matches_shot][
+                [
+                    "shot",
+                    "class_name",
+                    "outer_psin_block",
+                    "outer_psin_shot",
+                    "channels_in_band_block",
+                    "channels_in_band_shot",
+                ]
+            ].to_dict(orient="records"),
+            "largest_deviation_of_matching_blocks": {
+                "outer_psin": float(
+                    (blocks.outer_psin_block - blocks.outer_psin_shot)
+                    .abs()[blocks.outer_psin_matches_shot]
+                    .max()
+                ),
+                "channels_in_band": int(
+                    (blocks.channels_in_band_block - blocks.channels_in_band_shot)
+                    .abs()[blocks.placement_matches_shot]
+                    .max()
+                ),
+            },
+        },
         "diagnostic_without_these_blocks": _compact(
             bp.summarise(guess, truth, shots, ~in_block, replicates=REPLICATES)
         ),
@@ -1298,6 +1420,14 @@ def failures(args: argparse.Namespace) -> None:
     (args.out_dir / "failure_blocks.json").write_text(json.dumps(record, indent=1))
     blocks.drop(columns=["label", "called"]).round(4).to_csv(
         args.out_dir / "failure_blocks.csv", index=False
+    )
+    print(
+        f"placement: {record['placement']['blocks_matching_outer_psin']} of "
+        f"{record['blocks']} blocks match the shot's outermost psi_N, "
+        f"{record['placement']['blocks_matching_shot']} also its channel count; "
+        f"exceptions "
+        f"{record['placement']['exceptions']}; largest deviation among the matching "
+        f"{record['placement']['largest_deviation_of_matching_blocks']}"
     )
     print(
         f"{FAILURE_ROW}: {record['blocks']} blocks on {record['shots']} shots "
@@ -1354,6 +1484,29 @@ def markdown_protocol(args: argparse.Namespace) -> None:
             f"{_cell_c(r['without_geometry_exceptions'])} |"
         )
     print()
+    print(
+        "| Row | Intervals | L | H | QH | WP | Mean of L, H, QH |\n"
+        "|---|---|---|---|---|---|---|"
+    )
+    for name, r in sub["rows"].items():
+        for key, label in (
+            ("all_scored", "all scored"),
+            ("kevin_bes_intervals", "Gill's BES-time files"),
+            ("other_intervals", "other intervals"),
+        ):
+            e = r[key]
+            cells = []
+            for c in bp.CLASSES:
+                f1 = e["f1"][c]
+                cells.append(
+                    "-" if f1 is None else f"{f1:.2f} ({e['shots_per_class'][c]})"
+                )
+            lhqh = e.get("macro_f1_lhqh")
+            print(
+                f"| `{name}` | {label} | " + " | ".join(cells) + " | "
+                f"{'-' if lhqh is None else f'{lhqh:.3f}'} |"
+            )
+    print()
     fail = json.loads((args.out_dir / "failure_blocks.json").read_text())
     print(
         "| Shot | Year | Corpus | Class | Windows | Called right | Mostly called "
@@ -1367,6 +1520,23 @@ def markdown_protocol(args: argparse.Namespace) -> None:
             f"| {b['called_name']} ({100 * b['called_share']:.0f} %) | "
             f"{b['intervals_ms']} | {b['confident_learning_ms'] or '-'} |"
         )
+    pl = fail["placement"]
+    dev = pl["largest_deviation_of_matching_blocks"]
+    print()
+    print(
+        f"BES placement over the blocks' own windows against the shot median: "
+        f"{pl['blocks_matching_outer_psin']} of {pl['blocks']} blocks have the "
+        f"outermost channel's psi_N within {PLACEMENT_PSIN_TOL} of it (largest "
+        f"deviation {dev['outer_psin']:.3f}); {pl['blocks_matching_shot']} also have "
+        f"the channels in the pedestal band within {PLACEMENT_CHANNELS_TOL}. "
+        f"Exceptions: "
+        + "; ".join(
+            f"{e['shot']} ({e['class_name']}): outer psi_N {e['outer_psin_block']:.2f} "
+            f"against {e['outer_psin_shot']:.2f}, {e['channels_in_band_block']} "
+            f"channels in the band against {e['channels_in_band_shot']}"
+            for e in pl["exceptions"]
+        )
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

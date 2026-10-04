@@ -132,3 +132,85 @@ def test_review_stages_name_rows_of_the_table():
     assert set(abl.SUBSET_ROWS) <= set(abl.ROWS)
     # the failing blocks are read from a row each shot is tested in once
     assert abl.ROWS[abl.FAILURE_ROW].protocol == "cv5"
+
+
+def test_compact_adds_the_mean_of_l_h_qh_without_wpqh():
+    summary = {
+        "windows": 10,
+        "shots": 3,
+        "macro_f1": 0.5,
+        "ci95": {"macro_f1": [0.4, 0.6]},
+        "classes": {
+            "L": {"f1": 0.9, "shots": 1},
+            "H": {"f1": 0.6, "shots": 1},
+            "QH": {"f1": None, "shots": 0},
+            "WP": {"f1": 0.0, "shots": 1},
+        },
+    }
+    got = abl._compact(summary)
+    assert abs(got["macro_f1_lhqh"] - 0.75) < 1e-12  # QH has no windows: skipped
+    assert got["f1"]["WP"] == 0.0 and got["macro_f1"] == 0.5
+
+
+def test_the_table_3_row_by_year_prints_f1_and_shots_per_class(tmp_path, capsys):
+    import argparse
+    import json
+
+    classes = {
+        c: {
+            "intervals": 3,
+            "median_ms": 20.0,
+            "q25_ms": 10.0,
+            "q75_ms": 40.0,
+            "share_under_100_ms": 0.8,
+        }
+        for c in ("L", "H", "QH", "WP")
+    }
+    year = {
+        "shots": 21,
+        "windows": 2000,
+        "macro_f1": 0.48,
+        "ci95_macro_f1": [0.4, 0.9],
+        "f1": {"L": 0.0, "H": None, "QH": 0.96, "WP": None},
+        "shots_per_class": {"L": 1, "H": 0, "QH": 20, "WP": 0},
+    }
+    record = {
+        "rows": {},
+        "paired_steps": [],
+        "fragmentation": {
+            "corpus": {"classes": classes},
+            "other": {"classes": classes},
+        },
+        "class_mix": {},
+        "by_year": {"full_cum_abcdrgef": {"2014": year}},
+    }
+    (tmp_path / "populations.json").write_text(json.dumps(record))
+    abl.markdown_populations(argparse.Namespace(out_dir=tmp_path))
+    out = capsys.readouterr().out
+    assert "| 2014 | 21 | 2,000 | 0.00 (1) | - | 0.96 (20) | - |" in out
+    assert "a class carried by one shot counts for a half" in out
+
+
+def test_block_placement_compares_the_failure_windows_with_the_shot_median(
+    tmp_path, monkeypatch
+):
+    import pandas as pd
+
+    monkeypatch.setattr(abl, "GEOMETRY", tmp_path)
+    times = np.array([0.0, 1000.0])
+    psin = np.full((2, 64), 0.9, dtype=np.float32)
+    psin[:, 0:8] = 1.1  # row 0 lies outside the separatrix
+    psin[1, 8:16] = 1.3  # row 1 drifts outward in the second EFIT slice
+    np.savez(tmp_path / "7.npz", gtime_ms=times, psin=psin)
+    blocks = pd.DataFrame(
+        {"start": [0.0], "outer_psin": [1.1], "channels_in_band": [40]},
+        index=pd.Index([7], name="shot"),
+    )
+    early = abl.block_placement(7, np.array([0.0]), blocks)
+    assert abs(early["outer_psin_block"] - 1.1) < 1e-6
+    assert early["channels_in_band_block"] == 40
+    assert early["placement_matches_shot"] and early["outer_psin_matches_shot"]
+    late = abl.block_placement(7, np.array([1000.0]), blocks)
+    assert abs(late["outer_psin_block"] - 1.3) < 1e-6
+    assert late["channels_in_band_block"] == 32
+    assert not late["outer_psin_matches_shot"] and not late["placement_matches_shot"]

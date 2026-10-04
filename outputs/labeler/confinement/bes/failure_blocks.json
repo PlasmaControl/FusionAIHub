@@ -1,6 +1,6 @@
 {
- "git": "768a3cbd",
- "created": "2026-10-04T04:59:47+00:00",
+ "git": "ad83cb6e",
+ "created": "2026-10-04T13:21:13+00:00",
  "replicates": 1000,
  "row": "full_cum_abcdrge",
  "rule": "blocks of one class on one shot with at least 150 scored windows of which fewer than 10 % are called right",
@@ -9,6 +9,7 @@
   "windows": 230282,
   "shots": 316,
   "macro_f1": 0.7364733249751522,
+  "macro_f1_lhqh": 0.8510473245011951,
   "ci95_macro_f1": [
    0.6599731727040132,
    0.7966773790008367
@@ -38,10 +39,39 @@
   "WP": 5
  },
  "blocks_overlapping_confident_learning": 18,
+ "placement": {
+  "rule": "outermost block channel's median psi_N within 0.05 and block channels in the pedestal band within 3 of the shot's (all its labelled windows); psi_N over the block's own windows",
+  "blocks_matching_shot": 21,
+  "blocks_matching_outer_psin": 22,
+  "blocks": 23,
+  "exceptions": [
+   {
+    "shot": 174653,
+    "class_name": "WP",
+    "outer_psin_block": 1.186262542039155,
+    "outer_psin_shot": 1.0244214862793684,
+    "channels_in_band_block": 16,
+    "channels_in_band_shot": 29
+   },
+   {
+    "shot": 159372,
+    "class_name": "L",
+    "outer_psin_block": 1.0365355777978897,
+    "outer_psin_shot": 1.0232570860862733,
+    "channels_in_band_block": 29,
+    "channels_in_band_shot": 25
+   }
+  ],
+  "largest_deviation_of_matching_blocks": {
+   "outer_psin": 0.013278491711616436,
+   "channels_in_band": 3
+  }
+ },
  "diagnostic_without_these_blocks": {
   "windows": 215111,
   "shots": 302,
   "macro_f1": 0.8599698499284687,
+  "macro_f1_lhqh": 0.9121987532494781,
   "ci95_macro_f1": [
    0.7864424464952764,
    0.8954903741906051
@@ -71,7 +101,13 @@
    "corpus_shot": false,
    "year": 2019,
    "intervals_ms": "800-5000",
-   "confident_learning_ms": "800-5000"
+   "confident_learning_ms": "800-5000",
+   "outer_psin_block": 1.0204384273529052,
+   "channels_in_band_block": 36,
+   "outer_psin_shot": 1.0204384273529052,
+   "channels_in_band_shot": 36,
+   "outer_psin_matches_shot": true,
+   "placement_matches_shot": true
   },
   {
    "shot": 185871,
@@ -84,7 +120,13 @@
    "corpus_shot": true,
    "year": 2021,
    "intervals_ms": "2110-5170",
-   "confident_learning_ms": "2110-5170"
+   "confident_learning_ms": "2110-5170",
+   "outer_psin_block": 1.1091533977746963,
+   "channels_in_band_block": 24,
+   "outer_psin_shot": 1.1089070987701417,
+   "channels_in_band_shot": 24,
+   "outer_psin_matches_shot": true,
+   "placement_matches_shot": true
   },
   {
    "shot": 184810,
@@ -97,7 +139,13 @@
    "corpus_shot": false,
    "year": 2021,
    "intervals_ms": "2239-5006",
-   "confident_learning_ms": "2239-5006"
+   "confident_learning_ms": "2239-5006",
+   "outer_psin_block": 1.1108043326854706,
+   "channels_in_band_block": 24,
+   "outer_psin_shot": 1.1104249302864075,
+   "channels_in_band_shot": 24,
+   "outer_psin_matches_shot": true,
+   "placement_matches_shot": true
   },
   {
    "shot": 190507,
@@ -110,7 +158,13 @@
    "corpus_shot": true,
    "year": 2022,
    "intervals_ms": "1372-4244",
-   "confident_learning_ms": "1799-2000;1372-1787;2010-2079;2090-4244"
+   "confident_learning_ms": "1799-2000;1372-1787;2010-2079;2090-4244",
+   "outer_psin_block": 1.074681327202916,
+   "channels_in_band_block": 30,
+   "outer_psin_shot": 1.074845656335354,
+   "channels_in_band_shot": 30,
+   "outer_psin_matches_shot": true,
+   "placement_matches_shot": true
   },
   {
    "shot": 190670,
@@ -123,7 +177,13 @@
    "corpus_shot": true,
    "year": 2022,
    "intervals_ms": "3000-5000",
-   "confident_learning_ms": "3000-5000"
+   "confident_learning_ms": "3000-5000",
+   "outer_psin_block": 1.0374243068695068,
+   "channels_in_band_block": 30,
+   "outer_psin_shot": 1.0374243068695068,
+   "channels_in_band_shot": 30,
+   "outer_psin_matches_shot": true,
+   "placement_matches_shot": true
   },
   {
    "shot": 190514,
@@ -136,7 +196,13 @@
    "corpus_shot": true,
    "year": 2022,
    "intervals_ms": "3024-4916",
-   "confident_learning_ms": "3024-4916"
+   "confident_learning_ms": "3024-4916",
+   "outer_psin_block": 1.0414344354629517,
+   "channels_in_band_block": 30,
+   "outer_psin_shot": 1.0415121412277222,
+   "channels_in_band_shot": 30,
+   "outer_psin_matches_shot": true,
+   "placement_matches_shot": true
   },
   {
    "shot": 195865,
@@ -149,7 +215,13 @@
    "corpus_shot": true,
    "year": 2023,
    "intervals_ms": "2592-4401",
-   "confident_learning_ms": ""
+   "confident_learning_ms": "",
+   "outer_psin_block": 1.046557871246338,
+   "channels_in_band_block": 27,
+   "outer_psin_shot": 1.0466110887527469,
+   "channels_in_band_shot": 30,
+   "outer_psin_matches_shot": true,
+   "placement_matches_shot": true
   },
   {
    "shot": 191376,
@@ -162,7 +234,13 @@
    "corpus_shot": true,
    "year": 2022,
    "intervals_ms": "300-2058",
-   "confident_learning_ms": "300-2058"
+   "confident_learning_ms": "300-2058",
+   "outer_psin_block": 1.1096977929651737,
+   "channels_in_band_block": 22,
+   "outer_psin_shot": 1.1054882454305883,
+   "channels_in_band_shot": 22,
+   "outer_psin_matches_shot": true,
+   "placement_matches_shot": true
   },
   {
    "shot": 195821,
@@ -175,7 +253,13 @@
    "corpus_shot": true,
    "year": 2023,
    "intervals_ms": "1600-3400",
-   "confident_learning_ms": "1600-3400"
+   "confident_learning_ms": "1600-3400",
+   "outer_psin_block": 1.0491184089660643,
+   "channels_in_band_block": 30,
+   "outer_psin_shot": 1.0494138774871826,
+   "channels_in_band_shot": 30,
+   "outer_psin_matches_shot": true,
+   "placement_matches_shot": true
   },
   {
    "shot": 190666,
@@ -188,7 +272,13 @@
    "corpus_shot": true,
    "year": 2022,
    "intervals_ms": "2686-4000",
-   "confident_learning_ms": "2686-4000"
+   "confident_learning_ms": "2686-4000",
+   "outer_psin_block": 1.0422720781326293,
+   "channels_in_band_block": 30,
+   "outer_psin_shot": 1.042457526254654,
+   "channels_in_band_shot": 30,
+   "outer_psin_matches_shot": true,
+   "placement_matches_shot": true
   },
   {
    "shot": 184433,
@@ -201,7 +291,13 @@
    "corpus_shot": false,
    "year": 2021,
    "intervals_ms": "365-1552",
-   "confident_learning_ms": ""
+   "confident_learning_ms": "",
+   "outer_psin_block": 1.0682684750795364,
+   "channels_in_band_block": 30,
+   "outer_psin_shot": 1.0652302184820177,
+   "channels_in_band_shot": 30,
+   "outer_psin_matches_shot": true,
+   "placement_matches_shot": true
   },
   {
    "shot": 196493,
@@ -214,7 +310,13 @@
    "corpus_shot": true,
    "year": 2023,
    "intervals_ms": "1520-2518",
-   "confident_learning_ms": "1520-2518"
+   "confident_learning_ms": "1520-2518",
+   "outer_psin_block": 1.0079708066940307,
+   "channels_in_band_block": 36,
+   "outer_psin_shot": 1.0079843673706057,
+   "channels_in_band_shot": 36,
+   "outer_psin_matches_shot": true,
+   "placement_matches_shot": true
   },
   {
    "shot": 191782,
@@ -227,7 +329,13 @@
    "corpus_shot": true,
    "year": 2022,
    "intervals_ms": "400-2127",
-   "confident_learning_ms": "400-2127"
+   "confident_learning_ms": "400-2127",
+   "outer_psin_block": 1.080160951423645,
+   "channels_in_band_block": 29,
+   "outer_psin_shot": 1.078367481517792,
+   "channels_in_band_shot": 29,
+   "outer_psin_matches_shot": true,
+   "placement_matches_shot": true
   },
   {
    "shot": 184433,
@@ -240,7 +348,13 @@
    "corpus_shot": false,
    "year": 2021,
    "intervals_ms": "3063-3927",
-   "confident_learning_ms": "3063-3927"
+   "confident_learning_ms": "3063-3927",
+   "outer_psin_block": 1.063834267115593,
+   "channels_in_band_block": 33,
+   "outer_psin_shot": 1.0652302184820177,
+   "channels_in_band_shot": 30,
+   "outer_psin_matches_shot": true,
+   "placement_matches_shot": true
   },
   {
    "shot": 161608,
@@ -253,7 +367,13 @@
    "corpus_shot": false,
    "year": 2015,
    "intervals_ms": "3741-5461",
-   "confident_learning_ms": ""
+   "confident_learning_ms": "",
+   "outer_psin_block": 1.0684829588890075,
+   "channels_in_band_block": 23,
+   "outer_psin_shot": 1.0676620455503465,
+   "channels_in_band_shot": 23,
+   "outer_psin_matches_shot": true,
+   "placement_matches_shot": true
   },
   {
    "shot": 190508,
@@ -266,7 +386,13 @@
    "corpus_shot": true,
    "year": 2022,
    "intervals_ms": "834-1539",
-   "confident_learning_ms": ""
+   "confident_learning_ms": "",
+   "outer_psin_block": 1.0666579165935517,
+   "channels_in_band_block": 30,
+   "outer_psin_shot": 1.0666953677654267,
+   "channels_in_band_shot": 30,
+   "outer_psin_matches_shot": true,
+   "placement_matches_shot": true
   },
   {
    "shot": 174653,
@@ -279,7 +405,13 @@
    "corpus_shot": false,
    "year": 2018,
    "intervals_ms": "4130-4799",
-   "confident_learning_ms": "4363-4799;4130-4320"
+   "confident_learning_ms": "4363-4799;4130-4320",
+   "outer_psin_block": 1.186262542039155,
+   "channels_in_band_block": 16,
+   "outer_psin_shot": 1.0244214862793684,
+   "channels_in_band_shot": 29,
+   "outer_psin_matches_shot": false,
+   "placement_matches_shot": false
   },
   {
    "shot": 189329,
@@ -292,7 +424,13 @@
    "corpus_shot": true,
    "year": 2022,
    "intervals_ms": "1162-1989",
-   "confident_learning_ms": "1162-1212;1842-1989;1242-1417;1642-1818;1442-1618"
+   "confident_learning_ms": "1162-1212;1842-1989;1242-1417;1642-1818;1442-1618",
+   "outer_psin_block": 1.0366508782446384,
+   "channels_in_band_block": 36,
+   "outer_psin_shot": 1.0362224285900594,
+   "channels_in_band_shot": 36,
+   "outer_psin_matches_shot": true,
+   "placement_matches_shot": true
   },
   {
    "shot": 172211,
@@ -305,7 +443,13 @@
    "corpus_shot": false,
    "year": 2017,
    "intervals_ms": "1500-2030",
-   "confident_learning_ms": "1500-2030"
+   "confident_learning_ms": "1500-2030",
+   "outer_psin_block": 1.0301696371495723,
+   "channels_in_band_block": 30,
+   "outer_psin_shot": 1.0300721517980098,
+   "channels_in_band_shot": 30,
+   "outer_psin_matches_shot": true,
+   "placement_matches_shot": true
   },
   {
    "shot": 154771,
@@ -318,7 +462,13 @@
    "corpus_shot": false,
    "year": 2013,
    "intervals_ms": "2167-2680",
-   "confident_learning_ms": ""
+   "confident_learning_ms": "",
+   "outer_psin_block": 1.0408639969825744,
+   "channels_in_band_block": 30,
+   "outer_psin_shot": 1.0408709020932516,
+   "channels_in_band_shot": 30,
+   "outer_psin_matches_shot": true,
+   "placement_matches_shot": true
   },
   {
    "shot": 182682,
@@ -331,7 +481,13 @@
    "corpus_shot": false,
    "year": 2020,
    "intervals_ms": "1948-3819",
-   "confident_learning_ms": "1948-3819"
+   "confident_learning_ms": "1948-3819",
+   "outer_psin_block": 1.0761471181869506,
+   "channels_in_band_block": 30,
+   "outer_psin_shot": 1.0779819265365602,
+   "channels_in_band_shot": 30,
+   "outer_psin_matches_shot": true,
+   "placement_matches_shot": true
   },
   {
    "shot": 182665,
@@ -344,7 +500,13 @@
    "corpus_shot": false,
    "year": 2020,
    "intervals_ms": "1800-2300",
-   "confident_learning_ms": "1800-2300"
+   "confident_learning_ms": "1800-2300",
+   "outer_psin_block": 1.0880308494567872,
+   "channels_in_band_block": 30,
+   "outer_psin_shot": 1.0879404983520509,
+   "channels_in_band_shot": 30,
+   "outer_psin_matches_shot": true,
+   "placement_matches_shot": true
   },
   {
    "shot": 159372,
@@ -357,7 +519,13 @@
    "corpus_shot": false,
    "year": 2014,
    "intervals_ms": "921-1367",
-   "confident_learning_ms": "921-1367"
+   "confident_learning_ms": "921-1367",
+   "outer_psin_block": 1.0365355777978897,
+   "channels_in_band_block": 29,
+   "outer_psin_shot": 1.0232570860862733,
+   "channels_in_band_shot": 25,
+   "outer_psin_matches_shot": true,
+   "placement_matches_shot": false
   }
  ]
 }
