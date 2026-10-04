@@ -23,7 +23,10 @@ ROW = {
         "ci95": {"auroc": [0.8, 0.95], "auprc": [0.6, 0.8]},
     },
 }
-LEGACY = {"paper": {c: {"f1": f} for c, f in zip(fig.CLASSES, (0.9, 1.0, 0.9, 0.8))}}
+LEGACY = {
+    "paper": {c: {"f1": f} for c, f in zip(fig.CLASSES, (0.9, 1.0, 0.9, 0.8))},
+    "auc_one_vs_rest": {"per_class_at_least": 0.99},
+}
 
 
 def test_adapter_reads_the_protocol_rows_scores_and_intervals():
@@ -55,3 +58,33 @@ def test_confinement_panel_draws_the_protocol_row_and_names_its_source():
 def test_the_figure_reads_the_table_3_row_not_the_first_retrain():
     assert fig.SOURCES["confinement_si"].name == "full_cum_abcdrgef.json"
     assert fig.SOURCES["confinement_si"].parent.name == "ablation_rows"
+
+
+def test_legacy_auroc_is_the_published_bound_per_class_not_a_macro_value():
+    si = fig.confinement_si(ROW)
+    rows = fig.Rows()
+    fig.draw_confinement(Figure().add_subplot(), LEGACY, si, rows, "b", "auroc")
+    legacy = [r for r in rows.rows if r["group"] == "legacy"]
+    assert len(legacy) == 1
+    assert legacy[0]["value"] == 0.99
+    assert "lower bound" in legacy[0]["metric"]
+    assert "macro" not in legacy[0]["metric"]
+    assert legacy[0]["key"] == "auc_one_vs_rest.per_class_at_least"
+
+
+def test_the_published_values_are_committed_and_drawn_from_the_branch():
+    published = fig.load(fig.SOURCES["confinement"])
+    assert fig.SOURCES["confinement"].name == "gill_2024_published.json"
+    assert {c: published["paper"][c]["f1"] for c in fig.CLASSES} == {
+        "L": 0.94,
+        "H": 0.97,
+        "QH": 0.94,
+        "WP": 0.90,
+    }
+    assert published["auc_one_vs_rest"]["per_class_at_least"] == 0.99
+    rows = fig.Rows()
+    fig.draw_confinement(
+        Figure().add_subplot(), published, fig.confinement_si(ROW), rows, "b", "f1"
+    )
+    legacy = [r for r in rows.rows if r["group"] == "legacy"]
+    assert abs(legacy[0]["value"] - 0.9375) < 1e-12

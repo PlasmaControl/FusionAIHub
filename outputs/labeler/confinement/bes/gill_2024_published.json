@@ -1,0 +1,15 @@
+{
+ "source": "K. Gill et al., Machine Learning: Science and Technology 5, 035012 (2024), the results table of the BES confinement classifier: its own 44 test discharges, scored per 1024 us window (digest: .tmp/label_papers/Gill_2024_Mach._Learn.%3A_Sci._Technol._5_035012.md, 'Results')",
+ "paper": {
+  "L": {"f1": 0.94, "precision": 0.98, "recall": 0.90},
+  "H": {"f1": 0.97, "precision": 0.95, "recall": 0.98},
+  "QH": {"f1": 0.94, "precision": 0.92, "recall": 0.96},
+  "WP": {"f1": 0.90, "precision": 0.95, "recall": 0.86}
+ },
+ "average": {"f1": 0.94, "precision": 0.95, "recall": 0.93},
+ "average_note": "the plain mean of the four per-class F1 values on per-window predictions (0.9375)",
+ "auc_one_vs_rest": {
+  "per_class_at_least": 0.99,
+  "note": "the paper states one-vs-rest AUC of at least 0.99 for every class; it gives no macro AUROC and no AUPRC"
+ }
+}

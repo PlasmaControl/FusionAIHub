@@ -14,14 +14,14 @@ older annotation) used and "Tokamak-SI" is our labels:
   spectrogram, each chord scored) on the 19 held-out shots, 10 ms frames;
   legacy = against the Heidbrink annotation (`results.annotated`), Tokamak-SI =
   against the dense labels (`results.reviewed`).
-- Confinement: `confine-cnn`; legacy = the earlier paper's macro F1,
-  the mean of its four per-class F1 (`paper` in the first retrain's
-  evaluation), one bar, no interval; Tokamak-SI = our reimplementation under
-  the paper's selection and split, the ablation's protocol row
-  `full_cum_abcdrgef` (142 distinct test shots in 200 shot-tests from five
-  random by-shot splits whose test sets overlap, windows pooled; macro F1,
-  AUROC and AUPRC with shot-bootstrap intervals), the one confine-cnn score of
-  the paper. The first retrain's own score is not drawn.
+- Confinement: `confine-cnn`; legacy = the earlier paper's macro F1, the mean
+  of its four per-class F1 (`paper` in `gill_2024_published.json`, its results
+  table, committed beside the other records), one bar, no interval;
+  Tokamak-SI = our reimplementation under the paper's selection and split, the
+  ablation's protocol row `full_cum_abcdrgef` (142 distinct test shots in 200
+  shot-tests from five random by-shot splits whose test sets overlap, windows
+  pooled; macro F1, AUROC and AUPRC with shot-bootstrap intervals), the one
+  confine-cnn score of the paper. The first retrain's own score is not drawn.
 - ELMs: `elm-elmo`; legacy = D. Smith's windows at the published setting
   (`smith.published_setting`, its F1 from the stored counts); Tokamak-SI = the
   reviewed spans in 50 ms bins (`review.paper`).
@@ -30,8 +30,12 @@ older annotation) used and "Tokamak-SI" is our labels:
 
 `--metric auc` draws the same three scored sets for AUROC (top row) and AUPRC
 (bottom row) into `fig_benchmarks_auc.pdf`: a legacy score only where its paper
-reported one (neither confine-cnn's nor elm-elmo's did), else a hatched "not
-reported" slot; elm-elmo's AUROC and AUPRC come from a sweep of its threshold.
+reported one, else a hatched grey "not reported" slot (confine-cnn's and
+elm-elmo's AUPRC, and elm-elmo's AUROC). The confine-cnn paper reported a
+one-vs-rest AUC of at least 0.99 for every class and no macro value, so its
+legacy AUROC slot is a hatched bar at 0.99 labelled as that bound, not a macro
+score (`auc_one_vs_rest` in `gill_2024_published.json`); elm-elmo's AUROC and
+AUPRC come from a sweep of its threshold.
 
 A hatched empty slot is a model not yet scored. `--table` writes every number
 drawn, with its JSON key, as CSV; the same rows are printed.
@@ -56,8 +60,9 @@ REPO = Path(__file__).resolve().parents[3]
 OUTPUTS = REPO / "outputs" / "labeler"
 SOURCES = {
     "ae": OUTPUTS / "ae" / "baselines" / "evaluation.json",
-    # the earlier paper's per-class scores (`paper`), pasted from its table
-    "confinement": OUTPUTS / "confinement" / "bes" / "evaluation.json",
+    # the earlier paper's per-class scores (`paper`) and AUC bound
+    # (`auc_one_vs_rest`), from its results table
+    "confinement": OUTPUTS / "confinement" / "bes" / "gill_2024_published.json",
     # the protocol row's record (confinement_bes_ablation.py summarize)
     "confinement_si": OUTPUTS
     / "confinement"
@@ -210,6 +215,39 @@ def pending_slot(ax, x, width, edge, height=1.0, text=None) -> None:
         )
 
 
+def bound_slot(ax, x, width, value, colour, text) -> None:
+    """A hatched bar up to a published lower bound that holds for every class: not a
+    macro score, so it carries no value label and says what it is."""
+    ax.add_patch(
+        Rectangle(
+            (x - width / 2, 0),
+            width,
+            value,
+            facecolor="none",
+            edgecolor=colour,
+            hatch="////",
+            lw=0.6,
+            zorder=1,
+        )
+    )
+    ax.plot(
+        [x - width / 2, x + width / 2], [value, value], color=colour, lw=1.2, zorder=3
+    )
+    ax.text(
+        x,
+        value / 2,
+        text,
+        rotation=90,
+        ha="center",
+        va="center",
+        fontsize=VALUE_PT - 0.5,
+        linespacing=1.15,
+        color=INK,
+        zorder=4,
+        bbox={"facecolor": "white", "edgecolor": "none", "pad": 0.8, "alpha": 0.95},
+    )
+
+
 def group_labels(ax, centres, labels, y) -> None:
     """The setting of each group of bars, below the bar names."""
     trans = blended_transform_factory(ax.transData, ax.transAxes)
@@ -291,9 +329,10 @@ def confinement_si(record: dict) -> dict:
 def draw_confinement(
     ax, conf: dict, si: dict, rows: Rows, panel: str, metric: str = "f1"
 ) -> None:
-    """confine-cnn's macro score: the earlier paper's (legacy, from `conf`; F1
-    only, it published no AUROC or AUPRC) and our reimplementation under its
-    selection and split (Tokamak-SI, from `si`, see `confinement_si`)."""
+    """confine-cnn's macro score: the earlier paper's (legacy, from `conf`: macro
+    F1; for AUROC only its bound of 0.99 per class, one-vs-rest, no macro value;
+    no AUPRC) and our reimplementation under its selection and split (Tokamak-SI,
+    from `si`, see `confinement_si`)."""
     name = "macro " + METRICS[metric]
     if metric == "f1":
         published = conf["paper"]
@@ -308,6 +347,26 @@ def draw_confinement(
             None,
             SOURCES["confinement"],
             "mean of paper.{L,H,QH,WP}.f1",
+        )
+    elif metric == "auroc":
+        bound = conf["auc_one_vs_rest"]["per_class_at_least"]
+        bound_slot(
+            ax,
+            0,
+            0.8,
+            bound,
+            LEGACY,
+            f"\u2265 {bound:.2f} per class\n(one-vs-rest; no macro value)",
+        )
+        rows.add(
+            panel,
+            "confine-cnn",
+            "legacy",
+            "per-class AUROC, lower bound (one-vs-rest)",
+            bound,
+            None,
+            SOURCES["confinement"],
+            "auc_one_vs_rest.per_class_at_least",
         )
     else:
         pending_slot(ax, 0, 0.8, PENDING_EDGE, text="not reported")
@@ -484,6 +543,12 @@ def draw_auc(out: Path, png: Path | None, table: Path | None) -> None:
             Patch(color=SI, label="Tokamak-SI"),
             Patch(
                 facecolor="none",
+                edgecolor=LEGACY,
+                hatch="////",
+                label="bound for every class, no macro value",
+            ),
+            Patch(
+                facecolor="none",
                 edgecolor=PENDING_EDGE,
                 hatch="////",
                 label="not reported",
@@ -492,7 +557,7 @@ def draw_auc(out: Path, png: Path | None, table: Path | None) -> None:
         fig.legend(
             handles=handles,
             loc="upper center",
-            ncol=3,
+            ncol=4,
             frameon=False,
             bbox_to_anchor=(0.5, 1.0),
             handlelength=1.6,
