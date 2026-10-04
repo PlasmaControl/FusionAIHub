@@ -719,9 +719,11 @@ def report(args):
     )
     if population_summary["complete"]:
         population_text = (
-            f"The population run is complete: {population_summary['processed_count']}"
-            f" of {population_summary['corpus_shots']} corpus shots have a label "
-            "record under the rule below."
+            "The population run is complete: all "
+            f"{population_summary['corpus_shots']} corpus shots were attempted; "
+            f"{population_summary['processed_count']} have a usable label record "
+            f"and {population_summary['excluded_records']} do not (reader or "
+            "physical-core failures; the counts by reason are under Label states)."
         )
     else:
         population_text = (
@@ -780,8 +782,7 @@ def report(args):
             f"{number(models['saw-hl3']['crash_tolerance_2ms']['crash']['f1'])}, "
             "saw-ours "
             f"{number(models['saw-ours']['crash_tolerance_2ms']['crash']['f1'])}. "
-            "The derivative baseline has the highest point estimate; the "
-            "HL-3 paired crash-F1 interval includes zero. "
+            f"{best_crash_sentence(models)} "
             "HL-3's expert-shot ranking remains inverted on shot 190637; "
             "independent physical validation remains pending.\n"
         ),
@@ -1386,6 +1387,29 @@ def report(args):
     update_readme(manifest, population_summary)
 
 
+def best_crash_sentence(models):
+    """Which method has the best crash-F1 point estimate and the paired gaps."""
+    f1 = {
+        name: models[name]["crash_tolerance_2ms"]["crash"]["f1"]
+        for name in ("saw-derivative", "saw-hl3", "saw-ours")
+    }
+    best = max(f1, key=f1.get)
+    parts = []
+    for name in ("saw-hl3", "saw-ours"):
+        paired = models[name]["paired_vs_derivative"]["crash_tolerance_2ms"]
+        low, high = paired["ci95"]["crash_f1"]
+        verdict = "includes zero" if low <= 0 <= high else "excludes zero"
+        parts.append(
+            f"{NAMES[name]} minus the derivative picker is "
+            f"{number(paired['difference']['crash_f1'])} "
+            f"[{number(low)}, {number(high)}] ({verdict})"
+        )
+    return (
+        f"{NAMES[best]} has the highest crash-F1 point estimate; the paired "
+        f"OOF differences in crash F1 are: {'; '.join(parts)}."
+    )
+
+
 def update_readme(manifest, population):
     path = REPO / "data/events/sawtooth_oscillation/README.md"
     text = path.read_text()
@@ -1417,6 +1441,15 @@ def update_readme(manifest, population):
         else " (cohort shards; the population run was not complete when this "
         "was written, so the population shards hold only part of the corpus)"
     )
+    population_status = (
+        f"The population run is complete: {population['processed_count']} of "
+        f"{population['corpus_shots']} corpus shots have a usable record under the "
+        "final rule; the other shots have no readable ECE core and carry no label."
+        if population["complete"]
+        else "The population run is NOT complete under the final rule: "
+        f"{population['processed_count']} of {population['corpus_shots']} corpus "
+        "shots have a record, and no population number here is current."
+    )
     content = f"""## Physics-rule labels and validation
 
 These are **physics-rule labels validated only by the checks described** in the
@@ -1445,7 +1478,8 @@ unresolved ECE `unassessed`. Ambiguous observable support remains uncertain. The
 untracked exports in `extend_saw_physics/` hold the spans and crash points; they
 are additive research labels.
 
-Complete population label shards are at
+{population_status}
+Population label shards are at
 `$LABELER_ROOT/round4/saw/fix4/labels/`{population_note}. Verify with
 `sha256sum -c SHA256SUMS` from that directory. The `SHA256SUMS` file has sha256
 `{manifest["manifest_sha256"]}`; individual CSV hashes are in
@@ -1491,7 +1525,9 @@ pending and physical accuracy remains unvalidated. No model is recommended.
     text = text.replace(
         "q conflicts abstain)", "nominal geometry and bias-aware q evidence)"
     )
-    text = text.replace("sawtooth, sawtooth, sawtooth oscillation", "sawtooth, sawtooth oscillation")
+    text = text.replace(
+        "sawtooth, sawtooth, sawtooth oscillation", "sawtooth, sawtooth oscillation"
+    )
     path.write_text(text)
 
 
