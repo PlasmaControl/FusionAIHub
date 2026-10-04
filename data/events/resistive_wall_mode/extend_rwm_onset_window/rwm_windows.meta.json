@@ -1,0 +1,58 @@
+{
+  "categories": {
+    "0": "absent",
+    "1": "present",
+    "2": "uncertain",
+    "4": "unassessed"
+  },
+  "category": "resistive_wall_mode",
+  "category_2_reader_warning": "Category 2 covers BOTH Hanson pre-onset windows and comparison screen spans. Category alone cannot distinguish them: inspect attrs.evidence_tier (onset_window_uncertain versus unlabelled_screen). Neither tier is a verified negative; do not pool them by category.",
+  "columns": [
+    "shot",
+    "category",
+    "t_start",
+    "t_end",
+    "confidence",
+    "attrs"
+  ],
+  "coverage": "Hanson category 0 is assumed absence before the first precursor; Hanson category 2 is the uncertain 20 ms pre-onset convention. Hanson category 1 is one minimal 10 ms post-onset slice, not a measured duration. Comparison category 2 is the rwm_candidates screen, unlabelled and not negative. Reviewed negative coverage is unknown.",
+  "made_at": "2026-10-03T23:34:27+00:00",
+  "made_by": "scripts/labeler/rwm_build.py",
+  "n_rows": 612,
+  "n_shots": 165,
+  "rules": {
+    "present": "Hanson: [ONSET_TIME, ONSET_TIME + 10 ms) for either mode number, one minimal present slice; evidence tier onset_point_minimal. Mode duration is unmeasured. Present evidence takes precedence over overlapping uncertain windows.",
+    "absent": "high-current time only before the first listed onset minus 100 ms, assuming complete onset listing. No post-onset physical absence is inferred without mode termination evidence. A span whose attrs carry unexplained_beta_collapse holds a sharp beta_N fall of unestablished cause.",
+    "uncertain": "Hanson: [20 ms before ONSET_TIME, ONSET_TIME), of either mode number, as a convention with unverified pre-onset presence and extent; overlapping present time takes precedence. Comparison: rwm_candidates screen spans.",
+    "unassessed": "explicit precursor gaps and time beyond minimal present slices, apart from later uncertain onset windows; comparison time outside screen spans"
+  },
+  "onset_time_provenance": {
+    "field": "ONSET_TIME",
+    "detection_or_threshold_time_verified": false,
+    "finding": "Hanson source CSVs and category README name onset times but do not define growth-start versus detection/threshold timing. Piccione digests describe NSTX threshold t_RWM and cannot establish the meaning of Hanson's DIII-D ONSET_TIME.",
+    "sources_searched": [
+      "data/events/resistive_wall_mode/raw/rwm_onsets_2017.csv",
+      "data/events/resistive_wall_mode/raw/rwm_onsets_2024.csv",
+      "main:data/events/resistive_wall_mode/README.md",
+      "main:.tmp/label_papers/Piccione_2022_Nucl._Fusion_62_036002.md",
+      "main:.tmp/label_papers/outside/Piccione_tsdw2021_RWM_poster.md"
+    ],
+    "physical_window_categories": {
+      "pre_onset": 2,
+      "minimal_post_onset": 1
+    },
+    "forecast_target": "separate 100 ms point-time forecast target; unchanged",
+    "source_audit": "outputs/labeler/rwm/sensor_probe.json#/source_search"
+  },
+  "evidence_tiers": {
+    "onset_point_minimal": "category 1 on Hanson shots: [o, o+10 ms), one minimal present slice from the listed onset; not a measured duration",
+    "onset_window_uncertain": "category 2 on Hanson shots: [o-20 ms, o) by convention; ONSET_TIME meaning, pre-onset presence and extent unverified",
+    "assumed_absent": "Hanson time before first precursor; completeness assumption. A span whose attrs carry unexplained_beta_collapse holds a sharp beta_N fall of unestablished cause and is not clean assumed absence",
+    "unlabelled_screen": "category 2 on comparison shots: rwm_candidates screen spans, not onset windows or verified negatives",
+    "unassessed": "no assessed physical state or termination evidence"
+  },
+  "reader_contract": "review reader preserves all explicit rows and attrs; tier-less saves of tiered sources are rejected",
+  "source": "data/events/resistive_wall_mode/raw/rwm_onsets_{2017,2024}.csv",
+  "onset_interval_attributes": "attrs.source_onsets preserves every contributing original NTOR, MODE_TYPE, ONSET_TIME (ms) and source, including merged duplicates",
+  "summary": "outputs/labeler/rwm/shots.json"
+}

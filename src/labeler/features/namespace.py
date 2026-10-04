@@ -331,13 +331,13 @@ FEATURES: tuple[FeatureSpec, ...] = (
         name="rot_zipfit", kind="profile", units="kHz",
         sources=("archive", "fdp"),
         locators=("zipfit_trotfit_rho", r"\ZIPFIT01::TOP.PROFILES.TROTFIT"),
-        notes="stands in for cer_rot_csaps_1d. Units are kHz, not krad/s "
-              "and not km/s: MEASURED from the node's own units field "
-              "(the TROTFIT node reports `kHz`), which "
-              "settles the question carried from Task 8 - magnitude alone "
-              "could not, since v = omega*R with R ~ 1.75 m puts all three "
-              "readings in the same range. The model's domain rule "
-              "`absmax < 150` therefore reads as 150 kHz. No scale factor "
+        notes="stands in for cer_rot_csaps_1d. The TROTFIT units field says "
+              "kHz, retained as metadata, but RWM core magnitudes (median "
+              "75, maximum 174) match the ZIPFIT krad/s convention: kHz "
+              "would imply supersonic toroidal velocities. kHz and krad/s "
+              "differ by 2*pi; metadata alone does not settle physical units. "
+              "The domain rule `absmax < 150` is a raw-value cutoff, not "
+              "a verified 150 kHz limit. No scale factor "
               "against the archive (ratio 1.000000), 1.1e-2 median relative "
               "difference over 120 shots. The THINNEST of the thirteen: "
               "absent on 26 of the 120 sampled shots and single-sliced on "
@@ -356,6 +356,26 @@ FEATURES: tuple[FeatureSpec, ...] = (
         name="n2rms", kind="scalar", units="G",
         sources=("fdp",), locators=(r"\MHD::N2RMS",),
         notes="n=2 magnetic RMS amplitude; not specific to resistive wall modes",
+    ),
+    # Added for the resistive-wall-mode baseline (2026-10-03). Both were fetched
+    # live on shots 156785 (2014) and 176068 (2018) before being listed: q95 is
+    # 234 / 329 finite EFIT01 slices; DUSBRADIAL is PTDATA in volts, 40,202 /
+    # 40,204 samples. It is NOT a calibrated field: on 156785 it is zero for the
+    # whole shot, and the radial-field data of shots 176030-176912 are said to
+    # be corrupted (Fu et al. 2020), so a model must check it per campaign.
+    FeatureSpec(
+        name="q95", kind="scalar", units="",
+        sources=("fdp",),
+        locators=(r"\efit01::top.results.aeqdsk:q95",),
+        notes="edge safety factor from the EFIT01 scalar tree",
+    ),
+    FeatureSpec(
+        name="dusbradial", kind="scalar", units="V",
+        sources=("fdp",), locators=("DUSBRADIAL",),
+        step=0.001,
+        notes="PTDATA locked-mode (n=1) radial-field detector signal, in volts "
+              "as the node reports them, decimated to 1 ms. Not calibrated to "
+              "gauss; read as an indicator of a locked or very slow mode",
     ),
     FeatureSpec(
         name="qmin", kind="scalar", units="",

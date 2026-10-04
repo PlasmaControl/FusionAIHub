@@ -1,0 +1,25 @@
+% Appendix table: the paper's main-text row group is table_rwm_compact.tex.
+\begin{table*}[t]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}llccc@{}}
+\toprule
+Campaign & Evaluation & \shortstack{Primary\\AUROC difference} & \shortstack{High-$\beta$ conditional\\AUROC difference} & \shortstack{Above-proxy conditional\\AUROC difference} \\
+\midrule
+2014 & Seed 0 & $-0.047$ {\scriptsize $[-0.126, 0.050]$} & $-0.255$ {\scriptsize $[-0.422, -0.067]$} & $-0.262$ {\scriptsize $[-0.451, -0.045]$} \\
+2014 & Seed 1 & $0.006$ {\scriptsize $[-0.066, 0.091]$} & $-0.113$ {\scriptsize $[-0.231, 0.059]$} & $-0.105$ {\scriptsize $[-0.246, 0.062]$} \\
+2014 & Seed 2 & $-0.011$ {\scriptsize $[-0.078, 0.068]$} & $-0.148$ {\scriptsize $[-0.247, -0.002]$} & $-0.155$ {\scriptsize $[-0.267, -0.004]$} \\
+2014 & Seed 3 & $0.025$ {\scriptsize $[-0.039, 0.111]$} & $-0.039$ {\scriptsize $[-0.148, 0.125]$} & $-0.031$ {\scriptsize $[-0.169, 0.159]$} \\
+2014 & Seed 4 & $0.012$ {\scriptsize $[-0.061, 0.110]$} & $-0.097$ {\scriptsize $[-0.223, 0.111]$} & $-0.106$ {\scriptsize $[-0.245, 0.089]$} \\
+2014 & Run-record holdout & $0.019$ {\scriptsize $[-0.052, 0.096]$} & $-0.126$ {\scriptsize $[-0.245, 0.005]$} & $-0.134$ {\scriptsize $[-0.293, 0.011]$} \\
+2018 & Seed 0 & $-0.025$ {\scriptsize $[-0.057, 0.033]$} & $-0.033$ {\scriptsize $[-0.078, 0.048]$} & $-0.044$ {\scriptsize $[-0.109, 0.065]$} \\
+2018 & Seed 1 & $-0.012$ {\scriptsize $[-0.039, 0.031]$} & $-0.009$ {\scriptsize $[-0.049, 0.059]$} & $-0.023$ {\scriptsize $[-0.081, 0.061]$} \\
+2018 & Seed 2 & $-0.020$ {\scriptsize $[-0.050, 0.036]$} & $-0.024$ {\scriptsize $[-0.068, 0.066]$} & $-0.042$ {\scriptsize $[-0.106, 0.075]$} \\
+2018 & Seed 3 & $0.004$ {\scriptsize $[-0.020, 0.046]$} & $0.016$ {\scriptsize $[-0.016, 0.081]$} & $0.015$ {\scriptsize $[-0.040, 0.109]$} \\
+2018 & Seed 4 & $-0.012$ {\scriptsize $[-0.041, 0.045]$} & $-0.005$ {\scriptsize $[-0.052, 0.080]$} & $-0.014$ {\scriptsize $[-0.084, 0.101]$} \\
+2018 & Run-record holdout & $-0.049$ {\scriptsize $[-0.073, -0.013]$} & $-0.070$ {\scriptsize $[-0.117, -0.010]$} & $-0.057$ {\scriptsize $[-0.109, 0.011]$} \\
+\bottomrule
+\end{tabular}
+\caption{Forest minus elapsed time by campaign. Brackets: exploratory 95\% basic paired shot-bootstrap intervals (1,000 resamples), conditional on fixed fitted predictions, unadjusted for multiplicity. High-$\beta$: $\beta_N\geq0.8$ shot p95; above-proxy: $\beta_N/l_i>4$. In 2014, 5 of 5 high-$\beta$ and 5 of 5 above-proxy point differences are negative, and the primary differences range from $-0.047$ to $+0.025$ (0 of 5 intervals exclude zero); in 2018, 0 of 5 split-seed primary intervals exclude zero. Run-record holdout, primary AUROC difference: 2014 $+0.019$ $[-0.052, 0.096]$, 2018 $-0.049$ $[-0.073, -0.013]$; high-$\beta$: 2014 $-0.126$ $[-0.245, 0.005]$, 2018 $-0.070$ $[-0.117, -0.010]$.}
+\end{table*}

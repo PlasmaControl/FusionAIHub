@@ -1,0 +1,319 @@
+{
+  "script": "scripts/labeler/rwm_sensor_probe.py",
+  "made_at": "2026-10-03T17:36:28+00:00",
+  "source_search": {
+    "sources": [
+      {
+        "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/resistive_wall_mode/raw/rwm_onsets_2017.csv",
+        "exists": true,
+        "sha256": "29a61a8f5ede9bd55fe52370862b185e0993c45eb37dbc6fd88abb7d90e234e6",
+        "relevant_lines": [
+          {
+            "line": 1,
+            "text": "SHOT,ONSET_TIME,NTOR,MODE_TYPE"
+          }
+        ]
+      },
+      {
+        "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/resistive_wall_mode/raw/rwm_onsets_2024.csv",
+        "exists": true,
+        "sha256": "2ed54a04f3fc26909502c3bd18bfed5de1ad20bae3aca1c58cb730416579b8f1",
+        "relevant_lines": [
+          {
+            "line": 1,
+            "text": "SHOT,ONSET_TIME,NTOR,MODE_TYPE"
+          }
+        ]
+      },
+      {
+        "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/resistive_wall_mode/README.md",
+        "exists": true,
+        "sha256": "488044548092c56b8840ac3d85b7b0cafcc372d78532de605fd89f873186f6e9",
+        "relevant_lines": [
+          {
+            "line": 20,
+            "text": "Typically found via low-frequency (0-10 kHz) n = 1 magnetics - saddle loops and"
+          }
+        ]
+      },
+      {
+        "path": "/scratch/gpfs/nc1514/FusionAIHub/.tmp/label_papers/Piccione_2022_Nucl._Fusion_62_036002.md",
+        "exists": true,
+        "sha256": "790ad2aa01e1c8fb20c95543fb2aac2bd27c82cba9e1cec962d8deab7ceaa51b",
+        "relevant_lines": [
+          {
+            "line": 9,
+            "text": "- Defining observation in earlier analysis: **exponential rise of the n = 1 poloidal-field \"RWM sensor\" signal on the \u03c4_w timescale**. DECAF's primary indicator: a threshold on that sensor signal **together with the absence of an MHD (rotating / locked tearing mode) warning**."
+          }
+        ]
+      },
+      {
+        "path": "/scratch/gpfs/nc1514/FusionAIHub/.tmp/label_papers/outside/Piccione_tsdw2021_RWM_poster.md",
+        "exists": true,
+        "sha256": "f099cceba39a6f89ca0f8362f5c98fc12fa1dfffbc082019ef2cdb59423d519c",
+        "relevant_lines": [
+          {
+            "line": 37,
+            "text": "- DIII-D's classical RWM identification is model-based from the saddle-loop/poloidal-probe arrays with a Kalman filter that discriminates ELMs (In 2006 Phys. Plasmas 13 062512; Edgell 2002 Rev. Sci. Instrum. 73 1761), not a learned model."
+          }
+        ]
+      },
+      {
+        "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/src/labeler/features/namespace.py",
+        "exists": true,
+        "sha256": "bb30e69f4a5b76e194b82b968a003257343ac81483c90632abbbbcbeace006fd",
+        "relevant_lines": []
+      },
+      {
+        "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/src/labeler/events/raw.py",
+        "exists": true,
+        "sha256": "39d47de81dde091d385b14c9360a9feed700dd5d4fcef28889b545b237106ab4",
+        "relevant_lines": []
+      },
+      {
+        "path": "/scratch/gpfs/nc1514/FusionAIHub/.tmp/magnetic_mapping.csv",
+        "exists": true,
+        "sha256": "b717e5d903a873812475bc8a4e7d2c2d428944207a34f17d607ff1696c3f46b8",
+        "relevant_lines": []
+      },
+      {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/detach/d3d_nodes_199166.txt",
+        "exists": true,
+        "sha256": "569717b2f6aff14d472e8e1a5bd75e14f11ef105476ae5e323e719a6d6f4414f",
+        "relevant_lines": [
+          {
+            "line": 8196,
+            "text": "\\OPERATIONS::CN1BAMP SIGNAL"
+          },
+          {
+            "line": 8261,
+            "text": "\\OPERATIONS::ILN1BAMP SIGNAL"
+          },
+          {
+            "line": 8293,
+            "text": "\\OPERATIONS::IUN1BAMP SIGNAL"
+          }
+        ]
+      }
+    ],
+    "onset_time_detection_meaning_verified": false,
+    "onset_finding": "Hanson CSV headers and supplied category README provide onset points without defining growth-start versus detection/threshold timing. The Piccione digests' sensor threshold concerns NSTX t_RWM, not Hanson's DIII-D ONSET_TIME.",
+    "sensor_finding": "No source identifies a corrected low-frequency n=1 RWM sensor locator. The inventory lists the three OPERATIONS n=1 amplitude candidate locators exactly, but establishes neither diagnostic meaning nor RWM specificity. MHD N1RMS/N2RMS are generic RMS; magnetic_mapping.csv documents probes, not an RWM-sensor product.",
+    "physical_annotation": "20 ms pre-onset windows are category 2 uncertain",
+    "forecast_target": "separate point-time forecast target remains unchanged"
+  },
+  "candidate_specs": [
+    {
+      "name": "cn1bamp",
+      "exprs": [
+        "\\OPERATIONS::CN1BAMP"
+      ],
+      "via": "mds",
+      "tree": "OPERATIONS",
+      "missing_ok": false
+    },
+    {
+      "name": "iln1bamp",
+      "exprs": [
+        "\\OPERATIONS::ILN1BAMP"
+      ],
+      "via": "mds",
+      "tree": "OPERATIONS",
+      "missing_ok": false
+    },
+    {
+      "name": "iun1bamp",
+      "exprs": [
+        "\\OPERATIONS::IUN1BAMP"
+      ],
+      "via": "mds",
+      "tree": "OPERATIONS",
+      "missing_ok": false
+    }
+  ],
+  "validated_rwm_sensor_specs": [],
+  "requested_shots": [
+    156785,
+    158021,
+    176068
+  ],
+  "workers": 1,
+  "pace_seconds": 1.0,
+  "fetch_attempted": true,
+  "stopped_on_auth_error": false,
+  "production_corpus_or_cache_written": false,
+  "probes": [
+    {
+      "shot": 156785,
+      "name": "cn1bamp",
+      "expr": "\\OPERATIONS::CN1BAMP",
+      "fetched": true,
+      "units": {
+        "data": "Gauss",
+        "dim0": "ms"
+      },
+      "samples": 9124,
+      "clock_start": 0.0,
+      "clock_end": 9123.000000000002,
+      "median_step": 1.0,
+      "finite_fraction": 1.0,
+      "nonzero_samples": 9124,
+      "array": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/sensor_probe/156785_cn1bamp.npz",
+      "sensor_semantics_verified": false,
+      "seconds": 4.16
+    },
+    {
+      "shot": 156785,
+      "name": "iln1bamp",
+      "expr": "\\OPERATIONS::ILN1BAMP",
+      "fetched": true,
+      "units": {
+        "data": "Gauss",
+        "dim0": "ms"
+      },
+      "samples": 6629,
+      "clock_start": -0.019999999552965164,
+      "clock_end": 6999.14794921875,
+      "median_step": 1.0560302734375,
+      "finite_fraction": 1.0,
+      "nonzero_samples": 6629,
+      "array": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/sensor_probe/156785_iln1bamp.npz",
+      "sensor_semantics_verified": false,
+      "seconds": 0.88
+    },
+    {
+      "shot": 156785,
+      "name": "iun1bamp",
+      "expr": "\\OPERATIONS::IUN1BAMP",
+      "fetched": true,
+      "units": {
+        "data": "Gauss",
+        "dim0": "ms"
+      },
+      "samples": 6629,
+      "clock_start": -0.019999999552965164,
+      "clock_end": 6999.14794921875,
+      "median_step": 1.0560302734375,
+      "finite_fraction": 1.0,
+      "nonzero_samples": 6629,
+      "array": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/sensor_probe/156785_iun1bamp.npz",
+      "sensor_semantics_verified": false,
+      "seconds": 0.75
+    },
+    {
+      "shot": 158021,
+      "name": "cn1bamp",
+      "expr": "\\OPERATIONS::CN1BAMP",
+      "fetched": true,
+      "units": {
+        "data": "Gauss",
+        "dim0": "ms"
+      },
+      "samples": 9124,
+      "clock_start": 0.0,
+      "clock_end": 9123.000000000002,
+      "median_step": 1.0,
+      "finite_fraction": 1.0,
+      "nonzero_samples": 9124,
+      "array": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/sensor_probe/158021_cn1bamp.npz",
+      "sensor_semantics_verified": false,
+      "seconds": 2.11
+    },
+    {
+      "shot": 158021,
+      "name": "iln1bamp",
+      "expr": "\\OPERATIONS::ILN1BAMP",
+      "fetched": true,
+      "units": {
+        "data": "Gauss",
+        "dim0": "ms"
+      },
+      "samples": 6629,
+      "clock_start": -0.019999999552965164,
+      "clock_end": 6999.14794921875,
+      "median_step": 1.0560302734375,
+      "finite_fraction": 1.0,
+      "nonzero_samples": 6629,
+      "array": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/sensor_probe/158021_iln1bamp.npz",
+      "sensor_semantics_verified": false,
+      "seconds": 0.75
+    },
+    {
+      "shot": 158021,
+      "name": "iun1bamp",
+      "expr": "\\OPERATIONS::IUN1BAMP",
+      "fetched": true,
+      "units": {
+        "data": "Gauss",
+        "dim0": "ms"
+      },
+      "samples": 6629,
+      "clock_start": -0.019999999552965164,
+      "clock_end": 6999.14794921875,
+      "median_step": 1.0560302734375,
+      "finite_fraction": 1.0,
+      "nonzero_samples": 6629,
+      "array": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/sensor_probe/158021_iun1bamp.npz",
+      "sensor_semantics_verified": false,
+      "seconds": 0.75
+    },
+    {
+      "shot": 176068,
+      "name": "cn1bamp",
+      "expr": "\\OPERATIONS::CN1BAMP",
+      "fetched": true,
+      "units": {
+        "data": "Gauss",
+        "dim0": "ms"
+      },
+      "samples": 7000,
+      "clock_start": 0.0,
+      "clock_end": 6999.0,
+      "median_step": 1.0,
+      "finite_fraction": 1.0,
+      "nonzero_samples": 7000,
+      "array": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/sensor_probe/176068_cn1bamp.npz",
+      "sensor_semantics_verified": false,
+      "seconds": 1.69
+    },
+    {
+      "shot": 176068,
+      "name": "iln1bamp",
+      "expr": "\\OPERATIONS::ILN1BAMP",
+      "fetched": true,
+      "units": {
+        "data": "Gauss",
+        "dim0": "ms"
+      },
+      "samples": 7000,
+      "clock_start": 0.0,
+      "clock_end": 6999.0,
+      "median_step": 1.0,
+      "finite_fraction": 1.0,
+      "nonzero_samples": 7000,
+      "array": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/sensor_probe/176068_iln1bamp.npz",
+      "sensor_semantics_verified": false,
+      "seconds": 0.75
+    },
+    {
+      "shot": 176068,
+      "name": "iun1bamp",
+      "expr": "\\OPERATIONS::IUN1BAMP",
+      "fetched": true,
+      "units": {
+        "data": "Gauss",
+        "dim0": "ms"
+      },
+      "samples": 7000,
+      "clock_start": 0.0,
+      "clock_end": 6999.0,
+      "median_step": 1.0,
+      "finite_fraction": 1.0,
+      "nonzero_samples": 7000,
+      "array": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/sensor_probe/176068_iun1bamp.npz",
+      "sensor_semantics_verified": false,
+      "seconds": 0.75
+    }
+  ],
+  "status": "candidate probe completed; corrected low-frequency RWM sensor semantics remain unverified; no new sensor or model input registered"
+}

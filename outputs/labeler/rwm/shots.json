@@ -1,0 +1,547 @@
+{
+  "script": "scripts/labeler/rwm_build.py",
+  "made_at": "2026-10-03T23:34:27+00:00",
+  "pool": {
+    "shots": 208,
+    "usable": 207,
+    "unusable": {
+      "no n1rms": 1
+    }
+  },
+  "hanson": {
+    "shots": 33,
+    "shots_without_inputs": [],
+    "listed_onsets": 56,
+    "n1_events": 48,
+    "n2_events": 6,
+    "n1_shots": 30
+  },
+  "comparison": {
+    "per_hanson": 4,
+    "chosen": 132,
+    "by_campaign": {
+      "2014": 80,
+      "2018": 52
+    },
+    "balance": {
+      "2014": {
+        "hanson": {
+          "shots": 20,
+          "betan_p95_mean": 3.245002452135086,
+          "betan_over_li_p95_mean": 5.074836841547608
+        },
+        "matched": {
+          "shots": 80,
+          "betan_p95_mean": 3.309106771498919,
+          "betan_over_li_p95_mean": 4.433000793661423
+        },
+        "pool_not_chosen": {
+          "shots": 22,
+          "betan_p95_mean": 4.0786256226626305,
+          "betan_over_li_p95_mean": 4.65311474954602
+        }
+      },
+      "2018": {
+        "hanson": {
+          "shots": 13,
+          "betan_p95_mean": 3.046453839081984,
+          "betan_over_li_p95_mean": 4.984521003656763
+        },
+        "matched": {
+          "shots": 52,
+          "betan_p95_mean": 3.129781645765672,
+          "betan_over_li_p95_mean": 5.111470417854131
+        },
+        "pool_not_chosen": {
+          "shots": 20,
+          "betan_p95_mean": 3.3560581135749814,
+          "betan_over_li_p95_mean": 5.628439540893661
+        }
+      }
+    }
+  },
+  "cohort_overlap": {
+    "checked": true,
+    "cohort_shots": 500,
+    "in_cohort": 0,
+    "by_split": {}
+  },
+  "assumed_absent_collapses": {
+    "definition": "stored EFIT beta_N sample >= 2 whose lowest following sample within 100 ms is at least 40% lower (`features.beta_collapses`), starting inside a Hanson category-0 span",
+    "hanson_shots_scanned": 33,
+    "shots_with_a_collapse": [
+      156796,
+      158019,
+      158022,
+      176092
+    ],
+    "events": [
+      {
+        "shot": 156796,
+        "span_ms": [
+          1358.0,
+          2630.0
+        ],
+        "neutral_beam_power_cached": false,
+        "start_ms": 2260.0,
+        "betan_start": 3.143,
+        "min_ms": 2380.0,
+        "betan_min": 0.862,
+        "drop_fraction": 0.726
+      },
+      {
+        "shot": 158019,
+        "span_ms": [
+          330.0,
+          1508.0
+        ],
+        "neutral_beam_power_cached": false,
+        "start_ms": 1205.0,
+        "betan_start": 2.191,
+        "min_ms": 1305.0,
+        "betan_min": 1.113,
+        "drop_fraction": 0.492
+      },
+      {
+        "shot": 158022,
+        "span_ms": [
+          360.0,
+          2896.45
+        ],
+        "neutral_beam_power_cached": false,
+        "start_ms": 1325.0,
+        "betan_start": 2.25,
+        "min_ms": 1425.0,
+        "betan_min": 1.168,
+        "drop_fraction": 0.481
+      },
+      {
+        "shot": 158022,
+        "span_ms": [
+          360.0,
+          2896.45
+        ],
+        "neutral_beam_power_cached": false,
+        "start_ms": 2505.0,
+        "betan_start": 3.715,
+        "min_ms": 2665.0,
+        "betan_min": 1.315,
+        "drop_fraction": 0.646
+      },
+      {
+        "shot": 176092,
+        "span_ms": [
+          324.109,
+          3984.0
+        ],
+        "neutral_beam_power_cached": false,
+        "start_ms": 2300.0,
+        "betan_start": 3.138,
+        "min_ms": 2400.0,
+        "betan_min": 1.881,
+        "drop_fraction": 0.401
+      }
+    ],
+    "neutral_beam_power_cached_shots": [],
+    "treatment": "flagged in `attrs.unexplained_beta_collapse`; category unchanged because beam power (PINJ) is not cached for these shots and no fetch was made"
+  },
+  "feature_coverage": {
+    "comparison_2014": {
+      "betan": {
+        "shots_with_any": 80,
+        "slice_fraction": 0.940674146048282
+      },
+      "li": {
+        "shots_with_any": 80,
+        "slice_fraction": 0.940674146048282
+      },
+      "q95": {
+        "shots_with_any": 80,
+        "slice_fraction": 0.940674146048282
+      },
+      "qmin": {
+        "shots_with_any": 80,
+        "slice_fraction": 0.940674146048282
+      },
+      "wmhd_mj": {
+        "shots_with_any": 80,
+        "slice_fraction": 0.940674146048282
+      },
+      "betan_over_li": {
+        "shots_with_any": 80,
+        "slice_fraction": 0.940674146048282
+      },
+      "betan_minus_4li": {
+        "shots_with_any": 80,
+        "slice_fraction": 0.940674146048282
+      },
+      "ip_ma": {
+        "shots_with_any": 80,
+        "slice_fraction": 1.0
+      },
+      "n1rms_g": {
+        "shots_with_any": 80,
+        "slice_fraction": 0.9986226585194832
+      },
+      "n1rms_max_g": {
+        "shots_with_any": 80,
+        "slice_fraction": 0.9987228288089752
+      },
+      "n1rms_growth_per_s": {
+        "shots_with_any": 80,
+        "slice_fraction": 0.9986226585194832
+      },
+      "n2rms_g": {
+        "shots_with_any": 80,
+        "slice_fraction": 0.9986226585194832
+      },
+      "rot_core_khz": {
+        "shots_with_any": 80,
+        "slice_fraction": 0.7121356305719724
+      },
+      "rot_mid_khz": {
+        "shots_with_any": 80,
+        "slice_fraction": 0.7121356305719724
+      },
+      "lock_v": {
+        "shots_with_any": 80,
+        "slice_fraction": 0.9998998297105078
+      }
+    },
+    "comparison_2018": {
+      "betan": {
+        "shots_with_any": 52,
+        "slice_fraction": 0.9864287240863432
+      },
+      "li": {
+        "shots_with_any": 52,
+        "slice_fraction": 0.9864287240863432
+      },
+      "q95": {
+        "shots_with_any": 52,
+        "slice_fraction": 0.9864287240863432
+      },
+      "qmin": {
+        "shots_with_any": 52,
+        "slice_fraction": 0.9864287240863432
+      },
+      "wmhd_mj": {
+        "shots_with_any": 52,
+        "slice_fraction": 0.9864287240863432
+      },
+      "betan_over_li": {
+        "shots_with_any": 52,
+        "slice_fraction": 0.9864287240863432
+      },
+      "betan_minus_4li": {
+        "shots_with_any": 52,
+        "slice_fraction": 0.9864287240863432
+      },
+      "ip_ma": {
+        "shots_with_any": 52,
+        "slice_fraction": 1.0
+      },
+      "n1rms_g": {
+        "shots_with_any": 52,
+        "slice_fraction": 1.0
+      },
+      "n1rms_max_g": {
+        "shots_with_any": 52,
+        "slice_fraction": 1.0
+      },
+      "n1rms_growth_per_s": {
+        "shots_with_any": 52,
+        "slice_fraction": 1.0
+      },
+      "n2rms_g": {
+        "shots_with_any": 52,
+        "slice_fraction": 1.0
+      },
+      "rot_core_khz": {
+        "shots_with_any": 51,
+        "slice_fraction": 0.9192135071596494
+      },
+      "rot_mid_khz": {
+        "shots_with_any": 51,
+        "slice_fraction": 0.9192135071596494
+      },
+      "lock_v": {
+        "shots_with_any": 52,
+        "slice_fraction": 1.0
+      }
+    },
+    "hanson_2014": {
+      "betan": {
+        "shots_with_any": 20,
+        "slice_fraction": 0.9895203546956872
+      },
+      "li": {
+        "shots_with_any": 20,
+        "slice_fraction": 0.9895203546956872
+      },
+      "q95": {
+        "shots_with_any": 20,
+        "slice_fraction": 0.9895203546956872
+      },
+      "qmin": {
+        "shots_with_any": 20,
+        "slice_fraction": 0.9895203546956872
+      },
+      "wmhd_mj": {
+        "shots_with_any": 20,
+        "slice_fraction": 0.9895203546956872
+      },
+      "betan_over_li": {
+        "shots_with_any": 20,
+        "slice_fraction": 0.9895203546956872
+      },
+      "betan_minus_4li": {
+        "shots_with_any": 20,
+        "slice_fraction": 0.9895203546956872
+      },
+      "ip_ma": {
+        "shots_with_any": 20,
+        "slice_fraction": 1.0
+      },
+      "n1rms_g": {
+        "shots_with_any": 20,
+        "slice_fraction": 1.0
+      },
+      "n1rms_max_g": {
+        "shots_with_any": 20,
+        "slice_fraction": 1.0
+      },
+      "n1rms_growth_per_s": {
+        "shots_with_any": 20,
+        "slice_fraction": 1.0
+      },
+      "n2rms_g": {
+        "shots_with_any": 20,
+        "slice_fraction": 1.0
+      },
+      "rot_core_khz": {
+        "shots_with_any": 20,
+        "slice_fraction": 0.8119038022302835
+      },
+      "rot_mid_khz": {
+        "shots_with_any": 20,
+        "slice_fraction": 0.8119038022302835
+      },
+      "lock_v": {
+        "shots_with_any": 20,
+        "slice_fraction": 1.0
+      }
+    },
+    "hanson_2018": {
+      "betan": {
+        "shots_with_any": 13,
+        "slice_fraction": 0.9848849652220438
+      },
+      "li": {
+        "shots_with_any": 13,
+        "slice_fraction": 0.9848849652220438
+      },
+      "q95": {
+        "shots_with_any": 13,
+        "slice_fraction": 0.9848849652220438
+      },
+      "qmin": {
+        "shots_with_any": 13,
+        "slice_fraction": 0.9848849652220438
+      },
+      "wmhd_mj": {
+        "shots_with_any": 13,
+        "slice_fraction": 0.9848849652220438
+      },
+      "betan_over_li": {
+        "shots_with_any": 13,
+        "slice_fraction": 0.9848849652220438
+      },
+      "betan_minus_4li": {
+        "shots_with_any": 13,
+        "slice_fraction": 0.9848849652220438
+      },
+      "ip_ma": {
+        "shots_with_any": 13,
+        "slice_fraction": 1.0
+      },
+      "n1rms_g": {
+        "shots_with_any": 13,
+        "slice_fraction": 1.0
+      },
+      "n1rms_max_g": {
+        "shots_with_any": 13,
+        "slice_fraction": 1.0
+      },
+      "n1rms_growth_per_s": {
+        "shots_with_any": 13,
+        "slice_fraction": 1.0
+      },
+      "n2rms_g": {
+        "shots_with_any": 13,
+        "slice_fraction": 1.0
+      },
+      "rot_core_khz": {
+        "shots_with_any": 13,
+        "slice_fraction": 0.899812734082397
+      },
+      "rot_mid_khz": {
+        "shots_with_any": 13,
+        "slice_fraction": 0.899812734082397
+      },
+      "lock_v": {
+        "shots_with_any": 13,
+        "slice_fraction": 1.0
+      }
+    }
+  },
+  "slices": {
+    "rows": 82925,
+    "labels": {
+      "-1": 9184,
+      "0": 5255,
+      "1": 480
+    },
+    "unlabelled_comparison_rows": 68006
+  },
+  "windows": {
+    "csv": "data/events/resistive_wall_mode/extend_rwm_onset_window/rwm_windows.csv",
+    "rows": 612,
+    "minimal_present_windows": 54,
+    "uncertain_onset_windows": 54,
+    "assumed_absent_spans": 33,
+    "verified_absent_spans": 0,
+    "hanson_unassessed_spans": 87,
+    "comparison_unassessed_spans": 258,
+    "candidate_spans_on_comparison_shots": 126,
+    "onset_window_ms": 20.0,
+    "minimal_present_ms": 10.0,
+    "horizon_ms": 100.0,
+    "post_ms": 100.0
+  },
+  "evidence": {
+    "verified": "Hanson listed onset points only; no verified negative coverage",
+    "windows": "uncertain 20 ms pre-onset convention; minimal present 10 ms post-onset slice; neither is a measured mode duration",
+    "onset_time_provenance": {
+      "field": "ONSET_TIME",
+      "detection_or_threshold_time_verified": false,
+      "finding": "Hanson source CSVs and category README name onset times but do not define growth-start versus detection/threshold timing. Piccione digests describe NSTX threshold t_RWM and cannot establish the meaning of Hanson's DIII-D ONSET_TIME.",
+      "sources_searched": [
+        "data/events/resistive_wall_mode/raw/rwm_onsets_2017.csv",
+        "data/events/resistive_wall_mode/raw/rwm_onsets_2024.csv",
+        "main:data/events/resistive_wall_mode/README.md",
+        "main:.tmp/label_papers/Piccione_2022_Nucl._Fusion_62_036002.md",
+        "main:.tmp/label_papers/outside/Piccione_tsdw2021_RWM_poster.md"
+      ],
+      "physical_window_categories": {
+        "pre_onset": 2,
+        "minimal_post_onset": 1
+      },
+      "forecast_target": "separate 100 ms point-time forecast target; unchanged",
+      "source_audit": "outputs/labeler/rwm/sensor_probe.json#/source_search"
+    },
+    "negative_assumption": "onset listing is complete only before first onset precursor for physical category 0; not termination evidence",
+    "unassessed": "explicit category 4 for precursor gaps and time beyond minimal present slices; comparison time outside screen spans",
+    "primary_scoring": "before last n=1 onset only; n=2-only shots excluded",
+    "comparison": "unlabelled, never primary supervised negatives"
+  },
+  "input_audit": {
+    "dusbradial_zero_2014_shots": 79,
+    "dusbradial_corrupted_shot_range": [
+      176030,
+      176912
+    ],
+    "dusbradial_by_role_campaign": {
+      "comparison_2014": {
+        "shots": 80,
+        "zero_only_shots": 64,
+        "nonzero_shots": 16,
+        "missing_shots": 0
+      },
+      "comparison_2018": {
+        "shots": 52,
+        "zero_only_shots": 0,
+        "nonzero_shots": 52,
+        "missing_shots": 0
+      },
+      "hanson_2014": {
+        "shots": 20,
+        "zero_only_shots": 15,
+        "nonzero_shots": 5,
+        "missing_shots": 0
+      },
+      "hanson_2018": {
+        "shots": 13,
+        "zero_only_shots": 0,
+        "nonzero_shots": 13,
+        "missing_shots": 0
+      }
+    },
+    "dusbradial_2014_nonzero_shots": [
+      158018,
+      158019,
+      158020,
+      158021,
+      158022,
+      158023,
+      158928,
+      158929,
+      158930,
+      158931,
+      158932,
+      158933,
+      158934,
+      158935,
+      158936,
+      158937,
+      158938,
+      158939,
+      158940,
+      158941,
+      158942
+    ],
+    "corruption_source": "src/labeler/features/namespace.py (Fu et al. 2020 note)",
+    "dusbradial_in_primary_model": false,
+    "fetch_specs": [
+      "co2",
+      "ece",
+      "filterscopes",
+      "ip",
+      "pcphd03",
+      "pinj"
+    ],
+    "low_frequency_n1_rwm_sensor_specs": [],
+    "low_frequency_sensor_fetch_attempted": true,
+    "low_frequency_sensor_status": "candidate probe completed; corrected low-frequency RWM sensor semantics remain unverified; no new sensor or model input registered",
+    "low_frequency_sensor_probe": "outputs/labeler/rwm/sensor_probe.json",
+    "low_frequency_sensor_candidate_specs": [
+      {
+        "name": "cn1bamp",
+        "exprs": [
+          "\\OPERATIONS::CN1BAMP"
+        ],
+        "via": "mds",
+        "tree": "OPERATIONS",
+        "missing_ok": false
+      },
+      {
+        "name": "iln1bamp",
+        "exprs": [
+          "\\OPERATIONS::ILN1BAMP"
+        ],
+        "via": "mds",
+        "tree": "OPERATIONS",
+        "missing_ok": false
+      },
+      {
+        "name": "iun1bamp",
+        "exprs": [
+          "\\OPERATIONS::IUN1BAMP"
+        ],
+        "via": "mds",
+        "tree": "OPERATIONS",
+        "missing_ok": false
+      }
+    ]
+  }
+}

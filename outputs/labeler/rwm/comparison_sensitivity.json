@@ -1,0 +1,1242 @@
+{
+  "script": "scripts/labeler/rwm_comparison_sensitivity.py",
+  "made_at": "2026-10-03T23:05:22+00:00",
+  "status": "completed",
+  "model": "rwm-brf-comparison-negative",
+  "options": {
+    "kind": "brf",
+    "columns": [
+      "betan",
+      "li",
+      "q95",
+      "qmin",
+      "wmhd_mj",
+      "betan_over_li",
+      "betan_minus_4li",
+      "ip_ma",
+      "n1rms_g",
+      "n1rms_max_g",
+      "n1rms_growth_per_s",
+      "n2rms_g",
+      "rot_core_khz",
+      "rot_mid_khz"
+    ],
+    "comparison": true
+  },
+  "predictions": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf-comparison-negative_seed0.parquet",
+  "reference_predictions": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_seed0.parquet",
+  "fit_elapsed_seconds": 58.14550438709557,
+  "protocol": {
+    "outer_folds": 5,
+    "inner_folds": 3,
+    "fold_seed": 0,
+    "forest": {
+      "n_estimators": 300,
+      "max_depth": 8,
+      "min_leaf": 5
+    },
+    "bootstrap_replicates": 1000,
+    "training": "primary Hanson slices plus unlabelled comparisons as negatives",
+    "scoring": "unchanged primary Hanson mask and phase-controlled AUROC",
+    "cutoff_tuning": "inner-OOF primary Hanson slices; no comparison tuning",
+    "alarm_tuning": "unchanged inner-OOF Hanson traces through last explanation onset +100 ms; no comparison tuning",
+    "scope": "one CV; identical outer shots, inner splits and random seeds",
+    "paired_direction": "comparison-negative sensitivity minus original forest",
+    "intervals": "95% shot-bootstrap; percentile scores, basic paired changes",
+    "limitation": "label-noisy negatives; comparisons are not verified stable"
+  },
+  "reference_metrics": {
+    "slice_auroc": {
+      "estimate": 0.7602021883920076,
+      "low": 0.7058712054691425,
+      "high": 0.809161269108473,
+      "n_finite": 1000
+    },
+    "slice_auprc": {
+      "estimate": 0.16304825671489243,
+      "low": 0.12255501411878099,
+      "high": 0.21989172028956308,
+      "n_finite": 1000
+    },
+    "broad_auroc": {
+      "estimate": 0.7395949926583862,
+      "low": 0.6684464461630325,
+      "high": 0.7990014888281666,
+      "n_finite": 1000
+    },
+    "broad_auprc": {
+      "estimate": 0.06507217205517342,
+      "low": 0.042721200834610715,
+      "high": 0.10329684532486956,
+      "n_finite": 1000
+    },
+    "high_beta_auroc": {
+      "estimate": 0.6021780297512571,
+      "low": 0.4910802032725228,
+      "high": 0.6881463994312261,
+      "n_finite": 1000
+    },
+    "high_beta_auprc": {
+      "estimate": 0.16785884001570783,
+      "low": 0.12267115467999315,
+      "high": 0.2279026522395914,
+      "n_finite": 1000
+    },
+    "above_proxy_auroc": {
+      "estimate": 0.5455878667229984,
+      "low": 0.41598876744340335,
+      "high": 0.6421652382793495,
+      "n_finite": 1000
+    },
+    "above_proxy_auprc": {
+      "estimate": 0.17610580154667518,
+      "low": 0.12954093193398886,
+      "high": 0.24013785290265766,
+      "n_finite": 1000
+    },
+    "slice_tpr": {
+      "estimate": 0.75625,
+      "low": 0.6456429450369155,
+      "high": 0.86875,
+      "n_finite": 1000
+    },
+    "slice_fpr": {
+      "estimate": 0.3421503330161751,
+      "low": 0.2614966232303802,
+      "high": 0.42092874813984527,
+      "n_finite": 1000
+    },
+    "slice_precision": {
+      "estimate": 0.16797778806108282,
+      "low": 0.133228141878858,
+      "high": 0.21863721969635289,
+      "n_finite": 1000
+    },
+    "slice_f1": {
+      "estimate": 0.27489587277546385,
+      "low": 0.22652481957565895,
+      "high": 0.3366447880743131,
+      "n_finite": 1000
+    },
+    "onset_detection_rate": {
+      "estimate": 0.1875,
+      "low": 0.04875145180023232,
+      "high": 0.3333333333333333,
+      "n_finite": 1000
+    },
+    "uniform_alarm_reference": {
+      "estimate": 0.18965877180492585,
+      "low": 0.07954273659426815,
+      "high": 0.3024669369763545,
+      "n_finite": 1000
+    },
+    "detection_minus_uniform_reference": {
+      "estimate": -0.002158771804925852,
+      "low": -0.05818040847971017,
+      "high": 0.052070112093482064,
+      "n_finite": 1000
+    },
+    "warning_ms_mean": {
+      "estimate": 308.09444444444443,
+      "low": 251.107,
+      "high": 362.55833333333334,
+      "n_finite": 998
+    },
+    "warning_ms_median": {
+      "estimate": 356.0,
+      "low": 286.0,
+      "high": 389.0,
+      "n_finite": 998
+    },
+    "hanson_shot_detection_rate": {
+      "estimate": 0.06666666666666667,
+      "low": 0.0,
+      "high": 0.1724137931034483,
+      "n_finite": 1000
+    },
+    "hanson_any_alarm_shot_detection_rate": {
+      "estimate": 0.2,
+      "low": 0.06666666666666667,
+      "high": 0.35489631336405525,
+      "n_finite": 1000
+    },
+    "hanson_shot_early_rate": {
+      "estimate": 0.2,
+      "low": 0.06451612903225806,
+      "high": 0.3548387096774194,
+      "n_finite": 1000
+    },
+    "hanson_any_alarm_shot_early_rate": {
+      "estimate": 0.06666666666666667,
+      "low": 0.0,
+      "high": 0.17865259740259734,
+      "n_finite": 1000
+    },
+    "hanson_shot_miss_rate": {
+      "estimate": 0.7333333333333333,
+      "low": 0.5666666666666667,
+      "high": 0.8928571428571429,
+      "n_finite": 1000
+    },
+    "hanson_any_alarm_shot_miss_rate": {
+      "estimate": 0.7333333333333333,
+      "low": 0.5666666666666667,
+      "high": 0.8928571428571429,
+      "n_finite": 1000
+    },
+    "hanson_early_alarm_incidence": {
+      "estimate": 0.21212121212121213,
+      "low": 0.09090909090909091,
+      "high": 0.36363636363636365,
+      "n_finite": 1000
+    },
+    "hanson_early_alarms_per_shot": {
+      "estimate": 0.5454545454545454,
+      "low": 0.18181818181818182,
+      "high": 0.9704545454545448,
+      "n_finite": 1000
+    },
+    "hanson_ignored_alarm_incidence": {
+      "estimate": 0.3333333333333333,
+      "low": 0.18181818181818182,
+      "high": 0.5151515151515151,
+      "n_finite": 1000
+    },
+    "hanson_ignored_alarms_per_shot": {
+      "estimate": 1.878787878787879,
+      "low": 0.6060606060606061,
+      "high": 3.5166666666666653,
+      "n_finite": 1000
+    },
+    "hanson_unexplained_alarm_incidence": {
+      "estimate": 0.24242424242424243,
+      "low": 0.09090909090909091,
+      "high": 0.3939393939393939,
+      "n_finite": 1000
+    },
+    "hanson_unexplained_alarms_per_shot": {
+      "estimate": 0.8787878787878788,
+      "low": 0.24242424242424243,
+      "high": 1.696969696969697,
+      "n_finite": 1000
+    },
+    "comparison_alarm_incidence": {
+      "estimate": 0.14393939393939395,
+      "low": 0.08333333333333333,
+      "high": 0.21212121212121213,
+      "n_finite": 1000
+    },
+    "comparison_alarms_per_shot": {
+      "estimate": 0.6363636363636364,
+      "low": 0.30284090909090927,
+      "high": 1.0378787878787878,
+      "n_finite": 1000
+    }
+  },
+  "reference_phase_controlled_auroc": {
+    "estimate": 0.5337573804158704,
+    "low": 0.4359065321793412,
+    "high": 0.6248589220201699,
+    "n_finite": 1000
+  },
+  "paired_change": {
+    "slice_auroc": {
+      "estimate": 0.008345226768157299,
+      "low": -0.024694803704312145,
+      "high": 0.04035103474447985,
+      "n_finite": 1000
+    },
+    "slice_auprc": {
+      "estimate": 0.008362711469227402,
+      "low": -0.027490835947632457,
+      "high": 0.04262693985185305,
+      "n_finite": 1000
+    },
+    "broad_auroc": {
+      "estimate": 0.05695128959657236,
+      "low": 0.005705786051180453,
+      "high": 0.10009563107519956,
+      "n_finite": 1000
+    },
+    "broad_auprc": {
+      "estimate": 0.017996802981545698,
+      "low": -0.011934519643055953,
+      "high": 0.047631719175713204,
+      "n_finite": 1000
+    },
+    "high_beta_auroc": {
+      "estimate": 0.02261701520192516,
+      "low": -0.04324447224105525,
+      "high": 0.08090170988706367,
+      "n_finite": 1000
+    },
+    "high_beta_auprc": {
+      "estimate": 0.006494232877033601,
+      "low": -0.03831259197762618,
+      "high": 0.0504993647654252,
+      "n_finite": 1000
+    },
+    "above_proxy_auroc": {
+      "estimate": 0.026364671426218567,
+      "low": -0.057704494995540714,
+      "high": 0.09198836169000446,
+      "n_finite": 1000
+    },
+    "above_proxy_auprc": {
+      "estimate": 0.007788592815706263,
+      "low": -0.03493093597881417,
+      "high": 0.051373513327908786,
+      "n_finite": 1000
+    },
+    "slice_tpr": {
+      "estimate": 0.054166666666666696,
+      "low": -0.03218095238095234,
+      "high": 0.13755514705882355,
+      "n_finite": 1000
+    },
+    "slice_fpr": {
+      "estimate": 0.04053282588011414,
+      "low": 0.0023028047349104713,
+      "high": 0.08045093710341816,
+      "n_finite": 1000
+    },
+    "slice_precision": {
+      "estimate": -0.005894454727749493,
+      "low": -0.026138812342292837,
+      "high": 0.011933294967668526,
+      "n_finite": 1000
+    },
+    "slice_f1": {
+      "estimate": -0.0047569838865749725,
+      "low": -0.036604671496913085,
+      "high": 0.02088233521983,
+      "n_finite": 1000
+    },
+    "onset_detection_rate": {
+      "estimate": -0.08333333333333333,
+      "low": -0.23333333333333334,
+      "high": 0.07335185185185183,
+      "n_finite": 1000
+    },
+    "uniform_alarm_reference": {
+      "estimate": -0.043607286524084105,
+      "low": -0.19461328946244072,
+      "high": 0.09126299033310331,
+      "n_finite": 1000
+    },
+    "detection_minus_uniform_reference": {
+      "estimate": -0.039726046809249224,
+      "low": -0.09988387232849025,
+      "high": 0.02150141367447135,
+      "n_finite": 1000
+    },
+    "warning_ms_mean": {
+      "estimate": -129.41444444444443,
+      "low": -250.18960317460312,
+      "high": 14.27819444444441,
+      "n_finite": 991
+    },
+    "warning_ms_median": {
+      "estimate": -196.0,
+      "low": -392.0,
+      "high": -73.96250000000009,
+      "n_finite": 991
+    },
+    "hanson_shot_detection_rate": {
+      "estimate": 0.06666666666666667,
+      "low": -0.1,
+      "high": 0.22715893817204294,
+      "n_finite": 1000
+    },
+    "hanson_any_alarm_shot_detection_rate": {
+      "estimate": -0.033333333333333354,
+      "low": -0.20952380952380956,
+      "high": 0.1477306547619046,
+      "n_finite": 1000
+    },
+    "hanson_shot_early_rate": {
+      "estimate": 0.0,
+      "low": -0.19999999999999998,
+      "high": 0.1787367724867723,
+      "n_finite": 1000
+    },
+    "hanson_any_alarm_shot_early_rate": {
+      "estimate": 0.09999999999999999,
+      "low": -0.018750000000000017,
+      "high": 0.19999999999999998,
+      "n_finite": 1000
+    },
+    "hanson_shot_miss_rate": {
+      "estimate": -0.06666666666666665,
+      "low": -0.27126436781609187,
+      "high": 0.14814348118279552,
+      "n_finite": 1000
+    },
+    "hanson_any_alarm_shot_miss_rate": {
+      "estimate": -0.06666666666666665,
+      "low": -0.27126436781609187,
+      "high": 0.14814348118279552,
+      "n_finite": 1000
+    },
+    "hanson_early_alarm_incidence": {
+      "estimate": 0.0,
+      "low": -0.2121212121212121,
+      "high": 0.18181818181818182,
+      "n_finite": 1000
+    },
+    "hanson_early_alarms_per_shot": {
+      "estimate": -0.06060606060606055,
+      "low": -0.515151515151515,
+      "high": 0.4242424242424243,
+      "n_finite": 1000
+    },
+    "hanson_ignored_alarm_incidence": {
+      "estimate": -0.1515151515151515,
+      "low": -0.3636363636363636,
+      "high": 0.031060606060605456,
+      "n_finite": 1000
+    },
+    "hanson_ignored_alarms_per_shot": {
+      "estimate": -1.0,
+      "low": -2.6060606060606055,
+      "high": 0.8484848484848486,
+      "n_finite": 1000
+    },
+    "hanson_unexplained_alarm_incidence": {
+      "estimate": -0.030303030303030304,
+      "low": -0.2424242424242424,
+      "high": 0.15227272727272662,
+      "n_finite": 1000
+    },
+    "hanson_unexplained_alarms_per_shot": {
+      "estimate": -0.3939393939393939,
+      "low": -1.0,
+      "high": 0.48484848484848486,
+      "n_finite": 1000
+    },
+    "comparison_alarm_incidence": {
+      "estimate": -0.12121212121212122,
+      "low": -0.18181818181818182,
+      "high": -0.05303030303030304,
+      "n_finite": 1000
+    },
+    "comparison_alarms_per_shot": {
+      "estimate": -0.6060606060606061,
+      "low": -0.9318181818181819,
+      "high": -0.21212121212121215,
+      "n_finite": 1000
+    },
+    "phase_controlled_auroc": {
+      "estimate": 0.05339570438403829,
+      "low": -0.03028980093236386,
+      "high": 0.126503608281077,
+      "n_finite": 1000
+    }
+  },
+  "counts": {
+    "hanson_shots": 33,
+    "comparison_shots": 132,
+    "positive_slices": 480,
+    "negative_slices": 5255,
+    "excluded_slices": 9184,
+    "comparison_slices": 68006,
+    "target_onsets": 48,
+    "onsets_warned": 5,
+    "hanson_target_shots": 30,
+    "hanson_detected_shots": 4,
+    "hanson_early_shots": 6,
+    "hanson_missed_shots": 20,
+    "hanson_no_target_shots": 3,
+    "hanson_shots_with_an_unexplained_alarm": 7,
+    "comparison_shots_with_an_alarm": 3,
+    "hanson_any_alarm_detected_shots": 5,
+    "hanson_any_alarm_early_shots": 5,
+    "hanson_any_alarm_missed_shots": 20,
+    "hanson_early_alarms": 16,
+    "hanson_shots_with_an_early_alarm": 7,
+    "hanson_ignored_alarms": 29,
+    "hanson_shots_with_an_ignored_alarm": 6,
+    "broad_positive_slices": 480,
+    "broad_negative_slices": 13848,
+    "broad_prevalence": 0.03350083752093802,
+    "high_beta_positive_slices": 365,
+    "high_beta_negative_slices": 2351,
+    "high_beta_prevalence": 0.13438880706921943,
+    "above_proxy_positive_slices": 365,
+    "above_proxy_negative_slices": 1913,
+    "above_proxy_prevalence": 0.16022827041264268,
+    "prevalence": 0.08369659982563209
+  },
+  "within_shot_auroc": {
+    "primary": {
+      "n_shots": 30,
+      "mean": 0.7946785310749593,
+      "median": 0.8129069593787336
+    },
+    "broad": {
+      "n_shots": 30,
+      "mean": 0.7823451694198217,
+      "median": 0.82413311890854
+    }
+  },
+  "phase_controlled_auroc": {
+    "estimate": 0.5871530847999087,
+    "low": 0.5063988114267441,
+    "high": 0.664505457611437,
+    "n_finite": 1000
+  },
+  "phase_bin_width_sensitivity": {
+    "50": 0.5870477943290965,
+    "100": 0.5871530847999087,
+    "200": 0.5964538117342032,
+    "400": 0.593734748232538,
+    "800": 0.5885105684533036,
+    "no_time_control": 0.7588383797386151
+  },
+  "rules_by_fold": [
+    {
+      "fold": 0,
+      "cutoff": 0.4005711968365185,
+      "rule": [
+        0.9240437289491141,
+        0.9240437289491141,
+        0.0
+      ]
+    },
+    {
+      "fold": 1,
+      "cutoff": 0.35531370342097274,
+      "rule": [
+        0.434361664348528,
+        0.868723328697056,
+        50.0
+      ]
+    },
+    {
+      "fold": 2,
+      "cutoff": 0.36765765008013773,
+      "rule": [
+        0.9469719985073514,
+        0.9469719985073514,
+        50.0
+      ]
+    },
+    {
+      "fold": 3,
+      "cutoff": 0.226384325889881,
+      "rule": [
+        0.47709718822565433,
+        0.9541943764513087,
+        50.0
+      ]
+    },
+    {
+      "fold": 4,
+      "cutoff": 0.5014456217810592,
+      "rule": [
+        0.8828431369281814,
+        0.8828431369281814,
+        50.0
+      ]
+    }
+  ],
+  "metrics": {
+    "slice_auroc": {
+      "estimate": 0.7685474151601649,
+      "low": 0.7292088524118978,
+      "high": 0.8105473790324859,
+      "n_finite": 1000
+    },
+    "slice_auprc": {
+      "estimate": 0.17141096818411983,
+      "low": 0.1362620387009371,
+      "high": 0.22537436284883464,
+      "n_finite": 1000
+    },
+    "broad_auroc": {
+      "estimate": 0.7965462822549586,
+      "low": 0.7393213782242887,
+      "high": 0.8450010634914685,
+      "n_finite": 1000
+    },
+    "broad_auprc": {
+      "estimate": 0.08306897503671912,
+      "low": 0.05843608465322259,
+      "high": 0.12127040604777425,
+      "n_finite": 1000
+    },
+    "high_beta_auroc": {
+      "estimate": 0.6247950449531823,
+      "low": 0.5483314781561761,
+      "high": 0.6941624202292339,
+      "n_finite": 1000
+    },
+    "high_beta_auprc": {
+      "estimate": 0.17435307289274143,
+      "low": 0.1367884186588024,
+      "high": 0.23298538049955372,
+      "n_finite": 1000
+    },
+    "above_proxy_auroc": {
+      "estimate": 0.571952538149217,
+      "low": 0.48850436831917093,
+      "high": 0.6409935172148792,
+      "n_finite": 1000
+    },
+    "above_proxy_auprc": {
+      "estimate": 0.18389439436238145,
+      "low": 0.14139510406220132,
+      "high": 0.24866903931597983,
+      "n_finite": 1000
+    },
+    "slice_tpr": {
+      "estimate": 0.8104166666666667,
+      "low": 0.7062468112244898,
+      "high": 0.9071428571428571,
+      "n_finite": 1000
+    },
+    "slice_fpr": {
+      "estimate": 0.38268315889628923,
+      "low": 0.29501284925444693,
+      "high": 0.45993460819589915,
+      "n_finite": 1000
+    },
+    "slice_precision": {
+      "estimate": 0.16208333333333333,
+      "low": 0.1260690695736594,
+      "high": 0.21709625600020302,
+      "n_finite": 1000
+    },
+    "slice_f1": {
+      "estimate": 0.2701388888888889,
+      "low": 0.21768489696566326,
+      "high": 0.34391243318744635,
+      "n_finite": 1000
+    },
+    "onset_detection_rate": {
+      "estimate": 0.10416666666666667,
+      "low": 0.025,
+      "high": 0.1956628303495311,
+      "n_finite": 1000
+    },
+    "uniform_alarm_reference": {
+      "estimate": 0.14605148528084175,
+      "low": 0.06800536621834627,
+      "high": 0.24271429940883557,
+      "n_finite": 1000
+    },
+    "detection_minus_uniform_reference": {
+      "estimate": -0.041884818614175076,
+      "low": -0.1016386829422802,
+      "high": 0.01732652520278095,
+      "n_finite": 1000
+    },
+    "warning_ms_mean": {
+      "estimate": 178.68,
+      "low": 82.22500000000002,
+      "high": 288.5,
+      "n_finite": 993
+    },
+    "warning_ms_median": {
+      "estimate": 160.0,
+      "low": 26.0,
+      "high": 302.0,
+      "n_finite": 993
+    },
+    "hanson_shot_detection_rate": {
+      "estimate": 0.13333333333333333,
+      "low": 0.03225806451612903,
+      "high": 0.26666666666666666,
+      "n_finite": 1000
+    },
+    "hanson_any_alarm_shot_detection_rate": {
+      "estimate": 0.16666666666666666,
+      "low": 0.037037037037037035,
+      "high": 0.3127232142857141,
+      "n_finite": 1000
+    },
+    "hanson_shot_early_rate": {
+      "estimate": 0.2,
+      "low": 0.06896551724137931,
+      "high": 0.35714285714285715,
+      "n_finite": 1000
+    },
+    "hanson_any_alarm_shot_early_rate": {
+      "estimate": 0.16666666666666666,
+      "low": 0.060052447552448054,
+      "high": 0.3103448275862069,
+      "n_finite": 1000
+    },
+    "hanson_shot_miss_rate": {
+      "estimate": 0.6666666666666666,
+      "low": 0.4838709677419355,
+      "high": 0.8333333333333334,
+      "n_finite": 1000
+    },
+    "hanson_any_alarm_shot_miss_rate": {
+      "estimate": 0.6666666666666666,
+      "low": 0.4838709677419355,
+      "high": 0.8333333333333334,
+      "n_finite": 1000
+    },
+    "hanson_early_alarm_incidence": {
+      "estimate": 0.21212121212121213,
+      "low": 0.09090909090909091,
+      "high": 0.36363636363636365,
+      "n_finite": 1000
+    },
+    "hanson_early_alarms_per_shot": {
+      "estimate": 0.48484848484848486,
+      "low": 0.12121212121212122,
+      "high": 1.0015151515151501,
+      "n_finite": 1000
+    },
+    "hanson_ignored_alarm_incidence": {
+      "estimate": 0.18181818181818182,
+      "low": 0.06060606060606061,
+      "high": 0.3333333333333333,
+      "n_finite": 1000
+    },
+    "hanson_ignored_alarms_per_shot": {
+      "estimate": 0.8787878787878788,
+      "low": 0.09090909090909091,
+      "high": 2.273484848484848,
+      "n_finite": 1000
+    },
+    "hanson_unexplained_alarm_incidence": {
+      "estimate": 0.21212121212121213,
+      "low": 0.09090909090909091,
+      "high": 0.36363636363636365,
+      "n_finite": 1000
+    },
+    "hanson_unexplained_alarms_per_shot": {
+      "estimate": 0.48484848484848486,
+      "low": 0.12121212121212122,
+      "high": 1.0015151515151501,
+      "n_finite": 1000
+    },
+    "comparison_alarm_incidence": {
+      "estimate": 0.022727272727272728,
+      "low": 0.0,
+      "high": 0.05303030303030303,
+      "n_finite": 1000
+    },
+    "comparison_alarms_per_shot": {
+      "estimate": 0.030303030303030304,
+      "low": 0.0,
+      "high": 0.07575757575757576,
+      "n_finite": 1000
+    }
+  },
+  "by_campaign": {
+    "2014": {
+      "counts": {
+        "hanson_shots": 20,
+        "comparison_shots": 80,
+        "positive_slices": 260,
+        "negative_slices": 2280,
+        "excluded_slices": 4903,
+        "comparison_slices": 39932,
+        "target_onsets": 26,
+        "onsets_warned": 5,
+        "hanson_target_shots": 18,
+        "hanson_detected_shots": 4,
+        "hanson_early_shots": 5,
+        "hanson_missed_shots": 9,
+        "hanson_no_target_shots": 2,
+        "hanson_shots_with_an_unexplained_alarm": 6,
+        "comparison_shots_with_an_alarm": 2,
+        "hanson_any_alarm_detected_shots": 5,
+        "hanson_any_alarm_early_shots": 4,
+        "hanson_any_alarm_missed_shots": 9,
+        "hanson_early_alarms": 15,
+        "hanson_shots_with_an_early_alarm": 6,
+        "hanson_ignored_alarms": 26,
+        "hanson_shots_with_an_ignored_alarm": 3,
+        "broad_positive_slices": 260,
+        "broad_negative_slices": 6892,
+        "broad_prevalence": 0.036353467561521254,
+        "high_beta_positive_slices": 168,
+        "high_beta_negative_slices": 754,
+        "high_beta_prevalence": 0.1822125813449024,
+        "above_proxy_positive_slices": 176,
+        "above_proxy_negative_slices": 705,
+        "above_proxy_prevalence": 0.19977298524404086,
+        "prevalence": 0.10236220472440945
+      },
+      "metrics": {
+        "slice_auroc": {
+          "estimate": 0.7282051282051282,
+          "low": 0.6662415544445917,
+          "high": 0.7991349524172751,
+          "n_finite": 1000
+        },
+        "slice_auprc": {
+          "estimate": 0.17179077049446473,
+          "low": 0.12456574304966993,
+          "high": 0.2485079045440944,
+          "n_finite": 1000
+        },
+        "broad_auroc": {
+          "estimate": 0.796380418768695,
+          "low": 0.7168020222703704,
+          "high": 0.8569526003563056,
+          "n_finite": 1000
+        },
+        "broad_auprc": {
+          "estimate": 0.08797164589264954,
+          "low": 0.05412502982197941,
+          "high": 0.14072703259953176,
+          "n_finite": 1000
+        },
+        "high_beta_auroc": {
+          "estimate": 0.4886162687886826,
+          "low": 0.3774766306795729,
+          "high": 0.5761650663643978,
+          "n_finite": 1000
+        },
+        "high_beta_auprc": {
+          "estimate": 0.17412042671087513,
+          "low": 0.11381450356934876,
+          "high": 0.25864615971763943,
+          "n_finite": 1000
+        },
+        "above_proxy_auroc": {
+          "estimate": 0.4743552546744036,
+          "low": 0.36640923480672044,
+          "high": 0.5600637369785884,
+          "n_finite": 1000
+        },
+        "above_proxy_auprc": {
+          "estimate": 0.18381493311269412,
+          "low": 0.12688840744176028,
+          "high": 0.28243261573234457,
+          "n_finite": 1000
+        },
+        "slice_tpr": {
+          "estimate": 0.8884615384615384,
+          "low": 0.7925777777777778,
+          "high": 0.9720103448275862,
+          "n_finite": 1000
+        },
+        "slice_fpr": {
+          "estimate": 0.4513157894736842,
+          "low": 0.3383738768641385,
+          "high": 0.5542833501830506,
+          "n_finite": 1000
+        },
+        "slice_precision": {
+          "estimate": 0.18333333333333332,
+          "low": 0.1398214188712043,
+          "high": 0.25287666418589266,
+          "n_finite": 1000
+        },
+        "slice_f1": {
+          "estimate": 0.30394736842105263,
+          "low": 0.24100459908108646,
+          "high": 0.3898020351526364,
+          "n_finite": 1000
+        },
+        "onset_detection_rate": {
+          "estimate": 0.19230769230769232,
+          "low": 0.05,
+          "high": 0.3103448275862069,
+          "n_finite": 1000
+        },
+        "uniform_alarm_reference": {
+          "estimate": 0.2563572168490001,
+          "low": 0.12372789718782284,
+          "high": 0.38393398529670497,
+          "n_finite": 1000
+        },
+        "detection_minus_uniform_reference": {
+          "estimate": -0.06404952454130777,
+          "low": -0.1803347590987424,
+          "high": 0.03675926429598412,
+          "n_finite": 1000
+        },
+        "warning_ms_mean": {
+          "estimate": 178.68,
+          "low": 71.45000000000005,
+          "high": 294.1362499999999,
+          "n_finite": 994
+        },
+        "warning_ms_median": {
+          "estimate": 160.0,
+          "low": 26.0,
+          "high": 302.0,
+          "n_finite": 994
+        },
+        "hanson_shot_detection_rate": {
+          "estimate": 0.2222222222222222,
+          "low": 0.05263157894736842,
+          "high": 0.4117647058823529,
+          "n_finite": 1000
+        },
+        "hanson_any_alarm_shot_detection_rate": {
+          "estimate": 0.2777777777777778,
+          "low": 0.0665625000000001,
+          "high": 0.5,
+          "n_finite": 1000
+        },
+        "hanson_shot_early_rate": {
+          "estimate": 0.2777777777777778,
+          "low": 0.10526315789473684,
+          "high": 0.5,
+          "n_finite": 1000
+        },
+        "hanson_any_alarm_shot_early_rate": {
+          "estimate": 0.2222222222222222,
+          "low": 0.05555555555555555,
+          "high": 0.4444444444444444,
+          "n_finite": 1000
+        },
+        "hanson_shot_miss_rate": {
+          "estimate": 0.5,
+          "low": 0.2631578947368421,
+          "high": 0.7222222222222222,
+          "n_finite": 1000
+        },
+        "hanson_any_alarm_shot_miss_rate": {
+          "estimate": 0.5,
+          "low": 0.2631578947368421,
+          "high": 0.7222222222222222,
+          "n_finite": 1000
+        },
+        "hanson_early_alarm_incidence": {
+          "estimate": 0.3,
+          "low": 0.1,
+          "high": 0.55,
+          "n_finite": 1000
+        },
+        "hanson_early_alarms_per_shot": {
+          "estimate": 0.75,
+          "low": 0.2,
+          "high": 1.55,
+          "n_finite": 1000
+        },
+        "hanson_ignored_alarm_incidence": {
+          "estimate": 0.15,
+          "low": 0.0,
+          "high": 0.3,
+          "n_finite": 1000
+        },
+        "hanson_ignored_alarms_per_shot": {
+          "estimate": 1.3,
+          "low": 0.0,
+          "high": 3.55,
+          "n_finite": 1000
+        },
+        "hanson_unexplained_alarm_incidence": {
+          "estimate": 0.3,
+          "low": 0.1,
+          "high": 0.55,
+          "n_finite": 1000
+        },
+        "hanson_unexplained_alarms_per_shot": {
+          "estimate": 0.75,
+          "low": 0.2,
+          "high": 1.55,
+          "n_finite": 1000
+        },
+        "comparison_alarm_incidence": {
+          "estimate": 0.025,
+          "low": 0.0,
+          "high": 0.0625,
+          "n_finite": 1000
+        },
+        "comparison_alarms_per_shot": {
+          "estimate": 0.025,
+          "low": 0.0,
+          "high": 0.0625,
+          "n_finite": 1000
+        }
+      }
+    },
+    "2018": {
+      "counts": {
+        "hanson_shots": 13,
+        "comparison_shots": 52,
+        "positive_slices": 220,
+        "negative_slices": 2975,
+        "excluded_slices": 4281,
+        "comparison_slices": 28074,
+        "target_onsets": 22,
+        "onsets_warned": 0,
+        "hanson_target_shots": 12,
+        "hanson_detected_shots": 0,
+        "hanson_early_shots": 1,
+        "hanson_missed_shots": 11,
+        "hanson_no_target_shots": 1,
+        "hanson_shots_with_an_unexplained_alarm": 1,
+        "comparison_shots_with_an_alarm": 1,
+        "hanson_any_alarm_detected_shots": 0,
+        "hanson_any_alarm_early_shots": 1,
+        "hanson_any_alarm_missed_shots": 11,
+        "hanson_early_alarms": 1,
+        "hanson_shots_with_an_early_alarm": 1,
+        "hanson_ignored_alarms": 3,
+        "hanson_shots_with_an_ignored_alarm": 3,
+        "broad_positive_slices": 220,
+        "broad_negative_slices": 6956,
+        "broad_prevalence": 0.030657748049052396,
+        "high_beta_positive_slices": 197,
+        "high_beta_negative_slices": 1597,
+        "high_beta_prevalence": 0.10981047937569677,
+        "above_proxy_positive_slices": 189,
+        "above_proxy_negative_slices": 1208,
+        "above_proxy_prevalence": 0.13528990694345025,
+        "prevalence": 0.06885758998435054
+      },
+      "metrics": {
+        "slice_auroc": {
+          "estimate": 0.7922582123758595,
+          "low": 0.717120353687189,
+          "high": 0.850370376882453,
+          "n_finite": 1000
+        },
+        "slice_auprc": {
+          "estimate": 0.1890825929338932,
+          "low": 0.12814311534590764,
+          "high": 0.275794554045254,
+          "n_finite": 1000
+        },
+        "broad_auroc": {
+          "estimate": 0.794698494432537,
+          "low": 0.6973363630761095,
+          "high": 0.8762664201506463,
+          "n_finite": 1000
+        },
+        "broad_auprc": {
+          "estimate": 0.07961710020042387,
+          "low": 0.04220485378711688,
+          "high": 0.14260459450157878,
+          "n_finite": 1000
+        },
+        "high_beta_auroc": {
+          "estimate": 0.6664748942337949,
+          "low": 0.5381703599627837,
+          "high": 0.7693236900879465,
+          "n_finite": 1000
+        },
+        "high_beta_auprc": {
+          "estimate": 0.18757609463872,
+          "low": 0.13085579627896168,
+          "high": 0.28644185230328656,
+          "n_finite": 1000
+        },
+        "above_proxy_auroc": {
+          "estimate": 0.5961535092329794,
+          "low": 0.48885348490520486,
+          "high": 0.6842871855780404,
+          "n_finite": 1000
+        },
+        "above_proxy_auprc": {
+          "estimate": 0.19439094407078267,
+          "low": 0.13481512975370089,
+          "high": 0.301085911005709,
+          "n_finite": 1000
+        },
+        "slice_tpr": {
+          "estimate": 0.7181818181818181,
+          "low": 0.528538961038961,
+          "high": 0.8867222222222222,
+          "n_finite": 1000
+        },
+        "slice_fpr": {
+          "estimate": 0.3300840336134454,
+          "low": 0.21123277849035244,
+          "high": 0.44471705907614173,
+          "n_finite": 1000
+        },
+        "slice_precision": {
+          "estimate": 0.13859649122807016,
+          "low": 0.08349719910853348,
+          "high": 0.22734802462426904,
+          "n_finite": 1000
+        },
+        "slice_f1": {
+          "estimate": 0.2323529411764706,
+          "low": 0.1474867797484824,
+          "high": 0.350229701961219,
+          "n_finite": 1000
+        },
+        "onset_detection_rate": {
+          "estimate": 0.0,
+          "low": 0.0,
+          "high": 0.0,
+          "n_finite": 1000
+        },
+        "uniform_alarm_reference": {
+          "estimate": 0.015690166154836458,
+          "low": 0.0,
+          "high": 0.04502395505300896,
+          "n_finite": 1000
+        },
+        "detection_minus_uniform_reference": {
+          "estimate": -0.015690166154836458,
+          "low": -0.04502395505300896,
+          "high": 0.0,
+          "n_finite": 1000
+        },
+        "warning_ms_mean": {
+          "estimate": null,
+          "low": null,
+          "high": null,
+          "n_finite": 0
+        },
+        "warning_ms_median": {
+          "estimate": null,
+          "low": null,
+          "high": null,
+          "n_finite": 0
+        },
+        "hanson_shot_detection_rate": {
+          "estimate": 0.0,
+          "low": 0.0,
+          "high": 0.0,
+          "n_finite": 1000
+        },
+        "hanson_any_alarm_shot_detection_rate": {
+          "estimate": 0.0,
+          "low": 0.0,
+          "high": 0.0,
+          "n_finite": 1000
+        },
+        "hanson_shot_early_rate": {
+          "estimate": 0.08333333333333333,
+          "low": 0.0,
+          "high": 0.25,
+          "n_finite": 1000
+        },
+        "hanson_any_alarm_shot_early_rate": {
+          "estimate": 0.08333333333333333,
+          "low": 0.0,
+          "high": 0.25,
+          "n_finite": 1000
+        },
+        "hanson_shot_miss_rate": {
+          "estimate": 0.9166666666666666,
+          "low": 0.75,
+          "high": 1.0,
+          "n_finite": 1000
+        },
+        "hanson_any_alarm_shot_miss_rate": {
+          "estimate": 0.9166666666666666,
+          "low": 0.75,
+          "high": 1.0,
+          "n_finite": 1000
+        },
+        "hanson_early_alarm_incidence": {
+          "estimate": 0.07692307692307693,
+          "low": 0.0,
+          "high": 0.23076923076923078,
+          "n_finite": 1000
+        },
+        "hanson_early_alarms_per_shot": {
+          "estimate": 0.07692307692307693,
+          "low": 0.0,
+          "high": 0.23076923076923078,
+          "n_finite": 1000
+        },
+        "hanson_ignored_alarm_incidence": {
+          "estimate": 0.23076923076923078,
+          "low": 0.0,
+          "high": 0.46153846153846156,
+          "n_finite": 1000
+        },
+        "hanson_ignored_alarms_per_shot": {
+          "estimate": 0.23076923076923078,
+          "low": 0.0,
+          "high": 0.46153846153846156,
+          "n_finite": 1000
+        },
+        "hanson_unexplained_alarm_incidence": {
+          "estimate": 0.07692307692307693,
+          "low": 0.0,
+          "high": 0.23076923076923078,
+          "n_finite": 1000
+        },
+        "hanson_unexplained_alarms_per_shot": {
+          "estimate": 0.07692307692307693,
+          "low": 0.0,
+          "high": 0.23076923076923078,
+          "n_finite": 1000
+        },
+        "comparison_alarm_incidence": {
+          "estimate": 0.019230769230769232,
+          "low": 0.0,
+          "high": 0.057692307692307696,
+          "n_finite": 1000
+        },
+        "comparison_alarms_per_shot": {
+          "estimate": 0.038461538461538464,
+          "low": 0.0,
+          "high": 0.11538461538461539,
+          "n_finite": 1000
+        }
+      }
+    }
+  },
+  "comparison_by_run_title": {
+    "control of divertor radiation with impurity seeding in high betap scenario": {
+      "n_shots": 15,
+      "n_alarm_shots": 0,
+      "alarm_incidence": 0.0
+    },
+    "explore access to beta_n~5 using high-li approach": {
+      "n_shots": 28,
+      "n_alarm_shots": 0,
+      "alarm_incidence": 0.0
+    },
+    "explore access to bn~5 using high qmin approach - day 1": {
+      "n_shots": 2,
+      "n_alarm_shots": 1,
+      "alarm_incidence": 0.5
+    },
+    "explore access to bn~5 using high qmin approach - day 2": {
+      "n_shots": 19,
+      "n_alarm_shots": 1,
+      "alarm_incidence": 0.05263157894736842
+    },
+    "extend fully non-inductive high beta-p scenario to 1ma, q95=5": {
+      "n_shots": 34,
+      "n_alarm_shots": 1,
+      "alarm_incidence": 0.029411764705882353
+    },
+    "rwm control development for high \u03b2p scenario": {
+      "n_shots": 3,
+      "n_alarm_shots": 0,
+      "alarm_incidence": 0.0
+    },
+    "testing kinetic rwm stabilization theory at marginal stability": {
+      "n_shots": 31,
+      "n_alarm_shots": 0,
+      "alarm_incidence": 0.0
+    }
+  },
+  "comparison_by_pool_role": {
+    "same_day": {
+      "n_shots": 17,
+      "n_alarm_shots": 2,
+      "alarm_incidence": 0.11764705882352941
+    },
+    "same_experiment": {
+      "n_shots": 115,
+      "n_alarm_shots": 1,
+      "alarm_incidence": 0.008695652173913044
+    }
+  },
+  "external_details": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/comparison_sensitivity_details.json",
+    "sha256": "88d6bcb9f4db30bd30bea0bbf455d30de06976d3d3bfa3a75cf5c9ebc40eaf1a",
+    "bytes": 110558,
+    "omitted_keys": [
+      "per_shot",
+      "shots",
+      "alarm_shots"
+    ],
+    "contents": "complete evaluation, including nested per-shot records",
+    "reader": "labeler.rwm.records.load_evaluation(path, details=True)"
+  }
+}

@@ -1,0 +1,288 @@
+{
+  "script": "scripts/labeler/rwm_growth.py",
+  "onsets": {
+    "listed": 56,
+    "n1": 48,
+    "n2": 6,
+    "shots": 33
+  },
+  "onset_window_ms": 20.0,
+  "annotation_status": "20 ms tau_w convention; not a measured growth interval",
+  "search": {
+    "offsets_ms": [
+      -150.0,
+      -148.0,
+      -146.0,
+      -144.0,
+      -142.0,
+      -140.0,
+      -138.0,
+      -136.0,
+      -134.0,
+      -132.0,
+      -130.0,
+      -128.0,
+      -126.0,
+      -124.0,
+      -122.0,
+      -120.0,
+      -118.0,
+      -116.0,
+      -114.0,
+      -112.0,
+      -110.0,
+      -108.0,
+      -106.0,
+      -104.0,
+      -102.0,
+      -100.0,
+      -98.0,
+      -96.0,
+      -94.0,
+      -92.0,
+      -90.0,
+      -88.0,
+      -86.0,
+      -84.0,
+      -82.0,
+      -80.0,
+      -78.0,
+      -76.0,
+      -74.0,
+      -72.0,
+      -70.0,
+      -68.0,
+      -66.0,
+      -64.0,
+      -62.0,
+      -60.0,
+      -58.0,
+      -56.0,
+      -54.0,
+      -52.0,
+      -50.0,
+      -48.0,
+      -46.0,
+      -44.0,
+      -42.0,
+      -40.0,
+      -38.0,
+      -36.0,
+      -34.0,
+      -32.0,
+      -30.0,
+      -28.0,
+      -26.0,
+      -24.0,
+      -22.0,
+      -20.0,
+      -18.0,
+      -16.0,
+      -14.0,
+      -12.0,
+      -10.0,
+      -8.0,
+      -6.0,
+      -4.0,
+      -2.0,
+      0.0,
+      2.0,
+      4.0,
+      6.0,
+      8.0,
+      10.0,
+      12.0,
+      14.0,
+      16.0,
+      18.0,
+      20.0,
+      22.0,
+      24.0,
+      26.0,
+      28.0
+    ],
+    "same_search_at_controls": true,
+    "onsets_csv": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/growth_onsets.csv",
+    "controls_csv": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/growth_controls.csv"
+  },
+  "trailing_window_ms": 20.0,
+  "controls": {
+    "per_shot": 300,
+    "exclusion_ms": 170.0,
+    "seed": 0,
+    "n": 7704,
+    "shots": 30
+  },
+  "max_growth_per_s_n1": {
+    "n": 48,
+    "q1": 90.72956220408226,
+    "median": 111.71038802003883,
+    "q3": 173.7079858243532
+  },
+  "search_max_efold_ms_n1": {
+    "n": 48,
+    "q1": 5.756811318850975,
+    "median": 8.951917726438296,
+    "q3": 11.023510304614344
+  },
+  "max_growth_at_ms_n1": {
+    "n": 48,
+    "q1": -103.5,
+    "median": -39.0,
+    "q3": 0.0
+  },
+  "slope_at_onset_per_s_n1": {
+    "n": 48,
+    "q1": -47.561383158780885,
+    "median": -1.7455352889133646,
+    "q3": 25.322174320293527
+  },
+  "control_slope_per_s": {
+    "n": 7704,
+    "q1": -19.504226936035312,
+    "median": 1.935240641607814e-08,
+    "q3": 21.611437207384434
+  },
+  "control_max_growth_per_s_n1": {
+    "n": 7704,
+    "q1": 66.15973340810169,
+    "median": 109.82952529635003,
+    "q3": 170.10962510580248
+  },
+  "control_search_max_efold_ms": {
+    "n": 7704,
+    "q1": 5.878562525332289,
+    "median": 9.105019777712114,
+    "q3": 15.114933940733557
+  },
+  "slope_rank_test_n1": {
+    "statistic": "maximum trailing log-slope of the 90-offset search, 48 n=1 onsets against controls; rank_auc = U / (n m), two-sided Mann-Whitney",
+    "controls_before_first_onset": 2675,
+    "controls_after_first_onset": 5029,
+    "pre_onset_controls": {
+      "n_onsets": 48,
+      "n_controls": 2675,
+      "onset_median": 111.71038802003883,
+      "control_median": 111.73666333164721,
+      "rank_auc": 0.5450233644859813,
+      "mannwhitney_p": 0.28429982087463235
+    },
+    "all_controls": {
+      "n_onsets": 48,
+      "n_controls": 7704,
+      "onset_median": 111.71038802003883,
+      "control_median": 109.82952529635003,
+      "rank_auc": 0.5558773580823815,
+      "mannwhitney_p": 0.18129437057541675
+    }
+  },
+  "log_ratio_n1": {
+    "10": {
+      "onset": {
+        "n": 48,
+        "q1": -0.3087392727308337,
+        "median": -0.004225189312686787,
+        "q3": 0.31195313303736044
+      },
+      "control": {
+        "n": 7704,
+        "q1": -0.2803509678238022,
+        "median": 0.0,
+        "q3": 0.29806341930163727
+      },
+      "control_p90": 0.8552014585846496,
+      "fraction_of_onsets_above_control_p90": 0.14583333333333334
+    },
+    "20": {
+      "onset": {
+        "n": 48,
+        "q1": -0.25132874607588807,
+        "median": 0.07877096418003995,
+        "q3": 0.6625697708436384
+      },
+      "control": {
+        "n": 7704,
+        "q1": -0.3250926369177873,
+        "median": 0.0,
+        "q3": 0.35139387201515015
+      },
+      "control_p90": 0.9426730429012918,
+      "fraction_of_onsets_above_control_p90": 0.14583333333333334
+    },
+    "40": {
+      "onset": {
+        "n": 48,
+        "q1": -0.5735470678921812,
+        "median": -0.0005846799216346829,
+        "q3": 0.5023268579922899
+      },
+      "control": {
+        "n": 7704,
+        "q1": -0.40786825175002034,
+        "median": 0.0,
+        "q3": 0.4210431935468536
+      },
+      "control_p90": 1.1800506177145307,
+      "fraction_of_onsets_above_control_p90": 0.125
+    },
+    "80": {
+      "onset": {
+        "n": 48,
+        "q1": -0.5433754302480741,
+        "median": 0.23547043524787098,
+        "q3": 0.7125633728939589
+      },
+      "control": {
+        "n": 7704,
+        "q1": -0.47603009349655095,
+        "median": 0.0042862723603499416,
+        "q3": 0.5980877946900987
+      },
+      "control_p90": 1.391850488253651,
+      "fraction_of_onsets_above_control_p90": 0.1875
+    },
+    "150": {
+      "onset": {
+        "n": 48,
+        "q1": -0.750224840059082,
+        "median": 0.10410176700756255,
+        "q3": 0.6915066465501547
+      },
+      "control": {
+        "n": 7704,
+        "q1": -0.5481233227994615,
+        "median": 0.04988447447838988,
+        "q3": 0.757868358850843
+      },
+      "control_p90": 1.7708976799587124,
+      "fraction_of_onsets_above_control_p90": 0.08333333333333333
+    }
+  },
+  "betan": {
+    "interpolation": "finite bracketing samples only; no extrapolation",
+    "max_bracket_gap_ms": 50.0,
+    "collapse_scope": "merged n=1 onsets with finite beta at o-100 and o+40 ms",
+    "eligible_onsets": 43,
+    "unknown_onsets": 5,
+    "dropping_onsets": 26,
+    "m100": {
+      "n": 45,
+      "q1": 2.5836085081100464,
+      "median": 2.7750233787298204,
+      "q3": 3.009746414422989
+    },
+    "at_onset": {
+      "n": 44,
+      "q1": 2.5636970624327664,
+      "median": 2.716927877664568,
+      "q3": 2.9081169724464444
+    },
+    "p40": {
+      "n": 46,
+      "q1": 1.1269126644730594,
+      "median": 1.9339821206033245,
+      "q3": 2.3504022568464267
+    },
+    "fraction_dropping_20pct_by_p40": 0.6046511627906976
+  }
+}

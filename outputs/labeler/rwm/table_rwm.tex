@@ -1,0 +1,24 @@
+% Appendix table: the paper's main-text row group is table_rwm_compact.tex.
+\begin{table*}[t]
+\centering
+\small
+\setlength{\tabcolsep}{1.5pt}
+\begin{tabular}{@{}lccccccc@{}}
+\toprule
+\multicolumn{8}{@{}l}{Tokamak-SI (DIII-D): reference split (seed 0)} \\
+\midrule
+Model / rule & \shortstack{Phase-controlled\\AUROC} & \shortstack{Primary AUROC\\phase-confounded} & \shortstack{Broad\\AUROC} & \shortstack{Primary\\AUPRC} & \shortstack{Primary\\F1} & \shortstack{Slice\\TPR} & \shortstack{Slice\\FPR} \\
+\midrule
+\texttt{rwm-brf} & \shortstack{$0.534$\\{\scriptsize $[0.436, 0.625]$}} & \shortstack{$0.760$\\{\scriptsize $[0.706, 0.809]$}} & \shortstack{$0.740$\\{\scriptsize $[0.668, 0.799]$}} & \shortstack{$0.163$\\{\scriptsize $[0.123, 0.220]$}} & \shortstack{$0.275$\\{\scriptsize $[0.227, 0.337]$}} & \shortstack{$0.756$\\{\scriptsize $[0.646, 0.869]$}} & \shortstack{$0.342$\\{\scriptsize $[0.261, 0.421]$}} \\
+\addlinespace[1.5pt]
+Elapsed time & \shortstack{$0.522$\\{\scriptsize $[0.511, 0.536]$}} & \shortstack{$0.759$\\{\scriptsize $[0.712, 0.815]$}} & \shortstack{$0.390$\\{\scriptsize $[0.333, 0.440]$}} & \shortstack{$0.228$\\{\scriptsize $[0.212, 0.307]$}} & \shortstack{$0.267$\\{\scriptsize $[0.217, 0.331]$}} & \shortstack{$0.692$\\{\scriptsize $[0.525, 0.830]$}} & \shortstack{$0.318$\\{\scriptsize $[0.244, 0.368]$}} \\
+\addlinespace[1.5pt]
+$\beta_N$ & \shortstack{$0.529$\\{\scriptsize $[0.410, 0.638]$}} & \shortstack{$0.707$\\{\scriptsize $[0.639, 0.772]$}} & \shortstack{$0.715$\\{\scriptsize $[0.641, 0.776]$}} & \shortstack{$0.166$\\{\scriptsize $[0.128, 0.246]$}} & \shortstack{$0.246$\\{\scriptsize $[0.194, 0.312]$}} & \shortstack{$0.750$\\{\scriptsize $[0.619, 0.865]$}} & \shortstack{$0.397$\\{\scriptsize $[0.323, 0.454]$}} \\
+\addlinespace[1.5pt]
+$\beta_N/l_i$ & \shortstack{$0.588$\\{\scriptsize $[0.471, 0.690]$}} & \shortstack{$0.723$\\{\scriptsize $[0.664, 0.784]$}} & \shortstack{$0.752$\\{\scriptsize $[0.688, 0.815]$}} & \shortstack{$0.159$\\{\scriptsize $[0.127, 0.232]$}} & \shortstack{$0.261$\\{\scriptsize $[0.212, 0.328]$}} & \shortstack{$0.735$\\{\scriptsize $[0.602, 0.847]$}} & \shortstack{$0.356$\\{\scriptsize $[0.269, 0.427]$}} \\
+\addlinespace[1.5pt]
+\bottomrule
+\end{tabular}
+\caption{No demonstrated skill beyond elapsed time or $\beta_N/l_i$ under phase control; \texttt{rwm-brf} is an equilibrium-scalar timing baseline and no input senses the RWM. Phase-controlled AUROC, seed 0 (the forest's weakest split): forest $0.534$ $[0.436, 0.625]$, elapsed time $0.522$, $\beta_N/l_i$ $0.588$. Over 5 seeds the forest's margin over elapsed time is $+0.012$ to $+0.107$, positive on 5/5 seeds and the holdout, with an interval excluding zero on 1/5. Within shot, forest minus elapsed time, $\beta_N$ and $\beta_N/l_i$ is $-0.147$ $[-0.200, -0.084]$, $-0.031$ $[-0.109, 0.045]$ and $-0.071$ $[-0.133, -0.010]$; primary-mask within-shot ranking is dominated by phase (elapsed time $0.931$). Run-record holdout, forest minus elapsed time (primary AUROC): 2018 $-0.049$ $[-0.073, -0.013]$, 2014 $+0.019$ $[-0.052, 0.096]$, pooled $+0.020$ $[-0.033, 0.080]$. The 100 ms bin width was chosen after an earlier run with 200 ms bins, where seed 0's forest-minus-elapsed-time margin was $-0.037$; it is a post-hoc choice. Labels come from Hanson's onset list, with assumed negatives. Phase control compares pairs within campaign and 100 ms bins (at least 5 slices); elapsed time measures the residual-phase floor. Primary negatives end at the last target onset: 480 positive / 5,255 assumed-negative slices (prevalence 8.37\%). Broad adds later Hanson time and 1,349 negatives from $n=2$-only shots. Cutoffs use inner-fold primary slices. Brackets: exploratory shot-bootstrap intervals at fixed predictions, unadjusted for multiplicity. Published NSTX results are a different machine and are not comparable.}
+\label{tab:rwm-baseline}
+\end{table*}

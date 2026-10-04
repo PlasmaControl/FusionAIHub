@@ -7,7 +7,7 @@ import pytest
 
 from labeler.events.catalog.check import states
 from labeler.events.catalog.states import NOT_OBSERVABLE, PHENOMENA, STATE_NAMES
-from labeler.events.interval_tables import validate_intervals
+from labeler.events.interval_tables import WITH_ATTRS, attrs_text, validate_intervals
 from labeler.events.review import labels
 from labeler.events.review.labels import Label, normalise
 
@@ -87,6 +87,113 @@ def test_the_source_is_read_per_shot_and_point_events_are_ignored(event_dir):
         170815: Label((0, 2000), ((100, 300, 1),)),
         178642: Label((0, 2000)),
     }
+
+
+def test_rwm_export_reader_round_trip_keeps_unassessed_time_and_evidence(tmp_path):
+    from labeler.rwm.labels import window_rows
+
+    tiers = {
+        0: "assumed_absent", 1: "onset_point_minimal",
+        2: "onset_window_uncertain", 4: "unassessed",
+    }
+    exported = pd.DataFrame(
+        [
+            [shot, category, a, b, "", attrs_text({
+                "evidence_tier": tiers[category], "coverage_verified": False,
+            })]
+            for shot, category, a, b in window_rows(
+                156785, [856.0], (444.0, 4997.0), assumed_absent=True
+            )
+        ],
+        columns=WITH_ATTRS,
+    )
+    path = tmp_path / "rwm_windows.csv"
+    exported.to_csv(path, index=False)
+    label = labels.read_labels(path)[156785]
+    restored_rows = label.rows(156785)
+    assert [row[:4] for row in restored_rows] == [
+        [156785, 0, 444, 756], [156785, 4, 756, 836],
+        [156785, 2, 836, 856], [156785, 1, 856, 866],
+        [156785, 4, 866, 4997],
+    ]
+    restored = pd.DataFrame(restored_rows, columns=WITH_ATTRS)
+    assert restored["attrs"].tolist() == exported["attrs"].tolist()
+    # Probe both half-open onset windows and the unassessed time after them.
+    for t, expected in [
+        (500, 0), (800, 4), (836, 2), (840, 2), (855.9, 2),
+        (856, 1), (860, 1), (865.9, 1), (866, 4), (900, 4), (4996, 4),
+    ]:
+        covering = restored[(restored.t_start <= t) & (t < restored.t_end)]
+        assert covering.category.tolist() == [expected]
+    assert label.as_json()["attrs"] == [
+        {"evidence_tier": "assumed_absent", "coverage_verified": False},
+        {"evidence_tier": "unassessed", "coverage_verified": False},
+        {"evidence_tier": "onset_window_uncertain", "coverage_verified": False},
+        {"evidence_tier": "onset_point_minimal", "coverage_verified": False},
+        {"evidence_tier": "unassessed", "coverage_verified": False},
+    ]
+
+
+def test_reader_keeps_distinct_evidence_on_touching_absent_spans(tmp_path):
+    path = tmp_path / "evidence.csv"
+    attrs = [
+        attrs_text({"evidence_tier": tier, "coverage_verified": verified})
+        for tier, verified in [("assumed_absent", False), ("reviewed_absent", True)]
+    ]
+    pd.DataFrame(
+        [[7, 0, 0, 10, "", attrs[0]], [7, 0, 10, 20, "", attrs[1]]],
+        columns=WITH_ATTRS,
+    ).to_csv(path, index=False)
+    restored = labels.read_labels(path)[7]
+    assert restored.intervals == ((0, 10, 0), (10, 20, 0))
+    assert [row[-1] for row in restored.rows(7)] == attrs
+
+
+def test_a_fractional_unassessed_span_survives_whole_ms_sampling(tmp_path):
+    path = tmp_path / "evidence.csv"
+    pd.DataFrame(
+        [
+            [7, category, a, b, "", attrs_text({
+                "evidence_tier": tier, "coverage_verified": False,
+            })]
+            for category, a, b, tier in [
+                (0, 0, 10.25, "assumed_absent"),
+                (4, 10.25, 10.75, "unassessed"),
+                (1, 10.75, 30, "conventional_weak"),
+            ]
+        ],
+        columns=WITH_ATTRS,
+    ).to_csv(path, index=False)
+    label = labels.read_labels(path)[7]
+    assert label.intervals == ((0, 10, 0), (10, 11, 4), (11, 30, 1))
+
+
+def test_reader_refuses_implicit_coverage_in_an_evidence_table(tmp_path):
+    path = tmp_path / "evidence.csv"
+    attrs = attrs_text({
+        "evidence_tier": "conventional_weak", "coverage_verified": False,
+    })
+    pd.DataFrame(
+        [[7, 1, 0, 10, "", attrs], [7, 1, 20, 30, "", attrs]], columns=WITH_ATTRS,
+    ).to_csv(path, index=False)
+    with pytest.raises(ValueError, match="explicit.*unassessed"):
+        labels.read_labels(path)
+
+
+def test_tierless_review_save_refuses_an_evidence_source_before_writing(tmp_path):
+    event = tmp_path / "resistive_wall_mode"
+    (event / "format").mkdir(parents=True)
+    path = event / "format" / "rwm_format_2026.csv"
+    attrs = attrs_text({
+        "evidence_tier": "conventional_weak", "coverage_verified": False,
+    })
+    pd.DataFrame([[7, 1, 0, 20, "", attrs]], columns=WITH_ATTRS).to_csv(
+        path, index=False,
+    )
+    with pytest.raises(labels.SaveRefused, match="evidence"):
+        labels.save(event, 7, normalise([0, 20], [[0, 20, 1]]), source=path.name)
+    assert not labels.labels_path(event).exists()
+    assert not labels.history_path(event).exists()
 
 
 def test_the_newest_format_table_by_name_is_the_source(event_dir):
