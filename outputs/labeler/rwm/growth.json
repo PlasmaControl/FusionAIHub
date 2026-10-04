@@ -155,6 +155,27 @@
     "median": 9.105019777712114,
     "q3": 15.114933940733557
   },
+  "slope_rank_test_n1": {
+    "statistic": "maximum trailing log-slope of the 90-offset search, 48 n=1 onsets against controls; rank_auc = U / (n m), two-sided Mann-Whitney",
+    "controls_before_first_onset": 2675,
+    "controls_after_first_onset": 5029,
+    "pre_onset_controls": {
+      "n_onsets": 48,
+      "n_controls": 2675,
+      "onset_median": 111.71038802003883,
+      "control_median": 111.73666333164721,
+      "rank_auc": 0.5450233644859813,
+      "mannwhitney_p": 0.28429982087463235
+    },
+    "all_controls": {
+      "n_onsets": 48,
+      "n_controls": 7704,
+      "onset_median": 111.71038802003883,
+      "control_median": 109.82952529635003,
+      "rank_auc": 0.5558773580823815,
+      "mannwhitney_p": 0.18129437057541675
+    }
+  },
   "log_ratio_n1": {
     "10": {
       "onset": {

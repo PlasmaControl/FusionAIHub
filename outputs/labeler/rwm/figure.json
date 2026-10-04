@@ -118,24 +118,26 @@
     "below_proxy": true
   },
   "collapse_check": {
-    "definition": "n=1 onsets whose first cached slice in [o-20 ms, o) has beta_N/l_i below 0.75 of the largest finite beta_N/l_i of that shot's cached slices before it",
-    "fraction": 0.75,
-    "by_campaign": {
-      "2014": {
-        "eligible": 25,
-        "below": 1,
-        "below_shots": [
-          156796
-        ]
-      },
-      "2018": {
-        "eligible": 20,
-        "below": 0,
-        "below_shots": []
-      }
+    "definition": "stored EFIT beta_N sample >= 2 whose lowest following sample within 100 ms is at least 40% lower (`features.beta_collapses`), starting inside a Hanson category-0 span",
+    "displayed_collapse_starts_s_before_first_onset": {
+      "156796": [
+        0.47
+      ],
+      "158022": [
+        0.49144999999999983
+      ]
     },
-    "source": "outputs/labeler/rwm/evaluation.json#/onset_physics/rows"
+    "shots_with_a_collapse": [
+      156796,
+      158019,
+      158022,
+      176092
+    ],
+    "hanson_shots_scanned": 33,
+    "events": 5,
+    "treatment": "flagged in `attrs.unexplained_beta_collapse`; category unchanged because beam power (PINJ) is not cached for these shots and no fetch was made",
+    "source": "outputs/labeler/rwm/shots.json#/assumed_absent_collapses"
   },
-  "caption": "Held-out scores of the equilibrium-scalar timing baseline rwm-brf (blue) and \u03b2N/li (orange) on shots chosen by number, not by score. Vertical lines mark n=1 onsets; grey spans are 100 ms forecast targets. Bottom panels are unlabelled comparisons centred on matched Hanson onsets. The dotted \u03b2N/li=4 proxy uses the right axis, aligning with score 0.5. Panels 156796 and 158022 show \u03b2N/li collapses well before the onset, which is atypical: in the window just before the onset only 1 of 25 eligible 2014 onsets (156796) and 0 of 20 in 2018 have \u03b2N/li below 0.75 of its earlier maximum. The score is not a precursor indicator: on 156785 it rises after the onset and on 176077 it spikes at the onset. Neither physical duration nor warning skill is established.",
-  "caption_words": 127
+  "caption": "Held-out scores of the equilibrium-scalar timing baseline rwm-brf (blue) and \u03b2N/li (orange) on shots chosen by number, not by score. Vertical lines mark n=1 onsets; grey spans are 100 ms forecast targets. Bottom panels are unlabelled comparisons centred on matched Hanson onsets. The dotted \u03b2N/li=4 proxy uses the right axis, aligning with score 0.5. Panels 156796 and 158022 show \u03b2N/li collapses starting 0.47 and 0.49 s before the onset, inside time assumed absent. A \u03b2N fall of at least 40% within 100 ms from \u03b2N of at least 2 starts in the assumed-absent span of 4 of 33 Hanson shots (156796, 158019, 158022, 176092); its cause is not established, because beam power is not cached for them. The score is not a precursor indicator: on 156785 it rises after the onset and on 176077 it spikes at the onset. Neither physical duration nor warning skill is established.",
+  "caption_words": 147
 }
