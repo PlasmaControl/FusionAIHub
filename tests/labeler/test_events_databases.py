@@ -316,7 +316,18 @@ def test_the_per_table_sources_are_offered_as_documentation(table):
 def test_the_registered_outputs_include_rwm_ae_elm_and_tearing():
     specs = db.load_manifest(Paths().label_tables)
     assert {s.phenomenon for s in specs} == {"rwm", "ae", "elm", "tearing", "hmode", "lmode"}
-    assert len(specs) == 6
+    # the seventh is the ECE hand-drawn AE boxes (26 shots, dated 2022-01-24),
+    # registered with the confinement-review commit 43279081 with its provenance
+    assert {s.stem for s in specs} == {
+        "rwm_format_2026_v1",
+        "alfven_eigenmode_format_2026_v1",
+        "alfven_eigenmode_ece_format_2026_v1",
+        "edge_localized_mode_format_2026_v1",
+        "neoclassical_tearing_mode_format_2026_v1",
+        "high_confinement_mode_format_2026_v1",
+        "low_confinement_mode_format_2026_v1",
+    }
+    assert len(specs) == 7
     assert all(s.kind == "interval" and s.t_units == "ms" for s in specs)
     assert all(s.provenance for s in specs)
 
