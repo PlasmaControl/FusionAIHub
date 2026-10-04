@@ -52,8 +52,10 @@ def compare_onsets(
     When `intervals` has `onset_window_start_ms` (the start of the same-n weak track
     that led into the interval), `window_start_ms` is that time for the matched
     interval and `in_onset_window` says whether the reference onset lies between it
-    and the interval's end: the labelled onset is a point, its window is the span in
-    which the mode could have begun.
+    and the interval's start, each widened by `tol_ms`: the labelled onset is a point
+    (the interval's start, where the RMS crossed a tenth of the peak), its window the
+    span in which the mode could have begun. A reference onset later than the interval
+    start (plus `tol_ms`) is matched but not inside the window.
     """
     if ns is not None:
         intervals = intervals[intervals.n.isin(ns)]
@@ -86,7 +88,9 @@ def compare_onsets(
                     "start_ms": float(starts[k]) if hit else np.nan,
                     "end_ms": float(ends[k]) if hit else np.nan,
                     "window_start_ms": float(windows[k]) if hit else np.nan,
-                    "in_onset_window": bool(hit and windows[k] <= t <= ends[k]),
+                    "in_onset_window": bool(
+                        hit and windows[k] - tol_ms <= t <= starts[k] + tol_ms
+                    ),
                     "n_intervals": len(starts),
                 }
             )
@@ -130,6 +134,10 @@ def summarize(onsets: pd.DataFrame, compared: pd.DataFrame, references) -> dict:
                 f"{int(w)}": float((np.abs(err) <= w).mean()) for w in WITHIN_MS
             },
             "reference_after_interval_start_fraction": float((err > 0).mean()),
+            "reference_after_interval_start_by_more_than_tolerance": int(
+                (err > TOLERANCE_MS).sum()
+            ),
+            "reference_inside_onset_window": int(matched.in_onset_window.sum()),
             "reference_inside_onset_window_fraction": float(
                 matched.in_onset_window.mean()
             ),
