@@ -1003,9 +1003,20 @@ def markdown_populations(args: argparse.Namespace) -> None:
         per = " / ".join(f"{m['reweighted_f1'][c]:.2f}" for c in bp.CLASSES)
         print(
             f"`{name}` as scored {m['as_scored']:.3f}; reweighted to the paper's "
-            f"test mix {m['paper_test_mix']} labelled s per class: "
+            f"test mix {m['paper_test_mix']} (labelled seconds of L, H, QH "
+            f"and WPQH): "
             f"{m['reweighted_macro_f1']:.3f} (F1 {per})"
         )
+    by_year = pop.get("by_year") or {}
+    if by_year:
+        names = list(by_year)
+        years = sorted({y for v in by_year.values() for y in v})
+        print()
+        print("| Year of the shot | " + " | ".join(f"`{n}`" for n in names) + " |")
+        print("|---|" + "---|" * len(names))
+        for y in years:
+            cells = [_cell(by_year[n].get(y)) for n in names]
+            print(f"| {y} | " + " | ".join(cells) + " |")
     audit_path = args.out_dir / "validation_audit.json"
     if audit_path.exists():
         audit = json.loads(audit_path.read_text())

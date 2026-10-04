@@ -62,3 +62,65 @@ def test_support_counts_windows_and_shots_per_class():
     assert got["H"] == {"windows": 3, "shots": 3}
     assert got["QH"] == {"windows": 0, "shots": 0}
     assert got["WP"] == {"windows": 1, "shots": 1}
+
+
+def _scored(f1: float, shots: int) -> dict:
+    return {"macro_f1": f1, "ci95_macro_f1": [f1 - 0.1, f1 + 0.1], "shots": shots}
+
+
+def test_population_tables_print_rows_steps_fragmentation_mix_and_years(
+    tmp_path, capsys
+):
+    import argparse
+    import json
+
+    classes = {
+        c: {
+            "intervals": 3,
+            "median_ms": 20.0,
+            "q25_ms": 10.0,
+            "q75_ms": 40.0,
+            "share_under_100_ms": 0.8,
+        }
+        for c in ("L", "H", "QH", "WP")
+    }
+    diff = {"shots": 6, "difference": 0.01, "ci95": [-0.02, 0.04]}
+    record = {
+        "rows": {
+            "base": {
+                "own": _scored(0.7, 10),
+                "corpus_shots": _scored(0.7, 10),
+                "other_shots": {"macro_f1": None, "shots": 0},
+            }
+        },
+        "paired_steps": [
+            {
+                "step": "a gate",
+                "row": "only_a",
+                "versus": "base",
+                "common_shots": diff,
+                "corpus_shots": diff,
+                "other_shots": {"shots": 0},
+            }
+        ],
+        "fragmentation": {
+            "corpus": {"classes": classes},
+            "other": {"classes": classes},
+        },
+        "class_mix": {
+            "base": {
+                "as_scored": 0.7,
+                "paper_test_mix": [8.3, 21.8, 17.4, 9.7],
+                "reweighted_macro_f1": 0.65,
+                "reweighted_f1": {"L": 0.6, "H": 0.7, "QH": 0.6, "WP": 0.7},
+            }
+        },
+        "by_year": {"base": {"2021": _scored(0.6, 4), "2022": _scored(0.4, 3)}},
+    }
+    (tmp_path / "populations.json").write_text(json.dumps(record))
+    abl.markdown_populations(argparse.Namespace(out_dir=tmp_path))
+    out = capsys.readouterr().out
+    assert "| `base` | 0.700 [0.60, 0.80] (10) | 0.700 [0.60, 0.80] (10) | - |" in out
+    assert "`only_a` - `base`" in out
+    assert "| Year of the shot | `base` |" in out
+    assert "| 2022 | 0.400 [0.30, 0.50] (3) |" in out
