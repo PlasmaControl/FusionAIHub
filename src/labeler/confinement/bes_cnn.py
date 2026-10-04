@@ -1,12 +1,15 @@
 """The small 3D-convolutional BES classifier of Gill et al. (2024), and its training.
 
-Dropout, one 3D convolution (10 kernels (3, 3, 5) over rows, columns and frequency, zero
-padding, groups = 2, one per sub-window), batch norm, LeakyReLU, 3D max-pool (1, 2, 4),
-flatten, an MLP of two 60-unit layers and 4 logits. Input ``(B, 2, rows, 8, 128)``
-log-spectral features (``labeler.confinement.bes_features``). Training follows the
-paper: cross-entropy, one learning rate for the convolution and another for the MLP,
-60,000 steps, early stopping after 30 evaluations without a better validation loss, and
-the checkpoint with the best validation macro-F1 is kept.
+Dropout, one 3D convolution (10 kernels (3, 3, 5) over rows, columns and frequency,
+groups = 2, one per sub-window), batch norm, LeakyReLU, 3D max-pool (1, 2, 4), flatten,
+an MLP of two 60-unit layers and 4 logits. Input ``(B, 2, rows, 8, 128)`` log-spectral
+features (``labeler.confinement.bes_features``). The paper's "zero padding" is no
+padding: ``padding=(0, 0, 0)`` gives the paper's 227,644 parameters (``PAPER_PADDING``);
+the first retrain padded the convolution (``PADDED``, 465,244 parameters). Training
+follows the paper: cross-entropy, one learning rate for the convolution and another for
+the MLP, 60,000 steps, early stopping after 30 evaluations without a better validation
+loss (it never fired in the paper; ``early_stop=False`` runs every step, as the paper
+did), and the checkpoint with the best validation macro-F1 is kept.
 
 ``Features`` reads batches from a memory-mapped ``(n, 2, 64, 128)`` float16 array, so
 many training processes share one page cache.
@@ -18,7 +21,7 @@ import copy
 import queue
 import threading
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 
 import numpy as np
 import torch
@@ -29,19 +32,33 @@ from . import bes_protocol as bp
 COLUMNS = 8
 FREQS = 128
 CLASSES = bp.CLASSES
+#: The paper's convolution (no padding; 227,644 parameters for 6 rows).
+PAPER_PADDING = (0, 0, 0)
+#: The first retrain's convolution (same-size output; 465,244 parameters).
+PADDED = (1, 1, 2)
 
 
 class BesNet(nn.Module):
     """The paper's network for a ``rows`` x 8 block of BES channels."""
 
-    def __init__(self, rows: int = 6, dropout: float = 0.2):
+    def __init__(
+        self,
+        rows: int = 6,
+        dropout: float = 0.2,
+        padding: tuple[int, int, int] = PAPER_PADDING,
+    ):
         super().__init__()
         self.drop = nn.Dropout(dropout)
-        self.conv = nn.Conv3d(2, 10, (3, 3, 5), padding=(1, 1, 2), groups=2)
+        self.conv = nn.Conv3d(2, 10, (3, 3, 5), padding=padding, groups=2)
         self.norm = nn.BatchNorm3d(10)
         self.act = nn.LeakyReLU()
         self.pool = nn.MaxPool3d((1, 2, 4))
-        flat = 10 * rows * (COLUMNS // 2) * (FREQS // 4)
+        out = (
+            rows + 2 * padding[0] - 2,
+            COLUMNS + 2 * padding[1] - 2,
+            FREQS + 2 * padding[2] - 4,
+        )
+        flat = 10 * out[0] * (out[1] // 2) * (out[2] // 4)
         self.mlp = nn.Sequential(
             nn.Linear(flat, 60),
             nn.LeakyReLU(),
@@ -57,7 +74,9 @@ class BesNet(nn.Module):
 
 @dataclass(frozen=True)
 class TrainConfig:
-    """Optimiser and schedule. ``adam``: coupled L2 decay; ``adamw``: decoupled."""
+    """Optimiser, architecture and schedule. ``adam``: coupled L2 decay; ``adamw``:
+    decoupled. ``padding`` is the convolution's; ``early_stop`` False runs all ``steps``
+    (the paper's training: its early stopping never fired)."""
 
     optimiser: str = "adamw"
     lr_conv: float = 1e-3
@@ -70,6 +89,8 @@ class TrainConfig:
     patience: int = 30
     val_cap: int = 20000
     seed: int = 0
+    padding: tuple[int, int, int] = PADDED
+    early_stop: bool = True
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -79,6 +100,23 @@ class TrainConfig:
 OURS = TrainConfig()
 #: The paper's: Adam, weight decay 1e-3, 1e-3 for the convolution and 1e-5 for the MLP.
 PAPER = TrainConfig(optimiser="adam", lr_conv=1e-3, lr_mlp=1e-5, weight_decay=1e-3)
+#: The paper's optimiser, architecture (no padding) and training length (60,000 steps,
+#: no early stopping, best validation-F1 checkpoint).
+PAPER_FULL = replace(PAPER, padding=PAPER_PADDING, early_stop=False)
+
+
+def take_rows(x: np.ndarray, starts: np.ndarray, height: int, axis: int) -> np.ndarray:
+    """The ``height`` consecutive 8-channel rows of ``x`` from row ``starts[i]`` of
+    entry ``i`` (entries on axis 0, channels on ``axis``): ``(.., height * 8, ..)``."""
+    out_shape = list(x.shape)
+    out_shape[axis] = height * COLUMNS
+    out = np.empty(out_shape, dtype=x.dtype)
+    for s in np.unique(starts):
+        sel = np.flatnonzero(starts == s)
+        block = [slice(None)] * x.ndim
+        block[axis] = slice(int(s) * COLUMNS, (int(s) + height) * COLUMNS)
+        out[sel] = x[sel][tuple(block)]
+    return out
 
 
 class Features:
@@ -89,7 +127,9 @@ class Features:
     small set lives on the GPU, a large one in RAM and is gathered by a background
     thread. Callers address a kept row by its ``ids`` entry (by default its row in
     ``array``). The per-channel ``offset`` (``bes_features.standardising_offset``) is
-    added on the GPU.
+    added on the GPU. With ``starts`` (one first row per entry of ``index``) the block
+    is ``rows[1] - rows[0]`` consecutive rows from each window's own start row, the
+    per-shot block of ``labeler.confinement.bes_geometry``.
     """
 
     def __init__(
@@ -101,6 +141,7 @@ class Features:
         device,
         gpu_gb: float = 4.0,
         ids: np.ndarray | None = None,
+        starts: np.ndarray | None = None,
     ):
         self.rows = rows[1] - rows[0]
         self.device = device
@@ -109,9 +150,12 @@ class Features:
         block = slice(rows[0] * COLUMNS, rows[1] * COLUMNS)
         out = np.empty((len(index), 2, self.rows * COLUMNS, FREQS), dtype=np.float16)
         for lo in range(0, len(index), 8192):
-            out[lo : lo + 8192] = np.asarray(array[index[lo : lo + 8192]])[
-                :, :, block, :
-            ]
+            chunk = np.asarray(array[index[lo : lo + 8192]])
+            out[lo : lo + 8192] = (
+                chunk[:, :, block, :]
+                if starts is None
+                else take_rows(chunk, starts[lo : lo + 8192], self.rows, 2)
+            )
         self.on_gpu = out.nbytes <= gpu_gb * 2**30
         self.data = (
             torch.from_numpy(out).to(device) if self.on_gpu else torch.from_numpy(out)
@@ -194,7 +238,7 @@ def train(
     torch.manual_seed(cfg.seed)
     rng = np.random.default_rng(cfg.seed)
     torch.backends.cudnn.benchmark = False
-    model = BesNet(feats.rows, cfg.dropout).to(device)
+    model = BesNet(feats.rows, cfg.dropout, tuple(cfg.padding)).to(device)
     groups = [
         {
             "params": [*model.conv.parameters(), *model.norm.parameters()],
@@ -261,7 +305,7 @@ def train(
                 f"step {step} val loss {val_loss:.4f} macro-F1 {f1:.4f} "
                 f"best {best_f1:.4f} ({time.time() - started:.0f} s)"
             )
-        if since >= cfg.patience:
+        if cfg.early_stop and since >= cfg.patience:
             break
     if best_state is None:  # fewer steps than one evaluation
         best_state = copy.deepcopy(model.state_dict())

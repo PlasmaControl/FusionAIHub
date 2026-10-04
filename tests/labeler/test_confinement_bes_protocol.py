@@ -118,3 +118,61 @@ def test_block_roles_split_inside_a_shot_in_runs():
     assert set(np.unique(roles)) <= {0, 1, 2}
     # at least one of the two shots has windows in more than one role
     assert any(len(set(roles[table.shot == s])) > 1 for s in (1, 2))
+
+
+def test_reweighting_to_a_class_mix_keeps_the_per_class_recall():
+    conf = np.array(
+        [[90, 10, 0, 0], [5, 95, 0, 0], [0, 0, 50, 50], [0, 0, 0, 100]], dtype=float
+    )
+    # 100 windows per true class; ask for a mix with 3x as many class-0 windows
+    re = bp.reweight_to_mix(conf, mix=(3.0, 1.0, 1.0, 1.0))
+    assert np.isclose(re.sum(), conf.sum())
+    assert np.isclose(re[0].sum() / re.sum(), 0.5)
+    np.testing.assert_allclose(re[0] / re[0].sum(), conf[0] / conf[0].sum())
+    # the same mix as the support leaves the score unchanged
+    same = bp.reweight_to_mix(conf, mix=(1.0, 1.0, 1.0, 1.0))
+    assert np.isclose(bp.macro_f1(same), bp.macro_f1(conf))
+
+
+def test_run_day_groups_follow_the_utc_day_and_inherit_for_undated_shots():
+    dates = pd.DataFrame(
+        {
+            "shot": [10, 11, 12, 13, 14, 15],
+            "inserted_utc": [
+                "2021-03-01T15:00:00+00:00",
+                "2021-03-01T16:30:00+00:00",
+                "",
+                "2021-03-02T14:00:00+00:00",
+                "2021-09-09T09:00:00+00:00",  # EFIT run months later: untrusted
+                "2021-03-02T18:00:00+00:00",
+            ],
+            "consistent": [True, True, False, True, False, True],
+        }
+    )
+    got = bp.run_day_groups(dates)
+    assert got[10] == got[11] == got[12]  # 12 has no date: its predecessor's day
+    assert got[13] == got[14] == got[15]
+    assert got[10] != got[13]
+
+
+def test_deal_groups_keeps_a_group_whole_and_spreads_the_rare_class():
+    rng = np.random.default_rng(0)
+    shots = list(range(60))
+    group_of = {s: s // 3 for s in shots}  # 20 run days of 3 shots
+    # WP on one shot of every fifth day; QH on every second day; L and H everywhere
+    signature = {
+        s: "L,H,"
+        + ("QH," if (s // 3) % 2 == 0 else "")
+        + ("WP," if (s // 3) % 5 == 0 and s % 3 == 0 else "")
+        for s in shots
+    }
+    fold_of = bp.deal_groups(shots, group_of, signature, 4, rng)
+    for g in set(group_of.values()):
+        assert len({fold_of[s] for s in shots if group_of[s] == g}) == 1
+    for cls in ("WP", "QH"):
+        folds = {fold_of[s] for s in shots if cls in signature[s]}
+        assert folds == {0, 1, 2, 3}, cls
+    sizes = np.bincount([fold_of[s] for s in shots], minlength=4)
+    assert sizes.max() - sizes.min() <= 6
+    again = bp.deal_groups(shots, group_of, signature, 4, np.random.default_rng(0))
+    assert again == fold_of

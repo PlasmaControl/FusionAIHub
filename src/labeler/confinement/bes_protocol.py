@@ -114,6 +114,70 @@ def deal(shots: list[int], signature: dict[int, str], k: int, rng) -> dict[int, 
     return groups
 
 
+def run_day_groups(dates: pd.DataFrame) -> dict[int, int]:
+    """Each shot's run-day group, from the time its EFIT reconstruction was inserted.
+
+    ``dates`` has ``shot``, ``inserted_utc`` and ``consistent`` (see
+    ``scripts/labeler/confinement_shot_dates_fetch.py``). Shots sharing a UTC day share
+    a group; a shot without a trustworthy date joins the group of the nearest earlier
+    shot that has one (the next one, for the first shots). Shots of one run day share
+    plasma conditions, so folds that keep a day whole separate the sessions.
+    """
+    frame = dates.sort_values("shot").reset_index(drop=True)
+    stamp = pd.to_datetime(frame.inserted_utc, utc=True, errors="coerce")
+    day = stamp.dt.strftime("%Y-%m-%d").where(frame.consistent.astype(bool))
+    day = day.ffill().bfill()
+    codes = {d: i for i, d in enumerate(sorted(day.dropna().unique()))}
+    return {int(s): codes[d] for s, d in zip(frame.shot, day, strict=True)}
+
+
+def deal_groups(
+    shots: list[int],
+    group_of: dict[int, int],
+    signature: dict[int, str],
+    k: int,
+    rng,
+) -> dict[int, int]:
+    """Deal whole groups of shots into k folds, balancing each class across the folds.
+
+    A group's classes are those of its shots (``signature`` is a comma-separated class
+    string per shot). Groups holding the rarest class go first; each goes to the fold
+    that so far holds the smallest share of the classes the group carries, ties broken
+    by the fold's shot count and then at random.
+    """
+    members: dict[int, list[int]] = {}
+    for s in shots:
+        members.setdefault(group_of[s], []).append(s)
+    classes = {
+        g: {c for s in m for c in signature[s].split(",") if c}
+        for g, m in members.items()
+    }
+    total = {c: sum(1 for s in shots if c in signature[s].split(",")) for c in CLASSES}
+    order = sorted(
+        members,
+        key=lambda g: (
+            min(total[c] for c in classes[g]) if classes[g] else 0,
+            -len(members[g]),
+            rng.random(),
+        ),
+    )
+    held = np.zeros((k, len(CLASSES)))
+    count = np.zeros(k)
+    fold_of: dict[int, int] = {}
+    for g in order:
+        mask = np.array([c in classes[g] for c in CLASSES])
+        share = (
+            held[:, mask] / np.maximum(np.array(list(total.values()))[mask], 1)
+        ).sum(axis=1)
+        best = min(range(k), key=lambda f: (round(share[f], 9), count[f], rng.random()))
+        for s in members[g]:
+            fold_of[s] = best
+            for i, c in enumerate(CLASSES):
+                held[best, i] += c in signature[s].split(",")
+        count[best] += len(members[g])
+    return fold_of
+
+
 def class_presence(table: pd.DataFrame) -> dict[int, str]:
     """Each shot's set of classes, as a string key for stratified dealing."""
     return {
@@ -235,6 +299,23 @@ def macro_f1(conf: np.ndarray) -> float:
     """Mean F1 over the classes that have windows (the paper's "average")."""
     f1 = f1_from_conf(conf)
     return float(np.nanmean(f1)) if np.isfinite(f1).any() else float("nan")
+
+
+#: The paper's test set, labelled seconds per class (L, H, QH, WP QH).
+PAPER_TEST_MIX = (8.3, 21.8, 17.4, 9.7)
+
+
+def reweight_to_mix(conf: np.ndarray, mix: tuple[float, ...] = PAPER_TEST_MIX):
+    """The 4 x 4 confusion matrix with each true class's row rescaled so the classes
+    stand in the proportions ``mix`` (the total unchanged): the score the same
+    classifier would have on a test set with that class mix.
+    """
+    conf = np.asarray(conf, dtype=float)
+    support = conf.sum(axis=1)
+    want = np.asarray(mix, dtype=float) / np.sum(mix) * conf.sum()
+    with np.errstate(divide="ignore", invalid="ignore"):
+        scale = np.where(support > 0, want / support, 0.0)
+    return conf * scale[:, None]
 
 
 def bootstrap(
