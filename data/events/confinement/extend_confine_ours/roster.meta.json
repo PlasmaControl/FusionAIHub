@@ -4,27 +4,41 @@
   "1": "high (H)",
   "2": "low (L)",
   "3": "qh (QH)",
-  "4": "wpqh (WPQH)"
+  "4": "wpqh (WPQH)",
+  "5": "uncertain (segment below the confidence floor)"
  },
  "columns": [
   "shot",
   "category",
   "t_start",
   "t_end",
-  "confidence"
+  "confidence",
+  "predicted",
+  "source",
+  "tier",
+  "extrapolated"
  ],
- "made_at": "2026-10-03T21:37:42+00:00",
+ "made_at": "2026-10-04T03:00:53+00:00",
  "made_by": "scripts/labeler/confinement_ours.py apply",
- "git_sha": "5263c5a1",
+ "git_sha": "c9adae6c",
  "producer": "confine-ours",
- "model": "1D U-Net (U-Time style) over D-alpha, line density, beta_N, W_MHD and injected power; 5 shot-grouped folds; docs/labeler/confinement_ours.md",
+ "status": "experimental",
+ "model": "1D U-Net (U-Time style) over D-alpha, line density, beta_N, W_MHD and injected power; 5 folds, each holding whole run days out; docs/labeler/confinement_ours.md",
  "roster": "/scratch/gpfs/nc1514/FusionAIHub/data/events/confinement/shots.csv",
  "segmentation": {
   "bins_ms": 1.0,
   "active": "total beam power >= 200000 W, gaps of at most 50 ms bridged",
   "mode_filter_bins": 21,
   "min_segment_ms": 20,
-  "confidence": "mean probability of the segment's class over its bins"
+  "confidence": "mean probability of the segment's class over its bins",
+  "confidence_floor": "a segment under 0.7 is category 5 (uncertain); `predicted` keeps its class"
+ },
+ "columns_meaning": {
+  "category": "1 high, 2 low, 3 qh, 4 wpqh, 5 uncertain (under the floor)",
+  "predicted": "the segment's class, before the confidence floor",
+  "source": "held_out: a curated shot, read by the fold model that never saw it; ensemble: any other shot, the mean of the five fold models",
+  "tier": "unreviewed: a QH or WPQH segment on a shot outside the curated set (the curated set leaves out ELM-free and other quiescent H-modes the network could read as QH); model: the rest",
+  "extrapolated": "true for a shot past the last curated one (196493); the network never saw those campaigns"
  },
  "shots_in_roster": 839,
  "shots_labelled": 805,
@@ -73,5 +87,7 @@
   "curated_held_out": 401,
   "ensemble": 405
  },
- "coverage": "Active (beam-on) bins only; other time is not assessed, not low."
+ "audit": "outputs/labeler/confinement/ours/roster_audit.json",
+ "curated_interval_coverage": 0.42419143330655856,
+ "coverage": "Active (beam-on) bins only; other time is not assessed, not low. On curated shots only that share of the label time lies inside a curated interval; the rest is the network's reading of time nobody curated."
 }
