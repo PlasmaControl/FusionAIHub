@@ -91,8 +91,8 @@ def rule_audit_bundle():
     """Bundle current-only audits; no historical blind-cohort record is consumed."""
     result = {"sources": {}}
     for filename in (
-        "audit_fix3_current.json",
-        "criterion_support_fix3.json",
+        "audit_fix4_current.json",
+        "criterion_support_fix4.json",
         "island_inventory_fix2.json",
     ):
         record = read(TM / "labels" / filename)
@@ -106,7 +106,7 @@ def rule_audit_bundle():
             key: value for key, value in record.items() if key != "details"
         }
     for scope in ("cohort", "population"):
-        current = result["audit_fix3_current"][scope]
+        current = result["audit_fix4_current"][scope]
         current["after_seed_audit"] = {
             k: v for k, v in current["after_seed_audit"].items() if k != "details"
         }
@@ -514,44 +514,13 @@ def coverage(cohort):
     return out
 
 
-def paired_common_shots(cohort):
-    """tm-ours, the retrained CNN and the two-line baseline on identical shots and bins.
+def _paired_block(shots, y, valid, scores, thresholds):
+    """Metrics of every model and the paired differences on one shot and bin set.
 
-    Same shots, same available 10 ms bins, each model at its own inner-validation
-    thresholds; the shot bootstrap resamples the same shots for every difference.
+    Each model is scored at its own thresholds on the same shots and bins; the shot
+    bootstrap draws one set of weights per replicate and applies it to every model, so
+    each difference carries a paired interval.
     """
-    dev = sorted(int(s) for s in cohort.query("split != 'test'").shot)
-    ours, _ = tm_ours.load(dev, False)
-    cnn, _ = tm_prior_retrain.load("cnn", dev)
-    base, _ = tm_ours.load_baseline(dev)
-    shots = sorted(set(ours) & set(cnn) & set(base))
-    models = {
-        "tm-ours": ("tm_ours_magnetics_cv", "oof_tm_ours_magnetics"),
-        "tm-onsetcnn-retrained": (
-            "tm_prior_retrained_tm-onsetcnn_cv",
-            "oof_tm_prior_retrained_tm-onsetcnn",
-        ),
-    }
-    scores, thresholds = {}, {}
-    for model, (stem, probability) in models.items():
-        record = read(TM / "results" / f"{stem}.json")
-        fold_thresholds = {i["fold"]: i["threshold"] for i in record["fold_info"]}
-        thresholds[model] = {s: fold_thresholds[record["folds"][str(s)]] for s in shots}
-        with np.load(TM / "results" / f"{probability}.npz") as z:
-            scores[model] = {s: z[f"s{s}"] for s in shots}
-    record = read(TM / "results/tm_baseline_tworms_cv_tuned_dev.json")
-    scores["tm-rms-2line"] = tm_ours.run_baseline(base, shots, "tworms")
-    thresholds["tm-rms-2line"] = {
-        s: record["thresholds_by_shot"][str(s)] for s in shots
-    }
-    y, valid = {}, {}
-    for s in shots:
-        assert np.array_equal(ours[s][0], cnn[s]["centres"]), s
-        assert np.array_equal(ours[s][2], cnn[s]["y_bins"]), s
-        y[s] = ours[s][2]
-        valid[s] = ours[s][3] & cnn[s]["valid_bins"]
-        for model in models | {"tm-rms-2line": None}:
-            valid[s] = valid[s] & np.isfinite(scores[model][s])
     shots = [s for s in shots if valid[s].any()]
     results, stats = {}, {}
     for model, model_scores in scores.items():
@@ -598,10 +567,15 @@ def paired_common_shots(cohort):
         for metric in keys:
             samples = np.array([d[name][metric] for d in draws])
             samples = samples[np.isfinite(samples)]
+            lo, hi = (
+                float(np.percentile(samples, 2.5)),
+                float(np.percentile(samples, 97.5)),
+            )
             differences[name][metric] = {
                 "value": results[a][metric]["value"] - results[b][metric]["value"],
-                "lo": float(np.percentile(samples, 2.5)),
-                "hi": float(np.percentile(samples, 97.5)),
+                "lo": lo,
+                "hi": hi,
+                "excludes_zero": bool(lo > 0 or hi < 0),
             }
     return {
         "shots": shots,
@@ -609,9 +583,68 @@ def paired_common_shots(cohort):
         "scored_seconds": results["tm-ours"]["scored_seconds"],
         "metrics": results,
         "differences": differences,
+    }
+
+
+def paired_common_shots(cohort):
+    """tm-ours, the retrained CNN and the two-line baseline on identical shots and bins.
+
+    Same shots, same available 10 ms bins, each model at its own inner-validation
+    thresholds; the shot bootstrap resamples the same shots for every difference. The
+    primary block excludes uncertain time; `uncertain_negative` repeats the comparison
+    with uncertain time scored as negative (same scores, same thresholds), on the shots
+    and bins all three models score.
+    """
+    dev = sorted(int(s) for s in cohort.query("split != 'test'").shot)
+    ours, _ = tm_ours.load(dev, False)
+    cnn, _ = tm_prior_retrain.load("cnn", dev)
+    base, _ = tm_ours.load_baseline(dev)
+    shots = sorted(set(ours) & set(cnn) & set(base))
+    models = {
+        "tm-ours": ("tm_ours_magnetics_cv", "oof_tm_ours_magnetics"),
+        "tm-onsetcnn-retrained": (
+            "tm_prior_retrained_tm-onsetcnn_cv",
+            "oof_tm_prior_retrained_tm-onsetcnn",
+        ),
+    }
+    scores, thresholds = {}, {}
+    for model, (stem, probability) in models.items():
+        record = read(TM / "results" / f"{stem}.json")
+        fold_thresholds = {i["fold"]: i["threshold"] for i in record["fold_info"]}
+        thresholds[model] = {s: fold_thresholds[record["folds"][str(s)]] for s in shots}
+        with np.load(TM / "results" / f"{probability}.npz") as z:
+            scores[model] = {s: z[f"s{s}"] for s in shots}
+    record = read(TM / "results/tm_baseline_tworms_cv_tuned_dev.json")
+    scores["tm-rms-2line"] = tm_ours.run_baseline(base, shots, "tworms")
+    thresholds["tm-rms-2line"] = {
+        s: record["thresholds_by_shot"][str(s)] for s in shots
+    }
+    table = pd.read_csv(LABELS)
+    by_shot = {s: g for s, g in table.groupby("shot")}
+    y, valid = {}, {}
+    y_un, valid_un = {}, {}
+    for s in shots:
+        assert np.array_equal(ours[s][0], cnn[s]["centres"]), s
+        assert np.array_equal(ours[s][2], cnn[s]["y_bins"]), s
+        finite = np.ones(len(ours[s][0]), bool)
+        for model in scores:
+            finite &= np.isfinite(scores[model][s])
+        y[s] = ours[s][2]
+        valid[s] = ours[s][3] & cnn[s]["valid_bins"] & finite
+        y_un[s], label_valid = scoring.label_bins(
+            by_shot.get(s, table.iloc[:0]), ours[s][0], uncertain_negative=True
+        )
+        valid_un[s] = label_valid & finite & np.isfinite(ours[s][1]).all(axis=1)
+    primary = _paired_block(shots, y, valid, scores, thresholds)
+    negative = _paired_block(shots, y_un, valid_un, scores, thresholds)
+    return {
+        **primary,
+        "uncertain_negative": negative,
         "policy": (
             "same shots, same observable label and score bins; each model at its "
-            "own fold thresholds; paired 1000-draw shot bootstrap"
+            "own fold thresholds; paired 1000-draw shot bootstrap; the "
+            "uncertain_negative block scores uncertain time as negative on the same "
+            "scores and thresholds"
         ),
     }
 
@@ -1069,10 +1102,10 @@ def main(argv=None):
             f"{cnn}_tokamak-si_fixed",
             "tm-onsetcnn-published",
             "thr. 0.5",
-            False,
+            True,
             "si_published",
         ),
-        (f"{dsm500}_tokamak-si_tuned", "tm-dsm-500ms-published", "", False, "si_dsm"),
+        (f"{dsm500}_tokamak-si_tuned", "tm-dsm-500ms-published", "", True, "si_dsm"),
         (
             "tm_prior_retrained_tm-onsetcnn",
             "tm-onsetcnn-retrained",
@@ -1146,11 +1179,11 @@ def main(argv=None):
     like = {kind: like_for_like(cohort, kind) for kind in ("cnn", "dsm")}
     audit = rule_audit_bundle()
     write(
-        LOCAL / "sources/inner_splits_fix3.json",
-        read(TM / "results/inner_splits_fix3.json"),
+        LOCAL / "sources/inner_splits_fix4.json",
+        read(TM / "results/inner_splits_fix4.json"),
     )
-    diagnostics = read(LOCAL / "sources/rule_diagnostics_fix3.json")
-    calibration = read(LOCAL / "sources/calibration_dev_fix3.json")
+    diagnostics = read(LOCAL / "sources/rule_diagnostics_fix4.json")
+    calibration = read(LOCAL / "sources/calibration_dev_fix4.json")
     locking = {}
     frequencies = {int(p.stem) for p in (TM / "signals_freq").glob("*.npz")}
     for split in ("cohort", "population"):
@@ -1172,12 +1205,13 @@ def main(argv=None):
             ),
             "source": str(full),
             "meaning": (
-                "A lock is confirmed by a sustained rise of the n=1 radial field "
-                "(|DUSBRADIAL|, native ptdata units) of at least 5 above its median "
-                "over the 200 ms before the onset, for 20 ms, near an interval end "
-                "or abrupt collapse. Unknown locking status is not a negative; "
-                "time after a collapse stays uncertain until a measured release or "
-                "the discharge end."
+                "A lock is confirmed by a step of the n=1 radial field (|DUSBRADIAL|, "
+                "native ptdata units): the median over 20 to 120 ms after a candidate "
+                "time (an interval start, a frequency drop or collapse, an interval "
+                "end) exceeds the median over 200 to 20 ms before it by at least 5. "
+                "A field that is already high and drifting is not a step. Unknown "
+                "locking status is not a negative; time after a collapse stays "
+                "uncertain until a measured release or the discharge end."
             ),
         }
     sizes = {
@@ -1244,7 +1278,7 @@ def main(argv=None):
             for k, v in calibration.items()
             if k not in ("definition", "reference_shots")
         },
-        "inner_split_plan": "data/events/neoclassical_tearing_mode/benchmark/sources/inner_splits_fix3.json",
+        "inner_split_plan": "data/events/neoclassical_tearing_mode/benchmark/sources/inner_splits_fix4.json",
         "agreement": agreements,
         "coverage": cov,
         "label_counts": {
@@ -1283,16 +1317,16 @@ def main(argv=None):
     }
     write(LOCAL / "tm_benchmark.json", summary)
     write(TM / "results/tm_benchmark.json", summary)
-    window_coverage = audit["audit_fix3_current"]["cohort"]["screening_coverage"]
-    window_excluded = (
-        100 * window_coverage["uncertain_seconds"] / window_coverage["window_seconds"]
-    )
+    uncertain_share = diagnostics["uncertain_fraction"]["after"]["window"][
+        "pooled_fraction"
+    ]
     train_per_fold = round(sizes["retrained_models_train_shots_per_fold"]["mean"])
     caption = (
         "Recovery of a strong rotating n=1/n=2 magnetic rule (a tearing-mode "
         "proxy), not independent identification. AUROC and AUPRC are primary; "
         "F1 uses inner-validation thresholds. Uncertain time "
-        f"({window_excluded:.0f}\\% of catalog-window time) is excluded in the "
+        f"({100 * uncertain_share:.1f}\\% of observable catalog-window time) is "
+        "excluded in the "
         "upper block and scored as negative in the lower; boundary placement is "
         "scored only by the lower. tm-rms-2line is max(n=1/12 G, n=2/6 G), no "
         f"training. Published models saw thousands of shots, retrained ones "
@@ -1326,32 +1360,41 @@ def main(argv=None):
         )
     )
     keys = ("auroc", "auprc", "f1", "segf1_0.5")
-    paired_rows = [
-        {
-            "model": model,
-            "setting": "Tokamak-SI",
-            "metrics": metrics,
-        }
-        for model, metrics in paired["metrics"].items()
-    ]
-    for name, diff in paired["differences"].items():
-        a, b = name.split("_minus_")
-        paired_rows.append(
+    paired_rows = []
+    for setting, block in (
+        ("Tokamak-SI", paired),
+        (UN, paired["uncertain_negative"]),
+    ):
+        count = f"{len(block['shots'])} / {compact(block['bins_scored'])}"
+        paired_rows += [
             {
-                "model": f"Difference, {a} $-$ {b}",
-                "setting": "Tokamak-SI",
-                "metrics": {k: diff[k] for k in keys},
-                "shots_text": f"{len(paired['shots'])} / {compact(paired['bins_scored'])}",
+                "model": model,
+                "setting": setting,
+                "metrics": metrics,
+                "shots_text": count,
             }
-        )
+            for model, metrics in block["metrics"].items()
+        ]
+        for name, diff in block["differences"].items():
+            a, b = name.split("_minus_")
+            paired_rows.append(
+                {
+                    "model": f"Difference, {a} $-$ {b}",
+                    "setting": setting,
+                    "metrics": {k: diff[k] for k in keys},
+                    "shots_text": count,
+                }
+            )
     (DOCS / "table_tm_paired.tex").write_text(
         table_tex(
             paired_rows,
             "Models on identical development shots and available 10 ms bins (shot "
-            "and bin counts in the second column); each model keeps its "
-            "inner-validation threshold. Difference rows are paired shot-bootstrap "
-            "intervals (1,000 draws); a difference whose interval spans zero is not "
-            "resolved. Unavailable bins are hard barriers for segmental IoU 0.5.",
+            "and bin counts in the second column), with uncertain time excluded "
+            "(upper block) and scored as negative (lower block); each model keeps "
+            "its inner-validation threshold. Difference rows are paired "
+            "shot-bootstrap intervals (1,000 draws); a difference whose interval "
+            "spans zero is not resolved. Unavailable bins are hard barriers for "
+            "segmental IoU 0.5.",
             "tab:tm-paired",
         )
     )

@@ -3,9 +3,11 @@
 
 Each shot is three rows on one time axis: a strip with its intervals (one colour per
 toroidal number, a triangle at each onset) and, behind them, the uncertain time (one
-flat grey, however many uncertain rows overlap there; hatched where the uncertain time
-is a locked phase: slashes where the radial field confirms the lock, dots where the
-mode collapsed or locked but the field did not confirm it),
+flat grey with no outlines: uncertain rows that overlap are drawn once, so a darker or
+boxed patch never means "more uncertain"; hatched where the uncertain time is a locked
+phase: slashes where a step of the radial field confirms the lock of a mode, crosses
+where the field steps in flat-top time with no mode seen (`locked_unseeded`), dots
+where the mode collapsed or locked but the field did not confirm it),
 the 0-50 kHz MHR spectrogram (corpus `mhr` row 2, in dB above each frequency's
 own floor over the plasma), and the n = 1 and n = 2 RMS (log gauss) with the onset
 threshold and, per interval, the release level it was cut at. MHR often covers only
@@ -60,11 +62,12 @@ PROBE_ROW = 15
 MHR_ROW = 2
 Z_DB = (-3.0, 42.0)
 FONT = 7.5
-#: Uncertain rows made by the lock evidence, and how they are hatched: the radial
-#: field confirms them (slashes), or the mode collapsed or locked unconfirmed (dots).
+#: Uncertain rows made by the lock evidence, and how they are hatched: a step of the
+#: radial field confirms the lock of a mode (slashes), the field steps in flat-top time
+#: with no mode seen (crosses), or the mode collapsed or locked unconfirmed (dots).
 LOCK_HATCH = {
     "confirmed_locked_phase": "////",
-    "locked_unseeded": "////",
+    "locked_unseeded": "xxxx",
     "post_collapse_lock_unknown": "..",
     "rotation_after_lock_unassessed": "..",
 }
@@ -145,14 +148,15 @@ def draw_shot(fig, grid, shot, window, signals, frame, thresholds, diagnostic):
     uncertain = frame[(frame.category == 2) & (frame.t_end > frame.t_start)]
     for row in uncertain.itertuples(index=False):
         reason = parse_attrs(row.attrs).get("reason")
-        # Opaque, so overlapping uncertain rows never stack into a darker grey; the
-        # locked phases are the uncertain rows the lock evidence made.
+        # Flat and outline-free, so overlapping uncertain rows merge into one grey and
+        # never stack into a darker or boxed patch; the locked phases are the
+        # uncertain rows the lock evidence made, hatched on top of it.
         strip.axvspan(
             row.t_start / 1000,
             row.t_end / 1000,
             facecolor="0.8",
             edgecolor="0.25",
-            lw=0.25,
+            lw=0,
             hatch=LOCK_HATCH.get(reason),
             zorder=0 if reason not in LOCK_HATCH else 0.5,
         )
@@ -234,6 +238,13 @@ def main(argv=None) -> int:
     ap.add_argument(
         "--shots", type=int, nargs="+", help="these shots instead of a draw"
     )
+    ap.add_argument(
+        "--lock-example",
+        type=Path,
+        help="rule-diagnostics JSON: also draw the cohort lock with the largest "
+        "radial-field step among the confirmed n = 1 locks (the fixed rule that picks "
+        "a locking example)",
+    )
     ap.add_argument("--columns", type=int, default=3)
     ap.add_argument(
         "--width", type=float, default=7.3, help="publication width in inches"
@@ -261,6 +272,18 @@ def main(argv=None) -> int:
     shots = args.shots or sorted(
         rng.choice(eligible, size=min(args.n, len(eligible)), replace=False).tolist()
     )
+    lock_rule = None
+    if args.lock_example:
+        best = json.loads(args.lock_example.read_text())["lock_steps"]["cohort"][
+            "largest_step"
+        ]
+        if best["shot"] not in shots:
+            shots = [*shots, int(best["shot"])]
+        lock_rule = (
+            f"the locking example is shot {best['shot']}, the confirmed cohort n = 1 "
+            f"lock with the largest radial-field step ({best['step']:.1f} native "
+            f"units: {best['before']:.1f} before, {best['after']:.1f} after)"
+        )
     if any(s not in eligible for s in shots):
         raise SystemExit("gallery shots must be eligible development shots")
     columns = args.columns
@@ -318,31 +341,38 @@ def main(argv=None) -> int:
         plt.Line2D([], [], color=COLOUR[2], ls=":", lw=0.8, label="n = 2 seed (6 G)"),
         plt.Line2D([], [], color=COLOUR[1], ls="--", lw=1.0, label="n = 1 release"),
         plt.Line2D([], [], color=COLOUR[2], ls="--", lw=1.0, label="n = 2 release"),
-        Patch(facecolor="0.8", edgecolor="0.25", label="uncertain (any reason)"),
+        Patch(
+            facecolor="0.8",
+            edgecolor="none",
+            label="uncertain (overlapping rows drawn once)",
+        ),
     ]
     selected_spans = intervals_of(table[table.shot.isin(shots)])[0]
     reasons = {
         parse_attrs(a).get("reason")
         for a in table[table.shot.isin(shots) & (table.category == 2)]["attrs"]
     }
-    if reasons & {"confirmed_locked_phase", "locked_unseeded"}:
-        handles.append(
-            Patch(
-                facecolor="0.8",
-                edgecolor="0.25",
-                hatch="////",
-                label="locked (field confirms)",
+    for kind, hatch, label in (
+        (
+            {"confirmed_locked_phase"},
+            "////",
+            "locked mode (radial-field step confirms)",
+        ),
+        (
+            {"locked_unseeded"},
+            "xxxx",
+            "radial-field step, no mode seen",
+        ),
+        (
+            {"post_collapse_lock_unknown", "rotation_after_lock_unassessed"},
+            "..",
+            "lock not confirmed",
+        ),
+    ):
+        if reasons & kind:
+            handles.append(
+                Patch(facecolor="0.8", edgecolor="0.25", hatch=hatch, label=label)
             )
-        )
-    if reasons & {"post_collapse_lock_unknown", "rotation_after_lock_unassessed"}:
-        handles.append(
-            Patch(
-                facecolor="0.8",
-                edgecolor="0.25",
-                hatch="..",
-                label="lock not confirmed",
-            )
-        )
     fig.legend(
         handles=handles,
         loc="lower center",
@@ -395,6 +425,7 @@ def main(argv=None) -> int:
                 "dpi": 150,
                 "width_inches": args.width,
                 "font_pt": FONT,
+                "lock_example_rule": lock_rule,
                 "use": "column example"
                 if args.width <= 3.25
                 else "supplementary audit gallery",

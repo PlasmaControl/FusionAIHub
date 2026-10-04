@@ -49,6 +49,157 @@ def table(header, rows, text=1):
     return out
 
 
+def changelog(diag, previous, *, agreement_before, b):
+    """The label-rule history: what each round changed and the numbers it moved.
+
+    The paper-facing document states only the current rule; this appendix keeps the
+    before-and-after figures. Round 3 is read from the previous round's record
+    (`rule_diagnostics_fix3.json`), round 4 from the current one.
+    """
+    old_u = previous["uncertain_fraction"]["before"]
+    new_u = previous["uncertain_fraction"]["after"]
+    fc3 = previous["false_confirmation"]["all"]
+    seeds3 = previous["n2_seed_cuts"]
+    fraction = diag["uncertain_fraction"]
+    fc = diag["false_confirmation"]["rows"]
+    lags = (
+        "lag_300_ms",
+        "lag_1000_ms",
+        "lag_2000_ms",
+        "lag_from_interval_durations",
+    )
+    locked = {
+        k: v["intervals_by_end"].get("locked", 0) for k, v in diag["locking"].items()
+    }
+    seeds = diag["n2_seed_cuts"]
+    cal = b["harmonic_calibration"]
+    onset = {
+        ref: b["agreement"][f"{ref}_dev"]["agreement"]["n1"]
+        for ref in ("seo", "survival")
+    }
+    intro = (
+        "The methods document states only the current rule. This appendix keeps "
+        "what each round changed and the development-cohort numbers it moved. "
+        "Round 4 figures come from `benchmark/sources/rule_diagnostics_fix4.json`, "
+        "round 3 from `rule_diagnostics_fix3.json`."
+    )
+    lock_text = (
+        "Lock confirmation: a step at each candidate time (median 20 to 120 ms "
+        "after, 5 above the median 200 to 20 ms before); confirmed cohort locks"
+    )
+    false_text = (
+        "False-confirmation rate, previous test against the step test, at lags "
+        "of 300 / 1000 / 2000 ms and lags drawn from the interval durations"
+    )
+    veto_text = (
+        "Harmonic veto recalibrated on the bins that fit n = 2: level (n = 2 "
+        f"seeds removed of {seeds['seeds']})"
+    )
+    window_text = (
+        "Inside-the-onset-window count, Seo / survival (the old flag compared the "
+        "reference onset with the interval end)"
+    )
+    share_text = (
+        "Uncertain share of observable time, catalog window / flat-top (pooled)"
+    )
+    rows4 = [
+        (lock_text, locked["before"], locked["after"]),
+        (
+            false_text,
+            " / ".join(pct(fc[k]["previous_rate"]) for k in lags),
+            " / ".join(pct(fc[k]["current_rate"]) for k in lags),
+        ),
+        (
+            veto_text,
+            f"{diag['n2_cuts']['harmonic_ratio_previous']} ({seeds['veto_previous']})",
+            f"{cal['harmonic_ratio']} ({seeds['veto_current']})",
+        ),
+        (
+            window_text,
+            " / ".join(
+                f"{agreement_before[r]['inside_previous_definition']} of "
+                f"{agreement_before[r]['matched']}"
+                for r in ("seo", "survival")
+            ),
+            " / ".join(
+                f"{onset[r]['error_ms']['reference_inside_onset_window']} of "
+                f"{onset[r]['matched']}"
+                for r in ("seo", "survival")
+            ),
+        ),
+        (
+            "Duplicate rows in `tm_interval.csv`",
+            diag["duplicate_rows"]["before"],
+            diag["duplicate_rows"]["after"],
+        ),
+        (
+            share_text,
+            " / ".join(
+                pct(fraction["before"][k]["pooled_fraction"])
+                for k in ("window", "flat_top")
+            ),
+            " / ".join(
+                pct(fraction["after"][k]["pooled_fraction"])
+                for k in ("window", "flat_top")
+            ),
+        ),
+    ]
+    weak_text = (
+        "Weak tracks released at the weak floor, one weak screen over ramp-up and "
+        "flat-top: uncertain share of observable flat-top time (pooled)"
+    )
+    rise_text = (
+        "Lock confirmation by a rise over the pre-onset median: false "
+        "confirmations at a 300 ms lag (absolute level against relative rise)"
+    )
+    cap_text = (
+        "n = 2 frequency cap scaled with n (30 to 60 kHz): n = 2 seeds it removes"
+    )
+    old_veto_text = (
+        "Harmonic veto calibrated on the bins that fit n = 1: level (seeds removed)"
+    )
+    rows3 = [
+        (
+            weak_text,
+            pct(old_u["flat_top"]["pooled_fraction"]),
+            pct(new_u["flat_top"]["pooled_fraction"]),
+        ),
+        (rise_text, pct(fc3["absolute_rate"]), pct(fc3["relative_rate"])),
+        (
+            "Intervals ending in a confirmed lock",
+            previous["locking"]["before"]["intervals_by_end"].get("locked", 0),
+            previous["locking"]["after"]["intervals_by_end"].get("locked", 0),
+        ),
+        (cap_text, seeds3["cap_before"], seeds3["cap_after"]),
+        (
+            old_veto_text,
+            f"0.57 ({seeds3['veto_before']})",
+            f"0.72 ({seeds3['veto_after']})",
+        ),
+    ]
+    note = (
+        "Round 3's harmonic level was calibrated on the bins that fit n = 1, which "
+        "are not the harmonic bins (see the harmonic veto in the methods document); "
+        "round 4 replaced it."
+    )
+    lines = [
+        "# Tearing-mode label rule: changelog",
+        "",
+        intro,
+        "",
+        "## Round 4",
+        "",
+        *table(["Change", "Before", "After"], rows4),
+        "",
+        "## Round 3",
+        "",
+        *table(["Change", "Before", "After"], rows3),
+        "",
+        note,
+    ]
+    return "\n".join(line.rstrip() for line in lines) + "\n"
+
+
 def main():
     b = json.loads(BENCH.read_text())
     diag = b["rule_diagnostics"]
@@ -64,8 +215,11 @@ def main():
     fc = diag["false_confirmation"]
     n2 = diag["n2_cuts"]
     seeds = diag["n2_seed_cuts"]
-    lock_before = diag["locking"]["before"]
     lock_after = diag["locking"]["after"]
+    steps = diag["lock_steps"]["cohort"]
+    largest = steps["largest_step"]
+    share = fraction["after"]["window"]
+    share_text = pct(share["pooled_fraction"])
     counts = {k: v["counts"] for k, v in b["label_counts"].items()}
     cov = b["coverage"]
     paired = b["paired_common_shots"]
@@ -76,15 +230,19 @@ def main():
         f"{two['auroc']['hi']:+.3f}] and {two['auprc']['value']:+.3f} AUPRC "
         f"[{two['auprc']['lo']:+.3f}, {two['auprc']['hi']:+.3f}]"
     )
-    un = {
-        r["model"]: r["metrics"]
-        for r in b["rows"]
-        if r["setting"] == "Tokamak-SI, uncertain = negative" and not r["variant"]
-    }
+    un_pair = paired["uncertain_negative"]
+    un_diff = un_pair["differences"]["tm-ours_minus_tm-rms-2line"]["auprc"]
+    if un_diff["hi"] < 0:
+        un_verdict = "so the order reverses: the interval excludes 0"
+    elif un_diff["lo"] > 0:
+        un_verdict = "so the order holds: the interval excludes 0"
+    else:
+        un_verdict = "an interval that spans 0, so the order is not resolved"
     un_text = (
-        f"the order {'reverses' if un['tm-ours']['auprc']['value'] < un['tm-rms-2line']['auprc']['value'] else 'holds'}: "
-        f"AUPRC {un['tm-ours']['auprc']['value']:.3f} for `tm-ours` against "
-        f"{un['tm-rms-2line']['auprc']['value']:.3f} for the baseline"
+        f"the paired AUPRC difference on the {len(un_pair['shots'])} shots and "
+        f"{un_pair['bins_scored']} bins all three models score is "
+        f"{un_diff['value']:+.3f} [{un_diff['lo']:+.3f}, {un_diff['hi']:+.3f}], "
+        f"{un_verdict}"
     )
     onset_err = {
         ref: b["agreement"][f"{ref}_dev"]["agreement"]["n1"].get("error_ms")
@@ -137,42 +295,44 @@ def main():
         (
             "Seed and span frequency evidence uses `coherent_frequency` (a 50 ms "
             "window with p90−p10 width ≤ max(2 kHz, 25% of its median) and ≥80% "
-            "coherent support over a span). Where `N1FREQ`/`N2FREQ` is missing the "
-            "Mirnov fallback requires an n-resolved phase fit ≥ 0.9, prominence ≥ "
-            "10 dB, a line frequency between 1 kHz and the cap below, and coherent "
-            "amplitude above the frozen development quiet-time p95. The frequency cap "
-            "scales with the toroidal number: 30 kHz for n = 1, 60 kHz for n = 2 "
-            "(the Mirnov features stop at 30 kHz, so the n = 2 cap acts through "
-            "`N2FREQ` only). These are magnetic proxies, not proof of an island."
+            "coherent support over a span). A seed needs a coherent line at or above "
+            "**1.5 kHz** and at or below the cap, whether the line comes from "
+            "`N1FREQ`/`N2FREQ` or from the Mirnov fallback. Where `N1FREQ`/`N2FREQ` "
+            "is missing the fallback requires an n-resolved phase fit ≥ 0.9, "
+            "prominence ≥ 10 dB and coherent amplitude above the frozen development "
+            "quiet-time p95; its line search covers 1–30 kHz, so inside a span (not "
+            "for a seed) a fallback line between 1 and 1.5 kHz still counts as "
+            "support. The frequency cap scales with the toroidal number: 30 kHz for "
+            "n = 1, 60 kHz for n = 2 (the Mirnov features stop at 30 kHz, so the "
+            "n = 2 cap acts through `N2FREQ` only). These are magnetic proxies, not "
+            "proof of an island."
         ),
         "",
         (
             "**Harmonic veto.** An n = 2 seed is dropped where n2/n1 is at or below "
-            "the veto level, so the second harmonic of an n = 1 mode, which is a "
-            "bounded fraction of it, is not read as a separate n = 2 mode. The level "
-            "is the "
-            "99th percentile of n2/n1 over development bins where the n = 2 line sits "
-            "at twice the n = 1 frequency **and** the Mirnov best-fit toroidal number "
-            f"at that frequency is 1 ({cal['sets']['phase_coherent_best_fit_n1']['n_bins']} "
-            f"bins on {cal['sets']['phase_coherent_best_fit_n1']['n_shots']} shots), "
-            f"which gives {cal['harmonic_ratio_unrounded']:.3f}, set to "
-            f"**{cal['harmonic_ratio']}**. The earlier level, {cal['previous_harmonic_ratio_rounded']}, "
-            "used every frequency-matched bin "
-            f"({cal['sets']['frequency_matched_all']['n_bins']} bins), a set that "
-            "can also hold frequency-coupled 3/2 + 2/1 pairs, which are real n = 2 "
-            "modes. The phase-coherent set is a small minority of those bins, because "
-            "the harmonic of an n = 1 waveform usually fits n = 2, so the level rests "
-            "on a small sample; a higher level vetoes more seeds. "
-            f"Of the {seeds['seeds']} n = 2 seeds (50 ms above 6 G on the RMS "
-            f"alone) on {seeds['shots']} development shots, the harmonic veto removes "
-            f"{seeds['veto_before']} at the earlier level and {seeds['veto_after']} "
-            f"at {cal['harmonic_ratio']}; the coherent-frequency cap removes "
-            f"{seeds['cap_before']} at 30 kHz and {seeds['cap_after']} at 60 kHz; "
-            f"both together remove {seeds['both_before']} before and "
-            f"{seeds['both_after']} now. The n = 2 intervals that result: "
-            f"{n2['n2_intervals_kept']['before_cap30_veto0.57']} with the earlier "
-            f"settings, {n2['n2_intervals_kept']['after_cap60_veto']} with the "
-            "current ones."
+            "the veto level, so that the second harmonic of a rotating n = 1 mode, "
+            "whose amplitude is a bounded fraction of the n = 1 amplitude, is not "
+            "read as a separate n = 2 mode. The level is the 99th percentile of "
+            "n2/n1 over development bins where the n = 2 line sits at twice the "
+            "n = 1 frequency **and** the six midplane Mirnov probes' phases at that "
+            "frequency fit toroidal n = 2 (best-fit |n| = 2, fit ≥ 0.9): "
+            f"{cal['sets']['phase_coherent_best_fit_n2']['n_bins']} bins on "
+            f"{cal['sets']['phase_coherent_best_fit_n2']['n_shots']} shots, a "
+            f"99th percentile of {cal['harmonic_ratio_unrounded']:.3f}, rounded up "
+            f"to **{cal['harmonic_ratio']}**. These are the bins where the line at "
+            "2 f1 is the harmonic, because the harmonics of a rotating, "
+            "non-sinusoidal n = 1 waveform carry toroidal number 2. **The limit:** "
+            "toroidal phase cannot separate such a harmonic from a co-rotating, "
+            "frequency-coupled n = 2 mode (a 3/2 mode locked to the 2/1), because "
+            "both have n = 2 at 2 f1, so the veto is a heuristic and may also "
+            "remove real 3/2 modes. "
+            f"It removes {seeds['veto_current']} of the {seeds['seeds']} n = 2 seeds "
+            f"(50 ms above 6 G on the RMS alone) on {seeds['shots']} development "
+            f"shots; the 60 kHz frequency cap alone removes {seeds['cap']}, and the "
+            f"two cuts together {seeds['both_current']}. The rule yields "
+            f"{n2['n2_intervals_kept']['current_veto']} n = 2 intervals on the "
+            "development shots "
+            f"({n2['n2_intervals_kept']['no_veto']} without the veto)."
         ),
         "",
         (
@@ -180,27 +340,21 @@ def main():
             "core and is uncertain; it is released at the weak-line amplitude floor "
             "itself, and the same weak screen runs over ramp-up and flat-top. Time "
             "above the frozen weak RMS thresholds (n1 2.0282 G, n2 1.8280 G) that "
-            "the screen cannot assess is uncertain rather than absent, and a "
-            "sustained exceedance with no seed in otherwise-absent flat-top time is "
-            "uncertain with reason `locked_unseeded`. Quiet time is absent. The "
+            "the screen cannot assess is uncertain rather than absent. Quiet time is "
+            "absent, except that in otherwise-absent flat-top time a radial field "
+            "that steps up (the test below) and stays at least 5 above the median of "
+            "that time for 100 ms is uncertain with reason `locked_unseeded`: a "
+            "field event with no mode seen, not a mode. The "
             "label is a strong-mode label, not exhaustive TM truth: weak modes that "
             "fail the screen stay absent."
         ),
         "",
         (
-            "The uncertain share of observable development plasma went from "
-            f"**{pct(fraction['before']['flat_top']['pooled_fraction'])}** pooled "
-            f"(median shot {pct(fraction['before']['flat_top']['median_shot_fraction'])}) "
-            f"to **{pct(fraction['after']['flat_top']['pooled_fraction'])}** pooled "
-            f"(median shot {pct(fraction['after']['flat_top']['median_shot_fraction'])}) "
-            "from flat-top start; counted over the whole catalog window it is "
-            f"{pct(fraction['before']['window']['pooled_fraction'])} before and "
-            f"{pct(fraction['after']['window']['pooled_fraction'])} now "
-            f"(median shot {pct(fraction['before']['window']['median_shot_fraction'])} "
-            f"before, {pct(fraction['after']['window']['median_shot_fraction'])} now). "
-            f"{fraction['after']['flat_top']['shots_over_50_percent']} of "
-            f"{fraction['after']['flat_top']['shots']} shots are more than half uncertain "
-            f"(before: {fraction['before']['flat_top']['shots_over_50_percent']})."
+            f"Uncertain time is **{share_text}** of the observable catalog-window "
+            "time of the development shots (absent + present + uncertain, pooled "
+            f"over {share['shots']} shots; {share['shots_over_50_percent']} shots "
+            "are more than half uncertain). This one statistic is the uncertain "
+            "share quoted in the benchmark caption."
         ),
         "",
         "### Criterion pass rates",
@@ -217,7 +371,7 @@ def main():
         ),
         "",
     ]
-    criterion = b["rule_audit"]["criterion_support_fix3"]
+    criterion = b["rule_audit"]["criterion_support_fix4"]
     rows = []
     for scope in ("cohort", "population"):
         for n, states in criterion[scope].items():
@@ -248,7 +402,7 @@ def main():
     lines.extend(
         [
             "",
-            f"Source: [criterion_support_fix3.json]({SOURCES}/criterion_support_fix3.json).",
+            f"Source: [criterion_support_fix4.json]({SOURCES}/criterion_support_fix4.json).",
             "",
             "## Abrupt collapse and locking",
             "",
@@ -260,33 +414,75 @@ def main():
                 "independent signal is the n = 1 PTDATA radial field `DUSBRADIAL` "
                 "(native ptdata units, treated as gauss by disruption-py; the unit is "
                 "not verified here, so no absolute field is claimed). A lock is "
-                "confirmed by a **sustained rise**: |DUSBRADIAL| at least 5 above its "
-                "median over the 200 ms before the interval's onset, held for 20 ms "
-                "near the interval end or collapse; it is released when the field "
-                "stays below that rise for 200 ms. The relative rule replaces an "
-                "absolute 5-unit level, which fired on shots whose field sits high "
-                "before any mode. Shots 176030–176912 carry a corrupted channel and "
-                "are never confirmed. `N1FREQ`/`N2FREQ` falling to ≤ 1 kHz alone "
-                "creates only a candidate. n = 2 has no independent confirmation."
+                "confirmed by a **step**. At a candidate time t_c (an interval's "
+                "start, a frequency drop or abrupt collapse, or an interval's end) the "
+                "median of |DUSBRADIAL| over t_c + 20 ms to t_c + 120 ms must exceed "
+                "its median over t_c − 200 ms to t_c − 20 ms by at least 5 (each "
+                "window needs 50 ms of measured field, and the earlier window does "
+                "not reach before the flat-top start). The baseline is local to the "
+                "candidate, so a field that is already high or ramps slowly shows no "
+                "step and confirms nothing. The lock is released when the field "
+                "stays below its baseline plus 5 for 200 ms. Shots 176030–176912 "
+                "carry a corrupted channel and are never confirmed. `N1FREQ`/`N2FREQ` "
+                "falling to ≤ 1 kHz alone creates only a candidate. n = 2 has no "
+                "independent confirmation."
             ),
             "",
             (
                 "A lock is looked for at **every** interval end, not only after a "
                 "collapse, and for candidates the rule rejected: a rejected candidate "
                 "followed by a confirmed lock tail stays uncertain with the lock "
-                "reason. Quiet-time false confirmations were measured by placing "
-                f"{fc['all']['draws']} pseudo-onsets (20 per shot, seed 0) in stretches "
-                "labelled absent and testing for a lock 300 ms later: the old absolute "
-                f"rule confirmed **{pct(fc['all']['absolute_rate'])}**, the relative "
-                f"rule **{pct(fc['all']['relative_rate'])}**; on draws whose "
-                "pre-onset field was already ≥ 3 the rates are "
-                f"{pct(fc['draws_with_baseline_at_least_3']['absolute_rate'])} and "
-                f"{pct(fc['draws_with_baseline_at_least_3']['relative_rate'])} "
-                f"({fc['draws_with_baseline_at_least_3']['draws']} draws). "
-                f"Intervals ending in a confirmed lock: {lock_before['intervals_by_end'].get('locked', 0)} "
-                f"before, {lock_after['intervals_by_end'].get('locked', 0)} now. Uncertain "
-                f"`locked_unseeded` time: {unseeded('rows')} rows, "
-                f"{unseeded('seconds'):.1f} s on {unseeded('shots')} shots."
+                "reason. "
+                f"Across the {steps['n_confirmed_locks']} confirmed cohort locks "
+                f"(n = 1) the step is {steps['step_min']:.1f} to "
+                f"{steps['step_max']:.1f} (median {steps['step_median']:.1f}) native "
+                "units. The false-confirmation rate of the test was measured by "
+                "drawing a pseudo-onset in time the labels call absent, in a stretch "
+                "long enough for the 200 ms baseline and the 120 ms step window, and "
+                "testing for a lock `lag` later. The step test reads only the field "
+                "around that pseudo-lock; the lags are 300, 1000 and 2000 ms and "
+                f"{fc['n_interval_durations']} lags drawn from the cohort's interval "
+                f"durations (median {fc['interval_duration_quantiles_ms']['50']:.0f} "
+                "ms):"
+            ),
+            "",
+        ]
+    )
+    rows = []
+    for key, title in (
+        ("lag_300_ms", "300 ms"),
+        ("lag_1000_ms", "1000 ms"),
+        ("lag_2000_ms", "2000 ms"),
+        ("lag_from_interval_durations", "drawn from the interval durations"),
+    ):
+        row = fc["rows"][key]
+        rows.append(
+            (
+                title,
+                row["draws"],
+                row["shots"],
+                row["current"],
+                pct(row["current_rate"]),
+            )
+        )
+    lines.extend(
+        table(
+            ["Lag", "Draws", "Shots", "False confirmations", "Rate"],
+            rows,
+        )
+    )
+    lines.extend(
+        [
+            "",
+            (
+                f"Intervals ending in a confirmed lock: {lock_after['intervals_by_end'].get('locked', 0)} "
+                f"on the development shots. Uncertain `locked_unseeded` time: "
+                f"{unseeded('rows')} rows, {unseeded('seconds'):.1f} s on "
+                f"{unseeded('shots')} shots. The column example's locking shot is "
+                f"**{largest['shot']}**, chosen by a fixed rule: the confirmed cohort "
+                "n = 1 lock with the largest step "
+                f"({largest['step']:.1f} units: {largest['before']:.1f} before, "
+                f"{largest['after']:.1f} after); its decaying counterpart is 189514."
             ),
             "",
             (
@@ -351,13 +547,18 @@ def main():
             "## Onsets and historical-onset agreement",
             "",
             (
-                "The onset is the interval's start, a point event. The interval is "
-                "the span. Because the interval start is where the strong rule first "
-                "holds, the true onset lies earlier, in the preceding weak track; each "
-                "onset carries `onset_window_ms`, the start of the preceding same-n "
-                "weak track (the interval start where none exists), so the window "
-                f"{counts['cohort']['n_onset_windows']} of {counts['cohort']['n_onset_points']} "
-                "cohort onsets have is the span in which the mode could have begun."
+                "The onset is the interval's start, a point event, and the interval is "
+                "the span. The interval start is the qualified seed grown backwards "
+                "to max(1 G, 10% of its peak), so it precedes the 50 ms seed "
+                "crossing; it is not the time the strong rule first holds. Each onset "
+                "carries `onset_window_ms`, from the start of the preceding same-n "
+                "weak track to the interval start, the span in which the mode could "
+                f"have begun. {counts['cohort']['n_onset_windows']} of "
+                f"{counts['cohort']['n_onset_points']} cohort onsets have such a "
+                "window (the others have no preceding weak track), and "
+                f"{counts['cohort']['n_onset_windows_at_most_5_ms']} of those windows "
+                "are 5 ms or shorter: they are flagged, not widened, and say almost "
+                "nothing about where the mode began."
             ),
             "",
             (
@@ -375,7 +576,21 @@ def main():
                 f"{agreement['survival']['missed']} (survival) are short bursts, and "
                 f"{agreement['seo']['missed_reasons']['coherent_line_not_supported']} "
                 f"and {agreement['survival']['missed_reasons']['coherent_line_not_supported']} "
-                "lack a supported coherent line. The survival archive does not follow "
+                "lack a supported coherent line. The Seo onsets fall a median "
+                f"{agreement['seo']['error_ms']['median']:.0f} ms after the interval "
+                "start, inside the interval; a reference onset lies **inside the "
+                "onset window** (from "
+                "the window's start to the interval's start, each widened by the "
+                f"±100 ms tolerance) for {agreement['seo']['error_ms']['reference_inside_onset_window']} "
+                f"of {agreement['seo']['matched']} Seo and "
+                f"{agreement['survival']['error_ms']['reference_inside_onset_window']} "
+                f"of {agreement['survival']['matched']} survival onsets; "
+                f"{agreement['seo']['error_ms']['reference_after_interval_start_by_more_than_tolerance']} "
+                "Seo and "
+                f"{agreement['survival']['error_ms']['reference_after_interval_start_by_more_than_tolerance']} "
+                "survival onsets lie more than 100 ms after the interval start. The "
+                "label therefore holds the historical onset, it does not time it. "
+                "The survival archive does not follow "
                 "a literal continuous-50 ms rule on the 1 kHz `N1RMS`: its onsets "
                 "classed short bursts have no 50 ms raw-and-median 12 G crossing "
                 "near them. The rule was not selected to maximise archive agreement."
@@ -402,7 +617,8 @@ def main():
                 "—" if e is None else pct(e["within_ms"]["100"], 0),
                 "—"
                 if e is None
-                else pct(e["reference_inside_onset_window_fraction"], 0),
+                else f"{e['reference_inside_onset_window']} of {s['matched']} "
+                f"({pct(e['reference_inside_onset_window_fraction'], 0)})",
                 f"{s['intervals_without_an_onset']} of {s['compared_intervals']}",
             )
         )
@@ -427,7 +643,9 @@ def main():
             "",
             (
                 "The onset error is the reference onset minus our interval start, over "
-                "matched onsets only (positive: our interval began first). "
+                'matched onsets only (positive: our interval began first). "Inside '
+                'onset window" counts matched reference onsets between the window '
+                "start and the interval start, each widened by 100 ms. "
                 '"Intervals without a reference onset" counts compared intervals '
                 "that hold no reference onset of their shot."
             ),
@@ -443,13 +661,14 @@ def main():
             "",
             (
                 "The outer held-shot assignment is the seed-0 round-robin. Before any "
-                "fit, `tm_cv_plan.py` freezes inner shot roles in `inner_splits_fix3.json`, "
+                "fit, `tm_cv_plan.py` freezes inner shot roles in `inner_splits_fix4.json`, "
                 "stratified by whether a shot has an interval, with within-stratum swaps "
                 "so every model and legacy target has positive support in its "
                 "validation shots. No score or held-fold performance chooses roles. "
                 "Each fit asserts a positive-bearing early-stopping validation set and "
                 "threshold selection raises on zero positives. The published CNN is "
-                "also shown at its own 0.5 threshold. The DSM's published survival "
+                "shown at its own 0.5 threshold and at the tuned one, in both target "
+                "groups. The DSM's published survival "
                 "threshold 0.7 corresponds to risk 0.3."
             ),
             "",
@@ -518,9 +737,9 @@ def main():
         [
             "",
             (
-                "The Mirnov-derived uncertainty mask excludes about "
-                f"**{pct(fraction['after']['flat_top']['pooled_fraction'])}** of "
-                "observable development plasma. It shares `tm-ours` inputs, so the primary group "
+                "The Mirnov-derived uncertainty mask is "
+                f"**{share_text}** of observable catalog-window time (the statistic "
+                "defined above). It shares `tm-ours` inputs, so the primary group "
                 "emphasises strong modes against quiet magnetic time and can favour "
                 "the magnetic detector; the uncertain-as-negative group also scores "
                 "those hard cases. The +RMS row adds circular label inputs. The legacy rows "
@@ -536,44 +755,73 @@ def main():
                 "**Reading the table.** The two-line RMS baseline is the rule "
                 "restated as a score, with no training. A model that reaches it "
                 "has recovered the magnetic rule; one that exceeds it uses "
-                "information the rule does not. On the shared shots `tm-ours` "
-                f"exceeds the baseline by {pair_text} "
-                "and, with uncertain time scored as negative, "
-                f"{un_text}. `tm-ours` is therefore reported as "
-                "recovering the magnetic rule, not as a better detector."
+                "information the rule does not. On the shared shots the paired "
+                f"difference `tm-ours` − baseline is {pair_text}; with uncertain "
+                f"time scored as negative, {un_text}. `tm-ours` is therefore "
+                "reported as recovering the magnetic rule, not as a better detector."
             ),
             "",
             "### Paired comparison",
             "",
             (
-                f"Same {len(paired['shots'])} development shots and "
-                f"{paired['bins_scored']} identical available 10 ms bins for all three "
-                "models; each keeps its inner-validation threshold. Paired bootstrap "
-                "draws resample the same shots. Ranking, not a threshold-specific F1 "
-                "gain, is the primary comparison."
+                "Identical development shots and available 10 ms bins for all three "
+                "models within each target group; each model keeps its "
+                "inner-validation threshold. Paired bootstrap draws resample the same "
+                "shots, so each difference row carries a paired 95% interval; a "
+                "difference whose interval spans 0 is not resolved. Ranking, not a "
+                "threshold-specific F1 gain, is the primary comparison."
             ),
             "",
         ]
     )
     rows = []
-    for name, m in paired["metrics"].items():
-        rows.append(
-            (name, *[metric(m[k]) for k in ("auroc", "auprc", "f1", "segf1_0.5")])
-        )
-    for key, label in (
-        ("tm-ours_minus_tm-onsetcnn-retrained", "Difference, tm-ours − retrained CNN"),
-        ("tm-ours_minus_tm-rms-2line", "Difference, tm-ours − two-line RMS"),
+    for target, block in (
+        ("uncertain excluded", paired),
+        ("uncertain = negative", paired["uncertain_negative"]),
     ):
-        rows.append(
-            (
-                label,
-                *[
-                    metric(paired["differences"][key][k])
-                    for k in ("auroc", "auprc", "f1", "segf1_0.5")
-                ],
+        count = f"{len(block['shots'])} / {block['bins_scored']}"
+        for name, m in block["metrics"].items():
+            rows.append(
+                (
+                    target,
+                    name,
+                    count,
+                    *[metric(m[k]) for k in ("auroc", "auprc", "f1", "segf1_0.5")],
+                )
             )
+        for key, label in (
+            (
+                "tm-ours_minus_tm-onsetcnn-retrained",
+                "Difference, tm-ours − retrained CNN",
+            ),
+            ("tm-ours_minus_tm-rms-2line", "Difference, tm-ours − two-line RMS"),
+        ):
+            rows.append(
+                (
+                    target,
+                    label,
+                    count,
+                    *[
+                        metric(block["differences"][key][k])
+                        for k in ("auroc", "auprc", "f1", "segf1_0.5")
+                    ],
+                )
+            )
+    lines.extend(
+        table(
+            [
+                "Target",
+                "Model",
+                "Shots / bins",
+                "AUROC",
+                "AUPRC",
+                "F1",
+                "Segmental F1",
+            ],
+            rows,
+            text=2,
         )
-    lines.extend(table(["Model", "AUROC", "AUPRC", "F1", "Segmental F1"], rows))
+    )
     lines.extend(
         [
             "",
@@ -715,10 +963,16 @@ def main():
             (
                 "`tm_gallery.py --width 3.25 --columns 1` provides column-sized example "
                 "panels with 7.5 pt text at final width; the example shots are one "
-                "decaying n = 1 mode and one locking n = 1 mode. In the galleries a "
-                "present interval is drawn plain, uncertain time is flat grey, and "
-                "only the locked phase is hatched (a rise of the radial field, with or "
-                "without a preceding mode). A grey spectrogram background is time "
+                "decaying n = 1 mode (189514) and one locking n = 1 mode "
+                f"({largest['shot']}, picked by the fixed rule above: the largest "
+                "radial-field step). In the galleries a present interval is drawn "
+                "plain and uncertain time is one flat grey without outlines, so "
+                "uncertain rows that overlap are drawn once and a boxed or darker "
+                "patch never means more uncertainty. Only locked phases are hatched: "
+                "slashes where a step of the radial field confirms a mode's lock, "
+                "crosses where the field steps in flat-top time with no mode seen "
+                "(`locked_unseeded`), dots where a lock is suspected but "
+                "unconfirmed. A grey spectrogram background is time "
                 "with no record of that diagnostic. The 7.3-inch MHR and Mirnov "
                 "galleries are supplementary audit material and must not be shrunk "
                 "into a paper column. Their JSON sidecars record shots, width, font, "
@@ -741,12 +995,14 @@ def main():
             (
                 "Sequence: `tm_magfeatures.py`, `tm_harmonic_calibration.py`, "
                 "`tm_label.py` (`--from cohort`, then `--from population`), "
-                "`tm_audit_rule.py`, `tm_cv_plan.py`, `tm_fix3_diagnostics.py`, "
+                "`tm_audit_rule.py`, `tm_cv_plan.py`, `tm_rule_diagnostics.py`, "
                 "`tm_prior_retrain.py --model cnn/dsm`, `tm_ours.py --features "
                 "magnetics/magnetics+rms` and `--baseline`, `tm_prior_published.py` "
                 "(legacy and Tokamak-SI), `tm_agreement.py --exclude-test --tag _dev`, "
-                "`tm_sensitivity.py`, `tm_gallery.py`, `tm_benchmark.py --rescore "
-                "--gallery-reviewed`, `tm_write_doc.py`, `tm_render_tables.py`. Source "
+                "`tm_sensitivity.py`, `tm_gallery.py` (the column examples with "
+                "`--lock-example` on the rule-diagnostics record), `tm_benchmark.py "
+                "--rescore --gallery-reviewed`, `tm_write_doc.py`, "
+                "`tm_render_tables.py`, `tm_verify_artifacts.py`. Source "
                 "JSONs and the shot lists are committed under the benchmark's "
                 "`sources/`; predictions, weights, signals and figures stay under "
                 "`$LABELER_ROOT/round4/tm/`."
@@ -755,14 +1011,30 @@ def main():
             (
                 "Remaining limitations: the target and the detector inputs share the "
                 "magnetic RMS, the n = 2 level and the lock units are local "
-                "conventions, weak and fast-locking modes are omitted, the published "
+                "conventions, the harmonic veto is a heuristic that may remove real "
+                "3/2 modes, the onset is the interval start and does not time the "
+                "mode independently, weak and fast-locking modes are omitted, the "
+                "published "
                 "CNN's training overlap is unknown, the training sets of the retrained "
                 "models are far smaller than the published ones, lock status is "
                 "unknown on development shots without a `DUSBRADIAL` record, and there "
                 "is no independent ECE island radius or fully nested hyperparameter "
                 "selection."
             ),
+            "",
+            (
+                "Earlier label rules and the numbers each change moved are in the "
+                "[changelog](tearing_detection_changelog.md)."
+            ),
         ]
+    )
+    previous = json.loads(
+        (BENCH.parent / "sources/rule_diagnostics_fix3.json").read_text()
+    )
+    DOC.with_name("tearing_detection_changelog.md").write_text(
+        changelog(
+            diag, previous, agreement_before=diag["onset_window_flag_before"], b=b
+        )
     )
     DOC.write_text("\n".join(line.rstrip() for line in lines) + "\n")
     provenance = {
@@ -773,8 +1045,8 @@ def main():
         "document": str(DOC.relative_to(REPO)),
     }
     for path in (
-        TM / "results/document_fix3.json",
-        BENCH.parent / "sources/document_fix3.json",
+        TM / "results/document_fix4.json",
+        BENCH.parent / "sources/document_fix4.json",
     ):
         path.write_text(json.dumps(provenance, indent=2) + "\n")
     print(DOC)

@@ -26,7 +26,7 @@ def sha(path):
 
 
 def main():
-    tmp = Path(os.environ["TMPDIR"]) / "table_render_fix3"
+    tmp = Path(os.environ["TMPDIR"]) / "table_render_fix4"
     tmp.mkdir(parents=True, exist_ok=True)
     out = TM / "figures"
     out.mkdir(parents=True, exist_ok=True)

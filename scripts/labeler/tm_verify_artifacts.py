@@ -6,6 +6,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
+import subprocess
 from pathlib import Path
 
 import pandas as pd
@@ -28,6 +30,27 @@ def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def git(*args, check=True):
+    return subprocess.run(
+        ["git", "-C", str(REPO), *args], capture_output=True, text=True, check=check
+    )
+
+
+def committed(sha_text, what):
+    """`sha_text` names a commit that is an ancestor of HEAD (a clean provenance)."""
+    assert sha_text and not sha_text.endswith("-dirty"), (what, sha_text)
+    assert (
+        git("cat-file", "-e", f"{sha_text}^{{commit}}", check=False).returncode == 0
+    ), (
+        what,
+        sha_text,
+    )
+    assert (
+        git("merge-base", "--is-ancestor", sha_text, "HEAD", check=False).returncode
+        == 0
+    ), (what, sha_text)
+
+
 def main():
     cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
     blind = set(cohort.query("split == 'test'").shot)
@@ -38,8 +61,12 @@ def main():
     )
     label_sha = sha(labels)
     assert set(pd.read_csv(labels).shot) == set(dev)
+    for table_path in (labels, TM / "labels/tm_interval_population.csv"):
+        assert not pd.read_csv(table_path).duplicated().any(), table_path
+    # provenance: the code that made every output is committed and unmodified
+    assert not git("status", "--porcelain", "--", "src", "scripts", "tests").stdout
     assert not set(pd.read_csv(TM / "labels/tm_interval_population.csv").shot) & blind
-    plan = read(TM / "results/inner_splits_fix3.json")
+    plan = read(TM / "results/inner_splits_fix4.json")
     assert plan["labels_sha256"] == label_sha
     assert {int(s): f for s, f in plan["folds"].items()} == scoring.shot_folds(dev)
     for split in plan["splits"]:
@@ -66,6 +93,9 @@ def main():
     keys = {(r["model"], r["setting"], r["variant"]) for r in benchmark["rows"]}
     for key in (
         ("tm-onsetcnn-published", "Tokamak-SI", "thr. 0.5"),
+        ("tm-onsetcnn-published", "Tokamak-SI", ""),
+        ("tm-onsetcnn-published", "Tokamak-SI, uncertain = negative", "thr. 0.5"),
+        ("tm-onsetcnn-published", "Tokamak-SI, uncertain = negative", ""),
         ("tm-rms-2line", "Tokamak-SI", ""),
         ("tm-rms-2line", "Tokamak-SI", "seed levels"),
         ("tm-ours", "Tokamak-SI, uncertain = negative", ""),
@@ -82,6 +112,19 @@ def main():
         names = [r["model"] for r in benchmark["rows"] if r["setting"] == setting]
         kind = ["published" in n for n in names]
         assert kind == sorted(kind, reverse=True), (setting, names)
+    paired = benchmark["paired_common_shots"]
+    for block in (paired, paired["uncertain_negative"]):
+        for difference in block["differences"].values():
+            for cell in difference.values():
+                assert cell["excludes_zero"] == (cell["lo"] > 0 or cell["hi"] < 0)
+    for name in ("tm_benchmark.json", "rule_diagnostics_fix4.json"):
+        source = read(
+            LOCAL / name if name == "tm_benchmark.json" else LOCAL / "sources" / name
+        )
+        committed(source["git_sha"], name)
+    committed(
+        read(LOCAL / "sources/calibration_dev_fix4.json")["git_sha"], "calibration"
+    )
     figure2 = read(REPO / "docs/labeler/figure2_tm.json")
     for row in figure2["rows"]:
         assert {"architecture", "legacy_model", "tokamak_si_model"} <= set(row)
@@ -91,7 +134,7 @@ def main():
                 and "prevalence" in row["legacy"]
             )
             assert row["like_for_like"] is not None
-    audit = read(LOCAL / "sources/audit_fix3_current.json")
+    audit = read(LOCAL / "sources/audit_fix4_current.json")
     for scope in ("cohort", "population"):
         a = audit[scope]
         assert a["locking_audit"]["n_abrupt_incorrect_decay"] == 0
@@ -117,12 +160,19 @@ def main():
         base = TM / "figures" / stem
         p = read(base.with_suffix(".json"))
         assert p["labels_sha256"] == label_sha
+        committed(p["git_sha"], stem)
         assert p["source_sha256"] == sha(REPO / "scripts/labeler/tm_gallery.py")
         assert not set(p["shots"]) & blind
         assert p["png_sha256"] == sha(base.with_suffix(".png"))
         assert p["pdf_sha256"] == sha(base.with_suffix(".pdf"))
         if "column" in stem:
             assert p["width_inches"] == 3.25 and p["font_pt"] >= 7
+            # the locking example is the largest-step cohort lock, picked by a rule
+            best = read(LOCAL / "sources/rule_diagnostics_fix4.json")["lock_steps"][
+                "cohort"
+            ]["largest_step"]
+            assert best["shot"] in p["shots"] and p["lock_example_rule"], stem
+            assert 189138 not in p["shots"], stem
         figures.append(str(base))
     for stem in (
         "table_tm_benchmark",
@@ -139,7 +189,7 @@ def main():
         assert p["pdf_sha256"] == sha(base.with_suffix(".pdf"))
         figures.append(str(base))
     assert not list((TM / "results").glob("*_test.json"))
-    doc = read(TM / "results/document_fix3.json")
+    doc = read(TM / "results/document_fix4.json")
     assert doc["source_sha256"] == sha(REPO / "scripts/labeler/tm_write_doc.py")
     assert doc["document_sha256"] == sha(REPO / doc["document"])
     assert doc["benchmark_sha256"] == sha(LOCAL / "tm_benchmark.json")
@@ -155,9 +205,19 @@ def main():
         "earlier 500-shot",
         "near-circular",
         "189879",
+        "49.6%",
+        "10.4%",
+        "earlier level",
+        "went from",
     ):
         assert banned not in text, banned
         assert banned not in readme, banned
+    # one uncertain-share statistic, the same rounded value in the caption and the doc
+    caption = (REPO / "docs/labeler/table_tm_benchmark.tex").read_text()
+    in_caption = re.search(r"\((\d+\.\d)\\% of observable catalog-window", caption)
+    in_doc = re.search(r"\*\*(\d+\.\d)%\*\* of the observable catalog-window", text)
+    assert in_caption and in_doc and in_caption.group(1) == in_doc.group(1)
+    assert (REPO / "docs/labeler/tearing_detection_changelog.md").is_file()
     lines = text.split("\n")
     for i, line in enumerate(lines):
         if line.startswith("Sources:"):
@@ -182,8 +242,8 @@ def main():
         "status": "passed",
     }
     for path in (
-        TM / "results/artifact_verification_fix3.json",
-        LOCAL / "sources/artifact_verification_fix3.json",
+        TM / "results/artifact_verification_fix4.json",
+        LOCAL / "sources/artifact_verification_fix4.json",
     ):
         path.write_text(json.dumps(record, indent=2) + "\n")
     print(
