@@ -149,8 +149,8 @@ def bootstrap(tables: np.ndarray, seed: int, replicates: int) -> dict:
         "reference_classes": [list(STATES)[k] for k in reference_classes],
         "missing_class_support": "class F1 undefined; macro requires every frozen class",
         "warning": (
-            "Only two reference shots; intervals are descriptive and cannot "
-            "support population-accuracy claims."
+            f"Only {len(tables)} reference shots; intervals are descriptive and "
+            "cannot support population-accuracy claims."
         ),
         "ci95": {
             name: {

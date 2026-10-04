@@ -57,16 +57,21 @@ def root() -> Path:
 
 
 def kappa_from(table: np.ndarray) -> float:
+    """Cohen's kappa of a confusion table; NaN (undefined) on a degenerate table.
+
+    Degenerate means either rater used a single class: chance agreement is then
+    1 (both constant) or the table carries no information about agreement beyond
+    one rater's constancy, and 0 or 1 would read as a measurement. NaN becomes
+    JSON null and is left out of bootstrap intervals (counted as invalid draws).
+    """
     n = table.sum()
     if n == 0:
         return float("nan")
+    if (table.sum(axis=1) > 0).sum() < 2 or (table.sum(axis=0) > 0).sum() < 2:
+        return float("nan")
     observed = np.trace(table) / n
     expected = float(table.sum(axis=1) @ table.sum(axis=0)) / n**2
-    return (
-        float((observed - expected) / (1 - expected))
-        if 1 - expected > np.finfo(float).eps
-        else float("nan")
-    )
+    return float((observed - expected) / (1 - expected))
 
 
 def f1_from(table: np.ndarray, k: int) -> float:
@@ -448,6 +453,156 @@ def failure_analysis(frame, references) -> dict:
     return out
 
 
+#: Pairs scored threshold-free: the indicator whose continuous value is the score,
+#: and the indicator whose vote (attached versus detached or MARFE) is the reference.
+THRESHOLD_FREE_PAIRS = (
+    ("prad", "tangtv"),
+    ("afrac", "tangtv"),
+    ("prad", "afrac"),
+)
+#: A shot enters a within-shot statistic with this many bins where both indicators
+#: are valid, and (AUROC) this many bins of each reference class.
+MIN_SHOT_BINS = 20
+MIN_CLASS_BINS = 5
+
+
+def spearman(x: np.ndarray, y: np.ndarray) -> float:
+    if len(x) < 3:
+        return float("nan")
+    rx, ry = rankdata(x), rankdata(y)
+    if rx.std() == 0 or ry.std() == 0:
+        return float("nan")
+    return float(np.corrcoef(rx, ry)[0, 1])
+
+
+def interval(draws) -> list:
+    finite = np.asarray(draws, dtype=float)
+    finite = finite[np.isfinite(finite)]
+    if not len(finite):
+        return [float("nan"), float("nan")]
+    return [float(v) for v in np.percentile(finite, [2.5, 97.5])]
+
+
+def pooled_rho(frame, a, b, rng) -> dict:
+    """Spearman of the two oriented values on bins where both are valid, with a
+    shot-bootstrap interval. Oriented: both increase with detachment."""
+    ok = (
+        frame[f"{a}_valid"].to_numpy(bool)
+        & frame[f"{b}_valid"].to_numpy(bool)
+        & np.isfinite(frame[f"{a}_value"].to_numpy(float))
+        & np.isfinite(frame[f"{b}_value"].to_numpy(float))
+    )
+    sub = frame[ok]
+    x = DIRECTION[a] * sub[f"{a}_value"].to_numpy(float)
+    y = DIRECTION[b] * sub[f"{b}_value"].to_numpy(float)
+    shots = sub.shot.to_numpy()
+    out = {"n_bins": int(ok.sum()), "n_shots": len(np.unique(shots))}
+    if not len(x):
+        return {**out, "value": float("nan"), "ci95": [float("nan")] * 2}
+    by_shot = {s: np.flatnonzero(shots == s) for s in np.unique(shots)}
+    keys = list(by_shot)
+    draws = []
+    for _ in range(REPLICATES):
+        pick = rng.integers(0, len(keys), len(keys))
+        idx = np.concatenate([by_shot[keys[j]] for j in pick])
+        draws.append(spearman(x[idx], y[idx]))
+    return {**out, "value": spearman(x, y), "ci95": interval(draws)}
+
+
+def within_shot(frame, a, b, rng) -> dict:
+    """Per-shot AUROC and Spearman, summarised by their mean and a shot bootstrap.
+
+    A shot counts when `MIN_SHOT_BINS` bins have both indicators valid (Spearman)
+    and `MIN_CLASS_BINS` bins of each reference class (AUROC). This removes the
+    between-shot offset that one global cutoff cannot absorb.
+    """
+    both = (
+        frame[f"{a}_valid"].to_numpy(bool)
+        & frame[f"{b}_valid"].to_numpy(bool)
+        & np.isfinite(frame[f"{a}_value"].to_numpy(float))
+        & np.isfinite(frame[f"{b}_value"].to_numpy(float))
+    )
+    vote_b = frame[f"{b}_vote"].to_numpy()
+    rows = []
+    for shot, idx in frame.groupby("shot").indices.items():
+        keep = idx[both[idx]]
+        if len(keep) < MIN_SHOT_BINS:
+            continue
+        x = DIRECTION[a] * frame[f"{a}_value"].to_numpy(float)[keep]
+        y = DIRECTION[b] * frame[f"{b}_value"].to_numpy(float)[keep]
+        cast = vote_b[keep] > 0
+        positive = vote_b[keep][cast] != core.ATTACHED
+        auc = (
+            auroc(x[cast], positive)
+            if min(positive.sum(), (~positive).sum()) >= MIN_CLASS_BINS
+            else float("nan")
+        )
+        rows.append((int(shot), len(keep), spearman(x, y), auc))
+    table = np.array(rows, dtype=float).reshape(-1, 4)
+    out = {"min_shot_bins": MIN_SHOT_BINS, "min_class_bins": MIN_CLASS_BINS}
+    for column, name in ((2, "spearman"), (3, "auroc")):
+        values = table[:, column]
+        finite = values[np.isfinite(values)]
+        draws = [
+            float(np.mean(finite[rng.integers(0, len(finite), len(finite))]))
+            for _ in range(REPLICATES if len(finite) else 0)
+        ]
+        out[name] = {
+            "n_shots": len(finite),
+            "mean": float(np.mean(finite)) if len(finite) else float("nan"),
+            "mean_ci95": interval(draws),
+            "median": float(np.median(finite)) if len(finite) else float("nan"),
+            "share_at_least_0_8": float(np.mean(finite >= 0.8))
+            if len(finite)
+            else float("nan"),
+            "per_shot": {
+                str(int(s)): {"n_bins": int(n), "value": float(v)}
+                for s, n, v in zip(
+                    table[:, 0],
+                    table[:, 1],
+                    values,
+                    strict=True,
+                )
+                if np.isfinite(v)
+            },
+        }
+    return out
+
+
+def threshold_free(frame: pd.DataFrame, rng) -> dict:
+    """Agreement that needs no cutoff, per TangTV geometry tier and indicator pair.
+
+    AUROC: how well indicator A's continuous value (oriented so larger means more
+    detached) ranks the bins that indicator B votes detached or MARFE above the
+    ones it votes attached. Spearman: rank correlation of the two oriented values
+    where both are valid. Both pooled over shots and within shots, with 95%
+    shot-bootstrap intervals; `kappa` of the cast votes is in `pairwise_agreement`.
+    """
+    out = {}
+    for tier, rows in frame.groupby("tangtv_tier", sort=True):
+        rows = rows.reset_index(drop=True)
+        pairs = {}
+        for a, b in THRESHOLD_FREE_PAIRS:
+            ok = (
+                rows[f"{a}_valid"].to_numpy(bool)
+                & rows[f"{b}_valid"].to_numpy(bool)
+                & (rows[f"{b}_vote"].to_numpy() > 0)
+                & np.isfinite(rows[f"{a}_value"].to_numpy(float))
+            )
+            sub = rows[ok]
+            score = DIRECTION[a] * sub[f"{a}_value"].to_numpy(float)
+            positive = sub[f"{b}_vote"].to_numpy() != core.ATTACHED
+            pairs[f"{a}__{b}"] = {
+                "score": f"{a} value, larger = more detached",
+                "reference": f"{b} vote: detached or marfe versus attached",
+                "auroc_pooled": auroc_boot(score, positive, sub.shot.to_numpy(), rng),
+                "spearman_pooled": pooled_rho(rows, a, b, rng),
+                "within_shot": within_shot(rows, a, b, rng),
+            }
+        out[str(tier)] = pairs
+    return out
+
+
 def tier_agreement(frame: pd.DataFrame, rng) -> dict:
     """Every pairwise comparison retains its accepted TangTV geometry tier."""
     return {
@@ -541,6 +696,7 @@ def main() -> None:
         "by_tangtv_tier": all_tiers,
         "fit_by_tangtv_tier": fit_tiers,
     }
+    result["threshold_free_agreement"] = threshold_free(eligible, rng)
     result["paper_agreement"] = (
         result["pairwise_agreement"]["by_tangtv_tier"]
         .get("upper_shelf", {})
@@ -565,13 +721,13 @@ def main() -> None:
         },
     }
     result["divertor_te_check"] = {
-        "status": "withdrawn",
-        "reason": "Unlocalised real-time sample-and-hold points; no processed DTS/psiN chord check. No temperature accuracy claims.",
+        "record": "docs/labeler/results/detachment_te_check.json",
+        "script": "scripts/labeler/detach_te_check.py",
     }
     result["indicator_names"] = {
-        "afrac": "uncalibrated Jsat ratio (local proxy)",
-        "prad": "Prad,div/P_in (local development thresholds)",
-        "tangtv": "C-III front (local geometry, quality and MARFE gates)",
+        "afrac": "Jsat ratio at the peak SOL-side target probe (local proxy)",
+        "prad": "Prad,div,L / P_in (cutoffs anchored on shot 201081)",
+        "tangtv": "C-III front height DZ (shelf geometry, MARFE evidence)",
     }
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(dumps(result, indent=1))

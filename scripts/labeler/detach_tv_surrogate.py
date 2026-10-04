@@ -482,7 +482,8 @@ def main() -> None:
     parser.add_argument("--out", default=str(RESULT))
     parser.add_argument("--no-predict", action="store_true")
     parser.add_argument(
-        "--rescore-only", action="store_true",
+        "--rescore-only",
+        action="store_true",
         help="refresh saved LOSO metrics/undefined kappa without refitting",
     )
     parser.add_argument(

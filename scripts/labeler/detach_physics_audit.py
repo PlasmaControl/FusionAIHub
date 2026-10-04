@@ -50,6 +50,7 @@ FIELDS = (
     "aux_jsat_strike_r_m",
     "aux_jsat_radial_margin_m",
     "aux_jsat_selected_distance_m",
+    "afrac_probe_n_eligible",
     "afrac_efit_source",
 )
 
@@ -225,11 +226,10 @@ def main():
         "thresholds": {
             "elm_mask_half_width_ms": th.ELM_MASK_HALF_WIDTH_MS,
             "probe_strike_margin_m": th.PROBE_STRIKE_MARGIN_M,
-            "probe_max_distance_m": th.PROBE_MAX_DISTANCE_M,
-            "probe_sol_psi_n_min": th.PROBE_SOL_PSI_N_MIN,
+            "probe_sol_psi_n_window": [th.PROBE_SOL_PSI_N_MIN, th.PROBE_SOL_PSI_N_MAX],
             "marfe_dz_min": th.DZ_MARFE_MIN,
             "marfe_greenwald_min": th.GREENWALD_CUE_MIN,
-            "marfe_min_adjacent_bins": 2,
+            "marfe_min_adjacent_bins": th.MARFE_MIN_BINS,
         },
         "fetch_coverage": scan_inputs(),
         "shots": [audit_shot(s, args.bins_dir) for s in args.shots],

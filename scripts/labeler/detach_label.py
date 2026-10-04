@@ -114,7 +114,9 @@ def matrices(frame: pd.DataFrame):
 
 
 def cohen_kappa(a: np.ndarray, b: np.ndarray) -> float:
-    if len(a) == 0:
+    """Cohen's kappa; NaN (JSON null) when undefined: no bins, or either rater
+    used a single class, where kappa would read 0 or 1 without measuring anything."""
+    if len(a) == 0 or len(np.unique(a)) < 2 or len(np.unique(b)) < 2:
         return float("nan")
     labels = np.union1d(a, b)
     table = np.array([[np.sum((a == x) & (b == y)) for y in labels] for x in labels])
@@ -253,12 +255,20 @@ def label_frame(frame, model, threshold, width_ms=core.BIN_MS):
     diagnostic[assessed & ~np.isin(tier, ("certain",))] = core.UNCERTAIN
     out["state_model_diagnostic"] = diagnostic
     out["state_lm"], out["tier"] = state_rule, tier
-    provisional, _ = label_model.compatibility_decide(
-        votes, valid, tangtv_tier=np.full(len(frame), "upper_shelf"), elm_known=known
-    )
-    out["state_lower_shelf_window"] = np.where(
-        camera_tier == "lower_shelf_window", provisional, core.ABSENT
-    )
+    # Sensitivity: the same rule with Prad,div voting on f_div over the shot's own
+    # baseline (`prad_rel_vote`) instead of the absolute anchored cutoffs.
+    if "prad_rel_vote" in frame:
+        relative_votes = votes.copy()
+        relative_votes[:, LF_NAMES.index("prad")] = np.where(
+            valid[:, LF_NAMES.index("prad")],
+            frame["prad_rel_vote"].to_numpy(),
+            core.ABSTAIN,
+        )
+        out["state_rule_relative_prad"], out["tier_relative_prad"] = (
+            label_model.compatibility_decide(
+                relative_votes, valid, tangtv_tier=camera_tier, elm_known=known
+            )
+        )
     candidate = frame.get("tangtv_marfe_candidate", pd.Series(False, index=frame.index))
     out.loc[
         candidate.to_numpy(bool)
@@ -359,7 +369,6 @@ def write_indicator_csvs(frame: pd.DataFrame, out_dir: Path) -> int:
                 "t_ms": group.start_ms.to_numpy() + core.BIN_MS / 2,
                 "tier": group.tier.to_numpy(),
                 "state": group.state_lm.to_numpy(),
-                "state_lower_shelf_window": group.state_lower_shelf_window.to_numpy(),
                 "elm_known": np.isfinite(group.aux_elm_share.to_numpy()).astype(int),
                 "elm_share": group.aux_elm_share.to_numpy(),
                 "tangtv_source": group.tangtv_source.to_numpy(),
@@ -379,6 +388,8 @@ def write_indicator_csvs(frame: pd.DataFrame, out_dir: Path) -> int:
         for key in group.columns:
             if key.startswith("aux_jsat_") or key in (
                 "afrac_probe_position_valid",
+                "afrac_probe_n_eligible",
+                "afrac_reason",
                 "afrac_efit_source",
             ):
                 table[key] = group[key].to_numpy()
@@ -447,17 +458,19 @@ def table_meta(args, best, eligible, labeler, producer) -> dict:
         "n_requested_shots": len(eligible),
         "table_kind": "intervals",
         "coverage": (
-            "Exploratory labels; no independent benchmark. In practice, coverage "
-            "is two indicators: Prad,div and TangTV; the uncalibrated Jsat proxy "
-            "can also cast provisional lower-shelf votes. Assessed bins have "
-            "at least two valid measurements on eligible shots (at least 20 "
-            "assessed bins and 20 valid bins per contributing indicator). "
-            "Certainty requires upper-shelf TangTV plus f_div corroboration. "
-            "Time with no row was not assessed; it is not "
-            "attached. 4 (uncertain) includes conflicting compatible votes, "
-            "insufficient support, candidate MARFE, lower_shelf_window pending "
-            "owner sign-off, unknown ELM coverage and the Afrac+Prad-only weak tier. "
-            "The interval attrs tier and bin tier preserve those distinctions."
+            "Exploratory labels; no independent benchmark. A bin is assessed when "
+            "at least two indicators are valid on it, on shots with at least 20 "
+            "assessed bins and 20 valid bins from each of two indicators. Attached "
+            "and detached are certain when upper-shelf TangTV votes and at least "
+            "one other indicator casts a compatible vote with no conflict. MARFE "
+            "is certain on the TangTV MARFE vote (DZ >= 1.2, an emission peak "
+            "inside the separatrix near the X-point and the density cue, over at "
+            "least two adjacent bins) unless another indicator votes attached; "
+            "Prad,div and Afrac do not corroborate it. Time with no row was not "
+            "assessed; it is not attached. 4 (uncertain) is every other assessed "
+            "bin: conflicting votes, insufficient support, candidate_marfe, "
+            "lower_shelf_window, elm_unknown, geometry_unknown. The tier in each "
+            "interval's attrs says which."
         ),
         "labeler": labeler,
         "posterior_threshold": args.threshold if labeler == "label_model" else None,
@@ -575,7 +588,8 @@ def main() -> None:
             "method": "anchored: accuracies from the bins where every indicator is "
             "valid, class balance fixed at attached 1/2, detached 1/4, marfe 1/4, "
             "propensities from all bins; if fewer than 300 anchors, all-bin fallback (unidentified)",
-            "used_anchor": model.anchor_bins >= label_model.MIN_ANCHOR_BINS,
+            "used_anchor": model.used_anchor,
+            "min_anchor_bins": label_model.MIN_ANCHOR_BINS,
             "physical_accuracy_identified": False,
             "anchor_bins": model.anchor_bins,
             "anchor_shots": len(

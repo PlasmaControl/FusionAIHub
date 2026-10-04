@@ -287,9 +287,13 @@ def test_surrogate_bootstrap_reports_no_valid_degenerate_kappa(surrogate):
 
     rows = pd.DataFrame(
         {
-            "shot": [1, 1, 2, 2], "ze_pred": [-1.2] * 4, "ze": [-1.2] * 4,
-            "zx": [-1.1] * 4, "zs": [-1.25] * 4,
-            "vote_true": [1] * 4, "vote_pred": [1] * 4,
+            "shot": [1, 1, 2, 2],
+            "ze_pred": [-1.2] * 4,
+            "ze": [-1.2] * 4,
+            "zx": [-1.1] * 4,
+            "zs": [-1.25] * 4,
+            "vote_true": [1] * 4,
+            "vote_pred": [1] * 4,
         }
     )
     result = surrogate.bootstrap(rows, np.random.default_rng(0), n=10)
