@@ -1,0 +1,348 @@
+{
+ "schema": "figure2_coverage",
+ "made_by": "scripts/labeler/paper/fig2_coverage.py",
+ "git": "4d058075",
+ "made_at": "2026-10-04T14:31:30+00:00",
+ "definition": "Labelled time is, shot by shot, the union of the intervals a label table states present or absent (the four regimes for confinement); intervals stated uncertain, not observable or unassessed are not labelled time. Labelled shots are the shots with any labelled time. Tokamak-SI counts every released tier and split; the reviewed subset counts the shots whose labels a person reviewed.",
+ "units": {
+  "shots": "shots",
+  "seconds": "seconds of labelled time"
+ },
+ "order": [
+  "ae",
+  "confinement",
+  "elm",
+  "tm",
+  "sawtooth",
+  "rwm",
+  "detachment"
+ ],
+ "sets": {
+  "ae": {
+   "legacy": {
+    "status": "measured",
+    "label": "Heidbrink annotation",
+    "shots": 180,
+    "seconds": 360.0,
+    "shared_definition": false,
+    "definition": "the annotated shots' whole windows; unannotated time is listed absent, which the annotation under-counts, so legacy absent time is not reviewed absence",
+    "paths": [
+     "data/events/alfven_eigenmode/format/alfven_eigenmode_format_2026_v1.csv"
+    ],
+    "annotated_present_shots": 179,
+    "annotated_present_seconds": 87.4
+   },
+   "tokamak_si": {
+    "status": "measured",
+    "label": "expert-reviewed AE labels",
+    "shots": 180,
+    "seconds": 513.522,
+    "shared_definition": true,
+    "definition": "shared definition",
+    "paths": [
+     "data/events/alfven_eigenmode/review/labels.csv",
+     "data/events/alfven_eigenmode/review/history.jsonl"
+    ],
+    "reviewed": {
+     "status": "measured",
+     "shots": 180,
+     "seconds": 513.522,
+     "note": "every shot of the table was saved by a reviewer"
+    }
+   },
+   "notes": [
+    "the ECE hand-drawn boxes (a second legacy annotation, on another diagnostic) are not counted"
+   ],
+   "alternatives": [
+    {
+     "name": "ECE hand-drawn boxes (second legacy annotation)",
+     "shots": 26,
+     "seconds": 26.75,
+     "paths": [
+      "data/events/alfven_eigenmode/format/alfven_eigenmode_ece_format_2026_v1.csv"
+     ]
+    }
+   ],
+   "name": "AE"
+  },
+  "confinement": {
+   "legacy": {
+    "status": "measured",
+    "label": "Gill and Butt tables merged",
+    "shots": 446,
+    "seconds": 916.993,
+    "shared_definition": false,
+    "definition": "the curated L, H, QH and WPQH intervals of the merged table, less the blind split (never read) and the one H/L conflict interval",
+    "paths": [
+     "/scratch/gpfs/nc1514/FusionAIHub/runs/labeler/confinement/v1/merged_intervals.csv",
+     "data/events/catalog/cohort.csv"
+    ]
+   },
+   "tokamak_si": {
+    "status": "experimental",
+    "label": "confine-ours roster",
+    "shots": 798,
+    "seconds": 3368.409,
+    "shared_definition": true,
+    "definition": "shared definition on classes 1 to 4 (high, low, qh, wpqh) of the roster; class 5 (below the confidence floor) is uncertain; beam-on time only, other time is not assessed",
+    "paths": [
+     "data/events/confinement/extend_confine_ours/roster.csv",
+     "data/events/confinement/extend_confine_ours/roster.meta.json"
+    ],
+    "reviewed": {
+     "status": "none",
+     "shots": null,
+     "seconds": null,
+     "note": "the roster is a network's reading; no person reviewed it"
+    }
+   },
+   "notes": [
+    "Tokamak-SI is the experimental, unreviewed roster: segments are the network's reading of D-alpha, density, beta_N, W_MHD and beam power, labels and inputs share the 0D traces"
+   ],
+   "alternatives": [],
+   "name": "confinement"
+  },
+  "elm": {
+   "legacy": {
+    "status": "measured",
+    "label": "D. Smith's windows",
+    "shots": 211,
+    "seconds": 24.47,
+    "shared_definition": false,
+    "definition": "the 1 ms cells wholly inside a Smith window, shots with a hand-labelled ELM; windows are selected around known ELMs, so absent time is not continuous-discharge absence",
+    "paths": [
+     "outputs/labeler/elm/smith/evaluation.json"
+    ],
+    "smith_hand_onsets": 2316
+   },
+   "tokamak_si": {
+    "status": "measured",
+    "label": "reviewed ELM spans",
+    "shots": 119,
+    "seconds": 648.353,
+    "shared_definition": true,
+    "definition": "shared definition",
+    "paths": [
+     "data/events/edge_localized_mode/review/labels.csv",
+     "data/events/edge_localized_mode/review/history.jsonl"
+    ],
+    "reviewed": {
+     "status": "measured",
+     "shots": 119,
+     "seconds": 648.353,
+     "note": "every shot of the table was saved by a reviewer"
+    }
+   },
+   "notes": [
+    "legacy is Smith's windows as the benchmark uses them; the older WPQH onset table is the other legacy source (alternatives)"
+   ],
+   "alternatives": [
+    {
+     "name": "legacy onset table (Hiro's ELM labels, bins over a fixed window)",
+     "shots": 576,
+     "seconds": 3456.0,
+     "paths": [
+      "data/events/edge_localized_mode/format/edge_localized_mode_format_2026_v1.csv"
+     ]
+    }
+   ],
+   "name": "ELMs"
+  },
+  "tm": {
+   "legacy": {
+    "status": "measured",
+    "label": "Seo growth-phase labels",
+    "shots": 80,
+    "seconds": 129.98,
+    "shared_definition": false,
+    "definition": "deviation: matched growth-phase label support on observable catalog-window 10 ms bins; temporal holes excluded",
+    "paths": [
+     "docs/labeler/figure2_tm.json"
+    ],
+    "record_key": "coverage.legacy_seo"
+   },
+   "tokamak_si": {
+    "status": "measured",
+    "label": "interval labels, population",
+    "shots": 4798,
+    "seconds": 14231.2,
+    "shared_definition": false,
+    "definition": "deviation: the stream's record, labelled 10 ms bins from the measured plasma start to catalog window end; uncertain and unobservable bins excluded",
+    "paths": [
+     "docs/labeler/figure2_tm.json"
+    ],
+    "record_key": "coverage.ours_population",
+    "reviewed": {
+     "status": "none",
+     "shots": null,
+     "seconds": null,
+     "note": "a rule's output; no person reviewed the intervals"
+    }
+   },
+   "notes": [
+    "Tokamak-SI is the interval labeller's output on the population, scored as development cross-validation; the blind shots carry no tearing-mode labels",
+    "legacy and Tokamak-SI time are not on one definition: the legacy figure is the label support on observable bins, the Tokamak-SI figure the labelled bins from the measured plasma start"
+   ],
+   "alternatives": [
+    {
+     "name": "development cohort (record)",
+     "shots": 450,
+     "seconds": 1281.38,
+     "paths": [
+      "docs/labeler/figure2_tm.json"
+     ],
+     "record_key": "coverage.ours"
+    },
+    {
+     "name": "development cohort (union of the interval table)",
+     "shots": 450,
+     "seconds": 1631.9,
+     "paths": [
+      "data/events/neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
+     ]
+    },
+    {
+     "name": "survival legacy labels",
+     "shots": 175,
+     "seconds": 799.29,
+     "paths": [
+      "docs/labeler/figure2_tm.json"
+     ],
+     "record_key": "coverage.legacy_survival"
+    }
+   ],
+   "name": "tearing modes"
+  },
+  "sawtooth": {
+   "legacy": {
+    "status": "none",
+    "label": "no legacy label set",
+    "shots": null,
+    "seconds": null,
+    "shared_definition": false,
+    "definition": "the published sawtooth detectors are from another machine and ship no label table",
+    "paths": []
+   },
+   "tokamak_si": {
+    "status": "pending",
+    "label": "sawtooth labels",
+    "shots": null,
+    "seconds": null,
+    "shared_definition": false,
+    "definition": "the sawtooth stream's labels are not released yet",
+    "paths": [],
+    "reviewed": {
+     "status": "pending",
+     "shots": null,
+     "seconds": null,
+     "note": ""
+    }
+   },
+   "notes": [
+    "wired when the sawtooth stream merges"
+   ],
+   "alternatives": [],
+   "name": "sawtooth"
+  },
+  "rwm": {
+   "legacy": {
+    "status": "point_events",
+    "label": "Hanson onset list",
+    "shots": 33,
+    "seconds": null,
+    "shared_definition": false,
+    "definition": "onset times only: a shot count, no labelled time",
+    "paths": [
+     "data/events/resistive_wall_mode/format/rwm_format_2026_v1.csv"
+    ]
+   },
+   "tokamak_si": {
+    "status": "measured",
+    "label": "onset windows",
+    "shots": 33,
+    "seconds": 52.491,
+    "shared_definition": true,
+    "definition": "shared definition on the Hanson shots: present is one minimal slice from each listed onset; absent is assumed before the first precursor; the pre-onset window, the screened comparison shots and the unassessed time are not labelled",
+    "paths": [
+     "data/events/resistive_wall_mode/extend_rwm_onset_window/rwm_windows.csv",
+     "data/events/resistive_wall_mode/extend_rwm_onset_window/rwm_windows.meta.json"
+    ],
+    "reviewed": {
+     "status": "none",
+     "shots": null,
+     "seconds": null,
+     "note": "a completeness assumption; no person reviewed the spans"
+    }
+   },
+   "notes": [
+    "present time is a convention (one slice per onset), not a measured duration; absent time rests on a completeness assumption"
+   ],
+   "alternatives": [],
+   "name": "RWM"
+  },
+  "detachment": {
+   "legacy": {
+    "status": "none",
+    "label": "no legacy label set",
+    "shots": null,
+    "seconds": null,
+    "shared_definition": false,
+    "definition": "no earlier label set exists",
+    "paths": []
+   },
+   "tokamak_si": {
+    "status": "measured",
+    "label": "detachment labels",
+    "shots": 25,
+    "seconds": 45.75,
+    "shared_definition": false,
+    "definition": "deviation: the bins that carry a state (TangTV, with or without an agreeing second indicator); bins with no vote or a conflict are not labelled",
+    "paths": [
+     "/scratch/gpfs/nc1514/FusionAIHub-r4-detach/docs/labeler/figure2_detach.json@7813abc9"
+    ],
+    "record_key": "coverage.labelled_certain_or_tangtv_only",
+    "reviewed": {
+     "status": "none",
+     "shots": null,
+     "seconds": null,
+     "note": "indicator votes; no person reviewed the bins"
+    }
+   },
+   "notes": [
+    "the record is the detachment stream's committed file, not yet merged into this branch"
+   ],
+   "alternatives": [
+    {
+     "name": "assessed bins (a state or not)",
+     "shots": 32,
+     "seconds": 88.95,
+     "paths": [
+      "/scratch/gpfs/nc1514/FusionAIHub-r4-detach/docs/labeler/figure2_detach.json@7813abc9"
+     ],
+     "record_key": "coverage.assessed"
+    }
+   ],
+   "name": "detachment"
+  }
+ },
+ "sources": {
+  "/scratch/gpfs/nc1514/FusionAIHub-r4-detach/docs/labeler/figure2_detach.json@7813abc9": "af2e66f79544ba4bd706610ab0efe14c364589507d03ca7392795d140651fc66",
+  "/scratch/gpfs/nc1514/FusionAIHub/runs/labeler/confinement/v1/merged_intervals.csv": "72de466aeae391cb06852d0cfcf6a322d185fe2557d6f5b3c36d6ff690f663f2",
+  "data/events/alfven_eigenmode/format/alfven_eigenmode_ece_format_2026_v1.csv": "3e2d5e3ce441073a3e6cf2cce110e229b9fcac1e322db073a027b534ca32433f",
+  "data/events/alfven_eigenmode/format/alfven_eigenmode_format_2026_v1.csv": "8a52b8b785ddb78ba0932318e69ab58136fbaa0d3b19bcb7815159b2e6b72279",
+  "data/events/alfven_eigenmode/review/history.jsonl": "548a316324bccc71a505f84a9a61680f6c7a8a526f221a6fffe0126bcf60dd00",
+  "data/events/alfven_eigenmode/review/labels.csv": "b4308ff52d766779f33a92e9441a916bb07c854dcc1a98a2f61109bb6431e93a",
+  "data/events/catalog/cohort.csv": "b910527a9a2c7b4100cf5674aa6f57ec19b458f1ee952b23387341f1ed92bbda",
+  "data/events/confinement/extend_confine_ours/roster.csv": "8fcd23a3003f74b4d4e7ef4508ded19692b5fa9bffd82af60da9cd4e6a440793",
+  "data/events/confinement/extend_confine_ours/roster.meta.json": "5f349960e7a1cf920129a27eb9bc8a78db07118508e6acfc008f6ea54090806a",
+  "data/events/edge_localized_mode/format/edge_localized_mode_format_2026_v1.csv": "e81df0c70cbfece4e056cc8f9b7d9339338154e3d43ed09cd842641e120b8e9f",
+  "data/events/edge_localized_mode/review/history.jsonl": "ec1f21a7fe7ca43a0816b01a893d2b113455bb050ad75bd0daef4368aec4f291",
+  "data/events/edge_localized_mode/review/labels.csv": "6ae3497e921eadd134959b248aab93c6ca06511e7689041a52270e58cfdae380",
+  "data/events/neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv": "decba8f2a5c4b5f69b23e284bf70cf0058bbe1f55c519b9624714420b53a173a",
+  "data/events/resistive_wall_mode/extend_rwm_onset_window/rwm_windows.csv": "b372bbb707219c6269d7521ef70430b8ccea8c0df3f29b366fe2c352b6108c6e",
+  "data/events/resistive_wall_mode/extend_rwm_onset_window/rwm_windows.meta.json": "7ec86fd2e10cab2376fe8f14d2d27d981f82a4490c2765ea132242d491be4139",
+  "data/events/resistive_wall_mode/format/rwm_format_2026_v1.csv": "d88cf9c25dc97b6338f286403f1b4ecd2c6b14d1551a5b3b786ea622e35e5390",
+  "docs/labeler/figure2_tm.json": "5c423c157c78b457998095b3843e544d783d234e1843c6be394e86a882cdab41",
+  "outputs/labeler/elm/smith/evaluation.json": "95a745f4786fef2897e03729c7af8f85e51756b5ac282929f5f8bf4d9b70dcf3"
+ }
+}
