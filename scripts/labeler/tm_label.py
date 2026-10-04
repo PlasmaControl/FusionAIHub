@@ -270,7 +270,15 @@ def counts_of(frame, intervals) -> dict:
         },
         "n_onset_windows": int(intervals.onset_window_start_ms.notna().sum()),
         "n_onset_windows_at_most_5_ms": int(
-            ((intervals.t_start - intervals.onset_window_start_ms) <= 5.0).sum()
+            (
+                (intervals.t_start - intervals.onset_window_start_ms)
+                <= rule.ONSET_WINDOW_DEGENERATE_MS
+            ).sum()
+        ),
+        "n_onset_rows_flagged_degenerate": int(
+            point["attrs"]
+            .map(lambda a: bool(parse_attrs(a).get("onset_window_degenerate")))
+            .sum()
         ),
         "n_with_m": int(intervals.m.notna().sum()),
         "n_without_observed_onset": int((~intervals.onset_seen.astype(bool)).sum()),
@@ -353,7 +361,8 @@ def meta_for(which, frame, labels, missing, unlocked, shots, rules, extra=None):
         "weak track, interval start] in ms where such a track leads into the "
         "interval; the onset itself stays at the interval start (where the RMS "
         "crossed a tenth of the peak). A window of at most 5 ms is one the weak "
-        "track opened at the interval start: counted in "
+        "track opened at the interval start: the onset row carries "
+        "onset_window_degenerate true and the window is counted in "
         "counts.n_onset_windows_at_most_5_ms, not widened.",
         "calibration": "benchmark/sources/calibration_dev_fix1.json (weak floors, "
         "weak RMS thresholds) and calibration_dev_fix4.json (harmonic ratio)",

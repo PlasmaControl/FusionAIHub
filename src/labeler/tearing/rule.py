@@ -67,6 +67,10 @@ UNSEEDED_HOLD_MS = 100.0
 UNSEEDED_MIN_QUIET_MS = 200.0
 #: A weak track ending this far before an interval still leads into it (ms).
 ONSET_LEAD_GAP_MS = 50.0
+#: An onset window this short (ms) is one the weak track opened at the interval start:
+#: it says almost nothing about where the mode began, so the onset row is flagged
+#: (`onset_window_degenerate`), not widened.
+ONSET_WINDOW_DEGENERATE_MS = 5.0
 LOCK_REASONS = (
     "confirmed_locked_phase",
     "post_collapse_lock_unknown",
@@ -111,12 +115,13 @@ N1_RULE = ModeRule(n=1, onset_g=12.0)
 #: The 6 G n2 seed is a local extension, without an island-number assignment.
 #: The ratio is the rounded-up development-only p99 of N2RMS / N1RMS over strong n = 1
 #: bins whose n = 2 line at twice the frequency fits toroidal number 2 in the Mirnov
-#: array (best fit n = 2 at 2 f1, fit >= 0.9; scripts/labeler/tm_harmonic_calibration.py,
-#: calibration_dev_fix4.json). A rotating n = 1 waveform that is not sinusoidal has its
-#: harmonics at toroidal number 2, so those are the bins a harmonic occupies. Toroidal
-#: phase cannot tell such a harmonic from a co-rotating, frequency-coupled n = 2 mode:
-#: the veto is a heuristic, and it may also remove a real 3/2 mode. The weak floors
-#: still come from calibration_dev_fix1.json. No test reference.
+#: array (best fit n = 2 at 2 f1, fit >= 0.9;
+#: scripts/labeler/tm_harmonic_calibration.py, calibration_dev_fix4.json). A rotating
+#: n = 1 waveform that is not sinusoidal has its harmonics at toroidal number 2, so
+#: those are the bins a harmonic occupies. Toroidal phase cannot tell such a harmonic
+#: from a co-rotating, frequency-coupled n = 2 mode: the veto is a heuristic, and it
+#: may also remove a real 3/2 mode. The weak floors still come from
+#: calibration_dev_fix1.json. No test reference.
 N2_RULE = ModeRule(n=2, onset_g=6.0, harmonic_ratio=0.57, weak_g=1.827998042)
 RULES = (N1_RULE, N2_RULE)
 
@@ -859,6 +864,20 @@ def _onset_window(item: Interval, tracks) -> tuple[float, float] | None:
     return (min(leading), item.start_ms) if leading else None
 
 
+def _merge_overlapping(rows):
+    """`(a, b, reason, n)` rows with those of one reason and number that overlap merged.
+
+    Rows of another reason or number stay apart, as do rows that only touch.
+    """
+    out: list[tuple[float, float, str, int]] = []
+    for a, b, reason, n in sorted(rows, key=lambda r: (r[2], r[3], r[0], r[1])):
+        if out and out[-1][2:] == (reason, n) and a < out[-1][1]:
+            out[-1] = (out[-1][0], max(out[-1][1], b), reason, n)
+        else:
+            out.append((a, b, reason, n))
+    return out
+
+
 def _row(shot, category, a, b, attrs=None):
     return {
         "shot": int(shot),
@@ -884,6 +903,8 @@ def interval_attrs(item: Interval, *, crowd: int) -> dict:
         attrs["lock_candidates_ms"] = list(item.lock_candidates_ms)
     if crowd == 0 and item.onset_window_ms is not None:
         attrs["onset_window_ms"] = [round(float(v), 3) for v in item.onset_window_ms]
+        if item.start_ms - item.onset_window_ms[0] <= ONSET_WINDOW_DEGENERATE_MS:
+            attrs["onset_window_degenerate"] = True
     if item.m is not None:
         # m = n q needs the safety factor, which is the offline EFIT01 here
         attrs["m"] = int(item.m)
@@ -926,12 +947,12 @@ def shot_table(label: ShotLabel) -> pd.DataFrame:
     present = [(i.start_ms, i.end_ms) for i in label.intervals]
     ramp = _minus(list(label.ramp_up), gaps + present)
     uncertain = []
-    # one row per span, reason and number, however many routes found it
     for a, b, reason, n in dict.fromkeys(label.uncertain):
         uncertain.extend(
             (lo, hi, reason, n) for lo, hi in _minus([(a, b)], gaps + present)
         )
-    uncertain = list(dict.fromkeys(uncertain))
+    # one row per span, reason and number, however many routes found it
+    uncertain = _merge_overlapping(list(dict.fromkeys(uncertain)))
     busy = _union(present + ramp + gaps + [(a, b) for a, b, _, _ in uncertain])
     rows += [_row(label.shot, NOT_OBSERVABLE, a, b) for a, b in gaps]
     rows += [_row(label.shot, UNCERTAIN, a, b) for a, b in ramp]

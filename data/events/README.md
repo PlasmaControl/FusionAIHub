@@ -113,6 +113,7 @@ always observable because Ip always exists.
 <code>lock_time_ms</code>: number;<br />
 <code>lock_candidates_ms</code>: array;<br />
 <code>onset_window_ms</code>: array;<br />
+<code>onset_window_degenerate</code>: boolean, true / false;<br />
 <code>ended</code>: string, decay / plasma_end / locked / unknown;<br />
 <code>override</code>: string, island_not_resolved / q_unreliable /
 classical_tm / not_tearing_mode;<br />

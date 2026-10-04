@@ -200,7 +200,8 @@ def test_shot_table_validates_extension_intervals_with_onset_points_and_spans():
         "locked_known": False,
     }
     onset = parse_attrs(point["attrs"].iloc[0])
-    # the weak track that opens with the mode itself leads into it by a few samples
+    # the weak track that opens with the mode itself leads into it by a few samples,
+    # a window so short that the onset row says so
     start, window = span.t_start.iloc[0], onset.pop("onset_window_ms")
     assert window[1] == start and window[0] <= start
     assert onset == {
@@ -208,6 +209,7 @@ def test_shot_table_validates_extension_intervals_with_onset_points_and_spans():
         "n": 1,
         "ended": "decay",
         "locked_known": False,
+        "onset_window_degenerate": True,
     }
     assert point.t_start.iloc[0] == span.t_start.iloc[0]
     for cell in table["attrs"]:
@@ -805,6 +807,37 @@ def test_one_row_per_span_reason_and_number_whatever_the_route_that_found_it():
     assert (table.category == rule.UNCERTAIN).sum() == 2
 
 
+def test_overlapping_rows_of_one_reason_and_number_merge_into_one_span():
+    reason = "confirmed_locked_phase"
+    label = rule.ShotLabel(
+        1,
+        (0.0, 100.0),
+        0.0,
+        (),
+        uncertain=(
+            (10.0, 30.0, reason, 1),
+            (20.0, 40.0, reason, 1),
+            (35.0, 45.0, reason, 1),
+            (20.0, 40.0, reason, 2),
+            (20.0, 40.0, "post_collapse_lock_unknown", 1),
+            (60.0, 70.0, reason, 1),
+            (70.0, 80.0, reason, 1),
+        ),
+    )
+    rows = rule.shot_table(label).query("category == @rule.UNCERTAIN")
+    spans = sorted(
+        (r.t_start, r.t_end, parse_attrs(r.attrs)["reason"], parse_attrs(r.attrs)["n"])
+        for r in rows.itertuples()
+    )
+    assert spans == [
+        (10.0, 45.0, reason, 1),
+        (20.0, 40.0, reason, 2),
+        (20.0, 40.0, "post_collapse_lock_unknown", 1),
+        (60.0, 70.0, reason, 1),  # rows that only touch stay as they were
+        (70.0, 80.0, reason, 1),
+    ]
+
+
 def test_the_weak_screen_covers_the_ramp_up_like_the_flat_top():
     y = np.full(T.shape, 0.5)
     evidence = np.zeros(T.shape, bool)
@@ -847,6 +880,7 @@ def test_an_onset_carries_the_window_back_to_the_weak_track_that_led_into_it():
         item.start_ms,
     ]
     assert "onset_window_ms" not in parse_attrs(span["attrs"].iloc[0])
+    assert "onset_window_degenerate" not in parse_attrs(point["attrs"].iloc[0])
     for cell in table["attrs"]:
         assert not attr_problems(rule.CATEGORY, parse_attrs(cell))
     bare = rule.label_shot(
@@ -855,3 +889,10 @@ def test_an_onset_carries_the_window_back_to_the_weak_track_that_led_into_it():
     # nothing led into it but the weak track that opens with the mode itself
     first, second = bare.intervals[0].onset_window_ms
     assert second == bare.intervals[0].start_ms and second - first <= 5.0
+    bare_table = rule.shot_table(bare)
+    bare_point = bare_table[
+        (bare_table.category == 1) & (bare_table.t_end == bare_table.t_start)
+    ]
+    flagged = parse_attrs(bare_point["attrs"].iloc[0])
+    assert flagged["onset_window_degenerate"] is True
+    assert not attr_problems(rule.CATEGORY, flagged)
