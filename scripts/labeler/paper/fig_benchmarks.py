@@ -1,14 +1,15 @@
-r"""fig_benchmarks: F1 per label set, each model named "<task>-<model>", in two
-label settings, "legacy" and "Tokamak-SI".
+r"""fig_benchmarks: Figure 2 of the paper. Every label set, legacy against Tokamak-SI:
+the F1 of each model "<task>-<model>" in two label settings (two rows of panels),
+and below them how much labelled data each setting holds (the coverage row).
 
     PYTHONPATH=src pixi run --frozen -e labelmaker \
         python scripts/labeler/paper/fig_benchmarks.py \
         [--out dev/label_paper/figures/fig_benchmarks.pdf] [--png PATH] [--table PATH]
 
-Every score drawn is read from an evaluation JSON (`SOURCES`), with the 95 %
+Every score drawn is read from a committed record (`SOURCES`), with the 95 %
 shot-bootstrap interval stored beside it where there is one; none is typed in
-here. F1 only. Per set, "legacy" is the setting the model's own paper (or the
-older annotation) used and "Tokamak-SI" is our labels:
+here. Per set, "legacy" is the setting the model's own paper (or the older
+annotation) used and "Tokamak-SI" is our labels:
 
 - AE: `ae-ours` (the SELDnet model), `ae-rcn` and `ae-lstm` (chord
   spectrogram, each chord scored) on the 19 held-out shots, 10 ms frames;
@@ -22,23 +23,40 @@ older annotation) used and "Tokamak-SI" is our labels:
   shot-tests from five random by-shot splits whose test sets overlap, windows
   pooled; macro F1, AUROC and AUPRC with shot-bootstrap intervals), the one
   confine-cnn score of the paper. The first retrain's own score is not drawn.
-- ELMs: `elm-elmo`; legacy = D. Smith's windows at the published setting
-  (`smith.published_setting`, its F1 from the stored counts); Tokamak-SI = the
-  reviewed spans in 50 ms bins (`review.paper`).
-- Tearing modes, sawtooth and RWM onsets have no score yet: two empty
-  hatched slots each (legacy, Tokamak-SI).
+- ELMs: `elm-elmo` and `elm-ours` from the ELM stream's final records. Legacy =
+  D. Smith's windows at the published setting (`reimplemented_elmo_overlap` of
+  `smith/evaluation.json`: overlap-region F1, conditional on the selected
+  windows; the F1 is checked against the one the stored counts give). Tokamak-SI
+  = the reviewed spans in 50 ms bins on the 73 shots with BES, the set both
+  models are scored on (`sets.bes73` of `ours/evaluation.json`); `elm-ours` has
+  no legacy bar, and its score on all 119 reviewed shots is in the CSV only.
+- Tearing modes: `tm-onsetcnn` and `tm-dsm` (published model at its published
+  threshold on the Seo cohort, 25 ms bins, against the retrained twin on the
+  Tokamak-SI labels, 10 ms bins) and `tm-ours` (Tokamak-SI only), from
+  `docs/labeler/figure2_tm.json`. The Tokamak-SI F1 excludes uncertain time;
+  an open diamond marks the same model with uncertain time scored negative.
+- RWM: `rwm-brf` on the Tokamak-SI labels (`outputs/labeler/rwm/evaluation.json`),
+  pooled slice F1, with a tick at the elapsed-time baseline; the legacy
+  forest was scored on another machine and has no comparable F1 (a hatched slot).
+- Sawtooth has no score yet: two empty hatched slots (legacy, Tokamak-SI).
 
-`--metric auc` draws the same three scored sets for AUROC (top row) and AUPRC
-(bottom row) into `fig_benchmarks_auc.pdf`: a legacy score only where its paper
-reported one, else a hatched grey "not reported" slot (confine-cnn's and
-elm-elmo's AUPRC, and elm-elmo's AUROC). The confine-cnn paper reported a
-one-vs-rest AUC of at least 0.99 for every class and no macro value, so its
-legacy AUROC slot is a hatched bar at 0.99 labelled as that bound, not a macro
-score (`auc_one_vs_rest` in `gill_2024_published.json`); elm-elmo's AUROC and
-AUPRC come from a sweep of its threshold.
+The coverage row reads `docs/labeler/figure2_coverage.json` (written by
+`fig2_coverage.py`): labelled shots and labelled time per set, legacy against
+Tokamak-SI, with a darker inner bar for the human-reviewed subset.
 
-A hatched empty slot is a model not yet scored. `--table` writes every number
-drawn, with its JSON key, as CSV; the same rows are printed.
+`--metric auc` draws the same sets for AUROC and AUPRC (no coverage row) into
+`fig_benchmarks_auc.pdf`: a legacy score only where its paper reported one, else
+a hatched grey slot (confine-cnn's and elm-elmo's AUPRC, elm-elmo's AUROC; the
+NSTX forest's slice AUROC is another machine and is in the CSV only). The
+confine-cnn paper reported a one-vs-rest AUC of at least 0.99 for every class and
+no macro value, so its legacy AUROC slot is a hatched bar at 0.99 labelled as
+that bound, not a macro score (`auc_one_vs_rest` in `gill_2024_published.json`);
+the RWM AUROC is the phase-controlled one. elm-elmo's AUROC and AUPRC come from a
+sweep of its threshold.
+
+A hatched empty slot is a value not available; its reason is written in it.
+`--table` writes every number drawn, and the numbers kept out of the figure, with
+their JSON key as CSV; the same rows are printed.
 """
 
 from __future__ import annotations
@@ -47,12 +65,15 @@ import argparse
 import csv
 import json
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
+import matplotlib
 import numpy as np
 from matplotlib.figure import Figure
+from matplotlib.lines import Line2D
 from matplotlib.patches import Patch, Rectangle
-from matplotlib.transforms import blended_transform_factory
 
 from labeler.paper import FONT_PT, PAGE_IN, style
 
@@ -69,21 +90,42 @@ SOURCES = {
     / "bes"
     / "ablation_rows"
     / "full_cum_abcdrgef.json",
-    "elm": OUTPUTS / "elm" / "elmo" / "evaluation.json",
+    # the ELM stream's final records, the ones its paper tables read
+    "elm": OUTPUTS / "elm" / "ours" / "evaluation.json",
+    "elm_smith": OUTPUTS / "elm" / "smith" / "evaluation.json",
+    "tm": REPO / "docs" / "labeler" / "figure2_tm.json",
+    "rwm": OUTPUTS / "rwm" / "evaluation.json",
+    "coverage": REPO / "docs" / "labeler" / "figure2_coverage.json",
 }
 DEFAULT_OUT = REPO / "dev" / "label_paper" / "figures" / "fig_benchmarks.pdf"
 DEFAULT_AUC_OUT = DEFAULT_OUT.with_name("fig_benchmarks_auc.pdf")
 
 # Okabe-Ito, one colour per label setting (checked with the dataviz palette
-# validator, light surface).
+# validator, light surface); the reviewed subset is a darker shade of Tokamak-SI.
 LEGACY = "#E69F00"
 SI = "#0072B2"
+REVIEWED = "#0A2A47"
 INK = "#333333"
 PENDING_EDGE = "#999999"
-VALUE_PT = FONT_PT - 1.5
+# every text in the figure is at least FONT_PT (7 pt)
+TEXT = {
+    "xtick.labelsize": FONT_PT,
+    "ytick.labelsize": FONT_PT,
+    "legend.fontsize": FONT_PT,
+}
+VALUE_PT = FONT_PT
 BAR = 0.62
-YMAX = 1.13
+YMAX = 1.2
 YTICKS = np.arange(0.0, 1.01, 0.25)
+S_PER_H = 3600.0
+# layout in inches
+LEFT_IN, RIGHT_IN, GAP_IN = 0.45, 0.06, 0.5
+TITLE_IN, NAMES_IN = 0.2, 0.46
+AXES_IN = 0.82  # height of a score panel
+COVER_IN, COVER_NAMES_IN = 0.8, 0.55  # the coverage row, and its rotated names
+SLOT = 0.8  # width of an empty slot, in bar units
+GROUP_GAP = 1.7  # distance from the legacy group to the Tokamak-SI group
+BELOW_PT = 26  # the group label's distance under the axis, in points
 
 AE_MODELS = (  # (key in the evaluation, "<task>-<model>")
     ("seldnet", "ae-ours"),
@@ -94,9 +136,31 @@ AE_SETTINGS = (  # (setting, truth block, what it is scored against, colour)
     ("legacy", "annotated", "Heidbrink annotation", LEGACY),
     ("Tokamak-SI", "reviewed", "dense labels", SI),
 )
+TM_MODELS = (  # (architecture in the record, "<task>-<model>")
+    ("onsetcnn", "tm-onsetcnn"),
+    ("dsm", "tm-dsm"),
+    ("magnetic-detector", "tm-ours"),
+)
+# the record's key for each metric: (legacy, Tokamak-SI)
+TM_KEYS = {
+    "f1": ("f1_published_threshold", "f1"),
+    "auroc": ("auroc", "auroc"),
+    "auprc": ("auprc", "auprc"),
+}
 CLASSES = ("L", "H", "QH", "WP")
 METRICS = {"f1": "F1", "auroc": "AUROC", "auprc": "AUPRC"}
-PENDING = ("Tearing Modes", "Sawtooth", "Resistive Wall Modes")
+STATUS_TEXT = {
+    "none": "no legacy set",
+    "pending": "pending",
+    "point_events": "point events",
+}
+TITLES = {
+    "tm": "Tearing Modes",
+    "sawtooth": "Sawtooth",
+    "rwm": "Resistive Wall Modes",
+    "conf": "Confinement",
+    "elm": "Edge Localized Modes",
+}
 
 
 def load(path: Path) -> dict:
@@ -105,12 +169,25 @@ def load(path: Path) -> dict:
 
 
 class Rows:
-    """Every number drawn, with where it came from."""
+    """Every number drawn (and the numbers kept out of the figure), with where it
+    came from."""
 
     def __init__(self) -> None:
         self.rows: list[dict] = []
 
-    def add(self, panel, series, group, metric, value, ci, source, key) -> None:
+    def add(
+        self,
+        panel,
+        series,
+        group,
+        metric,
+        value,
+        ci,
+        source,
+        key,
+        note="",
+        drawn=True,
+    ) -> None:
         lo, hi = (None, None) if ci is None else ci
         self.rows.append(
             {
@@ -123,6 +200,8 @@ class Rows:
                 "ci_hi": hi,
                 "source": str(Path(source).relative_to(REPO)),
                 "key": key,
+                "drawn": drawn,
+                "note": note,
             }
         )
 
@@ -137,6 +216,13 @@ class Rows:
                 writer = csv.DictWriter(f, fields)
                 writer.writeheader()
                 writer.writerows(self.rows)
+
+
+def two_line(name: str) -> str:
+    """`ae-ours` as `ae-` over `ours`: the names sit under bars a few tenths of an
+    inch apart."""
+    head, _, tail = name.partition("-")
+    return f"{head}-\n{tail}" if tail else name
 
 
 def axes_style(ax, ylabel: str | None) -> None:
@@ -185,11 +271,49 @@ def scored_bar(ax, x, value, ci, colour, digits=3) -> None:
     )
 
 
-def pending_slot(ax, x, width, edge, height=1.0, text=None) -> None:
-    """An empty hatched slot: no model of this role scored yet."""
+def uncertain_marker(ax, x, value) -> None:
+    """The same model with uncertain time scored negative: an open diamond."""
+    ax.plot(
+        [x],
+        [value],
+        marker="D",
+        ms=3.6,
+        mfc="white",
+        mec=INK,
+        mew=0.8,
+        ls="none",
+        zorder=5,
+    )
+
+
+def baseline_tick(ax, x, value) -> None:
+    """A baseline's score on the model's bar: a short tick across it."""
+    half = BAR / 2 * 1.4
+    for colour, width in (("white", 3.0), (INK, 1.4)):
+        ax.plot(
+            [x - half, x + half],
+            [value, value],
+            color=colour,
+            lw=width,
+            solid_capstyle="butt",
+            zorder=5,
+        )
+
+
+def pending_slot(
+    ax,
+    x,
+    width,
+    edge,
+    height=1.0,
+    text=None,
+    bottom=0.0,
+    ytext=None,
+) -> None:
+    """An empty hatched slot: a value not available, with its reason written in."""
     ax.add_patch(
         Rectangle(
-            (x - width / 2, 0),
+            (x - width / 2, bottom),
             width,
             height,
             facecolor="none",
@@ -203,15 +327,16 @@ def pending_slot(ax, x, width, edge, height=1.0, text=None) -> None:
     if text:
         ax.text(
             x,
-            height / 2,
+            bottom + height / 2 if ytext is None else ytext,
             text,
             rotation=90,
             ha="center",
             va="center",
             fontsize=VALUE_PT,
+            linespacing=1.1,
             color=INK,
             zorder=4,
-            bbox={"facecolor": "white", "edgecolor": "none", "pad": 0.8},
+            bbox={"facecolor": "white", "edgecolor": "none", "pad": 0.6},
         )
 
 
@@ -240,36 +365,44 @@ def bound_slot(ax, x, width, value, colour, text) -> None:
         rotation=90,
         ha="center",
         va="center",
-        fontsize=VALUE_PT - 0.5,
-        linespacing=1.15,
+        fontsize=VALUE_PT,
+        linespacing=1.1,
         color=INK,
         zorder=4,
-        bbox={"facecolor": "white", "edgecolor": "none", "pad": 0.8, "alpha": 0.95},
+        bbox={"facecolor": "white", "edgecolor": "none", "pad": 0.6, "alpha": 0.95},
     )
 
 
-def group_labels(ax, centres, labels, y) -> None:
-    """The setting of each group of bars, below the bar names."""
-    trans = blended_transform_factory(ax.transData, ax.transAxes)
+def group_labels(ax, centres, labels, below_pt=BELOW_PT) -> None:
+    """The setting of each group of bars, under the bar names."""
     for c, text in zip(centres, labels):
-        ax.text(
-            c,
-            y,
+        ax.annotate(
             text,
-            transform=trans,
+            xy=(c, 0),
+            xycoords=("data", "axes fraction"),
+            xytext=(0, -below_pt),
+            textcoords="offset points",
             ha="center",
             va="top",
-            fontsize=FONT_PT - 1,
+            fontsize=FONT_PT,
             color=INK,
+            annotation_clip=False,
         )
 
 
-def finish_groups(ax, ticks, names, centres, labels, y=-0.12) -> None:
-    ax.set_xticks(ticks, names)
-    ax.tick_params(axis="x", labelsize=FONT_PT - 1.5)
+def finish_groups(ax, ticks, names, centres, labels, below_pt=BELOW_PT) -> None:
+    ax.set_xticks(ticks, [two_line(n) for n in names])
+    ax.tick_params(axis="x", labelsize=FONT_PT)
     ax.set_xlim(min(ticks) - 0.7, max(ticks) + 0.7)
-    group_labels(ax, centres, labels, y)
+    group_labels(ax, centres, labels, below_pt)
     axes_style(ax, None)
+
+
+def cell(c: dict) -> tuple[float, tuple | None]:
+    """A record's `{value, lo, hi}` cell: its value and its 95 % interval (none when
+    the interval is a point)."""
+    lo, hi = c["lo"], c["hi"]
+    return c["value"], ((lo, hi) if hi > lo else None)
 
 
 def draw_ae(ax, ae: dict, rows: Rows, panel: str, metric: str = "f1") -> None:
@@ -294,6 +427,7 @@ def draw_ae(ax, ae: dict, rows: Rows, panel: str, metric: str = "f1") -> None:
                 ci,
                 SOURCES["ae"],
                 f"results.{truth}.{key}.{metric}",
+                note=f"scored against the {truth_name}",
             )
         centres.append(float(np.mean(xs)))
         labels.append(setting)
@@ -353,10 +487,10 @@ def draw_confinement(
         bound_slot(
             ax,
             0,
-            0.8,
+            SLOT,
             bound,
             LEGACY,
-            f"\u2265 {bound:.2f} per class\n(one-vs-rest; no macro value)",
+            f"≥ {bound:.2f}\nper class",
         )
         rows.add(
             panel,
@@ -369,10 +503,10 @@ def draw_confinement(
             "auc_one_vs_rest.per_class_at_least",
         )
     else:
-        pending_slot(ax, 0, 0.8, PENDING_EDGE, text="not reported")
+        pending_slot(ax, 0, SLOT, PENDING_EDGE, text="not reported")
     value = si["macro"][metric]
     ci = si["ci95"][f"macro_{metric}"]
-    scored_bar(ax, 1.7, value, ci, SI)
+    scored_bar(ax, GROUP_GAP, value, ci, SI)
     rows.add(
         panel,
         "confine-cnn",
@@ -385,48 +519,287 @@ def draw_confinement(
     )
     finish_groups(
         ax,
-        [0, 1.7],
+        [0, GROUP_GAP],
         ["confine-cnn"] * 2,
-        [0, 1.7],
+        [0, GROUP_GAP],
         ["legacy", "Tokamak-SI"],
     )
     ax.set_ylabel(name, labelpad=2)
 
 
-def draw_elm(ax, elm: dict, rows: Rows, panel: str, metric: str = "f1") -> None:
-    """elm-elmo on D. Smith's windows (legacy; F1 only, there is no threshold
-    sweep there) and on the reviewed spans (Tokamak-SI; AUROC and AUPRC come
-    from a sweep of its detection threshold)."""
+def smith_legacy(smith: dict) -> tuple[float, tuple]:
+    """elm-elmo's legacy score: D. Smith's windows at the published setting, the
+    ELM stream's reimplementation (`reimplemented_elmo_overlap`). Its F1 must be the
+    one its stored counts and its stored precision and recall give. Returns the F1
+    and its interval."""
+    block = smith["reimplemented_elmo_overlap"]
+    c, point = block["counts"], block["point"]
+    from_counts = 2 * c["tp"] / (2 * c["tp"] + c["fp"] + c["fn"])
+    p, r = point["precision"], point["recall"]
+    from_pr = 2 * p * r / (p + r)
+    for name, other in (("counts", from_counts), ("precision and recall", from_pr)):
+        if abs(point["f1"] - other) > 1e-9:
+            raise ValueError(f"Smith F1 {point['f1']} is not its {name}' {other}")
+    return point["f1"], tuple(block["ci95"]["f1"])
+
+
+def draw_elm(
+    ax, elm: dict, smith: dict, rows: Rows, panel: str, metric: str = "f1"
+) -> None:
+    """elm-elmo on D. Smith's windows (legacy; F1 only, there is no threshold sweep
+    there) and on the reviewed spans, and elm-ours on the reviewed spans (Tokamak-SI,
+    the shots with BES that both models are scored on; AUROC and AUPRC come from a
+    sweep of the detection threshold)."""
     name = METRICS[metric]
+    src = SOURCES["elm"]
+    models = (("elm-elmo", "elm-elmo"), ("elm-ours", "elm-ours"))
     if metric == "f1":
-        smith = elm["smith"]["published_setting"]
-        scored_bar(ax, 0, smith["f1"], None, LEGACY)
+        value, ci = smith_legacy(smith)
+        scored_bar(ax, 0, value, ci, LEGACY)
         rows.add(
             panel,
             "elm-elmo",
             "legacy",
             name,
-            smith["f1"],
-            None,
-            SOURCES["elm"],
-            "smith.published_setting.f1",
+            value,
+            ci,
+            SOURCES["elm_smith"],
+            "reimplemented_elmo_overlap.point.f1",
+            note="D. Smith's windows at the published setting; overlap-region F1, "
+            "conditional on the selected windows",
         )
-        review = elm["review"]["paper"]
-        key = "review.paper.f1"
+        old = smith["original_cached_elmo_overlap"]["point"]["f1"]
+        rows.add(
+            panel,
+            "elm-elmo",
+            "legacy, original cached sweep",
+            name,
+            old,
+            tuple(smith["original_cached_elmo_overlap"]["ci95"]["f1"]),
+            SOURCES["elm_smith"],
+            "original_cached_elmo_overlap.point.f1",
+            note="the earlier figure's bar, kept out",
+            drawn=False,
+        )
     else:
-        pending_slot(ax, 0, 0.8, PENDING_EDGE, text="not reported")
-        review = elm["review"]["eta_sweep"]
-        key = f"review.eta_sweep.{metric}"
-    ci = review["ci95"][metric]
-    scored_bar(ax, 1.7, review[metric], ci, SI)
+        pending_slot(ax, 0, SLOT, PENDING_EDGE, text="not reported")
+        rows.add(
+            panel,
+            "elm-elmo",
+            "legacy, window occupancy",
+            name,
+            smith["methods"]["elm-elmo"]["occupancy_1ms"]["point"][metric],
+            None,
+            SOURCES["elm_smith"],
+            f"methods.elm-elmo.occupancy_1ms.point.{metric}",
+            note="reimplementation scored on the Smith windows' 1 ms cells; "
+            "the earlier paper reported none",
+            drawn=False,
+        )
+    bes = elm["sets"]["bes73"]
+    xs = [GROUP_GAP, GROUP_GAP + 1]
+    for x, (key, label) in zip(xs, models):
+        res = bes["methods"][key]
+        if metric == "f1":
+            value, ci = res["point"]["f1"], res["ci95"]["f1"]
+            where = f"sets.bes73.methods.{key}.point.f1"
+        else:
+            value, ci = res["point"][metric], res["ci95"][metric]
+            where = f"sets.bes73.methods.{key}.point.{metric}"
+        scored_bar(ax, x, value, ci, SI)
+        rows.add(
+            panel,
+            label,
+            "Tokamak-SI",
+            name,
+            value,
+            ci,
+            src,
+            where,
+            note="reviewed spans, 50 ms bins, the shots with BES",
+        )
+    res = elm["sets"]["all119"]["methods"]["elm-ours"]
     rows.add(
-        panel, "elm-elmo", "Tokamak-SI", name, review[metric], ci, SOURCES["elm"], key
+        panel,
+        "elm-ours",
+        "Tokamak-SI, all reviewed shots",
+        name,
+        res["point"][metric],
+        res["ci95"][metric],
+        src,
+        f"sets.all119.methods.elm-ours.point.{metric}",
+        note="kept out of the figure: elm-elmo needs BES, so the bars share bes73",
+        drawn=False,
     )
     finish_groups(
         ax,
-        [0, 1.7],
-        ["elm-elmo"] * 2,
-        [0, 1.7],
+        [0, *xs],
+        ["elm-elmo"] * 2 + ["elm-ours"],
+        [0, float(np.mean(xs))],
+        ["legacy", "Tokamak-SI"],
+    )
+    ax.set_ylabel(name, labelpad=2)
+
+
+def draw_tm(ax, tm: dict, rows: Rows, panel: str, metric: str = "f1") -> None:
+    """tm-onsetcnn and tm-dsm as the published model on its own labels (legacy, at
+    its published threshold) and as the retrained twin on the Tokamak-SI labels, and
+    tm-ours on Tokamak-SI only; each Tokamak-SI bar has an open diamond at the same
+    model with uncertain time scored negative."""
+    legacy_key, si_key = TM_KEYS[metric]
+    by = {r["architecture"]: r for r in tm["rows"]}
+    src = SOURCES["tm"]
+    name = METRICS[metric]
+    legacy_models = [(a, n) for a, n in TM_MODELS if by[a].get("legacy")]
+    ticks, names = [], []
+    xs = list(range(len(legacy_models)))
+    for x, (arch, label) in zip(xs, legacy_models):
+        block = by[arch]["legacy"]
+        value, ci = cell(block[legacy_key])
+        scored_bar(ax, x, value, ci, LEGACY)
+        ticks.append(x)
+        names.append(label)
+        rows.add(
+            panel,
+            label,
+            "legacy",
+            name,
+            value,
+            ci,
+            src,
+            f"rows[{arch}].legacy.{legacy_key}",
+            note=f"{block['model']}, published threshold, "
+            f"{block['bin_ms']:g} ms bins, {block['shots']} shots",
+        )
+        if metric == "f1":
+            tuned, tuned_ci = cell(block["f1_tuned"])
+            rows.add(
+                panel,
+                label,
+                "legacy, tuned threshold",
+                name,
+                tuned,
+                tuned_ci,
+                src,
+                f"rows[{arch}].legacy.f1_tuned",
+                note="secondary; kept out of the figure",
+                drawn=False,
+            )
+    legacy_centre = float(np.mean(xs))
+    x0 = (xs[-1] if xs else 0) + GROUP_GAP
+    si_xs = [x0 + i for i in range(len(TM_MODELS))]
+    for x, (arch, label) in zip(si_xs, TM_MODELS):
+        row = by[arch]
+        value, ci = cell(row["tokamak_si"][si_key])
+        scored_bar(ax, x, value, ci, SI)
+        unc, _ = cell(row["tokamak_si_uncertain_negative"][si_key])
+        uncertain_marker(ax, x, unc)
+        ticks.append(x)
+        names.append(label)
+        si = row["tokamak_si"]
+        rows.add(
+            panel,
+            label,
+            "Tokamak-SI",
+            name,
+            value,
+            ci,
+            src,
+            f"rows[{arch}].tokamak_si.{si_key}",
+            note=f"{row['tokamak_si_model']}, {si['bin_ms']:g} ms bins, "
+            f"{si['shots']} shots, uncertain time excluded",
+        )
+        rows.add(
+            panel,
+            label,
+            "Tokamak-SI, uncertain time scored negative",
+            name,
+            unc,
+            None,
+            src,
+            f"rows[{arch}].tokamak_si_uncertain_negative.{si_key}",
+            note="open diamond",
+        )
+    finish_groups(
+        ax,
+        ticks,
+        names,
+        [legacy_centre, float(np.mean(si_xs))],
+        ["legacy", "Tokamak-SI"],
+    )
+    ax.set_ylabel(name, labelpad=2)
+
+
+def rwm_cell(config: dict, metric: str) -> tuple[float, tuple, str]:
+    """rwm-brf's (or a baseline's) value, interval and key for `metric`: pooled
+    slice F1 and AUPRC, and the phase-controlled AUROC the paper's table reports."""
+    if metric == "auroc":
+        c, key = config["phase_controlled_auroc"], "phase_controlled_auroc"
+    else:
+        key = {"f1": "metrics.slice_f1", "auprc": "metrics.slice_auprc"}[metric]
+        c = config["metrics"][key.split(".")[1]]
+    return c["estimate"], (c["low"], c["high"]), key + ".estimate"
+
+
+def draw_rwm(ax, rwm: dict, rows: Rows, panel: str, metric: str = "f1") -> None:
+    """The legacy forest (another machine: a hatched slot, its slice AUROC in the
+    CSV only) and rwm-brf on the Tokamak-SI labels, with a tick at the elapsed-time
+    baseline."""
+    name = METRICS[metric]
+    src = SOURCES["rwm"]
+    legacy = rwm["legacy"]
+    reason = {
+        "f1": "other machine,\nno F1",
+        "auroc": "other machine,\nnot comparable",
+        "auprc": "other machine,\nno AUPRC",
+    }[metric]
+    pending_slot(ax, 0, SLOT, PENDING_EDGE, text=reason)
+    legacy_key = {"f1": "slice_f1", "auroc": "slice_auroc", "auprc": None}[metric]
+    rows.add(
+        panel,
+        "rwm-brf",
+        "legacy",
+        name,
+        legacy[legacy_key] if legacy_key else None,
+        None,
+        src,
+        f"legacy.{legacy_key}" if legacy_key else "legacy",
+        note=f"{legacy['model']}: {legacy['context']}; not drawn",
+        drawn=False,
+    )
+    brf, clock = (rwm["configs"][k] for k in ("rwm-brf", "rwm-rule-elapsed-time"))
+    value, ci, key = rwm_cell(brf, metric)
+    base, _, base_key = rwm_cell(clock, metric)
+    scored_bar(ax, GROUP_GAP, value, ci, SI)
+    baseline_tick(ax, GROUP_GAP, base)
+    rows.add(
+        panel,
+        "rwm-brf",
+        "Tokamak-SI",
+        name,
+        value,
+        ci,
+        src,
+        f"configs.rwm-brf.{key}",
+        note="100 ms horizon; "
+        + ("phase-controlled" if metric == "auroc" else "pooled slices"),
+    )
+    rows.add(
+        panel,
+        "rwm-rule-elapsed-time",
+        "Tokamak-SI, elapsed-time baseline",
+        name,
+        base,
+        None,
+        src,
+        f"configs.rwm-rule-elapsed-time.{base_key}",
+        note="tick",
+    )
+    finish_groups(
+        ax,
+        [0, GROUP_GAP],
+        ["", "rwm-brf"],
+        [0, GROUP_GAP],
         ["legacy", "Tokamak-SI"],
     )
     ax.set_ylabel(name, labelpad=2)
@@ -434,143 +807,323 @@ def draw_elm(ax, elm: dict, rows: Rows, panel: str, metric: str = "f1") -> None:
 
 def draw_pending(ax) -> None:
     """A set with no score yet: an empty slot for each setting."""
-    pending_slot(ax, 0, 0.8, LEGACY)
-    pending_slot(ax, 1.7, 0.8, SI)
-    finish_groups(ax, [0, 1.7], ["", ""], [0, 1.7], ["legacy", "Tokamak-SI"], y=-0.04)
+    pending_slot(ax, 0, SLOT, LEGACY, text="not yet scored")
+    pending_slot(ax, GROUP_GAP, SLOT, SI, text="not yet scored")
+    finish_groups(
+        ax,
+        [0, GROUP_GAP],
+        ["", ""],
+        [0, GROUP_GAP],
+        ["legacy", "Tokamak-SI"],
+    )
     ax.set_yticklabels([])
     ax.tick_params(axis="y", length=0)
     ax.spines["left"].set_visible(False)
 
 
-def draw(out: Path, png: Path | None, table: Path | None) -> None:
-    """The F1 figure: every set, with the sets not yet scored."""
-    ae, conf, elm = (load(SOURCES[k]) for k in ("ae", "confinement", "elm"))
-    si = confinement_si(load(SOURCES["confinement_si"]))
-    rows = Rows()
-    with style():
-        fig = Figure(figsize=(PAGE_IN, 4.0))
-        outer = fig.add_gridspec(
-            2,
-            1,
-            left=0.06,
-            right=0.995,
-            top=0.88,
-            bottom=0.04,
-            hspace=0.5,
-            height_ratios=[1.0, 0.55],
-        )
-        top = outer[0].subgridspec(1, 3, width_ratios=[2.2, 1, 1.15], wspace=0.22)
-        low = outer[1].subgridspec(1, 3, wspace=0.22)
-        a, b, c = (fig.add_subplot(top[0, i]) for i in range(3))
-        pend = [fig.add_subplot(low[0, i]) for i in range(3)]
-        draw_ae(a, ae, rows, "a")
-        draw_confinement(b, conf, si, rows, "b")
-        draw_elm(c, elm, rows, "c")
-        for ax in pend:
-            draw_pending(ax)
-        shots = len(ae["shots"]["fair"])
-        titles = {
-            a: f"Alfv\u00e9n Eigenmodes ({shots} held-out shots)",
-            b: "Confinement",
-            c: "Edge Localized Modes",
-        }
-        titles.update(zip(pend, PENDING))
-        for ax, text in titles.items():
-            ax.set_title(text, loc="left", fontsize=FONT_PT, pad=4)
-        handles = [
-            Patch(color=LEGACY, label="legacy"),
-            Patch(color=SI, label="Tokamak-SI"),
-            Patch(
-                facecolor="none",
-                edgecolor=PENDING_EDGE,
-                hatch="////",
-                label="not yet scored",
-            ),
-        ]
-        fig.legend(
-            handles=handles,
-            loc="upper center",
-            ncol=3,
-            frameon=False,
-            bbox_to_anchor=(0.5, 1.0),
-            handlelength=1.6,
-            columnspacing=1.6,
-            fontsize=FONT_PT - 1,
-        )
-        out.parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(out, format="pdf", metadata={"CreationDate": None})
-        if png is not None:
-            png.parent.mkdir(parents=True, exist_ok=True)
-            fig.savefig(png, dpi=200)
-    rows.write(table)
-    gits = {k: load(p).get("git") for k, p in SOURCES.items()}
-    print(f"wrote {out}; sources at git {gits}", file=sys.stderr)
+def draw_coverage(ax, cov: dict, rows: Rows, panel: str, field: str) -> None:
+    """Labelled shots (`field` "shots") or labelled time in hours ("seconds") per
+    set, log y: legacy against Tokamak-SI, each Tokamak-SI bar with a darker inner
+    bar for its human-reviewed subset; a set with no value in a setting gets a
+    hatched slot that says why."""
+    unit = "labelled shots" if field == "shots" else "labelled time (h)"
+    scale = 1.0 if field == "shots" else 1.0 / S_PER_H
+    order = cov["order"]
+    value_of = {}
+    for key in order:
+        for side in ("legacy", "tokamak_si"):
+            v = cov["sets"][key][side][field]
+            value_of[key, side] = None if v is None else v * scale
+    drawn = [v for v in value_of.values() if v is not None]
+    lo = 10.0 ** np.floor(np.log10(min(drawn)))
+    hi = 10.0 ** np.ceil(np.log10(max(drawn)))
+    width = 0.36
+    for i, key in enumerate(order):
+        entry = cov["sets"][key]
+        for sign, side, colour, group in (
+            (-1, "legacy", LEGACY, "legacy"),
+            (1, "tokamak_si", SI, "Tokamak-SI"),
+        ):
+            x = i + sign * 0.2
+            block = entry[side]
+            value = value_of[key, side]
+            record_key = f"sets.{key}.{side}.{field}"
+            if value is None:
+                pending_slot(
+                    ax,
+                    x,
+                    width,
+                    PENDING_EDGE,
+                    height=hi - lo,
+                    bottom=lo,
+                    text=STATUS_TEXT[block["status"]],
+                    ytext=float(np.sqrt(lo * hi)),
+                )
+                rows.add(
+                    panel,
+                    entry["name"],
+                    group,
+                    unit,
+                    None,
+                    None,
+                    SOURCES["coverage"],
+                    record_key,
+                    note=STATUS_TEXT[block["status"]],
+                )
+                continue
+            ax.bar(x, value - lo, width, bottom=lo, color=colour, lw=0, zorder=2)
+            rows.add(
+                panel,
+                entry["name"],
+                group,
+                unit,
+                value,
+                None,
+                SOURCES["coverage"],
+                record_key,
+                note=block["definition"]
+                if block["definition"] != "shared definition"
+                else "",
+            )
+            reviewed = block.get("reviewed")
+            if reviewed and reviewed["status"] == "measured":
+                inner = reviewed[field] * scale
+                ax.bar(
+                    x,
+                    inner - lo,
+                    width / 2,
+                    bottom=lo,
+                    color=REVIEWED,
+                    lw=0,
+                    zorder=3,
+                )
+                rows.add(
+                    panel,
+                    entry["name"],
+                    "Tokamak-SI, reviewed subset",
+                    unit,
+                    inner,
+                    None,
+                    SOURCES["coverage"],
+                    f"sets.{key}.{side}.reviewed.{field}",
+                )
+    ax.set_yscale("log")
+    ax.set_ylim(lo, hi)
+    ax.set_xlim(-0.7, len(order) - 0.3)
+    ax.set_xticks(range(len(order)))
+    ax.set_xticklabels(
+        [cov["sets"][k]["name"] for k in order],
+        rotation=40,
+        ha="right",
+        rotation_mode="anchor",
+    )
+    ax.tick_params(axis="x", length=0, pad=2, labelsize=FONT_PT)
+    ax.tick_params(axis="y", labelsize=FONT_PT, length=2, pad=1.5)
+    ax.grid(axis="y", color="#e4e4e4", lw=0.5)
+    ax.set_axisbelow(True)
+    for side in ("left", "bottom"):
+        ax.spines[side].set_color("#888888")
+        ax.spines[side].set_linewidth(0.6)
+    ax.set_title(unit, loc="left", fontsize=FONT_PT, pad=4)
 
 
-def draw_auc(out: Path, png: Path | None, table: Path | None) -> None:
-    """AUROC (top row) and AUPRC (bottom row) for the scored sets."""
-    ae, conf, elm = (load(SOURCES[k]) for k in ("ae", "confinement", "elm"))
-    si = confinement_si(load(SOURCES["confinement_si"]))
-    rows = Rows()
-    with style():
-        fig = Figure(figsize=(PAGE_IN, 4.6))
-        grid = fig.add_gridspec(
-            2,
-            3,
-            left=0.06,
-            right=0.995,
-            top=0.9,
-            bottom=0.09,
-            hspace=0.78,
-            wspace=0.22,
-            width_ratios=[2.2, 1, 1.15],
-        )
-        shots = len(ae["shots"]["fair"])
-        titles = (
-            f"Alfv\u00e9n Eigenmodes ({shots} held-out shots)",
-            "Confinement",
-            "Edge Localized Modes",
-        )
-        for r, metric in enumerate(("auroc", "auprc")):
-            axes = [fig.add_subplot(grid[r, i]) for i in range(3)]
-            draw_ae(axes[0], ae, rows, "a" + str(r), metric)
-            draw_confinement(axes[1], conf, si, rows, "b" + str(r), metric)
-            draw_elm(axes[2], elm, rows, "c" + str(r), metric)
-            for ax, text in zip(axes, titles):
-                ax.set_title(text, loc="left", fontsize=FONT_PT, pad=4)
-        handles = [
-            Patch(color=LEGACY, label="legacy"),
-            Patch(color=SI, label="Tokamak-SI"),
+def row_axes(fig, fig_h, top_in, height_in, units):
+    """One row of panels `height_in` high, its top `top_in` under the figure's top,
+    each as wide as its bars need (`units`, in bar spacings)."""
+    n = len(units)
+    width = PAGE_IN - LEFT_IN - RIGHT_IN - GAP_IN * (n - 1)
+    grid = fig.add_gridspec(
+        1,
+        n,
+        left=LEFT_IN / PAGE_IN,
+        right=1 - RIGHT_IN / PAGE_IN,
+        top=1 - top_in / fig_h,
+        bottom=1 - (top_in + height_in) / fig_h,
+        wspace=GAP_IN / (width / n),
+        width_ratios=units,
+    )
+    return [fig.add_subplot(grid[0, i]) for i in range(n)]
+
+
+def legend_handles(reviewed: bool, bound: bool) -> list:
+    handles = [
+        Patch(color=LEGACY, label="legacy"),
+        Patch(color=SI, label="Tokamak-SI"),
+    ]
+    if reviewed:
+        handles.append(Patch(color=REVIEWED, label="human-reviewed subset"))
+    if bound:
+        handles.append(
             Patch(
                 facecolor="none",
                 edgecolor=LEGACY,
                 hatch="////",
                 label="bound for every class, no macro value",
-            ),
-            Patch(
-                facecolor="none",
-                edgecolor=PENDING_EDGE,
-                hatch="////",
-                label="not reported",
-            ),
-        ]
-        fig.legend(
-            handles=handles,
-            loc="upper center",
-            ncol=4,
-            frameon=False,
-            bbox_to_anchor=(0.5, 1.0),
-            handlelength=1.6,
-            columnspacing=1.6,
-            fontsize=FONT_PT - 1,
+            )
         )
-        out.parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(out, format="pdf", metadata={"CreationDate": None})
-        if png is not None:
-            png.parent.mkdir(parents=True, exist_ok=True)
-            fig.savefig(png, dpi=200)
+    handles.append(
+        Patch(
+            facecolor="none",
+            edgecolor=PENDING_EDGE,
+            hatch="////",
+            label="no value (reason in slot)",
+        )
+    )
+    handles += [
+        Line2D(
+            [],
+            [],
+            marker="D",
+            ms=3.6,
+            mfc="white",
+            mec=INK,
+            mew=0.8,
+            ls="none",
+            label="uncertain time scored negative",
+        ),
+        Line2D([], [], color=INK, lw=1.4, label="elapsed-time baseline"),
+    ]
+    return handles
+
+
+def save(fig, out: Path, png: Path | None) -> None:
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out, format="pdf", metadata={"CreationDate": None})
+    if png is not None:
+        png.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(png, dpi=150)
+
+
+def tm_title(tm: dict) -> str:
+    """The panel title, with the two bin widths the record states."""
+    legacy = {r["legacy"]["bin_ms"] for r in tm["rows"] if r.get("legacy")}
+    si = {r["tokamak_si"]["bin_ms"] for r in tm["rows"]}
+    if len(legacy) != 1 or len(si) != 1:
+        raise ValueError(f"the TM rows differ in bin width: {legacy}, {si}")
+    return (
+        f"{TITLES['tm']} ({legacy.pop():g} ms legacy, {si.pop():g} ms Tokamak-SI bins)"
+    )
+
+
+def panels(axes, records, rows, metric, tag):
+    """The six panels of one metric: AE, confinement, ELM over TM, sawtooth, RWM."""
+    ae, conf, si, elm, smith, tm, rwm = records
+    top, bottom = axes
+    shots = len(ae["shots"]["fair"])
+    draw_ae(top[0], ae, rows, f"a{tag}", metric)
+    draw_confinement(top[1], conf, si, rows, f"b{tag}", metric)
+    draw_elm(top[2], elm, smith, rows, f"c{tag}", metric)
+    draw_tm(bottom[0], tm, rows, f"d{tag}", metric)
+    draw_pending(bottom[1])
+    draw_rwm(bottom[2], rwm, rows, f"f{tag}", metric)
+    titles = (
+        f"Alfvén Eigenmodes ({shots} held-out shots)",
+        TITLES["conf"],
+        TITLES["elm"],
+        tm_title(tm),
+        TITLES["sawtooth"],
+        TITLES["rwm"],
+    )
+    for ax, text in zip([*top, *bottom], titles):
+        ax.set_title(text, loc="left", fontsize=FONT_PT, pad=4)
+
+
+# bar spacings each panel needs: AE (two groups of three), confinement, ELM (one
+# legacy bar, two Tokamak-SI) over tearing modes (two, three), sawtooth, RWM
+TOP_UNITS = (7.1, 3.1, 4.1)
+BOTTOM_UNITS = (6.1, 3.1, 3.1)
+LEGEND_IN = 0.34
+
+
+def read_records():
+    ae, conf, elm, smith, tm, rwm = (
+        load(SOURCES[k]) for k in ("ae", "confinement", "elm", "elm_smith", "tm", "rwm")
+    )
+    si = confinement_si(load(SOURCES["confinement_si"]))
+    return ae, conf, si, elm, smith, tm, rwm
+
+
+@contextmanager
+def plot_style() -> Iterator[None]:
+    """The paper's text sizes, raised so that nothing is under FONT_PT; make and
+    save a figure inside it."""
+    with style(), matplotlib.rc_context(TEXT):
+        yield
+
+
+def add_legend(fig, reviewed: bool, bound: bool) -> None:
+    fig.legend(
+        handles=legend_handles(reviewed, bound),
+        loc="upper center",
+        ncol=3 if reviewed else 4,
+        frameon=False,
+        bbox_to_anchor=(0.5, 1.0),
+        handlelength=1.6,
+        columnspacing=1.4,
+        labelspacing=0.3,
+        borderaxespad=0.1,
+    )
+
+
+def figure_f1(records, cov: dict, rows: Rows) -> Figure:
+    """The F1 figure: two rows of panels, then the coverage row. Call inside
+    `plot_style`."""
+    block = TITLE_IN + AXES_IN + NAMES_IN
+    fig_h = LEGEND_IN + 2 * block + TITLE_IN + COVER_IN + COVER_NAMES_IN + 0.04
+    fig = Figure(figsize=(PAGE_IN, fig_h))
+    top = LEGEND_IN
+    axes = []
+    for units in (TOP_UNITS, BOTTOM_UNITS):
+        axes.append(row_axes(fig, fig_h, top + TITLE_IN, AXES_IN, units))
+        top += block
+    panels(axes, records, rows, "f1", "")
+    cover = row_axes(fig, fig_h, top + TITLE_IN, COVER_IN, (1, 1))
+    draw_coverage(cover[0], cov, rows, "g", "shots")
+    draw_coverage(cover[1], cov, rows, "h", "seconds")
+    add_legend(fig, reviewed=True, bound=False)
+    return fig
+
+
+def figure_auc(records, rows: Rows) -> Figure:
+    """AUROC then AUPRC, each as two rows of panels (no coverage row). Call
+    inside `plot_style`."""
+    block = TITLE_IN + AXES_IN + NAMES_IN
+    legend_in = LEGEND_IN + 0.1
+    fig_h = legend_in + 4 * block + 0.04
+    fig = Figure(figsize=(PAGE_IN, fig_h))
+    top = legend_in
+    for metric, tag in (("auroc", "0"), ("auprc", "1")):
+        axes = []
+        for units in (TOP_UNITS, BOTTOM_UNITS):
+            axes.append(row_axes(fig, fig_h, top + TITLE_IN, AXES_IN, units))
+            top += block
+        panels(axes, records, rows, metric, tag)
+    add_legend(fig, reviewed=False, bound=True)
+    return fig
+
+
+def draw(out: Path, png: Path | None, table: Path | None) -> None:
+    """The F1 figure, with the coverage row, and the numbers behind it."""
+    rows = Rows()
+    with plot_style():
+        fig = figure_f1(read_records(), load(SOURCES["coverage"]), rows)
+        save(fig, out, png)
     rows.write(table)
-    print(f"wrote {out}", file=sys.stderr)
+    gits = {k: load(p).get("git") for k, p in SOURCES.items()}
+    print(
+        f"wrote {out}; {PAGE_IN} x {fig.get_figheight():.2f} in; sources at git {gits}",
+        file=sys.stderr,
+    )
+
+
+def draw_auc(out: Path, png: Path | None, table: Path | None) -> None:
+    """The AUROC and AUPRC figure, and the numbers behind it."""
+    rows = Rows()
+    with plot_style():
+        fig = figure_auc(read_records(), rows)
+        save(fig, out, png)
+    rows.write(table)
+    print(f"wrote {out}; {PAGE_IN} x {fig.get_figheight():.2f} in", file=sys.stderr)
 
 
 def main(argv: list[str] | None = None) -> int:
