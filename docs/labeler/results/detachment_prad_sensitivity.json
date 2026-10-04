@@ -1,0 +1,883 @@
+{
+ "anchor": {
+  "shot": 201081,
+  "attached_mw": 1.621,
+  "detached_mw": 1.99,
+  "midpoint_mw": 1.8054999999999999,
+  "p_in_mw": 4.274,
+  "band_mw": 0.1,
+  "record": "docs/labeler/results/detachment_prad_anchor.json"
+ },
+ "criterion": "certain attached and certain detached bins on at least 3 of the same shots, at least one in the cohort",
+ "criterion_min_shots": 3,
+ "n_assessed_bins": 2873,
+ "variants": {
+  "primary_absolute": {
+   "family": "absolute",
+   "afrac_votes_removed": false,
+   "cutoffs": [
+    0.39904071127749174,
+    0.4458352831071596
+   ],
+   "prad_votes": {
+    "attached": 859,
+    "detached": 1454,
+    "abstain": 502
+   },
+   "certain_bins": {
+    "attached": 78,
+    "attached_by_split": {
+     "train": 0,
+     "val": 0,
+     "test": 0,
+     "outside": 78
+    },
+    "detached": 370,
+    "detached_by_split": {
+     "train": 0,
+     "val": 21,
+     "test": 0,
+     "outside": 349
+    },
+    "marfe": 23,
+    "marfe_by_split": {
+     "train": 0,
+     "val": 0,
+     "test": 0,
+     "outside": 23
+    }
+   },
+   "certain_shots": {
+    "attached": 9,
+    "detached": 21,
+    "marfe": 1
+   },
+   "certain_cohort_shots": {
+    "attached": 0,
+    "detached": 1,
+    "marfe": 0
+   },
+   "shots_with_certain_attached_and_detached": 6,
+   "cohort_shots_with_certain_attached_and_detached": 0,
+   "three_state_criterion_met": false,
+   "uncertain_bins": 2402,
+   "candidate_marfe_bins": 88
+  },
+  "relative": {
+   "family": "relative",
+   "afrac_votes_removed": false,
+   "cutoffs": [
+    1.0521283158544108,
+    1.17550894509562
+   ],
+   "prad_votes": {
+    "attached": 1158,
+    "detached": 615,
+    "abstain": 1042
+   },
+   "certain_bins": {
+    "attached": 141,
+    "attached_by_split": {
+     "train": 0,
+     "val": 0,
+     "test": 0,
+     "outside": 141
+    },
+    "detached": 219,
+    "detached_by_split": {
+     "train": 0,
+     "val": 1,
+     "test": 0,
+     "outside": 218
+    },
+    "marfe": 23,
+    "marfe_by_split": {
+     "train": 0,
+     "val": 0,
+     "test": 0,
+     "outside": 23
+    }
+   },
+   "certain_shots": {
+    "attached": 15,
+    "detached": 18,
+    "marfe": 1
+   },
+   "certain_cohort_shots": {
+    "attached": 0,
+    "detached": 1,
+    "marfe": 0
+   },
+   "shots_with_certain_attached_and_detached": 9,
+   "cohort_shots_with_certain_attached_and_detached": 0,
+   "three_state_criterion_met": false,
+   "uncertain_bins": 2490,
+   "candidate_marfe_bins": 88
+  },
+  "primary_absolute_afrac_abstains": {
+   "family": "absolute",
+   "afrac_votes_removed": true,
+   "cutoffs": [
+    0.39904071127749174,
+    0.4458352831071596
+   ],
+   "prad_votes": {
+    "attached": 859,
+    "detached": 1454,
+    "abstain": 502
+   },
+   "certain_bins": {
+    "attached": 47,
+    "attached_by_split": {
+     "train": 0,
+     "val": 0,
+     "test": 0,
+     "outside": 47
+    },
+    "detached": 501,
+    "detached_by_split": {
+     "train": 0,
+     "val": 51,
+     "test": 0,
+     "outside": 450
+    },
+    "marfe": 23,
+    "marfe_by_split": {
+     "train": 0,
+     "val": 0,
+     "test": 0,
+     "outside": 23
+    }
+   },
+   "certain_shots": {
+    "attached": 4,
+    "detached": 23,
+    "marfe": 1
+   },
+   "certain_cohort_shots": {
+    "attached": 0,
+    "detached": 1,
+    "marfe": 0
+   },
+   "shots_with_certain_attached_and_detached": 2,
+   "cohort_shots_with_certain_attached_and_detached": 0,
+   "three_state_criterion_met": false,
+   "uncertain_bins": 2302,
+   "candidate_marfe_bins": 88
+  },
+  "relative_afrac_abstains": {
+   "family": "relative",
+   "afrac_votes_removed": true,
+   "cutoffs": [
+    1.0521283158544108,
+    1.17550894509562
+   ],
+   "prad_votes": {
+    "attached": 1158,
+    "detached": 615,
+    "abstain": 1042
+   },
+   "certain_bins": {
+    "attached": 92,
+    "attached_by_split": {
+     "train": 0,
+     "val": 0,
+     "test": 0,
+     "outside": 92
+    },
+    "detached": 123,
+    "detached_by_split": {
+     "train": 0,
+     "val": 0,
+     "test": 0,
+     "outside": 123
+    },
+    "marfe": 23,
+    "marfe_by_split": {
+     "train": 0,
+     "val": 0,
+     "test": 0,
+     "outside": 23
+    }
+   },
+   "certain_shots": {
+    "attached": 14,
+    "detached": 12,
+    "marfe": 1
+   },
+   "certain_cohort_shots": {
+    "attached": 0,
+    "detached": 0,
+    "marfe": 0
+   },
+   "shots_with_certain_attached_and_detached": 7,
+   "cohort_shots_with_certain_attached_and_detached": 0,
+   "three_state_criterion_met": false,
+   "uncertain_bins": 2635,
+   "candidate_marfe_bins": 88
+  },
+  "absolute_published_anchor_values": {
+   "family": "absolute",
+   "afrac_votes_removed": false,
+   "cutoffs": [
+    0.42115114646700985,
+    0.4679457182966776
+   ],
+   "prad_votes": {
+    "attached": 1128,
+    "detached": 1224,
+    "abstain": 463
+   },
+   "certain_bins": {
+    "attached": 116,
+    "attached_by_split": {
+     "train": 0,
+     "val": 0,
+     "test": 0,
+     "outside": 116
+    },
+    "detached": 360,
+    "detached_by_split": {
+     "train": 0,
+     "val": 21,
+     "test": 0,
+     "outside": 339
+    },
+    "marfe": 23,
+    "marfe_by_split": {
+     "train": 0,
+     "val": 0,
+     "test": 0,
+     "outside": 23
+    }
+   },
+   "certain_shots": {
+    "attached": 15,
+    "detached": 19,
+    "marfe": 1
+   },
+   "certain_cohort_shots": {
+    "attached": 0,
+    "detached": 1,
+    "marfe": 0
+   },
+   "shots_with_certain_attached_and_detached": 8,
+   "cohort_shots_with_certain_attached_and_detached": 0,
+   "three_state_criterion_met": false,
+   "uncertain_bins": 2374,
+   "candidate_marfe_bins": 88
+  },
+  "absolute_band_0.025_mw": {
+   "family": "absolute",
+   "afrac_votes_removed": false,
+   "cutoffs": [
+    0.4165886757136172,
+    0.4282873186710341
+   ],
+   "prad_votes": {
+    "attached": 1058,
+    "detached": 1611,
+    "abstain": 146
+   },
+   "certain_bins": {
+    "attached": 52,
+    "attached_by_split": {
+     "train": 0,
+     "val": 0,
+     "test": 0,
+     "outside": 52
+    },
+    "detached": 371,
+    "detached_by_split": {
+     "train": 0,
+     "val": 21,
+     "test": 0,
+     "outside": 350
+    },
+    "marfe": 23,
+    "marfe_by_split": {
+     "train": 0,
+     "val": 0,
+     "test": 0,
+     "outside": 23
+    }
+   },
+   "certain_shots": {
+    "attached": 8,
+    "detached": 21,
+    "marfe": 1
+   },
+   "certain_cohort_shots": {
+    "attached": 0,
+    "detached": 1,
+    "marfe": 0
+   },
+   "shots_with_certain_attached_and_detached": 4,
+   "cohort_shots_with_certain_attached_and_detached": 0,
+   "three_state_criterion_met": false,
+   "uncertain_bins": 2427,
+   "candidate_marfe_bins": 88
+  },
+  "relative_band_0.025_mw": {
+   "family": "relative",
+   "afrac_votes_removed": false,
+   "cutoffs": [
+    1.0983960518198643,
+    1.1292412091301665
+   ],
+   "prad_votes": {
+    "attached": 1502,
+    "detached": 883,
+    "abstain": 430
+   },
+   "certain_bins": {
+    "attached": 134,
+    "attached_by_split": {
+     "train": 0,
+     "val": 0,
+     "test": 0,
+     "outside": 134
+    },
+    "detached": 198,
+    "detached_by_split": {
+     "train": 0,
+     "val": 1,
+     "test": 0,
+     "outside": 197
+    },
+    "marfe": 11,
+    "marfe_by_split": {
+     "train": 0,
+     "val": 0,
+     "test": 0,
+     "outside": 11
+    }
+   },
+   "certain_shots": {
+    "attached": 13,
+    "detached": 18,
+    "marfe": 1
+   },
+   "certain_cohort_shots": {
+    "attached": 0,
+    "detached": 1,
+    "marfe": 0
+   },
+   "shots_with_certain_attached_and_detached": 9,
+   "cohort_shots_with_certain_attached_and_detached": 0,
+   "three_state_criterion_met": false,
+   "uncertain_bins": 2530,
+   "candidate_marfe_bins": 100
+  },
+  "absolute_band_0.05_mw": {
+   "family": "absolute",
+   "afrac_votes_removed": false,
+   "cutoffs": [
+    0.4107393542349087,
+    0.4341366401497426
+   ],
+   "prad_votes": {
+    "attached": 996,
+    "detached": 1549,
+    "abstain": 270
+   },
+   "certain_bins": {
+    "attached": 60,
+    "attached_by_split": {
+     "train": 0,
+     "val": 0,
+     "test": 0,
+     "outside": 60
+    },
+    "detached": 370,
+    "detached_by_split": {
+     "train": 0,
+     "val": 21,
+     "test": 0,
+     "outside": 349
+    },
+    "marfe": 23,
+    "marfe_by_split": {
+     "train": 0,
+     "val": 0,
+     "test": 0,
+     "outside": 23
+    }
+   },
+   "certain_shots": {
+    "attached": 8,
+    "detached": 21,
+    "marfe": 1
+   },
+   "certain_cohort_shots": {
+    "attached": 0,
+    "detached": 1,
+    "marfe": 0
+   },
+   "shots_with_certain_attached_and_detached": 5,
+   "cohort_shots_with_certain_attached_and_detached": 0,
+   "three_state_criterion_met": false,
+   "uncertain_bins": 2420,
+   "candidate_marfe_bins": 88
+  },
+  "relative_band_0.05_mw": {
+   "family": "relative",
+   "afrac_votes_removed": false,
+   "cutoffs": [
+    1.0829734731647132,
+    1.1446637877853176
+   ],
+   "prad_votes": {
+    "attached": 1388,
+    "detached": 760,
+    "abstain": 667
+   },
+   "certain_bins": {
+    "attached": 141,
+    "attached_by_split": {
+     "train": 0,
+     "val": 0,
+     "test": 0,
+     "outside": 141
+    },
+    "detached": 209,
+    "detached_by_split": {
+     "train": 0,
+     "val": 1,
+     "test": 0,
+     "outside": 208
+    },
+    "marfe": 22,
+    "marfe_by_split": {
+     "train": 0,
+     "val": 0,
+     "test": 0,
+     "outside": 22
+    }
+   },
+   "certain_shots": {
+    "attached": 13,
+    "detached": 18,
+    "marfe": 1
+   },
+   "certain_cohort_shots": {
+    "attached": 0,
+    "detached": 1,
+    "marfe": 0
+   },
+   "shots_with_certain_attached_and_detached": 9,
+   "cohort_shots_with_certain_attached_and_detached": 0,
+   "three_state_criterion_met": false,
+   "uncertain_bins": 2501,
+   "candidate_marfe_bins": 89
+  },
+  "absolute_band_0.1_mw": {
+   "family": "absolute",
+   "afrac_votes_removed": false,
+   "cutoffs": [
+    0.39904071127749174,
+    0.4458352831071596
+   ],
+   "prad_votes": {
+    "attached": 859,
+    "detached": 1454,
+    "abstain": 502
+   },
+   "certain_bins": {
+    "attached": 78,
+    "attached_by_split": {
+     "train": 0,
+     "val": 0,
+     "test": 0,
+     "outside": 78
+    },
+    "detached": 370,
+    "detached_by_split": {
+     "train": 0,
+     "val": 21,
+     "test": 0,
+     "outside": 349
+    },
+    "marfe": 23,
+    "marfe_by_split": {
+     "train": 0,
+     "val": 0,
+     "test": 0,
+     "outside": 23
+    }
+   },
+   "certain_shots": {
+    "attached": 9,
+    "detached": 21,
+    "marfe": 1
+   },
+   "certain_cohort_shots": {
+    "attached": 0,
+    "detached": 1,
+    "marfe": 0
+   },
+   "shots_with_certain_attached_and_detached": 6,
+   "cohort_shots_with_certain_attached_and_detached": 0,
+   "three_state_criterion_met": false,
+   "uncertain_bins": 2402,
+   "candidate_marfe_bins": 88
+  },
+  "relative_band_0.1_mw": {
+   "family": "relative",
+   "afrac_votes_removed": false,
+   "cutoffs": [
+    1.0521283158544108,
+    1.17550894509562
+   ],
+   "prad_votes": {
+    "attached": 1158,
+    "detached": 615,
+    "abstain": 1042
+   },
+   "certain_bins": {
+    "attached": 141,
+    "attached_by_split": {
+     "train": 0,
+     "val": 0,
+     "test": 0,
+     "outside": 141
+    },
+    "detached": 219,
+    "detached_by_split": {
+     "train": 0,
+     "val": 1,
+     "test": 0,
+     "outside": 218
+    },
+    "marfe": 23,
+    "marfe_by_split": {
+     "train": 0,
+     "val": 0,
+     "test": 0,
+     "outside": 23
+    }
+   },
+   "certain_shots": {
+    "attached": 15,
+    "detached": 18,
+    "marfe": 1
+   },
+   "certain_cohort_shots": {
+    "attached": 0,
+    "detached": 1,
+    "marfe": 0
+   },
+   "shots_with_certain_attached_and_detached": 9,
+   "cohort_shots_with_certain_attached_and_detached": 0,
+   "three_state_criterion_met": false,
+   "uncertain_bins": 2490,
+   "candidate_marfe_bins": 88
+  },
+  "absolute_band_0.15_mw": {
+   "family": "absolute",
+   "afrac_votes_removed": false,
+   "cutoffs": [
+    0.38734206832007484,
+    0.45753392606457643
+   ],
+   "prad_votes": {
+    "attached": 700,
+    "detached": 1347,
+    "abstain": 768
+   },
+   "certain_bins": {
+    "attached": 91,
+    "attached_by_split": {
+     "train": 0,
+     "val": 0,
+     "test": 0,
+     "outside": 91
+    },
+    "detached": 372,
+    "detached_by_split": {
+     "train": 0,
+     "val": 21,
+     "test": 0,
+     "outside": 351
+    },
+    "marfe": 23,
+    "marfe_by_split": {
+     "train": 0,
+     "val": 0,
+     "test": 0,
+     "outside": 23
+    }
+   },
+   "certain_shots": {
+    "attached": 10,
+    "detached": 21,
+    "marfe": 1
+   },
+   "certain_cohort_shots": {
+    "attached": 0,
+    "detached": 1,
+    "marfe": 0
+   },
+   "shots_with_certain_attached_and_detached": 7,
+   "cohort_shots_with_certain_attached_and_detached": 0,
+   "three_state_criterion_met": false,
+   "uncertain_bins": 2387,
+   "candidate_marfe_bins": 88
+  },
+  "relative_band_0.15_mw": {
+   "family": "relative",
+   "afrac_votes_removed": false,
+   "cutoffs": [
+    1.0212831585441084,
+    1.2063541024059221
+   ],
+   "prad_votes": {
+    "attached": 836,
+    "detached": 457,
+    "abstain": 1522
+   },
+   "certain_bins": {
+    "attached": 161,
+    "attached_by_split": {
+     "train": 0,
+     "val": 0,
+     "test": 0,
+     "outside": 161
+    },
+    "detached": 239,
+    "detached_by_split": {
+     "train": 0,
+     "val": 1,
+     "test": 0,
+     "outside": 238
+    },
+    "marfe": 23,
+    "marfe_by_split": {
+     "train": 0,
+     "val": 0,
+     "test": 0,
+     "outside": 23
+    }
+   },
+   "certain_shots": {
+    "attached": 16,
+    "detached": 19,
+    "marfe": 1
+   },
+   "certain_cohort_shots": {
+    "attached": 0,
+    "detached": 1,
+    "marfe": 0
+   },
+   "shots_with_certain_attached_and_detached": 9,
+   "cohort_shots_with_certain_attached_and_detached": 0,
+   "three_state_criterion_met": false,
+   "uncertain_bins": 2450,
+   "candidate_marfe_bins": 88
+  },
+  "absolute_band_0.2_mw": {
+   "family": "absolute",
+   "afrac_votes_removed": false,
+   "cutoffs": [
+    0.37564342536265793,
+    0.46923256902199345
+   ],
+   "prad_votes": {
+    "attached": 549,
+    "detached": 1209,
+    "abstain": 1057
+   },
+   "certain_bins": {
+    "attached": 107,
+    "attached_by_split": {
+     "train": 0,
+     "val": 0,
+     "test": 0,
+     "outside": 107
+    },
+    "detached": 370,
+    "detached_by_split": {
+     "train": 0,
+     "val": 21,
+     "test": 0,
+     "outside": 349
+    },
+    "marfe": 23,
+    "marfe_by_split": {
+     "train": 0,
+     "val": 0,
+     "test": 0,
+     "outside": 23
+    }
+   },
+   "certain_shots": {
+    "attached": 15,
+    "detached": 21,
+    "marfe": 1
+   },
+   "certain_cohort_shots": {
+    "attached": 0,
+    "detached": 1,
+    "marfe": 0
+   },
+   "shots_with_certain_attached_and_detached": 9,
+   "cohort_shots_with_certain_attached_and_detached": 0,
+   "three_state_criterion_met": false,
+   "uncertain_bins": 2373,
+   "candidate_marfe_bins": 88
+  },
+  "relative_band_0.2_mw": {
+   "family": "relative",
+   "afrac_votes_removed": false,
+   "cutoffs": [
+    0.9904380012338062,
+    1.2371992597162247
+   ],
+   "prad_votes": {
+    "attached": 514,
+    "detached": 342,
+    "abstain": 1959
+   },
+   "certain_bins": {
+    "attached": 149,
+    "attached_by_split": {
+     "train": 0,
+     "val": 0,
+     "test": 0,
+     "outside": 149
+    },
+    "detached": 254,
+    "detached_by_split": {
+     "train": 0,
+     "val": 1,
+     "test": 0,
+     "outside": 253
+    },
+    "marfe": 23,
+    "marfe_by_split": {
+     "train": 0,
+     "val": 0,
+     "test": 0,
+     "outside": 23
+    }
+   },
+   "certain_shots": {
+    "attached": 15,
+    "detached": 19,
+    "marfe": 1
+   },
+   "certain_cohort_shots": {
+    "attached": 0,
+    "detached": 1,
+    "marfe": 0
+   },
+   "shots_with_certain_attached_and_detached": 7,
+   "cohort_shots_with_certain_attached_and_detached": 0,
+   "three_state_criterion_met": false,
+   "uncertain_bins": 2447,
+   "candidate_marfe_bins": 88
+  },
+  "absolute_band_0.3_mw": {
+   "family": "absolute",
+   "afrac_votes_removed": false,
+   "cutoffs": [
+    0.352246139447824,
+    0.49262985493682726
+   ],
+   "prad_votes": {
+    "attached": 404,
+    "detached": 805,
+    "abstain": 1606
+   },
+   "certain_bins": {
+    "attached": 150,
+    "attached_by_split": {
+     "train": 0,
+     "val": 0,
+     "test": 0,
+     "outside": 150
+    },
+    "detached": 355,
+    "detached_by_split": {
+     "train": 0,
+     "val": 21,
+     "test": 0,
+     "outside": 334
+    },
+    "marfe": 23,
+    "marfe_by_split": {
+     "train": 0,
+     "val": 0,
+     "test": 0,
+     "outside": 23
+    }
+   },
+   "certain_shots": {
+    "attached": 15,
+    "detached": 20,
+    "marfe": 1
+   },
+   "certain_cohort_shots": {
+    "attached": 0,
+    "detached": 1,
+    "marfe": 0
+   },
+   "shots_with_certain_attached_and_detached": 8,
+   "cohort_shots_with_certain_attached_and_detached": 0,
+   "three_state_criterion_met": false,
+   "uncertain_bins": 2345,
+   "candidate_marfe_bins": 88
+  },
+  "relative_band_0.3_mw": {
+   "family": "relative",
+   "afrac_votes_removed": false,
+   "cutoffs": [
+    0.9287476866132016,
+    1.298889574336829
+   ],
+   "prad_votes": {
+    "attached": 397,
+    "detached": 202,
+    "abstain": 2216
+   },
+   "certain_bins": {
+    "attached": 162,
+    "attached_by_split": {
+     "train": 0,
+     "val": 0,
+     "test": 0,
+     "outside": 162
+    },
+    "detached": 262,
+    "detached_by_split": {
+     "train": 0,
+     "val": 1,
+     "test": 0,
+     "outside": 261
+    },
+    "marfe": 23,
+    "marfe_by_split": {
+     "train": 0,
+     "val": 0,
+     "test": 0,
+     "outside": 23
+    }
+   },
+   "certain_shots": {
+    "attached": 15,
+    "detached": 19,
+    "marfe": 1
+   },
+   "certain_cohort_shots": {
+    "attached": 0,
+    "detached": 1,
+    "marfe": 0
+   },
+   "shots_with_certain_attached_and_detached": 7,
+   "cohort_shots_with_certain_attached_and_detached": 0,
+   "three_state_criterion_met": false,
+   "uncertain_bins": 2426,
+   "candidate_marfe_bins": 88
+  }
+ }
+}

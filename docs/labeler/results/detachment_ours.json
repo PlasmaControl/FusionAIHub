@@ -22,47 +22,69 @@
     189061,
     189081,
     189090,
-    189093,
     189094,
+    189097,
+    189100,
+    189451,
     190109,
-    190116,
-    199172
+    190110,
+    190113,
+    199172,
+    199352,
+    199353,
+    199354,
+    200977,
+    201081
    ],
    "heldout_shot_ids": [
     189062,
     189088,
     189101,
     189448,
-    199166,
-    200977
+    190114,
+    199166
    ],
-   "training_certain_bins": 158,
-   "predicted_bins": 235,
-   "heldout_certain_bins": 73,
-   "scored_certain_bins": 73,
+   "training_certain_bins": 318,
+   "predicted_bins": 294,
+   "heldout_certain_bins": 55,
+   "scored_certain_bins": 55,
    "training_class_support": {
     "attached": {
-     "n_bins": 0,
-     "n_shots": 0,
-     "shot_ids": []
+     "n_bins": 49,
+     "n_shots": 7,
+     "shot_ids": [
+      189057,
+      189097,
+      189100,
+      189451,
+      199354,
+      200977,
+      201081
+     ]
     },
     "detached": {
-     "n_bins": 151,
-     "n_shots": 9,
+     "n_bins": 246,
+     "n_shots": 15,
      "shot_ids": [
       189057,
       189061,
       189081,
       189090,
-      189093,
       189094,
+      189100,
       190109,
-      190116,
-      199172
+      190110,
+      190113,
+      199172,
+      199352,
+      199353,
+      199354,
+      200977,
+      201081
      ]
     },
     "marfe": {
-     "n_bins": 7,
+     "n_bins": 23,
      "n_shots": 1,
      "shot_ids": [
       199172
@@ -71,16 +93,20 @@
    },
    "heldout_class_support": {
     "attached": {
-     "n_bins": 0,
-     "n_shots": 0,
-     "shot_ids": []
+     "n_bins": 11,
+     "n_shots": 2,
+     "shot_ids": [
+      189448,
+      199166
+     ]
     },
     "detached": {
-     "n_bins": 73,
-     "n_shots": 3,
+     "n_bins": 44,
+     "n_shots": 4,
      "shot_ids": [
       189062,
       189088,
+      189101,
       199166
      ]
     },
@@ -92,19 +118,19 @@
    },
    "majority_class": "detached",
    "model_metrics": {
-    "accuracy": 0.9178082191780822,
-    "kappa": 0.0,
-    "macro_f1": 0.9571428571428572,
-    "f1_attached": null,
-    "f1_detached": 0.9571428571428572,
+    "accuracy": 0.7636363636363637,
+    "kappa": 0.5112781954887219,
+    "macro_f1": 0.7926436781609195,
+    "f1_attached": 0.7586206896551724,
+    "f1_detached": 0.8266666666666667,
     "f1_marfe": null
    },
    "majority_metrics": {
-    "accuracy": 1.0,
-    "kappa": null,
-    "macro_f1": 1.0,
-    "f1_attached": null,
-    "f1_detached": 1.0,
+    "accuracy": 0.8,
+    "kappa": 0.0,
+    "macro_f1": 0.4444444444444444,
+    "f1_attached": 0.0,
+    "f1_detached": 0.8888888888888888,
     "f1_marfe": null
    },
    "model_confusion_matrix": {
@@ -117,13 +143,13 @@
     "columns": "prediction",
     "counts": [
      [
-      0,
+      11,
       0,
       0
      ],
      [
-      0,
-      67,
+      7,
+      31,
       6
      ],
      [
@@ -144,12 +170,12 @@
     "counts": [
      [
       0,
-      0,
+      11,
       0
      ],
      [
       0,
-      73,
+      44,
       0
      ],
      [
@@ -169,30 +195,48 @@
     189088,
     189090,
     189094,
+    189097,
+    189100,
+    189101,
+    189448,
+    189451,
     190109,
-    199166
-   ],
-   "heldout_shot_ids": [
-    189081,
-    189093,
-    190116,
+    190110,
+    190113,
+    199166,
     199172,
     199352,
     199354
    ],
-   "training_certain_bins": 215,
-   "predicted_bins": 256,
-   "heldout_certain_bins": 16,
-   "scored_certain_bins": 16,
+   "heldout_shot_ids": [
+    189081,
+    189093,
+    199171,
+    199353,
+    200977,
+    201081
+   ],
+   "training_certain_bins": 270,
+   "predicted_bins": 442,
+   "heldout_certain_bins": 103,
+   "scored_certain_bins": 103,
    "training_class_support": {
     "attached": {
-     "n_bins": 0,
-     "n_shots": 0,
-     "shot_ids": []
+     "n_bins": 52,
+     "n_shots": 7,
+     "shot_ids": [
+      189057,
+      189097,
+      189100,
+      189448,
+      189451,
+      199166,
+      199354
+     ]
     },
     "detached": {
-     "n_bins": 215,
-     "n_shots": 8,
+     "n_bins": 195,
+     "n_shots": 15,
      "shot_ids": [
       189057,
       189061,
@@ -200,56 +244,66 @@
       189088,
       189090,
       189094,
+      189100,
+      189101,
       190109,
-      199166
+      190110,
+      190113,
+      199166,
+      199172,
+      199352,
+      199354
      ]
     },
     "marfe": {
-     "n_bins": 0,
-     "n_shots": 0,
-     "shot_ids": []
-    }
-   },
-   "heldout_class_support": {
-    "attached": {
-     "n_bins": 0,
-     "n_shots": 0,
-     "shot_ids": []
-    },
-    "detached": {
-     "n_bins": 9,
-     "n_shots": 4,
-     "shot_ids": [
-      189081,
-      189093,
-      190116,
-      199172
-     ]
-    },
-    "marfe": {
-     "n_bins": 7,
+     "n_bins": 23,
      "n_shots": 1,
      "shot_ids": [
       199172
      ]
     }
    },
+   "heldout_class_support": {
+    "attached": {
+     "n_bins": 8,
+     "n_shots": 2,
+     "shot_ids": [
+      200977,
+      201081
+     ]
+    },
+    "detached": {
+     "n_bins": 95,
+     "n_shots": 4,
+     "shot_ids": [
+      189081,
+      199353,
+      200977,
+      201081
+     ]
+    },
+    "marfe": {
+     "n_bins": 0,
+     "n_shots": 0,
+     "shot_ids": []
+    }
+   },
    "majority_class": "detached",
    "model_metrics": {
-    "accuracy": 0.5625,
-    "kappa": 0.0,
-    "macro_f1": 0.36,
-    "f1_attached": null,
-    "f1_detached": 0.72,
-    "f1_marfe": 0.0
+    "accuracy": 0.5339805825242718,
+    "kappa": 0.10661366100469809,
+    "macro_f1": 0.7224532224532225,
+    "f1_attached": 0.7692307692307693,
+    "f1_detached": 0.6756756756756757,
+    "f1_marfe": null
    },
    "majority_metrics": {
-    "accuracy": 0.5625,
+    "accuracy": 0.9223300970873787,
     "kappa": 0.0,
-    "macro_f1": 0.36,
-    "f1_attached": null,
-    "f1_detached": 0.72,
-    "f1_marfe": 0.0
+    "macro_f1": 0.4797979797979798,
+    "f1_attached": 0.0,
+    "f1_detached": 0.9595959595959596,
+    "f1_marfe": null
    },
    "model_confusion_matrix": {
     "labels": [
@@ -261,18 +315,18 @@
     "columns": "prediction",
     "counts": [
      [
-      0,
-      0,
+      5,
+      3,
       0
      ],
      [
       0,
-      9,
-      0
+      50,
+      45
      ],
      [
       0,
-      7,
+      0,
       0
      ]
     ]
@@ -288,17 +342,17 @@
     "counts": [
      [
       0,
-      0,
+      8,
       0
      ],
      [
       0,
-      9,
+      95,
       0
      ],
      [
       0,
-      7,
+      0,
       0
      ]
     ]
@@ -312,49 +366,72 @@
     189081,
     189088,
     189090,
-    189093,
     189094,
+    189100,
+    189101,
+    189448,
     190109,
-    190116,
+    190110,
+    190113,
     199166,
-    199172
+    199172,
+    199352,
+    199353,
+    199354,
+    200977,
+    201081
    ],
    "heldout_shot_ids": [
     189057,
     189097,
     189451,
+    195952,
     195954,
-    199171
+    199351
    ],
-   "training_certain_bins": 203,
-   "predicted_bins": 192,
-   "heldout_certain_bins": 28,
-   "scored_certain_bins": 28,
+   "training_certain_bins": 301,
+   "predicted_bins": 303,
+   "heldout_certain_bins": 72,
+   "scored_certain_bins": 72,
    "training_class_support": {
     "attached": {
-     "n_bins": 0,
-     "n_shots": 0,
-     "shot_ids": []
+     "n_bins": 22,
+     "n_shots": 6,
+     "shot_ids": [
+      189100,
+      189448,
+      199166,
+      199354,
+      200977,
+      201081
+     ]
     },
     "detached": {
-     "n_bins": 196,
-     "n_shots": 11,
+     "n_bins": 256,
+     "n_shots": 18,
      "shot_ids": [
       189061,
       189062,
       189081,
       189088,
       189090,
-      189093,
       189094,
+      189100,
+      189101,
       190109,
-      190116,
+      190110,
+      190113,
       199166,
-      199172
+      199172,
+      199352,
+      199353,
+      199354,
+      200977,
+      201081
      ]
     },
     "marfe": {
-     "n_bins": 7,
+     "n_bins": 23,
      "n_shots": 1,
      "shot_ids": [
       199172
@@ -363,12 +440,16 @@
    },
    "heldout_class_support": {
     "attached": {
-     "n_bins": 0,
-     "n_shots": 0,
-     "shot_ids": []
+     "n_bins": 38,
+     "n_shots": 3,
+     "shot_ids": [
+      189057,
+      189097,
+      189451
+     ]
     },
     "detached": {
-     "n_bins": 28,
+     "n_bins": 34,
      "n_shots": 1,
      "shot_ids": [
       189057
@@ -382,19 +463,19 @@
    },
    "majority_class": "detached",
    "model_metrics": {
-    "accuracy": 1.0,
-    "kappa": null,
-    "macro_f1": 1.0,
-    "f1_attached": null,
-    "f1_detached": 1.0,
+    "accuracy": 0.75,
+    "kappa": 0.5120481927710844,
+    "macro_f1": 0.7401764234161989,
+    "f1_attached": 0.6896551724137931,
+    "f1_detached": 0.7906976744186046,
     "f1_marfe": null
    },
    "majority_metrics": {
-    "accuracy": 1.0,
-    "kappa": null,
-    "macro_f1": 1.0,
-    "f1_attached": null,
-    "f1_detached": 1.0,
+    "accuracy": 0.4722222222222222,
+    "kappa": 0.0,
+    "macro_f1": 0.32075471698113206,
+    "f1_attached": 0.0,
+    "f1_detached": 0.6415094339622641,
     "f1_marfe": null
    },
    "model_confusion_matrix": {
@@ -407,13 +488,13 @@
     "columns": "prediction",
     "counts": [
      [
-      0,
-      0,
+      20,
+      18,
       0
      ],
      [
       0,
-      28,
+      34,
       0
      ],
      [
@@ -434,12 +515,12 @@
     "counts": [
      [
       0,
-      0,
+      38,
       0
      ],
      [
       0,
-      28,
+      34,
       0
      ],
      [
@@ -458,49 +539,71 @@
     189062,
     189081,
     189088,
-    189093,
-    190116,
+    189097,
+    189100,
+    189101,
+    189448,
+    189451,
+    190113,
     199166,
-    199172
+    199352,
+    199353,
+    199354,
+    200977,
+    201081
    ],
    "heldout_shot_ids": [
     189090,
     189094,
     190109,
     190110,
-    195952
+    190116,
+    199172
    ],
-   "training_certain_bins": 138,
-   "predicted_bins": 168,
-   "heldout_certain_bins": 93,
-   "scored_certain_bins": 93,
+   "training_certain_bins": 263,
+   "predicted_bins": 334,
+   "heldout_certain_bins": 110,
+   "scored_certain_bins": 110,
    "training_class_support": {
     "attached": {
-     "n_bins": 0,
-     "n_shots": 0,
-     "shot_ids": []
+     "n_bins": 60,
+     "n_shots": 9,
+     "shot_ids": [
+      189057,
+      189097,
+      189100,
+      189448,
+      189451,
+      199166,
+      199354,
+      200977,
+      201081
+     ]
     },
     "detached": {
-     "n_bins": 131,
-     "n_shots": 9,
+     "n_bins": 203,
+     "n_shots": 14,
      "shot_ids": [
       189057,
       189061,
       189062,
       189081,
       189088,
-      189093,
-      190116,
+      189100,
+      189101,
+      190113,
       199166,
-      199172
+      199352,
+      199353,
+      199354,
+      200977,
+      201081
      ]
     },
     "marfe": {
-     "n_bins": 7,
-     "n_shots": 1,
-     "shot_ids": [
-      199172
-     ]
+     "n_bins": 0,
+     "n_shots": 0,
+     "shot_ids": []
     }
    },
    "heldout_class_support": {
@@ -510,36 +613,40 @@
      "shot_ids": []
     },
     "detached": {
-     "n_bins": 93,
-     "n_shots": 3,
+     "n_bins": 87,
+     "n_shots": 5,
      "shot_ids": [
       189090,
       189094,
-      190109
+      190109,
+      190110,
+      199172
      ]
     },
     "marfe": {
-     "n_bins": 0,
-     "n_shots": 0,
-     "shot_ids": []
+     "n_bins": 23,
+     "n_shots": 1,
+     "shot_ids": [
+      199172
+     ]
     }
    },
    "majority_class": "detached",
    "model_metrics": {
-    "accuracy": 0.7311827956989247,
-    "kappa": 0.0,
-    "macro_f1": 0.84472049689441,
+    "accuracy": 0.6272727272727273,
+    "kappa": -0.10107421874999961,
+    "macro_f1": 0.3854748603351955,
     "f1_attached": null,
-    "f1_detached": 0.84472049689441,
-    "f1_marfe": null
+    "f1_detached": 0.770949720670391,
+    "f1_marfe": 0.0
    },
    "majority_metrics": {
-    "accuracy": 1.0,
-    "kappa": null,
-    "macro_f1": 1.0,
+    "accuracy": 0.7909090909090909,
+    "kappa": 0.0,
+    "macro_f1": 0.4416243654822335,
     "f1_attached": null,
-    "f1_detached": 1.0,
-    "f1_marfe": null
+    "f1_detached": 0.883248730964467,
+    "f1_marfe": 0.0
    },
    "model_confusion_matrix": {
     "labels": [
@@ -556,13 +663,13 @@
       0
      ],
      [
-      0,
-      68,
-      25
+      18,
+      69,
+      0
      ],
      [
       0,
-      0,
+      23,
       0
      ]
     ]
@@ -583,12 +690,12 @@
      ],
      [
       0,
-      93,
+      87,
       0
      ],
      [
       0,
-      0,
+      23,
       0
      ]
     ]
@@ -602,49 +709,66 @@
     189081,
     189088,
     189090,
-    189093,
     189094,
+    189097,
+    189101,
+    189448,
+    189451,
     190109,
-    190116,
+    190110,
     199166,
-    199172
+    199172,
+    199353,
+    200977,
+    201081
    ],
    "heldout_shot_ids": [
     189061,
     189100,
     190113,
-    199351,
-    199353
+    199352,
+    199354
    ],
-   "training_certain_bins": 210,
-   "predicted_bins": 163,
-   "heldout_certain_bins": 21,
-   "scored_certain_bins": 21,
+   "training_certain_bins": 340,
+   "predicted_bins": 263,
+   "heldout_certain_bins": 33,
+   "scored_certain_bins": 33,
    "training_class_support": {
     "attached": {
-     "n_bins": 0,
-     "n_shots": 0,
-     "shot_ids": []
+     "n_bins": 57,
+     "n_shots": 7,
+     "shot_ids": [
+      189057,
+      189097,
+      189448,
+      189451,
+      199166,
+      200977,
+      201081
+     ]
     },
     "detached": {
-     "n_bins": 203,
-     "n_shots": 11,
+     "n_bins": 260,
+     "n_shots": 14,
      "shot_ids": [
       189057,
       189062,
       189081,
       189088,
       189090,
-      189093,
       189094,
+      189101,
       190109,
-      190116,
+      190110,
       199166,
-      199172
+      199172,
+      199353,
+      200977,
+      201081
      ]
     },
     "marfe": {
-     "n_bins": 7,
+     "n_bins": 23,
      "n_shots": 1,
      "shot_ids": [
       199172
@@ -653,15 +777,22 @@
    },
    "heldout_class_support": {
     "attached": {
-     "n_bins": 0,
-     "n_shots": 0,
-     "shot_ids": []
+     "n_bins": 3,
+     "n_shots": 2,
+     "shot_ids": [
+      189100,
+      199354
+     ]
     },
     "detached": {
-     "n_bins": 21,
-     "n_shots": 1,
+     "n_bins": 30,
+     "n_shots": 5,
      "shot_ids": [
-      189061
+      189061,
+      189100,
+      190113,
+      199352,
+      199354
      ]
     },
     "marfe": {
@@ -672,19 +803,19 @@
    },
    "majority_class": "detached",
    "model_metrics": {
-    "accuracy": 1.0,
-    "kappa": null,
-    "macro_f1": 1.0,
-    "f1_attached": null,
-    "f1_detached": 1.0,
+    "accuracy": 0.5454545454545454,
+    "kappa": -0.13013698630136977,
+    "macro_f1": 0.35294117647058826,
+    "f1_attached": 0.0,
+    "f1_detached": 0.7058823529411765,
     "f1_marfe": null
    },
    "majority_metrics": {
-    "accuracy": 1.0,
-    "kappa": null,
-    "macro_f1": 1.0,
-    "f1_attached": null,
-    "f1_detached": 1.0,
+    "accuracy": 0.9090909090909091,
+    "kappa": 0.0,
+    "macro_f1": 0.47619047619047616,
+    "f1_attached": 0.0,
+    "f1_detached": 0.9523809523809523,
     "f1_marfe": null
    },
    "model_confusion_matrix": {
@@ -698,13 +829,13 @@
     "counts": [
      [
       0,
-      0,
+      3,
       0
      ],
      [
-      0,
-      21,
-      0
+      7,
+      18,
+      5
      ],
      [
       0,
@@ -724,12 +855,12 @@
     "counts": [
      [
       0,
-      0,
+      3,
       0
      ],
      [
       0,
-      21,
+      30,
       0
      ],
      [
@@ -741,12 +872,12 @@
    }
   }
  ],
- "n_windows": 1014,
- "n_shots": 27,
+ "n_windows": 1636,
+ "n_shots": 29,
  "class_counts": {
-  "attached": 0,
-  "detached": 224,
-  "marfe": 7
+  "attached": 60,
+  "detached": 290,
+  "marfe": 23
  },
  "input_policy": "complete measured input windows; no imputation or missingness channels",
  "fit_excluded_split": "test",
@@ -754,8 +885,8 @@
  "unscored_windows": 0,
  "eligibility": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/ours/eligibility.json",
  "cv_shots": {
-  "n_bins": 231,
-  "n_shots": 12,
+  "n_bins": 373,
+  "n_shots": 22,
   "shot_ids": [
    189057,
    189061,
@@ -763,30 +894,52 @@
    189081,
    189088,
    189090,
-   189093,
    189094,
+   189097,
+   189100,
+   189101,
+   189448,
+   189451,
    190109,
-   190116,
+   190110,
+   190113,
    199166,
-   199172
+   199172,
+   199352,
+   199353,
+   199354,
+   200977,
+   201081
   ],
   "reference_class_ids": [
+   0,
    1,
    2
   ],
   "reference_classes": [
+   "attached",
    "detached",
    "marfe"
   ],
   "class_support": {
    "attached": {
-    "n_bins": 0,
-    "n_shots": 0,
-    "shot_ids": []
+    "n_bins": 60,
+    "n_shots": 9,
+    "shot_ids": [
+     189057,
+     189097,
+     189100,
+     189448,
+     189451,
+     199166,
+     199354,
+     200977,
+     201081
+    ]
    },
    "detached": {
-    "n_bins": 224,
-    "n_shots": 12,
+    "n_bins": 290,
+    "n_shots": 19,
     "shot_ids": [
      189057,
      189061,
@@ -794,16 +947,23 @@
      189081,
      189088,
      189090,
-     189093,
      189094,
+     189100,
+     189101,
      190109,
-     190116,
+     190110,
+     190113,
      199166,
-     199172
+     199172,
+     199352,
+     199353,
+     199354,
+     200977,
+     201081
     ]
    },
    "marfe": {
-    "n_bins": 7,
+    "n_bins": 23,
     "n_shots": 1,
     "shot_ids": [
      199172
@@ -820,64 +980,64 @@
    "columns": "prediction",
    "counts": [
     [
-     0,
-     0,
+     36,
+     24,
      0
     ],
     [
-     0,
-     193,
-     31
+     32,
+     202,
+     56
     ],
     [
      0,
-     7,
+     23,
      0
     ]
    ]
   },
   "bootstrap_policy": "reference classes frozen before shot resampling; per-class F1 undefined without reference support; macro-F1 undefined unless every frozen reference class has support; intervals use only defined replicates, with counts reported for each metric",
   "accuracy": {
-   "value": 0.8354978354978355,
+   "value": 0.6380697050938338,
    "ci95": [
-    0.5494343000358037,
-    1.0
+    0.43302554632194523,
+    0.826640413606494
    ],
    "valid_replicates": 1000,
    "replicates": 1000
   },
   "kappa": {
-   "value": -0.052013422818792364,
+   "value": 0.1818979382950723,
    "ci95": [
-    -0.17049902521190702,
-    0.0
+    -0.13662350021786537,
+    0.5123534666948307
    ],
-   "valid_replicates": 963,
+   "valid_replicates": 1000,
    "replicates": 1000
   },
   "macro_f1": {
-   "value": 0.455188679245283,
+   "value": 0.43734539270253553,
    "ci95": [
-    0.33466789433578864,
-    0.4931506849315068
+    0.2616545211522307,
+    0.540395716269217
    ],
-   "valid_replicates": 669,
+   "valid_replicates": 651,
    "replicates": 1000
   },
   "f1_attached": {
-   "value": null,
+   "value": 0.5625,
    "ci95": [
-    null,
-    null
+    0.055482456140350876,
+    0.8350936250788975
    ],
-   "valid_replicates": 0,
+   "valid_replicates": 1000,
    "replicates": 1000
   },
   "f1_detached": {
-   "value": 0.910377358490566,
+   "value": 0.7495361781076066,
    "ci95": [
-    0.7092047445072819,
-    1.0
+    0.5403181657640688,
+    0.8933725256567336
    ],
    "valid_replicates": 1000,
    "replicates": 1000
@@ -888,21 +1048,21 @@
     0.0,
     0.0
    ],
-   "valid_replicates": 669,
+   "valid_replicates": 651,
    "replicates": 1000
   }
  },
  "cv_majority": {
-  "accuracy": 0.9696969696969697,
+  "accuracy": 0.7774798927613941,
   "kappa": 0.0,
-  "macro_f1": 0.49230769230769234,
-  "f1_attached": null,
-  "f1_detached": 0.9846153846153847,
+  "macro_f1": 0.29160382101558574,
+  "f1_attached": 0.0,
+  "f1_detached": 0.8748114630467572,
   "f1_marfe": 0.0
  },
  "cv_majority_ci": {
-  "n_bins": 231,
-  "n_shots": 12,
+  "n_bins": 373,
+  "n_shots": 22,
   "shot_ids": [
    189057,
    189061,
@@ -910,30 +1070,52 @@
    189081,
    189088,
    189090,
-   189093,
    189094,
+   189097,
+   189100,
+   189101,
+   189448,
+   189451,
    190109,
-   190116,
+   190110,
+   190113,
    199166,
-   199172
+   199172,
+   199352,
+   199353,
+   199354,
+   200977,
+   201081
   ],
   "reference_class_ids": [
+   0,
    1,
    2
   ],
   "reference_classes": [
+   "attached",
    "detached",
    "marfe"
   ],
   "class_support": {
    "attached": {
-    "n_bins": 0,
-    "n_shots": 0,
-    "shot_ids": []
+    "n_bins": 60,
+    "n_shots": 9,
+    "shot_ids": [
+     189057,
+     189097,
+     189100,
+     189448,
+     189451,
+     199166,
+     199354,
+     200977,
+     201081
+    ]
    },
    "detached": {
-    "n_bins": 224,
-    "n_shots": 12,
+    "n_bins": 290,
+    "n_shots": 19,
     "shot_ids": [
      189057,
      189061,
@@ -941,16 +1123,23 @@
      189081,
      189088,
      189090,
-     189093,
      189094,
+     189100,
+     189101,
      190109,
-     190116,
+     190110,
+     190113,
      199166,
-     199172
+     199172,
+     199352,
+     199353,
+     199354,
+     200977,
+     201081
     ]
    },
    "marfe": {
-    "n_bins": 7,
+    "n_bins": 23,
     "n_shots": 1,
     "shot_ids": [
      199172
@@ -968,27 +1157,27 @@
    "counts": [
     [
      0,
-     0,
+     60,
      0
     ],
     [
      0,
-     224,
+     290,
      0
     ],
     [
      0,
-     7,
+     23,
      0
     ]
    ]
   },
   "bootstrap_policy": "reference classes frozen before shot resampling; per-class F1 undefined without reference support; macro-F1 undefined unless every frozen reference class has support; intervals use only defined replicates, with counts reported for each metric",
   "accuracy": {
-   "value": 0.9696969696969697,
+   "value": 0.7774798927613941,
    "ci95": [
-    0.8771749226006191,
-    1.0
+    0.5999870801033591,
+    0.9214121003317657
    ],
    "valid_replicates": 1000,
    "replicates": 1000
@@ -999,32 +1188,32 @@
     0.0,
     0.0
    ],
-   "valid_replicates": 669,
+   "valid_replicates": 1000,
    "replicates": 1000
   },
   "macro_f1": {
-   "value": 0.49230769230769234,
+   "value": 0.29160382101558574,
    "ci95": [
-    0.4641003460207613,
-    0.4942071629769877
+    0.24889443566056968,
+    0.31203180330603053
    ],
-   "valid_replicates": 669,
+   "valid_replicates": 651,
    "replicates": 1000
   },
   "f1_attached": {
-   "value": null,
+   "value": 0.0,
    "ci95": [
-    null,
-    null
+    0.0,
+    0.0
    ],
-   "valid_replicates": 0,
+   "valid_replicates": 1000,
    "replicates": 1000
   },
   "f1_detached": {
-   "value": 0.9846153846153847,
+   "value": 0.8748114630467572,
    "ci95": [
-    0.9345691852459497,
-    1.0
+    0.7499899030694669,
+    0.9590988836644376
    ],
    "valid_replicates": 1000,
    "replicates": 1000
@@ -1035,31 +1224,37 @@
     0.0,
     0.0
    ],
-   "valid_replicates": 669,
+   "valid_replicates": 651,
    "replicates": 1000
   }
  },
  "marfe_transfer": {
   "status": "unsupported",
   "training_class_support": {
-   "n_bins": 7,
+   "n_bins": 23,
    "n_shots": 1,
    "shot_ids": [
     199172
    ]
   },
   "heldout_marfe_folds_without_training_support": [
-   1
+   3
   ],
   "reason": "MARFE candidates lack an independent benchmark; single-shot support cannot establish transfer to a different shot. Fold support records show when held-out MARFE has no supervised training examples."
  },
+ "dataset_fingerprint": "a5683d52a2df53bf53bc083a89c61bde36f2e2f85fa734cc40524a888714b4c3",
+ "label_source": {
+  "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/labels_bins.csv.gz",
+  "sha256": "df8747c48aa1526808be85d1b081b5b46e6e4f688fba46810d07404f11c6cc3c"
+ },
+ "bootstrap_comparison": "model and majority use identical shot resamples with seed 1 within each population",
  "evaluation_scope": "exploratory agreement with constructed labels; no independent physical benchmark or established learning beyond majority",
- "n_cv_windows": 231,
- "n_cv_shots": 12,
+ "n_cv_windows": 373,
+ "n_cv_shots": 22,
  "stratified": {
   "cv_all_combined": {
-   "n_bins": 231,
-   "n_shots": 12,
+   "n_bins": 373,
+   "n_shots": 22,
    "shot_ids": [
     189057,
     189061,
@@ -1067,30 +1262,52 @@
     189081,
     189088,
     189090,
-    189093,
     189094,
+    189097,
+    189100,
+    189101,
+    189448,
+    189451,
     190109,
-    190116,
+    190110,
+    190113,
     199166,
-    199172
+    199172,
+    199352,
+    199353,
+    199354,
+    200977,
+    201081
    ],
    "reference_class_ids": [
+    0,
     1,
     2
    ],
    "reference_classes": [
+    "attached",
     "detached",
     "marfe"
    ],
    "class_support": {
     "attached": {
-     "n_bins": 0,
-     "n_shots": 0,
-     "shot_ids": []
+     "n_bins": 60,
+     "n_shots": 9,
+     "shot_ids": [
+      189057,
+      189097,
+      189100,
+      189448,
+      189451,
+      199166,
+      199354,
+      200977,
+      201081
+     ]
     },
     "detached": {
-     "n_bins": 224,
-     "n_shots": 12,
+     "n_bins": 290,
+     "n_shots": 19,
      "shot_ids": [
       189057,
       189061,
@@ -1098,16 +1315,23 @@
       189081,
       189088,
       189090,
-      189093,
       189094,
+      189100,
+      189101,
       190109,
-      190116,
+      190110,
+      190113,
       199166,
-      199172
+      199172,
+      199352,
+      199353,
+      199354,
+      200977,
+      201081
      ]
     },
     "marfe": {
-     "n_bins": 7,
+     "n_bins": 23,
      "n_shots": 1,
      "shot_ids": [
       199172
@@ -1124,64 +1348,64 @@
     "columns": "prediction",
     "counts": [
      [
-      0,
-      0,
+      36,
+      24,
       0
      ],
      [
-      0,
-      193,
-      31
+      32,
+      202,
+      56
      ],
      [
       0,
-      7,
+      23,
       0
      ]
     ]
    },
    "bootstrap_policy": "reference classes frozen before shot resampling; per-class F1 undefined without reference support; macro-F1 undefined unless every frozen reference class has support; intervals use only defined replicates, with counts reported for each metric",
    "accuracy": {
-    "value": 0.8354978354978355,
+    "value": 0.6380697050938338,
     "ci95": [
-     0.5645633905736207,
-     1.0
+     0.41848200063714563,
+     0.8251661863664047
     ],
     "valid_replicates": 1000,
     "replicates": 1000
    },
    "kappa": {
-    "value": -0.052013422818792364,
+    "value": 0.1818979382950723,
     "ci95": [
-     -0.1548729550152459,
-     0.0
+     -0.13923579061474392,
+     0.526699156348393
     ],
-    "valid_replicates": 960,
+    "valid_replicates": 1000,
     "replicates": 1000
    },
    "macro_f1": {
-    "value": 0.455188679245283,
+    "value": 0.43734539270253553,
     "ci95": [
-     0.3575692963752665,
-     0.4932301740812379
+     0.26376221533445005,
+     0.5452340634367077
     ],
-    "valid_replicates": 657,
+    "valid_replicates": 650,
     "replicates": 1000
    },
    "f1_attached": {
-    "value": null,
+    "value": 0.5625,
     "ci95": [
-     null,
-     null
+     0.06423655913978496,
+     0.8418371212121211
     ],
-    "valid_replicates": 0,
+    "valid_replicates": 1000,
     "replicates": 1000
    },
    "f1_detached": {
-    "value": 0.910377358490566,
+    "value": 0.7495361781076066,
     "ci95": [
-     0.7216876853488302,
-     1.0
+     0.5373436471362739,
+     0.8906131291095211
     ],
     "valid_replicates": 1000,
     "replicates": 1000
@@ -1192,26 +1416,105 @@
      0.0,
      0.0
     ],
-    "valid_replicates": 657,
+    "valid_replicates": 650,
     "replicates": 1000
    }
   },
   "cv_all_loo_tangtv": {
-   "n_bins": 0,
-   "n_shots": 0,
-   "shot_ids": [],
-   "reference_class_ids": [],
-   "reference_classes": [],
+   "n_bins": 561,
+   "n_shots": 28,
+   "shot_ids": [
+    189057,
+    189061,
+    189062,
+    189081,
+    189088,
+    189090,
+    189093,
+    189094,
+    189097,
+    189100,
+    189101,
+    189448,
+    190109,
+    190110,
+    190113,
+    190114,
+    190116,
+    195952,
+    195954,
+    199166,
+    199171,
+    199172,
+    199351,
+    199352,
+    199353,
+    199354,
+    200977,
+    201081
+   ],
+   "reference_class_ids": [
+    0,
+    1
+   ],
+   "reference_classes": [
+    "attached",
+    "detached"
+   ],
    "class_support": {
     "attached": {
-     "n_bins": 0,
-     "n_shots": 0,
-     "shot_ids": []
+     "n_bins": 96,
+     "n_shots": 17,
+     "shot_ids": [
+      189061,
+      189062,
+      189088,
+      189100,
+      189101,
+      189448,
+      195952,
+      195954,
+      199166,
+      199171,
+      199172,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      201081
+     ]
     },
     "detached": {
-     "n_bins": 0,
-     "n_shots": 0,
-     "shot_ids": []
+     "n_bins": 465,
+     "n_shots": 25,
+     "shot_ids": [
+      189057,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      190109,
+      190110,
+      190113,
+      190114,
+      190116,
+      195952,
+      199166,
+      199171,
+      199172,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      201081
+     ]
     },
     "marfe": {
      "n_bins": 0,
@@ -1229,14 +1532,14 @@
     "columns": "prediction",
     "counts": [
      [
-      0,
-      0,
+      58,
+      38,
       0
      ],
      [
-      0,
-      0,
-      0
+      40,
+      339,
+      86
      ],
      [
       0,
@@ -1247,49 +1550,49 @@
    },
    "bootstrap_policy": "reference classes frozen before shot resampling; per-class F1 undefined without reference support; macro-F1 undefined unless every frozen reference class has support; intervals use only defined replicates, with counts reported for each metric",
    "accuracy": {
-    "value": null,
+    "value": 0.7076648841354723,
     "ci95": [
-     null,
-     null
+     0.5345989367822067,
+     0.8688316669810727
     ],
-    "valid_replicates": 0,
-    "replicates": 0
+    "valid_replicates": 1000,
+    "replicates": 1000
    },
    "kappa": {
-    "value": null,
+    "value": 0.2923204725863024,
     "ci95": [
-     null,
-     null
+     0.11566158482458416,
+     0.5575634235334208
     ],
-    "valid_replicates": 0,
-    "replicates": 0
+    "valid_replicates": 1000,
+    "replicates": 1000
    },
    "macro_f1": {
-    "value": null,
+    "value": 0.7015818987682738,
     "ci95": [
-     null,
-     null
+     0.5718190637538314,
+     0.8130352443993839
     ],
-    "valid_replicates": 0,
-    "replicates": 0
+    "valid_replicates": 1000,
+    "replicates": 1000
    },
    "f1_attached": {
-    "value": null,
+    "value": 0.5979381443298969,
     "ci95": [
-     null,
-     null
+     0.3999315068493151,
+     0.7598660630069798
     ],
-    "valid_replicates": 0,
-    "replicates": 0
+    "valid_replicates": 1000,
+    "replicates": 1000
    },
    "f1_detached": {
-    "value": null,
+    "value": 0.8052256532066508,
     "ci95": [
-     null,
-     null
+     0.6474425995535751,
+     0.9202819926557194
     ],
-    "valid_replicates": 0,
-    "replicates": 0
+    "valid_replicates": 1000,
+    "replicates": 1000
    },
    "f1_marfe": {
     "value": null,
@@ -1298,12 +1601,12 @@
      null
     ],
     "valid_replicates": 0,
-    "replicates": 0
+    "replicates": 1000
    }
   },
   "cv_inversion_combined": {
-   "n_bins": 231,
-   "n_shots": 12,
+   "n_bins": 373,
+   "n_shots": 22,
    "shot_ids": [
     189057,
     189061,
@@ -1311,30 +1614,52 @@
     189081,
     189088,
     189090,
-    189093,
     189094,
+    189097,
+    189100,
+    189101,
+    189448,
+    189451,
     190109,
-    190116,
+    190110,
+    190113,
     199166,
-    199172
+    199172,
+    199352,
+    199353,
+    199354,
+    200977,
+    201081
    ],
    "reference_class_ids": [
+    0,
     1,
     2
    ],
    "reference_classes": [
+    "attached",
     "detached",
     "marfe"
    ],
    "class_support": {
     "attached": {
-     "n_bins": 0,
-     "n_shots": 0,
-     "shot_ids": []
+     "n_bins": 60,
+     "n_shots": 9,
+     "shot_ids": [
+      189057,
+      189097,
+      189100,
+      189448,
+      189451,
+      199166,
+      199354,
+      200977,
+      201081
+     ]
     },
     "detached": {
-     "n_bins": 224,
-     "n_shots": 12,
+     "n_bins": 290,
+     "n_shots": 19,
      "shot_ids": [
       189057,
       189061,
@@ -1342,16 +1667,23 @@
       189081,
       189088,
       189090,
-      189093,
       189094,
+      189100,
+      189101,
       190109,
-      190116,
+      190110,
+      190113,
       199166,
-      199172
+      199172,
+      199352,
+      199353,
+      199354,
+      200977,
+      201081
      ]
     },
     "marfe": {
-     "n_bins": 7,
+     "n_bins": 23,
      "n_shots": 1,
      "shot_ids": [
       199172
@@ -1368,64 +1700,64 @@
     "columns": "prediction",
     "counts": [
      [
-      0,
-      0,
+      36,
+      24,
       0
      ],
      [
-      0,
-      193,
-      31
+      32,
+      202,
+      56
      ],
      [
       0,
-      7,
+      23,
       0
      ]
     ]
    },
    "bootstrap_policy": "reference classes frozen before shot resampling; per-class F1 undefined without reference support; macro-F1 undefined unless every frozen reference class has support; intervals use only defined replicates, with counts reported for each metric",
    "accuracy": {
-    "value": 0.8354978354978355,
+    "value": 0.6380697050938338,
     "ci95": [
-     0.5878429759416551,
-     1.0
+     0.443595954737035,
+     0.8134804597067578
     ],
     "valid_replicates": 1000,
     "replicates": 1000
    },
    "kappa": {
-    "value": -0.052013422818792364,
+    "value": 0.1818979382950723,
     "ci95": [
-     -0.13802976037033185,
-     0.0
+     -0.13882654218448207,
+     0.5086194788663275
     ],
-    "valid_replicates": 971,
+    "valid_replicates": 1000,
     "replicates": 1000
    },
    "macro_f1": {
-    "value": 0.455188679245283,
+    "value": 0.43734539270253553,
     "ci95": [
-     0.37009935648115405,
-     0.49353049907578556
+     0.26966966426567757,
+     0.5418271560652698
     ],
-    "valid_replicates": 637,
+    "valid_replicates": 646,
     "replicates": 1000
    },
    "f1_attached": {
-    "value": null,
+    "value": 0.5625,
     "ci95": [
-     null,
-     null
+     0.04641266699653637,
+     0.8482444498069498
     ],
-    "valid_replicates": 0,
+    "valid_replicates": 1000,
     "replicates": 1000
    },
    "f1_detached": {
-    "value": 0.910377358490566,
+    "value": 0.7495361781076066,
     "ci95": [
-     0.74042942507602,
-     1.0
+     0.52482172684055,
+     0.8847094426856765
     ],
     "valid_replicates": 1000,
     "replicates": 1000
@@ -1436,26 +1768,105 @@
      0.0,
      0.0
     ],
-    "valid_replicates": 637,
+    "valid_replicates": 646,
     "replicates": 1000
    }
   },
   "cv_inversion_loo_tangtv": {
-   "n_bins": 0,
-   "n_shots": 0,
-   "shot_ids": [],
-   "reference_class_ids": [],
-   "reference_classes": [],
+   "n_bins": 561,
+   "n_shots": 28,
+   "shot_ids": [
+    189057,
+    189061,
+    189062,
+    189081,
+    189088,
+    189090,
+    189093,
+    189094,
+    189097,
+    189100,
+    189101,
+    189448,
+    190109,
+    190110,
+    190113,
+    190114,
+    190116,
+    195952,
+    195954,
+    199166,
+    199171,
+    199172,
+    199351,
+    199352,
+    199353,
+    199354,
+    200977,
+    201081
+   ],
+   "reference_class_ids": [
+    0,
+    1
+   ],
+   "reference_classes": [
+    "attached",
+    "detached"
+   ],
    "class_support": {
     "attached": {
-     "n_bins": 0,
-     "n_shots": 0,
-     "shot_ids": []
+     "n_bins": 96,
+     "n_shots": 17,
+     "shot_ids": [
+      189061,
+      189062,
+      189088,
+      189100,
+      189101,
+      189448,
+      195952,
+      195954,
+      199166,
+      199171,
+      199172,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      201081
+     ]
     },
     "detached": {
-     "n_bins": 0,
-     "n_shots": 0,
-     "shot_ids": []
+     "n_bins": 465,
+     "n_shots": 25,
+     "shot_ids": [
+      189057,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      190109,
+      190110,
+      190113,
+      190114,
+      190116,
+      195952,
+      199166,
+      199171,
+      199172,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      201081
+     ]
     },
     "marfe": {
      "n_bins": 0,
@@ -1473,14 +1884,14 @@
     "columns": "prediction",
     "counts": [
      [
-      0,
-      0,
+      58,
+      38,
       0
      ],
      [
-      0,
-      0,
-      0
+      40,
+      339,
+      86
      ],
      [
       0,
@@ -1491,49 +1902,49 @@
    },
    "bootstrap_policy": "reference classes frozen before shot resampling; per-class F1 undefined without reference support; macro-F1 undefined unless every frozen reference class has support; intervals use only defined replicates, with counts reported for each metric",
    "accuracy": {
-    "value": null,
+    "value": 0.7076648841354723,
     "ci95": [
-     null,
-     null
+     0.5310322927145317,
+     0.8616186884236453
     ],
-    "valid_replicates": 0,
-    "replicates": 0
+    "valid_replicates": 1000,
+    "replicates": 1000
    },
    "kappa": {
-    "value": null,
+    "value": 0.2923204725863024,
     "ci95": [
-     null,
-     null
+     0.11597552464399548,
+     0.5531370338843162
     ],
-    "valid_replicates": 0,
-    "replicates": 0
+    "valid_replicates": 1000,
+    "replicates": 1000
    },
    "macro_f1": {
-    "value": null,
+    "value": 0.7015818987682738,
     "ci95": [
-     null,
-     null
+     0.5743111506796161,
+     0.8161770073788935
     ],
-    "valid_replicates": 0,
-    "replicates": 0
+    "valid_replicates": 1000,
+    "replicates": 1000
    },
    "f1_attached": {
-    "value": null,
+    "value": 0.5979381443298969,
     "ci95": [
-     null,
-     null
+     0.3940740112035308,
+     0.7669936161723633
     ],
-    "valid_replicates": 0,
-    "replicates": 0
+    "valid_replicates": 1000,
+    "replicates": 1000
    },
    "f1_detached": {
-    "value": null,
+    "value": 0.8052256532066508,
     "ci95": [
-     null,
-     null
+     0.647564127580765,
+     0.9153591627592207
     ],
-    "valid_replicates": 0,
-    "replicates": 0
+    "valid_replicates": 1000,
+    "replicates": 1000
    },
    "f1_marfe": {
     "value": null,
@@ -1542,7 +1953,7 @@
      null
     ],
     "valid_replicates": 0,
-    "replicates": 0
+    "replicates": 1000
    }
   },
   "cv_surrogate_combined": {
@@ -2386,12 +2797,5 @@
    }
   },
   "reference_note": "loo_tangtv = bins where the other two indicators agree: the compatible Afrac/Prad proxy pair, with posterior gates. This selects agreement and is not independently reviewed truth."
- },
- "dataset_fingerprint": "ef4d3f3d76d0d33ab90ed225bcf9368eae5d1afedcaea0b24295b31cf443ee08",
- "label_source": {
-  "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/labels_bins.csv.gz",
-  "sha256": "913ae93738f8366042a94c271f1570f2a6613f5ea552ddac8d2ecfae572f53c4"
- },
- "bootstrap_comparison": "model and majority use identical shot resamples with seed 1 within each population",
- "prediction_refresh": "saved predictions rescored after verifying prepared array contents, targets and splits; no new model fit"
+ }
 }

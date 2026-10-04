@@ -15,23 +15,23 @@
     "confidence",
     "attrs"
   ],
-  "coverage": "Exploratory labels; no independent benchmark. In practice, coverage is two indicators: Prad,div and TangTV; the uncalibrated Jsat proxy can also cast provisional lower-shelf votes. Assessed bins have at least two valid measurements on eligible shots (at least 20 assessed bins and 20 valid bins per contributing indicator). Certainty requires upper-shelf TangTV plus f_div corroboration. Time with no row was not assessed; it is not attached. 4 (uncertain) includes conflicting compatible votes, insufficient support, candidate MARFE, lower_shelf_window pending owner sign-off, unknown ELM coverage and the Afrac+Prad-only weak tier. The interval attrs tier and bin tier preserve those distinctions.",
+  "coverage": "Exploratory labels; no independent benchmark. A bin is assessed when at least two indicators are valid on it, on shots with at least 20 assessed bins and 20 valid bins from each of two indicators. Attached and detached are certain when upper-shelf TangTV votes and at least one other indicator casts a compatible vote with no conflict. MARFE is certain on the TangTV MARFE vote (DZ >= 1.2, an emission peak inside the separatrix near the X-point and the density cue, over at least two adjacent bins) unless another indicator votes attached; Prad,div and Afrac do not corroborate it. Time with no row was not assessed; it is not attached. 4 (uncertain) is every other assessed bin: conflicting votes, insufficient support, candidate_marfe, lower_shelf_window, elm_unknown, geometry_unknown. The tier in each interval's attrs says which.",
   "diagnostic_only": false,
   "diagnostic_posterior_threshold": 0.7,
   "fit_excluded_split": "test",
   "label_model_structure": "independent",
   "labeler": "rule",
-  "made_at": "2026-10-03T22:38:53+00:00",
+  "made_at": "2026-10-03T23:37:39+00:00",
   "made_by": "scripts/labeler/detach_label.py",
   "made_from": [
     {
-      "git_sha": "c0dd07fd",
+      "git_sha": "178cc884",
       "producer": "detach_vote"
     }
   ],
-  "n_requested_shots": 36,
-  "n_rows": 298,
-  "n_shots": 36,
+  "n_requested_shots": 37,
+  "n_rows": 679,
+  "n_shots": 37,
   "per_shot_files": {
     "axis_order": [
       "time",
@@ -80,7 +80,7 @@
   "producer": "detach_vote",
   "schema_version": 6,
   "shot_list": "detach_shots.csv",
-  "shot_list_sha256": "dd194d0481531d6077f6bef11bd94fbb926d4ebdc5a774c8db7a8937b4820e8c",
+  "shot_list_sha256": "daede4e7b1796da95f6c61ddf191d0e8a52357ae7d290a0bfbbd05913b481827",
   "table_kind": "intervals",
   "time_units": "ms"
 }

@@ -2,39 +2,42 @@
  "n_shots_with_bins": 470,
  "n_bins": 50032,
  "afrac": {
-  "valid_bins": 235,
-  "shots_with_valid_bins": 8,
-  "shots_with_20_valid_bins": 5,
+  "valid_bins": 2970,
+  "shots_with_valid_bins": 42,
+  "shots_with_20_valid_bins": 37,
   "invalid_reason_bins": {
-   "probe_flux_unknown": 33044,
+   "probe_flux_unknown": 34135,
    "no_positioned_probes": 12135,
-   "probe_far_from_strike": 2327,
-   "probe_not_sol": 1926,
+   "probe_beyond_sol_window": 363,
    "elm_unknown": 230,
-   "no_power": 130,
-   "ramp": 5
+   "no_probe_samples": 60,
+   "low_power": 52,
+   "elm": 31,
+   "ramp": 25,
+   "probe_not_sol": 22,
+   "no_power": 9
   },
   "votes": {
-   "attached": 122,
-   "detached": 43,
+   "attached": 977,
+   "detached": 1404,
    "marfe": 0
   }
  },
  "prad": {
-  "valid_bins": 38631,
-  "shots_with_valid_bins": 449,
-  "shots_with_20_valid_bins": 442,
+  "valid_bins": 39061,
+  "shots_with_valid_bins": 454,
+  "shots_with_20_valid_bins": 447,
   "invalid_reason_bins": {
-   "no_input_power": 6436,
-   "elm": 2970,
-   "low_power": 1347,
+   "no_input_power": 5952,
+   "elm": 3006,
+   "low_power": 1364,
    "elm_unknown": 252,
    "no_bolometer": 233,
-   "negative_radiation": 163
+   "negative_radiation": 164
   },
   "votes": {
-   "attached": 28558,
-   "detached": 2819,
+   "attached": 31064,
+   "detached": 5540,
    "marfe": 0
   }
  },
@@ -44,8 +47,8 @@
   "shots_with_20_valid_bins": 37,
   "invalid_reason_bins": {
    "no_inversion": 20530,
-   "surrogate_domain": 19017,
-   "efit_gap": 6230,
+   "surrogate_domain": 19192,
+   "efit_gap": 6055,
    "no_frames": 2462,
    "efit_missing": 2
   },
@@ -55,11 +58,11 @@
    "marfe": 27
   }
  },
- "n_eligible_shots": 36,
+ "n_eligible_shots": 37,
  "eligible_by_split": {
   "train": 1,
   "val": 1,
   "test": 0,
-  "outside": 34
+  "outside": 35
  }
 }

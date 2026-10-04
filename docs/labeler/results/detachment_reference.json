@@ -3,7 +3,7 @@
   "limitations": "A small literature sanity check, not an expert gold set or an estimate of population accuracy. The references come from papers also used to motivate indicator thresholds, so threshold-source overlap prevents a fully held-out validation claim.",
   "sources_record": {
     "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-detach/docs/labeler/results/detachment_reference_sources.json",
-    "sha256": "262c986d5cdd91285a4f8f0f43c342c80dbd7bfeea78a619a971c1e0cf56b999"
+    "sha256": "d35c6a056483c2ba6467ff32981b62f125cd578d1cc0f2b9f9aaf0c635531d93"
   },
   "digest_provenance": {
     "chen2026": {
@@ -47,18 +47,19 @@
   },
   "labels_record": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/labels_bins.csv.gz",
-    "sha256": "913ae93738f8366042a94c271f1570f2a6613f5ea552ddac8d2ecfae572f53c4"
+    "sha256": "df8747c48aa1526808be85d1b081b5b46e6e4f688fba46810d07404f11c6cc3c"
   },
   "bin_directory": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins",
   "matching": "Only the half-open bin [start_ms, start_ms+bin_ms) containing each published instant; no nearest-bin fallback or duration inference.",
   "consensus_column": "state_rule",
-  "n_primary_reference_points": 3,
-  "n_primary_reference_shots": 2,
+  "n_primary_reference_points": 10,
+  "n_primary_reference_shots": 3,
   "primary_shots": [
     180257,
-    199166
+    199166,
+    201081
   ],
-  "n_excluded_ambiguous_statements": 5,
+  "n_excluded_ambiguous_statements": 3,
   "confusion_row_names": [
     "attached",
     "detached",
@@ -98,7 +99,7 @@
           "vote_name": "abstain",
           "measurement_valid": false,
           "value": null,
-          "reason": "probe_far_from_strike"
+          "reason": "probe_beyond_sol_window"
         },
         "prad": {
           "vote": 0,
@@ -119,7 +120,7 @@
       "bin_ms": 50.0,
       "bins_source": {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/180257.npz",
-        "sha256": "9aaa2eac8f2a4da6135e82748547556ca3fee9a935aa9bbbd13466285f652f67"
+        "sha256": "8e116857cbd78a5a5162c0389dabaea7a80169e5aa1eb1e0cbe925e6b72a1bd3"
       },
       "gate_diagnostics": {
         "aux_greenwald_fraction": null,
@@ -164,7 +165,7 @@
           "vote_name": "abstain",
           "measurement_valid": false,
           "value": null,
-          "reason": "probe_far_from_strike"
+          "reason": "probe_beyond_sol_window"
         },
         "prad": {
           "vote": 1,
@@ -185,7 +186,7 @@
       "bin_ms": 50.0,
       "bins_source": {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/180257.npz",
-        "sha256": "9aaa2eac8f2a4da6135e82748547556ca3fee9a935aa9bbbd13466285f652f67"
+        "sha256": "8e116857cbd78a5a5162c0389dabaea7a80169e5aa1eb1e0cbe925e6b72a1bd3"
       },
       "gate_diagnostics": {
         "aux_greenwald_fraction": null,
@@ -226,11 +227,11 @@
           "reason": "uncertain_consensus"
         },
         "afrac": {
-          "vote": 0,
-          "vote_name": "abstain",
-          "measurement_valid": false,
-          "value": null,
-          "reason": "probe_not_sol"
+          "vote": 2,
+          "vote_name": "detached",
+          "measurement_valid": true,
+          "value": 0.1810278594493866,
+          "reason": ""
         },
         "prad": {
           "vote": 2,
@@ -251,7 +252,7 @@
       "bin_ms": 50.0,
       "bins_source": {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/199166.npz",
-        "sha256": "9dac4fe30ac4a59b7b9c71c3fee99d63ad086a6579bcf128d2c0b87f0f200978"
+        "sha256": "53ea2d995a45da67661a1dc1ed36da8e2f98ae7dec380f914399fe953145a43d"
       },
       "gate_diagnostics": {
         "aux_greenwald_fraction": 0.7211474947025647,
@@ -269,34 +270,496 @@
         "consensus_tier": "candidate_marfe"
       },
       "cohort_split": "external_development"
+    },
+    {
+      "reference_id": "chen2026_201081_attached_2300",
+      "shot": 201081,
+      "reference_time_ms": 2300.0,
+      "truth": 1,
+      "truth_name": "attached",
+      "source": "chen2026",
+      "digest_lines": [
+        84,
+        84
+      ],
+      "primary_state": "uncertain",
+      "primary_state_code": 4,
+      "prediction": {
+        "consensus": {
+          "vote": 0,
+          "vote_name": "abstain",
+          "measurement_valid": false,
+          "value": null,
+          "reason": "uncertain_consensus"
+        },
+        "afrac": {
+          "vote": 2,
+          "vote_name": "detached",
+          "measurement_valid": true,
+          "value": 0.337925523519516,
+          "reason": ""
+        },
+        "prad": {
+          "vote": 1,
+          "vote_name": "attached",
+          "measurement_valid": true,
+          "value": 0.381777822971344,
+          "reason": ""
+        },
+        "tangtv": {
+          "vote": 1,
+          "vote_name": "attached",
+          "measurement_valid": true,
+          "value": 0.22355714440345764,
+          "reason": ""
+        }
+      },
+      "start_ms": 2300.0,
+      "bin_ms": 50.0,
+      "bins_source": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/201081.npz",
+        "sha256": "14c6abffc38f8ac805f59cda28870d6fb9618ddb745db0331e30dd5e12001222"
+      },
+      "gate_diagnostics": {
+        "aux_greenwald_fraction": 0.8678670550055749,
+        "greenwald_source": "BCI_DENV2_unit_confirmed_ellipse",
+        "tangtv_source": "inversion",
+        "tangtv_efit_source": "EFIT02",
+        "tangtv_marfe_efit_source": "EFIT02",
+        "tangtv_marfe_candidate": false,
+        "tangtv_marfe_spatial": false,
+        "tangtv_marfe_second_cue": true,
+        "tangtv_tier": "upper_shelf",
+        "aux_elm_known": true,
+        "aux_elm_share": 0.0,
+        "afrac_method": "local_proxy",
+        "consensus_tier": "conflict"
+      },
+      "cohort_split": "external_development"
+    },
+    {
+      "reference_id": "chen2026_201081_attached_2500",
+      "shot": 201081,
+      "reference_time_ms": 2500.0,
+      "truth": 1,
+      "truth_name": "attached",
+      "source": "chen2026",
+      "digest_lines": [
+        84,
+        84
+      ],
+      "primary_state": "uncertain",
+      "primary_state_code": 4,
+      "prediction": {
+        "consensus": {
+          "vote": 0,
+          "vote_name": "abstain",
+          "measurement_valid": false,
+          "value": null,
+          "reason": "uncertain_consensus"
+        },
+        "afrac": {
+          "vote": 2,
+          "vote_name": "detached",
+          "measurement_valid": true,
+          "value": 0.4258803427219391,
+          "reason": ""
+        },
+        "prad": {
+          "vote": 0,
+          "vote_name": "abstain",
+          "measurement_valid": true,
+          "value": 0.43456366658210754,
+          "reason": "valid_measurement_abstains"
+        },
+        "tangtv": {
+          "vote": 0,
+          "vote_name": "abstain",
+          "measurement_valid": true,
+          "value": 0.48416951298713684,
+          "reason": "valid_measurement_abstains"
+        }
+      },
+      "start_ms": 2500.0,
+      "bin_ms": 50.0,
+      "bins_source": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/201081.npz",
+        "sha256": "14c6abffc38f8ac805f59cda28870d6fb9618ddb745db0331e30dd5e12001222"
+      },
+      "gate_diagnostics": {
+        "aux_greenwald_fraction": 0.9011319487171727,
+        "greenwald_source": "BCI_DENV2_unit_confirmed_ellipse",
+        "tangtv_source": "inversion",
+        "tangtv_efit_source": "EFIT02",
+        "tangtv_marfe_efit_source": "EFIT02",
+        "tangtv_marfe_candidate": false,
+        "tangtv_marfe_spatial": false,
+        "tangtv_marfe_second_cue": true,
+        "tangtv_tier": "upper_shelf",
+        "aux_elm_known": true,
+        "aux_elm_share": 0.0820000022649765,
+        "afrac_method": "local_proxy",
+        "consensus_tier": "insufficient_support"
+      },
+      "cohort_split": "external_development"
+    },
+    {
+      "reference_id": "chen2026_201081_detached_3000",
+      "shot": 201081,
+      "reference_time_ms": 3000.0,
+      "truth": 2,
+      "truth_name": "detached",
+      "source": "chen2026",
+      "digest_lines": [
+        84,
+        84
+      ],
+      "primary_state": "detached",
+      "primary_state_code": 2,
+      "prediction": {
+        "consensus": {
+          "vote": 2,
+          "vote_name": "detached",
+          "measurement_valid": true,
+          "value": null,
+          "reason": ""
+        },
+        "afrac": {
+          "vote": 2,
+          "vote_name": "detached",
+          "measurement_valid": true,
+          "value": 0.47376587986946106,
+          "reason": ""
+        },
+        "prad": {
+          "vote": 2,
+          "vote_name": "detached",
+          "measurement_valid": true,
+          "value": 0.45420101284980774,
+          "reason": ""
+        },
+        "tangtv": {
+          "vote": 2,
+          "vote_name": "detached",
+          "measurement_valid": true,
+          "value": 0.799275279045105,
+          "reason": ""
+        }
+      },
+      "start_ms": 3000.0,
+      "bin_ms": 50.0,
+      "bins_source": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/201081.npz",
+        "sha256": "14c6abffc38f8ac805f59cda28870d6fb9618ddb745db0331e30dd5e12001222"
+      },
+      "gate_diagnostics": {
+        "aux_greenwald_fraction": 1.021110827591443,
+        "greenwald_source": "BCI_DENV2_unit_confirmed_ellipse",
+        "tangtv_source": "inversion",
+        "tangtv_efit_source": "EFIT02",
+        "tangtv_marfe_efit_source": "EFIT02",
+        "tangtv_marfe_candidate": false,
+        "tangtv_marfe_spatial": true,
+        "tangtv_marfe_second_cue": true,
+        "tangtv_tier": "upper_shelf",
+        "aux_elm_known": true,
+        "aux_elm_share": 0.3700000047683716,
+        "afrac_method": "local_proxy",
+        "consensus_tier": "certain"
+      },
+      "cohort_split": "external_development"
+    },
+    {
+      "reference_id": "chen2026_201081_detached_3500",
+      "shot": 201081,
+      "reference_time_ms": 3500.0,
+      "truth": 2,
+      "truth_name": "detached",
+      "source": "chen2026",
+      "digest_lines": [
+        84,
+        84
+      ],
+      "primary_state": "detached",
+      "primary_state_code": 2,
+      "prediction": {
+        "consensus": {
+          "vote": 2,
+          "vote_name": "detached",
+          "measurement_valid": true,
+          "value": null,
+          "reason": ""
+        },
+        "afrac": {
+          "vote": 2,
+          "vote_name": "detached",
+          "measurement_valid": true,
+          "value": 0.43877023458480835,
+          "reason": ""
+        },
+        "prad": {
+          "vote": 2,
+          "vote_name": "detached",
+          "measurement_valid": true,
+          "value": 0.46142578125,
+          "reason": ""
+        },
+        "tangtv": {
+          "vote": 2,
+          "vote_name": "detached",
+          "measurement_valid": true,
+          "value": 0.7822593450546265,
+          "reason": ""
+        }
+      },
+      "start_ms": 3500.0,
+      "bin_ms": 50.0,
+      "bins_source": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/201081.npz",
+        "sha256": "14c6abffc38f8ac805f59cda28870d6fb9618ddb745db0331e30dd5e12001222"
+      },
+      "gate_diagnostics": {
+        "aux_greenwald_fraction": 1.0250167487431987,
+        "greenwald_source": "BCI_DENV2_unit_confirmed_ellipse",
+        "tangtv_source": "inversion",
+        "tangtv_efit_source": "EFIT02",
+        "tangtv_marfe_efit_source": "EFIT02",
+        "tangtv_marfe_candidate": false,
+        "tangtv_marfe_spatial": false,
+        "tangtv_marfe_second_cue": true,
+        "tangtv_tier": "upper_shelf",
+        "aux_elm_known": true,
+        "aux_elm_share": 0.0,
+        "afrac_method": "local_proxy",
+        "consensus_tier": "certain"
+      },
+      "cohort_split": "external_development"
+    },
+    {
+      "reference_id": "chen2026_201081_detached_4000",
+      "shot": 201081,
+      "reference_time_ms": 4000.0,
+      "truth": 2,
+      "truth_name": "detached",
+      "source": "chen2026",
+      "digest_lines": [
+        84,
+        84
+      ],
+      "primary_state": "detached",
+      "primary_state_code": 2,
+      "prediction": {
+        "consensus": {
+          "vote": 2,
+          "vote_name": "detached",
+          "measurement_valid": true,
+          "value": null,
+          "reason": ""
+        },
+        "afrac": {
+          "vote": 2,
+          "vote_name": "detached",
+          "measurement_valid": true,
+          "value": 0.4126317501068115,
+          "reason": ""
+        },
+        "prad": {
+          "vote": 2,
+          "vote_name": "detached",
+          "measurement_valid": true,
+          "value": 0.4595591723918915,
+          "reason": ""
+        },
+        "tangtv": {
+          "vote": 2,
+          "vote_name": "detached",
+          "measurement_valid": true,
+          "value": 0.8297942876815796,
+          "reason": ""
+        }
+      },
+      "start_ms": 4000.0,
+      "bin_ms": 50.0,
+      "bins_source": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/201081.npz",
+        "sha256": "14c6abffc38f8ac805f59cda28870d6fb9618ddb745db0331e30dd5e12001222"
+      },
+      "gate_diagnostics": {
+        "aux_greenwald_fraction": 1.0498217539362051,
+        "greenwald_source": "BCI_DENV2_unit_confirmed_ellipse",
+        "tangtv_source": "inversion",
+        "tangtv_efit_source": "EFIT02",
+        "tangtv_marfe_efit_source": "EFIT02",
+        "tangtv_marfe_candidate": false,
+        "tangtv_marfe_spatial": true,
+        "tangtv_marfe_second_cue": true,
+        "tangtv_tier": "upper_shelf",
+        "aux_elm_known": true,
+        "aux_elm_share": 0.0,
+        "afrac_method": "local_proxy",
+        "consensus_tier": "certain"
+      },
+      "cohort_split": "external_development"
+    },
+    {
+      "reference_id": "chen2026_201081_attached_4900",
+      "shot": 201081,
+      "reference_time_ms": 4900.0,
+      "truth": 1,
+      "truth_name": "attached",
+      "source": "chen2026",
+      "digest_lines": [
+        84,
+        84
+      ],
+      "primary_state": "uncertain",
+      "primary_state_code": 4,
+      "prediction": {
+        "consensus": {
+          "vote": 0,
+          "vote_name": "abstain",
+          "measurement_valid": false,
+          "value": null,
+          "reason": "uncertain_consensus"
+        },
+        "afrac": {
+          "vote": 2,
+          "vote_name": "detached",
+          "measurement_valid": true,
+          "value": 0.35886842012405396,
+          "reason": ""
+        },
+        "prad": {
+          "vote": 1,
+          "vote_name": "attached",
+          "measurement_valid": true,
+          "value": 0.3828774690628052,
+          "reason": ""
+        },
+        "tangtv": {
+          "vote": 1,
+          "vote_name": "attached",
+          "measurement_valid": true,
+          "value": 0.2095201313495636,
+          "reason": ""
+        }
+      },
+      "start_ms": 4900.0,
+      "bin_ms": 50.0,
+      "bins_source": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/201081.npz",
+        "sha256": "14c6abffc38f8ac805f59cda28870d6fb9618ddb745db0331e30dd5e12001222"
+      },
+      "gate_diagnostics": {
+        "aux_greenwald_fraction": 0.917071640171756,
+        "greenwald_source": "BCI_DENV2_unit_confirmed_ellipse",
+        "tangtv_source": "inversion",
+        "tangtv_efit_source": "EFIT02",
+        "tangtv_marfe_efit_source": "EFIT02",
+        "tangtv_marfe_candidate": false,
+        "tangtv_marfe_spatial": false,
+        "tangtv_marfe_second_cue": true,
+        "tangtv_tier": "upper_shelf",
+        "aux_elm_known": true,
+        "aux_elm_share": 0.0,
+        "afrac_method": "local_proxy",
+        "consensus_tier": "conflict"
+      },
+      "cohort_split": "external_development"
+    },
+    {
+      "reference_id": "chen2026_201081_attached_5100",
+      "shot": 201081,
+      "reference_time_ms": 5100.0,
+      "truth": 1,
+      "truth_name": "attached",
+      "source": "chen2026",
+      "digest_lines": [
+        84,
+        84
+      ],
+      "primary_state": "uncertain",
+      "primary_state_code": 4,
+      "prediction": {
+        "consensus": {
+          "vote": 0,
+          "vote_name": "abstain",
+          "measurement_valid": false,
+          "value": null,
+          "reason": "uncertain_consensus"
+        },
+        "afrac": {
+          "vote": 2,
+          "vote_name": "detached",
+          "measurement_valid": true,
+          "value": 0.35737377405166626,
+          "reason": ""
+        },
+        "prad": {
+          "vote": 1,
+          "vote_name": "attached",
+          "measurement_valid": true,
+          "value": 0.3844811022281647,
+          "reason": ""
+        },
+        "tangtv": {
+          "vote": 1,
+          "vote_name": "attached",
+          "measurement_valid": true,
+          "value": 0.19390103220939636,
+          "reason": ""
+        }
+      },
+      "start_ms": 5100.0,
+      "bin_ms": 50.0,
+      "bins_source": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/201081.npz",
+        "sha256": "14c6abffc38f8ac805f59cda28870d6fb9618ddb745db0331e30dd5e12001222"
+      },
+      "gate_diagnostics": {
+        "aux_greenwald_fraction": 0.8908481098357941,
+        "greenwald_source": "BCI_DENV2_unit_confirmed_ellipse",
+        "tangtv_source": "inversion",
+        "tangtv_efit_source": "EFIT02",
+        "tangtv_marfe_efit_source": "EFIT02",
+        "tangtv_marfe_candidate": false,
+        "tangtv_marfe_spatial": false,
+        "tangtv_marfe_second_cue": true,
+        "tangtv_tier": "upper_shelf",
+        "aux_elm_known": true,
+        "aux_elm_share": 0.026000000536441803,
+        "afrac_method": "local_proxy",
+        "consensus_tier": "conflict"
+      },
+      "cohort_split": "external_development"
     }
   ],
   "scores": {
     "consensus": {
       "overall": {
-        "n_reference_points": 3,
-        "n_cast_votes": 0,
-        "n_abstentions": 3,
-        "vote_coverage": 0.0,
-        "strict_accuracy_all_references": 0.0,
-        "agreement_on_cast_votes": null,
+        "n_reference_points": 10,
+        "n_cast_votes": 3,
+        "n_abstentions": 7,
+        "vote_coverage": 0.3,
+        "strict_accuracy_all_references": 0.3,
+        "agreement_on_cast_votes": 1.0,
         "kappa_on_cast_votes": null,
         "f1_with_abstentions_as_false_negatives": {
           "attached": 0.0,
-          "detached": 0.0,
+          "detached": 0.8571428571428571,
           "marfe": 0.0
         },
-        "macro_f1_supported_states": 0.0,
+        "macro_f1_supported_states": 0.2857142857142857,
         "confusion_truth_by_prediction": [
           [
             0,
             0,
             0,
-            1
+            5
           ],
           [
             0,
-            0,
+            3,
             0,
             1
           ],
@@ -308,26 +771,26 @@
           ]
         ],
         "binary_attached_vs_not_attached": {
-          "strict_accuracy_all_references": 0.0,
+          "strict_accuracy_all_references": 0.3,
           "f1_with_abstentions_as_false_negatives": {
             "attached": 0.0,
-            "not_attached": 0.0
+            "not_attached": 0.75
           },
           "confusion_truth_by_prediction": [
             [
               0,
               0,
-              1
+              5
             ],
             [
               0,
-              0,
+              3,
               2
             ]
           ]
         },
-        "n_valid_measurements": 0,
-        "measurement_coverage": 0.0
+        "n_valid_measurements": 3,
+        "measurement_coverage": 0.3
       },
       "by_shot": {
         "180257": {
@@ -441,38 +904,97 @@
           },
           "n_valid_measurements": 0,
           "measurement_coverage": 0.0
+        },
+        "201081": {
+          "n_reference_points": 7,
+          "n_cast_votes": 3,
+          "n_abstentions": 4,
+          "vote_coverage": 0.42857142857142855,
+          "strict_accuracy_all_references": 0.42857142857142855,
+          "agreement_on_cast_votes": 1.0,
+          "kappa_on_cast_votes": null,
+          "f1_with_abstentions_as_false_negatives": {
+            "attached": 0.0,
+            "detached": 1.0,
+            "marfe": null
+          },
+          "macro_f1_supported_states": 0.5,
+          "confusion_truth_by_prediction": [
+            [
+              0,
+              0,
+              0,
+              4
+            ],
+            [
+              0,
+              3,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0
+            ]
+          ],
+          "binary_attached_vs_not_attached": {
+            "strict_accuracy_all_references": 0.42857142857142855,
+            "f1_with_abstentions_as_false_negatives": {
+              "attached": 0.0,
+              "not_attached": 1.0
+            },
+            "confusion_truth_by_prediction": [
+              [
+                0,
+                0,
+                4
+              ],
+              [
+                0,
+                3,
+                0
+              ]
+            ]
+          },
+          "n_valid_measurements": 3,
+          "measurement_coverage": 0.42857142857142855
         }
       },
       "shot_bootstrap": {
         "unit": "shot",
         "replicates": 1000,
         "seed": 42,
-        "n_shots": 2,
+        "n_shots": 3,
         "reference_classes": [
           "attached",
           "detached",
           "marfe"
         ],
         "missing_class_support": "class F1 undefined; macro requires every frozen class",
-        "warning": "Only two reference shots; intervals are descriptive and cannot support population-accuracy claims.",
+        "warning": "Only 3 reference shots; intervals are descriptive and cannot support population-accuracy claims.",
         "ci95": {
           "vote_coverage": {
             "interval": [
               0.0,
-              0.0
+              0.42857142857142855
             ],
             "valid_replicates": 1000
           },
           "strict_accuracy_all_references": {
             "interval": [
               0.0,
-              0.0
+              0.42857142857142855
             ],
             "valid_replicates": 1000
           },
           "agreement_on_cast_votes": {
-            "interval": null,
-            "valid_replicates": 0
+            "interval": [
+              1.0,
+              1.0
+            ],
+            "valid_replicates": 709
           },
           "kappa_on_cast_votes": {
             "interval": null,
@@ -481,42 +1003,42 @@
           "macro_f1_supported_states": {
             "interval": [
               0.0,
-              0.0
+              0.3333333333333333
             ],
-            "valid_replicates": 494
+            "valid_replicates": 678
           },
           "f1_attached": {
             "interval": [
               0.0,
               0.0
             ],
-            "valid_replicates": 746
+            "valid_replicates": 964
           },
           "f1_detached": {
             "interval": [
               0.0,
-              0.0
+              1.0
             ],
-            "valid_replicates": 746
+            "valid_replicates": 964
           },
           "f1_marfe": {
             "interval": [
               0.0,
               0.0
             ],
-            "valid_replicates": 748
+            "valid_replicates": 714
           },
           "binary_f1_attached": {
             "interval": [
               0.0,
               0.0
             ],
-            "valid_replicates": 746
+            "valid_replicates": 964
           },
           "binary_f1_not_attached": {
             "interval": [
               0.0,
-              0.0
+              1.0
             ],
             "valid_replicates": 1000
           }
@@ -525,60 +1047,60 @@
     },
     "afrac": {
       "overall": {
-        "n_reference_points": 3,
-        "n_cast_votes": 0,
-        "n_abstentions": 3,
-        "vote_coverage": 0.0,
-        "strict_accuracy_all_references": 0.0,
-        "agreement_on_cast_votes": null,
-        "kappa_on_cast_votes": null,
+        "n_reference_points": 10,
+        "n_cast_votes": 8,
+        "n_abstentions": 2,
+        "vote_coverage": 0.8,
+        "strict_accuracy_all_references": 0.3,
+        "agreement_on_cast_votes": 0.375,
+        "kappa_on_cast_votes": 0.0,
         "f1_with_abstentions_as_false_negatives": {
           "attached": 0.0,
-          "detached": 0.0,
+          "detached": 0.5,
           "marfe": 0.0
         },
-        "macro_f1_supported_states": 0.0,
+        "macro_f1_supported_states": 0.16666666666666666,
         "confusion_truth_by_prediction": [
           [
             0,
-            0,
-            0,
-            1
-          ],
-          [
-            0,
-            0,
+            4,
             0,
             1
           ],
           [
             0,
-            0,
+            3,
             0,
             1
+          ],
+          [
+            0,
+            1,
+            0,
+            0
           ]
         ],
         "binary_attached_vs_not_attached": {
-          "strict_accuracy_all_references": 0.0,
+          "strict_accuracy_all_references": 0.4,
           "f1_with_abstentions_as_false_negatives": {
             "attached": 0.0,
-            "not_attached": 0.0
+            "not_attached": 0.6153846153846154
           },
           "confusion_truth_by_prediction": [
             [
               0,
-              0,
+              4,
               1
             ],
             [
               0,
-              0,
-              2
+              4,
+              1
             ]
           ]
         },
-        "n_valid_measurements": 0,
-        "measurement_coverage": 0.0
+        "n_valid_measurements": 8,
+        "measurement_coverage": 0.8
       },
       "by_shot": {
         "180257": {
@@ -639,12 +1161,12 @@
         },
         "199166": {
           "n_reference_points": 1,
-          "n_cast_votes": 0,
-          "n_abstentions": 1,
-          "vote_coverage": 0.0,
+          "n_cast_votes": 1,
+          "n_abstentions": 0,
+          "vote_coverage": 1.0,
           "strict_accuracy_all_references": 0.0,
-          "agreement_on_cast_votes": null,
-          "kappa_on_cast_votes": null,
+          "agreement_on_cast_votes": 0.0,
+          "kappa_on_cast_votes": 0.0,
           "f1_with_abstentions_as_false_negatives": {
             "attached": null,
             "detached": null,
@@ -666,16 +1188,16 @@
             ],
             [
               0,
+              1,
               0,
-              0,
-              1
+              0
             ]
           ],
           "binary_attached_vs_not_attached": {
-            "strict_accuracy_all_references": 0.0,
+            "strict_accuracy_all_references": 1.0,
             "f1_with_abstentions_as_false_negatives": {
               "attached": null,
-              "not_attached": 0.0
+              "not_attached": 1.0
             },
             "confusion_truth_by_prediction": [
               [
@@ -685,89 +1207,151 @@
               ],
               [
                 0,
-                0,
-                1
+                1,
+                0
               ]
             ]
           },
-          "n_valid_measurements": 0,
-          "measurement_coverage": 0.0
+          "n_valid_measurements": 1,
+          "measurement_coverage": 1.0
+        },
+        "201081": {
+          "n_reference_points": 7,
+          "n_cast_votes": 7,
+          "n_abstentions": 0,
+          "vote_coverage": 1.0,
+          "strict_accuracy_all_references": 0.42857142857142855,
+          "agreement_on_cast_votes": 0.42857142857142855,
+          "kappa_on_cast_votes": 0.0,
+          "f1_with_abstentions_as_false_negatives": {
+            "attached": 0.0,
+            "detached": 0.6,
+            "marfe": null
+          },
+          "macro_f1_supported_states": 0.3,
+          "confusion_truth_by_prediction": [
+            [
+              0,
+              4,
+              0,
+              0
+            ],
+            [
+              0,
+              3,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0
+            ]
+          ],
+          "binary_attached_vs_not_attached": {
+            "strict_accuracy_all_references": 0.42857142857142855,
+            "f1_with_abstentions_as_false_negatives": {
+              "attached": 0.0,
+              "not_attached": 0.6
+            },
+            "confusion_truth_by_prediction": [
+              [
+                0,
+                4,
+                0
+              ],
+              [
+                0,
+                3,
+                0
+              ]
+            ]
+          },
+          "n_valid_measurements": 7,
+          "measurement_coverage": 1.0
         }
       },
       "shot_bootstrap": {
         "unit": "shot",
         "replicates": 1000,
         "seed": 42,
-        "n_shots": 2,
+        "n_shots": 3,
         "reference_classes": [
           "attached",
           "detached",
           "marfe"
         ],
         "missing_class_support": "class F1 undefined; macro requires every frozen class",
-        "warning": "Only two reference shots; intervals are descriptive and cannot support population-accuracy claims.",
+        "warning": "Only 3 reference shots; intervals are descriptive and cannot support population-accuracy claims.",
         "ci95": {
           "vote_coverage": {
             "interval": [
               0.0,
-              0.0
+              1.0
             ],
             "valid_replicates": 1000
           },
           "strict_accuracy_all_references": {
             "interval": [
               0.0,
-              0.0
+              0.42857142857142855
             ],
             "valid_replicates": 1000
           },
           "agreement_on_cast_votes": {
-            "interval": null,
-            "valid_replicates": 0
+            "interval": [
+              0.0,
+              0.42857142857142855
+            ],
+            "valid_replicates": 968
           },
           "kappa_on_cast_votes": {
-            "interval": null,
-            "valid_replicates": 0
-          },
-          "macro_f1_supported_states": {
             "interval": [
               0.0,
               0.0
             ],
-            "valid_replicates": 494
+            "valid_replicates": 968
+          },
+          "macro_f1_supported_states": {
+            "interval": [
+              0.0,
+              0.19047619047619047
+            ],
+            "valid_replicates": 678
           },
           "f1_attached": {
             "interval": [
               0.0,
               0.0
             ],
-            "valid_replicates": 746
+            "valid_replicates": 964
           },
           "f1_detached": {
             "interval": [
               0.0,
-              0.0
+              0.6
             ],
-            "valid_replicates": 746
+            "valid_replicates": 964
           },
           "f1_marfe": {
             "interval": [
               0.0,
               0.0
             ],
-            "valid_replicates": 748
+            "valid_replicates": 714
           },
           "binary_f1_attached": {
             "interval": [
               0.0,
               0.0
             ],
-            "valid_replicates": 746
+            "valid_replicates": 964
           },
           "binary_f1_not_attached": {
             "interval": [
               0.0,
-              0.0
+              1.0
             ],
             "valid_replicates": 1000
           }
@@ -776,29 +1360,29 @@
     },
     "prad": {
       "overall": {
-        "n_reference_points": 3,
-        "n_cast_votes": 2,
-        "n_abstentions": 1,
-        "vote_coverage": 0.6666666666666666,
-        "strict_accuracy_all_references": 0.0,
-        "agreement_on_cast_votes": 0.0,
-        "kappa_on_cast_votes": -0.3333333333333333,
+        "n_reference_points": 10,
+        "n_cast_votes": 8,
+        "n_abstentions": 2,
+        "vote_coverage": 0.8,
+        "strict_accuracy_all_references": 0.6,
+        "agreement_on_cast_votes": 0.75,
+        "kappa_on_cast_votes": 0.5555555555555556,
         "f1_with_abstentions_as_false_negatives": {
-          "attached": 0.0,
-          "detached": 0.0,
+          "attached": 0.6666666666666666,
+          "detached": 0.75,
           "marfe": 0.0
         },
-        "macro_f1_supported_states": 0.0,
+        "macro_f1_supported_states": 0.47222222222222215,
         "confusion_truth_by_prediction": [
           [
+            3,
             0,
             0,
-            0,
-            1
+            2
           ],
           [
             1,
-            0,
+            3,
             0,
             0
           ],
@@ -810,26 +1394,26 @@
           ]
         ],
         "binary_attached_vs_not_attached": {
-          "strict_accuracy_all_references": 0.3333333333333333,
+          "strict_accuracy_all_references": 0.7,
           "f1_with_abstentions_as_false_negatives": {
-            "attached": 0.0,
-            "not_attached": 0.6666666666666666
+            "attached": 0.6666666666666666,
+            "not_attached": 0.8888888888888888
           },
           "confusion_truth_by_prediction": [
             [
+              3,
               0,
-              0,
-              1
+              2
             ],
             [
               1,
-              1,
+              4,
               0
             ]
           ]
         },
-        "n_valid_measurements": 2,
-        "measurement_coverage": 0.6666666666666666
+        "n_valid_measurements": 9,
+        "measurement_coverage": 0.9
       },
       "by_shot": {
         "180257": {
@@ -943,20 +1527,76 @@
           },
           "n_valid_measurements": 1,
           "measurement_coverage": 1.0
+        },
+        "201081": {
+          "n_reference_points": 7,
+          "n_cast_votes": 6,
+          "n_abstentions": 1,
+          "vote_coverage": 0.8571428571428571,
+          "strict_accuracy_all_references": 0.8571428571428571,
+          "agreement_on_cast_votes": 1.0,
+          "kappa_on_cast_votes": 1.0,
+          "f1_with_abstentions_as_false_negatives": {
+            "attached": 0.8571428571428571,
+            "detached": 1.0,
+            "marfe": null
+          },
+          "macro_f1_supported_states": 0.9285714285714286,
+          "confusion_truth_by_prediction": [
+            [
+              3,
+              0,
+              0,
+              1
+            ],
+            [
+              0,
+              3,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0
+            ]
+          ],
+          "binary_attached_vs_not_attached": {
+            "strict_accuracy_all_references": 0.8571428571428571,
+            "f1_with_abstentions_as_false_negatives": {
+              "attached": 0.8571428571428571,
+              "not_attached": 1.0
+            },
+            "confusion_truth_by_prediction": [
+              [
+                3,
+                0,
+                1
+              ],
+              [
+                0,
+                3,
+                0
+              ]
+            ]
+          },
+          "n_valid_measurements": 7,
+          "measurement_coverage": 1.0
         }
       },
       "shot_bootstrap": {
         "unit": "shot",
         "replicates": 1000,
         "seed": 42,
-        "n_shots": 2,
+        "n_shots": 3,
         "reference_classes": [
           "attached",
           "detached",
           "marfe"
         ],
         "missing_class_support": "class F1 undefined; macro requires every frozen class",
-        "warning": "Only two reference shots; intervals are descriptive and cannot support population-accuracy claims.",
+        "warning": "Only 3 reference shots; intervals are descriptive and cannot support population-accuracy claims.",
         "ci95": {
           "vote_coverage": {
             "interval": [
@@ -968,58 +1608,58 @@
           "strict_accuracy_all_references": {
             "interval": [
               0.0,
-              0.0
+              0.8571428571428571
             ],
             "valid_replicates": 1000
           },
           "agreement_on_cast_votes": {
             "interval": [
               0.0,
-              0.0
+              1.0
             ],
             "valid_replicates": 1000
           },
           "kappa_on_cast_votes": {
             "interval": [
-              -0.3333333333333333,
-              0.0
+              -0.2857142857142857,
+              1.0
             ],
             "valid_replicates": 1000
           },
           "macro_f1_supported_states": {
             "interval": [
               0.0,
-              0.0
+              0.5934065934065934
             ],
-            "valid_replicates": 494
+            "valid_replicates": 678
           },
           "f1_attached": {
             "interval": [
               0.0,
-              0.0
+              0.8571428571428571
             ],
-            "valid_replicates": 746
+            "valid_replicates": 964
           },
           "f1_detached": {
             "interval": [
               0.0,
-              0.0
+              1.0
             ],
-            "valid_replicates": 746
+            "valid_replicates": 964
           },
           "f1_marfe": {
             "interval": [
               0.0,
               0.0
             ],
-            "valid_replicates": 748
+            "valid_replicates": 714
           },
           "binary_f1_attached": {
             "interval": [
               0.0,
-              0.0
+              0.8571428571428571
             ],
-            "valid_replicates": 746
+            "valid_replicates": 964
           },
           "binary_f1_not_attached": {
             "interval": [
@@ -1033,29 +1673,29 @@
     },
     "tangtv": {
       "overall": {
-        "n_reference_points": 3,
-        "n_cast_votes": 0,
-        "n_abstentions": 3,
-        "vote_coverage": 0.0,
-        "strict_accuracy_all_references": 0.0,
-        "agreement_on_cast_votes": null,
-        "kappa_on_cast_votes": null,
+        "n_reference_points": 10,
+        "n_cast_votes": 6,
+        "n_abstentions": 4,
+        "vote_coverage": 0.6,
+        "strict_accuracy_all_references": 0.6,
+        "agreement_on_cast_votes": 1.0,
+        "kappa_on_cast_votes": 1.0,
         "f1_with_abstentions_as_false_negatives": {
-          "attached": 0.0,
-          "detached": 0.0,
+          "attached": 0.75,
+          "detached": 0.8571428571428571,
           "marfe": 0.0
         },
-        "macro_f1_supported_states": 0.0,
+        "macro_f1_supported_states": 0.5357142857142857,
         "confusion_truth_by_prediction": [
           [
+            3,
             0,
             0,
-            0,
-            1
+            2
           ],
           [
             0,
-            0,
+            3,
             0,
             1
           ],
@@ -1067,26 +1707,26 @@
           ]
         ],
         "binary_attached_vs_not_attached": {
-          "strict_accuracy_all_references": 0.0,
+          "strict_accuracy_all_references": 0.6,
           "f1_with_abstentions_as_false_negatives": {
-            "attached": 0.0,
-            "not_attached": 0.0
+            "attached": 0.75,
+            "not_attached": 0.75
           },
           "confusion_truth_by_prediction": [
             [
+              3,
               0,
-              0,
-              1
+              2
             ],
             [
               0,
-              0,
+              3,
               2
             ]
           ]
         },
-        "n_valid_measurements": 1,
-        "measurement_coverage": 0.3333333333333333
+        "n_valid_measurements": 8,
+        "measurement_coverage": 0.8
       },
       "by_shot": {
         "180257": {
@@ -1200,82 +1840,144 @@
           },
           "n_valid_measurements": 1,
           "measurement_coverage": 1.0
+        },
+        "201081": {
+          "n_reference_points": 7,
+          "n_cast_votes": 6,
+          "n_abstentions": 1,
+          "vote_coverage": 0.8571428571428571,
+          "strict_accuracy_all_references": 0.8571428571428571,
+          "agreement_on_cast_votes": 1.0,
+          "kappa_on_cast_votes": 1.0,
+          "f1_with_abstentions_as_false_negatives": {
+            "attached": 0.8571428571428571,
+            "detached": 1.0,
+            "marfe": null
+          },
+          "macro_f1_supported_states": 0.9285714285714286,
+          "confusion_truth_by_prediction": [
+            [
+              3,
+              0,
+              0,
+              1
+            ],
+            [
+              0,
+              3,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0
+            ]
+          ],
+          "binary_attached_vs_not_attached": {
+            "strict_accuracy_all_references": 0.8571428571428571,
+            "f1_with_abstentions_as_false_negatives": {
+              "attached": 0.8571428571428571,
+              "not_attached": 1.0
+            },
+            "confusion_truth_by_prediction": [
+              [
+                3,
+                0,
+                1
+              ],
+              [
+                0,
+                3,
+                0
+              ]
+            ]
+          },
+          "n_valid_measurements": 7,
+          "measurement_coverage": 1.0
         }
       },
       "shot_bootstrap": {
         "unit": "shot",
         "replicates": 1000,
         "seed": 42,
-        "n_shots": 2,
+        "n_shots": 3,
         "reference_classes": [
           "attached",
           "detached",
           "marfe"
         ],
         "missing_class_support": "class F1 undefined; macro requires every frozen class",
-        "warning": "Only two reference shots; intervals are descriptive and cannot support population-accuracy claims.",
+        "warning": "Only 3 reference shots; intervals are descriptive and cannot support population-accuracy claims.",
         "ci95": {
           "vote_coverage": {
             "interval": [
               0.0,
-              0.0
+              0.8571428571428571
             ],
             "valid_replicates": 1000
           },
           "strict_accuracy_all_references": {
             "interval": [
               0.0,
-              0.0
+              0.8571428571428571
             ],
             "valid_replicates": 1000
           },
           "agreement_on_cast_votes": {
-            "interval": null,
-            "valid_replicates": 0
+            "interval": [
+              1.0,
+              1.0
+            ],
+            "valid_replicates": 709
           },
           "kappa_on_cast_votes": {
-            "interval": null,
-            "valid_replicates": 0
+            "interval": [
+              1.0,
+              1.0
+            ],
+            "valid_replicates": 709
           },
           "macro_f1_supported_states": {
             "interval": [
               0.0,
-              0.0
+              0.6190476190476191
             ],
-            "valid_replicates": 494
+            "valid_replicates": 678
           },
           "f1_attached": {
             "interval": [
               0.0,
-              0.0
+              0.8571428571428571
             ],
-            "valid_replicates": 746
+            "valid_replicates": 964
           },
           "f1_detached": {
             "interval": [
               0.0,
-              0.0
+              1.0
             ],
-            "valid_replicates": 746
+            "valid_replicates": 964
           },
           "f1_marfe": {
             "interval": [
               0.0,
               0.0
             ],
-            "valid_replicates": 748
+            "valid_replicates": 714
           },
           "binary_f1_attached": {
             "interval": [
               0.0,
-              0.0
+              0.8571428571428571
             ],
-            "valid_replicates": 746
+            "valid_replicates": 964
           },
           "binary_f1_not_attached": {
             "interval": [
               0.0,
-              0.0
+              1.0
             ],
             "valid_replicates": 1000
           }
@@ -1299,7 +2001,7 @@
         "inversion_source_sav": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189057.sav",
         "bins": {
           "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/189057.npz",
-          "sha256": "9546e1a0cfd0134c3aab150a8c66be9d3560ef0e1d1b2e2c28a3ddc8b67499b9"
+          "sha256": "f95a72ec52a9ab9f888d3ad014377e23fcab448f65df2a6a264996f7429ea7ae"
         },
         "n_manual_frame_points": 171,
         "time_assignment": "By inversion-frame index; exact equal frame counts required."
@@ -1902,8 +2604,8 @@
   "thresholds": {
     "AFRAC_ATTACHED_MIN": 0.75,
     "AFRAC_DETACHED_MAX": 0.5,
-    "PRAD_ATTACHED_MAX": 0.36,
-    "PRAD_DETACHED_MIN": 0.5,
+    "PRAD_ATTACHED_MAX": 0.39904071127749174,
+    "PRAD_DETACHED_MIN": 0.4458352831071596,
     "DZ_ATTACHED_MAX": 0.35,
     "DZ_DETACHED_MIN": 0.5,
     "DZ_MARFE_MIN": 1.2

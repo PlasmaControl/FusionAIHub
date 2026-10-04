@@ -4,30 +4,83 @@
  "scope": "exploratory label-set coverage and indicator agreement; no independent benchmark",
  "independent_benchmark": {
   "status": "unavailable",
-  "reason": "No independent physical state reference with evaluable coverage."
+  "reason": "No independent physical state reference with evaluable coverage; the divertor Thomson check is in docs/labeler/results/detachment_te_check.json."
  },
- "interpretation": "Certain labels require compatible indicator votes; they are not independent truth. Agreement does not establish accuracy. MARFE candidates come from one shot and remain within cue uncertainty.",
+ "interpretation": "Certain labels require compatible indicator votes; they are not independent truth. Agreement does not establish accuracy.",
  "bin_ms": 50.0,
  "figure": {
   "width_in": 3.25,
-  "height_in": 3.4,
+  "height_in": 3.5,
   "min_font_pt": 7
  },
  "population": "all exported assessed eligible-shot bins, every split",
+ "paper_tier": "upper_shelf",
+ "agreement_population": {
+  "both_valid_bins": 1214,
+  "both_vote_bins": 837,
+  "both_vote_shots": 28,
+  "both_vote_shot_ids": [
+   189057,
+   189061,
+   189062,
+   189081,
+   189088,
+   189090,
+   189093,
+   189094,
+   189097,
+   189100,
+   189101,
+   189448,
+   189451,
+   190109,
+   190110,
+   190113,
+   190114,
+   190115,
+   190116,
+   199166,
+   199171,
+   199172,
+   199351,
+   199352,
+   199353,
+   199354,
+   200977,
+   201081
+  ],
+  "vote_table_prad_rows_tangtv_columns": [
+   [
+    47,
+    29,
+    0
+   ],
+   [
+    237,
+    501,
+    23
+   ],
+   [
+    0,
+    0,
+    0
+   ]
+  ]
+ },
  "bootstrap": {
   "unit": "shot",
   "replicates": 1000,
   "ci": 0.95,
   "seed": 0,
   "method": "percentile",
-  "undefined_draws": "excluded; valid_replicates reported",
-  "source": "/scratch/gpfs/nc1514/FusionAIHub-r4-detach/docs/labeler/results/detachment_benchmark.json"
+  "undefined_draws": "excluded; valid_replicates in the benchmark record",
+  "source": "docs/labeler/results/detachment_benchmark.json"
  },
  "coverage": {
   "assessed": {
-   "bins": 1737,
-   "shots": 36,
-   "seconds": 86.85,
+   "bins": 2873,
+   "shots": 37,
+   "seconds": 143.65,
    "shot_ids": [
     189057,
     189061,
@@ -58,6 +111,7 @@
     199353,
     199354,
     200977,
+    201081,
     206879,
     206880,
     206886,
@@ -68,9 +122,9 @@
    ]
   },
   "certain": {
-   "bins": 307,
-   "shots": 16,
-   "seconds": 15.35,
+   "bins": 471,
+   "shots": 24,
+   "seconds": 23.55,
    "shot_ids": [
     189057,
     189061,
@@ -78,38 +132,66 @@
     189081,
     189088,
     189090,
-    189093,
     189094,
+    189097,
+    189100,
+    189101,
+    189448,
+    189451,
     190109,
     190110,
     190113,
+    190114,
     190115,
-    190116,
     199166,
     199172,
-    200977
+    199352,
+    199353,
+    199354,
+    200977,
+    201081
    ]
   },
   "by_state": {
    "attached": {
     "assessed": {
-     "bins": 0,
-     "shots": 0,
-     "seconds": 0.0,
-     "shot_ids": []
+     "bins": 78,
+     "shots": 9,
+     "seconds": 3.9,
+     "shot_ids": [
+      189057,
+      189097,
+      189100,
+      189448,
+      189451,
+      199166,
+      199354,
+      200977,
+      201081
+     ]
     },
     "certain": {
-     "bins": 0,
-     "shots": 0,
-     "seconds": 0.0,
-     "shot_ids": []
+     "bins": 78,
+     "shots": 9,
+     "seconds": 3.9,
+     "shot_ids": [
+      189057,
+      189097,
+      189100,
+      189448,
+      189451,
+      199166,
+      199354,
+      200977,
+      201081
+     ]
     }
    },
    "detached": {
     "assessed": {
-     "bins": 300,
-     "shots": 16,
-     "seconds": 15.0,
+     "bins": 370,
+     "shots": 21,
+     "seconds": 18.5,
      "shot_ids": [
       189057,
       189061,
@@ -117,22 +199,27 @@
       189081,
       189088,
       189090,
-      189093,
       189094,
+      189100,
+      189101,
       190109,
       190110,
       190113,
+      190114,
       190115,
-      190116,
       199166,
       199172,
-      200977
+      199352,
+      199353,
+      199354,
+      200977,
+      201081
      ]
     },
     "certain": {
-     "bins": 300,
-     "shots": 16,
-     "seconds": 15.0,
+     "bins": 370,
+     "shots": 21,
+     "seconds": 18.5,
      "shot_ids": [
       189057,
       189061,
@@ -140,32 +227,37 @@
       189081,
       189088,
       189090,
-      189093,
       189094,
+      189100,
+      189101,
       190109,
       190110,
       190113,
+      190114,
       190115,
-      190116,
       199166,
       199172,
-      200977
+      199352,
+      199353,
+      199354,
+      200977,
+      201081
      ]
     }
    },
    "marfe": {
     "assessed": {
-     "bins": 7,
+     "bins": 23,
      "shots": 1,
-     "seconds": 0.35,
+     "seconds": 1.15,
      "shot_ids": [
       199172
      ]
     },
     "certain": {
-     "bins": 7,
+     "bins": 23,
      "shots": 1,
-     "seconds": 0.35,
+     "seconds": 1.15,
      "shot_ids": [
       199172
      ]
@@ -173,12 +265,13 @@
    },
    "uncertain": {
     "assessed": {
-     "bins": 1430,
-     "shots": 35,
-     "seconds": 71.5,
+     "bins": 2402,
+     "shots": 37,
+     "seconds": 120.1,
      "shot_ids": [
       189057,
       189061,
+      189062,
       189081,
       189088,
       189090,
@@ -205,6 +298,7 @@
       199353,
       199354,
       200977,
+      201081,
       206879,
       206880,
       206886,
@@ -317,10 +411,40 @@
    },
    "none": {
     "assessed": {
-     "bins": 134,
-     "shots": 7,
-     "seconds": 6.7,
+     "bins": 1141,
+     "shots": 37,
+     "seconds": 57.05,
      "shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190114,
+      190115,
+      190116,
+      195952,
+      195954,
+      199166,
+      199171,
+      199172,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      201081,
       206879,
       206880,
       206886,
@@ -381,10 +505,40 @@
      },
      "uncertain": {
       "assessed": {
-       "bins": 134,
-       "shots": 7,
-       "seconds": 6.7,
+       "bins": 1141,
+       "shots": 37,
+       "seconds": 57.05,
        "shot_ids": [
+        189057,
+        189061,
+        189062,
+        189081,
+        189088,
+        189090,
+        189093,
+        189094,
+        189097,
+        189100,
+        189101,
+        189448,
+        189451,
+        190109,
+        190110,
+        190113,
+        190114,
+        190115,
+        190116,
+        195952,
+        195954,
+        199166,
+        199171,
+        199172,
+        199351,
+        199352,
+        199353,
+        199354,
+        200977,
+        201081,
         206879,
         206880,
         206886,
@@ -405,9 +559,9 @@
    },
    "upper_shelf": {
     "assessed": {
-     "bins": 1144,
-     "shots": 27,
-     "seconds": 57.2,
+     "bins": 1273,
+     "shots": 28,
+     "seconds": 63.65,
      "shot_ids": [
       189057,
       189061,
@@ -435,13 +589,14 @@
       199352,
       199353,
       199354,
-      200977
+      200977,
+      201081
      ]
     },
     "certain": {
-     "bins": 307,
-     "shots": 16,
-     "seconds": 15.35,
+     "bins": 471,
+     "shots": 24,
+     "seconds": 23.55,
      "shot_ids": [
       189057,
       189061,
@@ -449,38 +604,66 @@
       189081,
       189088,
       189090,
-      189093,
       189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
       190109,
       190110,
       190113,
+      190114,
       190115,
-      190116,
       199166,
       199172,
-      200977
+      199352,
+      199353,
+      199354,
+      200977,
+      201081
      ]
     },
     "by_state": {
      "attached": {
       "assessed": {
-       "bins": 0,
-       "shots": 0,
-       "seconds": 0.0,
-       "shot_ids": []
+       "bins": 78,
+       "shots": 9,
+       "seconds": 3.9,
+       "shot_ids": [
+        189057,
+        189097,
+        189100,
+        189448,
+        189451,
+        199166,
+        199354,
+        200977,
+        201081
+       ]
       },
       "certain": {
-       "bins": 0,
-       "shots": 0,
-       "seconds": 0.0,
-       "shot_ids": []
+       "bins": 78,
+       "shots": 9,
+       "seconds": 3.9,
+       "shot_ids": [
+        189057,
+        189097,
+        189100,
+        189448,
+        189451,
+        199166,
+        199354,
+        200977,
+        201081
+       ]
       }
      },
      "detached": {
       "assessed": {
-       "bins": 300,
-       "shots": 16,
-       "seconds": 15.0,
+       "bins": 370,
+       "shots": 21,
+       "seconds": 18.5,
        "shot_ids": [
         189057,
         189061,
@@ -488,22 +671,27 @@
         189081,
         189088,
         189090,
-        189093,
         189094,
+        189100,
+        189101,
         190109,
         190110,
         190113,
+        190114,
         190115,
-        190116,
         199166,
         199172,
-        200977
+        199352,
+        199353,
+        199354,
+        200977,
+        201081
        ]
       },
       "certain": {
-       "bins": 300,
-       "shots": 16,
-       "seconds": 15.0,
+       "bins": 370,
+       "shots": 21,
+       "seconds": 18.5,
        "shot_ids": [
         189057,
         189061,
@@ -511,32 +699,37 @@
         189081,
         189088,
         189090,
-        189093,
         189094,
+        189100,
+        189101,
         190109,
         190110,
         190113,
+        190114,
         190115,
-        190116,
         199166,
         199172,
-        200977
+        199352,
+        199353,
+        199354,
+        200977,
+        201081
        ]
       }
      },
      "marfe": {
       "assessed": {
-       "bins": 7,
+       "bins": 23,
        "shots": 1,
-       "seconds": 0.35,
+       "seconds": 1.15,
        "shot_ids": [
         199172
        ]
       },
       "certain": {
-       "bins": 7,
+       "bins": 23,
        "shots": 1,
-       "seconds": 0.35,
+       "seconds": 1.15,
        "shot_ids": [
         199172
        ]
@@ -544,12 +737,13 @@
      },
      "uncertain": {
       "assessed": {
-       "bins": 837,
-       "shots": 26,
-       "seconds": 41.85,
+       "bins": 802,
+       "shots": 28,
+       "seconds": 40.1,
        "shot_ids": [
         189057,
         189061,
+        189062,
         189081,
         189088,
         189090,
@@ -573,7 +767,8 @@
         199352,
         199353,
         199354,
-        200977
+        200977,
+        201081
        ]
       },
       "certain": {
@@ -589,9 +784,9 @@
   "by_split": {
    "outside": {
     "assessed": {
-     "bins": 1649,
-     "shots": 34,
-     "seconds": 82.45,
+     "bins": 2750,
+     "shots": 35,
+     "seconds": 137.5,
      "shot_ids": [
       189057,
       189062,
@@ -620,6 +815,7 @@
       199353,
       199354,
       200977,
+      201081,
       206879,
       206880,
       206886,
@@ -630,101 +826,139 @@
      ]
     },
     "certain": {
-     "bins": 257,
-     "shots": 15,
-     "seconds": 12.85,
+     "bins": 450,
+     "shots": 23,
+     "seconds": 22.5,
      "shot_ids": [
       189057,
       189062,
       189081,
       189088,
       189090,
-      189093,
       189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
       190109,
       190110,
       190113,
+      190114,
       190115,
-      190116,
       199166,
       199172,
-      200977
+      199352,
+      199353,
+      199354,
+      200977,
+      201081
      ]
     },
     "by_state": {
      "attached": {
       "assessed": {
-       "bins": 0,
-       "shots": 0,
-       "seconds": 0.0,
-       "shot_ids": []
+       "bins": 78,
+       "shots": 9,
+       "seconds": 3.9,
+       "shot_ids": [
+        189057,
+        189097,
+        189100,
+        189448,
+        189451,
+        199166,
+        199354,
+        200977,
+        201081
+       ]
       },
       "certain": {
-       "bins": 0,
-       "shots": 0,
-       "seconds": 0.0,
-       "shot_ids": []
+       "bins": 78,
+       "shots": 9,
+       "seconds": 3.9,
+       "shot_ids": [
+        189057,
+        189097,
+        189100,
+        189448,
+        189451,
+        199166,
+        199354,
+        200977,
+        201081
+       ]
       }
      },
      "detached": {
       "assessed": {
-       "bins": 250,
-       "shots": 15,
-       "seconds": 12.5,
+       "bins": 349,
+       "shots": 20,
+       "seconds": 17.45,
        "shot_ids": [
         189057,
         189062,
         189081,
         189088,
         189090,
-        189093,
         189094,
+        189100,
+        189101,
         190109,
         190110,
         190113,
+        190114,
         190115,
-        190116,
         199166,
         199172,
-        200977
+        199352,
+        199353,
+        199354,
+        200977,
+        201081
        ]
       },
       "certain": {
-       "bins": 250,
-       "shots": 15,
-       "seconds": 12.5,
+       "bins": 349,
+       "shots": 20,
+       "seconds": 17.45,
        "shot_ids": [
         189057,
         189062,
         189081,
         189088,
         189090,
-        189093,
         189094,
+        189100,
+        189101,
         190109,
         190110,
         190113,
+        190114,
         190115,
-        190116,
         199166,
         199172,
-        200977
+        199352,
+        199353,
+        199354,
+        200977,
+        201081
        ]
       }
      },
      "marfe": {
       "assessed": {
-       "bins": 7,
+       "bins": 23,
        "shots": 1,
-       "seconds": 0.35,
+       "seconds": 1.15,
        "shot_ids": [
         199172
        ]
       },
       "certain": {
-       "bins": 7,
+       "bins": 23,
        "shots": 1,
-       "seconds": 0.35,
+       "seconds": 1.15,
        "shot_ids": [
         199172
        ]
@@ -732,11 +966,12 @@
      },
      "uncertain": {
       "assessed": {
-       "bins": 1392,
-       "shots": 33,
-       "seconds": 69.6,
+       "bins": 2300,
+       "shots": 35,
+       "seconds": 115.0,
        "shot_ids": [
         189057,
+        189062,
         189081,
         189088,
         189090,
@@ -762,6 +997,7 @@
         199353,
         199354,
         200977,
+        201081,
         206879,
         206880,
         206886,
@@ -782,9 +1018,9 @@
    },
    "train": {
     "assessed": {
-     "bins": 37,
+     "bins": 39,
      "shots": 1,
-     "seconds": 1.85,
+     "seconds": 1.95,
      "shot_ids": [
       195952
      ]
@@ -840,9 +1076,9 @@
      },
      "uncertain": {
       "assessed": {
-       "bins": 37,
+       "bins": 39,
        "shots": 1,
-       "seconds": 1.85,
+       "seconds": 1.95,
        "shot_ids": [
         195952
        ]
@@ -858,17 +1094,17 @@
    },
    "val": {
     "assessed": {
-     "bins": 51,
+     "bins": 84,
      "shots": 1,
-     "seconds": 2.55,
+     "seconds": 4.2,
      "shot_ids": [
       189061
      ]
     },
     "certain": {
-     "bins": 50,
+     "bins": 21,
      "shots": 1,
-     "seconds": 2.5,
+     "seconds": 1.05,
      "shot_ids": [
       189061
      ]
@@ -890,17 +1126,17 @@
      },
      "detached": {
       "assessed": {
-       "bins": 50,
+       "bins": 21,
        "shots": 1,
-       "seconds": 2.5,
+       "seconds": 1.05,
        "shot_ids": [
         189061
        ]
       },
       "certain": {
-       "bins": 50,
+       "bins": 21,
        "shots": 1,
-       "seconds": 2.5,
+       "seconds": 1.05,
        "shot_ids": [
         189061
        ]
@@ -922,9 +1158,9 @@
      },
      "uncertain": {
       "assessed": {
-       "bins": 1,
+       "bins": 63,
        "shots": 1,
-       "seconds": 0.05,
+       "seconds": 3.15,
        "shot_ids": [
         189061
        ]
@@ -940,427 +1176,102 @@
    }
   }
  },
- "indicator_agreement": {
-  "population": "every exported eligible-shot bin where Prad and TangTV both cast valid votes, without conditioning on the exported state",
-  "binary_mapping": {
-   "attached": "attached",
-   "detached": "detached",
-   "marfe": "detached"
+ "agreement": [
+  {
+   "key": "auroc_pooled",
+   "label": "AUROC pooled",
+   "kind": "threshold_free",
+   "chance": 0.5,
+   "value": 0.7902370070563981,
+   "ci95": [
+    0.6472734185872089,
+    0.9205165333510683
+   ],
+   "n_bins": 1039,
+   "n_shots": 28,
+   "drawn": true,
+   "undefined_reason": null
   },
-  "by_tangtv_tier": {
-   "lower_shelf_window": {
-    "both_valid": {
-     "bins": 459,
-     "shots": 9,
-     "seconds": 22.95,
-     "shot_ids": [
-      195952,
-      195954,
-      206879,
-      206880,
-      206886,
-      206891,
-      206892,
-      206893,
-      206894
-     ]
-    },
-    "both_vote": {
-     "bins": 114,
-     "shots": 9,
-     "seconds": 5.7,
-     "shot_ids": [
-      195952,
-      195954,
-      206879,
-      206880,
-      206886,
-      206891,
-      206892,
-      206893,
-      206894
-     ]
-    },
-    "state_order": [
-     "attached",
-     "detached",
-     "marfe"
-    ],
-    "table_axes": {
-     "rows": "prad_vote",
-     "columns": "tangtv_vote"
-    },
-    "confusion_counts": [
-     [
-      63,
-      16,
-      0
-     ],
-     [
-      0,
-      31,
-      4
-     ],
-     [
-      0,
-      0,
-      0
-     ]
-    ],
-    "metrics": {
-     "kappa_3class": {
-      "value": 0.6422968308754314,
-      "ci95": [
-       0.10050518649304785,
-       0.8794713656771418
-      ],
-      "valid_replicates": 1000,
-      "replicates": 1000
-     },
-     "kappa_binary": {
-      "value": 0.7074109720885466,
-      "ci95": [
-       0.12071491224474715,
-       0.955998395346505
-      ],
-      "valid_replicates": 1000,
-      "replicates": 1000
-     },
-     "agreement_3class": {
-      "value": 0.8245614035087719,
-      "ci95": [
-       0.533235294117647,
-       0.9569001555512346
-      ],
-      "valid_replicates": 1000,
-      "replicates": 1000
-     },
-     "agreement_binary": {
-      "value": 0.8596491228070176,
-      "ci95": [
-       0.559888888888889,
-       0.9821481092436974
-      ],
-      "valid_replicates": 1000,
-      "replicates": 1000
-     }
-    },
-    "conflicts": {
-     "tangtv_attached_prad_detached": {
-      "bins": 0,
-      "shots": 0,
-      "seconds": 0.0,
-      "shot_ids": []
-     },
-     "tangtv_attached_all_prad_votes": {
-      "bins": 63,
-      "shots": 4,
-      "seconds": 3.15,
-      "shot_ids": [
-       195952,
-       195954,
-       206892,
-       206893
-      ]
-     },
-     "tangtv_attached_prad_valid": {
-      "bins": 115,
-      "shots": 6,
-      "seconds": 5.75,
-      "shot_ids": [
-       195952,
-       195954,
-       206891,
-       206892,
-       206893,
-       206894
-      ]
-     }
-    }
-   },
-   "none": {
-    "both_valid": {
-     "bins": 0,
-     "shots": 0,
-     "seconds": 0.0,
-     "shot_ids": []
-    },
-    "both_vote": {
-     "bins": 0,
-     "shots": 0,
-     "seconds": 0.0,
-     "shot_ids": []
-    },
-    "state_order": [
-     "attached",
-     "detached",
-     "marfe"
-    ],
-    "table_axes": {
-     "rows": "prad_vote",
-     "columns": "tangtv_vote"
-    },
-    "confusion_counts": [
-     [
-      0,
-      0,
-      0
-     ],
-     [
-      0,
-      0,
-      0
-     ],
-     [
-      0,
-      0,
-      0
-     ]
-    ],
-    "metrics": {
-     "kappa_3class": {
-      "value": null,
-      "ci95": [
-       null,
-       null
-      ],
-      "valid_replicates": 0,
-      "replicates": 1000
-     },
-     "kappa_binary": {
-      "value": null,
-      "ci95": [
-       null,
-       null
-      ],
-      "valid_replicates": 0,
-      "replicates": 1000
-     },
-     "agreement_3class": {
-      "value": null,
-      "ci95": [
-       null,
-       null
-      ],
-      "valid_replicates": 0,
-      "replicates": 1000
-     },
-     "agreement_binary": {
-      "value": null,
-      "ci95": [
-       null,
-       null
-      ],
-      "valid_replicates": 0,
-      "replicates": 1000
-     }
-    },
-    "conflicts": {
-     "tangtv_attached_prad_detached": {
-      "bins": 0,
-      "shots": 0,
-      "seconds": 0.0,
-      "shot_ids": []
-     },
-     "tangtv_attached_all_prad_votes": {
-      "bins": 0,
-      "shots": 0,
-      "seconds": 0.0,
-      "shot_ids": []
-     },
-     "tangtv_attached_prad_valid": {
-      "bins": 0,
-      "shots": 0,
-      "seconds": 0.0,
-      "shot_ids": []
-     }
-    }
-   },
-   "upper_shelf": {
-    "both_valid": {
-     "bins": 1144,
-     "shots": 27,
-     "seconds": 57.2,
-     "shot_ids": [
-      189057,
-      189061,
-      189062,
-      189081,
-      189088,
-      189090,
-      189093,
-      189094,
-      189097,
-      189100,
-      189101,
-      189448,
-      189451,
-      190109,
-      190110,
-      190113,
-      190114,
-      190115,
-      190116,
-      199166,
-      199171,
-      199172,
-      199351,
-      199352,
-      199353,
-      199354,
-      200977
-     ]
-    },
-    "both_vote": {
-     "bins": 356,
-     "shots": 17,
-     "seconds": 17.8,
-     "shot_ids": [
-      189057,
-      189061,
-      189062,
-      189081,
-      189088,
-      189090,
-      189093,
-      189094,
-      189097,
-      190109,
-      190110,
-      190113,
-      190115,
-      190116,
-      199166,
-      199172,
-      200977
-     ]
-    },
-    "state_order": [
-     "attached",
-     "detached",
-     "marfe"
-    ],
-    "table_axes": {
-     "rows": "prad_vote",
-     "columns": "tangtv_vote"
-    },
-    "confusion_counts": [
-     [
-      0,
-      0,
-      0
-     ],
-     [
-      49,
-      300,
-      7
-     ],
-     [
-      0,
-      0,
-      0
-     ]
-    ],
-    "metrics": {
-     "kappa_3class": {
-      "value": 0.0,
-      "ci95": [
-       0.0,
-       0.0
-      ],
-      "valid_replicates": 1000,
-      "replicates": 1000
-     },
-     "kappa_binary": {
-      "value": 0.0,
-      "ci95": [
-       0.0,
-       0.0
-      ],
-      "valid_replicates": 1000,
-      "replicates": 1000
-     },
-     "agreement_3class": {
-      "value": 0.8426966292134831,
-      "ci95": [
-       0.6275592023265476,
-       0.97311325490474
-      ],
-      "valid_replicates": 1000,
-      "replicates": 1000
-     },
-     "agreement_binary": {
-      "value": 0.8623595505617978,
-      "ci95": [
-       0.6499871134020618,
-       0.9865467984566696
-      ],
-      "valid_replicates": 1000,
-      "replicates": 1000
-     }
-    },
-    "conflicts": {
-     "tangtv_attached_prad_detached": {
-      "bins": 49,
-      "shots": 6,
-      "seconds": 2.45,
-      "shot_ids": [
-       189057,
-       189081,
-       189088,
-       189090,
-       189093,
-       189097
-      ]
-     },
-     "tangtv_attached_all_prad_votes": {
-      "bins": 49,
-      "shots": 6,
-      "seconds": 2.45,
-      "shot_ids": [
-       189057,
-       189081,
-       189088,
-       189090,
-       189093,
-       189097
-      ]
-     },
-     "tangtv_attached_prad_valid": {
-      "bins": 416,
-      "shots": 18,
-      "seconds": 20.8,
-      "shot_ids": [
-       189057,
-       189081,
-       189088,
-       189090,
-       189093,
-       189094,
-       189097,
-       189100,
-       189101,
-       189448,
-       189451,
-       199166,
-       199171,
-       199351,
-       199352,
-       199353,
-       199354,
-       200977
-      ]
-     }
-    }
-   }
+  {
+   "key": "auroc_within_shot",
+   "label": "AUROC per shot",
+   "kind": "threshold_free",
+   "chance": 0.5,
+   "value": 0.7952316827657118,
+   "ci95": [
+    0.5815451125742075,
+    0.9763241537336932
+   ],
+   "n_bins": null,
+   "n_shots": 8,
+   "drawn": true,
+   "undefined_reason": null
   },
-  "paper_tier": "upper_shelf",
-  "bootstrap_source": "/scratch/gpfs/nc1514/FusionAIHub-r4-detach/docs/labeler/results/detachment_benchmark.json"
- },
+  {
+   "key": "spearman_pooled",
+   "label": "$\\rho$ pooled",
+   "kind": "threshold_free",
+   "chance": 0.0,
+   "value": 0.4982281344713227,
+   "ci95": [
+    0.32411375321129793,
+    0.6325934773473223
+   ],
+   "n_bins": 1214,
+   "n_shots": 28,
+   "drawn": true,
+   "undefined_reason": null
+  },
+  {
+   "key": "spearman_within_shot",
+   "label": "$\\rho$ per shot",
+   "kind": "threshold_free",
+   "chance": 0.0,
+   "value": 0.34286692485557724,
+   "ci95": [
+    0.19172152038730936,
+    0.5005992971046139
+   ],
+   "n_bins": null,
+   "n_shots": 28,
+   "drawn": true,
+   "undefined_reason": null
+  },
+  {
+   "key": "kappa_binary",
+   "label": "$\\kappa$ binary",
+   "kind": "kappa",
+   "chance": 0.0,
+   "value": 0.13755461898416455,
+   "ci95": [
+    -0.0646120626030815,
+    0.4074708735467627
+   ],
+   "n_bins": 837,
+   "n_shots": 28,
+   "drawn": true,
+   "undefined_reason": null
+  },
+  {
+   "key": "kappa_3class",
+   "label": "$\\kappa$ 3-class",
+   "kind": "kappa",
+   "chance": 0.0,
+   "value": 0.12247918593894545,
+   "ci95": [
+    -0.06795259962893943,
+    0.36839502893655257
+   ],
+   "n_bins": 837,
+   "n_shots": 28,
+   "drawn": true,
+   "undefined_reason": null
+  }
+ ],
  "coverage_table": [
   {
    "indicator": "afrac",
-   "setting": "Uncalibrated local Jsat ratio; attached-current fit unavailable",
+   "setting": "Jsat ratio at the peak SOL-side target probe, uncalibrated",
    "population": "all extracted shot/bin grids, every split",
    "population_counts": {
     "bins": 50032,
@@ -1840,11 +1751,45 @@
     ]
    },
    "measurement": {
-    "bins": 240,
-    "shots": 8,
-    "seconds": 12.0,
+    "bins": 3078,
+    "shots": 42,
+    "seconds": 153.9,
     "shot_ids": [
      180257,
+     189057,
+     189061,
+     189062,
+     189081,
+     189088,
+     189090,
+     189093,
+     189094,
+     189097,
+     189100,
+     189101,
+     189448,
+     189451,
+     190109,
+     190110,
+     190113,
+     190114,
+     190115,
+     190116,
+     195952,
+     195954,
+     195956,
+     195959,
+     195961,
+     195963,
+     199166,
+     199171,
+     199172,
+     199351,
+     199352,
+     199353,
+     199354,
+     200977,
+     201081,
      206879,
      206880,
      206886,
@@ -1855,11 +1800,45 @@
     ]
    },
    "valid_measurement": {
-    "bins": 235,
-    "shots": 8,
-    "seconds": 11.75,
+    "bins": 2970,
+    "shots": 42,
+    "seconds": 148.5,
     "shot_ids": [
      180257,
+     189057,
+     189061,
+     189062,
+     189081,
+     189088,
+     189090,
+     189093,
+     189094,
+     189097,
+     189100,
+     189101,
+     189448,
+     189451,
+     190109,
+     190110,
+     190113,
+     190114,
+     190115,
+     190116,
+     195952,
+     195954,
+     195956,
+     195959,
+     195961,
+     195963,
+     199166,
+     199171,
+     199172,
+     199351,
+     199352,
+     199353,
+     199354,
+     200977,
+     201081,
      206879,
      206880,
      206886,
@@ -1870,11 +1849,45 @@
     ]
    },
    "vote": {
-    "bins": 165,
-    "shots": 8,
-    "seconds": 8.25,
+    "bins": 2381,
+    "shots": 42,
+    "seconds": 119.05,
     "shot_ids": [
      180257,
+     189057,
+     189061,
+     189062,
+     189081,
+     189088,
+     189090,
+     189093,
+     189094,
+     189097,
+     189100,
+     189101,
+     189448,
+     189451,
+     190109,
+     190110,
+     190113,
+     190114,
+     190115,
+     190116,
+     195952,
+     195954,
+     195956,
+     195959,
+     195961,
+     195963,
+     199166,
+     199171,
+     199172,
+     199351,
+     199352,
+     199353,
+     199354,
+     200977,
+     201081,
      206879,
      206880,
      206886,
@@ -1885,15 +1898,38 @@
     ]
    },
    "certain_label": {
-    "bins": 0,
-    "shots": 0,
-    "seconds": 0.0,
-    "shot_ids": []
+    "bins": 352,
+    "shots": 22,
+    "seconds": 17.6,
+    "shot_ids": [
+     189057,
+     189061,
+     189062,
+     189081,
+     189088,
+     189090,
+     189094,
+     189097,
+     189100,
+     189448,
+     189451,
+     190109,
+     190110,
+     190113,
+     190114,
+     190115,
+     199166,
+     199172,
+     199353,
+     199354,
+     200977,
+     201081
+    ]
    }
   },
   {
    "indicator": "prad",
-   "setting": "Local Prad,div/P_in thresholds with heating and radiation smoothing",
+   "setting": "Prad,div,L over P_in, 250 ms inter-ELM means, absolute cutoffs anchored on 201081",
    "population": "all extracted shot/bin grids, every split",
    "population_counts": {
     "bins": 50032,
@@ -2373,9 +2409,9 @@
     ]
    },
    "measurement": {
-    "bins": 42601,
-    "shots": 450,
-    "seconds": 2130.05,
+    "bins": 43081,
+    "shots": 455,
+    "seconds": 2154.05,
     "shot_ids": [
      180257,
      185805,
@@ -2756,10 +2792,13 @@
      200977,
      200986,
      200990,
+     201081,
      201180,
      201227,
      201264,
      201270,
+     201395,
+     201447,
      201822,
      201831,
      201880,
@@ -2787,6 +2826,7 @@
      203413,
      203462,
      203470,
+     203498,
      203507,
      203512,
      203521,
@@ -2795,6 +2835,7 @@
      203563,
      203576,
      203626,
+     203629,
      203643,
      203661,
      203667,
@@ -2830,9 +2871,9 @@
     ]
    },
    "valid_measurement": {
-    "bins": 38631,
-    "shots": 449,
-    "seconds": 1931.55,
+    "bins": 39061,
+    "shots": 454,
+    "seconds": 1953.05,
     "shot_ids": [
      180257,
      185805,
@@ -3212,10 +3253,13 @@
      200977,
      200986,
      200990,
+     201081,
      201180,
      201227,
      201264,
      201270,
+     201395,
+     201447,
      201822,
      201831,
      201880,
@@ -3243,6 +3287,7 @@
      203413,
      203462,
      203470,
+     203498,
      203507,
      203512,
      203521,
@@ -3251,6 +3296,7 @@
      203563,
      203576,
      203626,
+     203629,
      203643,
      203661,
      203667,
@@ -3286,9 +3332,9 @@
     ]
    },
    "vote": {
-    "bins": 31377,
-    "shots": 449,
-    "seconds": 1568.85,
+    "bins": 36604,
+    "shots": 454,
+    "seconds": 1830.2,
     "shot_ids": [
      180257,
      185805,
@@ -3668,10 +3714,13 @@
      200977,
      200986,
      200990,
+     201081,
      201180,
      201227,
      201264,
      201270,
+     201395,
+     201447,
      201822,
      201831,
      201880,
@@ -3699,6 +3748,7 @@
      203413,
      203462,
      203470,
+     203498,
      203507,
      203512,
      203521,
@@ -3707,6 +3757,7 @@
      203563,
      203576,
      203626,
+     203629,
      203643,
      203661,
      203667,
@@ -3742,9 +3793,9 @@
     ]
    },
    "certain_label": {
-    "bins": 307,
-    "shots": 16,
-    "seconds": 15.35,
+    "bins": 382,
+    "shots": 23,
+    "seconds": 19.1,
     "shot_ids": [
      189057,
      189061,
@@ -3752,22 +3803,29 @@
      189081,
      189088,
      189090,
-     189093,
      189094,
+     189100,
+     189101,
+     189448,
+     189451,
      190109,
      190110,
      190113,
+     190114,
      190115,
-     190116,
      199166,
      199172,
-     200977
+     199352,
+     199353,
+     199354,
+     200977,
+     201081
     ]
    }
   },
   {
    "indicator": "tangtv",
-   "setting": "C-III front with upper-shelf geometry, quality and MARFE gates",
+   "setting": "C-III front height with shelf geometry, quality and MARFE gates",
    "population": "all extracted shot/bin grids, every split",
    "population_counts": {
     "bins": 50032,
@@ -4391,9 +4449,9 @@
     ]
    },
    "certain_label": {
-    "bins": 307,
-    "shots": 16,
-    "seconds": 15.35,
+    "bins": 471,
+    "shots": 24,
+    "seconds": 23.55,
     "shot_ids": [
      189057,
      189061,
@@ -4401,97 +4459,51 @@
      189081,
      189088,
      189090,
-     189093,
      189094,
+     189097,
+     189100,
+     189101,
+     189448,
+     189451,
      190109,
      190110,
      190113,
+     190114,
      190115,
-     190116,
      199166,
      199172,
-     200977
+     199352,
+     199353,
+     199354,
+     200977,
+     201081
     ]
    }
   }
  ],
  "definitions": {
   "assessed": "at least two valid measurements on an eligible shot",
-  "certain": "assessed compatible primary state attached/detached/marfe",
+  "certain": "assessed bin with a certain primary state (attached, detached or MARFE)",
+  "uncertain": "every other assessed bin; the tier says why",
   "seconds": "bin count times bin_ms / 1000; disjoint bins, not spans",
   "shots": "unique contributing shots; state shot counts may overlap",
   "measurement": "finite scalar before indicator validity gates",
   "valid_measurement": "passes the indicator validity gates",
   "vote": "valid attached/detached/marfe vote, excluding abstentions",
-  "certain_label": "vote bin also has a certain exported primary state"
+  "certain_label": "vote bin that also has a certain exported state",
+  "auroc": "P(f_div of a TangTV not-attached bin > f_div of a TangTV attached bin); 0.5 is chance",
+  "spearman": "rank correlation of f_div with DZ, both larger when more detached; 0 is chance",
+  "within_shot": "mean over shots of the per-shot statistic, shots with enough bins of both classes",
+  "kappa_binary": "Cohen's kappa of attached versus not attached (MARFE merged with detached); undefined, not drawn, when either indicator cast one class"
  },
  "thresholds": {
-  "prad_attached_max": 0.36,
-  "prad_detached_min": 0.5,
+  "prad_cutoffs_mw_over_p_in": "per shot from the 201081 anchor: see docs/labeler/results/detachment_prad_anchor.json",
   "prad_averaging_ms": 250.0
  },
  "sources": {
   "labels": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/labels_bins.csv.gz",
   "bins": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins",
-  "labels_sha256": "913ae93738f8366042a94c271f1570f2a6613f5ea552ddac8d2ecfae572f53c4",
-  "pairwise_agreement": "/scratch/gpfs/nc1514/FusionAIHub-r4-detach/docs/labeler/results/detachment_benchmark.json"
- },
- "rows": [
-  {
-   "panel": "detachment",
-   "kind": "coverage",
-   "series": "assessed",
-   "group": "Exploratory coverage",
-   "metric": "bins",
-   "value": 1737,
-   "n_shots": 36,
-   "seconds": 86.85,
-   "ci_lo": null,
-   "ci_hi": null,
-   "source": "docs/labeler/figure2_detach.json",
-   "key": "coverage.assessed.bins"
-  },
-  {
-   "panel": "detachment",
-   "kind": "coverage",
-   "series": "certain",
-   "group": "Exploratory coverage",
-   "metric": "bins",
-   "value": 307,
-   "n_shots": 16,
-   "seconds": 15.35,
-   "ci_lo": null,
-   "ci_hi": null,
-   "source": "docs/labeler/figure2_detach.json",
-   "key": "coverage.certain.bins"
-  },
-  {
-   "panel": "detachment",
-   "kind": "agreement",
-   "series": "kappa_3class",
-   "group": "Upper-shelf indicator agreement",
-   "metric": "kappa",
-   "value": 0.0,
-   "ci_lo": 0.0,
-   "ci_hi": 0.0,
-   "n_bins": 356,
-   "n_shots": 17,
-   "source": "docs/labeler/figure2_detach.json",
-   "key": "indicator_agreement.by_tangtv_tier.upper_shelf.metrics.kappa_3class.value"
-  },
-  {
-   "panel": "detachment",
-   "kind": "agreement",
-   "series": "kappa_binary",
-   "group": "Upper-shelf indicator agreement",
-   "metric": "kappa",
-   "value": 0.0,
-   "ci_lo": 0.0,
-   "ci_hi": 0.0,
-   "n_bins": 356,
-   "n_shots": 17,
-   "source": "docs/labeler/figure2_detach.json",
-   "key": "indicator_agreement.by_tangtv_tier.upper_shelf.metrics.kappa_binary.value"
-  }
- ]
+  "labels_sha256": "df8747c48aa1526808be85d1b081b5b46e6e4f688fba46810d07404f11c6cc3c",
+  "benchmark": "/scratch/gpfs/nc1514/FusionAIHub-r4-detach/docs/labeler/results/detachment_benchmark.json"
+ }
 }

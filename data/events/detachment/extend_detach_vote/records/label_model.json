@@ -2,39 +2,40 @@
  "bin_ms": 50.0,
  "posterior_threshold": 0.7,
  "fit": {
-  "n_shots": 36,
-  "n_bins": 1737,
+  "n_shots": 37,
+  "n_bins": 2873,
   "excluded_split": "test",
   "method": "anchored: accuracies from the bins where every indicator is valid, class balance fixed at attached 1/2, detached 1/4, marfe 1/4, propensities from all bins; if fewer than 300 anchors, all-bin fallback (unidentified)",
-  "used_anchor": false,
+  "used_anchor": true,
+  "min_anchor_bins": 300,
   "physical_accuracy_identified": false,
-  "anchor_bins": 0,
-  "anchor_shots": 7,
+  "anchor_bins": 1659,
+  "anchor_shots": 37,
   "anchor_source": "inversion_only",
   "posterior_calibrated": false,
   "all_bins_fit_for_comparison": {
    "afrac": {
-    "acc_weight": 1.2974938549057586,
+    "acc_weight": 0.16081347993069273,
     "at_weight_bound": false,
     "physical_accuracy_identified": false,
     "calibrated": false,
-    "propensity_weight": -0.6937429525927348,
-    "implied_accuracy": 0.7854129007919418
+    "propensity_weight": 0.6156310883936934,
+    "implied_accuracy": 0.5401169519313707
    },
    "prad": {
-    "acc_weight": 1.9082653922094461,
+    "acc_weight": 0.6372248206308354,
     "at_weight_bound": false,
     "physical_accuracy_identified": false,
     "calibrated": false,
-    "propensity_weight": -2.5485059339712395,
-    "implied_accuracy": 0.8708241482549364
+    "propensity_weight": 0.4659925049730577,
+    "implied_accuracy": 0.654125858385172
    },
    "tangtv": {
     "acc_weight": 4.0,
     "at_weight_bound": true,
     "physical_accuracy_identified": false,
     "calibrated": false,
-    "propensity_weight": -2.3137588962290128,
+    "propensity_weight": -2.3253558458244457,
     "implied_accuracy": 0.9646631559719039
    }
   }
@@ -44,53 +45,53 @@
   "rule": "simplest structure within one standard error of the best",
   "candidates": {
    "independent": {
-    "mean_heldout_loglik_per_bin": -2.0758246690205007,
+    "mean_heldout_loglik_per_bin": -2.8831716195754615,
     "folds": [
-     -1.9680288298712398,
-     -1.922368554922253,
-     -2.2065638944153134,
-     -2.471873166081382,
-     -1.8102888998123148
+     -2.869644495203454,
+     -2.937107889333404,
+     -2.8163943988298237,
+     -2.878915848971412,
+     -2.9137954655392138
     ]
    },
    "prad_tangtv": {
-    "mean_heldout_loglik_per_bin": -2.0758194062999893,
+    "mean_heldout_loglik_per_bin": -2.8803406330223225,
     "folds": [
-     -1.9680314834080628,
-     -1.9223670692078922,
-     -2.2065625071208688,
-     -2.4718694487528317,
-     -1.810266523010291
+     -2.85542975717793,
+     -2.937107477141329,
+     -2.816417818341534,
+     -2.878937064468505,
+     -2.9138110479823145
     ]
    },
    "afrac_tangtv": {
-    "mean_heldout_loglik_per_bin": -2.077973717032678,
+    "mean_heldout_loglik_per_bin": -2.876597502992219,
     "folds": [
-     -1.9680325221603692,
-     -1.9225894386408355,
-     -2.215522953432681,
-     -2.473427131754848,
-     -1.810296539174657
+     -2.837031278923245,
+     -2.935947599845591,
+     -2.8163753274325405,
+     -2.878937719295396,
+     -2.914695589464323
     ]
    },
    "afrac_prad": {
-    "mean_heldout_loglik_per_bin": -2.0818787886328645,
+    "mean_heldout_loglik_per_bin": -2.889605921652376,
     "folds": [
-     -2.002858067348125,
-     -1.9167931201286919,
-     -2.202308987564332,
-     -2.4811042748669645,
-     -1.8063294932562075
+     -2.889930822111955,
+     -2.926495313539151,
+     -2.837392252427916,
+     -2.8825352794124255,
+     -2.9116759407704347
     ]
    },
    "all_pairs": {
-    "mean_heldout_loglik_per_bin": -2.0837064482113563,
+    "mean_heldout_loglik_per_bin": -2.889680317959308,
     "folds": [
-     -2.0015523653603866,
-     -1.9159390917449737,
-     -2.2081224253126703,
-     -2.4872814313215,
-     -1.8056369273172497
+     -2.887449144308776,
+     -2.9264933662344452,
+     -2.8373924549838536,
+     -2.8830091801874733,
+     -2.914057444081992
     ]
    }
   }
@@ -104,135 +105,135 @@
   ],
   "corr": [],
   "theta": [
-   1.8020345892286087,
-   2.156621409587563,
-   -2.646817171074186,
-   -0.6937429525927348,
-   -2.5485059339712395,
-   -2.3137588962290128,
-   1.2974938549057586,
-   1.9082653922094461,
+   -0.6931471805599453,
+   -1.3862943611198906,
+   -1.3862943611198906,
+   0.6524274882928179,
+   0.37992281883928813,
+   -2.3253831887292904,
+   0.0915973142467318,
+   0.766014076296466,
    4.0
   ],
   "theta_layout": "prior(3), propensity(J), accuracy(J), correlation(P)"
  },
  "prior_logit": [
-  1.8020345892286087,
-  2.156621409587563,
-  -2.646817171074186
+  -0.6931471805599453,
+  -1.3862943611198906,
+  -1.3862943611198906
  ],
  "labelling_functions": {
   "afrac": {
-   "acc_weight": 1.2974938549057586,
+   "acc_weight": 0.0915973142467318,
    "at_weight_bound": false,
    "physical_accuracy_identified": false,
    "calibrated": false,
-   "propensity_weight": -0.6937429525927348,
-   "implied_accuracy": 0.7854129007919418
+   "propensity_weight": 0.6524274882928179,
+   "implied_accuracy": 0.5228833314063323
   },
   "prad": {
-   "acc_weight": 1.9082653922094461,
+   "acc_weight": 0.766014076296466,
    "at_weight_bound": false,
    "physical_accuracy_identified": false,
    "calibrated": false,
-   "propensity_weight": -2.5485059339712395,
-   "implied_accuracy": 0.8708241482549364
+   "propensity_weight": 0.37992281883928813,
+   "implied_accuracy": 0.6826580283517993
   },
   "tangtv": {
    "acc_weight": 4.0,
    "at_weight_bound": true,
    "physical_accuracy_identified": false,
    "calibrated": false,
-   "propensity_weight": -2.3137588962290128,
+   "propensity_weight": -2.3253831887292904,
    "implied_accuracy": 0.9646631559719039
   }
  },
  "state_counts_bins": {
   "label_model": {
-   "attached": 0,
-   "detached": 300,
-   "marfe": 0,
-   "uncertain": 1437
+   "attached": 78,
+   "detached": 370,
+   "marfe": 23,
+   "uncertain": 2402
   },
   "rule": {
-   "attached": 0,
-   "detached": 300,
-   "marfe": 7,
-   "uncertain": 1430
+   "attached": 78,
+   "detached": 370,
+   "marfe": 23,
+   "uncertain": 2402
   }
  },
  "rule_vs_label_model": {
-  "bins": 1737,
-  "agreement": 0.9959700633275763,
-  "kappa": 0.986060332997424,
+  "bins": 2873,
+  "agreement": 1.0,
+  "kappa": 1.0,
   "rows_rule_columns_label_model": {
    "attached": {
-    "attached": 0,
+    "attached": 78,
     "detached": 0,
     "marfe": 0,
     "uncertain": 0
    },
    "detached": {
     "attached": 0,
-    "detached": 300,
+    "detached": 370,
     "marfe": 0,
     "uncertain": 0
    },
    "marfe": {
     "attached": 0,
     "detached": 0,
-    "marfe": 0,
-    "uncertain": 7
+    "marfe": 23,
+    "uncertain": 0
    },
    "uncertain": {
     "attached": 0,
     "detached": 0,
     "marfe": 0,
-    "uncertain": 1430
+    "uncertain": 2402
    }
   }
  },
  "uncertain_by_threshold": {
   "0.5": {
-   "attached": 0,
-   "detached": 300,
-   "marfe": 0,
-   "uncertain": 1437
+   "attached": 78,
+   "detached": 370,
+   "marfe": 23,
+   "uncertain": 2402
   },
   "0.6": {
-   "attached": 0,
-   "detached": 300,
-   "marfe": 0,
-   "uncertain": 1437
+   "attached": 78,
+   "detached": 370,
+   "marfe": 23,
+   "uncertain": 2402
   },
   "0.7": {
-   "attached": 0,
-   "detached": 300,
-   "marfe": 0,
-   "uncertain": 1437
+   "attached": 78,
+   "detached": 370,
+   "marfe": 23,
+   "uncertain": 2402
   },
   "0.8": {
-   "attached": 0,
-   "detached": 300,
-   "marfe": 0,
-   "uncertain": 1437
+   "attached": 78,
+   "detached": 370,
+   "marfe": 23,
+   "uncertain": 2402
   },
   "0.9": {
-   "attached": 0,
-   "detached": 300,
-   "marfe": 0,
-   "uncertain": 1437
+   "attached": 78,
+   "detached": 370,
+   "marfe": 23,
+   "uncertain": 2402
   }
  },
  "primary_labeler": "rule",
  "state_lm_column": "legacy alias of primary rule; model is state_model_diagnostic",
  "tier_counts": {
-  "insufficient_support": 708,
+  "conflict": 1056,
+  "certain": 471,
   "lower_shelf_window": 459,
-  "certain": 307,
+  "insufficient_support": 401,
+  "low_confidence_pair": 364,
   "candidate_marfe": 84,
-  "conflict": 69,
-  "no_vote": 67,
-  "low_confidence_pair": 43
+  "no_vote": 38
  }
 }
