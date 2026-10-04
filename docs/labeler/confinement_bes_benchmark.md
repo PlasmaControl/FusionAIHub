@@ -1,8 +1,12 @@
 # Confinement benchmark: the BES classifier
 
-Status: **fix round 2, 2026-10-03. Under the paper's selection, split, optimiser, architecture
+Status: **fix round 3, 2026-10-04. Under the paper's selection, split, optimiser, architecture
 and training length our reimplementation scores macro F1 0.703 [0.59, 0.79] on discharges held out by shot, against the
-paper's 0.94; the remainder is unexplained** (section "The gap to the published score").
+paper's 0.94; the remainder is unexplained** (section "The gap to the published score"). The 0.703
+pools five random by-discharge splits whose test sets overlap: 142 distinct shots in 200 shot-tests,
+106,232 distinct windows of 152,863 pooled; one split like the paper's scores 0.684 +/- 0.074, each
+shot counted once 0.736 and probabilities averaged over repeats 0.747 (section "Overlap of the five
+test draws").
 The owner named the BES-based confinement classifier as the benchmark for the confinement labels,
 the way the CO2 LSTM and RCN are for the AE labels (2026-10-01). Its weights and code were not
 found, so the recipe below was retrained on the corpus BES and scored on shots the network never
@@ -16,7 +20,10 @@ reads, so its rerun without them (117 shots) is the ablation's `base`. The gap t
 score was taken apart by an ablation on 444 shots fetched at 1 MHz (2026-10-02 to 2026-10-03) and
 redone with the paper's architecture, training length and a block chosen from the channel
 positions (2026-10-03, fix round 2). The first retrain's explanation of the gap ("a small-data
-number") did not survive the fixed-population rescoring below and is withdrawn.
+number") did not survive the fixed-population rescoring below and is withdrawn. Fix round 3
+(2026-10-04) disclosed the overlap of the five test draws behind the Table 3 number, restated the
+label hypothesis (our labels are Gill's own), added a per-shot failure list and the geometry
+exceptions; nothing was retrained.
 
 Citation: K. Gill, D. Smith, S. Joung, B. Geiger, G. McKee, J. Zimmerman, R. Coffee,
 A. Jalalvand and E. Kolemen, "Real-time confinement regime detection in fusion plasmas with
@@ -49,13 +56,16 @@ without the `full_` prefix pad; the `full_*` rows do not, and
 
 **Not in the paste** (equations and symbols were lost): the dropout probability, both learning
 rates, the weight decay and Adam betas, the batch size, the parameter counts, the sampling rate and
-the window duration in time, the channel selection for the 6 x 8 block, the class counts (the
-paper's table 1) and the train/validation/test split. The first retrain had to assume them. The
+the window duration in time, the channel selection for the 6 x 8 block, the class counts (its
+table 1) and the train/validation/test split. The first retrain had to assume them. The
 paper's full text (the group's literature folder) later supplied most: Adam with weight decay 1e-3,
 learning rates 1e-3 (convolution) and 1e-5 (MLP), the native 1 MHz, 8 x 8 shots truncated to the first
-six rows, a split by discharge, and the data selection of factors a to d below. Still not stated, and
+six rows, a split by discharge, the data selection of factors a to d below, and its table 1: the
+labelled seconds and discharges per class (all data: L 60.0 s on 86 discharges, H 196.6 s on 102,
+QH 148.1 s on 140, WP QH 35.6 s on 38; its test set: 8.3 s on 11, 21.8 s on 13, 17.4 s on 17 and
+9.7 s on 7, which the class-mix reweighting below uses as `PAPER_TEST_MIX`). Still not stated, and
 set once and left untuned in every row here: the dropout probability (0.2), the Adam betas, the batch
-size (256), the window stride (2,048 samples) and the class counts of its table 1.
+size (256) and the window stride (2,048 samples).
 
 ## Published results (as pasted)
 
@@ -159,12 +169,12 @@ QH 0.85, WP 0.91). `train --protocol blocks` reproduces it.
 
 ## The gap to the published score: an ablation
 
-Status: **run 2026-10-02 to 2026-10-03, reworked in fix round 2 (2026-10-03 to 2026-10-04). Our
+Status: **run 2026-10-02 to 2026-10-03, reworked in fix rounds 2 and 3 (2026-10-03 to 2026-10-04). Our
 reimplementation under the paper's selection and split scores 0.703 [0.59, 0.79] against the paper's
 0.94, and the remainder is unexplained. What the ablation shows: no single protocol factor moves the
-score by more than 0.05; the 117 shots of the corpus score 0.44 to 0.46 under the gate whatever the
-training set, and the other shots 0.74 to 0.83, still below the paper's 0.94; and a split inside
-each shot reaches 0.90 to 0.95.** The first retrain scored 0.678 against the paper's 0.94. The
+score by more than 0.05; the 117 shots of the corpus score 0.44 to 0.46 in the four rows that apply
+the paper's whole selection to all fetched shots, and the other shots 0.74 to 0.83 in the same rows,
+still below the paper's 0.94; and a split inside each shot reaches 0.90 to 0.95.** The first retrain scored 0.678 against the paper's 0.94. The
 paper's full text (a digest of Gill et al. 2024 in the group's literature folder) states the data
 selection, the split and the optimiser that the pasted excerpt left out, so the retrain was rerun
 with each of them put in, on its own and cumulatively, scoring every row the same way; in fix round
@@ -172,13 +182,16 @@ with each of them put in, on its own and cumulatively, scoring every row the sam
 on 444 shots, factor d was rebuilt from the fetched channel positions, and the rows that decide the
 comparison-table number were rerun with the paper's architecture and training length. Script:
 `scripts/labeler/confinement_bes_ablation.py` (stages `consolidate`, `geometry`, `run`, `summarize`,
-`populations`, `audit`, `table`, `tables`); SLURM array:
+`populations`, `audit`, `table`, `tables`, and, from fix round 3, `repeats`, `subsets`, `failures`,
+`tables-protocol`, which print the tables of the last three sections of this page from their
+records); SLURM array:
 `scripts/labeler/confinement_bes_ablation.sbatch`; library:
 `src/labeler/confinement/bes_{windows,protocol,cnn,geometry}.py`; records, all under
 `outputs/labeler/confinement/bes/`: `ablation.json` (all rows) and `ablation_rows/<row>.json` (one
 per row, with its configuration and training log), `populations.json` (fixed populations, paired
 steps, label fragmentation, class mix, years), `validation_audit.json`, `geometry.json` and
-`geometry_blocks.csv`, `gate_breakdown.json`, `confident_*.json`; features, fold networks and
+`geometry_blocks.csv`, `gate_breakdown.json`, `protocol_repeats.json`, `subsets.json`,
+`failure_blocks.json` and `failure_blocks.csv`, `confident_*.json`; features, fold networks and
 out-of-fold predictions: `$LABELER_ROOT/round4/conf/{datasets,ablation,geometry}/`. The cohort's two
 blind test shots (190857, 192756) are never read; the first retrain's 119 shots included them, so
 its rerun here (`base`, 117 shots) differs from it a little.
@@ -252,6 +265,24 @@ radius from the others. The dropped shots hold 5 L, 13 H, 26 QH and 4 WPQH shots
 2018 6, 2019 1, 2021 6, 2022 8 and 2023 1. The dead-channel stand-in of the early-stopped rows
 (`only_d`) left out 6 of the 117 corpus shots.
 
+**Exceptions to the 6 x 8-block claim.** The block is chosen by how far the array reaches and how
+many rows cover the pedestal band, never by whether a row is one radial row. Two groups of kept
+shots do not fit the claim (stage `subsets`, record `subsets.json`):
+
+- **16 shots with a 4 x 16 layout** (179209, 179211 to 179214, 179216, 179219, 179220, 179223,
+  179314, 179321, 179328, 179331, 179333, 179334 and 186230; 23,359 windows): their 8-channel rows
+  alternate between an inner and an outer radial half (`rows_displaced` = 8, a Z span of 4.7 to
+  5.0 cm against a median of 10.9 cm), so the block is 4 poloidal x 16 radial, not a 6 x 8 grid.
+- **2 shots with the block in the scrape-off layer** (157082 and 185918; at most one row in the
+  `psi_N` band 0.85-1.0, none for 185918; outermost channel at `psi_N` 1.26 and 1.22): the array
+  looks outside the pedestal.
+
+They stay in every row as trained, since the rule was fixed before any score was read. Scoring
+without them changes nothing that matters (nothing was retrained): the Table 3 row scores 0.703
+[0.59, 0.80] on 132 shots (ten of the 18 are in its test sets) against 0.703 [0.59, 0.79] on 142,
+and the 5-fold `full_cum_abcdrge` 0.742 [0.67, 0.81] on 299 shots (17 of the 18 are scored; 157082
+has no window in it) against 0.736 on 316.
+
 ### How a row is scored
 
 Per window, out of sample (a shot is scored by networks that never saw it), with the macro F1 of the
@@ -320,6 +351,13 @@ are the `cum_*` rows (or `only_c`) rerun with the paper's architecture and train
 where marked, the geometry block; `ge_*` add one factor to `only_ge` on all 444 shots; `leak_*` are
 the leaky diagnostics. The "shots" column is the shots with a scored window of that class, so the
 gate's cost reads off it.
+
+**The split rows overlap.** `only_f`, `cum_abcdrf`, `cum_abcdrgef` and `full_cum_abcdrgef` score the
+pooled test sets of five random draws, drawn independently, so a shot can be tested in several of
+them. Their "Windows" count a window once per draw that tests it, and their score weights a shot by
+its number of tests; their "Shots" are distinct shots. The distinct windows and shot-tests and the
+scores with each shot counted once are in [Overlap of the five test
+draws](#overlap-of-the-five-test-draws).
 
 Macro AUROC and AUPRC [95 % CI] of the rows run with `--rank` (shot bootstrap, one against the
 rest):
@@ -495,9 +533,12 @@ table; "corpus" and "fetched-only" are the fixed populations of that table.
 - **The corpus shots score far below the others, and more training shots do not change it.** The 117
   corpus shots score 0.705 [0.62, 0.78] when 327 more shots are added to training (`only_ge`,
   ungated) against 0.713 [0.62, 0.78] without them (`only_g`): paired -0.008 [-0.05, +0.04]. Under
-  the paper's gate they score 0.44 to 0.46 in every row that scores them (`cum_abcdrge` 0.452 on 80
-  shots, `full_cum_abcdrge` 0.436 on 80, the Table 3 row `full_cum_abcdrgef` 0.463 on 34), while the
-  fetched-only shots score 0.74 to 0.83 in the same rows; adding the 327 shots to the gated 117-shot
+  the paper's whole selection on all fetched shots they score 0.44 to 0.46 (`cum_abcdrge` 0.452 on
+  80 shots, `cum_abcdrgef` 0.446 on 40, `full_cum_abcdrge` 0.436 on 80, the Table 3 row
+  `full_cum_abcdrgef` 0.463 on 34), while the fetched-only shots score 0.74 to 0.83 in the same
+  rows. The claim is for these four rows: the rows with part of the selection score the corpus shots
+  differently (`cum_a` 0.610, `cum_ab` 0.520, `ge_a` 0.598, and the 117-shot stack `cum_abcdrg`
+  0.416). Adding the 327 shots to the gated 117-shot
   stack moves its corpus shots by +0.037 [-0.05, +0.13] (`cum_abcdrg` to `cum_abcdrge`, 80 shots).
   The all-shot rows score higher than the 117-shot rows because 327 of their 444 shots are
   fetched-only shots that are easier, not because the network has more to learn from. **The first
@@ -518,7 +559,8 @@ table; "corpus" and "fetched-only" are the fixed populations of that table.
   (fetched-only shots: 25, 30 and 40 ms; 65 to 82 %); only QH differs, 20 intervals of 1.2 s
   (median) on the corpus shots against 392 of 190 ms. A 20 ms margin at each end leaves nothing of
   an interval of 40 ms, so most intervals of these classes give no window once the margins apply,
-  and the gate takes more (below: it removes 46 % of the L-mode and 76 % of the WPQH windows).
+  and the gate takes more (it fails 46 % of the L-mode and 76 % of the WPQH windows of the 444
+  shots, passive-BES windows among them: `gate_breakdown.json`).
 - **Single factors, on 444 shots.** The single-factor rows on 117 shots (`only_a` to `only_r`) are
   underpowered: in all five folds of each (two of five for `only_f`) the validation set holds fewer
   than 3 shots of some class (the validation audit), and `only_a` has two folds with a class missing
@@ -529,7 +571,16 @@ table; "corpus" and "fetched-only" are the fixed populations of that table.
   certain part, and the margins drop those windows); the paper's optimiser changes nothing (+0.001
   [-0.01, +0.01]) and neither do the paper's rows (-0.007 [-0.02, +0.01]). By class the gate costs
   WPQH most (F1 0.70 to 0.41; L 0.86 to 0.82, H 0.91 to 0.92, QH 0.84 to 0.86) and the margins help
-  WPQH most (0.70 to 0.76). The 117-shot rows had given -0.055 for the optimiser and -0.068 for the
+  WPQH most (0.70 to 0.76). **What the gate step removes.** The gate fails two kinds of window and the
+  step does not separate them: windows with the 150L beam on but out of range (50 to 700 kW) or the
+  150R beam above 200 kW, and **passive-BES windows**, where the 150L beam is below 50 kW and the BES
+  records passive emission only. On the 444 shots the passive windows are 33 % of the L-mode windows,
+  11 % of the H, 17 % of the QH and 68 % of the WPQH windows (`gate_breakdown.json`), against the 46 %
+  of L and 76 % of WPQH windows the gate fails in all, so most of what it removes is passive. The
+  gate steps compare a gated row, scored on beam-on windows, with an ungated row scored on all
+  windows, so the WPQH drop (0.70 to 0.41) is largely the removal of passive-BES windows, where the
+  beam state itself can serve as a shortcut to the class, not a measure of the 700 and 200 kW
+  thresholds; no row varies the thresholds, so this is not tested. The 117-shot rows had given -0.055 for the optimiser and -0.068 for the
   rows; neither survives at 444 shots and the earlier reading that the paper's selection rules each
   lower the score is withdrawn.
 - **The stack does not reach the paper.** The paper's selection on all fetched shots gives 0.731
@@ -542,10 +593,11 @@ table; "corpus" and "fetched-only" are the fixed populations of that table.
   `cum_abcdrgef`). Geometry dropped 43 of the 444 shots (3 without a position record, 40 whose array
   does not reach the separatrix), 13 of them corpus shots.
 - **The paper's split is no lift.** The five random splits by discharge give 0.703 [0.59, 0.79]
-  (`full_cum_abcdrgef`, 142 shots) against 0.736 for the 5-fold of the same recipe: paired +0.001
-  [-0.07, +0.08] on the 142 shots both score. A test set of 7 (WPQH) to 69 (H) shots per class is as
-  noisy as the paper's 44-shot set; the WPQH class rests on 2 to 3 test shots per split here (7 over
-  the five splits pooled) against the paper's 7 on its one test set.
+  pooled (`full_cum_abcdrgef`, 142 distinct shots in 200 shot-tests; one split scores 0.684 +/-
+  0.074) against 0.736 for the 5-fold of the same recipe: paired +0.001 [-0.07, +0.08] on the 142
+  shots both score. A test set of 7 (WPQH) to 69 (H) shots per class is as noisy as the paper's
+  44-shot set; the WPQH class rests on 2 to 3 test shots per split here (7 distinct over the five
+  splits) against the paper's 7 on its one test set.
 - **Class mix does not explain it.** Reweighting the confusion matrix of the Table 3 row to the
   class mix of the paper's test set (8.3, 21.8, 17.4 and 9.7 labelled seconds of L, H, QH and WPQH)
   gives 0.685, lower than the 0.703 as scored (the early-stopped `cum_abcdrgef` goes from 0.716 to
@@ -570,9 +622,11 @@ table; "corpus" and "fetched-only" are the fixed populations of that table.
 
 The score to set beside the paper's 0.94 is **`full_cum_abcdrgef`: macro F1 0.703 [0.59, 0.79]**,
 **our reimplementation under the paper's selection and split** (per class L 0.80, H 0.86, QH 0.77,
-WPQH 0.39 on 40, 69, 59 and 7 shots; macro AUROC 0.889, AUPRC 0.713; 152,863 windows on 142 test
-shots over five random splits by shot, the folds' own scores 0.79, 0.73, 0.62, 0.66 and 0.62).
-Overall and by population: 0.463 [0.28, 0.66] on the 34 corpus shots in it and 0.742 [0.60, 0.83] on
+WPQH 0.39 on 40, 69, 59 and 7 distinct shots; macro AUROC 0.889, AUPRC 0.713; 152,863 pooled
+windows, of which 106,232 are distinct, on 142 distinct test shots in 200 shot-tests over five
+random splits by shot whose test sets overlap, the splits' own scores 0.79, 0.73, 0.62, 0.66 and
+0.62: mean 0.684, sd 0.074). The row was named in advance as the Table 3 row and its number is
+kept; read it with the overlap below. Overall and by population: 0.463 [0.28, 0.66] on the 34 corpus shots in it and 0.742 [0.60, 0.83] on
 the other 108. The row is the paper's data selection and training put in as the paper's full text
 states them: the beam gate (150L at or above 700 kW, 150R at or below 200 kW; WPQH 400 kW in
 training), the margins, a 6 x 8 block chosen from each shot's channel positions (401 of the 444
@@ -588,24 +642,143 @@ this one (it stays in the table above). The first retrain's 0.678 and the ungate
 (0.828) are different protocols and are not offered as comparison-table numbers; the earlier
 suggestion to show `only_ge` beside it is dropped.
 
+#### Overlap of the five test draws
+
+The five repeats of the paper's split are drawn independently (`bes_protocol.paper_roles`, seed
+`SEED + r`), so a shot can be in the test set of more than one repeat: of the 142 test shots, 99
+were tested once, 30 twice, 11 three times and 2 four times (200 shot-tests). Pooling the five
+test sets counts a repeated shot's windows once per repeat that tests it (152,863 windows, of which
+106,232 are distinct) and weights the shot by its number of tests; each repeat's network is a
+different one, so the repeats are not copies. The pooled 0.703 stays the Table 3 number;
+three more readings bracket it (stage `repeats`, record `protocol_repeats.json`, all computed from
+the out-of-fold predictions on disk; each interval is a 95 % shot bootstrap that draws a shot with
+all its repeats):
+
+| Row | Test shots (shot-tests) | Windows pooled | Distinct windows | Pooled (Table 3) | One split, mean +/- sd of five | First repeat only | Probabilities averaged over repeats |
+|---|---|---|---|---|---|---|---|
+| `only_f` | 51 (70) | 36,800 | 27,804 | 0.810 [0.69, 0.89] (51) | 0.766 +/- 0.061 | 0.832 [0.71, 0.90] (51) | 0.839 [0.73, 0.90] (51) |
+| `cum_abcdrf` | 37 (50) | 24,942 | 18,009 | 0.483 [0.28, 0.63] (37) | 0.436 +/- 0.163 | 0.438 [0.27, 0.61] (37) | 0.428 [0.26, 0.60] (37) |
+| `cum_abcdrgef` | 146 (190) | 154,468 | 119,142 | 0.716 [0.61, 0.81] (146) | 0.712 +/- 0.083 | 0.713 [0.60, 0.81] (146) | 0.726 [0.60, 0.82] (146) |
+| `full_cum_abcdrgef` | 142 (200) | 152,863 | 106,232 | 0.703 [0.59, 0.79] (142) | 0.684 +/- 0.074 | 0.736 [0.61, 0.81] (142) | 0.747 [0.61, 0.82] (142) |
+
+- **One split like the paper's scores 0.684 +/- 0.074** (mean and sample standard deviation of the
+  five splits' own macro F1: 0.792, 0.727, 0.619, 0.658, 0.624): the score to expect from one run of
+  this protocol, and its spread. The pooled 0.703 lies within one sd of it.
+- **Each shot counted once** (the windows of the first repeat that tests it, 106,232 windows):
+  0.736 [0.61, 0.81].
+- **Probabilities averaged over the repeats that tested a shot** (the same 106,232 windows):
+  0.747 [0.61, 0.82].
+- The four readings of the Table 3 row span 0.684 to 0.747 and each of the three intervals holds the
+  other values; the paper's 0.94 is outside all of them. The other split rows overlap too and are in the table
+  (`cum_abcdrf` is the weakest, 0.483 pooled and 0.436 +/- 0.163 per split, on 37 shots).
+
+Windows and shots of the Table 3 row by class (the shots are distinct):
+
+| Class | Windows pooled | Distinct windows | Test shots |
+|---|---|---|---|
+| L | 23,693 | 14,589 | 40 |
+| H | 79,557 | 58,748 | 69 |
+| QH | 44,061 | 29,399 | 59 |
+| WP | 5,552 | 3,496 | 7 |
+
 It is 0.24 short of the paper's 0.94. The paper's selection, split, optimiser, architecture,
 training length and class mix are in, and none of them accounts for a gap that size (the single
 factors move the score by at most 0.05, the class mix lowers it, the paper's split changes it by
 +0.001 [-0.07, +0.08]), so the remainder is **unexplained**. What still differs, and is not tested:
 
-1. **The labels.** The paper's labels are its own: "standard ELMy H-mode" with H98y2 of at least 1,
-   segments ended slightly before every transition and checked against the logbook; ours merge
-   Gill's and Butt's tables, the H class is the experts' wider one, and 8.6 % of the intervals look
-   mislabelled (below). The corpus shots score 0.46 against 0.74 for the others, in this row and in
-   `confine-ours`; whether their labels or their conditions differ is not known.
+1. **The paper's selection within Gill's own labels.** Our labels are Gill's own: 2,545 of the
+   2,551 merged intervals carry a source from his tables (his workbook, his BES-time files or both)
+   and only 6 are Butt's table alone ([below](#whose-labels-and-where-the-score-is-lost)), so what
+   differs from the paper is what it kept of them, not who labelled them: "standard ELMy H-mode"
+   with H98y2 of at least 1 and no dithering, segments ended slightly before every transition and
+   checked against the logbook, 330 discharges. Ours keep the experts' wider H class, merge the
+   sources where they differ and include shots outside those 330; and 8.6 % of the intervals look
+   mislabelled (below). Restricting the scoring to the intervals of Gill's BES-time files gives no
+   lift (0.594 on 26 shots), and the failures are concentrated in 22 shots (below). The corpus
+   shots score 0.46 against 0.74 for the others, in this row and in `confine-ours`; whether their
+   labels or their conditions differ is not known.
 2. **The test set.** One 44-shot test set of 7 to 17 shots per class against five random splits
-   pooled over 142 shots; the WPQH class rests on 2 to 3 shots per split (7 pooled) against 7.
+   that overlap, pooled over 142 distinct shots (200 shot-tests); the WPQH class rests on 2 to 3
+   shots per split (7 distinct) against 7.
 3. **The shots.** 330 discharges 2012 to 2023 against 401 here (the 444 fetched, less the 43 that
    geometry drops).
 4. **Constants of ours.** The 20 ms margins and 100 ms after L-mode (the paper does not give them),
    the pedestal rows and 0.98 criterion of the geometry block; the unstated dropout (0.2), Adam
    betas, batch size (256), window stride (2,048 samples) and class weights, all set once and not
    tuned; one GPU where the paper trained on 48.
+
+### Whose labels, and where the score is lost
+
+Two readings of predictions already on disk bear on the first hypothesis above (stages `subsets`
+and `failures`; records `subsets.json`, `failure_blocks.json` and `failure_blocks.csv`; nothing was
+retrained).
+
+**Our labels are Gill's own.** Of the 2,551 merged intervals, 2,545 carry a source from Gill's
+tables (his workbook, his BES-time files or both) and 6 come from Butt's table alone
+(`merged_intervals.csv`, column `sources`: 1,563 intervals from the workbook and Butt's table, 514
+from the BES-time files alone, 468 from all three, 6 from Butt's alone). So the labels differ from
+the paper's in what the paper kept, not in who set them. If the paper's 0.94 rested on the part
+of the labels Gill took from his BES-time files, scoring on that part would lift the score. It does
+not: the predictions rescored on the windows of the 982 intervals that carry a BES-time-file source
+(alone or with the others), against the windows of the rest (macro F1 [95 % CI] (shots)):
+
+| Row | All scored | Intervals from Gill's BES-time files | Other intervals | Without the 4 x 16 and scrape-off-layer shots |
+|---|---|---|---|---|
+| `full_cum_abcdrgef` | 0.703 [0.59, 0.79] (142) | 0.594 [0.48, 0.87] (26) | 0.708 [0.59, 0.80] (124) | 0.703 [0.59, 0.80] (132) |
+| `full_cum_abcdrge` | 0.736 [0.66, 0.80] (316) | 0.607 [0.53, 0.84] (57) | 0.749 [0.67, 0.82] (273) | 0.742 [0.67, 0.81] (299) |
+
+The BES-time-file intervals score below the others (0.594 against 0.708 on the Table 3 row, 0.607
+against 0.749 on the 5-fold row; the intervals overlap, and WPQH is one shot in the first and two in
+the second, scored 0), so they are no easier. The last column drops the geometry exceptions of the section on factor d: the
+scores do not move. The H98y2 restriction of the paper's H class is not run (see Not done).
+
+**Where the 5-fold row fails: whole blocks.** In `full_cum_abcdrge` (316 shots, 230,282 windows; the
+row with most shots under the paper's training), a (shot, class) block is a failure when it has at
+least 150 scored windows and fewer than 10 % of them are called right. There are 23 such blocks on
+22 shots (12 of them corpus shots; L 9 blocks, H 4, QH 5, WPQH 5), holding 15,171 windows, 6.6 % of
+the row's. The threshold is a review-list convention set after looking at the predictions (with 20
+windows the list has 40 blocks). Five corpus L-mode shots (191376, 196493, 191782, 190508, 189329)
+hold 2,295 of the windows, which the network calls mostly H (WP on 196493); QH fails on 190507,
+195821 and 190666, WPQH on 190670, 190514 and 195865. 18 of the 23 blocks overlap an interval that confident learning flags
+below; both read the same out-of-fold predictions, so the overlap is not independent evidence. The
+list is for an expert or logbook check: each row is a stretch the network calls another regime
+almost throughout, whether through a label error, a plasma outside the paper's definition (H98y2
+below 1, dithering, the QH/WPQH boundary) or a BES problem (beam, geometry); the data cannot say
+which, and no label was changed. "Interval span" is the curated interval the block lies in, "Confident
+learning" the flagged intervals that overlap it ("-" for none), "Mostly called" the class most of the
+block's windows are called (and their share), the year that of the shot's EFIT01 insertion.
+
+| Shot | Year | Corpus | Class | Windows | Called right | Mostly called | Interval span (ms) | Confident learning |
+|---|---|---|---|---|---|---|---|---|
+| 179634 | 2019 | no | L | 2,031 | 0.0 % | QH (100 %) | 800-5000 | 800-5000 |
+| 185871 | 2021 | yes | H | 1,474 | 3.3 % | WP (55 %) | 2110-5170 | 2110-5170 |
+| 184810 | 2021 | no | H | 1,331 | 2.0 % | QH (98 %) | 2239-5006 | 2239-5006 |
+| 190507 | 2022 | yes | QH | 1,308 | 8.3 % | WP (88 %) | 1372-4244 | 1799-2000;1372-1787;2010-2079;2090-4244 |
+| 190670 | 2022 | yes | WP | 957 | 0.0 % | H (98 %) | 3000-5000 | 3000-5000 |
+| 190514 | 2022 | yes | WP | 904 | 0.0 % | QH (99 %) | 3024-4916 | 3024-4916 |
+| 195865 | 2023 | yes | WP | 863 | 0.0 % | H (53 %) | 2592-4401 | - |
+| 191376 | 2022 | yes | L | 839 | 3.6 % | H (96 %) | 300-2058 | 300-2058 |
+| 195821 | 2023 | yes | QH | 661 | 0.0 % | H (71 %) | 1600-3400 | 1600-3400 |
+| 190666 | 2022 | yes | QH | 622 | 1.8 % | H (98 %) | 2686-4000 | 2686-4000 |
+| 184433 | 2021 | no | L | 560 | 0.0 % | QH (98 %) | 365-1552 | - |
+| 196493 | 2023 | yes | L | 463 | 0.0 % | WP (94 %) | 1520-2518 | 1520-2518 |
+| 191782 | 2022 | yes | L | 413 | 0.5 % | H (100 %) | 400-2127 | 400-2127 |
+| 184433 | 2021 | no | H | 402 | 0.2 % | QH (100 %) | 3063-3927 | 3063-3927 |
+| 161608 | 2015 | no | WP | 387 | 0.0 % | QH (39 %) | 3741-5461 | - |
+| 190508 | 2022 | yes | L | 325 | 6.8 % | H (50 %) | 834-1539 | - |
+| 174653 | 2018 | no | WP | 266 | 0.4 % | QH (98 %) | 4130-4799 | 4363-4799;4130-4320 |
+| 189329 | 2022 | yes | L | 255 | 0.4 % | H (100 %) | 1162-1989 | 1162-1212;1842-1989;1242-1417;1642-1818;1442-1618 |
+| 172211 | 2017 | no | QH | 239 | 1.7 % | H (98 %) | 1500-2030 | 1500-2030 |
+| 154771 | 2013 | no | L | 229 | 0.0 % | QH (70 %) | 2167-2680 | - |
+| 182682 | 2020 | no | H | 228 | 0.0 % | WP (92 %) | 1948-3819 | 1948-3819 |
+| 182665 | 2020 | no | QH | 216 | 0.0 % | WP (99 %) | 1800-2300 | 1800-2300 |
+| 159372 | 2014 | no | L | 198 | 0.0 % | QH (100 %) | 921-1367 | 921-1367 |
+
+**As a diagnostic only, not a result:** the row scored without these blocks gives 0.860 [0.79,
+0.90] on 302 shots (215,111 windows; L 0.92, H 0.93, QH 0.88, WPQH 0.70) against 0.736. Dropping the
+blocks the network gets most wrong is selection on the outcome, so the number measures nothing; it
+shows that the deficit of this row sits in 6.6 % of its windows on 22 shots, and that even
+without them the score stays below the paper's 0.94.
 
 ### Confident learning: intervals the BES network doubts
 
@@ -666,7 +839,8 @@ the gate reads apart from the BES strip left of the row (mid grey: native 1 MHz 
 shots; black: the shot is also one of the 117 the corpus holds BES for at 500 kHz). The time axes
 end at the last labelled time of the data (6.5 s). The marginal bars give the labelled regime time
 by year of the shot and per 0.2 s of shot time. The year is not on disk for shots before 2021; it is
-the year the shot's EFIT01 reconstruction was inserted into MDSplus
+the year the shot's EFIT01 reconstruction was inserted into MDSplus, in the server's local (Pacific)
+time (the stamps carry no time zone and fall between 08:00 and 21:59; they are not UTC)
 (`confinement_shot_dates_fetch.py` reads `\EFIT01::TOP.RESULTS.GEQDSK:GTIME`; the file is
 `$LABELER_ROOT/round4/conf/dates.csv`: 445 of the 446 shots carry a stamp; the one without, 175658,
 and four whose stamp lies more than 30 days from their neighbours' (an EFIT run again later: 149996,
@@ -689,7 +863,10 @@ EFIT reconstruction's insertion into MDSplus, with the number of discharges abov
 - The H-mode definition: the paper's H-mode is ELMy H-mode with H98y2 of at least 1; ours is the
   experts' wider class. Restricting the H intervals to H98y2 of at least 1 (EFIT confinement
   time) and rescoring would test whether the label convention explains part of the remainder.
-  Not run.
+  Not run: H98y2 is not on disk (the 0D records hold the density, the stored energy and betaN),
+  and a fetch was out of scope in fix round 3.
+- No row draws the five test sets of the paper's split without overlap; the per-split mean, the
+  first-occurrence score and the repeat-averaged score bracket the effect.
 - The corpus-shot deficit cannot be attributed with what is on disk: the 117 corpus shots
   (2021-2023) differ from the rest in campaign, possibly in who set their labels and how (the
   interval-length table shows no finer intervals, so this is not known), in sampling (500 kHz in
@@ -697,8 +874,7 @@ EFIT reconstruction's insertion into MDSplus, with the number of discharges abov
   holding the others. A label audit of those shots against the logbook would separate the label
   convention from the campaign. Not run.
 - Anything the paper leaves open was set once and not tuned: dropout (0.2), the Adam betas, the
-  batch size (256), the window stride (2,048 samples), class weights, the class counts of its
-  table 1. Every row is one seed per fold or split; a second seed would show the run-to-run
+  batch size (256), the window stride (2,048 samples), class weights. Every row is one seed per fold or split; a second seed would show the run-to-run
   spread, which the bootstrap intervals (over shots, not over seeds) do not include.
 - The paper trained on 48 GPUs (its batch size per device is not stated); one GPU and a batch of
   256 here are a difference of optimisation, not tested.

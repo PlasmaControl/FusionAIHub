@@ -58,8 +58,9 @@ and are in no fold). The labelled bins are 789,441
 (L 97,856 on 104 shots; H 384,821 on 156; QH 211,348 on 181; WPQH 95,416 on 71).
 
 **Protocol.** 5-fold cross-validation in which a fold holds out **whole run days**. A shot's
-run day is the UTC day its EFIT01 reconstruction was inserted into MDSplus
-(`confinement_shot_dates_fetch.py` reads it from the tree: no table on disk dates the shots
+run day is the calendar day, in the MDSplus server's local (Pacific) time, on which its EFIT01
+reconstruction was inserted into MDSplus (the stamps carry no time zone and fall between 08:00 and
+21:59, so they are not UTC; `confinement_shot_dates_fetch.py` reads it from the tree: no table on disk dates the shots
 before 2021; five shots whose date is far from their neighbours' or missing take the day of
 the previous shot), which gives 104 groups for the 401 shots. Groups are dealt to the folds,
 those holding the rarer classes first, each to the fold that holds the smallest share of the
@@ -133,7 +134,12 @@ folds of `confine-ours` hold out run days, those of the BES network hold out sho
 | `cum_abcdrge` | paper selection, early-stopped padded network, shot-grouped 5-fold | 276 | 203,073 | 0.727 [0.66, 0.79] | 0.811 [0.74, 0.87] | +0.084 [+0.02, +0.15] |
 | `cum_abcdrgef` | paper selection and split, early-stopped padded network | 127 | 130,591 | 0.702 [0.58, 0.80] | 0.864 [0.76, 0.93] | +0.162 [+0.08, +0.24] |
 | `full_cum_abcdrge` | paper selection, architecture and training, shot-grouped 5-fold | 280 | 202,339 | 0.731 [0.65, 0.80] | 0.812 [0.74, 0.88] | +0.081 [+0.02, +0.14] |
-| `full_cum_abcdrgef` | **Table 3 row**: paper selection, architecture, training and split | 124 | 130,711 | 0.702 [0.58, 0.80] | 0.794 [0.71, 0.87] | +0.092 [-0.04, +0.24] |
+| `full_cum_abcdrgef` | **Table 3 row**: paper selection, architecture, training and split (pooled over five overlapping draws) | 124 | 130,711 | 0.702 [0.58, 0.80] | 0.794 [0.71, 0.87] | +0.092 [-0.04, +0.24] |
+
+The two split rows (`cum_abcdrgef`, `full_cum_abcdrgef`) pool the test sets of five random draws that
+overlap (142 distinct shots in 200 shot-tests for the Table 3 row), so their windows count a shot once
+per draw that tests it and the paired difference weights it the same way
+([confinement_bes_benchmark.md](confinement_bes_benchmark.md), "Overlap of the five test draws").
 
 **By population** (per 1 ms bin, all labelled bins, run-day folds): on the 117 shots the corpus
 holds BES for, 0.689 [0.59, 0.77] (L 0.84, H 0.94, QH 0.49, WPQH 0.48); on the other 284 curated
@@ -156,8 +162,9 @@ shots, 0.926 [0.89, 0.95] (L 0.93, H 0.97, QH 0.93, WPQH 0.88).
   windows (the BES row's gate and margins), hold out different units (run days against shots) and
   both learned from the same labels.
 - **The corpus-shot deficit is shared.** `confine-ours` scores 0.689 on the 117 corpus shots
-  against 0.926 on the other 284, the same ordering the BES network shows (0.44 to 0.46 gated on
-  the corpus shots against 0.74 to 0.80 on the others, `confinement_bes_benchmark.md`). Two
+  against 0.926 on the other 284, the same ordering the BES network shows (0.44 to 0.46 under the
+  paper's whole selection on the corpus shots against 0.74 to 0.83 on the others, in the four
+  all-shot full-selection rows of `confinement_bes_benchmark.md`). Two
   networks that read different signals find the same shots harder, so the cause lies in those
   shots (their labels or their conditions), not in the BES recipe; the data cannot say which.
 - **Circularity.** The curated intervals were set by experts reading the same 0D traces (a
@@ -166,6 +173,12 @@ shots, 0.926 [0.89, 0.95] (L 0.93, H 0.97, QH 0.93, WPQH 0.88).
   signals, not agreement with an independent measurement. The QH label rests on the edge harmonic
   oscillation seen in the magnetic spectrogram and the WPQH label on the pedestal width from
   Thomson scattering; the network sees neither, and there it is weakest.
+- **Training length.** Every fold ran to the 5,000-step cap and the patience of 16 evaluations
+  (4,000 steps) never fired, so the networks may be under-trained. The validation macro-F1 does not
+  support that: it peaked at steps 1,750, 3,000, 1,000, 1,500 and 2,500 and was lower at step 5,000
+  by 0.028, 0.055, 0.080, 0.014 and 0.010 (`ours_runday/fold*_training.json` under
+  `$LABELER_ROOT/round4/conf/`), so a longer run is not obviously better; none was run, nor was the
+  cap or patience tuned.
 - Folds hold whole run days out, so they cover day-to-day variation but not a change of
   campaign: no fold holds out 2012-2017 or 2021-2023. The cohort's blind test shots are not
   read at all.
