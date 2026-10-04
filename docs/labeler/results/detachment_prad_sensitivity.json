@@ -74,7 +74,7 @@
    "tangtv_only": {
     "bins": {
      "attached": 393,
-     "detached": 468,
+     "detached": 375,
      "marfe": 0
     },
     "bins_by_split": {
@@ -88,7 +88,7 @@
       "train": 0,
       "val": 57,
       "test": 0,
-      "outside": 411
+      "outside": 318
      },
      "marfe": {
       "train": 0,
@@ -99,17 +99,17 @@
     },
     "shots": {
      "attached": 17,
-     "detached": 20,
+     "detached": 14,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 11,
+    "shots_with_attached_and_detached": 6,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
    "certain_or_tangtv_only": {
     "bins": {
      "attached": 453,
-     "detached": 555,
+     "detached": 462,
      "marfe": 0
     },
     "bins_by_split": {
@@ -123,7 +123,7 @@
       "train": 0,
       "val": 57,
       "test": 0,
-      "outside": 498
+      "outside": 405
      },
      "marfe": {
       "train": 0,
@@ -134,21 +134,22 @@
     },
     "shots": {
      "attached": 19,
-     "detached": 20,
+     "detached": 14,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 13,
+    "shots_with_attached_and_detached": 8,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
-   "uncertain_bins": 771,
+   "uncertain_bins": 864,
    "candidate_marfe_bins": 70,
    "tier_counts": {
-    "tangtv_only": 861,
+    "tangtv_only": 768,
     "lower_shelf_window": 325,
     "insufficient_support": 224,
     "certain": 147,
     "no_vote": 123,
+    "tangtv_only_lmode": 93,
     "candidate_marfe": 70,
     "conflict": 29
    },
@@ -201,7 +202,7 @@
    "tangtv_only": {
     "bins": {
      "attached": 473,
-     "detached": 564,
+     "detached": 471,
      "marfe": 0
     },
     "bins_by_split": {
@@ -215,7 +216,7 @@
       "train": 0,
       "val": 57,
       "test": 0,
-      "outside": 507
+      "outside": 414
      },
      "marfe": {
       "train": 0,
@@ -226,17 +227,17 @@
     },
     "shots": {
      "attached": 19,
-     "detached": 21,
+     "detached": 15,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 14,
+    "shots_with_attached_and_detached": 9,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
    "certain_or_tangtv_only": {
     "bins": {
      "attached": 473,
-     "detached": 564,
+     "detached": 471,
      "marfe": 0
     },
     "bins_by_split": {
@@ -250,7 +251,7 @@
       "train": 0,
       "val": 57,
       "test": 0,
-      "outside": 507
+      "outside": 414
      },
      "marfe": {
       "train": 0,
@@ -261,19 +262,20 @@
     },
     "shots": {
      "attached": 19,
-     "detached": 21,
+     "detached": 15,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 14,
+    "shots_with_attached_and_detached": 9,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
-   "uncertain_bins": 742,
+   "uncertain_bins": 835,
    "candidate_marfe_bins": 70,
    "tier_counts": {
-    "tangtv_only": 1037,
+    "tangtv_only": 944,
     "no_vote": 347,
     "lower_shelf_window": 325,
+    "tangtv_only_lmode": 93,
     "candidate_marfe": 70
    }
   },
@@ -295,7 +297,7 @@
    "certain": {
     "bins": {
      "attached": 132,
-     "detached": 143,
+     "detached": 112,
      "marfe": 0
     },
     "bins_by_split": {
@@ -309,7 +311,7 @@
       "train": 0,
       "val": 0,
       "test": 0,
-      "outside": 143
+      "outside": 112
      },
      "marfe": {
       "train": 0,
@@ -320,17 +322,17 @@
     },
     "shots": {
      "attached": 15,
-     "detached": 13,
+     "detached": 8,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 9,
+    "shots_with_attached_and_detached": 6,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
    "tangtv_only": {
     "bins": {
      "attached": 219,
-     "detached": 179,
+     "detached": 117,
      "marfe": 0
     },
     "bins_by_split": {
@@ -344,7 +346,7 @@
       "train": 0,
       "val": 13,
       "test": 0,
-      "outside": 166
+      "outside": 104
      },
      "marfe": {
       "train": 0,
@@ -355,17 +357,17 @@
     },
     "shots": {
      "attached": 15,
-     "detached": 13,
+     "detached": 10,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 6,
+    "shots_with_attached_and_detached": 5,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
    "certain_or_tangtv_only": {
     "bins": {
      "attached": 351,
-     "detached": 322,
+     "detached": 229,
      "marfe": 0
     },
     "bins_by_split": {
@@ -379,7 +381,7 @@
       "train": 0,
       "val": 13,
       "test": 0,
-      "outside": 309
+      "outside": 216
      },
      "marfe": {
       "train": 0,
@@ -390,21 +392,22 @@
     },
     "shots": {
      "attached": 19,
-     "detached": 19,
+     "detached": 13,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 13,
+    "shots_with_attached_and_detached": 8,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
-   "uncertain_bins": 1106,
+   "uncertain_bins": 1199,
    "candidate_marfe_bins": 70,
    "tier_counts": {
     "conflict": 447,
-    "tangtv_only": 398,
+    "tangtv_only": 336,
     "lower_shelf_window": 325,
-    "certain": 275,
+    "certain": 244,
     "insufficient_support": 163,
+    "tangtv_only_lmode": 93,
     "candidate_marfe": 70,
     "low_confidence_pair": 67,
     "no_vote": 34
@@ -428,7 +431,7 @@
    "certain": {
     "bins": {
      "attached": 56,
-     "detached": 474,
+     "detached": 381,
      "marfe": 0
     },
     "bins_by_split": {
@@ -442,7 +445,7 @@
       "train": 0,
       "val": 51,
       "test": 0,
-      "outside": 423
+      "outside": 330
      },
      "marfe": {
       "train": 0,
@@ -453,7 +456,7 @@
     },
     "shots": {
      "attached": 5,
-     "detached": 20,
+     "detached": 14,
      "marfe": 0
     },
     "shots_with_attached_and_detached": 3,
@@ -498,7 +501,7 @@
    "certain_or_tangtv_only": {
     "bins": {
      "attached": 234,
-     "detached": 526,
+     "detached": 433,
      "marfe": 0
     },
     "bins_by_split": {
@@ -512,7 +515,7 @@
       "train": 0,
       "val": 57,
       "test": 0,
-      "outside": 469
+      "outside": 376
      },
      "marfe": {
       "train": 0,
@@ -523,22 +526,23 @@
     },
     "shots": {
      "attached": 17,
-     "detached": 20,
+     "detached": 14,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 11,
+    "shots_with_attached_and_detached": 6,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
-   "uncertain_bins": 1019,
+   "uncertain_bins": 1112,
    "candidate_marfe_bins": 70,
    "tier_counts": {
-    "certain": 530,
+    "certain": 437,
     "conflict": 355,
     "lower_shelf_window": 325,
     "tangtv_only": 230,
     "insufficient_support": 149,
     "low_confidence_pair": 108,
+    "tangtv_only_lmode": 93,
     "candidate_marfe": 70,
     "no_vote": 12
    }
@@ -560,7 +564,7 @@
    "certain": {
     "bins": {
      "attached": 92,
-     "detached": 123,
+     "detached": 92,
      "marfe": 0
     },
     "bins_by_split": {
@@ -574,7 +578,7 @@
       "train": 0,
       "val": 0,
       "test": 0,
-      "outside": 123
+      "outside": 92
      },
      "marfe": {
       "train": 0,
@@ -585,17 +589,17 @@
     },
     "shots": {
      "attached": 14,
-     "detached": 12,
+     "detached": 7,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 7,
+    "shots_with_attached_and_detached": 4,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
    "tangtv_only": {
     "bins": {
      "attached": 277,
-     "detached": 206,
+     "detached": 144,
      "marfe": 0
     },
     "bins_by_split": {
@@ -609,7 +613,7 @@
       "train": 0,
       "val": 13,
       "test": 0,
-      "outside": 193
+      "outside": 131
      },
      "marfe": {
       "train": 0,
@@ -620,17 +624,17 @@
     },
     "shots": {
      "attached": 18,
-     "detached": 14,
+     "detached": 11,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 8,
+    "shots_with_attached_and_detached": 7,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
    "certain_or_tangtv_only": {
     "bins": {
      "attached": 369,
-     "detached": 329,
+     "detached": 236,
      "marfe": 0
     },
     "bins_by_split": {
@@ -644,7 +648,7 @@
       "train": 0,
       "val": 13,
       "test": 0,
-      "outside": 316
+      "outside": 223
      },
      "marfe": {
       "train": 0,
@@ -655,22 +659,23 @@
     },
     "shots": {
      "attached": 19,
-     "detached": 20,
+     "detached": 14,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 14,
+    "shots_with_attached_and_detached": 9,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
-   "uncertain_bins": 1081,
+   "uncertain_bins": 1174,
    "candidate_marfe_bins": 70,
    "tier_counts": {
-    "tangtv_only": 483,
+    "tangtv_only": 421,
     "conflict": 339,
     "lower_shelf_window": 325,
     "insufficient_support": 239,
-    "certain": 215,
+    "certain": 184,
     "no_vote": 108,
+    "tangtv_only_lmode": 93,
     "candidate_marfe": 70
    }
   },
@@ -691,7 +696,7 @@
    "certain": {
     "bins": {
      "attached": 47,
-     "detached": 475,
+     "detached": 382,
      "marfe": 0
     },
     "bins_by_split": {
@@ -705,7 +710,7 @@
       "train": 0,
       "val": 51,
       "test": 0,
-      "outside": 424
+      "outside": 331
      },
      "marfe": {
       "train": 0,
@@ -716,7 +721,7 @@
     },
     "shots": {
      "attached": 4,
-     "detached": 21,
+     "detached": 15,
      "marfe": 0
     },
     "shots_with_attached_and_detached": 2,
@@ -761,7 +766,7 @@
    "certain_or_tangtv_only": {
     "bins": {
      "attached": 236,
-     "detached": 535,
+     "detached": 442,
      "marfe": 0
     },
     "bins_by_split": {
@@ -775,7 +780,7 @@
       "train": 0,
       "val": 57,
       "test": 0,
-      "outside": 478
+      "outside": 385
      },
      "marfe": {
       "train": 0,
@@ -786,21 +791,22 @@
     },
     "shots": {
      "attached": 17,
-     "detached": 21,
+     "detached": 15,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 12,
+    "shots_with_attached_and_detached": 7,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
-   "uncertain_bins": 1008,
+   "uncertain_bins": 1101,
    "candidate_marfe_bins": 70,
    "tier_counts": {
-    "certain": 522,
+    "certain": 429,
     "lower_shelf_window": 325,
     "insufficient_support": 297,
     "conflict": 266,
     "tangtv_only": 249,
+    "tangtv_only_lmode": 93,
     "candidate_marfe": 70,
     "no_vote": 50
    }
@@ -823,7 +829,7 @@
    "certain": {
     "bins": {
      "attached": 113,
-     "detached": 463,
+     "detached": 370,
      "marfe": 0
     },
     "bins_by_split": {
@@ -837,7 +843,7 @@
       "train": 0,
       "val": 51,
       "test": 0,
-      "outside": 412
+      "outside": 319
      },
      "marfe": {
       "train": 0,
@@ -848,10 +854,10 @@
     },
     "shots": {
      "attached": 14,
-     "detached": 20,
+     "detached": 14,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 8,
+    "shots_with_attached_and_detached": 5,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
@@ -893,7 +899,7 @@
    "certain_or_tangtv_only": {
     "bins": {
      "attached": 330,
-     "detached": 502,
+     "detached": 409,
      "marfe": 0
     },
     "bins_by_split": {
@@ -907,7 +913,7 @@
       "train": 0,
       "val": 57,
       "test": 0,
-      "outside": 445
+      "outside": 352
      },
      "marfe": {
       "train": 0,
@@ -918,22 +924,23 @@
     },
     "shots": {
      "attached": 18,
-     "detached": 20,
+     "detached": 14,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 12,
+    "shots_with_attached_and_detached": 7,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
-   "uncertain_bins": 947,
+   "uncertain_bins": 1040,
    "candidate_marfe_bins": 70,
    "tier_counts": {
-    "certain": 576,
+    "certain": 483,
     "lower_shelf_window": 325,
     "conflict": 278,
     "tangtv_only": 256,
     "insufficient_support": 131,
     "low_confidence_pair": 126,
+    "tangtv_only_lmode": 93,
     "candidate_marfe": 70,
     "no_vote": 17
    }
@@ -956,7 +963,7 @@
    "certain": {
     "bins": {
      "attached": 178,
-     "detached": 178,
+     "detached": 114,
      "marfe": 0
     },
     "bins_by_split": {
@@ -970,7 +977,7 @@
       "train": 0,
       "val": 0,
       "test": 0,
-      "outside": 178
+      "outside": 114
      },
      "marfe": {
       "train": 0,
@@ -981,17 +988,17 @@
     },
     "shots": {
      "attached": 18,
-     "detached": 13,
+     "detached": 8,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 12,
+    "shots_with_attached_and_detached": 7,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
    "tangtv_only": {
     "bins": {
      "attached": 76,
-     "detached": 60,
+     "detached": 36,
      "marfe": 0
     },
     "bins_by_split": {
@@ -1005,7 +1012,7 @@
       "train": 0,
       "val": 6,
       "test": 0,
-      "outside": 54
+      "outside": 30
      },
      "marfe": {
       "train": 0,
@@ -1016,7 +1023,7 @@
     },
     "shots": {
      "attached": 14,
-     "detached": 10,
+     "detached": 8,
      "marfe": 0
     },
     "shots_with_attached_and_detached": 4,
@@ -1026,7 +1033,7 @@
    "certain_or_tangtv_only": {
     "bins": {
      "attached": 254,
-     "detached": 238,
+     "detached": 150,
      "marfe": 0
     },
     "bins_by_split": {
@@ -1040,7 +1047,7 @@
       "train": 0,
       "val": 6,
       "test": 0,
-      "outside": 232
+      "outside": 144
      },
      "marfe": {
       "train": 0,
@@ -1051,21 +1058,22 @@
     },
     "shots": {
      "attached": 19,
-     "detached": 18,
+     "detached": 12,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 13,
+    "shots_with_attached_and_detached": 8,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
-   "uncertain_bins": 1287,
+   "uncertain_bins": 1375,
    "candidate_marfe_bins": 70,
    "tier_counts": {
-    "conflict": 654,
-    "certain": 356,
+    "conflict": 649,
     "lower_shelf_window": 325,
+    "certain": 292,
     "insufficient_support": 140,
-    "tangtv_only": 136,
+    "tangtv_only": 112,
+    "tangtv_only_lmode": 93,
     "low_confidence_pair": 91,
     "candidate_marfe": 70,
     "no_vote": 7
@@ -1089,7 +1097,7 @@
    "certain": {
     "bins": {
      "attached": 82,
-     "detached": 485,
+     "detached": 392,
      "marfe": 0
     },
     "bins_by_split": {
@@ -1103,7 +1111,7 @@
       "train": 0,
       "val": 51,
       "test": 0,
-      "outside": 434
+      "outside": 341
      },
      "marfe": {
       "train": 0,
@@ -1114,10 +1122,10 @@
     },
     "shots": {
      "attached": 10,
-     "detached": 20,
+     "detached": 14,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 6,
+    "shots_with_attached_and_detached": 4,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
@@ -1159,7 +1167,7 @@
    "certain_or_tangtv_only": {
     "bins": {
      "attached": 167,
-     "detached": 509,
+     "detached": 416,
      "marfe": 0
     },
     "bins_by_split": {
@@ -1173,7 +1181,7 @@
       "train": 0,
       "val": 57,
       "test": 0,
-      "outside": 452
+      "outside": 359
      },
      "marfe": {
       "train": 0,
@@ -1184,22 +1192,23 @@
     },
     "shots": {
      "attached": 14,
-     "detached": 20,
+     "detached": 14,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 8,
+    "shots_with_attached_and_detached": 5,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
-   "uncertain_bins": 1103,
+   "uncertain_bins": 1196,
    "candidate_marfe_bins": 70,
    "tier_counts": {
-    "certain": 567,
+    "certain": 474,
     "conflict": 451,
     "lower_shelf_window": 325,
     "insufficient_support": 134,
     "low_confidence_pair": 121,
     "tangtv_only": 109,
+    "tangtv_only_lmode": 93,
     "candidate_marfe": 70,
     "no_vote": 2
    }
@@ -1222,7 +1231,7 @@
    "certain": {
     "bins": {
      "attached": 167,
-     "detached": 149,
+     "detached": 114,
      "marfe": 0
     },
     "bins_by_split": {
@@ -1236,7 +1245,7 @@
       "train": 0,
       "val": 0,
       "test": 0,
-      "outside": 149
+      "outside": 114
      },
      "marfe": {
       "train": 0,
@@ -1247,17 +1256,17 @@
     },
     "shots": {
      "attached": 18,
-     "detached": 13,
+     "detached": 8,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 12,
+    "shots_with_attached_and_detached": 7,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
    "tangtv_only": {
     "bins": {
      "attached": 131,
-     "detached": 111,
+     "detached": 53,
      "marfe": 0
     },
     "bins_by_split": {
@@ -1271,7 +1280,7 @@
       "train": 0,
       "val": 6,
       "test": 0,
-      "outside": 105
+      "outside": 47
      },
      "marfe": {
       "train": 0,
@@ -1282,7 +1291,7 @@
     },
     "shots": {
      "attached": 15,
-     "detached": 11,
+     "detached": 9,
      "marfe": 0
     },
     "shots_with_attached_and_detached": 5,
@@ -1292,7 +1301,7 @@
    "certain_or_tangtv_only": {
     "bins": {
      "attached": 298,
-     "detached": 260,
+     "detached": 167,
      "marfe": 0
     },
     "bins_by_split": {
@@ -1306,7 +1315,7 @@
       "train": 0,
       "val": 6,
       "test": 0,
-      "outside": 254
+      "outside": 161
      },
      "marfe": {
       "train": 0,
@@ -1317,21 +1326,22 @@
     },
     "shots": {
      "attached": 19,
-     "detached": 18,
+     "detached": 12,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 13,
+    "shots_with_attached_and_detached": 8,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
-   "uncertain_bins": 1221,
+   "uncertain_bins": 1314,
    "candidate_marfe_bins": 70,
    "tier_counts": {
     "conflict": 574,
     "lower_shelf_window": 325,
-    "certain": 316,
-    "tangtv_only": 242,
+    "certain": 281,
+    "tangtv_only": 184,
     "insufficient_support": 154,
+    "tangtv_only_lmode": 93,
     "low_confidence_pair": 82,
     "candidate_marfe": 70,
     "no_vote": 16
@@ -1355,7 +1365,7 @@
    "certain": {
     "bins": {
      "attached": 68,
-     "detached": 478,
+     "detached": 385,
      "marfe": 0
     },
     "bins_by_split": {
@@ -1369,7 +1379,7 @@
       "train": 0,
       "val": 51,
       "test": 0,
-      "outside": 427
+      "outside": 334
      },
      "marfe": {
       "train": 0,
@@ -1380,10 +1390,10 @@
     },
     "shots": {
      "attached": 6,
-     "detached": 20,
+     "detached": 14,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 4,
+    "shots_with_attached_and_detached": 3,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
@@ -1425,7 +1435,7 @@
    "certain_or_tangtv_only": {
     "bins": {
      "attached": 190,
-     "detached": 514,
+     "detached": 421,
      "marfe": 0
     },
     "bins_by_split": {
@@ -1439,7 +1449,7 @@
       "train": 0,
       "val": 57,
       "test": 0,
-      "outside": 457
+      "outside": 364
      },
      "marfe": {
       "train": 0,
@@ -1450,22 +1460,23 @@
     },
     "shots": {
      "attached": 16,
-     "detached": 20,
+     "detached": 14,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 10,
+    "shots_with_attached_and_detached": 5,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
-   "uncertain_bins": 1075,
+   "uncertain_bins": 1168,
    "candidate_marfe_bins": 70,
    "tier_counts": {
-    "certain": 546,
+    "certain": 453,
     "conflict": 418,
     "lower_shelf_window": 325,
     "tangtv_only": 158,
     "insufficient_support": 137,
     "low_confidence_pair": 119,
+    "tangtv_only_lmode": 93,
     "candidate_marfe": 70,
     "no_vote": 6
    }
@@ -1488,7 +1499,7 @@
    "certain": {
     "bins": {
      "attached": 132,
-     "detached": 143,
+     "detached": 112,
      "marfe": 0
     },
     "bins_by_split": {
@@ -1502,7 +1513,7 @@
       "train": 0,
       "val": 0,
       "test": 0,
-      "outside": 143
+      "outside": 112
      },
      "marfe": {
       "train": 0,
@@ -1513,17 +1524,17 @@
     },
     "shots": {
      "attached": 15,
-     "detached": 13,
+     "detached": 8,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 9,
+    "shots_with_attached_and_detached": 6,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
    "tangtv_only": {
     "bins": {
      "attached": 219,
-     "detached": 179,
+     "detached": 117,
      "marfe": 0
     },
     "bins_by_split": {
@@ -1537,7 +1548,7 @@
       "train": 0,
       "val": 13,
       "test": 0,
-      "outside": 166
+      "outside": 104
      },
      "marfe": {
       "train": 0,
@@ -1548,17 +1559,17 @@
     },
     "shots": {
      "attached": 15,
-     "detached": 13,
+     "detached": 10,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 6,
+    "shots_with_attached_and_detached": 5,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
    "certain_or_tangtv_only": {
     "bins": {
      "attached": 351,
-     "detached": 322,
+     "detached": 229,
      "marfe": 0
     },
     "bins_by_split": {
@@ -1572,7 +1583,7 @@
       "train": 0,
       "val": 13,
       "test": 0,
-      "outside": 309
+      "outside": 216
      },
      "marfe": {
       "train": 0,
@@ -1583,21 +1594,22 @@
     },
     "shots": {
      "attached": 19,
-     "detached": 19,
+     "detached": 13,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 13,
+    "shots_with_attached_and_detached": 8,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
-   "uncertain_bins": 1106,
+   "uncertain_bins": 1199,
    "candidate_marfe_bins": 70,
    "tier_counts": {
     "conflict": 447,
-    "tangtv_only": 398,
+    "tangtv_only": 336,
     "lower_shelf_window": 325,
-    "certain": 275,
+    "certain": 244,
     "insufficient_support": 163,
+    "tangtv_only_lmode": 93,
     "candidate_marfe": 70,
     "low_confidence_pair": 67,
     "no_vote": 34
@@ -1621,7 +1633,7 @@
    "certain": {
     "bins": {
      "attached": 56,
-     "detached": 474,
+     "detached": 381,
      "marfe": 0
     },
     "bins_by_split": {
@@ -1635,7 +1647,7 @@
       "train": 0,
       "val": 51,
       "test": 0,
-      "outside": 423
+      "outside": 330
      },
      "marfe": {
       "train": 0,
@@ -1646,7 +1658,7 @@
     },
     "shots": {
      "attached": 5,
-     "detached": 20,
+     "detached": 14,
      "marfe": 0
     },
     "shots_with_attached_and_detached": 3,
@@ -1691,7 +1703,7 @@
    "certain_or_tangtv_only": {
     "bins": {
      "attached": 234,
-     "detached": 526,
+     "detached": 433,
      "marfe": 0
     },
     "bins_by_split": {
@@ -1705,7 +1717,7 @@
       "train": 0,
       "val": 57,
       "test": 0,
-      "outside": 469
+      "outside": 376
      },
      "marfe": {
       "train": 0,
@@ -1716,22 +1728,23 @@
     },
     "shots": {
      "attached": 17,
-     "detached": 20,
+     "detached": 14,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 11,
+    "shots_with_attached_and_detached": 6,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
-   "uncertain_bins": 1019,
+   "uncertain_bins": 1112,
    "candidate_marfe_bins": 70,
    "tier_counts": {
-    "certain": 530,
+    "certain": 437,
     "conflict": 355,
     "lower_shelf_window": 325,
     "tangtv_only": 230,
     "insufficient_support": 149,
     "low_confidence_pair": 108,
+    "tangtv_only_lmode": 93,
     "candidate_marfe": 70,
     "no_vote": 12
    }
@@ -1754,7 +1767,7 @@
    "certain": {
     "bins": {
      "attached": 106,
-     "detached": 131,
+     "detached": 111,
      "marfe": 0
     },
     "bins_by_split": {
@@ -1768,7 +1781,7 @@
       "train": 0,
       "val": 0,
       "test": 0,
-      "outside": 131
+      "outside": 111
      },
      "marfe": {
       "train": 0,
@@ -1779,7 +1792,7 @@
     },
     "shots": {
      "attached": 12,
-     "detached": 9,
+     "detached": 6,
      "marfe": 0
     },
     "shots_with_attached_and_detached": 6,
@@ -1789,7 +1802,7 @@
    "tangtv_only": {
     "bins": {
      "attached": 294,
-     "detached": 314,
+     "detached": 241,
      "marfe": 0
     },
     "bins_by_split": {
@@ -1803,7 +1816,7 @@
       "train": 0,
       "val": 42,
       "test": 0,
-      "outside": 272
+      "outside": 199
      },
      "marfe": {
       "train": 0,
@@ -1814,17 +1827,17 @@
     },
     "shots": {
      "attached": 16,
-     "detached": 17,
+     "detached": 12,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 9,
+    "shots_with_attached_and_detached": 5,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
    "certain_or_tangtv_only": {
     "bins": {
      "attached": 400,
-     "detached": 445,
+     "detached": 352,
      "marfe": 0
     },
     "bins_by_split": {
@@ -1838,7 +1851,7 @@
       "train": 0,
       "val": 42,
       "test": 0,
-      "outside": 403
+      "outside": 310
      },
      "marfe": {
       "train": 0,
@@ -1849,21 +1862,22 @@
     },
     "shots": {
      "attached": 19,
-     "detached": 20,
+     "detached": 14,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 13,
+    "shots_with_attached_and_detached": 8,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
-   "uncertain_bins": 934,
+   "uncertain_bins": 1027,
    "candidate_marfe_bins": 70,
    "tier_counts": {
-    "tangtv_only": 608,
+    "tangtv_only": 535,
     "lower_shelf_window": 325,
     "conflict": 270,
-    "certain": 237,
+    "certain": 217,
     "insufficient_support": 165,
+    "tangtv_only_lmode": 93,
     "candidate_marfe": 70,
     "no_vote": 64,
     "low_confidence_pair": 40
@@ -1887,7 +1901,7 @@
    "certain": {
     "bins": {
      "attached": 43,
-     "detached": 472,
+     "detached": 379,
      "marfe": 0
     },
     "bins_by_split": {
@@ -1901,7 +1915,7 @@
       "train": 0,
       "val": 51,
       "test": 0,
-      "outside": 421
+      "outside": 328
      },
      "marfe": {
       "train": 0,
@@ -1912,7 +1926,7 @@
     },
     "shots": {
      "attached": 6,
-     "detached": 20,
+     "detached": 14,
      "marfe": 0
     },
     "shots_with_attached_and_detached": 3,
@@ -1957,7 +1971,7 @@
    "certain_or_tangtv_only": {
     "bins": {
      "attached": 280,
-     "detached": 545,
+     "detached": 452,
      "marfe": 0
     },
     "bins_by_split": {
@@ -1971,7 +1985,7 @@
       "train": 0,
       "val": 57,
       "test": 0,
-      "outside": 488
+      "outside": 395
      },
      "marfe": {
       "train": 0,
@@ -1982,22 +1996,23 @@
     },
     "shots": {
      "attached": 18,
-     "detached": 20,
+     "detached": 14,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 12,
+    "shots_with_attached_and_detached": 7,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
-   "uncertain_bins": 954,
+   "uncertain_bins": 1047,
    "candidate_marfe_bins": 70,
    "tier_counts": {
-    "certain": 515,
+    "certain": 422,
     "lower_shelf_window": 325,
     "tangtv_only": 310,
     "conflict": 288,
     "insufficient_support": 144,
     "low_confidence_pair": 101,
+    "tangtv_only_lmode": 93,
     "candidate_marfe": 70,
     "no_vote": 26
    }
@@ -2020,7 +2035,7 @@
    "certain": {
     "bins": {
      "attached": 64,
-     "detached": 112,
+     "detached": 105,
      "marfe": 0
     },
     "bins_by_split": {
@@ -2034,7 +2049,7 @@
       "train": 0,
       "val": 0,
       "test": 0,
-      "outside": 112
+      "outside": 105
      },
      "marfe": {
       "train": 0,
@@ -2045,7 +2060,7 @@
     },
     "shots": {
      "attached": 6,
-     "detached": 7,
+     "detached": 5,
      "marfe": 0
     },
     "shots_with_attached_and_detached": 4,
@@ -2055,7 +2070,7 @@
    "tangtv_only": {
     "bins": {
      "attached": 355,
-     "detached": 428,
+     "detached": 342,
      "marfe": 0
     },
     "bins_by_split": {
@@ -2069,7 +2084,7 @@
       "train": 0,
       "val": 56,
       "test": 0,
-      "outside": 372
+      "outside": 286
      },
      "marfe": {
       "train": 0,
@@ -2080,17 +2095,17 @@
     },
     "shots": {
      "attached": 17,
-     "detached": 18,
+     "detached": 13,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 10,
+    "shots_with_attached_and_detached": 6,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
    "certain_or_tangtv_only": {
     "bins": {
      "attached": 419,
-     "detached": 540,
+     "detached": 447,
      "marfe": 0
     },
     "bins_by_split": {
@@ -2104,7 +2119,7 @@
       "train": 0,
       "val": 56,
       "test": 0,
-      "outside": 484
+      "outside": 391
      },
      "marfe": {
       "train": 0,
@@ -2115,21 +2130,22 @@
     },
     "shots": {
      "attached": 19,
-     "detached": 20,
+     "detached": 14,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 13,
+    "shots_with_attached_and_detached": 8,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
-   "uncertain_bins": 820,
+   "uncertain_bins": 913,
    "candidate_marfe_bins": 70,
    "tier_counts": {
-    "tangtv_only": 783,
+    "tangtv_only": 697,
     "lower_shelf_window": 325,
-    "certain": 176,
+    "certain": 169,
     "insufficient_support": 166,
     "conflict": 149,
+    "tangtv_only_lmode": 93,
     "no_vote": 92,
     "candidate_marfe": 70,
     "low_confidence_pair": 18
@@ -2153,7 +2169,7 @@
    "certain": {
     "bins": {
      "attached": 38,
-     "detached": 458,
+     "detached": 366,
      "marfe": 0
     },
     "bins_by_split": {
@@ -2167,7 +2183,7 @@
       "train": 0,
       "val": 51,
       "test": 0,
-      "outside": 407
+      "outside": 315
      },
      "marfe": {
       "train": 0,
@@ -2178,7 +2194,7 @@
     },
     "shots": {
      "attached": 4,
-     "detached": 18,
+     "detached": 12,
      "marfe": 0
     },
     "shots_with_attached_and_detached": 3,
@@ -2188,7 +2204,7 @@
    "tangtv_only": {
     "bins": {
      "attached": 296,
-     "detached": 94,
+     "detached": 93,
      "marfe": 0
     },
     "bins_by_split": {
@@ -2202,7 +2218,7 @@
       "train": 0,
       "val": 6,
       "test": 0,
-      "outside": 88
+      "outside": 87
      },
      "marfe": {
       "train": 0,
@@ -2213,17 +2229,17 @@
     },
     "shots": {
      "attached": 16,
-     "detached": 7,
+     "detached": 6,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 3,
+    "shots_with_attached_and_detached": 2,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
    "certain_or_tangtv_only": {
     "bins": {
      "attached": 334,
-     "detached": 552,
+     "detached": 459,
      "marfe": 0
     },
     "bins_by_split": {
@@ -2237,7 +2253,7 @@
       "train": 0,
       "val": 57,
       "test": 0,
-      "outside": 495
+      "outside": 402
      },
      "marfe": {
       "train": 0,
@@ -2248,21 +2264,22 @@
     },
     "shots": {
      "attached": 18,
-     "detached": 20,
+     "detached": 14,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 12,
+    "shots_with_attached_and_detached": 7,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
-   "uncertain_bins": 893,
+   "uncertain_bins": 986,
    "candidate_marfe_bins": 70,
    "tier_counts": {
-    "certain": 496,
-    "tangtv_only": 390,
+    "certain": 404,
+    "tangtv_only": 389,
     "lower_shelf_window": 325,
     "conflict": 222,
     "insufficient_support": 159,
+    "tangtv_only_lmode": 93,
     "low_confidence_pair": 78,
     "candidate_marfe": 70,
     "no_vote": 39
@@ -2286,7 +2303,7 @@
    "certain": {
     "bins": {
      "attached": 62,
-     "detached": 96,
+     "detached": 92,
      "marfe": 0
     },
     "bins_by_split": {
@@ -2300,7 +2317,7 @@
       "train": 0,
       "val": 0,
       "test": 0,
-      "outside": 96
+      "outside": 92
      },
      "marfe": {
       "train": 0,
@@ -2311,7 +2328,7 @@
     },
     "shots": {
      "attached": 7,
-     "detached": 5,
+     "detached": 4,
      "marfe": 0
     },
     "shots_with_attached_and_detached": 4,
@@ -2321,7 +2338,7 @@
    "tangtv_only": {
     "bins": {
      "attached": 378,
-     "detached": 458,
+     "detached": 369,
      "marfe": 0
     },
     "bins_by_split": {
@@ -2335,7 +2352,7 @@
       "train": 0,
       "val": 57,
       "test": 0,
-      "outside": 401
+      "outside": 312
      },
      "marfe": {
       "train": 0,
@@ -2346,17 +2363,17 @@
     },
     "shots": {
      "attached": 17,
-     "detached": 20,
+     "detached": 14,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 11,
+    "shots_with_attached_and_detached": 6,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
    "certain_or_tangtv_only": {
     "bins": {
      "attached": 440,
-     "detached": 554,
+     "detached": 461,
      "marfe": 0
     },
     "bins_by_split": {
@@ -2370,7 +2387,7 @@
       "train": 0,
       "val": 57,
       "test": 0,
-      "outside": 497
+      "outside": 404
      },
      "marfe": {
       "train": 0,
@@ -2381,21 +2398,22 @@
     },
     "shots": {
      "attached": 19,
-     "detached": 20,
+     "detached": 14,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 13,
+    "shots_with_attached_and_detached": 8,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
-   "uncertain_bins": 785,
+   "uncertain_bins": 878,
    "candidate_marfe_bins": 70,
    "tier_counts": {
-    "tangtv_only": 836,
+    "tangtv_only": 747,
     "lower_shelf_window": 325,
     "insufficient_support": 176,
-    "certain": 158,
+    "certain": 154,
     "no_vote": 110,
+    "tangtv_only_lmode": 93,
     "conflict": 92,
     "candidate_marfe": 70,
     "low_confidence_pair": 12
@@ -2419,7 +2437,7 @@
    "certain": {
     "bins": {
      "attached": 46,
-     "detached": 349,
+     "detached": 329,
      "marfe": 0
     },
     "bins_by_split": {
@@ -2433,7 +2451,7 @@
       "train": 0,
       "val": 51,
       "test": 0,
-      "outside": 298
+      "outside": 278
      },
      "marfe": {
       "train": 0,
@@ -2444,7 +2462,7 @@
     },
     "shots": {
      "attached": 4,
-     "detached": 17,
+     "detached": 12,
      "marfe": 0
     },
     "shots_with_attached_and_detached": 3,
@@ -2454,7 +2472,7 @@
    "tangtv_only": {
     "bins": {
      "attached": 363,
-     "detached": 206,
+     "detached": 133,
      "marfe": 0
     },
     "bins_by_split": {
@@ -2468,7 +2486,7 @@
       "train": 0,
       "val": 6,
       "test": 0,
-      "outside": 200
+      "outside": 127
      },
      "marfe": {
       "train": 0,
@@ -2479,17 +2497,17 @@
     },
     "shots": {
      "attached": 17,
-     "detached": 12,
+     "detached": 8,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 7,
+    "shots_with_attached_and_detached": 3,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
    "certain_or_tangtv_only": {
     "bins": {
      "attached": 409,
-     "detached": 555,
+     "detached": 462,
      "marfe": 0
     },
     "bins_by_split": {
@@ -2503,7 +2521,7 @@
       "train": 0,
       "val": 57,
       "test": 0,
-      "outside": 498
+      "outside": 405
      },
      "marfe": {
       "train": 0,
@@ -2514,21 +2532,22 @@
     },
     "shots": {
      "attached": 19,
-     "detached": 20,
+     "detached": 14,
      "marfe": 0
     },
-    "shots_with_attached_and_detached": 13,
+    "shots_with_attached_and_detached": 8,
     "cohort_shots_with_attached_and_detached": 0,
     "criterion_met": false
    },
-   "uncertain_bins": 815,
+   "uncertain_bins": 908,
    "candidate_marfe_bins": 70,
    "tier_counts": {
-    "tangtv_only": 569,
-    "certain": 395,
+    "tangtv_only": 496,
+    "certain": 375,
     "lower_shelf_window": 325,
     "insufficient_support": 164,
     "conflict": 139,
+    "tangtv_only_lmode": 93,
     "no_vote": 73,
     "candidate_marfe": 70,
     "low_confidence_pair": 44

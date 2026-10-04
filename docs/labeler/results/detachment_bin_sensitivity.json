@@ -82,51 +82,78 @@
  "excluded_test": [],
  "model_record": "label_model.json",
  "20ms": {
+  "bin_ms": 20,
+  "reference_min_bins": {
+   "afrac": 50,
+   "prad_baseline": 100,
+   "marfe": 5,
+   "shot_eligibility": 50
+  },
+  "afrac_valid_seconds": 6.4,
+  "afrac_valid_shots": 3,
+  "afrac_short_reference_seconds": 29.8,
+  "afrac_reason_seconds": {
+   "probe_flux_unknown": 269.08,
+   "l_mode": 36.26,
+   "probe_off_separatrix": 35.32,
+   "short_reference": 29.8,
+   "no_positioned_probes": 11.92,
+   "low_power": 9.24,
+   "no_power": 8.66,
+   "elm": 3.7800000000000002,
+   "ramp": 3.12,
+   "elm_unknown": 0.7000000000000001,
+   "no_probe_samples": 0.24
+  },
+  "tangtv_valid_seconds": 60.78,
+  "certain_seconds": 1.98,
+  "tangtv_only_seconds": 42.76,
   "n_shots": 77,
   "n_bins": 20726,
   "certain_by_state": {
    "attached": {
-    "bins": 152,
-    "shots": 7
+    "bins": 53,
+    "shots": 3
    },
    "detached": {
-    "bins": 430,
-    "shots": 13
+    "bins": 46,
+    "shots": 1
    }
   },
   "tangtv_only_by_state": {
    "attached": {
-    "bins": 859,
+    "bins": 1042,
     "shots": 18
    },
    "detached": {
-    "bins": 770,
-    "shots": 22
+    "bins": 1096,
+    "shots": 16
    }
   },
-  "n_certain_bins": 582,
-  "n_certain_shots": 18,
-  "n_tangtv_only_bins": 1629,
-  "n_tangtv_only_shots": 27,
+  "n_certain_bins": 99,
+  "n_certain_shots": 3,
+  "n_tangtv_only_bins": 2138,
+  "n_tangtv_only_shots": 26,
   "tier_counts": {
-   "tangtv_only": 1629,
-   "certain": 582,
-   "insufficient_support": 460,
-   "conflict": 284,
-   "candidate_marfe": 246,
-   "no_vote": 227
+   "tangtv_only": 2138,
+   "no_vote": 260,
+   "tangtv_only_lmode": 234,
+   "candidate_marfe": 173,
+   "insufficient_support": 100,
+   "certain": 99,
+   "conflict": 24
   },
-  "n_assessed_bins": 3428,
+  "n_assessed_bins": 3028,
   "n_assessed_shots": 27,
-  "assessed_share": 0.16539612081443597,
-  "uncertain_share_of_assessed": 0.35501750291715284,
-  "flicker_per_s": 0.49751243781094523,
+  "assessed_share": 0.14609669014764065,
+  "uncertain_share_of_assessed": 0.26122853368560106,
+  "flicker_per_s": 0.78229772016093,
   "pairwise_by_tangtv_tier": {
    "none": {
     "afrac__prad": {
-     "both_vote_bins": 228,
-     "agreement": 0.49122807017543857,
-     "kappa": -0.19221060223584563
+     "both_vote_bins": 61,
+     "agreement": 0.39344262295081966,
+     "kappa": -0.31450203843913815
     },
     "afrac__tangtv": {
      "both_vote_bins": 0,
@@ -141,30 +168,56 @@
    },
    "upper_shelf": {
     "afrac__prad": {
-     "both_vote_bins": 552,
-     "agreement": 0.4329710144927536,
-     "kappa": -0.047431980212425506
+     "both_vote_bins": 101,
+     "agreement": 0.5841584158415841,
+     "kappa": 0.1596671949286845
     },
     "afrac__tangtv": {
-     "both_vote_bins": 866,
-     "agreement": 0.6720554272517321,
-     "kappa": 0.2753095368586059
+     "both_vote_bins": 123,
+     "agreement": 0.8048780487804879,
+     "kappa": 0.6135113904163395
     },
     "prad__tangtv": {
-     "both_vote_bins": 1306,
-     "agreement": 0.33996937212863704,
-     "kappa": -0.22818815376626098
+     "both_vote_bins": 1263,
+     "agreement": 0.3515439429928741,
+     "kappa": -0.22137915643829503
     }
    }
   },
   "vs_50ms": {
    "tangtv_tier": "upper_shelf",
-   "bins_labelled_in_both": 2114,
-   "agreement": 0.9929044465468306,
-   "kappa": 0.9857087100702441
+   "bins_labelled_in_both": 2112,
+   "agreement": 0.9910037878787878,
+   "kappa": 0.98199792200894
   }
  },
  "50ms": {
+  "bin_ms": 50,
+  "reference_min_bins": {
+   "afrac": 20,
+   "prad_baseline": 40,
+   "marfe": 2,
+   "shot_eligibility": 20
+  },
+  "afrac_valid_seconds": 12.350000000000001,
+  "afrac_valid_shots": 6,
+  "afrac_short_reference_seconds": 26.200000000000003,
+  "afrac_reason_seconds": {
+   "probe_flux_unknown": 272.3,
+   "probe_off_separatrix": 37.85,
+   "l_mode": 37.35,
+   "short_reference": 26.200000000000003,
+   "no_positioned_probes": 11.950000000000001,
+   "low_power": 10.25,
+   "ramp": 3.1,
+   "no_power": 2.45,
+   "elm": 1.75,
+   "elm_unknown": 0.7000000000000001,
+   "no_probe_samples": 0.1
+  },
+  "tangtv_valid_seconds": 61.050000000000004,
+  "certain_seconds": 4.25,
+  "tangtv_only_seconds": 40.1,
   "n_shots": 77,
   "n_bins": 8327,
   "certain_by_state": {
@@ -183,17 +236,18 @@
     "shots": 17
    },
    "detached": {
-    "bins": 502,
-    "shots": 21
+    "bins": 409,
+    "shots": 15
    }
   },
   "n_certain_bins": 85,
   "n_certain_shots": 6,
-  "n_tangtv_only_bins": 895,
-  "n_tangtv_only_shots": 27,
+  "n_tangtv_only_bins": 802,
+  "n_tangtv_only_shots": 26,
   "tier_counts": {
-   "tangtv_only": 895,
+   "tangtv_only": 802,
    "no_vote": 94,
+   "tangtv_only_lmode": 93,
    "certain": 85,
    "candidate_marfe": 70,
    "insufficient_support": 64,
@@ -202,8 +256,8 @@
   "n_assessed_bins": 1237,
   "n_assessed_shots": 27,
   "assessed_share": 0.14855290020415515,
-  "uncertain_share_of_assessed": 0.20776071139854488,
-  "flicker_per_s": 0.16326530612244897,
+  "uncertain_share_of_assessed": 0.28294260307194824,
+  "flicker_per_s": 0.18038331454340473,
   "pairwise_by_tangtv_tier": {
    "none": {
     "afrac__prad": {
@@ -242,50 +296,78 @@
   }
  },
  "100ms": {
+  "bin_ms": 100,
+  "reference_min_bins": {
+   "afrac": 10,
+   "prad_baseline": 20,
+   "marfe": 1,
+   "shot_eligibility": 10
+  },
+  "afrac_valid_seconds": 13.0,
+  "afrac_valid_shots": 6,
+  "afrac_short_reference_seconds": 25.700000000000003,
+  "afrac_reason_seconds": {
+   "probe_flux_unknown": 273.7,
+   "probe_off_separatrix": 38.300000000000004,
+   "l_mode": 37.6,
+   "short_reference": 25.700000000000003,
+   "no_positioned_probes": 12.0,
+   "low_power": 10.8,
+   "ramp": 2.9000000000000004,
+   "no_power": 1.5,
+   "elm": 1.3,
+   "elm_unknown": 0.8,
+   "no_probe_samples": 0.4
+  },
+  "tangtv_valid_seconds": 61.900000000000006,
+  "certain_seconds": 5.1000000000000005,
+  "tangtv_only_seconds": 40.5,
   "n_shots": 77,
   "n_bins": 4180,
   "certain_by_state": {
    "attached": {
-    "bins": 18,
-    "shots": 3
+    "bins": 24,
+    "shots": 4
    },
    "detached": {
-    "bins": 9,
-    "shots": 1
+    "bins": 27,
+    "shots": 3
    }
   },
   "tangtv_only_by_state": {
    "attached": {
-    "bins": 212,
+    "bins": 200,
     "shots": 18
    },
    "detached": {
-    "bins": 279,
-    "shots": 20
+    "bins": 205,
+    "shots": 15
    }
   },
-  "n_certain_bins": 27,
-  "n_certain_shots": 3,
-  "n_tangtv_only_bins": 491,
-  "n_tangtv_only_shots": 27,
+  "n_certain_bins": 51,
+  "n_certain_shots": 6,
+  "n_tangtv_only_bins": 405,
+  "n_tangtv_only_shots": 26,
   "tier_counts": {
-   "tangtv_only": 491,
-   "certain": 27,
-   "candidate_marfe": 12,
-   "insufficient_support": 6,
-   "conflict": 2
+   "tangtv_only": 405,
+   "certain": 51,
+   "tangtv_only_lmode": 47,
+   "no_vote": 38,
+   "candidate_marfe": 36,
+   "insufficient_support": 31,
+   "conflict": 17
   },
-  "n_assessed_bins": 538,
+  "n_assessed_bins": 625,
   "n_assessed_shots": 27,
-  "assessed_share": 0.12870813397129185,
-  "uncertain_share_of_assessed": 0.03717472118959108,
-  "flicker_per_s": 0.21235521235521237,
+  "assessed_share": 0.14952153110047847,
+  "uncertain_share_of_assessed": 0.2704,
+  "flicker_per_s": 0.15350877192982457,
   "pairwise_by_tangtv_tier": {
    "none": {
     "afrac__prad": {
-     "both_vote_bins": 0,
-     "agreement": null,
-     "kappa": null
+     "both_vote_bins": 12,
+     "agreement": 0.4166666666666667,
+     "kappa": -0.31250000000000006
     },
     "afrac__tangtv": {
      "both_vote_bins": 0,
@@ -300,27 +382,28 @@
    },
    "upper_shelf": {
     "afrac__prad": {
-     "both_vote_bins": 0,
-     "agreement": null,
-     "kappa": null
+     "both_vote_bins": 31,
+     "agreement": 0.5161290322580645,
+     "kappa": 0.037267080745341595
     },
     "afrac__tangtv": {
-     "both_vote_bins": 29,
-     "agreement": 0.9310344827586207,
-     "kappa": 0.8481675392670156
+     "both_vote_bins": 68,
+     "agreement": 0.75,
+     "kappa": 0.4991334488734836
     },
     "prad__tangtv": {
-     "both_vote_bins": 7,
-     "agreement": 1.0,
-     "kappa": null
+     "both_vote_bins": 255,
+     "agreement": 0.3764705882352941,
+     "kappa": -0.14195183776932832
     }
    }
   },
   "vs_50ms": {
    "tangtv_tier": "upper_shelf",
-   "bins_labelled_in_both": 481,
-   "agreement": 0.9916839916839917,
-   "kappa": 0.9830776808330988
+   "bins_labelled_in_both": 425,
+   "agreement": 0.9905882352941177,
+   "kappa": 0.9811638523246022
   }
- }
+ },
+ "w50_matches_exported_bins": true
 }

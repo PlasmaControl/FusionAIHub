@@ -46,6 +46,7 @@
  "n_shots": 37,
  "primary_window_psin": 0.01,
  "reference_quantile": 0.9,
+ "reference_min_ms": 1000.0,
  "reference_min_bins": 20,
  "votes_cutoffs": {
   "attached_min": 0.75,
@@ -371,6 +372,7 @@
     }
    },
    "vs_te": {
+    "population": "every extracted bin of the 37-shot roster where Afrac is valid (and a Te is available); `detach_te_check.py` scores the Afrac vote on the assessed bins of the exported label set, a subset",
     "bands_ev": {
      "cold_max": 5.0,
      "warm_min": 10.0
@@ -420,8 +422,8 @@
       "pooled": {
        "value": 0.7462606837606838,
        "ci95": [
-        0.4502092309701005,
-        0.8621486615308658
+        0.45584019100028955,
+        0.8581226040692463
        ],
        "n_bins": 194,
        "n_not_attached": 104,
@@ -444,8 +446,8 @@
      "note": "threshold-free in Afrac: AUROC of -Afrac for Te <= 5 eV against Te >= 10 eV, every valid Afrac bin with such a Te",
      "value": 0.7606286337209303,
      "ci95": [
-      0.4307211548380442,
-      0.8774992695025224
+      0.4446747221509406,
+      0.8803018022615858
      ],
      "n_bins": 214,
      "n_not_attached": 86,
@@ -510,8 +512,8 @@
     "auroc_neg_afrac_tangtv_detached_vs_attached": {
      "value": 0.7351954204500593,
      "ci95": [
-      0.5790670607192198,
-      0.8554098081330511
+      0.5970172492627924,
+      0.851269939423776
      ],
      "n_bins": 468,
      "n_not_attached": 298,
@@ -537,6 +539,7 @@
     }
    },
    "vs_te": {
+    "population": "every extracted bin of the 37-shot roster where Afrac is valid (and a Te is available); `detach_te_check.py` scores the Afrac vote on the assessed bins of the exported label set, a subset",
     "bands_ev": {
      "cold_max": 5.0,
      "warm_min": 10.0
@@ -597,8 +600,8 @@
       "pooled": {
        "value": 0.6966949208226559,
        "ci95": [
-        0.49940936070048414,
-        0.830147940165704
+        0.4906678233382779,
+        0.8175192991220471
        ],
        "n_bins": 349,
        "n_not_attached": 171,
@@ -611,8 +614,8 @@
        "n_shots": 9,
        "mean": 0.6387629536881343,
        "mean_ci95": [
-        0.5260843879274605,
-        0.7521806928069827
+        0.5284463491755158,
+        0.7622021998182988
        ]
       }
      }
@@ -621,8 +624,8 @@
      "note": "threshold-free in Afrac: AUROC of -Afrac for Te <= 5 eV against Te >= 10 eV, every valid Afrac bin with such a Te",
      "value": 0.6700487651407897,
      "ci95": [
-      0.4470276681572488,
-      0.8134299723424723
+      0.4355145451965375,
+      0.8056665008026828
      ],
      "n_bins": 358,
      "n_not_attached": 195,
@@ -687,8 +690,8 @@
     "auroc_neg_afrac_tangtv_detached_vs_attached": {
      "value": 0.6830675778283979,
      "ci95": [
-      0.5601104306918921,
-      0.796652653822294
+      0.5658020471860837,
+      0.7990629851760864
      ],
      "n_bins": 664,
      "n_not_attached": 439,
@@ -714,6 +717,7 @@
     }
    },
    "vs_te": {
+    "population": "every extracted bin of the 37-shot roster where Afrac is valid (and a Te is available); `detach_te_check.py` scores the Afrac vote on the assessed bins of the exported label set, a subset",
     "bands_ev": {
      "cold_max": 5.0,
      "warm_min": 10.0
@@ -790,8 +794,8 @@
       "pooled": {
        "value": 0.6638539838539839,
        "ci95": [
-        0.5166198439979296,
-        0.7806901424334323
+        0.5213914580612925,
+        0.7748924953981865
        ],
        "n_bins": 534,
        "n_not_attached": 275,
@@ -804,8 +808,8 @@
        "n_shots": 15,
        "mean": 0.5966911872324346,
        "mean_ci95": [
-        0.5046230724281654,
-        0.6861647231570612
+        0.5117023802773343,
+        0.6924951343305565
        ]
       }
      }
@@ -814,8 +818,8 @@
      "note": "threshold-free in Afrac: AUROC of -Afrac for Te <= 5 eV against Te >= 10 eV, every valid Afrac bin with such a Te",
      "value": 0.6381496466833827,
      "ci95": [
-      0.4960705893675046,
-      0.7601128738782094
+      0.484037704667063,
+      0.7471548003478342
      ],
      "n_bins": 542,
      "n_not_attached": 328,

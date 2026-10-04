@@ -5,10 +5,10 @@
     "elm_mask_half_width_ms": 2.0,
     "afrac_psi_window": 0.01,
     "afrac_reference_quantile": 0.9,
-    "afrac_reference_min_bins": 20,
+    "afrac_reference_min_ms": 1000.0,
     "marfe_dz_min": 1.2,
     "marfe_greenwald_min": 0.8,
-    "marfe_min_adjacent_bins": 2
+    "marfe_min_adjacent_ms": 100.0
   },
   "fetch_coverage": {
     "inversion_shots": [
