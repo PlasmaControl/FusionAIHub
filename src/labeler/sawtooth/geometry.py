@@ -189,6 +189,45 @@ def nominal_frequencies(file, channels):
     return None, None
 
 
+def axis_field_T(radius, frequency_hz):
+    """Total field at the EFIT axis radius, B = F/R_axis, from the mapped RF grid.
+
+    A channel's second-harmonic resonance gives B = f/(2*27.992 GHz/T) at its
+    own R, so B(R_axis) = B_ch * R_ch / R_axis for the mapped channel nearest
+    the axis (channels 0-39 only). NaN where no channel or axis is mapped.
+    """
+    if radius is None or frequency_hz is None:
+        return None
+    frequency = np.array([np.nan if v is None else v for v in frequency_hz], float)
+    stop = min(40, len(frequency), len(radius.R_m))
+    with np.errstate(invalid="ignore"):
+        distance = np.abs(radius.R_m[:stop] - radius.axis_R_m[None])
+    distance = np.where(
+        np.isfinite(distance) & np.isfinite(frequency[:stop, None]), distance, np.inf
+    )
+    nearest = distance.argmin(axis=0)
+    columns = np.arange(distance.shape[1])
+    found = np.isfinite(distance[nearest, columns])
+    with np.errstate(invalid="ignore"):
+        field = (
+            frequency[nearest]
+            / (2 * ELECTRON_CYCLOTRON_HZ_PER_T)
+            * radius.R_m[nearest, columns]
+            / radius.axis_R_m
+        )
+    return np.where(found, field, np.nan)
+
+
+def x2_cutoff_density(field_T, margin=0.9):
+    """Second-harmonic X-mode right-cutoff density margin*2*(f_ce/8.98)^2 [m^-3].
+
+    ``f_ce`` is the electron cyclotron frequency in Hz at the field given, so
+    the argument must be the local field at the resonance, not B at R0.
+    """
+    f_ce = ELECTRON_CYCLOTRON_HZ_PER_T * np.abs(np.asarray(field_T))
+    return margin * 2 * (f_ce / 8.98) ** 2
+
+
 def second_harmonic_R(t_s, frequency_hz, bt, reference_radius_m):
     """R=2*(e/2pi/me)*abs(Bt)*Rref/f; no temporal extrapolation across gaps."""
     frequency = np.asarray(frequency_hz, dtype=float)

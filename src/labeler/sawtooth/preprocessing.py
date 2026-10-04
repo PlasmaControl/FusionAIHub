@@ -69,24 +69,32 @@ def mask_spans(t, mask):
     ]
 
 
-def state_spans(t, observable, present, uncertain, *, absent=None):
-    """Four states; only explicit positive absence evidence supplies negatives.
+STATES = ("present", "absent", "absent_q_prior", "uncertain", "unassessed")
+
+
+def state_spans(t, observable, present, uncertain, *, absent=None, q_prior=None):
+    """Five states; only an explicit ECE absence test supplies negatives.
 
     Observable bins without an accepted train or a tested absence remain
     uncertain. ``absent`` is a sample mask, typically ``Detection.absent_mask``.
-    Missing diagnostic support overrides every assessment.
+    ``q_prior`` marks time only a sustained EFIT01 q prior calls quiet: state
+    ``absent_q_prior``, not assessed and never a negative. A tested absence or
+    an uncertain interval overrides it. Missing diagnostic support overrides
+    every assessment.
     """
     from .metrics import spans_at
 
     observable = np.asarray(observable, dtype=bool)
     if observable.shape != np.shape(t):
         raise ValueError("observability must have one boolean per sample")
-    states = np.full(len(t), "uncertain", dtype="U10")
-    if absent is not None:
-        absent = np.asarray(absent, dtype=bool)
-        if absent.shape != np.shape(t):
+    states = np.full(len(t), "uncertain", dtype="U14")
+    for mask, label in ((q_prior, "absent_q_prior"), (absent, "absent")):
+        if mask is None:
+            continue
+        mask = np.asarray(mask, dtype=bool)
+        if mask.shape != np.shape(t):
             raise ValueError("absence evidence must have one boolean per sample")
-        states[absent] = "absent"
+        states[mask] = label
     states[spans_at(t, present)] = "present"
     doubt = spans_at(t, uncertain)
     states[doubt] = "uncertain"
@@ -94,7 +102,7 @@ def state_spans(t, observable, present, uncertain, *, absent=None):
     spans = sorted(
         [
             {"start_s": a, "end_s": b, "state": state}
-            for state in ("present", "absent", "uncertain", "unassessed")
+            for state in STATES
             for a, b in mask_spans(t, states == state)
         ],
         key=lambda r: r["start_s"],

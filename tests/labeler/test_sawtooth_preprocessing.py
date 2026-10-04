@@ -98,3 +98,19 @@ def test_uncertainty_and_missing_support_override_explicit_absence():
         "absent",
     ]
     assert not assessed[2:6].any()
+
+
+def test_q_prior_time_is_its_own_unassessed_state_and_never_a_negative():
+    t = np.arange(10) * 0.001
+    q_prior = np.zeros(10, dtype=bool)
+    q_prior[2:8] = True
+    absent = np.zeros(10, dtype=bool)
+    absent[6:8] = True
+    spans, assessed = state_spans(
+        t, np.ones(10, dtype=bool), [], [(0.004, 0.005)], absent=absent, q_prior=q_prior
+    )
+    states = {(r["start_s"], r["state"]) for r in spans}
+    assert (0.002, "absent_q_prior") in states
+    assert (0.006, "absent") in states
+    assert (0.004, "uncertain") in states  # uncertain overrides the prior
+    assert assessed.tolist() == [False] * 6 + [True] * 2 + [False] * 2

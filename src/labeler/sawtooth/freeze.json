@@ -30,7 +30,15 @@
     "relaxation_minimum_period_ms": 10.0,
     "relaxation_minimum_edges": 6,
     "periodicity_null_replicates": 199,
-    "periodicity_null_alpha": 0.05
+    "periodicity_null_alpha": 0.05,
+    "ece_validity_smooth_ms": 5.0,
+    "ece_validity_sustain_ms": 20.0,
+    "ece_step_ratio": 2.0,
+    "ece_step_max_rho": 0.7,
+    "ece_axis_to_max": 0.6,
+    "ece_axis_max_distance_m": 0.1,
+    "quiet_core_max_rho": 0.5,
+    "isolated_edge_context_ms": 5.15
   },
   "development_shots": [
     185945,
@@ -62,5 +70,12 @@
     "relaxation": "POSR>=6, period>=10ms, >=6edges, shuffled-time p<=.05. DIII-D reference48-108ms;10ms conservative guard, not universal tokamak limit.",
     "phase_null": "Run-conditional fixed-count/span refractory shuffled times. Repeat physical-gap grouping and compare minimum CV over ALL groups in every null replicate; controls selection/multiplicity within an observable run."
   },
-  "source": "outputs/labeler/sawtooth/fix3/freeze.json"
+  "source": "outputs/labeler/sawtooth/fix4/freeze.json",
+  "fix_round_4": {
+    "absent_class": "tested absence only: no POSR periodic edge (3+ edges, 20-250 ms) on any valid ECE channel at nominal rho < quiet_core_max_rho over a complete +/-1.5 maximum-period observable context, noise-resolved on at least 2 channels, no profile-passing candidate or slow relaxation phase nearby, and no isolated POSR edge within isolated_edge_context_ms. EFIT01 q_min >= 1.5 sustained 50 ms is neither necessary nor sufficient: time only that prior supports is state absent_q_prior, exported as uncertain with reason q_prior_only and never a benchmark negative.",
+    "ece_validity": "time is unobservable when, on a 5 ms moving mean of the valid channels, an adjacent-channel step ratio above ece_step_ratio inside nominal rho < ece_step_max_rho, or the channel nearest the EFIT axis (within ece_axis_max_distance_m) below ece_axis_to_max of the profile maximum, holds for at least 20 ms",
+    "density_cutoff": "second-harmonic X-mode cutoff 0.9*2*(f_ce/8.98 GHz)^2 with f_ce from the local field at the EFIT axis resonance F/R_axis (frequency/(2*27.992 GHz/T) at the nearest mapped channel times R_ch/R_axis), against the Thomson 90th-percentile density; Bt at R0 only where the axis field is unmapped",
+    "prior_inputs": "labels/prior_inputs/fix2_inputs.json (sawtooth_physics.py snapshot), listed in the label manifest",
+    "thresholds_chosen_on": "no split=test shot was used. ece_step_ratio 2, ece_axis_to_max 0.6 and the 20 ms sustain are the review's values; the 5 ms smoothing, rho 0.7 and 0.1 m limits are conservative priors; quiet_core_max_rho 0.5 is the review's rho < 0.5. isolated_edge_context_ms 5.15 (the frame holdoff) was chosen over a +/-375 ms veto, which left almost no tested absence, on a 17-shot TRAIN draw plus six train/val shots"
+  }
 }

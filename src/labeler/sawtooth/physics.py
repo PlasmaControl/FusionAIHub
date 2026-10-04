@@ -13,7 +13,7 @@ from itertools import pairwise
 from pathlib import Path
 
 import numpy as np
-from scipy.ndimage import gaussian_filter1d, maximum_filter1d
+from scipy.ndimage import gaussian_filter1d, maximum_filter1d, uniform_filter1d
 from scipy.signal import find_peaks
 
 from ..events.panels.ece_geometry import align_q
@@ -53,6 +53,17 @@ class Rule:
     maximum_channel_to_core: float = 1.5
     mirnov_burst_z: float = 6.0
     dalpha_burst_z: float = 6.0
+    # ECE-side validity (second-harmonic density cutoff and mapping failures).
+    ece_validity_smooth_ms: float = 5.0
+    ece_validity_sustain_ms: float = 20.0
+    ece_step_ratio: float = 2.0
+    ece_step_max_rho: float = 0.7
+    ece_axis_to_max: float = 0.6
+    ece_axis_max_distance_m: float = 0.1
+    # Tested absence: no periodic POSR edge on any valid channel inside this
+    # nominal geometric rho, and no isolated one within this context.
+    quiet_core_max_rho: float = 0.5
+    isolated_edge_context_ms: float = 5.15
 
 
 DEFAULT_RULE = Rule(
@@ -70,11 +81,89 @@ class Detection:
     uncertain_intervals: list[Event]
     absent_mask: np.ndarray
     absence_diagnostics: dict
+    # Sustained high EFIT01 q_min without an ECE quiet-core test. This is a
+    # prior, never a tested negative: it is exported as uncertain.
+    q_prior_mask: np.ndarray | None = None
 
 
 def _runs(mask):
     ends = np.flatnonzero(np.diff(np.r_[False, mask, False]))
     return list(zip(ends[::2], ends[1::2], strict=True))
+
+
+def _smooth_finite(values, width):
+    """Moving mean over finite samples only; NaN where under half is finite."""
+    finite = np.isfinite(values)
+    total = uniform_filter1d(
+        np.where(finite, values, 0.0).astype(np.float32), width, axis=1, mode="nearest"
+    )
+    count = uniform_filter1d(finite.astype(np.float32), width, axis=1, mode="nearest")
+    return np.divide(
+        total, count, out=np.full(values.shape, np.nan, np.float32), where=count > 0.5
+    )
+
+
+def ece_validity(values, t, rule=DEFAULT_RULE, *, radius=None):
+    """Mark time whose ECE profile cannot be a Te profile (cutoff, bad mapping).
+
+    Two sustained tests, both on a short moving mean of the valid channels:
+    a step between adjacent channels inside nominal rho < ``ece_step_max_rho``
+    larger than ``ece_step_ratio``, or the channel nearest the EFIT axis
+    reading below ``ece_axis_to_max`` of the profile maximum. A condition must
+    hold for at least ``ece_validity_sustain_ms`` to remove time. Edge channels
+    are excluded from the step test because a pedestal can legitimately exceed
+    a factor of two per channel. Without nominal geometry nothing is tested.
+    """
+    values = np.asarray(values, dtype=np.float32)
+    flag = np.zeros(len(t), dtype=bool)
+    info = {
+        "status": "geometry_unavailable_not_tested",
+        "step_ratio": rule.ece_step_ratio,
+        "step_max_rho": rule.ece_step_max_rho,
+        "axis_to_max": rule.ece_axis_to_max,
+        "sustain_ms": rule.ece_validity_sustain_ms,
+        "smooth_ms": rule.ece_validity_smooth_ms,
+        "step_samples": 0,
+        "axis_samples": 0,
+        "removed_samples": 0,
+    }
+    if radius is None or radius.nominal_rho is None:
+        return flag, info
+    dt = float(np.median(np.diff(t)))
+    width = max(1, round(rule.ece_validity_smooth_ms / 1000 / dt)) | 1
+    stop = min(40, len(values))
+    smooth = _smooth_finite(values[:stop], width)
+    valid = np.isfinite(smooth) & (smooth > 0)
+    rho = np.asarray(radius.nominal_rho)[:stop]
+    pair = valid[:-1] & valid[1:]
+    pair &= (rho[:-1] < rule.ece_step_max_rho) & (rho[1:] < rule.ece_step_max_rho)
+    low = np.minimum(smooth[:-1], smooth[1:])
+    high = np.maximum(smooth[:-1], smooth[1:])
+    step = (pair & (high > rule.ece_step_ratio * low)).any(axis=0)
+    peak = np.max(np.where(valid, smooth, -np.inf), axis=0)
+    distance = np.abs(np.asarray(radius.R_m)[:stop] - radius.axis_R_m[None])
+    distance = np.where(valid & np.isfinite(distance), distance, np.inf)
+    nearest = np.argmin(distance, axis=0)
+    columns = np.arange(len(t))
+    axis_te = smooth[nearest, columns]
+    evaluable = (
+        np.isfinite(peak)
+        & (peak > 0)
+        & (distance[nearest, columns] <= rule.ece_axis_max_distance_m)
+    )
+    axis = evaluable & (axis_te < rule.ece_axis_to_max * peak)
+    sustain = round(rule.ece_validity_sustain_ms / 1000 / dt)
+    for lo, hi in _runs(step | axis):
+        if hi - lo >= sustain:
+            flag[lo:hi] = True
+    info.update(
+        status="tested_nominal_geometry",
+        step_samples=int(step.sum()),
+        axis_samples=int(axis.sum()),
+        removed_samples=int(flag.sum()),
+        axis_max_distance_m=rule.ece_axis_max_distance_m,
+    )
+    return flag, info
 
 
 def posr(frame, peak, remove):
@@ -437,40 +526,68 @@ def _core_reference(values, membership):
     return reference
 
 
-def _absence_evidence(t, observable, core_edge, core_level, candidates, rule, sigma):
-    """Test quiet local support independently of profile/train acceptance.
-
-    Repeated significant negative core edges are conservative evidence of
-    possible relaxation even when the outer profile or central-drop gate fails.
-    A tested negative requires a full +/-1.5 maximum-period observable window.
-    This research policy still requires independent negative-label validation.
-    """
+def _channel_edge_times(edge, observable, t, rule, sigma):
+    """POSR-qualified negative edges of one channel's fractional edge trace."""
     dt = float(np.median(np.diff(t)))
     width = round(rule.frame_ms / 1000 / dt) | 1
     half, remove = width // 2, int(np.ceil(7 * sigma))
-    core_times, ambiguous_core_times = [], []
-    peaks, _ = find_peaks(-core_edge, distance=max(1, half))
+    times = []
+    peaks, _ = find_peaks(-edge, distance=max(1, half))
     for k in peaks:
         if k < half or k + half >= len(t) or not observable[k]:
             continue
-        relative = -core_edge[k] * np.sqrt(2 * np.pi) * sigma / core_level[k]
+        relative = -edge[k] * np.sqrt(2 * np.pi) * sigma
         if not np.isfinite(relative) or relative < rule.significance:
             continue
-        if posr(core_edge[k - half : k + half + 1], core_edge[k], remove) >= (
-            rule.posr_threshold
-        ):
-            # Fractional noise extrema do not supply phase/absence vetoes.
-            # Noise-limited support is separately marked unresolved below.
-            ambiguous_core_times.append(float(t[k]))
-            core_times.append(float(t[k]))
-    periodic = []
-    core_times = np.asarray(core_times)
-    # A periodicity claim must not cross an unobserved diagnostic gap.
-    for lo, hi in _runs(observable):
-        left = np.searchsorted(core_times, t[lo])
-        right = np.searchsorted(core_times, t[hi - 1], side="right")
-        for a, b in trains(core_times[left:right], rule):
-            periodic.extend(core_times[left + a : left + b])
+        if posr(edge[k - half : k + half + 1], edge[k], remove) >= rule.posr_threshold:
+            times.append(float(t[k]))
+    return times
+
+
+def _absence_evidence(t, observable, edges, support, candidates, rule, sigma):
+    """Test quiet core support independently of profile/train acceptance.
+
+    ``edges`` holds each supported channel's fractional edge trace (channels,
+    time) and ``support`` its validity. Tested absence is a negative result of
+    the frozen edge test on every supported channel: no POSR-qualified periodic
+    train (per channel, 20-250 ms, no bridging of unobserved time), no isolated
+    qualified edge within ``isolated_edge_context_ms``, no profile-passing
+    candidate or slow relaxation phase nearby, a full +/-1.5 maximum-period
+    observable context, and at least ``minimum_channels`` channels whose local
+    noise could resolve an edge at the profile significance threshold.
+    Quiet time is never inferred from EFIT q. This remains a research policy.
+    """
+    dt = float(np.median(np.diff(t)))
+    width = round(rule.frame_ms / 1000 / dt) | 1
+    block = max(width, round(rule.maximum_period_ms / 1000 / dt))
+    scale = np.sqrt(2 * np.pi) * sigma
+    runs = _runs(observable)
+    channel_times, periodic_by_channel = [], []
+    for row in range(len(edges)):
+        edge = np.where(support[row], edges[row], 0.0)
+        times = np.asarray(_channel_edge_times(edge, observable, t, rule, sigma))
+        channel_times.append(times)
+        periodic = []
+        # A periodicity claim must not cross an unobserved diagnostic gap.
+        for lo, hi in runs:
+            left = np.searchsorted(times, t[lo])
+            right = np.searchsorted(times, t[hi - 1], side="right")
+            for a, b in trains(times[left:right], rule):
+                periodic.extend(times[left + a : left + b])
+        periodic_by_channel.append(np.asarray(periodic))
+    all_times = np.sort(np.concatenate(channel_times)) if channel_times else np.empty(0)
+    # Merge simultaneous edges of different channels into one reported event.
+    merged = []
+    for time in all_times:
+        if not merged or time - merged[-1] > 2 * dt:
+            merged.append(float(time))
+    ambiguous_core_times = merged
+    periodic_times = (
+        np.unique(np.concatenate(periodic_by_channel))
+        if periodic_by_channel
+        else np.empty(0)
+    )
+    periodic = list(map(float, periodic_times))
     horizon = 1.5 * rule.maximum_period_ms / 1000
     radius = int(np.ceil(horizon / dt))
     complete = (
@@ -480,31 +597,34 @@ def _absence_evidence(t, observable, core_edge, core_level, candidates, rule, si
         == 0
     )
     # A failed edge test is informative only if its noise floor could resolve
-    # an edge at the profile significance threshold. Estimate local scatter
-    # in maximum-period blocks, then require that support across the context.
-    detectable = np.zeros(len(t), dtype=bool)
+    # an edge at the profile significance threshold. Estimate each channel's
+    # scatter in maximum-period blocks and require enough resolving channels.
+    resolved_channels = np.zeros(len(t), dtype=int)
     noise_rows = []
-    block = max(width, round(rule.maximum_period_ms / 1000 / dt))
     for lo in range(0, len(t), block):
         hi = min(len(t), lo + block)
-        supported = observable[lo:hi] & np.isfinite(core_level[lo:hi])
-        if supported.sum() < width:
-            continue
-        relative_edge = (
-            core_edge[lo:hi][supported]
-            * np.sqrt(2 * np.pi)
-            * sigma
-            / core_level[lo:hi][supported]
-        )
-        noise = float(1.4826 * np.median(abs(relative_edge - np.median(relative_edge))))
-        detectable[lo:hi] = rule.posr_threshold * noise < rule.significance
-        noise_rows.append(
-            {
-                "start_s": float(t[lo]),
-                "end_s": float(t[hi - 1] + dt),
-                "relative_edge_noise": noise,
-            }
-        )
+        noises = []
+        for row in range(len(edges)):
+            supported = observable[lo:hi] & support[row, lo:hi]
+            if supported.sum() < width:
+                continue
+            relative_edge = edges[row, lo:hi][supported] * scale
+            noises.append(
+                float(1.4826 * np.median(abs(relative_edge - np.median(relative_edge))))
+            )
+        resolving = sum(rule.posr_threshold * n < rule.significance for n in noises)
+        resolved_channels[lo:hi] = resolving
+        if noises:
+            noise_rows.append(
+                {
+                    "start_s": float(t[lo]),
+                    "end_s": float(t[hi - 1] + dt),
+                    "median_relative_edge_noise": float(np.median(noises)),
+                    "channels": len(noises),
+                    "resolving_channels": int(resolving),
+                }
+            )
+    detectable = resolved_channels >= rule.minimum_channels
     noise_resolved = (
         maximum_filter1d(
             (~detectable).astype(np.uint8), 2 * radius + 1, mode="constant", cval=1
@@ -512,22 +632,32 @@ def _absence_evidence(t, observable, core_edge, core_level, candidates, rule, si
         == 0
     )
 
-    def proximity(times):
+    def proximity(times, reach=horizon):
         near = np.zeros(len(t), dtype=bool)
         for time in times:
-            lo, hi = np.searchsorted(t, [time - horizon, time + horizon])
+            lo, hi = np.searchsorted(t, [time - reach, time + reach])
             # Include both boundary samples in the exclusion window.
             near[lo : min(len(t), hi + 1)] = True
         return near
 
     profile_near = proximity(candidates)
     periodic_near = proximity(periodic)
-    core_edge_near = proximity(ambiguous_core_times)
+    core_edge_near = proximity(
+        ambiguous_core_times, rule.isolated_edge_context_ms / 1000
+    )
     observable_spans = [
         (float(t[lo]), float(t[hi]) if hi < len(t) else float(t[-1] + dt))
-        for lo, hi in _runs(observable)
+        for lo, hi in runs
     ]
-    phase_spans = core_relaxation_phases(core_times, observable_spans, rule)
+    phase_spans, seen = [], set()
+    for times in channel_times:
+        for phase in core_relaxation_phases(times, observable_spans, rule):
+            # Neighbouring channels see the same relaxation: keep one record.
+            key = (phase["first_edge_s"], phase["last_edge_s"], phase["edges"])
+            if key not in seen:
+                seen.add(key)
+                phase_spans.append(phase)
+    phase_spans.sort(key=lambda phase: phase["start_s"])
     phase_support = np.zeros(len(t), dtype=bool)
     for phase in phase_spans:
         lo, hi = np.searchsorted(t, [phase["start_s"], phase["end_s"]])
@@ -547,21 +677,22 @@ def _absence_evidence(t, observable, core_edge, core_level, candidates, rule, si
         "context_radius_ms": horizon * 1000,
         "profile_passing_candidates": len(candidates),
         "core_relaxation_test": {
-            "method": "periodic_negative_fractional_core_edge_POSR",
-            "aggregation": "minimum_per_channel_fractional_edge",
+            "method": "per_channel_POSR_qualified_negative_fractional_edges",
+            "aggregation": "union_over_supported_channels",
+            "supported_channels": len(edges),
             "minimum_relative_edge": rule.significance,
             "posr_threshold": rule.posr_threshold,
             "minimum_period_ms": rule.minimum_period_ms,
             "maximum_period_ms": rule.maximum_period_ms,
             "minimum_train": rule.minimum_train,
-            "candidate_edges": len(core_times),
+            "candidate_edges": int(sum(len(x) for x in channel_times)),
             "ambiguous_edges": len(ambiguous_core_times),
             "ambiguous_edge_times_s": ambiguous_core_times,
             "periodic_edges": len(periodic),
-            "periodic_edge_times_s": list(map(float, periodic)),
+            "periodic_edge_times_s": periodic,
             "phase_spans": phase_spans,
             "phase_grouping": {
-                "edge_source": "POSR_qualified_edge_times_s",
+                "edge_source": "per_channel_POSR_qualified_edge_times_s",
                 "posr_threshold": rule.posr_threshold,
                 "minimum_train": rule.relaxation_minimum_edges,
                 "period_ratio": rule.period_ratio,
@@ -575,7 +706,10 @@ def _absence_evidence(t, observable, core_edge, core_level, candidates, rule, si
                 "minimum_period_ms": rule.minimum_period_ms,
                 "maximum_period_ms": rule.maximum_period_ms,
             },
-            "noise_method": "maximum_period_block_relative_edge_MAD",
+            "noise_method": (
+                "per_channel_maximum_period_block_relative_edge_MAD; "
+                f"at least {rule.minimum_channels} resolving channels"
+            ),
             "noise_windows": noise_rows,
         },
         "reason_samples": {
@@ -644,6 +778,7 @@ def detect(
     core_channels=None,
     ip=None,
     observability=None,
+    observability_reference=None,
     neutron=None,
     mirnov=None,
     nbi=None,
@@ -654,10 +789,13 @@ def detect(
     """ECE (channels,time) -> point crashes and train spans; all times seconds.
 
     Optional scalar diagnostics are (seconds, values). EFIT01 conflicts above
-    1.4 flag uncertainty; sustained q>=1.5 supplies absence unless ECE conflicts.
-    Calibrated psi must show loss inside
-    and gain outside q=1. Uncalibrated SXR has no corroboration claim. Observability
-    can supply a density/cutoff mask in addition to finite core ECE and its Te floor.
+    1.4 flag uncertainty. Tested absence is the ECE quiet-core test (no POSR
+    periodic edge on any valid channel inside nominal rho < 0.5); sustained
+    q>=1.5 is a prior, not evidence: time it alone supports is returned in
+    ``Detection.q_prior_mask`` and is never absent. Calibrated psi must show loss
+    inside and gain outside q=1. Uncalibrated SXR has no corroboration claim.
+    Observability can supply a density/cutoff mask; ``ece_validity`` removes
+    further time whose ECE profile shows cutoff or mapping failure.
     Neutron evidence needs known NBI power in watts and a measured-noise drop;
     missing auxiliary evidence never downgrades an ECE crash.
     """
@@ -679,9 +817,7 @@ def detect(
     if radius_geometry is not None and radius_geometry.lcfs_outer_R_m is not None:
         if radius_geometry.R_m.shape != values.shape:
             raise ValueError("radius geometry and ECE sample axes disagree")
-        overlap = (
-            radius_geometry.R_m < 2 / 3 * radius_geometry.lcfs_outer_R_m[None]
-        )
+        overlap = radius_geometry.R_m < 2 / 3 * radius_geometry.lcfs_outer_R_m[None]
         values[overlap] = np.nan
     finite = np.isfinite(values)
     proxy = np.asarray(
@@ -724,11 +860,23 @@ def detect(
     observable = (core_valid.sum(axis=0) >= rule.minimum_channels) & (
         finite.sum(axis=0) >= 4
     )
+    accounting = {"core_observable_samples": int(observable.sum())}
+    if observability_reference is not None:
+        # Accounting only: what the superseded reference-field guard would remove.
+        accounting["removed_by_reference_density_guard"] = int(
+            (observable & ~np.asarray(observability_reference, dtype=bool)).sum()
+        )
     if observability is not None:
         supplied = np.asarray(observability, dtype=bool)
         if supplied.shape != t.shape:
             raise ValueError("observability must have one boolean per ECE sample")
+        accounting["removed_by_density_guard"] = int((observable & ~supplied).sum())
         observable &= supplied
+    validity_flag, validity_info = ece_validity(values, t, rule, radius=radius_geometry)
+    accounting["removed_by_ece_validity"] = int((observable & validity_flag).sum())
+    validity_info["observable_removed_samples"] = accounting["removed_by_ece_validity"]
+    observable &= ~validity_flag
+    accounting["observable_samples_after_guards"] = int(observable.sum())
     clean = np.where(finite, values, 0)
     # No interpolation across missing data: exclude the whole filter support.
     bad = maximum_filter1d(
@@ -1078,25 +1226,37 @@ def detect(
                 **kwargs,
             )
         )
-    core_support = finite & membership
-    # Preserve the strongest negative fractional edge from any measured core
-    # channel. A signed proxy mean can dilute a drop in a subset of channels,
-    # or cancel it against simultaneous rises in other core channels.
-    core_edge = np.full(len(t), np.inf)
-    for channel in np.flatnonzero(core_support.any(axis=1)):
+    if radius_geometry is not None and radius_geometry.nominal_rho is not None:
+        # Every valid channel inside nominal rho < quiet_core_max_rho, not only
+        # the axis-selected proxy: a quiet core means quiet at all of them.
+        core_support = finite & (radius_geometry.nominal_rho < rule.quiet_core_max_rho)
+        quiet_support = "nominal_rho_all_valid_channels"
+    else:
+        core_support = finite & membership
+        quiet_support = "core_proxy_channels"
+    # Each supported channel keeps its own fractional edge: a signed proxy mean
+    # can dilute a drop in a subset of channels or cancel it against rises.
+    rows = np.flatnonzero(core_support.any(axis=1))
+    edges = np.zeros((len(rows), len(t)), dtype=np.float32)
+    for index, channel in enumerate(rows):
         channel_level = maximum_filter1d(clean[channel], reference_width)
-        fractional_edge = np.divide(
+        np.divide(
             c[channel],
             channel_level,
-            out=np.full(len(t), np.inf),
+            out=edges[index],
             where=core_support[channel] & (channel_level > 0),
         )
-        core_edge = np.minimum(core_edge, fractional_edge)
-    core_edge[~np.isfinite(core_edge)] = 0
     absent_mask, absence_diagnostics = _absence_evidence(
-        t, observable, core_edge, np.ones(len(t)), profile_candidates, rule, sigma
+        t, observable, edges, core_support[rows], profile_candidates, rule, sigma
     )
     absence_diagnostics["profile_passing_candidate_times_s"] = profile_candidates
+    absence_diagnostics["core_relaxation_test"]["support"] = {
+        "channels": quiet_support,
+        "maximum_nominal_rho": rule.quiet_core_max_rho,
+        "isolated_edge_context_ms": rule.isolated_edge_context_ms,
+    }
+    absence_diagnostics["ece_validity"] = validity_info
+    absence_diagnostics["guard_accounting"] = accounting
     high_q = np.zeros(len(t), dtype=bool)
     if qmin is not None:
         qvalues = align_q(t, qmin[0], np.atleast_2d(qmin[1]))[0]
@@ -1113,8 +1273,7 @@ def detect(
             high_q[lo : hi + 1] = False
         # Significant isolated core edges contradict a crash-free bin even
         # without a complete inversion. They protect their finite edge support,
-        # rather than invalidating an entire high-q phase. Magnetics-only EFIT
-        # provides absence evidence here, not independently established truth.
+        # rather than invalidating an entire high-q phase.
         for time in absence_diagnostics["core_relaxation_test"][
             "ambiguous_edge_times_s"
         ]:
@@ -1125,11 +1284,15 @@ def detect(
         for event in uncertain_intervals + intervals:
             lo, hi = np.searchsorted(t, [event.t0_s, event.t1_s])
             high_q[lo:hi] = False
-        absent_mask |= high_q
+    # Magnetics-only EFIT01 q_min is a prior, not a measurement of the core:
+    # high q neither makes nor is required for tested absence. Time it alone
+    # supports is a separate state, exported as uncertain and never a negative.
+    q_prior = high_q & ~absent_mask
     absence_diagnostics["qmin_absence_test"] = {
         "threshold": rule.qmin_absence,
         "sustain_ms": rule.qmin_sustain_ms,
         "q_source": q_source if qmin is not None else None,
+        "role": "supporting_prior_only; neither necessary nor sufficient",
         "conflicts_preserved": (
             "inversion_qualified_trains_full_context; "
             "isolated_POSR_core_edges_finite_support"
@@ -1137,8 +1300,11 @@ def detect(
         "validation_status": "physics_rule_evidence_not_expert_validated",
     }
     absence_diagnostics["reason_samples"].update(
-        sustained_high_q_absence=int(high_q.sum()),
+        sustained_high_q=int(high_q.sum()),
         tested_absence=int(absent_mask.sum()),
+        tested_absence_with_high_q=int((absent_mask & high_q).sum()),
+        tested_absence_without_high_q=int((absent_mask & ~high_q).sum()),
+        q_prior_only=int(q_prior.sum()),
     )
     return Detection(
         crashes,
@@ -1149,4 +1315,5 @@ def detect(
         uncertain_intervals,
         absent_mask,
         absence_diagnostics,
+        q_prior,
     )

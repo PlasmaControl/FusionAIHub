@@ -183,8 +183,10 @@ def test_significant_nonprofile_core_edges_are_not_absence(crashes):
     y += np.random.default_rng(25).normal(0, 0.001, y.shape)
     found = detect(t, y, shot=1, core_channels=[2, 3, 4])
     assert not found.intervals
+    # Periodic edges veto a full context; isolated edges veto their own frame.
+    context = 0.2 if len(crashes) > 3 else 0.005
     for crash in crashes:
-        assert not found.absent_mask[np.abs(t - crash) < 0.2].any()
+        assert not found.absent_mask[np.abs(t - crash) < context].any()
     assert found.absence_diagnostics["reason_samples"]["core_edge_ambiguous"] > 0
 
 
