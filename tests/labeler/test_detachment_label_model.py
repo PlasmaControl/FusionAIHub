@@ -273,17 +273,17 @@ def test_lower_shelf_tier_holds_even_where_tangtv_is_invalid():
     assert tier.tolist() == ["lower_shelf_window", "not_assessed"]
 
 
-def test_second_vote_makes_certain_and_tangtv_alone_is_silver():
+def test_afrac_is_the_second_vote_and_fdiv_is_a_bystander():
     # columns: afrac, prad, tangtv; a vote on an invalid indicator is dropped
     votes = np.array(
         [
             [1, -1, 1],  # afrac agrees: certain attached
-            [-1, 2, 2],  # prad agrees: certain detached
+            [-1, 2, 2],  # only f_div agrees: it is not a vote, silver detached
             [-1, -1, 2],  # everyone else abstains: silver detached
             [-1, -1, 1],  # the others are invalid: silver attached
             [2, -1, 1],  # afrac disagrees: conflict
-            [1, 2, 1],  # prad disagrees although afrac agrees: conflict
-            [1, 1, -1],  # no TangTV vote: a pair, no state
+            [1, 2, 1],  # f_div disagrees although afrac agrees: still certain
+            [1, 1, -1],  # no TangTV vote: afrac alone is not a label
             [-1, -1, -1],  # only TangTV is valid and it abstains: not assessed
         ]
     )
@@ -303,20 +303,50 @@ def test_second_vote_makes_certain_and_tangtv_alone_is_silver():
     state, tier = lm.compatibility_decide(
         votes, valid, tangtv_tier=np.full(8, "upper_shelf"), elm_known=np.ones(8, bool)
     )
-    assert state.tolist() == [1, 2, 2, 1, 4, 4, 4, 0]
+    assert state.tolist() == [1, 2, 2, 1, 4, 1, 4, 0]
+    assert tier.tolist() == [
+        "certain",
+        "tangtv_only",
+        "tangtv_only",
+        "tangtv_only",
+        "conflict",
+        "certain",
+        "insufficient_support",
+        "not_assessed",
+    ]
+    assert lm.SECOND_VOTERS == ("afrac",)
+
+
+def test_fdiv_returns_as_a_second_vote_in_the_sensitivity_variant():
+    votes = np.array([[1, -1, 1], [-1, 2, 2], [-1, -1, 2], [1, 2, 1], [1, 1, -1]])
+    valid = np.ones_like(votes, bool)
+    state, tier = lm.compatibility_decide(
+        votes,
+        valid,
+        tangtv_tier=np.full(5, "upper_shelf"),
+        elm_known=np.ones(5, bool),
+        second=("afrac", "prad"),
+    )
+    assert state.tolist() == [1, 2, 2, 4, 4]
     assert tier.tolist() == [
         "certain",
         "certain",
         "tangtv_only",
-        "tangtv_only",
-        "conflict",
         "conflict",
         "low_confidence_pair",
-        "not_assessed",
     ]
+    alone, tier_alone = lm.compatibility_decide(
+        votes,
+        valid,
+        tangtv_tier=np.full(5, "upper_shelf"),
+        elm_known=np.ones(5, bool),
+        second=(),
+    )
+    assert alone.tolist() == [1, 2, 2, 1, 4]
+    assert set(tier_alone[:4]) == {"tangtv_only"}
 
 
-def test_primary_compatibility_ignores_invalid_votes_and_requires_redundancy():
+def test_primary_compatibility_ignores_invalid_votes_and_fdiv():
     votes = np.array([[2, 2, 3], [2, 2, -1], [-1, -1, 2], [-1, -1, -1]])
     valid = np.array([[1, 1, 0], [1, 1, 0], [0, 0, 1], [1, 1, 0]], bool)
     state, tier = lm.compatibility_decide(
@@ -324,11 +354,19 @@ def test_primary_compatibility_ignores_invalid_votes_and_requires_redundancy():
     )
     assert state.tolist() == [4, 4, 2, 4]
     assert tier.tolist() == [
-        "low_confidence_pair",
-        "low_confidence_pair",
+        "insufficient_support",
+        "insufficient_support",
         "tangtv_only",
         "no_vote",
     ]
+    _, with_fdiv = lm.compatibility_decide(
+        votes,
+        valid,
+        tangtv_tier=np.full(4, "upper_shelf"),
+        elm_known=np.ones(4, bool),
+        second=("afrac", "prad"),
+    )
+    assert with_fdiv.tolist()[:2] == ["low_confidence_pair"] * 2
 
 
 def test_primary_compatibility_requires_explicit_upper_shelf_provenance():

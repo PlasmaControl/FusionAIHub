@@ -54,8 +54,9 @@ AFRAC_REFERENCE_MIN_BINS = 20
 #: PTDATA BMSPINJ + EFIT POH + ECH). Nothing is fitted to TangTV, Afrac or any
 #: other indicator, so the vote is not circular. They are GLOBAL cutoffs on the
 #: ratio (not per shot) and do not carry over from the anchor shot: median f_div
-#: in TangTV-attached bins is 0.41-0.58 on most shots (Opus review 5, I1), which
-#: is why the relative vote below is the exported one and this one a sensitivity.
+#: in TangTV-attached bins is 0.41-0.58 on most shots (Opus review 5, I1). Neither
+#: this vote nor the relative one below is part of the exported label (f_div is a
+#: within-shot corroborator, `label_model.SECOND_VOTERS`); both are sensitivities.
 PRAD_ANCHOR_SHOT = 201081
 PRAD_ANCHOR_ATTACHED_MW = 1.621
 PRAD_ANCHOR_DETACHED_MW = 1.990
@@ -83,12 +84,13 @@ def prad_cutoffs(
 
 PRAD_ATTACHED_MAX, PRAD_DETACHED_MIN = prad_cutoffs()
 
-#: PRIMARY (relative) cutoffs: f_div over the shot's own baseline (the
+#: Relative cutoffs: f_div over the shot's own baseline (the
 #: `PRAD_BASELINE_QUANTILE` of its valid f_div, the unseeded level), so a shot's
 #: input power and seeding cancel. Same anchor, power-free: the anchor shot's
 #: detached/attached ratio is 2.2/1.6, the midpoint 1.9/1.6 and the same band
-#: (`PRAD_BAND_MW` / attached MW) either side. This is the exported f_div vote
-#: (Opus review 5, I1). A shot without a baseline (fewer than
+#: (`PRAD_BAND_MW` / attached MW) either side. This is the f_div vote the data
+#: carry (`prad_vote`); the exported label does not use it (it ranks the bins of one
+#: shot but is at or below chance pooled over shots). A shot without a baseline (fewer than
 #: `PRAD_BASELINE_MIN_BINS` flat-top bins) has no f_div vote: the bin is invalid,
 #: reason `no_baseline`.
 PRAD_BASELINE_QUANTILE = 0.10

@@ -290,16 +290,24 @@ def label_frame(frame, model, threshold, width_ms=core.BIN_MS):
     diagnostic[assessed & ~np.isin(tier, ("certain",))] = core.UNCERTAIN
     out["state_model_diagnostic"] = diagnostic
     out["state_lm"], out["tier"] = state_rule, tier
-    # Sensitivity: the same rule with Prad,div voting on the absolute anchored
-    # cutoffs (`prad_abs_vote`) instead of the exported per-shot relative vote.
+    # Sensitivity: the same rule with f_div added as a second voter beside Afrac,
+    # once on the per-shot relative cutoffs (`prad_vote`) and once on the absolute
+    # anchored ones (`prad_abs_vote`). f_div is a bystander in the exported rule.
+    j = LF_NAMES.index("prad")
+    variants = {"relative": (votes, valid)}
     if "prad_abs_vote" in frame:
-        j = LF_NAMES.index("prad")
         absolute_votes, absolute_valid = votes.copy(), valid.copy()
         absolute_votes[:, j] = frame["prad_abs_vote"].to_numpy()
         absolute_valid[:, j] = frame["prad_abs_valid"].to_numpy(bool)
-        out["state_rule_absolute_prad"], out["tier_absolute_prad"] = (
+        variants["absolute"] = (absolute_votes, absolute_valid)
+    for family, (extra_votes, extra_valid) in variants.items():
+        out[f"state_rule_{family}_prad"], out[f"tier_{family}_prad"] = (
             label_model.compatibility_decide(
-                absolute_votes, absolute_valid, tangtv_tier=camera_tier, elm_known=known
+                extra_votes,
+                extra_valid,
+                tangtv_tier=camera_tier,
+                elm_known=known,
+                second=("afrac", "prad"),
             )
         )
     candidate = frame.get("tangtv_marfe_candidate", pd.Series(False, index=frame.index))
@@ -501,10 +509,11 @@ def table_meta(args, best, eligible, labeler, producer) -> dict:
             "indicators are valid on it, or TangTV votes alone, on shots with at "
             "least 20 assessed bins and 20 valid bins from each of two "
             "indicators. Attached and detached are certain when upper-shelf "
-            "TangTV votes and at least one other indicator (per-shot relative "
-            "f_div, or Afrac) casts a compatible vote with no conflict; they are "
-            "tangtv_only (silver) when TangTV votes and every other indicator "
-            "abstains or is invalid. MARFE is never a state: a sustained TangTV "
+            "TangTV votes and a valid Afrac vote agrees with it; they are "
+            "tangtv_only (silver) when TangTV votes and Afrac abstains or is "
+            "invalid; TangTV and Afrac voting against each other is conflict. "
+            "Divertor radiation (f_div) is not a vote; it is reported per shot. "
+            "MARFE is never a state: a sustained TangTV "
             "MARFE vote is the uncertain tier candidate_marfe. Time with no row "
             "was not assessed; it is not attached. 4 (uncertain) is every other "
             "assessed bin: conflict, insufficient_support, candidate_marfe, "

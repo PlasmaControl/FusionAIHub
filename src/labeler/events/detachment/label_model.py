@@ -365,27 +365,40 @@ def redundant_decide(posterior, votes, valid, threshold=0.7):
     return state, tier
 
 
-def compatibility_decide(votes, valid, *, tangtv_tier, elm_known):
+#: The indicators whose vote can confirm or contradict TangTV in the primary rule.
+#: f_div (`prad`) is deliberately absent: it ranks the bins of one shot well but its
+#: level differs between shots, so as a vote it only created conflicts (Opus review 5,
+#: I1; owner decision 2026-10-04). It stays a measured indicator, reported per shot,
+#: and a sensitivity variant adds it back with `second=("afrac", "prad")`.
+SECOND_VOTERS = ("afrac",)
+
+
+def compatibility_decide(votes, valid, *, tangtv_tier, elm_known, second=SECOND_VOTERS):
     """Primary observed label: the geometry-gated TangTV state, with a second vote.
 
     The label set is "geometry-gated TangTV state, validated by divertor Thomson
     Te". The rule uses no fitted posterior (``redundant_decide`` is retained only
-    as a model diagnostic). Tiers of an assessed bin, in the order they are decided:
+    as a model diagnostic). The voting indicators are TangTV and the `second`
+    ones (`SECOND_VOTERS`: Afrac); every other indicator is a bystander that
+    neither supports nor contradicts a state. `valid` still decides which bins are
+    assessed (two valid indicators of any kind, or a TangTV vote). Tiers of an
+    assessed bin, in the order they are decided:
 
-    * `certain`: TangTV votes attached or detached and at least one other valid
-      indicator casts a compatible vote (relative f_div, or Afrac), with no
-      conflicting vote. The state is TangTV's.
-    * `tangtv_only` (silver): TangTV votes attached or detached and no other valid
+    * `certain`: TangTV votes attached or detached and a second indicator casts a
+      compatible vote, with no second indicator contradicting it. The state is
+      TangTV's.
+    * `tangtv_only` (silver): TangTV votes attached or detached and no second
       indicator casts a vote (each abstains or is invalid). The state is TangTV's.
-    * `conflict`: a vote disagrees with TangTV's, or the other two disagree with
-      each other; the state is uncertain.
+    * `conflict`: a second indicator votes against TangTV's attached or detached
+      vote; the state is uncertain.
     * `candidate_marfe`: TangTV's MARFE vote (sustained front above the X-point,
       emission inside the separatrix, density cue). The state is uncertain, never
       MARFE: the density cue (fG >= 0.8) has no literature source (Dong 2025 gives
       fG >~ 0.5 on HL-3 with a core-point density and a core-Te condition), and the
       one published MARFE (199166 at 3705 ms) is not recovered.
-    * `low_confidence_pair` (the other two agree, no TangTV vote),
-      `insufficient_support`, `no_vote` (every valid indicator abstains).
+    * `insufficient_support` (a second indicator votes, TangTV casts none), `no_vote`
+      (no voting indicator casts a vote), `low_confidence_pair` (two second
+      indicators agree and TangTV casts none; only with more than one second voter).
     * `lower_shelf_window`, `geometry_unknown`, `elm_unknown`: no state is emitted
       (uncertain); the first two come from the camera geometry tier, which is set
       even where TangTV is invalid.
@@ -397,11 +410,13 @@ def compatibility_decide(votes, valid, *, tangtv_tier, elm_known):
     votes = np.where(valid, votes, ABSTAIN)
     n = len(votes)
     j_tv = LF_NAMES.index("tangtv")
-    others = [j for j, name in enumerate(LF_NAMES) if name != "tangtv"]
+    others = [LF_NAMES.index(name) for name in second]
+    ballot = np.zeros(len(LF_NAMES), bool)
+    ballot[[j_tv, *others]] = True
+    cast = (votes > 0) & ballot[None, :]
     tv = votes[:, j_tv]
-    cast = votes > 0
     assessed = (valid.sum(axis=1) >= 2) | (tv > 0)
-    fallback = rule(votes, valid)
+    fallback = rule(np.where(ballot[None, :], votes, ABSTAIN), valid & ballot[None, :])
     leaning = (tv == ATTACHED) | (tv == DETACHED)
     agree = np.zeros(n, bool)
     clash = np.zeros(n, bool)
@@ -411,16 +426,16 @@ def compatibility_decide(votes, valid, *, tangtv_tier, elm_known):
             fits = np.isin(tv, COMPATIBLE[LF_NAMES[j]][vote])
             agree |= cast_here & fits
             clash |= cast_here & ~fits
-    second = cast[:, others].any(axis=1)
+    second_cast = cast[:, others].any(axis=1) if others else np.zeros(n, bool)
     certain = leaning & agree & ~clash
-    silver = leaning & ~second
+    silver = leaning & ~second_cast
     state = np.full(n, UNCERTAIN, dtype=np.int8)
     state[certain | silver] = tv[certain | silver]
     tier = np.full(n, "insufficient_support", dtype=object)
     tier[(tv <= 0) & (cast.sum(axis=1) >= 2) & (fallback != UNCERTAIN)] = (
         "low_confidence_pair"
     )
-    tier[(fallback == UNCERTAIN) & cast.any(axis=1)] = "conflict"
+    tier[(tv <= 0) & (fallback == UNCERTAIN) & cast.any(axis=1)] = "conflict"
     tier[~cast.any(axis=1)] = "no_vote"
     tier[leaning & clash] = "conflict"
     tier[certain] = "certain"

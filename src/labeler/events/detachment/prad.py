@@ -3,17 +3,19 @@
 `f_div = Prad,div,L / P_in` with the lower-divertor radiated power from the
 calibrated bolometer (`\\BOLOM::PRAD_DIVL`, Eldon 2019's Prad,div,L) and P_in the
 beam, ohmic and ECH power. Thresholds and their sources are in `thresholds.py`.
-Prad,div is a radiation measure, not a detachment measure; the indicator is a
-weak voter. It never votes MARFE and never corroborates one: a MARFE moves the
-radiation out of the Prad,div,L region (above the X-point), so a MARFE bin can
-read the same f_div as a detached one or lower.
+Prad,div is a radiation measure, not a detachment measure, and its level differs
+between shots. It is not part of the exported label: it is a within-shot
+corroborator reported per shot, and a sensitivity variant adds its vote to the
+rule (`label_model.SECOND_VOTERS`). It never votes MARFE and never corroborates
+one: a MARFE moves the radiation out of the Prad,div,L region (above the
+X-point), so a MARFE bin can read the same f_div as a detached one or lower.
 
-Two votes are computed from the same value. The exported label's vote is the
-per-shot RELATIVE one (`relative_fdiv`: f_div over the shot's own baseline, so the
-shot's input power and seeding cancel; `with_relative_vote`). The absolute vote
-(`fdiv_vote` with the shot-201081-anchored global cutoffs) is recorded beside it as
-a sensitivity: those cutoffs do not carry over from the anchor shot (Opus review 5,
-I1).
+Two votes are computed from the same value. The relative one (`relative_fdiv`:
+f_div over the shot's own baseline, so the shot's input power and seeding cancel;
+`with_relative_vote`) is the indicator's vote (`prad_vote`). The absolute vote
+(`fdiv_vote` with the shot-201081-anchored global cutoffs) is recorded beside it
+(`prad_abs_vote`): those cutoffs do not carry over from the anchor shot (Opus
+review 5, I1).
 """
 
 from __future__ import annotations
