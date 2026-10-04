@@ -121,9 +121,8 @@ over bins whose n = 2 line sits at twice the n = 1 frequency and whose Mirnov be
 toroidal number there is 2: the harmonics of a rotating, non-sinusoidal n = 1 mode
 carry n = 2. Toroidal phase cannot separate such a harmonic from a co-rotating,
 frequency-coupled n = 2 mode (a 3/2 mode locked to the 2/1), so **the veto is a
-heuristic and may also remove real 3/2 modes**; it removes 9 of 86 n = 2 seeds on the
-development shots. Unsupported seeds, high-frequency
-or chirping bursts, and sustained coherent sub-seed lines are category 2 (uncertain).
+heuristic and may also remove real 3/2 modes**; <!-- gen:veto -->x<!-- /gen:veto -->.
+Unsupported seeds, high-frequency or chirping bursts, and sustained coherent sub-seed lines are category 2 (uncertain).
 Weak uncertainty tracks require a continuous 100 ms coherent core above the frozen
 development quiet-amplitude p95, then follow that line down to this amplitude
 floor itself; the same weak screen runs over ramp-up and flat-top. Brief evidence interruptions up to 50 ms can join; acquisition gaps cannot.
@@ -136,10 +135,10 @@ The subsequent phase is uncertain until the lock signal falls or the discharge e
 without that signal it stays uncertain to the discharge end. Lock confirmation uses
 the independently fetched n=1 `DUSBRADIAL` radial-field amplitude (native ptdata
 units, treated as gauss by disruption-py; the unit is not verified here): a lock is
-a **step**. At each candidate time (an interval's start, a frequency drop or abrupt
-collapse, an interval's end) the median |DUSBRADIAL| over 20 to 120 ms after must
-exceed its median over 200 to 20 ms before by at least 5, so a field that is already
-high or ramps slowly confirms nothing. Candidates are checked at every interval end
+a **step**. At each candidate time (a frequency drop at least 50 ms after the seed
+starts, an abrupt collapse, an interval's end) the median |DUSBRADIAL| over 20 to
+120 ms after must exceed its median over 200 to 20 ms before by at least 5, so a
+field that is already high or ramps slowly confirms nothing. Candidates are checked at every interval end
 and for rejected ones. A sustained rise (100 ms above the quiet median plus 5, with a
 step at its start) in otherwise-absent flat-top time is uncertain with reason
 `locked_unseeded`: a field event with no mode seen. Coverage is recorded in the label metadata; shots with no
@@ -170,10 +169,8 @@ catalog-window time of the development shots, and a co-primary benchmark group s
 it as negative. A lock is confirmed from `DUSBRADIAL`, which is on file for 327 of the
 450 development shots (12 confirmed locks); the rest keep an unknown lock status. The blind split carries no tearing-mode labels: its 50 shots are never opened
 for labels, features or scores. The benchmark tests recovery of a magnetic rule, not
-superiority as a TM detector: a two-line RMS baseline with no training is within
-0.001 AUROC of `tm-ours` (paired difference +0.001 [0.000, +0.002]), and with
-uncertain time scored as negative the paired AUPRC difference is not resolved
-(-0.020 [-0.177, +0.119]) while the baseline's F1 is higher. No TM coverage gain is
+superiority as a TM detector, and the untrained two-line RMS baseline is the reference
+it is paired with: <!-- gen:paired -->x<!-- /gen:paired --> No TM coverage gain is
 claimed: on the survival-matched shots the interval labels cover 464.4 s against
 799.3 s for the legacy labels.
 Population weak screening uses the same criteria where inputs exist; unscreened time

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import subprocess
@@ -12,7 +13,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from labeler.tearing import scoring
+from labeler.events.interval_tables import parse_attrs
+from labeler.tearing import rule, scoring
 
 REPO = Path(__file__).resolve().parents[2]
 TM = (
@@ -85,6 +87,8 @@ def main():
         record = read(REPO / row["source"])
         if "labels_sha256" in record:
             assert record["labels_sha256"] == label_sha
+        if "uncertain_negative" in row["source"]:
+            committed(record["git_sha"], row["source"])
         for fold in record.get("fold_info", []):
             assert fold["validation_bins_positive"] > 0
             assert fold["threshold"] != 0.999
@@ -113,17 +117,44 @@ def main():
         kind = ["published" in n for n in names]
         assert kind == sorted(kind, reverse=True), (setting, names)
     paired = benchmark["paired_common_shots"]
-    for block in (paired, paired["uncertain_negative"]):
-        for difference in block["differences"].values():
-            for cell in difference.values():
-                assert cell["excludes_zero"] == (cell["lo"] > 0 or cell["hi"] < 0)
+    for comparison in ("full_set", "cnn_subset"):
+        for block in paired[comparison].values():
+            for difference in block["differences"].values():
+                for cell in difference.values():
+                    assert cell["excludes_zero"] == (cell["lo"] > 0 or cell["hi"] < 0)
+    # the baseline comparison is on every development shot, and each model's value
+    # there is the value of its own row in the main table (same bins, same thresholds)
+    by_key = {(r["model"], r["setting"], r["variant"]): r for r in benchmark["rows"]}
+    for block, setting in (
+        (paired["full_set"]["primary"], "Tokamak-SI"),
+        (paired["full_set"]["uncertain_negative"], "Tokamak-SI, uncertain = negative"),
+    ):
+        assert block["shots"] == dev, setting
+        assert set(block["metrics"]) == {"tm-ours", "tm-rms-2line"}
+        for model, metrics in block["metrics"].items():
+            row = by_key[(model, setting, "")]["metrics"]
+            assert row["bins_scored"] == block["bins_scored"], (model, setting)
+            for key in ("auroc", "auprc", "f1", "segf1_0.5"):
+                assert abs(metrics[key]["value"] - row[key]["value"]) < 1e-6, (
+                    model,
+                    setting,
+                    key,
+                )
+    for block in paired["cnn_subset"].values():
+        assert set(block["metrics"]) == {"tm-ours", "tm-onsetcnn-retrained"}
+        assert len(block["shots"]) < len(dev)
     for name in ("tm_benchmark.json", "rule_diagnostics_fix4.json"):
         source = read(
             LOCAL / name if name == "tm_benchmark.json" else LOCAL / "sources" / name
         )
         committed(source["git_sha"], name)
-    committed(
-        read(LOCAL / "sources/calibration_dev_fix4.json")["git_sha"], "calibration"
+    calibration = read(LOCAL / "sources/calibration_dev_fix4.json")
+    committed(calibration["git_sha"], "calibration")
+    # the rule's hard-coded harmonic level is the calibration's rounded-up percentile
+    assert rule.N2_RULE.harmonic_ratio == calibration["harmonic_ratio"]
+    assert (
+        math.ceil(calibration["harmonic_ratio_unrounded"] * 100) / 100
+        == calibration["harmonic_ratio"]
     )
     figure2 = read(REPO / "docs/labeler/figure2_tm.json")
     for row in figure2["rows"]:
@@ -193,7 +224,41 @@ def main():
     assert doc["source_sha256"] == sha(REPO / "scripts/labeler/tm_write_doc.py")
     assert doc["document_sha256"] == sha(REPO / doc["document"])
     assert doc["benchmark_sha256"] == sha(LOCAL / "tm_benchmark.json")
-    readme = (REPO / "data/events/neoclassical_tearing_mode/README.md").read_text()
+    readme_path = REPO / "data/events/neoclassical_tearing_mode/README.md"
+    readme = readme_path.read_text()
+    assert doc["readme_sha256"] == sha(readme_path)
+    for span in ("veto", "paired"):
+        assert re.search(
+            rf"<!-- gen:{span} -->[^x].*<!-- /gen:{span} -->", readme, re.DOTALL
+        )
+    # onset rows with a degenerate window carry the flag, as the label meta counts
+    meta = read(labels.with_suffix(".meta.json"))["counts"]
+    frame = pd.read_csv(labels)
+    flagged = [
+        bool(parse_attrs(a).get("onset_window_degenerate"))
+        for a in frame[(frame.category == 1) & (frame.t_end == frame.t_start)].attrs
+    ]
+    assert sum(flagged) == meta["n_onset_rows_flagged_degenerate"] > 0
+    # hand-typed numbers of the README against the record they come from
+    counts = benchmark["label_counts"]["cohort"]["counts"]
+    assert (
+        counts["n_onset_rows_flagged_degenerate"]
+        == meta["n_onset_rows_flagged_degenerate"]
+    )
+    agreement = {
+        ref: benchmark["agreement"][f"{ref}_dev"]["agreement"]["n1"]
+        for ref in ("seo", "survival")
+    }
+    for ref, label in (("seo", "Seo"), ("survival", "survival")):
+        a = agreement[ref]
+        assert f"{label} **{a['matched']}/{a['reference_onsets']}**" in readme, ref
+    assert f"{counts['n_locked']} confirmed locks" in readme
+    share = benchmark["rule_diagnostics"]["uncertain_fraction"]["after"]["window"]
+    assert f"{100 * share['pooled_fraction']:.1f}% of the observable" in readme
+    on_file = benchmark["rule_diagnostics"]["lock_records"]
+    assert (
+        f"on file for {on_file['dev_shots_with_record']} of the {on_file['dev_shots']}"
+    ) in readme
     assert "**latest**: none" in readme or "**latest**: tm-ours" not in readme
     assert "no tearing-mode labels" in readme  # the blind split carries none
     text = (REPO / doc["document"]).read_text()

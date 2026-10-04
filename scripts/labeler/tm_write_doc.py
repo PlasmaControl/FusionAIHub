@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -20,6 +21,7 @@ DOC = REPO / "docs/labeler/tearing_detection.md"
 LABELS = (
     REPO / "data/events/neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
 )
+README = REPO / "data/events/neoclassical_tearing_mode/README.md"
 SOURCES = "../../data/events/neoclassical_tearing_mode/benchmark/sources"
 LOCK_EXAMPLES = ("n = 1 decaying", "n = 1 locking")
 
@@ -41,13 +43,131 @@ def signed(d):
     return f"{three(d['value'], True)} [{three(d['lo'], True)}, {three(d['hi'], True)}]"
 
 
-def resolved(d):
-    """Whether a paired interval excludes 0, and on which side."""
+METRICS = (
+    ("auroc", "AUROC"),
+    ("auprc", "AUPRC"),
+    ("f1", "F1"),
+    ("segf1_0.5", "segmental F1"),
+)
+OURS, BASELINE, TWIN = "tm-ours", "tm-rms-2line", "tm-onsetcnn-retrained"
+#: How a model reads in running text.
+SAY = {OURS: "`tm-ours`", BASELINE: "the two-line baseline", TWIN: "the retrained CNN"}
+
+
+def ahead(d, a, b):
+    """The model a paired interval puts ahead: `a` above 0, `b` below, else None."""
     if d["lo"] > 0:
-        return "above 0"
+        return a
     if d["hi"] < 0:
-        return "below 0"
-    return "spanning 0"
+        return b
+    return None
+
+
+def verdict(d, a, b):
+    """`a ahead`, `b ahead` or `not resolved` for one paired difference."""
+    who = ahead(d, a, b)
+    return f"{SAY[who]} ahead" if who else "not resolved"
+
+
+def difference_clauses(block, a, b):
+    """`AUROC +0.001 [+0.000, +0.002] (`tm-ours` ahead); AUPRC ...` for one block."""
+    diff = block["differences"][f"{a}_minus_{b}"]
+    return "; ".join(
+        f"{label} {signed(diff[key])} ({verdict(diff[key], a, b)})"
+        for key, label in METRICS
+    )
+
+
+def names(items):
+    """`AUROC`, `AUROC and AUPRC`, `AUROC, AUPRC and F1`."""
+    items = list(items)
+    if len(items) <= 2:
+        return " and ".join(items)
+    return ", ".join(items[:-1]) + " and " + items[-1]
+
+
+def ranking_across_groups(comparison, a, b):
+    """How the order of `a` and `b` changes from the excluded to the negative group.
+
+    A metric is reversed if the two groups' paired intervals put different models
+    ahead, held if both put the same one ahead, open if either spans zero.
+    """
+    first = comparison["primary"]["differences"][f"{a}_minus_{b}"]
+    second = comparison["uncertain_negative"]["differences"][f"{a}_minus_{b}"]
+    reversed_, held, open_, directions = [], {a: [], b: []}, [], set()
+    for key, label in METRICS:
+        x, y = ahead(first[key], a, b), ahead(second[key], a, b)
+        if x and y and x != y:
+            reversed_.append(label)
+            directions.add((x, y))
+        elif x and y:
+            held[x].append(label)
+        else:
+            open_.append(label)
+    clauses = []
+    if reversed_:
+        text = f"the order reverses between the groups on {names(reversed_)}"
+        if len(directions) == 1:
+            x, y = next(iter(directions))
+            text += (
+                f" ({SAY[x]} ahead with uncertain time excluded, {SAY[y]} ahead "
+                "with it scored as negative)"
+            )
+        clauses.append(text)
+    for who in (a, b):
+        if held[who]:
+            clauses.append(f"{SAY[who]} is ahead in both groups on {names(held[who])}")
+    if open_:
+        clauses.append(
+            f"the order is not resolved in at least one group on {names(open_)}"
+        )
+    text = "; ".join(clauses) if clauses else "no metric separates the models"
+    return text[0].upper() + text[1:] + "."
+
+
+def paired_report(paired):
+    """The baseline and CNN comparisons as running text, from the benchmark record.
+
+    Used by the document and, shortened, by the README, so no number is typed twice.
+    """
+    full, subset = paired["full_set"], paired["cnn_subset"]
+    ex, un = full["primary"], full["uncertain_negative"]
+    cex, cun = subset["primary"], subset["uncertain_negative"]
+    baseline = (
+        f"On all {len(ex['shots'])} development shots, which both models score on "
+        "identical bins, the paired difference `tm-ours` minus the two-line "
+        f"baseline is, with uncertain time excluded ({ex['bins_scored']} bins), "
+        f"{difference_clauses(ex, OURS, BASELINE)}; with uncertain time scored as "
+        f"negative ({un['bins_scored']} bins, {len(un['shots'])} shots), "
+        f"{difference_clauses(un, OURS, BASELINE)}. "
+        f"{ranking_across_groups(full, OURS, BASELINE)}"
+    )
+    twin = (
+        f"On the {len(cex['shots'])} shots ({cex['bins_scored']} bins; "
+        f"{len(cun['shots'])} shots and {cun['bins_scored']} bins with uncertain time "
+        "scored as negative) where the retrained CNN has inputs, `tm-ours` minus the "
+        f"retrained CNN is {difference_clauses(cex, OURS, TWIN)}; with uncertain "
+        f"time scored as negative, {difference_clauses(cun, OURS, TWIN)}"
+    )
+    return baseline, twin
+
+
+def patch_readme(blocks):
+    """Replace each `<!-- gen:name -->...<!-- /gen:name -->` span of the README.
+
+    The README is hand-written; the spans that carry benchmark numbers are written
+    here from the same record as the document, so no number is typed twice.
+    """
+    text = README.read_text()
+    for name, body in blocks.items():
+        pattern = re.compile(
+            rf"(<!-- gen:{name} -->).*?(<!-- /gen:{name} -->)", re.DOTALL
+        )
+        assert pattern.search(text), f"README has no gen:{name} span"
+        text = pattern.sub(
+            lambda m, body=body: f"{m.group(1)}{body}{m.group(2)}", text, count=1
+        )
+    README.write_text(text)
 
 
 def pct(x, digits=1):
@@ -107,9 +227,11 @@ def changelog(diag, previous, *, agreement_before, b):
         "Lock confirmation: a step at each candidate time (median 20 to 120 ms "
         "after, 5 above the median 200 to 20 ms before); confirmed cohort locks"
     )
+    realized = fc["lag_from_interval_durations"]["lag_quantiles_ms"]["50"]
     false_text = (
         "False-confirmation rate, previous test against the step test, at lags "
-        "of 300 / 1000 / 2000 ms and lags drawn from the interval durations"
+        "of 300 / 1000 / 2000 ms and lags drawn from the interval durations "
+        f"(realized median {realized:.0f} ms)"
     )
     veto_text = (
         "Harmonic veto recalibrated on the bins that fit n = 2: level (n = 2 "
@@ -117,7 +239,7 @@ def changelog(diag, previous, *, agreement_before, b):
     )
     window_text = (
         "Inside-the-onset-window count, Seo / survival (the old flag compared the "
-        "reference onset with the interval end)"
+        "reference onset with the interval end; the count is not widened)"
     )
     share_text = (
         "Uncertain share of observable time, catalog window / flat-top (pooled)"
@@ -239,8 +361,12 @@ def main():
     fc = diag["false_confirmation"]
     n2 = diag["n2_cuts"]
     seeds = diag["n2_seed_cuts"]
+    kept = n2["n2_intervals_kept"]
+    net = kept["current_veto"] - kept["no_veto"]
     lock_after = diag["locking"]["after"]
     steps = diag["lock_steps"]["cohort"]
+    durations = fc["interval_duration_quantiles_ms"]
+    realized = fc["rows"]["lag_from_interval_durations"]["lag_quantiles_ms"]
     largest = steps["largest_step"]
     share = fraction["after"]["window"]
     share_text = pct(share["pooled_fraction"])
@@ -248,34 +374,10 @@ def main():
     cov = b["coverage"]
     paired = b["paired_common_shots"]
     like = b["like_for_like"]
-    two = paired["differences"]["tm-ours_minus_tm-rms-2line"]
-    pair_text = f"{signed(two['auroc'])} AUROC and {signed(two['auprc'])} AUPRC"
-    un_pair = paired["uncertain_negative"]
-    un_diff = un_pair["differences"]["tm-ours_minus_tm-rms-2line"]["auprc"]
-    if un_diff["hi"] < 0:
-        un_verdict = "so the order reverses: the interval excludes 0"
-    elif un_diff["lo"] > 0:
-        un_verdict = "so the order holds: the interval excludes 0"
-    else:
-        un_verdict = "an interval that spans 0, so the order is not resolved"
-    un_cnn = un_pair["differences"]["tm-ours_minus_tm-onsetcnn-retrained"]
-    un_two = un_pair["differences"]["tm-ours_minus_tm-rms-2line"]
-    un_text = (
-        f"the paired AUPRC difference on the {len(un_pair['shots'])} shots and "
-        f"{un_pair['bins_scored']} bins all three models score is "
-        f"{signed(un_diff)}, {un_verdict}. In that group `tm-ours` minus the "
-        f"retrained CNN is {signed(un_cnn['auprc'])} AUPRC (interval "
-        f"{resolved(un_cnn['auprc'])}) and {signed(un_cnn['f1'])} F1 (interval "
-        f"{resolved(un_cnn['f1'])}); `tm-ours` minus the two-line baseline is "
-        f"{signed(un_two['f1'])} F1 (interval {resolved(un_two['f1'])}), at each "
-        "model's own inner-validation threshold"
-    )
+    baseline_text, twin_text = paired_report(paired)
     onset_error = {ref: agreement[ref]["error_ms"] for ref in ("seo", "survival")}
     window_text = {
-        ref: (
-            f"{e['reference_inside_onset_window']} of {agreement[ref]['matched']} "
-            f"({e['reference_inside_onset_window_strict']} without the widening)"
-        )
+        ref: f"{e['reference_inside_onset_window']} of {agreement[ref]['matched']}"
         for ref, e in onset_error.items()
     }
     late = {
@@ -368,8 +470,10 @@ def main():
             f"(50 ms above 6 G on the RMS alone) on {seeds['shots']} development "
             f"shots; the 60 kHz frequency cap alone removes {seeds['cap']}, and the "
             f"two cuts together {seeds['both_current']}. The finished rule yields "
-            f"{n2['n2_intervals_kept']['current_veto']} n = 2 intervals on the "
-            "development shots."
+            f"{kept['current_veto']} n = 2 intervals on the development shots "
+            f"({kept['no_veto']} without the veto): the veto removes seeds, not "
+            "intervals, and a removed seed can change how its neighbours merge, so "
+            f"its net effect on finished n = 2 intervals is {net:+d}."
         ),
         "",
         (
@@ -439,7 +543,10 @@ def main():
     lines.extend(
         [
             "",
-            f"Source: [criterion_support_fix4.json]({SOURCES}/criterion_support_fix4.json).",
+            (
+                "Source: [criterion_support_fix4.json]"
+                f"({SOURCES}/criterion_support_fix4.json)."
+            ),
             "",
             "## Abrupt collapse and locking",
             "",
@@ -451,8 +558,9 @@ def main():
                 "independent signal is the n = 1 PTDATA radial field `DUSBRADIAL` "
                 "(native ptdata units, treated as gauss by disruption-py; the unit is "
                 "not verified here, so no absolute field is claimed). A lock is "
-                "confirmed by a **step**. At a candidate time t_c (an interval's "
-                "start, a frequency drop or abrupt collapse, or an interval's end) the "
+                "confirmed by a **step**. At a candidate time t_c (a frequency drop "
+                "at least 50 ms after the seed starts, an abrupt collapse, or an "
+                "interval's end) the "
                 "median of |DUSBRADIAL| over t_c + 20 ms to t_c + 120 ms must exceed "
                 "its median over t_c − 200 ms to t_c − 20 ms by at least 5 (each "
                 "window needs 50 ms of measured field, and the earlier window does "
@@ -478,9 +586,12 @@ def main():
                 "long enough for the 200 ms baseline and the 120 ms step window, and "
                 "testing for a lock `lag` later. The step test reads only the field "
                 "around that pseudo-lock; the lags are 300, 1000 and 2000 ms and "
-                f"{fc['n_interval_durations']} lags drawn from the cohort's interval "
-                f"durations (median {fc['interval_duration_quantiles_ms']['50']:.0f} "
-                "ms):"
+                f"lags drawn from the cohort's {fc['n_interval_durations']} interval "
+                f"durations (median {durations['50']:.0f} ms, 90th percentile "
+                f"{durations['90']:.0f} ms). The last row keeps only the durations "
+                "that fit the quiet stretch, so its realized lags are shorter: median "
+                f"{realized['50']:.0f} ms, 10th percentile {realized['10']:.0f} ms, "
+                f"90th percentile {realized['90']:.0f} ms."
             ),
             "",
         ]
@@ -490,7 +601,13 @@ def main():
         ("lag_300_ms", "300 ms"),
         ("lag_1000_ms", "1000 ms"),
         ("lag_2000_ms", "2000 ms"),
-        ("lag_from_interval_durations", "drawn from the interval durations"),
+        (
+            "lag_from_interval_durations",
+            (
+                "drawn from the interval durations "
+                f"(realized median {realized['50']:.0f} ms)"
+            ),
+        ),
     ):
         row = fc["rows"][key]
         rows.append(
@@ -512,8 +629,9 @@ def main():
         [
             "",
             (
-                f"Intervals ending in a confirmed lock: {lock_after['intervals_by_end'].get('locked', 0)} "
-                f"on the development shots. Uncertain `locked_unseeded` time: "
+                "Intervals ending in a confirmed lock: "
+                f"{lock_after['intervals_by_end'].get('locked', 0)} "
+                "on the development shots. Uncertain `locked_unseeded` time: "
                 f"{unseeded('rows')} rows, {unseeded('seconds'):.1f} s on "
                 f"{unseeded('shots')} shots. The column example's locking shot is "
                 f"**{largest['shot']}**, chosen by a fixed rule: the confirmed cohort "
@@ -594,8 +712,11 @@ def main():
                 f"{counts['cohort']['n_onset_points']} cohort onsets have such a "
                 "window (the others have no preceding weak track), and "
                 f"{counts['cohort']['n_onset_windows_at_most_5_ms']} of those windows "
-                "are 5 ms or shorter: they are flagged, not widened, and say almost "
-                "nothing about where the mode began."
+                "are 5 ms or shorter and say almost nothing about where the mode "
+                f"began: {counts['cohort']['n_onset_rows_flagged_degenerate']} "
+                "onset rows are flagged with `onset_window_degenerate: true` (an "
+                "interval with no onset point has no row to flag), and no window is "
+                "widened."
             ),
             "",
             (
@@ -617,9 +738,10 @@ def main():
                 f"{agreement['seo']['error_ms']['median']:.0f} ms after the interval "
                 "start, inside the interval. A reference onset lies **inside the "
                 "onset window** when it is between the window's start and the "
-                "interval's start, each widened by the ±100 ms tolerance: "
-                f"{window_text['seo']} Seo and {window_text['survival']} survival "
-                f"onsets. {late['seo']} Seo and {late['survival']} survival onsets "
+                "interval's start (no widening: the match already allows 100 ms "
+                f"past the start): {window_text['seo']} Seo and "
+                f"{window_text['survival']} survival matched onsets. {late['seo']} "
+                f"Seo and {late['survival']} survival onsets "
                 "lie more than 100 ms after the interval start. The "
                 "label therefore holds the historical onset, it does not time it. "
                 "The survival archive does not follow "
@@ -649,8 +771,7 @@ def main():
                 "—" if e is None else pct(e["within_ms"]["100"], 0),
                 "—"
                 if e is None
-                else f"{e['reference_inside_onset_window']} of {s['matched']} "
-                f"({e['reference_inside_onset_window_strict']} strict)",
+                else f"{e['reference_inside_onset_window']} of {s['matched']}",
                 f"{s['intervals_without_an_onset']} of {s['compared_intervals']}",
             )
         )
@@ -677,8 +798,7 @@ def main():
                 "The onset error is the reference onset minus our interval start, over "
                 'matched onsets only (positive: our interval began first). "Inside '
                 'onset window" counts matched reference onsets between the window '
-                "start and the interval start, each widened by 100 ms (strict: "
-                "without the widening). "
+                "start and the interval start (not widened). "
                 '"Intervals without a reference onset" counts compared intervals '
                 "that hold no reference onset of their shot."
             ),
@@ -694,7 +814,8 @@ def main():
             "",
             (
                 "The outer held-shot assignment is the seed-0 round-robin. Before any "
-                "fit, `tm_cv_plan.py` freezes inner shot roles in `inner_splits_fix4.json`, "
+                "fit, `tm_cv_plan.py` freezes inner shot roles in "
+                "`inner_splits_fix4.json`, "
                 "stratified by whether a shot has an interval, with within-stratum swaps "
                 "so every model and legacy target has positive support in its "
                 "validation shots. No score or held-fold performance chooses roles. "
@@ -788,55 +909,62 @@ def main():
                 "**Reading the table.** The two-line RMS baseline is the rule "
                 "restated as a score, with no training. A model that reaches it "
                 "has recovered the magnetic rule; one that exceeds it uses "
-                "information the rule does not. On the shared shots the paired "
-                f"difference `tm-ours` − baseline is {pair_text}; with uncertain "
-                f"time scored as negative, {un_text}. `tm-ours` is therefore "
-                "reported as recovering the magnetic rule, not as a better detector."
+                f"information the rule does not. {baseline_text} `tm-ours` is "
+                "therefore reported as recovering the magnetic rule, not as a better "
+                "detector."
             ),
             "",
             "### Paired comparison",
             "",
             (
-                "Identical development shots and available 10 ms bins for all three "
-                "models within each target group; each model keeps its "
-                "inner-validation threshold. Paired bootstrap draws resample the same "
-                "shots, so each difference row carries a paired 95% interval; a "
-                "difference whose interval spans 0 is not resolved. Ranking, not a "
+                "Each comparison uses the development shots and available 10 ms "
+                "bins that both of its models score, within each target group; "
+                "each model keeps its inner-validation threshold. Paired bootstrap "
+                "draws resample the same shots, so each difference row carries a "
+                "paired 95% interval; a difference whose interval spans 0 is not "
+                "resolved. `tm-ours` and the two-line baseline need only the Mirnov "
+                "features, so they are compared on all "
+                f"{len(paired['full_set']['primary']['shots'])} "
+                "development shots (identical bins) and every statement about the "
+                "baseline uses that set. The retrained CNN has inputs on fewer shots, "
+                "so only the comparison with the CNN uses the restricted set; "
+                "comparing `tm-ours` with the baseline on it would rank them on "
+                "the shots the CNN happens to cover. Ranking, not a "
                 "threshold-specific F1 gain, is the primary comparison."
             ),
+            "",
+            f"{twin_text}.",
             "",
         ]
     )
     rows = []
-    for target, block in (
-        ("uncertain excluded", paired),
-        ("uncertain = negative", paired["uncertain_negative"]),
+    for comparison, scope, pair in (
+        ("full_set", "tm-ours, two-line RMS (all shots)", (OURS, BASELINE)),
+        ("cnn_subset", "tm-ours, retrained CNN (CNN shots)", (OURS, TWIN)),
     ):
-        count = f"{len(block['shots'])} / {block['bins_scored']}"
-        for name, m in block["metrics"].items():
-            rows.append(
-                (
-                    target,
-                    name,
-                    count,
-                    *[metric(m[k]) for k in ("auroc", "auprc", "f1", "segf1_0.5")],
-                )
-            )
-        for key, label in (
-            (
-                "tm-ours_minus_tm-onsetcnn-retrained",
-                "Difference, tm-ours − retrained CNN",
-            ),
-            ("tm-ours_minus_tm-rms-2line", "Difference, tm-ours − two-line RMS"),
+        for target, mode in (
+            ("uncertain excluded", "primary"),
+            ("uncertain = negative", "uncertain_negative"),
         ):
+            block = paired[comparison][mode]
+            count = f"{len(block['shots'])} / {block['bins_scored']}"
+            for name, m in block["metrics"].items():
+                rows.append(
+                    (
+                        f"{target}, {scope}",
+                        name,
+                        count,
+                        *[metric(m[k]) for k, _ in METRICS],
+                    )
+                )
             rows.append(
                 (
-                    target,
-                    label,
+                    f"{target}, {scope}",
+                    f"Difference, {pair[0]} − {pair[1]}",
                     count,
                     *[
-                        metric(block["differences"][key][k])
-                        for k in ("auroc", "auprc", "f1", "segf1_0.5")
+                        metric(block["differences"][f"{pair[0]}_minus_{pair[1]}"][k])
+                        for k, _ in METRICS
                     ],
                 )
             )
@@ -1004,7 +1132,12 @@ def main():
                 "radial-field step). In the galleries a present interval is drawn "
                 "plain and uncertain time is one flat grey without outlines, so "
                 "uncertain rows that overlap are drawn once and a boxed or darker "
-                "patch never means more uncertainty. Only locked phases are hatched: "
+                "patch never means more uncertainty. In the spectrogram and RMS "
+                "panels each interval is shaded in its own colour, and where an "
+                "n = 1 and an n = 2 interval overlap the two shadings blend into a "
+                'light grey (legend entry "n = 1 and 2 overlap"); that grey is '
+                "not uncertain time, which is drawn only in the strip above the "
+                "spectrogram. Only locked phases are hatched: "
                 "slashes where a step of the radial field confirms a mode's lock, "
                 "crosses where the field steps in flat-top time with no mode seen "
                 "(`locked_unseeded`), dots where a lock is suspected but "
@@ -1073,12 +1206,25 @@ def main():
         )
     )
     DOC.write_text("\n".join(line.rstrip() for line in lines) + "\n")
+    patch_readme(
+        {
+            "veto": (
+                f"it removes {seeds['veto_current']} of {seeds['seeds']} n = 2 seeds "
+                "on the development shots; the finished rule has "
+                f"{kept['current_veto']} n = 2 intervals, {kept['no_veto']} without "
+                "the veto, because a removed seed can change how its neighbours "
+                f"merge (net effect on intervals {net:+d})"
+            ),
+            "paired": baseline_text,
+        }
+    )
     provenance = {
         "made_by": "scripts/labeler/tm_write_doc.py",
         "source_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         "benchmark_sha256": hashlib.sha256(BENCH.read_bytes()).hexdigest(),
         "document_sha256": hashlib.sha256(DOC.read_bytes()).hexdigest(),
         "document": str(DOC.relative_to(REPO)),
+        "readme_sha256": hashlib.sha256(README.read_bytes()).hexdigest(),
     }
     for path in (
         TM / "results/document_fix4.json",
