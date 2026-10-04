@@ -15,9 +15,13 @@ older annotation) used and "Tokamak-SI" is our labels:
   legacy = against the Heidbrink annotation (`results.annotated`), Tokamak-SI =
   against the dense labels (`results.reviewed`).
 - Confinement: `confine-cnn`; legacy = the earlier paper's macro F1,
-  the mean of its four per-class F1 (`paper`), one bar, no interval;
-  Tokamak-SI = the retrained model, out of fold on 119 shots, macro F1
-  (`results.all_shots.macro`).
+  the mean of its four per-class F1 (`paper` in the first retrain's
+  evaluation), one bar, no interval; Tokamak-SI = our reimplementation under
+  the paper's selection and split, the ablation's protocol row
+  `full_cum_abcdrgef` (142 distinct test shots in 200 shot-tests from five
+  random by-shot splits whose test sets overlap, windows pooled; macro F1,
+  AUROC and AUPRC with shot-bootstrap intervals), the one confine-cnn score of
+  the paper. The first retrain's own score is not drawn.
 - ELMs: `elm-elmo`; legacy = D. Smith's windows at the published setting
   (`smith.published_setting`, its F1 from the stored counts); Tokamak-SI = the
   reviewed spans in 50 ms bins (`review.paper`).
@@ -52,7 +56,14 @@ REPO = Path(__file__).resolve().parents[3]
 OUTPUTS = REPO / "outputs" / "labeler"
 SOURCES = {
     "ae": OUTPUTS / "ae" / "baselines" / "evaluation.json",
+    # the earlier paper's per-class scores (`paper`), pasted from its table
     "confinement": OUTPUTS / "confinement" / "bes" / "evaluation.json",
+    # the protocol row's record (confinement_bes_ablation.py summarize)
+    "confinement_si": OUTPUTS
+    / "confinement"
+    / "bes"
+    / "ablation_rows"
+    / "full_cum_abcdrgef.json",
     "elm": OUTPUTS / "elm" / "elmo" / "evaluation.json",
 }
 DEFAULT_OUT = REPO / "dev" / "label_paper" / "figures" / "fig_benchmarks.pdf"
@@ -252,12 +263,37 @@ def draw_ae(ax, ae: dict, rows: Rows, panel: str, metric: str = "f1") -> None:
     ax.set_ylabel(METRICS[metric], labelpad=2)
 
 
+def confinement_si(record: dict) -> dict:
+    """The protocol row's record (`ablation_rows/full_cum_abcdrgef.json`) as the
+    macro scores and intervals `draw_confinement` reads: macro F1 from the row's
+    own windows, macro AUROC and AUPRC from its `ranking`, each with the 95 % shot
+    bootstrap interval stored beside it."""
+    own, rank = record["own_population"], record["ranking"]
+    return {
+        "macro": {
+            "f1": own["macro_f1"],
+            "auroc": rank["auroc"]["macro"],
+            "auprc": rank["auprc"]["macro"],
+        },
+        "ci95": {
+            "macro_f1": own["ci95"]["macro_f1"],
+            "macro_auroc": rank["ci95"]["auroc"],
+            "macro_auprc": rank["ci95"]["auprc"],
+        },
+        "keys": {
+            "f1": "own_population.macro_f1",
+            "auroc": "ranking.auroc.macro",
+            "auprc": "ranking.auprc.macro",
+        },
+    }
+
+
 def draw_confinement(
-    ax, conf: dict, rows: Rows, panel: str, metric: str = "f1"
+    ax, conf: dict, si: dict, rows: Rows, panel: str, metric: str = "f1"
 ) -> None:
-    """confine-cnn's macro score: the earlier paper's (legacy; F1 only, it
-    published no AUROC or AUPRC) and the retrained model's out of fold
-    (Tokamak-SI)."""
+    """confine-cnn's macro score: the earlier paper's (legacy, from `conf`; F1
+    only, it published no AUROC or AUPRC) and our reimplementation under its
+    selection and split (Tokamak-SI, from `si`, see `confinement_si`)."""
     name = "macro " + METRICS[metric]
     if metric == "f1":
         published = conf["paper"]
@@ -275,9 +311,8 @@ def draw_confinement(
         )
     else:
         pending_slot(ax, 0, 0.8, PENDING_EDGE, text="not reported")
-    result = conf["results"]["all_shots"]
-    value = result["macro"][metric]
-    ci = result["ci95"].get(f"macro_{metric}")  # no interval is stored for AUPRC
+    value = si["macro"][metric]
+    ci = si["ci95"][f"macro_{metric}"]
     scored_bar(ax, 1.7, value, ci, SI)
     rows.add(
         panel,
@@ -286,8 +321,8 @@ def draw_confinement(
         name,
         value,
         ci,
-        SOURCES["confinement"],
-        f"results.all_shots.macro.{metric}",
+        SOURCES["confinement_si"],
+        si["keys"][metric],
     )
     finish_groups(
         ax,
@@ -351,6 +386,7 @@ def draw_pending(ax) -> None:
 def draw(out: Path, png: Path | None, table: Path | None) -> None:
     """The F1 figure: every set, with the sets not yet scored."""
     ae, conf, elm = (load(SOURCES[k]) for k in ("ae", "confinement", "elm"))
+    si = confinement_si(load(SOURCES["confinement_si"]))
     rows = Rows()
     with style():
         fig = Figure(figsize=(PAGE_IN, 4.0))
@@ -369,7 +405,7 @@ def draw(out: Path, png: Path | None, table: Path | None) -> None:
         a, b, c = (fig.add_subplot(top[0, i]) for i in range(3))
         pend = [fig.add_subplot(low[0, i]) for i in range(3)]
         draw_ae(a, ae, rows, "a")
-        draw_confinement(b, conf, rows, "b")
+        draw_confinement(b, conf, si, rows, "b")
         draw_elm(c, elm, rows, "c")
         for ax in pend:
             draw_pending(ax)
@@ -415,6 +451,7 @@ def draw(out: Path, png: Path | None, table: Path | None) -> None:
 def draw_auc(out: Path, png: Path | None, table: Path | None) -> None:
     """AUROC (top row) and AUPRC (bottom row) for the scored sets."""
     ae, conf, elm = (load(SOURCES[k]) for k in ("ae", "confinement", "elm"))
+    si = confinement_si(load(SOURCES["confinement_si"]))
     rows = Rows()
     with style():
         fig = Figure(figsize=(PAGE_IN, 4.6))
@@ -438,7 +475,7 @@ def draw_auc(out: Path, png: Path | None, table: Path | None) -> None:
         for r, metric in enumerate(("auroc", "auprc")):
             axes = [fig.add_subplot(grid[r, i]) for i in range(3)]
             draw_ae(axes[0], ae, rows, "a" + str(r), metric)
-            draw_confinement(axes[1], conf, rows, "b" + str(r), metric)
+            draw_confinement(axes[1], conf, si, rows, "b" + str(r), metric)
             draw_elm(axes[2], elm, rows, "c" + str(r), metric)
             for ax, text in zip(axes, titles):
                 ax.set_title(text, loc="left", fontsize=FONT_PT, pad=4)
