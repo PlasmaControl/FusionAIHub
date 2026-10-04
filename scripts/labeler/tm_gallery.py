@@ -344,7 +344,7 @@ def main(argv=None) -> int:
         Patch(
             facecolor="0.8",
             edgecolor="none",
-            label="uncertain (overlapping rows drawn once)",
+            label="uncertain (rows merged)",
         ),
     ]
     selected_spans = intervals_of(table[table.shot.isin(shots)])[0]
@@ -356,17 +356,17 @@ def main(argv=None) -> int:
         (
             {"confirmed_locked_phase"},
             "////",
-            "locked mode (radial-field step confirms)",
+            "locked, field step",
         ),
         (
             {"locked_unseeded"},
             "xxxx",
-            "radial-field step, no mode seen",
+            "field step, no mode",
         ),
         (
             {"post_collapse_lock_unknown", "rotation_after_lock_unassessed"},
             "..",
-            "lock not confirmed",
+            "lock unconfirmed",
         ),
     ):
         if reasons & kind:
