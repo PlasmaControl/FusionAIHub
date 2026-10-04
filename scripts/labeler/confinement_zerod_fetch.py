@@ -6,9 +6,11 @@ zero-dimensional signals, so it can run on the whole roster, where BES is rare. 
 corpus and the raw cache already hold D-alpha (``filterscopes``) and the beam powers
 (``pinj``) for the roster; the rest comes from DIII-D through fdp:
 
-* ``dens``   ``\\BCI::DENV2F``, the CO2 V2 interferometer's fast voltage (proportional
-  to the line-integrated density; fringe jumps are not unwrapped), averaged to 1 ms
-  bins;
+* ``dens``   ``\\BCI::DENV2F``, the CO2 V2 interferometer's line-averaged density,
+  nominally in cm^-3 (a density-like trace, not a raw voltage: it rank-correlates 0.84
+  with the Thomson peak density on 542 shots and reads about 2.3 times that peak, so
+  the calibration is unconfirmed; ``confinement_denv2f_check.py``; fringe jumps are not
+  unwrapped), averaged to 1 ms bins;
 * ``wmhd``   ``\\efit01::top.results.aeqdsk:wmhd`` (J) and ``betan`` (``:betan``), as
   the equilibrium reconstruction gives them (one point every 15-30 ms);
 * ``pinj``   the eight beams' injected power (W), only for the shots whose corpus file

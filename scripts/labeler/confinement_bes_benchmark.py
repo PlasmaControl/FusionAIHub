@@ -205,9 +205,9 @@ def deal(shots: list[int], signature: dict[int, str], k: int, rng) -> dict[int, 
 
 
 def block_roles(windows: pd.DataFrame) -> np.ndarray:
-    """Roles for the leaky diagnostic: blocks of 50 consecutive windows (0.2 s) of a
-    shot go to train, validation or test at random (60/20/20), so a test window sits
-    beside training windows of its own shot."""
+    """Roles for the leaky diagnostic: blocks of 50 consecutive windows (0.2 s at
+    500 kHz) of a shot go to train, validation or test at random (60/20/20), so a test
+    window sits beside training windows of its own shot."""
     block = windows.groupby("shot").cumcount().to_numpy() // 50
     _, inverse = np.unique(windows.shot.to_numpy() * 10_000 + block, return_inverse=True)
     draw = np.random.default_rng(FOLD_SEED + 100).random(inverse.max() + 1)
