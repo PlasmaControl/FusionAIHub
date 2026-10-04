@@ -22,9 +22,9 @@ from labeler.config import Paths
 from labeler.events import heuristics
 from labeler.sawtooth.metrics import event_cells, point_metrics, spans_at
 
-FIX3 = Paths.from_env().root / "round4/saw/fix3"
-PREVIOUS = FIX3.parent / "fix2"
-OUTPUT = REPO / "outputs/labeler/sawtooth/fix3"
+WORK4 = Paths.from_env().root / "round4/saw/fix4"
+PREVIOUS = WORK4.parent / "fix2"
+OUTPUT = REPO / "outputs/labeler/sawtooth/fix4"
 LEGACY_SHOTS = [190602, 190604, 192090, 201948, 192154, 191384, 203349]
 WINDOW_SECONDS = 0.6
 MINIMUM_WINDOW_SECONDS = 0.15
@@ -886,8 +886,13 @@ def paper_example(args):
     colors = {
         "present": "#009E73",
         "absent": "#FFFFFF",
+        "absent_q_prior": "#CC79A7",
         "uncertain": "#E69F00",
         "unassessed": "#999999",
+    }
+    state_names = {
+        "absent_q_prior": "Q-prior only",
+        "absent": "Absent (ECE-tested)",
     }
     shown_states = set()
     near = (t >= lo) & (t <= hi)
@@ -920,7 +925,7 @@ def paper_example(args):
             facecolor=colors[state],
             edgecolor="0.6",
             alpha=0.4,
-            label=f"{state.capitalize()} (algorithmic state)",
+            label=f"{state_names.get(state, state.capitalize())} (algorithmic state)",
         )
         for state in colors
         if state in shown_states
@@ -967,7 +972,7 @@ def paper_example(args):
             "Nominal rho is abs(R-axis)/(LCFS_outer_R-axis), not calibrated "
             "flux. The outer channels lie on the low-field side. Markers "
             "are unvalidated physics-rule candidates; shaded spans show "
-            "the algorithmic four-state assessment."
+            "the algorithmic five-state assessment."
         ),
     }
     save_json(args.output / "paper_example.json", result)
@@ -1057,6 +1062,7 @@ def prior_spatial_diagnostic(args, record, plt):
         axis.spines[["top", "right"]].set_visible(False)
     axes[-1].set(xlabel="Time (ms)", xlim=(lo * 1000, hi * 1000))
     axes[-1].xaxis.set_major_locator(MaxNLocator(nbins=4, prune="both"))
+    axes[0].text(0.01, 0.97, f"DIII-D {shot}", transform=axes[0].transAxes, va="top")
     labels = [
         channel_label(record, [core], "Core"),
         channel_label(record, auxiliary, "Aux HFS") + " (excluded)",
@@ -1476,6 +1482,9 @@ def legacy_comparison(args):
             axis.spines[["top", "right"]].set_visible(False)
         axes[-1].set(xlabel="Time (ms)", xlim=(lo * 1000, hi * 1000))
         axes[-1].xaxis.set_major_locator(MaxNLocator(nbins=4, prune="both"))
+        axes[0].text(
+            0.01, 0.97, f"DIII-D {shot}", transform=axes[0].transAxes, va="top"
+        )
         labels = [
             channel_label(record, [core], "Core"),
             channel_label(record, outer, "Outer LFS"),
@@ -1670,7 +1679,7 @@ def main():
             "confirm-inspection",
         ],
     )
-    parser.add_argument("--work", type=Path, default=FIX3)
+    parser.add_argument("--work", type=Path, default=WORK4)
     parser.add_argument("--previous", type=Path, default=PREVIOUS)
     parser.add_argument("--output", type=Path, default=OUTPUT)
     parser.add_argument("--example-shot", type=int, default=192148)

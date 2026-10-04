@@ -30,6 +30,7 @@ VERMILION = "#D55E00"
 GREEN = "#009E73"
 ORANGE = "#E69F00"
 GRAY = "#999999"
+PURPLE = "#CC79A7"
 ORIGINAL_GALLERY_SHOTS = [
     186532,
     196405,
@@ -73,10 +74,15 @@ def state_spans(record):
 
 
 def shade_states(axis, t, observable, record):
+    colors = {
+        "present": GREEN,
+        "uncertain": ORANGE,
+        "unassessed": GRAY,
+        "absent_q_prior": PURPLE,
+    }
     for lo, hi, state in state_spans(record):
-        if state in ("present", "uncertain", "unassessed"):
-            color = {"present": GREEN, "uncertain": ORANGE, "unassessed": GRAY}[state]
-            axis.axvspan(lo * 1000, hi * 1000, color=color, alpha=0.12, lw=0)
+        if state in colors:
+            axis.axvspan(lo * 1000, hi * 1000, color=colors[state], alpha=0.12, lw=0)
     dt = np.median(np.diff(t))
     for start, stop in runs(~observable):
         axis.axvspan(
@@ -135,20 +141,16 @@ def state_legend(record, window=None):
         for lo, hi, state in state_spans(record)
         if window is None or (lo < window[1] and hi > window[0])
     }
-    for state, color in (
-        ("present", GREEN),
-        ("absent", "#FFFFFF"),
-        ("uncertain", ORANGE),
-        ("unassessed", GRAY),
+    for state, color, label in (
+        ("present", GREEN, "Present"),
+        ("absent", "#FFFFFF", "Absent (ECE-tested)"),
+        ("absent_q_prior", PURPLE, "Q-prior only"),
+        ("uncertain", ORANGE, "Uncertain"),
+        ("unassessed", GRAY, "Unassessed"),
     ):
         if state in shown:
             handles.append(
-                Patch(
-                    facecolor=color,
-                    edgecolor="0.7",
-                    alpha=0.25,
-                    label=state.capitalize(),
-                )
+                Patch(facecolor=color, edgecolor="0.7", alpha=0.25, label=label)
             )
     return handles
 
@@ -270,11 +272,20 @@ def overview(shot, record, t, y, observable, destination):
 
 def choose_crash(record, t, y, observable):
     crashes = record.get("crashes", [])
-    # Prefer the middle uncertain train to expose unresolved q/ECE conflicts.
-    uncertain = [r for r in crashes if crash_state(r) == "uncertain"]
-    choices = uncertain or crashes
-    if choices:
-        return choices[len(choices) // 2], "Detected crash"
+    # Fixed rule, no visual selection: the accepted crash with the largest
+    # normalized inversion amplitude a_norm; present crashes first, and an
+    # uncertain crash only when the shot has no present one.
+    for wanted in ("present", "uncertain"):
+        pool = [
+            r
+            for r in crashes
+            if crash_state(r) == wanted and r.get("attrs", {}).get("a_norm") is not None
+        ]
+        if pool:
+            best = max(pool, key=lambda r: (r["attrs"]["a_norm"], -r["time_s"]))
+            return best, "Detected crash"
+    if crashes:
+        return crashes[len(crashes) // 2], "Detected crash"
     core_channels, _ = proxy_groups(record)
     core = mean_trace(y[core_channels])
     finite = np.isfinite(core) & observable
@@ -515,12 +526,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--work", type=Path, default=WORK)
     parser.add_argument(
-        "--output", type=Path, default=REPO / "outputs/labeler/sawtooth/fix3"
+        "--output", type=Path, default=REPO / "outputs/labeler/sawtooth/fix4"
     )
     parser.add_argument(
         "--selection",
         type=Path,
-        default=REPO / "outputs/labeler/sawtooth/fix3/gallery.json",
+        default=REPO / "outputs/labeler/sawtooth/fix4/gallery.json",
     )
     parser.add_argument(
         "--confirm-inspection",
@@ -601,18 +612,25 @@ def main():
                 for path in sources
             },
             "crash_windows": windows,
+            "crash_selection_rule": (
+                "per shot, the accepted crash with the largest normalized inversion "
+                "amplitude a_norm (present crashes first; an uncertain crash only "
+                "when the shot has no present one); ties go to the earlier crash"
+            ),
             "geometry_note": (
                 "Nominal geometric rho=abs(R-axis)/(LCFS_outer_R-axis), not "
                 "calibrated flux. Outer proxy is on the low-field side."
             ),
             "q_note": (
-                "EFIT01 q-min is magnetics-only. Soft conflict and conservative "
-                "strong-q absence follow the frozen rule; display range 0–4."
+                "EFIT01 q-min is magnetics-only. Soft conflict and the q-prior "
+                "state follow the frozen rule; display range 0–4."
             ),
             "marker_note": (
                 "Crash markers show diagnostic candidate state; shaded spans show "
                 "canonical bin state. Crash points and sustained-presence spans "
-                "have different temporal support."
+                "have different temporal support. Purple spans are q-prior only: "
+                "EFIT01 q_min >= 1.5 with no ECE absence test, exported as "
+                "uncertain."
             ),
             "png_inspection": "pending",
         },
