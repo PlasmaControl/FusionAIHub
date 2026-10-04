@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -63,7 +64,7 @@ def test_calendar_day_sharing_uses_outer_test_membership_and_records_missing_dat
     }
 
 
-def test_example_replacement_preserves_original_selection_history(monkeypatch):
+def test_example_selection_is_a_fixed_rank_rule_without_substitution(monkeypatch):
     shots = list(range(100, 138))
     shots[9], shots[10], shots[28] = 200427, 203941, 195111
     ranks = {shot: rank for rank, shot in enumerate(shots)}
@@ -81,13 +82,40 @@ def test_example_replacement_preserves_original_selection_history(monkeypatch):
         cover=dict.fromkeys(shots),
     )
     oof = SimpleNamespace(trace=lambda shot: [None], threshold=dict.fromkeys(shots))
-    selected, audit = examples.pick_shots(data, {"bes73": bes}, oof)
-    assert selected == [195111, 203941]
-    assert audit["replaced_panel_b"]["shot"] == 200427
-    assert audit["replaced_panel_b"]["rank"] == 9
-    assert audit["replacement_rank"] == 10
-    assert "25th percentile" in audit["original_rule"]
-    assert "reviewer" in audit["rule"]
+    selected, info = examples.pick_shots(data, {"bes73": bes}, oof)
+    assert selected == [195111, 200427]
+    assert info["ranks"] == {"a": 28, "b": 9} and info["candidates"] == 38
+    assert "75th percentile" in info["rule"] and "25th percentile" in info["rule"]
+    assert "no substitution" in info["rule"]
+    text = json.dumps(info).lower()
+    assert "reviewer" not in text and "revised" not in text and "replace" not in text
+
+
+def test_example_caption_states_the_rule_and_defines_s0():
+    audit = {
+        "scored_bins": [],
+        "reviewed_spans": [],
+        "excluded_display_grid_bins_ms": [],
+    }
+    panels = [
+        {
+            "fold": 1,
+            "inner_validation_threshold": 0.3,
+            "displayed_scoring_audit": audit,
+        },
+        {
+            "fold": 4,
+            "inner_validation_threshold": 0.4,
+            "displayed_scoring_audit": audit,
+        },
+    ]
+    info = {"candidates": 38}
+    text = examples.caption_text([195111, 200427], info, panels, None)
+    assert "fixed rule, with no substitution" in text
+    assert "75th" in text and "25th percentile" in text and "38 candidates" in text
+    assert "$S_0=10^{15}$" in text and "no physical unit" in text
+    assert "reviewer" not in text.lower() and "revised" not in text.lower()
+    assert "ELM-O" not in text
 
 
 def test_displayed_disagreement_can_be_inside_scored_time_at_review_boundary():

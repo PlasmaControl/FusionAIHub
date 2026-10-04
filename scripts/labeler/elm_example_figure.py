@@ -1,19 +1,18 @@
 #!/usr/bin/env python
-"""Example figure: `elm-ours` on two reviewed shots, beside ELM-O and the ELM clock.
+"""Example figure: `elm-ours` on two reviewed shots, beside elm-elmo and the ELM clock.
 
     python scripts/labeler/elm_example_figure.py --run cv2 [--out-dir DIR]
 
-Two shots of the 73 with BES are shown: of the shots whose scored bins are 10 to
-90 % present, panel (a) is at the 75th percentile of per-shot F1 of `elm-ours`.
-Panel (b) replaces the original 25th-percentile shot 200427 with the next ranked
-shot on reviewer request; the original and replacement ranks are recorded.
+Two shots of the 73 with BES are shown, chosen by a fixed rule with no manual
+substitution: of the shots whose scored bins are 10 to 90 % present, panel (a) is at
+the 75th and panel (b) at the 25th percentile of per-shot F1 of `elm-ours`.
 Each panel shows normalized filterscope D-alpha (FS02) as log10(S/S0), with S0 the
 preprocessing centre defined on the figure, the reviewed spans (crowd, non-crowd
 present, absent), the out-of-fold event probability of `elm-ours` with its fold's
-threshold, and the spans ELM-O and the ELM clock detect, over a window of up to
+threshold, and the spans elm-elmo and the ELM clock detect, over a window of up to
 1.5 s from 100 ms before the first present span. Writes `fig_elm_examples.pdf`,
-`.png` (150 dpi), `fig_elm_examples_caption.tex` (the caption, with the panel-b
-replacement disclosed) and `fig_elm_examples.json` (the shots, the rule, their F1)
+`.png` (150 dpi), `fig_elm_examples_caption.tex` (the caption, which defines S0 and
+the selection rule) and `fig_elm_examples.json` (the shots, the rule, their F1)
 under `$LABELER_ROOT/round4/elm/figures/`.
 """
 
@@ -34,7 +33,7 @@ from labeler.elm import compare, inputs, labels, methods, prepare, train
 
 WINDOW_MS = 1500.0
 LEAD_MS = 100.0
-#: Okabe-Ito colours: crowd, non-crowd, absent, probability, ELM-O, clock.
+#: Okabe-Ito colours: crowd, non-crowd, absent, probability, elm-elmo, clock.
 CROWD, NON_CROWD, ABSENT = "#E69F00", "#CC79A7", "#999999"
 PROB, ELMO, CLOCK = "#009E73", "#D55E00", "#56B4E9"
 
@@ -47,7 +46,11 @@ def f1_of(truth: np.ndarray, call: np.ndarray) -> float:
 
 
 def pick_shots(data, sets, oof) -> tuple[list[int], dict]:
-    """The 75th and 25th percentile shots by per-shot F1 among the informative ones."""
+    """The 75th and 25th percentile shots by per-shot F1 among the informative ones.
+
+    A shot is a candidate when it is a bes73 shot whose scored bins are 10 to 90 %
+    present. The rule is applied mechanically; no shot is replaced by hand.
+    """
     bes = sets["bes73"]
     rows = []
     for s in bes.shots:
@@ -63,23 +66,13 @@ def pick_shots(data, sets, oof) -> tuple[list[int], dict]:
             rows.append((f1_of(part.truth, part.call), s))
     rows.sort()
     n = len(rows)
-    low_rank = int(0.25 * (n - 1))
-    lo, hi = rows[low_rank + 1], rows[round(0.75 * (n - 1))]
+    low_rank, high_rank = int(0.25 * (n - 1)), round(0.75 * (n - 1))
+    lo, hi = rows[low_rank], rows[high_rank]
     info = {
-        "original_rule": "bes73 shots with 10-90 % present bins, ordered by "
-        "per-shot F1 of elm-ours; panel a at the 75th percentile rank and "
-        "panel b at the 25th percentile rank",
-        "rule": "bes73 shots with 10-90 % present bins, ordered by per-shot F1 of "
-        "elm-ours; panel a at the 75th percentile rank; panel b at the next "
-        "rank above the original 25th percentile selection, after a reviewer "
-        "requested replacement of the ambiguous D-alpha drop example",
-        "replaced_panel_b": {
-            "shot": rows[low_rank][1],
-            "rank": low_rank,
-            "reason": "Reviewer requested replacement of the ambiguous "
-            "drop-shaped present example; panel b is a revised selection.",
-        },
-        "replacement_rank": low_rank + 1,
+        "rule": "bes73 shots with 10-90 % present scored bins, ordered by per-shot "
+        "F1 of elm-ours; panel a at the 75th percentile rank and panel b at the "
+        "25th percentile rank; no substitution",
+        "ranks": {"a": high_rank, "b": low_rank},
         "candidates": n,
         "per_shot_f1": {str(s): f for f, s in rows},
     }
@@ -152,7 +145,7 @@ def scored_window_audit(shot, spans, bins, event, threshold, elmo, t0, t1):
         "interval_ms": [t0, t1],
         "scoring_set": "bes73 before DSM-specific restrictions",
         "bin_rule": "50 ms bins wholly inside one reviewed scored span and "
-        "ELM-O analysed coverage; the span must have at least half its time covered",
+        "elm-elmo analysed coverage; the span must have at least half its time covered",
         "reviewed_spans": [
             {
                 "span_ms": [float(r.t_start), float(r.t_end)],
@@ -191,10 +184,7 @@ def draw_shot(axes, shot, data, sets, oof, elmo, clock, panel) -> dict:
         shade(a, d.spans, t0, t1)
     ax.plot(t[sel], x[sel], color="#222222", lw=0.6)
     ax.set_ylabel("FS02 D-alpha\n" + r"$\log_{10}(S/S_0)$", fontsize=8)
-    title = f"({panel}) shot {shot}"
-    if panel == "b":
-        title += " (revised selection)"
-    ax.set_title(title, fontsize=9, loc="left")
+    ax.set_title(f"({panel}) shot {shot}", fontsize=9, loc="left")
     bx.plot(tt[sl], event[sl], color=PROB, lw=1.0, label="elm-ours")
     bx.axhline(oof.threshold[shot], color=PROB, lw=0.8, ls="--")
     bx.set_ylim(-0.02, 1.02)
@@ -242,35 +232,27 @@ def draw_shot(axes, shot, data, sets, oof, elmo, clock, panel) -> dict:
             t1,
         ),
     }
-    if shot == 195111:
-        info["reviewer_disagreement_audit"] = scored_window_audit(
-            shot,
-            d.spans,
-            sets["bes73"].bins[shot],
-            event,
-            oof.threshold[shot],
-            elmo,
-            320.0,
-            700.0,
-        )
     return info
 
 
-def disagreement_sentence(audit: dict | None) -> str:
-    """The scored-bin disagreement between `elm-ours` and ELM-O on the panel shot."""
-    if audit is None:
-        return ""
-    bins = [
+def disagreement_bins(audit: dict) -> list[dict]:
+    """Scored crowd bins that `elm-ours` calls absent and elm-elmo calls present."""
+    return [
         r
         for r in audit["scored_bins"]
         if r["truth"] == 1 and not r["ours_call"] and r["elmo_call"]
     ]
-    if not bins:
-        return ""
+
+
+def disagreement_sentence(panel: dict) -> str:
+    """The disagreement with elm-elmo in the panel where it is largest (>= 3 bins)."""
+    audit = panel["displayed_scoring_audit"]
+    bins = disagreement_bins(audit)
     first, last = bins[0]["span_ms"][0], bins[-1]["span_ms"][1]
     text = (
-        f"The low elm-ours output from {first:g} to {last:g} ms covers {len(bins)} "
-        "scored 50 ms crowd bins that elm-ours calls absent and ELM-O calls present."
+        f"In panel ({panel['panel']}) the low elm-ours output from {first:g} to "
+        f"{last:g} ms covers {len(bins)} scored 50 ms crowd bins that elm-ours "
+        "calls absent and elm-elmo calls present."
     )
     excluded = audit["excluded_display_grid_bins_ms"]
     starts = [r["span_ms"][0] for r in audit["reviewed_spans"] if r["kind"] == "crowd"]
@@ -288,16 +270,14 @@ def disagreement_sentence(audit: dict | None) -> str:
 
 
 def caption_text(shots, info, panels, disagreement) -> str:
-    """The figure caption in LaTeX; the panel-b replacement and S0 are stated."""
+    """The figure caption in LaTeX; it states the selection rule and defines S0."""
     first, second = panels
-    replaced = info["replaced_panel_b"]
     return (
-        f"Reviewed spans and detector outputs on shots {shots[0]} and {shots[1]}, "
-        "drawn from the BES shots with 10--90\\% present 50 ms bins. Panel (a) "
-        "is at the 75th percentile of per-shot out-of-fold elm-ours F1. Panel (b) "
-        f"is a revised selection: the original 25th-percentile shot "
-        f"{replaced['shot']} was replaced, on a reviewer's request, by the next F1 "
-        "rank because its reviewed present span was an ambiguous D-alpha drop. "
+        f"Reviewed spans and detector outputs on shots {shots[0]} and {shots[1]}. "
+        "Shots are chosen by a fixed rule, with no substitution: among BES shots "
+        "with 10--90\\% present scored 50 ms bins "
+        f"({info['candidates']} candidates), panel (a) is at the 75th and panel (b) "
+        "at the 25th percentile of per-shot out-of-fold elm-ours F1. "
         "Top: FS02 D-alpha as $\\log_{10}(S/S_0)$, where "
         f"$S_0=10^{{{inputs.FS_CENTRE:g}}}$ native ordinate units is the "
         "preprocessing centre (input floor "
@@ -306,11 +286,11 @@ def caption_text(shots, info, panels, disagreement) -> str:
         "Bottom: out-of-fold ELMy-occupancy probability with its fold's threshold "
         f"(a: fold {first['fold']}, {first['inner_validation_threshold']:.3f}; b: "
         f"fold {second['fold']}, {second['inner_validation_threshold']:.3f}; each "
-        "held-out fold has its own inner-validation shots), ELM-O detections "
+        "held-out fold has its own inner-validation shots), elm-elmo detections "
         "(short ones as ticks) and the elm-clock present spans, which seeded the "
         "review and are not independent of it. "
-        + disagreement_sentence(disagreement)
-        + " Windows start 100 ms before the first reviewed present span, clipped "
+        + (disagreement_sentence(disagreement) + " " if disagreement else "")
+        + "Windows start 100 ms before the first reviewed present span, clipped "
         "to input coverage, and last up to 1500 ms; place at 7-inch width."
     )
 
@@ -361,7 +341,7 @@ def main(argv: list[str] | None = None) -> int:
         "reviewed: absent",
         "elm-ours probability",
         "CV threshold",
-        "ELM-O detections (ticks)",
+        "elm-elmo detections (ticks)",
         "elm-clock present spans",
     ]
     visible_kinds = set()
@@ -381,7 +361,7 @@ def main(argv: list[str] | None = None) -> int:
         [handles[i] for i in shading],
         [names[i] for i in shading],
         loc="lower center",
-        bbox_to_anchor=(0.5, 0.115),
+        bbox_to_anchor=(0.5, 0.055),
         ncol=len(shading),
         fontsize=7.5,
         frameon=False,
@@ -392,33 +372,18 @@ def main(argv: list[str] | None = None) -> int:
         handles[3:],
         names[3:],
         loc="lower center",
-        bbox_to_anchor=(0.5, 0.07),
+        bbox_to_anchor=(0.5, 0.01),
         ncol=4,
         fontsize=7.5,
         frameon=False,
         columnspacing=1.0,
         handlelength=1.4,
     )
-    fig.text(
-        0.5,
-        0.01,
-        rf"$S_0=10^{{{inputs.FS_CENTRE:g}}}$ native ordinate units, the "
-        "preprocessing centre of FS02 D-alpha "
-        rf"(input floor $10^{{{np.log10(inputs.FS_FLOOR):g}}}$)."
-        "\n"
-        r"$\log_{10}(S/S_0)$ is a dimensionless ratio; no physical unit is claimed.",
-        ha="center",
-        va="bottom",
-        fontsize=7,
-        linespacing=1.3,
-    )
-    fig.tight_layout(rect=(0, 0.15, 1, 1))
+    fig.tight_layout(rect=(0, 0.12, 1, 1))
     for ext in ("pdf", "png"):
         fig.savefig(out_dir / f"fig_elm_examples.{ext}", dpi=150)
-    disagreement = next(
-        (p["reviewer_disagreement_audit"] for p in panels if p["shot"] == 195111),
-        None,
-    )
+    counts = [len(disagreement_bins(p["displayed_scoring_audit"])) for p in panels]
+    disagreement = panels[int(np.argmax(counts))] if max(counts) >= 3 else None
     caption = caption_text(shots, info, panels, disagreement)
     info.update(
         {
