@@ -184,6 +184,7 @@ def test_same_shot_archive_maps_field_product_and_q1_with_transposed_grid(tmp_pa
     np.testing.assert_allclose(radius.R_m[:, 1], [1.35, 1.7, 2.05])
     evidence = radius_evidence(radius, 0.1, 1.5)
     assert evidence["inversion_R_m"] == pytest.approx(1.875)
+    assert evidence["axis_R_m"] == pytest.approx(1.7)
     assert evidence["q1_R_m"] == pytest.approx(2.05)
     assert evidence["q1_radius_difference_m"] == pytest.approx(-0.175)
     missing, missing_info = load_radius_geometry(

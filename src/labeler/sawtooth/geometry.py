@@ -588,6 +588,7 @@ def radius_evidence(radius, time_s, inversion_channel, flux=None):
     """
     result = {
         "inversion_R_m": None,
+        "axis_R_m": None,
         "q1_R_m": None,
         "q1_radius_difference_m": None,
         "inversion_nominal_rho": None,
@@ -606,6 +607,8 @@ def radius_evidence(radius, time_s, inversion_channel, flux=None):
         return result
     inversion = float(np.interp(channel, np.arange(len(R)), R))
     result["inversion_R_m"] = inversion
+    if np.isfinite(axis):
+        result["axis_R_m"] = float(axis)
     minor = np.nan
     if radius.lcfs_outer_R_m is not None:
         lcfs = align_q(
