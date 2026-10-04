@@ -147,3 +147,15 @@ def test_our_interval_beginning_well_after_the_reference_is_starts_later():
 
 def test_an_unrelated_burst_far_from_the_onset_does_not_hide_a_below_level_miss():
     assert reason([(2500, 2506, 40.0)], 1000.0) == "below_onset_level"
+
+
+def test_an_onset_inside_the_preceding_weak_window_is_said_to_be_inside_it():
+    intervals = frame((1, 1, 1000.0, 1500.0), (2, 1, 2000.0, 2500.0))
+    intervals["onset_window_start_ms"] = [800.0, float("nan")]
+    refs = [Reference(1, 900.0, 0, 6000), Reference(2, 1950.0, 0, 6000)]
+    onsets, compared = agreement.compare_onsets(refs, intervals)
+    assert onsets.window_start_ms.tolist() == pytest.approx([800.0, 2000.0])
+    # shot 1's onset lies in 800-1500; shot 2 has no window beyond the start, 50 ms late
+    assert onsets.in_onset_window.tolist() == [True, False]
+    out = agreement.summarize(onsets, compared, refs)
+    assert out["error_ms"]["reference_inside_onset_window_fraction"] == 0.5

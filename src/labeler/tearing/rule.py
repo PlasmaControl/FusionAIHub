@@ -19,11 +19,20 @@ alone do not establish an island's poloidal number or distinguish every MHD fami
 
 Frequency drops alone are `locked_candidate`, with `lock_time_ms`. Only independent
 locked-mode confirmation truncates the rotating interval and sets `locked`; without
-frequency its end/locking status is unknown. A confirmed lock (n=1 radial-field
-voltage >= 5 V for 20 ms) leaves the time after it uncertain until the field stays
-below 5 V for `lock_release_ms` (200 ms; a shorter dip is no release) or the window
-ends; an abrupt collapse nobody confirms stays uncertain to the window end. Observed onsets are points (iscrowd 0),
-present intervals spans (iscrowd 1). Acquisition gaps remain NaN and are unobservable.
+frequency its end/locking status is unknown. Confirmation reads the n=1 radial field
+(PTDATA `DUSBRADIAL`, native ptdata units, treated as gauss by disruption-py): the
+field must rise `LOCK_RISE` above its own median over the 200 ms before the interval
+began and stay there for 20 ms, within -5 to +100 ms of a candidate time. A candidate
+time is a frequency drop, an abrupt collapse or the interval's end, so a slow lock that
+follows a decay is found too. A confirmed lock leaves the time after it uncertain until
+the field is back below that level for `lock_release_ms` (200 ms; a shorter dip is no
+release) or the window ends; an abrupt collapse nobody confirms stays uncertain to the
+window end. Candidates the seed screen rejected get the same confirmation at their end,
+and a lock-level field held 100 ms in time no interval or lock tail covers is uncertain
+(`locked_unseeded`), not absent. Observed onsets are points (iscrowd 0), present
+intervals spans (iscrowd 1); an onset carries `onset_window_ms`, from the start of the
+same-n weak track that precedes the interval to the interval's start. Acquisition gaps
+remain NaN and are unobservable.
 """
 
 from __future__ import annotations
@@ -42,6 +51,24 @@ CATEGORY = "neoclassical_tearing_mode"
 #: Why an interval ended.
 DECAY, PLASMA_END, LOCKED, UNKNOWN = "decay", "plasma_end", "locked", "unknown"
 LOCK_INVALID_RANGE = (176030, 176912)
+#: n=1 radial-field lock confirmation (`DUSBRADIAL`, native ptdata units): a rise this
+#: far above the pre-onset median, held `LOCK_HOLD_MS`, near a candidate time.
+LOCK_RISE = 5.0
+LOCK_HOLD_MS = 20.0
+#: The pre-onset window the confirmation's baseline is the median of (ms).
+LOCK_BASELINE_MS = 200.0
+#: A lock-level field this long in time no interval covers is uncertain (ms).
+UNSEEDED_HOLD_MS = 100.0
+#: A weak track ending this far before an interval still leads into it (ms).
+ONSET_LEAD_GAP_MS = 50.0
+LOCK_REASONS = (
+    "confirmed_locked_phase",
+    "post_collapse_lock_unknown",
+    "locked_unseeded",
+)
+#: The rotating-line frequency cap per unit of toroidal number (kHz): an n-resolved
+#: line sits near n times the plasma's rotation frequency, so the cap scales with n.
+LINE_KHZ_PER_N = 30.0
 
 
 def valid_lock_shot(shot: int) -> bool:
@@ -76,9 +103,12 @@ class ModeRule:
 #: Farre-Kaga et al. 2025: above 12 G continuously for 50 ms; onset at 10% of peak.
 N1_RULE = ModeRule(n=1, onset_g=12.0)
 #: The 6 G n2 seed is a local extension, without an island-number assignment.
-#: The ratio is the rounded-up development-only p99 during strong n1-only modes
-#: (scripts/labeler/tm_calibrate_rule.py; calibration_dev_fix1.json). No test reference.
-N2_RULE = ModeRule(n=2, onset_g=6.0, harmonic_ratio=0.57, weak_g=1.827998042)
+#: The ratio is the rounded-up development-only p99 of N2RMS / N1RMS over strong n = 1
+#: bins whose n = 2 line at twice the frequency is phase-coherent with n = 1 in the
+#: Mirnov array (best-fit n = 1 at 2 f1, fit >= 0.9; scripts/labeler/
+#: tm_harmonic_calibration.py, calibration_dev_fix3.json). The weak floors still come
+#: from calibration_dev_fix1.json. No test reference.
+N2_RULE = ModeRule(n=2, onset_g=6.0, harmonic_ratio=0.72, weak_g=1.827998042)
 RULES = (N1_RULE, N2_RULE)
 
 
@@ -107,6 +137,9 @@ class Interval:
     #: the largest merged peak. The displayed release is their minimum.
     release_components: tuple[tuple[float, float, float], ...] = ()
     abrupt_collapse_ms: float | None = None
+    #: `(start of the preceding same-n weak track, interval start)` in ms, or None if
+    #: no weak track leads into the interval.
+    onset_window_ms: tuple[float, float] | None = None
 
 
 def uniform(t_ms, y) -> tuple[np.ndarray, np.ndarray, float]:
@@ -310,13 +343,14 @@ def frequency_locks(
     return np.asarray(found, dtype=float)
 
 
-def coherent_frequency(freq_khz, dt_ms, *, window_ms=50.0):
+def coherent_frequency(freq_khz, dt_ms, *, window_ms=50.0, max_khz=LINE_KHZ_PER_N):
     """A sustained rotating line, excluding fast sweeps and stationary activity.
 
     The local 50 ms 10th--90th-percentile width must be <=max(2 kHz, 25% of
-    median frequency), with 1.5<=f<=30 kHz. This local stability convention is
-    an explicit extension to reject broadband/chirping bursts, not a published
-    tearing/island discriminator. Missing samples remain unsupported.
+    median frequency), with 1.5<=f<=`max_khz` (30 kHz for n=1; callers pass 60 kHz
+    for n=2). This local stability convention is an explicit extension to reject
+    broadband/chirping bursts, not a published tearing/island discriminator. Missing
+    samples remain unsupported.
     """
     freq = np.asarray(freq_khz, dtype=float)
     finite = np.isfinite(freq)
@@ -330,7 +364,7 @@ def coherent_frequency(freq_khz, dt_ms, *, window_ms=50.0):
     return (
         finite
         & (freq >= 1.5)
-        & (freq <= 30.0)
+        & (freq <= max_khz)
         & (hi - lo <= np.maximum(2.0, 0.25 * median))
     )
 
@@ -466,21 +500,48 @@ class ShotLabel:
     uncertain: tuple[tuple[float, float, str, int], ...] = ()
 
 
-def _lock_release_ms(amp, t, dt, high, threshold, hold_ms, window_end) -> float:
+def _lock_release_ms(amp, t, dt, high, level, hold_ms, window_end) -> float:
     """When the radial field of a lock that began at sample `high` fell for good (ms).
 
-    A release is the first sample from which the measured field stays below
-    `threshold` for `hold_ms`. A dip shorter than that, a fall cut off by missing
-    data or the window, and a field that never falls are no release: the locked phase
-    then runs to `window_end`. The field is a radial-field voltage, so the hold is a
-    debounce of a noisy trace, not a calibrated decay time.
+    A release is the first sample from which the measured field stays below `level`
+    (the pre-onset baseline plus `LOCK_RISE`) for `hold_ms`. A dip shorter than that, a
+    fall cut off by missing data or the window, and a field that never falls are no
+    release: the locked phase then runs to `window_end`. The hold is a debounce of a
+    noisy trace, not a calibrated decay time.
     """
     need = max(1, int(np.ceil(hold_ms / dt - 1e-9)))
-    below = np.isfinite(amp) & (amp < threshold) & (np.arange(len(t)) > high)
+    below = np.isfinite(amp) & (amp < level) & (np.arange(len(t)) > high)
     for lo, hi in zip(*_runs(below), strict=True):
         if hi - lo >= need:
             return min(window_end, float(t[lo]))
     return window_end
+
+
+def lock_baseline(amp, t, dt, before_ms, floor_ms, window_ms=LOCK_BASELINE_MS):
+    """The radial field's quiet level ahead of `before_ms`: its median over `window_ms`.
+
+    If fewer than half of the window's samples were measured (the mode began at the
+    window's edge, or the record has a gap), the median over every measured sample
+    from `floor_ms` on stands in. None: nothing was measured.
+    """
+    window = (t >= before_ms - window_ms) & (t < before_ms) & np.isfinite(amp)
+    if window.sum() >= max(1, int(0.5 * window_ms / dt)):
+        return float(np.median(amp[window]))
+    measured = np.isfinite(amp) & (t >= floor_ms)
+    return float(np.median(amp[measured])) if measured.any() else None
+
+
+def lock_confirmation(amp, t, dt, level, time, hold_ms=LOCK_HOLD_MS):
+    """Sample index where a lock-level field first holds near `time`, or None.
+
+    The field must stay at or above `level` for `hold_ms` somewhere in -5 to +100 ms of
+    `time`.
+    """
+    nearby = (t >= time - 5.0) & (t <= time + 100.0)
+    for lo, hi in zip(*_runs(nearby & (amp >= level)), strict=True):
+        if (hi - lo) * dt >= hold_ms - 1e-9:
+            return int(lo)
+    return None
 
 
 def label_shot(
@@ -499,25 +560,29 @@ def label_shot(
     weak_release_coherent=None,
     screened=None,
     lock_amplitude=None,
-    lock_threshold_v: float = 5.0,
+    lock_rise: float = LOCK_RISE,
     lock_release_ms: float = 200.0,
+    unseeded_hold_ms: float = UNSEEDED_HOLD_MS,
     rules=RULES,
     gap_ms: float = 0.0,
     m_of=None,
 ) -> ShotLabel:
     """The shot's label over `window`, the plasma starting at `start_ms`.
 
-    The rule runs from the plasma's start to the window's end. The ramp-up before it
-    is uncertain where the rule fires on it, so a mode of the ramp-up neither makes an
-    interval nor passes for an absence. Stretches of the window the n = 1 record did
-    not cover for `gap_ms` are not observable. `m_of(n, start_ms, end_ms)`, if given,
-    returns an interval's poloidal number or None (`surface.supported_m`).
+    The strong rule runs from the plasma's start to the window's end. The ramp-up before
+    it is uncertain where the rule fires on it, so a mode of the ramp-up neither makes an
+    interval nor passes for an absence; the weak-line screen and the unscreened-RMS
+    check run over the whole window, ramp-up included, so one standard of "absent"
+    holds throughout. Stretches of the window the n = 1 record did not cover for
+    `gap_ms` are not observable. `m_of(n, start_ms, end_ms)`, if given, returns an
+    interval's poloidal number or None (`surface.supported_m`).
     """
     w0, w1 = float(window[0]), float(window[1])
     start = w0 if start_ms is None else min(max(float(start_ms), w0), w1)
     if not valid_lock_shot(shot):
         lock_amplitude = None
     plasma, uncertain = [], []
+    rejected, weak_tracks = [], {1: [], 2: []}
     t, first, dt = uniform(t_ms, n1)
     traces = {1: first}
     if n2 is not None:
@@ -532,7 +597,7 @@ def label_shot(
         if screened is not None:
             assessed = np.asarray(screened.get(n, np.zeros(t.shape, bool)), bool)
             nonquiet = valid & ~assessed & (y > mode_rule.weak_g)
-            nonquiet &= (t >= start) & (t <= w1)
+            nonquiet &= (t >= w0) & (t <= w1)
             uncertain.extend(
                 (
                     float(t[a]),
@@ -559,7 +624,7 @@ def label_shot(
             if seed_coherent is not None and n in seed_coherent:
                 seed_support = np.asarray(seed_coherent[n], dtype=bool) & valid
             seed = (y > mode_rule.onset_g) & seed_support & inside
-            if n == 2:
+            if n == 2 and mode_rule.harmonic_ratio is not None:
                 seed &= y > mode_rule.harmonic_ratio * first
             duration = max(
                 (b - a for a, b in zip(*_runs(seed), strict=True)), default=0
@@ -577,9 +642,11 @@ def label_shot(
                 (a, b, reason, n)
                 for a, b in _minus([(item.start_ms, item.end_ms)], accepted)
             )
+            if not any(a <= item.end_ms <= b for a, b in accepted):
+                rejected.append(item)
         # Weak lines visible in Mirnov remain uncertain even below the quiet-RMS
         # p95. RMS above that p95 requires rotating-line evidence too.
-        weak = weak_support & (t >= start) & (t <= w1)
+        weak = weak_support & (t >= w0) & (t <= w1)
         weak_starts, weak_stops = _runs(weak)
         cores = [
             (a, b)
@@ -589,7 +656,7 @@ def label_shot(
         release = weak.copy()
         if weak_release_coherent is not None and n in weak_release_coherent:
             release |= np.asarray(weak_release_coherent[n], dtype=bool) & valid
-            release &= (t >= start) & (t <= w1)
+            release &= (t >= w0) & (t <= w1)
         release_starts, release_stops = _runs(release)
         for a, b in zip(
             *_bridge(release_starts, release_stops, int(50.0 / dt), valid),
@@ -599,11 +666,28 @@ def label_shot(
             # filling short evidence interruptions. Missing acquisition is never
             # bridged; no collection of short fragments can establish a core.
             if any(a <= lo and hi <= b for lo, hi in cores):
+                weak_tracks[n].append((float(t[a]), float(t[b - 1])))
                 uncertain.extend(
                     (lo, hi, "coherent_sub_seed", n)
                     for lo, hi in _minus([(float(t[a]), float(t[b - 1]))], accepted)
                 )
     plasma = apply_locking(plasma, lock_ms, confirmed_ms=confirmed_lock_ms)
+    field = {
+        n: np.abs(np.asarray(a, float))
+        for n, a in (lock_amplitude or {}).items()
+        if a is not None
+    }
+
+    def confirm(n, onset_ms, time):
+        """`(index, level)` of a lock confirmed near `time`, else `(None, level)`."""
+        if n not in field:
+            return None, None
+        base = lock_baseline(field[n], t, dt, onset_ms, start)
+        if base is None:
+            return None, None
+        level = base + lock_rise
+        return lock_confirmation(field[n], t, dt, level, time), level
+
     resolved = []
     for item in plasma:
         collapse = item.abrupt_collapse_ms
@@ -617,31 +701,19 @@ def label_shot(
             times.append(collapse)
         if item.locked and item.lock_time_ms is not None:
             times.append(item.lock_time_ms)
-        if not times:
-            resolved.append(item)
-            continue
-        amplitude = None if lock_amplitude is None else lock_amplitude.get(item.n)
+        if item.ended != PLASMA_END:
+            # A slow lock can follow a plain decay: look at every interval's end.
+            times.append(original_end)
         earliest_confirmed = None
         for time in sorted(set(times)):
             tail_end = w1
             confirmed = item.locked and time == item.lock_time_ms
-            if amplitude is not None:
-                amp = np.abs(np.asarray(amplitude, float))
-                # DUSBRADIAL is voltage, not calibrated field. Require a 20 ms
-                # high phase near each transition; scan every eligible drop.
-                nearby = (t >= time - 5.0) & (t <= time + 100.0)
-                high = None
-                for lo, hi in zip(
-                    *_runs(nearby & (amp >= lock_threshold_v)), strict=True
-                ):
-                    if (hi - lo) * dt >= 20.0:
-                        high = lo
-                        confirmed = True
-                        break
-                if high is not None:
-                    tail_end = _lock_release_ms(
-                        amp, t, dt, high, lock_threshold_v, lock_release_ms, w1
-                    )
+            high, level = confirm(item.n, item.start_ms, time)
+            if high is not None:
+                confirmed = True
+                tail_end = _lock_release_ms(
+                    field[item.n], t, dt, high, level, lock_release_ms, w1
+                )
             if confirmed:
                 earliest_confirmed = (
                     time
@@ -692,6 +764,49 @@ def label_shot(
             )
         resolved.append(item)
     plasma = resolved
+    # A candidate the seed screen turned down can still end in a lock.
+    for item in rejected:
+        high, level = confirm(item.n, item.start_ms, item.end_ms)
+        if high is not None:
+            uncertain.append(
+                (
+                    float(item.end_ms),
+                    _lock_release_ms(
+                        field[item.n], t, dt, high, level, lock_release_ms, w1
+                    ),
+                    "confirmed_locked_phase",
+                    item.n,
+                )
+            )
+    # A lock-level field in time nothing else accounts for is not an absence.
+    if 1 in field:
+        covered = np.zeros(t.shape, bool)
+        for item in plasma:
+            covered |= (t >= item.start_ms) & (t <= item.end_ms)
+        for a, b, reason, n in uncertain:
+            if n == 1 and reason in LOCK_REASONS:
+                covered |= (t >= a) & (t <= b)
+        flat = (t >= start) & (t <= w1) & np.isfinite(field[1])
+        quiet = flat & ~covered
+        if quiet.sum() * dt >= LOCK_BASELINE_MS:
+            level = float(np.median(field[1][quiet])) + lock_rise
+            need = unseeded_hold_ms - 1e-9
+            for lo, hi in zip(*_runs(quiet & (field[1] >= level)), strict=True):
+                if (hi - lo) * dt < need:
+                    continue
+                end = _lock_release_ms(field[1], t, dt, lo, level, lock_release_ms, w1)
+                uncertain.extend(
+                    (a, b, "locked_unseeded", 1)
+                    for a, b in _minus(
+                        [(float(t[lo]), float(end))],
+                        [(a, b) for a, b, _, _ in uncertain],
+                    )
+                    if b > a
+                )
+    plasma = [
+        replace(item, onset_window_ms=_onset_window(item, weak_tracks))
+        for item in plasma
+    ]
     if m_of is not None:
         plasma = [replace(i, m=m_of(i.n, i.start_ms, i.end_ms)) for i in plasma]
     ramp = ()
@@ -702,6 +817,20 @@ def label_shot(
     return ShotLabel(
         int(shot), (w0, w1), start, tuple(plasma), ramp, tuple(gaps), tuple(uncertain)
     )
+
+
+def _onset_window(item: Interval, tracks) -> tuple[float, float] | None:
+    """`(start of the weak track that leads into `item`, item.start_ms)`, or None.
+
+    A leading track is one of the same toroidal number that holds the interval's start
+    or ended within one merge gap before it.
+    """
+    leading = [
+        a
+        for a, b in tracks.get(item.n, ())
+        if a < item.start_ms <= b + ONSET_LEAD_GAP_MS
+    ]
+    return (min(leading), item.start_ms) if leading else None
 
 
 def _row(shot, category, a, b, attrs=None):
@@ -727,6 +856,8 @@ def interval_attrs(item: Interval, *, crowd: int) -> dict:
         attrs["lock_time_ms"] = float(item.lock_time_ms)
     if item.lock_candidates_ms:
         attrs["lock_candidates_ms"] = list(item.lock_candidates_ms)
+    if crowd == 0 and item.onset_window_ms is not None:
+        attrs["onset_window_ms"] = [round(float(v), 3) for v in item.onset_window_ms]
     if item.m is not None:
         # m = n q needs the safety factor, which is the offline EFIT01 here
         attrs["m"] = int(item.m)
@@ -811,6 +942,9 @@ def intervals_frame(labels) -> pd.DataFrame:
             "release_components": item.release_components,
             "abrupt_collapse_ms": item.abrupt_collapse_ms,
             "onset_seen": item.onset_seen,
+            "onset_window_start_ms": None
+            if item.onset_window_ms is None
+            else item.onset_window_ms[0],
             "m": item.m,
         }
         for label in labels
@@ -839,6 +973,7 @@ def intervals_frame(labels) -> pd.DataFrame:
             "release_components",
             "abrupt_collapse_ms",
             "onset_seen",
+            "onset_window_start_ms",
             "m",
         ],
     )

@@ -65,6 +65,7 @@ PHENOMENA = {
                 "locked_known": bool,
                 "lock_time_ms": float,
                 "lock_candidates_ms": list,
+                "onset_window_ms": list,
                 "ended": _words("decay", "plasma_end", "locked", "unknown"),
                 "override": _words(
                     "island_not_resolved",

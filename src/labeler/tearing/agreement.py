@@ -49,6 +49,11 @@ def compare_onsets(
     `error_ms` is the reference onset less that start (positive: the interval began
     first). A compared interval is one that starts inside a reference's coverage, and
     `has_onset` says whether any reference onset of its shot lies in it or at its start.
+    When `intervals` has `onset_window_start_ms` (the start of the same-n weak track
+    that led into the interval), `window_start_ms` is that time for the matched
+    interval and `in_onset_window` says whether the reference onset lies between it
+    and the interval's end: the labelled onset is a point, its window is the span in
+    which the mode could have begun.
     """
     if ns is not None:
         intervals = intervals[intervals.n.isin(ns)]
@@ -58,6 +63,11 @@ def compare_onsets(
         mine = by_shot.get(ref.shot)
         starts = np.empty(0) if mine is None else mine.t_start.to_numpy(float)
         ends = np.empty(0) if mine is None else mine.t_end.to_numpy(float)
+        if mine is not None and "onset_window_start_ms" in mine:
+            windows = mine.onset_window_start_ms.to_numpy(float)
+            windows = np.where(np.isfinite(windows), windows, starts)
+        else:
+            windows = starts
         if ref.onset_ms is not None:
             t = float(ref.onset_ms)
             inside = (starts - tol_ms <= t) & (t <= ends + tol_ms)
@@ -75,6 +85,8 @@ def compare_onsets(
                     "error_ms": t - float(starts[k]) if hit else np.nan,
                     "start_ms": float(starts[k]) if hit else np.nan,
                     "end_ms": float(ends[k]) if hit else np.nan,
+                    "window_start_ms": float(windows[k]) if hit else np.nan,
+                    "in_onset_window": bool(hit and windows[k] <= t <= ends[k]),
                     "n_intervals": len(starts),
                 }
             )
@@ -118,6 +130,9 @@ def summarize(onsets: pd.DataFrame, compared: pd.DataFrame, references) -> dict:
                 f"{int(w)}": float((np.abs(err) <= w).mean()) for w in WITHIN_MS
             },
             "reference_after_interval_start_fraction": float((err > 0).mean()),
+            "reference_inside_onset_window_fraction": float(
+                matched.in_onset_window.mean()
+            ),
         }
     out["compared_intervals"] = len(compared)
     if len(compared):

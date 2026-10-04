@@ -113,7 +113,8 @@ def test_n2_harmonic_of_a_large_n1_mode_is_not_a_second_mode():
     harmonic = 0.3 * n1
     found = rule.tearing_intervals(T, n1, harmonic)
     assert [i.n for i in found] == [1]
-    independent = trace((1000, 50, 600, 50, 26.0))
+    # An n=2 amplitude well above the calibrated harmonic ratio is its own mode.
+    independent = trace((1000, 50, 600, 50, 40.0 * (rule.N2_RULE.harmonic_ratio + 0.2)))
     both = rule.tearing_intervals(T, n1, independent)
     assert [i.n for i in both] == [1, 2]
 
@@ -198,7 +199,11 @@ def test_shot_table_validates_extension_intervals_with_onset_points_and_spans():
         "ended": "decay",
         "locked_known": False,
     }
-    assert parse_attrs(point["attrs"].iloc[0]) == {
+    onset = parse_attrs(point["attrs"].iloc[0])
+    # the weak track that opens with the mode itself leads into it by a few samples
+    start, window = span.t_start.iloc[0], onset.pop("onset_window_ms")
+    assert window[1] == start and window[0] <= start
+    assert onset == {
         "iscrowd": 0,
         "n": 1,
         "ended": "decay",
@@ -242,7 +247,10 @@ def test_the_ramp_up_is_uncertain_only_where_the_rule_fires_in_it():
         coherent={1: noisy_ramp > 1.0},
     )
     table = rule.shot_table(label)
-    assert ((table.category == 2) & (table.t_start < 300)).sum() == 1
+    early = table[(table.category == 2) & (table.t_start < 300)]
+    # the rule's own ramp-up row, and the weak-line track the flat-top screen also runs
+    assert len(early) == 2 and early.t_end.max() < 300
+    assert early["attrs"].eq("").sum() == 1
     assert len(label.intervals) == 1  # the ramp-up's mode is not an interval
 
 
@@ -626,3 +634,164 @@ def test_abrupt_five_ms_collapse_can_touch_release_before_crossing_it():
     (item,) = rule.mode_intervals(T, y, rule.N1_RULE)
     assert item.abrupt_collapse_ms == 1504.0
     assert item.ended == rule.UNKNOWN
+
+
+def _collapse_with(field, **kwargs):
+    y = np.full(T.shape, 0.2)
+    y[1000:1500] = 25.0
+    label = rule.label_shot(
+        1,
+        T,
+        y,
+        None,
+        (0, 2999),
+        coherent={1: np.ones(T.shape, bool)},
+        lock_ms={1: []},
+        lock_amplitude={1: field},
+        **kwargs,
+    )
+    return label, rule.shot_table(label)
+
+
+def test_lock_confirmation_is_a_rise_over_the_pre_onset_level_not_an_absolute_level():
+    # a field that sat at 53 before the mode and still does is no lock
+    field = np.full(T.shape, 53.0)
+    label, _ = _collapse_with(field)
+    assert not label.intervals[0].locked and label.intervals[0].ended == rule.UNKNOWN
+    # a rise of 6 over that level held after the collapse is one
+    field[1500:2000] = 59.0
+    label, _ = _collapse_with(field)
+    assert label.intervals[0].locked
+    # a rise of 4 over a quiet level is not, although the quiet level sits at 0
+    field = np.zeros(T.shape)
+    field[1500:2000] = 4.0
+    label, _ = _collapse_with(field)
+    assert not label.intervals[0].locked
+
+
+def test_the_baseline_falls_back_to_the_flat_top_median_when_the_window_is_unmeasured():
+    field = np.full(T.shape, 20.0)
+    field[:900] = np.nan
+    field[1500:2000] = 26.0
+    label, _ = _collapse_with(field, start_ms=0.0)
+    assert label.intervals[0].locked
+
+
+def test_a_slow_lock_after_a_plain_decay_is_found_at_the_interval_end():
+    y = trace((1000, 50, 400, 50, 30.0))
+    (found,) = rule.mode_intervals(T, y, rule.N1_RULE)
+    assert found.ended == rule.DECAY
+    field = np.zeros(T.shape)
+    field[int(found.end_ms) + 20 : int(found.end_ms) + 900] = 10.0
+    label = rule.label_shot(
+        1,
+        T,
+        y,
+        None,
+        (0, 2999),
+        coherent={1: np.ones(T.shape, bool)},
+        lock_ms={1: []},
+        lock_amplitude={1: field},
+    )
+    (item,) = label.intervals
+    assert item.locked and item.ended == rule.LOCKED
+    table = rule.shot_table(label)
+    assert _category_at(table, found.end_ms + 400) == rule.UNCERTAIN
+    assert _category_at(table, found.end_ms + 1200) == rule.ABSENT
+    without = rule.label_shot(
+        1, T, y, None, (0, 2999), coherent={1: np.ones(T.shape, bool)}, lock_ms={1: []}
+    )
+    assert not without.intervals[0].locked
+
+
+def test_a_rejected_candidate_that_ends_in_a_lock_leaves_an_uncertain_tail():
+    y = np.full(T.shape, 0.2)
+    y[1000:1030] = 25.0  # a seed too short to be a mode
+    field = np.zeros(T.shape)
+    field[1040:1800] = 12.0
+    label = rule.label_shot(
+        1,
+        T,
+        y,
+        None,
+        (0, 2999),
+        coherent={1: np.ones(T.shape, bool)},
+        lock_amplitude={1: field},
+    )
+    assert not label.intervals
+    table = rule.shot_table(label)
+    assert _category_at(table, 1500) == rule.UNCERTAIN
+    assert _category_at(table, 2200) == rule.ABSENT
+    assert any(
+        reason == "confirmed_locked_phase" for _, _, reason, _ in label.uncertain
+    )
+
+
+def test_a_sustained_radial_field_in_absent_flat_top_time_is_uncertain_not_absent():
+    y = np.full(T.shape, 0.2)
+    field = np.zeros(T.shape)
+    field[1000:1300] = 12.0
+    label = rule.label_shot(1, T, y, None, (0, 2999), lock_amplitude={1: field})
+    assert not label.intervals
+    table = rule.shot_table(label)
+    assert _category_at(table, 1100) == rule.UNCERTAIN
+    assert _category_at(table, 1600) == rule.ABSENT
+    reasons = {reason for _, _, reason, _ in label.uncertain}
+    assert reasons == {"locked_unseeded"}
+    field[1000:1300] = 0.0
+    field[1000:1060] = 12.0  # shorter than the 100 ms hold
+    label = rule.label_shot(1, T, y, None, (0, 2999), lock_amplitude={1: field})
+    assert not label.uncertain
+    assert rule.shot_table(label).category.eq(rule.ABSENT).all()
+
+
+def test_the_weak_screen_covers_the_ramp_up_like_the_flat_top():
+    y = np.full(T.shape, 0.5)
+    evidence = np.zeros(T.shape, bool)
+    evidence[100:400] = True
+    label = rule.label_shot(
+        1, T, y, None, (5.0, 2900.0), start_ms=500.0, weak_coherent={1: evidence}
+    )
+    assert any(a <= 100 and b >= 399 for a, b, _, _ in label.uncertain)
+    table = rule.shot_table(label)
+    assert _category_at(table, 250) == rule.UNCERTAIN
+    assert _category_at(table, 450) == rule.ABSENT
+
+
+def test_the_n2_frequency_cap_scales_with_the_toroidal_number():
+    line = np.full(300, 45.0)
+    assert not rule.coherent_frequency(line, 1.0).any()
+    assert rule.coherent_frequency(line, 1.0, max_khz=2 * rule.LINE_KHZ_PER_N).all()
+
+
+def test_an_onset_carries_the_window_back_to_the_weak_track_that_led_into_it():
+    y = trace((1000, 50, 400, 50, 30.0))
+    lead = np.zeros(T.shape, bool)
+    lead[400:1000] = True
+    label = rule.label_shot(
+        1,
+        T,
+        y,
+        None,
+        (0, 2999),
+        coherent={1: np.ones(T.shape, bool)},
+        weak_coherent={1: lead},
+    )
+    (item,) = label.intervals
+    assert item.onset_window_ms == (400.0, item.start_ms)
+    table = rule.shot_table(label)
+    point = table[(table.category == 1) & (table.t_end == table.t_start)]
+    span = table[(table.category == 1) & (table.t_end > table.t_start)]
+    assert parse_attrs(point["attrs"].iloc[0])["onset_window_ms"] == [
+        400.0,
+        item.start_ms,
+    ]
+    assert "onset_window_ms" not in parse_attrs(span["attrs"].iloc[0])
+    for cell in table["attrs"]:
+        assert not attr_problems(rule.CATEGORY, parse_attrs(cell))
+    bare = rule.label_shot(
+        1, T, y, None, (0, 2999), coherent={1: np.ones(T.shape, bool)}
+    )
+    # nothing led into it but the weak track that opens with the mode itself
+    first, second = bare.intervals[0].onset_window_ms
+    assert second == bare.intervals[0].start_ms and second - first <= 5.0
