@@ -222,7 +222,7 @@ def run_prepare(paths, args):
         "event_matching": "Maximum-cardinality one-to-one chronological matching at +/-2 and +/-5 ms; ties minimize absolute timing error; predictions counted only in known Smith time.",
         "frozen_ensemble": "Original cv2 five checkpoints: mean probability / each existing fold threshold, call >=1. No fitting, selection, threshold adjustment or Smith-informed changes. Auxiliary onset head normalized by its frozen fold thresholds likewise.",
         "bootstrap": "1000 physical-shot resamples, seed 20261003; identical draws across methods; valid/undefined counts recorded; <5 positive-bearing shots descriptive.",
-        "onset_recipe": "Same U-Net from scratch, onset-only masked BCE on Smith hand starts; sigma=1 ms; 5 shot folds, 21 inner-validation shots; select trailing-3 mean inner-val event F1 at +/-2ms after warmup; threshold on inner validation only. No review/cohort test shots; no tuning on outer folds.",
+        "onset_recipe": "Same U-Net from scratch, onset-only masked BCE on Smith hand starts; sigma=1 ms; 5 outer folds (shot-grouped, or run-day-grouped when the CV record says so), 21 inner-validation shots; select trailing-3 mean inner-val event F1 at +/-2ms after warmup; threshold on inner validation only. No review/cohort test shots; no tuning on outer folds.",
         "limitations": "Smith windows are selected around known ELMs, not a continuous-discharge negative population. Event FPs within them depend on completeness of single-region hand annotations. Smith CV is developmental, frozen review-to-Smith transfer is independent.",
         "code_sha256": {
             str(p.relative_to(REPO)): sha256_of(p)
@@ -361,11 +361,19 @@ def run_train(paths, args):
     rng = np.random.default_rng(SEED)
     shots = np.array(sorted(data))
     rng.shuffle(shots)
-    folds = [sorted(shots[k::5].astype(int).tolist()) for k in range(5)]
+    if args.group_by == "run_day":
+        # every calendar run day whole inside one outer fold; a shot without a
+        # recorded day is its own group
+        days = audit(paths, windows(paths))["smith_shot_run_days"]
+        groups = {s: days.get(str(s)) or f"shot{s}" for s in data}
+        folds = train.deal_group_folds({s: None for s in data}, groups, 5, SEED)
+    else:
+        folds = [sorted(shots[k::5].astype(int).tolist()) for k in range(5)]
     cfg = train.Config(epochs=args.epochs, iters=args.iters, batch=16, crop_ms=1024)
     record = {
         "git": git_sha(),
         "folds": folds,
+        "fold_grouping": args.group_by,
         "fold_records": [],
         "seed": SEED,
         "model": "elm-ours-onset",
@@ -808,6 +816,12 @@ def main():
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--epochs", type=int, default=25)
     parser.add_argument("--iters", type=int, default=40)
+    parser.add_argument(
+        "--group-by",
+        choices=("shot", "run_day"),
+        default="shot",
+        help="train stage: `run_day` keeps every calendar run day in one outer fold",
+    )
     parser.add_argument("--out", type=Path, default=OUT)
     args = parser.parse_args()
     torch.set_num_threads(4)

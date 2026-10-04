@@ -79,8 +79,12 @@ def fetch_one(task):
     return row
 
 
-def fetch_native_photodiodes(paths, out, pace):
-    """Fetch PCPHD02/03 for every review shot, stopping on any auth error."""
+def fetch_native_photodiodes(paths, out, pace, fresh=()):
+    """Fetch PCPHD02/03 for every review shot, stopping on any auth error.
+
+    A shot listed in `fresh` is fetched even where the upstream pickle holds its
+    photodiodes, so no row of the detector rests on the upstream export.
+    """
     from labeler.events.verify import fdp_signal
 
     source = Path("/projects/EKOLEMEN/wpqh_elm_hiro/data/dalpha_wpqh.pkl")
@@ -106,7 +110,7 @@ def fetch_native_photodiodes(paths, out, pace):
     for shot in sorted(map(int, review.shot.unique())):
         for name in ("pcphd02", "pcphd03"):
             value = existing.get(str(shot), {}).get(name, {})
-            if np.asarray(value.get("data", [])).size > 2:
+            if shot not in fresh and np.asarray(value.get("data", [])).size > 2:
                 record["rows"].append(
                     {
                         "shot": shot,
@@ -118,6 +122,8 @@ def fetch_native_photodiodes(paths, out, pace):
                 continue
             cache = target / f"{shot}_{name}.npz"
             row = {"shot": shot, "column": name, "path": str(cache)}
+            if shot in fresh:
+                row["fresh_beside_upstream_pickle"] = True
             try:
                 arr = fdp_signal(shot, [name.upper()], via="ptdata", cache=cache)
                 row["samples"] = int(arr.y.size)
@@ -143,12 +149,22 @@ def main(argv=None):
     ap.add_argument("--pace", type=float, default=1.0)
     ap.add_argument("--out", type=Path, default=OUT)
     ap.add_argument("--native-photodiodes", action="store_true")
+    ap.add_argument(
+        "--fresh-shots",
+        type=int,
+        nargs="+",
+        default=(),
+        help="with --native-photodiodes: fetch these shots although the upstream "
+        "pickle holds them",
+    )
     args = ap.parse_args(argv)
     if args.pace < 1:
         ap.error("--pace must be at least 1 second")
     paths = Paths.from_env()
     if args.native_photodiodes:
-        return fetch_native_photodiodes(paths, args.out, args.pace)
+        return fetch_native_photodiodes(
+            paths, args.out, args.pace, {int(s) for s in args.fresh_shots}
+        )
     table = labels.review_table(prepare.review_csv(paths))
     shots = sorted(int(s) for s in table.shot.unique())
     cohort = pd.read_csv(paths.catalog / "cohort.csv").set_index("shot")

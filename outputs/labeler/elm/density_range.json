@@ -1,0 +1,502 @@
+{
+ "git": "11ba97cf0b65b4fb605be1496f321d5c96baaf60",
+ "created": "2026-10-04T02:59:11+00:00",
+ "script_sha256": "dc98d1b2bec40db34c9dc2352bbf3d1df0e03a2b41b44eb43ee6629613c8826d",
+ "purpose": "numerical range of the fast-density input (native ordinate / 1e14, clipped), flat-top window; units of the ordinate stay unverified",
+ "input_divisor_native_units": 100000000000000.0,
+ "clip_range": [
+  -3.0,
+  12.0
+ ],
+ "window_ms": [
+  1000,
+  4000
+ ],
+ "shots": 119,
+ "chords": 238,
+ "chords_zeroed_or_empty": 9,
+ "cells": 6870000,
+ "median": 0.8420515656471252,
+ "p05": 0.17288809269666672,
+ "p95": 1.9315436005592346,
+ "share_at_upper_clip": 0.004367103347889374,
+ "share_at_lower_clip": 0.0012589519650655022,
+ "per_shot": {
+  "185857": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "185866": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "185945": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "185961": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "186013": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "186093": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "186427": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "186569": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "186636": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "186945": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "187035": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "187076": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "187105": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "187196": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "187328": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "189004": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "189044": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "189061": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "189272": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "189324": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "189559": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "189688": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "189741": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "189885": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "190094": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "190177": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "190218": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "190300": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "190335": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "190637": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "190643": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "190695": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "190790": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "190991": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "191326": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "191382": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "191470": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "191677": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "192003": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "192010": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "192015": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "192148": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "192226": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "192229": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "192232": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "192425": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "192432": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "192721": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "192732": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "192751": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "192914": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "193008": {
+   "valid_cells": 30000,
+   "chords_used": 1
+  },
+  "193022": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "193075": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "193276": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "194155": {
+   "valid_cells": 30000,
+   "chords_used": 0
+  },
+  "194160": {
+   "valid_cells": 30000,
+   "chords_used": 0
+  },
+  "194445": {
+   "valid_cells": 30000,
+   "chords_used": 0
+  },
+  "194600": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "194608": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "195016": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "195024": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "195066": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "195102": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "195103": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "195111": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "195186": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "195263": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "195279": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "195646": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "195786": {
+   "valid_cells": 30000,
+   "chords_used": 1
+  },
+  "195959": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "196332": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "196405": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "196541": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "198806": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "198899": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "198971": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "199087": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "199789": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "199790": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "199909": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "199921": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "200127": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "200198": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "200320": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "200385": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "200427": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "200636": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "200917": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "200954": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "200990": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "201270": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "201395": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "201447": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "201494": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "201707": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "201973": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "201978": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "203012": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "203041": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "203132": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "203187": {
+   "valid_cells": 30000,
+   "chords_used": 1
+  },
+  "203470": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "203521": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "203576": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "203629": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "203719": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "203764": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "203778": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "203941": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "203959": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "204233": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "204240": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "204243": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "204256": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "204530": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "204560": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  },
+  "204937": {
+   "valid_cells": 30000,
+   "chords_used": 2
+  }
+ }
+}

@@ -1,7 +1,7 @@
 {
- "git": "da3f6693bdf71af611a8a163648cc59ee4ca45f5",
- "script_sha256": "ca9780b6fd61ed593f138361b622cda7cee84a2f04b5333bf31a4b8d3789ee02",
- "created": "2026-10-03T19:01:30+00:00",
+ "git": "11ba97cf0b65b4fb605be1496f321d5c96baaf60",
+ "script_sha256": "324f81006802d0f0df1304fc1b83363afcfad850da08b953ff05df426bcee246",
+ "created": "2026-10-04T02:48:52+00:00",
  "scope": "PCPHD02/03 on all 119 reviewed shots, regardless of H5 coverage",
  "rows": [
   {
@@ -329,14 +329,18 @@
   {
    "shot": 189885,
    "column": "pcphd02",
-   "source": "existing upstream photodiode pickle",
-   "samples": 142520
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/189885_pcphd02.npz",
+   "fresh_beside_upstream_pickle": true,
+   "samples": 142520,
+   "sha256": "308209c57e70a460c6ec8b0b1eaf65499af6458f94cc7f31504413a0439af9d0"
   },
   {
    "shot": 189885,
    "column": "pcphd03",
-   "source": "existing upstream photodiode pickle",
-   "samples": 142520
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/189885_pcphd03.npz",
+   "fresh_beside_upstream_pickle": true,
+   "samples": 142520,
+   "sha256": "1dc623f7ece31493e835e3c2b0d40f1d7e82f374e9e1558d9744b51e6186c746"
   },
   {
    "shot": 190094,
@@ -411,26 +415,34 @@
   {
    "shot": 190637,
    "column": "pcphd02",
-   "source": "existing upstream photodiode pickle",
-   "samples": 142499
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/190637_pcphd02.npz",
+   "fresh_beside_upstream_pickle": true,
+   "samples": 142499,
+   "sha256": "5801f2f928de39034863686740f347548dc83ba5bc7054591ce7a55293ca2e3e"
   },
   {
    "shot": 190637,
    "column": "pcphd03",
-   "source": "existing upstream photodiode pickle",
-   "samples": 142499
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/190637_pcphd03.npz",
+   "fresh_beside_upstream_pickle": true,
+   "samples": 142499,
+   "sha256": "0cbf02ad329c92970f9359241432fd4a54fc7221c0470860efc3a6d369c3248c"
   },
   {
    "shot": 190643,
    "column": "pcphd02",
-   "source": "existing upstream photodiode pickle",
-   "samples": 142497
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/190643_pcphd02.npz",
+   "fresh_beside_upstream_pickle": true,
+   "samples": 142497,
+   "sha256": "e5dc14f829359d99e399cab495b4f797b69b1c97679fe872f10eea627104fda6"
   },
   {
    "shot": 190643,
    "column": "pcphd03",
-   "source": "existing upstream photodiode pickle",
-   "samples": 142497
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/190643_pcphd03.npz",
+   "fresh_beside_upstream_pickle": true,
+   "samples": 142497,
+   "sha256": "f58b25d9771c24ea8eb9981cb6ecacbe6b568b03b19915601a987c7eaeccc40e"
   },
   {
    "shot": 190695,
@@ -659,38 +671,50 @@
   {
    "shot": 192721,
    "column": "pcphd02",
-   "source": "existing upstream photodiode pickle",
-   "samples": 142499
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/192721_pcphd02.npz",
+   "fresh_beside_upstream_pickle": true,
+   "samples": 142499,
+   "sha256": "45e93a7cfd740a5dd3aaec9f2dbedb7527a9bba2e11a42be1297ec3c9a2127ac"
   },
   {
    "shot": 192721,
    "column": "pcphd03",
-   "source": "existing upstream photodiode pickle",
-   "samples": 142499
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/192721_pcphd03.npz",
+   "fresh_beside_upstream_pickle": true,
+   "samples": 142499,
+   "sha256": "ebd08119914f602eac6708efedb51339349c10e74b5c34b4b784cf4bd05d6d7e"
   },
   {
    "shot": 192732,
    "column": "pcphd02",
-   "source": "existing upstream photodiode pickle",
-   "samples": 142499
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/192732_pcphd02.npz",
+   "fresh_beside_upstream_pickle": true,
+   "samples": 142499,
+   "sha256": "ca9bc0cd2a6d5a6d4235c616840203b95641d759c90b2a7bd0cd159f711defdb"
   },
   {
    "shot": 192732,
    "column": "pcphd03",
-   "source": "existing upstream photodiode pickle",
-   "samples": 142499
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/192732_pcphd03.npz",
+   "fresh_beside_upstream_pickle": true,
+   "samples": 142499,
+   "sha256": "d9d0cc72b6611a1f442422728294e6eb8eb9bf066a2d0cac664bdcfd296b64ad"
   },
   {
    "shot": 192751,
    "column": "pcphd02",
-   "source": "existing upstream photodiode pickle",
-   "samples": 142498
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/192751_pcphd02.npz",
+   "fresh_beside_upstream_pickle": true,
+   "samples": 142498,
+   "sha256": "efcc596564ff221d0688a873031292f6bb7270e077b8683abc7ec1ed51393ee4"
   },
   {
    "shot": 192751,
    "column": "pcphd03",
-   "source": "existing upstream photodiode pickle",
-   "samples": 142498
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/192751_pcphd03.npz",
+   "fresh_beside_upstream_pickle": true,
+   "samples": 142498,
+   "sha256": "7feca8f3521b223f62d58744e835c6d0d6efe287ee7ba32653685cb2adb11ff3"
   },
   {
    "shot": 192914,
@@ -1031,14 +1055,18 @@
   {
    "shot": 196541,
    "column": "pcphd02",
-   "source": "existing upstream photodiode pickle",
-   "samples": 142498
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/196541_pcphd02.npz",
+   "fresh_beside_upstream_pickle": true,
+   "samples": 142498,
+   "sha256": "db822f2f4a3b48491cc9fb5300539537b29c15fa47a4533c9840db36800f41a7"
   },
   {
    "shot": 196541,
    "column": "pcphd03",
-   "source": "existing upstream photodiode pickle",
-   "samples": 142498
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/196541_pcphd03.npz",
+   "fresh_beside_upstream_pickle": true,
+   "samples": 142498,
+   "sha256": "cd69d2a725e3ee62b2fc69fda1c74012fc1154fc446ddf719ddd771b4022ebd2"
   },
   {
    "shot": 198806,
@@ -1197,14 +1225,18 @@
   {
    "shot": 200385,
    "column": "pcphd02",
-   "source": "existing upstream photodiode pickle",
-   "samples": 142500
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/200385_pcphd02.npz",
+   "fresh_beside_upstream_pickle": true,
+   "samples": 142500,
+   "sha256": "26598bb3735798cc6a84db04be57f61e4f7d12bebaa95b724b9a9c809411e379"
   },
   {
    "shot": 200385,
    "column": "pcphd03",
-   "source": "existing upstream photodiode pickle",
-   "samples": 142500
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/200385_pcphd03.npz",
+   "fresh_beside_upstream_pickle": true,
+   "samples": 142500,
+   "sha256": "d6fbeda32c462320ae0aea678af316bcd327fb6cd85d9fe41de7b1b55d9f32a6"
   },
   {
    "shot": 200427,
@@ -1658,7 +1690,5 @@
  "pace_seconds": 1.0,
  "workers": 1,
  "stopped_on_auth_error": false,
- "store": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes",
- "generation_git": "8e166437de963398f15550e135fab796095e2bc2",
- "audit_git_meaning": "current code/record audit; historical training provenance remains embedded and is not rewritten"
+ "store": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes"
 }

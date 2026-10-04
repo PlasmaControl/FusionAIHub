@@ -27,6 +27,7 @@ from labeler.elm import compare, dsm, methods, score, swap, train
 REPO = Path(__file__).resolve().parents[2]
 OUT = REPO / "outputs/labeler/elm/dsm/native_detection.json"
 NAME = "elm-dsm-native-detect"
+OURS_NATIVE = "elm-ours-native-folds"
 
 
 def mean_cells(times, values, starts):
@@ -114,6 +115,10 @@ def main():
     data = train.load(paths)
     sets = compare.load_sets(paths, data)
     oof = methods.Oof(paths.root / "round4/elm/cv/cv2")
+    # elm-ours refitted on this comparator's own train/inner-validation shots
+    # (scripts/labeler/elm_native_ours.py); absent until that run exists
+    own_dir = paths.root / "round4/elm/cv/native37"
+    oof_own = methods.Oof(own_dir) if (own_dir / "run.json").exists() else None
     work = paths.root / "round4/elm/dsm/native_detection"
     work.mkdir(parents=True, exist_ok=True)
     with (native.SOURCE / "data/dalpha_wpqh.pkl").open("rb") as fh:
@@ -309,6 +314,8 @@ def main():
     sweep = compare.load_elmo_sweep(paths)
     for tag, panel in sets.items():
         parts = {NAME: [], "elm-ours": [], "elm-dsm-detect": [], "elm-clock": []}
+        if oof_own is not None:
+            parts[OURS_NATIVE] = []
         if panel.has_elmo:
             parts["elm-elmo"] = []
         used = {}
@@ -341,6 +348,17 @@ def main():
                     oof.threshold[s],
                 )
             )
+            if oof_own is not None:
+                parts[OURS_NATIVE].append(
+                    methods.trace_part(
+                        data[s].spans,
+                        s,
+                        b,
+                        panel.cover[s],
+                        oof_own.trace(s)[0],
+                        oof_own.threshold[s],
+                    )
+                )
             v = reduced[s][dsm.row_index(b)]
             parts["elm-dsm-detect"].append(
                 score.ShotScore(s, b.truth, b.kind, v >= reduced_thr[str(s)], v)
@@ -374,6 +392,19 @@ def main():
             }
         )
         record["sets"][tag] = summary
+    if oof_own is not None:
+        record["ours_on_native_folds"] = {
+            "method": OURS_NATIVE,
+            "script": "scripts/labeler/elm_native_ours.py",
+            "run": str(own_dir),
+            "run_json_sha256": sha256_of(own_dir / "run.json"),
+            "git": oof_own.record["git"],
+            "config": oof_own.record["config"],
+            "thresholds": [f["threshold"] for f in oof_own.record["fold_records"]],
+            "rule": "same network, recipe and per-fold seeds as the headline "
+            "elm-ours; trained on this comparator's train shots, inner-validation "
+            "shots select the checkpoint and threshold",
+        }
     record["checkpoints"] = {p.name: sha256_of(p) for p in work.glob("fold*.pt")}
     OUT.write_text(json.dumps(record, indent=1) + "\n")
     print({k: (r["n_shots"], r["bins"]) for k, r in record["sets"].items()}, flush=True)
