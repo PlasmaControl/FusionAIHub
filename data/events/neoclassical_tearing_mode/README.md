@@ -186,7 +186,16 @@ AUPRC -0.120 [-0.222, -0.019] (the two-line baseline ahead); F1 -0.084 [-0.104, 
 The order reverses between the groups on AUPRC (`tm-ours` ahead with uncertain time
 excluded, the two-line baseline ahead with it scored as negative); `tm-ours` is ahead in
 both groups on segmental F1; the order is not resolved in at least one group on AUROC
-and F1.<!-- /gen:paired --> No TM coverage gain is
+and F1. The untuned seed-level rule (the same score at its seed levels, no training, no
+tuning) has, with uncertain time scored as negative, F1 0.578 [0.507,0.643] and
+segmental F1 0.269 [0.204,0.341] against 0.363 [0.290,0.431] and 0.229 [0.182,0.281] for
+`tm-ours` (paired difference `tm-ours` minus the seed-level rule: F1 -0.215 [-0.305,
+-0.124] (the seed-level rule ahead); segmental F1 -0.040 [-0.107, +0.029] (not
+resolved); with uncertain time excluded, F1 +0.315 [+0.238, +0.393] (`tm-ours` ahead);
+segmental F1 +0.368 [+0.231, +0.493] (`tm-ours` ahead)). With uncertain time scored as
+negative the seed-level rule has the higher F1 and segmental F1 (F1 resolved; segmental
+F1 not resolved), so the segmental-F1 lead of `tm-ours` holds only against the tuned
+baseline.<!-- /gen:paired --> No TM coverage gain is
 claimed: on the survival-matched shots the interval labels cover 464.4 s against
 799.3 s for the legacy labels.
 Population weak screening uses the same criteria where inputs exist; unscreened time
