@@ -615,6 +615,10 @@ def clock_note(record: dict) -> str:
     )
 
 
+def n_shots(n: int, kind: str = "evaluation") -> str:
+    return f"{n} {kind} shot{'' if n == 1 else 's'}"
+
+
 def garcia_text(record: dict) -> str:
     """Who saved changes on the shots that differ from the paper's snapshot."""
     rec = record["dense_reconciliation"]
@@ -628,11 +632,11 @@ def garcia_text(record: dict) -> str:
         f"A. Garcia saved changes on {garcia['train'] + garcia['selection']} of the "
         f"{n_train} training and selection shots that differ from the paper's "
         f"snapshot ({garcia['train']} training, {garcia['selection']} selection) "
-        f"and on {garcia['evaluation']} evaluation shots; N. Chen on "
+        f"and on {n_shots(garcia['evaluation'])}; N. Chen on "
         f"{chen['train'] + chen['selection']} of them and "
-        f"{chen['evaluation']} evaluation shots; unnamed saves on "
+        f"{n_shots(chen['evaluation'])}; unnamed saves on "
         f"{unnamed['train'] + unnamed['selection']} of them and "
-        f"{unnamed['evaluation']} evaluation shots (a shot can carry several)"
+        f"{n_shots(unnamed['evaluation'])} (a shot can carry several)"
     )
 
 
@@ -1602,7 +1606,7 @@ def excluded_section(record: dict) -> list[str]:
         "",
         (
             "| Record | Epochs run | Selected epoch | Cohort | Dense AUROC | "
-            "Annotation AUROC | Selection within-shot SD | Selection AUROC |"
+            "Legacy-annotation AUROC | Selection within-shot SD | Selection AUROC |"
         ),
         "|---|---:|---:|---|---|---|---:|---:|",
     ]
@@ -1689,6 +1693,15 @@ def write_readme(record: dict, repo: Path) -> None:
     readme.write_text(head.rstrip("\n") + "\n\n" + note + "\n" + tail)
 
 
+def garcia_shots(record: dict) -> str:
+    """The shots whose intervals A. Garcia's saves changed, by cohort."""
+    edits = record["dense_history"]["by_name"]["Alvin Garcia"]["changed_shots"]
+    return (
+        f"{edits['train'] + edits['selection']} training and selection shots and "
+        f"{n_shots(edits['evaluation'])}"
+    )
+
+
 def summary(record: dict) -> str:
     fair = record["results"]["fair_19"]["references"]
     f = findings(record)
@@ -1730,8 +1743,9 @@ def summary(record: dict) -> str:
         "margin over chance against the legacy annotation, which makes time context "
         "a confound of every comparison with the saved detectors, and the dense "
         "reference is temporally coarse, so within-shot AUROC cannot rank methods "
-        "on it. A. Garcia, the author of the saved detectors, edited training and "
-        "selection shots of the dense labels (Limitations). Scores are float32; "
+        "on it. A. Garcia, the author of the saved detectors, saved interval "
+        f"changes to {garcia_shots(record)} of the dense labels (Limitations). "
+        "Scores are float32; "
         f"the largest change of a run's pooled AUROC from the bfloat16 inference is "
         f"{precision['auroc']['value']:.4f}. The Interpretation and "
         "Cross-architecture confounds sections give the numbers and the limits."

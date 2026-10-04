@@ -176,8 +176,8 @@ def test_garcia_text_counts_shots_by_group_and_person(report):
     text = report.garcia_text(record)
     assert "28 of the 29 training and selection shots" in text
     assert "22 training, 6 selection" in text
-    assert "and on 0 evaluation shots" in text
-    assert "N. Chen on 7 of them and 1 evaluation shots" in text
+    assert "and on 0 evaluation shots;" in text
+    assert "N. Chen on 7 of them and 1 evaluation shot;" in text
     assert "unnamed saves on 0 of them" in text
 
 
