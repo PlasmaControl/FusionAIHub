@@ -113,9 +113,69 @@ def test_example_caption_states_the_rule_and_defines_s0():
     text = examples.caption_text([195111, 200427], info, panels, None)
     assert "fixed rule, with no substitution" in text
     assert "75th" in text and "25th percentile" in text and "38 candidates" in text
-    assert "$S_0=10^{15}$" in text and "no physical unit" in text
+    assert "$S_0=10^{15}$ ph/(sr" in text and "dimensionless" in text
+    assert "no physical unit" not in text and "place at" not in text
+    assert "high-recycling" not in text  # no note unless a panel carries one
     assert "reviewer" not in text.lower() and "revised" not in text.lower()
     assert "ELM-O" not in text
+
+
+def recycling_shot(rise_log10):
+    """A synthetic shot: FS02-04 step up by `rise_log10` decades at 2430 ms."""
+    n = int((3000 - inputs.GRID0_MS) / inputs.DT_MS)
+    t = inputs.GRID0_MS + inputs.DT_MS * (np.arange(n) + 0.5)
+    x = np.zeros((len(inputs.CHANNELS), n))
+    x[inputs.VALID] = 1.0
+    for channel in ("fs02", "fs03", "fs04"):
+        x[inputs.CHANNELS.index(channel)] = (
+            np.where(t >= 2430.0, rise_log10, 0.0) / inputs.FS_SCALE
+        )
+    spans = pd.DataFrame(
+        {
+            "t_start": [2429.0, 2689.0],
+            "t_end": [2689.0, 2765.0],
+            "kind": ["absent", "non_crowd"],
+        }
+    )
+    return SimpleNamespace(x=x, spans=spans)
+
+
+def test_high_recycling_note_needs_the_span_and_a_rise_in_the_data():
+    note = examples.recycling_note(200427, recycling_shot(1.0))
+    assert note["span_ms"] == [2689.0, 2765.0] and note["rise_ms"] == 2430.0
+    assert note["levels"]["fs03"]["median_log10_in_span"] == pytest.approx(1.0)
+    assert note["levels"]["fs03"]["median_log10_before_rise"] == pytest.approx(0.0)
+    assert examples.recycling_note(200427, recycling_shot(0.1)) is None
+    assert examples.recycling_note(195111, recycling_shot(1.0)) is None
+    no_span = recycling_shot(1.0)
+    no_span.spans = no_span.spans.assign(kind=["absent", "absent"])
+    assert examples.recycling_note(200427, no_span) is None
+
+
+def test_example_caption_carries_the_high_recycling_clause_only_when_noted():
+    note = examples.recycling_note(200427, recycling_shot(1.0))
+    audit = {
+        "scored_bins": [],
+        "reviewed_spans": [],
+        "excluded_display_grid_bins_ms": [],
+    }
+    base = {"fold": 1, "inner_validation_threshold": 0.3}
+    panels = [
+        {**base, "panel": "a", "displayed_scoring_audit": audit},
+        {
+            **base,
+            "panel": "b",
+            "displayed_scoring_audit": audit,
+            "high_recycling": note,
+        },
+    ]
+    text = examples.caption_text([195111, 200427], {"candidates": 38}, panels, None)
+    assert (
+        "In panel (b) the reviewed non-crowd present span at 2689--2765 ms lies in a "
+        "high-recycling phase (FS02--04 D-alpha rises from 2430 ms), so ELM identity "
+        "there is ambiguous." in text
+    )
+    assert examples.recycling_sentence(panels[:1]) == ""
 
 
 def test_displayed_disagreement_can_be_inside_scored_time_at_review_boundary():

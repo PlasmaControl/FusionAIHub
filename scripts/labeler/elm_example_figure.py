@@ -7,7 +7,7 @@ Two shots of the 73 with BES are shown, chosen by a fixed rule with no manual
 substitution: of the shots whose scored bins are 10 to 90 % present, panel (a) is at
 the 75th and panel (b) at the 25th percentile of per-shot F1 of `elm-ours`.
 Each panel shows normalized filterscope D-alpha (FS02) as log10(S/S0), with S0 the
-preprocessing centre defined on the figure, the reviewed spans (crowd, non-crowd
+preprocessing centre defined in the caption, the reviewed spans (crowd, non-crowd
 present, absent), the out-of-fold event probability of `elm-ours` with its fold's
 threshold, and the spans elm-elmo and the ELM clock detect, over a window of up to
 1.5 s from 100 ms before the first present span. Writes `fig_elm_examples.pdf`,
@@ -36,6 +36,15 @@ LEAD_MS = 100.0
 #: Okabe-Ito colours: crowd, non-crowd, absent, probability, elm-elmo, clock.
 CROWD, NON_CROWD, ABSENT = "#E69F00", "#CC79A7", "#999999"
 PROB, ELMO, CLOCK = "#009E73", "#D55E00", "#56B4E9"
+
+
+#: Reviewed non-crowd present spans that sit in a high-recycling phase, where ELM
+#: identity is ambiguous: the span and the time from which FS02-04 D-alpha rises. The
+#: caption carries the note only when the shot is shown and the data confirm both the
+#: span and a rise of at least `RISE_MIN_LOG10` against the 200 ms before the rise.
+HIGH_RECYCLING = {200427: {"span_ms": (2689.0, 2765.0), "rise_ms": 2430.0}}
+RISE_MIN_LOG10 = 0.3
+RISE_BASELINE_MS = 200.0
 
 
 def f1_of(truth: np.ndarray, call: np.ndarray) -> float:
@@ -166,6 +175,43 @@ def scored_window_audit(shot, spans, bins, event, threshold, elmo, t0, t1):
     }
 
 
+def recycling_note(shot, d) -> dict | None:
+    """The high-recycling note for a shown shot, with the FS02-04 levels behind it."""
+    spec = HIGH_RECYCLING.get(shot)
+    if spec is None:
+        return None
+    start, stop = spec["span_ms"]
+    rise = spec["rise_ms"]
+    spans = d.spans[d.spans.kind == "non_crowd"]
+    if not (
+        ((spans.t_start - start).abs() <= 1) & ((spans.t_end - stop).abs() <= 1)
+    ).any():
+        return None
+    t = inputs.GRID0_MS + inputs.DT_MS * (np.arange(d.x.shape[1]) + 0.5)
+    valid = d.x[inputs.VALID] > 0
+    before = valid & (t >= rise - RISE_BASELINE_MS) & (t < rise)
+    inside = valid & (t >= start) & (t < stop)
+    levels = {}
+    for channel in ("fs02", "fs03", "fs04"):
+        x = d.x[inputs.CHANNELS.index(channel)] * inputs.FS_SCALE
+        levels[channel] = {
+            "median_log10_before_rise": float(np.median(x[before])),
+            "median_log10_in_span": float(np.median(x[inside])),
+        }
+    if not all(
+        v["median_log10_in_span"] - v["median_log10_before_rise"] >= RISE_MIN_LOG10
+        for v in levels.values()
+    ):
+        return None
+    return {
+        "span_ms": [start, stop],
+        "rise_ms": rise,
+        "baseline_ms": RISE_BASELINE_MS,
+        "minimum_rise_log10": RISE_MIN_LOG10,
+        "levels": levels,
+    }
+
+
 def draw_shot(axes, shot, data, sets, oof, elmo, clock, panel) -> dict:
     d = data[shot]
     t0, t1 = window_of(d.spans, d.cov0, d.cov1)
@@ -221,6 +267,7 @@ def draw_shot(axes, shot, data, sets, oof, elmo, clock, panel) -> dict:
         "probability_limits": list(bx.get_ylim()),
         "fold": int(oof.fold_of[shot]),
         "inner_validation_threshold": float(oof.threshold[shot]),
+        "high_recycling": recycling_note(shot, d),
         "displayed_scoring_audit": scored_window_audit(
             shot,
             d.spans,
@@ -269,6 +316,23 @@ def disagreement_sentence(panel: dict) -> str:
     return text
 
 
+def recycling_sentence(panels) -> str:
+    """One sentence per shown panel whose reviewed non-crowd span is in a high-
+    recycling phase (see `HIGH_RECYCLING`)."""
+    out = []
+    for panel in panels:
+        note = panel.get("high_recycling")
+        if note:
+            start, stop = note["span_ms"]
+            out.append(
+                f"In panel ({panel['panel']}) the reviewed non-crowd present span at "
+                f"{start:g}--{stop:g} ms lies in a high-recycling phase (FS02--04 "
+                f"D-alpha rises from {note['rise_ms']:g} ms), so ELM identity there "
+                "is ambiguous."
+            )
+    return " ".join(out)
+
+
 def caption_text(shots, info, panels, disagreement) -> str:
     """The figure caption in LaTeX; it states the selection rule and defines S0."""
     first, second = panels
@@ -279,10 +343,11 @@ def caption_text(shots, info, panels, disagreement) -> str:
         f"({info['candidates']} candidates), panel (a) is at the 75th and panel (b) "
         "at the 25th percentile of per-shot out-of-fold elm-ours F1. "
         "Top: FS02 D-alpha as $\\log_{10}(S/S_0)$, where "
-        f"$S_0=10^{{{inputs.FS_CENTRE:g}}}$ native ordinate units is the "
-        "preprocessing centre (input floor "
-        f"$10^{{{np.log10(inputs.FS_FLOOR):g}}}$); the ratio claims no physical "
-        "unit. Shading: reviewed crowd, non-crowd present and absent spans. "
+        f"$S_0=10^{{{inputs.FS_CENTRE:g}}}$ ph/(sr\\,cm$^2$\\,s), the corpus "
+        "filterscope unit, is the preprocessing centre (input floor "
+        f"$10^{{{np.log10(inputs.FS_FLOOR):g}}}$ in the same unit); the ratio is "
+        "dimensionless, and the stored input records keep no unit metadata. "
+        "Shading: reviewed crowd, non-crowd present and absent spans. "
         "Bottom: out-of-fold ELMy-occupancy probability with its fold's threshold "
         f"(a: fold {first['fold']}, {first['inner_validation_threshold']:.3f}; b: "
         f"fold {second['fold']}, {second['inner_validation_threshold']:.3f}; each "
@@ -290,8 +355,9 @@ def caption_text(shots, info, panels, disagreement) -> str:
         "(short ones as ticks) and the elm-clock present spans, which seeded the "
         "review and are not independent of it. "
         + (disagreement_sentence(disagreement) + " " if disagreement else "")
+        + (recycling_sentence(panels) + " " if recycling_sentence(panels) else "")
         + "Windows start 100 ms before the first reviewed present span, clipped "
-        "to input coverage, and last up to 1500 ms; place at 7-inch width."
+        "to input coverage, and last up to 1500 ms."
     )
 
 
@@ -418,8 +484,10 @@ def main(argv: list[str] | None = None) -> int:
             "plotted_heads": ["occupancy"],
             "axes": {
                 "x": "time in shot (ms)",
-                "dalpha": "log10(max(FS02, FS_FLOOR) / S0), dimensionless ratio; "
-                "source physical units unconfirmed",
+                "dalpha": "log10(max(FS02, FS_FLOOR) / S0), dimensionless ratio; S0 "
+                "and the floor are in the corpus filterscope unit ph/(sr cm2 s) "
+                "(src/labeler/events/raw.py); the stored input records keep no unit "
+                "metadata",
                 "input_transform_to_plot": "fs02 * FS_SCALE",
                 "FS_SCALE": inputs.FS_SCALE,
                 "FS_CENTRE": inputs.FS_CENTRE,
