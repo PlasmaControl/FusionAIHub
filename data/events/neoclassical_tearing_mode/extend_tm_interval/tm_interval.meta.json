@@ -34,9 +34,10 @@
     "n_locked_candidates": 29,
     "n_locked_known": 12,
     "n_onset_points": 81,
+    "n_onset_rows_flagged_degenerate": 10,
     "n_onset_windows": 70,
     "n_onset_windows_at_most_5_ms": 10,
-    "n_uncertain_rows": 1409,
+    "n_uncertain_rows": 1400,
     "n_with_m": 0,
     "n_without_observed_onset": 0,
     "shots_with_not_observable": 32,
@@ -44,7 +45,7 @@
     "uncertain_rows_by_reason": {
       "coherent_line_unconfirmed_or_above_30khz": 115,
       "coherent_sub_seed": 1053,
-      "confirmed_locked_phase": 48,
+      "confirmed_locked_phase": 39,
       "locked_unseeded": 11,
       "post_collapse_lock_unknown": 16,
       "rotation_after_lock_unassessed": 5,
@@ -53,8 +54,8 @@
     }
   },
   "crowd": "span rows iscrowd 1 (the whole interval), onset point rows iscrowd 0; t_start == t_end marks a point",
-  "generator_sha256": "cbe50a61b2765bf2e985838f3c1a1d05931289e1504a2bfd83446f6d525d69f0",
-  "git_sha": "90f07b1a",
+  "generator_sha256": "d86d523a3c7cb7b92dadfa0a98db93c1e0b055583db98f27de23ce5464a77170",
+  "git_sha": "751d5ee9",
   "locked": {
     "intervals_without_a_frequency_record_shots": [],
     "rule": "Frequency <=1 kHz for 20 ms after >=1.5 kHz is only a locked_candidate, storing earliest lock_time_ms and every in-span drop in lock_candidates_ms (plus <=100 ms after the RMS end). An abrupt raw >seed to <release collapse within <=5 ms never counts as decay: unknown unless |DUSBRADIAL| steps at a candidate time: its median over the 20 to 120 ms after the time is >=5 above its median over the 200 to 20 ms before it (each window needs 50 ms measured, the baseline is not read before the plasma start). The candidate times are every frequency drop, the collapse, every interval's end and the end of each rejected candidate. Post-lock time is uncertain until |DUSBRADIAL| stays <5 above that local baseline for 200 ms (shorter dips are no release) or the discharge ends; an absent diagnostic leaves an unconfirmed collapse's tail uncertain. A step of 5 followed by 100 ms above the quiet level in flat-top time no interval or lock tail covers is uncertain `locked_unseeded`. Without frequency: ended=unknown and locked_known=false per row.",
@@ -132,16 +133,16 @@
     "rule": "labeler.tearing.surface.supported_m requires an independently observed island radius to evaluate m = n*q there. No ECE island radius is resolved here, so m is empty; q alone is insufficient.",
     "signal": "qpsi_EFIT01 (the shot's feature file), offline EFIT01"
   },
-  "made_at": "2026-10-04T03:44:28+00:00",
+  "made_at": "2026-10-04T04:46:46+00:00",
   "made_by": "scripts/labeler/tm_label.py",
   "missing_signal_shots": [],
   "n_labelled_shots": 450,
   "n_missing_signal_shots": 0,
   "n_requested_shots": 450,
-  "n_rows": 2600,
+  "n_rows": 2591,
   "n_shots": 450,
   "n_shots_with_a_mode": 74,
-  "onset_window_ms": "An onset point carries [start of the preceding same-n weak track, interval start] in ms where such a track leads into the interval; the onset itself stays at the interval start (where the RMS crossed a tenth of the peak). A window of at most 5 ms is one the weak track opened at the interval start: counted in counts.n_onset_windows_at_most_5_ms, not widened.",
+  "onset_window_ms": "An onset point carries [start of the preceding same-n weak track, interval start] in ms where such a track leads into the interval; the onset itself stays at the interval start (where the RMS crossed a tenth of the peak). A window of at most 5 ms is one the weak track opened at the interval start: the onset row carries onset_window_degenerate true and the window is counted in counts.n_onset_windows_at_most_5_ms, not widened.",
   "plasma_start": "labeler.events.spans.plasma_start: the rule runs from the time Ip reaches its flat-top fraction; each shot's start is in $LABELER_ROOT/round4/tm/labels/plasma_start_<set>.json",
   "rule": {
     "n1": {
@@ -172,7 +173,7 @@
     }
   },
   "rule_doc": "docs/labeler/tearing_detection.md; labeler.tearing.rule",
-  "rule_sha256": "46d6c6c8a3dc6e5d438a8d1f2edc017aea84b90484aaa792f914f7634930c2ab",
+  "rule_sha256": "42d556dbdc8d117e99257e1e586de0ed547fc9981ffec3a16f100f81f846a2b7",
   "schema_version": 6,
   "screening_missing": "All requested shots exclude blind cohort IDs before input reads; unavailable line screening at RMS above frozen weak_g is uncertain even without positive coherent-line evidence.",
   "shots": "cohort",
