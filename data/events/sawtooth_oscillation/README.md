@@ -36,9 +36,9 @@ rises in the outer ones; the 1/1 precursor is visible on magnetics at 2-20 kHz.
 
 **all**:
 - ece_sawtooth | 2026_09_12 (rule; omnimode inversion test, envelope-once port)
-- saw_physics | 2026_10_03 (Gude multichannel inversion plus Muscatello central-drop/train criteria; nominal geometry and bias-aware q evidence)
-- saw-hl3 | 2026_10_03 (OuYang HL-3 CNN + bidirectional LSTM external baseline; GPU fit, DIII-D input/timing adaptations)
-- saw-ours | 2026_10_03 (PhaseNet-style multichannel ECE crash picker and train-presence head; GPU fit)
+- saw_physics | 2026_10_04 (Gude multichannel inversion plus Muscatello central-drop/train criteria; nominal geometry, local-field cutoff and ECE-validity guards, ECE-tested absence with a separate q-prior state)
+- saw-hl3 | 2026_10_04 (OuYang HL-3 CNN + bidirectional LSTM external baseline; GPU fit, DIII-D input/timing adaptations)
+- saw-ours | 2026_10_04 (PhaseNet-style multichannel ECE crash picker and train-presence head; GPU fit)
 
 ## Inputs
 **ece_sawtooth**:
@@ -79,29 +79,38 @@ These are **physics-rule labels validated only by the checks described** in the
 [current-state report](../../../docs/labeler/sawtooth_results.md). The rule uses
 Gude-style POSR, multichannel coincidence, core loss / outer gain, central drop,
 stable trains and nominal EFIT localization. It screens harmonic overlap and
-uses EFIT01 bias-aware q-min conflicts and sustained high-q absence evidence.
-POSR-qualified phase edges require ≥10 ms periods and a shuffled-time null that
-repeats the same group search. Geometry is nominal, with no flux calibration.
-Present/absent/uncertain/unassessed states remain distinct. Production labels
+uses EFIT01 bias-aware q-min conflicts. POSR-qualified phase edges require
+≥10 ms periods and a shuffled-time null that repeats the same group search.
+Geometry is nominal, with no flux calibration. Present / absent / absent_q_prior
+/ uncertain / unassessed states remain distinct. Production labels
 are not replaced. Old `ece_sawtooth` disagreement and its reader audit are in
 the report; the retained legacy rule and current catalog detector differ.
 Valid core ECE defines observability: missing ECE, low temperature and detected
 cutoff yield `unassessed`, and trains split at observability gaps. Native-rate
 antialiasing precedes decimation to 10 kHz. Where local neutron-rate and Mirnov
 data exist, their drop/burst flags give optional corroboration; no SXR
-corroboration is claimed without verified core/edge spatial pairing. Absence
-requires complete candidate-free context with a noise-resolved core relaxation
-test, or sustained EFIT01 q-min ≥ 1.5; ambiguous observable support remains
-uncertain. The untracked exports in `extend_saw_physics/` hold four-state spans
-and crash points; they are additive research labels.
+corroboration is claimed without verified core/edge spatial pairing. **Absent**
+means a tested absence: no POSR-periodic core edge on any valid ECE channel at
+nominal ρ<0.5 over a complete ±375 ms context, noise-resolved on at least two
+channels. Sustained EFIT01 q-min ≥ 1.5 is a prior, not a test: that time is
+`absent_q_prior`, exported as `uncertain` with reason `q_prior_only`, and it is
+never a benchmark negative. A density-cutoff guard uses the local field at the
+axis resonance and an ECE validity test (adjacent-channel step ratio above 2, or
+a near-axis channel below 0.6 of the profile maximum, sustained 20 ms) marks
+unresolved ECE `unassessed`. Ambiguous observable support remains uncertain. The
+untracked exports in `extend_saw_physics/` hold the spans and crash points; they
+are additive research labels.
 
-Complete population label shards are at
-`$LABELER_ROOT/round4/saw/fix3/labels/`. Verify with `sha256sum -c SHA256SUMS`
-from that directory. The `SHA256SUMS` file has sha256
-`3c70d44325cf98a0d4e9cb92efd3f6219e2c3fd13bf4f4bd7c57ee52d24168c3`; individual CSV hashes are in
-`outputs/labeler/sawtooth/fix3/label_manifest.json`. Cohort shards are a separate
-bundle at `$LABELER_ROOT/round4/saw/fix3/cohort_labels/`; `extend_saw_physics/`
-is the untracked integration copy. Git does not carry the large label store.
+The population run is complete: 13319 of 16909 corpus shots have a usable record under the final rule; the other shots have no readable ECE core and carry no label.
+Population label shards are at
+`$LABELER_ROOT/round4/saw/fix4/labels/` (cohort and population shards). Verify with
+`sha256sum -c SHA256SUMS` from that directory. The `SHA256SUMS` file has sha256
+`39ec0062962bf732f8d00816d8af2a6ee129612f6e43a476b76877f506e87b32`; individual CSV hashes are in
+`outputs/labeler/sawtooth/fix4/label_manifest.json`. The manifest also hashes
+`prior_inputs/fix2_inputs.json`, a snapshot of the earlier round's inputs the
+rule reads, and `freeze.json`. Cohort shards are the `cohort-*.csv` files in the
+same directory; `extend_saw_physics/` is the untracked integration copy. Git does
+not carry the large label store.
 
 Both learned models use three whole-shot TRAIN folds with inner-shot selection
 of checkpoint, hyperparameters and thresholds; CUDA training stops on
@@ -122,7 +131,7 @@ are exploratory and provide no independent crash-time precision/recall; the
 ## Blind crash-time annotation queue
 
 The prediction-free input pack is
-`$LABELER_ROOT/round4/saw/fix3/annotation_pack/`. It contains sensor windows,
+`$LABELER_ROOT/round4/saw/fix4/annotation_pack/`. It contains sensor windows,
 observable masks, nominal geometry and blank annotation targets. Random windows
 are frozen before prediction access. Candidate-free, model-negative, uncertain
 and disagreement cases supplement the primary probability sample. Keep the
@@ -135,7 +144,7 @@ shot clustering reduces the effective count. The owner is away: annotation is
 pending and physical accuracy remains unvalidated. No model is recommended.
 
 ## Alias
-sawtooth, sawtooth, sawtooth oscillation, sawtooth crash, st crash, sawtooth-free
+sawtooth, sawtooth oscillation, sawtooth crash, st crash, sawtooth-free
 
 ## Future Implementations
 
