@@ -37,12 +37,17 @@ from labeler.sawtooth.models import HL3, PhasePicker, soft_crash_target
 
 MODELS = ("saw-hl3", "saw-ours")
 BASELINES = ("saw-derivative", "saw-always-present")
-WORK = WORK.parent / "fix3"
-OUTPUT = OUTPUT.parent / "fix3"
+WORK = WORK.parent / "fix4"
+OUTPUT = OUTPUT.parent / "fix4"
 INPUT_POLICY = (
     "observable-only inputs; loss-only assessment; balanced crash-centred; "
     "axis-selected single-channel timing with complete filter support; "
-    "geometry outer rho .4-.65"
+    "geometry outer rho .4-.65; negatives only from ECE-tested absence"
+)
+OLD_NEGATIVES = (
+    "scoring-only sensitivity: assessed bins plus observable time that is absent "
+    "only by the EFIT01 q_min >= 1.5 prior, scored as no-crash negatives, which "
+    "reproduces the earlier absent class; models are not refit on it"
 )
 THRESHOLDS = np.r_[np.arange(1, 20) / 20, 0.975, 0.99, 0.995, 0.999]
 DERIVATIVE_Z = (*range(2, 21), 25, 30, 40, 50, 75, 100, 150, 200, 300, 500, 1000)
@@ -219,6 +224,45 @@ def masks_at(signal, times):
     observable = signal["observable"][nearest].astype(bool) & inside
     assessed = signal["assessed"][nearest].astype(bool) & observable
     return observable, assessed
+
+
+def operating_points(summaries):
+    """Per-fold operating points and their spread, as selected on inner shots."""
+    rows = [
+        {
+            "fold": summary["fold"],
+            "presence_threshold": summary["presence_threshold"],
+            "crash_threshold": summary["selected_crash_threshold"]["threshold"],
+            "crash_z": summary["selected_crash_threshold"]["z"],
+            "selection_shots": len(summary["selection_shots"]),
+            "best_epoch": summary["best_epoch"],
+            "epochs_completed": summary["epochs_completed"],
+            "seconds": summary["seconds"],
+        }
+        for summary in summaries
+    ]
+    presence = [row["presence_threshold"] for row in rows]
+    return {
+        "by_fold": rows,
+        "presence_threshold_min": min(presence),
+        "presence_threshold_max": max(presence),
+        "presence_threshold_range": max(presence) - min(presence),
+    }
+
+
+def with_q_prior(signal):
+    """Scoring-only sensitivity: restore the earlier absent class.
+
+    The previous rule called time absent when EFIT01 q_min stayed >= 1.5. That
+    time is now ``absent_q_prior`` (uncertain on export, no benchmark negatives).
+    This view adds it back as assessed time with no crashes, so a score can be
+    compared with the previous negatives. Models are not refit on it.
+    """
+    if "q_prior" not in signal:
+        raise ValueError("signals lack the q_prior mask; regenerate labels")
+    extra = np.asarray(signal["q_prior"], dtype=bool)
+    extra &= np.asarray(signal["observable"], dtype=bool)
+    return {**signal, "assessed": np.asarray(signal["assessed"], dtype=bool) | extra}
 
 
 def assessed_points(signal, times):
@@ -1395,6 +1439,8 @@ def evaluate(args):
                 summary["heldout_shots"],
             )
         rows = {1: [], 2: []}
+        old_rows = {1: [], 2: []}
+        old_by_shot = []
         shot_class_cells, derivative_class_cells, by_shot = [], [], []
         for shot in split["training_cohort"]:
             fold = split["folds"][shot]
@@ -1421,6 +1467,12 @@ def evaluate(args):
                 rows[tolerance].append(shot_rows[tolerance])
             by_shot.append(shot_result)
             rec = record(args.work, shot)
+            old_shot_rows, old_shot_result = score_prediction(
+                shot, name, pred, with_q_prior(signal), rec, presence_threshold
+            )
+            for tolerance in (1, 2):
+                old_rows[tolerance].append(old_shot_rows[tolerance])
+            old_by_shot.append(old_shot_result)
             if name == "saw-hl3":
                 _, _, classes = targets(
                     pred["class_t"], rec, summary["period_boundary_ms"]
@@ -1472,6 +1524,16 @@ def evaluate(args):
         score["by_shot"] = by_shot
         score["assessment_totals"] = assessment_totals(by_shot)
         score["coverage"] = coverage(by_shot)
+        score["old_negatives_sensitivity"] = {
+            "definition": OLD_NEGATIVES,
+            **{
+                f"crash_tolerance_{tolerance}ms": aggregate(old_rows[tolerance])
+                for tolerance in (1, 2)
+            },
+            "assessment_totals": assessment_totals(old_by_shot),
+        }
+        if name not in BASELINES:
+            score["operating_points"] = operating_points(summaries)
         score["score_label"] = output["protocol"]["primary"]
         score["crash_metric_label"] = (
             "derivative picker gated by HL-3"
@@ -1569,6 +1631,8 @@ def evaluate(args):
                     "reason": "always-present provides no period class; not applicable",
                 }
         fixed_rows = {1: [], 2: []}
+        fixed_old_rows = {1: [], 2: []}
+        fixed_old_by_shot = []
         fixed_by_shot = []
         for shot in split["fixed_validation_nonexpert"]:
             if shot not in split["fixed_validation_supported"]:
@@ -1588,6 +1652,17 @@ def evaluate(args):
             fixed_by_shot.append(shot_result)
             for tolerance in (1, 2):
                 fixed_rows[tolerance].append(shot_rows[tolerance])
+            old_shot_rows, old_shot_result = score_prediction(
+                shot,
+                name,
+                prediction,
+                with_q_prior(signal),
+                record(args.work, shot),
+                presence_threshold,
+            )
+            fixed_old_by_shot.append(old_shot_result)
+            for tolerance in (1, 2):
+                fixed_old_rows[tolerance].append(old_shot_rows[tolerance])
         score["fixed_validation"] = {
             **{
                 f"crash_tolerance_{tolerance}ms": aggregate(fixed_rows[tolerance])
@@ -1596,6 +1671,14 @@ def evaluate(args):
             "by_shot": fixed_by_shot,
             "assessment_totals": assessment_totals(fixed_by_shot),
             "coverage": coverage(fixed_by_shot),
+            "old_negatives_sensitivity": {
+                "definition": OLD_NEGATIVES,
+                **{
+                    f"crash_tolerance_{tolerance}ms": aggregate(fixed_old_rows[tolerance])
+                    for tolerance in (1, 2)
+                },
+                "assessment_totals": assessment_totals(fixed_old_by_shot),
+            },
             "score_label": output["protocol"]["primary"],
             "protocol": (
                 "second held-out set: nonexpert fixed validation; three frozen "
