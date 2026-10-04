@@ -1,0 +1,36 @@
+\begin{table*}[t]
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{>{\raggedright\arraybackslash}p{1.75in}rllll}
+\toprule
+Model & Shots / bins & AUROC [CI] & AUPRC [CI] & F1 [CI] & Segmental F1 [CI] \\
+\midrule
+\multicolumn{6}{l}{\emph{Uncertain time excluded: tm-ours and the two-line baseline (tuned, seed levels), all shots}} \\
+tm-ours & 450 / 162.8k & .999 [.997,1.000] & .994 [.989,.997] & .960 [.930,.980] & .843 [.778,.901] \\
+tm-rms-2line & 450 / 162.8k & .998 [.998,.999] & .986 [.980,.990] & .940 [.926,.953] & .629 [.538,.717] \\
+tm-rms-2line (seed levels) & 450 / 162.8k & .998 [.998,.999] & .986 [.980,.990] & .645 [.573,.717] & .475 [.364,.600] \\
+Difference, tm-ours $-$ tm-rms-2line & 450 / 162.8k & .000 [-.001,.001] & .009 [.003,.015] & .020 [-.011,.046] & .215 [.111,.309] \\
+Difference, tm-ours $-$ tm-rms-2line (seed levels) & 450 / 162.8k & .000 [-.001,.001] & .009 [.003,.015] & .315 [.238,.393] & .368 [.231,.493] \\
+\midrule
+\multicolumn{6}{l}{\emph{Uncertain time excluded: tm-ours and the retrained CNN, shots where it has inputs}} \\
+tm-ours & 278 / 31.2k & .999 [.998,1.000] & .997 [.993,1.000] & .986 [.975,.993] & .957 [.914,.986] \\
+tm-onsetcnn-retrained & 278 / 31.2k & .982 [.968,.993] & .953 [.916,.976] & .844 [.758,.906] & .683 [.538,.785] \\
+Difference, tm-ours $-$ tm-onsetcnn-retrained & 278 / 31.2k & .017 [.007,.031] & .044 [.022,.078] & .142 [.079,.225] & .274 [.176,.405] \\
+\midrule
+\multicolumn{6}{l}{\emph{Uncertain time scored as negative: tm-ours and the two-line baseline (tuned, seed levels), all shots}} \\
+tm-ours & 450 / 246.8k & .948 [.935,.960] & .512 [.394,.623] & .363 [.290,.431] & .229 [.182,.281] \\
+tm-rms-2line & 450 / 246.8k & .963 [.954,.971] & .632 [.559,.700] & .447 [.372,.519] & .191 [.152,.235] \\
+tm-rms-2line (seed levels) & 450 / 246.8k & .963 [.954,.971] & .632 [.559,.700] & .578 [.507,.643] & .269 [.204,.341] \\
+Difference, tm-ours $-$ tm-rms-2line & 450 / 246.8k & -.015 [-.029,-.003] & -.120 [-.222,-.019] & -.084 [-.104,-.065] & .038 [.010,.068] \\
+Difference, tm-ours $-$ tm-rms-2line (seed levels) & 450 / 246.8k & -.015 [-.029,-.003] & -.120 [-.222,-.019] & -.215 [-.305,-.124] & -.040 [-.107,.029] \\
+\midrule
+\multicolumn{6}{l}{\emph{Uncertain time scored as negative: tm-ours and the retrained CNN, shots where it has inputs}} \\
+tm-ours & 286 / 59.3k & .933 [.906,.958] & .616 [.444,.757] & .380 [.279,.476] & .353 [.242,.453] \\
+tm-onsetcnn-retrained & 286 / 59.3k & .903 [.873,.932] & .444 [.292,.599] & .435 [.331,.528] & .313 [.202,.417] \\
+Difference, tm-ours $-$ tm-onsetcnn-retrained & 286 / 59.3k & .030 [.002,.059] & .173 [.023,.312] & -.055 [-.100,-.008] & .039 [-.014,.108] \\
+\bottomrule
+\end{tabular}
+\caption{Paired comparisons on development shots, with uncertain time excluded (upper two blocks) and scored as negative (lower two). Each comparison uses the shots and available 10 ms bins both of its models score (shot and bin counts in the second column). Each model keeps its inner-validation threshold; the seed-level baseline is the same score at its fixed threshold, with no tuning. Brackets are 95\% shot-bootstrap intervals (1,000 draws); in difference rows they are paired, and a difference whose interval spans zero is not resolved. Unavailable bins are hard barriers for segmental IoU 0.5.}
+\label{tab:tm-paired}
+\end{table*}

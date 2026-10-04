@@ -1,0 +1,37 @@
+\begin{table*}[t]
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{>{\raggedright\arraybackslash}p{1.75in}rllll}
+\toprule
+Model & Shots / bins & AUROC [CI] & AUPRC [CI] & F1 [CI] & Segmental F1 [CI] \\
+\midrule
+\multicolumn{6}{l}{\emph{Legacy targets, at the published thresholds}} \\
+tm-dsm-250ms-published (risk 0.3) & 80 / 8.4k & .743 [.643,.844] & .185 [.106,.322] & .000 [.000,.000] & -- \\
+tm-dsm-1s-published (risk 0.3) & 80 / 8.4k & .722 [.612,.833] & .405 [.263,.551] & .049 [.000,.143] & -- \\
+\midrule
+\multicolumn{6}{l}{\emph{Tokamak-SI labels, uncertain time excluded}} \\
+tm-dsm-250ms-published & 247 / 43.7k & .780 [.692,.854] & .409 [.288,.532] & .438 [.328,.531] & .272 [.150,.398] \\
+tm-dsm-1s-published & 247 / 43.7k & .777 [.693,.851] & .399 [.281,.522] & .439 [.325,.531] & .277 [.157,.404] \\
+\midrule
+\multicolumn{6}{l}{\emph{Tokamak-SI labels, uncertain time scored as negative}} \\
+tm-rms-2line (seed levels) & 450 / 246.8k & .963 [.954,.971] & .632 [.559,.700] & .578 [.507,.643] & .269 [.204,.341] \\
+tm-rms & 450 / 246.8k & .936 [.911,.957] & .547 [.444,.650] & .419 [.340,.489] & .120 [.091,.151] \\
+tm-ours-rms & 450 / 246.8k & .960 [.949,.969] & .575 [.460,.689] & .362 [.290,.429] & .246 [.197,.297] \\
+\midrule
+\multicolumn{6}{l}{\emph{Legacy targets, inner-validation thresholds}} \\
+tm-onsetcnn-published$\dagger$ & 79 / 5.6k & .897 [.832,.952] & .601 [.385,.799] & .462 [.286,.615] & -- \\
+tm-dsm-250ms-published & 80 / 8.4k & .743 [.643,.844] & .185 [.106,.322] & .094 [.056,.142] & -- \\
+tm-dsm-500ms-published & 80 / 8.4k & .721 [.614,.828] & .294 [.179,.442] & .177 [.107,.266] & -- \\
+tm-dsm-1s-published & 80 / 8.4k & .722 [.612,.833] & .405 [.263,.551] & .306 [.195,.411] & -- \\
+\midrule
+\multicolumn{6}{l}{\emph{Tokamak-SI labels, fixed thresholds, uncertain time excluded}} \\
+tm-rms (12 G) & 450 / 162.8k & .985 [.977,.992] & .903 [.845,.943] & .523 [.425,.617] & .414 [.301,.534] \\
+tm-dsm-250ms-published (risk 0.3) & 247 / 43.7k & .780 [.692,.854] & .409 [.288,.532] & .000 [.000,.000] & .000 [.000,.000] \\
+tm-dsm-500ms-published (risk 0.3) & 247 / 43.7k & .779 [.691,.852] & .405 [.285,.528] & .000 [.000,.000] & .000 [.000,.000] \\
+tm-dsm-1s-published (risk 0.3) & 247 / 43.7k & .777 [.693,.851] & .399 [.281,.522] & .008 [.000,.021] & .000 [.000,.000] \\
+\bottomrule
+\end{tabular}
+\caption{Additional rows. Legacy rows at inner-validation thresholds, other DSM horizons, fixed-threshold results (DSM risk 0.3 equals upstream survival probability 0.7), and the uncertain-as-negative values of the rows not in the main table. Legacy bins are 25 ms, Tokamak-SI bins 10 ms. $\dagger$: published CNN training overlap unknown. Brackets: 95\% shot-bootstrap intervals.}
+\label{tab:tm-benchmark-appendix}
+\end{table*}

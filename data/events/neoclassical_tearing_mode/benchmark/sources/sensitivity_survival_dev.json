@@ -1,0 +1,153 @@
+{
+  "reference": "survival",
+  "shots": "cohort split != test",
+  "n_shots": 450,
+  "not_in_reference": 275,
+  "git_sha": "97b8e90f",
+  "rule_sha256": "e9e7434fb9714a0a5ab54441179bbf4c9774da09fcc7a1d7f9191b8faee3e1d5",
+  "frozen_label_sha256": "decba8f2a5c4b5f69b23e284bf70cf0058bbe1f55c519b9624714420b53a173a",
+  "caveat": "Survival shares N1RMS, 12 G / 50 ms and 10%-of-peak onset; agreement is near-circular, not independent physics validation. Variants are sensitivity checks only and do not choose the frozen rule.",
+  "variants": [
+    {
+      "variant": "frozen: 12 G, continuous 50 ms seed, coherent line, release 10 %",
+      "changes": {},
+      "intervals": 61,
+      "shots_with_an_interval": 57,
+      "median_duration_ms": 1388.0,
+      "reference_onsets": 67,
+      "matched_fraction": 0.23880597014925373,
+      "within_50ms_of_matched": 0.75,
+      "intervals_without_an_onset_fraction": 0.23809523809523808
+    },
+    {
+      "variant": "onset 8 G",
+      "changes": {
+        "onset_g": 8.0
+      },
+      "intervals": 84,
+      "shots_with_an_interval": 80,
+      "median_duration_ms": 1958.9999999999995,
+      "reference_onsets": 67,
+      "matched_fraction": 0.417910447761194,
+      "within_50ms_of_matched": 0.7142857142857143,
+      "intervals_without_an_onset_fraction": 0.2222222222222222
+    },
+    {
+      "variant": "onset 10 G",
+      "changes": {
+        "onset_g": 10.0
+      },
+      "intervals": 76,
+      "shots_with_an_interval": 72,
+      "median_duration_ms": 1962.9999999999998,
+      "reference_onsets": 67,
+      "matched_fraction": 0.34328358208955223,
+      "within_50ms_of_matched": 0.7391304347826086,
+      "intervals_without_an_onset_fraction": 0.23333333333333334
+    },
+    {
+      "variant": "onset 15 G",
+      "changes": {
+        "onset_g": 15.0
+      },
+      "intervals": 46,
+      "shots_with_an_interval": 43,
+      "median_duration_ms": 993.0000000000001,
+      "reference_onsets": 67,
+      "matched_fraction": 0.14925373134328357,
+      "within_50ms_of_matched": 0.8,
+      "intervals_without_an_onset_fraction": 0.2857142857142857
+    },
+    {
+      "variant": "hold 20 ms",
+      "changes": {
+        "hold_ms": 20.0
+      },
+      "intervals": 84,
+      "shots_with_an_interval": 79,
+      "median_duration_ms": 1481.5000000000007,
+      "reference_onsets": 67,
+      "matched_fraction": 0.417910447761194,
+      "within_50ms_of_matched": 0.7142857142857143,
+      "intervals_without_an_onset_fraction": 0.2
+    },
+    {
+      "variant": "hold 30 ms",
+      "changes": {
+        "hold_ms": 30.0
+      },
+      "intervals": 77,
+      "shots_with_an_interval": 72,
+      "median_duration_ms": 1112.000000000001,
+      "reference_onsets": 67,
+      "matched_fraction": 0.3880597014925373,
+      "within_50ms_of_matched": 0.7692307692307693,
+      "intervals_without_an_onset_fraction": 0.1875
+    },
+    {
+      "variant": "hold 100 ms",
+      "changes": {
+        "hold_ms": 100.0
+      },
+      "intervals": 43,
+      "shots_with_an_interval": 40,
+      "median_duration_ms": 1884.999999999999,
+      "reference_onsets": 67,
+      "matched_fraction": 0.208955223880597,
+      "within_50ms_of_matched": 0.6428571428571429,
+      "intervals_without_an_onset_fraction": 0.17647058823529413
+    },
+    {
+      "variant": "merge gap 20 ms",
+      "changes": {
+        "merge_gap_ms": 20.0
+      },
+      "intervals": 65,
+      "shots_with_an_interval": 60,
+      "median_duration_ms": 967.0000000000005,
+      "reference_onsets": 67,
+      "matched_fraction": 0.23880597014925373,
+      "within_50ms_of_matched": 0.875,
+      "intervals_without_an_onset_fraction": 0.30434782608695654
+    },
+    {
+      "variant": "merge gap 100 ms",
+      "changes": {
+        "merge_gap_ms": 100.0
+      },
+      "intervals": 58,
+      "shots_with_an_interval": 54,
+      "median_duration_ms": 1718.4999999999998,
+      "reference_onsets": 67,
+      "matched_fraction": 0.23880597014925373,
+      "within_50ms_of_matched": 0.5625,
+      "intervals_without_an_onset_fraction": 0.23809523809523808
+    },
+    {
+      "variant": "release 5 %",
+      "changes": {
+        "release_fraction": 0.05
+      },
+      "intervals": 51,
+      "shots_with_an_interval": 47,
+      "median_duration_ms": 1981.9999999999995,
+      "reference_onsets": 67,
+      "matched_fraction": 0.22388059701492538,
+      "within_50ms_of_matched": 0.5333333333333333,
+      "intervals_without_an_onset_fraction": 0.21052631578947367
+    },
+    {
+      "variant": "release 20 %",
+      "changes": {
+        "release_fraction": 0.2
+      },
+      "intervals": 63,
+      "shots_with_an_interval": 59,
+      "median_duration_ms": 1014.9999999999982,
+      "reference_onsets": 67,
+      "matched_fraction": 0.208955223880597,
+      "within_50ms_of_matched": 0.6428571428571429,
+      "intervals_without_an_onset_fraction": 0.36363636363636365
+    }
+  ]
+}

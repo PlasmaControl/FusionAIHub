@@ -1,0 +1,37 @@
+\begin{table*}[t]
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{>{\raggedright\arraybackslash}p{1.75in}rllll}
+\toprule
+Model & Shots / bins & AUROC [CI] & AUPRC [CI] & F1 [CI] & Segmental F1 [CI] \\
+\midrule
+\multicolumn{6}{l}{\emph{Legacy targets, at the published thresholds}} \\
+tm-onsetcnn-published (thr. 0.5)$\dagger$ & 79 / 5.6k & .897 [.832,.952] & .601 [.385,.799] & .611 [.437,.750] & -- \\
+tm-dsm-500ms-published (risk 0.3) & 80 / 8.4k & .721 [.614,.828] & .294 [.179,.442] & .000 [.000,.000] & -- \\
+\midrule
+\multicolumn{6}{l}{\emph{Tokamak-SI labels, uncertain time excluded}} \\
+tm-onsetcnn-published$\dagger$ & 278 / 31.0k & .974 [.959,.987] & .903 [.838,.948] & .779 [.689,.848] & .615 [.504,.713] \\
+tm-onsetcnn-published (thr. 0.5)$\dagger$ & 278 / 31.0k & .974 [.959,.987] & .903 [.838,.948] & .708 [.582,.808] & .588 [.416,.746] \\
+tm-dsm-500ms-published & 247 / 43.7k & .779 [.691,.852] & .405 [.285,.528] & .442 [.327,.534] & .279 [.157,.403] \\
+tm-onsetcnn-retrained & 278 / 31.2k & .982 [.968,.993] & .953 [.916,.976] & .844 [.758,.906] & .683 [.538,.785] \\
+tm-dsm-retrained & 336 / 58.1k & .963 [.940,.981] & .871 [.810,.916] & .799 [.728,.844] & .657 [.545,.745] \\
+tm-rms-2line & 450 / 162.8k & .998 [.998,.999] & .986 [.980,.990] & .940 [.926,.953] & .629 [.538,.717] \\
+tm-rms-2line (seed levels) & 450 / 162.8k & .998 [.998,.999] & .986 [.980,.990] & .645 [.573,.717] & .475 [.364,.600] \\
+tm-rms & 450 / 162.8k & .985 [.977,.992] & .903 [.845,.943] & .788 [.711,.843] & .302 [.240,.375] \\
+tm-ours & 450 / 162.8k & .999 [.997,1.000] & .994 [.989,.997] & .960 [.930,.980] & .843 [.778,.901] \\
+tm-ours-rms & 450 / 162.8k & 1.000 [.999,1.000] & .997 [.994,.999] & .967 [.935,.986] & .863 [.805,.917] \\
+\midrule
+\multicolumn{6}{l}{\emph{Tokamak-SI labels, uncertain time scored as negative}} \\
+tm-onsetcnn-published$\dagger$ & 286 / 59.1k & .900 [.864,.932] & .412 [.281,.571] & .406 [.306,.497] & .288 [.191,.374] \\
+tm-onsetcnn-published (thr. 0.5)$\dagger$ & 286 / 59.1k & .900 [.864,.932] & .412 [.281,.571] & .516 [.396,.625] & .394 [.240,.535] \\
+tm-dsm-500ms-published & 252 / 81.9k & .712 [.622,.795] & .157 [.098,.228] & .252 [.166,.330] & .167 [.071,.271] \\
+tm-onsetcnn-retrained & 286 / 59.3k & .903 [.873,.932] & .444 [.292,.599] & .435 [.331,.528] & .313 [.202,.417] \\
+tm-dsm-retrained & 341 / 112.2k & .839 [.791,.880] & .297 [.204,.411] & .356 [.278,.427] & .262 [.175,.347] \\
+tm-rms-2line & 450 / 246.8k & .963 [.954,.971] & .632 [.559,.700] & .447 [.372,.519] & .191 [.152,.235] \\
+tm-ours & 450 / 246.8k & .948 [.935,.960] & .512 [.394,.623] & .363 [.290,.431] & .229 [.182,.281] \\
+\bottomrule
+\end{tabular}
+\caption{Recovery of a strong rotating n=1/n=2 magnetic rule (a tearing-mode proxy), not independent identification. AUROC and AUPRC are primary; F1 uses inner-validation thresholds. Uncertain time (34.0\% of observable catalog-window time) is excluded in the middle block and scored as negative in the bottom block; the top block scores the legacy targets. Boundary placement is scored only by the bottom block. tm-rms-2line is max(n=1/12 G, n=2/6 G), no training. Published models saw thousands of shots, retrained ones 324 per fold. $\dagger$: training overlap unknown. Brackets: 95\% shot-bootstrap intervals. Shot sets: appendix.}
+\label{tab:tm-benchmark}
+\end{table*}

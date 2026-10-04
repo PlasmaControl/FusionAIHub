@@ -108,6 +108,13 @@ always observable because Ip always exists.
 <code>seed</code>: string, sawtooth / elm / fishbone / none;<br />
 <code>confinement</code>: string, L / H;<br />
 <code>locked</code>: boolean, true / false;<br />
+<code>locked_candidate</code>: boolean, true / false;<br />
+<code>locked_known</code>: boolean, true / false;<br />
+<code>lock_time_ms</code>: number;<br />
+<code>lock_candidates_ms</code>: array;<br />
+<code>onset_window_ms</code>: array;<br />
+<code>onset_window_degenerate</code>: boolean, true / false;<br />
+<code>ended</code>: string, decay / plasma_end / locked / unknown;<br />
 <code>override</code>: string, island_not_resolved / q_unreliable /
 classical_tm / not_tearing_mode;<br />
 <code>other_mhd</code>: string, m1 / classical_tm / fishbone / eho / kink;<br />
@@ -160,6 +167,11 @@ category-0 absent spans cover only gaps outside their combined coverage.
 `inversion_radius_m` is the sawtooth inversion radius as a minor radius:
 the distance from the magnetic axis along the ECE's midplane line of sight,
 in metres. It is neither the major radius R nor a normalised radius.
+
+`locked_known` (tearing mode) means "lock confirmed": true only where an
+independent locked-mode signal confirmed the lock (such an interval is also
+`locked`). False says that none was confirmed (no record, no step, or n = 2, which
+has no confirmation), not that the lock status was checked and found absent.
 
 `review/points.csv` holds point events with these columns:
 

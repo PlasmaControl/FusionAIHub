@@ -1,0 +1,76 @@
+{
+  "made_by": "scripts/labeler/tm_weak_diagnostics.py",
+  "shot": 185943,
+  "split": "train",
+  "inventory": [
+    {
+      "path": "/scratch/gpfs/EKOLEMEN/foundation_model/185943_processed.h5",
+      "exists": true,
+      "groups": {
+        "ece": {
+          "attrs": {},
+          "datasets": {
+            "xdata": {
+              "shape": [
+                3096576
+              ],
+              "attrs": {}
+            },
+            "ydata": {
+              "shape": [
+                48,
+                3096576
+              ],
+              "attrs": {}
+            }
+          }
+        }
+      }
+    },
+    {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm/lroot/features/185943_features.h5",
+      "exists": true,
+      "groups": {
+        "qpsi": {
+          "attrs": {
+            "archive_file": "/projects/EKOLEMEN/profile_predictor/DATA/new_h5_data/example_191450_183224.h5",
+            "complete": "1",
+            "fetched_at": "2026-10-03T12:40:49+00:00",
+            "locator": "qpsi_EFIT01",
+            "n_rows": "240",
+            "resolver": "archive",
+            "units": ""
+          },
+          "datasets": {
+            "rho": {
+              "shape": [
+                33
+              ],
+              "attrs": {}
+            },
+            "xdata": {
+              "shape": [
+                240
+              ],
+              "attrs": {}
+            },
+            "ydata": {
+              "shape": [
+                33,
+                240
+              ],
+              "attrs": {}
+            }
+          }
+        }
+      }
+    },
+    {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/features/185943_features.h5",
+      "exists": false,
+      "groups": {}
+    }
+  ],
+  "m_supported": false,
+  "assessment": "Inventory-only island-radius attempt: ECE temperature samples or channel coordinates alone do not establish a localized tearing-related temperature flattening or calibrated island radius. No validated island/flattening reconstruction is provided in these local groups. EFIT q(rho) alone cannot assign m. Retain m empty; no ECE fetch attempted."
+}

@@ -46,12 +46,27 @@ signature, and on the radial saddle loops once locked.
 ## Models
 **stable**: d3d_tearing_onset_cnn1d | 2022_12_01
 
-**latest**: d3d_tearing_time_to_event_dsm | 2026_09_05
+**latest**: none (the detectors below are saved development cross-validation ensembles, not registry models; nothing here has a deployed adapter)
 
 **all**:
 - d3d_tearing_onset_cnn1d | 2022_12_01 (upstream training date; presence at t+25 ms)
 - d3d_tearing_time_to_event_dsm | 2026_09_05 (survival forecast; 250 ms / 500 ms / 1 s)
 - d3d_tearing_time_to_event_dsm_continued | 2026_09_05 (continued-training variant)
+- tm-onsetcnn-retrained | 2026_10_04 (prior CNN architecture retrained for detection at t)
+- tm-dsm-retrained | 2026_10_04 (prior survival embedding with a detection head at t)
+- tm-ours | 2026_10_04 (Mirnov spectrogram detector, 10 ms bins; saved CV ensembles)
+- tm-ours-rms | 2026_10_04 (the same detector with the RMS as an input; circular ablation)
+
+The short names identify benchmark training scripts and saved cross-validation
+predictions, not registry models. Saved weights: only the two Mirnov detectors keep
+their fold ensembles, normalization and thresholds, under
+`$LABELER_ROOT/round4/tm/checkpoints/tm_ours_magnetics/` and
+`tm_ours_magnetics_rms/`. The retrained CNN and survival-embedding detectors keep
+only their out-of-fold predictions and thresholds (`results/oof_tm_prior_retrained_*`),
+not weights. All are experimental CV artifacts without a deployed registry adapter. Published
+weights remain available through the three original model IDs above. A two-line RMS
+baseline, `max(n1 RMS / 12 G, n2 RMS / 6 G)`, needs no training and is the reference
+the detectors are measured against.
 
 ## Inputs
 **d3d_tearing_onset_cnn1d**:
@@ -85,6 +100,117 @@ Three claims:
 
 `validate.alarm_quality` scores the published labels against archived onsets
 (`tm_label` on the 1,503 shots shared with the tearing archive).
+
+**Whole-interval labels** (`extend_tm_interval/tm_interval.csv`, 450 development shots;
+the lab's earlier labels are onsets or forecasts, these say when a mode is present):
+a rule on the n = 1 and n = 2 magnetic RMS (`\MHD::N1RMS`, `N2RMS`, gauss, 1 kHz; the
+processed magnetic traces), `labeler.tearing.rule`. The label is **a strong rotating
+n=1/n=2 mode (tearing-mode proxy)**, without independent island identification.
+A seed must exceed 12 G (n1, Farre-Kaga et al. 2025) or 6 G (n2, local extension)
+continuously for at least 50 ms in both raw and 5 ms median RMS, before any runs
+are joined. A stable rotating n-resolved line from 1.5 kHz up to the cap (30 kHz for
+n = 1, 60 kHz for n = 2) must support that seed (`N1FREQ`/`N2FREQ`, or Mirnov
+coherence when frequency is unavailable; the Mirnov line search covers 1 to 30 kHz).
+Hysteresis extends each qualified seed to max(1 G, 10% of its peak); release dips
+up to 50 ms merge only across available data. Merged components retain their own
+release levels; the stored summary release is the minimum, the peak the largest.
+The n = 2 frequency cap scales with n (the Mirnov features stop at 30 kHz, so the
+n = 2 cap acts through `N2FREQ` only). The development-only harmonic veto drops an
+n = 2 seed unless n2/n1 > 0.57, the 99th percentile (0.561, rounded up) of that ratio
+over bins whose n = 2 line sits at twice the n = 1 frequency and whose Mirnov best-fit
+toroidal number there is 2: the harmonics of a rotating, non-sinusoidal n = 1 mode
+carry n = 2. Toroidal phase cannot separate such a harmonic from a co-rotating,
+frequency-coupled n = 2 mode (a 3/2 mode locked to the 2/1), so **the veto is a
+heuristic and may also remove real 3/2 modes**; <!-- gen:veto -->it removes 9 of 86 n = 2 seeds on the development shots; the finished rule has 20 n = 2
+intervals, 19 without the veto, because a removed seed can change how its neighbours
+merge (net effect on intervals +1)<!-- /gen:veto -->.
+Unsupported seeds, high-frequency or chirping bursts, and sustained coherent sub-seed lines are category 2 (uncertain).
+Weak uncertainty tracks require a continuous 100 ms coherent core above the frozen
+development quiet-amplitude p95, then follow that line down to this amplitude
+floor itself; the same weak screen runs over ramp-up and flat-top. Brief evidence interruptions up to 50 ms can join; acquisition gaps cannot.
+Frequency drops alone are `locked_candidate`, with all candidate times retained;
+only independent locked-mode confirmation sets `locked=true` and truncates the
+rotating span at the confirmed time. An abrupt fall from above the seed to below
+release within 5 ms is never
+`decay`: it ends `locked` when radial-field evidence confirms, otherwise `unknown`.
+The subsequent phase is uncertain until the lock signal falls or the discharge ends;
+without that signal it stays uncertain to the discharge end. Lock confirmation uses
+the independently fetched n=1 `DUSBRADIAL` radial-field amplitude (native ptdata
+units, treated as gauss by disruption-py; the unit is not verified here): a lock is
+a **step**. At each candidate time (a frequency drop at least 50 ms after the seed
+starts, an abrupt collapse, an interval's end) the median |DUSBRADIAL| over 20 to
+120 ms after must exceed its median over 200 to 20 ms before by at least 5, so a
+field that is already high or ramps slowly confirms nothing. Candidates are checked at every interval end
+and for rejected ones. A sustained rise (100 ms above the quiet median plus 5, with a
+step at its start) in otherwise-absent flat-top time is uncertain with reason
+`locked_unseeded`: a field event with no mode seen. Coverage is recorded in the label metadata; shots with no
+`DUSBRADIAL` record keep an unknown lock status. `locked_known` is true only for a
+confirmed lock (the interval is then also `locked`); false says that none was
+confirmed (no record, no step, or n = 2), not that the lock was checked and found
+absent. The onset is a point event
+(`iscrowd` 0, at the interval's start) with an `onset_window_ms` attribute (the start
+of the preceding same-n weak track), the interval a span (`iscrowd` 1); both carry
+`n`. `m` requires EFIT q at an independently observed island radius, such as an ECE
+flattening location. No island radius is resolved here, so `m` is empty; a unique
+candidate rational surface alone does not identify it. The rest of each shot's
+window is absent, the ramp-up uncertain where the rule fires in it, and every RMS
+acquisition gap unobservable (preserved as NaN). tm-ours reads the same Mirnov array
+as the label's N1RMS; this benchmark measures recovery of an RMS-based rule.
+Counts, thresholds, the agreement with Seo's and the survival onsets and
+the detector benchmark are in
+[tearing_detection.md](../../../docs/labeler/tearing_detection.md). The detectors
+trained on these labels are `tm-ours` (Mirnov-array spectrogram features, per 10 ms
+bin) and the two prior architectures retrained for detection, `tm-onsetcnn-retrained` and
+`tm-dsm-retrained`. Their targets are mode presence at t, with horizon zero.
+
+These labels omit fast-locking and brief modes, and weak modes. Recall of the lab's
+archived onsets, counted when an onset lies in one of our intervals or within 100 ms
+of its edge, is Seo **12/26** and survival **16/67** on the development shots; that
+tests whether the label holds the historical onset, not the accuracy of its timing
+(the onset error against Seo has a median of 130 ms). Cohort "absent" can still
+contain weak modes that fail the weak-line screen. The uncertainty mask is partly
+Mirnov-derived and shares `tm-ours` inputs; it covers 34.0% of the observable
+catalog-window time of the development shots, and a co-primary benchmark group scores
+it as negative. A lock is confirmed from `DUSBRADIAL`, which is on file for 327 of the
+450 development shots (12 confirmed locks); the rest keep an unknown lock status. The blind split carries no tearing-mode labels: its 50 shots are never opened
+for labels, features or scores. The benchmark tests recovery of a magnetic rule, not
+superiority as a TM detector, and the untrained two-line RMS baseline is the reference
+it is paired with: <!-- gen:paired -->On all 450 development shots, which both models score on identical bins, the paired
+difference `tm-ours` minus the two-line baseline is, with uncertain time excluded
+(162840 bins), AUROC 0.000 [-0.001, +0.001] (not resolved); AUPRC +0.009 [+0.003,
++0.015] (`tm-ours` ahead); F1 +0.020 [-0.011, +0.046] (not resolved); segmental F1
++0.215 [+0.111, +0.309] (`tm-ours` ahead); with uncertain time scored as negative
+(246801 bins, 450 shots), AUROC -0.015 [-0.029, -0.003] (the two-line baseline ahead);
+AUPRC -0.120 [-0.222, -0.019] (the two-line baseline ahead); F1 -0.084 [-0.104, -0.065]
+(the two-line baseline ahead); segmental F1 +0.038 [+0.010, +0.068] (`tm-ours` ahead).
+The order reverses between the groups on AUPRC (`tm-ours` ahead with uncertain time
+excluded, the two-line baseline ahead with it scored as negative); `tm-ours` is ahead in
+both groups on segmental F1; the order is not resolved in at least one group on AUROC
+and F1. The untuned seed-level rule (the same score at its seed levels, no training, no
+tuning) has, with uncertain time scored as negative, F1 0.578 [0.507,0.643] and
+segmental F1 0.269 [0.204,0.341] against 0.363 [0.290,0.431] and 0.229 [0.182,0.281] for
+`tm-ours` (paired difference `tm-ours` minus the seed-level rule: F1 -0.215 [-0.305,
+-0.124] (the seed-level rule ahead); segmental F1 -0.040 [-0.107, +0.029] (not
+resolved); with uncertain time excluded, F1 +0.315 [+0.238, +0.393] (`tm-ours` ahead);
+segmental F1 +0.368 [+0.231, +0.493] (`tm-ours` ahead)). With uncertain time scored as
+negative the seed-level rule has the higher F1 and segmental F1 (F1 resolved; segmental
+F1 not resolved), so the segmental-F1 lead of `tm-ours` holds only against the tuned
+baseline.<!-- /gen:paired --> No TM coverage gain is
+claimed: on the survival-matched shots the interval labels cover 464.4 s against
+799.3 s for the legacy labels.
+Population weak screening uses the same criteria where inputs exist; unscreened time
+above the weak RMS thresholds is uncertain rather than absent.
+
+The `extend_` table must be converted before promotion to `review/`: state 3 is
+outside the TM catalog schema, n-specific rows overlap, onset points have zero
+length, and boundaries need whole-millisecond conversion. The focused table test
+checks interval geometry only, not full catalog validity.
+Historical `results/*_test.json` files were moved without inspection to
+`$LABELER_ROOT/round4/tm/results/quarantine_blind_test/`; they are excluded from all
+current processing. Superseded all-cohort audit/agreement source snapshots are
+quarantined there as well, without inspection, and are removed from the active
+benchmark sources. These historical records must not be used for model selection
+or evaluation. Blind shots are never opened for labeling, galleries or scores.
 
 ## Alias
 tearing mode, tearing, tm, ntm, neoclassical tearing mode, 2/1, 3/2, locked mode, magnetic island

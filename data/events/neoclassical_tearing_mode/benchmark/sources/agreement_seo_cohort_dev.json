@@ -1,0 +1,193 @@
+{
+  "reference": "seo",
+  "shots_set": "cohort",
+  "exclude_test": true,
+  "tolerance_ms": 100.0,
+  "n_shots_considered": 450,
+  "git_sha": "97b8e90f",
+  "intervals_table": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm/labels/tm_intervals_full_cohort.csv",
+  "intervals_sha256": "4e126b91c7aad96a23f10c9ca214ea2766d2316af5c9f094e44448029f5c272c",
+  "caveat": "Seo labels are growth-phase labels with limited temporal coverage. Agreement is containment within the interval or 100 ms of its edges, not timing accuracy.",
+  "unmatched_interval_breakdown": {
+    "definition": "n1 intervals on selected shots: compare only starts inside available archive coverage; other spans are not comparable",
+    "all_n1_intervals": 61,
+    "outside_reference_coverage_or_no_reference": 47,
+    "reference_mode_shots": 1,
+    "reference_quiet_shots": 2
+  },
+  "skipped": 370,
+  "skipped_reasons_first_10": {
+    "185805": "no archived rows",
+    "185835": "no archived rows",
+    "185838": "no archived rows",
+    "185857": "no archived rows",
+    "185866": "no archived rows",
+    "185943": "no archived rows",
+    "186013": "no archived rows",
+    "186025": "no archived rows",
+    "186093": "no archived rows",
+    "186226": "no archived rows"
+  },
+  "agreement": {
+    "n1": {
+      "n_shots_covered": 80,
+      "reference_onsets": 26,
+      "matched": 12,
+      "missed": 14,
+      "matched_fraction": 0.46153846153846156,
+      "error_ms": {
+        "median": 129.99999999999977,
+        "q25": 49.249999999999886,
+        "q75": 262.4999999999997,
+        "min": -66.00000000000091,
+        "max": 632.9999999999995,
+        "mean_abs": 210.6666666666666,
+        "within_ms": {
+          "25": 0.08333333333333333,
+          "50": 0.16666666666666666,
+          "100": 0.3333333333333333,
+          "250": 0.75
+        },
+        "reference_after_interval_start_fraction": 0.75,
+        "reference_after_interval_start_by_more_than_tolerance": 8,
+        "reference_inside_onset_window": 2,
+        "reference_inside_onset_window_fraction": 0.16666666666666666
+      },
+      "compared_intervals": 14,
+      "intervals_with_an_onset": 11,
+      "intervals_without_an_onset": 3,
+      "intervals_without_an_onset_fraction": 0.21428571428571427,
+      "intervals_without_an_onset_on_reference_mode_shots": 1,
+      "intervals_without_an_onset_on_reference_quiet_shots": 2,
+      "shots": {
+        "reference_mode_and_ours": 12,
+        "reference_mode_not_ours": 14,
+        "ours_not_reference": 2,
+        "neither": 52
+      },
+      "missed_reasons": {
+        "outside_window": 0,
+        "interval_starts_later": 1,
+        "short_burst": 9,
+        "below_onset_level": 0,
+        "no_record": 0,
+        "excluded_ramp_up": 0,
+        "coherent_line_not_supported": 4
+      }
+    },
+    "any_n": {
+      "n_shots_covered": 80,
+      "reference_onsets": 26,
+      "matched": 13,
+      "missed": 13,
+      "matched_fraction": 0.5,
+      "error_ms": {
+        "median": 143.99999999999955,
+        "q25": 73.0,
+        "q75": 386.99999999999955,
+        "min": -66.00000000000091,
+        "max": 1754.999999999999,
+        "mean_abs": 329.46153846153834,
+        "within_ms": {
+          "25": 0.07692307692307693,
+          "50": 0.15384615384615385,
+          "100": 0.3076923076923077,
+          "250": 0.6923076923076923
+        },
+        "reference_after_interval_start_fraction": 0.7692307692307693,
+        "reference_after_interval_start_by_more_than_tolerance": 9,
+        "reference_inside_onset_window": 2,
+        "reference_inside_onset_window_fraction": 0.15384615384615385
+      },
+      "compared_intervals": 19,
+      "intervals_with_an_onset": 12,
+      "intervals_without_an_onset": 7,
+      "intervals_without_an_onset_fraction": 0.3684210526315789,
+      "intervals_without_an_onset_on_reference_mode_shots": 1,
+      "intervals_without_an_onset_on_reference_quiet_shots": 6,
+      "shots": {
+        "reference_mode_and_ours": 13,
+        "reference_mode_not_ours": 13,
+        "ours_not_reference": 6,
+        "neither": 48
+      }
+    }
+  },
+  "agreement_strict": {
+    "n1": {
+      "n_shots_covered": 80,
+      "reference_onsets": 26,
+      "matched": 9,
+      "missed": 17,
+      "matched_fraction": 0.34615384615384615,
+      "error_ms": {
+        "median": 202.0,
+        "q25": 116.0,
+        "q75": 386.99999999999955,
+        "min": 73.0,
+        "max": 632.9999999999995,
+        "mean_abs": 266.55555555555526,
+        "within_ms": {
+          "25": 0.0,
+          "50": 0.0,
+          "100": 0.1111111111111111,
+          "250": 0.6666666666666666
+        },
+        "reference_after_interval_start_fraction": 1.0,
+        "reference_after_interval_start_by_more_than_tolerance": 8,
+        "reference_inside_onset_window": 0,
+        "reference_inside_onset_window_fraction": 0.0
+      },
+      "compared_intervals": 14,
+      "intervals_with_an_onset": 8,
+      "intervals_without_an_onset": 6,
+      "intervals_without_an_onset_fraction": 0.42857142857142855,
+      "intervals_without_an_onset_on_reference_mode_shots": 4,
+      "intervals_without_an_onset_on_reference_quiet_shots": 2,
+      "shots": {
+        "reference_mode_and_ours": 12,
+        "reference_mode_not_ours": 14,
+        "ours_not_reference": 2,
+        "neither": 52
+      }
+    },
+    "any_n": {
+      "n_shots_covered": 80,
+      "reference_onsets": 26,
+      "matched": 10,
+      "missed": 16,
+      "matched_fraction": 0.38461538461538464,
+      "error_ms": {
+        "median": 211.4999999999999,
+        "q25": 122.99999999999989,
+        "q75": 482.9999999999992,
+        "min": 73.0,
+        "max": 1754.999999999999,
+        "mean_abs": 415.39999999999964,
+        "within_ms": {
+          "25": 0.0,
+          "50": 0.0,
+          "100": 0.1,
+          "250": 0.6
+        },
+        "reference_after_interval_start_fraction": 1.0,
+        "reference_after_interval_start_by_more_than_tolerance": 9,
+        "reference_inside_onset_window": 0,
+        "reference_inside_onset_window_fraction": 0.0
+      },
+      "compared_intervals": 19,
+      "intervals_with_an_onset": 9,
+      "intervals_without_an_onset": 10,
+      "intervals_without_an_onset_fraction": 0.5263157894736842,
+      "intervals_without_an_onset_on_reference_mode_shots": 4,
+      "intervals_without_an_onset_on_reference_quiet_shots": 6,
+      "shots": {
+        "reference_mode_and_ours": 13,
+        "reference_mode_not_ours": 13,
+        "ours_not_reference": 6,
+        "neither": 48
+      }
+    }
+  },
+  "agreement_strict_tolerance_ms": 0.0
+}

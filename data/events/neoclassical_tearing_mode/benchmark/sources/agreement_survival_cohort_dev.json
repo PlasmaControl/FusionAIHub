@@ -1,0 +1,181 @@
+{
+  "reference": "survival",
+  "shots_set": "cohort",
+  "exclude_test": true,
+  "tolerance_ms": 100.0,
+  "n_shots_considered": 450,
+  "git_sha": "97b8e90f",
+  "intervals_table": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm/labels/tm_intervals_full_cohort.csv",
+  "intervals_sha256": "4e126b91c7aad96a23f10c9ca214ea2766d2316af5c9f094e44448029f5c272c",
+  "caveat": "The survival archive shares N1RMS, 12 G and the 10%-of-peak onset with this rule but does not follow a literal continuous-50 ms rule on the 1 kHz N1RMS: onsets classed short_burst have no 50 ms raw-and-median 12 G crossing near them (the rule finds nothing there). Agreement is containment of the reference onset within the interval or 100 ms of its edges, not timing accuracy, and does not independently validate tearing islands.",
+  "unmatched_interval_breakdown": {
+    "definition": "n1 intervals on selected shots: compare only starts inside available archive coverage; other spans are not comparable",
+    "all_n1_intervals": 61,
+    "outside_reference_coverage_or_no_reference": 40,
+    "reference_mode_shots": 3,
+    "reference_quiet_shots": 2
+  },
+  "not_in_reference": 275,
+  "agreement": {
+    "n1": {
+      "n_shots_covered": 175,
+      "reference_onsets": 67,
+      "matched": 16,
+      "missed": 51,
+      "matched_fraction": 0.23880597014925373,
+      "error_ms": {
+        "median": -4.547473508864641e-13,
+        "q25": -11.250000000000284,
+        "q75": 56.749999999999204,
+        "min": -16.00000000000091,
+        "max": 1814.9999999999995,
+        "mean_abs": 194.37500000000003,
+        "within_ms": {
+          "25": 0.6875,
+          "50": 0.75,
+          "100": 0.8125,
+          "250": 0.8125
+        },
+        "reference_after_interval_start_fraction": 0.5,
+        "reference_after_interval_start_by_more_than_tolerance": 3,
+        "reference_inside_onset_window": 8,
+        "reference_inside_onset_window_fraction": 0.5
+      },
+      "compared_intervals": 21,
+      "intervals_with_an_onset": 16,
+      "intervals_without_an_onset": 5,
+      "intervals_without_an_onset_fraction": 0.23809523809523808,
+      "intervals_without_an_onset_on_reference_mode_shots": 3,
+      "intervals_without_an_onset_on_reference_quiet_shots": 2,
+      "shots": {
+        "reference_mode_and_ours": 19,
+        "reference_mode_not_ours": 48,
+        "ours_not_reference": 2,
+        "neither": 106
+      },
+      "missed_reasons": {
+        "outside_window": 0,
+        "interval_starts_later": 2,
+        "short_burst": 30,
+        "below_onset_level": 3,
+        "no_record": 0,
+        "excluded_ramp_up": 0,
+        "coherent_line_not_supported": 16
+      }
+    },
+    "any_n": {
+      "n_shots_covered": 175,
+      "reference_onsets": 67,
+      "matched": 21,
+      "missed": 46,
+      "matched_fraction": 0.31343283582089554,
+      "error_ms": {
+        "median": 6.999999999999545,
+        "q25": -8.0,
+        "q75": 512.9999999999995,
+        "min": -16.00000000000091,
+        "max": 1814.9999999999995,
+        "mean_abs": 375.2857142857142,
+        "within_ms": {
+          "25": 0.5238095238095238,
+          "50": 0.5714285714285714,
+          "100": 0.6190476190476191,
+          "250": 0.6666666666666666
+        },
+        "reference_after_interval_start_fraction": 0.6190476190476191,
+        "reference_after_interval_start_by_more_than_tolerance": 8,
+        "reference_inside_onset_window": 8,
+        "reference_inside_onset_window_fraction": 0.38095238095238093
+      },
+      "compared_intervals": 32,
+      "intervals_with_an_onset": 22,
+      "intervals_without_an_onset": 10,
+      "intervals_without_an_onset_fraction": 0.3125,
+      "intervals_without_an_onset_on_reference_mode_shots": 4,
+      "intervals_without_an_onset_on_reference_quiet_shots": 6,
+      "shots": {
+        "reference_mode_and_ours": 25,
+        "reference_mode_not_ours": 42,
+        "ours_not_reference": 6,
+        "neither": 102
+      }
+    }
+  },
+  "agreement_strict": {
+    "n1": {
+      "n_shots_covered": 175,
+      "reference_onsets": 67,
+      "matched": 8,
+      "missed": 59,
+      "matched_fraction": 0.11940298507462686,
+      "error_ms": {
+        "median": 69.49999999999932,
+        "q25": 5.999999999999659,
+        "q75": 444.2499999999992,
+        "min": 1.0,
+        "max": 1814.9999999999995,
+        "mean_abs": 378.99999999999955,
+        "within_ms": {
+          "25": 0.375,
+          "50": 0.5,
+          "100": 0.625,
+          "250": 0.625
+        },
+        "reference_after_interval_start_fraction": 1.0,
+        "reference_after_interval_start_by_more_than_tolerance": 3,
+        "reference_inside_onset_window": 0,
+        "reference_inside_onset_window_fraction": 0.0
+      },
+      "compared_intervals": 21,
+      "intervals_with_an_onset": 8,
+      "intervals_without_an_onset": 13,
+      "intervals_without_an_onset_fraction": 0.6190476190476191,
+      "intervals_without_an_onset_on_reference_mode_shots": 11,
+      "intervals_without_an_onset_on_reference_quiet_shots": 2,
+      "shots": {
+        "reference_mode_and_ours": 19,
+        "reference_mode_not_ours": 48,
+        "ours_not_reference": 2,
+        "neither": 106
+      }
+    },
+    "any_n": {
+      "n_shots_covered": 175,
+      "reference_onsets": 67,
+      "matched": 13,
+      "missed": 54,
+      "matched_fraction": 0.19402985074626866,
+      "error_ms": {
+        "median": 354.9999999999991,
+        "q25": 43.99999999999909,
+        "q75": 978.9999999999991,
+        "min": 1.0,
+        "max": 1814.9999999999995,
+        "mean_abs": 600.2307692307687,
+        "within_ms": {
+          "25": 0.23076923076923078,
+          "50": 0.3076923076923077,
+          "100": 0.38461538461538464,
+          "250": 0.46153846153846156
+        },
+        "reference_after_interval_start_fraction": 1.0,
+        "reference_after_interval_start_by_more_than_tolerance": 8,
+        "reference_inside_onset_window": 0,
+        "reference_inside_onset_window_fraction": 0.0
+      },
+      "compared_intervals": 32,
+      "intervals_with_an_onset": 14,
+      "intervals_without_an_onset": 18,
+      "intervals_without_an_onset_fraction": 0.5625,
+      "intervals_without_an_onset_on_reference_mode_shots": 12,
+      "intervals_without_an_onset_on_reference_quiet_shots": 6,
+      "shots": {
+        "reference_mode_and_ours": 25,
+        "reference_mode_not_ours": 42,
+        "ours_not_reference": 6,
+        "neither": 102
+      }
+    }
+  },
+  "agreement_strict_tolerance_ms": 0.0
+}
