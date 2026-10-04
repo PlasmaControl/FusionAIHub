@@ -20,15 +20,17 @@ alone do not establish an island's poloidal number or distinguish every MHD fami
 Frequency drops alone are `locked_candidate`, with `lock_time_ms`. Only independent
 locked-mode confirmation truncates the rotating interval and sets `locked`; without
 frequency its end/locking status is unknown. Confirmation reads the n=1 radial field
-(PTDATA `DUSBRADIAL`, native ptdata units, treated as gauss by disruption-py): the
-field must rise `LOCK_RISE` above its own median over the 200 ms before the interval
-began and stay there for 20 ms, within -5 to +100 ms of a candidate time. A candidate
-time is a frequency drop, an abrupt collapse or the interval's end, so a slow lock that
-follows a decay is found too. A confirmed lock leaves the time after it uncertain until
-the field is back below that level for `lock_release_ms` (200 ms; a shorter dip is no
-release) or the window ends; an abrupt collapse nobody confirms stays uncertain to the
-window end. Candidates the seed screen rejected get the same confirmation at their end,
-and a lock-level field held 100 ms in time no interval or lock tail covers is uncertain
+(PTDATA `DUSBRADIAL`, native ptdata units, treated as gauss by disruption-py) and asks
+for a step at a candidate time: the field's median over the 20 to 120 ms after it must
+exceed its median over the 200 to 20 ms before it by `LOCK_RISE`. The baseline is thus
+local to the candidate, so a field that ramps slowly, or was already high, confirms
+nothing. A candidate time is a frequency drop, an abrupt collapse or the interval's end,
+so a slow lock that follows a decay is found too. A confirmed lock leaves the time after
+it uncertain until the field is back below that level for `lock_release_ms` (200 ms; a
+shorter dip is no release) or the window ends; an abrupt collapse nobody confirms stays
+uncertain to the window end. Candidates the seed screen rejected get the same
+confirmation at their end, and a sustained lock-level field (a step, then 100 ms above
+the quiet level) in time no interval or lock tail covers is uncertain
 (`locked_unseeded`), not absent. Observed onsets are points (iscrowd 0), present
 intervals spans (iscrowd 1); an onset carries `onset_window_ms`, from the start of the
 same-n weak track that precedes the interval to the interval's start. Acquisition gaps
@@ -51,14 +53,18 @@ CATEGORY = "neoclassical_tearing_mode"
 #: Why an interval ended.
 DECAY, PLASMA_END, LOCKED, UNKNOWN = "decay", "plasma_end", "locked", "unknown"
 LOCK_INVALID_RANGE = (176030, 176912)
-#: n=1 radial-field lock confirmation (`DUSBRADIAL`, native ptdata units): a rise this
-#: far above the pre-onset median, held `LOCK_HOLD_MS`, near a candidate time.
+#: n=1 radial-field lock confirmation (`DUSBRADIAL`, native ptdata units): a step at a
+#: candidate time, the median over `LOCK_AFTER_MS` (ms after it) at least this far above
+#: the median over `LOCK_BEFORE_MS` (ms from it, negative: before).
 LOCK_RISE = 5.0
-LOCK_HOLD_MS = 20.0
-#: The pre-onset window the confirmation's baseline is the median of (ms).
-LOCK_BASELINE_MS = 200.0
-#: A lock-level field this long in time no interval covers is uncertain (ms).
+LOCK_BEFORE_MS = (-200.0, -20.0)
+LOCK_AFTER_MS = (20.0, 120.0)
+#: Each of the two windows needs this much measured field, else no step is judged (ms).
+LOCK_MIN_MEASURED_MS = 50.0
+#: A lock-level field this long in time no interval covers is uncertain (ms), judged
+#: against the median of at least `UNSEEDED_MIN_QUIET_MS` of such time.
 UNSEEDED_HOLD_MS = 100.0
+UNSEEDED_MIN_QUIET_MS = 200.0
 #: A weak track ending this far before an interval still leads into it (ms).
 ONSET_LEAD_GAP_MS = 50.0
 LOCK_REASONS = (
@@ -104,11 +110,14 @@ class ModeRule:
 N1_RULE = ModeRule(n=1, onset_g=12.0)
 #: The 6 G n2 seed is a local extension, without an island-number assignment.
 #: The ratio is the rounded-up development-only p99 of N2RMS / N1RMS over strong n = 1
-#: bins whose n = 2 line at twice the frequency is phase-coherent with n = 1 in the
-#: Mirnov array (best-fit n = 1 at 2 f1, fit >= 0.9; scripts/labeler/
-#: tm_harmonic_calibration.py, calibration_dev_fix3.json). The weak floors still come
-#: from calibration_dev_fix1.json. No test reference.
-N2_RULE = ModeRule(n=2, onset_g=6.0, harmonic_ratio=0.72, weak_g=1.827998042)
+#: bins whose n = 2 line at twice the frequency fits toroidal number 2 in the Mirnov
+#: array (best fit n = 2 at 2 f1, fit >= 0.9; scripts/labeler/tm_harmonic_calibration.py,
+#: calibration_dev_fix4.json). A rotating n = 1 waveform that is not sinusoidal has its
+#: harmonics at toroidal number 2, so those are the bins a harmonic occupies. Toroidal
+#: phase cannot tell such a harmonic from a co-rotating, frequency-coupled n = 2 mode:
+#: the veto is a heuristic, and it may also remove a real 3/2 mode. The weak floors
+#: still come from calibration_dev_fix1.json. No test reference.
+N2_RULE = ModeRule(n=2, onset_g=6.0, harmonic_ratio=0.57, weak_g=1.827998042)
 RULES = (N1_RULE, N2_RULE)
 
 
@@ -504,9 +513,9 @@ def _lock_release_ms(amp, t, dt, high, level, hold_ms, window_end) -> float:
     """When the radial field of a lock that began at sample `high` fell for good (ms).
 
     A release is the first sample from which the measured field stays below `level`
-    (the pre-onset baseline plus `LOCK_RISE`) for `hold_ms`. A dip shorter than that, a
-    fall cut off by missing data or the window, and a field that never falls are no
-    release: the locked phase then runs to `window_end`. The hold is a debounce of a
+    (the baseline before the lock plus `LOCK_RISE`) for `hold_ms`. A dip shorter than
+    that, a fall cut off by missing data or the window, and a field that never falls are
+    no release: the locked phase then runs to `window_end`. The hold is a debounce of a
     noisy trace, not a calibrated decay time.
     """
     need = max(1, int(np.ceil(hold_ms / dt - 1e-9)))
@@ -517,31 +526,44 @@ def _lock_release_ms(amp, t, dt, high, level, hold_ms, window_end) -> float:
     return window_end
 
 
-def lock_baseline(amp, t, dt, before_ms, floor_ms, window_ms=LOCK_BASELINE_MS):
-    """The radial field's quiet level ahead of `before_ms`: its median over `window_ms`.
+def _measured_between(amp, t, lo_ms, hi_ms):
+    """Indices of the measured samples of `amp` with `lo_ms <= t <= hi_ms`."""
+    return np.flatnonzero((t >= lo_ms) & (t <= hi_ms) & np.isfinite(amp))
 
-    If fewer than half of the window's samples were measured (the mode began at the
-    window's edge, or the record has a gap), the median over every measured sample
-    from `floor_ms` on stands in. None: nothing was measured.
+
+def lock_step(amp, t, dt, time, *, floor_ms=-np.inf):
+    """`(before, after, after_indices)` of the radial field around `time`, or None.
+
+    `before` is the median of `amp` over `LOCK_BEFORE_MS` of `time` (not before
+    `floor_ms`), `after` its median over `LOCK_AFTER_MS`, and `after_indices` the
+    measured samples of that second window. Each window needs `LOCK_MIN_MEASURED_MS`
+    of measured field, else the step is not judged (None).
     """
-    window = (t >= before_ms - window_ms) & (t < before_ms) & np.isfinite(amp)
-    if window.sum() >= max(1, int(0.5 * window_ms / dt)):
-        return float(np.median(amp[window]))
-    measured = np.isfinite(amp) & (t >= floor_ms)
-    return float(np.median(amp[measured])) if measured.any() else None
+    before = _measured_between(
+        amp, t, max(time + LOCK_BEFORE_MS[0], floor_ms), time + LOCK_BEFORE_MS[1]
+    )
+    after = _measured_between(amp, t, time + LOCK_AFTER_MS[0], time + LOCK_AFTER_MS[1])
+    need = LOCK_MIN_MEASURED_MS / dt - 1e-9
+    if len(before) < need or len(after) < need:
+        return None
+    return float(np.median(amp[before])), float(np.median(amp[after])), after
 
 
-def lock_confirmation(amp, t, dt, level, time, hold_ms=LOCK_HOLD_MS):
-    """Sample index where a lock-level field first holds near `time`, or None.
+def lock_confirmation(amp, t, dt, time, *, rise=LOCK_RISE, floor_ms=-np.inf):
+    """`(index, level)` of a step of the radial field at `time`; `index` None: no step.
 
-    The field must stay at or above `level` for `hold_ms` somewhere in -5 to +100 ms of
-    `time`.
+    A step is `lock_step`'s `after` exceeding its `before` by `rise`; `level` is
+    `before + rise` and `index` the first sample of the after window at or above it.
+    Where the step cannot be judged both are None.
     """
-    nearby = (t >= time - 5.0) & (t <= time + 100.0)
-    for lo, hi in zip(*_runs(nearby & (amp >= level)), strict=True):
-        if (hi - lo) * dt >= hold_ms - 1e-9:
-            return int(lo)
-    return None
+    step = lock_step(amp, t, dt, time, floor_ms=floor_ms)
+    if step is None:
+        return None, None
+    before, after, indices = step
+    level = before + rise
+    if after < level:
+        return None, level
+    return int(indices[amp[indices] >= level][0]), level
 
 
 def label_shot(
@@ -678,15 +700,11 @@ def label_shot(
         if a is not None
     }
 
-    def confirm(n, onset_ms, time):
-        """`(index, level)` of a lock confirmed near `time`, else `(None, level)`."""
+    def confirm(n, time):
+        """`(index, level)` of a lock confirmed at `time`, else `(None, level)`."""
         if n not in field:
             return None, None
-        base = lock_baseline(field[n], t, dt, onset_ms, start)
-        if base is None:
-            return None, None
-        level = base + lock_rise
-        return lock_confirmation(field[n], t, dt, level, time), level
+        return lock_confirmation(field[n], t, dt, time, rise=lock_rise, floor_ms=start)
 
     resolved = []
     for item in plasma:
@@ -708,7 +726,7 @@ def label_shot(
         for time in sorted(set(times)):
             tail_end = w1
             confirmed = item.locked and time == item.lock_time_ms
-            high, level = confirm(item.n, item.start_ms, time)
+            high, level = confirm(item.n, time)
             if high is not None:
                 confirmed = True
                 tail_end = _lock_release_ms(
@@ -766,7 +784,7 @@ def label_shot(
     plasma = resolved
     # A candidate the seed screen turned down can still end in a lock.
     for item in rejected:
-        high, level = confirm(item.n, item.start_ms, item.end_ms)
+        high, level = confirm(item.n, item.end_ms)
         if high is not None:
             uncertain.append(
                 (
@@ -788,11 +806,19 @@ def label_shot(
                 covered |= (t >= a) & (t <= b)
         flat = (t >= start) & (t <= w1) & np.isfinite(field[1])
         quiet = flat & ~covered
-        if quiet.sum() * dt >= LOCK_BASELINE_MS:
+        if quiet.sum() * dt >= UNSEEDED_MIN_QUIET_MS:
             level = float(np.median(field[1][quiet])) + lock_rise
             need = unseeded_hold_ms - 1e-9
             for lo, hi in zip(*_runs(quiet & (field[1] >= level)), strict=True):
                 if (hi - lo) * dt < need:
+                    continue
+                # a field that merely drifts above the quiet level is no lock
+                if (
+                    lock_confirmation(
+                        field[1], t, dt, float(t[lo]), rise=lock_rise, floor_ms=start
+                    )[0]
+                    is None
+                ):
                     continue
                 end = _lock_release_ms(field[1], t, dt, lo, level, lock_release_ms, w1)
                 uncertain.extend(
@@ -900,10 +926,12 @@ def shot_table(label: ShotLabel) -> pd.DataFrame:
     present = [(i.start_ms, i.end_ms) for i in label.intervals]
     ramp = _minus(list(label.ramp_up), gaps + present)
     uncertain = []
-    for a, b, reason, n in label.uncertain:
+    # one row per span, reason and number, however many routes found it
+    for a, b, reason, n in dict.fromkeys(label.uncertain):
         uncertain.extend(
             (lo, hi, reason, n) for lo, hi in _minus([(a, b)], gaps + present)
         )
+    uncertain = list(dict.fromkeys(uncertain))
     busy = _union(present + ramp + gaps + [(a, b) for a, b, _, _ in uncertain])
     rows += [_row(label.shot, NOT_OBSERVABLE, a, b) for a, b in gaps]
     rows += [_row(label.shot, UNCERTAIN, a, b) for a, b in ramp]

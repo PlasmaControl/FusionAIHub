@@ -669,12 +669,47 @@ def test_lock_confirmation_is_a_rise_over_the_pre_onset_level_not_an_absolute_le
     assert not label.intervals[0].locked
 
 
-def test_the_baseline_falls_back_to_the_flat_top_median_when_the_window_is_unmeasured():
-    field = np.full(T.shape, 20.0)
-    field[:900] = np.nan
-    field[1500:2000] = 26.0
-    label, _ = _collapse_with(field, start_ms=0.0)
+def test_a_slowly_ramping_radial_field_is_no_step_and_confirms_no_lock():
+    # 0 to 45 over the record: far above where it was when the mode began, but it
+    # gains under 3 across the 200 to 20 ms before and the 20 to 120 ms after a time
+    ramp = np.linspace(0.0, 45.0, T.size)
+    label, _ = _collapse_with(ramp)
+    assert ramp[1504] - ramp[1000] > 5.0
+    (item,) = label.intervals
+    assert not item.locked and item.ended == rule.UNKNOWN
+    assert all(
+        reason != "confirmed_locked_phase" for _, _, reason, _ in label.uncertain
+    )
+    # the same ramp with a step of 8 at the collapse is a lock
+    stepped = ramp.copy()
+    stepped[1500:] += 8.0
+    label, _ = _collapse_with(stepped)
+    assert label.intervals[0].locked and label.intervals[0].ended == rule.LOCKED
+
+
+def test_the_baseline_is_the_field_just_before_the_candidate_not_before_the_onset():
+    # high while the mode began, quiet for the 200 ms before its collapse: the step of
+    # 6 over that quiet level is a lock, which the onset-time baseline would have missed
+    field = np.zeros(T.shape)
+    field[900:1280] = 40.0
+    field[1500:2000] = 6.0
+    label, _ = _collapse_with(field)
     assert label.intervals[0].locked
+
+
+def test_lock_confirmation_needs_measured_field_on_both_sides_of_the_time():
+    field = np.zeros(T.shape)
+    field[1500:] = 9.0
+    index, level = rule.lock_confirmation(field, T, 1.0, 1500.0)
+    assert level == rule.LOCK_RISE and T[index] >= 1520.0
+    assert rule.lock_confirmation(field, T, 1.0, 1400.0)[0] is None
+    gappy = field.copy()
+    gappy[1300:1485] = np.nan  # under 50 ms measured before the time
+    assert rule.lock_confirmation(gappy, T, 1.0, 1500.0) == (None, None)
+    assert rule.lock_confirmation(field, T, 1.0, 1500.0, floor_ms=1470.0) == (
+        None,
+        None,
+    )
 
 
 def test_a_slow_lock_after_a_plain_decay_is_found_at_the_interval_end():
@@ -743,6 +778,31 @@ def test_a_sustained_radial_field_in_absent_flat_top_time_is_uncertain_not_absen
     label = rule.label_shot(1, T, y, None, (0, 2999), lock_amplitude={1: field})
     assert not label.uncertain
     assert rule.shot_table(label).category.eq(rule.ABSENT).all()
+
+
+def test_a_slow_drift_of_the_radial_field_in_absent_time_is_not_unseeded():
+    y = np.full(T.shape, 0.2)
+    field = np.linspace(0.0, 45.0, T.size)
+    label = rule.label_shot(1, T, y, None, (0, 2999), lock_amplitude={1: field})
+    assert not label.uncertain
+    assert rule.shot_table(label).category.eq(rule.ABSENT).all()
+
+
+def test_one_row_per_span_reason_and_number_whatever_the_route_that_found_it():
+    label = rule.ShotLabel(
+        1,
+        (0.0, 100.0),
+        0.0,
+        (),
+        uncertain=(
+            (10.0, 20.0, "confirmed_locked_phase", 1),
+            (10.0, 20.0, "confirmed_locked_phase", 1),
+            (10.0, 20.0, "confirmed_locked_phase", 2),
+        ),
+    )
+    table = rule.shot_table(label)
+    assert not table.duplicated().any()
+    assert (table.category == rule.UNCERTAIN).sum() == 2
 
 
 def test_the_weak_screen_covers_the_ramp_up_like_the_flat_top():
