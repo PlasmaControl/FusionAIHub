@@ -4,7 +4,7 @@
   "exclude_test": true,
   "tolerance_ms": 100.0,
   "n_shots_considered": 450,
-  "git_sha": "7c7de9f0",
+  "git_sha": "751d5ee9",
   "intervals_table": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm/labels/tm_intervals_full_cohort.csv",
   "intervals_sha256": "4e126b91c7aad96a23f10c9ca214ea2766d2316af5c9f094e44448029f5c272c",
   "caveat": "Seo labels are growth-phase labels with limited temporal coverage. Agreement is containment within the interval or 100 ms of its edges, not timing accuracy.",
@@ -50,9 +50,8 @@
         },
         "reference_after_interval_start_fraction": 0.75,
         "reference_after_interval_start_by_more_than_tolerance": 8,
-        "reference_inside_onset_window": 4,
-        "reference_inside_onset_window_strict": 2,
-        "reference_inside_onset_window_fraction": 0.3333333333333333
+        "reference_inside_onset_window": 2,
+        "reference_inside_onset_window_fraction": 0.16666666666666666
       },
       "compared_intervals": 14,
       "intervals_with_an_onset": 11,
@@ -97,9 +96,8 @@
         },
         "reference_after_interval_start_fraction": 0.7692307692307693,
         "reference_after_interval_start_by_more_than_tolerance": 9,
-        "reference_inside_onset_window": 4,
-        "reference_inside_onset_window_strict": 2,
-        "reference_inside_onset_window_fraction": 0.3076923076923077
+        "reference_inside_onset_window": 2,
+        "reference_inside_onset_window_fraction": 0.15384615384615385
       },
       "compared_intervals": 19,
       "intervals_with_an_onset": 12,
@@ -138,7 +136,6 @@
         "reference_after_interval_start_fraction": 1.0,
         "reference_after_interval_start_by_more_than_tolerance": 8,
         "reference_inside_onset_window": 0,
-        "reference_inside_onset_window_strict": 0,
         "reference_inside_onset_window_fraction": 0.0
       },
       "compared_intervals": 14,
@@ -176,7 +173,6 @@
         "reference_after_interval_start_fraction": 1.0,
         "reference_after_interval_start_by_more_than_tolerance": 9,
         "reference_inside_onset_window": 0,
-        "reference_inside_onset_window_strict": 0,
         "reference_inside_onset_window_fraction": 0.0
       },
       "compared_intervals": 19,

@@ -1,6 +1,6 @@
 {
   "made_by": "scripts/labeler/tm_rule_diagnostics.py",
-  "git_sha": "7c7de9f0",
+  "git_sha": "751d5ee9",
   "split": "development shots only; blind test shots never read",
   "uncertain_fraction": {
     "before": {
@@ -116,8 +116,8 @@
           "shots": 343
         },
         "confirmed_locked_phase": {
-          "rows": 48,
-          "seconds": 20.665995000000002,
+          "rows": 39,
+          "seconds": 17.015995,
           "shots": 37
         },
         "locked_unseeded": {

@@ -1,22 +1,22 @@
 {
   "made_by": "scripts/labeler/tm_audit_rule.py",
-  "made_at": "2026-10-04T03:53:18.578623+00:00",
-  "git_sha": "90f07b1a",
+  "made_at": "2026-10-04T04:53:12.944751+00:00",
+  "git_sha": "751d5ee9",
   "policy": "Audit current nonblind TM labels, coherent criterion rates and screening coverage.\n\nNo historical label or blind signal artifacts are opened. Sample rates use the\nuniform RMS grid and its median time step; interval durations use unioned spans.\nUncertainty takes priority over presence; missing acquisition is unobservable.\nFrequency and Mirnov criterion rates condition on measured respective inputs;\ncombined span/seed support rates condition on all valid RMS samples.\n\nCriterion pass rates are split by toroidal number: the present rows of n are the time\ninside n's own intervals (not the other n's), and the absent rows are the time the\nfinished labels call absent. Absent rates are therefore post-labelling: time that passed\na weak screen was moved out of absent by construction, so a low absent pass rate is\npartly a consequence of the labelling, not an independent measurement.\n",
   "excluded_blind_shots": 50,
   "source_sha256": {
     "scripts/labeler/tm_audit_rule.py": "0e1d8c3217d36e047cf01e779a55281c11ef9a854f798439c9c410854093b51a",
-    "src/labeler/tearing/rule.py": "46d6c6c8a3dc6e5d438a8d1f2edc017aea84b90484aaa792f914f7634930c2ab",
-    "scripts/labeler/tm_label.py": "cbe50a61b2765bf2e985838f3c1a1d05931289e1504a2bfd83446f6d525d69f0"
+    "src/labeler/tearing/rule.py": "42d556dbdc8d117e99257e1e586de0ed547fc9981ffec3a16f100f81f846a2b7",
+    "scripts/labeler/tm_label.py": "d86d523a3c7cb7b92dadfa0a98db93c1e0b055583db98f27de23ce5464a77170"
   },
   "label_sha256": {
     "cohort": {
       "intervals": "4e126b91c7aad96a23f10c9ca214ea2766d2316af5c9f094e44448029f5c272c",
-      "table": "0cf0fe502baa219e75db447ee7a08b8ab92879070391e4e1bafc5aca7647f328"
+      "table": "af272ce2316a02d93a66384cc0b086108c87c639069fb72d99777046780f4cc9"
     },
     "population": {
       "intervals": "1249d1fb2e5d394e1be9e24ab769701b5f021827d5f4f4b7822466075165ca9b",
-      "table": "ca2290ae7ad415bfd95a7a5cdf560bee9aeccf8a7c78617e25c68535fa2fb9b7"
+      "table": "9f79bb19159b2380e582393fdd8c5f1057a63af69943080f4c00e677d4e7c546"
     }
   },
   "cohort": {
@@ -1103,8 +1103,8 @@
           "seconds": 1166.132
         },
         "confirmed_locked_phase": {
-          "rows": 48,
-          "seconds": 20.665995000000002
+          "rows": 39,
+          "seconds": 17.015995
         },
         "locked_unseeded": {
           "rows": 11,
@@ -12034,8 +12034,8 @@
           "seconds": 11841.646
         },
         "confirmed_locked_phase": {
-          "rows": 374,
-          "seconds": 199.17574999999997
+          "rows": 298,
+          "seconds": 159.42882500000002
         },
         "locked_unseeded": {
           "rows": 55,

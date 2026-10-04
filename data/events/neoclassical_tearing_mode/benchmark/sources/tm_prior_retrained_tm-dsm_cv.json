@@ -2,9 +2,9 @@
   "model": "tm-dsm",
   "slug": "d3d_tearing_time_to_event_dsm",
   "variant": "retrained from fresh weights, detection objective (horizon 0)",
-  "git_sha": "90f07b1a",
+  "git_sha": "751d5ee9",
   "labels": "data/events/neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv",
-  "labels_sha256": "0cf0fe502baa219e75db447ee7a08b8ab92879070391e4e1bafc5aca7647f328",
+  "labels_sha256": "af272ce2316a02d93a66384cc0b086108c87c639069fb72d99777046780f4cc9",
   "bin_ms": 10.0,
   "shots_without_inputs": [],
   "dev_shots": [
@@ -2474,7 +2474,7 @@
           ]
         }
       ],
-      "seconds": 27.4
+      "seconds": 9.7
     },
     {
       "fold": 1,
@@ -3554,7 +3554,7 @@
           ]
         }
       ],
-      "seconds": 40.2
+      "seconds": 7.6
     },
     {
       "fold": 2,
@@ -4687,7 +4687,7 @@
           ]
         }
       ],
-      "seconds": 57.1
+      "seconds": 10.7
     },
     {
       "fold": 3,
@@ -5750,7 +5750,7 @@
           ]
         }
       ],
-      "seconds": 34.9
+      "seconds": 6.6
     },
     {
       "fold": 4,
@@ -6973,7 +6973,7 @@
           ]
         }
       ],
-      "seconds": 93.1
+      "seconds": 17.5
     }
   ],
   "scored_shots": [
@@ -7607,7 +7607,7 @@
     "scored_seconds": 581.34,
     "segment_missing_data_policy": "unavailable label or score bins are hard barriers to merging; excluded from IoU"
   },
-  "rescore_git_sha": "1e4917bf",
+  "rescore_git_sha": "93eae927",
   "rescore_from": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm/results/oof_tm_prior_retrained_tm-dsm.npz",
   "rescore_delta": {
     "auroc": 0.0,

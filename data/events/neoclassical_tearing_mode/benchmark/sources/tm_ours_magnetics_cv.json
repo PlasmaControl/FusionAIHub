@@ -1,5 +1,5 @@
 {
-  "git_sha": "7c7de9f0",
+  "git_sha": "751d5ee9",
   "labels": "data/events/neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv",
   "bin_ms": 10.0,
   "shots_without_features": [],
@@ -908,7 +908,7 @@
     204840,
     204937
   ],
-  "labels_sha256": "0cf0fe502baa219e75db447ee7a08b8ab92879070391e4e1bafc5aca7647f328",
+  "labels_sha256": "af272ce2316a02d93a66384cc0b086108c87c639069fb72d99777046780f4cc9",
   "input_mask_policy": "zero only nonfinite feature rows; target uncertainty masks loss and evaluation, never model input context",
   "cuda_peak_allocated_gb": 0.01311232,
   "split": "dev, shot-grouped 5-fold out-of-fold",
@@ -2323,9 +2323,9 @@
       "threshold_status": "positive-bearing inner-validation F1 optimum",
       "checkpoint": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm/checkpoints/tm_ours_magnetics/fold_0.pt",
       "val_loss": [
-        0.009883848950266838,
-        0.007776970509439707,
-        0.006728962529450655
+        0.009883850812911987,
+        0.007776969578117132,
+        0.0067289951257407665
       ]
     },
     {
@@ -3265,9 +3265,9 @@
       "threshold_status": "positive-bearing inner-validation F1 optimum",
       "checkpoint": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm/checkpoints/tm_ours_magnetics/fold_1.pt",
       "val_loss": [
-        0.0014531626366078854,
-        0.0018289205618202686,
-        0.0013200539397075772
+        0.001453162170946598,
+        0.0018289191648364067,
+        0.0013200551038607955
       ]
     },
     {
@@ -4208,7 +4208,7 @@
       "checkpoint": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm/checkpoints/tm_ours_magnetics/fold_2.pt",
       "val_loss": [
         0.053469859063625336,
-        0.04929574951529503,
+        0.04929572343826294,
         0.04296804219484329
       ]
     },
@@ -5149,9 +5149,9 @@
       "threshold_status": "positive-bearing inner-validation F1 optimum",
       "checkpoint": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm/checkpoints/tm_ours_magnetics/fold_3.pt",
       "val_loss": [
-        0.010125665925443172,
-        0.007160354405641556,
-        0.01313005294650793
+        0.010125543922185898,
+        0.007160351611673832,
+        0.013130055740475655
       ]
     },
     {
@@ -6092,9 +6092,9 @@
       "threshold_status": "positive-bearing inner-validation F1 optimum",
       "checkpoint": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm/checkpoints/tm_ours_magnetics/fold_4.pt",
       "val_loss": [
-        0.002203175099566579,
-        0.0016576306661590934,
-        0.0014558554394170642
+        0.0022031895350664854,
+        0.001657649059779942,
+        0.0014559662668034434
       ]
     }
   ],
@@ -6137,14 +6137,14 @@
     "n_shots": 450,
     "replicates": 1000,
     "auroc": {
-      "value": 0.9987030305106901,
-      "lo": 0.9973475434168487,
-      "hi": 0.9995777195544144,
+      "value": 0.9987030312123005,
+      "lo": 0.99734754190067,
+      "hi": 0.9995777197630683,
       "valid_replicates": 1000
     },
     "auprc": {
       "value": 0.9942432641900758,
-      "lo": 0.9887736819088676,
+      "lo": 0.988773679611719,
       "hi": 0.9974521925169084,
       "valid_replicates": 1000
     },
@@ -6197,7 +6197,7 @@
     "scored_seconds": 1628.4,
     "segment_missing_data_policy": "unavailable label or score bins are hard barriers to merging; excluded from IoU"
   },
-  "rescore_git_sha": "1e4917bf",
+  "rescore_git_sha": "93eae927",
   "rescore_from": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm/results/oof_tm_ours_magnetics.npz",
   "rescore_delta": {
     "auroc": 0.0,

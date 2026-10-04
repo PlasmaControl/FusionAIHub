@@ -1,5 +1,6 @@
 {
   "made_by": "scripts/labeler/tm_benchmark.py",
+  "git_sha": "93eae927",
   "model": "tm-onsetcnn-retrained",
   "shots": [
     185805,
@@ -453,33 +454,33 @@
     204840,
     204937
   ],
-  "labels_sha256": "0cf0fe502baa219e75db447ee7a08b8ab92879070391e4e1bafc5aca7647f328",
+  "labels_sha256": "af272ce2316a02d93a66384cc0b086108c87c639069fb72d99777046780f4cc9",
   "policy": "category 2 (uncertain) scored as negative, category 3 (not observable) still excluded; the same fitted models and the same inner-validation thresholds as the primary row, so interval boundaries and the weak-line margin are scored too",
   "metrics": {
     "n_shots": 286,
     "replicates": 1000,
     "auroc": {
-      "value": 0.902795931325606,
-      "lo": 0.8725200036473097,
-      "hi": 0.9322146510783481,
+      "value": 0.9028081520069295,
+      "lo": 0.8725223124787859,
+      "hi": 0.9322224315619877,
       "valid_replicates": 1000
     },
     "auprc": {
-      "value": 0.4438136925942497,
-      "lo": 0.2920612761608013,
-      "hi": 0.5993315363254559,
+      "value": 0.44376591946178046,
+      "lo": 0.2920219421201793,
+      "hi": 0.5993424685401303,
       "valid_replicates": 1000
     },
     "f1": {
-      "value": 0.43494108671696197,
-      "lo": 0.3307037124386955,
-      "hi": 0.5281506670138281,
+      "value": 0.4350517212141767,
+      "lo": 0.330738347423252,
+      "hi": 0.528226392928843,
       "valid_replicates": 1000
     },
     "precision": {
-      "value": 0.28478659044236,
-      "lo": 0.20290781426877552,
-      "hi": 0.3682428719111044,
+      "value": 0.28488146132918774,
+      "lo": 0.20294827285970687,
+      "hi": 0.36831888180527234,
       "valid_replicates": 1000
     },
     "recall": {
@@ -495,21 +496,21 @@
       "valid_replicates": 1000
     },
     "segf1_0.3": {
-      "value": 0.33266533066132264,
-      "lo": 0.21444463758039287,
-      "hi": 0.4372798726494876,
+      "value": 0.3333333333333333,
+      "lo": 0.2153025098953981,
+      "hi": 0.4381505042886789,
       "valid_replicates": 1000
     },
     "segf1_0.5": {
-      "value": 0.312625250501002,
-      "lo": 0.201522288887787,
-      "hi": 0.41632846198416273,
+      "value": 0.3132530120481928,
+      "lo": 0.20229763211280724,
+      "hi": 0.4168649416841155,
       "valid_replicates": 1000
     },
     "segf1_0.7": {
-      "value": 0.2965931863727455,
-      "lo": 0.1854696452397771,
-      "hi": 0.3974956685005074,
+      "value": 0.2971887550200803,
+      "lo": 0.1862641117052882,
+      "hi": 0.39912888898156645,
       "valid_replicates": 1000
     },
     "shots_without_a_scored_bin": [

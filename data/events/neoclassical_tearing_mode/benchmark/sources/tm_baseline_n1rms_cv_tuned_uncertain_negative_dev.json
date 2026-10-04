@@ -1,5 +1,6 @@
 {
   "made_by": "scripts/labeler/tm_benchmark.py",
+  "git_sha": "93eae927",
   "model": "tm-rms",
   "shots": [
     185805,
@@ -453,7 +454,7 @@
     204840,
     204937
   ],
-  "labels_sha256": "0cf0fe502baa219e75db447ee7a08b8ab92879070391e4e1bafc5aca7647f328",
+  "labels_sha256": "af272ce2316a02d93a66384cc0b086108c87c639069fb72d99777046780f4cc9",
   "policy": "category 2 (uncertain) scored as negative, category 3 (not observable) still excluded; the same fitted models and the same inner-validation thresholds as the primary row, so interval boundaries and the weak-line margin are scored too",
   "metrics": {
     "n_shots": 450,
