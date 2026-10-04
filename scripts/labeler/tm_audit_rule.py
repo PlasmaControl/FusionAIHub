@@ -255,10 +255,10 @@ def audit_set(name, intervals, table, shots):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument(
-        "--out", type=Path, default=OUT / "labels/audit_fix3_current.json"
+        "--out", type=Path, default=OUT / "labels/audit_fix4_current.json"
     )
     parser.add_argument(
-        "--criterion-out", type=Path, default=OUT / "labels/criterion_support_fix3.json"
+        "--criterion-out", type=Path, default=OUT / "labels/criterion_support_fix4.json"
     )
     parser.add_argument(
         "--sets",

@@ -1,16 +1,22 @@
 #!/usr/bin/env python
-"""Calibrate the n = 2 harmonic veto on phase-coherent harmonic bins only.
+"""Calibrate the n = 2 harmonic veto on the bins whose line at 2 f1 fits toroidal n = 2.
 
 `tm_calibrate_rule.py` took every strong (>= 12 G for 50 ms) n = 1 bin whose n = 2 line
-sits at twice the n = 1 line's frequency, and set the veto at the 99th percentile of
-N2RMS / N1RMS there. A frequency-coupled 3/2 + 2/1 pair satisfies the same test, so that
-set can hold real n = 2 modes. Here the same bins are kept only where the Mirnov array
-agrees that the line at 2 f1 is the harmonic of the n = 1 mode: the best-fit toroidal
-number of the six midplane probes' phases at 2 f1 is 1 with a fit of at least 0.9
-(`COHERENT_FIT`). The 99th percentile of N2RMS / N1RMS over those bins is the veto,
-rounded up to two decimals. If that set is too small (fewer than `MIN_BINS` bins or
-`MIN_SHOTS` shots) the 95th percentile of the frequency-matched set stands in. The
-record keeps both sets, and the set whose best-fit number is 2, for comparison.
+sits at twice the n = 1 line's frequency and set the veto at the 99th percentile of
+N2RMS / N1RMS there. The second harmonic of a rotating, non-sinusoidal n = 1 waveform
+has toroidal number 2 at 2 f1, so the bins that are really the harmonic are the ones
+whose six midplane-probe phases at 2 f1 fit n = 2 (best-fit |n| = 2 with a fit of at
+least 0.9, `COHERENT_FIT`). Those bins are the harmonic reference: the 99th percentile
+of N2RMS / N1RMS over them, rounded up to two decimals, is the veto.
+
+The bins that fit n = 1 at 2 f1 are NOT the harmonic reference (a line of toroidal
+number 1 at 2 f1 is a different n = 1 line), and earlier rounds calibrated on them in
+error. The record keeps every set for comparison.
+
+Limit, stated plainly: toroidal phase cannot separate a harmonic of the n = 1 mode from
+a co-rotating, frequency-coupled n = 2 mode (a 3/2 mode locked to the 2/1), because both
+have toroidal number 2 at 2 f1. The veto is therefore a heuristic, and it may also
+remove real 3/2 modes; `tm_rule_diagnostics.py` reports how many seeds it removes.
 
 Only development shots from the frozen reference list of `calibration_dev_fix1.json`
 are read; no blind test shot is opened.
@@ -123,7 +129,7 @@ def main(argv=None) -> int:
     ap.add_argument(
         "--frozen", type=Path, default=SOURCES / "calibration_dev_fix1.json"
     )
-    ap.add_argument("--out", type=Path, default=SOURCES / "calibration_dev_fix3.json")
+    ap.add_argument("--out", type=Path, default=SOURCES / "calibration_dev_fix4.json")
     args = ap.parse_args(argv)
     cohort = pd.read_csv(CATALOG / "cohort.csv").set_index("shot")
     frozen = json.loads(args.frozen.read_text())
@@ -180,10 +186,10 @@ def main(argv=None) -> int:
         }
         for name, mask in sets.items()
     }
-    main_set = summary["phase_coherent_best_fit_n1"]
+    main_set = summary["phase_coherent_best_fit_n2"]
     enough = main_set["n_bins"] >= MIN_BINS and main_set["n_shots"] >= MIN_SHOTS
     if enough:
-        quantile, source = 0.99, "phase_coherent_best_fit_n1"
+        quantile, source = 0.99, "phase_coherent_best_fit_n2"
         value = float(np.quantile(ratio[sets[source]], quantile))
     else:
         quantile, source = 0.95, "frequency_matched_all"
@@ -198,13 +204,17 @@ def main(argv=None) -> int:
         "sets": summary,
         "minimum_bins": MIN_BINS,
         "minimum_shots": MIN_SHOTS,
-        "phase_coherent_set_large_enough": bool(enough),
+        "harmonic_set_large_enough": bool(enough),
         "selected_set": source,
         "selected_quantile": quantile,
         "harmonic_ratio_unrounded": value,
         "harmonic_ratio": math.ceil(value * 100) / 100,
-        "previous_harmonic_ratio": frozen["harmonic_ratio"],
-        "previous_harmonic_ratio_rounded": 0.57,
+        "frozen_reference_harmonic_ratio": frozen["harmonic_ratio"],
+        "limit": (
+            "toroidal phase cannot separate a harmonic of n = 1 from a co-rotating "
+            "coupled n = 2 mode; the veto is a heuristic that may also remove real "
+            "3/2 modes"
+        ),
         "reference_shots": sources,
         "shots_without_mirnov": missing,
     }

@@ -269,6 +269,9 @@ def counts_of(frame, intervals) -> dict:
             .items()
         },
         "n_onset_windows": int(intervals.onset_window_start_ms.notna().sum()),
+        "n_onset_windows_at_most_5_ms": int(
+            ((intervals.t_start - intervals.onset_window_start_ms) <= 5.0).sum()
+        ),
         "n_with_m": int(intervals.m.notna().sum()),
         "n_without_observed_onset": int((~intervals.onset_seen.astype(bool)).sum()),
         "shots_with_uncertain": int(frame[frame.category == 2].shot.nunique()),
@@ -315,17 +318,19 @@ def meta_for(which, frame, labels, missing, unlocked, shots, rules, extra=None):
             "locked_candidate, storing earliest lock_time_ms and every in-span "
             "drop in lock_candidates_ms (plus <=100 ms after the RMS end). "
             "An abrupt raw >seed to <release collapse within <=5 ms never "
-            "counts as decay: unknown unless |DUSBRADIAL| rises >=5 above its "
-            "median over the 200 ms before the interval began (the whole-flat-top "
-            "median if that window is mostly unmeasured) and holds 20 ms within "
-            "-5 to +100 ms of a candidate time, which also include every "
+            "counts as decay: unknown unless |DUSBRADIAL| steps at a candidate "
+            "time: its median over the 20 to 120 ms after the time is >=5 above "
+            "its median over the 200 to 20 ms before it (each window needs 50 ms "
+            "measured, the baseline is not read before the plasma start). The "
+            "candidate times are every frequency drop, the collapse, every "
             "interval's end and the end of each rejected candidate. "
             "Post-lock time is uncertain until |DUSBRADIAL| stays <5 above that "
-            "baseline for 200 ms (shorter dips are no release) or the discharge "
-            "ends; an absent diagnostic leaves an unconfirmed collapse's tail "
-            "uncertain. A rise of 5 held 100 ms in flat-top time no interval or "
-            "lock tail covers is uncertain `locked_unseeded`. Without "
-            "frequency: ended=unknown and locked_known=false per row.",
+            "local baseline for 200 ms (shorter dips are no release) or the "
+            "discharge ends; an absent diagnostic leaves an unconfirmed collapse's "
+            "tail uncertain. A step of 5 followed by 100 ms above the quiet level "
+            "in flat-top time no interval or lock tail covers is uncertain "
+            "`locked_unseeded`. Without frequency: ended=unknown and "
+            "locked_known=false per row.",
             "intervals_without_a_frequency_record_shots": unlocked,
             "unknown_locking_shots": sorted(
                 label.shot
@@ -346,9 +351,12 @@ def meta_for(which, frame, labels, missing, unlocked, shots, rules, extra=None):
         "screen runs over the whole catalog window, ramp-up included.",
         "onset_window_ms": "An onset point carries [start of the preceding same-n "
         "weak track, interval start] in ms where such a track leads into the "
-        "interval; the onset itself stays at the interval start.",
+        "interval; the onset itself stays at the interval start (where the RMS "
+        "crossed a tenth of the peak). A window of at most 5 ms is one the weak "
+        "track opened at the interval start: counted in "
+        "counts.n_onset_windows_at_most_5_ms, not widened.",
         "calibration": "benchmark/sources/calibration_dev_fix1.json (weak floors, "
-        "weak RMS thresholds) and calibration_dev_fix3.json (harmonic ratio)",
+        "weak RMS thresholds) and calibration_dev_fix4.json (harmonic ratio)",
         "screening_missing": "All requested shots exclude blind cohort IDs before "
         "input reads; unavailable line screening at RMS above frozen weak_g "
         "is uncertain even without positive coherent-line evidence.",
