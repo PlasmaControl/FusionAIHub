@@ -1,0 +1,161 @@
+{
+  "made_by": "scripts/labeler/tm_verify_artifacts.py",
+  "labels_sha256": "0cf0fe502baa219e75db447ee7a08b8ab92879070391e4e1bafc5aca7647f328",
+  "benchmark_sha256": "7fc694901b2c4ec7dd72b9776197c11627dca57ad683426b6330ef2d6ab72395",
+  "development_shots": 450,
+  "benchmark_rows_checked": [
+    [
+      "tm-onsetcnn-published",
+      "Legacy"
+    ],
+    [
+      "tm-dsm-500ms-published",
+      "Legacy"
+    ],
+    [
+      "tm-onsetcnn-published",
+      "Tokamak-SI"
+    ],
+    [
+      "tm-onsetcnn-published",
+      "Tokamak-SI"
+    ],
+    [
+      "tm-dsm-500ms-published",
+      "Tokamak-SI"
+    ],
+    [
+      "tm-onsetcnn-retrained",
+      "Tokamak-SI"
+    ],
+    [
+      "tm-dsm-retrained",
+      "Tokamak-SI"
+    ],
+    [
+      "tm-rms-2line",
+      "Tokamak-SI"
+    ],
+    [
+      "tm-rms-2line",
+      "Tokamak-SI"
+    ],
+    [
+      "tm-rms",
+      "Tokamak-SI"
+    ],
+    [
+      "tm-ours",
+      "Tokamak-SI"
+    ],
+    [
+      "tm-ours-rms",
+      "Tokamak-SI"
+    ],
+    [
+      "tm-onsetcnn-published",
+      "Tokamak-SI, uncertain = negative"
+    ],
+    [
+      "tm-onsetcnn-published",
+      "Tokamak-SI, uncertain = negative"
+    ],
+    [
+      "tm-dsm-500ms-published",
+      "Tokamak-SI, uncertain = negative"
+    ],
+    [
+      "tm-onsetcnn-retrained",
+      "Tokamak-SI, uncertain = negative"
+    ],
+    [
+      "tm-dsm-retrained",
+      "Tokamak-SI, uncertain = negative"
+    ],
+    [
+      "tm-rms-2line",
+      "Tokamak-SI, uncertain = negative"
+    ],
+    [
+      "tm-ours",
+      "Tokamak-SI, uncertain = negative"
+    ],
+    [
+      "tm-dsm-250ms-published",
+      "Legacy"
+    ],
+    [
+      "tm-dsm-1s-published",
+      "Legacy"
+    ],
+    [
+      "tm-dsm-250ms-published",
+      "Tokamak-SI"
+    ],
+    [
+      "tm-dsm-1s-published",
+      "Tokamak-SI"
+    ],
+    [
+      "tm-rms-2line",
+      "Tokamak-SI, uncertain = negative"
+    ],
+    [
+      "tm-rms",
+      "Tokamak-SI, uncertain = negative"
+    ],
+    [
+      "tm-ours-rms",
+      "Tokamak-SI, uncertain = negative"
+    ],
+    [
+      "tm-onsetcnn-published",
+      "Legacy, tuned"
+    ],
+    [
+      "tm-dsm-250ms-published",
+      "Legacy, tuned"
+    ],
+    [
+      "tm-dsm-500ms-published",
+      "Legacy, tuned"
+    ],
+    [
+      "tm-dsm-1s-published",
+      "Legacy, tuned"
+    ],
+    [
+      "tm-rms",
+      "Tokamak-SI, fixed"
+    ],
+    [
+      "tm-dsm-250ms-published",
+      "Tokamak-SI, fixed"
+    ],
+    [
+      "tm-dsm-500ms-published",
+      "Tokamak-SI, fixed"
+    ],
+    [
+      "tm-dsm-1s-published",
+      "Tokamak-SI, fixed"
+    ]
+  ],
+  "figures_verified": [
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm/figures/tm_gallery_mhr",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm/figures/tm_gallery_mirnov",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm/figures/tm_examples_column_mhr",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm/figures/tm_examples_column_mirnov",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm/figures/table_tm_benchmark_preview",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm/figures/table_tm_benchmark_appendix_preview",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm/figures/table_tm_paired_preview",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm/figures/table_tm_shot_sets_preview"
+  ],
+  "no_zero_positive_folds": true,
+  "outer_assignments_unchanged": true,
+  "no_abrupt_decay": true,
+  "no_seed_audit_failures": true,
+  "blind_excluded": true,
+  "file_sizes_below_2mb": true,
+  "status": "passed"
+}
