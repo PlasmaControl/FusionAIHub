@@ -9,8 +9,10 @@ The views figure shows the attached, detached and re-attached phases of one shot
 time order. Each column is a sustained interval (a run of at least `MIN_RUN_BINS`
 consecutive 50 ms bins of one TangTV vote, the longest such run before, at and
 after the detached phase), never a single bin, and is titled by that TangTV vote
-with the exported label of its bins in brackets: the label can be `certain`,
-`tangtv_only` (silver) or uncertain, and the column says which. The raw TangTV frame
+with the exported label of its bins in brackets: the label can be TangTV + Afrac
+agreement (tier `certain`, not a confidence level), `tangtv_only` (silver),
+`tangtv_only_lmode` (uncertain, the a-priori L-mode gate) or other uncertain, and the
+column says which. The raw TangTV frame
 and the C-III inversion with EFIT flux surfaces at the interval centre, the
 front-height line at
 the interval's median DZ, and under them the PRAD_DIVL and PRAD_TOT traces with the
@@ -51,9 +53,13 @@ STATE_COLOUR = {
     # silver (tangtv_only) tints of attached and detached
     11: "#8EC1E3",
     12: "#F4D58D",
+    # uncertain because TangTV votes detached on a known L-mode phase
+    14: "#009E73",
 }
 STATE_NAME = {1: "attached", 2: "detached", 3: "MARFE", 4: "uncertain"}
 SILVER_OFFSET = 10
+#: Colour key of the uncertain bins the L-mode gate sets (tier tangtv_only_lmode).
+LMODE_KEY = 14
 INK = "#222222"
 #: Top of the plotted inversion window (m): the divertor view, not the whole frame.
 VIEW_ZMAX = -0.85
@@ -112,7 +118,8 @@ def longest(candidates: list[dict]) -> dict | None:
 
 
 def label_composition(group: pd.DataFrame, run: dict) -> dict:
-    """Exported label of the bins of a TangTV-vote run: certain, tangtv_only or not."""
+    """Exported label of the bins of a TangTV-vote run: TangTV + Afrac agreement
+    (tier certain), TangTV only, the L-mode gate (uncertain) or other uncertain."""
     inside = group[
         (group.start_ms >= run["start_ms"]) & (group.start_ms < run["end_ms"])
     ]
@@ -122,6 +129,7 @@ def label_composition(group: pd.DataFrame, run: dict) -> dict:
         "certain": int((labelled & inside.tier.eq("certain")).sum()),
         "tangtv_only": int((labelled & inside.tier.eq("tangtv_only")).sum()),
         "uncertain": int(inside.state_rule.eq(core.UNCERTAIN).sum()),
+        "lmode_gate": int(inside.tier.eq("tangtv_only_lmode").sum()),
         "other_tiers": {
             str(k): int(v)
             for k, v in inside.loc[inside.state_rule.eq(core.UNCERTAIN), "tier"]
@@ -135,13 +143,15 @@ def label_text(composition: dict, state: int) -> str:
     """The bracket of a column title: what the exported label of its bins is."""
     n, name = composition["bins"], STATE_NAME[state]
     if composition["certain"] == n:
-        return f"label: certain {name}"
+        return f"label: {name}, TangTV +\nAfrac agreement"
     if composition["tangtv_only"] == n:
         return f"label: {name}, TangTV only"
+    if composition["lmode_gate"] == n:
+        return "label: uncertain (L-mode gate)"
     if composition["uncertain"] == n:
         return "label: uncertain"
     return (
-        f"label: {composition['certain']} certain, {composition['tangtv_only']} "
+        f"label: {composition['certain']} agreement, {composition['tangtv_only']} "
         f"TangTV only,\n{composition['uncertain']} uncertain of {n} bins"
     )
 
@@ -259,7 +269,7 @@ def strip(ax, start_ms, state, label) -> None:
             )
     ax.set_ylim(0, 1)
     ax.set_facecolor("#F3F3F3")
-    if not np.isin(state, (1, 2, 3, 4, 11, 12)).any():
+    if not np.isin(state, (1, 2, 3, 4, 11, 12, LMODE_KEY)).any():
         ax.text(
             0.5,
             0.5,
@@ -284,8 +294,11 @@ def timeline(fig, spec, group: pd.DataFrame, intervals: list[dict], te, cliffs) 
     axes = [fig.add_subplot(sub[i]) for i in range(n_rows)]
     start = group.start_ms.to_numpy()
     silver = group.tier.eq("tangtv_only").to_numpy() & group.state_rule.isin((1, 2))
+    lmode = group.tier.eq("tangtv_only_lmode").to_numpy()
     votes = {
-        "label": group.state_rule.to_numpy() + SILVER_OFFSET * silver,
+        "label": group.state_rule.to_numpy()
+        + SILVER_OFFSET * silver
+        + SILVER_OFFSET * lmode,
         "Afrac": np.where(group.afrac_valid, group.afrac_vote, 0),
         "TangTV": np.where(group.tangtv_valid, group.tangtv_vote, 0),
     }
@@ -353,18 +366,20 @@ def timeline(fig, spec, group: pd.DataFrame, intervals: list[dict], te, cliffs) 
 
 #: Summary-bar categories: (legend name, colour key).
 SUMMARY_CLASSES = (
-    ("attached, certain", 1),
+    ("attached, TangTV + Afrac agreement", 1),
     ("attached, TangTV only", 1 + SILVER_OFFSET),
-    ("detached, certain", 2),
+    ("detached, TangTV + Afrac agreement", 2),
     ("detached, TangTV only", 2 + SILVER_OFFSET),
-    ("uncertain", 4),
+    ("uncertain, TangTV detached in L-mode", LMODE_KEY),
+    ("uncertain, other", 4),
 )
 
 
 def label_class(frame: pd.DataFrame) -> pd.Series:
     """The summary class of every bin: the colour key of its exported label."""
     silver = frame.tier.eq("tangtv_only") & frame.state_rule.isin((1, 2))
-    return frame.state_rule + SILVER_OFFSET * silver
+    lmode = frame.tier.eq("tangtv_only_lmode")
+    return frame.state_rule + SILVER_OFFSET * (silver | lmode)
 
 
 def summary(ax, frame: pd.DataFrame, shot: int) -> dict:
@@ -411,16 +426,17 @@ def summary(ax, frame: pd.DataFrame, shot: int) -> dict:
     ax.set_xlim(-0.5, len(share) - 0.5)
     ax.set_ylim(0, 1)
     ax.set_xlabel(
-        "shot (assessed bins at least 10), ordered by certain share", labelpad=2
+        "shot (assessed bins at least 10), ordered by TangTV + Afrac agreement share",
+        labelpad=2,
     )
     ax.set_ylabel("share of bins")
     handles, labels = ax.get_legend_handles_labels()
     ax.legend(
         handles,
         labels,
-        ncol=3,
+        ncol=2,
         loc="upper center",
-        bbox_to_anchor=(0.5, -1.0),
+        bbox_to_anchor=(0.5, -1.15),
         frameon=False,
     )
     return {
@@ -469,10 +485,21 @@ def mark_geometry(ax, row: pd.Series) -> dict:
 
 
 def witness_inversion(ax, shot: int, time: float, row: pd.Series) -> dict:
-    """Show a parked inversion with the same EFIT contours as the main appendix."""
+    """Show a parked inversion with the same EFIT contours as the main appendix.
+
+    The frame is the one nearest `time` among the inversions whose time falls in the
+    row's own 50 ms bin, so the label, DZ and f_G quoted beside it belong to the
+    bin the frame is in (the nearest frame overall can sit in the neighbour bin).
+    """
     path = root() / "inversions" / f"{shot}.npz"
     with np.load(path) as inv:
-        index = int(np.argmin(abs(inv["times_ms"] - time)))
+        times = inv["times_ms"]
+        inside = np.flatnonzero(
+            (times >= row.start_ms) & (times < row.start_ms + core.BIN_MS)
+        )
+        if len(inside) == 0:
+            raise ValueError(f"shot {shot}: no inversion in bin {row.start_ms}")
+        index = int(inside[np.argmin(abs(times[inside] - time))])
         radii, elev = inv["radii"], inv["elevation"]
         shown = inv["frames"][index].astype(float)
         ax.imshow(
@@ -487,7 +514,7 @@ def witness_inversion(ax, shot: int, time: float, row: pd.Series) -> dict:
         actual = float(inv["times_ms"][index])
         ax.set_xlim(max(radii[0], 1.0), min(radii[-1], 1.8))
         ax.set_ylim(elev[0], VIEW_ZMAX)
-    efit = efit_slice(shot, time)
+    efit = efit_slice(shot, actual)
     if efit is not None:
         ax.contour(
             efit["r"],
@@ -555,13 +582,19 @@ def marfe_witness(frame: pd.DataFrame, out: Path) -> dict:
     if published.empty:
         return {"status": "unavailable", "reason": "199166 has no exported bins"}
     onset = PUBLISHED_MARFE_ONSET_MS
-    missed = published.iloc[
-        int(np.argmin(abs(published.start_ms + core.BIN_MS / 2 - onset)))
-    ]
     first_candidate = published[published.tier == "candidate_marfe"]
     in_bin = published[
         (published.start_ms <= onset) & (onset < published.start_ms + core.BIN_MS)
     ]
+    # the bin that contains the published onset; the frame drawn is the inversion
+    # inside that bin nearest the onset, so frame, bin, DZ and f_G are one bin
+    missed = (
+        in_bin.iloc[0]
+        if len(in_bin)
+        else published.iloc[
+            int(np.argmin(abs(published.start_ms + core.BIN_MS / 2 - onset)))
+        ]
+    )
     selections = [
         (
             199172,
@@ -569,7 +602,7 @@ def marfe_witness(frame: pd.DataFrame, out: Path) -> dict:
             candidate,
             "199172: candidate MARFE (no certain MARFE)",
         ),
-        (199166, onset, missed, "199166: published MARFE onset, 3705 ms"),
+        (199166, onset, missed, "199166: bin of the published onset (3705 ms)"),
     ]
     fig = plt.figure(figsize=(6.75, 4.1))
     grid = fig.add_gridspec(
@@ -693,7 +726,10 @@ def marfe_witness(frame: pd.DataFrame, out: Path) -> dict:
         "thresholds": {
             "dz_candidate_min": thresholds.DZ_MARFE_MIN,
             "greenwald_cue_min": thresholds.GREENWALD_CUE_MIN,
-            "persistence_min_bins": thresholds.MARFE_MIN_BINS,
+            "persistence_min_ms": thresholds.MARFE_MIN_MS,
+            "persistence_min_bins": thresholds.min_bins(
+                thresholds.MARFE_MIN_MS, core.BIN_MS
+            ),
             "prad_div_and_afrac": "not MARFE corroborators",
         },
         "width_in": 6.75,
@@ -782,7 +818,7 @@ def views_figure(shot, group, intervals, out) -> dict:
         height_ratios=[1, 1.15, 0.95],
         left=0.095,
         right=0.965,
-        top=0.93,
+        top=0.895,
         bottom=0.17,
         hspace=0.46,
         wspace=0.42,
@@ -914,15 +950,15 @@ def main() -> None:
     with_te = attach_te(group.reset_index(drop=True))
     te = with_te.te_ev.to_numpy(float) if np.isfinite(with_te.te_ev).any() else None
     cliffs = PUBLISHED_CLIFFS_MS.get(args.shot, ())
-    fig = plt.figure(figsize=(6.75, 6.9))
+    fig = plt.figure(figsize=(6.75, 7.4))
     grid = fig.add_gridspec(
         2,
         1,
         height_ratios=[4.6, 0.9],
         left=0.18,
         right=0.985,
-        top=0.96,
-        bottom=0.2,
+        top=0.965,
+        bottom=0.255,
         hspace=0.3,
     )
     timeline(fig, grid[0], group, intervals, te, cliffs)
@@ -948,14 +984,30 @@ def main() -> None:
                     "longest TangTV-attached run before and after it. The columns "
                     "follow the TangTV vote, not the exported label; each column "
                     "title carries the exported label of its bins in brackets "
-                    "(certain, TangTV only (silver) or uncertain)"
+                    "(TangTV + Afrac agreement, TangTV only (silver) or uncertain)"
                 ),
                 "caption_note": (
                     "Columns are titled by the TangTV vote with the exported label of "
                     "the same bins in brackets; a column can be a TangTV vote the "
                     "label calls uncertain. The summary bars below the timeline use "
-                    "the exported label and tier (silver = TangTV only)."
+                    "the exported label and tier (silver = TangTV only; green = "
+                    "uncertain because TangTV votes detached on a known L-mode "
+                    "phase). The IRTV heat-flux row is omitted because the fetch "
+                    "returned NODATA, and the raw TangTV frames carry no EFIT "
+                    "overlay because no camera projection calibration exists; the "
+                    "inversion panels carry the overlay."
                 ),
+                "caption_notes": {
+                    "irtv_row": "omitted: the IRTV HEATFLUX attempt returned NODATA",
+                    "raw_frame_overlay": (
+                        "none: no camera projection calibration is available, so "
+                        "the raw frames carry no EFIT overlay (the inversions do)"
+                    ),
+                    "tier_name": (
+                        "the tier `certain` is TangTV + Afrac agreement, not a "
+                        "confidence level"
+                    ),
+                },
                 "published_te_cliffs_ms": list(cliffs),
                 "published_te_cliffs_source": ".tmp/label_papers/"
                 "Chen_2026_Nucl._Fusion_66_036014.md (shot 201081)",

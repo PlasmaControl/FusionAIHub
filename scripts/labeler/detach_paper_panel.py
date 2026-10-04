@@ -5,13 +5,17 @@ There is no independent detachment benchmark. The label set is the geometry-gate
 TangTV state, validated by the divertor Thomson Te (a temperature none of the three
 indicators uses). The panel shows
 
-* the coverage of the exported label by tier (certain: TangTV plus an agreeing Afrac
-  vote; TangTV only, silver; the `candidate_marfe` tier; every other uncertain bin),
-  bins and shots;
+* the coverage of the exported label by tier, labelled bins first (TangTV + Afrac
+  agreement, tier `certain`, which is agreement and not a confidence level; TangTV
+  only, silver; `tangtv_only_lmode`, uncertain because TangTV votes detached on a
+  known L-mode phase; the `candidate_marfe` tier; every other uncertain bin), bins
+  and shots;
 * the agreement of the TangTV state with Te: the AUROC of -Te for a detached against
   an attached vote, pooled over shots with a 95% shot-bootstrap interval, for the
-  TangTV vote alone, the certain tier, the TangTV-only tier and the two indicators'
-  votes (f_div is drawn for reference, it is not a vote of the label). Whether the
+  TangTV vote alone, with the anchor shot 201081 left out and by regime (L-mode and
+  regime-unknown bins; the H-mode bins are one shot and not estimable), the labelled
+  bins, the agreement tier, the TangTV-only tier and the two indicators' votes (f_div
+  is drawn for reference, it is not a vote of the label). Whether the
   second vote improves the Te agreement is the `second_vote_effect` of the Te
   record, copied into the panel source;
 * f_div as a within-shot corroborator: its AUROC against the TangTV vote and against
@@ -49,7 +53,8 @@ PANEL_JSON = REPO / "docs" / "labeler" / "figure2_detach.json"
 AGREEMENT_JSON = RESULTS / "detachment_benchmark.json"
 TE_JSON = RESULTS / "detachment_te_check.json"
 FDIV_JSON = RESULTS / "detachment_fdiv_check.json"
-FIG_HEIGHT_IN = 5.4
+CURRENT_JSON = RESULTS / "detachment_current.json"
+FIG_HEIGHT_IN = 7.0
 LF_NAMES = ("afrac", "prad", "tangtv")
 #: Okabe-Ito colours of the exported classes; silver (TangTV only) is the tint.
 CLASS_COLOUR = {
@@ -57,14 +62,16 @@ CLASS_COLOUR = {
     "attached_silver": "#8EC1E3",
     "detached_certain": "#E69F00",
     "detached_silver": "#F4D58D",
+    "lmode_gate": "#009E73",
     "candidate_marfe": "#CC79A7",
     "uncertain": "#999999",
 }
 CLASS_LABEL = {
-    "attached_certain": "attached, certain",
+    "attached_certain": "attached, agreement tier",
     "attached_silver": "attached, TangTV only",
-    "detached_certain": "detached, certain",
+    "detached_certain": "detached, agreement tier",
     "detached_silver": "detached, TangTV only",
+    "lmode_gate": "uncertain, L-mode gate",
     "candidate_marfe": "candidate MARFE",
     "uncertain": "uncertain, other",
 }
@@ -101,6 +108,7 @@ def label_class(frame: pd.DataFrame) -> pd.Series:
     for name, code in (("attached", core.ATTACHED), ("detached", core.DETACHED)):
         out[(tier == "certain") & (state == code)] = f"{name}_certain"
         out[(tier == "tangtv_only") & (state == code)] = f"{name}_silver"
+    out[tier == "tangtv_only_lmode"] = "lmode_gate"
     out[tier == "candidate_marfe"] = "candidate_marfe"
     return out
 
@@ -249,10 +257,19 @@ def agreement_rows(benchmark: dict) -> list[dict]:
 def te_rows(te: dict) -> list[dict]:
     """AUROC of -Te for detached against attached, by what casts the vote."""
     auroc = "auroc_neg_te_detached_vs_attached"
+    regime = te["by_regime"]["tangtv_vote_alone"]
     sources = (
-        ("tangtv_alone", "TangTV alone", te["by_tier"]["tangtv_vote_alone"]),
-        ("certain", "certain tier", te["by_tier"]["certain"]),
+        ("labelled", "labelled", te["by_tier"]["certain_or_tangtv_only"]),
+        ("certain", "agreement tier", te["by_tier"]["certain"]),
         ("tangtv_only", "TangTV only", te["by_tier"]["tangtv_only"]),
+        ("tangtv_alone", "TangTV alone", te["by_tier"]["tangtv_vote_alone"]),
+        (
+            "tangtv_alone_without_201081",
+            "alone, w/o 201081",
+            te["by_tier"]["tangtv_vote_alone_without_201081"],
+        ),
+        ("tangtv_alone_regime_L", "alone, L-mode", regime["L"]),
+        ("tangtv_alone_regime_unknown", "alone, no regime", regime["unknown"]),
         ("afrac_vote", "Afrac vote", te["indicator_votes"]["afrac"]),
         (
             "f_div_vote",
@@ -326,6 +343,16 @@ def build() -> dict:
     if benchmark.get("sources", {}).get("labels_sha256") != digest:
         raise ValueError("Pairwise agreement is stale; rerun detach_benchmark.py")
     coverage = coverage_group(labels)
+    current = json.loads(CURRENT_JSON.read_text())
+    if current["labels_sha256"] != digest:
+        raise ValueError("Current-state record is stale; rerun detach_current_state.py")
+    never = current["population"]["assessed_bins_that_can_never_carry_a_state"]
+    coverage["assessed_that_can_never_carry_a_state"] = {
+        "reason": never["reason"],
+        "bins": never["bins"],
+        "shots": never["shots"],
+        "source": str(CURRENT_JSON),
+    }
     coverage["by_tangtv_tier"] = {
         str(tier): coverage_group(group)
         for tier, group in labels.groupby("tangtv_tier", dropna=False)
@@ -351,10 +378,12 @@ def build() -> dict:
             "docs/labeler/results/detachment_te_check.json.",
         },
         "label_set": "geometry-gated TangTV state, validated by divertor Thomson Te",
-        "interpretation": "Certain labels are the TangTV vote with an agreeing "
+        "interpretation": "TangTV + Afrac agreement (tier certain; agreement of two "
+        "indicators, not a confidence level) is the TangTV vote with an agreeing "
         "Afrac vote; TangTV only labels (silver) are the TangTV vote with Afrac "
-        "abstaining or invalid. Neither is independent truth. Agreement does not "
-        "establish accuracy.",
+        "abstaining or invalid; bins where TangTV votes detached on a known L-mode "
+        "phase are uncertain (tier tangtv_only_lmode). None is independent truth. "
+        "Agreement does not establish accuracy.",
         "bin_ms": core.BIN_MS,
         "figure": {"width_in": 3.25, "height_in": FIG_HEIGHT_IN, "min_font_pt": 7},
         "population": "all exported assessed eligible-shot bins, every split",
@@ -386,8 +415,11 @@ def build() -> dict:
         "definitions": {
             "assessed": "at least two valid measurements on an eligible shot, or a "
             "TangTV vote",
-            "certain": "assessed bin where the TangTV vote and an agreeing valid "
-            "Afrac vote state attached or detached",
+            "certain": "TangTV + Afrac agreement: assessed bin where the TangTV vote "
+            "and an agreeing valid Afrac vote state attached or detached (not a "
+            "confidence level)",
+            "tangtv_only_lmode": "uncertain: TangTV votes detached (0.5 <= DZ < "
+            "1.2) on a known L-mode phase; the DZ cutoffs come from an H-mode shot",
             "tangtv_only": "assessed bin where TangTV votes and Afrac abstains or "
             "is invalid (silver)",
             "conflict": "TangTV and Afrac vote against each other; uncertain",
@@ -473,11 +505,10 @@ def draw(data: dict, out: Path) -> None:
         3,
         1,
         figsize=(3.25, FIG_HEIGHT_IN),
-        gridspec_kw={"height_ratios": [0.8, 1.0, 1.7]},
+        gridspec_kw={"height_ratios": [1.2, 2.0, 1.5]},
     )
     coverage = data["coverage"]
     groups = (
-        ("Assessed", "assessed", tuple(CLASS_COLOUR)),
         (
             "Labelled",
             "labelled_certain_or_tangtv_only",
@@ -488,9 +519,11 @@ def draw(data: dict, out: Path) -> None:
                 "detached_silver",
             ),
         ),
-        ("Certain", "certain", ("attached_certain", "detached_certain")),
+        ("Agreement", "certain", ("attached_certain", "detached_certain")),
+        ("Assessed", "assessed", tuple(CLASS_COLOUR)),
     )
     drawn_classes = []
+    ticks = []
     for y, (_, key, classes) in enumerate(groups):
         left = 0
         for name in classes:
@@ -503,20 +536,16 @@ def draw(data: dict, out: Path) -> None:
                     drawn_classes.append(name)
             left += count
         entry = coverage[key]
-        coverage_ax.text(
-            max(left, 1) + coverage["assessed"]["bins"] * 0.02,
-            y,
-            f"{entry['bins']:,} bins, {entry['shots']} shots",
-            ha="left",
-            va="center",
-            fontsize=7,
-        )
-    coverage_ax.set_yticks(range(len(groups)), [g[0] for g in groups])
+        ticks.append(f"{groups[y][0]}\n{entry['bins']:,} bins, {entry['shots']} shots")
+    coverage_ax.set_yticks(range(len(groups)), ticks)
     coverage_ax.invert_yaxis()
-    coverage_ax.set_xlim(0, coverage["assessed"]["bins"] * 2.2)
-    coverage_ax.set_xticks([0, 1000])
+    coverage_ax.set_xlim(0, coverage["assessed"]["bins"] * 1.02)
+    coverage_ax.set_xticks([0, 500, 1000, 1500])
     coverage_ax.spines[["top", "right"]].set_visible(False)
-    coverage_ax.set_xlabel("50 ms bins")
+    never = coverage["assessed_that_can_never_carry_a_state"]
+    coverage_ax.set_xlabel(
+        f"50 ms bins; {never['bins']:,} assessed bins\ncan never carry a state"
+    )
     fig.legend(
         [Patch(facecolor=CLASS_COLOUR[n]) for n in drawn_classes],
         [CLASS_LABEL[n] for n in drawn_classes],
@@ -528,6 +557,7 @@ def draw(data: dict, out: Path) -> None:
         handlelength=1,
         columnspacing=0.8,
         handletextpad=0.4,
+        labelspacing=0.3,
     )
     te_rows_drawn = [row for row in data["te_agreement"] if row["drawn"]]
 
@@ -585,7 +615,7 @@ def draw(data: dict, out: Path) -> None:
         "\nfilled: pooled, open: per shot"
         "\n(shots: pooled / per shot)"
     )
-    fig.subplots_adjust(left=0.4, right=0.97, top=0.85, bottom=0.15, hspace=1.0)
+    fig.subplots_adjust(left=0.43, right=0.97, top=0.89, bottom=0.12, hspace=0.85)
     out.mkdir(parents=True, exist_ok=True)
     fig.savefig(out / "fig_detachment_figure2.pdf", metadata={"CreationDate": None})
     fig.savefig(out / "fig_detachment_figure2.png", dpi=150)
