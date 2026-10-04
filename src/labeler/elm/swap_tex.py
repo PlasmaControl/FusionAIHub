@@ -27,7 +27,7 @@ ROWS = (
     (NAME["elmo"], "elm-elmo"),
     (NAME["detect"], compare.DISPLAY_NAME[NAME["detect"]]),
     (NAME["clock"], "elm-clock"),
-    (NAME["dsm"], "elm-dsm refit"),
+    (NAME["dsm"], compare.DISPLAY_NAME[NAME["dsm"]]),
     (NAME["exposed"], compare.DISPLAY_NAME[NAME["exposed"]]),
     (NAME["init"], compare.DISPLAY_NAME[NAME["init"]]),
 )
@@ -43,9 +43,8 @@ def method_label(key: str, *, multiline: bool = False) -> str:
     label = label.replace("1×128", r"$1\times128$")
     if multiline:
         label = {
-            NAME["detect"]: (r"elm-dsm (60-input $1\times128$)"),
-            NAME["exposed"]: ("elm-dsm (source stats)"),
-            NAME["init"]: ("elm-dsm (source weights/stats)"),
+            NAME["exposed"]: ("elm-dsm-detect (source stats)"),
+            NAME["init"]: ("elm-dsm-detect (source weights/stats)"),
         }.get(key, label)
     if key in EXPOSED:
         label += r"$^{\ddagger}$"
@@ -117,8 +116,8 @@ def benchmark_table(res: dict, ref_a: str, ref_b: str, labels, record, source) -
     change = res.get("comparison", {}).get("auroc_change_paired", {})
     lines = [
         header(record, source)
-        + "\\footnotesize\\setlength{\\tabcolsep}{2.5pt}\n"
-        + "\\begin{tabular}{lccccc}",
+        + "\\footnotesize\\setlength{\\tabcolsep}{0.75pt}\n"
+        + "\\begin{tabular}{@{}lccccc@{}}",
         "\\toprule",
         (
             f"& \\multicolumn{{2}}{{c}}{{{labels[0]} "
@@ -171,10 +170,53 @@ def main_table(res: dict, record: dict, source: str) -> str:
     )
 
 
+def finding_one(record: dict) -> dict:
+    """Finding 1 on the AE-style known-majority cells (primary) and the strict bins.
+
+    The known-majority cells (`interval_audit.known_review_majority`) have at least
+    25 ms of legacy coverage and a reviewed present or absent state with at least
+    25 ms of occupancy; the strict bins are the interior bins the method rows use.
+    """
+    audit = record["interval_audit"]["known_review_majority"]
+    strict = record["swap"]["overlap"]["finding_1"]
+    strict_point = strict["as_methods"]["legacy_table_vs_reviewed"]["point"]
+    return {
+        "cells": audit["bins"],
+        "M": audit["M"],
+        "P": audit["P"],
+        "recall": audit["point"]["recall"],
+        "precision": audit["point"]["precision"],
+        "strict_bins": strict["bins"],
+        "strict_M": strict["M"],
+        "strict_P": strict["P"],
+        "strict_recall": strict_point["recall"],
+        "strict_precision": strict_point["precision"],
+    }
+
+
+def paired_intervals(record: dict) -> tuple[int, list[tuple[str, str, dict]]]:
+    """Eligible paired legacy-minus-review AUROC intervals and those excluding zero.
+
+    Counts every finite interval in the all-overlap and BES panels; the intervals
+    are unadjusted for multiplicity and the BES panel has seven shots.
+    """
+    total, hits = 0, []
+    for scope, tag in (("all", "overlap"), ("BES", "overlap_bes")):
+        panel = record["swap"][tag]
+        for key, row in panel["comparison"]["auroc_change_paired"].items():
+            lo, hi = row["ci95"] or (math.nan, math.nan)
+            if math.isnan(lo):
+                continue
+            total += 1
+            if lo > 0 or hi < 0:
+                hits.append((scope, key, row))
+    return total, hits
+
+
 def full_table(res: dict, record: dict, source: str, legacy_label=None) -> str:
     a, b = res["reviewed"], res["legacy"]
-    f1 = res["finding_1"]
-    leg_vs_rev = f1["as_methods"]["legacy_table_vs_reviewed"]
+    one = finding_one(record)
+    leg_vs_rev = res["finding_1"]["as_methods"]["legacy_table_vs_reviewed"]
     legacy_label = legacy_label or "legacy onset table"
     lines = [
         header(record, source) + "\\begin{tabular}{lcccccc}",
@@ -222,8 +264,15 @@ def full_table(res: dict, record: dict, source: str, legacy_label=None) -> str:
             f"{{{b['prevalence']:.3f}}} \\\\"
         ),
         (
-            f"$|M|$, $|P|$ of {f1['bins']} bins & \\multicolumn{{6}}{{c}}"
-            f"{{$|M|={f1['M']}$, $|P|={f1['P']}$}} \\\\"
+            f"Finding 1, {one['cells']} known-majority cells (primary) & "
+            f"\\multicolumn{{6}}{{c}}{{$|M|={one['M']}$, $|P|={one['P']}$; legacy "
+            f"recall {one['recall']:.3f}, precision {one['precision']:.3f}}} \\\\"
+        ),
+        (
+            f"Strict interior bins ({one['strict_bins']}, rows above) & "
+            f"\\multicolumn{{6}}{{c}}{{$|M|={one['strict_M']}$, "
+            f"$|P|={one['strict_P']}$; legacy recall {one['strict_recall']:.3f}, "
+            f"precision {one['strict_precision']:.3f}}} \\\\"
         ),
         "\\bottomrule",
         "\\end{tabular}",
@@ -282,64 +331,83 @@ def ranking_sentence(*panels: dict) -> str:
     return text
 
 
-def excluding_zero(*panels: tuple[str, dict]) -> str:
-    """Names the paired legacy-minus-review changes whose interval excludes zero."""
-    hits = []
-    for scope, panel in panels:
-        for key, row in panel["comparison"]["auroc_change_paired"].items():
-            lo, hi = row["ci95"]
-            if lo > 0 or hi < 0:
-                hits.append(
-                    f"{method_label(key)} {scope} ({signed(row['value'], row['ci95'])})"
-                )
+def excluding_zero(record: dict) -> str:
+    """The unadjusted paired intervals that exclude zero, as a count of the total."""
+    total, hits = paired_intervals(record)
     if not hits:
-        return "Every paired interval includes zero. "
-    return "The paired interval excludes zero only for " + "; ".join(hits) + ". "
+        return f"All {count_word(total)} unadjusted paired intervals include zero. "
+    shots = count_word(record["swap"]["overlap_bes"]["n_shots"])
+    named = "; ".join(
+        f"{method_label(key)} on the {scope} shots ({signed(row['value'], row['ci95'])}"
+        f"; {shots} shots)"
+        if scope == "BES"
+        else f"{method_label(key)} on the {scope} shots "
+        f"({signed(row['value'], row['ci95'])})"
+        for scope, key, row in hits
+    )
+    verb = "excludes" if len(hits) == 1 else "exclude"
+    return (
+        f"{count_word(len(hits)).capitalize()} of {total} unadjusted paired "
+        f"intervals {verb} zero: {named}. "
+    )
 
 
-def main_caption(record: dict, ours: dict | None = None) -> str:
+def main_caption(
+    record: dict, ours: dict | None = None, photodiode: dict | None = None
+) -> str:
     """The main swap caption; every number is read from the swap record.
 
-    `ours` is the elm-ours evaluation record; with it the caption compares ELM-O's
-    AUROC on the BES overlap shots with its AUROC on the whole BES subset.
+    `ours` is the elm-ours evaluation record; with it the caption compares elm-elmo's
+    AUROC on the BES overlap shots, with its interval, with its AUROC on the whole
+    BES subset. `photodiode` is the upstream-versus-fresh PCPHD02/03 comparison.
     """
     overlap, bes = record["swap"]["overlap"], record["swap"]["overlap_bes"]
-    held, held_bes = (
-        record["swap"]["overlap_dsm_heldout"],
-        record["swap"]["overlap_bes_dsm_heldout"],
-    )
+    one = finding_one(record)
     change = overlap["comparison"]["auroc_change_paired"][NAME["dsm"]]
     interval = change["ci95"]
     inside = interval[0] <= 0 <= interval[1]
-    order = ranking_sentence(overlap, bes)
     in_sample = len(overlap["dsm_refit_training_shots"])
     text = (
         f"ELM reference swap on {count_word(overlap['n_shots'])} overlap shots "
-        f"({count_word(bes['n_shots'])} with BES); inconclusive. AUROC compares "
-        "references; F1 uses review-tuned thresholds; "
+        f"({count_word(bes['n_shots'])} with BES); inconclusive. On {one['cells']} "
+        "known-majority cells the legacy onset table has recall "
+        f"{one['recall']:.3f} and precision {one['precision']:.3f} against the "
+        f"review ($|M|={one['M']}$ present cells missed, $|P|={one['P']}$ absent "
+        f"cells marked present). Method rows use {one['strict_bins']} strict "
+        "interior bins. AUROC compares references; F1 uses review-tuned thresholds; "
         "$\\Delta$ is the paired legacy-minus-review AUROC change with its "
         "shot-bootstrap interval; $^{\\dagger}$ marks recall $\\geq0.99$. "
-        + order
-        + f"The supplemental refit$^{{\\ddagger}}$ row's AUROC change "
-        f"{signed(change['value'])} is in-sample on {in_sample}/{overlap['n_shots']} "
-        "shots and "
+        + ranking_sentence(overlap, bes)
+        + f"The {method_label(NAME['dsm'])} change {signed(change['value'])} is "
+        f"in-sample on {in_sample}/{overlap['n_shots']} shots and "
         + ("within its interval" if inside else "outside its interval")
         + "; no AE Finding-2 analogue is established. "
-        + excluding_zero(("on all overlap shots", overlap), ("on the BES shots", bes))
-        + f"The {count_word(held['n_shots'])} shots "
-        f"({held_bes['n_shots']} with BES) outside original DSM fitting are too small "
-        f"for intervals. All {count_word(overlap['n_shots'])} overlap shots use the "
-        "upstream WPQH PCPHD02/03 export in the reduced-input detection adaptation."
+        + excluding_zero(record)
     )
     if ours is not None:
         elmo = NAME["elmo"]
-        panel = bes["reviewed"]["methods"][elmo]["point"]["auroc"]
+        res = bes["reviewed"]["methods"][elmo]
         whole = ours["sets"]["bes73"]["methods"][elmo]["point"]["auroc"]
+        lo, hi = res["ci95"]["auroc"]
+        contains = lo <= whole <= hi
         text += (
-            f" ELM-O scores {panel:.3f} on these {count_word(bes['n_shots'])} WPQH "
-            f"shots against {whole:.3f} on the BES subset, likely domain shift."
+            f"{elmo} scores {cell(res['point']['auroc'], res['ci95']['auroc'])} on "
+            f"the {count_word(bes['n_shots'])} BES shots against {whole:.3f} on "
+            f"bes73; the interval {'contains' if contains else 'excludes'} that "
+            "value, so no shift is established. "
         )
-    return text
+    if photodiode:
+        text += (
+            "The upstream PCPHD02/03 export the detection adaptation reads on "
+            f"these shots equals a fresh fetch in {photodiode['identical']} of "
+            f"{photodiode['records']} records, sample for sample."
+        )
+    else:
+        text += (
+            "All overlap shots use the upstream WPQH PCPHD02/03 export in the "
+            "detection adaptation."
+        )
+    return text.rstrip()
 
 
 def write(
@@ -347,6 +415,7 @@ def write(
     out_dir: Path,
     source="outputs/labeler/elm/swap/evaluation.json",
     ours: dict | None = None,
+    photodiode: dict | None = None,
 ):
     """Four consolidated appendix tables; complete diagnostics remain in JSON."""
     out_dir = Path(out_dir)
@@ -355,22 +424,31 @@ def write(
     for tag in ("overlap", "overlap_bes"):
         res = record["swap"][tag]
         panels.append(panel_heading(res) + main_table(res, record, source))
-    caption = main_caption(record, ours)
+    caption = main_caption(record, ours, photodiode)
+    held, held_bes = (
+        record["swap"]["overlap_dsm_heldout"],
+        record["swap"]["overlap_bes_dsm_heldout"],
+    )
     tables = {
         "table_elm_swap.tex": wrap_table(
-            "\n\\medskip\n".join(panels), caption, "tab:elm-swap"
+            "\n\\medskip\n".join(panels), caption, "tab:elm-swap", domain_note=False
         ),
         "table_elm_swap_full.tex": wrap_table(
             full_table(record["swap"]["overlap"], record, source),
-            "Fixed-prediction precision, recall and F1 against both references. "
-            "Eight overlap shots; identity oracle results hold by definition. "
-            "Brackets show eligible shot-bootstrap intervals; F1 is review-tuned.",
+            "Fixed-prediction precision, recall and F1 against both references on "
+            "the strict interior bins; Finding 1 on the known-majority cells "
+            "(primary) is in the last rows. Eight overlap shots; identity oracle "
+            "results hold by definition. Brackets show eligible shot-bootstrap "
+            "intervals; F1 is review-tuned. "
+            f"The {count_word(held['n_shots'])} shots ({held_bes['n_shots']} with "
+            "BES) outside original DSM fitting are too few for intervals.",
             "tab:elm-swap-full",
         ),
         "table_elm_swap_sensitivity.tex": wrap_table(
             sensitivity_table(record, source),
             "Legacy onset bins and covered-gap occupancy sensitivities. "
-            "All-covered review states use at least 25 ms present occupancy. "
+            "Known-majority cells have at least 25 ms of legacy coverage and are "
+            "labelled present or absent by at least 25 ms of that reviewed state. "
             "Missing coverage is never bridged. Tiny positive-shot subsets are "
             "descriptive only; eligible intervals use 1000 shot draws.",
             "tab:elm-swap-sensitivity",
@@ -428,7 +506,7 @@ def sensitivity_table(record: dict, source: str) -> str:
     audits = [("all-covered", record["interval_audit"]["known_review_majority"])]
     for key, audit in record["interval_audit_occupancy"].items():
         audits.append((key, audit["known_review_majority"]))
-    groups = [("All-covered majority (8 shots)", audits)]
+    groups = [("Known-majority cells (8 shots)", audits)]
     for tag, res in record["swap"].items():
         refs = [("onset", res["finding_1"])] + [
             (key, value["finding_1"]) for key, value in res["occupancy"].items()
@@ -536,12 +614,17 @@ def swap_caption(res: dict, gap: int | None = None, full: bool = False) -> str:
     )
 
 
-def wrap_table(body: str, caption: str, label: str) -> str:
+def wrap_table(
+    body: str, caption: str, label: str, domain_note: bool | None = None
+) -> str:
+    """A `table*` float; `domain_note` forces or suppresses the WPQH-domain sentence."""
     wanted = label.startswith("tab:elm-swap") or label in (
         "tab:elm-dsm-native",
         "tab:elm-dsm-own-target",
     )
-    if wanted and "domain shift" not in caption:  # the main caption says it already
+    if domain_note is not None:
+        wanted = domain_note
+    if wanted and "domain shift" not in caption:
         caption += " " + DOMAIN_NOTE
     return (
         "\\begin{table*}[t]\n\\centering\n\\small\n"

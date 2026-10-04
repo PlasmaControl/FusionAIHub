@@ -7,15 +7,17 @@ Method & AUROC & AUPRC & F1 \\
 \midrule
 \multicolumn{4}{l}{all119: 37 shots/3,576 matched bins} \\
 elm-ours & 0.936 {\scriptsize[0.862, 0.981]} & 0.853 {\scriptsize[0.632, 0.976]} & 0.833 {\scriptsize[0.727, 0.908]} \\
-elm-dsm (60-input $1\times128$) & 0.823 {\scriptsize[0.735, 0.899]} & 0.704 {\scriptsize[0.525, 0.849]} & 0.759 {\scriptsize[0.628, 0.852]} \\
-elm-dsm (124-input [100,1000]) & 0.734 {\scriptsize[0.610, 0.856]} & 0.598 {\scriptsize[0.396, 0.822]} & 0.664 {\scriptsize[0.509, 0.784]} \\
+elm-ours (native-fold training shots) & 0.863 {\scriptsize[0.795, 0.923]} & 0.785 {\scriptsize[0.599, 0.907]} & 0.760 {\scriptsize[0.654, 0.841]} \\
+elm-dsm-detect (60-input $1\times128$) & 0.823 {\scriptsize[0.735, 0.899]} & 0.704 {\scriptsize[0.525, 0.849]} & 0.759 {\scriptsize[0.628, 0.852]} \\
+elm-dsm-native-detect (124-input [100,1000]) & 0.734 {\scriptsize[0.610, 0.856]} & 0.598 {\scriptsize[0.396, 0.822]} & 0.664 {\scriptsize[0.509, 0.784]} \\
 \midrule
 \multicolumn{4}{l}{bes73: 37 shots/3,339 matched bins} \\
 elm-ours & 0.929 {\scriptsize[0.848, 0.980]} & 0.854 {\scriptsize[0.632, 0.976]} & 0.837 {\scriptsize[0.730, 0.913]} \\
-elm-dsm (60-input $1\times128$) & 0.805 {\scriptsize[0.708, 0.889]} & 0.706 {\scriptsize[0.530, 0.850]} & 0.763 {\scriptsize[0.634, 0.854]} \\
-elm-dsm (124-input [100,1000]) & 0.715 {\scriptsize[0.584, 0.844]} & 0.604 {\scriptsize[0.401, 0.825]} & 0.667 {\scriptsize[0.512, 0.789]} \\
-ELM-O & 0.890 {\scriptsize[0.818, 0.948]} & 0.808 {\scriptsize[0.677, 0.910]} & 0.818 {\scriptsize[0.722, 0.889]} \\
+elm-ours (native-fold training shots) & 0.852 {\scriptsize[0.780, 0.917]} & 0.789 {\scriptsize[0.603, 0.910]} & 0.766 {\scriptsize[0.661, 0.845]} \\
+elm-dsm-detect (60-input $1\times128$) & 0.805 {\scriptsize[0.708, 0.889]} & 0.706 {\scriptsize[0.530, 0.850]} & 0.763 {\scriptsize[0.634, 0.854]} \\
+elm-dsm-native-detect (124-input [100,1000]) & 0.715 {\scriptsize[0.584, 0.844]} & 0.604 {\scriptsize[0.401, 0.825]} & 0.667 {\scriptsize[0.512, 0.789]} \\
+elm-elmo & 0.890 {\scriptsize[0.818, 0.948]} & 0.808 {\scriptsize[0.677, 0.910]} & 0.818 {\scriptsize[0.722, 0.889]} \\
 \bottomrule
-\end{tabular}\caption{Secondary native DSM detection comparison. The 1 ms audit finds $\geq$112/124 inputs at 1 ms on $\geq$30 reviewed shots; 37 reviewed shots have complete-input scored bins. Both DSM rows are occupancy detection refits: 60-input $1\times128$ adaptation on 50 ms means, and native 124-input [100,1000] architecture on 1 ms means. All methods use identical supported shots/bins. Inner-validation AUPRC selects checkpoints and F1 selects thresholds. Brackets: 95\% shot-bootstrap intervals. These are developmental results from a fixed 25-epoch refit, with reconstructed native inputs and within-shot NBI smoothing. Three further seeds with post-warm-up selection (DSM repeats table) give mean (range) AUROC 0.715 (0.707--0.725) for the native 124-input refit (37 shots). These DSM rows are lower bounds on DSM detection skill under our recipe, not the best achievable DSM performance.}
+\end{tabular}\caption{Secondary native DSM detection comparison. The 1 ms audit finds $\geq$112/124 inputs at 1 ms on $\geq$30 reviewed shots; 37 reviewed shots have complete-input scored bins, identical for every method. Both DSM rows are occupancy detection fits: 60-input $1\times128$ adaptation on 50 ms means, and native 124-input [100,1000] architecture on 1 ms means. Training shots per fold (train/inner-validation): elm-ours 81--82/14; native-fold rows 24--28/2--8, so the 24--28-shot fits are far smaller than the headline's; elm-ours (native-fold training shots) repeats the elm-ours recipe on those shots. Inner-validation AUPRC selects checkpoints and F1 thresholds. Brackets: 95\% shot-bootstrap intervals. Developmental results from a fixed 25-epoch refit with reconstructed native inputs and within-shot NBI smoothing. Three further seeds with post-warm-up selection (DSM repeats table) give mean (range) AUROC 0.715 (0.707--0.725) for the native 124-input refit (37 shots). These DSM rows are lower bounds on DSM detection skill under our recipe, not the best achievable DSM performance.}
 \label{tab:elm-native-detection}
 \end{table*}

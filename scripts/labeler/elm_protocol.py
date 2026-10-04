@@ -16,8 +16,8 @@ import textwrap
 from pathlib import Path
 
 from labeler.config import git_sha, sha256_of
+from labeler.elm import compare, swap_tex
 from labeler.elm import facts as F
-from labeler.elm import swap_tex
 
 REPO = Path(__file__).resolve().parents[2]
 OUTPUTS = REPO / "outputs/labeler/elm"
@@ -30,8 +30,8 @@ LOWER_BOUND = (
     "These DSM detection rows are lower bounds on DSM detection skill under our "
     "recipe, not the best achievable DSM performance."
 )
-DSM_LABEL = "elm-dsm (60-input 1×128 refit, detection)"
-NATIVE_LABEL = "elm-dsm (124-input [100,1000] detection)"
+DSM_LABEL = "elm-dsm-detect (60-input 1×128)"
+NATIVE_LABEL = "elm-dsm-native-detect (124-input [100,1000])"
 BOUNDARY = "../../../../outputs/labeler/elm"
 
 
@@ -99,7 +99,7 @@ def method_rows(source: dict, scope: str, records: dict, tags=("all119", "bes73"
     """Table rows `tag / method` for the benchmark, in the paper's order."""
     order = (
         ("elm-ours", "elm-ours"),
-        ("elm-elmo", "ELM-O"),
+        ("elm-elmo", "elm-elmo"),
         ("elm-dsm-detect", DSM_LABEL),
         ("elm-clock", "elm-clock"),
         ("always present", "always-present"),
@@ -131,6 +131,7 @@ def primary_table(doc: Doc, records: dict) -> None:
         "F1",
         "Absent-bin FPR",
         "Absent-span alarm",
+        "Alarm, guard25",
     ]
     rows = []
     for tag, _, label, panel, res in method_rows(records["ours"], "primary", records):
@@ -142,6 +143,7 @@ def primary_table(doc: Doc, records: dict) -> None:
                 *(plain(res, m) for m in ("auprc", "f1")),
                 plain(res, "false_alarm_bin_rate"),
                 plain(res, "absent_span_alarm_rate"),
+                plain(res, "absent_span_alarm_rate_guard25"),
             ]
         )
     doc.table(header, rows)
@@ -217,6 +219,109 @@ def detection_inputs(audit: dict) -> str:
     )
 
 
+def photodiode_text(fx: dict) -> str:
+    """The fresh-fetch check of the upstream PCPHD02/03 export on the swap shots."""
+    check = fx.get("photodiode")
+    if not check:
+        return ""
+    return (
+        f"A fresh fetch of the {check['shots']} swap shots' PCPHD02/03 equals the "
+        f"upstream export sample for sample in {check['identical']} of "
+        f"{check['records']} records (maximum absolute difference "
+        f"{check['max_value_difference']:g}; `dsm/swap_photodiode_agreement.json`), "
+        "so the two sources agree in scale and the detection AUROC gap on those "
+        "shots is not an input-source artefact."
+    )
+
+
+def density_text(fx: dict) -> str:
+    """The measured numerical range of the fast-density input (units unverified)."""
+    d = fx.get("density")
+    if not d:
+        return ""
+    return (
+        "Over the flat-top window "
+        f"({d['window_ms'][0] / 1000:g}–{d['window_ms'][1] / 1000:g} s) of the "
+        f"{d['shots']} reviewed shots the divided fast-density input has median "
+        f"{d['median']:.2f}, 5–95% range {d['p05']:.2f}–{d['p95']:.2f}, and "
+        f"{100 * d['upper_clip_share']:.1f}% of cells sit at the upper clip "
+        f"({d['clip_range'][1]:g}; {d['chords_zeroed']} of {d['chords']} chords are "
+        "zeroed or empty in the window; `density_range.json`, "
+        "`scripts/labeler/elm_density_range.py`). This is a numerical range only: "
+        "the ordinate units and the FS02–04 sightlines are unverified, and no "
+        "sightline list is retained in the signal records or the literature digests."
+    )
+
+
+def smith_days_text(fx: dict) -> str:
+    """How the Smith onset folds treat run days."""
+    days = fx["smith_run_days"]
+    if days["crossing"] == 0:
+        return (
+            f"the Smith onset folds are grouped by run day (none of {days['days']} "
+            "days crosses folds)"
+        )
+    return f"{days['crossing']} of {days['days']} Smith days cross folds"
+
+
+def span(values) -> str:
+    low, high = min(values), max(values)
+    return f"{low}" if low == high else f"{low}–{high}"
+
+
+def native_sizes_text(fx: dict) -> str:
+    """Per-fold training and inner-validation shot counts, native refit and elm-ours."""
+    native, own = fx["native_detection"]["folds"], fx["ours_training_sizes"]
+    per_fold = ", ".join(f"{f['train']}/{f['inner_val']}" for f in native)
+    return (
+        "The native refit trains on "
+        f"{span([f['train'] for f in native])} shots per fold with "
+        f"{span([f['inner_val'] for f in native])} inner-validation shots "
+        f"(train/inner-validation by fold: {per_fold}), against "
+        f"{span([f['train'] for f in own])} and "
+        f"{span([f['inner_val'] for f in own])} for the headline elm-ours; its "
+        "thresholds, chosen on so few shots, are erratic "
+        f"({min(f['threshold'] for f in native):.1e}–"
+        f"{max(f['threshold'] for f in native):.4f})."
+    )
+
+
+def native_ours_text(native: dict, fx: dict) -> str:
+    """What elm-ours scores when trained on the native folds' own shots."""
+    key = "elm-ours-native-folds"
+    methods = native["sets"]["all119"]["methods"]
+    if key not in methods:
+        return ""
+    thresholds = fx["native_detection"]["ours_native_thresholds"] or []
+    spread = (
+        f"; its fold thresholds span {min(thresholds):.3f}–{max(thresholds):.3f}"
+        if thresholds
+        else ""
+    )
+    own, rival = methods[key], methods["elm-dsm-native-detect"]
+    higher = own["point"]["auroc"] > rival["point"]["auroc"]
+    (lo_a, hi_a), (lo_b, hi_b) = own["ci95"]["auroc"], rival["ci95"]["auroc"]
+    overlap = lo_a <= hi_b and lo_b <= hi_a
+    verdict = (
+        "At equal training shots elm-ours has the "
+        + ("higher" if higher else "lower")
+        + " point AUROC than the native refit"
+        + (", with overlapping intervals." if overlap else ", with disjoint intervals.")
+        + " The headline's lead over the native refit therefore mixes training size "
+        "with architecture."
+    )
+    return (
+        "`elm-ours (native-fold training shots)` repeats the elm-ours network, recipe "
+        "and seeds on the native folds' own train and inner-validation shots "
+        f"(`scripts/labeler/elm_native_ours.py`{spread}). On the same bins it "
+        f"scores AUROC {metric(methods[key], 'auroc')} against "
+        f"{metric(methods['elm-ours'], 'auroc')} for the headline elm-ours, "
+        f"{metric(methods['elm-dsm-native-detect'], 'auroc')} for the native "
+        f"refit and {metric(methods['elm-dsm-detect'], 'auroc')} for the 60-input "
+        "adaptation. " + verdict
+    )
+
+
 def audit_blocks(doc: Doc, records: dict, fx: dict, level: int = 3, full=True) -> None:
     """The native DSM detection comparator, with the DSM repeats.
 
@@ -241,7 +346,7 @@ def audit_blocks(doc: Doc, records: dict, fx: dict, level: int = 3, full=True) -
             "uses the original five outer folds and their inner-validation shot "
             "partitions; checkpoint AUPRC and F1 thresholds are selected only on "
             "inner validation. No source weights or statistics and no blind-test "
-            "shots are reused."
+            "shots are reused. " + native_sizes_text(fx)
         )
         doc.para(
             "Inputs are timestamp-aware 1 ms means from stored original corpus H5 "
@@ -258,7 +363,8 @@ def audit_blocks(doc: Doc, records: dict, fx: dict, level: int = 3, full=True) -
             f"({native['recipe']['epochs']} epochs, original folds, inner-validation "
             f"selection, no source weights or blind-test shots) on the {panel_shots} "
             "shots with complete 124-input rows, is scored on identical support. "
-            "Inputs and method: the DSM card's Evaluation section."
+            + native_sizes_text(fx)
+            + " Inputs and method: the DSM card's Evaluation section."
         )
     cell = metric if full else plain
     rows = []
@@ -266,9 +372,10 @@ def audit_blocks(doc: Doc, records: dict, fx: dict, level: int = 3, full=True) -
         panel = native["sets"][tag]
         for key, label in (
             ("elm-ours", "elm-ours"),
+            ("elm-ours-native-folds", "elm-ours (native-fold training shots)"),
             ("elm-dsm-detect", DSM_LABEL),
             ("elm-dsm-native-detect", NATIVE_LABEL),
-            ("elm-elmo", "ELM-O"),
+            ("elm-elmo", "elm-elmo"),
         ):
             res = panel["methods"].get(key)
             if res:
@@ -291,8 +398,9 @@ def audit_blocks(doc: Doc, records: dict, fx: dict, level: int = 3, full=True) -
         rows,
     )
     doc.para(
+        native_ours_text(native, fx),
         "This smaller support panel is a secondary control and does not replace the "
-        "primary all119/bes73 benchmark."
+        "primary all119/bes73 benchmark.",
     )
     seeds = fx["dsm_baselines"]
     if seeds:
@@ -405,7 +513,7 @@ def model_lines(records: dict, fx: dict) -> list[str]:
     ]
     refit = common["methods"]["elm-dsm"]
     lines.append(
-        f"- d3d_elm_time_to_event_dsm | 2026_09_06 | {triple(refit)} (elm-dsm refit; "
+        f"- d3d_elm_time_to_event_dsm | 2026_09_06 | {triple(refit)} (elm-dsm-survival; "
         "supplemental offline risk score reusing source data; "
         f"{common['n_shots']} shots / {common['bins']:,} common bins)"
     )
@@ -449,14 +557,14 @@ def caveat(records: dict, fx: dict) -> str:
             "developmental shot-CV estimates of ELMy-period occupancy, not onsets "
             f"({pct(fx['crowd_share'])}% of positive bins lie in crowd spans); the "
             "review was seeded by the D-alpha clock, which favours D-alpha-input "
-            "models over ELM-O. A frozen-model score on the blind split awaits "
+            "models over elm-elmo. A frozen-model score on the blind split awaits "
             "review of those shots."
         ),
         (
             f"Primary benchmark: all119 ({fx['bins']['all119']:,} bins) and bes73 "
-            f"({fx['bins']['bes73']:,} bins). On bes73, paired elm-ours minus ELM-O is "
+            f"({fx['bins']['bes73']:,} bins). On bes73, paired elm-ours minus elm-elmo is "
             f"{F.delta_text(fx['paired_primary'])}; every interval includes zero, so "
-            "the two are statistically indistinguishable (equivalence untested), while "
+            "no significant difference is detected (equivalence untested), while "
             "elm-ours extends BES-free coverage to all 119 shots. On the secondary "
             "common bins the same difference is "
             f"{F.delta_text(fx['paired_common_elmo'])}."
@@ -464,8 +572,12 @@ def caveat(records: dict, fx: dict) -> str:
         (
             f"On non-crowd-only shots elm-ours precision is "
             f"{F.fmt(*quiet['precision'])}; its absent-span alarm rate is "
-            f"{F.fmt(*fx['alarm']['all119/elm-ours']['span_alarm'])} against "
-            f"{F.fmt(*fx['alarm']['all119/elm-clock']['span_alarm'])} for the clock."
+            f"{F.fmt(*fx['alarm']['all119/elm-ours']['span_alarm'])} "
+            f"({fx['alarm']['all119/elm-ours']['span_alarm_guard25'][0]:.3f} with "
+            "25 ms trimmed from each absent-span edge) against "
+            f"{F.fmt(*fx['alarm']['all119/elm-clock']['span_alarm'])} "
+            f"({fx['alarm']['all119/elm-clock']['span_alarm_guard25'][0]:.3f}) for "
+            "the clock, whose boundaries seeded the review."
         ),
         (
             "The elm-dsm detection rows are lower bounds on DSM detection skill under "
@@ -599,13 +711,14 @@ def dsm_card(records: dict, fx: dict) -> Path:
     doc.para(
         "The detector uses 60 input columns. "
         f"{detection_inputs(records['input_audit'])} "
-        "This is elm-dsm (60-input 1×128 refit, detection), a reduced-input "
+        "This is elm-dsm-detect (60-input 1×128), a reduced-input "
         "adaptation trained and evaluated on 50 ms rows. The source model trained "
         "on native 1 ms rows with 124 inputs and layers [100, 1000] for WPQH "
         "breakthrough-ELM forecasting; this is not an objective-only retrain of "
-        "that model. Fast-density units and filterscope sightlines are unverified "
-        "in retained metadata; fixed input scaling, clipping and magnitude "
-        "screening do not establish physical calibration."
+        "that model. " + photodiode_text(fx) + " Fast-density units and filterscope "
+        "sightlines are unverified in retained metadata; fixed input scaling, "
+        "clipping and magnitude screening do not establish physical calibration. "
+        + density_text(fx)
     )
     doc.para(
         "The companion occupancy U-Net omits FS01 because its retained cache "
@@ -616,11 +729,9 @@ def dsm_card(records: dict, fx: dict) -> Path:
         "made no new fetches and changed no saved inputs or weights. Sources: "
         "`density_units.json`, `filterscope_metadata.json` and "
         "`src/labeler/elm/inputs.py`. No independently validated physical-onset "
-        "detector is delivered, and run days cross folds in both developmental "
-        f"analyses ({fx['review_run_days']['crossing']} of "
-        f"{fx['review_run_days']['days']} review days; "
-        f"{fx['smith_run_days']['crossing']} of {fx['smith_run_days']['days']} "
-        "Smith days)."
+        "detector is delivered; run days cross folds in the review analysis "
+        f"({fx['review_run_days']['crossing']} of "
+        f"{fx['review_run_days']['days']} review days) and {smith_days_text(fx)}."
     )
     doc.heading(3, "Limited-input survival refit (selection evidence)")
     doc.para(
@@ -699,9 +810,9 @@ def timing_text(fx: dict) -> str:
     return (
         f"Of {off['starts']} non-crowd reviewed starts on {off['shots']} BES-subset "
         f"shots, {off['matched']} (on {off['matched_shots']} shots) match the "
-        "nearest ELM-O onset within ±50 ms; the other "
+        "nearest elm-elmo onset within ±50 ms; the other "
         f"{off['unmatched']} are omitted and each start is matched independently. "
-        "Reviewed start minus ELM-O onset has median "
+        "Reviewed start minus elm-elmo onset has median "
         f"{off['median']} ms and quartiles [{off['p25']}, {off['p75']}] ms on the "
         "matched subset. This annotation-to-detector offset is not a measured "
         "physical-onset error: neither reference has independently verified "
@@ -722,7 +833,7 @@ def glossary(doc: Doc, fx: dict) -> None:
                 "coverage."
             ),
             (
-                f"**bes73**: the {fx['shots']['bes73']} of them with BES (ELM-O's "
+                f"**bes73**: the {fx['shots']['bes73']} of them with BES (elm-elmo's "
                 f"coverage), {fx['bins']['bes73']:,} bins. It is a scope, not a model."
             ),
             (
@@ -734,9 +845,17 @@ def glossary(doc: Doc, fx: dict) -> None:
                 "present spans, and spans without ELMs."
             ),
             (
-                "**known all-covered**: legacy-swap 50 ms cells with at least 25 ms of "
-                "reviewed present occupancy inside every method's coverage; unknown "
-                "time stays unknown."
+                "**known-majority cells**: legacy-swap 50 ms cells with at least 25 ms "
+                "of legacy coverage that at least 25 ms of one reviewed state, present "
+                "or absent, labels (ties go to present); mixed, uncertain and "
+                "not-observable cells stay out and unknown time stays unknown."
+            ),
+            (
+                "**model names**: `elm-elmo` is our reimplementation of ELM-O; "
+                "`elm-dsm-survival` is the DSM survival refit on source 1 ms rows; "
+                "`elm-dsm-detect` is the 60-input 1×128 occupancy-detection "
+                "adaptation on 50 ms means; `elm-dsm-native-detect` is the "
+                "124-input [100,1000] detection refit on 1 ms means."
             ),
             "**exact exports**: the source DSM's saved native rows.",
             (
@@ -762,7 +881,7 @@ def target_section(doc: Doc, fx: dict) -> None:
         f"started from the D-alpha clock: {pct(share['start'])}% of crowd starts, "
         f"{pct(share['end'])}% of ends and {pct(share['both'])}% of both "
         f"({share['crowd_spans']} crowd spans) lie within 1 ms of its boundaries, "
-        "which favours D-alpha-input models over ELM-O (BES and interferometers)."
+        "which favours D-alpha-input models over elm-elmo (BES and interferometers)."
     )
     doc.para(timing_text(fx))
     doc.para(
@@ -771,7 +890,14 @@ def target_section(doc: Doc, fx: dict) -> None:
         "alarm rate (any detection touching a covered absent span) is "
         f"{F.fmt(*alarm['all119/elm-ours']['span_alarm'])} for elm-ours and "
         f"{F.fmt(*alarm['all119/elm-clock']['span_alarm'])} for the clock on all119, "
-        f"{F.fmt(*alarm['bes73/elm-elmo']['span_alarm'])} for ELM-O on bes73."
+        f"{F.fmt(*alarm['bes73/elm-elmo']['span_alarm'])} for elm-elmo on bes73. "
+        "The centered 50 ms mean carries elm-ours detections about 25 ms across "
+        "reviewed edges and the clock's edges seeded the review, so the raw rate "
+        "favours the clock; with 25 ms trimmed from each absent-span edge "
+        "(guard25) the rates are "
+        f"{alarm['all119/elm-ours']['span_alarm_guard25'][0]:.3f} (elm-ours), "
+        f"{alarm['all119/elm-clock']['span_alarm_guard25'][0]:.3f} (clock) and "
+        f"{alarm['bes73/elm-elmo']['span_alarm_guard25'][0]:.3f} (elm-elmo, bes73)."
     )
 
 
@@ -795,13 +921,13 @@ def benchmark_section(doc: Doc, records: dict, fx: dict) -> None:
     seeds = fx["seed_range"]["all119"]
     doc.para(
         "elm-ours calls a bin present when its mean probability reaches the fold "
-        "threshold; ELM-O and the clock use any touching detected span. Fold "
+        "threshold; elm-elmo and the clock use any touching detected span. Fold "
         f"{early['fold']} (zero-based) selected epoch {early['epoch']} of "
         f"{fx['epochs']}; fold thresholds span {min(thr):.3f}–{max(thr):.3f}. Four "
         f"training seeds give all119 AUROC {seeds['auroc']['min']:.3f}–"
         f"{seeds['auroc']['max']:.3f}, AUPRC {seeds['auprc']['min']:.3f}–"
         f"{seeds['auprc']['max']:.3f} and F1 {seeds['f1']['min']:.3f}–"
-        f"{seeds['f1']['max']:.3f}. On bes73, paired elm-ours minus ELM-O is "
+        f"{seeds['f1']['max']:.3f}. On bes73, paired elm-ours minus elm-elmo is "
         f"{F.delta_text(fx['paired_primary'])}: every interval includes zero "
         "(equivalence untested), while elm-ours extends BES-free coverage to all "
         "119 shots."
@@ -817,7 +943,7 @@ def benchmark_section(doc: Doc, records: dict, fx: dict) -> None:
             f"the gap between clock spans): {moved['bins']:,} bins on "
             f"{moved['shots']} shots, {moved['positive_bins']:,} positive, with "
             f"{moved['absent_spans']} absent spans. The intervals are wide and the "
-            "stratum inconclusive; paired elm-ours minus ELM-O AUROC is "
+            "stratum inconclusive; paired elm-ours minus elm-elmo AUROC is "
             f"{F.fmt(*F.paired(paired), signed=True)}. Source: "
             "`ours/moved_boundary_stratum.json`."
         )
@@ -834,7 +960,7 @@ def benchmark_section(doc: Doc, records: dict, fx: dict) -> None:
         + ", ".join(str(r["epoch"]) for r in fx["dsm_folds"])
         + "). Paired elm-ours minus elm-dsm, all119: "
         f"{F.delta_text(pairs['all119'])}; bes73: {F.delta_text(pairs['bes73'])}. "
-        "Paired elm-ours minus ELM-O on bes73: "
+        "Paired elm-ours minus elm-elmo on bes73: "
         f"{F.delta_text(fx['paired_common_elmo'])}. " + LOWER_BOUND
     )
 
@@ -888,6 +1014,18 @@ def serving_section(doc: Doc, fx: dict) -> None:
         )
 
 
+def smith_occupancy_text(smith: dict) -> str:
+    """Window-occupancy rank metrics of the head and elm-elmo on the Smith windows."""
+    head, elmo = (
+        smith["methods"][m]["occupancy_1ms"] for m in ("elm-ours-onset", "elm-elmo")
+    )
+    return (
+        "On the selected windows' 1 ms occupancy, which every method sees only "
+        f"conditionally, window AUROC is {metric(head, 'auroc')} for the head "
+        f"and {metric(elmo, 'auroc')} for elm-elmo."
+    )
+
+
 def smith_swap_sections(doc: Doc, records: dict, fx: dict) -> None:
     head = fx["smith_head"]
     overlap = records["swap"]["swap"]["overlap"]
@@ -896,10 +1034,9 @@ def smith_swap_sections(doc: Doc, records: dict, fx: dict) -> None:
         "Frozen occupancy transfer is omitted for target mismatch: 50 ms occupancy "
         "cannot resolve approximately 8.5 ms Smith windows. The frozen "
         "reviewed-span start output is also omitted. The experimental "
-        "elm-ours-onset head is developmental shot CV with within-Smith run-day "
-        f"sharing ({fx['smith_run_days']['crossing']} of "
-        f"{fx['smith_run_days']['days']} run days cross folds); overlap with ELM-O's "
-        "historical tuning events is unknown."
+        "elm-ours-onset head is developmental CV: "
+        + smith_days_text(fx)
+        + "; overlap with the original ELM-O's historical tuning events is unknown."
     )
     doc.para(
         f"At ±2 ms the head recalls {head['recall']:.3f} of {head['windows']:,} "
@@ -909,14 +1046,15 @@ def smith_swap_sections(doc: Doc, records: dict, fx: dict) -> None:
         "selected windows; continuous-discharge precision/F1 is unavailable.** "
         f"{head['out_of_window']:,} further firings lie outside the windows and "
         "lack negative truth; the 10 ms minimum peak separation fixes the head's "
-        "in-window precision, so none is reported. ELM-O region-overlap recall is "
+        "in-window precision, so none is reported. elm-elmo region-overlap recall is "
         f"{head['elmo_region_recall']:.3f} after the 179859 time-axis repair. "
-        "Traces: `$LABELER_ROOT/round4/elm/smith/cv/pred/`; catalog onsets stay "
+        + smith_occupancy_text(records["smith"])
+        + " Traces: `$LABELER_ROOT/round4/elm/smith/cv/pred/`; catalog onsets stay "
         "withheld."
     )
     doc.heading(2, "Reference swap")
     doc.para(
-        swap_paragraph(records["swap"], records["ours"])
+        swap_paragraph(records["swap"], records["ours"], fx["photodiode"])
         + " Fixed predictions are also compared on "
         f"{overlap['reviewed']['bins']} strict interior bins; only AUROC compares "
         "references, and covered-gap merges at 100/200/300 ms never bridge missing "
@@ -924,35 +1062,54 @@ def smith_swap_sections(doc: Doc, records: dict, fx: dict) -> None:
     )
 
 
-def swap_paragraph(record: dict, ours: dict) -> str:
+def swap_paragraph(record: dict, ours: dict, photodiode: dict | None = None) -> str:
     """The swap result in prose; every figure is read from the swap record."""
     overlap, bes = record["swap"]["overlap"], record["swap"]["overlap_bes"]
     held = record["swap"]["overlap_dsm_heldout"]
     held_bes = record["swap"]["overlap_bes_dsm_heldout"]
-    audit = record["interval_audit"]["known_review_majority"]
+    one = swap_tex.finding_one(record)
     change = overlap["comparison"]["auroc_change_paired"][swap_tex.NAME["dsm"]]
     inside = change["ci95"][0] <= 0 <= change["ci95"][1]
     elmo = swap_tex.NAME["elmo"]
-    panel = bes["reviewed"]["methods"][elmo]["point"]["auroc"]
+    res = bes["reviewed"]["methods"][elmo]
     whole = ours["sets"]["bes73"]["methods"][elmo]["point"]["auroc"]
+    lo, hi = res["ci95"]["auroc"]
     count = swap_tex.count_word
-    return (
+    survival = compare.DISPLAY_NAME[swap_tex.NAME["dsm"]]
+    elmo_auroc = F.fmt(res["point"]["auroc"], res["ci95"]["auroc"])
+    text = (
         f"The legacy onset table overlaps {count(overlap['n_shots'])} review shots "
-        f"({count(bes['n_shots'])} with BES). On {audit['bins']} known all-covered "
-        f"50 ms cells, M={audit['M']} and P={audit['P']}; these are definition "
-        "disagreements, not adjudicated events. "
+        f"({count(bes['n_shots'])} with BES). Finding 1 is read on "
+        f"{one['cells']} known-majority cells: the legacy table's recall against "
+        f"the review is {one['recall']:.3f} and its precision {one['precision']:.3f}, "
+        f"with |M|={one['M']} review-present cells it marks absent and "
+        f"|P|={one['P']} review-absent cells it marks present; these are definition "
+        "disagreements, not adjudicated events. The "
+        f"{one['strict_bins']} strict interior bins of the method comparison give "
+        f"|M|={one['strict_M']} and |P|={one['strict_P']}. "
         + swap_tex.ranking_sentence(overlap, bes)
-        + "The supplemental refit's paired legacy-minus-review AUROC change is "
+        + f"The {survival} paired legacy-minus-review AUROC change is "
         f"{swap_tex.signed(change['value'], change['ci95'])}, in-sample on "
         f"{len(overlap['dsm_refit_training_shots'])}/{overlap['n_shots']} shots and "
         f"{'within' if inside else 'outside'} its interval; no AE Finding-2 analogue "
-        f"is established. The {count(held['n_shots'])} shots ({held_bes['n_shots']} "
-        "with BES) outside original DSM fitting are too small for intervals; their "
-        "values are in the JSON. All overlap shots use the upstream WPQH PCPHD02/03 "
-        "export in the reduced-input detection adaptation. ELM-O scores "
-        f"{panel:.3f} on these {count(bes['n_shots'])} WPQH shots against "
-        f"{whole:.3f} on the BES subset, likely domain shift."
+        f"is established. "
+        + swap_tex.excluding_zero(record).replace("$", "")
+        + f"The {count(held['n_shots'])} shots ({held_bes['n_shots']} with BES) "
+        "outside original DSM fitting are too small for intervals; their values "
+        f"are in the JSON. {elmo} scores {elmo_auroc} "
+        f"on the {count(bes['n_shots'])} BES shots against {whole:.3f} on bes73; "
+        f"the interval {'contains' if lo <= whole <= hi else 'excludes'} that "
+        "value, so no domain shift is established with seven shots."
     )
+    check = photodiode_text({"photodiode": photodiode}) if photodiode else ""
+    if check:
+        text += " " + check
+    else:
+        text += (
+            " All overlap shots use the upstream WPQH PCPHD02/03 export in the "
+            "reduced-input detection adaptation."
+        )
+    return text
 
 
 def provenance_section(doc: Doc, fx: dict) -> None:
@@ -967,8 +1124,10 @@ def provenance_section(doc: Doc, fx: dict) -> None:
         "chord whose median absolute native magnitude exceeds `1e16` is zeroed. "
         "These are fixed numerical choices, not verified calibration or a validated "
         "failure criterion. Offline audits changed no saved inputs, screening or "
-        "weights and made no new fetches. Sources: `density_units.json`, "
-        "`filterscope_metadata.json`, `src/labeler/elm/inputs.py`."
+        "weights and made no new fetches. "
+        + density_text(fx)
+        + " Sources: `density_units.json`, `filterscope_metadata.json`, "
+        "`src/labeler/elm/inputs.py`."
     )
 
 
@@ -993,6 +1152,11 @@ def sources_section(doc: Doc, records: dict) -> None:
                 "refits, native targets and comparator, repeats."
             ),
             (
+                "`dsm/swap_photodiode_agreement.json`, `density_range.json`: the "
+                "swap shots' PCPHD02/03 against a fresh fetch, and the fast-density "
+                "input's numerical range."
+            ),
+            (
                 "`smith/evaluation.json`, `swap/evaluation.json`, "
                 "`review_start_offsets.json`: onset scope, swap and timing."
             ),
@@ -1010,6 +1174,11 @@ def sources_section(doc: Doc, records: dict) -> None:
         "`elm_feature_evaluate.py`, `elm_moved_boundary_stratum.py`, "
         "`elm_tiled_inference.py`, `elm_run_day_summary.py` (after "
         "`elm_ours_evaluate.py --run cv2_runday`), `elm_dsm_baseline_seeds.py`, "
+        "`elm_native_ours.py` (GPU; elm-ours on the native folds) then "
+        "`elm_native_detect.py --rescore`, `elm_dsm_fetch.py --native-photodiodes "
+        "--fresh-shots <swap shots>` then `elm_dsm_photodiode_agreement.py`, "
+        "`elm_density_range.py`, "
+        "`elm_smith_evaluate.py train --group-by run_day` (GPU) and "
         "`elm_smith_evaluate.py evaluate`, `elm_reference_swap.py`, "
         "`elm_example_figure.py --run <run>`, `elm_paper_tables.py` and "
         "`elm_protocol.py`. Figures, checkpoints and predictions live under "
@@ -1023,7 +1192,7 @@ def render_doc(records: dict, fx: dict) -> str:
     own = ours["sets"]["all119"]["methods"]["elm-ours"]
     bes = ours["sets"]["bes73"]["methods"]["elm-ours"]
     doc = Doc()
-    doc.heading(1, "ELM occupancy and onset evaluation")
+    doc.heading(1, "ELM occupancy evaluation")
     doc.para(
         "`elm-ours` delivers BES-free ELMy-occupancy probability; the requested "
         "finer physical-onset trace is **not delivered to the catalog**. On all119 "

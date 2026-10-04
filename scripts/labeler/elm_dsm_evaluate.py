@@ -11,11 +11,11 @@ described in `labeler.elm.dsm`:
    validation rows (upstream calls them test),
    split, AUROC at 5, 10, 20 and 50 ms of "an ELM within `h` ms" with 95 % shot
    intervals; the point values are checked against the training record's.
-2. **elm-dsm refit**: an offline 50 ms forward-risk score with 25 ms centered-NBI
+2. **elm-dsm-survival**: an offline 50 ms forward-risk score with 25 ms centered-NBI
    lookahead, not a causal forecast. The model is not retrained; the hard call
    uses the threshold that maximises F1 on the fold's inner-validation shots (the same
    shots `elm-ours` used), applied to the fold's held-out shots.
-3. **elm-dsm (60-input 1×128 refit, detection)**: a reduced-input adaptation with
+3. **elm-dsm-detect (60-input 1×128)**: a reduced-input adaptation with
    one 128-unit embedding and one logit head, trained on the reviewed spans to say
    whether the 50 ms ending
    at a row is present, on the same shot-grouped folds and inner-validation shots as

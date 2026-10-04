@@ -23,9 +23,10 @@ LOWER_BOUND = (
     "not the best achievable DSM performance."
 )
 CAPTION_CAPS = {
-    "table_elm_benchmark.tex": 280,
+    "table_elm_benchmark.tex": 120,
     "table_elm_common_control.tex": 240,
-    "table_elm_swap.tex": 150,
+    "table_elm_swap.tex": 170,
+    "table_elm_native_detection.tex": 170,
 }
 DEFAULT_CAP = 130
 
@@ -74,59 +75,35 @@ PRIMARY_KEYS = (
     "f1",
     "false_alarm_bin_rate",
     "absent_span_alarm_rate",
+    "absent_span_alarm_rate_guard25",
 )
+ALARM_KEYS = ("absent_span_alarm_rate", "absent_span_alarm_rate_guard25")
 COMMON_KEYS = ("auroc", "auprc", "f1")
 
 
 def main_caption(fx: dict) -> str:
-    """The primary-benchmark caption; every figure is read from the JSON records."""
-    folds = fx["ours_folds"]
-    early = min(folds, key=lambda r: r["epoch"])
-    thr = [r["threshold"] for r in folds]
-    auroc = fx["seed_range"]["all119"]["auroc"]
-    quiet = fx["non_crowd_only"]
-    prec = F.fmt(*quiet["precision"])
+    """The primary-benchmark caption, at most 120 words; the rest is in the notes.
+
+    Every figure is read from the JSON records. Fold selection, seeds, thresholds,
+    the false-alarm definitions and the non-crowd and moved-boundary diagnostics are
+    in `appendix_note` (`elm_table_notes.tex`).
+    """
     share = fx["clock_share"]
-    text = (
+    return (
         "Primary reviewed-occupancy benchmark: developmental shot-grouped CV on "
-        f"the {fx['shots']['all119']} reviewed shots; a frozen-model score on the "
-        "blind split awaits review of those shots. The target is ELMy-period "
-        "occupancy, not onsets: "
+        f"the {fx['shots']['all119']} reviewed shots; there is no blind-split "
+        "score. The target is ELMy-period occupancy, not onsets: "
         f"{100 * fx['crowd_share']:.0f}\\% of positive bins come from crowd spans "
-        "and the label set has no onset trace. Scored 50 ms bins lie wholly inside "
-        "reviewed spans, so bins straddling a boundary are dropped and the task is "
-        "easier than whole-shot detection "
-        f"({fx['bins']['all119']:,} all119 bins; {fx['bins']['bes73']:,} bes73). "
-        "Labels come from review seeded by the D-alpha clock "
-        f"({100 * share['start']:.0f}\\% of crowd starts, {100 * share['end']:.0f}\\% "
-        f"of ends and {100 * share['both']:.0f}\\% of both lie within 1 ms of clock "
-        "boundaries), which favours D-alpha-input models over ELM-O. "
-        "Fold thresholds maximise inner-validation F1; elm-ours calls a bin on its "
-        "mean probability, ELM-O and the clock on any touching detected span. "
-        "FPR is the fraction of absent bins called present; alarm is the fraction "
-        "of absent spans touched. Paired elm-ours minus ELM-O on bes73: "
-        f"{delta_text(fx['paired_primary'])}; all include zero and equivalence is "
-        f"untested. Fold {early['fold']} (zero-based) selected epoch "
-        f"{early['epoch']} of {fx['epochs']} (thresholds "
-        f"{min(thr):.3f}--{max(thr):.3f}); four training "
-        f"seeds give all119 AUROC {auroc['min']:.3f}--{auroc['max']:.3f}. On "
-        f"non-crowd-only shots ({quiet['shots']} shots/{quiet['bins']:,} bins) "
-        f"elm-ours precision is {prec}."
+        f"and only interior 50 ms bins are scored ({fx['bins']['all119']:,} all119; "
+        f"{fx['bins']['bes73']:,} bes73). Review was seeded by the D-alpha clock "
+        f"({100 * share['both']:.0f}\\% of crowd spans match its boundaries within "
+        "1 ms), which favours D-alpha-input models over elm-elmo. Paired elm-ours "
+        f"minus elm-elmo on bes73: {delta_text(fx['paired_primary'])}; every "
+        "interval includes zero, so no difference is detected. Alarm: absent "
+        "spans touched by a detection (guard25: 25 ms trimmed from each edge). "
+        r"Brackets: 95\% shot-bootstrap intervals; $^{\dagger}$ recall "
+        r"$\geq0.99$; definitions in the ELM evaluation notes."
     )
-    moved = fx.get("moved")
-    if moved:
-        text += (
-            " The last block keeps bes73 spans whose boundaries both moved more "
-            f"than 1 ms from the clock ({moved['present_spans']} of "
-            f"{moved['all_present_spans']} present and {moved['absent_spans']} "
-            f"absent spans; {moved['bins']:,} bins); with so few present spans its "
-            "intervals are wide and the comparison inconclusive."
-        )
-    text += (
-        r" $^{\dagger}$ marks recall $\geq0.99$. Brackets: 95\% shot-bootstrap "
-        "intervals."
-    )
-    return text
 
 
 def common_caption(fx: dict) -> str:
@@ -137,14 +114,14 @@ def common_caption(fx: dict) -> str:
     text = (
         "Secondary common-bin control, requiring valid DSM rows for every method "
         f"({fx['common_bins']['all119']:,} all119; {fx['common_bins']['bes73']:,} "
-        r"bes73 bins). The elm-dsm (60-input $1\times128$) row is a detection "
+        r"bes73 bins). The elm-dsm-detect (60-input $1\times128$) row is a detection "
         "adaptation on 50 ms input means, not the native architecture; its "
         f"reported fit is fragile (selected epochs {epochs}; thresholds "
         f"{min(thr):.3f}--{max(thr):.3f}). " + seed_sentence(fx) + LOWER_BOUND + " "
-        "Paired elm-ours minus elm-dsm, all119: "
+        "Paired elm-ours minus elm-dsm-detect, all119: "
         f"{delta_text(fx['paired_common_dsm']['all119'])}; bes73: "
         f"{delta_text(fx['paired_common_dsm']['bes73'])}. Paired elm-ours minus "
-        f"ELM-O on bes73: {delta_text(fx['paired_common_elmo'])}; the latter "
+        f"elm-elmo on bes73: {delta_text(fx['paired_common_elmo'])}; the latter "
         "intervals include zero and equivalence is untested. "
         r"Brackets: 95\% shot-bootstrap intervals."
     )
@@ -157,17 +134,21 @@ def benchmark_table(ours, dsm, feature=None, fx=None, *, common=False) -> str:
     head = (
         r"Method & AUROC & AUPRC & F1 \\"
         if common
-        else r"Method & AUROC & AUPRC & F1 & Absent-bin FPR & Absent-span alarm \\"
+        else r"Method & AUROC & AUPRC & F1 & Absent-bin FPR & Absent-span alarm "
+        r"& Alarm, guard25 \\"
     )
     lines = [
-        r"\begin{tabular}{l" + "c" * len(keys) + "}",
+        (r"\footnotesize\setlength{\tabcolsep}{2.5pt}" + "\n" if not common else "")
+        + r"\begin{tabular}{l"
+        + "c" * len(keys)
+        + "}",
         r"\toprule",
         head,
     ]
     rows = (
         ("elm-ours", "elm-ours"),
         ("elm-elmo", "elm-elmo"),
-        ("elm-dsm-detect", r"elm-dsm (60-input $1\times128$)"),
+        ("elm-dsm-detect", r"elm-dsm-detect (60-input $1\times128$)"),
         ("elm-clock", "elm-clock"),
         ("always present", "always-present"),
         ("elm-feature-only", "elm-feature"),
@@ -212,9 +193,7 @@ def benchmark_table(ours, dsm, feature=None, fx=None, *, common=False) -> str:
         for key, label in rows[:2] + rows[3:4]:
             result = moved["methods"].get(key)
             if result is not None:
-                lines.append(
-                    metric_row(label, result, keys, blank=("absent_span_alarm_rate",))
-                )
+                lines.append(metric_row(label, result, keys, blank=ALARM_KEYS))
     lines += [r"\bottomrule", r"\end{tabular}"]
     caption = common_caption(fx) if common else main_caption(fx)
     label = "tab:elm-common-control" if common else "tab:elm-benchmark"
@@ -345,8 +324,8 @@ def own_target_table(dsm) -> str:
         )
     lines += [r"\bottomrule", r"\end{tabular}"]
     caption = (
-        f"{context['refit_input_columns']}-input DSM refit checkpoint, selected "
-        f"after epoch {context['refit_checkpoint_epochs']} of a "
+        f"elm-dsm-survival, the {context['refit_input_columns']}-input survival refit "
+        f"checkpoint, selected after epoch {context['refit_checkpoint_epochs']} of a "
         f"{context['refit_run_epochs']}-epoch run. Its survival target is an ELM within "
         "the forecast horizon, queried one ms later. Rows are the source "
         f"early-stopping validation set ({target['shots']} physical shots); "
@@ -375,11 +354,11 @@ def supplemental_table(dsm) -> str:
             + r"} \\",
         ]
         for key, label in (
-            ("elm-dsm", "elm-dsm survival refit"),
-            ("elm-dsm-detect-exposed", "elm-dsm (source statistics, detection)"),
+            ("elm-dsm", "elm-dsm-survival"),
+            ("elm-dsm-detect-exposed", "elm-dsm-detect (source statistics)"),
             (
                 "elm-dsm-detect-init",
-                "elm-dsm (source weights and statistics, detection)",
+                "elm-dsm-detect (source weights and statistics)",
             ),
         ):
             result = res["methods"][key]
@@ -390,10 +369,18 @@ def supplemental_table(dsm) -> str:
         "\n".join(lines),
         "Historical DSM variants with source fitting, normalization or checkpoint "
         "selection on these shots. Inputs retain mean-filled photodiodes and incomplete "
-        "slow CO2, unlike the revised isolated detector. Brackets show eligible "
+        "slow CO2, unlike the isolated detector. Brackets show eligible "
         "shot-bootstrap intervals; these rows are developmental diagnostics.",
         "tab:elm-supplemental",
     )
+
+
+def smith_folds_text(audit: dict) -> str:
+    """How the Smith onset folds treat run days, from the run-day audit."""
+    days, crossing = audit["run_days"], audit["run_days_spanning_multiple_folds"]
+    if crossing == 0:
+        return f"with folds grouped by run day (none of {days} Smith run days crosses)"
+    return f"by shot with {crossing} of {days} Smith run days crossing folds"
 
 
 def smith_table(record) -> str:
@@ -437,12 +424,12 @@ def smith_table(record) -> str:
     caption = (
         "Smith selected windows: frozen review-occupancy rows are omitted "
         "for target mismatch (50 ms occupancy versus approximately 8.5 ms windows). "
-        "The experimental elm-ours-onset head is developmental "
-        f"shot CV with {day_audit['run_days_spanning_multiple_folds']} of "
-        f"{day_audit['run_days']} Smith run days crossing folds; overlap with "
-        "ELM-O's historical tuning events is unknown because event membership "
-        "was not retained. Every metric is conditional on selected windows; "
-        "continuous-discharge precision and F1 are unavailable for every method. "
+        "The experimental elm-ours-onset head is developmental CV "
+        + smith_folds_text(day_audit)
+        + "; overlap with the original ELM-O's tuning events is unknown because "
+        "event membership was not retained. Every metric is conditional on "
+        "selected windows; "
+        "continuous-discharge precision and F1 are unavailable. "
         "Event precision and F1 are not shown: the 10 ms minimum peak "
         f"separation fixes the head's in-window precision at {precision:.3f}, and "
         f"{onset_audit['out_of_window_firings']:,} additional out-of-window "
@@ -524,6 +511,11 @@ def native_table(native) -> str:
     return swap_tex.wrap_table("\n".join(lines), caption, "tab:elm-dsm-native")
 
 
+def fold_range(values) -> str:
+    low, high = min(values), max(values)
+    return f"{low}" if low == high else f"{low}--{high}"
+
+
 def native_detection_table(record, fx=None) -> str:
     lines = [r"\begin{tabular}{lccc}", r"\toprule", r"Method & AUROC & AUPRC & F1 \\"]
     for tag in ("all119", "bes73"):
@@ -536,9 +528,10 @@ def native_detection_table(record, fx=None) -> str:
         ]
         for key, label in (
             ("elm-ours", "elm-ours"),
-            ("elm-dsm-detect", r"elm-dsm (60-input $1\times128$)"),
-            ("elm-dsm-native-detect", "elm-dsm (124-input [100,1000])"),
-            ("elm-elmo", "ELM-O"),
+            ("elm-ours-native-folds", "elm-ours (native-fold training shots)"),
+            ("elm-dsm-detect", r"elm-dsm-detect (60-input $1\times128$)"),
+            ("elm-dsm-native-detect", "elm-dsm-native-detect (124-input [100,1000])"),
+            ("elm-elmo", "elm-elmo"),
         ):
             result = panel["methods"].get(key)
             if result:
@@ -549,19 +542,32 @@ def native_detection_table(record, fx=None) -> str:
     lines += [r"\bottomrule", r"\end{tabular}"]
     gate_text = record["gate"].replace(">=", r"$\geq$")
     epochs = record["recipe"]["epochs"]
+    sizes = ""
+    if fx:
+        own = fx["ours_training_sizes"]
+        native = fx["native_detection"]["folds"]
+        sizes = (
+            "Training shots per fold (train/inner-validation): elm-ours "
+            f"{fold_range([f['train'] for f in own])}/"
+            f"{fold_range([f['inner_val'] for f in own])}; native-fold rows "
+            f"{fold_range([f['train'] for f in native])}/"
+            f"{fold_range([f['inner_val'] for f in native])}, so the 24--28-shot "
+            "fits are far smaller than the headline's; elm-ours (native-fold "
+            "training shots) repeats the elm-ours recipe on those shots. "
+        )
     caption = (
         f"Secondary native DSM detection comparison. The 1 ms audit finds "
         f"{gate_text}; "
         f"{record['sets']['all119']['n_shots']} reviewed shots have complete-input "
-        "scored bins. Both DSM rows are occupancy detection "
-        r"refits: 60-input $1\times128$ adaptation on 50 ms means, and native "
-        "124-input [100,1000] architecture on 1 ms means. All methods use identical "
-        "supported shots/bins. "
-        "Inner-validation AUPRC selects checkpoints and F1 selects thresholds. "
-        r"Brackets: 95\% shot-bootstrap intervals. These are developmental results "
-        f"from a fixed {epochs}-epoch refit, with reconstructed native inputs and "
-        "within-shot "
-        "NBI smoothing. " + (seed_sentence(fx, "native") if fx else "") + LOWER_BOUND
+        "scored bins, identical for every method. Both DSM rows are occupancy "
+        r"detection fits: 60-input $1\times128$ adaptation on 50 ms means, and native "
+        "124-input [100,1000] architecture on 1 ms means. " + sizes + "Inner-"
+        "validation AUPRC selects checkpoints and F1 thresholds. "
+        r"Brackets: 95\% shot-bootstrap intervals. Developmental results from a "
+        f"fixed {epochs}-epoch refit with reconstructed native inputs and "
+        "within-shot NBI smoothing. "
+        + (seed_sentence(fx, "native") if fx else "")
+        + LOWER_BOUND
     )
     return swap_tex.wrap_table("\n".join(lines), caption, "tab:elm-native-detection")
 
@@ -571,8 +577,8 @@ def dsm_repeats_table(fx: dict) -> str:
     seeds = fx["dsm_baselines"]
     lines = [r"\begin{tabular}{lccc}", r"\toprule", r"Fit & AUROC & AUPRC & F1 \\"]
     for key, label in (
-        ("reduced", r"elm-dsm (60-input $1\times128$)"),
-        ("native", "elm-dsm (124-input [100,1000])"),
+        ("reduced", r"elm-dsm-detect (60-input $1\times128$)"),
+        ("native", "elm-dsm-native-detect (124-input [100,1000])"),
     ):
         row = seeds[key]
         lines += [
@@ -662,32 +668,56 @@ def pct(value: float) -> str:
     return f"{100 * value:.0f}"
 
 
-def appendix_note(fx: dict) -> str:
+def alarm_pair(fx: dict, key: str) -> str:
+    """`raw/guard25`: the raw absent-span alarm rate and its guard25 companion."""
+    row = fx["alarm"][key]
+    return f"{row['span_alarm'][0]:.3f}/{row['span_alarm_guard25'][0]:.3f}"
+
+
+def appendix_note(fx: dict, swap_record: dict | None = None) -> str:
     """The shared appendix note: definitions, panels, thresholds and limits.
 
-    One page at most; every figure is read from the JSON records through `facts`.
+    Everything the main benchmark caption leaves out lives here. Every figure is
+    read from the JSON records through `facts` (and the swap record for Finding 1).
     """
     offsets, share = fx["offsets"], fx["clock_share"]
-    alarm = fx["alarm"]
     native = fx["native_detection"]
     review_days = fx["review_run_days"]
+    folds = fx["ours_folds"]
+    early = min(folds, key=lambda r: r["epoch"])
+    thr = [r["threshold"] for r in folds]
+    auroc = fx["seed_range"]["all119"]["auroc"]
+    quiet = fx["non_crowd_only"]
+    own = fx["ours_training_sizes"]
+    native_sizes = native["folds"]
+    one = swap_tex.finding_one(swap_record) if swap_record else None
     paragraphs = [
         r"\paragraph{ELM evaluation notes.}\label{app:elm-table-notes}",
         (
             r"\textbf{Sets.} \emph{all119}: the "
             f"{fx['shots']['all119']} reviewed shots, {fx['bins']['all119']:,} "
             "interior 50 ms bins (wholly inside one reviewed absent, non-crowd or "
-            "crowd span and inside signal coverage). \\emph{bes73}: the "
+            "crowd span and inside signal coverage), so boundary-straddling bins are "
+            "dropped and the task is easier than whole-shot detection. "
+            "\\emph{bes73}: the "
             f"{fx['shots']['bes73']} of them with BES, {fx['bins']['bes73']:,} bins "
-            "(ELM-O's coverage). \\emph{Common bins} "
+            "(elm-elmo's coverage). \\emph{Common bins} "
             f"({fx['common_bins']['all119']:,}/{fx['common_bins']['bes73']:,}) also "
-            "need valid DSM rows. \\emph{Known all-covered} cells, used only in "
-            "the legacy swap, are 50 ms cells with at least 25 ms reviewed present "
-            "occupancy inside every method's coverage; unknown time stays unknown. "
-            "\\emph{Exact exports} are the source DSM's saved native rows. "
-            "$^{\\ddagger}$ marks upstream data reused in source training, "
-            "normalization or selection (``source stats'', ``source weights/stats''; "
-            "two blind-cohort shots); $^{\\dagger}$ marks recall $\\geq0.99$."
+            "need valid DSM rows. \\emph{Known-majority cells}, used only in the "
+            "legacy swap, are 50 ms cells with at least 25 ms of legacy coverage "
+            "that at least 25 ms of one reviewed state, present or absent, labels; "
+            "mixed, uncertain and not-observable cells stay out and unknown time "
+            "stays unknown. \\emph{Exact exports} are the source DSM's saved native "
+            "rows. $^{\\ddagger}$ marks upstream data reused in source training, "
+            "normalization or selection (two blind-cohort shots); "
+            "$^{\\dagger}$ marks recall $\\geq0.99$."
+        ),
+        (
+            r"\textbf{Names.} \texttt{elm-elmo} is our reimplementation of ELM-O; "
+            r"\texttt{elm-dsm-survival} the DSM survival refit on source 1 ms rows; "
+            r"\texttt{elm-dsm-detect} the 60-input $1\times128$ occupancy-detection "
+            r"adaptation on 50 ms means; \texttt{elm-dsm-native-detect} the 124-input "
+            "[100,1000] detection refit on 1 ms means."
         ),
         (
             r"\textbf{Labels.} "
@@ -696,38 +726,86 @@ def appendix_note(fx: dict) -> str:
             "boundaries without independent physical-onset truth. The review began "
             f"from the clock: {pct(share['start'])}\\% of crowd starts, "
             f"{pct(share['end'])}\\% of ends and {pct(share['both'])}\\% of both lie "
-            f"within 1 ms of its boundaries ({share['crowd_spans']} crowd spans). "
+            f"within 1 ms of its boundaries ({share['crowd_spans']} crowd spans), "
+            "which favours D-alpha-input models over elm-elmo. "
             f"Of {offsets['starts']} non-crowd starts on {offsets['shots']} BES "
             f"shots, {offsets['matched']} (on {offsets['matched_shots']} shots) match "
-            "the nearest ELM-O onset within $\\pm50$ ms; reviewed start minus "
-            f"ELM-O onset has median ${offsets['median']}$ ms and quartiles "
+            "the nearest elm-elmo onset within $\\pm50$ ms; reviewed start minus "
+            f"elm-elmo onset has median ${offsets['median']}$ ms and quartiles "
             f"$[{offsets['p25']}, {offsets['p75']}]$ ms, an annotation offset, not a "
             "physical-onset error."
         ),
         (
-            r"\textbf{Panels.} Native-detection panel: "
-            f"{native['panel_shots']} shots with complete 124-input rows "
-            f"({native['shots_at_least_90']} pass the 112/124-input gate). "
-            "Legacy swap: eight overlap shots, seven with BES; the legacy table "
-            "and the DSM were built on WPQH phases with breakthrough-ELM targets. "
-            "Smith windows are selected windows: precision and F1 there are "
-            "conditional, and continuous-discharge precision is unavailable."
-        ),
-        (
-            r"\textbf{Thresholds.} Each fold selects its checkpoint by "
+            r"\textbf{Thresholds and alarms.} Each fold selects its checkpoint by "
             "inner-validation AUPRC and its threshold by inner-validation F1; "
-            "elm-ours thresholds a bin's mean probability, ELM-O and the clock use "
+            "elm-ours thresholds a bin's mean probability, elm-elmo and the clock use "
             "any touching detected span, and the DSM adaptation thresholds one "
-            "aligned row score. Absent-span alarm rates (any detection touching a "
-            "covered absent span): elm-ours "
-            f"{alarm['all119/elm-ours']['span_alarm'][0]:.3f}, "
-            f"clock {alarm['all119/elm-clock']['span_alarm'][0]:.3f} on all119; "
-            f"ELM-O {alarm['bes73/elm-elmo']['span_alarm'][0]:.3f} on bes73. "
+            "aligned row score. FPR is the fraction of absent bins called present; "
+            "the alarm is the fraction of covered absent spans touched by any "
+            "detection, and guard25 trims 25 ms from each absent-span edge first. "
+            "The centered 50 ms mean carries elm-ours detections about 25 ms across "
+            "reviewed edges and the clock's edges seeded the review, so the raw "
+            "alarm favours the clock; guard25 narrows but does not remove that "
+            "advantage. Alarm raw/guard25: elm-ours "
+            f"{alarm_pair(fx, 'all119/elm-ours')}, clock "
+            f"{alarm_pair(fx, 'all119/elm-clock')} on all119; elm-elmo "
+            f"{alarm_pair(fx, 'bes73/elm-elmo')} on bes73. "
+            f"Fold {early['fold']} (zero-based) of elm-ours selected epoch "
+            f"{early['epoch']} of {fx['epochs']} (fold thresholds "
+            f"{min(thr):.3f}--{max(thr):.3f}); four training seeds give all119 "
+            f"AUROC {auroc['min']:.3f}--{auroc['max']:.3f}. On non-crowd-only shots "
+            f"({quiet['shots']} shots/{quiet['bins']:,} bins) elm-ours precision is "
+            f"{F.fmt(*quiet['precision'])}. "
             f"Intervals use {fx['replicates']:,} shot-bootstrap draws and need five "
             "denominator-bearing shots per endpoint."
         ),
-        r"\textbf{Limits.} " + limits_text(fx, review_days),
     ]
+    moved = fx.get("moved")
+    if moved:
+        paragraphs.append(
+            r"\textbf{Moved-boundary block.} It keeps bes73 spans whose boundaries "
+            "both moved more than 1 ms from the clock "
+            f"({moved['present_spans']} of {moved['all_present_spans']} present and "
+            f"{moved['absent_spans']} absent spans; {moved['bins']:,} bins on "
+            f"{moved['shots']} shots); with so few present spans its intervals are "
+            "wide and the comparison inconclusive."
+        )
+    panel = (
+        r"\textbf{Panels.} Native-detection panel: "
+        f"{native['panel_shots']} shots with complete 124-input rows "
+        f"({native['shots_at_least_90']} pass the 112/124-input gate). The native "
+        "refit trains on "
+        f"{fold_range([f['train'] for f in native_sizes])} shots per fold with "
+        f"{fold_range([f['inner_val'] for f in native_sizes])} inner-validation "
+        "shots, against "
+        f"{fold_range([f['train'] for f in own])} and "
+        f"{fold_range([f['inner_val'] for f in own])} for the headline elm-ours; "
+        "the elm-ours row on the native folds' shots separates training size from "
+        "architecture. "
+    )
+    if one:
+        panel += (
+            "Legacy swap: eight overlap shots, seven with BES; the legacy table "
+            "and the DSM were built on WPQH phases with breakthrough-ELM targets. "
+            f"Finding 1 is read on {one['cells']} known-majority cells "
+            f"($|M|={one['M']}$, $|P|={one['P']}$; legacy recall "
+            f"{one['recall']:.3f}, precision {one['precision']:.3f}); the "
+            f"{one['strict_bins']} strict interior bins of the method rows give "
+            f"$|M|={one['strict_M']}$, $|P|={one['strict_P']}$. "
+        )
+    photodiode = fx.get("photodiode")
+    if photodiode:
+        panel += (
+            "The swap shots' PCPHD02/03 come from the upstream export; a fresh "
+            f"fetch reproduces it sample for sample ({photodiode['identical']} of "
+            f"{photodiode['records']} records), so the input source does not explain "
+            "the DSM detection gap on those shots. "
+        )
+    panel += (
+        "Smith windows are selected windows: precision and F1 there are "
+        "conditional, and continuous-discharge precision is unavailable."
+    )
+    paragraphs += [panel, r"\textbf{Limits.} " + limits_text(fx, review_days)]
     return "\n\n".join(paragraphs) + "\n"
 
 
@@ -758,8 +836,20 @@ def limits_text(fx: dict, review_days: dict) -> str:
             f"{tiled['tiled_auroc']:.3f} against {tiled['whole_auroc']:.3f} "
             f"(whole minus tiled {change}). "
         )
+    density = fx.get("density")
+    if density:
+        text += (
+            "The fast-density input (native ordinate over $10^{14}$) has median "
+            f"{density['median']:.2f}, 5--95\\% range {density['p05']:.2f}--"
+            f"{density['p95']:.2f} and {100 * density['upper_clip_share']:.1f}\\% "
+            f"of cells at the upper clip ({density['clip_range'][1]:g}) over "
+            f"{density['window_ms'][0] / 1000:g}--{density['window_ms'][1] / 1000:g} "
+            "s, so the clip alters few cells. "
+        )
     text += (
-        "Fast-density units and FS01--04 sightlines are unverified; the U-Net's "
+        "Fast-density ordinate units and FS01--04 sightlines are unverified (no "
+        "sightline list is retained in the signal records or the literature "
+        "digests); the U-Net's "
         "input scaling and chord screen are numerical choices, not calibrations. "
         "The DSM detection rows are lower bounds on DSM detection skill under "
         "our recipe. A frozen-model blind-split score awaits review of those "
@@ -815,10 +905,12 @@ def main(argv=None) -> int:
         target = OUTPUTS if name == "table_elm_benchmark.tex" else OUTPUTS / "appendix"
         target.mkdir(exist_ok=True)
         (target / name).write_text(content)
-    note = appendix_note(fx)
+    note = appendix_note(fx, records["swap"])
     (out / "elm_table_notes.tex").write_text(note)
     (OUTPUTS / "elm_table_notes.tex").write_text(note)
-    swap_tex.write(records["swap"], out, ours=records["ours"])
+    swap_tex.write(
+        records["swap"], out, ours=records["ours"], photodiode=fx.get("photodiode")
+    )
     swap_output = OUTPUTS / "swap"
     swap_output.mkdir(parents=True, exist_ok=True)
     tables = sorted(out.glob("table_elm_*.tex"))

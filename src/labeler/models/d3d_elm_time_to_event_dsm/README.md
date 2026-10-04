@@ -21,7 +21,7 @@ labelmaker:
   framework: dsm_pickle
   time_step_ms: 25.0
   ensemble_n: 1
-  display_name: elm-dsm refit
+  display_name: elm-dsm-survival
   membership:
     source: training_membership.json
     physical_training_shots: 300
@@ -42,9 +42,9 @@ labelmaker:
     centered_nbi_lookahead_ms: 25.0
   preprocessing_exposure:
     applies_to:
-      - elm-dsm refit
-      - elm-dsm (source statistics, detection)
-      - elm-dsm (source weights and statistics, detection)
+      - elm-dsm-survival
+      - elm-dsm-detect (source statistics)
+      - elm-dsm-detect (source weights and statistics)
     scope: upstream means and standard deviations computed before the source split
     blind_cohort_shots: [190532, 190646]
     role: feature statistics reuse upstream shots regardless of reviewed-label folds
@@ -167,16 +167,16 @@ labelmaker:
     - "corpus coverage: only 6 of the 24 sampled corpus shots have all 11 inputs, so 18 produce labels with no valid row at all. co2 is corpus:SignalAbsent below shot 198279 (12 of 24) and pinj_total/tinj_total have no fdp source in namespace.py, only archive+corpus (11 of 24). Serving the corpus properly needs an fdp NBI fetch and a decision about pre-198279 CO2"
 ---
 
-# elm-dsm refit
+# elm-dsm-survival
 
 **Status: implemented.** Offline ELM risk scores at 5, 10, 20 and 50 ms, from a
 Deep Survival Machines refit. Serving uses 50 ms means on a 25 ms grid for a
 model trained on 1 ms rows. The centered NBI boxcar incorporates the row 25 ms
 later, so these scores do not support causal forecasting claims. The paper's
-short names are `elm-dsm refit`,
-`elm-dsm (60-input 1×128 refit, detection)` (separate preprocessing per fold),
-`elm-dsm (source statistics, detection)` and
-`elm-dsm (source weights and statistics, detection)` (historical supplemental);
+short names are `elm-dsm-survival`,
+`elm-dsm-detect (60-input 1×128)` (separate preprocessing per fold),
+`elm-dsm-detect (source statistics)` and
+`elm-dsm-detect (source weights and statistics)` (historical supplemental);
 the existing adapter slug remains `d3d_elm_time_to_event_dsm` for compatibility.
 
 ## Model details
@@ -345,12 +345,21 @@ post-warm-up checkpoint selection and 3 further seeds the all119 AUROC has mean 
 The detector uses 60 input columns. PCPHD02/03 means come from a fresh fetch on 111 of
 119 shots and from the upstream WPQH PCPHD02/03 export on 8; DENV2F and DENV3F means
 supply the two density columns on 115 and 115 shots, with 4 and 4 rejected (failed
-digitiser) and mean-filled. This is elm-dsm (60-input 1×128 refit, detection), a
-reduced-input adaptation trained and evaluated on 50 ms rows. The source model trained
-on native 1 ms rows with 124 inputs and layers [100, 1000] for WPQH breakthrough-ELM
-forecasting; this is not an objective-only retrain of that model. Fast-density units and
-filterscope sightlines are unverified in retained metadata; fixed input scaling,
-clipping and magnitude screening do not establish physical calibration.
+digitiser) and mean-filled. This is elm-dsm-detect (60-input 1×128), a reduced-input
+adaptation trained and evaluated on 50 ms rows. The source model trained on native 1 ms
+rows with 124 inputs and layers [100, 1000] for WPQH breakthrough-ELM forecasting; this
+is not an objective-only retrain of that model. A fresh fetch of the 8 swap shots'
+PCPHD02/03 equals the upstream export sample for sample in 16 of 16 records (maximum
+absolute difference 0; `dsm/swap_photodiode_agreement.json`), so the two sources agree
+in scale and the detection AUROC gap on those shots is not an input-source artefact.
+Fast-density units and filterscope sightlines are unverified in retained metadata; fixed
+input scaling, clipping and magnitude screening do not establish physical calibration.
+Over the flat-top window (1–4 s) of the 119 reviewed shots the divided fast-density
+input has median 0.84, 5–95% range 0.17–1.93, and 0.4% of cells sit at the upper clip
+(12; 9 of 238 chords are zeroed or empty in the window; `density_range.json`,
+`scripts/labeler/elm_density_range.py`). This is a numerical range only: the ordinate
+units and the FS02–04 sightlines are unverified, and no sightline list is retained in
+the signal records or the literature digests.
 
 The companion occupancy U-Net omits FS01 because its retained cache contains FS02–04
 only. Its fast-density inputs divide native values by `1e14`, clip to `[-3, 12]`, and
@@ -358,8 +367,9 @@ clip ten times the 0.2 s high-pass to `[-10, 10]`; chords with median absolute n
 magnitude above `1e16` are zeroed by a heuristic failed-digitiser screen. Offline
 metadata audits made no new fetches and changed no saved inputs or weights. Sources:
 `density_units.json`, `filterscope_metadata.json` and `src/labeler/elm/inputs.py`. No
-independently validated physical-onset detector is delivered, and run days cross folds
-in both developmental analyses (16 of 94 review days; 21 of 31 Smith days).
+independently validated physical-onset detector is delivered; run days cross folds in
+the review analysis (16 of 94 review days) and the Smith onset folds are grouped by run
+day (none of 31 days crosses folds).
 
 ### Limited-input survival refit (selection evidence)
 
@@ -423,7 +433,10 @@ The native [100,1000] ReLU6 architecture was refitted for occupancy on complete-
 shots only, with random weights and optimizer-training-only normalization. The fixed
 25-epoch recipe uses the original five outer folds and their inner-validation shot
 partitions; checkpoint AUPRC and F1 thresholds are selected only on inner validation. No
-source weights or statistics and no blind-test shots are reused.
+source weights or statistics and no blind-test shots are reused. The native refit trains
+on 24–28 shots per fold with 2–8 inner-validation shots (train/inner-validation by fold:
+24/2, 28/3, 24/7, 24/3, 25/8), against 81–82 and 14 for the headline elm-ours; its
+thresholds, chosen on so few shots, are erratic (3.1e-05–0.9999).
 
 Inputs are timestamp-aware 1 ms means from stored original corpus H5 records and
 retained PCPHD02/03. Standardized inputs are clipped at ±10; NBI uses the source's
@@ -435,15 +448,24 @@ target are identical for every compared method.
 | Matched panel / method | Shots / bins | AUROC [95% shot CI] | AUPRC | F1 |
 |---|---|---|---|---|
 | all119 / elm-ours | 37 / 3,576 | 0.936 [0.862, 0.981] | 0.853 [0.632, 0.976] | 0.833 [0.727, 0.908] |
-| all119 / elm-dsm (60-input 1×128 refit, detection) | 37 / 3,576 | 0.823 [0.735, 0.899] | 0.704 [0.525, 0.849] | 0.759 [0.628, 0.852] |
-| all119 / elm-dsm (124-input [100,1000] detection) | 37 / 3,576 | 0.734 [0.610, 0.856] | 0.598 [0.396, 0.822] | 0.664 [0.509, 0.784] |
+| all119 / elm-ours (native-fold training shots) | 37 / 3,576 | 0.863 [0.795, 0.923] | 0.785 [0.599, 0.907] | 0.760 [0.654, 0.841] |
+| all119 / elm-dsm-detect (60-input 1×128) | 37 / 3,576 | 0.823 [0.735, 0.899] | 0.704 [0.525, 0.849] | 0.759 [0.628, 0.852] |
+| all119 / elm-dsm-native-detect (124-input [100,1000]) | 37 / 3,576 | 0.734 [0.610, 0.856] | 0.598 [0.396, 0.822] | 0.664 [0.509, 0.784] |
 | bes73 / elm-ours | 37 / 3,339 | 0.929 [0.848, 0.980] | 0.854 [0.632, 0.976] | 0.837 [0.730, 0.913] |
-| bes73 / elm-dsm (60-input 1×128 refit, detection) | 37 / 3,339 | 0.805 [0.708, 0.889] | 0.706 [0.530, 0.850] | 0.763 [0.634, 0.854] |
-| bes73 / elm-dsm (124-input [100,1000] detection) | 37 / 3,339 | 0.715 [0.584, 0.844] | 0.604 [0.401, 0.825] | 0.667 [0.512, 0.789] |
-| bes73 / ELM-O | 37 / 3,339 | 0.890 [0.818, 0.948] | 0.808 [0.677, 0.910] | 0.818 [0.722, 0.889] |
+| bes73 / elm-ours (native-fold training shots) | 37 / 3,339 | 0.852 [0.780, 0.917] | 0.789 [0.603, 0.910] | 0.766 [0.661, 0.845] |
+| bes73 / elm-dsm-detect (60-input 1×128) | 37 / 3,339 | 0.805 [0.708, 0.889] | 0.706 [0.530, 0.850] | 0.763 [0.634, 0.854] |
+| bes73 / elm-dsm-native-detect (124-input [100,1000]) | 37 / 3,339 | 0.715 [0.584, 0.844] | 0.604 [0.401, 0.825] | 0.667 [0.512, 0.789] |
+| bes73 / elm-elmo | 37 / 3,339 | 0.890 [0.818, 0.948] | 0.808 [0.677, 0.910] | 0.818 [0.722, 0.889] |
 
-This smaller support panel is a secondary control and does not replace the primary
-all119/bes73 benchmark.
+`elm-ours (native-fold training shots)` repeats the elm-ours network, recipe and seeds
+on the native folds' own train and inner-validation shots
+(`scripts/labeler/elm_native_ours.py`; its fold thresholds span 0.013–0.782). On the
+same bins it scores AUROC 0.863 [0.795, 0.923] against 0.936 [0.862, 0.981] for the
+headline elm-ours, 0.734 [0.610, 0.856] for the native refit and 0.823 [0.735, 0.899]
+for the 60-input adaptation. At equal training shots elm-ours has the higher point AUROC
+than the native refit, with overlapping intervals. The headline's lead over the native
+refit therefore mixes training size with architecture. This smaller support panel is a
+secondary control and does not replace the primary all119/bes73 benchmark.
 
 ### DSM baselines retrained with post-warm-up selection
 
@@ -456,10 +478,10 @@ thresholds span 0.0002–1.000, an erratic operating point.
 
 | Detector | Shots / bins | Fit | AUROC | AUPRC | F1 |
 |---|---|---|---|---|---|
-| elm-dsm (60-input 1×128 refit, detection) | 119 / 11,653 | reported (raw selection) | 0.845 | 0.748 | 0.742 |
-| elm-dsm (60-input 1×128 refit, detection) | 119 / 11,653 | post-warm-up repeats, mean (range) | 0.865 (0.857–0.870) | 0.740 (0.722–0.751) | 0.755 (0.749–0.763) |
-| elm-dsm (124-input [100,1000] detection) | 37 / 3,576 | reported (raw selection) | 0.734 | 0.598 | 0.664 |
-| elm-dsm (124-input [100,1000] detection) | 37 / 3,576 | post-warm-up repeats, mean (range) | 0.715 (0.707–0.725) | 0.598 (0.595–0.600) | 0.626 (0.603–0.642) |
+| elm-dsm-detect (60-input 1×128) | 119 / 11,653 | reported (raw selection) | 0.845 | 0.748 | 0.742 |
+| elm-dsm-detect (60-input 1×128) | 119 / 11,653 | post-warm-up repeats, mean (range) | 0.865 (0.857–0.870) | 0.740 (0.722–0.751) | 0.755 (0.749–0.763) |
+| elm-dsm-native-detect (124-input [100,1000]) | 37 / 3,576 | reported (raw selection) | 0.734 | 0.598 | 0.664 |
+| elm-dsm-native-detect (124-input [100,1000]) | 37 / 3,576 | post-warm-up repeats, mean (range) | 0.715 (0.707–0.725) | 0.598 (0.595–0.600) | 0.626 (0.603–0.642) |
 
 These DSM detection rows are lower bounds on DSM detection skill under our recipe, not
 the best achievable DSM performance. Source: `dsm/baseline_seeds.json`.

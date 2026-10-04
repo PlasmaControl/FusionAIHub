@@ -51,11 +51,11 @@ NAME = {
 }
 DISPLAY_NAME = {
     NAME["ours"]: "elm-ours",
-    NAME["dsm"]: dsm.DISPLAY_NAME,
-    NAME["detect"]: "elm-dsm (60-input 1×128 refit, detection)",
-    NAME["exposed"]: "elm-dsm (source statistics, detection)",
-    NAME["init"]: "elm-dsm (source weights and statistics, detection)",
-    NAME["elmo"]: "ELM-O",
+    NAME["dsm"]: "elm-dsm-survival",
+    NAME["detect"]: "elm-dsm-detect (60-input 1×128)",
+    NAME["exposed"]: "elm-dsm-detect (source statistics)",
+    NAME["init"]: "elm-dsm-detect (source weights and statistics)",
+    NAME["elmo"]: "elm-elmo",
     NAME["clock"]: "elm-clock",
 }
 

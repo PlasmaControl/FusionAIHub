@@ -112,3 +112,19 @@ def test_generators_do_not_type_in_record_numbers():
         text = (ROOT / name).read_text()
         for pattern in literals:
             assert not re.search(pattern, text), (name, pattern)
+
+
+def test_training_sizes_and_native_comparator_facts_come_from_the_records(records):
+    fx = facts.facts(records)
+    own, native = fx["ours_training_sizes"], fx["native_detection"]
+    assert all(isinstance(f["train"], int) for f in own)
+    assert sum(f["test"] for f in own) == fx["shots"]["all119"]
+    assert all(f["train"] < 30 for f in native["folds"])
+    assert min(f["train"] for f in own) > 2 * max(f["train"] for f in native["folds"])
+    assert native["has_ours_native_folds"]
+    photodiode = fx["photodiode"]
+    assert photodiode["identical"] == photodiode["records"] == 2 * photodiode["shots"]
+
+
+def test_photodiode_facts_are_absent_without_the_record():
+    assert facts.photodiode_facts(None) is None

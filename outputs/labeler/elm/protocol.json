@@ -1,6 +1,6 @@
 {
- "git": "2a3ff77536dcf8b9f1959d718fdb0cdab8693bd8",
- "script_sha256": "bab7453a5972031ff2ceeb6aca6fa60cc6e169713d90641084981fc09ccfa7a2",
+ "git": "11ba97cf0b65b4fb605be1496f321d5c96baaf60",
+ "script_sha256": "b396a1d0292d4df37d717212413af9ffa2ca8507c93ed68058eda3e05086664c",
  "sources": {
   "ours": {
    "path": "ours/evaluation.json",
@@ -40,7 +40,7 @@
   },
   "native_detection": {
    "path": "dsm/native_detection.json",
-   "sha256": "5b7261a646f9da1e6df08eafb3223865869c5847d0e52fccbf02beaebfe76a5b"
+   "sha256": "7f0412eb20a371fe6001eb55fd2a623d4b0d59a6432dc88bd2ea44d4633b71cb"
   },
   "rejection": {
    "path": "ours/rejection_sensitivity.json",
@@ -56,7 +56,7 @@
   },
   "smith": {
    "path": "smith/evaluation.json",
-   "sha256": "2f4ff55a6d0e53acc6eb8bf3cb9c0eb3294ed29e6dce1e28ef25b6678e732f90"
+   "sha256": "95a745f4786fef2897e03729c7af8f85e51756b5ac282929f5f8bf4d9b70dcf3"
   },
   "moved": {
    "path": "ours/moved_boundary_stratum.json",
@@ -73,16 +73,24 @@
   "dsm_seeds": {
    "path": "dsm/baseline_seeds.json",
    "sha256": "60dd339bed0bbdb05ef9cc948e41009da473b566ae90f7a53b2617d675ab5fac"
+  },
+  "density_range": {
+   "path": "density_range.json",
+   "sha256": "73ab181eda8c6020643b79ff899be7b94aaa7ca580971c79c3937a8c9b88f711"
+  },
+  "photodiode": {
+   "path": "dsm/swap_photodiode_agreement.json",
+   "sha256": "35502f9e318da772045fd4b2add1c89fd24e113a1225c27ee23af89fded5e286"
   }
  },
  "artifacts": {
-  "docs/labeler/elm_ours.md": "e0e260c5cb42a0da07e91b56cf6bd05f1abb93929e5042113fb48f29fcc1a506",
-  "data/events/edge_localized_mode/README.md": "2d9a434b916365ec72d16b3508982d0bae482b8420596fff3082df735b917a55",
-  "src/labeler/models/d3d_elm_time_to_event_dsm/README.md": "16e01f4a0c6e0f5d909f7ba8a1f80c7c07c83aab3e41caf53b13602ab11a6d5a"
+  "docs/labeler/elm_ours.md": "3ba68b6b0683b2fead517296243992cf20bd9d7afbca02a3c87079ab9e9d9fa0",
+  "data/events/edge_localized_mode/README.md": "7256b930c269bbdfe98caf4ad385f6e61ce4a486fc07832df2667d1eafd158f8",
+  "src/labeler/models/d3d_elm_time_to_event_dsm/README.md": "93cf1d9024dc9ad98ad8f236d12e180e6cdae39ca9104258e15831197ff492ae"
  },
  "model_names": {
   "elm-ours": "elm-ours",
-  "elm-dsm-detect": "elm-dsm (60-input $1\\times128$ refit, detection)",
+  "elm-dsm-detect": "elm-dsm-detect (60-input $1\\times128$)",
   "elm-clock": "elm-clock",
   "always present": "always-present",
   "elm-feature-only": "elm-feature",

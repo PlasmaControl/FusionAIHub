@@ -48,32 +48,35 @@ These are typically found via filterscope D-alpha bursts, divertor Langmuir prob
 
 **all**:
 - elm-ours | 2026_10_03 | AUROC: 0.941 [0.906, 0.967] | AUPRC: 0.877 [0.774, 0.949] | F1: 0.830 [0.778, 0.871] (primary all119; 119 shots / 12,409 bins; on the bes73 scope, 73 shots / 6,843 bins: AUROC 0.941 [0.898, 0.972], AUPRC 0.875 [0.751, 0.961], F1 0.845 [0.786, 0.896])
-- d3d_elm_time_to_event_dsm | 2026_09_06 | AUROC: 0.777 [0.730, 0.824] | AUPRC: 0.662 [0.592, 0.736] | F1: 0.627 [0.559, 0.692] (elm-dsm refit; supplemental offline risk score reusing source data; 119 shots / 11,653 common bins)
+- d3d_elm_time_to_event_dsm | 2026_09_06 | AUROC: 0.777 [0.730, 0.824] | AUPRC: 0.662 [0.592, 0.736] | F1: 0.627 [0.559, 0.692] (elm-dsm-survival; supplemental offline risk score reusing source data; 119 shots / 11,653 common bins)
 - elm-dsm (60-input 1×128 refit, detection) | 2026_10_03 | AUROC: 0.845 [0.796, 0.893] | AUPRC: 0.748 [0.651, 0.832] | F1: 0.742 [0.681, 0.798] (secondary control; lower bound on DSM detection skill under our recipe; 3 post-warm-up repeats give mean AUROC 0.865 (0.857–0.870); 119 shots / 11,653 common bins)
 - elm-clock | 2026_09_13 | AUROC: -- | AUPRC: -- | F1: 0.757 [0.680, 0.827] (primary all119; 119 shots / 12,409 bins)
 - elm-elmo | 2026_10_01 | AUROC: 0.918 [0.877, 0.951] | AUPRC: 0.833 [0.753, 0.890] | F1: 0.842 [0.789, 0.885] (primary bes73; 73 shots / 6,843 bins)
 - always-present | 2026_10_03 | AUROC: 0.500 [0.500, 0.500] | AUPRC: 0.376 [0.322, 0.430] | F1: 0.546 [0.487, 0.601] (baseline; primary all119; 119 shots / 12,409 bins)
 - elm-feature | 2026_10_03 | AUROC: 0.833 [0.783, 0.878] | AUPRC: 0.695 [0.606, 0.779] | F1: 0.703 [0.640, 0.758] (control; primary all119; 119 shots / 12,409 bins)
+- elm-dsm-detect (60-input 1×128) | 2026_10_03 | AUROC: 0.845 [0.796, 0.893] | AUPRC: 0.748 [0.651, 0.832] | F1: 0.742 [0.681, 0.798] (secondary control; lower bound on DSM detection skill under our recipe; 3 post-warm-up repeats give mean AUROC 0.865 (0.857–0.870); 119 shots / 11,653 common bins)
 
 Brackets are 95% shot-bootstrap intervals. Review results are developmental shot-CV
 estimates of ELMy-period occupancy, not onsets (97% of positive bins lie in crowd
 spans); the review was seeded by the D-alpha clock, which favours D-alpha-input models
-over ELM-O. A frozen-model score on the blind split awaits review of those shots.
+over elm-elmo. A frozen-model score on the blind split awaits review of those shots.
 Primary benchmark: all119 (12,409 bins) and bes73 (6,843 bins). On bes73, paired
-elm-ours minus ELM-O is AUROC +0.023 [-0.014, +0.067], AUPRC +0.043 [-0.058, +0.129], F1
-+0.002 [-0.052, +0.058]; every interval includes zero, so the two are statistically
-indistinguishable (equivalence untested), while elm-ours extends BES-free coverage to
-all 119 shots. On the secondary common bins the same difference is AUROC +0.025 [-0.013,
+elm-ours minus elm-elmo is AUROC +0.023 [-0.014, +0.067], AUPRC +0.043 [-0.058, +0.129],
+F1 +0.002 [-0.052, +0.058]; every interval includes zero, so no significant difference
+is detected (equivalence untested), while elm-ours extends BES-free coverage to all 119
+shots. On the secondary common bins the same difference is AUROC +0.025 [-0.013,
 +0.071], AUPRC +0.044 [-0.056, +0.131], F1 +0.007 [-0.044, +0.063]. On non-crowd-only
 shots elm-ours precision is 0.298 [0.132, 0.549]; its absent-span alarm rate is 0.596
-[0.478, 0.689] against 0.105 [0.063, 0.168] for the clock. The elm-dsm detection rows
-are lower bounds on DSM detection skill under our recipe. Serving runs a shot whole
-through the five fold models with the mean fold threshold (0.417, unevaluated); 4,096 ms
-tiled inference and run-day-grouped folds are sensitivities in the protocol document.
-Catalog physical-onset output is withheld. Every Smith method's precision/F1 is
-conditional on selected windows; continuous-discharge precision/F1 is unavailable. The
-experimental Smith onset head is omitted from catalog model claims. Inputs, run-day
-sharing and timing limits: [elm_ours.md](../../../docs/labeler/elm_ours.md).
+[0.478, 0.689] (0.427 with 25 ms trimmed from each absent-span edge) against 0.105
+[0.063, 0.168] (0.096) for the clock, whose boundaries seeded the review. The elm-dsm
+detection rows are lower bounds on DSM detection skill under our recipe. Serving runs a
+shot whole through the five fold models with the mean fold threshold (0.417,
+unevaluated); 4,096 ms tiled inference and run-day-grouped folds are sensitivities in
+the protocol document. Catalog physical-onset output is withheld. Every Smith method's
+precision/F1 is conditional on selected windows; continuous-discharge precision/F1 is
+unavailable. The experimental Smith onset head is omitted from catalog model claims.
+Inputs, run-day sharing and timing limits:
+[elm_ours.md](../../../docs/labeler/elm_ours.md).
 
 ## Inputs
 **elm-dsm** (internal adapter slug `d3d_elm_time_to_event_dsm`):

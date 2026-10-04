@@ -9,11 +9,11 @@ served as 50 ms means on a 25 ms grid. Three things are done with it here.
   early-stopping validation rows (upstream calls them test), the time to the next ELM,
   AUROC at each horizon with 95 % physical-shot-bootstrap intervals. Upstream split
   identifiers name phases, and phases of one physical shot can occur on both sides.
-* **elm-dsm refit on the reviewed bins**: the model served from the corpus as
+* **elm-dsm-survival on the reviewed bins**: the model served from the corpus as
   `labeler.models.d3d_elm_time_to_event_dsm` serves it (`shot_rows`), its 50 ms risk at
   a bin's start read as the bin's score. This is an offline risk score: centered
   NBI smoothing incorporates a row 25 ms later, so it is not a causal forecast.
-* **elm-dsm (60-input 1×128 refit, detection)** (`Detector`, `fit_fold`): a
+* **elm-dsm-detect (60-input 1×128)** (`Detector`, `fit_fold`): a
   reduced-input adaptation with a single 128-unit embedding and one logit,
   trained with cross-entropy to say whether the
   50 ms ending at a row's time stamp is present (ELMy) or absent in the review: the
@@ -26,7 +26,7 @@ served as 50 ms means on a 25 ms grid. Three things are done with it here.
 `[t - 50, t)` mean), so the row at a bin's end summarises the bin and the row at its
 start the bin before it.
 
-This is **elm-dsm refit, 60 of the original 124 inputs**, not the original
+This is **elm-dsm-survival, 60 of the original 124 inputs**, not the original
 124-input checkpoint. Missing `ip` and `bt` can be fetched into the isolated round-four
 store by `elm_dsm_fetch.py`; no corpus or production feature file is changed. Remaining
 missing columns, including the two photodiodes (`pcphd02/03`) in the survival and
@@ -35,7 +35,7 @@ use measured PCPHD02/03, or the recorded FS02/03 substitutes, and repaired densi
 Inputs outside the refit's row filter are clipped rather than
 dropped; the evaluation records missingness, filter failures and the risk scale.
 
-Historical variants (elm-dsm refit and detectors reusing source statistics or weights)
+Historical variants (elm-dsm-survival and detectors reusing source statistics or weights)
 use upstream feature means and standard deviations computed before its split.
 They inherit feature-statistics exposure to blind-cohort shots 190532 and 190646;
 this is not reviewed-label leakage. The confirmatory detection fit uses raw rows,
@@ -72,7 +72,7 @@ SPLIT_PKL = Path("/projects/EKOLEMEN/wpqh_elm_hiro/data/train_test_split_model10
 HORIZONS_MS = spec.HORIZONS_MS
 T_OFFSET_MS = spec.T_OFFSET_MS
 N_COLUMNS = len(spec.COLUMNS)
-DISPLAY_NAME = "elm-dsm refit"
+DISPLAY_NAME = "elm-dsm-survival"
 SERVING = {
     "interpretation": "offline risk score, not a causal forecast",
     "source_refit_trained_row_ms": 1.0,
@@ -96,9 +96,9 @@ SERVING = {
 }
 PREPROCESSING_EXPOSURE = {
     "applies_to": [
-        "elm-dsm refit",
-        "elm-dsm (source statistics, detection)",
-        "elm-dsm (source weights and statistics, detection)",
+        "elm-dsm-survival",
+        "elm-dsm-detect (source statistics)",
+        "elm-dsm-detect (source weights and statistics)",
     ],
     "scope": "upstream feature means/std computed before source split",
     "normalization_physical_shots": len(spec.NORMALIZATION_SHOTS),

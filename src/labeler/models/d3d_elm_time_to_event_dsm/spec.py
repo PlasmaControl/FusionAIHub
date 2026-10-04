@@ -1,4 +1,4 @@
-"""elm-dsm refit - offline ELM risk scores at 5, 10, 20 and 50 ms,
+"""elm-dsm-survival - offline ELM risk scores at 5, 10, 20 and 50 ms,
 from a Deep Survival Machines model labeler fitted itself.
 
 The weights are **not** upstream's. Upstream's Keras graphs take 124 inputs and

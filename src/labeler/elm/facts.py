@@ -37,12 +37,15 @@ OPTIONAL = {
     "tiled": "ours/tiled_inference.json",
     "run_day": "ours/run_day_cv.json",
     "dsm_seeds": "dsm/baseline_seeds.json",
+    "density_range": "density_range.json",
+    "photodiode": "dsm/swap_photodiode_agreement.json",
 }
 ELMO = "elm-elmo"
 OURS = "elm-ours"
 CLOCK = "elm-clock"
 DSM_DETECT = "elm-dsm-detect"
 DSM_NATIVE = "elm-dsm-native-detect"
+OURS_NATIVE = "elm-ours-native-folds"
 METRIC_KEYS = ("auroc", "auprc", "f1")
 
 
@@ -150,6 +153,7 @@ def facts(records: dict) -> dict:
             if "absent_span_alarm_rate" in res["point"]:
                 alarm[f"{tag}/{name}"] = {
                     "span_alarm": point(res, "absent_span_alarm_rate"),
+                    "span_alarm_guard25": point(res, "absent_span_alarm_rate_guard25"),
                     "bin_fpr": point(res, "false_alarm_bin_rate"),
                 }
     out["alarm"] = alarm
@@ -205,7 +209,29 @@ def facts(records: dict) -> dict:
         "panel_shots": native["sets"]["all119"]["n_shots"],
         "epochs": native["recipe"]["epochs"],
         "bes_panel_shots": native["sets"]["bes73"]["n_shots"],
+        "folds": [
+            {
+                "fold": f["fold"],
+                "train": len(f["train"]),
+                "inner_val": len(f["inner_val"]),
+                "test": len(f["test"]),
+                "threshold": f["threshold"],
+            }
+            for f in native["folds"]
+        ],
+        "has_ours_native_folds": OURS_NATIVE in native["sets"]["all119"]["methods"],
+        "ours_native_thresholds": native.get("ours_on_native_folds", {}).get(
+            "thresholds"
+        ),
     }
+    out["ours_training_sizes"] = [
+        {
+            "train": len(f["train"]),
+            "inner_val": len(f["inner_val"]),
+            "test": len(f["test"]),
+        }
+        for f in folds_history(records)
+    ]
     offsets = records["offsets"]
     quart = offsets["offset_ms"]
     out["offsets"] = {
@@ -234,10 +260,48 @@ def facts(records: dict) -> dict:
             "methods": stratum["methods"],
             "paired": stratum["paired_ours_minus"],
         }
+    out["density"] = density_facts(records.get("density_range"))
+    out["photodiode"] = photodiode_facts(records.get("photodiode"))
     out["tiled"] = tiled_facts(records.get("tiled"))
     out["run_day"] = run_day_facts(records.get("run_day"))
     out["dsm_baselines"] = dsm_baseline_facts(records.get("dsm_seeds"))
     return out
+
+
+def folds_history(records: dict) -> list[dict]:
+    """The reported run's completed folds, each with its shot counts."""
+    history = records["history"]
+    return history["runs"][history["reported_run"]]["completed_folds"]
+
+
+def density_facts(record: dict | None) -> dict | None:
+    """Numerical range of the fast-density input, from `density_range.json`."""
+    if not record:
+        return None
+    return {
+        "median": record["median"],
+        "p05": record["p05"],
+        "p95": record["p95"],
+        "upper_clip_share": record["share_at_upper_clip"],
+        "clip_range": record["clip_range"],
+        "window_ms": record["window_ms"],
+        "shots": record["shots"],
+        "chords": record["chords"],
+        "chords_zeroed": record["chords_zeroed_or_empty"],
+    }
+
+
+def photodiode_facts(record: dict | None) -> dict | None:
+    """Upstream export against a fresh fetch of the swap shots' PCPHD02/03."""
+    if not record:
+        return None
+    summary = record["summary"]
+    return {
+        "records": summary["records"],
+        "identical": summary["identical_samples"],
+        "max_value_difference": summary["max_abs_value_difference"],
+        "shots": len(record["shots"]),
+    }
 
 
 def tiled_facts(record: dict | None) -> dict | None:

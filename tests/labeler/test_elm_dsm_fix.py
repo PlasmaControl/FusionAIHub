@@ -113,13 +113,13 @@ def test_filter_share_and_risk_quantiles_use_only_usable_rows():
     assert out["missing_features"]["bt"] == {"n_shots": 1, "shots": [7]}
     assert out["always_mean_filled_columns"] == list(dsm.spec.ALWAYS_MEAN_FILLED)
     assert out["risk_quantiles_usable_rows"]["h50ms"]["quantiles"]["0.5"] == 0.2
-    assert out["display_name"] == "elm-dsm refit"
+    assert out["display_name"] == "elm-dsm-survival"
     assert out["serving"]["nbi_lookahead_ms"] == 25.0
     exposure = out["preprocessing_exposure"]
     assert exposure["applies_to"] == [
-        "elm-dsm refit",
-        "elm-dsm (source statistics, detection)",
-        "elm-dsm (source weights and statistics, detection)",
+        "elm-dsm-survival",
+        "elm-dsm-detect (source statistics)",
+        "elm-dsm-detect (source weights and statistics)",
     ]
     assert exposure["blind_cohort_shots"] == [190532, 190646]
 

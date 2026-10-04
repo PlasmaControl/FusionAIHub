@@ -5,15 +5,15 @@
 \toprule
 Method & Window AUROC & Window AUPRC & Window occupancy F1 \\
 \midrule
-elm-ours-onset & 0.982 {\scriptsize[0.979, 0.983]} & 0.918 {\scriptsize[0.912, 0.923]} & 0.791 {\scriptsize[0.781, 0.800]} \\
+elm-ours-onset & 0.980 {\scriptsize[0.978, 0.982]} & 0.908 {\scriptsize[0.902, 0.913]} & 0.781 {\scriptsize[0.770, 0.790]} \\
 elm-elmo & 0.883 {\scriptsize[0.874, 0.891]} & 0.798 {\scriptsize[0.783, 0.811]} & 0.866 {\scriptsize[0.855, 0.877]} \\
 \bottomrule\end{tabular}\par\smallskip
 \begin{tabular}{llcc}
 \toprule
 Method & Tolerance & Recall & Median $|e|$ (ms) \\
 \midrule
-elm-ours-onset & $\pm$2 ms & 0.930 {\scriptsize[0.915, 0.945]} & 0.244 \\
+elm-ours-onset & $\pm$2 ms & 0.925 {\scriptsize[0.910, 0.940]} & 0.242 \\
 elm-elmo & $\pm$2 ms & 0.987 {\scriptsize[0.971, 0.996]} & 0.075 \\
-\bottomrule\end{tabular}\caption{Smith selected windows: frozen review-occupancy rows are omitted for target mismatch (50 ms occupancy versus approximately 8.5 ms windows). The experimental elm-ours-onset head is developmental shot CV with 21 of 31 Smith run days crossing folds; overlap with ELM-O's historical tuning events is unknown because event membership was not retained. Every metric is conditional on selected windows; continuous-discharge precision and F1 are unavailable for every method. Event precision and F1 are not shown: the 10 ms minimum peak separation fixes the head's in-window precision at 1.000, and 30,436 additional out-of-window firings lack negative truth. Head recall is 0.930; matched errors are within 0.82 ms and 94\% are in the correct 1 ms cell. Only $\pm2$ ms matching is shown; the head is withheld from catalog claims. Brackets: shot-bootstrap intervals.}
+\bottomrule\end{tabular}\caption{Smith selected windows: frozen review-occupancy rows are omitted for target mismatch (50 ms occupancy versus approximately 8.5 ms windows). The experimental elm-ours-onset head is developmental CV with folds grouped by run day (none of 31 Smith run days crosses); overlap with the original ELM-O's tuning events is unknown because event membership was not retained. Every metric is conditional on selected windows; continuous-discharge precision and F1 are unavailable. Event precision and F1 are not shown: the 10 ms minimum peak separation fixes the head's in-window precision at 0.998, and 31,079 additional out-of-window firings lack negative truth. Head recall is 0.925; matched errors are within 1.01 ms and 92\% are in the correct 1 ms cell. Only $\pm2$ ms matching is shown; the head is withheld from catalog claims. Brackets: shot-bootstrap intervals.}
 \label{tab:elm-smith}
 \end{table*}
