@@ -11,15 +11,19 @@ import pytest
 from labeler.ae.supervision import (
     ShotMetric,
     activity_targets,
+    any_touch_prevalence,
     clean_split,
     dense_states,
     frame_index,
     frame_mean,
+    grid_shift,
+    interval_changing_saves,
     paired_scores,
     selection_threshold,
+    snapshot_difference,
     validate_split,
 )
-from labeler.events.catalog.states import PRESENT
+from labeler.events.catalog.states import ABSENT, PRESENT
 from labeler.events.review.labels import Label
 from labeler.scoring.frames import Assessment, frame_states
 
@@ -302,3 +306,51 @@ def test_seed_group_shot_interval_ignores_seed_resampling():
         # identical seeds: seed resampling adds nothing, so both intervals agree
         np.testing.assert_allclose(got["ci95"], got["ci95_shot"])
         assert got["sd"] == 0
+
+
+def test_snapshot_difference_counts_frames_and_net_present():
+    old = {1: np.full(200, ABSENT, np.int8), 2: np.full(200, ABSENT, np.int8)}
+    new = {1: old[1].copy(), 2: old[2].copy()}
+    new[2][10:15] = PRESENT
+    old[2][40:42] = PRESENT
+    diff = snapshot_difference(old, new, {"a": [1], "b": [2]})
+    assert diff["a"]["differing_shots"] == [] and diff["a"]["frames"] == 0
+    assert diff["b"] == {
+        "shots": 1,
+        "differing_shots": [2],
+        "frames": 7,
+        "net_present": 3,
+    }
+    assert any_touch_prevalence(new, [1, 2]) == 5 / 400
+
+
+def test_interval_changing_saves_ignores_first_saves_and_repeats():
+    def save(shot, when, name, intervals):
+        return {
+            "shot": shot,
+            "saved_at": when,
+            "name": name,
+            "window": [0, 2000],
+            "intervals": intervals,
+        }
+
+    entries = [
+        save(1, "2026-01-01T00:00", None, [[0, 10, 1]]),
+        save(1, "2026-01-02T00:00", "A", [[0, 10, 1]]),  # confirmation only
+        save(1, "2026-01-03T00:00", "B", [[0, 20, 1]]),  # a change
+        save(2, "2026-01-01T00:00", None, []),
+        save(2, "2026-01-04T00:00", "A", [[5, 6, 1]]),  # a change
+    ]
+    got = interval_changing_saves(entries)
+    assert [(c["shot"], c["name"]) for c in got] == [(1, "B"), (2, "A")]
+    later = interval_changing_saves(entries, after="2026-01-03T12:00")
+    assert [(c["shot"], c["name"]) for c in later] == [(2, "A")]
+
+
+def test_grid_shift_counts_columns_moved_by_the_recorded_times():
+    n = 7820
+    centres = (np.arange(n) + 0.5) * 2000 / n
+    assert grid_shift(centres)["columns_in_another_frame"] == 0
+    shifted = grid_shift(centres - 0.9)
+    assert shifted["columns_in_another_frame"] > 0
+    assert shifted["max_abs_offset_ms"] == pytest.approx(0.9)

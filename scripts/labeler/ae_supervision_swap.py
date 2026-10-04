@@ -28,7 +28,13 @@ sys.path.insert(0, str(REPO / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import ae_train
-from ae_baselines_evaluate import AE_CLASSES, check_order, load_older, nearest_bin
+from ae_baselines_evaluate import (
+    AE_CLASSES,
+    REVIEW,
+    check_order,
+    load_older,
+    nearest_bin,
+)
 
 from labeler.ae.supervision import (
     BOOTSTRAP_SEED,
@@ -37,14 +43,18 @@ from labeler.ae.supervision import (
     RECORD_MS,
     SPLIT_SEED,
     ShotMetric,
+    any_touch_prevalence,
     clean_split,
     clock_prior,
     convergence_screen,
     dense_states,
     frame_mean,
+    grid_shift,
+    interval_changing_saves,
     paired_scores,
     selection_threshold,
     sha256,
+    snapshot_difference,
     training_conformance,
     validate_split,
     within_shot_scores,
@@ -59,6 +69,8 @@ TABLES = Path(
     )
 )
 SUPERVISIONS = ("legacy", "dense", "threeway")
+#: The review table the paper's audit scored (the ae_xpower v2 test's snapshot).
+PAPER_SNAPSHOT = REVIEW
 
 
 def write_json(path: Path, record: dict) -> None:
@@ -387,6 +399,44 @@ def probe(args) -> None:
     print(json.dumps(record, indent=2))
 
 
+def predict_run(
+    checkpoint: Path,
+    manifest: dict,
+    manifest_path: Path,
+    supervision: str,
+    dtype,
+    device,
+) -> tuple[dict[int, np.ndarray], dict]:
+    """Frame probabilities of one checkpoint on the selection and evaluation shots.
+
+    Returns the 10 ms scores per shot and the selection-shot threshold for the
+    arm's own activity target. Evaluation labels never enter the threshold.
+    """
+    model_data = torch.load(checkpoint, map_location="cpu", weights_only=False)
+    model = ae_train.AeSeldNet(ae_train.AeSeldNetConfig.from_dict(model_data["config"]))
+    model.load_state_dict(model_data["state_dict"])
+    model.to(device)
+    selected, _ = ae_train.load_swap_labels(manifest_path, supervision)
+    selection = [s for s in selected if s.split == "valid"]
+    all_labels = ae_train.load_labels(Path(manifest["dataset_dir"]), "threeway")
+    evaluation = [
+        s for s in all_labels if int(s.shot) in manifest["split"]["evaluation"]
+    ]
+    # Verify evaluation inputs before using them; their labels never selected the model.
+    references(manifest)
+    preds = ae_train.predict_records(model, selection + evaluation, device, dtype)
+    arrays = {
+        int(s.shot): frame_mean(preds[s.path.stem]["prob"])
+        for s in selection + evaluation
+    }
+    parts = selection_parts(manifest_path, supervision, arrays)
+    threshold = selection_threshold(
+        np.concatenate([p[0] for p in parts]), np.concatenate([p[1] for p in parts])
+    )
+    threshold.update(shots=manifest["split"]["selection"], reference=supervision)
+    return arrays, threshold
+
+
 def train(args) -> None:
     manifest_path = args.out_dir / "manifest.json"
     manifest = load_manifest(manifest_path)
@@ -455,35 +505,12 @@ def train(args) -> None:
     training = json.loads(metadata.read_text())
     if training["status"] != "finished":
         raise ValueError("training did not finish")
-    device = torch.device("cuda")
     dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float32
-    model_data = torch.load(ckpt, map_location="cpu", weights_only=False)
-    model = ae_train.AeSeldNet(ae_train.AeSeldNetConfig.from_dict(model_data["config"]))
-    model.load_state_dict(model_data["state_dict"])
-    model.to(device)
-    selected, _ = ae_train.load_swap_labels(manifest_path, args.supervision)
-    selection = [s for s in selected if s.split == "valid"]
-    all_labels = ae_train.load_labels(Path(manifest["dataset_dir"]), "threeway")
-    evaluation = [
-        s for s in all_labels if int(s.shot) in manifest["split"]["evaluation"]
-    ]
-    # Verify evaluation inputs before using them; their labels never selected the model.
-    references(manifest)
-    preds = ae_train.predict_records(model, selection + evaluation, device, dtype)
-    arrays = {
-        s.shot: frame_mean(preds[s.path.stem]["prob"]) for s in selection + evaluation
-    }
-    scores, truth = [], []
-    for rec in selection:
-        share = frame_mean(rec.w)
-        keep = share >= 0.5
-        target = frame_mean(rec.y) / np.maximum(share, 1e-12)
-        scores.append(arrays[rec.shot][keep])
-        truth.append(target[keep] >= 0.5)
-    threshold = selection_threshold(np.concatenate(scores), np.concatenate(truth))
-    threshold.update(shots=manifest["split"]["selection"], reference=args.supervision)
+    arrays, threshold = predict_run(
+        ckpt, manifest, manifest_path, args.supervision, dtype, torch.device("cuda")
+    )
     probabilities = out / "probabilities.npz"
-    np.savez(probabilities, **arrays)
+    np.savez(probabilities, **{str(shot): p for shot, p in arrays.items()})
     record.update(
         status="finished",
         checkpoint={"path": str(ckpt), "sha256": sha256(ckpt)},
@@ -598,8 +625,15 @@ def audit_convergence(args) -> None:
     print(json.dumps(plan, indent=2))
 
 
-def load_run(directory: Path, manifest_path: Path) -> tuple[dict, dict, dict]:
-    """A finished run read from its own directory and verified by recorded hashes."""
+def load_run(
+    directory: Path, manifest_path: Path
+) -> tuple[dict, dict, dict, dict, dict]:
+    """A finished run read from its own directory and verified by recorded hashes.
+
+    Returns the run record, its training metadata, the float32 scores (the primary
+    scores), the bfloat16 scores the run was first inferred with, and the float32
+    record. ``infer-fp32`` must have run: there is no bfloat16-only evaluation.
+    """
     run = json.loads((directory / "run.json").read_text())
     if run["status"] != "finished" or run["manifest_sha256"] != sha256(manifest_path):
         raise ValueError(f"run in {directory} is unfinished or uses another manifest")
@@ -610,8 +644,95 @@ def load_run(directory: Path, manifest_path: Path) -> tuple[dict, dict, dict]:
     if sha256(probabilities) != run["probabilities"]["sha256"]:
         raise ValueError(f"probabilities changed in {directory}")
     with np.load(probabilities) as z:
+        bf16 = {int(k): z[k].copy() for k in z.files}
+    record_path = directory / "fp32.json"
+    if not record_path.exists():
+        raise ValueError(f"no float32 inference in {directory}; run infer-fp32")
+    fp32 = json.loads(record_path.read_text())
+    primary = directory / "probabilities_fp32.npz"
+    if (
+        fp32["checkpoint_sha256"] != run["checkpoint"]["sha256"]
+        or fp32["bf16_probabilities_sha256"] != run["probabilities"]["sha256"]
+        or sha256(primary) != fp32["probabilities"]["sha256"]
+    ):
+        raise ValueError(f"float32 record in {directory} does not match its run")
+    with np.load(primary) as z:
         scores = {int(k): z[k].copy() for k in z.files}
-    return run, json.loads(training_path.read_text()), scores
+    return run, json.loads(training_path.read_text()), scores, bf16, fp32
+
+
+def infer_fp32(args) -> None:
+    """Re-infer every finished run in float32 with autocast off.
+
+    Writes ``probabilities_fp32.npz`` and ``fp32.json`` beside each run; the first
+    inference (bfloat16 autocast on the GPU) stays untouched. An existing float32
+    record is never overwritten. Frame probabilities, not metrics, are compared
+    here; evaluate reports the metric changes.
+    """
+    manifest_path = args.out_dir / "manifest.json"
+    manifest = load_manifest(manifest_path)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    gpu = torch.cuda.get_device_name(0) if device.type == "cuda" else None
+    evaluation = manifest["split"]["evaluation"]
+    for run_path in sorted(args.out_dir.glob("models/*/seed-*/run.json")):
+        directory = run_path.parent
+        if (directory / "fp32.json").exists():
+            print(f"{directory}: float32 record exists, kept")
+            continue
+        run = json.loads(run_path.read_text())
+        if run["status"] != "finished":
+            continue
+        checkpoint = directory / Path(run["checkpoint"]["path"]).name
+        if sha256(checkpoint) != run["checkpoint"]["sha256"]:
+            raise ValueError(f"checkpoint changed in {directory}")
+        probabilities = directory / "probabilities.npz"
+        if sha256(probabilities) != run["probabilities"]["sha256"]:
+            raise ValueError(f"probabilities changed in {directory}")
+        started = datetime.now(UTC)
+        arrays, threshold = predict_run(
+            checkpoint,
+            manifest,
+            manifest_path,
+            run["supervision"],
+            torch.float32,
+            device,
+        )
+        with np.load(probabilities) as z:
+            bf16 = {int(k): z[k] for k in z.files}
+        if set(bf16) != set(arrays):
+            raise ValueError(f"float32 and bfloat16 shots differ in {directory}")
+        out = directory / "probabilities_fp32.npz"
+        np.savez(out, **{str(shot): p for shot, p in arrays.items()})
+        gap = {shot: float(np.abs(arrays[shot] - bf16[shot]).max()) for shot in arrays}
+        selection = manifest["split"]["selection"]
+        write_json(
+            directory / "fp32.json",
+            {
+                **provenance(),
+                "status": "finished",
+                "precision": "float32, autocast off",
+                "device": str(device),
+                "gpu": gpu,
+                "torch": torch.__version__,
+                "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
+                "started": started.isoformat(),
+                "finished": datetime.now(UTC).isoformat(),
+                "supervision": run["supervision"],
+                "seed": run["seed"],
+                "checkpoint_sha256": run["checkpoint"]["sha256"],
+                "bf16_probabilities_sha256": run["probabilities"]["sha256"],
+                "probabilities": {"path": str(out), "sha256": sha256(out)},
+                "threshold": threshold,
+                "frame_probability_difference": {
+                    "statistic": "largest absolute difference per shot, 10 ms frames",
+                    "selection_max": max(gap[s] for s in selection),
+                    "evaluation_max": max(gap[s] for s in evaluation),
+                    "evaluation_shots_over_0.1": sum(gap[s] > 0.1 for s in evaluation),
+                    "evaluation_shots": len(evaluation),
+                },
+            },
+        )
+        print(f"{directory}: float32 done, threshold {threshold['threshold']:.4f}")
 
 
 def reference_parts(refs: dict, shots: list[int], reference: str, prediction: dict):
@@ -692,22 +813,238 @@ def dense_prevalence(manifest: dict, refs: dict) -> dict:
     return out
 
 
-def dense_history(manifest: dict) -> dict:
-    """Who wrote the dense table and how many intervals its history holds."""
+BAND_CHANGE_DATE = "2026-09-30"  # the review display read 80-250 kHz until then
+GROUP_NAMES = ("train", "selection", "evaluation")
+
+
+def history_entries(manifest: dict) -> tuple[Path, list[dict]]:
     path = Path(manifest["inputs"]["dense"]["path"]).parent / "history.jsonl"
-    entries = [json.loads(line) for line in path.read_text().splitlines() if line]
+    return path, [json.loads(line) for line in path.read_text().splitlines() if line]
+
+
+def dense_history(manifest: dict) -> dict:
+    """Who saved the dense table, when, and who changed which shots.
+
+    The ``reviewer`` field is the login of the review server's process, not a
+    person; the person is the ``name`` field, absent on the earliest saves.
+    """
+    path, entries = history_entries(manifest)
+    group_of = {s: group for group, shots in manifest["split"].items() for s in shots}
+    changes = interval_changing_saves(entries)
     latest = {entry["shot"]: entry for entry in entries}
+    unnamed = "(unnamed)"
+    by_name = {}
+    for key in sorted({entry.get("name") or unnamed for entry in entries}):
+        mine = [e for e in entries if (e.get("name") or unnamed) == key]
+        edits = [c for c in changes if (c["name"] or unnamed) == key]
+        shots = sorted({c["shot"] for c in edits})
+        by_name[key] = {
+            "entries": len(mine),
+            "shots_saved": len({e["shot"] for e in mine}),
+            "first_saved": min(e["saved_at"] for e in mine),
+            "last_saved": max(e["saved_at"] for e in mine),
+            "interval_changing_saves": len(edits),
+            "first_change": min((c["saved_at"] for c in edits), default=None),
+            "last_change": max((c["saved_at"] for c in edits), default=None),
+            "changed_shots": {
+                group: sum(group_of.get(s) == group for s in shots)
+                for group in GROUP_NAMES
+            },
+        }
+    notes: dict[str, int] = {}
+    for entry in entries:
+        if entry.get("note"):
+            notes[entry["note"]] = notes.get(entry["note"], 0) + 1
     return {
         "path": str(path),
         "sha256": sha256(path),
         "entries": len(entries),
         "shots": len(latest),
-        "reviewers": sorted({str(entry["reviewer"]) for entry in entries}),
+        "logins": sorted({str(entry["reviewer"]) for entry in entries}),
+        "login_meaning": "the login of the review server's process, not the person",
+        "by_name": by_name,
+        "notes": notes,
         "sources": sorted({str(entry["source"]) for entry in entries}),
+        "interval_changing_saves": (
+            "saves whose window or intervals differ from the shot's previous save"
+        ),
         "latest_intervals_per_shot_total": sum(
             len(entry["intervals"]) for entry in latest.values()
         ),
         "all_entry_intervals_total": sum(len(entry["intervals"]) for entry in entries),
+    }
+
+
+def dense_reconciliation(manifest: dict, refs: dict) -> dict:
+    """The current dense table against the snapshot the paper's audit scored.
+
+    The paper's 943 intervals are the rows of ``PAPER_SNAPSHOT`` (the ae_xpower
+    v2 test's review table); the current table is a later version.
+    """
+    split = manifest["split"]
+    shots = [int(s) for s in manifest["dataset"]]
+    groups = {
+        "train_100": split["train"],
+        "selection_20": split["selection"],
+        "train_selection_120": split["train"] + split["selection"],
+        "evaluation_60": split["evaluation"],
+        "fair_19": manifest["older"]["fair_evaluation"],
+    }
+    table = pd.read_csv(PAPER_SNAPSHOT)
+    paper = read_labels(PAPER_SNAPSHOT)
+    old = {s: dense_states(paper[s]) for s in shots}
+    new = {s: refs[s]["dense"] for s in shots}
+    snapshot_time = datetime.fromtimestamp(
+        PAPER_SNAPSHOT.stat().st_mtime, UTC
+    ).isoformat(timespec="seconds")
+    _, entries = history_entries(manifest)
+    saves = interval_changing_saves(entries, after=snapshot_time)
+    difference = snapshot_difference(old, new, groups)
+    differing = sorted(
+        set(difference["train_selection_120"]["differing_shots"])
+        | set(difference["evaluation_60"]["differing_shots"])
+    )
+    group_of = {s: g for g, ss in split.items() for s in ss}
+    per_shot = {}
+    for shot in differing:
+        mine = [c for c in saves if c["shot"] == shot]
+        per_shot[str(shot)] = {
+            "group": group_of[shot],
+            "names": sorted({c["name"] or "(unnamed)" for c in mine}),
+            "last_change": max((c["saved_at"] for c in mine), default=None),
+            "changed_with_80_250_khz_display": any(
+                c["saved_at"][:10] <= BAND_CHANGE_DATE for c in mine
+            ),
+            "changed_with_60_250_khz_display": any(
+                c["saved_at"][:10] > BAND_CHANGE_DATE for c in mine
+            ),
+        }
+    names: dict[str, dict[str, int]] = {}
+    for shot, item in per_shot.items():
+        for name in item["names"]:
+            names.setdefault(name, {g: 0 for g in GROUP_NAMES})[item["group"]] += 1
+    return {
+        "paper_snapshot": {
+            "path": str(PAPER_SNAPSHOT),
+            "sha256": sha256(PAPER_SNAPSHOT),
+            "saved_utc": snapshot_time,
+            "rows": len(table),
+            "present_rows": int((table.category == PRESENT).sum()),
+            "absent_rows": int((table.category == ABSENT).sum()),
+            "shots": int(table.shot.nunique()),
+        },
+        "any_touch_prevalence": {
+            name: {
+                "paper_snapshot": any_touch_prevalence(old, groups[name]),
+                "current": any_touch_prevalence(new, groups[name]),
+            }
+            for name in ("train_selection_120", "evaluation_60", "fair_19")
+        },
+        "difference": difference,
+        "differing_shots": per_shot,
+        "differing_shots_by_name": names,
+        "display_band_change": {
+            "date": BAND_CHANGE_DATE,
+            "before": "80-250 kHz",
+            "after": "60-250 kHz",
+            "source": "BAND_KHZ comment in src/labeler/events/review/alfven.py",
+        },
+    }
+
+
+def frame_grid(manifest: dict) -> dict:
+    """How far the audit's uniform frame grid is from the recorded column times."""
+    masks = Path(manifest["dataset_dir"]).parent / "masks"
+    first = None
+    for shot, item in manifest["dataset"].items():
+        with np.load(masks / f"{shot}_{item['split']}_clean.npz") as z:
+            times = z["t_ms"]
+        if first is None:
+            first = times
+        elif not np.array_equal(first, times):
+            raise ValueError(f"native column times of shot {shot} differ")
+    return {
+        **grid_shift(first),
+        "shots_checked": len(manifest["dataset"]),
+        "source": f"{masks}/<shot>_<split>_clean.npz t_ms",
+    }
+
+
+def reference_coarseness(manifest: dict) -> dict:
+    """How many shots' dense reference is one present span (a time-only signal)."""
+    owner = read_labels(Path(manifest["inputs"]["dense"]["snapshot"]))
+    spans, runs = [], []
+    for shot in (int(s) for s in manifest["dataset"]):
+        spans.append(sum(1 for i in owner[shot].intervals if i[2] == PRESENT))
+        present = dense_states(owner[shot]) == PRESENT
+        runs.append(int((np.diff(np.r_[False, present, False].astype(int)) == 1).sum()))
+    return {
+        "shots": len(spans),
+        "single_present_span_in_table": sum(n == 1 for n in spans),
+        "single_run_of_present_frames": sum(n == 1 for n in runs),
+        "no_present": sum(n == 0 for n in spans),
+        "present_spans_per_shot_max": max(spans),
+    }
+
+
+def precision_check(refs, manifest, scores, scores_bf16) -> dict:
+    """Pooled AUROC and AUPRC of every accepted run at float32 and at bfloat16."""
+    split = manifest["split"]
+    cohorts = {
+        "all_60": split["evaluation"],
+        "fair_19": manifest["older"]["fair_evaluation"],
+    }
+    runs, worst = {}, {"auroc": (0.0, None), "auprc": (0.0, None)}
+    arms: dict[str, dict] = {}
+    for name in sorted(scores_bf16):
+        runs[name] = {}
+        for group, shots in cohorts.items():
+            runs[name][group] = {}
+            for reference in ("dense", "legacy"):
+                values = {}
+                for label, source in (
+                    ("fp32", scores[name]),
+                    ("bf16", scores_bf16[name]),
+                ):
+                    parts = reference_parts(refs, shots, reference, source)
+                    values[label] = ShotMetric(parts, 0.5).values(np.ones(len(parts)))[
+                        :2
+                    ]
+                change = values["fp32"] - values["bf16"]
+                runs[name][group][reference] = {
+                    "bf16": values["bf16"].tolist(),
+                    "fp32": values["fp32"].tolist(),
+                    "change": change.tolist(),
+                    "metrics": ["auroc", "auprc"],
+                }
+                for i, metric in enumerate(("auroc", "auprc")):
+                    if abs(change[i]) > worst[metric][0]:
+                        worst[metric] = (
+                            float(abs(change[i])),
+                            f"{name}, {group}, {reference} reference",
+                        )
+                arm = name.split("-")[2]
+                cell = arms.setdefault(arm, {}).setdefault(f"{group}/{reference}", [])
+                cell.append(change)
+    arm_mean = {
+        arm: {key: np.mean(changes, axis=0).tolist() for key, changes in cells.items()}
+        for arm, cells in arms.items()
+    }
+    largest = {
+        arm: {
+            metric: float(max(abs(v[i]) for v in cells.values()))
+            for i, metric in enumerate(("auroc", "auprc"))
+        }
+        for arm, cells in arm_mean.items()
+    }
+    return {
+        "statistic": "pooled-frame AUROC and AUPRC of each run, fp32 minus bf16",
+        "runs": runs,
+        "max_abs_change_per_run": {
+            m: {"value": v, "where": where} for m, (v, where) in worst.items()
+        },
+        "seed_mean_change": arm_mean,
+        "max_abs_seed_mean_change": largest,
     }
 
 
@@ -804,6 +1141,7 @@ def evaluate(args) -> None:
         raise ValueError("convergence plan declares another rule")
     split = manifest["split"]
     scores, own, matched, missing, runs, v100 = {}, {}, {}, [], {}, {}
+    scores_bf16 = {}
     for arm in SUPERVISIONS:
         for seed in plan["accepted_seeds"][arm]:
             name = f"ae-ours-{arm}-seed{seed}"
@@ -811,7 +1149,9 @@ def evaluate(args) -> None:
             if not (directory / "run.json").exists():
                 missing.append(name)
                 continue
-            run, training, scores[name] = load_run(directory, manifest_path)
+            run, training, scores[name], scores_bf16[name], fp32 = load_run(
+                directory, manifest_path
+            )
             audit = plan["audit"].get(name)
             if audit is None or audit["status"] != "accepted":
                 raise ValueError(f"{name} is not an accepted record of the plan")
@@ -820,8 +1160,16 @@ def evaluate(args) -> None:
                 "training_environment": training["environment"],
                 "epochs_completed": len(training["history"]),
                 "audit": audit,
+                "fp32": fp32,
+                "fp32_screen": convergence_screen(
+                    selection_parts(
+                        manifest_path,
+                        arm,
+                        {s: scores[name][s] for s in split["selection"]},
+                    )
+                ),
             }
-            own[name] = run["threshold"]["threshold"]
+            own[name] = fp32["threshold"]["threshold"]
             if "V100" in training["environment"]["gpu"] and seed != 0:
                 v100.setdefault(arm, []).append(name)
     source = Path(manifest["older"]["probabilities"]["path"])
@@ -931,7 +1279,7 @@ def evaluate(args) -> None:
             arm, seed = name.split("-")[2], int(name.rsplit("seed", 1)[1])
             candidates[name] = run_dir(args.out_dir, arm, seed)
     for name, directory in candidates.items():
-        run, training, prediction = load_run(directory, manifest_path)
+        run, training, prediction, _, _ = load_run(directory, manifest_path)
         row = {
             "directory": str(directory),
             "selected_epoch": run["selected_epoch"],
@@ -976,6 +1324,11 @@ def evaluate(args) -> None:
         "convergence": plan,
         "runs": runs,
         "excluded_runs": excluded,
+        "precision": (
+            "scores are float32 (autocast off) re-inferences of the checkpoints "
+            "(infer-fp32); precision_check compares them with the first, bfloat16 "
+            "inference"
+        ),
         "thresholds": {
             "calibration": (
                 "every method: maximum 10 ms F1 on its selection shots (20; six for "
@@ -990,6 +1343,12 @@ def evaluate(args) -> None:
         "campaign_overlap": campaign_overlap(manifest),
         "dense_prevalence": dense_prevalence(manifest, refs),
         "dense_history": dense_history(manifest),
+        "dense_reconciliation": dense_reconciliation(manifest, refs),
+        "dense_reference_coarseness": reference_coarseness(manifest),
+        "frame_grid": frame_grid(manifest),
+        "precision_check": precision_check(refs, manifest, scores, scores_bf16)
+        if complete
+        else None,
         "dense_counts": manifest["dense_counts"],
         "inputs": manifest["inputs"],
         "protocol": manifest["protocol"],
@@ -1042,6 +1401,7 @@ def main(argv=None) -> None:
     fit.add_argument("--seed", type=int, default=0)
     commands.add_parser("verify")
     commands.add_parser("probe")
+    commands.add_parser("infer-fp32")
     commands.add_parser("audit-convergence")
     score = commands.add_parser("evaluate")
     score.add_argument("--replicates", type=int, default=1000)
@@ -1057,6 +1417,7 @@ def main(argv=None) -> None:
         "train": train,
         "verify": verify,
         "probe": probe,
+        "infer-fp32": infer_fp32,
         "audit-convergence": audit_convergence,
         "evaluate": evaluate,
     }[args.command](args)

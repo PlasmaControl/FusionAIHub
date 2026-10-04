@@ -10,6 +10,7 @@ fixed across the three activity-supervision arms.
 from __future__ import annotations
 
 import hashlib
+from itertools import pairwise
 from pathlib import Path
 
 import numpy as np
@@ -275,6 +276,87 @@ def convergence_screen(parts: list[tuple]) -> dict:
         "mean_within_shot_sd": sd,
         "selection_auroc": _number(auc),
         "n_shots": len(parts),
+    }
+
+
+def any_touch_prevalence(states: dict[int, np.ndarray], shots: list[int]) -> float:
+    """Share of present frames among the present and absent frames of `shots`."""
+    present = sum(int((states[s] == PRESENT).sum()) for s in shots)
+    scored = sum(int(np.isin(states[s], (ABSENT, PRESENT)).sum()) for s in shots)
+    return present / scored
+
+
+def snapshot_difference(
+    old: dict[int, np.ndarray],
+    new: dict[int, np.ndarray],
+    groups: dict[str, list[int]],
+) -> dict:
+    """Where two label snapshots disagree, per group of shots, in 10 ms frames.
+
+    ``frames`` counts frames whose catalog state differs; ``net_present`` is the
+    change in present frames (new minus old), so it is negative when frames were
+    cleared.
+    """
+    out = {}
+    for name, shots in groups.items():
+        differing = [s for s in shots if not np.array_equal(old[s], new[s])]
+        out[name] = {
+            "shots": len(shots),
+            "differing_shots": sorted(differing),
+            "frames": int(sum((old[s] != new[s]).sum() for s in differing)),
+            "net_present": int(
+                sum(
+                    (new[s] == PRESENT).sum() - (old[s] == PRESENT).sum()
+                    for s in differing
+                )
+            ),
+        }
+    return out
+
+
+def interval_changing_saves(
+    entries: list[dict], after: str | None = None
+) -> list[dict]:
+    """Saves whose window or intervals differ from the shot's previous save.
+
+    ``entries`` are review-history lines (``shot``, ``saved_at`` ISO text,
+    ``window``, ``intervals``, optional ``name``). A shot's first save has no
+    predecessor and never counts. ``after`` keeps only saves later than that
+    ISO time, but each is still compared with the save just before it.
+    """
+    by_shot: dict[int, list[dict]] = {}
+    for entry in entries:
+        by_shot.setdefault(entry["shot"], []).append(entry)
+    changes = []
+    for shot, saves in by_shot.items():
+        saves = sorted(saves, key=lambda e: e["saved_at"])
+        for before, now in pairwise(saves):
+            same = now["window"] == before["window"] and [
+                list(i) for i in now["intervals"]
+            ] == [list(i) for i in before["intervals"]]
+            if not same and (after is None or now["saved_at"] > after):
+                changes.append(
+                    {"shot": shot, "name": now.get("name"), "saved_at": now["saved_at"]}
+                )
+    return sorted(changes, key=lambda c: (c["saved_at"], c["shot"]))
+
+
+def grid_shift(t_ms: np.ndarray) -> dict:
+    """Columns whose true 10 ms frame is not the audit's uniform-centre frame.
+
+    ``frame_index`` assumes native columns are evenly spread over 0 to 2 s; the
+    recorded column times (``t_ms``) differ from that by about a millisecond.
+    """
+    t_ms = np.asarray(t_ms, dtype=float)
+    centres = (np.arange(t_ms.size) + 0.5) * RECORD_MS / t_ms.size
+    true_frame = np.clip((t_ms // FRAME_MS).astype(int), 0, N_FRAMES - 1)
+    moved = true_frame != frame_index(t_ms.size)
+    return {
+        "columns": int(t_ms.size),
+        "columns_in_another_frame": int(moved.sum()),
+        "max_abs_offset_ms": float(np.abs(t_ms - centres).max()),
+        "first_ms": float(t_ms[0]),
+        "last_ms": float(t_ms[-1]),
     }
 
 
