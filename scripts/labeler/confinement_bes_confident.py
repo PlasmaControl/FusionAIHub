@@ -3,15 +3,19 @@
 confinement intervals does the signal disagree with?
 
     PYTHONPATH=src pixi run --frozen --no-install -e labelmaker \
-        python scripts/labeler/confinement_bes_confident.py [--row base]
+        python scripts/labeler/confinement_bes_confident.py [--row full_cum_abcdrge]
 
 Reads the shot-grouped 5-fold predictions of one ablation row (every shot is predicted
 by a model that never saw it), runs confident learning (Northcutt et al. 2021, written
 out in ``labeler.confinement.confident`` since cleanlab is not installed) on the windows
-that are beam-valid and at least 20 ms inside their interval, and flags an interval when
-at least half of its windows are confidently of one other class. The analysis is split
-by label status and by label source, and looks at QH against WPQH in particular, since
-that boundary is the one the experts mark least sharply.
+the row scores (``score_ok``) that are also at least 20 ms inside their interval, and
+flags an interval when at least half of its windows are confidently of one other class.
+The row must be a gated one (the default, ``full_cum_abcdrge``, applies the paper's
+beam gate and margins): an ungated row such as ``only_ge`` scores passive-BES windows,
+where the 150L beam is off, so a "beam-valid" claim holds only for gated rows
+(``confident_only_ge.json`` is that earlier, ungated run, kept as such). The analysis
+is split by label status and by label source, and looks at QH against WPQH in
+particular, since that boundary is the one the experts mark least sharply.
 
 A flagged interval is a candidate for review, not a correction: the classifier sees BES
 alone, and a window it calls L inside a labelled H interval may be a real dither. As a
@@ -63,7 +67,7 @@ def load_predictions(row_dir: Path, allow_partial: bool) -> pd.DataFrame:
 
 def windows_table(pred: pd.DataFrame, intervals: pd.DataFrame) -> pd.DataFrame:
     """Prediction windows joined to their interval, with ``keep`` set for the windows
-    that count (beam-valid, outside the interval-end margins)."""
+    that count (scored by the row, outside the interval-end margins)."""
     iv = intervals[["shot", "interval", "t_start", "t_end"]]
     merged = pred.merge(iv, on=["shot", "interval"], how="left", validate="m:1")
     inside = (merged.center_ms >= merged.t_start + MARGIN_MS) & (
@@ -207,15 +211,15 @@ def git_sha() -> str:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--row", default="base")
+    ap.add_argument("--row", default="full_cum_abcdrge")
     ap.add_argument("--runs-dir", type=Path, default=WORK / "ablation")
     ap.add_argument("--out-dir", type=Path, default=DEFAULT_OUT)
     ap.add_argument("--limit", type=int, default=60)
     ap.add_argument(
         "--ours-dir",
         type=Path,
-        default=WORK / "ours",
-        help="fold predictions of confine-ours, the second opinion",
+        default=WORK / "ours_runday",
+        help="fold predictions of confine-ours (run-day folds), the second opinion",
     )
     ap.add_argument("--allow-partial", action="store_true")
     args = ap.parse_args(argv)

@@ -1,19 +1,22 @@
 r"""fig_confinement_coverage: every curated-label shot, its L / H / QH / WPQH segments,
-whether BES and the beam gating are available, and the regime time by shot-number band.
+whether BES and the beam gating are available, and the regime time by year.
 
     PYTHONPATH=src pixi run --frozen --no-install -e labelmaker \
         python scripts/labeler/paper/fig_confinement_coverage.py \
         [--out PATH.pdf] [--png PATH.png] [--table PATH.csv]
 
 One row per shot of the curated confinement intervals outside the cohort's blind test
-split, in shot-number order and in two panels side by side. Each row has two strips: the
-labelled regimes (L, H, QH, WPQH) above, and below them the time when the 150L beam is
-at or above 700 kW and the 150R beam at or below 200 kW, the gate the BES classifier of
-Gill et al. (2024) is trained under (blank where the shot has no beam record). The two
-squares left of a row say whether the corpus holds the shot's BES (500 kHz) and whether
-the native 1 MHz BES was fetched. The bars underneath add the labelled regime time of
-each band of 5 000 shot numbers (left) and of each 0.2 s of shot time (right, aligned
-with the time axes above).
+split, in shot-number order and in three panels side by side. Each row has two strips:
+the labelled regimes (L, H, QH, WPQH) above, and below them, in light grey, the time
+when the 150L beam is at or above 700 kW and the 150R beam at or below 200 kW, the gate
+the BES classifier of Gill et al. (2024) is trained under (blank where the shot has no
+beam record). The two squares left of a row (dark and mid grey) say whether the corpus
+holds the shot's BES (500 kHz) and whether the native 1 MHz BES was fetched. The bars
+underneath add the labelled regime time of each year (left; a shot's year is the year
+its EFIT01 reconstruction was inserted into MDSplus, from ``round4/conf/dates.csv``, see
+``confinement_shot_dates_fetch.py``; shot-number bands of 5 000 when that file is
+missing) and of each 0.2 s of shot time (right, aligned with the time axes above). The
+time axes end at the last labelled time of the data.
 """
 
 from __future__ import annotations
@@ -21,12 +24,14 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import os
 import sys
 from pathlib import Path
 
 import matplotlib
 import numpy as np
+import pandas as pd
 from matplotlib.figure import Figure
 from matplotlib.patches import Patch
 
@@ -43,17 +48,22 @@ LABELER = Path(
 )
 WORK = LABELER / "round4/conf"
 DEFAULT_OUT = WORK / "fig_confinement_coverage.pdf"
+DATES = WORK / "dates.csv"
 CORPUS = zerod.CORPUS
 PAGE_IN = 6.75  # ICML \textwidth
 FONT_PT = 7
-# Okabe-Ito, one colour per regime; greys for the two availability strips.
+# Okabe-Ito, one colour per regime; greys for the availability marks: the beam gate is a
+# light strip along the time axis, the BES marks are dark squares left of the row.
 COLOURS = {"L": "#0072B2", "H": "#E69F00", "QH": "#009E73", "WP": "#CC79A7"}
 NAMES = {"L": "L", "H": "H", "QH": "QH", "WP": "WPQH"}
 INK = "#333333"
+GATE = "#cfcfcf"
 BES_CORPUS = "#111111"
-BES_NATIVE = "#9a9a9a"
-T_MAX_S = 8.4
+BES_NATIVE = "#6b6b6b"
+PANELS = 3
+FIG_H_IN = 9.0
 BAND = 5000
+BEAM_END_S = 10.0
 BEAM_GRID_MS = 5.0
 TIME_BIN_S = 0.2
 STYLE = {
@@ -84,7 +94,7 @@ def beam_valid_runs(shot: int) -> list[tuple[float, float]] | None:
     if got is None:
         return None
     t_ms, rows = got
-    grid = np.arange(0.0, T_MAX_S * 1000.0, BEAM_GRID_MS)
+    grid = np.arange(0.0, BEAM_END_S * 1000.0, BEAM_GRID_MS)
     left = np.interp(grid, t_ms, np.nan_to_num(rows[0]), left=0.0, right=0.0)
     right = np.interp(grid, t_ms, np.nan_to_num(rows[1]), left=0.0, right=0.0)
     ok = (left >= bp.GATE_LEFT_W) & (right <= bp.GATE_RIGHT_W)
@@ -98,6 +108,11 @@ def beam_valid_runs(shot: int) -> list[tuple[float, float]] | None:
 def collect() -> list[dict]:
     """Per shot: its regime segments, beam-valid runs and BES flags."""
     iv = bw.curated_intervals()
+    year = (
+        pd.read_csv(DATES, keep_default_na=False).set_index("shot").year
+        if DATES.exists()
+        else pd.Series(dtype=float)
+    )
     native = {
         int(f.stem) for f in (WORK / "bes1mhz").glob("*.npz") if "tmp" not in f.name
     }
@@ -114,16 +129,25 @@ def collect() -> list[dict]:
                 "beam": beam_valid_runs(shot),
                 "bes_corpus": corpus_has_bes(shot),
                 "bes_native": shot in native,
+                "year": int(year[shot]) if shot in year.index else None,
             }
         )
     return rows
 
 
-def draw_panel(ax, rows: list[dict], n_rows: int) -> None:
+def t_max(rows: list[dict]) -> float:
+    """The last labelled time of the data, rounded up to half a second."""
+    end = max(start + length for r in rows for _, start, length in r["segments"])
+    return math.ceil(end * 2) / 2
+
+
+def draw_panel(ax, rows: list[dict], n_rows: int, t_end: float) -> None:
     """``rows`` top to bottom on an axis that is ``n_rows`` rows tall."""
-    ax.set_xlim(-0.75, T_MAX_S)
+    ax.set_xlim(-0.9, t_end)
     ax.set_ylim(n_rows - 0.5, -0.5)
     for i, row in enumerate(rows):
+        if row["beam"]:
+            ax.broken_barh(row["beam"], (i + 0.16, 0.34), facecolors=GATE, linewidth=0)
         for regime, start, length in row["segments"]:
             ax.broken_barh(
                 [(start, length)],
@@ -131,73 +155,78 @@ def draw_panel(ax, rows: list[dict], n_rows: int) -> None:
                 facecolors=COLOURS[regime],
                 linewidth=0,
             )
-        if row["beam"]:
-            ax.broken_barh(row["beam"], (i + 0.2, 0.3), facecolors=INK, linewidth=0)
         ax.broken_barh(
-            [(-0.72, 0.3)],
-            (i - 0.5, 1.0),
+            [(-0.88, 0.36)],
+            (i - 0.5, 0.9),
             facecolors=BES_CORPUS if row["bes_corpus"] else "none",
             linewidth=0,
         )
         ax.broken_barh(
-            [(-0.38, 0.3)],
-            (i - 0.5, 1.0),
+            [(-0.48, 0.36)],
+            (i - 0.5, 0.9),
             facecolors=BES_NATIVE if row["bes_native"] else "none",
             linewidth=0,
         )
-    ticks = list(range(0, len(rows), 25))
+    ticks = list(range(0, len(rows), 20))
     ax.set_yticks(ticks, [str(rows[i]["shot"]) for i in ticks])
-    ax.set_xticks(np.arange(0, 9, 2))
+    ax.set_xticks(np.arange(0, t_end + 0.01, 1.0))
     ax.set_xlabel("time in shot (s)")
     ax.tick_params(length=2, pad=1.5)
     ax.spines["left"].set_visible(False)
     ax.tick_params(axis="y", length=0)
 
 
-def band_table(rows: list[dict]) -> list[dict]:
-    """Labelled seconds per regime, and shots, in each band of ``BAND`` shot numbers."""
-    bands: dict[int, dict] = {}
+def group_table(rows: list[dict], by_year: bool) -> list[dict]:
+    """Labelled seconds per regime, and shots, in each year (or, without dates, each
+    band of ``BAND`` shot numbers)."""
+    groups: dict[int, dict] = {}
     for row in rows:
-        b = row["shot"] // BAND * BAND
-        entry = bands.setdefault(
-            b, {"band": b, "shots": 0, **{c: 0.0 for c in COLOURS}}
+        key = row["year"] if by_year else row["shot"] // BAND * BAND
+        entry = groups.setdefault(
+            key, {"band": key, "shots": 0, **{c: 0.0 for c in COLOURS}}
         )
         entry["shots"] += 1
         for regime, _, length in row["segments"]:
             if regime in COLOURS:
                 entry[regime] += length
-    return [bands[b] for b in sorted(bands)]
+    return [groups[k] for k in sorted(groups)]
 
 
-def draw_bands(ax, bands: list[dict]) -> None:
-    x = np.arange(len(bands))
-    bottom = np.zeros(len(bands))
+def draw_groups(ax, groups: list[dict], by_year: bool) -> None:
+    x = np.arange(len(groups))
+    bottom = np.zeros(len(groups))
     for regime, colour in COLOURS.items():
-        h = np.array([b[regime] for b in bands])
+        h = np.array([g[regime] for g in groups])
         ax.bar(x, h, 0.78, bottom=bottom, color=colour, linewidth=0)
         bottom += h
-    for xi, b, top in zip(x, bands, bottom, strict=True):
+    for xi, g, top in zip(x, groups, bottom, strict=True):
         ax.text(
             xi,
             top + 4,
-            str(b["shots"]),
+            str(g["shots"]),
             ha="center",
             va="bottom",
             fontsize=FONT_PT,
             color=INK,
         )
-    ax.set_xticks(x, [f"{b['band'] // 1000}" for b in bands])
-    ax.set_xlim(-0.7, len(bands) - 0.3)
+    ax.set_xticks(
+        x, [str(g["band"]) if by_year else f"{g['band'] // 1000}" for g in groups]
+    )
+    ax.set_xlim(-0.7, len(groups) - 0.3)
     ax.set_ylim(0, bottom.max() * 1.16)
-    ax.set_xlabel("shot number / 1000 (bands of 5 000; shots above)")
+    ax.set_xlabel(
+        "year of the shot (EFIT01 insertion; shots above)"
+        if by_year
+        else "shot number / 1000 (bands of 5 000; shots above)"
+    )
     ax.set_ylabel("labelled time (s)")
     ax.tick_params(length=2, pad=1.5)
 
 
-def time_table(rows: list[dict]) -> np.ndarray:
+def time_table(rows: list[dict], t_end: float) -> np.ndarray:
     """Labelled shot-seconds per regime in each ``TIME_BIN_S`` bin of shot time,
     ``(len(COLOURS), n_bins)``."""
-    edges = np.arange(0.0, T_MAX_S + TIME_BIN_S, TIME_BIN_S)
+    edges = np.arange(0.0, t_end + TIME_BIN_S, TIME_BIN_S)
     out = np.zeros((len(COLOURS), len(edges) - 1))
     for row in rows:
         for regime, start, length in row["segments"]:
@@ -207,11 +236,11 @@ def time_table(rows: list[dict]) -> np.ndarray:
     return out
 
 
-def draw_time(ax, rows: list[dict]) -> None:
-    table = time_table(rows)
-    edges = np.arange(0.0, T_MAX_S + TIME_BIN_S, TIME_BIN_S)
+def draw_time(ax, rows: list[dict], t_end: float) -> None:
+    table = time_table(rows, t_end)
+    edges = np.arange(0.0, t_end + TIME_BIN_S, TIME_BIN_S)
     bottom = np.zeros(table.shape[1])
-    for (regime, colour), h in zip(COLOURS.items(), table, strict=True):
+    for (_, colour), h in zip(COLOURS.items(), table, strict=True):
         ax.bar(
             edges[:-1],
             h,
@@ -222,26 +251,28 @@ def draw_time(ax, rows: list[dict]) -> None:
             linewidth=0,
         )
         bottom += h
-    ax.set_xlim(-0.75, T_MAX_S)
-    ax.set_xticks(np.arange(0, 9, 2))
+    ax.set_xlim(-0.9, t_end)
+    ax.set_xticks(np.arange(0, t_end + 0.01, 1.0))
     ax.set_xlabel("time in shot (s)")
     ax.set_ylabel("labelled time, all shots (s)")
     ax.tick_params(length=2, pad=1.5)
 
 
 def make_figure(rows: list[dict]) -> Figure:
-    half = (len(rows) + 1) // 2
-    fig = Figure(figsize=(PAGE_IN, 9.0), dpi=150)
-    left = fig.add_axes((0.065, 0.19, 0.43, 0.77))
-    right = fig.add_axes((0.55, 0.19, 0.43, 0.77))
-    draw_panel(left, rows[:half], half)
-    draw_panel(right, rows[half:], half)  # same row pitch as the left panel
-    bands = fig.add_axes((0.065, 0.045, 0.43, 0.09))
-    draw_bands(bands, band_table(rows))
-    marginal = fig.add_axes((0.55, 0.045, 0.43, 0.09))
-    draw_time(marginal, rows)
+    by_year = all(r["year"] is not None for r in rows)
+    t_end = t_max(rows)
+    per = math.ceil(len(rows) / PANELS)
+    fig = Figure(figsize=(PAGE_IN, FIG_H_IN), dpi=150)
+    width, gap, x0 = 0.265, 0.05, 0.085
+    for i in range(PANELS):
+        ax = fig.add_axes((x0 + i * (width + gap), 0.17, width, 0.78))
+        draw_panel(ax, rows[i * per : (i + 1) * per], per, t_end)
+    groups = fig.add_axes((x0, 0.045, 2 * width - 0.02, 0.085))
+    draw_groups(groups, group_table(rows, by_year), by_year)
+    marginal = fig.add_axes((x0 + 2 * (width + gap), 0.045, width, 0.085))
+    draw_time(marginal, rows, t_end)
     handles = [Patch(color=c, label=NAMES[r]) for r, c in COLOURS.items()] + [
-        Patch(color=INK, label="beam gate"),
+        Patch(color=GATE, label="beam gate"),
         Patch(color=BES_CORPUS, label="BES, 500 kHz corpus"),
         Patch(color=BES_NATIVE, label="BES, 1 MHz fetched"),
     ]
@@ -271,9 +302,12 @@ def main(argv: list[str] | None = None) -> int:
         fig.savefig(args.out)
         png = args.png or args.out.with_suffix(".png")
         fig.savefig(png, dpi=150)
-    bands = band_table(rows)
+    by_year = all(r["year"] is not None for r in rows)
+    bands = group_table(rows, by_year)
     summary = {
         "shots": len(rows),
+        "grouped_by": "year (EFIT01 insertion time)" if by_year else "shot-number band",
+        "time_axis_end_s": t_max(rows),
         "beam_record_missing": [r["shot"] for r in rows if r["beam"] is None],
         "bes_corpus": sum(r["bes_corpus"] for r in rows),
         "bes_native": sum(r["bes_native"] for r in rows),
