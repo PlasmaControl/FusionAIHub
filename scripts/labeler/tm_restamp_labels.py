@@ -16,6 +16,9 @@ sha256 into the named records, keeping the old one beside it:
 
     PYTHONPATH=$PWD/src pixi run --frozen --no-install -e labelmaker python \\
         scripts/labeler/tm_restamp_labels.py tm_ours_magnetics_cv ...
+
+With no record named it only checks the change and prints the number of rows it
+touches.
 """
 
 from __future__ import annotations
@@ -64,7 +67,7 @@ def assert_attrs_only(old: pd.DataFrame, new: pd.DataFrame) -> int:
     changed = 0
     for before, after in zip(old["attrs"], new["attrs"], strict=True):
         a, b = parse_attrs(before), parse_attrs(after)
-        if before != after:
+        if not (before == after or (pd.isna(before) and pd.isna(after))):
             changed += 1
         a.pop(FLAG, None)
         b.pop(FLAG, None)
@@ -91,7 +94,11 @@ def assert_same_bins(old: pd.DataFrame, new: pd.DataFrame, shots) -> None:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("stems", nargs="+", help="records under results/, without .json")
+    ap.add_argument(
+        "stems",
+        nargs="*",
+        help="records under results/, without .json; none: only check the change",
+    )
     ap.add_argument("--previous-rev", default="HEAD")
     args = ap.parse_args(argv)
     old_bytes, new_bytes = previous_table(args.previous_rev), LABELS.read_bytes()
