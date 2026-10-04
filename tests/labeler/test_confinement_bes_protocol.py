@@ -134,17 +134,17 @@ def test_reweighting_to_a_class_mix_keeps_the_per_class_recall():
     assert np.isclose(bp.macro_f1(same), bp.macro_f1(conf))
 
 
-def test_run_day_groups_follow_the_utc_day_and_inherit_for_undated_shots():
+def test_run_day_groups_follow_the_local_day_and_inherit_for_undated_shots():
     dates = pd.DataFrame(
         {
             "shot": [10, 11, 12, 13, 14, 15],
-            "inserted_utc": [
-                "2021-03-01T15:00:00+00:00",
-                "2021-03-01T16:30:00+00:00",
+            "inserted_local": [
+                "2021-03-01T15:00:00",
+                "2021-03-01T16:30:00",
                 "",
-                "2021-03-02T14:00:00+00:00",
-                "2021-09-09T09:00:00+00:00",  # EFIT run months later: untrusted
-                "2021-03-02T18:00:00+00:00",
+                "2021-03-02T14:00:00",
+                "2021-09-09T09:00:00",  # EFIT run months later: untrusted
+                "2021-03-02T18:00:00",
             ],
             "consistent": [True, True, False, True, False, True],
         }
@@ -176,3 +176,83 @@ def test_deal_groups_keeps_a_group_whole_and_spreads_the_rare_class():
     assert sizes.max() - sizes.min() <= 6
     again = bp.deal_groups(shots, group_of, signature, 4, np.random.default_rng(0))
     assert again == fold_of
+
+
+def _repeats():
+    """Shot 1 is tested in repeats 0 and 2, shot 2 in repeat 1 and shot 3 in 0 and 1;
+    each shot has two windows (class 0 and 1), and the probabilities differ by repeat."""
+    shots = np.array([1, 1, 3, 3, 1, 1, 2, 2, 3, 3])
+    split = np.array(["split0"] * 4 + ["split2"] * 2 + ["split1"] * 4)
+    start = np.array([0.0, 2.0, 0.0, 2.0, 0.0, 2.0, 0.0, 2.0, 0.0, 2.0])
+    truth = np.array([0, 1] * 5)
+    probs = np.array(
+        [
+            [0.9, 0.1, 0, 0],
+            [0.2, 0.8, 0, 0],
+            [0.6, 0.4, 0, 0],
+            [0.1, 0.9, 0, 0],
+            [0.5, 0.5, 0, 0],
+            [0.0, 1.0, 0, 0],
+            [0.7, 0.3, 0, 0],
+            [0.3, 0.7, 0, 0],
+            [0.2, 0.8, 0, 0],
+            [0.4, 0.6, 0, 0],
+        ]
+    )
+    return shots, start, truth, split, probs
+
+
+def test_repeat_overlap_counts_tests_shots_and_distinct_windows():
+    shots, start, truth, split, _ = _repeats()
+    out = bp.repeat_overlap(shots, start, truth, split)
+    assert out["tests"] == 5 and out["shots"] == 3  # (1,0) (1,2) (3,0) (3,1) (2,1)
+    assert out["shots_by_times_tested"] == {1: 1, 2: 2}
+    assert out["windows"] == 10 and out["distinct_windows"] == 6
+    assert out["classes"]["L"] == {"windows": 5, "distinct_windows": 3, "shots": 3}
+    assert out["classes"]["WP"]["windows"] == 0
+
+
+def test_first_occurrence_keeps_each_shot_from_the_first_repeat_that_tested_it():
+    shots, _, _, split, _ = _repeats()
+    keep = bp.first_occurrence(shots, split)
+    # shot 1: repeat 0 (rows 0, 1), not 2; shot 3: repeat 0 (rows 2, 3), not 1
+    assert keep.tolist() == [True] * 4 + [False] * 2 + [True] * 2 + [False] * 2
+    assert len(np.unique(shots[keep])) == 3
+
+
+def test_average_repeats_gives_one_row_per_window_with_the_mean_probability():
+    shots, start, truth, _, probs = _repeats()
+    s, t, p, y = bp.average_repeats(shots, start, probs, truth)
+    assert len(s) == 6
+    row = {(a, b): (q, c) for a, b, q, c in zip(s, t, p, y, strict=True)}
+    q, c = row[(1, 0.0)]
+    np.testing.assert_allclose(q, [0.7, 0.3, 0, 0])  # mean of 0.9 and 0.5
+    assert c == 0
+    np.testing.assert_allclose(row[(2, 2.0)][0], [0.3, 0.7, 0, 0])  # tested once
+
+
+def test_average_repeats_refuses_a_window_with_two_labels():
+    shots, start, truth, _, probs = _repeats()
+    truth = truth.copy()
+    truth[4] = 3  # shot 1's first window labelled differently in repeat 2
+    with np.testing.assert_raises(ValueError):
+        bp.average_repeats(shots, start, probs, truth)
+
+
+def test_failure_blocks_lists_a_class_of_a_shot_that_is_almost_all_wrong():
+    # shot 7: 200 L windows, 5 called right; 200 H windows, all right.
+    # shot 8: 200 L windows all right; 100 QH windows, none right (too short a block)
+    truth = np.array([0] * 200 + [1] * 200 + [0] * 200 + [2] * 100)
+    shots = np.array([7] * 400 + [8] * 300)
+    guess = truth.copy()
+    guess[:195] = 2
+    guess[600:] = 1
+    out = bp.failure_blocks(guess, truth, shots)
+    assert out.shot.tolist() == [7] and out.label.tolist() == [0]
+    assert out.windows.tolist() == [200] and out.correct.tolist() == [5]
+    assert out.called.tolist() == [2] and np.isclose(out.called_share[0], 0.975)
+    both = bp.failure_blocks(guess, truth, shots, min_windows=100)
+    assert sorted(zip(both.shot, both.label, strict=True)) == [(7, 0), (8, 2)]
+    # a mask drops the windows it excludes
+    none = bp.failure_blocks(guess, truth, shots, shots == 8)
+    assert none.empty

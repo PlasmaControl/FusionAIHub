@@ -117,14 +117,17 @@ def deal(shots: list[int], signature: dict[int, str], k: int, rng) -> dict[int, 
 def run_day_groups(dates: pd.DataFrame) -> dict[int, int]:
     """Each shot's run-day group, from the time its EFIT reconstruction was inserted.
 
-    ``dates`` has ``shot``, ``inserted_utc`` and ``consistent`` (see
-    ``scripts/labeler/confinement_shot_dates_fetch.py``). Shots sharing a UTC day share
-    a group; a shot without a trustworthy date joins the group of the nearest earlier
-    shot that has one (the next one, for the first shots). Shots of one run day share
-    plasma conditions, so folds that keep a day whole separate the sessions.
+    ``dates`` has ``shot``, ``inserted_local`` and ``consistent`` (see
+    ``scripts/labeler/confinement_shot_dates_fetch.py``). ``inserted_local`` is the
+    stamp MDSplus recorded, in the local (Pacific) time of the server that wrote it,
+    with no time zone: the stamps fall between 08:00 and 21:59, none in the night
+    hours, so they are not UTC. Shots sharing a local calendar day share a group; a
+    shot without a trustworthy date joins the group of the nearest earlier shot that
+    has one (the next one, for the first shots). Shots of one run day share plasma
+    conditions, so folds that keep a day whole separate the sessions.
     """
     frame = dates.sort_values("shot").reset_index(drop=True)
-    stamp = pd.to_datetime(frame.inserted_utc, utc=True, errors="coerce")
+    stamp = pd.to_datetime(frame.inserted_local, errors="coerce")
     day = stamp.dt.strftime("%Y-%m-%d").where(frame.consistent.astype(bool))
     day = day.ffill().bfill()
     codes = {d: i for i, d in enumerate(sorted(day.dropna().unique()))}
@@ -266,6 +269,123 @@ def block_roles(
         np.where(draw < test_fraction + val_fraction, 1, 0),
     )
     return role[inverse]
+
+
+def window_keys(shots: np.ndarray, start_ms: np.ndarray) -> np.ndarray:
+    """An integer id for each distinct (shot, window start) pair, in order of first
+    appearance; the same window in two repeated test sets gets one id."""
+    key = pd.MultiIndex.from_arrays(
+        [np.asarray(shots), np.round(np.asarray(start_ms, dtype=float), 3)]
+    )
+    return key.factorize()[0]
+
+
+def repeat_overlap(
+    shots: np.ndarray, start_ms: np.ndarray, truth: np.ndarray, splits: np.ndarray
+) -> dict:
+    """How far the test sets of repeated random splits overlap.
+
+    The paper's split draws a test set at random in each repeat, so a shot can be a test
+    shot in several; pooling the repeats counts its windows once per repeat. Returns the
+    number of (shot, repeat) tests, the distinct shots and how many repeats tested each,
+    the pooled and the distinct windows, and the same per class.
+    """
+    shots, truth, splits = map(np.asarray, (shots, truth, splits))
+    tests = pd.MultiIndex.from_arrays([shots, splits]).unique()
+    times = pd.Series(tests.get_level_values(0)).value_counts()
+    key = window_keys(shots, start_ms)
+    classes = {}
+    for i, c in enumerate(CLASSES):
+        m = truth == i
+        classes[c] = {
+            "windows": int(m.sum()),
+            "distinct_windows": int(np.unique(key[m]).size),
+            "shots": int(np.unique(shots[m]).size),
+        }
+    return {
+        "tests": len(tests),
+        "shots": int(times.size),
+        "shots_by_times_tested": {
+            int(k): int(v) for k, v in times.value_counts().sort_index().items()
+        },
+        "windows": len(shots),
+        "distinct_windows": int(np.unique(key).size),
+        "classes": classes,
+    }
+
+
+def first_occurrence(shots: np.ndarray, splits: np.ndarray) -> np.ndarray:
+    """Mask keeping each shot's windows from the first repeat that tested it (first in
+    the sorted split names, ``split0`` before ``split1``), so every shot and window is
+    counted once."""
+    frame = pd.DataFrame({"shot": np.asarray(shots), "split": np.asarray(splits)})
+    return (frame.split == frame.groupby("shot").split.transform("min")).to_numpy()
+
+
+def average_repeats(
+    shots: np.ndarray, start_ms: np.ndarray, probs: np.ndarray, truth: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """One row per distinct window with the class probabilities averaged over the
+    repeats that tested it: shots, window starts, probabilities, truth."""
+    shots, truth = np.asarray(shots), np.asarray(truth)
+    start_ms = np.asarray(start_ms, dtype=float)
+    key = window_keys(shots, start_ms)
+    n = int(key.max()) + 1
+    count = np.bincount(key, minlength=n)
+    mean = (
+        np.stack(
+            [np.bincount(key, weights=probs[:, j], minlength=n) for j in range(4)],
+            axis=1,
+        )
+        / count[:, None]
+    )
+    first = np.full(n, -1)
+    first[key[::-1]] = np.arange(len(key))[::-1]
+    if not np.array_equal(truth, truth[first][key]):
+        raise ValueError("a window carries different labels in two repeats")
+    return shots[first], start_ms[first], mean, truth[first]
+
+
+def failure_blocks(
+    guess: np.ndarray,
+    truth: np.ndarray,
+    shots: np.ndarray,
+    mask: np.ndarray | None = None,
+    *,
+    below: float = 0.10,
+    min_windows: int = 150,
+) -> pd.DataFrame:
+    """The (shot, class) blocks a classifier gets almost entirely wrong.
+
+    A block is the windows of one true class on one shot; it is listed when it has at
+    least ``min_windows`` windows (150 windows are 0.15 s of labelled time at 1 MHz, a
+    stride of 1.02 ms) and fewer than ``below`` of them are called right. Columns: shot,
+    label, windows, correct, share_correct, called (the class most of the windows were
+    called, by index) and called_share.
+    """
+    guess, truth, shots = map(np.asarray, (guess, truth, shots))
+    if mask is not None:
+        guess, truth, shots = guess[mask], truth[mask], shots[mask]
+    k = len(CLASSES)
+    ids, inverse = np.unique(shots * k + truth, return_inverse=True)
+    counts = np.bincount(inverse * k + guess, minlength=ids.size * k).reshape(-1, k)
+    windows = counts.sum(axis=1)
+    label = ids % k
+    correct = counts[np.arange(ids.size), label]
+    called = counts.argmax(axis=1)
+    frame = pd.DataFrame(
+        {
+            "shot": ids // k,
+            "label": label,
+            "windows": windows,
+            "correct": correct,
+            "share_correct": correct / windows,
+            "called": called,
+            "called_share": counts.max(axis=1) / windows,
+        }
+    )
+    keep = (frame.windows >= min_windows) & (frame.share_correct < below)
+    return frame[keep].sort_values("windows", ascending=False).reset_index(drop=True)
 
 
 def confusion_by_shot(

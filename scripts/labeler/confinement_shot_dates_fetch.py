@@ -8,8 +8,10 @@ when the shot's EFIT reconstruction was inserted
 shot, so this is the shot's day; a shot whose date is more than 30 days from the
 median of its 11 neighbouring shots (an EFIT run again later) is flagged and takes
 the neighbours' median date for its year. Output:
-``$LABELER_ROOT/round4/conf/dates.csv`` (shot, inserted_utc, year, source_node,
-consistent). A single worker; run on the login node under fdp while logged in; it stops
+``$LABELER_ROOT/round4/conf/dates.csv`` (shot, inserted_local, year, source_node,
+consistent). The stamp is the server's local (Pacific) time as MDSplus records it,
+written without a time zone: it is not UTC (the stamps fall between 08:00 and 21:59,
+none in the night hours). A single worker; run on the login node under fdp while logged in; it stops
 at the first authentication error::
 
     pixi run --frozen -e labelmaker fdp run python \\
@@ -25,7 +27,7 @@ import json
 import os
 import sys
 import time
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -40,7 +42,7 @@ LABELER = Path(
     os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")
 )
 DEFAULT_OUT = LABELER / "round4/conf/dates.csv"
-VMS_EPOCH = datetime(1858, 11, 17, tzinfo=UTC)
+VMS_EPOCH = datetime(1858, 11, 17)  # noqa: DTZ001 (server local time, no zone)
 NODES = (
     ("EFIT01", r"\EFIT01::TOP.RESULTS.GEQDSK:GTIME"),
     ("BES", r"\BES::BES_R"),
@@ -49,8 +51,9 @@ AUTH_WORDS = ("auth", "credential", "kerberos", "permission denied", "expired", 
 FIRST, LAST = 2005, 2030
 
 
-def vms_to_utc(ticks: int) -> datetime:
-    """A 64-bit MDSplus/VMS time (100 ns ticks since 1858-11-17) as a UTC datetime."""
+def vms_to_local(ticks: int) -> datetime:
+    """A 64-bit MDSplus/VMS time (100 ns ticks since 1858-11-17) as a datetime in the
+    server's local time (no time zone attached)."""
     return VMS_EPOCH + timedelta(microseconds=int(ticks) / 10.0)
 
 
@@ -67,36 +70,48 @@ def inserted(shot: int) -> tuple[datetime, str] | None:
                 raise
             continue
         if ticks > 0:
-            when = vms_to_utc(ticks)
+            when = vms_to_local(ticks)
             if FIRST <= when.year <= LAST:
                 return when, tree
     return None
 
 
 def assign_years(frame: pd.DataFrame) -> pd.DataFrame:
-    """Add ``consistent`` and ``year`` to a shot-sorted frame of ``inserted_utc``.
+    """Add ``consistent`` and ``year`` to a shot-sorted frame of ``inserted_local``.
 
     A shot is consistent when it has a stamp within 30 days of the median stamp of its
     11 neighbouring shots; any other shot (no stamp, or an EFIT run again later) takes
     the year of that neighbours' median.
     """
-    when = pd.to_datetime(frame.inserted_utc, utc=True, errors="coerce")
-    seconds = pd.Series(
-        [t.timestamp() if pd.notna(t) else float("nan") for t in when],
-        index=frame.index,
-    )
+    when = pd.to_datetime(frame.inserted_local, errors="coerce")
+    seconds = (when - pd.Timestamp("1970-01-01")).dt.total_seconds()
     near = seconds.rolling(11, center=True, min_periods=3).median()
     consistent = when.notna() & ((seconds - near).abs() / 86400 <= 30)
     year = [
-        w.year if ok else (datetime.fromtimestamp(a, UTC).year if pd.notna(a) else None)
+        w.year if ok else (pd.Timestamp(a, unit="s").year if pd.notna(a) else None)
         for w, a, ok in zip(when, near, consistent, strict=True)
     ]
     return frame.assign(consistent=consistent, year=year)
 
 
+def from_legacy(frame: pd.DataFrame) -> pd.DataFrame:
+    """A frame written with the first version's ``inserted_utc`` column, whose stamps
+    carried a ``+00:00`` they never had (they are local time), as ``inserted_local``."""
+    if "inserted_utc" not in frame:
+        return frame
+    stamps = frame.inserted_utc.astype(str).str.replace(r"\+00:00$", "", regex=True)
+    return frame.drop(columns="inserted_utc").assign(inserted_local=stamps)[
+        [
+            "shot",
+            "inserted_local",
+            *[c for c in frame if c not in ("shot", "inserted_utc")],
+        ]
+    ]
+
+
 def summary(frame: pd.DataFrame) -> dict:
     """Shot count, dated count, inconsistent shots and the shots per year."""
-    stamped = pd.to_datetime(frame.inserted_utc, utc=True, errors="coerce")
+    stamped = pd.to_datetime(frame.inserted_local, errors="coerce")
     return {
         "shots": len(frame),
         "dated": int(stamped.notna().sum()),
@@ -115,11 +130,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--from-csv",
         action="store_true",
-        help="re-derive consistent and year from the stamps already in --out",
+        help="re-derive consistent and year from the stamps already in --out (a file "
+        "with the first version's inserted_utc column is converted)",
     )
     args = ap.parse_args(argv)
     if args.from_csv:
-        frame = assign_years(pd.read_csv(args.out, keep_default_na=False))
+        frame = assign_years(from_legacy(pd.read_csv(args.out, keep_default_na=False)))
         frame.to_csv(args.out, index=False)
         print(json.dumps(summary(frame)))
         return 0
@@ -135,7 +151,7 @@ def main(argv: list[str] | None = None) -> int:
         rows.append(
             {
                 "shot": shot,
-                "inserted_utc": when.isoformat(timespec="seconds") if when else "",
+                "inserted_local": when.isoformat(timespec="seconds") if when else "",
                 "year": None,
                 "source_node": tree,
             }

@@ -50,6 +50,21 @@ def curated_intervals(path: Path = INTERVALS, cohort: Path = COHORT) -> pd.DataF
     return mi.reset_index(drop=True)
 
 
+def source_mask(
+    shots: np.ndarray, intervals_of: np.ndarray, intervals: pd.DataFrame, source: str
+) -> np.ndarray:
+    """True for each window whose interval carries ``source`` among its sources
+    (``sources`` joins them with ``|``: ``kevin_bes``, ``kevin_workbook``, ``jalal``).
+
+    ``intervals`` is ``curated_intervals()``; a window names its interval by shot and
+    the interval's number within the shot.
+    """
+    names = intervals.set_index(["shot", "interval"]).sources
+    has = names.map(lambda s: source in str(s).split("|"))
+    key = pd.MultiIndex.from_arrays([np.asarray(shots), np.asarray(intervals_of)])
+    return has.reindex(key).fillna(False).to_numpy().astype(bool)
+
+
 def window_beam_power(
     t_ms: np.ndarray | None, y: np.ndarray | None, start_ms: np.ndarray, span_ms: float
 ) -> dict[str, np.ndarray]:
