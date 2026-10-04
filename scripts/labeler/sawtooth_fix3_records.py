@@ -11,9 +11,20 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from sawtooth_physics import OUTPUT, READER_POLICY, REPO, WORK, save_json
+from sawtooth_physics import (
+    FS,
+    OUTPUT,
+    PRIOR_INPUTS,
+    READER_POLICY,
+    REPO,
+    WORK,
+    save_json,
+)
 
 from labeler.sawtooth.physics import DEFAULT_RULE
+from labeler.sawtooth.preprocessing import STATES
+
+OBSERVED_STATES = tuple(state for state in STATES if state != "unassessed")
 
 
 def distribution(values, *, distance=False):
@@ -39,19 +50,24 @@ def distribution(values, *, distance=False):
 def state_totals(records):
     seconds = {
         state: sum(r.get("state_seconds", {}).get(state, 0) for r in records)
-        for state in ("present", "absent", "uncertain", "unassessed")
+        for state in STATES
     }
-    observable = sum(seconds[s] for s in ("present", "absent", "uncertain"))
+    observable = sum(seconds[s] for s in OBSERVED_STATES)
     return {
         "state_seconds": seconds,
         "observable_seconds": observable,
         "fractions_of_observable": {
             state: seconds[state] / observable if observable else None
-            for state in ("present", "absent", "uncertain")
+            for state in OBSERVED_STATES
         },
         "assessed_fraction_of_observable": (
             (seconds["present"] + seconds["absent"]) / observable
             if observable
+            else None
+        ),
+        "q_prior_only_fraction_of_absent_class": (
+            seconds["absent_q_prior"] / (seconds["absent"] + seconds["absent_q_prior"])
+            if seconds["absent"] + seconds["absent_q_prior"]
             else None
         ),
         "processed_count": sum("error" not in r for r in records),
@@ -68,6 +84,68 @@ def state_totals(records):
         "candidate_state_counts": dict(
             Counter(p["attrs"]["state"] for r in records for p in r["crashes"])
         ),
+    }
+
+
+GUARD_KEYS = (
+    "core_observable_samples",
+    "removed_by_reference_density_guard",
+    "removed_by_density_guard",
+    "removed_by_ece_validity",
+    "observable_samples_after_guards",
+)
+
+
+def guard_totals(records):
+    """Observable time the cutoff guards remove, in seconds and as fractions."""
+    used = [r for r in records if "error" not in r]
+    accounts = [r["absence_diagnostics"].get("guard_accounting", {}) for r in used]
+    totals = {key: sum(a.get(key, 0) for a in accounts) for key in GUARD_KEYS}
+    core = totals["core_observable_samples"]
+    fractions = [
+        a["removed_by_ece_validity"] / a["core_observable_samples"]
+        for a in accounts
+        if a.get("core_observable_samples")
+    ]
+    return {
+        "unit": "seconds of core-observable time",
+        "seconds": {key: value / FS for key, value in totals.items()},
+        "fraction_of_core_observable": {
+            key: (value / core if core else None) for key, value in totals.items()
+        },
+        "shots": len(fractions),
+        "ece_validity_shot_fraction_quantiles_0_25_50_75_100": (
+            np.quantile(fractions, [0, 0.25, 0.5, 0.75, 1]).tolist()
+            if fractions
+            else None
+        ),
+        "shots_with_ece_validity_above_20_percent": int(
+            np.sum(np.asarray(fractions) > 0.2)
+        ),
+        "shots_with_ece_validity_above_90_percent": int(
+            np.sum(np.asarray(fractions) > 0.9)
+        ),
+    }
+
+
+def absent_composition(records):
+    """What the absent class and the q-prior-only time consist of, in seconds."""
+    used = [r for r in records if "error" not in r]
+    reasons = [r["absence_diagnostics"]["reason_samples"] for r in used]
+
+    def seconds(key):
+        return sum(x.get(key, 0) for x in reasons) / FS
+
+    states = [r["state_seconds"] for r in used]
+    return {
+        "tested_absence_s": sum(x["absent"] for x in states),
+        "tested_absence_with_high_q_s": seconds("tested_absence_with_high_q"),
+        "tested_absence_without_high_q_s": seconds("tested_absence_without_high_q"),
+        "q_prior_only_s": sum(x["absent_q_prior"] for x in states),
+        "sustained_high_q_s": seconds("sustained_high_q"),
+        "shots_with_tested_absence": sum(x["absent"] > 0 for x in states),
+        "shots_with_q_prior_only": sum(x["absent_q_prior"] > 0 for x in states),
+        "shots": len(used),
     }
 
 
@@ -108,13 +186,19 @@ def records(args):
             "shots": rows.shot.astype(int).tolist(),
             "shots_requested": len(rows),
             **state_totals(selected),
+            "absent_composition": absent_composition(selected),
+            "guards": guard_totals(selected),
         }
     save_json(
         OUTPUT / "data_summary.json",
         {
             "source_records": str(args.work / "shots"),
             "splits": splits,
-            "population": state_totals(all_records),
+            "population": {
+                **state_totals(all_records),
+                "absent_composition": absent_composition(all_records),
+                "guards": guard_totals(all_records),
+            },
             "claim": "physics-rule labels validated only by reported checks",
             "prior_unverified_candidates_preserved": sum(
                 r.get("prior_unverified_candidates_preserved", 0) for r in all_records
@@ -122,6 +206,7 @@ def records(args):
         },
     )
     comparisons, inversion_rho, outer_minus_inversion_rho = [], [], []
+    axis_offsets = []  # signed inversion R minus axis R at paired points, metres
     train = set(cohort.loc[cohort.split == "train", "shot"])
     shot_table = []
     for record in all_records:
@@ -132,6 +217,12 @@ def records(args):
             if p["attrs"].get("q1_radius_difference_m") is not None
         ]
         comparisons.extend(deltas)
+        axis_offsets.extend(
+            p["attrs"]["inversion_R_m"] - p["attrs"]["axis_R_m"]
+            for p in record["crashes"]
+            if p["attrs"].get("q1_radius_difference_m") is not None
+            and p["attrs"].get("axis_R_m") is not None
+        )
         if record["shot"] in train and "error" not in record:
             outer_rho = record["core_geometry"].get("outer_nominal_rho_median")
             for point in record["crashes"]:
@@ -164,6 +255,21 @@ def records(args):
         ),
         "difference": "inversion major R minus same-side q=1 major R, metres",
         "distribution_all_diagnostic_points": distribution(comparisons, distance=True),
+        "paired_point_side": {
+            "definition": (
+                "same-side q=1 comparison; low-field side (LFS) means the "
+                "inversion R is at or beyond the EFIT magnetic axis R"
+            ),
+            "paired_points_with_axis_R": len(axis_offsets),
+            "low_field_side_points": int(np.sum(np.asarray(axis_offsets) >= 0)),
+            "high_field_side_points": int(np.sum(np.asarray(axis_offsets) < 0)),
+            "low_field_side_fraction": (
+                float(np.mean(np.asarray(axis_offsets) >= 0)) if axis_offsets else None
+            ),
+            "absolute_inversion_R_minus_axis_R_m": distribution(
+                np.abs(axis_offsets)
+            ),
+        },
         "train_present_inversion_nominal_rho": distribution(inversion_rho),
         "train_present_outer_minus_inversion_nominal_rho": distribution(
             outer_minus_inversion_rho
@@ -183,25 +289,23 @@ def records(args):
     small["by_shot_source"] = str(args.work / "q1_radius_audit.json")
     small["cohort_by_shot"] = [r for r in shot_table if r["shot"] in set(cohort.shot)]
     save_json(OUTPUT / "q1_radius_audit.json", small)
-    # Bias justification uses the previous rule's TRAIN candidates only. The
-    # reviewed/test shots never select the numerical thresholds in this audit.
-    prior_q = []
-    for shot in train:
-        path = args.work.parent / "fix2/shots" / f"{shot}.json"
-        if not path.exists():
-            continue
-        old = json.loads(path.read_text())
-        prior_q.extend(
-            p["attrs"]["qmin"]
-            for p in old["crashes"]
-            if p["attrs"].get("uncertainty_reasons") == ["qmin_conflict"]
-            and p["attrs"].get("qmin") is not None
-        )
+    # Bias justification uses the previous rule's TRAIN candidates only. They are
+    # read from the snapshot beside the labels, never from the superseded round.
+    # The reviewed/test shots never select the numerical thresholds here.
+    snapshot_path = args.work / "labels" / PRIOR_INPUTS
+    snapshot = json.loads(snapshot_path.read_text())
+    prior_q = [
+        q
+        for shot, values in snapshot["train_qmin_conflict_candidates"].items()
+        if int(shot) in train
+        for q in values
+    ]
     shot186532 = by_shot.get(186532, {})
     save_json(
         OUTPUT / "qmin_bias_audit.json",
         {
-            "source": str(args.work.parent / "fix2/shots"),
+            "source": f"labels/{PRIOR_INPUTS}",
+            "source_sha256": hashlib.sha256(snapshot_path.read_bytes()).hexdigest(),
             "selection": "fixed TRAIN only; sole prior uncertainty qmin_conflict",
             "prior_train_candidate_qmin": distribution(prior_q),
             "efit01_conflict_threshold": 1 + DEFAULT_RULE.qmin_margin,
@@ -209,11 +313,15 @@ def records(args):
             "sustain_ms": DEFAULT_RULE.qmin_sustain_ms,
             "justification": (
                 "Magnetics-only EFIT01 does not constrain central current like MSE. "
-                "Prior 1.05 conflict systematically flags ECE-supported trains near "
-                "1.1-1.3. A prescribed 1.4 conflict and sustained1.5 absence guard "
-                "leave this bias band unresolved by equilibrium, while requiring "
-                "clear high-q evidence; thresholds are not fitted to "
-                "expert/test results."
+                "The earlier 1.05 conflict systematically flags ECE-supported trains "
+                "near 1.1-1.3, and 5% of the prior TRAIN candidates sit above "
+                f"{np.quantile(prior_q, 0.95):.2f}. "
+                "A prescribed 1.4 conflict threshold leaves this bias band unresolved "
+                "by the equilibrium. High q is no longer sufficient for absence: "
+                "sustained q_min >= 1.5 supplies only the q-prior state "
+                "absent_q_prior, which is uncertain on export and supplies no "
+                "benchmark negative. Thresholds are not fitted to expert or test "
+                "results."
             ),
             "shot_186532": {
                 "state_seconds": shot186532.get("state_seconds"),
@@ -235,23 +343,31 @@ def manifest(args):
             destination.parent.mkdir(parents=True, exist_ok=True)
             path.replace(destination)
     lines, files = [], []
-    for path in sorted(labels.glob("*.csv")):
+    # The CSV shards and the frozen prior-round inputs the rule reads are hashed
+    # together, so deleting or regenerating an earlier round cannot change them.
+    hashed = sorted(labels.glob("*.csv")) + sorted(
+        (labels / PRIOR_INPUTS).parent.glob("*.json")
+    )
+    for path in hashed:
         sha = hashlib.sha256()
         with path.open("rb") as handle:
             for chunk in iter(lambda: handle.read(1024 * 1024), b""):
                 sha.update(chunk)
         digest = sha.hexdigest()
-        lines.append(f"{digest}  {path.name}\n")
-        files.append(
-            {"file": path.name, "sha256": digest, "bytes": path.stat().st_size}
-        )
+        name = str(path.relative_to(labels))
+        lines.append(f"{digest}  {name}\n")
+        files.append({"file": name, "sha256": digest, "bytes": path.stat().st_size})
     sums = labels / "SHA256SUMS"
     sums.write_text("".join(lines))
     record = {
         "labels_path": str(labels),
         "manifest": str(sums),
         "manifest_sha256": hashlib.sha256(sums.read_bytes()).hexdigest(),
-        "csv_shards": len(files),
+        "csv_shards": sum(f["file"].endswith(".csv") for f in files),
+        "prior_input_files": [f["file"] for f in files if f["file"].endswith(".json")],
+        "freeze_json_sha256": hashlib.sha256(
+            (args.work / "freeze.json").read_bytes()
+        ).hexdigest(),
         "files": files,
     }
     save_json(OUTPUT / "label_manifest.json", record)
