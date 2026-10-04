@@ -180,7 +180,11 @@ def changelog(diag, previous, *, agreement_before, b):
     note = (
         "Round 3's harmonic level was calibrated on the bins that fit n = 1, which "
         "are not the harmonic bins (see the harmonic veto in the methods document); "
-        "round 4 replaced it."
+        "round 4 replaced it. The round 4 false-confirmation rows re-measure the "
+        "previous test and the step test on the same draws (absent stretches of at "
+        "least 320 ms, 20 draws per shot and lag, seed 0); round 3's figures used "
+        "stretches of at least 700 ms, so the two rounds' numbers for the previous "
+        "test differ."
     )
     lines = [
         "# Tearing-mode label rule: changelog",
@@ -341,10 +345,9 @@ def main():
             f"It removes {seeds['veto_current']} of the {seeds['seeds']} n = 2 seeds "
             f"(50 ms above 6 G on the RMS alone) on {seeds['shots']} development "
             f"shots; the 60 kHz frequency cap alone removes {seeds['cap']}, and the "
-            f"two cuts together {seeds['both_current']}. The rule yields "
+            f"two cuts together {seeds['both_current']}. The finished rule yields "
             f"{n2['n2_intervals_kept']['current_veto']} n = 2 intervals on the "
-            "development shots "
-            f"({n2['n2_intervals_kept']['no_veto']} without the veto)."
+            "development shots."
         ),
         "",
         (
