@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import re
+import textwrap
 from pathlib import Path
 
 import pandas as pd
@@ -160,6 +161,9 @@ def patch_readme(blocks):
     """
     text = README.read_text()
     for name, body in blocks.items():
+        body = textwrap.fill(
+            body, width=88, break_long_words=False, break_on_hyphens=False
+        )
         pattern = re.compile(
             rf"(<!-- gen:{name} -->).*?(<!-- /gen:{name} -->)", re.DOTALL
         )

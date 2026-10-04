@@ -526,8 +526,10 @@ def _paired_block(shots, y, valid, scores, thresholds, pairs):
     shots = [s for s in shots if valid[s].any()]
     results, stats = {}, {}
     for model, model_scores in scores.items():
+        # the pooled scores of the shots, as `scoring.evaluate` takes them by default,
+        # so a model's value here is the value of its main-table row on these shots
         edges = scoring.edges_for(
-            np.concatenate([model_scores[s][valid[s]] for s in shots])
+            np.concatenate([np.asarray(model_scores[s], dtype=float) for s in shots])
         )
         results[model] = scoring.evaluate(
             shots,
