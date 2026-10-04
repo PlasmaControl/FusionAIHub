@@ -6,6 +6,12 @@ uniform RMS grid and its median time step; interval durations use unioned spans.
 Uncertainty takes priority over presence; missing acquisition is unobservable.
 Frequency and Mirnov criterion rates condition on measured respective inputs;
 combined span/seed support rates condition on all valid RMS samples.
+
+Criterion pass rates are split by toroidal number: the present rows of n are the time
+inside n's own intervals (not the other n's), and the absent rows are the time the
+finished labels call absent. Absent rates are therefore post-labelling: time that passed
+a weak screen was moved out of absent by construction, so a low absent pass rate is
+partly a consequence of the labelling, not an independent measurement.
 """
 
 from __future__ import annotations
@@ -22,6 +28,7 @@ import pandas as pd
 from tm_label import line_evidence
 
 from labeler.config import git_sha
+from labeler.events.interval_tables import parse_attrs
 from labeler.tearing import rule, scoring
 
 REPO = Path(__file__).resolve().parents[2]
@@ -31,6 +38,20 @@ OUT = Path(os.environ["LABELER_ROOT"]) / "round4/tm"
 def longest(t, mask):
     dt = float(np.median(np.diff(t)))
     return max((b - a for a, b in zip(*rule._runs(mask), strict=True)), default=0) * dt
+
+
+def uncertain_reasons(table):
+    """Number and seconds of uncertain rows (category 2) by their `reason` attribute."""
+    rows = table[table.category.eq(2) & (table.t_end > table.t_start)]
+    reasons = rows["attrs"].map(lambda a: parse_attrs(a).get("reason", "ramp_up"))
+    seconds = (rows.t_end - rows.t_start) / 1000.0
+    return {
+        reason: {
+            "rows": int((reasons == reason).sum()),
+            "seconds": float(seconds[reasons == reason].sum()),
+        }
+        for reason in sorted(set(reasons))
+    }
 
 
 def audit_set(name, intervals, table, shots):
@@ -141,8 +162,15 @@ def audit_set(name, intervals, table, shots):
                 "weak_mirnov_support": weak[n],
                 "screening_available": screened[n],
             }
+            own = np.zeros(t.shape, bool)
+            for item in intervals[
+                intervals.shot.eq(shot) & intervals.n.eq(n)
+            ].itertuples():
+                own |= (t >= item.t_start - 1e-6) & (t <= item.t_end + 1e-6)
             for category, title in ((0, "absent"), (1, "present")):
                 chosen = valid & (state == category)
+                if category == 1:
+                    chosen &= own
                 for criterion, mask in masks.items():
                     measured = chosen.copy()
                     if criterion.startswith("frequency_"):
@@ -217,6 +245,7 @@ def audit_set(name, intervals, table, shots):
                 (abrupt & intervals.ended.eq("decay")).sum()
             ),
             "intervals_by_end": intervals.ended.value_counts().to_dict(),
+            "uncertain_rows_by_reason": uncertain_reasons(table),
         },
         "screening_coverage": coverage,
     }
@@ -226,10 +255,10 @@ def audit_set(name, intervals, table, shots):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument(
-        "--out", type=Path, default=OUT / "labels/audit_fix2_current.json"
+        "--out", type=Path, default=OUT / "labels/audit_fix3_current.json"
     )
     parser.add_argument(
-        "--criterion-out", type=Path, default=OUT / "labels/criterion_support_fix2.json"
+        "--criterion-out", type=Path, default=OUT / "labels/criterion_support_fix3.json"
     )
     parser.add_argument(
         "--sets",

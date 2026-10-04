@@ -36,7 +36,7 @@ if str(REPO / "src") not in sys.path:
 
 from labeler.config import Paths, git_sha
 from labeler.events import spans
-from labeler.events.interval_tables import write_interval_table
+from labeler.events.interval_tables import parse_attrs, write_interval_table
 from labeler.tearing import rule, scoring, surface
 
 LABELER = Path(
@@ -92,19 +92,30 @@ def surface_hook(shot: int, roots):
     return None
 
 
-def line_evidence(shot, t_ms, freq_dir, mag_dir=MAGFEATURES):
+#: Weak-track amplitude floors: the frozen development quiet-time p95 of the Mirnov
+#: coherent amplitude (log10, `calibration_dev_fix1.json`).
+WEAK_FLOOR = {1: -0.2435681, 2: -0.6028450}
+#: The cap on a rotating line's frequency per toroidal number (kHz): n times 30.
+LINE_CAP_KHZ = {n: rule.LINE_KHZ_PER_N * n for n in (1, 2)}
+
+
+def line_evidence(shot, t_ms, freq_dir, mag_dir=MAGFEATURES, cap_khz=None):
     """Coherent/weak-line masks on the uniform RMS grid, and frequency drops.
 
     N<n>FREQ is the processed n-resolved line frequency. Where missing, use the
-    Mirnov phase fit >=0.9, prominence >=10 dB, frequency <=30 kHz and coherent
-    amplitude above the development-only quiet p95. An available frequency >30
-    kHz vetoes the Mirnov fallback for that n. No blind test calibration is read.
+    Mirnov phase fit >=0.9, prominence >=10 dB and coherent amplitude above the
+    development-only quiet p95 (`WEAK_FLOOR`). The Mirnov line frequency is searched
+    only over 1-30 kHz (`magfeatures.LINE_KHZ`), so no range test is repeated here. An
+    available N<n>FREQ above `cap_khz[n]` (default 30 kHz times n) vetoes the Mirnov
+    fallback for that n; the Mirnov features themselves stop at 30 kHz, so the n = 2
+    cap of 60 kHz acts through N2FREQ alone. The weak track is released at the weak
+    floor itself, the level that opened it. No blind test calibration is read.
     """
+    cap = {**LINE_CAP_KHZ, **(cap_khz or {})}
     t = np.asarray(t_ms)
     dt = float(np.median(np.diff(t)))
     mirnov = {1: np.zeros(t.shape, bool), 2: np.zeros(t.shape, bool)}
     weak_mirnov = {1: np.zeros(t.shape, bool), 2: np.zeros(t.shape, bool)}
-    weak_release = {1: np.zeros(t.shape, bool), 2: np.zeros(t.shape, bool)}
     seed_support = {1: np.zeros(t.shape, bool), 2: np.zeros(t.shape, bool)}
     screened = {1: np.zeros(t.shape, bool), 2: np.zeros(t.shape, bool)}
     path = mag_dir / f"{shot}.npz"
@@ -114,7 +125,7 @@ def line_evidence(shot, t_ms, freq_dir, mag_dir=MAGFEATURES):
             names = list(z["names"])
         index = np.searchsorted(centres + 5.0, t)
         inside = (index < len(centres)) & (t >= centres[0] - 5.0)
-        for n, floor in ((1, -0.2435681), (2, -0.6028450)):
+        for n, floor in WEAK_FLOOR.items():
             screened[n][inside] = np.isfinite(features[index[inside]]).all(axis=1)
             amplitude = np.max(
                 features[
@@ -123,31 +134,15 @@ def line_evidence(shot, t_ms, freq_dir, mag_dir=MAGFEATURES):
                 axis=1,
             )
             frequency = features[:, names.index("line_khz")]
-            mask = (
-                (features[:, names.index(f"fit{n}")] >= 0.9)
-                & (features[:, names.index("line_prominence_db")] >= 10.0)
-                & (frequency >= 1.0)
-                & (frequency <= 30.0)
-                & (amplitude > floor)
-            )
+            prominent = features[:, names.index("line_prominence_db")] >= 10.0
+            mask = (features[:, names.index(f"fit{n}")] >= 0.9) & prominent
+            mask &= amplitude > floor
             mirnov[n][inside] = mask[index[inside]]
             # a<n> is already restricted to cells best-fitting n with >=0.9
             # coherence. A different, stronger line can reduce fit<n> at the
             # overall peak without erasing this weaker n-resolved line.
-            weak_mask = (
-                (amplitude > floor)
-                & (features[:, names.index("line_prominence_db")] >= 10.0)
-                & (frequency >= 1.0)
-                & (frequency <= 30.0)
-            )
+            weak_mask = (amplitude > floor) & prominent
             weak_mirnov[n][inside] = weak_mask[index[inside]]
-            release_mask = (
-                (amplitude > floor - 1.0)
-                & (features[:, names.index("line_prominence_db")] >= 10.0)
-                & (frequency >= 1.0)
-                & (frequency <= 30.0)
-            )
-            weak_release[n][inside] = release_mask[index[inside]]
             seed_mask = mask & rule.coherent_frequency(frequency, 10.0)
             seed_support[n][inside] = seed_mask[index[inside]]
     support = {n: mask.copy() for n, mask in mirnov.items()}
@@ -159,25 +154,34 @@ def line_evidence(shot, t_ms, freq_dir, mag_dir=MAGFEATURES):
             for n in (1, 2):
                 freq = z[f"n{n}freq"]
                 aligned = scoring.align_scores(z["t_ms"], freq, t)
-                stable = rule.coherent_frequency(aligned, dt)
+                stable = rule.coherent_frequency(aligned, dt, max_khz=cap[n])
                 support[n] |= stable
                 screened[n] |= np.isfinite(aligned)
                 # Available processed frequency settles the rotating seed:
                 # a coherent rapid sweep or stationary pulse is only a candidate.
                 seed_support[n] = np.where(
                     np.isfinite(aligned),
-                    rule.coherent_frequency(aligned, dt),
+                    rule.coherent_frequency(aligned, dt, max_khz=cap[n]),
                     seed_support[n],
                 )
-                support[n][aligned > 30.0] = False
-                mirnov[n][aligned > 30.0] = False
+                support[n][aligned > cap[n]] = False
+                mirnov[n][aligned > cap[n]] = False
                 if np.isfinite(freq).any():
                     locks[n] = rule.frequency_locks(z["t_ms"], freq)
-    return support, weak_mirnov, locks, seed_support, weak_release, screened
+    # The weak track opens above the floor and is released at the same floor.
+    return support, weak_mirnov, locks, seed_support, weak_mirnov, screened
 
 
 def shot_label(
-    shot: int, window, paths: Paths, directory: Path, freq_dir=None, q_roots=()
+    shot: int,
+    window,
+    paths: Paths,
+    directory: Path,
+    freq_dir=None,
+    q_roots=(),
+    *,
+    rules=rule.RULES,
+    cap_khz=None,
 ):
     """`(label, how, locks_known)` of one shot, or None: its record was not fetched."""
     record = load_signals(shot, directory)
@@ -188,7 +192,7 @@ def shot_label(
     t_ms, n1, _ = rule.uniform(t_ms, n1)
     _, n2, _ = rule.uniform(record[0], n2)
     coherent, weak, locks, seed, weak_release, screened = line_evidence(
-        shot, t_ms, freq_dir
+        shot, t_ms, freq_dir, cap_khz=cap_khz
     )
     amplitude = None
     lock_path = LOCK_SIGNALS / f"{shot}.npz"
@@ -209,6 +213,7 @@ def shot_label(
         weak_release_coherent=weak_release,
         screened=screened,
         lock_amplitude=amplitude,
+        rules=rules,
         m_of=surface_hook(shot, q_roots or (paths,)),
     )
     return label, how, locks is not None and all(i.n in locks for i in label.intervals)
@@ -256,6 +261,14 @@ def counts_of(frame, intervals) -> dict:
         "n_locked_candidates": int(intervals.locked_candidate.sum()),
         "n_locked_known": int(intervals.locked_known.sum()),
         "n_uncertain_rows": int(frame.category.eq(2).sum()),
+        "uncertain_rows_by_reason": {
+            str(k): int(v)
+            for k, v in frame[frame.category == 2]["attrs"]
+            .map(lambda a: parse_attrs(a).get("reason", "ramp_up"))
+            .value_counts()
+            .items()
+        },
+        "n_onset_windows": int(intervals.onset_window_start_ms.notna().sum()),
         "n_with_m": int(intervals.m.notna().sum()),
         "n_without_observed_onset": int((~intervals.onset_seen.astype(bool)).sum()),
         "shots_with_uncertain": int(frame[frame.category == 2].shot.nunique()),
@@ -296,18 +309,22 @@ def meta_for(which, frame, labels, missing, unlocked, shots, rules, extra=None):
         "$LABELER_ROOT/round4/tm/labels/plasma_start_<set>.json",
         "missing_signal_shots": missing,
         "locked": {
-            "signal": "\\MHD::N1FREQ, \\MHD::N2FREQ (kHz); PTDATA DUSBRADIAL (V)",
+            "signal": "\\MHD::N1FREQ, \\MHD::N2FREQ (kHz); PTDATA DUSBRADIAL "
+            "(native ptdata units, treated as gauss by disruption-py)",
             "rule": "Frequency <=1 kHz for 20 ms after >=1.5 kHz is only a "
             "locked_candidate, storing earliest lock_time_ms and every in-span "
             "drop in lock_candidates_ms (plus <=100 ms after the RMS end). "
             "An abrupt raw >seed to <release collapse within <=5 ms never "
-            "counts as decay: unknown unless DUSBRADIAL >=5 V continuously "
-            "for 20 ms within 100 ms confirms a locked/very-slow phase. "
-            "This voltage convention is local, not calibrated gauss. "
-            "Post-collapse time is uncertain until DUSBRADIAL stays <5 V for "
-            "200 ms (shorter dips are no release) or the discharge ends; an absent "
-            "diagnostic leaves the entire tail uncertain. "
-            "Without "
+            "counts as decay: unknown unless |DUSBRADIAL| rises >=5 above its "
+            "median over the 200 ms before the interval began (the whole-flat-top "
+            "median if that window is mostly unmeasured) and holds 20 ms within "
+            "-5 to +100 ms of a candidate time, which also include every "
+            "interval's end and the end of each rejected candidate. "
+            "Post-lock time is uncertain until |DUSBRADIAL| stays <5 above that "
+            "baseline for 200 ms (shorter dips are no release) or the discharge "
+            "ends; an absent diagnostic leaves an unconfirmed collapse's tail "
+            "uncertain. A rise of 5 held 100 ms in flat-top time no interval or "
+            "lock tail covers is uncertain `locked_unseeded`. Without "
             "frequency: ended=unknown and locked_known=false per row.",
             "intervals_without_a_frequency_record_shots": unlocked,
             "unknown_locking_shots": sorted(
@@ -317,21 +334,26 @@ def meta_for(which, frame, labels, missing, unlocked, shots, rules, extra=None):
             ),
         },
         "coherent_line": "Continuous >=50 ms seed crossing before merging, "
-        "n-resolved frequency 1.5..30 kHz or Mirnov phase fit>=0.9, prominence>=10 dB "
-        "and amplitude above development-only quiet p95; local 50 ms frequency "
-        "p90-p10 width <= max(2 kHz, 25% median), >=80% span support. "
-        "Unsupported seeds and sustained >=100 ms weak coherent activity are "
-        "uncertain, excluded from detector training/scoring.",
+        "n-resolved frequency 1.5 kHz to 30 kHz times n or Mirnov phase fit>=0.9, "
+        "prominence>=10 dB and amplitude above development-only quiet p95; local "
+        "50 ms frequency p90-p10 width <= max(2 kHz, 25% median), >=80% span "
+        "support. Unsupported seeds and sustained >=100 ms weak coherent activity "
+        "are uncertain, excluded from detector training/scoring.",
         "weak_track": "Continuous >=100 ms n-resolved Mirnov amplitude above "
         "the frozen development quiet p95 establishes uncertainty, extended "
-        "along the coherent line at 10% of that amplitude floor; <=50 ms "
-        "evidence interruptions can be joined, acquisition gaps cannot.",
-        "calibration": str(OUT_ROOT / "labels/calibration_dev_fix1.json"),
+        "along the coherent line down to that same amplitude floor; <=50 ms "
+        "evidence interruptions can be joined, acquisition gaps cannot. The "
+        "screen runs over the whole catalog window, ramp-up included.",
+        "onset_window_ms": "An onset point carries [start of the preceding same-n "
+        "weak track, interval start] in ms where such a track leads into the "
+        "interval; the onset itself stays at the interval start.",
+        "calibration": "benchmark/sources/calibration_dev_fix1.json (weak floors, "
+        "weak RMS thresholds) and calibration_dev_fix3.json (harmonic ratio)",
         "screening_missing": "All requested shots exclude blind cohort IDs before "
         "input reads; unavailable line screening at RMS above frozen weak_g "
         "is uncertain even without positive coherent-line evidence.",
-        "test_exposure_correction": "Earlier harmonic_ratio=0.4 cited blind test "
-        "shot 187043; replaced by development-only p99 rounded up to 0.57.",
+        "test_exposure_correction": "An earlier harmonic ratio was read off a "
+        "blind-test shot; it was replaced by a development-only calibration.",
         "m": {
             "signal": "qpsi_EFIT01 (the shot's feature file), offline EFIT01",
             "rule": "labeler.tearing.surface.supported_m requires an independently "

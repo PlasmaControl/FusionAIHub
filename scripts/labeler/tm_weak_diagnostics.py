@@ -196,11 +196,11 @@ def main(argv=None):
                 "raw_dominant_fit_core_runs_ms": tracks(
                     dominant_mask, available, t, gap_ms=0
                 ),
-                "p95_seed_10percent_release": {
-                    "release_floor_log10": floor - 1.0,
+                "p95_seed_release_at_floor": {
+                    "release_floor_log10": floor,
                     "tracks_ms": anchored_tracks(
                         band_mask,
-                        (amplitude > floor - 1.0) & (prominence >= 10),
+                        (amplitude > floor) & (prominence >= 10),
                         available,
                         t,
                     ),

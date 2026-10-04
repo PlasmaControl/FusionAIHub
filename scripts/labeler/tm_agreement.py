@@ -216,11 +216,17 @@ def main(argv=None) -> int:
         "git_sha": git_sha(),
         "intervals_table": str(full),
         "intervals_sha256": hashlib.sha256(full.read_bytes()).hexdigest(),
-        "caveat": "Survival agreement shares N1RMS, 12 G / 50 ms and "
-        "10%-of-peak onset with this rule; it is near-circular and does not "
-        "independently validate tearing islands."
+        "caveat": "The survival archive shares N1RMS, 12 G and the 10%-of-peak "
+        "onset with this rule but does not follow a literal continuous-50 ms rule "
+        "on the 1 kHz N1RMS: onsets classed short_burst have no 50 ms raw-and-median "
+        "12 G crossing near them (the rule finds nothing there). Agreement is "
+        "containment of the reference onset within the interval or 100 ms of "
+        "its edges, not timing accuracy, and does not independently validate "
+        "tearing islands."
         if args.reference == "survival"
-        else "Seo labels are growth-phase labels with limited temporal coverage.",
+        else "Seo labels are growth-phase labels with limited temporal coverage. "
+        "Agreement is containment within the interval or 100 ms of its edges, "
+        "not timing accuracy.",
         "unmatched_interval_breakdown": {
             "definition": "n1 intervals on selected shots: compare only starts "
             "inside available archive coverage; other spans are not comparable",

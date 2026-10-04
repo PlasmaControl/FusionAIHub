@@ -67,11 +67,12 @@ MAX_CONSECUTIVE_FAILURES = 8
 LOCK_SOURCE = {
     "point": "DUSBRADIAL",
     "route": "ptdata",
-    "units": "V",
-    "local_source": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/"
-    "src/labeler/features/namespace.py:362-377",
-    "meaning": "n=1 locked or very slow radial-field voltage indicator, "
-    "not a gauss-calibrated magnetic amplitude",
+    "units": "native ptdata units (treated as gauss by disruption-py)",
+    "units_verified": False,
+    "units_note": "fdp returns the trace without unit metadata; the unit is not "
+    "independently verified here, so the label uses a rise relative to the shot's "
+    "own pre-onset level rather than an absolute field",
+    "meaning": "n=1 locked or very slow radial-field indicator",
     "known_invalid_inclusive_range": list(LOCK_INVALID_RANGE),
     "fallback": "ONSBRADIAL is mentioned in local disruption review conventions, "
     "but no validated units/calibration locator was found; not guessed or fetched",
