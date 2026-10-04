@@ -1,7 +1,7 @@
 {
   "made_by": "scripts/labeler/tm_cv_plan.py",
-  "labels_sha256": "b92cad8eee2b384975fdb81ecc0b95c5c6ea497b5b926bef64ffc039181fdb52",
-  "generator_sha256": "804f5384c6cb0794e02c776afbf2bd684e8e05a6fd4daa10c46176d14959e49d",
+  "labels_sha256": "0cf0fe502baa219e75db447ee7a08b8ab92879070391e4e1bafc5aca7647f328",
+  "generator_sha256": "5d07eda0d2ffbac82ef6177c8a9884ed8749f785f557566cec77ffa322baf8d3",
   "policy": "Predeclare positive-bearing inner validation before any TM detector fit.\n\nOuter folds remain seed-0 round-robin assignments on the 450 development shots.\nInner roles depend only on interval presence and positive target/input support,\nnever scores, fitting losses or held-fold performance. The fixed design uses 10%\nper presence stratum, with within-stratum swaps to retain observable positives for\nall published and retrained rows. Only outer-training pools determine inner roles.\n",
   "development_shots": [
     185805,
