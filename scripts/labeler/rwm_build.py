@@ -14,7 +14,8 @@ Reads the candidate pool (`labeler.rwm.shots.choose`, written by
 4. writes minimal 10 ms present slices after onsets (category 1) and uncertain
    pre-onset windows (category 2), since the sources
    do not define ONSET_TIME as a detection/threshold time,
-   and assumed-absent time before the first precursor (category 0) on Hanson shots.
+   and assumed-absent time before the first precursor (category 0) on Hanson shots;
+   a category-0 span holding a sharp beta_N collapse is flagged in its attrs.
    Explicit unassessed intervals (category 4) preserve every hole beyond minimal
    present slices and later uncertain windows. Post-onset
    physical state; comparison screen spans are uncertain (category 2), with remaining
@@ -32,6 +33,7 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+import h5py
 import numpy as np
 import pandas as pd
 
@@ -75,6 +77,22 @@ def measure(shot: int, paths: Paths) -> dict:
         "betan_p95": float(np.percentile(betan[inside], 95)),
         "betan_over_li_p95": float(np.percentile(betan[inside] / li[inside], 95)),
     }
+
+
+def nbi_power_cached(shot: int, paths: Paths) -> bool:
+    """Whether any local store holds this shot's injected neutral-beam power (`pinj`)."""
+    for path in (
+        paths.features_file(shot),
+        paths.corpus_file(shot),
+        raw.cache_path(shot, paths=paths),
+    ):
+        try:
+            with h5py.File(path) as handle:
+                if "pinj" in handle:
+                    return True
+        except OSError:
+            continue
+    return False
 
 
 def cohort_overlap(shots_used, paths: Paths) -> dict:
@@ -194,9 +212,42 @@ def main() -> None:
         windows.shot.isin(hanson_shots) & (windows.category == labels.UNCERTAIN)
     ] = "onset_window_uncertain"
     sources = {int(s): group.to_dict("records") for s, group in table.groupby("shot")}
+    betan_by_shot = {
+        int(s): data.load_signals(int(s), paths)["betan"] for s in hanson_shots
+    }
+    nbi_cached = {int(s): nbi_power_cached(int(s), paths) for s in hanson_shots}
+    collapses = []
     attributes = []
     for row, tier in zip(windows.itertuples(), tiers):
         attrs = {"evidence_tier": tier, "coverage_verified": False}
+        if tier == "assumed_absent":
+            found = features.beta_collapses(
+                *betan_by_shot[int(row.shot)], (row.t_start, row.t_end)
+            )
+            if found:
+                events = [
+                    {key: round(value, 3) for key, value in event.items()}
+                    for event in found
+                ]
+                attrs["unexplained_beta_collapse"] = {
+                    "events": events,
+                    "neutral_beam_power_checked": False,
+                    "note": (
+                        "beta_N falls sharply inside this assumed-absent span; the "
+                        "cause (beam power, an MHD event or a reconstruction "
+                        "artefact) is not established, so the span is not clean "
+                        "assumed absence"
+                    ),
+                }
+                collapses += [
+                    {
+                        "shot": int(row.shot),
+                        "span_ms": [float(row.t_start), float(row.t_end)],
+                        "neutral_beam_power_cached": nbi_cached[int(row.shot)],
+                        **event,
+                    }
+                    for event in events
+                ]
         if tier in ("onset_point_minimal", "onset_window_uncertain"):
             attrs["source_onsets"] = labels.interval_onset_sources(
                 row.category, row.t_start, row.t_end, sources[int(row.shot)]
@@ -284,6 +335,26 @@ def main() -> None:
             "balance": shots.balance(stats, set(matched.shot)),
         },
         "cohort_overlap": cohort_overlap(selected.shot, paths),
+        "assumed_absent_collapses": {
+            "definition": (
+                "stored EFIT beta_N sample >= "
+                f"{features.COLLAPSE_MIN_BETAN:g} whose lowest following sample "
+                f"within {features.COLLAPSE_WITHIN_MS:g} ms is at least "
+                f"{features.COLLAPSE_DROP:.0%} lower (`features.beta_collapses`), "
+                "starting inside a Hanson category-0 span"
+            ),
+            "hanson_shots_scanned": len(hanson_shots),
+            "shots_with_a_collapse": sorted({c["shot"] for c in collapses}),
+            "events": collapses,
+            "neutral_beam_power_cached_shots": sorted(
+                s for s, cached in nbi_cached.items() if cached
+            ),
+            "treatment": (
+                "flagged in `attrs.unexplained_beta_collapse`; category unchanged "
+                "because beam power (PINJ) is not cached for these shots and no "
+                "fetch was made"
+            ),
+        },
         "feature_coverage": {
             f"{role}_{year}": {
                 name: {
@@ -445,7 +516,9 @@ def main() -> None:
             "absent": (
                 f"high-current time only before the first listed onset minus "
                 f"{labels.HORIZON_MS:g} ms, assuming complete onset listing. "
-                "No post-onset physical absence is inferred without mode termination evidence"
+                "No post-onset physical absence is inferred without mode termination "
+                "evidence. A span whose attrs carry unexplained_beta_collapse holds a "
+                "sharp beta_N fall of unestablished cause."
             ),
             "uncertain": (
                 f"Hanson: [{labels.ONSET_WINDOW_MS:g} ms before ONSET_TIME, "
@@ -466,7 +539,11 @@ def main() -> None:
                 "category 2 on Hanson shots: [o-20 ms, o) by convention; "
                 "ONSET_TIME meaning, pre-onset presence and extent unverified"
             ),
-            "assumed_absent": "Hanson time before first precursor; completeness assumption",
+            "assumed_absent": (
+                "Hanson time before first precursor; completeness assumption. A "
+                "span whose attrs carry unexplained_beta_collapse holds a sharp "
+                "beta_N fall of unestablished cause and is not clean assumed absence"
+            ),
             "unlabelled_screen": (
                 "category 2 on comparison shots: rwm_candidates screen spans, "
                 "not onset windows or verified negatives"

@@ -166,3 +166,43 @@ def test_elapsed_time_uses_a_fixed_current_crossing_without_future_peak():
     assert np.isnan(base[0])
     assert base[1:].tolist() == [0.0, 10.0, 20.0]
     assert np.array_equal(base, f.time_since_flattop(t, ip, grid), equal_nan=True)
+
+
+def test_beta_collapses_find_a_sharp_drop_inside_the_span_only():
+    t = np.arange(0.0, 600.0, 10.0)
+    y = np.full(t.shape, 3.0)
+    y[(t >= 300) & (t < 340)] = 1.2  # 60% drop within 10 ms, back after 40 ms
+    events = f.beta_collapses(t, y, (0.0, 500.0))
+    assert len(events) == 1
+    event = events[0]
+    # The first stored sample whose next 100 ms reaches the minimum.
+    assert event["start_ms"] == 200.0 and event["betan_start"] == 3.0
+    assert event["min_ms"] == 300.0 and event["betan_min"] == pytest.approx(1.2)
+    assert event["drop_fraction"] == pytest.approx(0.6)
+    # The same drop is not reported when it starts outside the span.
+    assert f.beta_collapses(t, y, (0.0, 190.0)) == []
+    assert f.beta_collapses(t, y, (340.0, 500.0)) == []
+
+
+def test_beta_collapses_ignore_slow_decay_low_beta_and_gaps():
+    t = np.arange(0.0, 600.0, 10.0)
+    slow = 3.0 * np.exp(-t / 400.0)  # about 22% in 100 ms
+    assert f.beta_collapses(t, slow, (0.0, 500.0)) == []
+    low = np.full(t.shape, 1.5)
+    low[30:] = 0.3  # a collapse from beta_N below 2
+    assert f.beta_collapses(t, low, (0.0, 500.0)) == []
+    # NaN samples are skipped, never bridged into a drop.
+    hole = np.full(t.shape, 3.0)
+    hole[20:30] = np.nan
+    assert f.beta_collapses(t, hole, (0.0, 500.0)) == []
+
+
+def test_beta_collapses_merge_one_event_and_split_separate_ones():
+    t = np.arange(0.0, 800.0, 10.0)
+    y = np.full(t.shape, 3.0)
+    y[(t >= 300) & (t < 330)] = 2.0  # first step down (33%)
+    y[(t >= 330) & (t < 360)] = 1.0  # deeper, same event
+    y[(t >= 600) & (t < 620)] = 1.0  # a second, later event
+    events = f.beta_collapses(t, y, (0.0, 700.0))
+    assert [e["min_ms"] for e in events] == [330.0, 600.0]
+    assert events[0]["betan_min"] == 1.0

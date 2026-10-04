@@ -52,9 +52,11 @@ def outlier_record(shot: int, paths: Paths) -> dict:
         },
         "reading": (
             "the saved trace is a smooth rise from about zero current to half of its "
-            "peak before t = 0; the negative start is the 50%-of-peak crossing of that "
-            "rise on a low-peak shot, not a corrupted time base (interpretation of "
-            "the numbers above; the discharge was not otherwise inspected)"
+            "peak before t = 0; this is consistent with a fast ramp on a low-peak "
+            "shot rather than a corrupted time base, but a current this high this "
+            "early is unusual for DIII-D timing, so a time-base offset is not "
+            "excluded (an interpretation of the numbers above; the discharge was "
+            "not otherwise inspected). Flagged, not corrected"
         ),
     }
 

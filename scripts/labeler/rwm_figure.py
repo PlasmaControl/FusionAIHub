@@ -22,40 +22,33 @@ import pandas as pd
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
+from labeler.rwm import features
 from labeler.rwm.records import load_evaluation
 
 REPO = Path(__file__).resolve().parents[2]
 OUT = REPO / "outputs" / "labeler" / "rwm"
 SCORE_COLOR, BETA_COLOR = "#0072B2", "#D55E00"
 WINDOW_MS = (-800.0, 600.0)
-#: A pre-onset beta_N/l_i below this share of its earlier maximum counts as a collapse.
-COLLAPSE_FRACTION = 0.75
 
 
-def collapse_counts(rows, slices):
-    """Eligible n=1 onsets whose window beta_N/l_i is below 0.75 of the earlier peak.
+def displayed_collapses(examples, collapses):
+    """Assumed-absent beta_N collapses that start inside each Hanson panel's window.
 
-    For each merged n=1 onset (`onset_physics` rows) the value is the first cached
-    10 ms slice in [o-20 ms, o), the same snapshot the onset tables use; the
-    earlier peak is the largest finite beta_N/l_i of that shot's cached slices before
-    the snapshot. An onset with either missing is not eligible.
+    `collapses` is `shots.json#/assumed_absent_collapses`; times are relative to the
+    panel's centre (the shot's first onset), in seconds.
     """
-    by_shot = {int(s): g for s, g in slices.groupby("shot")}
-    counts = {}
-    for row in rows:
-        value, shot = row["betan_over_li"], int(row["shot"])
-        cell = counts.setdefault(
-            str(row["campaign"]), {"eligible": 0, "below": 0, "below_shots": []}
-        )
-        prior = by_shot[shot]
-        prior = prior.betan_over_li[prior.t_ms < row["sample_ms"]].dropna()
-        if value is None or not len(prior):
+    found = {}
+    for example in examples:
+        if example["role"] != "hanson":
             continue
-        cell["eligible"] += 1
-        if value < COLLAPSE_FRACTION * prior.max():
-            cell["below"] += 1
-            cell["below_shots"].append(shot)
-    return counts
+        for event in collapses["events"]:
+            relative = (event["start_ms"] - example["centre_ms"]) / 1000.0
+            if (
+                event["shot"] == example["shot"]
+                and WINDOW_MS[0] / 1000 <= relative <= WINDOW_MS[1] / 1000
+            ):
+                found.setdefault(example["shot"], []).append(relative)
+    return found
 
 
 def main():
@@ -213,13 +206,16 @@ def main():
     first_onset = next(
         row for row in record["onset_physics"]["rows"] if row["shot"] == 156785
     )
-    collapse = collapse_counts(
-        record["onset_physics"]["rows"],
-        pd.read_parquet(
-            out_dir / "slices.parquet", columns=["shot", "t_ms", "betan_over_li"]
-        ),
+    collapses = json.loads((OUT / "shots.json").read_text())["assumed_absent_collapses"]
+    shown = displayed_collapses(examples, collapses)
+    flagged = ", ".join(map(str, collapses["shots_with_a_collapse"]))
+    in_panels = (
+        f"Panels {' and '.join(map(str, shown))} show βN/li collapses starting "
+        f"{' and '.join(f'{-min(t):.2f}' for t in shown.values())} s before the "
+        "onset, inside time assumed absent. "
+        if shown
+        else ""
     )
-    early, late = collapse["2014"], collapse["2018"]
     metadata = {
         "script": "scripts/labeler/rwm_figure.py",
         "model": "rwm-brf",
@@ -239,27 +235,28 @@ def main():
         ),
         "first_panel_onset_physics": first_onset,
         "collapse_check": {
-            "definition": (
-                "n=1 onsets whose first cached slice in [o-20 ms, o) has beta_N/l_i "
-                f"below {COLLAPSE_FRACTION} of the largest finite beta_N/l_i of that "
-                "shot's cached slices before it"
-            ),
-            "fraction": COLLAPSE_FRACTION,
-            "by_campaign": collapse,
-            "source": "outputs/labeler/rwm/evaluation.json#/onset_physics/rows",
+            "definition": collapses["definition"],
+            "displayed_collapse_starts_s_before_first_onset": {
+                str(shot): [-t for t in times] for shot, times in shown.items()
+            },
+            "shots_with_a_collapse": collapses["shots_with_a_collapse"],
+            "hanson_shots_scanned": collapses["hanson_shots_scanned"],
+            "events": len(collapses["events"]),
+            "treatment": collapses["treatment"],
+            "source": "outputs/labeler/rwm/shots.json#/assumed_absent_collapses",
         },
         "caption": (
             "Held-out scores of the equilibrium-scalar timing baseline rwm-brf (blue) "
             "and βN/li (orange) on shots chosen by number, not by score. Vertical lines "
             "mark n=1 onsets; grey spans are 100 ms forecast targets. Bottom panels "
             "are unlabelled comparisons centred on matched Hanson onsets. The dotted "
-            "βN/li=4 proxy uses the right axis, aligning with score 0.5. Panels "
-            "156796 and 158022 show βN/li collapses well before the onset, which is "
-            "atypical: in the window just before the onset only "
-            f"{early['below']} of {early['eligible']} eligible 2014 onsets "
-            f"({', '.join(map(str, early['below_shots']))}) and "
-            f"{late['below']} of {late['eligible']} in 2018 have βN/li below "
-            f"{COLLAPSE_FRACTION:g} of its earlier maximum. The "
+            "βN/li=4 proxy uses the right axis, aligning with score 0.5. "
+            f"{in_panels}A βN fall of at least {features.COLLAPSE_DROP:.0%} within "
+            f"{features.COLLAPSE_WITHIN_MS:g} ms from βN of at least "
+            f"{features.COLLAPSE_MIN_BETAN:g} starts in the assumed-absent span of "
+            f"{len(collapses['shots_with_a_collapse'])} of "
+            f"{collapses['hanson_shots_scanned']} Hanson shots ({flagged}); its cause "
+            "is not established, because beam power is not cached for them. The "
             "score is not a precursor indicator: on 156785 it rises after the onset "
             "and on 176077 it spikes at the onset. Neither physical duration nor "
             "warning skill is established."

@@ -21,6 +21,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from scipy.stats import mannwhitneyu
 
 REPO = Path(__file__).resolve().parents[2]
 if str(REPO / "src") not in sys.path:
@@ -54,6 +55,25 @@ def _log_ratio(t, y, times, lag):
     now = features.trailing_mean(t, y, times, features.RMS_WINDOW_MS)
     before = features.trailing_mean(t, y, times - lag, features.RMS_WINDOW_MS)
     return np.log(np.maximum(now, floor) / np.maximum(before, floor))
+
+
+def _rank_comparison(onset, control) -> dict:
+    """Median and Mann-Whitney comparison of the onset and control search maxima.
+
+    `rank_auc` is the chance that an onset's maximum slope exceeds a control's (ties
+    half), U / (n m); 0.5 means no difference in ranks.
+    """
+    onset, control = (np.asarray(v, dtype=float) for v in (onset, control))
+    onset, control = onset[np.isfinite(onset)], control[np.isfinite(control)]
+    test = mannwhitneyu(onset, control, alternative="two-sided")
+    return {
+        "n_onsets": len(onset),
+        "n_controls": len(control),
+        "onset_median": float(np.median(onset)),
+        "control_median": float(np.median(control)),
+        "rank_auc": float(test.statistic / (len(onset) * len(control))),
+        "mannwhitney_p": float(test.pvalue),
+    }
 
 
 def _controls(signals, onsets_ms, rng):
@@ -160,8 +180,13 @@ def main() -> None:
             rows.append(row)
     frame = pd.DataFrame(rows)
     frame.to_csv(out_dir / "growth_onsets.csv", index=False)
-    pd.DataFrame(control_rows).to_csv(out_dir / "growth_controls.csv", index=False)
+    controls_frame = pd.DataFrame(control_rows)
+    controls_frame.to_csv(out_dir / "growth_controls.csv", index=False)
     n1 = frame[frame.ntor == 1]
+    # Most controls fall after the shot's first onset, where the plasma may already
+    # be perturbed; the pre-onset comparison keeps only those before it.
+    first_onset = table.groupby("shot").t_ms.min()
+    before = controls_frame.centre_ms < controls_frame.shot.map(first_onset)
     eligible = np.isfinite(n1.betan_m100) & np.isfinite(n1.betan_p40)
     dropping = eligible & (n1.betan_p40 < 0.8 * n1.betan_m100)
     result = {
@@ -199,6 +224,20 @@ def main() -> None:
         "control_search_max_efold_ms": _quartiles(
             1000.0 / np.asarray(control_maxima)[np.asarray(control_maxima) > 0]
         ),
+        "slope_rank_test_n1": {
+            "statistic": (
+                "maximum trailing log-slope of the 90-offset search, 48 n=1 onsets "
+                "against controls; rank_auc = U / (n m), two-sided Mann-Whitney"
+            ),
+            "controls_before_first_onset": int(before.sum()),
+            "controls_after_first_onset": int((~before).sum()),
+            "pre_onset_controls": _rank_comparison(
+                n1.max_growth_per_s, controls_frame.max_growth_per_s[before]
+            ),
+            "all_controls": _rank_comparison(
+                n1.max_growth_per_s, controls_frame.max_growth_per_s
+            ),
+        },
         "log_ratio_n1": {},
         "betan": {
             "interpolation": "finite bracketing samples only; no extrapolation",

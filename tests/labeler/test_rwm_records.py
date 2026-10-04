@@ -74,3 +74,11 @@ def test_custom_outputs_with_same_basename_preserve_baseline_details(tmp_path):
     for path, detail, record in zip(paths, details, records, strict=True):
         write_evaluation(record, path, detail)
     assert [load_evaluation(path, details=True) for path in paths] == records
+
+
+def test_reader_accepts_a_plain_string_path(tmp_path):
+    summary, details = tmp_path / "summary.json", tmp_path / "details.json"
+    record = {"per_shot": [{"shot": 7}]}
+    write_evaluation(record, summary, details)
+    assert load_evaluation(str(summary)) == load_evaluation(summary)
+    assert load_evaluation(str(summary), details=True) == record

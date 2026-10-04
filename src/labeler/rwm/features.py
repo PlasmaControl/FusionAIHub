@@ -99,6 +99,66 @@ def bracketed_interpolate(t_src_ms, y_src, t_grid_ms, max_gap_ms):
     return out
 
 
+#: A beta_N collapse starts at a stored sample at least this high ...
+COLLAPSE_MIN_BETAN = 2.0
+#: ... and loses at least this share of it ...
+COLLAPSE_DROP = 0.4
+#: ... within this many ms.
+COLLAPSE_WITHIN_MS = 100.0
+
+
+def beta_collapses(
+    t_ms,
+    betan,
+    span_ms,
+    *,
+    min_betan=COLLAPSE_MIN_BETAN,
+    drop=COLLAPSE_DROP,
+    within_ms=COLLAPSE_WITHIN_MS,
+):
+    """Sharp beta_N collapses whose first sample lies in `span_ms`, from stored samples.
+
+    A finite sample `x` at time `t` in the span, with `x >= min_betan`, starts a
+    collapse when the lowest finite sample in `(t, t + within_ms]` is at most
+    `(1 - drop) * x`. Qualifying samples inside an earlier collapse's reach are the
+    same event (the reach extends to the time of the lowest sample found so far).
+    Retrospective, offline, stored samples only; the cause (neutral-beam power,
+    an MHD event, a reconstruction artefact) is not decided here.
+
+    Returns dicts `start_ms`, `betan_start`, `min_ms`, `betan_min`,
+    `drop_fraction` (of the start sample), in time order. `start_ms` is the first
+    stored sample from which the minimum is reached within `within_ms`, so the
+    steepest fall can come up to `within_ms` after it.
+    """
+    t, y = np.asarray(t_ms, dtype=float), np.asarray(betan, dtype=float)
+    finite = np.isfinite(t) & np.isfinite(y)
+    t, y = t[finite], y[finite]
+    lo, hi = span_ms
+    events: list[dict] = []
+    for i in np.flatnonzero((t >= lo) & (t <= hi) & (y >= min_betan)):
+        after = (t > t[i]) & (t <= t[i] + within_ms)
+        if not after.any():
+            continue
+        j = np.flatnonzero(after)[np.argmin(y[after])]
+        if y[j] > (1.0 - drop) * y[i]:
+            continue
+        if events and t[i] <= events[-1]["min_ms"]:
+            if y[j] < events[-1]["betan_min"]:
+                events[-1].update(min_ms=float(t[j]), betan_min=float(y[j]))
+        else:
+            events.append(
+                {
+                    "start_ms": float(t[i]),
+                    "betan_start": float(y[i]),
+                    "min_ms": float(t[j]),
+                    "betan_min": float(y[j]),
+                }
+            )
+    for event in events:
+        event["drop_fraction"] = 1.0 - event["betan_min"] / event["betan_start"]
+    return events
+
+
 def hold(t_src_ms, y_src, t_grid_ms, max_age_ms):
     """Each grid time's last source value at or before it, NaN when older than the cap."""
     t_src = np.asarray(t_src_ms, dtype=float)

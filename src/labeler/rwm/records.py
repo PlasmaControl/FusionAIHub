@@ -34,13 +34,13 @@ def _summary(value):
     return value
 
 
-def load_evaluation(path: Path, *, details: bool = False) -> dict:
+def load_evaluation(path: Path | str, *, details: bool = False) -> dict:
     """Read summary metrics, or verify and load the complete external record.
 
     Older records without a pointer are already complete and remain readable.
     The summary alone suffices for tables, figures and saved-prediction replay.
     """
-    record = json.loads(path.read_text())
+    record = json.loads(Path(path).read_text())
     pointer = record.get("external_details")
     if details and pointer is not None:
         payload = Path(pointer["path"]).read_bytes()
