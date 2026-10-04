@@ -225,8 +225,9 @@ def main():
         "bin_directory": str(args.bins_dir),
         "thresholds": {
             "elm_mask_half_width_ms": th.ELM_MASK_HALF_WIDTH_MS,
-            "probe_strike_margin_m": th.PROBE_STRIKE_MARGIN_M,
-            "probe_sol_psi_n_window": [th.PROBE_SOL_PSI_N_MIN, th.PROBE_SOL_PSI_N_MAX],
+            "afrac_psi_window": th.AFRAC_PSI_WINDOW,
+            "afrac_reference_quantile": th.AFRAC_REFERENCE_QUANTILE,
+            "afrac_reference_min_bins": th.AFRAC_REFERENCE_MIN_BINS,
             "marfe_dz_min": th.DZ_MARFE_MIN,
             "marfe_greenwald_min": th.GREENWALD_CUE_MIN,
             "marfe_min_adjacent_bins": th.MARFE_MIN_BINS,

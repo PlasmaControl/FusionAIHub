@@ -8,7 +8,9 @@ Reads `$LABELER_ROOT/round4/detach/labels_bins.csv.gz` (written by
 states) and writes `docs/labeler/results/detachment_benchmark.json`.
 
 Pairwise cast votes are compared before consensus selection, separately for each
-``tangtv_tier``. The paper population is the upper-shelf Prad--TangTV pair.
+``tangtv_tier``. The paper population is the upper-shelf Prad--TangTV pair. The
+f_div scored threshold-free is the per-shot relative value (the exported vote's
+value); the absolute value is the `prad_abs` sensitivity pair.
 Cohen's kappa and binary attached/not-attached kappa use 1000 shot-bootstrap
 replicates. Lower-shelf measurements remain provisional. An indicator scored
 against a consensus containing its own vote cannot establish detector accuracy,
@@ -49,7 +51,16 @@ MODEL_RECORD = (
 REPLICATES = 1000
 STATES = (1, 2, 3)
 #: The sign that makes a larger score mean "not attached".
-DIRECTION = {"afrac": -1.0, "prad": 1.0, "tangtv": 1.0}
+DIRECTION = {"afrac": -1.0, "prad": 1.0, "prad_abs": 1.0, "tangtv": 1.0}
+#: Indicator name -> (value column, validity column, vote column). The exported
+#: f_div vote is the per-shot relative one (`prad_rel_value`); `prad_abs` is the
+#: absolute-cutoff sensitivity (`prad_value`, `prad_abs_valid`, `prad_abs_vote`).
+COLUMNS = {
+    "afrac": ("afrac_value", "afrac_valid", "afrac_vote"),
+    "prad": ("prad_rel_value", "prad_valid", "prad_vote"),
+    "prad_abs": ("prad_value", "prad_abs_valid", "prad_abs_vote"),
+    "tangtv": ("tangtv_value", "tangtv_valid", "tangtv_vote"),
+}
 
 
 def root() -> Path:
@@ -459,6 +470,7 @@ THRESHOLD_FREE_PAIRS = (
     ("prad", "tangtv"),
     ("afrac", "tangtv"),
     ("prad", "afrac"),
+    ("prad_abs", "tangtv"),
 )
 #: A shot enters a within-shot statistic with this many bins where both indicators
 #: are valid, and (AUROC) this many bins of each reference class.
@@ -486,15 +498,16 @@ def interval(draws) -> list:
 def pooled_rho(frame, a, b, rng) -> dict:
     """Spearman of the two oriented values on bins where both are valid, with a
     shot-bootstrap interval. Oriented: both increase with detachment."""
+    (va, ka, _), (vb, kb, _) = COLUMNS[a], COLUMNS[b]
     ok = (
-        frame[f"{a}_valid"].to_numpy(bool)
-        & frame[f"{b}_valid"].to_numpy(bool)
-        & np.isfinite(frame[f"{a}_value"].to_numpy(float))
-        & np.isfinite(frame[f"{b}_value"].to_numpy(float))
+        frame[ka].to_numpy(bool)
+        & frame[kb].to_numpy(bool)
+        & np.isfinite(frame[va].to_numpy(float))
+        & np.isfinite(frame[vb].to_numpy(float))
     )
     sub = frame[ok]
-    x = DIRECTION[a] * sub[f"{a}_value"].to_numpy(float)
-    y = DIRECTION[b] * sub[f"{b}_value"].to_numpy(float)
+    x = DIRECTION[a] * sub[va].to_numpy(float)
+    y = DIRECTION[b] * sub[vb].to_numpy(float)
     shots = sub.shot.to_numpy()
     out = {"n_bins": int(ok.sum()), "n_shots": len(np.unique(shots))}
     if not len(x):
@@ -516,20 +529,21 @@ def within_shot(frame, a, b, rng) -> dict:
     and `MIN_CLASS_BINS` bins of each reference class (AUROC). This removes the
     between-shot offset that one global cutoff cannot absorb.
     """
+    (va, ka, _), (vb, kb, qb) = COLUMNS[a], COLUMNS[b]
     both = (
-        frame[f"{a}_valid"].to_numpy(bool)
-        & frame[f"{b}_valid"].to_numpy(bool)
-        & np.isfinite(frame[f"{a}_value"].to_numpy(float))
-        & np.isfinite(frame[f"{b}_value"].to_numpy(float))
+        frame[ka].to_numpy(bool)
+        & frame[kb].to_numpy(bool)
+        & np.isfinite(frame[va].to_numpy(float))
+        & np.isfinite(frame[vb].to_numpy(float))
     )
-    vote_b = frame[f"{b}_vote"].to_numpy()
+    vote_b = frame[qb].to_numpy()
     rows = []
     for shot, idx in frame.groupby("shot").indices.items():
         keep = idx[both[idx]]
         if len(keep) < MIN_SHOT_BINS:
             continue
-        x = DIRECTION[a] * frame[f"{a}_value"].to_numpy(float)[keep]
-        y = DIRECTION[b] * frame[f"{b}_value"].to_numpy(float)[keep]
+        x = DIRECTION[a] * frame[va].to_numpy(float)[keep]
+        y = DIRECTION[b] * frame[vb].to_numpy(float)[keep]
         cast = vote_b[keep] > 0
         positive = vote_b[keep][cast] != core.ATTACHED
         auc = (
@@ -583,17 +597,20 @@ def threshold_free(frame: pd.DataFrame, rng) -> dict:
         rows = rows.reset_index(drop=True)
         pairs = {}
         for a, b in THRESHOLD_FREE_PAIRS:
+            (va, ka, _), (_, kb, qb) = COLUMNS[a], COLUMNS[b]
             ok = (
-                rows[f"{a}_valid"].to_numpy(bool)
-                & rows[f"{b}_valid"].to_numpy(bool)
-                & (rows[f"{b}_vote"].to_numpy() > 0)
-                & np.isfinite(rows[f"{a}_value"].to_numpy(float))
+                rows[ka].to_numpy(bool)
+                & rows[kb].to_numpy(bool)
+                & (rows[qb].to_numpy() > 0)
+                & np.isfinite(rows[va].to_numpy(float))
             )
             sub = rows[ok]
-            score = DIRECTION[a] * sub[f"{a}_value"].to_numpy(float)
-            positive = sub[f"{b}_vote"].to_numpy() != core.ATTACHED
+            score = DIRECTION[a] * sub[va].to_numpy(float)
+            positive = sub[qb].to_numpy() != core.ATTACHED
             pairs[f"{a}__{b}"] = {
-                "score": f"{a} value, larger = more detached",
+                "score": f"{va}, larger = more detached"
+                if a != "afrac"
+                else "afrac_value, larger Afrac = more attached (sign flipped)",
                 "reference": f"{b} vote: detached or marfe versus attached",
                 "auroc_pooled": auroc_boot(score, positive, sub.shot.to_numpy(), rng),
                 "spearman_pooled": pooled_rho(rows, a, b, rng),
@@ -620,6 +637,12 @@ def attached_conflict(frame: pd.DataFrame) -> dict:
     )
     detached = selected & frame.prad_vote.eq(core.DETACHED).to_numpy()
     cast = selected & frame.prad_vote.gt(core.ABSTAIN).to_numpy()
+    absolute = (
+        frame.tangtv_valid.to_numpy(bool)
+        & frame.prad_abs_valid.to_numpy(bool)
+        & frame.tangtv_vote.eq(core.ATTACHED).to_numpy()
+    )
+    absolute_detached = absolute & frame.prad_abs_vote.eq(core.DETACHED).to_numpy()
     return {
         "tangtv_attached_bins_with_valid_prad": int(selected.sum()),
         "tangtv_attached_bins_with_cast_prad": int(cast.sum()),
@@ -629,6 +652,13 @@ def attached_conflict(frame: pd.DataFrame) -> dict:
         "fraction_prad_detached": float(detached.sum() / selected.sum())
         if selected.any()
         else None,
+        "absolute_cutoffs_sensitivity": {
+            "tangtv_attached_bins_with_valid_prad": int(absolute.sum()),
+            "prad_detached_bins": int(absolute_detached.sum()),
+            "fraction_prad_detached": float(absolute_detached.sum() / absolute.sum())
+            if absolute.any()
+            else None,
+        },
     }
 
 
@@ -725,8 +755,10 @@ def main() -> None:
         "script": "scripts/labeler/detach_te_check.py",
     }
     result["indicator_names"] = {
-        "afrac": "Jsat ratio at the peak SOL-side target probe (local proxy)",
-        "prad": "Prad,div,L / P_in (cutoffs anchored on shot 201081)",
+        "afrac": "Jsat over each probe's own attached reference, read at the probe "
+        "nearest the separatrix (local proxy, L-mode abstains)",
+        "prad": "Prad,div,L / P_in over the shot's baseline (cutoffs from the 201081 "
+        "anchor; the absolute cutoffs are the prad_abs sensitivity)",
         "tangtv": "C-III front height DZ (shelf geometry, MARFE evidence)",
     }
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)

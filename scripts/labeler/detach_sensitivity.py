@@ -12,12 +12,14 @@ SAME compatibility rule labels the bins of the listed shots, with the fitted
 diagnostic model retained only for auxiliary fields (nothing is refitted per
 width), and the script reports:
 
-* the share of bins assessed (at least two indicators valid) and the share of the
-  assessed bins that are uncertain;
+* the certain and TangTV-only (silver) bins by state, with their shots, first (the
+  counts a reader needs before any rate), then the share of bins assessed (at least
+  two indicators valid or a TangTV vote) and the share of the assessed bins that are
+  uncertain, and the tier counts;
 * pairwise agreement and kappa of the indicators' votes;
-* `flicker_per_s`: transitions per second between certain states (a finer grid that
-  only resolves noise flickers more);
-* `vs_50ms`: the agreement and kappa of the certain states with the 50 ms labels,
+* `flicker_per_s`: transitions per second between labelled states (certain or
+  TangTV only; a finer grid that only resolves noise flickers more);
+* `vs_50ms`: the agreement and kappa of the labelled states with the 50 ms labels,
   each bin read at the 50 ms bin that holds its centre.
 
 The selected non-test shots include the owner's plasma_tv inversions and original
@@ -41,6 +43,17 @@ from labeler.events.detachment import core, label_model
 REPO = Path(__file__).resolve().parents[2]
 RESULT = REPO / "docs" / "labeler" / "results" / "detachment_bin_sensitivity.json"
 WIDTHS = (20, 50, 100)
+
+
+def by_state(mask, state, frame) -> dict:
+    """Bins and shots of the masked bins in each of the attached/detached states."""
+    return {
+        core.STATE_NAMES[c]: {
+            "bins": int((mask & (state == c)).sum()),
+            "shots": int(frame.shot[mask & (state == c)].nunique()),
+        }
+        for c in (core.ATTACHED, core.DETACHED)
+    }
 
 
 def root() -> Path:
@@ -75,7 +88,7 @@ def flicker(frame: pd.DataFrame, width: int) -> float:
     for idx in frame.groupby("shot").indices.values():
         state = frame.state_lm.to_numpy()[idx]
         start = frame.start_ms.to_numpy()[idx]
-        certain = np.isin(state, (1, 2, 3))
+        certain = np.isin(state, (1, 2))
         pair = certain[1:] & certain[:-1] & (np.diff(start) == width)
         changes += int(np.sum(pair & (state[1:] != state[:-1])))
         seconds += certain.sum() * width / 1000.0
@@ -104,15 +117,27 @@ def main() -> None:
         votes, valid = dl.matrices(frame)
         out, _, _ = dl.label_frame(frame, model, dl.POSTERIOR_THRESHOLD, float(width))
         assessed = out.assessed.to_numpy()
-        certain = out.state_lm.isin((1, 2, 3)).to_numpy()
+        tier = out.tier.to_numpy()
+        state = out.state_lm.to_numpy()
+        certain = (tier == "certain") & np.isin(state, (1, 2))
+        silver = (tier == "tangtv_only") & np.isin(state, (1, 2))
         labelled[width] = out
+
         result[f"{width}ms"] = {
             "n_shots": int(frame.shot.nunique()),
             "n_bins": len(frame),
-            "n_assessed_bins": int(assessed.sum()),
-            "n_assessed_shots": int(frame.loc[assessed, "shot"].nunique()),
+            "certain_by_state": by_state(certain, state, frame),
+            "tangtv_only_by_state": by_state(silver, state, frame),
             "n_certain_bins": int(certain.sum()),
             "n_certain_shots": int(frame.loc[certain, "shot"].nunique()),
+            "n_tangtv_only_bins": int(silver.sum()),
+            "n_tangtv_only_shots": int(frame.loc[silver, "shot"].nunique()),
+            "tier_counts": {
+                str(k): int(v)
+                for k, v in pd.Series(tier[assessed]).value_counts().items()
+            },
+            "n_assessed_bins": int(assessed.sum()),
+            "n_assessed_shots": int(frame.loc[assessed, "shot"].nunique()),
             "assessed_share": float(assessed.mean()),
             "uncertain_share_of_assessed": float(
                 np.mean(out.state_lm.to_numpy()[assessed] == core.UNCERTAIN)
@@ -149,10 +174,10 @@ def main() -> None:
             ]
         )
         mine = out.state_lm.to_numpy()
-        both = np.isin(mine, (1, 2, 3)) & np.isin(theirs, (1, 2, 3))
+        both = np.isin(mine, (1, 2)) & np.isin(theirs, (1, 2))
         result[f"{width}ms"]["vs_50ms"] = {
             "tangtv_tier": "upper_shelf",
-            "bins_certain_in_both": int(both.sum()),
+            "bins_labelled_in_both": int(both.sum()),
             "agreement": float(np.mean(mine[both] == theirs[both])),
             "kappa": dl.cohen_kappa(mine[both], theirs[both]),
         }
@@ -161,7 +186,9 @@ def main() -> None:
     for width in WIDTHS:
         r = result[f"{width}ms"]
         print(
-            f"{width:4d} ms: assessed {r['assessed_share']:.2f} uncertain "
+            f"{width:4d} ms: certain {r['certain_by_state']['attached']['bins']}/"
+            f"{r['certain_by_state']['detached']['bins']} assessed "
+            f"{r['assessed_share']:.2f} uncertain "
             f"{r['uncertain_share_of_assessed']:.2f} flicker {r['flicker_per_s']:.2f}/s"
             + (f" vs50 kappa {r['vs_50ms']['kappa']:.2f}" if "vs_50ms" in r else "")
         )

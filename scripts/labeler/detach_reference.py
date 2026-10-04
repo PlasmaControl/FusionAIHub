@@ -29,7 +29,14 @@ RESULTS = REPO / "docs" / "labeler" / "results"
 SOURCE = RESULTS / "detachment_reference_sources.json"
 STATES = {"attached": 1, "detached": 2, "marfe": 3}
 NAMES = {0: "abstain", **{v: k for k, v in STATES.items()}}
-METHODS = ("consensus", "afrac", "prad", "tangtv")
+#: `prad` is the exported per-shot relative f_div vote; `prad_absolute` the
+#: sensitivity vote on the 201081-anchored global cutoffs.
+METHODS = ("consensus", "afrac", "prad", "prad_absolute", "tangtv")
+#: bin-file columns (valid, vote, value, reason) of the methods that do not follow
+#: the `<name>_valid` pattern
+COLUMNS = {
+    "prad_absolute": ("prad_abs_valid", "prad_abs_vote", "prad_value", "prad_reason")
+}
 
 
 def root() -> Path:
@@ -147,7 +154,9 @@ def bootstrap(tables: np.ndarray, seed: int, replicates: int) -> dict:
         "seed": seed,
         "n_shots": len(tables),
         "reference_classes": [list(STATES)[k] for k in reference_classes],
-        "missing_class_support": "class F1 undefined; macro requires every frozen class",
+        "missing_class_support": (
+            "class F1 undefined; macro requires every frozen class"
+        ),
         "warning": (
             f"Only {len(tables)} reference shots; intervals are descriptive and "
             "cannot support population-accuracy claims."
@@ -222,11 +231,20 @@ def published_points(source: dict, bins_dir: Path, labels: pd.DataFrame) -> list
         for method in METHODS:
             value, valid, reason, vote = None, False, "no_containing_bin", 0
             if index is not None and method != "consensus":
-                valid = bool(bins[f"{method}_valid"][index])
-                raw_vote = int(bins[f"{method}_vote"][index])
+                c_valid, c_vote, c_value, c_reason = COLUMNS.get(
+                    method,
+                    (
+                        f"{method}_valid",
+                        f"{method}_vote",
+                        f"{method}_value",
+                        f"{method}_reason",
+                    ),
+                )
+                valid = bool(bins[c_valid][index])
+                raw_vote = int(bins[c_vote][index])
                 vote = raw_vote if valid and raw_vote in (1, 2, 3) else 0
-                value = float(bins[f"{method}_value"][index])
-                reason = str(bins[f"{method}_reason"][index])
+                value = float(bins[c_value][index])
+                reason = str(bins[c_reason][index])
                 if valid and vote == 0:
                     reason = "valid_measurement_abstains"
             elif index is not None:
@@ -456,6 +474,10 @@ def main() -> None:
             for name in (
                 "AFRAC_ATTACHED_MIN",
                 "AFRAC_DETACHED_MAX",
+                "AFRAC_PSI_WINDOW",
+                "AFRAC_REFERENCE_QUANTILE",
+                "PRAD_REL_ATTACHED_MAX",
+                "PRAD_REL_DETACHED_MIN",
                 "PRAD_ATTACHED_MAX",
                 "PRAD_DETACHED_MIN",
                 "DZ_ATTACHED_MAX",
