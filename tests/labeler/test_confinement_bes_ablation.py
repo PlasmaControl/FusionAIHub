@@ -188,7 +188,8 @@ def test_the_table_3_row_by_year_prints_f1_and_shots_per_class(tmp_path, capsys)
     abl.markdown_populations(argparse.Namespace(out_dir=tmp_path))
     out = capsys.readouterr().out
     assert "| 2014 | 21 | 2,000 | 0.00 (1) | - | 0.96 (20) | - |" in out
-    assert "a class carried by one shot counts for a half" in out
+    assert "a class counts for a quarter (four classes), a third (three)" in out
+    assert "for all of it in a year that holds one class" in out
 
 
 def test_block_placement_compares_the_failure_windows_with_the_shot_median(
@@ -214,3 +215,34 @@ def test_block_placement_compares_the_failure_windows_with_the_shot_median(
     assert abs(late["outer_psin_block"] - 1.3) < 1e-6
     assert late["channels_in_band_block"] == 32
     assert not late["outer_psin_matches_shot"] and not late["placement_matches_shot"]
+
+
+def test_placement_context_sets_the_failure_shots_against_the_kept_shots():
+    import pandas as pd
+
+    geo = pd.DataFrame(
+        {
+            "windows": [100, 100, 100, 100, 100],
+            "outer_psin": [1.00, 1.02, 1.05, 1.12, 0.40],
+            "channels_in_band": [30, 30, 28, 22, 5],
+            "reaches": [True, True, True, True, False],
+        },
+        index=pd.Index([1, 2, 3, 4, 5], name="shot"),
+    )
+    blocks = pd.DataFrame(
+        {"shot": [3, 4], "windows": [90, 40], "share_of_shot_windows": [0.9, 0.4]}
+    )
+    shots = np.repeat([1, 2, 3, 4], 10)
+    truth = np.zeros(40, dtype=int)
+    guess = truth.copy()
+    guess[20:] = 1  # shots 3 and 4 are called wrong throughout
+    ctx = abl.placement_context(blocks, geo, shots, guess, truth)
+    assert ctx["block_share_of_shot_windows"]["above_half"] == 1
+    assert ctx["block_share_of_shot_windows"]["above_80_percent"] == 1
+    assert ctx["kept_shots_outer_psin_quartiles"]["shots"] == 4
+    assert ctx["all_geometry_shots_outer_psin_quartiles"]["shots"] == 5
+    far = ctx["far_out"]
+    assert far["kept_shots"] == 1 and far["failure_shots"] == [4]
+    assert far["scored_shots"] == 1 and far["other_scored_shots"] == 3
+    assert far["mean_shot_window_accuracy"] == 0.0
+    assert abs(far["other_mean_shot_window_accuracy"] - 2 / 3) < 1e-9

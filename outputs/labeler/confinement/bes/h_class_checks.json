@@ -1,5 +1,6 @@
 {
- "created": "2026-10-04T13:23:01+00:00",
+ "git": "73016c4a",
+ "created": "2026-10-04T13:47:27+00:00",
  "what": "peak |I| over the 12 I-coil currents (rmp group, A) in each curated interval of the corpus shots; an observation, not a test of the H class",
  "applied_a": 1000.0,
  "corpus_shots": 117,

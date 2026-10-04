@@ -81,8 +81,8 @@ BEAM_GAP_MS = 50
 CONFIDENCE_FLOOR = 0.7
 UNCERTAIN = 5
 #: Categories whose labels on shots outside the curated set go to the unreviewed tier:
-#: the curated set excludes ELM-free and other quiescent H-modes that the network
-#: could read as QH or WPQH.
+#: the curated set may not contain ELM-free and other quiescent H-modes that the
+#: network could read as QH or WPQH (unverified).
 UNREVIEWED_CATEGORIES = (3, 4)
 
 
@@ -795,8 +795,8 @@ def apply(args: argparse.Namespace) -> None:
             "source": "held_out: a curated shot, read by the fold model that never "
             "saw it; ensemble: any other shot, the mean of the five fold models",
             "tier": "unreviewed: a QH or WPQH segment on a shot outside the curated "
-            "set (the curated set leaves out ELM-free and other quiescent H-modes "
-            "the network could read as QH); model: the rest",
+            "set (the curated set may not contain ELM-free and other quiescent "
+            "H-modes the network could read as QH (unverified)); model: the rest",
             "extrapolated": f"true for a shot past the last curated one "
             f"({last_curated}); the network never saw those campaigns",
         },

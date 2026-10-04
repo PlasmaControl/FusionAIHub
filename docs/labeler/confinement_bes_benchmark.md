@@ -83,7 +83,7 @@ The paper also reports a one-vs-rest ROC AUC of at least 0.99 for every class (n
 no AUPRC); the four per-class F1 above, their precision and recall and this bound are committed as
 `outputs/labeler/confinement/bes/gill_2024_published.json`, which the benchmark figure reads.
 
-These come from the paper's own test split (not described in the excerpt), not from
+These come from the paper's own 44-shot test set (its table 1, above), not from
 our labels, so they are the reference for what the model can do, not a number to
 compare with ours directly.
 
@@ -513,11 +513,13 @@ stage `tables` prints it from `populations.json`):
 | 2023 | 10 | 8,859 | 0.20 (3) | 0.88 (7) | 0.00 (1) | - |
 
 F1 per class (shots holding the class). The macro F1 is the mean of the F1 of the classes the year
-holds, so a class carried by one shot counts for a half (two classes) to a quarter (four) of it:
-the 2014 macro F1 of 0.481 is QH 0.96 on 20 shots and one L shot scored 0, and the 2023 value of
-0.360 averages three classes, one of them QH on a single shot at 0.00. A year's macro F1 is
-therefore a reading only where each class it holds rests on several shots (2021, 2022 and 2016 to
-2018).
+holds, so a class counts for a quarter (four classes), a third (three) or a half (two) of it, however
+few shots carry it, and for all of it in a year that holds one class (2013, 2019 and 2020: the
+macro F1 is that class's F1). The 2014 macro F1 of 0.481 is QH 0.96 on 20 shots and one L shot
+scored 0, and the 2023 value of 0.360 averages three classes, one of them QH on a single shot at
+0.00; and 2017, one of two years that hold all four classes, rests its WPQH quarter (0.61) on 2
+shots. A year's macro F1 is therefore a reading only where each class it holds rests on several
+shots (2016, 2018, 2021, and 2022 with 3 to 13 shots per class).
 
 #### Validation audit
 
@@ -741,8 +743,9 @@ factors move the score by at most 0.05, the class mix lowers it, the paper's spl
    where they differ and include shots outside those 330; and 8.6 % of the intervals look
    mislabelled (below). Restricting the scoring to the intervals of Gill's BES-time files gives no
    lift (0.594 on 26 shots), and the failures are concentrated in 22 shots (below). The corpus
-   shots score 0.46 against 0.74 for the others, in this row and in `confine-ours`; whether their
-   labels or their conditions differ is not known.
+   shots score 0.46 against 0.74 for the others in this row, and `confine-ours` shows the same
+   ordering on its own numbers (0.689 against 0.926); whether their labels or their conditions
+   differ is not known.
 2. **The test set.** One 44-shot test set of 7 to 17 shots per class against five random splits
    that overlap, pooled over 142 distinct shots (200 shot-tests); the WPQH class rests on 2 to 3
    shots per split (7 distinct) against 7.
@@ -808,13 +811,24 @@ below; both read the same out-of-fold predictions, so the overlap is not indepen
 list is for an expert or logbook check: each row is a stretch the network calls another regime
 almost throughout, whether through a label error, a plasma outside the paper's definition (H98y2
 below 1, dithering, the QH/WPQH boundary) or a BES problem (beam, geometry); the data cannot say
-which, and no label was changed. The failures are not a placement artefact: over each block's own
-windows, the outermost block channel's psi_N lies within 0.05 of the shot median for 22 of the 23 blocks
-(the largest deviation 0.013), and 21 also match its count of channels in the pedestal band (within 3;
-159372 differs by 4, 29 against 25). The exception is 174653 (WPQH, 4130-4799 ms), a geometry case: outer
-psi_N 1.19 against 1.02 and 16 channels in the band against 29, the plasma having moved (stage
-`failures`, columns `outer_psin_block` to `placement_matches_shot` of `failure_blocks.csv`, record
-`failure_blocks.json` key `placement`; the tolerances are conventions fixed before the comparison). "Interval span" is the curated interval the block lies in, "Confident
+which, and no label was changed. The placement did not change during the failure: over each block's
+own windows, the outermost block channel's psi_N lies within 0.05 of the shot median for 22 of the 23
+blocks (the largest deviation 0.013), and 21 also match its count of channels in the pedestal band
+(within 3; 159372 differs by 4, 29 against 25). The exception is 174653 (WPQH, 4130-4799 ms), a
+geometry case: outer psi_N 1.19 against 1.02 and 16 channels in the band against 29, the plasma
+having moved. That comparison is of a block with its own shot, and the block is most of the shot: it
+is more than half of the shot's labelled windows in 16 of the 23 blocks and more than 80 % in 9
+(179634's L block is 99 %), so a match says the array did not move, not that the placement is
+typical. In absolute terms the failure shots' outermost psi_N runs 1.008 to 1.110 against the
+1.029 / 1.047 / 1.073 quartiles of the 401 kept shots, so most are ordinary; three of them (184810,
+185871, 191376; 1.105 to 1.110, 22 to 24 channels in the band) are among the 27 kept shots at 1.10 or
+more (about the top 6 %), and the 23 of those 27 that the row scores average a per-shot window accuracy
+of 0.725 against 0.834 for the other 293. That is suggestive and **untested** (the 1.10 was chosen
+after looking at the failure shots, and a far-out block can explain at most those three of the 22
+shots); it is not a reason to call the failures a placement artefact, nor to rule one out (stage
+`failures`, columns `share_of_shot_windows` to `placement_matches_shot` of `failure_blocks.csv`, record
+`failure_blocks.json` key `placement`, with the absolute comparison under `context`; the tolerances
+and the 1.10 are conventions). "Interval span" is the curated interval the block lies in, "Confident
 learning" the flagged intervals that overlap it ("-" for none), "Mostly called" the class most of the
 block's windows are called (and their share), the year that of the shot's EFIT01 insertion.
 

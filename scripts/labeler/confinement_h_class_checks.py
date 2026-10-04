@@ -40,6 +40,7 @@ REPO = Path(__file__).resolve().parents[2]
 if str(REPO / "src") not in sys.path:
     sys.path.insert(0, str(REPO / "src"))
 
+from labeler.config import git_sha
 from labeler.confinement import bes_windows as bw
 
 LABELER = Path(
@@ -122,6 +123,7 @@ def main(argv: list[str] | None = None) -> int:
         except (KeyError, OSError):
             unread.append(shot)
     record = {
+        "git": git_sha(),
         "created": datetime.now(UTC).isoformat(timespec="seconds"),
         "what": "peak |I| over the 12 I-coil currents (rmp group, A) in each curated "
         "interval of the corpus shots; an observation, not a test of the H class",

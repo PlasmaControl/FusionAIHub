@@ -1051,8 +1051,9 @@ def markdown_populations(args: argparse.Namespace) -> None:
             print()
             print(
                 "F1 per class (shots holding the class). The macro F1 is the mean of "
-                "the F1 of the classes the year holds, so a class carried by one shot "
-                "counts for a half (two classes) to a quarter (four) of it."
+                "the F1 of the classes the year holds, so a class counts for a quarter "
+                "(four classes), a third (three) or a half (two) of it, however few "
+                "shots carry it, and for all of it in a year that holds one class."
             )
     audit_path = args.out_dir / "validation_audit.json"
     if audit_path.exists():
@@ -1307,6 +1308,79 @@ def _cell_c(entry: dict) -> str:
     return f"{entry['macro_f1']:.3f} [{lo:.2f}, {hi:.2f}] ({entry['shots']})"
 
 
+#: Outermost-channel psi_N from which a kept shot counts as "far out" (about the top 6 %
+#: of the 401). Set after looking at the failure shots, so an observation, not a test.
+FAR_OUT_PSIN = 1.10
+
+
+def placement_context(
+    blocks: pd.DataFrame,
+    geometry_blocks: pd.DataFrame,
+    shots: np.ndarray,
+    guess: np.ndarray,
+    truth: np.ndarray,
+) -> dict:
+    """What the placement comparison of ``block_placement`` can and cannot show.
+
+    A failure block is often most of its shot's windows, so its median placement is
+    close to the shot's by construction (``block_share_of_shot_windows``). In absolute
+    terms the failure shots' outermost psi_N is set against the quartiles of the kept
+    shots, and the shots whose block sits far out (``FAR_OUT_PSIN``) are counted among
+    the failures and scored by their per-shot window accuracy in the row. Untested."""
+    kept = geometry_blocks[geometry_blocks.reaches.astype(bool)]
+    quart = [0.25, 0.5, 0.75]
+    fail = sorted(int(s) for s in blocks.shot.unique())
+    share = blocks.share_of_shot_windows
+    far = kept[kept.outer_psin >= FAR_OUT_PSIN]
+    acc = pd.Series(guess == truth).groupby(shots).mean()
+    scored_far = acc.index.isin(far.index)
+    far_fail = sorted({int(s) for s in far.index} & set(fail))
+    return {
+        "block_share_of_shot_windows": {
+            "min": float(share.min()),
+            "median": float(share.median()),
+            "above_half": int((share > 0.5).sum()),
+            "above_80_percent": int((share > 0.8).sum()),
+            "blocks": len(blocks),
+            "denominator": "all labelled windows of the shot (geometry_blocks.csv)",
+        },
+        "failure_shots_outer_psin": {
+            "shots": len(fail),
+            "min": float(geometry_blocks.loc[fail].outer_psin.min()),
+            "median": float(geometry_blocks.loc[fail].outer_psin.median()),
+            "max": float(geometry_blocks.loc[fail].outer_psin.max()),
+        },
+        "kept_shots_outer_psin_quartiles": {
+            "shots": len(kept),
+            "q25_q50_q75": [float(v) for v in kept.outer_psin.quantile(quart)],
+        },
+        "all_geometry_shots_outer_psin_quartiles": {
+            "shots": int(geometry_blocks.outer_psin.notna().sum()),
+            "q25_q50_q75": [
+                float(v) for v in geometry_blocks.outer_psin.quantile(quart)
+            ],
+            "note": "includes the shots whose array does not reach the separatrix",
+        },
+        "far_out": {
+            "threshold_psin": FAR_OUT_PSIN,
+            "kept_shots": len(far),
+            "failure_shots": far_fail,
+            "failure_shots_outer_psin": [
+                float(geometry_blocks.loc[s].outer_psin) for s in far_fail
+            ],
+            "failure_shots_channels_in_band": [
+                int(geometry_blocks.loc[s].channels_in_band) for s in far_fail
+            ],
+            "scored_shots": int(scored_far.sum()),
+            "mean_shot_window_accuracy": float(acc[scored_far].mean()),
+            "other_scored_shots": int((~scored_far).sum()),
+            "other_mean_shot_window_accuracy": float(acc[~scored_far].mean()),
+            "note": "threshold set after looking at the failure shots; an "
+            "observation over the row's shots, not a test",
+        },
+    }
+
+
 def failures(args: argparse.Namespace) -> None:
     """The (shot, class) blocks of the 5-fold row ``FAILURE_ROW`` with at least 150
     windows of which under 10 % are called right: a list for an expert or a logbook
@@ -1355,6 +1429,10 @@ def failures(args: argparse.Namespace) -> None:
         ],
         intervals_ms=spans,
         confident_learning_ms=marks,
+        share_of_shot_windows=[
+            w / geometry_blocks.loc[s].windows
+            for s, w in zip(blocks.shot, blocks.windows, strict=True)
+        ],
         **pd.DataFrame(place).to_dict(orient="list"),
     )
     n_scored = len(shots)
@@ -1385,6 +1463,7 @@ def failures(args: argparse.Namespace) -> None:
                 f"{PLACEMENT_CHANNELS_TOL} of the shot's (all its labelled windows); "
                 "psi_N over the block's own windows"
             ),
+            "context": placement_context(blocks, geometry_blocks, shots, guess, truth),
             "blocks_matching_shot": int(blocks.placement_matches_shot.sum()),
             "blocks_matching_outer_psin": int(blocks.outer_psin_matches_shot.sum()),
             "blocks": len(blocks),
@@ -1522,6 +1601,25 @@ def markdown_protocol(args: argparse.Namespace) -> None:
         )
     pl = fail["placement"]
     dev = pl["largest_deviation_of_matching_blocks"]
+    ctx = pl["context"]
+    share, far = ctx["block_share_of_shot_windows"], ctx["far_out"]
+    q = ctx["kept_shots_outer_psin_quartiles"]["q25_q50_q75"]
+    print()
+    print(
+        f"Placement context: a block is more than half of its shot's labelled windows "
+        f"in {share['above_half']} of {share['blocks']} blocks and more than 80 % in "
+        f"{share['above_80_percent']}; the failure shots' outer psi_N runs "
+        f"{ctx['failure_shots_outer_psin']['min']:.3f} to "
+        f"{ctx['failure_shots_outer_psin']['max']:.3f} against the {q[0]:.3f} / "
+        f"{q[1]:.3f} / {q[2]:.3f} quartiles of the "
+        f"{ctx['kept_shots_outer_psin_quartiles']['shots']} kept shots; "
+        f"{len(far['failure_shots'])} failure shots {far['failure_shots']} are among "
+        f"the {far['kept_shots']} kept shots at {far['threshold_psin']:.2f} or more "
+        f"(per-shot window accuracy {far['mean_shot_window_accuracy']:.3f} on "
+        f"{far['scored_shots']} scored against "
+        f"{far['other_mean_shot_window_accuracy']:.3f} on "
+        f"{far['other_scored_shots']} others)."
+    )
     print()
     print(
         f"BES placement over the blocks' own windows against the shot median: "
