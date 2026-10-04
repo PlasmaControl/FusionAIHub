@@ -21,6 +21,7 @@ from sawtooth_physics import (
     save_json,
 )
 
+from labeler.config import Paths
 from labeler.sawtooth.physics import DEFAULT_RULE
 from labeler.sawtooth.preprocessing import STATES
 
@@ -179,6 +180,7 @@ def records(args):
         ]:
             assert phase["minimum_gap_ms"] >= 10 - 1e-6
             assert phase["null_p_value"] <= DEFAULT_RULE.periodicity_null_alpha
+    corpus = sum(1 for _ in Paths.from_env().corpus.glob("*_processed.h5"))
     splits = {}
     for split, rows in cohort.groupby("split"):
         selected = [by_shot[int(shot)] for shot in rows.shot]
@@ -198,6 +200,8 @@ def records(args):
                 **state_totals(all_records),
                 "absent_composition": absent_composition(all_records),
                 "guards": guard_totals(all_records),
+                "corpus_shots": corpus,
+                "complete": len(all_records) >= corpus,
             },
             "claim": "physics-rule labels validated only by reported checks",
             "prior_unverified_candidates_preserved": sum(
