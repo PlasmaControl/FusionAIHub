@@ -24,17 +24,17 @@ frequency its end/locking status is unknown. Confirmation reads the n=1 radial f
 for a step at a candidate time: the field's median over the 20 to 120 ms after it must
 exceed its median over the 200 to 20 ms before it by `LOCK_RISE`. The baseline is thus
 local to the candidate, so a field that ramps slowly, or was already high, confirms
-nothing. A candidate time is a frequency drop, an abrupt collapse or the interval's end,
-so a slow lock that follows a decay is found too. A confirmed lock leaves the time after
-it uncertain until the field is back below that level for `lock_release_ms` (200 ms; a
-shorter dip is no release) or the window ends; an abrupt collapse nobody confirms stays
-uncertain to the window end. Candidates the seed screen rejected get the same
-confirmation at their end, and a sustained lock-level field (a step, then 100 ms above
-the quiet level) in time no interval or lock tail covers is uncertain
-(`locked_unseeded`), not absent. Observed onsets are points (iscrowd 0), present
-intervals spans (iscrowd 1); an onset carries `onset_window_ms`, from the start of the
-same-n weak track that precedes the interval to the interval's start. Acquisition gaps
-remain NaN and are unobservable.
+nothing. A candidate time is a frequency drop at least 50 ms after the seed starts, an
+abrupt collapse or the interval's end, so a slow lock that follows a decay is found
+too. A confirmed lock leaves the time after it uncertain until the field is back below
+that level for `lock_release_ms` (200 ms; a shorter dip is no release) or the window
+ends; an abrupt collapse nobody confirms stays uncertain to the window end. Candidates
+the seed screen rejected get the same confirmation at their end, and a sustained
+lock-level field (a step, then 100 ms above the quiet level) in time no interval or
+lock tail covers is uncertain (`locked_unseeded`), not absent. Observed onsets are
+points (iscrowd 0), present intervals spans (iscrowd 1); an onset carries
+`onset_window_ms`, from the start of the same-n weak track that precedes the interval
+to the interval's start. Acquisition gaps remain NaN and are unobservable.
 """
 
 from __future__ import annotations
@@ -71,6 +71,8 @@ ONSET_LEAD_GAP_MS = 50.0
 #: it says almost nothing about where the mode began, so the onset row is flagged
 #: (`onset_window_degenerate`), not widened.
 ONSET_WINDOW_DEGENERATE_MS = 5.0
+#: Allowance for rounding: a window of exactly 5 ms (660.0 to 665.0) is flagged.
+ONSET_WINDOW_EPSILON_MS = 1e-6
 LOCK_REASONS = (
     "confirmed_locked_phase",
     "post_collapse_lock_unknown",
@@ -143,6 +145,9 @@ class Interval:
     seed_duration_ms: float = 0.0
     seed_start_ms: float | None = None
     locked_candidate: bool = False
+    #: True when a lock was confirmed at this interval's end (`locked` is then true
+    #: too). False says only that none was confirmed: no radial-field record, no step
+    #: at a candidate time, or n = 2, which has no confirmation.
     locked_known: bool = False
     lock_time_ms: float | None = None
     lock_candidates_ms: tuple[float, ...] = ()
@@ -596,13 +601,13 @@ def label_shot(
 ) -> ShotLabel:
     """The shot's label over `window`, the plasma starting at `start_ms`.
 
-    The strong rule runs from the plasma's start to the window's end. The ramp-up before
-    it is uncertain where the rule fires on it, so a mode of the ramp-up neither makes an
-    interval nor passes for an absence; the weak-line screen and the unscreened-RMS
-    check run over the whole window, ramp-up included, so one standard of "absent"
-    holds throughout. Stretches of the window the n = 1 record did not cover for
-    `gap_ms` are not observable. `m_of(n, start_ms, end_ms)`, if given, returns an
-    interval's poloidal number or None (`surface.supported_m`).
+    The strong rule runs from the plasma's start to the window's end. The ramp-up
+    before it is uncertain where the rule fires on it, so a mode of the ramp-up neither
+    makes an interval nor passes for an absence; the weak-line screen and the
+    unscreened-RMS check run over the whole window, ramp-up included, so one standard
+    of "absent" holds throughout. Stretches of the window the n = 1 record did not
+    cover for `gap_ms` are not observable. `m_of(n, start_ms, end_ms)`, if given,
+    returns an interval's poloidal number or None (`surface.supported_m`).
     """
     w0, w1 = float(window[0]), float(window[1])
     start = w0 if start_ms is None else min(max(float(start_ms), w0), w1)
@@ -889,6 +894,13 @@ def _row(shot, category, a, b, attrs=None):
     }
 
 
+def onset_window_degenerate(start_ms, window_start_ms) -> bool:
+    """An onset window of at most `ONSET_WINDOW_DEGENERATE_MS`, rounding allowed for."""
+    return start_ms - window_start_ms <= (
+        ONSET_WINDOW_DEGENERATE_MS + ONSET_WINDOW_EPSILON_MS
+    )
+
+
 def interval_attrs(item: Interval, *, crowd: int) -> dict:
     """The catalog attributes of one interval's span (`crowd` 1) or onset (0)."""
     attrs = {"iscrowd": int(crowd), "n": int(item.n)}
@@ -903,7 +915,7 @@ def interval_attrs(item: Interval, *, crowd: int) -> dict:
         attrs["lock_candidates_ms"] = list(item.lock_candidates_ms)
     if crowd == 0 and item.onset_window_ms is not None:
         attrs["onset_window_ms"] = [round(float(v), 3) for v in item.onset_window_ms]
-        if item.start_ms - item.onset_window_ms[0] <= ONSET_WINDOW_DEGENERATE_MS:
+        if onset_window_degenerate(item.start_ms, item.onset_window_ms[0]):
             attrs["onset_window_degenerate"] = True
     if item.m is not None:
         # m = n q needs the safety factor, which is the offline EFIT01 here

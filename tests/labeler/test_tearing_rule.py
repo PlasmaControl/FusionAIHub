@@ -896,3 +896,20 @@ def test_an_onset_carries_the_window_back_to_the_weak_track_that_led_into_it():
     flagged = parse_attrs(bare_point["attrs"].iloc[0])
     assert flagged["onset_window_degenerate"] is True
     assert not attr_problems(rule.CATEGORY, flagged)
+
+
+def test_a_window_of_exactly_five_milliseconds_is_flagged_despite_rounding():
+    # shot 185961: the window [660.0, 665.0] is exactly 5 ms, but the subtraction of
+    # the unrounded times can land a hair above 5.0
+    for start, flagged in ((665.0, True), (665.0 + 4e-10, True), (665.01, False)):
+        assert rule.onset_window_degenerate(start, 660.0) is flagged
+        item = rule.Interval(
+            n=1,
+            start_ms=start,
+            end_ms=900.0,
+            peak_g=20.0,
+            peak_ms=700.0,
+            onset_window_ms=(660.0, start),
+        )
+        attrs = rule.interval_attrs(item, crowd=0)
+        assert attrs.get("onset_window_degenerate", False) is flagged

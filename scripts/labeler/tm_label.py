@@ -272,7 +272,7 @@ def counts_of(frame, intervals) -> dict:
         "n_onset_windows_at_most_5_ms": int(
             (
                 (intervals.t_start - intervals.onset_window_start_ms)
-                <= rule.ONSET_WINDOW_DEGENERATE_MS
+                <= rule.ONSET_WINDOW_DEGENERATE_MS + rule.ONSET_WINDOW_EPSILON_MS
             ).sum()
         ),
         "n_onset_rows_flagged_degenerate": int(
@@ -330,8 +330,9 @@ def meta_for(which, frame, labels, missing, unlocked, shots, rules, extra=None):
             "time: its median over the 20 to 120 ms after the time is >=5 above "
             "its median over the 200 to 20 ms before it (each window needs 50 ms "
             "measured, the baseline is not read before the plasma start). The "
-            "candidate times are every frequency drop, the collapse, every "
-            "interval's end and the end of each rejected candidate. "
+            "candidate times are the frequency drops at least 50 ms after the "
+            "seed starts, the collapse, every interval's end and the end of each "
+            "rejected candidate. "
             "Post-lock time is uncertain until |DUSBRADIAL| stays <5 above that "
             "local baseline for 200 ms (shorter dips are no release) or the "
             "discharge ends; an absent diagnostic leaves an unconfirmed collapse's "
@@ -339,8 +340,11 @@ def meta_for(which, frame, labels, missing, unlocked, shots, rules, extra=None):
             "in flat-top time no interval or lock tail covers is uncertain "
             "`locked_unseeded`. Without frequency: ended=unknown and "
             "locked_known=false per row.",
+            "locked_known": "true when a lock was confirmed (then locked is true "
+            "too); false only says none was confirmed: no radial-field record, no "
+            "step, or n = 2, which has no confirmation",
             "intervals_without_a_frequency_record_shots": unlocked,
-            "unknown_locking_shots": sorted(
+            "unconfirmed_lock_shots": sorted(
                 label.shot
                 for label in labels
                 if any(not item.locked_known for item in label.intervals)
