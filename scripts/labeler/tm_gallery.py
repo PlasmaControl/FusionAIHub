@@ -13,8 +13,8 @@ own floor over the plasma), and the n = 1 and n = 2 RMS (log gauss) with the ons
 threshold and, per interval, the release level it was cut at. Both panels shade each
 interval in its colour; where an n = 1 and an n = 2 interval overlap the shadings
 blend into a light grey, named in the legend ("n = 1 and 2 overlap"). MHR often
-covers only part of a pulse; its uncovered times are grey. `--diagnostic mirnov` gives a second
-gallery with the longer MPI66M322D record (corpus `mirnov` row 15).
+covers only part of a pulse; its uncovered times are grey. `--diagnostic mirnov`
+gives a second gallery with the longer MPI66M322D record (corpus `mirnov` row 15).
 
     PYTHONPATH=$PWD/src pixi run --frozen --no-install -e labelmaker python \\
         scripts/labeler/tm_gallery.py --n 12 --seed 3 --out <stem>
