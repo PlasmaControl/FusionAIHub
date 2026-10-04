@@ -2,6 +2,7 @@
 language: en
 license: other
 library_name: pytorch
+pipeline_tag: time-series-forecasting
 tags:
   - diii-d
   - tokamak
