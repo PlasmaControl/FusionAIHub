@@ -1,0 +1,5946 @@
+{
+  "by_shot": [
+    {
+      "shot": 190602,
+      "scopes": {
+        "observable": {
+          "legacy_count": 0,
+          "physics_count": 0,
+          "signed_nearest_offset_ms_old_minus_physics": {
+            "n": 0,
+            "median": null,
+            "p25": null,
+            "p75": null
+          },
+          "signed_nearest_offsets_within_15ms": {
+            "n": 0,
+            "median": null,
+            "p25": null,
+            "p75": null
+          },
+          "nearest_legacy_anywhere_in_observable_support_offset_ms": {
+            "n": 0,
+            "median": null,
+            "p25": null,
+            "p75": null
+          },
+          "agreement": {
+            "2": {
+              "cells": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "metrics": {
+                "precision": null,
+                "recall": null,
+                "f1": null
+              }
+            },
+            "10": {
+              "cells": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "metrics": {
+                "precision": null,
+                "recall": null,
+                "f1": null
+              }
+            },
+            "12": {
+              "cells": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "metrics": {
+                "precision": null,
+                "recall": null,
+                "f1": null
+              }
+            }
+          },
+          "nearest_offset_histogram": {
+            "edges_ms": [
+              -25,
+              -24,
+              -23,
+              -22,
+              -21,
+              -20,
+              -19,
+              -18,
+              -17,
+              -16,
+              -15,
+              -14,
+              -13,
+              -12,
+              -11,
+              -10,
+              -9,
+              -8,
+              -7,
+              -6,
+              -5,
+              -4,
+              -3,
+              -2,
+              -1,
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24,
+              25
+            ],
+            "counts": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        },
+        "physics_present": {
+          "legacy_count": 0,
+          "physics_count": 0,
+          "signed_nearest_offset_ms_old_minus_physics": {
+            "n": 0,
+            "median": null,
+            "p25": null,
+            "p75": null
+          },
+          "signed_nearest_offsets_within_15ms": {
+            "n": 0,
+            "median": null,
+            "p25": null,
+            "p75": null
+          },
+          "nearest_legacy_anywhere_in_observable_support_offset_ms": {
+            "n": 0,
+            "median": null,
+            "p25": null,
+            "p75": null
+          },
+          "agreement": {
+            "2": {
+              "cells": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "metrics": {
+                "precision": null,
+                "recall": null,
+                "f1": null
+              }
+            },
+            "10": {
+              "cells": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "metrics": {
+                "precision": null,
+                "recall": null,
+                "f1": null
+              }
+            },
+            "12": {
+              "cells": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "metrics": {
+                "precision": null,
+                "recall": null,
+                "f1": null
+              }
+            }
+          },
+          "nearest_offset_histogram": {
+            "edges_ms": [
+              -25,
+              -24,
+              -23,
+              -22,
+              -21,
+              -20,
+              -19,
+              -18,
+              -17,
+              -16,
+              -15,
+              -14,
+              -13,
+              -12,
+              -11,
+              -10,
+              -9,
+              -8,
+              -7,
+              -6,
+              -5,
+              -4,
+              -3,
+              -2,
+              -1,
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24,
+              25
+            ],
+            "counts": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        }
+      },
+      "legacy_gate_diagnosis": {},
+      "example_profiles": [],
+      "trace_evidence": {
+        "physics": {
+          "core_channel": 0,
+          "outer_channels": [],
+          "core_fractional_drop": {
+            "n": 0,
+            "median": null,
+            "p25": null,
+            "p75": null
+          },
+          "outer_fractional_rise": {
+            "n": 0,
+            "median": null,
+            "p25": null,
+            "p75": null
+          },
+          "physical_validation": false
+        },
+        "legacy": {
+          "core_channel": 0,
+          "outer_channels": [],
+          "core_fractional_drop": {
+            "n": 62,
+            "median": -0.02839396628216504,
+            "p25": -0.03481096426680655,
+            "p75": -0.02201413203811299
+          },
+          "outer_fractional_rise": {
+            "n": 0,
+            "median": null,
+            "p25": null,
+            "p75": null
+          },
+          "physical_validation": false
+        },
+        "central_derivative": {
+          "core_channel": 0,
+          "outer_channels": [],
+          "core_fractional_drop": {
+            "n": 230,
+            "median": 0.17328997762007886,
+            "p25": 0.15431949351808774,
+            "p75": 0.18471740120089727
+          },
+          "outer_fractional_rise": {
+            "n": 0,
+            "median": null,
+            "p25": null,
+            "p75": null
+          },
+          "physical_validation": false
+        }
+      },
+      "train_only_holdoff_ablation": {
+        "performed": true,
+        "split": "train",
+        "derivative_source": "sawtooth_benchmark.derivative_candidates",
+        "derivative_z_fixed": 20,
+        "derivative_support": "Finite central-channel ECE only, independent of the new rule's multichannel/profile observability mask",
+        "derivative_count": 230,
+        "legacy_count": 62,
+        "physics_matches_derivative_2ms": 0,
+        "physics_minus_derivative_nearest_offset_ms": {
+          "n": 0,
+          "median": null,
+          "p25": null,
+          "p75": null
+        },
+        "no_holdoff_inversion_accepted_count": 622,
+        "original_matches_derivative_2ms": 0,
+        "no_holdoff_matches_derivative_2ms": 0,
+        "short_1to2ms_profile_same_holdoff_count": 80,
+        "short_1to2ms_profile_same_holdoff_matches_derivative_2ms": 0,
+        "additional_derivative_edges_recovered_without_holdoff": 0,
+        "old_minus_derivative_nearest_offset_ms": {
+          "n": 230,
+          "median": -9.399912720529313,
+          "p25": -30.274883100846807,
+          "p75": 31.000126224755455
+        },
+        "blocking_candidate_minus_derivative_offset_ms": {
+          "n": 0,
+          "median": null,
+          "p25": null,
+          "p75": null
+        },
+        "derivative_gate_diagnosis": {
+          "retained_edge_failed_2to8ms_inversion_profile": 230
+        },
+        "inversion_profile_failure_at_raw_edge": {
+          "dominant_drop_touches_array_end": 225,
+          "no_adjacent_3ch_gain_block": 4,
+          "gain_block_too_far": 1
+        },
+        "examples": [
+          {
+            "derivative_peak_s": 1.1758999702556256,
+            "nearest_raw_offset_ms": -0.39997020347160017,
+            "nearest_retained_offset_ms": 0.6000297965285117,
+            "nearest_accepted_offset_ms": -328.3999702034716,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "dominant_drop_touches_array_end",
+              "dominant_drop": [
+                0,
+                5
+              ],
+              "spatially_excluded_drop_channels": [
+                3,
+                4
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.2083999694868208,
+            "nearest_raw_offset_ms": 0.10003056533336441,
+            "nearest_retained_offset_ms": 0.10003056533336441,
+            "nearest_accepted_offset_ms": -360.89996943466673,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "dominant_drop_touches_array_end",
+              "dominant_drop": [
+                0,
+                6
+              ],
+              "spatially_excluded_drop_channels": [
+                3,
+                4,
+                5
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.2298999689782268,
+            "nearest_raw_offset_ms": -0.3999689260727468,
+            "nearest_retained_offset_ms": 0.600031073927143,
+            "nearest_accepted_offset_ms": -382.39996892607275,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "dominant_drop_touches_array_end",
+              "dominant_drop": [
+                0,
+                7
+              ],
+              "spatially_excluded_drop_channels": [
+                3,
+                4,
+                5,
+                6
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.3916999651507618,
+            "nearest_raw_offset_ms": -0.19996509860775724,
+            "nearest_retained_offset_ms": -0.19996509860775724,
+            "nearest_accepted_offset_ms": 505.8000349013922,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "no_adjacent_3ch_gain_block",
+              "gain_blocks": [],
+              "dominant_drop": [
+                30,
+                42
+              ],
+              "spatially_excluded_drop_channels": [
+                30,
+                31,
+                32,
+                33,
+                34,
+                35,
+                36,
+                37,
+                38,
+                39,
+                40,
+                41
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.4340999641477672,
+            "nearest_raw_offset_ms": 0.400035904386975,
+            "nearest_retained_offset_ms": 0.400035904386975,
+            "nearest_accepted_offset_ms": 463.4000359043868,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "dominant_drop_touches_array_end",
+              "dominant_drop": [
+                0,
+                7
+              ],
+              "spatially_excluded_drop_channels": [
+                3,
+                4,
+                5,
+                6
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.456399963620249,
+            "nearest_raw_offset_ms": 0.10003643190525935,
+            "nearest_retained_offset_ms": 0.10003643190525935,
+            "nearest_accepted_offset_ms": 441.1000364319051,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "dominant_drop_touches_array_end",
+              "dominant_drop": [
+                0,
+                8
+              ],
+              "spatially_excluded_drop_channels": [
+                3,
+                4,
+                5,
+                6,
+                7
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.4759999631566005,
+            "nearest_raw_offset_ms": 0.5000368955536683,
+            "nearest_retained_offset_ms": 0.5000368955536683,
+            "nearest_accepted_offset_ms": 421.5000368955535,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "dominant_drop_touches_array_end",
+              "dominant_drop": [
+                0,
+                8
+              ],
+              "spatially_excluded_drop_channels": [
+                3,
+                4,
+                5,
+                6,
+                7
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.536299961730172,
+            "nearest_raw_offset_ms": 0.2000383219820101,
+            "nearest_retained_offset_ms": 0.2000383219820101,
+            "nearest_accepted_offset_ms": 361.200038321982,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "gain_block_too_far",
+              "gain_blocks": [
+                [
+                  21,
+                  24
+                ]
+              ],
+              "dominant_drop": [
+                29,
+                42
+              ],
+              "spatially_excluded_drop_channels": [
+                29,
+                30,
+                31,
+                32,
+                33,
+                34,
+                35,
+                36,
+                37,
+                38,
+                39,
+                40,
+                41
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.5545999612972756,
+            "nearest_raw_offset_ms": -0.09996124512157145,
+            "nearest_retained_offset_ms": -0.09996124512157145,
+            "nearest_accepted_offset_ms": 342.9000387548784,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "dominant_drop_touches_array_end",
+              "dominant_drop": [
+                0,
+                8
+              ],
+              "spatially_excluded_drop_channels": [
+                3,
+                4,
+                5,
+                6,
+                7
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.571899960888035,
+            "nearest_raw_offset_ms": 0.6000391641189928,
+            "nearest_retained_offset_ms": 0.6000391641189928,
+            "nearest_accepted_offset_ms": 325.6000391641189,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "dominant_drop_touches_array_end",
+              "dominant_drop": [
+                0,
+                8
+              ],
+              "spatially_excluded_drop_channels": [
+                3,
+                4,
+                5,
+                6,
+                7
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.5931999603841722,
+            "nearest_raw_offset_ms": 0.30003966798197723,
+            "nearest_retained_offset_ms": 0.30003966798197723,
+            "nearest_accepted_offset_ms": 304.3000396679818,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "dominant_drop_touches_array_end",
+              "dominant_drop": [
+                0,
+                8
+              ],
+              "spatially_excluded_drop_channels": [
+                3,
+                4,
+                5,
+                6,
+                7
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.6245999596413885,
+            "nearest_raw_offset_ms": -0.09995958923436632,
+            "nearest_retained_offset_ms": -0.09995958923436632,
+            "nearest_accepted_offset_ms": 272.90004041076554,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "no_adjacent_3ch_gain_block",
+              "gain_blocks": [],
+              "dominant_drop": [
+                30,
+                41
+              ],
+              "spatially_excluded_drop_channels": [
+                30,
+                31,
+                32,
+                33,
+                34,
+                35,
+                36,
+                37,
+                38,
+                39,
+                40
+              ]
+            }
+          }
+        ],
+        "interpretation": "A fixed 20-sigma central derivative is an independent diagnostic edge proxy, not crash truth. Disable only the legacy 10ms candidate holdoff and keep its 2to8ms inversion test. A separate profile-duration ablation uses the same retained candidates and thresholds, only 1to2ms rather than 2to8ms windows. Raw dense picks can duplicate a single edge; compare one-to-one matches, not counts. No rule changes or tuning."
+      },
+      "split": "train",
+      "new_rule_observable_seconds": 0,
+      "geometry_observability": "nominal_outer_band_insufficient_support",
+      "prior_unverified_candidate_comparison": {
+        "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/shots/190602.json",
+        "prior_present_candidate_count": 122,
+        "legacy_count_inside_prior_present_support": 45,
+        "legacy_minus_prior_candidate_ms": {
+          "n": 122,
+          "median": -9.29988561365569,
+          "p25": -10.699920117614337,
+          "p75": 12.475100860703026
+        },
+        "offset_support": "Prior-present physics points; nearest legacy anywhere in native window",
+        "legacy_minus_prior_candidate_ms_within_15ms": {
+          "n": 77,
+          "median": -9.399913643095115,
+          "p25": -10.099940664809015,
+          "p75": 11.300092183262667
+        },
+        "prior_geometry_status": {
+          "status": "shot_hottest_physical_channel_proxy",
+          "radius_status": "unavailable",
+          "central_channel": 0,
+          "core_channels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ],
+          "outer_channels": [
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13
+          ],
+          "outer_status": "adjacent_channel_proxy_unvalidated",
+          "shot_median_te_kev": [
+            2.1748719215393066,
+            2.152416229248047,
+            2.139618396759033,
+            2.1301931142807007,
+            2.1383702754974365,
+            2.1173582077026367,
+            2.1016769409179688,
+            2.1082818508148193,
+            2.1030728816986084,
+            2.0494227409362793,
+            2.016374349594116,
+            1.9762275218963623,
+            1.8933335542678833,
+            1.7283916473388672,
+            1.5071007013320923,
+            1.3951473236083984,
+            1.388719081878662,
+            1.179438292980194,
+            1.0759109258651733,
+            1.114009439945221,
+            1.1133404970169067,
+            1.131382703781128,
+            1.0732518434524536,
+            1.0189766883850098,
+            0.9932108819484711,
+            0.973815381526947,
+            0.9090994000434875,
+            0.899549663066864,
+            0.80631422996521,
+            0.808758020401001,
+            0.7670614123344421,
+            0.7837998270988464,
+            0.7104063034057617,
+            0.7260954976081848,
+            0.7254560887813568,
+            0.7680936455726624,
+            0.7436054646968842,
+            0.7742563486099243,
+            0.6797308921813965,
+            0.7106675207614899,
+            1.024585247039795,
+            0.9052222371101379,
+            0.2872048020362854,
+            0.2707991898059845,
+            0.5604763031005859,
+            0.5384522676467896,
+            0.7491491436958313,
+            1.6421821117401123
+          ],
+          "coherent_core_peak_kev": 2.152416229248047,
+          "maximum_channel_to_core": 1.5,
+          "implausible_channels": [],
+          "fallback_excluded_from_core": [
+            40,
+            41,
+            42,
+            43,
+            44,
+            45,
+            46,
+            47
+          ],
+          "calibrated": false
+        },
+        "claim": "Prior spatially unverified algorithmic candidates; not physical truth"
+      }
+    },
+    {
+      "shot": 190604,
+      "scopes": {
+        "observable": {
+          "legacy_count": 0,
+          "physics_count": 0,
+          "signed_nearest_offset_ms_old_minus_physics": {
+            "n": 0,
+            "median": null,
+            "p25": null,
+            "p75": null
+          },
+          "signed_nearest_offsets_within_15ms": {
+            "n": 0,
+            "median": null,
+            "p25": null,
+            "p75": null
+          },
+          "nearest_legacy_anywhere_in_observable_support_offset_ms": {
+            "n": 0,
+            "median": null,
+            "p25": null,
+            "p75": null
+          },
+          "agreement": {
+            "2": {
+              "cells": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "metrics": {
+                "precision": null,
+                "recall": null,
+                "f1": null
+              }
+            },
+            "10": {
+              "cells": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "metrics": {
+                "precision": null,
+                "recall": null,
+                "f1": null
+              }
+            },
+            "12": {
+              "cells": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "metrics": {
+                "precision": null,
+                "recall": null,
+                "f1": null
+              }
+            }
+          },
+          "nearest_offset_histogram": {
+            "edges_ms": [
+              -25,
+              -24,
+              -23,
+              -22,
+              -21,
+              -20,
+              -19,
+              -18,
+              -17,
+              -16,
+              -15,
+              -14,
+              -13,
+              -12,
+              -11,
+              -10,
+              -9,
+              -8,
+              -7,
+              -6,
+              -5,
+              -4,
+              -3,
+              -2,
+              -1,
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24,
+              25
+            ],
+            "counts": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        },
+        "physics_present": {
+          "legacy_count": 0,
+          "physics_count": 0,
+          "signed_nearest_offset_ms_old_minus_physics": {
+            "n": 0,
+            "median": null,
+            "p25": null,
+            "p75": null
+          },
+          "signed_nearest_offsets_within_15ms": {
+            "n": 0,
+            "median": null,
+            "p25": null,
+            "p75": null
+          },
+          "nearest_legacy_anywhere_in_observable_support_offset_ms": {
+            "n": 0,
+            "median": null,
+            "p25": null,
+            "p75": null
+          },
+          "agreement": {
+            "2": {
+              "cells": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "metrics": {
+                "precision": null,
+                "recall": null,
+                "f1": null
+              }
+            },
+            "10": {
+              "cells": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "metrics": {
+                "precision": null,
+                "recall": null,
+                "f1": null
+              }
+            },
+            "12": {
+              "cells": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "metrics": {
+                "precision": null,
+                "recall": null,
+                "f1": null
+              }
+            }
+          },
+          "nearest_offset_histogram": {
+            "edges_ms": [
+              -25,
+              -24,
+              -23,
+              -22,
+              -21,
+              -20,
+              -19,
+              -18,
+              -17,
+              -16,
+              -15,
+              -14,
+              -13,
+              -12,
+              -11,
+              -10,
+              -9,
+              -8,
+              -7,
+              -6,
+              -5,
+              -4,
+              -3,
+              -2,
+              -1,
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24,
+              25
+            ],
+            "counts": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        }
+      },
+      "legacy_gate_diagnosis": {},
+      "example_profiles": [],
+      "trace_evidence": {
+        "physics": {
+          "core_channel": 0,
+          "outer_channels": [],
+          "core_fractional_drop": {
+            "n": 0,
+            "median": null,
+            "p25": null,
+            "p75": null
+          },
+          "outer_fractional_rise": {
+            "n": 0,
+            "median": null,
+            "p25": null,
+            "p75": null
+          },
+          "physical_validation": false
+        },
+        "legacy": {
+          "core_channel": 0,
+          "outer_channels": [],
+          "core_fractional_drop": {
+            "n": 49,
+            "median": -0.0316622691292876,
+            "p25": -0.03612334801762115,
+            "p75": -0.024935511607910577
+          },
+          "outer_fractional_rise": {
+            "n": 0,
+            "median": null,
+            "p25": null,
+            "p75": null
+          },
+          "physical_validation": false
+        }
+      },
+      "train_only_holdoff_ablation": {
+        "performed": false,
+        "reason": "exploratory ablation uses train only"
+      },
+      "split": "test",
+      "new_rule_observable_seconds": 0,
+      "geometry_observability": "nominal_outer_band_insufficient_support",
+      "prior_unverified_candidate_comparison": {
+        "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/shots/190604.json",
+        "prior_present_candidate_count": 77,
+        "legacy_count_inside_prior_present_support": 32,
+        "legacy_minus_prior_candidate_ms": {
+          "n": 77,
+          "median": -9.8999479554438,
+          "p25": -14.799873206328584,
+          "p75": 11.0001073535555
+        },
+        "offset_support": "Prior-present physics points; nearest legacy anywhere in native window",
+        "legacy_minus_prior_candidate_ms_within_15ms": {
+          "n": 49,
+          "median": -9.599917943670988,
+          "p25": -10.39992762351405,
+          "p75": 10.600125625088275
+        },
+        "prior_geometry_status": {
+          "status": "shot_hottest_physical_channel_proxy",
+          "radius_status": "unavailable",
+          "central_channel": 0,
+          "core_channels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ],
+          "outer_channels": [
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13
+          ],
+          "outer_status": "adjacent_channel_proxy_unvalidated",
+          "shot_median_te_kev": [
+            2.2210646867752075,
+            2.220200300216675,
+            2.2085068225860596,
+            2.2168710231781006,
+            2.2180676460266113,
+            2.2070817947387695,
+            2.187354564666748,
+            2.184386730194092,
+            2.172525405883789,
+            2.1340882778167725,
+            2.0840916633605957,
+            2.020040273666382,
+            1.9292255640029907,
+            1.779295563697815,
+            1.5445746183395386,
+            1.4508394002914429,
+            1.4312057495117188,
+            1.2045090198516846,
+            1.1208719611167908,
+            1.1566870212554932,
+            1.1518560647964478,
+            1.1632753610610962,
+            1.133519172668457,
+            1.0707732439041138,
+            1.0350496768951416,
+            1.0097736120224,
+            0.8918049931526184,
+            0.8417336344718933,
+            0.8716095387935638,
+            0.8392652869224548,
+            0.7971159219741821,
+            0.7807186841964722,
+            0.7277070879936218,
+            0.7556152939796448,
+            0.7478797435760498,
+            0.7811634540557861,
+            0.7602419257164001,
+            0.7715274393558502,
+            0.7005395293235779,
+            0.7224856317043304,
+            1.027358055114746,
+            0.9128637313842773,
+            0.2868920862674713,
+            0.27451273798942566,
+            0.5716938376426697,
+            0.5538554787635803,
+            0.7650856375694275,
+            1.6765323877334595
+          ],
+          "coherent_core_peak_kev": 2.220200300216675,
+          "maximum_channel_to_core": 1.5,
+          "implausible_channels": [],
+          "fallback_excluded_from_core": [
+            40,
+            41,
+            42,
+            43,
+            44,
+            45,
+            46,
+            47
+          ],
+          "calibrated": false
+        },
+        "claim": "Prior spatially unverified algorithmic candidates; not physical truth"
+      }
+    },
+    {
+      "shot": 192090,
+      "scopes": {
+        "observable": {
+          "legacy_count": 85,
+          "physics_count": 90,
+          "signed_nearest_offset_ms_old_minus_physics": {
+            "n": 90,
+            "median": -9.749867494700748,
+            "p25": -20.32495668610929,
+            "p75": 20.225118679231933
+          },
+          "signed_nearest_offsets_within_15ms": {
+            "n": 32,
+            "median": -4.849869680471741,
+            "p25": -11.349909279832593,
+            "p75": 0.7250934446936252
+          },
+          "nearest_legacy_anywhere_in_observable_support_offset_ms": {
+            "n": 90,
+            "median": -9.749867494700748,
+            "p25": -20.32495668610929,
+            "p75": 20.225118679231933
+          },
+          "agreement": {
+            "2": {
+              "cells": [
+                9.0,
+                81.0,
+                76.0
+              ],
+              "metrics": {
+                "precision": 0.1,
+                "recall": 0.10588235294117647,
+                "f1": 0.10285714285714286
+              }
+            },
+            "10": {
+              "cells": [
+                15.0,
+                75.0,
+                70.0
+              ],
+              "metrics": {
+                "precision": 0.16666666666666666,
+                "recall": 0.17647058823529413,
+                "f1": 0.17142857142857143
+              }
+            },
+            "12": {
+              "cells": [
+                22.0,
+                68.0,
+                63.0
+              ],
+              "metrics": {
+                "precision": 0.24444444444444444,
+                "recall": 0.25882352941176473,
+                "f1": 0.25142857142857145
+              }
+            }
+          },
+          "nearest_offset_histogram": {
+            "edges_ms": [
+              -25,
+              -24,
+              -23,
+              -22,
+              -21,
+              -20,
+              -19,
+              -18,
+              -17,
+              -16,
+              -15,
+              -14,
+              -13,
+              -12,
+              -11,
+              -10,
+              -9,
+              -8,
+              -7,
+              -6,
+              -5,
+              -4,
+              -3,
+              -2,
+              -1,
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24,
+              25
+            ],
+            "counts": [
+              0,
+              1,
+              0,
+              1,
+              2,
+              0,
+              1,
+              3,
+              0,
+              4,
+              3,
+              1,
+              3,
+              2,
+              1,
+              6,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              2,
+              7,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              3,
+              1,
+              0,
+              0,
+              3,
+              1,
+              0,
+              0,
+              1,
+              0,
+              2,
+              1,
+              2,
+              1,
+              2
+            ]
+          }
+        },
+        "physics_present": {
+          "legacy_count": 15,
+          "physics_count": 30,
+          "signed_nearest_offset_ms_old_minus_physics": {
+            "n": 30,
+            "median": -4.549859492034347,
+            "p25": -31.324938258449787,
+            "p75": 26.975064898380865
+          },
+          "signed_nearest_offsets_within_15ms": {
+            "n": 10,
+            "median": -4.549859492034347,
+            "p25": -11.174938983491867,
+            "p75": 10.625119160622255
+          },
+          "nearest_legacy_anywhere_in_observable_support_offset_ms": {
+            "n": 30,
+            "median": 0.40014124247012006,
+            "p25": -17.724942779021923,
+            "p75": 15.500104958432459
+          },
+          "agreement": {
+            "2": {
+              "cells": [
+                1.0,
+                29.0,
+                14.0
+              ],
+              "metrics": {
+                "precision": 0.03333333333333333,
+                "recall": 0.06666666666666667,
+                "f1": 0.044444444444444446
+              }
+            },
+            "10": {
+              "cells": [
+                2.0,
+                28.0,
+                13.0
+              ],
+              "metrics": {
+                "precision": 0.06666666666666667,
+                "recall": 0.13333333333333333,
+                "f1": 0.08888888888888889
+              }
+            },
+            "12": {
+              "cells": [
+                7.0,
+                23.0,
+                8.0
+              ],
+              "metrics": {
+                "precision": 0.23333333333333334,
+                "recall": 0.4666666666666667,
+                "f1": 0.3111111111111111
+              }
+            }
+          },
+          "nearest_offset_histogram": {
+            "edges_ms": [
+              -25,
+              -24,
+              -23,
+              -22,
+              -21,
+              -20,
+              -19,
+              -18,
+              -17,
+              -16,
+              -15,
+              -14,
+              -13,
+              -12,
+              -11,
+              -10,
+              -9,
+              -8,
+              -7,
+              -6,
+              -5,
+              -4,
+              -3,
+              -2,
+              -1,
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24,
+              25
+            ],
+            "counts": [
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              2,
+              1,
+              1,
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              2,
+              1,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0
+            ]
+          }
+        }
+      },
+      "legacy_gate_diagnosis": {
+        "legacy_retained_candidate_rejected_by_inversion_test": 81,
+        "legacy_accepted_within_2ms": 9
+      },
+      "example_profiles": [
+        {
+          "physics_time_s": 1.3244999667404136,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": 74.00003331174054
+        },
+        {
+          "physics_time_s": 1.666799958643125,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": -57.29995859097103
+        },
+        {
+          "physics_time_s": 2.0220999502383146,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": 10.400049813839463
+        },
+        {
+          "physics_time_s": 2.513699938609255,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": -63.199938557100936
+        },
+        {
+          "physics_time_s": 2.874399930076705,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": -37.89993002455061
+        },
+        {
+          "physics_time_s": 3.1168999243402387,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": -121.39992428808455
+        },
+        {
+          "physics_time_s": 4.312599896055319,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": 14.900103996835057
+        },
+        {
+          "physics_time_s": 4.531799890870027,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": -11.29989081787297
+        },
+        {
+          "physics_time_s": 4.809799884293789,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": 22.700115758365058
+        },
+        {
+          "physics_time_s": 5.060899878353885,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": -29.39987830173063
+        },
+        {
+          "physics_time_s": 5.295299872809029,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": 69.20012724312573
+        },
+        {
+          "physics_time_s": 5.58969986584484,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": 56.80013420731456
+        },
+        {
+          "physics_time_s": 5.97469985673746,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": -33.19985668530556
+        }
+      ],
+      "trace_evidence": {
+        "physics": {
+          "core_channel": 24,
+          "outer_channels": [
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10
+          ],
+          "core_fractional_drop": {
+            "n": 90,
+            "median": 0.18213046495489243,
+            "p25": 0.15373205985527208,
+            "p75": 0.21439675881956052
+          },
+          "outer_fractional_rise": {
+            "n": 90,
+            "median": 0.12178111160916344,
+            "p25": 0.10901189006575837,
+            "p75": 0.1497070636678281
+          },
+          "physical_validation": false
+        },
+        "legacy": {
+          "core_channel": 24,
+          "outer_channels": [
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10
+          ],
+          "core_fractional_drop": {
+            "n": 86,
+            "median": -0.005813118807700492,
+            "p25": -0.014935839965678644,
+            "p75": 0.025793403063511973
+          },
+          "outer_fractional_rise": {
+            "n": 86,
+            "median": 0.00402497434285354,
+            "p25": -0.0024837538381408376,
+            "p75": 0.03508118989294901
+          },
+          "physical_validation": false
+        },
+        "central_derivative": {
+          "core_channel": 24,
+          "outer_channels": [
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10
+          ],
+          "core_fractional_drop": {
+            "n": 116,
+            "median": 0.17845345885669045,
+            "p25": 0.15034667866071638,
+            "p75": 0.2123001504749365
+          },
+          "outer_fractional_rise": {
+            "n": 116,
+            "median": 0.12128182492104334,
+            "p25": 0.11076802109429787,
+            "p75": 0.14902869688217613
+          },
+          "physical_validation": false
+        }
+      },
+      "train_only_holdoff_ablation": {
+        "performed": true,
+        "split": "train",
+        "derivative_source": "sawtooth_benchmark.derivative_candidates",
+        "derivative_z_fixed": 20,
+        "derivative_support": "Finite central-channel ECE only, independent of the new rule's multichannel/profile observability mask",
+        "derivative_count": 116,
+        "legacy_count": 86,
+        "physics_matches_derivative_2ms": 87,
+        "physics_minus_derivative_nearest_offset_ms": {
+          "n": 116,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "no_holdoff_inversion_accepted_count": 903,
+        "original_matches_derivative_2ms": 12,
+        "no_holdoff_matches_derivative_2ms": 18,
+        "short_1to2ms_profile_same_holdoff_count": 117,
+        "short_1to2ms_profile_same_holdoff_matches_derivative_2ms": 3,
+        "additional_derivative_edges_recovered_without_holdoff": 6,
+        "old_minus_derivative_nearest_offset_ms": {
+          "n": 116,
+          "median": -0.1998874966355757,
+          "p25": -17.349883158211178,
+          "p75": 23.175081860579596
+        },
+        "blocking_candidate_minus_derivative_offset_ms": {
+          "n": 1,
+          "median": 2.20005729371886,
+          "p25": 2.20005729371886,
+          "p75": 2.20005729371886
+        },
+        "derivative_gate_diagnosis": {
+          "retained_edge_failed_2to8ms_inversion_profile": 103,
+          "raw_edge_suppressed_by_10ms_holdoff": 1,
+          "accepted_legacy_edge": 12
+        },
+        "inversion_profile_failure_at_raw_edge": {
+          "no_adjacent_3ch_gain_block": 98,
+          "gain_block_too_far": 8,
+          "accepted": 10
+        },
+        "examples": [
+          {
+            "derivative_peak_s": 1.3244999667404136,
+            "nearest_raw_offset_ms": 3.33117404771599e-05,
+            "nearest_retained_offset_ms": 3.33117404771599e-05,
+            "nearest_accepted_offset_ms": 74.00003331174054,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "no_adjacent_3ch_gain_block",
+              "gain_blocks": [],
+              "dominant_drop": [
+                22,
+                35
+              ],
+              "spatially_excluded_drop_channels": [
+                34
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.368699965694839,
+            "nearest_raw_offset_ms": -0.19996564268498496,
+            "nearest_retained_offset_ms": -0.19996564268498496,
+            "nearest_accepted_offset_ms": 29.80003435731504,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "no_adjacent_3ch_gain_block",
+              "gain_blocks": [],
+              "dominant_drop": [
+                20,
+                36
+              ],
+              "spatially_excluded_drop_channels": [
+                34,
+                35
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.4099999647178656,
+            "nearest_raw_offset_ms": -0.49996466571156084,
+            "nearest_retained_offset_ms": 0.5000353342885511,
+            "nearest_accepted_offset_ms": -11.49996466571146,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "no_adjacent_3ch_gain_block",
+              "gain_blocks": [],
+              "dominant_drop": [
+                20,
+                37
+              ],
+              "spatially_excluded_drop_channels": [
+                34,
+                35,
+                36
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.4789999630856339,
+            "nearest_raw_offset_ms": 0.5000369665202342,
+            "nearest_retained_offset_ms": 0.5000369665202342,
+            "nearest_accepted_offset_ms": -34.49996303347969,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "no_adjacent_3ch_gain_block",
+              "gain_blocks": [],
+              "dominant_drop": [
+                20,
+                37
+              ],
+              "spatially_excluded_drop_channels": [
+                34,
+                35,
+                36
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.5348999617632897,
+            "nearest_raw_offset_ms": -0.3999617111356546,
+            "nearest_retained_offset_ms": 0.6000382888644573,
+            "nearest_accepted_offset_ms": -20.399961711135674,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "no_adjacent_3ch_gain_block",
+              "gain_blocks": [],
+              "dominant_drop": [
+                19,
+                37
+              ],
+              "spatially_excluded_drop_channels": [
+                34,
+                35,
+                36
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.5764999607792196,
+            "nearest_raw_offset_ms": 3.9272934460043984e-05,
+            "nearest_retained_offset_ms": 3.9272934460043984e-05,
+            "nearest_accepted_offset_ms": -12.99996072706544,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "no_adjacent_3ch_gain_block",
+              "gain_blocks": [],
+              "dominant_drop": [
+                18,
+                38
+              ],
+              "spatially_excluded_drop_channels": [
+                34,
+                35,
+                36,
+                37
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.624899959634292,
+            "nearest_raw_offset_ms": -0.3999595821377877,
+            "nearest_retained_offset_ms": 0.6000404178621022,
+            "nearest_accepted_offset_ms": -15.399959582137912,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "no_adjacent_3ch_gain_block",
+              "gain_blocks": [],
+              "dominant_drop": [
+                19,
+                38
+              ],
+              "spatially_excluded_drop_channels": [
+                34,
+                35,
+                36,
+                37
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.666799958643125,
+            "nearest_raw_offset_ms": -0.2999585909708724,
+            "nearest_retained_offset_ms": -0.2999585909708724,
+            "nearest_accepted_offset_ms": -57.29995859097103,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "no_adjacent_3ch_gain_block",
+              "gain_blocks": [],
+              "dominant_drop": [
+                17,
+                39
+              ],
+              "spatially_excluded_drop_channels": [
+                34,
+                35,
+                36,
+                37,
+                38
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.712199957569164,
+            "nearest_raw_offset_ms": 0.30004248299020375,
+            "nearest_retained_offset_ms": 0.30004248299020375,
+            "nearest_accepted_offset_ms": 29.30004248299012,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "no_adjacent_3ch_gain_block",
+              "gain_blocks": [],
+              "dominant_drop": [
+                18,
+                38
+              ],
+              "spatially_excluded_drop_channels": [
+                34,
+                35,
+                36,
+                37
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.756299956525955,
+            "nearest_raw_offset_ms": 0.2000435261990674,
+            "nearest_retained_offset_ms": 0.2000435261990674,
+            "nearest_accepted_offset_ms": -14.799956473800835,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "no_adjacent_3ch_gain_block",
+              "gain_blocks": [],
+              "dominant_drop": [
+                18,
+                39
+              ],
+              "spatially_excluded_drop_channels": [
+                34,
+                35,
+                36,
+                37,
+                38
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.8035999554070483,
+            "nearest_raw_offset_ms": -0.09995535489415452,
+            "nearest_retained_offset_ms": -0.09995535489415452,
+            "nearest_accepted_offset_ms": 28.90004464510576,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "no_adjacent_3ch_gain_block",
+              "gain_blocks": [],
+              "dominant_drop": [
+                18,
+                38
+              ],
+              "spatially_excluded_drop_channels": [
+                34,
+                35,
+                36,
+                37
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.8447999544324405,
+            "nearest_raw_offset_ms": -0.29995438028640464,
+            "nearest_retained_offset_ms": 0.7000456197137073,
+            "nearest_accepted_offset_ms": -12.299954380286415,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "no_adjacent_3ch_gain_block",
+              "gain_blocks": [],
+              "dominant_drop": [
+                18,
+                39
+              ],
+              "spatially_excluded_drop_channels": [
+                34,
+                35,
+                36,
+                37,
+                38
+              ]
+            }
+          }
+        ],
+        "interpretation": "A fixed 20-sigma central derivative is an independent diagnostic edge proxy, not crash truth. Disable only the legacy 10ms candidate holdoff and keep its 2to8ms inversion test. A separate profile-duration ablation uses the same retained candidates and thresholds, only 1to2ms rather than 2to8ms windows. Raw dense picks can duplicate a single edge; compare one-to-one matches, not counts. No rule changes or tuning."
+      },
+      "split": "train",
+      "new_rule_observable_seconds": 5.999599858076271,
+      "geometry_observability": "nominal_low_field_side_rho_0.4_to_0.65",
+      "prior_unverified_candidate_comparison": {
+        "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/shots/192090.json",
+        "prior_present_candidate_count": 74,
+        "legacy_count_inside_prior_present_support": 40,
+        "legacy_minus_prior_candidate_ms": {
+          "n": 74,
+          "median": -4.849901296090309,
+          "p25": -15.374936589552302,
+          "p75": 23.000094461289923
+        },
+        "offset_support": "Prior-present physics points; nearest legacy anywhere in native window",
+        "legacy_minus_prior_candidate_ms_within_15ms": {
+          "n": 29,
+          "median": -9.699854520824225,
+          "p25": -11.899931585815704,
+          "p75": 0.3000798823857842
+        },
+        "prior_geometry_status": {
+          "status": "shot_hottest_physical_channel_proxy",
+          "radius_status": "unavailable",
+          "central_channel": 27,
+          "core_channels": [
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30
+          ],
+          "outer_channels": [
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23
+          ],
+          "outer_status": "adjacent_channel_proxy_unvalidated",
+          "shot_median_te_kev": [
+            0.2748883068561554,
+            0.4196947515010834,
+            0.5119227468967438,
+            0.6309649646282196,
+            0.6186635494232178,
+            0.8829755187034607,
+            1.0697506666183472,
+            1.1881023645401,
+            1.2608354091644287,
+            1.312516450881958,
+            1.4405182600021362,
+            1.603715181350708,
+            1.617627739906311,
+            1.6397567987442017,
+            1.8595064878463745,
+            1.8727240562438965,
+            2.0144481658935547,
+            2.2744617462158203,
+            2.410144329071045,
+            2.2270424365997314,
+            2.2960445880889893,
+            2.334827423095703,
+            2.2993407249450684,
+            2.402952194213867,
+            2.4148879051208496,
+            2.487017869949341,
+            2.6153244972229004,
+            2.7582952976226807,
+            2.241400122642517,
+            2.5045502185821533,
+            2.564913034439087,
+            2.641620397567749,
+            2.5628719329833984,
+            2.577619791030884,
+            2.2015817165374756,
+            2.045498847961426,
+            2.2691731452941895,
+            2.243460178375244,
+            2.8586435317993164,
+            2.3374522924423218,
+            0.18148499727249146,
+            0.21828295290470123,
+            0.13602760434150696,
+            0.17896531522274017,
+            0.2163485586643219,
+            0.2197805494070053,
+            0.1597900241613388,
+            0.20801763236522675
+          ],
+          "coherent_core_peak_kev": 2.564913034439087,
+          "maximum_channel_to_core": 1.5,
+          "implausible_channels": [],
+          "fallback_excluded_from_core": [
+            40,
+            41,
+            42,
+            43,
+            44,
+            45,
+            46,
+            47
+          ],
+          "calibrated": false
+        },
+        "claim": "Prior spatially unverified algorithmic candidates; not physical truth"
+      },
+      "current_production_v3_comparison": {
+        "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/events/192090_events.parquet",
+        "by_diagnostic": [
+          {
+            "diagnostic": "all",
+            "current_catalog_count": 53,
+            "physics_present_catalog_count": 18,
+            "physics_present_physics_count": 30,
+            "present_cells_2ms": [
+              17.0,
+              1.0,
+              13.0
+            ],
+            "catalog_minus_physics_nearest_ms": {
+              "n": 30,
+              "median": 0.05009120272003731,
+              "p25": -0.37494364956652815,
+              "p75": 31.750043011670726
+            }
+          },
+          {
+            "diagnostic": "ece",
+            "current_catalog_count": 42,
+            "physics_present_catalog_count": 15,
+            "physics_present_physics_count": 30,
+            "present_cells_2ms": [
+              15.0,
+              0.0,
+              15.0
+            ],
+            "catalog_minus_physics_nearest_ms": {
+              "n": 30,
+              "median": 0.15014021461645655,
+              "p25": -0.2999583355118296,
+              "p75": 79.0250719358807
+            }
+          },
+          {
+            "diagnostic": "sxr",
+            "current_catalog_count": 11,
+            "physics_present_catalog_count": 3,
+            "physics_present_physics_count": 30,
+            "present_cells_2ms": [
+              2.0,
+              1.0,
+              28.0
+            ],
+            "catalog_minus_physics_nearest_ms": {
+              "n": 30,
+              "median": 1.8500591187222692,
+              "p25": -3035.899867495905,
+              "p75": 572.6000440915457
+            }
+          }
+        ],
+        "interpretation": "This store has explicit detector v3 (ECE and SXR). Its point times are compared directly, separately from the legacy v2 cache. No catalog defect follows from legacy disagreement alone; both are unvalidated detectors."
+      }
+    },
+    {
+      "shot": 201948,
+      "scopes": {
+        "observable": {
+          "legacy_count": 41,
+          "physics_count": 0,
+          "signed_nearest_offset_ms_old_minus_physics": {
+            "n": 0,
+            "median": null,
+            "p25": null,
+            "p75": null
+          },
+          "signed_nearest_offsets_within_15ms": {
+            "n": 0,
+            "median": null,
+            "p25": null,
+            "p75": null
+          },
+          "nearest_legacy_anywhere_in_observable_support_offset_ms": {
+            "n": 0,
+            "median": null,
+            "p25": null,
+            "p75": null
+          },
+          "agreement": {
+            "2": {
+              "cells": [
+                0.0,
+                0.0,
+                41.0
+              ],
+              "metrics": {
+                "precision": null,
+                "recall": 0.0,
+                "f1": 0.0
+              }
+            },
+            "10": {
+              "cells": [
+                0.0,
+                0.0,
+                41.0
+              ],
+              "metrics": {
+                "precision": null,
+                "recall": 0.0,
+                "f1": 0.0
+              }
+            },
+            "12": {
+              "cells": [
+                0.0,
+                0.0,
+                41.0
+              ],
+              "metrics": {
+                "precision": null,
+                "recall": 0.0,
+                "f1": 0.0
+              }
+            }
+          },
+          "nearest_offset_histogram": {
+            "edges_ms": [
+              -25,
+              -24,
+              -23,
+              -22,
+              -21,
+              -20,
+              -19,
+              -18,
+              -17,
+              -16,
+              -15,
+              -14,
+              -13,
+              -12,
+              -11,
+              -10,
+              -9,
+              -8,
+              -7,
+              -6,
+              -5,
+              -4,
+              -3,
+              -2,
+              -1,
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24,
+              25
+            ],
+            "counts": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        },
+        "physics_present": {
+          "legacy_count": 0,
+          "physics_count": 0,
+          "signed_nearest_offset_ms_old_minus_physics": {
+            "n": 0,
+            "median": null,
+            "p25": null,
+            "p75": null
+          },
+          "signed_nearest_offsets_within_15ms": {
+            "n": 0,
+            "median": null,
+            "p25": null,
+            "p75": null
+          },
+          "nearest_legacy_anywhere_in_observable_support_offset_ms": {
+            "n": 0,
+            "median": null,
+            "p25": null,
+            "p75": null
+          },
+          "agreement": {
+            "2": {
+              "cells": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "metrics": {
+                "precision": null,
+                "recall": null,
+                "f1": null
+              }
+            },
+            "10": {
+              "cells": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "metrics": {
+                "precision": null,
+                "recall": null,
+                "f1": null
+              }
+            },
+            "12": {
+              "cells": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "metrics": {
+                "precision": null,
+                "recall": null,
+                "f1": null
+              }
+            }
+          },
+          "nearest_offset_histogram": {
+            "edges_ms": [
+              -25,
+              -24,
+              -23,
+              -22,
+              -21,
+              -20,
+              -19,
+              -18,
+              -17,
+              -16,
+              -15,
+              -14,
+              -13,
+              -12,
+              -11,
+              -10,
+              -9,
+              -8,
+              -7,
+              -6,
+              -5,
+              -4,
+              -3,
+              -2,
+              -1,
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24,
+              25
+            ],
+            "counts": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        }
+      },
+      "legacy_gate_diagnosis": {},
+      "example_profiles": [],
+      "trace_evidence": {
+        "physics": {
+          "core_channel": 0,
+          "outer_channels": [],
+          "core_fractional_drop": {
+            "n": 0,
+            "median": null,
+            "p25": null,
+            "p75": null
+          },
+          "outer_fractional_rise": {
+            "n": 0,
+            "median": null,
+            "p25": null,
+            "p75": null
+          },
+          "physical_validation": false
+        },
+        "legacy": {
+          "core_channel": 0,
+          "outer_channels": [],
+          "core_fractional_drop": {
+            "n": 42,
+            "median": -0.012089036091763674,
+            "p25": -0.02654525542997298,
+            "p75": 0.012511654548345595
+          },
+          "outer_fractional_rise": {
+            "n": 0,
+            "median": null,
+            "p25": null,
+            "p75": null
+          },
+          "physical_validation": false
+        },
+        "central_derivative": {
+          "core_channel": 0,
+          "outer_channels": [],
+          "core_fractional_drop": {
+            "n": 113,
+            "median": 0.15408970976253297,
+            "p25": 0.14540540540540542,
+            "p75": 0.1654564315352697
+          },
+          "outer_fractional_rise": {
+            "n": 0,
+            "median": null,
+            "p25": null,
+            "p75": null
+          },
+          "physical_validation": false
+        }
+      },
+      "train_only_holdoff_ablation": {
+        "performed": true,
+        "split": "train",
+        "derivative_source": "sawtooth_benchmark.derivative_candidates",
+        "derivative_z_fixed": 20,
+        "derivative_support": "Finite central-channel ECE only, independent of the new rule's multichannel/profile observability mask",
+        "derivative_count": 113,
+        "legacy_count": 42,
+        "physics_matches_derivative_2ms": 0,
+        "physics_minus_derivative_nearest_offset_ms": {
+          "n": 0,
+          "median": null,
+          "p25": null,
+          "p75": null
+        },
+        "no_holdoff_inversion_accepted_count": 437,
+        "original_matches_derivative_2ms": 0,
+        "no_holdoff_matches_derivative_2ms": 0,
+        "short_1to2ms_profile_same_holdoff_count": 63,
+        "short_1to2ms_profile_same_holdoff_matches_derivative_2ms": 0,
+        "additional_derivative_edges_recovered_without_holdoff": 0,
+        "old_minus_derivative_nearest_offset_ms": {
+          "n": 113,
+          "median": -9.497876249014325,
+          "p25": -56.19795493441026,
+          "p75": 30.802062878205305
+        },
+        "blocking_candidate_minus_derivative_offset_ms": {
+          "n": 0,
+          "median": null,
+          "p25": null,
+          "p75": null
+        },
+        "derivative_gate_diagnosis": {
+          "retained_edge_failed_2to8ms_inversion_profile": 113
+        },
+        "inversion_profile_failure_at_raw_edge": {
+          "no_adjacent_3ch_gain_block": 2,
+          "gain_block_too_far": 2,
+          "dominant_drop_touches_array_end": 109
+        },
+        "examples": [
+          {
+            "derivative_peak_s": 1.1764999702414323,
+            "nearest_raw_offset_ms": 0.0020300159406794194,
+            "nearest_retained_offset_ms": 1.0020300159405693,
+            "nearest_accepted_offset_ms": -167.99796998405947,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "no_adjacent_3ch_gain_block",
+              "gain_blocks": [],
+              "dominant_drop": [
+                30,
+                43
+              ],
+              "spatially_excluded_drop_channels": [
+                30,
+                31,
+                32,
+                33,
+                34,
+                35,
+                36,
+                37,
+                38,
+                39,
+                40,
+                41,
+                42
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.333099966536976,
+            "nearest_raw_offset_ms": 0.40203372039693264,
+            "nearest_retained_offset_ms": 0.40203372039693264,
+            "nearest_accepted_offset_ms": 104.4020337203968,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "gain_block_too_far",
+              "gain_blocks": [
+                [
+                  9,
+                  12
+                ]
+              ],
+              "dominant_drop": [
+                28,
+                47
+              ],
+              "spatially_excluded_drop_channels": [
+                28,
+                29,
+                30,
+                31,
+                32,
+                33,
+                34,
+                35,
+                36,
+                37,
+                38,
+                39,
+                40,
+                41,
+                42,
+                43,
+                44,
+                45,
+                46
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.448599963804762,
+            "nearest_raw_offset_ms": -0.0979635473890017,
+            "nearest_retained_offset_ms": -0.0979635473890017,
+            "nearest_accepted_offset_ms": 9.902036452611007,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "dominant_drop_touches_array_end",
+              "dominant_drop": [
+                0,
+                8
+              ],
+              "spatially_excluded_drop_channels": [
+                4,
+                5,
+                6,
+                7
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.4741999631991805,
+            "nearest_raw_offset_ms": 0.3020370581925391,
+            "nearest_retained_offset_ms": 0.3020370581925391,
+            "nearest_accepted_offset_ms": -15.697962941807475,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "gain_block_too_far",
+              "gain_blocks": [
+                [
+                  9,
+                  12
+                ]
+              ],
+              "dominant_drop": [
+                28,
+                47
+              ],
+              "spatially_excluded_drop_channels": [
+                28,
+                29,
+                30,
+                31,
+                32,
+                33,
+                34,
+                35,
+                36,
+                37,
+                38,
+                39,
+                40,
+                41,
+                42,
+                43,
+                44,
+                45,
+                46
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.5128999622837114,
+            "nearest_raw_offset_ms": 0.60203797366154,
+            "nearest_retained_offset_ms": 0.60203797366154,
+            "nearest_accepted_offset_ms": -54.3979620263384,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "dominant_drop_touches_array_end",
+              "dominant_drop": [
+                0,
+                8
+              ],
+              "spatially_excluded_drop_channels": [
+                4,
+                5,
+                6,
+                7
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.5489999614297467,
+            "nearest_raw_offset_ms": 0.5020388276262278,
+            "nearest_retained_offset_ms": 0.5020388276262278,
+            "nearest_accepted_offset_ms": -90.49796117237375,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "dominant_drop_touches_array_end",
+              "dominant_drop": [
+                0,
+                9
+              ],
+              "spatially_excluded_drop_channels": [
+                4,
+                5,
+                6,
+                7,
+                8
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.5692999609495395,
+            "nearest_raw_offset_ms": 0.20203930783346813,
+            "nearest_retained_offset_ms": 0.20203930783346813,
+            "nearest_accepted_offset_ms": -110.79796069216653,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "dominant_drop_touches_array_end",
+              "dominant_drop": [
+                0,
+                9
+              ],
+              "spatially_excluded_drop_channels": [
+                4,
+                5,
+                6,
+                7,
+                8
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.6066999600648224,
+            "nearest_raw_offset_ms": -0.19795980744952146,
+            "nearest_retained_offset_ms": 0.8020401925505904,
+            "nearest_accepted_offset_ms": 104.80204019255046,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "dominant_drop_touches_array_end",
+              "dominant_drop": [
+                0,
+                9
+              ],
+              "spatially_excluded_drop_channels": [
+                4,
+                5,
+                6,
+                7,
+                8
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.629399959527842,
+            "nearest_raw_offset_ms": 0.1020407295309056,
+            "nearest_retained_offset_ms": 0.1020407295309056,
+            "nearest_accepted_offset_ms": 82.10204072953098,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "dominant_drop_touches_array_end",
+              "dominant_drop": [
+                0,
+                9
+              ],
+              "spatially_excluded_drop_channels": [
+                4,
+                5,
+                6,
+                7,
+                8
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.651599959002689,
+            "nearest_raw_offset_ms": -0.09795874531626225,
+            "nearest_retained_offset_ms": -0.09795874531626225,
+            "nearest_accepted_offset_ms": 59.902041254683795,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "dominant_drop_touches_array_end",
+              "dominant_drop": [
+                0,
+                9
+              ],
+              "spatially_excluded_drop_channels": [
+                4,
+                5,
+                6,
+                7,
+                8
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.7210999573586296,
+            "nearest_raw_offset_ms": 0.40204289874323784,
+            "nearest_retained_offset_ms": 0.40204289874323784,
+            "nearest_accepted_offset_ms": -9.597957101256771,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "dominant_drop_touches_array_end",
+              "dominant_drop": [
+                0,
+                9
+              ],
+              "spatially_excluded_drop_channels": [
+                4,
+                5,
+                6,
+                7,
+                8
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.7466999567530481,
+            "nearest_raw_offset_ms": -0.19795649567533324,
+            "nearest_retained_offset_ms": -0.19795649567533324,
+            "nearest_accepted_offset_ms": 9.802043504324676,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "dominant_drop_touches_array_end",
+              "dominant_drop": [
+                0,
+                8
+              ],
+              "spatially_excluded_drop_channels": [
+                4,
+                5,
+                6,
+                7
+              ]
+            }
+          }
+        ],
+        "interpretation": "A fixed 20-sigma central derivative is an independent diagnostic edge proxy, not crash truth. Disable only the legacy 10ms candidate holdoff and keep its 2to8ms inversion test. A separate profile-duration ablation uses the same retained candidates and thresholds, only 1to2ms rather than 2to8ms windows. Raw dense picks can duplicate a single edge; compare one-to-one matches, not counts. No rule changes or tuning."
+      },
+      "split": "train",
+      "new_rule_observable_seconds": 5.848499861650622,
+      "geometry_observability": "nominal_outer_band_insufficient_support",
+      "prior_unverified_candidate_comparison": {
+        "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/shots/201948.json",
+        "prior_present_candidate_count": 68,
+        "legacy_count_inside_prior_present_support": 21,
+        "legacy_minus_prior_candidate_ms": {
+          "n": 68,
+          "median": 9.902057813556242,
+          "p25": -13.797928331399145,
+          "p75": 19.90211463414282
+        },
+        "offset_support": "Prior-present physics points; nearest legacy anywhere in native window",
+        "legacy_minus_prior_candidate_ms_within_15ms": {
+          "n": 33,
+          "median": 9.902036452611007,
+          "p25": -10.097938851013843,
+          "p75": 10.802060086852805
+        },
+        "prior_geometry_status": {
+          "status": "shot_hottest_physical_channel_proxy",
+          "radius_status": "unavailable",
+          "central_channel": 1,
+          "core_channels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ],
+          "outer_channels": [
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13
+          ],
+          "outer_status": "adjacent_channel_proxy_unvalidated",
+          "shot_median_te_kev": [
+            1.6351230144500732,
+            1.9739792346954346,
+            1.9056322574615479,
+            1.8563708066940308,
+            1.8153448104858398,
+            1.8123359680175781,
+            1.797463297843933,
+            1.8345414400100708,
+            1.8352458477020264,
+            1.8430181741714478,
+            1.8101080656051636,
+            1.7685835361480713,
+            1.742620825767517,
+            1.669619083404541,
+            1.5347366333007812,
+            1.5231983661651611,
+            1.4681463241577148,
+            1.3549115657806396,
+            1.2737187147140503,
+            1.1955816745758057,
+            1.1293156147003174,
+            1.073158860206604,
+            1.0902891159057617,
+            1.0341030359268188,
+            0.9844643771648407,
+            0.9532133340835571,
+            0.9631067514419556,
+            0.9802584052085876,
+            0.8436760902404785,
+            0.853523313999176,
+            0.8462812304496765,
+            0.847723126411438,
+            0.7949808835983276,
+            0.7643524408340454,
+            0.7343974709510803,
+            0.7605078518390656,
+            0.6787406206130981,
+            0.6763110160827637,
+            0.7807866930961609,
+            0.7363424301147461,
+            1.786858320236206,
+            1.5969287157058716,
+            1.4233505725860596,
+            1.5892173051834106,
+            1.6536527872085571,
+            1.5962224006652832,
+            1.6672688722610474,
+            4.434823036193848
+          ],
+          "coherent_core_peak_kev": 1.9056322574615479,
+          "maximum_channel_to_core": 1.5,
+          "implausible_channels": [
+            47
+          ],
+          "fallback_excluded_from_core": [
+            40,
+            41,
+            42,
+            43,
+            44,
+            45,
+            46,
+            47
+          ],
+          "calibrated": false
+        },
+        "claim": "Prior spatially unverified algorithmic candidates; not physical truth"
+      }
+    },
+    {
+      "shot": 192154,
+      "scopes": {
+        "observable": {
+          "legacy_count": 47,
+          "physics_count": 70,
+          "signed_nearest_offset_ms_old_minus_physics": {
+            "n": 70,
+            "median": 10.150056417970955,
+            "p25": -25.12489079411906,
+            "p75": 30.45010256281666
+          },
+          "signed_nearest_offsets_within_15ms": {
+            "n": 21,
+            "median": 10.40006270442806,
+            "p25": 7.20012823498184,
+            "p75": 11.200069119808642
+          },
+          "nearest_legacy_anywhere_in_observable_support_offset_ms": {
+            "n": 70,
+            "median": 10.150056417970955,
+            "p25": -25.12489079411906,
+            "p75": 30.45010256281666
+          },
+          "agreement": {
+            "2": {
+              "cells": [
+                0.0,
+                70.0,
+                47.0
+              ],
+              "metrics": {
+                "precision": 0.0,
+                "recall": 0.0,
+                "f1": 0.0
+              }
+            },
+            "10": {
+              "cells": [
+                7.0,
+                63.0,
+                40.0
+              ],
+              "metrics": {
+                "precision": 0.1,
+                "recall": 0.14893617021276595,
+                "f1": 0.11965811965811966
+              }
+            },
+            "12": {
+              "cells": [
+                17.0,
+                53.0,
+                30.0
+              ],
+              "metrics": {
+                "precision": 0.24285714285714285,
+                "recall": 0.3617021276595745,
+                "f1": 0.2905982905982906
+              }
+            }
+          },
+          "nearest_offset_histogram": {
+            "edges_ms": [
+              -25,
+              -24,
+              -23,
+              -22,
+              -21,
+              -20,
+              -19,
+              -18,
+              -17,
+              -16,
+              -15,
+              -14,
+              -13,
+              -12,
+              -11,
+              -10,
+              -9,
+              -8,
+              -7,
+              -6,
+              -5,
+              -4,
+              -3,
+              -2,
+              -1,
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24,
+              25
+            ],
+            "counts": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              3,
+              1,
+              2,
+              1,
+              0,
+              1,
+              0,
+              1,
+              0,
+              0,
+              1,
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              1,
+              0,
+              3,
+              4,
+              6,
+              2,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        },
+        "physics_present": {
+          "legacy_count": 27,
+          "physics_count": 59,
+          "signed_nearest_offset_ms_old_minus_physics": {
+            "n": 59,
+            "median": 11.50011297006781,
+            "p25": -22.199885144586595,
+            "p75": 41.25005697151019
+          },
+          "signed_nearest_offsets_within_15ms": {
+            "n": 13,
+            "median": 10.70012763176642,
+            "p25": 9.90005888405987,
+            "p75": 11.50011297006781
+          },
+          "nearest_legacy_anywhere_in_observable_support_offset_ms": {
+            "n": 59,
+            "median": 10.40006270442806,
+            "p25": -26.349913090048858,
+            "p75": 34.35011820148848
+          },
+          "agreement": {
+            "2": {
+              "cells": [
+                0.0,
+                59.0,
+                27.0
+              ],
+              "metrics": {
+                "precision": 0.0,
+                "recall": 0.0,
+                "f1": 0.0
+              }
+            },
+            "10": {
+              "cells": [
+                5.0,
+                54.0,
+                22.0
+              ],
+              "metrics": {
+                "precision": 0.0847457627118644,
+                "recall": 0.18518518518518517,
+                "f1": 0.11627906976744186
+              }
+            },
+            "12": {
+              "cells": [
+                12.0,
+                47.0,
+                15.0
+              ],
+              "metrics": {
+                "precision": 0.2033898305084746,
+                "recall": 0.4444444444444444,
+                "f1": 0.27906976744186046
+              }
+            }
+          },
+          "nearest_offset_histogram": {
+            "edges_ms": [
+              -25,
+              -24,
+              -23,
+              -22,
+              -21,
+              -20,
+              -19,
+              -18,
+              -17,
+              -16,
+              -15,
+              -14,
+              -13,
+              -12,
+              -11,
+              -10,
+              -9,
+              -8,
+              -7,
+              -6,
+              -5,
+              -4,
+              -3,
+              -2,
+              -1,
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24,
+              25
+            ],
+            "counts": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              2,
+              1,
+              1,
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              3,
+              2,
+              5,
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        }
+      },
+      "legacy_gate_diagnosis": {
+        "legacy_raw_candidate_suppressed_by_10ms_greedy_spacing": 3,
+        "legacy_retained_candidate_rejected_by_inversion_test": 67
+      },
+      "example_profiles": [
+        {
+          "physics_time_s": 1.166599970475622,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": 47.90002974044483
+        },
+        {
+          "physics_time_s": 1.4828999629933772,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": 65.6000372226897
+        },
+        {
+          "physics_time_s": 1.802599955430704,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": 12.900044785362885
+        },
+        {
+          "physics_time_s": 2.0794999488804873,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": -96.99994866442042
+        },
+        {
+          "physics_time_s": 2.3443999426141366,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": 37.100057601930025
+        },
+        {
+          "physics_time_s": 2.6135999362460676,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": -43.09993603000084
+        },
+        {
+          "physics_time_s": 3.166499923166924,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": -100.99992295085735
+        },
+        {
+          "physics_time_s": 3.445099916576493,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": -74.59991636042585
+        },
+        {
+          "physics_time_s": 3.6663999113415238,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": 38.1000888745433
+        },
+        {
+          "physics_time_s": 3.9457999047321684,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": 29.700095483898625
+        },
+        {
+          "physics_time_s": 4.29349989650714,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": 82.00010370892663
+        },
+        {
+          "physics_time_s": 4.567699890020793,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": -25.19988980472654
+        },
+        {
+          "physics_time_s": 4.8563998831914414,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": -84.89988297537465
+        },
+        {
+          "physics_time_s": 5.181899875491565,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": 10.600124724502002
+        }
+      ],
+      "trace_evidence": {
+        "physics": {
+          "core_channel": 27,
+          "outer_channels": [
+            8,
+            9,
+            10,
+            11,
+            12,
+            13
+          ],
+          "core_fractional_drop": {
+            "n": 70,
+            "median": 0.2652035216169853,
+            "p25": 0.247243117335402,
+            "p75": 0.28269853775196785
+          },
+          "outer_fractional_rise": {
+            "n": 70,
+            "median": 0.0860058443222596,
+            "p25": 0.07321027963749827,
+            "p75": 0.09977330068490611
+          },
+          "physical_validation": false
+        },
+        "legacy": {
+          "core_channel": 27,
+          "outer_channels": [
+            8,
+            9,
+            10,
+            11,
+            12,
+            13
+          ],
+          "core_fractional_drop": {
+            "n": 52,
+            "median": -0.011371378838741763,
+            "p25": -0.017811044079927764,
+            "p75": -0.0014062326875999614
+          },
+          "outer_fractional_rise": {
+            "n": 52,
+            "median": -0.004208225953572959,
+            "p25": -0.009432247194646337,
+            "p75": 0.0023677694734026856
+          },
+          "physical_validation": false
+        }
+      },
+      "train_only_holdoff_ablation": {
+        "performed": false,
+        "reason": "exploratory ablation uses train only"
+      },
+      "split": "test",
+      "new_rule_observable_seconds": 5.550899868690509,
+      "geometry_observability": "nominal_low_field_side_rho_0.4_to_0.65",
+      "prior_unverified_candidate_comparison": {
+        "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/shots/192154.json",
+        "prior_present_candidate_count": 62,
+        "legacy_count_inside_prior_present_support": 28,
+        "legacy_minus_prior_candidate_ms": {
+          "n": 62,
+          "median": 9.900064691493071,
+          "p25": -25.574896874773543,
+          "p75": 29.550098840618432
+        },
+        "offset_support": "Prior-present physics points; nearest legacy anywhere in native window",
+        "legacy_minus_prior_candidate_ms_within_15ms": {
+          "n": 19,
+          "median": 10.40006270442806,
+          "p25": 6.200127608110506,
+          "p75": 11.25009697301449
+        },
+        "prior_geometry_status": {
+          "status": "shot_hottest_physical_channel_proxy",
+          "radius_status": "unavailable",
+          "central_channel": 27,
+          "core_channels": [
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30
+          ],
+          "outer_channels": [
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23
+          ],
+          "outer_status": "adjacent_channel_proxy_unvalidated",
+          "shot_median_te_kev": [
+            0.06642638146877289,
+            0.04028599336743355,
+            0.09897427633404732,
+            0.18611177802085876,
+            0.22178728878498077,
+            0.34541988372802734,
+            0.45668239891529083,
+            0.5307030081748962,
+            0.5829797387123108,
+            0.6297327876091003,
+            0.7106972932815552,
+            0.8185643553733826,
+            0.867828756570816,
+            0.9064952433109283,
+            1.0317389965057373,
+            1.1906384825706482,
+            1.24006187915802,
+            1.3154439330101013,
+            1.4279721975326538,
+            1.5580720901489258,
+            1.6638214588165283,
+            1.732820987701416,
+            1.8000553846359253,
+            1.9225723147392273,
+            1.942942500114441,
+            1.9706836938858032,
+            2.1496611833572388,
+            2.2856152057647705,
+            1.9027765989303589,
+            2.146963596343994,
+            2.217334270477295,
+            2.2655545473098755,
+            2.159822106361389,
+            2.0898795127868652,
+            1.8147170543670654,
+            1.727038860321045,
+            1.7696938514709473,
+            1.6047238111495972,
+            1.6367546319961548,
+            1.321297526359558,
+            0.019245287403464317,
+            0.048620060086250305,
+            0.0744863972067833,
+            0.06553275883197784,
+            0.07427974790334702,
+            0.059437550604343414,
+            0.061024654656648636,
+            0.1690448597073555
+          ],
+          "coherent_core_peak_kev": 2.217334270477295,
+          "maximum_channel_to_core": 1.5,
+          "implausible_channels": [],
+          "fallback_excluded_from_core": [
+            40,
+            41,
+            42,
+            43,
+            44,
+            45,
+            46,
+            47
+          ],
+          "calibrated": false
+        },
+        "claim": "Prior spatially unverified algorithmic candidates; not physical truth"
+      }
+    },
+    {
+      "shot": 191384,
+      "scopes": {
+        "observable": {
+          "legacy_count": 162,
+          "physics_count": 62,
+          "signed_nearest_offset_ms_old_minus_physics": {
+            "n": 62,
+            "median": -9.249918639636645,
+            "p25": -11.474943892507861,
+            "p75": 11.350080470915458
+          },
+          "signed_nearest_offsets_within_15ms": {
+            "n": 46,
+            "median": -9.249918639636645,
+            "p25": -10.749902524305522,
+            "p75": 10.850103540972711
+          },
+          "nearest_legacy_anywhere_in_observable_support_offset_ms": {
+            "n": 62,
+            "median": -9.249918639636645,
+            "p25": -11.474943892507861,
+            "p75": 11.350080470915458
+          },
+          "agreement": {
+            "2": {
+              "cells": [
+                0.0,
+                62.0,
+                162.0
+              ],
+              "metrics": {
+                "precision": 0.0,
+                "recall": 0.0,
+                "f1": 0.0
+              }
+            },
+            "10": {
+              "cells": [
+                13.0,
+                49.0,
+                149.0
+              ],
+              "metrics": {
+                "precision": 0.20967741935483872,
+                "recall": 0.08024691358024691,
+                "f1": 0.11607142857142858
+              }
+            },
+            "12": {
+              "cells": [
+                31.0,
+                31.0,
+                131.0
+              ],
+              "metrics": {
+                "precision": 0.5,
+                "recall": 0.19135802469135801,
+                "f1": 0.2767857142857143
+              }
+            }
+          },
+          "nearest_offset_histogram": {
+            "edges_ms": [
+              -25,
+              -24,
+              -23,
+              -22,
+              -21,
+              -20,
+              -19,
+              -18,
+              -17,
+              -16,
+              -15,
+              -14,
+              -13,
+              -12,
+              -11,
+              -10,
+              -9,
+              -8,
+              -7,
+              -6,
+              -5,
+              -4,
+              -3,
+              -2,
+              -1,
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24,
+              25
+            ],
+            "counts": [
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              2,
+              1,
+              1,
+              1,
+              3,
+              2,
+              5,
+              2,
+              11,
+              2,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              2,
+              7,
+              4,
+              1,
+              5,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              1,
+              0,
+              3,
+              0
+            ]
+          }
+        },
+        "physics_present": {
+          "legacy_count": 53,
+          "physics_count": 33,
+          "signed_nearest_offset_ms_old_minus_physics": {
+            "n": 33,
+            "median": -8.49989358251424,
+            "p25": -10.599894384436759,
+            "p75": 13.100103280762276
+          },
+          "signed_nearest_offsets_within_15ms": {
+            "n": 22,
+            "median": -8.599915792693258,
+            "p25": -9.924895039103543,
+            "p75": 11.125086786351268
+          },
+          "nearest_legacy_anywhere_in_observable_support_offset_ms": {
+            "n": 33,
+            "median": -9.099933262303406,
+            "p25": -10.799905237595109,
+            "p75": 11.400078033212857
+          },
+          "agreement": {
+            "2": {
+              "cells": [
+                0.0,
+                33.0,
+                53.0
+              ],
+              "metrics": {
+                "precision": 0.0,
+                "recall": 0.0,
+                "f1": 0.0
+              }
+            },
+            "10": {
+              "cells": [
+                6.0,
+                27.0,
+                47.0
+              ],
+              "metrics": {
+                "precision": 0.18181818181818182,
+                "recall": 0.11320754716981132,
+                "f1": 0.13953488372093023
+              }
+            },
+            "12": {
+              "cells": [
+                14.0,
+                19.0,
+                39.0
+              ],
+              "metrics": {
+                "precision": 0.42424242424242425,
+                "recall": 0.2641509433962264,
+                "f1": 0.32558139534883723
+              }
+            }
+          },
+          "nearest_offset_histogram": {
+            "edges_ms": [
+              -25,
+              -24,
+              -23,
+              -22,
+              -21,
+              -20,
+              -19,
+              -18,
+              -17,
+              -16,
+              -15,
+              -14,
+              -13,
+              -12,
+              -11,
+              -10,
+              -9,
+              -8,
+              -7,
+              -6,
+              -5,
+              -4,
+              -3,
+              -2,
+              -1,
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24,
+              25
+            ],
+            "counts": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              2,
+              0,
+              2,
+              0,
+              1,
+              0,
+              2,
+              1,
+              6,
+              2,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              4,
+              1,
+              2,
+              2,
+              1,
+              1,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              2,
+              0
+            ]
+          }
+        }
+      },
+      "legacy_gate_diagnosis": {
+        "legacy_retained_candidate_rejected_by_inversion_test": 62
+      },
+      "example_profiles": [
+        {
+          "physics_time_s": 1.8642999539711576,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": -9.799953755090574
+        },
+        {
+          "physics_time_s": 2.1270999477544836,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": -17.59994753841676
+        },
+        {
+          "physics_time_s": 2.3769999418429664,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": -11.499941626899268
+        },
+        {
+          "physics_time_s": 2.5309999382000146,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": -9.49993798394777
+        },
+        {
+          "physics_time_s": 2.777999932357098,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": -12.499932141031067
+        },
+        {
+          "physics_time_s": 3.1063999245886214,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": 13.10007562744575
+        },
+        {
+          "physics_time_s": 3.3822999180620603,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": 11.200082154006807
+        },
+        {
+          "physics_time_s": 3.620299912432044,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": 11.20008778402326
+        },
+        {
+          "physics_time_s": 3.915299905453662,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": -10.799905237595109
+        },
+        {
+          "physics_time_s": 4.165599899532682,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": 10.90010068338465
+        },
+        {
+          "physics_time_s": 4.407999893798581,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": -8.49989358251424
+        },
+        {
+          "physics_time_s": 4.698999886914821,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": -16.49988669875402
+        },
+        {
+          "physics_time_s": 4.954399880873199,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": 11.10011934286792
+        }
+      ],
+      "trace_evidence": {
+        "physics": {
+          "core_channel": 32,
+          "outer_channels": [
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20
+          ],
+          "core_fractional_drop": {
+            "n": 62,
+            "median": 0.1410437176925756,
+            "p25": 0.12701861861522282,
+            "p75": 0.15745456328451882
+          },
+          "outer_fractional_rise": {
+            "n": 62,
+            "median": 0.09734868703172324,
+            "p25": 0.09031708383307595,
+            "p75": 0.10637652923380748
+          },
+          "physical_validation": false
+        },
+        "legacy": {
+          "core_channel": 32,
+          "outer_channels": [
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20
+          ],
+          "core_fractional_drop": {
+            "n": 164,
+            "median": -0.008961204348404132,
+            "p25": -0.014538326345877749,
+            "p75": -0.0007915567282321899
+          },
+          "outer_fractional_rise": {
+            "n": 164,
+            "median": -0.0011866728476301,
+            "p25": -0.00905320231141116,
+            "p75": 0.005982800899207465
+          },
+          "physical_validation": false
+        },
+        "central_derivative": {
+          "core_channel": 32,
+          "outer_channels": [
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20
+          ],
+          "core_fractional_drop": {
+            "n": 75,
+            "median": 0.1416709911779969,
+            "p25": 0.1263594208184705,
+            "p75": 0.1614602950408035
+          },
+          "outer_fractional_rise": {
+            "n": 75,
+            "median": 0.0971092479038917,
+            "p25": 0.08679432512517532,
+            "p75": 0.10910756179303716
+          },
+          "physical_validation": false
+        }
+      },
+      "train_only_holdoff_ablation": {
+        "performed": true,
+        "split": "train",
+        "derivative_source": "sawtooth_benchmark.derivative_candidates",
+        "derivative_z_fixed": 20,
+        "derivative_support": "Finite central-channel ECE only, independent of the new rule's multichannel/profile observability mask",
+        "derivative_count": 75,
+        "legacy_count": 164,
+        "physics_matches_derivative_2ms": 59,
+        "physics_minus_derivative_nearest_offset_ms": {
+          "n": 75,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "no_holdoff_inversion_accepted_count": 1793,
+        "original_matches_derivative_2ms": 3,
+        "no_holdoff_matches_derivative_2ms": 6,
+        "short_1to2ms_profile_same_holdoff_count": 134,
+        "short_1to2ms_profile_same_holdoff_matches_derivative_2ms": 3,
+        "additional_derivative_edges_recovered_without_holdoff": 3,
+        "old_minus_derivative_nearest_offset_ms": {
+          "n": 75,
+          "median": 0.6001300943072607,
+          "p25": -11.399921001641221,
+          "p75": 12.150089003465592
+        },
+        "blocking_candidate_minus_derivative_offset_ms": {
+          "n": 1,
+          "median": 2.4001284668058176,
+          "p25": 2.4001284668058176,
+          "p75": 2.4001284668058176
+        },
+        "derivative_gate_diagnosis": {
+          "accepted_legacy_edge": 3,
+          "retained_edge_failed_2to8ms_inversion_profile": 71,
+          "raw_edge_suppressed_by_10ms_holdoff": 1
+        },
+        "inversion_profile_failure_at_raw_edge": {
+          "accepted": 3,
+          "gain_block_too_far": 34,
+          "no_adjacent_3ch_gain_block": 37,
+          "no_significant_negative_block": 1
+        },
+        "examples": [
+          {
+            "derivative_peak_s": 1.8642999539711576,
+            "nearest_raw_offset_ms": 0.2000462449092133,
+            "nearest_retained_offset_ms": 0.2000462449092133,
+            "nearest_accepted_offset_ms": -9.799953755090574,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "gain_block_too_far",
+              "gain_blocks": [
+                [
+                  17,
+                  23
+                ]
+              ],
+              "dominant_drop": [
+                29,
+                40
+              ],
+              "spatially_excluded_drop_channels": []
+            }
+          },
+          {
+            "derivative_peak_s": 1.9107999528711752,
+            "nearest_raw_offset_ms": -0.2999526551084042,
+            "nearest_retained_offset_ms": 0.7000473448917077,
+            "nearest_accepted_offset_ms": -17.299952655108306,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "no_adjacent_3ch_gain_block",
+              "gain_blocks": [],
+              "dominant_drop": [
+                28,
+                40
+              ],
+              "spatially_excluded_drop_channels": []
+            }
+          },
+          {
+            "derivative_peak_s": 1.9478999519935551,
+            "nearest_raw_offset_ms": -0.39995177748819444,
+            "nearest_retained_offset_ms": 0.6000482225116954,
+            "nearest_accepted_offset_ms": 23.600048222511827,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "no_adjacent_3ch_gain_block",
+              "gain_blocks": [],
+              "dominant_drop": [
+                29,
+                40
+              ],
+              "spatially_excluded_drop_channels": []
+            }
+          },
+          {
+            "derivative_peak_s": 1.9938999509054005,
+            "nearest_raw_offset_ms": -0.399950689333739,
+            "nearest_retained_offset_ms": 0.6000493106663729,
+            "nearest_accepted_offset_ms": -11.399950689333638,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "no_adjacent_3ch_gain_block",
+              "gain_blocks": [],
+              "dominant_drop": [
+                28,
+                40
+              ],
+              "spatially_excluded_drop_channels": []
+            }
+          },
+          {
+            "derivative_peak_s": 2.0686999491359668,
+            "nearest_raw_offset_ms": -0.19994891989982833,
+            "nearest_retained_offset_ms": 0.8000510801000615,
+            "nearest_accepted_offset_ms": 27.800051080100197,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "gain_block_too_far",
+              "gain_blocks": [
+                [
+                  17,
+                  22
+                ]
+              ],
+              "dominant_drop": [
+                28,
+                40
+              ],
+              "spatially_excluded_drop_channels": []
+            }
+          },
+          {
+            "derivative_peak_s": 2.1270999477544836,
+            "nearest_raw_offset_ms": 0.40005246158303365,
+            "nearest_retained_offset_ms": 0.40005246158303365,
+            "nearest_accepted_offset_ms": -17.59994753841676,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "no_adjacent_3ch_gain_block",
+              "gain_blocks": [],
+              "dominant_drop": [
+                28,
+                40
+              ],
+              "spatially_excluded_drop_channels": []
+            }
+          },
+          {
+            "derivative_peak_s": 2.172999946668695,
+            "nearest_raw_offset_ms": -0.499946452627853,
+            "nearest_retained_offset_ms": 0.5000535473720369,
+            "nearest_accepted_offset_ms": 10.500053547371824,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "gain_block_too_far",
+              "gain_blocks": [
+                [
+                  17,
+                  22
+                ]
+              ],
+              "dominant_drop": [
+                28,
+                40
+              ],
+              "spatially_excluded_drop_channels": []
+            }
+          },
+          {
+            "derivative_peak_s": 2.2086999458241925,
+            "nearest_raw_offset_ms": -0.19994560812541806,
+            "nearest_retained_offset_ms": 0.8000543918744718,
+            "nearest_accepted_offset_ms": 12.800054391874482,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "gain_block_too_far",
+              "gain_blocks": [
+                [
+                  17,
+                  22
+                ]
+              ],
+              "dominant_drop": [
+                28,
+                40
+              ],
+              "spatially_excluded_drop_channels": []
+            }
+          },
+          {
+            "derivative_peak_s": 2.2541999447478656,
+            "nearest_raw_offset_ms": 0.30005546820133233,
+            "nearest_retained_offset_ms": 0.30005546820133233,
+            "nearest_accepted_offset_ms": -11.699944531798678,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "gain_block_too_far",
+              "gain_blocks": [
+                [
+                  17,
+                  22
+                ]
+              ],
+              "dominant_drop": [
+                28,
+                40
+              ],
+              "spatially_excluded_drop_channels": []
+            }
+          },
+          {
+            "derivative_peak_s": 2.3281999429973563,
+            "nearest_raw_offset_ms": 0.30005721871040336,
+            "nearest_retained_offset_ms": 0.30005721871040336,
+            "nearest_accepted_offset_ms": -13.699942781289387,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "no_adjacent_3ch_gain_block",
+              "gain_blocks": [],
+              "dominant_drop": [
+                29,
+                40
+              ],
+              "spatially_excluded_drop_channels": []
+            }
+          },
+          {
+            "derivative_peak_s": 2.3769999418429664,
+            "nearest_raw_offset_ms": -0.49994162689959154,
+            "nearest_retained_offset_ms": 0.5000583731002983,
+            "nearest_accepted_offset_ms": -11.499941626899268,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "no_adjacent_3ch_gain_block",
+              "gain_blocks": [],
+              "dominant_drop": [
+                29,
+                40
+              ],
+              "spatially_excluded_drop_channels": []
+            }
+          },
+          {
+            "derivative_peak_s": 2.4139999409677118,
+            "nearest_raw_offset_ms": -0.499940751645056,
+            "nearest_retained_offset_ms": 0.5000592483552779,
+            "nearest_accepted_offset_ms": 44.50005924835531,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "gain_block_too_far",
+              "gain_blocks": [
+                [
+                  16,
+                  23
+                ]
+              ],
+              "dominant_drop": [
+                28,
+                40
+              ],
+              "spatially_excluded_drop_channels": []
+            }
+          }
+        ],
+        "interpretation": "A fixed 20-sigma central derivative is an independent diagnostic edge proxy, not crash truth. Disable only the legacy 10ms candidate holdoff and keep its 2to8ms inversion test. A separate profile-duration ablation uses the same retained candidates and thresholds, only 1to2ms rather than 2to8ms windows. Raw dense picks can duplicate a single edge; compare one-to-one matches, not counts. No rule changes or tuning."
+      },
+      "split": "train",
+      "new_rule_observable_seconds": 5.372299872915387,
+      "geometry_observability": "nominal_low_field_side_rho_0.4_to_0.65",
+      "prior_unverified_candidate_comparison": {
+        "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/shots/191384.json",
+        "prior_present_candidate_count": 63,
+        "legacy_count_inside_prior_present_support": 90,
+        "legacy_minus_prior_candidate_ms": {
+          "n": 63,
+          "median": -8.699938002872276,
+          "p25": -11.449946158116454,
+          "p75": 12.10006621254367
+        },
+        "offset_support": "Prior-present physics points; nearest legacy anywhere in native window",
+        "legacy_minus_prior_candidate_ms_within_15ms": {
+          "n": 46,
+          "median": -8.899935632587841,
+          "p25": -10.749902524305522,
+          "p75": 10.850103540972711
+        },
+        "prior_geometry_status": {
+          "status": "shot_hottest_physical_channel_proxy",
+          "radius_status": "unavailable",
+          "central_channel": 38,
+          "core_channels": [
+            33,
+            34,
+            35,
+            36,
+            37,
+            38,
+            39
+          ],
+          "outer_channels": [
+            26,
+            27,
+            28,
+            29,
+            30,
+            31,
+            32
+          ],
+          "outer_status": "adjacent_channel_proxy_unvalidated",
+          "shot_median_te_kev": [
+            0.15896838158369064,
+            0.0920369103550911,
+            0.08422808349132538,
+            0.0665501318871975,
+            0.0507236048579216,
+            0.046928178519010544,
+            0.05742856487631798,
+            0.11401090770959854,
+            0.23342891037464142,
+            0.29713915288448334,
+            0.37432923913002014,
+            0.4823572039604187,
+            0.5054191052913666,
+            0.5637670159339905,
+            0.6573253571987152,
+            0.7560891807079315,
+            1.024718463420868,
+            1.2153674364089966,
+            1.2989848852157593,
+            1.2000690698623657,
+            1.3327248096466064,
+            1.4602464437484741,
+            1.5036877393722534,
+            1.683132290840149,
+            1.8082221150398254,
+            1.8967466354370117,
+            1.9655712842941284,
+            2.072679042816162,
+            1.6219483017921448,
+            1.9368507862091064,
+            1.945335865020752,
+            1.9510867595672607,
+            1.7335006594657898,
+            1.8084813356399536,
+            1.698991298675537,
+            1.7539829015731812,
+            2.0982561111450195,
+            2.021507501602173,
+            2.5272523164749146,
+            1.9979972839355469,
+            0.023872224614024162,
+            0.006077633006498218,
+            0.006913712713867426,
+            0.005434014368802309,
+            0.008042916655540466,
+            0.07083294540643692,
+            0.021331746131181717,
+            0.036203399300575256
+          ],
+          "coherent_core_peak_kev": 2.059881806373596,
+          "maximum_channel_to_core": 1.5,
+          "implausible_channels": [],
+          "fallback_excluded_from_core": [
+            40,
+            41,
+            42,
+            43,
+            44,
+            45,
+            46,
+            47
+          ],
+          "calibrated": false
+        },
+        "claim": "Prior spatially unverified algorithmic candidates; not physical truth"
+      }
+    },
+    {
+      "shot": 203349,
+      "scopes": {
+        "observable": {
+          "legacy_count": 95,
+          "physics_count": 103,
+          "signed_nearest_offset_ms_old_minus_physics": {
+            "n": 103,
+            "median": -9.69993199604291,
+            "p25": -18.199904295415514,
+            "p75": 16.950098657977808
+          },
+          "signed_nearest_offsets_within_15ms": {
+            "n": 32,
+            "median": -4.549902796837424,
+            "p25": -11.474921740778687,
+            "p75": 10.925111113206931
+          },
+          "nearest_legacy_anywhere_in_observable_support_offset_ms": {
+            "n": 103,
+            "median": -9.69993199604291,
+            "p25": -18.199904295415514,
+            "p75": 16.950098657977808
+          },
+          "agreement": {
+            "2": {
+              "cells": [
+                1.0,
+                102.0,
+                94.0
+              ],
+              "metrics": {
+                "precision": 0.009708737864077669,
+                "recall": 0.010526315789473684,
+                "f1": 0.010101010101010102
+              }
+            },
+            "10": {
+              "cells": [
+                4.0,
+                99.0,
+                91.0
+              ],
+              "metrics": {
+                "precision": 0.038834951456310676,
+                "recall": 0.042105263157894736,
+                "f1": 0.04040404040404041
+              }
+            },
+            "12": {
+              "cells": [
+                20.0,
+                83.0,
+                75.0
+              ],
+              "metrics": {
+                "precision": 0.1941747572815534,
+                "recall": 0.21052631578947367,
+                "f1": 0.20202020202020202
+              }
+            }
+          },
+          "nearest_offset_histogram": {
+            "edges_ms": [
+              -25,
+              -24,
+              -23,
+              -22,
+              -21,
+              -20,
+              -19,
+              -18,
+              -17,
+              -16,
+              -15,
+              -14,
+              -13,
+              -12,
+              -11,
+              -10,
+              -9,
+              -8,
+              -7,
+              -6,
+              -5,
+              -4,
+              -3,
+              -2,
+              -1,
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24,
+              25
+            ],
+            "counts": [
+              0,
+              2,
+              2,
+              1,
+              1,
+              2,
+              3,
+              4,
+              2,
+              4,
+              1,
+              1,
+              3,
+              6,
+              3,
+              2,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1,
+              6,
+              1,
+              4,
+              3,
+              0,
+              1,
+              8,
+              2,
+              0,
+              1,
+              0,
+              3,
+              1,
+              0,
+              0
+            ]
+          }
+        },
+        "physics_present": {
+          "legacy_count": 73,
+          "physics_count": 102,
+          "signed_nearest_offset_ms_old_minus_physics": {
+            "n": 102,
+            "median": -4.549902796837424,
+            "p25": -17.799917865411132,
+            "p75": 20.5750983297579
+          },
+          "signed_nearest_offsets_within_15ms": {
+            "n": 32,
+            "median": -4.549902796837424,
+            "p25": -11.474921740778687,
+            "p75": 10.925111113206931
+          },
+          "nearest_legacy_anywhere_in_observable_support_offset_ms": {
+            "n": 102,
+            "median": -9.74992592721624,
+            "p25": -18.349892753881658,
+            "p75": 16.975109331945013
+          },
+          "agreement": {
+            "2": {
+              "cells": [
+                1.0,
+                101.0,
+                72.0
+              ],
+              "metrics": {
+                "precision": 0.00980392156862745,
+                "recall": 0.0136986301369863,
+                "f1": 0.011428571428571429
+              }
+            },
+            "10": {
+              "cells": [
+                4.0,
+                98.0,
+                69.0
+              ],
+              "metrics": {
+                "precision": 0.0392156862745098,
+                "recall": 0.0547945205479452,
+                "f1": 0.045714285714285714
+              }
+            },
+            "12": {
+              "cells": [
+                20.0,
+                82.0,
+                53.0
+              ],
+              "metrics": {
+                "precision": 0.19607843137254902,
+                "recall": 0.273972602739726,
+                "f1": 0.22857142857142856
+              }
+            }
+          },
+          "nearest_offset_histogram": {
+            "edges_ms": [
+              -25,
+              -24,
+              -23,
+              -22,
+              -21,
+              -20,
+              -19,
+              -18,
+              -17,
+              -16,
+              -15,
+              -14,
+              -13,
+              -12,
+              -11,
+              -10,
+              -9,
+              -8,
+              -7,
+              -6,
+              -5,
+              -4,
+              -3,
+              -2,
+              -1,
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24,
+              25
+            ],
+            "counts": [
+              0,
+              1,
+              2,
+              1,
+              1,
+              2,
+              4,
+              4,
+              2,
+              4,
+              1,
+              1,
+              3,
+              6,
+              3,
+              2,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1,
+              6,
+              1,
+              4,
+              3,
+              0,
+              1,
+              6,
+              1,
+              0,
+              1,
+              0,
+              3,
+              1,
+              0,
+              0
+            ]
+          }
+        }
+      },
+      "legacy_gate_diagnosis": {
+        "legacy_retained_candidate_rejected_by_inversion_test": 102,
+        "legacy_accepted_within_2ms": 1
+      },
+      "example_profiles": [
+        {
+          "physics_time_s": 1.4445999638993843,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": -151.09996351940458
+        },
+        {
+          "physics_time_s": 1.788299955768978,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": -10.799955388998361
+        },
+        {
+          "physics_time_s": 2.1670999468082623,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": -23.59994642828278
+        },
+        {
+          "physics_time_s": 2.5192999384767845,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": 12.200061903195003
+        },
+        {
+          "physics_time_s": 2.890899929686389,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": 43.600070693590624
+        },
+        {
+          "physics_time_s": 3.2179999219486644,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": -10.499921568684734
+        },
+        {
+          "physics_time_s": 3.5521999140429856,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": 16.3000863369942
+        },
+        {
+          "physics_time_s": 3.871699906485043,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": 16.80009389493664
+        },
+        {
+          "physics_time_s": 4.177299899255913,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": -61.7998988759334
+        },
+        {
+          "physics_time_s": 4.4565998926489225,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": -48.099892268942845
+        },
+        {
+          "physics_time_s": 4.788499884797652,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": 11.00011558232783
+        },
+        {
+          "physics_time_s": 5.165099875888979,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": 16.40012449100059
+        },
+        {
+          "physics_time_s": 5.485299868314477,
+          "legacy_inversion_block_at_physics_time": null,
+          "old_minus_physics_nearest_ms": 22.200132065503198
+        }
+      ],
+      "trace_evidence": {
+        "physics": {
+          "core_channel": 25,
+          "outer_channels": [
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11
+          ],
+          "core_fractional_drop": {
+            "n": 103,
+            "median": 0.2376497005988024,
+            "p25": 0.17979311962560146,
+            "p75": 0.2811154954615239
+          },
+          "outer_fractional_rise": {
+            "n": 103,
+            "median": 0.1550866616428033,
+            "p25": 0.11145779152275179,
+            "p75": 0.18147370875896138
+          },
+          "physical_validation": false
+        },
+        "legacy": {
+          "core_channel": 25,
+          "outer_channels": [
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11
+          ],
+          "core_fractional_drop": {
+            "n": 97,
+            "median": -0.0125,
+            "p25": -0.02092050209205021,
+            "p75": 0.0020718232044198894
+          },
+          "outer_fractional_rise": {
+            "n": 101,
+            "median": -0.006274788373882565,
+            "p25": -0.012280575019865717,
+            "p75": 0.009745885070747874
+          },
+          "physical_validation": false
+        },
+        "central_derivative": {
+          "core_channel": 25,
+          "outer_channels": [
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11
+          ],
+          "core_fractional_drop": {
+            "n": 102,
+            "median": 0.24059420365113435,
+            "p25": 0.18216053888417302,
+            "p75": 0.28462966669042616
+          },
+          "outer_fractional_rise": {
+            "n": 102,
+            "median": 0.15637710313629777,
+            "p25": 0.11183689171041548,
+            "p75": 0.18270020502494544
+          },
+          "physical_validation": false
+        }
+      },
+      "train_only_holdoff_ablation": {
+        "performed": true,
+        "split": "train",
+        "derivative_source": "sawtooth_benchmark.derivative_candidates",
+        "derivative_z_fixed": 20,
+        "derivative_support": "Finite central-channel ECE only, independent of the new rule's multichannel/profile observability mask",
+        "derivative_count": 102,
+        "legacy_count": 101,
+        "physics_matches_derivative_2ms": 100,
+        "physics_minus_derivative_nearest_offset_ms": {
+          "n": 102,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "no_holdoff_inversion_accepted_count": 603,
+        "original_matches_derivative_2ms": 0,
+        "no_holdoff_matches_derivative_2ms": 1,
+        "short_1to2ms_profile_same_holdoff_count": 93,
+        "short_1to2ms_profile_same_holdoff_matches_derivative_2ms": 5,
+        "additional_derivative_edges_recovered_without_holdoff": 1,
+        "old_minus_derivative_nearest_offset_ms": {
+          "n": 102,
+          "median": 7.917646471788942e-05,
+          "p25": -17.799917865411132,
+          "p75": 16.975113791012685
+        },
+        "blocking_candidate_minus_derivative_offset_ms": {
+          "n": 0,
+          "median": null,
+          "p25": null,
+          "p75": null
+        },
+        "derivative_gate_diagnosis": {
+          "retained_edge_failed_2to8ms_inversion_profile": 102
+        },
+        "inversion_profile_failure_at_raw_edge": {
+          "no_adjacent_3ch_gain_block": 93,
+          "gain_block_too_far": 8,
+          "no_significant_negative_block": 1
+        },
+        "examples": [
+          {
+            "derivative_peak_s": 1.4933999627449943,
+            "nearest_raw_offset_ms": 0.10003763498533935,
+            "nearest_retained_offset_ms": 0.10003763498533935,
+            "nearest_accepted_offset_ms": 150.10003763498526,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "no_adjacent_3ch_gain_block",
+              "gain_blocks": [],
+              "dominant_drop": [
+                23,
+                35
+              ],
+              "spatially_excluded_drop_channels": []
+            }
+          },
+          {
+            "derivative_peak_s": 1.5345999617703863,
+            "nearest_raw_offset_ms": -0.09996139040668872,
+            "nearest_retained_offset_ms": -0.09996139040668872,
+            "nearest_accepted_offset_ms": 108.9000386095933,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "no_adjacent_3ch_gain_block",
+              "gain_blocks": [],
+              "dominant_drop": [
+                22,
+                36
+              ],
+              "spatially_excluded_drop_channels": [
+                35
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.580199960691694,
+            "nearest_raw_offset_ms": 0.30003968828551386,
+            "nearest_retained_offset_ms": 0.30003968828551386,
+            "nearest_accepted_offset_ms": 63.30003968828546,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "no_adjacent_3ch_gain_block",
+              "gain_blocks": [],
+              "dominant_drop": [
+                21,
+                36
+              ],
+              "spatially_excluded_drop_channels": [
+                35
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.6220999597005272,
+            "nearest_raw_offset_ms": 0.40004067945242916,
+            "nearest_retained_offset_ms": 0.40004067945242916,
+            "nearest_accepted_offset_ms": 21.40004067945234,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "no_adjacent_3ch_gain_block",
+              "gain_blocks": [],
+              "dominant_drop": [
+                20,
+                37
+              ],
+              "spatially_excluded_drop_channels": [
+                35,
+                36
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.6617999587614027,
+            "nearest_raw_offset_ms": -0.2999583814231599,
+            "nearest_retained_offset_ms": -0.2999583814231599,
+            "nearest_accepted_offset_ms": 13.700041618576853,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "no_adjacent_3ch_gain_block",
+              "gain_blocks": [],
+              "dominant_drop": [
+                20,
+                37
+              ],
+              "spatially_excluded_drop_channels": [
+                35,
+                36
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.7064999577040005,
+            "nearest_raw_offset_ms": 4.267597919493937e-05,
+            "nearest_retained_offset_ms": 4.267597919493937e-05,
+            "nearest_accepted_offset_ms": -30.999957324020944,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "no_adjacent_3ch_gain_block",
+              "gain_blocks": [],
+              "dominant_drop": [
+                20,
+                38
+              ],
+              "spatially_excluded_drop_channels": [
+                35,
+                36,
+                37
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.750299956667888,
+            "nearest_raw_offset_ms": 0.20004371209147997,
+            "nearest_retained_offset_ms": 0.20004371209147997,
+            "nearest_accepted_offset_ms": 27.200043712091613,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "no_adjacent_3ch_gain_block",
+              "gain_blocks": [],
+              "dominant_drop": [
+                19,
+                38
+              ],
+              "spatially_excluded_drop_channels": [
+                35,
+                36,
+                37
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.788299955768978,
+            "nearest_raw_offset_ms": 0.20004461100153748,
+            "nearest_retained_offset_ms": 0.20004461100153748,
+            "nearest_accepted_offset_ms": -10.799955388998361,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "no_adjacent_3ch_gain_block",
+              "gain_blocks": [],
+              "dominant_drop": [
+                19,
+                38
+              ],
+              "spatially_excluded_drop_channels": [
+                35,
+                36,
+                37
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.8409999545223314,
+            "nearest_raw_offset_ms": 0.5000458576482902,
+            "nearest_retained_offset_ms": 0.5000458576482902,
+            "nearest_accepted_offset_ms": -21.49995414235173,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "no_adjacent_3ch_gain_block",
+              "gain_blocks": [],
+              "dominant_drop": [
+                20,
+                38
+              ],
+              "spatially_excluded_drop_channels": [
+                35,
+                36,
+                37
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.8953999532354704,
+            "nearest_raw_offset_ms": 0.1000471445091744,
+            "nearest_retained_offset_ms": 0.1000471445091744,
+            "nearest_accepted_offset_ms": 15.100047144509299,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "no_adjacent_3ch_gain_block",
+              "gain_blocks": [],
+              "dominant_drop": [
+                20,
+                38
+              ],
+              "spatially_excluded_drop_channels": [
+                35,
+                36,
+                37
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.938699952211186,
+            "nearest_raw_offset_ms": -0.1999518312063575,
+            "nearest_retained_offset_ms": -0.1999518312063575,
+            "nearest_accepted_offset_ms": -11.199951831206478,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "no_adjacent_3ch_gain_block",
+              "gain_blocks": [],
+              "dominant_drop": [
+                19,
+                38
+              ],
+              "spatially_excluded_drop_channels": [
+                35,
+                36,
+                37
+              ]
+            }
+          },
+          {
+            "derivative_peak_s": 1.9826999511703427,
+            "nearest_raw_offset_ms": -0.19995079036294605,
+            "nearest_retained_offset_ms": 0.8000492096369438,
+            "nearest_accepted_offset_ms": 27.800049209636857,
+            "reason": "retained_edge_failed_2to8ms_inversion_profile",
+            "profile_diagnosis": {
+              "reason": "no_adjacent_3ch_gain_block",
+              "gain_blocks": [],
+              "dominant_drop": [
+                19,
+                38
+              ],
+              "spatially_excluded_drop_channels": [
+                35,
+                36,
+                37
+              ]
+            }
+          }
+        ],
+        "interpretation": "A fixed 20-sigma central derivative is an independent diagnostic edge proxy, not crash truth. Disable only the legacy 10ms candidate holdoff and keep its 2to8ms inversion test. A separate profile-duration ablation uses the same retained candidates and thresholds, only 1to2ms rather than 2to8ms windows. Raw dense picks can duplicate a single edge; compare one-to-one matches, not counts. No rule changes or tuning."
+      },
+      "split": "train",
+      "new_rule_observable_seconds": 5.7596998637512336,
+      "geometry_observability": "nominal_low_field_side_rho_0.4_to_0.65",
+      "prior_unverified_candidate_comparison": {
+        "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/shots/203349.json",
+        "prior_present_candidate_count": 59,
+        "legacy_count_inside_prior_present_support": 33,
+        "legacy_minus_prior_candidate_ms": {
+          "n": 59,
+          "median": -10.299947547189436,
+          "p25": -17.99988526927132,
+          "p75": 21.200115991569124
+        },
+        "offset_support": "Prior-present physics points; nearest legacy anywhere in native window",
+        "legacy_minus_prior_candidate_ms_within_15ms": {
+          "n": 16,
+          "median": -10.949919464525394,
+          "p25": -12.074867519934251,
+          "p75": 10.125103787087975
+        },
+        "prior_geometry_status": {
+          "status": "shot_hottest_physical_channel_proxy",
+          "radius_status": "unavailable",
+          "central_channel": 30,
+          "core_channels": [
+            27,
+            28,
+            29,
+            30,
+            31,
+            32,
+            33
+          ],
+          "outer_channels": [
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26
+          ],
+          "outer_status": "adjacent_channel_proxy_unvalidated",
+          "shot_median_te_kev": [
+            0.28992512822151184,
+            0.2999916970729828,
+            0.4108507037162781,
+            0.4971182942390442,
+            0.5760590434074402,
+            0.6583223342895508,
+            0.7703224420547485,
+            0.8870159387588501,
+            0.9496191143989563,
+            1.0530904531478882,
+            1.1884045600891113,
+            1.3076139688491821,
+            1.4457690715789795,
+            1.5636247396469116,
+            1.6743279695510864,
+            1.8229819536209106,
+            1.6073817014694214,
+            1.7788218259811401,
+            1.9186336994171143,
+            1.9425967335700989,
+            1.9823745489120483,
+            2.068137526512146,
+            2.097364664077759,
+            2.080836534500122,
+            2.080949544906616,
+            2.185549020767212,
+            2.2790064811706543,
+            2.2817018032073975,
+            2.200010299682617,
+            2.188103675842285,
+            2.3500051498413086,
+            2.306978702545166,
+            2.193842887878418,
+            2.25825572013855,
+            1.9575814008712769,
+            1.8982126712799072,
+            1.7676550149917603,
+            1.8164530992507935,
+            2.250244975090027,
+            2.0951759815216064,
+            0.5206114649772644,
+            0.4045300781726837,
+            0.6230229139328003,
+            0.9425086975097656,
+            0.9484551548957825,
+            1.099385380744934,
+            0.35297781229019165,
+            0.6960521340370178
+          ],
+          "coherent_core_peak_kev": 2.2817018032073975,
+          "maximum_channel_to_core": 1.5,
+          "implausible_channels": [],
+          "fallback_excluded_from_core": [
+            40,
+            41,
+            42,
+            43,
+            44,
+            45,
+            46,
+            47
+          ],
+          "calibrated": false
+        },
+        "claim": "Prior spatially unverified algorithmic candidates; not physical truth"
+      }
+    }
+  ],
+  "figures": [
+    {
+      "shot": 192090,
+      "window_s": [
+        2.393299939683216,
+        2.5432999396832163
+      ],
+      "trace_labels": [
+        "Core: nominal \u03c1=0.01",
+        "Outer LFS: nominal \u03c1=0.41\u20130.64"
+      ],
+      "core_channel": 24,
+      "outer_channels": [
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "pdf": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/figures/legacy_disagreement_192090.pdf",
+      "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/figures/legacy_disagreement_192090.png",
+      "png_inspected": true,
+      "png_sha256": "057c94fd73b990cc4be9dac0ad584e1b135a97365d4862de6ee1848a932b9fab"
+    },
+    {
+      "shot": 191384,
+      "window_s": [
+        2.9044999275905083,
+        3.0544999275905087
+      ],
+      "trace_labels": [
+        "Core: nominal \u03c1=0.02",
+        "Outer LFS: nominal \u03c1=0.42\u20130.60"
+      ],
+      "core_channel": 32,
+      "outer_channels": [
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20
+      ],
+      "pdf": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/figures/legacy_disagreement_191384.pdf",
+      "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/figures/legacy_disagreement_191384.png",
+      "png_inspected": true,
+      "png_sha256": "10d3c1118ec4b19cdc28e4b7ad9b9e1e62bcfba3d6efb273d1b5c0ad82577596"
+    },
+    {
+      "shot": 203349,
+      "window_s": [
+        3.5897999113793726,
+        3.739799911379373
+      ],
+      "trace_labels": [
+        "Core: nominal \u03c1=0.01",
+        "Outer LFS: nominal \u03c1=0.40\u20130.63"
+      ],
+      "core_channel": 25,
+      "outer_channels": [
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "pdf": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/figures/legacy_disagreement_203349.pdf",
+      "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/figures/legacy_disagreement_203349.png",
+      "png_inspected": true,
+      "png_sha256": "6d37b3c3f28815867f557dad216adbb2a5ff50e3e0abd73e1ee09b4d72b369cd"
+    },
+    {
+      "shot": 190602,
+      "window_s": [
+        3.8007999063880553,
+        3.9507999063880557
+      ],
+      "core_channel": 0,
+      "auxiliary_channels": [
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23
+      ],
+      "trace_labels": [
+        "Core: nominal \u03c1=0.22",
+        "Aux HFS: nominal \u03c1=0.51\u20130.79 (excluded)"
+      ],
+      "current_physics_picks": 0,
+      "current_observable_seconds": 0,
+      "current_geometry": {
+        "status": "nominal_second_harmonic_axis_proxy",
+        "radius_status": "nominal_R",
+        "central_channel": 0,
+        "core_channels": [
+          0,
+          1,
+          2
+        ],
+        "outer_channels": [],
+        "outer_status": "nominal_outer_band_insufficient_support",
+        "nominal_rho_median": [
+          0.22032464057813594,
+          0.2525111069298727,
+          0.28393982369045867,
+          0.3146415016765075,
+          0.3446434430464603,
+          0.3739668697141978,
+          0.40263594613778353,
+          0.43066192266641623,
+          0.4580620061012098,
+          0.484895187847654,
+          0.5111537091072329,
+          0.5368572683021072,
+          0.5620164171703632,
+          0.5866430190772675,
+          0.6107640800093742,
+          0.6343955860533992,
+          0.6344188621820308,
+          0.6575992152836596,
+          0.6803179111448916,
+          0.702624362343779,
+          0.7245036770266338,
+          0.7459314349196392,
+          0.7669364841960384,
+          0.7875437410965422,
+          0.8077683364235868,
+          0.82761741804916,
+          0.8471011799884169,
+          0.8662253116824526,
+          0.8850089451163297,
+          0.903450599134152,
+          0.921568488493346,
+          0.9393633625474697,
+          0.974031034783888,
+          1.0075413640584285,
+          1.0399584190737665,
+          1.0712724612317461,
+          1.101556696490273,
+          1.1309197984205372,
+          1.159350495302761,
+          1.186899815600179,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "core_nominal_rho_median": 0.2525111069298727,
+        "outer_nominal_rho_median": null,
+        "nominal_rho_definition": "abs(R-axis_R)/(LCFS_outer_R-axis_R)",
+        "nominal_rho_limitations": "vacuum second-harmonic geometric distance, not normalized flux; no relativistic or optical-depth correction",
+        "harmonic_overlap_excluded_channels": [
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32,
+          33,
+          34,
+          35,
+          36,
+          37,
+          38,
+          39
+        ],
+        "harmonic_overlap_mask": "median R2 < (2/3)*R_LCFS_outer",
+        "terminal_channels_excluded": [
+          40,
+          41,
+          42,
+          43,
+          44,
+          45,
+          46,
+          47
+        ],
+        "shot_median_te_kev": [
+          2.1748719215393066,
+          2.1525399684906006,
+          2.1404852867126465,
+          2.1462310552597046,
+          0.3995722383260727,
+          0.23127371072769165,
+          0.12264962121844292,
+          0.141425259411335,
+          0.1547907143831253,
+          0.16635891050100327,
+          0.16500400751829147,
+          0.15967390686273575,
+          0.1663033589720726,
+          0.16681896150112152,
+          0.15956544131040573,
+          0.14597131311893463,
+          0.13051564991474152,
+          0.11490236222743988,
+          0.11320514976978302,
+          0.10806739330291748,
+          0.11615882068872452,
+          0.11260467395186424,
+          0.12537776678800583,
+          0.12902751564979553,
+          0.0711376890540123,
+          0.08924450352787971,
+          0.09379372745752335,
+          0.16886374354362488,
+          0.05840513855218887,
+          0.07409845292568207,
+          0.07670038565993309,
+          0.10030754283070564,
+          0.046416619792580605,
+          0.018582286313176155,
+          0.02073635905981064,
+          0.02410944551229477,
+          0.013707224279642105,
+          0.003763898042961955,
+          null,
+          null,
+          1.024585247039795,
+          0.9052222371101379,
+          0.2872048020362854,
+          0.2707991898059845,
+          0.5604763031005859,
+          0.5384522676467896,
+          0.7491491436958313,
+          1.6421821117401123
+        ],
+        "coherent_core_peak_kev": 2.1525399684906006,
+        "maximum_channel_to_core": 1.5,
+        "implausible_channels": [
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32,
+          33,
+          34,
+          35,
+          36,
+          37,
+          40,
+          41,
+          42,
+          43,
+          44,
+          45,
+          46,
+          47
+        ],
+        "fallback_excluded_from_core": [
+          40,
+          41,
+          42,
+          43,
+          44,
+          45,
+          46,
+          47
+        ],
+        "calibrated": false
+      },
+      "input": "Unmodified native ECE, 1ms bin-mean envelope used by the old rule",
+      "pdf": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/figures/legacy_prior_geometry_190602.pdf",
+      "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/figures/legacy_prior_geometry_190602.png",
+      "png_inspected": true,
+      "required_caption": "The original timing example uses prior spatially unverified candidates, not the corrected physics labels. Nominal RF/EFIT geometry places only ECE channels 0\u20132 outside the third-harmonic overlap guard and provides no LFS outer group. The auxiliary high-field-side channels are masked; the corrected rule abstains on the whole shot. Candidate lines are not independent truth.",
+      "png_sha256": "9c64b022464edd4685375c57a31348cb9d9d77a06f33fda4b9170d2ff40ec322"
+    }
+  ],
+  "generated_utc": "2026-10-03T22:03:03.880453+00:00",
+  "source_sha256": {
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/shots/190602.json": "fd03f8e919fcb502acffd27383fe41498af967c764953a591ed1a847c01f63e1",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/signals/190602.npz": "3ad65f511b124c87abce9527e84f7a2140600a5f65cf546638c43fe1cd8130b3",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/old_rule/190602.json": "b362abda7ecf37d4c3b1bc40dd9e4a6ba5c355cabfa645f101ecca1f2d2c5fbd",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/legacy_audit/190602.npz": "b929a9fe8190ae1510cb4753a64ed05b3cb2774975c0aceb8f9284aa39953fac",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/shots/190604.json": "8a0fd5e3f6c4bae48a52942381dcf735875017eb3e99b3309304a77ad3d00efd",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/signals/190604.npz": "b2b1c0898cdc700492dfa9247b75331ecaa111a1618cf89c70680ebbba8546bc",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/old_rule/190604.json": "4a88a2ae77c64307de558c9e03bcc5319e7b75077d5608946f764aafc369e6b9",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/legacy_audit/190604.npz": "0612163316deefae1850b66db1ff348d3625e9bd0a1038ee0e1287aa9ce9509d",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/shots/192090.json": "e2144c307ab39faf25f5acb0053ae716a9cf8b68b374fada122a68b6f2f7aba6",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/signals/192090.npz": "0b7dc2ff88d3cc0d7a7e578a864b894c411dafa01f71686a9cc6afc84f34b8ce",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/old_rule/192090.json": "22631709af1b9a8e756e9081717373ea59483bed63baa343ab381c8f098f923a",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/legacy_audit/192090.npz": "9bcec3ce5fc7344aa0b0eddd28eebc38b171146577afde4112f088ea9531e875",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/shots/201948.json": "ba23430ad6ecf092c53467a2051307b81028ec6c5ed3c2fb48407dfaa3d95b03",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/signals/201948.npz": "fbf8301e0b7ea00d12b94add4f4c2f08f55ecbaa600832db5d77d03ee0ad0df2",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/old_rule/201948.json": "c044bd8e1ca1da889a1b67b5a4166b095b81c0ffc753c1a60a72ed3bc930f6bd",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/legacy_audit/201948.npz": "087ac970bc658bf1e9bdc6a136a49ea5c8bd4708fc8a38c56188273dbec86efe",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/shots/192154.json": "f9356b114603dcfa6aea41453a32935f222f71ae9e2c3b5c04ef1c2d724e2803",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/signals/192154.npz": "16f21d56ce6fc2dd4f4aa2b643022004f8cd36e095aab935010a96a088668f32",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/old_rule/192154.json": "77f84ba64ec53e5c1661e1962a5b605e1f370338d28de3be0f894c07d0155066",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/legacy_audit/192154.npz": "417b512e282bd2df0abfb173a04569a538b71ff46408ba09e8c843b180e833a4",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/shots/191384.json": "f493e48761111e6d21c6339b98aad114be9edda70015fef984d2e10ef4ee6d36",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/signals/191384.npz": "8b5ebf45d62a14d87484b50478c40d0dccf2c2c2a66bc021cebb960639e7f770",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/old_rule/191384.json": "febd2e7cf539548b5af0cdd7cc373c61fb74568e47b256e79f6869ac8ef6a22a",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/legacy_audit/191384.npz": "e1644fd8c4025f5b2981b5a57ed9e76c2c7b4c530fb09822e2da93d7efc750e3",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/shots/203349.json": "ebdc3022923dbb16ed8e4fb0fbd47f62b9eaac1aac1bddba019e7e98b798de95",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/signals/203349.npz": "b11cd1dafd4395cf5ff70223291934caeeb56d26166526f233c25ead5894b63f",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/old_rule/203349.json": "b7f92fd7c30b7a3700a245eab2c15db96befd4f0fe7f7181d2e0421d49a3a03d",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/legacy_audit/203349.npz": "423b83d35223f21d5c40e3fed8ca45da6a9c4c021737cc3d76343908797aef9d"
+  },
+  "offset_sign": "old time minus physics time; negative means old pick precedes",
+  "nearest_offset_warning": "Nearest neighbours can be reused and are descriptive. One-to-one event cells are reported separately; neither rule is ground truth.",
+  "legacy_reader_audit": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw/outputs/labeler/sawtooth/fix3/legacy_reader_audit.json",
+  "interpretation": "Use the exact-cache native reader audit to exclude a clock shift. Raw-candidate gate counts localize mismatch to missing edges, 10ms greedy suppression, or the inversion filter; profile windows use +/-2 to8ms and can reject faster true redistribution. Legacy picks and current catalog detector are different methods.",
+  "validation_status": "algorithm disagreement; no blind crash truth",
+  "required_caption": "Native-antialiased ECE at a central and outer low-field-side channel group; geometry is nominal geometric rho. Dotted green lines are new physics picks, dashed purple are the retained omnimode-style legacy ECE rule. Neither set is independent truth.",
+  "timing_table": [
+    {
+      "shot": 190602,
+      "split": "train",
+      "prior_unverified_present_points": 122,
+      "legacy_minus_prior_ms": -9.29988561365569,
+      "fresh_observable_seconds": 0,
+      "fresh_present_points": 0,
+      "fresh_old_minus_physics_ms_within_15ms": null,
+      "fresh_offset_pairs_within_15ms": 0,
+      "fresh_present_2ms_matches": 0.0,
+      "fixed_derivative_edge_proxy_n": 230,
+      "legacy_matches_derivative_2ms": 0,
+      "no_holdoff_matches_derivative_2ms": 0,
+      "old_minus_derivative_ms": -9.399912720529313,
+      "inversion_failures": {
+        "dominant_drop_touches_array_end": 225,
+        "no_adjacent_3ch_gain_block": 4,
+        "gain_block_too_far": 1
+      }
+    },
+    {
+      "shot": 190604,
+      "split": "test",
+      "prior_unverified_present_points": 77,
+      "legacy_minus_prior_ms": -9.8999479554438,
+      "fresh_observable_seconds": 0,
+      "fresh_present_points": 0,
+      "fresh_old_minus_physics_ms_within_15ms": null,
+      "fresh_offset_pairs_within_15ms": 0,
+      "fresh_present_2ms_matches": 0.0,
+      "fixed_derivative_edge_proxy_n": null,
+      "legacy_matches_derivative_2ms": null,
+      "no_holdoff_matches_derivative_2ms": null,
+      "old_minus_derivative_ms": null,
+      "inversion_failures": null
+    },
+    {
+      "shot": 192090,
+      "split": "train",
+      "prior_unverified_present_points": 74,
+      "legacy_minus_prior_ms": -4.849901296090309,
+      "fresh_observable_seconds": 5.999599858076271,
+      "fresh_present_points": 30,
+      "fresh_old_minus_physics_ms_within_15ms": -4.549859492034347,
+      "fresh_offset_pairs_within_15ms": 10,
+      "fresh_present_2ms_matches": 1.0,
+      "fixed_derivative_edge_proxy_n": 116,
+      "legacy_matches_derivative_2ms": 12,
+      "no_holdoff_matches_derivative_2ms": 18,
+      "old_minus_derivative_ms": -0.1998874966355757,
+      "inversion_failures": {
+        "no_adjacent_3ch_gain_block": 98,
+        "gain_block_too_far": 8,
+        "accepted": 10
+      }
+    },
+    {
+      "shot": 201948,
+      "split": "train",
+      "prior_unverified_present_points": 68,
+      "legacy_minus_prior_ms": 9.902057813556242,
+      "fresh_observable_seconds": 5.848499861650622,
+      "fresh_present_points": 0,
+      "fresh_old_minus_physics_ms_within_15ms": null,
+      "fresh_offset_pairs_within_15ms": 0,
+      "fresh_present_2ms_matches": 0.0,
+      "fixed_derivative_edge_proxy_n": 113,
+      "legacy_matches_derivative_2ms": 0,
+      "no_holdoff_matches_derivative_2ms": 0,
+      "old_minus_derivative_ms": -9.497876249014325,
+      "inversion_failures": {
+        "no_adjacent_3ch_gain_block": 2,
+        "gain_block_too_far": 2,
+        "dominant_drop_touches_array_end": 109
+      }
+    },
+    {
+      "shot": 192154,
+      "split": "test",
+      "prior_unverified_present_points": 62,
+      "legacy_minus_prior_ms": 9.900064691493071,
+      "fresh_observable_seconds": 5.550899868690509,
+      "fresh_present_points": 59,
+      "fresh_old_minus_physics_ms_within_15ms": 10.70012763176642,
+      "fresh_offset_pairs_within_15ms": 13,
+      "fresh_present_2ms_matches": 0.0,
+      "fixed_derivative_edge_proxy_n": null,
+      "legacy_matches_derivative_2ms": null,
+      "no_holdoff_matches_derivative_2ms": null,
+      "old_minus_derivative_ms": null,
+      "inversion_failures": null
+    },
+    {
+      "shot": 191384,
+      "split": "train",
+      "prior_unverified_present_points": 63,
+      "legacy_minus_prior_ms": -8.699938002872276,
+      "fresh_observable_seconds": 5.372299872915387,
+      "fresh_present_points": 33,
+      "fresh_old_minus_physics_ms_within_15ms": -8.599915792693258,
+      "fresh_offset_pairs_within_15ms": 22,
+      "fresh_present_2ms_matches": 0.0,
+      "fixed_derivative_edge_proxy_n": 75,
+      "legacy_matches_derivative_2ms": 3,
+      "no_holdoff_matches_derivative_2ms": 6,
+      "old_minus_derivative_ms": 0.6001300943072607,
+      "inversion_failures": {
+        "accepted": 3,
+        "gain_block_too_far": 34,
+        "no_adjacent_3ch_gain_block": 37,
+        "no_significant_negative_block": 1
+      }
+    },
+    {
+      "shot": 203349,
+      "split": "train",
+      "prior_unverified_present_points": 59,
+      "legacy_minus_prior_ms": -10.299947547189436,
+      "fresh_observable_seconds": 5.7596998637512336,
+      "fresh_present_points": 102,
+      "fresh_old_minus_physics_ms_within_15ms": -4.549902796837424,
+      "fresh_offset_pairs_within_15ms": 32,
+      "fresh_present_2ms_matches": 1.0,
+      "fixed_derivative_edge_proxy_n": 102,
+      "legacy_matches_derivative_2ms": 0,
+      "no_holdoff_matches_derivative_2ms": 1,
+      "old_minus_derivative_ms": 7.917646471788942e-05,
+      "inversion_failures": {
+        "no_adjacent_3ch_gain_block": 93,
+        "gain_block_too_far": 8,
+        "no_significant_negative_block": 1
+      }
+    }
+  ],
+  "png_inspection": {
+    "complete": true,
+    "method": "Every individual PNG viewed with the agent image viewer",
+    "frozen_utc": "2026-10-04T02:47:05.661722+00:00"
+  }
+}

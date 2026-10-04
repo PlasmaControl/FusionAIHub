@@ -1,0 +1,141 @@
+{
+  "shot": 185805,
+  "mode": "full",
+  "individual_node_source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/185805.h5",
+  "verified": true,
+  "elapsed_s": 18.376455256715417,
+  "comparisons": {
+    "gtime": {
+      "expected_shape": [
+        285
+      ],
+      "packed_shape": [
+        285
+      ],
+      "max_absolute_difference": 0.0,
+      "matches": true
+    },
+    "psirz": {
+      "expected_shape": [
+        285,
+        65,
+        65
+      ],
+      "packed_shape": [
+        285,
+        65,
+        65
+      ],
+      "max_absolute_difference": 0.0,
+      "matches": true
+    },
+    "qpsi": {
+      "expected_shape": [
+        285,
+        65
+      ],
+      "packed_shape": [
+        285,
+        65
+      ],
+      "max_absolute_difference": 0.0,
+      "matches": true
+    },
+    "fpol": {
+      "expected_shape": [
+        285,
+        65
+      ],
+      "packed_shape": [
+        285,
+        65
+      ],
+      "max_absolute_difference": 0.0,
+      "matches": true
+    },
+    "r": {
+      "expected_shape": [
+        65
+      ],
+      "packed_shape": [
+        65
+      ],
+      "max_absolute_difference": 0.0,
+      "matches": true
+    },
+    "z": {
+      "expected_shape": [
+        65
+      ],
+      "packed_shape": [
+        65
+      ],
+      "max_absolute_difference": 0.0,
+      "matches": true
+    },
+    "rmaxis": {
+      "expected_shape": [
+        285
+      ],
+      "packed_shape": [
+        285
+      ],
+      "max_absolute_difference": 0.0,
+      "matches": true
+    },
+    "zmaxis": {
+      "expected_shape": [
+        285
+      ],
+      "packed_shape": [
+        285
+      ],
+      "max_absolute_difference": 0.0,
+      "matches": true
+    },
+    "ssimag": {
+      "expected_shape": [
+        285
+      ],
+      "packed_shape": [
+        285
+      ],
+      "max_absolute_difference": 0.0,
+      "matches": true
+    },
+    "ssibry": {
+      "expected_shape": [
+        285
+      ],
+      "packed_shape": [
+        285
+      ],
+      "max_absolute_difference": 0.0,
+      "matches": true
+    },
+    "bdry": {
+      "expected_shape": [
+        285,
+        91,
+        2
+      ],
+      "packed_shape": [
+        285,
+        91,
+        2
+      ],
+      "max_absolute_difference": 0.0,
+      "matches": true
+    },
+    "nbdry": {
+      "expected_shape": [
+        285
+      ],
+      "packed_shape": [
+        285
+      ],
+      "max_absolute_difference": 0.0,
+      "matches": true
+    }
+  }
+}

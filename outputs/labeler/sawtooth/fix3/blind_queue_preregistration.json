@@ -1,0 +1,103 @@
+{
+  "frozen_utc": "2026-10-03T22:02:00.854798+00:00",
+  "annotation_status": "pending owner; no truth fabricated",
+  "base_selection_sha256": "38ff5c41e8da3e9eb9a08b9aec2860932da2e8a2606e9ceac2380c7238094a46",
+  "primary_sample": {
+    "windows": 141,
+    "shots": [
+      185857,
+      185866,
+      186013,
+      186093,
+      186945,
+      187076,
+      187105,
+      187196,
+      187328,
+      189044,
+      189061,
+      189559,
+      190300,
+      190335,
+      190991,
+      192003,
+      192226,
+      192232,
+      192425,
+      192732,
+      192914,
+      193075,
+      193276,
+      194445,
+      195066,
+      195646,
+      196332,
+      196541,
+      198806,
+      199087,
+      199909,
+      199921,
+      200198,
+      200320,
+      200385,
+      200427,
+      200954,
+      201270,
+      201395,
+      201447,
+      201973,
+      203041,
+      203778,
+      204530
+    ],
+    "eligible_shots": 47,
+    "shot_exclusions": [
+      {
+        "shot": 186427,
+        "reason": "no_contiguous_observable_150ms",
+        "observable_seconds": 0
+      },
+      {
+        "shot": 194600,
+        "reason": "reader_or_sensor_support_error",
+        "error": "ValueError: insufficient physically plausible ECE core channels"
+      },
+      {
+        "shot": 195786,
+        "reason": "reader_or_sensor_support_error",
+        "error": "ValueError: insufficient physically plausible ECE core channels"
+      }
+    ],
+    "window_duration_s": [
+      0.15,
+      0.6
+    ]
+  },
+  "secondary_samples": "Zero-candidate, model-negative, uncertain and disagreement supplements: report separately; do not pool as prevalence estimates",
+  "truth": "Blind crash times, present/absent intervals and explicit ambiguity masks from ECE; ambiguity excluded identically for all methods",
+  "crash_matching": "One-to-one labeler.sawtooth.metrics.event_cells matching within +/-2ms",
+  "presence": "2ms bins on annotated observable nonambiguous support",
+  "window_boundary_policy": "Exclude crash truth/picks within 2ms of window edges for every method; annotator may extend ambiguity where context is insufficient",
+  "primary_estimand": "Crash precision/recall on eligible observable tile interiors from inverse marginal inclusion weighted event counts (1/pi) on random tiles, and presence precision/recall from identically weighted 2ms bin counts. Report unweighted sensitivity too.",
+  "methods": [
+    "physics rule",
+    "legacy ECE rule",
+    "saw-ours",
+    "derivative picker gated by HL-3",
+    "derivative-only",
+    "always-present presence baseline"
+  ],
+  "method_applicability": {
+    "always-present presence baseline": "Presence only; no crash picker, so crash metrics are not applicable"
+  },
+  "retuning": "No rule, checkpoint, threshold or picker changes after annotation",
+  "intervals": "1000 whole-shot bootstrap replicates, seed 20261003",
+  "event_recall_precision_target": {
+    "nominal_95percent_half_width": 0.1,
+    "worst_case_recall": 0.5,
+    "normal_approximation_required_independent_positive_events": 97,
+    "wilson_half_width_at_n97_p_half": 0.09758847591538114,
+    "caveat": "200 windows do not guarantee 97 independent positive events. Repeated crashes within shot/train are correlated, so Wilson event intervals are descriptive and may understate uncertainty; shot bootstrap is primary. Report positive events, positive trains and positive shots and achieved CI widths; request more random windows if positive support is insufficient."
+  },
+  "source_prediction_hashes": "Freeze in completed_selection before annotation"
+}

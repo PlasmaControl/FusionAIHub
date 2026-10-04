@@ -1,0 +1,8 @@
+shot,split,prior_unverified_present_points,legacy_minus_prior_ms,fresh_observable_seconds,fresh_present_points,fresh_old_minus_physics_ms_within_15ms,fresh_offset_pairs_within_15ms,fresh_present_2ms_matches,fixed_derivative_edge_proxy_n,legacy_matches_derivative_2ms,no_holdoff_matches_derivative_2ms,old_minus_derivative_ms,inversion_failures
+190602,train,122,-9.29988561365569,0.0,0,,0,0.0,230.0,0.0,0.0,-9.399912720529313,"{'dominant_drop_touches_array_end': 225, 'no_adjacent_3ch_gain_block': 4, 'gain_block_too_far': 1}"
+190604,test,77,-9.8999479554438,0.0,0,,0,0.0,,,,,
+192090,train,74,-4.849901296090309,5.999599858076271,30,-4.549859492034347,10,1.0,116.0,12.0,18.0,-0.1998874966355757,"{'no_adjacent_3ch_gain_block': 98, 'gain_block_too_far': 8, 'accepted': 10}"
+201948,train,68,9.902057813556242,5.848499861650622,0,,0,0.0,113.0,0.0,0.0,-9.497876249014325,"{'no_adjacent_3ch_gain_block': 2, 'gain_block_too_far': 2, 'dominant_drop_touches_array_end': 109}"
+192154,test,62,9.900064691493071,5.550899868690509,59,10.70012763176642,13,0.0,,,,,
+191384,train,63,-8.699938002872276,5.372299872915387,33,-8.599915792693258,22,0.0,75.0,3.0,6.0,0.6001300943072607,"{'accepted': 3, 'gain_block_too_far': 34, 'no_adjacent_3ch_gain_block': 37, 'no_significant_negative_block': 1}"
+203349,train,59,-10.299947547189436,5.7596998637512336,102,-4.549902796837424,32,1.0,102.0,0.0,1.0,7.917646471788942e-05,"{'no_adjacent_3ch_gain_block': 93, 'gain_block_too_far': 8, 'no_significant_negative_block': 1}"
