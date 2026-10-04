@@ -1,6 +1,6 @@
 {
  "bin_ms": 50.0,
- "labels_sha256": "3c4084f1b92df33bd665ce5115db0fba19f2abc6875e88b1823e356f96a7a9c3",
+ "labels_sha256": "b7daaa3cb943438905813c6408b54a3ad5f99dba366a5fa79ee5d9f57f9bdf06",
  "script": "scripts/labeler/detach_current_state.py",
  "scope": "exploratory labels; no independent benchmark",
  "population": {
@@ -44,11 +44,27 @@
    ]
   },
   "certain": {
-   "bins": 275,
-   "shots": 19,
-   "seconds": 13.75,
+   "bins": 147,
+   "shots": 7,
+   "seconds": 7.35,
    "shot_ids": [
     189057,
+    189081,
+    189088,
+    189090,
+    189093,
+    189097,
+    201081
+   ]
+  },
+  "tangtv_only": {
+   "bins": 861,
+   "shots": 26,
+   "seconds": 43.05,
+   "shot_ids": [
+    189057,
+    189061,
+    189062,
     189081,
     189088,
     189090,
@@ -57,10 +73,15 @@
     189097,
     189100,
     189101,
+    189448,
     189451,
+    190109,
+    190110,
+    190113,
     190116,
     199166,
     199171,
+    199172,
     199351,
     199352,
     199353,
@@ -69,39 +90,10 @@
     201081
    ]
   },
-  "tangtv_only": {
-   "bins": 398,
-   "shots": 22,
-   "seconds": 19.9,
-   "shot_ids": [
-    189061,
-    189062,
-    189081,
-    189088,
-    189090,
-    189093,
-    189094,
-    189097,
-    189100,
-    189101,
-    189448,
-    189451,
-    190110,
-    190113,
-    199166,
-    199171,
-    199172,
-    199351,
-    199352,
-    199353,
-    199354,
-    200977
-   ]
-  },
   "labelled_certain_or_tangtv_only": {
-   "bins": 673,
-   "shots": 25,
-   "seconds": 33.65,
+   "bins": 1008,
+   "shots": 26,
+   "seconds": 50.4,
    "shot_ids": [
     189057,
     189061,
@@ -116,6 +108,7 @@
     189101,
     189448,
     189451,
+    190109,
     190110,
     190113,
     190116,
@@ -132,9 +125,9 @@
   },
   "by_state": {
    "attached": {
-    "bins": 351,
+    "bins": 453,
     "shots": 19,
-    "seconds": 17.55,
+    "seconds": 22.65,
     "shot_ids": [
      189057,
      189081,
@@ -158,9 +151,9 @@
     ]
    },
    "detached": {
-    "bins": 322,
-    "shots": 19,
-    "seconds": 16.1,
+    "bins": 555,
+    "shots": 20,
+    "seconds": 27.75,
     "shot_ids": [
      189057,
      189061,
@@ -171,6 +164,7 @@
      189094,
      189100,
      189101,
+     190109,
      190110,
      190113,
      190116,
@@ -184,13 +178,11 @@
     ]
    },
    "uncertain": {
-    "bins": 1106,
-    "shots": 32,
-    "seconds": 55.3,
+    "bins": 771,
+    "shots": 27,
+    "seconds": 38.55,
     "shot_ids": [
      189057,
-     189061,
-     189062,
      189081,
      189088,
      189090,
@@ -199,10 +191,7 @@
      189097,
      189100,
      189101,
-     189448,
-     189451,
      190109,
-     190110,
      190113,
      190116,
      199166,
@@ -225,55 +214,37 @@
   },
   "by_state_certain": {
    "attached": {
-    "bins": 132,
-    "shots": 15,
-    "seconds": 6.6,
+    "bins": 60,
+    "shots": 5,
+    "seconds": 3.0,
     "shot_ids": [
      189057,
      189081,
-     189088,
-     189090,
      189093,
-     189094,
      189097,
-     189100,
-     189451,
-     199171,
-     199351,
-     199352,
-     199353,
-     200977,
      201081
     ]
    },
    "detached": {
-    "bins": 143,
-    "shots": 13,
-    "seconds": 7.15,
+    "bins": 87,
+    "shots": 4,
+    "seconds": 4.35,
     "shot_ids": [
      189057,
      189088,
      189090,
-     189094,
-     189100,
-     189101,
-     190116,
-     199166,
-     199352,
-     199353,
-     199354,
-     200977,
      201081
     ]
    }
   },
   "by_state_tangtv_only": {
    "attached": {
-    "bins": 219,
-    "shots": 15,
-    "seconds": 10.95,
+    "bins": 393,
+    "shots": 17,
+    "seconds": 19.65,
     "shot_ids": [
      189081,
+     189088,
      189090,
      189093,
      189094,
@@ -287,14 +258,16 @@
      199351,
      199352,
      199353,
-     199354
+     199354,
+     200977
     ]
    },
    "detached": {
-    "bins": 179,
-    "shots": 13,
-    "seconds": 8.95,
+    "bins": 468,
+    "shots": 20,
+    "seconds": 23.4,
     "shot_ids": [
+     189057,
      189061,
      189062,
      189081,
@@ -303,11 +276,17 @@
      189094,
      189100,
      189101,
+     190109,
      190110,
      190113,
+     190116,
+     199166,
      199172,
      199352,
-     200977
+     199353,
+     199354,
+     200977,
+     201081
     ]
    }
   },
@@ -316,12 +295,12 @@
     "assessed_bins": 1722,
     "assessed_shots": 31,
     "certain_bins_by_state": {
-     "attached": 132,
-     "detached": 143
+     "attached": 60,
+     "detached": 87
     },
     "tangtv_only_bins_by_state": {
-     "attached": 219,
-     "detached": 166
+     "attached": 393,
+     "detached": 411
     }
    },
    "val": {
@@ -333,7 +312,7 @@
     },
     "tangtv_only_bins_by_state": {
      "attached": 0,
-     "detached": 13
+     "detached": 57
     }
    }
   },
@@ -355,121 +334,51 @@
     }
    },
    "certain": {
-    "bins": 275,
-    "shots": 19,
-    "seconds": 13.75,
+    "bins": 147,
+    "shots": 7,
+    "seconds": 7.35,
     "shot_ids": [
      189057,
      189081,
      189088,
      189090,
      189093,
-     189094,
      189097,
-     189100,
-     189101,
-     189451,
-     190116,
-     199166,
-     199171,
-     199351,
-     199352,
-     199353,
-     199354,
-     200977,
      201081
     ],
     "state_bins": {
-     "attached": 132,
-     "detached": 143,
+     "attached": 60,
+     "detached": 87,
      "uncertain": 0
     }
    },
    "conflict": {
-    "bins": 447,
-    "shots": 29,
-    "seconds": 22.35,
+    "bins": 29,
+    "shots": 5,
+    "seconds": 1.45,
     "shot_ids": [
      189057,
-     189061,
-     189062,
      189081,
      189088,
      189090,
-     189093,
-     189094,
-     189097,
-     189100,
-     189101,
-     189448,
-     189451,
-     190109,
-     190110,
-     190113,
-     199166,
-     199171,
-     199351,
-     199352,
-     199353,
-     199354,
-     201081,
-     206880,
-     206886,
-     206891,
-     206892,
-     206893,
-     206894
+     189093
     ],
     "state_bins": {
      "attached": 0,
      "detached": 0,
-     "uncertain": 447
+     "uncertain": 29
     }
    },
    "insufficient_support": {
-    "bins": 163,
-    "shots": 24,
-    "seconds": 8.15,
+    "bins": 224,
+    "shots": 13,
+    "seconds": 11.2,
     "shot_ids": [
      189057,
      189081,
      189088,
      189090,
      189093,
-     189094,
-     189097,
-     189100,
-     189101,
-     190109,
-     199166,
-     199171,
-     199172,
-     199351,
-     199352,
-     199353,
-     199354,
-     201081,
-     206880,
-     206886,
-     206891,
-     206892,
-     206893,
-     206894
-    ],
-    "state_bins": {
-     "attached": 0,
-     "detached": 0,
-     "uncertain": 163
-    }
-   },
-   "low_confidence_pair": {
-    "bins": 67,
-    "shots": 11,
-    "seconds": 3.35,
-    "shot_ids": [
-     189057,
-     189081,
-     189088,
      189097,
      201081,
      206880,
@@ -482,7 +391,7 @@
     "state_bins": {
      "attached": 0,
      "detached": 0,
-     "uncertain": 67
+     "uncertain": 224
     }
    },
    "lower_shelf_window": {
@@ -504,37 +413,47 @@
     }
    },
    "no_vote": {
-    "bins": 34,
-    "shots": 15,
-    "seconds": 1.7,
+    "bins": 123,
+    "shots": 24,
+    "seconds": 6.15,
     "shot_ids": [
      189081,
      189088,
      189090,
      189093,
      189094,
+     189097,
+     189100,
      189101,
+     190109,
+     199166,
+     199171,
      199172,
+     199351,
      199352,
      199353,
      199354,
      200977,
      201081,
      206880,
+     206886,
      206891,
+     206892,
+     206893,
      206894
     ],
     "state_bins": {
      "attached": 0,
      "detached": 0,
-     "uncertain": 34
+     "uncertain": 123
     }
    },
    "tangtv_only": {
-    "bins": 398,
-    "shots": 22,
-    "seconds": 19.9,
+    "bins": 861,
+    "shots": 26,
+    "seconds": 43.05,
     "shot_ids": [
+     189057,
      189061,
      189062,
      189081,
@@ -547,8 +466,10 @@
      189101,
      189448,
      189451,
+     190109,
      190110,
      190113,
+     190116,
      199166,
      199171,
      199172,
@@ -556,11 +477,12 @@
      199352,
      199353,
      199354,
-     200977
+     200977,
+     201081
     ],
     "state_bins": {
-     "attached": 219,
-     "detached": 179,
+     "attached": 393,
+     "detached": 468,
      "uncertain": 0
     }
    }
@@ -762,17 +684,24 @@
    "gate": "ELM, ramp, low power, and known L-mode bins abstain"
   },
   "afrac_in_labelled_bins": {
-   "labelled_bins_certain_or_tangtv_only": 673,
-   "certain_bins": 275,
-   "certain_bins_with_afrac_cast": 128,
-   "certain_bins_with_f_div_cast": 212,
-   "certain_bins_corroborated_by_afrac_only": 63,
-   "certain_bins_corroborated_by_f_div_only": 147,
-   "certain_bins_corroborated_by_both": 65
+   "labelled_bins_certain_or_tangtv_only": 1008,
+   "certain_bins": 147,
+   "certain_bins_with_afrac_cast": 147,
+   "tangtv_only_bins": 861,
+   "tangtv_only_afrac_valid_between_cutoffs": 52,
+   "tangtv_only_afrac_invalid": 809,
+   "tangtv_only_afrac_invalid_reasons": {
+    "short_reference": 311,
+    "l_mode": 277,
+    "probe_off_separatrix": 195,
+    "elm": 22,
+    "no_power": 3,
+    "probe_flux_unknown": 1
+   }
   }
  },
  "prad": {
-  "exported_vote": "relative f_div over the shot baseline",
+  "role": "within-shot corroborator, not a vote: the relative and absolute votes below are sensitivities",
   "by_tier": {
    "lower_shelf_window": {
     "bins": 333,
@@ -1043,7 +972,7 @@
      "tangtv_marfe_spatial": false,
      "tangtv_marfe_second_cue": false,
      "aux_greenwald_fraction": 0.6966516113177825,
-     "tier": "certain",
+     "tier": "tangtv_only",
      "state_rule": 2
     },
     {
@@ -1092,44 +1021,18 @@
    "shots_with_attached": [
     189057,
     189081,
-    189088,
-    189090,
     189093,
-    189094,
     189097,
-    189100,
-    189451,
-    199171,
-    199351,
-    199352,
-    199353,
-    200977,
     201081
    ],
    "shots_with_detached": [
     189057,
     189088,
     189090,
-    189094,
-    189100,
-    189101,
-    190116,
-    199166,
-    199352,
-    199353,
-    199354,
-    200977,
     201081
    ],
    "shots_with_both": [
     189057,
-    189088,
-    189090,
-    189094,
-    189100,
-    199352,
-    199353,
-    200977,
     201081
    ],
    "cohort_shots_with_both": [],
@@ -1169,6 +1072,7 @@
     189094,
     189100,
     189101,
+    190109,
     190110,
     190113,
     190116,

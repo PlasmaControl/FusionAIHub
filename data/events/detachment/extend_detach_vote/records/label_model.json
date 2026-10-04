@@ -150,34 +150,34 @@
  },
  "state_counts_bins": {
   "label_model": {
-   "attached": 132,
-   "detached": 143,
+   "attached": 55,
+   "detached": 73,
    "marfe": 0,
-   "uncertain": 1504
+   "uncertain": 1651
   },
   "rule": {
-   "attached": 351,
-   "detached": 322,
+   "attached": 453,
+   "detached": 555,
    "marfe": 0,
-   "uncertain": 1106
+   "uncertain": 771
   }
  },
  "rule_vs_label_model": {
   "bins": 1779,
-  "agreement": 0.7762788083192805,
-  "kappa": 0.4975000691960975,
+  "agreement": 0.5053400786958966,
+  "kappa": 0.14288060706601186,
   "rows_rule_columns_label_model": {
    "attached": {
-    "attached": 132,
+    "attached": 55,
     "detached": 0,
     "marfe": 0,
-    "uncertain": 219
+    "uncertain": 398
    },
    "detached": {
     "attached": 0,
-    "detached": 143,
+    "detached": 73,
     "marfe": 0,
-    "uncertain": 179
+    "uncertain": 482
    },
    "marfe": {
     "attached": 0,
@@ -189,52 +189,51 @@
     "attached": 0,
     "detached": 0,
     "marfe": 0,
-    "uncertain": 1106
+    "uncertain": 771
    }
   }
  },
  "uncertain_by_threshold": {
   "0.5": {
-   "attached": 132,
-   "detached": 143,
+   "attached": 55,
+   "detached": 73,
    "marfe": 0,
-   "uncertain": 1504
+   "uncertain": 1651
   },
   "0.6": {
-   "attached": 132,
-   "detached": 143,
+   "attached": 55,
+   "detached": 73,
    "marfe": 0,
-   "uncertain": 1504
+   "uncertain": 1651
   },
   "0.7": {
-   "attached": 132,
-   "detached": 143,
+   "attached": 55,
+   "detached": 73,
    "marfe": 0,
-   "uncertain": 1504
+   "uncertain": 1651
   },
   "0.8": {
-   "attached": 132,
-   "detached": 143,
+   "attached": 55,
+   "detached": 73,
    "marfe": 0,
-   "uncertain": 1504
+   "uncertain": 1651
   },
   "0.9": {
-   "attached": 132,
-   "detached": 143,
+   "attached": 55,
+   "detached": 73,
    "marfe": 0,
-   "uncertain": 1504
+   "uncertain": 1651
   }
  },
  "primary_labeler": "rule",
  "state_lm_column": "legacy alias of primary rule; model is state_model_diagnostic",
  "tier_counts": {
-  "conflict": 447,
-  "tangtv_only": 398,
+  "tangtv_only": 861,
   "lower_shelf_window": 325,
-  "certain": 275,
-  "insufficient_support": 163,
+  "insufficient_support": 224,
+  "certain": 147,
+  "no_vote": 123,
   "candidate_marfe": 70,
-  "low_confidence_pair": 67,
-  "no_vote": 34
+  "conflict": 29
  }
 }

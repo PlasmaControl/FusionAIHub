@@ -7,11 +7,11 @@
   "reason": "No independent physical state reference with evaluable coverage; the divertor Thomson check is in docs/labeler/results/detachment_te_check.json."
  },
  "label_set": "geometry-gated TangTV state, validated by divertor Thomson Te",
- "interpretation": "Certain labels are the TangTV vote with an agreeing second indicator; TangTV only labels (silver) are the TangTV vote alone. Neither is independent truth. Agreement does not establish accuracy.",
+ "interpretation": "Certain labels are the TangTV vote with an agreeing Afrac vote; TangTV only labels (silver) are the TangTV vote with Afrac abstaining or invalid. Neither is independent truth. Agreement does not establish accuracy.",
  "bin_ms": 50.0,
  "figure": {
   "width_in": 3.25,
-  "height_in": 4.6,
+  "height_in": 5.4,
   "min_font_pt": 7
  },
  "population": "all exported assessed eligible-shot bins, every split",
@@ -115,9 +115,9 @@
    ]
   },
   "labelled_certain_or_tangtv_only": {
-   "bins": 673,
-   "shots": 25,
-   "seconds": 33.65,
+   "bins": 1008,
+   "shots": 26,
+   "seconds": 50.4,
    "shot_ids": [
     189057,
     189061,
@@ -132,6 +132,7 @@
     189101,
     189448,
     189451,
+    190109,
     190110,
     190113,
     190116,
@@ -147,60 +148,39 @@
    ]
   },
   "certain": {
-   "bins": 275,
-   "shots": 19,
-   "seconds": 13.75,
+   "bins": 147,
+   "shots": 7,
+   "seconds": 7.35,
    "shot_ids": [
     189057,
     189081,
     189088,
     189090,
     189093,
-    189094,
     189097,
-    189100,
-    189101,
-    189451,
-    190116,
-    199166,
-    199171,
-    199351,
-    199352,
-    199353,
-    199354,
-    200977,
     201081
    ]
   },
   "by_class": {
    "attached_certain": {
-    "bins": 132,
-    "shots": 15,
-    "seconds": 6.6,
+    "bins": 60,
+    "shots": 5,
+    "seconds": 3.0,
     "shot_ids": [
      189057,
      189081,
-     189088,
-     189090,
      189093,
-     189094,
      189097,
-     189100,
-     189451,
-     199171,
-     199351,
-     199352,
-     199353,
-     200977,
      201081
     ]
    },
    "attached_silver": {
-    "bins": 219,
-    "shots": 15,
-    "seconds": 10.95,
+    "bins": 393,
+    "shots": 17,
+    "seconds": 19.65,
     "shot_ids": [
      189081,
+     189088,
      189090,
      189093,
      189094,
@@ -214,34 +194,27 @@
      199351,
      199352,
      199353,
-     199354
+     199354,
+     200977
     ]
    },
    "detached_certain": {
-    "bins": 143,
-    "shots": 13,
-    "seconds": 7.15,
+    "bins": 87,
+    "shots": 4,
+    "seconds": 4.35,
     "shot_ids": [
      189057,
      189088,
      189090,
-     189094,
-     189100,
-     189101,
-     190116,
-     199166,
-     199352,
-     199353,
-     199354,
-     200977,
      201081
     ]
    },
    "detached_silver": {
-    "bins": 179,
-    "shots": 13,
-    "seconds": 8.95,
+    "bins": 468,
+    "shots": 20,
+    "seconds": 23.4,
     "shot_ids": [
+     189057,
      189061,
      189062,
      189081,
@@ -250,11 +223,17 @@
      189094,
      189100,
      189101,
+     190109,
      190110,
      190113,
+     190116,
+     199166,
      199172,
      199352,
-     200977
+     199353,
+     199354,
+     200977,
+     201081
     ]
    },
    "candidate_marfe": {
@@ -269,13 +248,11 @@
     ]
    },
    "uncertain": {
-    "bins": 1036,
-    "shots": 31,
-    "seconds": 51.8,
+    "bins": 701,
+    "shots": 25,
+    "seconds": 35.05,
     "shot_ids": [
      189057,
-     189061,
-     189062,
      189081,
      189088,
      189090,
@@ -284,11 +261,7 @@
      189097,
      189100,
      189101,
-     189448,
-     189451,
      190109,
-     190110,
-     190113,
      199166,
      199171,
      199172,
@@ -320,106 +293,41 @@
     ]
    },
    "certain": {
-    "bins": 275,
-    "shots": 19,
-    "seconds": 13.75,
+    "bins": 147,
+    "shots": 7,
+    "seconds": 7.35,
     "shot_ids": [
      189057,
      189081,
      189088,
      189090,
      189093,
-     189094,
      189097,
-     189100,
-     189101,
-     189451,
-     190116,
-     199166,
-     199171,
-     199351,
-     199352,
-     199353,
-     199354,
-     200977,
      201081
     ]
    },
    "conflict": {
-    "bins": 447,
-    "shots": 29,
-    "seconds": 22.35,
+    "bins": 29,
+    "shots": 5,
+    "seconds": 1.45,
     "shot_ids": [
      189057,
-     189061,
-     189062,
      189081,
      189088,
      189090,
-     189093,
-     189094,
-     189097,
-     189100,
-     189101,
-     189448,
-     189451,
-     190109,
-     190110,
-     190113,
-     199166,
-     199171,
-     199351,
-     199352,
-     199353,
-     199354,
-     201081,
-     206880,
-     206886,
-     206891,
-     206892,
-     206893,
-     206894
+     189093
     ]
    },
    "insufficient_support": {
-    "bins": 163,
-    "shots": 24,
-    "seconds": 8.15,
+    "bins": 224,
+    "shots": 13,
+    "seconds": 11.2,
     "shot_ids": [
      189057,
      189081,
      189088,
      189090,
      189093,
-     189094,
-     189097,
-     189100,
-     189101,
-     190109,
-     199166,
-     199171,
-     199172,
-     199351,
-     199352,
-     199353,
-     199354,
-     201081,
-     206880,
-     206886,
-     206891,
-     206892,
-     206893,
-     206894
-    ]
-   },
-   "low_confidence_pair": {
-    "bins": 67,
-    "shots": 11,
-    "seconds": 3.35,
-    "shot_ids": [
-     189057,
-     189081,
-     189088,
      189097,
      201081,
      206880,
@@ -444,32 +352,42 @@
     ]
    },
    "no_vote": {
-    "bins": 34,
-    "shots": 15,
-    "seconds": 1.7,
+    "bins": 123,
+    "shots": 24,
+    "seconds": 6.15,
     "shot_ids": [
      189081,
      189088,
      189090,
      189093,
      189094,
+     189097,
+     189100,
      189101,
+     190109,
+     199166,
+     199171,
      199172,
+     199351,
      199352,
      199353,
      199354,
      200977,
      201081,
      206880,
+     206886,
      206891,
+     206892,
+     206893,
      206894
     ]
    },
    "tangtv_only": {
-    "bins": 398,
-    "shots": 22,
-    "seconds": 19.9,
+    "bins": 861,
+    "shots": 26,
+    "seconds": 43.05,
     "shot_ids": [
+     189057,
      189061,
      189062,
      189081,
@@ -482,8 +400,10 @@
      189101,
      189448,
      189451,
+     190109,
      190110,
      190113,
+     190116,
      199166,
      199171,
      199172,
@@ -491,7 +411,8 @@
      199352,
      199353,
      199354,
-     200977
+     200977,
+     201081
     ]
    }
   },
@@ -667,49 +588,15 @@
      }
     },
     "by_tier": {
-     "conflict": {
-      "bins": 70,
-      "shots": 10,
-      "seconds": 3.5,
-      "shot_ids": [
-       189057,
-       189093,
-       189097,
-       201081,
-       206880,
-       206886,
-       206891,
-       206892,
-       206893,
-       206894
-      ]
-     },
      "insufficient_support": {
-      "bins": 98,
+      "bins": 206,
       "shots": 12,
-      "seconds": 4.9,
+      "seconds": 10.3,
       "shot_ids": [
        189057,
        189081,
        189088,
        189093,
-       189097,
-       201081,
-       206880,
-       206886,
-       206891,
-       206892,
-       206893,
-       206894
-      ]
-     },
-     "low_confidence_pair": {
-      "bins": 66,
-      "shots": 10,
-      "seconds": 3.3,
-      "shot_ids": [
-       189057,
-       189088,
        189097,
        201081,
        206880,
@@ -721,14 +608,19 @@
       ]
      },
      "no_vote": {
-      "bins": 6,
-      "shots": 5,
-      "seconds": 0.3,
+      "bins": 34,
+      "shots": 10,
+      "seconds": 1.7,
       "shot_ids": [
        189081,
+       189093,
+       189097,
        201081,
        206880,
+       206886,
        206891,
+       206892,
+       206893,
        206894
       ]
      }
@@ -769,9 +661,9 @@
      ]
     },
     "labelled_certain_or_tangtv_only": {
-     "bins": 673,
-     "shots": 25,
-     "seconds": 33.65,
+     "bins": 1008,
+     "shots": 26,
+     "seconds": 50.4,
      "shot_ids": [
       189057,
       189061,
@@ -786,6 +678,7 @@
       189101,
       189448,
       189451,
+      190109,
       190110,
       190113,
       190116,
@@ -801,60 +694,39 @@
      ]
     },
     "certain": {
-     "bins": 275,
-     "shots": 19,
-     "seconds": 13.75,
+     "bins": 147,
+     "shots": 7,
+     "seconds": 7.35,
      "shot_ids": [
       189057,
       189081,
       189088,
       189090,
       189093,
-      189094,
       189097,
-      189100,
-      189101,
-      189451,
-      190116,
-      199166,
-      199171,
-      199351,
-      199352,
-      199353,
-      199354,
-      200977,
       201081
      ]
     },
     "by_class": {
      "attached_certain": {
-      "bins": 132,
-      "shots": 15,
-      "seconds": 6.6,
+      "bins": 60,
+      "shots": 5,
+      "seconds": 3.0,
       "shot_ids": [
        189057,
        189081,
-       189088,
-       189090,
        189093,
-       189094,
        189097,
-       189100,
-       189451,
-       199171,
-       199351,
-       199352,
-       199353,
-       200977,
        201081
       ]
      },
      "attached_silver": {
-      "bins": 219,
-      "shots": 15,
-      "seconds": 10.95,
+      "bins": 393,
+      "shots": 17,
+      "seconds": 19.65,
       "shot_ids": [
        189081,
+       189088,
        189090,
        189093,
        189094,
@@ -868,34 +740,27 @@
        199351,
        199352,
        199353,
-       199354
+       199354,
+       200977
       ]
      },
      "detached_certain": {
-      "bins": 143,
-      "shots": 13,
-      "seconds": 7.15,
+      "bins": 87,
+      "shots": 4,
+      "seconds": 4.35,
       "shot_ids": [
        189057,
        189088,
        189090,
-       189094,
-       189100,
-       189101,
-       190116,
-       199166,
-       199352,
-       199353,
-       199354,
-       200977,
        201081
       ]
      },
      "detached_silver": {
-      "bins": 179,
-      "shots": 13,
-      "seconds": 8.95,
+      "bins": 468,
+      "shots": 20,
+      "seconds": 23.4,
       "shot_ids": [
+       189057,
        189061,
        189062,
        189081,
@@ -904,11 +769,17 @@
        189094,
        189100,
        189101,
+       190109,
        190110,
        190113,
+       190116,
+       199166,
        199172,
        199352,
-       200977
+       199353,
+       199354,
+       200977,
+       201081
       ]
      },
      "candidate_marfe": {
@@ -923,26 +794,19 @@
       ]
      },
      "uncertain": {
-      "bins": 471,
-      "shots": 25,
-      "seconds": 23.55,
+      "bins": 136,
+      "shots": 18,
+      "seconds": 6.8,
       "shot_ids": [
        189057,
-       189061,
-       189062,
        189081,
        189088,
        189090,
        189093,
        189094,
-       189097,
        189100,
        189101,
-       189448,
-       189451,
        190109,
-       190110,
-       190113,
        199166,
        199171,
        199172,
@@ -968,23 +832,58 @@
       ]
      },
      "certain": {
-      "bins": 275,
-      "shots": 19,
-      "seconds": 13.75,
+      "bins": 147,
+      "shots": 7,
+      "seconds": 7.35,
       "shot_ids": [
        189057,
        189081,
        189088,
        189090,
        189093,
-       189094,
        189097,
+       201081
+      ]
+     },
+     "conflict": {
+      "bins": 29,
+      "shots": 5,
+      "seconds": 1.45,
+      "shot_ids": [
+       189057,
+       189081,
+       189088,
+       189090,
+       189093
+      ]
+     },
+     "insufficient_support": {
+      "bins": 18,
+      "shots": 4,
+      "seconds": 0.9,
+      "shot_ids": [
+       189081,
+       189090,
+       189093,
+       201081
+      ]
+     },
+     "no_vote": {
+      "bins": 89,
+      "shots": 17,
+      "seconds": 4.45,
+      "shot_ids": [
+       189081,
+       189088,
+       189090,
+       189093,
+       189094,
        189100,
        189101,
-       189451,
-       190116,
+       190109,
        199166,
        199171,
+       199172,
        199351,
        199352,
        199353,
@@ -993,10 +892,10 @@
        201081
       ]
      },
-     "conflict": {
-      "bins": 377,
-      "shots": 23,
-      "seconds": 18.85,
+     "tangtv_only": {
+      "bins": 861,
+      "shots": 26,
+      "seconds": 43.05,
       "shot_ids": [
        189057,
        189061,
@@ -1014,91 +913,16 @@
        190109,
        190110,
        190113,
+       190116,
        199166,
        199171,
+       199172,
        199351,
        199352,
        199353,
        199354,
+       200977,
        201081
-      ]
-     },
-     "insufficient_support": {
-      "bins": 65,
-      "shots": 16,
-      "seconds": 3.25,
-      "shot_ids": [
-       189081,
-       189088,
-       189090,
-       189093,
-       189094,
-       189100,
-       189101,
-       190109,
-       199166,
-       199171,
-       199172,
-       199351,
-       199352,
-       199353,
-       199354,
-       201081
-      ]
-     },
-     "low_confidence_pair": {
-      "bins": 1,
-      "shots": 1,
-      "seconds": 0.05,
-      "shot_ids": [
-       189081
-      ]
-     },
-     "no_vote": {
-      "bins": 28,
-      "shots": 11,
-      "seconds": 1.4,
-      "shot_ids": [
-       189081,
-       189088,
-       189090,
-       189093,
-       189094,
-       189101,
-       199172,
-       199352,
-       199353,
-       199354,
-       200977
-      ]
-     },
-     "tangtv_only": {
-      "bins": 398,
-      "shots": 22,
-      "seconds": 19.9,
-      "shot_ids": [
-       189061,
-       189062,
-       189081,
-       189088,
-       189090,
-       189093,
-       189094,
-       189097,
-       189100,
-       189101,
-       189448,
-       189451,
-       190110,
-       190113,
-       199166,
-       199171,
-       199172,
-       199351,
-       199352,
-       199353,
-       199354,
-       200977
       ]
      }
     }
@@ -1145,9 +969,9 @@
      ]
     },
     "labelled_certain_or_tangtv_only": {
-     "bins": 660,
-     "shots": 24,
-     "seconds": 33.0,
+     "bins": 951,
+     "shots": 25,
+     "seconds": 47.55,
      "shot_ids": [
       189057,
       189062,
@@ -1161,6 +985,7 @@
       189101,
       189448,
       189451,
+      190109,
       190110,
       190113,
       190116,
@@ -1176,60 +1001,39 @@
      ]
     },
     "certain": {
-     "bins": 275,
-     "shots": 19,
-     "seconds": 13.75,
+     "bins": 147,
+     "shots": 7,
+     "seconds": 7.35,
      "shot_ids": [
       189057,
       189081,
       189088,
       189090,
       189093,
-      189094,
       189097,
-      189100,
-      189101,
-      189451,
-      190116,
-      199166,
-      199171,
-      199351,
-      199352,
-      199353,
-      199354,
-      200977,
       201081
      ]
     },
     "by_class": {
      "attached_certain": {
-      "bins": 132,
-      "shots": 15,
-      "seconds": 6.6,
+      "bins": 60,
+      "shots": 5,
+      "seconds": 3.0,
       "shot_ids": [
        189057,
        189081,
-       189088,
-       189090,
        189093,
-       189094,
        189097,
-       189100,
-       189451,
-       199171,
-       199351,
-       199352,
-       199353,
-       200977,
        201081
       ]
      },
      "attached_silver": {
-      "bins": 219,
-      "shots": 15,
-      "seconds": 10.95,
+      "bins": 393,
+      "shots": 17,
+      "seconds": 19.65,
       "shot_ids": [
        189081,
+       189088,
        189090,
        189093,
        189094,
@@ -1243,34 +1047,27 @@
        199351,
        199352,
        199353,
-       199354
+       199354,
+       200977
       ]
      },
      "detached_certain": {
-      "bins": 143,
-      "shots": 13,
-      "seconds": 7.15,
+      "bins": 87,
+      "shots": 4,
+      "seconds": 4.35,
       "shot_ids": [
        189057,
        189088,
        189090,
-       189094,
-       189100,
-       189101,
-       190116,
-       199166,
-       199352,
-       199353,
-       199354,
-       200977,
        201081
       ]
      },
      "detached_silver": {
-      "bins": 166,
-      "shots": 12,
-      "seconds": 8.3,
+      "bins": 411,
+      "shots": 19,
+      "seconds": 20.55,
       "shot_ids": [
+       189057,
        189062,
        189081,
        189088,
@@ -1278,11 +1075,17 @@
        189094,
        189100,
        189101,
+       190109,
        190110,
        190113,
+       190116,
+       199166,
        199172,
        199352,
-       200977
+       199353,
+       199354,
+       200977,
+       201081
       ]
      },
      "candidate_marfe": {
@@ -1297,12 +1100,11 @@
       ]
      },
      "uncertain": {
-      "bins": 992,
-      "shots": 30,
-      "seconds": 49.6,
+      "bins": 701,
+      "shots": 25,
+      "seconds": 35.05,
       "shot_ids": [
        189057,
-       189062,
        189081,
        189088,
        189090,
@@ -1311,11 +1113,7 @@
        189097,
        189100,
        189101,
-       189448,
-       189451,
        190109,
-       190110,
-       190113,
        199166,
        199171,
        199172,
@@ -1347,105 +1145,41 @@
       ]
      },
      "certain": {
-      "bins": 275,
-      "shots": 19,
-      "seconds": 13.75,
+      "bins": 147,
+      "shots": 7,
+      "seconds": 7.35,
       "shot_ids": [
        189057,
        189081,
        189088,
        189090,
        189093,
-       189094,
        189097,
-       189100,
-       189101,
-       189451,
-       190116,
-       199166,
-       199171,
-       199351,
-       199352,
-       199353,
-       199354,
-       200977,
        201081
       ]
      },
      "conflict": {
-      "bins": 403,
-      "shots": 28,
-      "seconds": 20.15,
+      "bins": 29,
+      "shots": 5,
+      "seconds": 1.45,
       "shot_ids": [
        189057,
-       189062,
        189081,
        189088,
        189090,
-       189093,
-       189094,
-       189097,
-       189100,
-       189101,
-       189448,
-       189451,
-       190109,
-       190110,
-       190113,
-       199166,
-       199171,
-       199351,
-       199352,
-       199353,
-       199354,
-       201081,
-       206880,
-       206886,
-       206891,
-       206892,
-       206893,
-       206894
+       189093
       ]
      },
      "insufficient_support": {
-      "bins": 163,
-      "shots": 24,
-      "seconds": 8.15,
+      "bins": 224,
+      "shots": 13,
+      "seconds": 11.2,
       "shot_ids": [
        189057,
        189081,
        189088,
        189090,
        189093,
-       189094,
-       189097,
-       189100,
-       189101,
-       190109,
-       199166,
-       199171,
-       199172,
-       199351,
-       199352,
-       199353,
-       199354,
-       201081,
-       206880,
-       206886,
-       206891,
-       206892,
-       206893,
-       206894
-      ]
-     },
-     "low_confidence_pair": {
-      "bins": 67,
-      "shots": 11,
-      "seconds": 3.35,
-      "shot_ids": [
-       189057,
-       189081,
-       189088,
        189097,
        201081,
        206880,
@@ -1470,32 +1204,42 @@
       ]
      },
      "no_vote": {
-      "bins": 34,
-      "shots": 15,
-      "seconds": 1.7,
+      "bins": 123,
+      "shots": 24,
+      "seconds": 6.15,
       "shot_ids": [
        189081,
        189088,
        189090,
        189093,
        189094,
+       189097,
+       189100,
        189101,
+       190109,
+       199166,
+       199171,
        199172,
+       199351,
        199352,
        199353,
        199354,
        200977,
        201081,
        206880,
+       206886,
        206891,
+       206892,
+       206893,
        206894
       ]
      },
      "tangtv_only": {
-      "bins": 385,
-      "shots": 21,
-      "seconds": 19.25,
+      "bins": 804,
+      "shots": 25,
+      "seconds": 40.2,
       "shot_ids": [
+       189057,
        189062,
        189081,
        189088,
@@ -1507,8 +1251,10 @@
        189101,
        189448,
        189451,
+       190109,
        190110,
        190113,
+       190116,
        199166,
        199171,
        199172,
@@ -1516,7 +1262,8 @@
        199352,
        199353,
        199354,
-       200977
+       200977,
+       201081
       ]
      }
     }
@@ -1531,9 +1278,9 @@
      ]
     },
     "labelled_certain_or_tangtv_only": {
-     "bins": 13,
+     "bins": 57,
      "shots": 1,
-     "seconds": 0.65,
+     "seconds": 2.85,
      "shot_ids": [
       189061
      ]
@@ -1564,9 +1311,9 @@
       "shot_ids": []
      },
      "detached_silver": {
-      "bins": 13,
+      "bins": 57,
       "shots": 1,
-      "seconds": 0.65,
+      "seconds": 2.85,
       "shot_ids": [
        189061
       ]
@@ -1578,27 +1325,17 @@
       "shot_ids": []
      },
      "uncertain": {
-      "bins": 44,
-      "shots": 1,
-      "seconds": 2.2,
-      "shot_ids": [
-       189061
-      ]
+      "bins": 0,
+      "shots": 0,
+      "seconds": 0.0,
+      "shot_ids": []
      }
     },
     "by_tier": {
-     "conflict": {
-      "bins": 44,
-      "shots": 1,
-      "seconds": 2.2,
-      "shot_ids": [
-       189061
-      ]
-     },
      "tangtv_only": {
-      "bins": 13,
+      "bins": 57,
       "shots": 1,
-      "seconds": 0.65,
+      "seconds": 2.85,
       "shot_ids": [
        189061
       ]
@@ -1635,21 +1372,21 @@
    "key": "te_certain",
    "label": "certain tier",
    "chance": 0.5,
-   "value": 0.9092063492063492,
+   "value": 0.9374074074074074,
    "ci95": [
-    0.7684567782815808,
-    0.9600018656716418
+    0.038461538461538464,
+    0.9749687108886108
    ],
-   "n_bins": 195,
-   "n_not_attached": 90,
-   "n_shots": 17,
+   "n_bins": 104,
+   "n_not_attached": 54,
+   "n_shots": 6,
    "within_shot": {
     "min_class_bins": 5,
     "n_shots": 2,
-    "mean": 0.9510052447552448,
+    "mean": 0.9512946204122674,
     "mean_ci95": [
-     0.9326923076923077,
-     0.9693181818181819
+     0.9485294117647058,
+     0.9540598290598291
     ]
    },
    "drawn": true
@@ -1658,21 +1395,21 @@
    "key": "te_tangtv_only",
    "label": "TangTV only",
    "chance": 0.5,
-   "value": 0.9539165920175177,
+   "value": 0.949170426935092,
    "ci95": [
-    0.9038084768157233,
-    0.9954373573655061
+    0.9067372227867367,
+    0.9808687043328118
    ],
-   "n_bins": 248,
-   "n_not_attached": 51,
-   "n_shots": 19,
+   "n_bins": 550,
+   "n_not_attached": 215,
+   "n_shots": 22,
    "within_shot": {
     "min_class_bins": 5,
-    "n_shots": 1,
-    "mean": 0.8,
+    "n_shots": 4,
+    "mean": 0.9753632478632479,
     "mean_ci95": [
-     0.8,
-     0.8
+     0.9353632478632479,
+     0.9978632478632479
     ]
    },
    "drawn": true
@@ -1683,8 +1420,8 @@
    "chance": 0.5,
    "value": 0.763136987856089,
    "ci95": [
-    0.44423954583152697,
-    0.8617408532575817
+    0.47350877192982455,
+    0.8683607240973312
    ],
    "n_bins": 188,
    "n_not_attached": 99,
@@ -1702,12 +1439,12 @@
   },
   {
    "key": "te_f_div_vote",
-   "label": "$f_{\\mathrm{div}}$ rel. vote",
+   "label": "$f_{\\mathrm{div}}$ votes (unused)",
    "chance": 0.5,
    "value": 0.41632088520055327,
    "ci95": [
-    0.22807053167376728,
-    0.5898859002189156
+    0.24558753698673397,
+    0.5862605749964933
    ],
    "n_bins": 505,
    "n_not_attached": 241,
@@ -1717,8 +1454,8 @@
     "n_shots": 6,
     "mean": 0.805450486830888,
     "mean_ci95": [
-     0.6534897025171625,
-     0.9185223822557246
+     0.6687016908212561,
+     0.9185303371920851
     ]
    },
    "drawn": true
@@ -1727,28 +1464,123 @@
  "second_vote_effect": {
   "question": "does requiring an agreeing second indicator improve the agreement of the TangTV state with divertor Thomson Te?",
   "certain_minus_tangtv_alone": {
-   "difference": -0.03609089807563082,
+   "difference": -0.007889839874572702,
    "ci95": [
-    -0.16497231449447095,
-    0.010908661324257666
+    -0.9233705380621924,
+    0.02729303683832425
    ],
    "n_shots": 23,
-   "valid_replicates": 1000,
+   "valid_replicates": 957,
    "reading": "not distinguishable",
    "note": "AUROC(-Te) of the certain bins minus that of every TangTV attached/detached vote on the upper shelf that has a Te; the certain bins are a subset of them"
   },
   "certain_minus_tangtv_where_second_vote_missing_or_clashing": {
-   "difference": -0.05087247962247954,
+   "difference": -0.010206803111965201,
    "ci95": [
-    -0.17520610489490793,
-    0.0067042492155986256
+    -0.9377092015603788,
+    0.03639679055870842
    ],
    "n_shots": 23,
-   "valid_replicates": 1000,
+   "valid_replicates": 972,
    "reading": "not distinguishable",
    "note": "against the TangTV votes that are tangtv_only or in conflict"
   }
  },
+ "fdiv_corroborator": [
+  {
+   "key": "fdiv_relative_vs_tangtv",
+   "label": "relative vs TangTV",
+   "chance": 0.5,
+   "pooled": {
+    "value": 0.4125615153416785,
+    "ci95": [
+     0.24950625133777915,
+     0.5698334411528645
+    ],
+    "n_bins": 990,
+    "n_shots": 26
+   },
+   "within_shot": {
+    "value": 0.7952316827657118,
+    "ci95": [
+     0.579179713901243,
+     0.9766503598740441
+    ],
+    "n_shots": 8,
+    "shots_above_chance": 6
+   }
+  },
+  {
+   "key": "fdiv_relative_vs_te",
+   "label": "relative vs Te",
+   "chance": 0.5,
+   "pooled": {
+    "value": 0.395546516478932,
+    "ci95": [
+     0.20297424672424672,
+     0.5775215558830616
+    ],
+    "n_bins": 690,
+    "n_shots": 25
+   },
+   "within_shot": {
+    "value": 0.6921815504431039,
+    "ci95": [
+     0.5389506973357906,
+     0.857473681370755
+    ],
+    "n_shots": 7,
+    "shots_above_chance": 4
+   }
+  },
+  {
+   "key": "fdiv_absolute_vs_tangtv",
+   "label": "absolute vs TangTV",
+   "chance": 0.5,
+   "pooled": {
+    "value": 0.7825824883574991,
+    "ci95": [
+     0.6288340932058518,
+     0.9235544524743224
+    ],
+    "n_bins": 990,
+    "n_shots": 26
+   },
+   "within_shot": {
+    "value": 0.7952316827657118,
+    "ci95": [
+     0.5617884655549129,
+     0.9769849302744039
+    ],
+    "n_shots": 8,
+    "shots_above_chance": 6
+   }
+  },
+  {
+   "key": "fdiv_absolute_vs_te",
+   "label": "absolute vs Te",
+   "chance": 0.5,
+   "pooled": {
+    "value": 0.7835836462244472,
+    "ci95": [
+     0.6944380659557354,
+     0.8589881950577214
+    ],
+    "n_bins": 690,
+    "n_shots": 25
+   },
+   "within_shot": {
+    "value": 0.6921815504431039,
+    "ci95": [
+     0.5397188551309853,
+     0.8551153350726767
+    ],
+    "n_shots": 7,
+    "shots_above_chance": 4
+   }
+  }
+ ],
+ "fdiv_source": "/scratch/gpfs/nc1514/FusionAIHub-r4-detach/docs/labeler/results/detachment_fdiv_check.json",
  "te_source": "/scratch/gpfs/nc1514/FusionAIHub-r4-detach/docs/labeler/results/detachment_te_check.json",
  "agreement": [
   {
@@ -2388,27 +2220,29 @@
     ]
    },
    "certain_label": {
-    "bins": 128,
-    "shots": 6,
-    "seconds": 6.4,
+    "bins": 147,
+    "shots": 7,
+    "seconds": 7.35,
     "shot_ids": [
      189057,
      189081,
      189088,
      189090,
+     189093,
      189097,
      201081
     ]
    },
    "labelled_certain_or_tangtv_only": {
-    "bins": 128,
-    "shots": 6,
-    "seconds": 6.4,
+    "bins": 147,
+    "shots": 7,
+    "seconds": 7.35,
     "shot_ids": [
      189057,
      189081,
      189088,
      189090,
+     189093,
      189097,
      201081
     ]
@@ -2416,7 +2250,7 @@
   },
   {
    "indicator": "prad",
-   "setting": "Prad,div,L over P_in, 250 ms inter-ELM means, over the shot's own baseline (per-shot relative); 201081-anchored absolute cutoffs are a sensitivity",
+   "setting": "Prad,div,L over P_in, 250 ms inter-ELM means; a within-shot corroborator, not a vote of the label (its relative and 201081-anchored absolute votes are sensitivities)",
    "population": "all extracted shot/bin grids, every split",
    "population_counts": {
     "bins": 50032,
@@ -3854,37 +3688,27 @@
     ]
    },
    "certain_label": {
-    "bins": 212,
-    "shots": 19,
-    "seconds": 10.6,
+    "bins": 84,
+    "shots": 7,
+    "seconds": 4.2,
     "shot_ids": [
      189057,
      189081,
      189088,
      189090,
      189093,
-     189094,
      189097,
-     189100,
-     189101,
-     189451,
-     190116,
-     199166,
-     199171,
-     199351,
-     199352,
-     199353,
-     199354,
-     200977,
      201081
     ]
    },
    "labelled_certain_or_tangtv_only": {
-    "bins": 212,
-    "shots": 19,
-    "seconds": 10.6,
+    "bins": 547,
+    "shots": 25,
+    "seconds": 27.35,
     "shot_ids": [
      189057,
+     189061,
+     189062,
      189081,
      189088,
      189090,
@@ -3893,7 +3717,11 @@
      189097,
      189100,
      189101,
+     189448,
      189451,
+     190109,
+     190110,
+     190113,
      190116,
      199166,
      199171,
@@ -4506,35 +4334,23 @@
     ]
    },
    "certain_label": {
-    "bins": 275,
-    "shots": 19,
-    "seconds": 13.75,
+    "bins": 147,
+    "shots": 7,
+    "seconds": 7.35,
     "shot_ids": [
      189057,
      189081,
      189088,
      189090,
      189093,
-     189094,
      189097,
-     189100,
-     189101,
-     189451,
-     190116,
-     199166,
-     199171,
-     199351,
-     199352,
-     199353,
-     199354,
-     200977,
      201081
     ]
    },
    "labelled_certain_or_tangtv_only": {
-    "bins": 673,
-    "shots": 25,
-    "seconds": 33.65,
+    "bins": 1008,
+    "shots": 26,
+    "seconds": 50.4,
     "shot_ids": [
      189057,
      189061,
@@ -4549,6 +4365,7 @@
      189101,
      189448,
      189451,
+     190109,
      190110,
      190113,
      190116,
@@ -4567,8 +4384,9 @@
  ],
  "definitions": {
   "assessed": "at least two valid measurements on an eligible shot, or a TangTV vote",
-  "certain": "assessed bin where the TangTV vote and an agreeing second indicator (relative f_div or Afrac) state attached or detached and none disagrees",
-  "tangtv_only": "assessed bin where TangTV votes and every other indicator abstains or is invalid (silver)",
+  "certain": "assessed bin where the TangTV vote and an agreeing valid Afrac vote state attached or detached",
+  "tangtv_only": "assessed bin where TangTV votes and Afrac abstains or is invalid (silver)",
+  "conflict": "TangTV and Afrac vote against each other; uncertain",
   "candidate_marfe": "uncertain bin with a sustained TangTV high front; no MARFE state is exported",
   "uncertain": "every other assessed bin; the tier says why",
   "te_auroc": "P(Te of a detached-vote bin < Te of an attached-vote bin); 0.5 is chance",
@@ -4592,7 +4410,7 @@
    0.39904071127749174,
    0.4458352831071596
   ],
-  "prad_cutoffs_note": "the exported f_div vote is the per-shot relative one (f_div over the shot baseline); the absolute cutoffs are global (one pair for every shot), anchored on 201081, and a sensitivity: docs/labeler/results/detachment_prad_anchor.json",
+  "prad_cutoffs_note": "f_div is not a vote of the label. Its relative votes (f_div over the shot baseline) and its absolute votes (global cutoffs, one pair for every shot, anchored on 201081) are sensitivities: docs/labeler/results/detachment_prad_anchor.json",
   "afrac_window_psin": 0.01,
   "afrac_votes": [
    0.5,
@@ -4603,8 +4421,9 @@
  "sources": {
   "labels": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/labels_bins.csv.gz",
   "bins": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins",
-  "labels_sha256": "3c4084f1b92df33bd665ce5115db0fba19f2abc6875e88b1823e356f96a7a9c3",
+  "labels_sha256": "b7daaa3cb943438905813c6408b54a3ad5f99dba366a5fa79ee5d9f57f9bdf06",
   "benchmark": "/scratch/gpfs/nc1514/FusionAIHub-r4-detach/docs/labeler/results/detachment_benchmark.json",
-  "te_check": "/scratch/gpfs/nc1514/FusionAIHub-r4-detach/docs/labeler/results/detachment_te_check.json"
+  "te_check": "/scratch/gpfs/nc1514/FusionAIHub-r4-detach/docs/labeler/results/detachment_te_check.json",
+  "fdiv_check": "/scratch/gpfs/nc1514/FusionAIHub-r4-detach/docs/labeler/results/detachment_fdiv_check.json"
  }
 }

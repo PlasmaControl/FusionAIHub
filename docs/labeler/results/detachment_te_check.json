@@ -1,7 +1,7 @@
 {
  "bin_ms": 50.0,
  "method": [
-  "The processed divertor Thomson Te (`\\ELECTRONS::TSTE_DIV`, 14 or 16 chords at R = 1.485 m,\n20 ms, fetched by `detach_fetch_round4.py --stage dts`) is a temperature\nmeasurement that none of the three indicators uses, so it checks them where the\nlabel cannot: the cold-target criterion that the literature itself uses.",
+  "The processed divertor Thomson Te (`\\ELECTRONS::TSTE_DIV`, 14 or 16 chords at\nR = 1.485 m, 20 ms, fetched by `detach_fetch_round4.py --stage dts`) is a temperature\nmeasurement that none of the three indicators uses, so it checks them where the\nlabel cannot: the cold-target criterion that the literature itself uses.",
   "* Chords: those 1.5 to 5 cm above the outer shelf (Z = -1.25 m). The lowest chord\n  (0.7 cm) is left out for stray light (Eldon 2017) and Chen 2026's own chords on\n  shot 201081 are Z = -1.222 and -1.205 m. A chord counts at a time only while it\n  lies on the SOL side of the separatrix and in the near SOL, 1.000 < psiN <= 1.05,\n  by the multi-slice EFIT map on disk (the strike point moves off the chord on\n  other shots); samples outside 0.1-50 eV are rejected (Eldon 2017).\n* Bands: attached is Te >= 10 eV, detached Te <= 5 eV (Eldon 2017's detachment\n  threshold; the Te cliff jumps between about 1-3 eV and 8-20 eV and 3-8 eV values\n  are rare). Chen 2026 reports 20 eV to 3 eV across the cliffs of shot 201081.\n  The bands were fixed from those digests before scoring.\n* A bin's Te is the median of the selected chords' valid samples inside it.",
   "Reported per primary state, per label tier and per indicator vote: how many bins and\nshots carry a Te, the Te quantiles, the share inside the band, and a threshold-free\nAUROC of -Te for the detached against the attached bins (pooled and within shots,\nwith shot-bootstrap intervals; the number of shots behind each within-shot figure is\nbeside it). The tiers are `certain` (TangTV plus an agreeing second indicator),\n`tangtv_only` (TangTV alone, silver), both together (the exported attached and\ndetached bins) and the TangTV vote alone; a paired shot bootstrap says whether the\nsecond vote improves the agreement with Te. Shot 201081's two cliff times are read\nfrom the data and set beside the published ones. No threshold is fitted here.",
   "    pixi run --frozen -e labelmaker python scripts/labeler/detach_te_check.py\n"
@@ -99,14 +99,14 @@
  "bins_assessed": 1779,
  "primary_state": {
   "attached": {
-   "n_bins": 302,
+   "n_bins": 385,
    "te_ev_quantiles_10_50_90": [
-    7.866146779060364,
-    16.241451025009155,
-    22.528158473968507
+    7.812114810943604,
+    15.982235431671143,
+    22.10672206878662
    ],
-   "share_in_band": 0.8344370860927153,
-   "share_between_bands": 0.10927152317880795,
+   "share_in_band": 0.8415584415584415,
+   "share_between_bands": 0.10649350649350649,
    "n_shots": 18,
    "shot_ids": [
     189057,
@@ -130,24 +130,26 @@
    ]
   },
   "detached": {
-   "n_bins": 141,
+   "n_bins": 269,
    "te_ev_quantiles_10_50_90": [
-    1.383955717086792,
-    2.4792702198028564,
-    10.14505672454834
+    1.4084607720375062,
+    2.263678789138794,
+    9.439525198936463
    ],
-   "share_in_band": 0.6666666666666666,
-   "share_between_bands": 0.2198581560283688,
-   "n_shots": 15,
+   "share_in_band": 0.7360594795539034,
+   "share_between_bands": 0.18587360594795538,
+   "n_shots": 17,
    "shot_ids": [
     189057,
     189061,
+    189062,
     189081,
     189088,
     189090,
     189094,
     189100,
     189101,
+    190109,
     190110,
     190113,
     199166,
@@ -164,24 +166,24 @@
   },
   "auroc_neg_te_detached_vs_attached": {
    "pooled": {
-    "value": 0.9315203607157954,
+    "value": 0.9465070245739391,
     "ci95": [
-     0.8865234419476341,
-     0.9695416284004483
+     0.9066739724283046,
+     0.977328883062411
     ],
-    "n_bins": 443,
-    "n_not_attached": 141,
-    "n_shots": 21,
+    "n_bins": 654,
+    "n_not_attached": 269,
+    "n_shots": 23,
     "valid_replicates": 1000,
     "replicates": 1000
    },
    "within_shot": {
     "min_class_bins": 5,
     "n_shots": 6,
-    "mean": 0.9628350815850816,
+    "mean": 0.9676252723311546,
     "mean_ci95": [
-     0.9246794871794872,
-     0.9948863636363637
+     0.9422207977207977,
+     0.9889814814814816
     ]
    }
   }
@@ -189,51 +191,36 @@
  "by_tier": {
   "certain": {
    "attached": {
-    "n_bins": 105,
+    "n_bins": 50,
     "te_ev_quantiles_10_50_90": [
-     7.816950035095215,
-     15.980426788330078,
-     22.085331630706786
+     7.751157927513123,
+     13.061738967895508,
+     21.552785682678223
     ],
-    "share_in_band": 0.780952380952381,
-    "share_between_bands": 0.17142857142857143,
-    "n_shots": 14,
+    "share_in_band": 0.74,
+    "share_between_bands": 0.24,
+    "n_shots": 5,
     "shot_ids": [
      189057,
      189081,
-     189088,
-     189090,
      189093,
-     189094,
      189097,
-     189100,
-     189451,
-     199171,
-     199351,
-     199352,
-     199353,
      201081
     ]
    },
    "detached": {
-    "n_bins": 90,
+    "n_bins": 54,
     "te_ev_quantiles_10_50_90": [
-     1.3781769633293153,
-     2.950462281703949,
-     10.652966070175172
+     1.2113194584846496,
+     1.9778723418712616,
+     8.99454807043076
     ],
-    "share_in_band": 0.5444444444444444,
-    "share_between_bands": 0.32222222222222224,
-    "n_shots": 9,
+    "share_in_band": 0.7777777777777778,
+    "share_between_bands": 0.14814814814814814,
+    "n_shots": 3,
     "shot_ids": [
      189057,
      189090,
-     189100,
-     189101,
-     199166,
-     199352,
-     199353,
-     199354,
      201081
     ]
    },
@@ -244,41 +231,42 @@
    },
    "auroc_neg_te_detached_vs_attached": {
     "pooled": {
-     "value": 0.9092063492063492,
+     "value": 0.9374074074074074,
      "ci95": [
-      0.7684567782815808,
-      0.9600018656716418
+      0.038461538461538464,
+      0.9749687108886108
      ],
-     "n_bins": 195,
-     "n_not_attached": 90,
-     "n_shots": 17,
-     "valid_replicates": 1000,
+     "n_bins": 104,
+     "n_not_attached": 54,
+     "n_shots": 6,
+     "valid_replicates": 979,
      "replicates": 1000
     },
     "within_shot": {
      "min_class_bins": 5,
      "n_shots": 2,
-     "mean": 0.9510052447552448,
+     "mean": 0.9512946204122674,
      "mean_ci95": [
-      0.9326923076923077,
-      0.9693181818181819
+      0.9485294117647058,
+      0.9540598290598291
      ]
     }
    }
   },
   "tangtv_only": {
    "attached": {
-    "n_bins": 197,
+    "n_bins": 335,
     "te_ev_quantiles_10_50_90": [
-     8.150240993499756,
-     16.29012680053711,
-     22.69825439453125
+     7.812114810943603,
+     16.370302200317383,
+     22.434158325195312
     ],
-    "share_in_band": 0.8629441624365483,
-    "share_between_bands": 0.07614213197969544,
-    "n_shots": 15,
+    "share_in_band": 0.8567164179104477,
+    "share_between_bands": 0.08656716417910448,
+    "n_shots": 16,
     "shot_ids": [
      189081,
+     189088,
      189090,
      189093,
      189094,
@@ -296,25 +284,32 @@
     ]
    },
    "detached": {
-    "n_bins": 51,
+    "n_bins": 215,
     "te_ev_quantiles_10_50_90": [
-     1.4091712832450867,
-     2.2572853565216064,
-     6.841369867324829
+     1.4685892939567566,
+     2.3079047203063965,
+     9.604799222946166
     ],
-    "share_in_band": 0.8823529411764706,
-    "share_between_bands": 0.0392156862745098,
-    "n_shots": 9,
+    "share_in_band": 0.7255813953488373,
+    "share_between_bands": 0.19534883720930232,
+    "n_shots": 16,
     "shot_ids": [
      189061,
+     189062,
      189081,
      189088,
      189090,
      189094,
+     189100,
      189101,
+     190109,
      190110,
      190113,
-     199352
+     199166,
+     199352,
+     199353,
+     199354,
+     201081
     ]
    },
    "marfe": {
@@ -324,38 +319,38 @@
    },
    "auroc_neg_te_detached_vs_attached": {
     "pooled": {
-     "value": 0.9539165920175177,
+     "value": 0.949170426935092,
      "ci95": [
-      0.9038084768157233,
-      0.9954373573655061
+      0.9067372227867367,
+      0.9808687043328118
      ],
-     "n_bins": 248,
-     "n_not_attached": 51,
-     "n_shots": 19,
+     "n_bins": 550,
+     "n_not_attached": 215,
+     "n_shots": 22,
      "valid_replicates": 1000,
      "replicates": 1000
     },
     "within_shot": {
      "min_class_bins": 5,
-     "n_shots": 1,
-     "mean": 0.8,
+     "n_shots": 4,
+     "mean": 0.9753632478632479,
      "mean_ci95": [
-      0.8,
-      0.8
+      0.9353632478632479,
+      0.9978632478632479
      ]
     }
    }
   },
   "certain_or_tangtv_only": {
    "attached": {
-    "n_bins": 302,
+    "n_bins": 385,
     "te_ev_quantiles_10_50_90": [
-     7.866146779060364,
-     16.241451025009155,
-     22.528158473968507
+     7.812114810943604,
+     15.982235431671143,
+     22.10672206878662
     ],
-    "share_in_band": 0.8344370860927153,
-    "share_between_bands": 0.10927152317880795,
+    "share_in_band": 0.8415584415584415,
+    "share_between_bands": 0.10649350649350649,
     "n_shots": 18,
     "shot_ids": [
      189057,
@@ -379,24 +374,26 @@
     ]
    },
    "detached": {
-    "n_bins": 141,
+    "n_bins": 269,
     "te_ev_quantiles_10_50_90": [
-     1.383955717086792,
-     2.4792702198028564,
-     10.14505672454834
+     1.4084607720375062,
+     2.263678789138794,
+     9.439525198936463
     ],
-    "share_in_band": 0.6666666666666666,
-    "share_between_bands": 0.2198581560283688,
-    "n_shots": 15,
+    "share_in_band": 0.7360594795539034,
+    "share_between_bands": 0.18587360594795538,
+    "n_shots": 17,
     "shot_ids": [
      189057,
      189061,
+     189062,
      189081,
      189088,
      189090,
      189094,
      189100,
      189101,
+     190109,
      190110,
      190113,
      199166,
@@ -413,24 +410,24 @@
    },
    "auroc_neg_te_detached_vs_attached": {
     "pooled": {
-     "value": 0.9315203607157954,
+     "value": 0.9465070245739391,
      "ci95": [
-      0.8874117370092304,
-      0.9690981508183188
+      0.9106218993036476,
+      0.9774130030855857
      ],
-     "n_bins": 443,
-     "n_not_attached": 141,
-     "n_shots": 21,
+     "n_bins": 654,
+     "n_not_attached": 269,
+     "n_shots": 23,
      "valid_replicates": 1000,
      "replicates": 1000
     },
     "within_shot": {
      "min_class_bins": 5,
      "n_shots": 6,
-     "mean": 0.9628350815850816,
+     "mean": 0.9676252723311546,
      "mean_ci95": [
-      0.921168414918415,
-      0.9948863636363637
+      0.9412719959778783,
+      0.9900925925925925
      ]
     }
    }
@@ -529,55 +526,35 @@
   },
   "tangtv_vote_in_conflict_bins": {
    "attached": {
-    "n_bins": 91,
+    "n_bins": 8,
     "te_ev_quantiles_10_50_90": [
-     5.828832149505615,
-     15.264342308044434,
-     20.060704708099365
+     4.159291994571686,
+     8.057034373283386,
+     21.56649441719055
     ],
-    "share_in_band": 0.8241758241758241,
-    "share_between_bands": 0.12087912087912088,
-    "n_shots": 15,
+    "share_in_band": 0.375,
+    "share_between_bands": 0.375,
+    "n_shots": 3,
     "shot_ids": [
      189057,
      189081,
-     189093,
-     189097,
-     189100,
-     189101,
-     189448,
-     189451,
-     199166,
-     199171,
-     199351,
-     199352,
-     199353,
-     199354,
-     201081
+     189093
     ]
    },
    "detached": {
-    "n_bins": 134,
+    "n_bins": 6,
     "te_ev_quantiles_10_50_90": [
-     1.4800393640995027,
-     2.086079925298691,
-     6.901147770881654
+     1.6295417845249176,
+     2.0781089067459106,
+     2.9853246808052063
     ],
-    "share_in_band": 0.8208955223880597,
-    "share_between_bands": 0.1417910447761194,
-    "n_shots": 11,
+    "share_in_band": 1.0,
+    "share_between_bands": 0.0,
+    "n_shots": 3,
     "shot_ids": [
-     189057,
-     189061,
-     189062,
      189088,
      189090,
-     189093,
-     189094,
-     189101,
-     190109,
-     190110,
-     190113
+     189093
     ]
    },
    "marfe": {
@@ -587,15 +564,15 @@
    },
    "auroc_neg_te_detached_vs_attached": {
     "pooled": {
-     "value": 0.9585041823847794,
+     "value": 0.9791666666666666,
      "ci95": [
-      0.9057292311664108,
-      0.9933704538114531
+      0.9375,
+      1.0
      ],
-     "n_bins": 225,
-     "n_not_attached": 134,
-     "n_shots": 23,
-     "valid_replicates": 1000,
+     "n_bins": 14,
+     "n_not_attached": 6,
+     "n_shots": 5,
+     "valid_replicates": 981,
      "replicates": 1000
     },
     "within_shot": {
@@ -612,24 +589,24 @@
   "second_vote_effect": {
    "question": "does requiring an agreeing second indicator improve the agreement of the TangTV state with divertor Thomson Te?",
    "certain_minus_tangtv_alone": {
-    "difference": -0.03609089807563082,
+    "difference": -0.007889839874572702,
     "ci95": [
-     -0.16497231449447095,
-     0.010908661324257666
+     -0.9233705380621924,
+     0.02729303683832425
     ],
     "n_shots": 23,
-    "valid_replicates": 1000,
+    "valid_replicates": 957,
     "reading": "not distinguishable",
     "note": "AUROC(-Te) of the certain bins minus that of every TangTV attached/detached vote on the upper shelf that has a Te; the certain bins are a subset of them"
    },
    "certain_minus_tangtv_where_second_vote_missing_or_clashing": {
-    "difference": -0.05087247962247954,
+    "difference": -0.010206803111965201,
     "ci95": [
-     -0.17520610489490793,
-     0.0067042492155986256
+     -0.9377092015603788,
+     0.03639679055870842
     ],
     "n_shots": 23,
-    "valid_replicates": 1000,
+    "valid_replicates": 972,
     "reading": "not distinguishable",
     "note": "against the TangTV votes that are tangtv_only or in conflict"
    }
@@ -686,8 +663,8 @@
     "pooled": {
      "value": 0.763136987856089,
      "ci95": [
-      0.44423954583152697,
-      0.8617408532575817
+      0.47350877192982455,
+      0.8683607240973312
      ],
      "n_bins": 188,
      "n_not_attached": 99,
@@ -779,8 +756,8 @@
     "pooled": {
      "value": 0.41632088520055327,
      "ci95": [
-      0.22807053167376728,
-      0.5898859002189156
+      0.24558753698673397,
+      0.5862605749964933
      ],
      "n_bins": 505,
      "n_not_attached": 241,
@@ -793,8 +770,8 @@
      "n_shots": 6,
      "mean": 0.805450486830888,
      "mean_ci95": [
-      0.6534897025171625,
-      0.9185223822557246
+      0.6687016908212561,
+      0.9185303371920851
      ]
     }
    }
@@ -871,8 +848,8 @@
     "pooled": {
      "value": 0.9452972472819801,
      "ci95": [
-      0.907711719447511,
-      0.9775523167310985
+      0.9065008193108551,
+      0.975159142573756
      ],
      "n_bins": 668,
      "n_not_attached": 275,
@@ -885,8 +862,8 @@
      "n_shots": 6,
      "mean": 0.9693409586056645,
      "mean_ci95": [
-      0.9442581070889894,
-      0.9900974840791017
+      0.9440987933634992,
+      0.9912115384615385
      ]
     }
    }

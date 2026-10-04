@@ -15,23 +15,23 @@
     "confidence",
     "attrs"
   ],
-  "coverage": "Geometry-gated TangTV state, validated by divertor Thomson Te; no independent benchmark. A bin is assessed when at least two indicators are valid on it, or TangTV votes alone, on shots with at least 20 assessed bins and 20 valid bins from each of two indicators. Attached and detached are certain when upper-shelf TangTV votes and at least one other indicator (per-shot relative f_div, or Afrac) casts a compatible vote with no conflict; they are tangtv_only (silver) when TangTV votes and every other indicator abstains or is invalid. MARFE is never a state: a sustained TangTV MARFE vote is the uncertain tier candidate_marfe. Time with no row was not assessed; it is not attached. 4 (uncertain) is every other assessed bin: conflict, insufficient_support, candidate_marfe, lower_shelf_window, elm_unknown, geometry_unknown. The tier in each interval's attrs says which.",
+  "coverage": "Geometry-gated TangTV state, validated by divertor Thomson Te; no independent benchmark. A bin is assessed when at least two indicators are valid on it, or TangTV votes alone, on shots with at least 20 assessed bins and 20 valid bins from each of two indicators. Attached and detached are certain when upper-shelf TangTV votes and a valid Afrac vote agrees with it; they are tangtv_only (silver) when TangTV votes and Afrac abstains or is invalid; TangTV and Afrac voting against each other is conflict. Divertor radiation (f_div) is not a vote; it is reported per shot. MARFE is never a state: a sustained TangTV MARFE vote is the uncertain tier candidate_marfe. Time with no row was not assessed; it is not attached. 4 (uncertain) is every other assessed bin: conflict, insufficient_support, candidate_marfe, lower_shelf_window, elm_unknown, geometry_unknown. The tier in each interval's attrs says which.",
   "diagnostic_only": false,
   "diagnostic_posterior_threshold": 0.7,
   "fit_excluded_split": "test",
   "label_model_structure": "independent",
   "labeler": "rule",
-  "made_at": "2026-10-04T03:39:56+00:00",
+  "made_at": "2026-10-04T04:14:09+00:00",
   "made_by": "scripts/labeler/detach_label.py",
   "made_from": [
     {
       "code_dirty": false,
-      "git_sha": "c6924ca3",
+      "git_sha": "ab924a85",
       "producer": "detach_vote"
     }
   ],
   "n_requested_shots": 32,
-  "n_rows": 407,
+  "n_rows": 300,
   "n_shots": 32,
   "per_shot_files": {
     "axis_order": [
