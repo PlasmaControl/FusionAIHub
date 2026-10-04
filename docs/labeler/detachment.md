@@ -36,8 +36,8 @@ disagrees, `tangtv_only` (silver) when TangTV is the only vote. A persistent hig
 front, the MARFE candidate, is the uncertain tier `candidate_marfe`: the density
 cue that would make it a MARFE has no literature source (see the MARFE results).
 
-The brief for this label set asked for a benchmark of each single indicator against
-the combined label, and optionally for learned detectors. That is replaced by the
+The original plan for this label set called for a benchmark of each single indicator
+against the combined label, and optionally for learned detectors. That is replaced by the
 independent divertor Thomson Te check: scoring an indicator against a label built
 from it is circular, while Te is read by none of the three indicators. The
 single-indicator agreement tables remain as agreement diagnostics, and the learned
