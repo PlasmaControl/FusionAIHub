@@ -497,8 +497,8 @@
     }
   },
   "code_sha256": {
-    "scripts/labeler/ae_supervision_swap.py": "dd913fb6fe0310b040bf2fc8062f931d9397c5f60029d19eff097d160b51210a",
-    "scripts/labeler/ae_supervision_swap_report.py": "3ef559ad87591679a32f0b94263bd5321be43f9da5ddab01f171ad0ac6b344bb",
+    "scripts/labeler/ae_supervision_swap.py": "9a14f8361943178d7afca6366f63b5327bedd9a4c269199f28858251d36b849e",
+    "scripts/labeler/ae_supervision_swap_report.py": "d46801b0931588ba153a6e94b2f7d185e9df19ce7b58d33fa3973b3552bd5dcf",
     "scripts/labeler/ae_train.py": "ccc0be47b7ddfd3aa0ff296b7b52e75eee7638fc303c5877cedf9ebbfd8dfb72",
     "src/labeler/ae/model.py": "9789ed80721a87b7bfb0e07927d2d1469b3c3b51deb65edea5d33860c99c235f",
     "src/labeler/ae/supervision.py": "8e58ddbd31012527d61d889378cb338d64aa849c86b8946941573001e91b3a5f"
@@ -765,12 +765,15 @@
           "selection": 0,
           "train": 3
         },
+        "confirmation_entries": 0,
         "entries": 208,
         "first_change": "2026-09-25T20:43:49+00:00",
         "first_saved": "2026-09-23T16:42:21+00:00",
         "interval_changing_saves": 28,
         "last_change": "2026-09-29T18:07:16+00:00",
         "last_saved": "2026-09-29T18:07:16+00:00",
+        "saves": 208,
+        "shots_confirmed": 0,
         "shots_saved": 180
       },
       "Alvin Garcia": {
@@ -779,13 +782,16 @@
           "selection": 6,
           "train": 22
         },
+        "confirmation_entries": 180,
         "entries": 210,
         "first_change": "2026-10-01T21:22:07+00:00",
-        "first_saved": "2026-10-01T03:55:52+00:00",
+        "first_saved": "2026-10-01T21:22:07+00:00",
         "interval_changing_saves": 29,
         "last_change": "2026-10-01T21:39:39+00:00",
         "last_saved": "2026-10-01T21:39:58+00:00",
-        "shots_saved": 180
+        "saves": 30,
+        "shots_confirmed": 180,
+        "shots_saved": 28
       },
       "Nathaniel Chen": {
         "changed_shots": {
@@ -793,15 +799,21 @@
           "selection": 2,
           "train": 4
         },
+        "confirmation_entries": 180,
         "entries": 221,
         "first_change": "2026-09-29T19:19:15+00:00",
         "first_saved": "2026-09-29T18:44:11+00:00",
         "interval_changing_saves": 7,
         "last_change": "2026-10-01T23:16:55+00:00",
         "last_saved": "2026-10-01T23:17:05+00:00",
-        "shots_saved": 180
+        "saves": 41,
+        "shots_confirmed": 180,
+        "shots_saved": 36
       }
     },
+    "confirmation_times": [
+      "2026-10-01T03:55:52+00:00"
+    ],
     "entries": 639,
     "interval_changing_saves": "saves whose window or intervals differ from the shot's previous save",
     "latest_intervals_per_shot_total": 371,
@@ -1248,7 +1260,10 @@
     "display_band_change": {
       "after": "60-250 kHz",
       "before": "80-250 kHz",
+      "commit": "43279081",
+      "commit_utc": "2026-10-02T03:14:23+00:00",
       "date": "2026-09-30",
+      "file_modified_utc": "2026-09-30T14:24:35+00:00",
       "source": "BAND_KHZ comment in src/labeler/events/review/alfven.py"
     },
     "paper_snapshot": {
@@ -1693,8 +1708,8 @@
     "shots_checked": 180,
     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/ae/masks/<shot>_<split>_clean.npz t_ms"
   },
-  "generated": "2026-10-04T03:35:26.205409+00:00",
-  "git": "5f1a2b57c1fb99081d66e7e1f2288140e6403662",
+  "generated": "2026-10-04T04:01:53.402067+00:00",
+  "git": "fc2881d7d964722692b7d93fba9bc0888b20c212",
   "gpu_probe": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/aeswap/gpu_probe.json",
     "record": {
@@ -1731,6 +1746,16 @@
       "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/alfven_eigenmode/review/labels.csv",
       "sha256": "b4308ff52d766779f33a92e9441a916bb07c854dcc1a98a2f61109bb6431e93a",
       "snapshot": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/aeswap/inputs/dense.csv"
+    }
+  },
+  "interrupted_runs": {
+    "ae-ours-threeway-seed0-interrupted": {
+      "attempt_started_utc": "2026-10-03T13:24:23.188842+00:00",
+      "attempt_status": "running",
+      "completed_run": "models/threeway/seed-0",
+      "epochs_recorded": 3,
+      "first_epochs_match_completed_run": true,
+      "has_run_json": false
     }
   },
   "limitations": [

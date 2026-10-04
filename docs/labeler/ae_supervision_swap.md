@@ -6,7 +6,7 @@ Source of every number below: [evaluation.json](../../outputs/labeler/ae/supervi
 
 ## Summary
 
-On the 19 shared held-out shots the seed-mean AUROC of ae-ours trained on the legacy annotation, the dense relabel and annotation-and-TokEye agreement is 0.807, 0.980, 0.980 against the dense reference and 0.747, 0.685, 0.711 against the legacy annotation. ae-ours trained on the legacy annotation is below ae-rcn on both references in point estimate (resolved on the legacy annotation only), so, for this recipe (rather than the best achievable legacy-trained model), the reversal against ae-rcn needs dense or agreement targets; the reversal against ae-lstm persists (marginally on the dense reference). An input-free clock reaches 88% of ae-rcn's AUROC margin over chance against the legacy annotation, which makes time context a confound of every comparison with the saved detectors, and the dense reference is temporally coarse, so within-shot AUROC cannot rank methods on it. A. Garcia, the author of the saved detectors, saved interval changes to 28 training and selection shots and 0 evaluation shots of the dense labels (Limitations). Scores are float32; the largest change of a run's pooled AUROC from the bfloat16 inference is 0.0103. The Interpretation and Cross-architecture confounds sections give the numbers and the limits.
+On the 19 shared held-out shots the seed-mean AUROC of ae-ours trained on the legacy annotation, the dense relabel and annotation-and-TokEye agreement is 0.807, 0.980, 0.980 against the dense reference and 0.747, 0.685, 0.711 against the legacy annotation. ae-ours trained on the legacy annotation is below ae-rcn on both references in point estimate (resolved on the legacy annotation only), so, for this recipe (rather than the best achievable legacy-trained model), the reversal against ae-rcn needs dense or agreement targets; the reversal against ae-lstm persists (2 of 3 seeds; not resolved once seed variance is included), marginally on the dense reference. An input-free clock reaches 88% of ae-rcn's AUROC margin over chance against the legacy annotation, which makes time context a confound of every comparison with the saved detectors, and the dense reference is temporally coarse, so within-shot AUROC cannot rank methods on it. A. Garcia, the author of the saved detectors, saved interval changes to 28 training and selection shots and 0 evaluation shots of the dense labels (Limitations). Scores are float32; the largest change of a run's pooled AUROC from the bfloat16 inference is 0.0103. The Interpretation and Cross-architecture confounds sections give the numbers and the limits.
 
 ## Convergence rule and the nine records
 
@@ -28,10 +28,10 @@ An earlier draft of the rule (the screen alone) was applied by the previous impl
 | ae-ours-threeway-seed0 | 18 | 13 | conforms | 0.374 | 0.991 | accepted |
 | ae-ours-threeway-seed1 | 14 | 9 | conforms | 0.371 | 0.988 | accepted |
 | ae-ours-threeway-seed2 | 29 | 26 | conforms | 0.378 | 0.993 | accepted |
-| ae-ours-dense-seed1-superseded1 (first attempt) | 11 | 6 | stopped inside the plateau | 0.374 | 0.920 | superseded: rerun with the same seed |
-| ae-ours-legacy-seed2-superseded1 (first attempt) | 7 | 2 | stopped inside the plateau | 0.001 | 0.460 | superseded: rerun with the same seed |
+| ae-ours-dense-seed1-superseded1 (first attempt) | 11 | 6 | stopped before the rule allowed | 0.374 | 0.920 | superseded: rerun with the same seed |
+| ae-ours-legacy-seed2-superseded1 (first attempt) | 7 | 2 | stopped before the rule allowed | 0.001 | 0.460 | superseded: rerun with the same seed |
 
-Of the nine first-generation records, 7 conformed to rule 1 as they stood; 2 stopped inside the plateau (ae-ours-dense-seed1-superseded1, ae-ours-legacy-seed2-superseded1) and were rerun with the same seed. After rerunning, 9 of the 9 final records pass rule 2 and none needed replacing. Selection-only outputs were used for every decision above; no evaluation frame entered the rule. The first-attempt records are kept on disk and scored in the last section, so the effect of the rule is visible.
+Of the nine first-generation records, 7 conformed to rule 1 as they stood; 2 stopped before the rule allowed (ae-ours-dense-seed1-superseded1, ae-ours-legacy-seed2-superseded1) and were rerun with the same seed. After rerunning, 9 of the 9 final records pass rule 2 and none needed replacing. Selection-only outputs were used for every decision above; no evaluation frame entered the rule. The first-attempt records are kept on disk and scored in the last section, so the effect of the rule is visible.
 
 The table above and the decisions it records used the bfloat16 outputs; every score below is a float32 re-inference of the same checkpoints. Re-screened on the float32 selection scores, 9 of 9 accepted records pass rule 2 (within-shot SD 0.206 to 0.392, selection AUROC 0.787 to 0.994); no record changes status.
 
@@ -43,7 +43,7 @@ NumPy split seed 20261003 freezes 100 training, 20 selection and 60 evaluation s
 
 Only the activity target changes between arms. The legacy arm trains on the legacy annotation (the Heidbrink hand annotation) by the audit's at-least-half-annotated rule at 10 ms (classes 1 to 4, LFM excluded), expanded to the native columns; the dense arm uses the catalog any-touch state rule and masks unknown states; threeway keeps the native annotation-and-TokEye agreement, needs at least half the native columns of a frame to carry agreement weight, and masks disagreement. The annotation-and-TokEye frequency target and its weights are identical in every arm (verification.json). Each input covers 0 to 2 s as 7,820 native columns.
 
-**Band.** The model reads the CO2 spectrogram from 80.57 to 250.00 kHz (348 bins, four chords). The review display the dense labels were drawn on read 80-250 kHz until 2026-09-30 and 60-250 kHz afterwards (BAND_KHZ comment in src/labeler/events/review/alfven.py). The 29 training and selection shots that differ from the paper's snapshot were changed with the 60-250 kHz display (29 of 29; 1 of them also carry an earlier change made with the 80-250 kHz display), so present frames added to them can rest on activity between 60 and 80.6 kHz that ae-ours cannot see. Among the reviewers, A. Garcia saved changes on 28 of the 29 training and selection shots that differ from the paper's snapshot (22 training, 6 selection) and on 0 evaluation shots; N. Chen on 6 of them and 0 evaluation shots; unnamed saves on 1 of them and 1 evaluation shot (a shot can carry several). A. Garcia is the author of ae-rcn and ae-lstm (Limitations). The arms train on the current table, edits included. "Absent" in the dense labels, and in every target ae-ours trains on, means absent within the observed band; it says nothing about activity below 80.6 kHz, which the legacy annotation can mark and which can therefore be labelled absent. The saved UCI detectors read 20 to 250 kHz.
+**Band.** The model reads the CO2 spectrogram from 80.57 to 250.00 kHz (348 bins, four chords). The review display the dense labels were drawn on read 80-250 kHz until 2026-09-30 and 60-250 kHz afterwards (BAND_KHZ comment in src/labeler/events/review/alfven.py; the main checkout's copy of that file was last modified 2026-09-30 14:24:35 UTC, which fits the date, and the change was committed in 43279081 on 2026-10-02 03:14:23 UTC, after A. Garcia's saves; what the browser showed was not checked). The 29 training and selection shots that differ from the paper's snapshot were changed with the 60-250 kHz display (29 of 29; 1 of them also carries an earlier change made with the 80-250 kHz display), so present frames added to them can rest on activity between 60 and 80.6 kHz that ae-ours cannot see. Among the reviewers, A. Garcia saved changes on 28 of the 29 training and selection shots that differ from the paper's snapshot (22 training, 6 selection) and on 0 evaluation shots; N. Chen on 6 of them and 0 evaluation shots; unnamed saves on 1 of them and 1 evaluation shot (a shot can carry several). A. Garcia is the author of ae-rcn and ae-lstm (Limitations). The arms train on the current table, edits included. "Absent" in the dense labels, and in every target ae-ours trains on, means absent within the observed band; it says nothing about activity below 80.6 kHz, which the legacy annotation can mark and which can therefore be labelled absent. The saved UCI detectors read 20 to 250 kHz.
 
 **Frame grid.** The audit's 10 ms frames spread the 7,820 native columns evenly over 0 to 2 s (`frame_index`), and every arm, target and reference here inherits that assignment. The recorded column times run from -0.77 to 2000.89 ms, so 372 of the 7,820 columns fall in a neighbouring frame, at most 1.02 ms from the uniform centre (identical in all 180 shots).
 
@@ -75,7 +75,7 @@ ae-ours-dense-seed0, ae-ours-legacy-seed0 ran on A100 GPUs; every other record r
 
 ## Inference precision
 
-The training run scored each checkpoint under bfloat16 autocast. This Torch build emulates bfloat16 on the V100, and the frame probabilities it gives differ visibly from float32 ones. Every checkpoint was therefore re-inferred in float32 (autocast off; `infer-fp32`, files `probabilities_fp32.npz` and `fp32.json` beside each run), the thresholds were recalibrated on the float32 selection scores, and all scores, thresholds and intervals in this document are float32. The bfloat16 files are untouched. Change in the pooled-frame score, float32 minus bfloat16 (`precision_check` in evaluation.json): the largest change of any run in any cohort and reference is 0.0103 AUROC (ae-ours-legacy-seed1, all_60, dense reference) and 0.0203 AUPRC (ae-ours-legacy-seed2, fair_19, legacy reference). Seed-mean change per arm (AUROC / AUPRC):
+The training run scored each checkpoint under bfloat16 autocast. This Torch build emulates bfloat16 on the V100, and the frame probabilities it gives differ visibly from float32 ones. Every checkpoint was therefore re-inferred in float32 (autocast off; `infer-fp32`, files `probabilities_fp32.npz` and `fp32.json` beside each run), the thresholds were recalibrated on the float32 selection scores, and all scores, thresholds and intervals in this document are float32. The bfloat16 files are untouched. Change in the pooled-frame score, float32 minus bfloat16 (`precision_check` in evaluation.json): the largest change of any run in any cohort and reference is 0.0103 AUROC (ae-ours-legacy-seed1, 60 shots, dense reference) and 0.0203 AUPRC (ae-ours-legacy-seed2, 19 shared held-out shots, legacy annotation reference). Seed-mean change per arm (AUROC / AUPRC):
 
 | Arm | 60 shots, dense | 60 shots, legacy annotation | 19 shared held-out shots, dense | 19 shared held-out shots, legacy annotation |
 |---|---|---|---|---|
@@ -149,13 +149,13 @@ Against the dense reference:
 
 | First minus second | AUROC | AUPRC | F1 |
 |---|---|---|---|
+| ae-ours-dense minus ae-ours-threeway | +0.009 [-0.003, 0.028] | +0.004 [-0.002, 0.015] | +0.017 [0.007, 0.030] |
+| ae-ours-dense minus clock-legacy-annotation | +0.197 [0.169, 0.225] | +0.103 [0.084, 0.123] | +0.180 [0.152, 0.204] |
+| ae-ours-dense minus clock-dense | +0.142 [0.115, 0.167] | +0.077 [0.057, 0.099] | +0.196 [0.158, 0.228] |
 | ae-ours-legacy minus ae-ours-dense | -0.128 [-0.158, -0.100] | -0.058 [-0.074, -0.044] | -0.113 [-0.132, -0.095] |
 | ae-ours-legacy minus ae-ours-threeway | -0.118 [-0.153, -0.084] | -0.054 [-0.071, -0.037] | -0.095 [-0.115, -0.078] |
 | ae-ours-legacy minus clock-legacy-annotation | +0.070 [0.027, 0.107] | +0.045 [0.023, 0.066] | +0.067 [0.032, 0.100] |
 | ae-ours-legacy minus clock-dense | +0.014 [-0.031, 0.051] | +0.019 [-0.005, 0.042] | +0.083 [0.039, 0.125] |
-| ae-ours-dense minus ae-ours-threeway | +0.009 [-0.003, 0.028] | +0.004 [-0.002, 0.015] | +0.017 [0.007, 0.030] |
-| ae-ours-dense minus clock-legacy-annotation | +0.197 [0.169, 0.225] | +0.103 [0.084, 0.123] | +0.180 [0.152, 0.204] |
-| ae-ours-dense minus clock-dense | +0.142 [0.115, 0.167] | +0.077 [0.057, 0.099] | +0.196 [0.158, 0.228] |
 | ae-ours-threeway minus clock-legacy-annotation | +0.188 [0.151, 0.219] | +0.098 [0.077, 0.120] | +0.162 [0.131, 0.190] |
 | ae-ours-threeway minus clock-dense | +0.132 [0.096, 0.164] | +0.072 [0.049, 0.096] | +0.179 [0.139, 0.214] |
 | clock-legacy-annotation minus clock-dense | -0.056 [-0.067, -0.046] | -0.026 [-0.030, -0.022] | +0.016 [0.007, 0.024] |
@@ -164,13 +164,13 @@ Against the legacy annotation reference:
 
 | First minus second | AUROC | AUPRC | F1 |
 |---|---|---|---|
+| ae-ours-dense minus ae-ours-threeway | -0.011 [-0.029, 0.009] | -0.033 [-0.053, -0.011] | +0.001 [-0.013, 0.019] |
+| ae-ours-dense minus clock-legacy-annotation | -0.218 [-0.286, -0.152] | -0.269 [-0.352, -0.182] | -0.132 [-0.208, -0.052] |
+| ae-ours-dense minus clock-dense | -0.221 [-0.286, -0.159] | -0.258 [-0.329, -0.184] | -0.153 [-0.224, -0.082] |
 | ae-ours-legacy minus ae-ours-dense | +0.089 [0.046, 0.129] | +0.211 [0.164, 0.249] | +0.017 [-0.008, 0.038] |
 | ae-ours-legacy minus ae-ours-threeway | +0.078 [0.036, 0.115] | +0.178 [0.131, 0.221] | +0.019 [-0.010, 0.043] |
 | ae-ours-legacy minus clock-legacy-annotation | -0.129 [-0.184, -0.078] | -0.058 [-0.148, 0.026] | -0.114 [-0.186, -0.040] |
 | ae-ours-legacy minus clock-dense | -0.132 [-0.188, -0.085] | -0.047 [-0.126, 0.026] | -0.136 [-0.203, -0.069] |
-| ae-ours-dense minus ae-ours-threeway | -0.011 [-0.029, 0.009] | -0.033 [-0.053, -0.011] | +0.001 [-0.013, 0.019] |
-| ae-ours-dense minus clock-legacy-annotation | -0.218 [-0.286, -0.152] | -0.269 [-0.352, -0.182] | -0.132 [-0.208, -0.052] |
-| ae-ours-dense minus clock-dense | -0.221 [-0.286, -0.159] | -0.258 [-0.329, -0.184] | -0.153 [-0.224, -0.082] |
 | ae-ours-threeway minus clock-legacy-annotation | -0.207 [-0.270, -0.144] | -0.236 [-0.332, -0.138] | -0.133 [-0.204, -0.060] |
 | ae-ours-threeway minus clock-dense | -0.210 [-0.268, -0.152] | -0.225 [-0.309, -0.135] | -0.154 [-0.220, -0.088] |
 | clock-legacy-annotation minus clock-dense | -0.003 [-0.017, 0.012] | +0.011 [-0.009, 0.032] | -0.021 [-0.041, -0.002] |
@@ -195,8 +195,8 @@ Shots: 170660, 170661, 170663, 170666, 170669, 170677, 170678, 170718, 170725, 1
 | ae-ours, annotation-and-TokEye agreement, seed 1 | 0.983 [0.969, 0.993] | 0.993 [0.982, 0.998] | 0.994 [0.970, 1.000] | 0.943 [0.909, 0.969] |
 | ae-ours, annotation-and-TokEye agreement, seed 2 | 0.975 [0.954, 0.989] | 0.990 [0.976, 0.996] | 0.990 [0.978, 1.000] | 0.942 [0.907, 0.968] |
 | **ae-ours, annotation-and-TokEye agreement, mean over seeds** | 0.980 ± 0.005 | 0.992 ± 0.002 | 0.994 ± 0.004 | 0.940 ± 0.005 |
-| ae-rcn (UCI ±125 ms windows, 801 shots (saved)) | 0.862 [0.810, 0.907] | 0.930 [0.906, 0.955] | 0.980 [0.948, 0.993] | 0.864 [0.805, 0.912] |
-| ae-lstm (UCI ±125 ms windows, 801 shots (saved)) | 0.736 [0.654, 0.802] | 0.855 [0.835, 0.885] | 0.769 [0.692, 0.897] | 0.800 [0.763, 0.839] |
+| ae-rcn (saved predictions, UCI ±125 ms windows, 801 shots) | 0.862 [0.810, 0.907] | 0.930 [0.906, 0.955] | 0.980 [0.948, 0.993] | 0.864 [0.805, 0.912] |
+| ae-lstm (saved predictions, UCI ±125 ms windows, 801 shots) | 0.736 [0.654, 0.802] | 0.855 [0.835, 0.885] | 0.769 [0.692, 0.897] | 0.800 [0.763, 0.839] |
 | clock from legacy annotation (input-free, 120 shots) | 0.818 [0.773, 0.865] | 0.905 [0.881, 0.931] | 0.859 [0.849, 0.945] | 0.809 [0.775, 0.848]† |
 | clock from dense relabel (input-free, 120 shots) | 0.875 [0.834, 0.913] | 0.936 [0.909, 0.960] | 1.000 [0.995, 1.000] | 0.799 [0.753, 0.850]† |
 
@@ -216,8 +216,8 @@ Shots: 170660, 170661, 170663, 170666, 170669, 170677, 170678, 170718, 170725, 1
 | ae-ours, annotation-and-TokEye agreement, seed 1 | 0.698 [0.582, 0.816] | 0.355 [0.200, 0.570] | 0.835 [0.536, 0.948] | 0.450 [0.341, 0.586] |
 | ae-ours, annotation-and-TokEye agreement, seed 2 | 0.735 [0.626, 0.847] | 0.412 [0.224, 0.625] | 0.844 [0.603, 0.968] | 0.442 [0.328, 0.587] |
 | **ae-ours, annotation-and-TokEye agreement, mean over seeds** | 0.711 ± 0.021 | 0.372 ± 0.035 | 0.826 ± 0.025 | 0.445 ± 0.004 |
-| ae-rcn (UCI ±125 ms windows, 801 shots (saved)) | 0.911 [0.878, 0.939] | 0.691 [0.554, 0.798] | 0.944 [0.870, 0.976] | 0.571 [0.439, 0.660] |
-| ae-lstm (UCI ±125 ms windows, 801 shots (saved)) | 0.898 [0.854, 0.930] | 0.668 [0.509, 0.779] | 0.917 [0.835, 0.959] | 0.602 [0.435, 0.718] |
+| ae-rcn (saved predictions, UCI ±125 ms windows, 801 shots) | 0.911 [0.878, 0.939] | 0.691 [0.554, 0.798] | 0.944 [0.870, 0.976] | 0.571 [0.439, 0.660] |
+| ae-lstm (saved predictions, UCI ±125 ms windows, 801 shots) | 0.898 [0.854, 0.930] | 0.668 [0.509, 0.779] | 0.917 [0.835, 0.959] | 0.602 [0.435, 0.718] |
 | clock from legacy annotation (input-free, 120 shots) | 0.860 [0.817, 0.903] | 0.558 [0.413, 0.696] | 0.926 [0.844, 0.960] | 0.545 [0.441, 0.641]† |
 | clock from dense relabel (input-free, 120 shots) | 0.877 [0.840, 0.914] | 0.552 [0.422, 0.680] | 0.921 [0.862, 0.955] | 0.580 [0.485, 0.673]† |
 
@@ -227,52 +227,52 @@ Against the dense reference:
 
 | First minus second | AUROC | AUPRC | F1 |
 |---|---|---|---|
+| ae-lstm minus clock-legacy-annotation | -0.082 [-0.142, -0.039] | -0.050 [-0.068, -0.032] | -0.009 [-0.063, 0.037] |
+| ae-lstm minus clock-dense | -0.138 [-0.216, -0.091] | -0.081 [-0.099, -0.060] | +0.001 [-0.066, 0.056] |
+| ae-ours-dense minus ae-lstm | +0.244 [0.170, 0.326] | +0.136 [0.110, 0.155] | +0.159 [0.125, 0.194] |
+| ae-ours-dense minus ae-ours-threeway | -0.000 [-0.014, 0.012] | -0.000 [-0.007, 0.006] | +0.019 [0.005, 0.036] |
+| ae-ours-dense minus ae-rcn | +0.118 [0.066, 0.175] | +0.061 [0.037, 0.084] | +0.096 [0.055, 0.146] |
+| ae-ours-dense minus clock-legacy-annotation | +0.162 [0.106, 0.210] | +0.086 [0.062, 0.110] | +0.150 [0.091, 0.197] |
+| ae-ours-dense minus clock-dense | +0.105 [0.055, 0.149] | +0.055 [0.029, 0.082] | +0.160 [0.087, 0.220] |
+| ae-ours-legacy minus ae-lstm | +0.070 [0.001, 0.144] | +0.055 [0.017, 0.091] | +0.016 [-0.033, 0.072] |
 | ae-ours-legacy minus ae-ours-dense | -0.173 [-0.248, -0.111] | -0.081 [-0.108, -0.053] | -0.143 [-0.178, -0.111] |
 | ae-ours-legacy minus ae-ours-threeway | -0.173 [-0.251, -0.108] | -0.082 [-0.111, -0.051] | -0.124 [-0.163, -0.091] |
 | ae-ours-legacy minus ae-rcn | -0.055 [-0.149, 0.036] | -0.020 [-0.062, 0.024] | -0.048 [-0.096, 0.004] |
-| ae-ours-legacy minus ae-lstm | +0.070 [0.001, 0.144] | +0.055 [0.017, 0.091] | +0.016 [-0.033, 0.072] |
 | ae-ours-legacy minus clock-legacy-annotation | -0.011 [-0.095, 0.068] | +0.005 [-0.034, 0.046] | +0.007 [-0.060, 0.070] |
 | ae-ours-legacy minus clock-dense | -0.068 [-0.153, 0.012] | -0.026 [-0.068, 0.020] | +0.017 [-0.062, 0.090] |
-| ae-ours-dense minus ae-ours-threeway | -0.000 [-0.014, 0.012] | -0.000 [-0.007, 0.006] | +0.019 [0.005, 0.036] |
-| ae-ours-dense minus ae-rcn | +0.118 [0.066, 0.175] | +0.061 [0.037, 0.084] | +0.096 [0.055, 0.146] |
-| ae-ours-dense minus ae-lstm | +0.244 [0.170, 0.326] | +0.136 [0.110, 0.155] | +0.159 [0.125, 0.194] |
-| ae-ours-dense minus clock-legacy-annotation | +0.162 [0.106, 0.210] | +0.086 [0.062, 0.110] | +0.150 [0.091, 0.197] |
-| ae-ours-dense minus clock-dense | +0.105 [0.055, 0.149] | +0.055 [0.029, 0.082] | +0.160 [0.087, 0.220] |
-| ae-ours-threeway minus ae-rcn | +0.119 [0.070, 0.175] | +0.062 [0.038, 0.084] | +0.076 [0.036, 0.125] |
 | ae-ours-threeway minus ae-lstm | +0.244 [0.172, 0.327] | +0.136 [0.110, 0.155] | +0.140 [0.099, 0.181] |
+| ae-ours-threeway minus ae-rcn | +0.119 [0.070, 0.175] | +0.062 [0.038, 0.084] | +0.076 [0.036, 0.125] |
 | ae-ours-threeway minus clock-legacy-annotation | +0.162 [0.104, 0.210] | +0.086 [0.063, 0.110] | +0.131 [0.063, 0.185] |
 | ae-ours-threeway minus clock-dense | +0.105 [0.055, 0.147] | +0.056 [0.031, 0.081] | +0.141 [0.059, 0.207] |
 | ae-rcn minus ae-lstm | +0.125 [0.058, 0.200] | +0.075 [0.045, 0.096] | +0.063 [0.008, 0.114] |
 | ae-rcn minus clock-legacy-annotation | +0.043 [-0.007, 0.091] | +0.025 [0.001, 0.046] | +0.055 [-0.033, 0.128] |
 | ae-rcn minus clock-dense | -0.013 [-0.065, 0.033] | -0.006 [-0.031, 0.018] | +0.065 [-0.038, 0.152] |
-| ae-lstm minus clock-legacy-annotation | -0.082 [-0.142, -0.039] | -0.050 [-0.068, -0.032] | -0.009 [-0.063, 0.037] |
-| ae-lstm minus clock-dense | -0.138 [-0.216, -0.091] | -0.081 [-0.099, -0.060] | +0.001 [-0.066, 0.056] |
 | clock-legacy-annotation minus clock-dense | -0.056 [-0.076, -0.045] | -0.031 [-0.039, -0.023] | +0.010 [-0.008, 0.025] |
 
 Against the legacy annotation reference:
 
 | First minus second | AUROC | AUPRC | F1 |
 |---|---|---|---|
+| ae-lstm minus clock-legacy-annotation | +0.038 [-0.006, 0.079] | +0.110 [-0.022, 0.219] | +0.058 [-0.099, 0.175] |
+| ae-lstm minus clock-dense | +0.021 [-0.018, 0.060] | +0.116 [-0.003, 0.210] | +0.022 [-0.123, 0.138] |
+| ae-ours-dense minus ae-lstm | -0.213 [-0.335, -0.097] | -0.345 [-0.475, -0.163] | -0.171 [-0.265, -0.062] |
+| ae-ours-dense minus ae-ours-threeway | -0.026 [-0.056, -0.004] | -0.049 [-0.086, -0.000] | -0.014 [-0.034, 0.003] |
+| ae-ours-dense minus ae-rcn | -0.226 [-0.351, -0.119] | -0.367 [-0.468, -0.215] | -0.140 [-0.231, -0.038] |
+| ae-ours-dense minus clock-legacy-annotation | -0.175 [-0.301, -0.067] | -0.235 [-0.371, -0.075] | -0.113 [-0.242, 0.014] |
+| ae-ours-dense minus clock-dense | -0.192 [-0.309, -0.090] | -0.228 [-0.333, -0.083] | -0.149 [-0.269, -0.031] |
+| ae-ours-legacy minus ae-lstm | -0.151 [-0.245, -0.054] | -0.119 [-0.274, 0.031] | -0.155 [-0.265, -0.029] |
 | ae-ours-legacy minus ae-ours-dense | +0.062 [-0.003, 0.140] | +0.225 [0.116, 0.293] | +0.016 [-0.037, 0.051] |
 | ae-ours-legacy minus ae-ours-threeway | +0.036 [-0.038, 0.114] | +0.176 [0.070, 0.275] | +0.002 [-0.057, 0.043] |
 | ae-ours-legacy minus ae-rcn | -0.164 [-0.254, -0.074] | -0.142 [-0.259, -0.023] | -0.124 [-0.221, -0.016] |
-| ae-ours-legacy minus ae-lstm | -0.151 [-0.245, -0.054] | -0.119 [-0.274, 0.031] | -0.155 [-0.265, -0.029] |
 | ae-ours-legacy minus clock-legacy-annotation | -0.113 [-0.214, -0.027] | -0.009 [-0.164, 0.125] | -0.097 [-0.214, 0.004] |
 | ae-ours-legacy minus clock-dense | -0.130 [-0.218, -0.052] | -0.003 [-0.132, 0.113] | -0.133 [-0.238, -0.044] |
-| ae-ours-dense minus ae-ours-threeway | -0.026 [-0.056, -0.004] | -0.049 [-0.086, -0.000] | -0.014 [-0.034, 0.003] |
-| ae-ours-dense minus ae-rcn | -0.226 [-0.351, -0.119] | -0.367 [-0.468, -0.215] | -0.140 [-0.231, -0.038] |
-| ae-ours-dense minus ae-lstm | -0.213 [-0.335, -0.097] | -0.345 [-0.475, -0.163] | -0.171 [-0.265, -0.062] |
-| ae-ours-dense minus clock-legacy-annotation | -0.175 [-0.301, -0.067] | -0.235 [-0.371, -0.075] | -0.113 [-0.242, 0.014] |
-| ae-ours-dense minus clock-dense | -0.192 [-0.309, -0.090] | -0.228 [-0.333, -0.083] | -0.149 [-0.269, -0.031] |
-| ae-ours-threeway minus ae-rcn | -0.200 [-0.310, -0.098] | -0.318 [-0.426, -0.180] | -0.126 [-0.212, -0.028] |
 | ae-ours-threeway minus ae-lstm | -0.187 [-0.294, -0.075] | -0.296 [-0.436, -0.121] | -0.157 [-0.249, -0.048] |
+| ae-ours-threeway minus ae-rcn | -0.200 [-0.310, -0.098] | -0.318 [-0.426, -0.180] | -0.126 [-0.212, -0.028] |
 | ae-ours-threeway minus clock-legacy-annotation | -0.149 [-0.264, -0.046] | -0.186 [-0.343, -0.022] | -0.100 [-0.221, 0.033] |
 | ae-ours-threeway minus clock-dense | -0.166 [-0.273, -0.069] | -0.179 [-0.309, -0.037] | -0.135 [-0.247, -0.010] |
 | ae-rcn minus ae-lstm | +0.013 [-0.012, 0.039] | +0.023 [-0.064, 0.109] | -0.031 [-0.102, 0.066] |
 | ae-rcn minus clock-legacy-annotation | +0.051 [0.020, 0.079] | +0.133 [0.034, 0.211] | +0.027 [-0.081, 0.116] |
 | ae-rcn minus clock-dense | +0.034 [0.013, 0.058] | +0.139 [0.053, 0.205] | -0.009 [-0.119, 0.074] |
-| ae-lstm minus clock-legacy-annotation | +0.038 [-0.006, 0.079] | +0.110 [-0.022, 0.219] | +0.058 [-0.099, 0.175] |
-| ae-lstm minus clock-dense | +0.021 [-0.018, 0.060] | +0.116 [-0.003, 0.210] | +0.022 [-0.123, 0.138] |
 | clock-legacy-annotation minus clock-dense | -0.017 [-0.033, 0.005] | +0.006 [-0.022, 0.045] | -0.035 [-0.070, 0.000] |
 
 ## V100-only sensitivity
@@ -333,7 +333,7 @@ AUPRC, seed-mean ae-ours minus the saved detector, 19 shared held-out shots, int
 | dense relabel | +0.061 [0.037, 0.084] | -0.367 [-0.468, -0.215] | +0.136 [0.110, 0.155] | -0.345 [-0.475, -0.163] |
 | annotation-and-TokEye agreement | +0.062 [0.038, 0.084] | -0.318 [-0.426, -0.180] | +0.136 [0.110, 0.155] | -0.296 [-0.436, -0.121] |
 
-**What the swap shows (AUROC, 19 shared shots).** The model trained on the legacy annotation is not resolved from ae-rcn on the dense reference (-0.055 [-0.149, 0.036]) and trails it on the legacy annotation (-0.164 [-0.254, -0.074]). Its point estimate is below ae-rcn's on both references, resolved on the legacy annotation but with an interval that includes zero on the dense reference; it does not lead ae-rcn there, so there is no reversal against ae-rcn when ae-ours is trained on the legacy annotation. The same model leads ae-lstm on the dense reference (+0.070 [0.001, 0.144]) and trails it on the legacy annotation (-0.151 [-0.245, -0.054]). The reversal against ae-lstm persists: ae-ours trained on the legacy annotation is above it on the dense reference and below it on the legacy annotation. The dense interval's lower end is within 0.005 of zero, so that resolution is marginal. The model trained on the dense relabel leads ae-rcn on the dense reference (+0.118 [0.066, 0.175]) and trails it on the legacy annotation (-0.226 [-0.351, -0.119]). The model trained on annotation-and-TokEye agreement leads ae-rcn on the dense reference (+0.119 [0.070, 0.175]) and trails it on the legacy annotation (-0.200 [-0.310, -0.098]). ae-ours's lead over ae-rcn on the dense reference therefore depends on the target: it is absent when the same recipe trains on the legacy annotation, rather than the best achievable legacy-trained model (Limitations: the recipe was developed for the agreement target, the legacy seeds are unstable, and training windows are fixed), and present when it trains on either of the other two targets. Which of the two carries it is not separated, and the cross-architecture confounds below apply to every statement against the saved detectors.
+**What the swap shows (AUROC, 19 shared shots).** The model trained on the legacy annotation is not resolved from ae-rcn on the dense reference (-0.055 [-0.149, 0.036]) and trails it on the legacy annotation (-0.164 [-0.254, -0.074]). Its point estimate is below ae-rcn's on both references, resolved on the legacy annotation but with an interval that includes zero on the dense reference; it does not lead ae-rcn there, so there is no reversal against ae-rcn when ae-ours is trained on the legacy annotation. The same model leads ae-lstm on the dense reference (+0.070 [0.001, 0.144]) and trails it on the legacy annotation (-0.151 [-0.245, -0.054]). The reversal against ae-lstm persists (2 of 3 seeds; not resolved once seed variance is included): ae-ours trained on the legacy annotation is above it on the dense reference and below it on the legacy annotation. The dense interval's lower end is within 0.005 of zero, so that resolution is marginal. The model trained on the dense relabel leads ae-rcn on the dense reference (+0.118 [0.066, 0.175]) and trails it on the legacy annotation (-0.226 [-0.351, -0.119]). The model trained on annotation-and-TokEye agreement leads ae-rcn on the dense reference (+0.119 [0.070, 0.175]) and trails it on the legacy annotation (-0.200 [-0.310, -0.098]). ae-ours's lead over ae-rcn on the dense reference therefore depends on the target: it is absent when the same recipe trains on the legacy annotation, rather than the best achievable legacy-trained model (Limitations: the recipe was developed for the agreement target, the legacy seeds are unstable, and training windows are fixed), and present when it trains on either of the other two targets. Which of the two carries it is not separated, and the cross-architecture confounds below apply to every statement against the saved detectors.
 
 **Input-free clock.** Each 10 ms frame is scored by its positive rate over the 120 training and selection shots, with no input and no evaluation data. The clock from the legacy annotation peaks at 495 ms (0.78), averages 0.22 over the 0 to 2 s record and 0.00 over its first and last 100 ms; the clock from the dense relabel peaks at 405 ms (0.99), averages 0.43 over the 0 to 2 s record and 0.12 over its first and last 100 ms. On the 19 shared shots its pooled AUROC is 0.860 against the legacy annotation (clock from the legacy annotation) and 0.875 against the dense reference (clock from the dense relabel). For comparison (legacy annotation / dense): ae-rcn 0.911 / 0.862, ae-lstm 0.898 / 0.736, and the ae-ours seed means legacy annotation 0.747 / 0.807, dense relabel 0.685 / 0.980, annotation-and-TokEye agreement 0.711 / 0.980. Within shots the clock's median AUROC is 0.926 against the legacy annotation and 1.000 against the dense reference, against ae-rcn 0.944 / 0.980 and ae-lstm 0.917 / 0.769.
 
@@ -345,7 +345,7 @@ ae-ours trains on random 182 ms windows (710 columns) and cannot learn absolute 
 
 **F1.** AUROC and AUPRC carry the claims. F1 is reported with every method calibrated on the reference it is scored on; the clocks' F1 is in-sample (their thresholds are tuned on shots that are part of the clocks' own 120). The earlier protocol left the saved detectors at thresholds set against the legacy annotation, which moves their F1 on the dense reference: ae-rcn on the 19 shots scores 0.864 with its threshold calibrated on dense and 0.350 at its saved annotation-set threshold (`f1_own_target_threshold`).
 
-**Selection.** The reviewers' objection was that the published model was selected on the 60 validation shots that include the 19 benchmark shots. The same recipe retrained with the epoch chosen on 20 separate training shots (the threeway arm, which is the published target) scores AUROC 0.980 on the 19 shots (published 0.982) and 0.975 on the 60 shots (published 0.980), AUPRC 0.992 and 0.989 (published 0.992 and 0.992). Published minus retrained seed mean, against the seed SD of the retrain: AUROC +0.0055 against SD 0.0046 on 60 shots; AUPRC +0.0032 against SD 0.0014 on 60 shots; AUROC +0.0017 against SD 0.0047 on 19 shots; AUPRC +0.0005 against SD 0.0017 on 19 shots. The gap exceeds the seed SD for AUROC on 60 shots and AUPRC on 60 shots, so the retrained scores are lower than the published ones by more than the seed spread there. The comparison also changes the training data: the retrain uses 100 training shots, the published model 120. Selection on the validation block and the 20 extra training shots together therefore account for at most about 0.005 AUROC and 0.003 AUPRC on the 60 shots (the published scores are rounded to three decimals, and were scored under the original bfloat16 inference; float32 moves the retrain's seed means by at most 0.0015 AUROC and 0.0034 AUPRC). The recipe itself (symmetric cross entropy over binary cross entropy) was chosen on the validation block (the model README), so only the epoch choice is clean.
+**Selection.** The reviewers' objection was that the published model was selected on the 60 validation shots that include the 19 benchmark shots. The same recipe retrained with the epoch chosen on 20 separate training shots (the threeway arm, which is the published target) scores AUROC 0.980 on the 19 shots (published 0.982) and 0.975 on the 60 shots (published 0.980), AUPRC 0.992 and 0.989 (published 0.992 and 0.992). Published minus retrained seed mean, against the seed SD of the retrain: AUROC +0.0055 against SD 0.0046 on 60 shots; AUPRC +0.0032 against SD 0.0014 on 60 shots; AUROC +0.0017 against SD 0.0047 on 19 shots; AUPRC +0.0005 against SD 0.0017 on 19 shots. The gap exceeds the seed SD for AUROC on 60 shots and AUPRC on 60 shots, so the retrained scores are lower than the published ones by more than the seed spread there. The comparison also changes the training data: the retrain uses 100 training shots, the published model 120. Selection on the validation block and the 20 extra training shots together therefore account for about 0.005 AUROC (within roughly 1 seed SD) and 0.003 AUPRC (about 2 seed SD) on the 60 shots; these are point estimates, not bounds, because the published model is one seed (its scores are rounded to three decimals, and were scored under the original bfloat16 inference; float32 moves the retrain's seed means by at most 0.0015 AUROC and 0.0034 AUPRC). The recipe itself (symmetric cross entropy over binary cross entropy) was chosen on the validation block (the model README), so only the epoch choice is clean.
 
 ## Cross-architecture confounds
 
@@ -359,12 +359,12 @@ The swap holds the architecture fixed and varies supervision. The comparison wit
 
 ## Limitations
 
-- **Dense labels' provenance and reviewers.** The history file holds 639 entries on 180 shots. Its `reviewer` field is the login of the review server's process (nc1514), not a person; the person is the `name` field: (unnamed) 208 entries on 180 shots; Alvin Garcia 210 entries on 180 shots; Nathaniel Chen 221 entries on 180 shots (the unnamed saves run 2026-09-23 to 2026-09-29, before the first named save on 2026-09-29). The confirmation note reads "Review confirmation recorded at user request: all AE examples checked by Alvin Garcia and Nathaniel Chen." (360 entries). The source of every entry is `alfven_eigenmode_format_2026_v1.csv`: the review was pre-filled from the annotation's source table. A. Garcia, the author of ae-rcn and ae-lstm, therefore helped make the dense labels the training arms learn from: he saved all 180 shots, and the 29 saves that changed intervals (on 2026-10-01) cover 22 training, 6 selection and 0 evaluation shots. A. Garcia saved changes on 28 of the 29 training and selection shots that differ from the paper's snapshot (22 training, 6 selection) and on 0 evaluation shots; N. Chen on 6 of them and 0 evaluation shots; unnamed saves on 1 of them and 1 evaluation shot (a shot can carry several). The current table differs from the snapshot the paper's audit scored on 29 of the 120 training and selection shots and on none of the 19 shared shots. Those changes were made with the 60-250 kHz review display (80-250 kHz before 2026-09-30), while ae-ours reads 80.6 kHz and above. The arms were trained on the current table, edits included; no model was retrained without them. Whether a TokEye layer was on screen while reviewing is an open question, and it bears on why dense and threeway supervision score alike.
+- **Dense labels' provenance and reviewers.** The history file holds 639 entries on 180 shots. Its `reviewer` field is the login of the review server's process (nc1514), not a person; the person is the `name` field: unnamed 208 saves on 180 shots; Alvin Garcia 30 saves on 28 shots and 180 confirmation entries; Nathaniel Chen 41 saves on 36 shots and 180 confirmation entries (the unnamed saves run 2026-09-23 to 2026-09-29, before the first named save on 2026-09-29). The confirmation note reads "Review confirmation recorded at user request: all AE examples checked by Alvin Garcia and Nathaniel Chen." (360 entries), all written at 2026-10-01 03:55:52 UTC. The source of every entry is `alfven_eigenmode_format_2026_v1.csv`: the review was pre-filled from the annotation's source table. A. Garcia, the author of ae-rcn and ae-lstm, therefore helped make the dense labels the training arms learn from: a confirmation in his name was recorded for all 180 shots at the owner's request; his own 30 saves cover 28 shots, and the 29 saves that changed intervals (on 2026-10-01) cover 22 training, 6 selection and 0 evaluation shots. A. Garcia saved changes on 28 of the 29 training and selection shots that differ from the paper's snapshot (22 training, 6 selection) and on 0 evaluation shots; N. Chen on 6 of them and 0 evaluation shots; unnamed saves on 1 of them and 1 evaluation shot (a shot can carry several). The current table differs from the snapshot the paper's audit scored on 29 of the 120 training and selection shots and on none of the 19 shared shots. Those changes were made with the 60-250 kHz review display (80-250 kHz before 2026-09-30), while ae-ours reads 80.6 kHz and above. The arms were trained on the current table, edits included; no model was retrained without them. Whether a TokEye layer was on screen while reviewing is an open question, and it bears on why dense and threeway supervision score alike.
 - **The legacy arm is not the best achievable legacy-trained model.** The recipe (the symmetric-cross-entropy weights, the learning rate and the early stopping) was developed for the agreement target and reused unchanged for the legacy and dense targets, and the legacy arm is the unstable one: the pooled AUROC of its three accepted seeds ranges 0.805 to 0.885 (60 shots, dense); 0.706 to 0.742 (60 shots, legacy annotation); 0.764 to 0.830 (19 shared held-out shots, dense); 0.728 to 0.781 (19 shared held-out shots, legacy annotation); the first attempt of seed 2 stopped inside the constant-output plateau and was rerun under the declared rule. A comparison with ae-rcn that rests on the legacy arm therefore says what this recipe does on the legacy annotation, not what a model tuned for it would do.
 - **Fixed training windows.** Every epoch re-draws the same 800 windows (eight per shot; persistent DataLoader workers never see `set_epoch()`); the shot order alone changes. This affects every arm and seed equally, and the published recipe too, and it is not fixed in this round, because it would mean rerunning every arm. Its effect on the arms' order is not measured.
 - **Three seeds** give limited precision for training variability. The headline intervals resample shots only, and the seed SD is reported beside them; the interval that also resamples the seed IDs is in evaluation.json as `ci95` and is not used here, because with three seeds it mostly reflects the worst seed.
 - **Hardware.** A100 and V100S runs mix; see the V100-only sensitivity.
-- **Precision.** Epochs were selected during training under bfloat16 autocast; only the reported scores, thresholds and intervals are float32. The largest change of a run's pooled AUROC is 0.0103 (Inference precision).
+- **Precision.** Epochs were selected during training under bfloat16 autocast; only the reported scores, thresholds and intervals are float32. The largest change of a run's pooled AUROC is 0.0103 (Inference precision). The frame-level disagreement between the two precisions sits in the legacy arm: its three seeds have 12, 37 and 43 of the 60 evaluation shots with a single-frame difference above 0.1, against at most 8 in any other arm's runs. The legacy epochs were selected under bfloat16, which is one more reason that arm is not the best achievable legacy-trained model.
 - **Dense reference.** It is temporally coarse, so within-shot AUROC cannot rank methods on it (Interpretation); and the 10 ms frame grid is the audit's, with 372 of 7,820 columns in a neighbouring frame (Frozen protocol).
 - **Clock F1 is in-sample.** The clocks' thresholds are tuned on 20 shots that are part of the 120 shots the clocks are built from; their AUROC and AUPRC are not affected.
 - **The LSTM retrain was deferred.** The brief's optional item (`ae-lstm-retrained`: the published 3 x 64 LSTM architecture trained on the same 100/20 split, on whole records, with dense and with legacy supervision) was not run. It remains the control that separates time context from supervision: it gives the older architecture the same supervision treatment while keeping its time context, and the clock rows bound what time context alone achieves.
@@ -380,6 +380,8 @@ These records are not in any mean, SD or interval above. They are scored with th
 | ae-ours-dense-seed1-superseded1 | 12 | 6 | 19 shared held-out shots | 0.979 [0.958, 0.993] | 0.663 [0.523, 0.789] | 0.374 | 0.920 |
 | ae-ours-legacy-seed2-superseded1 | 8 | 2 | 60 shots | 0.445 [0.389, 0.506] | 0.466 [0.413, 0.514] | 0.001 | 0.460 |
 | ae-ours-legacy-seed2-superseded1 | 8 | 2 | 19 shared held-out shots | 0.447 [0.355, 0.549] | 0.511 [0.423, 0.594] | 0.001 | 0.460 |
+
+`ae-ours-threeway-seed0-interrupted` (`models/threeway/seed-0-interrupted`) is not in the table and was never scored: a first launch of the same seed that stopped after 3 recorded epochs (its attempt record still reads `running` and it has no `run.json`); the seed was trained again from scratch in `models/threeway/seed-0` and the first 3 epochs of the completed run reproduce its validation losses exactly.
 
 ## Reproduction
 
@@ -397,4 +399,4 @@ python scripts/labeler/ae_supervision_swap.py audit-convergence
 python scripts/labeler/ae_supervision_swap.py evaluate
 ```
 
-`audit-convergence` applies the declared rule to every record, archives any record that stopped inside the plateau, and lists the runs still to train. Completed runs are never overwritten. The launchers use a short TMPDIR (`$LABELER_ROOT/scratch/ae-sw`) because DataLoader workers add `/pymp-*/listener-*` to it and a socket path must stay under 108 bytes.
+`audit-convergence` applies the declared rule to every record, archives any record that stopped before the rule allowed, and lists the runs still to train. Completed runs are never overwritten. The launchers use a short TMPDIR (`$LABELER_ROOT/scratch/ae-sw`) because DataLoader workers add `/pymp-*/listener-*` to it and a socket path must stay under 108 bytes.
