@@ -10,8 +10,10 @@ where the field steps in flat-top time with no mode seen (`locked_unseeded`), do
 where the mode collapsed or locked but the field did not confirm it),
 the 0-50 kHz MHR spectrogram (corpus `mhr` row 2, in dB above each frequency's
 own floor over the plasma), and the n = 1 and n = 2 RMS (log gauss) with the onset
-threshold and, per interval, the release level it was cut at. MHR often covers only
-part of a pulse; its uncovered times are grey. `--diagnostic mirnov` gives a second
+threshold and, per interval, the release level it was cut at. Both panels shade each
+interval in its colour; where an n = 1 and an n = 2 interval overlap the shadings
+blend into a light grey, named in the legend ("n = 1 and 2 overlap"). MHR often
+covers only part of a pulse; its uncovered times are grey. `--diagnostic mirnov` gives a second
 gallery with the longer MPI66M322D record (corpus `mirnov` row 15).
 
     PYTHONPATH=$PWD/src pixi run --frozen --no-install -e labelmaker python \\
@@ -71,6 +73,28 @@ LOCK_HATCH = {
     "post_collapse_lock_unknown": "..",
     "rotation_after_lock_unassessed": "..",
 }
+
+
+def overlap_colour(alpha: float = 0.12):
+    """The colour where the n = 1 and n = 2 shadings overlap, over a white panel.
+
+    Each interval is a translucent span in its own colour (`alpha`), so two overlapping
+    ones blend into a light grey; the legend names it so it is not read as uncertain.
+    """
+    rgb = np.ones(3)
+    for n in (1, 2):
+        rgb = alpha * np.array(matplotlib.colors.to_rgb(COLOUR[n])) + (1 - alpha) * rgb
+    return tuple(float(v) for v in rgb)
+
+
+def has_overlap(frame: pd.DataFrame) -> bool:
+    """Whether one shot has an n = 1 and an n = 2 interval that overlap in time."""
+    spans = intervals_of(frame)[0]
+    return any(
+        a[2] != b[2] and a[0] < b[1] and b[0] < a[1]
+        for i, a in enumerate(spans)
+        for b in spans[i + 1 :]
+    )
 
 
 def intervals_of(frame: pd.DataFrame):
@@ -347,6 +371,15 @@ def main(argv=None) -> int:
             label="uncertain (rows merged)",
         ),
     ]
+    if any(has_overlap(table[table.shot == shot]) for shot in shots):
+        handles.append(
+            Patch(
+                facecolor=overlap_colour(),
+                edgecolor="0.5",
+                lw=0.4,
+                label="n = 1 and 2 overlap",
+            )
+        )
     selected_spans = intervals_of(table[table.shot.isin(shots)])[0]
     reasons = {
         parse_attrs(a).get("reason")

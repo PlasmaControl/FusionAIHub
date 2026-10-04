@@ -19,8 +19,8 @@ snapshotted under ``round4/tm/fix3_original``) and after (the current tables):
 
 Only development shots are read. Writes ``<sources>/rule_diagnostics_fix4.json``.
 
-    PYTHONPATH=$PWD/src LABELER_NO_FETCH=1 pixi run --frozen --no-install -e labelmaker \\
-        python scripts/labeler/tm_rule_diagnostics.py
+    PYTHONPATH=$PWD/src LABELER_NO_FETCH=1 pixi run --frozen --no-install \\
+        -e labelmaker python scripts/labeler/tm_rule_diagnostics.py
 """
 
 from __future__ import annotations
@@ -66,7 +66,10 @@ NO_CAP = 1.0e9
 
 
 def seconds_by_state(table: pd.DataFrame, window, start=None) -> dict:
-    """Seconds per state in `window` (from `start` on, if given); uncertain beats present."""
+    """Seconds per state in `window` (from `start` on, if given).
+
+    Uncertain beats present where they overlap.
+    """
     w0, w1 = (float(window[0]), float(window[1]))
     if start is not None:
         w0 = max(w0, float(start))
@@ -93,7 +96,10 @@ def seconds_by_state(table: pd.DataFrame, window, start=None) -> dict:
 def uncertain_fractions(
     table: pd.DataFrame, cohort: pd.DataFrame, starts: dict
 ) -> dict:
-    """Pooled and median-shot uncertain fraction of observable time, window and flat-top."""
+    """Pooled and median-shot uncertain fraction of observable time.
+
+    Both are taken over the catalog window and over the flat-top.
+    """
     rows = {"window": [], "flat_top": []}
     for shot, group in table.groupby("shot"):
         window = (
@@ -178,7 +184,10 @@ def relabel(shot, row, start, rules, cap_khz):
 
 
 def n2_cuts(cohort: pd.DataFrame, starts: dict, ratio: float) -> dict:
-    """n = 2 intervals kept with each cut on and off, at the previous and current veto."""
+    """n = 2 intervals kept with each cut on and off, at both vetoes' levels.
+
+    The levels are the previous veto's and the current one's.
+    """
     base = rule.N2_RULE
     cap = {2: 60.0}
     variants = {
@@ -402,7 +411,7 @@ def false_confirmation(
 
 
 def lock_steps(full: pd.DataFrame) -> dict:
-    """Size of the radial-field step at every confirmed lock, and the largest cohort one.
+    """Size of the radial-field step at every confirmed lock, and the largest one.
 
     Each confirmed lock's step is `lock_step` at its lock time: the median over 20 to
     120 ms after minus the median over 200 to 20 ms before.
