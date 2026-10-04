@@ -724,10 +724,18 @@ def like_for_like(cohort, kind):
     return out
 
 
+def short_number(value):
+    """Three decimals without the leading zero; a rounded zero has no sign."""
+    text = f"{value:.3f}"
+    if float(text) == 0.0:
+        return ".000"
+    return text.replace("0.", ".", 1)
+
+
 def display(metric):
     if metric is None:
         return "--"
-    values = [f"{metric[k]:.3f}".removeprefix("0") for k in ("value", "lo", "hi")]
+    values = [short_number(metric[k]) for k in ("value", "lo", "hi")]
     return f"{values[0]} [{values[1]},{values[2]}]"
 
 
