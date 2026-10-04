@@ -7,9 +7,12 @@ timeline and the MARFE witness.
 
 The views figure shows the attached, detached and re-attached phases of one shot in
 time order. Each column is a sustained interval (a run of at least `MIN_RUN_BINS`
-consecutive 50 ms bins of one certain state, the longest such run before, at and
-after the detached phase), never a single bin: the raw TangTV frame and the C-III
-inversion with EFIT flux surfaces at the interval centre, the front-height line at
+consecutive 50 ms bins of one TangTV vote, the longest such run before, at and
+after the detached phase), never a single bin, and is titled by that TangTV vote
+with the exported label of its bins in brackets: the label can be `certain`,
+`tangtv_only` (silver) or uncertain, and the column says which. The raw TangTV frame
+and the C-III inversion with EFIT flux surfaces at the interval centre, the
+front-height line at
 the interval's median DZ, and under them the PRAD_DIVL and PRAD_TOT traces with the
 three intervals marked. A 2D bolometer emissivity does not exist in the corpus or in
 the BOLOM tree (`detachment_bolometer_availability.json`), so the radiation row is
@@ -33,14 +36,24 @@ import pandas as pd
 from detach_json import dumps
 
 mpl.use("Agg")
+import matplotlib.patheffects as pe
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
 from labeler.events.detachment import core, thresholds
 
 #: Okabe-Ito: attached blue, detached orange, MARFE reddish purple, uncertain grey.
-STATE_COLOUR = {1: "#0072B2", 2: "#E69F00", 3: "#CC79A7", 4: "#999999"}
+STATE_COLOUR = {
+    1: "#0072B2",
+    2: "#E69F00",
+    3: "#CC79A7",
+    4: "#999999",
+    # silver (tangtv_only) tints of attached and detached
+    11: "#8EC1E3",
+    12: "#F4D58D",
+}
 STATE_NAME = {1: "attached", 2: "detached", 3: "MARFE", 4: "uncertain"}
+SILVER_OFFSET = 10
 INK = "#222222"
 #: Top of the plotted inversion window (m): the divertor view, not the whole frame.
 VIEW_ZMAX = -0.85
@@ -98,22 +111,54 @@ def longest(candidates: list[dict]) -> dict | None:
     return max(candidates, key=lambda r: r["n_bins"]) if candidates else None
 
 
-def sustained_intervals(group: pd.DataFrame) -> list[dict]:
-    """The attached, detached and re-attached intervals of a shot in time order.
+def label_composition(group: pd.DataFrame, run: dict) -> dict:
+    """Exported label of the bins of a TangTV-vote run: certain, tangtv_only or not."""
+    inside = group[
+        (group.start_ms >= run["start_ms"]) & (group.start_ms < run["end_ms"])
+    ]
+    labelled = inside.state_rule.eq(run["state"])
+    return {
+        "bins": len(inside),
+        "certain": int((labelled & inside.tier.eq("certain")).sum()),
+        "tangtv_only": int((labelled & inside.tier.eq("tangtv_only")).sum()),
+        "uncertain": int(inside.state_rule.eq(core.UNCERTAIN).sum()),
+        "other_tiers": {
+            str(k): int(v)
+            for k, v in inside.loc[inside.state_rule.eq(core.UNCERTAIN), "tier"]
+            .value_counts()
+            .items()
+        },
+    }
 
-    The detached interval is the longest run of certain detached bins. The attached
-    intervals are the longest certain attached run ending before it and the longest
-    one starting after it. A state with no certain run falls back to the TangTV
-    vote runs, so the column says which it is (`basis`).
+
+def label_text(composition: dict, state: int) -> str:
+    """The bracket of a column title: what the exported label of its bins is."""
+    n, name = composition["bins"], STATE_NAME[state]
+    if composition["certain"] == n:
+        return f"label: certain {name}"
+    if composition["tangtv_only"] == n:
+        return f"label: {name}, TangTV only"
+    if composition["uncertain"] == n:
+        return "label: uncertain"
+    return (
+        f"label: {composition['certain']} certain, {composition['tangtv_only']} "
+        f"TangTV only,\n{composition['uncertain']} uncertain of {n} bins"
+    )
+
+
+def sustained_intervals(group: pd.DataFrame) -> list[dict]:
+    """The attached, detached and re-attached TangTV-vote intervals in time order.
+
+    The detached interval is the longest run of TangTV-detached upper-shelf bins.
+    The attached intervals are the longest TangTV-attached run ending before it and
+    the longest one starting after it. The runs follow the TangTV vote, not the
+    exported label (the label of the same bins can be certain, silver or uncertain);
+    each interval records the composition of its exported label.
     """
     upper = upper_shelf(group)
 
     def best(state, keep):
-        for column in ("state_rule", "tangtv_vote"):
-            found = longest([r for r in runs(upper, column, state) if keep(r)])
-            if found:
-                return found
-        return None
+        return longest([r for r in runs(upper, "tangtv_vote", state) if keep(r)])
 
     detached = best(core.DETACHED, lambda r: True)
     if detached is None:
@@ -123,12 +168,13 @@ def sustained_intervals(group: pd.DataFrame) -> list[dict]:
     chosen = [r for r in (before, detached, after) if r]
     for r in chosen:
         r["centre_ms"] = 0.5 * (r["start_ms"] + r["end_ms"])
+        r["label_composition"] = label_composition(group, r)
     return sorted(chosen, key=lambda r: r["start_ms"])
 
 
 def choose_shot(frame: pd.DataFrame) -> int:
     """The transition shot: 201081 when assessed, otherwise the shot with the
-    longest attached-detached-attached sequence of sustained certain intervals."""
+    longest attached-detached-attached sequence of sustained TangTV-vote intervals."""
     if (frame.shot == 201081).any() and len(
         sustained_intervals(frame[frame.shot == 201081])
     ) == 3:
@@ -213,7 +259,7 @@ def strip(ax, start_ms, state, label) -> None:
             )
     ax.set_ylim(0, 1)
     ax.set_facecolor("#F3F3F3")
-    if not np.isin(state, (1, 2, 3, 4)).any():
+    if not np.isin(state, (1, 2, 3, 4, 11, 12)).any():
         ax.text(
             0.5,
             0.5,
@@ -237,10 +283,11 @@ def timeline(fig, spec, group: pd.DataFrame, intervals: list[dict], te, cliffs) 
     sub = spec.subgridspec(n_rows, 1, height_ratios=ratios, hspace=0.28)
     axes = [fig.add_subplot(sub[i]) for i in range(n_rows)]
     start = group.start_ms.to_numpy()
+    silver = group.tier.eq("tangtv_only").to_numpy() & group.state_rule.isin((1, 2))
     votes = {
-        "label": group.state_rule.to_numpy(),
+        "label": group.state_rule.to_numpy() + SILVER_OFFSET * silver,
         "Afrac": np.where(group.afrac_valid, group.afrac_vote, 0),
-        "Prad,div": np.where(group.prad_valid, group.prad_vote, 0),
+        r"$f_{\mathrm{div}}$ rel.": np.where(group.prad_valid, group.prad_vote, 0),
         "TangTV": np.where(group.tangtv_valid, group.tangtv_vote, 0),
     }
     for ax, (name, state) in zip(axes[:4], votes.items(), strict=True):
@@ -249,11 +296,11 @@ def timeline(fig, spec, group: pd.DataFrame, intervals: list[dict], te, cliffs) 
     dz = group.tangtv_value.to_numpy(float)
     series = [
         (
-            r"$f_{\mathrm{div}}$",
-            np.where(group.prad_valid, group.prad_value, np.nan),
+            r"$f_{\mathrm{div}}$ / baseline",
+            np.where(group.prad_valid, group.prad_rel_value, np.nan),
             (
-                (thresholds.PRAD_ATTACHED_MAX, "--"),
-                (thresholds.PRAD_DETACHED_MIN, ":"),
+                (thresholds.PRAD_REL_ATTACHED_MAX, "--"),
+                (thresholds.PRAD_REL_DETACHED_MIN, ":"),
             ),
         ),
         (
@@ -305,40 +352,67 @@ def timeline(fig, spec, group: pd.DataFrame, intervals: list[dict], te, cliffs) 
     axes[-1].set_xlabel("time (ms)")
 
 
+#: Summary-bar categories: (legend name, colour key).
+SUMMARY_CLASSES = (
+    ("attached, certain", 1),
+    ("attached, TangTV only", 1 + SILVER_OFFSET),
+    ("detached, certain", 2),
+    ("detached, TangTV only", 2 + SILVER_OFFSET),
+    ("uncertain", 4),
+)
+
+
+def label_class(frame: pd.DataFrame) -> pd.Series:
+    """The summary class of every bin: the colour key of its exported label."""
+    silver = frame.tier.eq("tangtv_only") & frame.state_rule.isin((1, 2))
+    return frame.state_rule + SILVER_OFFSET * silver
+
+
 def summary(ax, frame: pd.DataFrame, shot: int) -> dict:
-    """Per-shot fractions of assessed bins by state, one column per shot."""
+    """Per-shot fractions of assessed bins by exported label and tier, one bar per
+    shot, the shot number under every bar."""
     assessed = frame[frame.assessed & frame.state_rule.isin((1, 2, 3, 4))]
+    keys = [key for _, key in SUMMARY_CLASSES]
     table = (
-        assessed.groupby(["shot", "state_rule"])
+        assessed.assign(klass=label_class(assessed))
+        .groupby(["shot", "klass"])
         .size()
         .unstack(fill_value=0)
-        .reindex(columns=[1, 2, 3, 4], fill_value=0)
+        .reindex(columns=keys, fill_value=0)
     )
     table = table[table.sum(axis=1) >= 10]
     share = table.div(table.sum(axis=1), axis=0)
-    order = share.sort_values([1, 2, 3, 4], ascending=False).index
-    share = share.loc[order]
+    certain = share[1] + share[2]
+    order = share.assign(_c=certain).sort_values(["_c", 1, 2, 11, 12], ascending=False)
+    share = share.loc[order.index]
     x = np.arange(len(share))
     bottom = np.zeros(len(share))
-    for state in (1, 2, 3, 4):
+    for name, key in SUMMARY_CLASSES:
         ax.bar(
             x,
-            share[state].to_numpy(),
+            share[key].to_numpy(),
             bottom=bottom,
             width=1.0,
-            color=STATE_COLOUR[state],
+            color=STATE_COLOUR[key],
             linewidth=0,
-            label=STATE_NAME[state],
+            label=name,
         )
-        bottom += share[state].to_numpy()
+        bottom += share[key].to_numpy()
+    ax.set_xticks(x)
+    ax.set_xticklabels([str(int(v)) for v in share.index], rotation=90, fontsize=7)
+    ax.tick_params(axis="x", length=2, pad=1)
     if shot in share.index:
         ax.axvline(
-            list(share.index).index(shot), color=INK, lw=0.9, label="example shot"
+            list(share.index).index(shot),
+            color=INK,
+            lw=0.9,
+            ls=(0, (1, 1.5)),
+            label="example shot",
         )
     ax.set_xlim(-0.5, len(share) - 0.5)
     ax.set_ylim(0, 1)
     ax.set_xlabel(
-        f"{len(share)} assessed shots (at least 10 bins), ordered by state mix"
+        "shot (assessed bins at least 10), ordered by certain share", labelpad=2
     )
     ax.set_ylabel("share of bins")
     handles, labels = ax.get_legend_handles_labels()
@@ -347,19 +421,51 @@ def summary(ax, frame: pd.DataFrame, shot: int) -> dict:
         labels,
         ncol=3,
         loc="upper center",
-        bbox_to_anchor=(0.5, -0.55),
+        bbox_to_anchor=(0.5, -1.0),
         frameon=False,
     )
     return {
         "population": "Assessed shots with at least 10 assessed bins each",
         "n_shots": len(share),
         "ordered_shots": [int(value) for value in share.index],
-        "state_bin_counts_by_shot": {
-            str(key): {
-                STATE_NAME[state]: int(table.loc[key, state]) for state in (1, 2, 3, 4)
-            }
+        "classes": [name for name, _ in SUMMARY_CLASSES],
+        "label_class_bin_counts_by_shot": {
+            str(key): {name: int(table.loc[key, k]) for name, k in SUMMARY_CLASSES}
             for key in share.index
         },
+    }
+
+
+def mark_geometry(ax, row: pd.Series) -> dict:
+    """X-point (cross) and outer strike point (ring), white with a dark halo so they
+    read on the bright emission and on the dark background; None where not finite."""
+    halo = [pe.withStroke(linewidth=2.2, foreground="#000000")]
+    if np.isfinite(row.aux_rxpt1) and np.isfinite(row.aux_zxpt1):
+        ax.plot(
+            row.aux_rxpt1,
+            row.aux_zxpt1,
+            "x",
+            color="white",
+            ms=6,
+            mew=1.4,
+            path_effects=halo,
+            zorder=6,
+        )
+    if np.isfinite(row.aux_rvsod) and np.isfinite(row.aux_zvsod):
+        ax.plot(
+            row.aux_rvsod,
+            row.aux_zvsod,
+            "o",
+            mfc="none",
+            mec="white",
+            ms=5,
+            mew=1.2,
+            path_effects=halo,
+            zorder=6,
+        )
+    return {
+        "x_point_rz_m": [float(row.aux_rxpt1), float(row.aux_zxpt1)],
+        "strike_point_rz_m": [float(row.aux_rvsod), float(row.aux_zvsod)],
     }
 
 
@@ -402,10 +508,7 @@ def witness_inversion(ax, shot: int, time: float, row: pd.Series) -> dict:
         )
         if efit["lim"] is not None:
             ax.plot(efit["lim"][:, 0], efit["lim"][:, 1], color="#56B4E9", lw=1)
-    if np.isfinite(row.aux_rxpt1):
-        ax.plot(row.aux_rxpt1, row.aux_zxpt1, "x", color="white", ms=4)
-    if np.isfinite(row.aux_rvsod):
-        ax.plot(row.aux_rvsod, row.aux_zvsod, "o", mfc="none", mec="white", ms=4)
+    markers = mark_geometry(ax, row)
     if np.isfinite(row.tangtv_value) and np.isfinite(row.aux_zxpt1):
         height = row.aux_zxpt1 - (1 - row.tangtv_value) * (
             row.aux_zxpt1 - row.aux_zvsod
@@ -427,43 +530,53 @@ def witness_inversion(ax, shot: int, time: float, row: pd.Series) -> dict:
         "efit_time_ms": efit["t_ms"] if efit else None,
         "efit_source": efit["source"] if efit else None,
         "flux_contours": [0.98, 1.0, 1.02, 1.05, 1.1] if efit else [],
+        **markers,
     }
 
 
+PUBLISHED_MARFE_ONSET_MS = 3705.0
+
+
 def marfe_witness(frame: pd.DataFrame, out: Path) -> dict:
-    """Juxtapose a single-shot exploratory candidate and a missed published onset."""
-    rows = frame[(frame.shot == 199172) & (frame.state_rule == core.MARFE)]
-    selection = "median-time certain MARFE bin"
+    """Juxtapose a TangTV-high candidate and the published MARFE onset of 199166.
+
+    There is no certain MARFE (the fG >= 0.8 density cue has no literature source,
+    `detach_label.py`), so both columns show `candidate_marfe` evidence at most. The
+    published onset column reports the recall of that onset (0 of 1) in plain text.
+    """
+    rows = frame[(frame.shot == 199172) & (frame.tier == "candidate_marfe")]
+    selection = "median-time candidate_marfe bin of 199172"
     if rows.empty:
         rows = frame[(frame.shot == 199172) & frame.tangtv_vote.eq(core.MARFE)]
-        selection = "median-time TangTV MARFE vote; exported state shown"
-    if rows.empty:
-        rows = frame[(frame.shot == 199172) & frame.tangtv_marfe_candidate]
-        selection = "median-time sustained high-front candidate; exported state shown"
+        selection = "median-time TangTV MARFE vote of 199172; exported tier shown"
     if rows.empty:
         return {"status": "unavailable", "reason": "199172 has no MARFE candidate"}
     candidate = rows.iloc[int(np.argmin(abs(rows.start_ms - rows.start_ms.median())))]
-    published = frame[frame.shot == 199166]
+    published = frame[frame.shot == 199166].sort_values("start_ms")
     if published.empty:
         return {"status": "unavailable", "reason": "199166 has no exported bins"}
-    published_onset = 3705.0
+    onset = PUBLISHED_MARFE_ONSET_MS
     missed = published.iloc[
-        int(np.argmin(abs(published.start_ms + core.BIN_MS / 2 - published_onset)))
+        int(np.argmin(abs(published.start_ms + core.BIN_MS / 2 - onset)))
+    ]
+    first_candidate = published[published.tier == "candidate_marfe"]
+    in_bin = published[
+        (published.start_ms <= onset) & (onset < published.start_ms + core.BIN_MS)
     ]
     selections = [
         (
             199172,
             float(candidate.start_ms + core.BIN_MS / 2),
             candidate,
-            "199172: MARFE evidence on one shot",
+            "199172: candidate MARFE (no certain MARFE)",
         ),
-        (199166, published_onset, missed, "199166: published MARFE onset, 3705 ms"),
+        (199166, onset, missed, "199166: published MARFE onset, 3705 ms"),
     ]
-    fig = plt.figure(figsize=(6.75, 3.9))
+    fig = plt.figure(figsize=(6.75, 4.1))
     grid = fig.add_gridspec(
         2,
         2,
-        height_ratios=[2.1, 1],
+        height_ratios=[2.1, 1.05],
         left=0.08,
         right=0.98,
         top=0.90,
@@ -479,17 +592,30 @@ def marfe_witness(frame: pd.DataFrame, out: Path) -> dict:
         state = STATE_NAME[int(row.state_rule)]
         spatial = bool(row.tangtv_marfe_spatial)
         cue = bool(row.tangtv_marfe_second_cue)
+        frame_ms = provenance["inversion_time_ms"]
+        lines = [
+            (
+                f"Frame shown: {frame_ms:.0f} ms; label bin "
+                f"{row.start_ms:.0f}\u2013{row.start_ms + core.BIN_MS:.0f} ms"
+            ),
+            f"Exported label: {state}; tier: {row.tier}",
+            f"DZ = {row.tangtv_value:.3f}; $f_G$ = {row.aux_greenwald_fraction:.3f}",
+            (
+                f"Inside-separatrix cue: {'passes' if spatial else 'fails'}; "
+                f"density cue: {'passes' if cue else 'fails'}"
+            ),
+        ]
+        if shot == 199166:
+            lines.append(
+                "MARFE recall at the published onset: 0 of 1\n"
+                "(tier candidate_marfe; MARFE is never a state)"
+            )
         text_ax = fig.add_subplot(grid[1, col])
         text_ax.axis("off")
         text_ax.text(
             0,
             1,
-            f"Exported label: {state}; tier: {row.tier}\n"
-            f"Bin: {row.start_ms:.0f}–{row.start_ms + core.BIN_MS:.0f} ms\n"
-            f"DZ = {row.tangtv_value:.3f}; "
-            f"$f_G$ = {row.aux_greenwald_fraction:.3f}\n"
-            f"Inside-separatrix cue: {'passes' if spatial else 'fails'}; "
-            f"density cue: {'passes' if cue else 'fails'}",
+            "\n".join(lines),
             transform=text_ax.transAxes,
             ha="left",
             va="top",
@@ -517,8 +643,8 @@ def marfe_witness(frame: pd.DataFrame, out: Path) -> dict:
     fig.legend(
         [
             Line2D([], [], color="#56B4E9", lw=1),
-            Line2D([], [], color="0.3", marker="x", ls="none", ms=4),
-            Line2D([], [], color="0.3", marker="o", mfc="none", ls="none", ms=4),
+            Line2D([], [], color="0.3", marker="x", ls="none", ms=5),
+            Line2D([], [], color="0.3", marker="o", mfc="none", ls="none", ms=5),
             Line2D([], [], color="#E69F00", ls="--", lw=0.8),
         ],
         [r"EFIT $\psi_N$ and wall", "X-point", "outer strike point", "C-III height"],
@@ -532,14 +658,39 @@ def marfe_witness(frame: pd.DataFrame, out: Path) -> dict:
     )
     fig.savefig(out / "fig_detachment_marfe_witness.png", dpi=150)
     plt.close(fig)
+    states_at_onset = {
+        "bin_start_ms": float(in_bin.start_ms.iloc[0]) if len(in_bin) else None,
+        "exported_state": STATE_NAME[int(in_bin.state_rule.iloc[0])]
+        if len(in_bin)
+        else None,
+        "tier": str(in_bin.tier.iloc[0]) if len(in_bin) else None,
+    }
     record = {
         "status": "available",
-        "scope": "MARFE evidence on one shot and a missed published onset; "
+        "scope": "MARFE evidence on one shot and the recall of one published onset; "
         "no independent benchmark",
         "independent_benchmark": "unavailable",
+        "certain_marfe_exported": False,
+        "certain_marfe_reason": (
+            "no literature source for the density cue (fG >= 0.8): Dong 2025 gives "
+            "fG >~ 0.5 on HL-3 with a core-point density and core-Te condition, "
+            "not this cue"
+        ),
         "candidate_selection": selection,
-        "published_onset_source": ".tmp/label_papers/Chen_2026_Nucl._Fusion_66_036014.md",
-        "published_onset_ms": published_onset,
+        "published_onset_source": (
+            ".tmp/label_papers/Chen_2026_Nucl._Fusion_66_036014.md"
+        ),
+        "published_onset_ms": onset,
+        "published_onset_recall": {
+            "recalled": 0,
+            "of": 1,
+            "meaning": "no bin of 199166 is exported as MARFE (no shot has one)",
+            "label_at_onset": states_at_onset,
+            "first_candidate_marfe_bin_ms": (
+                float(first_candidate.start_ms.min()) if len(first_candidate) else None
+            ),
+            "candidate_marfe_bins_199166": len(first_candidate),
+        },
         "thresholds": {
             "dz_candidate_min": thresholds.DZ_MARFE_MIN,
             "greenwald_cue_min": thresholds.GREENWALD_CUE_MIN,
@@ -547,7 +698,7 @@ def marfe_witness(frame: pd.DataFrame, out: Path) -> dict:
             "prad_div_and_afrac": "not MARFE corroborators",
         },
         "width_in": 6.75,
-        "height_in": 3.9,
+        "height_in": 4.1,
         "min_font_pt": 7,
         "selections": records,
         "flux_legend": "blue: EFIT psi_N/wall; white x: X-point; white o: "
@@ -602,10 +753,7 @@ def draw_inversion(ax, shot, group, run, inv, efit_t) -> dict:
         )
         if efit["lim"] is not None:
             ax.plot(efit["lim"][:, 0], efit["lim"][:, 1], color="#56B4E9", lw=1.0)
-    if np.isfinite(row.aux_rxpt1):
-        ax.plot(row.aux_rxpt1, row.aux_zxpt1, "x", color="white", ms=4)
-    if np.isfinite(row.aux_rvsod):
-        ax.plot(row.aux_rvsod, row.aux_zvsod, "o", mfc="none", mec="white", ms=4)
+    markers = mark_geometry(ax, row)
     dz = float(np.nanmedian(inside.tangtv_value))
     if np.isfinite(dz) and np.isfinite(row.aux_zxpt1):
         height = row.aux_zxpt1 - (1 - dz) * (row.aux_zxpt1 - row.aux_zvsod)
@@ -621,6 +769,7 @@ def draw_inversion(ax, shot, group, run, inv, efit_t) -> dict:
         "median_dz": dz,
         "strike_r_m": float(row.aux_rvsod),
         "strike_z_m": float(row.aux_zvsod),
+        **markers,
     }
 
 
@@ -644,7 +793,11 @@ def views_figure(shot, group, intervals, out) -> dict:
         state = run["state"]
         span = f"{run['start_ms']:.0f}–{run['end_ms']:.0f} ms"
         ax = fig.add_subplot(outer[0, col])
-        ax.set_title(f"({chr(97 + col)}) {STATE_NAME[state]}, {span}")
+        bracket = label_text(run["label_composition"], state)
+        ax.set_title(
+            f"({chr(97 + col)}) TangTV {STATE_NAME[state]}, {span}\n({bracket})",
+            fontsize=7.5,
+        )
         raw_time = None
         if video is not None:
             vt, vid = video
@@ -668,6 +821,8 @@ def views_figure(shot, group, intervals, out) -> dict:
         selections[chr(97 + col)] = {
             **run,
             "state": STATE_NAME[state],
+            "tangtv_vote": STATE_NAME[state],
+            "exported_label": bracket,
             "raw_time_ms": raw_time,
             **info,
         }
@@ -709,7 +864,7 @@ def views_figure(shot, group, intervals, out) -> dict:
     handles += [
         plt.Rectangle((0, 0), 1, 1, color=STATE_COLOUR[s], alpha=0.35) for s in (1, 2)
     ]
-    labels += ["attached interval", "detached interval"]
+    labels += ["TangTV-attached interval", "TangTV-detached interval"]
     ax.legend(
         handles,
         labels,
@@ -760,16 +915,16 @@ def main() -> None:
     with_te = attach_te(group.reset_index(drop=True))
     te = with_te.te_ev.to_numpy(float) if np.isfinite(with_te.te_ev).any() else None
     cliffs = PUBLISHED_CLIFFS_MS.get(args.shot, ())
-    fig = plt.figure(figsize=(6.75, 6.2))
+    fig = plt.figure(figsize=(6.75, 6.9))
     grid = fig.add_gridspec(
         2,
         1,
-        height_ratios=[4.6, 0.8],
+        height_ratios=[4.6, 0.9],
         left=0.18,
         right=0.985,
-        top=0.955,
-        bottom=0.14,
-        hspace=0.28,
+        top=0.96,
+        bottom=0.2,
+        hspace=0.3,
     )
     timeline(fig, grid[0], group, intervals, te, cliffs)
     summary_record = summary(fig.add_subplot(grid[1]), frame, args.shot)
@@ -790,9 +945,17 @@ def main() -> None:
                 "min_run_bins": MIN_RUN_BINS,
                 "intervals": selections,
                 "interval_rule": (
-                    "longest run of consecutive certain-detached bins; longest "
-                    "certain-attached run before and after it; the TangTV vote "
-                    "run when a state has no certain run (basis)"
+                    "longest run of consecutive TangTV-detached upper-shelf bins; "
+                    "longest TangTV-attached run before and after it. The columns "
+                    "follow the TangTV vote, not the exported label; each column "
+                    "title carries the exported label of its bins in brackets "
+                    "(certain, TangTV only (silver) or uncertain)"
+                ),
+                "caption_note": (
+                    "Columns are titled by the TangTV vote with the exported label of "
+                    "the same bins in brackets; a column can be a TangTV vote the "
+                    "label calls uncertain. The summary bars below the timeline use "
+                    "the exported label and tier (silver = TangTV only)."
                 ),
                 "published_te_cliffs_ms": list(cliffs),
                 "published_te_cliffs_source": ".tmp/label_papers/"
@@ -812,10 +975,11 @@ def main() -> None:
                     "docs/labeler/results/detachment_bolometer_availability.json"
                 ),
                 "timeline_rows": (
-                    "label, Afrac, Prad,div and TangTV vote strips; f_div and DZ with the "
-                    "primary cutoffs (dashed attached, dotted detached, dash-dot "
-                    "MARFE); divertor Thomson Te at the SOL chords near the target "
-                    "with the 5 and 10 eV bands when fetched (log axis)"
+                    "label (silver = TangTV only), Afrac, relative f_div and TangTV "
+                    "vote strips; f_div over its shot baseline and DZ with the "
+                    "cutoffs (dashed attached, dotted detached, dash-dot MARFE); "
+                    "divertor Thomson Te at the SOL chords near the target with the "
+                    "5 and 10 eV bands when fetched (log axis)"
                 ),
                 "timeline_te": "shown"
                 if te is not None

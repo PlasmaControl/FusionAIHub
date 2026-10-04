@@ -93,9 +93,10 @@ def main():
     record["labels_sha256"] = hashlib.sha256(labels_path.read_bytes()).hexdigest()
     record["producer"] = "scripts/labeler/detach_handoff.py"
     RESULT.write_text(dumps(record, indent=1) + "\n")
-    certain = labels.state_rule.isin((1, 2, 3))
+    certain = labels.tier.eq("certain")
+    silver = labels.tier.eq("tangtv_only")
     states = {
-        dl.core.STATE_NAMES[s]: int(labels.state_rule.eq(s).sum()) for s in (1, 2, 3, 4)
+        dl.core.STATE_NAMES[s]: int(labels.state_rule.eq(s).sum()) for s in (1, 2, 4)
     }
     tiers = labels.tier.value_counts().to_dict()
     sha = record["labels_sha256"]
@@ -105,28 +106,38 @@ def main():
         (
             "Exploratory labels; **no independent benchmark**. "
             f"{len(labels):,} assessed bins/{labels.shot.nunique()} shots; "
-            f"{int(certain.sum()):,} certain bins/"
+            f"{int(certain.sum()):,} `certain` bins/"
             f"{labels.loc[certain, 'shot'].nunique()} shots/"
-            f"{certain.sum() * 0.05:.2f} s. State bins: {states}. "
-            f"Tier counts: {tiers}. Labels sha256 {sha}. "
-            "A certain attached or detached bin has a TangTV vote plus a compatible "
-            "vote from Afrac or Prad,div and no conflicting vote; a certain MARFE "
-            "is the TangTV MARFE vote (spatial cue, density cue, persistence). "
-            "Agreement with the divertor Thomson temperature, an independent "
-            "measurement, is in docs/labeler/results/detachment_te_check.json."
+            f"{certain.sum() * 0.05:.2f} s and {int(silver.sum()):,} "
+            f"`tangtv_only` bins/{labels.loc[silver, 'shot'].nunique()} shots. "
+            f"State bins: {states}. Tier counts: {tiers}. Labels sha256 {sha}. "
+            "The label set is the geometry-gated TangTV state, validated by "
+            "divertor Thomson Te. A `certain` attached or detached bin has an "
+            "upper-shelf TangTV vote plus a compatible vote from the per-shot "
+            "relative f_div or Afrac and no conflicting vote; a `tangtv_only` "
+            "(silver) bin has the TangTV vote alone. TIER NAMES CHANGED from the "
+            "earlier round: `certain` used to be every attached, detached or MARFE "
+            "state; it now excludes `tangtv_only`, and no MARFE state is exported "
+            "(a TangTV MARFE vote is the uncertain tier `candidate_marfe`). A "
+            "consumer that treated every state 1 or 2 row as certain must now "
+            "read the tier. Agreement with the divertor Thomson temperature, an "
+            "independent measurement, is in "
+            "docs/labeler/results/detachment_te_check.json."
         ),
         "",
         "## Stable label interface",
         "",
         (
-            "Codes: absent=0 internally, attached=1, detached=2, MARFE=3, "
-            "uncertain=4. Missing rows mean unassessed. Confidence is null. "
-            "state_lm aliases state_rule; state_model_diagnostic is vestigial. "
-            "`tier` says why a bin is not certain: conflict, insufficient_support, "
-            "low_confidence_pair, no_vote, candidate_marfe (a TangTV MARFE "
-            "candidate without the full evidence), lower_shelf_window, "
-            "geometry_unknown, elm_unknown. Temporal suggestions do not promote "
-            "certainty."
+            "Codes: absent=0 internally, attached=1, detached=2, MARFE=3 (in the "
+            "coding but never written), uncertain=4. Missing rows mean "
+            "unassessed. Confidence is null. state_lm aliases state_rule; "
+            "state_model_diagnostic is vestigial. `tier` is `certain`, "
+            "`tangtv_only` (a state, silver), or says why a bin has no state: "
+            "conflict, insufficient_support, low_confidence_pair, no_vote, "
+            "candidate_marfe (a sustained TangTV MARFE vote; the fG cue has no "
+            "literature source, so it is a candidate and never a state), "
+            "lower_shelf_window, geometry_unknown, elm_unknown. Temporal "
+            "suggestions do not promote certainty."
         ),
         "",
         (
@@ -134,9 +145,9 @@ def main():
             "extraction is NOT a label column. It is absent from the interval "
             "table, the per-shot grids, labels_bins.csv.gz and indicators/*.csv "
             "(the earlier state_lower_shelf_window column was removed), and "
-            "its bins carry state=4 and tier=lower_shelf_window. Only the "
-            "per-indicator vote and value columns of those bins remain, for "
-            "reference."
+            "its bins carry state=4 and tier=lower_shelf_window. The TangTV "
+            "vote there is invalid (tangtv_valid false, reason lower_shelf_window); "
+            "the value is kept in tangtv_value for reference."
         ),
         (
             "- Worktree intervals: data/events/detachment/extend_detach_vote/"
@@ -146,24 +157,35 @@ def main():
         (
             "- Full bins: round4/detach/labels_bins.csv.gz. labels_rule.csv stays "
             "stable; labels_label_model.csv is diagnostic. `state_rule` uses the "
-            "absolute Prad,div cutoffs anchored on 201081; "
-            "`state_rule_relative_prad` and `tier_relative_prad` are the same rule "
-            "with the per-shot relative f_div votes (`prad_rel_value`, "
-            "`prad_rel_vote`), kept as a sensitivity column."
+            "per-shot RELATIVE f_div vote (`prad_rel_value`; `prad_vote` and "
+            "`prad_valid` are that vote). `state_rule_absolute_prad` and "
+            "`tier_absolute_prad` are the same rule with the global absolute "
+            "cutoffs anchored on 201081 (`prad_abs_valid`, `prad_abs_vote`; "
+            "`prad_value` is the absolute f_div), kept as a sensitivity column. "
+            "The old `prad_rel_vote`, `state_rule_relative_prad` and "
+            "`tier_relative_prad` no longer exist."
         ),
         (
             "- indicators/<shot>.csv retains t_ms, state, tier, afrac, prad_div "
             "(MW), prad_fraction, tangtv_dz, tangtv_front_height, validity, and the "
             "Afrac probe provenance (aux_jsat_selected_probe/_r_m/_z_m/_psin, "
-            "strike position, distance to the outer strike, radial margin, "
-            "afrac_probe_n_eligible). Times are centers; NPZ start_ms and interval "
-            "boundaries are bin starts."
+            "strike position, distance to the outer strike, radial margin, the "
+            "probe's attached reference aux_jsat_reference, "
+            "afrac_probe_n_eligible), prad_rel_value, regime and regime_source. "
+            "Times are centers; NPZ start_ms and interval boundaries are bin "
+            "starts."
         ),
         (
-            "- Afrac probe: the peak-Jsat probe among those on the scrape-off side "
-            "(psiN > 1.000, at least 5 mm outboard of the outer strike, psiN <= "
-            "1.05). The provenance columns are exported for invalid bins too; "
-            "afrac_probe_n_eligible=0 means no probe passed the flux gate."
+            "- Afrac probe: each probe has its own attached reference (the 0.9 "
+            "quantile of its own model-normalised current over its bins within "
+            "|psiN - 1| <= 0.01, at least 20 bins) and the probe nearest the "
+            "separatrix in flux with a reference is read; the value is the "
+            "current over that reference (aux_jsat_reference). Bins in a known "
+            "L-mode stretch abstain (reason l_mode; `regime` is L, H or unknown "
+            "and `regime_source` says from where). The provenance columns are "
+            "exported for invalid bins too; afrac_probe_n_eligible=0 means no "
+            "probe was inside the window. An EFIT sentinel is never exported as "
+            "the outer strike point."
         ),
         (
             "- bins/<shot>.npz keys: afrac_*, prad_*, tangtv_* (value, valid, "
@@ -173,7 +195,8 @@ def main():
             "(centered 250 ms inter-ELM radiation means), "
             "aux_prad_div_fraction_total (diagnostic ratio, not a vote), "
             "aux_prad_divl_native_w, aux_prad_elm_window_known, prad_averaging_ms, "
-            "prad_rel_value/prad_rel_vote, afrac_probe_n_eligible, "
+            "prad_rel_value, prad_abs_valid/prad_abs_vote, regime, regime_source, "
+            "aux_jsat_reference, afrac_probe_n_eligible, "
             "tangtv_marfe_candidate/_spatial/_second_cue/_back_transition."
         ),
         (
@@ -187,7 +210,7 @@ def main():
         (
             "- MIN_VALID_BINS=20 is an explicit eligibility deviation from "
             "exporting every two-measurement shot: require >=20 assessed bins and "
-            ">=20 valid bins per contributing indicator. Narrow valid snippets "
+            "at least two indicators each valid on >=20 bins. Narrow valid snippets "
             "remain in bins/<shot>.npz, but have no exported label row."
         ),
         (
@@ -279,7 +302,10 @@ def main():
             "entries; paper_agreement is the upper-shelf Prad-TangTV block."
         ),
         (
-            "Figure paths: round4/detach/figure/fig_detachment_{views,timeline,"
+            "Table provenance: detach_shots.meta.json `made_from` carries git_sha "
+            "and code_dirty; the validator checks the producers are unchanged "
+            "since that commit. Figure paths: "
+            "round4/detach/figure/fig_detachment_{views,timeline,"
             "marfe_witness,figure2}.{pdf,png}. The views and timeline figures "
             "draw shot 201081 (two Te cliffs); detach_figure.py picks time-ordered "
             "columns from sustained intervals of at least five bins. The "

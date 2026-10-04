@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 from pathlib import Path
 
 import detach_label as dl
@@ -14,15 +15,66 @@ import numpy as np
 import pandas as pd
 from detach_json import dumps
 
-from labeler.events.detachment import core, label_model, thresholds
+from labeler.events.detachment import core, label_model, prad, thresholds
 from labeler.events.interval_tables import read_label_grid
 
 ROOT = Path(os.environ["LABELER_ROOT"]) / "round4/detach"
 RESULTS = dl.REPO / "docs/labeler/results"
+STRIKE_REAL_R_M = (0.8, 2.5)
+
+
+def check_provenance(meta: dict) -> dict:
+    """The label tables were made from a clean tree whose producers are still HEAD's."""
+    made = meta["made_from"][0]
+    sha = made["git_sha"]
+    assert made["code_dirty"] is False, "labels made from a dirty tree"
+    changed = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(dl.REPO),
+            "diff",
+            "--name-only",
+            sha,
+            "HEAD",
+            "--",
+            *dl.PRODUCER_PATHS,
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split()
+    assert not changed, f"label producers changed since {sha}: {changed}"
+    return {
+        "made_from_sha": sha,
+        "code_dirty": False,
+        "producer_paths": list(dl.PRODUCER_PATHS),
+    }
+
+
+def attach_regime(frame: pd.DataFrame) -> pd.DataFrame:
+    """The confinement regime of each bin, read from the per-shot bin arrays."""
+    parts = []
+    for shot in sorted(frame.shot.unique()):
+        with np.load(ROOT / "bins" / f"{int(shot)}.npz") as npz:
+            parts.append(
+                pd.DataFrame(
+                    {
+                        "shot": int(shot),
+                        "start_ms": npz["start_ms"],
+                        "regime": npz["regime"].astype(str),
+                    }
+                )
+            )
+    merged = frame.merge(
+        pd.concat(parts, ignore_index=True), on=["shot", "start_ms"], how="left"
+    )
+    assert len(merged) == len(frame) and merged.regime.notna().all()
+    return merged
 
 
 def main():
-    frame = pd.read_csv(ROOT / "labels_bins.csv.gz")
+    frame = attach_regime(pd.read_csv(ROOT / "labels_bins.csv.gz"))
     votes, valid = dl.matrices(frame)
     rule, _ = label_model.compatibility_decide(
         votes,
@@ -32,90 +84,115 @@ def main():
     )
     assert np.array_equal(frame.state_rule, rule)
     assert np.array_equal(frame.state_lm, frame.state_rule)
-    # the sensitivity column is the same rule with the per-shot relative f_div votes
-    relative_votes = votes.copy()
-    relative_votes[:, 1] = np.where(valid[:, 1], frame.prad_rel_vote, core.ABSTAIN)
-    relative, _ = label_model.compatibility_decide(
-        relative_votes,
-        valid,
+    # the sensitivity column is the same rule with the absolute f_div votes
+    absolute_votes, absolute_valid = votes.copy(), valid.copy()
+    absolute_votes[:, 1] = frame.prad_abs_vote.to_numpy()
+    absolute_valid[:, 1] = frame.prad_abs_valid.to_numpy(bool)
+    absolute, _ = label_model.compatibility_decide(
+        absolute_votes,
+        absolute_valid,
         tangtv_tier=frame.tangtv_tier.to_numpy(),
         elm_known=np.isfinite(frame.aux_elm_share),
     )
-    assert np.array_equal(frame.state_rule_relative_prad, relative)
+    assert np.array_equal(frame.state_rule_absolute_prad, absolute)
     # the lower-shelf column is not a label column and is not in any handoff file
     assert not [c for c in frame.columns if "lower_shelf" in c and c != "tangtv_tier"]
-    cutoffs = thresholds.prad_cutoffs()
-    prad_cast = frame.prad_valid.to_numpy()
-    expected_prad = np.where(
-        frame.prad_value <= cutoffs[0],
-        core.ATTACHED,
-        np.where(frame.prad_value >= cutoffs[1], core.DETACHED, core.ABSTAIN),
-    )
+    # the exported f_div vote is the per-shot relative one; the absolute one is a
+    # global-cutoff sensitivity
+    relative_cut = thresholds.prad_relative_cutoffs()
+    prad_cast = frame.prad_valid.to_numpy(bool)
+    expected_prad = prad.fdiv_vote(frame.prad_rel_value.to_numpy(float), *relative_cut)
     assert np.array_equal(frame.prad_vote[prad_cast], expected_prad[prad_cast])
+    absolute_cut = thresholds.prad_cutoffs()
+    abs_cast = frame.prad_abs_valid.to_numpy(bool)
+    expected_abs = prad.fdiv_vote(frame.prad_value.to_numpy(float), *absolute_cut)
+    assert np.array_equal(frame.prad_abs_vote[abs_cast], expected_abs[abs_cast])
+    assert not (prad_cast & ~abs_cast).any(), "relative vote valid without absolute"
     assert frame.confidence.isna().all()
-    assert (valid.sum(axis=1) >= 2).all()
+    assert (valid.sum(axis=1) >= 1).all()
+    assert ((valid.sum(axis=1) >= 2) | (votes[:, 2] > 0)).all()
     assert (votes[~valid] == core.ABSTAIN).all()
     assert (
-        frame.loc[frame.prad_valid, "aux_prad_divl_w"]
+        frame.loc[frame.prad_abs_valid, "aux_prad_divl_w"]
         .ge(-thresholds.RADIATION_NEGATIVE_TOL_W)
         .all()
     )
     assert (
-        frame.loc[frame.prad_valid, "aux_prad_divl_native_w"]
+        frame.loc[frame.prad_abs_valid, "aux_prad_divl_native_w"]
         .ge(-thresholds.RADIATION_NEGATIVE_TOL_W)
         .all()
     )
-    assert frame.loc[frame.prad_valid, "aux_p_in_w"].notna().all()
-    assert frame.loc[frame.prad_valid, "aux_prad_elm_window_known"].all()
+    assert frame.loc[frame.prad_abs_valid, "aux_p_in_w"].notna().all()
+    assert frame.loc[frame.prad_abs_valid, "aux_prad_elm_window_known"].all()
     assert frame.prad_averaging_ms.eq(250.0).all()
-    certain = frame.state_rule.isin(core.VOTE_STATES)
-    assert frame.loc[certain, "tangtv_tier"].eq("upper_shelf").all()
-    # certain attached/detached: TangTV votes the state, one other valid indicator
-    # votes it too, and no valid indicator votes against it
+    # tiers: certain / tangtv_only are the only tiers with an attached or detached
+    # state, MARFE is never a state, and both need an upper-shelf TangTV vote
+    labelled = frame.state_rule.isin((core.ATTACHED, core.DETACHED))
+    certain = frame.tier.eq("certain")
+    silver = frame.tier.eq("tangtv_only")
+    assert (labelled == (certain | silver)).all()
+    assert not frame.state_rule.eq(core.MARFE).any(), "no certain MARFE is exported"
+    assert frame.loc[labelled, "tangtv_tier"].eq("upper_shelf").all()
+    # certain: TangTV votes the state, a second valid indicator casts a compatible
+    # vote and no valid indicator votes against it; tangtv_only: nothing else votes
+    compatible = label_model.COMPATIBLE
     for state in (core.ATTACHED, core.DETACHED):
         rows = frame.state_rule.eq(state)
         assert votes[rows, 2].tolist() == [state] * int(rows.sum())
-        others = votes[rows][:, :2]
-        assert ((others == state).any(axis=1)).all()
-        assert not ((others > 0) & (others != state)).any()
-    # certain MARFE: the TangTV MARFE vote, no attached vote elsewhere; Prad,div and
-    # Afrac never corroborate it
-    marfe = frame.state_rule.eq(core.MARFE)
-    assert (frame.loc[marfe, "tangtv_vote"] == core.MARFE).all()
-    assert not (votes[marfe][:, :2] == core.ATTACHED).any()
-    assert frame.loc[marfe, ["tangtv_marfe_spatial"]].all().all()
+        for tier_rows, need_second in ((rows & certain, True), (rows & silver, False)):
+            others = votes[tier_rows.to_numpy()][:, :2]
+            casts = others > 0
+            if need_second:
+                assert casts.any(axis=1).all()
+            else:
+                assert not casts.any()
+            for j, name in enumerate(("afrac", "prad")):
+                for vote in (core.ATTACHED, core.DETACHED):
+                    if (others[:, j] == vote).any():
+                        assert state in compatible[name][vote]
     candidate = frame.tier.eq("candidate_marfe")
     assert frame.loc[candidate, "state_rule"].eq(core.UNCERTAIN).all()
-    assert frame.loc[candidate, "tangtv_marfe_candidate"].all()
-    assert np.isfinite(frame.loc[certain, "aux_elm_share"]).all()
+    assert (
+        frame.loc[candidate, "tangtv_vote"].eq(core.MARFE)
+        | frame.loc[candidate, "tangtv_marfe_candidate"].astype(bool)
+    ).all()
+    assert np.isfinite(frame.loc[labelled, "aux_elm_share"]).all()
     certain_by_split = {
         split: int((certain & frame.split.eq(split)).sum())
         for split in ("train", "val", "test", "outside")
     }
+    # M4: the lower-shelf extraction is never a valid vote and never a state
+    lower = frame.tangtv_tier.eq("lower_shelf_window")
+    assert not frame.loc[lower, "tangtv_valid"].astype(bool).any()
+    assert frame.loc[lower, "tangtv_reason"].eq("lower_shelf_window").all()
     assert (
         not frame.loc[frame.tier.eq("lower_shelf_window"), "state_rule"]
-        .isin(core.VOTE_STATES)
+        .isin((core.ATTACHED, core.DETACHED))
         .any()
     )
-    jsat = frame.afrac_vote > 0
+    # Afrac: per-probe reference inside the flux window, never in a known L-mode
+    jsat = frame.afrac_valid.astype(bool)
     assert frame.loc[jsat, "afrac_probe_position_valid"].all()
     assert (
-        frame.loc[jsat, "aux_jsat_selected_psin"] <= thresholds.PROBE_SOL_PSI_N_MAX
+        (frame.loc[jsat, "aux_jsat_selected_psin"] - 1.0).abs()
+        <= thresholds.AFRAC_PSI_WINDOW + 1e-6
     ).all()
     assert (frame.loc[jsat, "afrac_probe_n_eligible"] >= 1).all()
-    assert frame.loc[jsat, "afrac_method"].notna().all()
+    assert frame.loc[jsat, "afrac_method"].eq("per_probe_reference").all()
+    assert (frame.loc[jsat, "aux_jsat_reference"] > 0).all()
+    assert not frame.loc[jsat, "regime"].eq("L").any()
+    assert frame.loc[frame.afrac_reason.eq("l_mode"), "regime"].eq("L").all()
+    # M1: an EFIT sentinel is never exported as the outer strike point
+    strike = frame.aux_jsat_strike_r_m
     assert (
-        frame.loc[jsat, "aux_jsat_selected_psin"]
-        >= thresholds.PROBE_SOL_PSI_N_MIN - 1e-6
-    ).all()
-    assert (
-        frame.loc[jsat, "aux_jsat_radial_margin_m"]
-        >= thresholds.PROBE_STRIKE_MARGIN_M - 1e-6
+        strike.isna()
+        | ((strike >= STRIKE_REAL_R_M[0]) & (strike <= STRIKE_REAL_R_M[1]))
     ).all()
     table = pd.read_csv(dl.OUT / "detach_shots.csv")
     assert table.confidence.isna().all()
     primary_meta = json.loads((dl.OUT / "detach_shots.meta.json").read_text())
     diagnostic_meta = json.loads((ROOT / "labels_label_model.meta.json").read_text())
+    provenance = check_provenance(primary_meta)
     assert primary_meta["primary_method"] == "compatibility rule with TangTV required"
     assert primary_meta["diagnostic_only"] is False
     assert diagnostic_meta["diagnostic_only"] is True
@@ -169,20 +246,35 @@ def main():
     current = json.loads((RESULTS / "detachment_current.json").read_text())
     assert current["labels_sha256"] == sha
     d9 = current["paper_criterion_d9"]
-    states = frame.state_rule
     cohort = frame.split.isin(("train", "val", "test"))
-    both = set(frame.loc[states.eq(core.ATTACHED), "shot"]) & set(
-        frame.loc[states.eq(core.DETACHED), "shot"]
-    )
-    cohort_both = both & set(frame.loc[cohort, "shot"])
-    assert sorted(both) == sorted(d9["shots_with_both"])
-    assert sorted(cohort_both) == sorted(d9["cohort_shots_with_both"])
-    assert d9["met"] == (len(both) >= 3 and len(cohort_both) >= 1)
+    for name, tiers in (
+        ("certain", ("certain",)),
+        ("certain_or_tangtv_only", ("certain", "tangtv_only")),
+    ):
+        rows = frame[frame.tier.isin(tiers)]
+        both = set(rows.loc[rows.state_rule.eq(core.ATTACHED), "shot"]) & set(
+            rows.loc[rows.state_rule.eq(core.DETACHED), "shot"]
+        )
+        cohort_both = both & set(frame.loc[cohort, "shot"])
+        assert sorted(both) == sorted(d9[name]["shots_with_both"])
+        assert sorted(cohort_both) == sorted(d9[name]["cohort_shots_with_both"])
+        assert d9[name]["met"] == (len(both) >= 3 and len(cohort_both) >= 1)
+    assert d9["met"] == d9["certain"]["met"]
     assert d9["presentation"] == (
         "three_state_label_set_exploratory_with_te_check"
         if d9["met"]
         else "indicator_agreement_appendix"
     )
+    # the Afrac check decided to keep or drop the proxy; the vote agrees with it
+    afrac_check = json.loads((RESULTS / "detachment_afrac_check.json").read_text())
+    keep = afrac_check["decision"]["keep_afrac_in_vote"]
+    assert keep == bool((frame.afrac_vote.gt(0) & frame.afrac_valid.astype(bool)).any())
+    # the te check and the prad sensitivity score the same labels
+    te = json.loads((RESULTS / "detachment_te_check.json").read_text())
+    assert te["bins_assessed"] == len(frame)
+    sensitivity = json.loads((RESULTS / "detachment_prad_sensitivity.json").read_text())
+    assert sensitivity["variants"]["primary_relative"]["reproduces_exported_labels"]
+    assert sensitivity["n_assessed_bins"] == len(frame)
     model = json.loads((dl.OUT / "records/label_model.json").read_text())
     assert "used_anchor" in model["fit"]
     assert model["fit"]["anchor_bins"] == int(valid.all(axis=1).sum()) or (
@@ -192,7 +284,7 @@ def main():
     models = readme.split("<!-- MODELS -->")[1].split("<!-- /MODELS -->")[0]
     assert "detach-ours" not in models and "detach-victor" not in models
     handoff = (ROOT / "HANDOFF.md").read_text()
-    assert sha[:12] in handoff and "lower_shelf" in handoff
+    assert sha[:12] in handoff and "lower_shelf" in handoff and "tangtv_only" in handoff
     json_paths = sorted(
         p
         for p in RESULTS.glob("detachment_*.json")
@@ -239,8 +331,10 @@ def main():
         "trace_rows": trace_rows,
         "grids_checked": len(shot_ids),
         "certain_bins": int(certain.sum()),
+        "tangtv_only_bins": int(silver.sum()),
         "certain_bins_by_split": certain_by_split,
-        "sol_current_voting_bins": int(jsat.sum()),
+        "provenance": provenance,
+        "afrac_valid_bins": int(jsat.sum()),
         "reference_points": reference["n_primary_reference_points"],
         "finite_json_files_checked": len(json_paths),
         "bootstrap_valid_count_fields_checked": len(replicate_fields),
@@ -251,12 +345,21 @@ def main():
             "rule reproduction and legacy alias",
             "valid assessed bins and abstention encoding",
             "native and 250 ms radiation offset gates and covered heating windows",
-            "upper-shelf/known-ELM certainty and explicit cohort counts",
-            "SOL position and flux margins",
+            (
+                "tiers: certain needs TangTV plus a compatible second vote and no "
+                "clash; tangtv_only is TangTV alone; no MARFE state; upper shelf only"
+            ),
+            (
+                "Afrac inside the flux window with a per-probe reference; no valid "
+                "bin in a known L-mode; no sentinel strike point"
+            ),
+            "lower-shelf TangTV invalid, never a state",
+            "label tables made from a clean tree whose producers are unchanged at HEAD",
+            "the Afrac check's keep decision matches the vote",
             "exact interval, sparse-grid and trace reconstruction; no stale shots",
             "reference, figure, Figure 2 and current-state checksums match the labels",
-            "certain MARFE needs the TangTV vote; candidate_marfe never certain",
-            "relative-Prad sensitivity column and absolute cutoffs reproduce",
+            "candidate_marfe never carries a state",
+            "relative f_div vote and the absolute sensitivity column reproduce",
             "no lower-shelf column in labels, traces or handoff; one Figure 2 record",
             "paper D9 decision recomputed from the labels",
             "diagnostic metadata does not claim primary-rule grids",
