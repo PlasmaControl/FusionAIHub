@@ -267,7 +267,7 @@ def one_table(record: dict, reference: str, name: str, label: str) -> str:
         caption,
         rf"\label{{{label}}}",
         r"\centering\footnotesize",
-        r"\setlength{\tabcolsep}{4.5pt}",
+        r"\setlength{\tabcolsep}{4.2pt}",
         r"\begin{tabular}{@{}l>{\raggedright\arraybackslash}p{1.3in}cccc@{}}",
         r"\toprule",
         r"Model & Training & AUROC & AUPRC & Shot AUROC & F1 \\",
@@ -306,6 +306,16 @@ MAIN_ROWS = (
     ("clock", "from the legacy annotation", "clock-annotation"),
     ("clock", "from the dense relabel", "clock-dense"),
 )
+#: The training labels as the narrow main table names them.
+MAIN_TEX_TRAINING = {
+    "ae-ours-legacy": "legacy annotation",
+    "ae-ours-dense": "dense relabel",
+    "ae-ours-threeway": "agreement",
+    "ae-rcn": "saved",
+    "ae-lstm": "saved",
+    "clock-annotation": "legacy annotation",
+    "clock-dense": "dense relabel",
+}
 MAIN_HEAD = (
     "Model",
     "Training labels",
@@ -357,19 +367,25 @@ def main_markdown(record: dict) -> list[str]:
 def main_table(record: dict) -> str:
     """The main-text table (``table*``); the long tables stay in the appendix."""
     rows = []
-    for model, training, cells in main_cells(record):
+    for (model, _, name), (_, _, cells) in zip(MAIN_ROWS, main_cells(record)):
         label = rf"\texttt{{{model}}}" if model.startswith("ae-") else model
-        rows.append(" & ".join([label, training, *(tex(c) for c in cells)]) + r" \\")
+        short = MAIN_TEX_TRAINING[name]
+        rows.append(
+            " & ".join([f"{label}, {short}", *(tex(c) for c in cells)]) + r" \\"
+        )
     coarse = record["dense_reference_coarseness"]
     caption = (
         r"\caption{AE supervision swap on the 19 held-out shots that ae-rcn and "
         r"ae-lstm did not train on, scored against two references (10\,ms frames). "
         r"The three \texttt{ae-ours} rows are one recipe trained on three activity "
-        r"targets (100 training shots, epoch chosen on 20 other shots) and give the "
-        r"mean $\pm$ sample standard deviation over three seeds. The saved "
-        r"detectors \texttt{ae-rcn} and \texttt{ae-lstm} and the two input-free "
+        r"targets (the legacy annotation, the dense relabel, or the agreement of the "
+        r"annotation with TokEye; 100 training shots, epoch chosen on 20 other "
+        r"shots) and give the mean $\pm$ sample standard deviation over three "
+        r"seeds. The saved detectors \texttt{ae-rcn} and \texttt{ae-lstm} (801 "
+        r"training shots) and the two input-free "
         r"\emph{clocks} (each 10\,ms frame scored by its positive rate over the 120 "
-        r"training and selection shots) are single models and give the estimate. "
+        r"training and selection shots, from the labels named) are single models "
+        r"and give the estimate. "
         r"The last two columns are the paired AUROC difference from "
         r"\texttt{ae-rcn} (row minus \texttt{ae-rcn}; seed mean for "
         r"\texttt{ae-ours}) with a 95\,\% interval from 1000 resamplings of the 19 "
@@ -383,18 +399,18 @@ def main_table(record: dict) -> str:
         r"\begin{table*}[t]",
         caption,
         r"\label{tab:ae_supervision_swap_main}",
-        r"\centering\footnotesize",
-        r"\setlength{\tabcolsep}{3.4pt}",
-        r"\begin{tabular}{@{}ll cc cc cc@{}}",
+        r"\centering\scriptsize",
+        r"\setlength{\tabcolsep}{3pt}",
+        r"\begin{tabular}{@{}l cc cc cc@{}}",
         r"\toprule",
         (
-            r" & & \multicolumn{2}{c}{Dense reference} & "
+            r" & \multicolumn{2}{c}{Dense reference} & "
             r"\multicolumn{2}{c}{Legacy annotation} & "
             r"\multicolumn{2}{c}{AUROC minus \texttt{ae-rcn}} \\"
         ),
-        r"\cmidrule(lr){3-4}\cmidrule(lr){5-6}\cmidrule(l){7-8}",
+        r"\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(l){6-7}",
         (
-            r"Model & Training labels & AUROC & AUPRC & AUROC & AUPRC & "
+            r"Model, training labels & AUROC & AUPRC & AUROC & AUPRC & "
             r"Dense ref. & Legacy-ann. ref. \\"
         ),
         r"\midrule",
@@ -600,21 +616,23 @@ def clock_note(record: dict) -> str:
 
 
 def garcia_text(record: dict) -> str:
-    """Who edited the dense labels after the paper's snapshot, from the history."""
+    """Who saved changes on the shots that differ from the paper's snapshot."""
     rec = record["dense_reconciliation"]
     names = rec["differing_shots_by_name"]
-    diff = rec["difference"]
-    n_train = len(diff["train_selection_120"]["differing_shots"])
-    garcia = names.get("Alvin Garcia", {})
-    chen = names.get("Nathaniel Chen", {})
+    n_train = len(rec["difference"]["train_selection_120"]["differing_shots"])
+    zero = {"train": 0, "selection": 0, "evaluation": 0}
+    garcia = names.get("Alvin Garcia", zero)
+    chen = names.get("Nathaniel Chen", zero)
+    unnamed = names.get("(unnamed)", zero)
     return (
-        f"A. Garcia, the author of ae-rcn and ae-lstm, saved changes on "
-        f"{garcia.get('train', 0) + garcia.get('selection', 0)} of the {n_train} "
-        f"training and selection shots that differ from the paper's snapshot "
-        f"({garcia.get('train', 0)} training, {garcia.get('selection', 0)} "
-        f"selection) and on {garcia.get('evaluation', 0)} evaluation shots; "
-        f"N. Chen saved changes on {chen.get('train', 0) + chen.get('selection', 0)} "
-        "of them"
+        f"A. Garcia saved changes on {garcia['train'] + garcia['selection']} of the "
+        f"{n_train} training and selection shots that differ from the paper's "
+        f"snapshot ({garcia['train']} training, {garcia['selection']} selection) "
+        f"and on {garcia['evaluation']} evaluation shots; N. Chen on "
+        f"{chen['train'] + chen['selection']} of them and "
+        f"{chen['evaluation']} evaluation shots; unnamed saves on "
+        f"{unnamed['train'] + unnamed['selection']} of them and "
+        f"{unnamed['evaluation']} evaluation shots (a shot can carry several)"
     )
 
 
@@ -630,13 +648,14 @@ def band_text(record: dict) -> str:
         f"(348 bins, four chords). The review display the dense labels were drawn on "
         f"read {band['before']} until {band['date']} and {band['after']} afterwards "
         f"({band['source']}). The {len(ts)} training and selection shots that differ "
-        f"from the paper's snapshot were edited with the {band['after']} display "
-        f"({late} of {len(ts)}; {early} also carry an earlier edit made with the "
-        f"{band['before']} display), so present frames added to them can rest on "
-        "activity between 60 and 80.6 kHz that ae-ours cannot see. "
+        f"from the paper's snapshot were changed with the {band['after']} display "
+        f"({late} of {len(ts)}; {early} of them also carry an earlier change made "
+        f"with the {band['before']} display), so present frames added to them can "
+        "rest on activity between 60 and 80.6 kHz that ae-ours cannot see. "
+        "Among the reviewers, "
         + garcia_text(record)
-        + " (Limitations). No evaluation shot was edited by Garcia, and no model "
-        "was retrained after these edits. "
+        + ". A. Garcia is the author of ae-rcn and ae-lstm (Limitations). The "
+        "arms train on the current table, edits included. "
         '"Absent" in the dense labels, and in every target ae-ours trains on, means '
         "absent within the observed band; it says nothing about activity below "
         "80.6 kHz, which the legacy annotation can mark and which can therefore be "
@@ -1067,6 +1086,8 @@ def findings(record: dict) -> dict:
     out["rcn_resolved"] = verdict(rcn_d) == "trails" and verdict(rcn_a) == "trails"
     out["lstm_sign"] = lstm_d["mean"] > 0 > lstm_a["mean"]
     out["lstm_resolved"] = verdict(lstm_d) == "leads" and verdict(lstm_a) == "trails"
+    #: The dense interval's lower end sits within rounding of zero.
+    out["lstm_marginal"] = out["lstm_resolved"] and lstm_d["ci95_shot"][0] < 0.005
     out["lead_with_new"] = any(
         rel(fair["dense"], f"ae-ours-{arm}", "ae-rcn")["ci95_shot"][0] > 0
         for arm in ("dense", "threeway")
@@ -1136,9 +1157,9 @@ def selection_text(record: dict) -> str:
         f"{PUBLISHED['all_60']['auprc']:.3f}). Published minus retrained seed mean, "
         f"against the seed SD of the retrain: {cells}. "
         + (
-            f"The gap exceeds the seed SD for {', '.join(beyond)}, so the retrained "
-            "scores are lower than the published ones by more than the seed spread "
-            "there. "
+            f"The gap exceeds the seed SD for {' and '.join(beyond)}, so the "
+            "retrained scores are lower than the published ones by more than the "
+            "seed spread there. "
             if beyond
             else "No gap exceeds the seed SD. "
         )
@@ -1227,6 +1248,12 @@ def interpretation(record: dict) -> list[str]:
             "The reversal against ae-lstm persists: ae-ours trained on the legacy "
             "annotation is above it on the dense reference and below it on the "
             "legacy annotation."
+            + (
+                " The dense interval's lower end is within 0.005 of zero, so that "
+                "resolution is marginal."
+                if f["lstm_marginal"]
+                else ""
+            )
             if f["lstm_resolved"]
             else "The reversal against ae-lstm persists in sign (above on the "
             "dense reference, below on the legacy annotation) but is resolved "
@@ -1417,27 +1444,46 @@ def provenance_text(record: dict) -> str:
         for name, item in hist["by_name"].items()
     )
     notes = "; ".join(f'"{note}" ({n} entries)' for note, n in hist["notes"].items())
+    unnamed = hist["by_name"].get("(unnamed)")
+    named_from = min(
+        item["first_saved"]
+        for name, item in hist["by_name"].items()
+        if name != "(unnamed)"
+    )
     garcia = hist["by_name"]["Alvin Garcia"]
     edits = garcia["changed_shots"]
+    days = {garcia["first_change"][:10], garcia["last_change"][:10]}
+    when = (
+        f"on {garcia['first_change'][:10]}"
+        if len(days) == 1
+        else f"from {garcia['first_change'][:10]} to {garcia['last_change'][:10]}"
+    )
     differing = len(rec["difference"]["train_selection_120"]["differing_shots"])
     band = rec["display_band_change"]
     return (
         f"- **Dense labels' provenance and reviewers.** The history file holds "
         f"{hist['entries']} entries on {hist['shots']} shots. Its `reviewer` field is "
         f"the login of the review server's process ({', '.join(hist['logins'])}), "
-        f"not a person; the person is the `name` field: {people} (the unnamed "
-        "entries are the earliest saves, from before names were recorded). The "
-        f"confirmation note reads {notes}. The source of every entry is "
+        f"not a person; the person is the `name` field: {people}"
+        + (
+            f" (the unnamed saves run {unnamed['first_saved'][:10]} to "
+            f"{unnamed['last_saved'][:10]}, before the first named save on "
+            f"{named_from[:10]})"
+            if unnamed
+            else ""
+        )
+        + f". The confirmation note reads {notes}. The source of every entry is "
         f"`{'`, `'.join(hist['sources'])}`: the review was pre-filled from the "
         "annotation's source table. A. Garcia, the author of ae-rcn and ae-lstm, "
         "therefore helped make the dense labels the training arms learn from: "
-        f"his interval-changing saves cover {edits['train']} training, "
-        f"{edits['selection']} selection and {edits['evaluation']} evaluation shots "
-        f"({garcia['first_change'][:10]} to {garcia['last_change'][:10]}). "
+        f"he saved all {garcia['shots_saved']} shots, and the "
+        f"{garcia['interval_changing_saves']} saves that changed intervals "
+        f"({when}) cover {edits['train']} training, {edits['selection']} selection "
+        f"and {edits['evaluation']} evaluation shots. "
         + garcia_text(record)
         + f". The current table differs from the snapshot the paper's audit scored "
         f"on {differing} of the 120 training and selection shots and on none of "
-        "the 19 shared shots. Those edits were made with the "
+        "the 19 shared shots. Those changes were made with the "
         f"{band['after']} review display ({band['before']} before {band['date']}), "
         "while ae-ours reads 80.6 kHz and above. The arms were trained on the "
         "current table, edits included; no model was retrained without them. "
@@ -1458,7 +1504,11 @@ def legacy_limits_text(record: dict) -> str:
             ]
             cells.append(f"{min(vals):.3f} to {max(vals):.3f} ({short}, {name})")
     collapsed = sorted(
-        n for n in record["convergence"]["superseded"] if n.startswith("ae-ours-legacy")
+        n.removeprefix("ae-ours-legacy-")
+        .removesuffix("-superseded1")
+        .replace("seed", "seed ")
+        for n in record["convergence"]["superseded"]
+        if n.startswith("ae-ours-legacy")
     )
     return (
         "- **The legacy arm is not the best achievable legacy-trained model.** The "
@@ -1669,6 +1719,7 @@ def summary(record: dict) -> str:
         + "; "
         + (
             "the reversal against ae-lstm persists"
+            + (" (marginally on the dense reference)" if f["lstm_marginal"] else "")
             if f["lstm_resolved"]
             else "the reversal against ae-lstm persists in sign but is not resolved "
             "on the dense reference"
