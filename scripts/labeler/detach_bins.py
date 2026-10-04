@@ -211,8 +211,24 @@ def tangtv_for(shot, edges, cache, elm=None, *, with_frame_mask=False):
         elm_flag=None if elm is None else elm[1],
         return_frame_mask=True,
     )
+    indicator = tangtv.void_lower_shelf(
+        indicator, shelf_tier_of(edges, ft, cache, accepted)
+    )
     result = (indicator, source)
     return (*result, accepted) if with_frame_mask else result
+
+
+def shelf_tier_of(edges, frame_t_ms, geo, accepted):
+    """The per-bin shelf geometry tier of the accepted frames (`tangtv.shelf_tier`)."""
+    et = geo["rxpt1"][0]
+    near = np.abs(et[None, :] - frame_t_ms[:, None]).argmin(axis=1)
+    return tangtv.shelf_tier(
+        edges,
+        frame_t_ms,
+        geo["rvsod"][1][near],
+        geo["zvsod"][1][near],
+        accepted,
+    )
 
 
 def greenwald_cue(edges, cache):
@@ -294,19 +310,21 @@ def confinement(shot, edges):
     return mode, back
 
 
-def processed_ratio(shot, edges, cache, base, elm):
-    """Local Jsat proxy from the SOL-side processed probes; no camera-dependent fit.
+def processed_ratio(shot, edges, cache, elm, lmode=None):
+    """Local Jsat proxy from the positioned processed probes; no camera-dependent fit.
 
-    The probes and the outer strike point use the same close EFIT map. The probe is
-    chosen by flux (`afrac.select_sol_probe`): the peak current among the probes
-    outboard of the strike point with 1.000 < psiN <= 1.05. A whole-shot
-    model-normalised 90th percentile is only a local reference, not Eldon C.
+    Each probe is referenced to its own near-separatrix attached level and the
+    probe nearest the separatrix in flux is read (`afrac.afrac_indicator`; the
+    window is `AFRAC_PSI_WINDOW`). The probes and the outer strike point use the
+    same close EFIT map; the strike point is only provenance, and an EFIT sentinel
+    is never exported as one (`tangtv.real_strike`). `lmode` (True where the shot is
+    known to be in L-mode) abstains the bin and keeps it out of every reference.
     Provenance (the reported probe's position, flux, distance and margin) is
     exported for every bin, valid or not: an invalid bin reports the probe nearest
-    the strike point and the reason it could not vote.
+    the separatrix and the reason it could not vote.
     """
     n = len(edges) - 1
-    modes = np.full(n, "local_proxy", dtype="U32")
+    modes = np.full(n, "per_probe_reference", dtype="U32")
     provenance = {
         "aux_jsat_selected_probe": np.full(n, -1, np.int16),
         "afrac_efit_source": np.full(n, "none", dtype="U16"),
@@ -322,6 +340,7 @@ def processed_ratio(shot, edges, cache, base, elm):
                 "strike_z_m",
                 "selected_distance_m",
                 "radial_margin_m",
+                "reference",
             )
         },
     }
@@ -365,22 +384,32 @@ def processed_ratio(shot, edges, cache, base, elm):
     near = np.abs(maps["gtime_ms"][:, None] - centres[None, :]).argmin(axis=0)
     close = np.abs(maps["gtime_ms"][near] - centres) <= 40
     strike = np.stack([maps[k][near] for k in ("rvsod", "zvsod")], axis=1)
-    strike[~close] = np.nan
+    strike[~close | ~tangtv.real_strike(strike[:, 0], strike[:, 1])] = np.nan
     psi_n = signals.flux_at_positions(maps, centres, positions)
-    which, usable, probe_reason = afrac.select_sol_probe(jsat, positions, strike, psi_n)
+    density = signals.line_density(cache)
+    power = signals.heating_power(shot, cache)
+    if density is None or power is None:
+        return invalid("no_density" if density is None else "no_power")
+    indicator, which, references = afrac.afrac_indicator(
+        edges,
+        jsat,
+        psi_n,
+        *density,
+        power[0],
+        power[2],
+        *cache["ipmeas"],
+        *(elm or (None, None)),
+        lmode,
+    )
+    usable = indicator.valid
     column = np.arange(n)
-    reported = afrac.reported_probe(positions, strike, psi_n, which, usable)
+    reported = afrac.reported_probe(psi_n, which, usable)
     index = np.maximum(reported, 0)
-    selected = np.where(usable, jsat[np.maximum(which, 0), column], np.nan)
     numbers = np.array([int(k[1:]) for k in keys])
     provenance["afrac_efit_source"][:] = str(maps.get("source", "EFIT01"))
     provenance["afrac_probe_position_valid"] = usable
     provenance["afrac_probe_n_eligible"] = (
-        (
-            (positions[:, None, 0] - strike[None, :, 0] >= th.PROBE_STRIKE_MARGIN_M)
-            & (psi_n > th.PROBE_SOL_PSI_N_MIN)
-            & (psi_n <= th.PROBE_SOL_PSI_N_MAX)
-        )
+        (np.isfinite(psi_n) & (np.abs(psi_n - 1.0) <= th.AFRAC_PSI_WINDOW))
         .sum(axis=0)
         .astype(np.int16)
     )
@@ -400,28 +429,10 @@ def processed_ratio(shot, edges, cache, base, elm):
     provenance["aux_jsat_radial_margin_m"] = (
         reported_positions[:, 0] - strike[:, 0]
     ).astype(np.float32)
-    density = signals.line_density(cache)
-    power = signals.heating_power(shot, cache)
-    if density is None or power is None:
-        return invalid("no_density" if density is None else "no_power")
-    base = afrac.afrac_indicator(
-        edges,
-        centres,
-        selected[None, :],
-        *density,
-        power[0],
-        power[2],
-        *cache["ipmeas"],
-        *(elm or (None, None)),
-        pre_masked=True,
-    )
-    reason = np.where(~usable, probe_reason, base.reason)
-    reason[~core.elm_bin_known(edges, *(elm or (None, None)))] = "elm_unknown"
-    return (
-        core.assemble("afrac", base.value, base.valid & usable, reason, base.vote),
-        modes,
-        provenance,
-    )
+    provenance["aux_jsat_reference"] = np.where(
+        usable, references[np.maximum(which, 0)], np.nan
+    ).astype(np.float32)
+    return indicator, modes, provenance
 
 
 def process(
@@ -444,13 +455,13 @@ def process(
     n = len(starts)
 
     power = signals.heating_power(shot, cache)
-    p_t, p_in, p_sol = (None, None, None) if power is None else power
+    p_t, p_in, _ = (None, None, None) if power is None else power
     elm = signals.elm_mask(shot, cache)
     elm_t, elm_flag = (None, None) if elm is None else elm
     density = signals.line_density(cache)
     n_t, n_y = (None, None) if density is None else density
-    # Unpositioned raw sweeps supply diagnostics only; processed_ratio below
-    # always replaces their votes with independently positioned SOL-side current.
+    # Unpositioned raw sweeps supply diagnostics only (`aux_jsat_peak`); the Afrac
+    # vote always comes from the positioned processed probes (`processed_ratio`).
     probes = langmuir.read_shot(shot) if raw_probe_diagnostics else None
 
     prad_ind = prad.prad_indicator(
@@ -461,19 +472,18 @@ def process(
         elm_t,
         elm_flag,
     )
-    afrac_ind = afrac.afrac_indicator(
-        edges,
-        None if probes is None else probes["t_ms"],
-        None if probes is None else probes["jsat"],
-        n_t,
-        n_y,
-        p_t,
-        p_sol,
-        t_ip,
-        ip,
-        elm_t,
-        elm_flag,
+    # The exported f_div vote is the per-shot relative one; the absolute vote (the
+    # shot-201081-anchored global cutoffs) stays beside it as a sensitivity.
+    centres = core.bin_centres(edges)
+    p_in_window = (
+        None
+        if p_t is None
+        else signals.window_mean(p_t, p_in, centres, th.PRAD_AVERAGING_MS)
     )
+    ratio = prad.relative_fdiv(prad_ind.value, prad_ind.valid, p_in_window)
+    prad_abs_vote, prad_abs_valid = prad_ind.vote.copy(), prad_ind.valid.copy()
+    prad_ind = prad.with_relative_vote(prad_ind, ratio)
+    regime, regime_source = signals.regime(shot, centres)
     tangtv_ind, tangtv_source, frame_quality = tangtv_for(
         shot, edges, cache, elm, with_frame_mask=True
     )
@@ -486,7 +496,7 @@ def process(
     second, fg = greenwald_cue(edges, cache)
     _, back_transition = confinement(shot, edges)
     afrac_ind, afrac_mode, probe_provenance = processed_ratio(
-        shot, edges, cache, afrac_ind, elm
+        shot, edges, cache, elm, regime == "L"
     )
     vote, candidate = tangtv.evidence_votes(
         tangtv_ind.value, tangtv_ind.valid, spatial, second
@@ -502,6 +512,10 @@ def process(
         out[f"{ind.name}_reason"] = ind.reason.astype(str)
         out[f"{ind.name}_vote"] = ind.vote
     out["afrac_method"] = afrac_mode
+    out["regime"] = regime
+    out["regime_source"] = np.full(n, regime_source)
+    out["prad_abs_valid"] = prad_abs_valid
+    out["prad_abs_vote"] = prad_abs_vote.astype(np.int8)
     out.update(probe_provenance)
     out["tangtv_source"] = np.full(n, tangtv_source)
     out["tangtv_efit_source"] = np.full(n, geo_source)
@@ -520,15 +534,9 @@ def process(
     )
     # the quantities behind the indicators, for the figure and the failure analysis
     out["aux_ip_a"] = core.bin_median(t_ip, ip, edges)[0].astype(np.float32)
-    if p_t is not None:
-        out["aux_p_in_w"] = signals.window_mean(
-            p_t, p_in, core.bin_centres(edges), th.PRAD_AVERAGING_MS
-        ).astype(np.float32)
-    ratio = prad.relative_fdiv(prad_ind.value, prad_ind.valid, out.get("aux_p_in_w"))
+    if p_in_window is not None:
+        out["aux_p_in_w"] = p_in_window.astype(np.float32)
     out["prad_rel_value"] = ratio.astype(np.float32)
-    out["prad_rel_vote"] = np.where(
-        prad_ind.valid, prad.relative_vote(ratio), core.ABSTAIN
-    ).astype(np.int8)
     for name in ("prad_divl", "prad_tot"):
         out[f"aux_{name}_w"] = np.full(n, np.nan, np.float32)
         if name in cache:
@@ -575,12 +583,7 @@ def process(
     rec = load_inversion(shot) if tangtv_source == "inversion" else load_surrogate(shot)
     out["tangtv_tier"] = np.full(n, "none", dtype="U24")
     if rec is not None and frame_quality is not None:
-        ft = rec["times_ms"]
-        et = geo["rxpt1"][0]
-        near = np.abs(et[None, :] - ft[:, None]).argmin(axis=1)
-        out["tangtv_tier"] = tangtv.shelf_tier(
-            edges, ft, geo["rvsod"][1][near], geo["zvsod"][1][near], frame_quality
-        )
+        out["tangtv_tier"] = shelf_tier_of(edges, rec["times_ms"], geo, frame_quality)
     add_envelope(out)
     target = (out_dir or root() / "bins") / f"{shot}.npz"
     target.parent.mkdir(parents=True, exist_ok=True)

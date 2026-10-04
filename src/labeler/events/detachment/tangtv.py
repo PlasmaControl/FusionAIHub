@@ -80,6 +80,12 @@ def _is_real(x: np.ndarray, lo: float, hi: float) -> np.ndarray:
     return ok
 
 
+def real_strike(rvsod, zvsod) -> np.ndarray:
+    """True where an outer strike point (R, Z) is a real position, not an EFIT
+    sentinel (-0.89, -9.99, 0) or outside the vessel's divertor region."""
+    return _is_real(rvsod, 0.8, 2.5) & _is_real(zvsod, -1.6, -0.9)
+
+
 def shelf_gate(
     rvsod: np.ndarray,
     zvsod: np.ndarray,
@@ -145,6 +151,22 @@ def shelf_tier(edges, frame_t_ms, rvsod, zvsod, accepted):
     tier[(count > 0) & (lower_share == 1)] = "lower_shelf_window"
     tier[(upper_share > 0) & (lower_share > 0)] = "mixed_shelf"
     return tier
+
+
+def void_lower_shelf(indicator: Indicator, tier: np.ndarray) -> Indicator:
+    """Mark the lower-shelf window invalid: no state is ever emitted there.
+
+    plasma_tv's regression was built on the upper shelf and Victor & Scotti 2024
+    needed a separate model for the lower one, so a bin whose accepted frames are
+    all in the lower-shelf window (`shelf_tier`) cannot vote and is not counted as
+    valid TangTV coverage; its reason is `lower_shelf_window`. The front height
+    stays in `value` for display. The label's tier `lower_shelf_window` is
+    assigned from the geometry tier, not from this validity.
+    """
+    lower = np.asarray(tier) == "lower_shelf_window"
+    valid = indicator.valid & ~lower
+    reason = np.where(indicator.valid & lower, "lower_shelf_window", indicator.reason)
+    return assemble(indicator.name, indicator.value, valid, reason, indicator.vote)
 
 
 def tangtv_indicator(

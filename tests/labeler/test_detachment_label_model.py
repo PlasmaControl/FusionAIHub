@@ -249,13 +249,70 @@ def test_primary_compatibility_requires_upper_shelf_and_known_elm():
         ),
         elm_known=np.array([True, True, False, True, True]),
     )
-    assert state.tolist() == [2, 4, 4, 3, 4]
+    assert state.tolist() == [2, 4, 4, 4, 4]
     assert tier.tolist() == [
         "certain",
         "lower_shelf_window",
         "elm_unknown",
-        "certain",
+        "candidate_marfe",
         "conflict",
+    ]
+
+
+def test_lower_shelf_tier_holds_even_where_tangtv_is_invalid():
+    # the lower-shelf TangTV is marked invalid; the geometry tier still names the bin
+    votes = np.array([[2, 2, -1], [-1, -1, -1]])
+    valid = np.array([[1, 1, 0], [1, 0, 0]], bool)
+    state, tier = lm.compatibility_decide(
+        votes,
+        valid,
+        tangtv_tier=np.array(["lower_shelf_window", "lower_shelf_window"]),
+        elm_known=np.ones(2, bool),
+    )
+    assert state.tolist() == [4, 0]
+    assert tier.tolist() == ["lower_shelf_window", "not_assessed"]
+
+
+def test_second_vote_makes_certain_and_tangtv_alone_is_silver():
+    # columns: afrac, prad, tangtv; a vote on an invalid indicator is dropped
+    votes = np.array(
+        [
+            [1, -1, 1],  # afrac agrees: certain attached
+            [-1, 2, 2],  # prad agrees: certain detached
+            [-1, -1, 2],  # everyone else abstains: silver detached
+            [-1, -1, 1],  # the others are invalid: silver attached
+            [2, -1, 1],  # afrac disagrees: conflict
+            [1, 2, 1],  # prad disagrees although afrac agrees: conflict
+            [1, 1, -1],  # no TangTV vote: a pair, no state
+            [-1, -1, -1],  # only TangTV is valid and it abstains: not assessed
+        ]
+    )
+    valid = np.array(
+        [
+            [1, 1, 1],
+            [1, 1, 1],
+            [1, 1, 1],
+            [0, 0, 1],
+            [1, 1, 1],
+            [1, 1, 1],
+            [1, 1, 1],
+            [0, 0, 1],
+        ],
+        bool,
+    )
+    state, tier = lm.compatibility_decide(
+        votes, valid, tangtv_tier=np.full(8, "upper_shelf"), elm_known=np.ones(8, bool)
+    )
+    assert state.tolist() == [1, 2, 2, 1, 4, 4, 4, 0]
+    assert tier.tolist() == [
+        "certain",
+        "certain",
+        "tangtv_only",
+        "tangtv_only",
+        "conflict",
+        "conflict",
+        "low_confidence_pair",
+        "not_assessed",
     ]
 
 
@@ -265,11 +322,11 @@ def test_primary_compatibility_ignores_invalid_votes_and_requires_redundancy():
     state, tier = lm.compatibility_decide(
         votes, valid, tangtv_tier=np.full(4, "upper_shelf"), elm_known=np.ones(4, bool)
     )
-    assert state.tolist() == [4, 4, 0, 4]
+    assert state.tolist() == [4, 4, 2, 4]
     assert tier.tolist() == [
         "low_confidence_pair",
         "low_confidence_pair",
-        "not_assessed",
+        "tangtv_only",
         "no_vote",
     ]
 
@@ -283,21 +340,21 @@ def test_primary_compatibility_requires_explicit_upper_shelf_provenance():
     assert tier.tolist() == ["geometry_unknown"]
 
 
-def test_marfe_is_certain_on_the_tangtv_vote_alone():
-    # Prad,div and Afrac do not corroborate a MARFE: the radiation leaves the
-    # Prad,div,L region and the target current says nothing about the X-point.
-    # Their detached votes are neither required nor counted; abstentions and
-    # detached votes give the same state.
-    votes = np.array([[2, 2, 3], [-1, -1, 3], [-1, 2, 3], [2, -1, 3]])
-    valid = np.array([[1, 1, 1], [1, 1, 1], [0, 1, 1], [1, 0, 1]], bool)
+def test_marfe_is_only_ever_a_candidate():
+    # The density cue behind the TangTV MARFE vote has no literature source, so the
+    # label never states a MARFE: every TangTV MARFE vote is the uncertain tier
+    # candidate_marfe, whatever Prad,div and Afrac vote, and even alone.
+    votes = np.array([[2, 2, 3], [-1, -1, 3], [-1, 2, 3], [2, -1, 3], [1, 2, 3]])
+    valid = np.array([[1, 1, 1], [1, 1, 1], [0, 1, 1], [1, 0, 1], [1, 1, 1]], bool)
     state, tier = lm.compatibility_decide(
-        votes, valid, tangtv_tier=np.full(4, "upper_shelf"), elm_known=np.ones(4, bool)
+        votes, valid, tangtv_tier=np.full(5, "upper_shelf"), elm_known=np.ones(5, bool)
     )
-    assert state.tolist() == [3, 3, 3, 3]
-    assert tier.tolist() == ["certain"] * 4
+    assert state.tolist() == [4] * 5
+    assert tier.tolist() == ["candidate_marfe"] * 5
+    assert core.MARFE not in state
 
 
-def test_marfe_still_needs_a_second_valid_indicator_and_known_geometry():
+def test_a_marfe_vote_still_respects_geometry_and_elm_coverage():
     votes = np.array([[-1, -1, 3], [2, 2, 3], [2, 2, 3]])
     valid = np.array([[0, 0, 1], [1, 1, 1], [1, 1, 1]], bool)
     state, tier = lm.compatibility_decide(
@@ -306,17 +363,5 @@ def test_marfe_still_needs_a_second_valid_indicator_and_known_geometry():
         tangtv_tier=np.array(["upper_shelf", "lower_shelf_window", "upper_shelf"]),
         elm_known=np.array([True, True, False]),
     )
-    assert state.tolist() == [0, 4, 4]
-    assert tier.tolist() == ["not_assessed", "lower_shelf_window", "elm_unknown"]
-
-
-def test_an_attached_vote_from_another_indicator_blocks_marfe():
-    votes = np.array([[1, 2, 3], [2, 1, 3]])
-    state, tier = lm.compatibility_decide(
-        votes,
-        votes > 0,
-        tangtv_tier=np.full(2, "upper_shelf"),
-        elm_known=np.ones(2, bool),
-    )
-    assert state.tolist() == [4, 4]
-    assert tier.tolist() == ["conflict", "conflict"]
+    assert state.tolist() == [4, 4, 4]
+    assert tier.tolist() == ["candidate_marfe", "lower_shelf_window", "elm_unknown"]

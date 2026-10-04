@@ -59,7 +59,7 @@ import numpy as np
 from scipy.optimize import minimize
 from scipy.special import logsumexp
 
-from .core import ABSENT, ABSTAIN, ATTACHED, MARFE, UNCERTAIN, VOTE_STATES
+from .core import ABSENT, ABSTAIN, ATTACHED, DETACHED, MARFE, UNCERTAIN, VOTE_STATES
 
 LF_NAMES = ("afrac", "prad", "tangtv")
 ALLOWED = {"afrac": (1, 2), "prad": (1, 2), "tangtv": (1, 2, 3)}
@@ -366,47 +366,71 @@ def redundant_decide(posterior, votes, valid, threshold=0.7):
 
 
 def compatibility_decide(votes, valid, *, tangtv_tier, elm_known):
-    """Primary observed label: compatible redundant votes with TangTV required.
+    """Primary observed label: the geometry-gated TangTV state, with a second vote.
 
-    This rule uses no fitted posterior. ``redundant_decide`` is retained only as a
-    model diagnostic. Unknown ELM coverage never supplies certainty, and a
-    lower-shelf camera window never emits a state (its bins are uncertain with the
-    tier `lower_shelf_window`).
+    The label set is "geometry-gated TangTV state, validated by divertor Thomson
+    Te". The rule uses no fitted posterior (``redundant_decide`` is retained only
+    as a model diagnostic). Tiers of an assessed bin, in the order they are decided:
 
-    Attached and detached are certain when TangTV votes and at least one other
-    valid indicator casts a compatible vote, with no conflicting vote. MARFE is
-    certain on the TangTV MARFE vote alone, which already carries the spatial
-    evidence (emission peak inside the separatrix near and above the X-point), the
-    density-limit cue and a persistence of adjacent bins (`tangtv.evidence_votes`);
-    Prad,div and Afrac are NOT corroborators of a MARFE (the radiation leaves the
-    Prad,div,L region and the target current says nothing about the X-point), so
-    their detached votes are neither required nor counted, and only an attached
-    vote from either of them (a conflict) can stop it.
+    * `certain`: TangTV votes attached or detached and at least one other valid
+      indicator casts a compatible vote (relative f_div, or Afrac), with no
+      conflicting vote. The state is TangTV's.
+    * `tangtv_only` (silver): TangTV votes attached or detached and no other valid
+      indicator casts a vote (each abstains or is invalid). The state is TangTV's.
+    * `conflict`: a vote disagrees with TangTV's, or the other two disagree with
+      each other; the state is uncertain.
+    * `candidate_marfe`: TangTV's MARFE vote (sustained front above the X-point,
+      emission inside the separatrix, density cue). The state is uncertain, never
+      MARFE: the density cue (fG >= 0.8) has no literature source (Dong 2025 gives
+      fG >~ 0.5 on HL-3 with a core-point density and a core-Te condition), and the
+      one published MARFE (199166 at 3705 ms) is not recovered.
+    * `low_confidence_pair` (the other two agree, no TangTV vote),
+      `insufficient_support`, `no_vote` (every valid indicator abstains).
+    * `lower_shelf_window`, `geometry_unknown`, `elm_unknown`: no state is emitted
+      (uncertain); the first two come from the camera geometry tier, which is set
+      even where TangTV is invalid.
+    * `not_assessed`: fewer than two valid indicators and no TangTV vote; no row.
+
+    Unknown ELM coverage never supplies a state.
     """
     valid = np.asarray(valid, bool)
     votes = np.where(valid, votes, ABSTAIN)
-    assessed = valid.sum(axis=1) >= 2
-    fallback = rule(votes, valid)
-    cast = votes > 0
-    support = cast.sum(axis=1) >= 2
-    conflict = (fallback == UNCERTAIN) & cast.any(axis=1)
-    tv = votes[:, LF_NAMES.index("tangtv")]
+    n = len(votes)
+    j_tv = LF_NAMES.index("tangtv")
     others = [j for j, name in enumerate(LF_NAMES) if name != "tangtv"]
-    attached_elsewhere = (votes[:, others] == ATTACHED).any(axis=1)
-    marfe_ok = assessed & (tv == MARFE) & ~attached_elsewhere
-    permitted = assessed & support & (tv > 0) & ~conflict & (tv != MARFE)
-    state = np.where(permitted, fallback, UNCERTAIN).astype(np.int8)
-    state[marfe_ok] = MARFE
-    tier = np.full(len(state), "insufficient_support", dtype=object)
-    tier[permitted | marfe_ok] = "certain"
-    tier[(tv <= 0) & support & ~conflict] = "low_confidence_pair"
-    tier[conflict & ~marfe_ok] = "conflict"
+    tv = votes[:, j_tv]
+    cast = votes > 0
+    assessed = (valid.sum(axis=1) >= 2) | (tv > 0)
+    fallback = rule(votes, valid)
+    leaning = (tv == ATTACHED) | (tv == DETACHED)
+    agree = np.zeros(n, bool)
+    clash = np.zeros(n, bool)
+    for j in others:
+        for vote in (ATTACHED, DETACHED):
+            cast_here = votes[:, j] == vote
+            fits = np.isin(tv, COMPATIBLE[LF_NAMES[j]][vote])
+            agree |= cast_here & fits
+            clash |= cast_here & ~fits
+    second = cast[:, others].any(axis=1)
+    certain = leaning & agree & ~clash
+    silver = leaning & ~second
+    state = np.full(n, UNCERTAIN, dtype=np.int8)
+    state[certain | silver] = tv[certain | silver]
+    tier = np.full(n, "insufficient_support", dtype=object)
+    tier[(tv <= 0) & (cast.sum(axis=1) >= 2) & (fallback != UNCERTAIN)] = (
+        "low_confidence_pair"
+    )
+    tier[(fallback == UNCERTAIN) & cast.any(axis=1)] = "conflict"
     tier[~cast.any(axis=1)] = "no_vote"
+    tier[leaning & clash] = "conflict"
+    tier[certain] = "certain"
+    tier[silver] = "tangtv_only"
+    tier[tv == MARFE] = "candidate_marfe"
     geometry = np.asarray(tangtv_tier)
-    lower = valid[:, 2] & (geometry == "lower_shelf_window")
+    lower = geometry == "lower_shelf_window"
     state[lower] = UNCERTAIN
     tier[lower] = "lower_shelf_window"
-    unknown_geometry = valid[:, 2] & ~np.isin(
+    unknown_geometry = valid[:, j_tv] & ~np.isin(
         geometry, ("upper_shelf", "lower_shelf_window")
     )
     state[unknown_geometry] = UNCERTAIN

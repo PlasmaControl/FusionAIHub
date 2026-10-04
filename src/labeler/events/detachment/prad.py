@@ -8,9 +8,12 @@ weak voter. It never votes MARFE and never corroborates one: a MARFE moves the
 radiation out of the Prad,div,L region (above the X-point), so a MARFE bin can
 read the same f_div as a detached one or lower.
 
-Two votes are computed from the same value: the absolute one (the exported label's
-vote) and a per-shot relative one (`relative_fdiv`, f_div over the shot's own
-baseline), recorded as a sensitivity alternative.
+Two votes are computed from the same value. The exported label's vote is the
+per-shot RELATIVE one (`relative_fdiv`: f_div over the shot's own baseline, so the
+shot's input power and seeding cancel; `with_relative_vote`). The absolute vote
+(`fdiv_vote` with the shot-201081-anchored global cutoffs) is recorded beside it as
+a sensitivity: those cutoffs do not carry over from the anchor shot (Opus review 5,
+I1).
 """
 
 from __future__ import annotations
@@ -87,6 +90,19 @@ def relative_fdiv(
 def relative_vote(ratio: np.ndarray) -> np.ndarray:
     """Vote on `relative_fdiv` with the anchor-derived relative cutoffs."""
     return fdiv_vote(ratio, th.PRAD_REL_ATTACHED_MAX, th.PRAD_REL_DETACHED_MIN)
+
+
+def with_relative_vote(indicator: Indicator, ratio: np.ndarray) -> Indicator:
+    """The exported f_div indicator: the absolute f_div value, voting on `ratio`.
+
+    A bin that is valid but has no baseline (`ratio` not finite: the shot has too
+    few flat-top bins) cannot vote: it becomes invalid, reason `no_baseline`.
+    """
+    ratio = np.asarray(ratio, dtype=float)
+    valid = indicator.valid & np.isfinite(ratio)
+    reason = np.where(indicator.valid & ~valid, "no_baseline", indicator.reason)
+    vote = np.where(valid, relative_vote(ratio), ABSTAIN)
+    return assemble(indicator.name, indicator.value, valid, reason, vote)
 
 
 def elm_window_known(edges, elm_t_ms, elm_flag) -> np.ndarray:

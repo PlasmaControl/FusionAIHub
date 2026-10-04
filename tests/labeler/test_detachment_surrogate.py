@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 from labeler.events.detachment import core
+from labeler.events.detachment import thresholds as th
 
 SCRIPTS = Path(__file__).resolve().parents[2] / "scripts" / "labeler"
 
@@ -210,7 +211,8 @@ def test_processed_local_proxy_excludes_quality_failures_and_private_flux(
         "z": np.array([-1.26, -1.24]),
         "ssimag": np.zeros(100),
         "ssibry": np.ones(100),
-        "psirz": np.tile([[0.95, 1.05], [0.95, 1.05]], (100, 1, 1)),
+        # psiN 0.97 at p1 (private flux, far from the separatrix), 1.004 at p2
+        "psirz": np.tile([[0.94, 1.02], [0.94, 1.02]], (100, 1, 1)),
     }
     monkeypatch.setattr(bins.signals, "load_flux_map", lambda shot: maps)
     monkeypatch.setattr(bins.signals, "line_density", lambda cache: (t, np.ones(100)))
@@ -219,23 +221,70 @@ def test_processed_local_proxy_excludes_quality_failures_and_private_flux(
         "heating_power",
         lambda *args: (t, np.full(100, 4e6), np.full(100, 4e6)),
     )
-    base = core.assemble(
-        "afrac", np.ones(100), np.ones(100, bool), np.full(100, ""), np.ones(100)
-    )
     ti = np.arange(5001.0)
     ip = np.where(ti < 1000, 1e6 + 2000 * ti, 3e6)
     flag = (ti >= 1000) & (ti < 1100)
-    indicator, method, provenance = bins.processed_ratio(
-        1, edges, {"ipmeas": (ti, ip)}, base, (ti, flag)
-    )
+    cache = {"ipmeas": (ti, ip)}
+    indicator, method, provenance = bins.processed_ratio(1, edges, cache, (ti, flag))
     assert not indicator.valid[:22].any()
     assert indicator.valid[23:].all()
     assert indicator.value[indicator.valid] == pytest.approx(
         np.ones(indicator.valid.sum())
     )
-    assert set(method) == {"local_proxy"}
+    assert set(method) == {"per_probe_reference"}
     assert set(provenance["aux_jsat_selected_probe"][indicator.valid]) == {2}
-    assert (provenance["aux_jsat_selected_psin"][indicator.valid] > 1.01).all()
+    psi = provenance["aux_jsat_selected_psin"][indicator.valid]
+    assert (np.abs(psi - 1.0) <= th.AFRAC_PSI_WINDOW).all()
+    assert (provenance["afrac_probe_n_eligible"][indicator.valid] == 1).all()
+    assert provenance["aux_jsat_reference"][indicator.valid] == pytest.approx(
+        np.full(indicator.valid.sum(), 1.0 / (4e6 ** (-3 / 7)))
+    )
+    # a known L-mode stretch abstains
+    gated, _, _ = bins.processed_ratio(
+        1, edges, cache, (ti, flag), np.arange(100) >= 50
+    )
+    assert (gated.reason[50:] == "l_mode").all() and not gated.valid[50:].any()
+    assert gated.valid[23:50].all()
+
+
+def test_exported_strike_point_is_never_an_efit_sentinel(bins, monkeypatch, tmp_path):
+    monkeypatch.setattr(bins, "root", lambda: tmp_path)
+    (tmp_path / "processed_probes").mkdir()
+    edges = np.arange(0.0, 5050.0, 50.0)
+    t = core.bin_centres(edges)
+    np.savez(
+        tmp_path / "processed_probes/1.npz",
+        p1_t_ms=t,
+        p1_jsat=np.ones(100),
+        p1_rz=np.array([1.512, -1.25]),
+    )
+    maps = {
+        "source": np.array("EFIT01"),
+        "gtime_ms": t,
+        "rvsod": np.full(100, -0.89),  # EFIT's "no such point" value
+        "zvsod": np.full(100, -0.89),
+        "r": np.array([1.48, 1.52]),
+        "z": np.array([-1.26, -1.24]),
+        "ssimag": np.zeros(100),
+        "ssibry": np.ones(100),
+        "psirz": np.tile([[0.94, 1.02], [0.94, 1.02]], (100, 1, 1)),
+    }
+    monkeypatch.setattr(bins.signals, "load_flux_map", lambda shot: maps)
+    monkeypatch.setattr(bins.signals, "line_density", lambda cache: (t, np.ones(100)))
+    monkeypatch.setattr(
+        bins.signals,
+        "heating_power",
+        lambda *args: (t, np.full(100, 4e6), np.full(100, 4e6)),
+    )
+    ti = np.arange(5001.0)
+    indicator, _, provenance = bins.processed_ratio(
+        1, edges, {"ipmeas": (ti, np.full(5001, 3e6))}, (ti, np.zeros(5001, bool))
+    )
+    # the probe is still read by its flux; no distance or margin is invented
+    assert indicator.valid.all()
+    assert np.isnan(provenance["aux_jsat_strike_r_m"]).all()
+    assert np.isnan(provenance["aux_jsat_selected_distance_m"]).all()
+    assert np.isnan(provenance["aux_jsat_radial_margin_m"]).all()
 
 
 def test_surrogate_training_rejects_stale_efit_geometry(surrogate, monkeypatch):

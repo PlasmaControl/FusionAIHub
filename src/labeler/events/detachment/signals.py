@@ -338,6 +338,57 @@ def elm_mask(shot: int, cache=None):
     return t, np.where(available, widened.astype(float), np.nan)
 
 
+#: The suggestion table the confinement review opens on: curated spans where a shot
+#: has them, else the D-alpha H-mode method's. Categories 1 high, 2 low, 3 qh,
+#: 4 wpqh, 5 uncertain; 0 is time in which nothing is observable.
+REGIME_TABLE = "suggestions/regimes/v1/confinement_suggest_regimes_v1.csv"
+_REGIME_L = (2,)
+_REGIME_H = (1, 3, 4)
+
+
+def regime(shot: int, centres_ms) -> tuple[np.ndarray, str]:
+    """`(regime, source)`: `L`, `H` or `unknown` on each bin centre, and where from.
+
+    Eldon 2022's Afrac model holds in H-mode, so the exporter gates L-mode out. The
+    regime comes from, in order, the confinement suggestion table when it marks
+    the shot's bins low or high (`regime_table`), else the D-alpha H-mode method
+    (`spans.detect_hmode`: L is the stretch it measured outside its H-mode spans,
+    `dalpha_detector`), else it is `unknown` (`none`) and nothing is gated. A bin
+    in the H-mode method's uncertain spans, or outside what it measured, is
+    `unknown`. Coverage is partial (the method needs the corpus D-alpha, CO2 and
+    beams), which is why the caller exports the regime beside the gate.
+    """
+    import pandas as pd
+
+    from labeler.config import Paths
+    from labeler.events import spans
+
+    centres = np.asarray(centres_ms, dtype=float)
+    out = np.full(len(centres), "unknown", dtype="U7")
+    paths = Paths.from_env()
+    table = paths.root / REGIME_TABLE
+    if table.is_file():
+        rows = pd.read_csv(table).query("shot == @shot")
+        for row in rows.itertuples():
+            hit = (centres >= row.t_start) & (centres < row.t_end)
+            out[hit & np.isin(row.category, _REGIME_L)] = "L"
+            out[hit & np.isin(row.category, _REGIME_H)] = "H"
+        if (out != "unknown").any():
+            return out, "regime_table"
+    try:
+        found = spans.detect_hmode(int(shot), paths)
+    except spans.INPUT_MISSING:
+        return out, "none"
+    measured = [(a, b) for a, b in found.measured]
+    held = [(a, b) for a, b, _ in found.spans]
+    for a, b in spans.minus(measured, held):
+        out[(centres >= a) & (centres < b)] = "L"
+    for a, b, state in found.spans:
+        if state == spans.PRESENT:
+            out[(centres >= a) & (centres < b)] = "H"
+    return out, "dalpha_detector"
+
+
 def tangtv_geometry(shot, cache=None):
     """EFIT02 for camera geometry; explicit EFIT01 fallback for missing records.
 

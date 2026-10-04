@@ -17,13 +17,24 @@ AFRAC_ATTACHED_MIN = 0.75
 #: calls detaching, and the operating point Eldon 2022 controls to. Between 0.5 and
 #: 0.75 the strike point is partially detached: the indicator abstains.
 AFRAC_DETACHED_MAX = 0.5
-#: Positioned processed currents still lack an independently identified attached
-#: reference for Eldon's C. The local reference is the shot's own quantile of the
-#: model-normalised Jsat over its valid bins (the detachment only ever lowers the
-#: ratio, so the upper tail is the attached level). A shot detached throughout is
-#: therefore mis-called attached in its top tail: a stated limitation of this
+#: Each probe's own attached reference for Eldon's C: the shot's own quantile of the
+#: probe's model-normalised Jsat over the bins where that probe is near the
+#: separatrix (the detachment only ever lowers the ratio, so the upper tail is the
+#: attached level). A probe detached through every one of its near-separatrix bins
+#: is therefore mis-called attached in its top tail: a stated limitation of this
 #: indicator, which is why it never decides alone.
 AFRAC_REFERENCE_QUANTILE = 0.90
+#: A probe is read, and its reference defined, only where it is within this psiN of
+#: the separatrix (|psiN - 1| <= window). The shelf's flux expansion is about 0.5
+#: psiN per metre, so 0.01 is about 2 cm of target. Chosen from the probe spacing
+#: (1-4 cm) and the width of the target profile, not from a score; 0.015 and 0.02
+#: are swept in `docs/labeler/results/detachment_afrac_check.json`. Wider windows
+#: admit probes whose psiN is mis-mapped by the EFIT strike-point error.
+AFRAC_PSI_WINDOW = 0.01
+#: A probe needs at least this many near-separatrix bins to define its reference
+#: (one second of 50 ms bins).
+AFRAC_REFERENCE_MIN_BINS = 20
+
 
 # --- Prad,div (Eldon 2019, NME 18 285; Chen 2026 NF 66 036014) ---------------------
 #: Prad,div,L / P_in, with P_in = neutral beams + EFIT ohmic + ECH (never a typed-in
@@ -31,7 +42,7 @@ AFRAC_REFERENCE_QUANTILE = 0.90
 #: digest recommends normalising before thresholding: by the input power, or as a
 #: ratio to the shot's own unseeded baseline. Both are used, as follows.
 #:
-#: PRIMARY (absolute) cutoffs are anchored on the one shot whose attached and
+#: SENSITIVITY (absolute) cutoffs are anchored on the one shot whose attached and
 #: detached Prad,div,L are published together with its divertor Thomson Te cliffs:
 #: Chen 2026 shot 201081 (published Prad,div,L 1.6 MW attached, 2.2 MW detached;
 #: Te cliffs at ~2650 and ~4450 ms). The anchor values below are MEASURED on that
@@ -41,10 +52,15 @@ AFRAC_REFERENCE_QUANTILE = 0.90
 #: The cutoffs sit BETWEEN the measured attached and detached values: the
 #: midpoint plus or minus `PRAD_BAND_MW`, divided by the measured P_in (beams from
 #: PTDATA BMSPINJ + EFIT POH + ECH). Nothing is fitted to TangTV, Afrac or any
-#: other indicator, so the vote is not circular.
+#: other indicator, so the vote is not circular. They are GLOBAL cutoffs on the
+#: ratio (not per shot) and do not carry over from the anchor shot: median f_div
+#: in TangTV-attached bins is 0.41-0.58 on most shots (Opus review 5, I1), which
+#: is why the relative vote below is the exported one and this one a sensitivity.
 PRAD_ANCHOR_SHOT = 201081
 PRAD_ANCHOR_ATTACHED_MW = 1.621
 PRAD_ANCHOR_DETACHED_MW = 1.990
+#: The anchor shot's input power, one number used everywhere: the median of the
+#: 250 ms-averaged P_in over the 32 50 ms bins of its attached window (MW).
 PRAD_ANCHOR_P_IN_MW = 4.274
 #: Half-width of the abstention band around the midpoint, in MW of Prad,div,L.
 #: The published operating values are quoted to 0.1 MW, so a band of 0.1 MW keeps
@@ -67,12 +83,14 @@ def prad_cutoffs(
 
 PRAD_ATTACHED_MAX, PRAD_DETACHED_MIN = prad_cutoffs()
 
-#: SENSITIVITY (relative) cutoffs: f_div over the shot's own baseline (the
+#: PRIMARY (relative) cutoffs: f_div over the shot's own baseline (the
 #: `PRAD_BASELINE_QUANTILE` of its valid f_div, the unseeded level), so a shot's
 #: input power and seeding cancel. Same anchor, power-free: the anchor shot's
 #: detached/attached ratio is 2.2/1.6, the midpoint 1.9/1.6 and the same band
-#: (`PRAD_BAND_MW` / attached MW) either side. This vote is an alternative recorded
-#: beside the absolute one; it never enters the exported label.
+#: (`PRAD_BAND_MW` / attached MW) either side. This is the exported f_div vote
+#: (Opus review 5, I1). A shot without a baseline (fewer than
+#: `PRAD_BASELINE_MIN_BINS` flat-top bins) has no f_div vote: the bin is invalid,
+#: reason `no_baseline`.
 PRAD_BASELINE_QUANTILE = 0.10
 #: A shot needs this many valid bins for a baseline to mean anything.
 PRAD_BASELINE_MIN_BINS = 40
@@ -153,18 +171,9 @@ MAX_ELM_FRACTION = 0.8
 #: Local inter-ELM mask: +/-2 ms around the D-alpha excursion. Camera exposures
 #: integrate ELMs as in Chen 2026 and do not reuse this mask as an overlap veto.
 ELM_MASK_HALF_WIDTH_MS = 2.0
-#: Outer-target probes are chosen by flux, not by distance. A probe votes when it is
-#: on the SOL side of the outer strike point: at least this far outboard of it (EFIT's
-#: strike-position uncertainty guard, 5 mm, not a diagnostic calibration), strictly
-#: outside the separatrix (psiN above `PROBE_SOL_PSI_N_MIN`) and inside the near SOL
-#: (psiN up to `PROBE_SOL_PSI_N_MAX`), where the target current is carried. Private
-#: flux and inboard probes never qualify. Among the eligible probes the peak
-#: current is used (Eldon's Afrac is the peak target current) and the probe is
-#: recorded. At the shelf's flux expansion psiN rises by about 0.4 per metre, so the
-#: window spans several probes and no distance cap is needed.
-PROBE_STRIKE_MARGIN_M = 0.005
-PROBE_SOL_PSI_N_MIN = 1.000
-PROBE_SOL_PSI_N_MAX = 1.05
+#: Distance of a probe from the outer strike point, kept only as provenance. The
+#: probe is read by its flux position (`AFRAC_PSI_WINDOW`), not by this distance.
+#: Every processed LANGMUIR probe is on the outer target (R >= 1.22 m).
 #: Density-limit cue of a MARFE; local conservative cue, not a universal MARFE
 #: boundary. Spatial evidence and sustained height remain mandatory.
 GREENWALD_CUE_MIN = 0.8

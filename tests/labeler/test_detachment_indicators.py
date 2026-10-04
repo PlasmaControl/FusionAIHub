@@ -65,48 +65,36 @@ def sweeps(level):
     return t, np.asarray(level, dtype=float)
 
 
+def afrac_run(jsat, psi=None, *, density=1e14, power=4e6, **kwargs):
+    """`afrac_indicator` on per-bin probe currents (probe, bin) at constant ne, P."""
+    jsat = np.atleast_2d(np.asarray(jsat, dtype=float))
+    psi = np.full(jsat.shape, 1.0) if psi is None else np.asarray(psi, dtype=float)
+    tn, ne = series(density) if np.isscalar(density) else density
+    tp, psol = series(power)
+    elm_t, elm_flag = clean_elm()
+    kwargs.setdefault("elm_t_ms", elm_t)
+    kwargs.setdefault("elm_flag", elm_flag)
+    return afrac.afrac_indicator(EDGES, jsat, psi, tn, ne, tp, psol, **kwargs)
+
+
 def test_afrac_attached_then_detached():
-    t = np.arange(0.5, 5000.0, 1.0)
-    # constant density and power; Jsat falls to a fifth in the second half.
-    jsat = np.where(t < 2500, 1.0, 0.2)[None, :]
-    tn, ne = series(1e14)
-    tp, psol = series(4e6)
-    ind = afrac.afrac_indicator(
-        EDGES,
-        t,
-        jsat,
-        tn,
-        ne,
-        tp,
-        psol,
-        elm_t_ms=clean_elm()[0],
-        elm_flag=clean_elm()[1],
-    )
+    # constant density and power; Jsat falls to a fifth in the second half
+    jsat = np.where(core.bin_centres(EDGES) < 2500, 1.0, 0.2)
+    ind, which, refs = afrac_run(jsat)
     first, second = EDGES[:-1] < 2500, EDGES[:-1] >= 2500
-    assert ind.valid.all()
+    assert ind.valid.all() and (which == 0).all()
     assert (ind.vote[first] == core.ATTACHED).all()
     assert (ind.vote[second] == core.DETACHED).all()
     assert ind.value[first] == pytest.approx(np.ones(first.sum()))
+    assert refs == pytest.approx([1.0 / (1e14**2 * (4e6) ** (-3 / 7))])
 
 
 def test_afrac_model_takes_out_the_density_scaling():
-    t = np.arange(0.5, 5000.0, 1.0)
-    tn = np.arange(0.0, 5000.0, 10.0)
+    tn = np.arange(-150.0, 5151.0, 10.0)
     ne = np.where(tn < 2500, 1e14, 2e14)
-    # Jsat doubles-squared with the density: the model says that is still attached.
-    jsat = np.where(t < 2500, 1.0, 4.0)[None, :]
-    tp, psol = series(4e6)
-    ind = afrac.afrac_indicator(
-        EDGES,
-        t,
-        jsat,
-        tn,
-        ne,
-        tp,
-        psol,
-        elm_t_ms=clean_elm()[0],
-        elm_flag=clean_elm()[1],
-    )
+    # Jsat quadruples with the doubled density: the model says that is still attached
+    jsat = np.where(core.bin_centres(EDGES) < 2500, 1.0, 4.0)
+    ind, *_ = afrac_run(jsat, density=(tn, ne))
     assert (ind.vote == core.ATTACHED).all()
 
 
@@ -119,98 +107,98 @@ def test_afrac_peak_over_probes():
     assert which[0] == 0 and which[-1] == 1
 
 
-def test_afrac_invalid_without_inputs_or_reference():
-    t = np.arange(0.5, 5000.0, 1.0)
-    jsat = np.ones((1, t.size))
+def test_afrac_does_not_depend_on_which_probe_is_read():
+    # An attached plasma throughout; the strike point moves, so the probe nearest
+    # the separatrix changes from p0 (a strong probe) to p1 (ten times weaker).
+    # One shared reference would read the change as a detachment; each probe's own
+    # reference reads it as attached on both sides.
+    first = core.bin_centres(EDGES) < 2500
+    jsat = np.vstack([np.where(first, 10.0, 9.0), np.full(N, 1.0)])
+    psi = np.vstack([np.where(first, 1.003, 1.05), np.full(N, 1.006)])
+    ind, which, refs = afrac_run(jsat, psi)
+    assert ind.valid.all()
+    assert (which[first] == 0).all() and (which[~first] == 1).all()
+    assert (ind.vote == core.ATTACHED).all()
+    assert ind.value[first] == pytest.approx(np.ones(first.sum()))
+    assert ind.value[~first] == pytest.approx(np.ones((~first).sum()))
+    assert refs[0] / refs[1] == pytest.approx(10.0)
+
+
+def test_afrac_reads_the_probe_nearest_the_separatrix_inside_the_window():
+    jsat = np.vstack([np.full(N, 1.0), np.full(N, 3.0), np.full(N, 9.0)])
+    psi = np.vstack([np.full(N, 1.008), np.full(N, 0.996), np.full(N, 1.02)])
+    ind, which, refs = afrac_run(jsat, psi)
+    assert (which == 1).all() and ind.valid.all()
+    # the probe at psiN 1.02 is outside the window: no reference, never read
+    assert np.isnan(refs[2]) and np.isfinite(refs[:2]).all()
+
+
+def test_afrac_l_mode_bins_abstain_and_stay_out_of_the_reference():
+    centres = core.bin_centres(EDGES)
+    lmode = (centres >= 1000) & (centres < 2000)
+    jsat = np.where(lmode, 100.0, 1.0)
+    ind, _, refs = afrac_run(jsat, lmode=lmode)
+    assert (ind.reason[lmode] == "l_mode").all() and not ind.valid[lmode].any()
+    assert (ind.vote[lmode] == core.ABSTAIN).all()
+    assert ind.valid[~lmode].all()
+    assert ind.value[~lmode] == pytest.approx(np.ones((~lmode).sum()))
+    assert refs == pytest.approx([1.0 / (1e14**2 * (4e6) ** (-3 / 7))])
+
+
+def test_afrac_probe_reasons():
+    ok = np.ones(N)
+    cases = {
+        "probe_flux_unknown": (ok, np.full(N, np.nan)),
+        "probe_off_separatrix": (ok, np.full(N, 1.05)),
+        "no_probe_samples": (np.zeros(N), np.full(N, 1.0)),
+    }
+    for reason, (jsat, psi) in cases.items():
+        ind, which, _ = afrac_run(jsat, psi)
+        assert set(ind.reason) == {reason}, reason
+        assert not ind.valid.any() and (which == -1).all()
+    # a reference needs AFRAC_REFERENCE_MIN_BINS bins near the separatrix
+    psi = np.full(N, 1.05)
+    psi[: th.AFRAC_REFERENCE_MIN_BINS - 1] = 1.0
+    ind, *_ = afrac_run(ok, psi)
+    assert "short_reference" in set(ind.reason) and not ind.valid.any()
+    psi[: th.AFRAC_REFERENCE_MIN_BINS] = 1.0
+    ind, *_ = afrac_run(ok, psi)
+    assert ind.valid[: th.AFRAC_REFERENCE_MIN_BINS].all()
+
+
+def test_afrac_invalid_without_inputs():
+    jsat = np.ones((1, N))
+    psi = np.ones((1, N))
     tn, ne = series(1e14)
     tp, psol = series(4e6)
-    assert set(afrac.afrac_indicator(EDGES, None, None, tn, ne, tp, psol).reason) == {
-        "no_probes"
-    }
-    assert set(afrac.afrac_indicator(EDGES, t, jsat, None, None, tp, psol).reason) == {
-        "no_density"
-    }
-    assert set(afrac.afrac_indicator(EDGES, t, jsat, tn, ne, None, None).reason) == {
-        "no_power"
-    }
-    short = core.bin_edges(0.0, 1000.0)
-    ind = afrac.afrac_indicator(
-        short,
-        t,
-        jsat,
-        tn,
-        ne,
-        tp,
-        psol,
-        elm_t_ms=clean_elm()[0],
-        elm_flag=clean_elm()[1],
-    )
-    assert ind.valid.all()  # No unsourced three-second duration gate.
-    _, weak = series(0.1e6)
-    low = afrac.afrac_indicator(
-        EDGES,
-        t,
-        jsat,
-        tn,
-        ne,
-        tp,
-        weak,
-        elm_t_ms=clean_elm()[0],
-        elm_flag=clean_elm()[1],
-    )
+    assert set(
+        afrac.afrac_indicator(EDGES, None, None, tn, ne, tp, psol)[0].reason
+    ) == {"no_probes"}
+    assert set(
+        afrac.afrac_indicator(EDGES, jsat, psi, None, None, tp, psol)[0].reason
+    ) == {"no_density"}
+    assert set(
+        afrac.afrac_indicator(EDGES, jsat, psi, tn, ne, None, None)[0].reason
+    ) == {"no_power"}
+    low, *_ = afrac_run(jsat, psi, power=0.1e6)
     assert set(low.reason) == {"low_power"}
 
 
 def test_afrac_ramp_is_invalid():
-    t = np.arange(0.5, 5000.0, 1.0)
-    jsat = np.ones((1, t.size))
-    tn, ne = series(1e14)
-    tp, psol = series(4e6)
     ti = np.arange(0.0, 5000.0, 20.0)
     ip = np.where(ti < 1000, ti * 2e3, 2e6)  # 2 MA/s ramp in the first second
-    ind = afrac.afrac_indicator(EDGES, t, jsat, tn, ne, tp, psol, ti, ip, *clean_elm())
+    ind, *_ = afrac_run(np.ones(N), ip_t_ms=ti, ip_a=ip)
     ramp = (EDGES[:-1] > 60) & (EDGES[1:] < 950)  # the record's edge reads 0
     assert (ind.reason[ramp] == "ramp").all()
     assert ind.valid[EDGES[:-1] > 1100].all()
 
 
-def test_afrac_reads_the_inter_elm_level():
-    # Every 10th ms-sweep is an ELM spike 10x the quiet level; masked, the bin's
-    # median current is the quiet one and the shot reads attached throughout.
-    t = np.arange(0.5, 5000.0, 1.0)
-    jsat = np.ones((1, t.size))
-    flag = np.zeros(t.size, dtype=bool)
-    flag[::10] = True
-    jsat[0, flag] = 10.0
-    tn, ne = series(1e14)
-    tp, psol = series(4e6)
-    te = np.r_[t[0] - 0.5, t, t[-1] + 0.5]
-    ef = np.r_[False, flag, False]
-    ind = afrac.afrac_indicator(EDGES, t, jsat, tn, ne, tp, psol, None, None, te, ef)
-    assert ind.valid.all()
-    assert ind.value == pytest.approx(np.ones(N))
-
-
-def test_pre_masked_jsat_does_not_drop_an_entire_bin_at_an_elm_centre():
-    t = core.bin_centres(EDGES)
+def test_afrac_elm_bins_are_invalid():
     te, flag = clean_elm()
-    flag[te == 25] = True
-    tn, ne = series(1e14)
-    tp, psol = series(4e6)
-    ind = afrac.afrac_indicator(
-        EDGES,
-        t,
-        np.ones((1, len(t))),
-        tn,
-        ne,
-        tp,
-        psol,
-        elm_t_ms=te,
-        elm_flag=flag,
-        pre_masked=True,
-    )
-    assert ind.valid.all()
-    assert ind.value == pytest.approx(np.ones(N))
+    flag[(te >= 1000) & (te < 1050)] = True  # the whole bin is inside an ELM
+    ind, *_ = afrac_run(np.ones(N), elm_t_ms=te, elm_flag=flag)
+    assert ind.reason[20] == "elm" and not ind.valid[20]
+    assert ind.valid[np.arange(N) != 20].all()
 
 
 def test_elm_at_uses_the_nearest_sample():
@@ -225,7 +213,8 @@ def test_power_and_current_abstain_without_elm_information():
     t, p = series(4e6)
     tn, ne = series(1e14)
     rad = prad.prad_indicator(EDGES, t, p / 2, t, p)
-    jsat = afrac.afrac_indicator(EDGES, t, np.ones((1, len(t))), tn, ne, t, p)
+    one = np.ones((1, N))
+    jsat, *_ = afrac.afrac_indicator(EDGES, one, one, tn, ne, t, p)
     for indicator in (rad, jsat):
         assert not indicator.valid.any()
         assert set(indicator.reason) == {"elm_unknown"}
@@ -541,98 +530,78 @@ def test_relative_fdiv_needs_a_baseline():
     assert np.isnan(ratio[-1]) and ratio[0] == pytest.approx(1.0)
 
 
-#: 189057 at 3000 ms (EFIT02 slice): the outer strike point and the processed
-#: Langmuir probes p12-p18 on the divertor shelf at Z = -1.249 m, with psiN read
-#: off the multi-slice flux map and the measured median Jsat (A/cm^2). Flux
-#: grows only ~0.4 per metre here, so psiN = 1.01 lies 2.3 cm from the strike.
-SHELF_STRIKE = np.array([[1.4928, -1.2448]])
-SHELF_R = [1.5027, 1.5316, 1.5591, 1.5870, 1.6148, 1.6430, 1.6702]
-SHELF_POSITIONS = np.array([[r, -1.2494] for r in SHELF_R])
-SHELF_PSI_N = np.array(
-    [[1.0026], [1.0153], [1.0289], [1.0444], [1.0614], [1.0806], [1.1008]]
-)
-SHELF_JSAT = np.array([[5.847], [5.583], [3.353], [2.115], [1.207], [1.102], [0.859]])
-
-
-def test_positioned_jsat_takes_the_peak_current_in_the_near_sol_window():
-    which, valid, reason = afrac.select_sol_probe(
-        SHELF_JSAT, SHELF_POSITIONS, SHELF_STRIKE, SHELF_PSI_N
-    )
-    # p12 sits 9.9 mm outboard at psiN 1.003: SOL side, so it is eligible and has
-    # the peak; the former 1.01 flux cut and 2 cm cap rejected it
-    assert (
-        which.tolist() == [0] and valid.tolist() == [True] and reason.tolist() == [""]
-    )
-
-
-def test_positioned_jsat_follows_the_peak_outward_as_the_target_detaches():
-    jsat = SHELF_JSAT.copy()
-    jsat[0] = 0.8  # the probe nearest the strike point has lost its current
-    which, valid, _ = afrac.select_sol_probe(
-        jsat, SHELF_POSITIONS, SHELF_STRIKE, SHELF_PSI_N
-    )
-    assert which.tolist() == [1] and valid.tolist() == [True]
-    # a larger current beyond the window (psiN > 1.05) is never selected
-    jsat[4] = 40.0
-    which, _, _ = afrac.select_sol_probe(
-        jsat, SHELF_POSITIONS, SHELF_STRIKE, SHELF_PSI_N
-    )
-    assert which.tolist() == [1]
-
-
-def test_positioned_jsat_rejections_name_the_reason():
-    positions = np.array([[1.45, -1.25], [1.503, -1.25], [1.52, -1.25]])
-    strike = np.tile([1.5, -1.25], (4, 1))
-    psi_n = np.array(
-        [
-            [0.99, 1.02, np.nan, 1.08],  # probe 0: inboard of the strike point
-            [1.002, 1.001, np.nan, 1.08],  # probe 1: only 3 mm outboard
-            [1.02, 0.998, np.nan, 1.07],  # probe 2: 2 cm outboard
-        ]
-    )
-    which, valid, reason = afrac.select_sol_probe(
-        np.ones((3, 4)), positions, strike, psi_n
-    )
-    # bin 0 is valid on probe 2; bin 1 has probe 2 inside the separatrix; bin 2 has
-    # no flux anywhere; bin 3 is outside the separatrix but beyond psiN 1.05
-    assert which.tolist() == [2, -1, -1, -1]
-    assert valid.tolist() == [True, False, False, False]
-    assert reason.tolist() == [
-        "",
-        "probe_not_sol",
-        "probe_flux_unknown",
-        "probe_beyond_sol_window",
-    ]
-
-
-def test_positioned_jsat_eligible_probe_without_current():
-    which, valid, reason = afrac.select_sol_probe(
-        np.array([[np.nan, 0.0]]),
-        np.array([[1.52, -1.25]]),
-        np.tile([1.5, -1.25], (2, 1)),
-        np.array([[1.02, 1.02]]),
-    )
-    assert which.tolist() == [-1, -1] and not valid.any()
-    assert reason.tolist() == ["no_probe_samples", "no_probe_samples"]
+def test_exported_fdiv_votes_on_the_relative_ratio_and_needs_a_baseline():
+    f = np.r_[np.full(60, 0.3), np.full(30, 0.45)]
+    absolute = prad.fdiv_vote(f)
+    valid = np.ones(len(f), bool)
+    ind = core.assemble("prad", f, valid, np.full(len(f), ""), absolute)
+    ratio = prad.relative_fdiv(f, valid)
+    out = prad.with_relative_vote(ind, ratio)
+    assert (out.vote[:60] == core.ATTACHED).all()
+    assert (out.vote[60:] == core.DETACHED).all()
+    # a shot without a baseline cannot vote: invalid, reason no_baseline
+    short = prad.with_relative_vote(ind, np.full(len(f), np.nan))
+    assert not short.valid.any() and set(short.reason) == {"no_baseline"}
+    assert (short.vote == core.ABSTAIN).all()
 
 
 def test_reported_probe_names_the_nearest_known_probe_on_invalid_bins():
-    strike = np.array([[1.5, -1.25], [1.5, -1.25]])
-    positions = np.array([[1.45, -1.25], [1.503, -1.25], [1.58, -1.25]])
-    psi_n = np.array([[0.99, np.nan], [1.002, np.nan], [1.04, np.nan]])
-    which, valid, reason = afrac.select_sol_probe(
-        np.ones((3, 2)), positions, strike, psi_n
+    psi_n = np.array(
+        [[0.99, np.nan, 1.07], [1.002, np.nan, 1.04], [1.04, np.nan, 1.02]]
     )
-    assert valid.tolist() == [True, False] and reason[1] == "probe_flux_unknown"
-    reported = afrac.reported_probe(positions, strike, psi_n, which, valid)
-    # bin 0 reports the chosen probe, bin 1 (no flux anywhere) reports none
-    assert reported.tolist() == [which[0], -1]
-    psi_n[:, 1] = [0.99, 1.002, 1.04]
-    which, valid, reason = afrac.select_sol_probe(
-        np.ones((3, 2)), positions, strike, psi_n
+    which = np.array([1, -1, -1])
+    valid = np.array([True, False, False])
+    reported = afrac.reported_probe(psi_n, which, valid)
+    # bin 0 reports the probe that was read, bin 1 (no flux anywhere) none, bin 2
+    # the probe nearest the separatrix although it was too far to vote
+    assert reported.tolist() == [1, -1, 2]
+
+
+def test_afrac_window_is_one_decision_not_a_fitted_number():
+    assert th.AFRAC_PSI_WINDOW == pytest.approx(0.01)
+    assert th.AFRAC_REFERENCE_MIN_BINS == 20
+
+
+def test_regime_prefers_the_table_then_the_hmode_detector(monkeypatch, tmp_path):
+    import pandas as pd
+
+    from labeler.events import spans
+
+    monkeypatch.setenv("LABELER_ROOT", str(tmp_path))
+    centres = np.array([100.0, 600.0, 1100.0, 1600.0])
+    found = spans.Found(
+        spans=((500.0, 1200.0, spans.PRESENT), (1200.0, 1700.0, spans.UNCERTAIN)),
+        measured=((0.0, 1700.0),),
     )
-    reported = afrac.reported_probe(positions, strike, psi_n, which, valid)
-    assert reported[1] == which[1]
+    monkeypatch.setattr(spans, "detect_hmode", lambda shot, paths: found)
+    got, source = signals.regime(7, centres)
+    # L where the method measured outside its H-mode spans; an uncertain span and
+    # time outside what it measured are unknown, not L
+    assert got.tolist() == ["L", "H", "H", "unknown"] and source == "dalpha_detector"
+    table = tmp_path / signals.REGIME_TABLE
+    table.parent.mkdir(parents=True)
+    rows = [(7, 5, 0, 900), (7, 1, 900, 2000), (8, 2, 0, 2000)]
+    pd.DataFrame(rows, columns=["shot", "category", "t_start", "t_end"]).to_csv(
+        table, index=False
+    )
+    monkeypatch.setattr(spans, "detect_hmode", lambda *a: pytest.fail("table first"))
+    got, source = signals.regime(7, centres)
+    assert got.tolist() == ["unknown", "unknown", "H", "H"] and source == "regime_table"
+    got, source = signals.regime(8, centres)
+    assert set(got) == {"L"} and source == "regime_table"
+
+
+def test_regime_is_unknown_without_the_detectors_inputs(monkeypatch, tmp_path):
+    from labeler.events import spans
+
+    monkeypatch.setenv("LABELER_ROOT", str(tmp_path))
+
+    def missing(shot, paths):
+        raise KeyError("no co2")
+
+    monkeypatch.setattr(spans, "detect_hmode", missing)
+    got, source = signals.regime(7, np.array([100.0, 600.0]))
+    assert got.tolist() == ["unknown", "unknown"] and source == "none"
 
 
 def test_beam_power_falls_back_to_the_bms_total(monkeypatch):

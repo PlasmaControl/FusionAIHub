@@ -83,6 +83,29 @@ def git_sha() -> str:
     return out.stdout.strip() or "unknown"
 
 
+def code_dirty() -> bool:
+    """True when tracked code or tests differ from HEAD: the labels would then not
+    be reproducible from the commit `git_sha` names."""
+    out = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(REPO),
+            "status",
+            "--porcelain",
+            "--untracked-files=no",
+            "--",
+            "src",
+            "scripts",
+            "tests",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return bool(out.stdout.strip()) or out.returncode != 0
+
+
 def load_one(path: Path) -> pd.DataFrame:
     """One shot's bins (`detach_bins.py`) as a frame, a row per bin."""
     with np.load(path) as npz:
@@ -230,6 +253,11 @@ def smooth_segments(
     return state
 
 
+def assessed_mask(votes, valid) -> np.ndarray:
+    """A bin is assessed when two indicators are valid, or TangTV votes alone."""
+    return (valid.sum(axis=1) >= 2) | (votes[:, LF_NAMES.index("tangtv")] > 0)
+
+
 def label_frame(frame, model, threshold, width_ms=core.BIN_MS):
     """Observed rule and separately named model diagnostic on the same bins.
 
@@ -237,7 +265,7 @@ def label_frame(frame, model, threshold, width_ms=core.BIN_MS):
     now aliases ``state_rule``. Model output is ``state_model_diagnostic``.
     """
     votes, valid = matrices(frame)
-    assessed = valid.sum(axis=1) >= 2
+    assessed = assessed_mask(votes, valid)
     resolves = votes[:, LF_NAMES.index("tangtv")] > 0
     posterior = label_model.pool_marfe(model.posterior(votes), resolves)
     elm_share = frame.get("aux_elm_share", pd.Series(np.nan, index=frame.index))
@@ -255,18 +283,16 @@ def label_frame(frame, model, threshold, width_ms=core.BIN_MS):
     diagnostic[assessed & ~np.isin(tier, ("certain",))] = core.UNCERTAIN
     out["state_model_diagnostic"] = diagnostic
     out["state_lm"], out["tier"] = state_rule, tier
-    # Sensitivity: the same rule with Prad,div voting on f_div over the shot's own
-    # baseline (`prad_rel_vote`) instead of the absolute anchored cutoffs.
-    if "prad_rel_vote" in frame:
-        relative_votes = votes.copy()
-        relative_votes[:, LF_NAMES.index("prad")] = np.where(
-            valid[:, LF_NAMES.index("prad")],
-            frame["prad_rel_vote"].to_numpy(),
-            core.ABSTAIN,
-        )
-        out["state_rule_relative_prad"], out["tier_relative_prad"] = (
+    # Sensitivity: the same rule with Prad,div voting on the absolute anchored
+    # cutoffs (`prad_abs_vote`) instead of the exported per-shot relative vote.
+    if "prad_abs_vote" in frame:
+        j = LF_NAMES.index("prad")
+        absolute_votes, absolute_valid = votes.copy(), valid.copy()
+        absolute_votes[:, j] = frame["prad_abs_vote"].to_numpy()
+        absolute_valid[:, j] = frame["prad_abs_valid"].to_numpy(bool)
+        out["state_rule_absolute_prad"], out["tier_absolute_prad"] = (
             label_model.compatibility_decide(
-                relative_votes, valid, tangtv_tier=camera_tier, elm_known=known
+                absolute_votes, absolute_valid, tangtv_tier=camera_tier, elm_known=known
             )
         )
     candidate = frame.get("tangtv_marfe_candidate", pd.Series(False, index=frame.index))
@@ -391,6 +417,9 @@ def write_indicator_csvs(frame: pd.DataFrame, out_dir: Path) -> int:
                 "afrac_probe_n_eligible",
                 "afrac_reason",
                 "afrac_efit_source",
+                "regime",
+                "regime_source",
+                "prad_rel_value",
             ):
                 table[key] = group[key].to_numpy()
         target = out_dir / f"{int(shot)}.csv"
@@ -449,7 +478,9 @@ def table_meta(args, best, eligible, labeler, producer) -> dict:
         "categories": category_labels("detachment"),
         "made_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "made_by": "scripts/labeler/detach_label.py",
-        "made_from": [{"producer": producer, "git_sha": git_sha()}],
+        "made_from": [
+            {"producer": producer, "git_sha": git_sha(), "code_dirty": code_dirty()}
+        ],
         "producer": producer,
         "shot_list": f"{args.list_name}.csv",
         "shot_list_sha256": hashlib.sha256(
@@ -458,17 +489,18 @@ def table_meta(args, best, eligible, labeler, producer) -> dict:
         "n_requested_shots": len(eligible),
         "table_kind": "intervals",
         "coverage": (
-            "Exploratory labels; no independent benchmark. A bin is assessed when "
-            "at least two indicators are valid on it, on shots with at least 20 "
-            "assessed bins and 20 valid bins from each of two indicators. Attached "
-            "and detached are certain when upper-shelf TangTV votes and at least "
-            "one other indicator casts a compatible vote with no conflict. MARFE "
-            "is certain on the TangTV MARFE vote (DZ >= 1.2, an emission peak "
-            "inside the separatrix near the X-point and the density cue, over at "
-            "least two adjacent bins) unless another indicator votes attached; "
-            "Prad,div and Afrac do not corroborate it. Time with no row was not "
-            "assessed; it is not attached. 4 (uncertain) is every other assessed "
-            "bin: conflicting votes, insufficient support, candidate_marfe, "
+            "Geometry-gated TangTV state, validated by divertor Thomson Te; no "
+            "independent benchmark. A bin is assessed when at least two "
+            "indicators are valid on it, or TangTV votes alone, on shots with at "
+            "least 20 assessed bins and 20 valid bins from each of two "
+            "indicators. Attached and detached are certain when upper-shelf "
+            "TangTV votes and at least one other indicator (per-shot relative "
+            "f_div, or Afrac) casts a compatible vote with no conflict; they are "
+            "tangtv_only (silver) when TangTV votes and every other indicator "
+            "abstains or is invalid. MARFE is never a state: a sustained TangTV "
+            "MARFE vote is the uncertain tier candidate_marfe. Time with no row "
+            "was not assessed; it is not attached. 4 (uncertain) is every other "
+            "assessed bin: conflict, insufficient_support, candidate_marfe, "
             "lower_shelf_window, elm_unknown, geometry_unknown. The tier in each "
             "interval's attrs says which."
         ),
@@ -524,7 +556,7 @@ def main() -> None:
     split = cohort_split(frame.shot.unique())
     frame["split"] = frame.shot.map(split)
     votes, valid = matrices(frame)
-    assessed = valid.sum(axis=1) >= 2
+    assessed = assessed_mask(votes, valid)
     per_shot_valid = pd.DataFrame(valid, columns=LF_NAMES).groupby(frame.shot).sum()
     per_shot_assessed = pd.Series(assessed).groupby(frame.shot).sum()
     eligible = set(

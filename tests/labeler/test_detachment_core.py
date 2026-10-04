@@ -243,3 +243,26 @@ def test_tangtv_tier_is_per_bin_and_mixed_geometry_is_not_upper_shelf():
         np.ones(4, bool),
     )
     assert tier.tolist() == ["upper_shelf", "lower_shelf_window", "mixed_shelf"]
+
+
+def test_lower_shelf_bins_are_marked_invalid_with_their_value_kept():
+    ind = core.assemble(
+        "tangtv",
+        np.array([0.2, 0.3, 0.6]),
+        np.ones(3, bool),
+        np.full(3, ""),
+        np.array([1, 1, 2]),
+    )
+    out = tangtv.void_lower_shelf(
+        ind, np.array(["upper_shelf", "lower_shelf_window", "mixed_shelf"])
+    )
+    assert out.valid.tolist() == [True, False, True]
+    assert out.reason.tolist() == ["", "lower_shelf_window", ""]
+    assert out.vote.tolist() == [1, core.ABSTAIN, 2]
+    assert out.value.tolist() == ind.value.tolist()
+
+
+def test_real_strike_rejects_efit_sentinels():
+    r = np.array([1.48, -0.89, 1.48, 0.0, np.nan])
+    z = np.array([-1.25, -0.89, -0.89, 0.0, -1.25])
+    assert tangtv.real_strike(r, z).tolist() == [True, False, False, False, False]
