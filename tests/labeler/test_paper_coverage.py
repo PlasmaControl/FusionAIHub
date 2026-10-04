@@ -83,8 +83,9 @@ def test_the_coverage_figure(tmp_path):
     assert (tmp_path / "fig_coverage.pdf").is_file()
     shots, present, split = fig.axes  # no suggestions panel
     assert _coming(shots) == 4 and _coming(present) == 4
-    # Shots on a log axis: each bar from 1 to its count, its number beside it.
-    assert shots.get_xscale() == "log" and present.get_xscale() == "linear"
+    # Shots and present time on log axes: each bar from 1 to its count, its number
+    # beside it.
+    assert shots.get_xscale() == "log" and present.get_xscale() == "log"
     spans = [(bar.get_x(), bar.get_x() + bar.get_width()) for bar in shots.patches]
     assert spans == [(1, 4), (1, 2)], "labelled, positive"
     assert {"4", "2"} <= set(_texts(shots))
@@ -95,7 +96,8 @@ def test_the_coverage_figure(tmp_path):
         "with a present span",
     ], "AE's labelled shots are its reviewed ones"
     assert not [ax for ax in fig.axes if "suggest" in ax.get_title()]
-    assert [bar.get_width() for bar in present.patches] == [0.9]
+    # AE's 0.9 s is under the log axis's 1 s start: no bar, its number kept.
+    assert [bar.get_width() for bar in present.patches] == []
     assert "0.9" in _texts(present)
     assert [bar.get_height() for bar in split.patches] == [1, 1, 1, 1]
     assert [t.get_text() for t in split.get_xticklabels()] == [
@@ -227,7 +229,7 @@ def test_the_datasets_table(tmp_path):
     assert lines[5] == "AE & 4 & 4 & 2 & 0.9 & 1 & 1 & 1 & 1 & 4 & 2 \\\\"
     assert lines[6:10] == [
         f"{name} & \\multicolumn{{10}}{{c}}{{coming}} \\\\"
-        for name in ("NTM", "H-mode", "ELMing", "sawteeth")
+        for name in ("TM", "H-mode", "ELMing", "sawtooth")
     ]
 
 
