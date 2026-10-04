@@ -124,3 +124,11 @@ def test_population_tables_print_rows_steps_fragmentation_mix_and_years(
     assert "`only_a` - `base`" in out
     assert "| Year of the shot | `base` |" in out
     assert "| 2022 | 0.400 [0.30, 0.50] (3) |" in out
+
+
+def test_review_stages_name_rows_of_the_table():
+    assert set(abl.REPEAT_ROWS) <= set(abl.ROWS)
+    assert all(abl.ROWS[n].protocol == "paper" for n in abl.REPEAT_ROWS)
+    assert set(abl.SUBSET_ROWS) <= set(abl.ROWS)
+    # the failing blocks are read from a row each shot is tested in once
+    assert abl.ROWS[abl.FAILURE_ROW].protocol == "cv5"

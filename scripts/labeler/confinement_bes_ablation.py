@@ -31,6 +31,16 @@ the checkpoint with the best validation F1) and choose the block by geometry. St
     populations                    every row on the corpus and the fetched-only shots,
                                    paired factor steps, label fragmentation, class mix
     table                          the record as Markdown tables
+    repeats                        the overlap of the paper split's five random test
+                                   sets and the scores that do not pool it
+                                   (protocol_repeats.json)
+    subsets                        the protocol rows on the intervals of Gill's BES
+                                   files and without the shots the 6 x 8 block fits
+                                   badly (subsets.json)
+    failures                       the (shot, class) blocks a row gets almost entirely
+                                   wrong, for a label review (failure_blocks.json and
+                                   .csv)
+    tables-protocol                those three records as Markdown tables
 
 Every score is per window and carries a 95 % interval bootstrapped over shots (1000
 replicates). A row is scored on its own population (the windows it kept) and on the
@@ -1030,6 +1040,335 @@ def markdown_populations(args: argparse.Namespace) -> None:
             )
 
 
+#: Rows run with the paper's split: five random test sets that can share shots.
+REPEAT_ROWS = ("only_f", "cum_abcdrf", "cum_abcdrgef", "full_cum_abcdrgef")
+#: Rows rescored on subsets of their shots and windows.
+SUBSET_ROWS = ("full_cum_abcdrgef", "full_cum_abcdrge")
+#: The 5-fold row (each shot tested once) whose failing blocks are listed.
+FAILURE_ROW = "full_cum_abcdrge"
+#: A kept shot whose 8-channel rows all sit away from the others in major radius
+#: (``rows_displaced`` counts rows more than 1 cm from the median row): the 4 x 16
+#: layout, whose rows alternate between the inner and the outer radial half.
+LAYOUT_ROWS_DISPLACED = 8
+#: A kept shot whose block has at most this many rows covering the pedestal: the block
+#: lies in the scrape-off layer.
+SOL_ROWS_COVERING_MAX = 1
+
+
+def _compact(summary: dict) -> dict:
+    """The macro score of ``bp.summarise`` without the confusion matrix."""
+    return {
+        "windows": summary["windows"],
+        "shots": summary["shots"],
+        "macro_f1": summary["macro_f1"],
+        "ci95_macro_f1": summary["ci95"]["macro_f1"],
+        "f1": {c: v["f1"] for c, v in summary["classes"].items()},
+        "shots_per_class": {c: v["shots"] for c, v in summary["classes"].items()},
+    }
+
+
+def _scored(row: Row):
+    """A finished row's scored windows: the table of predictions, their class
+    probabilities, argmax classes, truth and shots."""
+    got = row_predictions(row)
+    if got is None:
+        raise SystemExit(f"row {row.name}: predictions are missing")
+    pred, probs, own, _, _ = got
+    sc = pred[own].reset_index(drop=True)
+    p = probs[own]
+    return sc, p, p.argmax(1), sc.label.to_numpy(), sc.shot.to_numpy()
+
+
+def repeats(args: argparse.Namespace) -> None:
+    """The paper split's repeats, which draw their test sets independently, so a shot
+    can be tested in several. For each row run with that split: the overlap of the
+    test sets, the pooled score (windows of every repeat, the Table 3 number), the mean
+    and spread of the repeats' own scores (what one split like the paper's scores), the
+    score with each shot counted in its first repeat only, and the score of the
+    probabilities averaged over the repeats that tested each window."""
+    rows = {}
+    for name in REPEAT_ROWS:
+        if row_predictions(ROWS[name]) is None:
+            continue
+        sc, probs, guess, truth, shots = _scored(ROWS[name])
+        splits = sc.split.to_numpy().astype(str)
+        start = sc.start_ms.to_numpy()
+        first = bp.first_occurrence(shots, splits)
+        a_shot, _, a_prob, a_truth = bp.average_repeats(shots, start, probs, truth)
+        per = []
+        for n in sorted(set(splits)):
+            m = splits == n
+            conf = bp.confusion_by_shot(guess[m], truth[m], shots[m])[1].sum(axis=0)
+            per.append(bp.macro_f1(conf))
+        rows[name] = {
+            "overlap": bp.repeat_overlap(shots, start, truth, splits),
+            "pooled": _compact(
+                bp.summarise(guess, truth, shots, replicates=REPLICATES)
+            ),
+            "per_split": {
+                "macro_f1": per,
+                "mean": float(np.mean(per)),
+                "sd": float(np.std(per, ddof=1)),
+            },
+            "first_occurrence": _compact(
+                bp.summarise(
+                    guess[first], truth[first], shots[first], replicates=REPLICATES
+                )
+            ),
+            "repeat_averaged": _compact(
+                bp.summarise(a_prob.argmax(1), a_truth, a_shot, replicates=REPLICATES)
+            ),
+        }
+    record = {
+        "git": git_sha(),
+        "created": datetime.now(UTC).isoformat(timespec="seconds"),
+        "replicates": REPLICATES,
+        "note": (
+            "pooled: the windows of the five repeats together, a window tested in "
+            "several repeats counted in each (the Table 3 number); per_split: the "
+            "macro F1 of each repeat on its own, mean and standard deviation (ddof 1); "
+            "first_occurrence: each shot's windows from the first repeat that tested "
+            "it; repeat_averaged: one row per distinct window, the probabilities "
+            "averaged over the repeats that tested it"
+        ),
+        "rows": rows,
+    }
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+    (args.out_dir / "protocol_repeats.json").write_text(json.dumps(record, indent=1))
+    for name, r in rows.items():
+        o = r["overlap"]
+        print(
+            f"{name:20s} {o['shots']} shots in {o['tests']} tests, "
+            f"{o['windows']:,} windows ({o['distinct_windows']:,} distinct): pooled "
+            f"{r['pooled']['macro_f1']:.3f}, per split {r['per_split']['mean']:.3f} "
+            f"+/- {r['per_split']['sd']:.3f}, first {r['first_occurrence']['macro_f1']:.3f}, "
+            f"averaged {r['repeat_averaged']['macro_f1']:.3f}"
+        )
+
+
+def label_sources() -> dict:
+    """How many of the merged intervals carry a source from Gill's tables (the
+    workbook and the BES-time files) and how many from Butt's alone."""
+    merged = pd.read_csv(bw.INTERVALS)
+    parts = merged.sources.astype(str).str.split("|")
+    gill = parts.map(lambda p: "kevin_workbook" in p or "kevin_bes" in p)
+    return {
+        "intervals": len(merged),
+        "with_a_gill_source": int(gill.sum()),
+        "butt_only": int((~gill).sum()),
+        "kevin_bes_files": int(parts.map(lambda p: "kevin_bes" in p).sum()),
+    }
+
+
+def subsets(args: argparse.Namespace) -> None:
+    """The protocol rows rescored on the windows of intervals that come from Gill's
+    BES-time files, and without the shots the 6 x 8 block fits badly (the 4 x 16
+    layout, a block in the scrape-off layer). Both are sensitivity readings of a row
+    scored as it was trained: nothing here is retrained."""
+    intervals = bw.curated_intervals()
+    blocks = load_blocks()
+    kept = blocks[blocks.reaches.astype(bool) & blocks.start.notna()]
+    layout = sorted(
+        int(s) for s in kept.index[kept.rows_displaced == LAYOUT_ROWS_DISPLACED]
+    )
+    sol = sorted(
+        int(s) for s in kept.index[kept.rows_covering <= SOL_ROWS_COVERING_MAX]
+    )
+    rows = {}
+    for name in SUBSET_ROWS:
+        sc, _, guess, truth, shots = _scored(ROWS[name])
+        gill = bw.source_mask(shots, sc.interval.to_numpy(), intervals, "kevin_bes")
+        odd = np.isin(shots, layout + sol)
+
+        def score(mask, shots=shots, guess=guess, truth=truth):
+            return _compact(
+                bp.summarise(guess, truth, shots, mask, replicates=REPLICATES)
+            )
+
+        rows[name] = {
+            "all_scored": score(None),
+            "kevin_bes_intervals": score(gill),
+            "other_intervals": score(~gill),
+            "without_geometry_exceptions": {
+                **score(~odd),
+                "excluded_shots_scored": sorted(int(s) for s in np.unique(shots[odd])),
+            },
+        }
+    record = {
+        "git": git_sha(),
+        "created": datetime.now(UTC).isoformat(timespec="seconds"),
+        "replicates": REPLICATES,
+        "label_sources": label_sources(),
+        "geometry_exceptions": {
+            "layout_4x16": layout,
+            "block_in_scrape_off_layer": sol,
+            "rule": (
+                f"kept shots with rows_displaced == {LAYOUT_ROWS_DISPLACED} (layout) "
+                f"or rows_covering <= {SOL_ROWS_COVERING_MAX} (scrape-off layer)"
+            ),
+        },
+        "rows": rows,
+    }
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+    (args.out_dir / "subsets.json").write_text(json.dumps(record, indent=1))
+    for name, r in rows.items():
+        print(
+            f"{name:20s} all {_cell_c(r['all_scored'])}  kevin_bes "
+            f"{_cell_c(r['kevin_bes_intervals'])}  other {_cell_c(r['other_intervals'])}  "
+            f"without exceptions {_cell_c(r['without_geometry_exceptions'])}"
+        )
+
+
+def _cell_c(entry: dict) -> str:
+    """``0.703 [0.59, 0.79] (142)`` for a compact score."""
+    if entry["macro_f1"] is None or not np.isfinite(entry["macro_f1"]):
+        return "-"
+    lo, hi = entry["ci95_macro_f1"]
+    return f"{entry['macro_f1']:.3f} [{lo:.2f}, {hi:.2f}] ({entry['shots']})"
+
+
+def failures(args: argparse.Namespace) -> None:
+    """The (shot, class) blocks of the 5-fold row ``FAILURE_ROW`` with at least 150
+    windows of which under 10 % are called right: a list for an expert or a logbook
+    check of the labels. The score without them is a diagnostic (a classifier scored on
+    what it gets right is no benchmark), never a number to report. Blocks that overlap
+    an interval the confident-learning analysis flagged are marked."""
+    sc, _, guess, truth, shots = _scored(ROWS[FAILURE_ROW])
+    blocks = bp.failure_blocks(guess, truth, shots)
+    in_block = np.isin(
+        shots * len(bp.CLASSES) + truth,
+        blocks.shot.to_numpy() * len(bp.CLASSES) + blocks.label.to_numpy(),
+    )
+    intervals = bw.curated_intervals()
+    corpus = fetched_shots(WORK / "bes500k")
+    year = pd.read_csv(DATES).set_index("shot").year if DATES.exists() else None
+    flagged = json.loads((args.out_dir / f"confident_{FAILURE_ROW}.json").read_text())[
+        "flagged"
+    ]["all_flagged"]
+    spans, marks = [], []
+    for b in blocks.itertuples():
+        m = (shots == b.shot) & (truth == b.label)
+        ivs = intervals[
+            (intervals.shot == b.shot) & intervals.interval.isin(sc.interval[m])
+        ]
+        spans.append(f"{ivs.t_start.min():.0f}-{ivs.t_end.max():.0f}")
+        hit = [
+            f"{f['t_start']:.0f}-{f['t_end']:.0f}"
+            for f in flagged
+            if f["shot"] == b.shot and f["given"] == bp.CLASSES[b.label]
+        ]
+        marks.append(";".join(hit))
+    blocks = blocks.assign(
+        class_name=[bp.CLASSES[i] for i in blocks.label],
+        called_name=[bp.CLASSES[i] for i in blocks.called],
+        corpus_shot=blocks.shot.isin(corpus),
+        year=[
+            None if year is None else int(year.get(s, 0)) or None for s in blocks.shot
+        ],
+        intervals_ms=spans,
+        confident_learning_ms=marks,
+    )
+    n_scored = len(shots)
+    record = {
+        "git": git_sha(),
+        "created": datetime.now(UTC).isoformat(timespec="seconds"),
+        "replicates": REPLICATES,
+        "row": FAILURE_ROW,
+        "rule": "blocks of one class on one shot with at least 150 scored windows "
+        "of which fewer than 10 % are called right",
+        "windows_scored": n_scored,
+        "all_scored": _compact(
+            bp.summarise(guess, truth, shots, replicates=REPLICATES)
+        ),
+        "blocks": len(blocks),
+        "shots": int(blocks.shot.nunique()),
+        "corpus_shots": int(blocks[blocks.corpus_shot].shot.nunique()),
+        "windows_in_blocks": int(in_block.sum()),
+        "share_of_windows": float(in_block.mean()),
+        "blocks_by_class": {c: int((blocks.class_name == c).sum()) for c in bp.CLASSES},
+        "blocks_overlapping_confident_learning": int(
+            (blocks.confident_learning_ms != "").sum()
+        ),
+        "diagnostic_without_these_blocks": _compact(
+            bp.summarise(guess, truth, shots, ~in_block, replicates=REPLICATES)
+        ),
+        "list": blocks.drop(columns=["label", "called"]).to_dict(orient="records"),
+    }
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+    (args.out_dir / "failure_blocks.json").write_text(json.dumps(record, indent=1))
+    blocks.drop(columns=["label", "called"]).round(4).to_csv(
+        args.out_dir / "failure_blocks.csv", index=False
+    )
+    print(
+        f"{FAILURE_ROW}: {record['blocks']} blocks on {record['shots']} shots "
+        f"({record['corpus_shots']} corpus), {100 * record['share_of_windows']:.1f} % "
+        f"of the windows; without them "
+        f"{_cell_c(record['diagnostic_without_these_blocks'])}"
+    )
+
+
+def markdown_protocol(args: argparse.Namespace) -> None:
+    """``protocol_repeats.json``, ``subsets.json`` and ``failure_blocks.json`` as
+    Markdown tables."""
+    rep = json.loads((args.out_dir / "protocol_repeats.json").read_text())["rows"]
+    print(
+        "| Row | Test shots (shot-tests) | Windows pooled | Distinct windows | "
+        "Pooled (Table 3) | One split, mean +/- sd of five | First repeat only | "
+        "Probabilities averaged over repeats |"
+    )
+    print("|---|---|---|---|---|---|---|---|")
+    for name, r in rep.items():
+        o, ps = r["overlap"], r["per_split"]
+        print(
+            f"| `{name}` | {o['shots']} ({o['tests']}) | {o['windows']:,} | "
+            f"{o['distinct_windows']:,} | {_cell_c(r['pooled'])} | "
+            f"{ps['mean']:.3f} +/- {ps['sd']:.3f} | "
+            f"{_cell_c(r['first_occurrence'])} | {_cell_c(r['repeat_averaged'])} |"
+        )
+    print()
+    t3 = rep["full_cum_abcdrgef"]["overlap"]
+    print("| Class | Windows pooled | Distinct windows | Test shots |")
+    print("|---|---|---|---|")
+    for c in bp.CLASSES:
+        e = t3["classes"][c]
+        print(f"| {c} | {e['windows']:,} | {e['distinct_windows']:,} | {e['shots']} |")
+    print()
+    print(
+        "Times a shot was tested: "
+        + ", ".join(
+            f"{n} time{'s' if int(n) > 1 else ''}: {v}"
+            for n, v in t3["shots_by_times_tested"].items()
+        )
+    )
+    print()
+    sub = json.loads((args.out_dir / "subsets.json").read_text())
+    print(
+        "| Row | All scored | Intervals from Gill's BES-time files | Other intervals "
+        "| Without the 4 x 16 and scrape-off-layer shots |"
+    )
+    print("|---|---|---|---|---|")
+    for name, r in sub["rows"].items():
+        print(
+            f"| `{name}` | {_cell_c(r['all_scored'])} | "
+            f"{_cell_c(r['kevin_bes_intervals'])} | {_cell_c(r['other_intervals'])} | "
+            f"{_cell_c(r['without_geometry_exceptions'])} |"
+        )
+    print()
+    fail = json.loads((args.out_dir / "failure_blocks.json").read_text())
+    print(
+        "| Shot | Year | Corpus | Class | Windows | Called right | Mostly called "
+        "| Interval span (ms) | Confident learning |"
+    )
+    print("|---|---|---|---|---|---|---|---|---|")
+    for b in fail["list"]:
+        print(
+            f"| {b['shot']} | {b['year'] or '-'} | {'yes' if b['corpus_shot'] else 'no'} "
+            f"| {b['class_name']} | {b['windows']:,} | {100 * b['share_correct']:.1f} % "
+            f"| {b['called_name']} ({100 * b['called_share']:.0f} %) | "
+            f"{b['intervals_ms']} | {b['confident_learning_ms'] or '-'} |"
+        )
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--out-dir", type=Path, default=DEFAULT_OUT)
@@ -1056,6 +1395,10 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("audit", help="validation sets and test shots per class and split")
     sub.add_parser("table", help="print ablation.json as Markdown")
     sub.add_parser("tables", help="print populations.json and the audit as Markdown")
+    sub.add_parser("repeats", help="overlap of the paper split's random test sets")
+    sub.add_parser("subsets", help="rows on Gill's BES-time intervals, no odd layouts")
+    sub.add_parser("failures", help="(shot, class) blocks the 5-fold row gets wrong")
+    sub.add_parser("tables-protocol", help="repeats, subsets, failures as Markdown")
     s = sub.add_parser("summarize")
     s.add_argument(
         "--rank",
@@ -1076,6 +1419,14 @@ def main(argv: list[str] | None = None) -> int:
         markdown(args)
     elif args.stage == "tables":
         markdown_populations(args)
+    elif args.stage == "repeats":
+        repeats(args)
+    elif args.stage == "subsets":
+        subsets(args)
+    elif args.stage == "failures":
+        failures(args)
+    elif args.stage == "tables-protocol":
+        markdown_protocol(args)
     elif args.stage == "run":
         for name in args.rows:
             run_row(ROWS[name], args)
