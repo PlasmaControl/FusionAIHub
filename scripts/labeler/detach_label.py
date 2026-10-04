@@ -57,6 +57,14 @@ OUT = REPO / "data" / "events" / "detachment" / "extend_detach_vote"
 ROSTER = REPO / "data" / "events" / "detachment" / "shots.csv"
 LIST_NAME = "detach_shots"
 MIN_VALID_BINS = 20  # one second of 50 ms bins
+#: The code that makes the labels: the tables record the commit they were made from
+#: and the validator checks these paths are unchanged between it and HEAD.
+PRODUCER_PATHS = (
+    "src/labeler/events/detachment",
+    "scripts/labeler/detach_bins.py",
+    "scripts/labeler/detach_label.py",
+    "scripts/labeler/detach_json.py",
+)
 POSTERIOR_THRESHOLD = 0.7
 CV_FOLDS = 5
 MIN_GRID_END_MS = 6000.0  # the catalog grid covers at least 0 to 5950 ms
@@ -84,8 +92,9 @@ def git_sha() -> str:
 
 
 def code_dirty() -> bool:
-    """True when tracked code or tests differ from HEAD: the labels would then not
-    be reproducible from the commit `git_sha` names."""
+    """True when a label-producing path differs from HEAD: the labels would then not
+    be reproducible from the commit `git_sha` names. Downstream analysis scripts and
+    tests are not producers; the validator checks the producers stay unchanged."""
     out = subprocess.run(
         [
             "git",
@@ -95,9 +104,7 @@ def code_dirty() -> bool:
             "--porcelain",
             "--untracked-files=no",
             "--",
-            "src",
-            "scripts",
-            "tests",
+            *PRODUCER_PATHS,
         ],
         capture_output=True,
         text=True,

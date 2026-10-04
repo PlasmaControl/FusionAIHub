@@ -310,7 +310,9 @@ def confinement(shot, edges):
     return mode, back
 
 
-def processed_ratio(shot, edges, cache, elm, lmode=None):
+def processed_ratio(
+    shot, edges, cache, elm, lmode=None, afrac_window=th.AFRAC_PSI_WINDOW
+):
     """Local Jsat proxy from the positioned processed probes; no camera-dependent fit.
 
     Each probe is referenced to its own near-separatrix attached level and the
@@ -400,6 +402,7 @@ def processed_ratio(shot, edges, cache, elm, lmode=None):
         *cache["ipmeas"],
         *(elm or (None, None)),
         lmode,
+        window=afrac_window,
     )
     usable = indicator.valid
     column = np.arange(n)
@@ -409,7 +412,7 @@ def processed_ratio(shot, edges, cache, elm, lmode=None):
     provenance["afrac_efit_source"][:] = str(maps.get("source", "EFIT01"))
     provenance["afrac_probe_position_valid"] = usable
     provenance["afrac_probe_n_eligible"] = (
-        (np.isfinite(psi_n) & (np.abs(psi_n - 1.0) <= th.AFRAC_PSI_WINDOW))
+        (np.isfinite(psi_n) & (np.abs(psi_n - 1.0) <= afrac_window))
         .sum(axis=0)
         .astype(np.int16)
     )
@@ -441,8 +444,13 @@ def process(
     out_dir: Path | None = None,
     *,
     raw_probe_diagnostics: bool = True,
+    afrac_window: float = th.AFRAC_PSI_WINDOW,
 ) -> dict:
-    """Compute and save one shot's bins; return a one-line status."""
+    """Compute and save one shot's bins; return a one-line status.
+
+    `afrac_window` is the Afrac flux window (`AFRAC_PSI_WINDOW`); other values are
+    for the window sensitivity record (`detach_afrac_check.py`) only.
+    """
     cache = signals.load_cache(shot)
     if "ipmeas" not in cache:
         return {"shot": shot, "status": "no_cache"}
@@ -496,7 +504,7 @@ def process(
     second, fg = greenwald_cue(edges, cache)
     _, back_transition = confinement(shot, edges)
     afrac_ind, afrac_mode, probe_provenance = processed_ratio(
-        shot, edges, cache, elm, regime == "L"
+        shot, edges, cache, elm, regime == "L", afrac_window
     )
     vote, candidate = tangtv.evidence_votes(
         tangtv_ind.value, tangtv_ind.valid, spatial, second
@@ -614,6 +622,12 @@ def main() -> int:
     )
     parser.add_argument("--width-ms", type=float, default=core.BIN_MS)
     parser.add_argument(
+        "--afrac-window",
+        type=float,
+        default=th.AFRAC_PSI_WINDOW,
+        help="Afrac flux window; other than the default only for the sensitivity",
+    )
+    parser.add_argument(
         "--out-dir", default=None, help="default: $LABELER_ROOT/round4/detach/bins"
     )
     args = parser.parse_args()
@@ -625,12 +639,19 @@ def main() -> int:
     if not args.redo:
         shots = [s for s in shots if not (out_dir / f"{s}.npz").is_file()]
     log = (
-        out_dir.parent / "bins_log.jsonl" if args.out_dir else root() / "bins_log.jsonl"
+        out_dir.parent / f"{out_dir.name}_log.jsonl"
+        if args.out_dir
+        else root() / "bins_log.jsonl"
     )
     done = 0
     with mp.Pool(args.workers) as pool, open(log, "a") as handle:
         for result in pool.imap_unordered(
-            functools.partial(process_safe, width_ms=args.width_ms, out_dir=out_dir),
+            functools.partial(
+                process_safe,
+                width_ms=args.width_ms,
+                out_dir=out_dir,
+                afrac_window=args.afrac_window,
+            ),
             shots,
             chunksize=1,
         ):
@@ -641,9 +662,11 @@ def main() -> int:
     return 0
 
 
-def process_safe(shot: int, width_ms: float, out_dir: Path) -> dict:
+def process_safe(
+    shot: int, width_ms: float, out_dir: Path, afrac_window: float = th.AFRAC_PSI_WINDOW
+) -> dict:
     try:
-        return process(shot, width_ms, out_dir)
+        return process(shot, width_ms, out_dir, afrac_window=afrac_window)
     except Exception as error:  # noqa: BLE001  one bad shot must not stop the run
         return {"shot": shot, "status": f"error {type(error).__name__}: {error}"[:200]}
 
