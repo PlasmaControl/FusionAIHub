@@ -22,11 +22,20 @@ Reported per primary state, per label tier and per indicator vote: how many bins
 shots carry a Te, the Te quantiles, the share inside the band, and a threshold-free
 AUROC of -Te for the detached against the attached bins (pooled and within shots,
 with shot-bootstrap intervals; the number of shots behind each within-shot figure is
-beside it). The tiers are `certain` (TangTV plus an agreeing second indicator),
-`tangtv_only` (TangTV alone, silver), both together (the exported attached and
-detached bins) and the TangTV vote alone; a paired shot bootstrap says whether the
-second vote improves the agreement with Te. Shot 201081's two cliff times are read
-from the data and set beside the published ones. No threshold is fitted here.
+beside it). The tiers are `certain` (TangTV + Afrac agreement), `tangtv_only`
+(TangTV alone, silver), both together (the exported attached and detached bins),
+`tangtv_only_lmode` (the TangTV detached vote on a known L-mode bin, exported as
+uncertain) and the TangTV vote alone; a paired shot bootstrap says whether the
+second vote improves the agreement with Te, and is "not estimable" where the
+certain tier sits on fewer than `MIN_PAIRED_SHOTS` shots with a Te. The same
+numbers are given by regime (H, L, unknown; the regime source of the Afrac gate),
+for the TangTV vote alone (before the L-mode gate) and for the exported states
+(after it), and by DZ band for the TangTV detached votes: the L-mode gate itself
+was set a priori (the DZ cutoffs come from an H-mode shot) and is only reported
+here, never tuned on Te. One row leaves the anchor shot 201081 out (it sets the DZ
+cliff). Shot 201081's two cliff times are read from the data and set beside the
+published ones. No threshold is fitted here. Every shot bootstrap uses the fresh
+generator of `detach_benchmark.boot_rng`, so a population has one interval.
 
     pixi run --frozen -e labelmaker python scripts/labeler/detach_te_check.py
 """
@@ -56,6 +65,12 @@ TE_ATTACHED_MIN_EV = 10.0
 TE_DETACHED_MAX_EV = 5.0
 PUBLISHED_CLIFFS_MS = {201081: (2650.0, 4450.0)}
 MIN_SHOT_BINS = 5
+#: A paired shot bootstrap on fewer shots than this has no estimate.
+MIN_PAIRED_SHOTS = 10
+ANCHOR_SHOT = 201081
+#: TangTV detached votes are described by front height in these bands (DZ).
+DZ_BANDS = ((0.5, 0.65), (0.65, 0.8), (0.8, 1.2))
+REGIMES = ("H", "L", "unknown")
 
 
 def load_dts(shot: int):
@@ -133,7 +148,7 @@ def summarise(te: np.ndarray, band) -> dict:
     }
 
 
-def score_states(frame, state_column, rng, mask=None) -> dict:
+def score_states(frame, state_column, mask=None) -> dict:
     """Te summaries of the attached/detached/MARFE bins and the AUROC of -Te."""
     sel = frame[np.isfinite(frame.te_ev)]
     if mask is not None:
@@ -155,7 +170,6 @@ def score_states(frame, state_column, rng, mask=None) -> dict:
         -two.te_ev.to_numpy(float),
         (two[state_column] == core.DETACHED).to_numpy(),
         two.shot.to_numpy(),
-        rng,
     )
     per_shot = []
     for _, rows in two.groupby("shot"):
@@ -163,17 +177,13 @@ def score_states(frame, state_column, rng, mask=None) -> dict:
         if min(positive.sum(), (~positive).sum()) >= MIN_SHOT_BINS:
             per_shot.append(bench.auroc(-rows.te_ev.to_numpy(float), positive))
     finite = np.asarray([v for v in per_shot if np.isfinite(v)])
-    draws = [
-        float(np.mean(finite[rng.integers(0, len(finite), len(finite))]))
-        for _ in range(bench.REPLICATES if len(finite) else 0)
-    ]
     out["auroc_neg_te_detached_vs_attached"] = {
         "pooled": pooled,
         "within_shot": {
             "min_class_bins": MIN_SHOT_BINS,
             "n_shots": len(finite),
             "mean": float(finite.mean()) if len(finite) else None,
-            "mean_ci95": bench.interval(draws),
+            "mean_ci95": bench.mean_boot(finite),
         },
     }
     return out
@@ -195,9 +205,11 @@ def te_subset(frame: pd.DataFrame, state: pd.Series, mask) -> tuple:
     )
 
 
-def paired_difference(a: tuple, b: tuple, rng) -> dict:
+def paired_difference(a: tuple, b: tuple) -> dict:
     """AUROC(-Te) of subset `a` minus that of subset `b`, one shot bootstrap that
-    resamples the shots of both subsets together (so shared shots stay paired)."""
+    resamples the shots of both subsets together (so shared shots stay paired).
+    Replicates where either subset has a single class are dropped and counted."""
+    rng = bench.boot_rng()
     shots = np.unique(np.concatenate([a[2], b[2]]))
     if not len(shots):
         return {"difference": None, "ci95": [None, None], "n_shots": 0}
@@ -216,14 +228,20 @@ def paired_difference(a: tuple, b: tuple, rng) -> dict:
         "difference": float(full) if np.isfinite(full) else None,
         "ci95": bench.interval(draws),
         "n_shots": len(shots),
+        "n_shots_first_subset": len(np.unique(a[2])),
+        "n_shots_second_subset": len(np.unique(b[2])),
         "valid_replicates": len(draws),
+        "dropped_replicates": bench.REPLICATES - len(draws),
     }
 
 
 def second_vote_verdict(difference: dict) -> str:
-    """Plain reading of a paired difference: better, worse or not distinguishable."""
+    """Plain reading of a paired difference: better, worse, not distinguishable, or
+    not estimable (fewer than `MIN_PAIRED_SHOTS` shots behind the first subset, or an
+    interval that is not finite)."""
     lo, hi = difference["ci95"]
-    if difference["difference"] is None or lo is None or not np.isfinite(lo):
+    few = difference.get("n_shots_first_subset", 0) < MIN_PAIRED_SHOTS
+    if difference["difference"] is None or lo is None or not np.isfinite(lo) or few:
         return "not estimable"
     if lo > 0:
         return "better"
@@ -232,38 +250,60 @@ def second_vote_verdict(difference: dict) -> str:
     return "not distinguishable"
 
 
-def tier_scores(frame: pd.DataFrame, rng) -> dict:
-    """Te agreement per label tier, TangTV alone, and the second vote's effect."""
-    tangtv = frame.tangtv_vote.where(
+def reading_text(difference: dict) -> str:
+    """The reading as a sentence fragment: 'not estimable on 6 shots' and so on."""
+    reading = second_vote_verdict(difference)
+    if reading == "not estimable":
+        return f"not estimable on {difference.get('n_shots_first_subset', 0)} shots"
+    return reading
+
+
+def tangtv_alone(frame: pd.DataFrame) -> pd.Series:
+    """The TangTV vote where it is valid on the upper shelf, else abstain: the vote
+    before the regime gate."""
+    return frame.tangtv_vote.where(
         frame.tangtv_valid.astype(bool) & frame.tangtv_tier.eq("upper_shelf"),
         core.ABSTAIN,
     )
+
+
+def tier_scores(frame: pd.DataFrame) -> dict:
+    """Te agreement per label tier, TangTV alone, and the second vote's effect."""
+    tangtv = tangtv_alone(frame)
     frame = frame.assign(tangtv_alone=tangtv)
     certain = frame.tier.eq("certain").to_numpy()
     silver = frame.tier.eq("tangtv_only").to_numpy()
+    lmode = frame.tier.eq("tangtv_only_lmode").to_numpy()
     conflict = frame.tier.eq("conflict").to_numpy() & tangtv.isin((1, 2)).to_numpy()
     everywhere = np.ones(len(frame), bool)
     out = {
-        "certain": score_states(frame, "state_rule", rng, mask=certain),
-        "tangtv_only": score_states(frame, "state_rule", rng, mask=silver),
-        "certain_or_tangtv_only": score_states(frame, "state_rule", rng),
-        "tangtv_vote_alone": score_states(frame, "tangtv_alone", rng),
+        "certain": score_states(frame, "state_rule", mask=certain),
+        "tangtv_only": score_states(frame, "state_rule", mask=silver),
+        "certain_or_tangtv_only": score_states(frame, "state_rule"),
+        "tangtv_vote_alone": score_states(frame, "tangtv_alone"),
+        "tangtv_vote_alone_without_201081": score_states(
+            frame, "tangtv_alone", mask=(frame.shot != ANCHOR_SHOT).to_numpy()
+        ),
         "tangtv_vote_in_conflict_bins": score_states(
-            frame, "tangtv_alone", rng, mask=conflict
+            frame, "tangtv_alone", mask=conflict
+        ),
+        "tangtv_vote_in_lmode_gated_bins": score_states(
+            frame, "tangtv_alone", mask=lmode
         ),
     }
     state = frame.state_rule
     a = te_subset(frame, state, certain)
     b = te_subset(frame, tangtv, everywhere)
     c = te_subset(frame, tangtv, silver | conflict)
-    difference = paired_difference(a, b, rng)
-    against_rest = paired_difference(a, c, rng)
+    difference = paired_difference(a, b)
+    against_rest = paired_difference(a, c)
     out["second_vote_effect"] = {
         "question": "does requiring an agreeing second indicator improve the "
         "agreement of the TangTV state with divertor Thomson Te?",
         "certain_minus_tangtv_alone": {
             **difference,
             "reading": second_vote_verdict(difference),
+            "reading_text": reading_text(difference),
             "note": "AUROC(-Te) of the certain bins minus that of every TangTV "
             "attached/detached vote on the upper shelf that has a Te; the certain "
             "bins are a subset of them",
@@ -271,9 +311,52 @@ def tier_scores(frame: pd.DataFrame, rng) -> dict:
         "certain_minus_tangtv_where_second_vote_missing_or_clashing": {
             **against_rest,
             "reading": second_vote_verdict(against_rest),
+            "reading_text": reading_text(against_rest),
             "note": "against the TangTV votes that are tangtv_only or in conflict",
         },
     }
+    return out
+
+
+def regime_scores(frame: pd.DataFrame) -> dict:
+    """Te agreement by regime, before the L-mode gate (the TangTV vote alone) and
+    after it (the exported attached/detached states), and by DZ band.
+
+    The gate was set a priori from the H-mode origin of the DZ cutoffs; this block
+    describes what it removed and does not select anything.
+    """
+    tangtv = tangtv_alone(frame)
+    frame = frame.assign(tangtv_alone=tangtv)
+    out = {
+        "note": "regime from the regime source of the Afrac gate (confinement "
+        "suggestion table, else the D-alpha H-mode detector, else unknown); the "
+        "L-mode gate is a priori (the DZ cutoffs come from an H-mode shot) and is "
+        "reported here, not tuned on Te",
+        "bins_by_regime": {r: int(frame.regime.eq(r).sum()) for r in REGIMES},
+        "tangtv_vote_alone": {},
+        "exported_state": {},
+        "tangtv_detached_by_dz_band": {},
+    }
+    for regime in REGIMES:
+        mask = frame.regime.eq(regime).to_numpy()
+        out["tangtv_vote_alone"][regime] = score_states(frame, "tangtv_alone", mask)
+        out["exported_state"][regime] = score_states(frame, "state_rule", mask)
+        bands = {}
+        for lo, hi in DZ_BANDS:
+            rows = frame[
+                mask
+                & frame.tangtv_alone.eq(core.DETACHED).to_numpy()
+                & np.isfinite(frame.te_ev).to_numpy()
+                & (frame.tangtv_value >= lo).to_numpy()
+                & (frame.tangtv_value < hi).to_numpy()
+            ]
+            bands[f"{lo:g}-{hi:g}"] = {
+                **summarise(
+                    rows.te_ev.to_numpy(float), lambda x: x <= TE_DETACHED_MAX_EV
+                ),
+                "n_shots": int(rows.shot.nunique()),
+            }
+        out["tangtv_detached_by_dz_band"][regime] = bands
     return out
 
 
@@ -310,7 +393,6 @@ def cliffs(frame: pd.DataFrame, shot: int) -> dict | None:
 def main() -> int:
     frame = pd.read_csv(ROOT / "labels_bins.csv.gz")
     frame = attach_te(frame)
-    rng = np.random.default_rng(0)
     fetched = sorted(int(p.stem) for p in (ROOT / "dts").glob("*.npz"))
     usable = sorted(
         int(s) for s in frame.loc[np.isfinite(frame.te_ev), "shot"].unique()
@@ -332,15 +414,17 @@ def main() -> int:
         "shots_with_te_in_assessed_bins": usable,
         "bins_with_te": int(np.isfinite(frame.te_ev).sum()),
         "bins_assessed": len(frame),
-        "primary_state": score_states(frame, "state_rule", rng),
-        "by_tier": tier_scores(frame, rng),
+        "primary_state": score_states(frame, "state_rule"),
+        "by_tier": tier_scores(frame),
+        "by_regime": regime_scores(frame),
+        "indicator_votes_population": "assessed bins of the exported label set "
+        "(labels_bins.csv.gz), valid votes only",
         "indicator_votes": {
             name: score_states(
                 frame.assign(
                     vote=frame[f"{name}_vote"].where(frame[f"{name}_valid"], 0)
                 ),
                 "vote",
-                rng,
             )
             for name in ("afrac", "prad", "tangtv")
         },

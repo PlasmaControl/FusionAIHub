@@ -149,7 +149,7 @@ def psin_dependence(frame: pd.DataFrame, state: int) -> dict:
     }
 
 
-def vs_tangtv(frame: pd.DataFrame, rng) -> dict:
+def vs_tangtv(frame: pd.DataFrame) -> dict:
     """The proxy against the TangTV state on the upper shelf (both valid)."""
     both = (
         frame.afrac_valid.astype(bool)
@@ -166,7 +166,6 @@ def vs_tangtv(frame: pd.DataFrame, rng) -> dict:
             -rows.afrac_value.to_numpy(float),
             rows.tangtv_vote.eq(core.DETACHED).to_numpy(),
             rows.shot.to_numpy(),
-            rng,
         ),
     }
     cast = rows[rows.afrac_vote.isin((core.ATTACHED, core.DETACHED))]
@@ -193,14 +192,14 @@ def vs_tangtv(frame: pd.DataFrame, rng) -> dict:
     return out
 
 
-def vs_te(frame: pd.DataFrame, rng) -> dict:
+def vs_te(frame: pd.DataFrame) -> dict:
     """The proxy against divertor Thomson Te (chords and bands of `detach_te_check`)."""
     withte = tc.attach_te(frame[["shot", "start_ms"]].copy())
     frame = frame.assign(te_ev=withte.te_ev.to_numpy())
     voted = frame.assign(
         vote=frame.afrac_vote.where(frame.afrac_valid.astype(bool), core.ABSTAIN)
     )
-    vote_based = tc.score_states(voted, "vote", rng)
+    vote_based = tc.score_states(voted, "vote")
     scored = frame[
         frame.afrac_valid.astype(bool)
         & np.isfinite(frame.afrac_value)
@@ -211,9 +210,11 @@ def vs_te(frame: pd.DataFrame, rng) -> dict:
         -scored.afrac_value.to_numpy(float),
         (scored.te_ev <= TE_COLD_MAX_EV).to_numpy(),
         scored.shot.to_numpy(),
-        rng,
     )
     return {
+        "population": "every extracted bin of the 37-shot roster where Afrac is "
+        "valid (and a Te is available); `detach_te_check.py` scores the Afrac vote on "
+        "the assessed bins of the exported label set, a subset",
         "bands_ev": {"cold_max": TE_COLD_MAX_EV, "warm_min": TE_WARM_MIN_EV},
         "votes_attached_and_detached": {
             "attached": vote_based["attached"],
@@ -247,7 +248,7 @@ def phases(frame: pd.DataFrame) -> dict:
     return out
 
 
-def window_row(frame: pd.DataFrame, rng) -> dict:
+def window_row(frame: pd.DataFrame) -> dict:
     valid = frame.afrac_valid.astype(bool)
     return {
         "bins_valid": int(valid.sum()),
@@ -256,8 +257,8 @@ def window_row(frame: pd.DataFrame, rng) -> dict:
             str(k): int(v)
             for k, v in frame.loc[~valid, "afrac_reason"].value_counts().items()
         },
-        "vs_tangtv": vs_tangtv(frame, rng),
-        "vs_te": vs_te(frame, rng),
+        "vs_tangtv": vs_tangtv(frame),
+        "vs_te": vs_te(frame),
         "shot_201081_phase_medians": phases(frame),
     }
 
@@ -317,13 +318,12 @@ def sentinel_strikes(frame: pd.DataFrame) -> dict:
 
 def main() -> int:
     shots = {int(s) for s in SHOTS.read_text().split()}
-    rng = np.random.default_rng(0)
     before = pd.read_csv(BEFORE)
     before = before[before.shot.isin(shots)].reset_index(drop=True)
     windows = {w: load_bins(d, shots) for w, d in WINDOW_DIRS.items()}
     primary = windows[th.AFRAC_PSI_WINDOW]
 
-    rows = {f"{w:g}": window_row(frame, rng) for w, frame in windows.items()}
+    rows = {f"{w:g}": window_row(frame) for w, frame in windows.items()}
     key = f"{th.AFRAC_PSI_WINDOW:g}"
     te_vote = rows[key]["vs_te"]["votes_attached_and_detached"][
         "auroc_neg_te_detached_vs_attached"
@@ -339,7 +339,8 @@ def main() -> int:
         "n_shots": len(shots),
         "primary_window_psin": th.AFRAC_PSI_WINDOW,
         "reference_quantile": th.AFRAC_REFERENCE_QUANTILE,
-        "reference_min_bins": th.AFRAC_REFERENCE_MIN_BINS,
+        "reference_min_ms": th.AFRAC_REFERENCE_MIN_MS,
+        "reference_min_bins": th.min_bins(th.AFRAC_REFERENCE_MIN_MS, core.BIN_MS),
         "votes_cutoffs": {
             "attached_min": th.AFRAC_ATTACHED_MIN,
             "detached_max": th.AFRAC_DETACHED_MAX,

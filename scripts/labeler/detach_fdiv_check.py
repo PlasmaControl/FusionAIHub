@@ -79,16 +79,12 @@ def shot_row(rows: pd.DataFrame, family: str, reference: str) -> dict:
     return {"n_detached": n_pos, "n_attached": n_neg, "auroc": area}
 
 
-def summary(per_shot: dict, frame: pd.DataFrame, family: str, reference: str, rng):
+def summary(per_shot: dict, frame: pd.DataFrame, family: str, reference: str):
     """Within-shot mean over the shots with both classes, and the pooled AUROC."""
     areas = np.asarray(
         [v[family][reference]["auroc"] for v in per_shot.values()], dtype=float
     )
     areas = areas[np.isfinite(areas)]
-    draws = [
-        float(np.mean(areas[rng.integers(0, len(areas), len(areas))]))
-        for _ in range(bench.REPLICATES if len(areas) else 0)
-    ]
     value, valid = FAMILIES[family]
     ok = frame[valid].astype(bool) & np.isfinite(frame[value])
     positive, negative = classes(frame)[reference]
@@ -97,14 +93,13 @@ def summary(per_shot: dict, frame: pd.DataFrame, family: str, reference: str, rn
         frame[value].to_numpy(float)[use],
         positive.to_numpy()[use],
         frame.shot.to_numpy()[use],
-        rng,
     )
     return {
         "within_shot": {
             "min_class_bins": MIN_CLASS_BINS,
             "n_shots": len(areas),
             "mean": float(areas.mean()) if len(areas) else None,
-            "mean_ci95": bench.interval(draws),
+            "mean_ci95": bench.mean_boot(areas),
             "shots_above_chance": int((areas > 0.5).sum()),
             "median": float(np.median(areas)) if len(areas) else None,
         },
@@ -115,7 +110,6 @@ def summary(per_shot: dict, frame: pd.DataFrame, family: str, reference: str, rn
 def main() -> int:
     frame = pd.read_csv(ROOT / "labels_bins.csv.gz")
     frame = te.attach_te(frame)
-    rng = np.random.default_rng(0)
     split = frame.drop_duplicates("shot").set_index("shot").split.to_dict()
     per_shot = {}
     for shot, rows in frame.groupby("shot"):
@@ -149,7 +143,7 @@ def main() -> int:
         },
         "summary": {
             family: {
-                reference: summary(per_shot, frame, family, reference, rng)
+                reference: summary(per_shot, frame, family, reference)
                 for reference in ("tangtv", "te")
             }
             for family in FAMILIES

@@ -7,9 +7,12 @@ Reads `$LABELER_ROOT/round4/detach/labels_bins.csv.gz` (every assessed bin, writ
 by `detach_label.py`) and the extracted per-shot grids in `bins/`, and writes
 `docs/labeler/results/detachment_current.json`:
 
-* the population by state, split and tier (`certain`: TangTV vote plus an agreeing
-  Afrac vote; `tangtv_only`: TangTV vote with Afrac abstaining or invalid, silver;
-  `conflict`: TangTV and Afrac disagree);
+* the population by state, split and tier, led by the labelled bins (the attached and
+  detached states: `certain` is the TangTV + Afrac agreement, `tangtv_only` the TangTV
+  vote with Afrac abstaining or invalid, silver; `conflict`: TangTV and Afrac
+  disagree; `tangtv_only_lmode`: the TangTV detached vote on a known L-mode bin,
+  exported as uncertain) and the assessed bins that can never carry a state (TangTV
+  invalid); the L-mode gate by regime (H, L, unknown); the camera frame timing;
 * Afrac: coverage on the upper shelf, the reasons a bin had no valid probe, and the
   provenance of the probe that voted (psiN, its attached reference, how many probes
   were inside the window), and the L/H gate's abstentions;
@@ -30,12 +33,13 @@ import hashlib
 import os
 from pathlib import Path
 
+import h5py
 import numpy as np
 import pandas as pd
 from detach_json import dumps
 from detach_label import load_all
 
-from labeler.events.detachment import core, thresholds
+from labeler.events.detachment import core, signals, thresholds
 
 REPO = Path(__file__).resolve().parents[2]
 ROOT = Path(os.environ["LABELER_ROOT"]) / "round4/detach"
@@ -118,7 +122,93 @@ def population_block(labels: pd.DataFrame) -> dict:
         for tier, rows in labels.groupby("tier")
     }
     out["tangtv_geometry_tier_of_assessed_bins"] = counts(labels.tangtv_tier)
+    # Assessed counts a bin on any two valid indicators (f_div included), but a state
+    # needs a TangTV vote: where TangTV is invalid the bin is uncertain whatever the
+    # others say. Lead with the labelled bins and count what can never be labelled.
+    no_tangtv = assessed & ~labels.tangtv_valid.astype(bool).to_numpy()
+    with_state = set(labels.loc[labelled, "shot"].astype(int))
+    out["assessed_bins_that_can_never_carry_a_state"] = {
+        "reason": "TangTV is invalid on the bin (a state needs a TangTV vote)",
+        **population(labels, no_tangtv),
+    }
+    out["assessed_shots_without_a_labelled_bin"] = sorted(
+        int(s) for s in set(labels.shot.astype(int)) - with_state
+    )
+    out["labelled_by_regime"] = {
+        regime: {
+            core.STATE_NAMES[s]: population(
+                labels, labelled & labels.regime.eq(regime) & labels.state_rule.eq(s)
+            )
+            for s in (1, 2)
+        }
+        for regime in ("H", "L", "unknown")
+    }
+    out["certain_by_regime"] = {
+        regime: population(labels, certain & labels.regime.eq(regime))
+        for regime in ("H", "L", "unknown")
+    }
+    gated = assessed & labels.tier.eq("tangtv_only_lmode").to_numpy()
+    detached_vote = labels.tangtv_vote.eq(core.DETACHED) & labels.tangtv_valid.astype(
+        bool
+    )
+    out["lmode_gate"] = {
+        "rule": "a DETACHED TangTV vote (0.5 <= DZ < 1.2) on a bin of a known L-mode "
+        "phase is the uncertain tier `tangtv_only_lmode`; the DZ cutoffs come from an "
+        "H-mode shot and the gate is a priori, not tuned on Te. An unknown regime "
+        "keeps the plain rule and is counted here.",
+        "gated_bins": population(labels, gated),
+        "tangtv_detached_votes_by_regime": {
+            regime: population(
+                labels, assessed & detached_vote & labels.regime.eq(regime)
+            )
+            for regime in ("H", "L", "unknown")
+        },
+        "regime_source_of_assessed_bins": counts(labels.regime_source),
+        "bins_by_regime": counts(labels.regime),
+    }
     return out
+
+
+def frame_timing_block(shots) -> dict:
+    """Spacing of the TangTV frames: the inversions the vote reads and the corpus's
+    resampled raw movie. Chen 2026's camera records 60 Hz interlaced fields as 30 Hz
+    full frames; the inversions are one per field."""
+    inversion, corpus = {}, {}
+    for shot in sorted(int(s) for s in shots):
+        path = ROOT / "inversions" / f"{shot}.npz"
+        if path.is_file():
+            with np.load(path) as npz:
+                t = np.asarray(npz["times_ms"], dtype=float)
+            if len(t) > 2:
+                inversion[shot] = float(np.median(np.diff(t)))
+        movie = signals.CORPUS / f"{shot}_processed.h5"
+        if movie.is_file():
+            with h5py.File(movie, "r") as f:
+                if "tangtv" in f and f["tangtv"]["xdata"].shape[0] > 2:
+                    x = np.asarray(f["tangtv"]["xdata"][:], dtype=float) * 1000.0
+                    corpus[shot] = float(np.median(np.diff(x)))
+
+    def summary(values: dict, name: str) -> dict:
+        v = np.asarray(list(values.values()), dtype=float)
+        if not len(v):
+            return {"source": name, "n_shots": 0}
+        return {
+            "source": name,
+            "n_shots": len(v),
+            "median_spacing_ms_min_median_max": [
+                float(v.min()),
+                float(np.median(v)),
+                float(v.max()),
+            ],
+            "frames_per_bin_median": float(core.BIN_MS / np.median(v)),
+        }
+
+    return {
+        "camera": "Chen 2026: 60 Hz interlaced captured as 30 Hz full frames",
+        "inversions": summary(inversion, "inversions/<shot>.npz times_ms"),
+        "corpus_raw_movie": summary(corpus, "corpus <shot>_processed.h5 /tangtv xdata"),
+        "bin_ms": core.BIN_MS,
+    }
 
 
 def afrac_block(bins: pd.DataFrame, labels: pd.DataFrame) -> dict:
@@ -187,7 +277,9 @@ def afrac_block(bins: pd.DataFrame, labels: pd.DataFrame) -> dict:
             "window": f"|psiN - 1| <= {thresholds.AFRAC_PSI_WINDOW}",
             "reference": f"per probe: the {thresholds.AFRAC_REFERENCE_QUANTILE} "
             "quantile of its own model-normalised current over its bins in the "
-            f"window, at least {thresholds.AFRAC_REFERENCE_MIN_BINS} bins",
+            f"window, at least {thresholds.AFRAC_REFERENCE_MIN_MS:g} ms of bins "
+            f"({thresholds.min_bins(thresholds.AFRAC_REFERENCE_MIN_MS, core.BIN_MS)} "
+            f"at {core.BIN_MS:g} ms)",
             "choice": "the probe nearest the separatrix in flux among those with a "
             "reference",
             "gate": "ELM, ramp, low power, and known L-mode bins abstain",
@@ -297,7 +389,7 @@ def marfe_block(labels: pd.DataFrame) -> dict:
     return {
         "evidence_rule": (
             f"TangTV MARFE vote (DZ >= {thresholds.DZ_MARFE_MIN:.1f} held for "
-            f"{thresholds.MARFE_MIN_BINS} adjacent valid bins), an emission peak "
+            f"{thresholds.MARFE_MIN_MS:g} ms of adjacent valid bins), an emission peak "
             "inside the separatrix near the X-point, and the density cue "
             f"fG >= {thresholds.GREENWALD_CUE_MIN:.1f}; Prad,div and Afrac do not "
             "corroborate a MARFE"
@@ -373,6 +465,7 @@ def main() -> None:
         "script": "scripts/labeler/detach_current_state.py",
         "scope": "exploratory labels; no independent benchmark",
         "population": population_block(labels),
+        "frame_timing": frame_timing_block(labels.shot.unique()),
         "afrac": afrac_block(bins, labels),
         "prad": prad_block(bins, labels),
         "marfe": marfe_block(labels),

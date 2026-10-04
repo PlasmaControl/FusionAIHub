@@ -49,6 +49,10 @@ MODEL_RECORD = (
     / "label_model.json"
 )
 REPLICATES = 1000
+#: Every shot bootstrap of a statistic starts a fresh generator at this seed, so the
+#: same population gives the same interval in every script and whatever else was
+#: drawn before it (a shared stream made one statistic print two intervals).
+BOOT_SEED = 0
 STATES = (1, 2, 3)
 #: The sign that makes a larger score mean "not attached".
 DIRECTION = {"afrac": -1.0, "prad": 1.0, "prad_abs": 1.0, "tangtv": 1.0}
@@ -61,6 +65,22 @@ COLUMNS = {
     "prad_abs": ("prad_value", "prad_abs_valid", "prad_abs_vote"),
     "tangtv": ("tangtv_value", "tangtv_valid", "tangtv_vote"),
 }
+
+
+def boot_rng() -> np.random.Generator:
+    return np.random.default_rng(BOOT_SEED)
+
+
+def mean_boot(values) -> list:
+    """95% shot-bootstrap interval of the mean of per-shot values (one per shot)."""
+    finite = np.asarray(values, dtype=float)
+    finite = finite[np.isfinite(finite)]
+    rng = boot_rng()
+    draws = [
+        float(np.mean(finite[rng.integers(0, len(finite), len(finite))]))
+        for _ in range(REPLICATES if len(finite) else 0)
+    ]
+    return interval(draws)
 
 
 def root() -> Path:
@@ -231,8 +251,9 @@ def bootstrap(tables, counts, name, rng):
     return out
 
 
-def auroc_boot(score, positive, shots, rng) -> dict:
-    """AUROC with a shot-bootstrap 95% interval."""
+def auroc_boot(score, positive, shots) -> dict:
+    """AUROC with a shot-bootstrap 95% interval (fresh generator, `BOOT_SEED`)."""
+    rng = boot_rng()
     if not len(score):
         nan = float("nan")
         return {
@@ -308,13 +329,13 @@ def pairwise_ci(frame: pd.DataFrame, rng) -> dict:
     return out
 
 
-def auroc_ci(frame, name, reference, rng) -> dict:
+def auroc_ci(frame, name, reference) -> dict:
     ok = np.isin(reference, STATES) & frame[f"{name}_valid"].to_numpy()
     sub = frame[ok]
     score = DIRECTION[name] * sub[f"{name}_value"].to_numpy(dtype=float)
     positive = reference[ok] != 1
     finite = np.isfinite(score)
-    return auroc_boot(score[finite], positive[finite], sub.shot.to_numpy()[finite], rng)
+    return auroc_boot(score[finite], positive[finite], sub.shot.to_numpy()[finite])
 
 
 def conflicts_resolved(frame: pd.DataFrame) -> dict:
@@ -495,9 +516,10 @@ def interval(draws) -> list:
     return [float(v) for v in np.percentile(finite, [2.5, 97.5])]
 
 
-def pooled_rho(frame, a, b, rng) -> dict:
+def pooled_rho(frame, a, b) -> dict:
     """Spearman of the two oriented values on bins where both are valid, with a
     shot-bootstrap interval. Oriented: both increase with detachment."""
+    rng = boot_rng()
     (va, ka, _), (vb, kb, _) = COLUMNS[a], COLUMNS[b]
     ok = (
         frame[ka].to_numpy(bool)
@@ -522,7 +544,7 @@ def pooled_rho(frame, a, b, rng) -> dict:
     return {**out, "value": spearman(x, y), "ci95": interval(draws)}
 
 
-def within_shot(frame, a, b, rng) -> dict:
+def within_shot(frame, a, b) -> dict:
     """Per-shot AUROC and Spearman, summarised by their mean and a shot bootstrap.
 
     A shot counts when `MIN_SHOT_BINS` bins have both indicators valid (Spearman)
@@ -557,14 +579,10 @@ def within_shot(frame, a, b, rng) -> dict:
     for column, name in ((2, "spearman"), (3, "auroc")):
         values = table[:, column]
         finite = values[np.isfinite(values)]
-        draws = [
-            float(np.mean(finite[rng.integers(0, len(finite), len(finite))]))
-            for _ in range(REPLICATES if len(finite) else 0)
-        ]
         out[name] = {
             "n_shots": len(finite),
             "mean": float(np.mean(finite)) if len(finite) else float("nan"),
-            "mean_ci95": interval(draws),
+            "mean_ci95": mean_boot(finite),
             "median": float(np.median(finite)) if len(finite) else float("nan"),
             "share_at_least_0_8": float(np.mean(finite >= 0.8))
             if len(finite)
@@ -583,7 +601,7 @@ def within_shot(frame, a, b, rng) -> dict:
     return out
 
 
-def threshold_free(frame: pd.DataFrame, rng) -> dict:
+def threshold_free(frame: pd.DataFrame) -> dict:
     """Agreement that needs no cutoff, per TangTV geometry tier and indicator pair.
 
     AUROC: how well indicator A's continuous value (oriented so larger means more
@@ -612,9 +630,9 @@ def threshold_free(frame: pd.DataFrame, rng) -> dict:
                 if a != "afrac"
                 else "afrac_value, larger Afrac = more attached (sign flipped)",
                 "reference": f"{b} vote: detached or marfe versus attached",
-                "auroc_pooled": auroc_boot(score, positive, sub.shot.to_numpy(), rng),
-                "spearman_pooled": pooled_rho(rows, a, b, rng),
-                "within_shot": within_shot(rows, a, b, rng),
+                "auroc_pooled": auroc_boot(score, positive, sub.shot.to_numpy()),
+                "spearman_pooled": pooled_rho(rows, a, b),
+                "within_shot": within_shot(rows, a, b),
             }
         out[str(tier)] = pairs
     return out
@@ -700,6 +718,9 @@ def main() -> None:
         "bootstrap": {
             "unit": "shot with at least one compared vote pair",
             "seed": 0,
+            "generator": "pairwise kappa: one stream; every other statistic: a "
+            "fresh generator at the seed (`boot_rng`), so one population has one "
+            "interval in every record",
             "replicates": REPLICATES,
             "ci": "percentile 95%; undefined draws excluded and counted",
         },
@@ -726,7 +747,7 @@ def main() -> None:
         "by_tangtv_tier": all_tiers,
         "fit_by_tangtv_tier": fit_tiers,
     }
-    result["threshold_free_agreement"] = threshold_free(eligible, rng)
+    result["threshold_free_agreement"] = threshold_free(eligible)
     result["paper_agreement"] = (
         result["pairwise_agreement"]["by_tangtv_tier"]
         .get("upper_shelf", {})
