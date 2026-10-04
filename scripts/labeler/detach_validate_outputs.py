@@ -32,6 +32,26 @@ def main():
     )
     assert np.array_equal(frame.state_rule, rule)
     assert np.array_equal(frame.state_lm, frame.state_rule)
+    # the sensitivity column is the same rule with the per-shot relative f_div votes
+    relative_votes = votes.copy()
+    relative_votes[:, 1] = np.where(valid[:, 1], frame.prad_rel_vote, core.ABSTAIN)
+    relative, _ = label_model.compatibility_decide(
+        relative_votes,
+        valid,
+        tangtv_tier=frame.tangtv_tier.to_numpy(),
+        elm_known=np.isfinite(frame.aux_elm_share),
+    )
+    assert np.array_equal(frame.state_rule_relative_prad, relative)
+    # the lower-shelf column is not a label column and is not in any handoff file
+    assert not [c for c in frame.columns if "lower_shelf" in c and c != "tangtv_tier"]
+    cutoffs = thresholds.prad_cutoffs()
+    prad_cast = frame.prad_valid.to_numpy()
+    expected_prad = np.where(
+        frame.prad_value <= cutoffs[0],
+        core.ATTACHED,
+        np.where(frame.prad_value >= cutoffs[1], core.DETACHED, core.ABSTAIN),
+    )
+    assert np.array_equal(frame.prad_vote[prad_cast], expected_prad[prad_cast])
     assert frame.confidence.isna().all()
     assert (valid.sum(axis=1) >= 2).all()
     assert (votes[~valid] == core.ABSTAIN).all()
@@ -50,6 +70,23 @@ def main():
     assert frame.prad_averaging_ms.eq(250.0).all()
     certain = frame.state_rule.isin(core.VOTE_STATES)
     assert frame.loc[certain, "tangtv_tier"].eq("upper_shelf").all()
+    # certain attached/detached: TangTV votes the state, one other valid indicator
+    # votes it too, and no valid indicator votes against it
+    for state in (core.ATTACHED, core.DETACHED):
+        rows = frame.state_rule.eq(state)
+        assert votes[rows, 2].tolist() == [state] * int(rows.sum())
+        others = votes[rows][:, :2]
+        assert ((others == state).any(axis=1)).all()
+        assert not ((others > 0) & (others != state)).any()
+    # certain MARFE: the TangTV MARFE vote, no attached vote elsewhere; Prad,div and
+    # Afrac never corroborate it
+    marfe = frame.state_rule.eq(core.MARFE)
+    assert (frame.loc[marfe, "tangtv_vote"] == core.MARFE).all()
+    assert not (votes[marfe][:, :2] == core.ATTACHED).any()
+    assert frame.loc[marfe, ["tangtv_marfe_spatial"]].all().all()
+    candidate = frame.tier.eq("candidate_marfe")
+    assert frame.loc[candidate, "state_rule"].eq(core.UNCERTAIN).all()
+    assert frame.loc[candidate, "tangtv_marfe_candidate"].all()
     assert np.isfinite(frame.loc[certain, "aux_elm_share"]).all()
     certain_by_split = {
         split: int((certain & frame.split.eq(split)).sum())
@@ -62,6 +99,11 @@ def main():
     )
     jsat = frame.afrac_vote > 0
     assert frame.loc[jsat, "afrac_probe_position_valid"].all()
+    assert (
+        frame.loc[jsat, "aux_jsat_selected_psin"] <= thresholds.PROBE_SOL_PSI_N_MAX
+    ).all()
+    assert (frame.loc[jsat, "afrac_probe_n_eligible"] >= 1).all()
+    assert frame.loc[jsat, "afrac_method"].notna().all()
     assert (
         frame.loc[jsat, "aux_jsat_selected_psin"]
         >= thresholds.PROBE_SOL_PSI_N_MIN - 1e-6
@@ -109,12 +151,48 @@ def main():
         assert np.array_equal(traces.state, rows.state_rule)
         assert np.array_equal(traces.t_ms, rows.start_ms + core.BIN_MS / 2)
         assert "aux_jsat_selected_probe" in traces
+        assert "afrac_probe_n_eligible" in traces
+        assert not [c for c in traces.columns if "lower_shelf" in c]
         trace_rows += len(traces)
     sha = hashlib.sha256((ROOT / "labels_bins.csv.gz").read_bytes()).hexdigest()
     reference = json.loads((RESULTS / "detachment_reference.json").read_text())
     assert reference["labels_record"]["sha256"] == sha
     figure = json.loads((ROOT / "figure/figure.json").read_text())
     assert figure["labels_sha256"] == sha
+    panel = json.loads((dl.REPO / "docs/labeler/figure2_detach.json").read_text())
+    assert panel["sources"]["labels_sha256"] == sha
+    # one canonical Figure 2 record; the duplicate is gone
+    assert not (RESULTS / "detachment_figure2.json").exists()
+    for row in panel["agreement"]:
+        if row["kind"] == "kappa" and row["value"] is None:
+            assert not row["drawn"]
+    current = json.loads((RESULTS / "detachment_current.json").read_text())
+    assert current["labels_sha256"] == sha
+    d9 = current["paper_criterion_d9"]
+    states = frame.state_rule
+    cohort = frame.split.isin(("train", "val", "test"))
+    both = set(frame.loc[states.eq(core.ATTACHED), "shot"]) & set(
+        frame.loc[states.eq(core.DETACHED), "shot"]
+    )
+    cohort_both = both & set(frame.loc[cohort, "shot"])
+    assert sorted(both) == sorted(d9["shots_with_both"])
+    assert sorted(cohort_both) == sorted(d9["cohort_shots_with_both"])
+    assert d9["met"] == (len(both) >= 3 and len(cohort_both) >= 1)
+    assert d9["presentation"] == (
+        "three_state_label_set_exploratory_with_te_check"
+        if d9["met"]
+        else "indicator_agreement_appendix"
+    )
+    model = json.loads((dl.OUT / "records/label_model.json").read_text())
+    assert "used_anchor" in model["fit"]
+    assert model["fit"]["anchor_bins"] == int(valid.all(axis=1).sum()) or (
+        not model["fit"]["used_anchor"]
+    )
+    readme = (dl.REPO / "data/events/detachment/README.md").read_text()
+    models = readme.split("<!-- MODELS -->")[1].split("<!-- /MODELS -->")[0]
+    assert "detach-ours" not in models and "detach-victor" not in models
+    handoff = (ROOT / "HANDOFF.md").read_text()
+    assert sha[:12] in handoff and "lower_shelf" in handoff
     json_paths = sorted(
         p
         for p in RESULTS.glob("detachment_*.json")
@@ -146,10 +224,10 @@ def main():
     for path in json_paths:
         record = json.loads(path.read_text(), parse_constant=reject_nonfinite)
         check_replicates(record)
-    log = ROOT / "logs/round3-covering-tests.log"
+    log = ROOT / "logs/round4-covering-tests.log"
     tests = re.search(r"(\d+) passed", log.read_text())
     assert tests, "Covering test success absent"
-    lint_log = ROOT / "logs/round3-ruff.log"
+    lint_log = ROOT / "logs/round4-ruff.log"
     assert "All checks passed!" in lint_log.read_text()
     assert "would reformat" not in lint_log.read_text()
     record = {
@@ -176,7 +254,11 @@ def main():
             "upper-shelf/known-ELM certainty and explicit cohort counts",
             "SOL position and flux margins",
             "exact interval, sparse-grid and trace reconstruction; no stale shots",
-            "reference and figure source checksums match current labels",
+            "reference, figure, Figure 2 and current-state checksums match the labels",
+            "certain MARFE needs the TangTV vote; candidate_marfe never certain",
+            "relative-Prad sensitivity column and absolute cutoffs reproduce",
+            "no lower-shelf column in labels, traces or handoff; one Figure 2 record",
+            "paper D9 decision recomputed from the labels",
             "diagnostic metadata does not claim primary-rule grids",
             "strict finite JSON and bootstrap replicate counts",
         ],

@@ -97,6 +97,8 @@ def main():
     states = {
         dl.core.STATE_NAMES[s]: int(labels.state_rule.eq(s).sum()) for s in (1, 2, 3, 4)
     }
+    tiers = labels.tier.value_counts().to_dict()
+    sha = record["labels_sha256"]
     lines = [
         "# Detachment data interface for detach-ui",
         "",
@@ -106,9 +108,12 @@ def main():
             f"{int(certain.sum()):,} certain bins/"
             f"{labels.loc[certain, 'shot'].nunique()} shots/"
             f"{certain.sum() * 0.05:.2f} s. State bins: {states}. "
-            "Certainty is upper-shelf TangTV with f_div corroboration, not "
-            "independently validated physical truth. MARFE is a single-shot "
-            "candidate class within threshold uncertainty."
+            f"Tier counts: {tiers}. Labels sha256 {sha}. "
+            "A certain attached or detached bin has a TangTV vote plus a compatible "
+            "vote from Afrac or Prad,div and no conflicting vote; a certain MARFE "
+            "is the TangTV MARFE vote (spatial cue, density cue, persistence). "
+            "Agreement with the divertor Thomson temperature, an independent "
+            "measurement, is in docs/labeler/results/detachment_te_check.json."
         ),
         "",
         "## Stable label interface",
@@ -117,10 +122,22 @@ def main():
             "Codes: absent=0 internally, attached=1, detached=2, MARFE=3, "
             "uncertain=4. Missing rows mean unassessed. Confidence is null. "
             "state_lm aliases state_rule; state_model_diagnostic is vestigial. "
-            "Lower-shelf votes remain provisional: primary state=4, "
-            "tier=lower_shelf_window. Temporal suggestions do not promote certainty."
+            "`tier` says why a bin is not certain: conflict, insufficient_support, "
+            "low_confidence_pair, no_vote, candidate_marfe (a TangTV MARFE "
+            "candidate without the full evidence), lower_shelf_window, "
+            "geometry_unknown, elm_unknown. Temporal suggestions do not promote "
+            "certainty."
         ),
         "",
+        (
+            "- Lower-shelf TangTV window: the owner's restricted lower-shelf "
+            "extraction is NOT a label column. It is absent from the interval "
+            "table, the per-shot grids, labels_bins.csv.gz and indicators/*.csv "
+            "(the earlier state_lower_shelf_window column was removed), and "
+            "its bins carry state=4 and tier=lower_shelf_window. Only the "
+            "per-indicator vote and value columns of those bins remain, for "
+            "reference."
+        ),
         (
             "- Worktree intervals: data/events/detachment/extend_detach_vote/"
             "detach_shots.csv; columns shot,category,t_start,t_end,confidence,attrs "
@@ -128,39 +145,56 @@ def main():
         ),
         (
             "- Full bins: round4/detach/labels_bins.csv.gz. labels_rule.csv stays "
-            "stable; labels_label_model.csv is diagnostic."
+            "stable; labels_label_model.csv is diagnostic. `state_rule` uses the "
+            "absolute Prad,div cutoffs anchored on 201081; "
+            "`state_rule_relative_prad` and `tier_relative_prad` are the same rule "
+            "with the per-shot relative f_div votes (`prad_rel_value`, "
+            "`prad_rel_vote`), kept as a sensitivity column."
         ),
         (
             "- indicators/<shot>.csv retains t_ms, state, tier, afrac, prad_div "
-            "(MW), prad_fraction, tangtv_dz, tangtv_front_height and validity. "
-            "Times are centers; NPZ start_ms and interval boundaries are bin starts."
+            "(MW), prad_fraction, tangtv_dz, tangtv_front_height, validity, and the "
+            "Afrac probe provenance (aux_jsat_selected_probe/_r_m/_z_m/_psin, "
+            "strike position, distance to the outer strike, radial margin, "
+            "afrac_probe_n_eligible). Times are centers; NPZ start_ms and interval "
+            "boundaries are bin starts."
         ),
         (
-            "- bins/<shot>.npz retains all existing keys. aux_p_in_w now means "
-            "centered 250 ms heating power; aux_prad_divl_w and aux_prad_tot_w "
-            "are centered 250 ms inter-ELM radiation means. "
-            "aux_prad_div_fraction_total is a diagnostic ratio, not another vote. "
-            "aux_prad_divl_native_w retains the native label-bin radiation mean; "
-            "aux_prad_elm_window_known records D-alpha availability across "
-            "the full radiation averaging window; "
-            "prad_averaging_ms=250 documents the window. "
-            "tangtv_marfe_back_transition separates the H-L cue from fG."
+            "- Afrac probe: the peak-Jsat probe among those on the scrape-off side "
+            "(psiN > 1.000, at least 5 mm outboard of the outer strike, psiN <= "
+            "1.05). The provenance columns are exported for invalid bins too; "
+            "afrac_probe_n_eligible=0 means no probe passed the flux gate."
+        ),
+        (
+            "- bins/<shot>.npz keys: afrac_*, prad_*, tangtv_* (value, valid, "
+            "reason, vote), aux_p_in_w (centered 250 ms input power: neutral "
+            "beams + EFIT ohmic + ECH; the beams come from PTDATA BMSPINJ where "
+            "the corpus pinj group is a stub), aux_prad_divl_w and aux_prad_tot_w "
+            "(centered 250 ms inter-ELM radiation means), "
+            "aux_prad_div_fraction_total (diagnostic ratio, not a vote), "
+            "aux_prad_divl_native_w, aux_prad_elm_window_known, prad_averaging_ms, "
+            "prad_rel_value/prad_rel_vote, afrac_probe_n_eligible, "
+            "tangtv_marfe_candidate/_spatial/_second_cue/_back_transition."
         ),
         (
             "- D-alpha NaNs remain unavailable. An uncovered 50 ms window is "
             "elm_unknown, as is an uncovered 250 ms radiation averaging window; "
             "uncovered heating windows are no_input_power. "
-            "Averaging windows include both endpoints in means and availability; "
-            "native label bins are left-closed/right-open. "
             "Native-bin or 250 ms radiation means below -0.05 MW are "
-            "negative_radiation; this is a "
-            "local offset tolerance, not a calibrated uncertainty."
+            "negative_radiation; this is a local offset tolerance, not a "
+            "calibrated uncertainty."
         ),
         (
             "- MIN_VALID_BINS=20 is an explicit eligibility deviation from "
             "exporting every two-measurement shot: require >=20 assessed bins and "
             ">=20 valid bins per contributing indicator. Narrow valid snippets "
             "remain in bins/<shot>.npz, but have no exported label row."
+        ),
+        (
+            "- dts/<shot>.npz: processed divertor Thomson Te (te in eV, te_err, "
+            "ne as stored, chord r/z in m, t_ms in ms); an npz with "
+            "no `te` key records an absent node. The independent check selects "
+            "the chords 1.5-5 cm above the shelf with psiN in (1.000, 1.05]."
         ),
         "",
         "## Diagnostic sources and time bases",
@@ -214,45 +248,45 @@ def main():
     schema = json.loads(panel.read_text())
     lines += [
         "",
-        "## Figure 2 schema change",
+        "## Figure 2 record",
         "",
         (
-            "docs/labeler/figure2_detach.json now provides coverage and upper-shelf "
-            "Prad–TangTV agreement. F1-vs-consensus rows were removed. "
-            "Do not pass it to the former detector-benchmark row renderer. "
+            "docs/labeler/figure2_detach.json is the one canonical Figure 2 record "
+            "(the duplicate detachment_figure2.json was removed). "
             "Detachment has no independent benchmark; the JSON says so in "
             "`independent_benchmark` and `scope`. "
             f"Schema name: `{schema.get('schema')}`. "
             f"Top-level keys: {', '.join(schema)}."
         ),
         (
-            "coverage.{assessed,certain}, coverage.by_state.<state>.{assessed,"
-            "certain}, coverage.by_tangtv_tier.<tier> and coverage.by_split "
-            "contain populations with bins, shots, seconds and shot_ids. "
-            "indicator_agreement.by_tangtv_tier.<tier> gives both_valid and "
-            "both_vote populations; confusion_counts has Prad rows/TangTV "
-            "columns in attached/detached/MARFE order. metrics contains "
-            "kappa_3class, kappa_binary, agreement_3class and agreement_binary "
-            "with point, CI and valid_replicates. Binary agreement maps MARFE "
-            "to detached. Conflicts retain attached-TangTV/detached-Prad counts. "
-            "rows has kind=coverage (bins) or kind=agreement (kappa); draw "
-            "these on separate axes. sources.labels_sha256 links the generation."
+            "`agreement` is a list of rows {key, label, kind, chance, value, ci95, "
+            "n_bins, n_shots, drawn, undefined_reason}: kind=threshold_free rows "
+            "(AUROC and Spearman of f_div against the TangTV vote, pooled and "
+            "within shot, shot-bootstrap 95% intervals) and kind=kappa rows. A "
+            "kappa on a table where either rater used one class is null with "
+            "drawn=false and must not be plotted. `coverage` holds the "
+            "populations (bins, shots, seconds, shot_ids) for assessed and certain "
+            "bins, by state, by TangTV tier and by split. `coverage_table` gives, "
+            "per indicator, how many bins have a measurement, a valid "
+            "measurement, a vote and a certain label. `definitions` states each "
+            "term. sources.labels_sha256 links the generation."
         ),
         "",
         (
-            "Agreement record paths stay stable. records/agreement.json "
-            "all_eligible_bins and fit_bins_train_val_outside now contain "
-            "by_tangtv_tier.<tier>.<pair>, with top-level by_tangtv_tier and "
-            "fit_by_tangtv_tier aliases. The benchmark JSON's corresponding "
-            "keys contain <tier>.<pair> directly, with named by_tangtv_tier "
-            "aliases. Cross-tier agreement scalars and circular benchmark "
-            "tables were removed."
+            "Agreement record paths: records/agreement.json and the benchmark "
+            "JSON hold by_tangtv_tier.<tier>.<pair> (bins, agreement, kappa); "
+            "threshold_free_agreement.<tier>.<pair> holds the AUROC/Spearman "
+            "entries; paper_agreement is the upper-shelf Prad-TangTV block."
         ),
         (
-            "Figure paths remain round4/detach/figure/fig_detachment_{views,"
-            "timeline,figure2}.{pdf,png}; the MARFE witness adds "
-            "fig_detachment_marfe_witness.{pdf,png}. Appendix panels use full "
-            "6.75-inch width. Rebuild detach-ui from these outputs."
+            "Figure paths: round4/detach/figure/fig_detachment_{views,timeline,"
+            "marfe_witness,figure2}.{pdf,png}. The views and timeline figures "
+            "draw shot 201081 (two Te cliffs); detach_figure.py picks time-ordered "
+            "columns from sustained intervals of at least five bins. The "
+            "bolometer row shows PRAD_DIVL/PRAD_TOT traces because no 2D "
+            "bolometer emissivity exists "
+            "(docs/labeler/results/detachment_bolometer_availability.json). "
+            "Rebuild detach-ui from these outputs."
         ),
     ]
     (ROOT / "HANDOFF.md").write_text("\n".join(lines) + "\n")
