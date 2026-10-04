@@ -30,7 +30,7 @@ TM = (
 LABELS = (
     REPO / "data/events/neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
 )
-PLAN = TM / "results/inner_splits_fix2.json"
+PLAN = TM / "results/inner_splits_fix3.json"
 
 
 def load_plan(shots):

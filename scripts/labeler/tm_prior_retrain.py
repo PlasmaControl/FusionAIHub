@@ -19,7 +19,7 @@ Here the *same architecture on the same inputs* is trained afresh on that questi
 * protocol as `tm_ours.py`: the 450 train and validation shots in five shot-grouped
   folds (`scoring.shot_folds`, seed 0), each scored by nets trained on the other four
   with a tenth of their shots stopping the training and choosing the F1 threshold; the
-  50 test shots scored once (``--final``) by nets trained on all 450;
+  50 blind test shots are never opened;
 * scores are the nets' row probabilities interpolated to the 10 ms bins
   (`detectors.rows_to_bins`), then `scoring.evaluate` with 1000 shot bootstraps.
 
@@ -234,14 +234,11 @@ def truth(data, shots):
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--model", choices=sorted(MODELS), required=True)
-    ap.add_argument("--final", action="store_true", help="also score the 50 test shots")
     ap.add_argument("--bootstrap", type=int, default=1000)
     ap.add_argument(
         "--folds", type=int, default=FOLDS, help="run only the first k folds"
     )
     args = ap.parse_args(argv)
-    if args.final:
-        raise SystemExit("blind-test processing is forbidden in this regeneration")
     import torch
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -250,10 +247,8 @@ def main(argv=None) -> int:
     name, slug = MODELS[args.model]
     cohort = pd.read_csv(CATALOG / "cohort.csv")
     dev_all = sorted(int(s) for s in cohort[cohort.split != "test"].shot)
-    test_all = sorted(int(s) for s in cohort[cohort.split == "test"].shot)
-    data, missing = load(args.model, dev_all + (test_all if args.final else []))
+    data, missing = load(args.model, dev_all)
     dev = [s for s in dev_all if s in data]
-    test = [s for s in test_all if s in data]
     meta = {
         "model": name,
         "slug": slug,
@@ -361,33 +356,6 @@ def main(argv=None) -> int:
         f" F1 {res['f1']['value']:.3f}",
         flush=True,
     )
-    if args.final:
-        train_all, val_all = scoring.inner_split(dev_all, 999, HYPER["val_fraction"])
-        train = [s for s in train_all if s in data]
-        val = [s for s in val_all if s in data]
-        nets = ensemble(args.model, data, train, val, device)
-        thr = pick_threshold(data, bin_scores(nets, data, val, device), val)
-        scores = bin_scores(nets, data, test, device)
-        y, valid = truth(data, test)
-        res = scoring.evaluate(test, y, valid, scores, thr, n=args.bootstrap, seed=0)
-        write(
-            f"tm_prior_retrained_{name}_test",
-            {
-                **meta,
-                "split": "test (50 shots), nets trained on all dev shots",
-                "test_shots": test,
-                "threshold": thr,
-                "members": [record for _, record in nets],
-                "metrics": res,
-            },
-        )
-        print(
-            name,
-            "test",
-            f"AUROC {res['auroc']['value']:.3f} AUPRC {res['auprc']['value']:.3f}"
-            f" F1 {res['f1']['value']:.3f}",
-            flush=True,
-        )
     return 0
 
 

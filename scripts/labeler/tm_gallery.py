@@ -2,8 +2,10 @@
 """A gallery of strong rotating n=1/n=2 modes (tearing-mode proxies).
 
 Each shot is three rows on one time axis: a strip with its intervals (one colour per
-toroidal number, a triangle at each onset, dots for unconfirmed lock candidates and
-slashes for confirmed locking),
+toroidal number, a triangle at each onset) and, behind them, the uncertain time (one
+flat grey, however many uncertain rows overlap there; hatched where the uncertain time
+is a locked phase: slashes where the radial field confirms the lock, dots where the
+mode collapsed or locked but the field did not confirm it),
 the 0-50 kHz MHR spectrogram (corpus `mhr` row 2, in dB above each frequency's
 own floor over the plasma), and the n = 1 and n = 2 RMS (log gauss) with the onset
 threshold and, per interval, the release level it was cut at. MHR often covers only
@@ -58,6 +60,14 @@ PROBE_ROW = 15
 MHR_ROW = 2
 Z_DB = (-3.0, 42.0)
 FONT = 7.5
+#: Uncertain rows made by the lock evidence, and how they are hatched: the radial
+#: field confirms them (slashes), or the mode collapsed or locked unconfirmed (dots).
+LOCK_HATCH = {
+    "confirmed_locked_phase": "////",
+    "locked_unseeded": "////",
+    "post_collapse_lock_unknown": "..",
+    "rotation_after_lock_unassessed": "..",
+}
 
 
 def intervals_of(frame: pd.DataFrame):
@@ -105,16 +115,15 @@ def draw_shot(fig, grid, shot, window, signals, frame, thresholds, diagnostic):
     strip, spec_ax, rms_ax = (fig.add_subplot(sub[i]) for i in range(3))
     w0, w1 = window[0] / 1000.0, window[1] / 1000.0
     spans, onsets = intervals_of(frame)
-    for t0, t1, n, locked, candidate in spans:
+    for t0, t1, n, _, _ in spans:
         strip.axvspan(
             t0 / 1000,
             t1 / 1000,
             ymin=0.12 + 0.4 * (n == 2),
             ymax=0.52 + 0.4 * (n == 2),
             facecolor=COLOUR[n],
-            edgecolor="black" if locked or candidate else COLOUR[n],
-            lw=0.5 if locked or candidate else 0,
-            hatch="////" if locked else ".." if candidate else None,
+            edgecolor=COLOUR[n],
+            lw=0,
         )
         rms_ax.axvspan(t0 / 1000, t1 / 1000, color=COLOUR[n], alpha=0.12, lw=0)
     for t, n in onsets:
@@ -135,14 +144,17 @@ def draw_shot(fig, grid, shot, window, signals, frame, thresholds, diagnostic):
     strip.set_title(f"{shot}", fontsize=FONT, loc="left", pad=2)
     uncertain = frame[(frame.category == 2) & (frame.t_end > frame.t_start)]
     for row in uncertain.itertuples(index=False):
+        reason = parse_attrs(row.attrs).get("reason")
+        # Opaque, so overlapping uncertain rows never stack into a darker grey; the
+        # locked phases are the uncertain rows the lock evidence made.
         strip.axvspan(
             row.t_start / 1000,
             row.t_end / 1000,
             facecolor="0.8",
             edgecolor="0.25",
             lw=0.25,
-            alpha=0.75,
-            zorder=0,
+            hatch=LOCK_HATCH.get(reason),
+            zorder=0 if reason not in LOCK_HATCH else 0.5,
         )
     got = spectrogram(shot, window, diagnostic)
     spec_ax.set_facecolor("0.85")
@@ -306,19 +318,29 @@ def main(argv=None) -> int:
         plt.Line2D([], [], color=COLOUR[2], ls=":", lw=0.8, label="n = 2 seed (6 G)"),
         plt.Line2D([], [], color=COLOUR[1], ls="--", lw=1.0, label="n = 1 release"),
         plt.Line2D([], [], color=COLOUR[2], ls="--", lw=1.0, label="n = 2 release"),
-        Patch(facecolor="0.8", edgecolor="0.25", label="uncertain"),
+        Patch(facecolor="0.8", edgecolor="0.25", label="uncertain (any reason)"),
     ]
     selected_spans = intervals_of(table[table.shot.isin(shots)])[0]
-    if any(s[4] for s in selected_spans):
+    reasons = {
+        parse_attrs(a).get("reason")
+        for a in table[table.shot.isin(shots) & (table.category == 2)]["attrs"]
+    }
+    if reasons & {"confirmed_locked_phase", "locked_unseeded"}:
         handles.append(
             Patch(
-                facecolor="white", edgecolor="black", hatch="..", label="lock candidate"
+                facecolor="0.8",
+                edgecolor="0.25",
+                hatch="////",
+                label="locked (field confirms)",
             )
         )
-    if any(s[3] for s in selected_spans):
+    if reasons & {"post_collapse_lock_unknown", "rotation_after_lock_unassessed"}:
         handles.append(
             Patch(
-                facecolor="white", edgecolor="black", hatch="////", label="locked end"
+                facecolor="0.8",
+                edgecolor="0.25",
+                hatch="..",
+                label="lock not confirmed",
             )
         )
     fig.legend(

@@ -26,7 +26,7 @@ def sha(path):
 
 
 def main():
-    tmp = Path(os.environ["TMPDIR"]) / "table_render_fix2"
+    tmp = Path(os.environ["TMPDIR"]) / "table_render_fix3"
     tmp.mkdir(parents=True, exist_ok=True)
     out = TM / "figures"
     out.mkdir(parents=True, exist_ok=True)
@@ -34,6 +34,7 @@ def main():
         "table_tm_benchmark",
         "table_tm_benchmark_appendix",
         "table_tm_paired",
+        "table_tm_shot_sets",
     ):
         source = REPO / "docs/labeler" / f"{name}.tex"
         tex = tmp / f"{name}.tex"

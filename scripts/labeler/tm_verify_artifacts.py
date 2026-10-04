@@ -39,7 +39,7 @@ def main():
     label_sha = sha(labels)
     assert set(pd.read_csv(labels).shot) == set(dev)
     assert not set(pd.read_csv(TM / "labels/tm_interval_population.csv").shot) & blind
-    plan = read(TM / "results/inner_splits_fix2.json")
+    plan = read(TM / "results/inner_splits_fix3.json")
     assert plan["labels_sha256"] == label_sha
     assert {int(s): f for s, f in plan["folds"].items()} == scoring.shot_folds(dev)
     for split in plan["splits"]:
@@ -63,11 +63,35 @@ def main():
             assert fold["threshold"] != 0.999
             assert not set(fold["validation"]) & set(fold["held"])
         checked.append([row["model"], row["setting"]])
-    assert any(
-        r["setting"] == "Interval, published thr. 0.5" for r in benchmark["rows"]
-    )
-    assert any(r["setting"] == "Uncertain = negative" for r in benchmark["rows"])
-    audit = read(LOCAL / "sources/audit_fix2_current.json")
+    keys = {(r["model"], r["setting"], r["variant"]) for r in benchmark["rows"]}
+    for key in (
+        ("tm-onsetcnn-published", "Tokamak-SI", "thr. 0.5"),
+        ("tm-rms-2line", "Tokamak-SI", ""),
+        ("tm-rms-2line", "Tokamak-SI", "seed levels"),
+        ("tm-ours", "Tokamak-SI, uncertain = negative", ""),
+        ("tm-rms-2line", "Tokamak-SI, uncertain = negative", ""),
+    ):
+        assert key in keys, key
+    assert {r["setting"] for r in benchmark["rows"]} <= {
+        "Legacy",
+        "Tokamak-SI",
+        "Tokamak-SI, uncertain = negative",
+    }
+    # published rows are not interleaved with retrained ones, per setting
+    for setting in ("Tokamak-SI", "Tokamak-SI, uncertain = negative"):
+        names = [r["model"] for r in benchmark["rows"] if r["setting"] == setting]
+        kind = ["published" in n for n in names]
+        assert kind == sorted(kind, reverse=True), (setting, names)
+    figure2 = read(REPO / "docs/labeler/figure2_tm.json")
+    for row in figure2["rows"]:
+        assert {"architecture", "legacy_model", "tokamak_si_model"} <= set(row)
+        if row["legacy"] is not None:
+            assert (
+                row["legacy"]["f1_published_threshold"]
+                and "prevalence" in row["legacy"]
+            )
+            assert row["like_for_like"] is not None
+    audit = read(LOCAL / "sources/audit_fix3_current.json")
     for scope in ("cohort", "population"):
         a = audit[scope]
         assert a["locking_audit"]["n_abrupt_incorrect_decay"] == 0
@@ -104,6 +128,7 @@ def main():
         "table_tm_benchmark",
         "table_tm_benchmark_appendix",
         "table_tm_paired",
+        "table_tm_shot_sets",
     ):
         base = TM / "figures" / f"{stem}_preview"
         p = read(base.with_suffix(".json"))
@@ -114,14 +139,31 @@ def main():
         assert p["pdf_sha256"] == sha(base.with_suffix(".pdf"))
         figures.append(str(base))
     assert not list((TM / "results").glob("*_test.json"))
-    doc = read(TM / "results/document_fix2.json")
+    doc = read(TM / "results/document_fix3.json")
     assert doc["source_sha256"] == sha(REPO / "scripts/labeler/tm_write_doc.py")
     assert doc["document_sha256"] == sha(REPO / doc["document"])
     assert doc["benchmark_sha256"] == sha(LOCAL / "tm_benchmark.json")
-    assert (
-        "**latest**: tm-ours"
-        in (REPO / "data/events/neoclassical_tearing_mode/README.md").read_text()
-    )
+    readme = (REPO / "data/events/neoclassical_tearing_mode/README.md").read_text()
+    assert "**latest**: none" in readme or "**latest**: tm-ours" not in readme
+    assert "no tearing-mode labels" in readme  # the blind split carries none
+    text = (REPO / doc["document"]).read_text()
+    for banned in (
+        "volts, not gauss",
+        "review_baseline",
+        "435.7",
+        "909.9",
+        "earlier 500-shot",
+        "near-circular",
+        "189879",
+    ):
+        assert banned not in text, banned
+        assert banned not in readme, banned
+    lines = text.split("\n")
+    for i, line in enumerate(lines):
+        if line.startswith("Sources:"):
+            assert lines[i - 1] == "", "Sources: needs a blank line before it"
+    assert "{'" not in text, "a Python dict repr leaked into the document"
+    assert "review_baseline" not in (LOCAL / "tm_benchmark.json").read_text()
     for path in LOCAL.rglob("*.json"):
         assert path.stat().st_size <= 2_000_000, path
     record = {
@@ -140,8 +182,8 @@ def main():
         "status": "passed",
     }
     for path in (
-        TM / "results/artifact_verification_fix2.json",
-        LOCAL / "sources/artifact_verification_fix2.json",
+        TM / "results/artifact_verification_fix3.json",
+        LOCAL / "sources/artifact_verification_fix3.json",
     ):
         path.write_text(json.dumps(record, indent=2) + "\n")
     print(

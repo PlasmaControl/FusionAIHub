@@ -12,14 +12,16 @@ Protocol (frozen before any score was looked at):
 * the 450 training and validation shots of the cohort are dealt into five shot-grouped
   folds (`scoring.shot_folds`, seed 0); each fold is scored by nets trained on the other
   four, a tenth of whose shots stop the training early and choose the F1 threshold;
-* the 50 test shots are scored once, by nets trained on all 450 (``--final``), at the
-  threshold their own validation shots chose;
+* the 50 blind test shots are never opened: no test-split scoring exists in this script;
 * ``--features magnetics`` is the detector; ``--features magnetics+rms`` adds the lab's
   n = 1 and n = 2 RMS (the traces the labels are drawn from) as the ablation that says
   how much of the label is read back from them;
-* ``--baseline`` is no model: the smoothed n = 1 RMS of each bin against a threshold
-  chosen on the same inner-validation shots as every learned row. The fixed 12 G
-  threshold is a separately labelled extra; AUROC and AUPRC sweep every threshold.
+* ``--baseline`` is no model. Two scores are written: the smoothed n = 1 RMS of each
+  bin (``tm-rms``) and the two-line magnetic rule max(n = 1 / 12 G, n = 2 / 6 G)
+  (``tm-rms2``: the seed levels of the label itself, no weights, no training). Each is
+  scored against a threshold chosen on the same inner-validation shots as every learned
+  row; the fixed 12 G (n = 1) and the fixed two-line level 1 (12 G / 6 G) are separately
+  labelled extras. AUROC and AUPRC sweep every threshold.
 
 Every number is written with its shots, bins and thresholds to
 ``$LABELER_ROOT/round4/tm/results/<name>.json``.
@@ -244,9 +246,35 @@ def truth_of(data, shots):
     )
 
 
-def run_baseline(data, shots, rms_col=0):
-    """The smoothed n = 1 RMS of each bin as the score, 12 G as the threshold."""
-    return {s: data[s][1][:, rms_col] for s in shots}, float(np.log10(12.0))
+SEED_G = (12.0, 6.0)
+#: Baseline scores: name -> (description, fixed threshold in log10 of the score's unit,
+#: why that threshold). The two-line score is log10 max(n1 / 12 G, n2 / 6 G), so its
+#: fixed level is 0: either line at its seed amplitude.
+BASELINES = {
+    "n1rms": (
+        "log10 of the smoothed n=1 RMS, bin maximum",
+        float(np.log10(SEED_G[0])),
+        "the rule's n = 1 onset level, 12 G",
+    ),
+    "tworms": (
+        "log10 max(n=1 RMS / 12 G, n=2 RMS / 6 G), smoothed, bin maximum",
+        0.0,
+        "the rule's seed levels: n = 1 at 12 G or n = 2 at 6 G",
+    ),
+}
+
+
+def run_baseline(data, shots, kind="n1rms"):
+    """Per-bin baseline scores of `kind` (`BASELINES`) for each of `shots`."""
+    if kind == "n1rms":
+        return {s: data[s][1][:, 0] for s in shots}
+    return {
+        s: np.fmax(
+            data[s][1][:, 0] - np.log10(SEED_G[0]),
+            data[s][1][:, 1] - np.log10(SEED_G[1]),
+        )
+        for s in shots
+    }
 
 
 def load_baseline(shots):
@@ -316,24 +344,16 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--features", choices=("magnetics", "magnetics+rms"), default=None)
     ap.add_argument("--baseline", action="store_true")
-    ap.add_argument("--final", action="store_true", help="also score the 50 test shots")
     ap.add_argument("--bootstrap", type=int, default=1000)
     args = ap.parse_args(argv)
-    if args.final:
-        raise SystemExit("blind-test processing is forbidden in this regeneration")
     if not args.baseline and args.features is None:
         raise SystemExit("name --features or --baseline")
 
     cohort = pd.read_csv(CATALOG / "cohort.csv")
     dev_all = sorted(int(s) for s in cohort[cohort.split != "test"].shot)
-    test = sorted(int(s) for s in cohort[cohort.split == "test"].shot)
     with_rms = args.baseline or args.features == "magnetics+rms"
-    requested = dev_all + (test if args.final else [])
-    data, skipped = (
-        load_baseline(requested) if args.baseline else load(requested, with_rms)
-    )
+    data, skipped = load_baseline(dev_all) if args.baseline else load(dev_all, with_rms)
     dev = [s for s in dev_all if s in data]
-    test = [s for s in test if s in data]
     meta = {
         "git_sha": git_sha(),
         "labels": str(LABELS.relative_to(REPO)),
@@ -350,52 +370,38 @@ def main(argv=None) -> int:
     }
 
     if args.baseline:
-        # the baseline needs no features of the magnetics: its n1 column is the RMS
-        score, onset = run_baseline(data, dev)
+        # the baselines need no magnetics features: their columns are the RMS
         y, valid = truth_of(data, dev)
         _, splits = load_plan(dev_all)
-        tuned, info = scoring.cv_thresholds(dev_all, y, valid, score, splits=splits)
-        for fold in info:
-            fold["threshold_g"] = float(10 ** fold["threshold"])
-        variants = {
-            "12g": (onset, "the rule's onset level, 12 G"),
-            "cv_tuned": (tuned, "F1-maximising on shared-fold inner validation only"),
-        }
-        for name, shots in (("dev", dev), ("test", test if args.final else [])):
-            if not shots:
-                continue
-            score, _ = run_baseline(data, shots)
-            y, valid = truth_of(data, shots)
+        for kind, (what, fixed, fixed_why) in BASELINES.items():
+            score = run_baseline(data, dev, kind)
+            tuned, info = scoring.cv_thresholds(dev_all, y, valid, score, splits=splits)
+            for fold in info:
+                fold["threshold_native"] = float(10 ** fold["threshold"])
+            variants = {
+                "12g" if kind == "n1rms" else "seed": (fixed, fixed_why),
+                "cv_tuned": (
+                    tuned,
+                    "F1-maximising on shared-fold inner validation only",
+                ),
+            }
             for label, (thr, why) in variants.items():
-                if name == "test" and isinstance(thr, dict):
-                    _, val_all = scoring.inner_split(dev_all, 999)
-                    val = [s for s in val_all if s in data]
-                    val_score, _ = run_baseline(data, val)
-                    edges = scoring.edges_for(
-                        np.concatenate([val_score[s][data[s][3]] for s in val])
-                    )
-                    thr = scoring.best_threshold(
-                        [
-                            scoring.shot_stats(
-                                s, data[s][2], data[s][3], val_score[s], edges
-                            )
-                            for s in val
-                        ],
-                        edges,
-                    )
                 res = scoring.evaluate(
-                    shots, y, valid, score, thr, n=args.bootstrap, seed=0
+                    dev, y, valid, score, thr, n=args.bootstrap, seed=0
                 )
                 write(
-                    f"tm_baseline_n1rms_{label}_{name}",
+                    f"tm_baseline_{kind}_{label}_dev",
                     {
                         **meta,
-                        "split": name,
-                        "shots": shots,
-                        "score": "log10 of the smoothed n=1 RMS, bin maximum",
-                        "threshold_log10_g": thr if not isinstance(thr, dict) else None,
-                        "threshold_g": float(10**thr)
-                        if not isinstance(thr, dict)
+                        "split": "dev",
+                        "shots": dev,
+                        "score": what,
+                        "threshold_log10": None if isinstance(thr, dict) else thr,
+                        "threshold_native": None
+                        if isinstance(thr, dict)
+                        else float(10**thr),
+                        "thresholds_by_shot": {str(s): float(v) for s, v in thr.items()}
+                        if isinstance(thr, dict)
                         else None,
                         "folds": scoring.shared_cv(dev_all)[0],
                         "fold_info": info,
@@ -483,26 +489,6 @@ def main(argv=None) -> int:
         TM / "results" / f"oof_tm_ours_{tag}.npz",
         **{f"s{s}": oof[s].astype(np.float32) for s in dev},
     )
-    if args.final:
-        train_all, val_all = scoring.inner_split(dev_all, 999, HYPER["val_fraction"])
-        train = [s for s in train_all if s in data]
-        val = [s for s in val_all if s in data]
-        nets = ensemble(data, train, val, device)
-        thr = pick_threshold(data, predict(nets, data, val, device), val)
-        scores = predict(nets, data, test, device)
-        y, valid = truth_of(data, test)
-        res = scoring.evaluate(test, y, valid, scores, thr, n=args.bootstrap, seed=0)
-        write(
-            f"tm_ours_{tag}_test",
-            {
-                **meta,
-                "split": "test (50 shots), nets trained on all dev shots",
-                "test_shots": test,
-                "threshold": thr,
-                "hyper": HYPER,
-                "metrics": res,
-            },
-        )
     return 0
 
 
