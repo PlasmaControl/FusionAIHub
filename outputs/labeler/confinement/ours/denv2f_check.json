@@ -1,0 +1,32 @@
+{
+ "git": "c9adae6c",
+ "created": "2026-10-04T02:57:35+00:00",
+ "window_ms": [
+  2000.0,
+  4000.0
+ ],
+ "shots": 542,
+ "denv2f_percentiles": {
+  "5": 732181692416.0001,
+  "25": 81183658475520.0,
+  "50": 123904748158976.0,
+  "75": 163110715392000.0,
+  "95": 262551556325375.78
+ },
+ "thomson_peak_m3_percentiles": {
+  "5": 1.8039407561162725e+19,
+  "25": 3.80045979736007e+19,
+  "50": 5.3038361747426116e+19,
+  "75": 6.7096638805088666e+19,
+  "95": 9.46015936456563e+19
+ },
+ "spearman_denv2f_vs_thomson_peak": 0.836744290176534,
+ "ratio_to_thomson_peak_cm3": {
+  "5": 0.029207746292107997,
+  "25": 2.135019835008186,
+  "50": 2.3105607682392604,
+  "75": 2.4835525201458646,
+  "95": 2.773247672077658
+ },
+ "reading": "values of 1e13 to 3e14 and a rank correlation with the Thomson density mean a density-like trace in cm^-3, not a voltage; its scale is about twice the Thomson peak in cm^-3, so it stays nominal"
+}

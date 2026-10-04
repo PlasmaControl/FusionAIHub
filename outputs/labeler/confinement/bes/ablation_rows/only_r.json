@@ -1,6 +1,6 @@
 {
- "git": "cbe70119",
- "created": "2026-10-03T23:11:51+00:00",
+ "git": "05f09478",
+ "created": "2026-10-04T04:32:15+00:00",
  "replicates": 1000,
  "paper_criteria": {
   "gate": true,
@@ -19,8 +19,9 @@
   "gate": false,
   "transition_ms": 0.0,
   "buildup_ms": 0.0,
-  "layout": false,
+  "layout": "",
   "optimiser": "ours",
+  "arch": "padded",
   "protocol": "cv5"
  },
  "windows_predicted": 65052,
