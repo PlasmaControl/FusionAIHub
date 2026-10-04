@@ -1,6 +1,6 @@
 # Confinement benchmark: the BES classifier
 
-Status: **fix round 3, 2026-10-04. Under the paper's selection, split, optimiser, architecture
+Status: **fix round 4, 2026-10-04. Under the paper's selection, split, optimiser, architecture
 and training length our reimplementation scores macro F1 0.703 [0.59, 0.79] on discharges held out by shot, against the
 paper's 0.94; the remainder is unexplained** (section "The gap to the published score"). The 0.703
 pools five random by-discharge splits whose test sets overlap: 142 distinct shots in 200 shot-tests,
@@ -23,7 +23,9 @@ positions (2026-10-03, fix round 2). The first retrain's explanation of the gap 
 number") did not survive the fixed-population rescoring below and is withdrawn. Fix round 3
 (2026-10-04) disclosed the overlap of the five test draws behind the Table 3 number, restated the
 label hypothesis (our labels are Gill's own), added a per-shot failure list and the geometry
-exceptions; nothing was retrained.
+exceptions; nothing was retrained. Fix round 4 (2026-10-04) states the paper's per-class AUC of at
+least 0.99 beside our macro AUROC, reads the by-year and BES-time-file comparisons per class, and
+marks what our H class contains against the paper's as unverified; nothing was retrained.
 
 Citation: K. Gill, D. Smith, S. Joung, B. Geiger, G. McKee, J. Zimmerman, R. Coffee,
 A. Jalalvand and E. Kolemen, "Real-time confinement regime detection in fusion plasmas with
@@ -76,6 +78,10 @@ size (256) and the window stride (2,048 samples).
 | QH-mode | 0.94 | 0.92 | 0.96 |
 | WP QH-mode | 0.90 | 0.95 | 0.86 |
 | Average | 0.94 | 0.95 | 0.93 |
+
+The paper also reports a one-vs-rest ROC AUC of at least 0.99 for every class (no macro value, and
+no AUPRC); the four per-class F1 above, their precision and recall and this bound are committed as
+`outputs/labeler/confinement/bes/gill_2024_published.json`, which the benchmark figure reads.
 
 These come from the paper's own test split (not described in the excerpt), not from
 our labels, so they are the reference for what the model can do, not a number to
@@ -169,10 +175,10 @@ QH 0.85, WP 0.91). `train --protocol blocks` reproduces it.
 
 ## The gap to the published score: an ablation
 
-Status: **run 2026-10-02 to 2026-10-03, reworked in fix rounds 2 and 3 (2026-10-03 to 2026-10-04). Our
+Status: **run 2026-10-02 to 2026-10-03, reworked in fix rounds 2 to 4 (2026-10-03 to 2026-10-04). Our
 reimplementation under the paper's selection and split scores 0.703 [0.59, 0.79] against the paper's
 0.94, and the remainder is unexplained. What the ablation shows: no single protocol factor moves the
-score by more than 0.05; the 117 shots of the corpus score 0.44 to 0.46 in the four rows that apply
+score by more than 0.05 on 444 shots; the 117 shots of the corpus score 0.44 to 0.46 in the four rows that apply
 the paper's whole selection to all fetched shots, and the other shots 0.74 to 0.83 in the same rows,
 still below the paper's 0.94; and a split inside each shot reaches 0.90 to 0.95.** The first retrain scored 0.678 against the paper's 0.94. The
 paper's full text (a digest of Gill et al. 2024 in the group's literature folder) states the data
@@ -488,6 +494,31 @@ often one or two classes, so a per-year score is noisy.
 | 2022 | 0.760 [0.66, 0.85] (73) | 0.487 [0.34, 0.66] (22) | 0.438 [0.28, 0.60] (45) | 0.464 [0.27, 0.69] (19) |
 | 2023 | 0.471 [0.34, 0.59] (25) | 0.285 [0.18, 0.60] (8) | 0.454 [0.31, 0.68] (22) | 0.360 [0.21, 1.00] (10) |
 
+The Table 3 row by year again, with the F1 of each class and the test shots that hold it (the
+stage `tables` prints it from `populations.json`):
+
+| Year of the shot | `full_cum_abcdrgef`: shots | windows | L | H | QH | WP |
+|---|---|---|---|---|---|---|
+| 2012 | 2 | 1,477 | 1.00 (2) | 1.00 (1) | - | - |
+| 2013 | 1 | 458 | 0.04 (1) | - | - | - |
+| 2014 | 20 | 15,889 | 0.00 (1) | - | 0.96 (20) | - |
+| 2015 | 11 | 6,248 | 0.11 (2) | - | 0.90 (9) | 0.00 (1) |
+| 2016 | 7 | 5,279 | 0.64 (4) | 0.87 (4) | 0.89 (3) | - |
+| 2017 | 14 | 8,487 | 0.97 (4) | 0.89 (3) | 0.86 (10) | 0.61 (2) |
+| 2018 | 11 | 7,268 | 0.91 (6) | 0.90 (3) | 0.97 (7) | - |
+| 2019 | 14 | 15,544 | - | 0.85 (14) | - | - |
+| 2020 | 1 | 1,068 | - | - | - | 0.53 (1) |
+| 2021 | 32 | 57,296 | 0.88 (13) | 0.91 (24) | 0.48 (5) | - |
+| 2022 | 19 | 24,990 | 0.26 (4) | 0.77 (13) | 0.52 (4) | 0.32 (3) |
+| 2023 | 10 | 8,859 | 0.20 (3) | 0.88 (7) | 0.00 (1) | - |
+
+F1 per class (shots holding the class). The macro F1 is the mean of the F1 of the classes the year
+holds, so a class carried by one shot counts for a half (two classes) to a quarter (four) of it:
+the 2014 macro F1 of 0.481 is QH 0.96 on 20 shots and one L shot scored 0, and the 2023 value of
+0.360 averages three classes, one of them QH on a single shot at 0.00. A year's macro F1 is
+therefore a reading only where each class it holds rests on several shots (2021, 2022 and 2016 to
+2018).
+
 #### Validation audit
 
 A split is degenerate when its validation set lacks a class, thin when it holds fewer than three
@@ -549,9 +580,12 @@ table; "corpus" and "fetched-only" are the fixed populations of that table.
   BES recipe. What it is, the data cannot say. The corpus shots are 20 from 2021, 72 from 2022 and
   25 from 2023; the fetched-only shots are 65 from 2021 and 1 from 2022, the rest earlier, so the
   campaign and the membership of the corpus are almost the same variable. By year of the shot the
-  Table 3 row scores 0.76 for 2021 (32 shots) and 0.46 and 0.36 for 2022 and 2023 (19 and 10 shots);
-  2014 and 2015 are as low (0.48 and 0.34, 20 and 11 shots) and 2016 to 2019 higher (0.80 to 0.93),
-  though a year's macro F1 rests on 1 to 32 shots and is noisy (the year table below). The sampling
+  Table 3 row scores 0.76 for 2021 (32 shots) and 0.46 and 0.36 for 2022 and 2023 (19 and 10 shots).
+  The 2022 deficit is broad: L 0.26 on 4 shots, H 0.77 on 13, QH 0.52 on 4 and WPQH 0.32 on 3. The
+  2023 value rests on L 0.20 (3 shots), H 0.88 (7) and one QH shot at 0.00, so it is thin. The other
+  years are not compared: most hold one or two classes on one or two shots each, so a class held by
+  one shot carries a half to a quarter of the macro F1 (the per-class table under "By year of the
+  shot"; 2014, for one, is QH 0.96 on 20 shots plus one L shot scored 0). The sampling
   rate is not it (500 kHz in the corpus; `only_g` against `base` is -0.005 [-0.04, +0.03]); the
   labels of those shots (the next point) may be.
 - **The labelled intervals are short, which the gate and margins punish.** The median L, H and WPQH
@@ -627,7 +661,17 @@ windows, of which 106,232 are distinct, on 142 distinct test shots in 200 shot-t
 random splits by shot whose test sets overlap, the splits' own scores 0.79, 0.73, 0.62, 0.66 and
 0.62: mean 0.684, sd 0.074). The row was named in advance as the Table 3 row and its number is
 kept; read it with the overlap below. Overall and by population: 0.463 [0.28, 0.66] on the 34 corpus shots in it and 0.742 [0.60, 0.83] on
-the other 108. The row is the paper's data selection and training put in as the paper's full text
+the other 108.
+
+**The ranking score falls short too.** The paper reports a one-vs-rest AUC of at least 0.99 for
+every class and no macro value; our macro AUROC on this row is 0.889 [0.81, 0.95] (L 0.937, H 0.925,
+QH 0.912, WPQH 0.785 one-vs-rest; AUPRC 0.713 [0.62, 0.83], which the paper does not report). So the
+gap is in the ranking of the windows and
+not only in the F1 at the argmax. The benchmark figure draws the paper's bound as a hatched bar at
+0.99 labelled "per class, no macro value" beside our macro AUROC, and leaves its AUPRC as "not
+reported".
+
+The row is the paper's data selection and training put in as the paper's full text
 states them: the beam gate (150L at or above 700 kW, 150R at or below 200 kW; WPQH 400 kW in
 training), the margins, a 6 x 8 block chosen from each shot's channel positions (401 of the 444
 shots), the native 1 MHz BES, Adam with weight decay 1e-3 and rates 1e-3 and 1e-5, the
@@ -691,8 +735,10 @@ factors move the score by at most 0.05, the class mix lowers it, the paper's spl
    and only 6 are Butt's table alone ([below](#whose-labels-and-where-the-score-is-lost)), so what
    differs from the paper is what it kept of them, not who labelled them: "standard ELMy H-mode"
    with H98y2 of at least 1 and no dithering, segments ended slightly before every transition and
-   checked against the logbook, 330 discharges. Ours keep the experts' wider H class, merge the
-   sources where they differ and include shots outside those 330; and 8.6 % of the intervals look
+   checked against the logbook, 330 discharges. Whether ours is the experts' wider H class (taking in
+   ELM-suppressed, ELM-free or negative-triangularity H-modes the paper left out) is **unverified**
+   ([below](#what-our-h-class-contains-against-the-papers-is-unverified)); ours merge the sources
+   where they differ and include shots outside those 330; and 8.6 % of the intervals look
    mislabelled (below). Restricting the scoring to the intervals of Gill's BES-time files gives no
    lift (0.594 on 26 shots), and the failures are concentrated in 22 shots (below). The corpus
    shots score 0.46 against 0.74 for the others, in this row and in `confine-ours`; whether their
@@ -727,10 +773,28 @@ not: the predictions rescored on the windows of the 982 intervals that carry a B
 | `full_cum_abcdrgef` | 0.703 [0.59, 0.79] (142) | 0.594 [0.48, 0.87] (26) | 0.708 [0.59, 0.80] (124) | 0.703 [0.59, 0.80] (132) |
 | `full_cum_abcdrge` | 0.736 [0.66, 0.80] (316) | 0.607 [0.53, 0.84] (57) | 0.749 [0.67, 0.82] (273) | 0.742 [0.67, 0.81] (299) |
 
-The BES-time-file intervals score below the others (0.594 against 0.708 on the Table 3 row, 0.607
-against 0.749 on the 5-fold row; the intervals overlap, and WPQH is one shot in the first and two in
-the second, scored 0), so they are no easier. The last column drops the geometry exceptions of the section on factor d: the
-scores do not move. The H98y2 restriction of the paper's H class is not run (see Not done).
+By class, with the shots that hold each class (the stage `tables-protocol` prints it from
+`subsets.json`; "Mean of L, H, QH" is the mean of those three F1, WPQH windows still counting as
+errors of the other classes):
+
+| Row | Intervals | L | H | QH | WP | Mean of L, H, QH |
+|---|---|---|---|---|---|---|
+| `full_cum_abcdrgef` | all scored | 0.80 (40) | 0.86 (69) | 0.77 (59) | 0.39 (7) | 0.806 |
+| `full_cum_abcdrgef` | Gill's BES-time files | 0.89 (6) | 0.78 (15) | 0.70 (10) | 0.00 (1) | 0.793 |
+| `full_cum_abcdrgef` | other intervals | 0.77 (36) | 0.88 (59) | 0.79 (49) | 0.40 (6) | 0.811 |
+| `full_cum_abcdrge` | all scored | 0.83 (77) | 0.90 (143) | 0.82 (137) | 0.39 (19) | 0.851 |
+| `full_cum_abcdrge` | Gill's BES-time files | 0.88 (14) | 0.76 (25) | 0.79 (26) | 0.00 (2) | 0.809 |
+| `full_cum_abcdrge` | other intervals | 0.82 (66) | 0.93 (126) | 0.83 (113) | 0.42 (17) | 0.858 |
+
+Scoring on the BES-time-file intervals gives **no lift**: the macro F1 is lower (0.594 against 0.708
+on the Table 3 row, 0.607 against 0.749 on the 5-fold row; the intervals overlap), but WPQH, which
+carries a quarter of the macro F1, rests on one shot in the subset (two in the 5-fold row) and is
+scored 0. Over L, H and QH the two subsets are level (0.793 against 0.811 on the Table 3 row, 0.809
+against 0.858 on the 5-fold row; no interval is computed for these means), with L higher on the
+BES-time-file intervals (0.89 on 6 shots against 0.77 on 36) and H and QH lower, so these intervals
+are neither easier nor clearly harder. The last column of the first table drops the geometry
+exceptions of the section on factor d: the scores do not move. The H98y2 restriction of the paper's
+H class is not run (see Not done).
 
 **Where the 5-fold row fails: whole blocks.** In `full_cum_abcdrge` (316 shots, 230,282 windows; the
 row with most shots under the paper's training), a (shot, class) block is a failure when it has at
@@ -744,7 +808,13 @@ below; both read the same out-of-fold predictions, so the overlap is not indepen
 list is for an expert or logbook check: each row is a stretch the network calls another regime
 almost throughout, whether through a label error, a plasma outside the paper's definition (H98y2
 below 1, dithering, the QH/WPQH boundary) or a BES problem (beam, geometry); the data cannot say
-which, and no label was changed. "Interval span" is the curated interval the block lies in, "Confident
+which, and no label was changed. The failures are not a placement artefact: over each block's own
+windows, the outermost block channel's psi_N lies within 0.05 of the shot median for 22 of the 23 blocks
+(the largest deviation 0.013), and 21 also match its count of channels in the pedestal band (within 3;
+159372 differs by 4, 29 against 25). The exception is 174653 (WPQH, 4130-4799 ms), a geometry case: outer
+psi_N 1.19 against 1.02 and 16 channels in the band against 29, the plasma having moved (stage
+`failures`, columns `outer_psin_block` to `placement_matches_shot` of `failure_blocks.csv`, record
+`failure_blocks.json` key `placement`; the tolerances are conventions fixed before the comparison). "Interval span" is the curated interval the block lies in, "Confident
 learning" the flagged intervals that overlap it ("-" for none), "Mostly called" the class most of the
 block's windows are called (and their share), the year that of the shot's EFIT01 insertion.
 
@@ -816,6 +886,42 @@ is `$LABELER_ROOT/round4/conf/confident/intervals_full_cum_abcdrge.csv`).
   learned from them), so the opinion is weak where it agrees with them.
 - None of this edits a label. The flagged intervals are for the review page.
 
+### What our H class contains, against the paper's, is unverified
+
+The paper's H-mode is "standard ELMy H-mode" with H98y2 of at least 1 and no dithering; it leaves
+out ELM-suppressed, ELM-free and negative-triangularity H-modes. Our H intervals are the experts'
+(merged from Gill's tables), and **what they contain against those exclusions is UNVERIFIED**: no
+check here shows that they hold such plasmas, and none shows that they do not. This page and
+[confinement_ours.md](confinement_ours.md) say the same, and neither states either reading as fact.
+Two cheap checks were possible without fetching (script `scripts/labeler/confinement_h_class_checks.py`,
+record `outputs/labeler/confinement/bes/h_class_checks.json`); they are observations:
+
+- **I-coil currents** (the 12 coils of the `rmp` group of the corpus HDF5, on all 117 corpus
+  shots; peak |I| over the coils and over each curated interval; 1 kA is a reading convention, not a
+  threshold of ELM suppression). Resonant perturbations that suppress ELMs take a few kA, but the
+  same coils are driven near 1.5 kA for non-resonant fields in QH-mode work, so a current says "a field is
+  applied", not "ELMs are suppressed":
+
+  | Class | Corpus shots | Intervals | Shots with a peak at or above 1 kA | Intervals at or above 1 kA | Median shot peak (A) | Largest shot peak (A) |
+  |---|---|---|---|---|---|---|
+  | L | 38 | 272 | 9 | 13 | 19 | 1,546 |
+  | H | 74 | 408 | 10 | 34 | 27 | 5,101 |
+  | QH | 16 | 20 | 12 | 16 | 1,523 | 1,561 |
+  | WPQH | 20 | 268 | 15 | 205 | 1,530 | 2,630 |
+
+  Of the 74 corpus shots with an H interval, 10 reach 1 kA while labelled H, five of them 2.9 to
+  5.1 kA (189189 and 189191 at 5.1 kA, 195510, 195511 and 195550 at 2.9 to 3.3 kA; the other five
+  1.0 to 1.6 kA), sizes at which resonant perturbations are run. So the H class holds some shots
+  with an applied field; whether any is ELM-suppressed is not read from the currents. The other 64
+  of the 74 stay below 1 kA.
+- **EFIT triangularity of 179634** (2019; labelled L over 800-5000 ms and called QH throughout, the
+  first row of the failure list above): it would show whether this is a negative-triangularity
+  discharge, which the paper left out. **Not run**: the plasma shape is not on disk (the geometry
+  records keep only psi_N at the 64 BES channels, and the 0D records the stored energy and
+  normalised beta), and fetching was out of scope.
+
+The H98y2 restriction and an ELM-state check stay under "Not done".
+
 ### What the labels rest on
 
 The curated intervals were set by experts from other measurements than BES: L and H from the D-alpha
@@ -835,8 +941,8 @@ blind test split (446) as one row, in shot-number order over three panels, and w
 ICML text width; `--table` writes the year marginal as CSV). Each row holds the labelled regimes (L,
 H, QH, WPQH) and, in light grey beneath them, the time the beam gate of Gill et al. (2024) is met
 (150L at or above 700 kW, 150R at or below 200 kW; blank for 175658, which has no beam record), so
-the gate reads apart from the BES strip left of the row (mid grey: native 1 MHz BES fetched, 444
-shots; black: the shot is also one of the 117 the corpus holds BES for at 500 kHz). The time axes
+the gate reads apart from the two BES squares left of the row (right, mid grey: native 1 MHz BES
+fetched, 444 shots; left, black: the shot is also one of the 117 the corpus holds BES for at 500 kHz). The time axes
 end at the last labelled time of the data (6.5 s). The marginal bars give the labelled regime time
 by year of the shot and per 0.2 s of shot time. The year is not on disk for shots before 2021; it is
 the year the shot's EFIT01 reconstruction was inserted into MDSplus, in the server's local (Pacific)
@@ -852,16 +958,17 @@ corpus shots are 20 from 2021, 72 from 2022 and 25 from 2023.
 discharges outside the held-out test set, in shot-number order (three panels); the bar is the
 labelled regime over the discharge (L blue, H orange, QH green, WPQH pink; unlabelled time blank),
 the light-grey strip beneath it the time the beam gate of the reference BES classifier is met (150L
-beam at or above 700 kW, 150R at or below 200 kW). The square to the left of a row marks the BES
-record: grey, fetched at its native 1 MHz (444 shots); black, also in the 500 kHz corpus (117 shots,
-all 2021-2023). Bottom: labelled regime time by year of the discharge (left; the year is that of the
+beam at or above 700 kW, 150R at or below 200 kW). The two squares to the left of a row mark the BES
+record: the left one black where the shot is in the 500 kHz corpus (117 shots, all 2021-2023), the
+right one grey where its native 1 MHz BES was fetched (444 shots; a corpus row shows both, the
+others the grey one alone). Bottom: labelled regime time by year of the discharge (left; the year is that of the
 EFIT reconstruction's insertion into MDSplus, with the number of discharges above each bar) and per
 0.2 s of discharge time for all discharges (right).*
 
 ## Not done
 
-- The H-mode definition: the paper's H-mode is ELMy H-mode with H98y2 of at least 1; ours is the
-  experts' wider class. Restricting the H intervals to H98y2 of at least 1 (EFIT confinement
+- The H-mode definition: the paper's H-mode is ELMy H-mode with H98y2 of at least 1; whether ours is
+  the experts' wider class is unverified (see "What our H class contains"). Restricting the H intervals to H98y2 of at least 1 (EFIT confinement
   time) and rescoring would test whether the label convention explains part of the remainder.
   Not run: H98y2 is not on disk (the 0D records hold the density, the stored energy and betaN),
   and a fetch was out of scope in fix round 3.

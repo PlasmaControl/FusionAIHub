@@ -106,8 +106,9 @@ and 60,000 steps with no early stopping), native 1 MHz BES, 401 shots, split by 
 0.703 [0.587, 0.794] on 142 distinct test shots (five random splits whose test sets overlap: 200
 shot-tests, 152,863 windows pooled of which 106,232 are distinct; one split scores 0.684 +/- 0.074,
 each shot counted once 0.736, probabilities averaged over the repeats 0.747; corpus shots 0.463 on
-34, other shots 0.742 on 108), against the paper's 0.94 on its own 44-shot test set. The remainder
-is unexplained. The 2026_10_01 line is the first retrain, with none of that protocol, on the 119
+34, other shots 0.742 on 108), against the paper's 0.94 on its own 44-shot test set; our macro
+AUROC is 0.889 [0.81, 0.95] against the paper's one-vs-rest AUC of at least 0.99 for every class
+(it gives no macro value). The remainder is unexplained. The 2026_10_01 line is the first retrain, with none of that protocol, on the 119
 shots the corpus holds BES for at 500 kHz, and it read two blind test shots: reading them out, the
 same recipe scores 0.717 [0.63, 0.78] on 117 shots, and the first retrain's 0.678 is not a
 benchmark number. Protocols, the

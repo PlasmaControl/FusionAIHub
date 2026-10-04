@@ -233,9 +233,15 @@ records in the same folder. `roster_audit.json` holds every number below.
   | QH | 142 | 83 | 42 | 137 | 0.54 | 18 % (25 segments) |
   | WPQH | 107 | 59 | 8 | 32 | 0.48 | 4 % (4 segments) |
 
-  The curated training set leaves out ELM-suppressed, ELM-free and negative-triangularity
-  H-modes (Gill's exclusions), so a plasma without ELMs on a shot outside it is likely to be
-  read as QH. The QH and WPQH segments there (249) are therefore on the `unreviewed` tier, and
+  Whether the curated training set leaves out ELM-suppressed, ELM-free and negative-triangularity
+  H-modes (the exclusions of the paper's H class, Gill et al. 2024) is **unverified**: its H
+  intervals are the experts' own, merged from Gill's tables, and nothing here checks what they
+  contain ([confinement_bes_benchmark.md](confinement_bes_benchmark.md), "What our H class
+  contains, against the paper's, is unverified"; the one check on disk, the I-coil currents of the
+  117 corpus shots, finds an applied field of 2.9 to 5.1 kA in labelled H intervals of 5 of them and
+  proves nothing about ELM suppression). If such plasmas are not in the set, a plasma without ELMs
+  on a shot outside it is likely to be read as QH; if they are, the network has learned them as H.
+  Either way the QH and WPQH segments there (249) are on the `unreviewed` tier, and
   only 29 of them clear the floor; treat the other 220 as uncertain. The 142 shots past 196493
   are flagged `extrapolated` (their H and L segments are 60 % and 74 % at or above the floor,
   their QH 17 % and WPQH 3 %, the same as the rest).

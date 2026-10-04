@@ -10,9 +10,10 @@ split, in shot-number order and in three panels side by side. Each row has two s
 the labelled regimes (L, H, QH, WPQH) above, and below them, in light grey, the time
 when the 150L beam is at or above 700 kW and the 150R beam at or below 200 kW, the gate
 the BES classifier of Gill et al. (2024) is trained under (blank where the shot has no
-beam record). The one square left of a row says which BES record the shot has: mid grey
-where the native 1 MHz BES was fetched, black where the corpus holds it at 500 kHz as
-well (every such shot is also fetched natively). The bars
+beam record). Two squares left of a row say which BES record the shot has: the left one
+is black where the corpus holds the BES at 500 kHz, the right one mid grey where the
+native 1 MHz BES was fetched (every corpus shot is also fetched natively, so a corpus
+row shows both squares and a fetched-only row the grey one alone). The bars
 underneath add the labelled regime time of each year (left; a shot's year is the year
 its EFIT01 reconstruction was inserted into MDSplus, from ``round4/conf/dates.csv``, see
 ``confinement_shot_dates_fetch.py``; shot-number bands of 5 000 when that file is
