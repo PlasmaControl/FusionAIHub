@@ -46,7 +46,7 @@ signature, and on the radial saddle loops once locked.
 ## Models
 **stable**: d3d_tearing_onset_cnn1d | 2022_12_01
 
-**latest**: tm-ours | 2026_10_03 (experimental magnetic-rule detector; development CV)
+**latest**: none (the detectors below are saved development cross-validation ensembles, not registry models; nothing here has a deployed adapter)
 
 **all**:
 - d3d_tearing_onset_cnn1d | 2022_12_01 (upstream training date; presence at t+25 ms)
@@ -55,12 +55,18 @@ signature, and on the radial saddle loops once locked.
 - tm-onsetcnn-retrained | 2026_10_03 (prior CNN architecture retrained for detection at t)
 - tm-dsm-retrained | 2026_10_03 (prior survival embedding with a detection head at t)
 - tm-ours | 2026_10_03 (Mirnov spectrogram detector, 10 ms bins; saved CV ensembles)
+- tm-ours-rms | 2026_10_03 (the same detector with the RMS as an input; circular ablation)
 
-The three short names identify benchmark training scripts and saved
-cross-validation predictions. The tm-ours fold ensembles, normalization and
-thresholds are saved under `$LABELER_ROOT/round4/tm/checkpoints/tm_ours_magnetics/`;
-they are experimental CV checkpoints, without a deployed registry adapter. Published
-weights remain available through the three original model IDs above.
+The short names identify benchmark training scripts and saved cross-validation
+predictions, not registry models. Saved weights: only the two Mirnov detectors keep
+their fold ensembles, normalization and thresholds, under
+`$LABELER_ROOT/round4/tm/checkpoints/tm_ours_magnetics/` and
+`tm_ours_magnetics_rms/`. The retrained CNN and survival-embedding detectors keep
+only their out-of-fold predictions and thresholds (`results/oof_tm_prior_retrained_*`),
+not weights. All are experimental CV artifacts without a deployed registry adapter. Published
+weights remain available through the three original model IDs above. A two-line RMS
+baseline, `max(n1 RMS / 12 G, n2 RMS / 6 G)`, needs no training and is the reference
+the detectors are measured against.
 
 ## Inputs
 **d3d_tearing_onset_cnn1d**:
@@ -107,22 +113,30 @@ are joined. A stable rotating n-resolved line below 30 kHz must support that see
 Hysteresis extends each qualified seed to max(1 G, 10% of its peak); release dips
 up to 50 ms merge only across available data. Merged components retain their own
 release levels; the stored summary release is the minimum, the peak the largest.
-The development-only harmonic cutoff is n2/n1 >0.57. Unsupported seeds, high-frequency
+The n = 2 frequency cap scales with n (30 kHz for n = 1, 60 kHz for n = 2). The
+development-only harmonic veto drops an n = 2 seed unless n2/n1 > 0.72, the 99th
+percentile of that ratio over bins whose n = 2 line sits at twice the n = 1 frequency
+and whose Mirnov best-fit toroidal number there is 1. Unsupported seeds, high-frequency
 or chirping bursts, and sustained coherent sub-seed lines are category 2 (uncertain).
 Weak uncertainty tracks require a continuous 100 ms coherent core above the frozen
-development quiet-amplitude p95, then follow that line at 10% of this amplitude
-floor. Brief evidence interruptions up to 50 ms can join; acquisition gaps cannot.
+development quiet-amplitude p95, then follow that line down to this amplitude
+floor itself; the same weak screen runs over ramp-up and flat-top. Brief evidence interruptions up to 50 ms can join; acquisition gaps cannot.
 Frequency drops alone are `locked_candidate`, with all candidate times retained;
 only independent locked-mode confirmation sets `locked=true` and truncates the
 rotating span at the confirmed time. An abrupt fall from above the seed to below
 release within 5 ms is never
 `decay`: it ends `locked` when radial-field evidence confirms, otherwise `unknown`.
-The subsequent phase is uncertain until the lock signal stays below 5 V for 200 ms or
-the discharge ends; without that signal it stays uncertain to the discharge end. Lock confirmation uses
-the independently fetched n=1 `DUSBRADIAL` radial-field amplitude (volts), with its
-threshold and coverage recorded in the label metadata. Unknown cases remain explicit.
-The onset is a point event
-(`iscrowd` 0, at the interval's start), the interval a span (`iscrowd` 1); both carry
+The subsequent phase is uncertain until the lock signal falls or the discharge ends;
+without that signal it stays uncertain to the discharge end. Lock confirmation uses
+the independently fetched n=1 `DUSBRADIAL` radial-field amplitude (native ptdata
+units, treated as gauss by disruption-py; the unit is not verified here): a lock is a
+rise of |DUSBRADIAL| by at least 5 above its median over the 200 ms before the onset,
+held for 20 ms, checked at every interval end and for rejected candidates. A
+sustained rise in otherwise-absent flat-top time is uncertain with reason
+`locked_unseeded`. Coverage is recorded in the label metadata; shots with no
+`DUSBRADIAL` record keep an unknown lock status. The onset is a point event
+(`iscrowd` 0, at the interval's start) with an `onset_window_ms` attribute (the start
+of the preceding same-n weak track), the interval a span (`iscrowd` 1); both carry
 `n`. `m` requires EFIT q at an independently observed island radius, such as an ECE
 flattening location. No island radius is resolved here, so `m` is empty; a unique
 candidate rational surface alone does not identify it. The rest of each shot's
@@ -137,18 +151,22 @@ bin) and the two prior architectures retrained for detection, `tm-onsetcnn-retra
 `tm-dsm-retrained`. Their targets are mode presence at t, with horizon zero.
 
 These labels omit fast-locking and brief modes, and weak modes. Recall of the lab's
-archived onsets within 100 ms on the development shots is Seo **12/26** and survival
-**16/67** (the earlier 500-shot labels matched Seo 13/26 and survival 18/67). Cohort
-"absent" can still contain weak modes: on 189879 the weak 7 kHz n=2 line is uncertain
-to 3.9 s and absent after, although a review saw it to about 4.5 s. The uncertainty
-mask is partly Mirnov-derived and shares `tm-ours` inputs; it excludes 42% of
-development catalog-window time (49.6% of observable plasma), and a sensitivity row
-scores it as negative. The benchmark tests recovery of a magnetic rule, not
-superiority as a TM detector. No TM coverage gain is claimed: on the survival-matched
-shots the interval labels cover 375.9 s against 799.3 s for the legacy labels
-(the earlier labels: 435.7 s against 909.9 s). Population weak screening uses the
-same criteria where inputs exist; unscreened time above the weak RMS thresholds is
-uncertain rather than absent.
+archived onsets, counted when an onset lies in one of our intervals or within 100 ms
+of its edge, is Seo **12/26** and survival **16/67** on the development shots; that
+tests whether the label holds the historical onset, not the accuracy of its timing
+(the onset error against Seo has a median of 130 ms). Cohort "absent" can still
+contain weak modes that fail the weak-line screen. The uncertainty mask is partly
+Mirnov-derived and shares `tm-ours` inputs; it covers 34% of development
+catalog-window time and 40.3% of observable plasma (37.2% for the median shot), and a
+co-primary benchmark group scores it as negative. A lock is confirmed from `DUSBRADIAL`,
+which is on file for 327 of the 450 development shots; the rest keep an unknown lock
+status. The blind split carries no tearing-mode labels: its 50 shots are never opened
+for labels, features or scores. The benchmark tests recovery of a magnetic rule, not
+superiority as a TM detector: a two-line RMS baseline with no training is within
+0.001 AUROC of `tm-ours`. No TM coverage gain is claimed: on the survival-matched
+shots the interval labels cover 451.1 s against 799.3 s for the legacy labels.
+Population weak screening uses the same criteria where inputs exist; unscreened time
+above the weak RMS thresholds is uncertain rather than absent.
 
 The `extend_` table must be converted before promotion to `review/`: state 3 is
 outside the TM catalog schema, n-specific rows overlap, onset points have zero

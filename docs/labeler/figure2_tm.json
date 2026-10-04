@@ -1,10 +1,31 @@
 {
   "made_by": "scripts/labeler/tm_benchmark.py",
-  "models": [
+  "schema": {
+    "rows": "one per architecture, in drawing order",
+    "rows[].architecture": "key shared by the legacy and Tokamak-SI model",
+    "rows[].legacy_model": "published model scored on its own legacy target (null: none)",
+    "rows[].tokamak_si_model": "model scored on the Tokamak-SI labels (retrained twin or ours)",
+    "rows[].legacy": "f1_published_threshold (primary), f1_tuned (secondary), auroc, auprc, prevalence (beside AUPRC: it differs from the Tokamak-SI target), shots, bins, bin_ms (25), held_out",
+    "rows[].tokamak_si": "f1 (inner-validation threshold), auroc, auprc, prevalence, shots, bins, bin_ms (10), uncertain time excluded",
+    "rows[].tokamak_si_uncertain_negative": "the same with uncertain time scored as negative",
+    "rows[].like_for_like": "published model and retrained twin on one target, mask and shot set: primary and uncertain_negative, each with the published model at its published and tuned thresholds and the retrained model",
+    "metric cells": "{value, lo, hi}, 95% shot-bootstrap, 1000 draws"
+  },
+  "rows": [
     {
-      "model": "tm-onsetcnn-retrained",
+      "architecture": "onsetcnn",
+      "legacy_model": "tm-onsetcnn-published",
+      "tokamak_si_model": "tm-onsetcnn-retrained",
       "legacy": {
-        "f1": {
+        "model": "tm-onsetcnn-published",
+        "held_out": false,
+        "f1_published_threshold": {
+          "value": 0.6111967128916281,
+          "lo": 0.4368766505555833,
+          "hi": 0.749534664889375,
+          "valid_replicates": 1000
+        },
+        "f1_tuned": {
           "value": 0.46227775108121094,
           "lo": 0.2856755206388129,
           "hi": 0.6146195840108301,
@@ -22,40 +43,276 @@
           "hi": 0.7992659206090776,
           "valid_replicates": 1000
         },
+        "prevalence": {
+          "value": 0.1496415770609319,
+          "lo": 0.08095603157826838,
+          "hi": 0.2244242369779624,
+          "valid_replicates": 1000
+        },
         "shots": 79,
-        "held_out": false,
+        "bins": 5580,
+        "bin_ms": 25.0,
         "source": "data/events/neoclassical_tearing_mode/benchmark/sources/tm_prior_published_tm-onsetcnn_legacy_cohort.json"
       },
       "tokamak_si": {
         "f1": {
-          "value": 0.795837059923571,
-          "lo": 0.6841513276087817,
-          "hi": 0.8813859169843208,
+          "value": 0.8725660639777468,
+          "lo": 0.7968855245289199,
+          "hi": 0.9196809651390595,
           "valid_replicates": 1000
         },
         "auroc": {
-          "value": 0.9565287993937095,
-          "lo": 0.9294417906531691,
-          "hi": 0.97856165085135,
+          "value": 0.9849301546265685,
+          "lo": 0.9732136455669265,
+          "hi": 0.9935519848316159,
           "valid_replicates": 1000
         },
         "auprc": {
-          "value": 0.8780983709613714,
-          "lo": 0.7624595715426331,
-          "hi": 0.9499571407800363,
+          "value": 0.9564230189129832,
+          "lo": 0.9238952077047842,
+          "hi": 0.9765258583128024,
           "valid_replicates": 1000
         },
-        "shots": 266,
+        "prevalence": {
+          "value": 0.179230719753007,
+          "lo": 0.12326755707463552,
+          "hi": 0.23863173174443666,
+          "valid_replicates": 1000
+        },
+        "shots": 278,
+        "bins": 31094,
+        "bin_ms": 10.0,
         "source": "data/events/neoclassical_tearing_mode/benchmark/sources/tm_prior_retrained_tm-onsetcnn_cv.json"
+      },
+      "tokamak_si_uncertain_negative": {
+        "f1": {
+          "value": 0.4620270643468655,
+          "lo": 0.3542170473526009,
+          "hi": 0.5573750227928417,
+          "valid_replicates": 1000
+        },
+        "auroc": {
+          "value": 0.9065724004511165,
+          "lo": 0.8790749977727684,
+          "hi": 0.9328766305523518,
+          "valid_replicates": 1000
+        },
+        "auprc": {
+          "value": 0.4286465526615389,
+          "lo": 0.29708497156790614,
+          "hi": 0.5778956178521326,
+          "valid_replicates": 1000
+        },
+        "prevalence": {
+          "value": 0.09399085895468268,
+          "lo": 0.06352836626661423,
+          "hi": 0.12682812108129013,
+          "valid_replicates": 1000
+        },
+        "shots": 286,
+        "bins": 59293,
+        "bin_ms": 10.0,
+        "source": "data/events/neoclassical_tearing_mode/benchmark/sources/tm_prior_retrained_tm-onsetcnn_uncertain_negative_dev.json"
+      },
+      "like_for_like": {
+        "published_model": "tm-onsetcnn-published",
+        "retrained_model": "tm-onsetcnn-retrained",
+        "published_threshold": 0.5,
+        "primary": {
+          "shots": 273,
+          "bins": 27597,
+          "prevalence": {
+            "value": 0.19183244555567633,
+            "lo": 0.13071773568972106,
+            "hi": 0.25166442628926494,
+            "valid_replicates": 1000
+          },
+          "published_at_published_threshold": {
+            "auroc": {
+              "value": 0.9739600213029189,
+              "lo": 0.9582849192434719,
+              "hi": 0.9871002174211851,
+              "valid_replicates": 1000
+            },
+            "auprc": {
+              "value": 0.9079703223251802,
+              "lo": 0.8461244608577844,
+              "hi": 0.9554172681618329,
+              "valid_replicates": 1000
+            },
+            "f1": {
+              "value": 0.7130290061816452,
+              "lo": 0.5967934167059934,
+              "hi": 0.8140769756730822,
+              "valid_replicates": 1000
+            },
+            "segf1_0.5": {
+              "value": 0.5783132530120482,
+              "lo": 0.40609375000000014,
+              "hi": 0.7300273109243697,
+              "valid_replicates": 1000
+            }
+          },
+          "published_at_tuned_threshold": {
+            "auroc": {
+              "value": 0.9739600213029189,
+              "lo": 0.9582849192434719,
+              "hi": 0.9871002174211851,
+              "valid_replicates": 1000
+            },
+            "auprc": {
+              "value": 0.9079703223251802,
+              "lo": 0.8461244608577844,
+              "hi": 0.9554172681618329,
+              "valid_replicates": 1000
+            },
+            "f1": {
+              "value": 0.7855934251873338,
+              "lo": 0.686546387746826,
+              "hi": 0.8550345062831584,
+              "valid_replicates": 1000
+            },
+            "segf1_0.5": {
+              "value": 0.6259541984732825,
+              "lo": 0.4978707836394235,
+              "hi": 0.7225353681630834,
+              "valid_replicates": 1000
+            }
+          },
+          "retrained": {
+            "auroc": {
+              "value": 0.9845692566003875,
+              "lo": 0.9737880550684896,
+              "hi": 0.9937374248062526,
+              "valid_replicates": 1000
+            },
+            "auprc": {
+              "value": 0.958926102680324,
+              "lo": 0.9293724793738692,
+              "hi": 0.9787664515058823,
+              "valid_replicates": 1000
+            },
+            "f1": {
+              "value": 0.8761714129742516,
+              "lo": 0.8013460500637295,
+              "hi": 0.925661407306771,
+              "valid_replicates": 1000
+            },
+            "segf1_0.5": {
+              "value": 0.7378640776699029,
+              "lo": 0.6076898734177215,
+              "hi": 0.8346490927764464,
+              "valid_replicates": 1000
+            }
+          }
+        },
+        "uncertain_negative": {
+          "shots": 281,
+          "bins": 54355,
+          "prevalence": {
+            "value": 0.09739674362984087,
+            "lo": 0.06517538449559716,
+            "hi": 0.132403904767885,
+            "valid_replicates": 1000
+          },
+          "published_at_published_threshold": {
+            "auroc": {
+              "value": 0.8985885704208835,
+              "lo": 0.8604621332916654,
+              "hi": 0.9360106388958861,
+              "valid_replicates": 1000
+            },
+            "auprc": {
+              "value": 0.41453821727704326,
+              "lo": 0.2771466308676368,
+              "hi": 0.5843321450842429,
+              "valid_replicates": 1000
+            },
+            "f1": {
+              "value": 0.5207501302309429,
+              "lo": 0.38941294117871394,
+              "hi": 0.6367535311299225,
+              "valid_replicates": 1000
+            },
+            "segf1_0.5": {
+              "value": 0.3949579831932773,
+              "lo": 0.24,
+              "hi": 0.5338767069128068,
+              "valid_replicates": 1000
+            }
+          },
+          "published_at_tuned_threshold": {
+            "auroc": {
+              "value": 0.8985885704208835,
+              "lo": 0.8604621332916654,
+              "hi": 0.9360106388958861,
+              "valid_replicates": 1000
+            },
+            "auprc": {
+              "value": 0.41453821727704326,
+              "lo": 0.2771466308676368,
+              "hi": 0.5843321450842429,
+              "valid_replicates": 1000
+            },
+            "f1": {
+              "value": 0.4099739298629215,
+              "lo": 0.3095483335371751,
+              "hi": 0.5020389501716056,
+              "valid_replicates": 1000
+            },
+            "segf1_0.5": {
+              "value": 0.30196078431372547,
+              "lo": 0.20833081113801455,
+              "hi": 0.39113124557336937,
+              "valid_replicates": 1000
+            }
+          },
+          "retrained": {
+            "auroc": {
+              "value": 0.9051071279567181,
+              "lo": 0.8791993240694402,
+              "hi": 0.9322452332259695,
+              "valid_replicates": 1000
+            },
+            "auprc": {
+              "value": 0.43134773737472265,
+              "lo": 0.2983695344075947,
+              "hi": 0.5987914014574146,
+              "valid_replicates": 1000
+            },
+            "f1": {
+              "value": 0.4653972549777692,
+              "lo": 0.3589797557431532,
+              "hi": 0.5633471392262003,
+              "valid_replicates": 1000
+            },
+            "segf1_0.5": {
+              "value": 0.3356643356643357,
+              "lo": 0.233286350148368,
+              "hi": 0.43830648297316815,
+              "valid_replicates": 1000
+            }
+          }
+        }
       }
     },
     {
-      "model": "tm-dsm-retrained",
+      "architecture": "dsm",
+      "legacy_model": "tm-dsm-500ms-published",
+      "tokamak_si_model": "tm-dsm-retrained",
       "legacy": {
-        "f1": {
-          "value": 0.27518104015799866,
-          "lo": 0.1672023546841508,
-          "hi": 0.3644891934015228,
+        "model": "tm-dsm-500ms-published",
+        "held_out": true,
+        "f1_published_threshold": {
+          "value": 0.0,
+          "lo": 0.0,
+          "hi": 0.0,
+          "valid_replicates": 1000
+        },
+        "f1_tuned": {
+          "value": 0.17748158540862854,
+          "lo": 0.10712906802037848,
+          "hi": 0.26572944845902047,
           "valid_replicates": 1000
         },
         "auroc": {
@@ -70,101 +327,508 @@
           "hi": 0.44171796507941996,
           "valid_replicates": 1000
         },
+        "prevalence": {
+          "value": 0.06099019373355657,
+          "lo": 0.040338953305264484,
+          "hi": 0.08460858540757542,
+          "valid_replicates": 1000
+        },
         "shots": 80,
-        "held_out": true,
+        "bins": 8362,
+        "bin_ms": 25.0,
         "source": "data/events/neoclassical_tearing_mode/benchmark/sources/tm_prior_published_tm-dsm-500ms_legacy.json"
       },
       "tokamak_si": {
         "f1": {
-          "value": 0.6726709554443651,
-          "lo": 0.575222357883845,
-          "hi": 0.7603942039618236,
+          "value": 0.8030960478480123,
+          "lo": 0.7335819013028275,
+          "hi": 0.8483839160029513,
           "valid_replicates": 1000
         },
         "auroc": {
-          "value": 0.9455347023726766,
-          "lo": 0.9097342840945696,
-          "hi": 0.974706736334196,
+          "value": 0.9618138503661295,
+          "lo": 0.9366900330293673,
+          "hi": 0.9801199893423553,
           "valid_replicates": 1000
         },
         "auprc": {
-          "value": 0.8344799263583618,
-          "lo": 0.7259580056406585,
-          "hi": 0.9117980172786427,
+          "value": 0.8667188010576099,
+          "lo": 0.8036184549665696,
+          "hi": 0.9129549813652335,
           "valid_replicates": 1000
         },
-        "shots": 322,
+        "prevalence": {
+          "value": 0.15996539792387543,
+          "lo": 0.11952364168136313,
+          "hi": 0.20327519733529792,
+          "valid_replicates": 1000
+        },
+        "shots": 336,
+        "bins": 57800,
+        "bin_ms": 10.0,
         "source": "data/events/neoclassical_tearing_mode/benchmark/sources/tm_prior_retrained_tm-dsm_cv.json"
-      }
-    },
-    {
-      "model": "tm-ours",
-      "legacy": null,
-      "tokamak_si": {
+      },
+      "tokamak_si_uncertain_negative": {
         "f1": {
-          "value": 0.9522519706913914,
-          "lo": 0.9157527961280729,
-          "hi": 0.9783488167506075,
+          "value": 0.34592847039806024,
+          "lo": 0.27053135760103364,
+          "hi": 0.41529566304264076,
           "valid_replicates": 1000
         },
         "auroc": {
-          "value": 0.9987358628917263,
-          "lo": 0.9974132841292075,
-          "hi": 0.9996715100515423,
+          "value": 0.833657504344469,
+          "lo": 0.7873082339876527,
+          "hi": 0.8742724032998475,
           "valid_replicates": 1000
         },
         "auprc": {
-          "value": 0.9890359390764566,
-          "lo": 0.9760937411344179,
-          "hi": 0.9974420954291177,
+          "value": 0.29725160172726395,
+          "lo": 0.20392115347184928,
+          "hi": 0.41100113507269675,
+          "valid_replicates": 1000
+        },
+        "prevalence": {
+          "value": 0.08240715157889107,
+          "lo": 0.06035314359139899,
+          "hi": 0.10570439201175658,
+          "valid_replicates": 1000
+        },
+        "shots": 341,
+        "bins": 112199,
+        "bin_ms": 10.0,
+        "source": "data/events/neoclassical_tearing_mode/benchmark/sources/tm_prior_retrained_tm-dsm_uncertain_negative_dev.json"
+      },
+      "like_for_like": {
+        "published_model": "tm-dsm-500ms-published",
+        "retrained_model": "tm-dsm-retrained",
+        "published_threshold": 0.3,
+        "primary": {
+          "shots": 247,
+          "bins": 43436,
+          "prevalence": {
+            "value": 0.15726586241827056,
+            "lo": 0.10603023469130034,
+            "hi": 0.20804568534909226,
+            "valid_replicates": 1000
+          },
+          "published_at_published_threshold": {
+            "auroc": {
+              "value": 0.7791861071253884,
+              "lo": 0.6892034241530787,
+              "hi": 0.85226237957546,
+              "valid_replicates": 1000
+            },
+            "auprc": {
+              "value": 0.4067810184212936,
+              "lo": 0.28547564424170313,
+              "hi": 0.52972479090128,
+              "valid_replicates": 1000
+            },
+            "f1": {
+              "value": 0.0,
+              "lo": 0.0,
+              "hi": 0.0,
+              "valid_replicates": 1000
+            },
+            "segf1_0.5": {
+              "value": 0.0,
+              "lo": 0.0,
+              "hi": 0.0,
+              "valid_replicates": 1000
+            }
+          },
+          "published_at_tuned_threshold": {
+            "auroc": {
+              "value": 0.7791861071253884,
+              "lo": 0.6892034241530787,
+              "hi": 0.85226237957546,
+              "valid_replicates": 1000
+            },
+            "auprc": {
+              "value": 0.4067810184212936,
+              "lo": 0.28547564424170313,
+              "hi": 0.52972479090128,
+              "valid_replicates": 1000
+            },
+            "f1": {
+              "value": 0.4421157684630739,
+              "lo": 0.3280377362325036,
+              "hi": 0.5346226817657436,
+              "valid_replicates": 1000
+            },
+            "segf1_0.5": {
+              "value": 0.28116710875331563,
+              "lo": 0.160208944281525,
+              "hi": 0.4063598966377569,
+              "valid_replicates": 1000
+            }
+          },
+          "retrained": {
+            "auroc": {
+              "value": 0.9592706390399743,
+              "lo": 0.9230094608864928,
+              "hi": 0.9839560448740635,
+              "valid_replicates": 1000
+            },
+            "auprc": {
+              "value": 0.8702744795586698,
+              "lo": 0.7782913682907295,
+              "hi": 0.9309233473245426,
+              "valid_replicates": 1000
+            },
+            "f1": {
+              "value": 0.800480384307446,
+              "lo": 0.707494504333307,
+              "hi": 0.8651351344704714,
+              "valid_replicates": 1000
+            },
+            "segf1_0.5": {
+              "value": 0.6701570680628273,
+              "lo": 0.5489304812834226,
+              "hi": 0.7659574468085106,
+              "valid_replicates": 1000
+            }
+          }
+        },
+        "uncertain_negative": {
+          "shots": 252,
+          "bins": 81920,
+          "prevalence": {
+            "value": 0.08338623046875,
+            "lo": 0.05643936807690954,
+            "hi": 0.11263658243074384,
+            "valid_replicates": 1000
+          },
+          "published_at_published_threshold": {
+            "auroc": {
+              "value": 0.7117731968555369,
+              "lo": 0.6218855846450505,
+              "hi": 0.7950316429462967,
+              "valid_replicates": 1000
+            },
+            "auprc": {
+              "value": 0.15653777853316933,
+              "lo": 0.09851829617994258,
+              "hi": 0.22803817715664237,
+              "valid_replicates": 1000
+            },
+            "f1": {
+              "value": 0.0,
+              "lo": 0.0,
+              "hi": 0.0,
+              "valid_replicates": 1000
+            },
+            "segf1_0.5": {
+              "value": 0.0,
+              "lo": 0.0,
+              "hi": 0.0,
+              "valid_replicates": 1000
+            }
+          },
+          "published_at_tuned_threshold": {
+            "auroc": {
+              "value": 0.7117731968555369,
+              "lo": 0.6218855846450505,
+              "hi": 0.7950316429462967,
+              "valid_replicates": 1000
+            },
+            "auprc": {
+              "value": 0.15653777853316933,
+              "lo": 0.09851829617994258,
+              "hi": 0.22803817715664237,
+              "valid_replicates": 1000
+            },
+            "f1": {
+              "value": 0.2508335954702737,
+              "lo": 0.1662930226388129,
+              "hi": 0.32929760917969403,
+              "valid_replicates": 1000
+            },
+            "segf1_0.5": {
+              "value": 0.16699801192842942,
+              "lo": 0.07099133261105094,
+              "hi": 0.2713638145643437,
+              "valid_replicates": 1000
+            }
+          },
+          "retrained": {
+            "auroc": {
+              "value": 0.8480433287968925,
+              "lo": 0.7874297685432686,
+              "hi": 0.8971039514205376,
+              "valid_replicates": 1000
+            },
+            "auprc": {
+              "value": 0.3556489578361538,
+              "lo": 0.24659155820990272,
+              "hi": 0.4802765828044281,
+              "valid_replicates": 1000
+            },
+            "f1": {
+              "value": 0.363894449499545,
+              "lo": 0.2669940860673719,
+              "hi": 0.45652488492834153,
+              "valid_replicates": 1000
+            },
+            "segf1_0.5": {
+              "value": 0.2829736211031175,
+              "lo": 0.17741568914956013,
+              "hi": 0.38667032967032966,
+              "valid_replicates": 1000
+            }
+          }
+        }
+      }
+    },
+    {
+      "architecture": "magnetic-detector",
+      "legacy_model": null,
+      "tokamak_si_model": "tm-ours",
+      "legacy": null,
+      "tokamak_si": {
+        "f1": {
+          "value": 0.9614383561643836,
+          "lo": 0.9295557637210895,
+          "hi": 0.9807490900578294,
+          "valid_replicates": 1000
+        },
+        "auroc": {
+          "value": 0.9987312554014486,
+          "lo": 0.9972431881740919,
+          "hi": 0.9996614478652887,
+          "valid_replicates": 1000
+        },
+        "auprc": {
+          "value": 0.9949120781261906,
+          "lo": 0.9899102233575715,
+          "hi": 0.9978860053793687,
+          "valid_replicates": 1000
+        },
+        "prevalence": {
+          "value": 0.08965964101254151,
+          "lo": 0.06862636939879525,
+          "hi": 0.1129516944042663,
           "valid_replicates": 1000
         },
         "shots": 450,
+        "bins": 160507,
+        "bin_ms": 10.0,
         "source": "data/events/neoclassical_tearing_mode/benchmark/sources/tm_ours_magnetics_cv.json"
-      }
-    },
-    {
-      "model": "tm-rms",
-      "legacy": null,
-      "tokamak_si": {
+      },
+      "tokamak_si_uncertain_negative": {
         "f1": {
-          "value": 0.7631916714204221,
-          "lo": 0.68073654577236,
-          "hi": 0.8300688088771276,
+          "value": 0.36491966931835906,
+          "lo": 0.2900422289729384,
+          "hi": 0.43170827480904866,
           "valid_replicates": 1000
         },
         "auroc": {
-          "value": 0.987147924189936,
-          "lo": 0.9796547159384272,
-          "hi": 0.9931331434827816,
+          "value": 0.9493045935419643,
+          "lo": 0.9359225648966277,
+          "hi": 0.9607332396413283,
           "valid_replicates": 1000
         },
         "auprc": {
-          "value": 0.918484759517926,
-          "lo": 0.8683635067620853,
-          "hi": 0.9547497323970607,
+          "value": 0.4939292750755102,
+          "lo": 0.3736746315177328,
+          "hi": 0.6166125912896577,
+          "valid_replicates": 1000
+        },
+        "prevalence": {
+          "value": 0.058310136506740246,
+          "lo": 0.0439689771898463,
+          "hi": 0.07351381036150499,
           "valid_replicates": 1000
         },
         "shots": 450,
+        "bins": 246801,
+        "bin_ms": 10.0,
+        "source": "data/events/neoclassical_tearing_mode/benchmark/sources/tm_ours_magnetics_uncertain_negative_dev.json"
+      },
+      "like_for_like": null
+    },
+    {
+      "architecture": "two-line-rms",
+      "legacy_model": null,
+      "tokamak_si_model": "tm-rms-2line",
+      "legacy": null,
+      "tokamak_si": {
+        "f1": {
+          "value": 0.9441581659480492,
+          "lo": 0.9307474302153413,
+          "hi": 0.9555627648182244,
+          "valid_replicates": 1000
+        },
+        "auroc": {
+          "value": 0.998494247563814,
+          "lo": 0.9979437046920374,
+          "hi": 0.9989711514309814,
+          "valid_replicates": 1000
+        },
+        "auprc": {
+          "value": 0.9858981706860306,
+          "lo": 0.9803695076307126,
+          "hi": 0.9902877750488428,
+          "valid_replicates": 1000
+        },
+        "prevalence": {
+          "value": 0.08965964101254151,
+          "lo": 0.06862636939879525,
+          "hi": 0.1129516944042663,
+          "valid_replicates": 1000
+        },
+        "shots": 450,
+        "bins": 160507,
+        "bin_ms": 10.0,
+        "source": "data/events/neoclassical_tearing_mode/benchmark/sources/tm_baseline_tworms_cv_tuned_dev.json"
+      },
+      "tokamak_si_uncertain_negative": {
+        "f1": {
+          "value": 0.4597814953909184,
+          "lo": 0.38140985188128174,
+          "hi": 0.5313607619781096,
+          "valid_replicates": 1000
+        },
+        "auroc": {
+          "value": 0.962765950293354,
+          "lo": 0.9540120071948344,
+          "hi": 0.9711998315443181,
+          "valid_replicates": 1000
+        },
+        "auprc": {
+          "value": 0.6304784990468353,
+          "lo": 0.5561116278293954,
+          "hi": 0.699729393565556,
+          "valid_replicates": 1000
+        },
+        "prevalence": {
+          "value": 0.058310136506740246,
+          "lo": 0.0439689771898463,
+          "hi": 0.07351381036150499,
+          "valid_replicates": 1000
+        },
+        "shots": 450,
+        "bins": 246801,
+        "bin_ms": 10.0,
+        "source": "data/events/neoclassical_tearing_mode/benchmark/sources/tm_baseline_tworms_cv_tuned_uncertain_negative_dev.json"
+      },
+      "like_for_like": null
+    },
+    {
+      "architecture": "n1-rms",
+      "legacy_model": null,
+      "tokamak_si_model": "tm-rms",
+      "legacy": null,
+      "tokamak_si": {
+        "f1": {
+          "value": 0.7870621799058193,
+          "lo": 0.7107811966130496,
+          "hi": 0.8431813760415935,
+          "valid_replicates": 1000
+        },
+        "auroc": {
+          "value": 0.9852534019654162,
+          "lo": 0.9767914112480941,
+          "hi": 0.9919869666951521,
+          "valid_replicates": 1000
+        },
+        "auprc": {
+          "value": 0.903514356833493,
+          "lo": 0.8454714410600715,
+          "hi": 0.9435039317762182,
+          "valid_replicates": 1000
+        },
+        "prevalence": {
+          "value": 0.08965964101254151,
+          "lo": 0.06862636939879525,
+          "hi": 0.1129516944042663,
+          "valid_replicates": 1000
+        },
+        "shots": 450,
+        "bins": 160507,
+        "bin_ms": 10.0,
         "source": "data/events/neoclassical_tearing_mode/benchmark/sources/tm_baseline_n1rms_cv_tuned_dev.json"
-      }
+      },
+      "tokamak_si_uncertain_negative": {
+        "f1": {
+          "value": 0.41890161355237643,
+          "lo": 0.33932012524554467,
+          "hi": 0.4884230036167233,
+          "valid_replicates": 1000
+        },
+        "auroc": {
+          "value": 0.9355259867174264,
+          "lo": 0.9105663115048303,
+          "hi": 0.9573833870678394,
+          "valid_replicates": 1000
+        },
+        "auprc": {
+          "value": 0.5461586936086901,
+          "lo": 0.4435891912469613,
+          "hi": 0.6497699315160557,
+          "valid_replicates": 1000
+        },
+        "prevalence": {
+          "value": 0.058310136506740246,
+          "lo": 0.0439689771898463,
+          "hi": 0.07351381036150499,
+          "valid_replicates": 1000
+        },
+        "shots": 450,
+        "bins": 246801,
+        "bin_ms": 10.0,
+        "source": "data/events/neoclassical_tearing_mode/benchmark/sources/tm_baseline_n1rms_cv_tuned_uncertain_negative_dev.json"
+      },
+      "like_for_like": null
     }
   ],
+  "baselines": {
+    "two_line_rms_seed_levels": {
+      "f1": {
+        "value": 0.6448760758124441,
+        "lo": 0.5720463520737794,
+        "hi": 0.716607737814049,
+        "valid_replicates": 1000
+      },
+      "auroc": {
+        "value": 0.998494247563814,
+        "lo": 0.9979437046920374,
+        "hi": 0.9989711514309814,
+        "valid_replicates": 1000
+      },
+      "auprc": {
+        "value": 0.9858981706860306,
+        "lo": 0.9803695076307126,
+        "hi": 0.9902877750488428,
+        "valid_replicates": 1000
+      },
+      "prevalence": {
+        "value": 0.08965964101254151,
+        "lo": 0.06862636939879525,
+        "hi": 0.1129516944042663,
+        "valid_replicates": 1000
+      },
+      "shots": 450,
+      "bins": 160507,
+      "bin_ms": 10.0,
+      "source": "data/events/neoclassical_tearing_mode/benchmark/sources/tm_baseline_tworms_seed_dev.json"
+    }
+  },
   "coverage": {
     "ours": {
       "labelled_shots": 450,
-      "classifiable_shots": 436,
+      "classifiable_shots": 448,
       "observable_shots": 450,
-      "labelled_seconds": 1062.1100000000001,
+      "labelled_seconds": 1258.05,
       "observable_plasma_seconds": 2109.09,
       "definition": "labelled 10 ms bins from the measured plasma start to catalog window end; uncertain and unobservable bins excluded",
       "observable_definition": "10 ms plasma bins from the measured plasma start to catalog window end; uncertain included, unavailable excluded"
     },
     "ours_population": {
       "labelled_shots": 4798,
-      "classifiable_shots": 4677,
+      "classifiable_shots": 4777,
       "observable_shots": 4797,
-      "labelled_seconds": 11748.25,
+      "labelled_seconds": 14168.720000000001,
       "observable_plasma_seconds": 22620.97,
       "definition": "labelled 10 ms bins from the measured plasma start to catalog window end; uncertain and unobservable bins excluded",
       "observable_definition": "10 ms plasma bins from the measured plasma start to catalog window end; uncertain included, unavailable excluded"
@@ -188,19 +852,19 @@
       "labelled_shots": 80,
       "labelled_seconds": 129.98,
       "observable_plasma_seconds": 391.09000000000003,
-      "interval_seconds_on_same_shots": 171.5,
-      "common_labelled_seconds": 47.09
+      "interval_seconds_on_same_shots": 214.11,
+      "common_labelled_seconds": 59.99
     },
     "legacy_survival": {
       "labelled_shots": 175,
       "labelled_seconds": 799.29,
       "observable_plasma_seconds": 863.6800000000001,
-      "interval_seconds_on_same_shots": 375.93,
-      "common_labelled_seconds": 331.97
+      "interval_seconds_on_same_shots": 451.07,
+      "common_labelled_seconds": 405.2
     }
   },
-  "threshold_policy": "F1 at positive-bearing presence-stratified inner-validation thresholds; published CNN also scored at its published 0.5 threshold",
-  "primary_comparison": "AUROC and AUPRC",
+  "threshold_policy": "Legacy F1 at the model's published threshold (CNN 0.5, DSM risk 0.3) is primary and the inner-validation value secondary; Tokamak-SI F1 at positive-bearing presence-stratified inner-validation thresholds.",
+  "primary_comparison": "AUROC and AUPRC, with prevalence beside AUPRC",
   "paired_common_shots": {
     "shots": [
       185805,
@@ -213,6 +877,7 @@
       185961,
       185978,
       185996,
+      186013,
       186025,
       186226,
       186496,
@@ -242,6 +907,8 @@
       189008,
       189044,
       189046,
+      189051,
+      189061,
       189085,
       189138,
       189272,
@@ -282,6 +949,7 @@
       190156,
       190177,
       190182,
+      190212,
       190218,
       190271,
       190273,
@@ -304,6 +972,7 @@
       190799,
       190957,
       190991,
+      190992,
       191183,
       191448,
       191470,
@@ -348,10 +1017,13 @@
       192761,
       192766,
       192914,
+      192996,
       193008,
+      193022,
       193024,
       193075,
       193108,
+      193119,
       193148,
       193162,
       193164,
@@ -366,6 +1038,7 @@
       195159,
       195169,
       195263,
+      195528,
       195637,
       195642,
       195649,
@@ -373,6 +1046,7 @@
       195836,
       195952,
       195956,
+      196324,
       196577,
       196627,
       198806,
@@ -440,12 +1114,14 @@
       203470,
       203507,
       203530,
+      203563,
       203576,
       203626,
       203667,
       203719,
       203745,
       203764,
+      203784,
       203785,
       203827,
       203959,
@@ -470,162 +1146,259 @@
       204840,
       204937
     ],
-    "bins_scored": 26005,
-    "scored_seconds": 260.05,
+    "bins_scored": 31094,
+    "scored_seconds": 310.94,
     "metrics": {
       "tm-ours": {
-        "n_shots": 266,
+        "n_shots": 278,
         "replicates": 1000,
         "auroc": {
-          "value": 0.9976432044687433,
-          "lo": 0.9929386158983312,
-          "hi": 0.999949605049316,
+          "value": 0.999406676717955,
+          "lo": 0.9986436329810074,
+          "hi": 0.9999281287332006,
           "valid_replicates": 1000
         },
         "auprc": {
-          "value": 0.9915005884532524,
-          "lo": 0.9740027368850857,
-          "hi": 0.9998233434064558,
+          "value": 0.9981810667316097,
+          "lo": 0.9959242240894168,
+          "hi": 0.9996622983429971,
           "valid_replicates": 1000
         },
         "f1": {
-          "value": 0.949628982976866,
-          "lo": 0.8748868781735634,
-          "hi": 0.9902975383330626,
+          "value": 0.9841184387617766,
+          "lo": 0.9723965677342212,
+          "hi": 0.9918524188746629,
           "valid_replicates": 1000
         },
         "precision": {
-          "value": 0.9246854811288677,
-          "lo": 0.7991481445621107,
-          "hi": 0.9992308135072909,
+          "value": 0.9842067480258435,
+          "lo": 0.968340767569692,
+          "hi": 0.9938275531284987,
           "valid_replicates": 1000
         },
         "recall": {
-          "value": 0.9759554997308452,
-          "lo": 0.9507412817162165,
-          "hi": 0.9954398189176416,
+          "value": 0.984030145343621,
+          "lo": 0.9672173614944635,
+          "hi": 0.9956640424610247,
           "valid_replicates": 1000
         },
         "prevalence": {
-          "value": 0.21430494135743125,
-          "lo": 0.14997098256437996,
-          "hi": 0.28339761613152875,
+          "value": 0.179230719753007,
+          "lo": 0.12326755707463552,
+          "hi": 0.23863173174443666,
           "valid_replicates": 1000
         },
         "segf1_0.3": {
-          "value": 0.9333333333333333,
-          "lo": 0.8761792054099746,
-          "hi": 0.9780395136778115,
+          "value": 0.9665071770334929,
+          "lo": 0.9308092018968823,
+          "hi": 0.9895860180412371,
           "valid_replicates": 1000
         },
         "segf1_0.5": {
-          "value": 0.9142857142857143,
-          "lo": 0.8401458241272647,
-          "hi": 0.9704799882929684,
+          "value": 0.9665071770334929,
+          "lo": 0.9308092018968823,
+          "hi": 0.9895860180412371,
           "valid_replicates": 1000
         },
         "segf1_0.7": {
-          "value": 0.9142857142857143,
-          "lo": 0.8401458241272647,
-          "hi": 0.9704799882929684,
+          "value": 0.9569377990430622,
+          "lo": 0.9183589829374373,
+          "hi": 0.9838731240296705,
           "valid_replicates": 1000
         },
         "shots_without_a_scored_bin": [],
-        "bins_scored": 26005,
+        "bins_scored": 31094,
         "bins_positive": 5573,
         "bin_ms": 10.0,
-        "scored_seconds": 260.05,
+        "scored_seconds": 310.94,
         "segment_missing_data_policy": "unavailable label or score bins are hard barriers to merging; excluded from IoU"
       },
       "tm-onsetcnn-retrained": {
-        "n_shots": 266,
+        "n_shots": 278,
         "replicates": 1000,
         "auroc": {
-          "value": 0.9565312583913292,
-          "lo": 0.9294377973943546,
-          "hi": 0.9785634786967987,
+          "value": 0.9849283722837807,
+          "lo": 0.9732095099093964,
+          "hi": 0.9935513199136949,
           "valid_replicates": 1000
         },
         "auprc": {
-          "value": 0.8779830797986131,
-          "lo": 0.7622857352715948,
-          "hi": 0.9498917644735128,
+          "value": 0.9562798830250689,
+          "lo": 0.9236554422900607,
+          "hi": 0.9764189956998603,
           "valid_replicates": 1000
         },
         "f1": {
-          "value": 0.795837059923571,
-          "lo": 0.6841513276087817,
-          "hi": 0.8813859169843208,
+          "value": 0.8725660639777468,
+          "lo": 0.7968855245289199,
+          "hi": 0.9196809651390595,
           "valid_replicates": 1000
         },
         "precision": {
-          "value": 0.727624145108534,
-          "lo": 0.5617347720250261,
-          "hi": 0.876202299673935,
+          "value": 0.8462316641375822,
+          "lo": 0.7221984336355626,
+          "hi": 0.9302916248883117,
           "valid_replicates": 1000
         },
         "recall": {
-          "value": 0.8781625695316706,
-          "lo": 0.811182449841254,
-          "hi": 0.9324498971199842,
+          "value": 0.9005921406782702,
+          "lo": 0.8480282035178479,
+          "hi": 0.9410354643853645,
           "valid_replicates": 1000
         },
         "prevalence": {
-          "value": 0.21430494135743125,
-          "lo": 0.14997098256437996,
-          "hi": 0.28339761613152875,
+          "value": 0.179230719753007,
+          "lo": 0.12326755707463552,
+          "hi": 0.23863173174443666,
           "valid_replicates": 1000
         },
         "segf1_0.3": {
-          "value": 0.7248908296943232,
-          "lo": 0.5728113849473072,
-          "hi": 0.8287088682307806,
+          "value": 0.7377777777777778,
+          "lo": 0.5945146759662889,
+          "hi": 0.8353562688253011,
           "valid_replicates": 1000
         },
         "segf1_0.5": {
-          "value": 0.7161572052401747,
-          "lo": 0.5680436847103514,
-          "hi": 0.8201349496419534,
+          "value": 0.7377777777777778,
+          "lo": 0.5945146759662889,
+          "hi": 0.8353562688253011,
           "valid_replicates": 1000
         },
         "segf1_0.7": {
-          "value": 0.6986899563318777,
-          "lo": 0.5404885654885656,
-          "hi": 0.8118194285391129,
+          "value": 0.7111111111111111,
+          "lo": 0.5583173076923077,
+          "hi": 0.8198371448371448,
           "valid_replicates": 1000
         },
         "shots_without_a_scored_bin": [],
-        "bins_scored": 26005,
+        "bins_scored": 31094,
         "bins_positive": 5573,
         "bin_ms": 10.0,
-        "scored_seconds": 260.05,
+        "scored_seconds": 310.94,
+        "segment_missing_data_policy": "unavailable label or score bins are hard barriers to merging; excluded from IoU"
+      },
+      "tm-rms-2line": {
+        "n_shots": 278,
+        "replicates": 1000,
+        "auroc": {
+          "value": 0.9982447403855315,
+          "lo": 0.9965164954604138,
+          "hi": 0.9993599334282353,
+          "valid_replicates": 1000
+        },
+        "auprc": {
+          "value": 0.9934823729204545,
+          "lo": 0.9863705727971581,
+          "hi": 0.9972309926240875,
+          "valid_replicates": 1000
+        },
+        "f1": {
+          "value": 0.9590418723715487,
+          "lo": 0.9340246170219387,
+          "hi": 0.9763542264188624,
+          "valid_replicates": 1000
+        },
+        "precision": {
+          "value": 0.9776328052190121,
+          "lo": 0.9565698597166685,
+          "hi": 0.9890763532642449,
+          "valid_replicates": 1000
+        },
+        "recall": {
+          "value": 0.9411448053113225,
+          "lo": 0.8987404926642084,
+          "hi": 0.9742812466228118,
+          "valid_replicates": 1000
+        },
+        "prevalence": {
+          "value": 0.179230719753007,
+          "lo": 0.12326755707463552,
+          "hi": 0.23863173174443666,
+          "valid_replicates": 1000
+        },
+        "segf1_0.3": {
+          "value": 0.909952606635071,
+          "lo": 0.8521713403653203,
+          "hi": 0.9503600032359841,
+          "valid_replicates": 1000
+        },
+        "segf1_0.5": {
+          "value": 0.8909952606635071,
+          "lo": 0.8086499346893078,
+          "hi": 0.9465694024120331,
+          "valid_replicates": 1000
+        },
+        "segf1_0.7": {
+          "value": 0.8720379146919431,
+          "lo": 0.7864007520062855,
+          "hi": 0.9305741094147583,
+          "valid_replicates": 1000
+        },
+        "shots_without_a_scored_bin": [],
+        "bins_scored": 31094,
+        "bins_positive": 5573,
+        "bin_ms": 10.0,
+        "scored_seconds": 310.94,
         "segment_missing_data_policy": "unavailable label or score bins are hard barriers to merging; excluded from IoU"
       }
     },
-    "difference_ours_minus_cnn": {
-      "auroc": {
-        "value": 0.041111946077414085,
-        "lo": 0.02092481747660071,
-        "hi": 0.0663130100484696
+    "differences": {
+      "tm-ours_minus_tm-onsetcnn-retrained": {
+        "auroc": {
+          "value": 0.014478304434174305,
+          "lo": 0.005791890901076244,
+          "hi": 0.026094631717792683
+        },
+        "auprc": {
+          "value": 0.04190118370654072,
+          "lo": 0.021926472624470898,
+          "hi": 0.07425188910562126
+        },
+        "f1": {
+          "value": 0.1115523747840298,
+          "lo": 0.06555757840081299,
+          "hi": 0.18253350887181896
+        },
+        "segf1_0.5": {
+          "value": 0.22872939925571512,
+          "lo": 0.13816502981444223,
+          "hi": 0.3606321439446975
+        }
       },
-      "auprc": {
-        "value": 0.11351750865463928,
-        "lo": 0.049498202286645816,
-        "hi": 0.2131297394597507
-      },
-      "f1": {
-        "value": 0.15379192305329503,
-        "lo": 0.08805624283961348,
-        "hi": 0.2471509826400217
-      },
-      "segf1_0.5": {
-        "value": 0.19812850904553958,
-        "lo": 0.08037280649417296,
-        "hi": 0.3437813942980571
+      "tm-ours_minus_tm-rms-2line": {
+        "auroc": {
+          "value": 0.0011619363324235632,
+          "lo": 0.00025760600632113997,
+          "hi": 0.0026196965025428696
+        },
+        "auprc": {
+          "value": 0.004698693811155175,
+          "lo": 0.0016368212532747535,
+          "hi": 0.010190046654149285
+        },
+        "f1": {
+          "value": 0.025076566390227928,
+          "lo": 0.006489263036291476,
+          "hi": 0.0480713400726767
+        },
+        "segf1_0.5": {
+          "value": 0.07551191636998578,
+          "lo": 0.02071958877334521,
+          "hi": 0.1536149584008252
+        }
       }
     },
-    "policy": "same shots, same observable label and score bins; original fold thresholds; paired 1000-draw shot bootstrap"
+    "policy": "same shots, same observable label and score bins; each model at its own fold thresholds; paired 1000-draw shot bootstrap"
   },
-  "note": "Legacy and interval targets differ; no paired performance gain is implied. Null means no legacy model. CNN legacy overlap is unknown; DSM legacy uses 500 ms. Coverage is clipped to observable plasma within catalog windows on a common 10 ms grid and includes quiet labelled time.",
+  "training_size_confound": {
+    "retrained_models_train_shots_per_fold": {
+      "mean": 324.0,
+      "folds": 5
+    },
+    "published_dsm_training_shots": 8923,
+    "published_cnn_training_shots": "not listed; the card reports a corpus of thousands of shots",
+    "meaning": "The published models were trained on thousands of shots; the retrained twins see about 324 per outer fold, so a retrained model that ranks below its published twin is confounded by training-set size. No population-scale retrain is part of this benchmark."
+  },
+  "note": "Legacy and Tokamak-SI targets differ in target, bin width, shot set, prevalence and mask, so no cross-setting gain is implied; the like-for-like pair scores a published model and its retrained twin on one target, one mask and one shot set. Null means no legacy model.",
   "source": "data/events/neoclassical_tearing_mode/benchmark/tm_benchmark.json"
 }

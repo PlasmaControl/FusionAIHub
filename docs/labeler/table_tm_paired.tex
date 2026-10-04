@@ -2,14 +2,18 @@
 \centering
 \scriptsize
 \setlength{\tabcolsep}{3pt}
-\begin{tabular}{>{\raggedright\arraybackslash}p{1.2in}>{\raggedright\arraybackslash}p{0.75in}rllll}
+\begin{tabular}{>{\raggedright\arraybackslash}p{1.75in}rllll}
 \toprule
-Model & Setting & Shots & AUROC [CI] & AUPRC [CI] & F1 [CI] & Segmental F1 [CI] \\
+Model & Shots / bins & AUROC [CI] & AUPRC [CI] & F1 [CI] & Segmental F1 [CI] \\
 \midrule
-tm-ours & Common shots and bins & 266 & .998 [.993,1.000] & .992 [.974,1.000] & .950 [.875,.990] & .914 [.840,.970] \\
-tm-onsetcnn-retrained & Common shots and bins & 266 & .957 [.929,.979] & .878 [.762,.950] & .796 [.684,.881] & .716 [.568,.820] \\
+\multicolumn{6}{l}{\emph{Tokamak-SI labels, uncertain time excluded}} \\
+tm-ours & 278 / 31.1k & .999 [.999,1.000] & .998 [.996,1.000] & .984 [.972,.992] & .967 [.931,.990] \\
+tm-onsetcnn-retrained & 278 / 31.1k & .985 [.973,.994] & .956 [.924,.976] & .873 [.797,.920] & .738 [.595,.835] \\
+tm-rms-2line & 278 / 31.1k & .998 [.997,.999] & .993 [.986,.997] & .959 [.934,.976] & .891 [.809,.947] \\
+Difference, tm-ours $-$ tm-onsetcnn-retrained & 278 / 31.1k & .014 [.006,.026] & .042 [.022,.074] & .112 [.066,.183] & .229 [.138,.361] \\
+Difference, tm-ours $-$ tm-rms-2line & 278 / 31.1k & .001 [.000,.003] & .005 [.002,.010] & .025 [.006,.048] & .076 [.021,.154] \\
 \bottomrule
 \end{tabular}
-\caption{Paired comparison on identical development shots and available 10 ms bins. Thresholds retain their shared-fold validation values. Unavailable bins are hard boundaries for segmental IoU 0.5; brackets give 95\% shot-bootstrap intervals (1,000 draws).}
+\caption{Models on identical development shots and available 10 ms bins (shot and bin counts in the second column); each model keeps its inner-validation threshold. Difference rows are paired shot-bootstrap intervals (1,000 draws); a difference whose interval spans zero is not resolved. Unavailable bins are hard barriers for segmental IoU 0.5.}
 \label{tab:tm-paired}
 \end{table*}

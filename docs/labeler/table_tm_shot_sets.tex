@@ -1,0 +1,27 @@
+\begin{table*}[t]
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{>{\raggedright\arraybackslash}p{1.2in}>{\raggedright\arraybackslash}p{2.0in}rr>{\raggedright\arraybackslash}p{1.7in}}
+\toprule
+Target & Shot set & Shots & Bins & Rows \\
+\midrule
+Legacy targets & development shots whose Seo archive rows the row match places & 79 & 5.6k & tm-onsetcnn-published \\
+Legacy targets & development shots outside the DSM training list that the survival labels cover & 80 & 8.4k & tm-dsm-500ms-published; tm-dsm-250ms-published; tm-dsm-1s-published \\
+Tokamak-SI, uncertain excluded & development shots with exported detector inputs & 278 & 30.8k & tm-onsetcnn-published \\
+Tokamak-SI, uncertain excluded & development shots with exported detector inputs, outside the DSM training list & 247 & 43.4k & tm-dsm-500ms-published; tm-dsm-250ms-published; tm-dsm-1s-published \\
+Tokamak-SI, uncertain excluded & development shots with exported detector inputs; out-of-fold & 278 & 31.1k & tm-onsetcnn-retrained \\
+Tokamak-SI, uncertain excluded & development shots with exported detector inputs; out-of-fold & 336 & 57.8k & tm-dsm-retrained \\
+Tokamak-SI, uncertain excluded & development shots with N1RMS and N2RMS records & 450 & 160.5k & tm-rms-2line; tm-rms \\
+Tokamak-SI, uncertain excluded & development shots with Mirnov features; out-of-fold & 450 & 160.5k & tm-ours; tm-ours-rms \\
+Tokamak-SI, uncertain = negative & development shots with exported detector inputs & 286 & 59.1k & tm-onsetcnn-published \\
+Tokamak-SI, uncertain = negative & development shots with exported detector inputs; out-of-fold & 286 & 59.3k & tm-onsetcnn-retrained \\
+Tokamak-SI, uncertain = negative & development shots with exported detector inputs; out-of-fold & 341 & 112.2k & tm-dsm-retrained \\
+Tokamak-SI, uncertain = negative & development shots with N1RMS and N2RMS records & 450 & 246.8k & tm-rms-2line; tm-rms \\
+Tokamak-SI, uncertain = negative & development shots with Mirnov features; out-of-fold & 450 & 246.8k & tm-ours; tm-ours-rms \\
+Tokamak-SI, uncertain = negative & development shots with exported detector inputs, outside the DSM training list & 252 & 81.9k & tm-dsm-500ms-published \\
+\bottomrule
+\end{tabular}
+\caption{Shot set of every benchmark row. Every set is a subset of the 450 development shots (the 50 blind shots are never opened); the shot lists are in each row's source JSON.}
+\label{tab:tm-shot-sets}
+\end{table*}
