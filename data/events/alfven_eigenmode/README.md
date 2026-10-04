@@ -43,14 +43,13 @@ Typically found via magnetics (Mirnov / MHR probes), CO2 interferometer chords, 
 - d3d_ae_co2_lstm | 2022_10_04 | AUROC: 0.714 | AUPRC: 0.842 | F1: 0.715
 - d3d_ae_co2_rcn_xpow | 2023_03_03 | AUROC: 0.767 | AUPRC: 0.886 | F1: 0.725
 - d3d_ae_co2_lstm_xpow | 2022_11_21 | AUROC: 0.699 | AUPRC: 0.825 | F1: 0.700
-- ae-ours | legacy supervision | clean 100/20 selection | three seeds | AUROC: 0.672 ± 0.209 | AUPRC: 0.813 ± 0.156 | F1: 0.739 ± 0.141
-- ae-ours | dense supervision | clean 100/20 selection | three seeds | AUROC: 0.982 ± 0.003 | AUPRC: 0.992 ± 0.001 | F1: 0.955 ± 0.007
-- ae-ours | threeway supervision | clean 100/20 selection | three seeds | AUROC: 0.981 ± 0.004 | AUPRC: 0.992 ± 0.001 | F1: 0.938 ± 0.005
-
-Supervision-swap lines report seed mean ± sample SD against dense labels on the shared 19 held-out shots. Pooled intervals, both references, all 60 shots and paired differences: [ae_supervision_swap.md](../../../docs/labeler/ae_supervision_swap.md).
-The historical model scores below use the original selection protocol.
+- d3d_ae_activity_seldnet_sup_legacy | 2026_10_03 | AUROC: 0.801 | AUPRC: 0.908 | F1: 0.813
+- d3d_ae_activity_seldnet_sup_dense | 2026_10_03 | AUROC: 0.981 | AUPRC: 0.992 | F1: 0.959
+- d3d_ae_activity_seldnet_sup_threeway | 2026_10_03 | AUROC: 0.981 | AUPRC: 0.992 | F1: 0.941
 
 Scores are against the owner-reviewed labels, on 10 ms frames of the 19 validation shots the older detectors did not train on (SELDnet at 0.5, RCN at 0.10, LSTM at 0.15; each chord or chord pair a sample). On all 60 validation shots the SELDnet scores AUROC 0.980, AUPRC 0.992, F1 0.951. Against the raw Heidbrink annotation, which under-counts, the order reverses: AUROC 0.68 for the SELDnet and 0.86 to 0.90 for the older detectors. Protocol, caveats and the older detectors' files: [ae_baselines_benchmark.md](../../../docs/labeler/ae_baselines_benchmark.md).
+
+The three `d3d_ae_activity_seldnet_sup_*` lines above are the published recipe (`ae-ours`) retrained for the supervision swap on 100 training shots with the epoch chosen on 20 held-out selection shots, each trained on one activity target (`sup_legacy`: the annotation; `sup_dense`: the dense relabel; `sup_threeway`: annotation-and-TokEye agreement). Each line is the mean of three seeds on the 19 shared held-out shots against the dense reference, with F1 calibrated on the dense reference on the 20 selection shots; they are not the published model on the first line, which was selected on the 60 validation shots. Checkpoints under `$LABELER_ROOT/round4/aeswap/`: `sup_legacy` = `models/legacy/seed-<n>/ae_seldnet_legacy_sce_seed<n>.pt` (sha256 prefix: seed 0 `9eca09d25f60`, seed 1 `2aa5b41fec71`, seed 2 `fbdd873945b7`); `sup_dense` = `models/dense/seed-<n>/ae_seldnet_dense_sce_seed<n>.pt` (sha256 prefix: seed 0 `dd507200f4fd`, seed 1 `c33a5524a17d`, seed 2 `fab308464c54`); `sup_threeway` = `models/threeway/seed-<n>/ae_seldnet_threeway_sce_seed<n>.pt` (sha256 prefix: seed 0 `cde435e2ee68`, seed 1 `0706a75c0899`, seed 2 `4e796381e21b`). Both references, all 60 shots, the input-free clock and paired differences: [ae_supervision_swap.md](../../../docs/labeler/ae_supervision_swap.md).
 
 ## Inputs
 **d3d_ae_activity_seldnet**:
