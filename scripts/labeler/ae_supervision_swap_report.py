@@ -9,7 +9,8 @@ from __future__ import annotations
 from pathlib import Path
 
 ARMS = ("legacy", "dense", "threeway")
-REFS = (("dense", "dense"), ("legacy", "annotation"))
+# One name for the Heidbrink hand annotation everywhere: "legacy annotation".
+REFS = (("dense", "dense"), ("legacy", "legacy annotation"))
 GROUPS = (
     ("all_60", "60 shots", "All 60 evaluation shots"),
     ("fair_19", "19 shared held-out shots", "The 19 shared held-out shots"),
@@ -21,15 +22,25 @@ PUBLISHED = {
 }
 SAVED = {"ae-rcn": "ae-rcn", "ae-lstm": "ae-lstm"}
 CLOCKS = {
-    "clock-annotation": "clock (from annotation)",
-    "clock-dense": "clock (from dense labels)",
+    "clock-annotation": "clock from legacy annotation",
+    "clock-dense": "clock from dense relabel",
 }
+CLOCK_TRAINING = "input-free, 120 shots"
 SAVED_TRAINING = "UCI ±125 ms windows, 801 shots (saved)"
 MODEL_NOTE = {
-    "legacy": "annotation (legacy) supervision",
-    "dense": "dense supervision",
-    "threeway": "annotation-and-TokEye agreement (threeway) supervision",
+    "legacy": "legacy annotation",
+    "dense": "dense relabel",
+    "threeway": "annotation-and-TokEye agreement",
 }
+#: The target each arm trains on, as the prose names it.
+ARM_TARGET = {
+    "legacy": "the legacy annotation",
+    "dense": "the dense relabel",
+    "threeway": "annotation-and-TokEye agreement",
+}
+#: ae-ours trained on each target, as the prose names the model.
+ARM_MODEL = {arm: f"ae-ours trained on {target}" for arm, target in ARM_TARGET.items()}
+DAGGER = "†"
 PM = "±"
 
 
@@ -121,10 +132,15 @@ def seed_mean_shot_median(block, arm, reference, record) -> tuple[float, float |
 
 def display(name: str) -> tuple[str, str]:
     if name in CLOCKS:
-        return CLOCKS[name], "input-free (120 shots)"
+        return CLOCKS[name], CLOCK_TRAINING
     if name in SAVED:
         return name, SAVED_TRAINING
     return "ae-ours", MODEL_NOTE[name.removeprefix("ae-ours-")]
+
+
+def pretty(name: str) -> str:
+    """A method id as it reads in a row label (the legacy annotation, in full)."""
+    return name.replace("clock-annotation", "clock-legacy-annotation")
 
 
 # --------------------------------------------------------------------------- tables
@@ -149,7 +165,7 @@ def table_rows(record: dict, group: str, reference: str) -> list[str]:
                 " & ".join(
                     [
                         r"\texttt{ae-ours}",
-                        f"{arm}, seed {seed}",
+                        f"{MODEL_NOTE[arm]}, seed {seed}",
                         point_ci(m["auroc"]),
                         point_ci(m["auprc"]),
                         f3(shot_median(block, reference, name)),
@@ -164,7 +180,7 @@ def table_rows(record: dict, group: str, reference: str) -> list[str]:
             " & ".join(
                 [
                     r"\textit{ae-ours}",
-                    rf"\textit{{{arm}, mean of 3}}",
+                    rf"\textit{{{MODEL_NOTE[arm]}, mean of 3}}",
                     tex(mean_sd(s["auroc"])),
                     tex(mean_sd(s["auprc"])),
                     tex(f"{f3(mean)} {PM} {f3(sd)}"),
@@ -180,6 +196,7 @@ def table_rows(record: dict, group: str, reference: str) -> list[str]:
         label, training = display(name)
         if name in SAVED:
             label, training = rf"\texttt{{{name}}}", SAVED_TRAINING_TEX
+        f1 = f3(m["f1"]["value"]) + (r"$^\dagger$" if name in CLOCKS else "")
         rows.append(
             " & ".join(
                 [
@@ -188,7 +205,7 @@ def table_rows(record: dict, group: str, reference: str) -> list[str]:
                     point_ci(m["auroc"]),
                     point_ci(m["auprc"]),
                     f3(shot_median(block, reference, name)),
-                    f3(m["f1"]["value"]),
+                    f1,
                 ]
             )
             + r" \\"
@@ -196,10 +213,27 @@ def table_rows(record: dict, group: str, reference: str) -> list[str]:
     return rows
 
 
+def clock_shot_auroc(record: dict) -> float:
+    """Median within-shot AUROC of the dense clock against the dense reference."""
+    return shot_median(record["results"]["all_60"], "dense", "clock-dense")
+
+
 def one_table(record: dict, reference: str, name: str, label: str) -> str:
     """One table* at 6.75 in, two labelled cohort panels, 7 pt text or larger."""
     blocks = record["results"]
     counts = {g: blocks[g]["references"][reference] for g, _, _ in GROUPS}
+    coarse = record["dense_reference_coarseness"]
+    caveat = (
+        (
+            r"\textbf{Dense reference.} "
+            rf"{coarse['single_present_span_in_table']} of {coarse['shots']} "
+            r"shots have a single present span, so the input-free dense clock "
+            rf"reaches a median Shot AUROC of {clock_shot_auroc(record):.4f} on "
+            r"the 60 shots and that column cannot rank methods here. "
+        )
+        if reference == "dense"
+        else ""
+    )
     caption = (
         rf"\caption{{AE supervision swap scored against the {name} reference, on "
         r"10\,ms frames. \textbf{Models.} The three \texttt{ae-ours} arms differ only "
@@ -211,7 +245,7 @@ def one_table(record: dict, reference: str, name: str, label: str) -> str:
         r"60 evaluation shots among them, so they are scored on the 19 shared "
         r"held-out shots only). The two \emph{clock} rows use no input: each 10\,ms "
         r"frame is scored by its positive rate over the 120 training and selection "
-        r"shots, from the annotation or from the dense labels. "
+        r"shots, from the legacy annotation or from the dense relabel. "
         r"\textbf{Scores.} AUROC and AUPRC pool all frames of a cohort; a seed row "
         r"and a baseline give the estimate and a 95\,\% interval from 1000 "
         r"shot-bootstrap replicates (CI); a \emph{mean} row gives the mean and "
@@ -220,7 +254,10 @@ def one_table(record: dict, reference: str, name: str, label: str) -> str:
         r"is calibrated per method on the reference being scored: its threshold "
         r"maximises F1 on that method's own selection shots (20; six for "
         r"\texttt{ae-rcn} and \texttt{ae-lstm}) against this reference. "
-        rf"Frames: {counts['all_60']['n_frames']} on 60 shots "
+        r"$^\dagger$\,The clocks' thresholds are tuned on 20 shots that are part of "
+        r"the 120 shots the clock itself is built from (in-sample). "
+        + caveat
+        + rf"Frames: {counts['all_60']['n_frames']} on 60 shots "
         rf"({counts['all_60']['n_positive']} positive) and "
         rf"{counts['fair_19']['n_frames']} on 19 shots "
         rf"({counts['fair_19']['n_positive']} positive).}}"
@@ -254,9 +291,123 @@ def paper_table(record: dict) -> str:
         + one_table(
             record,
             "legacy",
-            "annotation (Heidbrink)",
+            "legacy annotation",
             "tab:ae_supervision_swap_annotation",
         )
+    )
+
+
+MAIN_ROWS = (
+    ("ae-ours", "legacy annotation", "ae-ours-legacy"),
+    ("ae-ours", "dense relabel", "ae-ours-dense"),
+    ("ae-ours", "annotation-TokEye agreement", "ae-ours-threeway"),
+    ("ae-rcn", "saved, 801 shots", "ae-rcn"),
+    ("ae-lstm", "saved, 801 shots", "ae-lstm"),
+    ("clock", "from the legacy annotation", "clock-annotation"),
+    ("clock", "from the dense relabel", "clock-dense"),
+)
+MAIN_HEAD = (
+    "Model",
+    "Training labels",
+    "Dense AUROC",
+    "Dense AUPRC",
+    "Legacy-annotation AUROC",
+    "Legacy-annotation AUPRC",
+    "AUROC minus ae-rcn, dense",
+    "AUROC minus ae-rcn, legacy annotation",
+)
+
+
+def main_cells(record: dict) -> list[tuple[str, str, list[str]]]:
+    """The main table's rows: both references side by side on the 19 shared shots.
+
+    ae-ours rows give the seed mean and the sample SD; the saved detectors and the
+    clocks are single models, so they give the estimate. The last two cells are
+    the paired AUROC difference from ae-rcn with its shot-bootstrap interval.
+    """
+    fair = record["results"]["fair_19"]["references"]
+    dense, legacy = fair["dense"], fair["legacy"]
+    rows = []
+    for model, training, name in MAIN_ROWS:
+        cells = []
+        for res in (dense, legacy):
+            for metric in ("auroc", "auprc"):
+                if name.startswith("ae-ours-"):
+                    cells.append(mean_sd(res["seed_summary"]["methods"][name][metric]))
+                else:
+                    cells.append(f3(res["methods"][name][metric]["value"]))
+        for res in (dense, legacy):
+            cells.append(
+                "n/a" if name == "ae-rcn" else diff_text(rel(res, name, "ae-rcn"))
+            )
+        rows.append((model, training, cells))
+    return rows
+
+
+def main_markdown(record: dict) -> list[str]:
+    lines = [
+        "| " + " | ".join(MAIN_HEAD) + " |",
+        "|---|---|---:|---:|---:|---:|---|---|",
+    ]
+    for model, training, cells in main_cells(record):
+        lines.append("| " + " | ".join([model, training, *cells]) + " |")
+    return lines
+
+
+def main_table(record: dict) -> str:
+    """The main-text table (``table*``); the long tables stay in the appendix."""
+    rows = []
+    for model, training, cells in main_cells(record):
+        label = rf"\texttt{{{model}}}" if model.startswith("ae-") else model
+        rows.append(" & ".join([label, training, *(tex(c) for c in cells)]) + r" \\")
+    coarse = record["dense_reference_coarseness"]
+    caption = (
+        r"\caption{AE supervision swap on the 19 held-out shots that ae-rcn and "
+        r"ae-lstm did not train on, scored against two references (10\,ms frames). "
+        r"The three \texttt{ae-ours} rows are one recipe trained on three activity "
+        r"targets (100 training shots, epoch chosen on 20 other shots) and give the "
+        r"mean $\pm$ sample standard deviation over three seeds. The saved "
+        r"detectors \texttt{ae-rcn} and \texttt{ae-lstm} and the two input-free "
+        r"\emph{clocks} (each 10\,ms frame scored by its positive rate over the 120 "
+        r"training and selection shots) are single models and give the estimate. "
+        r"The last two columns are the paired AUROC difference from "
+        r"\texttt{ae-rcn} (row minus \texttt{ae-rcn}; seed mean for "
+        r"\texttt{ae-ours}) with a 95\,\% interval from 1000 resamplings of the 19 "
+        r"shots. The dense reference is temporally coarse "
+        rf"({coarse['single_present_span_in_table']} of {coarse['shots']} shots "
+        r"have one present span), so the clock rows show how much of each score "
+        r"is time context alone. All 60 evaluation shots and the F1 and per-seed "
+        r"results are in the appendix tables.}"
+    )
+    lines = [
+        r"\begin{table*}[t]",
+        caption,
+        r"\label{tab:ae_supervision_swap_main}",
+        r"\centering\footnotesize",
+        r"\setlength{\tabcolsep}{3.4pt}",
+        r"\begin{tabular}{@{}ll cc cc cc@{}}",
+        r"\toprule",
+        (
+            r" & & \multicolumn{2}{c}{Dense reference} & "
+            r"\multicolumn{2}{c}{Legacy annotation} & "
+            r"\multicolumn{2}{c}{AUROC minus \texttt{ae-rcn}} \\"
+        ),
+        r"\cmidrule(lr){3-4}\cmidrule(lr){5-6}\cmidrule(l){7-8}",
+        (
+            r"Model & Training labels & AUROC & AUPRC & AUROC & AUPRC & "
+            r"Dense ref. & Legacy-ann. ref. \\"
+        ),
+        r"\midrule",
+        *rows,
+        r"\bottomrule",
+        r"\end{tabular}",
+        r"\end{table*}",
+    ]
+    return (
+        "% Needs booktabs. Written by ae_supervision_swap_report.py from\n"
+        "% evaluation.json: the main-text table (19 shared held-out shots).\n"
+        + "\n".join(lines)
+        + "\n"
     )
 
 
@@ -277,7 +428,11 @@ def methods_rows(record: dict, group: str, reference: str, f1: bool = False):
                 ),
                 point_ci(m["f1"]),
             ]
-            rows.append(f"| ae-ours {arm}, seed {seed} | " + " | ".join(cells) + " |")
+            rows.append(
+                f"| ae-ours, {MODEL_NOTE[arm]}, seed {seed} | "
+                + " | ".join(cells)
+                + " |"
+            )
         s = result["seed_summary"]["methods"][f"ae-ours-{arm}"]
         mean, sd = seed_mean_shot_median(block, arm, reference, record)
         cells = [
@@ -287,7 +442,9 @@ def methods_rows(record: dict, group: str, reference: str, f1: bool = False):
             mean_sd(s["f1"]),
         ]
         rows.append(
-            f"| **ae-ours {arm}, mean over seeds** | " + " | ".join(cells) + " |"
+            f"| **ae-ours, {MODEL_NOTE[arm]}, mean over seeds** | "
+            + " | ".join(cells)
+            + " |"
         )
     for name in ("ae-rcn", "ae-lstm", "clock-annotation", "clock-dense"):
         if name not in result["methods"]:
@@ -301,7 +458,7 @@ def methods_rows(record: dict, group: str, reference: str, f1: bool = False):
                 f"{f3(shot_median(block, reference, name))} "
                 f"{interval(result['within_shot'][name]['auroc']['ci95'])}"
             ),
-            point_ci(m["f1"]),
+            point_ci(m["f1"]) + (DAGGER if name in CLOCKS else ""),
         ]
         rows.append(f"| {label} ({training}) | " + " | ".join(cells) + " |")
     return rows
@@ -312,7 +469,7 @@ def paired_rows(record: dict, group: str, reference: str) -> list[str]:
     rows = []
     for name, metrics in summary["paired_differences"].items():
         rows.append(
-            f"| {name} | "
+            f"| {pretty(name)} | "
             + " | ".join(diff_text(metrics[m]) for m in ("auroc", "auprc", "f1"))
             + " |"
         )
@@ -403,43 +560,134 @@ def convergence_section(record: dict) -> list[str]:
             "visible."
         ),
         "",
+        float32_screen_note(record),
+        "",
     ]
     return lines
 
 
-def protocol_section(record: dict, manifest: dict) -> list[str]:
+def float32_screen_note(record: dict) -> str:
+    """Whether the accepted records still pass rule 2 on the float32 scores."""
+    screen = record["convergence"]["rule"]["screen"]
+    shots = [run["fp32_screen"] for run in record["runs"].values()]
+    passing = [
+        sc["mean_within_shot_sd"] >= screen["within_shot_sd_min"]
+        and sc["selection_auroc"] > screen["selection_auroc_min_exclusive"]
+        for sc in shots
+    ]
+    sds = [sc["mean_within_shot_sd"] for sc in shots]
+    aucs = [sc["selection_auroc"] for sc in shots]
+    return (
+        "The table above and the decisions it records used the bfloat16 outputs; "
+        "every score below is a float32 re-inference of the same checkpoints. "
+        f"Re-screened on the float32 selection scores, {sum(passing)} of "
+        f"{len(passing)} accepted records pass rule 2 (within-shot SD "
+        f"{min(sds):.3f} to {max(sds):.3f}, selection AUROC {min(aucs):.3f} to "
+        f"{max(aucs):.3f}); no record changes status."
+        if all(passing)
+        else "Re-screened on the float32 selection scores, "
+        f"{len(passing) - sum(passing)} accepted records fail rule 2 "
+        "(`fp32_screen` in evaluation.json)."
+    )
+
+
+def clock_note(record: dict) -> str:
+    return (
+        "The clocks' thresholds are tuned on the 20 selection shots, which are part "
+        "of the 120 shots the clock's own positive rates come from, so clock F1 is "
+        "in-sample; their AUROC and AUPRC need no threshold."
+    )
+
+
+def garcia_text(record: dict) -> str:
+    """Who edited the dense labels after the paper's snapshot, from the history."""
+    rec = record["dense_reconciliation"]
+    names = rec["differing_shots_by_name"]
+    diff = rec["difference"]
+    n_train = len(diff["train_selection_120"]["differing_shots"])
+    garcia = names.get("Alvin Garcia", {})
+    chen = names.get("Nathaniel Chen", {})
+    return (
+        f"A. Garcia, the author of ae-rcn and ae-lstm, saved changes on "
+        f"{garcia.get('train', 0) + garcia.get('selection', 0)} of the {n_train} "
+        f"training and selection shots that differ from the paper's snapshot "
+        f"({garcia.get('train', 0)} training, {garcia.get('selection', 0)} "
+        f"selection) and on {garcia.get('evaluation', 0)} evaluation shots; "
+        f"N. Chen saved changes on {chen.get('train', 0) + chen.get('selection', 0)} "
+        "of them"
+    )
+
+
+def band_text(record: dict) -> str:
+    rec = record["dense_reconciliation"]
+    shots = rec["differing_shots"]
+    ts = [s for s, v in shots.items() if v["group"] != "evaluation"]
+    late = sum(shots[s]["changed_with_60_250_khz_display"] for s in ts)
+    early = sum(shots[s]["changed_with_80_250_khz_display"] for s in ts)
+    band = rec["display_band_change"]
+    return (
+        f"**Band.** The model reads the CO2 spectrogram from 80.57 to 250.00 kHz "
+        f"(348 bins, four chords). The review display the dense labels were drawn on "
+        f"read {band['before']} until {band['date']} and {band['after']} afterwards "
+        f"({band['source']}). The {len(ts)} training and selection shots that differ "
+        f"from the paper's snapshot were edited with the {band['after']} display "
+        f"({late} of {len(ts)}; {early} also carry an earlier edit made with the "
+        f"{band['before']} display), so present frames added to them can rest on "
+        "activity between 60 and 80.6 kHz that ae-ours cannot see. "
+        + garcia_text(record)
+        + " (Limitations). No evaluation shot was edited by Garcia, and no model "
+        "was retrained after these edits. "
+        '"Absent" in the dense labels, and in every target ae-ours trains on, means '
+        "absent within the observed band; it says nothing about activity below "
+        "80.6 kHz, which the legacy annotation can mark and which can therefore be "
+        "labelled absent. The saved UCI detectors read 20 to 250 kHz."
+    )
+
+
+def counts_text(record: dict, manifest: dict) -> str:
     counts = record["dense_counts"]
-    prev = record["dense_prevalence"]
-    hist = record["dense_history"]
-    tr = prev["train_selection_120"]
-    ev = prev["evaluation_60"]
+    rec = record["dense_reconciliation"]
+    snap = rec["paper_snapshot"]
+    prev = rec["any_touch_prevalence"]
+    diff = rec["difference"]
+    ts, ev = diff["train_selection_120"], diff["evaluation_60"]
+    ev_shots = ", ".join(map(str, ev["differing_shots"]))
+    return (
+        f"**Dense label counts.** The paper's 943 intervals are the {snap['rows']} "
+        f"rows of the table its audit scored, the ae_xpower v2 review table "
+        f"(`{snap['path']}`, SHA256 `{snap['sha256']}`): {snap['present_rows']} "
+        f"present and {snap['absent_rows']} absent rows over {snap['shots']} shots. "
+        "Its any-touch prevalence (present among present and absent 10 ms frames) "
+        f"is {prev['train_selection_120']['paper_snapshot']:.3f} on the 120 "
+        f"training and selection shots (the paper's 0.41) and "
+        f"{prev['evaluation_60']['paper_snapshot']:.3f} on the 60 evaluation shots "
+        "(0.70). The current table "
+        f"(`review/labels.csv`, SHA256 `{manifest['inputs']['dense']['sha256']}`) "
+        f"has {counts['rows']} rows over {counts['shots']} shots, "
+        f"{counts['present_intervals']} present and "
+        f"{counts['rows'] - counts['present_intervals']} absent; every present row "
+        "is a merged crowd span (`iscrowd`), so rows are not individual boxes. It "
+        f"differs from the snapshot on {len(ts['differing_shots'])} of the 120 "
+        f"training and selection shots ({ts['frames']} frames, a net "
+        f"{ts['net_present']:+d} present frames; prevalence "
+        f"{prev['train_selection_120']['current']:.3f}) and on "
+        f"{len(ev['differing_shots'])} of the 60 evaluation shots "
+        f"({ev['frames']} frames, a net {ev['net_present']:+d}; shot {ev_shots}), "
+        f"and on {len(diff['fair_19']['differing_shots'])} of the 19 shared "
+        "held-out shots. The evaluation reference therefore matches the paper's "
+        "audit; the training labels are a later version of it. The paper's second "
+        'count, 954 "after later review", matches neither table. Source: '
+        "`dense_counts`, `dense_reconciliation` and `dense_history` in "
+        "evaluation.json."
+    )
+
+
+def protocol_section(record: dict, manifest: dict) -> list[str]:
+    grid = record["frame_grid"]
     return [
         "## Frozen protocol",
         "",
-        (
-            f"The dense snapshot (`review/labels.csv`, SHA256 "
-            f"`{manifest['inputs']['dense']['sha256']}`) has {counts['rows']} rows "
-            f"over {counts['shots']} shots: {counts['present_intervals']} present "
-            f"and {counts['rows'] - counts['present_intervals']} absent rows. Every "
-            "present row is a merged crowd span (`iscrowd`), so they are not "
-            "individual boxes. Its history file holds "
-            f"{hist['entries']} entries, whose latest interval list per shot totals "
-            f"{hist['latest_intervals_per_shot_total']} intervals and whose "
-            f"entries together total {hist['all_entry_intervals_total']}. The paper's "
-            '"943 intervals when the benchmark was scored, 954 after later review" '
-            "matches none of these counts, so it counts another unit or an earlier "
-            "snapshot; this document uses the file as it stands and takes no "
-            "number from the paper's count. "
-            f"Prevalence of present time: {tr['prevalence_by_duration']:.3f} by "
-            f"duration and {tr['prevalence_any_touch_frames']:.3f} in any-touch "
-            "10 ms frames on the 120 training and selection shots, against 0.41 in "
-            "the paper (not reconciled: the paper's figure may predate later review "
-            f"edits), and {ev['prevalence_by_duration']:.3f} and "
-            f"{ev['prevalence_any_touch_frames']:.3f} on the 60 validation shots, "
-            "against 0.70 in the paper (the frame count matches). Source: "
-            "`dense_counts`, `dense_history` and `dense_prevalence` in "
-            "evaluation.json."
-        ),
+        counts_text(record, manifest),
         "",
         (
             f"NumPy split seed {manifest['split_seed']} freezes 100 training, 20 "
@@ -450,25 +698,30 @@ def protocol_section(record: dict, manifest: dict) -> list[str]:
         ),
         "",
         (
-            "Only the activity target changes between arms. Legacy is the audit's "
+            "Only the activity target changes between arms. The legacy arm trains on "
+            "the legacy annotation (the Heidbrink hand annotation) by the audit's "
             "at-least-half-annotated rule at 10 ms (classes 1 to 4, LFM excluded), "
-            "expanded to the native columns; dense uses the catalog any-touch state "
-            "rule and masks unknown states; threeway keeps the native "
-            "annotation-and-TokEye agreement, needs at least half the native columns "
-            "of a frame to carry agreement weight, and masks disagreement. The "
-            "annotation-and-TokEye frequency target and its weights are identical in "
-            "every arm (verification.json). Each input covers 0 to 2 s as 7,820 "
-            "native columns."
+            "expanded to the native columns; the dense arm uses the catalog "
+            "any-touch state rule and masks unknown states; threeway keeps the "
+            "native annotation-and-TokEye agreement, needs at least half the native "
+            "columns of a frame to carry agreement weight, and masks disagreement. "
+            "The annotation-and-TokEye frequency target and its weights are "
+            "identical in every arm (verification.json). Each input covers 0 to 2 s "
+            "as 7,820 native columns."
         ),
         "",
+        band_text(record),
+        "",
         (
-            "**Band.** The model reads the CO2 spectrogram from 80.57 to 250.00 kHz "
-            "(348 bins, four chords), and the dense review display covered 80 to "
-            '250 kHz. "Absent" in the dense labels, and in every target ae-ours '
-            "trains on, means absent within that observed band; it says nothing "
-            "about activity below 80.6 kHz, which the annotation can mark and which "
-            "can therefore be labelled absent. The saved UCI detectors read 20 to "
-            "250 kHz."
+            f"**Frame grid.** The audit's 10 ms frames spread the "
+            f"{grid['columns']:,} native columns evenly over 0 to 2 s "
+            "(`frame_index`), and every arm, target and reference here inherits "
+            f"that assignment. The recorded column times run from "
+            f"{grid['first_ms']:.2f} to {grid['last_ms']:.2f} ms, so "
+            f"{grid['columns_in_another_frame']} of the {grid['columns']:,} columns "
+            "fall in a neighbouring frame, at most "
+            f"{grid['max_abs_offset_ms']:.2f} ms from the uniform centre "
+            f"(identical in all {grid['shots_checked']} shots)."
         ),
         "",
         (
@@ -477,13 +730,17 @@ def protocol_section(record: dict, manifest: dict) -> list[str]:
             "unchanged frequency objective, 710-column windows (182 ms), eight "
             "windows per shot, batch 16, AdamW 1e-4, weight decay 1e-4, cosine decay "
             "to 1e-6) with the convergence rule above; CUDA allocations are capped "
-            "at 10 GiB. The persistent DataLoader workers keep their epoch-0 copy of "
+            "at 10 GiB. The recipe was developed for the threeway target: symmetric "
+            "cross entropy was chosen over binary cross entropy on the 60 validation "
+            "shots (the model README), and its weights, the learning rate and early "
+            "stopping were set for that target; the legacy and dense arms reuse it "
+            "unchanged. The persistent DataLoader workers keep their epoch-0 copy of "
             "the dataset, so `set_epoch()` never reaches them: every epoch re-draws "
             "the same eight windows per shot (800 windows), and only the shot order "
             "is reshuffled. This holds for every arm and seed, including the "
-            "published model's recipe; changing it would require rerunning "
-            "everything (checked in isolation with and without persistent "
-            "workers)."
+            "published model's recipe, and it is not fixed in this round: changing "
+            "it would require rerunning everything (checked in isolation with and "
+            "without persistent workers)."
         ),
         "",
         (
@@ -492,11 +749,21 @@ def protocol_section(record: dict, manifest: dict) -> list[str]:
             "reference it is scored against: the threshold maximises 10 ms F1 on that "
             "method's selection shots (20; six for ae-rcn and ae-lstm, the only "
             "ones they did not train on; the clocks use the 20) with ties going to "
-            "the highest threshold. F1 at each record's own-target threshold (the "
-            "earlier protocol: each arm's threshold from its own activity target, "
-            "the older detectors' from the annotation) is kept in evaluation.json "
+            "the highest threshold. "
+            + clock_note(record)
+            + " F1 at each record's own-target threshold (the earlier protocol: "
+            "each arm's threshold from its own activity target, the older "
+            "detectors' from the legacy annotation) is kept in evaluation.json "
             "(`f1_own_target_threshold`) and is used in no claim. No evaluation "
             "frame selects an epoch or a threshold."
+        ),
+        "",
+        (
+            "**Precision.** The training run scored each checkpoint under bfloat16 "
+            "autocast. Every score in this document is a float32 re-inference "
+            "(autocast off) of the same checkpoints, with the thresholds "
+            "recalibrated on the float32 selection scores; the next section gives "
+            "the change."
         ),
         "",
         (
@@ -523,7 +790,7 @@ def runs_section(record: dict) -> list[str]:
         "",
         (
             "| Supervision | Seed | Selected epoch | Epochs run | Patience from | "
-            "Own-target threshold | Execution | GPU |"
+            "Own-target threshold (float32) | Execution | GPU |"
         ),
         "|---|---:|---:|---:|---:|---:|---|---|",
     ]
@@ -543,7 +810,7 @@ def runs_section(record: dict) -> list[str]:
         lines.append(
             f"| {run['supervision']} | {run['seed']} | {run['selected_epoch']} | "
             f"{run['epochs_completed']} | {start} | "
-            f"{run['threshold']['threshold']:.4f} | {job} | {gpu} |"
+            f"{run['fp32']['threshold']['threshold']:.4f} | {job} | {gpu} |"
         )
     lines += [
         "",
@@ -551,10 +818,73 @@ def runs_section(record: dict) -> list[str]:
             f"{', '.join(on_a100) or 'No record'} ran on A100 GPUs; every other "
             "record ran on the head node's V100S. This Torch build reports V100 "
             "bfloat16 support through emulation, so the unchanged trainer autocasts "
-            "to bfloat16 on both (gpu_probe.json). Hardware is therefore a nuisance "
+            "to bfloat16 on both (gpu_probe.json) when it scores the checkpoint; "
+            "every score in this document is instead a float32 re-inference of the "
+            "same checkpoints (next section). Hardware is therefore a nuisance "
             "variable of the supervision comparison; the V100-only sensitivity "
             "analysis below restricts every arm to its V100 runs of seeds other "
             "than 0."
+        ),
+        "",
+    ]
+    return lines
+
+
+def precision_section(record: dict) -> list[str]:
+    """How much the float32 re-inference moved the scores."""
+    check = record["precision_check"]
+    worst = check["max_abs_change_per_run"]
+    frames = {
+        name: run["fp32"]["frame_probability_difference"]
+        for name, run in sorted(record["runs"].items())
+    }
+    lines = [
+        "## Inference precision",
+        "",
+        (
+            "The training run scored each checkpoint under bfloat16 autocast. This "
+            "Torch build emulates bfloat16 on the V100, and the frame probabilities "
+            "it gives differ visibly from float32 ones. Every checkpoint was "
+            "therefore re-inferred in float32 (autocast off; `infer-fp32`, files "
+            "`probabilities_fp32.npz` and `fp32.json` beside each run), the "
+            "thresholds were recalibrated on the float32 selection scores, and all "
+            "scores, thresholds and intervals in this document are float32. The "
+            "bfloat16 files are untouched. Change in the pooled-frame score, float32 "
+            "minus bfloat16 (`precision_check` in evaluation.json): the largest "
+            "change of any run in any cohort and reference is "
+            f"{worst['auroc']['value']:.4f} "
+            f"AUROC ({worst['auroc']['where']}) and {worst['auprc']['value']:.4f} "
+            f"AUPRC ({worst['auprc']['where']}). Seed-mean change per arm "
+            "(AUROC / AUPRC):"
+        ),
+        "",
+        "| Arm | "
+        + " | ".join(f"{short}, {name}" for _, short, _ in GROUPS for _, name in REFS)
+        + " |",
+        "|---|" + "---|" * (len(GROUPS) * len(REFS)),
+    ]
+    for arm in ARMS:
+        cells = []
+        for group, _, _ in GROUPS:
+            for reference, _ in REFS:
+                d_auroc, d_auprc = check["seed_mean_change"][arm][
+                    f"{group}/{reference}"
+                ]
+                cells.append(f"{d_auroc:+.4f} / {d_auprc:+.4f}")
+        lines.append(f"| {arm} | " + " | ".join(cells) + " |")
+    over = [f["evaluation_shots_over_0.1"] for f in frames.values()]
+    biggest = max(frames.values(), key=lambda f: f["evaluation_max"])
+    lines += [
+        "",
+        (
+            "Frame by frame the two precisions disagree more than the pooled scores "
+            f"do: on the 60 evaluation shots the largest single-frame difference "
+            f"between the two probabilities of a shot exceeds 0.1 on {min(over)} to "
+            f"{max(over)} shots per record (largest overall "
+            f"{biggest['evaluation_max']:.2f}). Pooled over a cohort, the largest "
+            f"change of a run's AUROC is {worst['auroc']['value']:.4f}; the "
+            "bfloat16 scores stay on disk (`probabilities.npz`) and the first "
+            "evaluation that used them is in the git history of this document."
         ),
         "",
     ]
@@ -573,8 +903,19 @@ def scores_section(record: dict) -> list[str]:
             "values. Shot AUROC is the median over shots with both classes of the "
             "within-shot AUROC, with a shot-bootstrap interval; it removes "
             "differences in calibration between shots. F1 is calibrated on the "
-            "reference being scored for every method (above)."
+            "reference being scored for every method (above). The dense reference "
+            "is temporally coarse (Interpretation): Shot AUROC cannot rank methods "
+            "on it."
         ),
+        "",
+        (
+            "**Main table** (19 shared held-out shots; the main-text LaTeX table is "
+            "`table_supervision_swap_main.tex`; ae-ours rows are the seed mean and "
+            "sample SD, the other rows single models; the last two columns are the "
+            "paired AUROC difference from ae-rcn with a shot-bootstrap interval):"
+        ),
+        "",
+        *main_markdown(record),
         "",
     ]
     for group, short, label in GROUPS:
@@ -682,8 +1023,8 @@ def contrast_table(record: dict, metric: str) -> list[str]:
         ),
         "",
         (
-            "| ae-ours arm | minus ae-rcn, dense | minus ae-rcn, annotation | "
-            "minus ae-lstm, dense | minus ae-lstm, annotation |"
+            "| ae-ours arm | minus ae-rcn, dense | minus ae-rcn, legacy annotation | "
+            "minus ae-lstm, dense | minus ae-lstm, legacy annotation |"
         ),
         "|---|---|---|---|---|",
     ]
@@ -693,15 +1034,15 @@ def contrast_table(record: dict, metric: str) -> list[str]:
             for base in ("ae-rcn", "ae-lstm")
             for ref in ("dense", "legacy")
         ]
-        lines.append(f"| {arm} | " + " | ".join(cells) + " |")
+        lines.append(f"| {MODEL_NOTE[arm]} | " + " | ".join(cells) + " |")
     return lines + [""]
 
 
 def vs(label: str, other: str, dense: dict, annotation: dict) -> str:
     return (
         f"{label} {verdict(dense)} {other} on the dense reference "
-        f"({diff_text(dense)}) and {verdict(annotation)} it on the annotation "
-        f"({diff_text(annotation)})"
+        f"({diff_text(dense)}) and {verdict(annotation)} it on the legacy "
+        f"annotation ({diff_text(annotation)})"
     )
 
 
@@ -750,10 +1091,93 @@ def profile(prior: list[float]) -> str:
     )
 
 
+def selection_text(record: dict) -> str:
+    """The selection paragraph, derived from the published scores and the retrain."""
+    seed = {
+        "all_60": record["results"]["all_60"]["references"]["dense"]["seed_summary"][
+            "methods"
+        ]["ae-ours-threeway"],
+        "fair_19": record["results"]["fair_19"]["references"]["dense"]["seed_summary"][
+            "methods"
+        ]["ae-ours-threeway"],
+    }
+    gaps = {
+        (group, metric): (
+            PUBLISHED[group][metric] - seed[group][metric]["mean"],
+            seed[group][metric]["sd"],
+        )
+        for group in seed
+        for metric in ("auroc", "auprc")
+    }
+    beyond = [
+        f"{metric.upper()} on {'19' if group == 'fair_19' else '60'} shots"
+        for (group, metric), (gap, sd) in gaps.items()
+        if gap > sd
+    ]
+    cells = "; ".join(
+        f"{metric.upper()} {gap:+.4f} against SD {sd:.4f} on "
+        f"{'19' if group == 'fair_19' else '60'} shots"
+        for (group, metric), (gap, sd) in gaps.items()
+    )
+    g60 = {m: max(gaps[("all_60", m)][0], 0.0) for m in ("auroc", "auprc")}
+    precision = record["precision_check"]["max_abs_seed_mean_change"]["threeway"]
+    return (
+        "**Selection.** The reviewers' objection was that the published model "
+        "was selected on the 60 validation shots that include the 19 benchmark "
+        "shots. The same recipe retrained with the epoch chosen on 20 separate "
+        "training shots (the threeway arm, which is the published target) scores "
+        f"AUROC {f3(seed['fair_19']['auroc']['mean'])} on the 19 shots (published "
+        f"{PUBLISHED['fair_19']['auroc']:.3f}) and "
+        f"{f3(seed['all_60']['auroc']['mean'])} on the 60 shots (published "
+        f"{PUBLISHED['all_60']['auroc']:.3f}), AUPRC "
+        f"{f3(seed['fair_19']['auprc']['mean'])} and "
+        f"{f3(seed['all_60']['auprc']['mean'])} (published "
+        f"{PUBLISHED['fair_19']['auprc']:.3f} and "
+        f"{PUBLISHED['all_60']['auprc']:.3f}). Published minus retrained seed mean, "
+        f"against the seed SD of the retrain: {cells}. "
+        + (
+            f"The gap exceeds the seed SD for {', '.join(beyond)}, so the retrained "
+            "scores are lower than the published ones by more than the seed spread "
+            "there. "
+            if beyond
+            else "No gap exceeds the seed SD. "
+        )
+        + "The comparison also changes the training data: the retrain uses 100 "
+        "training shots, the published model 120. Selection on the validation "
+        "block and the 20 extra training shots together therefore account for at "
+        f"most about {g60['auroc']:.3f} AUROC and {g60['auprc']:.3f} AUPRC on the "
+        "60 shots (the published scores are rounded to three decimals, and were "
+        "scored under the original bfloat16 inference; float32 moves the retrain's "
+        f"seed means by at most {precision['auroc']:.4f} AUROC and "
+        f"{precision['auprc']:.4f} AUPRC). The recipe itself (symmetric cross "
+        "entropy over binary cross entropy) was chosen on the validation block "
+        "(the model README), so only the epoch choice is clean."
+    )
+
+
+def coarse_text(record: dict) -> str:
+    coarse = record["dense_reference_coarseness"]
+    blocks = record["results"]
+    shot60 = shot_median(blocks["all_60"], "dense", "clock-dense")
+    shot19 = shot_median(blocks["fair_19"], "dense", "clock-dense")
+    return (
+        "**The dense reference is temporally coarse.** "
+        f"{coarse['single_present_span_in_table']} of {coarse['shots']} shots carry "
+        f"a single present span in the table ({coarse['single_run_of_present_frames']} "
+        "a single run of present frames on the 10 ms grid), and the input-free dense "
+        f"clock reaches a median within-shot AUROC of {shot60:.4f} on the 60 "
+        f"evaluation shots ({shot19:.4f} on the 19) against it. Within a shot the "
+        "reference is therefore predicted almost perfectly by time alone, so the "
+        "Shot AUROC column cannot rank methods on it, and the pooled AUROC against "
+        "it mostly measures onset and offset timing between shots."
+    )
+
+
 def interpretation(record: dict) -> list[str]:
     fair = record["results"]["fair_19"]["references"]
     all60 = record["results"]["all_60"]["references"]
     out = ["## Interpretation", ""]
+    legacy_model = ARM_MODEL["legacy"]
 
     # 1. the effect of supervision inside ae-ours
     lines = []
@@ -763,16 +1187,16 @@ def interpretation(record: dict) -> list[str]:
             d = rel(res["dense"], f"ae-ours-{first}", "ae-ours-legacy")
             a = rel(res["legacy"], f"ae-ours-{first}", "ae-ours-legacy")
             parts.append(
-                f"{first} minus legacy supervision {diff_text(d)} against the dense "
-                f"reference and {diff_text(a)} against the annotation"
+                f"{ARM_MODEL[first]} minus {legacy_model} {diff_text(d)} against the "
+                f"dense reference and {diff_text(a)} against the legacy annotation"
             )
         lines.append(f"On the {label}, the AUROC of " + "; ".join(parts) + ".")
     dt = rel(fair["dense"], "ae-ours-dense", "ae-ours-threeway")
     dt60 = rel(all60["dense"], "ae-ours-dense", "ae-ours-threeway")
     lines.append(
-        "Dense minus threeway supervision, against the dense reference: "
-        f"{diff_text(dt)} on the 19 shots and {diff_text(dt60)} on the 60 shots, "
-        "so dense relabelling and annotation-and-TokEye agreement are not "
+        "Dense relabel minus agreement as the training target, against the dense "
+        f"reference: {diff_text(dt)} on the 19 shots and {diff_text(dt60)} on the 60 "
+        "shots, so dense relabelling and annotation-and-TokEye agreement are not "
         "separated by this experiment."
     )
     out += ["**Within ae-ours (supervision).** " + " ".join(lines), ""]
@@ -781,18 +1205,18 @@ def interpretation(record: dict) -> list[str]:
     out += contrast_table(record, "auroc") + contrast_table(record, "auprc")
     f = findings(record)
     statements = [
-        vs("Legacy-supervised ae-ours", "ae-rcn", *f["legacy_rcn"])
+        vs("The model trained on the legacy annotation", "ae-rcn", *f["legacy_rcn"])
         + ". "
         + (
             (
                 "It trails ae-rcn on both references: there is no reversal "
-                "against ae-rcn when ae-ours is trained on legacy-type supervision."
+                "against ae-rcn when ae-ours is trained on the legacy annotation."
                 if f["rcn_resolved"]
                 else "Its point estimate is below ae-rcn's on both references, "
-                "resolved on the annotation but with an interval that includes "
-                "zero on the dense reference; it does not lead ae-rcn there, so "
-                "there is no reversal against ae-rcn when ae-ours is trained on "
-                "legacy-type supervision."
+                "resolved on the legacy annotation but with an interval that "
+                "includes zero on the dense reference; it does not lead ae-rcn "
+                "there, so there is no reversal against ae-rcn when ae-ours is "
+                "trained on the legacy annotation."
             )
             if f["no_reversal_rcn"]
             else "The reversal against ae-rcn is not excluded by this comparison."
@@ -800,12 +1224,13 @@ def interpretation(record: dict) -> list[str]:
         vs("The same model", "ae-lstm", *f["legacy_lstm"])
         + ". "
         + (
-            "The reversal against ae-lstm persists: legacy-supervised ae-ours is "
-            "above it on the dense reference and below it on the annotation."
+            "The reversal against ae-lstm persists: ae-ours trained on the legacy "
+            "annotation is above it on the dense reference and below it on the "
+            "legacy annotation."
             if f["lstm_resolved"]
             else "The reversal against ae-lstm persists in sign (above on the "
-            "dense reference, below on the annotation) but is resolved only on "
-            "the annotation; the dense interval includes zero."
+            "dense reference, below on the legacy annotation) but is resolved "
+            "only on the legacy annotation; the dense interval includes zero."
             if f["lstm_sign"]
             else "The reversal against ae-lstm does not persist in both signs."
         ),
@@ -813,7 +1238,7 @@ def interpretation(record: dict) -> list[str]:
     for arm in ("dense", "threeway"):
         statements.append(
             vs(
-                f"The {arm}-supervised model",
+                f"The model trained on {ARM_TARGET[arm]}",
                 "ae-rcn",
                 rel(fair["dense"], f"ae-ours-{arm}", "ae-rcn"),
                 rel(fair["legacy"], f"ae-ours-{arm}", "ae-rcn"),
@@ -823,11 +1248,13 @@ def interpretation(record: dict) -> list[str]:
     if f["no_reversal_rcn"] and f["lead_with_new"]:
         statements.append(
             "ae-ours's lead over ae-rcn on the dense reference therefore depends on "
-            "dense or annotation-and-TokEye-agreement supervision: it is absent "
-            "when the same recipe trains on the legacy annotation and present when "
-            "it trains on either of the other two targets. Which of the two carries "
-            "it is not separated, and the cross-architecture confounds below apply "
-            "to every statement against the saved detectors."
+            "the target: it is absent when the same recipe trains on the legacy "
+            "annotation, rather than the best achievable legacy-trained model "
+            "(Limitations: the recipe was developed for the agreement target, the "
+            "legacy seeds are unstable, and training windows are fixed), and "
+            "present when it trains on either of the other two targets. Which of "
+            "the two carries it is not separated, and the cross-architecture "
+            "confounds below apply to every statement against the saved detectors."
         )
     out += [
         "**What the swap shows (AUROC, 19 shared shots).** " + " ".join(statements),
@@ -844,40 +1271,40 @@ def interpretation(record: dict) -> list[str]:
         (
             "**Input-free clock.** Each 10 ms frame is scored by its positive rate "
             "over the 120 training and selection shots, with no input and no "
-            "evaluation data. The annotation-based clock "
-            f"{profile(clocks['clock-annotation']['prior'])}; the dense-based clock "
-            f"{profile(clocks['clock-dense']['prior'])}. On the 19 shared shots its "
-            "pooled AUROC is "
-            f"{f3(value(ref_a, 'clock-annotation'))} against the annotation (clock "
-            "from the annotation) and "
+            "evaluation data. The clock from the legacy annotation "
+            f"{profile(clocks['clock-annotation']['prior'])}; the clock from the "
+            f"dense relabel {profile(clocks['clock-dense']['prior'])}. On the 19 "
+            "shared shots its pooled AUROC is "
+            f"{f3(value(ref_a, 'clock-annotation'))} against the legacy annotation "
+            "(clock from the legacy annotation) and "
             f"{f3(value(ref_d, 'clock-dense'))} against the dense reference (clock "
-            "from the dense labels). For comparison (annotation / dense): ae-rcn "
-            f"{f3(value(ref_a, 'ae-rcn'))} / {f3(value(ref_d, 'ae-rcn'))}, ae-lstm "
-            f"{f3(value(ref_a, 'ae-lstm'))} / {f3(value(ref_d, 'ae-lstm'))}, and "
-            "the ae-ours seed means "
+            "from the dense relabel). For comparison (legacy annotation / dense): "
+            f"ae-rcn {f3(value(ref_a, 'ae-rcn'))} / {f3(value(ref_d, 'ae-rcn'))}, "
+            f"ae-lstm {f3(value(ref_a, 'ae-lstm'))} / {f3(value(ref_d, 'ae-lstm'))}, "
+            "and the ae-ours seed means "
             + ", ".join(
-                f"{arm} {f3(mean(ref_a, 'ae-ours-' + arm))} / "
+                f"{MODEL_NOTE[arm]} {f3(mean(ref_a, 'ae-ours-' + arm))} / "
                 f"{f3(mean(ref_d, 'ae-ours-' + arm))}"
                 for arm in ARMS
             )
             + ". Within shots the clock's median AUROC is "
-            f"{f3(shot('legacy', 'clock-annotation'))} against the annotation and "
-            f"{f3(shot('dense', 'clock-dense'))} against the dense reference, "
-            f"against ae-rcn {f3(shot('legacy', 'ae-rcn'))} / "
+            f"{f3(shot('legacy', 'clock-annotation'))} against the legacy "
+            f"annotation and {f3(shot('dense', 'clock-dense'))} against the dense "
+            f"reference, against ae-rcn {f3(shot('legacy', 'ae-rcn'))} / "
             f"{f3(shot('dense', 'ae-rcn'))} and ae-lstm "
             f"{f3(shot('legacy', 'ae-lstm'))} / {f3(shot('dense', 'ae-lstm'))}."
         ),
         "",
         (
-            "Against the annotation the clock reaches "
+            "Against the legacy annotation the clock reaches "
             f"{f['margin_rcn']:.0%} of ae-rcn's pooled AUROC margin over chance and "
-            f"{f['margin_lstm']:.0%} of ae-lstm's. Paired AUROC differences against the "
-            "annotation: ae-rcn minus the annotation clock "
-            f"{diff_text(rel(ref_a, 'ae-rcn', 'clock-annotation'))}, ae-lstm minus "
-            f"it {diff_text(rel(ref_a, 'ae-lstm', 'clock-annotation'))}, "
+            f"{f['margin_lstm']:.0%} of ae-lstm's. Paired AUROC differences against "
+            "the legacy annotation: ae-rcn minus the clock from the legacy "
+            f"annotation {diff_text(rel(ref_a, 'ae-rcn', 'clock-annotation'))}, "
+            f"ae-lstm minus it {diff_text(rel(ref_a, 'ae-lstm', 'clock-annotation'))}, "
             "and "
             + ", ".join(
-                f"{arm}-supervised ae-ours minus it "
+                f"ae-ours trained on {ARM_TARGET[arm]} minus it "
                 f"{diff_text(rel(ref_a, f'ae-ours-{arm}', 'clock-annotation'))}"
                 for arm in ARMS
             )
@@ -886,14 +1313,17 @@ def interpretation(record: dict) -> list[str]:
             f"minus it {diff_text(rel(ref_d, 'ae-rcn', 'clock-dense'))}."
         ),
         "",
+        coarse_text(record),
+        "",
         (
             "ae-ours trains on random 182 ms windows (710 columns) and cannot learn "
             "absolute time; Garcia's models read the whole 0 to 2 s record and can. "
-            "Where the annotation concentrates in time, as the profile above shows, "
-            "part of the older detectors' score against the annotation is time "
+            "Where the legacy annotation concentrates in time, as the profile above "
+            "shows, part of the older detectors' score against it is time "
             "context, not a better reading of the spectrogram, and the clock is "
             "the control that measures how much. The fair test of time context "
-            "against supervision is the deferred LSTM retrain (Limitations)."
+            "against supervision is the deferred LSTM retrain "
+            "(`ae-lstm-retrained`; Limitations)."
         ),
         "",
     ]
@@ -906,37 +1336,19 @@ def interpretation(record: dict) -> list[str]:
     out += [
         (
             "**F1.** AUROC and AUPRC carry the claims. F1 is reported with every "
-            "method calibrated on the reference it is scored on. The earlier "
-            "protocol left the saved detectors at thresholds set against the "
-            "annotation, which moves their F1 on the dense reference: ae-rcn on "
-            f"the 19 shots scores {f3(f1_dense)} with its threshold calibrated on "
-            f"dense and {f3(f1_own)} at its saved annotation-set threshold "
-            "(`f1_own_target_threshold`)."
+            "method calibrated on the reference it is scored on; the clocks' F1 is "
+            "in-sample (their thresholds are tuned on shots that are part of the "
+            "clocks' own 120). The earlier protocol left the saved detectors at "
+            "thresholds set against the legacy annotation, which moves their F1 on "
+            f"the dense reference: ae-rcn on the 19 shots scores {f3(f1_dense)} with "
+            f"its threshold calibrated on dense and {f3(f1_own)} at its saved "
+            "annotation-set threshold (`f1_own_target_threshold`)."
         ),
         "",
     ]
 
     # 5. selection
-    th = fair["dense"]["seed_summary"]["methods"]["ae-ours-threeway"]
-    th60 = all60["dense"]["seed_summary"]["methods"]["ae-ours-threeway"]
-    out += [
-        (
-            "**Selection.** The reviewers' objection was that the published model "
-            "was selected on the 60 validation shots that include the 19 benchmark "
-            "shots. The same recipe retrained with the epoch chosen on 20 separate "
-            "training shots (the threeway arm, which is the published target) "
-            f"scores AUROC {f3(th['auroc']['mean'])} on the 19 shots (published "
-            f"{PUBLISHED['fair_19']['auroc']:.3f}) and "
-            f"{f3(th60['auroc']['mean'])} on the 60 shots (published "
-            f"{PUBLISHED['all_60']['auroc']:.3f}), AUPRC {f3(th['auprc']['mean'])} "
-            f"and {f3(th60['auprc']['mean'])} (published "
-            f"{PUBLISHED['fair_19']['auprc']:.3f} and "
-            f"{PUBLISHED['all_60']['auprc']:.3f}); the seed SD of the AUROC is "
-            f"{f3(th['auroc']['sd'])}. Selecting on the validation block did not "
-            "inflate the published scores beyond that seed spread."
-        ),
-        "",
-    ]
+    out += [selection_text(record), ""]
     return out
 
 
@@ -997,19 +1409,91 @@ def confounds_section(record: dict) -> list[str]:
     ]
 
 
-def limitations_section(record: dict) -> list[str]:
+def provenance_text(record: dict) -> str:
     hist = record["dense_history"]
+    rec = record["dense_reconciliation"]
+    people = "; ".join(
+        f"{name} {item['entries']} entries on {item['shots_saved']} shots"
+        for name, item in hist["by_name"].items()
+    )
+    notes = "; ".join(f'"{note}" ({n} entries)' for note, n in hist["notes"].items())
+    garcia = hist["by_name"]["Alvin Garcia"]
+    edits = garcia["changed_shots"]
+    differing = len(rec["difference"]["train_selection_120"]["differing_shots"])
+    band = rec["display_band_change"]
+    return (
+        f"- **Dense labels' provenance and reviewers.** The history file holds "
+        f"{hist['entries']} entries on {hist['shots']} shots. Its `reviewer` field is "
+        f"the login of the review server's process ({', '.join(hist['logins'])}), "
+        f"not a person; the person is the `name` field: {people} (the unnamed "
+        "entries are the earliest saves, from before names were recorded). The "
+        f"confirmation note reads {notes}. The source of every entry is "
+        f"`{'`, `'.join(hist['sources'])}`: the review was pre-filled from the "
+        "annotation's source table. A. Garcia, the author of ae-rcn and ae-lstm, "
+        "therefore helped make the dense labels the training arms learn from: "
+        f"his interval-changing saves cover {edits['train']} training, "
+        f"{edits['selection']} selection and {edits['evaluation']} evaluation shots "
+        f"({garcia['first_change'][:10]} to {garcia['last_change'][:10]}). "
+        + garcia_text(record)
+        + f". The current table differs from the snapshot the paper's audit scored "
+        f"on {differing} of the 120 training and selection shots and on none of "
+        "the 19 shared shots. Those edits were made with the "
+        f"{band['after']} review display ({band['before']} before {band['date']}), "
+        "while ae-ours reads 80.6 kHz and above. The arms were trained on the "
+        "current table, edits included; no model was retrained without them. "
+        "Whether a TokEye layer was on screen while reviewing is an open question, "
+        "and it bears on why dense and threeway supervision score alike."
+    )
+
+
+def legacy_limits_text(record: dict) -> str:
+    cells = []
+    for group, short, _ in GROUPS:
+        for reference, name in REFS:
+            vals = [
+                m["auroc"]["value"]
+                for _, m in per_seed(
+                    record["results"][group], "legacy", reference, record
+                )
+            ]
+            cells.append(f"{min(vals):.3f} to {max(vals):.3f} ({short}, {name})")
+    collapsed = sorted(
+        n for n in record["convergence"]["superseded"] if n.startswith("ae-ours-legacy")
+    )
+    return (
+        "- **The legacy arm is not the best achievable legacy-trained model.** The "
+        "recipe (the symmetric-cross-entropy weights, the learning rate and the "
+        "early stopping) was developed for the agreement target and reused "
+        "unchanged for the legacy and dense targets, and the legacy arm is the "
+        "unstable one: the pooled AUROC of its three accepted seeds ranges "
+        + "; ".join(cells)
+        + (
+            f"; the first attempt of {', '.join(collapsed)} stopped inside the "
+            "constant-output plateau and was rerun under the declared rule."
+            if collapsed
+            else "; no first attempt was superseded."
+        )
+        + " A comparison with ae-rcn that rests on the legacy arm therefore says "
+        "what this recipe does on the legacy annotation, not what a model tuned "
+        "for it would do."
+    )
+
+
+def limitations_section(record: dict) -> list[str]:
+    grid = record["frame_grid"]
+    fp32 = record["precision_check"]["max_abs_change_per_run"]
     return [
         "## Limitations",
         "",
+        provenance_text(record),
+        legacy_limits_text(record),
         (
-            f"- **Dense labels' provenance.** All {hist['entries']} history entries of "
-            f"the dense table are by {len(hist['reviewers'])} reviewer "
-            f"({', '.join(hist['reviewers'])}), and their source is "
-            f"`{'`, `'.join(hist['sources'])}`: the review was pre-filled from the "
-            "annotation's source table. Whether a TokEye layer was on screen while "
-            "reviewing is an open question, and it bears on why dense and threeway "
-            "supervision score alike."
+            "- **Fixed training windows.** Every epoch re-draws the same 800 "
+            "windows (eight per shot; persistent DataLoader workers never see "
+            "`set_epoch()`); the shot order alone changes. This affects every arm "
+            "and seed equally, and the published recipe too, and it is not fixed "
+            "in this round, because it would mean rerunning every arm. Its effect "
+            "on the arms' order is not measured."
         ),
         (
             "- **Three seeds** give limited precision for training variability. The "
@@ -1020,18 +1504,31 @@ def limitations_section(record: dict) -> list[str]:
         ),
         "- **Hardware.** A100 and V100S runs mix; see the V100-only sensitivity.",
         (
-            "- **Fixed training windows.** Every epoch re-draws the same windows "
-            "(persistent workers); this applies to all arms and to the published "
-            "recipe."
+            "- **Precision.** Epochs were selected during training under bfloat16 "
+            "autocast; only the reported scores, thresholds and intervals are "
+            f"float32. The largest change of a run's pooled AUROC is "
+            f"{fp32['auroc']['value']:.4f} (Inference precision)."
+        ),
+        (
+            "- **Dense reference.** It is temporally coarse, so within-shot AUROC "
+            "cannot rank methods on it (Interpretation); and the 10 ms frame grid "
+            f"is the audit's, with {grid['columns_in_another_frame']} of "
+            f"{grid['columns']:,} columns in a neighbouring frame (Frozen "
+            "protocol)."
+        ),
+        (
+            "- **Clock F1 is in-sample.** The clocks' thresholds are tuned on 20 "
+            "shots that are part of the 120 shots the clocks are built from; their "
+            "AUROC and AUPRC are not affected."
         ),
         (
             "- **The LSTM retrain was deferred.** The brief's optional item "
             "(`ae-lstm-retrained`: the published 3 x 64 LSTM architecture trained on "
             "the same 100/20 split, on whole records, with dense and with legacy "
-            "supervision) was not run. It is the control that separates time context "
-            "from supervision: it gives the older architecture the same supervision "
-            "treatment while keeping its time context, and the clock rows bound what "
-            "time context alone achieves."
+            "supervision) was not run. It remains the control that separates time "
+            "context from supervision: it gives the older architecture the same "
+            "supervision treatment while keeping its time context, and the clock "
+            "rows bound what time context alone achieves."
         ),
         (
             "- The saved detectors are scored on 19 shots and calibrated on six; their "
@@ -1100,12 +1597,14 @@ def readme_block(record: dict) -> tuple[list[str], str]:
         "The three `d3d_ae_activity_seldnet_sup_*` lines above are the published "
         "recipe (`ae-ours`) retrained for the supervision swap on 100 training "
         "shots with the epoch chosen on 20 held-out selection shots, each trained "
-        "on one activity target (`sup_legacy`: the annotation; `sup_dense`: the "
-        "dense relabel; `sup_threeway`: annotation-and-TokEye agreement). Each "
+        "on one activity target (`sup_legacy`: the legacy annotation; `sup_dense`: "
+        "the dense relabel; `sup_threeway`: annotation-and-TokEye agreement). Each "
         "line is the mean of three seeds on the 19 shared held-out shots against "
-        "the dense reference, with F1 calibrated on the dense reference on the "
-        "20 selection shots; they are not the published model on the first line, "
-        "which was selected on the 60 validation shots. Checkpoints under "
+        "the dense reference, scored in float32, with F1 calibrated on the dense "
+        "reference on the 20 selection shots; they are not the published model on "
+        "the first line, which was selected on the 60 validation shots, and the "
+        "legacy line is the recipe on the legacy annotation, not the best "
+        "achievable legacy-trained model. Checkpoints under "
         "`$LABELER_ROOT/round4/aeswap/`: "
         + "; ".join(checkpoints)
         + ". Both references, all 60 shots, the input-free clock and paired "
@@ -1146,22 +1645,24 @@ def summary(record: dict) -> str:
     seed_mean = lambda ref, arm: f3(
         fair[ref]["seed_summary"]["methods"][f"ae-ours-{arm}"]["auroc"]["mean"]
     )
+    precision = record["precision_check"]["max_abs_change_per_run"]
     return (
-        "On the 19 shared held-out shots the seed-mean AUROC against the dense "
-        "reference is "
-        + ", ".join(f"{arm} {seed_mean('dense', arm)}" for arm in ARMS)
-        + " for the legacy, dense and threeway supervision arms, and against the "
-        "annotation "
-        + ", ".join(f"{arm} {seed_mean('legacy', arm)}" for arm in ARMS)
-        + ". Legacy-supervised ae-ours "
+        "On the 19 shared held-out shots the seed-mean AUROC of ae-ours trained on "
+        "the legacy annotation, the dense relabel and annotation-and-TokEye "
+        "agreement is "
+        + ", ".join(seed_mean("dense", arm) for arm in ARMS)
+        + " against the dense reference and "
+        + ", ".join(seed_mean("legacy", arm) for arm in ARMS)
+        + " against the legacy annotation. ae-ours trained on the legacy annotation "
         + (
             (
                 "trails ae-rcn on both references"
                 if f["rcn_resolved"]
                 else "is below ae-rcn on both references in point estimate (resolved "
-                "on the annotation only)"
+                "on the legacy annotation only)"
             )
-            + ", so the reversal against ae-rcn needs dense or agreement supervision"
+            + ", so, for this recipe (rather than the best achievable legacy-trained "
+            "model), the reversal against ae-rcn needs dense or agreement targets"
             if f["no_reversal_rcn"] and f["lead_with_new"]
             else "does not trail ae-rcn on both references"
         )
@@ -1175,10 +1676,14 @@ def summary(record: dict) -> str:
             else "the reversal against ae-lstm does not persist in both signs"
         )
         + f". An input-free clock reaches {f['margin_rcn']:.0%} of ae-rcn's AUROC "
-        "margin over chance against the annotation, which makes time context a "
-        "confound of every comparison with the saved detectors. The Interpretation "
-        "and Cross-architecture confounds sections give the numbers and the "
-        "limits."
+        "margin over chance against the legacy annotation, which makes time context "
+        "a confound of every comparison with the saved detectors, and the dense "
+        "reference is temporally coarse, so within-shot AUROC cannot rank methods "
+        "on it. A. Garcia, the author of the saved detectors, edited training and "
+        "selection shots of the dense labels (Limitations). Scores are float32; "
+        f"the largest change of a run's pooled AUROC from the bfloat16 inference is "
+        f"{precision['auroc']['value']:.4f}. The Interpretation and "
+        "Cross-architecture confounds sections give the numbers and the limits."
     )
 
 
@@ -1207,8 +1712,9 @@ def render_report(record: dict, manifest: dict, out: Path, repo: Path) -> None:
             "[manifest.json](../../outputs/labeler/ae/supervision_swap/manifest.json) "
             "holds the shot lists and input hashes; "
             "[verification.json](../../outputs/labeler/ae/supervision_swap/verification.json) "
-            "checks target equality and split isolation. The paper table is "
-            "`table_supervision_swap.tex` in the same directory."
+            "checks target equality and split isolation. The main-text paper table "
+            "is `table_supervision_swap_main.tex` and the two long appendix tables "
+            "are `table_supervision_swap.tex`, in the same directory."
         ),
         "",
         "## Summary",
@@ -1221,6 +1727,7 @@ def render_report(record: dict, manifest: dict, out: Path, repo: Path) -> None:
         + convergence_section(record)
         + protocol_section(record, manifest)
         + runs_section(record)
+        + precision_section(record)
         + scores_section(record)
         + sensitivity_section(record)
         + interpretation(record)
@@ -1242,6 +1749,8 @@ def render_report(record: dict, manifest: dict, out: Path, repo: Path) -> None:
             ),
             "sbatch scripts/labeler/ae_supervision_swap.sbatch",
             "bash scripts/labeler/ae_supervision_swap_head.sh 0 legacy:2",
+            "# float32 re-inference of every finished run (GPU, CUDA interpreter)",
+            "python scripts/labeler/ae_supervision_swap.py infer-fp32",
             "# CPU, pixi labelmaker environment",
             "python scripts/labeler/ae_supervision_swap.py verify",
             "python scripts/labeler/ae_supervision_swap.py audit-convergence",
@@ -1259,9 +1768,10 @@ def render_report(record: dict, manifest: dict, out: Path, repo: Path) -> None:
         ]
     )
     (repo / "docs/labeler/ae_supervision_swap.md").write_text("\n".join(doc))
-    table = paper_table(record)
-    (out / "table_supervision_swap.tex").write_text(table)
-    (
-        repo / "outputs/labeler/ae/supervision_swap/table_supervision_swap.tex"
-    ).write_text(table)
+    for name, table in (
+        ("table_supervision_swap.tex", paper_table(record)),
+        ("table_supervision_swap_main.tex", main_table(record)),
+    ):
+        (out / name).write_text(table)
+        (repo / "outputs/labeler/ae/supervision_swap" / name).write_text(table)
     write_readme(record, repo)
