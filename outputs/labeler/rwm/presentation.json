@@ -211,8 +211,8 @@
         }
       }
     },
-    "caption": "No demonstrated skill beyond elapsed time or $\\beta_N/l_i$ under phase control; below $\\beta_N/l_i$ within shot ($-0.071$ $[-0.133, -0.010]$). Equilibrium-scalar timing baseline on Hanson's onset list with assumed negatives; no input senses the RWM. Phase-controlled AUROC 0.53--0.63 over 5 splits in 100 ms bins only: the width was fixed after an earlier run with 200 ms bins, where seed 0's forest-minus-elapsed-time margin was $-0.037$. The forest-minus-elapsed-time interval excludes zero on 1 of 5 splits and the forest-minus-$\\beta_N/l_i$ interval on 0 of 5. In 2014 the forest-minus-elapsed-time difference is negative on every split in both conditional strata (high-$\\beta$ and above-proxy) and ranges from $-0.047$ to $+0.025$ in primary AUROC; the 2018 run-record holdout gives $-0.049$ $[-0.073, -0.013]$ in primary AUROC. Phase control compares pairs within campaign and 100 ms bins (at least 5 slices); elapsed time measures the residual-phase floor. Primary negatives end at the last target onset: 480 positive / 5,255 assumed-negative slices (prevalence 8.37\\%). Broad adds later Hanson time and 1,349 negatives from $n=2$-only shots. Cutoffs use inner-fold primary slices. Brackets: exploratory shot-bootstrap intervals at fixed predictions, unadjusted for multiplicity. Published NSTX results are a different machine and are not comparable.",
-    "caption_words": 191,
+    "caption": "No demonstrated skill beyond elapsed time or $\\beta_N/l_i$ under phase control; \\texttt{rwm-brf} is an equilibrium-scalar timing baseline and no input senses the RWM. Phase-controlled AUROC, seed 0 (the forest's weakest split): forest $0.534$ $[0.436, 0.625]$, elapsed time $0.522$, $\\beta_N/l_i$ $0.588$. Over 5 seeds the forest's margin over elapsed time is $+0.012$ to $+0.107$, positive on 5/5 seeds and the holdout, with an interval excluding zero on 1/5. Within shot, forest minus elapsed time, $\\beta_N$ and $\\beta_N/l_i$ is $-0.147$ $[-0.200, -0.084]$, $-0.031$ $[-0.109, 0.045]$ and $-0.071$ $[-0.133, -0.010]$; primary-mask within-shot ranking is dominated by phase (elapsed time $0.931$). Run-record holdout, forest minus elapsed time (primary AUROC): 2018 $-0.049$ $[-0.073, -0.013]$, 2014 $+0.019$ $[-0.052, 0.096]$, pooled $+0.020$ $[-0.033, 0.080]$. The 100 ms bin width was chosen after an earlier run with 200 ms bins, where seed 0's forest-minus-elapsed-time margin was $-0.037$; it is a post-hoc choice. Labels come from Hanson's onset list, with assumed negatives. Phase control compares pairs within campaign and 100 ms bins (at least 5 slices); elapsed time measures the residual-phase floor. Primary negatives end at the last target onset: 480 positive / 5,255 assumed-negative slices (prevalence 8.37\\%). Broad adds later Hanson time and 1,349 negatives from $n=2$-only shots. Cutoffs use inner-fold primary slices. Brackets: exploratory shot-bootstrap intervals at fixed predictions, unadjusted for multiplicity. Published NSTX results are a different machine and are not comparable.",
+    "caption_words": 226,
     "scope": "appendix"
   },
   "compact_latex": {
@@ -221,32 +221,35 @@
     "cells": {
       "rwm-brf": {
         "phase_controlled_auroc": "configs.rwm-brf.phase_controlled_auroc",
+        "within_shot_mean_auroc": "configs.rwm-brf.within_shot_auroc.primary.mean",
         "slice_auroc": "configs.rwm-brf.metrics.slice_auroc",
         "slice_auprc": "configs.rwm-brf.metrics.slice_auprc",
         "slice_f1": "configs.rwm-brf.metrics.slice_f1"
       },
       "rwm-rule-elapsed-time": {
         "phase_controlled_auroc": "configs.rwm-rule-elapsed-time.phase_controlled_auroc",
+        "within_shot_mean_auroc": "configs.rwm-rule-elapsed-time.within_shot_auroc.primary.mean",
         "slice_auroc": "configs.rwm-rule-elapsed-time.metrics.slice_auroc",
         "slice_auprc": "configs.rwm-rule-elapsed-time.metrics.slice_auprc",
         "slice_f1": "configs.rwm-rule-elapsed-time.metrics.slice_f1"
       },
       "rwm-rule-betan-over-li": {
         "phase_controlled_auroc": "configs.rwm-rule-betan-over-li.phase_controlled_auroc",
+        "within_shot_mean_auroc": "configs.rwm-rule-betan-over-li.within_shot_auroc.primary.mean",
         "slice_auroc": "configs.rwm-rule-betan-over-li.metrics.slice_auroc",
         "slice_auprc": "configs.rwm-rule-betan-over-li.metrics.slice_auprc",
         "slice_f1": "configs.rwm-rule-betan-over-li.metrics.slice_f1"
       }
     },
-    "caption": "No demonstrated skill beyond elapsed time or $\\beta_N/l_i$ under phase control; below $\\beta_N/l_i$ within shot ($-0.071$ $[-0.133, -0.010]$). The forest uses equilibrium scalars only (no input senses the RWM). Phase control compares pairs within campaign and 100 ms bins (at least 5 slices); elapsed time is the residual-phase floor, and the forest's margin over it excludes zero on 1 of 5 splits. Reference split, 480 positive and 5,255 assumed-negative slices; pooled scores are phase-confounded. Brackets: exploratory 95\\% shot-bootstrap intervals.",
-    "caption_words": 79,
+    "caption": "No demonstrated skill beyond elapsed time or $\\beta_N/l_i$ under phase control; \\texttt{rwm-brf} is an equilibrium-scalar timing baseline and no input senses the RWM. Phase-controlled AUROC, seed 0 (the forest's weakest split): forest $0.534$ $[0.436, 0.625]$, elapsed time $0.522$, $\\beta_N/l_i$ $0.588$. Over 5 seeds the forest's margin over elapsed time is $+0.012$ to $+0.107$, positive on 5/5 seeds and the holdout, with an interval excluding zero on 1/5. Within shot, forest minus elapsed time, $\\beta_N$ and $\\beta_N/l_i$ is $-0.147$ $[-0.200, -0.084]$, $-0.031$ $[-0.109, 0.045]$ and $-0.071$ $[-0.133, -0.010]$; primary-mask within-shot ranking is dominated by phase (elapsed time $0.931$). Run-record holdout, forest minus elapsed time (primary AUROC): 2018 $-0.049$ $[-0.073, -0.013]$, 2014 $+0.019$ $[-0.052, 0.096]$, pooled $+0.020$ $[-0.033, 0.080]$. Phase control compares pairs within campaign and 100 ms bins (at least 5 slices); elapsed time is the residual-phase floor. Within-shot AUROC is the mean over two-class Hanson shots on the primary mask (point estimate). Table rows show the reference split, 480 positive and 5,255 assumed-negative slices; pooled scores are phase-confounded. Brackets: exploratory 95\\% shot-bootstrap intervals.",
+    "caption_words": 173,
     "scope": "paper (column width)"
   },
   "supplemental_latex": {
     "split_summary": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_split_summary.tex",
       "source_path": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/table_rwm_split_summary.tex",
-      "caption": "Phase-controlled scores and paired phase differences (top); pooled forest scores and forest-minus-elapsed-time differences (bottom). No demonstrated skill beyond elapsed time or $\\beta_N/l_i$ under phase control; below $\\beta_N/l_i$ within shot ($-0.071$ $[-0.133, -0.010]$). Phase-controlled AUROC 0.53--0.63 over 5 splits in 100 ms bins only: the width was fixed after an earlier run with 200 ms bins, where seed 0's forest-minus-elapsed-time margin was $-0.037$. The forest-minus-elapsed-time interval excludes zero on 1 of 5 splits and the forest-minus-$\\beta_N/l_i$ interval on 0 of 5. In 2014 the forest-minus-elapsed-time difference is negative on every split in both conditional strata (high-$\\beta$ and above-proxy) and ranges from $-0.047$ to $+0.025$ in primary AUROC; the 2018 run-record holdout gives $-0.049$ $[-0.073, -0.013]$ in primary AUROC. Ranges are point estimates across seeds 0--4, not confidence intervals. Brackets: exploratory 95\\% shot-bootstrap intervals, unadjusted for multiplicity, at fixed predictions; individual scores use percentile intervals, paired differences use basic intervals. High-$\\beta$: $\\beta_N\\geq0.8$ shot p95; above-proxy: $\\beta_N/l_i>4$. Holdout retains four records across three dates; broad paired intervals are available for seed 0 and holdout only. The primary seed-3 lower bound rounds to $-0.000$; its unrounded value is negative.",
+      "caption": "Phase-controlled scores and paired phase differences (top); pooled forest scores and forest-minus-elapsed-time differences (bottom). No demonstrated skill beyond elapsed time or $\\beta_N/l_i$ under phase control; \\texttt{rwm-brf} is an equilibrium-scalar timing baseline and no input senses the RWM. Phase-controlled AUROC, seed 0 (the forest's weakest split): forest $0.534$ $[0.436, 0.625]$, elapsed time $0.522$, $\\beta_N/l_i$ $0.588$. Over 5 seeds the forest's margin over elapsed time is $+0.012$ to $+0.107$, positive on 5/5 seeds and the holdout, with an interval excluding zero on 1/5. Within shot, forest minus elapsed time, $\\beta_N$ and $\\beta_N/l_i$ is $-0.147$ $[-0.200, -0.084]$, $-0.031$ $[-0.109, 0.045]$ and $-0.071$ $[-0.133, -0.010]$; primary-mask within-shot ranking is dominated by phase (elapsed time $0.931$). Run-record holdout, forest minus elapsed time (primary AUROC): 2018 $-0.049$ $[-0.073, -0.013]$, 2014 $+0.019$ $[-0.052, 0.096]$, pooled $+0.020$ $[-0.033, 0.080]$. The 100 ms bin width was chosen after an earlier run with 200 ms bins, where seed 0's forest-minus-elapsed-time margin was $-0.037$; it is a post-hoc choice. Ranges are point estimates across seeds 0--4, not confidence intervals. Brackets: exploratory 95\\% shot-bootstrap intervals, unadjusted for multiplicity, at fixed predictions; individual scores use percentile intervals, paired differences use basic intervals. High-$\\beta$: $\\beta_N\\geq0.8$ shot p95; above-proxy: $\\beta_N/l_i>4$. Holdout retains four records across three dates; broad paired intervals are available for seed 0 and holdout only. The primary seed-3 lower bound rounds to $-0.000$; its unrounded value is negative.",
       "source": {
         "split_sensitivity.phase_controlled_auroc": {
           "by_seed": {
@@ -1500,7 +1503,7 @@
     "within_shot": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_within_shot.tex",
       "source_path": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/table_rwm_within_shot.tex",
-      "caption": "No demonstrated skill beyond elapsed time or $\\beta_N/l_i$ under phase control; below $\\beta_N/l_i$ within shot ($-0.071$ $[-0.133, -0.010]$). Within-shot AUROC means on the reference split; each of 30 two-class Hanson shots receives equal weight. Within-shot model means are point estimates; differences have 95\\% basic paired shot-bootstrap intervals (1,000 replicates, seed 0), unadjusted for multiplicity. Within shot, the forest is 0.020--0.071 below $\\beta_N$ and $\\beta_N/l_i$ on both masks (1 of 4 unadjusted intervals exclude zero). Elapsed time's 0.931 is an artefact of the primary mask's cutoff at the last onset. Phase control uses primary positive-negative pairs within campaign and 100 ms elapsed-time bins, weighted by pair counts. Individual phase intervals are percentile; all three basic paired forest-minus-scalar phase intervals include zero. One-class cells are omitted; phase resampling is stratified by campaign.",
+      "caption": "No demonstrated skill beyond elapsed time or $\\beta_N/l_i$ under phase control. Within-shot AUROC means on the reference split; each of 30 two-class Hanson shots receives equal weight. Within-shot model means are point estimates; differences have 95\\% basic paired shot-bootstrap intervals (1,000 replicates, seed 0), unadjusted for multiplicity. Forest minus elapsed time, $\\beta_N$ and $\\beta_N/l_i$ is $-0.147$ $[-0.200, -0.084]$, $-0.031$ $[-0.109, 0.045]$, $-0.071$ $[-0.133, -0.010]$ on the primary mask and $0.302$ $[0.217, 0.384]$, $-0.020$ $[-0.095, 0.058]$, $-0.067$ $[-0.137, 0.002]$ on the broad mask (3 of 6 unadjusted intervals exclude zero). Elapsed time's 0.931 is an artefact of the primary mask's cutoff at the last onset, so within-shot ranking on that mask is dominated by phase. Phase control uses primary positive-negative pairs within campaign and 100 ms elapsed-time bins, weighted by pair counts. Individual phase intervals are percentile; 0 of 3 basic paired forest-minus-rule phase intervals exclude zero on the reference split. One-class cells are omitted; phase resampling is stratified by campaign.",
       "source": {
         "paired_within_shot_auroc": {
           "rwm-brf - rwm-rule-elapsed-time": {
@@ -1658,7 +1661,7 @@
     "campaign_pairs": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_campaign_pairs.tex",
       "source_path": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/table_rwm_campaign_pairs.tex",
-      "caption": "Forest minus elapsed time by campaign. Brackets: exploratory 95\\% basic paired shot-bootstrap intervals (1,000 resamples), conditional on fixed fitted predictions, unadjusted for multiplicity. High-$\\beta$: $\\beta_N\\geq0.8$ shot p95; above-proxy: $\\beta_N/l_i>4$. All five 2014 point differences are negative in both conditional strata, while the primary 2014 differences range from $-0.047$ to $+0.025$; all five 2018 split-seed intervals include zero. The included 2018 run-record holdout intervals exclude zero: primary $-0.049$ {\\scriptsize $[-0.073, -0.013]$}; high-$\\beta$ $-0.070$ {\\scriptsize $[-0.117, -0.010]$}.",
+      "caption": "Forest minus elapsed time by campaign. Brackets: exploratory 95\\% basic paired shot-bootstrap intervals (1,000 resamples), conditional on fixed fitted predictions, unadjusted for multiplicity. High-$\\beta$: $\\beta_N\\geq0.8$ shot p95; above-proxy: $\\beta_N/l_i>4$. In 2014, 5 of 5 high-$\\beta$ and 5 of 5 above-proxy point differences are negative, and the primary differences range from $-0.047$ to $+0.025$ (0 of 5 intervals exclude zero); in 2018, 0 of 5 split-seed primary intervals exclude zero. Run-record holdout, primary AUROC difference: 2014 $+0.019$ $[-0.052, 0.096]$, 2018 $-0.049$ $[-0.073, -0.013]$; high-$\\beta$: 2014 $-0.126$ $[-0.245, 0.005]$, 2018 $-0.070$ $[-0.117, -0.010]$.",
       "source": {
         "split_sensitivity.paired_time_by_campaign": {
           "2014": {
@@ -2130,7 +2133,7 @@
     "alarms": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_alarms.tex",
       "source_path": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/table_rwm_alarms.tex",
-      "caption": "Forest alarms across all five splits and the run-record holdout. D/E/M: Detected/Early/Missed among 30 target shots. The first considered alarm decides the primary shot category; any-warning precedence is a sensitivity. Per-onset counts retain all alarms. Brackets: 95\\% percentile shot-bootstrap intervals, including detection-minus-reference, conditional on fixed fitted predictions and unadjusted for multiplicity. Between-model differences elsewhere use basic paired intervals. No improvement over the approximate rate-matched random reference was established: all five difference intervals include zero; equivalence is not established. Comparison and Hanson incidences are unlabelled-shot incidences, not verified false-positive rates. Warning medians are conditional on the matching window; the reference-split median is $356$ {\\scriptsize $[286, 389]$} ms, near the 400 ms limit.",
+      "caption": "Forest alarms across all five splits and the run-record holdout. D/E/M: Detected/Early/Missed among 30 target shots. The first considered alarm decides the primary shot category; any-warning precedence is a sensitivity. Per-onset counts retain all alarms. Brackets: 95\\% percentile shot-bootstrap intervals, including detection-minus-reference, conditional on fixed fitted predictions and unadjusted for multiplicity. Between-model differences elsewhere use basic paired intervals. No improvement over the approximate rate-matched random-alarm reference was established: all 6 detection-difference intervals include zero. This does not establish equivalence. Comparison and Hanson incidences are unlabelled-shot incidences, not verified false-positive rates. Warning medians are conditional on the matching window; the reference-split median is $356$ {\\scriptsize $[286, 389]$} ms, near the 400 ms limit.",
       "source": {
         "configs.rwm-brf": {
           "0": {
@@ -5505,6 +5508,7 @@
     "Campaign paired AUROC \u2014 five splits and run-record holdout",
     "Piccione-style primary scores \u2014 all models (reference split, seed 0)",
     "Broader Hanson-negative sensitivity \u2014 same models and predictions",
+    "Rule baseline \u2014 rwm_candidates review screen (reference split, seed 0)",
     "Within-shot AUROC \u2014 primary and broad Hanson masks (reference split, seed 0)",
     "Paired within-shot mean AUROC differences (95% basic shot CIs)",
     "Phase-controlled primary AUROC \u2014 within campaign and 100 ms time bins",
@@ -5546,7 +5550,7 @@
   "documentation": {
     "doc": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/docs/labeler/rwm_baseline.md",
     "readme": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/data/events/resistive_wall_mode/README.md",
-    "words": 4330,
+    "words": 4646,
     "warning_distribution": {
       "n": 9,
       "min_ms": 32.0,
@@ -5562,6 +5566,193 @@
       "source": "E#/configs/rwm-brf/per_shot/*/warning_ms (external details)"
     }
   },
+  "balanced_statement": {
+    "text": "No demonstrated skill beyond elapsed time or \u03b2N/li under phase control; `rwm-brf` is an equilibrium-scalar timing baseline and no input senses the RWM. Phase-controlled AUROC, seed 0 (the forest's weakest split): forest 0.534 [0.436, 0.625], elapsed time 0.522, \u03b2N/li 0.588. Over 5 seeds the forest's margin over elapsed time is +0.012 to +0.107, positive on 5/5 seeds and the holdout, with an interval excluding zero on 1/5. Within shot, forest minus elapsed time, \u03b2N and \u03b2N/li is \u22120.147 [\u22120.200, \u22120.084], \u22120.031 [\u22120.109, 0.045] and \u22120.071 [\u22120.133, \u22120.010]; primary-mask within-shot ranking is dominated by phase (elapsed time 0.931). Run-record holdout, forest minus elapsed time (primary AUROC): 2018 \u22120.049 [\u22120.073, \u22120.013], 2014 +0.019 [\u22120.052, 0.096], pooled +0.020 [\u22120.033, 0.080].",
+    "words": 117,
+    "facts": {
+      "n": 5,
+      "bin_ms": 100.0,
+      "phase_range": {
+        "by_seed": {
+          "0": {
+            "estimate": 0.5337573804158704,
+            "low": 0.4359065321793412,
+            "high": 0.6248589220201699,
+            "n_finite": 1000
+          },
+          "1": {
+            "estimate": 0.5922302404518098,
+            "low": 0.509658562421827,
+            "high": 0.679910641220516,
+            "n_finite": 1000
+          },
+          "2": {
+            "estimate": 0.5796371830343136,
+            "low": 0.4967997484226588,
+            "high": 0.6661975203593852,
+            "n_finite": 1000
+          },
+          "3": {
+            "estimate": 0.6290538806012721,
+            "low": 0.548928091412632,
+            "high": 0.7062312483648875,
+            "n_finite": 1000
+          },
+          "4": {
+            "estimate": 0.5977637696454549,
+            "low": 0.5062144811209105,
+            "high": 0.6908722839157221,
+            "n_finite": 1000
+          }
+        },
+        "min": 0.5337573804158704,
+        "max": 0.6290538806012721,
+        "lowest_seed": "0",
+        "holdout": {
+          "estimate": 0.5927721840326307,
+          "low": 0.5166916537679644,
+          "high": 0.6794383094006398,
+          "n_finite": 1000
+        }
+      },
+      "lowest_seed": "0",
+      "forest_phase": {
+        "estimate": 0.5337573804158704,
+        "low": 0.4359065321793412,
+        "high": 0.6248589220201699,
+        "n_finite": 1000
+      },
+      "time_phase": {
+        "estimate": 0.521991500042785,
+        "low": 0.5106637385486236,
+        "high": 0.5363999718687644,
+        "n_finite": 1000
+      },
+      "beta_phase": {
+        "estimate": 0.5879089534784221,
+        "low": 0.4713608649179918,
+        "high": 0.6895454861349805,
+        "n_finite": 1000
+      },
+      "time": {
+        "min": 0.011765880373085347,
+        "max": 0.10706238055848705,
+        "positive": 5,
+        "excluding_zero": 1,
+        "above_zero": 1,
+        "holdout": {
+          "estimate": 0.0707806839898456,
+          "low": -0.013343274249616288,
+          "high": 0.14946262816063643,
+          "n_finite": 1000
+        },
+        "n": 5
+      },
+      "beta": {
+        "min": -0.054151573062551694,
+        "max": 0.041144927122850006,
+        "positive": 3,
+        "excluding_zero": 0,
+        "above_zero": 0,
+        "holdout": {
+          "estimate": 0.004863230554208564,
+          "low": -0.11939576220901602,
+          "high": 0.10201992223825054,
+          "n_finite": 1000
+        },
+        "n": 5
+      },
+      "skill_beyond_phase": false,
+      "within": {
+        "rwm-rule-elapsed-time": {
+          "n_shots": 30,
+          "estimate": -0.1473058164956158,
+          "low": -0.19962373253232737,
+          "high": -0.08358075967412446,
+          "n_finite": 1000
+        },
+        "rwm-rule-betan": {
+          "n_shots": 30,
+          "estimate": -0.030804177543612088,
+          "low": -0.10922506204012734,
+          "high": 0.04541901765035304,
+          "n_finite": 1000
+        },
+        "rwm-rule-betan-over-li": {
+          "n_shots": 30,
+          "estimate": -0.07102316273973741,
+          "low": -0.1325289050622218,
+          "high": -0.010139829509499432,
+          "n_finite": 1000
+        }
+      },
+      "within_broad": {
+        "rwm-rule-elapsed-time": {
+          "n_shots": 30,
+          "estimate": 0.3021296242047748,
+          "low": 0.216744813532865,
+          "high": 0.383832594519025,
+          "n_finite": 1000
+        },
+        "rwm-rule-betan": {
+          "n_shots": 30,
+          "estimate": -0.020451360444092015,
+          "low": -0.09526686252158853,
+          "high": 0.058452577617381,
+          "n_finite": 1000
+        },
+        "rwm-rule-betan-over-li": {
+          "n_shots": 30,
+          "estimate": -0.06673886147153996,
+          "low": -0.13702868990745856,
+          "high": 0.00219867902272064,
+          "n_finite": 1000
+        }
+      },
+      "elapsed_within": 0.9309497992055623,
+      "holdout_campaign": {
+        "2014": {
+          "estimate": 0.0189591767881242,
+          "low": -0.0519950009850383,
+          "high": 0.09575879800081918,
+          "n_finite": 1000
+        },
+        "2018": {
+          "estimate": -0.0488342245989305,
+          "low": -0.07326809703940504,
+          "high": -0.012977049461394038,
+          "n_finite": 1000
+        }
+      },
+      "holdout_pooled": {
+        "estimate": 0.02018652870282267,
+        "low": -0.03257246149711114,
+        "high": 0.07979945793328441,
+        "n_finite": 1000
+      },
+      "margin_200": -0.03747612874447659,
+      "primary_2014": [
+        -0.046863191632928514,
+        0.025361842105263155
+      ]
+    }
+  },
+  "candidate_rule": {
+    "auroc": {
+      "estimate": 0.5,
+      "low": 0.5,
+      "high": 0.5,
+      "n_finite": 1000
+    },
+    "warned": 0,
+    "onsets": 48,
+    "alarmed": 36,
+    "comparison": 132,
+    "incidence": 0.2727272727272727,
+    "primary_calls": 0,
+    "hanson_calls": 62,
+    "calls_before_first_onset": 0
+  },
   "rotation_ablation_source": {
     "path": "outputs/labeler/rwm/rotation_ablation.json",
     "sha256": "e782c3770f53c9201c36590c21e5d5ed008df148db1567e5e6d489296d283645"
@@ -5572,7 +5763,7 @@
   },
   "growth_source": {
     "path": "outputs/labeler/rwm/growth.json",
-    "sha256": "c54d6f3a5af0aa6b40ae3a6676a8e3bd6c14e426f3c31e0a54e636dd86d1d903"
+    "sha256": "bb1563445909f3f145cc40cf02f403d7c5e07a28e7788632d836f8f8cf0e94ae"
   },
   "external_evaluation_details": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/evaluation_details.json",
@@ -5604,67 +5795,67 @@
     "main": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm.pdf",
-        "sha256": "4c78763a282395352e620a76fc069528bc67418b027ff30b5d2dfdabcb7897cf"
+        "sha256": "6b246adb10c74a636f994363b8e7d47082c742c3fb9a416088947bad215ce223"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm-1.png",
-        "sha256": "23dca040b0c4b5ef028e56ffaea0e5ea2b05ba254dd08d38856e6dbecb9ca8ba"
+        "sha256": "d92801e1d5eeae5ebe0fa2d3f152a96cd83d5fb7bf0790fe4cf49b7ffcba28ed"
       }
     ],
     "compact": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_compact.pdf",
-        "sha256": "eaf91f092ca76c1c8c70ded4bde737510d8f519b47ac478145dcfc104d0b92f0"
+        "sha256": "e9241b24215aff6b37b8d072d19ce16079c97b767f91d10acd485432c807ab4f"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_compact-1.png",
-        "sha256": "b32cf60c339ab535e5914eace1c146ada4e42a32bf925d86606d8359c56cd86c"
+        "sha256": "b784568c1aac7d1da69f894562223a4832edb69785296ac7ef475cafb9ac5abb"
       }
     ],
     "split_summary": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_split_summary.pdf",
-        "sha256": "23f9a39d8fef6186ba2f3044bf2a2860d25081ca31172e79e037983c1e0e2a30"
+        "sha256": "060253004db14cabaf743878ab06d27d7ce3dffa6b721f18202516fe6fe879f2"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_split_summary-1.png",
-        "sha256": "574099c25168693eefa55f41b6f2b30575dbcda45152a1f28dd3a64f1a8ae19f"
+        "sha256": "f00d38d7f183b8b3bcf7622cf001b733519c6ac2011fe5bb04bca23d1ac1bb52"
       }
     ],
     "within_shot": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_within_shot.pdf",
-        "sha256": "923d96e01b4e4f529e4469e7ed141e70c65fa331f6bfa0cbb0f68a663ffba4eb"
+        "sha256": "006da42a406c6a96e659c44f5ad561760eda9d8c9e251d55909956f5b9106f4b"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_within_shot-1.png",
-        "sha256": "d41d168bcd952631743aad87aaeafbb812c2a0a3f995ef315022f51c0eb48604"
+        "sha256": "7613c495636428b1f4cc79e11db3e7e117d24e764b3b887327915e1910164338"
       }
     ],
     "campaign_pairs": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_campaign_pairs.pdf",
-        "sha256": "eac1b8211be0c70d339e412fff9ea1fa9a124f093bd2e69e4716ee89a37ac45d"
+        "sha256": "89c26ce68956ba984de3cfa5e35f95ad0301bd818dc7fae707b6c04aef342612"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_campaign_pairs-1.png",
-        "sha256": "454ddc001e6316e0c3b476d704a12fc64f99dd634c0ab97f6168f8693ea86285"
+        "sha256": "91b742c5bc396ad0d3496eaa14d05e87292ccfa88de650f0a5bc362cfec6c3b6"
       }
     ],
     "alarms": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_alarms.pdf",
-        "sha256": "e234ca34515d7ef2c46f169d171885c8738f78d886feb9f5a8032dea3e761538"
+        "sha256": "d3acd1fd9c011e8fa6cb5d54bb941dac19c94ceb5b5639d293cb5e268efa226c"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_alarms-1.png",
-        "sha256": "7a4a129abab30a6f61cabdb5ceb3af4c09158e115e16daeda26133c2904889ac"
+        "sha256": "f8f33df30ece0abd5b5bba1d2d4a855515dfbf8659a0500f0a060586b338fced"
       }
     ],
     "onset_actual": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_actual.pdf",
-        "sha256": "41e7d632e3e9c065db8defa6c84df99bde8a999bacf483abd069e1d4ecb52e56"
+        "sha256": "a2624e54ad6caa44d3fa4a3a486e1578893097f9bf77b3a52bc1a738c500ead4"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_actual-1.png",
@@ -5674,7 +5865,7 @@
     "onset_window": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_window.pdf",
-        "sha256": "f24b1fccc045c7c339b8f911050266d570ccf61dfe7e9185ece54fd6ec3a9f24"
+        "sha256": "3cb37dbb9a6ca0f65fafc1c7e60c20b6e8b0086765b88562ff655f5709edfe16"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_window-1.png",
@@ -5684,56 +5875,36 @@
   },
   "supplied_check_logs": {
     "covering_tests": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix12-covering-tests.log",
-      "output": "........................................................................ [ 67%]\n...................................                                      [100%]\n107 passed in 11.66s"
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix13-covering-tests.log",
+      "output": ".............................................                            [100%]\n45 passed in 2.85s"
     },
     "ruff_check": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix12-ruff.log",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix13-ruff.log",
       "output": "All checks passed!"
     },
     "python_format": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix12-format.log",
-      "output": "7 files already formatted"
-    },
-    "table_and_record_validation": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix12-validation.log",
-      "output": "evaluation every old key, point, interval bound, count and rule preserved (n_finite added)\ncomparison_sensitivity every old key, point, interval bound, count and rule preserved (n_finite added)\nrotation_ablation every old key, point, interval bound, count and rule preserved (n_finite added)\n6 forest phase points and both paired differences independently reproduced; 18 duplicate-shot draws agree with direct allowed-pair enumeration\nfirst-onset pooled scores reproduced: 300 positives / 4429 negatives\ngrowth/mask/split counts, table copies and external record hashes validated"
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix13-format.log",
+      "output": "Fix round 13 creates no new .py files, so `ruff format --check` has nothing to check (rules: format-check new .py files only). `ruff check` on the nine changed .py files: see fix13-ruff.log (All checks passed!)."
     },
     "latex_compile": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix12-latex.log",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix13-latex.log",
       "output": "table_rwm_alarms: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_campaign_pairs: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_compact: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_onset_actual: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_onset_window: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_split_summary: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_within_shot: compiled twice and rendered at 150 dpi\nPages:           1"
     },
     "visual_inspection": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix12-visual.log",
-      "output": "visual inspection 2026-10-03: viewed rwm_onset_scores.png (caption counts and 'not a precursor indicator' match panels 156785 and 176077), table_rwm_compact-1.png (fits one column, headline caption), table_rwm-1.png, table_rwm_split_summary-1.png, table_rwm_within_shot-1.png, table_rwm_campaign_pairs-1.png, table_rwm_alarms-1.png, table_rwm_onset_actual-1.png, table_rwm_onset_window-1.png; no overflow, no legacy row, captions lead with the headline"
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix13-visual.log",
+      "output": "Fix round 13 visual inspection (Read tool on the rendered PNGs in /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/):\ntable_rwm-1.png, table_rwm_split_summary-1.png, table_rwm_compact-1.png (6 columns, row labels top-aligned, no overfull box), table_rwm_alarms-1.png (count and rate on one line, rows aligned with labels), table_rwm_within_shot-1.png, table_rwm_campaign_pairs-1.png, rwm_onset_scores.png (panels visually unchanged)."
     },
-    "baseline_saved_replay": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix12-rescore.log",
-      "output": "completed rwm-rule-rwm-candidates seed=0\ncompleted rwm-rule-elapsed-time seed=0\ncompleted rwm-rule-betan-over-li seed=0\ncompleted rwm-rule-betan seed=0\ncompleted rwm-brf seed=0\ncompleted rwm-brf seed=1\ncompleted rwm-brf seed=2\ncompleted rwm-brf seed=4\ncompleted rwm-brf seed=3\ncompleted leave-one-run-record-out\nwrote /scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/evaluation.json"
-    },
-    "comparison_saved_replay": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix12-comparison-replay.log",
-      "output": "wrote /scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/comparison_sensitivity.json"
-    },
-    "rotation_saved_replay": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix12-rotation-replay.log",
-      "output": "wrote /scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/rotation_ablation.json"
+    "growth_regeneration": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix13-growth.log",
+      "output": "{\n  \"script\": \"scripts/labeler/rwm_growth.py\",\n  \"onsets\": {\n    \"listed\": 56,\n    \"n1\": 48,\n    \"n2\": 6,\n    \"shots\": 33\n  },\n  \"onset_window_ms\": 20.0,\n  \"annotation_status\": \"20 ms tau_w convention; not a measured growth interval\",\n  \"search\": {\n    \"offsets_ms\": [\n      -150.0,\n      -148.0,\n      -146.0,\n      -144.0,\n      -142.0,\n      -140.0,\n      -138.0,\n      -136.0,\n      -134.0,\n      -132.0,\n      -130.0,\n      -128.0,\n      -126.0,\n      -124.0,\n      -122.0,\n      -120.0,\n      -118.0,\n      -116.0,\n      -114.0,\n      -112.0,\n      -110.0,\n      -108.0,\n      -106.0,\n      -104.0,\n      -102.0,\n      -100.0,\n      -98.0,\n      -96.0,\n      -94.0,\n      -92.0,\n      -90.0,\n      -88.0,\n      -86.0,\n      -84.0,\n      -82.0,\n      -80.0,\n      -78.0,\n      -76.0,\n      -74.0,\n      -72.0,\n      -70.0,\n      -68.0,\n      -66.0,\n      -64.0,\n      -62.0,\n      -60.0,\n      -58.0,\n      -56.0,\n      -54.0,\n      -52.0,\n      -50.0,\n      -48.0,\n      -46.0,\n      -44.0,\n      -42.0,\n      -40.0,\n      -38.0,\n      -36.0,\n      -34.0,\n      -32.0,\n      -30.0,\n      -28.0,\n      -26.0,\n      -24.0,\n      -22.0,\n      -20.0,\n      -18.0,\n      -16.0,\n      -14.0,\n      -12.0,\n      -10.0,\n      -8.0,\n      -6.0,\n      -4.0,\n      -2.0,\n      0.0,\n      2.0,\n      4.0,\n      6.0,\n      8.0,\n      10.0,\n      12.0,\n      14.0,\n      16.0,\n      18.0,\n      20.0,\n      22.0,\n      24.0,\n      26.0,\n      28.0\n    ],\n    \"same_search_at_controls\": true,\n    \"onsets_csv\": \"/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/growth_onsets.csv\",\n    \"controls_csv\": \"/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/growth_controls.csv\"\n  },\n  \"trailing_window_ms\": 20.0,\n  \"controls\": {\n    \"per_shot\": 300,\n    \"exclusion_ms\": 170.0,\n    \"seed\": 0,\n    \"n\": 7704,\n    \"shots\": 30\n  },\n  \"max_growth_per_s_n1\": {\n    \"n\": 48,\n    \"q1\": 90.72956220408226,\n    \"median\": 111.71038802003883,\n    \"q3\": 173.7079858243532\n  },\n  \"search_max_efold_ms_n1\": {\n    \"n\": 48,\n    \"q1\": 5.756811318850975,\n    \"median\": 8.951917726438296,\n    \"q3\": 11.023510304614344\n  },\n  \"max_growth_at_ms_n1\": {\n    \"n\": 48,\n    \"q1\": -103.5,\n    \"median\": -39.0,\n    \"q3\": 0.0\n  },\n  \"slope_at_onset_per_s_n1\": {\n    \"n\": 48,\n    \"q1\": -47.561383158780885,\n    \"median\": -1.7455352889133646,\n    \"q3\": 25.322174320293527\n  },\n  \"control_slope_per_s\": {\n    \"n\": 7704,\n    \"q1\": -19.504226936035312,\n    \"median\": 1.935240641607814e-08,\n    \"q3\": 21.611437207384434\n  },\n  \"control_max_growth_per_s_n1\": {\n    \"n\": 7704,\n    \"q1\": 66.15973340810169,\n    \"median\": 109.82952529635003,\n    \"q3\": 170.10962510580248\n  },\n  \"control_search_max_efold_ms\": {\n    \"n\": 7704,\n    \"q1\": 5.878562525332289,\n    \"median\": 9.105019777712114,\n    \"q3\": 15.114933940733557\n  },\n  \"slope_rank_test_n1\": {\n    \"statistic\": \"maximum trailing log-slope of the 90-offset search, 48 n=1 onsets against controls; rank_auc = U / (n m), two-sided Mann-Whitney\",\n    \"controls_before_first_onset\": 2675,\n    \"controls_after_first_onset\": 5029,\n    \"pre_onset_controls\": {\n      \"n_onsets\": 48,\n      \"n_controls\": 2675,\n      \"onset_median\": 111.71038802003883,\n      \"control_median\": 111.73666333164721,\n      \"rank_auc\": 0.5450233644859813,\n      \"mannwhitney_p\": 0.28429982087463235\n    },\n    \"all_controls\": {\n      \"n_onsets\": 48,\n      \"n_controls\": 7704,\n      \"onset_median\": 111.71038802003883,\n      \"control_median\": 109.82952529635003,\n      \"rank_auc\": 0.5558773580823815,\n      \"mannwhitney_p\": 0.18129437057541675\n    }\n  },\n  \"log_ratio_n1\": {\n    \"10\": {\n      \"onset\": {\n        \"n\": 48,\n        \"q1\": -0.3087392727308337,\n        \"median\": -0.004225189312686787,\n        \"q3\": 0.31195313303736044\n      },\n      \"control\": {\n        \"n\": 7704,\n        \"q1\": -0.2803509678238022,\n        \"median\": 0.0,\n        \"q3\": 0.29806341930163727\n      },\n      \"control_p90\": 0.8552014585846496,\n      \"fraction_of_onsets_above_control_p90\": 0.14583333333333334\n    },\n    \"20\": {\n      \"onset\": {\n        \"n\": 48,\n        \"q1\": -0.25132874607588807,\n        \"median\": 0.07877096418003995,\n        \"q3\": 0.6625697708436384\n      },\n      \"control\": {\n        \"n\": 7704,\n        \"q1\": -0.3250926369177873,\n        \"median\": 0.0,\n        \"q3\": 0.35139387201515015\n      },\n      \"control_p90\": 0.9426730429012918,\n      \"fraction_of_onsets_above_control_p90\": 0.14583333333333334\n    },\n    \"40\": {\n      \"onset\": {\n        \"n\": 48,\n        \"q1\": -0.5735470678921812,\n        \"median\": -0.0005846799216346829,\n        \"q3\": 0.5023268579922899\n      },\n      \"control\": {\n        \"n\": 7704,\n        \"q1\": -0.40786825175002034,\n        \"median\": 0.0,\n        \"q3\": 0.4210431935468536\n      },\n      \"control_p90\": 1.1800506177145307,\n      \"fraction_of_onsets_above_control_p90\": 0.125\n    },\n    \"80\": {\n      \"onset\": {\n        \"n\": 48,\n        \"q1\": -0.5433754302480741,\n        \"median\": 0.23547043524787098,\n        \"q3\": 0.7125633728939589\n      },\n      \"control\": {\n        \"n\": 7704,\n        \"q1\": -0.47603009349655095,\n        \"median\": 0.0042862723603499416,\n        \"q3\": 0.5980877946900987\n      },\n      \"control_p90\": 1.391850488253651,\n      \"fraction_of_onsets_above_control_p90\": 0.1875\n    },\n    \"150\": {\n      \"onset\": {\n        \"n\": 48,\n        \"q1\": -0.750224840059082,\n        \"median\": 0.10410176700756255,\n        \"q3\": 0.6915066465501547\n      },\n      \"control\": {\n        \"n\": 7704,\n        \"q1\": -0.5481233227994615,\n        \"median\": 0.04988447447838988,\n        \"q3\": 0.757868358850843\n      },\n      \"control_p90\": 1.7708976799587124,\n      \"fraction_of_onsets_above_control_p90\": 0.08333333333333333\n    }\n  },\n  \"betan\": {\n    \"interpolation\": \"finite bracketing samples only; no extrapolation\",\n    \"max_bracket_gap_ms\": 50.0,\n    \"collapse_scope\": \"merged n=1 onsets with finite beta at o-100 and o+40 ms\",\n    \"eligible_onsets\": 43,\n    \"unknown_onsets\": 5,\n    \"dropping_onsets\": 26,\n    \"m100\": {\n      \"n\": 45,\n      \"q1\": 2.5836085081100464,\n      \"median\": 2.7750233787298204,\n      \"q3\": 3.009746414422989\n    },\n    \"at_onset\": {\n      \"n\": 44,\n      \"q1\": 2.5636970624327664,\n      \"median\": 2.716927877664568,\n      \"q3\": 2.9081169724464444\n    },\n    \"p40\": {\n      \"n\": 46,\n      \"q1\": 1.1269126644730594,\n      \"median\": 1.9339821206033245,\n      \"q3\": 2.3504022568464267\n    },\n    \"fraction_dropping_20pct_by_p40\": 0.6046511627906976\n  }\n}"
     },
     "data_audit": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix12-data-audit.log",
-      "output": "wrote /scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/data_audit.json"
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix13-data-audit.log",
+      "output": "wrote /scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/data_audit.json\n\nreal\t0m3.554s\nuser\t0m5.034s\nsys\t0m0.473s"
     },
     "figure_regeneration": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix12-figure.log",
-      "output": "wrote /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/rwm_onset_scores.pdf and /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/rwm_onset_scores.png"
-    },
-    "saved_prediction_preservation": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix12-predictions.log",
-      "output": "predictions_rwm-brf-comparison-negative_seed0.parquet: OK\npredictions_rwm-brf_full_trace.parquet: OK\npredictions_rwm-brf_leave_run_record_out.parquet: OK\npredictions_rwm-brf-no-rotation_seed0.parquet: OK\npredictions_rwm-brf_seed0.parquet: OK\npredictions_rwm-brf_seed1.parquet: OK\npredictions_rwm-brf_seed2.parquet: OK\npredictions_rwm-brf_seed3.parquet: OK\npredictions_rwm-brf_seed4.parquet: OK\npredictions_rwm-rule-betan_full_trace.parquet: OK\npredictions_rwm-rule-betan-over-li_full_trace.parquet: OK\npredictions_rwm-rule-betan-over-li_seed0.parquet: OK\npredictions_rwm-rule-betan_seed0.parquet: OK\npredictions_rwm-rule-elapsed-time_full_trace.parquet: OK\npredictions_rwm-rule-elapsed-time_seed0.parquet: OK\npredictions_rwm-rule-rwm-candidates_full_trace.parquet: OK\npredictions_rwm-rule-rwm-candidates_seed0.parquet: OK\nslices.parquet: OK\nshots.csv: OK\ngrowth_onsets.csv: OK"
-    },
-    "artifact_hashes": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix12-artifact-hashes.log",
-      "output": "table_rwm.pdf SHA-256 OK\ntable_rwm-1.png SHA-256 OK\ntable_rwm_compact.pdf SHA-256 OK\ntable_rwm_compact-1.png SHA-256 OK\ntable_rwm_split_summary.pdf SHA-256 OK\ntable_rwm_split_summary-1.png SHA-256 OK\ntable_rwm_within_shot.pdf SHA-256 OK\ntable_rwm_within_shot-1.png SHA-256 OK\ntable_rwm_campaign_pairs.pdf SHA-256 OK\ntable_rwm_campaign_pairs-1.png SHA-256 OK\ntable_rwm_alarms.pdf SHA-256 OK\ntable_rwm_alarms-1.png SHA-256 OK\ntable_rwm_onset_actual.pdf SHA-256 OK\ntable_rwm_onset_actual-1.png SHA-256 OK\ntable_rwm_onset_window.pdf SHA-256 OK\ntable_rwm_onset_window-1.png SHA-256 OK\nexternal details {\"path\": \"/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/evaluation_details.json\", \"sha256\": \"4940776f8ce90cc0af74034af39cbf84019fd2b56f3efdf67c21dee3bff45203\", \"bytes\": 1921038, \"omitted_keys\":"
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix13-figure.log",
+      "output": "wrote /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/rwm_onset_scores.pdf and /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/rwm_onset_scores.png\n\nreal\t0m2.098s\nuser\t0m3.316s\nsys\t0m0.278s"
     }
   }
 }

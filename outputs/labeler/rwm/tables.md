@@ -30,7 +30,7 @@ Ranges are min/max point estimates across seeds 0–4, not confidence intervals.
 | 4 | 0.034 [-0.017, 0.088] | 0.022 [-0.054, 0.105] | 0.017 [-0.076, 0.128] |
 | point range | 0.001–0.047 | -0.040–0.054 | -0.051–0.061 |
 
-Forest minus elapsed time; 95% basic paired shot-bootstrap intervals. Intervals condition on fixed fitted predictions; elapsed-time ranks are fixed across splits. These three pooled strata retain discharge-phase information. The primary seed-3 lower bound is -0.0001, borderline near zero; a bootstrap-bound sign change alone would not establish robust superiority.
+Forest minus elapsed time; 95% basic paired shot-bootstrap intervals. Intervals condition on fixed fitted predictions; elapsed-time ranks are fixed across splits. These three pooled strata retain discharge-phase information. The primary seed-3 lower bound is -0.0001, the one nearest zero; a bootstrap-bound sign change alone would not establish robust superiority.
 
 ### Campaign paired AUROC — five splits and run-record holdout
 
@@ -49,7 +49,7 @@ Forest minus elapsed time; 95% basic paired shot-bootstrap intervals. Intervals 
 | 2018 | seed 4 | -0.012 [-0.041, 0.045] | -0.005 [-0.052, 0.080] | -0.014 [-0.084, 0.101] |
 | 2018 | run-record holdout | -0.049 [-0.073, -0.013] | -0.070 [-0.117, -0.010] | -0.057 [-0.109, 0.011] |
 
-Forest minus elapsed time; 95% basic paired shot-bootstrap intervals condition on fixed fitted predictions. High-beta: beta_N >= 0.8 times the shot's beta_N p95; above-proxy: beta_N/li > 4. Campaign 2014 forest high-beta AUROC is below chance on the reference split (0.311 [0.22, 0.41]); the scalar rules are near chance. Forest five-split high-beta range: 0.311–0.527; below elapsed time on every split in the conditional strata (point estimates; CI excludes zero on 2 of 5 seeds), while the primary differences in the first column are mixed in sign. Included 2018 run-record holdout CIs exclude zero: primary -0.049 [-0.073, -0.013]; high-beta -0.070 [-0.117, -0.010].
+Forest minus elapsed time; 95% basic paired shot-bootstrap intervals condition on fixed fitted predictions. High-beta: beta_N >= 0.8 times the shot's beta_N p95; above-proxy: beta_N/li > 4. Campaign 2014 forest high-beta AUROC on the reference split is below chance (0.311 [0.22, 0.41]); the scalar rules are near chance. Forest five-split high-beta range: 0.311–0.527. In 2014, 5 of 5 high-beta and 5 of 5 above-proxy point differences are negative, and the primary differences range from −0.047 to +0.025 (0 of 5 intervals exclude zero); in 2018, 0 of 5 split-seed primary intervals exclude zero. Run-record holdout, primary AUROC difference: 2014 +0.019 [−0.052, 0.096], 2018 −0.049 [−0.073, −0.013]; high-beta: 2014 −0.126 [−0.245, 0.005], 2018 −0.070 [−0.117, −0.010].
 
 ### Piccione-style primary scores — all models (reference split, seed 0)
 
@@ -68,6 +68,14 @@ Forest minus elapsed time; 95% basic paired shot-bootstrap intervals condition o
 | Elapsed time | 0.390 [0.333, 0.440] | 0.025 [0.019, 0.032] |
 | βN | 0.715 [0.641, 0.776] | 0.064 [0.043, 0.099] |
 | βN/li | 0.752 [0.688, 0.815] | 0.074 [0.052, 0.115] |
+
+### Rule baseline — rwm_candidates review screen (reference split, seed 0)
+
+| rule | primary AUROC (95% CI) | primary AUPRC (95% CI) | primary F1 | onsets warned | unlabelled shots with an alarm | primary slice calls |
+|---|---|---|---|---|---|---|
+| RWM screen | 0.500 [0.500, 0.500] | 0.084 [0.070, 0.102] | 0.000 | 0/48 | 36/132 (27%) | 0 |
+
+As a rule baseline the `rwm_candidates` screen scores primary AUROC 0.500, warns 0/48 onsets and alarms on 36/132 (27%) unlabelled comparison shots; it makes 0 calls on primary Hanson slices (62 Hanson calls in all, 0 before the first listed onset), so its AUROC is the no-information value, not a measured skill (`E#/configs/rwm-rule-rwm-candidates`, `E#/screen_audit`).
 
 ### Within-shot AUROC — primary and broad Hanson masks (reference split, seed 0)
 
@@ -253,7 +261,7 @@ Source: outputs/labeler/rwm/rotation_ablation.json. Change is no rotation minus 
 | run-record holdout | 3/4/23 | 6/1/23 | 8/48 | 0.167 [0.049, 0.309] | 0.014 [-0.025, 0.053] | 214 [140, 343] |
 | five-split point range | — | — | — | 0.125–0.271 | -0.002–0.057 | 135–356 |
 
-No improvement over the approximate rate-matched random-alarm reference was established: all five detection-difference intervals include zero. This does not establish equivalence. Warning medians condition on detected onsets; intervals condition on fixed fitted predictions. In the reference split, the beta_N rule warns 4/48 onsets and has detection minus reference 0.058 [0.014, 0.115]; its low detection coverage limits that result.
+No improvement over the approximate rate-matched random-alarm reference was established: all 6 detection-difference intervals include zero. This does not establish equivalence. Warning medians condition on detected onsets; intervals condition on fixed fitted predictions. In the reference split, the beta_N rule warns 4/48 onsets and has detection minus reference 0.058 [0.014, 0.115]; its low detection coverage limits that result.
 
 ### n=1 onset physics — actual onset, by campaign
 

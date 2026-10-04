@@ -10,7 +10,7 @@ import os
 import re
 from pathlib import Path
 
-from labeler.rwm import alarm
+from labeler.rwm import alarm, features
 from labeler.rwm.metrics import CONDITIONAL_KEYS
 from labeler.rwm.records import load_evaluation
 
@@ -79,113 +79,188 @@ def forest_runs(record):
     return {"0": config, **config["split_seeds"]}
 
 
-def signed(metric, digits=3, latex=False):
+def sci(metric, latex=False, plus=False):
     """Estimate and interval with true minus signs (math mode for LaTeX)."""
+    estimate = f"{metric['estimate']:+.3f}" if plus else f"{metric['estimate']:.3f}"
+    bounds = f"{metric['low']:.3f}, {metric['high']:.3f}"
     if latex:
-        return (
-            f"${metric['estimate']:.{digits}f}$ "
-            f"$[{metric['low']:.{digits}f}, {metric['high']:.{digits}f}]$"
-        )
-    return interval(metric, digits).replace("-", "−")
+        return f"${estimate}$ $[{bounds}]$"
+    return f"{estimate} [{bounds}]".replace("-", "−")
+
+
+def num(value, latex=False, plus=False):
+    text = f"{value:+.3f}" if plus else f"{value:.3f}"
+    return f"${text}$" if latex else text.replace("-", "−")
+
+
+def texify(text):
+    """Plain wording to LaTeX text (numbers are already in math mode)."""
+    return (
+        text.replace("βN/li", r"$\beta_N/l_i$")
+        .replace("βN", r"$\beta_N$")
+        .replace("high-β", r"high-$\beta$")
+        .replace("`rwm-brf`", r"\texttt{rwm-brf}")
+        .replace("–", "--")
+        .replace("%", r"\%")
+    )
+
+
+RULES = ("rwm-rule-elapsed-time", "rwm-rule-betan", "rwm-rule-betan-over-li")
+
+
+def pair_facts(pair, n):
+    """Seed-level facts of one forest-minus-rule phase comparison."""
+    estimates = [row["estimate"] for row in pair["by_seed"].values()]
+    return {
+        "min": pair["min"],
+        "max": pair["max"],
+        "positive": sum(value > 0 for value in estimates),
+        "excluding_zero": pair["cis_excluding_zero"],
+        "above_zero": sum(row["low"] > 0 for row in pair["by_seed"].values()),
+        "holdout": pair["holdout"],
+        "n": n,
+    }
 
 
 def headline_facts(record):
-    """Every number and sign behind the headline, checked against the JSON.
+    """Every number behind the headline, read from the JSON; nothing is asserted.
 
-    The headline claims are asserted here, so the prose cannot be regenerated
-    from a record that no longer supports them.
+    The wording is chosen from these values, so a rerun that changes the outcome
+    changes the sentence instead of failing the build.
     """
     summary = record["split_sensitivity"]
     seeds = [str(seed) for seed in summary["seeds"]]
-    pairs = summary["paired_phase"]
-    time, beta = pairs["rwm-rule-elapsed-time"], pairs["rwm-rule-betan-over-li"]
-    within_pair = record["paired"]["rwm-brf - rwm-rule-betan-over-li"][
-        "within_shot_auroc"
-    ]
-    within = within_pair["primary"]
+    n = len(seeds)
+    configs, paired = record["configs"], record["paired"]
+    time = pair_facts(summary["paired_phase"]["rwm-rule-elapsed-time"], n)
+    beta = pair_facts(summary["paired_phase"]["rwm-rule-betan-over-li"], n)
+    holdout = record["leave_one_run_record_out"]
+    campaigns = holdout["paired_time_by_campaign"]
     widths = {
-        name: record["configs"][name]["phase_bin_width_sensitivity"]
+        name: configs[name]["phase_bin_width_sensitivity"]
         for name in ("rwm-brf", "rwm-rule-elapsed-time")
     }
-    margin_200 = widths["rwm-brf"]["200"] - widths["rwm-rule-elapsed-time"]["200"]
-    holdout = record["leave_one_run_record_out"]["paired_time_by_campaign"]["2018"][
-        "slice_auroc"
-    ]
     campaign_2014 = summary["paired_time_by_campaign"]["2014"]
-    strata = ("high_beta_auroc", "above_proxy_auroc")
     primary_2014 = [campaign_2014[s]["slice_auroc"]["estimate"] for s in seeds]
-    checks = {
-        "forest is below beta_N/l_i within shot": within["high"] < 0,
-        "no beta_N/l_i phase interval excludes zero": beta["cis_excluding_zero"] == 0,
-        "elapsed-time phase interval excludes zero on a minority of splits": (
-            0 < time["cis_excluding_zero"] < len(seeds) / 2
-        ),
-        "200 ms margin over elapsed time is negative": margin_200 < 0,
-        "2018 run-record holdout interval is below zero": holdout["high"] < 0,
-        "2014 conditional differences are negative on every split": all(
-            campaign_2014[s][k]["estimate"] < 0 for s in seeds for k in strata
-        ),
+    within = {
+        name: paired[f"rwm-brf - {name}"]["within_shot_auroc"] for name in RULES
     }
-    failed = [name for name, ok in checks.items() if not ok]
-    if failed:
-        raise ValueError(
-            "headline no longer supported by the record: " + "; ".join(failed)
-        )
     return {
-        "n": len(seeds),
-        "within": within,
-        "within_broad": within_pair["broad"],
+        "n": n,
+        "bin_ms": record["protocol"]["phase_bin_ms"],
         "phase_range": summary["phase_controlled_auroc"],
         "lowest_seed": summary["phase_controlled_auroc"]["lowest_seed"],
-        "time_cis": time["cis_excluding_zero"],
-        "beta_cis": beta["cis_excluding_zero"],
-        "margin_200": margin_200,
-        "holdout_2018": holdout,
+        "forest_phase": configs["rwm-brf"]["phase_controlled_auroc"],
+        "time_phase": configs["rwm-rule-elapsed-time"]["phase_controlled_auroc"],
+        "beta_phase": configs["rwm-rule-betan-over-li"]["phase_controlled_auroc"],
+        "time": time,
+        "beta": beta,
+        # Elapsed-time and βN/li margins above zero on most splits would be skill.
+        "skill_beyond_phase": min(time["above_zero"], beta["above_zero"]) > n / 2,
+        "within": {name: row["primary"] for name, row in within.items()},
+        "within_broad": {name: row["broad"] for name, row in within.items()},
+        "elapsed_within": configs["rwm-rule-elapsed-time"]["within_shot_auroc"][
+            "primary"
+        ]["mean"],
+        "holdout_campaign": {c: campaigns[c]["slice_auroc"] for c in ("2014", "2018")},
+        "holdout_pooled": holdout["paired_time"]["slice_auroc"],
+        "margin_200": widths["rwm-brf"]["200"] - widths["rwm-rule-elapsed-time"]["200"],
         "primary_2014": (min(primary_2014), max(primary_2014)),
-        "bin_ms": record["protocol"]["phase_bin_ms"],
-        "claims_checked": sorted(checks),
     }
 
 
 def headline(record, latex=False):
-    """The result in one sentence; every place that states a result leads with it."""
+    """The verdict in one sentence; the balanced numbers follow it."""
     f = headline_facts(record)
     text = (
-        "No demonstrated skill beyond elapsed time or βN/li under phase control; "
-        f"below βN/li within shot ({signed(f['within'], latex=latex)})."
+        "Skill beyond elapsed time and βN/li under phase control on most splits"
+        if f["skill_beyond_phase"]
+        else "No demonstrated skill beyond elapsed time or βN/li under phase control"
     )
-    return text.replace("βN/li", r"$\beta_N/l_i$") if latex else text
+    return texify(text) if latex else text
 
 
-def split_statement(record, latex=False):
-    """The qualified split-level statement that replaces 'above the floor everywhere'."""
+def balanced_statement(record, latex=False):
+    """The result in one clause per metric: phase, within shot and holdout.
+
+    Every figure is read from the record, and each metric reports all of its
+    comparators, so the sentence does not select the favourable one.
+    """
     f = headline_facts(record)
-    n = f["n"]
-    low, high = f["primary_2014"]
-
-    def num(value, plus=False):
-        text = f"{value:+.3f}" if plus else f"{value:.3f}"
-        return f"${text}$" if latex else text.replace("-", "−")
-
-    text = (
-        f"Phase-controlled AUROC {split_range(f['phase_range'], 2)} over {n} splits "
-        f"in {f['bin_ms']:g} ms bins only: the width was fixed after an earlier run "
-        "with 200 ms bins, where seed 0's forest-minus-elapsed-time margin was "
-        f"{num(f['margin_200'])}. The forest-minus-elapsed-time interval excludes "
-        f"zero on {f['time_cis']} of {n} splits and the forest-minus-βN/li interval "
-        f"on {f['beta_cis']} of {n}. In 2014 the forest-minus-elapsed-time "
-        "difference is negative on every split in both conditional strata "
-        "(high-β and above-proxy) and ranges from "
-        f"{num(low, True)} to {num(high, True)} in primary AUROC; the 2018 "
-        f"run-record holdout gives {signed(f['holdout_2018'], latex=latex)} in "
-        "primary AUROC."
-    )
-    if latex:
-        text = (
-            text.replace("βN/li", r"$\beta_N/l_i$")
-            .replace("high-β", r"high-$\beta$")
-            .replace("–", "--")
+    n, time = f["n"], f["time"]
+    holdout_up = time["holdout"]["estimate"] > 0
+    if time["positive"] == n and holdout_up:
+        where = f"positive on {n}/{n} seeds and the holdout"
+    else:
+        where = (
+            f"positive on {time['positive']}/{n} seeds and "
+            f"{'positive' if holdout_up else 'negative'} on the holdout"
         )
+    weakest = (
+        "seed 0 (the forest's weakest split)"
+        if f["lowest_seed"] == "0"
+        else f"seed 0 (the forest's weakest split is seed {f['lowest_seed']})"
+    )
+    within = f["within"]
+    holdouts = f["holdout_campaign"]
+
+    def m(value, plus=False):
+        return num(value, latex, plus)
+
+    text = (
+        f"{headline(record)}; `rwm-brf` is an equilibrium-scalar timing baseline "
+        "and no input senses the RWM. "
+        f"Phase-controlled AUROC, {weakest}: forest {sci(f['forest_phase'], latex)}, "
+        f"elapsed time {m(f['time_phase']['estimate'])}, "
+        f"βN/li {m(f['beta_phase']['estimate'])}. "
+        f"Over {n} seeds the forest's margin over elapsed time is "
+        f"{m(time['min'], True)} to {m(time['max'], True)}, {where}, with an "
+        f"interval excluding zero on {time['excluding_zero']}/{n}. "
+        "Within shot, forest minus elapsed time, βN and βN/li is "
+        f"{sci(within['rwm-rule-elapsed-time'], latex)}, "
+        f"{sci(within['rwm-rule-betan'], latex)} and "
+        f"{sci(within['rwm-rule-betan-over-li'], latex)}; primary-mask "
+        "within-shot ranking is dominated by phase (elapsed time "
+        f"{m(f['elapsed_within'])}). "
+        "Run-record holdout, forest minus elapsed time (primary AUROC): "
+        f"2018 {sci(holdouts['2018'], latex, True)}, "
+        f"2014 {sci(holdouts['2014'], latex, True)}, "
+        f"pooled {sci(f['holdout_pooled'], latex, True)}."
+    )
+    return texify(text) if latex else text
+
+
+def brief_statement(record):
+    """The balanced result in one README clause: all metrics, no selected one."""
+    f = headline_facts(record)
+    time, within, holdouts = f["time"], f["within"], f["holdout_campaign"]
+    head = headline(record)
+    return (
+        head[0].lower()
+        + head[1:]
+        + f"; phase-controlled margin over elapsed time "
+        f"{num(time['min'], plus=True)} to {num(time['max'], plus=True)} over "
+        f"{f['n']} seeds (interval excluding zero on {time['excluding_zero']}/"
+        f"{f['n']}); within shot, forest minus elapsed time, βN and βN/li "
+        f"{num(within['rwm-rule-elapsed-time']['estimate'], plus=True)}, "
+        f"{num(within['rwm-rule-betan']['estimate'], plus=True)} and "
+        f"{num(within['rwm-rule-betan-over-li']['estimate'], plus=True)}, a "
+        "ranking dominated by phase (elapsed time "
+        f"{num(f['elapsed_within'])}); run-record holdout 2018 "
+        f"{num(holdouts['2018']['estimate'], plus=True)}, 2014 "
+        f"{num(holdouts['2014']['estimate'], plus=True)}; equilibrium-scalar "
+        "timing baseline, no input senses the RWM"
+    )
+
+
+def bin_choice(record, latex=False):
+    """The post-hoc bin-width disclosure, with the 200 ms margin from the record."""
+    f = headline_facts(record)
+    text = (
+        f"The {f['bin_ms']:g} ms bin width was chosen after an earlier run with "
+        f"200 ms bins, where seed 0's forest-minus-elapsed-time margin was "
+        f"{num(f['margin_200'], latex)}; it is a post-hoc choice."
+    )
     return text
 
 
@@ -245,7 +320,9 @@ def split_scores(record):
 def split_pairs(record):
     summary = record["split_sensitivity"]
     keys = ("slice_auroc", "high_beta_auroc", "above_proxy_auroc")
-    borderline = summary["paired_time_by_seed"]["3"]["slice_auroc"]
+    by_seed = summary["paired_time_by_seed"]
+    near_zero = min(by_seed, key=lambda s: abs(by_seed[s]["slice_auroc"]["low"]))
+    borderline = by_seed[near_zero]["slice_auroc"]
     return table(
         [
             "fold seed",
@@ -267,11 +344,43 @@ def split_pairs(record):
         "\n\nForest minus elapsed time; 95% basic paired shot-bootstrap intervals. "
         "Intervals condition on fixed fitted predictions; elapsed-time ranks "
         "are fixed across splits. These three pooled strata retain "
-        "discharge-phase information. The primary seed-3 lower bound is "
-        f"{borderline['low']:.4f}, borderline near zero; a bootstrap-bound "
+        f"discharge-phase information. The primary seed-{near_zero} lower bound "
+        f"is {borderline['low']:.4f}, the one nearest zero; a bootstrap-bound "
         "sign change alone would not "
         "establish robust superiority."
     )
+
+
+def campaign_notes(record, latex=False):
+    """Computed campaign wording: split-seed signs, intervals and both holdouts."""
+    summary = record["split_sensitivity"]["paired_time_by_campaign"]
+    holdout = record["leave_one_run_record_out"]["paired_time_by_campaign"]
+    seeds = list(summary["2014"])
+    n = len(seeds)
+
+    def negative(campaign, key):
+        return sum(summary[campaign][s][key]["estimate"] < 0 for s in seeds)
+
+    def excluding(campaign, key):
+        return sum(
+            m[key]["low"] > 0 or m[key]["high"] < 0 for m in summary[campaign].values()
+        )
+
+    low, high = headline_facts(record)["primary_2014"]
+    text = (
+        f"In 2014, {negative('2014', 'high_beta_auroc')} of {n} high-β and "
+        f"{negative('2014', 'above_proxy_auroc')} of {n} above-proxy point "
+        "differences are negative, and the primary differences range from "
+        f"{num(low, latex, True)} to {num(high, latex, True)} "
+        f"({excluding('2014', 'slice_auroc')} of {n} intervals exclude zero); in "
+        f"2018, {excluding('2018', 'slice_auroc')} of {n} split-seed primary "
+        "intervals exclude zero. Run-record holdout, primary AUROC difference: "
+        f"2014 {sci(holdout['2014']['slice_auroc'], latex, True)}, "
+        f"2018 {sci(holdout['2018']['slice_auroc'], latex, True)}; high-β: "
+        f"2014 {sci(holdout['2014']['high_beta_auroc'], latex, True)}, "
+        f"2018 {sci(holdout['2018']['high_beta_auroc'], latex, True)}."
+    )
+    return texify(text) if latex else text.replace("high-β", "high-beta")
 
 
 def campaign_pairs(record):
@@ -307,26 +416,12 @@ def campaign_pairs(record):
         "\n\nForest minus elapsed time; 95% basic paired shot-bootstrap intervals "
         "condition on fixed fitted predictions. High-beta: beta_N >= 0.8 times "
         "the shot's beta_N p95; above-proxy: beta_N/li > 4. Campaign 2014 "
-        "forest high-beta AUROC is below chance on the reference split "
+        "forest high-beta AUROC on the reference split is "
+        f"{'below chance ' if reference['high'] < 0.5 else ''}"
         f"({reference['estimate']:.3f} [{reference['low']:.2f}, "
         f"{reference['high']:.2f}]); the scalar rules are near chance. "
-        f"Forest five-split high-beta range: {split_range(ranges, 3)}; below "
-        "elapsed time on every split in the conditional strata (point estimates; "
-        "CI excludes zero on 2 of 5 seeds), while the primary differences in the "
-        "first column are mixed in sign. "
-        "Included 2018 run-record holdout CIs exclude zero: primary "
-        + interval(
-            record["leave_one_run_record_out"]["paired_time_by_campaign"]["2018"][
-                "slice_auroc"
-            ]
-        )
-        + "; high-beta "
-        + interval(
-            record["leave_one_run_record_out"]["paired_time_by_campaign"]["2018"][
-                "high_beta_auroc"
-            ]
-        )
-        + "."
+        f"Forest five-split high-beta range: {split_range(ranges, 3)}. "
+        + campaign_notes(record)
     )
 
 
@@ -429,6 +524,31 @@ def alarm_tables(configs):
     }
 
 
+def alarm_reference_statement(record):
+    """Detection minus the random-alarm reference: what the intervals allow."""
+    intervals = [
+        run["metrics"]["detection_minus_uniform_reference"]
+        for run in forest_runs(record).values()
+    ]
+    intervals.append(
+        record["leave_one_run_record_out"]["metrics"][
+            "detection_minus_uniform_reference"
+        ]
+    )
+    excluding = sum(m["low"] > 0 or m["high"] < 0 for m in intervals)
+    if excluding == 0:
+        return (
+            "No improvement over the approximate rate-matched random-alarm "
+            f"reference was established: all {len(intervals)} detection-difference "
+            "intervals include zero. This does not establish equivalence."
+        )
+    return (
+        f"The detection-minus-random-reference interval excludes zero on {excluding} "
+        f"of {len(intervals)} evaluations (signs in the table); the reference is "
+        "approximate and this does not establish onset-specific skill."
+    )
+
+
 def forest_alarm_splits(record):
     keys = (
         "onset_detection_rate",
@@ -488,9 +608,9 @@ def forest_alarm_splits(record):
         ],
         rows,
     ) + (
-        "\n\nNo improvement over the approximate rate-matched random-alarm "
-        "reference was established: all five detection-difference intervals "
-        "include zero. This does not establish equivalence. Warning medians "
+        "\n\n"
+        + alarm_reference_statement(record)
+        + " Warning medians "
         "condition on detected onsets; intervals condition on fixed fitted "
         "predictions. In the reference split, the beta_N rule warns "
         f"{betan_count['onsets_warned']}/{betan_count['target_onsets']} onsets "
@@ -760,32 +880,56 @@ def alarm_sensitivity(config):
     )
 
 
-def latex_cell(m, stacked=False, bound_digits=2, digits=3):
+def rounding_note(summary):
+    """Say when the primary lower bound nearest zero rounds to zero."""
+    by_seed = summary["paired_time_by_seed"]
+    seed = min(by_seed, key=lambda s: abs(by_seed[s]["slice_auroc"]["low"]))
+    low = by_seed[seed]["slice_auroc"]["low"]
+    if round(low, 3) != 0:
+        return f"The primary seed-{seed} lower bound is ${low:.3f}$."
+    return (
+        f"The primary seed-{seed} lower bound rounds to ${'-' if low < 0 else ''}"
+        f"0.000$; its unrounded value is {'negative' if low < 0 else 'positive'}."
+    )
+
+
+def stack(top, bottom=None, align=""):
+    """Two-line cell (value over interval); a hidden interval keeps rows aligned."""
+    position = f"[{align}]" if align else ""
+    hidden = r"\phantom{{\scriptsize $[\,]$}}"
+    return r"\shortstack" + position + "{" + top + r"\\" + (bottom or hidden) + "}"
+
+
+def latex_parts(m, bound_digits=2, digits=3):
+    """The point estimate and, when it has one, its bracketed interval."""
     if m["estimate"] is None:
-        return "--"
+        return "--", None
     point = f"${m['estimate']:.{digits}f}$"
     if m["low"] is None or m["high"] is None:
-        return point
+        return point, None
     bounds = (
         r"{\scriptsize $["
         + f"{m['low']:.{bound_digits}f}, {m['high']:.{bound_digits}f}]"
         + "$}"
     )
+    return point, bounds
+
+
+def latex_cell(m, stacked=False, bound_digits=2, digits=3):
+    point, bounds = latex_parts(m, bound_digits, digits)
+    if bounds is None:
+        return point
     if stacked:
-        return r"\shortstack{" + point + r"\\" + bounds + "}"
+        return stack(point, bounds)
     return point + " " + bounds
 
 
 def latex_incidence(numerator, denominator, metric):
+    """Count and rate on one line, the interval beneath."""
     if not denominator:
         return "--"
-    return (
-        r"\shortstack{"
-        + f"{numerator}/{denominator}"
-        + r"\\"
-        + latex_cell(metric, stacked=True, bound_digits=3)
-        + "}"
-    )
+    point, bounds = latex_parts(metric, bound_digits=3)
+    return stack(f"{numerator}/{denominator} ({point})", bounds)
 
 
 def phase_width_table(record):
@@ -835,12 +979,98 @@ def finite_draw_summary(replicates, *records):
     }
 
 
+CANDIDATES = "rwm-rule-rwm-candidates"
+
+
+def candidate_facts(record):
+    """The review screen scored as a rule, read from the evaluation record."""
+    config, audit = record["configs"][CANDIDATES], record["screen_audit"]
+    n, m = config["counts"], config["metrics"]
+    return {
+        "auroc": m["slice_auroc"],
+        "warned": n["onsets_warned"],
+        "onsets": n["target_onsets"],
+        "alarmed": n["comparison_shots_with_an_alarm"],
+        "comparison": n["comparison_shots"],
+        "incidence": m["comparison_alarm_incidence"]["estimate"],
+        "primary_calls": audit["primary_calls"],
+        "hanson_calls": audit["hanson_calls"],
+        "calls_before_first_onset": audit["calls_before_first_listed_onset"],
+    }
+
+
+def candidate_line(record):
+    """One line for the doc and tables.md: the screen as a rule baseline."""
+    f = candidate_facts(record)
+    return (
+        "As a rule baseline the `rwm_candidates` screen scores primary AUROC "
+        f"{f['auroc']['estimate']:.3f}, warns {f['warned']}/{f['onsets']} onsets "
+        f"and alarms on {f['alarmed']}/{f['comparison']} ({f['incidence']:.0%}) "
+        f"unlabelled comparison shots; it makes {f['primary_calls']} calls on "
+        f"primary Hanson slices ({f['hanson_calls']} Hanson calls in all, "
+        f"{f['calls_before_first_onset']} before the first listed onset), so its "
+        "AUROC is the no-information value, not a measured skill "
+        f"(`E#/configs/{CANDIDATES}`, `E#/screen_audit`)."
+    )
+
+
+def candidate_table(record):
+    config = record["configs"][CANDIDATES]
+    n, m = config["counts"], config["metrics"]
+    return table(
+        [
+            "rule",
+            "primary AUROC (95% CI)",
+            "primary AUPRC (95% CI)",
+            "primary F1",
+            "onsets warned",
+            "unlabelled shots with an alarm",
+            "primary slice calls",
+        ],
+        [
+            [
+                CANDIDATES,
+                interval(m["slice_auroc"]),
+                interval(m["slice_auprc"]),
+                point(m["slice_f1"]["estimate"]),
+                f"{n['onsets_warned']}/{n['target_onsets']}",
+                (
+                    f"{n['comparison_shots_with_an_alarm']}/{n['comparison_shots']} "
+                    f"({m['comparison_alarm_incidence']['estimate']:.0%})"
+                ),
+                str(record["screen_audit"]["primary_calls"]),
+            ]
+        ],
+    ) + "\n\n" + candidate_line(record)
+
+
+def absent_collapse_text(shots):
+    """Collapses inside category-0 spans, flagged rather than re-categorised."""
+    found = shots["assumed_absent_collapses"]
+    flagged = found["shots_with_a_collapse"]
+    cached = len(found["neutral_beam_power_cached_shots"])
+    cached_text = "none" if cached == 0 else str(cached)
+    return (
+        f"**Collapses inside category 0.** A βN fall of at least "
+        f"{features.COLLAPSE_DROP:.0%} within {features.COLLAPSE_WITHIN_MS:g} ms, "
+        f"from βN of at least {features.COLLAPSE_MIN_BETAN:g}, starts inside the "
+        f"assumed-absent span of {len(flagged)} of {found['hanson_shots_scanned']} "
+        f"Hanson shots ({', '.join(str(s) for s in flagged)}; "
+        f"{len(found['events'])} events, `S#/assumed_absent_collapses`). Neutral-beam "
+        f"power is cached for {cached_text} of "
+        "them, so the cause (a beam trip, a mode, a disruption precursor) is not "
+        "established. Each such span keeps category 0 and carries "
+        "`attrs.unexplained_beta_collapse`; no span was re-categorised."
+    )
+
+
 def abstract_text(record, shots, growth):
     """Five plain sentences: task, shots, labels, result, limitation."""
     hanson, windows = shots["hanson"], shots["windows"]
     balance = shots["comparison"]["balance"]
     count = record["configs"]["rwm-brf"]["counts"]
     f = headline_facts(record)
+    within = f["within"]
     return (
         "1. **Task.** From equilibrium scalars on a 10 ms grid, say whether a "
         "resistive wall mode (RWM) onset comes within the next 100 ms in a DIII-D "
@@ -856,10 +1086,14 @@ def abstract_text(record, shots, growth):
         "4 unassessed; no verified absence) and forecast labels of "
         f"{count['positive_slices']} positive and {count['negative_slices']:,} "
         "assumed-negative 10 ms slices.\n"
-        "4. **Result.** A balanced random forest after Piccione 2022 "
-        "(`rwm-brf`) shows no demonstrated skill beyond elapsed time or βN/li "
-        "under phase control and sits below βN/li within shot "
-        f"({signed(f['within'])}).\n"
+        f"4. **Result.** {headline(record)}: a balanced random forest after "
+        "Piccione 2022 (`rwm-brf`) has phase-controlled AUROC "
+        f"{interval(f['forest_phase'])} against "
+        f"{point(f['time_phase']['estimate'])} for elapsed time and "
+        f"{point(f['beta_phase']['estimate'])} for βN/li on seed 0, and within "
+        "shot, forest minus elapsed time, βN and βN/li is "
+        f"{sci(within['rwm-rule-elapsed-time'])}, {sci(within['rwm-rule-betan'])} "
+        f"and {sci(within['rwm-rule-betan-over-li'])}.\n"
         "5. **Limitation.** No input senses the RWM, so `rwm-brf` is an "
         "equilibrium-scalar timing baseline, not an RWM predictor; the next step "
         "is a fetch of the radial-field sensor with confirmed semantics."
@@ -923,10 +1157,10 @@ def physics_text(growth, shots, data_audit):
         by_role[f"{role}_2014"]["shots"] for role in ("hanson", "comparison")
     )
     low, high = audit["dusbradial_corrupted_shot_range"]
-    onset, control = (
-        growth["max_growth_per_s_n1"],
-        growth["control_max_growth_per_s_n1"],
-    )
+    onset = growth["max_growth_per_s_n1"]
+    rank = growth["slope_rank_test_n1"]
+    pre, every = rank["pre_onset_controls"], rank["all_controls"]
+    late_share = rank["controls_after_first_onset"] / every["n_controls"]
     traces = data_audit["operations_n1_probe"]["traces"]
 
     def probe(shot, name):
@@ -947,11 +1181,16 @@ def physics_text(growth, shots, data_audit):
         f"{by_role['hanson_2014']['shots']} Hanson) and flagged corrupted for "
         f"shots {low}–{high}, which covers all 2018 Hanson shots "
         "(`S#/input_audit`).\n"
-        f"- N1RMS shows no growth at onsets: the median maximum log-slope is "
-        f"**{onset['median']:.1f}/s at {onset['n']} n=1 onsets versus "
-        f"{control['median']:.1f}/s at {growth['controls']['n']:,} controls** "
-        "under an identical search (`G#/{max_growth_per_s_n1,"
-        "control_max_growth_per_s_n1,controls}`).\n"
+        "- N1RMS shows no detectably larger maximum slope at onsets: the median "
+        f"maximum log-slope is **{onset['median']:.1f}/s at {onset['n']} n=1 "
+        f"onsets versus {pre['control_median']:.1f}/s at {pre['n_controls']:,} "
+        "controls before the shot's first onset** under an identical search "
+        f"(rank AUC {pre['rank_auc']:.3f}, Mann-Whitney p "
+        f"{pre['mannwhitney_p']:.2f}). {late_share:.0%} of all controls fall "
+        "after the shot's first onset, so the pre-onset controls are the "
+        f"comparison; against all {every['n_controls']:,} controls the median is "
+        f"{every['control_median']:.1f}/s (rank AUC {every['rank_auc']:.3f}, p "
+        f"{every['mannwhitney_p']:.2f}; `G#/slope_rank_test_n1`).\n"
         "- The OPERATIONS n=1 amplitudes (CN1BAMP, ILN1BAMP, IUN1BAMP) are "
         "applied-field amplitudes, not a plasma response. Flat-top medians (Gauss, "
         "`D#/operations_n1_probe`): 2014 shots 156785 and 158021 have I-coil "
@@ -965,10 +1204,11 @@ def physics_text(growth, shots, data_audit):
         "flat-top samples within 5% of the median) and I-coil "
         f"{i3['median']:.2f}/{u3['median']:.2f} G. Their semantics are "
         "unverified (`sensor_probe.json`), and none was promoted to an input.\n\n"
-        "A near-constant applied n=1 field in 2018 suggests active n=1 control "
-        "there, which does not establish but would explain a campaign dependence "
-        "and is a physical reason to stratify every result by campaign (the "
-        "campaign tables do). N1RMS cannot distinguish an RWM from a tearing mode "
+        "The near-flat 2018 C-coil n=1 plateau points to a pre-programmed or "
+        "static applied field (for example error-field correction) rather than "
+        "active feedback; this does not establish the cause, and it is a "
+        "physical reason to stratify every result by campaign (the campaign "
+        "tables do). N1RMS cannot distinguish an RWM from a tearing mode "
         "or an applied-field response. The forest can therefore only learn the "
         "βN/li-and-time trajectory of a Hanson shot, and its labels cannot be "
         "checked against any input. **Next step:** fetch the radial-field sensor "
@@ -1023,9 +1263,12 @@ def audit_text(record, comparison, rotation, data_audit):
         f"{outlier['peak_ip_ma']:.2f} MA, so the 50%-of-peak crossing "
         f"({outlier['half_peak_ip_ma']:.2f} MA) falls before t = 0; the first "
         f"|Ip| ≥ 0.5 MA sample is at {first_text} ms. "
-        "It is a fast ramp on a low-current shot, not a corrupted time base. "
-        "Comparison shots enter only alarm incidence, the interval export and the "
-        "comparison-negative sensitivity's training (`D#/outliers`).\n"
+        "This is consistent with a fast ramp on a low-current shot rather than "
+        "a corrupted time base, but a current this high this early is unusual "
+        "for DIII-D timing, so a time-base offset is not excluded; the shot is "
+        "flagged, not corrected. Comparison shots enter only alarm incidence, "
+        "the interval export and the comparison-negative sensitivity's training "
+        "(`D#/outliers`).\n"
         "- **Finite bootstrap draws:** every interval records its finite draws "
         f"(`n_finite`) and a build fails below 90% of {replicates:,}. Over "
         f"{finite['intervals']:,} intervals in E, C and A the smallest finite share "
@@ -1114,30 +1357,24 @@ def write_documentation(record, comparison):
     )
     chunks = {
         "lead": (
-            f"**{headline(record)}** The within-shot difference is on the primary "
-            "mask; on the broad mask it is "
-            f"{signed(headline_facts(record)['within_broad'])}. `rwm-brf` is an "
-            "equilibrium-scalar timing "
-            "baseline on Hanson's onset list, not an RWM predictor: no input "
-            "senses the RWM (see *What the inputs sense*). "
-            + split_statement(record)
-            + " Reference split (seed 0): `rwm-brf` "
-            f"**{interval(forest['phase_controlled_auroc'])}**, elapsed time "
-            f"**{interval(elapsed['phase_controlled_auroc'])}** (the residual-phase "
-            f"floor), in **{protocol['phase_bin_ms']:g} ms bins** with at least "
-            f"**{protocol['phase_min_slices']} slices per bin**; pooled primary "
-            f"AUROC **{interval(forest['metrics']['slice_auroc'])}** is "
-            "phase-confounded. Sources: "
-            "`E#/split_sensitivity/{phase_controlled_auroc,paired_phase,"
-            "paired_time_by_campaign}`, `E#/paired/*/within_shot_auroc`, "
-            "`E#/configs/*/phase_bin_width_sensitivity`, "
-            "`E#/leave_one_run_record_out/paired_time_by_campaign`; E is defined below."
+            balanced_statement(record)
+            + " Sources: `E#/{split_sensitivity,paired,leave_one_run_record_out}`."
         ),
         "abstract": abstract_text(record, shots_record, growth_record),
         "glossary": glossary_text(record),
         "physics": physics_text(growth_record, shots_record, data_audit),
         "audit": audit_text(record, comparison, rotation, data_audit),
-        "phase": table(
+        "phase": (
+            f"Pooled primary AUROC on the reference split is "
+            f"{interval(forest['metrics']['slice_auroc'])} for the forest and "
+            f"{interval(elapsed['metrics']['slice_auroc'])} for elapsed time; both "
+            "are phase-confounded, so neither is a skill measure. Phase "
+            f"control uses {protocol['phase_bin_ms']:g} ms bins with at least "
+            f"{protocol['phase_min_slices']} slices per bin. "
+            + bin_choice(record)
+            + "\n\n"
+        )
+        + table(
             ["Model / rule", "Phase AUROC (95% CI)", "Forest minus rule (95% CI)"],
             phase_rows,
         )
@@ -1155,8 +1392,10 @@ def write_documentation(record, comparison):
             f"{configs['rwm-rule-rwm-candidates']['counts']['comparison_shots_with_an_alarm']}/"
             f"{configs['rwm-rule-rwm-candidates']['counts']['comparison_shots']} "
             "unlabelled comparisons, so it is excluded from forecasting tables "
-            "(`E#/screen_audit` and that screen's `counts`)."
+            "(`E#/screen_audit` and that screen's `counts`). "
+            + candidate_line(record)
         ),
+        "absent_collapses": absent_collapse_text(shots_record),
     }
     audit = record["forecast_label_audit"]
     missing, rotation = audit["efit_missing"], audit["rotation_raw"]["rot_core_khz"]
@@ -1226,16 +1465,24 @@ def write_documentation(record, comparison):
     doc.write_text(body)
     readme = REPO / "data/events/resistive_wall_mode/README.md"
     clause = {
-        "rwm-brf": headline(record)[0].lower()
-        + headline(record)[1:].rstrip(".")
-        + "; an equilibrium-scalar timing baseline, no input senses the RWM",
+        "rwm-brf": brief_statement(record),
         "rwm-rule-elapsed-time": "its phase-controlled AUROC is the residual-phase "
         "floor",
         "rwm-rule-betan": "single-scalar rule, not an RWM sensor",
         "rwm-rule-betan-over-li": "single-scalar rule, not an RWM sensor",
     }
     model_lines = []
-    for name in NAMES:
+    screen = candidate_facts(record)
+    clause[CANDIDATES] = (
+        "retrospective review-editor screen (n=1 RMS above the flat-top median "
+        "plus 6 MAD, βN > 4 li, at least 10 ms) with "
+        f"{screen['primary_calls']} calls on primary Hanson slices, so its AUROC "
+        f"is the no-information value; warns {screen['warned']}/{screen['onsets']} "
+        f"onsets and alarms on {screen['alarmed']}/{screen['comparison']} "
+        f"({screen['incidence']:.0%}) unlabelled comparison shots; a review "
+        "aid, not a forecast comparator"
+    )
+    for name in (*NAMES, CANDIDATES):
         config = configs[name]
         model_lines.append(
             f"- {name} | 2026_10_03 | Phase-controlled AUROC: "
@@ -1248,11 +1495,13 @@ def write_documentation(record, comparison):
     models = (
         "## Models\n**stable**: none\n\n**latest**: rwm-brf\n\n**all**:\n\n"
         + "\n".join(model_lines)
+        + "\n\n"
+        + balanced_statement(record)
         + "\n\nReference split (seed 0), Hanson primary forecasts, assumed "
         f"negatives, {protocol['phase_bin_ms']:g} ms phase bins with at least "
         f"{protocol['phase_min_slices']} slices; intervals are exploratory 95% "
-        "shot-bootstrap intervals. Definitions, the split statement and the "
-        "sensitivities are in [protocol and results](../../../docs/labeler/"
+        "shot-bootstrap intervals. Definitions, the split sensitivities and the "
+        "post-hoc bin choice are in [protocol and results](../../../docs/labeler/"
         "rwm_baseline.md).\n\n"
     )
     body, count = re.subn(
@@ -1332,11 +1581,11 @@ def write_latex(record, out_dir):
     protocol = record["protocol"]
     n = configs["rwm-brf"]["counts"]
     caption = (
-        headline(record, latex=True)
-        + r" Equilibrium-scalar timing baseline on Hanson's onset list with "
-        "assumed negatives; no input senses the RWM. "
-        + split_statement(record, latex=True)
-        + " Phase control compares pairs within campaign and "
+        balanced_statement(record, latex=True)
+        + " "
+        + bin_choice(record, latex=True)
+        + " Labels come from Hanson's onset list, with assumed negatives. "
+        "Phase control compares pairs within campaign and "
         f"{protocol['phase_bin_ms']:g} ms bins "
         f"(at least {protocol['phase_min_slices']} slices); elapsed time measures "
         r"the residual-phase floor. Primary negatives end at the last target "
@@ -1374,19 +1623,19 @@ def write_latex(record, out_dir):
 def write_compact_latex(record, out_dir):
     """The paper's row group: forest, elapsed time and βN/li, at column width."""
     configs, protocol = record["configs"], record["protocol"]
-    facts = headline_facts(record)
     keys = ("slice_auroc", "slice_auprc", "slice_f1")
     lines = [
         r"\begin{table}[t]",
         r"\centering",
         r"\small",
-        r"\setlength{\tabcolsep}{2pt}",
-        r"\begin{tabular}{@{}lcccc@{}}",
+        r"\setlength{\tabcolsep}{1pt}",
+        r"\begin{tabular}{@{}lccccc@{}}",
         r"\toprule",
-        r"\multicolumn{5}{@{}l}{RWM, DIII-D (assumed negatives)} \\",
+        r"\multicolumn{6}{@{}l}{RWM, DIII-D (assumed negatives)} \\",
         r"\midrule",
         (
             r"Model / rule & \shortstack{Phase-\\controlled\\AUROC} & "
+            r"\shortstack{Within-\\shot\\AUROC} & "
             r"\shortstack{Pooled\\AUROC} & \shortstack{Pooled\\AUPRC} & "
             r"\shortstack{Pooled\\F1} \\"
         ),
@@ -1400,30 +1649,32 @@ def write_compact_latex(record, out_dir):
     cells = {}
     for name, label in names.items():
         config = configs[name]
-        row = [config["phase_controlled_auroc"]] + [config["metrics"][k] for k in keys]
-        lines.append(
-            label
-            + " & "
-            + " & ".join(latex_cell(m, stacked=True, bound_digits=2) for m in row)
-            + r" \\"
-        )
+        within = config["within_shot_auroc"]["primary"]["mean"]
+        phase, pooled = config["phase_controlled_auroc"], config["metrics"]
+        cells_row = [
+            latex_cell(phase, stacked=True, bound_digits=2),
+            stack(f"${within:.3f}$"),
+            *(latex_cell(pooled[k], stacked=True, bound_digits=2) for k in keys),
+        ]
+        lines.append(stack(label, align="l") + " & " + " & ".join(cells_row) + r" \\")
         lines.append(r"\addlinespace[2pt]")
         cells[name] = {
             "phase_controlled_auroc": f"configs.{name}.phase_controlled_auroc",
+            "within_shot_mean_auroc": f"configs.{name}.within_shot_auroc.primary.mean",
             **{k: f"configs.{name}.metrics.{k}" for k in keys},
         }
     lines += [r"\bottomrule", r"\end{tabular}"]
     n = configs["rwm-brf"]["counts"]
     caption = (
-        headline(record, latex=True)
-        + " The forest uses equilibrium scalars only (no input senses the RWM). "
-        f"Phase control compares pairs within campaign and {protocol['phase_bin_ms']:g} "
-        f"ms bins (at least {protocol['phase_min_slices']} slices); elapsed time is "
-        "the residual-phase floor, and the forest's margin over it excludes zero on "
-        f"{facts['time_cis']} of {facts['n']} splits. Reference split, "
-        f"{n['positive_slices']} positive and {n['negative_slices']:,} "
-        "assumed-negative slices; pooled scores are phase-confounded. Brackets: "
-        r"exploratory 95\% shot-bootstrap intervals."
+        balanced_statement(record, latex=True)
+        + f" Phase control compares pairs within campaign and "
+        f"{protocol['phase_bin_ms']:g} ms bins (at least "
+        f"{protocol['phase_min_slices']} slices); elapsed time is the "
+        "residual-phase floor. Within-shot AUROC is the mean over two-class "
+        "Hanson shots on the primary mask (point estimate). Table rows show the "
+        f"reference split, {n['positive_slices']} positive and "
+        f"{n['negative_slices']:,} assumed-negative slices; pooled scores are "
+        r"phase-confounded. Brackets: exploratory 95\% shot-bootstrap intervals."
     )
     lines += [
         r"\caption{" + caption + "}",
@@ -1450,7 +1701,9 @@ def write_supplemental_latex(record, out_dir):
     artifacts = {}
     n_bootstrap = record["protocol"]["bootstrap_replicates"]
 
-    def write(name, columns, header, rows, caption, source, long=False, panel=None):
+    def write(
+        name, columns, header, rows, caption, source, long=False, panel=None, space=None
+    ):
         environment = "longtable" if long else "tabular"
         lines = [APPENDIX_NOTE.rstrip()]
         lines += [r"\begingroup"] if long else [r"\begin{table*}[t]", r"\centering"]
@@ -1483,7 +1736,9 @@ def write_supplemental_latex(record, out_dir):
                 r"\endlastfoot",
             ]
         lines += [
-            " & ".join(paper_name(cell, latex=True) for cell in row) + r" \\"
+            " & ".join(paper_name(cell, latex=True) for cell in row)
+            + r" \\"
+            + (rf" \addlinespace[{space}]" if space else "")
             for row in rows
         ]
         if not long:
@@ -1620,9 +1875,9 @@ def write_supplemental_latex(record, out_dir):
         rows,
         r"Phase-controlled scores and paired phase differences (top); pooled "
         r"forest scores and forest-minus-elapsed-time differences (bottom). "
-        + headline(record, latex=True)
+        + balanced_statement(record, latex=True)
         + " "
-        + split_statement(record, latex=True)
+        + bin_choice(record, latex=True)
         + " "
         r"Ranges are "
         r"point estimates across seeds 0--4, not confidence intervals. Brackets: "
@@ -1631,8 +1886,8 @@ def write_supplemental_latex(record, out_dir):
         r"use percentile intervals, paired differences use basic intervals. "
         r"High-$\beta$: $\beta_N\geq0.8$ shot p95; above-proxy: $\beta_N/l_i>4$. "
         r"Holdout retains four records across three dates; broad paired "
-        r"intervals are available for seed 0 and holdout only. The primary "
-        r"seed-3 lower bound rounds to $-0.000$; its unrounded value is negative.",
+        r"intervals are available for seed 0 and holdout only. "
+        + rounding_note(summary),
         {
             "split_sensitivity.phase_controlled_auroc": phase,
             "split_sensitivity.paired_phase": pairs,
@@ -1653,14 +1908,17 @@ def write_supplemental_latex(record, out_dir):
         },
         panel=phase_panel,
     )
-    within_pairs = [
-        pair["within_shot_auroc"][mask]
-        for name, pair in record["paired"].items()
-        if name.endswith(("rule-betan", "rule-betan-over-li"))
-        for mask in ("primary", "broad")
-    ]
-    below = [abs(row["estimate"]) for row in within_pairs]
+    facts = headline_facts(record)
+    within_pairs = [*facts["within"].values(), *facts["within_broad"].values()]
     excludes_zero = sum(row["low"] > 0 or row["high"] < 0 for row in within_pairs)
+    phase_pairs = [row["phase_controlled_auroc"] for row in record["paired"].values()]
+    phase_excluding = sum(row["low"] > 0 or row["high"] < 0 for row in phase_pairs)
+
+    def rule_list(mask):
+        return ", ".join(
+            sci(row, latex=True) for row in facts[mask].values()
+        )
+
     time_mean = record["configs"]["rwm-rule-elapsed-time"]["within_shot_auroc"][
         "primary"
     ]
@@ -1699,23 +1957,24 @@ def write_supplemental_latex(record, out_dir):
         ],
         rows,
         headline(record, latex=True)
-        + f" Within-shot AUROC means on the reference split; each of "
+        + f". Within-shot AUROC means on the reference split; each of "
         f"{time_mean['n_shots']} two-class "
         r"Hanson shots receives equal weight. Within-shot model means are point "
         r"estimates; "
         r"differences have 95\% basic paired shot-bootstrap intervals "
         f"({n_bootstrap:,} replicates, seed 0), unadjusted for multiplicity. "
-        f"Within shot, the forest is {min(below):.3f}--{max(below):.3f} below "
-        r"$\beta_N$ and $\beta_N/l_i$ "
-        f"on both masks ({excludes_zero} of {len(within_pairs)} unadjusted "
+        "Forest minus elapsed time, $\\beta_N$ and $\\beta_N/l_i$ is "
+        f"{rule_list('within')} on the primary mask and {rule_list('within_broad')} "
+        f"on the broad mask ({excludes_zero} of {len(within_pairs)} unadjusted "
         r"intervals exclude zero). "
         f"Elapsed time's {time_mean['mean']:.3f} is an artefact of the primary "
-        r"mask's cutoff at the "
-        r"last onset. Phase control uses primary positive-negative pairs within "
-        f"campaign and {record['protocol']['phase_bin_ms']:g} ms elapsed-time "
-        r"bins, weighted by pair counts. "
-        r"Individual phase intervals are percentile; all three basic paired "
-        r"forest-minus-scalar phase intervals include zero. One-class cells "
+        r"mask's cutoff at the last onset, so within-shot ranking on that mask is "
+        r"dominated by phase. Phase control uses primary positive-negative pairs "
+        f"within campaign and {record['protocol']['phase_bin_ms']:g} ms "
+        r"elapsed-time bins, weighted by pair counts. "
+        r"Individual phase intervals are percentile; "
+        f"{phase_excluding} of {len(phase_pairs)} basic paired forest-minus-rule "
+        r"phase intervals exclude zero on the reference split. One-class cells "
         r"are omitted; phase resampling is stratified by campaign.",
         {
             "paired_within_shot_auroc": {
@@ -1778,28 +2037,8 @@ def write_supplemental_latex(record, out_dir):
         f"shot-bootstrap intervals ({n_bootstrap:,} resamples), conditional on fixed "
         r"fitted predictions, unadjusted for multiplicity. High-$\beta$: "
         r"$\beta_N\geq0.8$ shot p95; "
-        r"above-proxy: $\beta_N/l_i>4$. All five 2014 point differences are "
-        r"negative in both conditional strata, while the primary 2014 differences "
-        r"range from "
-        + f"${headline_facts(record)['primary_2014'][0]:+.3f}$ to "
-        + f"${headline_facts(record)['primary_2014'][1]:+.3f}$"
-        + r"; all five 2018 split-seed "
-        r"intervals include zero. The included 2018 run-record holdout "
-        r"intervals exclude zero: primary "
-        + latex_cell(
-            record["leave_one_run_record_out"]["paired_time_by_campaign"]["2018"][
-                "slice_auroc"
-            ],
-            bound_digits=3,
-        )
-        + r"; high-$\beta$ "
-        + latex_cell(
-            record["leave_one_run_record_out"]["paired_time_by_campaign"]["2018"][
-                "high_beta_auroc"
-            ],
-            bound_digits=3,
-        )
-        + ".",
+        r"above-proxy: $\beta_N/l_i>4$. "
+        + campaign_notes(record, latex=True),
         {
             "split_sensitivity.paired_time_by_campaign": campaigns,
             "leave_one_run_record_out.paired_time_by_campaign": record[
@@ -1821,15 +2060,20 @@ def write_supplemental_latex(record, out_dir):
         n, metrics = result["counts"], result["metrics"]
         rows.append(
             [
-                label,
-                "/".join(
-                    str(n[f"hanson_{k}_shots"]) for k in ("detected", "early", "missed")
+                label if label.startswith(r"\shortstack") else stack(label, align="l"),
+                stack(
+                    "/".join(
+                        str(n[f"hanson_{k}_shots"])
+                        for k in ("detected", "early", "missed")
+                    )
                 ),
-                "/".join(
-                    str(n[f"hanson_any_alarm_{k}_shots"])
-                    for k in ("detected", "early", "missed")
+                stack(
+                    "/".join(
+                        str(n[f"hanson_any_alarm_{k}_shots"])
+                        for k in ("detected", "early", "missed")
+                    )
                 ),
-                f"{n['onsets_warned']}/{n['target_onsets']}",
+                stack(f"{n['onsets_warned']}/{n['target_onsets']}"),
                 *(
                     latex_cell(metrics[k], stacked=True, bound_digits=3)
                     for k in keys[:2]
@@ -1851,15 +2095,15 @@ def write_supplemental_latex(record, out_dir):
     rows.append(
         [
             r"\shortstack[l]{Five-split\\point range}",
-            "--",
-            "--",
-            "--",
+            stack("--"),
+            stack("--"),
+            stack("--"),
             *(
                 latex_range(ranges[k], 0 if k == keys[2] else 3, stacked=True)
                 for k in keys
             ),
-            "--",
-            "--",
+            stack("--"),
+            stack("--"),
         ]
     )
     write(
@@ -1878,17 +2122,17 @@ def write_supplemental_latex(record, out_dir):
         ],
         rows,
         r"Forest alarms across all five splits and the run-record holdout. "
-        r"D/E/M: Detected/Early/Missed among 30 target shots. The first considered "
+        "D/E/M: Detected/Early/Missed among "
+        f"{record['configs']['rwm-brf']['counts']['hanson_target_shots']} target "
+        "shots. The first considered "
         r"alarm decides the primary shot category; any-warning precedence is a "
         r"sensitivity. Per-onset counts retain all alarms. "
         r"Brackets: 95\% percentile shot-bootstrap intervals, including "
         r"detection-minus-reference, conditional on fixed fitted predictions "
         r"and unadjusted for multiplicity. "
         r"Between-model differences elsewhere use basic paired intervals. "
-        r"No improvement "
-        r"over the approximate rate-matched random reference was established: "
-        r"all five difference intervals include zero; equivalence is not "
-        r"established. Comparison and Hanson "
+        + alarm_reference_statement(record)
+        + r" Comparison and Hanson "
         r"incidences are unlabelled-shot incidences, not verified false-positive "
         r"rates. Warning medians are conditional on the matching window; the "
         r"reference-split median is "
@@ -1909,6 +2153,7 @@ def write_supplemental_latex(record, out_dir):
                 "metrics"
             ],
         },
+        space="4pt",
     )
     physics = record["onset_physics"]
     for actual in (True, False):
@@ -2019,6 +2264,9 @@ def main():
         ),
         "Broader Hanson-negative sensitivity — same models and predictions": scores(
             configs, "broad"
+        ),
+        "Rule baseline — rwm_candidates review screen (reference split, seed 0)": (
+            candidate_table(record)
         ),
         (
             "Within-shot AUROC — primary and broad Hanson masks "
@@ -2249,6 +2497,12 @@ def main():
         "markdown": str(args.out),
         "sections": list(sections),
         "documentation": write_documentation(record, comparison),
+        "balanced_statement": {
+            "text": balanced_statement(record),
+            "words": len(balanced_statement(record).split()),
+            "facts": headline_facts(record),
+        },
+        "candidate_rule": candidate_facts(record),
         "rotation_ablation_source": {
             "path": "outputs/labeler/rwm/rotation_ablation.json",
             "sha256": hashlib.sha256(
@@ -2301,20 +2555,20 @@ def main():
             "output": (tmp_dir / filename).read_text().strip(),
         }
         for name, filename in (
-            ("covering_tests", "fix12-covering-tests.log"),
-            ("ruff_check", "fix12-ruff.log"),
-            ("python_format", "fix12-format.log"),
-            ("table_and_record_validation", "fix12-validation.log"),
-            ("latex_compile", "fix12-latex.log"),
-            ("visual_inspection", "fix12-visual.log"),
-            ("baseline_saved_replay", "fix12-rescore.log"),
-            ("comparison_saved_replay", "fix12-comparison-replay.log"),
-            ("rotation_saved_replay", "fix12-rotation-replay.log"),
-            ("growth_regeneration", "fix12-growth.log"),
-            ("data_audit", "fix12-data-audit.log"),
-            ("figure_regeneration", "fix12-figure.log"),
-            ("saved_prediction_preservation", "fix12-predictions.log"),
-            ("artifact_hashes", "fix12-artifact-hashes.log"),
+            ("covering_tests", "fix13-covering-tests.log"),
+            ("ruff_check", "fix13-ruff.log"),
+            ("python_format", "fix13-format.log"),
+            ("table_and_record_validation", "fix13-validation.log"),
+            ("latex_compile", "fix13-latex.log"),
+            ("visual_inspection", "fix13-visual.log"),
+            ("baseline_saved_replay", "fix13-rescore.log"),
+            ("comparison_saved_replay", "fix13-comparison-replay.log"),
+            ("rotation_saved_replay", "fix13-rotation-replay.log"),
+            ("growth_regeneration", "fix13-growth.log"),
+            ("data_audit", "fix13-data-audit.log"),
+            ("figure_regeneration", "fix13-figure.log"),
+            ("saved_prediction_preservation", "fix13-predictions.log"),
+            ("artifact_hashes", "fix13-artifact-hashes.log"),
         )
         if (tmp_dir / filename).is_file()
     }

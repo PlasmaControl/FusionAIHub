@@ -1,21 +1,21 @@
 \begin{table}[t]
 \centering
 \small
-\setlength{\tabcolsep}{2pt}
-\begin{tabular}{@{}lcccc@{}}
+\setlength{\tabcolsep}{1pt}
+\begin{tabular}{@{}lccccc@{}}
 \toprule
-\multicolumn{5}{@{}l}{RWM, DIII-D (assumed negatives)} \\
+\multicolumn{6}{@{}l}{RWM, DIII-D (assumed negatives)} \\
 \midrule
-Model / rule & \shortstack{Phase-\\controlled\\AUROC} & \shortstack{Pooled\\AUROC} & \shortstack{Pooled\\AUPRC} & \shortstack{Pooled\\F1} \\
+Model / rule & \shortstack{Phase-\\controlled\\AUROC} & \shortstack{Within-\\shot\\AUROC} & \shortstack{Pooled\\AUROC} & \shortstack{Pooled\\AUPRC} & \shortstack{Pooled\\F1} \\
 \midrule
-Forest & \shortstack{$0.534$\\{\scriptsize $[0.44, 0.62]$}} & \shortstack{$0.760$\\{\scriptsize $[0.71, 0.81]$}} & \shortstack{$0.163$\\{\scriptsize $[0.12, 0.22]$}} & \shortstack{$0.275$\\{\scriptsize $[0.23, 0.34]$}} \\
+\shortstack[l]{Forest\\\phantom{{\scriptsize $[\,]$}}} & \shortstack{$0.534$\\{\scriptsize $[0.44, 0.62]$}} & \shortstack{$0.784$\\\phantom{{\scriptsize $[\,]$}}} & \shortstack{$0.760$\\{\scriptsize $[0.71, 0.81]$}} & \shortstack{$0.163$\\{\scriptsize $[0.12, 0.22]$}} & \shortstack{$0.275$\\{\scriptsize $[0.23, 0.34]$}} \\
 \addlinespace[2pt]
-Elapsed time & \shortstack{$0.522$\\{\scriptsize $[0.51, 0.54]$}} & \shortstack{$0.759$\\{\scriptsize $[0.71, 0.81]$}} & \shortstack{$0.228$\\{\scriptsize $[0.21, 0.31]$}} & \shortstack{$0.267$\\{\scriptsize $[0.22, 0.33]$}} \\
+\shortstack[l]{Elapsed time\\\phantom{{\scriptsize $[\,]$}}} & \shortstack{$0.522$\\{\scriptsize $[0.51, 0.54]$}} & \shortstack{$0.931$\\\phantom{{\scriptsize $[\,]$}}} & \shortstack{$0.759$\\{\scriptsize $[0.71, 0.81]$}} & \shortstack{$0.228$\\{\scriptsize $[0.21, 0.31]$}} & \shortstack{$0.267$\\{\scriptsize $[0.22, 0.33]$}} \\
 \addlinespace[2pt]
-$\beta_N/l_i$ & \shortstack{$0.588$\\{\scriptsize $[0.47, 0.69]$}} & \shortstack{$0.723$\\{\scriptsize $[0.66, 0.78]$}} & \shortstack{$0.159$\\{\scriptsize $[0.13, 0.23]$}} & \shortstack{$0.261$\\{\scriptsize $[0.21, 0.33]$}} \\
+\shortstack[l]{$\beta_N/l_i$\\\phantom{{\scriptsize $[\,]$}}} & \shortstack{$0.588$\\{\scriptsize $[0.47, 0.69]$}} & \shortstack{$0.855$\\\phantom{{\scriptsize $[\,]$}}} & \shortstack{$0.723$\\{\scriptsize $[0.66, 0.78]$}} & \shortstack{$0.159$\\{\scriptsize $[0.13, 0.23]$}} & \shortstack{$0.261$\\{\scriptsize $[0.21, 0.33]$}} \\
 \addlinespace[2pt]
 \bottomrule
 \end{tabular}
-\caption{No demonstrated skill beyond elapsed time or $\beta_N/l_i$ under phase control; below $\beta_N/l_i$ within shot ($-0.071$ $[-0.133, -0.010]$). The forest uses equilibrium scalars only (no input senses the RWM). Phase control compares pairs within campaign and 100 ms bins (at least 5 slices); elapsed time is the residual-phase floor, and the forest's margin over it excludes zero on 1 of 5 splits. Reference split, 480 positive and 5,255 assumed-negative slices; pooled scores are phase-confounded. Brackets: exploratory 95\% shot-bootstrap intervals.}
+\caption{No demonstrated skill beyond elapsed time or $\beta_N/l_i$ under phase control; \texttt{rwm-brf} is an equilibrium-scalar timing baseline and no input senses the RWM. Phase-controlled AUROC, seed 0 (the forest's weakest split): forest $0.534$ $[0.436, 0.625]$, elapsed time $0.522$, $\beta_N/l_i$ $0.588$. Over 5 seeds the forest's margin over elapsed time is $+0.012$ to $+0.107$, positive on 5/5 seeds and the holdout, with an interval excluding zero on 1/5. Within shot, forest minus elapsed time, $\beta_N$ and $\beta_N/l_i$ is $-0.147$ $[-0.200, -0.084]$, $-0.031$ $[-0.109, 0.045]$ and $-0.071$ $[-0.133, -0.010]$; primary-mask within-shot ranking is dominated by phase (elapsed time $0.931$). Run-record holdout, forest minus elapsed time (primary AUROC): 2018 $-0.049$ $[-0.073, -0.013]$, 2014 $+0.019$ $[-0.052, 0.096]$, pooled $+0.020$ $[-0.033, 0.080]$. Phase control compares pairs within campaign and 100 ms bins (at least 5 slices); elapsed time is the residual-phase floor. Within-shot AUROC is the mean over two-class Hanson shots on the primary mask (point estimate). Table rows show the reference split, 480 positive and 5,255 assumed-negative slices; pooled scores are phase-confounded. Brackets: exploratory 95\% shot-bootstrap intervals.}
 \label{tab:rwm-compact}
 \end{table}
