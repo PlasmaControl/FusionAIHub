@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+from collections import Counter
 from pathlib import Path
 
 from sawtooth_physics import OUTPUT, REPO, WORK
@@ -23,6 +24,89 @@ def number(value, digits=3):
 
 def interval(value, ci):
     return number(value) + (f" [{number(ci[0])}, {number(ci[1])}]" if ci else "")
+
+
+def distribution(summary, unit=""):
+    """Render a quantile summary as text, not as a raw dictionary."""
+    levels = "/".join(f"{100 * q:g}" for q in summary["quantile_levels"])
+    values = ", ".join(number(v) for v in summary["quantiles"])
+    text = (
+        f"n={summary['n']}; mean {number(summary['mean'])}{unit}; "
+        f"quantiles at {levels}%: {values}{unit}"
+    )
+    if summary.get("within_0p15_m_fraction") is not None:
+        text += f"; {100 * summary['within_0p15_m_fraction']:.1f}% within 0.15 m"
+    return text
+
+
+def seconds_text(seconds):
+    return ", ".join(
+        f"{state} {number(value, 2)} s" for state, value in seconds.items()
+    )
+
+
+def limitation_lines(work, data, reference, bench):
+    """Known limitations stated from the records, not from memory."""
+    population = data["population"]
+    candidates = population["candidate_state_counts"]
+    fractions = population["fractions_of_observable"]
+    example = json.loads((work / "shots" / "203563.json").read_text())
+    states = Counter(p["attrs"]["state"] for p in example["crashes"])
+    first = example["crashes"][0]["attrs"]
+    periods = [
+        w["median_period_ms"] for r in reference["by_shot"] for w in r["windows"]
+    ]
+    amplitudes = [
+        w["median_amplitude"] for r in reference["by_shot"] for w in r["windows"]
+    ]
+    published_period = reference["by_shot"][0]["published_period_ms"]
+    published_amplitude = reference["by_shot"][0]["published_amplitude"]
+    return [
+        (
+            "Known limitations, all left as they are because a rule change would "
+            "force a full population rerun:\n"
+        ),
+        (
+            f"- Uncertain dominates: {100 * fractions['uncertain']:.1f}% of "
+            f"observable population time and {candidates['uncertain']} of "
+            f"{candidates['present'] + candidates['uncertain']} candidates are "
+            "uncertain. Only about a third of observable time is assessed, so "
+            "all conditional scores describe that third."
+        ),
+        (
+            "- The EFIT01 q=1 radius conflict is conservative. Shot 203563 "
+            f"(EFIT01 q_min {first['qmin']:.2f}, inversion minus q=1 radius "
+            f"{first['q1_radius_difference_m']:.3f} m) has "
+            f"{states['uncertain']} of {len(example['crashes'])} candidates "
+            "uncertain although it shows regular trains."
+        ),
+        (
+            "- Population shots without archived field or axis metadata, and "
+            "shots without a usable ECE waveform, receive no definite label "
+            "(see the exclusion counts above)."
+        ),
+        (
+            f"- The central-ECE reference windows give periods "
+            f"{min(periods):.0f}–{max(periods):.0f} ms and amplitudes "
+            f"{min(amplitudes):.2f}–{max(amplitudes):.2f}, against "
+            f"{published_period[0]} ± {published_period[1]} ms and "
+            f"{published_amplitude[0]} ± {published_amplitude[1]} published; the "
+            f"largest deviations are {max(abs(v - published_period[0]) for v in periods):.1f} "
+            f"ms and {max(abs(v - published_amplitude[0]) for v in amplitudes):.2f}. "
+            "They are sanity checks, not calibration."
+        ),
+        (
+            "- The legacy-offset diagnosis traces the old detector's offsets to "
+            "its inversion-profile gate and holdoff, not to the reader. The "
+            "current catalog detector could be compared only on shot 192090."
+        ),
+        (
+            "- Each gallery crash panel prefers the middle uncertain train when "
+            "a shot has one, to expose unresolved q/ECE conflicts, so the "
+            "gallery over-represents hard cases."
+        ),
+        "",
+    ]
 
 
 def source(name, key=""):
@@ -55,18 +139,30 @@ def timing_table(legacy):
 
 def reference_table(reference):
     lines = [
-        "| Shot | Window s | Period ms | Relative amplitude | Status |",
-        "|---|---|---:|---:|---|",
+        (
+            "| Shot | Window s | Period ms | Published period ms | "
+            "Relative amplitude | Published amplitude | Status |"
+        ),
+        "|---|---|---:|---:|---:|---:|---|",
     ]
     for row in reference["by_shot"]:
+        period, amplitude = row["published_period_ms"], row["published_amplitude"]
+        published = (
+            f"{period[0]} ± {period[1]}",
+            f"{amplitude[0]} ± {amplitude[1]}",
+        )
         if not row.get("windows"):
-            lines.append(f"| {row['shot']} | — | — | — | {row['status']} |")
+            lines.append(
+                f"| {row['shot']} | — | — | {published[0]} | — | "
+                f"{published[1]} | {row['status']} |"
+            )
         for window in row.get("windows", []):
             left, right = window["window_s"]
             lines.append(
                 f"| {row['shot']} | {left}–{right} | "
-                f"{number(window['median_period_ms'], 2)} | "
-                f"{number(window['median_amplitude'])} | {row['status']} |"
+                f"{number(window['median_period_ms'], 2)} | {published[0]} | "
+                f"{number(window['median_amplitude'])} | {published[1]} | "
+                f"{row['status']} |"
             )
     return "\n".join(lines) + "\n"
 
@@ -184,7 +280,8 @@ def report(args):
             f"The q=1 audit contains {q1['efit_shots']} EFIT-supported shots, "
             f"{q1['q1_checked_shots']} with a profile intersection check, and "
             f"{q1['paired_shots']} with paired diagnostic inversion points. "
-            f"All-point ΔR distribution: `{q1['distribution_all_diagnostic_points']}`. "
+            "All-point ΔR (inversion R minus same-side q=1 R, metres): "
+            f"{distribution(q1['distribution_all_diagnostic_points'], ' m')}. "
             "The full per-shot ledger includes checks with no axis-connected "
             "surface, checks with no candidate, and missing-profile cases. "
             "Paired nominal differences greater than 0.15 m flag uncertainty; "
@@ -193,8 +290,9 @@ def report(args):
         ),
         source("q1_radius_audit.json"),
         (
-            f"TRAIN definite-present nominal inversion ρ distribution: "
-            f"`{q1['train_present_inversion_nominal_rho']}`. The shot-median "
+            "TRAIN definite-present nominal inversion ρ: "
+            f"{distribution(q1['train_present_inversion_nominal_rho'])}. "
+            "The shot-median "
             "outer input lies beyond the candidate inversion at "
             f"{100 * q1['train_present_outer_beyond_inversion_fraction']:.1f}% "
             "of comparable TRAIN definite-present points; the full ledger "
@@ -213,9 +311,10 @@ def report(args):
             "without vetoing an entire high-q phase.\n"
         ),
         (
-            f"Prior train q-conflict distribution: "
-            f"`{bias['prior_train_candidate_qmin']}`. "
-            f"Shot 186532 current state seconds: `{bias['shot_186532']['state_seconds']}`.\n"
+            "Prior TRAIN candidate q_min: "
+            f"{distribution(bias['prior_train_candidate_qmin'])}. "
+            "Shot 186532 current state seconds: "
+            f"{seconds_text(bias['shot_186532']['state_seconds'])}.\n"
         ),
         source("qmin_bias_audit.json"),
         source("freeze.json"),
@@ -270,9 +369,39 @@ def report(args):
             )
             + f" | {100 * row['assessed_fraction_of_observable']:.1f}% |"
         )
+    population_summary = data["population"]
+    seconds = population_summary["state_seconds"]
+    requested = (
+        population_summary["processed_count"] + population_summary["excluded_records"]
+    )
+    lines.append(
+        f"| population | {requested} | "
+        + " | ".join(
+            number(seconds[s]) for s in ("present", "absent", "uncertain", "unassessed")
+        )
+        + f" | {100 * population_summary['assessed_fraction_of_observable']:.1f}% |"
+    )
+    messages = ", ".join(
+        f"{count} × {message}"
+        for message, count in sorted(
+            population_summary["exclusion_messages"].items(), key=lambda kv: -kv[1]
+        )
+    )
     lines += [
         "",
-        source("data_summary.json", "splits"),
+        (
+            f"Population: {population_summary['processed_count']} of {requested} "
+            f"shots have a label record; {population_summary['excluded_records']} "
+            "have none and contribute no state seconds, so their absence is not "
+            "evidence of absence. Exclusion reasons: "
+            f"{messages}. The population row counts the cohort shots as well. "
+            "Records whose archived equilibrium lacks the field or axis metadata "
+            "(radius status `bt_or_efit_axis_unavailable`) carry no present "
+            "candidates and no absent seconds; they are almost entirely "
+            "unassessed."
+        ),
+        "",
+        source("data_summary.json", "splits; population"),
         "### Conditional agreement with the physics rule on assessed bins\n",
         (
             f"OOF shots: {oof_coverage['requested_shots']} requested, "
@@ -578,6 +707,7 @@ def report(args):
             "logs remain under the large output directory.\n"
         ),
         "### Concerns and next work\n",
+        *limitation_lines(args.work, data, reference, bench),
         (
             "Blind physical accuracy remains unmeasured. Reviewed-span "
             "failures and any inverted HL-3 ranking remain failures, not "

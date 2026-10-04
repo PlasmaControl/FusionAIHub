@@ -59,6 +59,11 @@ def state_totals(records):
         "exclusion_reason_counts": dict(
             Counter(r.get("error_kind", "unspecified") for r in records if "error" in r)
         ),
+        "exclusion_messages": dict(
+            Counter(
+                str(r["error"]).split(" (")[0][:80] for r in records if "error" in r
+            )
+        ),
         "diagnostic_crashes": sum(len(r["crashes"]) for r in records),
         "candidate_state_counts": dict(
             Counter(p["attrs"]["state"] for r in records for p in r["crashes"])
