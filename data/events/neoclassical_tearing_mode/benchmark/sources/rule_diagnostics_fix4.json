@@ -1,6 +1,6 @@
 {
   "made_by": "scripts/labeler/tm_rule_diagnostics.py",
-  "git_sha": "751d5ee9",
+  "git_sha": "97b8e90f",
   "split": "development shots only; blind test shots never read",
   "uncertain_fraction": {
     "before": {

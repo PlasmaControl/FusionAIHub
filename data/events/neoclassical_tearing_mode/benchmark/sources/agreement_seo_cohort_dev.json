@@ -4,7 +4,7 @@
   "exclude_test": true,
   "tolerance_ms": 100.0,
   "n_shots_considered": 450,
-  "git_sha": "751d5ee9",
+  "git_sha": "97b8e90f",
   "intervals_table": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm/labels/tm_intervals_full_cohort.csv",
   "intervals_sha256": "4e126b91c7aad96a23f10c9ca214ea2766d2316af5c9f094e44448029f5c272c",
   "caveat": "Seo labels are growth-phase labels with limited temporal coverage. Agreement is containment within the interval or 100 ms of its edges, not timing accuracy.",

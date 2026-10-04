@@ -2,7 +2,7 @@
   "model": "tm-dsm-500ms",
   "slug": "d3d_tearing_time_to_event_dsm",
   "setting": "legacy, published risk against an onset within the horizon on rows before the survival label's first onset",
-  "git_sha": "751d5ee9",
+  "git_sha": "97b8e90f",
   "score": "risk, horizon 500ms",
   "threshold": null,
   "threshold_is": "F1-maximising thresholds on shared cohort-450 fold inner validation shots only; cohort split=test excluded; same fold and inner shot roles for every model",

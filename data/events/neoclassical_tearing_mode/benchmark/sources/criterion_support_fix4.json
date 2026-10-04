@@ -1,10 +1,11 @@
 {
   "made_by": "scripts/labeler/tm_audit_rule.py",
+  "git_sha": "97b8e90f",
   "policy": "Audit current nonblind TM labels, coherent criterion rates and screening coverage.\n\nNo historical label or blind signal artifacts are opened. Sample rates use the\nuniform RMS grid and its median time step; interval durations use unioned spans.\nUncertainty takes priority over presence; missing acquisition is unobservable.\nFrequency and Mirnov criterion rates condition on measured respective inputs;\ncombined span/seed support rates condition on all valid RMS samples.\n\nCriterion pass rates are split by toroidal number: the present rows of n are the time\ninside n's own intervals (not the other n's), and the absent rows are the time the\nfinished labels call absent. Absent rates are therefore post-labelling: time that passed\na weak screen was moved out of absent by construction, so a low absent pass rate is\npartly a consequence of the labelling, not an independent measurement.\n",
   "source_sha256": {
-    "scripts/labeler/tm_audit_rule.py": "0e1d8c3217d36e047cf01e779a55281c11ef9a854f798439c9c410854093b51a",
-    "src/labeler/tearing/rule.py": "42d556dbdc8d117e99257e1e586de0ed547fc9981ffec3a16f100f81f846a2b7",
-    "scripts/labeler/tm_label.py": "d86d523a3c7cb7b92dadfa0a98db93c1e0b055583db98f27de23ce5464a77170"
+    "scripts/labeler/tm_audit_rule.py": "529f5cd89e07243f756fcbaecaae9c9f35a9eda0f6bc163165934c015d138512",
+    "src/labeler/tearing/rule.py": "e9e7434fb9714a0a5ab54441179bbf4c9774da09fcc7a1d7f9191b8faee3e1d5",
+    "scripts/labeler/tm_label.py": "a27d941335b0e3a2049f10d10e0e50b57c1a31277c963f37adc6e04f7f005d6c"
   },
   "cohort": {
     "1": {
@@ -477,11 +478,11 @@
   "label_sha256": {
     "cohort": {
       "intervals": "4e126b91c7aad96a23f10c9ca214ea2766d2316af5c9f094e44448029f5c272c",
-      "table": "af272ce2316a02d93a66384cc0b086108c87c639069fb72d99777046780f4cc9"
+      "table": "decba8f2a5c4b5f69b23e284bf70cf0058bbe1f55c519b9624714420b53a173a"
     },
     "population": {
       "intervals": "1249d1fb2e5d394e1be9e24ab769701b5f021827d5f4f4b7822466075165ca9b",
-      "table": "9f79bb19159b2380e582393fdd8c5f1057a63af69943080f4c00e677d4e7c546"
+      "table": "e8723bf6b063a68b2e1595025f9e1311bba9259797c2a394a2e7d0944ca123ef"
     }
   }
 }

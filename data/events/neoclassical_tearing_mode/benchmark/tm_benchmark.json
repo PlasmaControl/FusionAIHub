@@ -1,8 +1,8 @@
 {
   "made_by": "scripts/labeler/tm_benchmark.py",
-  "generator_sha256": "fb8c77b453d4724f569135642fc659ef19218456f2529bf90abbfcfb33f0a8d8",
-  "git_sha": "93eae927",
-  "labels_sha256": "af272ce2316a02d93a66384cc0b086108c87c639069fb72d99777046780f4cc9",
+  "generator_sha256": "1fdd280d4d770e53bd8330c8c9f27a2379e6c0ea02d1a81efd594569e3211f85",
+  "git_sha": "ab547e6d",
+  "labels_sha256": "decba8f2a5c4b5f69b23e284bf70cf0058bbe1f55c519b9624714420b53a173a",
   "evaluation": "development only; AUROC and AUPRC primary; F1 and segmental F1 at thresholds tuned on interval-presence-stratified inner validation with positive support for every model; outer folds shared. Two co-primary target definitions: uncertain time excluded, and uncertain time scored as negative (which scores interval boundaries).",
   "primary_metrics_do_not_score": "Boundary placement. Uncertain time borders the intervals, is excluded from bin metrics and acts as a barrier in segmental IoU, so the excluded-uncertain group does not test where an interval starts or ends; the uncertain-as-negative group does.",
   "bootstrap": {
@@ -230,7 +230,7 @@
         190991,
         190992
       ],
-      "shot_set": "development shots whose Seo archive rows the row match places",
+      "shot_set": "development shots with exported CNN inputs whose Seo archive rows lie on the model's time grid",
       "held_out": false,
       "note": "Training overlap unknown: the archive is the training store; descriptive.",
       "threshold_unestimable_folds": [],
@@ -22106,7 +22106,7 @@
         190991,
         190992
       ],
-      "shot_set": "development shots whose Seo archive rows the row match places",
+      "shot_set": "development shots with exported CNN inputs whose Seo archive rows lie on the model's time grid",
       "held_out": false,
       "note": "",
       "threshold_unestimable_folds": [],
@@ -26824,6 +26824,70 @@
             "bin_ms": 10.0,
             "scored_seconds": 1628.4,
             "segment_missing_data_policy": "unavailable label or score bins are hard barriers to merging; excluded from IoU"
+          },
+          "tm-rms-2line (seed levels)": {
+            "n_shots": 450,
+            "replicates": 1000,
+            "auroc": {
+              "value": 0.9984909195998706,
+              "lo": 0.9979289543941604,
+              "hi": 0.9989608644499051,
+              "valid_replicates": 1000
+            },
+            "auprc": {
+              "value": 0.985620380420433,
+              "lo": 0.9799489124651426,
+              "hi": 0.9900635930451409,
+              "valid_replicates": 1000
+            },
+            "f1": {
+              "value": 0.6451188574650004,
+              "lo": 0.5726974369139614,
+              "hi": 0.7169268718195944,
+              "valid_replicates": 1000
+            },
+            "precision": {
+              "value": 0.9975301467383408,
+              "lo": 0.9957746271860446,
+              "hi": 0.9988131651642715,
+              "valid_replicates": 1000
+            },
+            "recall": {
+              "value": 0.4767062417551899,
+              "lo": 0.40173085335562864,
+              "hi": 0.5592594905516551,
+              "valid_replicates": 1000
+            },
+            "prevalence": {
+              "value": 0.08844878408253501,
+              "lo": 0.06779088311818855,
+              "hi": 0.11096388553890607,
+              "valid_replicates": 1000
+            },
+            "segf1_0.3": {
+              "value": 0.594059405940594,
+              "lo": 0.4872837662983976,
+              "hi": 0.7013143106893107,
+              "valid_replicates": 1000
+            },
+            "segf1_0.5": {
+              "value": 0.4752475247524752,
+              "lo": 0.36358800773694394,
+              "hi": 0.6000224215246637,
+              "valid_replicates": 1000
+            },
+            "segf1_0.7": {
+              "value": 0.3564356435643564,
+              "lo": 0.2545454545454545,
+              "hi": 0.4673217623497997,
+              "valid_replicates": 1000
+            },
+            "shots_without_a_scored_bin": [],
+            "bins_scored": 162840,
+            "bins_positive": 14403,
+            "bin_ms": 10.0,
+            "scored_seconds": 1628.4,
+            "segment_missing_data_policy": "unavailable label or score bins are hard barriers to merging; excluded from IoU"
           }
         },
         "differences": {
@@ -26850,6 +26914,32 @@
               "value": 0.21467181467181473,
               "lo": 0.11099282231503269,
               "hi": 0.3087315091698487,
+              "excludes_zero": true
+            }
+          },
+          "tm-ours_minus_tm-rms-2line (seed levels)": {
+            "auroc": {
+              "value": 0.0002121116124299549,
+              "lo": -0.0012556544409801807,
+              "hi": 0.0012754888566921805,
+              "excludes_zero": false
+            },
+            "auprc": {
+              "value": 0.00862288376964282,
+              "lo": 0.002596362854538978,
+              "hi": 0.014847271583764057,
+              "excludes_zero": true
+            },
+            "f1": {
+              "value": 0.31522844546793183,
+              "lo": 0.237570295268606,
+              "hi": 0.39275899484489013,
+              "excludes_zero": true
+            },
+            "segf1_0.5": {
+              "value": 0.36799571849076806,
+              "lo": 0.2311460921684595,
+              "hi": 0.49338963580943396,
               "excludes_zero": true
             }
           }
@@ -27438,6 +27528,70 @@
             "bin_ms": 10.0,
             "scored_seconds": 2468.01,
             "segment_missing_data_policy": "unavailable label or score bins are hard barriers to merging; excluded from IoU"
+          },
+          "tm-rms-2line (seed levels)": {
+            "n_shots": 450,
+            "replicates": 1000,
+            "auroc": {
+              "value": 0.9628270753131045,
+              "lo": 0.9541254186258272,
+              "hi": 0.9712186832030687,
+              "valid_replicates": 1000
+            },
+            "auprc": {
+              "value": 0.6319202375348735,
+              "lo": 0.5587482965342033,
+              "hi": 0.7001366851857944,
+              "valid_replicates": 1000
+            },
+            "f1": {
+              "value": 0.5779947807054466,
+              "lo": 0.5068037346503667,
+              "hi": 0.6432407790775441,
+              "valid_replicates": 1000
+            },
+            "precision": {
+              "value": 0.7339390700160342,
+              "lo": 0.640231851592568,
+              "hi": 0.8101134714110891,
+              "valid_replicates": 1000
+            },
+            "recall": {
+              "value": 0.4767062417551899,
+              "lo": 0.40173085335562864,
+              "hi": 0.5592594905516551,
+              "valid_replicates": 1000
+            },
+            "prevalence": {
+              "value": 0.05835875867601833,
+              "lo": 0.044004895974109476,
+              "hi": 0.07358452202454228,
+              "valid_replicates": 1000
+            },
+            "segf1_0.3": {
+              "value": 0.3438395415472779,
+              "lo": 0.2732850241545894,
+              "hi": 0.416449454926802,
+              "valid_replicates": 1000
+            },
+            "segf1_0.5": {
+              "value": 0.2693409742120344,
+              "lo": 0.20416985381608027,
+              "hi": 0.34118012422360244,
+              "valid_replicates": 1000
+            },
+            "segf1_0.7": {
+              "value": 0.20630372492836677,
+              "lo": 0.14934028737220226,
+              "hi": 0.2747536945812808,
+              "valid_replicates": 1000
+            },
+            "shots_without_a_scored_bin": [],
+            "bins_scored": 246801,
+            "bins_positive": 14403,
+            "bin_ms": 10.0,
+            "scored_seconds": 2468.01,
+            "segment_missing_data_policy": "unavailable label or score bins are hard barriers to merging; excluded from IoU"
           }
         },
         "differences": {
@@ -27465,6 +27619,32 @@
               "lo": 0.010086745080089056,
               "hi": 0.06756795191139219,
               "excludes_zero": true
+            }
+          },
+          "tm-ours_minus_tm-rms-2line (seed levels)": {
+            "auroc": {
+              "value": -0.014588380370915255,
+              "lo": -0.028545931316104226,
+              "hi": -0.002824096906235354,
+              "excludes_zero": true
+            },
+            "auprc": {
+              "value": -0.1196433530615667,
+              "lo": -0.22227305256187083,
+              "hi": -0.018542573885155175,
+              "excludes_zero": true
+            },
+            "f1": {
+              "value": -0.21458185027313864,
+              "lo": -0.30476903230215396,
+              "hi": -0.12385330079095293,
+              "excludes_zero": true
+            },
+            "segf1_0.5": {
+              "value": -0.03988891941751385,
+              "lo": -0.10659934756640865,
+              "hi": 0.029106891330250725,
+              "excludes_zero": false
             }
           }
         }
@@ -28364,7 +28544,7 @@
         }
       }
     },
-    "policy": "each comparison scores the shots and available 10 ms bins both of its models have, each model at its own fold thresholds, on one paired 1000-draw shot bootstrap; full_set (tm-ours, two-line baseline) holds every development shot and is the set for any comparison with the baseline; cnn_subset (tm-ours, retrained CNN) is restricted to the shots and bins where the CNN has inputs and is used only for comparisons with the CNN; the uncertain_negative blocks score uncertain time as negative on the same scores and thresholds"
+    "policy": "each comparison scores the shots and available 10 ms bins both of its models have, each model at its own fold thresholds, on one paired 1000-draw shot bootstrap; full_set (tm-ours, the two-line baseline tuned and at its seed levels) holds every development shot and is the set for any comparison with the baseline; cnn_subset (tm-ours, retrained CNN) is restricted to the shots and bins where the CNN has inputs and is used only for comparisons with the CNN; the uncertain_negative blocks score uncertain time as negative on the same scores and thresholds"
   },
   "like_for_like": {
     "cnn": {
@@ -30280,23 +30460,23 @@
     },
     "audit_fix4_current": {
       "made_by": "scripts/labeler/tm_audit_rule.py",
-      "made_at": "2026-10-04T04:53:12.944751+00:00",
-      "git_sha": "751d5ee9",
+      "made_at": "2026-10-04T13:30:47.651515+00:00",
+      "git_sha": "97b8e90f",
       "policy": "Audit current nonblind TM labels, coherent criterion rates and screening coverage.\n\nNo historical label or blind signal artifacts are opened. Sample rates use the\nuniform RMS grid and its median time step; interval durations use unioned spans.\nUncertainty takes priority over presence; missing acquisition is unobservable.\nFrequency and Mirnov criterion rates condition on measured respective inputs;\ncombined span/seed support rates condition on all valid RMS samples.\n\nCriterion pass rates are split by toroidal number: the present rows of n are the time\ninside n's own intervals (not the other n's), and the absent rows are the time the\nfinished labels call absent. Absent rates are therefore post-labelling: time that passed\na weak screen was moved out of absent by construction, so a low absent pass rate is\npartly a consequence of the labelling, not an independent measurement.\n",
       "excluded_blind_shots": 50,
       "source_sha256": {
-        "scripts/labeler/tm_audit_rule.py": "0e1d8c3217d36e047cf01e779a55281c11ef9a854f798439c9c410854093b51a",
-        "src/labeler/tearing/rule.py": "42d556dbdc8d117e99257e1e586de0ed547fc9981ffec3a16f100f81f846a2b7",
-        "scripts/labeler/tm_label.py": "d86d523a3c7cb7b92dadfa0a98db93c1e0b055583db98f27de23ce5464a77170"
+        "scripts/labeler/tm_audit_rule.py": "529f5cd89e07243f756fcbaecaae9c9f35a9eda0f6bc163165934c015d138512",
+        "src/labeler/tearing/rule.py": "e9e7434fb9714a0a5ab54441179bbf4c9774da09fcc7a1d7f9191b8faee3e1d5",
+        "scripts/labeler/tm_label.py": "a27d941335b0e3a2049f10d10e0e50b57c1a31277c963f37adc6e04f7f005d6c"
       },
       "label_sha256": {
         "cohort": {
           "intervals": "4e126b91c7aad96a23f10c9ca214ea2766d2316af5c9f094e44448029f5c272c",
-          "table": "af272ce2316a02d93a66384cc0b086108c87c639069fb72d99777046780f4cc9"
+          "table": "decba8f2a5c4b5f69b23e284bf70cf0058bbe1f55c519b9624714420b53a173a"
         },
         "population": {
           "intervals": "1249d1fb2e5d394e1be9e24ab769701b5f021827d5f4f4b7822466075165ca9b",
-          "table": "9f79bb19159b2380e582393fdd8c5f1057a63af69943080f4c00e677d4e7c546"
+          "table": "e8723bf6b063a68b2e1595025f9e1311bba9259797c2a394a2e7d0944ca123ef"
         }
       },
       "cohort": {
@@ -30454,11 +30634,12 @@
     },
     "criterion_support_fix4": {
       "made_by": "scripts/labeler/tm_audit_rule.py",
+      "git_sha": "97b8e90f",
       "policy": "Audit current nonblind TM labels, coherent criterion rates and screening coverage.\n\nNo historical label or blind signal artifacts are opened. Sample rates use the\nuniform RMS grid and its median time step; interval durations use unioned spans.\nUncertainty takes priority over presence; missing acquisition is unobservable.\nFrequency and Mirnov criterion rates condition on measured respective inputs;\ncombined span/seed support rates condition on all valid RMS samples.\n\nCriterion pass rates are split by toroidal number: the present rows of n are the time\ninside n's own intervals (not the other n's), and the absent rows are the time the\nfinished labels call absent. Absent rates are therefore post-labelling: time that passed\na weak screen was moved out of absent by construction, so a low absent pass rate is\npartly a consequence of the labelling, not an independent measurement.\n",
       "source_sha256": {
-        "scripts/labeler/tm_audit_rule.py": "0e1d8c3217d36e047cf01e779a55281c11ef9a854f798439c9c410854093b51a",
-        "src/labeler/tearing/rule.py": "42d556dbdc8d117e99257e1e586de0ed547fc9981ffec3a16f100f81f846a2b7",
-        "scripts/labeler/tm_label.py": "d86d523a3c7cb7b92dadfa0a98db93c1e0b055583db98f27de23ce5464a77170"
+        "scripts/labeler/tm_audit_rule.py": "529f5cd89e07243f756fcbaecaae9c9f35a9eda0f6bc163165934c015d138512",
+        "src/labeler/tearing/rule.py": "e9e7434fb9714a0a5ab54441179bbf4c9774da09fcc7a1d7f9191b8faee3e1d5",
+        "scripts/labeler/tm_label.py": "a27d941335b0e3a2049f10d10e0e50b57c1a31277c963f37adc6e04f7f005d6c"
       },
       "cohort": {
         "1": {
@@ -30931,11 +31112,11 @@
       "label_sha256": {
         "cohort": {
           "intervals": "4e126b91c7aad96a23f10c9ca214ea2766d2316af5c9f094e44448029f5c272c",
-          "table": "af272ce2316a02d93a66384cc0b086108c87c639069fb72d99777046780f4cc9"
+          "table": "decba8f2a5c4b5f69b23e284bf70cf0058bbe1f55c519b9624714420b53a173a"
         },
         "population": {
           "intervals": "1249d1fb2e5d394e1be9e24ab769701b5f021827d5f4f4b7822466075165ca9b",
-          "table": "9f79bb19159b2380e582393fdd8c5f1057a63af69943080f4c00e677d4e7c546"
+          "table": "e8723bf6b063a68b2e1595025f9e1311bba9259797c2a394a2e7d0944ca123ef"
         }
       }
     },
@@ -31018,7 +31199,7 @@
   },
   "rule_diagnostics": {
     "made_by": "scripts/labeler/tm_rule_diagnostics.py",
-    "git_sha": "751d5ee9",
+    "git_sha": "97b8e90f",
     "split": "development shots only; blind test shots never read",
     "uncertain_fraction": {
       "before": {
@@ -32773,7 +32954,7 @@
       "exclude_test": true,
       "tolerance_ms": 100.0,
       "n_shots_considered": 450,
-      "git_sha": "751d5ee9",
+      "git_sha": "97b8e90f",
       "intervals_table": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm/labels/tm_intervals_full_cohort.csv",
       "intervals_sha256": "4e126b91c7aad96a23f10c9ca214ea2766d2316af5c9f094e44448029f5c272c",
       "caveat": "Seo labels are growth-phase labels with limited temporal coverage. Agreement is containment within the interval or 100 ms of its edges, not timing accuracy.",
@@ -32966,7 +33147,7 @@
       "exclude_test": true,
       "tolerance_ms": 100.0,
       "n_shots_considered": 450,
-      "git_sha": "751d5ee9",
+      "git_sha": "97b8e90f",
       "intervals_table": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm/labels/tm_intervals_full_cohort.csv",
       "intervals_sha256": "4e126b91c7aad96a23f10c9ca214ea2766d2316af5c9f094e44448029f5c272c",
       "caveat": "The survival archive shares N1RMS, 12 G and the 10%-of-peak onset with this rule but does not follow a literal continuous-50 ms rule on the 1 kHz N1RMS: onsets classed short_burst have no 50 ms raw-and-median 12 G crossing near them (the rule finds nothing there). Agreement is containment of the reference onset within the interval or 100 ms of its edges, not timing accuracy, and does not independently validate tearing islands.",
@@ -33146,9 +33327,9 @@
       "shots": "cohort split != test",
       "n_shots": 450,
       "not_in_reference": 275,
-      "git_sha": "751d5ee9",
-      "rule_sha256": "42d556dbdc8d117e99257e1e586de0ed547fc9981ffec3a16f100f81f846a2b7",
-      "frozen_label_sha256": "af272ce2316a02d93a66384cc0b086108c87c639069fb72d99777046780f4cc9",
+      "git_sha": "97b8e90f",
+      "rule_sha256": "e9e7434fb9714a0a5ab54441179bbf4c9774da09fcc7a1d7f9191b8faee3e1d5",
+      "frozen_label_sha256": "decba8f2a5c4b5f69b23e284bf70cf0058bbe1f55c519b9624714420b53a173a",
       "caveat": "Survival shares N1RMS, 12 G / 50 ms and 10%-of-peak onset; agreement is near-circular, not independent physics validation. Variants are sensitivity checks only and do not choose the frozen rule.",
       "variants": [
         {
@@ -35367,9 +35548,9 @@
         "n_locked_candidates": 29,
         "n_locked_known": 12,
         "n_onset_points": 81,
-        "n_onset_rows_flagged_degenerate": 10,
+        "n_onset_rows_flagged_degenerate": 11,
         "n_onset_windows": 70,
-        "n_onset_windows_at_most_5_ms": 10,
+        "n_onset_windows_at_most_5_ms": 11,
         "n_uncertain_rows": 1400,
         "n_with_m": 0,
         "n_without_observed_onset": 0,
@@ -35387,13 +35568,14 @@
         }
       },
       "crowd": "span rows iscrowd 1 (the whole interval), onset point rows iscrowd 0; t_start == t_end marks a point",
-      "generator_sha256": "d86d523a3c7cb7b92dadfa0a98db93c1e0b055583db98f27de23ce5464a77170",
-      "git_sha": "751d5ee9",
+      "generator_sha256": "a27d941335b0e3a2049f10d10e0e50b57c1a31277c963f37adc6e04f7f005d6c",
+      "git_sha": "97b8e90f",
       "locked": {
         "intervals_without_a_frequency_record_shots": [],
-        "rule": "Frequency <=1 kHz for 20 ms after >=1.5 kHz is only a locked_candidate, storing earliest lock_time_ms and every in-span drop in lock_candidates_ms (plus <=100 ms after the RMS end). An abrupt raw >seed to <release collapse within <=5 ms never counts as decay: unknown unless |DUSBRADIAL| steps at a candidate time: its median over the 20 to 120 ms after the time is >=5 above its median over the 200 to 20 ms before it (each window needs 50 ms measured, the baseline is not read before the plasma start). The candidate times are every frequency drop, the collapse, every interval's end and the end of each rejected candidate. Post-lock time is uncertain until |DUSBRADIAL| stays <5 above that local baseline for 200 ms (shorter dips are no release) or the discharge ends; an absent diagnostic leaves an unconfirmed collapse's tail uncertain. A step of 5 followed by 100 ms above the quiet level in flat-top time no interval or lock tail covers is uncertain `locked_unseeded`. Without frequency: ended=unknown and locked_known=false per row.",
+        "locked_known": "true when a lock was confirmed (then locked is true too); false only says none was confirmed: no radial-field record, no step, or n = 2, which has no confirmation",
+        "rule": "Frequency <=1 kHz for 20 ms after >=1.5 kHz is only a locked_candidate, storing earliest lock_time_ms and every in-span drop in lock_candidates_ms (plus <=100 ms after the RMS end). An abrupt raw >seed to <release collapse within <=5 ms never counts as decay: unknown unless |DUSBRADIAL| steps at a candidate time: its median over the 20 to 120 ms after the time is >=5 above its median over the 200 to 20 ms before it (each window needs 50 ms measured, the baseline is not read before the plasma start). The candidate times are the frequency drops at least 50 ms after the seed starts, the collapse, every interval's end and the end of each rejected candidate. Post-lock time is uncertain until |DUSBRADIAL| stays <5 above that local baseline for 200 ms (shorter dips are no release) or the discharge ends; an absent diagnostic leaves an unconfirmed collapse's tail uncertain. A step of 5 followed by 100 ms above the quiet level in flat-top time no interval or lock tail covers is uncertain `locked_unseeded`. Without frequency: ended=unknown and locked_known=false per row.",
         "signal": "\\MHD::N1FREQ, \\MHD::N2FREQ (kHz); PTDATA DUSBRADIAL (native ptdata units, treated as gauss by disruption-py)",
-        "unknown_locking_shots": [
+        "unconfirmed_lock_shots": [
           185943,
           185945,
           185961,
@@ -35466,7 +35648,7 @@
         "rule": "labeler.tearing.surface.supported_m requires an independently observed island radius to evaluate m = n*q there. No ECE island radius is resolved here, so m is empty; q alone is insufficient.",
         "signal": "qpsi_EFIT01 (the shot's feature file), offline EFIT01"
       },
-      "made_at": "2026-10-04T04:46:46+00:00",
+      "made_at": "2026-10-04T13:24:52+00:00",
       "made_by": "scripts/labeler/tm_label.py",
       "missing_signal_shots": [],
       "n_labelled_shots": 450,
@@ -35506,7 +35688,7 @@
         }
       },
       "rule_doc": "docs/labeler/tearing_detection.md; labeler.tearing.rule",
-      "rule_sha256": "42d556dbdc8d117e99257e1e586de0ed547fc9981ffec3a16f100f81f846a2b7",
+      "rule_sha256": "e9e7434fb9714a0a5ab54441179bbf4c9774da09fcc7a1d7f9191b8faee3e1d5",
       "schema_version": 6,
       "screening_missing": "All requested shots exclude blind cohort IDs before input reads; unavailable line screening at RMS above frozen weak_g is uncertain even without positive coherent-line evidence.",
       "shots": "cohort",
@@ -35552,9 +35734,9 @@
         "n_locked_candidates": 351,
         "n_locked_known": 142,
         "n_onset_points": 828,
-        "n_onset_rows_flagged_degenerate": 78,
+        "n_onset_rows_flagged_degenerate": 81,
         "n_onset_windows": 718,
-        "n_onset_windows_at_most_5_ms": 78,
+        "n_onset_windows_at_most_5_ms": 81,
         "n_uncertain_rows": 14085,
         "n_with_m": 0,
         "n_without_observed_onset": 7,
@@ -35573,13 +35755,14 @@
         }
       },
       "crowd": "span rows iscrowd 1 (the whole interval), onset point rows iscrowd 0; t_start == t_end marks a point",
-      "generator_sha256": "d86d523a3c7cb7b92dadfa0a98db93c1e0b055583db98f27de23ce5464a77170",
-      "git_sha": "751d5ee9",
+      "generator_sha256": "a27d941335b0e3a2049f10d10e0e50b57c1a31277c963f37adc6e04f7f005d6c",
+      "git_sha": "97b8e90f",
       "locked": {
         "intervals_without_a_frequency_record_shots": [],
-        "rule": "Frequency <=1 kHz for 20 ms after >=1.5 kHz is only a locked_candidate, storing earliest lock_time_ms and every in-span drop in lock_candidates_ms (plus <=100 ms after the RMS end). An abrupt raw >seed to <release collapse within <=5 ms never counts as decay: unknown unless |DUSBRADIAL| steps at a candidate time: its median over the 20 to 120 ms after the time is >=5 above its median over the 200 to 20 ms before it (each window needs 50 ms measured, the baseline is not read before the plasma start). The candidate times are every frequency drop, the collapse, every interval's end and the end of each rejected candidate. Post-lock time is uncertain until |DUSBRADIAL| stays <5 above that local baseline for 200 ms (shorter dips are no release) or the discharge ends; an absent diagnostic leaves an unconfirmed collapse's tail uncertain. A step of 5 followed by 100 ms above the quiet level in flat-top time no interval or lock tail covers is uncertain `locked_unseeded`. Without frequency: ended=unknown and locked_known=false per row.",
+        "locked_known": "true when a lock was confirmed (then locked is true too); false only says none was confirmed: no radial-field record, no step, or n = 2, which has no confirmation",
+        "rule": "Frequency <=1 kHz for 20 ms after >=1.5 kHz is only a locked_candidate, storing earliest lock_time_ms and every in-span drop in lock_candidates_ms (plus <=100 ms after the RMS end). An abrupt raw >seed to <release collapse within <=5 ms never counts as decay: unknown unless |DUSBRADIAL| steps at a candidate time: its median over the 20 to 120 ms after the time is >=5 above its median over the 200 to 20 ms before it (each window needs 50 ms measured, the baseline is not read before the plasma start). The candidate times are the frequency drops at least 50 ms after the seed starts, the collapse, every interval's end and the end of each rejected candidate. Post-lock time is uncertain until |DUSBRADIAL| stays <5 above that local baseline for 200 ms (shorter dips are no release) or the discharge ends; an absent diagnostic leaves an unconfirmed collapse's tail uncertain. A step of 5 followed by 100 ms above the quiet level in flat-top time no interval or lock tail covers is uncertain `locked_unseeded`. Without frequency: ended=unknown and locked_known=false per row.",
         "signal": "\\MHD::N1FREQ, \\MHD::N2FREQ (kHz); PTDATA DUSBRADIAL (native ptdata units, treated as gauss by disruption-py)",
-        "unknown_locking_shots": [
+        "unconfirmed_lock_shots": [
           185799,
           185942,
           185943,
@@ -36204,7 +36387,7 @@
         "rule": "labeler.tearing.surface.supported_m requires an independently observed island radius to evaluate m = n*q there. No ECE island radius is resolved here, so m is empty; q alone is insufficient.",
         "signal": "qpsi_EFIT01 (the shot's feature file), offline EFIT01"
       },
-      "made_at": "2026-10-04T04:53:08+00:00",
+      "made_at": "2026-10-04T13:30:44+00:00",
       "made_by": "scripts/labeler/tm_label.py",
       "missing_signal_shots": [
         185967,
@@ -36269,7 +36452,7 @@
         }
       },
       "rule_doc": "docs/labeler/tearing_detection.md; labeler.tearing.rule",
-      "rule_sha256": "42d556dbdc8d117e99257e1e586de0ed547fc9981ffec3a16f100f81f846a2b7",
+      "rule_sha256": "e9e7434fb9714a0a5ab54441179bbf4c9774da09fcc7a1d7f9191b8faee3e1d5",
       "schema_version": 6,
       "screening_missing": "All requested shots exclude blind cohort IDs before input reads; unavailable line screening at RMS above frozen weak_g is uncertain even without positive coherent-line evidence.",
       "shots": "population",
@@ -36286,8 +36469,8 @@
       "with_frequency": 74,
       "without_frequency": [],
       "intervals_locked_known": 12,
-      "intervals_locked_unknown": 69,
-      "shots_with_unknown_locking_intervals": [
+      "intervals_unconfirmed_lock": 69,
+      "shots_with_unconfirmed_lock_intervals": [
         185943,
         185945,
         185961,
@@ -36357,15 +36540,15 @@
       ],
       "confirmed_locked_intervals": 12,
       "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm/labels/tm_intervals_full_cohort.csv",
-      "meaning": "A lock is confirmed by a step of the n=1 radial field (|DUSBRADIAL|, native ptdata units): the median over 20 to 120 ms after a candidate time (a frequency drop at least 50 ms after the seed starts, a collapse, an interval end) exceeds the median over 200 to 20 ms before it by at least 5. A field that is already high and drifting is not a step. Unknown locking status is not a negative; time after a collapse stays uncertain until a measured release or the discharge end."
+      "meaning": "A lock is confirmed by a step of the n=1 radial field (|DUSBRADIAL|, native ptdata units): the median over 20 to 120 ms after a candidate time (a frequency drop at least 50 ms after the seed starts, a collapse, an interval end) exceeds the median over 200 to 20 ms before it by at least 5. A field that is already high and drifting is not a step. `locked_known` is true only for a confirmed lock; false says none was confirmed (no record, no step, or n = 2, which has no confirmation), not that the field was checked and found quiet. Time after a collapse stays uncertain until a measured release or the discharge end."
     },
     "population": {
       "shots_with_intervals": 714,
       "with_frequency": 714,
       "without_frequency": [],
       "intervals_locked_known": 142,
-      "intervals_locked_unknown": 693,
-      "shots_with_unknown_locking_intervals": [
+      "intervals_unconfirmed_lock": 693,
+      "shots_with_unconfirmed_lock_intervals": [
         185799,
         185942,
         185943,
@@ -36987,18 +37170,18 @@
       ],
       "confirmed_locked_intervals": 142,
       "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm/labels/tm_intervals_full_population.csv",
-      "meaning": "A lock is confirmed by a step of the n=1 radial field (|DUSBRADIAL|, native ptdata units): the median over 20 to 120 ms after a candidate time (a frequency drop at least 50 ms after the seed starts, a collapse, an interval end) exceeds the median over 200 to 20 ms before it by at least 5. A field that is already high and drifting is not a step. Unknown locking status is not a negative; time after a collapse stays uncertain until a measured release or the discharge end."
+      "meaning": "A lock is confirmed by a step of the n=1 radial field (|DUSBRADIAL|, native ptdata units): the median over 20 to 120 ms after a candidate time (a frequency drop at least 50 ms after the seed starts, a collapse, an interval end) exceeds the median over 200 to 20 ms before it by at least 5. A field that is already high and drifting is not a step. `locked_known` is true only for a confirmed lock; false says none was confirmed (no record, no step, or n = 2, which has no confirmation), not that the field was checked and found quiet. Time after a collapse stays uncertain until a measured release or the discharge end."
     }
   },
   "gallery": {
     "mhr": {
       "made_by": "scripts/labeler/tm_gallery.py",
-      "git_sha": "93eae927",
+      "git_sha": "ab547e6d",
       "source_sha256": "6d2a7b7e1dfc6fc3043f3263aca30c042f8ac89392409e1805a90e385ca076d2",
-      "labels_sha256": "af272ce2316a02d93a66384cc0b086108c87c639069fb72d99777046780f4cc9",
+      "labels_sha256": "decba8f2a5c4b5f69b23e284bf70cf0058bbe1f55c519b9624714420b53a173a",
       "full_labels_sha256": "4e126b91c7aad96a23f10c9ca214ea2766d2316af5c9f094e44448029f5c272c",
       "png_sha256": "67d5c07cd23e4de6b4ad6e5e5e5e532d74262521ac80b98f7860bc4d31006371",
-      "pdf_sha256": "bbf46ebdb55ace49d13a8b0a76893c04dad8e8dfc15947295cd9d1df7f48a8c7",
+      "pdf_sha256": "e70a9274f659d9535c1ab0440103b8c3f96ff04499e8fbb8467857da3b75fcd3",
       "diagnostic": "mhr",
       "diagnostic_row": 2,
       "seed": 0,
@@ -37357,12 +37540,12 @@
     },
     "mirnov": {
       "made_by": "scripts/labeler/tm_gallery.py",
-      "git_sha": "93eae927",
+      "git_sha": "ab547e6d",
       "source_sha256": "6d2a7b7e1dfc6fc3043f3263aca30c042f8ac89392409e1805a90e385ca076d2",
-      "labels_sha256": "af272ce2316a02d93a66384cc0b086108c87c639069fb72d99777046780f4cc9",
+      "labels_sha256": "decba8f2a5c4b5f69b23e284bf70cf0058bbe1f55c519b9624714420b53a173a",
       "full_labels_sha256": "4e126b91c7aad96a23f10c9ca214ea2766d2316af5c9f094e44448029f5c272c",
       "png_sha256": "09ffbc8ed115e06c0b9612b8f7fc363b1dcf3a60d3381d43e13a5e87ad72bffe",
-      "pdf_sha256": "db15d9e9df67e2d873ee4f1d5ae49bec1d5ed62ee12c34a0d7ddcb8deeca4825",
+      "pdf_sha256": "d095944793e5e3b625573f99cbc1a111bd711159c2b79faae8d647b2ba1c3cb9",
       "diagnostic": "mirnov",
       "diagnostic_row": 15,
       "seed": 0,
@@ -37723,12 +37906,12 @@
   "column_examples": {
     "mhr": {
       "made_by": "scripts/labeler/tm_gallery.py",
-      "git_sha": "93eae927",
+      "git_sha": "ab547e6d",
       "source_sha256": "6d2a7b7e1dfc6fc3043f3263aca30c042f8ac89392409e1805a90e385ca076d2",
-      "labels_sha256": "af272ce2316a02d93a66384cc0b086108c87c639069fb72d99777046780f4cc9",
+      "labels_sha256": "decba8f2a5c4b5f69b23e284bf70cf0058bbe1f55c519b9624714420b53a173a",
       "full_labels_sha256": "4e126b91c7aad96a23f10c9ca214ea2766d2316af5c9f094e44448029f5c272c",
       "png_sha256": "31be44fcd52e800676fb4492458cefb026b29b00688cb347ae83ad691179c220",
-      "pdf_sha256": "f8d111c569cd904451e8caa7b30e22c44488b7c8519211936df7b56afe78ecce",
+      "pdf_sha256": "53cf55f0503fbe97a181ed911dd25f693686f618bbbbb4c7ead94bab7c0104bf",
       "diagnostic": "mhr",
       "diagnostic_row": 2,
       "seed": 0,
@@ -37862,12 +38045,12 @@
     },
     "mirnov": {
       "made_by": "scripts/labeler/tm_gallery.py",
-      "git_sha": "93eae927",
+      "git_sha": "ab547e6d",
       "source_sha256": "6d2a7b7e1dfc6fc3043f3263aca30c042f8ac89392409e1805a90e385ca076d2",
-      "labels_sha256": "af272ce2316a02d93a66384cc0b086108c87c639069fb72d99777046780f4cc9",
+      "labels_sha256": "decba8f2a5c4b5f69b23e284bf70cf0058bbe1f55c519b9624714420b53a173a",
       "full_labels_sha256": "4e126b91c7aad96a23f10c9ca214ea2766d2316af5c9f094e44448029f5c272c",
       "png_sha256": "465daac91756867138a2833294a560a371565c259c30d1ded401bab4bf150b03",
-      "pdf_sha256": "84141268fa435e7f9f42accddab83590815ae4965891a35ee7ad88b5ec45799e",
+      "pdf_sha256": "ad35a5ef210baf180ca5979db90f7696ed0158ab6db62226a2cfd84084258f4d",
       "diagnostic": "mirnov",
       "diagnostic_row": 15,
       "seed": 0,
@@ -38001,8 +38184,8 @@
     }
   },
   "gallery_review": {
-    "reviewed": true,
-    "rule_sha256": "42d556dbdc8d117e99257e1e586de0ed547fc9981ffec3a16f100f81f846a2b7",
+    "reviewed": false,
+    "rule_sha256": "e9e7434fb9714a0a5ab54441179bbf4c9774da09fcc7a1d7f9191b8faee3e1d5",
     "finding": "Gallery uses live MHR row 2 and the Mirnov array. Continuous seed and coherent-line evidence define strong rotating n=1/n=2 modes; unsupported candidates, sustained sub-seed lines and locked phases are uncertain."
   },
   "blind_test": {

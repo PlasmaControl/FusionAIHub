@@ -1451,6 +1451,70 @@
             "bin_ms": 10.0,
             "scored_seconds": 1628.4,
             "segment_missing_data_policy": "unavailable label or score bins are hard barriers to merging; excluded from IoU"
+          },
+          "tm-rms-2line (seed levels)": {
+            "n_shots": 450,
+            "replicates": 1000,
+            "auroc": {
+              "value": 0.9984909195998706,
+              "lo": 0.9979289543941604,
+              "hi": 0.9989608644499051,
+              "valid_replicates": 1000
+            },
+            "auprc": {
+              "value": 0.985620380420433,
+              "lo": 0.9799489124651426,
+              "hi": 0.9900635930451409,
+              "valid_replicates": 1000
+            },
+            "f1": {
+              "value": 0.6451188574650004,
+              "lo": 0.5726974369139614,
+              "hi": 0.7169268718195944,
+              "valid_replicates": 1000
+            },
+            "precision": {
+              "value": 0.9975301467383408,
+              "lo": 0.9957746271860446,
+              "hi": 0.9988131651642715,
+              "valid_replicates": 1000
+            },
+            "recall": {
+              "value": 0.4767062417551899,
+              "lo": 0.40173085335562864,
+              "hi": 0.5592594905516551,
+              "valid_replicates": 1000
+            },
+            "prevalence": {
+              "value": 0.08844878408253501,
+              "lo": 0.06779088311818855,
+              "hi": 0.11096388553890607,
+              "valid_replicates": 1000
+            },
+            "segf1_0.3": {
+              "value": 0.594059405940594,
+              "lo": 0.4872837662983976,
+              "hi": 0.7013143106893107,
+              "valid_replicates": 1000
+            },
+            "segf1_0.5": {
+              "value": 0.4752475247524752,
+              "lo": 0.36358800773694394,
+              "hi": 0.6000224215246637,
+              "valid_replicates": 1000
+            },
+            "segf1_0.7": {
+              "value": 0.3564356435643564,
+              "lo": 0.2545454545454545,
+              "hi": 0.4673217623497997,
+              "valid_replicates": 1000
+            },
+            "shots_without_a_scored_bin": [],
+            "bins_scored": 162840,
+            "bins_positive": 14403,
+            "bin_ms": 10.0,
+            "scored_seconds": 1628.4,
+            "segment_missing_data_policy": "unavailable label or score bins are hard barriers to merging; excluded from IoU"
           }
         },
         "differences": {
@@ -1477,6 +1541,32 @@
               "value": 0.21467181467181473,
               "lo": 0.11099282231503269,
               "hi": 0.3087315091698487,
+              "excludes_zero": true
+            }
+          },
+          "tm-ours_minus_tm-rms-2line (seed levels)": {
+            "auroc": {
+              "value": 0.0002121116124299549,
+              "lo": -0.0012556544409801807,
+              "hi": 0.0012754888566921805,
+              "excludes_zero": false
+            },
+            "auprc": {
+              "value": 0.00862288376964282,
+              "lo": 0.002596362854538978,
+              "hi": 0.014847271583764057,
+              "excludes_zero": true
+            },
+            "f1": {
+              "value": 0.31522844546793183,
+              "lo": 0.237570295268606,
+              "hi": 0.39275899484489013,
+              "excludes_zero": true
+            },
+            "segf1_0.5": {
+              "value": 0.36799571849076806,
+              "lo": 0.2311460921684595,
+              "hi": 0.49338963580943396,
               "excludes_zero": true
             }
           }
@@ -2065,6 +2155,70 @@
             "bin_ms": 10.0,
             "scored_seconds": 2468.01,
             "segment_missing_data_policy": "unavailable label or score bins are hard barriers to merging; excluded from IoU"
+          },
+          "tm-rms-2line (seed levels)": {
+            "n_shots": 450,
+            "replicates": 1000,
+            "auroc": {
+              "value": 0.9628270753131045,
+              "lo": 0.9541254186258272,
+              "hi": 0.9712186832030687,
+              "valid_replicates": 1000
+            },
+            "auprc": {
+              "value": 0.6319202375348735,
+              "lo": 0.5587482965342033,
+              "hi": 0.7001366851857944,
+              "valid_replicates": 1000
+            },
+            "f1": {
+              "value": 0.5779947807054466,
+              "lo": 0.5068037346503667,
+              "hi": 0.6432407790775441,
+              "valid_replicates": 1000
+            },
+            "precision": {
+              "value": 0.7339390700160342,
+              "lo": 0.640231851592568,
+              "hi": 0.8101134714110891,
+              "valid_replicates": 1000
+            },
+            "recall": {
+              "value": 0.4767062417551899,
+              "lo": 0.40173085335562864,
+              "hi": 0.5592594905516551,
+              "valid_replicates": 1000
+            },
+            "prevalence": {
+              "value": 0.05835875867601833,
+              "lo": 0.044004895974109476,
+              "hi": 0.07358452202454228,
+              "valid_replicates": 1000
+            },
+            "segf1_0.3": {
+              "value": 0.3438395415472779,
+              "lo": 0.2732850241545894,
+              "hi": 0.416449454926802,
+              "valid_replicates": 1000
+            },
+            "segf1_0.5": {
+              "value": 0.2693409742120344,
+              "lo": 0.20416985381608027,
+              "hi": 0.34118012422360244,
+              "valid_replicates": 1000
+            },
+            "segf1_0.7": {
+              "value": 0.20630372492836677,
+              "lo": 0.14934028737220226,
+              "hi": 0.2747536945812808,
+              "valid_replicates": 1000
+            },
+            "shots_without_a_scored_bin": [],
+            "bins_scored": 246801,
+            "bins_positive": 14403,
+            "bin_ms": 10.0,
+            "scored_seconds": 2468.01,
+            "segment_missing_data_policy": "unavailable label or score bins are hard barriers to merging; excluded from IoU"
           }
         },
         "differences": {
@@ -2092,6 +2246,32 @@
               "lo": 0.010086745080089056,
               "hi": 0.06756795191139219,
               "excludes_zero": true
+            }
+          },
+          "tm-ours_minus_tm-rms-2line (seed levels)": {
+            "auroc": {
+              "value": -0.014588380370915255,
+              "lo": -0.028545931316104226,
+              "hi": -0.002824096906235354,
+              "excludes_zero": true
+            },
+            "auprc": {
+              "value": -0.1196433530615667,
+              "lo": -0.22227305256187083,
+              "hi": -0.018542573885155175,
+              "excludes_zero": true
+            },
+            "f1": {
+              "value": -0.21458185027313864,
+              "lo": -0.30476903230215396,
+              "hi": -0.12385330079095293,
+              "excludes_zero": true
+            },
+            "segf1_0.5": {
+              "value": -0.03988891941751385,
+              "lo": -0.10659934756640865,
+              "hi": 0.029106891330250725,
+              "excludes_zero": false
             }
           }
         }
@@ -2991,7 +3171,7 @@
         }
       }
     },
-    "policy": "each comparison scores the shots and available 10 ms bins both of its models have, each model at its own fold thresholds, on one paired 1000-draw shot bootstrap; full_set (tm-ours, two-line baseline) holds every development shot and is the set for any comparison with the baseline; cnn_subset (tm-ours, retrained CNN) is restricted to the shots and bins where the CNN has inputs and is used only for comparisons with the CNN; the uncertain_negative blocks score uncertain time as negative on the same scores and thresholds"
+    "policy": "each comparison scores the shots and available 10 ms bins both of its models have, each model at its own fold thresholds, on one paired 1000-draw shot bootstrap; full_set (tm-ours, the two-line baseline tuned and at its seed levels) holds every development shot and is the set for any comparison with the baseline; cnn_subset (tm-ours, retrained CNN) is restricted to the shots and bins where the CNN has inputs and is used only for comparisons with the CNN; the uncertain_negative blocks score uncertain time as negative on the same scores and thresholds"
   },
   "training_size_confound": {
     "retrained_models_train_shots_per_fold": {

@@ -908,7 +908,7 @@
     204840,
     204937
   ],
-  "labels_sha256": "af272ce2316a02d93a66384cc0b086108c87c639069fb72d99777046780f4cc9",
+  "labels_sha256": "decba8f2a5c4b5f69b23e284bf70cf0058bbe1f55c519b9624714420b53a173a",
   "input_mask_policy": "zero only nonfinite feature rows; target uncertainty masks loss and evaluation, never model input context",
   "cuda_peak_allocated_gb": 0.01311232,
   "split": "dev, shot-grouped 5-fold out-of-fold",
@@ -10788,5 +10788,7 @@
     "unestimable_folds": [],
     "zero_positive_convention": "error: no fallback is allowed",
     "f1_limitation": null
-  }
+  },
+  "labels_sha256_trained_on": "af272ce2316a02d93a66384cc0b086108c87c639069fb72d99777046780f4cc9",
+  "labels_restamp": "the labels changed only in the attrs column (the onset_window_degenerate flag); per-bin targets and masks are identical, so the fit was not repeated (scripts/labeler/tm_restamp_labels.py)"
 }
