@@ -1,0 +1,96 @@
+{
+ "git": "cbe70119",
+ "created": "2026-10-03T22:51:25+00:00",
+ "corpus_500k": {
+  "shots": 117,
+  "windows": 65052,
+  "classes": {
+   "L": {
+    "windows": 8209,
+    "shots": 38,
+    "passes_gate": 0.27871847971738334,
+    "no_beam_record": 0.0,
+    "left_below_50kW": 0.5194298940187599,
+    "left_50_to_700kW": 0.19600438543062493,
+    "right_above_200kW": 0.009501766354001705,
+    "left_at_least_400kW_and_right_ok": 0.4742355950785723
+   },
+   "H": {
+    "windows": 46503,
+    "shots": 74,
+    "passes_gate": 0.7475216652689074,
+    "no_beam_record": 0.0,
+    "left_below_50kW": 0.08917704234135432,
+    "left_50_to_700kW": 0.017418231081865687,
+    "right_above_200kW": 0.21308302690149022,
+    "left_at_least_400kW_and_right_ok": 0.7646173365159237
+   },
+   "QH": {
+    "windows": 4998,
+    "shots": 16,
+    "passes_gate": 0.7252901160464186,
+    "no_beam_record": 0.0,
+    "left_below_50kW": 0.2729091636654662,
+    "left_50_to_700kW": 0.0010004001600640256,
+    "right_above_200kW": 0.17286914765906364,
+    "left_at_least_400kW_and_right_ok": 0.7260904361744698
+   },
+   "WP": {
+    "windows": 5342,
+    "shots": 20,
+    "passes_gate": 0.5445526020217147,
+    "no_beam_record": 0.0,
+    "left_below_50kW": 0.3946087607637589,
+    "left_50_to_700kW": 0.02208910520404343,
+    "right_above_200kW": 0.3365780606514414,
+    "left_at_least_400kW_and_right_ok": 0.5666417072257581
+   }
+  }
+ },
+ "all_shots_1m": {
+  "shots": 444,
+  "windows": 446426,
+  "classes": {
+   "L": {
+    "windows": 67042,
+    "shots": 125,
+    "passes_gate": 0.5369320724322066,
+    "no_beam_record": 0.0,
+    "left_below_50kW": 0.3295396915366487,
+    "left_50_to_700kW": 0.11677754243608485,
+    "right_above_200kW": 0.05954476298439784,
+    "left_at_least_400kW_and_right_ok": 0.6521434324751648
+   },
+   "H": {
+    "windows": 209331,
+    "shots": 176,
+    "passes_gate": 0.6694756151740545,
+    "no_beam_record": 0.0,
+    "left_below_50kW": 0.11490414702074704,
+    "left_50_to_700kW": 0.017880772556382,
+    "right_above_200kW": 0.2822467766360453,
+    "left_at_least_400kW_and_right_ok": 0.6869837721121095
+   },
+   "QH": {
+    "windows": 117299,
+    "shots": 196,
+    "passes_gate": 0.6831260283548879,
+    "no_beam_record": 0.0,
+    "left_below_50kW": 0.17187699809887552,
+    "left_50_to_700kW": 0.005490242883571045,
+    "right_above_200kW": 0.23423047084800383,
+    "left_at_least_400kW_and_right_ok": 0.6881729597012762
+   },
+   "WP": {
+    "windows": 52754,
+    "shots": 78,
+    "passes_gate": 0.237763961026652,
+    "no_beam_record": 0.0,
+    "left_below_50kW": 0.6820146339614058,
+    "left_50_to_700kW": 0.02847177465215908,
+    "right_above_200kW": 0.5343481063047352,
+    "left_at_least_400kW_and_right_ok": 0.26598930886757405
+   }
+  }
+ }
+}

@@ -1,0 +1,93 @@
+{
+ "category": "confinement",
+ "categories": {
+  "1": "high (H)",
+  "2": "low (L)",
+  "3": "qh (QH)",
+  "4": "wpqh (WPQH)",
+  "5": "uncertain (segment below the confidence floor)"
+ },
+ "columns": [
+  "shot",
+  "category",
+  "t_start",
+  "t_end",
+  "confidence",
+  "predicted",
+  "source",
+  "tier",
+  "extrapolated"
+ ],
+ "made_at": "2026-10-04T13:45:45+00:00",
+ "made_by": "scripts/labeler/confinement_ours.py apply",
+ "git_sha": "73016c4a",
+ "producer": "confine-ours",
+ "status": "experimental",
+ "model": "1D U-Net (U-Time style) over D-alpha, line density, beta_N, W_MHD and injected power; 5 folds, each holding whole run days out; docs/labeler/confinement_ours.md",
+ "roster": "/scratch/gpfs/nc1514/FusionAIHub/data/events/confinement/shots.csv",
+ "segmentation": {
+  "bins_ms": 1.0,
+  "active": "total beam power >= 200000 W, gaps of at most 50 ms bridged",
+  "mode_filter_bins": 21,
+  "min_segment_ms": 20,
+  "confidence": "mean probability of the segment's class over its bins",
+  "confidence_floor": "a segment under 0.7 is category 5 (uncertain); `predicted` keeps its class"
+ },
+ "columns_meaning": {
+  "category": "1 high, 2 low, 3 qh, 4 wpqh, 5 uncertain (under the floor)",
+  "predicted": "the segment's class, before the confidence floor",
+  "source": "held_out: a curated shot, read by the fold model that never saw it; ensemble: any other shot, the mean of the five fold models",
+  "tier": "unreviewed: a QH or WPQH segment on a shot outside the curated set (the curated set may not contain ELM-free and other quiescent H-modes the network could read as QH (unverified)); model: the rest",
+  "extrapolated": "true for a shot past the last curated one (196493); the network never saw those campaigns"
+ },
+ "shots_in_roster": 839,
+ "shots_labelled": 805,
+ "shots_missing": {
+  "count": 34,
+  "reasons": {
+   "190586": "no beam power record",
+   "190602": "no beam power record",
+   "191228": "no beam power record",
+   "191313": "no beam power record",
+   "191316": "no beam power record",
+   "191320": "no beam power record",
+   "191326": "no beam power record",
+   "194597": "no beam power record",
+   "194598": "no beam power record",
+   "194600": "no beam power record",
+   "194602": "no beam power record",
+   "194603": "no beam power record",
+   "194605": "no beam power record",
+   "194608": "no beam power record",
+   "196093": "no beam power record",
+   "196096": "no beam power record",
+   "196101": "no beam power record",
+   "199183": "no beam power record",
+   "200007": "no segment of 20 ms or more while the beam is on",
+   "200704": "no beam power record",
+   "201099": "no beam power record",
+   "201395": "no beam power record",
+   "201447": "no beam power record",
+   "201707": "no beam power record",
+   "201713": "no beam power record",
+   "201948": "no beam power record",
+   "202098": "no beam power record",
+   "202100": "no beam power record",
+   "202101": "no beam power record",
+   "202102": "no beam power record",
+   "202103": "no beam power record",
+   "202110": "no beam power record",
+   "203498": "no beam power record",
+   "203629": "no beam power record"
+  }
+ },
+ "prediction_source": {
+  "curated shots": "the fold model that never saw the shot",
+  "other shots": "mean of the five fold models",
+  "curated_held_out": 401,
+  "ensemble": 405
+ },
+ "audit": "outputs/labeler/confinement/ours/roster_audit.json",
+ "curated_interval_coverage": 0.42419143330655856,
+ "coverage": "Active (beam-on) bins only; other time is not assessed, not low. On curated shots only that share of the label time lies inside a curated interval; the rest is the network's reading of time nobody curated."
+}

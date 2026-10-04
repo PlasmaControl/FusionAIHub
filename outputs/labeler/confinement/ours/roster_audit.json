@@ -1,0 +1,92 @@
+{
+ "git": "73016c4a",
+ "created": "2026-10-04T13:45:45+00:00",
+ "grouping": "run_day",
+ "confidence_floor": 0.7,
+ "last_curated_shot": 196493,
+ "curated_shots": {
+  "shots": 401,
+  "label_seconds": 1850.002,
+  "share_inside_a_curated_interval": 0.42419143330655856,
+  "share_inside_a_curated_interval_of_the_same_class": 0.3863012039986984,
+  "by_class": {
+   "H": {
+    "label_seconds": 715.896,
+    "share_inside_a_curated_interval": 0.5368307687150089,
+    "share_inside_one_of_the_same_class": 0.512081363773509
+   },
+   "L": {
+    "label_seconds": 442.221,
+    "share_inside_a_curated_interval": 0.22420237844878466,
+    "share_inside_one_of_the_same_class": 0.19307540799735878
+   },
+   "QH": {
+    "label_seconds": 474.037,
+    "share_inside_a_curated_interval": 0.4418621331246295,
+    "share_inside_one_of_the_same_class": 0.3958382995420189
+   },
+   "WPQH": {
+    "label_seconds": 217.848,
+    "share_inside_a_curated_interval": 0.42155080606661527,
+    "share_inside_one_of_the_same_class": 0.3444465866108479
+   }
+  }
+ },
+ "non_curated_shots": {
+  "shots": 404,
+  "shots_past_the_last_curated_shot": 142,
+  "by_predicted_class": {
+   "H": {
+    "segments": 583,
+    "segments_at_or_above_floor": 361,
+    "shots": 360,
+    "shots_with_1_s_or_more": 276,
+    "seconds": 1093.383,
+    "mean_confidence": 0.770015437392796
+   },
+   "L": {
+    "segments": 704,
+    "segments_at_or_above_floor": 484,
+    "shots": 389,
+    "shots_with_1_s_or_more": 163,
+    "seconds": 498.399,
+    "mean_confidence": 0.7941264204545455
+   },
+   "QH": {
+    "segments": 142,
+    "segments_at_or_above_floor": 25,
+    "shots": 83,
+    "shots_with_1_s_or_more": 42,
+    "seconds": 137.197,
+    "mean_confidence": 0.5432042253521127
+   },
+   "WPQH": {
+    "segments": 107,
+    "segments_at_or_above_floor": 4,
+    "shots": 59,
+    "shots_with_1_s_or_more": 8,
+    "seconds": 32.057,
+    "mean_confidence": 0.476607476635514
+   }
+  },
+  "segments_made_uncertain_by_the_floor": 663,
+  "unreviewed_tier_segments": 249
+ },
+ "dalpha_cross_check": {
+  "table": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/dalpha_lh/v1/confinement_suggest_dalpha_lh_v1.csv",
+  "shots": 404,
+  "note": "D-alpha H-mode table: high, uncertain, or unmarked (no H-mode detected or not observable; L-mode is never established by it)",
+  "H_seconds": {
+   "high": 479.399,
+   "uncertain": 265.371,
+   "other": 348.613,
+   "share_in_dalpha_high": 0.4384547775116313
+  },
+  "L_seconds": {
+   "high": 30.396,
+   "uncertain": 71.306,
+   "other": 396.697,
+   "share_in_dalpha_high": 0.060987281274641404
+  }
+ }
+}

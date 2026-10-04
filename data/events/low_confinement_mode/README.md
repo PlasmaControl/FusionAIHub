@@ -31,9 +31,13 @@ ELM-free but noisy D-alpha.
 
 **all**:
 - dalpha_lh | 2026_09_12 (rule-based L-H / H-L transition detector, not a regime label)
-- d3d_confinement_bes_cnn | 2026_10_01 | AUROC: 0.945 | AUPRC: 0.783 | F1: 0.733
+- confine-ours | 2026_10_03 | AUROC: 0.962 | AUPRC: 0.903 | F1: 0.895 (experimental; 0D signals, no BES; per 1 ms bin on the 401 curated shots, folds hold out run days)
+- confine-cnn | 2026_10_03 | AUROC: 0.937 | AUPRC: 0.808 | F1: 0.795
+- confine-cnn | 2026_10_01 | AUROC: 0.945 | AUPRC: 0.783 | F1: 0.733 (first retrain; read 2 blind test shots)
 
-Scores are for L-mode as one class of the four-class BES benchmark classifier (L, H, QH, WP QH), on 2 ms windows of the 119 labelled shots that have BES in the corpus, held out by shot (8,209 L-mode windows from 38 shots; precision 0.765, recall 0.703; the paper's L-mode F1 is 0.94). Retrained here from the paper's description, because the original is not on disk. Protocol, caveats and the full table: [confinement_bes_benchmark.md](../../../docs/labeler/confinement_bes_benchmark.md).
+Scores are for L-mode as one class of the four-class BES benchmark classifier (L, H, QH, WP QH), `confine-cnn`, rebuilt from the paper's description (its code is not on disk) and retrained on our labels. The 2026_10_03 line is our reimplementation under the paper's selection and split: the paper's beam gate, margins, optimiser, architecture and training length, a 6 x 8 block chosen from the channel positions, native 1 MHz BES (1,024-sample windows, 1 ms), 401 shots, five random splits by shot with the test windows pooled (the splits overlap, so the test windows are pooled once per split that tests them: 142 distinct test shots in 200 shot-tests and 106,232 distinct windows of 152,863 pooled over all classes, and one split scores macro F1 0.684 +/- 0.074 against the pooled 0.703): 23,693 pooled L-mode windows (14,589 distinct) on 40 distinct test shots, precision 0.847, recall 0.750, F1 0.795 [0.64, 0.89] (shot bootstrap); the paper's L-mode F1 is 0.94 on its own 44-shot test set. The 2026_10_01 line is the first retrain with none of that protocol, on 2 ms windows of the 119 labelled shots that have BES in the corpus, held out by shot (8,209 L-mode windows from 38 shots; precision 0.765, recall 0.703; the paper's L-mode F1 is 0.94); its two blind test shots are read, and it is not a benchmark number. Protocol, caveats and the full table: [confinement_bes_benchmark.md](../../../docs/labeler/confinement_bes_benchmark.md).
+
+The `confine-ours` line is L-mode as one class of the four-class segmenter of the 0D signals (a 1D U-Net over D-alpha, line-integrated density, stored energy, normalised beta and beam power, no BES; experimental, [confinement_ours.md](../../../docs/labeler/confinement_ours.md)), scored per 1 ms bin out of sample on the 401 curated shots in 5-fold cross-validation whose folds hold out whole run days: 97,856 labelled bins on 104 shots, F1 0.895 [0.842, 0.939] (shot bootstrap); record `outputs/labeler/confinement/ours/scores.json` (`per_bin_all_labelled`). It is not scored on the same windows as `confine-cnn`, so the two lines are not paired.
 
 ## Inputs
 **dalpha_lh**:
@@ -45,8 +49,8 @@ Scores are for L-mode as one class of the four-class BES benchmark classifier (L
 - `D-alpha filterscopes` (channels pooled)
 - `NBI power` (optional)
 
-**d3d_confinement_bes_cnn**:
-- `BES` inner 6 x 8 block of the 8 x 8 array (channels 8-55 of 64), 2.5-150 kHz, 1,024-sample windows (2 ms at 500 kHz)
+**confine-cnn**:
+- `BES` 6 x 8 block of the 8 x 8 array, 2.5-150 kHz, 1,024-sample windows. 2026_10_03: the block chosen per shot from the channel positions (rows 0-5 for 349 of 401 shots, rows 1-6 for 37, rows 2-7 for 15), 1 MHz (1 ms). 2026_10_01: channels 8-55 of 64 (rows 1-6), 500 kHz (2 ms)
 
 ## Method
 
@@ -62,7 +66,7 @@ a bin 1. A bin spanning a transition can therefore be positive in both H and L
 outputs; it means each regime occurred within that bin. Consecutive equal known
 bins are compressed into CSV intervals. Exact original bounds remain in raw/.
 
-Benchmark: the BES classifier of the published confinement-regime paper, rebuilt from its description, is scored against the merged confinement intervals (L, H, QH and WP QH; [shared confinement labels](../confinement/README.md)) with `scripts/labeler/confinement_bes_benchmark.py`; its results and the paper's per-class scores are in [confinement_bes_benchmark.md](../../../docs/labeler/confinement_bes_benchmark.md).
+Benchmark: the BES classifier of the published confinement-regime paper, rebuilt from its description, is scored against the merged confinement intervals (L, H, QH and WP QH; [shared confinement labels](../confinement/README.md)) with `scripts/labeler/confinement_bes_benchmark.py` (first retrain) and `scripts/labeler/confinement_bes_ablation.py` (protocol-matched rows); its results and the paper's per-class scores are in [confinement_bes_benchmark.md](../../../docs/labeler/confinement_bes_benchmark.md).
 
 ## Alias
 l-mode, lmode, low confinement mode, ohmic (only when no auxiliary heating is applied)
