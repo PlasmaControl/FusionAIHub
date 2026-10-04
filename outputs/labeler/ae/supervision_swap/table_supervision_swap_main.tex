@@ -1,0 +1,23 @@
+% Needs booktabs. Written by ae_supervision_swap_report.py from
+% evaluation.json: the main-text table (19 shared held-out shots).
+\begin{table*}[t]
+\caption{AE supervision swap on the 19 held-out shots that ae-rcn and ae-lstm did not train on, scored against two references (10\,ms frames). The three \texttt{ae-ours} rows are one recipe trained on three activity targets (the legacy annotation, the dense relabel, or the agreement of the annotation with TokEye; 100 training shots, epoch chosen on 20 other shots) and give the mean $\pm$ sample standard deviation over three seeds. The saved detectors \texttt{ae-rcn} and \texttt{ae-lstm} (801 training shots) and the two input-free \emph{clocks} (each 10\,ms frame scored by its positive rate over the 120 training and selection shots, from the labels named) are single models and give the estimate. The last two columns are the paired AUROC difference from \texttt{ae-rcn} (row minus \texttt{ae-rcn}; seed mean for \texttt{ae-ours}) with a 95\,\% interval from 1000 resamplings of the 19 shots. The dense reference is temporally coarse (93 of 180 shots have one present span), so the clock rows show how much of each score is time context alone. All 60 evaluation shots and the F1 and per-seed results are in the appendix tables.}
+\label{tab:ae_supervision_swap_main}
+\centering\scriptsize
+\setlength{\tabcolsep}{2.5pt}
+\begin{tabular}{@{}l cc cc cc@{}}
+\toprule
+ & \multicolumn{2}{c}{Dense reference} & \multicolumn{2}{c}{Legacy annotation} & \multicolumn{2}{c}{AUROC minus \texttt{ae-rcn}} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(l){6-7}
+Model, training labels & AUROC & AUPRC & AUROC & AUPRC & Dense ref. & Legacy-ann. ref. \\
+\midrule
+\texttt{ae-ours}, legacy annotation & 0.807 $\pm$ 0.038 & 0.910 $\pm$ 0.024 & 0.747 $\pm$ 0.029 & 0.548 $\pm$ 0.008 & $-$0.055 [$-$0.149, 0.036] & $-$0.164 [$-$0.254, $-$0.074] \\
+\texttt{ae-ours}, dense relabel & 0.980 $\pm$ 0.006 & 0.991 $\pm$ 0.002 & 0.685 $\pm$ 0.014 & 0.323 $\pm$ 0.024 & +0.118 [0.066, 0.175] & $-$0.226 [$-$0.351, $-$0.119] \\
+\texttt{ae-ours}, agreement & 0.980 $\pm$ 0.005 & 0.992 $\pm$ 0.002 & 0.711 $\pm$ 0.021 & 0.372 $\pm$ 0.035 & +0.119 [0.070, 0.175] & $-$0.200 [$-$0.310, $-$0.098] \\
+\texttt{ae-rcn}, saved & 0.862 & 0.930 & 0.911 & 0.691 & n/a & n/a \\
+\texttt{ae-lstm}, saved & 0.736 & 0.855 & 0.898 & 0.668 & $-$0.125 [$-$0.200, $-$0.058] & $-$0.013 [$-$0.039, 0.012] \\
+clock, legacy annotation & 0.818 & 0.905 & 0.860 & 0.558 & $-$0.043 [$-$0.091, 0.007] & $-$0.051 [$-$0.079, $-$0.020] \\
+clock, dense relabel & 0.875 & 0.936 & 0.877 & 0.552 & +0.013 [$-$0.033, 0.065] & $-$0.034 [$-$0.058, $-$0.013] \\
+\bottomrule
+\end{tabular}
+\end{table*}

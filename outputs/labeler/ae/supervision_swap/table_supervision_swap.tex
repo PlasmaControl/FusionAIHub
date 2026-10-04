@@ -1,0 +1,93 @@
+% Needs booktabs and array. Written by ae_supervision_swap_report.py from
+% evaluation.json; the dense table comes first, the annotation table second.
+\begin{table*}[t]
+\caption{AE supervision swap scored against the dense relabel reference, on 10\,ms frames. \textbf{Models.} The three \texttt{ae-ours} arms differ only in the activity target they train on (the legacy annotation, the dense relabel, or annotation-and-TokEye agreement), with 100 training shots, random 182\,ms windows, the epoch chosen on 20 held-out selection shots and three seeds each. \texttt{ae-rcn} and \texttt{ae-lstm} are the saved detectors, trained on UCI $\pm$125\,ms windows from 801 shots (41 of the 60 evaluation shots among them, so they are scored on the 19 shared held-out shots only). The two \emph{clock} rows use no input: each 10\,ms frame is scored by its positive rate over the 120 training and selection shots, from the legacy annotation or from the dense relabel. \textbf{Scores.} AUROC and AUPRC pool all frames of a cohort; a seed row and a baseline give the estimate and a 95\,\% interval from 1000 shot-bootstrap replicates (CI); a \emph{mean} row gives the mean and the sample standard deviation over the three seeds (SD), never both. Shot AUROC is the median over shots of the within-shot AUROC. F1 is calibrated per method on the reference being scored: its threshold maximises F1 on that method's own selection shots (20; six for \texttt{ae-rcn} and \texttt{ae-lstm}) against this reference. $^\dagger$\,The clocks' thresholds are tuned on 20 shots that are part of the 120 shots the clock itself is built from (in-sample). \textbf{Dense reference.} 93 of 180 shots have a single present span, so the input-free dense clock reaches a median Shot AUROC of 0.9997 on the 60 shots and that column cannot rank methods here. Frames: 12000 on 60 shots (8352 positive) and 3800 on 19 shots (2595 positive).}
+\label{tab:ae_supervision_swap_dense}
+\centering\footnotesize
+\setlength{\tabcolsep}{4.2pt}
+\begin{tabular}{@{}l>{\raggedright\arraybackslash}p{1.3in}cccc@{}}
+\toprule
+Model & Training & AUROC & AUPRC & Shot AUROC & F1 \\
+\midrule
+\multicolumn{6}{@{}l}{\textbf{60 shots}} \\
+\texttt{ae-ours} & legacy annotation, seed 0 & 0.885 [0.856, 0.913] & 0.953 [0.934, 0.967] & 0.931 & 0.869 \\
+\texttt{ae-ours} & legacy annotation, seed 1 & 0.805 [0.762, 0.846] & 0.905 [0.880, 0.928] & 0.797 & 0.828 \\
+\texttt{ae-ours} & legacy annotation, seed 2 & 0.879 [0.848, 0.908] & 0.947 [0.929, 0.963] & 0.880 & 0.845 \\
+\textit{ae-ours} & \textit{legacy annotation, mean of 3} & 0.856 $\pm$ 0.044 & 0.935 $\pm$ 0.026 & 0.869 $\pm$ 0.068 & 0.847 $\pm$ 0.020 \\
+\texttt{ae-ours} & dense relabel, seed 0 & 0.984 [0.975, 0.991] & 0.993 [0.987, 0.997] & 0.999 & 0.960 \\
+\texttt{ae-ours} & dense relabel, seed 1 & 0.980 [0.969, 0.989] & 0.991 [0.984, 0.996] & 0.999 & 0.954 \\
+\texttt{ae-ours} & dense relabel, seed 2 & 0.988 [0.982, 0.994] & 0.995 [0.991, 0.998] & 0.999 & 0.965 \\
+\textit{ae-ours} & \textit{dense relabel, mean of 3} & 0.984 $\pm$ 0.004 & 0.993 $\pm$ 0.002 & 0.999 $\pm$ 0.000 & 0.960 $\pm$ 0.005 \\
+\texttt{ae-ours} & annotation-and-TokEye agreement, seed 0 & 0.978 [0.958, 0.990] & 0.990 [0.978, 0.996] & 0.998 & 0.936 \\
+\texttt{ae-ours} & annotation-and-TokEye agreement, seed 1 & 0.977 [0.959, 0.989] & 0.990 [0.979, 0.996] & 0.998 & 0.945 \\
+\texttt{ae-ours} & annotation-and-TokEye agreement, seed 2 & 0.969 [0.949, 0.984] & 0.987 [0.974, 0.995] & 0.998 & 0.946 \\
+\textit{ae-ours} & \textit{annotation-and-TokEye agreement, mean of 3} & 0.975 $\pm$ 0.005 & 0.989 $\pm$ 0.001 & 0.998 $\pm$ 0.000 & 0.943 $\pm$ 0.005 \\
+clock from legacy annotation & input-free, 120 shots & 0.787 [0.762, 0.812] & 0.890 [0.868, 0.911] & 0.859 & 0.780$^\dagger$ \\
+clock from dense relabel & input-free, 120 shots & 0.842 [0.819, 0.868] & 0.916 [0.893, 0.938] & 1.000 & 0.764$^\dagger$ \\
+\midrule
+\multicolumn{6}{@{}l}{\textbf{19 shared held-out shots}} \\
+\texttt{ae-ours} & legacy annotation, seed 0 & 0.830 [0.754, 0.901] & 0.926 [0.890, 0.958] & 0.888 & 0.831 \\
+\texttt{ae-ours} & legacy annotation, seed 1 & 0.764 [0.668, 0.847] & 0.882 [0.846, 0.924] & 0.797 & 0.790 \\
+\texttt{ae-ours} & legacy annotation, seed 2 & 0.827 [0.752, 0.889] & 0.921 [0.888, 0.954] & 0.846 & 0.826 \\
+\textit{ae-ours} & \textit{legacy annotation, mean of 3} & 0.807 $\pm$ 0.038 & 0.910 $\pm$ 0.024 & 0.844 $\pm$ 0.046 & 0.816 $\pm$ 0.023 \\
+\texttt{ae-ours} & dense relabel, seed 0 & 0.983 [0.961, 0.996] & 0.992 [0.979, 0.999] & 0.999 & 0.960 \\
+\texttt{ae-ours} & dense relabel, seed 1 & 0.973 [0.946, 0.993] & 0.989 [0.971, 0.998] & 1.000 & 0.958 \\
+\texttt{ae-ours} & dense relabel, seed 2 & 0.984 [0.968, 0.995] & 0.993 [0.983, 0.998] & 0.999 & 0.960 \\
+\textit{ae-ours} & \textit{dense relabel, mean of 3} & 0.980 $\pm$ 0.006 & 0.991 $\pm$ 0.002 & 0.999 $\pm$ 0.000 & 0.959 $\pm$ 0.001 \\
+\texttt{ae-ours} & annotation-and-TokEye agreement, seed 0 & 0.983 [0.966, 0.994] & 0.992 [0.982, 0.998] & 0.998 & 0.934 \\
+\texttt{ae-ours} & annotation-and-TokEye agreement, seed 1 & 0.983 [0.969, 0.993] & 0.993 [0.982, 0.998] & 0.994 & 0.943 \\
+\texttt{ae-ours} & annotation-and-TokEye agreement, seed 2 & 0.975 [0.954, 0.989] & 0.990 [0.976, 0.996] & 0.990 & 0.942 \\
+\textit{ae-ours} & \textit{annotation-and-TokEye agreement, mean of 3} & 0.980 $\pm$ 0.005 & 0.992 $\pm$ 0.002 & 0.994 $\pm$ 0.004 & 0.940 $\pm$ 0.005 \\
+\texttt{ae-rcn} & UCI $\pm$125\,ms windows, 801 shots (saved) & 0.862 [0.810, 0.907] & 0.930 [0.906, 0.955] & 0.980 & 0.864 \\
+\texttt{ae-lstm} & UCI $\pm$125\,ms windows, 801 shots (saved) & 0.736 [0.654, 0.802] & 0.855 [0.835, 0.885] & 0.769 & 0.800 \\
+clock from legacy annotation & input-free, 120 shots & 0.818 [0.773, 0.865] & 0.905 [0.881, 0.931] & 0.859 & 0.809$^\dagger$ \\
+clock from dense relabel & input-free, 120 shots & 0.875 [0.834, 0.913] & 0.936 [0.909, 0.960] & 1.000 & 0.799$^\dagger$ \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{table*}[t]
+\caption{AE supervision swap scored against the legacy annotation reference, on 10\,ms frames. \textbf{Models.} The three \texttt{ae-ours} arms differ only in the activity target they train on (the legacy annotation, the dense relabel, or annotation-and-TokEye agreement), with 100 training shots, random 182\,ms windows, the epoch chosen on 20 held-out selection shots and three seeds each. \texttt{ae-rcn} and \texttt{ae-lstm} are the saved detectors, trained on UCI $\pm$125\,ms windows from 801 shots (41 of the 60 evaluation shots among them, so they are scored on the 19 shared held-out shots only). The two \emph{clock} rows use no input: each 10\,ms frame is scored by its positive rate over the 120 training and selection shots, from the legacy annotation or from the dense relabel. \textbf{Scores.} AUROC and AUPRC pool all frames of a cohort; a seed row and a baseline give the estimate and a 95\,\% interval from 1000 shot-bootstrap replicates (CI); a \emph{mean} row gives the mean and the sample standard deviation over the three seeds (SD), never both. Shot AUROC is the median over shots of the within-shot AUROC. F1 is calibrated per method on the reference being scored: its threshold maximises F1 on that method's own selection shots (20; six for \texttt{ae-rcn} and \texttt{ae-lstm}) against this reference. $^\dagger$\,The clocks' thresholds are tuned on 20 shots that are part of the 120 shots the clock itself is built from (in-sample). Frames: 12000 on 60 shots (2348 positive) and 3800 on 19 shots (796 positive).}
+\label{tab:ae_supervision_swap_annotation}
+\centering\footnotesize
+\setlength{\tabcolsep}{4.2pt}
+\begin{tabular}{@{}l>{\raggedright\arraybackslash}p{1.3in}cccc@{}}
+\toprule
+Model & Training & AUROC & AUPRC & Shot AUROC & F1 \\
+\midrule
+\multicolumn{6}{@{}l}{\textbf{60 shots}} \\
+\texttt{ae-ours} & legacy annotation, seed 0 & 0.706 [0.644, 0.764] & 0.455 [0.362, 0.549] & 0.764 & 0.392 \\
+\texttt{ae-ours} & legacy annotation, seed 1 & 0.721 [0.666, 0.772] & 0.482 [0.400, 0.559] & 0.822 & 0.436 \\
+\texttt{ae-ours} & legacy annotation, seed 2 & 0.742 [0.688, 0.787] & 0.449 [0.353, 0.541] & 0.844 & 0.411 \\
+\textit{ae-ours} & \textit{legacy annotation, mean of 3} & 0.723 $\pm$ 0.018 & 0.462 $\pm$ 0.017 & 0.810 $\pm$ 0.041 & 0.413 $\pm$ 0.022 \\
+\texttt{ae-ours} & dense relabel, seed 0 & 0.638 [0.568, 0.703] & 0.256 [0.190, 0.342] & 0.582 & 0.370 \\
+\texttt{ae-ours} & dense relabel, seed 1 & 0.626 [0.559, 0.691] & 0.239 [0.183, 0.319] & 0.565 & 0.401 \\
+\texttt{ae-ours} & dense relabel, seed 2 & 0.638 [0.573, 0.702] & 0.257 [0.193, 0.341] & 0.649 & 0.415 \\
+\textit{ae-ours} & \textit{dense relabel, mean of 3} & 0.634 $\pm$ 0.007 & 0.251 $\pm$ 0.010 & 0.599 $\pm$ 0.044 & 0.395 $\pm$ 0.023 \\
+\texttt{ae-ours} & annotation-and-TokEye agreement, seed 0 & 0.639 [0.579, 0.698] & 0.266 [0.200, 0.356] & 0.637 & 0.404 \\
+\texttt{ae-ours} & annotation-and-TokEye agreement, seed 1 & 0.636 [0.577, 0.696] & 0.275 [0.207, 0.358] & 0.733 & 0.401 \\
+\texttt{ae-ours} & annotation-and-TokEye agreement, seed 2 & 0.659 [0.600, 0.715] & 0.310 [0.228, 0.403] & 0.735 & 0.377 \\
+\textit{ae-ours} & \textit{annotation-and-TokEye agreement, mean of 3} & 0.645 $\pm$ 0.013 & 0.284 $\pm$ 0.023 & 0.702 $\pm$ 0.056 & 0.394 $\pm$ 0.015 \\
+clock from legacy annotation & input-free, 120 shots & 0.852 [0.819, 0.882] & 0.520 [0.431, 0.604] & 0.943 & 0.527$^\dagger$ \\
+clock from dense relabel & input-free, 120 shots & 0.855 [0.826, 0.884] & 0.509 [0.431, 0.581] & 0.923 & 0.548$^\dagger$ \\
+\midrule
+\multicolumn{6}{@{}l}{\textbf{19 shared held-out shots}} \\
+\texttt{ae-ours} & legacy annotation, seed 0 & 0.728 [0.610, 0.840] & 0.540 [0.355, 0.707] & 0.747 & 0.429 \\
+\texttt{ae-ours} & legacy annotation, seed 1 & 0.732 [0.620, 0.844] & 0.556 [0.376, 0.710] & 0.822 & 0.463 \\
+\texttt{ae-ours} & legacy annotation, seed 2 & 0.781 [0.696, 0.868] & 0.550 [0.383, 0.709] & 0.929 & 0.451 \\
+\textit{ae-ours} & \textit{legacy annotation, mean of 3} & 0.747 $\pm$ 0.029 & 0.548 $\pm$ 0.008 & 0.833 $\pm$ 0.092 & 0.447 $\pm$ 0.017 \\
+\texttt{ae-ours} & dense relabel, seed 0 & 0.690 [0.548, 0.814] & 0.341 [0.185, 0.570] & 0.735 & 0.420 \\
+\texttt{ae-ours} & dense relabel, seed 1 & 0.670 [0.537, 0.800] & 0.295 [0.167, 0.514] & 0.561 & 0.428 \\
+\texttt{ae-ours} & dense relabel, seed 2 & 0.697 [0.570, 0.818] & 0.333 [0.191, 0.558] & 0.763 & 0.446 \\
+\textit{ae-ours} & \textit{dense relabel, mean of 3} & 0.685 $\pm$ 0.014 & 0.323 $\pm$ 0.024 & 0.686 $\pm$ 0.110 & 0.431 $\pm$ 0.013 \\
+\texttt{ae-ours} & annotation-and-TokEye agreement, seed 0 & 0.700 [0.581, 0.822] & 0.349 [0.191, 0.564] & 0.797 & 0.444 \\
+\texttt{ae-ours} & annotation-and-TokEye agreement, seed 1 & 0.698 [0.582, 0.816] & 0.355 [0.200, 0.570] & 0.835 & 0.450 \\
+\texttt{ae-ours} & annotation-and-TokEye agreement, seed 2 & 0.735 [0.626, 0.847] & 0.412 [0.224, 0.625] & 0.844 & 0.442 \\
+\textit{ae-ours} & \textit{annotation-and-TokEye agreement, mean of 3} & 0.711 $\pm$ 0.021 & 0.372 $\pm$ 0.035 & 0.826 $\pm$ 0.025 & 0.445 $\pm$ 0.004 \\
+\texttt{ae-rcn} & UCI $\pm$125\,ms windows, 801 shots (saved) & 0.911 [0.878, 0.939] & 0.691 [0.554, 0.798] & 0.944 & 0.571 \\
+\texttt{ae-lstm} & UCI $\pm$125\,ms windows, 801 shots (saved) & 0.898 [0.854, 0.930] & 0.668 [0.509, 0.779] & 0.917 & 0.602 \\
+clock from legacy annotation & input-free, 120 shots & 0.860 [0.817, 0.903] & 0.558 [0.413, 0.696] & 0.926 & 0.545$^\dagger$ \\
+clock from dense relabel & input-free, 120 shots & 0.877 [0.840, 0.914] & 0.552 [0.422, 0.680] & 0.921 & 0.580$^\dagger$ \\
+\bottomrule
+\end{tabular}
+\end{table*}
