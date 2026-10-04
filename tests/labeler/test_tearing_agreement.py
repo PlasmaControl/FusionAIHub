@@ -156,10 +156,11 @@ def test_an_onset_inside_the_preceding_weak_window_is_said_to_be_inside_it():
     onsets, compared = agreement.compare_onsets(refs, intervals)
     assert onsets.window_start_ms.tolist() == pytest.approx([800.0, 2000.0])
     # shot 1's onset lies in 800-1000; shot 2 has no window beyond its start, and its
-    # onset is 50 ms early, within the matching tolerance of that start
-    assert onsets.in_onset_window.tolist() == [True, True]
+    # onset is 50 ms early: matched within the tolerance, but not inside an empty window
+    assert onsets.matched.tolist() == [True, True]
+    assert onsets.in_onset_window.tolist() == [True, False]
     out = agreement.summarize(onsets, compared, refs)
-    assert out["error_ms"]["reference_inside_onset_window_fraction"] == 1.0
+    assert out["error_ms"]["reference_inside_onset_window_fraction"] == 0.5
 
 
 def test_an_onset_after_the_interval_start_is_matched_but_not_in_its_onset_window():
@@ -169,15 +170,13 @@ def test_an_onset_after_the_interval_start_is_matched_but_not_in_its_onset_windo
     refs = [Reference(1, 1300.0, 0, 6000), Reference(2, 1080.0, 0, 6000)]
     onsets, compared = agreement.compare_onsets(refs, intervals)
     assert onsets.matched.tolist() == [True, True]
-    assert onsets.in_onset_window.tolist() == [False, True]
-    # without the tolerance neither onset is between the window start and the start
-    assert onsets.in_onset_window_strict.tolist() == [False, False]
-    # before the window start, beyond the tolerance, the onset is not in the window either
+    # the window is not widened: neither onset is between the window start and the start
+    assert onsets.in_onset_window.tolist() == [False, False]
+    # before the window start the onset is not in the window either
     early = agreement.compare_onsets([Reference(1, 650.0, 0, 6000)], intervals[:1])[0]
     assert early.matched.tolist() == [False]
     assert early.in_onset_window.tolist() == [False]
     out = agreement.summarize(onsets, compared, refs)
-    assert out["error_ms"]["reference_inside_onset_window_fraction"] == 0.5
-    assert out["error_ms"]["reference_inside_onset_window"] == 1
-    assert out["error_ms"]["reference_inside_onset_window_strict"] == 0
+    assert out["error_ms"]["reference_inside_onset_window_fraction"] == 0.0
+    assert out["error_ms"]["reference_inside_onset_window"] == 0
     assert out["error_ms"]["reference_after_interval_start_by_more_than_tolerance"] == 1
