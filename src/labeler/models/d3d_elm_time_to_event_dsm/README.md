@@ -365,11 +365,13 @@ The companion occupancy U-Net omits FS01 because its retained cache contains FS0
 only. Its fast-density inputs divide native values by `1e14`, clip to `[-3, 12]`, and
 clip ten times the 0.2 s high-pass to `[-10, 10]`; chords with median absolute native
 magnitude above `1e16` are zeroed by a heuristic failed-digitiser screen. Offline
-metadata audits made no new fetches and changed no saved inputs or weights. Sources:
-`density_units.json`, `filterscope_metadata.json` and `src/labeler/elm/inputs.py`. No
-independently validated physical-onset detector is delivered; run days cross folds in
-the review analysis (16 of 94 review days) and the Smith onset folds are grouped by run
-day (none of 31 days crosses folds).
+metadata audits changed no saved inputs or weights and fetched nothing (the one fresh
+fetch in this evaluation is the swap shots' PCPHD02/03 comparison, 16 records,
+`dsm/swap_photodiode_agreement.json`). Sources: `density_units.json`,
+`filterscope_metadata.json` and `src/labeler/elm/inputs.py`. No independently validated
+physical-onset detector is delivered; run days cross folds in the review analysis (16 of
+94 review days) and the Smith onset folds are grouped by run day (none of 31 days
+crosses folds).
 
 ### Limited-input survival refit (selection evidence)
 
@@ -463,8 +465,12 @@ on the native folds' own train and inner-validation shots
 same bins it scores AUROC 0.863 [0.795, 0.923] against 0.936 [0.862, 0.981] for the
 headline elm-ours, 0.734 [0.610, 0.856] for the native refit and 0.823 [0.735, 0.899]
 for the 60-input adaptation. At equal training shots elm-ours has the higher point AUROC
-than the native refit, with overlapping intervals. The headline's lead over the native
-refit therefore mixes training size with architecture. This smaller support panel is a
+than the native refit; paired on the same shots and bootstrap draws (elm-ours on the
+native folds minus the native refit), all119 AUROC +0.129 [+0.012, +0.262], AUPRC +0.187
+[-0.036, +0.362], F1 +0.097 [+0.016, +0.200] (the interval excludes zero for AUROC and
+F1; it includes zero for AUPRC) and bes73 AUROC +0.137 [+0.013, +0.284], AUPRC +0.185
+[-0.034, +0.360], F1 +0.099 [+0.017, +0.201]. The headline's lead over the native refit
+therefore mixes training size with architecture. This smaller support panel is a
 secondary control and does not replace the primary all119/bes73 benchmark.
 
 ### DSM baselines retrained with post-warm-up selection

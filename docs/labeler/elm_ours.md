@@ -101,14 +101,15 @@ elm-elmo AUROC is +0.004 [-0.034, +0.037]. Source: `ours/moved_boundary_stratum.
 | elm-elmo | 0.934 [0.894, 0.965] | 0.816 | 0.822 | 0.098 |
 
 **Secondary DSM common-bin control** (11,653 / 6,527 bins; tables in
-`dsm/evaluation.json:sets` and the paper). The reduced-input elm-dsm detector scores
-all119 AUROC 0.845 [0.796, 0.893], AUPRC 0.748, F1 0.742; its reported fit is fragile
-(selected epochs 35, 31, 2, 24, 0). Paired elm-ours minus elm-dsm, all119: AUROC +0.094
-[+0.055, +0.132], AUPRC +0.131 [+0.068, +0.195], F1 +0.091 [+0.040, +0.139]; bes73:
-AUROC +0.099 [+0.058, +0.147], AUPRC +0.146 [+0.075, +0.227], F1 +0.066 [+0.009,
-+0.126]. Paired elm-ours minus elm-elmo on bes73: AUROC +0.025 [-0.013, +0.071], AUPRC
-+0.044 [-0.056, +0.131], F1 +0.007 [-0.044, +0.063]. These DSM detection rows are lower
-bounds on DSM detection skill under our recipe, not the best achievable DSM performance.
+`dsm/evaluation.json:sets` and the paper). The reduced-input elm-dsm-detect adaptation
+scores all119 AUROC 0.845 [0.796, 0.893], AUPRC 0.748, F1 0.742; its reported fit is
+fragile (selected epochs 35, 31, 2, 24, 0). Paired elm-ours minus elm-dsm-detect,
+all119: AUROC +0.094 [+0.055, +0.132], AUPRC +0.131 [+0.068, +0.195], F1 +0.091 [+0.040,
++0.139]; bes73: AUROC +0.099 [+0.058, +0.147], AUPRC +0.146 [+0.075, +0.227], F1 +0.066
+[+0.009, +0.126]. Paired elm-ours minus elm-elmo on bes73: AUROC +0.025 [-0.013,
++0.071], AUPRC +0.044 [-0.056, +0.131], F1 +0.007 [-0.044, +0.063]. These DSM detection
+rows are lower bounds on DSM detection skill under our recipe, not the best achievable
+DSM performance.
 
 ## Serving protocol and sensitivities
 
@@ -174,8 +175,12 @@ on the native folds' own train and inner-validation shots
 same bins it scores AUROC 0.863 [0.795, 0.923] against 0.936 [0.862, 0.981] for the
 headline elm-ours, 0.734 [0.610, 0.856] for the native refit and 0.823 [0.735, 0.899]
 for the 60-input adaptation. At equal training shots elm-ours has the higher point AUROC
-than the native refit, with overlapping intervals. The headline's lead over the native
-refit therefore mixes training size with architecture. This smaller support panel is a
+than the native refit; paired on the same shots and bootstrap draws (elm-ours on the
+native folds minus the native refit), all119 AUROC +0.129 [+0.012, +0.262], AUPRC +0.187
+[-0.036, +0.362], F1 +0.097 [+0.016, +0.200] (the interval excludes zero for AUROC and
+F1; it includes zero for AUPRC) and bes73 AUROC +0.137 [+0.013, +0.284], AUPRC +0.185
+[-0.034, +0.360], F1 +0.099 [+0.017, +0.201]. The headline's lead over the native refit
+therefore mixes training size with architecture. This smaller support panel is a
 secondary control and does not replace the primary all119/bes73 benchmark.
 
 ### DSM baselines retrained with post-warm-up selection
@@ -221,21 +226,24 @@ establish physical calibration or prove that screened chords are faulty.
 
 ## Signal provenance and numerical preprocessing
 
-The retained caches do not establish fast-density physical ordinate units or FS01–04
+The retained caches do not establish fast-density physical ordinate units or FS02–04
 sightlines (divertor versus midplane); FS01 is not an input to the occupancy U-Net, and
-paired slow CO2 checks numerical scales only. Filterscope levels use `(log10(max(x,
+paired slow CO2 checks numerical scales only. Filterscope FS02–04 values are in the
+corpus unit ph/(sr cm² s) (`src/labeler/events/raw.py`, checked on shot 187018),
+although the stored ELM-O records keep no unit metadata; their levels use `(log10(max(x,
 1e12)) - 15) / 1.5` with contrast to a 0.5 s running median. Fast density is divided by
 `1e14`, clipped to `[-3, 12]`, and ten times its 0.2 s high-pass is clipped to `[-10,
 10]`; a chord whose median absolute native magnitude exceeds `1e16` is zeroed. These are
 fixed numerical choices, not verified calibration or a validated failure criterion.
-Offline audits changed no saved inputs, screening or weights and made no new fetches.
-Over the flat-top window (1–4 s) of the 119 reviewed shots the divided fast-density
-input has median 0.84, 5–95% range 0.17–1.93, and 0.4% of cells sit at the upper clip
-(12; 9 of 238 chords are zeroed or empty in the window; `density_range.json`,
-`scripts/labeler/elm_density_range.py`). This is a numerical range only: the ordinate
-units and the FS02–04 sightlines are unverified, and no sightline list is retained in
-the signal records or the literature digests. Sources: `density_units.json`,
-`filterscope_metadata.json`, `src/labeler/elm/inputs.py`.
+Offline audits changed no saved inputs, screening or weights and fetched nothing (the
+one fresh fetch in this evaluation is the swap shots' PCPHD02/03 comparison, 16 records,
+`dsm/swap_photodiode_agreement.json`). Over the flat-top window (1–4 s) of the 119
+reviewed shots the divided fast-density input has median 0.84, 5–95% range 0.17–1.93,
+and 0.4% of cells sit at the upper clip (12; 9 of 238 chords are zeroed or empty in the
+window; `density_range.json`, `scripts/labeler/elm_density_range.py`). This is a
+numerical range only: the ordinate units and the FS02–04 sightlines are unverified, and
+no sightline list is retained in the signal records or the literature digests. Sources:
+`density_units.json`, `filterscope_metadata.json`, `src/labeler/elm/inputs.py`.
 
 ## Smith onset and transfer
 

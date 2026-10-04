@@ -542,30 +542,43 @@ def native_detection_table(record, fx=None) -> str:
     lines += [r"\bottomrule", r"\end{tabular}"]
     gate_text = record["gate"].replace(">=", r"$\geq$")
     epochs = record["recipe"]["epochs"]
-    sizes = ""
+    sizes = paired = ""
     if fx:
-        own = fx["ours_training_sizes"]
+
+        def per_fold(rows) -> str:
+            train = fold_range([f["train"] for f in rows])
+            return f"{train}/{fold_range([f['inner_val'] for f in rows])}"
+
         native = fx["native_detection"]["folds"]
         sizes = (
             "Training shots per fold (train/inner-validation): elm-ours "
-            f"{fold_range([f['train'] for f in own])}/"
-            f"{fold_range([f['inner_val'] for f in own])}; native-fold rows "
-            f"{fold_range([f['train'] for f in native])}/"
-            f"{fold_range([f['inner_val'] for f in native])}, so the 24--28-shot "
-            "fits are far smaller than the headline's; elm-ours (native-fold "
-            "training shots) repeats the elm-ours recipe on those shots. "
+            f"{per_fold(fx['ours_training_sizes'])} and elm-dsm-detect "
+            f"{per_fold(fx['dsm_detect_training_sizes'])}, both on the full "
+            f"{fx['shots']['all119']}-shot folds; native-fold rows "
+            f"{per_fold(native)}, so those fits are far smaller; elm-ours "
+            "(native-fold training shots) repeats the elm-ours recipe on them. "
         )
+        rows = fx["native_detection"]["paired_native_folds"]
+        if rows:
+            paired = (
+                "Paired elm-ours (native-fold training shots) minus "
+                f"elm-dsm-native-detect, all119: {delta_text(rows['all119'])}. "
+            )
+    gate = (
+        f"The 1 ms audit gate ({gate_text}) is met "
+        f"({record['shots_at_least_90_percent']} shots pass); "
+    )
     caption = (
-        f"Secondary native DSM detection comparison. The 1 ms audit finds "
-        f"{gate_text}; "
-        f"{record['sets']['all119']['n_shots']} reviewed shots have complete-input "
+        "Secondary native DSM detection comparison. "
+        + gate
+        + f"{record['sets']['all119']['n_shots']} reviewed shots have complete-input "
         "scored bins, identical for every method. Both DSM rows are occupancy "
         r"detection fits: 60-input $1\times128$ adaptation on 50 ms means, and native "
-        "124-input [100,1000] architecture on 1 ms means. " + sizes + "Inner-"
-        "validation AUPRC selects checkpoints and F1 thresholds. "
-        r"Brackets: 95\% shot-bootstrap intervals. Developmental results from a "
-        f"fixed {epochs}-epoch refit with reconstructed native inputs and "
-        "within-shot NBI smoothing. "
+        "124-input [100,1000] architecture on 1 ms means. "
+        + sizes
+        + paired
+        + r"Brackets: 95\% shot-bootstrap intervals. Developmental fixed "
+        f"{epochs}-epoch refit on reconstructed native inputs. "
         + (seed_sentence(fx, "native") if fx else "")
         + LOWER_BOUND
     )
@@ -674,6 +687,32 @@ def alarm_pair(fx: dict, key: str) -> str:
     return f"{row['span_alarm'][0]:.3f}/{row['span_alarm_guard25'][0]:.3f}"
 
 
+def guard25_text(fx: dict) -> str:
+    """The guard25 denominator: empty interiors count as not alarmed; interior rates."""
+    alarm = fx["alarm"]
+
+    def rate(key: str, field: str = "span_alarm_interior_guard25") -> str:
+        return f"{alarm[key][field][0]:.3f}"
+
+    empty = ", ".join(
+        f"{alarm[f'{tag}/elm-ours']['guard25_empty']} of "
+        f"{alarm[f'{tag}/elm-ours']['absent_spans']} on {tag}"
+        for tag in ("all119", "bes73")
+    )
+    rule = "/".join(
+        rate(f"{tag}/always present", "span_alarm_guard25")
+        for tag in ("all119", "bes73")
+    )
+    return (
+        "An absent span of at most 50 ms has an empty guard25 interior and stays in "
+        f"the denominator as not alarmed ({empty}), so the always-present rule "
+        f"scores {rule} rather than 1; on nonempty interiors alone the guard25 "
+        f"rates are {rate('all119/elm-ours')} (elm-ours) and "
+        f"{rate('all119/elm-clock')} (clock) on all119 and "
+        f"{rate('bes73/elm-elmo')} (elm-elmo) on bes73. "
+    )
+
+
 def appendix_note(fx: dict, swap_record: dict | None = None) -> str:
     """The shared appendix note: definitions, panels, thresholds and limits.
 
@@ -750,7 +789,8 @@ def appendix_note(fx: dict, swap_record: dict | None = None) -> str:
             f"{alarm_pair(fx, 'all119/elm-ours')}, clock "
             f"{alarm_pair(fx, 'all119/elm-clock')} on all119; elm-elmo "
             f"{alarm_pair(fx, 'bes73/elm-elmo')} on bes73. "
-            f"Fold {early['fold']} (zero-based) of elm-ours selected epoch "
+            + guard25_text(fx)
+            + f"Fold {early['fold']} (zero-based) of elm-ours selected epoch "
             f"{early['epoch']} of {fx['epochs']} (fold thresholds "
             f"{min(thr):.3f}--{max(thr):.3f}); four training seeds give all119 "
             f"AUROC {auroc['min']:.3f}--{auroc['max']:.3f}. On non-crowd-only shots "
@@ -781,7 +821,14 @@ def appendix_note(fx: dict, swap_record: dict | None = None) -> str:
         f"{fold_range([f['train'] for f in own])} and "
         f"{fold_range([f['inner_val'] for f in own])} for the headline elm-ours; "
         "the elm-ours row on the native folds' shots separates training size from "
-        "architecture. "
+        "architecture"
+        + (
+            f"; its paired AUROC over the native refit is "
+            f"{F.fmt(*native['paired_native_folds']['all119']['auroc'], signed=True)}"
+            " on all119. "
+            if native["paired_native_folds"]
+            else ". "
+        )
     )
     if one:
         panel += (
@@ -847,7 +894,7 @@ def limits_text(fx: dict, review_days: dict) -> str:
             "s, so the clip alters few cells. "
         )
     text += (
-        "Fast-density ordinate units and FS01--04 sightlines are unverified (no "
+        "Fast-density ordinate units and FS02--04 sightlines are unverified (no "
         "sightline list is retained in the signal records or the literature "
         "digests); the U-Net's "
         "input scaling and chord screen are numerical choices, not calibrations. "

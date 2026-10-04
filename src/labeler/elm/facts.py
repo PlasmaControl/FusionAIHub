@@ -154,7 +154,12 @@ def facts(records: dict) -> dict:
                 alarm[f"{tag}/{name}"] = {
                     "span_alarm": point(res, "absent_span_alarm_rate"),
                     "span_alarm_guard25": point(res, "absent_span_alarm_rate_guard25"),
+                    "span_alarm_interior_guard25": point(
+                        res, "absent_span_interior_alarm_rate_guard25"
+                    ),
                     "bin_fpr": point(res, "false_alarm_bin_rate"),
+                    "absent_spans": res["counts"]["absent_spans"],
+                    "guard25_empty": res["counts"]["absent_spans_guard25_empty"],
                 }
     out["alarm"] = alarm
     out["paired_primary"] = {
@@ -220,10 +225,14 @@ def facts(records: dict) -> dict:
             for f in native["folds"]
         ],
         "has_ours_native_folds": OURS_NATIVE in native["sets"]["all119"]["methods"],
+        "paired_native_folds": paired_native_folds(native),
         "ours_native_thresholds": native.get("ours_on_native_folds", {}).get(
             "thresholds"
         ),
     }
+    out["dsm_detect_training_sizes"] = [
+        {"train": f["train_shots"], "inner_val": f["inner_val_shots"]} for f in detect
+    ]
     out["ours_training_sizes"] = [
         {
             "train": len(f["train"]),
@@ -265,6 +274,22 @@ def facts(records: dict) -> dict:
     out["tiled"] = tiled_facts(records.get("tiled"))
     out["run_day"] = run_day_facts(records.get("run_day"))
     out["dsm_baselines"] = dsm_baseline_facts(records.get("dsm_seeds"))
+    return out
+
+
+def paired_native_folds(native: dict) -> dict | None:
+    """elm-ours on the native folds minus the native refit, per panel, as paired rows.
+
+    The rows come from `native_detection.json:sets.<panel>.paired`; `None` where the
+    record predates them (no elm-ours refit on the native folds, or not yet rescored).
+    """
+    out = {}
+    for tag in ("all119", "bes73"):
+        rows = native["sets"][tag].get("paired", {})
+        keys = {m: f"{OURS_NATIVE} - {DSM_NATIVE}: {m}" for m in METRIC_KEYS}
+        if not all(key in rows for key in keys.values()):
+            return None
+        out[tag] = {m: paired(rows[key]) for m, key in keys.items()}
     return out
 
 

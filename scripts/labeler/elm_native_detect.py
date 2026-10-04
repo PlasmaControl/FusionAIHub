@@ -382,7 +382,16 @@ def main():
                 )
                 p.score = swap.sweep_bin_scores(sweep[sweep.shot == s], b)
                 parts["elm-elmo"].append(p)
-        summary = methods.summarise_methods(parts, score.draws(len(used)), "elm-ours")
+        boot = score.draws(len(used))
+        summary = methods.summarise_methods(parts, boot, "elm-ours")
+        if OURS_NATIVE in parts:
+            # equal training shots: elm-ours on the native folds against the native
+            # refit, on the same shots and bootstrap draws as every other pair
+            for metric in ("auroc", "auprc", "f1"):
+                key = f"{OURS_NATIVE} - {NAME}: {metric}"
+                summary["paired"][key] = score.paired_difference(
+                    parts[OURS_NATIVE], parts[NAME], boot, metric
+                )
         summary.update(
             {
                 "shots": list(map(int, used)),

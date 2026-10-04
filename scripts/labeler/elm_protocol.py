@@ -234,6 +234,18 @@ def photodiode_text(fx: dict) -> str:
     )
 
 
+def fetch_text(fx: dict) -> str:
+    """What the offline audits fetched: nothing, beside the swap-shot photodiode check."""
+    check = fx.get("photodiode")
+    if not check:
+        return "fetched nothing"
+    return (
+        "fetched nothing (the one fresh fetch in this evaluation is the swap shots' "
+        f"PCPHD02/03 comparison, {check['records']} records, "
+        "`dsm/swap_photodiode_agreement.json`)"
+    )
+
+
 def density_text(fx: dict) -> str:
     """The measured numerical range of the fast-density input (units unverified)."""
     d = fx.get("density")
@@ -286,6 +298,22 @@ def native_sizes_text(fx: dict) -> str:
     )
 
 
+def zero_note(rows: dict) -> str:
+    """Which paired intervals exclude zero, from `{metric: (value, interval)}`."""
+    flags = {m.upper(): not ci[0] <= 0 <= ci[1] for m, (_, ci) in rows.items()}
+    excluded = [m for m, flag in flags.items() if flag]
+    included = [m for m, flag in flags.items() if not flag]
+    parts = []
+    if excluded:
+        parts.append("the interval excludes zero for " + " and ".join(excluded))
+    if included:
+        parts.append(
+            ("it includes zero for " if excluded else "every interval includes zero: ")
+            + " and ".join(included)
+        )
+    return "; ".join(parts)
+
+
 def native_ours_text(native: dict, fx: dict) -> str:
     """What elm-ours scores when trained on the native folds' own shots."""
     key = "elm-ours-native-folds"
@@ -300,14 +328,29 @@ def native_ours_text(native: dict, fx: dict) -> str:
     )
     own, rival = methods[key], methods["elm-dsm-native-detect"]
     higher = own["point"]["auroc"] > rival["point"]["auroc"]
-    (lo_a, hi_a), (lo_b, hi_b) = own["ci95"]["auroc"], rival["ci95"]["auroc"]
-    overlap = lo_a <= hi_b and lo_b <= hi_a
+    pairs = fx["native_detection"]["paired_native_folds"]
     verdict = (
         "At equal training shots elm-ours has the "
         + ("higher" if higher else "lower")
         + " point AUROC than the native refit"
-        + (", with overlapping intervals." if overlap else ", with disjoint intervals.")
-        + " The headline's lead over the native refit therefore mixes training size "
+    )
+    if pairs:
+        verdict += (
+            "; paired on the same shots and bootstrap draws (elm-ours on the native "
+            f"folds minus the native refit), all119 {F.delta_text(pairs['all119'])} "
+            f"({zero_note(pairs['all119'])}) and bes73 "
+            f"{F.delta_text(pairs['bes73'])}. "
+        )
+    else:
+        (lo_a, hi_a), (lo_b, hi_b) = own["ci95"]["auroc"], rival["ci95"]["auroc"]
+        overlap = lo_a <= hi_b and lo_b <= hi_a
+        verdict += (
+            ", with overlapping marginal intervals; no paired interval is recorded. "
+            if overlap
+            else ", with disjoint marginal intervals. "
+        )
+    verdict += (
+        "The headline's lead over the native refit therefore mixes training size "
         "with architecture."
     )
     return (
@@ -580,7 +623,7 @@ def caveat(records: dict, fx: dict) -> str:
             "the clock, whose boundaries seeded the review."
         ),
         (
-            "The elm-dsm detection rows are lower bounds on DSM detection skill under "
+            "The elm-dsm-detect rows are lower bounds on DSM detection skill under "
             "our recipe."
         ),
     ]
@@ -614,6 +657,7 @@ def patch_models(text: str, new_lines: list[str], note: str) -> str:
         "elmo": "elm-elmo",
         "elm-dsm-detect": DSM_LABEL,
         "elm-dsm (detection)": DSM_LABEL,
+        "elm-dsm (60-input 1×128 refit, detection)": DSM_LABEL,
     }
     entries = {}
     for line in re.findall(r"^- .*$", section, re.MULTILINE):
@@ -726,7 +770,7 @@ def dsm_card(records: dict, fx: dict) -> Path:
         "`1e14`, clip to `[-3, 12]`, and clip ten times the 0.2 s high-pass to "
         "`[-10, 10]`; chords with median absolute native magnitude above `1e16` "
         "are zeroed by a heuristic failed-digitiser screen. Offline metadata audits "
-        "made no new fetches and changed no saved inputs or weights. Sources: "
+        f"changed no saved inputs or weights and {fetch_text(fx)}. Sources: "
         "`density_units.json`, `filterscope_metadata.json` and "
         "`src/labeler/elm/inputs.py`. No independently validated physical-onset "
         "detector is delivered; run days cross folds in the review analysis "
@@ -954,11 +998,11 @@ def benchmark_section(doc: Doc, records: dict, fx: dict) -> None:
         "**Secondary DSM common-bin control** "
         f"({fx['common_bins']['all119']:,} / {fx['common_bins']['bes73']:,} bins; "
         "tables in `dsm/evaluation.json:sets` and the paper). The reduced-input "
-        f"elm-dsm detector scores all119 AUROC {metric(dsm, 'auroc')}, AUPRC "
+        f"elm-dsm-detect adaptation scores all119 AUROC {metric(dsm, 'auroc')}, AUPRC "
         f"{plain(dsm, 'auprc')}, F1 {plain(dsm, 'f1')}; its reported fit is fragile "
         "(selected epochs "
         + ", ".join(str(r["epoch"]) for r in fx["dsm_folds"])
-        + "). Paired elm-ours minus elm-dsm, all119: "
+        + "). Paired elm-ours minus elm-dsm-detect, all119: "
         f"{F.delta_text(pairs['all119'])}; bes73: {F.delta_text(pairs['bes73'])}. "
         "Paired elm-ours minus elm-elmo on bes73: "
         f"{F.delta_text(fx['paired_common_elmo'])}. " + LOWER_BOUND
@@ -1116,15 +1160,18 @@ def provenance_section(doc: Doc, fx: dict) -> None:
     doc.heading(2, "Signal provenance and numerical preprocessing")
     doc.para(
         "The retained caches do not establish fast-density physical ordinate units "
-        "or FS01–04 sightlines (divertor versus midplane); FS01 is not an input to "
+        "or FS02–04 sightlines (divertor versus midplane); FS01 is not an input to "
         "the occupancy U-Net, and paired slow CO2 checks numerical scales only. "
-        "Filterscope levels use `(log10(max(x, 1e12)) - 15) / 1.5` with contrast to "
-        "a 0.5 s running median. Fast density is divided by `1e14`, clipped to "
-        "`[-3, 12]`, and ten times its 0.2 s high-pass is clipped to `[-10, 10]`; a "
-        "chord whose median absolute native magnitude exceeds `1e16` is zeroed. "
+        "Filterscope FS02–04 values are in the corpus unit ph/(sr cm² s) "
+        "(`src/labeler/events/raw.py`, checked on shot 187018), although the "
+        "stored ELM-O records keep no unit metadata; their levels use "
+        "`(log10(max(x, 1e12)) - 15) / 1.5` with contrast to a 0.5 s running "
+        "median. Fast density is divided by `1e14`, clipped to `[-3, 12]`, and ten "
+        "times its 0.2 s high-pass is clipped to `[-10, 10]`; a chord whose median "
+        "absolute native magnitude exceeds `1e16` is zeroed. "
         "These are fixed numerical choices, not verified calibration or a validated "
         "failure criterion. Offline audits changed no saved inputs, screening or "
-        "weights and made no new fetches. "
+        f"weights and {fetch_text(fx)}. "
         + density_text(fx)
         + " Sources: `density_units.json`, `filterscope_metadata.json`, "
         "`src/labeler/elm/inputs.py`."

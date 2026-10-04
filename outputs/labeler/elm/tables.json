@@ -1,5 +1,5 @@
 {
- "git": "11ba97cf",
+ "git": "b5468d41",
  "sources": {
   "ours": {
    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/ours/evaluation.json",
@@ -39,7 +39,7 @@
   },
   "native_detection": {
    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/native_detection.json",
-   "sha256": "7f0412eb20a371fe6001eb55fd2a623d4b0d59a6432dc88bd2ea44d4633b71cb"
+   "sha256": "9ccd92f5a375ab521480c5bfea72835af76f57cc004e9975f9502f0709167281"
   },
   "rejection": {
    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/ours/rejection_sensitivity.json",
@@ -89,7 +89,7 @@
   "table_elm_dsm_native.tex": "8968b4ed0e8463f30b989f3c80a5af8ed93b5e4a0adc818038f8120bdf3cda28",
   "table_elm_dsm_own_target.tex": "4e92508dbe61a23d3c7dba5f80a8cee86c511f8633144559616131d80a486d8c",
   "table_elm_dsm_repeats.tex": "addc81f8103101906b40da516e70823c06c81554553a6cef97705bde12fb3841",
-  "table_elm_native_detection.tex": "c827eade92f729a18bdc4d80b51ea281e614e3f4f374842d573c13fe6aa768cd",
+  "table_elm_native_detection.tex": "6e266e03d367154fcfe274c529be95e5458e375684d0635ec6a736de5f6a60f5",
   "table_elm_per_kind.tex": "0822e0acdf6384f0c6760e3243bed7ddccf96dfa0082a418809e364e140b93e5",
   "table_elm_rejection.tex": "6da0d616ad3d78318143e545c3df2fa5867e651ac63fbc889345b000b8092d42",
   "table_elm_smith.tex": "c61052970d85cfad0b601854c70738a1d31041d2fafc2883bc78e5d22dfeeb3b",
@@ -119,7 +119,7 @@
    118
   ],
   "table_elm_native_detection.tex": [
-   151
+   166
   ],
   "table_elm_per_kind.tex": [
    46
@@ -148,7 +148,7 @@
  },
  "shared_notes": {
   "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/elm_table_notes.tex",
-  "sha256": "45d019cc70dc1ab712f257a7f93f462abb51d17025fb6c3b81d2a48f9e62c9d1"
+  "sha256": "07fca34fa42daa1f3465cb9989640f66294b6448f710986708ad3d090e334435"
  },
  "benchmark_json_paths": [
   "ours/evaluation.json:sets.all119.methods",

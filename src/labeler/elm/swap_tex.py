@@ -394,7 +394,12 @@ def main_caption(
             f"{elmo} scores {cell(res['point']['auroc'], res['ci95']['auroc'])} on "
             f"the {count_word(bes['n_shots'])} BES shots against {whole:.3f} on "
             f"bes73; the interval {'contains' if contains else 'excludes'} that "
-            "value, so no shift is established. "
+            "value, so "
+            + (
+                "no shift is established. "
+                if contains
+                else "a shift from the bes73 value is indicated. "
+            )
         )
     if photodiode:
         text += (

@@ -1,5 +1,6 @@
 """Paper table regression checks for reference scope and metric conditioning."""
 
+import copy
 import json
 from pathlib import Path
 
@@ -109,6 +110,23 @@ def test_swap_caption_reads_the_elmo_shift_numbers_from_the_records():
     assert f"{change['elm-dsm']['value']:+.3f}" in text
 
 
+def test_swap_caption_branches_on_whether_the_interval_excludes_the_bes73_value():
+    data = record()
+    ours = json.loads((SOURCE.parent.parent / "ours/evaluation.json").read_text())
+    inside = swap_tex.main_caption(data, ours)
+    assert "the interval contains that value, so no shift is established" in inside
+    panel = data["swap"]["overlap_bes"]["reviewed"]["methods"]["elm-elmo"]
+    moved = copy.deepcopy(ours)
+    moved["sets"]["bes73"]["methods"]["elm-elmo"]["point"]["auroc"] = (
+        panel["ci95"]["auroc"][1] + 0.05
+    )
+    outside = swap_tex.main_caption(data, moved)
+    assert (
+        "the interval excludes that value, so a shift from the bes73 value" in outside
+    )
+    assert "is indicated" in outside and "no shift is established" not in outside
+
+
 def test_swap_caption_reports_photodiode_agreement_only_with_the_record():
     data = record()
     fresh = {"records": 16, "identical": 16}
@@ -174,6 +192,40 @@ def paper_module():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def protocol_module():
+    import importlib.util
+    import sys
+
+    path = SOURCE.parents[4] / "scripts/labeler/elm_protocol.py"
+    sys.path.insert(0, str(path.parent))
+    spec = importlib.util.spec_from_file_location("elm_protocol", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_patch_models_lists_the_dsm_adaptation_once_under_every_old_label():
+    module = protocol_module()
+    old = (
+        "## Models\n**stable**: x | 2026_09_06\n\n**latest**: elm-ours | 2026_09_13"
+        "\n\n**all**:\n"
+        "- elm-dsm (60-input 1×128 refit, detection) | 2026_10_01 | AUROC: 0.1\n"
+        "- elm-dsm (detection) | 2026_09_30 | AUROC: 0.2\n"
+        "- elm-dsm-detect | 2026_09_29 | AUROC: 0.3\n"
+        f"- {module.DSM_LABEL} | 2026_10_02 | AUROC: 0.4\n"
+        "- elm_clock | 2026_09_13 | F1: 0.5\n\nOld note.\n\n## Inputs\n"
+    )
+    text = module.patch_models(
+        old, [f"- {module.DSM_LABEL} | 2026_10_03 | AUROC: 0.9"], "N."
+    )
+    entries = [line for line in text.splitlines() if line.startswith("- ")]
+    assert [e.split(" | ")[0] for e in entries] == [
+        f"- {module.DSM_LABEL}",
+        "- elm-clock",
+    ]
+    assert "AUROC: 0.9" in entries[0]
 
 
 def benchmark_inputs():
@@ -248,6 +300,27 @@ def test_table_notes_hold_the_diagnostics_the_caption_dropped():
     assert "mean probability" in note and "any touching detected span" in note
     assert "FPR is the fraction of absent bins" in note
     assert "guard25 trims 25 ms from each absent-span edge" in note
+    # the guard25 denominator: empty interiors stay in as not alarmed
+    alarm = fx["alarm"]
+    ours_all = alarm["all119/elm-ours"]
+    assert "stays in the denominator as not alarmed" in note
+    assert (
+        f"{ours_all['guard25_empty']} of {ours_all['absent_spans']} on all119" in note
+    )
+    bes_ours = alarm["bes73/elm-ours"]
+    assert f"{bes_ours['guard25_empty']} of {bes_ours['absent_spans']} on bes73" in note
+    rule = "/".join(
+        f"{alarm[f'{tag}/always present']['span_alarm_guard25'][0]:.3f}"
+        for tag in ("all119", "bes73")
+    )
+    assert f"the always-present rule scores {rule} rather than 1" in note
+    for key, name in (
+        ("all119/elm-ours", "elm-ours"),
+        ("all119/elm-clock", "clock"),
+        ("bes73/elm-elmo", "elm-elmo"),
+    ):
+        interior = alarm[key]["span_alarm_interior_guard25"][0]
+        assert f"{interior:.3f} ({name})" in note
     assert "inner-validation F1" in note and "shot-bootstrap" in note
     share = fx["clock_share"]
     assert f"{100 * share['both']:.0f}\\% of both" in note
@@ -307,6 +380,17 @@ def test_native_detection_caption_states_training_sizes_and_the_matched_row():
     assert f"{low}--{high}" in caption
     assert f"elm-ours {min(f['train'] for f in own)}--" in caption
     assert "train/inner-validation" in caption
+    # elm-dsm-detect trains on the full folds; the gate is a condition, not a finding
+    assert "elm-dsm-detect 81--82/14, both on the full 119-shot folds" in caption
+    assert f"({native['shots_at_least_90_percent']} shots pass)" in caption
+    assert "audit gate" in caption and "is met" in caption
+    assert "audit finds" not in caption
+    # the paired interval comes from the saved predictions, not the marginal ones
+    pairs = fx["native_detection"]["paired_native_folds"]["all119"]
+    assert (
+        "Paired elm-ours (native-fold training shots) minus elm-dsm-native-detect, "
+        f"all119: {facts.delta_text(pairs)}" in caption
+    )
     assert "elm-ours (native-fold training shots)" in text
     assert "elm-dsm-detect (60-input $1\\times128$)" in text
     assert "elm-dsm-native-detect (124-input [100,1000])" in text

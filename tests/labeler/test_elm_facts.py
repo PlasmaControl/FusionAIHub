@@ -126,5 +126,39 @@ def test_training_sizes_and_native_comparator_facts_come_from_the_records(record
     assert photodiode["identical"] == photodiode["records"] == 2 * photodiode["shots"]
 
 
+def test_guard25_and_native_pairing_facts_come_from_the_records(records):
+    fx = facts.facts(records)
+    ours = records["ours"]["sets"]["all119"]["methods"]["elm-ours"]
+    row = fx["alarm"]["all119/elm-ours"]
+    assert row["absent_spans"] == ours["counts"]["absent_spans"]
+    assert row["guard25_empty"] == ours["counts"]["absent_spans_guard25_empty"]
+    interior = ours["point"]["absent_span_interior_alarm_rate_guard25"]
+    assert row["span_alarm_interior_guard25"][0] == interior
+    # an always-present rule alarms on every nonempty interior but not on empty ones
+    rule = fx["alarm"]["all119/always present"]
+    assert rule["span_alarm_interior_guard25"][0] == 1.0
+    assert rule["span_alarm_guard25"][0] < 1.0
+    native = records["native_detection"]["sets"]["all119"]["paired"]
+    key = "elm-ours-native-folds - elm-dsm-native-detect: auroc"
+    pairs = fx["native_detection"]["paired_native_folds"]
+    assert pairs["all119"]["auroc"] == (native[key]["value"], native[key]["ci95"])
+    assert set(pairs) == {"all119", "bes73"}
+    sizes = fx["dsm_detect_training_sizes"]
+    assert [f["train"] for f in sizes] == [
+        f["train_shots"] for f in records["dsm"]["detectors"]["elm-dsm-detect"]["folds"]
+    ]
+
+
+def test_native_pairing_is_none_when_the_record_predates_it(records):
+    older = copy.deepcopy(records["native_detection"])
+    for tag in ("all119", "bes73"):
+        older["sets"][tag]["paired"] = {
+            k: v
+            for k, v in older["sets"][tag]["paired"].items()
+            if "native-folds" not in k
+        }
+    assert facts.paired_native_folds(older) is None
+
+
 def test_photodiode_facts_are_absent_without_the_record():
     assert facts.photodiode_facts(None) is None
