@@ -1,0 +1,664 @@
+{
+ "selected_at_utc": "2026-10-03T20:10:27.709155+00:00",
+ "source_repository": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw",
+ "source_commit": "ad0ca40f1a7e85c22a88ffcf71ba7ee7456c13e2",
+ "completion_git_path": "outputs/labeler/sawtooth/fix2/cohort_labels.json",
+ "original_source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/shots",
+ "snapshot_source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots",
+ "completion_record": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/cohort_labels.json",
+ "completion_snapshot_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/cohort_labels.json",
+ "completion_sha256": "fde6ec2ac7eea37cfd524128a1cae241e5e13a44b43f70c0b3460415c6076f28",
+ "completion_requested_count": 500,
+ "validation_status": "unvalidated_research_labels_owner_away",
+ "files": [
+  {
+   "shot": 201978,
+   "original_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/shots/201978.json",
+   "snapshot_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/201978.json",
+   "sha256": "61cea2aa20aed751bafda1d03b948de3c8f524593060492d9ef89f78d2250449"
+  },
+  {
+   "shot": 201973,
+   "original_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/shots/201973.json",
+   "snapshot_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/201973.json",
+   "sha256": "51ef465dee33362a43361971605c04203015d794c11445d0067bd352ea299a4d"
+  },
+  {
+   "shot": 203187,
+   "original_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/shots/203187.json",
+   "snapshot_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/203187.json",
+   "sha256": "8011656a9ea4d577b5606099a23c0ec225a021f12f327201a63d72a624da5b64"
+  },
+  {
+   "shot": 186636,
+   "original_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/shots/186636.json",
+   "snapshot_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/186636.json",
+   "sha256": "f05b196d23c4348ab73a430df971f678860c623b2cd0725fd567d8d00b202a6a"
+  },
+  {
+   "shot": 191376,
+   "original_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/shots/191376.json",
+   "snapshot_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/191376.json",
+   "sha256": "1cbb956f214bef3b443ab5c2589710f8d9543e7dfe31661866ad806732257d60"
+  },
+  {
+   "shot": 191782,
+   "original_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/shots/191782.json",
+   "snapshot_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/191782.json",
+   "sha256": "b520fd9a76e37784c12cbc4af441d6385663d4e8ca292cc389b04ea97c63d76e"
+  }
+ ],
+ "catalog_comparison": [
+  {
+   "model": "ece_sawtooth",
+   "version": "v3",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/ece_sawtooth/v3/sawtooth_oscillation_suggest_ece_sawtooth_v3.csv",
+   "sha256": "05c995be4de317eeed4b45591d0b803e9147906bd4674ed8c7b84ab477b8d38c",
+   "shots": {
+    "201978": [
+     {
+      "start_ms": 1500,
+      "end_ms": 2291.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 2291.0,
+      "end_ms": 3300,
+      "category": 1,
+      "state": "present"
+     }
+    ],
+    "201973": [
+     {
+      "start_ms": 1600,
+      "end_ms": 3350,
+      "category": 0,
+      "state": "absent"
+     }
+    ],
+    "203187": [
+     {
+      "start_ms": 1700,
+      "end_ms": 3114.0,
+      "category": 0,
+      "state": "absent"
+     }
+    ],
+    "186636": [
+     {
+      "start_ms": 1300,
+      "end_ms": 3799.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 3799.0,
+      "end_ms": 3900,
+      "category": 1,
+      "state": "present"
+     }
+    ],
+    "191376": [
+     {
+      "start_ms": 1500,
+      "end_ms": 1719.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 1719.0,
+      "end_ms": 2731.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 2731.0,
+      "end_ms": 2900,
+      "category": 0,
+      "state": "absent"
+     }
+    ],
+    "191782": [
+     {
+      "start_ms": 1800,
+      "end_ms": 2414.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 2414.0,
+      "end_ms": 2757.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 2757.0,
+      "end_ms": 3169.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 3169.0,
+      "end_ms": 3343.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 3343.0,
+      "end_ms": 3700,
+      "category": 0,
+      "state": "absent"
+     }
+    ]
+   }
+  },
+  {
+   "model": "sawtooth_frames",
+   "version": "v2",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/sawtooth_frames/v2/sawtooth_oscillation_suggest_sawtooth_frames_v2.csv",
+   "sha256": "a445f034fc90ce6eb8311f9c9331df7e6f206c05376cf48d900516f2d05b469f",
+   "shots": {
+    "201978": [
+     {
+      "start_ms": 1500,
+      "end_ms": 2290.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 2290.0,
+      "end_ms": 2890.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 2890.0,
+      "end_ms": 2900.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 2900.0,
+      "end_ms": 2940.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 2940.0,
+      "end_ms": 2960.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 2960.0,
+      "end_ms": 3300,
+      "category": 1,
+      "state": "present"
+     }
+    ],
+    "201973": [
+     {
+      "start_ms": 1600,
+      "end_ms": 2100.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 2100.0,
+      "end_ms": 2110.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 2110.0,
+      "end_ms": 2190.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 2190.0,
+      "end_ms": 2200.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 2200.0,
+      "end_ms": 2700.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 2700.0,
+      "end_ms": 2720.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 2720.0,
+      "end_ms": 2750.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 2750.0,
+      "end_ms": 2780.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 2780.0,
+      "end_ms": 2790.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 2790.0,
+      "end_ms": 2810.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 2810.0,
+      "end_ms": 2860.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 2860.0,
+      "end_ms": 2880.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 2880.0,
+      "end_ms": 2910.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 2910.0,
+      "end_ms": 2950.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 2950.0,
+      "end_ms": 2960.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 2960.0,
+      "end_ms": 2970.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 2970.0,
+      "end_ms": 2990.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 2990.0,
+      "end_ms": 3050.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 3050.0,
+      "end_ms": 3060.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 3060.0,
+      "end_ms": 3070.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 3070.0,
+      "end_ms": 3080.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 3080.0,
+      "end_ms": 3130.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 3130.0,
+      "end_ms": 3140.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 3140.0,
+      "end_ms": 3210.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 3210.0,
+      "end_ms": 3220.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 3220.0,
+      "end_ms": 3230.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 3230.0,
+      "end_ms": 3280.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 3280.0,
+      "end_ms": 3290.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 3290.0,
+      "end_ms": 3300.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 3300.0,
+      "end_ms": 3310.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 3310.0,
+      "end_ms": 3350,
+      "category": 0,
+      "state": "absent"
+     }
+    ],
+    "203187": [
+     {
+      "start_ms": 1700,
+      "end_ms": 2250.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 2250.0,
+      "end_ms": 2700.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 2700.0,
+      "end_ms": 2750.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 2750.0,
+      "end_ms": 2760.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 2760.0,
+      "end_ms": 2770.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 2770.0,
+      "end_ms": 2780.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 2780.0,
+      "end_ms": 3110.0,
+      "category": 0,
+      "state": "absent"
+     }
+    ],
+    "186636": [
+     {
+      "start_ms": 1300,
+      "end_ms": 3900,
+      "category": 0,
+      "state": "absent"
+     }
+    ],
+    "191376": [
+     {
+      "start_ms": 1500,
+      "end_ms": 1690.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 1690.0,
+      "end_ms": 1700.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 1700.0,
+      "end_ms": 1710.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 1710.0,
+      "end_ms": 2040.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 2040.0,
+      "end_ms": 2050.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 2050.0,
+      "end_ms": 2460.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 2460.0,
+      "end_ms": 2470.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 2470.0,
+      "end_ms": 2500.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 2500.0,
+      "end_ms": 2520.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 2520.0,
+      "end_ms": 2540.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 2540.0,
+      "end_ms": 2550.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 2550.0,
+      "end_ms": 2640.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 2640.0,
+      "end_ms": 2650.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 2650.0,
+      "end_ms": 2660.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 2660.0,
+      "end_ms": 2900,
+      "category": 0,
+      "state": "absent"
+     }
+    ],
+    "191782": [
+     {
+      "start_ms": 1800,
+      "end_ms": 2490.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 2490.0,
+      "end_ms": 2500.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 2500.0,
+      "end_ms": 2510.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 2510.0,
+      "end_ms": 2530.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 2530.0,
+      "end_ms": 2560.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 2560.0,
+      "end_ms": 2600.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 2600.0,
+      "end_ms": 2610.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 2610.0,
+      "end_ms": 2630.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 2630.0,
+      "end_ms": 2650.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 2650.0,
+      "end_ms": 2660.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 2660.0,
+      "end_ms": 2680.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 2680.0,
+      "end_ms": 2690.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 2690.0,
+      "end_ms": 3150.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 3150.0,
+      "end_ms": 3170.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 3170.0,
+      "end_ms": 3180.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 3180.0,
+      "end_ms": 3190.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 3190.0,
+      "end_ms": 3210.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 3210.0,
+      "end_ms": 3290.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 3290.0,
+      "end_ms": 3300.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 3300.0,
+      "end_ms": 3310.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 3310.0,
+      "end_ms": 3700,
+      "category": 0,
+      "state": "absent"
+     }
+    ]
+   }
+  }
+ ],
+ "integration_decision": "controller pins the sawtooth source shipped with the paper"
+}

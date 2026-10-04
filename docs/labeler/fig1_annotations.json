@@ -1,0 +1,23 @@
+{
+  "201978": {
+    "publication_suitability": {"suitable_alternate": true, "role": "primary"},
+    "ae_label": {"time_ms": 2100, "frequency_khz": 200}
+  },
+  "201973": {
+    "publication_suitability": {"suitable_alternate": true, "role": "best visual alternate; ELM/H-mode conflict"}
+  },
+  "203187": {
+    "publication_suitability": {"suitable_alternate": true, "role": "alternate requiring ELM/H-mode and post-NBI review"},
+    "ae_physical_review_caveat": "AE suggestions persist after NBI turns off."
+  },
+  "186636": {
+    "publication_suitability": {"suitable_alternate": true, "role": "imported-NTM alternate; possible pickup"},
+    "ae_physical_review_caveat": "Persistent pink lines may be pickup."
+  },
+  "191376": {
+    "publication_suitability": {"suitable_alternate": false, "role": "unsuitable diagnostic: no AE and n=1 mode with NTM absent"}
+  },
+  "191782": {
+    "publication_suitability": {"suitable_alternate": false, "role": "unsuitable diagnostic: no AE and n=1 mode with NTM absent"}
+  }
+}
