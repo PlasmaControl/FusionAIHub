@@ -1,0 +1,212 @@
+{
+  "made_by": "scripts/labeler/tm_fix3_diagnostics.py",
+  "git_sha": "6feeb53c",
+  "split": "development shots only; blind test shots never read",
+  "uncertain_fraction": {
+    "before": {
+      "window": {
+        "shots": 450,
+        "uncertain_s": 1046.67299,
+        "observable_s": 2471.207464,
+        "pooled_fraction": 0.42354719514557115,
+        "median_shot_fraction": 0.4656520622039152,
+        "shots_over_50_percent": 217,
+        "shots_over_90_percent": 4
+      },
+      "flat_top": {
+        "shots": 450,
+        "uncertain_s": 1046.67299,
+        "observable_s": 2111.0420896990663,
+        "pooled_fraction": 0.4958086790913797,
+        "median_shot_fraction": 0.5808062684128859,
+        "shots_over_50_percent": 247,
+        "shots_over_90_percent": 62
+      }
+    },
+    "after": {
+      "window": {
+        "shots": 450,
+        "uncertain_s": 862.7119700000001,
+        "observable_s": 2471.207464,
+        "pooled_fraction": 0.34910544038402114,
+        "median_shot_fraction": 0.3157390541632661,
+        "shots_over_50_percent": 163,
+        "shots_over_90_percent": 2
+      },
+      "flat_top": {
+        "shots": 450,
+        "uncertain_s": 850.8372764233436,
+        "observable_s": 2111.0420896990663,
+        "pooled_fraction": 0.40304136074550384,
+        "median_shot_fraction": 0.37230418941397236,
+        "shots_over_50_percent": 196,
+        "shots_over_90_percent": 17
+      }
+    }
+  },
+  "locking": {
+    "before": {
+      "intervals": 78,
+      "intervals_by_end": {
+        "decay": 48,
+        "locked": 18,
+        "unknown": 11,
+        "plasma_end": 1
+      },
+      "uncertain_by_reason": {
+        "coherent_line_unconfirmed_or_above_30khz": {
+          "rows": 118,
+          "seconds": 45.33399999999999,
+          "shots": 84
+        },
+        "coherent_sub_seed": {
+          "rows": 860,
+          "seconds": 1717.3289999999993,
+          "shots": 342
+        },
+        "confirmed_locked_phase": {
+          "rows": 26,
+          "seconds": 11.187994999999999,
+          "shots": 17
+        },
+        "post_collapse_lock_unknown": {
+          "rows": 11,
+          "seconds": 8.683995,
+          "shots": 11
+        },
+        "rotation_after_lock_unassessed": {
+          "rows": 9,
+          "seconds": 0.288,
+          "shots": 8
+        },
+        "short_seed": {
+          "rows": 154,
+          "seconds": 139.71499999999995,
+          "shots": 124
+        },
+        "weak_screening_unavailable_nonquiet": {
+          "rows": 7,
+          "seconds": 0.010000000000000002,
+          "shots": 5
+        }
+      }
+    },
+    "after": {
+      "intervals": 81,
+      "intervals_by_end": {
+        "decay": 49,
+        "unknown": 16,
+        "locked": 15,
+        "plasma_end": 1
+      },
+      "uncertain_by_reason": {
+        "coherent_line_unconfirmed_or_above_30khz": {
+          "rows": 114,
+          "seconds": 43.201999999999984,
+          "shots": 84
+        },
+        "coherent_sub_seed": {
+          "rows": 1055,
+          "seconds": 1166.3349999999991,
+          "shots": 343
+        },
+        "confirmed_locked_phase": {
+          "rows": 78,
+          "seconds": 33.706995,
+          "shots": 50
+        },
+        "locked_unseeded": {
+          "rows": 61,
+          "seconds": 22.832984999999994,
+          "shots": 54
+        },
+        "post_collapse_lock_unknown": {
+          "rows": 17,
+          "seconds": 12.68599,
+          "shots": 16
+        },
+        "rotation_after_lock_unassessed": {
+          "rows": 6,
+          "seconds": 0.148,
+          "shots": 6
+        },
+        "short_seed": {
+          "rows": 154,
+          "seconds": 139.3029999999999,
+          "shots": 125
+        },
+        "weak_screening_unavailable_nonquiet": {
+          "rows": 7,
+          "seconds": 0.010000000000000002,
+          "shots": 5
+        }
+      }
+    }
+  },
+  "false_confirmation": {
+    "definition": "pseudo-intervals begin at a drawn time in a stretch the previous labels call absent (at least 700 ms long, 20 draws per shot, seed 0); the test reads -5 to +100 ms around 300 ms after the pseudo-onset for 20 ms at the level",
+    "all": {
+      "draws": 6220,
+      "absolute": 645,
+      "relative": 76,
+      "shots": 311,
+      "absolute_rate": 0.10369774919614148,
+      "relative_rate": 0.012218649517684888
+    },
+    "draws_with_baseline_at_least_3": {
+      "draws": 1478,
+      "absolute": 453,
+      "relative": 33,
+      "shots": 198,
+      "absolute_rate": 0.30649526387009474,
+      "relative_rate": 0.022327469553450607
+    }
+  },
+  "lock_records": {
+    "dev_shots": 450,
+    "dev_shots_with_record": 327,
+    "dev_shots_without_record": 123
+  },
+  "n2_cuts": {
+    "n2_intervals_kept": {
+      "before_cap30_veto0.57": 17,
+      "before_cap30_no_veto": 17,
+      "before_no_cap_veto0.57": 20,
+      "after_cap60_veto": 20,
+      "after_cap60_no_veto": 19,
+      "after_no_cap_veto": 20,
+      "cap30_veto_new": 17
+    },
+    "shots_with_n2_interval": {
+      "before_cap30_veto0.57": 17,
+      "before_cap30_no_veto": 17,
+      "before_no_cap_veto0.57": 19,
+      "after_cap60_veto": 19,
+      "after_cap60_no_veto": 18,
+      "after_no_cap_veto": 19,
+      "cap30_veto_new": 17
+    },
+    "removed_by_harmonic_veto": {
+      "before": 0,
+      "after": -1
+    },
+    "removed_by_frequency_cap": {
+      "before": 3,
+      "after": 0
+    },
+    "harmonic_ratio_before": 0.57,
+    "harmonic_ratio_after": 0.72,
+    "note": "The Mirnov features stop at 30 kHz, so the 60 kHz n = 2 cap acts through N2FREQ only."
+  },
+  "n2_seed_cuts": {
+    "seeds": 86,
+    "shots": 27,
+    "veto_before": 9,
+    "veto_after": 10,
+    "cap_before": 10,
+    "cap_after": 9,
+    "both_before": 16,
+    "both_after": 15,
+    "definition": "seeds are runs of at least 50 ms with raw and 5 ms median n = 2 RMS above 6 G in the flat-top; a cut removes a seed when no 50 ms stretch of it survives; 'both' applies the veto and the coherent-frequency cap together"
+  }
+}

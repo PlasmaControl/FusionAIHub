@@ -4,10 +4,10 @@
   "exclude_test": true,
   "tolerance_ms": 100.0,
   "n_shots_considered": 450,
-  "git_sha": "e162d57f",
+  "git_sha": "6feeb53c",
   "intervals_table": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm/labels/tm_intervals_full_cohort.csv",
-  "intervals_sha256": "c3fda4a66f09797ebb342fe47fbc9a342a1935af182891f97db14e60e8d3ccb7",
-  "caveat": "Seo labels are growth-phase labels with limited temporal coverage.",
+  "intervals_sha256": "731add68cf9e91046aec4c692679073a7b41df7893382f5a261490a0700b0ac3",
+  "caveat": "Seo labels are growth-phase labels with limited temporal coverage. Agreement is containment within the interval or 100 ms of its edges, not timing accuracy.",
   "unmatched_interval_breakdown": {
     "definition": "n1 intervals on selected shots: compare only starts inside available archive coverage; other spans are not comparable",
     "all_n1_intervals": 61,
@@ -48,7 +48,8 @@
           "100": 0.3333333333333333,
           "250": 0.75
         },
-        "reference_after_interval_start_fraction": 0.75
+        "reference_after_interval_start_fraction": 0.75,
+        "reference_inside_onset_window_fraction": 0.9166666666666666
       },
       "compared_intervals": 14,
       "intervals_with_an_onset": 11,
@@ -91,7 +92,8 @@
           "100": 0.3076923076923077,
           "250": 0.6923076923076923
         },
-        "reference_after_interval_start_fraction": 0.7692307692307693
+        "reference_after_interval_start_fraction": 0.7692307692307693,
+        "reference_inside_onset_window_fraction": 0.9230769230769231
       },
       "compared_intervals": 19,
       "intervals_with_an_onset": 12,
@@ -127,7 +129,8 @@
           "100": 0.1111111111111111,
           "250": 0.6666666666666666
         },
-        "reference_after_interval_start_fraction": 1.0
+        "reference_after_interval_start_fraction": 1.0,
+        "reference_inside_onset_window_fraction": 1.0
       },
       "compared_intervals": 14,
       "intervals_with_an_onset": 8,
@@ -161,7 +164,8 @@
           "100": 0.1,
           "250": 0.6
         },
-        "reference_after_interval_start_fraction": 1.0
+        "reference_after_interval_start_fraction": 1.0,
+        "reference_inside_onset_window_fraction": 1.0
       },
       "compared_intervals": 19,
       "intervals_with_an_onset": 9,

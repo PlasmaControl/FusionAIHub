@@ -3,16 +3,15 @@
   "slug": "d3d_tearing_onset_cnn1d",
   "setting": "legacy, published outputs against Seo's archived tm_label",
   "shot_set": "population",
-  "git_sha": "e162d57f",
+  "git_sha": "6feeb53c",
   "score": "tm_prob at the archive's rows (the label's own time grid, 25 ms)",
   "threshold": 0.096,
   "threshold_is": "F1-maximising on available shared-cohort development inner validation shots (seed 999), then fixed for population supplement",
   "population_threshold_validation_shots": [
     186532,
-    189580,
     189741,
-    190271,
     190300,
+    190632,
     190799
   ],
   "fold_info": [],

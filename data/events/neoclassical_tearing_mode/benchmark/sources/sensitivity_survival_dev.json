@@ -3,9 +3,9 @@
   "shots": "cohort split != test",
   "n_shots": 450,
   "not_in_reference": 275,
-  "git_sha": "e162d57f",
-  "rule_sha256": "d3c49b142c41499294c2195faca4020abe49cd68d8b391bb42c391b7a39e9e50",
-  "frozen_label_sha256": "0a67a96a75b0155d37206874af673a96e8aada215a1fb2522790a42432b68bc5",
+  "git_sha": "6feeb53c",
+  "rule_sha256": "4f92e664d53031033898ab235fe65f5c854a4a2b538f722036d0755c0193bc8c",
+  "frozen_label_sha256": "b92cad8eee2b384975fdb81ecc0b95c5c6ea497b5b926bef64ffc039181fdb52",
   "caveat": "Survival shares N1RMS, 12 G / 50 ms and 10%-of-peak onset; agreement is near-circular, not independent physics validation. Variants are sensitivity checks only and do not choose the frozen rule.",
   "variants": [
     {
