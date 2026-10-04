@@ -1048,7 +1048,9 @@ def sensitivity_section(record: dict) -> list[str]:
         (
             "Legacy and dense seed 0 ran on A100, threeway seed 0 on V100. "
             "Restricting every arm to its V100 runs of seeds other than 0 "
-            "(" + "; ".join(f"{a}: {', '.join(r)}" for a, r in runs.items()) + ") "
+            "("
+            + "; ".join(f"{a}: {', '.join(runs[a])}" for a in ARMS if a in runs)
+            + ") "
             "gives two seeds per arm on identical hardware. Seed means, with the "
             "shot-only interval:"
         ),
