@@ -52,7 +52,8 @@ def compare_onsets(
     When `intervals` has `onset_window_start_ms` (the start of the same-n weak track
     that led into the interval), `window_start_ms` is that time for the matched
     interval and `in_onset_window` says whether the reference onset lies between it
-    and the interval's start, each widened by `tol_ms`: the labelled onset is a point
+    and the interval's start, each widened by `tol_ms` (`in_onset_window_strict` is the
+    same without the widening): the labelled onset is a point
     (the interval's start, where the RMS crossed a tenth of the peak), its window the
     span in which the mode could have begun. A reference onset later than the interval
     start (plus `tol_ms`) is matched but not inside the window.
@@ -90,6 +91,9 @@ def compare_onsets(
                     "window_start_ms": float(windows[k]) if hit else np.nan,
                     "in_onset_window": bool(
                         hit and windows[k] - tol_ms <= t <= starts[k] + tol_ms
+                    ),
+                    "in_onset_window_strict": bool(
+                        hit and windows[k] <= t <= starts[k]
                     ),
                     "n_intervals": len(starts),
                 }
@@ -138,6 +142,9 @@ def summarize(onsets: pd.DataFrame, compared: pd.DataFrame, references) -> dict:
                 (err > TOLERANCE_MS).sum()
             ),
             "reference_inside_onset_window": int(matched.in_onset_window.sum()),
+            "reference_inside_onset_window_strict": int(
+                matched.in_onset_window_strict.sum()
+            ),
             "reference_inside_onset_window_fraction": float(
                 matched.in_onset_window.mean()
             ),

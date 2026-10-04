@@ -170,6 +170,8 @@ def test_an_onset_after_the_interval_start_is_matched_but_not_in_its_onset_windo
     onsets, compared = agreement.compare_onsets(refs, intervals)
     assert onsets.matched.tolist() == [True, True]
     assert onsets.in_onset_window.tolist() == [False, True]
+    # without the tolerance neither onset is between the window start and the start
+    assert onsets.in_onset_window_strict.tolist() == [False, False]
     # before the window start, beyond the tolerance, the onset is not in the window either
     early = agreement.compare_onsets([Reference(1, 650.0, 0, 6000)], intervals[:1])[0]
     assert early.matched.tolist() == [False]
@@ -177,4 +179,5 @@ def test_an_onset_after_the_interval_start_is_matched_but_not_in_its_onset_windo
     out = agreement.summarize(onsets, compared, refs)
     assert out["error_ms"]["reference_inside_onset_window_fraction"] == 0.5
     assert out["error_ms"]["reference_inside_onset_window"] == 1
+    assert out["error_ms"]["reference_inside_onset_window_strict"] == 0
     assert out["error_ms"]["reference_after_interval_start_by_more_than_tolerance"] == 1

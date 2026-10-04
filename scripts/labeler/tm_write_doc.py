@@ -244,6 +244,18 @@ def main():
         f"{un_diff['value']:+.3f} [{un_diff['lo']:+.3f}, {un_diff['hi']:+.3f}], "
         f"{un_verdict}"
     )
+    onset_error = {ref: agreement[ref]["error_ms"] for ref in ("seo", "survival")}
+    window_text = {
+        ref: (
+            f"{e['reference_inside_onset_window']} of {agreement[ref]['matched']} "
+            f"({e['reference_inside_onset_window_strict']} without the widening)"
+        )
+        for ref, e in onset_error.items()
+    }
+    late = {
+        ref: e["reference_after_interval_start_by_more_than_tolerance"]
+        for ref, e in onset_error.items()
+    }
     onset_err = {
         ref: b["agreement"][f"{ref}_dev"]["agreement"]["n1"].get("error_ms")
         for ref in ("seo", "survival")
@@ -578,17 +590,12 @@ def main():
                 f"and {agreement['survival']['missed_reasons']['coherent_line_not_supported']} "
                 "lack a supported coherent line. The Seo onsets fall a median "
                 f"{agreement['seo']['error_ms']['median']:.0f} ms after the interval "
-                "start, inside the interval; a reference onset lies **inside the "
-                "onset window** (from "
-                "the window's start to the interval's start, each widened by the "
-                f"±100 ms tolerance) for {agreement['seo']['error_ms']['reference_inside_onset_window']} "
-                f"of {agreement['seo']['matched']} Seo and "
-                f"{agreement['survival']['error_ms']['reference_inside_onset_window']} "
-                f"of {agreement['survival']['matched']} survival onsets; "
-                f"{agreement['seo']['error_ms']['reference_after_interval_start_by_more_than_tolerance']} "
-                "Seo and "
-                f"{agreement['survival']['error_ms']['reference_after_interval_start_by_more_than_tolerance']} "
-                "survival onsets lie more than 100 ms after the interval start. The "
+                "start, inside the interval. A reference onset lies **inside the "
+                "onset window** when it is between the window's start and the "
+                "interval's start, each widened by the ±100 ms tolerance: "
+                f"{window_text['seo']} Seo and {window_text['survival']} survival "
+                f"onsets. {late['seo']} Seo and {late['survival']} survival onsets "
+                "lie more than 100 ms after the interval start. The "
                 "label therefore holds the historical onset, it does not time it. "
                 "The survival archive does not follow "
                 "a literal continuous-50 ms rule on the 1 kHz `N1RMS`: its onsets "
@@ -618,7 +625,7 @@ def main():
                 "—"
                 if e is None
                 else f"{e['reference_inside_onset_window']} of {s['matched']} "
-                f"({pct(e['reference_inside_onset_window_fraction'], 0)})",
+                f"({e['reference_inside_onset_window_strict']} strict)",
                 f"{s['intervals_without_an_onset']} of {s['compared_intervals']}",
             )
         )
@@ -645,7 +652,8 @@ def main():
                 "The onset error is the reference onset minus our interval start, over "
                 'matched onsets only (positive: our interval began first). "Inside '
                 'onset window" counts matched reference onsets between the window '
-                "start and the interval start, each widened by 100 ms. "
+                "start and the interval start, each widened by 100 ms (strict: "
+                "without the widening). "
                 '"Intervals without a reference onset" counts compared intervals '
                 "that hold no reference onset of their shot."
             ),
