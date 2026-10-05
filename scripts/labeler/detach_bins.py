@@ -582,6 +582,18 @@ def process(
     if elm_t is not None:
         share = core.bin_fraction(elm_t, elm_flag, edges)
         out["aux_elm_share"][out["aux_elm_known"]] = share[out["aux_elm_known"]]
+    # The Afrac gate above used the known regime only. For the TangTV gate the
+    # unknown-regime window of a shot is typed by its ELMs and input power
+    # (`signals.probable_regimes`); the value and its source are written to the
+    # same columns, so a table can split known from probable.
+    out["regime"], out["regime_source"] = signals.probable_regimes(
+        out["regime"],
+        out["regime_source"],
+        out["aux_elm_known"],
+        out["aux_elm_share"],
+        out.get("aux_p_in_w", np.full(n, np.nan)),
+        width_ms,
+    )
     # Unlocalised real-time DTS is deliberately excluded from all claims.
     out.update(geometry_aux(geo, edges))
     for key, (value, keep) in frame_geometry_aux(

@@ -389,6 +389,64 @@ def regime(shot: int, centres_ms) -> tuple[np.ndarray, str]:
     return out, "dalpha_detector"
 
 
+#: Regime values the TangTV L-mode gate acts on: known L-mode and the probable-L proxy.
+GATED_REGIMES = ("L", "probable_L")
+
+
+def probable_regimes(
+    regime, source, elm_known, elm_share, p_in_w, width_ms: float
+) -> tuple[np.ndarray, np.ndarray]:
+    """`(regime, source)` with the unknown-regime bins typed by ELMs and power.
+
+    The confinement table and the D-alpha H-mode detector leave most shots without a
+    regime (the detector needs CO2, absent on every 189xxx and 190xxx shot). The bins
+    of a shot whose regime is `unknown` and whose ELM coverage is known form its
+    window. The window is
+
+    * `probable_L` when the D-alpha ELM detector flags no ELM in any bin of it (no
+      ELM-flagged sample at all, a bin with an unknown input power included) and its
+      median input power (`p_in_w`, W) is below `thresholds.PROBABLE_L_MAX_P_IN_W`
+      (the Martin 2008 L-H threshold range). The TangTV detached vote there is
+      gated like a known L-mode one;
+    * `probable_H` when it has any ELM share and is not `probable_L`: ELMs are the
+      textbook H-mode signature. Report only; nothing is gated on it.
+
+    A window shorter than `PROBABLE_REGIME_MIN_MS` (in bins at `width_ms`), a
+    window without an input power, and every bin of known regime keep what they
+    had. The new value is also written to the source, so a table can split known
+    from probable. Known coverage is the only basis: an unknown ELM coverage never
+    types a bin.
+    """
+    from labeler.events.detachment import thresholds
+
+    regime = np.asarray(regime)
+    out = np.array(regime, dtype="U12")
+    src = np.array(np.broadcast_to(np.asarray(source), regime.shape), dtype="U16")
+    window = (
+        (regime == "unknown")
+        & np.asarray(elm_known, bool)
+        & np.isfinite(np.asarray(elm_share, dtype=float))
+    )
+    need = thresholds.min_bins(thresholds.PROBABLE_REGIME_MIN_MS, width_ms)
+    if window.sum() < need:
+        return out, src
+    power = np.asarray(p_in_w, dtype=float)[window]
+    power = power[np.isfinite(power)]
+    if not len(power):
+        return out, src
+    share = np.asarray(elm_share, dtype=float)[window]
+    quiet = share.max() == 0.0
+    if quiet and float(np.median(power)) < thresholds.PROBABLE_L_MAX_P_IN_W:
+        label = "probable_L"
+    elif share.max() > 0.0:
+        label = "probable_H"
+    else:
+        return out, src
+    out[window] = label
+    src[window] = label
+    return out, src
+
+
 def tangtv_geometry(shot, cache=None):
     """EFIT02 for camera geometry; explicit EFIT01 fallback for missing records.
 

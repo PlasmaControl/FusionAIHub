@@ -36,7 +36,9 @@ Differences from published Afrac remain:
   not tuned to a score; wider windows admit probes whose psiN is mis-mapped by
   the EFIT strike-point error.
 * `<ne>` is the line-integrated CO2 density (V2 chord) and `P_SOL` is the heating
-  power minus dW/dt, core radiation not subtracted; both enter only as ratios.
+  power minus dW/dt, core radiation not subtracted; both enter only as ratios. The
+  density is the bin median; `P_SOL`, which sits on the 20-25 ms EFIT time base, is
+  interpolated to the bin centre, so a 20 ms bin is not left without a sample.
 * Eldon 2022's model needs L-mode excluded: bins in a known L-mode stretch
   abstain (reason `l_mode`), and do not enter any reference. Bins where the regime
   is not known are not gated (the caller records which).
@@ -59,6 +61,7 @@ from .core import (
     bin_fraction,
     bin_median,
     elm_bin_known,
+    interp_at_centres,
 )
 
 
@@ -162,7 +165,7 @@ def afrac_indicator(
         )
 
     density = bin_median(ne_t_ms, ne, edges)[0]
-    p_sol = bin_median(power_t_ms, p_sol_w, edges)[0]
+    p_sol = interp_at_centres(power_t_ms, p_sol_w, edges)
     with np.errstate(invalid="ignore", divide="ignore"):
         raw = jsat / (density**2 * np.power(p_sol, -3.0 / 7.0))[None, :]
     raw[~np.isfinite(raw)] = np.nan

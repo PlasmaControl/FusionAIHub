@@ -23,6 +23,28 @@ def test_median_ignores_a_spike_and_mean_does_not():
     assert mean[0] == pytest.approx(25.75)
 
 
+def test_interp_at_centres_fills_a_bin_that_holds_no_sample_but_not_a_gap():
+    # EFIT-like 40 ms samples on 20 ms bins: half the bins hold no sample, but every
+    # centre inside the record has an interpolated value; a hole in the record and
+    # the ends outside it stay NaN
+    edges = core.bin_edges(0.0, 400.0, 20.0)
+    t = np.arange(10.0, 390.0, 40.0)
+    y = 2.0 * t
+    med, _ = core.bin_median(t, y, edges)
+    assert np.isnan(med).any()
+    value = core.interp_at_centres(t, y, edges)
+    centres = core.bin_centres(edges)
+    inside = (centres >= t[0]) & (centres <= t[-1])
+    assert np.isfinite(value[inside]).all() and np.isnan(value[~inside]).all()
+    assert value[inside] == pytest.approx(2.0 * centres[inside])
+    keep = (t < 150.0) | (t > 250.0)
+    gapped = core.interp_at_centres(t[keep], y[keep], edges)
+    in_hole = (centres > 130.0) & (centres < 270.0)
+    assert np.isnan(gapped[in_hole]).all()
+    # fewer than two finite samples give nothing
+    assert np.isnan(core.interp_at_centres(t[:1], y[:1], edges)).all()
+
+
 def test_keep_mask_and_min_count():
     edges = np.array([0.0, 50.0, 100.0])
     t = np.array([10.0, 20.0, 70.0])

@@ -270,6 +270,21 @@ def assessed_mask(votes, valid) -> np.ndarray:
     return (valid.sum(axis=1) >= 2) | (votes[:, LF_NAMES.index("tangtv")] > 0)
 
 
+def eligible_shots(frame: pd.DataFrame, width_ms: float = core.BIN_MS) -> set[int]:
+    """Shots with `MIN_VALID_MS` of valid bins from each of two indicators and of
+    assessed bins; the duration is counted in bins of `width_ms` (the exported grid
+    by default), so the bin width is a resolution, not a stricter or looser rule."""
+    need = th.min_bins(MIN_VALID_MS, width_ms)
+    votes, valid = matrices(frame)
+    per_shot_valid = pd.DataFrame(valid, columns=LF_NAMES).groupby(frame.shot).sum()
+    per_shot_assessed = pd.Series(assessed_mask(votes, valid)).groupby(frame.shot).sum()
+    return set(
+        per_shot_valid.index[
+            ((per_shot_valid >= need).sum(axis=1) >= 2) & (per_shot_assessed >= need)
+        ].astype(int)
+    )
+
+
 def label_frame(frame, model, threshold, width_ms=core.BIN_MS):
     """Observed rule and separately named model diagnostic on the same bins.
 
@@ -511,7 +526,7 @@ def table_meta(args, best, eligible, labeler, producer) -> dict:
         "n_requested_shots": len(eligible),
         "table_kind": "intervals",
         "coverage": (
-            "Geometry-gated TangTV state, validated by divertor Thomson Te; no "
+            "Geometry-gated TangTV state, checked against divertor Thomson Te; no "
             "independent benchmark. A bin is assessed when at least two "
             "indicators are valid on it, or TangTV votes alone, on shots with at "
             "least 1 s of assessed bins and 1 s of valid bins from each of two "
@@ -520,9 +535,11 @@ def table_meta(args, best, eligible, labeler, producer) -> dict:
             "vote agrees with it; two proxies agreeing, not a confidence level) "
             "and tangtv_only (silver: TangTV votes and Afrac abstains or is "
             "invalid). TangTV and Afrac voting against each other is conflict. A "
-            "detached TangTV vote on a bin of a known L-mode phase is the "
-            "uncertain tier tangtv_only_lmode (the DZ cutoffs come from an "
-            "H-mode shot; an unknown regime keeps the plain rule). Divertor "
+            "detached TangTV vote on a bin of a known L-mode phase or of a "
+            "probable-L one (unknown regime, known ELM coverage, no ELM, median "
+            "input power under 2 MW, the L-H threshold range of Martin 2008) is "
+            "the uncertain tier tangtv_only_lmode (the DZ cutoffs come from an "
+            "H-mode shot; any other regime keeps the plain rule). Divertor "
             "radiation (f_div) is not a vote; it is reported per shot. MARFE is "
             "never a state: a sustained TangTV MARFE vote is the uncertain tier "
             "candidate_marfe. Time with no row was not assessed; it is not "
@@ -582,16 +599,7 @@ def main() -> None:
     frame = load_all(Path(args.bins_dir))
     split = cohort_split(frame.shot.unique())
     frame["split"] = frame.shot.map(split)
-    votes, valid = matrices(frame)
-    assessed = assessed_mask(votes, valid)
-    per_shot_valid = pd.DataFrame(valid, columns=LF_NAMES).groupby(frame.shot).sum()
-    per_shot_assessed = pd.Series(assessed).groupby(frame.shot).sum()
-    eligible = set(
-        per_shot_valid.index[
-            ((per_shot_valid >= MIN_VALID_BINS).sum(axis=1) >= 2)
-            & (per_shot_assessed >= MIN_VALID_BINS)
-        ].astype(int)
-    )
+    eligible = eligible_shots(frame)
     work = frame[frame.shot.isin(eligible)].reset_index(drop=True)
     votes, valid = matrices(work)
     fit_mask = (work.split != "test").to_numpy() & (valid.sum(axis=1) >= 2)

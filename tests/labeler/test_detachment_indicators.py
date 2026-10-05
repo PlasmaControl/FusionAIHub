@@ -169,6 +169,33 @@ def test_afrac_probe_reasons():
     assert ind.valid[:need].all()
 
 
+def test_afrac_power_on_the_efit_time_base_is_interpolated_to_the_bin():
+    # P_SOL every 40 ms: a bin median would leave every other 20 ms bin without a
+    # sample (reason no_power); the value at the bin centre does not
+    width = 20.0
+    edges = core.bin_edges(0.0, 5000.0, width)
+    n = len(edges) - 1
+    tn, ne = series(1e14)
+    tp = np.arange(10.0, 5000.0, 40.0)
+    psol = np.full(tp.shape, 4e6)
+    elm_t, elm_flag = clean_elm()
+    psi = np.full((1, n), 1.0)
+    ind, *_ = afrac.afrac_indicator(
+        edges,
+        np.ones((1, n)),
+        psi,
+        tn,
+        ne,
+        tp,
+        psol,
+        elm_t_ms=elm_t,
+        elm_flag=elm_flag,
+    )
+    inside = (core.bin_centres(edges) >= tp[0]) & (core.bin_centres(edges) <= tp[-1])
+    assert "no_power" not in set(ind.reason[inside])
+    assert ind.valid[inside & (core.bin_centres(edges) > 1200.0)].all()
+
+
 def test_afrac_reference_length_is_a_duration_not_a_bin_count():
     # the same second of near-separatrix time defines a reference at any width
     tn, ne = series(1e14)
@@ -662,3 +689,49 @@ def test_beam_power_falls_back_to_the_bms_total(monkeypatch):
     assert signals.beam_power(0, cache, np.array([500.0]), 250.0) == pytest.approx(
         [3.5e6]
     )
+
+
+def regime_inputs(n, *, share=0.0, power=1.2e6, known=True):
+    unknown = np.full(n, "unknown")
+    return {
+        "regime": unknown,
+        "source": np.full(n, "none"),
+        "elm_known": np.full(n, known),
+        "elm_share": np.full(n, share, dtype=float),
+        "p_in_w": np.full(n, power, dtype=float),
+        "width_ms": 50.0,
+    }
+
+
+def test_probable_l_is_elm_free_known_coverage_and_under_2_mw():
+    n = 40  # 2 s of 50 ms bins, more than the 1 s the window needs
+    regime, source = signals.probable_regimes(**regime_inputs(n))
+    assert set(regime) == {"probable_L"} and set(source) == {"probable_L"}
+    assert signals.GATED_REGIMES == ("L", "probable_L")
+    # a power at or above the cut, or any ELM share, is not probable L
+    regime, _ = signals.probable_regimes(**regime_inputs(n, power=2.5e6))
+    assert set(regime) == {"unknown"}
+    kw = regime_inputs(n)
+    kw["elm_share"][7] = 0.2
+    regime, source = signals.probable_regimes(**kw)
+    assert set(regime) == {"probable_H"} and set(source) == {"probable_H"}
+    # unknown ELM coverage is not "no ELMs"
+    regime, _ = signals.probable_regimes(**regime_inputs(n, share=np.nan, known=False))
+    assert set(regime) == {"unknown"}
+
+
+def test_probable_regimes_leave_known_regimes_and_short_windows_alone():
+    n = 40
+    kw = regime_inputs(n)
+    kw["regime"] = np.array(["H"] * 10 + ["L"] * 10 + ["unknown"] * 20)
+    kw["source"] = np.array(["regime_table"] * 20 + ["none"] * 20)
+    regime, source = signals.probable_regimes(**kw)
+    assert regime[:20].tolist() == ["H"] * 10 + ["L"] * 10
+    assert set(regime[20:]) == {"probable_L"}
+    assert set(source[:20]) == {"regime_table"}
+    # the window must last min_bins(1000 ms): 20 bins at 50 ms, 10 at 100 ms
+    short = regime_inputs(19)
+    assert set(signals.probable_regimes(**short)[0]) == {"unknown"}
+    wide = {**regime_inputs(10), "width_ms": 100.0}
+    assert set(signals.probable_regimes(**wide)[0]) == {"probable_L"}
+    assert th.min_bins(th.PROBABLE_REGIME_MIN_MS, 20.0) == 50

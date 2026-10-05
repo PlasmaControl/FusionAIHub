@@ -293,6 +293,29 @@ def test_detached_vote_on_a_known_lmode_bin_is_its_own_uncertain_tier():
     assert tier.tolist() == ["lower_shelf_window", "elm_unknown"]
 
 
+def test_a_probable_lmode_window_is_gated_like_a_known_lmode_one():
+    # the proxy regime gates the detached vote the same way; probable H does not;
+    # only the detached vote is gated, an attached vote keeps its state
+    votes = np.array([[-1, -1, 2], [-1, -1, 2], [-1, -1, 2], [-1, -1, 1], [2, 2, 2]])
+    valid = votes > 0
+    regime = np.array(["probable_L", "probable_H", "unknown", "probable_L", "L"])
+    state, tier = lm.compatibility_decide(
+        votes,
+        valid,
+        regime=regime,
+        tangtv_tier=np.full(5, "upper_shelf"),
+        elm_known=np.ones(5, bool),
+    )
+    assert state.tolist() == [4, 2, 2, 1, 4]
+    assert tier.tolist() == [
+        "tangtv_only_lmode",
+        "tangtv_only",
+        "tangtv_only",
+        "tangtv_only",
+        "tangtv_only_lmode",
+    ]
+
+
 def test_lower_shelf_tier_holds_even_where_tangtv_is_invalid():
     # the lower-shelf TangTV is marked invalid; the geometry tier still names the bin
     votes = np.array([[2, 2, -1], [-1, -1, -1]])

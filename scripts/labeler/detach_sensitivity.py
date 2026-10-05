@@ -17,8 +17,10 @@ width), and the script reports:
   bins assessed (at least two indicators valid or a TangTV vote) and the share of the
   assessed bins that are uncertain, and the tier counts;
 * the duration constants at that width (`afrac_reference_min_bins`,
-  `prad_baseline_min_bins`, `marfe_min_bins`: each is a fixed duration in ms, so the
-  count scales with the width) and the Afrac valid time, in seconds and shots, and
+  `prad_baseline_min_bins`, `marfe_min_bins`, `shot_eligibility`: each is a fixed
+  duration in ms, so the count scales with the width; the shot eligibility is
+  applied, so a shot with too little valid time at that width is dropped and
+  listed in `shots_ineligible`) and the Afrac valid time, in seconds and shots, and
   the time lost to `short_reference` and to every other reason (`afrac_reason_seconds`):
   the width changes what Afrac can see only through the grid, not through the length
   of the reference;
@@ -132,6 +134,11 @@ def main() -> None:
     }
     for width in WIDTHS:
         frame = load_width(width, shots)
+        # shot eligibility is the same duration at every width (`MIN_VALID_MS` of
+        # valid bins from two indicators and of assessed bins), counted in bins
+        eligible = dl.eligible_shots(frame, float(width))
+        loaded = {int(x) for x in frame.shot.unique()}
+        frame = frame[frame.shot.isin(eligible)].reset_index(drop=True)
         votes, valid = dl.matrices(frame)
         out, _, _ = dl.label_frame(frame, model, dl.POSTERIOR_THRESHOLD, float(width))
         assessed = out.assessed.to_numpy()
@@ -152,6 +159,8 @@ def main() -> None:
                 "marfe": th.min_bins(th.MARFE_MIN_MS, width),
                 "shot_eligibility": th.min_bins(dl.MIN_VALID_MS, width),
             },
+            "shots_loaded": len(loaded),
+            "shots_ineligible": sorted(loaded - eligible),
             "afrac_valid_seconds": float(afrac_valid.sum() * seconds),
             "afrac_valid_shots": int(frame.loc[afrac_valid, "shot"].nunique()),
             "afrac_short_reference_seconds": float(short.sum() * seconds),

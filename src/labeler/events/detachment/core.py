@@ -117,6 +117,34 @@ def bin_median(
     return out, count
 
 
+def interp_at_centres(t_ms: np.ndarray, y: np.ndarray, edges: np.ndarray) -> np.ndarray:
+    """`y` linearly interpolated to the bin centres from its finite samples.
+
+    For a slowly varying input sampled about as often as the bin is wide (the EFIT
+    time base, 20-25 ms): a bin median of it leaves a 20 ms bin without a sample,
+    while the value at the centre is defined wherever the record is. NaN where the
+    centre is outside the record or between two samples more than twice the median
+    sample step apart (the same gap rule as `sample_windows_known`): a gap is never
+    filled.
+    """
+    t_ms = np.asarray(t_ms, dtype=float)
+    y = np.asarray(y, dtype=float)
+    ok = np.isfinite(y) & np.isfinite(t_ms)
+    centres = bin_centres(edges)
+    out = np.full(len(centres), np.nan)
+    if ok.sum() < 2:
+        return out
+    t, v = t_ms[ok], y[ok]
+    order = np.argsort(t, kind="stable")
+    t, v = t[order], v[order]
+    step = float(np.median(np.diff(t_ms[np.isfinite(t_ms)])))
+    after = np.clip(np.searchsorted(t, centres, side="left"), 1, len(t) - 1)
+    inside = (centres >= t[0]) & (centres <= t[-1])
+    good = inside & (t[after] - t[after - 1] <= max(2 * step, 2.0))
+    out[good] = np.interp(centres[good], t, v)
+    return out
+
+
 def bin_mean(
     t_ms: np.ndarray,
     y: np.ndarray,

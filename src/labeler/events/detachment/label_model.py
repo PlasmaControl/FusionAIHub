@@ -60,6 +60,7 @@ from scipy.optimize import minimize
 from scipy.special import logsumexp
 
 from .core import ABSENT, ABSTAIN, ATTACHED, DETACHED, MARFE, UNCERTAIN, VOTE_STATES
+from .signals import GATED_REGIMES
 
 LF_NAMES = ("afrac", "prad", "tangtv")
 ALLOWED = {"afrac": (1, 2), "prad": (1, 2), "tangtv": (1, 2, 3)}
@@ -378,7 +379,7 @@ def compatibility_decide(
 ):
     """Primary observed label: the geometry-gated TangTV state, with a second vote.
 
-    The label set is "geometry-gated TangTV state, validated by divertor Thomson
+    The label set is "geometry-gated TangTV state, checked against divertor Thomson
     Te". The rule uses no fitted posterior (``redundant_decide`` is retained only
     as a model diagnostic). The voting indicators are TangTV and the `second`
     ones (`SECOND_VOTERS`: Afrac); every other indicator is a bystander that
@@ -394,11 +395,16 @@ def compatibility_decide(
     * `conflict`: a second indicator votes against TangTV's attached or detached
       vote; the state is uncertain.
     * `tangtv_only_lmode`: TangTV's DETACHED vote (0.5 <= DZ < 1.2) on a bin of a
-      known L-mode phase (`regime == "L"`). The DZ cutoffs were read off an H-mode
-      shot (201081), and Chen 2026's outboard-of-X-point window excludes the
-      inner SOL only in H-mode, so the cutoff is not known to hold in L-mode. The
-      state is uncertain; the gate is a priori, not retuned on Te. An unknown
-      regime keeps the plain rule (`regime` None gates nothing).
+      known L-mode phase (`regime == "L"`) or of a probable-L one (`regime ==
+      "probable_L"`: an unknown-regime window with known ELM coverage, no ELM and a
+      median input power under the L-H threshold range, `signals.probable_regimes`).
+      The DZ cutoffs were read off an H-mode shot (201081), and Chen 2026's
+      outboard-of-X-point window excludes the inner SOL only in H-mode, so the
+      cutoff is not known to hold in L-mode. Only the detached vote is gated: an
+      L-mode inner-SOL leakage lifts the apparent front, which biases DZ upward, so
+      a LOW DZ (the attached vote) stays trustworthy there. The state is uncertain;
+      the gate is a priori, not retuned on Te. Any other regime (H, probable_H,
+      unknown) keeps the plain rule (`regime` None gates nothing).
     * `candidate_marfe`: TangTV's MARFE vote (sustained front above the X-point,
       emission inside the separatrix, density cue). The state is uncertain, never
       MARFE: the density cue (fG >= 0.8) has no literature source (Dong 2025 gives
@@ -425,7 +431,11 @@ def compatibility_decide(
     tv = votes[:, j_tv]
     assessed = (valid.sum(axis=1) >= 2) | (tv > 0)
     fallback = rule(np.where(ballot[None, :], votes, ABSTAIN), valid & ballot[None, :])
-    lmode = np.zeros(n, bool) if regime is None else np.asarray(regime) == "L"
+    lmode = (
+        np.zeros(n, bool)
+        if regime is None
+        else np.isin(np.asarray(regime), GATED_REGIMES)
+    )
     lmode_detached = (tv == DETACHED) & lmode
     leaning = ((tv == ATTACHED) | (tv == DETACHED)) & ~lmode_detached
     agree = np.zeros(n, bool)
