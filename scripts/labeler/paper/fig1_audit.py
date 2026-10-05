@@ -700,7 +700,11 @@ def main():
             # This shot has no QH or WPQH time: the row is L and H only.
             assert not [1 for _, _, c in clipped if c in (3, 4)]
             source_text = sources_text["confinement"]["text"]
-            assert source_text == "model (unreviewed)"
+            assert source_text == (
+                "model (unreviewed)"
+                if any(t == "unreviewed" for t in table.tier)
+                else "model"
+            )
             assert not drawn["elm_qh_overlaps_ms"]
             assert "QH" not in caption
             assert "H-mode detector" not in caption + appendix
