@@ -676,6 +676,12 @@ def _f1_bar(performance: dict) -> float | None:
     return None
 
 
+def ntm_shown_threshold(record: dict) -> float | None:
+    """The TM threshold a figure shows when it is not the model's own, else None."""
+    value = record.get("decision_threshold")
+    return value if value is not None and value != NTM_THRESHOLD else None
+
+
 def ntm_qualification(record: dict, shots: bool = False) -> str:
     """The detector's held-out score against its bar, for a caption.
 
@@ -684,9 +690,12 @@ def ntm_qualification(record: dict, shots: bool = False) -> str:
     """
     performance = record.get("performance") or {}
     parts = []
+    shown = ntm_shown_threshold(record)
     score = performance.get("f1")
     if score is not None:
         text = f"held-out F1 {score:.2f}"
+        if shown is not None:
+            text += f" at {NTM_THRESHOLD:g}"
         if shots and performance.get("shots"):
             text += f" on {performance['shots']} shots"
         parts.append(text)
@@ -695,6 +704,8 @@ def ntm_qualification(record: dict, shots: bool = False) -> str:
         bar = _f1_bar(performance)
         target = f"our {bar:g} bar" if bar else "its bar"
         parts.append(("meets " if met else "below ") + target)
+    if shown is not None:
+        parts.append(f"shown at {shown:g}")
     return ", ".join(parts)
 
 
@@ -1103,6 +1114,12 @@ def appendix_notes(
     if ntm.get("tier") == lf.GENERATED:
         thresholds.append(f"TM {ntm.get('decision_threshold') or NTM_THRESHOLD:g}")
     notes.append("Operating probability thresholds: " + "; ".join(thresholds) + ".")
+    shown = ntm_shown_threshold(ntm) if ntm.get("tier") == lf.GENERATED else None
+    if shown is not None:
+        notes.append(
+            f"The TM threshold is {shown:g} here, not the model's {NTM_THRESHOLD:g}: "
+            "at the model's the detector marks only part of the mode."
+        )
     tagged = drawn.get("blobs", {}).get("tagged")
     ae_highlighted = tagged is None or bool(tagged.get(mt.AE))
     if ae_detector and ae_highlighted:

@@ -1739,7 +1739,7 @@ def track_record(track: lf.Track, window=None) -> dict | None:
         "decision_threshold": (
             {
                 mode_tags.AE: ae_threshold,
-                mode_tags.NTM: figure_sources.NTM_THRESHOLD,
+                mode_tags.NTM: meta.get("threshold", figure_sources.NTM_THRESHOLD),
                 mode_tags.SAWTOOTH: figure_sources.SAWTOOTH_THRESHOLD,
             }.get(track.spec.key)
             if track.source.tier == lf.GENERATED
