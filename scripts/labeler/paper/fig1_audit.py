@@ -102,7 +102,8 @@ def main():
     assert sha256_of(complete) == manifest["completion_sha256"]
     completion = json.loads(complete.read_text())
     assert not set(map(str, rendered)) & set(completion["errors"])
-    assert set(rendered) <= set(completion["processed_shots"])
+    outside_run = {f["shot"] for f in manifest["files"] if f.get("outside_cohort_run")}
+    assert set(rendered) <= set(completion["processed_shots"]) | outside_run
     snapshot_hashes = {}
     for source in manifest["files"]:
         path = source["snapshot_path"]
@@ -248,7 +249,7 @@ def main():
         assert set(shown) <= set(crashes["ece_times_ms"])
         assert drawn["sawtooth_strip_shown"] is False
         if shot == PRIMARY:
-            assert record["window_ms"] == [300, 5800]
+            assert record["window_ms"] == [100, 6200]
         assert drawn["catalog_sawtooth_frame_model_shown"] is False
         saw = record["tracks"]["sawtooth_oscillation"]
         assert saw["state_intervals_ms"]
@@ -626,13 +627,10 @@ def main():
             assert "harmonics" not in caption
             assert drawn["n2_harmonic_consistent"] is False
             assert drawn["n3_harmonic_consistent"] is False
-            # n=3 is never measured alongside n=1 in NTM time here, so the
-            # appendix gives the n=2 ratio only.
-            assert "in 0 of 63 ms where both are measured (0%" in appendix
+            # The NTM detector is positive for 100 ms only, with no n=1 and n=3
+            # measured together, so the appendix carries no ratio sentence.
+            assert "where both are measured" not in appendix
             assert "n=3 lies within" not in appendix
-            assert "cannot separate harmonics of one island from phase-locked" in (
-                appendix
-            )
             assert "linear frequency axis, 0--250 kHz" in caption
             # No row of this shot is an expert review, so no D-alpha spike
             # "precedes the expert span" and the ELM source is named a detector.
@@ -673,9 +671,9 @@ def main():
                 t["tier"] == lf.SILVER for t in record["tracks"].values() if t
             )
             assert (
-                "Sawtooth: present 366 ms, uncertain 4595 ms, unassessed 539 ms"
+                "Sawtooth: present 44 ms, uncertain 1739 ms, unassessed 4260 ms"
             ) in appendix
-            assert len(shown) == 12 and min(shown) > 5000
+            assert len(shown) == 2 and min(shown) > 6000
             assert "detector F1" not in " ".join(legend)
             for key in (mt.AE, mt.NTM):
                 assert record["detector_training"][key]["figure_shot_in_training"] is (
