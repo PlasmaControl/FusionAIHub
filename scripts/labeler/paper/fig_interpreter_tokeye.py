@@ -757,7 +757,7 @@ def draw_legends(
             for h in event_handles
         ],
         handler_map={tuple: HandlerTuple(ndivide=1)},
-        bbox_to_anchor=(0.792, pos.y1 - 0.025),
+        bbox_to_anchor=(0.792, pos.y1 - 0.012),
         **legend_options,
     )
     if n_handles:
