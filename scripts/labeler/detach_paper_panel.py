@@ -2,25 +2,31 @@
 """Write the detachment Figure 2 panel: coverage by tier, agreement with Te and f_div.
 
 There is no independent detachment benchmark. The label set is the geometry-gated
-TangTV state, validated by the divertor Thomson Te (a temperature none of the three
-indicators uses). The panel shows
+TangTV state, checked against the divertor Thomson Te (a temperature none of the
+three indicators uses; Te has since informed rule decisions, so this is a consistency
+check, not a validation). The panel shows
 
 * the coverage of the exported label by tier, labelled bins first (TangTV + Afrac
   agreement, tier `certain`, which is agreement and not a confidence level; TangTV
   only, silver; `tangtv_only_lmode`, uncertain because TangTV votes detached on a
-  known L-mode phase; the `candidate_marfe` tier; every other uncertain bin), bins
-  and shots;
+  known L-mode or probable-L phase; the `candidate_marfe` tier; every other
+  uncertain bin), bins and shots;
 * the agreement of the TangTV state with Te: the AUROC of -Te for a detached against
-  an attached vote, pooled over shots with a 95% shot-bootstrap interval, for the
-  TangTV vote alone, with the anchor shot 201081 left out and by regime (L-mode and
-  regime-unknown bins; the H-mode bins are one shot and not estimable), the labelled
-  bins, the agreement tier, the TangTV-only tier and the two indicators' votes (f_div
-  is drawn for reference, it is not a vote of the label). Whether the
-  second vote improves the Te agreement is the `second_vote_effect` of the Te
-  record, copied into the panel source;
+  an attached vote, pooled over shots with a 95% shot-bootstrap interval. Filled
+  markers are the TangTV vote before the L-mode gate (every shot, without the anchor
+  shot 201081, and by regime: known L-mode, probable L-mode, probable H-mode,
+  no regime; the known-H bins are one shot, so not estimable and not drawn); open
+  markers are the label tiers (labelled bins, the agreement tier, the TangTV-only
+  tier) and the two indicators' votes (f_div is drawn for reference, it is not a vote
+  of the label). The share of detached votes at or below 5 eV is written under the
+  regime rows. Whether the second vote improves the Te agreement is the
+  `second_vote_effect` of the Te record, copied into the panel source. A row on
+  fewer than `detach_benchmark.MIN_INTERVAL_SHOTS` shots has a value and no interval
+  (the record says "n/a (N shots)") and is not drawn;
 * f_div as a within-shot corroborator: its AUROC against the TangTV vote and against
-  Te, pooled over shots (filled) and the mean over shots (open), for the per-shot
-  relative value and the absolute ratio, with the shot counts.
+  Te, pooled over shots (filled blue diamond) and the mean over shots (open blue
+  triangle; the shapes and colour differ from the Te panel's black circles), for the
+  per-shot relative value and the absolute ratio, with the shot counts.
 
 Every number is read from `docs/labeler/results/detachment_benchmark.json`,
 `detachment_te_check.json`, `detachment_fdiv_check.json` and the exported bins. The
@@ -38,11 +44,13 @@ from pathlib import Path
 import matplotlib
 
 matplotlib.use("Agg")
+import detach_benchmark as bench
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from detach_json import dumps
 from detach_label import load_all
+from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
 from labeler.events.detachment import core, thresholds
@@ -54,7 +62,9 @@ AGREEMENT_JSON = RESULTS / "detachment_benchmark.json"
 TE_JSON = RESULTS / "detachment_te_check.json"
 FDIV_JSON = RESULTS / "detachment_fdiv_check.json"
 CURRENT_JSON = RESULTS / "detachment_current.json"
-FIG_HEIGHT_IN = 7.0
+FIG_HEIGHT_IN = 8.3
+#: Colour and shapes of the f_div panel: not the Te panel's black circles.
+FDIV_COLOUR = "#0072B2"
 LF_NAMES = ("afrac", "prad", "tangtv")
 #: Okabe-Ito colours of the exported classes; silver (TangTV only) is the tint.
 CLASS_COLOUR = {
@@ -84,6 +94,22 @@ SETTINGS = {
     "tangtv": "C-III front height with shelf geometry, quality and MARFE gates",
 }
 PAPER_TIER = "upper_shelf"
+
+
+def clean_ci(ci) -> list[float] | None:
+    """The interval as floats, or None where it is missing (a null in the record is
+    "n/a": fewer than `bench.MIN_INTERVAL_SHOTS` shots, or no valid draw)."""
+    if not ci or any(x is None or not np.isfinite(x) for x in ci):
+        return None
+    return [float(x) for x in ci]
+
+
+def n_a(n_shots) -> str:
+    """The text for an interval that does not exist: 'n/a (1 shot)'."""
+    n = int(n_shots or 0)
+    if n >= bench.MIN_INTERVAL_SHOTS:
+        return "n/a (no valid bootstrap draw)"
+    return f"n/a ({n} shot{'' if n == 1 else 's'})"
 
 
 def root() -> Path:
@@ -180,7 +206,10 @@ def agreement_rows(benchmark: dict) -> list[dict]:
                 "kind": kind,
                 "chance": chance,
                 "value": value if finite else None,
-                "ci95": [float(x) for x in ci] if finite and ci else None,
+                "ci95": clean_ci(ci) if finite else None,
+                "ci_note": None
+                if finite and clean_ci(ci)
+                else (n_a(n_shots) if finite else None),
                 "n_bins": n_bins,
                 "n_shots": n_shots,
                 "drawn": bool(finite),
@@ -254,45 +283,153 @@ def agreement_rows(benchmark: dict) -> list[dict]:
     return rows
 
 
+#: The Te bands behind `share_in_band` (the record's `bands_ev`).
+BAND_TEXT = {"attached": ">= 10 eV", "detached": "<= 5 eV"}
+
+
+def share_in_band(entry: dict) -> dict:
+    """Share of the attached bins at or above 10 eV and of the detached bins at or
+    below 5 eV, with the bin counts and the shots behind them."""
+    out = {}
+    for state in ("attached", "detached"):
+        block = entry.get(state, {})
+        n = int(block.get("n_bins", 0))
+        out[state] = {
+            "band_ev": BAND_TEXT[state],
+            "n_bins": n,
+            "n_in_band": int(block.get("n_in_band", 0)) if n else 0,
+            "share": block.get("share_in_band") if n else None,
+            "n_shots": int(block.get("n_shots", 0)),
+        }
+    return out
+
+
 def te_rows(te: dict) -> list[dict]:
-    """AUROC of -Te for detached against attached, by what casts the vote."""
+    """AUROC of -Te for detached against attached, by what casts the vote.
+
+    `population` says which vote the row scores: `vote_before_gate` is the TangTV
+    vote with no L-mode gate (the check against Te, filled markers); `label_tier`
+    and `indicator_vote` are the exported tiers and the single-indicator votes (open
+    markers). The shares in band of a label tier are post-selection: the gate was
+    added after the Te check flagged the L-mode bins.
+    """
     auroc = "auroc_neg_te_detached_vs_attached"
-    regime = te["by_regime"]["tangtv_vote_alone"]
+    regime = te["by_regime"]["tangtv_vote_before_gate"]
+    before = te["by_tier"]
+    gate_note = (
+        "TangTV vote before the L-mode gate (every valid upper-shelf vote), the "
+        "check against Te; the share in band is not post-selection"
+    )
+    post_note = (
+        "exported tier, after the L-mode gate; the share in band is post-selection "
+        "(the gate was added after the Te check flagged the L-mode bins)"
+    )
+    vote_note = "single-indicator vote on the assessed bins of the label set"
     sources = (
-        ("labelled", "labelled", te["by_tier"]["certain_or_tangtv_only"]),
-        ("certain", "agreement tier", te["by_tier"]["certain"]),
-        ("tangtv_only", "TangTV only", te["by_tier"]["tangtv_only"]),
-        ("tangtv_alone", "TangTV alone", te["by_tier"]["tangtv_vote_alone"]),
         (
-            "tangtv_alone_without_201081",
-            "alone, w/o 201081",
-            te["by_tier"]["tangtv_vote_alone_without_201081"],
+            "labelled",
+            "labelled tiers",
+            "label_tier",
+            before["certain_or_tangtv_only"],
+            post_note,
         ),
-        ("tangtv_alone_regime_L", "alone, L-mode", regime["L"]),
-        ("tangtv_alone_regime_unknown", "alone, no regime", regime["unknown"]),
-        ("afrac_vote", "Afrac vote", te["indicator_votes"]["afrac"]),
+        ("certain", "agreement tier", "label_tier", before["certain"], post_note),
+        (
+            "tangtv_only",
+            "TangTV-only tier",
+            "label_tier",
+            before["tangtv_only"],
+            post_note,
+        ),
+        (
+            "tangtv_vote_before_gate",
+            "TangTV vote, no gate",
+            "vote_before_gate",
+            before["tangtv_vote_before_gate"],
+            gate_note,
+        ),
+        (
+            "tangtv_vote_before_gate_without_201081",
+            "  w/o shot 201081",
+            "vote_before_gate",
+            before["tangtv_vote_before_gate_without_201081"],
+            gate_note + "; the anchor shot 201081 (it sets the DZ cutoffs) left out",
+        ),
+        (
+            "tangtv_vote_before_gate_regime_H",
+            "  known H-mode",
+            "vote_before_gate",
+            regime["H"],
+            gate_note + "; known H-mode bins",
+        ),
+        (
+            "tangtv_vote_before_gate_regime_L",
+            "  known L-mode",
+            "vote_before_gate",
+            regime["L"],
+            gate_note + "; bins of a known L-mode phase, where the gate acts",
+        ),
+        (
+            "tangtv_vote_before_gate_regime_probable_L",
+            "  probable L-mode",
+            "vote_before_gate",
+            regime["probable_L"],
+            gate_note + "; regime unknown, ELM-free, median P_in under 2 MW (an "
+            "a-priori proxy), where the gate also acts",
+        ),
+        (
+            "tangtv_vote_before_gate_regime_probable_H",
+            "  probable H-mode",
+            "vote_before_gate",
+            regime["probable_H"],
+            gate_note + "; regime unknown with an ELM share (report only, the gate "
+            "does not act on it)",
+        ),
+        (
+            "tangtv_vote_before_gate_regime_unknown",
+            "  no regime",
+            "vote_before_gate",
+            regime["unknown"],
+            gate_note + "; regime unknown and neither proxy applies",
+        ),
+        (
+            "afrac_vote",
+            "Afrac vote",
+            "indicator_vote",
+            te["indicator_votes"]["afrac"],
+            vote_note,
+        ),
         (
             "f_div_vote",
             r"$f_{\mathrm{div}}$ votes (unused)",
+            "indicator_vote",
             te["indicator_votes"]["prad"],
+            vote_note + "; f_div is not a vote of the label",
         ),
     )
     rows = []
-    for key, label, entry in sources:
+    for key, label, population, entry, note in sources:
         pooled = entry[auroc]["pooled"]
+        n_shots = pooled["n_shots"]
         finite = pooled["value"] is not None and np.isfinite(pooled["value"])
+        ci = clean_ci(pooled["ci95"]) if finite else None
+        shares = share_in_band(entry)
         rows.append(
             {
                 "key": f"te_{key}",
-                "label": label,
+                "label": label.strip(),
+                "population": population,
                 "chance": 0.5,
                 "value": pooled["value"] if finite else None,
-                "ci95": [float(x) for x in pooled["ci95"]] if finite else None,
+                "ci95": ci,
+                "ci_note": None if ci or not finite else n_a(n_shots),
                 "n_bins": pooled["n_bins"],
                 "n_not_attached": pooled["n_not_attached"],
-                "n_shots": pooled["n_shots"],
+                "n_shots": n_shots,
+                "share_in_band": shares,
+                "note": note,
                 "within_shot": entry[auroc]["within_shot"],
-                "drawn": bool(finite),
+                "drawn": bool(finite and ci),
             }
         )
     return rows
@@ -316,17 +453,23 @@ def fdiv_rows(record: dict) -> list[dict]:
                     "chance": 0.5,
                     "pooled": {
                         "value": pooled["value"] if finite(pooled["value"]) else None,
-                        "ci95": [float(x) for x in pooled["ci95"]]
+                        "ci95": clean_ci(pooled["ci95"])
                         if finite(pooled["value"])
                         else None,
+                        "ci_note": None
+                        if clean_ci(pooled["ci95"]) or not finite(pooled["value"])
+                        else n_a(pooled["n_shots"]),
                         "n_bins": pooled["n_bins"],
                         "n_shots": pooled["n_shots"],
                     },
                     "within_shot": {
                         "value": within["mean"] if finite(within["mean"]) else None,
-                        "ci95": [float(x) for x in within["mean_ci95"]]
+                        "ci95": clean_ci(within["mean_ci95"])
                         if finite(within["mean"])
                         else None,
+                        "ci_note": None
+                        if clean_ci(within["mean_ci95"]) or not finite(within["mean"])
+                        else n_a(within["n_shots"]),
                         "n_shots": within["n_shots"],
                         "shots_above_chance": within["shots_above_chance"],
                     },
@@ -377,13 +520,17 @@ def build() -> dict:
             "coverage; the divertor Thomson check is in "
             "docs/labeler/results/detachment_te_check.json.",
         },
-        "label_set": "geometry-gated TangTV state, validated by divertor Thomson Te",
+        "label_set": "geometry-gated TangTV state, checked against divertor Thomson Te",
         "interpretation": "TangTV + Afrac agreement (tier certain; agreement of two "
         "indicators, not a confidence level) is the TangTV vote with an agreeing "
         "Afrac vote; TangTV only labels (silver) are the TangTV vote with Afrac "
         "abstaining or invalid; bins where TangTV votes detached on a known L-mode "
-        "phase are uncertain (tier tangtv_only_lmode). None is independent truth. "
-        "Agreement does not establish accuracy.",
+        "phase or in a probable-L window (regime unknown, ELM-free, median P_in under "
+        "2 MW) are uncertain (tier tangtv_only_lmode). None is independent truth. "
+        "Agreement does not establish accuracy; the Te rows of the vote before the "
+        "gate are the check, and the shares in band of the label tiers are "
+        "post-selection (the gate was added after the Te check flagged the L-mode "
+        "bins).",
         "bin_ms": core.BIN_MS,
         "figure": {"width_in": 3.25, "height_in": FIG_HEIGHT_IN, "min_font_pt": 7},
         "population": "all exported assessed eligible-shot bins, every split",
@@ -419,7 +566,16 @@ def build() -> dict:
             "and an agreeing valid Afrac vote state attached or detached (not a "
             "confidence level)",
             "tangtv_only_lmode": "uncertain: TangTV votes detached (0.5 <= DZ < "
-            "1.2) on a known L-mode phase; the DZ cutoffs come from an H-mode shot",
+            "1.2) on a known L-mode phase or in a probable-L window; the DZ cutoffs "
+            "come from an H-mode shot. Only the detached vote is gated: L-mode "
+            "inner-SOL leakage biases DZ upward, so a low DZ stays trustworthy",
+            "probable_L": "regime unknown from every source, ELM coverage known, no "
+            "ELM share in the window and median P_in under 2 MW (the Martin 2008 "
+            "L-H threshold scaling gives about 1.7 to 2.4 MW for typical DIII-D "
+            "parameters); an a-priori proxy, not a measured regime",
+            "vote_before_gate": "the TangTV vote with no L-mode gate (filled "
+            "markers of the Te panel); not the same population as the "
+            "`no_second_voter` label composition, which has the gate applied",
             "tangtv_only": "assessed bin where TangTV votes and Afrac abstains or "
             "is invalid (silver)",
             "conflict": "TangTV and Afrac vote against each other; uncertain",
@@ -471,23 +627,31 @@ def build() -> dict:
     return result
 
 
-def interval_plot(ax, rows, colour_for, *, chance_label=None) -> None:
-    """Dot and 95% interval per row, the chance level as a grey tick."""
+def interval_plot(ax, rows, colour_for, *, tick_for=None) -> None:
+    """Dot and 95% interval per row, the chance level as a grey tick. `tick_for`
+    writes the row's tick label (default: label and shot count)."""
     for y, row in enumerate(rows):
         ax.plot([row["chance"]], [y], marker="|", ms=7, color=".6", mew=0.8, zorder=1)
         colour, face = colour_for(row)
         ax.plot(row["value"], y, "o", ms=4, color=colour, mfc=face, zorder=3)
         if row["ci95"] and all(np.isfinite(row["ci95"])):
             ax.hlines(y, *row["ci95"], color=colour, lw=1, zorder=2)
-    ax.set_yticks(
-        range(len(rows)),
-        [
-            f"{row['label']} ({row['n_shots']})" if row.get("n_shots") else row["label"]
-            for row in rows
-        ],
+    default = lambda row: (
+        f"{row['label']} ({row['n_shots']})" if row.get("n_shots") else row["label"]
     )
+    ax.set_yticks(range(len(rows)), [(tick_for or default)(row) for row in rows])
     ax.set_ylim(len(rows) - 0.4, -0.6)
     ax.spines[["top", "right"]].set_visible(False)
+
+
+def te_tick(row: dict) -> str:
+    """Row label, shot count and, for the vote before the gate, the share of its
+    detached votes at or below 5 eV (the L-mode row is the one that matters)."""
+    text = f"{row['label']} ({row['n_shots']})"
+    detached = row["share_in_band"]["detached"]
+    if row["population"] == "vote_before_gate" and detached["n_bins"]:
+        text += f"\ndetached \u2264 5 eV: {detached['n_in_band']}/{detached['n_bins']}"
+    return text
 
 
 def draw(data: dict, out: Path) -> None:
@@ -505,7 +669,7 @@ def draw(data: dict, out: Path) -> None:
         3,
         1,
         figsize=(3.25, FIG_HEIGHT_IN),
-        gridspec_kw={"height_ratios": [1.2, 2.0, 1.5]},
+        gridspec_kw={"height_ratios": [1.2, 3.1, 1.5]},
     )
     coverage = data["coverage"]
     groups = (
@@ -562,9 +726,26 @@ def draw(data: dict, out: Path) -> None:
     te_rows_drawn = [row for row in data["te_agreement"] if row["drawn"]]
 
     def te_colour(row):
-        return ("#222222", "#222222") if "alone" in row["key"] else ("#222222", "white")
+        filled = row["population"] == "vote_before_gate"
+        return ("#222222", "#222222" if filled else "white")
 
-    interval_plot(te_ax, te_rows_drawn, te_colour)
+    interval_plot(te_ax, te_rows_drawn, te_colour, tick_for=te_tick)
+    te_ax.legend(
+        [
+            Line2D([], [], marker="o", ms=4, color="#222222", mfc="#222222", ls="-"),
+            Line2D([], [], marker="o", ms=4, color="#222222", mfc="white", ls="-"),
+        ],
+        ["TangTV vote before the gate", "label tiers, indicator votes"],
+        loc="lower left",
+        bbox_to_anchor=(-0.02, 1.0),
+        ncol=1,
+        frameon=False,
+        fontsize=7,
+        handlelength=1.4,
+        labelspacing=0.25,
+        handletextpad=0.4,
+        borderaxespad=0.2,
+    )
     te_ax.set_xlim(0.2, 1.02)
     te_ax.set_xlabel(r"AUROC of $-T_e$, detached vs attached" "\n(shots in brackets)")
     rows = data["fdiv_corroborator"]
@@ -573,8 +754,8 @@ def draw(data: dict, out: Path) -> None:
             [row["chance"]], [y], marker="|", ms=7, color=".6", mew=0.8, zorder=1
         )
         for part, dy, marker, face in (
-            ("pooled", -0.16, "o", "#222222"),
-            ("within_shot", 0.16, "s", "white"),
+            ("pooled", -0.16, "D", FDIV_COLOUR),
+            ("within_shot", 0.16, "^", "white"),
         ):
             entry = row[part]
             if entry["value"] is None:
@@ -584,12 +765,12 @@ def draw(data: dict, out: Path) -> None:
                 y + dy,
                 marker,
                 ms=3.6,
-                color="#222222",
+                color=FDIV_COLOUR,
                 mfc=face,
                 zorder=3,
             )
             if entry["ci95"] and all(np.isfinite(entry["ci95"])):
-                agreement_ax.hlines(y + dy, *entry["ci95"], color="#222222", lw=1)
+                agreement_ax.hlines(y + dy, *entry["ci95"], color=FDIV_COLOUR, lw=1)
     agreement_ax.set_yticks(
         range(len(rows)),
         [
@@ -612,7 +793,7 @@ def draw(data: dict, out: Path) -> None:
     )
     agreement_ax.set_xlabel(
         r"AUROC of $f_{\mathrm{div}}$"
-        "\nfilled: pooled, open: per shot"
+        "\nfilled diamond: pooled, open triangle: per shot"
         "\n(shots: pooled / per shot)"
     )
     fig.subplots_adjust(left=0.43, right=0.97, top=0.89, bottom=0.12, hspace=0.85)

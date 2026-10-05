@@ -45,6 +45,8 @@ REPO = Path(__file__).resolve().parents[2]
 ROOT = Path(os.environ["LABELER_ROOT"]) / "round4/detach"
 OUT = REPO / "docs/labeler/results/detachment_current.json"
 COHORT_SPLITS = ("train", "val", "test")
+#: Known H and L, the a-priori probable L and (report-only) probable H, the rest.
+REGIMES = ("H", "L", "probable_L", "probable_H", "unknown")
 #: The criterion for presenting a three-state label set rather than an agreement
 #: appendix: certain attached and certain detached bins on this many of the same
 #: shots, at least one of them in the fixed cohort.
@@ -141,11 +143,11 @@ def population_block(labels: pd.DataFrame) -> dict:
             )
             for s in (1, 2)
         }
-        for regime in ("H", "L", "unknown")
+        for regime in REGIMES
     }
     out["certain_by_regime"] = {
         regime: population(labels, certain & labels.regime.eq(regime))
-        for regime in ("H", "L", "unknown")
+        for regime in REGIMES
     }
     gated = assessed & labels.tier.eq("tangtv_only_lmode").to_numpy()
     detached_vote = labels.tangtv_vote.eq(core.DETACHED) & labels.tangtv_valid.astype(
@@ -153,15 +155,41 @@ def population_block(labels: pd.DataFrame) -> dict:
     )
     out["lmode_gate"] = {
         "rule": "a DETACHED TangTV vote (0.5 <= DZ < 1.2) on a bin of a known L-mode "
-        "phase is the uncertain tier `tangtv_only_lmode`; the DZ cutoffs come from an "
-        "H-mode shot and the gate is a priori, not tuned on Te. An unknown regime "
-        "keeps the plain rule and is counted here.",
+        "phase, or of a probable-L window, is the uncertain tier "
+        "`tangtv_only_lmode`; the DZ cutoffs come from an H-mode shot and the gate "
+        "is a priori, not tuned on Te. Only the detached vote is gated: L-mode "
+        "inner-SOL leakage biases DZ upward, so a low DZ stays trustworthy. A "
+        "regime that is neither keeps the plain rule and is counted here.",
+        "probable_l_rule": "regime unknown from every source, ELM coverage known, "
+        "no ELM share on any bin of the window, median P_in under "
+        f"{thresholds.PROBABLE_L_MAX_P_IN_W / 1e6:g} MW "
+        "(Martin 2008 L-H threshold scaling, about 1.7 to 2.4 MW for typical DIII-D "
+        f"parameters), at least {thresholds.PROBABLE_REGIME_MIN_MS:g} ms of bins",
+        "probable_h_rule": "regime unknown from every source and any ELM share in "
+        "the window (report only, no gate acts on it)",
         "gated_bins": population(labels, gated),
+        "gated_bins_by_regime": {
+            regime: population(labels, gated & labels.regime.eq(regime))
+            for regime in ("L", "probable_L")
+        },
+        "gated_bins_by_shot": {
+            regime: {
+                str(int(shot)): {
+                    "n_bins": len(rows),
+                    "n_dz_at_least_0_8": int((rows.tangtv_value >= 0.8).sum()),
+                    "n_dz_below_0_8": int((rows.tangtv_value < 0.8).sum()),
+                }
+                for shot, rows in labels[gated & labels.regime.eq(regime)].groupby(
+                    "shot"
+                )
+            }
+            for regime in ("L", "probable_L")
+        },
         "tangtv_detached_votes_by_regime": {
             regime: population(
                 labels, assessed & detached_vote & labels.regime.eq(regime)
             )
-            for regime in ("H", "L", "unknown")
+            for regime in REGIMES
         },
         "regime_source_of_assessed_bins": counts(labels.regime_source),
         "bins_by_regime": counts(labels.regime),

@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 from detach_json import dumps
 
-from labeler.events.detachment import core, label_model, prad, thresholds
+from labeler.events.detachment import core, label_model, prad, signals, thresholds
 from labeler.events.interval_tables import read_label_grid
 
 ROOT = Path(os.environ["LABELER_ROOT"]) / "round4/detach"
@@ -127,13 +127,33 @@ def main():
     silver = frame.tier.eq("tangtv_only")
     assert (labelled == (certain | silver)).all()
     assert not frame.state_rule.eq(core.MARFE).any(), "no certain MARFE is exported"
-    # the a-priori L-mode gate: a DETACHED TangTV vote on a known L-mode bin is its
-    # own uncertain tier and no detached state is exported on a known L-mode bin
+    # the a-priori L-mode gate: a DETACHED TangTV vote on a known L-mode bin or in a
+    # probable-L window is its own uncertain tier and no detached state is exported
+    # there
     gated = frame.tier.eq("tangtv_only_lmode")
     assert frame.loc[gated, "state_rule"].eq(core.UNCERTAIN).all()
-    assert frame.loc[gated, "regime"].eq("L").all()
+    assert frame.loc[gated, "regime"].isin(signals.GATED_REGIMES).all()
     assert frame.loc[gated, "tangtv_vote"].eq(core.DETACHED).all()
-    assert not (frame.regime.eq("L") & frame.state_rule.eq(core.DETACHED)).any()
+    in_gate = frame.regime.isin(signals.GATED_REGIMES)
+    assert not (in_gate & frame.state_rule.eq(core.DETACHED)).any()
+    # the probable-regime proxy is a pure function of the stored columns: typing every
+    # bin of the unknown-regime windows again from their ELM share and input power
+    # reproduces the regime and its source
+    for shot, rows in frame.groupby("shot"):
+        base = rows.regime.where(~rows.regime.str.startswith("probable_"), "unknown")
+        source = rows.regime_source.where(
+            ~rows.regime.str.startswith("probable_"), "unknown"
+        )
+        again, again_source = signals.probable_regimes(
+            base.to_numpy(),
+            source.to_numpy(),
+            rows.aux_elm_known.to_numpy(bool),
+            rows.aux_elm_share.to_numpy(float),
+            rows.aux_p_in_w.to_numpy(float),
+            core.BIN_MS,
+        )
+        assert np.array_equal(again, rows.regime.to_numpy()), shot
+        assert np.array_equal(again_source, rows.regime_source.to_numpy()), shot
     assert frame.loc[labelled, "tangtv_tier"].eq("upper_shelf").all()
     # certain: TangTV votes the state and a valid Afrac vote is compatible with it;
     # tangtv_only: Afrac casts no vote; f_div is not consulted
@@ -185,6 +205,8 @@ def main():
     assert (frame.loc[jsat, "aux_jsat_reference"] > 0).all()
     assert not frame.loc[jsat, "regime"].eq("L").any()
     assert frame.loc[frame.afrac_reason.eq("l_mode"), "regime"].eq("L").all()
+    # Afrac's own gate is known L only: it is never valid on a probable-L bin
+    assert not frame.loc[jsat, "regime"].eq("probable_L").any()
     # M1: an EFIT sentinel is never exported as the outer strike point
     strike = frame.aux_jsat_strike_r_m
     assert (

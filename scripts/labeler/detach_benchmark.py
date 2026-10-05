@@ -53,6 +53,10 @@ REPLICATES = 1000
 #: same population gives the same interval in every script and whatever else was
 #: drawn before it (a shared stream made one statistic print two intervals).
 BOOT_SEED = 0
+#: A shot bootstrap over fewer shots than this has no interval: resampling one or two
+#: shots gives identical or near-identical draws, a degenerate "interval" such as
+#: [0.92, 0.92]. The record carries null and the text prints "n/a (1 shot)".
+MIN_INTERVAL_SHOTS = 3
 STATES = (1, 2, 3)
 #: The sign that makes a larger score mean "not attached".
 DIRECTION = {"afrac": -1.0, "prad": 1.0, "prad_abs": 1.0, "tangtv": 1.0}
@@ -78,7 +82,7 @@ def mean_boot(values) -> list:
     rng = boot_rng()
     draws = [
         float(np.mean(finite[rng.integers(0, len(finite), len(finite))]))
-        for _ in range(REPLICATES if len(finite) else 0)
+        for _ in range(REPLICATES if len(finite) >= MIN_INTERVAL_SHOTS else 0)
     ]
     return interval(draws)
 
@@ -225,7 +229,7 @@ def bootstrap(tables, counts, name, rng):
     )
     draws = []
     n = len(tables)
-    for _ in range(REPLICATES if n else 0):
+    for _ in range(REPLICATES if n >= MIN_INTERVAL_SHOTS else 0):
         pick = rng.integers(0, n, n)
         c = counts[pick].sum(axis=0)
         draws.append(
@@ -268,7 +272,7 @@ def auroc_boot(score, positive, shots) -> dict:
     by_shot = {s: np.flatnonzero(shots == s) for s in np.unique(shots)}
     keys = list(by_shot)
     draws = []
-    for _ in range(REPLICATES):
+    for _ in range(REPLICATES if len(keys) >= MIN_INTERVAL_SHOTS else 0):
         pick = rng.integers(0, len(keys), len(keys))
         idx = np.concatenate([by_shot[keys[j]] for j in pick])
         draws.append(auroc(score[idx], positive[idx]))
@@ -537,7 +541,7 @@ def pooled_rho(frame, a, b) -> dict:
     by_shot = {s: np.flatnonzero(shots == s) for s in np.unique(shots)}
     keys = list(by_shot)
     draws = []
-    for _ in range(REPLICATES):
+    for _ in range(REPLICATES if len(keys) >= MIN_INTERVAL_SHOTS else 0):
         pick = rng.integers(0, len(keys), len(keys))
         idx = np.concatenate([by_shot[keys[j]] for j in pick])
         draws.append(spearman(x[idx], y[idx]))

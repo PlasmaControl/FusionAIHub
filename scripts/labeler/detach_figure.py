@@ -53,7 +53,7 @@ STATE_COLOUR = {
     # silver (tangtv_only) tints of attached and detached
     11: "#8EC1E3",
     12: "#F4D58D",
-    # uncertain because TangTV votes detached on a known L-mode phase
+    # uncertain because TangTV votes detached on a known L-mode or probable-L phase
     14: "#009E73",
 }
 STATE_NAME = {1: "attached", 2: "detached", 3: "MARFE", 4: "uncertain"}
@@ -992,7 +992,8 @@ def main() -> None:
                     "label calls uncertain. The summary bars below the timeline use "
                     "the exported label and tier (silver = TangTV only; green = "
                     "uncertain because TangTV votes detached on a known L-mode "
-                    "phase). The IRTV heat-flux row is omitted because the fetch "
+                    "or probable-L phase). The IRTV heat-flux row is omitted "
+                    "because the fetch "
                     "returned NODATA, and the raw TangTV frames carry no EFIT "
                     "overlay because no camera projection calibration exists; the "
                     "inversion panels carry the overlay."

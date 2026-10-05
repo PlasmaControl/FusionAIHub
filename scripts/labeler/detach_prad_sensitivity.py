@@ -12,7 +12,10 @@ second voter, under the per-shot RELATIVE cutoffs (`prad_vote`,
 attached and detached Prad,div,L plus or minus `PRAD_BAND_MW`, over its measured
 P_in), the band swept from 0.025 to 0.3 MW for both families, plus the published
 1.6/2.2 MW values for the anchor. It also records the exported rule itself
-(`primary`, which must reproduce the exported labels) and TangTV alone (`tangtv_alone`).
+(`primary`, which must reproduce the exported labels) and the rule with no second
+voter (`no_second_voter`: TangTV votes alone, so every labelled bin is TangTV only;
+the L-mode gate still withholds its gated detached votes, so this is not the
+pre-gate TangTV vote that the Te check names `tangtv_vote_before_gate`).
 Per variant: the certain and tangtv_only bins by state, the shots and cohort shots they
 sit on and whether the three-state criterion below holds. Nothing is selected from
 it: the variants only show how much the composition moves.
@@ -333,7 +336,7 @@ def main() -> int:
         np.array_equal(state, frame.state_rule.to_numpy())
         and np.array_equal(tier, frame.tier.to_numpy())
     )
-    add("tangtv_alone", plain, relative_valid, None, "none", ())
+    add("no_second_voter", plain, relative_valid, None, "none", ())
     both = ("afrac", "prad")
     add(
         "with_relative_fdiv",
@@ -430,7 +433,7 @@ def main() -> int:
     OUT.write_text(dumps(record, indent=1) + "\n")
     for name in (
         "primary",
-        "tangtv_alone",
+        "no_second_voter",
         "with_relative_fdiv",
         "with_absolute_fdiv",
     ):

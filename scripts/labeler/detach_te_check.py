@@ -28,14 +28,20 @@ beside it). The tiers are `certain` (TangTV + Afrac agreement), `tangtv_only`
 uncertain) and the TangTV vote alone; a paired shot bootstrap says whether the
 second vote improves the agreement with Te, and is "not estimable" where the
 certain tier sits on fewer than `MIN_PAIRED_SHOTS` shots with a Te. The same
-numbers are given by regime (H, L, unknown; the regime source of the Afrac gate),
-for the TangTV vote alone (before the L-mode gate) and for the exported states
-(after it), and by DZ band for the TangTV detached votes: the L-mode gate itself
-was set a priori (the DZ cutoffs come from an H-mode shot) and is only reported
-here, never tuned on Te. One row leaves the anchor shot 201081 out (it sets the DZ
-cliff). Shot 201081's two cliff times are read from the data and set beside the
-published ones. No threshold is fitted here. Every shot bootstrap uses the fresh
-generator of `detach_benchmark.boot_rng`, so a population has one interval.
+numbers are given by regime (H, L, probable L, probable H, unknown; the regime
+source of the label model), for the TangTV vote before the gate
+(`tangtv_vote_before_gate`, every TangTV vote on the upper shelf, with no L-mode
+gate) and for the exported states (after the gate), and by DZ band for the TangTV detached votes: the
+gate itself was set a priori (the DZ cutoffs come from an H-mode shot; only the
+detached vote is gated, because L-mode inner-SOL leakage biases DZ upward, so a
+low DZ stays trustworthy) and is only reported here, never tuned on Te. The
+before-gate rows are the check against Te; the after-gate shares are post-
+selection (the gate was added after this check flagged the L-mode bins). One row
+leaves the anchor shot 201081 out (it sets the DZ cliff). Shot 201081's two cliff
+times are read from the data and set beside the published ones. No threshold is
+fitted here. Every shot bootstrap uses the fresh generator of
+`detach_benchmark.boot_rng`, so a population has one interval; a population on
+fewer than `detach_benchmark.MIN_INTERVAL_SHOTS` shots has none ("n/a (N shots)").
 
     pixi run --frozen -e labelmaker python scripts/labeler/detach_te_check.py
 """
@@ -70,7 +76,11 @@ MIN_PAIRED_SHOTS = 10
 ANCHOR_SHOT = 201081
 #: TangTV detached votes are described by front height in these bands (DZ).
 DZ_BANDS = ((0.5, 0.65), (0.65, 0.8), (0.8, 1.2))
-REGIMES = ("H", "L", "unknown")
+#: Known H and L (curated intervals or a D-alpha detector), the two a-priori proxies
+#: for a shot whose regime no source gives (`signals.probable_regimes`: ELM-free and
+#: median P_in under 2 MW is probable L; ELMy is probable H, report only) and the
+#: bins that are none of these.
+REGIMES = ("H", "L", "probable_L", "probable_H", "unknown")
 
 
 def load_dts(shot: int):
@@ -141,6 +151,7 @@ def summarise(te: np.ndarray, band) -> dict:
     return {
         "n_bins": len(te),
         "te_ev_quantiles_10_50_90": [float(v) for v in np.percentile(te, [10, 50, 90])],
+        "n_in_band": int(np.sum(band(te))),
         "share_in_band": float(np.mean(band(te))),
         "share_between_bands": float(
             np.mean((te > TE_DETACHED_MAX_EV) & (te < TE_ATTACHED_MIN_EV))
@@ -258,7 +269,7 @@ def reading_text(difference: dict) -> str:
     return reading
 
 
-def tangtv_alone(frame: pd.DataFrame) -> pd.Series:
+def tangtv_before_gate(frame: pd.DataFrame) -> pd.Series:
     """The TangTV vote where it is valid on the upper shelf, else abstain: the vote
     before the regime gate."""
     return frame.tangtv_vote.where(
@@ -269,8 +280,8 @@ def tangtv_alone(frame: pd.DataFrame) -> pd.Series:
 
 def tier_scores(frame: pd.DataFrame) -> dict:
     """Te agreement per label tier, TangTV alone, and the second vote's effect."""
-    tangtv = tangtv_alone(frame)
-    frame = frame.assign(tangtv_alone=tangtv)
+    tangtv = tangtv_before_gate(frame)
+    frame = frame.assign(tangtv_before_gate=tangtv)
     certain = frame.tier.eq("certain").to_numpy()
     silver = frame.tier.eq("tangtv_only").to_numpy()
     lmode = frame.tier.eq("tangtv_only_lmode").to_numpy()
@@ -280,15 +291,15 @@ def tier_scores(frame: pd.DataFrame) -> dict:
         "certain": score_states(frame, "state_rule", mask=certain),
         "tangtv_only": score_states(frame, "state_rule", mask=silver),
         "certain_or_tangtv_only": score_states(frame, "state_rule"),
-        "tangtv_vote_alone": score_states(frame, "tangtv_alone"),
-        "tangtv_vote_alone_without_201081": score_states(
-            frame, "tangtv_alone", mask=(frame.shot != ANCHOR_SHOT).to_numpy()
+        "tangtv_vote_before_gate": score_states(frame, "tangtv_before_gate"),
+        "tangtv_vote_before_gate_without_201081": score_states(
+            frame, "tangtv_before_gate", mask=(frame.shot != ANCHOR_SHOT).to_numpy()
         ),
-        "tangtv_vote_in_conflict_bins": score_states(
-            frame, "tangtv_alone", mask=conflict
+        "tangtv_vote_before_gate_in_conflict_bins": score_states(
+            frame, "tangtv_before_gate", mask=conflict
         ),
-        "tangtv_vote_in_lmode_gated_bins": score_states(
-            frame, "tangtv_alone", mask=lmode
+        "tangtv_vote_before_gate_in_gated_bins": score_states(
+            frame, "tangtv_before_gate", mask=lmode
         ),
     }
     state = frame.state_rule
@@ -300,7 +311,7 @@ def tier_scores(frame: pd.DataFrame) -> dict:
     out["second_vote_effect"] = {
         "question": "does requiring an agreeing second indicator improve the "
         "agreement of the TangTV state with divertor Thomson Te?",
-        "certain_minus_tangtv_alone": {
+        "certain_minus_tangtv_before_gate": {
             **difference,
             "reading": second_vote_verdict(difference),
             "reading_text": reading_text(difference),
@@ -318,34 +329,79 @@ def tier_scores(frame: pd.DataFrame) -> dict:
     return out
 
 
+def gated_by_shot(frame: pd.DataFrame) -> dict:
+    """What the gate withholds, shot by shot: the TangTV detached votes (before the
+    gate) on known L-mode and probable-L bins, with those at DZ >= 0.8 (the cold
+    ones) and the Te in band (<= 5 eV) among the bins that have a Te."""
+    vote = tangtv_before_gate(frame).eq(core.DETACHED).to_numpy()
+    out = {}
+    for regime in ("L", "probable_L"):
+        rows = frame[vote & frame.regime.eq(regime).to_numpy()]
+        per_shot = {}
+        for shot, group in rows.groupby("shot"):
+            te = group.te_ev[np.isfinite(group.te_ev)]
+            per_shot[str(int(shot))] = {
+                "n_bins": len(group),
+                "n_dz_at_least_0_8": int((group.tangtv_value >= 0.8).sum()),
+                "n_dz_below_0_8": int((group.tangtv_value < 0.8).sum()),
+                "n_with_te": len(te),
+                "n_te_at_most_5_ev": int((te <= TE_DETACHED_MAX_EV).sum()),
+            }
+        keys = (
+            "n_bins",
+            "n_dz_at_least_0_8",
+            "n_dz_below_0_8",
+            "n_with_te",
+            "n_te_at_most_5_ev",
+        )
+        out[regime] = {
+            "per_shot": per_shot,
+            "total": {k: sum(v[k] for v in per_shot.values()) for k in keys},
+            "n_shots": len(per_shot),
+        }
+    return out
+
+
 def regime_scores(frame: pd.DataFrame) -> dict:
-    """Te agreement by regime, before the L-mode gate (the TangTV vote alone) and
-    after it (the exported attached/detached states), and by DZ band.
+    """Te agreement by regime, before the gate (the TangTV vote with no L-mode gate)
+    and after it (the exported attached/detached states), and by DZ band.
 
     The gate was set a priori from the H-mode origin of the DZ cutoffs; this block
-    describes what it removed and does not select anything.
+    describes what it removed and does not select anything. `probable_H` is
+    report-only (no gate acts on it).
     """
-    tangtv = tangtv_alone(frame)
-    frame = frame.assign(tangtv_alone=tangtv)
+    tangtv = tangtv_before_gate(frame)
+    frame = frame.assign(tangtv_before_gate=tangtv)
     out = {
-        "note": "regime from the regime source of the Afrac gate (confinement "
-        "suggestion table, else the D-alpha H-mode detector, else unknown); the "
-        "L-mode gate is a priori (the DZ cutoffs come from an H-mode shot) and is "
-        "reported here, not tuned on Te",
+        "note": "regime from the regime source of the label model (the confinement "
+        "suggestion table: curated Gill and Butt intervals where they exist, else "
+        "the dalpha_lh detector; then the D-alpha H-mode detector; else unknown), "
+        "then the a-priori proxies for a shot with no regime (`probable_L`: ELM "
+        "coverage known, no ELM share in the window, median P_in under 2 MW; "
+        "`probable_H`: any ELM share, report only). The gate acts on L and "
+        "probable_L only; it is a priori (the DZ cutoffs come from an H-mode shot) "
+        "and is reported here, not tuned on Te. Rows of `tangtv_vote_before_gate` "
+        "are the check against Te; rows of `exported_state` are post-selection",
         "bins_by_regime": {r: int(frame.regime.eq(r).sum()) for r in REGIMES},
-        "tangtv_vote_alone": {},
+        "shots_by_regime": {
+            r: int(frame.loc[frame.regime.eq(r), "shot"].nunique()) for r in REGIMES
+        },
+        "tangtv_vote_before_gate": {},
         "exported_state": {},
         "tangtv_detached_by_dz_band": {},
+        "gated_detached_votes_by_shot": gated_by_shot(frame),
     }
     for regime in REGIMES:
         mask = frame.regime.eq(regime).to_numpy()
-        out["tangtv_vote_alone"][regime] = score_states(frame, "tangtv_alone", mask)
+        out["tangtv_vote_before_gate"][regime] = score_states(
+            frame, "tangtv_before_gate", mask
+        )
         out["exported_state"][regime] = score_states(frame, "state_rule", mask)
         bands = {}
         for lo, hi in DZ_BANDS:
             rows = frame[
                 mask
-                & frame.tangtv_alone.eq(core.DETACHED).to_numpy()
+                & frame.tangtv_before_gate.eq(core.DETACHED).to_numpy()
                 & np.isfinite(frame.te_ev).to_numpy()
                 & (frame.tangtv_value >= lo).to_numpy()
                 & (frame.tangtv_value < hi).to_numpy()

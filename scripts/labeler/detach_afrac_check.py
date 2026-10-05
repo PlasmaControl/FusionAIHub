@@ -267,9 +267,16 @@ def regime_block(frame: pd.DataFrame) -> dict:
     """Where the L/H gate knows the regime and what it removed."""
     out = {
         "rule": "bins in a known L-mode stretch abstain (reason l_mode) and enter no "
-        "reference; a bin whose regime is unknown is not gated",
+        "reference; a bin whose regime is unknown is not gated. The probable-L "
+        "proxy (`signals.probable_regimes`) gates the label model's TangTV vote, "
+        "not Afrac: Afrac is invalid on every probable-L bin anyway (no valid "
+        "power or reference), so the regime here counts L and H only",
         "source_order": [
-            "confinement suggestion table (category 2 low = L; 1, 3, 4 = H)",
+            (
+                "confinement suggestion table (curated Gill and Butt intervals where "
+                "they exist, else the dalpha_lh detector; category 2 low = L; "
+                "1, 3, 4 = H)"
+            ),
             (
                 "D-alpha H-mode detector (L = measured time outside every H or "
                 "uncertain span)"
@@ -283,7 +290,9 @@ def regime_block(frame: pd.DataFrame) -> dict:
             "bins": len(rows),
             "bins_L": int((rows.regime == "L").sum()),
             "bins_H": int((rows.regime == "H").sum()),
-            "bins_unknown": int((rows.regime == "unknown").sum()),
+            "bins_unknown": int((~rows.regime.isin(("L", "H"))).sum()),
+            "bins_probable_L": int((rows.regime == "probable_L").sum()),
+            "bins_probable_H": int((rows.regime == "probable_H").sum()),
             "source": sorted(str(s) for s in rows.regime_source.unique()),
             "afrac_l_mode_abstentions": int((rows.afrac_reason == "l_mode").sum()),
             "afrac_valid": int(rows.afrac_valid.astype(bool).sum()),
@@ -294,7 +303,9 @@ def regime_block(frame: pd.DataFrame) -> dict:
         "bins_regime_known": int(known.sum()),
         "bins_L": int((frame.regime == "L").sum()),
         "bins_H": int((frame.regime == "H").sum()),
-        "bins_unknown": int((frame.regime == "unknown").sum()),
+        "bins_unknown": int((~known).sum()),
+        "bins_probable_L": int((frame.regime == "probable_L").sum()),
+        "bins_probable_H": int((frame.regime == "probable_H").sum()),
         "shots": int(frame.shot.nunique()),
         "shots_with_known_regime": int(frame.loc[known, "shot"].nunique()),
         "afrac_l_mode_abstentions": int((frame.afrac_reason == "l_mode").sum()),
