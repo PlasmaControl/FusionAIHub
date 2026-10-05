@@ -3795,19 +3795,19 @@
  "tokeye": {
   "checkpoint": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/tokeye/big_tf_unet_251210.pt",
   "sha256": "4afc3948ba53af40cb2787441b251757f8c77e764784e0aaa2602af0471229a9",
-  "probe": "co2 row 0 (CO2 R0)",
+  "probe": "co2 rows 0 and 3 (CO2 R0 x V3 cross-power)",
   "threshold": 0.2,
   "cache": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/cache/tokeye_199563_600_5900.npz",
-  "cache_sha256": "9f6f772e168a36dd0e5f9e94241c521e9247d051ae655fd0f34e9d88b01b8325",
+  "cache_sha256": "c10f8e046f776e053acc0d216bd50802c404fc430a4a70e75c0933ed107408ca",
   "fingerprints": {
    "preprocessing": {
     "code_sha256": {
      "labeler/ae/labels.py": "ffd73c485fd75725403b7ad27a54da0471cb2b2f813cdd718f694739449dcfdc",
      "labeler/ae/transform.py": "971819c5fc3a612cdf2282f9d7b686ac7476f59d788844010261f84f3a62bf2d",
-     "labeler/events/masks.py": "db4d3fc03cc367de6e536d4dff57083b03973152b825d634f15803a465650e3f",
+     "labeler/events/masks.py": "c06a1a10bb70b12a5f571040052063e2d1b4a1aee3c5091879cb29bf932a5be7",
      "labeler/events/unet.py": "ea5e374c5811777df7c9696e19106df91eb5554e3617dc2f134ae8be993cd4ab"
     },
-    "inference_sha256": "6a62453f5ba58776397796e7012bc55ebaa76ca20a0f5a9f09df52c58ffb7339",
+    "inference_sha256": "fc8550ba175b529e4fb808da74b21ffbce1c60b47a178289c9f71e5b7b2515c4",
     "row_lit_threshold": 0.2,
     "runtime_versions": {
      "numpy": "1.26.4",
@@ -3821,6 +3821,13 @@
     "end_s": 7.550007343292236,
     "fs_hz": 500000.00147544045,
     "group": "co2",
+    "partner_row": 3,
+    "partner_sample_sha256": "80af5f9bff6ad317764f4b423ea10ee552dad240fcd782f7cbb2e53bddbd8996",
+    "partner_span": [
+     500000.00147544045,
+     -1.4499906301498413,
+     7.550007343292236
+    ],
     "row": 0,
     "sample_sha256": "bfb5d685bc0281bde6f558cbdbb9040a0489b8dac8970ea8b7785699903eec83",
     "samples": 4500000,
@@ -5142,11 +5149,11 @@
  },
  "caption": {
   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/caption.tex",
-  "sha256": "a431f509273582011cf65661763528d9dee5a8f05c7d2eb1b4ac0876b83e0d8f"
+  "sha256": "645b7a5ff18649feedff2a364b3ebc81314bea38645747e89a3b460de313f3b4"
  },
  "appendix": {
   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/appendix.txt",
-  "sha256": "a7ec1b557d556aad09c899919f53f277cd9ddd6853a512a504ad5ffb0f8685b4"
+  "sha256": "312c26f39a7f00c80b7191a804c31bbff04b641e72efc5112e0027cea56208bb"
  },
  "drawn": {
   "figure": [
@@ -5154,18 +5161,18 @@
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.png"
   ],
   "figure_sha256": {
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.pdf": "d75d7bd5e8da13235f5b3c3e2d74f76026dd98e5f4c29cdb638600a117304823",
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.png": "bbb7ea9d7d9075b436f54780fa4d0aa8f5bfeb5ee63b5744e23e33fbfa6de748"
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.pdf": "c200b7d0eded0ffdb3a1d3160035a50ca449a922cb822f7dae54525b43cb9d9f",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.png": "573ec78e8130d4d8bd7e220599e3c9eb9196fb7c0cfca985b03ccd91fbb907dc"
   },
   "blobs": {
-   "wide_above_split": 121,
-   "zoom_below_split": 299,
+   "wide_above_split": 1107,
+   "zoom_below_split": 310,
    "tagged": {
-    "alfven_eigenmode": 64,
-    "neoclassical_tearing_mode": 10,
+    "alfven_eigenmode": 216,
+    "neoclassical_tearing_mode": 7,
     "sawtooth_oscillation": 0
    },
-   "untagged": 346
+   "untagged": 1194
   },
   "elm_peaks_in_label": 38,
   "elm_peak_times_ms": [
@@ -5242,7 +5249,7 @@
      200,
      250
     ],
-    "raw_spectrogram": "CO2 R0, wide pass, one colour scale, 0-250 kHz",
+    "raw_spectrogram": "CO2 R0 x V3 cross-power, wide pass, one colour scale, 0-250 kHz",
     "mask_zoom_pass_khz": [
      0.0,
      50.0
@@ -5833,12 +5840,12 @@
   "late_untagged_high_frequency": {
    "band_khz": [
     60.05859392722576,
-    242.18750071466647
+    249.02343823483852
    ],
-   "pixels": 1444,
-   "columns": 232,
-   "first_time_ms": 4219.1293531212605,
-   "last_time_ms": 5689.337348782851,
+   "pixels": 30950,
+   "columns": 2152,
+   "first_time_ms": 4209.657353149211,
+   "last_time_ms": 5797.881348462552,
    "rule": "all coherent pixels in the AE detector band during late ABSENT times after the last PRESENT AE interval; no duration cutoff",
    "reason": "AE detector absent; time coincidence is required"
   },
@@ -5849,26 +5856,24 @@
    "minimum_support_ms": 50.0,
    "caption_frequency_step_khz": 1.0,
    "ridge_rule": "per-column pixel-weighted frequency of each measured n",
-   "support_ms": 31.743999906327872,
-   "joint_support_ms": 159.74399952861768,
-   "joint_columns": 156,
-   "passing_columns": 31,
-   "passing_fraction": 0.1987179487179487,
-   "n1_median_khz": 11.35253909599999,
-   "n2_median_khz": 22.73220492819114
+   "support_ms": 38.9119998851761,
+   "joint_support_ms": 146.43199956789954,
+   "joint_columns": 143,
+   "passing_columns": 38,
+   "passing_fraction": 0.26573426573426573,
+   "n1_median_khz": 13.989257853780634,
+   "n2_median_khz": 28.015136801419345
   },
   "harmonic3_support": {
    "frequency_ratio_tolerance": 0.15000000000000002,
    "minimum_support_ms": 50.0,
    "caption_frequency_step_khz": 1.0,
    "ridge_rule": "per-column pixel-weighted frequency of each measured n",
-   "support_ms": 2.047999993956637,
-   "joint_support_ms": 98.30399970991857,
-   "joint_columns": 96,
-   "passing_columns": 2,
-   "passing_fraction": 0.020833333333333332,
-   "n1_median_khz": 4.435221367254476,
-   "n3_median_khz": 13.122558632473106
+   "support_ms": 0.0,
+   "joint_support_ms": 64.51199980963406,
+   "joint_columns": 63,
+   "passing_columns": 0,
+   "passing_fraction": 0.0
   },
   "persistent_line_rows": {
    "wide": 0,
@@ -5887,21 +5892,21 @@
      "regions": 6,
      "omitted_fragments": 6,
      "omitted_sizes_px": [
-      4,
-      4,
-      16,
-      23,
-      36,
-      55
+      2,
+      3,
+      8,
+      10,
+      21,
+      59
      ],
      "dashed_regions": 1
     }
    }
   },
-  "n3_components_unoutlined": 4,
+  "n3_components_unoutlined": 3,
   "n3_outline_rule": "both dominant n and outlined support must be n=1 or 2",
   "n_map": {
-   "kept_share": 0.1021,
+   "kept_share": 0.0772,
    "keys": [
     "n=1",
     "n=2",
@@ -5915,8 +5920,8 @@
    "outside_support": "unknown; cannot supply dominant n evidence"
   },
   "ntm_dominant_n": {
-   "1": 7,
-   "2": 3
+   "1": 5,
+   "2": 2
   },
   "ae_boxes_ms_khz": [],
   "sawtooth_crashes": {
@@ -6015,14 +6020,14 @@
      "outside_band": 0
     },
     "neoclassical_tearing_mode": {
-     "pixels": 3309,
+     "pixels": 3242,
      "outside_present": 0,
      "outside_band": 0
     }
    },
    "wide": {
     "alfven_eigenmode": {
-     "pixels": 7523,
+     "pixels": 25604,
      "outside_present": 0,
      "outside_band": 0
     },
@@ -6070,11 +6075,11 @@
    }
   }
  },
- "git": "e3999588",
+ "git": "b2b1f03c",
  "render_started_from_clean_head": true,
  "render_code_sha256": {
-  "scripts/labeler/paper/fig_interpreter_tokeye.py": "4c4b4c17ba707df49c5256f43bed872ac1c5052136571478a0ea54175187e2c8",
-  "src/labeler/paper/figure_sources.py": "d727dacaf9eeac0fc54a10bc7ef549bd508cb6dbe873ddb149ea37ad8569ad98",
+  "scripts/labeler/paper/fig_interpreter_tokeye.py": "d1034926c6f1ff0ee83b62f1aa1cb3188aac65a7963de10b14167dfb3f2497d1",
+  "src/labeler/paper/figure_sources.py": "157ee50b1153047f79dae705a477ce4ae54ce3abfae8a1ce869a3fca754f1d0e",
   "src/labeler/paper/mode_tags.py": "5a23d78ab919e93ab892633ea46e1891d2785227b91ff2552e891e476f6b4661"
  }
 }

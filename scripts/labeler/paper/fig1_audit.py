@@ -654,13 +654,13 @@ def main():
             )
             assert "(held-out F1 0.46, below our 0.7 bar) is positive." in caption
             assert "Highlights mark time/band coincidence only." in caption
-            # 20 % and 2 % of the jointly measured time pass the 5 % ratio test:
+            # 27 % and 0 % of the jointly measured time pass the 5 % ratio test:
             # below the 0.6 gate, so the caption makes no harmonic claim.
             assert "harmonics" not in caption
             assert drawn["n2_harmonic_consistent"] is False
             assert drawn["n3_harmonic_consistent"] is False
-            assert "in 32 of 160 ms where both are measured (20%" in appendix
-            assert "in 2 of 98 ms where both are measured (2%" in appendix
+            assert "in 39 of 146 ms where both are measured (27%" in appendix
+            assert "in 0 of 65 ms where both are measured (0%" in appendix
             assert "cannot separate harmonics of one island from phase-locked" in (
                 appendix
             )
