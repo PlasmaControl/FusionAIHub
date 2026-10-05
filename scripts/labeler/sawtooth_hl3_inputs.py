@@ -298,6 +298,11 @@ def aggregate():
         ),
         "shots_with_observable_support": len(rows),
         "channels": list(names),
+        "unit_scale": {n: hl3.UNIT_SCALE[n] for n in names},
+        "unit_scale_note": (
+            "each row is divided by this when stacked: stored energy MJ, powers MW, "
+            "CO2 chord V2 / 1e14; the sources below name the reader's own units"
+        ),
         "present_rule": f"finite on at least {PRESENT:.0%} of the shot's observable samples",
         "shots_present": {n: len(rows) - len(lacking[n]) for n in names},
         "shots_lacking": {n: len(lacking[n]) for n in names},

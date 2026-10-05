@@ -17,6 +17,18 @@
     "nbi_power",
     "ech_power"
   ],
+  "unit_scale": {
+    "ece_core_te": 1.0,
+    "mirnov_pair_mean": 1.0,
+    "ip": 1.0,
+    "line_density": 100000000000000.0,
+    "sxr_core": 1.0,
+    "sxr_edge": 1.0,
+    "stored_energy": 1000000.0,
+    "nbi_power": 1000000.0,
+    "ech_power": 1000000.0
+  },
+  "unit_scale_note": "each row is divided by this when stacked: stored energy MJ, powers MW, CO2 chord V2 / 1e14; the sources below name the reader's own units",
   "present_rule": "finite on at least 50% of the shot's observable samples",
   "shots_present": {
     "ece_core_te": 435,
