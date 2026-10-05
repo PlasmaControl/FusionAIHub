@@ -15,6 +15,7 @@ import math
 from pathlib import Path
 
 import numpy as np
+from detach_benchmark import MIN_INTERVAL_SHOTS
 
 REPO = Path(__file__).resolve().parents[2]
 RESULTS = REPO / "docs/labeler/results"
@@ -29,15 +30,39 @@ def load(name: str) -> dict:
     return json.loads((RESULTS / f"detachment_{name}.json").read_text())
 
 
+def shots_text(n_shots) -> str:
+    """`1 shot`, `2 shots`."""
+    return f"{n_shots} shot{'' if n_shots == 1 else 's'}"
+
+
+def n_a(n_shots) -> str:
+    """`n/a (1 shot)`: what stands where an interval over too few shots would."""
+    return f"n/a ({shots_text(n_shots)})"
+
+
 def metric(entry, digits: int = 2) -> str:
-    """`value [lo, hi]` of a record entry carrying `value` and `ci95`."""
+    """`value [lo, hi]` of a record entry carrying `value` and `ci95`.
+
+    An entry whose interval is null (the record leaves it out under three shots)
+    reads `value [n/a (k shots)]`, never a degenerate interval.
+    """
     if not entry or entry.get("value") is None or not math.isfinite(entry["value"]):
         return "undefined"
     value = f"{entry['value']:.{digits}f}"
     lo, hi = entry.get("ci95") or (None, None)
     if lo is None or hi is None:
-        return value
+        if entry.get("n_shots") is None:
+            return value
+        return f"{value} [{n_a(entry['n_shots'])}]"
     return f"{value} [{lo:.{digits}f}, {hi:.{digits}f}]"
+
+
+def within_metric(w: dict) -> str:
+    """`mean [lo, hi]` of a within-shot block (`mean`, `mean_ci95`, `n_shots`)."""
+    if not w["n_shots"] or w["mean"] is None:
+        return "undefined"
+    entry = {"value": w["mean"], "ci95": w["mean_ci95"], "n_shots": w["n_shots"]}
+    return metric(entry)
 
 
 def table(header, rows) -> str:
@@ -109,7 +134,7 @@ def reference_201081(rec: Records) -> dict:
 
 def second_vote(rec: Records) -> dict:
     """Does the second vote improve the Te agreement of the TangTV state?"""
-    effect = rec.te["by_tier"]["second_vote_effect"]["certain_minus_tangtv_alone"]
+    effect = rec.te["by_tier"]["second_vote_effect"]["certain_minus_tangtv_before_gate"]
     lo, hi = effect["ci95"]
     improves = lo is not None and np.isfinite(lo) and lo > 0
     return {
@@ -134,8 +159,9 @@ def within_text(group: dict) -> str:
     w = group[AUROC]["within_shot"]
     if not w["n_shots"]:
         return "undefined (no shot has both classes)"
-    lo, hi = w["mean_ci95"]
-    return f"{w['mean']:.2f} [{lo:.2f}, {hi:.2f}] over {w['n_shots']} shot(s)"
+    k = w["n_shots"]
+    text = within_metric(w)
+    return text if "n/a" in text else f"{text} over {shots_text(k)}"
 
 
 def share_text(entry: dict) -> str:
@@ -185,9 +211,8 @@ def fdiv_within(rec: Records, family: str, reference: str) -> str:
     w = rec.fdiv_summary(family, reference)["within_shot"]
     if not w["n_shots"]:
         return "undefined (no shot has both classes)"
-    lo, hi = w["mean_ci95"]
     return (
-        f"{w['mean']:.2f} [{lo:.2f}, {hi:.2f}] over {w['n_shots']} shots "
+        f"{within_metric(w)} over {w['n_shots']} shots "
         f"({w['shots_above_chance']} above 0.5)"
     )
 
@@ -196,6 +221,50 @@ def fdiv_pooled(rec: Records, family: str, reference: str) -> str:
     """`value [lo, hi] (bins, shots)` of f_div's pooled AUROC."""
     e = rec.fdiv_summary(family, reference)["pooled"]
     return f"{metric(e)} on {e['n_bins']:,} bins, {e['n_shots']} shots"
+
+
+def probable_l_votes(rec: Records) -> dict:
+    """What the probable-L gate withholds, split by DZ and read against Te."""
+    votes = rec.te["by_regime"]["gated_detached_votes_by_shot"]["probable_L"]
+    per_shot = votes["per_shot"]
+    high = {k: v for k, v in per_shot.items() if v["n_dz_at_least_0_8"]}
+    low = {k: v for k, v in per_shot.items() if v["n_dz_below_0_8"]}
+    assert not set(high) & set(low), "a probable-L shot with both DZ groups"
+    cold_n = sum(v["n_with_te"] for v in high.values())
+    cold_in = sum(v["n_te_at_most_5_ev"] for v in high.values())
+    band = rec.te["by_regime"]["tangtv_detached_by_dz_band"]["probable_L"]["0.5-0.65"]
+    return {
+        "votes": votes,
+        "dz_high": ", ".join(
+            f"{v['n_dz_at_least_0_8']} on {k}" for k, v in high.items()
+        ),
+        "dz_low": ", ".join(f"{v['n_dz_below_0_8']} on {k}" for k, v in low.items()),
+        "cold_high": f"{cold_in} of the {cold_n} bins that have a Te are at or "
+        "below 5 eV",
+        "warm_low": f"{band['n_in_band']} of its {band['n_bins']} bins with a Te "
+        f"are at or below 5 eV, median {band['te_ev_quantiles_10_50_90'][1]:.1f} eV",
+    }
+
+
+def fdiv_populations(rec: Records) -> str:
+    """Name and count the two populations of f_div's pooled AUROC against TangTV.
+
+    The corroborator record scores TangTV detached votes against attached votes; the
+    agreement diagnostics also count the TangTV MARFE-vote bins as detached.
+    """
+    a = rec.fdiv_summary("relative", "tangtv")["pooled"]
+    a_abs = rec.fdiv_summary("absolute", "tangtv")["pooled"]
+    b = rec.tf("upper_shelf", "prad__tangtv")["auroc_pooled"]
+    b_abs = rec.tf("upper_shelf", "prad_abs__tangtv")["auroc_pooled"]
+    return (
+        "The pooled f_div figures against TangTV come in two populations: "
+        "the corroborator population (TangTV detached votes against attached "
+        f"votes; {a['n_bins']:,} bins on {a['n_shots']} shots; relative "
+        f"{metric(a)}, absolute {metric(a_abs)}) and the agreement-diagnostics "
+        "population, which also counts the TangTV MARFE-vote bins as detached "
+        f"({b['n_bins']:,} bins on {b['n_shots']} shots; relative {metric(b)}, "
+        f"absolute {metric(b_abs)})"
+    )
 
 
 def cohort_text(rec: Records) -> str:
@@ -225,7 +294,7 @@ def summary(rec: Records) -> str:
     rel = rec.sens["anchor"]["relative_cutoffs"]
     absolute = rec.sens["anchor"]["absolute_cutoffs_global"]
     tv, ce, so = (
-        rec.te_auroc(n) for n in ("tangtv_vote_alone", "certain", "tangtv_only")
+        rec.te_auroc(n) for n in ("tangtv_vote_before_gate", "certain", "tangtv_only")
     )
     sv = second_vote(rec)
     fdiv_vote = rec.te["indicator_votes"]["prad"][AUROC]["pooled"]
@@ -262,32 +331,48 @@ def summary(rec: Records) -> str:
     without = pop["assessed_shots_without_a_labelled_bin"]
     gate = pop["lmode_gate"]
     lab_e = rec.te_auroc("certain_or_tangtv_only")
-    no201 = rec.te_auroc("tangtv_vote_alone_without_201081")
-    lmode_e = rec.te["by_regime"]["tangtv_vote_alone"]["L"]
-    unknown_e = rec.te["by_regime"]["tangtv_vote_alone"]["unknown"]
+    no201 = rec.te_auroc("tangtv_vote_before_gate_without_201081")
+    pre = rec.te["by_regime"]["tangtv_vote_before_gate"]
+    lmode_e, plow_e, phigh_e = pre["L"], pre["probable_L"], pre["probable_H"]
+    unknown_e, hmode_e = pre["unknown"], pre["H"]
+    gated_by_regime = gate["gated_bins_by_regime"]
+    pl = probable_l_votes(rec)
+    plow_votes, dz_high, dz_low = pl["votes"], pl["dz_high"], pl["dz_low"]
+    cold_high, warm_low = pl["cold_high"], pl["warm_low"]
     paragraphs = [
         (
-            "**Label set: the geometry-gated TangTV state, validated by divertor "
-            "Thomson Te. Exploratory; no gold-standard benchmark.** Each 50 ms bin "
-            "on an eligible shot is attached, detached or uncertain; MARFE is never "
-            "a state. Two indicators vote: the TangTV C-III front height DZ and the "
-            "target-current ratio (Afrac proxy: a probe's Jsat over that probe's "
-            "own attached level, the probe nearest the separatrix, known L-mode "
-            "bins abstain). The lower-divertor radiated fraction f_div = "
-            "Prad,div,L / P_in is measured on every bin but is not a vote: it "
-            "corroborates within a shot and creates no conflicts (below). A bin is "
-            "`certain` when TangTV votes and a valid Afrac vote agrees with it "
-            "(called **TangTV + Afrac agreement** in text: two indicators agree, "
-            "this is not a confidence level, and its Te agreement is not higher "
-            "than that of the TangTV-only tier, below); `tangtv_only` (silver) "
-            "when TangTV votes and Afrac abstains or is invalid; `conflict` when "
-            "TangTV and Afrac vote differently; a TangTV detached vote on a known "
-            "L-mode phase is `tangtv_only_lmode`, uncertain (the DZ cutoffs come "
-            "from an H-mode shot, so the vote is not trusted as a state in "
-            "L-mode: the gate is a priori and was not tuned on Te; a bin of "
-            "unknown regime keeps the TangTV vote); every other assessed bin is "
-            "uncertain, with the reason in the `tier` column. The agreement tier "
-            "measures indicator agreement, not physical accuracy."
+            "**Label set: the geometry-gated TangTV state, checked against "
+            "divertor Thomson Te. Exploratory; no gold-standard benchmark.** Each "
+            "50 ms bin on an eligible shot is attached, detached or uncertain; "
+            "MARFE is never a state. Two indicators vote: the TangTV C-III front "
+            "height DZ and the target-current ratio (Afrac proxy: a probe's Jsat "
+            "over that probe's own attached level, the probe nearest the "
+            "separatrix, known L-mode bins abstain). The lower-divertor radiated "
+            "fraction f_div = Prad,div,L / P_in is measured on every bin but is "
+            "not a vote: it corroborates within a shot and creates no conflicts "
+            "(below). A bin is `certain` when TangTV votes and a valid Afrac "
+            "vote agrees with it (called **TangTV + Afrac agreement** in text: "
+            "two indicators agree, this is not a confidence level, and its Te "
+            "agreement is not higher than that of the TangTV-only tier, below); "
+            "`tangtv_only` (silver) when TangTV votes and Afrac abstains or is "
+            "invalid; `conflict` when TangTV and Afrac vote differently. A TangTV "
+            "detached vote on a bin of a known L-mode phase or of a probable-L "
+            "phase is `tangtv_only_lmode`, uncertain: the DZ cutoffs come from "
+            "an H-mode shot, so the detached vote is not trusted as a state in "
+            "L-mode. Only the detached vote is gated, and that choice is a "
+            "priori: L-mode inner-SOL leakage biases DZ upward, so a low DZ "
+            "stays trustworthy. A phase of unknown regime is probable-L when its "
+            "ELM coverage is known, its ELM share is zero over the window and "
+            "its median P_in is below 2 MW (the L-H threshold power of Martin "
+            "2008's multi-machine scaling is about 1.7 to 2.4 MW at typical "
+            "DIII-D parameters); the window is the bins of unknown regime that "
+            "have both an ELM flag and a measured P_in, at least 1 s of them. A "
+            "phase of unknown regime with an ELM share is probable-H, which is "
+            "reported and not gated. The gate is fixed from the regime alone and "
+            "was not tuned on Te; a bin of any other regime keeps the TangTV "
+            "vote. Every other assessed bin is uncertain, with the reason in the "
+            "`tier` column. The agreement tier measures indicator agreement, not "
+            "physical accuracy."
         ),
         (
             f"**Coverage.** Labelled (a state, attached or detached): "
@@ -308,10 +393,13 @@ def summary(rec: Records) -> str:
             f"{labelled['tangtv_only_afrac_valid_between_cutoffs']} it sits "
             f"between its cutoffs. By regime, the labelled detached bins are "
             f"H-mode {by_regime['H']['detached']['bins']}, L-mode "
-            f"{by_regime['L']['detached']['bins']} and regime-unknown "
-            f"{by_regime['unknown']['detached']['bins']}, and every "
-            "agreement-tier bin is on a shot of unknown regime, so the regime "
-            "gate of Afrac never acts where the agreement tier lives. Of "
+            f"{by_regime['L']['detached']['bins']}, probable-L "
+            f"{by_regime['probable_L']['detached']['bins']}, probable-H "
+            f"{by_regime['probable_H']['detached']['bins']} and bins of unknown "
+            f"regime {by_regime['unknown']['detached']['bins']}; every "
+            "agreement-tier bin is on a shot that has no known regime (probable-H "
+            "here), so the regime gate of Afrac never acts where the agreement "
+            "tier lives. Of "
             f"{pop['assessed']['bins']:,} assessed bins on "
             f"{pop['assessed']['shots']} shots ({pop['assessed']['seconds']:.0f} "
             f"s), {never['bins']} bins on {never['shots']} shots can never carry "
@@ -320,56 +408,86 @@ def summary(rec: Records) -> str:
             f"{pop['by_state']['uncertain']['bins']:,} assessed bins are uncertain: "
             f"{pop['by_tier']['conflict']['bins']} `conflict`, "
             f"{gate['gated_bins']['bins']} `tangtv_only_lmode` on "
-            f"{gate['gated_bins']['shots']} shots, and the rest by the tier "
-            "column. "
+            f"{gate['gated_bins']['shots']} shots ("
+            f"{gated_by_regime['L']['bins']} on {gated_by_regime['L']['shots']} "
+            "shots of a known L-mode phase and "
+            f"{gated_by_regime['probable_L']['bins']} on "
+            f"{gated_by_regime['probable_L']['shots']} shots of a probable-L "
+            "phase), and the rest by the tier column. "
             f"{cohort_text(rec)}"
         ),
         (
-            "**Divertor Thomson Te check.** AUROC of -Te for a detached against an "
-            "attached vote (pooled, with shot-bootstrap 95% intervals; one "
+            "**Divertor Thomson Te check.** AUROC of -Te for a detached against "
+            "an attached vote (pooled, with shot-bootstrap 95% intervals; one "
             "bootstrap per statistic, so a population has one interval wherever "
-            f"it appears): the labelled bins {metric(lab_e)} "
-            f"({lab_e['n_bins']} bins, {lab_e['n_shots']} shots); TangTV alone "
-            f"{metric(tv)} ({tv['n_bins']} bins, {tv['n_shots']} shots), "
-            f"and {metric(no201)} on {no201['n_shots']} shots without the anchor "
-            "shot 201081 that sets the DZ cutoffs; TangTV + Afrac agreement "
-            f"{metric(ce)} ({ce['n_bins']} bins, {ce['n_shots']} shots{ce_note}); "
-            f"TangTV only {metric(so)} ({so['n_bins']} bins, "
-            f"{so['n_shots']} shots). Within shots: TangTV alone "
-            f"{within_text(rec.te_group('tangtv_vote_alone'))}, agreement tier "
-            f"{within_text(rec.te_group('certain'))}, TangTV only "
+            "it appears; an interval over fewer than three shots is printed "
+            "`n/a`). **The check is the TangTV vote before the L-mode gate** "
+            "(every valid upper-shelf TangTV vote, called `tangtv_vote_before_gate` "
+            f"in the records): AUROC {metric(tv)} ({tv['n_bins']} bins, "
+            f"{tv['n_shots']} shots), and {metric(no201)} on {no201['n_shots']} "
+            "shots without the anchor shot 201081 that sets the DZ cutoffs. The "
+            "exported tiers follow the L-mode gate, which was introduced after "
+            "the Te check flagged the L-mode bins, so their scores are "
+            "post-selection and are not an independent test of the gate: the "
+            f"labelled bins {metric(lab_e)} ({lab_e['n_bins']} bins, "
+            f"{lab_e['n_shots']} shots), TangTV + Afrac agreement {metric(ce)} "
+            f"({ce['n_bins']} bins, {ce['n_shots']} shots{ce_note}), TangTV only "
+            f"{metric(so)} ({so['n_bins']} bins, {so['n_shots']} shots). Within "
+            "shots: the vote before the gate "
+            f"{within_text(rec.te_group('tangtv_vote_before_gate'))}, agreement "
+            f"tier {within_text(rec.te_group('certain'))}, TangTV only "
             f"{within_text(rec.te_group('tangtv_only'))}. Share of bins in the "
-            "expected Te band (attached >= 10 eV, detached <= 5 eV; in brackets bins "
-            "/ shots): attached "
+            "expected Te band (attached >= 10 eV, detached <= 5 eV; in brackets "
+            "bins / shots), before the gate: attached "
+            f"{share_text(rec.te_group('tangtv_vote_before_gate')['attached'])} "
+            "and detached "
+            f"{share_text(rec.te_group('tangtv_vote_before_gate')['detached'])}; "
+            "after it (post-selection), in the agreement tier attached "
             f"{share_text(rec.te_group('certain')['attached'])} and detached "
-            f"{share_text(rec.te_group('certain')['detached'])} in the agreement "
-            "tier against attached "
+            f"{share_text(rec.te_group('certain')['detached'])} against attached "
             f"{share_text(rec.te_group('tangtv_only')['attached'])} and detached "
-            f"{share_text(rec.te_group('tangtv_only')['detached'])} "
-            "in the TangTV-only tier: the agreement tier is not more Te-consistent. "
+            f"{share_text(rec.te_group('tangtv_only')['detached'])} in the "
+            "TangTV-only tier: the agreement tier is not more Te-consistent. "
             "**The second vote does not improve the Te agreement of the TangTV "
-            f"state**: the paired difference (agreement tier minus TangTV alone) is "
-            f"{sv['reading_text']} (the agreement tier rests on "
-            f"{sv['n_shots_first']} shots; {sv['dropped']} of {sv['replicates']} "
-            "bootstrap replicates are dropped because their agreement-tier "
-            "resample has one class, so the interval "
+            "state**: the paired difference (agreement tier minus the vote "
+            f"before the gate) is {sv['reading_text']} (the agreement tier rests "
+            f"on {sv['n_shots_first']} shots; {sv['dropped']} of "
+            f"{sv['replicates']} bootstrap replicates are dropped because their "
+            "agreement-tier resample has one class, so the interval "
             f"[{sv['ci'][0]:+.2f}, {sv['ci'][1]:+.2f}] is not a result). What the "
             "second vote buys is agreement between two indicators, not a better "
-            "match to Te. **By regime** (the regime source of the Afrac gate): "
-            "the TangTV vote on known L-mode phases ranks Te almost perfectly, "
-            f"AUROC {regime_auroc(lmode_e)}, but its detached bins sit at "
-            f"{lmode_e['detached']['te_ev_quantiles_10_50_90'][1]:.1f} eV "
-            f"(median; {lmode_e['detached']['share_in_band']:.2f} of "
-            f"{lmode_e['detached']['n_bins']} bins at or below 5 eV), against "
-            f"{unknown_e['detached']['share_in_band']:.2f} of "
-            f"{unknown_e['detached']['n_bins']} on shots of unknown regime: in "
-            "L-mode the DZ cutoff of 0.5 marks detaching, not detached, so those "
-            "bins are `tangtv_only_lmode`, uncertain. The gate is a priori (the "
-            "cutoffs come from an H-mode shot; Chen 2026 notes that the "
-            "outboard-of-X-point window excludes the inner SOL only in H-mode); "
-            "it was not tuned on Te. The H-mode bins are one shot with "
-            f"{rec.te['by_regime']['tangtv_vote_alone']['H']['detached']['n_bins']} "
-            "detached bins and no attached ones, so its AUROC is not estimable."
+            "match to Te. **By regime**, before the gate (the regime source is "
+            "the label model's; the probable-L and probable-H rows are the "
+            "proxies above): on known L-mode phases the TangTV vote ranks Te "
+            f"almost perfectly, AUROC {regime_auroc(lmode_e)}, but its detached "
+            f"bins sit at {lmode_e['detached']['te_ev_quantiles_10_50_90'][1]:.1f} "
+            f"eV (median; {lmode_e['detached']['n_in_band']} of "
+            f"{lmode_e['detached']['n_bins']} bins at or below 5 eV), in L-mode "
+            "the DZ cutoff of 0.5 marks detaching, not detached, so these bins "
+            "are `tangtv_only_lmode`, uncertain. On probable-L phases "
+            f"({plow_e['detached']['n_shots']} shots with a Te) "
+            f"{plow_e['detached']['n_in_band']} of "
+            f"{plow_e['detached']['n_bins']} detached bins "
+            f"({plow_e['detached']['share_in_band']:.2f}) are at or below 5 eV: "
+            "the gate withholds mostly cold bins there, because it is a priori "
+            "and does not look at Te. It withholds "
+            f"{plow_votes['total']['n_bins']} detached votes on "
+            f"{plow_votes['n_shots']} shots, "
+            f"{plow_votes['total']['n_dz_at_least_0_8']} of them with DZ >= 0.8 "
+            f"({dz_high}), cold where a Te exists "
+            f"({cold_high}), and {plow_votes['total']['n_dz_below_0_8']} warm "
+            f"ones with DZ 0.5 to 0.65 ({dz_low}; "
+            f"{warm_low}). The H-mode bins are one shot with "
+            f"{hmode_e['detached']['n_bins']} detached bins and no attached "
+            "ones, so its AUROC is not estimable; the probable-H phases "
+            f"(report only) give {regime_auroc(phigh_e)}, with "
+            f"{phigh_e['detached']['share_in_band']:.2f} of "
+            f"{phigh_e['detached']['n_bins']} detached bins at or below 5 eV; "
+            f"{unknown_e['detached']['n_bins'] + unknown_e['attached']['n_bins']} "
+            "bins on shots with neither a regime nor a proxy are too few to "
+            "score. The gate is a priori (the cutoffs come from an H-mode shot; "
+            "Chen 2026 notes that the outboard-of-X-point window excludes the "
+            "inner SOL only in H-mode); it was not tuned on Te."
         ),
         (
             "**Afrac proxy rebuilt.** The earlier proxy read the peak-current "
@@ -420,12 +538,13 @@ def summary(rec: Records) -> str:
             f"{fdiv_within(rec, 'relative', 'tangtv')}, and cold above warm "
             f"divertor Thomson Te with {fdiv_within(rec, 'relative', 'te')}; "
             "pooled over shots the same scores give "
-            f"{fdiv_pooled(rec, 'relative', 'tangtv')} against TangTV and "
+            f"{fdiv_pooled(rec, 'relative', 'tangtv')} against TangTV (TangTV "
+            "detached votes against attached votes) and "
             f"{fdiv_pooled(rec, 'relative', 'te')} against Te, i.e. no support "
             "once the shots are mixed. The absolute f_div (201081-anchored "
             f"cutoffs {absolute[0]:.3f} / {absolute[1]:.3f}, P_in "
             f"{anchor['p_in_mw']:.3f} MW) ranks the same bins within a shot and "
-            f"better pooled (against TangTV "
+            f"better pooled (against TangTV, same population: "
             f"{fdiv_pooled(rec, 'absolute', 'tangtv')}), but its cutoffs vote "
             "detached on most TangTV-attached bins where it votes. Counting only "
             "the relative votes it casts, their AUROC against Te is "
@@ -476,6 +595,31 @@ def published_cue(rec: Records) -> str:
     return f"{rec.phys['thresholds']['marfe_greenwald_min']:.1f}"
 
 
+def regime_source_sentence(rec: Records) -> str:
+    """Where the assessed shots' regime information comes from, from the record."""
+    gate = rec.cur["population"]["lmode_gate"]
+    table = gate["regime_table_provenance"]
+    shots = gate["regime_source_shots"]
+    known = [k for k in ("dalpha_detector", "regime_table") if k in shots]
+    n_known = len({x for k in known for x in shots[k]})
+    if table["curated_shots"]:
+        curated = ", ".join(str(x) for x in table["curated_shots"])
+        return (
+            f"{n_known} assessed shots have a known regime; the curated Gill and "
+            f"Butt intervals cover {curated}."
+        )
+    detector = ", ".join(str(x) for x in shots["regime_table"])
+    return (
+        f"On the {rec.cur['population']['assessed']['shots']} assessed shots "
+        f"({n_known} with a known regime) all regime information comes from the "
+        "D-alpha detectors: no assessed shot has a curated interval, the "
+        f"table's rows for {detector} are the dalpha_lh detector's own "
+        f"({gate['regime_source_of_assessed_bins']['regime_table']} bins) and the "
+        "other known-L shots come from the H-mode detector "
+        f"({gate['regime_source_of_assessed_bins']['dalpha_detector']} bins)."
+    )
+
+
 def coverage_tables(rec: Records) -> list[str]:
     cur = rec.cur["population"]
     tiers = cur["by_tier"]
@@ -506,20 +650,32 @@ def coverage_tables(rec: Records) -> list[str]:
         [f"Tier `{name}`", pop(entry), f"{entry['seconds']:.2f}"]
         for name, entry in tiers.items()
     ]
-    sources = cur["lmode_gate"]["regime_source_of_assessed_bins"]
+    gate = cur["lmode_gate"]
+    sources = gate["regime_source_of_assessed_bins"]
     regime_rows = []
-    for regime, label in (("H", "H-mode"), ("L", "L-mode"), ("unknown", "unknown")):
+    for regime, label in (
+        ("H", "H-mode"),
+        ("L", "L-mode"),
+        ("probable_L", "probable L-mode (gated)"),
+        ("probable_H", "probable H-mode (report only)"),
+        ("unknown", "no regime, no proxy"),
+    ):
         entry = cur["labelled_by_regime"][regime]
-        votes = cur["lmode_gate"]["tangtv_detached_votes_by_regime"][regime]
+        votes = gate["tangtv_detached_votes_by_regime"][regime]
+        withheld = gate["gated_bins_by_regime"].get(regime)
         regime_rows.append(
             [
                 label,
                 pop(entry["attached"]),
                 pop(entry["detached"]),
                 pop(votes),
+                pop(withheld) if withheld else "-",
                 pop(cur["certain_by_regime"][regime]),
             ]
         )
+    loose = gate["tangtv_detached_votes_by_regime"]["unknown"]["shot_ids"]
+    assert set(loose) <= set(gate["regime_source_shots"]["probable_L"])
+    loose_shots = " and ".join(str(x) for x in loose)
     first = rec.fig["coverage_table"][0]["population_counts"]
     return [
         "### Coverage\n",
@@ -539,23 +695,41 @@ def coverage_tables(rec: Records) -> list[str]:
         "\n### Labelled bins by regime\n",
         table(
             [
-                "Regime (Afrac gate source)",
+                "Regime",
                 "Labelled attached (bins / shots)",
                 "Labelled detached (bins / shots)",
                 "TangTV detached votes before the gate",
+                "Votes withheld by the gate",
                 "Agreement-tier bins",
             ],
             regime_rows,
         ),
         (
-            "\nThe regime is Jalal Butt's confinement table where it covers the "
-            "shot, else the D-alpha H-mode detector, else unknown "
-            f"({sources['none']:,} assessed bins of unknown regime, "
-            f"{sources['dalpha_detector']} from the D-alpha detector and "
-            f"{sources['regime_table']} from the table). The gate moves "
-            f"{rec.cur['population']['lmode_gate']['gated_bins']['bins']} TangTV "
-            "detached votes on known L-mode phases to `tangtv_only_lmode`; no "
-            "labelled detached bin is on a known L-mode phase."
+            "\nThe regime comes from the confinement suggestion table where it "
+            "covers the shot (curated Gill and Butt intervals where they exist, "
+            "else the dalpha_lh D-alpha detector's rows), else from the D-alpha "
+            "H-mode detector, else it is unknown. "
+            + regime_source_sentence(rec)
+            + " A shot or phase of unknown regime then gets a proxy label from its "
+            "ELM flag and input power (probable-L: no ELM share and median P_in "
+            "under 2 MW, gated like known L-mode; probable-H: any ELM share, "
+            "report only; both written to the `regime` and `regime_source` "
+            f"columns): {sources['probable_L']} assessed bins are probable-L "
+            f"and {sources['probable_H']:,} probable-H, {sources['none']} stay "
+            "without a regime because their ELM flag or P_in is missing. The gate "
+            f"moves {gate['gated_bins']['bins']} TangTV detached votes to "
+            "`tangtv_only_lmode` "
+            f"({gate['gated_bins_by_regime']['L']['bins']} on known L-mode "
+            f"phases, {gate['gated_bins_by_regime']['probable_L']['bins']} on "
+            "probable-L phases); no labelled detached bin is on a known or "
+            "probable-L phase. The probable-L window is the unknown-regime bins "
+            "that have both an ELM flag and a measured P_in, so a bin that lacks "
+            "either keeps the plain rule: "
+            f"{cur['labelled_by_regime']['unknown']['detached']['bins']} "
+            "labelled detached bins on "
+            f"{cur['labelled_by_regime']['unknown']['detached']['shots']} shots "
+            f"({loose_shots}, which otherwise type as probable-L) lie outside "
+            "the window."
         ),
         "\n### Indicator coverage, all extracted shots\n",
         table(
@@ -615,9 +789,19 @@ def second_indicator_table(rec: Records) -> list[str]:
     ]
 
 
+BEFORE = "tangtv_vote_before_gate"
+TE_REGIMES = (
+    ("H", "known H-mode"),
+    ("L", "known L-mode"),
+    ("probable_L", "probable L-mode"),
+    ("probable_H", "probable H-mode (report only)"),
+    ("unknown", "no regime, no proxy"),
+)
+
+
 def te_tables(rec: Records) -> list[str]:
     te = rec.te
-    regime = te["by_regime"]["tangtv_vote_alone"]
+    regime = te["by_regime"]["tangtv_vote_before_gate"]
     groups = [
         ("agreement tier attached", te["by_tier"]["certain"]["attached"]),
         ("agreement tier detached", te["by_tier"]["certain"]["detached"]),
@@ -625,22 +809,37 @@ def te_tables(rec: Records) -> list[str]:
         ("TangTV-only detached", te["by_tier"]["tangtv_only"]["detached"]),
         ("labelled attached", te["by_tier"]["certain_or_tangtv_only"]["attached"]),
         ("labelled detached", te["by_tier"]["certain_or_tangtv_only"]["detached"]),
-        ("TangTV vote alone, attached", te["by_tier"]["tangtv_vote_alone"]["attached"]),
-        ("TangTV vote alone, detached", te["by_tier"]["tangtv_vote_alone"]["detached"]),
         (
-            "TangTV vote alone without 201081, attached",
-            te["by_tier"]["tangtv_vote_alone_without_201081"]["attached"],
+            "TangTV vote before the gate, attached",
+            te["by_tier"]["tangtv_vote_before_gate"]["attached"],
         ),
         (
-            "TangTV vote alone without 201081, detached",
-            te["by_tier"]["tangtv_vote_alone_without_201081"]["detached"],
+            "TangTV vote before the gate, detached",
+            te["by_tier"]["tangtv_vote_before_gate"]["detached"],
+        ),
+        (
+            "TangTV vote before the gate without 201081, attached",
+            te["by_tier"]["tangtv_vote_before_gate_without_201081"]["attached"],
+        ),
+        (
+            "TangTV vote before the gate without 201081, detached",
+            te["by_tier"]["tangtv_vote_before_gate_without_201081"]["detached"],
         ),
     ]
-    for key, name in (("H", "H-mode"), ("L", "L-mode"), ("unknown", "unknown regime")):
+    for key, name in TE_REGIMES:
         groups += [
-            (f"TangTV vote alone, {name}, attached", regime[key]["attached"]),
-            (f"TangTV vote alone, {name}, detached", regime[key]["detached"]),
+            (f"vote before the gate, {name}, attached", regime[key]["attached"]),
+            (f"vote before the gate, {name}, detached", regime[key]["detached"]),
         ]
+    groups.append(
+        (
+            (
+                "TangTV detached vote in the gated bins (known L and probable L), "
+                "detached"
+            ),
+            te["by_tier"]["tangtv_vote_before_gate_in_gated_bins"]["detached"],
+        )
+    )
     groups += [
         (f"{ind} vote {n}", te["indicator_votes"][ind][n])
         for ind in ("afrac", "prad")
@@ -669,17 +868,15 @@ def te_tables(rec: Records) -> list[str]:
         ),
         ("TangTV + Afrac agreement tier", te["by_tier"]["certain"]),
         ("TangTV-only tier", te["by_tier"]["tangtv_only"]),
-        ("TangTV vote alone", te["by_tier"]["tangtv_vote_alone"]),
+        ("TangTV vote before the gate (the check)", te["by_tier"][BEFORE]),
         (
-            "TangTV vote alone, 201081 left out",
-            te["by_tier"]["tangtv_vote_alone_without_201081"],
+            "TangTV vote before the gate, 201081 left out",
+            te["by_tier"]["tangtv_vote_before_gate_without_201081"],
         ),
-        ("TangTV vote alone, L-mode phases", regime["L"]),
-        ("TangTV vote alone, regime unknown", regime["unknown"]),
-        ("TangTV vote alone, H-mode phases", regime["H"]),
+        *[(f"vote before the gate, {name}", regime[key]) for key, name in TE_REGIMES],
         (
             "TangTV vote in `conflict` bins",
-            te["by_tier"]["tangtv_vote_in_conflict_bins"],
+            te["by_tier"]["tangtv_vote_before_gate_in_conflict_bins"],
         ),
         ("Afrac vote (assessed bins)", te["indicator_votes"]["afrac"]),
         ("relative f_div votes (unused)", te["indicator_votes"]["prad"]),
@@ -692,9 +889,7 @@ def te_tables(rec: Records) -> list[str]:
                 name,
                 metric(pooled) if pooled["value"] is not None else "not estimable",
                 f"{pooled['n_bins']} / {pooled['n_shots']}",
-                metric({"value": within["mean"], "ci95": within["mean_ci95"]})
-                if within["n_shots"]
-                else "undefined",
+                within_metric(within),
                 within["n_shots"],
             ]
         )
@@ -703,13 +898,30 @@ def te_tables(rec: Records) -> list[str]:
     other = te["by_tier"]["second_vote_effect"][
         "certain_minus_tangtv_where_second_vote_missing_or_clashing"
     ]
-    regime = te["by_regime"]["tangtv_vote_alone"]
+    regime = te["by_regime"]["tangtv_vote_before_gate"]
+    pl = probable_l_votes(rec)
+    gated_votes = te["by_regime"]["gated_detached_votes_by_shot"]
+    regime_shots = te["by_regime"]["shots_by_regime"]
+    shot_rows = [
+        [
+            name,
+            shot,
+            v["n_bins"],
+            v["n_dz_at_least_0_8"],
+            v["n_dz_below_0_8"],
+            v["n_with_te"],
+            v["n_te_at_most_5_ev"],
+        ]
+        for key, name in (("L", "known L-mode"), ("probable_L", "probable L-mode"))
+        for shot, v in gated_votes[key]["per_shot"].items()
+    ]
     return [
         "\n### Divertor Thomson Te check\n",
         (
             "The processed divertor Thomson Te (`\\ELECTRONS::TSTE_DIV`, 14 or 16 "
             "chords at R = 1.485 m, about 20 ms) is a temperature that none of "
-            "the three indicators (TangTV, Afrac, f_div) uses. A bin's Te is the "
+            "the three indicators (TangTV, Afrac, f_div) uses; the labels are "
+            "checked against it, not validated by it. A bin's Te is the "
             "median of the valid samples of the chords "
             f"{te['chord_selection']['above_shelf_m'][0] * 100:.1f} to "
             f"{te['chord_selection']['above_shelf_m'][1] * 100:.0f} cm above the "
@@ -718,7 +930,12 @@ def te_tables(rec: Records) -> list[str]:
             f"< psiN <= {te['chord_selection']['psi_n_window'][1]:.2f}, by the "
             f"multi-slice EFIT map; samples outside {te['bands_ev']['valid'][0]}-"
             f"{te['bands_ev']['valid'][1]:.0f} eV are rejected. No threshold is "
-            "fitted: the bands were fixed from the literature before scoring."
+            "fitted: the bands were fixed from the literature before scoring. "
+            "**The check is the TangTV vote before the L-mode gate** (every "
+            "valid upper-shelf TangTV vote). Te has informed rule decisions "
+            "(the Afrac keep rule, the removal of f_div as a voter, the L-mode "
+            "gate), so the rows after the gate are post-selection and the whole "
+            "table is a consistency check, not an independent validation."
         ),
         "",
         table(
@@ -727,11 +944,15 @@ def te_tables(rec: Records) -> list[str]:
         (
             "\nShare in band is the fraction of bins with Te >= "
             f"{te['bands_ev']['attached_min']:.0f} eV for attached or <= "
-            f"{te['bands_ev']['detached_max']:.0f} eV for detached. AUROC of -Te "
+            f"{te['bands_ev']['detached_max']:.0f} eV for detached; the rows of "
+            "the tiers (agreement tier, TangTV only, labelled) are after the "
+            "L-mode gate and so post-selection. AUROC of -Te "
             "for detached against attached votes (pooled with a shot-bootstrap "
             "interval; within shots is the mean over the shots that have at least "
             f"{te['by_tier']['certain'][AUROC]['within_shot']['min_class_bins']} "
-            "bins of each class, with the number of such shots):\n"
+            "bins of each class, with the number of such shots; an interval "
+            f"over fewer than {MIN_INTERVAL_SHOTS} shots is `n/a`, and a "
+            "population with a single class is `not estimable`):\n"
         ),
         table(
             [
@@ -746,8 +967,8 @@ def te_tables(rec: Records) -> list[str]:
         (
             "\n**Does the second vote improve the Te agreement?** It does not, "
             "and the paired difference cannot be estimated: agreement tier minus "
-            f"TangTV alone is {sv['reading_text']} (the agreement tier has "
-            f"{sv['n_shots_first']} shots with a Te; "
+            f"the TangTV vote before the gate is {sv['reading_text']} (the "
+            f"agreement tier has {sv['n_shots_first']} shots with a Te; "
             f"{sv['dropped']} of {sv['replicates']} bootstrap replicates are "
             "dropped because the resample of those shots has a single class, "
             f"which leaves the interval [{sv['ci'][0]:+.2f}, {sv['ci'][1]:+.2f}] "
@@ -756,44 +977,82 @@ def te_tables(rec: Records) -> list[str]:
             f"difference is {other['difference']:+.3f} "
             f"[{other['ci95'][0]:+.2f}, {other['ci95'][1]:+.2f}] "
             f"({other['reading_text']}). The within-shot figure for the "
-            f"agreement tier rests on "
+            "agreement tier rests on "
             f"{te['by_tier']['certain'][AUROC]['within_shot']['n_shots']} "
-            "shot(s), too few for any statement. In the share-in-band column the "
+            "shots, too few for any statement. In the share-in-band column the "
             "agreement tier is less Te-consistent than the TangTV-only tier "
             f"(attached {share_text(te['by_tier']['certain']['attached'])} against "
             f"{share_text(te['by_tier']['tangtv_only']['attached'])}), so the "
             "tier is agreement of two indicators and not a confidence level."
         ),
-        "\n### L-mode: where the TangTV vote is not cold\n",
+        "\n### L-mode and probable L-mode: where the TangTV detached vote is gated\n",
         (
             "The DZ cutoffs (0.35 and 0.5) come from one H-mode shot (201081). "
             "On known L-mode phases the TangTV detached vote is not cold by the "
             "Te criterion: "
-            f"{regime['L']['detached']['share_in_band']:.2f} of its "
-            f"{regime['L']['detached']['n_bins']} bins with a Te are at or below "
+            f"{regime['L']['detached']['n_in_band']} of its "
+            f"{regime['L']['detached']['n_bins']} bins with a Te "
+            f"({regime['L']['detached']['share_in_band']:.2f}) are at or below "
             f"{te['bands_ev']['detached_max']:.0f} eV (median "
             f"{regime['L']['detached']['te_ev_quantiles_10_50_90'][1]:.1f} eV), "
-            f"against {regime['unknown']['detached']['share_in_band']:.2f} "
-            f"on shots of unknown regime, although the ranking inside L-mode is "
-            f"near perfect ({regime_auroc(regime['L'])}): the state boundary sits "
+            f"against {regime['probable_H']['detached']['share_in_band']:.2f} on "
+            "probable-H phases, although the ranking inside L-mode is near "
+            f"perfect ({regime_auroc(regime['L'])}): the state boundary sits "
             "at about 10 eV there, not 5 eV. Chen 2026 notes that the "
             "outboard-of-X-point window excludes the inner SOL only in H-mode, so a "
-            "cutoff set on an H-mode shot need not carry over to L-mode. The "
-            "label therefore withholds the state (tier `tangtv_only_lmode`, "
-            "uncertain) for a TangTV detached vote on a known L-mode phase, from "
-            "the regime alone; **the gate was not tuned on Te**, which would "
-            "make this check circular. A bin of unknown regime keeps the vote. "
-            "Te of the TangTV detached votes by DZ band (before the gate, "
-            "shot counts beside each cell):\n"
+            "cutoff set on an H-mode shot need not carry over to L-mode. Only the "
+            "detached vote is gated, and that is a priori: in L-mode the inner "
+            "SOL leaks into the window and biases DZ upward, so a low DZ stays "
+            "trustworthy. The label withholds the state (tier "
+            "`tangtv_only_lmode`, uncertain) for a TangTV detached vote on a "
+            "known L-mode phase, from the regime alone; **the gate was not "
+            "tuned on Te**, which would make this check circular. The regime is "
+            f"known on {regime_shots['L']} assessed shots in L-mode and "
+            f"{regime_shots['H']} in H-mode, so the gate also acts on a proxy: a "
+            "phase of unknown regime with known ELM coverage, no ELM share and a "
+            "median P_in below 2 MW (probable-L; the L-H threshold power of "
+            "Martin 2008's scaling is about 1.7 to 2.4 MW at typical DIII-D "
+            "parameters) is gated the same way, also from the regime alone. The "
+            "proxy window is the bins of unknown regime that have both an ELM "
+            "flag and a measured P_in. A phase with an ELM share is probable-H, "
+            "reported here and not gated.\n"
+            f"\n**What the probable-L gate withholds.** "
+            f"{pl['votes']['total']['n_bins']} TangTV detached votes on "
+            f"{pl['votes']['n_shots']} shots: {pl['votes']['total']['n_dz_at_least_0_8']} "
+            f"with DZ >= 0.8 ({pl['dz_high']}), where {pl['cold_high']}, so the "
+            "gate withholds cold bins too, because the rule does not look at Te "
+            f"(of all {pl['votes']['total']['n_bins']} gated votes "
+            f"{pl['votes']['total']['n_te_at_most_5_ev']} of the "
+            f"{pl['votes']['total']['n_with_te']} that have a Te are at or below "
+            f"5 eV), and {pl['votes']['total']['n_dz_below_0_8']} with DZ 0.5 to "
+            f"0.65 ({pl['dz_low']}), the detaching-not-detached case the gate is "
+            f"for: {pl['warm_low']}. In the labels these bins are uncertain "
+            "(`tangtv_only_lmode`). The gate by shot:\n"
         ),
         table(
-            ["DZ band", "H-mode", "L-mode", "Unknown regime"],
+            [
+                "Regime",
+                "Shot",
+                "Gated bins",
+                "DZ >= 0.8",
+                "DZ < 0.8",
+                "With a Te",
+                "Te <= 5 eV",
+            ],
+            shot_rows,
+        ),
+        (
+            "\nTe of the TangTV detached votes by DZ band and regime (before the "
+            "gate, shot counts beside each cell):\n"
+        ),
+        table(
+            ["DZ band", *(name for _, name in TE_REGIMES)],
             [
                 [
                     band,
                     *(
                         (
-                            f"{e['n_bins']} bins / {e['n_shots']} shots, median "
+                            f"{e['n_bins']} bins / {shots_text(e['n_shots'])}, median "
                             f"{e['te_ev_quantiles_10_50_90'][1]:.1f} eV, in band "
                             f"{e['share_in_band']:.2f}"
                         )
@@ -802,8 +1061,9 @@ def te_tables(rec: Records) -> list[str]:
                                 band
                             )
                         )
+                        and e["n_bins"]
                         else "-"
-                        for r in ("H", "L", "unknown")
+                        for r, _ in TE_REGIMES
                     ),
                 ]
                 for band in ("0.5-0.65", "0.65-0.8", "0.8-1.2")
@@ -813,13 +1073,12 @@ def te_tables(rec: Records) -> list[str]:
             "\nExported detached and attached bins by regime after the gate: "
             + "; ".join(
                 f"{name} {regime_auroc_bins(te['by_regime']['exported_state'][key])}"
-                for key, name in (
-                    ("H", "H-mode"),
-                    ("L", "L-mode"),
-                    ("unknown", "unknown"),
-                )
+                for key, name in TE_REGIMES
             )
-            + "."
+            + ". The probable-H phases, where the gate does not act, give "
+            f"{regime_auroc(regime['probable_H'])} before the gate (the "
+            "ELMy shots of unknown regime are H-mode by the ELM signature; "
+            "report only)."
         ),
         (
             f"\n{len(te['shots_with_te_in_assessed_bins'])} of the "
@@ -838,7 +1097,7 @@ def te_tables(rec: Records) -> list[str]:
 
 def agreement_tables(rec: Records) -> list[str]:
     names = {
-        "auroc_pooled": "AUROC of relative f_div, pooled",
+        "auroc_pooled": "AUROC of relative f_div, pooled (detached or MARFE vote)",
         "auroc_within_shot": "AUROC of relative f_div, mean over shots",
         "spearman_pooled": "Spearman rho of relative f_div with DZ, pooled",
         "spearman_within_shot": "Spearman rho, mean over shots",
@@ -858,8 +1117,11 @@ def agreement_tables(rec: Records) -> list[str]:
     pair_rows = []
     for tier in ("upper_shelf", "lower_shelf_window"):
         for pair, name in (
-            ("prad__tangtv", "relative f_div against TangTV (corroborator)"),
-            ("prad_abs__tangtv", "absolute f_div against TangTV (sensitivity)"),
+            ("prad__tangtv", "relative f_div against TangTV (detached or MARFE vote)"),
+            (
+                "prad_abs__tangtv",
+                "absolute f_div against TangTV (sensitivity; detached or MARFE vote)",
+            ),
             ("afrac__tangtv", "Afrac against TangTV"),
             ("prad__afrac", "relative f_div against Afrac"),
         ):
@@ -872,11 +1134,7 @@ def agreement_tables(rec: Records) -> list[str]:
                     metric(entry["auroc_pooled"]),
                     entry["auroc_pooled"]["n_bins"],
                     entry["auroc_pooled"]["n_shots"],
-                    (
-                        f"{within['mean']:.2f}"
-                        if within["n_shots"] and within["mean"] is not None
-                        else "undefined"
-                    ),
+                    within_metric(within),
                     within["n_shots"],
                 ]
             )
@@ -894,8 +1152,9 @@ def agreement_tables(rec: Records) -> list[str]:
             f"({rec.bench['replicates']} replicates, seed 0). Kappa is null, and "
             "not drawn, where either rater used one class. The within-shot rows "
             "average over the few shots that have enough bins of both classes "
-            "(the shot count is in the last column of the table). The same "
-            "statistics for each pair of indicators:\n"
+            "(the shot count is in the last column of the table). "
+            f"{fdiv_populations(rec)}. The same statistics for each pair of "
+            "indicators:\n"
         ),
         table(
             [
@@ -904,7 +1163,7 @@ def agreement_tables(rec: Records) -> list[str]:
                 "AUROC [CI]",
                 "Bins",
                 "Shots",
-                "Within-shot AUROC",
+                "Within-shot AUROC [CI]",
                 "Shots (within)",
             ],
             pair_rows,
@@ -1058,9 +1317,7 @@ def fdiv_corroborator_tables(rec: Records) -> list[str]:
         summary_rows.append(
             [
                 name,
-                metric({"value": w["mean"], "ci95": w["mean_ci95"]})
-                if w["n_shots"]
-                else "undefined",
+                within_metric(w),
                 w["n_shots"],
                 w["shots_above_chance"],
                 metric(pooled),
@@ -1095,7 +1352,10 @@ def fdiv_corroborator_tables(rec: Records) -> list[str]:
             "the shots. The relative f_div is the ratio over the shot's own "
             "baseline, valid where the baseline exists; the absolute ranks the "
             "bins of one shot the same way (it differs by a per-shot constant) "
-            "and is the 201081-anchored sensitivity. Record: "
+            "and is the 201081-anchored sensitivity. The pooled column here is "
+            "the corroborator population (TangTV detached votes against "
+            "attached votes), not the agreement-diagnostics population above, "
+            "which also counts the MARFE-vote bins. Record: "
             "`docs/labeler/results/detachment_fdiv_check.json`.\n"
         ),
         table(
@@ -1250,6 +1510,7 @@ def composition_tables(rec: Records) -> list[str]:
             ]
         )
     d9 = rec.cur["paper_criterion_d9"]
+    no_second = rec.variant("no_second_voter")
     return [
         "\n### Composition under other second voters\n",
         table(
@@ -1267,8 +1528,15 @@ def composition_tables(rec: Records) -> list[str]:
         ),
         (
             "\n`primary` is the exported label: Afrac is the only second voter. "
-            "`tangtv_alone` has no second voter, so every TangTV vote is TangTV "
-            "only. The `with_*` rows add f_div as a second voter next to Afrac "
+            "`no_second_voter` has none, so every TangTV vote that survives the "
+            "L-mode gate is TangTV only "
+            f"({no_second['tangtv_only']['bins']['attached']} attached and "
+            f"{no_second['tangtv_only']['bins']['detached']} detached bins); the "
+            "gate still applies, so it is not the TangTV vote before the gate "
+            "of the Te rows (`tangtv_vote_before_gate`, "
+            f"{rec.te_auroc('tangtv_vote_before_gate')['n_bins']} bins with a "
+            "Te, with no gate), which includes the gated detached votes. The "
+            "`with_*` rows add f_div as a second voter next to Afrac "
             "(`with_relative_fdiv` reproduces the label of the earlier build, "
             "where f_div was a vote: it makes many more agreement-tier bins and many "
             "more conflicts); `relative` takes cutoffs that scale the shot "
@@ -1433,7 +1701,7 @@ def width_marfe_tables(rec: Records) -> list[str]:
             "the roster is not the exported shot list, so its 50 ms row differs "
             "from the coverage table above; the widths are comparable with each "
             "other, and the 50 ms rows reproduce the exported bins on the shots "
-            "they share). With the durations held fixed the labelled time is "
+            f"they share). {eligibility_sentence(rec)} With the durations held fixed the labelled time is "
             "about the same at every width ("
             + ", ".join(f"{labelled_seconds(rec, k):.1f} s at {k}" for k in pairs)
             + "), the time in which Afrac has no long enough reference is stable ("
@@ -1455,15 +1723,28 @@ def width_marfe_tables(rec: Records) -> list[str]:
             )
             + " (a share of the labelled seconds of "
             + ", ".join(f"{certain_share(rec, k):.3f}" for k in pairs)
-            + "). The 20 ms loss is Afrac's input cadence, not the width of the "
-            "physics: the heating-power input is sampled about every 20-25 ms, so "
-            "a 20 ms bin often holds no sample and Afrac is invalid for "
-            f"{rec.widths['20ms']['afrac_reason_seconds']['no_power']:.1f} s "
-            "(`no_power`) against "
+            + "). Afrac's heating-power input is interpolated to the bin centres "
+            "(as the f_div window means are), so a narrow bin is not lost for want "
+            "of a sample: Afrac is invalid for "
+            f"{rec.widths['20ms']['afrac_reason_seconds']['no_power']:.1f} s at "
+            "20 ms, "
             f"{rec.widths['50ms']['afrac_reason_seconds']['no_power']:.1f} s at "
             "50 ms and "
             f"{rec.widths['100ms']['afrac_reason_seconds']['no_power']:.1f} s at "
-            "100 ms. "
+            "100 ms for `no_power` (a bin centre outside the power record or "
+            "in a gap of it). The agreement tier still grows with the width "
+            "because Afrac is valid for longer ("
+            + ", ".join(f"{rec.widths[k]['afrac_valid_seconds']:.1f} s" for k in pairs)
+            + " at 20, 50 and 100 ms): the time it loses to the ELM exclusion falls "
+            f"from {rec.widths['20ms']['afrac_reason_seconds']['elm']:.1f} s at "
+            "20 ms to "
+            f"{rec.widths['100ms']['afrac_reason_seconds']['elm']:.1f} s at 100 ms "
+            "and the time to a short reference from "
+            f"{rec.widths['20ms']['afrac_reason_seconds']['short_reference']:.1f} s "
+            "to "
+            f"{rec.widths['100ms']['afrac_reason_seconds']['short_reference']:.1f} s "
+            "(the power input is no longer the cause, and the rest is not "
+            "attributed here). "
             "A reference length counted in bins instead of seconds (20 bins) would "
             "have been 0.4 s at 20 ms and 2 s at 100 ms and produced a strong "
             "width dependence that is not in the data. The 20 ms labels flicker "
@@ -1517,6 +1798,24 @@ def width_marfe_tables(rec: Records) -> list[str]:
     ]
 
 
+def eligibility_sentence(rec: Records) -> str:
+    """The shot eligibility the width check applies, from the record."""
+    widths = {k: rec.widths[k] for k in ("20ms", "50ms", "100ms")}
+    dropped = {k: set(w["shots_ineligible"]) for k, w in widths.items()}
+    loaded = {w["shots_loaded"] for w in widths.values()}
+    if len({frozenset(v) for v in dropped.values()}) == 1 and len(loaded) == 1:
+        return (
+            "Shot eligibility is applied at each width (the same duration, "
+            f"counted in bins): {len(next(iter(dropped.values())))} of the "
+            f"{loaded.pop()} loaded shots are ineligible at every width."
+        )
+    return (
+        "Shot eligibility is applied at each width (ineligible shots: "
+        + ", ".join(f"{len(v)} at {k}" for k, v in dropped.items())
+        + ")."
+    )
+
+
 def labelled_seconds(rec: Records, key: str) -> float:
     """Agreement-tier plus TangTV-only seconds at one bin width."""
     w = rec.widths[key]
@@ -1543,6 +1842,125 @@ def results(rec: Records) -> str:
         + width_marfe_tables(rec)
     )
     return "\n".join(parts)
+
+
+def limitations(rec: Records) -> str:
+    """The Limitations paragraphs, numbers read from the records."""
+    cur = rec.cur["population"]
+    lab = cur["labelled_certain_or_tangtv_only"]
+    never = cur["assessed_bins_that_can_never_carry_a_state"]
+    gate = cur["lmode_gate"]
+    by = gate["gated_bins_by_regime"]
+    pl = probable_l_votes(rec)
+    sv = second_vote(rec)
+    shots_by = rec.te["by_regime"]["shots_by_regime"]
+    known_l = rec.te["by_regime"]["tangtv_vote_before_gate"]["L"]["detached"]
+    proxy = rec.cur["regime_proxy"]
+    low_power = [
+        (
+            f"{k} ({proxy['shots'][str(k)]['elm_flag_bins']} flagged bins of "
+            f"{proxy['shots'][str(k)]['window_bins']}, at most "
+            f"{proxy['shots'][str(k)]['p_in_mw_at_flags_max']:.1f} MW; median "
+            f"P_in {proxy['shots'][str(k)]['median_p_in_mw']:.1f} MW)"
+        )
+        for k in proxy["probable_h_below_the_power_cut"]
+    ]
+    low_power_votes = sum(
+        proxy["shots"][str(k)]["tangtv_detached_votes"]
+        for k in proxy["probable_h_below_the_power_cut"]
+    )
+    outside = rec.cur["population"]["labelled_by_regime"]["unknown"]["detached"]
+    widths = rec.widths
+    return "\n\n".join(
+        [
+            (
+                "The published points are few (ten, on three shots) and share "
+                "their sources with the indicator definitions, so they support "
+                "neither accuracy nor calibration. The TangTV + Afrac agreement "
+                "tier (`certain`) measures agreement between two indicators, not "
+                "physical accuracy and not confidence: the second vote does not "
+                "improve the label's agreement with divertor Thomson Te over the "
+                "TangTV vote before the gate (the paired difference is not "
+                f"estimable on its {sv['n_shots_first']} shots), and the "
+                "TangTV-only tier is more Te-consistent than the agreement tier. "
+                "Te has informed rule decisions (the Afrac keep rule, the removal "
+                "of f_div as a voter, the L-mode gate), so the comparison with Te "
+                "is a consistency check, not a validation, and the shares in band "
+                "after the gate are post-selection. All agreement-tier bins are on "
+                "shots with no known regime."
+            ),
+            (
+                "The TangTV DZ cutoffs come from one H-mode shot (201081). The "
+                f"L-mode gate withholds {by['L']['bins']} TangTV detached votes on "
+                f"{by['L']['shots']} shots of a known L-mode phase "
+                f"({known_l['n_in_band']} of the {known_l['n_bins']} that have a "
+                "Te are at or below 5 eV) and "
+                f"{by['probable_L']['bins']} on {by['probable_L']['shots']} "
+                "shots of a probable-L phase. The regime is known on "
+                f"{shots_by['L'] + shots_by['H']} of the "
+                f"{cur['assessed']['shots']} assessed shots, so the probable-L "
+                "proxy (unknown regime, ELM coverage known, no ELM share, median "
+                "P_in under 2 MW) does much of the work; it is a rule on two "
+                "signals, not a regime measurement, and it has a price: it "
+                f"withholds {pl['votes']['total']['n_dz_at_least_0_8']} detached "
+                f"votes with DZ >= 0.8 ({pl['dz_high']}), cold where a Te exists "
+                f"({pl['cold_high']}), together with "
+                f"{pl['votes']['total']['n_dz_below_0_8']} warm votes "
+                f"({pl['dz_low']}; {pl['warm_low']}). Its zero-ELM-share "
+                "condition is strict: "
+                + "; ".join(low_power)
+                + " type as probable-H on a few ELM flags in the current ramp "
+                "although their median power is under the cut; they carry "
+                f"{low_power_votes} detached votes, so no label depends on it. "
+                "The window counts the bins that have both an ELM flag and a "
+                "measured P_in; a first definition counted every bin with ELM "
+                "coverage and typed 190113 probable-H through one flag on a bin "
+                "without input power, so the window was narrowed. That is a "
+                "definitional change (a bin without power cannot support a power "
+                "criterion), but it was made after seeing that outcome. "
+                f"{outside['bins']} labelled detached bins on {outside['shots']} "
+                "shots lie outside the window and keep the plain rule."
+            ),
+            (
+                "The Afrac proxy is a weak second vote: it is valid on few shots, "
+                "its Te interval includes chance, its result depends on the flux "
+                "window, and the L-mode gate of Afrac itself knows the regime on a "
+                "minority of shots; most labelled bins are therefore `tangtv_only`, "
+                "not because Afrac disagrees but because it has no valid "
+                "measurement there. f_div corroborates TangTV and Te within the "
+                "few shots that have both classes but not pooled over shots "
+                "(AUROC below 0.5), and the absolute cutoffs do not carry over "
+                "from their anchor shot either, so it is reported per shot and "
+                "does not vote; the shot counts beside every f_div figure are "
+                f"small. Of the assessed bins, {never['bins']} on "
+                f"{never['shots']} shots can never carry a state (TangTV is "
+                f"invalid there), so the labelled set ({lab['bins']} bins on "
+                f"{lab['shots']} shots) is the number to quote. Only one "
+                "assessed shot is in the fixed cohort and none is a test shot; "
+                "agreement-tier attached and detached bins never coexist on a "
+                "cohort shot, so the set cannot support the cohort benchmark or "
+                "a study of attached-to-detached transitions. No bin is exported "
+                "as MARFE: the one published MARFE (199166 at 3705 ms) is a "
+                "`candidate_marfe` bin, recalled 0 of 1 as a state. The Thomson "
+                "check covers attached and detached only, on the shots that have "
+                "a chord near the target; the within-shot Te figures rest on a "
+                "handful of shots, and an interval over fewer than "
+                f"{MIN_INTERVAL_SHOTS} shots is not given. The labelled states do "
+                "not depend on the bin width once the minimum durations are fixed "
+                "in seconds (labelled time and states agree across 20, 50 and "
+                "100 ms); the agreement tier does ("
+                + ", ".join(
+                    f"{widths[k]['certain_seconds']:.1f} s at {k}"
+                    for k in ("20ms", "50ms", "100ms")
+                )
+                + "), through the time Afrac is valid, not through its power "
+                "input. Indicator agreement can share systematic biases. Future "
+                "work needs an independent expert state table, more inversion "
+                "coverage, an a-priori regime for every shot and a "
+                "literature-backed density cue for MARFE."
+            ),
+        ]
+    )
 
 
 def baselines(rec: Records) -> str:
@@ -1593,8 +2011,9 @@ def baselines(rec: Records) -> str:
         "minority of the held-out shots, so the control scores below 0.5 and "
         "kappa 0 (a constant class) is the plainer reference. Intervals are "
         "shot-bootstrap (1000 replicates); bins are those with complete inputs "
-        "or a camera frame, and the interval of `detach-ours` has a lower kappa "
-        "end near 0.\n\n"
+        "or a camera frame, and the lower ends of the kappa intervals are "
+        f"{rec.ours['cv_shots']['kappa']['ci95'][0]:.2f} (`detach-ours`) and "
+        f"{rec.victor['cv_shots']['kappa']['ci95'][0]:.2f} (`detach-victor`).\n\n"
         + table(
             [
                 "Model",
@@ -1619,14 +2038,14 @@ def models(rec: Records) -> str:
     lab = cur["labelled_certain_or_tangtv_only"]
     never = cur["assessed_bins_that_can_never_carry_a_state"]
     gate = cur["lmode_gate"]["gated_bins"]
-    tv_e, ce_e = rec.te_auroc("tangtv_vote_alone"), rec.te_auroc("certain")
+    tv_e, ce_e = rec.te_auroc("tangtv_vote_before_gate"), rec.te_auroc("certain")
     lab_e = rec.te_auroc("certain_or_tangtv_only")
     tv = f"{metric(tv_e)} on {tv_e['n_shots']} shots"
     ce = f"{metric(ce_e)} on {ce_e['n_shots']} shots"
     lb = f"{metric(lab_e)} on {lab_e['n_shots']} shots"
     return (
         f"- detach_vote | {MODEL_DATE}: exploratory geometry-gated TangTV state "
-        "validated by divertor Thomson Te; a per-probe Afrac proxy is the "
+        "checked against divertor Thomson Te; a per-probe Afrac proxy is the "
         "second vote and f_div a within-shot corroborator; labelled "
         f"{lab['bins']:,} bins/{lab['shots']} shots, of which TangTV + Afrac "
         f"agreement (not a confidence level) {cur['certain']['bins']} "
@@ -1637,10 +2056,11 @@ def models(rec: Records) -> str:
         f"{cur['assessed']['bins']:,} assessed bins/{cur['assessed']['shots']} "
         f"shots, of which {never['bins']} can never carry a state (no valid "
         f"TangTV vote) and {gate['bins']} bins on {gate['shots']} shots are "
-        "uncertain because TangTV votes detached on a known L-mode phase. AUROC "
-        f"of -Te against the vote: labelled bins {lb}, TangTV alone {tv}, "
-        f"agreement tier {ce}. No MARFE state is exported. No independent "
-        "benchmark.\n"
+        "uncertain because TangTV votes detached on a known L-mode phase or a "
+        "probable-L phase (no ELM share, median P_in under 2 MW). AUROC of -Te "
+        f"against the vote: the TangTV vote before the gate {tv} (the check), "
+        f"then after the gate (post-selection) labelled bins {lb} and agreement "
+        f"tier {ce}. No MARFE state is exported. No independent benchmark.\n"
         f"- detach_rule | {MODEL_DATE}: alias of the primary rule.\n\n"
         "Class support, agreement tables and intervals are in "
         "[the protocol](../../../docs/labeler/detachment.md) and its linked JSON "
@@ -1654,6 +2074,7 @@ def main() -> None:
     replace_block(DOC, "SUMMARY", text)
     replace_block(README, "SUMMARY", text)
     replace_block(DOC, "RESULTS", results(rec))
+    replace_block(DOC, "LIMITATIONS", limitations(rec))
     replace_block(DOC, "BASELINES", baselines(rec))
     replace_block(README, "MODELS", models(rec))
     print("wrote", DOC, "and", README)
