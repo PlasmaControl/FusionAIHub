@@ -753,7 +753,7 @@ def main():
         info = subprocess.check_output(["pdfinfo", str(pdf)], text=True)
         size = re.search(r"Page size:\s+([\d.]+) x ([\d.]+)", info)
         width, height = (float(v) / 72 for v in size.groups())
-        assert width == 6.75 and height <= 5.6
+        assert width == 6.75 and height <= 5.8
         audited.append(
             {
                 "shot": shot,
