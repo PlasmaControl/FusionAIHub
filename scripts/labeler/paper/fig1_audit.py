@@ -27,11 +27,11 @@ from labeler.paper import label_figure as lf
 from labeler.paper import mode_tags as mt
 from labeler.paper.figure_sources import AE_THRESHOLD
 
-#: Figure 1 is one shot on one linear 0-250 kHz frequency axis. The earlier
+#: Figure 1 is one shot on one linear 0-150 kHz frequency axis. The earlier
 #: alternates are not rendered on this axis; `--shots` audits any rendered set.
 PRIMARY = 199597
 SHOTS = (PRIMARY,)
-AXIS_TICKS_KHZ = [0, 50, 100, 150, 200, 250]
+AXIS_TICKS_KHZ = [0, 50, 100, 150]
 #: Words that would describe a broken, stretched or compressed frequency axis.
 BROKEN_AXIS_WORDS = ("stretched", "compressed", "scale break", "three frequency")
 
@@ -162,7 +162,7 @@ def main():
                     # the split and the axis); every other filtering parameter
                     # must match.
                     assert new["split_khz"] == 60.0, shot
-                    assert new["frequency_axis"].startswith("linear 0-250 kHz"), shot
+                    assert new["frequency_axis"].startswith("linear 0-150 kHz"), shot
                     assert new["bands_khz"][mt.AE] == [60.0, None], shot
                     moved = {
                         "outline_display_rule",
@@ -333,15 +333,15 @@ def main():
                 state = "unassessed"
             assert row["state"] == state
         geometry = drawn["layout"]
-        # One linear 0-250 kHz axis in both spectrograms, with no scale break.
+        # One linear 0-150 kHz axis in both spectrograms, with no scale break.
         axis = geometry["frequency_axis"]
         assert axis["scale"] == "linear" and axis["scale_breaks_khz"] == []
-        assert axis["band_khz"] == [0, 250]
+        assert axis["band_khz"] == [0, 150]
         assert axis["ticks_khz"] == AXIS_TICKS_KHZ
         assert axis["mask_zoom_pass_khz"] == [0, 50]
-        assert axis["mask_wide_pass_khz"] == [50, 250]
+        assert axis["mask_wide_pass_khz"] == [50, 150]
         assert axis["ae_ntm_split_khz"] == 60 and axis["n_view_top_khz"] == 30
-        # The n view is the bottom 30 of 250 kHz of the processed panel.
+        # The n view is the bottom 30 of 150 kHz of the processed panel.
         panels = geometry["frequency_panels"]
         assert geometry["n_view_height_in"] >= 0.14
         assert (
@@ -354,7 +354,7 @@ def main():
             < 1e-6
         )
         raw_panel, processed = panels["raw"], panels["pr"]
-        assert raw_panel["band_khz"] == processed["band_khz"] == [0, 250]
+        assert raw_panel["band_khz"] == processed["band_khz"] == [0, 150]
         assert abs(raw_panel["height_in"] - processed["height_in"]) < 1e-9
         assert raw_panel["ticks_khz"] == processed["ticks_khz"] == AXIS_TICKS_KHZ
         assert raw_panel["bounds"][0] == processed["bounds"][0]
@@ -435,7 +435,7 @@ def main():
         with Image.open(png) as native:
             assert all(abs(dpi - 150) < 0.1 for dpi in native.info["dpi"])
             rgb = np.asarray(native.convert("RGB"))
-        # Read the processed panel above the n view (30-250 kHz): n hues are
+        # Read the processed panel above the n view (30-150 kHz): n hues are
         # excluded, but pink below the 60 kHz AE floor would still be caught.
         px0, py0, px1, py1 = panels["pr"]["bounds"]
         n_top, band_top = axis["n_view_top_khz"], axis["band_khz"][1]
@@ -503,7 +503,7 @@ def main():
         assert caption.startswith(
             f"\\caption{{DIII-D shot {shot}. (a) Raw CO2 interferometer cross-power "
         )
-        assert "(linear frequency axis, 0--250 kHz)." in caption
+        assert "(linear frequency axis, 0--150 kHz)." in caption
         assert not any(w in caption.lower() for w in BROKEN_AXIS_WORDS)
         assert "normalised" not in caption
         assert "(b) TokEye coherent-mode mask after small-object removal" in caption
@@ -557,7 +557,7 @@ def main():
             bool(tags[mt.NTM]) and bool(fs.harmonic_clause(drawn))
         )
         assert (
-            "The frequency axis is linear, 0–250 kHz, in both spectrograms, with no "
+            "The frequency axis is linear, 0–150 kHz, in both spectrograms, with no "
             "scale break." in appendix
         )
         assert "The raw spectrogram uses one colour scale." in appendix
@@ -643,7 +643,7 @@ def main():
                 "measured (94%" in appendix
             )
             assert "n=3 lies within" not in appendix
-            assert "linear frequency axis, 0--250 kHz" in caption
+            assert "linear frequency axis, 0--150 kHz" in caption
             # No row of this shot is an expert review, so no D-alpha spike
             # "precedes the expert span" and the ELM source is named a detector.
             assert drawn["first_large_peak_before_expert_ms"] is None

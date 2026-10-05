@@ -853,7 +853,7 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
         f"DIII-D shot {shot}.",
         (
             "(a) Raw CO2 interferometer cross-power spectrogram (linear frequency "
-            "axis, 0–250 kHz)."
+            "axis, 0–150 kHz)."
         ),
         (
             "(b) TokEye coherent-mode mask after small-object removal; below "
@@ -1073,7 +1073,7 @@ def appendix_notes(
         f"DIII-D shot {shot}. The raw spectrogram uses one colour scale.",
         (
             "Toroidal mode number n is measured by the Mirnov array. "
-            "The frequency axis is linear, 0–250 kHz, in both spectrograms, with "
+            "The frequency axis is linear, 0–150 kHz, in both spectrograms, with "
             "no scale break. The raw spectrogram is the wide-range pass; the "
             "mask is drawn from the higher-resolution pass below 50 kHz and the "
             "wide-range pass above it, because the higher-resolution pass's "

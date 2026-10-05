@@ -8,7 +8,7 @@ One non-blind cohort shot over a few seconds, in three groups on one time axis:
 
 - **raw**: the CO2 interferometer's R0 x V1 cross-power spectrogram (`SOURCE_ROW`,
   `PARTNER_ROW`, the wide pass) on one
-  linear 0-250 kHz axis, one colour scale, D-alpha and NBI power;
+  linear 0-150 kHz axis, one colour scale, D-alpha and NBI power;
 - **processed**: the same spectrogram through TokEye (the network's mode mask,
   `labeler.paper.mode_tags`: transient burst removed, pickup removed,
   `skimage.morphology.remove_small_objects` and small-hole filling, connected
@@ -100,13 +100,13 @@ PRESETS = {
 SPLIT_KHZ = mode_tags.SPLIT_KHZ
 #: The tag analysis reads the zoom pass (0.12 kHz/bin; its decimation filter rolls
 #: off from about 50 kHz, Nyquist 62.5 kHz) below `SPLIT_KHZ`, the wide pass
-#: (0.49 kHz/bin, to 250 kHz) above it.
+#: (0.49 kHz/bin, drawn to `TOP_KHZ`) above it.
 #: The mask is drawn from the zoom pass up to here; its top few kHz are the
 #: decimation filter's roll-off (a dark strip), so the wide pass fills the rest.
 ZOOM_TOP_KHZ = 50.0
 #: Both spectrograms: one linear axis, these ticks.
-FREQ_TICKS_KHZ = [0, 50, 100, 150, 200, 250]
-TOP_KHZ = 250.0
+FREQ_TICKS_KHZ = [0, 50, 100, 150]
+TOP_KHZ = 150.0
 N_VIEW_KHZ = 30.0  # the n map's band
 #: The columns an image is pooled to for the page (a 3 s wide pass has 12,000).
 IMAGE_COLUMNS = 3000
@@ -748,7 +748,7 @@ def track_bars(ax, track: lf.Track, colour: str, regimes=None, bar=BAR) -> None:
 
 
 def draw_frequency_panels(ax, raw: Band, zoom: Band, top: Band) -> bool:
-    """The raw spectrogram and the TokEye mask, each on one linear 0-250 kHz axis.
+    """The raw spectrogram and the TokEye mask, each on one linear 0-150 kHz axis.
 
     The raw panel is the wide pass alone on one colour scale. The mask panel takes
     the zoom pass below `ZOOM_TOP_KHZ` and the wide pass above it (`top`, drawn
@@ -996,7 +996,7 @@ def draw(
 
     low = Band(z, "zoom", 0.0, SPLIT_KHZ, t0, t1)
     high = Band(z, "wide", SPLIT_KHZ, TOP_KHZ + 1, t0, t1)
-    # What is drawn: the wide pass on one colour scale over 0-250 kHz, and the mask
+    # What is drawn: the wide pass on one colour scale over 0-150 kHz, and the mask
     # from the zoom pass below ZOOM_TOP_KHZ and the wide pass above it.
     raw_view = Band(z, "wide", 0.0, TOP_KHZ + 1, t0, t1)
     mask_top = Band(z, "wide", ZOOM_TOP_KHZ, TOP_KHZ + 1, t0, t1)
@@ -1327,7 +1327,7 @@ def draw(
                 "band_khz": list(ax["pr"].get_ylim()),
                 "scale_breaks_khz": [],
                 "ticks_khz": ax["pr"].get_yticks().tolist(),
-                "raw_spectrogram": "CO2 R0 x V1 cross-power, wide pass, one colour scale, 0-250 kHz",
+                "raw_spectrogram": "CO2 R0 x V1 cross-power, wide pass, one colour scale, 0-150 kHz",
                 "mask_zoom_pass_khz": [0.0, ZOOM_TOP_KHZ],
                 "mask_wide_pass_khz": [ZOOM_TOP_KHZ, TOP_KHZ],
                 "ae_ntm_split_khz": SPLIT_KHZ,
@@ -2039,7 +2039,7 @@ def main(argv=None) -> int:
             "raw, end-exclusive intervals; independent of present_columns",
             "n_palette": N_COLOURS,
             "n_brightness_rule": "constant full colour for every measured n pixel",
-            "raw_normalisation": "3rd/99.8th percentiles of the whole 0-250 kHz window, "
+            "raw_normalisation": "3rd/99.8th percentiles of the whole 0-150 kHz window, "
             "one colour scale",
             "unkeyed_n_colour": N_OTHER,
             "bands_khz": {
@@ -2047,7 +2047,7 @@ def main(argv=None) -> int:
                 for k, (lo, hi) in mode_tags.BANDS.items()
             },
             "split_khz": SPLIT_KHZ,
-            "frequency_axis": "linear 0-250 kHz, no scale breaks",
+            "frequency_axis": "linear 0-150 kHz, no scale breaks",
             "elm_peaks": f"D-alpha less a {ELM_WINDOW}-sample running median, "
             f"over {ELM_MADS} MADs",
         },
