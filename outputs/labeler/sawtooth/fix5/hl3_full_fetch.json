@@ -1,0 +1,2214 @@
+{
+  "shots_considered": 438,
+  "shots_fetched_or_tried": 437,
+  "still_missing_locally": 0,
+  "still_missing_shots": [],
+  "blind_test_fetched": false,
+  "workers": 3,
+  "pace_s": 1.0,
+  "authentication_stop": false,
+  "counts": {
+    "wmhd_ok": 437,
+    "bms_ok": 13
+  },
+  "rows": [
+    {
+      "shot": 185805,
+      "wmhd": "ok 285 samples",
+      "status": "done"
+    },
+    {
+      "shot": 185835,
+      "wmhd": "ok 268 samples",
+      "status": "done"
+    },
+    {
+      "shot": 185838,
+      "wmhd": "ok 268 samples",
+      "status": "done"
+    },
+    {
+      "shot": 185857,
+      "wmhd": "ok 272 samples",
+      "status": "done"
+    },
+    {
+      "shot": 185866,
+      "wmhd": "ok 259 samples",
+      "status": "done"
+    },
+    {
+      "shot": 185943,
+      "wmhd": "ok 267 samples",
+      "status": "done"
+    },
+    {
+      "shot": 185945,
+      "wmhd": "ok 305 samples",
+      "status": "done"
+    },
+    {
+      "shot": 185953,
+      "wmhd": "ok 128 samples",
+      "status": "done"
+    },
+    {
+      "shot": 185961,
+      "wmhd": "ok 261 samples",
+      "status": "done"
+    },
+    {
+      "shot": 185978,
+      "wmhd": "ok 292 samples",
+      "status": "done"
+    },
+    {
+      "shot": 185996,
+      "wmhd": "ok 77 samples",
+      "status": "done"
+    },
+    {
+      "shot": 186013,
+      "wmhd": "ok 259 samples",
+      "status": "done"
+    },
+    {
+      "shot": 186025,
+      "wmhd": "ok 244 samples",
+      "status": "done"
+    },
+    {
+      "shot": 186093,
+      "wmhd": "ok 279 samples",
+      "status": "done"
+    },
+    {
+      "shot": 186226,
+      "wmhd": "ok 280 samples",
+      "status": "done"
+    },
+    {
+      "shot": 186287,
+      "wmhd": "ok 183 samples",
+      "status": "done"
+    },
+    {
+      "shot": 186427,
+      "wmhd": "ok 24 samples",
+      "status": "done"
+    },
+    {
+      "shot": 186496,
+      "wmhd": "ok 382 samples",
+      "status": "done"
+    },
+    {
+      "shot": 186530,
+      "wmhd": "ok 334 samples",
+      "status": "done"
+    },
+    {
+      "shot": 186532,
+      "wmhd": "ok 145 samples",
+      "status": "done"
+    },
+    {
+      "shot": 186561,
+      "wmhd": "ok 379 samples",
+      "status": "done"
+    },
+    {
+      "shot": 186569,
+      "wmhd": "ok 337 samples",
+      "status": "done"
+    },
+    {
+      "shot": 186610,
+      "wmhd": "ok 385 samples",
+      "status": "done"
+    },
+    {
+      "shot": 186636,
+      "wmhd": "ok 324 samples",
+      "status": "done"
+    },
+    {
+      "shot": 186640,
+      "wmhd": "ok 328 samples",
+      "status": "done"
+    },
+    {
+      "shot": 186747,
+      "wmhd": "ok 330 samples",
+      "status": "done"
+    },
+    {
+      "shot": 186901,
+      "wmhd": "ok 245 samples",
+      "status": "done"
+    },
+    {
+      "shot": 186945,
+      "wmhd": "ok 384 samples",
+      "status": "done"
+    },
+    {
+      "shot": 186981,
+      "wmhd": "ok 332 samples",
+      "status": "done"
+    },
+    {
+      "shot": 187019,
+      "wmhd": "ok 352 samples",
+      "status": "done"
+    },
+    {
+      "shot": 187025,
+      "wmhd": "ok 305 samples",
+      "status": "done"
+    },
+    {
+      "shot": 187035,
+      "wmhd": "ok 324 samples",
+      "status": "done"
+    },
+    {
+      "shot": 187066,
+      "wmhd": "ok 253 samples",
+      "status": "done"
+    },
+    {
+      "shot": 187072,
+      "wmhd": "ok 262 samples",
+      "status": "done"
+    },
+    {
+      "shot": 187076,
+      "wmhd": "ok 176 samples",
+      "status": "done"
+    },
+    {
+      "shot": 187100,
+      "wmhd": "ok 257 samples",
+      "status": "done"
+    },
+    {
+      "shot": 187105,
+      "wmhd": "ok 268 samples",
+      "status": "done"
+    },
+    {
+      "shot": 187116,
+      "wmhd": "ok 295 samples",
+      "status": "done"
+    },
+    {
+      "shot": 187144,
+      "wmhd": "ok 255 samples",
+      "status": "done"
+    },
+    {
+      "shot": 187154,
+      "wmhd": "ok 184 samples",
+      "status": "done"
+    },
+    {
+      "shot": 187196,
+      "wmhd": "ok 116 samples",
+      "status": "done"
+    },
+    {
+      "shot": 187301,
+      "wmhd": "ok 246 samples",
+      "status": "done"
+    },
+    {
+      "shot": 187327,
+      "wmhd": "ok 246 samples",
+      "status": "done"
+    },
+    {
+      "shot": 187328,
+      "wmhd": "ok 125 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189004,
+      "wmhd": "ok 292 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189008,
+      "wmhd": "ok 292 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189044,
+      "wmhd": "ok 282 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189046,
+      "wmhd": "ok 255 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189051,
+      "wmhd": "ok 325 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189061,
+      "wmhd": "ok 294 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189085,
+      "wmhd": "ok 291 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189138,
+      "wmhd": "ok 263 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189272,
+      "wmhd": "ok 298 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189284,
+      "wmhd": "ok 301 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189311,
+      "wmhd": "ok 324 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189324,
+      "wmhd": "ok 206 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189325,
+      "wmhd": "ok 225 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189365,
+      "wmhd": "ok 269 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189369,
+      "wmhd": "ok 267 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189370,
+      "wmhd": "ok 259 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189500,
+      "wmhd": "ok 147 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189501,
+      "wmhd": "ok 259 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189513,
+      "wmhd": "ok 253 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189514,
+      "wmhd": "ok 259 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189538,
+      "wmhd": "ok 204 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189540,
+      "wmhd": "ok 123 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189541,
+      "wmhd": "ok 188 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189547,
+      "wmhd": "ok 294 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189559,
+      "wmhd": "ok 277 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189570,
+      "wmhd": "ok 320 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189578,
+      "wmhd": "ok 114 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189580,
+      "wmhd": "ok 171 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189684,
+      "wmhd": "ok 308 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189688,
+      "wmhd": "ok 312 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189732,
+      "wmhd": "ok 240 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189741,
+      "wmhd": "ok 316 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189872,
+      "wmhd": "ok 162 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189873,
+      "wmhd": "ok 289 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189879,
+      "wmhd": "ok 283 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189885,
+      "wmhd": "ok 140 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189886,
+      "wmhd": "ok 112 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189990,
+      "wmhd": "ok 211 samples",
+      "status": "done"
+    },
+    {
+      "shot": 189998,
+      "wmhd": "ok 256 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190010,
+      "wmhd": "ok 255 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190018,
+      "wmhd": "ok 251 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190046,
+      "wmhd": "ok 298 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190056,
+      "wmhd": "ok 254 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190094,
+      "wmhd": "ok 283 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190102,
+      "wmhd": "ok 291 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190129,
+      "wmhd": "ok 247 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190156,
+      "wmhd": "ok 243 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190177,
+      "wmhd": "ok 245 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190182,
+      "wmhd": "ok 251 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190212,
+      "wmhd": "ok 266 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190218,
+      "wmhd": "ok 221 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190271,
+      "wmhd": "ok 254 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190273,
+      "wmhd": "ok 209 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190298,
+      "wmhd": "ok 321 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190299,
+      "wmhd": "ok 263 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190300,
+      "wmhd": "ok 161 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190335,
+      "wmhd": "ok 143 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190379,
+      "wmhd": "ok 129 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190450,
+      "wmhd": "ok 292 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190526,
+      "wmhd": "ok 285 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190586,
+      "wmhd": "ok 360 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190602,
+      "wmhd": "ok 414 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190627,
+      "wmhd": "ok 284 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190632,
+      "wmhd": "ok 291 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190637,
+      "wmhd": "ok 288 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190643,
+      "wmhd": "ok 260 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190695,
+      "wmhd": "ok 281 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190736,
+      "wmhd": "ok 262 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190738,
+      "wmhd": "ok 267 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190776,
+      "wmhd": "ok 274 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190787,
+      "wmhd": "ok 257 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190788,
+      "wmhd": "ok 256 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190790,
+      "wmhd": "ok 279 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190799,
+      "wmhd": "ok 285 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190957,
+      "wmhd": "ok 217 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190991,
+      "wmhd": "ok 306 samples",
+      "status": "done"
+    },
+    {
+      "shot": 190992,
+      "wmhd": "ok 305 samples",
+      "status": "done"
+    },
+    {
+      "shot": 191009,
+      "wmhd": "ok 284 samples",
+      "status": "done"
+    },
+    {
+      "shot": 191183,
+      "wmhd": "ok 292 samples",
+      "status": "done"
+    },
+    {
+      "shot": 191228,
+      "wmhd": "ok 153 samples",
+      "bms": "ok 10000 blocks, max 0.00 MW",
+      "status": "done"
+    },
+    {
+      "shot": 191313,
+      "wmhd": "ok 164 samples",
+      "bms": "ok 10000 blocks, max 0.00 MW",
+      "status": "done"
+    },
+    {
+      "shot": 191316,
+      "wmhd": "ok 165 samples",
+      "status": "done"
+    },
+    {
+      "shot": 191320,
+      "wmhd": "ok 169 samples",
+      "status": "done"
+    },
+    {
+      "shot": 191326,
+      "wmhd": "ok 168 samples",
+      "status": "done"
+    },
+    {
+      "shot": 191376,
+      "wmhd": "ok 250 samples",
+      "status": "done"
+    },
+    {
+      "shot": 191382,
+      "wmhd": "ok 215 samples",
+      "status": "done"
+    },
+    {
+      "shot": 191384,
+      "wmhd": "ok 193 samples",
+      "status": "done"
+    },
+    {
+      "shot": 191448,
+      "wmhd": "ok 292 samples",
+      "status": "done"
+    },
+    {
+      "shot": 191470,
+      "wmhd": "ok 286 samples",
+      "status": "done"
+    },
+    {
+      "shot": 191489,
+      "wmhd": "ok 276 samples",
+      "status": "done"
+    },
+    {
+      "shot": 191499,
+      "wmhd": "ok 205 samples",
+      "status": "done"
+    },
+    {
+      "shot": 191506,
+      "wmhd": "ok 253 samples",
+      "status": "done"
+    },
+    {
+      "shot": 191519,
+      "wmhd": "ok 248 samples",
+      "status": "done"
+    },
+    {
+      "shot": 191521,
+      "wmhd": "ok 252 samples",
+      "status": "done"
+    },
+    {
+      "shot": 191596,
+      "wmhd": "ok 294 samples",
+      "status": "done"
+    },
+    {
+      "shot": 191670,
+      "wmhd": "ok 266 samples",
+      "status": "done"
+    },
+    {
+      "shot": 191672,
+      "wmhd": "ok 209 samples",
+      "status": "done"
+    },
+    {
+      "shot": 191677,
+      "wmhd": "ok 215 samples",
+      "status": "done"
+    },
+    {
+      "shot": 191782,
+      "wmhd": "ok 262 samples",
+      "status": "done"
+    },
+    {
+      "shot": 191968,
+      "wmhd": "ok 208 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192003,
+      "wmhd": "ok 233 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192010,
+      "wmhd": "ok 231 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192015,
+      "wmhd": "ok 266 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192045,
+      "wmhd": "ok 334 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192090,
+      "wmhd": "ok 325 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192148,
+      "wmhd": "ok 266 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192149,
+      "wmhd": "ok 248 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192152,
+      "wmhd": "ok 261 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192159,
+      "wmhd": "ok 256 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192221,
+      "wmhd": "ok 338 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192222,
+      "wmhd": "ok 313 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192223,
+      "wmhd": "ok 321 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192226,
+      "wmhd": "ok 324 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192228,
+      "wmhd": "ok 319 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192229,
+      "wmhd": "ok 323 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192230,
+      "wmhd": "ok 317 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192231,
+      "wmhd": "ok 322 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192232,
+      "wmhd": "ok 323 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192233,
+      "wmhd": "ok 324 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192275,
+      "wmhd": "ok 262 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192276,
+      "wmhd": "ok 260 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192277,
+      "wmhd": "ok 242 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192279,
+      "wmhd": "ok 260 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192309,
+      "wmhd": "ok 286 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192387,
+      "wmhd": "ok 247 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192404,
+      "wmhd": "ok 293 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192424,
+      "wmhd": "ok 294 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192425,
+      "wmhd": "ok 300 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192431,
+      "wmhd": "ok 282 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192432,
+      "wmhd": "ok 108 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192433,
+      "wmhd": "ok 124 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192721,
+      "wmhd": "ok 251 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192732,
+      "wmhd": "ok 250 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192735,
+      "wmhd": "ok 294 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192741,
+      "wmhd": "ok 200 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192751,
+      "wmhd": "ok 285 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192755,
+      "wmhd": "ok 265 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192761,
+      "wmhd": "ok 266 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192766,
+      "wmhd": "ok 263 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192914,
+      "wmhd": "ok 297 samples",
+      "status": "done"
+    },
+    {
+      "shot": 192996,
+      "wmhd": "ok 283 samples",
+      "status": "done"
+    },
+    {
+      "shot": 193008,
+      "wmhd": "ok 233 samples",
+      "status": "done"
+    },
+    {
+      "shot": 193016,
+      "wmhd": "ok 283 samples",
+      "status": "done"
+    },
+    {
+      "shot": 193022,
+      "wmhd": "ok 281 samples",
+      "status": "done"
+    },
+    {
+      "shot": 193024,
+      "wmhd": "ok 273 samples",
+      "status": "done"
+    },
+    {
+      "shot": 193075,
+      "wmhd": "ok 258 samples",
+      "status": "done"
+    },
+    {
+      "shot": 193087,
+      "wmhd": "ok 273 samples",
+      "status": "done"
+    },
+    {
+      "shot": 193107,
+      "wmhd": "ok 279 samples",
+      "status": "done"
+    },
+    {
+      "shot": 193108,
+      "wmhd": "ok 282 samples",
+      "status": "done"
+    },
+    {
+      "shot": 193119,
+      "wmhd": "ok 276 samples",
+      "status": "done"
+    },
+    {
+      "shot": 193148,
+      "wmhd": "ok 299 samples",
+      "status": "done"
+    },
+    {
+      "shot": 193162,
+      "wmhd": "ok 285 samples",
+      "status": "done"
+    },
+    {
+      "shot": 193164,
+      "wmhd": "ok 245 samples",
+      "status": "done"
+    },
+    {
+      "shot": 193266,
+      "wmhd": "ok 369 samples",
+      "status": "done"
+    },
+    {
+      "shot": 193267,
+      "wmhd": "ok 171 samples",
+      "status": "done"
+    },
+    {
+      "shot": 193273,
+      "wmhd": "ok 154 samples",
+      "status": "done"
+    },
+    {
+      "shot": 193276,
+      "wmhd": "ok 130 samples",
+      "status": "done"
+    },
+    {
+      "shot": 193280,
+      "wmhd": "ok 310 samples",
+      "status": "done"
+    },
+    {
+      "shot": 193281,
+      "wmhd": "ok 309 samples",
+      "status": "done"
+    },
+    {
+      "shot": 193282,
+      "wmhd": "ok 251 samples",
+      "status": "done"
+    },
+    {
+      "shot": 193353,
+      "wmhd": "ok 289 samples",
+      "status": "done"
+    },
+    {
+      "shot": 193793,
+      "wmhd": "ok 291 samples",
+      "status": "done"
+    },
+    {
+      "shot": 193802,
+      "wmhd": "ok 299 samples",
+      "status": "done"
+    },
+    {
+      "shot": 193832,
+      "wmhd": "ok 233 samples",
+      "status": "done"
+    },
+    {
+      "shot": 194025,
+      "wmhd": "ok 216 samples",
+      "status": "done"
+    },
+    {
+      "shot": 194026,
+      "wmhd": "ok 229 samples",
+      "status": "done"
+    },
+    {
+      "shot": 194071,
+      "wmhd": "ok 176 samples",
+      "status": "done"
+    },
+    {
+      "shot": 194099,
+      "wmhd": "ok 304 samples",
+      "status": "done"
+    },
+    {
+      "shot": 194115,
+      "wmhd": "ok 174 samples",
+      "status": "done"
+    },
+    {
+      "shot": 194154,
+      "wmhd": "ok 151 samples",
+      "status": "done"
+    },
+    {
+      "shot": 194160,
+      "wmhd": "ok 279 samples",
+      "status": "done"
+    },
+    {
+      "shot": 194199,
+      "wmhd": "ok 222 samples",
+      "status": "done"
+    },
+    {
+      "shot": 194213,
+      "wmhd": "ok 288 samples",
+      "status": "done"
+    },
+    {
+      "shot": 194219,
+      "wmhd": "ok 236 samples",
+      "status": "done"
+    },
+    {
+      "shot": 194232,
+      "wmhd": "ok 309 samples",
+      "status": "done"
+    },
+    {
+      "shot": 194238,
+      "wmhd": "ok 233 samples",
+      "status": "done"
+    },
+    {
+      "shot": 194347,
+      "wmhd": "ok 290 samples",
+      "status": "done"
+    },
+    {
+      "shot": 194408,
+      "wmhd": "ok 101 samples",
+      "status": "done"
+    },
+    {
+      "shot": 194410,
+      "wmhd": "ok 96 samples",
+      "status": "done"
+    },
+    {
+      "shot": 194412,
+      "wmhd": "ok 157 samples",
+      "status": "done"
+    },
+    {
+      "shot": 194445,
+      "wmhd": "ok 278 samples",
+      "status": "done"
+    },
+    {
+      "shot": 194597,
+      "wmhd": "ok 313 samples",
+      "bms": "ok 16500 blocks, max 0.00 MW",
+      "status": "done"
+    },
+    {
+      "shot": 194837,
+      "wmhd": "ok 341 samples",
+      "status": "done"
+    },
+    {
+      "shot": 194843,
+      "wmhd": "ok 331 samples",
+      "status": "done"
+    },
+    {
+      "shot": 194959,
+      "wmhd": "ok 261 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195016,
+      "wmhd": "ok 316 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195024,
+      "wmhd": "ok 311 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195034,
+      "wmhd": "ok 331 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195035,
+      "wmhd": "ok 322 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195040,
+      "wmhd": "ok 320 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195062,
+      "wmhd": "ok 324 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195064,
+      "wmhd": "ok 324 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195066,
+      "wmhd": "ok 324 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195101,
+      "wmhd": "ok 324 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195102,
+      "wmhd": "ok 322 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195103,
+      "wmhd": "ok 322 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195107,
+      "wmhd": "ok 290 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195111,
+      "wmhd": "ok 298 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195159,
+      "wmhd": "ok 337 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195169,
+      "wmhd": "ok 111 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195186,
+      "wmhd": "ok 203 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195187,
+      "wmhd": "ok 196 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195263,
+      "wmhd": "ok 318 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195279,
+      "wmhd": "ok 242 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195280,
+      "wmhd": "ok 304 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195281,
+      "wmhd": "ok 310 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195282,
+      "wmhd": "ok 321 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195528,
+      "wmhd": "ok 336 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195626,
+      "wmhd": "ok 328 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195637,
+      "wmhd": "ok 315 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195642,
+      "wmhd": "ok 307 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195645,
+      "wmhd": "ok 292 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195646,
+      "wmhd": "ok 305 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195649,
+      "wmhd": "ok 279 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195736,
+      "wmhd": "ok 364 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195836,
+      "wmhd": "ok 250 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195871,
+      "wmhd": "ok 153 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195896,
+      "wmhd": "ok 124 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195910,
+      "wmhd": "ok 327 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195952,
+      "wmhd": "ok 205 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195956,
+      "wmhd": "ok 205 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195959,
+      "wmhd": "ok 287 samples",
+      "status": "done"
+    },
+    {
+      "shot": 195989,
+      "wmhd": "ok 232 samples",
+      "status": "done"
+    },
+    {
+      "shot": 196020,
+      "wmhd": "ok 294 samples",
+      "status": "done"
+    },
+    {
+      "shot": 196093,
+      "wmhd": "ok 218 samples",
+      "status": "done"
+    },
+    {
+      "shot": 196096,
+      "wmhd": "ok 209 samples",
+      "status": "done"
+    },
+    {
+      "shot": 196099,
+      "wmhd": "ok 190 samples",
+      "status": "done"
+    },
+    {
+      "shot": 196101,
+      "wmhd": "ok 190 samples",
+      "status": "done"
+    },
+    {
+      "shot": 196146,
+      "wmhd": "ok 176 samples",
+      "status": "done"
+    },
+    {
+      "shot": 196154,
+      "wmhd": "ok 175 samples",
+      "status": "done"
+    },
+    {
+      "shot": 196324,
+      "wmhd": "ok 273 samples",
+      "status": "done"
+    },
+    {
+      "shot": 196332,
+      "wmhd": "ok 273 samples",
+      "status": "done"
+    },
+    {
+      "shot": 196375,
+      "wmhd": "ok 322 samples",
+      "status": "done"
+    },
+    {
+      "shot": 196405,
+      "wmhd": "ok 266 samples",
+      "status": "done"
+    },
+    {
+      "shot": 196451,
+      "wmhd": "ok 316 samples",
+      "status": "done"
+    },
+    {
+      "shot": 196491,
+      "wmhd": "ok 316 samples",
+      "status": "done"
+    },
+    {
+      "shot": 196494,
+      "wmhd": "ok 279 samples",
+      "status": "done"
+    },
+    {
+      "shot": 196505,
+      "wmhd": "ok 209 samples",
+      "status": "done"
+    },
+    {
+      "shot": 196541,
+      "wmhd": "ok 307 samples",
+      "status": "done"
+    },
+    {
+      "shot": 196577,
+      "wmhd": "ok 337 samples",
+      "status": "done"
+    },
+    {
+      "shot": 196627,
+      "wmhd": "ok 157 samples",
+      "status": "done"
+    },
+    {
+      "shot": 196632,
+      "wmhd": "ok 154 samples",
+      "status": "done"
+    },
+    {
+      "shot": 198672,
+      "wmhd": "ok 245 samples",
+      "status": "done"
+    },
+    {
+      "shot": 198806,
+      "wmhd": "ok 268 samples",
+      "status": "done"
+    },
+    {
+      "shot": 198899,
+      "wmhd": "ok 328 samples",
+      "status": "done"
+    },
+    {
+      "shot": 198971,
+      "wmhd": "ok 371 samples",
+      "status": "done"
+    },
+    {
+      "shot": 199054,
+      "wmhd": "ok 337 samples",
+      "status": "done"
+    },
+    {
+      "shot": 199071,
+      "wmhd": "ok 265 samples",
+      "status": "done"
+    },
+    {
+      "shot": 199073,
+      "wmhd": "ok 257 samples",
+      "status": "done"
+    },
+    {
+      "shot": 199087,
+      "wmhd": "ok 289 samples",
+      "status": "done"
+    },
+    {
+      "shot": 199183,
+      "wmhd": "ok 279 samples",
+      "bms": "ok 16499 blocks, max 0.00 MW",
+      "status": "done"
+    },
+    {
+      "shot": 199216,
+      "wmhd": "ok 130 samples",
+      "status": "done"
+    },
+    {
+      "shot": 199217,
+      "wmhd": "ok 222 samples",
+      "status": "done"
+    },
+    {
+      "shot": 199281,
+      "wmhd": "ok 297 samples",
+      "status": "done"
+    },
+    {
+      "shot": 199560,
+      "wmhd": "ok 313 samples",
+      "status": "done"
+    },
+    {
+      "shot": 199712,
+      "wmhd": "ok 158 samples",
+      "status": "done"
+    },
+    {
+      "shot": 199789,
+      "wmhd": "ok 271 samples",
+      "status": "done"
+    },
+    {
+      "shot": 199790,
+      "wmhd": "ok 160 samples",
+      "status": "done"
+    },
+    {
+      "shot": 199907,
+      "wmhd": "ok 125 samples",
+      "status": "done"
+    },
+    {
+      "shot": 199908,
+      "wmhd": "ok 140 samples",
+      "status": "done"
+    },
+    {
+      "shot": 199909,
+      "wmhd": "ok 309 samples",
+      "status": "done"
+    },
+    {
+      "shot": 199910,
+      "wmhd": "ok 324 samples",
+      "status": "done"
+    },
+    {
+      "shot": 199911,
+      "wmhd": "ok 290 samples",
+      "status": "done"
+    },
+    {
+      "shot": 199912,
+      "wmhd": "ok 288 samples",
+      "status": "done"
+    },
+    {
+      "shot": 199921,
+      "wmhd": "ok 260 samples",
+      "status": "done"
+    },
+    {
+      "shot": 200007,
+      "wmhd": "ok 235 samples",
+      "status": "done"
+    },
+    {
+      "shot": 200009,
+      "wmhd": "ok 246 samples",
+      "status": "done"
+    },
+    {
+      "shot": 200012,
+      "wmhd": "ok 290 samples",
+      "status": "done"
+    },
+    {
+      "shot": 200013,
+      "wmhd": "ok 290 samples",
+      "status": "done"
+    },
+    {
+      "shot": 200014,
+      "wmhd": "ok 249 samples",
+      "status": "done"
+    },
+    {
+      "shot": 200083,
+      "wmhd": "ok 227 samples",
+      "status": "done"
+    },
+    {
+      "shot": 200127,
+      "wmhd": "ok 229 samples",
+      "status": "done"
+    },
+    {
+      "shot": 200129,
+      "wmhd": "ok 231 samples",
+      "status": "done"
+    },
+    {
+      "shot": 200149,
+      "wmhd": "ok 264 samples",
+      "status": "done"
+    },
+    {
+      "shot": 200198,
+      "wmhd": "ok 319 samples",
+      "status": "done"
+    },
+    {
+      "shot": 200199,
+      "wmhd": "ok 230 samples",
+      "status": "done"
+    },
+    {
+      "shot": 200219,
+      "wmhd": "ok 297 samples",
+      "status": "done"
+    },
+    {
+      "shot": 200320,
+      "wmhd": "ok 267 samples",
+      "status": "done"
+    },
+    {
+      "shot": 200385,
+      "wmhd": "ok 243 samples",
+      "status": "done"
+    },
+    {
+      "shot": 200427,
+      "wmhd": "ok 170 samples",
+      "status": "done"
+    },
+    {
+      "shot": 200435,
+      "wmhd": "ok 186 samples",
+      "status": "done"
+    },
+    {
+      "shot": 200551,
+      "wmhd": "ok 330 samples",
+      "status": "done"
+    },
+    {
+      "shot": 200563,
+      "wmhd": "ok 313 samples",
+      "status": "done"
+    },
+    {
+      "shot": 200596,
+      "wmhd": "ok 274 samples",
+      "status": "done"
+    },
+    {
+      "shot": 200610,
+      "wmhd": "ok 193 samples",
+      "status": "done"
+    },
+    {
+      "shot": 200636,
+      "wmhd": "ok 232 samples",
+      "status": "done"
+    },
+    {
+      "shot": 200672,
+      "wmhd": "ok 253 samples",
+      "status": "done"
+    },
+    {
+      "shot": 200704,
+      "wmhd": "ok 94 samples",
+      "status": "done"
+    },
+    {
+      "shot": 200712,
+      "wmhd": "ok 131 samples",
+      "status": "done"
+    },
+    {
+      "shot": 200738,
+      "wmhd": "ok 172 samples",
+      "status": "done"
+    },
+    {
+      "shot": 200847,
+      "wmhd": "ok 144 samples",
+      "status": "done"
+    },
+    {
+      "shot": 200875,
+      "wmhd": "ok 204 samples",
+      "status": "done"
+    },
+    {
+      "shot": 200882,
+      "wmhd": "ok 207 samples",
+      "status": "done"
+    },
+    {
+      "shot": 200889,
+      "wmhd": "ok 202 samples",
+      "status": "done"
+    },
+    {
+      "shot": 200917,
+      "wmhd": "ok 234 samples",
+      "status": "done"
+    },
+    {
+      "shot": 200954,
+      "wmhd": "ok 233 samples",
+      "status": "done"
+    },
+    {
+      "shot": 200958,
+      "wmhd": "ok 257 samples",
+      "status": "done"
+    },
+    {
+      "shot": 200986,
+      "wmhd": "ok 231 samples",
+      "status": "done"
+    },
+    {
+      "shot": 200990,
+      "wmhd": "ok 229 samples",
+      "status": "done"
+    },
+    {
+      "shot": 201099,
+      "wmhd": "ok 218 samples",
+      "status": "done"
+    },
+    {
+      "shot": 201180,
+      "wmhd": "ok 311 samples",
+      "status": "done"
+    },
+    {
+      "shot": 201227,
+      "wmhd": "ok 267 samples",
+      "status": "done"
+    },
+    {
+      "shot": 201264,
+      "wmhd": "ok 254 samples",
+      "status": "done"
+    },
+    {
+      "shot": 201270,
+      "wmhd": "ok 258 samples",
+      "status": "done"
+    },
+    {
+      "shot": 201395,
+      "wmhd": "ok 271 samples",
+      "status": "done"
+    },
+    {
+      "shot": 201447,
+      "wmhd": "ok 118 samples",
+      "status": "done"
+    },
+    {
+      "shot": 201490,
+      "wmhd": "ok 339 samples",
+      "status": "done"
+    },
+    {
+      "shot": 201494,
+      "wmhd": "ok 305 samples",
+      "status": "done"
+    },
+    {
+      "shot": 201707,
+      "wmhd": "ok 288 samples",
+      "bms": "ok 18999 blocks, max 0.00 MW",
+      "status": "done"
+    },
+    {
+      "shot": 201713,
+      "wmhd": "ok 124 samples",
+      "bms": "ok 18999 blocks, max 0.00 MW",
+      "status": "done"
+    },
+    {
+      "shot": 201822,
+      "wmhd": "ok 241 samples",
+      "status": "done"
+    },
+    {
+      "shot": 201831,
+      "wmhd": "ok 247 samples",
+      "status": "done"
+    },
+    {
+      "shot": 201880,
+      "wmhd": "ok 210 samples",
+      "status": "done"
+    },
+    {
+      "shot": 201948,
+      "wmhd": "ok 311 samples",
+      "bms": "ok 18999 blocks, max 0.00 MW",
+      "status": "done"
+    },
+    {
+      "shot": 201973,
+      "wmhd": "ok 161 samples",
+      "status": "done"
+    },
+    {
+      "shot": 201978,
+      "wmhd": "ok 263 samples",
+      "status": "done"
+    },
+    {
+      "shot": 201991,
+      "wmhd": "ok 296 samples",
+      "status": "done"
+    },
+    {
+      "shot": 202000,
+      "wmhd": "ok 242 samples",
+      "status": "done"
+    },
+    {
+      "shot": 202028,
+      "wmhd": "ok 241 samples",
+      "status": "done"
+    },
+    {
+      "shot": 202041,
+      "wmhd": "ok 256 samples",
+      "status": "done"
+    },
+    {
+      "shot": 202098,
+      "wmhd": "ok 186 samples",
+      "bms": "ok 15999 blocks, max 0.00 MW",
+      "status": "done"
+    },
+    {
+      "shot": 202100,
+      "wmhd": "ok 171 samples",
+      "bms": "ok 15999 blocks, max 0.00 MW",
+      "status": "done"
+    },
+    {
+      "shot": 202101,
+      "wmhd": "ok 178 samples",
+      "bms": "ok 15999 blocks, max 0.00 MW",
+      "status": "done"
+    },
+    {
+      "shot": 202102,
+      "wmhd": "ok 176 samples",
+      "bms": "ok 15999 blocks, max 0.00 MW",
+      "status": "done"
+    },
+    {
+      "shot": 202103,
+      "wmhd": "ok 105 samples",
+      "bms": "ok 15999 blocks, max 0.00 MW",
+      "status": "done"
+    },
+    {
+      "shot": 202110,
+      "wmhd": "ok 97 samples",
+      "bms": "ok 16000 blocks, max 0.00 MW",
+      "status": "done"
+    },
+    {
+      "shot": 202150,
+      "wmhd": "ok 190 samples",
+      "status": "done"
+    },
+    {
+      "shot": 202162,
+      "wmhd": "ok 238 samples",
+      "status": "done"
+    },
+    {
+      "shot": 202181,
+      "wmhd": "ok 294 samples",
+      "status": "done"
+    },
+    {
+      "shot": 202186,
+      "wmhd": "ok 273 samples",
+      "status": "done"
+    },
+    {
+      "shot": 202197,
+      "wmhd": "ok 279 samples",
+      "status": "done"
+    },
+    {
+      "shot": 202205,
+      "wmhd": "ok 149 samples",
+      "status": "done"
+    },
+    {
+      "shot": 202206,
+      "wmhd": "ok 219 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203012,
+      "wmhd": "ok 272 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203033,
+      "wmhd": "ok 253 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203041,
+      "wmhd": "ok 255 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203132,
+      "wmhd": "ok 274 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203136,
+      "wmhd": "ok 296 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203138,
+      "wmhd": "ok 299 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203174,
+      "wmhd": "ok 128 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203187,
+      "wmhd": "ok 147 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203293,
+      "wmhd": "ok 259 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203294,
+      "wmhd": "ok 243 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203349,
+      "wmhd": "ok 308 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203397,
+      "wmhd": "ok 181 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203401,
+      "wmhd": "ok 188 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203413,
+      "wmhd": "ok 150 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203462,
+      "wmhd": "ok 322 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203470,
+      "wmhd": "ok 291 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203498,
+      "wmhd": "ok 292 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203507,
+      "wmhd": "ok 286 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203512,
+      "wmhd": "ok 155 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203521,
+      "wmhd": "ok 264 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203530,
+      "wmhd": "ok 138 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203563,
+      "wmhd": "ok 266 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203576,
+      "wmhd": "ok 279 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203626,
+      "wmhd": "ok 146 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203629,
+      "wmhd": "ok 295 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203643,
+      "wmhd": "ok 188 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203661,
+      "wmhd": "ok 205 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203667,
+      "wmhd": "ok 273 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203719,
+      "wmhd": "ok 220 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203745,
+      "wmhd": "ok 235 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203746,
+      "wmhd": "ok 229 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203764,
+      "wmhd": "ok 229 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203778,
+      "wmhd": "ok 228 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203784,
+      "wmhd": "ok 215 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203785,
+      "wmhd": "ok 156 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203827,
+      "wmhd": "ok 303 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203876,
+      "wmhd": "ok 224 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203941,
+      "wmhd": "ok 310 samples",
+      "status": "done"
+    },
+    {
+      "shot": 203959,
+      "wmhd": "ok 303 samples",
+      "status": "done"
+    },
+    {
+      "shot": 204093,
+      "wmhd": "ok 230 samples",
+      "status": "done"
+    },
+    {
+      "shot": 204141,
+      "wmhd": "ok 293 samples",
+      "status": "done"
+    },
+    {
+      "shot": 204144,
+      "wmhd": "ok 280 samples",
+      "status": "done"
+    },
+    {
+      "shot": 204225,
+      "wmhd": "ok 179 samples",
+      "status": "done"
+    },
+    {
+      "shot": 204233,
+      "wmhd": "ok 242 samples",
+      "status": "done"
+    },
+    {
+      "shot": 204237,
+      "wmhd": "ok 186 samples",
+      "status": "done"
+    },
+    {
+      "shot": 204238,
+      "wmhd": "ok 189 samples",
+      "status": "done"
+    },
+    {
+      "shot": 204240,
+      "wmhd": "ok 193 samples",
+      "status": "done"
+    },
+    {
+      "shot": 204242,
+      "wmhd": "ok 217 samples",
+      "status": "done"
+    },
+    {
+      "shot": 204243,
+      "wmhd": "ok 223 samples",
+      "status": "done"
+    },
+    {
+      "shot": 204244,
+      "wmhd": "ok 201 samples",
+      "status": "done"
+    },
+    {
+      "shot": 204256,
+      "wmhd": "ok 225 samples",
+      "status": "done"
+    },
+    {
+      "shot": 204324,
+      "wmhd": "ok 310 samples",
+      "status": "done"
+    },
+    {
+      "shot": 204530,
+      "wmhd": "ok 229 samples",
+      "status": "done"
+    },
+    {
+      "shot": 204531,
+      "wmhd": "ok 235 samples",
+      "status": "done"
+    },
+    {
+      "shot": 204560,
+      "wmhd": "ok 229 samples",
+      "status": "done"
+    },
+    {
+      "shot": 204652,
+      "wmhd": "ok 145 samples",
+      "status": "done"
+    },
+    {
+      "shot": 204687,
+      "wmhd": "ok 241 samples",
+      "status": "done"
+    },
+    {
+      "shot": 204689,
+      "wmhd": "ok 240 samples",
+      "status": "done"
+    },
+    {
+      "shot": 204840,
+      "wmhd": "ok 199 samples",
+      "status": "done"
+    },
+    {
+      "shot": 204937,
+      "wmhd": "ok 235 samples",
+      "status": "done"
+    }
+  ]
+}
