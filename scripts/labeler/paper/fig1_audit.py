@@ -585,8 +585,8 @@ def main():
         assert "shorter than 10 ms, with no state smoothing" in appendix
         assert "magnetics-only" not in appendix
         assert "Bt unavailable" not in appendix
-        if shown:
-            assert "ECE-supported crash candidates" in appendix
+        # The ECE strip is not drawn, so the appendix does not describe it.
+        assert "ECE-supported crash candidates" not in appendix
         if drawn["first_large_peak_before_expert_ms"] is not None:
             assert "precedes the expert span" in appendix
         if drawn["elm_hmode_conflicts_ms"]:
