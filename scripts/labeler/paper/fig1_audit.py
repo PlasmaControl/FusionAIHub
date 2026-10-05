@@ -335,7 +335,7 @@ def main():
         assert axis["ae_ntm_split_khz"] == 60 and axis["n_view_top_khz"] == 30
         # The n view is the bottom 30 of 250 kHz of the processed panel.
         panels = geometry["frequency_panels"]
-        assert geometry["n_view_height_in"] >= 0.09
+        assert geometry["n_view_height_in"] >= 0.14
         assert (
             abs(
                 geometry["n_view_height_in"]
@@ -701,7 +701,7 @@ def main():
         assert sha256_of(caption_file) == record["caption"]["sha256"]
         layout = record["print_layout"]
         assert layout["width_in"] == 6.75 and layout["minimum_font_pt"] >= 7
-        assert layout["height_in"] <= 4.5
+        assert layout["height_in"] <= 5.6
         assert record["decision_thresholds"]["ae"] == AE_THRESHOLD
         external = Path(record["caption"]["path"]).parent / "fig_interpreter.json"
         assert external.read_bytes() == file.read_bytes()
@@ -760,7 +760,7 @@ def main():
         info = subprocess.check_output(["pdfinfo", str(pdf)], text=True)
         size = re.search(r"Page size:\s+([\d.]+) x ([\d.]+)", info)
         width, height = (float(v) / 72 for v in size.groups())
-        assert width == 6.75 and height <= 4.5
+        assert width == 6.75 and height <= 5.6
         audited.append(
             {
                 "shot": shot,

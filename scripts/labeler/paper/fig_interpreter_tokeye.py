@@ -76,7 +76,7 @@ from labeler.paper import PAGE_IN, figure_sources, mode_tags, roster, style
 from labeler.paper import label_figure as lf
 
 STEM = "fig_interpreter"
-HEIGHT_IN = 4.4
+HEIGHT_IN = 5.3
 DPI_PNG = 150
 DPI_PDF = 300
 #: The window's margin the TokEye cache keeps beyond the figure's, ms.
@@ -997,7 +997,7 @@ def draw(
     # Heights in inches, top to bottom: (a) raw, (b) processed, (c) D-alpha with the
     # ELM and confinement labels, (d) NBI power, (e) the label rows.
     layout = {
-        "raw": 0.9, "g0": 0.07, "pr": 0.9, "g1": 0.08, "da_pr": 0.8,
+        "raw": 1.35, "g0": 0.07, "pr": 1.35, "g1": 0.08, "da_pr": 0.8,
         "g2": 0.06, "nbi": 0.4, "g3": 0.1,
     }  # fmt: skip
     names = [*layout, *[f"track{i}" for i in range(len(display_tracks))]]
