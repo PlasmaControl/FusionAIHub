@@ -628,13 +628,15 @@ def main():
             )
             assert "(held-out F1 0.46, below our 0.7 bar) is positive." in caption
             assert "Highlights mark time/band coincidence only." in caption
-            # 27 % and 0 % of the jointly measured time pass the 5 % ratio test:
+            # 0 % of the jointly measured time pass the 5 % ratio test:
             # below the 0.6 gate, so the caption makes no harmonic claim.
             assert "harmonics" not in caption
             assert drawn["n2_harmonic_consistent"] is False
             assert drawn["n3_harmonic_consistent"] is False
-            assert "in 39 of 146 ms where both are measured (27%" in appendix
-            assert "in 0 of 65 ms where both are measured (0%" in appendix
+            # n=3 is never measured alongside n=1 in NTM time here, so the
+            # appendix gives the n=2 ratio only.
+            assert "in 0 of 104 ms where both are measured (0%" in appendix
+            assert "n=3 lies within" not in appendix
             assert "cannot separate harmonics of one island from phase-locked" in (
                 appendix
             )
@@ -678,7 +680,7 @@ def main():
                 t["tier"] == lf.SILVER for t in record["tracks"].values() if t
             )
             assert (
-                "Sawtooth: present 366 ms, uncertain 4195 ms, unassessed 539 ms"
+                "Sawtooth: present 366 ms, uncertain 4595 ms, unassessed 539 ms"
             ) in appendix
             assert len(shown) == 12 and min(shown) > 5000
             assert "detector F1" not in " ".join(legend)
