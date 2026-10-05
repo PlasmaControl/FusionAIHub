@@ -6,7 +6,7 @@
 set -uo pipefail
 GPU=${1:?GPU index required}
 shift
-REPO=/scratch/gpfs/nc1514/FusionAIHub-r4-aeswap
+REPO=${REPO:-/scratch/gpfs/nc1514/FusionAIHub}
 # Short on purpose: an AF_UNIX socket path must stay under 108 bytes.
 export TMPDIR=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/ae-sw
 export LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker

@@ -29,7 +29,7 @@
 set -euo pipefail
 
 ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker
-REPO=/scratch/gpfs/nc1514/FusionAIHub-r4-conf
+REPO=${REPO:-/scratch/gpfs/nc1514/FusionAIHub}
 export PYTHONPATH=$REPO/src
 export LABELER_ROOT=$ROOT
 

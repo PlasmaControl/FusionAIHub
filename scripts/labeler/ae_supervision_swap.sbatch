@@ -12,7 +12,7 @@
 #SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/aeswap/slurm-%A_%a.out
 
 set -euo pipefail
-REPO=/scratch/gpfs/nc1514/FusionAIHub-r4-aeswap
+REPO=${REPO:-/scratch/gpfs/nc1514/FusionAIHub}
 # Short on purpose: DataLoader workers add /pymp-*/listener-* to TMPDIR and an
 # AF_UNIX socket path must stay under 108 bytes.
 export TMPDIR=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/ae-sw

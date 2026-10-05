@@ -4,7 +4,7 @@
 set -euo pipefail
 JOB_ID=${1:?array job ID required}
 DEADLINE=$(( $(date -d "${2:?submit timestamp required}" +%s) + 1800 ))
-REPO=/scratch/gpfs/nc1514/FusionAIHub-r4-aeswap
+REPO=${REPO:-/scratch/gpfs/nc1514/FusionAIHub}
 export TMPDIR=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/ae-sw  # short: AF_UNIX
 mkdir -p "$TMPDIR"
 export LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker
