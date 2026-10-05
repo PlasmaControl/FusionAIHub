@@ -50,6 +50,11 @@ def rebuild_primary(record):
         "--tmax", str(record["window_ms"][1]), "--out", str(rebuild_dir),
     ]  # fmt: skip
     cmd.extend(["--annotations", record["annotations"]["path"]])
+    outside = record.get("outside_cohort")
+    if outside:
+        cmd.extend(["--outside-cohort", "--year", str(outside["year"])])
+        if outside["rows_dir"]:
+            cmd.extend(["--outside-rows", outside["rows_dir"]])
     ae = record["ae_ours_lookup"]["supplied_predictions"]
     if ae:
         cmd.extend(["--ae-labels", ae])

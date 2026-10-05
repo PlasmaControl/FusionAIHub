@@ -1973,6 +1973,14 @@ def main(argv=None) -> int:
         "year": candidate.year,
         "window_ms": [t0, t1],
         "split": split,
+        "outside_cohort": (
+            None
+            if split != OUTSIDE_COHORT
+            else {
+                "year": args.year,
+                "rows_dir": None if args.outside_rows is None else str(args.outside_rows),
+            }
+        ),
         "publication_suitability": annotations.get("publication_suitability", {}),
         "annotations": {
             "path": str(args.annotations),
