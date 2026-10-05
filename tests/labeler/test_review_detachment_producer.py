@@ -195,6 +195,38 @@ def test_ui_rejects_missing_assessed_label_or_stale_vote_snapshot(tmp_path):
     assert "tangtv_vote" in result["reason"]
 
 
+def test_tangtv_only_bins_are_assessed_and_must_be_labelled(tmp_path):
+    """A bin whose only valid indicator is TangTV is labelled (tier tangtv_only)."""
+    root = tmp_path / "round4/detach"
+    (root / "bins").mkdir(parents=True, exist_ok=True)
+    frame = table(root / "labels_bins.csv.gz")
+    for name in ("afrac", "prad"):
+        frame.loc[1, f"{name}_valid"] = False
+        frame.loc[1, f"{name}_vote"] = -1
+        frame.loc[1, f"{name}_reason"] = "no_input_power"
+    fields = {
+        column: (
+            np.asarray(frame[column], dtype=str)
+            if column.endswith("_reason") or column == "tangtv_source"
+            else frame[column].to_numpy()
+        )
+        for column in frame.columns
+        if column not in ("shot", "split", "confidence", "state_lm", "state_rule")
+    }
+    np.savez(root / "bins/170815.npz", **fields)
+    assert producer.assessed_bins(fields).tolist() == [True, True, True, False, False]
+    frame[frame.state_lm > 0].to_csv(root / "labels_bins.csv.gz", index=False)
+    result = producer.load(170815, Paths(root=tmp_path))
+    assert result["source_suppressed"] is False
+    assert result["state_lm"] == [1, 2, 3, 4, 0]
+    frame[(frame.state_lm > 0) & (frame.start_ms != 150)].to_csv(
+        root / "labels_bins.csv.gz", index=False
+    )
+    result = producer.load(170815, Paths(root=tmp_path))
+    assert result["source_suppressed"] is True
+    assert "assessed" in result["reason"]
+
+
 def test_unpublished_shot_keeps_votes_without_inventing_an_assessment(tmp_path):
     root = tmp_path / "round4/detach"
     (root / "bins").mkdir(parents=True, exist_ok=True)

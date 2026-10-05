@@ -41,6 +41,19 @@ def _read(path, _mtime, _size, _inode):
     return pd.read_csv(path, keep_default_na=False, low_memory=False)
 
 
+def assessed_bins(bins):
+    """Bins the producer labels: two valid indicators, or a TangTV vote.
+
+    This is the `assessed` mask of `label_model.compatibility_decide`: a bin whose
+    only valid indicator is TangTV is the `tangtv_only` tier. The NPZ carries
+    ABSTAIN (-1) on every invalid bin, so a positive TangTV vote implies a valid one.
+    """
+    valid = np.sum(
+        [bins[f"{name}_valid"] for name in ("afrac", "prad", "tangtv")], axis=0
+    )
+    return (valid >= 2) | (np.asarray(bins["tangtv_vote"]) > 0)
+
+
 def _verify_snapshot(frame, bins):
     """Reject labels from an incomplete or different producer vote snapshot."""
     starts = np.asarray(bins["start_ms"], dtype=float)
@@ -50,20 +63,7 @@ def _verify_snapshot(frame, bins):
         # The producer also applies a per-shot eligibility gate. No published
         # rows is distinct from missing assessed rows within a published shot.
         return
-    assessed = (
-        np.sum(
-            [
-                bins[f"{name}_valid"]
-                for name in (
-                    "afrac",
-                    "prad",
-                    "tangtv",
-                )
-            ],
-            axis=0,
-        )
-        >= 2
-    )
+    assessed = assessed_bins(bins)
     labelled = frame[pd.to_numeric(frame.state_lm, errors="coerce") > 0]
     if set(labelled.start_ms) != set(starts[assessed]):
         raise ValueError("producer labels incomplete for assessed vote bins")

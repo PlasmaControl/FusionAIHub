@@ -26,7 +26,7 @@ import numpy as np
 import pandas as pd
 
 from labeler.config import git_dirty, git_sha, sha256_of
-from labeler.events.review import recipe
+from labeler.events.review import producer, recipe
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -85,7 +85,7 @@ def read_inputs(bins_path: Path, labels_path: Path, cohort_path: Path, shot: int
         and set(labels.split) != {str(cohort_shot.split.iloc[0])}
     ):
         raise ValueError("producer and cohort split disagree")
-    assessed = np.sum([bins[f"{name}_valid"] for name in INDICATORS], axis=0) >= 2
+    assessed = producer.assessed_bins(bins)
     indexed = labels.set_index("start_ms")
     # The producer table contains assessed bins only. Its absent rows stay unknown.
     if not labels.empty and set(indexed.index) != set(starts[assessed]):
