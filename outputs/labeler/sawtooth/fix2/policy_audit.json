@@ -1,0 +1,40 @@
+{
+  "counts": {
+    "processed_shots": 13648,
+    "metadata_present_spans": 28714,
+    "failed_reads": 3261,
+    "tested_absent_spans": 2135,
+    "noise_qualified_neutron_crashes": 7877
+  },
+  "assertions_passed": true,
+  "validation_status": "implementation audit, no blind physical validation",
+  "rule": {
+    "sigma_ms": 0.25,
+    "frame_ms": 10.3,
+    "posr_threshold": 6.0,
+    "coincidence_ms": 0.5,
+    "minimum_channels": 2,
+    "significance": 0.02,
+    "maximum_net": 0.9,
+    "minimum_block": 2,
+    "pulse_reach": 6,
+    "minimum_period_ms": 20.0,
+    "maximum_period_ms": 250.0,
+    "period_ratio": 2.5,
+    "minimum_train": 3,
+    "qmin_margin": 0.05,
+    "radius_tolerance": 0.15,
+    "central_relative_drop": 0.05,
+    "te_floor_kev": 0.5,
+    "inversion_spread_channels": 2.0,
+    "minimum_ip_ma": 0.3,
+    "neutron_relative_drop": 0.02,
+    "neutron_noise_k": 3.0,
+    "minimum_nbi_power_w": 100000.0,
+    "maximum_channel_to_core": 1.5,
+    "mirnov_burst_z": 6.0,
+    "dalpha_burst_z": 6.0
+  },
+  "source_records": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/shots",
+  "boundary_policy": "test sampled bins; a half-open span's end extends one 10kHz sample beyond its final sample"
+}

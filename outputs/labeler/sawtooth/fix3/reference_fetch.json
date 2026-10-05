@@ -1,0 +1,77 @@
+{
+  "shots_requested": [
+    141182,
+    141195
+  ],
+  "authentication_failed": false,
+  "workers": 1,
+  "pace_s": 1.0,
+  "mode": "full_q1",
+  "expected_eq_nodes": [
+    "gtime",
+    "psirz",
+    "qpsi",
+    "fpol",
+    "r",
+    "z",
+    "rmaxis",
+    "zmaxis",
+    "ssimag",
+    "ssibry",
+    "bdry",
+    "nbdry"
+  ],
+  "records": [
+    {
+      "shot": 141182,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/reference/geometry/141182.h5",
+      "fetched": [
+        "ece/ECEVS06"
+      ],
+      "missing": {},
+      "packed_transport": "fdp://fdp-d3d-origin.nationalresearchplatform.org:8443/mdsip",
+      "status": "complete"
+    },
+    {
+      "shot": 141195,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/reference/geometry/141195.h5",
+      "fetched": [
+        "ece/ECEVS01",
+        "ece/ECEVS10",
+        "ece/ECEVS11",
+        "ece/ECEVS12",
+        "ece/ECEVS13",
+        "ece/ECEVS14",
+        "ece/ECEVS15",
+        "ece/ECEVS16",
+        "ece/ECEVS17",
+        "ece/ECEVS18",
+        "ece/ECEVS19",
+        "ece/ECEVS20",
+        "ece/ECEVS21",
+        "ece/ECEVS22",
+        "ece/ECEVS23",
+        "ece/ECEVS24",
+        "ece/ECEVS25",
+        "ece/ECEVS26",
+        "ece/ECEVS27",
+        "ece/ECEVS28",
+        "ece/ECEVS29",
+        "ece/ECEVS30",
+        "ece/ECEVS31",
+        "ece/ECEVS32",
+        "ece/ECEVS33",
+        "ece/ECEVS34",
+        "ece/ECEVS35",
+        "ece/ECEVS36",
+        "ece/ECEVS37",
+        "ece/ECEVS38",
+        "ece/ECEVS39",
+        "ece/ECEVS40"
+      ],
+      "missing": {},
+      "packed_transport": "fdp://fdp-d3d-origin.nationalresearchplatform.org:8443/mdsip",
+      "status": "complete"
+    }
+  ]
+}

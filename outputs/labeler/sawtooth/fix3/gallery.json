@@ -1,0 +1,452 @@
+{
+  "seed": 20261003,
+  "shots": [
+    186532,
+    196405,
+    192148,
+    204261,
+    203563,
+    202206,
+    201978,
+    196020,
+    192149,
+    191326,
+    195064,
+    193024
+  ],
+  "sampling": "Original uniform random usable nonexpert train-shot sample retained; current support failures remain represented as unassessed",
+  "figures": [
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_186532_overview.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_186532_overview.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_186532_crash.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_186532_crash.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_196405_overview.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_196405_overview.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_196405_crash.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_196405_crash.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_192148_overview.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_192148_overview.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_192148_crash.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_192148_crash.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_204261_overview.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_204261_overview.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_204261_crash.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_204261_crash.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_203563_overview.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_203563_overview.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_203563_crash.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_203563_crash.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_202206_overview.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_202206_overview.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_202206_crash.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_202206_crash.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_201978_overview.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_201978_overview.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_201978_crash.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_201978_crash.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_196020_overview.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_196020_overview.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_196020_crash.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_196020_crash.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_192149_overview.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_192149_overview.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_192149_crash.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_192149_crash.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_191326_overview.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_191326_overview.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_191326_crash.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_191326_crash.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_195064_overview.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_195064_overview.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_195064_crash.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_195064_crash.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_193024_overview.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_193024_overview.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_193024_crash.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_193024_crash.png"
+  ],
+  "source_sha256": {
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/shots/186532.json": "93a5ce6504f9ef3348a34bb398f313b6a693b86540d5820e5f2778500ad587f6",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/signals/186532.npz": "a639a52c5684412c0fabefea1dc4eb036a6b22ff7044ed6589a27ffe7fbaea3e",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/shots/196405.json": "18d2fc8f8cdee23d098f878d81581aedc1d2e0690c0c1269a9293e5646d45de2",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/signals/196405.npz": "e43a8452f36cbeb4050daa6f6c368eff1f53915ca9cb16b701b2a4c6769b0913",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/shots/192148.json": "e0504973c57d6362253b3a7960e47cbc3ca049fed1edc1691006f89a6b122df2",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/signals/192148.npz": "c2768cb7b8e95f3382dd815303ce43c1b738424f4d097f1f2f888191d15a59a6",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/shots/204261.json": "2f5d83c75d447bd333146691e271ef2eb98f91c476b5b70d81fb9ba3ea917af8",
+    "/scratch/gpfs/EKOLEMEN/foundation_model/204261_processed.h5": "7f48ea08ace724b5baf50bd08f3ddf9ae78d02f1f2f8e43018896ed09c4ea915",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/shots/203563.json": "b82f2fa9339f0bc005040ce791e3de2ee3563f36d91e6efac60742d5022338ac",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/signals/203563.npz": "c072bd3e93812b63ad4f5a9d08a1a4e13725f59e37ec14da88f6a5af197c7082",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/shots/202206.json": "cf459500b15d8481cf76a2f14553857a873111c4a57cfdb4cb6245d25cfeb345",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/signals/202206.npz": "019799c2bc05c0dff1a86265c2206ef3a9976de9b316cbb870e8baee01d2ac53",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/shots/201978.json": "51449a049cad64afeaffc77e0308da4e165744624613b49d45206081b63de389",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/signals/201978.npz": "1ee1774bd557156594355697e9e0418ffb6a2214b881023bfb846f1b378bc29b",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/shots/196020.json": "9a08ea65ae9c299b91b5ac1816866cf1f0b77e19d0984465e81a9b797f8543dd",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/signals/196020.npz": "d58147456aee7d082c8ee9c96d6b37b39d9c1d9cb12fe2a0c149432d99958ead",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/shots/192149.json": "f29c473dae2db023deb8a347afcd4da48e73033f4ed3e4126a2cc0a35fa87395",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/signals/192149.npz": "4fa3e9c15394a8adb0bb1459f47ef3fe91401d0d5e63e7a5f8418fb48f11dc91",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/shots/191326.json": "b1fb9c529288f8c52e4d54e0389074d4da099ae579b64421b008234015ecea07",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/signals/191326.npz": "7884901fb17689cebbba030a73f7533099f585093dcc5f1a27a539531b816b73",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/shots/195064.json": "8e7b56a076e7b5b078523510359e0c61424d6c365bddaf120412463b2ee62b51",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/signals/195064.npz": "09efaaca5e49f508c3bbe7993b7be0838436939697a138f690137341760f8c2e",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/shots/193024.json": "89d7ff1fbe324fbc6fa4e9335d3f084e7dcdcf92442bc3cc1dbc57b7adb08085",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/signals/193024.npz": "7aebb07445123d5264167cee7a9cef0260977b16f42f006fd26e8e09722e6cba"
+  },
+  "crash_windows": [
+    {
+      "shot": 186532,
+      "center_s": 2.2827999440713174,
+      "selection": "Detected crash",
+      "state": "uncertain",
+      "bin_state": "uncertain",
+      "window_ms": 60,
+      "inversion_channel": 6.0,
+      "central_channel": 10,
+      "gain_block_channels": [
+        0,
+        6
+      ],
+      "outer_trace_channels": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "central_relative_drop": 0.1139469406686703,
+      "uncertainty_reasons": [
+        "qmin_conflict"
+      ]
+    },
+    {
+      "shot": 196405,
+      "center_s": 3.2694999207304045,
+      "selection": "Detected crash",
+      "state": "uncertain",
+      "bin_state": "uncertain",
+      "window_ms": 60,
+      "inversion_channel": 17.5,
+      "central_channel": 25,
+      "gain_block_channels": [
+        0,
+        18
+      ],
+      "outer_trace_channels": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17
+      ],
+      "central_relative_drop": 0.15628838284450972,
+      "uncertainty_reasons": [
+        "nominal_q1_radius_mismatch"
+      ]
+    },
+    {
+      "shot": 192148,
+      "center_s": 1.3257999667096614,
+      "selection": "Detected crash",
+      "state": "uncertain",
+      "bin_state": "uncertain",
+      "window_ms": 60,
+      "inversion_channel": 22.5,
+      "central_channel": 28,
+      "gain_block_channels": [
+        12,
+        23
+      ],
+      "outer_trace_channels": [
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22
+      ],
+      "central_relative_drop": 0.1987639672314799,
+      "uncertainty_reasons": [
+        "qmin_conflict"
+      ]
+    },
+    {
+      "shot": 204261,
+      "selection": "Sensor diagnostic; no label",
+      "state": "unassessed",
+      "bin_state": "unassessed",
+      "center_s": 2.1525499471524507,
+      "window_ms": 60,
+      "reader_or_support_error": "insufficient physically plausible ECE core channels",
+      "raw_signal_source": "/scratch/gpfs/EKOLEMEN/foundation_model/204261_processed.h5",
+      "raw_signal_processing": "Native ECE FIR antialias to 10kHz; no spatial mask"
+    },
+    {
+      "shot": 203563,
+      "center_s": 2.6793999346895334,
+      "selection": "Detected crash",
+      "state": "uncertain",
+      "bin_state": "uncertain",
+      "window_ms": 60,
+      "inversion_channel": 19.5,
+      "central_channel": 26,
+      "gain_block_channels": [
+        1,
+        20
+      ],
+      "outer_trace_channels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19
+      ],
+      "central_relative_drop": 0.363450561048326,
+      "uncertainty_reasons": [
+        "nominal_q1_radius_mismatch"
+      ]
+    },
+    {
+      "shot": 202206,
+      "center_s": 1.0352999735815933,
+      "selection": "Detected crash",
+      "state": "present",
+      "bin_state": "present",
+      "window_ms": 60,
+      "inversion_channel": 21.5,
+      "central_channel": 29,
+      "gain_block_channels": [
+        10,
+        22
+      ],
+      "outer_trace_channels": [
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21
+      ],
+      "central_relative_drop": 0.12293361275795041,
+      "uncertainty_reasons": []
+    },
+    {
+      "shot": 201978,
+      "center_s": 4.7696998852423755,
+      "selection": "Diagnostic window; no label",
+      "state": "uncertain",
+      "bin_state": "uncertain",
+      "window_ms": 60,
+      "inversion_channel": null,
+      "central_channel": 32,
+      "gain_block_channels": [
+        null,
+        null
+      ],
+      "outer_trace_channels": [
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20
+      ],
+      "central_relative_drop": null,
+      "uncertainty_reasons": []
+    },
+    {
+      "shot": 196020,
+      "center_s": 6.101899853728476,
+      "selection": "Detected crash",
+      "state": "uncertain",
+      "bin_state": "uncertain",
+      "window_ms": 60,
+      "inversion_channel": 21.5,
+      "central_channel": 31,
+      "gain_block_channels": [
+        17,
+        22
+      ],
+      "outer_trace_channels": [
+        17,
+        18,
+        19,
+        20,
+        21
+      ],
+      "central_relative_drop": 0.1174670770092026,
+      "uncertainty_reasons": [
+        "unverified_spatial_adjacency"
+      ]
+    },
+    {
+      "shot": 192149,
+      "center_s": 1.418799964509697,
+      "selection": "Detected crash",
+      "state": "uncertain",
+      "bin_state": "uncertain",
+      "window_ms": 60,
+      "inversion_channel": 21.5,
+      "central_channel": 28,
+      "gain_block_channels": [
+        14,
+        22
+      ],
+      "outer_trace_channels": [
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21
+      ],
+      "central_relative_drop": 0.18935258359457183,
+      "uncertainty_reasons": [
+        "qmin_conflict"
+      ]
+    },
+    {
+      "shot": 191326,
+      "center_s": 3.3128999197037543,
+      "selection": "Detected crash",
+      "state": "uncertain",
+      "bin_state": "uncertain",
+      "window_ms": 60,
+      "inversion_channel": 5.5,
+      "central_channel": 17,
+      "gain_block_channels": [
+        0,
+        6
+      ],
+      "outer_trace_channels": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "central_relative_drop": 0.09760313607132756,
+      "uncertainty_reasons": [
+        "unverified_spatial_adjacency"
+      ]
+    },
+    {
+      "shot": 195064,
+      "center_s": 4.392299894169973,
+      "selection": "Detected crash",
+      "state": "uncertain",
+      "bin_state": "uncertain",
+      "window_ms": 60,
+      "inversion_channel": 4.5,
+      "central_channel": 2,
+      "gain_block_channels": [
+        5,
+        7
+      ],
+      "outer_trace_channels": [
+        5,
+        6
+      ],
+      "central_relative_drop": 0.07981017268302326,
+      "uncertainty_reasons": [
+        "qmin_conflict"
+      ]
+    },
+    {
+      "shot": 193024,
+      "center_s": 2.943399928444473,
+      "selection": "Detected crash",
+      "state": "uncertain",
+      "bin_state": "uncertain",
+      "window_ms": 60,
+      "inversion_channel": 6.5,
+      "central_channel": 9,
+      "gain_block_channels": [
+        5,
+        7
+      ],
+      "outer_trace_channels": [
+        5,
+        6
+      ],
+      "central_relative_drop": 0.05041827016607819,
+      "uncertainty_reasons": [
+        "nominal_q1_radius_mismatch"
+      ]
+    }
+  ],
+  "geometry_note": "Nominal geometric rho=abs(R-axis)/(LCFS_outer_R-axis), not calibrated flux. Outer proxy is on the low-field side.",
+  "q_note": "EFIT01 q-min is magnetics-only. Soft conflict and conservative strong-q absence follow the frozen rule; display range 0\u20134.",
+  "marker_note": "Crash markers show diagnostic candidate state; shaded spans show canonical bin state. Crash points and sustained-presence spans have different temporal support.",
+  "png_inspection": {
+    "complete": true,
+    "method": "Each PNG viewed with the agent image viewer",
+    "sha256": {
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_186532_overview.png": "a641ce6177adecb530445df3a561277519965931949c7a4231cf0cbee12a53b3",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_186532_crash.png": "0c048165c8769c51227de43570953c6f1d853b9b5ac13cd489753f81ede8d957",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_196405_overview.png": "02030a929fd1a6d91f20f7905db20ad3c08e0d16e5eeffe9f47cb4590654ff8c",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_196405_crash.png": "59e34fdba6eed7c24ead5f6c9078a9e94fe8c076c85e23019051d052f0d02bf6",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_192148_overview.png": "011a04d04e34dd3899a4e94af3ec2d0e6560361174bba3c732aedcad4af5c668",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_192148_crash.png": "c6e84205d85d75fd05b3b6ba0e2417173363adc5d3c43a683a5721af4d2e64ec",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_204261_overview.png": "6a5c29802be080069b0d72ae51b1a7285b3022b62a47a3f063e87829907ddbf9",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_204261_crash.png": "ef2cd7b434aa96ee3245c54c601d5a666f41d639c669e7b78494af8d9e9233d0",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_203563_overview.png": "9f794f6f22013fd82a855c50407df926bbeaa8bb3d916161268febff9fd0d3b5",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_203563_crash.png": "1579709d9bde8addfa94b6ee56e56a02a32b25d4d1d58b578ea3ff0c671f1cdc",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_202206_overview.png": "8b32b5ae043db132523903f37723f865288210b8d249ea5d5da6b2d4c2e04185",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_202206_crash.png": "8283dc3b995bf5df2009222a300cf5b5c07a3662e155f792e769de7ee56d0373",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_201978_overview.png": "2ec35167e005ad13d62864a77800df9817d8538ec580f4760386c8a3bff7743a",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_201978_crash.png": "7f46ccda6b4d807c67f8206b3d96e94e79320110993706bb5c480e78bf7ec3f7",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_196020_overview.png": "fd35b66bb8dab08c8032cdf367bd8cac787307621052101fe2fef50b47ebe8b3",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_196020_crash.png": "f16b5da22fce92ac0a70d479456fb9de70771ffebd21bb81a2e76fd6a0c8f6f0",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_192149_overview.png": "c30e5f523585568feb302ad5faaed4a28a7cedaffc13b2403dd7a608aaefa0af",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_192149_crash.png": "2eef8fcae23ea4014346dbb17392abd07abbdead96d1b123f469d2280a419223",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_191326_overview.png": "39fdeee6d4e03211d2dd799cb86ca6c4652904bcaed3c621ab5ed6e4adb51978",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_191326_crash.png": "55600f6823d923ddaa0044645504a4b0d7c5dbc749d5a2d00904e8fe058feb42",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_195064_overview.png": "684d4e3c8c8a300ed621ba38fe22838b4cb04d55d69d3d607700426259f2b8b9",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_195064_crash.png": "34d5590568b8da4176d8eb9c43d1b513062460699c73206b1a534058e0b8fdd1",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_193024_overview.png": "01c6d4f8b8b92f7129a956b79f432ae52cc3e0c66ca821e54bd8db42476dc443",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/gallery/shot_193024_crash.png": "24df63c59209fe8435874922467510bb29bd00a4ca0e5829116b6c538c496980"
+    }
+  }
+}

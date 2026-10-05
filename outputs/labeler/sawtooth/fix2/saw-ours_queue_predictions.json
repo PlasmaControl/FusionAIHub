@@ -1,0 +1,106 @@
+{
+  "model": "saw-ours",
+  "shots": [
+    185857,
+    185866,
+    186093,
+    186427,
+    187105,
+    187196,
+    187328,
+    189559,
+    190300,
+    192232,
+    193075,
+    195786,
+    198806,
+    200320,
+    204530
+  ],
+  "split": "fixed validation; excluded from fitting and selection",
+  "files": [
+    {
+      "shot": 185857,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/predictions/ensemble/saw-ours/185857.npz",
+      "picks": 15
+    },
+    {
+      "shot": 185866,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/predictions/ensemble/saw-ours/185866.npz",
+      "picks": 22
+    },
+    {
+      "shot": 186093,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/predictions/ensemble/saw-ours/186093.npz",
+      "picks": 56
+    },
+    {
+      "shot": 186427,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/predictions/ensemble/saw-ours/186427.npz",
+      "picks": 8
+    },
+    {
+      "shot": 187105,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/predictions/ensemble/saw-ours/187105.npz",
+      "picks": 82
+    },
+    {
+      "shot": 187196,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/predictions/ensemble/saw-ours/187196.npz",
+      "picks": 2
+    },
+    {
+      "shot": 187328,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/predictions/ensemble/saw-ours/187328.npz",
+      "picks": 9
+    },
+    {
+      "shot": 189559,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/predictions/ensemble/saw-ours/189559.npz",
+      "picks": 53
+    },
+    {
+      "shot": 190300,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/predictions/ensemble/saw-ours/190300.npz",
+      "picks": 21
+    },
+    {
+      "shot": 192232,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/predictions/ensemble/saw-ours/192232.npz",
+      "picks": 7
+    },
+    {
+      "shot": 193075,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/predictions/ensemble/saw-ours/193075.npz",
+      "picks": 37
+    },
+    {
+      "shot": 195786,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/predictions/ensemble/saw-ours/195786.npz",
+      "picks": 136
+    },
+    {
+      "shot": 198806,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/predictions/ensemble/saw-ours/198806.npz",
+      "picks": 33
+    },
+    {
+      "shot": 200320,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/predictions/ensemble/saw-ours/200320.npz",
+      "picks": 17
+    },
+    {
+      "shot": 204530,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/predictions/ensemble/saw-ours/204530.npz",
+      "picks": 63
+    }
+  ],
+  "crash_threshold": 0.9499999999999998,
+  "derivative_z": 0.0,
+  "presence_threshold": 0.5166666666666666,
+  "threshold_provenance": "means of frozen inner-selection thresholds",
+  "ensemble": "mean of three frozen fold probabilities",
+  "pick_support": "observable bins, including algorithm-uncertain bins",
+  "validation_status": "unvalidated algorithmic predictions for blind review",
+  "input_policy": "observable-only inputs; loss-only assessment; balanced crash-centred"
+}

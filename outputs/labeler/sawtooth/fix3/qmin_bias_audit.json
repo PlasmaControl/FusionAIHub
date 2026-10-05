@@ -1,0 +1,50 @@
+{
+  "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/shots",
+  "selection": "fixed TRAIN only; sole prior uncertainty qmin_conflict",
+  "prior_train_candidate_qmin": {
+    "n": 1233,
+    "quantile_levels": [
+      0,
+      0.05,
+      0.25,
+      0.5,
+      0.75,
+      0.95,
+      1
+    ],
+    "quantiles": [
+      1.0501567740130286,
+      1.061704071198308,
+      1.1211655557068276,
+      1.2176167194036198,
+      1.3142392526215483,
+      1.74090757956412,
+      5.289478014303262
+    ],
+    "mean": 1.2782239283169972,
+    "within_0p15_m_fraction": null
+  },
+  "efit01_conflict_threshold": 1.4,
+  "absence_threshold": 1.5,
+  "sustain_ms": 50.0,
+  "justification": "Magnetics-only EFIT01 does not constrain central current like MSE. Prior 1.05 conflict systematically flags ECE-supported trains near 1.1-1.3. A prescribed 1.4 conflict and sustained1.5 absence guard leave this bias band unresolved by equilibrium, while requiring clear high-q evidence; thresholds are not fitted to expert/test results.",
+  "shot_186532": {
+    "state_seconds": {
+      "present": 0,
+      "absent": 1.0868999742888017,
+      "uncertain": 4.77079988714419,
+      "unassessed": 0.2753999934852672
+    },
+    "reasons": {
+      "unobservable": 2754,
+      "incomplete_context": 7517,
+      "unresolved_core_noise": 56079,
+      "near_profile_candidate": 43436,
+      "periodic_core_relaxation": 24158,
+      "core_edge_ambiguous": 58577,
+      "core_relaxation_phase": 0,
+      "tested_absence": 10869,
+      "sustained_high_q_absence": 10869
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "shot": 185805,
+  "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/185805.h5",
+  "transport": "fdp://fdp-d3d-origin.nationalresearchplatform.org:8443/mdsip",
+  "expression": "\\ECE::TOP.SETUP.ECEZH",
+  "verified": true,
+  "expected_height_m": 0.004000000189989805,
+  "remote_height_m": 0.004000000189989805,
+  "elapsed_s": 0.3965542367659509
+}

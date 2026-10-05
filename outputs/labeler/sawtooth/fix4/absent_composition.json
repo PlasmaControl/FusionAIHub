@@ -1,0 +1,223 @@
+{
+  "definition": "previous absent class = ECE test or sustained EFIT01 q_min >= 1.5; current absent class = ECE quiet-core test only",
+  "previous_source": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw/outputs/labeler/sawtooth/fix3/data_summary.json",
+  "sample_period_s": 0.0001,
+  "before": {
+    "train": {
+      "absent_s": 422.318590009829,
+      "sustained_high_q_absence_s": 392.3719,
+      "high_q_fraction_of_absent": 0.9290898134294017,
+      "shots_with_absent_time": 377,
+      "shots_whose_absent_time_is_all_high_q": 314,
+      "state_seconds_from_summary": {
+        "present": 177.52909580045477,
+        "absent": 422.318590009829,
+        "uncertain": 1185.4503719575403,
+        "unassessed": 337.26029202192854
+      }
+    },
+    "val": {
+      "absent_s": 49.70489882420417,
+      "sustained_high_q_absence_s": 49.1377,
+      "high_q_fraction_of_absent": 0.988588673599151,
+      "shots_with_absent_time": 45,
+      "shots_whose_absent_time_is_all_high_q": 41,
+      "state_seconds_from_summary": {
+        "present": 25.720099391577364,
+        "absent": 49.70489882420417,
+        "uncertain": 139.7385966944091,
+        "unassessed": 49.66629882511728
+      }
+    },
+    "test": {
+      "absent_s": 53.261098740080335,
+      "sustained_high_q_absence_s": 51.96,
+      "high_q_fraction_of_absent": 0.9755713124426924,
+      "shots_with_absent_time": 47,
+      "shots_whose_absent_time_is_all_high_q": 40,
+      "state_seconds_from_summary": {
+        "present": 15.150499641606865,
+        "absent": 53.261098740080335,
+        "uncertain": 144.11079659098243,
+        "unassessed": 53.47359873505357
+      }
+    },
+    "population": {
+      "absent_s": 9756.89846920136,
+      "sustained_high_q_absence_s": 9224.1706,
+      "high_q_fraction_of_absent": 0.9453998756999501,
+      "shots_with_absent_time": 10266,
+      "shots_whose_absent_time_is_all_high_q": 8704,
+      "state_seconds_from_summary": {
+        "present": 5595.259467641143,
+        "absent": 9756.89846920136,
+        "uncertain": 29952.76559145474,
+        "unassessed": 36860.056828056535
+      }
+    }
+  },
+  "after": {
+    "train": {
+      "tested_absent_s": 80.41319809778298,
+      "q_prior_only_s": 288.27949318059507,
+      "tested_absent_with_high_q_s": 48.8771,
+      "tested_absent_without_high_q_s": 31.5361,
+      "tested_fraction_of_former_absent_class": 0.21810358599451524,
+      "q_prior_only_fraction_of_former_absent_class": 0.7818964140054848,
+      "shots_with_tested_absence": 166,
+      "shots_with_q_prior_only": 372,
+      "shots": 390,
+      "tested_absent_fraction_of_observable": 0.05432883453173834,
+      "q_prior_only_fraction_of_observable": 0.19476764081509332
+    },
+    "val": {
+      "tested_absent_s": 5.3100998743867605,
+      "q_prior_only_s": 40.05639905244456,
+      "tested_absent_with_high_q_s": 3.9132,
+      "tested_absent_without_high_q_s": 1.3969,
+      "tested_fraction_of_former_absent_class": 0.11704892376533343,
+      "q_prior_only_fraction_of_former_absent_class": 0.8829510762346666,
+      "shots_with_tested_absence": 16,
+      "shots_with_q_prior_only": 45,
+      "shots": 48,
+      "tested_absent_fraction_of_observable": 0.030189496640842153,
+      "q_prior_only_fraction_of_observable": 0.22773253860458934
+    },
+    "test": {
+      "tested_absent_s": 10.086699761393747,
+      "q_prior_only_s": 39.60009906323858,
+      "tested_absent_with_high_q_s": 7.328,
+      "tested_absent_without_high_q_s": 2.7587,
+      "tested_fraction_of_former_absent_class": 0.20300562724908827,
+      "q_prior_only_fraction_of_former_absent_class": 0.7969943727509118,
+      "shots_with_tested_absence": 18,
+      "shots_with_q_prior_only": 47,
+      "shots": 49,
+      "tested_absent_fraction_of_observable": 0.05595425449708183,
+      "q_prior_only_fraction_of_observable": 0.2196748266043295
+    },
+    "population": {
+      "tested_absent_s": 1577.906062673795,
+      "q_prior_only_s": 7104.607331941119,
+      "tested_absent_with_high_q_s": 956.1985,
+      "tested_absent_without_high_q_s": 624.7334,
+      "tested_fraction_of_former_absent_class": 0.18173378962506953,
+      "q_prior_only_fraction_of_former_absent_class": 0.8182662103749304,
+      "shots_with_tested_absence": 3866,
+      "shots_with_q_prior_only": 10113,
+      "shots": 13319,
+      "tested_absent_fraction_of_observable": 0.04086861744461533,
+      "q_prior_only_fraction_of_observable": 0.18401315896543124
+    }
+  },
+  "guards": {
+    "train": {
+      "unit": "seconds of core-observable time",
+      "seconds": {
+        "core_observable_samples": 1856.0011,
+        "removed_by_reference_density_guard": 61.5281,
+        "removed_by_density_guard": 88.7836,
+        "removed_by_ece_validity": 280.0694,
+        "observable_samples_after_guards": 1487.1481
+      },
+      "fraction_of_core_observable": {
+        "core_observable_samples": 1.0,
+        "removed_by_reference_density_guard": 0.03315089630065413,
+        "removed_by_density_guard": 0.04783596302825467,
+        "removed_by_ece_validity": 0.15089937177300164,
+        "observable_samples_after_guards": 0.8012646651987437
+      },
+      "shots": 388,
+      "ece_validity_shot_fraction_quantiles_0_25_50_75_100": [
+        0.0,
+        0.0,
+        0.05694868826638492,
+        0.22605548737140188,
+        0.9653147901399067
+      ],
+      "shots_with_ece_validity_above_20_percent": 108,
+      "shots_with_ece_validity_above_90_percent": 2
+    },
+    "val": {
+      "unit": "seconds of core-observable time",
+      "seconds": {
+        "core_observable_samples": 228.8265,
+        "removed_by_reference_density_guard": 12.9502,
+        "removed_by_density_guard": 18.3971,
+        "removed_by_ece_validity": 33.7062,
+        "observable_samples_after_guards": 176.7232
+      },
+      "fraction_of_core_observable": {
+        "core_observable_samples": 1.0,
+        "removed_by_reference_density_guard": 0.05659396966697476,
+        "removed_by_density_guard": 0.08039759381015747,
+        "removed_by_ece_validity": 0.14730024713046785,
+        "observable_samples_after_guards": 0.7723021590593747
+      },
+      "shots": 47,
+      "ece_validity_shot_fraction_quantiles_0_25_50_75_100": [
+        0.0,
+        0.0,
+        0.09946166394779772,
+        0.2664480973596215,
+        0.6297684786463347
+      ],
+      "shots_with_ece_validity_above_20_percent": 16,
+      "shots_with_ece_validity_above_90_percent": 0
+    },
+    "test": {
+      "unit": "seconds of core-observable time",
+      "seconds": {
+        "core_observable_samples": 223.3933,
+        "removed_by_reference_density_guard": 10.2567,
+        "removed_by_density_guard": 16.4471,
+        "removed_by_ece_validity": 26.0611,
+        "observable_samples_after_guards": 180.8851
+      },
+      "fraction_of_core_observable": {
+        "core_observable_samples": 1.0,
+        "removed_by_reference_density_guard": 0.04591319435274021,
+        "removed_by_density_guard": 0.07362396275985,
+        "removed_by_ece_validity": 0.11666016841149668,
+        "observable_samples_after_guards": 0.8097158688286533
+      },
+      "shots": 47,
+      "ece_validity_shot_fraction_quantiles_0_25_50_75_100": [
+        0.0,
+        0.0,
+        0.027628067605044215,
+        0.13697041391280038,
+        0.6538598214845628
+      ],
+      "shots_with_ece_validity_above_20_percent": 8,
+      "shots_with_ece_validity_above_90_percent": 0
+    },
+    "population": {
+      "unit": "seconds of core-observable time",
+      "seconds": {
+        "core_observable_samples": 46515.7055,
+        "removed_by_reference_density_guard": 1017.5355,
+        "removed_by_density_guard": 1529.672,
+        "removed_by_ece_validity": 6208.9197,
+        "observable_samples_after_guards": 38777.1138
+      },
+      "fraction_of_core_observable": {
+        "core_observable_samples": 1.0,
+        "removed_by_reference_density_guard": 0.02187509549865905,
+        "removed_by_density_guard": 0.03288506502389822,
+        "removed_by_ece_validity": 0.1334800715857142,
+        "observable_samples_after_guards": 0.8336348633903876
+      },
+      "shots": 10857,
+      "ece_validity_shot_fraction_quantiles_0_25_50_75_100": [
+        0.0,
+        0.0,
+        0.02613809627532128,
+        0.17104127295210098,
+        1.0
+      ],
+      "shots_with_ece_validity_above_20_percent": 2428,
+      "shots_with_ece_validity_above_90_percent": 58
+    }
+  }
+}

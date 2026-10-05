@@ -1,0 +1,452 @@
+{
+  "model": "saw-hl3",
+  "shots": [
+    185857,
+    185866,
+    186013,
+    186093,
+    186427,
+    186636,
+    186945,
+    187076,
+    187105,
+    187196,
+    187328,
+    189044,
+    189061,
+    189324,
+    189559,
+    190300,
+    190335,
+    190637,
+    190991,
+    192003,
+    192226,
+    192232,
+    192425,
+    192732,
+    192914,
+    193075,
+    193276,
+    194445,
+    194600,
+    195066,
+    195646,
+    195786,
+    196332,
+    196541,
+    198806,
+    199087,
+    199909,
+    199921,
+    200198,
+    200320,
+    200385,
+    200427,
+    200954,
+    201270,
+    201395,
+    201447,
+    201973,
+    203041,
+    203778,
+    204530
+  ],
+  "requested_shot_ids": [
+    185857,
+    185866,
+    186013,
+    186093,
+    186427,
+    186636,
+    186945,
+    187076,
+    187105,
+    187196,
+    187328,
+    189044,
+    189061,
+    189324,
+    189559,
+    190300,
+    190335,
+    190637,
+    190991,
+    192003,
+    192226,
+    192232,
+    192425,
+    192732,
+    192914,
+    193075,
+    193276,
+    194445,
+    194600,
+    195066,
+    195646,
+    195786,
+    196332,
+    196541,
+    198806,
+    199087,
+    199909,
+    199921,
+    200198,
+    200320,
+    200385,
+    200427,
+    200954,
+    201270,
+    201395,
+    201447,
+    201973,
+    203041,
+    203778,
+    204530
+  ],
+  "supported_shot_ids": [
+    185857,
+    185866,
+    186013,
+    186093,
+    186427,
+    186636,
+    186945,
+    187076,
+    187105,
+    187196,
+    187328,
+    189044,
+    189061,
+    189324,
+    189559,
+    190300,
+    190335,
+    190637,
+    190991,
+    192003,
+    192226,
+    192232,
+    192425,
+    192732,
+    192914,
+    193075,
+    193276,
+    194445,
+    195066,
+    195646,
+    196332,
+    196541,
+    198806,
+    199087,
+    199909,
+    199921,
+    200198,
+    200320,
+    200385,
+    200427,
+    200954,
+    201270,
+    201395,
+    201447,
+    201973,
+    203041,
+    203778,
+    204530
+  ],
+  "requested_shots": 50,
+  "supported_shots": 48,
+  "scored_shots": null,
+  "scoring_status": "inference export; outcomes scored in benchmark.json",
+  "unavailable": [
+    {
+      "shot": 194600,
+      "status": "unavailable",
+      "outcome_status": "unknown",
+      "exclusion_reason": "ValueError: insufficient physically plausible ECE core channels",
+      "error_kind": "unsupported_physical_core",
+      "source_record": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/shots/194600.json",
+      "observable_bins": 0,
+      "assessed_bins": 0,
+      "unassessed_bins": 0,
+      "uncertain_bins": 0,
+      "observable_picks": null,
+      "assessed_picks": null,
+      "excluded_picks": null,
+      "presence": null,
+      "presence_cells": null,
+      "crash_tolerance_1ms": null,
+      "crash_tolerance_2ms": null
+    },
+    {
+      "shot": 195786,
+      "status": "unavailable",
+      "outcome_status": "unknown",
+      "exclusion_reason": "ValueError: insufficient physically plausible ECE core channels",
+      "error_kind": "unsupported_physical_core",
+      "source_record": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/shots/195786.json",
+      "observable_bins": 0,
+      "assessed_bins": 0,
+      "unassessed_bins": 0,
+      "uncertain_bins": 0,
+      "observable_picks": null,
+      "assessed_picks": null,
+      "excluded_picks": null,
+      "presence": null,
+      "presence_cells": null,
+      "crash_tolerance_1ms": null,
+      "crash_tolerance_2ms": null
+    }
+  ],
+  "split": "fixed validation; excluded from fitting and selection",
+  "files": [
+    {
+      "shot": 185857,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/185857.npz",
+      "picks": 53
+    },
+    {
+      "shot": 185866,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/185866.npz",
+      "picks": 16
+    },
+    {
+      "shot": 186013,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/186013.npz",
+      "picks": 12
+    },
+    {
+      "shot": 186093,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/186093.npz",
+      "picks": 141
+    },
+    {
+      "shot": 186427,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/186427.npz",
+      "picks": 0
+    },
+    {
+      "shot": 186636,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/186636.npz",
+      "picks": 122
+    },
+    {
+      "shot": 186945,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/186945.npz",
+      "picks": 54
+    },
+    {
+      "shot": 187076,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/187076.npz",
+      "picks": 12
+    },
+    {
+      "shot": 187105,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/187105.npz",
+      "picks": 82
+    },
+    {
+      "shot": 187196,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/187196.npz",
+      "picks": 18
+    },
+    {
+      "shot": 187328,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/187328.npz",
+      "picks": 7
+    },
+    {
+      "shot": 189044,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/189044.npz",
+      "picks": 71
+    },
+    {
+      "shot": 189061,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/189061.npz",
+      "picks": 149
+    },
+    {
+      "shot": 189324,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/189324.npz",
+      "picks": 79
+    },
+    {
+      "shot": 189559,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/189559.npz",
+      "picks": 94
+    },
+    {
+      "shot": 190300,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/190300.npz",
+      "picks": 39
+    },
+    {
+      "shot": 190335,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/190335.npz",
+      "picks": 19
+    },
+    {
+      "shot": 190637,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/190637.npz",
+      "picks": 5
+    },
+    {
+      "shot": 190991,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/190991.npz",
+      "picks": 24
+    },
+    {
+      "shot": 192003,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/192003.npz",
+      "picks": 28
+    },
+    {
+      "shot": 192226,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/192226.npz",
+      "picks": 125
+    },
+    {
+      "shot": 192232,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/192232.npz",
+      "picks": 188
+    },
+    {
+      "shot": 192425,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/192425.npz",
+      "picks": 63
+    },
+    {
+      "shot": 192732,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/192732.npz",
+      "picks": 16
+    },
+    {
+      "shot": 192914,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/192914.npz",
+      "picks": 124
+    },
+    {
+      "shot": 193075,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/193075.npz",
+      "picks": 70
+    },
+    {
+      "shot": 193276,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/193276.npz",
+      "picks": 29
+    },
+    {
+      "shot": 194445,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/194445.npz",
+      "picks": 13
+    },
+    {
+      "shot": 195066,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/195066.npz",
+      "picks": 41
+    },
+    {
+      "shot": 195646,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/195646.npz",
+      "picks": 8
+    },
+    {
+      "shot": 196332,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/196332.npz",
+      "picks": 27
+    },
+    {
+      "shot": 196541,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/196541.npz",
+      "picks": 37
+    },
+    {
+      "shot": 198806,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/198806.npz",
+      "picks": 76
+    },
+    {
+      "shot": 199087,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/199087.npz",
+      "picks": 62
+    },
+    {
+      "shot": 199909,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/199909.npz",
+      "picks": 96
+    },
+    {
+      "shot": 199921,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/199921.npz",
+      "picks": 57
+    },
+    {
+      "shot": 200198,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/200198.npz",
+      "picks": 35
+    },
+    {
+      "shot": 200320,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/200320.npz",
+      "picks": 101
+    },
+    {
+      "shot": 200385,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/200385.npz",
+      "picks": 1
+    },
+    {
+      "shot": 200427,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/200427.npz",
+      "picks": 50
+    },
+    {
+      "shot": 200954,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/200954.npz",
+      "picks": 116
+    },
+    {
+      "shot": 201270,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/201270.npz",
+      "picks": 46
+    },
+    {
+      "shot": 201395,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/201395.npz",
+      "picks": 50
+    },
+    {
+      "shot": 201447,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/201447.npz",
+      "picks": 1
+    },
+    {
+      "shot": 201973,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/201973.npz",
+      "picks": 5
+    },
+    {
+      "shot": 203041,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/203041.npz",
+      "picks": 53
+    },
+    {
+      "shot": 203778,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/203778.npz",
+      "picks": 105
+    },
+    {
+      "shot": 204530,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/predictions/ensemble/saw-hl3/204530.npz",
+      "picks": 85
+    }
+  ],
+  "crash_threshold": 0.2333333333333333,
+  "derivative_z": 9.0,
+  "presence_threshold": 0.25000000000000006,
+  "threshold_provenance": "means of frozen inner-selection thresholds",
+  "ensemble": "mean of three frozen fold probabilities",
+  "pick_support": "observable bins, including algorithm-uncertain bins",
+  "validation_status": "unvalidated algorithmic predictions for blind review",
+  "input_policy": "observable-only inputs; loss-only assessment; balanced crash-centred; axis-selected single-channel timing with complete filter support; geometry outer rho .4-.65; negatives only from ECE-tested absence"
+}

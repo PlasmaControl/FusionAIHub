@@ -1,0 +1,497 @@
+{
+  "by_shot": [
+    {
+      "shot": 190602,
+      "corpus": "/scratch/gpfs/EKOLEMEN/foundation_model/190602_processed.h5",
+      "native_shape": [
+        48,
+        3096576
+      ],
+      "native_clock_start_s": -0.05000000074505806,
+      "native_clock_median_dt_s": 1.9073486328125e-06,
+      "window_s": [
+        0.006,
+        8.4
+      ],
+      "cached_legacy_equal_native_clipped_rerun": true,
+      "cached_legacy_count": 62,
+      "rerun_legacy_count": 62,
+      "whole_record_old_count_in_window": 65,
+      "whole_record_vs_clipped_cells_2ms": [
+        62.0,
+        3.0,
+        0.0
+      ],
+      "whole_record_vs_clipped_signed_offset_ms": {
+        "n": 62,
+        "median": -7.972120741328581e-07,
+        "p25": -7.972120741328581e-07,
+        "p75": -7.972120741328581e-07
+      },
+      "cached_clock_equals_exact_native_sample_clock": true,
+      "picker_clock_contract": {
+        "envelope_first_center_s": 0.006500000052154065,
+        "expected_first_center_s": 0.006500000052154065,
+        "bin_drop_i_event_time": "te[i+1]; first bin after negative step",
+        "time_mapping_error_ms": 4.3368086899420177e-16,
+        "raw_candidate_count": 2731,
+        "greedy_retained_candidate_count": 418,
+        "inversion_accepted_count": 62,
+        "expected_quantization_lag_ms": [
+          0,
+          1
+        ]
+      },
+      "production_event_store": {
+        "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/events/190602_events.parquet",
+        "error": "FileNotFoundError: [Errno 2] No such file or directory: '/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/events/190602_events.parquet'"
+      }
+    },
+    {
+      "shot": 190604,
+      "corpus": "/scratch/gpfs/EKOLEMEN/foundation_model/190604_processed.h5",
+      "native_shape": [
+        48,
+        3096576
+      ],
+      "native_clock_start_s": -0.05000000074505806,
+      "native_clock_median_dt_s": 1.9073486328125e-06,
+      "window_s": [
+        0.006,
+        9.025
+      ],
+      "cached_legacy_equal_native_clipped_rerun": true,
+      "cached_legacy_count": 50,
+      "rerun_legacy_count": 50,
+      "whole_record_old_count_in_window": 51,
+      "whole_record_vs_clipped_cells_2ms": [
+        49.0,
+        2.0,
+        1.0
+      ],
+      "whole_record_vs_clipped_signed_offset_ms": {
+        "n": 50,
+        "median": -7.972120741328581e-07,
+        "p25": -7.972120741328581e-07,
+        "p75": -7.972120741328581e-07
+      },
+      "cached_clock_equals_exact_native_sample_clock": true,
+      "picker_clock_contract": {
+        "envelope_first_center_s": 0.006500000052154065,
+        "expected_first_center_s": 0.006500000052154065,
+        "bin_drop_i_event_time": "te[i+1]; first bin after negative step",
+        "time_mapping_error_ms": 4.3368086899420177e-16,
+        "raw_candidate_count": 2775,
+        "greedy_retained_candidate_count": 404,
+        "inversion_accepted_count": 50,
+        "expected_quantization_lag_ms": [
+          0,
+          1
+        ]
+      },
+      "production_event_store": {
+        "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/events/190604_events.parquet",
+        "error": "FileNotFoundError: [Errno 2] No such file or directory: '/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/events/190604_events.parquet'"
+      }
+    },
+    {
+      "shot": 192090,
+      "corpus": "/scratch/gpfs/EKOLEMEN/foundation_model/192090_processed.h5",
+      "native_shape": [
+        48,
+        3096576
+      ],
+      "native_clock_start_s": -0.05000000074505806,
+      "native_clock_median_dt_s": 1.9073486328125e-06,
+      "window_s": [
+        0.006,
+        6.883
+      ],
+      "cached_legacy_equal_native_clipped_rerun": true,
+      "cached_legacy_count": 86,
+      "rerun_legacy_count": 86,
+      "whole_record_old_count_in_window": 86,
+      "whole_record_vs_clipped_cells_2ms": [
+        83.0,
+        3.0,
+        3.0
+      ],
+      "whole_record_vs_clipped_signed_offset_ms": {
+        "n": 86,
+        "median": -7.972120741328581e-07,
+        "p25": -7.972120741328581e-07,
+        "p75": -7.972120741328581e-07
+      },
+      "cached_clock_equals_exact_native_sample_clock": true,
+      "picker_clock_contract": {
+        "envelope_first_center_s": 0.006500000052154065,
+        "expected_first_center_s": 0.006500000052154065,
+        "bin_drop_i_event_time": "te[i+1]; first bin after negative step",
+        "time_mapping_error_ms": 4.3368086899420177e-16,
+        "raw_candidate_count": 3145,
+        "greedy_retained_candidate_count": 443,
+        "inversion_accepted_count": 86,
+        "expected_quantization_lag_ms": [
+          0,
+          1
+        ]
+      },
+      "production_event_store": {
+        "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/events/192090_events.parquet",
+        "rows": 53,
+        "columns": [
+          "shot",
+          "event_id",
+          "source",
+          "evidence_kind",
+          "phenomenon",
+          "t0_s",
+          "t1_s",
+          "f0_khz",
+          "f1_khz",
+          "confidence",
+          "horizon_s",
+          "diag",
+          "channel",
+          "pass_name",
+          "attrs",
+          "t_cov0_s",
+          "t_cov1_s",
+          "run_id",
+          "git_sha",
+          "written_at"
+        ],
+        "attrs_samples": [
+          {
+            "coverage_intervals": [
+              [
+                -0.05000000074505806,
+                6.143147945404053
+              ]
+            ],
+            "coverage_min_gap_s": 0.008,
+            "detector": "v3",
+            "fall": 0.11103761265657708,
+            "inversion_channel_lo": 22,
+            "inversion_channel_stop": 35,
+            "pulse_channel_lo": 37,
+            "pulse_channel_stop": 40,
+            "z_min": -25.31113631436733
+          },
+          {
+            "coverage_intervals": [
+              [
+                -0.05000000074505806,
+                6.143147945404053
+              ]
+            ],
+            "coverage_min_gap_s": 0.008,
+            "detector": "v3",
+            "fall": 0.13050757809627048,
+            "inversion_channel_lo": 20,
+            "inversion_channel_stop": 36,
+            "pulse_channel_lo": 37,
+            "pulse_channel_stop": 40,
+            "z_min": -24.735454806483173
+          },
+          {
+            "coverage_intervals": [
+              [
+                -0.05000000074505806,
+                6.143147945404053
+              ]
+            ],
+            "coverage_min_gap_s": 0.008,
+            "detector": "v3",
+            "fall": 0.14401326658386546,
+            "inversion_channel_lo": 20,
+            "inversion_channel_stop": 37,
+            "pulse_channel_lo": 6,
+            "pulse_channel_stop": 17,
+            "z_min": -23.14768853639728
+          }
+        ],
+        "detector_counts": {
+          "v3": 53
+        },
+        "diagnostic_counts": {
+          "ece": 42,
+          "sxr": 11
+        },
+        "t0_s": [
+          1.324499999254942,
+          1.368499999254942,
+          1.409499999254942,
+          1.478499999254942,
+          1.534499999254942,
+          1.576499999254942,
+          1.624499999254942,
+          1.666499999254942,
+          1.712499999254942,
+          1.756499999254942,
+          1.803499999254942,
+          1.844499999254942,
+          1.882499999254942,
+          1.935499999254942,
+          2.022499999254942,
+          2.186499999254942,
+          2.266499999254942,
+          2.341499999254942,
+          2.350499999254942,
+          2.386499999254942,
+          2.420499999254942,
+          2.470499999254942,
+          2.515499999254942,
+          2.553499999254942,
+          2.594499999254942,
+          3.293499999254942,
+          3.513499999254942,
+          3.609499999254942,
+          3.724499999254942,
+          3.813499999254942,
+          3.893499999254942,
+          3.940499999254942,
+          3.946499999254942,
+          4.021499999254942,
+          4.073499999254942,
+          4.115499999254942,
+          4.222499999254942,
+          4.273499999254942,
+          5.130499999254942,
+          5.589499999254942,
+          5.645499999254942,
+          5.720499999254942,
+          5.778499999254942,
+          5.828499999254942,
+          5.860499999254942,
+          5.891499999254942,
+          5.930499999254942,
+          5.974499999254942,
+          6.008499999254942,
+          6.034499999254942,
+          6.066499999254942,
+          6.102499999254942,
+          6.201499999254942
+        ],
+        "comparison_window_s": [
+          0.006,
+          6.883
+        ],
+        "stored_points_in_comparison_window": 53,
+        "diagnostic_counts_in_comparison_window": {
+          "ece": 42,
+          "sxr": 11
+        },
+        "stored_vs_full_legacy_cells_2ms": [
+          6.0,
+          47.0,
+          80.0
+        ],
+        "stored_vs_full_legacy_cells_2ms_by_diagnostic": {
+          "ece": [
+            4.0,
+            38.0,
+            82.0
+          ],
+          "sxr": [
+            2.0,
+            9.0,
+            84.0
+          ]
+        }
+      }
+    },
+    {
+      "shot": 201948,
+      "corpus": "/scratch/gpfs/EKOLEMEN/foundation_model/201948_processed.h5",
+      "native_shape": [
+        48,
+        3096576
+      ],
+      "native_clock_start_s": -0.05000000074505806,
+      "native_clock_median_dt_s": 1.9073486328125e-06,
+      "window_s": [
+        0.01,
+        6.389
+      ],
+      "cached_legacy_equal_native_clipped_rerun": true,
+      "cached_legacy_count": 42,
+      "rerun_legacy_count": 42,
+      "whole_record_old_count_in_window": 42,
+      "whole_record_vs_clipped_cells_2ms": [
+        41.0,
+        1.0,
+        1.0
+      ],
+      "whole_record_vs_clipped_signed_offset_ms": {
+        "n": 42,
+        "median": -0.0020010024309458085,
+        "p25": -0.002001002431306631,
+        "p75": -0.002001002430862542
+      },
+      "cached_clock_equals_exact_native_sample_clock": true,
+      "picker_clock_contract": {
+        "envelope_first_center_s": 0.010502000257372857,
+        "expected_first_center_s": 0.010502000257372857,
+        "bin_drop_i_event_time": "te[i+1]; first bin after negative step",
+        "time_mapping_error_ms": 4.3368086899420177e-16,
+        "raw_candidate_count": 2340,
+        "greedy_retained_candidate_count": 404,
+        "inversion_accepted_count": 42,
+        "expected_quantization_lag_ms": [
+          0,
+          1
+        ]
+      },
+      "production_event_store": {
+        "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/events/201948_events.parquet",
+        "error": "FileNotFoundError: [Errno 2] No such file or directory: '/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/events/201948_events.parquet'"
+      }
+    },
+    {
+      "shot": 192154,
+      "corpus": "/scratch/gpfs/EKOLEMEN/foundation_model/192154_processed.h5",
+      "native_shape": [
+        48,
+        3096576
+      ],
+      "native_clock_start_s": -0.05000000074505806,
+      "native_clock_median_dt_s": 1.9073486328125e-06,
+      "window_s": [
+        0.007,
+        5.835
+      ],
+      "cached_legacy_equal_native_clipped_rerun": true,
+      "cached_legacy_count": 52,
+      "rerun_legacy_count": 52,
+      "whole_record_old_count_in_window": 53,
+      "whole_record_vs_clipped_cells_2ms": [
+        47.0,
+        6.0,
+        5.0
+      ],
+      "whole_record_vs_clipped_signed_offset_ms": {
+        "n": 52,
+        "median": -9.611249573993064e-07,
+        "p25": -9.611249573993064e-07,
+        "p75": -9.611245133100965e-07
+      },
+      "cached_clock_equals_exact_native_sample_clock": true,
+      "picker_clock_contract": {
+        "envelope_first_center_s": 0.007500000216066838,
+        "expected_first_center_s": 0.007500000216066838,
+        "bin_drop_i_event_time": "te[i+1]; first bin after negative step",
+        "time_mapping_error_ms": 4.3368086899420177e-16,
+        "raw_candidate_count": 3791,
+        "greedy_retained_candidate_count": 437,
+        "inversion_accepted_count": 52,
+        "expected_quantization_lag_ms": [
+          0,
+          1
+        ]
+      },
+      "production_event_store": {
+        "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/events/192154_events.parquet",
+        "error": "FileNotFoundError: [Errno 2] No such file or directory: '/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/events/192154_events.parquet'"
+      }
+    },
+    {
+      "shot": 191384,
+      "corpus": "/scratch/gpfs/EKOLEMEN/foundation_model/191384_processed.h5",
+      "native_shape": [
+        48,
+        3096576
+      ],
+      "native_clock_start_s": -0.05000000074505806,
+      "native_clock_median_dt_s": 1.9073486328125e-06,
+      "window_s": [
+        0.007,
+        5.604
+      ],
+      "cached_legacy_equal_native_clipped_rerun": true,
+      "cached_legacy_count": 164,
+      "rerun_legacy_count": 164,
+      "whole_record_old_count_in_window": 164,
+      "whole_record_vs_clipped_cells_2ms": [
+        152.0,
+        12.0,
+        12.0
+      ],
+      "whole_record_vs_clipped_signed_offset_ms": {
+        "n": 164,
+        "median": -9.611249573993064e-07,
+        "p25": -9.611249573993064e-07,
+        "p75": -9.611246798435502e-07
+      },
+      "cached_clock_equals_exact_native_sample_clock": true,
+      "picker_clock_contract": {
+        "envelope_first_center_s": 0.007500000216066838,
+        "expected_first_center_s": 0.007500000216066838,
+        "bin_drop_i_event_time": "te[i+1]; first bin after negative step",
+        "time_mapping_error_ms": 4.3368086899420177e-16,
+        "raw_candidate_count": 4128,
+        "greedy_retained_candidate_count": 421,
+        "inversion_accepted_count": 164,
+        "expected_quantization_lag_ms": [
+          0,
+          1
+        ]
+      },
+      "production_event_store": {
+        "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/events/191384_events.parquet",
+        "error": "FileNotFoundError: [Errno 2] No such file or directory: '/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/events/191384_events.parquet'"
+      }
+    },
+    {
+      "shot": 203349,
+      "corpus": "/scratch/gpfs/EKOLEMEN/foundation_model/203349_processed.h5",
+      "native_shape": [
+        48,
+        3096576
+      ],
+      "native_clock_start_s": -0.05000000074505806,
+      "native_clock_median_dt_s": 1.9073486328125e-06,
+      "window_s": [
+        0.008,
+        6.726
+      ],
+      "cached_legacy_equal_native_clipped_rerun": true,
+      "cached_legacy_count": 101,
+      "rerun_legacy_count": 101,
+      "whole_record_old_count_in_window": 103,
+      "whole_record_vs_clipped_cells_2ms": [
+        99.0,
+        4.0,
+        2.0
+      ],
+      "whole_record_vs_clipped_signed_offset_ms": {
+        "n": 101,
+        "median": -1.1250377296434522e-06,
+        "p25": -1.1250378406657546e-06,
+        "p75": -1.1250373965765448e-06
+      },
+      "cached_clock_equals_exact_native_sample_clock": true,
+      "picker_clock_contract": {
+        "envelope_first_center_s": 0.008500000379979611,
+        "expected_first_center_s": 0.008500000379979611,
+        "bin_drop_i_event_time": "te[i+1]; first bin after negative step",
+        "time_mapping_error_ms": 4.3368086899420177e-16,
+        "raw_candidate_count": 2128,
+        "greedy_retained_candidate_count": 397,
+        "inversion_accepted_count": 101,
+        "expected_quantization_lag_ms": [
+          0,
+          1
+        ]
+      },
+      "production_event_store": {
+        "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/events/203349_events.parquet",
+        "error": "FileNotFoundError: [Errno 2] No such file or directory: '/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/events/203349_events.parquet'"
+      }
+    }
+  ],
+  "legacy_method": "sawtooth_events ECE rule; retained unchanged defaults",
+  "current_pipeline_method": "sawtooth_block now uses sawtooth_crashes and sawtooth_events_v3 over ECE/SXR since 2026-09-30; the retained legacy cache audits the preceding omnimode-style ECE rule, not the current pipeline",
+  "cache_reader_conclusion": "No cached reader or clock defect found",
+  "picker_time_contract": "Original envelope time is first post-step 1ms bin center; this can explain up to 1ms lag, not a fixed +/-10ms offset. Greedy candidate spacing is 10ms, applied before inversion."
+}

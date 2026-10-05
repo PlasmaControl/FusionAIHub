@@ -1,0 +1,753 @@
+{
+  "purpose": "frozen rule on the published DIII-D crash references; no tuning",
+  "published": {
+    "period_ms": [
+      85.0,
+      5.0
+    ],
+    "amplitude": [
+      0.35,
+      0.02
+    ],
+    "windows_s": [
+      [
+        2.7,
+        3.0
+      ],
+      [
+        4.55,
+        4.8
+      ]
+    ],
+    "known_crash_s": {
+      "141182": 2.8371
+    },
+    "source": ".tmp/label_papers/Muscatello_ST.md"
+  },
+  "rule": {
+    "sigma_ms": 0.25,
+    "frame_ms": 10.3,
+    "posr_threshold": 6.0,
+    "coincidence_ms": 0.5,
+    "minimum_channels": 2,
+    "significance": 0.02,
+    "maximum_net": 0.9,
+    "minimum_block": 2,
+    "pulse_reach": 6,
+    "minimum_period_ms": 20.0,
+    "maximum_period_ms": 250.0,
+    "period_ratio": 2.5,
+    "minimum_train": 3,
+    "qmin_margin": 0.4,
+    "qmin_absence": 1.5,
+    "qmin_sustain_ms": 50.0,
+    "relaxation_minimum_period_ms": 10.0,
+    "relaxation_minimum_edges": 6,
+    "periodicity_null_replicates": 199,
+    "periodicity_null_alpha": 0.05,
+    "radius_tolerance": 0.15,
+    "central_relative_drop": 0.05,
+    "te_floor_kev": 0.5,
+    "inversion_spread_channels": 2.0,
+    "minimum_ip_ma": 0.3,
+    "neutron_relative_drop": 0.02,
+    "neutron_noise_k": 3.0,
+    "minimum_nbi_power_w": 100000.0,
+    "maximum_channel_to_core": 1.5,
+    "mirnov_burst_z": 6.0,
+    "dalpha_burst_z": 6.0,
+    "ece_validity_smooth_ms": 5.0,
+    "ece_validity_sustain_ms": 20.0,
+    "ece_step_ratio": 2.0,
+    "ece_step_max_rho": 0.7,
+    "ece_axis_to_max": 0.6,
+    "ece_axis_max_distance_m": 0.1,
+    "quiet_core_max_rho": 0.5,
+    "isolated_edge_context_ms": 5.15
+  },
+  "match_tolerance_s": 0.002,
+  "by_shot": [
+    {
+      "shot": 141182,
+      "central_channel": 23,
+      "calibration": {
+        "2.7-3.0": {
+          "median_te_kev_by_ecevs": {
+            "14": 2.747233953359053,
+            "15": 2.9284827663629516,
+            "16": 3.008037002734656,
+            "17": 8.114853994141507,
+            "18": 8.334419620824171
+          },
+          "ecevs17_over_ecevs15": 2.7710096461382983,
+          "central_channel_median_te_kev": 9.596439703700124
+        },
+        "4.55-4.8": {
+          "median_te_kev_by_ecevs": {
+            "14": 2.597536117689626,
+            "15": 2.751080239901598,
+            "16": 2.901368649199033,
+            "17": 7.759850641167361,
+            "18": 8.135019591058143
+          },
+          "ecevs17_over_ecevs15": 2.8206558749609276,
+          "central_channel_median_te_kev": 9.066912918034575
+        }
+      },
+      "derivative_picker": {
+        "windows": [
+          {
+            "window_s": [
+              2.7,
+              3.0
+            ],
+            "crash_times_s": [
+              2.745401999933849,
+              2.837201999931678,
+              2.9296019999294933
+            ],
+            "crashes_found": 3,
+            "crashes_expected_range": [
+              3,
+              4
+            ],
+            "count_within_expected": true,
+            "median_period_ms": 92.09999999782225,
+            "period_pass": false,
+            "median_amplitude": 0.35528096580816065,
+            "amplitude_pass": true
+          },
+          {
+            "window_s": [
+              4.55,
+              4.8
+            ],
+            "crash_times_s": [
+              4.571501999890668,
+              4.657501999888634,
+              4.747301999886511
+            ],
+            "crashes_found": 3,
+            "crashes_expected_range": [
+              2,
+              4
+            ],
+            "count_within_expected": true,
+            "median_period_ms": 87.89999999792153,
+            "period_pass": true,
+            "median_amplitude": 0.3799568347365622,
+            "amplitude_pass": false
+          }
+        ],
+        "crash_times_s": [
+          2.052201999950241,
+          2.148001999947976,
+          2.2495019999455756,
+          2.335201999943549,
+          2.398801999942045,
+          2.491401999939855,
+          2.557101999938302,
+          2.6561019999359607,
+          2.745401999933849,
+          2.837201999931678,
+          2.9296019999294933,
+          3.0231019999272823,
+          3.1149019999251113,
+          3.195101999923215,
+          3.276801999921283,
+          3.3573019999193794,
+          3.442201999917372,
+          3.5294019999153097,
+          3.6066019999134844,
+          3.653601999912373,
+          3.741101999910304,
+          3.8094019999086886,
+          3.8942019999066835,
+          3.9651019999050066,
+          4.031201999903444,
+          4.104801999901704,
+          4.176501999900008,
+          4.263301999897956,
+          4.346901999895978,
+          4.417801999894302,
+          4.462901999893235,
+          4.571501999890668,
+          4.657501999888634,
+          4.747301999886511,
+          4.81880199988482,
+          4.865601999883713,
+          4.942201999881902,
+          5.0300019998798255
+        ],
+        "known_crash_offset_ms": 0.10199993167825383
+      },
+      "frozen_rule": {
+        "crash_times_s": [],
+        "windows": [
+          {
+            "window_s": [
+              2.7,
+              3.0
+            ],
+            "crash_times_s": [],
+            "crashes_found": 0,
+            "crashes_expected_range": [
+              3,
+              4
+            ],
+            "count_within_expected": false,
+            "median_period_ms": null,
+            "period_pass": null,
+            "median_amplitude": null,
+            "amplitude_pass": null,
+            "agreement_with_picker": {
+              "unconfirmed_picks_s": [],
+              "unpicked_reference_s": [
+                2.745401999933849,
+                2.837201999931678,
+                2.9296019999294933
+              ]
+            }
+          },
+          {
+            "window_s": [
+              4.55,
+              4.8
+            ],
+            "crash_times_s": [],
+            "crashes_found": 0,
+            "crashes_expected_range": [
+              2,
+              4
+            ],
+            "count_within_expected": false,
+            "median_period_ms": null,
+            "period_pass": null,
+            "median_amplitude": null,
+            "amplitude_pass": null,
+            "agreement_with_picker": {
+              "unconfirmed_picks_s": [],
+              "unpicked_reference_s": [
+                4.571501999890668,
+                4.657501999888634,
+                4.747301999886511
+              ]
+            }
+          }
+        ],
+        "states": {
+          "observable_s": 0.0,
+          "absent_s": 0.0,
+          "q_prior_only_s": 0.0,
+          "present_train_spans_s": [],
+          "uncertain_spans": 0,
+          "record_s": 3.0999999999239414
+        },
+        "ece_validity": {
+          "status": "tested_nominal_geometry",
+          "step_ratio": 2.0,
+          "step_max_rho": 0.7,
+          "axis_to_max": 0.6,
+          "sustain_ms": 20.0,
+          "smooth_ms": 5.0,
+          "step_samples": 31000,
+          "axis_samples": 0,
+          "removed_samples": 31000,
+          "axis_max_distance_m": 0.1,
+          "observable_removed_samples": 31000
+        },
+        "guard_accounting": {
+          "core_observable_samples": 31000,
+          "removed_by_ece_validity": 31000,
+          "observable_samples_after_guards": 0
+        },
+        "central_channel": 23,
+        "crash_states": {
+          "present": 0,
+          "uncertain": 0
+        }
+      },
+      "rule_validity_test_off": {
+        "crash_times_s": [
+          2.052001999950246,
+          2.148001999947976,
+          2.2495019999455756,
+          2.3353019999435465,
+          2.398801999942045,
+          2.491401999939855,
+          2.557101999938302,
+          2.6561019999359607,
+          2.745401999933849,
+          2.8371019999316807,
+          2.9296019999294933,
+          3.0231019999272823,
+          3.1149019999251113,
+          3.1950019999232175,
+          3.2769019999212805,
+          3.3573019999193794,
+          3.442201999917372,
+          3.5294019999153097,
+          3.606901999913477,
+          3.653601999912373,
+          3.741001999910306,
+          3.8094019999086886,
+          3.8942019999066835,
+          3.9651019999050066,
+          4.031301999903442,
+          4.104801999901704,
+          4.176501999900008,
+          4.263301999897956,
+          4.346901999895978,
+          4.462901999893235,
+          4.571501999890668,
+          4.657501999888634
+        ],
+        "windows": [
+          {
+            "window_s": [
+              2.7,
+              3.0
+            ],
+            "crash_times_s": [
+              2.745401999933849,
+              2.8371019999316807,
+              2.9296019999294933
+            ],
+            "crashes_found": 3,
+            "crashes_expected_range": [
+              3,
+              4
+            ],
+            "count_within_expected": true,
+            "median_period_ms": 92.09999999782227,
+            "period_pass": false,
+            "median_amplitude": 0.35528096580816065,
+            "amplitude_pass": true,
+            "agreement_with_picker": {
+              "unconfirmed_picks_s": [],
+              "unpicked_reference_s": []
+            }
+          },
+          {
+            "window_s": [
+              4.55,
+              4.8
+            ],
+            "crash_times_s": [
+              4.571501999890668,
+              4.657501999888634
+            ],
+            "crashes_found": 2,
+            "crashes_expected_range": [
+              2,
+              4
+            ],
+            "count_within_expected": true,
+            "median_period_ms": 85.99999999796637,
+            "period_pass": true,
+            "median_amplitude": 0.3887209964810121,
+            "amplitude_pass": false,
+            "agreement_with_picker": {
+              "unconfirmed_picks_s": [],
+              "unpicked_reference_s": [
+                4.747301999886511
+              ]
+            }
+          }
+        ],
+        "states": {
+          "observable_s": 3.0897999999241916,
+          "absent_s": 0.0,
+          "q_prior_only_s": 0.0,
+          "present_train_spans_s": [
+            [
+              2.052001999950246,
+              2.6066019999371313
+            ],
+            [
+              2.700751999934905,
+              3.929651999905845
+            ],
+            [
+              3.998201999904224,
+              4.104901999901701
+            ],
+            [
+              4.2199019998989815,
+              4.614501999889651
+            ]
+          ],
+          "uncertain_spans": 13,
+          "record_s": 3.0999999999239414
+        },
+        "ece_validity": {
+          "status": "tested_nominal_geometry",
+          "step_ratio": 1000000000.0,
+          "step_max_rho": 0.7,
+          "axis_to_max": 0.0,
+          "sustain_ms": 20.0,
+          "smooth_ms": 5.0,
+          "step_samples": 0,
+          "axis_samples": 0,
+          "removed_samples": 0,
+          "axis_max_distance_m": 0.1,
+          "observable_removed_samples": 0
+        },
+        "guard_accounting": {
+          "core_observable_samples": 31000,
+          "removed_by_ece_validity": 0,
+          "observable_samples_after_guards": 31000
+        },
+        "central_channel": 23,
+        "crash_states": {
+          "present": 28,
+          "uncertain": 4
+        },
+        "known_crash_offset_ms": 0.001999931680707334
+      }
+    },
+    {
+      "shot": 141195,
+      "central_channel": 23,
+      "calibration": {
+        "2.7-3.0": {
+          "median_te_kev_by_ecevs": {
+            "14": 2.4750839658661015,
+            "15": 2.630940805992899,
+            "16": 2.7197315847930503,
+            "17": 7.509907077713892,
+            "18": 7.967229146261335
+          },
+          "ecevs17_over_ecevs15": 2.8544568774057635,
+          "central_channel_median_te_kev": 9.292358085189766
+        },
+        "4.55-4.8": {
+          "median_te_kev_by_ecevs": {
+            "14": 2.6621525285572827,
+            "15": 2.8147758080313245,
+            "16": 2.9119233608987463,
+            "17": 8.060369950550148,
+            "18": 8.614135062357661
+          },
+          "ecevs17_over_ecevs15": 2.8635921651563545,
+          "central_channel_median_te_kev": 10.856417416152578
+        }
+      },
+      "derivative_picker": {
+        "windows": [
+          {
+            "window_s": [
+              2.7,
+              3.0
+            ],
+            "crash_times_s": [
+              2.704301999934821,
+              2.7913019999327635,
+              2.899801999930198
+            ],
+            "crashes_found": 3,
+            "crashes_expected_range": [
+              3,
+              4
+            ],
+            "count_within_expected": true,
+            "median_period_ms": 97.74999999768852,
+            "period_pass": false,
+            "median_amplitude": 0.35352210029091935,
+            "amplitude_pass": true
+          },
+          {
+            "window_s": [
+              4.55,
+              4.8
+            ],
+            "crash_times_s": [
+              4.5543019998910745,
+              4.6446019998889385,
+              4.727201999886986
+            ],
+            "crashes_found": 3,
+            "crashes_expected_range": [
+              2,
+              4
+            ],
+            "count_within_expected": true,
+            "median_period_ms": 86.44999999795556,
+            "period_pass": true,
+            "median_amplitude": 0.49176449883405393,
+            "amplitude_pass": false
+          }
+        ],
+        "crash_times_s": [
+          2.0416019999504917,
+          2.120201999948633,
+          2.2078019999465615,
+          2.310001999944145,
+          2.4215019999415084,
+          2.5131019999393422,
+          2.599801999937292,
+          2.704301999934821,
+          2.7913019999327635,
+          2.899801999930198,
+          3.0139019999274996,
+          3.1366019999245984,
+          3.2369019999222264,
+          3.333501999919942,
+          3.4488019999172157,
+          3.5454019999149313,
+          3.6205019999131554,
+          3.6750019999118666,
+          3.760501999909845,
+          3.833701999908114,
+          3.9070019999063805,
+          3.969401999904905,
+          4.025101999903588,
+          4.1095019999015925,
+          4.208301999899256,
+          4.263801999897944,
+          4.310001999896851,
+          4.351401999895872,
+          4.416301999894338,
+          4.4665019998931506,
+          4.5543019998910745,
+          4.6446019998889385,
+          4.727201999886986,
+          4.829301999884572,
+          4.898501999882935,
+          4.994201999880672,
+          5.061201999879088
+        ]
+      },
+      "frozen_rule": {
+        "crash_times_s": [
+          4.1095019999015925,
+          4.263701999897946,
+          4.351401999895872
+        ],
+        "windows": [
+          {
+            "window_s": [
+              2.7,
+              3.0
+            ],
+            "crash_times_s": [],
+            "crashes_found": 0,
+            "crashes_expected_range": [
+              3,
+              4
+            ],
+            "count_within_expected": false,
+            "median_period_ms": null,
+            "period_pass": null,
+            "median_amplitude": null,
+            "amplitude_pass": null,
+            "agreement_with_picker": {
+              "unconfirmed_picks_s": [],
+              "unpicked_reference_s": [
+                2.704301999934821,
+                2.7913019999327635,
+                2.899801999930198
+              ]
+            }
+          },
+          {
+            "window_s": [
+              4.55,
+              4.8
+            ],
+            "crash_times_s": [],
+            "crashes_found": 0,
+            "crashes_expected_range": [
+              2,
+              4
+            ],
+            "count_within_expected": false,
+            "median_period_ms": null,
+            "period_pass": null,
+            "median_amplitude": null,
+            "amplitude_pass": null,
+            "agreement_with_picker": {
+              "unconfirmed_picks_s": [],
+              "unpicked_reference_s": [
+                4.5543019998910745,
+                4.6446019998889385,
+                4.727201999886986
+              ]
+            }
+          }
+        ],
+        "states": {
+          "observable_s": 0.47279999998839983,
+          "absent_s": 0.0,
+          "q_prior_only_s": 0.0,
+          "present_train_spans_s": [],
+          "uncertain_spans": 3,
+          "record_s": 3.0999999999239414
+        },
+        "ece_validity": {
+          "status": "tested_nominal_geometry",
+          "step_ratio": 2.0,
+          "step_max_rho": 0.7,
+          "axis_to_max": 0.6,
+          "sustain_ms": 20.0,
+          "smooth_ms": 5.0,
+          "step_samples": 26200,
+          "axis_samples": 0,
+          "removed_samples": 26200,
+          "axis_max_distance_m": 0.1,
+          "observable_removed_samples": 26200
+        },
+        "guard_accounting": {
+          "core_observable_samples": 31000,
+          "removed_by_ece_validity": 26200,
+          "observable_samples_after_guards": 4800
+        },
+        "central_channel": 23,
+        "crash_states": {
+          "present": 0,
+          "uncertain": 3
+        }
+      },
+      "rule_validity_test_off": {
+        "crash_times_s": [
+          2.120201999948633,
+          2.2078019999465615,
+          2.310001999944145,
+          2.4215019999415084,
+          2.5131019999393422,
+          2.599801999937292,
+          2.704301999934821,
+          2.7913019999327635,
+          2.899801999930198,
+          3.0139019999274996,
+          3.1366019999245984,
+          3.2369019999222264,
+          3.333501999919942,
+          3.4488019999172157,
+          3.5454019999149313,
+          3.619601999913177,
+          3.6205019999131554,
+          3.6750019999118666,
+          3.759701999909864,
+          3.760501999909845,
+          3.833701999908114,
+          3.9070019999063805,
+          3.969401999904905,
+          4.025101999903588,
+          4.1095019999015925,
+          4.263701999897946,
+          4.351401999895872,
+          4.416401999894335
+        ],
+        "windows": [
+          {
+            "window_s": [
+              2.7,
+              3.0
+            ],
+            "crash_times_s": [
+              2.704301999934821,
+              2.7913019999327635,
+              2.899801999930198
+            ],
+            "crashes_found": 3,
+            "crashes_expected_range": [
+              3,
+              4
+            ],
+            "count_within_expected": true,
+            "median_period_ms": 97.74999999768852,
+            "period_pass": false,
+            "median_amplitude": 0.35352210029091935,
+            "amplitude_pass": true,
+            "agreement_with_picker": {
+              "unconfirmed_picks_s": [],
+              "unpicked_reference_s": []
+            }
+          },
+          {
+            "window_s": [
+              4.55,
+              4.8
+            ],
+            "crash_times_s": [],
+            "crashes_found": 0,
+            "crashes_expected_range": [
+              2,
+              4
+            ],
+            "count_within_expected": false,
+            "median_period_ms": null,
+            "period_pass": null,
+            "median_amplitude": null,
+            "amplitude_pass": null,
+            "agreement_with_picker": {
+              "unconfirmed_picks_s": [],
+              "unpicked_reference_s": [
+                4.5543019998910745,
+                4.6446019998889385,
+                4.727201999886986
+              ]
+            }
+          }
+        ],
+        "states": {
+          "observable_s": 3.0897999999241916,
+          "absent_s": 0.0,
+          "q_prior_only_s": 0.0,
+          "present_train_spans_s": [
+            [
+              2.120201999948633,
+              2.3657519999428267
+            ],
+            [
+              2.4673019999404255,
+              2.7044019999348183
+            ],
+            [
+              2.7913019999327635,
+              3.6197019999131745
+            ],
+            [
+              3.6205019999131554,
+              3.7598019999098615
+            ],
+            [
+              3.760501999909845,
+              4.025201999903585
+            ],
+            [
+              4.383901999895103,
+              4.416501999894333
+            ]
+          ],
+          "uncertain_spans": 5,
+          "record_s": 3.0999999999239414
+        },
+        "ece_validity": {
+          "status": "tested_nominal_geometry",
+          "step_ratio": 1000000000.0,
+          "step_max_rho": 0.7,
+          "axis_to_max": 0.0,
+          "sustain_ms": 20.0,
+          "smooth_ms": 5.0,
+          "step_samples": 0,
+          "axis_samples": 0,
+          "removed_samples": 0,
+          "axis_max_distance_m": 0.1,
+          "observable_removed_samples": 0
+        },
+        "guard_accounting": {
+          "core_observable_samples": 31000,
+          "removed_by_ece_validity": 0,
+          "observable_samples_after_guards": 31000
+        },
+        "central_channel": 23,
+        "crash_states": {
+          "present": 24,
+          "uncertain": 4
+        }
+      }
+    }
+  ]
+}

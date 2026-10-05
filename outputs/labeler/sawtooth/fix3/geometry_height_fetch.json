@@ -1,0 +1,5011 @@
+{
+  "shots_requested": [
+    185805,
+    185835,
+    185838,
+    185857,
+    185866,
+    185943,
+    185945,
+    185953,
+    185961,
+    185978,
+    185993,
+    185996,
+    186013,
+    186025,
+    186093,
+    186226,
+    186254,
+    186287,
+    186427,
+    186431,
+    186496,
+    186500,
+    186530,
+    186532,
+    186561,
+    186569,
+    186575,
+    186610,
+    186636,
+    186640,
+    186747,
+    186901,
+    186939,
+    186945,
+    186981,
+    187019,
+    187025,
+    187035,
+    187043,
+    187066,
+    187072,
+    187076,
+    187100,
+    187105,
+    187116,
+    187144,
+    187154,
+    187196,
+    187201,
+    187301,
+    187327,
+    187328,
+    189004,
+    189008,
+    189044,
+    189046,
+    189051,
+    189061,
+    189085,
+    189138,
+    189272,
+    189284,
+    189311,
+    189324,
+    189325,
+    189361,
+    189365,
+    189369,
+    189370,
+    189500,
+    189501,
+    189513,
+    189514,
+    189538,
+    189540,
+    189541,
+    189547,
+    189559,
+    189570,
+    189577,
+    189578,
+    189580,
+    189684,
+    189688,
+    189732,
+    189741,
+    189872,
+    189873,
+    189879,
+    189885,
+    189886,
+    189990,
+    189998,
+    190010,
+    190018,
+    190046,
+    190056,
+    190094,
+    190102,
+    190129,
+    190156,
+    190177,
+    190182,
+    190212,
+    190218,
+    190271,
+    190273,
+    190298,
+    190299,
+    190300,
+    190301,
+    190335,
+    190364,
+    190379,
+    190414,
+    190450,
+    190524,
+    190526,
+    190532,
+    190586,
+    190602,
+    190604,
+    190627,
+    190632,
+    190637,
+    190643,
+    190646,
+    190695,
+    190736,
+    190738,
+    190776,
+    190779,
+    190785,
+    190787,
+    190788,
+    190790,
+    190799,
+    190820,
+    190857,
+    190957,
+    190991,
+    190992,
+    191009,
+    191183,
+    191228,
+    191313,
+    191316,
+    191320,
+    191326,
+    191376,
+    191380,
+    191382,
+    191384,
+    191448,
+    191470,
+    191489,
+    191499,
+    191506,
+    191519,
+    191521,
+    191549,
+    191596,
+    191670,
+    191672,
+    191674,
+    191677,
+    191782,
+    191968,
+    192003,
+    192010,
+    192015,
+    192045,
+    192090,
+    192148,
+    192149,
+    192152,
+    192154,
+    192159,
+    192221,
+    192222,
+    192223,
+    192224,
+    192226,
+    192228,
+    192229,
+    192230,
+    192231,
+    192232,
+    192233,
+    192275,
+    192276,
+    192277,
+    192279,
+    192309,
+    192387,
+    192404,
+    192423,
+    192424,
+    192425,
+    192431,
+    192432,
+    192433,
+    192434,
+    192721,
+    192732,
+    192735,
+    192741,
+    192751,
+    192755,
+    192756,
+    192761,
+    192766,
+    192914,
+    192969,
+    192996,
+    193008,
+    193016,
+    193022,
+    193024,
+    193075,
+    193087,
+    193106,
+    193107,
+    193108,
+    193119,
+    193148,
+    193162,
+    193164,
+    193266,
+    193267,
+    193273,
+    193276,
+    193277,
+    193280,
+    193281,
+    193282,
+    193353,
+    193793,
+    193802,
+    193832,
+    194025,
+    194026,
+    194071,
+    194099,
+    194115,
+    194154,
+    194155,
+    194160,
+    194199,
+    194207,
+    194213,
+    194219,
+    194232,
+    194238,
+    194347,
+    194401,
+    194403,
+    194408,
+    194410,
+    194412,
+    194445,
+    194597,
+    194598,
+    194600,
+    194602,
+    194603,
+    194605,
+    194608,
+    194609,
+    194837,
+    194843,
+    194959,
+    195016,
+    195024,
+    195031,
+    195034,
+    195035,
+    195040,
+    195062,
+    195064,
+    195066,
+    195101,
+    195102,
+    195103,
+    195107,
+    195111,
+    195159,
+    195169,
+    195186,
+    195187,
+    195263,
+    195279,
+    195280,
+    195281,
+    195282,
+    195528,
+    195626,
+    195637,
+    195642,
+    195645,
+    195646,
+    195649,
+    195717,
+    195736,
+    195786,
+    195836,
+    195871,
+    195896,
+    195910,
+    195952,
+    195956,
+    195959,
+    195989,
+    196020,
+    196093,
+    196096,
+    196099,
+    196101,
+    196146,
+    196153,
+    196154,
+    196324,
+    196332,
+    196350,
+    196375,
+    196405,
+    196451,
+    196491,
+    196494,
+    196505,
+    196541,
+    196577,
+    196627,
+    196632,
+    198672,
+    198806,
+    198899,
+    198955,
+    198971,
+    199054,
+    199071,
+    199073,
+    199087,
+    199122,
+    199183,
+    199216,
+    199217,
+    199230,
+    199281,
+    199557,
+    199560,
+    199563,
+    199569,
+    199712,
+    199789,
+    199790,
+    199907,
+    199908,
+    199909,
+    199910,
+    199911,
+    199912,
+    199919,
+    199921,
+    199951,
+    200007,
+    200009,
+    200012,
+    200013,
+    200014,
+    200083,
+    200127,
+    200129,
+    200149,
+    200198,
+    200199,
+    200219,
+    200320,
+    200385,
+    200427,
+    200435,
+    200551,
+    200563,
+    200596,
+    200610,
+    200636,
+    200672,
+    200704,
+    200712,
+    200738,
+    200847,
+    200875,
+    200882,
+    200889,
+    200917,
+    200954,
+    200958,
+    200986,
+    200990,
+    201099,
+    201107,
+    201180,
+    201227,
+    201264,
+    201270,
+    201395,
+    201447,
+    201488,
+    201490,
+    201494,
+    201707,
+    201713,
+    201822,
+    201831,
+    201880,
+    201948,
+    201973,
+    201978,
+    201991,
+    202000,
+    202028,
+    202041,
+    202098,
+    202100,
+    202101,
+    202102,
+    202103,
+    202110,
+    202112,
+    202150,
+    202162,
+    202181,
+    202186,
+    202188,
+    202197,
+    202205,
+    202206,
+    203012,
+    203033,
+    203041,
+    203132,
+    203136,
+    203138,
+    203174,
+    203187,
+    203293,
+    203294,
+    203349,
+    203397,
+    203401,
+    203413,
+    203462,
+    203470,
+    203498,
+    203507,
+    203512,
+    203521,
+    203530,
+    203552,
+    203563,
+    203576,
+    203626,
+    203629,
+    203643,
+    203661,
+    203667,
+    203719,
+    203745,
+    203746,
+    203764,
+    203778,
+    203784,
+    203785,
+    203827,
+    203876,
+    203941,
+    203959,
+    204093,
+    204141,
+    204144,
+    204225,
+    204232,
+    204233,
+    204237,
+    204238,
+    204240,
+    204242,
+    204243,
+    204244,
+    204256,
+    204261,
+    204324,
+    204530,
+    204531,
+    204560,
+    204652,
+    204687,
+    204689,
+    204840,
+    204937
+  ],
+  "authentication_failed": false,
+  "workers": 2,
+  "pace_s": 1.0,
+  "mode": "height_only",
+  "expected_eq_nodes": [],
+  "records": [
+    {
+      "shot": 185805,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/185805.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 185835,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/185835.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 185838,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/185838.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 185857,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/185857.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 185943,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/185943.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 185866,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/185866.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 185945,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/185945.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 185953,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/185953.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 185978,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/185978.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 185961,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/185961.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 185993,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/185993.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 185996,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/185996.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 186025,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/186025.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 186013,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/186013.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 186093,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/186093.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 186226,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/186226.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 186287,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/186287.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 186254,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/186254.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 186427,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/186427.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 186431,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/186431.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 186500,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/186500.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 186496,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/186496.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 186532,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/186532.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 186530,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/186530.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 186561,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/186561.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 186569,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/186569.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 186575,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/186575.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 186610,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/186610.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 186640,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/186640.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 186636,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/186636.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 186747,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/186747.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 186901,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/186901.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 186945,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/186945.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 186939,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/186939.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 186981,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/186981.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 187019,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/187019.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 187025,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/187025.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 187035,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/187035.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 187043,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/187043.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 187066,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/187066.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 187076,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/187076.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 187072,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/187072.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 187105,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/187105.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 187100,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/187100.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 187116,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/187116.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 187144,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/187144.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 187154,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/187154.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 187196,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/187196.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 187201,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/187201.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 187301,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/187301.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 187327,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/187327.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 187328,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/187328.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189004,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189004.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189008,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189008.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189046,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189046.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189044,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189044.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189051,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189051.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189061,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189061.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189085,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189085.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189138,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189138.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189284,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189284.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189272,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189272.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189324,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189324.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189311,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189311.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189361,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189361.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189325,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189325.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189365,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189365.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189369,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189369.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189500,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189500.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189370,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189370.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189513,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189513.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189501,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189501.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189538,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189538.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189514,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189514.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189540,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189540.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189541,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189541.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189559,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189559.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189547,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189547.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189570,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189570.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189577,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189577.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189578,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189578.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189580,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189580.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189688,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189688.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189684,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189684.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189732,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189732.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189741,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189741.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189872,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189872.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189873,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189873.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189885,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189885.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189879,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189879.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189990,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189990.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189886,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189886.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 189998,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/189998.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190010,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190010.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190046,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190046.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190018,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190018.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190094,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190094.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190056,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190056.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190129,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190129.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190102,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190102.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190156,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190156.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190177,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190177.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190212,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190212.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190182,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190182.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190271,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190271.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190218,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190218.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190273,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190273.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190298,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190298.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190299,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190299.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190300,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190300.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190301,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190301.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190335,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190335.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190364,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190364.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190379,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190379.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190414,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190414.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190450,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190450.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190524,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190524.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190526,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190526.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190532,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190532.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190586,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190586.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190602,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190602.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190604,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190604.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190627,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190627.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190632,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190632.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190637,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190637.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190643,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190643.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190646,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190646.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190695,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190695.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190736,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190736.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190738,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190738.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190776,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190776.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190779,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190779.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190787,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190787.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190785,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190785.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190788,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190788.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190790,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190790.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190799,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190799.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190820,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190820.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190857,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190857.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190957,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190957.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190991,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190991.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 190992,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/190992.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 191009,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/191009.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 191183,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/191183.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 191228,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/191228.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 191313,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/191313.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 191320,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/191320.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 191316,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/191316.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 191376,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/191376.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 191326,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/191326.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 191382,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/191382.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 191380,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/191380.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 191448,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/191448.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 191384,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/191384.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 191470,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/191470.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 191489,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/191489.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 191506,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/191506.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 191499,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/191499.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 191521,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/191521.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 191519,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/191519.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 191596,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/191596.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 191549,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/191549.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 191672,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/191672.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 191670,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/191670.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 191674,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/191674.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 191677,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/191677.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 191968,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/191968.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 191782,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/191782.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192003,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192003.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192010,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192010.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192015,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192015.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192045,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192045.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192090,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192090.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192148,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192148.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192152,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192152.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192149,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192149.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192154,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192154.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192159,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192159.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192222,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192222.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192221,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192221.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192223,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192223.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192224,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192224.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192228,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192228.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192226,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192226.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192230,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192230.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192229,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192229.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192232,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192232.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192231,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192231.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192233,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192233.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192275,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192275.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192276,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192276.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192277,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192277.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192309,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192309.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192279,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192279.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192387,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192387.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192404,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192404.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192423,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192423.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192424,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192424.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192425,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192425.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192431,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192431.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192433,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192433.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192432,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192432.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192721,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192721.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192434,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192434.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192732,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192732.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192735,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192735.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192741,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192741.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192751,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192751.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192755,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192755.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192756,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192756.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192761,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192761.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192766,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192766.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192969,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192969.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192914,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192914.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 193008,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/193008.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 192996,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/192996.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 193022,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/193022.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 193016,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/193016.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 193024,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/193024.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 193075,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/193075.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 193087,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/193087.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 193106,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/193106.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 193107,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/193107.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 193108,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/193108.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 193148,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/193148.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 193119,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/193119.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 193164,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/193164.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 193162,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/193162.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 193266,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/193266.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 193267,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/193267.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 193273,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/193273.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 193276,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/193276.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 193280,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/193280.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 193277,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/193277.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 193282,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/193282.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 193281,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/193281.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 193353,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/193353.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 193793,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/193793.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 193802,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/193802.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 193832,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/193832.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 194025,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/194025.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 194026,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/194026.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 194099,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/194099.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 194071,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/194071.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 194115,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/194115.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 194154,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/194154.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 194155,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/194155.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 194160,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/194160.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 194199,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/194199.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 194207,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/194207.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 194213,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/194213.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 194219,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/194219.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 194232,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/194232.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 194238,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/194238.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 194401,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/194401.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 194347,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/194347.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 194403,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/194403.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 194408,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/194408.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 194410,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/194410.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 194412,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/194412.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 194445,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/194445.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 194597,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/194597.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 194598,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/194598.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 194600,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/194600.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 194602,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/194602.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 194603,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/194603.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 194605,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/194605.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 194608,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/194608.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 194837,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/194837.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 194609,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/194609.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 194843,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/194843.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 194959,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/194959.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195024,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195024.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195016,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195016.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195031,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195031.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195034,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195034.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195035,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195035.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195040,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195040.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195062,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195062.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195064,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195064.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195066,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195066.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195101,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195101.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195102,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195102.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195103,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195103.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195111,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195111.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195107,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195107.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195169,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195169.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195159,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195159.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195187,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195187.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195186,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195186.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195263,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195263.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195279,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195279.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195281,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195281.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195280,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195280.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195528,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195528.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195282,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195282.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195626,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195626.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195637,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195637.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195645,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195645.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195642,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195642.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195646,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195646.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195649,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195649.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195717,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195717.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195736,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195736.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195786,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195786.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195836,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195836.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195871,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195871.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195896,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195896.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195910,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195910.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195952,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195952.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195956,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195956.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195959,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195959.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 195989,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/195989.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 196020,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/196020.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 196093,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/196093.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 196096,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/196096.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 196099,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/196099.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 196101,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/196101.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 196146,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/196146.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 196153,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/196153.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 196154,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/196154.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 196324,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/196324.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 196332,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/196332.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 196350,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/196350.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 196375,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/196375.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 196405,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/196405.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 196451,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/196451.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 196491,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/196491.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 196494,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/196494.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 196505,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/196505.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 196541,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/196541.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 196577,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/196577.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 196627,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/196627.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 196632,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/196632.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 198672,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/198672.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 198806,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/198806.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 198899,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/198899.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 198955,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/198955.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 198971,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/198971.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 199054,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/199054.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 199071,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/199071.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 199073,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/199073.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 199087,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/199087.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 199122,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/199122.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 199183,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/199183.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 199216,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/199216.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 199217,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/199217.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 199230,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/199230.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 199281,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/199281.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 199557,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/199557.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 199560,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/199560.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 199563,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/199563.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 199569,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/199569.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 199712,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/199712.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 199789,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/199789.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 199790,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/199790.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 199907,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/199907.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 199908,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/199908.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 199909,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/199909.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 199910,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/199910.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 199911,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/199911.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 199912,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/199912.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 199919,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/199919.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 199921,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/199921.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 200007,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/200007.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 199951,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/199951.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 200012,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/200012.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 200009,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/200009.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 200014,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/200014.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 200013,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/200013.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 200083,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/200083.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 200127,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/200127.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 200129,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/200129.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 200149,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/200149.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 200198,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/200198.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 200199,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/200199.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 200219,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/200219.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 200320,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/200320.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 200385,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/200385.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 200427,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/200427.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 200435,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/200435.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 200551,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/200551.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 200563,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/200563.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 200596,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/200596.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 200610,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/200610.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 200636,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/200636.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 200672,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/200672.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 200704,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/200704.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 200712,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/200712.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 200738,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/200738.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 200847,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/200847.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 200875,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/200875.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 200882,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/200882.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 200889,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/200889.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 200917,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/200917.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 200954,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/200954.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 200958,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/200958.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 200986,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/200986.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 200990,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/200990.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 201099,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/201099.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 201107,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/201107.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 201180,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/201180.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 201227,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/201227.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 201264,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/201264.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 201270,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/201270.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 201395,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/201395.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 201447,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/201447.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 201488,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/201488.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 201490,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/201490.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 201494,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/201494.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 201707,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/201707.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 201713,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/201713.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 201822,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/201822.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 201831,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/201831.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 201880,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/201880.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 201948,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/201948.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 201973,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/201973.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 201978,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/201978.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 201991,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/201991.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 202000,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/202000.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 202028,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/202028.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 202041,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/202041.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 202098,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/202098.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 202100,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/202100.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 202101,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/202101.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 202102,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/202102.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 202103,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/202103.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 202110,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/202110.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 202112,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/202112.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 202150,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/202150.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 202162,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/202162.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 202181,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/202181.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 202186,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/202186.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 202188,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/202188.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 202197,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/202197.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 202205,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/202205.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 202206,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/202206.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203012,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203012.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203033,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203033.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203041,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203041.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203132,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203132.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203136,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203136.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203138,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203138.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203174,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203174.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203187,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203187.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203293,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203293.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203294,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203294.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203349,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203349.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203397,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203397.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203401,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203401.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203413,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203413.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203462,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203462.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203470,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203470.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203498,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203498.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203507,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203507.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203512,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203512.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203521,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203521.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203530,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203530.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203552,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203552.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203563,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203563.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203576,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203576.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203626,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203626.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203629,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203629.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203643,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203643.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203661,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203661.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203667,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203667.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203719,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203719.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203745,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203745.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203746,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203746.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203764,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203764.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203778,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203778.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203784,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203784.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203785,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203785.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203827,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203827.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203876,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203876.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203941,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203941.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 203959,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/203959.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 204093,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/204093.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 204141,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/204141.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 204144,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/204144.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 204225,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/204225.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 204232,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/204232.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 204233,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/204233.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 204237,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/204237.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 204238,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/204238.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 204240,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/204240.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 204242,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/204242.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 204243,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/204243.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 204244,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/204244.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 204256,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/204256.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 204261,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/204261.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 204324,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/204324.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 204530,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/204530.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 204531,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/204531.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 204560,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/204560.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 204652,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/204652.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 204687,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/204687.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 204689,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/204689.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 204840,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/204840.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    },
+    {
+      "shot": 204937,
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/204937.h5",
+      "fetched": [
+        "ecegeom/ECEZH"
+      ],
+      "missing": {},
+      "status": "complete"
+    }
+  ]
+}

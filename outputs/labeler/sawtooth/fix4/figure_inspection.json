@@ -1,0 +1,182 @@
+{
+  "complete": true,
+  "frozen_utc": "2026-10-04T04:53:44.686030+00:00",
+  "png_count": 29,
+  "method": "Every individual PNG viewed with the agent image viewer",
+  "figures": [
+    {
+      "group": "paper_example",
+      "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/figures/sawtooth_example.png",
+      "sha256": "b143fda1bc5beed9a56d2ae23fa08629f6baaa1ace3e87a9e4149682ef83314c",
+      "source_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw/outputs/labeler/sawtooth/fix4/paper_example.json"
+    },
+    {
+      "group": "legacy_disagreement",
+      "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/figures/legacy_disagreement_192090.png",
+      "sha256": "526b4bf242536b04ba9e196aa1b19a0e813c142ab85d04b48d0e58f8183a8976",
+      "source_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw/outputs/labeler/sawtooth/fix4/legacy_disagreement.json"
+    },
+    {
+      "group": "legacy_disagreement",
+      "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/figures/legacy_disagreement_191384.png",
+      "sha256": "61f9232c2f8f17ac71d35edc00cbfd5a77cea31b9dc26142076a2dc001d92f79",
+      "source_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw/outputs/labeler/sawtooth/fix4/legacy_disagreement.json"
+    },
+    {
+      "group": "legacy_disagreement",
+      "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/figures/legacy_disagreement_203349.png",
+      "sha256": "1215f4b4e6edd44220d725f86f1ea8e43f8d8d09e5b39577f5be935758fad70c",
+      "source_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw/outputs/labeler/sawtooth/fix4/legacy_disagreement.json"
+    },
+    {
+      "group": "legacy_disagreement",
+      "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/figures/legacy_prior_geometry_190602.png",
+      "sha256": "d1e6478e43c7e4f1cc362b2216ab2b48054d2b324db0acad795402691b80ab1c",
+      "source_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw/outputs/labeler/sawtooth/fix4/legacy_disagreement.json"
+    },
+    {
+      "group": "gallery",
+      "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/gallery/shot_186532_overview.png",
+      "sha256": "aafc0611a35494a7d3a5bda7984bd0d8133f5ed113a875d81b2625f65cc49f43",
+      "source_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw/outputs/labeler/sawtooth/fix4/gallery.json"
+    },
+    {
+      "group": "gallery",
+      "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/gallery/shot_186532_crash.png",
+      "sha256": "9da14a0d24cd524ca5bd87d162c20f43fdc42561538834727d455398cedb6ed5",
+      "source_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw/outputs/labeler/sawtooth/fix4/gallery.json"
+    },
+    {
+      "group": "gallery",
+      "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/gallery/shot_196405_overview.png",
+      "sha256": "3e289bb749411a8cfc08bac8898cbdc4d9ef2984db040e699ece837e63d0dcdf",
+      "source_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw/outputs/labeler/sawtooth/fix4/gallery.json"
+    },
+    {
+      "group": "gallery",
+      "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/gallery/shot_196405_crash.png",
+      "sha256": "c2b631c8c40fa11086a8d7982cc53cd3b4cec605a389073950b2bc369b735716",
+      "source_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw/outputs/labeler/sawtooth/fix4/gallery.json"
+    },
+    {
+      "group": "gallery",
+      "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/gallery/shot_192148_overview.png",
+      "sha256": "1bcf5349e8629e282f6653de70cf328ce0a83df0c4873e174be762b187875d02",
+      "source_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw/outputs/labeler/sawtooth/fix4/gallery.json"
+    },
+    {
+      "group": "gallery",
+      "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/gallery/shot_192148_crash.png",
+      "sha256": "360d7927642c84dba6e8c15e5b311ac9f79d982e9a61c6d44d5b3511953b783a",
+      "source_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw/outputs/labeler/sawtooth/fix4/gallery.json"
+    },
+    {
+      "group": "gallery",
+      "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/gallery/shot_204261_overview.png",
+      "sha256": "6a5c29802be080069b0d72ae51b1a7285b3022b62a47a3f063e87829907ddbf9",
+      "source_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw/outputs/labeler/sawtooth/fix4/gallery.json"
+    },
+    {
+      "group": "gallery",
+      "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/gallery/shot_204261_crash.png",
+      "sha256": "ef2cd7b434aa96ee3245c54c601d5a666f41d639c669e7b78494af8d9e9233d0",
+      "source_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw/outputs/labeler/sawtooth/fix4/gallery.json"
+    },
+    {
+      "group": "gallery",
+      "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/gallery/shot_203563_overview.png",
+      "sha256": "86b5318971edaa0930e65b126270acd507d2b6d15826229a0af9c7f171890e48",
+      "source_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw/outputs/labeler/sawtooth/fix4/gallery.json"
+    },
+    {
+      "group": "gallery",
+      "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/gallery/shot_203563_crash.png",
+      "sha256": "2a5540b4e06c57c846e441e3bcc38592e4e066becaf599bda630c4a3910decd7",
+      "source_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw/outputs/labeler/sawtooth/fix4/gallery.json"
+    },
+    {
+      "group": "gallery",
+      "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/gallery/shot_202206_overview.png",
+      "sha256": "9f3c8e529f83b712941fba91d4726bc09d8e6ead7236bc39644b86654347b2ea",
+      "source_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw/outputs/labeler/sawtooth/fix4/gallery.json"
+    },
+    {
+      "group": "gallery",
+      "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/gallery/shot_202206_crash.png",
+      "sha256": "bcea412a136fe26b1ec17d3a0096aed1d593631ecd7f9b159ad77c4c58eaa31e",
+      "source_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw/outputs/labeler/sawtooth/fix4/gallery.json"
+    },
+    {
+      "group": "gallery",
+      "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/gallery/shot_201978_overview.png",
+      "sha256": "6ce36c972919110877c6f242f38f21db7c5385ce18d2cae81f431d4ff600be38",
+      "source_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw/outputs/labeler/sawtooth/fix4/gallery.json"
+    },
+    {
+      "group": "gallery",
+      "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/gallery/shot_201978_crash.png",
+      "sha256": "8e73b939dca7975fbe4f040f0a3034349c05ce3f77be30ccaa74d5e13b961fac",
+      "source_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw/outputs/labeler/sawtooth/fix4/gallery.json"
+    },
+    {
+      "group": "gallery",
+      "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/gallery/shot_196020_overview.png",
+      "sha256": "208d4fdd8db7ba3559a4ed22808622d2cbd8f93036044696b104bdc2afe4a8e3",
+      "source_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw/outputs/labeler/sawtooth/fix4/gallery.json"
+    },
+    {
+      "group": "gallery",
+      "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/gallery/shot_196020_crash.png",
+      "sha256": "bbfceb9a3fc3cbc2a3b5f1f780c67ee96af461b0d77f4271d59f42939e4b3e42",
+      "source_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw/outputs/labeler/sawtooth/fix4/gallery.json"
+    },
+    {
+      "group": "gallery",
+      "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/gallery/shot_192149_overview.png",
+      "sha256": "cf0014247e3e051e4286dfa22f8014d7766b7abed23c390ffee1ac5d5c9baff4",
+      "source_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw/outputs/labeler/sawtooth/fix4/gallery.json"
+    },
+    {
+      "group": "gallery",
+      "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/gallery/shot_192149_crash.png",
+      "sha256": "fa62f0938779ca3cc77873890a054c41b77daecc4dc28d0ad4b0696fb7f44a8a",
+      "source_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw/outputs/labeler/sawtooth/fix4/gallery.json"
+    },
+    {
+      "group": "gallery",
+      "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/gallery/shot_191326_overview.png",
+      "sha256": "4224b872fdaef78432d5efe96b42a901234e37b377f5804d7658618763f564cd",
+      "source_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw/outputs/labeler/sawtooth/fix4/gallery.json"
+    },
+    {
+      "group": "gallery",
+      "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/gallery/shot_191326_crash.png",
+      "sha256": "ad48e066774fe992d38b2f76064f84ed5cd6c576e48cbd8777f3b4c3bbb0162a",
+      "source_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw/outputs/labeler/sawtooth/fix4/gallery.json"
+    },
+    {
+      "group": "gallery",
+      "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/gallery/shot_195064_overview.png",
+      "sha256": "d7ad47ebb5e1d8cc0b1ac60045f7852041f744cbfefe499b1a4f7c9e3bcab152",
+      "source_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw/outputs/labeler/sawtooth/fix4/gallery.json"
+    },
+    {
+      "group": "gallery",
+      "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/gallery/shot_195064_crash.png",
+      "sha256": "686f9bcb47e6490ede46f7183ca7d175185b932f9e2ce00d8419b42ba80d2cce",
+      "source_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw/outputs/labeler/sawtooth/fix4/gallery.json"
+    },
+    {
+      "group": "gallery",
+      "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/gallery/shot_193024_overview.png",
+      "sha256": "468dfaaea845015674dc3fc0785df5d841ce1252ab08eaf52895852b034c19a5",
+      "source_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw/outputs/labeler/sawtooth/fix4/gallery.json"
+    },
+    {
+      "group": "gallery",
+      "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/gallery/shot_193024_crash.png",
+      "sha256": "f67256ae12998a0b7396c760965033253ce5ba19656ad525dd7836c584570fe9",
+      "source_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw/outputs/labeler/sawtooth/fix4/gallery.json"
+    }
+  ]
+}

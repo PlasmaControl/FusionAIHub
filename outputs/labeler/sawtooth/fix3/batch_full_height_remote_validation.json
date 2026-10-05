@@ -1,0 +1,9 @@
+{
+  "shot": 185805,
+  "mode": "full",
+  "transport": "fdp://fdp-d3d-origin.nationalresearchplatform.org:8443/mdsip",
+  "individual_node_source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/geometry/185805.h5",
+  "verified": false,
+  "error": "TreeNNF: %TREE-W-NNF, Node Not Found",
+  "authentication_failed": false
+}

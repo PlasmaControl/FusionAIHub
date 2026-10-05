@@ -1,0 +1,97 @@
+{
+  "definition": "Uncertain gaps inside otherwise clean sawtooth trains (fix round 4, minor).\n\nA block is a run of present spans joined across gaps that are entirely uncertain\nand at most ``--max-gap`` seconds long. The share is the uncertain gap time over\nthe block time. Each gap is attributed to what is in it:\n\n* an accepted crash point left uncertain, with its uncertainty reasons;\n* no accepted crash point (a crash missed by the profile or edge tests, so the\n  period ratio test splits the train).\n\nReads the per-shot records of the current label round and writes\n``uncertain_gaps.json``.",
+  "max_gap_s": 0.5,
+  "scope": "cohort records",
+  "records": 500,
+  "blocks_with_uncertain_gaps": 199,
+  "block_seconds": 261.33519381797703,
+  "uncertain_gap_seconds": 79.98689810786736,
+  "gap_share_of_block_time": 0.30607013521331977,
+  "gap_share_of_observable_time": 0.043216219628812357,
+  "gaps": 804,
+  "gap_kinds": {
+    "no_accepted_crash": 543,
+    "uncertain_crash": 261
+  },
+  "gap_seconds_by_kind": {
+    "no_accepted_crash": 49.35699883243396,
+    "uncertain_crash": 30.629899275433413
+  },
+  "uncertain_crash_reasons": {
+    "unverified_spatial_adjacency": 283,
+    "qmin_conflict": 7,
+    "nominal_q1_radius_mismatch": 202
+  },
+  "example": {
+    "shot": 192148,
+    "gaps": [
+      {
+        "shot": 192148,
+        "start_s": 1.6234999596674096,
+        "end_s": 1.7541999565756317,
+        "kind": "uncertain_crash",
+        "reasons": {
+          "unverified_spatial_adjacency": 1
+        }
+      },
+      {
+        "shot": 192148,
+        "start_s": 1.8252999548937232,
+        "end_s": 1.929299952433548,
+        "kind": "no_accepted_crash",
+        "reasons": {}
+      },
+      {
+        "shot": 192148,
+        "start_s": 2.2796999441446495,
+        "end_s": 2.3836999416844744,
+        "kind": "no_accepted_crash",
+        "reasons": {}
+      },
+      {
+        "shot": 192148,
+        "start_s": 2.48659993925032,
+        "end_s": 2.7403999332465463,
+        "kind": "no_accepted_crash",
+        "reasons": {}
+      },
+      {
+        "shot": 192148,
+        "start_s": 2.9966999271836334,
+        "end_s": 3.1126999244395916,
+        "kind": "no_accepted_crash",
+        "reasons": {}
+      },
+      {
+        "shot": 192148,
+        "start_s": 3.2023999223176904,
+        "end_s": 3.3103999197628933,
+        "kind": "no_accepted_crash",
+        "reasons": {}
+      },
+      {
+        "shot": 192148,
+        "start_s": 4.039499902515645,
+        "end_s": 4.13789990018794,
+        "kind": "no_accepted_crash",
+        "reasons": {}
+      },
+      {
+        "shot": 192148,
+        "start_s": 5.084199877802711,
+        "end_s": 5.127699876773695,
+        "kind": "no_accepted_crash",
+        "reasons": {}
+      }
+    ],
+    "uncertain_s": 0.9583999773285383,
+    "state_seconds": {
+      "present": 2.9003999313894964,
+      "absent": 0,
+      "q_prior_ece_contradicted": 0.1542999963499515,
+      "q_prior_untested": 0.43729998965543593,
+      "uncertain": 2.1051999502003738,
+      "unassessed": 0.2357999944220258
+    }
+  }
+}

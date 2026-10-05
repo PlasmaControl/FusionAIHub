@@ -1,0 +1,3698 @@
+{
+  "archived_grid_proof": {
+    "verified": true,
+    "root": "/scratch/gpfs/nc1514/omnimode/data",
+    "shots_audited": 25,
+    "shots": [
+      170008,
+      170660,
+      170670,
+      170672,
+      170677,
+      170679,
+      170796,
+      175987,
+      176054,
+      178631,
+      180634,
+      184847,
+      184859,
+      184902,
+      184964,
+      185781,
+      190904,
+      193273,
+      193277,
+      193280,
+      193281,
+      199597,
+      199606,
+      199607,
+      200729
+    ],
+    "minimum_shots": 25,
+    "tolerance_ghz": 0.001,
+    "terminal_channels_excluded": [
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47
+    ],
+    "invalid_files": [],
+    "exceptions": [
+      {
+        "shot": 180634,
+        "channels": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ],
+        "frequency_ghz": [
+          82.5,
+          83.5,
+          84.5,
+          85.5,
+          86.5,
+          87.5,
+          88.5,
+          89.5,
+          90.5,
+          91.5,
+          92.5,
+          93.5,
+          94.5,
+          95.5,
+          96.5,
+          97.5
+        ],
+        "consensus_ghz": [
+          83.5,
+          84.5,
+          85.5,
+          86.5,
+          87.5,
+          88.5,
+          89.5,
+          90.5,
+          91.5,
+          92.5,
+          93.5,
+          94.5,
+          95.5,
+          96.5,
+          97.5,
+          98.4990005493164
+        ],
+        "maximum_difference_ghz": 1.0
+      }
+    ],
+    "frequency_hz": [
+      83500000000.0,
+      84500000000.0,
+      85500000000.0,
+      86500000000.0,
+      87500000000.0,
+      88500000000.0,
+      89500000000.0,
+      90500000000.0,
+      91500000000.0,
+      92500000000.0,
+      93500000000.0,
+      94500000000.0,
+      95500000000.0,
+      96500000000.0,
+      97500000000.0,
+      98499000549.3164,
+      98500000000.0,
+      99500000000.0,
+      100500000000.0,
+      101500000000.0,
+      102500000000.0,
+      103500000000.0,
+      104500000000.0,
+      105500000000.0,
+      106500000000.0,
+      107500000000.0,
+      108500000000.0,
+      109500000000.0,
+      110500000000.0,
+      111500000000.0,
+      112500000000.0,
+      113500000000.0,
+      115500000000.0,
+      117500000000.0,
+      119500000000.0,
+      121500000000.0,
+      123500000000.0,
+      125500000000.0,
+      127500000000.0,
+      129500000000.0
+    ],
+    "channel_agreement_fraction": [
+      0.96,
+      0.96,
+      0.96,
+      0.96,
+      0.96,
+      0.96,
+      0.96,
+      0.96,
+      0.96,
+      0.96,
+      0.96,
+      0.96,
+      0.96,
+      0.96,
+      0.96,
+      0.96,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "limitations": "modal archive grid transferred to other shots; historical RF changes outside the audited shot range are not excluded; same-shot metadata overrides it; channel 0 joins TECEF01/ECEVS01"
+  },
+  "cached_setup_records": 500,
+  "matches": 500,
+  "exceptions": [],
+  "by_shot": [
+    {
+      "shot": 185805,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/185805.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 185835,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/185835.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 185838,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/185838.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 185857,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/185857.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 185866,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/185866.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 185943,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/185943.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 185945,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/185945.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 185953,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/185953.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 185961,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/185961.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 185978,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/185978.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 185993,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/185993.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 185996,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/185996.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 186013,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/186013.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 186025,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/186025.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 186093,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/186093.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 186226,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/186226.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 186254,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/186254.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 186287,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/186287.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 186427,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/186427.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 186431,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/186431.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 186496,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/186496.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 186500,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/186500.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 186530,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/186530.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 186532,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/186532.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 186561,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/186561.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 186569,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/186569.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 186575,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/186575.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 186610,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/186610.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 186636,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/186636.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 186640,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/186640.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 186747,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/186747.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 186901,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/186901.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 186939,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/186939.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 186945,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/186945.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 186981,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/186981.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 187019,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/187019.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 187025,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/187025.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 187035,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/187035.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 187043,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/187043.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 187066,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/187066.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 187072,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/187072.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 187076,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/187076.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 187100,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/187100.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 187105,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/187105.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 187116,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/187116.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 187144,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/187144.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 187154,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/187154.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 187196,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/187196.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 187201,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/187201.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 187301,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/187301.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 187327,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/187327.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 187328,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/187328.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189004,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189004.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189008,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189008.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189044,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189044.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189046,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189046.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189051,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189051.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189061,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189061.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189085,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189085.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189138,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189138.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189272,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189272.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189284,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189284.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189311,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189311.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189324,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189324.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189325,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189325.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189361,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189361.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189365,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189365.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189369,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189369.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189370,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189370.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189500,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189500.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189501,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189501.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189513,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189513.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189514,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189514.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189538,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189538.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189540,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189540.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189541,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189541.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189547,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189547.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189559,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189559.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189570,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189570.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189577,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189577.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189578,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189578.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189580,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189580.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189684,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189684.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189688,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189688.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189732,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189732.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189741,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189741.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189872,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189872.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189873,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189873.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189879,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189879.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189885,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189885.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189886,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189886.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189990,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189990.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 189998,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/189998.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190010,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190010.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190018,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190018.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190046,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190046.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190056,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190056.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190094,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190094.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190102,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190102.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190129,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190129.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190156,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190156.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190177,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190177.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190182,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190182.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190212,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190212.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190218,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190218.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190271,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190271.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190273,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190273.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190298,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190298.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190299,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190299.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190300,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190300.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190301,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190301.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190335,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190335.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190364,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190364.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190379,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190379.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190414,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190414.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190450,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190450.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190524,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190524.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190526,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190526.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190532,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190532.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190586,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190586.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190602,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190602.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190604,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190604.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190627,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190627.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190632,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190632.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190637,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190637.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190643,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190643.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190646,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190646.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190695,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190695.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190736,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190736.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190738,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190738.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190776,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190776.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190779,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190779.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190785,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190785.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190787,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190787.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190788,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190788.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190790,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190790.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190799,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190799.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190820,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190820.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190857,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190857.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190957,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190957.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190991,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190991.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 190992,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/190992.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 191009,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/191009.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 191183,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/191183.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 191228,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/191228.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 191313,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/191313.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 191316,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/191316.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 191320,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/191320.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 191326,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/191326.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 191376,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/191376.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 191380,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/191380.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 191382,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/191382.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 191384,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/191384.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 191448,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/191448.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 191470,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/191470.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 191489,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/191489.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 191499,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/191499.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 191506,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/191506.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 191519,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/191519.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 191521,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/191521.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 191549,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/191549.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 191596,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/191596.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 191670,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/191670.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 191672,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/191672.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 191674,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/191674.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 191677,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/191677.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 191782,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/191782.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 191968,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/191968.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192003,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192003.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192010,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192010.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192015,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192015.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192045,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192045.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192090,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192090.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192148,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192148.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192149,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192149.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192152,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192152.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192154,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192154.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192159,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192159.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192221,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192221.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192222,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192222.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192223,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192223.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192224,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192224.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192226,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192226.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192228,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192228.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192229,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192229.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192230,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192230.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192231,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192231.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192232,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192232.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192233,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192233.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192275,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192275.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192276,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192276.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192277,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192277.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192279,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192279.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192309,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192309.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192387,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192387.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192404,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192404.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192423,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192423.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192424,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192424.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192425,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192425.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192431,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192431.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192432,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192432.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192433,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192433.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192434,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192434.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192721,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192721.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192732,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192732.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192735,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192735.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192741,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192741.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192751,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192751.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192755,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192755.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192756,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192756.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192761,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192761.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192766,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192766.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192914,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192914.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192969,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192969.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 192996,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/192996.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 193008,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/193008.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 193016,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/193016.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 193022,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/193022.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 193024,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/193024.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 193075,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/193075.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 193087,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/193087.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 193106,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/193106.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 193107,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/193107.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 193108,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/193108.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 193119,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/193119.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 193148,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/193148.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 193162,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/193162.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 193164,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/193164.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 193266,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/193266.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 193267,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/193267.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 193273,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/193273.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 193276,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/193276.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 193277,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/193277.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 193280,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/193280.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 193281,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/193281.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 193282,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/193282.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 193353,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/193353.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 193793,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/193793.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 193802,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/193802.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 193832,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/193832.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 194025,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/194025.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 194026,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/194026.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 194071,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/194071.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 194099,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/194099.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 194115,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/194115.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 194154,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/194154.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 194155,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/194155.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 194160,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/194160.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 194199,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/194199.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 194207,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/194207.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 194213,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/194213.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 194219,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/194219.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 194232,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/194232.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 194238,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/194238.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 194347,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/194347.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 194401,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/194401.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 194403,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/194403.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 194408,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/194408.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 194410,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/194410.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 194412,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/194412.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 194445,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/194445.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 194597,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/194597.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 194598,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/194598.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 194600,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/194600.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 194602,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/194602.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 194603,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/194603.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 194605,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/194605.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 194608,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/194608.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 194609,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/194609.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 194837,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/194837.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 194843,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/194843.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 194959,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/194959.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195016,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195016.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195024,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195024.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195031,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195031.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195034,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195034.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195035,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195035.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195040,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195040.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195062,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195062.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195064,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195064.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195066,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195066.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195101,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195101.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195102,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195102.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195103,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195103.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195107,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195107.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195111,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195111.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195159,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195159.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195169,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195169.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195186,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195186.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195187,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195187.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195263,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195263.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195279,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195279.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195280,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195280.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195281,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195281.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195282,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195282.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195528,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195528.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195626,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195626.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195637,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195637.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195642,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195642.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195645,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195645.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195646,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195646.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195649,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195649.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195717,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195717.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195736,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195736.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195786,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195786.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195836,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195836.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195871,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195871.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195896,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195896.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195910,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195910.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195952,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195952.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195956,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195956.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195959,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195959.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 195989,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/195989.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 196020,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/196020.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 196093,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/196093.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 196096,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/196096.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 196099,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/196099.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 196101,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/196101.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 196146,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/196146.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 196153,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/196153.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 196154,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/196154.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 196324,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/196324.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 196332,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/196332.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 196350,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/196350.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 196375,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/196375.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 196405,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/196405.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 196451,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/196451.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 196491,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/196491.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 196494,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/196494.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 196505,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/196505.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 196541,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/196541.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 196577,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/196577.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 196627,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/196627.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 196632,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/196632.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 198672,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/198672.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 198806,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/198806.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 198899,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/198899.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 198955,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/198955.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 198971,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/198971.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 199054,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/199054.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 199071,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/199071.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 199073,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/199073.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 199087,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/199087.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 199122,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/199122.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 199183,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/199183.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 199216,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/199216.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 199217,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/199217.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 199230,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/199230.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 199281,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/199281.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 199557,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/199557.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 199560,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/199560.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 199563,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/199563.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 199569,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/199569.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 199712,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/199712.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 199789,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/199789.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 199790,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/199790.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 199907,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/199907.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 199908,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/199908.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 199909,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/199909.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 199910,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/199910.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 199911,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/199911.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 199912,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/199912.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 199919,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/199919.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 199921,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/199921.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 199951,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/199951.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 200007,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/200007.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 200009,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/200009.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 200012,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/200012.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 200013,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/200013.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 200014,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/200014.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 200083,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/200083.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 200127,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/200127.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 200129,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/200129.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 200149,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/200149.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 200198,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/200198.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 200199,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/200199.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 200219,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/200219.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 200320,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/200320.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 200385,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/200385.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 200427,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/200427.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 200435,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/200435.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 200551,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/200551.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 200563,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/200563.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 200596,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/200596.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 200610,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/200610.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 200636,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/200636.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 200672,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/200672.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 200704,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/200704.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 200712,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/200712.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 200738,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/200738.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 200847,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/200847.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 200875,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/200875.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 200882,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/200882.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 200889,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/200889.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 200917,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/200917.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 200954,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/200954.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 200958,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/200958.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 200986,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/200986.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 200990,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/200990.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 201099,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/201099.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 201107,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/201107.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 201180,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/201180.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 201227,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/201227.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 201264,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/201264.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 201270,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/201270.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 201395,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/201395.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 201447,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/201447.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 201488,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/201488.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 201490,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/201490.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 201494,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/201494.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 201707,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/201707.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 201713,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/201713.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 201822,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/201822.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 201831,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/201831.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 201880,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/201880.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 201948,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/201948.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 201973,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/201973.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 201978,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/201978.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 201991,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/201991.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 202000,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/202000.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 202028,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/202028.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 202041,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/202041.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 202098,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/202098.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 202100,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/202100.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 202101,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/202101.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 202102,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/202102.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 202103,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/202103.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 202110,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/202110.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 202112,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/202112.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 202150,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/202150.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 202162,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/202162.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 202181,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/202181.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 202186,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/202186.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 202188,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/202188.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 202197,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/202197.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 202205,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/202205.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 202206,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/202206.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203012,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203012.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203033,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203033.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203041,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203041.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203132,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203132.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203136,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203136.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203138,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203138.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203174,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203174.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203187,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203187.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203293,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203293.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203294,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203294.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203349,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203349.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203397,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203397.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203401,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203401.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203413,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203413.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203462,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203462.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203470,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203470.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203498,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203498.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203507,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203507.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203512,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203512.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203521,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203521.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203530,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203530.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203552,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203552.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203563,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203563.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203576,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203576.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203626,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203626.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203629,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203629.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203643,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203643.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203661,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203661.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203667,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203667.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203719,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203719.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203745,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203745.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203746,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203746.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203764,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203764.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203778,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203778.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203784,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203784.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203785,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203785.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203827,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203827.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203876,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203876.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203941,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203941.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 203959,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/203959.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 204093,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/204093.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 204141,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/204141.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 204144,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/204144.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 204225,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/204225.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 204232,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/204232.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 204233,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/204233.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 204237,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/204237.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 204238,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/204238.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 204240,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/204240.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 204242,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/204242.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 204243,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/204243.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 204244,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/204244.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 204256,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/204256.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 204261,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/204261.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 204324,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/204324.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 204530,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/204530.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 204531,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/204531.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 204560,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/204560.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 204652,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/204652.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 204687,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/204687.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 204689,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/204689.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 204840,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/204840.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    },
+    {
+      "shot": 204937,
+      "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/geometry/204937.h5",
+      "maximum_abs_delta_ghz": 0.0,
+      "exception_channels": [],
+      "order_break_channels": []
+    }
+  ],
+  "limitations": "cached setups check RF values; the channel identifier join is established by the archived ECE/FREQ proof"
+}

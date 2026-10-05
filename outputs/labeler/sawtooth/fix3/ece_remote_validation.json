@@ -1,0 +1,16 @@
+{
+  "shot": 141182,
+  "channel": 0,
+  "source_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/reference/geometry/141182.h5",
+  "transport": "fdp://fdp-d3d-origin.nationalresearchplatform.org:8443/mdsip",
+  "verified": true,
+  "data_rtol": 2e-06,
+  "data_atol_kev": 2e-07,
+  "clock_atol_ms": 1e-05,
+  "samples": 4096000,
+  "local_dtype": "float32",
+  "remote_dtype": "float64",
+  "data_max_abs_delta": 8.64054186422436e-07,
+  "clock_max_abs_delta_ms": 1.937160050147213e-07,
+  "elapsed_s": 7.496253963094205
+}
