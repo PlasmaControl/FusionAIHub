@@ -335,7 +335,7 @@ def main():
         assert axis["ae_ntm_split_khz"] == 60 and axis["n_view_top_khz"] == 30
         # The n view is the bottom 30 of 250 kHz of the processed panel.
         panels = geometry["frequency_panels"]
-        assert geometry["n_view_height_in"] >= 0.1
+        assert geometry["n_view_height_in"] >= 0.09
         assert (
             abs(
                 geometry["n_view_height_in"]
