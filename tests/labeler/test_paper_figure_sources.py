@@ -309,7 +309,7 @@ def test_caption_follows_sources_and_actual_acceptance_bars(tier):
     assert "Ticks" not in text
     assert ("below its bar" in text) == (tier == fs.lf.GENERATED)
     assert "the n=2 ridge is consistent with a harmonic of the n=1 mode" in text
-    assert ("the NTM detector (" in text) == (tier == fs.lf.GENERATED)
+    assert ("the TM detector (" in text) == (tier == fs.lf.GENERATED)
     for internal in ("ntm_frames", "dalpha_lh", "MPI66M", "N1", "S1", "PRESENT"):
         assert internal not in text
 
@@ -632,8 +632,8 @@ def test_caption_omits_absent_highlights_and_expert_elm_claims():
             "elm_crowd_spans_ms": [],
         },
     )
-    assert "AE:" not in text and "NTM:" not in text
-    assert "Pink" not in text and "NTM outlines" not in text
+    assert "AE:" not in text and "TM:" not in text
+    assert "Pink" not in text and "TM outlines" not in text
     assert "ELMs: detector" in fs.appendix_notes(42, records, {})
     assert "circles" not in text and "expert ELM" not in text
     assert "Triangles:" not in text
@@ -805,7 +805,7 @@ def _primary_records(ae="ae-ours"):
         fs.mt.NTM: {
             "tier": fs.lf.GENERATED,
             "what": "detector",
-            "title": "NTM",
+            "title": "TM",
             "performance": {
                 "f1": 0.457472,
                 "shots": 761,
@@ -850,7 +850,7 @@ def test_primary_caption_describes_the_figure_and_its_highlights():
         "toroidal mode number n (Mirnov array). Pink: mask pixels ≥60 kHz while "
         "the CO2 AE detector (80–250 kHz input band; trained on TokEye-mask-"
         "derived targets, so not independent of TokEye) is positive (25 ms "
-        "bins). Orange outlines: n=1/2 pixels while the NTM detector (held-out "
+        "bins). Orange outlines: n=1/2 pixels while the TM detector (held-out "
         "F1 0.46, below our 0.7 bar) is positive. Highlights mark time/band "
         "coincidence only. (c) D-alpha, ELM intervals (red) and confinement "
         "regimes. (d) NBI power. (e) Normalized beta. (f) Label rows; sources: "
@@ -939,15 +939,15 @@ def test_ae_text_follows_the_ae_source():
 def test_thresholds_are_listed_only_for_detector_tracks():
     records = _primary_records()
     assert (
-        "Operating probability thresholds: TokEye 0.2; AE 0.5; NTM 0.63."
+        "Operating probability thresholds: TokEye 0.2; AE 0.5; TM 0.63."
         in fs.appendix_notes(1, records, {})
     )
-    records[fs.mt.NTM] = {"tier": fs.lf.LEGACY, "what": "archive", "title": "NTM"}
+    records[fs.mt.NTM] = {"tier": fs.lf.LEGACY, "what": "archive", "title": "TM"}
     records[fs.mt.AE]["tier"] = fs.lf.SILVER
     text = fs.appendix_notes(1, records, {})
     assert "Operating probability thresholds: TokEye 0.2." in text
-    assert "NTM 0.63" not in text and "AE 0.5" not in text
-    assert "NTM detector" not in text and "AE highlights" not in text
+    assert "TM 0.63" not in text and "AE 0.5" not in text
+    assert "TM detector" not in text and "AE highlights" not in text
 
 
 def test_appendix_states_the_persistent_row_step_and_its_effect():
@@ -1031,7 +1031,7 @@ def test_appendix_describes_one_linear_frequency_axis_without_breaks():
 def test_appendix_pink_floor_is_the_split_and_explains_the_detector_band():
     text = fs.appendix_notes(1, _primary_records(), {})
     assert "mask pixels ≥60 kHz" in text
-    assert "the AE/NTM split)" in text
+    assert "the AE/TM split)" in text
     assert "input band is 80–250 kHz" in text and "60–80 kHz" in text
     assert "stay white" not in text
     caption = fs.caption(1, _primary_records(), {})
@@ -1064,12 +1064,12 @@ def test_appendix_states_whether_the_shot_was_in_each_detectors_training():
     shot = {"figure_shot_in_training": False}
     inside = {"figure_shot_in_training": True}
     both_out = {fs.mt.AE: shot, fs.mt.NTM: shot}
-    assert "This shot is in neither the AE nor the NTM detector's training set." in (
+    assert "This shot is in neither the AE nor the TM detector's training set." in (
         fs.appendix_notes(1, {}, {}, both_out)
     )
     ntm_in = {fs.mt.AE: shot, fs.mt.NTM: inside}
     assert (
-        "This shot is in the NTM detector's training set and not in the AE detector's."
+        "This shot is in the TM detector's training set and not in the AE detector's."
     ) in fs.appendix_notes(1, {}, {}, ntm_in)
     assert fs.training_note({fs.mt.AE: shot}) == (
         "This shot is not in the AE detector's training set."

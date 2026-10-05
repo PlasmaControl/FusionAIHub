@@ -699,7 +699,7 @@ def ntm_qualification(record: dict, shots: bool = False) -> str:
 
 
 def ntm_description(record: dict) -> str:
-    """The NTM track's source text: detector suggestions and their score."""
+    """The TM track's source text: detector suggestions and their score."""
     detail = ntm_qualification(record, shots=True)
     return "detector (suggestions" + (f"; {detail})" if detail else ")")
 
@@ -870,7 +870,7 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
             sentences.append("Pink: mask pixels ≥60 kHz inside labelled AE time.")
     if ntm:
         if ntm_record.get("tier") == lf.GENERATED:
-            detector = "the NTM detector"
+            detector = "the TM detector"
             qualification = ntm_qualification(ntm_record)
             if qualification:
                 detector += f" ({qualification})"
@@ -878,7 +878,7 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
                 f"Orange outlines: n=1/2 pixels while {detector} is positive."
             )
         else:
-            sentences.append("Orange outlines: n=1/2 pixels inside labelled NTM time.")
+            sentences.append("Orange outlines: n=1/2 pixels inside labelled TM time.")
     if ae or ntm:
         text = "Highlights mark time/band coincidence only"
         clause = harmonic_clause(drawn) if ntm else ""
@@ -1033,7 +1033,7 @@ def _harmonic_text(support: dict | None, order: int) -> str | None:
 
 def training_note(training: dict | None) -> str:
     """Whether the figure's shot was in each detector's training set."""
-    names = {mt.AE: "AE", mt.NTM: "NTM"}
+    names = {mt.AE: "AE", mt.NTM: "TM"}
     known = {
         names[key]: bool(record["figure_shot_in_training"])
         for key, record in (training or {}).items()
@@ -1045,7 +1045,7 @@ def training_note(training: dict | None) -> str:
         return ""
     if not inside:
         if len(outside) == 2:
-            return "This shot is in neither the AE nor the NTM detector's training set."
+            return "This shot is in neither the AE nor the TM detector's training set."
         return f"This shot is not in the {outside[0]} detector's training set."
     text = f"This shot is in the {' and '.join(inside)} detector's training set"
     if outside:
@@ -1071,7 +1071,7 @@ def appendix_notes(
             "decimation filter rolls off above about 50 kHz. The mask is TokEye "
             "run on the same record, the cross-power of CO2 interferometer chords R0 and V1 "
             "(the AE review page's rows, averaged over 8 columns so that a mode both "
-            "chords see stands out of the noise each sees alone). Toroidal mode numbers and the NTM candidates come from "
+            "chords see stands out of the noise each sees alone). Toroidal mode numbers and the TM candidates come from "
             "the Mirnov array and are drawn on the CO2 mask, so a pixel's n is "
             "not measured on the signal that lit it."
         ),
@@ -1080,7 +1080,7 @@ def appendix_notes(
     sources = []
     for key, name in (
         (mt.AE, "AE"),
-        (mt.NTM, "NTM"),
+        (mt.NTM, "TM"),
         ("confinement", "H-mode"),
         ("edge_localized_mode", "ELMs"),
         (mt.SAWTOOTH, "sawtooth"),
@@ -1101,7 +1101,7 @@ def appendix_notes(
     if ae_detector:
         thresholds.append(f"AE {ae.get('decision_threshold') or AE_THRESHOLD:g}")
     if ntm.get("tier") == lf.GENERATED:
-        thresholds.append(f"NTM {ntm.get('decision_threshold') or NTM_THRESHOLD:g}")
+        thresholds.append(f"TM {ntm.get('decision_threshold') or NTM_THRESHOLD:g}")
     notes.append("Operating probability thresholds: " + "; ".join(thresholds) + ".")
     tagged = drawn.get("blobs", {}).get("tagged")
     ae_highlighted = tagged is None or bool(tagged.get(mt.AE))
@@ -1113,7 +1113,7 @@ def appendix_notes(
         notes.append(text + ".")
         notes.append(
             "The detector's input band is 80–250 kHz; pink starts at 60 kHz (the "
-            "AE/NTM split), so mask pixels at 60–80 kHz are "
+            "AE/TM split), so mask pixels at 60–80 kHz are "
             "highlighted by time coincidence with the detector, not detected by it."
         )
         if ae_ours:
@@ -1129,13 +1129,13 @@ def appendix_notes(
             )
     if ntm.get("tier") == lf.GENERATED:
         notes.append(
-            "NTM detector: "
+            "TM detector: "
             + ntm_qualification(ntm)
             + "; shared magnetic inputs, not independent confirmation."
         )
     if records.get(mt.NTM) is not None:
         notes.append(
-            "NTM outlines require measured and dominant n=1 or 2 at ≤30 kHz. "
+            "TM outlines require measured and dominant n=1 or 2 at ≤30 kHz. "
             "They mark time coincidence only; they do not establish a 2/1 island."
         )
         display = drawn.get("ntm_outline_display")
@@ -1150,7 +1150,7 @@ def appendix_notes(
         if dashed:
             notes.append(
                 "Dashed orange outlines show the rest of a tagged component's "
-                "measured n=1 or 2 support, outside NTM-positive time: the "
+                "measured n=1 or 2 support, outside TM-positive time: the "
                 "detector's timing cuts the tag, not the mode."
             )
         harmonics = [
@@ -1160,7 +1160,7 @@ def appendix_notes(
         ]
         if harmonics:
             notes.append(
-                "Frequency ratios of the measured-n ridges, in NTM-positive time: "
+                "Frequency ratios of the measured-n ridges, in TM-positive time: "
                 + "; ".join(harmonics)
                 + ". A frequency ratio cannot separate harmonics of one island "
                 "from phase-locked coupled modes; the poloidal number m needs "

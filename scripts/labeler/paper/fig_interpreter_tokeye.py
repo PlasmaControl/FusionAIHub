@@ -124,7 +124,7 @@ EVENT_COLOURS = {
 }
 EVENT_NAMES = {
     mode_tags.AE: "AE",
-    mode_tags.NTM: "NTM",
+    mode_tags.NTM: "TM",
     mode_tags.SAWTOOTH: "sawtooth",
     "edge_localized_mode": "ELMs",
 }
@@ -796,7 +796,7 @@ def draw_legends(
     if projected["zoom"][mode_tags.NTM].any():
         event_handles.append(
             (
-                Patch(fc="black", label="NTM"),
+                Patch(fc="black", label="TM"),
                 Line2D([], [], color=NTM_CONTOUR_COLOUR, ls="-", lw=NTM_CONTOUR_LW),
             )
         )
@@ -1275,7 +1275,7 @@ def draw(
 
         # ---- label tracks
         titles = {
-            mode_tags.AE: "AE", mode_tags.NTM: "NTM", mode_tags.SAWTOOTH: "sawtooth",
+            mode_tags.AE: "AE", mode_tags.NTM: "TM", mode_tags.SAWTOOTH: "sawtooth",
             elm_key: "ELMs", "confinement": by_key["confinement"].spec.title,
         }  # fmt: skip
         for a, track in zip(track_axes, display_tracks, strict=True):
@@ -1556,7 +1556,7 @@ def draw(
                 r.get("omitted_fragments", 0) for r in ntm_outline_regions.values()
             ),
             "dashed_rule": "a thin dashed outline of the rest of a tagged "
-            "component's measured n=1/2 support (all time, NTM band) where the "
+            "component's measured n=1/2 support (all time, TM band) where the "
             "detector-positive clip cuts it; display only",
             "dashed_regions": sum(
                 r.get("dashed_regions", 0) for r in ntm_outline_regions.values()
@@ -1822,7 +1822,7 @@ def main(argv=None) -> int:
         "--outside-rows",
         type=Path,
         help="directory of <event>.csv/.meta.json single-shot frame-model rows "
-        "for NTM and ELMs, for a shot outside the cohort",
+        "for TM and ELMs, for a shot outside the cohort",
     )
     parser.add_argument(
         "--annotations",
@@ -2026,7 +2026,7 @@ def main(argv=None) -> int:
             "hole_area_px": mode_tags.HOLE_AREA,
             "components": "scipy.ndimage.label, 8-connected (3x3 structure)",
             "tag_rule": "component AND PRESENT time pixels AND event band; "
-            "NTM dominant measured n in {1,2} AND pixel n in {1,2} <=30 kHz; "
+            "TM dominant measured n in {1,2} AND pixel n in {1,2} <=30 kHz; "
             "sawtooth crash ticks, no mode tag",
             "ae_highlight_rule": "pixel tint only; no component bounding boxes",
             "outline_display_rule": "max pool measured n=1 or 2 support at "

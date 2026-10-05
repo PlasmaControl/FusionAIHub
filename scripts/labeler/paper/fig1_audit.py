@@ -212,7 +212,7 @@ def main():
             }
             new_tags = record["drawn"]["blobs"]["tagged"]
             old_tags = baseline["drawn"]["blobs"]["tagged"]
-            assert new_tags[mt.NTM] == old_tags[mt.NTM], (shot, "NTM tags changed")
+            assert new_tags[mt.NTM] == old_tags[mt.NTM], (shot, "TM tags changed")
             assert new_tags[mt.SAWTOOTH] == old_tags[mt.SAWTOOTH], shot
             assert new_tags[mt.AE] >= old_tags[mt.AE], (shot, "AE tags shrank")
             late = record["drawn"]["late_untagged_high_frequency"]
@@ -427,7 +427,7 @@ def main():
         legend = [label.replace("\n", " ") for label in geometry["legend_labels"]]
         tags = drawn["blobs"]["tagged"]
         assert ("AE" in legend) == bool(tags[mt.AE])
-        assert ("NTM" in legend) == bool(tags[mt.NTM])
+        assert ("TM" in legend) == bool(tags[mt.NTM])
         assert "coherent" in legend and "ELM" in legend
         assert ("transient" in legend) == drawn["tokeye_transient_drawn"]
         assert geometry["ntm_key_black_swatch"] == bool(tags[mt.NTM])
@@ -524,7 +524,7 @@ def main():
         assert ("Red: TokEye's transient channel." in caption) == (
             drawn["tokeye_transient_drawn"]
         )
-        for key, name in ((mt.AE, "AE"), (mt.NTM, "NTM")):
+        for key, name in ((mt.AE, "AE"), (mt.NTM, "TM")):
             if record["tracks"][key]["tier"] == lf.GENERATED:
                 value = record["tracks"][key]["decision_threshold"]
                 thresholds.append(f"{name} {(value or AE_THRESHOLD):g}")
@@ -532,7 +532,7 @@ def main():
             appendix
         )
         # Detector-only thresholds: an imported NTM table has none to list.
-        assert ("NTM 0.63" in appendix) == (
+        assert ("TM 0.63" in appendix) == (
             record["tracks"][mt.NTM]["tier"] == lf.GENERATED
         )
         ae_ours = record["tracks"][mt.AE]["what"].startswith("ae-ours")
