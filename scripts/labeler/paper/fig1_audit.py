@@ -76,7 +76,7 @@ def main():
     parser.add_argument(
         "--records",
         type=Path,
-        default=Path("outputs/labeler/paper/fig_interpreter_tokeye"),
+        default=Path("outputs/labeler/paper/fig_interpreter_tokeye/fig1b"),
     )
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument(
