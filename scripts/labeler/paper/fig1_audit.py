@@ -29,7 +29,7 @@ from labeler.paper.figure_sources import AE_THRESHOLD
 
 #: Figure 1 is one shot on one linear 0-250 kHz frequency axis. The earlier
 #: alternates are not rendered on this axis; `--shots` audits any rendered set.
-PRIMARY = 199563
+PRIMARY = 199597
 SHOTS = (PRIMARY,)
 AXIS_TICKS_KHZ = [0, 50, 100, 150, 200, 250]
 #: Words that would describe a broken, stretched or compressed frequency axis.
@@ -40,7 +40,7 @@ def rebuild_primary(record):
     """Rebuild with the recorded sources and verify identical PDF/PNG bytes."""
     files = [Path(p) for p in record["drawn"]["figure"]]
     before = {str(p): sha256_of(p) for p in files}
-    rebuild_dir = Path(os.environ["TMPDIR"]) / "fig1c-primary-rebuild"
+    rebuild_dir = Path(os.environ["TMPDIR"]) / "fig1d-primary-rebuild"
     rebuild_dir.mkdir(parents=True, exist_ok=True)
     cmd = [
         "pixi", "run", "--frozen", "--no-install", "--manifest-path",
@@ -77,7 +77,7 @@ def main():
     parser.add_argument(
         "--records",
         type=Path,
-        default=Path("outputs/labeler/paper/fig_interpreter_tokeye/fig1c"),
+        default=Path("outputs/labeler/paper/fig_interpreter_tokeye/fig1d"),
     )
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument(
@@ -221,7 +221,9 @@ def main():
                     key,
                 )
         assert record["render_started_from_clean_head"]
-        assert record["split"] in ("train", "val"), f"blind shot {shot}"
+        assert record["split"] in ("train", "val", "outside_cohort"), (
+            f"blind shot {shot}"
+        )
         drawn = record["drawn"]
         render_commits.add(record["git"])
         for path, digest in record["render_code_sha256"].items():

@@ -2,7 +2,7 @@ r"""fig_interpreter (the teaser): raw signals -> TokEye-processed -> labelled.
 
     PYTHONPATH=src pixi run --frozen -e labelmaker \
         python scripts/labeler/paper/fig_interpreter_tokeye.py \
-        [--shot 199563] [--tmin MS --tmax MS] [--out DIR]
+        [--shot 199597] [--tmin MS --tmax MS] [--out DIR]
 
 One non-blind cohort shot over a few seconds, in three groups on one time axis:
 
@@ -81,9 +81,14 @@ DPI_PNG = 150
 DPI_PDF = 300
 #: The window's margin the TokEye cache keeps beyond the figure's, ms.
 CACHE_MARGIN_MS = 100.0
+#: The `split` a shot in no cohort split carries, and its default window, ms.
+OUTSIDE_COHORT = "outside_cohort"
+OUTSIDE_WINDOW = (8, 7000)
+
 #: Each shot's window, ms, where `--tmin`/`--tmax` are not given (the cohort
 #: window otherwise): chosen on the shot's own labels, see the report.
 PRESETS = {
+    199597: (100.0, 6200.0),
     186636: (1300.0, 3900.0),
     201973: (1600.0, 3350.0),
     199563: (300.0, 5800.0),
@@ -284,6 +289,7 @@ def shot_tracks(
     sawtooth_labels: Path | None = None,
     ae_labels: Path | None = None,
     show_sawtooth: bool = False,
+    outside_rows: Path | None = None,
 ) -> tuple[tuple[lf.Track, ...], Path | None]:
     """The catalog's tracks on `candidate`: `label_figure`'s, the AE generated
     from the corpus CO2, else from the raw cache; and the CO2 file the
@@ -300,6 +306,18 @@ def shot_tracks(
     read = lf.generate(paths, [candidate], read, specs)
     selected = {t.spec.key: t for t in lf.tracks_of(candidate.shot, read, specs)}
     selected["confinement"] = confinement
+    for key in (mode_tags.NTM, "edge_localized_mode"):
+        # A shot in no cohort split has no row in the frame models' merged tables:
+        # their rows for it come from a single-shot run saved beside its metadata.
+        table = None if outside_rows is None else Path(outside_rows) / f"{key}.csv"
+        if selected[key].source is None and table is not None and table.is_file():
+            held = lf.read_rows(table).get(candidate.shot)
+            if held:
+                what = selected[key].spec.sources[-1].what
+                source = lf.Source(
+                    lf.GENERATED, f"{what}, run on this shot alone", lambda p, t=table: t
+                )
+                selected[key] = lf.Track(selected[key].spec, source, table, held)
     if show_sawtooth:
         selected[mode_tags.SAWTOOTH] = figure_sources.sawtooth_track(
             paths, candidate.shot, sawtooth_labels, []
@@ -1781,19 +1799,31 @@ def main(argv=None) -> int:
 
     torch.set_num_threads(8)
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--shot", type=int, default=199563)
+    parser.add_argument("--shot", type=int, default=199597)
     parser.add_argument(
         "--tmin", "--start", type=float, help="ms; supply both bounds or neither"
     )
     parser.add_argument("--tmax", "--end", type=float)
-    parser.add_argument("--out", type=Path, help="folder; default round4/fig1c")
+    parser.add_argument("--out", type=Path, help="folder; default round4/fig1d")
     parser.add_argument(
-        "--cache", type=Path, help="TokEye cache; default round4/fig1c/cache"
+        "--cache", type=Path, help="TokEye cache; default round4/fig1d/cache"
     )
     parser.add_argument("--device", default="cpu", help="TokEye's device")
     parser.add_argument("--cache-only", action="store_true", help="TokEye, no figure")
     parser.add_argument("--png-dpi", type=int, default=DPI_PNG, help="the PNG's dpi")
     parser.add_argument("--record", type=Path, help="also write the record here")
+    parser.add_argument(
+        "--outside-cohort",
+        action="store_true",
+        help="draw a shot that is in no cohort split (a detector-only figure)",
+    )
+    parser.add_argument("--year", type=int, default=2024, help="its run year")
+    parser.add_argument(
+        "--outside-rows",
+        type=Path,
+        help="directory of <event>.csv/.meta.json single-shot frame-model rows "
+        "for NTM and ELMs, for a shot outside the cohort",
+    )
     parser.add_argument(
         "--annotations",
         type=Path,
@@ -1835,14 +1865,19 @@ def main(argv=None) -> int:
     clean_head = not subprocess.check_output(["git", "status", "--porcelain"]).strip()
 
     paths = Paths.from_env()
-    out = args.out or paths.root / "round4" / "fig1c"
-    cache = args.cache or paths.root / "round4" / "fig1c" / "cache"
+    out = args.out or paths.root / "round4" / "fig1d"
+    cache = args.cache or paths.root / "round4" / "fig1d" / "cache"
     found = [c for c in lf.candidates(paths) if c.shot == args.shot]
-    if not found:
-        raise SystemExit(f"{args.shot}: not a non-blind cohort shot")
-    (candidate,) = found
     cohort = read_cohort(cohort_path(paths))
-    split = str(cohort.loc[cohort["shot"] == args.shot, "split"].iloc[0])
+    if found:
+        (candidate,) = found
+        split = str(cohort.loc[cohort["shot"] == args.shot, "split"].iloc[0])
+    elif args.outside_cohort and not (cohort["shot"] == args.shot).any():
+        # A shot in no split at all: no detector trained or was scored on it.
+        candidate = lf.Candidate(args.shot, args.year, OUTSIDE_WINDOW)
+        split = OUTSIDE_COHORT
+    else:
+        raise SystemExit(f"{args.shot}: not a non-blind cohort shot")
     if split == "test":
         raise SystemExit(f"{args.shot}: a test shot, not drawn")
     if args.tmin is None or args.tmax is None:
@@ -1871,6 +1906,7 @@ def main(argv=None) -> int:
         saw_source,
         args.ae_labels,
         args.show_sawtooth or saw_source is not None,
+        args.outside_rows,
     )
     out.mkdir(parents=True, exist_ok=True)
     drawn = draw(

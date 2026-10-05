@@ -1,4 +1,7 @@
 {
+  "199597": {
+    "publication_suitability": {"suitable_alternate": true, "role": "primary: the owner's Figure 1 shot; detector-only labels, in no cohort split"}
+  },
   "199563": {
     "publication_suitability": {"suitable_alternate": true, "role": "primary: the shot of the original Figure 1; linear frequency axis"},
     "ae_label": {"time_ms": 3900, "frequency_khz": 200}
