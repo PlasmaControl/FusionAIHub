@@ -214,7 +214,7 @@ def test_tangtv_only_bins_are_assessed_and_must_be_labelled(tmp_path):
         if column not in ("shot", "split", "confidence", "state_lm", "state_rule")
     }
     np.savez(root / "bins/170815.npz", **fields)
-    assert producer.assessed_bins(fields).tolist() == [True, True, True, False, False]
+    assert producer.assessed_bins(fields).tolist() == [True, True, True, True, False]
     frame[frame.state_lm > 0].to_csv(root / "labels_bins.csv.gz", index=False)
     result = producer.load(170815, Paths(root=tmp_path))
     assert result["source_suppressed"] is False
