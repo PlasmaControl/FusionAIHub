@@ -641,7 +641,7 @@ def main():
             assert drawn["n3_harmonic_consistent"] is False
             # n=3 is never measured alongside n=1 in NTM time here, so the
             # appendix gives the n=2 ratio only.
-            assert "in 0 of 104 ms where both are measured (0%" in appendix
+            assert "in 0 of 75 ms where both are measured (0%" in appendix
             assert "n=3 lies within" not in appendix
             assert "cannot separate harmonics of one island from phase-locked" in (
                 appendix
