@@ -240,10 +240,11 @@ def main():
             assert band["measured_n3_outline_pixels"] == 0
         assert drawn["ae_boxes_ms_khz"] == []
         crashes = drawn["sawtooth_crashes"]
-        shown = crashes["drawn_times_ms"]
+        shown = crashes["candidate_times_ms"]
+        assert crashes["drawn_times_ms"] == []
         assert not set(shown) & set(crashes["rejected_elm_times_ms"])
         assert set(shown) <= set(crashes["ece_times_ms"])
-        assert drawn["sawtooth_strip_shown"] == bool(shown)
+        assert drawn["sawtooth_strip_shown"] is False
         if shot == PRIMARY:
             assert record["window_ms"] == [700, 5800]
         assert drawn["catalog_sawtooth_frame_model_shown"] is False

@@ -1571,7 +1571,12 @@ def draw(
             for n in (1, 2)
         },
         "ae_boxes_ms_khz": [],
-        "sawtooth_crashes": {**crash_record, "drawn_times_ms": crashes.tolist()},
+        "sawtooth_crashes": {
+            **crash_record,
+            # The ECE strip is no longer drawn; the candidates stay in the record.
+            "drawn_times_ms": [],
+            "candidate_times_ms": crashes.tolist(),
+        },
         "projection_audit": {
             band.name: {
                 e: figure_sources.projection_audit(
