@@ -1004,7 +1004,7 @@ def draw(
         "g2": 0.2, "nbi": 0.38, "h_proc": 0.52,
         "pr": 3.6,
         "crashes": 0.24 if len(crashes) else 0.001,
-        "g3": 0.1, "da_pr": 0.52, "h_lab": 0.36,
+        "g3": 0.1, "da_pr": 0.55, "h_lab": 0.36,
     }  # fmt: skip
     names = [*layout, *[f"track{i}" for i in range(len(display_tracks))]]
     heights = [
