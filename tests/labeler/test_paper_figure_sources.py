@@ -844,8 +844,9 @@ def test_primary_caption_describes_the_figure_and_its_highlights():
     }
     text = fs.caption(199563, _primary_records(), drawn)
     assert text == (
-        "DIII-D shot 199563. Top: raw Mirnov spectrogram (linear frequency "
-        "axis, 0–250 kHz), D-alpha, NBI power. Middle: TokEye "
+        "DIII-D shot 199563. Top: raw CO2 interferometer and Mirnov "
+        "spectrograms (linear frequency axes, 0–250 kHz), D-alpha, NBI power. "
+        "Middle: TokEye "
         "coherent-mode mask after small-object removal; below 30 kHz coloured by "
         "toroidal mode number n (Mirnov array). Pink: mask pixels ≥60 kHz while "
         "the CO2 AE detector (80–250 kHz input band; trained on TokEye-mask-"

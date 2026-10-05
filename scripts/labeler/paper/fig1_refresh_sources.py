@@ -1,6 +1,6 @@
 """Pin the sawtooth export that Figure 1 reads and record competing catalog sources.
 
-Read-only inputs; writes immutable copies under `$LABELER_ROOT/round4/fig1b/` and a
+Read-only inputs; writes immutable copies under `$LABELER_ROOT/round4/fig1c/` and a
 small manifest in this worktree. The source is the saw stream's final population
 export, `$LABELER_ROOT/round4/saw/fix5/`, which outlives any stream worktree: its
 `labels/SHA256SUMS` pins every population shard, and that file's own digest is pinned
@@ -26,7 +26,7 @@ from labeler.paper import label_figure as lf
 from labeler.paper import mode_tags as mt
 
 #: Figure 1's shot and window (ms): AE, ELMs, confinement classes, an NTM and sawtooth all appear.
-WINDOWS = {199563: (700, 5800)}
+WINDOWS = {201991: (1000, 6100)}
 
 #: sha256 of `labels/SHA256SUMS` in the pinned export (the stream's documented value).
 EXPORT_SUMS_SHA256 = "47081aebcad868911bf3e38817b3e0c79e4ba9f02efe5fcee84780ad00a0ef14"
@@ -133,14 +133,14 @@ def main():
     parser.add_argument(
         "--snapshot",
         type=Path,
-        default=paths.root / "round4/fig1b/saw_source",
+        default=paths.root / "round4/fig1c/saw_source",
         help="immutable copies read by the render",
     )
     parser.add_argument(
         "--manifest",
         type=Path,
         default=Path(
-            "outputs/labeler/paper/fig_interpreter_tokeye/fig1b/"
+            "outputs/labeler/paper/fig_interpreter_tokeye/fig1c/"
             "sawtooth_source_manifest.json"
         ),
     )

@@ -29,7 +29,7 @@ from labeler.paper.figure_sources import AE_THRESHOLD
 
 #: Figure 1 is one shot on one linear 0-250 kHz frequency axis. The earlier
 #: alternates are not rendered on this axis; `--shots` audits any rendered set.
-PRIMARY = 199563
+PRIMARY = 201991
 SHOTS = (PRIMARY,)
 AXIS_TICKS_KHZ = [0, 50, 100, 150, 200, 250]
 #: Words that would describe a broken, stretched or compressed frequency axis.
@@ -40,7 +40,7 @@ def rebuild_primary(record):
     """Rebuild with the recorded sources and verify identical PDF/PNG bytes."""
     files = [Path(p) for p in record["drawn"]["figure"]]
     before = {str(p): sha256_of(p) for p in files}
-    rebuild_dir = Path(os.environ["TMPDIR"]) / "fig1b-primary-rebuild"
+    rebuild_dir = Path(os.environ["TMPDIR"]) / "fig1c-primary-rebuild"
     rebuild_dir.mkdir(parents=True, exist_ok=True)
     cmd = [
         "pixi", "run", "--frozen", "--no-install", "--manifest-path",
@@ -77,7 +77,7 @@ def main():
     parser.add_argument(
         "--records",
         type=Path,
-        default=Path("outputs/labeler/paper/fig_interpreter_tokeye/fig1b"),
+        default=Path("outputs/labeler/paper/fig_interpreter_tokeye/fig1c"),
     )
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument(
@@ -533,8 +533,10 @@ def main():
             )
         )
         assert "no present time" not in caption.lower()
-        assert caption.startswith(f"\\caption{{DIII-D shot {shot}. Top: raw Mirnov ")
-        assert "(linear frequency axis, 0--250 kHz), D-alpha, NBI power." in caption
+        assert caption.startswith(
+            f"\\caption{{DIII-D shot {shot}. Top: raw CO2 interferometer "
+        )
+        assert "(linear frequency axes, 0--250 kHz), D-alpha, NBI power." in caption
         assert not any(w in caption.lower() for w in BROKEN_AXIS_WORDS)
         assert "normalised" not in caption
         assert "Middle: TokEye coherent-mode mask after small-object removal" in caption

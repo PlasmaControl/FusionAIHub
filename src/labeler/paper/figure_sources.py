@@ -834,7 +834,7 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
     sentences = [
         f"DIII-D shot {shot}.",
         (
-            "Top: raw Mirnov spectrogram (linear frequency axis, 0–250 kHz), "
+            "Top: raw CO2 interferometer and Mirnov spectrograms (linear frequency axes, 0–250 kHz), "
             "D-alpha, NBI power."
         ),
         (

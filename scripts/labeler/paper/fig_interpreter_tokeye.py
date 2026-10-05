@@ -6,7 +6,7 @@ r"""fig_interpreter (the teaser): raw signals -> TokEye-processed -> labelled.
 
 One non-blind cohort shot over a few seconds, in three groups on one time axis:
 
-- **raw**: the Mirnov probe's spectrogram (MPI66M322D, the wide pass) on one
+- **raw**: the CO2 interferometer's spectrogram (R0, `SOURCE_ROW`, the wide pass) on one
   linear 0-250 kHz axis, one colour scale, D-alpha and NBI power;
 - **processed**: the same spectrogram through TokEye (the network's mode mask,
   `labeler.paper.mode_tags`: transient burst removed, pickup removed,
@@ -75,7 +75,7 @@ from labeler.paper import PAGE_IN, figure_sources, mode_tags, roster, style
 from labeler.paper import label_figure as lf
 
 STEM = "fig_interpreter"
-HEIGHT_IN = 5.6
+HEIGHT_IN = 6.6
 DPI_PNG = 150
 DPI_PDF = 300
 #: The window's margin the TokEye cache keeps beyond the figure's, ms.
@@ -149,6 +149,16 @@ HEADINGS = {
     ),
     "h_lab": ("Labels; source at right",),
 }
+#: The signal TokEye segments and the raw panel draws: the CO2 interferometer R0
+#: (corpus `co2` row 0, 500 kHz). The n colouring and the NTM tags still read the
+#: Mirnov array, gated by this mask.
+SOURCE_GROUP = "co2"
+SOURCE_ROW = 0
+SOURCE_TITLE = "CO2 R0"
+#: The Mirnov probe drawn as a second raw spectrogram (corpus `mirnov` row 20,
+#: MPI66M20, one of the cleaner probes: little fixed-frequency pickup).
+MIRNOV_ROW = 20
+MIRNOV_TITLE = "Mirnov"
 INK = "#222222"
 BAR = (0.12, 0.76)
 FONT = 7
@@ -173,7 +183,7 @@ def run_tokeye(paths: Paths, shot: int, t0: float, t1: float, device: str) -> di
         torch.set_num_threads(8)
     model = unet.load_unet(roster.tokeye_file(paths), device=device)
     y, fs, t0_s, _ = masks.read_waveform(
-        paths.corpus_file(shot), roster.GATE_GROUP, roster.GATE_ROW
+        paths.corpus_file(shot), SOURCE_GROUP, SOURCE_ROW
     )
     out: dict = {}
     for name, decim in (("wide", 1), ("zoom", masks.ZOOM_DECIM)):
@@ -187,6 +197,14 @@ def run_tokeye(paths: Paths, shot: int, t0: float, t1: float, device: str) -> di
         out[f"{name}_t_ms"] = t_ms[keep]
         out[f"{name}_f_khz"] = masks.freq_axis_khz(fs, decim)
         out[f"{name}_row_lit"] = (probs[0] >= mode_tags.PROB_THRESHOLD).mean(axis=1)
+    # the second raw panel: one Mirnov probe's wide-pass spectrogram, no mask
+    ym, fsm, t0m, _ = masks.read_waveform(paths.corpus_file(shot), "mirnov", MIRNOV_ROW)
+    spec, meta = masks.prep(ym, fs_hz=fsm, decim=1)
+    t_ms = masks.col_times_s(spec.shape[1], fsm, 1, t0m) * 1000
+    keep = (t_ms >= t0) & (t_ms <= t1)
+    out["mirnov_raw"] = masks.unstandardise(spec[:, keep], meta).astype(np.float16)
+    out["mirnov_t_ms"] = t_ms[keep]
+    out["mirnov_f_khz"] = masks.freq_axis_khz(fsm, 1)
     return out
 
 
@@ -200,8 +218,8 @@ def tokeye_passes(
         figure_sources.tokeye_fingerprints(
             paths,
             shot,
-            roster.GATE_GROUP,
-            roster.GATE_ROW,
+            SOURCE_GROUP,
+            SOURCE_ROW,
             inspect.getsource(run_tokeye),
         ),
         sort_keys=True,
@@ -428,6 +446,21 @@ def style_axes(ax, bottom: bool = False) -> None:
     ax.tick_params(labelbottom=bottom, bottom=bottom)
     for side in ("top", "right"):
         ax.spines[side].set_visible(False)
+
+
+def mirnov_band(z: dict, t0: float, t1: float) -> Band:
+    """A `Band`-shaped view of the second raw panel: the Mirnov wide pass, 0-250 kHz,
+    on its own colour scale (no mask)."""
+    t, f = z["mirnov_t_ms"], z["mirnov_f_khz"]
+    cols, rows = (t >= t0) & (t <= t1), f < TOP_KHZ + 1
+    band = object.__new__(Band)
+    band.t, band.f = t[cols], f[rows]
+    band.raw = z["mirnov_raw"][rows][:, cols].astype(np.float32)
+    band.edges = None
+    band.k = max(1, len(band.t) // IMAGE_COLUMNS)
+    lo_v, hi_v = np.percentile(band.raw, (3, 99.8))
+    band.norm = np.clip((band.raw - lo_v) / (hi_v - lo_v), 0, 1)
+    return band
 
 
 def draw_raw(ax, band: Band, cmap: str = "viridis") -> None:
@@ -958,6 +991,7 @@ def draw(
     # What is drawn: the wide pass on one colour scale over 0-250 kHz, and the mask
     # from the zoom pass below ZOOM_TOP_KHZ and the wide pass above it.
     raw_view = Band(z, "wide", 0.0, TOP_KHZ + 1, t0, t1)
+    mirnov_view = mirnov_band(z, t0, t1)
     mask_top = Band(z, "wide", ZOOM_TOP_KHZ, TOP_KHZ + 1, t0, t1)
     spans = {e: present_spans(by_key[e]) for e in (mode_tags.AE, mode_tags.NTM)}
     n_original = n_sig.rows[0] if n_sig.rows else None
@@ -999,7 +1033,7 @@ def draw(
     n_read, n_kept = roster.gated(n_sig.rows[0], gate) if n_sig.rows else (None, None)
 
     layout = {
-        "h_raw": 0.32, "raw": 3.6,
+        "h_raw": 0.32, "raw": 2.4, "g0": 0.22, "raw2": 2.1,
         "g1": 0.1, "da_raw": 0.38,
         "g2": 0.2, "nbi": 0.38, "h_proc": 0.52,
         "pr": 3.6,
@@ -1024,11 +1058,12 @@ def draw(
             bottom=0.095,
         )
         ax = {n: fig.add_subplot(gs[i]) for i, n in enumerate(names)}
-        for n in ("h_raw", "g1", "g2", "h_proc", "g3", "h_lab"):
+        for n in ("h_raw", "g0", "g1", "g2", "h_proc", "g3", "h_lab"):
             ax[n].set_visible(False)
         track_axes = [ax[f"track{i}"] for i in range(len(display_tracks))]
         for n in (
             "raw",
+            "raw2",
             "da_raw",
             "nbi",
             "pr",
@@ -1043,10 +1078,24 @@ def draw(
 
         # ---- raw
         draw_frequency_panels(ax, raw_view, low, mask_top)
-        ax["raw"].text(
+        ax["raw2"].set_ylim(0, TOP_KHZ)
+        ax["raw2"].set_yticks(FREQ_TICKS_KHZ)
+        ax["raw2"].set_ylabel("kHz", labelpad=2)
+        draw_raw(ax["raw2"], mirnov_view)
+        ax["raw2"].text(
             1.02,
             0.97,
             "Mirnov\nmagnetics",
+            transform=ax["raw2"].transAxes,
+            fontsize=FONT,
+            ha="left",
+            va="top",
+            color=INK,
+        )
+        ax["raw"].text(
+            1.02,
+            0.97,
+            "CO$_2$\ninterferometer",
             transform=ax["raw"].transAxes,
             fontsize=FONT,
             ha="left",
@@ -1386,7 +1435,7 @@ def draw(
                 "band_khz": list(ax["pr"].get_ylim()),
                 "scale_breaks_khz": [],
                 "ticks_khz": ax["pr"].get_yticks().tolist(),
-                "raw_spectrogram": "wide pass, one colour scale, 0-250 kHz",
+                "raw_spectrogram": "CO2 R0, wide pass, one colour scale, 0-250 kHz",
                 "mask_zoom_pass_khz": [0.0, ZOOM_TOP_KHZ],
                 "mask_wide_pass_khz": [ZOOM_TOP_KHZ, TOP_KHZ],
                 "ae_ntm_split_khz": SPLIT_KHZ,
@@ -1874,9 +1923,9 @@ def main(argv=None) -> int:
         "--tmin", "--start", type=float, help="ms; supply both bounds or neither"
     )
     parser.add_argument("--tmax", "--end", type=float)
-    parser.add_argument("--out", type=Path, help="folder; default round4/fig1b")
+    parser.add_argument("--out", type=Path, help="folder; default round4/fig1c")
     parser.add_argument(
-        "--cache", type=Path, help="TokEye cache; default round4/fig1b/cache"
+        "--cache", type=Path, help="TokEye cache; default round4/fig1c/cache"
     )
     parser.add_argument("--device", default="cpu", help="TokEye's device")
     parser.add_argument("--cache-only", action="store_true", help="TokEye, no figure")
@@ -1923,8 +1972,8 @@ def main(argv=None) -> int:
     clean_head = not subprocess.check_output(["git", "status", "--porcelain"]).strip()
 
     paths = Paths.from_env()
-    out = args.out or paths.root / "round4" / "fig1b"
-    cache = args.cache or paths.root / "round4" / "fig1b" / "cache"
+    out = args.out or paths.root / "round4" / "fig1c"
+    cache = args.cache or paths.root / "round4" / "fig1c" / "cache"
     found = [c for c in lf.candidates(paths) if c.shot == args.shot]
     if not found:
         raise SystemExit(f"{args.shot}: not a non-blind cohort shot")
@@ -2055,7 +2104,7 @@ def main(argv=None) -> int:
         "tokeye": {
             "checkpoint": str(checkpoint),
             "sha256": sha256_of(checkpoint),
-            "probe": f"{roster.GATE_GROUP} row {roster.GATE_ROW} ({roster.GATE_TITLE})",
+            "probe": f"{SOURCE_GROUP} row {SOURCE_ROW} ({SOURCE_TITLE})",
             "threshold": mode_tags.PROB_THRESHOLD,
             "cache": str(cache_file),
             "cache_sha256": sha256_of(cache_file),
