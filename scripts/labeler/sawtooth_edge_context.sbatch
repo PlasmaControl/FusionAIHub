@@ -18,7 +18,7 @@ export LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker
 export LABELER_LABEL_TABLES=/scratch/gpfs/nc1514/FusionAIHub/data/events
 export LABELER_NO_FETCH=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
 export PATH=/home/nc1514/.pixi/bin:$PATH
-cd /scratch/gpfs/nc1514/FusionAIHub-r4-saw
+cd "${LABELER_REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
 export PYTHONPATH=$PWD/src
 trap 'bash /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/bin/tmpsweep.sh' EXIT
 timeout 10800 pixi run --frozen --no-install \

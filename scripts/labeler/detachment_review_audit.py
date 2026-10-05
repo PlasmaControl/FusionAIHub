@@ -74,7 +74,8 @@ def frozen_delivery(out, record_path, write_handoff=False):
     if write_handoff:
         text = (
             "# detach-ui — Fix round 6 handoff\n\n"
-            "Code is on `r4-detach-ui` in `/scratch/gpfs/nc1514/FusionAIHub-r4-detach-ui`. "
+            "Code is in the repository checkout this file was generated from "
+            "(merged from `r4-detach-ui`). "
             "Read **Fix round 6** in the stream report and "
             "`docs/labeler/detachment_review.md` for the finding map and commands.\n\n"
             f"Frozen delivery: {record['queue_shots']} nonblind camera shots, "

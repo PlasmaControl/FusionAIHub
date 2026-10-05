@@ -26,9 +26,12 @@ and the figure's CSV carries the same note; nothing is changed silently:
   start), not the union of the interval table;
 - RWM: legacy is a list of onset points (shots only, no time); Tokamak-SI absent
   time is assumed before the first precursor;
-- sawtooth: no label set released yet, and no legacy label set exists;
-- detachment: no legacy set, no human review; the record is read from the
-  detachment stream's committed file.
+- sawtooth: no legacy label set exists (the published detectors are from another
+  machine and ship no table); Tokamak-SI is the released population labels, whose
+  shards are verified against the manifest's digests, and the reviewed subset is
+  the three shots a person drew spans on;
+- detachment: no legacy set, no human review; the record is the detachment
+  stream's committed `docs/labeler/figure2_detach.json`.
 
 The record, `docs/labeler/figure2_coverage.json`, is what the figure draws.
 """
@@ -57,15 +60,20 @@ CONFINEMENT_INTERVALS = Path(
         f"{MAIN}/runs/labeler/confinement/v1/merged_intervals.csv",
     )
 )
-#: the detachment stream's worktree, whose committed record is read until it merges
-DETACH_WORKTREE = Path(
-    os.environ.get(
-        "LABELER_DETACH_WORKTREE", "/scratch/gpfs/nc1514/FusionAIHub-r4-detach"
-    )
-)
 TM_RECORD = REPO / "docs" / "labeler" / "figure2_tm.json"
 SMITH_RECORD = REPO / "outputs" / "labeler" / "elm" / "smith" / "evaluation.json"
-DETACH_RECORD = "docs/labeler/figure2_detach.json"
+#: the detachment stream's record, committed in this repository
+DETACH_RECORD = Path(
+    os.environ.get(
+        "LABELER_DETACH_RECORD", REPO / "docs" / "labeler" / "figure2_detach.json"
+    )
+)
+#: the sawtooth stream's label manifest (the shards' digests) and, in the
+#: checkout, the untracked integration copy of the shards
+SAW_MANIFEST = (
+    REPO / "outputs" / "labeler" / "sawtooth" / "fix5" / "label_manifest.json"
+)
+SAW_TABLES = TABLES / "sawtooth_oscillation"
 #: x order of the figure
 SETS = ("ae", "confinement", "elm", "tm", "sawtooth", "rwm", "detachment")
 NAMES = {
@@ -392,7 +400,41 @@ def tm() -> dict:
     }
 
 
+def saw_shards() -> tuple[list[Path], dict]:
+    """The released population label shards and the manifest that digests them.
+    The checkout's integration copy is used when it holds the shards, else the
+    label store the manifest names; each shard must match its digest."""
+    from labeler.config import Paths
+
+    manifest = load_json(SAW_MANIFEST)
+    entries = [f for f in manifest["files"] if f["file"].startswith("population-")]
+    folders = (
+        SAW_TABLES / "extend_saw_physics",
+        Path(manifest["labels_path"]),
+        Paths.from_env().root / "round4" / "saw" / "fix5" / "labels",
+    )
+    folder = next((f for f in folders if (f / entries[0]["file"]).is_file()), None)
+    if folder is None:
+        raise FileNotFoundError("the sawtooth population label shards are not found")
+    shards = [folder / e["file"] for e in entries]
+    for shard, entry in zip(shards, entries):
+        if hashlib.sha256(shard.read_bytes()).hexdigest() != entry["sha256"]:
+            raise ValueError(f"{shard} does not match the manifest's digest")
+    return shards, manifest
+
+
 def sawtooth() -> dict:
+    shards, manifest = saw_shards()
+    frame = pd.concat(
+        [
+            pd.read_csv(f, usecols=["shot", "category", "t_start", "t_end"])
+            for f in shards
+        ]
+    )
+    review = table("sawtooth_oscillation/review/labels.csv")
+    history = review.with_name("history.jsonl")
+    seen = reviewed_shots(history)
+    rev = labelled(pd.read_csv(review), (0, 1), seen)
     return {
         "legacy": side(
             "none",
@@ -402,13 +444,28 @@ def sawtooth() -> dict:
             [],
         ),
         "tokamak_si": side(
-            "pending",
-            "sawtooth labels",
-            "the sawtooth stream's labels are not released yet",
-            [],
-            reviewed=reviewed_block("pending"),
+            "measured",
+            "released population labels",
+            "shared definition on the physics-rule labels: present (a periodic "
+            "relaxation train) and absent (ECE-tested absence) count; the q-prior "
+            "states, other uncertain time and unassessed time do not",
+            [SAW_MANIFEST, review, history],
+            reviewed=reviewed_block(
+                "measured",
+                rev["shots"],
+                rev["seconds"],
+                "the shots a person drew spans on, anchored to earlier rule suggestions",
+            ),
+            shards=len(shards),
+            shards_sha256sums=manifest["manifest_sha256"],
+            **labelled(frame, (0, 1)),
         ),
-        "notes": ["wired when the sawtooth stream merges"],
+        "notes": [
+            (
+                "the labels are rule output, unvalidated against an independent "
+                "truth; only the reviewed spans are human-drawn"
+            )
+        ],
         "alternatives": [],
     }
 
@@ -451,29 +508,11 @@ def rwm() -> dict:
 
 
 def detach_record() -> tuple[dict | None, str | None]:
-    """The detachment record: this checkout's if present, else the detachment
-    worktree's committed file (and its commit)."""
-    own = REPO / DETACH_RECORD
-    if own.is_file():
-        return load_json(own), note_source(own)
-    git = ["git", "-C", str(DETACH_WORKTREE)]
-    shown = subprocess.run(
-        [*git, "show", f"HEAD:{DETACH_RECORD}"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if shown.returncode:
+    """The detachment stream's committed record (`DETACH_RECORD`), and the name it
+    is cited by; none when the file is absent."""
+    if not DETACH_RECORD.is_file():
         return None, None
-    rev = subprocess.run(
-        [*git, "rev-parse", "--short", "HEAD"],
-        capture_output=True,
-        text=True,
-        check=False,
-    ).stdout.strip()
-    name = f"{DETACH_WORKTREE}/{DETACH_RECORD}@{rev}"
-    note_source(name, hashlib.sha256(shown.stdout.encode()).hexdigest())
-    return json.loads(shown.stdout), name
+    return load_json(DETACH_RECORD), note_source(DETACH_RECORD)
 
 
 def detachment() -> dict:
@@ -517,8 +556,8 @@ def detachment() -> dict:
         },
         "notes": [
             (
-                "the record is the detachment stream's committed file, not yet merged "
-                "into this branch"
+                "the record is the detachment stream's committed file; its tiers "
+                "are TangTV with an agreeing Afrac vote and TangTV only"
             )
         ],
         "alternatives": [

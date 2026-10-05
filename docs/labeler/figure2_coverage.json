@@ -1,8 +1,8 @@
 {
  "schema": "figure2_coverage",
  "made_by": "scripts/labeler/paper/fig2_coverage.py",
- "git": "4d058075",
- "made_at": "2026-10-04T14:31:30+00:00",
+ "git": "1a29d71c",
+ "made_at": "2026-10-05T02:51:27+00:00",
  "definition": "Labelled time is, shot by shot, the union of the intervals a label table states present or absent (the four regimes for confinement); intervals stated uncertain, not observable or unassessed are not labelled time. Labelled shots are the shots with any labelled time. Tokamak-SI counts every released tier and split; the reviewed subset counts the shots whose labels a person reviewed.",
  "units": {
   "shots": "shots",
@@ -224,22 +224,28 @@
     "paths": []
    },
    "tokamak_si": {
-    "status": "pending",
-    "label": "sawtooth labels",
-    "shots": null,
-    "seconds": null,
-    "shared_definition": false,
-    "definition": "the sawtooth stream's labels are not released yet",
-    "paths": [],
+    "status": "measured",
+    "label": "released population labels",
+    "shots": 7295,
+    "seconds": 6469.443,
+    "shared_definition": true,
+    "definition": "shared definition on the physics-rule labels: present (a periodic relaxation train) and absent (ECE-tested absence) count; the q-prior states, other uncertain time and unassessed time do not",
+    "paths": [
+     "outputs/labeler/sawtooth/fix5/label_manifest.json",
+     "data/events/sawtooth_oscillation/review/labels.csv",
+     "data/events/sawtooth_oscillation/review/history.jsonl"
+    ],
     "reviewed": {
-     "status": "pending",
-     "shots": null,
-     "seconds": null,
-     "note": ""
-    }
+     "status": "measured",
+     "shots": 3,
+     "seconds": 17.967,
+     "note": "the shots a person drew spans on, anchored to earlier rule suggestions"
+    },
+    "shards": 151,
+    "shards_sha256sums": "47081aebcad868911bf3e38817b3e0c79e4ba9f02efe5fcee84780ad00a0ef14"
    },
    "notes": [
-    "wired when the sawtooth stream merges"
+    "the labels are rule output, unvalidated against an independent truth; only the reviewed spans are human-drawn"
    ],
    "alternatives": [],
    "name": "sawtooth"
@@ -293,12 +299,12 @@
    "tokamak_si": {
     "status": "measured",
     "label": "detachment labels",
-    "shots": 25,
-    "seconds": 45.75,
+    "shots": 23,
+    "seconds": 41.05,
     "shared_definition": false,
     "definition": "deviation: the bins that carry a state (TangTV, with or without an agreeing second indicator); bins with no vote or a conflict are not labelled",
     "paths": [
-     "/scratch/gpfs/nc1514/FusionAIHub-r4-detach/docs/labeler/figure2_detach.json@7813abc9"
+     "docs/labeler/figure2_detach.json"
     ],
     "record_key": "coverage.labelled_certain_or_tangtv_only",
     "reviewed": {
@@ -309,15 +315,15 @@
     }
    },
    "notes": [
-    "the record is the detachment stream's committed file, not yet merged into this branch"
+    "the record is the detachment stream's committed file; its tiers are TangTV with an agreeing Afrac vote and TangTV only"
    ],
    "alternatives": [
     {
      "name": "assessed bins (a state or not)",
      "shots": 32,
-     "seconds": 88.95,
+     "seconds": 89.0,
      "paths": [
-      "/scratch/gpfs/nc1514/FusionAIHub-r4-detach/docs/labeler/figure2_detach.json@7813abc9"
+      "docs/labeler/figure2_detach.json"
      ],
      "record_key": "coverage.assessed"
     }
@@ -326,7 +332,6 @@
   }
  },
  "sources": {
-  "/scratch/gpfs/nc1514/FusionAIHub-r4-detach/docs/labeler/figure2_detach.json@7813abc9": "af2e66f79544ba4bd706610ab0efe14c364589507d03ca7392795d140651fc66",
   "/scratch/gpfs/nc1514/FusionAIHub/runs/labeler/confinement/v1/merged_intervals.csv": "72de466aeae391cb06852d0cfcf6a322d185fe2557d6f5b3c36d6ff690f663f2",
   "data/events/alfven_eigenmode/format/alfven_eigenmode_ece_format_2026_v1.csv": "3e2d5e3ce441073a3e6cf2cce110e229b9fcac1e322db073a027b534ca32433f",
   "data/events/alfven_eigenmode/format/alfven_eigenmode_format_2026_v1.csv": "8a52b8b785ddb78ba0932318e69ab58136fbaa0d3b19bcb7815159b2e6b72279",
@@ -342,7 +347,11 @@
   "data/events/resistive_wall_mode/extend_rwm_onset_window/rwm_windows.csv": "b372bbb707219c6269d7521ef70430b8ccea8c0df3f29b366fe2c352b6108c6e",
   "data/events/resistive_wall_mode/extend_rwm_onset_window/rwm_windows.meta.json": "7ec86fd2e10cab2376fe8f14d2d27d981f82a4490c2765ea132242d491be4139",
   "data/events/resistive_wall_mode/format/rwm_format_2026_v1.csv": "d88cf9c25dc97b6338f286403f1b4ecd2c6b14d1551a5b3b786ea622e35e5390",
+  "data/events/sawtooth_oscillation/review/history.jsonl": "5eed09aeb201b181c232fe3d567d65a03ca8b815ebb8a646d9c85fe2ac0e68f8",
+  "data/events/sawtooth_oscillation/review/labels.csv": "dd602f56b59a6c20621ee7975d65ea5a47637c98ebf06455839aeb128e36345a",
+  "docs/labeler/figure2_detach.json": "30420c20cc39a62a33e943450840e718272b0136de6e52d379c2f2125802d42a",
   "docs/labeler/figure2_tm.json": "5c423c157c78b457998095b3843e544d783d234e1843c6be394e86a882cdab41",
-  "outputs/labeler/elm/smith/evaluation.json": "95a745f4786fef2897e03729c7af8f85e51756b5ac282929f5f8bf4d9b70dcf3"
+  "outputs/labeler/elm/smith/evaluation.json": "95a745f4786fef2897e03729c7af8f85e51756b5ac282929f5f8bf4d9b70dcf3",
+  "outputs/labeler/sawtooth/fix5/label_manifest.json": "74587800265cf092bb71815a1765ef25f3ad31768a137dadc69179b61b931b34"
  }
 }

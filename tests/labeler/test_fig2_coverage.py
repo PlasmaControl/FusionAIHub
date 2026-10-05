@@ -143,6 +143,85 @@ def test_a_value_read_from_a_stream_record_equals_that_records_key():
         assert block["seconds"] == pytest.approx(node["labelled_seconds"], abs=5e-4)
 
 
+def test_sawtooth_counts_the_released_present_and_tested_absent_population():
+    block = record()["sets"]["sawtooth"]["tokamak_si"]
+    manifest = json.loads(cov.SAW_MANIFEST.read_text())
+    assert block["status"] == "measured" and block["shared_definition"]
+    assert block["shards"] == sum(
+        f["file"].startswith("population-") for f in manifest["files"]
+    )
+    assert block["shards_sha256sums"] == manifest["manifest_sha256"]
+    # the stream's own record: present plus tested-absent seconds of the population
+    stream = json.loads(
+        (cov.SAW_MANIFEST.parent / "population_labels.json").read_text()
+    )["state_seconds"]
+    labelled_s = stream["present"] + stream["absent"]
+    assert block["seconds"] == pytest.approx(labelled_s, rel=1e-3)
+    assert (
+        block["shots"]
+        > json.loads((cov.SAW_MANIFEST.parent / "population_labels.json").read_text())[
+            "positive_shots"
+        ]
+    )  # the tested-absent shots add to the shots with a train
+    assert record()["sets"]["sawtooth"]["legacy"]["status"] == "none"
+
+
+def test_the_sawtooth_reviewed_subset_is_the_three_shots_a_person_drew_spans_on():
+    reviewed = record()["sets"]["sawtooth"]["tokamak_si"]["reviewed"]
+    history = cov.table("sawtooth_oscillation/review/history.jsonl")
+    lines = history.read_text().splitlines()
+    seen = {json.loads(ln)["shot"] for ln in lines if ln.strip()}
+    assert reviewed["status"] == "measured" and reviewed["shots"] == len(seen) == 3
+    assert 0 < reviewed["seconds"] < 60
+
+
+def test_a_shard_that_does_not_match_the_manifests_digest_is_refused(
+    tmp_path, monkeypatch
+):
+    import hashlib
+
+    shard = tmp_path / "population-000.csv"
+    shard.write_text("shot,category,t_start,t_end\n1,1,0,1000\n")
+    manifest = tmp_path / "manifest.json"
+
+    def write(digest):
+        manifest.write_text(
+            json.dumps(
+                {
+                    "labels_path": str(tmp_path),
+                    "manifest_sha256": "0" * 64,
+                    "files": [{"file": shard.name, "sha256": digest}],
+                }
+            )
+        )
+
+    monkeypatch.setattr(cov, "SAW_MANIFEST", manifest)
+    monkeypatch.setattr(cov, "SAW_TABLES", tmp_path / "none")
+    write(hashlib.sha256(shard.read_bytes()).hexdigest())
+    assert cov.saw_shards()[0] == [shard]
+    write("1" * 64)
+    with pytest.raises(ValueError, match="digest"):
+        cov.saw_shards()
+
+
+def test_detachment_reads_this_checkouts_record_and_names_no_worktree():
+    block = record()["sets"]["detachment"]["tokamak_si"]
+    stream = json.loads(cov.DETACH_RECORD.read_text())["coverage"]
+    cover = stream["labelled_certain_or_tangtv_only"]
+    assert block["shots"] == cover["shots"]
+    assert block["seconds"] == pytest.approx(cover["seconds"], abs=5e-4)
+    assert block["paths"] == ["docs/labeler/figure2_detach.json"]
+    assert cov.DETACH_RECORD.relative_to(cov.REPO) == Path(
+        "docs/labeler/figure2_detach.json"
+    )
+
+
+def test_no_recorded_source_and_no_default_path_names_a_stream_worktree():
+    assert not [s for s in record()["sources"] if "FusionAIHub-r4-" in s]
+    assert "FusionAIHub-r4-" not in SCRIPT.read_text()
+    assert "worktree" not in SCRIPT.read_text().lower()
+
+
 def test_the_record_names_the_files_it_was_made_from():
     rec = record()
     assert rec["sources"], "no source digests"
