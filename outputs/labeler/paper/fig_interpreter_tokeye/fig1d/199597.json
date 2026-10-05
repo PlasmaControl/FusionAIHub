@@ -3856,7 +3856,7 @@
    "3": "#F0E442"
   },
   "n_brightness_rule": "constant full colour for every measured n pixel",
-  "raw_normalisation": "3rd/99.8th percentiles of the whole 0-250 kHz window, one colour scale",
+  "raw_normalisation": "3rd/99.8th percentiles of the whole 0-150 kHz window, one colour scale",
   "unkeyed_n_colour": "#8C6BB1",
   "bands_khz": {
    "alfven_eigenmode": [
@@ -3873,7 +3873,7 @@
    ]
   },
   "split_khz": 60.0,
-  "frequency_axis": "linear 0-250 kHz, no scale breaks",
+  "frequency_axis": "linear 0-150 kHz, no scale breaks",
   "elm_peaks": "D-alpha less a 25-sample running median, over 4.0 MADs"
  },
  "tracks": {
@@ -5664,11 +5664,11 @@
  },
  "caption": {
   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/caption.tex",
-  "sha256": "f4b34c878a89ce278b1906bcf22135b946a3e1138ac1b2087c03764bb7cdf1d9"
+  "sha256": "016890a43581fbe2e7d7d153305cf453a79b638577660370868d4f54aeace1cd"
  },
  "appendix": {
   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/appendix.txt",
-  "sha256": "5ca5e7aa04dc7b7e16442100caa5cb7b1107a83916c2df06b7dc15422bb0fda2"
+  "sha256": "12d201c06ffa085ea80566fe7098ac0c9b000a6417e3c1a8a315f4b0105240d4"
  },
  "drawn": {
   "figure": [
@@ -5676,18 +5676,18 @@
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/fig_interpreter.png"
   ],
   "figure_sha256": {
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/fig_interpreter.pdf": "d7003d01d500eb31a3a2f703d9e1f9127a67c5349865cb635d3b1b38001b57ed",
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/fig_interpreter.png": "84075d6bf4a229137fe3b188e4bf19656e84ec4181b472a66729ba4578e455c9"
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/fig_interpreter.pdf": "309825071a787294135e9612c9781ad3e863d15cdee42d80c56f6121a5e16181",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/fig_interpreter.png": "2ce990b79e6c77c286e1c3dd1364dfcb8fc58d559eb5f95c28634389e057d761"
   },
   "blobs": {
-   "wide_above_split": 459,
+   "wide_above_split": 396,
    "zoom_below_split": 139,
    "tagged": {
-    "alfven_eigenmode": 325,
+    "alfven_eigenmode": 286,
     "neoclassical_tearing_mode": 13,
     "sawtooth_oscillation": 0
    },
-   "untagged": 260
+   "untagged": 236
   },
   "beta_n": {
    "store": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/features/199597_features.h5",
@@ -5755,36 +5755,34 @@
     "scale": "linear",
     "band_khz": [
      0.0,
-     250.0
+     150.0
     ],
     "scale_breaks_khz": [],
     "ticks_khz": [
      0,
      50,
      100,
-     150,
-     200,
-     250
+     150
     ],
-    "raw_spectrogram": "CO2 R0 x V1 cross-power, wide pass, one colour scale, 0-250 kHz",
+    "raw_spectrogram": "CO2 R0 x V1 cross-power, wide pass, one colour scale, 0-150 kHz",
     "mask_zoom_pass_khz": [
      0.0,
      50.0
     ],
     "mask_wide_pass_khz": [
      50.0,
-     250.0
+     150.0
     ],
     "ae_ntm_split_khz": 60.0,
     "n_view_top_khz": 30.0
    },
-   "n_view_height_in": 0.15462620689655165,
+   "n_view_height_in": 0.2577103448275861,
    "ece_candidate_key_placement": null,
    "frequency_panels": {
     "raw": {
      "band_khz": [
       0.0,
-      250.0
+      150.0
      ],
      "height_in": 1.2885517241379305,
      "bounds": [
@@ -5797,15 +5795,13 @@
       0,
       50,
       100,
-      150,
-      200,
-      250
+      150
      ]
     },
     "pr": {
      "band_khz": [
       0.0,
-      250.0
+      150.0
      ],
      "height_in": 1.2885517241379305,
      "bounds": [
@@ -5818,9 +5814,7 @@
       0,
       50,
       100,
-      150,
-      200,
-      250
+      150
      ]
     }
    },
@@ -5839,40 +5833,22 @@
       "text": "50",
       "bounds": [
        0.11502057613168726,
-       0.7955676127921373,
+       0.8253951989990338,
        0.13279835390946504,
-       0.8124464708168286
+       0.8422740570237252
       ]
      },
      {
       "text": "100",
       "bounds": [
        0.10613168724279837,
-       0.8403089921024821,
+       0.8999641645162751,
        0.13279835390946504,
-       0.8571878501271735
+       0.9168430225409666
       ]
      },
      {
       "text": "150",
-      "bounds": [
-       0.10613168724279837,
-       0.8850503714128268,
-       0.13279835390946504,
-       0.9019292294375183
-      ]
-     },
-     {
-      "text": "200",
-      "bounds": [
-       0.10613168724279837,
-       0.9297917507231717,
-       0.13279835390946504,
-       0.9466706087478631
-      ]
-     },
-     {
-      "text": "250",
       "bounds": [
        0.10613168724279837,
        0.9745331300335165,
@@ -5895,40 +5871,22 @@
       "text": "50",
       "bounds": [
        0.11502057613168726,
-       0.5602610993821757,
+       0.5900886855890723,
        0.13279835390946504,
-       0.5771399574068671
+       0.6069675436137637
       ]
      },
      {
       "text": "100",
       "bounds": [
        0.10613168724279837,
-       0.6050024786925206,
+       0.6646576511063136,
        0.13279835390946504,
-       0.6218813367172119
+       0.6815365091310049
       ]
      },
      {
       "text": "150",
-      "bounds": [
-       0.10613168724279837,
-       0.6497438580028653,
-       0.13279835390946504,
-       0.6666227160275567
-      ]
-     },
-     {
-      "text": "200",
-      "bounds": [
-       0.10613168724279837,
-       0.6944852373132102,
-       0.13279835390946504,
-       0.7113640953379016
-      ]
-     },
-     {
-      "text": "250",
       "bounds": [
        0.10613168724279837,
        0.7392266166235549,
@@ -6319,12 +6277,12 @@
   "late_untagged_high_frequency": {
    "band_khz": [
     60.05859392722576,
-    242.67578196610734
+    149.4140629409031
    ],
-   "pixels": 12357,
-   "columns": 1633,
-   "first_time_ms": 2800.1213573085843,
-   "last_time_ms": 5966.585347964726,
+   "pixels": 10903,
+   "columns": 1368,
+   "first_time_ms": 2837.241357199048,
+   "last_time_ms": 5193.465350246111,
    "rule": "all coherent pixels in the AE detector band during late ABSENT times after the last PRESENT AE interval; no duration cutoff",
    "reason": "AE detector absent; time coincidence is required"
   },
@@ -6371,17 +6329,17 @@
      "regions": 11,
      "omitted_fragments": 11,
      "omitted_sizes_px": [
-      2,
-      3,
-      4,
       4,
       6,
-      12,
-      13,
-      13,
-      24,
-      34,
-      60
+      6,
+      6,
+      6,
+      17,
+      19,
+      20,
+      25,
+      47,
+      73
      ],
      "dashed_regions": 2
     }
@@ -6460,7 +6418,7 @@
    },
    "wide": {
     "alfven_eigenmode": {
-     "pixels": 82472,
+     "pixels": 77934,
      "outside_present": 0,
      "outside_band": 0
     },
@@ -6508,11 +6466,11 @@
    }
   }
  },
- "git": "46382d1d",
+ "git": "aec0da61",
  "render_started_from_clean_head": true,
  "render_code_sha256": {
-  "scripts/labeler/paper/fig_interpreter_tokeye.py": "4eea192faa9488c55d48c61e33d604d21c4712e4d1fa9fdac0d0303b2835a306",
-  "src/labeler/paper/figure_sources.py": "c6f60930eb665a016a52e7f196a3a03798ff027250889419ecbc051b9aa67ddc",
+  "scripts/labeler/paper/fig_interpreter_tokeye.py": "db7c5768a735f7df20e00a34ff4bf5d697b29b7fa5592fddbbdff41f704640a2",
+  "src/labeler/paper/figure_sources.py": "a69d992b9fa292c47f2edd252381dd663109318ad0ca5f5a1ebdca8596a38865",
   "src/labeler/paper/mode_tags.py": "5a23d78ab919e93ab892633ea46e1891d2785227b91ff2552e891e476f6b4661"
  }
 }
