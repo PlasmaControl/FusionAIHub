@@ -1082,8 +1082,8 @@ def draw(
         beta = equilibrium.signal(candidate.shot, "betan", paths)
         beta_ms = np.ravel(beta.x) * 1000.0
         beta_y = np.ravel(beta.y)
-        shown = (beta_ms >= t0) & (beta_ms <= t1)
-        ax["bn"].plot(beta_ms[shown], beta_y[shown], color="#555555", lw=0.8)
+        beta_in = (beta_ms >= t0) & (beta_ms <= t1)
+        ax["bn"].plot(beta_ms[beta_in], beta_y[beta_in], color="#555555", lw=0.8)
         ax["bn"].set_ylabel(
             r"$\beta_N$", rotation=0, ha="right", va="center", labelpad=3
         )
@@ -1472,7 +1472,7 @@ def draw(
         "beta_n": {
             "store": beta.attrs.get("store"),
             "resolver": beta.attrs.get("resolver"),
-            "samples_drawn": int(shown.sum()),
+            "samples_drawn": int(beta_in.sum()),
         },
         "tokeye_threshold": TOKEYE_THRESHOLD,
         "tokeye_transient_drawn": transient_shown,
