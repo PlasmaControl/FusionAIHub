@@ -176,7 +176,8 @@ EFIT_SENTINELS = (-0.89, -9.99, 0.0)
 # --- Probable L-mode (regime proxy for the TangTV gate) -----------------------------
 #: A shot or phase whose regime the confinement table and the D-alpha detector do not
 #: give is `probable_L` when its ELM coverage is known, the D-alpha detector flags no
-#: ELM anywhere in the window, and its median input power is below this. The cut sits
+#: ELM anywhere in the window (the bins where the ELM coverage and the input power
+#: are both known), and its median input power is below this. The cut sits
 #: in the L-H threshold range of the multi-machine scaling (Martin 2008, P_LH =
 #: 0.0488 n_e,20^0.717 B_T^0.803 S^0.941 MW), about 1.7-2.4 MW for typical DIII-D
 #: parameters (B_T about 2 T, n_e 3-5 x 10^19 m^-3): 2 MW is the middle of that
@@ -185,8 +186,8 @@ EFIT_SENTINELS = (-0.89, -9.99, 0.0)
 #: range. It is a proxy, not a measurement of the regime. A priori: fixed from the
 #: scaling before any Te was looked at.
 PROBABLE_L_MAX_P_IN_W = 2.0e6
-#: The window needs this much time (ms) of bins with known ELM coverage; the bin
-#: count is `min_bins(PROBABLE_REGIME_MIN_MS, width_ms)`.
+#: The window needs this much time (ms) of bins with known ELM coverage and a
+#: measured input power; the bin count is `min_bins(PROBABLE_REGIME_MIN_MS, width_ms)`.
 PROBABLE_REGIME_MIN_MS = 1000.0
 
 # --- Common ------------------------------------------------------------------------

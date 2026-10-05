@@ -2,25 +2,25 @@
  "n_shots_with_bins": 470,
  "n_bins": 50032,
  "afrac": {
-  "valid_bins": 909,
+  "valid_bins": 898,
   "shots_with_valid_bins": 14,
   "shots_with_20_valid_bins": 14,
   "invalid_reason_bins": {
-   "probe_flux_unknown": 33742,
+   "probe_flux_unknown": 33721,
    "no_positioned_probes": 12135,
-   "l_mode": 852,
-   "probe_off_separatrix": 842,
-   "short_reference": 671,
-   "low_power": 328,
+   "l_mode": 845,
+   "probe_off_separatrix": 826,
+   "short_reference": 677,
+   "low_power": 311,
    "elm_unknown": 230,
    "ramp": 159,
+   "no_power": 120,
    "elm": 71,
-   "no_power": 54,
    "no_probe_samples": 39
   },
   "votes": {
-   "attached": 434,
-   "detached": 288,
+   "attached": 443,
+   "detached": 273,
    "marfe": 0
   }
  },
@@ -49,8 +49,8 @@
   "shots_with_20_valid_bins": 28,
   "invalid_reason_bins": {
    "no_inversion": 20530,
-   "surrogate_domain": 19103,
-   "efit_gap": 6144,
+   "surrogate_domain": 19074,
+   "efit_gap": 6173,
    "no_frames": 2462,
    "lower_shelf_window": 500,
    "efit_missing": 2

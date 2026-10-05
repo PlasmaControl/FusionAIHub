@@ -715,6 +715,11 @@ def test_probable_l_is_elm_free_known_coverage_and_under_2_mw():
     kw["elm_share"][7] = 0.2
     regime, source = signals.probable_regimes(**kw)
     assert set(regime) == {"probable_H"} and set(source) == {"probable_H"}
+    # an ELM flag on a bin with no measured input power is outside the window
+    kw = regime_inputs(n)
+    kw["elm_share"][3], kw["p_in_w"][3] = 0.4, np.nan
+    regime, _ = signals.probable_regimes(**kw)
+    assert regime[3] == "unknown" and set(np.delete(regime, 3)) == {"probable_L"}
     # unknown ELM coverage is not "no ELMs"
     regime, _ = signals.probable_regimes(**regime_inputs(n, share=np.nan, known=False))
     assert set(regime) == {"unknown"}

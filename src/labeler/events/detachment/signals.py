@@ -400,20 +400,21 @@ def probable_regimes(
 
     The confinement table and the D-alpha H-mode detector leave most shots without a
     regime (the detector needs CO2, absent on every 189xxx and 190xxx shot). The bins
-    of a shot whose regime is `unknown` and whose ELM coverage is known form its
-    window. The window is
+    of a shot whose regime is `unknown`, whose ELM coverage is known and whose input
+    power is measured form its window: the stretch where both inputs of the proxy
+    exist, so the ELM test and the power test read the same bins (an ELM flag on a
+    bin with no input power, in the current ramp or after the end of the heating, is
+    outside the window). The window is
 
-    * `probable_L` when the D-alpha ELM detector flags no ELM in any bin of it (no
-      ELM-flagged sample at all, a bin with an unknown input power included) and its
-      median input power (`p_in_w`, W) is below `thresholds.PROBABLE_L_MAX_P_IN_W`
-      (the Martin 2008 L-H threshold range). The TangTV detached vote there is
-      gated like a known L-mode one;
+    * `probable_L` when the D-alpha ELM detector flags no ELM in any bin of it
+      (zero ELM share) and its median input power (`p_in_w`, W) is below
+      `thresholds.PROBABLE_L_MAX_P_IN_W` (the Martin 2008 L-H threshold range). The
+      TangTV detached vote there is gated like a known L-mode one;
     * `probable_H` when it has any ELM share and is not `probable_L`: ELMs are the
       textbook H-mode signature. Report only; nothing is gated on it.
 
-    A window shorter than `PROBABLE_REGIME_MIN_MS` (in bins at `width_ms`), a
-    window without an input power, and every bin of known regime keep what they
-    had. The new value is also written to the source, so a table can split known
+    A window shorter than `PROBABLE_REGIME_MIN_MS` (in bins at `width_ms`) and every
+    bin of known regime keep what they had. The new value is also written to the source, so a table can split known
     from probable. Known coverage is the only basis: an unknown ELM coverage never
     types a bin.
     """
@@ -426,14 +427,12 @@ def probable_regimes(
         (regime == "unknown")
         & np.asarray(elm_known, bool)
         & np.isfinite(np.asarray(elm_share, dtype=float))
+        & np.isfinite(np.asarray(p_in_w, dtype=float))
     )
     need = thresholds.min_bins(thresholds.PROBABLE_REGIME_MIN_MS, width_ms)
     if window.sum() < need:
         return out, src
     power = np.asarray(p_in_w, dtype=float)[window]
-    power = power[np.isfinite(power)]
-    if not len(power):
-        return out, src
     share = np.asarray(elm_share, dtype=float)[window]
     quiet = share.max() == 0.0
     if quiet and float(np.median(power)) < thresholds.PROBABLE_L_MAX_P_IN_W:
