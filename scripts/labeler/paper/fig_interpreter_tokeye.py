@@ -1248,7 +1248,7 @@ def draw(
                     shown.add(category)
                     a, b = max(r.t_start, t0), min(r.t_end, t1)
                     regime_regions.setdefault(category, []).append((a, b, label))
-        for regions in regime_regions.values():
+        for category, regions in regime_regions.items():
             # Adjacent source rows shade one continuous region; merge only
             # their label-placement bounds, preserving all original rows.
             continuous = []
@@ -1267,8 +1267,14 @@ def draw(
             region_width = (
                 da.transData.transform((b, 0))[0] - (da.transData.transform((a, 0))[0])
             )
-            if text.get_window_extent().width + 4 * fig.dpi / 72 > region_width:
+            pad_px = 4 * fig.dpi / 72
+            if text.get_window_extent().width + pad_px > region_width:
                 text.set_text(label.replace(" (inferred)", "\ninferred"))
+            if (
+                text.get_window_extent().width + pad_px > region_width
+                and category in CLASS_LEGEND
+            ):
+                text.set_text(CLASS_LEGEND[category])  # the class's short name
             regime_texts.append((text, a, b))
             if elm_chip is not None:
                 clear_of(text, [elm_chip])
