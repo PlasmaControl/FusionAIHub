@@ -37,7 +37,8 @@ rises in the outer ones; the 1/1 precursor is visible on magnetics at 2-20 kHz.
 **all**:
 - ece_sawtooth | 2026_09_12 (rule; omnimode inversion test, envelope-once port)
 - saw_physics | 2026_10_04 (Gude multichannel inversion plus Muscatello central-drop/train criteria; nominal geometry, local-field cutoff and ECE-validity guards, ECE-tested absence with a separate q-prior state)
-- saw-hl3 | 2026_10_04 (OuYang HL-3 CNN + bidirectional LSTM external baseline; GPU fit, DIII-D input/timing adaptations)
+- saw-hl3-full | 2026_10_05 | AUROC: 0.870 [0.827, 0.908] | AUPRC: 0.949 [0.929, 0.966] | F1: 0.870 [0.835, 0.899] (OuYang HL-3 CNN + bidirectional LSTM on the paper's nine offline inputs, label-free SXR chords; presence out of fold on 2 ms bins, 390 shots, conditional agreement with the physics rule on assessed bins (not an independent truth); crash F1 ±2 ms 0.894 [0.874, 0.910] (derivative picker gated by HL-3); three-class window accuracy 0.715 [0.662, 0.769] against 0.522 [0.447, 0.589] for the majority class; always present AUROC 0.500, AUPRC 0.736, F1 0.848)
+- saw-hl3-ece | 2026_10_04 | AUROC: 0.765 [0.697, 0.823] | AUPRC: 0.890 [0.853, 0.919] | F1: 0.843 [0.796, 0.881] (the same network on the earlier four-input ECE adaptation; presence out of fold on 2 ms bins, 390 shots, conditional agreement with the physics rule on assessed bins (not an independent truth); crash F1 ±2 ms 0.894 [0.872, 0.912] (derivative picker gated by HL-3); three-class window accuracy 0.644 [0.591, 0.697] against 0.522 [0.447, 0.589] for the majority class; always present AUROC 0.500, AUPRC 0.736, F1 0.848)
 - saw-ours | 2026_10_04 (PhaseNet-style multichannel ECE crash picker and train-presence head; GPU fit)
 
 ## Inputs
@@ -50,7 +51,17 @@ rises in the outer ones; the 1/1 precursor is visible on magnetics at 2-20 kHz.
 - `ECE Te, ch 20-23`, `ECE Te, ch 24-27`, `ECE Te, ch 28-31`, `ECE Te, ch 32-35`
 - `SXR` (optional)
 
-**saw-hl3**:
+**saw-hl3-full**:
+- The paper's offline set at 10 kHz: Ip, line-integrated density (CO2 chord V2),
+  Mirnov rows 0–1 mean, SXR core and edge chords, EFIT01 stored energy, ECE core
+  electron temperature, total beam power and ECH power (nine channels; a missing
+  input is a masked channel)
+- SXR chords chosen per shot without labels, because no SX90 chord geometry is
+  available: the structured chord with the highest 100 Hz–2 kHz variance is the
+  core, and the most anti-correlated structured chord further from the fan centre
+  is the edge (method counts and per-input shot coverage are in the report)
+
+**saw-hl3-ece**:
 - EFIT-axis core ECE and low-field-side outer ECE at nominal geometric ρ=0.4–0.65
 - Mirnov 0–1 mean and Ip in MA; missing values use fitting-shot means
 
@@ -118,20 +129,20 @@ rule reads, and `freeze.json`. Cohort shards are the `cohort-*.csv` files in the
 same directory; `extend_saw_physics/` is the untracked integration copy. Git does
 not carry the large label store.
 
-Both learned models use three whole-shot TRAIN folds with inner-shot selection
+The learned models use three whole-shot TRAIN folds with inner-shot selection
 of checkpoint, hyperparameters and thresholds; CUDA training stops on
 inner-selection loss patience. The trivial derivative and always-present
 baselines use the same folds. The three reviewed shots and the blind test split
-are excluded from training and tuning. `saw-hl3` receives adapted inputs
-(EFIT-axis core ECE, low-field-side outer ECE, Mirnov, Ip) while `saw-ours`
-receives the first 40 ECE channels, so comparisons include input information as
-well as architecture. The second held-out set is the 47 nonexpert
-fixed-validation shots. Headline scores are **conditional agreement with the
-physics rule on assessed bins** and include excluded-pick counts and paired
-shot-bootstrap comparisons. HL-3 crash timing is **derivative picker gated by
-HL-3**, an adapted baseline, rather than a learned crash head. Reviewed spans
-were anchored to old suggestions and used in previous rule revisions; they
-are exploratory and provide no independent crash-time precision/recall; the
+are excluded from training and tuning. `saw-hl3-full` receives the paper's nine
+offline inputs and `saw-hl3-ece` the earlier four (EFIT-axis core ECE,
+low-field-side outer ECE, Mirnov, Ip) while `saw-ours` receives the first 40 ECE
+channels, so comparisons include input information as well as architecture. The
+second held-out set is the 47 nonexpert fixed-validation shots. Headline scores
+are **conditional agreement with the physics rule on assessed bins** and include
+excluded-pick counts and paired shot-bootstrap comparisons. HL-3 crash timing is
+**derivative picker gated by HL-3**, an adapted baseline, rather than a learned
+crash head. Reviewed spans were anchored to old suggestions and used in previous
+rule revisions; they are exploratory and provide no independent crash-time precision/recall; the
 190637 span may include edge-originated relaxations.
 
 ## Blind crash-time annotation queue

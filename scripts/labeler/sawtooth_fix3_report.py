@@ -15,9 +15,13 @@ from labeler.sawtooth.preprocessing import STATES
 NAMES = {
     "saw-derivative": "Single-channel derivative / ±125 ms presence",
     "saw-always-present": "Always present",
-    "saw-hl3": "Adapted HL-3 / derivative picker gated by HL-3",
+    "saw-hl3-full": "HL-3, full offline inputs / derivative picker gated by HL-3",
+    "saw-hl3-ece": "HL-3, ECE-only inputs / derivative picker gated by HL-3",
     "saw-ours": "PhaseNet-style picker",
 }
+#: The HL-3 network under its two input sets, the paper's full set first.
+HL3 = ("saw-hl3-full", "saw-hl3-ece")
+SHORT = {"saw-hl3-full": "HL-3 full inputs", "saw-hl3-ece": "HL-3 ECE-only inputs"}
 
 
 def number(value, digits=3):
@@ -273,7 +277,7 @@ def fixed_threshold_table(models):
         ),
         "|---|---:|---:|---:|---:|---:|---:|---|",
     ]
-    for name in ("saw-hl3", "saw-ours"):
+    for name in (*HL3, "saw-ours"):
         for row in models[name]["presence_fixed_threshold"]["by_fold"]:
             selected, fixed = row["at_selected_threshold"], row["at_fixed_threshold"]
             lines.append(
@@ -559,7 +563,7 @@ def operating_table(models):
         ),
         "|---|---:|---:|---:|---:|---:|---:|",
     ]
-    for name in ("saw-hl3", "saw-ours"):
+    for name in (*HL3, "saw-ours"):
         points = models[name]["operating_points"]
         for row in points["by_fold"]:
             lines.append(
@@ -854,6 +858,7 @@ def radial_lines(radial):
         ),
         "|---|---:|---:|---:|---:|---:|---:|---:|---|",
     ]
+
     def coincidence(entry):
         data = entry["dalpha"]
         if data["status"] != "evaluated":
@@ -947,6 +952,164 @@ def radial_lines(radial):
     return lines
 
 
+INPUT_NAMES = {
+    "ece_core_te": "ECE core electron temperature (EFIT-axis channel average)",
+    "mirnov_pair_mean": "Mirnov pair (rows 0 and 1, mean)",
+    "ip": "Plasma current",
+    "line_density": "Line-integrated density (CO2 chord V2)",
+    "sxr_core": "SXR core chord",
+    "sxr_edge": "SXR edge chord",
+    "stored_energy": "Stored energy (EFIT01 WMHD)",
+    "nbi_power": "Neutral-beam power (summed beams)",
+    "ech_power": "ECH power (summed gyrotrons)",
+}
+
+
+def hl3_input_lines(inputs):
+    """Input parity of the two HL-3 runs, shot coverage and the SXR chord choice."""
+    total = inputs["shots_with_observable_support"]
+    lines = [
+        (
+            "`saw-hl3-full` receives the paper's offline input set at 10 kHz, in "
+            "20 ms windows with a 2 ms stride: plasma current, line-integrated "
+            "density, a Mirnov pair, SXR core and edge chords, stored energy, "
+            "the ECE core electron temperature, neutral-beam power and ECH power. "
+            "The paper lists ten rows; its two beam powers are one total here, so "
+            "the network has nine input channels. An input a shot lacks is a "
+            "masked channel (missing, zero after standardisation) and the shot is "
+            "still scored. `saw-hl3-ece` is the earlier four-input adaptation "
+            "(EFIT-axis core ECE, low-field-side outer ECE at nominal geometric "
+            "ρ=0.4–0.65, Mirnov 0–1 mean, Ip). Both runs use the same folds, "
+            "inner-selection shots, window sampling, seeds, recipe and scoring; "
+            "only the input channels differ. Each channel is divided by a fixed "
+            f"scale when stacked ({inputs['unit_scale_note'].split(': ', 1)[1]}).\n"
+        ),
+        (
+            f"Of the {inputs['shots']} benchmark shots, "
+            f"{len(inputs['shots_without_observable_support'])} have no observable "
+            "ECE support and supply no window; the coverage below is over the "
+            f"other {total}. Only shots the benchmark uses (TRAIN folds, supported "
+            "fixed validation, the reviewed shots) were read or fetched; the blind "
+            "test split was not.\n"
+        ),
+        "| Input | Source (shots) | Shots with it | Shots lacking it |",
+        "|---|---|---:|---:|",
+    ]
+    for name in inputs["channels"]:
+        sources = ", ".join(
+            f"{key} ({count})"
+            for key, count in inputs["sources"][name].items()
+            if key != "missing"
+        )
+        lines.append(
+            f"| {INPUT_NAMES[name]} | {sources} | {inputs['shots_present'][name]} | "
+            f"{inputs['shots_lacking'][name]} |"
+        )
+    status = inputs["sxr_status_counts"]
+    fans = inputs["sxr_fan_counts"]
+    fan_text = ", ".join(f"{k} on {v} shots" for k, v in fans.items() if k != "None")
+    lines += [
+        "",
+        source("hl3_full_inputs.json", "shots_present; shots_lacking; sources"),
+        (
+            "**SXR chord choice.** "
+            f"{inputs['sxr_geometry']}. The two chords are therefore chosen "
+            "from the data of each shot alone, with no label, crash time or q "
+            "profile (`labeler.sawtooth.hl3_inputs`, method "
+            f"`{inputs['sxr_method']}`). In the first lit fan "
+            f"({fan_text}), "
+            "the band variance from 100 Hz to 2 kHz of every lit chord is "
+            "compared with the white-noise share its own 3–4.5 kHz band "
+            f"predicts; a chord carries structure when the ratio is at least "
+            f"{inputs['sxr_structure_ratio']:g}. The core is the structured "
+            "chord with the highest band variance, and the edge is the structured "
+            "chord further from the fan centre whose band signal is most "
+            "anti-correlated with the core (a sawtooth inverts across the "
+            "inversion radius). Where no chord carries structure the core falls "
+            "back to the highest ratio and the shot is flagged; where no further "
+            "chord exists the edge is missing. Each channel is scaled per shot by "
+            "its median and 1.4826 times its median absolute deviation. Method "
+            f"counts: a pair on {status.get('pair', 0)} shots, a core without an "
+            f"edge chord on {status.get('no_edge_chord', 0)}, no chord pair on "
+            f"{status.get('no_sxr_pair', 0)}; the core chord carries band "
+            f"structure on {inputs['sxr_core_with_structure']} of "
+            f"{inputs['shots_present']['sxr_core']} shots and the edge chord on "
+            f"{inputs['sxr_edge_with_structure']} of "
+            f"{inputs['shots_present']['sxr_edge']}. The chosen edge chord is "
+            "anti-correlated with the core on "
+            f"{inputs['sxr_edge_correlation_negative']} of "
+            f"{inputs['sxr_edge_correlation_shots']} pairs (median correlation "
+            f"{number(inputs['sxr_edge_correlation_median'], 2)}), so on most "
+            "shots it is a weak stand-in for the paper's inverted edge chord. The "
+            "per-shot method record is `per_shot[].sxr`.\n"
+        ),
+        source("hl3_full_inputs.json", "sxr_*; per_shot[].sxr"),
+    ]
+    return lines
+
+
+def three_class_table(models):
+    """The paper's three-regime window accuracy with its majority-class floor."""
+    lines = [
+        (
+            "| Three-regime window classifier | Accuracy [95% CI] | "
+            "Macro-F1 [95% CI] | Precision none / small / large | "
+            "Recall none / small / large | Predicted share none / small / large |"
+        ),
+        "|---|---:|---:|---|---|---|",
+    ]
+
+    def triple(values, scale=1.0, digits=3):
+        return " / ".join(
+            "—" if v is None else f"{v * scale:.{digits}f}" for v in values
+        )
+
+    def row(label, block):
+        ci = block["ci95"]
+        return (
+            f"| {label} | "
+            f"{interval(block['window_accuracy'], ci['window_accuracy'])} | "
+            f"{interval(block['macro_f1'], ci['macro_f1'])} | "
+            f"{triple(block['per_class_precision'])} | "
+            f"{triple(block['per_class_recall'])} | "
+            f"{triple(block['predicted_class_shares'], 100, 1)} % |"
+        )
+
+    first = models[HL3[0]]["three_class"]
+    for name in HL3:
+        lines.append(row(SHORT[name], models[name]["three_class"]))
+    lines.append(
+        row(
+            "Single-channel derivative with period",
+            models["saw-derivative"]["three_class"],
+        )
+    )
+    lines.append(row("Fitting-chosen majority class", first["majority_baseline"]))
+    lines.append("| Always present (period class undefined) | — | — | — | — | — |")
+    return "\n".join(lines) + "\n"
+
+
+def paired_ece_table(models):
+    """Full-input HL-3 minus the four-input run, same whole-shot draws."""
+    lines = [
+        (
+            "| Held-out set | Δ crash F1 [95% CI] | Δ presence F1 [95% CI] | "
+            "Δ presence AUROC [95% CI] | Δ presence AUPRC [95% CI] |"
+        ),
+        "|---|---:|---:|---:|---:|",
+    ]
+    for fixed, label in ((False, "OOF"), (True, "Fixed validation")):
+        full = models["saw-hl3-full"]
+        row = full["fixed_validation"] if fixed else full
+        paired = row["paired_vs_hl3_ece"]["crash_tolerance_2ms"]
+        cells = " | ".join(
+            interval(paired["difference"][key], paired["ci95"][key])
+            for key in ("crash_f1", "presence_f1", "presence_auroc", "presence_auprc")
+        )
+        lines.append(f"| {label} | {cells} |")
+    return "\n".join(lines) + "\n"
+
+
 def report(args):
     def read(name):
         return json.loads((args.output / name).read_text())
@@ -966,6 +1129,9 @@ def report(args):
     rule = json.loads((args.output / "freeze.json").read_text())["rule"]
     derivation = read("edge_context_derivation.json")
     models = bench["Tokamak-SI"]
+    inputs = read("hl3_full_inputs.json")
+    classification = models["saw-hl3-full"]["three_class"]
+    protocol = models["saw-hl3-full"]["three_class_window_protocol"]
     oof_coverage = models["saw-ours"]["coverage"]
     val_coverage = models["saw-ours"]["fixed_validation"]["coverage"]
     counts = models["saw-ours"]["assessment_totals"]
@@ -1059,12 +1225,14 @@ def report(args):
             "Conditional OOF crash F1 at ±2 ms: derivative "
             f"{number(models['saw-derivative']['crash_tolerance_2ms']['crash']['f1'])}, "
             "HL-3-gated derivative "
-            f"{number(models['saw-hl3']['crash_tolerance_2ms']['crash']['f1'])}, "
-            "saw-ours "
+            f"{number(models['saw-hl3-full']['crash_tolerance_2ms']['crash']['f1'])} "
+            "(full offline inputs) and "
+            f"{number(models['saw-hl3-ece']['crash_tolerance_2ms']['crash']['f1'])} "
+            "(ECE-only inputs), saw-ours "
             f"{number(models['saw-ours']['crash_tolerance_2ms']['crash']['f1'])}. "
             f"{best_crash_sentence(models)} "
-            "HL-3's expert-shot ranking remains inverted on shot 190637; "
-            "independent physical validation remains pending.\n"
+            f"{expert_inversion_sentence(models)} "
+            "Independent physical validation remains pending.\n"
         ),
         source("benchmark.json", "Tokamak-SI.*"),
         "### Method\n",
@@ -1143,8 +1311,9 @@ def report(args):
         ),
         source("fetched_frequency_audit.json"),
         (
-            "The adapted HL-3 outer input uses low-field-side nominal geometric "
-            "ρ=0.4–0.65, beyond the typical inversion region, rather than adjacent "
+            "The ECE-only HL-3 run's outer input uses low-field-side nominal "
+            "geometric ρ=0.4–0.65, beyond the typical inversion region, rather "
+            "than adjacent "
             "array rows. Geometric ρ=|R−R_axis|/(R_LCFS,out−R_axis) is **not** "
             "normalized flux. Vacuum mapping omits relativistic and optical-depth "
             "corrections. Missing ECEZH uses the published first-40 midplane "
@@ -1339,7 +1508,7 @@ def report(args):
         "|---|---|---:|---:|",
     ]
     for fixed, label in ((False, "OOF"), (True, "Fixed validation")):
-        for name in ("saw-derivative", "saw-hl3", "saw-ours", "saw-always-present"):
+        for name in ("saw-derivative", *HL3, "saw-ours", "saw-always-present"):
             row = models[name]["fixed_validation"] if fixed else models[name]
             if name == "saw-derivative":
                 lines.append(f"| {label} | {NAMES[name]} (reference) | 0 | 0 |")
@@ -1350,6 +1519,8 @@ def report(args):
                 f"{interval(paired['difference']['crash_f1'], paired['ci95']['crash_f1'])} | "
                 f"{interval(paired['difference']['presence_f1'], paired['ci95']['presence_f1'])} |"
             )
+    boundaries = protocol["class_boundaries_ms_by_fold"]
+    boundary_text = ", ".join(number(b, 1) for b in boundaries)
     lines += [
         "",
         source("benchmark.json", "paired_vs_derivative"),
@@ -1376,39 +1547,44 @@ def report(args):
         source("benchmark.json", "Tokamak-SI.*.operating_points"),
         fixed_threshold_table(models),
         source("benchmark.json", "Tokamak-SI.*.presence_fixed_threshold"),
+        "#### HL-3 inputs and the full-input comparison\n",
+        *hl3_input_lines(inputs),
         (
-            "HL-3 is an adapted external architecture, replacing the paper's "
-            "SXR pair with geometry-selected ECE plus Mirnov and Ip. It has "
-            "no crash head: its timing score is the **derivative picker gated "
-            "by HL-3**. LR, weight decay and dropout are selected on inner "
-            "shots. The U-Net probability grid extends through 0.999; fold "
-            "records retain selected operating points and boundary flags.\n"
+            "HL-3 is the OuYang 2025 CNN with a bidirectional LSTM, run on two "
+            "input sets under one recipe. It has no crash head: its timing score "
+            "is the **derivative picker gated by HL-3**. LR, weight decay and "
+            "dropout are selected on inner shots. The U-Net probability grid "
+            "extends through 0.999; fold records retain selected operating points "
+            "and boundary flags. Full-input HL-3 minus the four-input run, with "
+            "the same whole-shot bootstrap draws on both sides:\n"
         ),
+        paired_ece_table(models),
+        source("benchmark.json", "Tokamak-SI.saw-hl3-full.paired_vs_hl3_ece"),
+        source("saw-hl3-full_fold_0.json"),
+        source("saw-hl3-full_fold_1.json"),
+        source("saw-hl3-full_fold_2.json"),
         source("saw-hl3_fold_0.json"),
         source("saw-hl3_fold_1.json"),
         source("saw-hl3_fold_2.json"),
         source("saw-ours_fold_0.json"),
         source("saw-ours_fold_1.json"),
         source("saw-ours_fold_2.json"),
-        "| Three-regime window classifier | Accuracy | Macro-F1 |",
-        "|---|---:|---:|",
-    ]
-    classification = models["saw-hl3"]["three_class"]
-    rows = (
-        ("Adapted HL-3", classification),
+        "#### Three-regime window classification\n",
         (
-            "Single-channel derivative with period",
-            models["saw-derivative"]["three_class"],
+            "The paper's task: each 20 ms window (2 ms stride) is no sawtooth, "
+            "small-period sawtooth or large-period sawtooth, the boundary being "
+            "the median period of the fitting shots of each fold "
+            f"({boundary_text} "
+            "ms for the three folds), scored out of fold on observable and "
+            "physics-rule-assessed window centres. The class shares of the scored "
+            f"windows (none / small / large) are "
+            f"{' / '.join(f'{100 * v:.1f}%' for v in classification['class_shares'])}, "
+            "and the fitting-chosen majority class is large-period in every fold, "
+            "so a classifier that never leaves that class scores "
+            f"{number(classification['majority_baseline']['window_accuracy'])} "
+            "accuracy by construction; accuracy is read against that floor.\n"
         ),
-        ("Fitting-chosen majority", classification["majority_baseline"]),
-    )
-    for name, row in rows:
-        lines.append(
-            f"| {name} | {number(row['window_accuracy'])} | {number(row['macro_f1'])} |"
-        )
-    lines += [
-        "| Always present (period class undefined) | — | — |",
-        "",
+        three_class_table(models),
         (
             "Derivative period abstentions count as errors on the original "
             "class support. Always present has no period class or crash time.\n"
@@ -1457,28 +1633,45 @@ def report(args):
             "physics rule's assessment mask.\n"
         ),
         (
-            f"HL-3 ranking check: {models['saw-hl3']['expert']['auc_diagnosis']}. "
+            "HL-3 ranking check, full inputs: "
+            f"{models['saw-hl3-full']['expert']['auc_diagnosis']}. ECE-only "
+            f"inputs: {models['saw-hl3-ece']['expert']['auc_diagnosis']}. "
             "No expert-based inversion or retuning was performed.\n"
         ),
-        "| Reviewed shot | HL-3 AUROC | HL-3 assessed diagnostic AUROC | Saw-ours AUROC |",
-        "|---|---:|---:|---:|",
+        (
+            "| Reviewed shot | HL-3 full AUROC | HL-3 full assessed diagnostic "
+            "AUROC | HL-3 ECE-only AUROC | HL-3 ECE-only assessed diagnostic "
+            "AUROC | Saw-ours AUROC |"
+        ),
+        "|---|---:|---:|---:|---:|---:|",
     ]
     ours_by_shot = {row["shot"]: row for row in models["saw-ours"]["expert"]["by_shot"]}
-    for row in models["saw-hl3"]["expert"]["by_shot"]:
+    ece_by_shot = {
+        row["shot"]: row for row in models["saw-hl3-ece"]["expert"]["by_shot"]
+    }
+    for row in models["saw-hl3-full"]["expert"]["by_shot"]:
+        ece = ece_by_shot[row["shot"]]
         lines.append(
             f"| {row['shot']} | {number(row['presence']['auroc'])} | "
             f"{number(row['conditional_assessed_presence']['auroc'])} | "
+            f"{number(ece['presence']['auroc'])} | "
+            f"{number(ece['conditional_assessed_presence']['auroc'])} | "
             f"{number(ours_by_shot[row['shot']]['presence']['auroc'])} |"
         )
+    shared = sorted(
+        set.intersection(
+            *(set(models[name]["expert"]["inverted_auroc_shots"]) for name in HL3)
+        )
+    )
     lines += [
         "",
         source("benchmark.json", "Tokamak-SI.*.expert.by_shot"),
         (
-            "HL-3's residual inversion is concentrated in shot 190637 and "
-            "persists on assessed support. The physics rule calls no "
-            "definite-present phase there while the reviewed spans contain "
-            "substantial positive support. The radial profile below resolves "
-            "which side the data support.\n"
+            "Shots ranked inverted (AUROC below 0.5) by both HL-3 runs: "
+            f"{', '.join(str(shot) for shot in shared) if shared else 'none'}. "
+            "The physics rule calls no definite-present phase on shot 190637 "
+            "while the reviewed spans contain substantial positive support. The "
+            "radial profile below resolves which side the data support.\n"
         ),
         (
             f"Source: `{args.work}/shots/190637.json` → `state_seconds`; "
@@ -1693,18 +1886,31 @@ def report(args):
         args.report.write_text(
             existing.rstrip("\n") + "\n" + marker + "\n" + status + "\n" + body
         )
-    update_readme(manifest, population_summary)
+    update_readme(manifest, population_summary, models)
+
+
+def expert_inversion_sentence(models):
+    """Which reviewed shots each HL-3 run ranks inverted (AUROC below 0.5)."""
+    parts = []
+    for name in HL3:
+        inverted = models[name]["expert"]["inverted_auroc_shots"]
+        shots = ", ".join(str(shot) for shot in inverted) if inverted else "none"
+        parts.append(f"{SHORT[name]}: {shots}")
+    return (
+        "Reviewed shots with presence AUROC below 0.5 (exploratory, no retuning): "
+        f"{'; '.join(parts)}."
+    )
 
 
 def best_crash_sentence(models):
     """Which method has the best crash-F1 point estimate and the paired gaps."""
     f1 = {
         name: models[name]["crash_tolerance_2ms"]["crash"]["f1"]
-        for name in ("saw-derivative", "saw-hl3", "saw-ours")
+        for name in ("saw-derivative", *HL3, "saw-ours")
     }
     best = max(f1, key=f1.get)
     parts = []
-    for name in ("saw-hl3", "saw-ours"):
+    for name in (*HL3, "saw-ours"):
         paired = models[name]["paired_vs_derivative"]["crash_tolerance_2ms"]
         low, high = paired["ci95"]["crash_f1"]
         verdict = "includes zero" if low <= 0 <= high else "excludes zero"
@@ -1741,10 +1947,77 @@ def failure_breakdown(population):
     return "; ".join(f"{count} × {name}" for name, count in groups.items() if count)
 
 
-def update_readme(manifest, population):
+def readme_model_lines(models):
+    """The HL-3 lines of the README's Models list, scores read from the record."""
+
+    def score(block, key):
+        return interval(block["presence"][key], block["ci95"][f"presence_{key}"])
+
+    base = models["saw-always-present"]["crash_tolerance_2ms"]["presence"]
+    majority = models["saw-hl3-full"]["three_class_majority_baseline"]
+    tail = (
+        "; presence out of fold on 2 ms bins, {shots} shots, conditional agreement "
+        "with the physics rule on assessed bins (not an independent truth); crash "
+        "F1 ±2 ms {crash} (derivative picker gated by HL-3); three-class window "
+        "accuracy {accuracy} against {floor} for the majority class; always present "
+        f"AUROC {number(base['auroc'])}, AUPRC {number(base['auprc'])}, "
+        f"F1 {number(base['f1'])})"
+    )
+    lines = []
+    for name, date, what in (
+        (
+            "saw-hl3-full",
+            "2026_10_05",
+            (
+                "OuYang HL-3 CNN + bidirectional LSTM on the paper's nine offline "
+                "inputs, label-free SXR chords"
+            ),
+        ),
+        (
+            "saw-hl3-ece",
+            "2026_10_04",
+            "the same network on the earlier four-input ECE adaptation",
+        ),
+    ):
+        block = models[name]["crash_tolerance_2ms"]
+        three = models[name]["three_class"]
+        lines.append(
+            f"- {name} | {date} | AUROC: {score(block, 'auroc')} | "
+            f"AUPRC: {score(block, 'auprc')} | F1: {score(block, 'f1')} "
+            f"({what}"
+            + tail.format(
+                shots=block["shots"],
+                crash=interval(block["crash"]["f1"], block["ci95"]["crash_f1"]),
+                accuracy=interval(
+                    three["window_accuracy"], three["ci95"]["window_accuracy"]
+                ),
+                floor=interval(majority["accuracy"], majority["accuracy_ci95"]),
+            )
+            + "\n"
+        )
+    return lines
+
+
+def update_readme(manifest, population, models):
     path = REPO / "data/events/sawtooth_oscillation/README.md"
     text = path.read_text()
-    inputs = text.index("**saw-hl3**:", text.index("## Inputs"))
+    kept = []
+    for line in text.splitlines(keepends=True):
+        if line.startswith("- saw-hl3"):
+            continue
+        if line.startswith("- saw-ours |"):
+            kept.extend(readme_model_lines(models))
+        kept.append(line)
+    text = "".join(kept)
+    section = text.index("## Inputs")
+    inputs = min(
+        index
+        for index in (
+            text.find(marker, section)
+            for marker in ("**saw-hl3-full**:", "**saw-hl3**:")
+        )
+        if index >= 0
+    )
     method = text.index("## Method\n", inputs)
     # Keep the production ece_sawtooth description; replace everything from
     # the physics-rule paragraphs (first run) or the previous rewrite onward.
@@ -1757,7 +2030,17 @@ def update_readme(manifest, population):
     ]
     tail = min(index for index in tails if index >= 0)
     last = text.index("## Alias", tail)
-    inputs_content = """**saw-hl3**:
+    inputs_content = """**saw-hl3-full**:
+- The paper's offline set at 10 kHz: Ip, line-integrated density (CO2 chord V2),
+  Mirnov rows 0–1 mean, SXR core and edge chords, EFIT01 stored energy, ECE core
+  electron temperature, total beam power and ECH power (nine channels; a missing
+  input is a masked channel)
+- SXR chords chosen per shot without labels, because no SX90 chord geometry is
+  available: the structured chord with the highest 100 Hz–2 kHz variance is the
+  core, and the most anti-correlated structured chord further from the fan centre
+  is the edge (method counts and per-input shot coverage are in the report)
+
+**saw-hl3-ece**:
 - EFIT-axis core ECE and low-field-side outer ECE at nominal geometric ρ=0.4–0.65
 - Mirnov 0–1 mean and Ip in MA; missing values use fitting-shot means
 
@@ -1827,20 +2110,20 @@ rule reads, and `freeze.json`. Cohort shards are the `cohort-*.csv` files in the
 same directory; `extend_saw_physics/` is the untracked integration copy. Git does
 not carry the large label store.
 
-Both learned models use three whole-shot TRAIN folds with inner-shot selection
+The learned models use three whole-shot TRAIN folds with inner-shot selection
 of checkpoint, hyperparameters and thresholds; CUDA training stops on
 inner-selection loss patience. The trivial derivative and always-present
 baselines use the same folds. The three reviewed shots and the blind test split
-are excluded from training and tuning. `saw-hl3` receives adapted inputs
-(EFIT-axis core ECE, low-field-side outer ECE, Mirnov, Ip) while `saw-ours`
-receives the first 40 ECE channels, so comparisons include input information as
-well as architecture. The second held-out set is the 47 nonexpert
-fixed-validation shots. Headline scores are **conditional agreement with the
-physics rule on assessed bins** and include excluded-pick counts and paired
-shot-bootstrap comparisons. HL-3 crash timing is **derivative picker gated by
-HL-3**, an adapted baseline, rather than a learned crash head. Reviewed spans
-were anchored to old suggestions and used in previous rule revisions; they
-are exploratory and provide no independent crash-time precision/recall; the
+are excluded from training and tuning. `saw-hl3-full` receives the paper's nine
+offline inputs and `saw-hl3-ece` the earlier four (EFIT-axis core ECE,
+low-field-side outer ECE, Mirnov, Ip) while `saw-ours` receives the first 40 ECE
+channels, so comparisons include input information as well as architecture. The
+second held-out set is the 47 nonexpert fixed-validation shots. Headline scores
+are **conditional agreement with the physics rule on assessed bins** and include
+excluded-pick counts and paired shot-bootstrap comparisons. HL-3 crash timing is
+**derivative picker gated by HL-3**, an adapted baseline, rather than a learned
+crash head. Reviewed spans were anchored to old suggestions and used in previous
+rule revisions; they are exploratory and provide no independent crash-time precision/recall; the
 190637 span may include edge-originated relaxations.
 
 ## Blind crash-time annotation queue

@@ -14,7 +14,7 @@ Source: `outputs/labeler/sawtooth/fix5/population_labels.json`.
 
 Source: `outputs/labeler/sawtooth/fix5/absent_composition.json`.
 
-Conditional OOF crash F1 at ±2 ms: derivative 0.903, HL-3-gated derivative 0.894, saw-ours 0.873. Single-channel derivative / ±125 ms presence has the highest crash-F1 point estimate; the paired OOF differences in crash F1 are: Adapted HL-3 / derivative picker gated by HL-3 minus the derivative picker is -0.009 [-0.018, -0.003] (excludes zero); PhaseNet-style picker minus the derivative picker is -0.030 [-0.055, -0.009] (excludes zero). HL-3's expert-shot ranking remains inverted on shot 190637; independent physical validation remains pending.
+Conditional OOF crash F1 at ±2 ms: derivative 0.903, HL-3-gated derivative 0.894 (full offline inputs) and 0.894 (ECE-only inputs), saw-ours 0.873. Single-channel derivative / ±125 ms presence has the highest crash-F1 point estimate; the paired OOF differences in crash F1 are: HL-3, full offline inputs / derivative picker gated by HL-3 minus the derivative picker is -0.009 [-0.015, -0.005] (excludes zero); HL-3, ECE-only inputs / derivative picker gated by HL-3 minus the derivative picker is -0.009 [-0.018, -0.003] (excludes zero); PhaseNet-style picker minus the derivative picker is -0.030 [-0.055, -0.009] (excludes zero). Reviewed shots with presence AUROC below 0.5 (exploratory, no retuning): HL-3 full inputs: 190637; HL-3 ECE-only inputs: 186636, 189324, 190637. Independent physical validation remains pending.
 
 Source: `outputs/labeler/sawtooth/fix5/benchmark.json` → `Tokamak-SI.*`.
 
@@ -97,7 +97,7 @@ The archived grid audit covers 25 shots with 1 documented setup exception. The f
 
 Source: `outputs/labeler/sawtooth/fix5/fetched_frequency_audit.json`.
 
-The adapted HL-3 outer input uses low-field-side nominal geometric ρ=0.4–0.65, beyond the typical inversion region, rather than adjacent array rows. Geometric ρ=|R−R_axis|/(R_LCFS,out−R_axis) is **not** normalized flux. Vacuum mapping omits relativistic and optical-depth corrections. Missing ECEZH uses the published first-40 midplane assumption explicitly. Full EFIT profiles are needed for q=1; minimal field/axis/boundary metadata cannot supply that comparison.
+The ECE-only HL-3 run's outer input uses low-field-side nominal geometric ρ=0.4–0.65, beyond the typical inversion region, rather than adjacent array rows. Geometric ρ=|R−R_axis|/(R_LCFS,out−R_axis) is **not** normalized flux. Vacuum mapping omits relativistic and optical-depth corrections. Missing ECEZH uses the published first-40 midplane assumption explicitly. Full EFIT profiles are needed for q=1; minimal field/axis/boundary metadata cannot supply that comparison.
 
 Source: `outputs/labeler/sawtooth/fix5/geometry_metadata_audit.json`.
 
@@ -154,7 +154,8 @@ The trivial picker differentiates only the EFIT-axis-selected single ECE channel
 |---|---:|---:|---:|---:|---:|---:|
 | Single-channel derivative / ±125 ms presence | 0.990 [0.983, 0.995] | 0.985 [0.977, 0.992] | 0.994 [0.990, 0.997] | 0.994 [0.990, 0.997] | 0.903 [0.884, 0.919] | 4155 / 17616 / 21771 |
 | Always present | 0.736 [0.675, 0.790] | 0.500 [0.500, 0.500] | 0.848 [0.806, 0.882] | 0.848 [0.806, 0.882] | — | 0 / 0 / 0 |
-| Adapted HL-3 / derivative picker gated by HL-3 | 0.890 [0.853, 0.919] | 0.765 [0.697, 0.823] | 0.852 [0.813, 0.882] | 0.843 [0.796, 0.881] | 0.894 [0.872, 0.912] | 4071 / 16734 / 20805 |
+| HL-3, full offline inputs / derivative picker gated by HL-3 | 0.949 [0.929, 0.966] | 0.870 [0.827, 0.908] | 0.889 [0.858, 0.915] | 0.870 [0.835, 0.899] | 0.894 [0.874, 0.910] | 4079 / 16087 / 20166 |
+| HL-3, ECE-only inputs / derivative picker gated by HL-3 | 0.890 [0.853, 0.919] | 0.765 [0.697, 0.823] | 0.852 [0.813, 0.882] | 0.843 [0.796, 0.881] | 0.894 [0.872, 0.912] | 4071 / 16734 / 20805 |
 | PhaseNet-style picker | 0.990 [0.982, 0.995] | 0.980 [0.967, 0.988] | 0.935 [0.908, 0.957] | 0.976 [0.965, 0.984] | 0.873 [0.847, 0.893] | 3647 / 11016 / 14663 |
 
 Source: `outputs/labeler/sawtooth/fix5/benchmark.json` → `Tokamak-SI.*.crash_tolerance_2ms; assessment_totals`.
@@ -165,7 +166,8 @@ Second held-out set: 47 nonexpert fixed-validation shots requested; 45 have usab
 |---|---:|---:|---:|---:|---:|---:|
 | Single-channel derivative / ±125 ms presence | 0.997 [0.987, 1.000] | 0.992 [0.967, 1.000] | — | 0.999 [0.993, 1.000] | 0.893 [0.830, 0.939] | 466 / 2054 / 2520 |
 | Always present | 0.851 [0.713, 0.928] | 0.500 [0.500, 0.500] | — | 0.919 [0.832, 0.962] | — | 0 / 0 / 0 |
-| Adapted HL-3 / derivative picker gated by HL-3 | 0.957 [0.897, 0.986] | 0.784 [0.630, 0.905] | — | 0.928 [0.847, 0.968] | 0.892 [0.827, 0.938] | 465 / 2034 / 2499 |
+| HL-3, full offline inputs / derivative picker gated by HL-3 | 0.992 [0.970, 0.998] | 0.957 [0.908, 0.985] | — | 0.933 [0.855, 0.970] | 0.890 [0.820, 0.936] | 463 / 2012 / 2475 |
+| HL-3, ECE-only inputs / derivative picker gated by HL-3 | 0.957 [0.897, 0.986] | 0.784 [0.630, 0.905] | — | 0.928 [0.847, 0.968] | 0.892 [0.827, 0.938] | 465 / 2034 / 2499 |
 | PhaseNet-style picker | 1.000 [1.000, 1.000] | 1.000 [1.000, 1.000] | — | 0.999 [0.995, 1.000] | 0.870 [0.825, 0.906] | 364 / 814 / 1178 |
 
 Source: `outputs/labeler/sawtooth/fix5/benchmark.json` → `Tokamak-SI.*.fixed_validation`.
@@ -173,11 +175,13 @@ Source: `outputs/labeler/sawtooth/fix5/benchmark.json` → `Tokamak-SI.*.fixed_v
 | Held-out set | Method minus derivative-only | Δ crash F1 [95% CI] | Δ presence F1 [95% CI] |
 |---|---|---:|---:|
 | OOF | Single-channel derivative / ±125 ms presence (reference) | 0 | 0 |
-| OOF | Adapted HL-3 / derivative picker gated by HL-3 | -0.009 [-0.018, -0.003] | -0.151 [-0.197, -0.114] |
+| OOF | HL-3, full offline inputs / derivative picker gated by HL-3 | -0.009 [-0.015, -0.005] | -0.124 [-0.157, -0.095] |
+| OOF | HL-3, ECE-only inputs / derivative picker gated by HL-3 | -0.009 [-0.018, -0.003] | -0.151 [-0.197, -0.114] |
 | OOF | PhaseNet-style picker | -0.030 [-0.055, -0.009] | -0.018 [-0.029, -0.009] |
 | OOF | Always present | — | -0.146 [-0.187, -0.113] |
 | Fixed validation | Single-channel derivative / ±125 ms presence (reference) | 0 | 0 |
-| Fixed validation | Adapted HL-3 / derivative picker gated by HL-3 | -0.001 [-0.004, 0.000] | -0.070 [-0.149, -0.032] |
+| Fixed validation | HL-3, full offline inputs / derivative picker gated by HL-3 | -0.004 [-0.015, 0.000] | -0.066 [-0.143, -0.029] |
+| Fixed validation | HL-3, ECE-only inputs / derivative picker gated by HL-3 | -0.001 [-0.004, 0.000] | -0.070 [-0.149, -0.032] |
 | Fixed validation | PhaseNet-style picker | -0.023 [-0.065, 0.028] | 0.000 [-0.004, 0.005] |
 | Fixed validation | Always present | — | -0.079 [-0.164, -0.037] |
 
@@ -191,11 +195,13 @@ Benchmark negatives now come only from ECE-tested absence. The previous negative
 |---|---|---:|---:|---:|---:|---:|---:|
 | OOF | Single-channel derivative / ±125 ms presence | 0.994 | 0.855 | 0.985 | 0.922 | 0.903 | 0.860 |
 | OOF | Always present | 0.848 | 0.478 | 0.500 | 0.500 | — | — |
-| OOF | Adapted HL-3 / derivative picker gated by HL-3 | 0.843 | 0.491 | 0.765 | 0.621 | 0.894 | 0.855 |
+| OOF | HL-3, full offline inputs / derivative picker gated by HL-3 | 0.870 | 0.549 | 0.870 | 0.773 | 0.894 | 0.857 |
+| OOF | HL-3, ECE-only inputs / derivative picker gated by HL-3 | 0.843 | 0.491 | 0.765 | 0.621 | 0.894 | 0.855 |
 | OOF | PhaseNet-style picker | 0.976 | 0.802 | 0.980 | 0.929 | 0.873 | 0.835 |
 | Fixed validation | Single-channel derivative / ±125 ms presence | 0.999 | 0.897 | 0.992 | 0.938 | 0.893 | 0.872 |
 | Fixed validation | Always present | 0.919 | 0.519 | 0.500 | 0.500 | — | — |
-| Fixed validation | Adapted HL-3 / derivative picker gated by HL-3 | 0.928 | 0.549 | 0.784 | 0.717 | 0.892 | 0.871 |
+| Fixed validation | HL-3, full offline inputs / derivative picker gated by HL-3 | 0.933 | 0.594 | 0.957 | 0.916 | 0.890 | 0.869 |
+| Fixed validation | HL-3, ECE-only inputs / derivative picker gated by HL-3 | 0.928 | 0.549 | 0.784 | 0.717 | 0.892 | 0.871 |
 | Fixed validation | PhaseNet-style picker | 0.999 | 0.773 | 1.000 | 0.967 | 0.870 | 0.846 |
 
 Source: `outputs/labeler/sawtooth/fix5/benchmark.json` → `Tokamak-SI.*.old_negatives_sensitivity`.
@@ -206,10 +212,14 @@ Presence and crash thresholds are selected on each fold's inner shots. A wide pr
 
 | Method | Fold | Presence threshold | Crash threshold | Crash z | Inner shots | Best / completed epochs |
 |---|---:|---:|---:|---:|---:|---:|
-| Adapted HL-3 / derivative picker gated by HL-3 | 0 | 0.050 | 0.050 | 8.00 | 52 | 9 / 17 |
-| Adapted HL-3 / derivative picker gated by HL-3 | 1 | 0.650 | 0.300 | 9.00 | 52 | 3 / 11 |
-| Adapted HL-3 / derivative picker gated by HL-3 | 2 | 0.050 | 0.350 | 10.00 | 52 | 6 / 14 |
-| Adapted HL-3 / derivative picker gated by HL-3 | spread | 0.050–0.650 (range 0.600) | | | | |
+| HL-3, full offline inputs / derivative picker gated by HL-3 | 0 | 0.750 | 0.050 | 8.00 | 52 | 7 / 15 |
+| HL-3, full offline inputs / derivative picker gated by HL-3 | 1 | 0.150 | 0.300 | 9.00 | 52 | 2 / 10 |
+| HL-3, full offline inputs / derivative picker gated by HL-3 | 2 | 0.100 | 0.100 | 10.00 | 52 | 2 / 10 |
+| HL-3, full offline inputs / derivative picker gated by HL-3 | spread | 0.100–0.750 (range 0.650) | | | | |
+| HL-3, ECE-only inputs / derivative picker gated by HL-3 | 0 | 0.050 | 0.050 | 8.00 | 52 | 9 / 17 |
+| HL-3, ECE-only inputs / derivative picker gated by HL-3 | 1 | 0.650 | 0.300 | 9.00 | 52 | 3 / 11 |
+| HL-3, ECE-only inputs / derivative picker gated by HL-3 | 2 | 0.050 | 0.350 | 10.00 | 52 | 6 / 14 |
+| HL-3, ECE-only inputs / derivative picker gated by HL-3 | spread | 0.050–0.650 (range 0.600) | | | | |
 | PhaseNet-style picker | 0 | 0.250 | 0.950 | 0.00 | 52 | 21 / 29 |
 | PhaseNet-style picker | 1 | 0.100 | 0.950 | 0.00 | 52 | 18 / 26 |
 | PhaseNet-style picker | 2 | 0.550 | 0.975 | 0.00 | 52 | 16 / 24 |
@@ -219,16 +229,56 @@ Source: `outputs/labeler/sawtooth/fix5/benchmark.json` → `Tokamak-SI.*.operati
 
 | Method | Fold | Held-out shots | Inner-selected threshold | Presence F1 at the selected threshold | Presence F1 at 0.5 | AUPRC | Positive / negative bins |
 |---|---:|---:|---:|---:|---:|---:|---|
-| Adapted HL-3 / derivative picker gated by HL-3 | 0 | 130 | 0.050 | 0.848 | 0.835 | 0.907 | 28,840 / 9,759 |
-| Adapted HL-3 / derivative picker gated by HL-3 | 1 | 130 | 0.650 | 0.822 | 0.862 | 0.876 | 34,425 / 11,784 |
-| Adapted HL-3 / derivative picker gated by HL-3 | 2 | 130 | 0.050 | 0.866 | 0.859 | 0.898 | 20,844 / 8,657 |
+| HL-3, full offline inputs / derivative picker gated by HL-3 | 0 | 130 | 0.750 | 0.856 | 0.858 | 0.962 | 28,840 / 9,759 |
+| HL-3, full offline inputs / derivative picker gated by HL-3 | 1 | 130 | 0.150 | 0.881 | 0.914 | 0.954 | 34,425 / 11,784 |
+| HL-3, full offline inputs / derivative picker gated by HL-3 | 2 | 130 | 0.100 | 0.869 | 0.887 | 0.944 | 20,844 / 8,657 |
+| HL-3, ECE-only inputs / derivative picker gated by HL-3 | 0 | 130 | 0.050 | 0.848 | 0.835 | 0.907 | 28,840 / 9,759 |
+| HL-3, ECE-only inputs / derivative picker gated by HL-3 | 1 | 130 | 0.650 | 0.822 | 0.862 | 0.876 | 34,425 / 11,784 |
+| HL-3, ECE-only inputs / derivative picker gated by HL-3 | 2 | 130 | 0.050 | 0.866 | 0.859 | 0.898 | 20,844 / 8,657 |
 | PhaseNet-style picker | 0 | 130 | 0.250 | 0.971 | 0.970 | 0.991 | 28,840 / 9,759 |
 | PhaseNet-style picker | 1 | 130 | 0.100 | 0.982 | 0.986 | 0.995 | 34,425 / 11,784 |
 | PhaseNet-style picker | 2 | 130 | 0.550 | 0.971 | 0.828 | 0.985 | 20,844 / 8,657 |
 
 Source: `outputs/labeler/sawtooth/fix5/benchmark.json` → `Tokamak-SI.*.presence_fixed_threshold`.
 
-HL-3 is an adapted external architecture, replacing the paper's SXR pair with geometry-selected ECE plus Mirnov and Ip. It has no crash head: its timing score is the **derivative picker gated by HL-3**. LR, weight decay and dropout are selected on inner shots. The U-Net probability grid extends through 0.999; fold records retain selected operating points and boundary flags.
+#### HL-3 inputs and the full-input comparison
+
+`saw-hl3-full` receives the paper's offline input set at 10 kHz, in 20 ms windows with a 2 ms stride: plasma current, line-integrated density, a Mirnov pair, SXR core and edge chords, stored energy, the ECE core electron temperature, neutral-beam power and ECH power. The paper lists ten rows; its two beam powers are one total here, so the network has nine input channels. An input a shot lacks is a masked channel (missing, zero after standardisation) and the shot is still scored. `saw-hl3-ece` is the earlier four-input adaptation (EFIT-axis core ECE, low-field-side outer ECE at nominal geometric ρ=0.4–0.65, Mirnov 0–1 mean, Ip). Both runs use the same folds, inner-selection shots, window sampling, seeds, recipe and scoring; only the input channels differ. Each channel is divided by a fixed scale when stacked (stored energy MJ, powers MW, CO2 chord V2 / 1e14; the sources below name the reader's own units).
+
+Of the 438 benchmark shots, 3 have no observable ECE support and supply no window; the coverage below is over the other 435. Only shots the benchmark uses (TRAIN folds, supported fixed validation, the reviewed shots) were read or fetched; the blind test split was not.
+
+| Input | Source (shots) | Shots with it | Shots lacking it |
+|---|---|---:|---:|
+| ECE core electron temperature (EFIT-axis channel average) | benchmark baseline (EFIT-axis core ECE average) (435) | 435 | 0 |
+| Mirnov pair (rows 0 and 1, mean) | corpus:mirnov rows 0-1 (FIR 10 kHz) (435) | 435 | 0 |
+| Plasma current | benchmark baseline (Ip / 1e6) (435) | 435 | 0 |
+| Line-integrated density (CO2 chord V2) | raw_cache:co2 chord V2 (FIR 10 kHz) (283), corpus:co2 chord V2 (FIR 10 kHz) (152) | 435 | 0 |
+| SXR core chord | SX90RM1S chord (390), SX90RM1F chord (44) | 434 | 1 |
+| SXR edge chord | SX90RM1S chord (364), SX90RM1F chord (44) | 408 | 27 |
+| Stored energy (EFIT01 WMHD) | EFIT01 WMHD (J) (435) | 434 | 1 |
+| Neutral-beam power (summed beams) | corpus:pinj (410), fetched:BMSPINJ (13), detach_cache:BMSPINJ (12) | 435 | 0 |
+| ECH power (summed gyrotrons) | corpus:ech_power (sum of gyrotrons, W) (433) | 433 | 2 |
+
+Source: `outputs/labeler/sawtooth/fix5/hl3_full_inputs.json` → `shots_present; shots_lacking; sources`.
+
+**SXR chord choice.** SX90 chord impact parameters are in neither MDSplus nor imas_composer (probed 2026-10-05), so every shot uses the label-free pairing. The two chords are therefore chosen from the data of each shot alone, with no label, crash time or q profile (`labeler.sawtooth.hl3_inputs`, method `label_free_noise_corrected_highpass_variance_core_and_anticorrelated_outer_edge`). In the first lit fan (SX90RM1S on 390 shots, SX90RM1F on 44 shots), the band variance from 100 Hz to 2 kHz of every lit chord is compared with the white-noise share its own 3–4.5 kHz band predicts; a chord carries structure when the ratio is at least 2. The core is the structured chord with the highest band variance, and the edge is the structured chord further from the fan centre whose band signal is most anti-correlated with the core (a sawtooth inverts across the inversion radius). Where no chord carries structure the core falls back to the highest ratio and the shot is flagged; where no further chord exists the edge is missing. Each channel is scaled per shot by its median and 1.4826 times its median absolute deviation. Method counts: a pair on 408 shots, a core without an edge chord on 26, no chord pair on 1; the core chord carries band structure on 306 of 434 shots and the edge chord on 225 of 408. The chosen edge chord is anti-correlated with the core on 55 of 408 pairs (median correlation 0.39), so on most shots it is a weak stand-in for the paper's inverted edge chord. The per-shot method record is `per_shot[].sxr`.
+
+Source: `outputs/labeler/sawtooth/fix5/hl3_full_inputs.json` → `sxr_*; per_shot[].sxr`.
+
+HL-3 is the OuYang 2025 CNN with a bidirectional LSTM, run on two input sets under one recipe. It has no crash head: its timing score is the **derivative picker gated by HL-3**. LR, weight decay and dropout are selected on inner shots. The U-Net probability grid extends through 0.999; fold records retain selected operating points and boundary flags. Full-input HL-3 minus the four-input run, with the same whole-shot bootstrap draws on both sides:
+
+| Held-out set | Δ crash F1 [95% CI] | Δ presence F1 [95% CI] | Δ presence AUROC [95% CI] | Δ presence AUPRC [95% CI] |
+|---|---:|---:|---:|---:|
+| OOF | -0.000 [-0.008, 0.010] | 0.027 [-0.016, 0.076] | 0.105 [0.045, 0.172] | 0.059 [0.031, 0.094] |
+| Fixed validation | -0.002 [-0.013, 0.003] | 0.004 [-0.010, 0.019] | 0.173 [0.056, 0.317] | 0.035 [0.010, 0.082] |
+
+Source: `outputs/labeler/sawtooth/fix5/benchmark.json` → `Tokamak-SI.saw-hl3-full.paired_vs_hl3_ece`.
+
+Source: `outputs/labeler/sawtooth/fix5/saw-hl3-full_fold_0.json`.
+
+Source: `outputs/labeler/sawtooth/fix5/saw-hl3-full_fold_1.json`.
+
+Source: `outputs/labeler/sawtooth/fix5/saw-hl3-full_fold_2.json`.
 
 Source: `outputs/labeler/sawtooth/fix5/saw-hl3_fold_0.json`.
 
@@ -242,12 +292,17 @@ Source: `outputs/labeler/sawtooth/fix5/saw-ours_fold_1.json`.
 
 Source: `outputs/labeler/sawtooth/fix5/saw-ours_fold_2.json`.
 
-| Three-regime window classifier | Accuracy | Macro-F1 |
-|---|---:|---:|
-| Adapted HL-3 | 0.644 | 0.624 |
-| Single-channel derivative with period | 0.871 | 0.872 |
-| Fitting-chosen majority | 0.522 | 0.229 |
-| Always present (period class undefined) | — | — |
+#### Three-regime window classification
+
+The paper's task: each 20 ms window (2 ms stride) is no sawtooth, small-period sawtooth or large-period sawtooth, the boundary being the median period of the fitting shots of each fold (40.0, 43.7, 41.2 ms for the three folds), scored out of fold on observable and physics-rule-assessed window centres. The class shares of the scored windows (none / small / large) are 26.4% / 21.3% / 52.2%, and the fitting-chosen majority class is large-period in every fold, so a classifier that never leaves that class scores 0.522 accuracy by construction; accuracy is read against that floor.
+
+| Three-regime window classifier | Accuracy [95% CI] | Macro-F1 [95% CI] | Precision none / small / large | Recall none / small / large | Predicted share none / small / large |
+|---|---:|---:|---|---|---|
+| HL-3 full inputs | 0.715 [0.662, 0.769] | 0.703 [0.651, 0.753] | 0.695 / 0.581 / 0.813 | 0.676 / 0.791 / 0.704 | 25.7 / 29.1 / 45.2 % |
+| HL-3 ECE-only inputs | 0.644 [0.591, 0.697] | 0.624 [0.568, 0.678] | 0.554 / 0.538 / 0.763 | 0.519 / 0.757 / 0.661 | 24.7 / 30.0 / 45.2 % |
+| Single-channel derivative with period | 0.871 [0.848, 0.893] | 0.872 [0.847, 0.894] | 0.994 / 0.652 / 0.952 | 0.972 / 0.918 / 0.801 | 25.9 / 30.1 / 44.0 % |
+| Fitting-chosen majority class | 0.522 [0.447, 0.589] | 0.229 [0.206, 0.247] | — / — / 0.522 | 0.000 / 0.000 / 1.000 | 0.0 / 0.0 / 100.0 % |
+| Always present (period class undefined) | — | — | — | — | — |
 
 Derivative period abstentions count as errors on the original class support. Always present has no period class or crash time.
 
@@ -263,24 +318,25 @@ Source: `outputs/labeler/sawtooth/fix5/benchmark.json` → `legacy`.
 |---|---:|---|---|
 | Single-channel derivative / ±125 ms presence | 0.536 | 186636: 0.481; 189324: 0.755; 190637: 0.202 | 207 / 0 / 207 |
 | Always present | 0.500 | 186636: 0.257; 189324: 0.682; 190637: 0.792 | 0 / 0 / 0 |
-| Adapted HL-3 / derivative picker gated by HL-3 | 0.268 | 186636: 0.257; 189324: 0.682; 190637: 0.016 | 206 / 0 / 206 |
+| HL-3, full offline inputs / derivative picker gated by HL-3 | 0.488 | 186636: 0.308; 189324: 0.682; 190637: 0.064 | 206 / 0 / 206 |
+| HL-3, ECE-only inputs / derivative picker gated by HL-3 | 0.268 | 186636: 0.257; 189324: 0.682; 190637: 0.016 | 206 / 0 / 206 |
 | PhaseNet-style picker | 0.751 | 186636: 0.295; 189324: 0.718; 190637: 0.806 | 94 / 0 / 94 |
 
 Source: `outputs/labeler/sawtooth/fix5/benchmark.json` → `Tokamak-SI.*.expert`.
 
 Reviewed-score support is the intersection of known reviewed spans and observable inputs. Picks outside it have unknown outcomes. The JSON separately records picks excluded by physics-rule assessment for the conditional agreement diagnostic. Model predictions on reviewed spans are scored independently of the physics rule's assessment mask.
 
-HL-3 ranking check: AUROC below 0.5 persists on listed exploratory expert shots; no expert-based inversion, retuning or threshold selection performed. No expert-based inversion or retuning was performed.
+HL-3 ranking check, full inputs: AUROC below 0.5 persists on listed exploratory expert shots; no expert-based inversion, retuning or threshold selection performed. ECE-only inputs: AUROC below 0.5 persists on listed exploratory expert shots; no expert-based inversion, retuning or threshold selection performed. No expert-based inversion or retuning was performed.
 
-| Reviewed shot | HL-3 AUROC | HL-3 assessed diagnostic AUROC | Saw-ours AUROC |
-|---|---:|---:|---:|
-| 186636 | 0.205 | — | 0.808 |
-| 189324 | 0.468 | 0.659 | 0.868 |
-| 190637 | 0.085 | — | 0.741 |
+| Reviewed shot | HL-3 full AUROC | HL-3 full assessed diagnostic AUROC | HL-3 ECE-only AUROC | HL-3 ECE-only assessed diagnostic AUROC | Saw-ours AUROC |
+|---|---:|---:|---:|---:|---:|
+| 186636 | 0.725 | — | 0.205 | — | 0.808 |
+| 189324 | 0.897 | 0.992 | 0.468 | 0.659 | 0.868 |
+| 190637 | 0.240 | — | 0.085 | — | 0.741 |
 
 Source: `outputs/labeler/sawtooth/fix5/benchmark.json` → `Tokamak-SI.*.expert.by_shot`.
 
-HL-3's residual inversion is concentrated in shot 190637 and persists on assessed support. The physics rule calls no definite-present phase there while the reviewed spans contain substantial positive support. The radial profile below resolves which side the data support.
+Shots ranked inverted (AUROC below 0.5) by both HL-3 runs: 190637. The physics rule calls no definite-present phase on shot 190637 while the reviewed spans contain substantial positive support. The radial profile below resolves which side the data support.
 
 Source: `/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/shots/190637.json` → `state_seconds`; `outputs/labeler/sawtooth/fix5/validation.json` → `expert.by_shot`.
 
