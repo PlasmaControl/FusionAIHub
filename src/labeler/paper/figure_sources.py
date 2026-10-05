@@ -694,8 +694,6 @@ def ntm_qualification(record: dict, shots: bool = False) -> str:
     score = performance.get("f1")
     if score is not None:
         text = f"held-out F1 {score:.2f}"
-        if shown is not None:
-            text += f" at {NTM_THRESHOLD:g}"
         if shots and performance.get("shots"):
             text += f" on {performance['shots']} shots"
         parts.append(text)

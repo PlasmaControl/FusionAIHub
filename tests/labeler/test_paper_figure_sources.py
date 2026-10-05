@@ -1087,7 +1087,7 @@ def test_ntm_source_text_names_the_bar_from_the_evaluation():
     assert fs.ntm_description({}) == "detector (suggestions)"
     shown = {**record, "decision_threshold": 0.5}
     assert fs.ntm_qualification(shown) == (
-        "held-out F1 0.46 at 0.63, below our 0.7 bar, shown at 0.5"
+        "held-out F1 0.46, below our 0.7 bar, shown at 0.5"
     )
     assert fs.ntm_qualification({**record, "decision_threshold": 0.63}) == (
         "held-out F1 0.46, below our 0.7 bar"

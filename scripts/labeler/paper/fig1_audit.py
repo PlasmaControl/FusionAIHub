@@ -627,7 +627,7 @@ def main():
                 "so not independent of TokEye) is positive (25 ms bins)." in caption
             )
             assert (
-                "(held-out F1 0.46 at 0.63, below our 0.7 bar, shown at 0.5) is positive."
+                "(held-out F1 0.46, below our 0.7 bar, shown at 0.5) is positive."
                 in caption
             )
             assert "Highlights mark time/band coincidence only." in caption
