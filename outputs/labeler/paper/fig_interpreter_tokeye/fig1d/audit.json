@@ -11,16 +11,16 @@
     6200.0
    ],
    "record": "outputs/labeler/paper/fig_interpreter_tokeye/fig1d/199597.json",
-   "record_sha256": "febbb9612c5eabf653f0b244d801ed0d693acda6b226a85427fb6b179d4f652e",
+   "record_sha256": "0120bfef188fe3556e36016cf5d17c7eec5b537826f48bf3c8cf16d24e4cd4ec",
    "ae_source": "ae-ours, CO2 activity predictions, p>=0.5",
    "tag_counts": {
     "alfven_eigenmode": 325,
-    "neoclassical_tearing_mode": 3,
+    "neoclassical_tearing_mode": 13,
     "sawtooth_oscillation": 0
    },
    "verified_crashes": 2,
    "elm_peak_count": 33,
-   "caption_words": 105,
+   "caption_words": 120,
    "projection_violations": 0,
    "raster_ae_audit": {
     "pink_pixels": 846,
@@ -356,7 +356,7 @@
      "coherent",
      "transient",
      "AE",
-     "NTM",
+     "TM",
      "ELM",
      "n=1",
      "n=2",
@@ -467,12 +467,12 @@
       ]
      },
      {
-      "text": "NTM",
+      "text": "TM",
       "font_pt": 7.0,
       "bounds": [
        0.810724279835391,
        0.6627274311791588,
-       0.8433168724279836,
+       0.8329465020576132,
        0.6796062892038501
       ]
      },
@@ -607,13 +607,13 @@
     "minimum_support_ms": 50.0,
     "caption_frequency_step_khz": 1.0,
     "ridge_rule": "per-column pixel-weighted frequency of each measured n",
-    "support_ms": 41.983999876111056,
-    "joint_support_ms": 41.983999876111056,
-    "joint_columns": 41,
-    "passing_columns": 41,
-    "passing_fraction": 1.0,
-    "n1_median_khz": 9.826660185247302,
-    "n2_median_khz": 19.836425839784926
+    "support_ms": 206.84799938962033,
+    "joint_support_ms": 219.13599935336015,
+    "joint_columns": 214,
+    "passing_columns": 202,
+    "passing_fraction": 0.9439252336448598,
+    "n1_median_khz": 10.070800810967732,
+    "n2_median_khz": 20.26367193479568
    },
    "tokeye_cache": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/cache/tokeye_199597_0_6300.npz",
@@ -707,7 +707,7 @@
    },
    "elm_hmode_conflicts_ms": [],
    "elm_qh_overlaps_ms": [],
-   "render_source_commit": "48d93581",
+   "render_source_commit": "46382d1d",
    "sawtooth_source": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/saw_source/shots/199597.json",
@@ -5004,7 +5004,7 @@
    },
    "appendix": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/appendix.txt",
-    "sha256": "4c6501c75f88678c891248affbf474b09d9d5bde3d222a07f86f5839a2be540b"
+    "sha256": "5ca5e7aa04dc7b7e16442100caa5cb7b1107a83916c2df06b7dc15422bb0fda2"
    },
    "sawtooth_display_intervals_ms": [
     {
@@ -5591,8 +5591,8 @@
     5.760000000000001
    ],
    "figure_sha256": {
-    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/fig_interpreter.pdf": "ec904aa64f39be7ce1eb979d81f7334d56f044dd1dba10f9e80adb83458b2641",
-    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/fig_interpreter.png": "b4e9b3dfd535374cc8a6823a07a10d0f8e8815bdb1c2d8fb304b443495343423"
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/fig_interpreter.pdf": "d7003d01d500eb31a3a2f703d9e1f9127a67c5349865cb635d3b1b38001b57ed",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/fig_interpreter.png": "84075d6bf4a229137fe3b188e4bf19656e84ec4181b472a66729ba4578e455c9"
    }
   }
  ],
@@ -5604,8 +5604,8 @@
   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/sawtooth_oscillation/199597.h5": "6db5d325bdce1d20856fa652a7c26b483ce5e1caa0104973f94ddce4fd4dcf32",
   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/ae_ours.csv": "935fbfe59fa4d7a61b2ad1f5102be1f75c1df8240a7715692d3643e0994e28fd",
   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/ae_ours.meta.json": "f56f0187a3d211995f97516fb34710b57e91b9834f232eea111b2a78789ce395",
-  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/outside_rows/neoclassical_tearing_mode.csv": "198edca552c8e291a59baa28810df608803d3baf5f5b2a4b4b295ae15bd83d2c",
-  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/outside_rows/neoclassical_tearing_mode.meta.json": "a23ff8fc9da4fc56ba07e1f36d9be30ef663a8e08a0988c5e60de4525c3b7c44",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/outside_rows/neoclassical_tearing_mode.csv": "bfa111f173031104c7e073fc8340c521db0b1555c482213575f311db0ffcc1e9",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/outside_rows/neoclassical_tearing_mode.meta.json": "a6401ec031496de5195795ec40280212bbf43cbc57c922e098a5f64a8e26c8a9",
   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/ntm_frames/v2/evaluation.json": "0e3060f6d5459d6a9047d48f242ba79860707c47cdad25b138bc728d79aab80f",
   "/scratch/gpfs/nc1514/FusionAIHub/data/events/confinement/extend_confine_ours/roster.csv": "9c44addafb15e19794298b7c7cebdd883273f818befbafa6ce40b7877d078f52",
   "/scratch/gpfs/nc1514/FusionAIHub/data/events/confinement/extend_confine_ours/roster.meta.json": "5f349960e7a1cf920129a27eb9bc8a78db07118508e6acfc008f6ea54090806a",
@@ -5680,12 +5680,12 @@
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/saw_source/shots/199597.json"
   ],
   "before": {
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/fig_interpreter.pdf": "ec904aa64f39be7ce1eb979d81f7334d56f044dd1dba10f9e80adb83458b2641",
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/fig_interpreter.png": "b4e9b3dfd535374cc8a6823a07a10d0f8e8815bdb1c2d8fb304b443495343423"
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/fig_interpreter.pdf": "d7003d01d500eb31a3a2f703d9e1f9127a67c5349865cb635d3b1b38001b57ed",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/fig_interpreter.png": "84075d6bf4a229137fe3b188e4bf19656e84ec4181b472a66729ba4578e455c9"
   },
   "after": {
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/fig_interpreter.pdf": "ec904aa64f39be7ce1eb979d81f7334d56f044dd1dba10f9e80adb83458b2641",
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/fig_interpreter.png": "b4e9b3dfd535374cc8a6823a07a10d0f8e8815bdb1c2d8fb304b443495343423"
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/fig_interpreter.pdf": "d7003d01d500eb31a3a2f703d9e1f9127a67c5349865cb635d3b1b38001b57ed",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/fig_interpreter.png": "84075d6bf4a229137fe3b188e4bf19656e84ec4181b472a66729ba4578e455c9"
   },
   "identical": true,
   "rebuild_files": [
