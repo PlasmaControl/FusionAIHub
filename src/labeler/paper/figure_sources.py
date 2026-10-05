@@ -834,7 +834,7 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
     sentences = [
         f"DIII-D shot {shot}.",
         (
-            "Top: raw CO2 interferometer and Mirnov spectrograms (linear frequency axes, 0–250 kHz), "
+            "Top: raw CO2 interferometer spectrogram (linear frequency axis, 0–250 kHz), "
             "D-alpha, NBI power."
         ),
         (
@@ -1038,14 +1038,12 @@ def appendix_notes(
         f"DIII-D shot {shot}. The raw spectrogram uses one colour scale.",
         (
             "Toroidal mode number n is measured by the Mirnov array. "
-            "The frequency axis is linear, 0–250 kHz, in every spectrogram, with "
-            "no scale break. The raw spectrograms are the wide-range pass; the "
+            "The frequency axis is linear, 0–250 kHz, in both spectrograms, with "
+            "no scale break. The raw spectrogram is the wide-range pass; the "
             "mask is drawn from the higher-resolution pass below 50 kHz and the "
             "wide-range pass above it, because the higher-resolution pass's "
             "decimation filter rolls off above about 50 kHz. The mask is TokEye "
-            "run on the top raw record, the CO2 interferometer; the second raw "
-            "spectrogram is one Mirnov probe, shown for comparison and not "
-            "segmented. Toroidal mode numbers and the NTM candidates come from "
+            "run on the raw record, the CO2 interferometer. Toroidal mode numbers and the NTM candidates come from "
             "the Mirnov array and are drawn on the CO2 mask, so a pixel's n is "
             "not measured on the signal that lit it."
         ),

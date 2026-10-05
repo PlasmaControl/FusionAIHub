@@ -29,7 +29,7 @@ from labeler.paper.figure_sources import AE_THRESHOLD
 
 #: Figure 1 is one shot on one linear 0-250 kHz frequency axis. The earlier
 #: alternates are not rendered on this axis; `--shots` audits any rendered set.
-PRIMARY = 201991
+PRIMARY = 199563
 SHOTS = (PRIMARY,)
 AXIS_TICKS_KHZ = [0, 50, 100, 150, 200, 250]
 #: Words that would describe a broken, stretched or compressed frequency axis.
@@ -245,7 +245,7 @@ def main():
         assert set(shown) <= set(crashes["ece_times_ms"])
         assert drawn["sawtooth_strip_shown"] == bool(shown)
         if shot == PRIMARY:
-            assert record["window_ms"] == [1000, 6100]
+            assert record["window_ms"] == [700, 5800]
         assert drawn["catalog_sawtooth_frame_model_shown"] is False
         saw = record["tracks"]["sawtooth_oscillation"]
         assert saw["state_intervals_ms"]
@@ -324,7 +324,7 @@ def main():
                 state = "unassessed"
             assert row["state"] == state
         geometry = drawn["layout"]
-        # One linear 0-250 kHz axis in every spectrogram, with no scale break.
+        # One linear 0-250 kHz axis in both spectrograms, with no scale break.
         axis = geometry["frequency_axis"]
         assert axis["scale"] == "linear" and axis["scale_breaks_khz"] == []
         assert axis["band_khz"] == [0, 250]
@@ -345,18 +345,12 @@ def main():
             < 1e-6
         )
         raw_panel, processed = panels["raw"], panels["pr"]
-        # two raw spectrograms (CO2, Mirnov) of one height, above the mask
-        raw_two = panels["raw2"]
-        assert raw_panel["band_khz"] == raw_two["band_khz"] == [0, 250]
-        assert processed["band_khz"] == [0, 250]
-        assert abs(raw_panel["height_in"] - raw_two["height_in"]) < 1e-9
-        assert raw_panel["height_in"] >= 1.0
-        assert raw_panel["ticks_khz"] == raw_two["ticks_khz"] == AXIS_TICKS_KHZ
-        assert processed["ticks_khz"] == AXIS_TICKS_KHZ
-        for panel in (raw_panel, raw_two):
-            assert panel["bounds"][0] == processed["bounds"][0]
-            assert panel["bounds"][2] == processed["bounds"][2]
-        for prefix in ("raw", "raw2", "pr"):
+        assert raw_panel["band_khz"] == processed["band_khz"] == [0, 250]
+        assert abs(raw_panel["height_in"] - processed["height_in"]) < 1e-9
+        assert raw_panel["ticks_khz"] == processed["ticks_khz"] == AXIS_TICKS_KHZ
+        assert raw_panel["bounds"][0] == processed["bounds"][0]
+        assert raw_panel["bounds"][2] == processed["bounds"][2]
+        for prefix in ("raw", "pr"):
             ticks = sorted(
                 geometry["frequency_tick_bounds"][prefix],
                 key=lambda tick: tick["bounds"][1],
@@ -542,7 +536,7 @@ def main():
         assert caption.startswith(
             f"\\caption{{DIII-D shot {shot}. Top: raw CO2 interferometer "
         )
-        assert "(linear frequency axes, 0--250 kHz), D-alpha, NBI power." in caption
+        assert "(linear frequency axis, 0--250 kHz), D-alpha, NBI power." in caption
         assert not any(w in caption.lower() for w in BROKEN_AXIS_WORDS)
         assert "normalised" not in caption
         assert "Middle: TokEye coherent-mode mask after small-object removal" in caption
@@ -589,7 +583,7 @@ def main():
             bool(tags[mt.NTM]) and bool(fs.harmonic_clause(drawn))
         )
         assert (
-            "The frequency axis is linear, 0–250 kHz, in every spectrogram, with no "
+            "The frequency axis is linear, 0–250 kHz, in both spectrograms, with no "
             "scale break." in appendix
         )
         assert "The raw spectrogram uses one colour scale." in appendix
@@ -670,7 +664,7 @@ def main():
             assert "cannot separate harmonics of one island from phase-locked" in (
                 appendix
             )
-            assert "linear frequency axes, 0--250 kHz" in caption
+            assert "linear frequency axis, 0--250 kHz" in caption
             # No row of this shot is an expert review, so no D-alpha spike
             # "precedes the expert span" and the ELM source is named a detector.
             assert drawn["first_large_peak_before_expert_ms"] is None
@@ -737,7 +731,7 @@ def main():
         assert sha256_of(caption_file) == record["caption"]["sha256"]
         layout = record["print_layout"]
         assert layout["width_in"] == 6.75 and layout["minimum_font_pt"] >= 7
-        assert layout["height_in"] <= 6.6
+        assert layout["height_in"] <= 5.6
         assert record["decision_thresholds"]["ae"] == AE_THRESHOLD
         external = Path(record["caption"]["path"]).parent / "fig_interpreter.json"
         assert external.read_bytes() == file.read_bytes()
@@ -795,7 +789,7 @@ def main():
         info = subprocess.check_output(["pdfinfo", str(pdf)], text=True)
         size = re.search(r"Page size:\s+([\d.]+) x ([\d.]+)", info)
         width, height = (float(v) / 72 for v in size.groups())
-        assert width == 6.75 and height <= 6.6
+        assert width == 6.75 and height <= 5.6
         audited.append(
             {
                 "shot": shot,
