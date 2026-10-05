@@ -376,7 +376,7 @@ class Band:
     def blobs(self, spans: dict, n_read=None) -> list[mode_tags.Blob]:
         """The blobs of this band's mask, tagged by `spans`' events."""
         found = mode_tags.blobs(self.lit_full, self.t, self.all_f)
-        # Keep whole components for dominant-n evidence across the display fold.
+        # Keep whole components for dominant-n evidence across the 60 kHz AE/NTM split.
         found = [b for b in found if (self.rows[b.component.rows]).any()]
         n = None
         if n_read is not None:
@@ -1543,8 +1543,8 @@ def draw(
         "figure": [str(p) for p in paths_out],
         "figure_sha256": {str(p): sha256_of(p) for p in paths_out},
         "blobs": {
-            "wide_above_fold": len(blobs_high),
-            "zoom_below_fold": len(blobs_low),
+            "wide_above_split": len(blobs_high),
+            "zoom_below_split": len(blobs_low),
             "tagged": tags_count,
             "untagged": sum(not b.tags for b in blobs_high + blobs_low),
         },
