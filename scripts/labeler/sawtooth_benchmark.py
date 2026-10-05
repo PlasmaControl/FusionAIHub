@@ -36,8 +36,31 @@ from labeler.sawtooth.metrics import (
 from labeler.sawtooth.models import HL3, PhasePicker, soft_crash_target
 from labeler.sawtooth.physics import apply_edge_context
 
-MODELS = ("saw-hl3", "saw-ours")
+HL3_ECE = "saw-hl3"  # the four-input network; the record calls it saw-hl3-ece
+HL3_FULL = "saw-hl3-full"  # the paper's full offline input set
+HL3_MODELS = (HL3_ECE, HL3_FULL)
+MODELS = (*HL3_MODELS, "saw-ours")
+RECORD_NAMES = {HL3_ECE: "saw-hl3-ece"}
 BASELINES = ("saw-derivative", "saw-always-present")
+#: Where each model's input matrix lives in the signal dict (`load_signal`).
+INPUT_KEYS = {HL3_ECE: "baseline", HL3_FULL: "hl3_full"}
+HL3_ECE_CHANNELS = [
+    "ECE core mean: nominal EFIT magnetic-axis channel band",
+    "ECE outer mean: nominal LFS rho .4-.65 channel band",
+    "Mirnov mean channels 0-1",
+    "Ip",
+]
+HL3_FULL_CHANNELS = [
+    "ECE core mean: nominal EFIT magnetic-axis channel band (electron temperature)",
+    "Mirnov mean channels 0-1 (10 kHz FIR)",
+    "Ip",
+    "line-integrated density: CO2 interferometer chord V2 (10 kHz FIR)",
+    "SXR core chord: SX90 fan, label-free choice (robust per-shot scale)",
+    "SXR edge chord: SX90 fan, label-free choice (robust per-shot scale)",
+    "stored energy: EFIT01 WMHD, bridged between 20 ms samples",
+    "neutral-beam power: summed beams, BMSPINJ where the corpus group is empty",
+    "ECH power: summed gyrotrons",
+]
 # Isolated-edge vetoes of the context sensitivity (ms): the frame holdoff, 50 ms
 # and the full +/-375 ms absence-test context. Scoring only; nothing is refit.
 EDGE_CONTEXTS_MS = (5.15, 50.0, 375.0)
@@ -92,6 +115,20 @@ LEGACY = {
         "counts disagree with stated accuracy; split grouping unspecified."
     ),
 }
+
+
+def is_hl3(name):
+    """Either HL-3 input variant: one code path, one training recipe."""
+    return name in HL3_MODELS
+
+
+def hl3_channels(name):
+    return len(HL3_FULL_CHANNELS) if name == HL3_FULL else len(HL3_ECE_CHANNELS)
+
+
+def signal_keys(name):
+    """The signal-dict keys a model reads for windows and inference."""
+    return ("t", "observable", "assessed", INPUT_KEYS.get(name, "y"))
 
 
 def usable_signal_shots(work):
@@ -154,7 +191,8 @@ def unavailable_record(work, shot):
         "outcome_status": "unknown",
         "exclusion_reason": source.get("error", "signal input unavailable"),
         "error_kind": source.get("error_kind", "signal_unavailable"),
-        "source_record": str(path) if path.exists() else None,
+        # Resolved: a work directory may link its read-only inputs from another.
+        "source_record": str(path.resolve()) if path.exists() else None,
         "observable_bins": 0,
         "assessed_bins": 0,
         "unassessed_bins": 0,
@@ -342,7 +380,8 @@ def with_edge_context(signal, rec, context_ms):
     edges = rec["absence_diagnostics"]["core_relaxation_test"]["ambiguous_edge_times_s"]
     absent = apply_edge_context(t, signal["absent_holdoff"], edges, context_ms)
     present = spans_at(
-        t, [(r["start_s"], r["end_s"]) for r in rec["states"] if r["state"] == "present"]
+        t,
+        [(r["start_s"], r["end_s"]) for r in rec["states"] if r["state"] == "present"],
     )
     doubt = spans_at(
         t, [(r["start_s"], r["end_s"]) for r in rec["uncertain_intervals"]]
@@ -360,7 +399,10 @@ def assessed_points(signal, times):
 
 def input_values(signal, name):
     """One observability-only input policy shared by fitting and inference."""
-    values = signal["baseline" if name == "saw-hl3" else "y"].astype(np.float32).copy()
+    key = INPUT_KEYS.get(name, "y")
+    if key not in signal:
+        raise ValueError(f"{name} needs the {key!r} input of each shot")
+    values = np.asarray(signal[key]).astype(np.float32).copy()
     observable = np.asarray(signal["observable"], dtype=bool)
     if observable.shape != (len(signal["t"]),):
         raise ValueError("observability must share the native input time grid")
@@ -425,10 +467,10 @@ def sample_window_starts(t, classes, crashes, width, rng, *, count):
 
 def windows(work, shots, model, boundary, *, per_shot=64, balanced=True):
     """Same random/crash-centred sampling and observable inputs for both models."""
-    width = 200 if model == "saw-hl3" else 1000
+    width = 200 if is_hl3(model) else 1000
     xs, ys, owners = [], [], []
     for shot in shots:
-        data = np.load(work / "signals" / f"{shot}.npz")
+        data = load_signal(work, shot, keys=signal_keys(model))
         t = data["t"]
         x = input_values(data, model)
         if len(t) < width:
@@ -450,12 +492,20 @@ def windows(work, shots, model, boundary, *, per_shot=64, balanced=True):
             mask = assessed[start : start + width]
             if observable[start : start + width].mean() < 0.8 or not mask.any():
                 continue
-            if model == "saw-hl3" and not mask[width // 2]:
+            if is_hl3(model) and not mask[width // 2]:
                 continue
-            xs.append(window.astype(np.float16))
+            with np.errstate(over="ignore"):
+                stored = window.astype(np.float16)
+            if (np.isinf(stored) & np.isfinite(window)).any():
+                # An overflowed channel would read as missing in `normalizer`.
+                raise ValueError(
+                    f"shot {shot}: an input overflows float16 (above 65504); "
+                    "rescale that channel to order one"
+                )
+            xs.append(stored)
             ys.append(
                 int(classes[start + width // 2])
-                if model == "saw-hl3"
+                if is_hl3(model)
                 else np.stack(
                     [pick[start : start + width], present[start : start + width], mask]
                 ).astype(np.float16)
@@ -523,7 +573,7 @@ def prediction_classification(predictions, work, boundary):
 
 
 def loss(model, logits, y, weights=None):
-    if model == "saw-hl3":
+    if is_hl3(model):
         return F.cross_entropy(logits, y.long(), weight=weights)
     logp = F.log_softmax(logits[:, :2], dim=1)
     pick, present, mask = y[:, 0], y[:, 1], y[:, 2]
@@ -544,7 +594,7 @@ def infer(model, name, signal, mean, std, *, batch=128):
     device = next(model.parameters()).device
     model.eval()
     with torch.no_grad():
-        if name == "saw-hl3":
+        if is_hl3(name):
             starts = np.arange(0, len(t) - 200 + 1, 20)
             chunks = []
             for offset in range(0, len(starts), batch):
@@ -697,9 +747,25 @@ def derivative_prediction(signal, z, *, derivative=None):
     }
 
 
-def load_signal(work, shot):
+def load_signal(work, shot, *, keys=None):
+    """A shot's arrays as a dict; the full HL-3 inputs come from `hl3_inputs/`.
+
+    `keys` limits what is read (the signal files hold all 48 ECE channels).
+    """
     with np.load(work / "signals" / f"{shot}.npz") as data:
-        return {key: data[key] for key in data.files}
+        signal = {key: data[key] for key in data.files if keys is None or key in keys}
+    if keys is None or INPUT_KEYS[HL3_FULL] in keys:
+        side = work / "hl3_inputs" / f"{shot}.npz"
+        if side.is_file():
+            with np.load(side) as data:
+                if len(data["t"]) != len(signal["t"]) or not np.array_equal(
+                    data["t"], signal["t"]
+                ):
+                    raise ValueError(
+                        f"shot {shot}: HL-3 inputs are off the signal grid"
+                    )
+                signal[INPUT_KEYS[HL3_FULL]] = data["inputs"]
+    return signal
 
 
 def derivative_classes(signal, times, z, boundary_ms, *, derivative=None):
@@ -850,11 +916,11 @@ def calibrate(name, predictions, work, *, selection_shots, split):
     options = []
     derivatives = (
         {shot: derivative_candidates(signal) for shot, signal in signals.items()}
-        if name == "saw-hl3"
+        if is_hl3(name)
         else {}
     )
     for threshold in THRESHOLDS:
-        for z in DERIVATIVE_Z if name == "saw-hl3" else (0,):
+        for z in DERIVATIVE_Z if is_hl3(name) else (0,):
             cells = np.zeros(3)
             for shot, prediction in predictions.items():
                 estimate = picks(
@@ -915,7 +981,9 @@ def fit_configuration(
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
     model = (
-        HL3(dropout=configuration["dropout"]) if name == "saw-hl3" else PhasePicker()
+        HL3(channels=hl3_channels(name), dropout=configuration["dropout"])
+        if is_hl3(name)
+        else PhasePicker()
     ).to(device)
     optimizer = torch.optim.Adam(
         model.parameters(),
@@ -924,7 +992,7 @@ def fit_configuration(
     )
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.97)
     history, best, best_epoch, stale = [], float("inf"), -1, 0
-    batch = 128 if name == "saw-hl3" else 32
+    batch = 128 if is_hl3(name) else 32
     epoch = 0
     best_state = None
     while stale < args.patience and epoch < args.max_epochs:
@@ -936,7 +1004,7 @@ def fit_configuration(
             selected = rng.integers(0, len(x), size=batch)
             xx = normalize(x[selected], mean, std)
             yy = y[selected].astype(np.float32)
-            if name == "saw-hl3":
+            if is_hl3(name):
                 # Temporal shifts can change the regime near a boundary.
                 xx *= rng.uniform(0.8, 1.2, size=(batch, 1, 1)).astype(np.float32)
                 xx += rng.normal(0, 0.1, size=xx.shape).astype(np.float32)
@@ -947,7 +1015,7 @@ def fit_configuration(
             torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
             optimizer.step()
             losses.append(value.item())
-            if name == "saw-hl3":
+            if is_hl3(name):
                 np.add.at(
                     fitting_cells,
                     (y[selected], logits.detach().argmax(dim=1).cpu().numpy()),
@@ -965,9 +1033,9 @@ def fit_configuration(
                 # fitting weights, on the inner split only.
                 vloss.append(loss(name, logits, torch.from_numpy(yy).to(device)).item())
                 vweights.append(
-                    float(len(yy)) if name == "saw-hl3" else float(yy[:, 2].sum())
+                    float(len(yy)) if is_hl3(name) else float(yy[:, 2].sum())
                 )
-                if name == "saw-hl3":
+                if is_hl3(name):
                     np.add.at(
                         selection_cells,
                         (yy.astype(int), logits.argmax(dim=1).cpu().numpy()),
@@ -980,12 +1048,12 @@ def fit_configuration(
                 "train_loss": float(np.mean(losses)),
                 "val_loss": validation_loss,
                 "augmented_fit_classification": classification_metrics(fitting_cells)
-                if name == "saw-hl3"
+                if is_hl3(name)
                 else None,
                 "natural_selection_classification": classification_metrics(
                     selection_cells
                 )
-                if name == "saw-hl3"
+                if is_hl3(name)
                 else None,
             }
         )
@@ -1057,7 +1125,7 @@ def train(args):
             selection_windows = len(vx)
             mean, std = normalizer(x)
             class_weights = None
-            if name == "saw-hl3":
+            if is_hl3(name):
                 counts = np.bincount(y, minlength=3)
                 _, natural_y, _ = windows(
                     args.work, training, name, boundary, per_shot=32, balanced=False
@@ -1070,8 +1138,8 @@ def train(args):
                     device=device,
                 )
             begun = time.monotonic()
-            batch = 128 if name == "saw-hl3" else 32
-            if name == "saw-hl3":
+            batch = 128 if is_hl3(name) else 32
+            if is_hl3(name):
                 sx, sy, _ = windows(
                     args.work,
                     validation,
@@ -1114,8 +1182,8 @@ def train(args):
                 del state
             configuration = best_candidate["configuration"]
             model = (
-                HL3(dropout=configuration["dropout"])
-                if name == "saw-hl3"
+                HL3(channels=hl3_channels(name), dropout=configuration["dropout"])
+                if is_hl3(name)
                 else PhasePicker()
             ).to(device)
             model.load_state_dict(best_state)
@@ -1124,13 +1192,11 @@ def train(args):
             stale = best_candidate["stale_epochs"]
             epoch = best_candidate["epochs_completed"]
             fit_classification = (
-                window_classification(model, x, y, mean, std)
-                if name == "saw-hl3"
-                else None
+                window_classification(model, x, y, mean, std) if is_hl3(name) else None
             )
             balanced_selection_classification = (
                 window_classification(model, vx, vy, mean, std)
-                if name == "saw-hl3"
+                if is_hl3(name)
                 else None
             )
             torch.save(
@@ -1142,7 +1208,7 @@ def train(args):
                     "training_shots": training,
                     "validation_shots": validation,
                     "selection_shots": validation,
-                    "majority_class": majority_class if name == "saw-hl3" else None,
+                    "majority_class": majority_class if is_hl3(name) else None,
                     "model": name,
                     "input_policy": INPUT_POLICY,
                     "configuration": configuration,
@@ -1151,9 +1217,7 @@ def train(args):
             )
             del x, y, vx, vy, sx, sy
             validation_predictions = {
-                s: infer(
-                    model, name, np.load(args.work / "signals" / f"{s}.npz"), mean, std
-                )
+                s: infer(model, name, load_signal(args.work, s), mean, std)
                 for s in validation
             }
             selected, options = calibrate(
@@ -1168,7 +1232,7 @@ def train(args):
             for shot in (
                 heldout + split["expert_shots"] + split["fixed_validation_supported"]
             ):
-                signal = np.load(args.work / "signals" / f"{shot}.npz")
+                signal = load_signal(args.work, shot)
                 prediction = infer(model, name, signal, mean, std)
                 prediction["picks"] = picks(
                     name, prediction, signal, selected["threshold"], selected["z"]
@@ -1191,18 +1255,18 @@ def train(args):
                 "fixed_validation_supported": split["fixed_validation_supported"],
                 "training_windows": len(owners),
                 "selection_windows": selection_windows,
-                "training_class_counts": counts.tolist() if name == "saw-hl3" else None,
+                "training_class_counts": counts.tolist() if is_hl3(name) else None,
                 "natural_training_class_counts": (
-                    natural_counts.tolist() if name == "saw-hl3" else None
+                    natural_counts.tolist() if is_hl3(name) else None
                 ),
-                "majority_class": majority_class if name == "saw-hl3" else None,
+                "majority_class": majority_class if is_hl3(name) else None,
                 "fit_classification": fit_classification,
                 "balanced_selection_classification": balanced_selection_classification,
                 "natural_selection_classification": (
                     prediction_classification(
                         validation_predictions, args.work, boundary
                     )
-                    if name == "saw-hl3"
+                    if is_hl3(name)
                     else None
                 ),
                 "diagnosis_scope": "fitting and inner-selection fixed-train shots only",
@@ -1214,7 +1278,7 @@ def train(args):
                 "hyperparameter_selection": (
                     "minimum unweighted cross entropy on natural random windows "
                     "from inner selection shots only"
-                    if name == "saw-hl3"
+                    if is_hl3(name)
                     else "fixed optimizer; inner selection masked loss stopping"
                 ),
                 "derivative_baseline": calibrate_derivative(
@@ -1236,10 +1300,10 @@ def train(args):
                 "device_name": torch.cuda.get_device_name(),
                 "peak_cuda_memory_bytes": torch.cuda.max_memory_allocated(),
                 "threshold_grid": THRESHOLDS.tolist(),
-                "derivative_z_grid": list(DERIVATIVE_Z) if name == "saw-hl3" else [],
+                "derivative_z_grid": list(DERIVATIVE_Z) if is_hl3(name) else [],
                 "selected_derivative_z_at_grid_edge": (
                     selected["z"] in (min(DERIVATIVE_Z), max(DERIVATIVE_Z))
-                    if name == "saw-hl3"
+                    if is_hl3(name)
                     else None
                 ),
                 "window_sampling": (
@@ -1248,13 +1312,8 @@ def train(args):
                     "identical policy for both models"
                 ),
                 "input_channels": (
-                    [
-                        "ECE core mean: nominal EFIT magnetic-axis channel band",
-                        "ECE outer mean: nominal LFS rho .4-.65 channel band",
-                        "Mirnov mean channels 0-1",
-                        "Ip",
-                    ]
-                    if name == "saw-hl3"
+                    (HL3_FULL_CHANNELS if name == HL3_FULL else HL3_ECE_CHANNELS)
+                    if is_hl3(name)
                     else [f"ECE channel {i}" for i in range(48)]
                 ),
                 "unknown_truth": (
@@ -1466,10 +1525,16 @@ def evaluate(args):
                 "conditional algorithm-assessed scores also reported."
             ),
             "input_parity": (
-                "saw-hl3: nominal EFIT-axis core and LFS rho .4-.65 ECE averages, "
-                "Mirnov mean 0-1 and Ip; "
-                "saw-ours: all 48 ECE channels. Adapted HL-3 ECE inputs replace "
-                "published SXR; architecture and input access differ. "
+                "saw-hl3-full: the paper's offline input set at 10 kHz, 20 ms windows "
+                "and 2 ms stride: plasma current, line-integrated density (CO2 chord "
+                "V2), a Mirnov pair, SXR core and edge chords, EFIT01 stored energy, "
+                "ECE core electron temperature, neutral-beam power and ECH power; "
+                "the two SXR chords come from a label-free per-shot rule (no SX90 "
+                "geometry is available) and a missing input is a masked channel. "
+                "saw-hl3-ece: the earlier four-input adaptation, nominal EFIT-axis "
+                "core and LFS rho .4-.65 ECE averages, Mirnov mean 0-1 and Ip; "
+                "saw-ours: all 48 ECE channels. Architecture and recipe are the same "
+                "for both HL-3 variants. "
                 "Derivative timing: one axis-selected ECE channel, shared by "
                 "derivative-only and derivative picker gated by HL-3."
             ),
@@ -1582,7 +1647,7 @@ def evaluate(args):
             for tolerance in (1, 2):
                 fixed_threshold_rows[tolerance].append(fixed_rows_shot[tolerance])
             fold_rows[fold].append((shot_rows[2], fixed_rows_shot[2]))
-            if name == "saw-hl3":
+            if is_hl3(name):
                 _, _, classes = targets(
                     pred["class_t"], rec, summary["period_boundary_ms"]
                 )
@@ -1676,7 +1741,7 @@ def evaluate(args):
         score["score_label"] = output["protocol"]["primary"]
         score["crash_metric_label"] = (
             "derivative picker gated by HL-3"
-            if name == "saw-hl3"
+            if is_hl3(name)
             else "single-channel derivative picker"
             if name == "saw-derivative"
             else "no crash prediction"
@@ -1694,7 +1759,7 @@ def evaluate(args):
                 for fold, summary in enumerate(summaries)
             ]
         paired_rows["out_of_fold"][name] = rows
-        if name == "saw-hl3":
+        if is_hl3(name):
             classification = bootstrap_classification(shot_class_cells)
             derivative_classification = bootstrap_classification(derivative_class_cells)
             derivative_classification["policy"] = (
@@ -1813,7 +1878,9 @@ def evaluate(args):
             "old_negatives_sensitivity": {
                 "definition": OLD_NEGATIVES,
                 **{
-                    f"crash_tolerance_{tolerance}ms": aggregate(fixed_old_rows[tolerance])
+                    f"crash_tolerance_{tolerance}ms": aggregate(
+                        fixed_old_rows[tolerance]
+                    )
                     for tolerance in (1, 2)
                 },
                 "assessment_totals": assessment_totals(fixed_old_by_shot),
@@ -1987,7 +2054,7 @@ def evaluate(args):
                 "no independent point crash times or spatial validation."
             ),
         }
-        if name == "saw-hl3":
+        if is_hl3(name):
             score["expert"]["inverted_auroc_shots"] = [
                 row["shot"]
                 for row in expert
@@ -2017,6 +2084,20 @@ def evaluate(args):
             if group == "fixed_validation":
                 target = target["fixed_validation"]
             target["paired_vs_derivative"] = comparison
+            if name == HL3_FULL and HL3_ECE in group_rows:
+                target["paired_vs_hl3_ece"] = {
+                    f"crash_tolerance_{tolerance}ms": paired_bootstrap(
+                        group_rows[name][tolerance],
+                        group_rows[HL3_ECE][tolerance],
+                        direction="saw-hl3-full minus saw-hl3-ece",
+                    )
+                    for tolerance in (1, 2)
+                }
+    if HL3_FULL in args.models:
+        output["Tokamak-SI"] = {
+            RECORD_NAMES.get(name, name): result
+            for name, result in output["Tokamak-SI"].items()
+        }
     save_json(args.work / "benchmark.json", output)
     summary = dict(output)
     summary["Tokamak-SI"] = {}
@@ -2073,18 +2154,19 @@ def predict(args):
                 directory / "checkpoint.pt", map_location=device, weights_only=False
             )
             model = (
-                HL3(dropout=checkpoint["configuration"]["dropout"])
-                if name == "saw-hl3"
+                HL3(
+                    channels=hl3_channels(name),
+                    dropout=checkpoint["configuration"]["dropout"],
+                )
+                if is_hl3(name)
                 else PhasePicker()
             ).to(device)
             model.load_state_dict(checkpoint["state_dict"])
             for shot in shots:
-                with np.load(args.work / "signals" / f"{shot}.npz") as signal:
-                    predictions[shot].append(
-                        infer(
-                            model, name, signal, checkpoint["mean"], checkpoint["std"]
-                        )
-                    )
+                signal = load_signal(args.work, shot)
+                predictions[shot].append(
+                    infer(model, name, signal, checkpoint["mean"], checkpoint["std"])
+                )
             summaries.append(summary)
             del model, checkpoint
             torch.cuda.empty_cache()
@@ -2100,8 +2182,8 @@ def predict(args):
         files = []
         for shot in shots:
             prediction = ensemble_predictions(predictions[shot])
-            with np.load(args.work / "signals" / f"{shot}.npz") as signal:
-                prediction["picks"] = picks(name, prediction, signal, threshold, z)
+            signal = load_signal(args.work, shot)
+            prediction["picks"] = picks(name, prediction, signal, threshold, z)
             path = destination / f"{shot}.npz"
             np.savez_compressed(path, **prediction)
             files.append(

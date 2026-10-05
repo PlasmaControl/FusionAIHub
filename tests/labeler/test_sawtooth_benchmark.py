@@ -154,13 +154,16 @@ def test_aggregate_uses_each_shots_calibrated_presence_confusion():
     assert result["presence"]["accuracy"] == pytest.approx(10 / 13)
 
 
-@pytest.mark.parametrize("name,channels", [("saw-hl3", 4), ("saw-ours", 48)])
+@pytest.mark.parametrize(
+    "name,channels", [("saw-hl3", 4), ("saw-hl3-full", 9), ("saw-ours", 48)]
+)
 def test_inputs_retain_observable_uncertain_measurements(name, channels):
     signal = {
         "t": np.arange(5) * 0.001,
         "observable": np.array([True, False, True, True, True]),
         "assessed": np.array([True, False, False, True, True]),
         "baseline": np.full((4, 5), 3.0),
+        "hl3_full": np.full((9, 5), 3.0),
         "y": np.full((48, 5), 3.0),
     }
     values = benchmark.input_values(signal, name)
@@ -173,12 +176,68 @@ def test_inputs_retain_observable_uncertain_measurements(name, channels):
     np.testing.assert_equal(benchmark.input_values(signal, name), values)
 
 
-@pytest.mark.parametrize("name,width", [("saw-hl3", 200), ("saw-ours", 1000)])
+def test_full_hl3_inputs_need_their_side_file():
+    signal = {
+        "t": np.arange(5) * 0.001,
+        "observable": np.ones(5, dtype=bool),
+        "baseline": np.zeros((4, 5)),
+    }
+    with pytest.raises(ValueError, match="hl3_full"):
+        benchmark.input_values(signal, "saw-hl3-full")
+
+
+def test_window_sampling_refuses_an_input_that_overflows_float16(tmp_path):
+    (tmp_path / "signals").mkdir()
+    (tmp_path / "shots").mkdir()
+    (tmp_path / "hl3_inputs").mkdir()
+    t = np.arange(200) * 0.0001
+    np.savez(
+        tmp_path / "signals/1.npz",
+        t=t,
+        observable=np.ones(200, bool),
+        assessed=np.ones(200, bool),
+        baseline=np.zeros((4, 200)),
+    )
+    inputs = np.ones((9, 200), np.float32)
+    inputs[6] = 2.0e6  # stored energy left in joules
+    np.savez(tmp_path / "hl3_inputs/1.npz", t=t, inputs=inputs)
+    rec = {
+        "observable_spans": [[0.0, 0.02]],
+        "assessed_spans": [[0.0, 0.02]],
+        "intervals": [],
+        "crashes": [],
+    }
+    (tmp_path / "shots/1.json").write_text(json.dumps(rec))
+    with pytest.raises(ValueError, match="float16"):
+        benchmark.windows(tmp_path, [1], "saw-hl3-full", 50, per_shot=1)
+
+
+def test_load_signal_attaches_full_hl3_inputs_on_the_signal_grid(tmp_path):
+    (tmp_path / "signals").mkdir()
+    (tmp_path / "hl3_inputs").mkdir()
+    t = np.arange(50) * 0.0001
+    np.savez(tmp_path / "signals/7.npz", t=t, y=np.zeros((48, 50)))
+    # Without the side file the shot loads as before: no full-input key.
+    assert "hl3_full" not in benchmark.load_signal(tmp_path, 7)
+    np.savez(tmp_path / "hl3_inputs/7.npz", t=t, inputs=np.ones((9, 50), np.float32))
+    signal = benchmark.load_signal(tmp_path, 7)
+    assert signal["hl3_full"].shape == (9, 50)
+    # A reader asking only for other keys neither loads nor checks the side file.
+    assert set(benchmark.load_signal(tmp_path, 7, keys=("t",))) == {"t"}
+    np.savez(tmp_path / "hl3_inputs/7.npz", t=t + 1e-4, inputs=np.ones((9, 50)))
+    with pytest.raises(ValueError, match="off the signal grid"):
+        benchmark.load_signal(tmp_path, 7)
+
+
+@pytest.mark.parametrize(
+    "name,width", [("saw-hl3", 200), ("saw-hl3-full", 200), ("saw-ours", 1000)]
+)
 def test_sampled_windows_retain_uncertain_inputs_and_mask_missing_inputs(
     tmp_path, name, width
 ):
     (tmp_path / "signals").mkdir()
     (tmp_path / "shots").mkdir()
+    (tmp_path / "hl3_inputs").mkdir()
     t = np.arange(width) * 0.0001
     observable = np.ones(width, dtype=bool)
     observable[20] = False
@@ -191,6 +250,9 @@ def test_sampled_windows_retain_uncertain_inputs_and_mask_missing_inputs(
         assessed=assessed,
         baseline=np.full((4, width), 3.0),
         y=np.full((48, width), 3.0),
+    )
+    np.savez(
+        tmp_path / "hl3_inputs/1.npz", t=t, inputs=np.full((9, width), 3.0, np.float32)
     )
     rec = {
         "observable_spans": [[0.0, width * 0.0001]],
@@ -636,14 +698,27 @@ def test_evaluation_exports_peer_baselines_fixed_holdout_and_excluded_picks(
     benchmark.evaluate(SimpleNamespace(work=work, models=list(benchmark.MODELS)))
     result = json.loads((work / "benchmark.json").read_text())
     scores = result["Tokamak-SI"]
+    # The four-input network keeps its place in the record as saw-hl3-ece.
     assert set(scores) == {
-        "saw-hl3",
+        "saw-hl3-ece",
+        "saw-hl3-full",
         "saw-ours",
         "saw-derivative",
         "saw-always-present",
     }
     assert scores["saw-always-present"]["crash_tolerance_2ms"]["crash"] is None
-    assert scores["saw-hl3"]["crash_metric_label"] == "derivative picker gated by HL-3"
+    for hl3 in ("saw-hl3-ece", "saw-hl3-full"):
+        assert scores[hl3]["crash_metric_label"] == "derivative picker gated by HL-3"
+        assert scores[hl3]["three_class"]["per_class_precision"] is not None
+        assert len(scores[hl3]["three_class"]["class_shares"]) == 3
+        assert "per_class_precision" in scores[hl3]["three_class"]["ci95"]
+    paired_ece = scores["saw-hl3-full"]["paired_vs_hl3_ece"]["crash_tolerance_2ms"]
+    assert paired_ece["direction"] == "saw-hl3-full minus saw-hl3-ece"
+    assert paired_ece["shot_ids"] == [1, 2, 3]
+    # Identical predictions on both variants: every paired difference is zero.
+    assert paired_ece["difference"]["presence_f1"] == 0
+    assert "paired_vs_hl3_ece" in scores["saw-hl3-full"]["fixed_validation"]
+    assert "paired_vs_hl3_ece" not in scores["saw-ours"]
     assert scores["saw-ours"]["assessment_totals"]["observable_picks"] == 6
     assert scores["saw-ours"]["assessment_totals"]["excluded_picks"] == 3
     sensitivity = scores["saw-ours"]["old_negatives_sensitivity"]
@@ -668,7 +743,11 @@ def test_evaluation_exports_peer_baselines_fixed_holdout_and_excluded_picks(
     assert [row["fold"] for row in points["by_fold"]] == [0, 1, 2]
     assert points["presence_threshold_range"] == 0.0
     derivative_classes = scores["saw-derivative"]["three_class"]
-    assert derivative_classes["windows"] == scores["saw-hl3"]["three_class"]["windows"]
+    assert (
+        derivative_classes["windows"]
+        == scores["saw-hl3-ece"]["three_class"]["windows"]
+        == scores["saw-hl3-full"]["three_class"]["windows"]
+    )
     assert derivative_classes["unclassified_windows"] > 0
     assert scores["saw-always-present"]["three_class"]["window_accuracy"] is None
     for score in scores.values():

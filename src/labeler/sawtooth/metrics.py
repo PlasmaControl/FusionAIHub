@@ -46,6 +46,16 @@ def classification_metrics(cells, *, unclassified=None):
             float(tp / total) if total else None
             for tp, total in zip(true_positive, support, strict=True)
         ],
+        "per_class_precision": [
+            float(tp / total) if total else None
+            for tp, total in zip(true_positive, predicted, strict=True)
+        ],
+        "class_shares": (support / support.sum()).tolist()
+        if support.sum()
+        else [None] * 3,
+        "predicted_class_shares": (predicted / predicted.sum()).tolist()
+        if predicted.sum()
+        else [None] * 3,
         "per_class_f1": f1.tolist() if support.sum() else [None] * 3,
         "window_accuracy": float(cells.trace() / support.sum())
         if support.sum()
@@ -76,6 +86,7 @@ def bootstrap_classification(rows, *, replicates=1000, seed=20261003):
     samples = {name: [] for name in ("window_accuracy", "macro_f1")}
     baseline_samples = {name: [] for name in samples}
     recall_samples = [[] for _ in range(3)]
+    precision_samples = [[] for _ in range(3)]
     rng = np.random.default_rng(seed)
     for _ in range(replicates):
         selected = rng.integers(0, len(rows), size=len(rows))
@@ -92,6 +103,11 @@ def bootstrap_classification(rows, *, replicates=1000, seed=20261003):
         ):
             if value is not None:
                 sample.append(value)
+        for sample, value in zip(
+            precision_samples, values["per_class_precision"], strict=True
+        ):
+            if value is not None:
+                sample.append(value)
 
     def interval(sample):
         return np.quantile(sample, [0.025, 0.975]).tolist() if sample else None
@@ -103,6 +119,7 @@ def bootstrap_classification(rows, *, replicates=1000, seed=20261003):
         "ci95": {
             **{name: interval(v) for name, v in samples.items()},
             "per_class_recall": [interval(v) for v in recall_samples],
+            "per_class_precision": [interval(v) for v in precision_samples],
         },
         "majority_baseline": baseline,
         "shot_ids": [r["shot"] for r in rows],
@@ -381,7 +398,14 @@ def aggregate(rows, *, replicates=1000, seed=20261003, threshold=0.5):
     }
 
 
-def paired_bootstrap(rows, baseline_rows, *, replicates=1000, seed=20261003):
+def paired_bootstrap(
+    rows,
+    baseline_rows,
+    *,
+    replicates=1000,
+    seed=20261003,
+    direction="model minus derivative-only baseline",
+):
     """Model minus baseline with the same whole-shot draw on both sides.
 
     Shots are paired by ID, not input ordering. Crash differences stay undefined
@@ -464,7 +488,7 @@ def paired_bootstrap(rows, baseline_rows, *, replicates=1000, seed=20261003):
         "shots": len(shots),
         "bootstrap_replicates": replicates,
         "bootstrap_seed": seed,
-        "direction": "model minus derivative-only baseline",
+        "direction": direction,
         "resampling": "identical whole-shot draws for model and baseline",
     }
 
