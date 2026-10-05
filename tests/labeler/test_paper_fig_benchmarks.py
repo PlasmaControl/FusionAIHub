@@ -349,6 +349,51 @@ def test_the_sawtooth_auc_panels_read_the_records_presence_auroc_and_auprc():
         assert not [r for r in every if "fixed threshold" in r["group"]]
 
 
+def test_the_hl3_bar_is_the_full_input_run_and_the_four_input_run_is_csv_only():
+    saw = records()[7]
+    assert fig.SAW_HL3 == "saw-hl3-full" and fig.SAW_HL3_ECE == "saw-hl3-ece"
+    assert fig.SAW_HL3 in fig.SAW_MODELS and fig.SAW_HL3_ECE not in fig.SAW_MODELS
+    for metric in ("f1", "auroc", "auprc"):
+        drawn, every, ax = drawn_rows(fig.draw_sawtooth, saw, metric=metric)
+        assert fig.SAW_HL3_ECE not in {r["series"] for r in drawn}
+        ece = [r for r in every if r["series"] == fig.SAW_HL3_ECE]
+        presence = [r for r in ece if r["group"] == "Tokamak-SI, four-input run"]
+        block = saw["Tokamak-SI"][fig.SAW_HL3_ECE]["crash_tolerance_2ms"]
+        assert len(presence) == 1 and not presence[0]["drawn"]
+        assert presence[0]["value"] == block["presence"][metric]
+        assert (presence[0]["ci_lo"], presence[0]["ci_hi"]) == tuple(
+            block["ci95"][f"presence_{metric}"]
+        )
+        assert presence[0]["key"] == (
+            f"Tokamak-SI.saw-hl3-ece.crash_tolerance_2ms.presence.{metric}"
+        )
+        # the bars are the drawn models' values: the CSV-only run adds none
+        assert {round(r["value"], 12) for r in drawn} <= bar_heights(ax) | {
+            round(r["value"], 12) for r in every if r["group"].endswith("baseline")
+        }
+
+
+def test_the_sawtooth_csv_keeps_three_class_accuracy_beside_its_majority_floor():
+    saw = records()[7]
+    _, every, _ = drawn_rows(fig.draw_sawtooth, saw)
+    for model in (fig.SAW_HL3, fig.SAW_HL3_ECE):
+        entry = saw["Tokamak-SI"][model]
+        rows = {
+            r["metric"]: r
+            for r in every
+            if r["series"] == model
+            and r["metric"].startswith("three-class")
+            and r["group"] != "legacy"
+        }
+        accuracy = rows["three-class window accuracy"]
+        floor = rows["three-class window accuracy, majority-class floor"]
+        assert accuracy["value"] == entry["three_class_window_accuracy"]
+        assert floor["value"] == entry["three_class_majority_baseline"]["accuracy"]
+        assert floor["value"] < accuracy["value"]
+        assert not accuracy["drawn"] and not floor["drawn"]
+        assert accuracy["source"] == SAW_SOURCE
+
+
 def test_the_sawtooth_title_states_the_bin_width_the_record_gives():
     saw = records()[7]
     title = fig.saw_title(saw)
@@ -499,3 +544,10 @@ def test_no_score_is_typed_into_the_script():
         and 0 < n.value < 1
     }
     assert not scores & typed, scores & typed
+
+
+def test_a_name_with_two_hyphens_breaks_at_the_last_one():
+    assert fig.two_line("ae-ours") == "ae-\nours"
+    assert fig.two_line("saw-hl3-full") == "saw-hl3-\nfull"
+    assert fig.two_line("saw-derivative") == "saw-\nderivative"
+    assert fig.two_line("plain") == "plain"

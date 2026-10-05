@@ -40,8 +40,9 @@ annotation) used and "Tokamak-SI" is our labels:
   "trivial baseline", as the always-present tick of the sawtooth panel); the legacy
   forest was scored on another machine and has no comparable F1 (a hatched slot).
 - Sawtooth: `saw-derivative` (the single-channel derivative picker, which reads the same
-  ECE edges the labels are built from), `saw-hl3` (the OuYang 2025 HL-3 network,
-  replicated) and `saw-ours`
+  ECE edges the labels are built from), `saw-hl3-full` (the OuYang 2025 HL-3 network,
+  replicated, on the paper's nine offline inputs; the earlier four-input run,
+  `saw-hl3-ece`, is in the CSV only) and `saw-ours`
   on the Tokamak-SI labels, from the sawtooth stream's benchmark record
   (`outputs/labeler/sawtooth/fix5/benchmark.json`): presence F1 on 2 ms bins,
   out of fold over the shot-grouped three-fold split of the TRAIN shots (the
@@ -161,9 +162,11 @@ TM_KEYS = {
     "auroc": ("auroc", "auroc"),
     "auprc": ("auprc", "auprc"),
 }
+SAW_HL3 = "saw-hl3-full"  # the HL-3 bar: the paper's full offline inputs
+SAW_HL3_ECE = "saw-hl3-ece"  # the earlier four-input run: in the CSV only
 SAW_MODELS = (  # the models of the record, named "<task>-<model>" there
     "saw-derivative",
-    "saw-hl3",
+    SAW_HL3,
     "saw-ours",
 )
 SAW_TRIVIAL = "saw-always-present"
@@ -241,9 +244,11 @@ class Rows:
 
 def two_line(name: str) -> str:
     """`ae-ours` as `ae-` over `ours`: the names sit under bars a few tenths of an
-    inch apart."""
-    head, _, tail = name.partition("-")
-    return f"{head}-\n{tail}" if tail else name
+    inch apart. A name with two hyphens (`saw-hl3-full`) breaks at the last one, so
+    its second line stays as narrow as its neighbours'."""
+    split = name.rpartition if name.count("-") > 1 else name.partition
+    head, sep, tail = split("-")
+    return f"{head}-\n{tail}" if sep else name
 
 
 def axes_style(ax, ylabel: str | None) -> None:
@@ -842,7 +847,7 @@ def saw_title(saw: dict) -> str:
 
 
 def draw_sawtooth(ax, saw: dict, rows: Rows, panel: str, metric: str = "f1") -> None:
-    """The derivative baseline, `saw-hl3` and `saw-ours` on the Tokamak-SI labels
+    """The derivative baseline, `saw-hl3-full` and `saw-ours` on the Tokamak-SI labels
     (presence, out of fold; a tick at the always-present baseline) and, as the
     legacy setting, a hatched slot: the HL-3 paper was scored on another machine."""
     name = METRICS[metric]
@@ -856,7 +861,7 @@ def draw_sawtooth(ax, saw: dict, rows: Rows, panel: str, metric: str = "f1") -> 
     legacy = saw["legacy"]
     rows.add(
         panel,
-        "saw-hl3",
+        SAW_HL3,
         "legacy",
         name,
         None,
@@ -923,12 +928,64 @@ def draw_sawtooth(ax, saw: dict, rows: Rows, panel: str, metric: str = "f1") -> 
         f"{block.format(SAW_TRIVIAL)}.{metric}",
         note="presence = 1 everywhere; tick",
     )
+    ece_presence, ece_ci95 = saw_presence(saw, SAW_HL3_ECE)
+    ece_entry = saw["Tokamak-SI"][SAW_HL3_ECE]
+    rows.add(
+        panel,
+        SAW_HL3_ECE,
+        "Tokamak-SI, four-input run",
+        name,
+        ece_presence[metric],
+        tuple(ece_ci95[f"presence_{metric}"]),
+        src,
+        f"{block.format(SAW_HL3_ECE)}.{metric}",
+        note="the earlier four-input HL-3 run (EFIT-axis and outer ECE, Mirnov, Ip), "
+        f"same {ece_entry['coverage']['supported_shots']} supported TRAIN shots "
+        "and bins; kept out of the figure",
+        drawn=False,
+    )
     if metric == "f1":
-        hl3 = saw["Tokamak-SI"]["saw-hl3"]
+        for model in (SAW_HL3, SAW_HL3_ECE):
+            entry = saw["Tokamak-SI"][model]
+            group = (
+                "Tokamak-SI, three-class"
+                if model == SAW_HL3
+                else "Tokamak-SI, four-input run, three-class"
+            )
+            note = (
+                "the same three-class windows scored on DIII-D, out of fold; "
+                "kept out of the figure"
+            )
+            rows.add(
+                panel,
+                model,
+                group,
+                "three-class window accuracy",
+                entry["three_class_window_accuracy"],
+                tuple(entry["three_class_accuracy_ci95"]),
+                src,
+                f"Tokamak-SI.{model}.three_class_window_accuracy",
+                note=note,
+                drawn=False,
+            )
+            majority = entry["three_class_majority_baseline"]
+            rows.add(
+                panel,
+                model,
+                group,
+                "three-class window accuracy, majority-class floor",
+                majority["accuracy"],
+                tuple(majority["accuracy_ci95"]),
+                src,
+                f"Tokamak-SI.{model}.three_class_majority_baseline.accuracy",
+                note="the fitting-chosen majority class on the same windows; "
+                "kept out of the figure",
+                drawn=False,
+            )
         for mode, key in (("real-time", "real_time"), ("offline", "offline")):
             rows.add(
                 panel,
-                "saw-hl3",
+                SAW_HL3,
                 "legacy",
                 f"three-class window accuracy, {mode} (stated)",
                 legacy[key]["accuracy_stated"],
@@ -939,19 +996,6 @@ def draw_sawtooth(ax, saw: dict, rows: Rows, panel: str, metric: str = "f1") -> 
                 "not an F1, not comparable; kept out of the figure",
                 drawn=False,
             )
-        rows.add(
-            panel,
-            "saw-hl3",
-            "Tokamak-SI, three-class",
-            "three-class window accuracy",
-            hl3["three_class_window_accuracy"],
-            tuple(hl3["three_class_accuracy_ci95"]),
-            src,
-            "Tokamak-SI.saw-hl3.three_class_window_accuracy",
-            note="the same three-class windows scored on DIII-D, out of fold; "
-            "kept out of the figure",
-            drawn=False,
-        )
     finish_groups(
         ax,
         [0, *xs],
