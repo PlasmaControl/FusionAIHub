@@ -147,7 +147,7 @@ ELM_BOX_COLOUR = "#D62728"
 #: The probability TokEye's coherent and transient channels are cut at in this figure
 #: (the network's operating point is `mode_tags.PROB_THRESHOLD`, 0.2; the figure
 #: raises it to show less low-confidence noise), and the transient channel's colour.
-TOKEYE_THRESHOLD = 0.35
+TOKEYE_THRESHOLD = 0.45
 TRANSIENT_COLOUR = "#E8262B"
 #: The share of the D-alpha panel's height the ELM boxes span; the regime names sit above.
 ELM_BOX_TOP = 0.62
