@@ -775,8 +775,8 @@ def main():
         fingerprints = fs.tokeye_fingerprints(
             Paths.from_env(),
             shot,
-            renderer.roster.GATE_GROUP,
-            renderer.roster.GATE_ROW,
+            renderer.SOURCE_GROUP,
+            renderer.SOURCE_ROW,
             renderer.inspect.getsource(renderer.run_tokeye),
         )
         assert tokeye["fingerprints"] == fingerprints
