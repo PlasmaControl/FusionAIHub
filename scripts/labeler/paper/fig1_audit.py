@@ -512,9 +512,9 @@ def main():
         assert "(linear frequency axis, 0--250 kHz)." in caption
         assert not any(w in caption.lower() for w in BROKEN_AXIS_WORDS)
         assert "normalised" not in caption
-        assert "Middle: TokEye coherent-mode mask after small-object removal" in caption
+        assert "(b) TokEye coherent-mode mask after small-object removal" in caption
         assert "toroidal mode number $n$ (Mirnov array)" in caption
-        assert "Bottom: label tracks with sources." in caption
+        assert "(e) Label rows; sources in the appendix." in caption
         assert "row omitted" not in caption and "shared inputs" not in caption
         assert "Circles:" not in caption and "Triangles:" not in caption
         appendix_file = args.records / f"{shot}.appendix.txt"
