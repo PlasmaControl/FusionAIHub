@@ -1019,7 +1019,7 @@ def test_appendix_explains_the_dashed_outline_only_when_one_is_drawn():
 
 def test_appendix_describes_one_linear_frequency_axis_without_breaks():
     text = fs.appendix_notes(1, _primary_records(), {})
-    assert "The frequency axis is linear, 0–250 kHz, in both spectrograms" in text
+    assert "The frequency axis is linear, 0–150 kHz, in both spectrograms" in text
     assert "no scale break" in text
     assert "The raw spectrogram uses one colour scale" in text
     assert "decimation filter rolls off above about 50 kHz" in text
