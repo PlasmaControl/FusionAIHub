@@ -1,0 +1,2631 @@
+{
+ "survey_source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/survey/corpus_survey.csv",
+ "shots": [
+  {
+   "shot": 189057,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/189057_processed.h5",
+    "group": "tangtv",
+    "time_samples": 1,
+    "usable_time_record": false,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     null,
+     null
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/189057_processed.h5",
+    "group": "bolo",
+    "time_samples": 163841,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -4.965199947357178,
+     11.418800354003906
+    ],
+    "live_channels": 47
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/189057.npz",
+    "usable": true,
+    "frames": 171,
+    "time_range_ms": [
+     2071.776123046875,
+     4907.9296875
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189057.sav",
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189057_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189057.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -130.41375429469625,
+     6893.184190380429
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/189057.npz",
+    "usable": true,
+    "source": "EFIT02",
+    "slices": 175
+   }
+  },
+  {
+   "shot": 189061,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/189061_processed.h5",
+    "group": "tangtv",
+    "time_samples": 1,
+    "usable_time_record": false,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     null,
+     null
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/189061_processed.h5",
+    "group": "bolo",
+    "time_samples": 163841,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -4.965199947357178,
+     11.418800354003906
+    ],
+    "live_channels": 47
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/189061.npz",
+    "usable": true,
+    "frames": 171,
+    "time_range_ms": [
+     2062.9296875,
+     4899.08349609375
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189061.sav",
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189061_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189061.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -105.89395287837833,
+     6884.338168133558
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/189061.npz",
+    "usable": true,
+    "source": "EFIT02",
+    "slices": 194
+   }
+  },
+  {
+   "shot": 189062,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/189062_processed.h5",
+    "group": "tangtv",
+    "time_samples": 1,
+    "usable_time_record": false,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     null,
+     null
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/189062_processed.h5",
+    "group": "bolo",
+    "time_samples": 163841,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -4.965199947357178,
+     11.418800354003906
+    ],
+    "live_channels": 47
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/189062.npz",
+    "usable": true,
+    "frames": 121,
+    "time_range_ms": [
+     2051.517333984375,
+     4053.50830078125
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189062.sav",
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189062_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189062.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -117.30633704150095,
+     6872.925858985558
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/189062.npz",
+    "usable": true,
+    "source": "EFIT02",
+    "slices": 168
+   }
+  },
+  {
+   "shot": 189081,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/189081_processed.h5",
+    "group": "tangtv",
+    "time_samples": 1,
+    "usable_time_record": false,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     null,
+     null
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/189081_processed.h5",
+    "group": "bolo",
+    "time_samples": 163841,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -4.965199947357178,
+     11.418800354003906
+    ],
+    "live_channels": 47
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/189081.npz",
+    "usable": true,
+    "frames": 171,
+    "time_range_ms": [
+     2061.473876953125,
+     4897.6240234375
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189081.sav",
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189081_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189081.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -107.34661740292795,
+     6882.875513500925
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/189081.npz",
+    "usable": true,
+    "source": "EFIT02",
+    "slices": 184
+   }
+  },
+  {
+   "shot": 189088,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/189088_processed.h5",
+    "group": "tangtv",
+    "time_samples": 1,
+    "usable_time_record": false,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     null,
+     null
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/189088_processed.h5",
+    "group": "bolo",
+    "time_samples": 163841,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -4.965199947357178,
+     11.418800354003906
+    ],
+    "live_channels": 47
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/189088.npz",
+    "usable": true,
+    "frames": 121,
+    "time_range_ms": [
+     2065.76806640625,
+     4067.7578125
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189088.sav",
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189088_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189088.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -103.05416437489912,
+     6887.173306616181
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/189088.npz",
+    "usable": true,
+    "source": "EFIT02",
+    "slices": 184
+   }
+  },
+  {
+   "shot": 189090,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/189090_processed.h5",
+    "group": "tangtv",
+    "time_samples": 1,
+    "usable_time_record": false,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     null,
+     null
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/189090_processed.h5",
+    "group": "bolo",
+    "time_samples": 163841,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -4.965199947357178,
+     11.418800354003906
+    ],
+    "live_channels": 47
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/189090.npz",
+    "usable": true,
+    "frames": 171,
+    "time_range_ms": [
+     2085.968017578125,
+     4922.12060546875
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189090.sav",
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189090_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189090.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -116.22086565052159,
+     6907.374004001189
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/189090.npz",
+    "usable": true,
+    "source": "EFIT01",
+    "slices": 260
+   }
+  },
+  {
+   "shot": 189093,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/189093_processed.h5",
+    "group": "tangtv",
+    "time_samples": 1,
+    "usable_time_record": false,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     null,
+     null
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/189093_processed.h5",
+    "group": "bolo",
+    "time_samples": 163841,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -4.965199947357178,
+     11.418800354003906
+    ],
+    "live_channels": 47
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/189093.npz",
+    "usable": true,
+    "frames": 171,
+    "time_range_ms": [
+     2066.5888671875,
+     4902.74169921875
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189093.sav",
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189093_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189093.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -102.23389608012512,
+     6887.995389913134
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/189093.npz",
+    "usable": true,
+    "source": "EFIT02",
+    "slices": 152
+   }
+  },
+  {
+   "shot": 189094,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/189094_processed.h5",
+    "group": "tangtv",
+    "time_samples": 1,
+    "usable_time_record": false,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     null,
+     null
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/189094_processed.h5",
+    "group": "bolo",
+    "time_samples": 163841,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -4.965199947357178,
+     11.418800354003906
+    ],
+    "live_channels": 47
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/189094.npz",
+    "usable": true,
+    "frames": 171,
+    "time_range_ms": [
+     2062.762939453125,
+     4898.916015625
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189094.sav",
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189094_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189094.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -106.05985795422457,
+     6884.169878042461
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/189094.npz",
+    "usable": true,
+    "source": "EFIT02",
+    "slices": 146
+   }
+  },
+  {
+   "shot": 189097,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/189097_processed.h5",
+    "group": "tangtv",
+    "time_samples": 1,
+    "usable_time_record": false,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     null,
+     null
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/189097_processed.h5",
+    "group": "bolo",
+    "time_samples": 163841,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -4.965199947357178,
+     11.418800354003906
+    ],
+    "live_channels": 47
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/189097.npz",
+    "usable": true,
+    "frames": 171,
+    "time_range_ms": [
+     2060.736328125,
+     4896.8896484375
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189097.sav",
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189097_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189097.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -108.08701113723218,
+     6882.143789885025
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/189097.npz",
+    "usable": true,
+    "source": "EFIT02",
+    "slices": 184
+   }
+  },
+  {
+   "shot": 189100,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/189100_processed.h5",
+    "group": "tangtv",
+    "time_samples": 1,
+    "usable_time_record": false,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     null,
+     null
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/189100_processed.h5",
+    "group": "bolo",
+    "time_samples": 163841,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -4.965199947357178,
+     11.418800354003906
+    ],
+    "live_channels": 47
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/189100.npz",
+    "usable": true,
+    "frames": 201,
+    "time_range_ms": [
+     2037.00634765625,
+     5373.65771484375
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189100.sav",
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189100_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189100.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -131.81709753274916,
+     6858.414498489741
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/189100.npz",
+    "usable": true,
+    "source": "EFIT02",
+    "slices": 121
+   }
+  },
+  {
+   "shot": 189101,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/189101_processed.h5",
+    "group": "tangtv",
+    "time_samples": 1,
+    "usable_time_record": false,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     null,
+     null
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/189101_processed.h5",
+    "group": "bolo",
+    "time_samples": 163841,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -4.965199947357178,
+     11.418800354003906
+    ],
+    "live_channels": 47
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/189101.npz",
+    "usable": true,
+    "frames": 201,
+    "time_range_ms": [
+     2037.8057861328125,
+     5374.45751953125
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189101.sav",
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189101_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189101.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -131.01783638279883,
+     6859.214164648596
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/189101.npz",
+    "usable": true,
+    "source": "EFIT02",
+    "slices": 163
+   }
+  },
+  {
+   "shot": 189448,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/189448_processed.h5",
+    "group": "tangtv",
+    "time_samples": 1,
+    "usable_time_record": false,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     null,
+     null
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/189448_processed.h5",
+    "group": "bolo",
+    "time_samples": 163841,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -4.965199947357178,
+     11.418800354003906
+    ],
+    "live_channels": 47
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/189448.npz",
+    "usable": true,
+    "frames": 120,
+    "time_range_ms": [
+     2007.6839599609375,
+     3993.044921875
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189448.sav",
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189448_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189448.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -111.03651532079384,
+     6912.561864362009
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/189448.npz",
+    "usable": true,
+    "source": "EFIT01",
+    "slices": 252
+   }
+  },
+  {
+   "shot": 189451,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/189451_processed.h5",
+    "group": "tangtv",
+    "time_samples": 1,
+    "usable_time_record": false,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     null,
+     null
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/189451_processed.h5",
+    "group": "bolo",
+    "time_samples": 163841,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -4.965199947357178,
+     11.418800354003906
+    ],
+    "live_channels": 47
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/189451.npz",
+    "usable": true,
+    "frames": 120,
+    "time_range_ms": [
+     2008.7879638671875,
+     3994.149169921875
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189451.sav",
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189451_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189451.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -109.93289704578346,
+     6880.300108984533
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/189451.npz",
+    "usable": true,
+    "source": "EFIT01",
+    "slices": 255
+   }
+  },
+  {
+   "shot": 190109,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/190109_processed.h5",
+    "group": "tangtv",
+    "time_samples": 354,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -0.1257131099700927,
+     6.934287071228027
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/190109_processed.h5",
+    "group": "bolo",
+    "time_samples": 163841,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -4.965199947357178,
+     11.418800354003906
+    ],
+    "live_channels": 47
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/190109.npz",
+    "usable": true,
+    "frames": 120,
+    "time_range_ms": [
+     2009.7452392578125,
+     3995.0009765625
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_190109.sav",
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_190109_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_190109.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -125.71311334858437,
+     6897.88967637944
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/190109.npz",
+    "usable": true,
+    "source": "EFIT01",
+    "slices": 244
+   }
+  },
+  {
+   "shot": 190110,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/190110_processed.h5",
+    "group": "tangtv",
+    "time_samples": 353,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -0.1305627971887588,
+     6.90943717956543
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/190110_processed.h5",
+    "group": "bolo",
+    "time_samples": 163841,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -4.965199947357178,
+     11.418800354003906
+    ],
+    "live_channels": 47
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/190110.npz",
+    "usable": true,
+    "frames": 120,
+    "time_range_ms": [
+     2004.1910400390625,
+     3989.55322265625
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_190110.sav",
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_190110_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_190110.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -114.5308107147146,
+     6875.705555352828
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/190110.npz",
+    "usable": true,
+    "source": "EFIT01",
+    "slices": 172
+   }
+  },
+  {
+   "shot": 190113,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/190113_processed.h5",
+    "group": "tangtv",
+    "time_samples": 353,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -0.1277201175689697,
+     6.912280082702637
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/190113_processed.h5",
+    "group": "bolo",
+    "time_samples": 163841,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -4.965199947357178,
+     11.418800354003906
+    ],
+    "live_channels": 47
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/190113.npz",
+    "usable": true,
+    "frames": 121,
+    "time_range_ms": [
+     2087.41845703125,
+     4089.4111328125
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_190113.sav",
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_190113_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_190113.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -114.77340683353832,
+     6908.830657904195
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/190113.npz",
+    "usable": true,
+    "source": "EFIT01",
+    "slices": 182
+   }
+  },
+  {
+   "shot": 190114,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/190114_processed.h5",
+    "group": "tangtv",
+    "time_samples": 353,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -0.1306094378232956,
+     6.909390449523926
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/190114_processed.h5",
+    "group": "bolo",
+    "time_samples": 163841,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -4.965199947357178,
+     11.418800354003906
+    ],
+    "live_channels": 47
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/190114.npz",
+    "usable": true,
+    "frames": 121,
+    "time_range_ms": [
+     2052.41748046875,
+     4054.41015625
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_190114.sav",
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_190114_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_190114.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -116.40772090362661,
+     6873.829875171827
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/190114.npz",
+    "usable": true,
+    "source": "EFIT01",
+    "slices": 164
+   }
+  },
+  {
+   "shot": 190115,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/190115_processed.h5",
+    "group": "tangtv",
+    "time_samples": 353,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -0.123914286494255,
+     6.916085720062256
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/190115_processed.h5",
+    "group": "bolo",
+    "time_samples": 163841,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -4.965199947357178,
+     11.418800354003906
+    ],
+    "live_channels": 47
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/190115.npz",
+    "usable": true,
+    "frames": 119,
+    "time_range_ms": [
+     2016.279296875,
+     3984.9052734375
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_190115.sav",
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_190115_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_190115.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -119.17955293296545,
+     6871.058118143059
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/190115.npz",
+    "usable": true,
+    "source": "EFIT01",
+    "slices": 200
+   }
+  },
+  {
+   "shot": 190116,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/190116_processed.h5",
+    "group": "tangtv",
+    "time_samples": 353,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -0.1314240545034408,
+     6.908576011657715
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/190116_processed.h5",
+    "group": "bolo",
+    "time_samples": 163841,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -4.965199947357178,
+     11.418800354003906
+    ],
+    "live_channels": 47
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/190116.npz",
+    "usable": true,
+    "frames": 120,
+    "time_range_ms": [
+     2002.7486572265625,
+     3988.111328125
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_190116.sav",
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_190116_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_190116.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -115.97367029839079,
+     6907.630649447105
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/190116.npz",
+    "usable": true,
+    "source": "EFIT01",
+    "slices": 243
+   }
+  },
+  {
+   "shot": 195952,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/195952_processed.h5",
+    "group": "tangtv",
+    "time_samples": 353,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -0.1272722780704498,
+     6.9127278327941895
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/195952_processed.h5",
+    "group": "bolo",
+    "time_samples": 163841,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -4.965199947357178,
+     11.418800354003906
+    ],
+    "live_channels": 47
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/195952.npz",
+    "usable": true,
+    "frames": 201,
+    "time_range_ms": [
+     2074.917236328125,
+     5411.56787109375
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/plasma_tv/data/raw/issues/emission_structure_pu_cam240perp_195952.sav",
+     "/scratch/gpfs/nc1514/plasma_tv/data/raw/issues/emission_structure_pu_cam240perp_195952_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/plasma_tv/data/raw/issues/emission_structure_pu_cam240perp_195952.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -127.27227701265365,
+     6896.324152633473
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/195952.npz",
+    "usable": true,
+    "source": "EFIT02",
+    "slices": 95
+   }
+  },
+  {
+   "shot": 195954,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/195954_processed.h5",
+    "group": "tangtv",
+    "time_samples": 353,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -0.1258812695741653,
+     6.914118766784668
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/195954_processed.h5",
+    "group": "bolo",
+    "time_samples": 163841,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -4.965199947357178,
+     11.418800354003906
+    ],
+    "live_channels": 47
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/195954.npz",
+    "usable": true,
+    "frames": 201,
+    "time_range_ms": [
+     2076.308349609375,
+     5412.958984375
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/plasma_tv/data/raw/issues/emission_structure_pu_cam240perp_195954.sav",
+     "/scratch/gpfs/nc1514/plasma_tv/data/raw/issues/emission_structure_pu_cam240perp_195954_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/plasma_tv/data/raw/issues/emission_structure_pu_cam240perp_195954.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -125.88126647910103,
+     6897.715433192365
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/195954.npz",
+    "usable": true,
+    "source": "EFIT02",
+    "slices": 95
+   }
+  },
+  {
+   "shot": 195956,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/195956_processed.h5",
+    "group": "tangtv",
+    "time_samples": 353,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -0.1314790099859237,
+     6.9085211753845215
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/195956_processed.h5",
+    "group": "bolo",
+    "time_samples": 163841,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -4.965199947357178,
+     11.418800354003906
+    ],
+    "live_channels": 47
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/195956.npz",
+    "usable": true,
+    "frames": 201,
+    "time_range_ms": [
+     2039.5361328125,
+     5376.18701171875
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/plasma_tv/data/raw/issues/emission_structure_pu_cam240perp_195956.sav",
+     "/scratch/gpfs/nc1514/plasma_tv/data/raw/issues/emission_structure_pu_cam240perp_195956_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/plasma_tv/data/raw/issues/emission_structure_pu_cam240perp_195956.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -129.28700678907333,
+     6860.943584219944
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/195956.npz",
+    "usable": true,
+    "source": "EFIT02",
+    "slices": 20
+   }
+  },
+  {
+   "shot": 195959,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/195959_processed.h5",
+    "group": "tangtv",
+    "time_samples": 353,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -0.1280439794063568,
+     6.911955833435059
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/195959_processed.h5",
+    "group": "bolo",
+    "time_samples": 163841,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -4.965199947357178,
+     11.418800354003906
+    ],
+    "live_channels": 47
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/195959.npz",
+    "usable": true,
+    "frames": 201,
+    "time_range_ms": [
+     2074.1474609375,
+     5410.798828125
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/plasma_tv/data/raw/issues/emission_structure_pu_cam240perp_195959.sav",
+     "/scratch/gpfs/nc1514/plasma_tv/data/raw/issues/emission_structure_pu_cam240perp_195959_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/plasma_tv/data/raw/issues/emission_structure_pu_cam240perp_195959.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -128.0423953330144,
+     6895.555159350783
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/195959.npz",
+    "usable": true,
+    "source": "EFIT02",
+    "slices": 15
+   }
+  },
+  {
+   "shot": 195961,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/195961_processed.h5",
+    "group": "tangtv",
+    "time_samples": 353,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -0.1206811890006065,
+     6.919318675994873
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/195961_processed.h5",
+    "group": "bolo",
+    "time_samples": 163841,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -4.965199947357178,
+     11.418800354003906
+    ],
+    "live_channels": 47
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/195961.npz",
+    "usable": true,
+    "frames": 201,
+    "time_range_ms": [
+     2067.27978515625,
+     5403.93115234375
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/plasma_tv/data/raw/issues/emission_structure_pu_cam240perp_195961.sav",
+     "/scratch/gpfs/nc1514/plasma_tv/data/raw/issues/emission_structure_pu_cam240perp_195961_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/plasma_tv/data/raw/issues/emission_structure_pu_cam240perp_195961.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -101.54365339707583,
+     6888.687597628608
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/195961.npz",
+    "usable": true,
+    "source": "EFIT02",
+    "slices": 19
+   }
+  },
+  {
+   "shot": 195963,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/195963_processed.h5",
+    "group": "tangtv",
+    "time_samples": 353,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -0.1299366652965545,
+     6.91006326675415
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/195963_processed.h5",
+    "group": "bolo",
+    "time_samples": 163841,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -4.965199947357178,
+     11.418800354003906
+    ],
+    "live_channels": 47
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/195963.npz",
+    "usable": true,
+    "frames": 201,
+    "time_range_ms": [
+     2045.4525146484375,
+     5382.10400390625
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/plasma_tv/data/raw/issues/emission_structure_pu_cam240perp_195963.sav",
+     "/scratch/gpfs/nc1514/plasma_tv/data/raw/issues/emission_structure_pu_cam240perp_195963_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/plasma_tv/data/raw/issues/emission_structure_pu_cam240perp_195963.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -123.37093426771462,
+     6866.8604817184805
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/195963.npz",
+    "usable": true,
+    "source": "EFIT02",
+    "slices": 23
+   }
+  },
+  {
+   "shot": 199166,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/199166_processed.h5",
+    "group": "tangtv",
+    "time_samples": 354,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -0.1255815923213958,
+     6.934418201446533
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/199166_processed.h5",
+    "group": "bolo",
+    "time_samples": 163841,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -4.965199947357178,
+     11.418800354003906
+    ],
+    "live_channels": 47
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/199166.npz",
+    "usable": true,
+    "frames": 120,
+    "time_range_ms": [
+     2013.81298828125,
+     3999.17578125
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_199166.sav",
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_199166_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_199166.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -104.90947297234088,
+     6885.328768094927
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/199166.npz",
+    "usable": true,
+    "source": "EFIT01",
+    "slices": 272
+   }
+  },
+  {
+   "shot": 199171,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/199171_processed.h5",
+    "group": "tangtv",
+    "time_samples": 354,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -0.1131976246833801,
+     6.946802139282227
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/199171_processed.h5",
+    "group": "bolo",
+    "time_samples": 163841,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -4.965199947357178,
+     11.418800354003906
+    ],
+    "live_channels": 47
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/199171.npz",
+    "usable": true,
+    "frames": 119,
+    "time_range_ms": [
+     2015.2713623046875,
+     3983.8984375
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_199171.sav",
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_199171_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_199171.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -103.45170413069427,
+     6886.788816930652
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/199171.npz",
+    "usable": true,
+    "source": "EFIT01",
+    "slices": 271
+   }
+  },
+  {
+   "shot": 199172,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/199172_processed.h5",
+    "group": "tangtv",
+    "time_samples": 354,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -0.1299506276845932,
+     6.930049419403076
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/199172_processed.h5",
+    "group": "bolo",
+    "time_samples": 163841,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -4.965199947357178,
+     11.418800354003906
+    ],
+    "live_channels": 47
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/199172.npz",
+    "usable": true,
+    "frames": 120,
+    "time_range_ms": [
+     2009.44091796875,
+     3994.697998046875
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_199172.sav",
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_199172_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_199172.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -126.01895396523177,
+     6864.222017157748
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/199172.npz",
+    "usable": true,
+    "source": "EFIT01",
+    "slices": 268
+   }
+  },
+  {
+   "shot": 199351,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/199351_processed.h5",
+    "group": "tangtv",
+    "time_samples": 354,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -0.1251413226127624,
+     6.934858798980713
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/199351_processed.h5",
+    "group": "bolo",
+    "time_samples": 163841,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -4.965199947357178,
+     11.418800354003906
+    ],
+    "live_channels": 47
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/199351.npz",
+    "usable": true,
+    "frames": 120,
+    "time_range_ms": [
+     2010.3179931640625,
+     3995.574462890625
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_199351.sav",
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_199351_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_199351.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -125.14132929658517,
+     6865.097931801733
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/199351.npz",
+    "usable": true,
+    "source": "EFIT01",
+    "slices": 274
+   }
+  },
+  {
+   "shot": 199352,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/199352_processed.h5",
+    "group": "tangtv",
+    "time_samples": 355,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -0.1304439902305603,
+     6.94955587387085
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/199352_processed.h5",
+    "group": "bolo",
+    "time_samples": 163841,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -4.965199947357178,
+     11.418800354003906
+    ],
+    "live_channels": 47
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/199352.npz",
+    "usable": true,
+    "frames": 120,
+    "time_range_ms": [
+     2006.457763671875,
+     3991.821044921875
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_199352.sav",
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_199352_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_199352.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -112.26522717783227,
+     6877.97487391524
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/199352.npz",
+    "usable": true,
+    "source": "EFIT01",
+    "slices": 271
+   }
+  },
+  {
+   "shot": 199353,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/199353_processed.h5",
+    "group": "tangtv",
+    "time_samples": 355,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -0.1305980235338211,
+     6.94940185546875
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/199353_processed.h5",
+    "group": "bolo",
+    "time_samples": 163841,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -4.965199947357178,
+     11.418800354003906
+    ],
+    "live_channels": 47
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/199353.npz",
+    "usable": true,
+    "frames": 120,
+    "time_range_ms": [
+     2004.6195068359375,
+     3989.98291015625
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_199353.sav",
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_199353_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_199353.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -114.10372563563287,
+     6909.50354914546
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/199353.npz",
+    "usable": true,
+    "source": "EFIT01",
+    "slices": 266
+   }
+  },
+  {
+   "shot": 199354,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/199354_processed.h5",
+    "group": "tangtv",
+    "time_samples": 353,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -0.1315263956785202,
+     6.908473491668701
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/199354_processed.h5",
+    "group": "bolo",
+    "time_samples": 163841,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -4.965199947357178,
+     11.418800354003906
+    ],
+    "live_channels": 47
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/199354.npz",
+    "usable": true,
+    "frames": 119,
+    "time_range_ms": [
+     2016.5635986328125,
+     3985.19091796875
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_199354.sav",
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_199354_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_199354.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -102.15974726174026,
+     6888.081688882243
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/199354.npz",
+    "usable": true,
+    "source": "EFIT01",
+    "slices": 270
+   }
+  },
+  {
+   "shot": 200977,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/200977_processed.h5",
+    "group": "tangtv",
+    "time_samples": 353,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -0.1318520903587341,
+     6.908147811889648
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/200977_processed.h5",
+    "group": "bolo",
+    "time_samples": 163841,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -4.965199947357178,
+     11.418800354003906
+    ],
+    "live_channels": 47
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/200977.npz",
+    "usable": true,
+    "frames": 210,
+    "time_range_ms": [
+     2003.60693359375,
+     5490.35791015625
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/plasma_tv/data/external/TangTV/emission_structure_pu_cam240perp_200977.sav",
+     "/scratch/gpfs/nc1514/plasma_tv/data/external/TangTV/emission_structure_pu_cam240perp_200977_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/plasma_tv/data/external/TangTV/emission_structure_pu_cam240perp_200977.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -131.85209535453467,
+     6891.7528094434365
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/200977.npz",
+    "usable": true,
+    "source": "EFIT01",
+    "slices": 293
+   }
+  },
+  {
+   "shot": 201081,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/201081_processed.h5",
+    "group": "tangtv",
+    "time_samples": 353,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -0.1137312278151512,
+     6.926268577575684
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/201081_processed.h5",
+    "group": "bolo",
+    "time_samples": 163841,
+    "usable_time_record": true,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     -4.965199947357178,
+     11.418800354003906
+    ],
+    "live_channels": 47
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/201081.npz",
+    "usable": true,
+    "frames": 210,
+    "time_range_ms": [
+     2004.994873046875,
+     5491.8583984375
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/plasma_tv/data/external/TangTV/emission_structure_pu_cam240perp_201081.sav",
+     "/scratch/gpfs/nc1514/plasma_tv/data/external/TangTV/emission_structure_pu_cam240perp_201081_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/plasma_tv/data/external/TangTV/emission_structure_pu_cam240perp_201081.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -113.73122902745381,
+     6909.885945829023
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/201081.npz",
+    "usable": true,
+    "source": "EFIT02",
+    "slices": 243
+   }
+  },
+  {
+   "shot": 206879,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/206879_processed.h5",
+    "group": "tangtv",
+    "time_samples": 0,
+    "usable_time_record": false,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     null,
+     null
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/206879_processed.h5",
+    "group": "bolo",
+    "time_samples": 0,
+    "usable_time_record": false,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     null,
+     null
+    ],
+    "live_channels": 0
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/206879.npz",
+    "usable": true,
+    "frames": 180,
+    "time_range_ms": [
+     2506.345458984375,
+     5492.61328125
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_cam240paria_206879.sav",
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_cam240paria_206879_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_cam240paria_206879_raw.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -129.62513718679546,
+     6894.015138311237
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/206879.npz",
+    "usable": true,
+    "source": "EFIT02",
+    "slices": 241
+   }
+  },
+  {
+   "shot": 206880,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/206880_processed.h5",
+    "group": "tangtv",
+    "time_samples": 0,
+    "usable_time_record": false,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     null,
+     null
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/206880_processed.h5",
+    "group": "bolo",
+    "time_samples": 0,
+    "usable_time_record": false,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     null,
+     null
+    ],
+    "live_channels": 0
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/206880.npz",
+    "usable": true,
+    "frames": 180,
+    "time_range_ms": [
+     2506.112060546875,
+     5492.3798828125
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_cam240paria_206880.sav",
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_cam240paria_206880_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_cam240paria_206880_raw.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -129.8585159137845,
+     6893.782179145068
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/206880.npz",
+    "usable": true,
+    "source": "EFIT02",
+    "slices": 238
+   }
+  },
+  {
+   "shot": 206886,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/206886_processed.h5",
+    "group": "tangtv",
+    "time_samples": 0,
+    "usable_time_record": false,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     null,
+     null
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/206886_processed.h5",
+    "group": "bolo",
+    "time_samples": 0,
+    "usable_time_record": false,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     null,
+     null
+    ],
+    "live_channels": 0
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/206886.npz",
+    "usable": true,
+    "frames": 180,
+    "time_range_ms": [
+     2504.362548828125,
+     5490.63134765625
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_cam240paria_206886.sav",
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_cam240paria_206886_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_cam240paria_206886_raw.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -131.60889850854872,
+     6892.033686669469
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/206886.npz",
+    "usable": true,
+    "source": "EFIT02",
+    "slices": 241
+   }
+  },
+  {
+   "shot": 206891,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/206891_processed.h5",
+    "group": "tangtv",
+    "time_samples": 0,
+    "usable_time_record": false,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     null,
+     null
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/206891_processed.h5",
+    "group": "bolo",
+    "time_samples": 0,
+    "usable_time_record": false,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     null,
+     null
+    ],
+    "live_channels": 0
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/206891.npz",
+    "usable": true,
+    "frames": 180,
+    "time_range_ms": [
+     2509.25146484375,
+     5495.62744140625
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_cam240paria_206891.sav",
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_cam240paria_206891_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_cam240paria_206891_raw.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -109.98369309976697,
+     6880.293308099657
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/206891.npz",
+    "usable": true,
+    "source": "EFIT02",
+    "slices": 234
+   }
+  },
+  {
+   "shot": 206892,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/206892_processed.h5",
+    "group": "tangtv",
+    "time_samples": 0,
+    "usable_time_record": false,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     null,
+     null
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/206892_processed.h5",
+    "group": "bolo",
+    "time_samples": 0,
+    "usable_time_record": false,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     null,
+     null
+    ],
+    "live_channels": 0
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/206892.npz",
+    "usable": true,
+    "frames": 180,
+    "time_range_ms": [
+     2508.071533203125,
+     5494.43017578125
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_cam240perp_206892.sav",
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_cam240perp_206892_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_cam240perp_206892_raw.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -111.1485951013863,
+     6879.088445840329
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/206892.npz",
+    "usable": true,
+    "source": "EFIT02",
+    "slices": 240
+   }
+  },
+  {
+   "shot": 206893,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/206893_processed.h5",
+    "group": "tangtv",
+    "time_samples": 0,
+    "usable_time_record": false,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     null,
+     null
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/206893_processed.h5",
+    "group": "bolo",
+    "time_samples": 0,
+    "usable_time_record": false,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     null,
+     null
+    ],
+    "live_channels": 0
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/206893.npz",
+    "usable": true,
+    "frames": 180,
+    "time_range_ms": [
+     2505.334716796875,
+     5491.693359375
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_cam240perp_206893.sav",
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_cam240perp_206893_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_cam240perp_206893_raw.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -113.88546390384435,
+     6876.351712079644
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/206893.npz",
+    "usable": true,
+    "source": "EFIT02",
+    "slices": 241
+   }
+  },
+  {
+   "shot": 206894,
+   "tangtv": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/206894_processed.h5",
+    "group": "tangtv",
+    "time_samples": 0,
+    "usable_time_record": false,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     null,
+     null
+    ]
+   },
+   "bolo": {
+    "path": "/scratch/gpfs/EKOLEMEN/foundation_model/206894_processed.h5",
+    "group": "bolo",
+    "time_samples": 0,
+    "usable_time_record": false,
+    "xdata_units": "seconds",
+    "time_range_s": [
+     null,
+     null
+    ],
+    "live_channels": 0
+   },
+   "inversion": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/206894.npz",
+    "usable": true,
+    "frames": 180,
+    "time_range_ms": [
+     2511.37890625,
+     5497.73779296875
+    ],
+    "frame_axes": [
+     "time",
+     "Z",
+     "R"
+    ]
+   },
+   "raw_sav": {
+    "usable": true,
+    "candidates": [
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_cam240perp_206894.sav",
+     "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_cam240perp_206894_raw.sav"
+    ],
+    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_cam240perp_206894_raw.sav",
+    "frames": 420,
+    "time_range_ms": [
+     -107.84129634425044,
+     6882.395939709544
+    ],
+    "frame_axes": [
+     "time",
+     "y",
+     "x"
+    ]
+   },
+   "flux_map": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/206894.npz",
+    "usable": true,
+    "source": "EFIT02",
+    "slices": 237
+   }
+  }
+ ],
+ "labels_sha256": "a683b477dca02a2a2a1ce9c484b59280a2c59d71b0b9395e8b9891fcb34f981a",
+ "producer": "scripts/labeler/detach_handoff.py"
+}

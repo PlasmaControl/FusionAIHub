@@ -1,0 +1,1924 @@
+{
+ "bin_ms": 50.0,
+ "method": [
+  "The processed divertor Thomson Te (`\\ELECTRONS::TSTE_DIV`, 14 or 16 chords at\nR = 1.485 m, 20 ms, fetched by `detach_fetch_round4.py --stage dts`) is a temperature\nmeasurement that none of the three indicators uses, so it checks them where the\nlabel cannot: the cold-target criterion that the literature itself uses.",
+  "* Chords: those 1.5 to 5 cm above the outer shelf (Z = -1.25 m). The lowest chord\n  (0.7 cm) is left out for stray light (Eldon 2017) and Chen 2026's own chords on\n  shot 201081 are Z = -1.222 and -1.205 m. A chord counts at a time only while it\n  lies on the SOL side of the separatrix and in the near SOL, 1.000 < psiN <= 1.05,\n  by the multi-slice EFIT map on disk (the strike point moves off the chord on\n  other shots); samples outside 0.1-50 eV are rejected (Eldon 2017).\n* Bands: attached is Te >= 10 eV, detached Te <= 5 eV (Eldon 2017's detachment\n  threshold; the Te cliff jumps between about 1-3 eV and 8-20 eV and 3-8 eV values\n  are rare). Chen 2026 reports 20 eV to 3 eV across the cliffs of shot 201081.\n  The bands were fixed from those digests before scoring.\n* A bin's Te is the median of the selected chords' valid samples inside it.",
+  "Reported per primary state, per label tier and per indicator vote: how many bins and\nshots carry a Te, the Te quantiles, the share inside the band, and a threshold-free\nAUROC of -Te for the detached against the attached bins (pooled and within shots,\nwith shot-bootstrap intervals; the number of shots behind each within-shot figure is\nbeside it). The tiers are `certain` (TangTV + Afrac agreement), `tangtv_only`\n(TangTV only, silver), both together (the exported attached and detached bins),\n`tangtv_only_lmode` (the TangTV detached vote on a bin of a known L-mode or a\nprobable-L phase, exported as uncertain: `tangtv_vote_before_gate_in_gated_bins`)\nand the TangTV vote before the gate; a paired shot bootstrap says whether the\nsecond vote improves the agreement with Te, and is \"not estimable\" where the\ncertain tier sits on fewer than `MIN_PAIRED_SHOTS` shots with a Te. The same\nnumbers are given by regime (H, L, probable L, probable H, unknown; the regime\nsource of the label model), for the TangTV vote before the gate\n(`tangtv_vote_before_gate`, every TangTV vote on the upper shelf, with no L-mode\ngate) and for the exported states (after the gate), and by DZ band for the TangTV\ndetached votes, with the gated votes of each shot (`gated_detached_votes_by_shot`).\nThe gate itself was set a priori (the DZ cutoffs come from an H-mode shot; only the\ndetached vote is gated, because L-mode inner-SOL leakage biases DZ upward, so a\nlow DZ stays trustworthy; probable L is a regime proxy fixed from the ELM flag and\nP_in, not from Te) and is only reported here, never tuned on Te. The\nbefore-gate rows are the check against Te; the after-gate shares are post-\nselection (the gate was added after this check flagged the L-mode bins). One row\nleaves the anchor shot 201081 out (it sets the DZ cliff). Shot 201081's two cliff\ntimes are read from the data and set beside the published ones. No threshold is\nfitted here. Every shot bootstrap uses the fresh generator of\n`detach_benchmark.boot_rng`, so a population has one interval; a population on\nfewer than `detach_benchmark.MIN_INTERVAL_SHOTS` shots has none (\"n/a (N shots)\").",
+  "    pixi run --frozen -e labelmaker python scripts/labeler/detach_te_check.py\n"
+ ],
+ "bands_ev": {
+  "attached_min": 10.0,
+  "detached_max": 5.0,
+  "valid": [
+   0.1,
+   50.0
+  ]
+ },
+ "chord_selection": {
+  "above_shelf_m": [
+   0.015,
+   0.05
+  ],
+  "shelf_z_m": -1.25,
+  "psi_n_window": [
+   1.0,
+   1.05
+  ]
+ },
+ "shots_with_dts_fetched": [
+  189057,
+  189061,
+  189062,
+  189081,
+  189088,
+  189090,
+  189093,
+  189094,
+  189097,
+  189100,
+  189101,
+  189448,
+  189451,
+  190109,
+  190110,
+  190113,
+  190114,
+  190115,
+  190116,
+  195952,
+  195954,
+  195956,
+  195959,
+  195961,
+  195963,
+  199166,
+  199171,
+  199172,
+  199351,
+  199352,
+  199353,
+  199354,
+  200977,
+  201081,
+  206879,
+  206880,
+  206886,
+  206891,
+  206892,
+  206893,
+  206894
+ ],
+ "shots_with_te_in_assessed_bins": [
+  189057,
+  189061,
+  189062,
+  189081,
+  189088,
+  189090,
+  189093,
+  189094,
+  189097,
+  189100,
+  189101,
+  189448,
+  189451,
+  190109,
+  190110,
+  190113,
+  190116,
+  199166,
+  199171,
+  199351,
+  199352,
+  199353,
+  199354,
+  201081,
+  206894
+ ],
+ "bins_with_te": 847,
+ "bins_assessed": 1780,
+ "primary_state": {
+  "attached": {
+   "n_bins": 386,
+   "te_ev_quantiles_10_50_90": [
+    7.817325830459595,
+    15.98133111000061,
+    22.10446000099182
+   ],
+   "n_in_band": 324,
+   "share_in_band": 0.8393782383419689,
+   "share_between_bands": 0.10880829015544041,
+   "n_shots": 18,
+   "shot_ids": [
+    189057,
+    189081,
+    189088,
+    189090,
+    189093,
+    189094,
+    189097,
+    189100,
+    189101,
+    189448,
+    189451,
+    199166,
+    199171,
+    199351,
+    199352,
+    199353,
+    199354,
+    201081
+   ]
+  },
+  "detached": {
+   "n_bins": 167,
+   "te_ev_quantiles_10_50_90": [
+    1.3277432799339295,
+    2.0397965908050537,
+    6.606057167053224
+   ],
+   "n_in_band": 141,
+   "share_in_band": 0.844311377245509,
+   "share_between_bands": 0.09580838323353294,
+   "n_shots": 11,
+   "shot_ids": [
+    189057,
+    189061,
+    189062,
+    189081,
+    189088,
+    189090,
+    189094,
+    189100,
+    189101,
+    190113,
+    201081
+   ]
+  },
+  "marfe": {
+   "n_bins": 0,
+   "n_shots": 0,
+   "shot_ids": []
+  },
+  "auroc_neg_te_detached_vs_attached": {
+   "pooled": {
+    "value": 0.9524991467841519,
+    "ci95": [
+     0.9074535910543376,
+     0.987512955478142
+    ],
+    "n_bins": 553,
+    "n_not_attached": 167,
+    "n_shots": 21,
+    "valid_replicates": 1000,
+    "replicates": 1000
+   },
+   "within_shot": {
+    "min_class_bins": 5,
+    "n_shots": 3,
+    "mean": 0.9403217697335345,
+    "mean_ci95": [
+     0.9166666666666666,
+     0.9557692307692308
+    ]
+   }
+  }
+ },
+ "by_tier": {
+  "certain": {
+   "attached": {
+    "n_bins": 52,
+    "te_ev_quantiles_10_50_90": [
+     6.91666944026947,
+     12.891287684440613,
+     22.015735816955566
+    ],
+    "n_in_band": 38,
+    "share_in_band": 0.7307692307692307,
+    "share_between_bands": 0.25,
+    "n_shots": 5,
+    "shot_ids": [
+     189057,
+     189081,
+     189093,
+     189097,
+     201081
+    ]
+   },
+   "detached": {
+    "n_bins": 58,
+    "te_ev_quantiles_10_50_90": [
+     1.2129210114479065,
+     1.9226926267147064,
+     8.487519633769994
+    ],
+    "n_in_band": 46,
+    "share_in_band": 0.7931034482758621,
+    "share_between_bands": 0.13793103448275862,
+    "n_shots": 3,
+    "shot_ids": [
+     189057,
+     189090,
+     201081
+    ]
+   },
+   "marfe": {
+    "n_bins": 0,
+    "n_shots": 0,
+    "shot_ids": []
+   },
+   "auroc_neg_te_detached_vs_attached": {
+    "pooled": {
+     "value": 0.9399867374005305,
+     "ci95": [
+      0.8070709677419354,
+      0.9722530521642619
+     ],
+     "n_bins": 110,
+     "n_not_attached": 58,
+     "n_shots": 6,
+     "valid_replicates": 977,
+     "replicates": 1000
+    },
+    "within_shot": {
+     "min_class_bins": 5,
+     "n_shots": 2,
+     "mean": 0.9512946204122674,
+     "mean_ci95": [
+      null,
+      null
+     ]
+    }
+   }
+  },
+  "tangtv_only": {
+   "attached": {
+    "n_bins": 334,
+    "te_ev_quantiles_10_50_90": [
+     7.879040718078614,
+     16.365872383117676,
+     22.321242332458493
+    ],
+    "n_in_band": 286,
+    "share_in_band": 0.8562874251497006,
+    "share_between_bands": 0.08682634730538923,
+    "n_shots": 16,
+    "shot_ids": [
+     189081,
+     189088,
+     189090,
+     189093,
+     189094,
+     189097,
+     189100,
+     189101,
+     189448,
+     189451,
+     199166,
+     199171,
+     199351,
+     199352,
+     199353,
+     199354
+    ]
+   },
+   "detached": {
+    "n_bins": 109,
+    "te_ev_quantiles_10_50_90": [
+     1.4092214703559875,
+     2.0901087522506714,
+     5.824460697174073
+    ],
+    "n_in_band": 95,
+    "share_in_band": 0.8715596330275229,
+    "share_between_bands": 0.07339449541284404,
+    "n_shots": 10,
+    "shot_ids": [
+     189061,
+     189062,
+     189081,
+     189088,
+     189090,
+     189094,
+     189100,
+     189101,
+     190113,
+     201081
+    ]
+   },
+   "marfe": {
+    "n_bins": 0,
+    "n_shots": 0,
+    "shot_ids": []
+   },
+   "auroc_neg_te_detached_vs_attached": {
+    "pooled": {
+     "value": 0.956875240344998,
+     "ci95": [
+      0.9002697969075978,
+      0.9928181530889276
+     ],
+     "n_bins": 443,
+     "n_not_attached": 109,
+     "n_shots": 20,
+     "valid_replicates": 1000,
+     "replicates": 1000
+    },
+    "within_shot": {
+     "min_class_bins": 5,
+     "n_shots": 1,
+     "mean": 0.9166666666666666,
+     "mean_ci95": [
+      null,
+      null
+     ]
+    }
+   }
+  },
+  "certain_or_tangtv_only": {
+   "attached": {
+    "n_bins": 386,
+    "te_ev_quantiles_10_50_90": [
+     7.817325830459595,
+     15.98133111000061,
+     22.10446000099182
+    ],
+    "n_in_band": 324,
+    "share_in_band": 0.8393782383419689,
+    "share_between_bands": 0.10880829015544041,
+    "n_shots": 18,
+    "shot_ids": [
+     189057,
+     189081,
+     189088,
+     189090,
+     189093,
+     189094,
+     189097,
+     189100,
+     189101,
+     189448,
+     189451,
+     199166,
+     199171,
+     199351,
+     199352,
+     199353,
+     199354,
+     201081
+    ]
+   },
+   "detached": {
+    "n_bins": 167,
+    "te_ev_quantiles_10_50_90": [
+     1.3277432799339295,
+     2.0397965908050537,
+     6.606057167053224
+    ],
+    "n_in_band": 141,
+    "share_in_band": 0.844311377245509,
+    "share_between_bands": 0.09580838323353294,
+    "n_shots": 11,
+    "shot_ids": [
+     189057,
+     189061,
+     189062,
+     189081,
+     189088,
+     189090,
+     189094,
+     189100,
+     189101,
+     190113,
+     201081
+    ]
+   },
+   "marfe": {
+    "n_bins": 0,
+    "n_shots": 0,
+    "shot_ids": []
+   },
+   "auroc_neg_te_detached_vs_attached": {
+    "pooled": {
+     "value": 0.9524991467841519,
+     "ci95": [
+      0.9074535910543376,
+      0.987512955478142
+     ],
+     "n_bins": 553,
+     "n_not_attached": 167,
+     "n_shots": 21,
+     "valid_replicates": 1000,
+     "replicates": 1000
+    },
+    "within_shot": {
+     "min_class_bins": 5,
+     "n_shots": 3,
+     "mean": 0.9403217697335345,
+     "mean_ci95": [
+      0.9166666666666666,
+      0.9557692307692308
+     ]
+    }
+   }
+  },
+  "tangtv_vote_before_gate": {
+   "attached": {
+    "n_bins": 393,
+    "te_ev_quantiles_10_50_90": [
+     6.8092982292175295,
+     15.980426788330078,
+     22.111246204376222
+    ],
+    "n_in_band": 327,
+    "share_in_band": 0.8320610687022901,
+    "share_between_bands": 0.11195928753180662,
+    "n_shots": 18,
+    "shot_ids": [
+     189057,
+     189081,
+     189088,
+     189090,
+     189093,
+     189094,
+     189097,
+     189100,
+     189101,
+     189448,
+     189451,
+     199166,
+     199171,
+     199351,
+     199352,
+     199353,
+     199354,
+     201081
+    ]
+   },
+   "detached": {
+    "n_bins": 275,
+    "te_ev_quantiles_10_50_90": [
+     1.4095516324043273,
+     2.2572853565216064,
+     9.403703927993774
+    ],
+    "n_in_band": 204,
+    "share_in_band": 0.7418181818181818,
+    "share_between_bands": 0.18181818181818182,
+    "n_shots": 18,
+    "shot_ids": [
+     189057,
+     189061,
+     189062,
+     189081,
+     189088,
+     189090,
+     189093,
+     189094,
+     189100,
+     189101,
+     190109,
+     190110,
+     190113,
+     199166,
+     199352,
+     199353,
+     199354,
+     201081
+    ]
+   },
+   "marfe": {
+    "n_bins": 0,
+    "n_shots": 0,
+    "shot_ids": []
+   },
+   "auroc_neg_te_detached_vs_attached": {
+    "pooled": {
+     "value": 0.9452972472819801,
+     "ci95": [
+      0.9076308072788909,
+      0.9766902376937039
+     ],
+     "n_bins": 668,
+     "n_not_attached": 275,
+     "n_shots": 23,
+     "valid_replicates": 1000,
+     "replicates": 1000
+    },
+    "within_shot": {
+     "min_class_bins": 5,
+     "n_shots": 6,
+     "mean": 0.9693409586056645,
+     "mean_ci95": [
+      0.9434967320261438,
+      0.9894905312552371
+     ]
+    }
+   }
+  },
+  "tangtv_vote_before_gate_without_201081": {
+   "attached": {
+    "n_bins": 367,
+    "te_ev_quantiles_10_50_90": [
+     6.702541542053223,
+     16.036805629730225,
+     22.233182907104503
+    ],
+    "n_in_band": 306,
+    "share_in_band": 0.8337874659400545,
+    "share_between_bands": 0.10626702997275204,
+    "n_shots": 17,
+    "shot_ids": [
+     189057,
+     189081,
+     189088,
+     189090,
+     189093,
+     189094,
+     189097,
+     189100,
+     189101,
+     189448,
+     189451,
+     199166,
+     199171,
+     199351,
+     199352,
+     199353,
+     199354
+    ]
+   },
+   "detached": {
+    "n_bins": 235,
+    "te_ev_quantiles_10_50_90": [
+     1.4413931965827942,
+     2.263678789138794,
+     9.472655034065246
+    ],
+    "n_in_band": 175,
+    "share_in_band": 0.7446808510638298,
+    "share_between_bands": 0.17872340425531916,
+    "n_shots": 17,
+    "shot_ids": [
+     189057,
+     189061,
+     189062,
+     189081,
+     189088,
+     189090,
+     189093,
+     189094,
+     189100,
+     189101,
+     190109,
+     190110,
+     190113,
+     199166,
+     199352,
+     199353,
+     199354
+    ]
+   },
+   "marfe": {
+    "n_bins": 0,
+    "n_shots": 0,
+    "shot_ids": []
+   },
+   "auroc_neg_te_detached_vs_attached": {
+    "pooled": {
+     "value": 0.9444953330627862,
+     "ci95": [
+      0.9047069090931286,
+      0.9794085867973518
+     ],
+     "n_bins": 602,
+     "n_not_attached": 235,
+     "n_shots": 22,
+     "valid_replicates": 1000,
+     "replicates": 1000
+    },
+    "within_shot": {
+     "min_class_bins": 5,
+     "n_shots": 5,
+     "mean": 0.9720553041729513,
+     "mean_ci95": [
+      0.9404313725490197,
+      0.9956239316239316
+     ]
+    }
+   }
+  },
+  "tangtv_vote_before_gate_in_conflict_bins": {
+   "attached": {
+    "n_bins": 7,
+    "te_ev_quantiles_10_50_90": [
+     3.916847324371338,
+     6.543554067611694,
+     22.06842432022095
+    ],
+    "n_in_band": 3,
+    "share_in_band": 0.42857142857142855,
+    "share_between_bands": 0.2857142857142857,
+    "n_shots": 3,
+    "shot_ids": [
+     189057,
+     189081,
+     189093
+    ]
+   },
+   "detached": {
+    "n_bins": 8,
+    "te_ev_quantiles_10_50_90": [
+     1.6767773866653441,
+     2.153887301683426,
+     2.855983018875122
+    ],
+    "n_in_band": 8,
+    "share_in_band": 1.0,
+    "share_between_bands": 0.0,
+    "n_shots": 3,
+    "shot_ids": [
+     189088,
+     189090,
+     189093
+    ]
+   },
+   "marfe": {
+    "n_bins": 0,
+    "n_shots": 0,
+    "shot_ids": []
+   },
+   "auroc_neg_te_detached_vs_attached": {
+    "pooled": {
+     "value": 0.9642857142857143,
+     "ci95": [
+      0.9047619047619048,
+      1.0
+     ],
+     "n_bins": 15,
+     "n_not_attached": 8,
+     "n_shots": 5,
+     "valid_replicates": 982,
+     "replicates": 1000
+    },
+    "within_shot": {
+     "min_class_bins": 5,
+     "n_shots": 0,
+     "mean": null,
+     "mean_ci95": [
+      null,
+      null
+     ]
+    }
+   }
+  },
+  "tangtv_vote_before_gate_in_gated_bins": {
+   "attached": {
+    "n_bins": 0,
+    "n_shots": 0,
+    "shot_ids": []
+   },
+   "detached": {
+    "n_bins": 100,
+    "te_ev_quantiles_10_50_90": [
+     1.554935783147812,
+     3.625637114048004,
+     10.191261100769047
+    ],
+    "n_in_band": 55,
+    "share_in_band": 0.55,
+    "share_between_bands": 0.34,
+    "n_shots": 7,
+    "shot_ids": [
+     190109,
+     190110,
+     190113,
+     199166,
+     199352,
+     199353,
+     199354
+    ]
+   },
+   "marfe": {
+    "n_bins": 0,
+    "n_shots": 0,
+    "shot_ids": []
+   },
+   "auroc_neg_te_detached_vs_attached": {
+    "pooled": {
+     "value": null,
+     "ci95": [
+      null,
+      null
+     ],
+     "n_bins": 100,
+     "n_not_attached": 100,
+     "n_shots": 7,
+     "valid_replicates": 0,
+     "replicates": 1000
+    },
+    "within_shot": {
+     "min_class_bins": 5,
+     "n_shots": 0,
+     "mean": null,
+     "mean_ci95": [
+      null,
+      null
+     ]
+    }
+   }
+  },
+  "second_vote_effect": {
+   "question": "does requiring an agreeing second indicator improve the agreement of the TangTV state with divertor Thomson Te?",
+   "certain_minus_tangtv_before_gate": {
+    "difference": -0.005310509881449543,
+    "ci95": [
+     -0.13231003039513678,
+     0.029036080938321107
+    ],
+    "n_shots": 23,
+    "n_shots_first_subset": 6,
+    "n_shots_second_subset": 23,
+    "valid_replicates": 961,
+    "dropped_replicates": 39,
+    "reading": "not estimable",
+    "reading_text": "not estimable on 6 shots",
+    "note": "AUROC(-Te) of the certain bins minus that of every TangTV attached/detached vote on the upper shelf that has a Te; the certain bins are a subset of them"
+   },
+   "certain_minus_tangtv_where_second_vote_missing_or_clashing": {
+    "difference": -0.017829639770685413,
+    "ci95": [
+     -0.1481187670861841,
+     0.021948296982773428
+    ],
+    "n_shots": 21,
+    "n_shots_first_subset": 6,
+    "n_shots_second_subset": 21,
+    "valid_replicates": 950,
+    "dropped_replicates": 50,
+    "reading": "not estimable",
+    "reading_text": "not estimable on 6 shots",
+    "note": "against the TangTV votes that are tangtv_only or in conflict"
+   }
+  }
+ },
+ "by_regime": {
+  "note": "regime from the regime source of the label model (the confinement suggestion table: curated Gill and Butt intervals where they exist, else the dalpha_lh detector; then the D-alpha H-mode detector; else unknown), then the a-priori proxies for a shot with no regime (`probable_L`: ELM coverage known, no ELM share in the window, median P_in under 2 MW; `probable_H`: any ELM share, report only). The gate acts on L and probable_L only; it is a priori (the DZ cutoffs come from an H-mode shot) and is reported here, not tuned on Te. Rows of `tangtv_vote_before_gate` are the check against Te; rows of `exported_state` are post-selection",
+  "bins_by_regime": {
+   "H": 56,
+   "L": 350,
+   "probable_L": 140,
+   "probable_H": 1220,
+   "unknown": 14
+  },
+  "shots_by_regime": {
+   "H": 1,
+   "L": 8,
+   "probable_L": 4,
+   "probable_H": 20,
+   "unknown": 3
+  },
+  "tangtv_vote_before_gate": {
+   "H": {
+    "attached": {
+     "n_bins": 0,
+     "n_shots": 0,
+     "shot_ids": []
+    },
+    "detached": {
+     "n_bins": 20,
+     "te_ev_quantiles_10_50_90": [
+      1.2615936994552612,
+      1.8161932229995728,
+      2.451756715774536
+     ],
+     "n_in_band": 20,
+     "share_in_band": 1.0,
+     "share_between_bands": 0.0,
+     "n_shots": 1,
+     "shot_ids": [
+      189061
+     ]
+    },
+    "marfe": {
+     "n_bins": 0,
+     "n_shots": 0,
+     "shot_ids": []
+    },
+    "auroc_neg_te_detached_vs_attached": {
+     "pooled": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "n_bins": 20,
+      "n_not_attached": 20,
+      "n_shots": 1,
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "within_shot": {
+      "min_class_bins": 5,
+      "n_shots": 0,
+      "mean": null,
+      "mean_ci95": [
+       null,
+       null
+      ]
+     }
+    }
+   },
+   "L": {
+    "attached": {
+     "n_bins": 169,
+     "te_ev_quantiles_10_50_90": [
+      13.55701560974121,
+      17.709718704223633,
+      22.515556716918944
+     ],
+     "n_in_band": 169,
+     "share_in_band": 1.0,
+     "share_between_bands": 0.0,
+     "n_shots": 6,
+     "shot_ids": [
+      199166,
+      199171,
+      199351,
+      199352,
+      199353,
+      199354
+     ]
+    },
+    "detached": {
+     "n_bins": 31,
+     "te_ev_quantiles_10_50_90": [
+      5.038174629211426,
+      8.615456581115723,
+      11.870738506317139
+     ],
+     "n_in_band": 3,
+     "share_in_band": 0.0967741935483871,
+     "share_between_bands": 0.6129032258064516,
+     "n_shots": 4,
+     "shot_ids": [
+      199166,
+      199352,
+      199353,
+      199354
+     ]
+    },
+    "marfe": {
+     "n_bins": 0,
+     "n_shots": 0,
+     "shot_ids": []
+    },
+    "auroc_neg_te_detached_vs_attached": {
+     "pooled": {
+      "value": 0.9961824775720557,
+      "ci95": [
+       0.9923941798941799,
+       1.0
+      ],
+      "n_bins": 200,
+      "n_not_attached": 31,
+      "n_shots": 6,
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "within_shot": {
+      "min_class_bins": 5,
+      "n_shots": 3,
+      "mean": 0.9949287749287749,
+      "mean_ci95": [
+       0.9914529914529915,
+       1.0
+      ]
+     }
+    }
+   },
+   "probable_L": {
+    "attached": {
+     "n_bins": 0,
+     "n_shots": 0,
+     "shot_ids": []
+    },
+    "detached": {
+     "n_bins": 69,
+     "te_ev_quantiles_10_50_90": [
+      1.5079288840293885,
+      2.1708096265792847,
+      7.919320440292359
+     ],
+     "n_in_band": 52,
+     "share_in_band": 0.7536231884057971,
+     "share_between_bands": 0.21739130434782608,
+     "n_shots": 3,
+     "shot_ids": [
+      190109,
+      190110,
+      190113
+     ]
+    },
+    "marfe": {
+     "n_bins": 0,
+     "n_shots": 0,
+     "shot_ids": []
+    },
+    "auroc_neg_te_detached_vs_attached": {
+     "pooled": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "n_bins": 69,
+      "n_not_attached": 69,
+      "n_shots": 3,
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "within_shot": {
+      "min_class_bins": 5,
+      "n_shots": 0,
+      "mean": null,
+      "mean_ci95": [
+       null,
+       null
+      ]
+     }
+    }
+   },
+   "probable_H": {
+    "attached": {
+     "n_bins": 221,
+     "te_ev_quantiles_10_50_90": [
+      5.018301963806152,
+      13.64683723449707,
+      21.494916915893555
+     ],
+     "n_in_band": 156,
+     "share_in_band": 0.7058823529411765,
+     "share_between_bands": 0.19457013574660634,
+     "n_shots": 12,
+     "shot_ids": [
+      189057,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
+      201081
+     ]
+    },
+    "detached": {
+     "n_bins": 152,
+     "te_ev_quantiles_10_50_90": [
+      1.3849179565906524,
+      2.1322741508483887,
+      7.536632990837101
+     ],
+     "n_in_band": 126,
+     "share_in_band": 0.8289473684210527,
+     "share_between_bands": 0.10526315789473684,
+     "n_shots": 10,
+     "shot_ids": [
+      189057,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189100,
+      189101,
+      201081
+     ]
+    },
+    "marfe": {
+     "n_bins": 0,
+     "n_shots": 0,
+     "shot_ids": []
+    },
+    "auroc_neg_te_detached_vs_attached": {
+     "pooled": {
+      "value": 0.9251012145748988,
+      "ci95": [
+       0.8592037173882812,
+       0.9708351479131874
+      ],
+      "n_bins": 373,
+      "n_not_attached": 152,
+      "n_shots": 13,
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "within_shot": {
+      "min_class_bins": 5,
+      "n_shots": 3,
+      "mean": 0.9437531422825541,
+      "mean_ci95": [
+       0.9166666666666666,
+       0.9588235294117647
+      ]
+     }
+    }
+   },
+   "unknown": {
+    "attached": {
+     "n_bins": 3,
+     "te_ev_quantiles_10_50_90": [
+      10.48208978176117,
+      12.481039881706238,
+      22.957977080345156
+     ],
+     "n_in_band": 2,
+     "share_in_band": 0.6666666666666666,
+     "share_between_bands": 0.3333333333333333,
+     "n_shots": 1,
+     "shot_ids": [
+      189448
+     ]
+    },
+    "detached": {
+     "n_bins": 3,
+     "te_ev_quantiles_10_50_90": [
+      1.6355453848838806,
+      1.8741337656974792,
+      1.8836220145225524
+     ],
+     "n_in_band": 3,
+     "share_in_band": 1.0,
+     "share_between_bands": 0.0,
+     "n_shots": 1,
+     "shot_ids": [
+      190113
+     ]
+    },
+    "marfe": {
+     "n_bins": 0,
+     "n_shots": 0,
+     "shot_ids": []
+    },
+    "auroc_neg_te_detached_vs_attached": {
+     "pooled": {
+      "value": 1.0,
+      "ci95": [
+       null,
+       null
+      ],
+      "n_bins": 6,
+      "n_not_attached": 3,
+      "n_shots": 2,
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "within_shot": {
+      "min_class_bins": 5,
+      "n_shots": 0,
+      "mean": null,
+      "mean_ci95": [
+       null,
+       null
+      ]
+     }
+    }
+   }
+  },
+  "exported_state": {
+   "H": {
+    "attached": {
+     "n_bins": 0,
+     "n_shots": 0,
+     "shot_ids": []
+    },
+    "detached": {
+     "n_bins": 20,
+     "te_ev_quantiles_10_50_90": [
+      1.2615936994552612,
+      1.8161932229995728,
+      2.451756715774536
+     ],
+     "n_in_band": 20,
+     "share_in_band": 1.0,
+     "share_between_bands": 0.0,
+     "n_shots": 1,
+     "shot_ids": [
+      189061
+     ]
+    },
+    "marfe": {
+     "n_bins": 0,
+     "n_shots": 0,
+     "shot_ids": []
+    },
+    "auroc_neg_te_detached_vs_attached": {
+     "pooled": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "n_bins": 20,
+      "n_not_attached": 20,
+      "n_shots": 1,
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "within_shot": {
+      "min_class_bins": 5,
+      "n_shots": 0,
+      "mean": null,
+      "mean_ci95": [
+       null,
+       null
+      ]
+     }
+    }
+   },
+   "L": {
+    "attached": {
+     "n_bins": 169,
+     "te_ev_quantiles_10_50_90": [
+      13.55701560974121,
+      17.709718704223633,
+      22.515556716918944
+     ],
+     "n_in_band": 169,
+     "share_in_band": 1.0,
+     "share_between_bands": 0.0,
+     "n_shots": 6,
+     "shot_ids": [
+      199166,
+      199171,
+      199351,
+      199352,
+      199353,
+      199354
+     ]
+    },
+    "detached": {
+     "n_bins": 0,
+     "n_shots": 0,
+     "shot_ids": []
+    },
+    "marfe": {
+     "n_bins": 0,
+     "n_shots": 0,
+     "shot_ids": []
+    },
+    "auroc_neg_te_detached_vs_attached": {
+     "pooled": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "n_bins": 169,
+      "n_not_attached": 0,
+      "n_shots": 6,
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "within_shot": {
+      "min_class_bins": 5,
+      "n_shots": 0,
+      "mean": null,
+      "mean_ci95": [
+       null,
+       null
+      ]
+     }
+    }
+   },
+   "probable_L": {
+    "attached": {
+     "n_bins": 0,
+     "n_shots": 0,
+     "shot_ids": []
+    },
+    "detached": {
+     "n_bins": 0,
+     "n_shots": 0,
+     "shot_ids": []
+    },
+    "marfe": {
+     "n_bins": 0,
+     "n_shots": 0,
+     "shot_ids": []
+    },
+    "auroc_neg_te_detached_vs_attached": {
+     "pooled": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "n_bins": 0,
+      "n_not_attached": 0,
+      "n_shots": 0,
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "within_shot": {
+      "min_class_bins": 5,
+      "n_shots": 0,
+      "mean": null,
+      "mean_ci95": [
+       null,
+       null
+      ]
+     }
+    }
+   },
+   "probable_H": {
+    "attached": {
+     "n_bins": 214,
+     "te_ev_quantiles_10_50_90": [
+      5.133603811264038,
+      13.755497932434082,
+      21.459082031250002
+     ],
+     "n_in_band": 153,
+     "share_in_band": 0.7149532710280374,
+     "share_between_bands": 0.19158878504672897,
+     "n_shots": 12,
+     "shot_ids": [
+      189057,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
+      201081
+     ]
+    },
+    "detached": {
+     "n_bins": 144,
+     "te_ev_quantiles_10_50_90": [
+      1.3453420579433442,
+      2.1322741508483887,
+      7.800127530097966
+     ],
+     "n_in_band": 118,
+     "share_in_band": 0.8194444444444444,
+     "share_between_bands": 0.1111111111111111,
+     "n_shots": 9,
+     "shot_ids": [
+      189057,
+      189062,
+      189081,
+      189088,
+      189090,
+      189094,
+      189100,
+      189101,
+      201081
+     ]
+    },
+    "marfe": {
+     "n_bins": 0,
+     "n_shots": 0,
+     "shot_ids": []
+    },
+    "auroc_neg_te_detached_vs_attached": {
+     "pooled": {
+      "value": 0.9239356178608515,
+      "ci95": [
+       0.8520682529862892,
+       0.971171608616084
+      ],
+      "n_bins": 358,
+      "n_not_attached": 144,
+      "n_shots": 13,
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "within_shot": {
+      "min_class_bins": 5,
+      "n_shots": 3,
+      "mean": 0.9403217697335345,
+      "mean_ci95": [
+       0.9166666666666666,
+       0.9557692307692308
+      ]
+     }
+    }
+   },
+   "unknown": {
+    "attached": {
+     "n_bins": 3,
+     "te_ev_quantiles_10_50_90": [
+      10.48208978176117,
+      12.481039881706238,
+      22.957977080345156
+     ],
+     "n_in_band": 2,
+     "share_in_band": 0.6666666666666666,
+     "share_between_bands": 0.3333333333333333,
+     "n_shots": 1,
+     "shot_ids": [
+      189448
+     ]
+    },
+    "detached": {
+     "n_bins": 3,
+     "te_ev_quantiles_10_50_90": [
+      1.6355453848838806,
+      1.8741337656974792,
+      1.8836220145225524
+     ],
+     "n_in_band": 3,
+     "share_in_band": 1.0,
+     "share_between_bands": 0.0,
+     "n_shots": 1,
+     "shot_ids": [
+      190113
+     ]
+    },
+    "marfe": {
+     "n_bins": 0,
+     "n_shots": 0,
+     "shot_ids": []
+    },
+    "auroc_neg_te_detached_vs_attached": {
+     "pooled": {
+      "value": 1.0,
+      "ci95": [
+       null,
+       null
+      ],
+      "n_bins": 6,
+      "n_not_attached": 3,
+      "n_shots": 2,
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "within_shot": {
+      "min_class_bins": 5,
+      "n_shots": 0,
+      "mean": null,
+      "mean_ci95": [
+       null,
+       null
+      ]
+     }
+    }
+   }
+  },
+  "tangtv_detached_by_dz_band": {
+   "H": {
+    "0.5-0.65": {
+     "n_bins": 3,
+     "te_ev_quantiles_10_50_90": [
+      1.8101118206977844,
+      2.1432271599769592,
+      3.115440857410431
+     ],
+     "n_in_band": 3,
+     "share_in_band": 1.0,
+     "share_between_bands": 0.0,
+     "n_shots": 1
+    },
+    "0.65-0.8": {
+     "n_bins": 10,
+     "te_ev_quantiles_10_50_90": [
+      1.496799921989441,
+      1.9418373703956604,
+      2.451756715774536
+     ],
+     "n_in_band": 10,
+     "share_in_band": 1.0,
+     "share_between_bands": 0.0,
+     "n_shots": 1
+    },
+    "0.8-1.2": {
+     "n_bins": 7,
+     "te_ev_quantiles_10_50_90": [
+      1.2388991355895995,
+      1.433759868144989,
+      2.0979912996292116
+     ],
+     "n_in_band": 7,
+     "share_in_band": 1.0,
+     "share_between_bands": 0.0,
+     "n_shots": 1
+    }
+   },
+   "L": {
+    "0.5-0.65": {
+     "n_bins": 21,
+     "te_ev_quantiles_10_50_90": [
+      6.930254220962524,
+      9.313699722290039,
+      11.226795196533203
+     ],
+     "n_in_band": 1,
+     "share_in_band": 0.047619047619047616,
+     "share_between_bands": 0.6190476190476191,
+     "n_shots": 4
+    },
+    "0.65-0.8": {
+     "n_bins": 8,
+     "te_ev_quantiles_10_50_90": [
+      5.927950930595398,
+      7.433167338371277,
+      11.964375066757203
+     ],
+     "n_in_band": 0,
+     "share_in_band": 0.0,
+     "share_between_bands": 0.75,
+     "n_shots": 3
+    },
+    "0.8-1.2": {
+     "n_bins": 2,
+     "te_ev_quantiles_10_50_90": [
+      2.3228469252586366,
+      2.664179027080536,
+      3.005511128902435
+     ],
+     "n_in_band": 2,
+     "share_in_band": 1.0,
+     "share_between_bands": 0.0,
+     "n_shots": 1
+    }
+   },
+   "probable_L": {
+    "0.5-0.65": {
+     "n_bins": 22,
+     "te_ev_quantiles_10_50_90": [
+      4.368417453765869,
+      6.7909663915634155,
+      9.72110241651535
+     ],
+     "n_in_band": 5,
+     "share_in_band": 0.22727272727272727,
+     "share_between_bands": 0.6818181818181818,
+     "n_shots": 1
+    },
+    "0.65-0.8": {
+     "n_bins": 0,
+     "n_shots": 0
+    },
+    "0.8-1.2": {
+     "n_bins": 47,
+     "te_ev_quantiles_10_50_90": [
+      1.4566459894180297,
+      1.9153589010238647,
+      2.8114156723022456
+     ],
+     "n_in_band": 47,
+     "share_in_band": 1.0,
+     "share_between_bands": 0.0,
+     "n_shots": 2
+    }
+   },
+   "probable_H": {
+    "0.5-0.65": {
+     "n_bins": 46,
+     "te_ev_quantiles_10_50_90": [
+      1.8342282474040985,
+      3.2204779982566833,
+      9.549244403839111
+     ],
+     "n_in_band": 33,
+     "share_in_band": 0.717391304347826,
+     "share_between_bands": 0.1956521739130435,
+     "n_shots": 9
+    },
+    "0.65-0.8": {
+     "n_bins": 70,
+     "te_ev_quantiles_10_50_90": [
+      1.397673672437668,
+      1.9414839148521423,
+      6.366793227195743
+     ],
+     "n_in_band": 60,
+     "share_in_band": 0.8571428571428571,
+     "share_between_bands": 0.07142857142857142,
+     "n_shots": 7
+    },
+    "0.8-1.2": {
+     "n_bins": 36,
+     "te_ev_quantiles_10_50_90": [
+      1.2424804419279099,
+      1.7701806426048279,
+      3.556869924068451
+     ],
+     "n_in_band": 33,
+     "share_in_band": 0.9166666666666666,
+     "share_between_bands": 0.05555555555555555,
+     "n_shots": 5
+    }
+   },
+   "unknown": {
+    "0.5-0.65": {
+     "n_bins": 0,
+     "n_shots": 0
+    },
+    "0.65-0.8": {
+     "n_bins": 0,
+     "n_shots": 0
+    },
+    "0.8-1.2": {
+     "n_bins": 3,
+     "te_ev_quantiles_10_50_90": [
+      1.6355453848838806,
+      1.8741337656974792,
+      1.8836220145225524
+     ],
+     "n_in_band": 3,
+     "share_in_band": 1.0,
+     "share_between_bands": 0.0,
+     "n_shots": 1
+    }
+   }
+  },
+  "gated_detached_votes_by_shot": {
+   "L": {
+    "per_shot": {
+     "199166": {
+      "n_bins": 6,
+      "n_dz_at_least_0_8": 2,
+      "n_dz_below_0_8": 4,
+      "n_with_te": 6,
+      "n_te_at_most_5_ev": 2
+     },
+     "199172": {
+      "n_bins": 9,
+      "n_dz_at_least_0_8": 4,
+      "n_dz_below_0_8": 5,
+      "n_with_te": 0,
+      "n_te_at_most_5_ev": 0
+     },
+     "199352": {
+      "n_bins": 2,
+      "n_dz_at_least_0_8": 0,
+      "n_dz_below_0_8": 2,
+      "n_with_te": 2,
+      "n_te_at_most_5_ev": 0
+     },
+     "199353": {
+      "n_bins": 10,
+      "n_dz_at_least_0_8": 0,
+      "n_dz_below_0_8": 10,
+      "n_with_te": 10,
+      "n_te_at_most_5_ev": 0
+     },
+     "199354": {
+      "n_bins": 13,
+      "n_dz_at_least_0_8": 0,
+      "n_dz_below_0_8": 13,
+      "n_with_te": 13,
+      "n_te_at_most_5_ev": 1
+     },
+     "200977": {
+      "n_bins": 53,
+      "n_dz_at_least_0_8": 16,
+      "n_dz_below_0_8": 37,
+      "n_with_te": 0,
+      "n_te_at_most_5_ev": 0
+     }
+    },
+    "total": {
+     "n_bins": 93,
+     "n_dz_at_least_0_8": 22,
+     "n_dz_below_0_8": 71,
+     "n_with_te": 31,
+     "n_te_at_most_5_ev": 3
+    },
+    "n_shots": 6
+   },
+   "probable_L": {
+    "per_shot": {
+     "190109": {
+      "n_bins": 28,
+      "n_dz_at_least_0_8": 0,
+      "n_dz_below_0_8": 28,
+      "n_with_te": 22,
+      "n_te_at_most_5_ev": 5
+     },
+     "190110": {
+      "n_bins": 32,
+      "n_dz_at_least_0_8": 32,
+      "n_dz_below_0_8": 0,
+      "n_with_te": 26,
+      "n_te_at_most_5_ev": 26
+     },
+     "190113": {
+      "n_bins": 32,
+      "n_dz_at_least_0_8": 32,
+      "n_dz_below_0_8": 0,
+      "n_with_te": 21,
+      "n_te_at_most_5_ev": 21
+     },
+     "190116": {
+      "n_bins": 2,
+      "n_dz_at_least_0_8": 2,
+      "n_dz_below_0_8": 0,
+      "n_with_te": 0,
+      "n_te_at_most_5_ev": 0
+     }
+    },
+    "total": {
+     "n_bins": 94,
+     "n_dz_at_least_0_8": 66,
+     "n_dz_below_0_8": 28,
+     "n_with_te": 69,
+     "n_te_at_most_5_ev": 52
+    },
+    "n_shots": 4
+   }
+  }
+ },
+ "indicator_votes_population": "assessed bins of the exported label set (labels_bins.csv.gz), valid votes only",
+ "indicator_votes": {
+  "afrac": {
+   "attached": {
+    "n_bins": 92,
+    "te_ev_quantiles_10_50_90": [
+     2.209808260202408,
+     12.531534910202026,
+     21.265284347534188
+    ],
+    "n_in_band": 62,
+    "share_in_band": 0.6739130434782609,
+    "share_between_bands": 0.16304347826086957,
+    "n_shots": 7,
+    "shot_ids": [
+     189057,
+     189081,
+     189088,
+     189090,
+     189093,
+     189097,
+     201081
+    ]
+   },
+   "detached": {
+    "n_bins": 105,
+    "te_ev_quantiles_10_50_90": [
+     1.3545958280563355,
+     2.5767695903778076,
+     16.770515155792246
+    ],
+    "n_in_band": 66,
+    "share_in_band": 0.6285714285714286,
+    "share_between_bands": 0.13333333333333333,
+    "n_shots": 7,
+    "shot_ids": [
+     189057,
+     189081,
+     189090,
+     189093,
+     189097,
+     201081,
+     206894
+    ]
+   },
+   "marfe": {
+    "n_bins": 0,
+    "n_shots": 0,
+    "shot_ids": []
+   },
+   "auroc_neg_te_detached_vs_attached": {
+    "pooled": {
+     "value": 0.7709109730848861,
+     "ci95": [
+      0.5405544361965359,
+      0.8634716403868683
+     ],
+     "n_bins": 197,
+     "n_not_attached": 105,
+     "n_shots": 8,
+     "valid_replicates": 1000,
+     "replicates": 1000
+    },
+    "within_shot": {
+     "min_class_bins": 5,
+     "n_shots": 3,
+     "mean": 0.6564570058190365,
+     "mean_ci95": [
+      0.35714285714285715,
+      0.8918334234721471
+     ]
+    }
+   }
+  },
+  "prad": {
+   "attached": {
+    "n_bins": 265,
+    "te_ev_quantiles_10_50_90": [
+     1.4716264367103578,
+     4.887042045593262,
+     18.952235412597656
+    ],
+    "n_in_band": 83,
+    "share_in_band": 0.3132075471698113,
+    "share_between_bands": 0.1811320754716981,
+    "n_shots": 21,
+    "shot_ids": [
+     189057,
+     189061,
+     189062,
+     189081,
+     189088,
+     189090,
+     189093,
+     189094,
+     189097,
+     189100,
+     189101,
+     189451,
+     190109,
+     190110,
+     190113,
+     190116,
+     199171,
+     199351,
+     199352,
+     199353,
+     201081
+    ]
+   },
+   "detached": {
+    "n_bins": 241,
+    "te_ev_quantiles_10_50_90": [
+     1.542867660522461,
+     10.109465599060059,
+     18.319533348083496
+    ],
+    "n_in_band": 76,
+    "share_in_band": 0.3153526970954357,
+    "share_between_bands": 0.17842323651452283,
+    "n_shots": 16,
+    "shot_ids": [
+     189057,
+     189081,
+     189093,
+     189097,
+     189100,
+     189101,
+     189448,
+     189451,
+     199166,
+     199171,
+     199351,
+     199352,
+     199353,
+     199354,
+     201081,
+     206894
+    ]
+   },
+   "marfe": {
+    "n_bins": 0,
+    "n_shots": 0,
+    "shot_ids": []
+   },
+   "auroc_neg_te_detached_vs_attached": {
+    "pooled": {
+     "value": 0.41540750019572537,
+     "ci95": [
+      0.22806998489417,
+      0.5759241914301931
+     ],
+     "n_bins": 506,
+     "n_not_attached": 241,
+     "n_shots": 25,
+     "valid_replicates": 1000,
+     "replicates": 1000
+    },
+    "within_shot": {
+     "min_class_bins": 5,
+     "n_shots": 6,
+     "mean": 0.805450486830888,
+     "mean_ci95": [
+      0.6632495026996307,
+      0.9245435586515308
+     ]
+    }
+   }
+  },
+  "tangtv": {
+   "attached": {
+    "n_bins": 393,
+    "te_ev_quantiles_10_50_90": [
+     6.8092982292175295,
+     15.980426788330078,
+     22.111246204376222
+    ],
+    "n_in_band": 327,
+    "share_in_band": 0.8320610687022901,
+    "share_between_bands": 0.11195928753180662,
+    "n_shots": 18,
+    "shot_ids": [
+     189057,
+     189081,
+     189088,
+     189090,
+     189093,
+     189094,
+     189097,
+     189100,
+     189101,
+     189448,
+     189451,
+     199166,
+     199171,
+     199351,
+     199352,
+     199353,
+     199354,
+     201081
+    ]
+   },
+   "detached": {
+    "n_bins": 275,
+    "te_ev_quantiles_10_50_90": [
+     1.4095516324043273,
+     2.2572853565216064,
+     9.403703927993774
+    ],
+    "n_in_band": 204,
+    "share_in_band": 0.7418181818181818,
+    "share_between_bands": 0.18181818181818182,
+    "n_shots": 18,
+    "shot_ids": [
+     189057,
+     189061,
+     189062,
+     189081,
+     189088,
+     189090,
+     189093,
+     189094,
+     189100,
+     189101,
+     190109,
+     190110,
+     190113,
+     199166,
+     199352,
+     199353,
+     199354,
+     201081
+    ]
+   },
+   "marfe": {
+    "n_bins": 0,
+    "n_shots": 0,
+    "shot_ids": []
+   },
+   "auroc_neg_te_detached_vs_attached": {
+    "pooled": {
+     "value": 0.9452972472819801,
+     "ci95": [
+      0.9076308072788909,
+      0.9766902376937039
+     ],
+     "n_bins": 668,
+     "n_not_attached": 275,
+     "n_shots": 23,
+     "valid_replicates": 1000,
+     "replicates": 1000
+    },
+    "within_shot": {
+     "min_class_bins": 5,
+     "n_shots": 6,
+     "mean": 0.9693409586056645,
+     "mean_ci95": [
+      0.9434967320261438,
+      0.9894905312552371
+     ]
+    }
+   }
+  }
+ },
+ "cliff_check": {
+  "201081": {
+   "first_cold_ms": 2575.0,
+   "last_cold_ms": 4425.0,
+   "warm_before_first_cold_share": 0.9230769230769231,
+   "published_cliffs_ms": [
+    2650.0,
+    4450.0
+   ],
+   "te_ev_at_2000_ms_and_3500_ms_and_5000_ms": [
+    13.673985004425049,
+    1.7647485733032227,
+    12.507299900054932
+   ]
+  }
+ }
+}

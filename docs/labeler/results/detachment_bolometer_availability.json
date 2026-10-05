@@ -1,0 +1,26 @@
+{
+ "shot": 201081,
+ "bolfit01_twod_children": [],
+ "bolfit01_oned_children": [
+  "CHANNELS",
+  "DATA",
+  "DATAFIT",
+  "KNOTS",
+  "POWER_1HALF",
+  "POWER_1THIRD",
+  "POWER_2THIRD",
+  "POWER_CORE",
+  "POWER_SOL",
+  "PROF_RHO",
+  "TENSION"
+ ],
+ "corpus_bolo": {
+  "bolo_ydata_shape": [
+   48,
+   163841
+  ],
+  "bolo_xdata_length": 163841
+ },
+ "has_2d_emissivity": false,
+ "conclusion": "no 2D bolometer emissivity: the corpus `bolo` group is 48 raw chord voltages (channels by time) and the BOLFIT01.TWOD structure has no children; the detach-ui source has no other bolometer image. The views figure shows PRAD_DIVL and PRAD_TOT traces instead."
+}

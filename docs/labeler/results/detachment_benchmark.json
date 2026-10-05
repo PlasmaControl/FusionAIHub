@@ -1,0 +1,4778 @@
+{
+ "bin_ms": 50.0,
+ "replicates": 1000,
+ "n_shots": 32,
+ "n_shots_by_split": {
+  "train": 0,
+  "val": 1,
+  "test": 0,
+  "outside": 31
+ },
+ "n_assessed_bins": 1780,
+ "scope": "exploratory coverage and indicator agreement",
+ "sources": {
+  "labels": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/labels_bins.csv.gz",
+  "labels_sha256": "a683b477dca02a2a2a1ce9c484b59280a2c59d71b0b9395e8b9891fcb34f981a",
+  "bins_dir": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins",
+  "script": "scripts/labeler/detach_benchmark.py"
+ },
+ "independent_benchmark": false,
+ "reference_note": "No independent benchmark. Pairwise cast votes are compared before consensus selection and stratified by tangtv_tier. The paper population is upper-shelf Prad/TangTV only; lower-shelf votes are provisional. Agreement does not establish physical state accuracy.",
+ "bootstrap": {
+  "unit": "shot with at least one compared vote pair",
+  "seed": 0,
+  "generator": "pairwise kappa: one stream; every other statistic: a fresh generator at the seed (`boot_rng`), so one population has one interval in every record",
+  "replicates": 1000,
+  "ci": "percentile 95%; undefined draws excluded and counted"
+ },
+ "rule_conflicts_resolved_by_model": {
+  "bins": 0,
+  "with_tangtv_vote": 0,
+  "model_state_equals_tangtv_vote": 0
+ },
+ "pairwise_agreement": {
+  "schema_note": "all_eligible_bins and fit_bins_train_val_outside now nest tangtv_tier then indicator pair. No cross-tier agreement rollup is emitted. by_tangtv_tier and fit_by_tangtv_tier are named aliases.",
+  "all_eligible_bins": {
+   "lower_shelf_window": {
+    "afrac__prad": {
+     "population_bins": 333,
+     "population_shots": 6,
+     "population_shot_ids": [
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "both_valid_bins": 325,
+     "both_vote_bins": 196,
+     "both_vote_shots": 6,
+     "both_vote_shot_ids": [
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "agreement": {
+      "value": 0.9489795918367347,
+      "ci95": [
+       0.8734177215189873,
+       0.9897959183673469
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": 0.895932887331422,
+      "ci95": [
+       0.5759637188208618,
+       0.977871060251046
+      ],
+      "valid_replicates": 997,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": 0.895932887331422,
+      "ci95": [
+       0.5759637188208618,
+       0.977871060251046
+      ],
+      "valid_replicates": 997,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": 0.9489795918367347,
+      "ci95": [
+       0.8734177215189873,
+       0.9897959183673469
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "afrac",
+     "count_columns": "prad",
+     "counts": [
+      [
+       107,
+       8,
+       0
+      ],
+      [
+       2,
+       79,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    },
+    "afrac__tangtv": {
+     "population_bins": 333,
+     "population_shots": 6,
+     "population_shot_ids": [
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "both_valid_bins": 0,
+     "both_vote_bins": 0,
+     "both_vote_shots": 0,
+     "both_vote_shot_ids": [],
+     "agreement": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "afrac",
+     "count_columns": "tangtv",
+     "counts": [
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    },
+    "prad__tangtv": {
+     "population_bins": 333,
+     "population_shots": 6,
+     "population_shot_ids": [
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "both_valid_bins": 0,
+     "both_vote_bins": 0,
+     "both_vote_shots": 0,
+     "both_vote_shot_ids": [],
+     "agreement": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "prad",
+     "count_columns": "tangtv",
+     "counts": [
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    }
+   },
+   "none": {
+    "afrac__prad": {
+     "population_bins": 2085,
+     "population_shots": 32,
+     "population_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190116,
+      199166,
+      199171,
+      199172,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      201081,
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "both_valid_bins": 241,
+     "both_vote_bins": 137,
+     "both_vote_shots": 12,
+     "both_vote_shot_ids": [
+      189057,
+      189088,
+      189090,
+      189093,
+      189097,
+      201081,
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "agreement": {
+      "value": 0.48175182481751827,
+      "ci95": [
+       0.3391267501842299,
+       0.6000662251655628
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": -0.12023494184037765,
+      "ci95": [
+       -0.4050990465230971,
+       0.16252257827068275
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": -0.12023494184037765,
+      "ci95": [
+       -0.4050990465230971,
+       0.16252257827068275
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": 0.48175182481751827,
+      "ci95": [
+       0.3391267501842299,
+       0.6000662251655628
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "afrac",
+     "count_columns": "prad",
+     "counts": [
+      [
+       54,
+       26,
+       0
+      ],
+      [
+       45,
+       12,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    },
+    "afrac__tangtv": {
+     "population_bins": 2085,
+     "population_shots": 32,
+     "population_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190116,
+      199166,
+      199171,
+      199172,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      201081,
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "both_valid_bins": 0,
+     "both_vote_bins": 0,
+     "both_vote_shots": 0,
+     "both_vote_shot_ids": [],
+     "agreement": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "afrac",
+     "count_columns": "tangtv",
+     "counts": [
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    },
+    "prad__tangtv": {
+     "population_bins": 2085,
+     "population_shots": 32,
+     "population_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190116,
+      199166,
+      199171,
+      199172,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      201081,
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "both_valid_bins": 0,
+     "both_vote_bins": 0,
+     "both_vote_shots": 0,
+     "both_vote_shot_ids": [],
+     "agreement": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "prad",
+     "count_columns": "tangtv",
+     "counts": [
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    }
+   },
+   "upper_shelf": {
+    "afrac__prad": {
+     "population_bins": 1229,
+     "population_shots": 26,
+     "population_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190116,
+      199166,
+      199171,
+      199172,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      201081
+     ],
+     "both_valid_bins": 233,
+     "both_vote_bins": 98,
+     "both_vote_shots": 6,
+     "both_vote_shot_ids": [
+      189057,
+      189081,
+      189088,
+      189093,
+      189097,
+      201081
+     ],
+     "agreement": {
+      "value": 0.7142857142857143,
+      "ci95": [
+       0.2765957446808511,
+       0.8705882352941177
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": 0.33911368015414267,
+      "ci95": [
+       -0.2334149826495203,
+       0.7244094488188976
+      ],
+      "valid_replicates": 996,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": 0.33911368015414267,
+      "ci95": [
+       -0.2334149826495203,
+       0.7244094488188976
+      ],
+      "valid_replicates": 996,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": 0.7142857142857143,
+      "ci95": [
+       0.2765957446808511,
+       0.8705882352941177
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "afrac",
+     "count_columns": "prad",
+     "counts": [
+      [
+       16,
+       20,
+       0
+      ],
+      [
+       8,
+       54,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    },
+    "afrac__tangtv": {
+     "population_bins": 1229,
+     "population_shots": 26,
+     "population_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190116,
+      199166,
+      199171,
+      199172,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      201081
+     ],
+     "both_valid_bins": 243,
+     "both_vote_bins": 167,
+     "both_vote_shots": 7,
+     "both_vote_shot_ids": [
+      189057,
+      189081,
+      189088,
+      189090,
+      189093,
+      189097,
+      201081
+     ],
+     "agreement": {
+      "value": 0.8263473053892215,
+      "ci95": [
+       0.5794269552385637,
+       0.9560082969432314
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": 0.6512565708936415,
+      "ci95": [
+       0.09055536434636556,
+       0.9099173763943943
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": 0.6512565708936415,
+      "ci95": [
+       0.09055536434636556,
+       0.9099173763943943
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": 0.8263473053892215,
+      "ci95": [
+       0.5794269552385637,
+       0.9560082969432314
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "afrac",
+     "count_columns": "tangtv",
+     "counts": [
+      [
+       62,
+       10,
+       0
+      ],
+      [
+       19,
+       76,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    },
+    "prad__tangtv": {
+     "population_bins": 1229,
+     "population_shots": 26,
+     "population_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190116,
+      199166,
+      199171,
+      199172,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      201081
+     ],
+     "both_valid_bins": 1167,
+     "both_vote_bins": 554,
+     "both_vote_shots": 25,
+     "both_vote_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190116,
+      199166,
+      199171,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      201081
+     ],
+     "agreement": {
+      "value": 0.388086642599278,
+      "ci95": [
+       0.21180232295385726,
+       0.5658856273354135
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": -0.16246796816004158,
+      "ci95": [
+       -0.4427256241689655,
+       0.14386255150527746
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": -0.16246796816004158,
+      "ci95": [
+       -0.4427256241689655,
+       0.14386255150527746
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": 0.388086642599278,
+      "ci95": [
+       0.21180232295385726,
+       0.5658856273354135
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "prad",
+     "count_columns": "tangtv",
+     "counts": [
+      [
+       92,
+       235,
+       0
+      ],
+      [
+       104,
+       123,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    }
+   }
+  },
+  "fit_bins_train_val_outside": {
+   "lower_shelf_window": {
+    "afrac__prad": {
+     "population_bins": 325,
+     "population_shots": 6,
+     "population_shot_ids": [
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "both_valid_bins": 325,
+     "both_vote_bins": 196,
+     "both_vote_shots": 6,
+     "both_vote_shot_ids": [
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "agreement": {
+      "value": 0.9489795918367347,
+      "ci95": [
+       0.8713935810810811,
+       0.9898010204081632
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": 0.895932887331422,
+      "ci95": [
+       0.5759637188208618,
+       0.9777211966900065
+      ],
+      "valid_replicates": 998,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": 0.895932887331422,
+      "ci95": [
+       0.5759637188208618,
+       0.9777211966900065
+      ],
+      "valid_replicates": 998,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": 0.9489795918367347,
+      "ci95": [
+       0.8713935810810811,
+       0.9898010204081632
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "afrac",
+     "count_columns": "prad",
+     "counts": [
+      [
+       107,
+       8,
+       0
+      ],
+      [
+       2,
+       79,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    },
+    "afrac__tangtv": {
+     "population_bins": 325,
+     "population_shots": 6,
+     "population_shot_ids": [
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "both_valid_bins": 0,
+     "both_vote_bins": 0,
+     "both_vote_shots": 0,
+     "both_vote_shot_ids": [],
+     "agreement": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "afrac",
+     "count_columns": "tangtv",
+     "counts": [
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    },
+    "prad__tangtv": {
+     "population_bins": 325,
+     "population_shots": 6,
+     "population_shot_ids": [
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "both_valid_bins": 0,
+     "both_vote_bins": 0,
+     "both_vote_shots": 0,
+     "both_vote_shot_ids": [],
+     "agreement": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "prad",
+     "count_columns": "tangtv",
+     "counts": [
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    }
+   },
+   "none": {
+    "afrac__prad": {
+     "population_bins": 241,
+     "population_shots": 13,
+     "population_shot_ids": [
+      189057,
+      189081,
+      189088,
+      189090,
+      189093,
+      189097,
+      201081,
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "both_valid_bins": 241,
+     "both_vote_bins": 137,
+     "both_vote_shots": 12,
+     "both_vote_shot_ids": [
+      189057,
+      189088,
+      189090,
+      189093,
+      189097,
+      201081,
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "agreement": {
+      "value": 0.48175182481751827,
+      "ci95": [
+       0.3357587064676617,
+       0.6
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": -0.12023494184037765,
+      "ci95": [
+       -0.4114512285431369,
+       0.14227283738867116
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": -0.12023494184037765,
+      "ci95": [
+       -0.4114512285431369,
+       0.14227283738867116
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": 0.48175182481751827,
+      "ci95": [
+       0.3357587064676617,
+       0.6
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "afrac",
+     "count_columns": "prad",
+     "counts": [
+      [
+       54,
+       26,
+       0
+      ],
+      [
+       45,
+       12,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    },
+    "afrac__tangtv": {
+     "population_bins": 241,
+     "population_shots": 13,
+     "population_shot_ids": [
+      189057,
+      189081,
+      189088,
+      189090,
+      189093,
+      189097,
+      201081,
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "both_valid_bins": 0,
+     "both_vote_bins": 0,
+     "both_vote_shots": 0,
+     "both_vote_shot_ids": [],
+     "agreement": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "afrac",
+     "count_columns": "tangtv",
+     "counts": [
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    },
+    "prad__tangtv": {
+     "population_bins": 241,
+     "population_shots": 13,
+     "population_shot_ids": [
+      189057,
+      189081,
+      189088,
+      189090,
+      189093,
+      189097,
+      201081,
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "both_valid_bins": 0,
+     "both_vote_bins": 0,
+     "both_vote_shots": 0,
+     "both_vote_shot_ids": [],
+     "agreement": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "prad",
+     "count_columns": "tangtv",
+     "counts": [
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    }
+   },
+   "upper_shelf": {
+    "afrac__prad": {
+     "population_bins": 1177,
+     "population_shots": 26,
+     "population_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190116,
+      199166,
+      199171,
+      199172,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      201081
+     ],
+     "both_valid_bins": 233,
+     "both_vote_bins": 98,
+     "both_vote_shots": 6,
+     "both_vote_shot_ids": [
+      189057,
+      189081,
+      189088,
+      189093,
+      189097,
+      201081
+     ],
+     "agreement": {
+      "value": 0.7142857142857143,
+      "ci95": [
+       0.2765957446808511,
+       0.875
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": 0.33911368015414267,
+      "ci95": [
+       -0.21310935441370213,
+       0.7248862240843743
+      ],
+      "valid_replicates": 999,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": 0.33911368015414267,
+      "ci95": [
+       -0.21310935441370213,
+       0.7248862240843743
+      ],
+      "valid_replicates": 999,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": 0.7142857142857143,
+      "ci95": [
+       0.2765957446808511,
+       0.875
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "afrac",
+     "count_columns": "prad",
+     "counts": [
+      [
+       16,
+       20,
+       0
+      ],
+      [
+       8,
+       54,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    },
+    "afrac__tangtv": {
+     "population_bins": 1177,
+     "population_shots": 26,
+     "population_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190116,
+      199166,
+      199171,
+      199172,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      201081
+     ],
+     "both_valid_bins": 243,
+     "both_vote_bins": 167,
+     "both_vote_shots": 7,
+     "both_vote_shot_ids": [
+      189057,
+      189081,
+      189088,
+      189090,
+      189093,
+      189097,
+      201081
+     ],
+     "agreement": {
+      "value": 0.8263473053892215,
+      "ci95": [
+       0.5889045859595741,
+       0.950448073284875
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": 0.6512565708936415,
+      "ci95": [
+       0.12533066283727595,
+       0.8999092427453056
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": 0.6512565708936415,
+      "ci95": [
+       0.12533066283727595,
+       0.8999092427453056
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": 0.8263473053892215,
+      "ci95": [
+       0.5889045859595741,
+       0.950448073284875
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "afrac",
+     "count_columns": "tangtv",
+     "counts": [
+      [
+       62,
+       10,
+       0
+      ],
+      [
+       19,
+       76,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    },
+    "prad__tangtv": {
+     "population_bins": 1177,
+     "population_shots": 26,
+     "population_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190116,
+      199166,
+      199171,
+      199172,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      201081
+     ],
+     "both_valid_bins": 1167,
+     "both_vote_bins": 554,
+     "both_vote_shots": 25,
+     "both_vote_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190116,
+      199166,
+      199171,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      201081
+     ],
+     "agreement": {
+      "value": 0.388086642599278,
+      "ci95": [
+       0.2296805950557865,
+       0.5777005931637588
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": -0.16246796816004158,
+      "ci95": [
+       -0.4239072708060587,
+       0.16683584896453665
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": -0.16246796816004158,
+      "ci95": [
+       -0.4239072708060587,
+       0.16683584896453665
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": 0.388086642599278,
+      "ci95": [
+       0.2296805950557865,
+       0.5777005931637588
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "prad",
+     "count_columns": "tangtv",
+     "counts": [
+      [
+       92,
+       235,
+       0
+      ],
+      [
+       104,
+       123,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    }
+   }
+  },
+  "by_tangtv_tier": {
+   "lower_shelf_window": {
+    "afrac__prad": {
+     "population_bins": 333,
+     "population_shots": 6,
+     "population_shot_ids": [
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "both_valid_bins": 325,
+     "both_vote_bins": 196,
+     "both_vote_shots": 6,
+     "both_vote_shot_ids": [
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "agreement": {
+      "value": 0.9489795918367347,
+      "ci95": [
+       0.8734177215189873,
+       0.9897959183673469
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": 0.895932887331422,
+      "ci95": [
+       0.5759637188208618,
+       0.977871060251046
+      ],
+      "valid_replicates": 997,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": 0.895932887331422,
+      "ci95": [
+       0.5759637188208618,
+       0.977871060251046
+      ],
+      "valid_replicates": 997,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": 0.9489795918367347,
+      "ci95": [
+       0.8734177215189873,
+       0.9897959183673469
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "afrac",
+     "count_columns": "prad",
+     "counts": [
+      [
+       107,
+       8,
+       0
+      ],
+      [
+       2,
+       79,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    },
+    "afrac__tangtv": {
+     "population_bins": 333,
+     "population_shots": 6,
+     "population_shot_ids": [
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "both_valid_bins": 0,
+     "both_vote_bins": 0,
+     "both_vote_shots": 0,
+     "both_vote_shot_ids": [],
+     "agreement": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "afrac",
+     "count_columns": "tangtv",
+     "counts": [
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    },
+    "prad__tangtv": {
+     "population_bins": 333,
+     "population_shots": 6,
+     "population_shot_ids": [
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "both_valid_bins": 0,
+     "both_vote_bins": 0,
+     "both_vote_shots": 0,
+     "both_vote_shot_ids": [],
+     "agreement": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "prad",
+     "count_columns": "tangtv",
+     "counts": [
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    }
+   },
+   "none": {
+    "afrac__prad": {
+     "population_bins": 2085,
+     "population_shots": 32,
+     "population_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190116,
+      199166,
+      199171,
+      199172,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      201081,
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "both_valid_bins": 241,
+     "both_vote_bins": 137,
+     "both_vote_shots": 12,
+     "both_vote_shot_ids": [
+      189057,
+      189088,
+      189090,
+      189093,
+      189097,
+      201081,
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "agreement": {
+      "value": 0.48175182481751827,
+      "ci95": [
+       0.3391267501842299,
+       0.6000662251655628
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": -0.12023494184037765,
+      "ci95": [
+       -0.4050990465230971,
+       0.16252257827068275
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": -0.12023494184037765,
+      "ci95": [
+       -0.4050990465230971,
+       0.16252257827068275
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": 0.48175182481751827,
+      "ci95": [
+       0.3391267501842299,
+       0.6000662251655628
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "afrac",
+     "count_columns": "prad",
+     "counts": [
+      [
+       54,
+       26,
+       0
+      ],
+      [
+       45,
+       12,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    },
+    "afrac__tangtv": {
+     "population_bins": 2085,
+     "population_shots": 32,
+     "population_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190116,
+      199166,
+      199171,
+      199172,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      201081,
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "both_valid_bins": 0,
+     "both_vote_bins": 0,
+     "both_vote_shots": 0,
+     "both_vote_shot_ids": [],
+     "agreement": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "afrac",
+     "count_columns": "tangtv",
+     "counts": [
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    },
+    "prad__tangtv": {
+     "population_bins": 2085,
+     "population_shots": 32,
+     "population_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190116,
+      199166,
+      199171,
+      199172,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      201081,
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "both_valid_bins": 0,
+     "both_vote_bins": 0,
+     "both_vote_shots": 0,
+     "both_vote_shot_ids": [],
+     "agreement": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "prad",
+     "count_columns": "tangtv",
+     "counts": [
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    }
+   },
+   "upper_shelf": {
+    "afrac__prad": {
+     "population_bins": 1229,
+     "population_shots": 26,
+     "population_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190116,
+      199166,
+      199171,
+      199172,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      201081
+     ],
+     "both_valid_bins": 233,
+     "both_vote_bins": 98,
+     "both_vote_shots": 6,
+     "both_vote_shot_ids": [
+      189057,
+      189081,
+      189088,
+      189093,
+      189097,
+      201081
+     ],
+     "agreement": {
+      "value": 0.7142857142857143,
+      "ci95": [
+       0.2765957446808511,
+       0.8705882352941177
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": 0.33911368015414267,
+      "ci95": [
+       -0.2334149826495203,
+       0.7244094488188976
+      ],
+      "valid_replicates": 996,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": 0.33911368015414267,
+      "ci95": [
+       -0.2334149826495203,
+       0.7244094488188976
+      ],
+      "valid_replicates": 996,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": 0.7142857142857143,
+      "ci95": [
+       0.2765957446808511,
+       0.8705882352941177
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "afrac",
+     "count_columns": "prad",
+     "counts": [
+      [
+       16,
+       20,
+       0
+      ],
+      [
+       8,
+       54,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    },
+    "afrac__tangtv": {
+     "population_bins": 1229,
+     "population_shots": 26,
+     "population_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190116,
+      199166,
+      199171,
+      199172,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      201081
+     ],
+     "both_valid_bins": 243,
+     "both_vote_bins": 167,
+     "both_vote_shots": 7,
+     "both_vote_shot_ids": [
+      189057,
+      189081,
+      189088,
+      189090,
+      189093,
+      189097,
+      201081
+     ],
+     "agreement": {
+      "value": 0.8263473053892215,
+      "ci95": [
+       0.5794269552385637,
+       0.9560082969432314
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": 0.6512565708936415,
+      "ci95": [
+       0.09055536434636556,
+       0.9099173763943943
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": 0.6512565708936415,
+      "ci95": [
+       0.09055536434636556,
+       0.9099173763943943
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": 0.8263473053892215,
+      "ci95": [
+       0.5794269552385637,
+       0.9560082969432314
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "afrac",
+     "count_columns": "tangtv",
+     "counts": [
+      [
+       62,
+       10,
+       0
+      ],
+      [
+       19,
+       76,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    },
+    "prad__tangtv": {
+     "population_bins": 1229,
+     "population_shots": 26,
+     "population_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190116,
+      199166,
+      199171,
+      199172,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      201081
+     ],
+     "both_valid_bins": 1167,
+     "both_vote_bins": 554,
+     "both_vote_shots": 25,
+     "both_vote_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190116,
+      199166,
+      199171,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      201081
+     ],
+     "agreement": {
+      "value": 0.388086642599278,
+      "ci95": [
+       0.21180232295385726,
+       0.5658856273354135
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": -0.16246796816004158,
+      "ci95": [
+       -0.4427256241689655,
+       0.14386255150527746
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": -0.16246796816004158,
+      "ci95": [
+       -0.4427256241689655,
+       0.14386255150527746
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": 0.388086642599278,
+      "ci95": [
+       0.21180232295385726,
+       0.5658856273354135
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "prad",
+     "count_columns": "tangtv",
+     "counts": [
+      [
+       92,
+       235,
+       0
+      ],
+      [
+       104,
+       123,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    }
+   }
+  },
+  "fit_by_tangtv_tier": {
+   "lower_shelf_window": {
+    "afrac__prad": {
+     "population_bins": 325,
+     "population_shots": 6,
+     "population_shot_ids": [
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "both_valid_bins": 325,
+     "both_vote_bins": 196,
+     "both_vote_shots": 6,
+     "both_vote_shot_ids": [
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "agreement": {
+      "value": 0.9489795918367347,
+      "ci95": [
+       0.8713935810810811,
+       0.9898010204081632
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": 0.895932887331422,
+      "ci95": [
+       0.5759637188208618,
+       0.9777211966900065
+      ],
+      "valid_replicates": 998,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": 0.895932887331422,
+      "ci95": [
+       0.5759637188208618,
+       0.9777211966900065
+      ],
+      "valid_replicates": 998,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": 0.9489795918367347,
+      "ci95": [
+       0.8713935810810811,
+       0.9898010204081632
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "afrac",
+     "count_columns": "prad",
+     "counts": [
+      [
+       107,
+       8,
+       0
+      ],
+      [
+       2,
+       79,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    },
+    "afrac__tangtv": {
+     "population_bins": 325,
+     "population_shots": 6,
+     "population_shot_ids": [
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "both_valid_bins": 0,
+     "both_vote_bins": 0,
+     "both_vote_shots": 0,
+     "both_vote_shot_ids": [],
+     "agreement": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "afrac",
+     "count_columns": "tangtv",
+     "counts": [
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    },
+    "prad__tangtv": {
+     "population_bins": 325,
+     "population_shots": 6,
+     "population_shot_ids": [
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "both_valid_bins": 0,
+     "both_vote_bins": 0,
+     "both_vote_shots": 0,
+     "both_vote_shot_ids": [],
+     "agreement": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "prad",
+     "count_columns": "tangtv",
+     "counts": [
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    }
+   },
+   "none": {
+    "afrac__prad": {
+     "population_bins": 241,
+     "population_shots": 13,
+     "population_shot_ids": [
+      189057,
+      189081,
+      189088,
+      189090,
+      189093,
+      189097,
+      201081,
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "both_valid_bins": 241,
+     "both_vote_bins": 137,
+     "both_vote_shots": 12,
+     "both_vote_shot_ids": [
+      189057,
+      189088,
+      189090,
+      189093,
+      189097,
+      201081,
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "agreement": {
+      "value": 0.48175182481751827,
+      "ci95": [
+       0.3357587064676617,
+       0.6
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": -0.12023494184037765,
+      "ci95": [
+       -0.4114512285431369,
+       0.14227283738867116
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": -0.12023494184037765,
+      "ci95": [
+       -0.4114512285431369,
+       0.14227283738867116
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": 0.48175182481751827,
+      "ci95": [
+       0.3357587064676617,
+       0.6
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "afrac",
+     "count_columns": "prad",
+     "counts": [
+      [
+       54,
+       26,
+       0
+      ],
+      [
+       45,
+       12,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    },
+    "afrac__tangtv": {
+     "population_bins": 241,
+     "population_shots": 13,
+     "population_shot_ids": [
+      189057,
+      189081,
+      189088,
+      189090,
+      189093,
+      189097,
+      201081,
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "both_valid_bins": 0,
+     "both_vote_bins": 0,
+     "both_vote_shots": 0,
+     "both_vote_shot_ids": [],
+     "agreement": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "afrac",
+     "count_columns": "tangtv",
+     "counts": [
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    },
+    "prad__tangtv": {
+     "population_bins": 241,
+     "population_shots": 13,
+     "population_shot_ids": [
+      189057,
+      189081,
+      189088,
+      189090,
+      189093,
+      189097,
+      201081,
+      206880,
+      206886,
+      206891,
+      206892,
+      206893,
+      206894
+     ],
+     "both_valid_bins": 0,
+     "both_vote_bins": 0,
+     "both_vote_shots": 0,
+     "both_vote_shot_ids": [],
+     "agreement": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": null,
+      "ci95": [
+       null,
+       null
+      ],
+      "valid_replicates": 0,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "prad",
+     "count_columns": "tangtv",
+     "counts": [
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    }
+   },
+   "upper_shelf": {
+    "afrac__prad": {
+     "population_bins": 1177,
+     "population_shots": 26,
+     "population_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190116,
+      199166,
+      199171,
+      199172,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      201081
+     ],
+     "both_valid_bins": 233,
+     "both_vote_bins": 98,
+     "both_vote_shots": 6,
+     "both_vote_shot_ids": [
+      189057,
+      189081,
+      189088,
+      189093,
+      189097,
+      201081
+     ],
+     "agreement": {
+      "value": 0.7142857142857143,
+      "ci95": [
+       0.2765957446808511,
+       0.875
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": 0.33911368015414267,
+      "ci95": [
+       -0.21310935441370213,
+       0.7248862240843743
+      ],
+      "valid_replicates": 999,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": 0.33911368015414267,
+      "ci95": [
+       -0.21310935441370213,
+       0.7248862240843743
+      ],
+      "valid_replicates": 999,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": 0.7142857142857143,
+      "ci95": [
+       0.2765957446808511,
+       0.875
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "afrac",
+     "count_columns": "prad",
+     "counts": [
+      [
+       16,
+       20,
+       0
+      ],
+      [
+       8,
+       54,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    },
+    "afrac__tangtv": {
+     "population_bins": 1177,
+     "population_shots": 26,
+     "population_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190116,
+      199166,
+      199171,
+      199172,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      201081
+     ],
+     "both_valid_bins": 243,
+     "both_vote_bins": 167,
+     "both_vote_shots": 7,
+     "both_vote_shot_ids": [
+      189057,
+      189081,
+      189088,
+      189090,
+      189093,
+      189097,
+      201081
+     ],
+     "agreement": {
+      "value": 0.8263473053892215,
+      "ci95": [
+       0.5889045859595741,
+       0.950448073284875
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": 0.6512565708936415,
+      "ci95": [
+       0.12533066283727595,
+       0.8999092427453056
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": 0.6512565708936415,
+      "ci95": [
+       0.12533066283727595,
+       0.8999092427453056
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": 0.8263473053892215,
+      "ci95": [
+       0.5889045859595741,
+       0.950448073284875
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "afrac",
+     "count_columns": "tangtv",
+     "counts": [
+      [
+       62,
+       10,
+       0
+      ],
+      [
+       19,
+       76,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    },
+    "prad__tangtv": {
+     "population_bins": 1177,
+     "population_shots": 26,
+     "population_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190116,
+      199166,
+      199171,
+      199172,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      201081
+     ],
+     "both_valid_bins": 1167,
+     "both_vote_bins": 554,
+     "both_vote_shots": 25,
+     "both_vote_shot_ids": [
+      189057,
+      189061,
+      189062,
+      189081,
+      189088,
+      189090,
+      189093,
+      189094,
+      189097,
+      189100,
+      189101,
+      189448,
+      189451,
+      190109,
+      190110,
+      190113,
+      190116,
+      199166,
+      199171,
+      199351,
+      199352,
+      199353,
+      199354,
+      200977,
+      201081
+     ],
+     "agreement": {
+      "value": 0.388086642599278,
+      "ci95": [
+       0.2296805950557865,
+       0.5777005931637588
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "kappa": {
+      "value": -0.16246796816004158,
+      "ci95": [
+       -0.4239072708060587,
+       0.16683584896453665
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "binary_kappa": {
+      "value": -0.16246796816004158,
+      "ci95": [
+       -0.4239072708060587,
+       0.16683584896453665
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "binary_agreement": {
+      "value": 0.388086642599278,
+      "ci95": [
+       0.2296805950557865,
+       0.5777005931637588
+      ],
+      "valid_replicates": 1000,
+      "replicates": 1000
+     },
+     "count_labels": [
+      "attached",
+      "detached",
+      "marfe"
+     ],
+     "count_rows": "prad",
+     "count_columns": "tangtv",
+     "counts": [
+      [
+       92,
+       235,
+       0
+      ],
+      [
+       104,
+       123,
+       0
+      ],
+      [
+       0,
+       0,
+       0
+      ]
+     ]
+    }
+   }
+  }
+ },
+ "threshold_free_agreement": {
+  "lower_shelf_window": {
+   "prad__tangtv": {
+    "score": "prad_rel_value, larger = more detached",
+    "reference": "tangtv vote: detached or marfe versus attached",
+    "auroc_pooled": {
+     "value": null,
+     "ci95": [
+      null,
+      null
+     ],
+     "n_bins": 0,
+     "n_not_attached": 0,
+     "n_shots": 0,
+     "valid_replicates": 0,
+     "replicates": 1000
+    },
+    "spearman_pooled": {
+     "n_bins": 0,
+     "n_shots": 0,
+     "value": null,
+     "ci95": [
+      null,
+      null
+     ]
+    },
+    "within_shot": {
+     "min_shot_bins": 20,
+     "min_class_bins": 5,
+     "spearman": {
+      "n_shots": 0,
+      "mean": null,
+      "mean_ci95": [
+       null,
+       null
+      ],
+      "median": null,
+      "share_at_least_0_8": null,
+      "per_shot": {}
+     },
+     "auroc": {
+      "n_shots": 0,
+      "mean": null,
+      "mean_ci95": [
+       null,
+       null
+      ],
+      "median": null,
+      "share_at_least_0_8": null,
+      "per_shot": {}
+     }
+    }
+   },
+   "afrac__tangtv": {
+    "score": "afrac_value, larger Afrac = more attached (sign flipped)",
+    "reference": "tangtv vote: detached or marfe versus attached",
+    "auroc_pooled": {
+     "value": null,
+     "ci95": [
+      null,
+      null
+     ],
+     "n_bins": 0,
+     "n_not_attached": 0,
+     "n_shots": 0,
+     "valid_replicates": 0,
+     "replicates": 1000
+    },
+    "spearman_pooled": {
+     "n_bins": 0,
+     "n_shots": 0,
+     "value": null,
+     "ci95": [
+      null,
+      null
+     ]
+    },
+    "within_shot": {
+     "min_shot_bins": 20,
+     "min_class_bins": 5,
+     "spearman": {
+      "n_shots": 0,
+      "mean": null,
+      "mean_ci95": [
+       null,
+       null
+      ],
+      "median": null,
+      "share_at_least_0_8": null,
+      "per_shot": {}
+     },
+     "auroc": {
+      "n_shots": 0,
+      "mean": null,
+      "mean_ci95": [
+       null,
+       null
+      ],
+      "median": null,
+      "share_at_least_0_8": null,
+      "per_shot": {}
+     }
+    }
+   },
+   "prad__afrac": {
+    "score": "prad_rel_value, larger = more detached",
+    "reference": "afrac vote: detached or marfe versus attached",
+    "auroc_pooled": {
+     "value": 0.9653859231553893,
+     "ci95": [
+      0.8287826575785258,
+      0.9955308521699734
+     ],
+     "n_bins": 258,
+     "n_not_attached": 85,
+     "n_shots": 6,
+     "valid_replicates": 997,
+     "replicates": 1000
+    },
+    "spearman_pooled": {
+     "n_bins": 325,
+     "n_shots": 6,
+     "value": 0.6641154982259277,
+     "ci95": [
+      0.09683538798884854,
+      0.868252611332247
+     ]
+    },
+    "within_shot": {
+     "min_shot_bins": 20,
+     "min_class_bins": 5,
+     "spearman": {
+      "n_shots": 6,
+      "mean": 0.4243270439488927,
+      "mean_ci95": [
+       -0.004556590312892868,
+       0.7527417027417029
+      ],
+      "median": 0.5476203814859277,
+      "share_at_least_0_8": 0.3333333333333333,
+      "per_shot": {
+       "206880": {
+        "n_bins": 55,
+        "value": 0.22871572871572876
+       },
+       "206886": {
+        "n_bins": 55,
+        "value": -0.5069985569985571
+       },
+       "206891": {
+        "n_bins": 50,
+        "value": 0.39841536614645856
+       },
+       "206892": {
+        "n_bins": 55,
+        "value": 0.696825396825397
+       },
+       "206893": {
+        "n_bins": 55,
+        "value": 0.8936507936507938
+       },
+       "206894": {
+        "n_bins": 55,
+        "value": 0.8353535353535355
+       }
+      }
+     },
+     "auroc": {
+      "n_shots": 3,
+      "mean": 0.9874686716791979,
+      "mean_ci95": [
+       0.9624060150375939,
+       1.0
+      ],
+      "median": 1.0,
+      "share_at_least_0_8": 1.0,
+      "per_shot": {
+       "206892": {
+        "n_bins": 55,
+        "value": 0.9624060150375939
+       },
+       "206893": {
+        "n_bins": 55,
+        "value": 1.0
+       },
+       "206894": {
+        "n_bins": 55,
+        "value": 1.0
+       }
+      }
+     }
+    }
+   },
+   "prad_abs__tangtv": {
+    "score": "prad_value, larger = more detached",
+    "reference": "tangtv vote: detached or marfe versus attached",
+    "auroc_pooled": {
+     "value": null,
+     "ci95": [
+      null,
+      null
+     ],
+     "n_bins": 0,
+     "n_not_attached": 0,
+     "n_shots": 0,
+     "valid_replicates": 0,
+     "replicates": 1000
+    },
+    "spearman_pooled": {
+     "n_bins": 0,
+     "n_shots": 0,
+     "value": null,
+     "ci95": [
+      null,
+      null
+     ]
+    },
+    "within_shot": {
+     "min_shot_bins": 20,
+     "min_class_bins": 5,
+     "spearman": {
+      "n_shots": 0,
+      "mean": null,
+      "mean_ci95": [
+       null,
+       null
+      ],
+      "median": null,
+      "share_at_least_0_8": null,
+      "per_shot": {}
+     },
+     "auroc": {
+      "n_shots": 0,
+      "mean": null,
+      "mean_ci95": [
+       null,
+       null
+      ],
+      "median": null,
+      "share_at_least_0_8": null,
+      "per_shot": {}
+     }
+    }
+   }
+  },
+  "none": {
+   "prad__tangtv": {
+    "score": "prad_rel_value, larger = more detached",
+    "reference": "tangtv vote: detached or marfe versus attached",
+    "auroc_pooled": {
+     "value": null,
+     "ci95": [
+      null,
+      null
+     ],
+     "n_bins": 0,
+     "n_not_attached": 0,
+     "n_shots": 0,
+     "valid_replicates": 0,
+     "replicates": 1000
+    },
+    "spearman_pooled": {
+     "n_bins": 0,
+     "n_shots": 0,
+     "value": null,
+     "ci95": [
+      null,
+      null
+     ]
+    },
+    "within_shot": {
+     "min_shot_bins": 20,
+     "min_class_bins": 5,
+     "spearman": {
+      "n_shots": 0,
+      "mean": null,
+      "mean_ci95": [
+       null,
+       null
+      ],
+      "median": null,
+      "share_at_least_0_8": null,
+      "per_shot": {}
+     },
+     "auroc": {
+      "n_shots": 0,
+      "mean": null,
+      "mean_ci95": [
+       null,
+       null
+      ],
+      "median": null,
+      "share_at_least_0_8": null,
+      "per_shot": {}
+     }
+    }
+   },
+   "afrac__tangtv": {
+    "score": "afrac_value, larger Afrac = more attached (sign flipped)",
+    "reference": "tangtv vote: detached or marfe versus attached",
+    "auroc_pooled": {
+     "value": null,
+     "ci95": [
+      null,
+      null
+     ],
+     "n_bins": 0,
+     "n_not_attached": 0,
+     "n_shots": 0,
+     "valid_replicates": 0,
+     "replicates": 1000
+    },
+    "spearman_pooled": {
+     "n_bins": 0,
+     "n_shots": 0,
+     "value": null,
+     "ci95": [
+      null,
+      null
+     ]
+    },
+    "within_shot": {
+     "min_shot_bins": 20,
+     "min_class_bins": 5,
+     "spearman": {
+      "n_shots": 0,
+      "mean": null,
+      "mean_ci95": [
+       null,
+       null
+      ],
+      "median": null,
+      "share_at_least_0_8": null,
+      "per_shot": {}
+     },
+     "auroc": {
+      "n_shots": 0,
+      "mean": null,
+      "mean_ci95": [
+       null,
+       null
+      ],
+      "median": null,
+      "share_at_least_0_8": null,
+      "per_shot": {}
+     }
+    }
+   },
+   "prad__afrac": {
+    "score": "prad_rel_value, larger = more detached",
+    "reference": "afrac vote: detached or marfe versus attached",
+    "auroc_pooled": {
+     "value": 0.3079550020088389,
+     "ci95": [
+      0.04901432601012433,
+      0.490093121369622
+     ],
+     "n_bins": 207,
+     "n_not_attached": 76,
+     "n_shots": 13,
+     "valid_replicates": 1000,
+     "replicates": 1000
+    },
+    "spearman_pooled": {
+     "n_bins": 241,
+     "n_shots": 13,
+     "value": -0.2558940022632969,
+     "ci95": [
+      -0.5787962838082877,
+      0.10136666850069846
+     ]
+    },
+    "within_shot": {
+     "min_shot_bins": 20,
+     "min_class_bins": 5,
+     "spearman": {
+      "n_shots": 7,
+      "mean": -0.5825245148226514,
+      "mean_ci95": [
+       -0.7217272768639227,
+       -0.4141810570381999
+      ],
+      "median": -0.6452991452991452,
+      "share_at_least_0_8": 0.0,
+      "per_shot": {
+       "201081": {
+        "n_bins": 24,
+        "value": -0.6452173913043477
+       },
+       "206880": {
+        "n_bins": 27,
+        "value": -0.12087912087912088
+       },
+       "206886": {
+        "n_bins": 27,
+        "value": -0.416971916971917
+       },
+       "206891": {
+        "n_bins": 27,
+        "value": -0.691086691086691
+       },
+       "206892": {
+        "n_bins": 26,
+        "value": -0.7969230769230767
+       },
+       "206893": {
+        "n_bins": 27,
+        "value": -0.6452991452991452
+       },
+       "206894": {
+        "n_bins": 27,
+        "value": -0.7612942612942613
+       }
+      }
+     },
+     "auroc": {
+      "n_shots": 4,
+      "mean": 0.025051020408163264,
+      "mean_ci95": [
+       0.0,
+       0.0675
+      ],
+      "median": 0.00510204081632653,
+      "share_at_least_0_8": 0.0,
+      "per_shot": {
+       "201081": {
+        "n_bins": 24,
+        "value": 0.01020408163265306
+       },
+       "206891": {
+        "n_bins": 27,
+        "value": 0.0
+       },
+       "206893": {
+        "n_bins": 27,
+        "value": 0.09
+       },
+       "206894": {
+        "n_bins": 27,
+        "value": 0.0
+       }
+      }
+     }
+    }
+   },
+   "prad_abs__tangtv": {
+    "score": "prad_value, larger = more detached",
+    "reference": "tangtv vote: detached or marfe versus attached",
+    "auroc_pooled": {
+     "value": null,
+     "ci95": [
+      null,
+      null
+     ],
+     "n_bins": 0,
+     "n_not_attached": 0,
+     "n_shots": 0,
+     "valid_replicates": 0,
+     "replicates": 1000
+    },
+    "spearman_pooled": {
+     "n_bins": 0,
+     "n_shots": 0,
+     "value": null,
+     "ci95": [
+      null,
+      null
+     ]
+    },
+    "within_shot": {
+     "min_shot_bins": 20,
+     "min_class_bins": 5,
+     "spearman": {
+      "n_shots": 0,
+      "mean": null,
+      "mean_ci95": [
+       null,
+       null
+      ],
+      "median": null,
+      "share_at_least_0_8": null,
+      "per_shot": {}
+     },
+     "auroc": {
+      "n_shots": 0,
+      "mean": null,
+      "mean_ci95": [
+       null,
+       null
+      ],
+      "median": null,
+      "share_at_least_0_8": null,
+      "per_shot": {}
+     }
+    }
+   }
+  },
+  "upper_shelf": {
+   "prad__tangtv": {
+    "score": "prad_rel_value, larger = more detached",
+    "reference": "tangtv vote: detached or marfe versus attached",
+    "auroc_pooled": {
+     "value": 0.4125690421662401,
+     "ci95": [
+      0.2626264657818716,
+      0.5823932487065305
+     ],
+     "n_bins": 1013,
+     "n_not_attached": 571,
+     "n_shots": 26,
+     "valid_replicates": 1000,
+     "replicates": 1000
+    },
+    "spearman_pooled": {
+     "n_bins": 1167,
+     "n_shots": 26,
+     "value": -0.09111627342559257,
+     "ci95": [
+      -0.3062549603381282,
+      0.18090635678597308
+     ]
+    },
+    "within_shot": {
+     "min_shot_bins": 20,
+     "min_class_bins": 5,
+     "spearman": {
+      "n_shots": 26,
+      "mean": 0.3589057418165982,
+      "mean_ci95": [
+       0.19635856750424946,
+       0.5240124524961031
+      ],
+      "median": 0.3221321719887,
+      "share_at_least_0_8": 0.2692307692307692,
+      "per_shot": {
+       "189057": {
+        "n_bins": 48,
+        "value": 0.5293095961788972
+       },
+       "189061": {
+        "n_bins": 51,
+        "value": -0.02171945701357466
+       },
+       "189062": {
+        "n_bins": 37,
+        "value": 0.2294926505452821
+       },
+       "189081": {
+        "n_bins": 57,
+        "value": 0.1630152968628468
+       },
+       "189088": {
+        "n_bins": 39,
+        "value": 0.007894736842105263
+       },
+       "189090": {
+        "n_bins": 58,
+        "value": -0.1404226521886247
+       },
+       "189093": {
+        "n_bins": 45,
+        "value": 0.8440052700922266
+       },
+       "189094": {
+        "n_bins": 48,
+        "value": 0.9413808076422058
+       },
+       "189097": {
+        "n_bins": 44,
+        "value": 0.5739252995066948
+       },
+       "189100": {
+        "n_bins": 47,
+        "value": -0.17946345975948197
+       },
+       "189101": {
+        "n_bins": 59,
+        "value": -0.24202220923436593
+       },
+       "189448": {
+        "n_bins": 34,
+        "value": -0.42276546982429325
+       },
+       "189451": {
+        "n_bins": 40,
+        "value": 0.35778611632270174
+       },
+       "190109": {
+        "n_bins": 38,
+        "value": -0.14279461647882702
+       },
+       "190110": {
+        "n_bins": 32,
+        "value": 0.1099706744868035
+       },
+       "190113": {
+        "n_bins": 36,
+        "value": 0.09575289575289575
+       },
+       "190116": {
+        "n_bins": 34,
+        "value": 0.2864782276546982
+       },
+       "199166": {
+        "n_bins": 40,
+        "value": 0.9243902439024392
+       },
+       "199171": {
+        "n_bins": 40,
+        "value": 0.8600375234521578
+       },
+       "199172": {
+        "n_bins": 40,
+        "value": -0.02363977485928706
+       },
+       "199351": {
+        "n_bins": 40,
+        "value": 0.8294559099437149
+       },
+       "199352": {
+        "n_bins": 40,
+        "value": 0.679174484052533
+       },
+       "199353": {
+        "n_bins": 40,
+        "value": 0.7671669793621013
+       },
+       "199354": {
+        "n_bins": 40,
+        "value": 0.8120075046904317
+       },
+       "200977": {
+        "n_bins": 70,
+        "value": 0.6012947248709648
+       },
+       "201081": {
+        "n_bins": 70,
+        "value": 0.891837984428309
+       }
+      }
+     },
+     "auroc": {
+      "n_shots": 8,
+      "mean": 0.7952316827657118,
+      "mean_ci95": [
+       0.579179713901243,
+       0.9766503598740441
+      ],
+      "median": 0.94212775528565,
+      "share_at_least_0_8": 0.75,
+      "per_shot": {
+       "189057": {
+        "n_bins": 48,
+        "value": 0.9289473684210526
+       },
+       "189100": {
+        "n_bins": 47,
+        "value": 0.38992042440318303
+       },
+       "189101": {
+        "n_bins": 59,
+        "value": 0.15873015873015872
+       },
+       "199166": {
+        "n_bins": 40,
+        "value": 1.0
+       },
+       "199353": {
+        "n_bins": 40,
+        "value": 0.9526315789473684
+       },
+       "199354": {
+        "n_bins": 40,
+        "value": 0.9316239316239316
+       },
+       "200977": {
+        "n_bins": 70,
+        "value": 1.0
+       },
+       "201081": {
+        "n_bins": 70,
+        "value": 1.0
+       }
+      }
+     }
+    }
+   },
+   "afrac__tangtv": {
+    "score": "afrac_value, larger Afrac = more attached (sign flipped)",
+    "reference": "tangtv vote: detached or marfe versus attached",
+    "auroc_pooled": {
+     "value": 0.8434535907859079,
+     "ci95": [
+      0.6015824275586438,
+      0.9484896802196828
+     ],
+     "n_bins": 219,
+     "n_not_attached": 96,
+     "n_shots": 7,
+     "valid_replicates": 1000,
+     "replicates": 1000
+    },
+    "spearman_pooled": {
+     "n_bins": 243,
+     "n_shots": 7,
+     "value": 0.6004578406305778,
+     "ci95": [
+      0.08264664085803543,
+      0.7825975797835735
+     ]
+    },
+    "within_shot": {
+     "min_shot_bins": 20,
+     "min_class_bins": 5,
+     "spearman": {
+      "n_shots": 5,
+      "mean": 0.27580318746450927,
+      "mean_ci95": [
+       -0.2355955631317145,
+       0.7537313051483228
+      ],
+      "median": 0.38904694167852055,
+      "share_at_least_0_8": 0.4,
+      "per_shot": {
+       "189057": {
+        "n_bins": 32,
+        "value": 0.8361436950146626
+       },
+       "189081": {
+        "n_bins": 37,
+        "value": 0.38904694167852055
+       },
+       "189093": {
+        "n_bins": 41,
+        "value": -0.6571428571428573
+       },
+       "189097": {
+        "n_bins": 28,
+        "value": -0.042692939244663386
+       },
+       "201081": {
+        "n_bins": 70,
+        "value": 0.8536610970168839
+       }
+      }
+     },
+     "auroc": {
+      "n_shots": 2,
+      "mean": 0.9772727272727273,
+      "mean_ci95": [
+       null,
+       null
+      ],
+      "median": 0.9772727272727273,
+      "share_at_least_0_8": 1.0,
+      "per_shot": {
+       "189057": {
+        "n_bins": 32,
+        "value": 0.9545454545454546
+       },
+       "201081": {
+        "n_bins": 70,
+        "value": 1.0
+       }
+      }
+     }
+    }
+   },
+   "prad__afrac": {
+    "score": "prad_rel_value, larger = more detached",
+    "reference": "afrac vote: detached or marfe versus attached",
+    "auroc_pooled": {
+     "value": 0.7066650683289379,
+     "ci95": [
+      0.3714063208532955,
+      0.8823820492052242
+     ],
+     "n_bins": 183,
+     "n_not_attached": 97,
+     "n_shots": 7,
+     "valid_replicates": 1000,
+     "replicates": 1000
+    },
+    "spearman_pooled": {
+     "n_bins": 233,
+     "n_shots": 7,
+     "value": 0.3361016723639189,
+     "ci95": [
+      -0.24955485617221806,
+      0.643366349701981
+     ]
+    },
+    "within_shot": {
+     "min_shot_bins": 20,
+     "min_class_bins": 5,
+     "spearman": {
+      "n_shots": 5,
+      "mean": 0.21256508840808214,
+      "mean_ci95": [
+       -0.31927170356472045,
+       0.7184435288938185
+      ],
+      "median": 0.19819819819819817,
+      "share_at_least_0_8": 0.4,
+      "per_shot": {
+       "189057": {
+        "n_bins": 31,
+        "value": 0.8399193548387098
+       },
+       "189081": {
+        "n_bins": 37,
+        "value": 0.19819819819819817
+       },
+       "189093": {
+        "n_bins": 38,
+        "value": -0.8019476966845388
+       },
+       "189097": {
+        "n_bins": 24,
+        "value": -0.03043478260869565
+       },
+       "201081": {
+        "n_bins": 70,
+        "value": 0.857090368296737
+       }
+      }
+     },
+     "auroc": {
+      "n_shots": 3,
+      "mean": 0.8665647644927535,
+      "mean_ci95": [
+       0.67578125,
+       1.0
+      ],
+      "median": 0.9239130434782609,
+      "share_at_least_0_8": 0.6666666666666666,
+      "per_shot": {
+       "189057": {
+        "n_bins": 31,
+        "value": 0.9239130434782609
+       },
+       "189081": {
+        "n_bins": 37,
+        "value": 0.67578125
+       },
+       "201081": {
+        "n_bins": 70,
+        "value": 1.0
+       }
+      }
+     }
+    }
+   },
+   "prad_abs__tangtv": {
+    "score": "prad_value, larger = more detached",
+    "reference": "tangtv vote: detached or marfe versus attached",
+    "auroc_pooled": {
+     "value": 0.786763715320427,
+     "ci95": [
+      0.6336810797420844,
+      0.919327448266592
+     ],
+     "n_bins": 1013,
+     "n_not_attached": 571,
+     "n_shots": 26,
+     "valid_replicates": 1000,
+     "replicates": 1000
+    },
+    "spearman_pooled": {
+     "n_bins": 1167,
+     "n_shots": 26,
+     "value": 0.5105141955963628,
+     "ci95": [
+      0.33293725620379533,
+      0.6534335873717658
+     ]
+    },
+    "within_shot": {
+     "min_shot_bins": 20,
+     "min_class_bins": 5,
+     "spearman": {
+      "n_shots": 26,
+      "mean": 0.3589057418165982,
+      "mean_ci95": [
+       0.19635856750424946,
+       0.5240124524961031
+      ],
+      "median": 0.3221321719887,
+      "share_at_least_0_8": 0.2692307692307692,
+      "per_shot": {
+       "189057": {
+        "n_bins": 48,
+        "value": 0.5293095961788972
+       },
+       "189061": {
+        "n_bins": 51,
+        "value": -0.02171945701357466
+       },
+       "189062": {
+        "n_bins": 37,
+        "value": 0.2294926505452821
+       },
+       "189081": {
+        "n_bins": 57,
+        "value": 0.1630152968628468
+       },
+       "189088": {
+        "n_bins": 39,
+        "value": 0.007894736842105263
+       },
+       "189090": {
+        "n_bins": 58,
+        "value": -0.1404226521886247
+       },
+       "189093": {
+        "n_bins": 45,
+        "value": 0.8440052700922266
+       },
+       "189094": {
+        "n_bins": 48,
+        "value": 0.9413808076422058
+       },
+       "189097": {
+        "n_bins": 44,
+        "value": 0.5739252995066948
+       },
+       "189100": {
+        "n_bins": 47,
+        "value": -0.17946345975948197
+       },
+       "189101": {
+        "n_bins": 59,
+        "value": -0.24202220923436593
+       },
+       "189448": {
+        "n_bins": 34,
+        "value": -0.42276546982429325
+       },
+       "189451": {
+        "n_bins": 40,
+        "value": 0.35778611632270174
+       },
+       "190109": {
+        "n_bins": 38,
+        "value": -0.14279461647882702
+       },
+       "190110": {
+        "n_bins": 32,
+        "value": 0.1099706744868035
+       },
+       "190113": {
+        "n_bins": 36,
+        "value": 0.09575289575289575
+       },
+       "190116": {
+        "n_bins": 34,
+        "value": 0.2864782276546982
+       },
+       "199166": {
+        "n_bins": 40,
+        "value": 0.9243902439024392
+       },
+       "199171": {
+        "n_bins": 40,
+        "value": 0.8600375234521578
+       },
+       "199172": {
+        "n_bins": 40,
+        "value": -0.02363977485928706
+       },
+       "199351": {
+        "n_bins": 40,
+        "value": 0.8294559099437149
+       },
+       "199352": {
+        "n_bins": 40,
+        "value": 0.679174484052533
+       },
+       "199353": {
+        "n_bins": 40,
+        "value": 0.7671669793621013
+       },
+       "199354": {
+        "n_bins": 40,
+        "value": 0.8120075046904317
+       },
+       "200977": {
+        "n_bins": 70,
+        "value": 0.6012947248709648
+       },
+       "201081": {
+        "n_bins": 70,
+        "value": 0.891837984428309
+       }
+      }
+     },
+     "auroc": {
+      "n_shots": 8,
+      "mean": 0.7952316827657118,
+      "mean_ci95": [
+       0.579179713901243,
+       0.9766503598740441
+      ],
+      "median": 0.94212775528565,
+      "share_at_least_0_8": 0.75,
+      "per_shot": {
+       "189057": {
+        "n_bins": 48,
+        "value": 0.9289473684210526
+       },
+       "189100": {
+        "n_bins": 47,
+        "value": 0.38992042440318303
+       },
+       "189101": {
+        "n_bins": 59,
+        "value": 0.15873015873015872
+       },
+       "199166": {
+        "n_bins": 40,
+        "value": 1.0
+       },
+       "199353": {
+        "n_bins": 40,
+        "value": 0.9526315789473684
+       },
+       "199354": {
+        "n_bins": 40,
+        "value": 0.9316239316239316
+       },
+       "200977": {
+        "n_bins": 70,
+        "value": 1.0
+       },
+       "201081": {
+        "n_bins": 70,
+        "value": 1.0
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "paper_agreement": {
+  "population_bins": 1229,
+  "population_shots": 26,
+  "population_shot_ids": [
+   189057,
+   189061,
+   189062,
+   189081,
+   189088,
+   189090,
+   189093,
+   189094,
+   189097,
+   189100,
+   189101,
+   189448,
+   189451,
+   190109,
+   190110,
+   190113,
+   190116,
+   199166,
+   199171,
+   199172,
+   199351,
+   199352,
+   199353,
+   199354,
+   200977,
+   201081
+  ],
+  "both_valid_bins": 1167,
+  "both_vote_bins": 554,
+  "both_vote_shots": 25,
+  "both_vote_shot_ids": [
+   189057,
+   189061,
+   189062,
+   189081,
+   189088,
+   189090,
+   189093,
+   189094,
+   189097,
+   189100,
+   189101,
+   189448,
+   189451,
+   190109,
+   190110,
+   190113,
+   190116,
+   199166,
+   199171,
+   199351,
+   199352,
+   199353,
+   199354,
+   200977,
+   201081
+  ],
+  "agreement": {
+   "value": 0.388086642599278,
+   "ci95": [
+    0.21180232295385726,
+    0.5658856273354135
+   ],
+   "valid_replicates": 1000,
+   "replicates": 1000
+  },
+  "kappa": {
+   "value": -0.16246796816004158,
+   "ci95": [
+    -0.4427256241689655,
+    0.14386255150527746
+   ],
+   "valid_replicates": 1000,
+   "replicates": 1000
+  },
+  "binary_kappa": {
+   "value": -0.16246796816004158,
+   "ci95": [
+    -0.4427256241689655,
+    0.14386255150527746
+   ],
+   "valid_replicates": 1000,
+   "replicates": 1000
+  },
+  "binary_agreement": {
+   "value": 0.388086642599278,
+   "ci95": [
+    0.21180232295385726,
+    0.5658856273354135
+   ],
+   "valid_replicates": 1000,
+   "replicates": 1000
+  },
+  "count_labels": [
+   "attached",
+   "detached",
+   "marfe"
+  ],
+  "count_rows": "prad",
+  "count_columns": "tangtv",
+  "counts": [
+   [
+    92,
+    235,
+    0
+   ],
+   [
+    104,
+    123,
+    0
+   ],
+   [
+    0,
+    0,
+    0
+   ]
+  ]
+ },
+ "failure_analysis": {
+  "prad_detached_where_tangtv_attached_by_tier": {
+   "lower_shelf_window": {
+    "tangtv_attached_bins_with_valid_prad": 0,
+    "tangtv_attached_bins_with_cast_prad": 0,
+    "prad_detached_bins": 0,
+    "prad_abstain_bins": 0,
+    "shot_ids": [],
+    "fraction_prad_detached": null,
+    "absolute_cutoffs_sensitivity": {
+     "tangtv_attached_bins_with_valid_prad": 0,
+     "prad_detached_bins": 0,
+     "fraction_prad_detached": null
+    }
+   },
+   "none": {
+    "tangtv_attached_bins_with_valid_prad": 0,
+    "tangtv_attached_bins_with_cast_prad": 0,
+    "prad_detached_bins": 0,
+    "prad_abstain_bins": 0,
+    "shot_ids": [],
+    "fraction_prad_detached": null,
+    "absolute_cutoffs_sensitivity": {
+     "tangtv_attached_bins_with_valid_prad": 0,
+     "prad_detached_bins": 0,
+     "fraction_prad_detached": null
+    }
+   },
+   "upper_shelf": {
+    "tangtv_attached_bins_with_valid_prad": 442,
+    "tangtv_attached_bins_with_cast_prad": 196,
+    "prad_detached_bins": 104,
+    "prad_abstain_bins": 246,
+    "shot_ids": [
+     189057,
+     189081,
+     189088,
+     189090,
+     189093,
+     189094,
+     189097,
+     189100,
+     189101,
+     189448,
+     189451,
+     199166,
+     199171,
+     199351,
+     199352,
+     199353,
+     199354,
+     200977,
+     201081
+    ],
+    "fraction_prad_detached": 0.23529411764705882,
+    "absolute_cutoffs_sensitivity": {
+     "tangtv_attached_bins_with_valid_prad": 442,
+     "prad_detached_bins": 237,
+     "fraction_prad_detached": 0.5361990950226244
+    }
+   }
+  },
+  "invalid_reasons_by_tier": {
+   "lower_shelf_window": {
+    "afrac": {
+     "short_reference": 5,
+     "probe_flux_unknown": 3
+    },
+    "prad": {},
+    "tangtv": {
+     "lower_shelf_window": 330,
+     "efit_gap": 3
+    }
+   },
+   "none": {
+    "afrac": {
+     "probe_off_separatrix": 424,
+     "probe_flux_unknown": 398,
+     "l_mode": 393,
+     "low_power": 229,
+     "short_reference": 165,
+     "ramp": 104,
+     "no_power": 73,
+     "no_probe_samples": 37,
+     "elm": 14
+    },
+    "prad": {
+     "no_input_power": 281,
+     "low_power": 111,
+     "elm": 24,
+     "negative_radiation": 1,
+     "elm_unknown": 1
+    },
+    "tangtv": {
+     "no_frames": 2006,
+     "efit_gap": 79
+    }
+   },
+   "upper_shelf": {
+    "afrac": {
+     "short_reference": 369,
+     "l_mode": 350,
+     "probe_off_separatrix": 232,
+     "elm": 22,
+     "no_power": 8,
+     "probe_flux_unknown": 5
+    },
+    "prad": {
+     "no_input_power": 30,
+     "elm": 27
+    },
+    "tangtv": {
+     "efit_gap": 6
+    }
+   }
+  }
+ },
+ "divertor_te_check": {
+  "record": "docs/labeler/results/detachment_te_check.json",
+  "script": "scripts/labeler/detach_te_check.py"
+ },
+ "indicator_names": {
+  "afrac": "Jsat over each probe's own attached reference, read at the probe nearest the separatrix (local proxy, L-mode abstains)",
+  "prad": "Prad,div,L / P_in over the shot's baseline (cutoffs from the 201081 anchor; the absolute cutoffs are the prad_abs sensitivity)",
+  "tangtv": "C-III front height DZ (shelf geometry, MARFE evidence)"
+ }
+}

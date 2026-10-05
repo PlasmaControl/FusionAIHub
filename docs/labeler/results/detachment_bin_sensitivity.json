@@ -1,0 +1,573 @@
+{
+ "shots_requested": 77,
+ "shots": [
+  189057,
+  189061,
+  189062,
+  189081,
+  189088,
+  189090,
+  189093,
+  189094,
+  189097,
+  189100,
+  189101,
+  189448,
+  189451,
+  190109,
+  190110,
+  190113,
+  190114,
+  190115,
+  190116,
+  190212,
+  190218,
+  191382,
+  191384,
+  192045,
+  192148,
+  192149,
+  192152,
+  192159,
+  192228,
+  192229,
+  192230,
+  192231,
+  192232,
+  192233,
+  192275,
+  192276,
+  192277,
+  192279,
+  194959,
+  196146,
+  196154,
+  198672,
+  199166,
+  199171,
+  199172,
+  199281,
+  199351,
+  199352,
+  199353,
+  199354,
+  200083,
+  200127,
+  200129,
+  200149,
+  200320,
+  200563,
+  200954,
+  200958,
+  200977,
+  200986,
+  200990,
+  201099,
+  201180,
+  201270,
+  202181,
+  202186,
+  202197,
+  202205,
+  202206,
+  203745,
+  203746,
+  203764,
+  203778,
+  203784,
+  203785,
+  204093,
+  204937
+ ],
+ "excluded_test": [
+  192154,
+  196153,
+  201107,
+  202188
+ ],
+ "model_record": "label_model.json",
+ "20ms": {
+  "bin_ms": 20,
+  "reference_min_bins": {
+   "afrac": 50,
+   "prad_baseline": 100,
+   "marfe": 5,
+   "shot_eligibility": 50
+  },
+  "shots_loaded": 77,
+  "shots_ineligible": [
+   190114,
+   190115,
+   190212,
+   190218,
+   191382,
+   191384,
+   192045,
+   192148,
+   192149,
+   192152,
+   192159,
+   192228,
+   192229,
+   192230,
+   192231,
+   192232,
+   192233,
+   192275,
+   192276,
+   192277,
+   192279,
+   194959,
+   196146,
+   196154,
+   198672,
+   199281,
+   200083,
+   200127,
+   200129,
+   200149,
+   200320,
+   200563,
+   200954,
+   200958,
+   200986,
+   200990,
+   201099,
+   201180,
+   201270,
+   202181,
+   202186,
+   202197,
+   202205,
+   202206,
+   203745,
+   203746,
+   203764,
+   203778,
+   203784,
+   203785,
+   204093,
+   204937
+  ],
+  "afrac_valid_seconds": 9.44,
+  "afrac_valid_shots": 6,
+  "afrac_short_reference_seconds": 25.18,
+  "afrac_reason_seconds": {
+   "l_mode": 37.44,
+   "probe_off_separatrix": 32.24,
+   "short_reference": 25.18,
+   "probe_flux_unknown": 17.1,
+   "low_power": 7.74,
+   "elm": 3.7800000000000002,
+   "no_power": 3.46,
+   "ramp": 2.96,
+   "no_probe_samples": 0.22
+  },
+  "tangtv_valid_seconds": 57.38,
+  "certain_seconds": 3.44,
+  "tangtv_only_seconds": 33.68,
+  "n_shots": 25,
+  "n_bins": 6978,
+  "certain_by_state": {
+   "attached": {
+    "bins": 66,
+    "shots": 4
+   },
+   "detached": {
+    "bins": 106,
+    "shots": 3
+   }
+  },
+  "tangtv_only_by_state": {
+   "attached": {
+    "bins": 997,
+    "shots": 18
+   },
+   "detached": {
+    "bins": 687,
+    "shots": 12
+   }
+  },
+  "n_certain_bins": 172,
+  "n_certain_shots": 6,
+  "n_tangtv_only_bins": 1684,
+  "n_tangtv_only_shots": 22,
+  "tier_counts": {
+   "tangtv_only": 1684,
+   "tangtv_only_lmode": 470,
+   "no_vote": 248,
+   "candidate_marfe": 173,
+   "certain": 172,
+   "insufficient_support": 123,
+   "conflict": 73
+  },
+  "n_assessed_bins": 2943,
+  "n_assessed_shots": 25,
+  "assessed_share": 0.42175408426483235,
+  "uncertain_share_of_assessed": 0.3693510023785253,
+  "flicker_per_s": 0.8890086206896552,
+  "pairwise_by_tangtv_tier": {
+   "none": {
+    "afrac__prad": {
+     "both_vote_bins": 67,
+     "agreement": 0.373134328358209,
+     "kappa": -0.26642664266426647
+    },
+    "afrac__tangtv": {
+     "both_vote_bins": 0,
+     "agreement": null,
+     "kappa": null
+    },
+    "prad__tangtv": {
+     "both_vote_bins": 0,
+     "agreement": null,
+     "kappa": null
+    }
+   },
+   "upper_shelf": {
+    "afrac__prad": {
+     "both_vote_bins": 130,
+     "agreement": 0.5230769230769231,
+     "kappa": 0.032412965186074505
+    },
+    "afrac__tangtv": {
+     "both_vote_bins": 245,
+     "agreement": 0.7020408163265306,
+     "kappa": 0.3964499038234401
+    },
+    "prad__tangtv": {
+     "both_vote_bins": 1263,
+     "agreement": 0.3515439429928741,
+     "kappa": -0.22137915643829503
+    }
+   }
+  },
+  "vs_50ms": {
+   "tangtv_tier": "upper_shelf",
+   "bins_labelled_in_both": 1757,
+   "agreement": 0.9891861126920888,
+   "kappa": 0.9778880845502735
+  }
+ },
+ "50ms": {
+  "bin_ms": 50,
+  "reference_min_bins": {
+   "afrac": 20,
+   "prad_baseline": 40,
+   "marfe": 2,
+   "shot_eligibility": 20
+  },
+  "shots_loaded": 77,
+  "shots_ineligible": [
+   190114,
+   190115,
+   190212,
+   190218,
+   191382,
+   191384,
+   192045,
+   192148,
+   192149,
+   192152,
+   192159,
+   192228,
+   192229,
+   192230,
+   192231,
+   192232,
+   192233,
+   192275,
+   192276,
+   192277,
+   192279,
+   194959,
+   196146,
+   196154,
+   198672,
+   199281,
+   200083,
+   200127,
+   200129,
+   200149,
+   200320,
+   200563,
+   200954,
+   200958,
+   200986,
+   200990,
+   201099,
+   201180,
+   201270,
+   202181,
+   202186,
+   202197,
+   202205,
+   202206,
+   203745,
+   203746,
+   203764,
+   203778,
+   203784,
+   203785,
+   204093,
+   204937
+  ],
+  "afrac_valid_seconds": 11.8,
+  "afrac_valid_shots": 6,
+  "afrac_short_reference_seconds": 24.1,
+  "afrac_reason_seconds": {
+   "l_mode": 37.15,
+   "probe_off_separatrix": 32.45,
+   "short_reference": 24.1,
+   "probe_flux_unknown": 17.25,
+   "low_power": 9.0,
+   "no_power": 3.6,
+   "ramp": 2.95,
+   "elm": 1.75,
+   "no_probe_samples": 0.1
+  },
+  "tangtv_valid_seconds": 57.650000000000006,
+  "certain_seconds": 3.8000000000000003,
+  "tangtv_only_seconds": 33.95,
+  "n_shots": 25,
+  "n_bins": 2803,
+  "certain_by_state": {
+   "attached": {
+    "bins": 36,
+    "shots": 4
+   },
+   "detached": {
+    "bins": 40,
+    "shots": 3
+   }
+  },
+  "tangtv_only_by_state": {
+   "attached": {
+    "bins": 392,
+    "shots": 17
+   },
+   "detached": {
+    "bins": 287,
+    "shots": 11
+   }
+  },
+  "n_certain_bins": 76,
+  "n_certain_shots": 6,
+  "n_tangtv_only_bins": 679,
+  "n_tangtv_only_shots": 22,
+  "tier_counts": {
+   "tangtv_only": 679,
+   "tangtv_only_lmode": 187,
+   "no_vote": 93,
+   "certain": 76,
+   "candidate_marfe": 70,
+   "insufficient_support": 66,
+   "conflict": 29
+  },
+  "n_assessed_bins": 1200,
+  "n_assessed_shots": 25,
+  "assessed_share": 0.4281127363539065,
+  "uncertain_share_of_assessed": 0.37083333333333335,
+  "flicker_per_s": 0.21192052980132448,
+  "pairwise_by_tangtv_tier": {
+   "none": {
+    "afrac__prad": {
+     "both_vote_bins": 30,
+     "agreement": 0.43333333333333335,
+     "kappa": -0.18604651162790703
+    },
+    "afrac__tangtv": {
+     "both_vote_bins": 0,
+     "agreement": null,
+     "kappa": null
+    },
+    "prad__tangtv": {
+     "both_vote_bins": 0,
+     "agreement": null,
+     "kappa": null
+    }
+   },
+   "upper_shelf": {
+    "afrac__prad": {
+     "both_vote_bins": 55,
+     "agreement": 0.6181818181818182,
+     "kappa": 0.24162836506894284
+    },
+    "afrac__tangtv": {
+     "both_vote_bins": 105,
+     "agreement": 0.7238095238095238,
+     "kappa": 0.45085662759242556
+    },
+    "prad__tangtv": {
+     "both_vote_bins": 510,
+     "agreement": 0.3431372549019608,
+     "kappa": -0.2280588260663302
+    }
+   }
+  }
+ },
+ "100ms": {
+  "bin_ms": 100,
+  "reference_min_bins": {
+   "afrac": 10,
+   "prad_baseline": 20,
+   "marfe": 1,
+   "shot_eligibility": 10
+  },
+  "shots_loaded": 77,
+  "shots_ineligible": [
+   190114,
+   190115,
+   190212,
+   190218,
+   191382,
+   191384,
+   192045,
+   192148,
+   192149,
+   192152,
+   192159,
+   192228,
+   192229,
+   192230,
+   192231,
+   192232,
+   192233,
+   192275,
+   192276,
+   192277,
+   192279,
+   194959,
+   196146,
+   196154,
+   198672,
+   199281,
+   200083,
+   200127,
+   200129,
+   200149,
+   200320,
+   200563,
+   200954,
+   200958,
+   200986,
+   200990,
+   201099,
+   201180,
+   201270,
+   202181,
+   202186,
+   202197,
+   202205,
+   202206,
+   203745,
+   203746,
+   203764,
+   203778,
+   203784,
+   203785,
+   204093,
+   204937
+  ],
+  "afrac_valid_seconds": 13.0,
+  "afrac_valid_shots": 6,
+  "afrac_short_reference_seconds": 22.8,
+  "afrac_reason_seconds": {
+   "l_mode": 37.6,
+   "probe_off_separatrix": 32.800000000000004,
+   "short_reference": 22.8,
+   "probe_flux_unknown": 18.0,
+   "low_power": 7.800000000000001,
+   "no_power": 4.1000000000000005,
+   "ramp": 2.8000000000000003,
+   "elm": 1.3,
+   "no_probe_samples": 0.30000000000000004
+  },
+  "tangtv_valid_seconds": 58.5,
+  "certain_seconds": 5.1000000000000005,
+  "tangtv_only_seconds": 33.9,
+  "n_shots": 25,
+  "n_bins": 1405,
+  "certain_by_state": {
+   "attached": {
+    "bins": 24,
+    "shots": 4
+   },
+   "detached": {
+    "bins": 27,
+    "shots": 3
+   }
+  },
+  "tangtv_only_by_state": {
+   "attached": {
+    "bins": 199,
+    "shots": 18
+   },
+   "detached": {
+    "bins": 140,
+    "shots": 11
+   }
+  },
+  "n_certain_bins": 51,
+  "n_certain_shots": 6,
+  "n_tangtv_only_bins": 339,
+  "n_tangtv_only_shots": 22,
+  "tier_counts": {
+   "tangtv_only": 339,
+   "tangtv_only_lmode": 92,
+   "certain": 51,
+   "no_vote": 37,
+   "candidate_marfe": 36,
+   "insufficient_support": 32,
+   "conflict": 18
+  },
+  "n_assessed_bins": 605,
+  "n_assessed_shots": 25,
+  "assessed_share": 0.4306049822064057,
+  "uncertain_share_of_assessed": 0.35537190082644626,
+  "flicker_per_s": 0.17948717948717952,
+  "pairwise_by_tangtv_tier": {
+   "none": {
+    "afrac__prad": {
+     "both_vote_bins": 13,
+     "agreement": 0.38461538461538464,
+     "kappa": -0.30000000000000004
+    },
+    "afrac__tangtv": {
+     "both_vote_bins": 0,
+     "agreement": null,
+     "kappa": null
+    },
+    "prad__tangtv": {
+     "both_vote_bins": 0,
+     "agreement": null,
+     "kappa": null
+    }
+   },
+   "upper_shelf": {
+    "afrac__prad": {
+     "both_vote_bins": 31,
+     "agreement": 0.5161290322580645,
+     "kappa": 0.037267080745341595
+    },
+    "afrac__tangtv": {
+     "both_vote_bins": 69,
+     "agreement": 0.7391304347826086,
+     "kappa": 0.4772727272727272
+    },
+    "prad__tangtv": {
+     "both_vote_bins": 255,
+     "agreement": 0.3764705882352941,
+     "kappa": -0.14195183776932832
+    }
+   }
+  },
+  "vs_50ms": {
+   "tangtv_tier": "upper_shelf",
+   "bins_labelled_in_both": 362,
+   "agreement": 0.988950276243094,
+   "kappa": 0.9774349384447562
+  }
+ },
+ "w50_matches_exported_bins": true
+}

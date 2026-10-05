@@ -1,0 +1,169 @@
+{
+ "node": "PTDATA BMSPINJ",
+ "unit": "volts, 1 V = 1 MW total injected neutral-beam power",
+ "why": "The corpus `pinj` group is a stub on these shots and the `\\NB::PINJ*` and per-beam `\\D3D::...PINJ_<beam>` nodes hold no data.",
+ "calibration_against_corpus_beams": {
+  "189057": {
+   "n_windows": 16,
+   "corpus_over_bms_median": 0.994061183710157,
+   "corpus_over_bms_range": [
+    0.9900935775540801,
+    1.0195804086095046
+   ],
+   "bms_max_mw": 8.308714866638184,
+   "corpus_max_mw": 8.8160535
+  },
+  "189093": {
+   "n_windows": 17,
+   "corpus_over_bms_median": 0.9715888062070818,
+   "corpus_over_bms_range": [
+    0.9662695422895865,
+    0.9904298856083038
+   ],
+   "bms_max_mw": 11.290940284729004,
+   "corpus_max_mw": 11.046103375
+  },
+  "190109": {
+   "n_windows": 0,
+   "corpus_over_bms_median": null,
+   "corpus_over_bms_range": null,
+   "bms_max_mw": 1.6597964763641357,
+   "corpus_max_mw": 1.85579625
+  },
+  "195952": {
+   "n_windows": 15,
+   "corpus_over_bms_median": 1.012547189558389,
+   "corpus_over_bms_range": [
+    1.0111709625486018,
+    1.0559594050821075
+   ],
+   "bms_max_mw": 10.082012176513672,
+   "corpus_max_mw": 10.501283125
+  },
+  "199166": {
+   "n_windows": 16,
+   "corpus_over_bms_median": 1.0069375498500108,
+   "corpus_over_bms_range": [
+    1.0062570231664842,
+    1.0084117763806313
+   ],
+   "bms_max_mw": 1.2075086832046509,
+   "corpus_max_mw": 1.775106
+  },
+  "199172": {
+   "n_windows": 16,
+   "corpus_over_bms_median": 1.0042273789686509,
+   "corpus_over_bms_range": [
+    1.0031543033967976,
+    1.0058590886352714
+   ],
+   "bms_max_mw": 1.3722997903823853,
+   "corpus_max_mw": 1.9054399375
+  },
+  "199351": {
+   "n_windows": 16,
+   "corpus_over_bms_median": 1.0059392332431454,
+   "corpus_over_bms_range": [
+    1.0050821304042683,
+    1.0071670579419585
+   ],
+   "bms_max_mw": 1.254939317703247,
+   "corpus_max_mw": 1.7496581875
+  },
+  "200977": {
+   "n_windows": 16,
+   "corpus_over_bms_median": 1.0028456850464529,
+   "corpus_over_bms_range": [
+    1.0015160518647666,
+    1.0038005853053116
+   ],
+   "bms_max_mw": 1.4289400577545166,
+   "corpus_max_mw": 1.958733875
+  }
+ },
+ "corpus_over_bms_median_range": [
+  0.9715888062070818,
+  1.012547189558389
+ ],
+ "n_shots_supplied": 26,
+ "shots_supplied": {
+  "180257": {
+   "max_mw": 10.313361167907715
+  },
+  "180264": {
+   "max_mw": 10.54035472869873
+  },
+  "190586": {
+   "max_mw": 0.0
+  },
+  "190602": {
+   "max_mw": 0.0
+  },
+  "190604": {
+   "max_mw": 0.0
+  },
+  "191316": {
+   "max_mw": 0.0
+  },
+  "191320": {
+   "max_mw": 0.0
+  },
+  "191326": {
+   "max_mw": 0.0
+  },
+  "196093": {
+   "max_mw": 0.0
+  },
+  "196096": {
+   "max_mw": 0.0
+  },
+  "196101": {
+   "max_mw": 0.0
+  },
+  "200704": {
+   "max_mw": 0.0
+  },
+  "201081": {
+   "max_mw": 4.7779669761657715
+  },
+  "201099": {
+   "max_mw": 0.0
+  },
+  "201107": {
+   "max_mw": 0.0
+  },
+  "201395": {
+   "max_mw": 10.247364044189453
+  },
+  "201447": {
+   "max_mw": 13.178105354309082
+  },
+  "203498": {
+   "max_mw": 4.7088623046875
+  },
+  "203629": {
+   "max_mw": 14.447269439697266
+  },
+  "206879": {
+   "max_mw": 12.513161659240723
+  },
+  "206880": {
+   "max_mw": 10.757854461669922
+  },
+  "206886": {
+   "max_mw": 12.400428771972656
+  },
+  "206891": {
+   "max_mw": 12.438080787658691
+  },
+  "206892": {
+   "max_mw": 10.854381561279297
+  },
+  "206893": {
+   "max_mw": 12.388532638549805
+  },
+  "206894": {
+   "max_mw": 10.664148330688477
+  }
+ }
+}

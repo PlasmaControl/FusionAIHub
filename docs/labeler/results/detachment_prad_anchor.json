@@ -1,0 +1,94 @@
+{
+ "shot": 201081,
+ "source": "Chen 2026 NF 66 036014 worked example: Te cliffs ~2650 and ~4450 ms, Prad,div,L 1.6 MW attached and 2.2 MW detached, 4 MW NBI",
+ "published": {
+  "cliff_detach_ms": 2650.0,
+  "cliff_reattach_ms": 4450.0,
+  "prad_divl_attached_mw": 1.6,
+  "prad_divl_detached_mw": 2.2,
+  "nbi_mw": 4.0
+ },
+ "window_rule": {
+  "averaging_ms": 250.0,
+  "elm_masked": true,
+  "guard_ms": 100.0,
+  "flat_top_ms": [
+   1500.0,
+   5700.0
+  ],
+  "reattach_settle_ms": 500.0,
+  "windows_from": "published Te-cliff times, not TangTV"
+ },
+ "p_in_mw": {
+  "anchor_value_used": "measured_anchor.p_in_mw below: the median of the 250 ms-averaged P_in over the 32 attached-window bins, the one P_in number the cutoffs and the documents use",
+  "components_flat_top_median_mw_not_p_in": {
+   "beams": 4.08654801940918,
+   "poh": 0.21127445770245323,
+   "ech": 6.752684482534774e-05
+  },
+  "beam_source": "PTDATA BMSPINJ (corpus pinj is a stub on this shot)"
+ },
+ "phases": {
+  "attached_before_first_cliff": {
+   "n_bins": 19,
+   "centres_ms": [
+    1525.0,
+    2425.0
+   ],
+   "prad_divl_mw_median": 1.4702870783898305,
+   "prad_divl_mw_range": [
+    1.390683252314815,
+    1.7724868266129032
+   ],
+   "f_div_median": 0.34522482509400465,
+   "p_in_mw_median": 4.2577206690652325
+  },
+  "detached_between_cliffs": {
+   "n_bins": 28,
+   "centres_ms": [
+    2875.0,
+    4225.0
+   ],
+   "prad_divl_mw_median": 1.989654040606185,
+   "prad_divl_mw_range": [
+    1.9628040592105263,
+    2.0132801854166664
+   ],
+   "f_div_median": 0.45905428165580975,
+   "p_in_mw_median": 4.3313196490990595
+  },
+  "attached_after_second_cliff": {
+   "n_bins": 13,
+   "centres_ms": [
+    5075.0,
+    5675.0
+   ],
+   "prad_divl_mw_median": 1.640844189516129,
+   "prad_divl_mw_range": [
+    1.623151550403226,
+    1.6603719858870967
+   ],
+   "f_div_median": 0.38368854368013944,
+   "p_in_mw_median": 4.277274183927527
+  },
+  "attached_both": {
+   "n_bins": 32,
+   "centres_ms": [
+    1525.0,
+    5675.0
+   ],
+   "prad_divl_mw_median": 1.6209600836032523,
+   "prad_divl_mw_range": [
+    1.390683252314815,
+    1.7724868266129032
+   ],
+   "f_div_median": 0.3776157121604572,
+   "p_in_mw_median": 4.274182987220368
+  }
+ },
+ "measured_anchor": {
+  "p_in_mw": 4.274,
+  "attached_mw": 1.621,
+  "detached_mw": 1.99
+ }
+}

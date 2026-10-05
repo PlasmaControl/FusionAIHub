@@ -1,0 +1,234 @@
+{
+  "description": "Published timed state statements, transcribed from local paper digests. Frozen independently of regenerated votes; no new threshold is selected from their agreement.",
+  "scope": "A small literature sanity check, not an expert gold set or an estimate of population accuracy. The references come from papers also used to motivate indicator thresholds, so threshold-source overlap prevents a fully held-out validation claim.",
+  "sources": {
+    "chen2026": {
+      "doi": "10.1088/1741-4326/ae3972",
+      "digest": "/scratch/gpfs/nc1514/FusionAIHub/.tmp/label_papers/Chen_2026_Nucl._Fusion_66_036014.md",
+      "examined_lines": [
+        79,
+        108
+      ]
+    },
+    "eldon2021": {
+      "doi": "10.1016/j.nme.2021.100963",
+      "digest": "/scratch/gpfs/nc1514/FusionAIHub/.tmp/label_papers/outside/Eldon_2021_NME_Afrac_DIIID_EAST.md",
+      "examined_lines": [
+        29,
+        38
+      ]
+    },
+    "eldon2019": {
+      "doi": "10.1016/j.nme.2019.01.010",
+      "digest": "/scratch/gpfs/nc1514/FusionAIHub/.tmp/label_papers/advances_detach_eldon.md",
+      "examined_lines": [
+        25,
+        50
+      ],
+      "exclusion": "Radiation and heat-flux changes do not specify a timed attached/detached/MARFE state. High radiated fraction or radiative collapse alone is not assigned MARFE."
+    },
+    "eldon2022": {
+      "doi": "10.1088/1361-6587/ac6ff9",
+      "digest": "/scratch/gpfs/nc1514/FusionAIHub/.tmp/label_papers/Eldon_2022_Plasma_Phys._Control._Fusion_64_075002.md",
+      "exclusion": "Worked control examples are KSTAR shots, not DIII-D records in this evaluation."
+    }
+  },
+  "records": [
+    {
+      "id": "eldon2021_180257_attached",
+      "shot": 180257,
+      "time_ms": 2400.0,
+      "state": "attached",
+      "source": "eldon2021",
+      "digest_lines": [
+        33,
+        33
+      ],
+      "evidence": "Published profile window at 2.4 s is described as attached, with DOD approximately 1.",
+      "score_primary": true,
+      "ambiguity": "The digest gives a profile-window centre, not the window edges. Score only the containing exported bin; do not expand into a state interval.",
+      "threshold_source_overlap": true
+    },
+    {
+      "id": "eldon2021_180257_detached",
+      "shot": 180257,
+      "time_ms": 4800.0,
+      "state": "detached",
+      "source": "eldon2021",
+      "digest_lines": [
+        33,
+        38
+      ],
+      "evidence": "Published profile window at 4.8 s is described as detached, with DOD approximately 4; target-temperature profiles corroborate the current decrease.",
+      "score_primary": true,
+      "ambiguity": "Only a profile-window centre is given. Score the containing exported bin without inferring an interval.",
+      "threshold_source_overlap": true
+    },
+    {
+      "id": "chen2026_199166_marfe",
+      "shot": 199166,
+      "time_ms": 3705.0,
+      "state": "marfe",
+      "source": "chen2026",
+      "digest_lines": [
+        81,
+        81
+      ],
+      "evidence": "The L-mode density-ramp reference is explicitly reported to have a MARFE at 3.705 s.",
+      "score_primary": true,
+      "ambiguity": "The published instant may describe onset; a 50 ms bin can mix pre-onset and post-onset conditions. Do not expand the instant into a MARFE interval.",
+      "threshold_source_overlap": true
+    },
+    {
+      "id": "eldon2021_180257_transition",
+      "shot": 180257,
+      "time_ms": 3600.0,
+      "state": null,
+      "source": "eldon2021",
+      "digest_lines": [
+        33,
+        37
+      ],
+      "evidence": "The 3.6 s profile window is described as detaching, with DOD approximately 2 and low target temperature.",
+      "score_primary": false,
+      "ambiguity": "Transition/depth language does not specify which discrete state the exact instant should receive."
+    },
+    {
+      "id": "chen2026_200977_onset",
+      "shot": 200977,
+      "time_ms": 2800.0,
+      "state": null,
+      "source": "chen2026",
+      "digest_lines": [
+        83,
+        83
+      ],
+      "evidence": "Detachment onset is reported at 2.8 s.",
+      "score_primary": false,
+      "ambiguity": "An onset instant straddles attached and detached conditions; no duration or discrete state is assigned."
+    },
+    {
+      "id": "eldon2021_180264_collapse",
+      "shot": 180264,
+      "state": null,
+      "source": "eldon2021",
+      "digest_lines": [
+        34,
+        34
+      ],
+      "evidence": "A radiative-collapse disruption is reported after neon seeding.",
+      "score_primary": false,
+      "ambiguity": "No exact time is given and radiative collapse does not itself confirm a localized MARFE."
+    },
+    {
+      "id": "chen2026_201081_attached_2300",
+      "time_ms": 2300.0,
+      "state": "attached",
+      "evidence": "Chen 2026, shot 201081: before the first Te cliff (~2650 ms), Te about 20 eV at the divertor Thomson chords Z = -1.222 and -1.205 m. The state is the cold-target criterion applied to the published Te-cliff times.",
+      "ambiguity": "The cliff times are read off a published plot to about 100 ms; points are kept at least 150 ms from a cliff. The Prad,div anchor was measured on this shot's cliff-defined windows (detachment_prad_anchor.json), so the Prad score on it is not independent; TangTV and Afrac are.",
+      "shot": 201081,
+      "source": "chen2026",
+      "digest_lines": [
+        84,
+        84
+      ],
+      "score_primary": true,
+      "threshold_source_overlap": true
+    },
+    {
+      "id": "chen2026_201081_attached_2500",
+      "time_ms": 2500.0,
+      "state": "attached",
+      "evidence": "Chen 2026, shot 201081: before the first Te cliff (~2650 ms), Te about 20 eV at the divertor Thomson chords Z = -1.222 and -1.205 m. The state is the cold-target criterion applied to the published Te-cliff times.",
+      "ambiguity": "The cliff times are read off a published plot to about 100 ms; points are kept at least 150 ms from a cliff. The Prad,div anchor was measured on this shot's cliff-defined windows (detachment_prad_anchor.json), so the Prad score on it is not independent; TangTV and Afrac are.",
+      "shot": 201081,
+      "source": "chen2026",
+      "digest_lines": [
+        84,
+        84
+      ],
+      "score_primary": true,
+      "threshold_source_overlap": true
+    },
+    {
+      "id": "chen2026_201081_detached_3000",
+      "time_ms": 3000.0,
+      "state": "detached",
+      "evidence": "Chen 2026, shot 201081: between the two Te cliffs (~2650 and ~4450 ms), Te about 3 eV at the divertor Thomson chords. The state is the cold-target criterion applied to the published Te-cliff times.",
+      "ambiguity": "The cliff times are read off a published plot to about 100 ms; points are kept at least 150 ms from a cliff. The Prad,div anchor was measured on this shot's cliff-defined windows (detachment_prad_anchor.json), so the Prad score on it is not independent; TangTV and Afrac are.",
+      "shot": 201081,
+      "source": "chen2026",
+      "digest_lines": [
+        84,
+        84
+      ],
+      "score_primary": true,
+      "threshold_source_overlap": true
+    },
+    {
+      "id": "chen2026_201081_detached_3500",
+      "time_ms": 3500.0,
+      "state": "detached",
+      "evidence": "Chen 2026, shot 201081: between the two Te cliffs (~2650 and ~4450 ms), Te about 3 eV at the divertor Thomson chords. The state is the cold-target criterion applied to the published Te-cliff times.",
+      "ambiguity": "The cliff times are read off a published plot to about 100 ms; points are kept at least 150 ms from a cliff. The Prad,div anchor was measured on this shot's cliff-defined windows (detachment_prad_anchor.json), so the Prad score on it is not independent; TangTV and Afrac are.",
+      "shot": 201081,
+      "source": "chen2026",
+      "digest_lines": [
+        84,
+        84
+      ],
+      "score_primary": true,
+      "threshold_source_overlap": true
+    },
+    {
+      "id": "chen2026_201081_detached_4000",
+      "time_ms": 4000.0,
+      "state": "detached",
+      "evidence": "Chen 2026, shot 201081: between the two Te cliffs (~2650 and ~4450 ms), Te about 3 eV at the divertor Thomson chords. The state is the cold-target criterion applied to the published Te-cliff times.",
+      "ambiguity": "The cliff times are read off a published plot to about 100 ms; points are kept at least 150 ms from a cliff. The Prad,div anchor was measured on this shot's cliff-defined windows (detachment_prad_anchor.json), so the Prad score on it is not independent; TangTV and Afrac are.",
+      "shot": 201081,
+      "source": "chen2026",
+      "digest_lines": [
+        84,
+        84
+      ],
+      "score_primary": true,
+      "threshold_source_overlap": true
+    },
+    {
+      "id": "chen2026_201081_attached_4900",
+      "time_ms": 4900.0,
+      "state": "attached",
+      "evidence": "Chen 2026, shot 201081: after the second Te cliff (~4450 ms): reattached, Te back above the cold-target band. The state is the cold-target criterion applied to the published Te-cliff times.",
+      "ambiguity": "The cliff times are read off a published plot to about 100 ms; points are kept at least 150 ms from a cliff. The Prad,div anchor was measured on this shot's cliff-defined windows (detachment_prad_anchor.json), so the Prad score on it is not independent; TangTV and Afrac are.",
+      "shot": 201081,
+      "source": "chen2026",
+      "digest_lines": [
+        84,
+        84
+      ],
+      "score_primary": true,
+      "threshold_source_overlap": true
+    },
+    {
+      "id": "chen2026_201081_attached_5100",
+      "time_ms": 5100.0,
+      "state": "attached",
+      "evidence": "Chen 2026, shot 201081: after the second Te cliff (~4450 ms): reattached, Te back above the cold-target band. The state is the cold-target criterion applied to the published Te-cliff times.",
+      "ambiguity": "The cliff times are read off a published plot to about 100 ms; points are kept at least 150 ms from a cliff. The Prad,div anchor was measured on this shot's cliff-defined windows (detachment_prad_anchor.json), so the Prad score on it is not independent; TangTV and Afrac are.",
+      "shot": 201081,
+      "source": "chen2026",
+      "digest_lines": [
+        84,
+        84
+      ],
+      "score_primary": true,
+      "threshold_source_overlap": true
+    }
+  ],
+  "manual_front_check": {
+    "directory": "/scratch/gpfs/nc1514/plasma_tv/data/labels/manual_labeled_points/all",
+    "meaning": "Owner-selected C-III emission-front Z positions, one per inversion frame; check only the numerical DZ estimate after conversion with EFIT geometry.",
+    "prohibition": "Do not count these points as independent attached/detached/MARFE truth or infer MARFE from front height alone."
+  }
+}
