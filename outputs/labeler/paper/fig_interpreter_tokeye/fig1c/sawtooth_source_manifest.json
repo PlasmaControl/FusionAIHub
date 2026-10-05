@@ -1,5 +1,5 @@
 {
- "selected_at_utc": "2026-10-05T13:55:58.475424+00:00",
+ "selected_at_utc": "2026-10-05T14:17:08.795642+00:00",
  "export_root": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5",
  "export_sums_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/labels/SHA256SUMS",
  "export_sums_sha256": "47081aebcad868911bf3e38817b3e0c79e4ba9f02efe5fcee84780ad00a0ef14",
@@ -10,28 +10,28 @@
  "validation_status": "unvalidated_research_labels_owner_away",
  "snapshot_source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/saw_source/shots",
  "windows_ms": {
-  "201991": [
-   1000,
-   6100
+  "199563": [
+   700,
+   5800
   ]
  },
  "files": [
   {
-   "shot": 201991,
-   "original_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/shots/201991.json",
-   "snapshot_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/saw_source/shots/201991.json",
-   "sha256": "505b602ebc628307d6aa8189649a39c47e362da44fca31d5b7c4fecec6fa0fd2",
-   "population_shard": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/labels/population-122.csv",
-   "population_shard_snapshot_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/saw_source/labels/population-122.csv",
-   "population_shard_sha256": "f540c949405d67a83b659068135ee0f1494bf3b86df67b9c35973df1f46f1324",
+   "shot": 199563,
+   "original_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/shots/199563.json",
+   "snapshot_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/saw_source/shots/199563.json",
+   "sha256": "90be9fe5aa72c32b8bd1adca465a94029dbf0c8eef47e22b91e61a7fe12744bf",
+   "population_shard": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/labels/population-100.csv",
+   "population_shard_snapshot_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/saw_source/labels/population-100.csv",
+   "population_shard_sha256": "d9c8e2e2afab1e4a047ecb20cf51e9909037cf4591ebc7bfb94747b63316612b",
    "states_equal_population_shard": true,
    "state_seconds": {
-    "present": 0.3134999925839921,
-    "absent": 0.9086999785042182,
-    "q_prior_ece_contradicted": 0,
-    "q_prior_untested": 0.5512999869587054,
-    "uncertain": 1.6564999608146094,
-    "unassessed": 2.706099935985767
+    "present": 0.3659999913420764,
+    "absent": 0,
+    "q_prior_ece_contradicted": 0.5654999866227968,
+    "q_prior_untested": 0,
+    "uncertain": 4.46859989429289,
+    "unassessed": 0.7349999826131851
    }
   }
  ],
@@ -42,36 +42,54 @@
    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/ece_sawtooth/v3/sawtooth_oscillation_suggest_ece_sawtooth_v3.csv",
    "sha256": "05c995be4de317eeed4b45591d0b803e9147906bd4674ed8c7b84ab477b8d38c",
    "shots": {
-    "201991": [
+    "199563": [
      {
-      "start_ms": 1000,
-      "end_ms": 1456.0,
+      "start_ms": 700,
+      "end_ms": 915.0,
       "category": 2,
       "state": "uncertain"
      },
      {
-      "start_ms": 1456.0,
-      "end_ms": 2604.0,
+      "start_ms": 915.0,
+      "end_ms": 2115.0,
       "category": 0,
       "state": "absent"
      },
      {
-      "start_ms": 2604.0,
-      "end_ms": 3875.0,
+      "start_ms": 2115.0,
+      "end_ms": 2193.0,
       "category": 1,
       "state": "present"
      },
      {
-      "start_ms": 3875.0,
-      "end_ms": 5415.0,
+      "start_ms": 2193.0,
+      "end_ms": 2566.0,
       "category": 0,
       "state": "absent"
      },
      {
-      "start_ms": 5415.0,
-      "end_ms": 6100,
+      "start_ms": 2566.0,
+      "end_ms": 3534.0,
       "category": 1,
       "state": "present"
+     },
+     {
+      "start_ms": 3534.0,
+      "end_ms": 3827.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 3827.0,
+      "end_ms": 5738.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 5738.0,
+      "end_ms": 5800,
+      "category": 0,
+      "state": "absent"
      }
     ]
    }
@@ -82,196 +100,40 @@
    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/sawtooth_frames/v2/sawtooth_oscillation_suggest_sawtooth_frames_v2.csv",
    "sha256": "a445f034fc90ce6eb8311f9c9331df7e6f206c05376cf48d900516f2d05b469f",
    "shots": {
-    "201991": [
+    "199563": [
      {
-      "start_ms": 1000,
-      "end_ms": 2540.0,
+      "start_ms": 700,
+      "end_ms": 2000.0,
       "category": 0,
       "state": "absent"
      },
      {
-      "start_ms": 2540.0,
-      "end_ms": 3380.0,
+      "start_ms": 2000.0,
+      "end_ms": 4900.0,
       "category": 1,
       "state": "present"
      },
      {
-      "start_ms": 3380.0,
-      "end_ms": 3400.0,
+      "start_ms": 4900.0,
+      "end_ms": 4910.0,
       "category": 0,
       "state": "absent"
      },
      {
-      "start_ms": 3400.0,
-      "end_ms": 3420.0,
+      "start_ms": 4910.0,
+      "end_ms": 4980.0,
       "category": 1,
       "state": "present"
      },
      {
-      "start_ms": 3420.0,
-      "end_ms": 3440.0,
+      "start_ms": 4980.0,
+      "end_ms": 5100.0,
       "category": 0,
       "state": "absent"
      },
      {
-      "start_ms": 3440.0,
-      "end_ms": 3530.0,
-      "category": 1,
-      "state": "present"
-     },
-     {
-      "start_ms": 3530.0,
-      "end_ms": 3550.0,
-      "category": 0,
-      "state": "absent"
-     },
-     {
-      "start_ms": 3550.0,
-      "end_ms": 3560.0,
-      "category": 1,
-      "state": "present"
-     },
-     {
-      "start_ms": 3560.0,
-      "end_ms": 3570.0,
-      "category": 0,
-      "state": "absent"
-     },
-     {
-      "start_ms": 3570.0,
-      "end_ms": 3580.0,
-      "category": 1,
-      "state": "present"
-     },
-     {
-      "start_ms": 3580.0,
-      "end_ms": 3590.0,
-      "category": 0,
-      "state": "absent"
-     },
-     {
-      "start_ms": 3590.0,
-      "end_ms": 3600.0,
-      "category": 1,
-      "state": "present"
-     },
-     {
-      "start_ms": 3600.0,
-      "end_ms": 3610.0,
-      "category": 0,
-      "state": "absent"
-     },
-     {
-      "start_ms": 3610.0,
-      "end_ms": 3620.0,
-      "category": 1,
-      "state": "present"
-     },
-     {
-      "start_ms": 3620.0,
-      "end_ms": 3630.0,
-      "category": 0,
-      "state": "absent"
-     },
-     {
-      "start_ms": 3630.0,
-      "end_ms": 3640.0,
-      "category": 1,
-      "state": "present"
-     },
-     {
-      "start_ms": 3640.0,
-      "end_ms": 3660.0,
-      "category": 0,
-      "state": "absent"
-     },
-     {
-      "start_ms": 3660.0,
-      "end_ms": 3690.0,
-      "category": 1,
-      "state": "present"
-     },
-     {
-      "start_ms": 3690.0,
-      "end_ms": 3700.0,
-      "category": 0,
-      "state": "absent"
-     },
-     {
-      "start_ms": 3700.0,
-      "end_ms": 3720.0,
-      "category": 1,
-      "state": "present"
-     },
-     {
-      "start_ms": 3720.0,
-      "end_ms": 3730.0,
-      "category": 0,
-      "state": "absent"
-     },
-     {
-      "start_ms": 3730.0,
-      "end_ms": 3750.0,
-      "category": 1,
-      "state": "present"
-     },
-     {
-      "start_ms": 3750.0,
-      "end_ms": 4110.0,
-      "category": 0,
-      "state": "absent"
-     },
-     {
-      "start_ms": 4110.0,
-      "end_ms": 4120.0,
-      "category": 1,
-      "state": "present"
-     },
-     {
-      "start_ms": 4120.0,
-      "end_ms": 4190.0,
-      "category": 0,
-      "state": "absent"
-     },
-     {
-      "start_ms": 4190.0,
-      "end_ms": 4240.0,
-      "category": 1,
-      "state": "present"
-     },
-     {
-      "start_ms": 4240.0,
-      "end_ms": 4250.0,
-      "category": 0,
-      "state": "absent"
-     },
-     {
-      "start_ms": 4250.0,
-      "end_ms": 4770.0,
-      "category": 1,
-      "state": "present"
-     },
-     {
-      "start_ms": 4770.0,
-      "end_ms": 4780.0,
-      "category": 0,
-      "state": "absent"
-     },
-     {
-      "start_ms": 4780.0,
-      "end_ms": 4820.0,
-      "category": 1,
-      "state": "present"
-     },
-     {
-      "start_ms": 4820.0,
-      "end_ms": 5410.0,
-      "category": 0,
-      "state": "absent"
-     },
-     {
-      "start_ms": 5410.0,
-      "end_ms": 6100,
+      "start_ms": 5100.0,
+      "end_ms": 5800.0,
       "category": 1,
       "state": "present"
      }
