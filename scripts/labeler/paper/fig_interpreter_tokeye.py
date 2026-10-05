@@ -75,7 +75,7 @@ from labeler.paper import PAGE_IN, figure_sources, mode_tags, roster, style
 from labeler.paper import label_figure as lf
 
 STEM = "fig_interpreter"
-HEIGHT_IN = 6.6
+HEIGHT_IN = 6.2
 DPI_PNG = 150
 DPI_PDF = 300
 #: The window's margin the TokEye cache keeps beyond the figure's, ms.
@@ -1033,10 +1033,10 @@ def draw(
     n_read, n_kept = roster.gated(n_sig.rows[0], gate) if n_sig.rows else (None, None)
 
     layout = {
-        "h_raw": 0.32, "raw": 2.25, "g0": 0.22, "raw2": 2.25,
+        "h_raw": 0.32, "raw": 2.0, "g0": 0.22, "raw2": 2.0,
         "g1": 0.1, "da_raw": 0.38,
         "g2": 0.2, "nbi": 0.38, "h_proc": 0.52,
-        "pr": 3.6,
+        "pr": 3.3,
         "crashes": 0.24 if len(crashes) else 0.001,
         "g3": 0.1, "da_pr": 0.55, "h_lab": 0.36,
     }  # fmt: skip

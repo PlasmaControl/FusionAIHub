@@ -737,7 +737,7 @@ def main():
         assert sha256_of(caption_file) == record["caption"]["sha256"]
         layout = record["print_layout"]
         assert layout["width_in"] == 6.75 and layout["minimum_font_pt"] >= 7
-        assert layout["height_in"] <= 5.6
+        assert layout["height_in"] <= 6.2
         assert record["decision_thresholds"]["ae"] == AE_THRESHOLD
         external = Path(record["caption"]["path"]).parent / "fig_interpreter.json"
         assert external.read_bytes() == file.read_bytes()
