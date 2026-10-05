@@ -1,8 +1,8 @@
 {
  "schema": "figure2_coverage",
  "made_by": "scripts/labeler/paper/fig2_coverage.py",
- "git": "1a29d71c",
- "made_at": "2026-10-05T02:51:27+00:00",
+ "git": "ff5946df",
+ "made_at": "2026-10-05T03:15:46+00:00",
  "definition": "Labelled time is, shot by shot, the union of the intervals a label table states present or absent (the four regimes for confinement); intervals stated uncertain, not observable or unassessed are not labelled time. Labelled shots are the shots with any labelled time. Tokamak-SI counts every released tier and split; the reviewed subset counts the shots whose labels a person reviewed.",
  "units": {
   "shots": "shots",
