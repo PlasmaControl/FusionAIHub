@@ -1,5 +1,9 @@
 # TokEye Figure 1
 
+> **Superseded for Figure 1 by [fig1b/](fig1b/README.md)** (owner revision: shot 199563,
+> one linear 0-250 kHz frequency axis). The record below describes the earlier six-shot
+> render with three frequency scales; it is kept for history.
+
 Primary: **201978, 1500–3300 ms**. Final renderer commit: **34937d65** (all six renders
 began from it, clean). Vector PDFs and native 150-dpi PNGs are under
 `$LABELER_ROOT/round4/fig1/`; small records, captions, appendices and the audit are here.

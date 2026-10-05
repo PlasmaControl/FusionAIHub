@@ -88,7 +88,7 @@ def main():
         help="git ref whose records must have identical scientific data",
     )
     args = parser.parse_args()
-    shots = tuple(args.shots)
+    rendered = tuple(args.shots)
     manifest_file = args.records / "sawtooth_source_manifest.json"
     manifest = json.loads(manifest_file.read_text())
     # The source is the saw stream's final export, pinned by the digest of its
@@ -100,8 +100,8 @@ def main():
     complete = Path(manifest["completion_snapshot_path"])
     assert sha256_of(complete) == manifest["completion_sha256"]
     completion = json.loads(complete.read_text())
-    assert not set(map(str, shots)) & set(completion["errors"])
-    assert set(shots) <= set(completion["processed_shots"])
+    assert not set(map(str, rendered)) & set(completion["errors"])
+    assert set(rendered) <= set(completion["processed_shots"])
     snapshot_hashes = {}
     for source in manifest["files"]:
         path = source["snapshot_path"]
@@ -119,14 +119,14 @@ def main():
         assert sha256_of(Path(source["path"])) == source["sha256"]
         spec = next(s for s in lf.TRACKS if s.key == mt.SAWTOOTH)
         raw = lf.read_rows(Path(source["path"]))
-        for shot in shots:
+        for shot in rendered:
             record = json.loads((args.records / f"{shot}.json").read_text())
             assert source["shots"][str(shot)] == fs.state_intervals(
                 lf.Track(spec, rows=raw.get(shot, ())), record["window_ms"]
             )
     audited, checked_sources, labels = [], {}, set()
     render_commits = set()
-    for shot in shots:
+    for shot in rendered:
         file = args.records / f"{shot}.json"
         record = json.loads(file.read_text())
         if args.baseline_ref:
@@ -810,7 +810,7 @@ def main():
     primary = json.loads((args.records / f"{PRIMARY}.json").read_text())
     assert len(render_commits) == 1, "all renders must use the same source commit"
     reproducibility = rebuild_primary(primary) if args.rebuild_primary else None
-    for shot in shots:
+    for shot in rendered:
         file = args.records / f"{shot}.json"
         record = json.loads(file.read_text())
         external = Path(record["caption"]["path"]).parent / "fig_interpreter.json"
