@@ -81,9 +81,9 @@ Gude-style POSR, multichannel coincidence, core loss / outer gain, central drop,
 stable trains and nominal EFIT localization. It screens harmonic overlap and
 uses EFIT01 bias-aware q-min conflicts. POSR-qualified phase edges require
 ≥10 ms periods and a shuffled-time null that repeats the same group search.
-Geometry is nominal, with no flux calibration. Present / absent / absent_q_prior
-/ uncertain / unassessed states remain distinct. Production labels
-are not replaced. Old `ece_sawtooth` disagreement and its reader audit are in
+Geometry is nominal, with no flux calibration. Present / absent /
+q_prior_ece_contradicted / q_prior_untested / uncertain / unassessed states
+remain distinct. Production labels are not replaced. Old `ece_sawtooth` disagreement and its reader audit are in
 the report; the retained legacy rule and current catalog detector differ.
 Valid core ECE defines observability: missing ECE, low temperature and detected
 cutoff yield `unassessed`, and trains split at observability gaps. Native-rate
@@ -92,21 +92,27 @@ data exist, their drop/burst flags give optional corroboration; no SXR
 corroboration is claimed without verified core/edge spatial pairing. **Absent**
 means a tested absence: no POSR-periodic core edge on any valid ECE channel at
 nominal ρ<0.5 over a complete ±375 ms context, noise-resolved on at least two
-channels. Sustained EFIT01 q-min ≥ 1.5 is a prior, not a test: that time is
-`absent_q_prior`, exported as `uncertain` with reason `q_prior_only`, and it is
-never a benchmark negative. A density-cutoff guard uses the local field at the
-axis resonance and an ECE validity test (adjacent-channel step ratio above 2, or
-a near-axis channel below 0.6 of the profile maximum, sustained 20 ms) marks
-unresolved ECE `unassessed`. Ambiguous observable support remains uncertain. The
+channels (an edge counts only when its relative change is at least 2%, so a
+core relaxation train below 2% is called quiet). Sustained EFIT01 q-min ≥ 1.5 is
+a prior, not a test: that time is `q_prior_ece_contradicted` where it lies in
+the absence-test context of a periodic edge or profile candidate (the ECE shows
+relaxation evidence there) and `q_prior_untested` elsewhere; both are exported
+as `uncertain` with the state name as the reason and are never a benchmark
+negative. A density-cutoff guard uses the local field at the axis resonance
+where it is mapped (Bt at R0, then a fixed guard, only as fallbacks; the report
+gives the records by branch) and an ECE validity test (adjacent-channel step
+ratio above 2, or a near-axis channel below 0.6 of the profile maximum,
+sustained 20 ms; dead channels are excluded) marks unresolved ECE `unassessed`.
+Ambiguous observable support remains uncertain. The
 untracked exports in `extend_saw_physics/` hold the spans and crash points; they
 are additive research labels.
 
-The population run is complete: 13319 of 16909 corpus shots have a usable record under the final rule; the other shots have no readable ECE core and carry no label.
+The population run is complete: 13319 of 16909 corpus shots have a usable record under the final rule. The other 3590 carry no label, for these reasons: 2835 × absent waveform or incompatible clock; 426 × insufficient physical or finite ECE core (core channels, finite window, no ECE group); 266 × unreadable file or object; 63 × other (for example a geometry time axis that is not increasing).
 Population label shards are at
-`$LABELER_ROOT/round4/saw/fix4/labels/` (cohort and population shards). Verify with
+`$LABELER_ROOT/round4/saw/fix5/labels/` (cohort and population shards). Verify with
 `sha256sum -c SHA256SUMS` from that directory. The `SHA256SUMS` file has sha256
-`39ec0062962bf732f8d00816d8af2a6ee129612f6e43a476b76877f506e87b32`; individual CSV hashes are in
-`outputs/labeler/sawtooth/fix4/label_manifest.json`. The manifest also hashes
+`47081aebcad868911bf3e38817b3e0c79e4ba9f02efe5fcee84780ad00a0ef14`; individual CSV hashes are in
+`outputs/labeler/sawtooth/fix5/label_manifest.json`. The manifest also hashes
 `prior_inputs/fix2_inputs.json`, a snapshot of the earlier round's inputs the
 rule reads, and `freeze.json`. Cohort shards are the `cohort-*.csv` files in the
 same directory; `extend_saw_physics/` is the untracked integration copy. Git does
@@ -131,11 +137,14 @@ are exploratory and provide no independent crash-time precision/recall; the
 ## Blind crash-time annotation queue
 
 The prediction-free input pack is
-`$LABELER_ROOT/round4/saw/fix4/annotation_pack/`. It contains sensor windows,
+`$LABELER_ROOT/round4/saw/fix5/annotation_pack/`. It contains sensor windows,
 observable masks, nominal geometry and blank annotation targets. Random windows
 are frozen before prediction access. Candidate-free, model-negative, uncertain
-and disagreement cases supplement the primary probability sample. Keep the
-private `selection_audit/` directory and every detector/model prediction hidden.
+and disagreement cases supplement the primary probability sample. Annotators
+receive the annotation pack only: no repository outputs and no access to
+`round4/saw`. Keep the private `selection_audit/` directory and every
+detector/model prediction hidden (the `predictions/` directories are mode
+`go-rwx`).
 Mark crash times, timing tolerances, positive/negative observable spans and
 ambiguity masks; lock annotations before revealing picks. Use preregistered
 sampling weights and whole-shot bootstrap intervals. Approximately 97
