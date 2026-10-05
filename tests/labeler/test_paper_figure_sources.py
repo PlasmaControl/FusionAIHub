@@ -844,15 +844,16 @@ def test_primary_caption_describes_the_figure_and_its_highlights():
     }
     text = fs.caption(199563, _primary_records(), drawn)
     assert text == (
-        "DIII-D shot 199563. Top: raw CO2 interferometer cross-power spectrogram "
-        "(linear frequency axis, 0–250 kHz), D-alpha, NBI power. Middle: TokEye "
+        "DIII-D shot 199563. (a) Raw CO2 interferometer cross-power spectrogram "
+        "(linear frequency axis, 0–250 kHz). (b) TokEye "
         "coherent-mode mask after small-object removal; below 30 kHz coloured by "
         "toroidal mode number n (Mirnov array). Pink: mask pixels ≥60 kHz while "
         "the CO2 AE detector (80–250 kHz input band; trained on TokEye-mask-"
         "derived targets, so not independent of TokEye) is positive (25 ms "
         "bins). Orange outlines: n=1/2 pixels while the NTM detector (held-out "
         "F1 0.46, below our 0.7 bar) is positive. Highlights mark time/band "
-        "coincidence only. Bottom: label tracks with sources."
+        "coincidence only. (c) D-alpha, ELM intervals (red) and confinement "
+        "regimes. (d) NBI power. (e) Label rows; sources in the appendix."
     )
     # One linear axis: no scale break, stretching or compression is described.
     for broken in ("three frequency", "stretched", "compressed", "normalised"):
@@ -1050,13 +1051,12 @@ def test_appendix_elm_marks_are_named_only_where_drawn():
     both = {"elm_crowd_spans_ms": [{"span_ms": [1, 2]}], "elm_peaks_in_label": 3}
     text = fs.appendix_notes(1, {}, both)
     assert "Open circles delimit expert spans containing many ELMs" in text
-    assert "downward triangles mark threshold D-alpha peaks" in text
+    # D-alpha peaks are no longer drawn, so no mark is named for them.
+    assert "triangles" not in text
     circles = fs.appendix_notes(1, {}, {"elm_crowd_spans_ms": [{"span_ms": [1, 2]}]})
     assert "circles" in circles and "triangles" not in circles
     peaks = fs.appendix_notes(1, {}, {"elm_peaks_in_label": 2})
-    assert "triangles" in peaks and "circles" not in peaks
-    assert peaks.endswith("Downward triangles mark threshold D-alpha peaks.")
-    assert "circles" not in fs.appendix_notes(1, {}, {"elm_peaks_in_label": 0})
+    assert "triangles" not in peaks and "circles" not in peaks
 
 
 def test_appendix_states_whether_the_shot_was_in_each_detectors_training():

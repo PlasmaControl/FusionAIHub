@@ -334,7 +334,7 @@ def main():
         assert axis["ae_ntm_split_khz"] == 60 and axis["n_view_top_khz"] == 30
         # The n view is the bottom 30 of 250 kHz of the processed panel.
         panels = geometry["frequency_panels"]
-        assert geometry["n_view_height_in"] >= 0.15
+        assert geometry["n_view_height_in"] >= 0.1
         assert (
             abs(
                 geometry["n_view_height_in"]
@@ -402,34 +402,12 @@ def main():
             assert geometry["ae_in_panel_label"] is None
         n_key = geometry["n_key_bounds"]
         if n_key is not None:
+            # Right of the spectrograms, beside the D-alpha panel.
             panel = panels["pr"]["bounds"]
             assert n_key[0] > panel[2]
-            assert panel[1] <= n_key[1] < n_key[3] <= panel[3]
-        sources_text = {t["track"]: t for t in geometry["track_source_text_bounds"]}
-        panel_right = panels["pr"]["bounds"][2]
-        for t in sources_text.values():
-            x0, y0, x1, y1 = t["bounds"]
-            assert panel_right < x0 < x1 <= 1 and 0 <= y0 < y1 <= 1, t["text"]
-        ordered = sorted(sources_text.values(), key=lambda t: t["bounds"][1])
-        for lower, upper in pairwise(ordered):
-            # Text boxes of neighbouring rows touch by under 2.5 px (descenders).
-            assert lower["bounds"][3] <= upper["bounds"][1] + 0.003, (
-                shot,
-                lower["text"],
-                upper["text"],
-            )
-        ntm_source = record["tracks"][mt.NTM]
-        if ntm_source["tier"] == lf.GENERATED:
-            assert sources_text[mt.NTM]["text"] == "detector (suggestions)"
-        assert "\n" not in sources_text[mt.SAWTOOTH]["text"], (
-            "sawtooth source on one line"
-        )
-        saw_row = sources_text[mt.SAWTOOTH]["text"]
-        if saw["tier"] == lf.GENERATED:
-            expected = fs.sawtooth_row_source(
-                saw["display_intervals_ms"], saw["density_guard"]
-            )
-            assert saw_row == expected
+            assert 0 <= n_key[1] < n_key[3] <= panel[1]
+        # The figure carries no source text beside the rows; the appendix names them.
+        assert geometry["track_source_text_bounds"] == []
         # No stretch/compression note: the axis needs none.
         assert "scale_note" not in geometry
         for text in geometry["heading_and_legend_text_bounds"]:
@@ -454,15 +432,9 @@ def main():
                 assert width <= 0 or height <= 0, (left["text"], right["text"])
         legend = [label.replace("\n", " ") for label in geometry["legend_labels"]]
         tags = drawn["blobs"]["tagged"]
-        assert ("AE (detector-positive time; mask ≥60 kHz)" in legend) == bool(
-            tags[mt.AE]
-        )
-        ntm_key = (
-            "NTM candidate suggestions"
-            if record["tracks"][mt.NTM]["tier"] == lf.GENERATED
-            else "NTM labels"
-        )
-        assert (f"{ntm_key} (n=1 or 2, ≤30 kHz)" in legend) == bool(tags[mt.NTM])
+        assert ("AE" in legend) == bool(tags[mt.AE])
+        assert ("NTM" in legend) == bool(tags[mt.NTM])
+        assert "TokEye" in legend and "ELM" in legend
         assert geometry["ntm_key_black_swatch"] == bool(tags[mt.NTM])
         png = Path(drawn["figure"][1])
         with Image.open(png) as native:
@@ -534,9 +506,9 @@ def main():
         )
         assert "no present time" not in caption.lower()
         assert caption.startswith(
-            f"\\caption{{DIII-D shot {shot}. Top: raw CO2 interferometer cross-power "
+            f"\\caption{{DIII-D shot {shot}. (a) Raw CO2 interferometer cross-power "
         )
-        assert "(linear frequency axis, 0--250 kHz), D-alpha, NBI power." in caption
+        assert "(linear frequency axis, 0--250 kHz)." in caption
         assert not any(w in caption.lower() for w in BROKEN_AXIS_WORDS)
         assert "normalised" not in caption
         assert "Middle: TokEye coherent-mode mask after small-object removal" in caption
@@ -546,6 +518,7 @@ def main():
         assert "Circles:" not in caption and "Triangles:" not in caption
         appendix_file = args.records / f"{shot}.appendix.txt"
         appendix = appendix_file.read_text()
+        assert "Tracks: AE: " in appendix  # the rows' sources are not in the figure
         assert appendix.strip() == fs.appendix_notes(
             shot, record["tracks"], drawn, record["detector_training"]
         )
@@ -693,11 +666,8 @@ def main():
             assert sha256_of(roster) == confinement["sha256"]
             # This shot has no QH or WPQH time: the row is L and H only.
             assert not [1 for _, _, c in clipped if c in (3, 4)]
-            source_text = sources_text["confinement"]["text"]
-            assert source_text == (
-                "model (unreviewed)"
-                if any(t == "unreviewed" for t in table.tier)
-                else "model"
+            assert ("Unreviewed marks a QH or WPQH segment" in appendix) == any(
+                t == "unreviewed" for t in table.tier
             )
             assert not drawn["elm_qh_overlaps_ms"]
             assert "QH" not in caption
@@ -730,7 +700,7 @@ def main():
         assert sha256_of(caption_file) == record["caption"]["sha256"]
         layout = record["print_layout"]
         assert layout["width_in"] == 6.75 and layout["minimum_font_pt"] >= 7
-        assert layout["height_in"] <= 5.6
+        assert layout["height_in"] <= 4.5
         assert record["decision_thresholds"]["ae"] == AE_THRESHOLD
         external = Path(record["caption"]["path"]).parent / "fig_interpreter.json"
         assert external.read_bytes() == file.read_bytes()
@@ -789,7 +759,7 @@ def main():
         info = subprocess.check_output(["pdfinfo", str(pdf)], text=True)
         size = re.search(r"Page size:\s+([\d.]+) x ([\d.]+)", info)
         width, height = (float(v) / 72 for v in size.groups())
-        assert width == 6.75 and height <= 5.6
+        assert width == 6.75 and height <= 4.5
         audited.append(
             {
                 "shot": shot,

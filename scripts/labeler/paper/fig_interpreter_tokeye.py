@@ -76,7 +76,7 @@ from labeler.paper import PAGE_IN, figure_sources, mode_tags, roster, style
 from labeler.paper import label_figure as lf
 
 STEM = "fig_interpreter"
-HEIGHT_IN = 5.6
+HEIGHT_IN = 4.4
 DPI_PNG = 150
 DPI_PDF = 300
 #: The window's margin the TokEye cache keeps beyond the figure's, ms.
@@ -142,14 +142,12 @@ NTM_DASHED_LW = 0.7
 NTM_DASHED_STYLE = (0, (3, 1.6))
 #: Outlines enclosing fewer print pixels (150 dpi) than this are not drawn.
 NTM_OUTLINE_MIN_PX = 100
-HEADINGS = {
-    "h_raw": ("Raw signals",),
-    "h_proc": (
-        "TokEye-processed: modes overlapping event labels",
-        ("mask → remove small objects / fill holes → components → time/band tags"),
-    ),
-    "h_lab": ("Labels; source at right",),
-}
+#: The ELM interval boxes, in red so they read against the D-alpha trace.
+ELM_BOX_COLOUR = "#D62728"
+#: The share of the D-alpha panel's height the ELM boxes span; the regime names sit above.
+ELM_BOX_TOP = 0.78
+#: D-alpha's panel runs to this multiple of its own maximum (room for the regime names).
+DALPHA_HEADROOM = 1.38
 #: The signal TokEye segments and the raw panel draws: the cross-power spectrogram
 #: of the CO2 interferometer chords R0 and V3 (corpus `co2` rows 0 and 3, 500 kHz),
 #: the AE review page's rows, in which a mode both chords see stands out of the noise
@@ -728,26 +726,21 @@ def draw_legends(
     """Source-aware signal/event keys and aligned label-state keys."""
     da = ax["da_pr"]
     elm_key = "edge_localized_mode"
-    pos = ax["h_proc"].get_position()
+    pos = ax["pr"].get_position()
     event_handles = [
-        Patch(fc="white", ec=INK, lw=0.5, label="TokEye mask,\nn not measured")
+        Patch(fc="white", ec=INK, lw=0.5, label="TokEye")
     ]
     if projected["wide"][mode_tags.AE].any():
         event_handles.append(
             Patch(
                 fc=EVENT_COLOURS[mode_tags.AE],
-                label="AE (detector-positive\ntime; mask ≥60 kHz)",
+                label="AE",
             )
         )
     if projected["zoom"][mode_tags.NTM].any():
-        ntm_label = (
-            "NTM candidate\nsuggestions"
-            if by_key[mode_tags.NTM].source.tier == lf.GENERATED
-            else "NTM labels"
-        )
         event_handles.append(
             (
-                Patch(fc="black", label=f"{ntm_label}\n(n=1 or 2, ≤30 kHz)"),
+                Patch(fc="black", label="NTM"),
                 Line2D([], [], color=NTM_CONTOUR_COLOUR, ls="-", lw=NTM_CONTOUR_LW),
             )
         )
@@ -759,9 +752,13 @@ def draw_legends(
                     color=NTM_CONTOUR_COLOUR,
                     ls=NTM_DASHED_STYLE,
                     lw=NTM_DASHED_LW,
-                    label="rest of NTM component",
+                    label="NTM, rest",
                 )
             )
+    if visible:
+        event_handles.append(
+            Patch(fc="none", ec=ELM_BOX_COLOUR, lw=0.8, label="ELM")
+        )
     legend_options = {
         "loc": "upper left",
         "ncols": 1,
@@ -780,38 +777,24 @@ def draw_legends(
             for h in event_handles
         ],
         handler_map={tuple: HandlerTuple(ndivide=1)},
-        bbox_to_anchor=(0.792, pos.y1 - 0.012),
+        bbox_to_anchor=(0.792, pos.y1),
         **legend_options,
     )
     if n_handles:
         fig.legend(
             handles=n_handles,
-            title="toroidal mode number n\n(Mirnov array)",
+            title="n (Mirnov)",
             title_fontsize=FONT,
-            bbox_to_anchor=(0.792, ax["pr"].get_position().y0),
+            bbox_to_anchor=(0.792, da.get_position().y1),
             **{
                 **legend_options,
-                "loc": "lower left",
+                "loc": "upper left",
                 "ncols": 2,
                 "columnspacing": 0.4,
                 "handlelength": 0.7,
                 "labelspacing": 0.25,
             },
         )
-    elm_handles = []
-    if visible:
-        elm_handles.append(Patch(fc="none", ec=INK, lw=0.8, label="ELM intervals"))
-    if len(peaks):
-        elm_handles.append(
-            Line2D([], [], color=INK, marker="v", ls="", ms=3, label="D-alpha peaks")
-        )
-    if elm_handles:
-        fig.legend(
-            handles=elm_handles,
-            bbox_to_anchor=(0.792, da.get_position().y1),
-            **legend_options,
-        )
-
     colours = [
         EVENT_COLOURS[t.spec.key]
         for t in display_tracks
@@ -845,7 +828,7 @@ def draw_legends(
         handles.append(Patch(fc="white", ec="#999999", lw=0.5))
         display_keys.append("blank")
     labels = [
-        "blank: unassessed / unobservable" if k == "blank" else k for k in display_keys
+        "unassessed" if k == "blank" else k for k in display_keys
     ]
     # The confinement row's class colours, only those the row draws in the window.
     drawn_classes = {
@@ -955,9 +938,6 @@ def draw(
     if saw is not None:
         by_key[mode_tags.SAWTOOTH] = saw
     show_sawtooth = saw is not None
-    saw_guard = None
-    if saw is not None and saw.file and Path(saw.file).suffix == ".json":
-        saw_guard = json.loads(Path(saw.file).read_text()).get("density_guard")
     display_saw, saw_changes = (
         figure_sources.sawtooth_display(saw, (t0, t1))
         if saw is not None
@@ -1014,18 +994,16 @@ def draw(
     )
     n_read, n_kept = roster.gated(n_sig.rows[0], gate) if n_sig.rows else (None, None)
 
+    # Heights in inches, top to bottom: (a) raw, (b) processed, (c) D-alpha with the
+    # ELM and confinement labels, (d) NBI power, (e) the label rows.
     layout = {
-        "h_raw": 0.32, "raw": 3.6,
-        "g1": 0.1, "da_raw": 0.38,
-        "g2": 0.2, "nbi": 0.38, "h_proc": 0.52,
-        "pr": 3.6,
-        "crashes": 0.24 if len(crashes) else 0.001,
-        "g3": 0.1, "da_pr": 0.55, "h_lab": 0.36,
+        "raw": 0.9, "g0": 0.07, "pr": 0.9, "g1": 0.08, "da_pr": 0.8,
+        "g2": 0.06, "nbi": 0.4, "g3": 0.1,
     }  # fmt: skip
     names = [*layout, *[f"track{i}" for i in range(len(display_tracks))]]
     heights = [
         *layout.values(),
-        *[0.20 for t in display_tracks],
+        *[0.19 for t in display_tracks],
     ]
     with style():
         fig = Figure(figsize=(PAGE_IN, HEIGHT_IN))
@@ -1037,19 +1015,17 @@ def draw(
             left=0.14,
             right=0.78,
             top=0.985,
-            bottom=0.095,
+            bottom=0.12,
         )
         ax = {n: fig.add_subplot(gs[i]) for i, n in enumerate(names)}
-        for n in ("h_raw", "g1", "g2", "h_proc", "g3", "h_lab"):
+        for n in ("g0", "g1", "g2", "g3"):
             ax[n].set_visible(False)
         track_axes = [ax[f"track{i}"] for i in range(len(display_tracks))]
         for n in (
             "raw",
-            "da_raw",
             "nbi",
             "pr",
             "da_pr",
-            "crashes",
         ):
             ax[n].set_xlim(t0, t1)
             style_axes(ax[n])
@@ -1062,21 +1038,13 @@ def draw(
         ax["raw"].text(
             1.02,
             0.97,
-            "CO$_2$\nR0$\\times$V3\ncross-power",
+            "CO$_2$\nR0$\\times$V3",
             transform=ax["raw"].transAxes,
             fontsize=FONT,
             ha="left",
             va="top",
             color=INK,
         )
-        if da_sig.rows:
-            trace(ax["da_raw"], da_sig.rows[0])
-        ax["da_raw"].set_ylabel(
-            "D-alpha\n(a.u.)", rotation=0, ha="right", va="center", labelpad=3
-        )
-        ax["da_raw"].set_yticks([])
-        ax["da_raw"].set_ylim(bottom=0)
-        ax["da_raw"].tick_params(bottom=False)
         if nbi_sig.rows:
             trace(ax["nbi"], nbi_sig.rows[0], colour="#555555")
         ax["nbi"].set_ylabel(
@@ -1111,38 +1079,6 @@ def draw(
                 full=whole_ntm[band.name],
             )
         ae_annotation = (annotations or {}).get("ae_label")
-        strip = ax["crashes"]
-        strip.set_facecolor("#222222")
-        strip.set_ylim(0, 1)
-        strip.set_yticks([])
-        strip.tick_params(bottom=False)
-        for side in strip.spines.values():
-            side.set_visible(False)
-        strip.vlines(
-            crashes,
-            0.08,
-            0.92,
-            color=EVENT_COLOURS[mode_tags.SAWTOOTH],
-            lw=0.7,
-            linestyle="dotted",
-        )
-        strip.set_ylabel(
-            "ECE candidates", rotation=0, ha="right", va="center", labelpad=3
-        )
-        if len(crashes):
-            strip.text(
-                0.015,
-                0.5,
-                "ECE-supported crash candidates",
-                transform=strip.transAxes,
-                color="white",
-                fontsize=FONT,
-                ha="left",
-                va="center",
-            )
-        if not len(crashes):
-            strip.set_visible(False)
-
         # D-alpha: the ELM label's span and spikes, the confinement regimes
         elm_key = "edge_localized_mode"
         elm_spans = present_spans(by_key[elm_key])
@@ -1174,30 +1110,25 @@ def draw(
         visible = []
         elm_boxes = []
         peak_artist = None
-        elm_chip = None
         da = ax["da_pr"]
         if da_sig.rows:
             trace(da, da_sig.rows[0])
             top = float(np.max(da_sig.rows[0].values[1]))
-            da.set_ylim(0, top * 3.0)
+            da.set_ylim(0, top * DALPHA_HEADROOM)
+            # Red boxes span the lower part of the panel; the regime names above
+            # them stay clear of the boxes. Drawn in axes height so the scale is
+            # D-alpha's own.
+            box_transform = da.get_xaxis_transform()
             peaks = elm_peaks(da_sig.rows[0], elm_spans)
-            if len(peaks):
-                (peak_artist,) = da.plot(
-                    peaks,
-                    np.full(len(peaks), top),
-                    "v",
-                    color=EVENT_COLOURS[elm_key],
-                    ms=2.2,
-                    mew=0,
-                )
             for a, b in elm_spans:
                 box = Rectangle(
                     (a, 0),
                     b - a,
-                    top * 1.45,
+                    ELM_BOX_TOP,
                     fill=False,
-                    ec=EVENT_COLOURS[elm_key],
+                    ec=ELM_BOX_COLOUR,
                     lw=0.8,
+                    transform=box_transform,
                 )
                 da.add_patch(box)
                 elm_boxes.append(box)
@@ -1205,13 +1136,14 @@ def draw(
                 box = Rectangle(
                     (a, 0),
                     b - a,
-                    top * 1.45,
+                    ELM_BOX_TOP,
                     fc="#eeeeee",
                     ec="#aaaaaa",
                     hatch="////",
                     lw=0.5,
                     alpha=0.55,
                     zorder=0.5,
+                    transform=box_transform,
                 )
                 da.add_patch(box)
                 elm_boxes.append(box)
@@ -1224,12 +1156,6 @@ def draw(
                     for a, b in uncertain_elm
                     if a < t1 and b > t0
                 ]
-            if visible:
-                a, _ = max(visible, key=lambda s: s[1] - s[0])
-                elm_chip = da.text(
-                    a + 20, top * 1.55, "ELMs", fontsize=FONT,
-                    va="bottom", ha="left", color=INK,
-                )  # fmt: skip
         da.set_yticks([])
         da.set_ylabel(
             "D-alpha\n(a.u.)", rotation=0, ha="right", va="center", labelpad=3
@@ -1292,11 +1218,8 @@ def draw(
             ):
                 text.set_text(CLASS_LEGEND[category])  # the class's short name
             regime_texts.append((text, a, b))
-            if elm_chip is not None:
-                clear_of(text, [elm_chip])
 
         # ---- label tracks
-        track_source_texts = []
         titles = {
             mode_tags.AE: "AE", mode_tags.NTM: "NTM", mode_tags.SAWTOOTH: "sawtooth",
             elm_key: "ELMs", "confinement": by_key["confinement"].spec.title,
@@ -1306,44 +1229,20 @@ def draw(
             track_bars(a, track, EVENT_COLOURS.get(key, "#888888"),
                        CLASS_COLOURS if key == "confinement" else None)  # fmt: skip
             a.set_ylabel(titles[key], rotation=0, ha="right", va="center", labelpad=3)
-            tier = "" if track.source is None else TIER_NAMES[track.source.tier]
-            if key == "confinement" and track.source is not None:
-                tier = figure_sources.confinement_row_source(track, (t0, t1)) or tier
-            if key == mode_tags.NTM and tier == "detector":
-                tier = "detector (suggestions)"
-            if (
-                key == mode_tags.SAWTOOTH
-                and track.source is not None
-                and track.source.what.startswith("physics")
-            ):
-                tier = figure_sources.sawtooth_row_source(
-                    figure_sources.state_intervals(track, (t0, t1)), saw_guard
-                )
-            # Extra lines hang below the row; the first stays on its centre.
-            first_line_px = 0.0
-            if "\n" in tier:
-                probe = a.text(0, 0, tier.split("\n")[0], fontsize=FONT)
-                first_line_px = probe.get_window_extent().height
-                probe.remove()
-            row_px = a.get_window_extent().height
-            source_text = a.text(
-                1.008, 0.5 + 0.5 * first_line_px / row_px,
-                tier, transform=a.transAxes, fontsize=FONT, linespacing=1.0,
-                va="top" if "\n" in tier else "center", ha="left", color="#444444",
-            )  # fmt: skip
-            track_source_texts.append((key, source_text))
         track_axes[-1].tick_params(labelbottom=True, bottom=True)
         track_axes[-1].spines["bottom"].set_visible(True)
         track_axes[-1].set_xlabel("time (ms)", labelpad=1)
 
-        # group headings
-        for name, lines in HEADINGS.items():
+        # panel letters, in the left margin at each panel's top; the five label rows
+        # are one panel
+        letters = {
+            "raw": "(a)", "pr": "(b)", "da_pr": "(c)", "nbi": "(d)",
+            "track0": "(e)",
+        }  # fmt: skip
+        for name, letter in letters.items():
             pos = ax[name].get_position()
-            for i, text in enumerate(lines):
-                bold = "bold" if text == lines[0] else "normal"
-                y = pos.y1 - (i + 0.5) * pos.height / len(lines)
-                fig.text(pos.x0, y, text, fontsize=FONT, fontweight=bold,
-                         va="center", ha="left")  # fmt: skip
+            fig.text(0.012, pos.y1, letter, fontsize=FONT, fontweight="bold",
+                     va="top", ha="left")  # fmt: skip
 
         colours, display_keys = draw_legends(
             fig,
@@ -1369,7 +1268,7 @@ def draw(
                 text
                 for key in fig.legends
                 for text in key.texts
-                if text.get_text().startswith("AE (detector-positive")
+                if text.get_text() == "AE"
             )
             ae_chip = ax["pr"].text(
                 ae_annotation["time_ms"],
@@ -1392,7 +1291,7 @@ def draw(
             (
                 key
                 for key in fig.legends
-                if key.get_title().get_text().startswith("toroidal mode number")
+                if key.get_title().get_text().startswith("n (Mirnov)")
             ),
             None,
         )
@@ -1412,7 +1311,7 @@ def draw(
             * HEIGHT_IN
             * N_VIEW_KHZ
             / TOP_KHZ,
-            "ece_candidate_key_placement": "in strip" if len(crashes) else None,
+            "ece_candidate_key_placement": None,
             "frequency_panels": {
                 name: {
                     "band_khz": list(ax[name].get_ylim()),
@@ -1462,7 +1361,7 @@ def draw(
                         .extents
                     ),
                 }
-                for key, text in track_source_texts
+                for key, text in []
             ],
             "ntm_key_black_swatch": bool(projected["zoom"][mode_tags.NTM].any()),
             "n_key_bounds": None
@@ -1618,7 +1517,7 @@ def draw(
             and r.t_end > t0
             and r.t_start < t1
         ],
-        "sawtooth_strip_shown": bool(len(crashes)),
+        "sawtooth_strip_shown": False,
         "sawtooth_track_shown": show_sawtooth,
         "sawtooth_visibility_rule": "show every selected track, including uncertain "
         "and unassessed states",

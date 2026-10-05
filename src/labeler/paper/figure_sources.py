@@ -843,11 +843,11 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
     sentences = [
         f"DIII-D shot {shot}.",
         (
-            "Top: raw CO2 interferometer cross-power spectrogram (linear frequency axis, 0–250 kHz), "
-            "D-alpha, NBI power."
+            "(a) Raw CO2 interferometer cross-power spectrogram (linear frequency "
+            "axis, 0–250 kHz)."
         ),
         (
-            "Middle: TokEye coherent-mode mask after small-object removal; below "
+            "(b) TokEye coherent-mode mask after small-object removal; below "
             "30 kHz coloured by toroidal mode number n (Mirnov array)."
         ),
     ]
@@ -881,7 +881,10 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
         text = "Highlights mark time/band coincidence only"
         clause = harmonic_clause(drawn) if ntm else ""
         sentences.append(text + (f"; {clause}." if clause else "."))
-    sentences.append("Bottom: label tracks with sources.")
+    sentences.append(
+        "(c) D-alpha, ELM intervals (red) and confinement regimes. (d) NBI "
+        "power. (e) Label rows; sources in the appendix."
+    )
     if drawn.get("elm_hmode_conflicts_ms"):
         sentences.append(
             f"{_elm_name(records)} and the H-mode detector disagree in parts of "
@@ -1214,8 +1217,6 @@ def appendix_notes(
     marks = []
     if drawn.get("elm_crowd_spans_ms"):
         marks.append("Open circles delimit expert spans containing many ELMs")
-    if drawn.get("elm_peaks_in_label"):
-        marks.append("downward triangles mark threshold D-alpha peaks")
     if marks:
         text = "; ".join(marks) + "."
         notes.append(text[0].upper() + text[1:])
