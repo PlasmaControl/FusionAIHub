@@ -324,7 +324,7 @@ def main():
                 state = "unassessed"
             assert row["state"] == state
         geometry = drawn["layout"]
-        # One linear 0-250 kHz axis in both spectrograms, with no scale break.
+        # One linear 0-250 kHz axis in every spectrogram, with no scale break.
         axis = geometry["frequency_axis"]
         assert axis["scale"] == "linear" and axis["scale_breaks_khz"] == []
         assert axis["band_khz"] == [0, 250]
@@ -589,7 +589,7 @@ def main():
             bool(tags[mt.NTM]) and bool(fs.harmonic_clause(drawn))
         )
         assert (
-            "The frequency axis is linear, 0–250 kHz, in both spectrograms, with no "
+            "The frequency axis is linear, 0–250 kHz, in every spectrogram, with no "
             "scale break." in appendix
         )
         assert "The raw spectrogram uses one colour scale." in appendix
@@ -660,13 +660,13 @@ def main():
             )
             assert "(held-out F1 0.46, below our 0.7 bar) is positive." in caption
             assert "Highlights mark time/band coincidence only." in caption
-            # 19 % and 0 % of the jointly measured time pass the 5 % ratio test:
+            # 26 % and 1 % of the jointly measured time pass the 5 % ratio test:
             # below the 0.6 gate, so the caption makes no harmonic claim.
             assert "harmonics" not in caption
             assert drawn["n2_harmonic_consistent"] is False
             assert drawn["n3_harmonic_consistent"] is False
-            assert "in 38 of 198 ms where both are measured (19%" in appendix
-            assert "in 0 of 139 ms where both are measured (0%" in appendix
+            assert "in 360 of 1365 ms where both are measured (26%" in appendix
+            assert "in 7 of 1026 ms where both are measured (1%" in appendix
             assert "cannot separate harmonics of one island from phase-locked" in (
                 appendix
             )

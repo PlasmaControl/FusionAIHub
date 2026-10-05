@@ -1038,11 +1038,16 @@ def appendix_notes(
         f"DIII-D shot {shot}. The raw spectrogram uses one colour scale.",
         (
             "Toroidal mode number n is measured by the Mirnov array. "
-            "The frequency axis is linear, 0–250 kHz, in both spectrograms, with "
-            "no scale break. The raw spectrogram is the wide-range pass; the mask "
-            "is drawn from the higher-resolution pass below 50 kHz and the "
+            "The frequency axis is linear, 0–250 kHz, in every spectrogram, with "
+            "no scale break. The raw spectrograms are the wide-range pass; the "
+            "mask is drawn from the higher-resolution pass below 50 kHz and the "
             "wide-range pass above it, because the higher-resolution pass's "
-            "decimation filter rolls off above about 50 kHz."
+            "decimation filter rolls off above about 50 kHz. The mask is TokEye "
+            "run on the top raw record, the CO2 interferometer; the second raw "
+            "spectrogram is one Mirnov probe, shown for comparison and not "
+            "segmented. Toroidal mode numbers and the NTM candidates come from "
+            "the Mirnov array and are drawn on the CO2 mask, so a pixel's n is "
+            "not measured on the signal that lit it."
         ),
         _chain_note(drawn),
     ]
@@ -1167,10 +1172,10 @@ def appendix_notes(
             else " at late times"
         )
         notes.append(
-            f"Magnetic lines at {lo:.0f}–{hi:.0f} kHz remain visible{timing}, "
+            f"Mask lines at {lo:.0f}–{hi:.0f} kHz remain visible{timing}, "
             "but stay untagged because the CO2 AE detector is negative. "
             "The AE tags inherit the detector's timing, including its "
-            "negative gaps; they do not imply that the magnetic lines disappear."
+            "negative gaps; they do not imply that the lines disappear."
         )
     if drawn.get("sawtooth_strip_shown"):
         notes.append(
