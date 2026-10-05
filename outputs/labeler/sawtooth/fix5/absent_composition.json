@@ -1,0 +1,334 @@
+{
+  "definition": "previous absent class = ECE test or sustained EFIT01 q_min >= 1.5; current absent class = ECE quiet-core test only",
+  "previous_source": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw/outputs/labeler/sawtooth/fix3/data_summary.json",
+  "sample_period_s": 0.0001,
+  "before": {
+    "train": {
+      "absent_s": 422.318590009829,
+      "sustained_high_q_absence_s": 392.3719,
+      "high_q_fraction_of_absent": 0.9290898134294017,
+      "shots_with_absent_time": 377,
+      "shots_whose_absent_time_is_all_high_q": 314,
+      "state_seconds_from_summary": {
+        "present": 177.52909580045477,
+        "absent": 422.318590009829,
+        "uncertain": 1185.4503719575403,
+        "unassessed": 337.26029202192854
+      }
+    },
+    "val": {
+      "absent_s": 49.70489882420417,
+      "sustained_high_q_absence_s": 49.1377,
+      "high_q_fraction_of_absent": 0.988588673599151,
+      "shots_with_absent_time": 45,
+      "shots_whose_absent_time_is_all_high_q": 41,
+      "state_seconds_from_summary": {
+        "present": 25.720099391577364,
+        "absent": 49.70489882420417,
+        "uncertain": 139.7385966944091,
+        "unassessed": 49.66629882511728
+      }
+    },
+    "test": {
+      "absent_s": 53.261098740080335,
+      "sustained_high_q_absence_s": 51.96,
+      "high_q_fraction_of_absent": 0.9755713124426924,
+      "shots_with_absent_time": 47,
+      "shots_whose_absent_time_is_all_high_q": 40,
+      "state_seconds_from_summary": {
+        "present": 15.150499641606865,
+        "absent": 53.261098740080335,
+        "uncertain": 144.11079659098243,
+        "unassessed": 53.47359873505357
+      }
+    },
+    "population": {
+      "absent_s": 9756.89846920136,
+      "sustained_high_q_absence_s": 9224.1706,
+      "high_q_fraction_of_absent": 0.9453998756999501,
+      "shots_with_absent_time": 10266,
+      "shots_whose_absent_time_is_all_high_q": 8704,
+      "state_seconds_from_summary": {
+        "present": 5595.259467641143,
+        "absent": 9756.89846920136,
+        "uncertain": 29952.76559145474,
+        "unassessed": 36860.056828056535
+      }
+    }
+  },
+  "after": {
+    "train": {
+      "tested_absent_s": 60.419698570739854,
+      "q_prior_only_s": 306.974992738343,
+      "q_prior_ece_contradicted_s": 180.59139572801442,
+      "q_prior_untested_s": 126.38359701032861,
+      "q_prior_ece_contradicted_fraction": 0.588293509243424,
+      "tested_absent_with_high_q_s": 35.3318,
+      "tested_absent_without_high_q_s": 25.0879,
+      "tested_fraction_of_former_absent_class": 0.16445446817822906,
+      "q_prior_only_fraction_of_former_absent_class": 0.8355455318217709,
+      "shots_with_tested_absence": 161,
+      "shots_with_q_prior_only": 375,
+      "shots": 390,
+      "tested_absent_fraction_of_observable": 0.0405003948506462,
+      "q_prior_only_fraction_of_observable": 0.20577077855860118
+    },
+    "val": {
+      "tested_absent_s": 3.7257999118642204,
+      "q_prior_only_s": 41.29179902322051,
+      "q_prior_ece_contradicted_s": 24.661799416612006,
+      "q_prior_untested_s": 16.629999606608507,
+      "q_prior_ece_contradicted_fraction": 0.597256598162347,
+      "tested_absent_with_high_q_s": 2.7786,
+      "tested_absent_without_high_q_s": 0.9472,
+      "tested_fraction_of_former_absent_class": 0.08276318595393803,
+      "q_prior_only_fraction_of_former_absent_class": 0.9172368140460619,
+      "shots_with_tested_absence": 15,
+      "shots_with_q_prior_only": 45,
+      "shots": 48,
+      "tested_absent_fraction_of_observable": 0.020810688532281765,
+      "q_prior_only_fraction_of_observable": 0.23063792708606795
+    },
+    "test": {
+      "tested_absent_s": 7.244899828618038,
+      "q_prior_only_s": 41.9001990088285,
+      "q_prior_ece_contradicted_s": 26.720599367910012,
+      "q_prior_untested_s": 15.17959964091849,
+      "q_prior_ece_contradicted_fraction": 0.6377201063479412,
+      "tested_absent_with_high_q_s": 5.0612,
+      "tested_absent_without_high_q_s": 2.1837,
+      "tested_fraction_of_former_absent_class": 0.14741856258304487,
+      "q_prior_only_fraction_of_former_absent_class": 0.8525814374169551,
+      "shots_with_tested_absence": 17,
+      "shots_with_q_prior_only": 47,
+      "shots": 49,
+      "tested_absent_fraction_of_observable": 0.04025150174342243,
+      "q_prior_only_fraction_of_observable": 0.23279078708467324
+    },
+    "population": {
+      "tested_absent_s": 1240.7669706489978,
+      "q_prior_only_s": 7464.653923423766,
+      "q_prior_ece_contradicted_s": 4420.038295445407,
+      "q_prior_untested_s": 3044.6156279783595,
+      "q_prior_ece_contradicted_fraction": 0.5921290311363954,
+      "tested_absent_with_high_q_s": 734.4582,
+      "tested_absent_without_high_q_s": 509.1048,
+      "tested_fraction_of_former_absent_class": 0.1425280851720559,
+      "q_prior_only_fraction_of_former_absent_class": 0.8574719148279442,
+      "shots_with_tested_absence": 3738,
+      "shots_with_q_prior_only": 10230,
+      "shots": 13319,
+      "tested_absent_fraction_of_observable": 0.031623112410227985,
+      "q_prior_only_fraction_of_observable": 0.19024973722536107
+    }
+  },
+  "edge_context_sensitivity": {
+    "definition": "tested absence of the cohort rebuilt with an isolated-edge veto of the stated length (ms) from the stored frame-holdoff mask; every other condition is unchanged; 5.15 ms is the frame holdoff",
+    "rule_value_ms": 50.0,
+    "train": {
+      "5.15": {
+        "tested_absent_s": 81.15870000000001,
+        "shots": 166,
+        "fraction_of_observable": 0.054402115093585626
+      },
+      "50": {
+        "tested_absent_s": 60.419699999999985,
+        "shots": 161,
+        "fraction_of_observable": 0.0405003958087046
+      },
+      "375": {
+        "tested_absent_s": 15.3983,
+        "shots": 48,
+        "fraction_of_observable": 0.010321753414551483
+      }
+    },
+    "val": {
+      "5.15": {
+        "tested_absent_s": 5.3101,
+        "shots": 16,
+        "fraction_of_observable": 0.029659895804758023
+      },
+      "50": {
+        "tested_absent_s": 3.7257999999999996,
+        "shots": 15,
+        "fraction_of_observable": 0.020810689024569673
+      },
+      "375": {
+        "tested_absent_s": 0.2394,
+        "shots": 3,
+        "fraction_of_observable": 0.0013371836793391971
+      }
+    },
+    "test": {
+      "5.15": {
+        "tested_absent_s": 9.867199999999999,
+        "shots": 17,
+        "fraction_of_observable": 0.05482058101532892
+      },
+      "50": {
+        "tested_absent_s": 7.2449,
+        "shots": 17,
+        "fraction_of_observable": 0.04025150269559313
+      },
+      "375": {
+        "tested_absent_s": 1.6310000000000002,
+        "shots": 6,
+        "fraction_of_observable": 0.009061574472596227
+      }
+    }
+  },
+  "guards": {
+    "train": {
+      "unit": "seconds of core-observable time",
+      "records_by_density_guard_status": {
+        "Thomson_90percentile_and_local_axis_field": 384,
+        "density_unavailable": 6
+      },
+      "records_by_cutoff_field": {
+        "local field at the EFIT axis resonance (F/R_axis)": 384,
+        "none": 6
+      },
+      "records_with_dead_channels": 302,
+      "dead_channels_total": 2603,
+      "seconds": {
+        "core_observable_samples": 1856.0011,
+        "removed_by_reference_density_guard": 61.5281,
+        "removed_by_density_guard": 191.9722,
+        "removed_by_ece_validity": 166.1866,
+        "observable_samples_after_guards": 1497.8423
+      },
+      "fraction_of_core_observable": {
+        "core_observable_samples": 1.0,
+        "removed_by_reference_density_guard": 0.03315089630065413,
+        "removed_by_density_guard": 0.10343323611176738,
+        "removed_by_ece_validity": 0.0895401408975458,
+        "observable_samples_after_guards": 0.8070266229906868
+      },
+      "shots": 388,
+      "ece_validity_shot_fraction_quantiles_0_25_50_75_100": [
+        0.0,
+        0.0,
+        0.0188839934920762,
+        0.11952101954714348,
+        0.9104248649369706
+      ],
+      "shots_with_ece_validity_above_20_percent": 65,
+      "shots_with_ece_validity_above_90_percent": 1
+    },
+    "val": {
+      "unit": "seconds of core-observable time",
+      "records_by_density_guard_status": {
+        "Thomson_90percentile_and_local_axis_field": 46,
+        "density_unavailable": 2
+      },
+      "records_by_cutoff_field": {
+        "local field at the EFIT axis resonance (F/R_axis)": 46,
+        "none": 2
+      },
+      "records_with_dead_channels": 41,
+      "dead_channels_total": 371,
+      "seconds": {
+        "core_observable_samples": 228.8265,
+        "removed_by_reference_density_guard": 12.9502,
+        "removed_by_density_guard": 28.4136,
+        "removed_by_ece_validity": 20.6642,
+        "observable_samples_after_guards": 179.7487
+      },
+      "fraction_of_core_observable": {
+        "core_observable_samples": 1.0,
+        "removed_by_reference_density_guard": 0.05659396966697476,
+        "removed_by_density_guard": 0.12417093299945592,
+        "removed_by_ece_validity": 0.0903051001522988,
+        "observable_samples_after_guards": 0.7855239668482453
+      },
+      "shots": 47,
+      "ece_validity_shot_fraction_quantiles_0_25_50_75_100": [
+        0.0,
+        0.0,
+        0.029909484454939,
+        0.12000835925443373,
+        0.47628733009227103
+      ],
+      "shots_with_ece_validity_above_20_percent": 8,
+      "shots_with_ece_validity_above_90_percent": 0
+    },
+    "test": {
+      "unit": "seconds of core-observable time",
+      "records_by_density_guard_status": {
+        "Thomson_90percentile_and_local_axis_field": 48,
+        "density_unavailable": 1
+      },
+      "records_by_cutoff_field": {
+        "local field at the EFIT axis resonance (F/R_axis)": 48,
+        "none": 1
+      },
+      "records_with_dead_channels": 39,
+      "dead_channels_total": 356,
+      "seconds": {
+        "core_observable_samples": 223.3933,
+        "removed_by_reference_density_guard": 10.2567,
+        "removed_by_density_guard": 24.2128,
+        "removed_by_ece_validity": 18.6602,
+        "observable_samples_after_guards": 180.5203
+      },
+      "fraction_of_core_observable": {
+        "core_observable_samples": 1.0,
+        "removed_by_reference_density_guard": 0.04591319435274021,
+        "removed_by_density_guard": 0.10838641982548268,
+        "removed_by_ece_validity": 0.08353070571051147,
+        "observable_samples_after_guards": 0.8080828744640058
+      },
+      "shots": 47,
+      "ece_validity_shot_fraction_quantiles_0_25_50_75_100": [
+        0.0,
+        0.0,
+        0.008374516152591474,
+        0.10090621822299244,
+        0.49076885205546894
+      ],
+      "shots_with_ece_validity_above_20_percent": 5,
+      "shots_with_ece_validity_above_90_percent": 0
+    },
+    "population": {
+      "unit": "seconds of core-observable time",
+      "records_by_density_guard_status": {
+        "Thomson_90percentile_and_local_axis_field": 9926,
+        "Thomson_90percentile_and_reference_bt_axis_unmapped": 4,
+        "Thomson_90percentile_fixed_density_guard_axis_field_and_bt_unavailable": 961,
+        "density_unavailable": 2428
+      },
+      "records_by_cutoff_field": {
+        "local field at the EFIT axis resonance (F/R_axis)": 9926,
+        "none": 2428,
+        "none: fixed density guard (axis field and Bt both unavailable)": 961,
+        "reference field Bt at R0 (axis field unmapped)": 4
+      },
+      "records_with_dead_channels": 8948,
+      "dead_channels_total": 113688,
+      "seconds": {
+        "core_observable_samples": 46515.7055,
+        "removed_by_reference_density_guard": 1017.5355,
+        "removed_by_density_guard": 3730.8155,
+        "removed_by_ece_validity": 3392.0757,
+        "observable_samples_after_guards": 39392.8143
+      },
+      "fraction_of_core_observable": {
+        "core_observable_samples": 1.0,
+        "removed_by_reference_density_guard": 0.02187509549865905,
+        "removed_by_density_guard": 0.0802055017740191,
+        "removed_by_ece_validity": 0.07292323449764725,
+        "observable_samples_after_guards": 0.8468712637283337
+      },
+      "shots": 10857,
+      "ece_validity_shot_fraction_quantiles_0_25_50_75_100": [
+        0.0,
+        0.0,
+        0.004209707687365805,
+        0.0665155712247125,
+        0.9465829500562988
+      ],
+      "shots_with_ece_validity_above_20_percent": 1123,
+      "shots_with_ece_validity_above_90_percent": 3
+    }
+  }
+}

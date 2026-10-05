@@ -1,0 +1,85 @@
+{
+  "source": "scripts/labeler/sawtooth_fix3_records.py",
+  "covering_tests_passed": 168,
+  "covering_test_files": [
+    "test_sawtooth_physics.py",
+    "test_sawtooth_fix.py",
+    "test_sawtooth_fix3.py",
+    "test_sawtooth_phase_null.py",
+    "test_sawtooth_preprocessing.py",
+    "test_sawtooth_geometry.py",
+    "test_sawtooth_shot_geometry.py",
+    "test_sawtooth_benchmark.py",
+    "test_sawtooth_classification.py",
+    "test_sawtooth_masked_metrics.py",
+    "test_sawtooth_edge_context.py"
+  ],
+  "ruff": "all changed Python files passed",
+  "format": "all new Python files passed",
+  "diff_check": "passed",
+  "logs": {
+    "covering_tests": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/covering_tests.log",
+    "ruff": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/ruff.log",
+    "format": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/format.log",
+    "diff_check": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/diff_check.log"
+  },
+  "output_tails": {
+    "covering_tests": [
+      "........................................................................ [ 42%]",
+      "........................................................................ [ 85%]",
+      "........................                                                 [100%]",
+      "168 passed in 14.95s",
+      "/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/lib/python3.11/site-packages/XRootD/client/finalize.py:46: FutureWarning: `torch.distributed.reduce_op` is deprecated, please use `torch.distributed.ReduceOp` instead",
+      "  if isinstance(obj, File) and obj.is_open():"
+    ],
+    "ruff": [
+      "All checks passed!"
+    ],
+    "format": [
+      "3 files already formatted"
+    ],
+    "diff_check": []
+  },
+  "code_sha256": {
+    "src/labeler/sawtooth/__init__.py": "ead643ca679ccccb58cffade518ed23e9db4fbe70a45fc88b61ba0d36c7b87a8",
+    "src/labeler/sawtooth/geometry.py": "d2c3b2526ab77f3d58e6a0da15085425cea219d1e62cc2b8a89b9ca98a71cb07",
+    "src/labeler/sawtooth/metrics.py": "6214ba1d2a490ec172fd99a90c03ab518ef7033edef72664644bfef65b83e25d",
+    "src/labeler/sawtooth/models.py": "452aeea67f02559c5200dbe889e7aec728d17f116cb81cef4b2636942a2d41a6",
+    "src/labeler/sawtooth/physics.py": "835a6fa1ce0b8e6937c97f77f8f106dde122f373e3e52a8c190d321b6b58b59a",
+    "src/labeler/sawtooth/preprocessing.py": "a4c21fbb6df192f8e5114b257d95a0df8a572b8b25c8ddbb2b7308f309891234",
+    "scripts/labeler/sawtooth_absent_composition.py": "7ba81c5165013aef75a5d0905b4495764847930da3bf8bb47b07983ab6f9feca",
+    "scripts/labeler/sawtooth_benchmark.py": "7c6055c2b6432d43815e7b13459b093f81d755d56f865b4c919169039271f79e",
+    "scripts/labeler/sawtooth_clock_audit.py": "5ed870d2b2849adf9740dda0f4794f0f099fb8646de1a3ce1e64b8619a8ab8ec",
+    "scripts/labeler/sawtooth_edge_context.py": "140b46645bada79d98f7090691a9696be7852d74c10fe7552ec4db50d9becff0",
+    "scripts/labeler/sawtooth_fix2_artifacts.py": "cba42bf2f6dcdf9613d10904f429e836389118b2fa16369ed6f3a21c34270e42",
+    "scripts/labeler/sawtooth_fix3_artifacts.py": "2c29202f0c1b678e9b08471371f0cafc2aff5ac722e1c1ee0be59e131c7dc38a",
+    "scripts/labeler/sawtooth_fix3_records.py": "1d715c6667d62155bc7659cc91955afd5350d509891269a5f7639ac72ecd6bc7",
+    "scripts/labeler/sawtooth_fix3_report.py": "620543d318e85b6bda22416635108983e8d4fa556edb005f5fcf79548d15719b",
+    "scripts/labeler/sawtooth_fix5_setup.py": "e4af3458b8072ee68249e1eaad021d2037ae1538c9f0c6eb352e1ee546f2b607",
+    "scripts/labeler/sawtooth_fix_audit.py": "9c8a0a5a44a2addcd7e38cc21bb0cb6de3ff4d60b95b8d8f9b365926b8bc1c70",
+    "scripts/labeler/sawtooth_fix_validation.py": "25538d94f0393bc6d5f6b0dadb8416a096ce68ddf3e0f1123ff179e28f3ae30f",
+    "scripts/labeler/sawtooth_freeze.py": "944e8d6b67334d43f331b9f7164739764b20878d6ba45df9333ff2ea4e68362e",
+    "scripts/labeler/sawtooth_gallery.py": "49527354d2c5aa15e2ad3bd562628b696c187d92a83b8fb40ed124f940befd62",
+    "scripts/labeler/sawtooth_geometry_fix3.py": "6518f2e632229066b869630a2b16d42f1492612ebb13f1c2d7c9c88f032be7b1",
+    "scripts/labeler/sawtooth_phase_null_audit.py": "cdcc976d4d6fe0940d000cce0be482fd4786b8b6d64b61e2600e91b4151745bb",
+    "scripts/labeler/sawtooth_physics.py": "a450e020fa0ff474eee5af6f6533f249c849698d30d1ba2366ad3bf4d489a7f0",
+    "scripts/labeler/sawtooth_radial_drop.py": "f0ecb50311d63884f371d5c9ce9a2af3fc4d3787f8636099cd9d9f327549bc9c",
+    "scripts/labeler/sawtooth_reference_check.py": "731a47a46862763b4ada704563e3b355c506bde16670d60fc9f6fca438d1a070",
+    "scripts/labeler/sawtooth_reference_rule.py": "7c00060a013d15bbf45499a339e28c44f9e8c853dab7c92020bcc88fc918170c",
+    "scripts/labeler/sawtooth_repair_masks.py": "bb222ad3d9f4bfd317176066de93d9637d5b33cb9b87f96cb33eb66a2498993a",
+    "scripts/labeler/sawtooth_results.py": "323ddc425ebca994e214173152fe4f0ebb4ece71d14371c281d0fd747ea4804d",
+    "scripts/labeler/sawtooth_target_audit.py": "8ea77aed8b2a4c1087fbd6805e7149811c73c92fdd30656dcfd2e96d20dae696",
+    "scripts/labeler/sawtooth_uncertain_gaps.py": "7129f67efe68c787ecf127b4df510eb8b0143e8de7c3654707b1b80a86c92afd",
+    "tests/labeler/test_sawtooth_benchmark.py": "ddeaca70b7d47a28f824cf72c3a658972046bce6db01aa74dd6336de4587ce31",
+    "tests/labeler/test_sawtooth_classification.py": "d9956f32205a395377f3ff563e73c2d8ac1c0a36d841814a544f0f35a9c833c9",
+    "tests/labeler/test_sawtooth_edge_context.py": "fdcb75843ec8a0cc3d5b2087713a4e4752d38e1b509ff463cffc0a09d31720b4",
+    "tests/labeler/test_sawtooth_fix.py": "045c7e697f5573a581a286ddf1111fe87904903937b5f851db936bb3cebb61b7",
+    "tests/labeler/test_sawtooth_fix3.py": "70c269ab7b8df5b5006a995076efbb8a51615b390a9fa4c652c62f678f504f03",
+    "tests/labeler/test_sawtooth_geometry.py": "0b5785f2d1212ed65e084011786168596f0bfef904d30c1c4b97e129018db528",
+    "tests/labeler/test_sawtooth_masked_metrics.py": "633495fc5708a5f07bfcc9f0b735d8cf1d8422aa0dce74a1a6ef53bd15f29ba6",
+    "tests/labeler/test_sawtooth_phase_null.py": "bf9246061acfe9ca74b9bbf4f88efd8e4e6d9da17f24c82b2c64a50b6d1d8bd1",
+    "tests/labeler/test_sawtooth_physics.py": "a63332c19c4e51ec956e8804cab789e140528eddbe6fa628ff87813b30237794",
+    "tests/labeler/test_sawtooth_preprocessing.py": "8e0ce3a66f491e78576be4372caca369b5040e0212f2bda890b94c97a7d94805",
+    "tests/labeler/test_sawtooth_shot_geometry.py": "7dd3f3c4528902b09de12776c99ef8cb8411814c5bff31904c71a5a8eb8835e4"
+  }
+}

@@ -1,0 +1,105 @@
+{
+  "created_utc": "2026-10-05T01:31:21.890666+00:00",
+  "seed": 23,
+  "periodic_seed": 24,
+  "draws": 1000,
+  "qualified_edge_count": 20,
+  "edge_span_s": 1.0,
+  "refractory_holdoff_ms": 5.15,
+  "null_generator": "fixed count/endpoints/span; shifted uniform order statistics",
+  "periodic_contrast": {
+    "rejected": 1000,
+    "draws": 1000,
+    "rate": 1.0,
+    "standard_error": 0.0,
+    "ci95": [
+      0.996173241514445,
+      1.0
+    ],
+    "interval_method": "Wilson binomial interval over independent generated draws",
+    "rate_meaning": "acceptance, not rejection; synthetic positive contrast",
+    "period_ms": 52.63157894736842,
+    "interior_timing_jitter_sigma_ms": 1.5
+  },
+  "raw_whole_run_null": {
+    "rejected": 49,
+    "draws": 1000,
+    "rate": 0.049,
+    "standard_error": 0.006826346021115542,
+    "ci95": [
+      0.037261034647360615,
+      0.06419070150661013
+    ],
+    "interval_method": "Wilson binomial interval over independent generated draws"
+  },
+  "full_group_search_null": {
+    "rejected": 52,
+    "draws": 1000,
+    "rate": 0.052,
+    "standard_error": 0.007021111023192838,
+    "ci95": [
+      0.03987303628377742,
+      0.06755573931927998
+    ],
+    "interval_method": "Wilson binomial interval over independent generated draws"
+  },
+  "subfloor_6ms_regular_edges_accepted": false,
+  "rule": {
+    "sigma_ms": 0.25,
+    "frame_ms": 10.3,
+    "posr_threshold": 6.0,
+    "coincidence_ms": 0.5,
+    "minimum_channels": 2,
+    "significance": 0.02,
+    "maximum_net": 0.9,
+    "minimum_block": 2,
+    "pulse_reach": 6,
+    "minimum_period_ms": 20.0,
+    "maximum_period_ms": 250.0,
+    "period_ratio": 2.5,
+    "minimum_train": 3,
+    "qmin_margin": 0.4,
+    "qmin_absence": 1.5,
+    "qmin_sustain_ms": 50.0,
+    "relaxation_minimum_period_ms": 10.0,
+    "relaxation_minimum_edges": 6,
+    "periodicity_null_replicates": 199,
+    "periodicity_null_alpha": 0.05,
+    "radius_tolerance": 0.15,
+    "central_relative_drop": 0.05,
+    "te_floor_kev": 0.5,
+    "inversion_spread_channels": 2.0,
+    "minimum_ip_ma": 0.3,
+    "neutron_relative_drop": 0.02,
+    "neutron_noise_k": 3.0,
+    "minimum_nbi_power_w": 100000.0,
+    "maximum_channel_to_core": 1.5,
+    "mirnov_burst_z": 6.0,
+    "dalpha_burst_z": 6.0,
+    "ece_validity_smooth_ms": 5.0,
+    "ece_validity_sustain_ms": 20.0,
+    "ece_step_ratio": 2.0,
+    "ece_step_max_rho": 0.7,
+    "ece_axis_to_max": 0.6,
+    "ece_axis_max_distance_m": 0.1,
+    "quiet_core_max_rho": 0.5,
+    "isolated_edge_context_ms": 50.0
+  },
+  "rule_json": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw/src/labeler/sawtooth/freeze.json",
+  "references": [
+    {
+      "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw/src/labeler/sawtooth/physics.py",
+      "functions": [
+        "core_relaxation_phases",
+        "periodicity_null",
+        "_relaxation_groups",
+        "_selected_phase_null"
+      ]
+    },
+    {
+      "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-saw/tests/labeler/test_sawtooth_phase_null.py",
+      "purpose": "independent regression for grouping-induced false rejection"
+    }
+  ],
+  "interpretation": "Full-search null replicates the same physical-gap grouping and uses minimum CV across every eligible group, accounting for selection and multiplicity within an observable run. Monte Carlo rate intervals describe synthetic draws, not physical label accuracy. Separate observable runs and shots do not share a global familywise error guarantee. POSR qualification is conditioned on, not simulated."
+}
