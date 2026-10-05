@@ -11,7 +11,7 @@
     5800.0
    ],
    "record": "outputs/labeler/paper/fig_interpreter_tokeye/fig1c/199563.json",
-   "record_sha256": "e145624a1dff6506737f1f6b57e8139fedd7ea638e0ac060eed1e84f66ce2c44",
+   "record_sha256": "15ea170df8696a0ea12ecdca8510f3788db25fea18d106cdb7a3c435f0262fcc",
    "ae_source": "ae-ours, CO2 activity predictions, p>=0.5",
    "tag_counts": {
     "alfven_eigenmode": 145,
@@ -23,7 +23,7 @@
    "caption_words": 104,
    "projection_violations": 0,
    "raster_ae_audit": {
-    "pink_pixels": 697,
+    "pink_pixels": 370,
     "outside_present": 0,
     "below_detector_band": 0,
     "boundary_tolerance_pixels": 1,
@@ -253,32 +253,12 @@
     "ntm_key_black_swatch": true,
     "n_key_bounds": [
      0.792,
-     0.39941496434462176,
+     0.4816281512605045,
      0.9080493827160494,
-     0.46709033613445405
+     0.5493035230503368
     ],
-    "ae_in_panel_label": {
-     "text": "AE",
-     "anchor_ms_khz": [
-      3900,
-      200
-     ],
-     "bounds": [
-      0.5475510662177329,
-      0.6665154898437365,
-      0.570267115600449,
-      0.6892618210806338
-     ]
-    },
-    "ae_margin_label": {
-     "text": "AE",
-     "bounds": [
-      0.810724279835391,
-      0.6574440281714102,
-      0.8299835390946503,
-      0.6757878436850371
-     ]
-    },
+    "ae_in_panel_label": null,
+    "ae_margin_label": null,
     "elm_box_bounds": [
      [
       0.3494545454545454,
@@ -353,7 +333,6 @@
      "transient",
      "AE",
      "NTM",
-     "NTM, rest",
      "ELM",
      "n=1",
      "n=2",
@@ -464,23 +443,13 @@
       ]
      },
      {
-      "text": "NTM, rest",
-      "font_pt": 7.0,
-      "bounds": [
-       0.810724279835391,
-       0.6074354295078883,
-       0.8800298353909466,
-       0.6257792450215152
-      ]
-     },
-     {
       "text": "ELM",
       "font_pt": 7.0,
       "bounds": [
        0.810724279835391,
-       0.5824311301761272,
+       0.6074354295078883,
        0.8418353909465022,
-       0.6007749456897541
+       0.6257792450215152
       ]
      },
      {
@@ -488,9 +457,9 @@
       "font_pt": 7.0,
       "bounds": [
        0.8064032921810699,
-       0.4235020729007014,
+       0.5057152598165842,
        0.8360329218106995,
-       0.4418458884143282
+       0.524059075330211
       ]
      },
      {
@@ -498,9 +467,9 @@
       "font_pt": 7.0,
       "bounds": [
        0.8064032921810699,
-       0.39941496434462176,
+       0.4816281512605045,
        0.8360329218106995,
-       0.41775877985824855
+       0.4999719667741313
       ]
      },
      {
@@ -508,9 +477,9 @@
       "font_pt": 7.0,
       "bounds": [
        0.8561975308641975,
-       0.4235020729007014,
+       0.5057152598165842,
        0.885827160493827,
-       0.4418458884143282
+       0.524059075330211
       ]
      },
      {
@@ -518,9 +487,9 @@
       "font_pt": 7.0,
       "bounds": [
        0.8561975308641975,
-       0.39941496434462176,
+       0.4816281512605045,
        0.9080493827160493,
-       0.4189161190222947
+       0.5011293059381774
       ]
      },
      {
@@ -584,13 +553,13 @@
       ]
      },
      {
-      "text": "n (Mirnov)",
+      "text": "n",
       "font_pt": 7.0,
       "bounds": [
-       0.8123742283950617,
-       0.4475891814567811,
-       0.8876751543209876,
-       0.46709033613445405
+       0.8455802469135802,
+       0.5298023683726638,
+       0.8544691358024691,
+       0.5481461838862907
       ]
      }
     ]
@@ -702,7 +671,7 @@
    },
    "elm_hmode_conflicts_ms": [],
    "elm_qh_overlaps_ms": [],
-   "render_source_commit": "77d2d03c",
+   "render_source_commit": "7024e18e",
    "sawtooth_source": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/saw_source/shots/199563.json",
@@ -5244,8 +5213,8 @@
     5.300000000000001
    ],
    "figure_sha256": {
-    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.pdf": "34790dd2b339b8dcdb37f189ec593f1b49dfe8446c9850d0e4ff28ee414deedb",
-    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.png": "fc19d8528284b71db803b235fcbe08c5545c08201b273fac16a4e4895da9e084"
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.pdf": "546fb14e53a1cfef13900327c96f76f9d4c1602f6def36186928e8535bb435fb",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.png": "6fd2774a8332576dc4d871a1cf812c353049a2df1b783615efe93d06fff8b0c0"
    }
   }
  ],
@@ -5414,12 +5383,12 @@
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/saw_source/shots/199563.json"
   ],
   "before": {
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.pdf": "34790dd2b339b8dcdb37f189ec593f1b49dfe8446c9850d0e4ff28ee414deedb",
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.png": "fc19d8528284b71db803b235fcbe08c5545c08201b273fac16a4e4895da9e084"
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.pdf": "546fb14e53a1cfef13900327c96f76f9d4c1602f6def36186928e8535bb435fb",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.png": "6fd2774a8332576dc4d871a1cf812c353049a2df1b783615efe93d06fff8b0c0"
   },
   "after": {
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.pdf": "34790dd2b339b8dcdb37f189ec593f1b49dfe8446c9850d0e4ff28ee414deedb",
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.png": "fc19d8528284b71db803b235fcbe08c5545c08201b273fac16a4e4895da9e084"
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.pdf": "546fb14e53a1cfef13900327c96f76f9d4c1602f6def36186928e8535bb435fb",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.png": "6fd2774a8332576dc4d871a1cf812c353049a2df1b783615efe93d06fff8b0c0"
   },
   "identical": true,
   "rebuild_files": [

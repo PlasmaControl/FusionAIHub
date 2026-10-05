@@ -5329,8 +5329,8 @@
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.png"
   ],
   "figure_sha256": {
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.pdf": "34790dd2b339b8dcdb37f189ec593f1b49dfe8446c9850d0e4ff28ee414deedb",
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.png": "fc19d8528284b71db803b235fcbe08c5545c08201b273fac16a4e4895da9e084"
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.pdf": "546fb14e53a1cfef13900327c96f76f9d4c1602f6def36186928e8535bb435fb",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.png": "6fd2774a8332576dc4d871a1cf812c353049a2df1b783615efe93d06fff8b0c0"
   },
   "blobs": {
    "wide_above_split": 390,
@@ -5623,32 +5623,12 @@
    "ntm_key_black_swatch": true,
    "n_key_bounds": [
     0.792,
-    0.39941496434462176,
+    0.4816281512605045,
     0.9080493827160494,
-    0.46709033613445405
+    0.5493035230503368
    ],
-   "ae_in_panel_label": {
-    "text": "AE",
-    "anchor_ms_khz": [
-     3900,
-     200
-    ],
-    "bounds": [
-     0.5475510662177329,
-     0.6665154898437365,
-     0.570267115600449,
-     0.6892618210806338
-    ]
-   },
-   "ae_margin_label": {
-    "text": "AE",
-    "bounds": [
-     0.810724279835391,
-     0.6574440281714102,
-     0.8299835390946503,
-     0.6757878436850371
-    ]
-   },
+   "ae_in_panel_label": null,
+   "ae_margin_label": null,
    "elm_box_bounds": [
     [
      0.3494545454545454,
@@ -5723,7 +5703,6 @@
     "transient",
     "AE",
     "NTM",
-    "NTM, rest",
     "ELM",
     "n=1",
     "n=2",
@@ -5834,23 +5813,13 @@
      ]
     },
     {
-     "text": "NTM, rest",
-     "font_pt": 7.0,
-     "bounds": [
-      0.810724279835391,
-      0.6074354295078883,
-      0.8800298353909466,
-      0.6257792450215152
-     ]
-    },
-    {
      "text": "ELM",
      "font_pt": 7.0,
      "bounds": [
       0.810724279835391,
-      0.5824311301761272,
+      0.6074354295078883,
       0.8418353909465022,
-      0.6007749456897541
+      0.6257792450215152
      ]
     },
     {
@@ -5858,9 +5827,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.8064032921810699,
-      0.4235020729007014,
+      0.5057152598165842,
       0.8360329218106995,
-      0.4418458884143282
+      0.524059075330211
      ]
     },
     {
@@ -5868,9 +5837,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.8064032921810699,
-      0.39941496434462176,
+      0.4816281512605045,
       0.8360329218106995,
-      0.41775877985824855
+      0.4999719667741313
      ]
     },
     {
@@ -5878,9 +5847,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.8561975308641975,
-      0.4235020729007014,
+      0.5057152598165842,
       0.885827160493827,
-      0.4418458884143282
+      0.524059075330211
      ]
     },
     {
@@ -5888,9 +5857,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.8561975308641975,
-      0.39941496434462176,
+      0.4816281512605045,
       0.9080493827160493,
-      0.4189161190222947
+      0.5011293059381774
      ]
     },
     {
@@ -5954,13 +5923,13 @@
      ]
     },
     {
-     "text": "n (Mirnov)",
+     "text": "n",
      "font_pt": 7.0,
      "bounds": [
-      0.8123742283950617,
-      0.4475891814567811,
-      0.8876751543209876,
-      0.46709033613445405
+      0.8455802469135802,
+      0.5298023683726638,
+      0.8544691358024691,
+      0.5481461838862907
      ]
     }
    ]
@@ -6200,10 +6169,10 @@
    }
   }
  },
- "git": "77d2d03c",
+ "git": "7024e18e",
  "render_started_from_clean_head": true,
  "render_code_sha256": {
-  "scripts/labeler/paper/fig_interpreter_tokeye.py": "435fc6fbd4bccff3420520221ff336c0aad2de9d90cfa9b0ba1fe5d0c96e5667",
+  "scripts/labeler/paper/fig_interpreter_tokeye.py": "61d32cd02f5741197ee6cd3a838b998824aceff118a659476e6616f83537a888",
   "src/labeler/paper/figure_sources.py": "782f0e0cc2c5274d07f8e20d3af6624f95cc3d1ca3f5dfcacca43a8fa56c1c1a",
   "src/labeler/paper/mode_tags.py": "5a23d78ab919e93ab892633ea46e1891d2785227b91ff2552e891e476f6b4661"
  }
