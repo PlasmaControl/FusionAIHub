@@ -63,7 +63,7 @@ from matplotlib.path import Path as PlotPath
 from scipy import ndimage, signal
 
 from labeler.config import Paths, atomic_path, git_sha, sha256_of
-from labeler.events import masks, unet
+from labeler.events import equilibrium, masks, unet
 from labeler.events.catalog.cohort import read_cohort
 from labeler.events.catalog.states import ABSENT, NOT_OBSERVABLE, PRESENT, UNCERTAIN
 from labeler.events.spans import cohort_path
@@ -76,7 +76,7 @@ from labeler.paper import PAGE_IN, figure_sources, mode_tags, roster, style
 from labeler.paper import label_figure as lf
 
 STEM = "fig_interpreter"
-HEIGHT_IN = 5.3
+HEIGHT_IN = 5.76
 DPI_PNG = 150
 DPI_PDF = 300
 #: The window's margin the TokEye cache keeps beyond the figure's, ms.
@@ -1022,10 +1022,10 @@ def draw(
     n_read, n_kept = roster.gated(n_sig.rows[0], gate) if n_sig.rows else (None, None)
 
     # Heights in inches, top to bottom: (a) raw, (b) processed, (c) D-alpha with the
-    # ELM and confinement labels, (d) NBI power, (e) the label rows.
+    # ELM and confinement labels, (d) NBI power, (e) beta_N, (f) the label rows.
     layout = {
         "raw": 1.35, "g0": 0.07, "pr": 1.35, "g1": 0.08, "da_pr": 0.4,
-        "g2": 0.06, "nbi": 0.4, "g3": 0.1,
+        "g2": 0.06, "nbi": 0.4, "g3": 0.06, "bn": 0.4, "g4": 0.1,
     }  # fmt: skip
     names = [*layout, *[f"track{i}" for i in range(len(display_tracks))]]
     heights = [
@@ -1045,12 +1045,13 @@ def draw(
             bottom=0.12,
         )
         ax = {n: fig.add_subplot(gs[i]) for i, n in enumerate(names)}
-        for n in ("g0", "g1", "g2", "g3"):
+        for n in ("g0", "g1", "g2", "g3", "g4"):
             ax[n].set_visible(False)
         track_axes = [ax[f"track{i}"] for i in range(len(display_tracks))]
         for n in (
             "raw",
             "nbi",
+            "bn",
             "pr",
             "da_pr",
         ):
@@ -1078,6 +1079,14 @@ def draw(
             "NBI power\n(MW)", rotation=0, ha="right", va="center", labelpad=3
         )
         ax["nbi"].set_ylim(bottom=0)
+        beta = equilibrium.signal(candidate.shot, "betan", paths)
+        beta_ms = beta.x * 1000.0
+        shown = (beta_ms >= t0) & (beta_ms <= t1)
+        ax["bn"].plot(beta_ms[shown], beta.y[shown], color="#555555", lw=0.8)
+        ax["bn"].set_ylabel(
+            r"$\beta_N$", rotation=0, ha="right", va="center", labelpad=3
+        )
+        ax["bn"].set_ylim(bottom=0)
 
         # ---- processed: binary coherent mask, with measured n below 30 kHz
         keys = []
@@ -1263,7 +1272,7 @@ def draw(
         # are one panel
         letters = {
             "raw": "(a)", "pr": "(b)", "da_pr": "(c)", "nbi": "(d)",
-            "track0": "(e)",
+            "bn": "(e)", "track0": "(f)",
         }  # fmt: skip
         for name, letter in letters.items():
             pos = ax[name].get_position()
@@ -1458,6 +1467,11 @@ def draw(
             "zoom_below_split": len(blobs_low),
             "tagged": tags_count,
             "untagged": sum(not b.tags for b in blobs_high + blobs_low),
+        },
+        "beta_n": {
+            "store": beta.attrs.get("store"),
+            "resolver": beta.attrs.get("resolver"),
+            "samples_drawn": int(shown.sum()),
         },
         "tokeye_threshold": TOKEYE_THRESHOLD,
         "tokeye_transient_drawn": transient_shown,

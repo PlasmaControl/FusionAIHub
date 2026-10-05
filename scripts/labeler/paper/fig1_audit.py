@@ -500,7 +500,7 @@ def main():
         assert "normalised" not in caption
         assert "(b) TokEye coherent-mode mask after small-object removal" in caption
         assert "toroidal mode number $n$ (Mirnov array)" in caption
-        assert "(e) Label rows; sources in the appendix." in caption
+        assert "(e) Normalized beta. (f) Label rows; sources: appendix." in caption
         assert "row omitted" not in caption and "shared inputs" not in caption
         assert "Circles:" not in caption and "Triangles:" not in caption
         appendix_file = args.records / f"{shot}.appendix.txt"
@@ -694,7 +694,7 @@ def main():
         assert sha256_of(caption_file) == record["caption"]["sha256"]
         layout = record["print_layout"]
         assert layout["width_in"] == 6.75 and layout["minimum_font_pt"] >= 7
-        assert layout["height_in"] <= 5.6
+        assert layout["height_in"] <= 5.8
         assert record["decision_thresholds"]["ae"] == AE_THRESHOLD
         external = Path(record["caption"]["path"]).parent / "fig_interpreter.json"
         assert external.read_bytes() == file.read_bytes()

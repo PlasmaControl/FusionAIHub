@@ -885,7 +885,7 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
         sentences.append(text + (f"; {clause}." if clause else "."))
     sentences.append(
         "(c) D-alpha, ELM intervals (red) and confinement regimes. (d) NBI "
-        "power. (e) Label rows; sources in the appendix."
+        "power. (e) Normalized beta. (f) Label rows; sources: appendix."
     )
     if drawn.get("elm_hmode_conflicts_ms"):
         sentences.append(

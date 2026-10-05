@@ -853,7 +853,8 @@ def test_primary_caption_describes_the_figure_and_its_highlights():
         "bins). Orange outlines: n=1/2 pixels while the NTM detector (held-out "
         "F1 0.46, below our 0.7 bar) is positive. Highlights mark time/band "
         "coincidence only. (c) D-alpha, ELM intervals (red) and confinement "
-        "regimes. (d) NBI power. (e) Label rows; sources in the appendix."
+        "regimes. (d) NBI power. (e) Normalized beta. (f) Label rows; sources: "
+        "appendix."
     )
     # One linear axis: no scale break, stretching or compression is described.
     for broken in ("three frequency", "stretched", "compressed", "normalised"):
