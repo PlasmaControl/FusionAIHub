@@ -384,23 +384,8 @@ def main():
                 shot,
                 "peak triangles touch box",
             )
-        anchor = record["annotations"]["shot"].get("ae_label")
-        if anchor:
-            # A small "AE" chip inside the upper processed panel, no leader line.
-            chip = geometry["ae_in_panel_label"]
-            assert chip["text"] == "AE"
-            assert chip["anchor_ms_khz"] == [anchor["time_ms"], anchor["frequency_khz"]]
-            hi = panels["pr"]["bounds"]
-            assert hi[0] < chip["bounds"][0] < chip["bounds"][2] < hi[2]
-            assert hi[1] < chip["bounds"][1] < chip["bounds"][3] < hi[3]
-            # The chip is in the AE band, above the n view and the 60 kHz split.
-            assert anchor["frequency_khz"] >= mt.BANDS[mt.AE][0]
-            assert "leader_anchor_ms_khz" not in geometry["ae_margin_label"]
-            assert geometry["ae_margin_label"]["bounds"][0] > hi[2]
-            spans = record["tracks"][mt.AE]["present_spans_ms"]
-            assert any(a <= anchor["time_ms"] < b for a, b in spans)
-        else:
-            assert geometry["ae_in_panel_label"] is None
+        # No floating AE chip in the processed panel; the legend names AE.
+        assert geometry["ae_in_panel_label"] is None
         n_key = geometry["n_key_bounds"]
         if n_key is not None:
             # Right of the spectrograms, beside the D-alpha panel.

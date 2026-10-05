@@ -758,7 +758,6 @@ def draw_legends(
     peaks,
     t0,
     t1,
-    ntm_dashed=False,
     transient=False,
 ):
     """Source-aware signal/event keys and aligned label-state keys."""
@@ -784,17 +783,6 @@ def draw_legends(
                 Line2D([], [], color=NTM_CONTOUR_COLOUR, ls="-", lw=NTM_CONTOUR_LW),
             )
         )
-        if ntm_dashed:
-            event_handles.append(
-                Line2D(
-                    [],
-                    [],
-                    color=NTM_CONTOUR_COLOUR,
-                    ls=NTM_DASHED_STYLE,
-                    lw=NTM_DASHED_LW,
-                    label="NTM, rest",
-                )
-            )
     if visible:
         event_handles.append(
             Patch(fc="none", ec=ELM_BOX_COLOUR, lw=0.8, label="ELM")
@@ -1118,7 +1106,6 @@ def draw(
                 record=ntm_outline_regions.setdefault(band.name, {}),
                 full=whole_ntm[band.name],
             )
-        ae_annotation = (annotations or {}).get("ae_label")
         # D-alpha: the ELM label's span and spikes, the confinement regimes
         elm_key = "edge_localized_mode"
         elm_spans = present_spans(by_key[elm_key])
@@ -1296,38 +1283,9 @@ def draw(
             peaks,
             t0,
             t1,
-            ntm_dashed=any(
-                r.get("dashed_regions", 0) for r in ntm_outline_regions.values()
-            ),
             transient=transient_shown,
         )
         fig.draw_without_rendering()
-        ae_label = None
-        ae_chip = None
-        if ae_annotation and projected["wide"][mode_tags.AE].any():
-            ae_label = next(
-                text
-                for key in fig.legends
-                for text in key.texts
-                if text.get_text() == "AE"
-            )
-            ae_chip = ax["pr"].text(
-                ae_annotation["time_ms"],
-                ae_annotation["frequency_khz"],
-                "AE",
-                fontsize=FONT,
-                color="black",
-                ha="center",
-                va="center",
-                bbox={
-                    "boxstyle": "round,pad=0.12",
-                    "fc": EVENT_COLOURS[mode_tags.AE],
-                    "ec": "white",
-                    "lw": 0.5,
-                },
-                zorder=9,
-            )
-            fig.draw_without_rendering()
         n_legend = next(
             (
                 key
@@ -1412,31 +1370,8 @@ def draw(
                 .transformed(fig.transFigure.inverted())
                 .extents
             ),
-            "ae_in_panel_label": None
-            if ae_chip is None
-            else {
-                "text": ae_chip.get_text(),
-                "anchor_ms_khz": [
-                    ae_annotation["time_ms"],
-                    ae_annotation["frequency_khz"],
-                ],
-                "bounds": list(
-                    ae_chip.get_bbox_patch()
-                    .get_window_extent()
-                    .transformed(fig.transFigure.inverted())
-                    .extents
-                ),
-            },
-            "ae_margin_label": None
-            if ae_label is None
-            else {
-                "text": ae_label.get_text(),
-                "bounds": list(
-                    ae_label.get_window_extent()
-                    .transformed(fig.transFigure.inverted())
-                    .extents
-                ),
-            },
+            "ae_in_panel_label": None,
+            "ae_margin_label": None,
             "elm_box_bounds": [
                 list(
                     box.get_window_extent()
