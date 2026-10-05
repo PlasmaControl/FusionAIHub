@@ -1,7 +1,8 @@
 """The benchmark figure (paper Figure 2): the confine-cnn bars (the Tokamak-SI score
 is the ablation's protocol row, the paper's one confine-cnn score, read through a
-small adapter), the tearing-mode, RWM and ELM panels (each reads its stream's final
-record), the coverage row, the figure's size and text, and no typed score."""
+small adapter), the tearing-mode, sawtooth, RWM and ELM panels (each reads its
+stream's final record), the coverage row, the figure's size and text, and no typed
+score."""
 
 from __future__ import annotations
 
@@ -148,7 +149,7 @@ def test_a_legacy_f1_that_is_not_its_counts_or_precision_and_recall_is_refused()
 
 
 def test_the_elm_panel_reads_the_final_records_on_the_shots_with_bes():
-    _, _, _, elm, smith, _, _ = records()
+    _, _, _, elm, smith, _, _, _ = records()
     drawn, every, ax = drawn_rows(fig.draw_elm, elm, smith)
     by = {(r["series"], r["group"]): r for r in drawn}
     assert set(by) == {
@@ -172,7 +173,7 @@ def test_the_elm_panel_reads_the_final_records_on_the_shots_with_bes():
 
 
 def test_the_elm_auc_panel_has_no_legacy_bar_and_the_sweeps_values():
-    _, _, _, elm, smith, _, _ = records()
+    _, _, _, elm, smith, _, _, _ = records()
     for metric in ("auroc", "auprc"):
         drawn, _, _ = drawn_rows(fig.draw_elm, elm, smith, metric=metric)
         assert {r["group"] for r in drawn} == {"Tokamak-SI"}
@@ -264,6 +265,111 @@ def test_the_rwm_auc_panel_keeps_the_other_machines_auroc_out_of_the_figure():
     assert legacy[0]["value"] == rwm["legacy"]["slice_auroc"] and not legacy[0]["drawn"]
 
 
+# sawtooth
+
+SAW_SOURCE = "outputs/labeler/sawtooth/fix5/benchmark.json"
+
+
+def test_the_sawtooth_panel_draws_out_of_fold_presence_f1_from_the_record():
+    saw = records()[7]
+    drawn, _, ax = drawn_rows(fig.draw_sawtooth, saw)
+    by = {(r["series"], r["group"]): r for r in drawn}
+    for model in fig.SAW_MODELS:
+        row = by[model, "Tokamak-SI"]
+        block = saw["Tokamak-SI"][model]["crash_tolerance_2ms"]
+        assert row["value"] == block["presence"]["f1"]
+        assert (row["ci_lo"], row["ci_hi"]) == tuple(block["ci95"]["presence_f1"])
+        assert row["key"] == f"Tokamak-SI.{model}.crash_tolerance_2ms.presence.f1"
+        assert row["source"] == SAW_SOURCE
+        assert "out of fold" in row["note"] and "inner-selection" in row["note"]
+    assert [m for m, _ in by if m.startswith("saw-")][:3] == list(fig.SAW_MODELS)
+    assert {round(r["value"], 12) for r in drawn} <= bar_heights(ax) | {
+        round(by["saw-always-present", "Tokamak-SI, trivial baseline"]["value"], 12)
+    }
+
+
+def test_the_sawtooth_panel_ticks_the_always_present_baseline_on_every_bar():
+    saw = records()[7]
+    for metric in ("f1", "auroc", "auprc"):
+        drawn, _, ax = drawn_rows(fig.draw_sawtooth, saw, metric=metric)
+        base = saw["Tokamak-SI"]["saw-always-present"]["crash_tolerance_2ms"][
+            "presence"
+        ][metric]
+        row = next(r for r in drawn if r["group"] == "Tokamak-SI, trivial baseline")
+        assert row["value"] == base
+        ticks = [ln for ln in ax.lines if list(ln.get_ydata()) == [base, base]]
+        assert len(ticks) == 2 * len(fig.SAW_MODELS)  # a white halo and a dark line
+
+
+def test_the_sawtooth_legacy_slot_is_the_other_machine_with_no_drawn_value():
+    saw = records()[7]
+    drawn, every, ax = drawn_rows(fig.draw_sawtooth, saw)
+    assert not [r for r in drawn if r["group"] == "legacy"]
+    assert any("other machine" in t.get_text() for t in ax.texts)
+    legacy = [r for r in every if r["group"] == "legacy"]
+    slot = [r for r in legacy if r["value"] is None]
+    assert len(slot) == 1 and slot[0]["key"] == "legacy"
+    stated = [r for r in legacy if r["value"] is not None]
+    assert {r["key"] for r in stated} == {
+        "legacy.real_time.accuracy_stated",
+        "legacy.offline.accuracy_stated",
+    }  # the paper's own three-class accuracy: in the CSV only, never an F1
+    assert all(not r["drawn"] and "not an F1" in r["note"] for r in stated)
+
+
+def test_the_sawtooth_f1_csv_names_the_threshold_policy_and_keeps_the_fixed_one_out():
+    saw = records()[7]
+    drawn, every, _ = drawn_rows(fig.draw_sawtooth, saw)
+    assert all(
+        "selected per fold on inner-selection shots" in r["note"]
+        for r in drawn
+        if r["group"] == "Tokamak-SI"
+    )
+    fixed = [r for r in every if r["group"] == "Tokamak-SI, fixed threshold"]
+    assert {r["series"] for r in fixed} == set(fig.SAW_MODELS)
+    for r in fixed:
+        pooled = saw["Tokamak-SI"][r["series"]]["presence_fixed_threshold"]["pooled"]
+        assert not r["drawn"] and r["value"] == pooled["f1"]
+        assert "single threshold 0.5" in r["note"]
+
+
+def test_the_sawtooth_auc_panels_read_the_records_presence_auroc_and_auprc():
+    saw = records()[7]
+    for metric in ("auroc", "auprc"):
+        drawn, every, _ = drawn_rows(fig.draw_sawtooth, saw, metric=metric)
+        for model in fig.SAW_MODELS:
+            row = next(
+                r for r in drawn if r["series"] == model and r["group"] == "Tokamak-SI"
+            )
+            block = saw["Tokamak-SI"][model]["crash_tolerance_2ms"]
+            assert row["value"] == block["presence"][metric]
+            assert (row["ci_lo"], row["ci_hi"]) == tuple(
+                block["ci95"][f"presence_{metric}"]
+            )
+        assert not [r for r in every if "fixed threshold" in r["group"]]
+
+
+def test_the_sawtooth_title_states_the_bin_width_the_record_gives():
+    saw = records()[7]
+    title = fig.saw_title(saw)
+    assert title.startswith("Sawtooth")
+    assert f"{saw['protocol']['bin_ms']:g} ms bins" in title
+
+
+def test_a_presence_block_that_differs_between_crash_tolerances_is_refused():
+    def entry(one, two):
+        return {
+            "crash_tolerance_1ms": {"presence": {"f1": one}},
+            "crash_tolerance_2ms": {"presence": {"f1": two}, "ci95": {}},
+        }
+
+    assert fig.saw_presence({"Tokamak-SI": {"m": entry(0.9, 0.9)}}, "m")[0] == {
+        "f1": 0.9
+    }
+    with pytest.raises(ValueError, match="crash tolerances"):
+        fig.saw_presence({"Tokamak-SI": {"m": entry(0.9, 0.8)}}, "m")
+
+
 # coverage
 
 
@@ -299,6 +405,16 @@ def test_the_coverage_panels_draw_the_record_and_hatch_what_has_no_value():
         )
 
 
+def test_the_coverage_axis_reaches_the_smallest_reviewed_subset():
+    cov = fig.load(fig.SOURCES["coverage"])
+    for field in ("shots", "seconds"):
+        _, every, ax = drawn_rows(fig.draw_coverage, cov, metric=field)
+        low = ax.get_ylim()[0]
+        reviewed = [r for r in every if r["group"] == "Tokamak-SI, reviewed subset"]
+        assert reviewed and all(r["value"] >= low for r in reviewed)
+        assert {r["series"] for r in reviewed} >= {"sawtooth"}  # three shots
+
+
 # the whole figure
 
 
@@ -318,7 +434,7 @@ def test_the_f1_figure_fits_the_main_text_and_every_text_is_at_least_7_pt():
             }
             assert not small, small
     assert figure.get_figheight() <= 5.2
-    assert {r["panel"] for r in rows.rows} == set("abcdfgh")  # e: not yet scored
+    assert {r["panel"] for r in rows.rows} == set("abcdefgh")
 
 
 def test_no_version_label_and_no_misspelling_in_the_text_or_the_table():
@@ -334,11 +450,20 @@ def test_no_version_label_and_no_misspelling_in_the_text_or_the_table():
         assert "sawteeth" not in text.lower() and "Jalalvand" not in text
 
 
-def test_sawtooth_is_drawn_as_not_yet_scored_in_both_settings():
-    fig_ax = Figure().add_subplot()
-    fig.draw_pending(fig_ax)
-    labels = [t.get_text() for t in fig_ax.texts]
-    assert labels.count("not yet scored") == 2
+def test_nothing_is_left_as_not_yet_scored_and_the_twin_has_the_sawtooth_panels():
+    recs = records()
+    with fig.plot_style():
+        rows = fig.Rows()
+        figure = fig.figure_f1(recs, fig.load(fig.SOURCES["coverage"]), rows)
+        twin_rows = fig.Rows()
+        twin = fig.figure_auc(recs, twin_rows)
+    for f in (figure, twin):
+        assert "not yet scored" not in {t.get_text() for t in f.findobj(Text)}
+    assert {r["panel"] for r in twin_rows.rows if r["series"] == "saw-ours"} == {
+        "e0",
+        "e1",
+    }
+    assert {r["panel"] for r in rows.rows if r["series"] == "saw-ours"} == {"e"}
 
 
 # the guard: a drawn score is read from a record, never typed
@@ -351,10 +476,19 @@ def test_no_score_is_typed_into_the_script():
         rows = fig.Rows()
         fig.figure_f1(recs, cov, rows)
         fig.figure_auc(recs, rows)
+    # the always-present baseline's AUROC is the chance level 0.5 by definition (the
+    # record's own value); it coincides with the layout's 0.5s, so it is exempt
+    chance = {"AUROC": 0.5}
     scores = {
         round(r["value"], 3)
         for r in rows.rows
-        if r["drawn"] and r["panel"] not in "gh" and 0 < (r["value"] or 0) < 1
+        if r["drawn"]
+        and r["panel"] not in "gh"
+        and 0 < (r["value"] or 0) < 1
+        and not (
+            r["group"] == "Tokamak-SI, trivial baseline"
+            and r["value"] == chance.get(r["metric"])
+        )
     }
     tree = ast.parse(SCRIPT.read_text())
     typed = {

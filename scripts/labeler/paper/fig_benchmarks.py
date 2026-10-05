@@ -36,9 +36,21 @@ annotation) used and "Tokamak-SI" is our labels:
   `docs/labeler/figure2_tm.json`. The Tokamak-SI F1 excludes uncertain time;
   an open diamond marks the same model with uncertain time scored negative.
 - RWM: `rwm-brf` on the Tokamak-SI labels (`outputs/labeler/rwm/evaluation.json`),
-  pooled slice F1, with a tick at the elapsed-time baseline; the legacy
+  pooled slice F1, with a tick at the elapsed-time baseline (the legend's
+  "trivial baseline", as the always-present tick of the sawtooth panel); the legacy
   forest was scored on another machine and has no comparable F1 (a hatched slot).
-- Sawtooth has no score yet: two empty hatched slots (legacy, Tokamak-SI).
+- Sawtooth: `saw-derivative` (the single-channel derivative picker, which reads the same
+  ECE edges the labels are built from), `saw-hl3` (the OuYang 2025 HL-3 network,
+  replicated) and `saw-ours`
+  on the Tokamak-SI labels, from the sawtooth stream's benchmark record
+  (`outputs/labeler/sawtooth/fix5/benchmark.json`): presence F1 on 2 ms bins,
+  out of fold over the shot-grouped three-fold split of the TRAIN shots (the
+  record's `crash_tolerance_2ms.presence`; the presence threshold is selected
+  per fold on inner-selection shots), with the record's 95 % shot-bootstrap
+  interval and a tick at the always-present baseline. The score is agreement
+  with the physics rule on assessed bins, not an independent truth. HL-3's own
+  paper was scored on another machine: a hatched slot, its stated three-class
+  window accuracy in the CSV only.
 
 The coverage row reads `docs/labeler/figure2_coverage.json` (written by
 `fig2_coverage.py`): labelled shots and labelled time per set, legacy against
@@ -95,6 +107,8 @@ SOURCES = {
     "elm_smith": OUTPUTS / "elm" / "smith" / "evaluation.json",
     "tm": REPO / "docs" / "labeler" / "figure2_tm.json",
     "rwm": OUTPUTS / "rwm" / "evaluation.json",
+    # the sawtooth stream's benchmark: out-of-fold presence scores per model
+    "saw": OUTPUTS / "sawtooth" / "fix5" / "benchmark.json",
     "coverage": REPO / "docs" / "labeler" / "figure2_coverage.json",
 }
 DEFAULT_OUT = REPO / "dev" / "label_paper" / "figures" / "fig_benchmarks.pdf"
@@ -147,6 +161,13 @@ TM_KEYS = {
     "auroc": ("auroc", "auroc"),
     "auprc": ("auprc", "auprc"),
 }
+SAW_MODELS = (  # the models of the record, named "<task>-<model>" there
+    "saw-derivative",
+    "saw-hl3",
+    "saw-ours",
+)
+SAW_TRIVIAL = "saw-always-present"
+SAW_BLOCK = "crash_tolerance_2ms"  # holds the presence scores (the same at 1 ms)
 CLASSES = ("L", "H", "QH", "WP")
 METRICS = {"f1": "F1", "auroc": "AUROC", "auprc": "AUPRC"}
 STATUS_TEXT = {
@@ -805,20 +826,141 @@ def draw_rwm(ax, rwm: dict, rows: Rows, panel: str, metric: str = "f1") -> None:
     ax.set_ylabel(name, labelpad=2)
 
 
-def draw_pending(ax) -> None:
-    """A set with no score yet: an empty slot for each setting."""
-    pending_slot(ax, 0, SLOT, LEGACY, text="not yet scored")
-    pending_slot(ax, GROUP_GAP, SLOT, SI, text="not yet scored")
+def saw_presence(saw: dict, model: str) -> tuple[dict, dict]:
+    """A model's out-of-fold presence scores and their 95 % shot-bootstrap
+    intervals (`crash_tolerance_2ms` of the benchmark record). The presence block
+    does not depend on the crash tolerance; the record must say the same at 1 ms."""
+    entry = saw["Tokamak-SI"][model]
+    if entry["crash_tolerance_1ms"]["presence"] != entry[SAW_BLOCK]["presence"]:
+        raise ValueError(f"{model}: presence differs between the crash tolerances")
+    return entry[SAW_BLOCK]["presence"], entry[SAW_BLOCK]["ci95"]
+
+
+def saw_title(saw: dict) -> str:
+    """The panel title, with the bin width the record states."""
+    return f"{TITLES['sawtooth']} (presence, {saw['protocol']['bin_ms']:g} ms bins)"
+
+
+def draw_sawtooth(ax, saw: dict, rows: Rows, panel: str, metric: str = "f1") -> None:
+    """The derivative baseline, `saw-hl3` and `saw-ours` on the Tokamak-SI labels
+    (presence, out of fold; a tick at the always-present baseline) and, as the
+    legacy setting, a hatched slot: the HL-3 paper was scored on another machine."""
+    name = METRICS[metric]
+    src = SOURCES["saw"]
+    reason = {
+        "f1": "other machine,\nno F1",
+        "auroc": "other machine,\nnot comparable",
+        "auprc": "other machine,\nno AUPRC",
+    }[metric]
+    pending_slot(ax, 0, SLOT, PENDING_EDGE, text=reason)
+    legacy = saw["legacy"]
+    rows.add(
+        panel,
+        "saw-hl3",
+        "legacy",
+        name,
+        None,
+        None,
+        src,
+        "legacy",
+        note=f"{legacy['source']}: no presence {name}; not drawn",
+        drawn=False,
+    )
+    block = f"Tokamak-SI.{{}}.{SAW_BLOCK}.presence"
+    base_presence, _ = saw_presence(saw, SAW_TRIVIAL)
+    base = base_presence[metric]
+    xs = [GROUP_GAP + i for i in range(len(SAW_MODELS))]
+    for x, model in zip(xs, SAW_MODELS):
+        presence, ci95 = saw_presence(saw, model)
+        value = presence[metric]
+        ci = tuple(ci95[f"presence_{metric}"])
+        scored_bar(ax, x, value, ci, SI)
+        baseline_tick(ax, x, base)
+        entry = saw["Tokamak-SI"][model]
+        rows.add(
+            panel,
+            model,
+            "Tokamak-SI",
+            name,
+            value,
+            ci,
+            src,
+            f"{block.format(model)}.{metric}",
+            note=f"presence on {saw['protocol']['bin_ms']:g} ms bins, out of fold "
+            f"over {entry['coverage']['supported_shots']} supported TRAIN shots "
+            f"({entry['coverage']['scored_shots']} with assessed bins; "
+            f"{presence['positive_bins']} present and {presence['negative_bins']} "
+            "tested-absent bins), scored against the physics rule on assessed bins"
+            + (
+                "; presence threshold selected per fold on inner-selection shots"
+                if metric == "f1"
+                else ""
+            ),
+        )
+        if metric == "f1":
+            fixed = entry["presence_fixed_threshold"]
+            rows.add(
+                panel,
+                model,
+                "Tokamak-SI, fixed threshold",
+                name,
+                fixed["pooled"]["f1"],
+                tuple(fixed["ci95"]["presence_f1"]),
+                src,
+                f"Tokamak-SI.{model}.presence_fixed_threshold.pooled.f1",
+                note=f"the same bins at the single threshold {fixed['threshold']:g}"
+                "; kept out of the figure",
+                drawn=False,
+            )
+    rows.add(
+        panel,
+        SAW_TRIVIAL,
+        "Tokamak-SI, trivial baseline",
+        name,
+        base,
+        None,
+        src,
+        f"{block.format(SAW_TRIVIAL)}.{metric}",
+        note="presence = 1 everywhere; tick",
+    )
+    if metric == "f1":
+        hl3 = saw["Tokamak-SI"]["saw-hl3"]
+        for mode, key in (("real-time", "real_time"), ("offline", "offline")):
+            rows.add(
+                panel,
+                "saw-hl3",
+                "legacy",
+                f"three-class window accuracy, {mode} (stated)",
+                legacy[key]["accuracy_stated"],
+                None,
+                src,
+                f"legacy.{key}.accuracy_stated",
+                note="the HL-3 paper's own metric on its own machine and windows; "
+                "not an F1, not comparable; kept out of the figure",
+                drawn=False,
+            )
+        rows.add(
+            panel,
+            "saw-hl3",
+            "Tokamak-SI, three-class",
+            "three-class window accuracy",
+            hl3["three_class_window_accuracy"],
+            tuple(hl3["three_class_accuracy_ci95"]),
+            src,
+            "Tokamak-SI.saw-hl3.three_class_window_accuracy",
+            note="the same three-class windows scored on DIII-D, out of fold; "
+            "kept out of the figure",
+            drawn=False,
+        )
     finish_groups(
         ax,
-        [0, GROUP_GAP],
-        ["", ""],
-        [0, GROUP_GAP],
+        [0, *xs],
+        ["", *SAW_MODELS],
+        [0, float(np.mean(xs))],
         ["legacy", "Tokamak-SI"],
     )
-    ax.set_yticklabels([])
-    ax.tick_params(axis="y", length=0)
-    ax.spines["left"].set_visible(False)
+    ax.set_xlim(-0.6, xs[-1] + 0.55)  # a little tighter, so the tearing title fits
+    ax.set_ylabel(name, labelpad=2)
 
 
 def draw_coverage(ax, cov: dict, rows: Rows, panel: str, field: str) -> None:
@@ -835,6 +977,10 @@ def draw_coverage(ax, cov: dict, rows: Rows, panel: str, field: str) -> None:
             v = cov["sets"][key][side][field]
             value_of[key, side] = None if v is None else v * scale
     drawn = [v for v in value_of.values() if v is not None]
+    for key in order:  # the reviewed subset can be the smallest bar
+        reviewed = cov["sets"][key]["tokamak_si"].get("reviewed")
+        if reviewed and reviewed["status"] == "measured":
+            drawn.append(reviewed[field] * scale)
     lo = 10.0 ** np.floor(np.log10(min(drawn)))
     hi = 10.0 ** np.ceil(np.log10(max(drawn)))
     width = 0.36
@@ -981,7 +1127,7 @@ def legend_handles(reviewed: bool, bound: bool) -> list:
             ls="none",
             label="uncertain time scored negative",
         ),
-        Line2D([], [], color=INK, lw=1.4, label="elapsed-time baseline"),
+        Line2D([], [], color=INK, lw=1.4, label="trivial baseline"),
     ]
     return handles
 
@@ -1007,21 +1153,21 @@ def tm_title(tm: dict) -> str:
 
 def panels(axes, records, rows, metric, tag):
     """The six panels of one metric: AE, confinement, ELM over TM, sawtooth, RWM."""
-    ae, conf, si, elm, smith, tm, rwm = records
+    ae, conf, si, elm, smith, tm, rwm, saw = records
     top, bottom = axes
     shots = len(ae["shots"]["fair"])
     draw_ae(top[0], ae, rows, f"a{tag}", metric)
     draw_confinement(top[1], conf, si, rows, f"b{tag}", metric)
     draw_elm(top[2], elm, smith, rows, f"c{tag}", metric)
     draw_tm(bottom[0], tm, rows, f"d{tag}", metric)
-    draw_pending(bottom[1])
+    draw_sawtooth(bottom[1], saw, rows, f"e{tag}", metric)
     draw_rwm(bottom[2], rwm, rows, f"f{tag}", metric)
     titles = (
         f"Alfvén Eigenmodes ({shots} held-out shots)",
         TITLES["conf"],
         TITLES["elm"],
         tm_title(tm),
-        TITLES["sawtooth"],
+        saw_title(saw),
         TITLES["rwm"],
     )
     for ax, text in zip([*top, *bottom], titles):
@@ -1029,18 +1175,20 @@ def panels(axes, records, rows, metric, tag):
 
 
 # bar spacings each panel needs: AE (two groups of three), confinement, ELM (one
-# legacy bar, two Tokamak-SI) over tearing modes (two, three), sawtooth, RWM
+# legacy bar, two Tokamak-SI) over tearing modes (two, three), sawtooth (a legacy
+# slot, three Tokamak-SI), RWM
 TOP_UNITS = (7.1, 3.1, 4.1)
-BOTTOM_UNITS = (6.1, 3.1, 3.1)
+BOTTOM_UNITS = (6.4, 4.8, 3.1)
 LEGEND_IN = 0.34
 
 
 def read_records():
-    ae, conf, elm, smith, tm, rwm = (
-        load(SOURCES[k]) for k in ("ae", "confinement", "elm", "elm_smith", "tm", "rwm")
+    ae, conf, elm, smith, tm, rwm, saw = (
+        load(SOURCES[k])
+        for k in ("ae", "confinement", "elm", "elm_smith", "tm", "rwm", "saw")
     )
     si = confinement_si(load(SOURCES["confinement_si"]))
-    return ae, conf, si, elm, smith, tm, rwm
+    return ae, conf, si, elm, smith, tm, rwm, saw
 
 
 @contextmanager
