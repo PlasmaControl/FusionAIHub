@@ -245,7 +245,7 @@ def main():
         assert set(shown) <= set(crashes["ece_times_ms"])
         assert drawn["sawtooth_strip_shown"] == bool(shown)
         if shot == PRIMARY:
-            assert record["window_ms"] == [700, 5800]
+            assert record["window_ms"] == [1000, 6100]
         assert drawn["catalog_sawtooth_frame_model_shown"] is False
         saw = record["tracks"]["sawtooth_oscillation"]
         assert saw["state_intervals_ms"]
@@ -691,30 +691,22 @@ def main():
                 for r in confinement["state_intervals_ms"]
             ] == clipped
             assert sha256_of(roster) == confinement["sha256"]
-            qh = [(a, b) for a, b, c in clipped if c == 3]
-            assert qh == [(2153.0, 4537.0)]
+            # This shot has no QH or WPQH time: the row is L and H only.
+            assert not [1 for _, _, c in clipped if c in (3, 4)]
             source_text = sources_text["confinement"]["text"]
             assert source_text == "model (unreviewed)"
-            # ELM boxes inside QH are disclosed, with whose labels they are.
-            assert drawn["elm_qh_overlaps_ms"], "ELM intervals overlap the QH span"
-            assert all(
-                o["category"] == 3
-                and qh[0][0] <= o["span_ms"][0] < o["span_ms"][1] <= qh[0][1]
-                for o in drawn["elm_qh_overlaps_ms"]
-            )
-            assert "ELM intervals overlap the QH span; QH is ELM-free by" in caption
-            assert "the detector's and the QH label is the model's" in caption
-            assert "both unreviewed" in caption
+            assert not drawn["elm_qh_overlaps_ms"]
+            assert "QH" not in caption
             assert "H-mode detector" not in caption + appendix
-            assert "Overlaps: " in appendix
             assert not drawn["elm_hmode_conflicts_ms"]
             assert not any(
                 t["tier"] == lf.SILVER for t in record["tracks"].values() if t
             )
-            assert "Sawtooth: present 366 ms, uncertain 4195 ms, unassessed 539 ms" in (
-                appendix
-            )
-            assert len(shown) == 12 and min(shown) > 5000
+            assert (
+                "Sawtooth: present 313 ms, absent 643 ms, uncertain 1627 ms, "
+                "unassessed 2517 ms"
+            ) in appendix
+            assert len(shown) == 9 and min(shown) > 5400
             assert "detector F1" not in " ".join(legend)
             for key in (mt.AE, mt.NTM):
                 assert record["detector_training"][key]["figure_shot_in_training"] is (
