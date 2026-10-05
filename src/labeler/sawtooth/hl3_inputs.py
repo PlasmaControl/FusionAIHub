@@ -41,6 +41,23 @@ CHANNELS = (
     "nbi_power",
     "ech_power",
 )
+#: Divisor applied to each channel when stacking, so every row is of order one: the
+#: benchmark stores its training windows as float16 (largest finite value 65504),
+#: and a stored energy in joules or a power in watts overflows it to infinity, which
+#: the normaliser then reads as a missing channel. Stored energy is in MJ and the
+#: two powers in MW; the CO2 chord V2 is divided by 1e14 (its corpus unit gives
+#: about 1e14 to 4e14); the SXR chords are already in units of their own noise.
+UNIT_SCALE = {
+    "ece_core_te": 1.0,
+    "mirnov_pair_mean": 1.0,
+    "ip": 1.0,
+    "line_density": 1e14,
+    "sxr_core": 1.0,
+    "sxr_edge": 1.0,
+    "stored_energy": 1e6,
+    "nbi_power": 1e6,
+    "ech_power": 1e6,
+}
 BAND_HZ = (100.0, 2000.0)
 #: Above every sawtooth harmonic that matters here; its variance, scaled by the
 #: bandwidth ratio, is the white-noise share of the 100 Hz to 2 kHz band.
@@ -270,9 +287,10 @@ def stack_inputs(t, parts):
     """Stack channels onto the native grid ``t`` in `CHANNELS` order.
 
     ``parts`` maps a channel name to ``None`` (missing on the shot), an array
-    already on ``t``, or a ``(tx, values)`` pair on its own clock. Returns the
-    ``(9, len(t))`` float32 matrix (NaN where unknown) and each channel's finite
-    fraction over the analysis window.
+    already on ``t``, or a ``(tx, values)`` pair on its own clock, in the units the
+    reader produced (J, W, the CO2 corpus unit); each row is divided by its
+    `UNIT_SCALE`. Returns the ``(9, len(t))`` float32 matrix (NaN where unknown) and
+    each channel's finite fraction over the analysis window.
     """
     unknown = set(parts) - set(CHANNELS)
     if unknown:
@@ -290,7 +308,7 @@ def stack_inputs(t, parts):
             values = np.asarray(part, dtype=np.float64)
             if values.shape != (len(t),):
                 raise ValueError(f"{name} must be on the native grid")
-        matrix[row] = values
+        matrix[row] = values / UNIT_SCALE[name]
     return matrix, {
         name: float(np.isfinite(matrix[row]).mean())
         for row, name in enumerate(CHANNELS)

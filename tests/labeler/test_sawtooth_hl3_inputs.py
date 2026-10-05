@@ -178,7 +178,7 @@ def test_stack_inputs_orders_channels_and_reports_missing_ones():
     parts = {
         "ip": np.full(100, 1.5),
         "ech_power": None,
-        "stored_energy": (np.array([-1.0, 1.0]), np.array([10.0, 30.0])),
+        "stored_energy": (np.array([-1.0, 1.0]), np.array([1.0e6, 3.0e6])),
     }
     matrix, coverage = hl3.stack_inputs(t, parts)
     assert matrix.shape == (9, 100) and matrix.dtype == np.float32
@@ -186,8 +186,31 @@ def test_stack_inputs_orders_channels_and_reports_missing_ones():
     np.testing.assert_array_equal(matrix[2], 1.5)
     assert coverage["ip"] == 1.0
     assert coverage["ech_power"] == 0.0 and coverage["sxr_edge"] == 0.0
-    np.testing.assert_allclose(matrix[6, 0], 20.0, atol=1e-2)
+    np.testing.assert_allclose(matrix[6, 0], 2.0, atol=1e-6)  # joules to MJ
     assert len(hl3.CHANNELS) == 9 and len(set(hl3.CHANNELS)) == 9
+
+
+def test_stacked_units_keep_every_channel_finite_in_float16():
+    # Typical DIII-D magnitudes in the units the readers produce: the benchmark
+    # stores windows as float16, which overflows above 65504.
+    t = np.arange(50) * 1e-4
+    raw = {
+        "ece_core_te": 8.0,
+        "mirnov_pair_mean": 310.0,
+        "ip": 1.6,
+        "line_density": 4.4e14,
+        "sxr_core": 100.0,
+        "sxr_edge": 140.0,
+        "stored_energy": 1.9e6,
+        "nbi_power": 1.7e7,
+        "ech_power": 2.3e6,
+    }
+    assert set(hl3.UNIT_SCALE) == set(hl3.CHANNELS)
+    matrix, _ = hl3.stack_inputs(t, {k: np.full(50, v) for k, v in raw.items()})
+    assert np.isfinite(matrix.astype(np.float16)).all()
+    assert np.abs(matrix).max() < 400
+    np.testing.assert_allclose(matrix[hl3.CHANNELS.index("nbi_power")], 17.0)
+    np.testing.assert_allclose(matrix[hl3.CHANNELS.index("line_density")], 4.4)
 
 
 def test_stack_inputs_refuses_unknown_names_and_misaligned_arrays():

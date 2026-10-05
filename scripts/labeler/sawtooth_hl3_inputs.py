@@ -8,12 +8,15 @@ had, `outputs/labeler/sawtooth/fix5/hl3_full_inputs.json`:
     ece_core_te       the benchmark's existing core ECE average (keV, EFIT-axis rule)
     mirnov_pair_mean  mean of Mirnov rows 0 and 1, 10 kHz FIR-decimated
     ip                plasma current (MA), the benchmark's existing input
-    line_density      CO2 interferometer chord V2 (corpus or raw cache), 10 kHz
+    line_density      CO2 interferometer chord V2 (corpus or raw cache), 10 kHz, / 1e14
     sxr_core          SX90 core chord, label-free choice (see `labeler.sawtooth.hl3_inputs`)
     sxr_edge          SX90 edge chord, label-free choice
-    stored_energy     EFIT01 WMHD (J, 20 ms cadence, bridged to 100 ms gaps)
-    nbi_power         summed beam power (W): corpus `pinj`, else PTDATA BMSPINJ
-    ech_power         summed gyrotron power (W): corpus `ech_power`
+    stored_energy     EFIT01 WMHD (MJ, 20 ms cadence, bridged to 100 ms gaps)
+    nbi_power         summed beam power (MW): corpus `pinj`, else PTDATA BMSPINJ
+    ech_power         summed gyrotron power (MW): corpus `ech_power`
+
+Every row is divided by `hl3_inputs.UNIT_SCALE` when stacked: the benchmark stores
+training windows as float16, and joules or watts overflow it to infinity.
 
 A signal a shot lacks is a missing channel (NaN here, masked in the network);
 the shot is still built. No label, crash time or interval is read: the only
