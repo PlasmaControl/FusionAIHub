@@ -1055,7 +1055,7 @@ def appendix_notes(
             "mask is drawn from the higher-resolution pass below 50 kHz and the "
             "wide-range pass above it, because the higher-resolution pass's "
             "decimation filter rolls off above about 50 kHz. The mask is TokEye "
-            "run on the same record, the cross-power of CO2 interferometer chords R0 and V3 "
+            "run on the same record, the cross-power of CO2 interferometer chords R0 and V1 "
             "(the AE review page's rows, averaged over 8 columns so that a mode both "
             "chords see stands out of the noise each sees alone). Toroidal mode numbers and the NTM candidates come from "
             "the Mirnov array and are drawn on the CO2 mask, so a pixel's n is "

@@ -6,7 +6,7 @@ r"""fig_interpreter (the teaser): raw signals -> TokEye-processed -> labelled.
 
 One non-blind cohort shot over a few seconds, in three groups on one time axis:
 
-- **raw**: the CO2 interferometer's R0 x V3 cross-power spectrogram (`SOURCE_ROW`,
+- **raw**: the CO2 interferometer's R0 x V1 cross-power spectrogram (`SOURCE_ROW`,
   `PARTNER_ROW`, the wide pass) on one
   linear 0-250 kHz axis, one colour scale, D-alpha and NBI power;
 - **processed**: the same spectrogram through TokEye (the network's mode mask,
@@ -86,7 +86,7 @@ CACHE_MARGIN_MS = 100.0
 PRESETS = {
     186636: (1300.0, 3900.0),
     201973: (1600.0, 3350.0),
-    199563: (700.0, 5800.0),
+    199563: (300.0, 5800.0),
     201978: (1500.0, 3300.0),
     203187: (1700.0, 3150.0),
 }
@@ -145,18 +145,18 @@ NTM_OUTLINE_MIN_PX = 100
 #: The ELM interval boxes, in red so they read against the D-alpha trace.
 ELM_BOX_COLOUR = "#D62728"
 #: The share of the D-alpha panel's height the ELM boxes span; the regime names sit above.
-ELM_BOX_TOP = 0.78
+ELM_BOX_TOP = 0.62
 #: D-alpha's panel runs to this multiple of its own maximum (room for the regime names).
 DALPHA_HEADROOM = 1.38
 #: The signal TokEye segments and the raw panel draws: the cross-power spectrogram
-#: of the CO2 interferometer chords R0 and V3 (corpus `co2` rows 0 and 3, 500 kHz),
+#: of the CO2 interferometer chords R0 and V1 (corpus `co2` rows 0 and 3, 500 kHz),
 #: the AE review page's rows, in which a mode both chords see stands out of the noise
 #: each sees alone. The n colouring and the NTM tags still read the Mirnov array,
 #: gated by this mask.
 SOURCE_GROUP = "co2"
 SOURCE_ROW = 0
-PARTNER_ROW = 3
-SOURCE_TITLE = "CO2 R0 x V3 cross-power"
+PARTNER_ROW = 1
+SOURCE_TITLE = "CO2 R0 x V1 cross-power"
 INK = "#222222"
 BAR = (0.12, 0.76)
 FONT = 7
@@ -997,7 +997,7 @@ def draw(
     # Heights in inches, top to bottom: (a) raw, (b) processed, (c) D-alpha with the
     # ELM and confinement labels, (d) NBI power, (e) the label rows.
     layout = {
-        "raw": 1.35, "g0": 0.07, "pr": 1.35, "g1": 0.08, "da_pr": 0.8,
+        "raw": 1.35, "g0": 0.07, "pr": 1.35, "g1": 0.08, "da_pr": 0.4,
         "g2": 0.06, "nbi": 0.4, "g3": 0.1,
     }  # fmt: skip
     names = [*layout, *[f"track{i}" for i in range(len(display_tracks))]]
@@ -1038,7 +1038,7 @@ def draw(
         ax["raw"].text(
             1.02,
             0.97,
-            "CO$_2$\nR0$\\times$V3",
+            "CO$_2$\nR0$\\times$V1",
             transform=ax["raw"].transAxes,
             fontsize=FONT,
             ha="left",
@@ -1301,7 +1301,7 @@ def draw(
                 "band_khz": list(ax["pr"].get_ylim()),
                 "scale_breaks_khz": [],
                 "ticks_khz": ax["pr"].get_yticks().tolist(),
-                "raw_spectrogram": "CO2 R0 x V3 cross-power, wide pass, one colour scale, 0-250 kHz",
+                "raw_spectrogram": "CO2 R0 x V1 cross-power, wide pass, one colour scale, 0-250 kHz",
                 "mask_zoom_pass_khz": [0.0, ZOOM_TOP_KHZ],
                 "mask_wide_pass_khz": [ZOOM_TOP_KHZ, TOP_KHZ],
                 "ae_ntm_split_khz": SPLIT_KHZ,
