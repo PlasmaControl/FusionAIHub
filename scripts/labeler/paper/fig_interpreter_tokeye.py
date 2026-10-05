@@ -6,7 +6,8 @@ r"""fig_interpreter (the teaser): raw signals -> TokEye-processed -> labelled.
 
 One non-blind cohort shot over a few seconds, in three groups on one time axis:
 
-- **raw**: the CO2 interferometer's spectrogram (R0, `SOURCE_ROW`, the wide pass) on one
+- **raw**: the CO2 interferometer's R0 x V3 cross-power spectrogram (`SOURCE_ROW`,
+  `PARTNER_ROW`, the wide pass) on one
   linear 0-250 kHz axis, one colour scale, D-alpha and NBI power;
 - **processed**: the same spectrogram through TokEye (the network's mode mask,
   `labeler.paper.mode_tags`: transient burst removed, pickup removed,
@@ -149,12 +150,15 @@ HEADINGS = {
     ),
     "h_lab": ("Labels; source at right",),
 }
-#: The signal TokEye segments and the raw panel draws: the CO2 interferometer R0
-#: (corpus `co2` row 0, 500 kHz). The n colouring and the NTM tags still read the
-#: Mirnov array, gated by this mask.
+#: The signal TokEye segments and the raw panel draws: the cross-power spectrogram
+#: of the CO2 interferometer chords R0 and V3 (corpus `co2` rows 0 and 3, 500 kHz),
+#: the AE review page's rows, in which a mode both chords see stands out of the noise
+#: each sees alone. The n colouring and the NTM tags still read the Mirnov array,
+#: gated by this mask.
 SOURCE_GROUP = "co2"
 SOURCE_ROW = 0
-SOURCE_TITLE = "CO2 R0"
+PARTNER_ROW = 3
+SOURCE_TITLE = "CO2 R0 x V3 cross-power"
 INK = "#222222"
 BAR = (0.12, 0.76)
 FONT = 7
@@ -178,12 +182,17 @@ def run_tokeye(paths: Paths, shot: int, t0: float, t1: float, device: str) -> di
     if device == "cpu":
         torch.set_num_threads(8)
     model = unet.load_unet(roster.tokeye_file(paths), device=device)
-    y, fs, t0_s, _ = masks.read_waveform(
+    y, fs, t0_s, t1_s = masks.read_waveform(
         paths.corpus_file(shot), SOURCE_GROUP, SOURCE_ROW
     )
+    y2, fs2, t0_2, t1_2 = masks.read_waveform(
+        paths.corpus_file(shot), SOURCE_GROUP, PARTNER_ROW
+    )
+    if (y.shape, fs, t0_s, t1_s) != (y2.shape, fs2, t0_2, t1_2):
+        raise ValueError(f"shot {shot}: the two CO2 chords are not on one clock")
     out: dict = {}
     for name, decim in (("wide", 1), ("zoom", masks.ZOOM_DECIM)):
-        spec, meta = masks.prep(y, fs_hz=fs, decim=decim)
+        spec, meta = masks.prep_cross(y, y2, fs_hz=fs, decim=decim)
         probs = masks.infer(model, spec, device, batch=8, amp=False)
         t_ms = masks.col_times_s(spec.shape[1], fs, decim, t0_s) * 1000
         keep = (t_ms >= t0) & (t_ms <= t1)
@@ -209,6 +218,7 @@ def tokeye_passes(
             SOURCE_GROUP,
             SOURCE_ROW,
             inspect.getsource(run_tokeye),
+            partner_row=PARTNER_ROW,
         ),
         sort_keys=True,
     )
@@ -1052,7 +1062,7 @@ def draw(
         ax["raw"].text(
             1.02,
             0.97,
-            "CO$_2$\ninterferometer",
+            "CO$_2$\nR0$\\times$V3\ncross-power",
             transform=ax["raw"].transAxes,
             fontsize=FONT,
             ha="left",
@@ -1392,7 +1402,7 @@ def draw(
                 "band_khz": list(ax["pr"].get_ylim()),
                 "scale_breaks_khz": [],
                 "ticks_khz": ax["pr"].get_yticks().tolist(),
-                "raw_spectrogram": "CO2 R0, wide pass, one colour scale, 0-250 kHz",
+                "raw_spectrogram": "CO2 R0 x V3 cross-power, wide pass, one colour scale, 0-250 kHz",
                 "mask_zoom_pass_khz": [0.0, ZOOM_TOP_KHZ],
                 "mask_wide_pass_khz": [ZOOM_TOP_KHZ, TOP_KHZ],
                 "ae_ntm_split_khz": SPLIT_KHZ,
@@ -2061,7 +2071,7 @@ def main(argv=None) -> int:
         "tokeye": {
             "checkpoint": str(checkpoint),
             "sha256": sha256_of(checkpoint),
-            "probe": f"{SOURCE_GROUP} row {SOURCE_ROW} ({SOURCE_TITLE})",
+            "probe": f"{SOURCE_GROUP} rows {SOURCE_ROW} and {PARTNER_ROW} ({SOURCE_TITLE})",
             "threshold": mode_tags.PROB_THRESHOLD,
             "cache": str(cache_file),
             "cache_sha256": sha256_of(cache_file),

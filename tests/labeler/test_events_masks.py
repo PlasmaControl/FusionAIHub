@@ -836,3 +836,19 @@ def test_the_pilot_shots_mhr_record_is_the_one_a1_measured():
     assert (t1 - t0) == pytest.approx(4.194, abs=1e-3)
     assert transform.n_frames(y.size) == 16_391
     assert masks.tile(np.zeros((512, 16_391), np.float32))[1]["n_tiles"] == 37
+
+
+def test_prep_cross_keeps_a_shared_tone_and_drops_independent_noise():
+    rng = np.random.default_rng(0)
+    n = 40_000
+    t = np.arange(n) / 500_000
+    tone = np.sin(2 * np.pi * 100e3 * t)
+    a = rng.normal(size=n) + tone
+    b = rng.normal(size=n) + tone
+    spec, meta = masks.prep_cross(a, b, fs_hz=500_000.0)
+    assert spec.shape[0] == 512 and meta["cross_columns"] == 8
+    bin_100 = round(100e3 / 500_000 * 1024) - 1
+    by_bin = spec.mean(axis=1)
+    assert by_bin[bin_100 - 1 : bin_100 + 2].max() > by_bin.mean() + 5 * by_bin.std()
+    with pytest.raises(ValueError):
+        masks.prep_cross(a, b[:-1], fs_hz=500_000.0)

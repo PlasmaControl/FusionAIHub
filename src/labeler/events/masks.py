@@ -54,7 +54,14 @@ import torch
 from scipy import signal
 
 from ..ae.labels import HOP, N_BINS, N_FFT, PROB_THRESHOLD
-from ..ae.transform import STD_EPS, compute_stft, standardise
+from ..ae.transform import (
+    CLIP_HIGH,
+    CLIP_LOW,
+    STD_EPS,
+    compute_stft,
+    short_time_fft,
+    standardise,
+)
 from ..config import atomic_path
 from .unet import probabilities
 
@@ -209,6 +216,58 @@ def prep(y, *, fs_hz: float, decim: int = 1):
         "spec_std": float(raw.std()),
         "clip_lo": float(raw.min()),
         "clip_hi": float(raw.max()),
+    }
+    return spec, meta
+
+
+def prep_cross(y, y2, *, fs_hz: float, decim: int = 1, columns: int = 8):
+    """Two waveforms -> `((512, T) float32, meta)`: `prep` on their cross-spectrum.
+
+    The same STFT as `prep`, but each bin is the product of the first
+    record's transform with the conjugate of the second's, averaged over
+    `columns` neighbouring columns as complex numbers (the review page's
+    cross-power rows use 8) before `log1p(|.|)`. Only what the two records
+    share survives the average, so a mode both chords see stands out of the
+    noise each sees alone. Clip, standardisation and `meta` are `prep`'s.
+    """
+    from scipy.ndimage import uniform_filter1d
+
+    y, y2 = np.asarray(y), np.asarray(y2)
+    if y.ndim != 1 or y.shape != y2.shape:
+        raise ValueError(f"prep_cross takes two equal 1-D records, got {y.shape}, {y2.shape}")
+    decim = int(decim)
+    if decim == 1:
+        waves = y, y2
+    elif decim == ZOOM_DECIM:
+        waves = tuple(
+            signal.decimate(w, ZOOM_DECIM, ftype="iir", zero_phase=True)
+            for w in (y, y2)
+        )
+    else:
+        raise ValueError(f"decim must be 1 (wide) or {ZOOM_DECIM} (zoom), not {decim}")
+    stft = short_time_fft()
+    a = stft.stft(np.asarray(waves[0], dtype=np.float64)[None, :])[0]
+    b = stft.stft(np.asarray(waves[1], dtype=np.float64)[None, :])[0]
+    product = a * np.conj(b)
+    del a, b
+    mean = uniform_filter1d(product.real, int(columns), axis=-1) + 1j * (
+        uniform_filter1d(product.imag, int(columns), axis=-1)
+    )
+    sxx = np.log1p(np.abs(mean))[1:, :]
+    vmin, vmax = np.percentile(sxx, [CLIP_LOW, CLIP_HIGH])
+    raw = np.clip(sxx, vmin, vmax).astype(np.float32)
+    spec = standardise(raw[None])[0]
+    meta = {
+        "fs_hz": float(fs_hz),
+        "decim": decim,
+        "n_cols": int(spec.shape[1]),
+        "hop_s": float(HOP * decim / fs_hz),
+        "freq_khz_per_bin": float(fs_hz / decim / 1e3 / N_FFT),
+        "spec_mean": float(raw.mean()),
+        "spec_std": float(raw.std()),
+        "clip_lo": float(raw.min()),
+        "clip_hi": float(raw.max()),
+        "cross_columns": int(columns),
     }
     return spec, meta
 

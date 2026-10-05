@@ -61,7 +61,9 @@ ROSTER_WHAT = "released confine-ours roster (1-D U-Net model labels)"
 ELM_FREE_CLASSES = (3, 4)
 
 
-def tokeye_fingerprints(paths, shot, group, row, inference_code) -> dict:
+def tokeye_fingerprints(
+    paths, shot, group, row, inference_code, partner_row=None
+) -> dict:
     """Identity of the actual model waveform and its preprocessing/inference.
 
     Hash the trimmed float32 samples that enter prep, with their timing and
@@ -82,6 +84,13 @@ def tokeye_fingerprints(paths, shot, group, row, inference_code) -> dict:
         "start_s": t0,
         "end_s": t1,
     }
+    if partner_row is not None:
+        y2, fs2, t0_2, t1_2 = masks.read_waveform(
+            paths.corpus_file(shot), group, partner_row
+        )
+        waveform["partner_row"] = partner_row
+        waveform["partner_sample_sha256"] = hashlib.sha256(y2.tobytes()).hexdigest()
+        waveform["partner_span"] = [fs2, t0_2, t1_2]
     preprocessing = {
         "code_sha256": {
             str(Path(m.__file__).relative_to(Path(__file__).parents[2])): sha256_of(
@@ -834,7 +843,7 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
     sentences = [
         f"DIII-D shot {shot}.",
         (
-            "Top: raw CO2 interferometer spectrogram (linear frequency axis, 0–250 kHz), "
+            "Top: raw CO2 interferometer cross-power spectrogram (linear frequency axis, 0–250 kHz), "
             "D-alpha, NBI power."
         ),
         (
@@ -1043,7 +1052,9 @@ def appendix_notes(
             "mask is drawn from the higher-resolution pass below 50 kHz and the "
             "wide-range pass above it, because the higher-resolution pass's "
             "decimation filter rolls off above about 50 kHz. The mask is TokEye "
-            "run on the raw record, the CO2 interferometer. Toroidal mode numbers and the NTM candidates come from "
+            "run on the same record, the cross-power of CO2 interferometer chords R0 and V3 "
+            "(the AE review page's rows, averaged over 8 columns so that a mode both "
+            "chords see stands out of the noise each sees alone). Toroidal mode numbers and the NTM candidates come from "
             "the Mirnov array and are drawn on the CO2 mask, so a pixel's n is "
             "not measured on the signal that lit it."
         ),

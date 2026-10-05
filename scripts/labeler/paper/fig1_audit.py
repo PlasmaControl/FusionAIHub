@@ -534,7 +534,7 @@ def main():
         )
         assert "no present time" not in caption.lower()
         assert caption.startswith(
-            f"\\caption{{DIII-D shot {shot}. Top: raw CO2 interferometer "
+            f"\\caption{{DIII-D shot {shot}. Top: raw CO2 interferometer cross-power "
         )
         assert "(linear frequency axis, 0--250 kHz), D-alpha, NBI power." in caption
         assert not any(w in caption.lower() for w in BROKEN_AXIS_WORDS)
@@ -771,6 +771,7 @@ def main():
             renderer.SOURCE_GROUP,
             renderer.SOURCE_ROW,
             renderer.inspect.getsource(renderer.run_tokeye),
+            partner_row=renderer.PARTNER_ROW,
         )
         assert tokeye["fingerprints"] == fingerprints
         with np.load(tokeye["cache"]) as cache:
