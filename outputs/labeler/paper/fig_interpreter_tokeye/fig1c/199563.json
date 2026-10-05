@@ -5329,8 +5329,8 @@
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.png"
   ],
   "figure_sha256": {
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.pdf": "057dae02bb0fe972000508de9565266d26fb7026668c8c32dfd517f7d3711b1c",
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.png": "a276938ce3949fce53b89d5d371426ba2d8eea07f9a97ebb28cf056761fd922a"
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.pdf": "822f69bac039e6be4e42c5f77aa95e2a022c113f1ef2dfb95087b71c5fb2a4c9",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.png": "ea5f1e5216b98f11751858be5f36ec8f2d2d3a5b0e2e9ca8e691c4bba48b6c7f"
   },
   "blobs": {
    "wide_above_split": 571,
@@ -5719,8 +5719,8 @@
    ],
    "dalpha_peak_box_gap_pt": null,
    "legend_labels": [
-    "TokEye coherent",
-    "TokEye transient",
+    "coherent",
+    "transient",
     "AE",
     "NTM",
     "NTM, rest",
@@ -5794,22 +5794,22 @@
      ]
     },
     {
-     "text": "TokEye coherent",
+     "text": "coherent",
      "font_pt": 7.0,
      "bounds": [
       0.810724279835391,
       0.7074526268349323,
-      0.9309094650205763,
+      0.8755853909465021,
       0.7269537815126053
      ]
     },
     {
-     "text": "TokEye transient",
+     "text": "transient",
      "font_pt": 7.0,
      "bounds": [
       0.810724279835391,
       0.6824483275031713,
-      0.9312335390946502,
+      0.8759094650205762,
       0.7019494821808443
      ]
     },
@@ -6199,10 +6199,10 @@
    }
   }
  },
- "git": "ced4bd08",
+ "git": "b79beda1",
  "render_started_from_clean_head": true,
  "render_code_sha256": {
-  "scripts/labeler/paper/fig_interpreter_tokeye.py": "14cf7c42b380e8c16d42e8ac6fb7a7e1e93dceed3a405a2493aba70a96acb674",
+  "scripts/labeler/paper/fig_interpreter_tokeye.py": "af1c192112a61b20e13a078d09c3cfae8659efbde38808d0319de534990f3302",
   "src/labeler/paper/figure_sources.py": "782f0e0cc2c5274d07f8e20d3af6624f95cc3d1ca3f5dfcacca43a8fa56c1c1a",
   "src/labeler/paper/mode_tags.py": "5a23d78ab919e93ab892633ea46e1891d2785227b91ff2552e891e476f6b4661"
  }
