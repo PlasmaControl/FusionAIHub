@@ -1,0 +1,60 @@
+{
+ "selected_at_utc": "2026-10-05T15:45:05.416275+00:00",
+ "export_root": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5",
+ "export_sums_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/labels/SHA256SUMS",
+ "export_sums_sha256": "47081aebcad868911bf3e38817b3e0c79e4ba9f02efe5fcee84780ad00a0ef14",
+ "completion_record": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/cohort_labels.json",
+ "completion_snapshot_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/saw_source/cohort_labels.json",
+ "completion_sha256": "4c6a82bce2c4b823b8bfc78f779a4e3a87441dc274b5906b986dc17ae33b5417",
+ "completion_requested_count": 500,
+ "validation_status": "unvalidated_research_labels_owner_away",
+ "snapshot_source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/saw_source/shots",
+ "windows_ms": {
+  "199597": [
+   100,
+   6200
+  ]
+ },
+ "files": [
+  {
+   "shot": 199597,
+   "original_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/shots/199597.json",
+   "snapshot_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/saw_source/shots/199597.json",
+   "sha256": "333f5fc5d7554ba242aaec2e8f3044ca0a3b60a290dcbd1dc8f781e4b40af542",
+   "population_shard": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/labels/population-100.csv",
+   "population_shard_snapshot_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/saw_source/labels/population-100.csv",
+   "population_shard_sha256": "d9c8e2e2afab1e4a047ecb20cf51e9909037cf4591ebc7bfb94747b63316612b",
+   "states_equal_population_shard": true,
+   "outside_cohort_run": true,
+   "state_seconds": {
+    "present": 0.04419999895442572,
+    "absent": 0,
+    "q_prior_ece_contradicted": 0.804099980978587,
+    "q_prior_untested": 0,
+    "uncertain": 0.9344999778939049,
+    "unassessed": 4.34599989719306
+   }
+  }
+ ],
+ "catalog_comparison": [
+  {
+   "model": "ece_sawtooth",
+   "version": "v3",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/ece_sawtooth/v3/sawtooth_oscillation_suggest_ece_sawtooth_v3.csv",
+   "sha256": "05c995be4de317eeed4b45591d0b803e9147906bd4674ed8c7b84ab477b8d38c",
+   "shots": {
+    "199597": []
+   }
+  },
+  {
+   "model": "sawtooth_frames",
+   "version": "v2",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/sawtooth_frames/v2/sawtooth_oscillation_suggest_sawtooth_frames_v2.csv",
+   "sha256": "a445f034fc90ce6eb8311f9c9331df7e6f206c05376cf48d900516f2d05b469f",
+   "shots": {
+    "199597": []
+   }
+  }
+ ],
+ "integration_decision": "controller pins the sawtooth source shipped with the paper"
+}
