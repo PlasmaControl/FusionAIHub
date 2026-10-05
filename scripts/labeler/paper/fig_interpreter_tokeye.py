@@ -1080,9 +1080,10 @@ def draw(
         )
         ax["nbi"].set_ylim(bottom=0)
         beta = equilibrium.signal(candidate.shot, "betan", paths)
-        beta_ms = beta.x * 1000.0
+        beta_ms = np.ravel(beta.x) * 1000.0
+        beta_y = np.ravel(beta.y)
         shown = (beta_ms >= t0) & (beta_ms <= t1)
-        ax["bn"].plot(beta_ms[shown], beta.y[shown], color="#555555", lw=0.8)
+        ax["bn"].plot(beta_ms[shown], beta_y[shown], color="#555555", lw=0.8)
         ax["bn"].set_ylabel(
             r"$\beta_N$", rotation=0, ha="right", va="center", labelpad=3
         )
