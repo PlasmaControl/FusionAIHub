@@ -246,7 +246,7 @@ def main():
         assert set(shown) <= set(crashes["ece_times_ms"])
         assert drawn["sawtooth_strip_shown"] is False
         if shot == PRIMARY:
-            assert record["window_ms"] == [700, 5800]
+            assert record["window_ms"] == [300, 5800]
         assert drawn["catalog_sawtooth_frame_model_shown"] is False
         saw = record["tracks"]["sawtooth_oscillation"]
         assert saw["state_intervals_ms"]

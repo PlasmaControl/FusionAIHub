@@ -149,7 +149,7 @@ ELM_BOX_TOP = 0.62
 #: D-alpha's panel runs to this multiple of its own maximum (room for the regime names).
 DALPHA_HEADROOM = 1.38
 #: The signal TokEye segments and the raw panel draws: the cross-power spectrogram
-#: of the CO2 interferometer chords R0 and V1 (corpus `co2` rows 0 and 3, 500 kHz),
+#: of the CO2 interferometer chords R0 and V1 (corpus `co2` rows 0 and 1, 500 kHz),
 #: the AE review page's rows, in which a mode both chords see stands out of the noise
 #: each sees alone. The n colouring and the NTM tags still read the Mirnov array,
 #: gated by this mask.

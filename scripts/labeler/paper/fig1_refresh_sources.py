@@ -26,7 +26,7 @@ from labeler.paper import label_figure as lf
 from labeler.paper import mode_tags as mt
 
 #: Figure 1's shot and window (ms): AE, ELMs, confinement classes, an NTM and sawtooth all appear.
-WINDOWS = {199563: (700, 5800)}
+WINDOWS = {199563: (300, 5800)}
 
 #: sha256 of `labels/SHA256SUMS` in the pinned export (the stream's documented value).
 EXPORT_SUMS_SHA256 = "47081aebcad868911bf3e38817b3e0c79e4ba9f02efe5fcee84780ad00a0ef14"
