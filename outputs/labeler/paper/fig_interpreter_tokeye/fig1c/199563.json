@@ -6070,8 +6070,8 @@
    }
   }
  },
- "git": "4e32a3df",
- "render_started_from_clean_head": false,
+ "git": "e3999588",
+ "render_started_from_clean_head": true,
  "render_code_sha256": {
   "scripts/labeler/paper/fig_interpreter_tokeye.py": "4c4b4c17ba707df49c5256f43bed872ac1c5052136571478a0ea54175187e2c8",
   "src/labeler/paper/figure_sources.py": "d727dacaf9eeac0fc54a10bc7ef549bd508cb6dbe873ddb149ea37ad8569ad98",
