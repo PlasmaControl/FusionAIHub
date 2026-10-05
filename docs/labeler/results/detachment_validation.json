@@ -1,21 +1,21 @@
 {
  "status": "passed",
  "producer": "scripts/labeler/detach_validate_outputs.py",
- "labels_sha256": "c779aea69564a4196be58a219ba76e58a76fac1ab0b0f1f875286fcac42c6018",
- "assessed_bins": 1779,
- "intervals": 300,
- "trace_rows": 1779,
+ "labels_sha256": "a683b477dca02a2a2a1ce9c484b59280a2c59d71b0b9395e8b9891fcb34f981a",
+ "assessed_bins": 1780,
+ "intervals": 304,
+ "trace_rows": 1780,
  "grids_checked": 32,
- "certain_bins": 147,
- "tangtv_only_bins": 768,
+ "certain_bins": 138,
+ "tangtv_only_bins": 683,
  "certain_bins_by_split": {
   "train": 0,
   "val": 0,
   "test": 0,
-  "outside": 147
+  "outside": 138
  },
  "provenance": {
-  "made_from_sha": "882a0243",
+  "made_from_sha": "1d470a9c",
   "code_dirty": false,
   "producer_paths": [
    "src/labeler/events/detachment",
@@ -24,11 +24,11 @@
    "scripts/labeler/detach_json.py"
   ]
  },
- "afrac_valid_bins": 816,
+ "afrac_valid_bins": 809,
  "reference_points": 10,
  "finite_json_files_checked": 21,
- "bootstrap_valid_count_fields_checked": 418,
- "covering_tests_passed": 111,
+ "bootstrap_valid_count_fields_checked": 422,
+ "covering_tests_passed": 116,
  "covering_test_log": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/logs/round4-covering-tests.log",
  "lint_log": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/logs/round4-ruff.log",
  "checks": [
@@ -43,7 +43,7 @@
   "exact interval, sparse-grid and trace reconstruction; no stale shots",
   "reference, figure, Figure 2 and current-state checksums match the labels",
   "candidate_marfe never carries a state",
-  "tangtv_only_lmode: a detached TangTV vote on a known L-mode bin is uncertain, and no detached state sits on a known L-mode bin",
+  "tangtv_only_lmode: a detached TangTV vote on a known L-mode bin or in a probable-L window is uncertain, and no detached state sits on either; the probable regimes are re-derived from each shot's whole bins; Afrac is never valid on a probable-L bin",
   "f_div relative and absolute sensitivity columns (f_div added as a second voter) reproduce; the f_div check feeds Figure 2",
   "no lower-shelf column in labels, traces or handoff; one Figure 2 record",
   "paper D9 decision recomputed from the labels",

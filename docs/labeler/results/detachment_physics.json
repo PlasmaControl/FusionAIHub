@@ -967,7 +967,7 @@
       "witness_bins": [
         {
           "start_ms": 4000.0,
-          "afrac_value": 0.9349026679992676,
+          "afrac_value": 0.9404501914978027,
           "afrac_valid": true,
           "afrac_reason": "",
           "afrac_vote": 1,
@@ -1005,7 +1005,7 @@
         },
         {
           "start_ms": 4050.0,
-          "afrac_value": 0.8321411609649658,
+          "afrac_value": 0.8174359202384949,
           "afrac_valid": true,
           "afrac_reason": "",
           "afrac_vote": 1,
@@ -1043,7 +1043,7 @@
         },
         {
           "start_ms": 4100.0,
-          "afrac_value": 0.6165199279785156,
+          "afrac_value": 0.6150266528129578,
           "afrac_valid": true,
           "afrac_reason": "",
           "afrac_vote": -1,
@@ -1081,7 +1081,7 @@
         },
         {
           "start_ms": 4150.0,
-          "afrac_value": 0.6587989330291748,
+          "afrac_value": 0.663303554058075,
           "afrac_valid": true,
           "afrac_reason": "",
           "afrac_vote": -1,
@@ -1119,7 +1119,7 @@
         },
         {
           "start_ms": 4200.0,
-          "afrac_value": 0.3973529040813446,
+          "afrac_value": 0.39795398712158203,
           "afrac_valid": true,
           "afrac_reason": "",
           "afrac_vote": 2,
@@ -1157,7 +1157,7 @@
         },
         {
           "start_ms": 4250.0,
-          "afrac_value": 0.5881864428520203,
+          "afrac_value": 0.5886112451553345,
           "afrac_valid": true,
           "afrac_reason": "",
           "afrac_vote": -1,

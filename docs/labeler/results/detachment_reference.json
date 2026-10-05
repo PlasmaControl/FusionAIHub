@@ -47,7 +47,7 @@
   },
   "labels_record": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/labels_bins.csv.gz",
-    "sha256": "c779aea69564a4196be58a219ba76e58a76fac1ab0b0f1f875286fcac42c6018"
+    "sha256": "a683b477dca02a2a2a1ce9c484b59280a2c59d71b0b9395e8b9891fcb34f981a"
   },
   "bin_directory": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins",
   "matching": "Only the half-open bin [start_ms, start_ms+bin_ms) containing each published instant; no nearest-bin fallback or duration inference.",
@@ -127,7 +127,7 @@
       "bin_ms": 50.0,
       "bins_source": {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/180257.npz",
-        "sha256": "e85a8446b86a4ef09b3f305132c9da9d1dcc9187127feddc07af84eb03c1eb8e"
+        "sha256": "3f8cb2b6107510540734ef4e5ae5726cdae936393e6f398d68fecc3639edafa5"
       },
       "gate_diagnostics": {
         "aux_greenwald_fraction": null,
@@ -200,7 +200,7 @@
       "bin_ms": 50.0,
       "bins_source": {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/180257.npz",
-        "sha256": "e85a8446b86a4ef09b3f305132c9da9d1dcc9187127feddc07af84eb03c1eb8e"
+        "sha256": "3f8cb2b6107510540734ef4e5ae5726cdae936393e6f398d68fecc3639edafa5"
       },
       "gate_diagnostics": {
         "aux_greenwald_fraction": null,
@@ -273,7 +273,7 @@
       "bin_ms": 50.0,
       "bins_source": {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/199166.npz",
-        "sha256": "206a018a703717a475cd84458e0113796c4c99e1ee70ed6d69317ceefec668a7"
+        "sha256": "c17ddf564a7178e6b0b02ed7342cde41fd0eb8d115509bb1a02c6e44e12166cf"
       },
       "gate_diagnostics": {
         "aux_greenwald_fraction": 0.7211474947025647,
@@ -317,7 +317,7 @@
           "vote": 1,
           "vote_name": "attached",
           "measurement_valid": true,
-          "value": 1.0791093111038208,
+          "value": 1.075842261314392,
           "reason": ""
         },
         "prad": {
@@ -346,7 +346,7 @@
       "bin_ms": 50.0,
       "bins_source": {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/201081.npz",
-        "sha256": "2a372493054df0d2bf2c5b10b80a3707a3a509f239de1e46ab40ce232645b20c"
+        "sha256": "06ad2d0fc2228594b6e6f2c1f240b6b6e0bea1d6490b27b6193d44114aa20a5a"
       },
       "gate_diagnostics": {
         "aux_greenwald_fraction": 0.8678670550055749,
@@ -390,7 +390,7 @@
           "vote": 1,
           "vote_name": "attached",
           "measurement_valid": true,
-          "value": 0.7961409687995911,
+          "value": 0.7757522463798523,
           "reason": ""
         },
         "prad": {
@@ -419,7 +419,7 @@
       "bin_ms": 50.0,
       "bins_source": {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/201081.npz",
-        "sha256": "2a372493054df0d2bf2c5b10b80a3707a3a509f239de1e46ab40ce232645b20c"
+        "sha256": "06ad2d0fc2228594b6e6f2c1f240b6b6e0bea1d6490b27b6193d44114aa20a5a"
       },
       "gate_diagnostics": {
         "aux_greenwald_fraction": 0.9011319487171727,
@@ -463,7 +463,7 @@
           "vote": 2,
           "vote_name": "detached",
           "measurement_valid": true,
-          "value": 0.17139041423797607,
+          "value": 0.17069289088249207,
           "reason": ""
         },
         "prad": {
@@ -492,7 +492,7 @@
       "bin_ms": 50.0,
       "bins_source": {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/201081.npz",
-        "sha256": "2a372493054df0d2bf2c5b10b80a3707a3a509f239de1e46ab40ce232645b20c"
+        "sha256": "06ad2d0fc2228594b6e6f2c1f240b6b6e0bea1d6490b27b6193d44114aa20a5a"
       },
       "gate_diagnostics": {
         "aux_greenwald_fraction": 1.021110827591443,
@@ -536,7 +536,7 @@
           "vote": 2,
           "vote_name": "detached",
           "measurement_valid": true,
-          "value": 0.27194342017173767,
+          "value": 0.2709859311580658,
           "reason": ""
         },
         "prad": {
@@ -565,7 +565,7 @@
       "bin_ms": 50.0,
       "bins_source": {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/201081.npz",
-        "sha256": "2a372493054df0d2bf2c5b10b80a3707a3a509f239de1e46ab40ce232645b20c"
+        "sha256": "06ad2d0fc2228594b6e6f2c1f240b6b6e0bea1d6490b27b6193d44114aa20a5a"
       },
       "gate_diagnostics": {
         "aux_greenwald_fraction": 1.0250167487431987,
@@ -609,7 +609,7 @@
           "vote": 2,
           "vote_name": "detached",
           "measurement_valid": true,
-          "value": 0.2109377384185791,
+          "value": 0.21026016771793365,
           "reason": ""
         },
         "prad": {
@@ -638,7 +638,7 @@
       "bin_ms": 50.0,
       "bins_source": {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/201081.npz",
-        "sha256": "2a372493054df0d2bf2c5b10b80a3707a3a509f239de1e46ab40ce232645b20c"
+        "sha256": "06ad2d0fc2228594b6e6f2c1f240b6b6e0bea1d6490b27b6193d44114aa20a5a"
       },
       "gate_diagnostics": {
         "aux_greenwald_fraction": 1.0498217539362051,
@@ -682,7 +682,7 @@
           "vote": 1,
           "vote_name": "attached",
           "measurement_valid": true,
-          "value": 0.8551517724990845,
+          "value": 0.853718638420105,
           "reason": ""
         },
         "prad": {
@@ -711,7 +711,7 @@
       "bin_ms": 50.0,
       "bins_source": {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/201081.npz",
-        "sha256": "2a372493054df0d2bf2c5b10b80a3707a3a509f239de1e46ab40ce232645b20c"
+        "sha256": "06ad2d0fc2228594b6e6f2c1f240b6b6e0bea1d6490b27b6193d44114aa20a5a"
       },
       "gate_diagnostics": {
         "aux_greenwald_fraction": 0.917071640171756,
@@ -755,7 +755,7 @@
           "vote": 1,
           "vote_name": "attached",
           "measurement_valid": true,
-          "value": 0.8886253237724304,
+          "value": 0.8834777474403381,
           "reason": ""
         },
         "prad": {
@@ -784,7 +784,7 @@
       "bin_ms": 50.0,
       "bins_source": {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/201081.npz",
-        "sha256": "2a372493054df0d2bf2c5b10b80a3707a3a509f239de1e46ab40ce232645b20c"
+        "sha256": "06ad2d0fc2228594b6e6f2c1f240b6b6e0bea1d6490b27b6193d44114aa20a5a"
       },
       "gate_diagnostics": {
         "aux_greenwald_fraction": 0.8908481098357941,
@@ -2387,7 +2387,7 @@
         "inversion_source_sav": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189057.sav",
         "bins": {
           "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/189057.npz",
-          "sha256": "698ea341515548c67ce83f36200421673bbcf74a7d05c3f70d1604e7bbb031ce"
+          "sha256": "176ff02786af90ad8db216b925446ddd5a85294dc5d501cc5347692f916f13ca"
         },
         "n_manual_frame_points": 171,
         "time_assignment": "By inversion-frame index; exact equal frame counts required."

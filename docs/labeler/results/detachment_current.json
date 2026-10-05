@@ -1,13 +1,13 @@
 {
  "bin_ms": 50.0,
- "labels_sha256": "c779aea69564a4196be58a219ba76e58a76fac1ab0b0f1f875286fcac42c6018",
+ "labels_sha256": "a683b477dca02a2a2a1ce9c484b59280a2c59d71b0b9395e8b9891fcb34f981a",
  "script": "scripts/labeler/detach_current_state.py",
  "scope": "exploratory labels; no independent benchmark",
  "population": {
   "assessed": {
-   "bins": 1779,
+   "bins": 1780,
    "shots": 32,
-   "seconds": 88.95,
+   "seconds": 89.0,
    "shot_ids": [
     189057,
     189061,
@@ -44,9 +44,9 @@
    ]
   },
   "certain": {
-   "bins": 147,
+   "bins": 138,
    "shots": 7,
-   "seconds": 7.35,
+   "seconds": 6.9,
    "shot_ids": [
     189057,
     189081,
@@ -58,9 +58,9 @@
    ]
   },
   "tangtv_only": {
-   "bins": 768,
-   "shots": 25,
-   "seconds": 38.4,
+   "bins": 683,
+   "shots": 23,
+   "seconds": 34.15,
    "shot_ids": [
     189057,
     189061,
@@ -75,10 +75,8 @@
     189101,
     189448,
     189451,
-    190109,
     190110,
     190113,
-    190116,
     199166,
     199171,
     199351,
@@ -90,9 +88,9 @@
    ]
   },
   "labelled_certain_or_tangtv_only": {
-   "bins": 915,
-   "shots": 25,
-   "seconds": 45.75,
+   "bins": 821,
+   "shots": 23,
+   "seconds": 41.05,
    "shot_ids": [
     189057,
     189061,
@@ -107,10 +105,8 @@
     189101,
     189448,
     189451,
-    190109,
     190110,
     190113,
-    190116,
     199166,
     199171,
     199351,
@@ -123,9 +119,9 @@
   },
   "by_state": {
    "attached": {
-    "bins": 453,
+    "bins": 454,
     "shots": 19,
-    "seconds": 22.65,
+    "seconds": 22.7,
     "shot_ids": [
      189057,
      189081,
@@ -149,9 +145,9 @@
     ]
    },
    "detached": {
-    "bins": 462,
-    "shots": 14,
-    "seconds": 23.1,
+    "bins": 367,
+    "shots": 12,
+    "seconds": 18.35,
     "shot_ids": [
      189057,
      189061,
@@ -162,17 +158,15 @@
      189094,
      189100,
      189101,
-     190109,
      190110,
      190113,
-     190116,
      201081
     ]
    },
    "uncertain": {
-    "bins": 864,
-    "shots": 27,
-    "seconds": 43.2,
+    "bins": 959,
+    "shots": 28,
+    "seconds": 47.95,
     "shot_ids": [
      189057,
      189081,
@@ -184,6 +178,7 @@
      189100,
      189101,
      190109,
+     190110,
      190113,
      190116,
      199166,
@@ -206,9 +201,9 @@
   },
   "by_state_certain": {
    "attached": {
-    "bins": 60,
+    "bins": 62,
     "shots": 5,
-    "seconds": 3.0,
+    "seconds": 3.1,
     "shot_ids": [
      189057,
      189081,
@@ -218,9 +213,9 @@
     ]
    },
    "detached": {
-    "bins": 87,
+    "bins": 76,
     "shots": 4,
-    "seconds": 4.35,
+    "seconds": 3.8,
     "shot_ids": [
      189057,
      189088,
@@ -231,9 +226,9 @@
   },
   "by_state_tangtv_only": {
    "attached": {
-    "bins": 393,
+    "bins": 392,
     "shots": 17,
-    "seconds": 19.65,
+    "seconds": 19.6,
     "shot_ids": [
      189081,
      189088,
@@ -255,9 +250,9 @@
     ]
    },
    "detached": {
-    "bins": 375,
-    "shots": 14,
-    "seconds": 18.75,
+    "bins": 291,
+    "shots": 12,
+    "seconds": 14.55,
     "shot_ids": [
      189057,
      189061,
@@ -268,25 +263,23 @@
      189094,
      189100,
      189101,
-     190109,
      190110,
      190113,
-     190116,
      201081
     ]
    }
   },
   "by_split": {
    "outside": {
-    "assessed_bins": 1722,
+    "assessed_bins": 1723,
     "assessed_shots": 31,
     "certain_bins_by_state": {
-     "attached": 60,
-     "detached": 87
+     "attached": 62,
+     "detached": 76
     },
     "tangtv_only_bins_by_state": {
-     "attached": 393,
-     "detached": 318
+     "attached": 392,
+     "detached": 234
     }
    },
    "val": {
@@ -320,9 +313,9 @@
     }
    },
    "certain": {
-    "bins": 147,
+    "bins": 138,
     "shots": 7,
-    "seconds": 7.35,
+    "seconds": 6.9,
     "shot_ids": [
      189057,
      189081,
@@ -333,8 +326,8 @@
      201081
     ],
     "state_bins": {
-     "attached": 60,
-     "detached": 87,
+     "attached": 62,
+     "detached": 76,
      "uncertain": 0
     }
    },
@@ -356,9 +349,9 @@
     }
    },
    "insufficient_support": {
-    "bins": 224,
+    "bins": 226,
     "shots": 13,
-    "seconds": 11.2,
+    "seconds": 11.3,
     "shot_ids": [
      189057,
      189081,
@@ -377,7 +370,7 @@
     "state_bins": {
      "attached": 0,
      "detached": 0,
-     "uncertain": 224
+     "uncertain": 226
     }
    },
    "lower_shelf_window": {
@@ -399,9 +392,9 @@
     }
    },
    "no_vote": {
-    "bins": 123,
+    "bins": 122,
     "shots": 24,
-    "seconds": 6.15,
+    "seconds": 6.1,
     "shot_ids": [
      189081,
      189088,
@@ -431,13 +424,13 @@
     "state_bins": {
      "attached": 0,
      "detached": 0,
-     "uncertain": 123
+     "uncertain": 122
     }
    },
    "tangtv_only": {
-    "bins": 768,
-    "shots": 25,
-    "seconds": 38.4,
+    "bins": 683,
+    "shots": 23,
+    "seconds": 34.15,
     "shot_ids": [
      189057,
      189061,
@@ -452,10 +445,8 @@
      189101,
      189448,
      189451,
-     190109,
      190110,
      190113,
-     190116,
      199166,
      199171,
      199351,
@@ -466,16 +457,20 @@
      201081
     ],
     "state_bins": {
-     "attached": 393,
-     "detached": 375,
+     "attached": 392,
+     "detached": 291,
      "uncertain": 0
     }
    },
    "tangtv_only_lmode": {
-    "bins": 93,
-    "shots": 6,
-    "seconds": 4.65,
+    "bins": 187,
+    "shots": 10,
+    "seconds": 9.35,
     "shot_ids": [
+     190109,
+     190110,
+     190113,
+     190116,
      199166,
      199172,
      199352,
@@ -486,24 +481,25 @@
     "state_bins": {
      "attached": 0,
      "detached": 0,
-     "uncertain": 93
+     "uncertain": 187
     }
    }
   },
   "tangtv_geometry_tier_of_assessed_bins": {
    "upper_shelf": 1214,
    "lower_shelf_window": 325,
-   "none": 240
+   "none": 241
   },
   "assessed_bins_that_can_never_carry_a_state": {
    "reason": "TangTV is invalid on the bin (a state needs a TangTV vote)",
-   "bins": 565,
-   "shots": 12,
-   "seconds": 28.25,
+   "bins": 566,
+   "shots": 13,
+   "seconds": 28.3,
    "shot_ids": [
     189057,
     189081,
     189088,
+    189090,
     189093,
     189097,
     201081,
@@ -516,6 +512,8 @@
    ]
   },
   "assessed_shots_without_a_labelled_bin": [
+   190109,
+   190116,
    199172,
    206880,
    206886,
@@ -563,11 +561,25 @@
      "shot_ids": []
     }
    },
-   "unknown": {
+   "probable_L": {
     "attached": {
-     "bins": 269,
+     "bins": 0,
+     "shots": 0,
+     "seconds": 0.0,
+     "shot_ids": []
+    },
+    "detached": {
+     "bins": 0,
+     "shots": 0,
+     "seconds": 0.0,
+     "shot_ids": []
+    }
+   },
+   "probable_H": {
+    "attached": {
+     "bins": 264,
      "shots": 12,
-     "seconds": 13.45,
+     "seconds": 13.2,
      "shot_ids": [
       189057,
       189081,
@@ -584,9 +596,9 @@
      ]
     },
     "detached": {
-     "bins": 406,
-     "shots": 14,
-     "seconds": 20.3,
+     "bins": 303,
+     "shots": 10,
+     "seconds": 15.15,
      "shot_ids": [
       189057,
       189061,
@@ -597,11 +609,26 @@
       189094,
       189100,
       189101,
-      190109,
-      190110,
-      190113,
-      190116,
       201081
+     ]
+    }
+   },
+   "unknown": {
+    "attached": {
+     "bins": 6,
+     "shots": 1,
+     "seconds": 0.3,
+     "shot_ids": [
+      189448
+     ]
+    },
+    "detached": {
+     "bins": 8,
+     "shots": 2,
+     "seconds": 0.4,
+     "shot_ids": [
+      190110,
+      190113
      ]
     }
    }
@@ -619,10 +646,16 @@
     "seconds": 0.0,
     "shot_ids": []
    },
-   "unknown": {
-    "bins": 147,
+   "probable_L": {
+    "bins": 0,
+    "shots": 0,
+    "seconds": 0.0,
+    "shot_ids": []
+   },
+   "probable_H": {
+    "bins": 138,
     "shots": 7,
-    "seconds": 7.35,
+    "seconds": 6.9,
     "shot_ids": [
      189057,
      189081,
@@ -632,15 +665,27 @@
      189097,
      201081
     ]
+   },
+   "unknown": {
+    "bins": 0,
+    "shots": 0,
+    "seconds": 0.0,
+    "shot_ids": []
    }
   },
   "lmode_gate": {
-   "rule": "a DETACHED TangTV vote (0.5 <= DZ < 1.2) on a bin of a known L-mode phase is the uncertain tier `tangtv_only_lmode`; the DZ cutoffs come from an H-mode shot and the gate is a priori, not tuned on Te. An unknown regime keeps the plain rule and is counted here.",
+   "rule": "a DETACHED TangTV vote (0.5 <= DZ < 1.2) on a bin of a known L-mode phase, or of a probable-L window, is the uncertain tier `tangtv_only_lmode`; the DZ cutoffs come from an H-mode shot and the gate is a priori, not tuned on Te. Only the detached vote is gated: L-mode inner-SOL leakage biases DZ upward, so a low DZ stays trustworthy. A regime that is neither keeps the plain rule and is counted here.",
+   "probable_l_rule": "regime unknown from every source, ELM coverage known, no ELM share on any bin of the window, median P_in under 2 MW (Martin 2008 L-H threshold scaling, about 1.7 to 2.4 MW for typical DIII-D parameters), at least 1000 ms of bins",
+   "probable_h_rule": "regime unknown from every source and any ELM share in the window (report only, no gate acts on it)",
    "gated_bins": {
-    "bins": 93,
-    "shots": 6,
-    "seconds": 4.65,
+    "bins": 187,
+    "shots": 10,
+    "seconds": 9.35,
     "shot_ids": [
+     190109,
+     190110,
+     190113,
+     190116,
      199166,
      199172,
      199352,
@@ -648,6 +693,88 @@
      199354,
      200977
     ]
+   },
+   "gated_bins_by_regime": {
+    "L": {
+     "bins": 93,
+     "shots": 6,
+     "seconds": 4.65,
+     "shot_ids": [
+      199166,
+      199172,
+      199352,
+      199353,
+      199354,
+      200977
+     ]
+    },
+    "probable_L": {
+     "bins": 94,
+     "shots": 4,
+     "seconds": 4.7,
+     "shot_ids": [
+      190109,
+      190110,
+      190113,
+      190116
+     ]
+    }
+   },
+   "gated_bins_by_shot": {
+    "L": {
+     "199166": {
+      "n_bins": 6,
+      "n_dz_at_least_0_8": 2,
+      "n_dz_below_0_8": 4
+     },
+     "199172": {
+      "n_bins": 9,
+      "n_dz_at_least_0_8": 4,
+      "n_dz_below_0_8": 5
+     },
+     "199352": {
+      "n_bins": 2,
+      "n_dz_at_least_0_8": 0,
+      "n_dz_below_0_8": 2
+     },
+     "199353": {
+      "n_bins": 10,
+      "n_dz_at_least_0_8": 0,
+      "n_dz_below_0_8": 10
+     },
+     "199354": {
+      "n_bins": 13,
+      "n_dz_at_least_0_8": 0,
+      "n_dz_below_0_8": 13
+     },
+     "200977": {
+      "n_bins": 53,
+      "n_dz_at_least_0_8": 16,
+      "n_dz_below_0_8": 37
+     }
+    },
+    "probable_L": {
+     "190109": {
+      "n_bins": 28,
+      "n_dz_at_least_0_8": 0,
+      "n_dz_below_0_8": 28
+     },
+     "190110": {
+      "n_bins": 32,
+      "n_dz_at_least_0_8": 32,
+      "n_dz_below_0_8": 0
+     },
+     "190113": {
+      "n_bins": 32,
+      "n_dz_at_least_0_8": 32,
+      "n_dz_below_0_8": 0
+     },
+     "190116": {
+      "n_bins": 2,
+      "n_dz_at_least_0_8": 2,
+      "n_dz_below_0_8": 0
+     }
+    }
    },
    "tangtv_detached_votes_by_regime": {
     "H": {
@@ -671,10 +798,21 @@
       200977
      ]
     },
-    "unknown": {
-     "bins": 415,
-     "shots": 15,
-     "seconds": 20.75,
+    "probable_L": {
+     "bins": 94,
+     "shots": 4,
+     "seconds": 4.7,
+     "shot_ids": [
+      190109,
+      190110,
+      190113,
+      190116
+     ]
+    },
+    "probable_H": {
+     "bins": 313,
+     "shots": 11,
+     "seconds": 15.65,
      "shot_ids": [
       189057,
       189061,
@@ -686,25 +824,292 @@
       189094,
       189100,
       189101,
-      190109,
-      190110,
-      190113,
-      190116,
       201081
+     ]
+    },
+    "unknown": {
+     "bins": 8,
+     "shots": 2,
+     "seconds": 0.4,
+     "shot_ids": [
+      190110,
+      190113
      ]
     }
    },
    "regime_source_of_assessed_bins": {
-    "none": 1372,
+    "probable_H": 1220,
     "dalpha_detector": 350,
-    "regime_table": 57
+    "probable_L": 140,
+    "regime_table": 56,
+    "none": 14
+   },
+   "regime_source_shots": {
+    "dalpha_detector": [
+     199166,
+     199171,
+     199172,
+     199351,
+     199352,
+     199353,
+     199354,
+     200977
+    ],
+    "none": [
+     189448,
+     190110,
+     190113
+    ],
+    "probable_H": [
+     189057,
+     189061,
+     189062,
+     189081,
+     189088,
+     189090,
+     189093,
+     189094,
+     189097,
+     189100,
+     189101,
+     189448,
+     189451,
+     201081,
+     206880,
+     206886,
+     206891,
+     206892,
+     206893,
+     206894
+    ],
+    "probable_L": [
+     190109,
+     190110,
+     190113,
+     190116
+    ],
+    "regime_table": [
+     189061
+    ]
+   },
+   "regime_table_provenance": {
+    "shots": {
+     "189061": {
+      "rows": 4,
+      "equal_to_detector_rows": true
+     }
+    },
+    "curated_shots": []
    },
    "bins_by_regime": {
-    "unknown": 1373,
+    "probable_H": 1220,
     "L": 350,
-    "H": 56
+    "probable_L": 140,
+    "H": 56,
+    "unknown": 14
    }
   }
+ },
+ "regime_proxy": {
+  "p_in_cut_mw": 2.0,
+  "shots": {
+   "189057": {
+    "regime": "probable_H",
+    "window_bins": 108,
+    "elm_flag_bins": 82,
+    "p_in_mw_at_flags_max": 6.225028,
+    "median_p_in_mw": 6.084596,
+    "tangtv_detached_votes": 39
+   },
+   "189061": {
+    "regime": "probable_H",
+    "window_bins": 42,
+    "elm_flag_bins": 14,
+    "p_in_mw_at_flags_max": 6.1993615,
+    "median_p_in_mw": 2.112166,
+    "tangtv_detached_votes": 57
+   },
+   "189062": {
+    "regime": "probable_H",
+    "window_bins": 106,
+    "elm_flag_bins": 84,
+    "p_in_mw_at_flags_max": 6.1585575,
+    "median_p_in_mw": 6.0228315,
+    "tangtv_detached_votes": 37
+   },
+   "189081": {
+    "regime": "probable_H",
+    "window_bins": 116,
+    "elm_flag_bins": 86,
+    "p_in_mw_at_flags_max": 9.456279,
+    "median_p_in_mw": 8.815943,
+    "tangtv_detached_votes": 2
+   },
+   "189088": {
+    "regime": "probable_H",
+    "window_bins": 103,
+    "elm_flag_bins": 80,
+    "p_in_mw_at_flags_max": 9.994009,
+    "median_p_in_mw": 9.402586,
+    "tangtv_detached_votes": 34
+   },
+   "189090": {
+    "regime": "probable_H",
+    "window_bins": 95,
+    "elm_flag_bins": 71,
+    "p_in_mw_at_flags_max": 9.663827,
+    "median_p_in_mw": 9.437615,
+    "tangtv_detached_votes": 51
+   },
+   "189093": {
+    "regime": "probable_H",
+    "window_bins": 111,
+    "elm_flag_bins": 83,
+    "p_in_mw_at_flags_max": 9.172875,
+    "median_p_in_mw": 8.920926,
+    "tangtv_detached_votes": 2
+   },
+   "189094": {
+    "regime": "probable_H",
+    "window_bins": 115,
+    "elm_flag_bins": 84,
+    "p_in_mw_at_flags_max": 9.226277,
+    "median_p_in_mw": 8.730063,
+    "tangtv_detached_votes": 36
+   },
+   "189097": {
+    "regime": "probable_H",
+    "window_bins": 111,
+    "elm_flag_bins": 77,
+    "p_in_mw_at_flags_max": 9.150506,
+    "median_p_in_mw": 8.817164,
+    "tangtv_detached_votes": 0
+   },
+   "189100": {
+    "regime": "probable_H",
+    "window_bins": 101,
+    "elm_flag_bins": 77,
+    "p_in_mw_at_flags_max": 9.380749,
+    "median_p_in_mw": 9.018768,
+    "tangtv_detached_votes": 29
+   },
+   "189101": {
+    "regime": "probable_H",
+    "window_bins": 103,
+    "elm_flag_bins": 79,
+    "p_in_mw_at_flags_max": 9.396725,
+    "median_p_in_mw": 9.069983,
+    "tangtv_detached_votes": 42
+   },
+   "189448": {
+    "regime": "probable_H",
+    "window_bins": 90,
+    "elm_flag_bins": 6,
+    "p_in_mw_at_flags_max": 1.1730805,
+    "median_p_in_mw": 1.0138770625,
+    "tangtv_detached_votes": 0
+   },
+   "189451": {
+    "regime": "probable_H",
+    "window_bins": 96,
+    "elm_flag_bins": 4,
+    "p_in_mw_at_flags_max": 0.7398415625,
+    "median_p_in_mw": 1.105846,
+    "tangtv_detached_votes": 0
+   },
+   "190109": {
+    "regime": "probable_L",
+    "window_bins": 87,
+    "elm_flag_bins": 0,
+    "p_in_mw_at_flags_max": null,
+    "median_p_in_mw": 1.183522375,
+    "tangtv_detached_votes": 28
+   },
+   "190110": {
+    "regime": "probable_L",
+    "window_bins": 62,
+    "elm_flag_bins": 0,
+    "p_in_mw_at_flags_max": null,
+    "median_p_in_mw": 1.36838,
+    "tangtv_detached_votes": 36
+   },
+   "190113": {
+    "regime": "probable_L",
+    "window_bins": 61,
+    "elm_flag_bins": 0,
+    "p_in_mw_at_flags_max": null,
+    "median_p_in_mw": 1.416002375,
+    "tangtv_detached_votes": 36
+   },
+   "190116": {
+    "regime": "probable_L",
+    "window_bins": 92,
+    "elm_flag_bins": 0,
+    "p_in_mw_at_flags_max": null,
+    "median_p_in_mw": 1.42431275,
+    "tangtv_detached_votes": 2
+   },
+   "201081": {
+    "regime": "probable_H",
+    "window_bins": 118,
+    "elm_flag_bins": 46,
+    "p_in_mw_at_flags_max": 4.3380905,
+    "median_p_in_mw": 4.275655,
+    "tangtv_detached_votes": 40
+   },
+   "206880": {
+    "regime": "probable_H",
+    "window_bins": 126,
+    "elm_flag_bins": 86,
+    "p_in_mw_at_flags_max": 10.136709,
+    "median_p_in_mw": 7.951446,
+    "tangtv_detached_votes": 0
+   },
+   "206886": {
+    "regime": "probable_H",
+    "window_bins": 121,
+    "elm_flag_bins": 86,
+    "p_in_mw_at_flags_max": 11.596674,
+    "median_p_in_mw": 9.382415,
+    "tangtv_detached_votes": 0
+   },
+   "206891": {
+    "regime": "probable_H",
+    "window_bins": 114,
+    "elm_flag_bins": 72,
+    "p_in_mw_at_flags_max": 11.659026,
+    "median_p_in_mw": 9.642884,
+    "tangtv_detached_votes": 0
+   },
+   "206892": {
+    "regime": "probable_H",
+    "window_bins": 115,
+    "elm_flag_bins": 55,
+    "p_in_mw_at_flags_max": 10.340654,
+    "median_p_in_mw": 8.1797925,
+    "tangtv_detached_votes": 0
+   },
+   "206893": {
+    "regime": "probable_H",
+    "window_bins": 109,
+    "elm_flag_bins": 43,
+    "p_in_mw_at_flags_max": 11.60647,
+    "median_p_in_mw": 10.048078,
+    "tangtv_detached_votes": 0
+   },
+   "206894": {
+    "regime": "probable_H",
+    "window_bins": 105,
+    "elm_flag_bins": 48,
+    "p_in_mw_at_flags_max": 9.867772,
+    "median_p_in_mw": 8.1130215,
+    "tangtv_detached_votes": 0
+   }
+  },
+  "probable_h_below_the_power_cut": [
+   189448,
+   189451
+  ]
  },
  "frame_timing": {
   "camera": "Chen 2026: 60 Hz interlaced captured as 30 Hz full frames",
@@ -806,9 +1211,9 @@
    ]
   },
   "upper_shelf_valid": {
-   "bins": 251,
+   "bins": 243,
    "shots": 7,
-   "seconds": 12.55,
+   "seconds": 12.15,
    "shot_ids": [
     189057,
     189081,
@@ -820,13 +1225,13 @@
    ]
   },
   "upper_shelf_votes": {
-   "attached": 84,
-   "detached": 110
+   "attached": 86,
+   "detached": 100
   },
   "valid_bins_all_tiers": {
-   "bins": 827,
+   "bins": 816,
    "shots": 13,
-   "seconds": 41.35,
+   "seconds": 40.8,
    "shot_ids": [
     189057,
     189081,
@@ -844,30 +1249,30 @@
    ]
   },
   "reasons_upper_shelf": {
-   "short_reference": 364,
+   "short_reference": 369,
    "l_mode": 350,
-   "": 251,
-   "probe_off_separatrix": 233,
+   "": 243,
+   "probe_off_separatrix": 232,
    "elm": 22,
-   "probe_flux_unknown": 5,
-   "no_power": 4
+   "no_power": 8,
+   "probe_flux_unknown": 5
   },
   "reasons_all_bins": {
-   "": 827,
-   "l_mode": 747,
-   "probe_off_separatrix": 664,
-   "short_reference": 533,
-   "probe_flux_unknown": 422,
-   "low_power": 242,
+   "": 816,
+   "l_mode": 743,
+   "probe_off_separatrix": 656,
+   "short_reference": 539,
+   "probe_flux_unknown": 406,
+   "low_power": 229,
    "ramp": 104,
+   "no_power": 81,
    "no_probe_samples": 37,
-   "elm": 36,
-   "no_power": 35
+   "elm": 36
   },
   "l_mode_abstentions": {
-   "bins": 747,
+   "bins": 743,
    "shots": 8,
-   "seconds": 37.35,
+   "seconds": 37.15,
    "shot_ids": [
     199166,
     199171,
@@ -880,24 +1285,28 @@
    ]
   },
   "regime_of_all_bins": {
-   "unknown": 2680,
+   "probable_H": 2105,
    "L": 830,
+   "probable_L": 302,
+   "unknown": 273,
    "H": 137
   },
   "regime_source_of_all_bins": {
-   "none": 2630,
+   "probable_H": 2105,
    "dalpha_detector": 895,
-   "regime_table": 122
+   "probable_L": 302,
+   "none": 265,
+   "regime_table": 80
   },
   "selected_probe_provenance_valid_bins": {
    "distinct_probes": 4,
    "psin_min_median_max": [
-    0.9901481866836548,
-    1.000854253768921,
+    0.990264356136322,
+    1.0008009672164917,
     1.0096968412399292
    ],
    "probes_inside_window_per_bin_median": 1.0,
-   "attached_reference_median": 9.208602116307385e-25
+   "attached_reference_median": 9.705590403053411e-25
   },
   "provenance_exported_for_invalid_bins": {
    "columns": [
@@ -911,8 +1320,8 @@
     "afrac_probe_n_eligible",
     "afrac_reason"
    ],
-   "upper_shelf_invalid_bins": 978,
-   "of_which_with_reported_probe_psin": 972
+   "upper_shelf_invalid_bins": 986,
+   "of_which_with_reported_probe_psin": 980
   },
   "eligibility": {
    "window": "|psiN - 1| <= 0.01",
@@ -921,18 +1330,18 @@
    "gate": "ELM, ramp, low power, and known L-mode bins abstain"
   },
   "afrac_in_labelled_bins": {
-   "labelled_bins_certain_or_tangtv_only": 915,
-   "certain_bins": 147,
-   "certain_bins_with_afrac_cast": 147,
-   "tangtv_only_bins": 768,
+   "labelled_bins_certain_or_tangtv_only": 821,
+   "certain_bins": 138,
+   "certain_bins_with_afrac_cast": 138,
+   "tangtv_only_bins": 683,
    "tangtv_only_afrac_valid_between_cutoffs": 52,
-   "tangtv_only_afrac_invalid": 716,
+   "tangtv_only_afrac_invalid": 631,
    "tangtv_only_afrac_invalid_reasons": {
-    "short_reference": 311,
-    "probe_off_separatrix": 195,
+    "short_reference": 271,
     "l_mode": 184,
+    "probe_off_separatrix": 149,
     "elm": 22,
-    "no_power": 3,
+    "no_power": 4,
     "probe_flux_unknown": 1
    }
   }
@@ -1309,10 +1718,8 @@
     189094,
     189100,
     189101,
-    190109,
     190110,
     190113,
-    190116,
     201081
    ],
    "shots_with_both": [
