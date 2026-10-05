@@ -268,9 +268,13 @@ normal review; stale stores stay intact until that explicit action.
 
 ## Reproduction and controller resume
 
-The producer is in its own fix round. No delivery stores were rebuilt for fixes 5 or 6.
-After its code, method document and outputs land, run this one command from the
-integrated repository (replace `$PWD` only if using a different checkout):
+The controller resume was run once after the round-four integration (`r4-int2`, all
+394 delivery stores rebuilt at panel version 6, revision 1; no saved human review
+existed, so none could be lost). Its records are
+`docs/labeler/results/detachment_review_queue.json` (the build) and
+`docs/labeler/results/detachment_review_resume_audit.json` (the read-only audit).
+To repeat it after a producer change, run this one command from the integrated
+repository (replace `$PWD` only if using a different checkout):
 
 ```bash
 TMPDIR=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/detach-ui \
@@ -352,4 +356,4 @@ stops its own free-port server. Current evidence is in
 `docs/labeler/results/detachment_ui_fix6_*.json`; frozen delivery counts remain
 in `detachment_ui_fix5_delivery.json`. Superseded bulk JSON lives in
 `$LABELER_ROOT/round4/detach-ui/archive/results/`. `HANDOFF.md` and the current-state report clearly
-separate frozen delivery counts from the pending controller rebuild.
+separate the frozen fix-five delivery counts from the rebuild recorded above.

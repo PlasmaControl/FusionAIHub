@@ -1,0 +1,168 @@
+{
+  "made_at": "2026-10-05T03:12:45+00:00",
+  "git_sha": "bbd258bcd134bcf0e7a4c9c567cce7482f3d9882",
+  "script_sha256": "95018c0d668978b7f13bd243a43c42ccdd7f0766f85ccdef753fdbef3951aea7",
+  "build_record": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui/roster_build.json",
+  "resume_stores": 394,
+  "resume_would_rebuild": 0,
+  "recipes_refreshed": [],
+  "resume_stale_shots": [],
+  "camera_with_any_shelf_sample": 94,
+  "gas": [
+    {
+      "shot": 190094,
+      "store_available": true,
+      "preplasma_samples": 100000,
+      "native_baseline": 156.93313598632812,
+      "stored_baseline": 156.93313598632812,
+      "baseline_matches": true,
+      "corrected_min": -0.7593377232551575,
+      "corrected_max": 0.5975003242492676
+    },
+    {
+      "shot": 190102,
+      "store_available": true,
+      "preplasma_samples": 100000,
+      "native_baseline": 156.99801635742188,
+      "stored_baseline": 156.99801635742188,
+      "baseline_matches": true,
+      "corrected_min": -0.6268525123596191,
+      "corrected_max": 0.4759646952152252
+    },
+    {
+      "shot": 190212,
+      "store_available": true,
+      "preplasma_samples": 100000,
+      "native_baseline": 157.56581115722656,
+      "stored_baseline": 157.56581115722656,
+      "baseline_matches": true,
+      "corrected_min": -0.9483062028884888,
+      "corrected_max": 0.5901082158088684
+    },
+    {
+      "shot": 190218,
+      "store_available": true,
+      "preplasma_samples": 100000,
+      "native_baseline": 157.67935180664062,
+      "stored_baseline": 157.67935180664062,
+      "baseline_matches": true,
+      "corrected_min": -0.9097902774810791,
+      "corrected_max": 0.8386962413787842
+    },
+    {
+      "shot": 190450,
+      "store_available": true,
+      "preplasma_samples": 100000,
+      "native_baseline": 147.64883422851562,
+      "stored_baseline": 147.64883422851562,
+      "baseline_matches": true,
+      "corrected_min": -0.5836983919143677,
+      "corrected_max": 0.5892807245254517
+    },
+    {
+      "shot": 190109,
+      "store_available": true,
+      "preplasma_samples": 100000,
+      "native_baseline": 35.360015869140625,
+      "stored_baseline": 35.360015869140625,
+      "baseline_matches": true,
+      "corrected_min": -0.11771643906831741,
+      "corrected_max": 0.08685743063688278
+    },
+    {
+      "shot": 190110,
+      "store_available": true,
+      "preplasma_samples": 100000,
+      "native_baseline": 35.3635368347168,
+      "stored_baseline": 35.3635368347168,
+      "baseline_matches": true,
+      "corrected_min": -0.12643888592720032,
+      "corrected_max": 0.24191652238368988
+    },
+    {
+      "shot": 190111,
+      "store_available": false
+    },
+    {
+      "shot": 190112,
+      "store_available": false
+    },
+    {
+      "shot": 190113,
+      "store_available": true,
+      "preplasma_samples": 100000,
+      "native_baseline": 35.3635368347168,
+      "stored_baseline": 35.3635368347168,
+      "baseline_matches": true,
+      "corrected_min": -0.11700662225484848,
+      "corrected_max": 0.15280842781066895
+    },
+    {
+      "shot": 190114,
+      "store_available": true,
+      "preplasma_samples": 100000,
+      "native_baseline": 35.3635368347168,
+      "stored_baseline": 35.3635368347168,
+      "baseline_matches": true,
+      "corrected_min": -0.12633231282234192,
+      "corrected_max": 0.15278911590576172
+    },
+    {
+      "shot": 190115,
+      "store_available": true,
+      "preplasma_samples": 100000,
+      "native_baseline": 35.35298538208008,
+      "stored_baseline": 35.35298538208008,
+      "baseline_matches": true,
+      "corrected_min": -0.1277952790260315,
+      "corrected_max": 0.13537955284118652
+    },
+    {
+      "shot": 190116,
+      "store_available": true,
+      "preplasma_samples": 100000,
+      "native_baseline": 35.35650634765625,
+      "stored_baseline": 35.35650634765625,
+      "baseline_matches": true,
+      "corrected_min": -0.13607707619667053,
+      "corrected_max": 0.10960960388183594
+    },
+    {
+      "shot": 190182,
+      "store_available": true,
+      "preplasma_samples": 100000,
+      "native_baseline": 35.905487060546875,
+      "stored_baseline": 35.905487060546875,
+      "baseline_matches": true,
+      "corrected_min": -0.16392385959625244,
+      "corrected_max": 0.12593623995780945
+    }
+  ],
+  "clipped_suggestions": [
+    {
+      "shot": 202205,
+      "window_ms": [
+        9.0,
+        3134.0
+      ],
+      "delivered_rows": 0,
+      "within_window": true,
+      "last_row": []
+    },
+    {
+      "shot": 202206,
+      "window_ms": [
+        9.0,
+        4584.0
+      ],
+      "delivered_rows": 0,
+      "within_window": true,
+      "last_row": []
+    }
+  ],
+  "queue_shots": 247,
+  "suggestion_rows": 592,
+  "suggestion_shots": 13,
+  "producer_snapshot_consistent": true,
+  "blind_overlap": []
+}
