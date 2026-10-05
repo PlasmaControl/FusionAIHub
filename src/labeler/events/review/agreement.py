@@ -124,8 +124,8 @@ def agreement(event_dir: Path) -> dict:
 
 
 def require_binary(event: str):
-    if event == "minimum_safety_factor":
-        raise ValueError("minimum_safety_factor has multiclass regime labels; "
+    if event in {"minimum_safety_factor", "confinement", "detachment"}:
+        raise ValueError(f"{event} has multiclass regime labels; "
                          "binary present/absent scoring is undefined")
 
 

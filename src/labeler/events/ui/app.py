@@ -39,7 +39,7 @@ from ...ae.seg.pseudo import PseudoMask
 from ...config import Paths, sha256_of
 from .. import raw, rosters, rwm
 from ..review import build as review_build
-from ..review import labels, reviewers, rows, versions
+from ..review import labels, reviewers, rows, versions, video
 
 STATIC = Path(__file__).parent / "static"
 COOKIE = "labeler_verify_token"
@@ -54,8 +54,10 @@ BAD_TOKEN = "bad token"
 #: name and hides the history instead of failing every save. 3 added the masks,
 #: 4 the whole-shot TokEye layer, 5 the list of names the page asks from,
 #: 6 the exact RWM onset annotations, 7 individual/group annotation resolution,
-#: 8 independent, overlapping individual and crowd annotation lanes.
-API_VERSION = 8
+#: 8 independent, overlapping individual and crowd annotation lanes,
+#: 9 detachment camera manifests and lazy frame requests.
+#: 10 saved suggestion exposure and producer-prefill provenance.
+API_VERSION = 10
 
 log = logging.getLogger(__name__)
 
@@ -70,6 +72,8 @@ class LabelIn(BaseModel):
     iscrowd: list[object] | None = Field(default=None, max_length=1000)
     overlap_edit: bool = False
     name: str | None = Field(default=None, max_length=versions.NAME_MAX)
+    suggestions_shown: bool | None = None
+    prefilled: bool | None = None
 
 
 class MaskIn(BaseModel):
@@ -113,6 +117,12 @@ class Builds:
                 return None, f"{type(error).__name__}: {error}"
             if review_build.current(path, event):
                 return path, None
+            if event == "detachment" and path.is_file():
+                return None, (
+                    f"Stale frozen detachment store: {path}. Opening a shot never "
+                    "overwrites it. The controller must run the documented "
+                    "resume-build after the producer is final."
+                )
             self.running[key] = self.pool.submit(
                 review_build.build, event, shot, self.paths
             )
@@ -280,12 +290,15 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
         for row in described["rows"]:
             if band is not None and "band" in row:
                 row["band"] = list(band)
+        producer = described.get("params", {}).get("detachment_producer", {})
+        suppress_source = event == "detachment" and producer.get("source_suppressed", False)
         return {
             "event": event,
             "shot": shot,
             "tier": tier,
             **described,
-            **labels.shot_labels(directory, shot),
+            **({"video": video.meta(path)} if event == "detachment" else {}),
+            **labels.shot_labels(directory, shot, suppress_source=suppress_source),
             "reviewers": reviewers.shot_reviewers(directory, shot),
             **({"onsets": rwm.onsets(shot, paths)}
                if event == "resistive_wall_mode" else {}),
@@ -313,6 +326,30 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
             media_type="application/octet-stream",
             headers={"X-Grid": json.dumps(grid)},
         )
+
+    @app.get("/api/frame")
+    def frame_view(
+        event: str, shot: int, camera: str,
+        channel: Annotated[int, Query(ge=0, le=255)] = 0,
+        t_ms: float = 0.0,
+    ):
+        directory = require_event(event, paths)
+        roster_tier(_roster(directory), shot)
+        if event != "detachment":
+            raise HTTPException(404, "this event has no camera previews")
+        path = paths.spectrogram_file(event, shot)
+        if not path.is_file():
+            raise HTTPException(404, f"shot {shot} has no previews yet: open it first")
+        try:
+            data, frame = video.read_frame(path, camera, channel, t_ms)
+        except KeyError:
+            raise HTTPException(404, "no frames for this camera/channel") from None
+        except ValueError as error:
+            raise HTTPException(400, str(error)) from None
+        return Response(data, media_type="image/png", headers={
+            "X-Frame-Time-Ms": str(frame["time_ms"]),
+            "X-Frame-Index": str(frame["index"]),
+        })
 
     @app.post("/api/label")
     def save_label(body: LabelIn):
@@ -344,6 +381,8 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
                 name=name,
                 source_sha256=sha256_of(table) if table else None,
                 crowd_edit=body.iscrowd is not None,
+                suggestions_shown=body.suggestions_shown,
+                prefilled=body.prefilled,
             )
         except labels.SaveRefused as error:
             raise HTTPException(409, str(error)) from None

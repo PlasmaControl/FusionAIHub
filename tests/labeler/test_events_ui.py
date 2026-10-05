@@ -104,7 +104,13 @@ def _built(paths, event="alfven_eigenmode", shot=170815):
         "p1", "Density", np.stack([np.zeros((1, 2000)), np.ones((1, 2000))])
     )
     path = paths.spectrogram_file(event, shot)
-    review_rows.write(path, Grid(0.0, 1.0, 2000), [image, trace], event=event)
+    review_rows.write(
+        path, Grid(0.0, 1.0, 2000), [image, trace], event=event,
+        **({"panel_version": review_build.PANEL_VERSIONS[event]}
+           if event == "detachment" else {}),
+        **({"panel_revision": review_build.PANEL_REVISIONS[event]}
+           if event == "detachment" else {}),
+    )
     return path
 
 
@@ -266,7 +272,8 @@ def test_events_lists_each_roster_and_how_much_of_it_is_reviewed(client, source)
             {"event": "alfven_eigenmode", "n_shots": 2, "n_reviewed": 0,
              "categories": states},
             {"event": "detachment", "n_shots": 1, "n_reviewed": 0,
-             "categories": {"1": "present"}},
+             "categories": {"1": "attached", "2": "detached", "3": "marfe",
+                            "4": "uncertain"}},
         ]
     }
 
@@ -323,6 +330,37 @@ def test_a_built_shot_opens_with_its_grid_its_rows_and_its_labels(
     assert (body["saved"], body["last_save"], body["state"]) == (
         None, None, "unreviewed"
     )
+
+
+@pytest.mark.parametrize("human_saved", [False, True])
+def test_inconsistent_detachment_source_is_hidden_and_human_review_is_preserved(
+    client, paths, tables, human_saved
+):
+    import h5py
+
+    directory = tables / "detachment"
+    (directory / "format").mkdir()
+    (directory / "format/detachment_format_test.csv").write_text(SOURCE)
+    path = _built(paths, event="detachment")
+    if human_saved:
+        response = client.post("/api/label", json=_label(
+            event="detachment", intervals=[[100, 150, 4]],
+        ))
+        assert response.status_code == 200
+    with h5py.File(path, "a") as store:
+        store.attrs["params"] = json.dumps({"detachment_producer": {
+            "reason": "Snapshot differs", "source_suppressed": True,
+        }})
+    body = client.get("/api/shot?event=detachment&shot=170815").json()
+    assert body["source"] is None
+    assert body["params"]["detachment_producer"]["source_suppressed"] is True
+    if human_saved:
+        assert body["saved"]["intervals"] == [[100, 150, 4]]
+        assert body["state"] == "changed"
+    else:
+        assert body["saved"] is None and body["state"] == "unreviewed"
+    queue = client.get("/api/queue?event=detachment").json()
+    assert queue["shots"][0]["shot"] == 170815
 
 
 def _one_trace(event, shot, paths):

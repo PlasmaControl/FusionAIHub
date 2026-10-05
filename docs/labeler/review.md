@@ -492,6 +492,46 @@ whose saved or source annotations overlap. This prevents a cached older page
 from silently flattening the lanes. Restart an older server and reload the page
 to use overlapping annotations.
 
+## Detachment cameras
+
+The `detachment` editor offers spans **1 attached, 2 detached, 3 marfe,
+4 uncertain**; unmarked time is not reviewed. The Individual lane starts from
+the producer label, so reviewers correct suggestions. **Start blank** clears
+the editable lane while keeping Source visible. Drag **Time (ms)** or click the
+timeline to seek the nearest camera frame and move the cursor across all
+panels. The video panel stays visible while scrolling. **Play/Pause** waits for
+decoded frames before advancing. All selected camera images, physical views,
+captions and the shared clock publish together; pausing discards staged frames.
+TangTV corpus images are 50 Hz linear resamples blending adjacent exposures;
+seeking shows a loading state. Labels still use the
+usual timeline lanes, saves and history.
+
+Each available `bolo`, `tangtv` or `irtv` image channel uses a fixed per-shot
+grayscale scale. Missing/stub cameras have a one-line unavailable card.
+Selectors name the source views; the default is lower-divertor TangTV channel
+**2, then 0** if 2 is unavailable. The TangTV filter/emission line is not recorded.
+Raw Langmuir sweeps are omitted; bolo raw chord voltages have a
+qualitative chord×time context row, and optional Jsat peaks show probe ids; filterscope, density and gas-flow context uses block means over the
+plasma window. Optional producer files add validity-gated Afrac, lower-divertor
+radiation fraction and normalized TangTV DZ. Movies stay in the per-shot store;
+the page requests one frame at a time. Camera controls require server API 9.
+The state track is exclusive: MARFE can physically coexist with detachment,
+and partial detachment has no separate state. The queue is the delivery overlay
+`round4/detach-ui/tables/detachment/shots.csv`, gated on camera availability,
+separately from the EFIT shelf gate. Frozen delivery counts are recorded in
+[the fix-five delivery record](results/detachment_ui_fix5_delivery.json): 247
+queued shots, 87 with camera/shelf coverage. The earlier “94” shelf-sample count
+is superseded. `results/detachment_review_queue.json` is a future controller
+rebuild output; it is not present evidence. Blind test and reserved shots are excluded.
+When DRSEP is absent, the page says **topology unavailable**, alongside the
+lower outer strike-point gate. See the
+[human camera protocol](detachment_review.md#human-camera-review-protocol) and
+the page's separate **What the machine label means** block, generated from the
+producer recipe stored with the shot.
+
+See [Detachment camera review](detachment_review.md) for data contracts,
+launch commands and the isolated real-shot screenshot check.
+
 ## The row store
 
 The page reads rows from `$LABELER_ROOT/spectrograms/<event>/<shot>.h5`. Each

@@ -228,6 +228,10 @@ const S = {
   savedRows: new Map(), // event -> shot -> {count, row}, from acknowledged saves
   shot: null,
   meta: null, // what /api/shot said: grid, t_range, rows, source, saved, state, last_save
+  video: null, // camera cards, selected time and playback; detachment only
+  blind: false, // independent detachment review: no producer-derived drawings
+  suggestionsShown: false,
+  prefilled: false,
   label: null, // the label being edited, always normalised
   selected: -1,
   view: [0, 1], // the ms on screen
@@ -259,7 +263,8 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const sleep = (delay) => new Promise((done) => setTimeout(done, delay));
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const known = () => Object.keys(S.categories).map(Number);
-const draftKey = (shot) => `labeler:${S.event}:${shot}`;
+const draftKey = (shot) => `labeler:${S.event}:${shot}${S.event === "detachment" ? ":independent" : ""}`;
+const exposureKey = (shot) => `${draftKey(shot)}:exposure`;
 
 function stored(key) {
   try {
@@ -302,7 +307,7 @@ function say(message, error = false) {
 
 function readTokens() {
   const style = getComputedStyle(document.documentElement);
-  const names = ["panel", "ink", "muted", "rule", "label", "changed", "veil", "mask", "rejected", "tokeye"];
+  const names = ["panel", "ink", "muted", "rule", "label", "changed", "veil", "mask", "rejected", "tokeye", "unreviewed"];
   T = Object.fromEntries(names.map((name) => [name, style.getPropertyValue(`--${name}`).trim()]));
 }
 
@@ -349,12 +354,32 @@ function emptyLabel() {
   return { window: [lo, Math.min(ms(S.meta.t_range[1]), lo + LONGEST_WINDOW_MS)], intervals: [] };
 }
 
-const baseline = () => S.meta.saved || S.meta.source || emptyLabel();
+const independent = () => S.event === "detachment";
+const isBlind = () => independent() && S.blind;
+const baseline = () => S.meta.saved || (independent() ? emptyLabel() : S.meta.source || emptyLabel());
 const dirty = () => Boolean(S.meta) && !same(S.label, baseline());
+
+function keepExposure() {
+  if (independent() && S.meta) store(exposureKey(S.shot), JSON.stringify({
+    suggestions_shown: S.suggestionsShown, prefilled: S.prefilled,
+  }));
+}
+
+const mergeExposure = (a, b) => a === true || b === true ? true :
+  a == null || b == null ? null : false;
+
+function previousExposure(shot) {
+  try { return JSON.parse(stored(exposureKey(shot)) || "null"); }
+  catch { return null; }
+}
 
 function draft(shot) {
   try {
     const label = JSON.parse(stored(draftKey(shot)));
+    if (independent() && label) {
+      S.suggestionsShown = mergeExposure(S.suggestionsShown, label.suggestions_shown);
+      S.prefilled = mergeExposure(S.prefilled, label.prefilled);
+    }
     return label && normalise(label.window, label.intervals, known(), label.iscrowd);
   } catch {
     return null;
@@ -380,9 +405,11 @@ function edit(window, intervals, iscrowd) {
 /** Keep the draft until it is saved or reverted, and mark the shot unsaved. */
 function touch() {
   if (stillOpening()) return;
+  keepExposure();
   const saving = S.saving && S.saving.event === S.event && S.saving.shot === S.shot;
   const keep = dirty() || (saving && !same(S.label, S.saving.label));
-  store(draftKey(S.shot), keep ? JSON.stringify(S.label) : null);
+  store(draftKey(S.shot), keep ? JSON.stringify({ ...S.label,
+    ...(independent() ? { suggestions_shown: S.suggestionsShown, prefilled: S.prefilled } : {}) }) : null);
   $("dirty").hidden = !dirty();
   renderQueue();
   render();
@@ -405,9 +432,26 @@ function undo() {
 function revert() {
   if (stillOpening()) return;
   if (!S.meta) return;
+  if (isBlind()) return;
   const source = S.meta.source || emptyLabel();
+  if (independent()) {
+    const keep = source.intervals.map((_, i) => i).filter(i => [1, 2, 3].includes(source.intervals[i][2]));
+    S.prefilled = mergeExposure(S.prefilled, keep.length > 0);
+    S.suggestionsShown = true;
+    S.selected = -1;
+    edit(source.window, keep.map(i => source.intervals[i]), source.iscrowd && keep.map(i => source.iscrowd[i]));
+    return;
+  }
   S.selected = -1;
   edit(source.window, source.intervals, source.iscrowd);
+}
+
+/** Clear only Individual/unspecified annotations, retaining the Crowd lane. */
+function startBlank() {
+  if (stillOpening() || !S.meta) return;
+  const crowd = S.label.intervals.filter((_, i) => S.label.iscrowd?.[i] === 1);
+  S.selected = -1;
+  edit(S.label.window, crowd, crowd.map(() => 1));
 }
 
 function removeSelected() {
@@ -483,6 +527,7 @@ async function boot() {
   S.name = picked() || stored("labeler:name") || "";
   $("reviewer-name").value = S.name;
   S.showMasks = stored("labeler:masks") !== "hidden";
+  S.blind = stored("labeler:detachment-blind") === "true";
   wire();
   try {
     S.api = (await (await api("/api/version")).json()).api;
@@ -550,6 +595,7 @@ function stillOpening() {
 }
 
 function leave() {
+  clearVideo();
   closeDialog($("versions"));
   S.versions = [];
   S.versionsAt = null;
@@ -597,6 +643,7 @@ async function openEvent(event, shot) {
 
 /** Show `shot` (or no shot) with nothing to edit, and the note `text` where the rows go. */
 function showNothing(shot, text) {
+  clearVideo();
   cancelAnimationFrame(S.frame);
   Object.assign(S, { shot, meta: null, data: null, overview: null, label: null,
     undo: [], selected: -1, asked: "", frame: 0, masks: null, tokeye: null });
@@ -610,6 +657,7 @@ function showNothing(shot, text) {
 }
 
 async function openShot(shot) {
+  clearVideo();
   const ticket = ++S.ticket;
   leave();
   if (shot == null) {
@@ -630,10 +678,28 @@ async function openShot(shot) {
     }
     Object.assign(S, { shot, meta, data: null, overview: null, asked: "", undo: [], selected: -1, masks: null,
       tokeye: null });
-    S.label = draft(shot) || baseline();
+    // Confirmed BCI units also apply to frozen stores whose old UI called
+    // the CO2 line integral's native units unverified; preserve store bytes.
+    if (independent()) for (const row of meta.rows) {
+      const metadata = meta.params?.panel_metadata?.[row.name];
+      if (!metadata?.measurement?.includes("CO2 line-integrated")) continue;
+      row.y_units = "m·cm⁻³";
+      row.legend = row.legend.map(text => text.replace("native units (unverified)", "m·cm⁻³"));
+      metadata.caveat = "BCI line integral in m·cm⁻³ (configs/shot_design/signals.yaml); no chord-length division. Upstream density context, not a line average or local Thomson measurement.";
+    }
+    const exposure = independent() ? previousExposure(shot) : null;
+    S.suggestionsShown = independent() ? mergeExposure(exposure ? exposure.suggestions_shown : false,
+      meta.saved ? meta.last_save?.suggestions_shown ?? null : false) : true;
+    S.prefilled = independent() ? mergeExposure(exposure ? exposure.prefilled : false,
+      meta.saved ? meta.last_save?.prefilled ?? null : false) : Boolean(meta.source && !meta.saved);
+    const pending = draft(shot);
+    S.label = isBlind() ? baseline() : pending || baseline();
+    if (independent() && !S.blind) S.suggestionsShown = true;
+    keepExposure();
     buildRows();
     arrive();
     fit();
+    buildVideo();
     fetchRows(0);
     prefetch();
     loadMasks(ticket);
@@ -653,6 +719,10 @@ function arrive() {
   history.replaceState(null, "", `#${S.event}${S.shot == null ? "" : `/${S.shot}`}`);
   $("shot").value = S.shot ?? "";
   showHeader();
+  if (S.api >= 7) {
+    $("stale").hidden = S.event !== "detachment" || S.api >= 9;
+    $("stale").textContent = "Restart the server for detachment cameras";
+  }
   renderQueue();
   $("queue").querySelector(".current")?.scrollIntoView({ block: "nearest" });
 }
@@ -758,18 +828,27 @@ async function save(next) {
   const resolution = S.api >= 7
     ? { iscrowd: label.iscrowd || label.intervals.map(() => null) } : {};
   const overlap = S.api >= 8 ? { overlap_edit: true } : {};
+  if (independent() && S.api < 10) {
+    S.saving = false;
+    return say("Restart the server before saving detachment exposure flags", true);
+  }
+  const exposure = S.api >= 10
+    ? { suggestions_shown: S.suggestionsShown, prefilled: S.prefilled } : {};
   try {
     const response = await api("/api/label", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ event, shot, ...label, ...resolution, ...overlap, ...name }),
+      body: JSON.stringify({ event, shot, ...label, ...resolution, ...overlap, ...name, ...exposure }),
     });
     const body = await response.json();
     const saved = S.savedRows.get(event) || new Map();
     saved.set(shot, { count: ++S.saveCount, row: body.row });
     S.savedRows.set(event, saved);
     try {
-      if (same(JSON.parse(stored(key)), label)) store(key, null);
+      const pendingDraft = JSON.parse(stored(key));
+      const pendingLabel = pendingDraft && normalise(pendingDraft.window, pendingDraft.intervals,
+        undefined, pendingDraft.iscrowd);
+      if (same(pendingLabel, label)) store(key, null);
     } catch {
       // A malformed draft does not prevent the completed save from being shown.
     }
@@ -798,16 +877,22 @@ async function save(next) {
 // -- drawing
 
 function buildRows() {
-  $("rows").replaceChildren(...S.meta.rows.map(() => document.createElement("canvas")));
+  $("rows").replaceChildren(...S.meta.rows.map(row => {
+    const canvas = document.createElement("canvas");
+    const metadata = S.meta.params?.panel_metadata?.[row.name];
+    canvas.title = metadata?.caveat || "";
+    return canvas;
+  }));
   sizeCanvases();
 }
 
 /** Each row at its own height, or taller when the rows would not fill the view. */
 function sizeRows() {
   if (!S.meta) return;
-  const base = S.meta.rows.map((row) => (row.kind === "image" ? IMAGE_H : TRACE_H));
-  const room = $("top").clientHeight - $("axis-row").offsetHeight;
-  const scale = Math.max(1, room / base.reduce((a, b) => a + b, 0));
+  const base = S.meta.rows.map((row) => (isBlind() && S.meta.params?.panel_metadata?.[row.name]?.indicator
+    ? 0 : row.kind === "image" ? IMAGE_H : TRACE_H));
+  const room = $("top").clientHeight - $("axis-row").offsetHeight - $("video-panel").offsetHeight;
+  const scale = Math.max(1, room / (base.reduce((a, b) => a + b, 0) || 1));
   [...$("rows").children].forEach((canvas, i) => {
     canvas.style.height = `${Math.floor(base[i] * scale)}px`;
   });
@@ -838,13 +923,17 @@ function render() {
     S.frame = 0;
     drawRows();
     drawAxis();
-    drawTrack($("source-track"), S.meta.source, false);
+    drawTrack($("source-track"), isBlind() ? null : S.meta.source, false);
+    drawProducerStrips();
     drawTrack($("label-track"), S.label, true, S.api >= 8 ? 0 : undefined);
     if (S.api >= 8) drawTrack($("crowd-track"), S.label, true, 1);
+    showVideoCursor();
   });
 }
 
-const categoryColour = (c) => (c === 1 ? T.label : CATEGORY_COLOURS[c] || T.muted);
+const categoryColour = (c) => (S.event === "detachment" && S.categories[c] === "detached" ? "#0072b2" :
+  S.event === "detachment" && S.categories[c] === "uncertain" ? CATEGORY_COLOURS[5] :
+  c === 1 ? T.label : CATEGORY_COLOURS[c] || T.muted);
 
 function drawRows() {
   const canvases = $("rows").children;
@@ -852,6 +941,7 @@ function drawRows() {
     const canvas = canvases[i];
     const [w, h] = [canvas.clientWidth, canvas.clientHeight];
     const g = context(canvas);
+    if (isBlind() && S.meta.params?.panel_metadata?.[row.name]?.indicator) return;
     const values = S.data && S.data.rows[i];
     const range = row.kind === "image" ? imageRange(row) : values && traceRange(row, values);
     g.save();
@@ -866,6 +956,15 @@ function drawRows() {
     if (row.kind === "image") drawTokeye(g, row, w, h, false);
     g.restore();
     drawGutter(g, row, range, h);
+    const note = S.event === "detachment" && indicatorNote(row, S.video?.time);
+    if (note) {
+      g.font = FONT; g.textAlign = "left";
+      const width = w - GUTTER - RIGHT - 10;
+      g.fillStyle = T.panel;
+      g.fillRect(GUTTER + 3, 1, Math.min(width, g.measureText(note).width + 4), 15);
+      g.fillStyle = T.muted;
+      g.fillText(note, GUTTER + 5, 13, width);
+    }
     g.fillStyle = T.rule;
     g.fillRect(0, h - 1, w, 1);
   });
@@ -982,12 +1081,39 @@ function bitmap(row, data, i) {
 }
 
 /** A trace row's y range over the columns on screen, its dashed lines included. */
+function traceGuides(row) {
+  const metadata = S.meta.params?.panel_metadata?.[row.name];
+  return metadata?.indicator === "prad" ? [...new Set([...row.hlines, 1])] : row.hlines;
+}
+
+/** Report stored Afrac methods verbatim; never invent their calibration recipe. */
+function indicatorNote(row, time) {
+  const metadata = S.meta.params?.panel_metadata?.[row.name];
+  if (metadata?.quantity === "aux_jsat_peak") {
+    const i = metadata.bin_start_ms?.findIndex((start, i) => start <= time && time < metadata.bin_end_ms[i]) ?? -1;
+    return `Jsat peak probe: ${metadata.probe_id?.[i] ?? "unavailable at cursor"} · probe switching cannot establish rollover`;
+  }
+  if (metadata?.indicator === "prad") {
+    const values = S.data?.rows[S.meta.rows.indexOf(row)];
+    if (!values) return "";
+    const step = (S.data.t1 - S.data.t0) / S.data.n;
+    const exceeds = Array.from(values).some((value, i) => {
+      const j = i % S.data.n, t0 = S.data.t0 + j * step;
+      return Number.isFinite(value) && value > 1 && t0 < S.view[1] && t0 + step > S.view[0];
+    });
+    return exceeds ? "f_div > 1: check heating-power denominator and radiation estimate" : "";
+  }
+  if (metadata?.indicator !== "afrac") return "";
+  const i = metadata.bin_start_ms?.findIndex((start, i) => start <= time && time < metadata.bin_end_ms[i]) ?? -1;
+  return `Afrac method: ${metadata.afrac_method?.[i] || "not recorded at cursor"}`;
+}
+
 function traceRange(row, values) {
   const n = S.data.n;
   const step = (S.data.t1 - S.data.t0) / n;
   const j0 = clamp(Math.floor((S.view[0] - S.data.t0) / step), 0, n);
   const j1 = clamp(Math.ceil((S.view[1] - S.data.t0) / step), 0, n);
-  let [lo, hi] = [Math.min(Infinity, ...row.hlines), Math.max(-Infinity, ...row.hlines)];
+  let [lo, hi] = [Math.min(Infinity, ...traceGuides(row)), Math.max(-Infinity, ...traceGuides(row))];
   for (let p = 0; p < 2 * row.n_channels; p++) {
     for (let j = j0; j < j1; j++) {
       const v = values[p * n + j];
@@ -1007,7 +1133,7 @@ function drawTrace(g, row, values, [lo, hi], w, h) {
   g.lineWidth = 1;
   g.strokeStyle = T.muted;
   g.setLineDash([4, 3]);
-  for (const v of row.hlines) {
+  for (const v of traceGuides(row)) {
     g.beginPath();
     g.moveTo(0, y(v));
     g.lineTo(w, y(v));
@@ -1029,6 +1155,10 @@ function drawTrace(g, row, values, [lo, hi], w, h) {
       if (pen) g.lineTo(x, y(low));
       else g.moveTo(x, y(low));
       g.lineTo(x, y(high));
+      if (S.meta.params?.panel_metadata?.[row.name]?.indicator === "prad" && high > 1) {
+        g.fillStyle = "#d55e00";
+        g.fillRect(x - 2, y(high) - 2, 4, 4);
+      }
       pen = true;
     }
     g.stroke();
@@ -1219,9 +1349,11 @@ function drawTrack(canvas, label, editable, lane) {
     g.fillStyle = T.ink;
     g.fillRect(px(lo), h - HANDLE_BAND / 2 - 0.5, px(hi) - px(lo), 1);
     for (const t of label.window) g.fillRect(px(t) - 2, h - HANDLE_BAND, 4, HANDLE_BAND);
-    const source = S.meta.source || { window: label.window, intervals: [] };
-    g.fillStyle = T.changed;
-    for (const [a, b] of diffRuns(source, label)) g.fillRect(px(a), 0, Math.max(1, px(b) - px(a)), 3);
+    if (!isBlind()) {
+      const source = S.meta.source || { window: label.window, intervals: [] };
+      g.fillStyle = T.changed;
+      for (const [a, b] of diffRuns(source, label)) g.fillRect(px(a), 0, Math.max(1, px(b) - px(a)), 3);
+    }
   } else {
     g.strokeStyle = T.ink;
     g.lineWidth = 1;
@@ -1257,13 +1389,15 @@ function hatch(g, x, y, width, height) {
 
 function showHeader() {
   renderResolution();
+  $("detachment-help").hidden = S.event !== "detachment";
   const next = neighbour(1);
   $("next-shot").textContent = next == null || next === S.shot ? "" : `→ ${next}`;
   const row = S.queue.find((r) => r.shot === S.shot) || {};
   const last = S.meta?.last_save;
   $("tier").textContent = row.tier || "";
-  $("state").textContent = S.queueEvent !== S.event ? "the queue is still loading" : row.state || "";
-  $("state").className = `pill ${row.state || ""}`;
+  const state = isBlind() && row.state && row.state !== "unreviewed" ? "reviewed" : row.state;
+  $("state").textContent = S.queueEvent !== S.event ? "the queue is still loading" : state || "";
+  $("state").className = `pill ${state || ""}`;
   $("saved").textContent = last ? `saved ${when(last.saved_at)}${last.name ? ` by ${last.name}` : ""}` : "";
   $("dirty").hidden = !dirty();
   showContributors();
@@ -1323,7 +1457,8 @@ function renderQueue() {
   }
   S.queue.forEach((row, i) => {
     const chip = nav.children[i];
-    const marks = [row.state, row.shot === S.shot && "current", stored(draftKey(row.shot)) && "dirty"];
+    const state = isBlind() && row.state !== "unreviewed" ? "reviewed" : row.state;
+    const marks = [state, row.shot === S.shot && "current", stored(draftKey(row.shot)) && "dirty"];
     chip.className = ["chip", ...marks.filter(Boolean)].join(" ");
     chip.title = row.tier;
   });
@@ -1361,6 +1496,7 @@ function onRowsDown(event) {
 
 function onLabelDown(event) {
   if (event.button !== 0 || !S.meta) return;
+  if (S.video) { pauseVideo(); seekVideo(timeAt(event.clientX)); }
   const rect = event.currentTarget.getBoundingClientRect();
   const lane = S.api >= 8 ? Number(event.currentTarget.dataset.lane) : undefined;
   const hit = hitTest(S.label, event.clientX - rect.left, event.clientY - rect.top, rect.height, px, lane);
@@ -1436,7 +1572,10 @@ function dragTo(clientX) {
 function endDrag(event) {
   const d = S.drag;
   S.drag = null;
-  if (d?.kind === "pan" && d.canvas && !d.moved && event?.type === "pointerup") return clickMask(d);
+  if (d?.kind === "pan" && !d.moved && event?.type === "pointerup") {
+    if (S.video) { pauseVideo(); return seekVideo(timeAt(event.clientX)); }
+    if (d.canvas) return clickMask(d);
+  }
   if (!d || d.kind === "pan" || same(d.base, S.label)) return;
   keepForUndo(d.base);
   touch();
@@ -1611,16 +1750,404 @@ function onWheel(event, zoomAlways) {
   zoomAt(timeAt(event.clientX), Math.exp(dy * 0.002));
 }
 
-function showCursor(clientX) {
-  const cursor = $("cursor");
+function showCursor(clientX, hover = false) {
+  const cursor = $(hover ? "hover-cursor" : "cursor");
   const axis = $("axis-row").getBoundingClientRect();
   const x = clientX - axis.left;
   cursor.hidden = !S.meta || x < GUTTER || x > axis.width - RIGHT;
   if (cursor.hidden) return;
-  const top = $("top").getBoundingClientRect().top;
+  const viewport = $("top").getBoundingClientRect();
+  const videoBottom = S.video ? $("video-panel").getBoundingClientRect().bottom : viewport.top;
+  const top = Math.max(viewport.top, videoBottom, $("rows").getBoundingClientRect().top);
   const bottom = $(S.api >= 8 ? "crowd-track" : "label-track").getBoundingClientRect().bottom;
   Object.assign(cursor.style, { left: `${clientX}px`, top: `${top}px`, height: `${bottom - top}px` });
-  $("cursor-time").textContent = `${Math.round(timeAt(clientX))} ms`;
+  $(hover ? "hover-time" : "cursor-time").textContent = `${Math.round(timeAt(clientX))} ms`;
+}
+
+// -- detachment cameras: small manifests, one lazy frame per camera
+
+function pauseVideo() {
+  if (S.video) {
+    clearTimeout(S.video.timer);
+    S.video.timer = null;
+    S.video.playing = false;
+    S.video.epoch++;
+    S.video.seekSeq++;
+    S.video.cards.forEach(cancelVideoFrame);
+    if (Number.isFinite(S.video.time)) $("video-time").value = S.video.time;
+  }
+  $("video-play").textContent = "Play";
+  $("video-play").setAttribute("aria-pressed", "false");
+}
+
+/** Release transaction-owned pixels without touching the last published frame. */
+function cancelVideoFrame(card) {
+  card.abort?.abort();
+  card.seq++;
+  if (card.staged?.url) URL.revokeObjectURL(card.staged.url);
+  card.staged = null;
+  card.pendingKey = "";
+  card.figure.setAttribute("aria-busy", "false");
+  if (card.img) card.img.style.visibility = "visible";
+  if (card.renderedNote) card.note.textContent = card.renderedNote;
+  else if (card.channel && card.note.textContent.startsWith("Loading"))
+    card.note.textContent = "Frame canceled; seek to retry.";
+}
+
+function clearVideo() {
+  pauseVideo();
+  closeDialog($("camera-enlarged"));
+  for (const card of S.video?.cards || []) {
+    card.abort?.abort();
+    if (card.url) URL.revokeObjectURL(card.url);
+  }
+  S.video = null;
+  $("video-panel").hidden = true;
+  $("video-cameras").replaceChildren();
+  $("cursor").hidden = true;
+  $("hover-cursor").hidden = true;
+}
+
+function buildVideo() {
+  $("start-blank").hidden = S.event !== "detachment";
+  showBlindMode();
+  if (S.event !== "detachment" || !S.meta?.video || S.api < 9) return;
+  const cards = [];
+  for (const camera of S.meta.video.cameras) {
+    const figure = document.createElement("figure");
+    figure.className = "camera";
+    const caption = document.createElement("figcaption");
+    caption.textContent = camera.name;
+    const note = document.createElement("p");
+    const channel = camera.channels.find(c => c.channel === camera.default_channel) || camera.channels[0];
+    const card = { camera, figure, note, channel, key: "", seq: 0 };
+    figure.append(caption);
+    if (!card.channel) {
+      figure.classList.add("unavailable");
+      note.textContent = `No frames for this camera: ${camera.reason}`;
+    } else {
+      const select = document.createElement("select");
+      select.setAttribute("aria-label", `${camera.name} channel`);
+      const views = camera.views?.length ? camera.views : camera.channels;
+      for (const channel of views) {
+        const option = document.createElement("option");
+        option.value = channel.channel;
+        option.textContent = `${channel.channel}: ${channel.view_name || "unknown view"} · ${channel.region || "unknown"}`;
+        option.disabled = !camera.channels.some(c => c.channel === channel.channel);
+        if (option.disabled) option.textContent += " · unavailable";
+        select.append(option);
+      }
+      select.value = card.channel.channel;
+      select.addEventListener("change", () => {
+        pauseVideo();
+        card.channel = camera.channels.find((c) => c.channel === Number(select.value));
+        videoTimes();
+        seekVideo(S.video.time);
+      });
+      caption.append(select);
+      card.img = document.createElement("img");
+      card.img.alt = `${camera.name} camera frame`;
+      figure.addEventListener("click", event => {
+        if (event.target === card.img) enlargeCamera(card);
+      });
+      figure.addEventListener("keydown", event => {
+        if (event.target === card.img && ["Enter", " "].includes(event.key)) {
+          event.preventDefault(); enlargeCamera(card);
+        }
+      });
+      figure.append(card.img);
+    }
+    figure.append(note);
+    if (card.channel) {
+      const details = document.createElement("details"), summary = document.createElement("summary");
+      summary.textContent = "Camera details";
+      const spectral = document.createElement("small");
+      spectral.textContent = [camera.name === "tangtv" ? camera.spectral_note : "",
+        camera.sampling_note].filter(Boolean).join(" ");
+      details.append(summary, spectral); figure.append(details);
+    }
+    cards.push(card);
+  }
+  S.video = { cards, times: [], timer: null, playing: false, epoch: 0, seekSeq: 0 };
+  videoTimes();
+  $("video-cameras").replaceChildren(...cards.map((card) => card.figure));
+  $("video-panel").hidden = false;
+  buildProducerStrips();
+  const slider = $("video-time");
+  [slider.min, slider.max] = S.meta.t_range;
+  slider.disabled = !S.video.times.length;
+  $("video-play").disabled = true;
+  $("video-clock").textContent = "";
+  sizeCanvases();
+  seekVideo(S.video.times[0] ?? S.meta.t_range[0]);
+}
+
+function videoTimes() {
+  const [lo, hi] = S.meta.t_range;
+  const primary = S.video.cards.find(c => c.camera.name === "tangtv" && c.channel) ||
+    S.video.cards.find(c => c.channel);
+  S.video.times = [...new Set(primary?.channel.times_ms || [])]
+    .filter(t => t >= lo && t <= hi).sort((a, b) => a - b);
+}
+
+async function seekVideo(t, playbackEpoch = null) {
+  const v = S.video;
+  if (!v || !Number.isFinite(Number(t)) || pendingNavigation()) return false;
+  if (playbackEpoch == null && v.playing) pauseVideo();
+  const seq = ++v.seekSeq;
+  const requested = clamp(Number(t), ...S.meta.t_range);
+  const time = v.times.reduce((best, frame) =>
+    Math.abs(frame - requested) < Math.abs(best - requested) ? frame : best, v.times[0] ?? requested);
+  const current = () => S.video === v && seq === v.seekSeq &&
+    (playbackEpoch == null || (v.playing && v.epoch === playbackEpoch));
+  const commit = () => {
+    v.time = time;
+    $("video-time").value = time;
+    $("video-clock").textContent = `${time.toFixed(1)} ms`;
+    $("video-play").disabled = !v.times.length;
+    showVideoGeometry(time);
+    drawProducerStrips();
+    render();
+    showVideoCursor();
+  };
+  const cards = v.cards.filter(c => c.channel);
+  cards.forEach(cancelVideoFrame);
+  const delivered = await Promise.all(cards
+    .map(card => loadVideoFrame(card, time, current, playbackEpoch != null)));
+  if (!current()) return false;
+  if (delivered.some(frame => !frame)) {
+    cards.forEach(cancelVideoFrame);
+    if (Number.isFinite(v.time)) $("video-time").value = v.time;
+    return false;
+  }
+  // No await or browser paint can occur within this publication transaction.
+  for (const frame of delivered) {
+    const { card, img, url, key, note } = frame;
+    if (img) {
+      card.img.replaceWith(img);
+      card.img = img;
+      if (card.url) URL.revokeObjectURL(card.url);
+      card.url = url;
+    }
+    card.key = key;
+    card.staged = null;
+    card.pendingKey = "";
+    card.note.textContent = card.renderedNote = note;
+    card.img.style.visibility = "visible";
+    card.figure.setAttribute("aria-busy", "false");
+  }
+  commit();
+  return true;
+}
+
+function showVideoGeometry(time) {
+  const geometry = S.meta?.params?.detachment_geometry;
+  const line = $("video-geometry");
+  const samples = geometry?.samples || [];
+  const sample = samples.reduce((best, item) => !best ||
+    Math.abs(item.time_ms - time) < Math.abs(best.time_ms - time) ? item : best, null);
+  const nearby = sample && Math.abs(sample.time_ms - time) <= 40;
+  const configuration = nearby ? sample.configuration : null;
+  const names = { LSN: "LSN (lower single null)", USN: "USN (upper single null)",
+    DN: "DN (double null)" };
+  line.textContent = (configuration ? `Magnetic configuration: ${names[configuration]} · ` : "") +
+    (nearby ? `Lower outer strike-point gate ${sample.shelf_gate ? "valid" : "invalid"}` :
+      "EFIT shelf gate unavailable at this time") +
+    (nearby && !configuration ? " · topology unavailable (DRSEP required)" : "");
+  line.title = nearby ? `${sample.time_ms.toFixed(1)} ms: ${sample.reason || geometry.note}` :
+    (geometry?.note || "No local EFIT geometry source; use uncertain when geometry is required.");
+}
+
+/** Exact half-open producer bins; an uncovered time has no inferred state. */
+function producerAt(data, time) {
+  const i = data?.bin_start_ms?.findIndex((start, i) => start <= time && time < data.bin_end_ms[i]) ?? -1;
+  if (i < 0) return null;
+  return { state: data.label_available === false ? null : data.state_lm[i],
+    rule: data.label_available === false ? null : data.state_rule[i],
+    tangtv_source: data.tangtv_source[i], confidence: data.confidence[i],
+    votes: Object.fromEntries(Object.entries(data.votes).map(([name, vote]) =>
+      [name, { vote: vote.vote[i], valid: vote.valid[i], reason: vote.reason[i] }])) };
+}
+
+const PRODUCER_LANES = [
+  ["state_lm", "Producer"], ["state_rule", "Rule"],
+  ["afrac", "Afrac vote"], ["prad", "f_div vote"], ["tangtv", "TangTV vote"],
+];
+
+function buildProducerStrips() {
+  const data = S.meta?.params?.detachment_producer;
+  const recipe = data?.recipe;
+  $("detachment-machine-help").textContent = recipe?.reason ||
+    [recipe?.documentation, recipe?.record && Object.keys(recipe.record).length ?
+      JSON.stringify(recipe.record, null, 2) : ""].filter(Boolean).join("\n\n") ||
+    "Producer interpretation record unavailable; inspect the stored votes and reasons.";
+  $("detachment-strips").hidden = S.blind;
+  $("detachment-lanes").replaceChildren(...PRODUCER_LANES.map(([key, title]) => {
+    const canvas = document.createElement("canvas");
+    canvas.dataset.producerLane = key;
+    canvas.setAttribute("aria-label", title);
+    canvas.addEventListener("click", event => { pauseVideo(); seekVideo(timeAt(event.clientX)); });
+    return canvas;
+  }));
+  $("detachment-strips").title = data?.source || "Producer label source unavailable";
+}
+
+function drawProducerStrips() {
+  if (S.event !== "detachment" || !S.video || S.blind) return;
+  const data = S.meta?.params?.detachment_producer;
+  const canvases = $("detachment-lanes").children;
+  PRODUCER_LANES.forEach(([key, title], lane) => {
+    const canvas = canvases[lane];
+    if (!canvas) return;
+    const g = context(canvas), h = canvas.clientHeight, w = canvas.clientWidth;
+    g.font = FONT; g.fillStyle = T.muted;
+    g.fillText(title, 8, h / 2 + 4);
+    g.save(); g.beginPath(); g.rect(GUTTER, 0, w - GUTTER - RIGHT, h); g.clip();
+    (data?.bin_start_ms || []).forEach((start, i) => {
+      const a = px(start), b = px(data.bin_end_ms[i]);
+      const vote = data.votes[key];
+      const code = vote ? vote.vote[i] : data[key][i];
+      if (code === 0 && !vote) return;
+      g.fillStyle = code > 0 ? categoryColour(code) : T.unreviewed;
+      g.fillRect(a, 3, b - a, h - 6);
+      if (vote && !vote.valid[i]) hatch(g, a, 3, b - a, h - 6);
+    });
+    if (Number.isFinite(S.video.time)) {
+      g.fillStyle = T.ink; g.fillRect(px(S.video.time), 0, 1, h);
+    }
+    g.restore();
+  });
+  const at = producerAt(data, S.video.time);
+  const stateName = c => c === null ? "label not published" :
+    c === 0 ? "unassessed" : S.categories[c] || "unavailable";
+  const voteName = v => !v.valid ? `invalid (${v.reason || "reason unavailable"})` :
+    v.vote === -1 ? `abstains (${v.reason || "producer evidence gates; see stored recipe"})` : stateName(v.vote);
+  $("detachment-reading").textContent = at ?
+    `At ${S.video.time.toFixed(1)} ms: producer ${stateName(at.state)} · rule ${stateName(at.rule)} · ` +
+    Object.entries(at.votes).map(([name, vote]) => `${name === "prad" ? "f_div" : name}: ${voteName(vote)}`).join(" · ") +
+    (at.tangtv_source === "surrogate" ? " · TangTV source: surrogate regression (model estimate)" :
+      at.tangtv_source === "inversion" ? " · TangTV source: tomographic inversion" : "") :
+    data?.reason || "No producer bin at this time (unassessed)";
+}
+
+function loadVideoFrame(card, time, current, playback) {
+  const { channel, times_ms: times } = card.channel;
+  let right = times.findIndex((t) => t >= time);
+  if (right < 0) right = times.length - 1;
+  if (right && Math.abs(time - times[right - 1]) <= Math.abs(times[right] - time)) right--;
+  const key = `${channel}/${right}`;
+  const outside = time < times[0] || time > times.at(-1);
+  const view = `${card.channel.view_name} · ${card.channel.region}`;
+  const note = `${times[right].toFixed(1)} ms · ${view} · nearest corpus frame${outside ? " · outside camera coverage" : ""}`;
+  if (card.key === key) {
+    return Promise.resolve({ card, key, note });
+  }
+  card.abort = new AbortController();
+  const seq = ++card.seq, ticket = S.ticket;
+  card.pendingKey = key;
+  card.figure.setAttribute("aria-busy", "true");
+  if (!playback) {
+    card.img.style.visibility = "hidden";
+    card.note.textContent = `Loading ${view} at ${times[right].toFixed(1)} ms…`;
+  }
+  const query = new URLSearchParams({ event: S.event, shot: S.shot,
+    camera: card.camera.name, channel, t_ms: times[right] });
+  card.pending = (async () => {
+    let url;
+    try {
+      const response = await api(`/api/frame?${query}`, { signal: card.abort.signal });
+      url = URL.createObjectURL(await response.blob());
+      const img = new Image();
+      img.src = url;
+      await img.decode();
+      if (ticket !== S.ticket || seq !== card.seq || !current()) return false;
+      const header = response.headers.get("X-Frame-Time-Ms");
+      const actual = Number(header);
+      if (header == null || !Number.isFinite(actual)) throw new Error("frame timestamp missing");
+      img.alt = `${card.camera.name}: ${view} at ${actual.toFixed(1)} ms`;
+      img.dataset.frameTime = actual;
+      img.dataset.channel = channel;
+      img.tabIndex = 0;
+      img.title = "Click or press Enter to enlarge this frame";
+      card.staged = { card, img, url, key,
+        note: note.replace(times[right].toFixed(1), actual.toFixed(1)) };
+      url = null;
+      return card.staged;
+    } catch (error) {
+      if (ticket === S.ticket && seq === card.seq && error.name !== "AbortError") {
+        if (!card.renderedNote) card.note.textContent = `Frame unavailable: ${error.message}. Seek to retry.`;
+        say(`Frame unavailable: ${error.message}`, true);
+      }
+      return false;
+    } finally {
+      if (url) URL.revokeObjectURL(url);
+      if (seq === card.seq && !card.staged) {
+        card.pendingKey = "";
+        card.figure.setAttribute("aria-busy", "false");
+        if (card.renderedNote) card.note.textContent = card.renderedNote;
+        card.img.style.visibility = "visible";
+      }
+    }
+  })();
+  return card.pending;
+}
+
+function showVideoCursor() {
+  if (!S.video || !S.meta) return;
+  const axis = $("axis-row").getBoundingClientRect();
+  showCursor(axis.left + px(S.video.time));
+}
+
+function enlargeCamera(card) {
+  if (!card.url || card.figure.getAttribute("aria-busy") === "true") return;
+  pauseVideo();
+  $("camera-enlarged-image").src = card.img.src;
+  $("camera-enlarged-image").alt = card.img.alt;
+  $("camera-enlarged-caption").textContent = card.note.textContent;
+  $("camera-enlarged").showModal();
+}
+
+function showBlindMode() {
+  const active = S.event === "detachment" && S.blind;
+  $("blind-control").hidden = S.event !== "detachment";
+  $("blind-mode").checked = S.blind;
+  for (const id of ["source-lane", "detachment-strips", "detachment-details", "detachment-machine-help"])
+    $(id).hidden = active;
+  $("revert").disabled = active || !S.meta;
+  $("revert").textContent = independent() ? "Use Source (1–3)" : "Revert";
+  $("detachment-reading").textContent = active ? "" : $("detachment-reading").textContent;
+  for (const [i, canvas] of Array.from($("rows").children).entries())
+    canvas.hidden = active && Boolean(S.meta?.params?.panel_metadata?.[S.meta.rows[i]?.name]?.indicator);
+  if (active) for (const canvas of [$("source-track"), ...$("detachment-lanes").children]) {
+    canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+  }
+}
+
+async function playVideo() {
+  if (!S.video || !S.video.times.length || !Number.isFinite(S.video.time)) return;
+  if (S.video.playing) return pauseVideo();
+  const v = S.video;
+  v.playing = true;
+  const epoch = ++v.epoch;
+  $("video-play").textContent = "Pause";
+  $("video-play").setAttribute("aria-pressed", "true");
+  const active = () => S.video === v && v.playing && v.epoch === epoch;
+  const ready = await seekVideo(v.time >= v.times.at(-1) ? v.times[0] : v.time, epoch);
+  if (!active()) return;
+  if (!ready) return pauseVideo();
+  const step = () => {
+    if (!active() || pendingNavigation()) return;
+    const next = v.times.find((t) => t > v.time + 0.001);
+    if (next == null) return pauseVideo();
+    const delay = Math.max(50, next - v.time);
+    v.timer = setTimeout(async () => {
+      const ready = await seekVideo(next, epoch);
+      if (!active()) return;
+      if (!ready) return pauseVideo();
+      step();
+    }, delay);
+  };
+  step();
 }
 
 function toggleKeys() {
@@ -1754,7 +2281,7 @@ async function toggleVersions() {
 }
 
 function renderVersions() {
-  const changes = versionChanges(S.versions, S.meta.source);
+  const changes = versionChanges(S.versions, isBlind() ? null : S.meta.source);
   const items = S.versions.map((version, i) => {
     const item = document.createElement("li");
     const who = version.name || "no name";
@@ -1785,6 +2312,11 @@ function restoreVersion(number) {
   closeDialog($("versions"));
   const label = normalise(found.window, found.intervals, known(), found.iscrowd);
   if (!label) return say(`version ${number} does not fit this event's categories`, true);
+  if (independent()) {
+    S.suggestionsShown = mergeExposure(S.suggestionsShown, found.suggestions_shown);
+    S.prefilled = mergeExposure(S.prefilled, found.prefilled);
+    keepExposure();
+  }
   if (same(label, S.label)) return say(`version ${number} is already the current label`);
   const replaced = dirty() ? "; replaced an unsaved edit; Ctrl+Z brings it back" : "";
   S.selected = -1;
@@ -1873,11 +2405,36 @@ function wire() {
   }
   window.addEventListener("pointermove", (event) => {
     if (S.drag) dragTo(event.clientX);
+    if (S.video) {
+      showVideoCursor();
+      if (S.drag || event.target.closest?.("#rows, .track, #axis-row")) showCursor(event.clientX, true);
+      else $("hover-cursor").hidden = true;
+      return;
+    }
     if (S.drag || event.target.closest?.("#top, .track")) showCursor(event.clientX);
     else $("cursor").hidden = true;
   });
   window.addEventListener("hashchange", followHash);
-  document.documentElement.addEventListener("pointerleave", () => ($("cursor").hidden = true));
+  document.documentElement.addEventListener("pointerleave", () => {
+    $("hover-cursor").hidden = true;
+    if (!S.video) $("cursor").hidden = true;
+  });
+  $("video-time").addEventListener("input", () => {
+    const requested = $("video-time").value;
+    pauseVideo();
+    seekVideo(requested);
+  });
+  $("video-play").addEventListener("click", playVideo);
+  $("start-blank").addEventListener("click", startBlank);
+  $("blind-mode").addEventListener("change", () => {
+    S.blind = $("blind-mode").checked;
+    store("labeler:detachment-blind", String(S.blind));
+    if (S.blind) { startBlank(); S.undo = []; }
+    else S.suggestionsShown = true;
+    keepExposure();
+    showBlindMode(); showHeader(); renderQueue(); sizeCanvases(); render();
+  });
+  $("top").addEventListener("scroll", showVideoCursor);
   window.addEventListener("pointerup", endDrag);
   window.addEventListener("pointercancel", endDrag);
   document.addEventListener("keydown", onKey);
@@ -1929,10 +2486,15 @@ function wire() {
     render();
     fetchRows();
   }).observe(top);
+  new ResizeObserver(() => {
+    sizeRows();
+    sizeCanvases();
+    render();
+  }).observe($("video-panel"));
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { ms, paint, runs, normalise, diffRuns, versionChanges, niceStep, hitTest, hasOverlaps, regionAt, lut, modeLut };
+  module.exports = { ms, paint, runs, normalise, diffRuns, versionChanges, niceStep, hitTest, hasOverlaps, regionAt, lut, modeLut, producerAt };
 } else {
   boot();
 }

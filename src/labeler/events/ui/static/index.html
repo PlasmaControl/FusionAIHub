@@ -26,11 +26,33 @@
   </span>
 </header>
 <main id="top">
+  <section id="video-panel" aria-label="Detachment cameras" hidden>
+    <div id="video-controls">
+      <button id="video-play" type="button" aria-pressed="false">Play</button>
+      <label for="video-time">Time (ms)</label>
+      <input id="video-time" type="range" step="any" aria-label="Camera time in milliseconds">
+      <output id="video-clock" for="video-time"></output>
+      <label id="blind-control" hidden><input id="blind-mode" type="checkbox"> Blind mode</label>
+    </div>
+    <p id="video-context">Target: lower outer divertor leg. <span id="video-geometry"></span></p>
+    <div id="video-cameras"></div>
+    <div id="detachment-strips" hidden aria-label="Producer labels and indicator votes">
+      <div id="detachment-lanes"></div>
+    </div>
+    <details id="detachment-details">
+      <summary>Producer reading and diagnostic details (unverified)</summary>
+      <div class="detail-scroll">
+        <p class="strip-legend"><span style="color:#0e8a8c">■ attached</span> · <span style="color:#0072b2">■ detached</span> · <span style="color:#cc79a7">■ MARFE</span> · <span style="color:#d55e00">■ uncertain</span> · grey abstains · hatched invalid · blank unassessed</p>
+        <p id="detachment-reading"></p>
+        <p id="detachment-caveats">Check the stored producer recipe in help. Uncalibrated local proxies are weak review aids. TangTV surrogate values are regression estimates.</p>
+      </div>
+    </details>
+  </section>
   <div id="rows"></div>
   <canvas id="axis-row" aria-hidden="true"></canvas>
 </main>
 <footer id="bottom">
-  <div class="track"><span class="name">Source</span><canvas id="source-track"></canvas></div>
+  <div class="track" id="source-lane"><span class="name">Source</span><canvas id="source-track"></canvas></div>
   <div class="track"><span class="name" id="individual-lane-name" title="Legacy unspecified spans also appear here">Label</span><canvas id="label-track" data-lane="0" aria-label="Individual and unspecified annotations"></canvas></div>
   <div class="track" id="crowd-lane" hidden><span class="name">Crowd</span><canvas id="crowd-track" data-lane="1" aria-label="Crowd annotations"></canvas></div>
   <div id="controls">
@@ -47,6 +69,7 @@
     <button id="save" class="primary" type="button">Save <kbd>S</kbd></button>
     <button id="next" type="button">Next <span id="next-shot"></span> <kbd>K</kbd></button>
     <button id="revert" type="button">Revert <kbd>R</kbd></button>
+    <button id="start-blank" type="button" hidden title="Clear Individual/unspecified annotations; preserve Crowd. Undo restores your draft.">Start blank</button>
     <button id="show-versions" type="button" hidden>History <kbd>H</kbd></button>
   </div>
   <nav id="queue" aria-label="Shots"></nav>
@@ -54,6 +77,7 @@
   <p id="onsets" hidden></p>
 </footer>
 <div id="cursor" hidden><span id="cursor-time"></span></div>
+<div id="hover-cursor" hidden><span id="hover-time"></span></div>
 <dialog id="keys">
   <table>
     <tr><td><kbd>Enter</kbd></td><td>Save, then open the next shot in the queue (Save and Next in one)</td></tr>
@@ -67,6 +91,7 @@
     <tr><td>Drag on a label lane</td><td>Add, move or resize a span in that lane; either foot moves the shared window. Individual and Crowd spans can overlap.</td></tr>
     <tr><td>Shift-drag on the rows</td><td>Add a span</td></tr>
     <tr><td>Drag on the rows</td><td>Pan</td></tr>
+    <tr><td>Detachment cameras</td><td>Drag the time slider or click the timeline to seek the nearest frame. Play steps through stored frames. Labels use the same timeline lanes.</td></tr>
     <tr><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd> wheel</td><td>Zoom</td></tr>
     <tr><td>Double-click</td><td>Fit the window</td></tr>
     <tr><td><kbd>Shift</kbd> <kbd>←</kbd> <kbd>→</kbd></td><td>Pan</td></tr>
@@ -77,6 +102,25 @@
     <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>Contrast</td></tr>
     <tr><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd> <kbd>Z</kbd></td><td>Undo</td></tr>
   </table>
+  <section id="detachment-help" hidden>
+    <h3>Detachment: lower outer divertor leg</h3>
+    <p>Review the lower outer leg using the camera and diagnostic context. The EFIT shelf gate is a producer DZ requirement; without DRSEP it does not establish magnetic topology. D-alpha chord locations are not recorded. TangTV corpus images are 50 Hz linear resamples: blends of adjacent exposures, previewed at 40 ms spacing after rebuilding.</p>
+    <dl>
+      <dt>Attached</dt><dd>Emission peaked at the target strike point, corroborated by target evidence. TangTV filter is unrecorded; D-alpha recombination can stay target-bright during detachment.</dd>
+      <dt>Detached</dt><dd>Front lifted toward the X-point, with target ion-flux (Afrac/Jsat) rollover or low target Te.</dd>
+      <dt>MARFE</dt><dd>Localized radiation inside the separatrix near/above the X-point (high-field side), persisting over several frames.</dd>
+      <dt>Uncertain</dt><dd>The reviewer cannot decide: view blocked, evidence conflicts, or camera lift lacks target ion-flux/temperature corroboration.</dd>
+      <dt>Unmarked</dt><dd>Not reviewed.</dd>
+    </dl>
+    <p>The Individual lane starts empty unless a saved human review exists. Start blank clears that lane; Crowd is preserved. Blind mode implies Start blank and suppresses Source, producer comparisons and indicator plots. Use Source (1–3) is an explicit exposed prefill; state 4 is never copied. Saves record suggestion exposure and prefill, and prior exposure can bias agreement. Without target evidence, camera lift alone is uncertain. Jsat peak probe switching cannot establish rollover; confirm target location and compare the same probe. MARFE has its own exclusive stage. Missing evidence never means attached. Grey means valid abstention; hatching means invalid evidence.</p>
+    <h3>What the machine label means</h3>
+    <pre id="detachment-machine-help">Open a shot to read its stored producer recipe.</pre>
+  </section>
+  <form method="dialog"><button>Close</button></form>
+</dialog>
+<dialog id="camera-enlarged" aria-label="Enlarged camera frame">
+  <img id="camera-enlarged-image" alt="Camera frame">
+  <p id="camera-enlarged-caption"></p>
   <form method="dialog"><button>Close</button></form>
 </dialog>
 <dialog id="versions" aria-labelledby="versions-title">

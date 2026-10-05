@@ -1,0 +1,82 @@
+{
+  "archive": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui/archive",
+  "files": [
+    {
+      "source": "docs/labeler/results/archive/fix3/detachment_ui_fix3_demo_190010.json",
+      "destination": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui/archive/results/fix3/detachment_ui_fix3_demo_190010.json",
+      "sha256": "e334932df33b3110fd2b37396786106168fd72c515738f1fa5ea8bbe0bcd8b22",
+      "bytes": 223649
+    },
+    {
+      "source": "docs/labeler/results/archive/fix3/detachment_ui_fix3_demo_190102.json",
+      "destination": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui/archive/results/fix3/detachment_ui_fix3_demo_190102.json",
+      "sha256": "2b906ed2e379e5470d45d3e97d2d46b4c293d451abe9fdaf88e0243fd85e8400",
+      "bytes": 257001
+    },
+    {
+      "source": "docs/labeler/results/archive/fix3/detachment_ui_fix3_demo_190212.json",
+      "destination": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui/archive/results/fix3/detachment_ui_fix3_demo_190212.json",
+      "sha256": "82f98e77826effa6eb41f38226a33e09908e5ea542f89793c080c6da3b58f6ea",
+      "bytes": 227808
+    },
+    {
+      "source": "docs/labeler/results/archive/fix3/detachment_ui_fix3_export.json",
+      "destination": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui/archive/results/fix3/detachment_ui_fix3_export.json",
+      "sha256": "17d501f202a5360e85dca970ded263e8c59b24404fdb1bd5f7eb38c39e3c42de",
+      "bytes": 9289
+    },
+    {
+      "source": "docs/labeler/results/archive/fix3/detachment_ui_fix3_verification.json",
+      "destination": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui/archive/results/fix3/detachment_ui_fix3_verification.json",
+      "sha256": "ee6f23dbd227592c8c1c7af86c33502d079a7ad2eb8812a262f5caddacd164cb",
+      "bytes": 9124
+    },
+    {
+      "source": "docs/labeler/results/archive/fix4/detachment_review_queue.json",
+      "destination": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui/archive/results/fix4/detachment_review_queue.json",
+      "sha256": "8906da52008423728ee34217340c885e013a206681612d39ffa695f799c86891",
+      "bytes": 162131
+    },
+    {
+      "source": "docs/labeler/results/archive/fix4/detachment_ui_fix4_delivery.json",
+      "destination": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui/archive/results/fix4/detachment_ui_fix4_delivery.json",
+      "sha256": "813e076219555eb7206e08528a61b2f79ad3742e0c89c06747605cb4817b9545",
+      "bytes": 5285
+    },
+    {
+      "source": "docs/labeler/results/archive/fix4/detachment_ui_fix4_demo_200977.json",
+      "destination": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui/archive/results/fix4/detachment_ui_fix4_demo_200977.json",
+      "sha256": "adfea597c6771985d5aaff42e26bf129b1abf30139001336884c141ba6faf9f6",
+      "bytes": 270024
+    },
+    {
+      "source": "docs/labeler/results/archive/fix4/detachment_ui_fix4_export.json",
+      "destination": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui/archive/results/fix4/detachment_ui_fix4_export.json",
+      "sha256": "9413c3eca7b512ed201e6d4cee6a3ae4795f4cf23e7d61d0776f66ab473f1683",
+      "bytes": 24555
+    },
+    {
+      "source": "docs/labeler/results/archive/fix4/detachment_ui_fix4_export_190212.json",
+      "destination": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui/archive/results/fix4/detachment_ui_fix4_export_190212.json",
+      "sha256": "728fa01a4b777027e1bc0bc8699925240c37f41a8d5b56df74fedb1cbe09a058",
+      "bytes": 22841
+    },
+    {
+      "source": "docs/labeler/results/archive/fix4/detachment_ui_fix4_verification.json",
+      "destination": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui/archive/results/fix4/detachment_ui_fix4_verification.json",
+      "sha256": "32393983c7c40e970e2db504c6ed9f0a8c004e56d42eeab44d95ceb02a8dee44",
+      "bytes": 9555
+    }
+  ],
+  "browser_folders": [
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui/archive/browser-190010",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui/archive/browser-190102",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui/archive/browser-190212",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui/archive/browser-195956",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui/archive/browser-fix4-200977",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui/archive/browser-fix5-200977"
+  ],
+  "file_count": 11,
+  "bytes_moved": 1221262,
+  "store_rebuilds": 0
+}

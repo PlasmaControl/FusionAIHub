@@ -19,15 +19,20 @@ from pathlib import Path
 
 from ...config import Paths, git_sha
 from .. import rosters
-from . import alfven, panel_rows, rows
+from . import alfven, detachment, panel_rows, rows
 
-BUILDERS = {"alfven_eigenmode": alfven.build}
+BUILDERS = {"alfven_eigenmode": alfven.build, "detachment": detachment.build}
 # Rows an older build wrote that the review no longer shows, until it is rebuilt.
 HIDDEN = {"alfven_eigenmode": alfven.DROPPED}
 # The band an event's image rows show, whatever band the stored rows were built with.
 BANDS = {"alfven_eigenmode": alfven.BAND_KHZ}
 # Changes to these diagnostic recipes replace earlier cached review rows.
-PANEL_VERSIONS = {"edge_localized_mode": 3, "sawtooth_oscillation": 1}
+PANEL_VERSIONS = {
+    "edge_localized_mode": 3, "sawtooth_oscillation": 1, "detachment": 6,
+}
+# Recipe 6 has not been delivered yet. Reject early recipe-6 stores lacking
+# the independent-review target/bolometer context introduced in this fix round.
+PANEL_REVISIONS = {"detachment": 1}
 
 
 def current(path: Path, event: str) -> bool:
@@ -40,7 +45,10 @@ def current(path: Path, event: str) -> bool:
     import h5py
 
     with h5py.File(path, "r") as store:
-        return store.attrs.get("panel_version") == version
+        return store.attrs.get("panel_version") == version and (
+            event not in PANEL_REVISIONS
+            or store.attrs.get("panel_revision") == PANEL_REVISIONS[event]
+        )
 
 
 def build(
@@ -70,6 +78,8 @@ def build(
         builder=builder.__module__.rsplit(".", 1)[-1], **info,
         **({"panel_version": PANEL_VERSIONS[event]}
            if event in PANEL_VERSIONS and out is None else {}),
+        **({"panel_revision": PANEL_REVISIONS[event]}
+           if event in PANEL_REVISIONS and out is None else {}),
         made_at=datetime.now(UTC).isoformat(timespec="seconds"), git_sha=git_sha(),
     )
     return path

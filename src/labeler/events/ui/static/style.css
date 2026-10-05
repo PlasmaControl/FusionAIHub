@@ -107,6 +107,43 @@ canvas { display: block; width: 100%; }
 #rows canvas { cursor: grab; }
 #rows canvas:active { cursor: grabbing; }
 
+#video-panel { position: sticky; top: 0; z-index: 2; background: var(--panel);
+  max-height: min(350px, calc(100% - 154px)); overflow-y: auto;
+  padding: 5px 12px; border-bottom: 1px solid var(--rule); }
+#video-panel[hidden] { display: none; }
+#video-controls { display: flex; align-items: center; gap: 10px; }
+#video-time { flex: 1; min-width: 60px; padding: 0; }
+#video-clock { min-width: 90px; text-align: right; }
+#video-context { margin: 6px 0; font-size: 12px; }
+#detachment-strips { margin: 3px -12px 0; }
+#detachment-strips[hidden] { display: none; }
+.strip-legend, #detachment-reading, #detachment-caveats {
+  margin: 4px 12px; font-size: 11px; color: var(--muted);
+}
+#detachment-caveats { margin: 4px 0 0; }
+#detachment-lanes canvas { height: 16px; cursor: pointer; }
+#detachment-details summary, .camera details summary { font-size: 11px; color: var(--muted); cursor: pointer; }
+.detail-scroll { max-height: 100px; overflow: auto; }
+#detachment-machine-help { white-space: pre-wrap; font: inherit; max-height: 45vh; overflow: auto; }
+#detachment-help { max-width: 650px; }
+#detachment-help dt { margin-top: 8px; font-weight: 600; }
+#detachment-help dd { margin-left: 0; }
+#video-cameras { display: flex; flex-wrap: wrap; gap: 3px 12px; margin-top: 3px; }
+.camera { flex: 1 1 45%; min-width: 0; margin: 0; }
+.camera.unavailable { order: 1; display: flex; gap: 6px; flex: 1 1 45%; align-items: center; overflow: hidden; }
+.camera.unavailable p { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11px; }
+.camera figcaption { display: flex; align-items: center; gap: 6px; }
+.camera select { min-width: 0; max-width: 100%; flex: 1; font-size: 11px; }
+.camera small { display: block; color: var(--muted); }
+.camera img { display: block; width: 100%; height: 110px; object-fit: contain; background: #000; }
+.camera img { cursor: zoom-in; }
+#camera-enlarged { width: min(1100px, 92vw); max-width: 92vw; }
+#camera-enlarged-image { display: block; width: 100%; max-height: 75vh; object-fit: contain; background: #000; }
+#camera-enlarged-caption { color: var(--muted); }
+#blind-control { white-space: nowrap; font-size: 12px; }
+.camera p { color: var(--muted); margin: 4px 0; }
+body.busy #video-panel { opacity: 0.35; pointer-events: none; }
+
 #rows .failure { margin: 0; padding: 40px 12px 40px var(--gutter); color: var(--muted); }
 body.busy #rows, body.busy .track canvas { opacity: 0.35; pointer-events: none; }
 
@@ -186,14 +223,14 @@ button.primary { background: var(--label); border-color: var(--label); color: #f
   background: var(--unsaved);
 }
 
-#cursor {
+#cursor, #hover-cursor {
   position: fixed;
   width: 1px;
   background: var(--ink);
   opacity: 0.5;
   pointer-events: none;
 }
-#cursor-time {
+#cursor-time, #hover-time {
   position: absolute;
   top: 2px;
   left: 5px;

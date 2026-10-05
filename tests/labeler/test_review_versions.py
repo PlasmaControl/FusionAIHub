@@ -139,7 +139,7 @@ def test_a_history_line_written_before_names_existed_reads_as_unnamed(event_dir)
 
 
 def test_the_server_reports_its_api_version(client):
-    assert client.get("/api/version").json() == {"api": API_VERSION} == {"api": 8}
+    assert client.get("/api/version").json() == {"api": API_VERSION} == {"api": 10}
 
 
 def test_the_history_route_is_behind_the_gate(client):
@@ -164,6 +164,27 @@ def test_a_named_save_is_listed_among_the_shots_versions(client):
         (2, None),
     ]
     assert body["versions"][1]["intervals"] == [[150, 400, 1]]
+
+
+@pytest.mark.parametrize(
+    "shown,prefilled", [(False, False), (True, False), (True, True), (None, None)]
+)
+def test_api_save_and_history_preserve_exposure(client, shown, prefilled):
+    response = client.post(
+        "/api/label",
+        json=_label(
+            suggestions_shown=shown,
+            prefilled=prefilled,
+        ),
+    )
+    assert response.status_code == 200
+    last = response.json()["last_save"]
+    [version] = client.get("/api/history?event=alfven_eigenmode&shot=170815").json()[
+        "versions"
+    ]
+    for entry in (last, version):
+        assert entry["suggestions_shown"] is shown
+        assert entry["prefilled"] is prefilled
 
 
 def test_a_shot_never_saved_has_no_versions(client):

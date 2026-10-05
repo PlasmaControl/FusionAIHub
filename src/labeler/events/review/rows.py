@@ -107,7 +107,7 @@ def pool(values: np.ndarray, level: int, kind: str) -> np.ndarray:
     return np.stack([low, high])
 
 
-def write(path, grid: Grid, rows, **info) -> None:
+def write(path, grid: Grid, rows, *, video_corpus=None, **info) -> None:
     """Write one shot's rows; `info` becomes file attributes (JSON if not scalar)."""
     with atomic_path(path) as tmp, h5py.File(tmp, "w") as f:
         f.attrs.update(
@@ -139,6 +139,10 @@ def write(path, grid: Grid, rows, **info) -> None:
                     compression="gzip",
                     compression_opts=1,
                 )
+        if video_corpus is not None:
+            from . import video
+
+            video.write(f, video_corpus)
 
 
 def meta(path, hide=frozenset()) -> dict:
@@ -149,8 +153,15 @@ def meta(path, hide=frozenset()) -> dict:
             {"name": name, **json.loads(f["rows"][name].attrs["meta"])}
             for name in _names(f, hide)
         ]
+        params = json.loads(f.attrs.get("params", "{}"))
+        described = {
+            key: params[key] for key in (
+                "detachment_geometry", "detachment_producer", "panel_metadata",
+            ) if key in params
+        }
     grid = {"t0": t0, "dt": dt, "n": n}
-    return {"grid": grid, "t_range": [t0, t0 + n * dt], "rows": rows}
+    return {"grid": grid, "t_range": [t0, t0 + n * dt], "rows": rows,
+            **({"params": described} if described else {})}
 
 
 def read_window(

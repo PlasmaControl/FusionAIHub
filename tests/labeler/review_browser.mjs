@@ -1304,6 +1304,452 @@ async function overlappingAnnotations() {
   }
 }
 
+async function detachmentCameras(shot = 170815, demo = false) {
+  if (!demo) await visit("detachment", shot);
+  await until(`S.video && S.video.cards.some(c => c.img?.naturalWidth > 0)`);
+  check("fresh detachment review starts empty despite Source suggestions", await js(`
+    S.meta.source.intervals.length > 0 && S.label.intervals.length === 0 && !dirty()`));
+  check("detachment offers all four states", same(await js("S.categories"),
+    {1: "attached", 2: "detached", 3: "marfe", 4: "uncertain"}));
+  check("CO2 rows display confirmed BCI line-integral units", await js(`
+    S.meta.rows.filter(row => S.meta.params.panel_metadata?.[row.name]?.measurement?.includes("CO2 line-integrated"))
+      .every(row => row.y_units === "m·cm⁻³")`));
+  if (!demo) check("shelf gate is visible without inventing topology from missing DRSEP", await js(`
+    !$("video-geometry").textContent.includes("Magnetic configuration:") &&
+    $("video-geometry").textContent.includes("topology unavailable") &&
+    $("video-geometry").textContent.includes("strike-point gate valid")`));
+  check("producer label, fallback rule and three vote strips are visible", await js(`
+    !$("detachment-strips").hidden && $("detachment-lanes").children.length === 5 &&
+    S.meta.params.detachment_producer.state_lm.length > 0 &&
+    Array.from($("detachment-lanes").children).every(c => c.width > 0 && c.height > 0)`));
+  check("human camera protocol and stored machine recipe are separate", await js(`
+    $("detachment-help").textContent.includes("target strike point") &&
+    $("detachment-help").textContent.includes("ion-flux (Afrac/Jsat) rollover or low target Te") &&
+    $("detachment-help").textContent.includes("inside the separatrix") &&
+    $("detachment-help").textContent.includes("D-alpha chord locations are not recorded") &&
+    !$("detachment-help").textContent.includes("shelf gate invalid") &&
+    $("detachment-help").textContent.includes("Not reviewed") &&
+    $("detachment-machine-help").textContent.length > 0 &&
+    $("detachment-caveats").textContent.includes("Uncalibrated")`));
+  if (demo) {
+    check("threshold guides come only from the stored recipe", await js(`
+      S.meta.rows.filter(row => S.meta.params.panel_metadata[row.name]?.indicator).every(row => {
+        const name = S.meta.params.panel_metadata[row.name].indicator;
+        const values = S.meta.params.detachment_producer.recipe.record.thresholds?.[name] || {};
+        const expected = [...new Set(Object.values(values).filter(v => typeof v === "number"))].sort((a,b) => a-b);
+        return same(traceGuides(row), name === "prad" ? [...new Set([...expected, 1])].sort((a,b) => a-b) : expected);
+      })`));
+    check("real-shot density uses line-density context before local Thomson", await js(`
+      S.meta.rows.some(row => row.title.includes("CO2") && row.title.includes("density")) &&
+      !S.meta.rows.some(row => row.title.includes("Thomson core local density"))`));
+    check("TangTV front trace preserves its source identity", await js(`
+      S.meta.rows.some(row => row.title.includes("TangTV") &&
+        (row.title.includes("regression") || row.title.includes("inversion")))`));
+    check("draft Source lane is connected to producer labels", await js(`
+      S.meta.source && S.meta.source.intervals.length > 0`));
+  }
+  check("cameras have small manifests and lazy pixels", await js(`
+    S.meta.video.cameras.every(c => c.channels.every(ch => !ch.frames)) &&
+    S.video.cards.some(c => c.img?.src.startsWith("blob:"))`));
+  check("missing cameras explain their absence", await js(`
+    S.video.cards.filter(c => !c.channel).every(c => c.note.textContent.includes("No frames"))`));
+  check("selectors prefer producer channel 2 when live and name the physical view", await js(`
+    S.video.cards.filter(c => c.channel && c.camera.name === "tangtv").every(c =>
+      [0,2].includes(c.channel.channel) &&
+      (!c.camera.channels.some(ch => ch.channel === 2) || c.channel.channel === 2) &&
+      c.figure.querySelector("select").selectedOptions[0].textContent.includes("lower divertor"))`));
+  await js(`window.realVideoFetch = window.fetch.bind(window);
+    window.frameActive = 0; window.framePeak = 0;
+    window.fetch = async (input, options) => {
+      if (!String(input).startsWith("/api/frame?")) return window.realVideoFetch(input, options);
+      window.framePeak = Math.max(window.framePeak, ++window.frameActive);
+      try {
+        const result = await window.realVideoFetch(input, options);
+        await new Promise(ok => setTimeout(ok, 180));
+        return result;
+      } finally { window.frameActive--; }
+    };
+    window.oldFrames = S.video.cards.filter(c => c.channel).map(c => c.img.dataset.frameTime);`);
+  const middle = await js(`S.video.times[Math.floor(S.video.times.length / 2)]`);
+  await js(`$("video-time").value = ${middle};
+    $("video-time").dispatchEvent(new Event("input", {bubbles: true}));`);
+  check("delayed seek hides old pixels and keeps their time until decoded", await js(`
+    S.video.cards.filter(c => c.channel).every((c,i) =>
+      c.figure.getAttribute("aria-busy") === "true" &&
+      c.img.dataset.frameTime === window.oldFrames[i] &&
+      getComputedStyle(c.img).visibility === "hidden" && c.note.textContent.includes("Loading"))`));
+  await until(`S.video.cards.filter(c => c.channel).every(c =>
+    Math.abs(Number(c.img.dataset.frameTime) - Number(c.note.textContent.split(" ")[0])) <= 0.06 && c.img.complete)`);
+  check("slider seeks the stored corpus clock and persistent timeline cursor", await js(`
+    Math.abs(S.video.time - ${middle}) < 0.01 && !$("cursor").hidden &&
+    Math.abs(parseFloat($("cursor").style.left) - ($("axis-row").getBoundingClientRect().left + px(S.video.time))) < 1`));
+  check("decoded image, physical identity and caption time agree", await js(`
+    S.video.cards.filter(c => c.channel).every(c =>
+      c.img.dataset.channel === String(c.channel.channel) &&
+      c.img.alt.includes(c.channel.view_name) &&
+      c.figure.getAttribute("aria-busy") === "false" &&
+      c.note.textContent.includes(c.channel.view_name))`));
+  await js(`seekVideo(${middle} + 3)`);
+  await until(`S.video.cards.filter(c => c.channel).every(c => c.figure.getAttribute("aria-busy") === "false")`);
+  check("cursor snaps arbitrary slider times to the displayed TangTV frame", await js(`
+    S.video.time === Number(S.video.cards.find(c => c.camera.name === "tangtv").img.dataset.frameTime)`));
+  check("Afrac caveat uses each stored bin method and draws to the right of the gutter", await js(`(() => {
+    const row = S.meta.rows.find(row => S.meta.params.panel_metadata?.[row.name]?.indicator === "afrac");
+    if (!row) return false;
+    const metadata = S.meta.params.panel_metadata[row.name], original = {...metadata};
+    Object.assign(metadata, {bin_start_ms: [0,50], bin_end_ms: [50,100],
+      afrac_method: ["local_proxy", "eldon_pre_puff_LH"]});
+    const notes = [indicatorNote(row, 25), indicatorNote(row, 75)];
+    Object.assign(metadata, original);
+    const canvas = $("rows").children[S.meta.rows.indexOf(row)], g = canvas.getContext("2d");
+    const fillText = g.fillText, drawn = [];
+    g.fillText = function(text, x, y, ...args) {
+      if (String(text).startsWith("Afrac method:")) drawn.push({text, x, align: this.textAlign});
+      return fillText.call(this, text, x, y, ...args);
+    };
+    drawRows(); g.fillText = fillText;
+    return notes[0].includes("local_proxy") && !notes[0].includes("eldon") &&
+      notes[1].includes("eldon_pre_puff_LH") && !notes[1].includes("local_proxy") &&
+      drawn.length === 1 && drawn[0].align === "left" && drawn[0].x > GUTTER;
+  })()`));
+  check("f_div warning appears only for valid values above one in view", await js(`(() => {
+    const row = S.meta.rows.find(row => S.meta.params.panel_metadata?.[row.name]?.indicator === "prad");
+    const original = S.view;
+    const metadata = S.meta.params.panel_metadata[row.name];
+    const full = indicatorNote(row);
+    S.view = [S.meta.t_range[1] + 100, S.meta.t_range[1] + 200];
+    const outside = indicatorNote(row); S.view = original;
+    return traceGuides(row).includes(1) && !outside &&
+      (${demo} ? !full : full.includes("f_div > 1"));
+  })()`));
+  await js(`S.video.cards.find(c => c.channel).img.click()`);
+  check("camera opens an enlarged view of the same frame", await js(`
+    $("camera-enlarged").open && $("camera-enlarged-image").src === S.video.cards.find(c => c.channel).img.src &&
+    $("camera-enlarged-caption").textContent === S.video.cards.find(c => c.channel).note.textContent`));
+  check("explicit producer prefill excludes state four and records anchoring", await js(`(() => {
+    revert(); return S.prefilled && S.suggestionsShown &&
+      S.label.intervals.length > 0 && S.label.intervals.every(s => s[2] !== 4);
+  })()`));
+  await js(`$("camera-enlarged").close(); window.beforeBlind = JSON.stringify(S.label); $("blind-mode").click()`);
+  check("blind mode implies Start blank and hides producer context", await js(`
+    $("source-lane").hidden && $("detachment-strips").hidden && $("detachment-details").hidden &&
+    $("detachment-machine-help").hidden && S.label.intervals.length === 0`));
+  check("blind canvas pixels contain no Source diff feedback even after edits", await js(`(() => {
+    const clean = () => {
+      drawTrack($("label-track"), S.label, true, 0);
+      const c = $("label-track"), g = c.getContext("2d");
+      const probe = document.createElement("canvas").getContext("2d");
+      probe.fillStyle = T.changed; probe.fillRect(0,0,1,1);
+      const colour = probe.getImageData(0,0,1,1).data;
+      const pixels = g.getImageData(GUTTER,0,c.width-GUTTER,3).data;
+      for (let i=0;i<pixels.length;i+=4)
+        if (pixels[i] === colour[0] && pixels[i+1] === colour[1] &&
+            pixels[i+2] === colour[2] && pixels[i+3]) return false;
+      return true;
+    };
+    const blank = clean(), before = S.label;
+    const [lo,hi] = S.label.window;
+    edit(S.label.window, [[lo,(lo+hi)/2,2]], [0]); const edited = clean();
+    edit(S.label.window, [[lo,(lo+hi)/2,4]], [0]); const uncertain = clean();
+    S.label = before; S.undo = []; touch();
+    return blank && edited && uncertain;
+  })()`));
+  await js(`openShot(${shot})`);
+  check("reopening blind cannot erase earlier suggestion exposure", await js(`S.suggestionsShown === true`));
+  // A separate clean reviewer session must be blind before the first render.
+  await js(`localStorage.clear(); localStorage.setItem("labeler:detachment-blind", "true")`);
+  await send("Page.navigate", { url: "about:blank" });
+  await until(`location.href === "about:blank"`);
+  await send("Page.navigate", { url: `${BASE}/#detachment/${shot}` });
+  await opened(shot);
+  await until(`S.video && S.video.cards.some(c => c.img?.naturalWidth > 0)`);
+  check("fresh blind load stays empty and records no producer exposure", await js(`
+    S.blind && S.label.intervals.length === 0 && !S.suggestionsShown && !S.prefilled &&
+    $("revert").disabled`));
+  if (demo) {
+    await sleep(100);
+    const blindScreenshot = await send("Page.captureScreenshot", {format: "png"});
+    writeFileSync(CASE.replace(/\.png$/, "_blind.png"), Buffer.from(blindScreenshot.data, "base64"));
+  }
+  await js(`$("blind-mode").click()`);
+  await js(`window.realVideoFetch = window.fetch.bind(window);
+    window.frameActive = 0; window.framePeak = 0;
+    window.fetch = async (input, options) => {
+      if (!String(input).startsWith("/api/frame?")) return window.realVideoFetch(input, options);
+      window.framePeak = Math.max(window.framePeak, ++window.frameActive);
+      try {
+        const result = await window.realVideoFetch(input, options);
+        await new Promise(done => setTimeout(done, 150));
+        return result;
+      } finally { window.frameActive--; }
+    }; seekVideo(${middle});`);
+  check("leaving blind mode restores producer context", await js(`
+    !$("source-lane").hidden && !$("detachment-strips").hidden && !$("detachment-details").hidden`));
+  check("detached and uncertain use distinct colour-blind-safe blue and orange", await js(`
+    categoryColour(2) === "#0072b2" && categoryColour(4) === "#d55e00"`));
+  check("start blank resets selection, preserves Crowd flags, permits category change and Undo", await js(`(() => {
+    const source = JSON.stringify(S.meta.source), category = S.category;
+    const [lo, hi] = S.label.window;
+    edit(S.label.window, [...S.label.intervals, [lo, hi, 3]],
+      [...S.label.intervals.map((_, i) => S.label.iscrowd?.[i] ?? null), 1]);
+    const before = JSON.stringify(S.label);
+    S.selected = S.label.intervals.findIndex((_, i) => S.label.iscrowd?.[i] !== 1);
+    $("start-blank").click();
+    const cleared = S.selected === -1 && same(S.label.intervals, [[lo, hi, 3]]) &&
+      same(S.label.iscrowd, [1]) && JSON.stringify(S.meta.source) === source;
+    setCategory(2);
+    const unchanged = same(S.label.intervals, [[lo, hi, 3]]) && same(S.label.iscrowd, [1]);
+    undo(); const restored = JSON.stringify(S.label) === before;
+    undo(); S.category = category; renderSwatches();
+    return cleared && unchanged && restored;
+  })()`));
+  for (const [width, height] of [[1366,768], [1400,900]]) {
+    await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });
+    await js(`$("top").scrollTop = 0; $("detachment-details").open = false;`);
+    await sleep(100);
+    const layout = await js(`(() => {
+      const rect = id => $(id).getBoundingClientRect();
+      const panel = rect("video-panel"), axis = rect("axis-row"), main = rect("top");
+      const camera = S.video.cards.find(c => c.channel).img.getBoundingClientRect();
+      const row = $("rows").children[0].getBoundingClientRect();
+      const controls = rect("controls"), annotations = rect("label-track");
+      return { panel: panel.height, main: main.height, row: row.height,
+        cameraVisible: camera.top >= main.top && camera.bottom <= panel.bottom,
+        diagnosticVisible: row.top >= panel.bottom - 1 && row.bottom <= axis.top + 1,
+        axisVisible: axis.top >= panel.bottom && axis.bottom <= main.bottom,
+        annotationVisible: annotations.top >= main.bottom && controls.bottom <= innerHeight };
+    })()`);
+    check(`camera, full diagnostic, time axis and annotations fit at ${width}x${height}`,
+      layout.cameraVisible && layout.diagnosticVisible && layout.axisVisible && layout.annotationVisible, layout);
+    await js(`$("detachment-details").open = true;`);
+    await sleep(50);
+    check(`expanded details leave a diagnostic row at ${width}x${height}`, await js(`
+      $("top").clientHeight - $("video-panel").offsetHeight - $("axis-row").offsetHeight >=
+        $("rows").children[0].clientHeight`));
+    await js(`$("detachment-details").open = false;`);
+  }
+  if (!demo) {
+    await send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 2600, deviceScaleFactor: 1, mobile: false });
+    await sleep(100);
+    await js(`window.rowHeightBefore = $("rows").children[0].clientHeight;
+      window.panelHeightBefore = $("video-panel").style.height;
+      window.panelMaxBefore = $("video-panel").style.maxHeight;
+      $("video-panel").style.maxHeight = "none";
+      $("video-panel").style.height = ($("video-panel").clientHeight + 60) + "px";`);
+    await sleep(100);
+    check("rows resize when the video panel grows after delivery", await js(`
+      $("rows").children[0].clientHeight < window.rowHeightBefore`));
+    await js(`$("video-panel").style.height = window.panelHeightBefore;
+      $("video-panel").style.maxHeight = window.panelMaxBefore;`);
+    await send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
+    await sleep(50);
+  }
+  const [hoverX, hoverY] = await js(`(() => {
+    const r = $("rows").querySelector("canvas")?.getBoundingClientRect() || $("axis-row").getBoundingClientRect();
+    return [r.left + px(S.video.times[0]),
+      Math.min(r.top + 12, $("top").getBoundingClientRect().bottom - 4)];
+  })()`);
+  await mouse("mouseMoved", hoverX, hoverY);
+  check("detachment hover reads time independently of the pinned video cursor", await js(`
+    !$('hover-cursor').hidden && $('hover-time').textContent !== $('cursor-time').textContent &&
+    Math.abs(S.video.time - ${middle}) < 0.01`));
+  await js(`$("top").scrollTop = 10000`);
+  await sleep(50);
+  check("video stays visible and cursor starts below the sticky panel while scrolling", await js(`
+    Math.abs($("video-panel").getBoundingClientRect().top - $("top").getBoundingClientRect().top) < 1 &&
+    parseFloat($("cursor").style.top) >= $("video-panel").getBoundingClientRect().bottom - 1`));
+  await js(`$("top").scrollTop = 0`);
+  await sleep(50);
+  const channelCard = await js(`S.video.cards.findIndex(c => c.camera.channels.length > 1)`);
+  if (channelCard >= 0) {
+    await js(`(() => {
+      const card = S.video.cards[${channelCard}], select = card.figure.querySelector("select");
+      select.value = card.camera.channels.find(c => c.channel !== card.channel.channel).channel;
+      select.dispatchEvent(new Event("change", {bubbles: true}));
+    })()`);
+    check("changing views hides pixels until their channel identity is delivered", await js(`
+      getComputedStyle(S.video.cards[${channelCard}].img).visibility === "hidden"`));
+    await until(`S.video.cards[${channelCard}].img.complete &&
+      S.video.cards[${channelCard}].img.dataset.channel === String(S.video.cards[${channelCard}].channel.channel)`);
+    check("camera channel selectors retain the shared time", await js(`Math.abs(S.video.time - ${middle}) < 0.01`));
+  }
+  const target = await js(`S.video.times[Math.floor(S.video.times.length / 3)]`);
+  const [x, y] = await js(`(() => {
+    const r = $("rows").querySelector("canvas")?.getBoundingClientRect() ||
+      $("axis-row").getBoundingClientRect();
+    return [r.left + px(${target}), r.top + r.height / 2];
+  })()`);
+  await mouse("mousePressed", x, y, {buttons: 1});
+  await mouse("mouseReleased", x, y, {buttons: 0});
+  await until(`S.video.cards.filter(c => c.channel).every(c => c.figure.getAttribute("aria-busy") === "false")`);
+  check("clicking a timeline seeks without changing labels", await js(`
+    Math.abs(S.video.time - ${target}) < 2 && !dirty()`));
+  await js(`window.playStart = S.video.time; window.playFrames = S.video.cards.filter(c => c.channel).map(c => c.img.src);
+    window.framePeak = 0;`);
+  await js(`$("video-play").click()`);
+  await sleep(100);
+  check("playback waits for frames delayed beyond their cadence", await js(`S.video.time === window.playStart`));
+  await until(`S.video.time > ${target} + 0.1`);
+  check("playback delivers new pixels before advancing and bounds requests", await js(`
+    S.video.cards.filter(c => c.channel).every((c,i) =>
+      c.img.src !== window.playFrames[i] &&
+      Math.abs(Number(c.img.dataset.frameTime)-S.video.time) <= 65) &&
+    window.framePeak <= S.video.cards.filter(c => c.channel).length`));
+  await js(`$("video-play").click()`);
+  const paused = await js("S.video.time");
+  await sleep(150);
+  check("play steps forward and pause stops the clock", await js(`
+    S.video.timer === null && S.video.time === ${paused} &&
+    $("video-play").getAttribute("aria-pressed") === "false"`));
+  await js("window.fetch = window.realVideoFetch");
+  // Fast seeks must finish on the latest request, even when an older fetch arrives late.
+  await js(`window.realVideoFetch = window.fetch.bind(window);
+    window.fetch = async (input, options) => {
+      const result = await window.realVideoFetch(input, options);
+      if (String(input).startsWith("/api/frame?") &&
+          new URL(String(input), location.origin).searchParams.get("t_ms") === String(S.video?.times[0]))
+        await new Promise(ok => setTimeout(ok, 150));
+      return result;
+    };
+    seekVideo(S.video.times[0]); seekVideo(${middle});`);
+  await sleep(250);
+  check("late frame responses cannot replace a newer seek", await js(`
+    S.video.cards.filter(c => c.channel).every(c =>
+      Math.abs(Number(c.img.dataset.frameTime) - Number(c.note.textContent.split(" ")[0])) <= 0.06) &&
+      Math.abs(S.video.time - ${middle}) < 0.01`));
+  await js("window.fetch = window.realVideoFetch");
+  if (demo) {
+    await js(`(async () => {
+      const card = S.video.cards.find(c => c.camera.name === "tangtv");
+      card.channel = card.camera.channels.find(c => c.channel === 2 && c.region === "lower divertor") ||
+        card.camera.channels.find(c => c.region === "lower divertor");
+      card.figure.querySelector("select").value = card.channel.channel;
+      videoTimes();
+      const requested = ${JSON.stringify(process.env.DETACHMENT_CAPTURE_TIME_MS || "")};
+      const time = requested === "" ? S.video.time : S.video.times.reduce((best, item) =>
+        Math.abs(item - Number(requested)) < Math.abs(best - Number(requested)) ? item : best);
+      await seekVideo(time);
+    })()`);
+    await until(`S.video.cards.filter(c => c.channel).every(c => c.img.complete)`);
+    check("review-tool illustration uses a delivered lower-divertor view", await js(`
+      S.video.cards.find(c => c.camera.name === "tangtv").channel.region === "lower divertor"`));
+    await send("Emulation.setDeviceMetricsOverride", { width: 1366, height: 768, deviceScaleFactor: 1, mobile: false });
+    await js(`$("top").scrollTop = 0; showVideoCursor(); $("hover-cursor").hidden = true;`);
+    await sleep(100);
+    const screenshot = await send("Page.captureScreenshot", {format: "png"});
+    writeFileSync(CASE, Buffer.from(screenshot.data, "base64"));
+    await send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 2400, deviceScaleFactor: 1, mobile: false });
+    await sleep(100);
+    const tall = await send("Page.captureScreenshot", {format: "png"});
+    writeFileSync(CASE.replace(/\.png$/, "_diagnostics.png"), Buffer.from(tall.data, "base64"));
+    return;
+  }
+  await press("2");
+  await draw(80, 160);
+  await press("s");
+  await until("!S.saving && !dirty()");
+  check("detached labels are saved on the usual timeline", await js(`
+    S.meta.saved.intervals.some(([a,b,c]) => c === 2 && Math.abs(a-80) <= 2 && Math.abs(b-160) <= 2)`));
+  check("detachment save versions record exposure without producer prefill", await js(`
+    S.meta.last_save.suggestions_shown === true && S.meta.last_save.prefilled === false`));
+  check("saving removes exposure-bearing drafts", await js(`stored(draftKey(S.shot)) === null`));
+  await js(`window.humanSaved = JSON.stringify(S.meta.saved); revert();
+    $("blind-mode").click(); openShot(${shot});`);
+  check("blind reopening uses saved human review instead of Source-prefilled draft", await js(`
+    JSON.stringify(S.label) === window.humanSaved`));
+  await js(`$("blind-mode").click()`);
+  await js(`$("video-play").click()`);
+  await visit("alfven_eigenmode", 170815);
+  check("navigation clears playback, previews and pinned cursor", await js(`
+    S.video === null && $("video-panel").hidden && $("video-cameras").children.length === 0`));
+  await js(`$("top").scrollTop = 10000; showCursor($("axis-row").getBoundingClientRect().left + px(100));`);
+  check("other events clamp the cursor top to the visible rows viewport", await js(`
+    parseFloat($("cursor").style.top) >= $("top").getBoundingClientRect().top`));
+}
+
+async function atomicDetachmentPlayback() {
+  await visit("detachment", 170815);
+  await js(`window.earlyRealFetch = window.fetch.bind(window); window.earlyReleases = [];
+    window.fetch = async (input, options) => {
+      const response = await window.earlyRealFetch(input, options);
+      if (String(input).startsWith("/api/frame?"))
+        await new Promise(resolve => window.earlyReleases.push(resolve));
+      return response;
+    }; clearVideo(); buildVideo();`);
+  await until(`window.earlyReleases.length === 2`);
+  check("Play stays disabled before the first complete camera transaction", await js(`
+    $("video-play").disabled && !S.video.playing`));
+  await js(`$("video-play").click()`);
+  check("early Play cannot publish a NaN timestamp", await js(`
+    !$("video-clock").textContent.includes("NaN") && !S.video.playing`));
+  await js(`window.fetch = window.earlyRealFetch; window.earlyReleases.forEach(resolve => resolve());`);
+  await until(`S.video?.cards.filter(c => c.channel).length === 2 &&
+    S.video.cards.filter(c => c.channel).every(c => c.img?.naturalWidth > 0)`);
+  await js(`window.fetch = async (input, options) => {
+    if (String(input).startsWith("/api/frame?")) throw new Error("initial frame failure");
+    return window.earlyRealFetch(input, options);
+  }; clearVideo(); buildVideo();`);
+  await until(`S.video.cards.filter(c => c.channel).every(c => c.figure.getAttribute("aria-busy") === "false")`);
+  check("an initial frame failure leaves Play disabled and no committed clock", await js(`
+    $("video-play").disabled && $("video-clock").textContent === "" && !S.video.playing &&
+    S.video.cards.filter(c => c.channel).every(c => c.note.textContent.includes("unavailable"))`));
+  await js(`(async () => { window.fetch = window.earlyRealFetch;
+    await seekVideo(S.video.times[0]); })()`);
+  check("a successful retry enables playback at a finite timestamp", await js(`
+    !$("video-play").disabled && Number.isFinite(S.video.time)`));
+  await js(`window.fetch = async (input, options) => {
+    if (String(input).startsWith("/api/frame?")) throw new Error("seek failure");
+    return window.earlyRealFetch(input, options);
+  }; $("video-time").value = 60; $("video-time").dispatchEvent(new Event("input", {bubbles:true}));`);
+  await until(`S.video.cards.filter(c => c.channel).every(c => c.figure.getAttribute("aria-busy") === "false")`);
+  check("a failed seek restores slider, clock and both delivered frames", await js(`
+    S.video.time === 0 && Number($("video-time").value) === 0 &&
+    $("video-clock").textContent === "0.0 ms" && S.video.cards.filter(c => c.channel).every(c =>
+      Number(c.img.dataset.frameTime) === 0 && c.note.textContent.startsWith("0.0 ms"))`));
+  await js("window.fetch = window.earlyRealFetch");
+  await js(`(async () => { await seekVideo(S.video.times[0]);
+    window.atomicBefore = S.video.cards.filter(c => c.channel).map(c =>
+      [c.img.src, c.img.dataset.frameTime, c.note.textContent]);
+    window.atomicTime = S.video.time;
+    window.atomicReading = $("detachment-reading").textContent;
+    window.atomicSlowRelease = null;
+    window.realVideoFetch = window.fetch.bind(window);
+    window.fetch = async (input, options) => {
+      const response = await window.realVideoFetch(input, options);
+      if (String(input).startsWith("/api/frame?")) {
+        const camera = new URL(String(input), location.origin).searchParams.get("camera");
+        if (camera === "irtv") await new Promise(resolve => { window.atomicSlowRelease = resolve; });
+      }
+      return response;
+    };
+    $("video-play").click(); })()`);
+  await until(`window.atomicSlowRelease !== null`);
+  // Wait for the fast camera's detached Image.decode(), while IRTV is held.
+  await until(`S.video.cards.find(c => c.camera.name === "tangtv").staged != null ||
+    S.video.cards.find(c => c.camera.name === "tangtv").img.src !== window.atomicBefore[0][0]`);
+  check("unequal camera deliveries keep both published images and clock at the old time", await js(`
+    S.video.time === window.atomicTime && $("detachment-reading").textContent === window.atomicReading &&
+    S.video.cards.filter(c => c.channel).every((c,i) =>
+      c.img.src === window.atomicBefore[i][0] && c.img.dataset.frameTime === window.atomicBefore[i][1] &&
+      c.note.textContent === window.atomicBefore[i][2])`));
+  await js(`pauseVideo(); window.atomicSlowRelease();`);
+  await until(`S.video.cards.filter(c => c.channel).every(c => c.pendingKey === "")`);
+  check("pause between deliveries discards staged images and preserves both captions and clock", await js(`
+    S.video.time === window.atomicTime && S.video.cards.filter(c => c.channel).every((c,i) =>
+      !c.staged && c.img.src === window.atomicBefore[i][0] &&
+      c.img.dataset.frameTime === window.atomicBefore[i][1] && c.note.textContent === window.atomicBefore[i][2] &&
+      getComputedStyle(c.img).visibility === "visible" && c.figure.getAttribute("aria-busy") === "false")`));
+  await js(`window.fetch = window.realVideoFetch;
+    window.playStart = S.video.time; $("video-play").click();`);
+  await until(`S.video.time > window.playStart`);
+  check("all cameras and the shared clock publish together after resume", await js(`
+    $("detachment-reading").textContent.startsWith("At " + S.video.time.toFixed(1) + " ms:") &&
+    S.video.cards.filter(c => c.channel).every(c =>
+      Math.abs(Number(c.img.dataset.frameTime) - S.video.time) < 0.01 &&
+      c.note.textContent.startsWith(Number(c.img.dataset.frameTime).toFixed(1)))`));
+  await js("pauseVideo()");
+}
+
 try {
   await within(send("Runtime.enable"), "first page command (Runtime.enable)");
   await send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
@@ -1335,11 +1781,13 @@ try {
     // Every scenario but the first open has picked its name already (API 1 has no list).
     await send("Page.enable");
     await send("Page.addScriptToEvaluateOnNewDocument", { source: `
-      sessionStorage.setItem("labeler:who", "Grace Hopper");
+      if (location.protocol === "http:") sessionStorage.setItem("labeler:who", ${JSON.stringify(SCENARIO === "detachment-demo" ? "Reviewer" : "Grace Hopper")});
     ` });
   }
-  await send("Page.navigate", { url: `${BASE}/?token=${TOKEN}#alfven_eigenmode/170815` });
-  if (SCENARIO !== "race") await opened(170815);
+  const demoShot = Number(process.env.DETACHMENT_DEMO_SHOT || 190010);
+  const initial = SCENARIO === "detachment-demo" ? `detachment/${demoShot}` : "alfven_eigenmode/170815";
+  await send("Page.navigate", { url: `${BASE}/?token=${TOKEN}#${initial}` });
+  if (SCENARIO !== "race") await opened(SCENARIO === "detachment-demo" ? demoShot : 170815);
   if (SCENARIO === "race") await navigationRace();
   else if (SCENARIO === "inflight") await inflight();
   else if (SCENARIO === "pending") await pendingResponses();
@@ -1349,6 +1797,9 @@ try {
   else if (SCENARIO === "equilibrium") await equilibriumEditors();
   else if (SCENARIO === "crowds") await crowdAnnotations();
   else if (SCENARIO === "overlaps") await overlappingAnnotations();
+  else if (SCENARIO === "detachment") await detachmentCameras();
+  else if (SCENARIO === "detachment-atomic") await atomicDetachmentPlayback();
+  else if (SCENARIO === "detachment-demo") await detachmentCameras(demoShot, true);
   else await currentServer();
 } catch (error) {
   check("the page did what was asked", false, String(error));

@@ -47,6 +47,34 @@ def test_the_script_parses():
     subprocess.run([NODE, "--check", str(APP)], check=True, timeout=30)
 
 
+@needs_node
+def test_producer_strips_use_half_open_bins_and_preserve_vote_validity():
+    found = _node(
+        "[99,100,149,150,200].map(t => m.producerAt(input, t))",
+        {
+            "bin_start_ms": [100, 150],
+            "bin_end_ms": [150, 200],
+            "state_lm": [2, 4],
+            "state_rule": [2, 4],
+            "votes": {
+                "afrac": {"vote": [-1, -1], "valid": [True, False],
+                          "reason": ["", "no_probes"]},
+            },
+            "tangtv_source": ["surrogate", "none"],
+            "confidence": [0.9, 0.5],
+        },
+    )
+    assert found[0] is None and found[-1] is None
+    assert found[1] == found[2]
+    assert found[1]["state"] == 2
+    assert found[1]["votes"]["afrac"] == {
+        "vote": -1, "valid": True, "reason": "",
+    }
+    assert found[3]["votes"]["afrac"] == {
+        "vote": -1, "valid": False, "reason": "no_probes",
+    }
+
+
 def _cases():
     rng = random.Random(0)
     cases = []

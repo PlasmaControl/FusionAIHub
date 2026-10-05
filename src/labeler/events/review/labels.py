@@ -381,6 +381,8 @@ def save(
     name: str | None = None,
     source_sha256: str | None = None,
     crowd_edit: bool = False,
+    suggestions_shown: bool | None = None,
+    prefilled: bool | None = None,
 ) -> dict:
     """Replace one shot's rows in `labels.csv` and append the save to history.
 
@@ -400,6 +402,10 @@ def save(
     `source_sha256` is that table's sha256 when it was made, kept in the history
     line when given (see `agreement`: a save without one is matched to the table
     by name).
+
+    `suggestions_shown` and `prefilled` record producer exposure and anchoring
+    for each saved version. None preserves unknown provenance from old clients;
+    it must never be interpreted as an independent blind review.
     """
     with _write_lock:
         source_label = read_source(event_dir).get(int(shot))
@@ -454,6 +460,8 @@ def save(
             "saved_at": datetime.now(UTC).isoformat(timespec="seconds"),
             **label.as_json(),
             "source": source,
+            "suggestions_shown": suggestions_shown,
+            "prefilled": prefilled,
         }
         if source_sha256 is not None:
             entry["source_sha256"] = source_sha256
@@ -504,11 +512,11 @@ def resume(shots: list[dict], history: list[dict]) -> int | None:
     return last if last in order else order[0]
 
 
-def shot_labels(event_dir, shot: int) -> dict:
+def shot_labels(event_dir, shot: int, *, suppress_source=False) -> dict:
     shot = int(shot)
     event = Path(event_dir).name
     saved = offered(event, read_saved(event_dir).get(shot))
-    source = offered(event, read_source(event_dir).get(shot))
+    source = None if suppress_source else offered(event, read_source(event_dir).get(shot))
     history = read_history(event_dir)
     last = next((entry for entry in reversed(history) if entry["shot"] == shot), None)
     return {

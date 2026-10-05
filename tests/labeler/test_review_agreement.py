@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from labeler.events import suggestions
 from labeler.events.review import agreement, labels
 
@@ -18,6 +20,14 @@ SAVED = {
     4: [(0, 50, 1)],  # saved from another table: not counted
 }
 OTHER = "high_confinement_mode_format_2026_v1.csv"
+
+
+@pytest.mark.parametrize(
+    "event", ["detachment", "confinement", "minimum_safety_factor"]
+)
+def test_multiclass_events_refuse_binary_agreement(event):
+    with pytest.raises(ValueError, match="multiclass"):
+        agreement.require_binary(event)
 
 
 def _event(p):
