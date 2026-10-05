@@ -95,6 +95,7 @@ def main():
     RESULT.write_text(dumps(record, indent=1) + "\n")
     certain = labels.tier.eq("certain")
     silver = labels.tier.eq("tangtv_only")
+    lmode = labels.tier.eq("tangtv_only_lmode")
     states = {
         dl.core.STATE_NAMES[s]: int(labels.state_rule.eq(s).sum()) for s in (1, 2, 4)
     }
@@ -106,17 +107,30 @@ def main():
         (
             "Exploratory labels; **no independent benchmark**. "
             f"{len(labels):,} assessed bins/{labels.shot.nunique()} shots; "
+            f"Labelled bins: {int((certain | silver).sum()):,}/"
+            f"{labels.loc[certain | silver, 'shot'].nunique()} shots, of which "
             f"{int(certain.sum()):,} `certain` bins/"
             f"{labels.loc[certain, 'shot'].nunique()} shots/"
             f"{certain.sum() * 0.05:.2f} s and {int(silver.sum()):,} "
-            f"`tangtv_only` bins/{labels.loc[silver, 'shot'].nunique()} shots. "
+            f"`tangtv_only` bins/{labels.loc[silver, 'shot'].nunique()} shots; "
+            f"{int(lmode.sum()):,} bins on "
+            f"{labels.loc[lmode, 'shot'].nunique()} shots are the uncertain tier "
+            "`tangtv_only_lmode`. "
             f"State bins: {states}. Tier counts: {tiers}. Labels sha256 {sha}. "
             "The label set is the geometry-gated TangTV state, validated by "
-            "divertor Thomson Te. A `certain` attached or detached bin has an "
+            "divertor Thomson Te. The tier `certain` is called TangTV + Afrac "
+            "agreement in the paper text: it is the agreement of two indicators, "
+            "not a confidence level (its Te agreement is not higher than the "
+            "TangTV-only tier). A `certain` attached or detached bin has an "
             "upper-shelf TangTV vote plus an agreeing valid Afrac vote (the "
             "per-probe reference; known L-mode bins abstain); a `tangtv_only` "
             "(silver) bin has the TangTV vote with Afrac abstaining or invalid; "
-            "TangTV and Afrac voting against each other is `conflict`. f_div is "
+            "TangTV and Afrac voting against each other is `conflict`. "
+            "`tangtv_only_lmode` is a bin where TangTV votes detached "
+            "(0.5 <= DZ < 1.2) on a known L-mode phase (the regime source of the "
+            "Afrac gate): the DZ cutoffs come from an H-mode shot (201081), so "
+            "the state is withheld (state 4), a priori and not tuned on Te; an "
+            "unknown regime keeps the TangTV vote. f_div is "
             "NOT a vote: it is a within-shot corroborator reported per shot "
             "(docs/labeler/results/detachment_fdiv_check.json), and a sensitivity "
             "variant adds it back. TIER NAMES CHANGED from the "
@@ -138,8 +152,10 @@ def main():
             "Codes: absent=0 internally, attached=1, detached=2, MARFE=3 (in the "
             "coding but never written), uncertain=4. Missing rows mean "
             "unassessed. Confidence is null. state_lm aliases state_rule; "
-            "state_model_diagnostic is vestigial. `tier` is `certain`, "
-            "`tangtv_only` (a state, silver), or says why a bin has no state: "
+            "state_model_diagnostic is vestigial. `tier` is `certain` (TangTV + "
+            "Afrac agreement), `tangtv_only` (a state, silver), or says why a bin "
+            "has no state: tangtv_only_lmode (TangTV detached on a known L-mode "
+            "phase, uncertain), "
             "conflict (TangTV against Afrac), insufficient_support (Afrac votes, "
             "TangTV does not), no_vote, "
             "candidate_marfe (a sustained TangTV MARFE vote; the fG cue has no "
@@ -186,7 +202,7 @@ def main():
         (
             "- Afrac probe: each probe has its own attached reference (the 0.9 "
             "quantile of its own model-normalised current over its bins within "
-            "|psiN - 1| <= 0.01, at least 20 bins) and the probe nearest the "
+            "|psiN - 1| <= 0.01, at least 1 s of bins) and the probe nearest the "
             "separatrix in flux with a reference is read; the value is the "
             "current over that reference (aux_jsat_reference). Bins in a known "
             "L-mode stretch abstain (reason l_mode; `regime` is L, H or unknown "
@@ -216,10 +232,11 @@ def main():
             "calibrated uncertainty."
         ),
         (
-            "- MIN_VALID_BINS=20 is an explicit eligibility deviation from "
-            "exporting every two-measurement shot: require >=20 assessed bins and "
-            "at least two indicators each valid on >=20 bins. Narrow valid snippets "
-            "remain in bins/<shot>.npz, but have no exported label row."
+            "- MIN_VALID_MS=1000 (20 bins at 50 ms; the count is derived from the "
+            "bin width) is an explicit eligibility deviation from exporting every "
+            "two-measurement shot: require 1 s of assessed bins and at least two "
+            "indicators each valid for 1 s. Narrow valid snippets remain in "
+            "bins/<shot>.npz, but have no exported label row."
         ),
         (
             "- dts/<shot>.npz: processed divertor Thomson Te (te in eV, te_err, "
