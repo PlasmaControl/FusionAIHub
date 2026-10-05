@@ -388,10 +388,10 @@ def main():
         assert geometry["ae_in_panel_label"] is None
         n_key = geometry["n_key_bounds"]
         if n_key is not None:
-            # Right of the spectrograms, beside the D-alpha panel.
+            # Right of the processed panel, inside its vertical extent.
             panel = panels["pr"]["bounds"]
             assert n_key[0] > panel[2]
-            assert 0 <= n_key[1] < n_key[3] <= panel[1]
+            assert panel[1] <= n_key[1] < n_key[3] <= panel[3]
         # The figure carries no source text beside the rows; the appendix names them.
         assert geometry["track_source_text_bounds"] == []
         # No stretch/compression note: the axis needs none.

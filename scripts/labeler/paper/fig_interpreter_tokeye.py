@@ -761,7 +761,6 @@ def draw_legends(
     transient=False,
 ):
     """Source-aware signal/event keys and aligned label-state keys."""
-    da = ax["da_pr"]
     elm_key = "edge_localized_mode"
     pos = ax["pr"].get_position()
     event_handles = [
@@ -811,12 +810,12 @@ def draw_legends(
     if n_handles:
         fig.legend(
             handles=n_handles,
-            title="n (Mirnov)",
+            title="n",
             title_fontsize=FONT,
-            bbox_to_anchor=(0.792, da.get_position().y1),
+            bbox_to_anchor=(0.792, pos.y0),
             **{
                 **legend_options,
-                "loc": "upper left",
+                "loc": "lower left",
                 "ncols": 2,
                 "columnspacing": 0.4,
                 "handlelength": 0.7,
@@ -1290,7 +1289,7 @@ def draw(
             (
                 key
                 for key in fig.legends
-                if key.get_title().get_text().startswith("n (Mirnov)")
+                if key.get_title().get_text() == "n"
             ),
             None,
         )
