@@ -553,10 +553,20 @@ def test_evaluation_exports_peer_baselines_fixed_holdout_and_excluded_picks(
             observable=observable,
             assessed=assessed,
             q_prior=(t >= 0.1) & (t < 0.15),
+            absent_holdoff=(t < 0.1) & ~((t >= 0.04) & (t < 0.08)),
         )
         (work / "shots" / f"{shot}.json").write_text(
             json.dumps(
                 {
+                    "states": [
+                        {"start_s": 0, "end_s": 0.04, "state": "absent"},
+                        {"start_s": 0.04, "end_s": 0.08, "state": "present"},
+                        {"start_s": 0.08, "end_s": 0.1, "state": "absent"},
+                    ],
+                    "uncertain_intervals": [],
+                    "absence_diagnostics": {
+                        "core_relaxation_test": {"ambiguous_edge_times_s": []}
+                    },
                     "observable_spans": [[0, 0.2]],
                     "assessed_spans": [[0, 0.1]],
                     "intervals": [
@@ -642,6 +652,18 @@ def test_evaluation_exports_peer_baselines_fixed_holdout_and_excluded_picks(
         > scores["saw-ours"]["assessment_totals"]["assessed_bins"]
     )
     assert "crash_tolerance_2ms" in sensitivity
+    context = scores["saw-ours"]["edge_context_sensitivity"]
+    assert context["contexts_ms"] == [5.15, 50.0, 375.0]
+    # No qualified edges in this fixture: every veto reproduces the assessed set.
+    for key in ("5.15_ms", "50_ms", "375_ms"):
+        assert (
+            context[key]["assessment_totals"]["assessed_bins"]
+            == scores["saw-ours"]["assessment_totals"]["assessed_bins"]
+        )
+    fixed_presence = scores["saw-ours"]["presence_fixed_threshold"]
+    assert fixed_presence["threshold"] == 0.5
+    assert [row["fold"] for row in fixed_presence["by_fold"]] == [0, 1, 2]
+    assert fixed_presence["pooled"]["f1"] is not None
     points = scores["saw-ours"]["operating_points"]
     assert [row["fold"] for row in points["by_fold"]] == [0, 1, 2]
     assert points["presence_threshold_range"] == 0.0
@@ -666,3 +688,36 @@ def test_evaluation_exports_peer_baselines_fixed_holdout_and_excluded_picks(
         assert score["expert"]["by_shot"][0]["shot"] == 5
     paired = scores["saw-ours"]["fixed_validation"]["paired_vs_derivative"]
     assert paired["crash_tolerance_2ms"]["bootstrap_replicates"] == 1000
+
+
+def test_edge_context_sensitivity_vetoes_absence_only_near_qualified_edges():
+    t = np.arange(2000) * 0.0001
+    present = (t >= 0.04) & (t < 0.08)
+    holdoff = (t < 0.1) & ~present
+    signal = {
+        "t": t,
+        "observable": np.ones(len(t), bool),
+        "absent_holdoff": holdoff,
+        "assessed": present | holdoff,
+    }
+    rec = {
+        "states": [{"start_s": 0.04, "end_s": 0.08, "state": "present"}],
+        "uncertain_intervals": [],
+        "absence_diagnostics": {
+            "core_relaxation_test": {"ambiguous_edge_times_s": [0.09]}
+        },
+    }
+    narrow = benchmark.with_edge_context(signal, rec, 5.15)["assessed"]
+    wide = benchmark.with_edge_context(signal, rec, 50.0)["assessed"]
+    widest = benchmark.with_edge_context(signal, rec, 375.0)["assessed"]
+    assert narrow[present].all() and wide[present].all() and widest[present].all()
+    assert narrow.sum() > wide.sum() > widest.sum() == present.sum()
+    assert not narrow[np.abs(t - 0.09) < 0.005].any()
+    assert narrow[t < 0.04].all() and not wide[(t >= 0.08) & (t < 0.1)].any()
+    # An uncertain interval and unobservable time override tested absence.
+    rec["uncertain_intervals"] = [{"start_s": 0.0, "end_s": 0.02}]
+    signal["observable"] = signal["observable"] & ~((t >= 0.03) & (t < 0.035))
+    both = benchmark.with_edge_context(signal, rec, 5.15)["assessed"]
+    assert not both[t < 0.02].any() and not both[(t >= 0.03) & (t < 0.035)].any()
+    with pytest.raises(ValueError, match="absent_holdoff"):
+        benchmark.with_edge_context({"t": t}, rec, 5.15)

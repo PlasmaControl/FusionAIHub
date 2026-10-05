@@ -34,11 +34,14 @@ from labeler.sawtooth.metrics import (
     spans_at,
 )
 from labeler.sawtooth.models import HL3, PhasePicker, soft_crash_target
+from labeler.sawtooth.physics import apply_edge_context
 
 MODELS = ("saw-hl3", "saw-ours")
 BASELINES = ("saw-derivative", "saw-always-present")
-WORK = WORK.parent / "fix4"
-OUTPUT = OUTPUT.parent / "fix4"
+# Isolated-edge vetoes of the context sensitivity (ms): the frame holdoff, 50 ms
+# and the full +/-375 ms absence-test context. Scoring only; nothing is refit.
+EDGE_CONTEXTS_MS = (5.15, 50.0, 375.0)
+FIXED_PRESENCE_THRESHOLD = 0.5
 INPUT_POLICY = (
     "observable-only inputs; loss-only assessment; balanced crash-centred; "
     "axis-selected single-channel timing with complete filter support; "
@@ -48,6 +51,11 @@ OLD_NEGATIVES = (
     "scoring-only sensitivity: assessed bins plus observable time that is absent "
     "only by the EFIT01 q_min >= 1.5 prior, scored as no-crash negatives, which "
     "reproduces the earlier absent class; models are not refit on it"
+)
+EDGE_CONTEXT_SENSITIVITY = (
+    "scoring-only sensitivity: tested absence rebuilt with an isolated-edge veto of "
+    "the stated length around every qualified core edge (5.15 ms is the frame "
+    "holdoff); every other state is unchanged and models are not refit"
 )
 THRESHOLDS = np.r_[np.arange(1, 20) / 20, 0.975, 0.99, 0.995, 0.999]
 DERIVATIVE_Z = (*range(2, 21), 25, 30, 40, 50, 75, 100, 150, 200, 300, 500, 1000)
@@ -226,6 +234,60 @@ def masks_at(signal, times):
     return observable, assessed
 
 
+def presence_fixed_threshold(fold_rows, fixed_rows, summaries, name):
+    """Presence at one fixed 0.5 threshold, pooled and for each held-out fold.
+
+    The inner-selected thresholds move across folds, so the headline presence
+    scores are the ranking scores (AUPRC, AUROC); this adds the F1 at a single
+    fixed threshold, per fold and pooled with a shot-bootstrap interval.
+    """
+    folds = []
+    for fold in range(3):
+        selected_rows = [a for a, _ in fold_rows[fold]]
+        fixed = [b for _, b in fold_rows[fold]]
+        if not selected_rows:
+            continue
+        threshold = (
+            summaries[fold]["presence_threshold"]
+            if name not in BASELINES
+            else FIXED_PRESENCE_THRESHOLD
+        )
+        at_selected = presence_from_cells(
+            np.stack([r["histogram"] for r in selected_rows]).sum(axis=0),
+            np.stack([r["presence_cells"] for r in selected_rows]).sum(axis=0),
+            threshold,
+        )
+        at_fixed = presence_from_cells(
+            np.stack([r["histogram"] for r in fixed]).sum(axis=0),
+            np.stack([r["presence_cells"] for r in fixed]).sum(axis=0),
+            FIXED_PRESENCE_THRESHOLD,
+        )
+        keys = ("auprc", "auroc", "f1", "precision", "recall")
+        folds.append(
+            {
+                "fold": fold,
+                "shots": len(fixed),
+                "selected_threshold": threshold,
+                "at_selected_threshold": {k: at_selected[k] for k in keys},
+                "at_fixed_threshold": {k: at_fixed[k] for k in keys},
+                "positive_bins": at_fixed["positive_bins"],
+                "negative_bins": at_fixed["negative_bins"],
+            }
+        )
+    pooled = aggregate(fixed_rows, threshold=FIXED_PRESENCE_THRESHOLD)
+    return {
+        "threshold": FIXED_PRESENCE_THRESHOLD,
+        "by_fold": folds,
+        "pooled": pooled["presence"],
+        "ci95": {k: v for k, v in pooled["ci95"].items() if k.startswith("presence")},
+        "definition": (
+            "presence scored at the single threshold 0.5 on the same out-of-fold "
+            "assessed bins as the headline score; by_fold also lists the inner-selected "
+            "threshold's scores, which differ across folds"
+        ),
+    }
+
+
 def operating_points(summaries):
     """Per-fold operating points and their spread, as selected on inner shots."""
     rows = [
@@ -254,7 +316,7 @@ def with_q_prior(signal):
     """Scoring-only sensitivity: restore the earlier absent class.
 
     The previous rule called time absent when EFIT01 q_min stayed >= 1.5. That
-    time is now ``absent_q_prior`` (uncertain on export, no benchmark negatives).
+    time is now the q-prior states (uncertain on export, no benchmark negatives).
     This view adds it back as assessed time with no crashes, so a score can be
     compared with the previous negatives. Models are not refit on it.
     """
@@ -263,6 +325,31 @@ def with_q_prior(signal):
     extra = np.asarray(signal["q_prior"], dtype=bool)
     extra &= np.asarray(signal["observable"], dtype=bool)
     return {**signal, "assessed": np.asarray(signal["assessed"], dtype=bool) | extra}
+
+
+def with_edge_context(signal, rec, context_ms):
+    """Scoring-only sensitivity: tested absence under another isolated-edge veto.
+
+    Rebuilds the assessed mask from the shot's present spans and the tested
+    absence made with only the frame-holdoff veto (``absent_holdoff``), vetoed
+    within ``context_ms`` of any qualified edge, as the state partition does:
+    uncertain intervals and unobservable time override both. With the rule's own
+    context this reproduces ``signal["assessed"]``. Models are not refit.
+    """
+    if "absent_holdoff" not in signal:
+        raise ValueError("signals lack the absent_holdoff mask; regenerate labels")
+    t = signal["t"]
+    edges = rec["absence_diagnostics"]["core_relaxation_test"]["ambiguous_edge_times_s"]
+    absent = apply_edge_context(t, signal["absent_holdoff"], edges, context_ms)
+    present = spans_at(
+        t, [(r["start_s"], r["end_s"]) for r in rec["states"] if r["state"] == "present"]
+    )
+    doubt = spans_at(
+        t, [(r["start_s"], r["end_s"]) for r in rec["uncertain_intervals"]]
+    )
+    observable = np.asarray(signal["observable"], dtype=bool)
+    assessed = observable & ~doubt & (present | absent)
+    return {**signal, "assessed": assessed}
 
 
 def assessed_points(signal, times):
@@ -1441,6 +1528,10 @@ def evaluate(args):
         rows = {1: [], 2: []}
         old_rows = {1: [], 2: []}
         old_by_shot = []
+        context_rows = {c: {1: [], 2: []} for c in EDGE_CONTEXTS_MS}
+        context_by_shot = {c: [] for c in EDGE_CONTEXTS_MS}
+        fold_rows = {fold: [] for fold in range(3)}
+        fixed_threshold_rows = {1: [], 2: []}
         shot_class_cells, derivative_class_cells, by_shot = [], [], []
         for shot in split["training_cohort"]:
             fold = split["folds"][shot]
@@ -1473,6 +1564,24 @@ def evaluate(args):
             for tolerance in (1, 2):
                 old_rows[tolerance].append(old_shot_rows[tolerance])
             old_by_shot.append(old_shot_result)
+            for context in EDGE_CONTEXTS_MS:
+                alt_rows, alt_result = score_prediction(
+                    shot,
+                    name,
+                    pred,
+                    with_edge_context(signal, rec, context),
+                    rec,
+                    presence_threshold,
+                )
+                for tolerance in (1, 2):
+                    context_rows[context][tolerance].append(alt_rows[tolerance])
+                context_by_shot[context].append(alt_result)
+            fixed_rows_shot, _ = score_prediction(
+                shot, name, pred, signal, rec, FIXED_PRESENCE_THRESHOLD
+            )
+            for tolerance in (1, 2):
+                fixed_threshold_rows[tolerance].append(fixed_rows_shot[tolerance])
+            fold_rows[fold].append((shot_rows[2], fixed_rows_shot[2]))
             if name == "saw-hl3":
                 _, _, classes = targets(
                     pred["class_t"], rec, summary["period_boundary_ms"]
@@ -1532,6 +1641,36 @@ def evaluate(args):
             },
             "assessment_totals": assessment_totals(old_by_shot),
         }
+        score["edge_context_sensitivity"] = {
+            "definition": EDGE_CONTEXT_SENSITIVITY,
+            "contexts_ms": list(EDGE_CONTEXTS_MS),
+            **{
+                f"{context:g}_ms": {
+                    "isolated_edge_context_ms": context,
+                    **{
+                        f"crash_tolerance_{tolerance}ms": aggregate(
+                            context_rows[context][tolerance]
+                        )
+                        for tolerance in (1, 2)
+                    },
+                    "assessment_totals": assessment_totals(context_by_shot[context]),
+                    "negative_bins": sum(
+                        row["presence"]["negative_bins"]
+                        for row in context_by_shot[context]
+                        if row["presence"] is not None
+                    ),
+                    "positive_bins": sum(
+                        row["presence"]["positive_bins"]
+                        for row in context_by_shot[context]
+                        if row["presence"] is not None
+                    ),
+                }
+                for context in EDGE_CONTEXTS_MS
+            },
+        }
+        score["presence_fixed_threshold"] = presence_fixed_threshold(
+            fold_rows, fixed_threshold_rows[2], summaries, name
+        )
         if name not in BASELINES:
             score["operating_points"] = operating_points(summaries)
         score["score_label"] = output["protocol"]["primary"]

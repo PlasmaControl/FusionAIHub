@@ -134,7 +134,7 @@ def limitation_lines(work, data, check, bench, composition, gaps, radial, side):
 
 def source(name, key=""):
     suffix = f" → `{key}`" if key else ""
-    return f"Source: `outputs/labeler/sawtooth/fix4/{name}`{suffix}.\n"
+    return f"Source: `outputs/labeler/sawtooth/fix5/{name}`{suffix}.\n"
 
 
 def timing_table(legacy):
@@ -191,12 +191,15 @@ def reference_table(reference):
 
 
 def model_table(models, *, fixed=False):
+    """Presence leads with the threshold-free AUPRC; F1 is shown at two thresholds."""
     lines = [
         (
-            "| Method | Crash F1 ±2 ms [95% CI] | Presence F1 [95% CI] | "
-            "AUROC | AUPRC | Assessed / excluded / observable picks |"
+            "| Method | Presence AUPRC [95% CI] | Presence AUROC [95% CI] | "
+            "Presence F1, fixed 0.5 [95% CI] | Presence F1, inner-selected "
+            "threshold [95% CI] | Crash F1 ±2 ms [95% CI] | "
+            "Assessed / excluded / observable picks |"
         ),
-        "|---|---:|---:|---:|---:|---:|",
+        "|---|---:|---:|---:|---:|---:|---:|",
     ]
     for name, label in NAMES.items():
         result = models[name]["fixed_validation"] if fixed else models[name]
@@ -204,13 +207,81 @@ def model_table(models, *, fixed=False):
         crash, presence, ci = stats["crash"], stats["presence"], stats["ci95"]
         counts = result["assessment_totals"]
         crash_f1 = interval(crash["f1"], ci.get("crash_f1")) if crash else "—"
+        pooled = result.get("presence_fixed_threshold")
+        at_fixed = (
+            interval(pooled["pooled"]["f1"], pooled["ci95"].get("presence_f1"))
+            if pooled
+            else "—"
+        )
         lines.append(
-            f"| {label} | {crash_f1} | "
-            f"{interval(presence['f1'], ci.get('presence_f1'))} | "
-            f"{number(presence['auroc'])} | {number(presence['auprc'])} | "
+            f"| {label} | "
+            f"{interval(presence['auprc'], ci.get('presence_auprc'))} | "
+            f"{interval(presence['auroc'], ci.get('presence_auroc'))} | "
+            f"{at_fixed} | "
+            f"{interval(presence['f1'], ci.get('presence_f1'))} | {crash_f1} | "
             f"{counts['assessed_picks']} / {counts['excluded_picks']} / "
             f"{counts['observable_picks']} |"
         )
+    return "\n".join(lines) + "\n"
+
+
+def benchmark_framing(models):
+    """What the conditional benchmark can and cannot show, from its own numbers."""
+    derivative = models["saw-derivative"]
+    ours = models["saw-ours"]
+    d_crash = derivative["crash_tolerance_2ms"]["crash"]["f1"]
+    o_crash = ours["crash_tolerance_2ms"]["crash"]["f1"]
+    totals = ours["assessment_totals"]
+    comparison = (
+        f"the derivative baseline's crash F1 ({number(d_crash)}) is higher than "
+        f"saw-ours ({number(o_crash)})"
+        if d_crash > o_crash
+        else f"the derivative baseline's crash F1 ({number(d_crash)}) is not "
+        f"higher than saw-ours ({number(o_crash)}), although it starts with an "
+        "advantage"
+    )
+    return [
+        (
+            "**What this benchmark can and cannot show.** Presence is a sanity "
+            "check, close to trivial: the single-channel derivative baseline "
+            "reaches AUROC "
+            f"{number(derivative['crash_tolerance_2ms']['presence']['auroc'])} "
+            "out of fold and "
+            f"{number(derivative['fixed_validation']['crash_tolerance_2ms']['presence']['auroc'])} "
+            "on the fixed validation shots, so a model has little room to "
+            "separate itself. The labels are built from the same ECE edges the "
+            f"derivative baseline reads, so {comparison}: crash F1 here is "
+            "agreement with the rule, not physical accuracy. Only "
+            f"{totals['both_class_shots']} of the {totals['assessed_shots']} "
+            "assessed out-of-fold shots have both present and tested-absent "
+            "bins, so most per-shot presence scores rest on one class. The blind "
+            "expert queue is the real test of the labels and the models; nothing "
+            "here replaces it. Presence is led by the threshold-free AUPRC, with "
+            "F1 at one fixed threshold (0.5) beside the F1 at the inner-selected "
+            "one.\n"
+        ),
+    ]
+
+
+def fixed_threshold_table(models):
+    """Per-fold presence scores at one fixed threshold and at the inner-selected one."""
+    lines = [
+        (
+            "| Method | Fold | Held-out shots | Inner-selected threshold | "
+            "Presence F1 at the selected threshold | Presence F1 at 0.5 | "
+            "AUPRC | Positive / negative bins |"
+        ),
+        "|---|---:|---:|---:|---:|---:|---:|---|",
+    ]
+    for name in ("saw-hl3", "saw-ours"):
+        for row in models[name]["presence_fixed_threshold"]["by_fold"]:
+            selected, fixed = row["at_selected_threshold"], row["at_fixed_threshold"]
+            lines.append(
+                f"| {NAMES[name]} | {row['fold']} | {row['shots']} | "
+                f"{number(row['selected_threshold'])} | {number(selected['f1'])} | "
+                f"{number(fixed['f1'])} | {number(fixed['auprc'])} | "
+                f"{row['positive_bins']:,} / {row['negative_bins']:,} |"
+            )
     return "\n".join(lines) + "\n"
 
 
@@ -218,7 +289,7 @@ def hours(seconds):
     return f"{seconds / 3600:.2f} h"
 
 
-def method_lines(rule):
+def method_lines(rule, derivation):
     """The detector and state definitions, from the frozen rule values."""
     return [
         (
@@ -234,15 +305,23 @@ def method_lines(rule):
             f"{rule['minimum_channels']} core channels (nearest the EFIT axis) "
             f"read at least {rule['te_floor_kev']} keV, and unobservable where "
             "R<(2/3)R_LCFS,out (third-harmonic overlap), where the Thomson "
-            "density exceeds 0.9 of the X2 cutoff 2(f_ce/8.98 GHz)² with f_ce "
-            "from the local field at the axis resonance (B0·R0/R), or where the "
+            "density exceeds 0.9 of the X2 cutoff 2(f_ce/8.98 GHz)² or where the "
             f"ECE-validity test holds for at least "
             f"{rule['ece_validity_sustain_ms']:g} ms on a "
             f"{rule['ece_validity_smooth_ms']:g} ms moving mean: an "
             f"adjacent-channel step ratio above {rule['ece_step_ratio']:g} "
             f"inside nominal ρ<{rule['ece_step_max_rho']:g}, or the channel "
             f"within {rule['ece_axis_max_distance_m']:g} m of the axis below "
-            f"{rule['ece_axis_to_max']:g} of the profile maximum.\n"
+            f"{rule['ece_axis_to_max']:g} of the profile maximum. f_ce in the "
+            "cutoff comes from the local field at the EFIT axis resonance "
+            "(F/R_axis) wherever that axis field is mapped, with or without a "
+            "Bt trace; the field Bt(R0) is used only where the axis field is "
+            "unmapped but Bt exists, and a fixed 8×10¹⁹ m⁻³ guard only where "
+            "neither exists (the record's `cutoff_field` names the branch). A "
+            "channel whose record median is below the "
+            f"{rule['te_floor_kev']} keV floor, or that shows no fluctuation, is "
+            "a dead channel and is left out of both validity tests: a cutoff "
+            "step is one-sided and a dead channel is low on both sides.\n"
         ),
         (
             f"2. **Edge filter and POSR.** Each channel is filtered with a "
@@ -307,10 +386,21 @@ def method_lines(rule):
             "complete ±375 ms observable context, noise-resolved on at least two "
             "channels, with no profile candidate or slow relaxation phase "
             f"nearby and no isolated edge within "
-            f"{rule['isolated_edge_context_ms']} ms. `absent_q_prior` is time "
-            f"supported only by sustained EFIT01 q_min≥{rule['qmin_absence']} "
-            f"({rule['qmin_sustain_ms']:g} ms); it is exported as `uncertain` "
-            "with reason `q_prior_only` and is never a benchmark negative. "
+            f"{rule['isolated_edge_context_ms']:g} ms. An edge counts against "
+            "absence only when its relative change reaches "
+            f"`significance` = {100 * rule['significance']:g}% of the local Te, so "
+            f"a core relaxation train below {100 * rule['significance']:g}% is "
+            "called quiet. The isolated-edge length was derived on TRAIN shots "
+            f"only ({derivation['derivation_shot_count']} shots, "
+            "`edge_context_derivation.json`): it is the "
+            f"{derivation['criterion']}. Time supported only by sustained "
+            f"EFIT01 q_min≥{rule['qmin_absence']} ({rule['qmin_sustain_ms']:g} "
+            "ms) is never absent. It is `q_prior_ece_contradicted` where it lies "
+            "within the absence-test context of a periodic edge or a profile "
+            "candidate, which is where the ECE shows relaxation evidence, and "
+            "`q_prior_untested` elsewhere, where the ECE test did not run or "
+            "was inconclusive. Both are exported as `uncertain` with the state "
+            "name as the reason and are never a benchmark negative. "
             "`uncertain` is observable time without definite evidence and "
             "`unassessed` is unobservable time. `assessed` means present or "
             "absent. High q is neither necessary nor sufficient for absence: a "
@@ -324,20 +414,86 @@ def composition_lines(composition):
     lines = [
         (
             "| Set | Absent before s | High-q share before | Tested absent s | "
-            "Q-prior only s | Tested share of former absent class | "
-            "Shots with tested absence |"
+            "Q-prior, ECE-contradicted s | Q-prior, untested s | "
+            "ECE-contradicted share of q-prior | "
+            "Tested share of former absent class | Shots with tested absence |"
         ),
-        "|---|---:|---:|---:|---:|---:|---:|",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for name in ("train", "val", "test", "population"):
         before, after = composition["before"][name], composition["after"][name]
+        share = after["q_prior_ece_contradicted_fraction"]
         lines.append(
             f"| {name} | {number(before['absent_s'], 1)} | "
             f"{100 * before['high_q_fraction_of_absent']:.1f}% | "
             f"{number(after['tested_absent_s'], 1)} | "
-            f"{number(after['q_prior_only_s'], 1)} | "
+            f"{number(after['q_prior_ece_contradicted_s'], 1)} | "
+            f"{number(after['q_prior_untested_s'], 1)} | "
+            f"{'—' if share is None else f'{100 * share:.1f}%'} | "
             f"{100 * after['tested_fraction_of_former_absent_class']:.1f}% | "
             f"{after['shots_with_tested_absence']} of {after['shots']} |"
+        )
+    return "\n".join(lines) + "\n"
+
+
+def context_lines(composition, models):
+    """Tested absence and benchmark negatives under three isolated-edge vetoes."""
+    sensitivity = composition["edge_context_sensitivity"]
+    own = sensitivity["rule_value_ms"]
+    contexts = [k for k in sensitivity["train"]]
+    lines = [
+        (
+            "| Isolated-edge veto ms | Train tested absent s | Val tested absent s | "
+            "Test tested absent s | Tested share of observable (train) | "
+            "OOF benchmark negative bins | OOF positive bins |"
+        ),
+        "|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    ours = models["saw-ours"]["edge_context_sensitivity"]
+    for key in contexts:
+        row = ours[f"{key}_ms"]
+        mark = " (rule value)" if abs(float(key) - own) < 1e-9 else ""
+        lines.append(
+            f"| {key}{mark} | "
+            + " | ".join(
+                number(sensitivity[split][key]["tested_absent_s"], 1)
+                for split in ("train", "val", "test")
+            )
+            + f" | {100 * sensitivity['train'][key]['fraction_of_observable']:.1f}% | "
+            f"{row['negative_bins']:,} | {row['positive_bins']:,} |"
+        )
+    return "\n".join(lines) + "\n"
+
+
+def guard_status_lines(composition):
+    """Records by the density-guard branch they took, and dead channels found."""
+    names = {
+        "Thomson_90percentile_and_local_axis_field": "local axis field",
+        "Thomson_90percentile_and_reference_bt_axis_unmapped": (
+            "Bt(R0), axis field unmapped"
+        ),
+        "Thomson_90percentile_fixed_density_guard_axis_field_and_bt_unavailable": (
+            "fixed 8e19 guard (no axis field, no Bt)"
+        ),
+    }
+    lines = [
+        (
+            "| Set | Records | Local axis field | Bt(R0), axis field unmapped | "
+            "Fixed 8e19 guard | No Thomson density | Records with dead channels | "
+            "Dead channels |"
+        ),
+        "|---|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for name in ("train", "val", "test", "population"):
+        guards = composition["guards"][name]
+        counts = guards["records_by_density_guard_status"]
+        known = [counts.get(key, 0) for key in names]
+        total = sum(counts.values())
+        lines.append(
+            f"| {name} | {total} | "
+            + " | ".join(str(count) for count in known)
+            + f" | {total - sum(known)} | {guards['records_with_dead_channels']} | "
+            f"{guards['dead_channels_total']} |"
         )
     return "\n".join(lines) + "\n"
 
@@ -345,8 +501,9 @@ def composition_lines(composition):
 def guard_lines(composition):
     lines = [
         (
-            "| Set | Core-observable s | Removed by the earlier B0(R0) guard | "
-            "Removed by the local-field guard | Removed by ECE validity | "
+            "| Set | Core-observable s | Removed by the earlier guard (Bt at R0, "
+            "fixed 8e19 without Bt) | "
+            "Removed by the current guard | Removed by ECE validity | "
             "Shots with >20% removed by validity |"
         ),
         "|---|---:|---:|---:|---:|---:|",
@@ -502,6 +659,58 @@ def gap_lines(gaps):
     ]
 
 
+GATE_TEXT = {
+    "found": "found by the rule",
+    "train_test": "passed every gate but is not part of a stable train",
+    "no_edge_cluster": "no two-channel POSR edge cluster at the crash",
+    "coincidence": "only one channel reaches the POSR threshold",
+    "unobservable_core": "core not observable at the crash",
+    "holdoff": "inside the holdoff of the previous cluster",
+    "coverage": "too few valid channels in the inversion profile",
+    "significance": "profile A_norm below the significance threshold",
+    "redistribution": "profile falls or rises everywhere (A_net)",
+    "drop_block": "no contiguous loss block of two channels",
+    "rise_block": "no adjacent gain block of two channels",
+    "central_relative_drop": "central drop below the floor",
+    "unobservable_central_channel": "central channel unobservable",
+    "elm_edge_only": "edge loss with a D-alpha burst",
+    "edge_only_proxy": "loss outside the core",
+    "low_plasma_current": "plasma current below the floor",
+    "calibrated_direction": "calibrated flux direction conflict",
+}
+
+
+def gate_text(counts):
+    return "; ".join(
+        f"{count} × {GATE_TEXT.get(gate, gate)}"
+        for gate, count in sorted(counts.items(), key=lambda kv: -kv[1])
+    )
+
+
+def reference_gate_lines(check):
+    """Which gate decides each published reference crash, for both rule rows."""
+    rows = {row["shot"]: row for row in check["by_shot"]}
+    lines = []
+    for shot in (141182, 141195):
+        row = rows[shot]
+        frozen = row["frozen_rule"]["reference_crash_gates"]["counts"]
+        off = row["rule_validity_test_off"]["reference_crash_gates"]["counts"]
+        lines.append(
+            f"- Shot {shot}: frozen rule, {gate_text(frozen)}. "
+            f"With the validity test off: {gate_text(off)}."
+        )
+    return [
+        (
+            "Which gate decides the reference crashes. Each derivative-picker "
+            "crash inside the published windows is attributed to the first gate "
+            "that turned the rule's candidate down (`rejected_events` of the "
+            "detector), or to the train test when every gate accepted it, or to "
+            "no candidate when no two-channel edge cluster exists there:\n"
+        ),
+        "\n".join(lines) + "\n",
+    ]
+
+
 def reference_lines(check):
     """Narrative for the frozen rule on the Muscatello reference shots."""
     ratios, central = [], []
@@ -575,8 +784,37 @@ def reference_lines(check):
             "central Te and these band failures are not evidence about the rule "
             "alone.\n"
         ),
+        *reference_gate_lines(check),
         source("muscatello_rule_check.json"),
     ]
+
+
+def elm_verdict(entry, reference):
+    """The 190637 sentence, decided by the D-alpha coincidence record."""
+    data = entry["dalpha"]
+    if data["status"] != "evaluated":
+        return "no filterscope D-alpha, so the span stays indeterminate."
+    fraction, chance = data["coincident_fraction"], data["chance_fraction"]
+    ref = reference["dalpha"]
+    context = (
+        f" (reference sawtooth shot {reference['shot']}: "
+        f"{number(ref['coincident_fraction'], 2)})"
+        if ref.get("status") == "evaluated"
+        else ""
+    )
+    if data["marks_elms"]:
+        return (
+            f"the expert span marks edge-localized modes, not a central sawtooth. "
+            f"{100 * fraction:.0f}% of its {data['events_evaluated']} events lie "
+            f"within ±1 ms of a filterscope D-alpha spike, against "
+            f"{100 * chance:.0f}% at the same times shifted by 35–100 ms{context}."
+        )
+    return (
+        "not a central sawtooth by ECE, and the D-alpha test does not mark "
+        f"edge-localized modes either ({100 * fraction:.0f}% of "
+        f"{data['events_evaluated']} events coincide with a spike, against "
+        f"{100 * chance:.0f}% shifted{context}), so the span stays indeterminate."
+    )
 
 
 def radial_lines(radial):
@@ -601,14 +839,36 @@ def radial_lines(radial):
             "central drop ≤ −0.05 inside |ρ|<0.15 and an outer rise ≥ +0.02 at "
             "ρ 0.3–0.6 is sawtooth-like; no central drop with a monotone outward "
             "decline to ≤ −0.15 at the outermost channel is edge-driven; "
-            "otherwise indeterminate.\n"
+            "otherwise indeterminate. A second, independent test counts the "
+            "fraction of events within ±1 ms of a filterscope D-alpha spike "
+            "(6 robust standard deviations over the surrounding ±25 ms), against "
+            "the same fraction at the event times shifted by 35–100 ms; a shot "
+            "marks edge-localized modes when at least half of its events "
+            "coincide with a spike and at least twice the shifted fraction "
+            "does.\n"
         ),
         (
             "| Shot | Events | Central change | Outer rise (ρ 0.3–0.6) | "
-            "Outermost change (ρ) | Span s | Observable after guards s | Verdict |"
+            "Outermost change (ρ) | Span s | Observable after guards s | "
+            "D-alpha coincident / shifted | Verdict |"
         ),
-        "|---|---:|---:|---:|---:|---:|---:|---|",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---|",
     ]
+    def coincidence(entry):
+        data = entry["dalpha"]
+        if data["status"] != "evaluated":
+            return "—"
+        return (
+            f"{number(data['coincident_fraction'], 2)} / "
+            f"{number(data['chance_fraction'], 2)}"
+        )
+
+    lines.append(
+        f"| {reference['shot']} (reference) | {reference['events']} | "
+        f"{number(reference['central_median_change'])} | "
+        f"{number(reference['outer_rise_max_change_rho_0p3_0p6'])} | — | — | — | "
+        f"{coincidence(reference)} | {reference['verdict']} |"
+    )
     for shot, row in shots.items():
         support = row["support"]
         outer = row["outermost_median_change"]
@@ -617,7 +877,8 @@ def radial_lines(radial):
             f"{number(row['outer_rise_max_change_rho_0p3_0p6'])} | "
             f"{number(outer)} ({number(row['outermost_rho'], 2)}) | "
             f"{number(support['expert_positive_s'], 2)} | "
-            f"{number(support['observable_s'], 2)} | {row['verdict']} |"
+            f"{number(support['observable_s'], 2)} | {coincidence(row)} | "
+            f"{row['verdict']} |"
         )
     lines.append("")
     a, b, c, d = (shots[k] for k in ("190637", "186636", "189324", "186532"))
@@ -625,22 +886,28 @@ def radial_lines(radial):
     core = guards["core_observable_samples"]
     lines += [
         (
-            f"**Shot 190637: the data support an edge or off-axis relaxation, "
-            f"not a central sawtooth.** The span is {number(a['support']['expert_positive_s'], 2)} s and fully "
-            f"observable. The median event has no central drop "
+            f"**Shot 190637: {elm_verdict(a, reference)}** The span is "
+            f"{number(a['support']['expert_positive_s'], 2)} s and "
+            f"{number(a['support']['observable_s'], 2)} s of it is observable "
+            "after the guards. The median event has no central drop "
             f"({number(a['central_median_change'])}, against "
             f"{number(reference['central_median_change'])} for the verified "
             f"sawtooth) and no outer rise ({number(a['outer_rise_max_change_rho_0p3_0p6'])}); "
             "the drop grows outward to "
             f"{number(a['outermost_median_change'])} at ρ≈{number(a['outermost_rho'], 2)}. "
-            "The pre-registered edge-driven bar (−0.15) is missed by "
-            f"{abs(-0.15 - a['outermost_median_change']):.2f}, so the formal verdict "
-            "is indeterminate, but nothing here supports a central crash. "
-            f"EFIT01 q_min is at least 1.5 for {number(a['state_seconds']['absent_q_prior'], 2)} s "
+            "The pre-registered edge-driven bar (−0.15) is "
+            + (
+                f"missed by {abs(-0.15 - a['outermost_median_change']):.2f}, so the "
+                "formal ECE verdict is indeterminate"
+                if a["verdict"] != "edge-driven"
+                else "met, so the formal ECE verdict is edge-driven"
+            )
+            + ". "
+            f"Q-prior time (EFIT01 q_min at least 1.5 for 50 ms) covers "
+            f"{number(a['state_seconds']['q_prior_ece_contradicted'] + a['state_seconds']['q_prior_untested'], 2)} s "
             "of the shot, consistent with no q=1 surface. The rule is right "
-            "not to call this span a present sawtooth; the expert-positive "
-            "label, taken as a central sawtooth, is not supported by ECE (it "
-            "may mark edge relaxations, as the catalog README already warns).\n"
+            "not to call this span a present sawtooth, and the expert-positive "
+            "label, taken as a central sawtooth, is not supported by ECE.\n"
         ),
         (
             f"**Shot 186636: cutoff, so the span is untestable, not wrong.** "
@@ -672,7 +939,9 @@ def radial_lines(radial):
             f"crash panel of earlier rounds) shows no "
             f"relaxation at its {d['events']} rule events (central "
             f"{number(d['central_median_change'])}, outer {number(d['outer_rise_max_change_rho_0p3_0p6'])}); "
-            "its three accepted crash points are weak and uncertain.\n"
+            "its three accepted crash points are weak and uncertain. The panel "
+            "is left as it is: the rule is not changed for one shot and the "
+            "weak panel is reported, not replaced.\n"
         ),
     ]
     return lines
@@ -695,6 +964,7 @@ def report(args):
     composition = read("absent_composition.json")
     gaps, radial = read("uncertain_gaps.json"), read("radial_drop_profiles.json")
     rule = json.loads((args.output / "freeze.json").read_text())["rule"]
+    derivation = read("edge_context_derivation.json")
     models = bench["Tokamak-SI"]
     oof_coverage = models["saw-ours"]["coverage"]
     val_coverage = models["saw-ours"]["fixed_validation"]["coverage"]
@@ -709,6 +979,10 @@ def report(args):
     )
     cohort_q_prior = sum(
         composition["after"][k]["q_prior_only_s"] for k in ("train", "val", "test")
+    )
+    cohort_contradicted = sum(
+        composition["after"][k]["q_prior_ece_contradicted_s"]
+        for k in ("train", "val", "test")
     )
     cohort_high_q = sum(
         composition["before"][k]["sustained_high_q_absence_s"]
@@ -766,11 +1040,17 @@ def report(args):
             "no longer makes a negative. Absent now means an ECE quiet-core test "
             f"passed: {number(cohort_tested, 0)} s on the cohort "
             f"({100 * cohort_tested / cohort_observable:.1f}% of observable time). "
-            f"Time supported only by q_min is `absent_q_prior` "
+            f"Time with sustained q_min≥1.5 and no tested absence is the q-prior "
             f"({number(cohort_q_prior, 0)} s, "
-            f"{100 * cohort_q_prior / cohort_observable:.1f}%), exported as "
-            "`uncertain` with reason `q_prior_only` and excluded from benchmark "
-            "negatives. The assessed set is therefore smaller and more "
+            f"{100 * cohort_q_prior / cohort_observable:.1f}% of observable "
+            "time), exported as `uncertain` and excluded from benchmark "
+            f"negatives. {100 * cohort_contradicted / cohort_q_prior:.1f}% of it "
+            f"({number(cohort_contradicted, 0)} s) lies within the absence-test "
+            "context of a periodic edge or a profile candidate "
+            "(`q_prior_ece_contradicted`): the ECE shows relaxation evidence "
+            "there, so this share measures how much of the old q-only negative "
+            "class the ECE contradicts. The rest (`q_prior_untested`) was not "
+            "tested by the ECE. The assessed set is therefore smaller and more "
             "positive-heavy; the old-negatives sensitivity below keeps the "
             "previous scoring for comparison.\n"
         ),
@@ -788,7 +1068,7 @@ def report(args):
         ),
         source("benchmark.json", "Tokamak-SI.*"),
         "### Method\n",
-        *method_lines(rule),
+        *method_lines(rule, derivation),
         source("freeze.json", "rule"),
         "### Tested absence and the density and cutoff guards\n",
         (
@@ -806,14 +1086,36 @@ def report(args):
         ),
         source("absent_composition.json", "before; after"),
         (
-            "The density guard now uses the local field at the axis resonance "
-            "(B0·R0/R) instead of the field at R0, and a new ECE-side validity "
-            "test removes time where a static channel-to-channel calibration "
-            "step or a cold axis channel shows the ECE core is not resolved. "
+            "Sensitivity to the isolated-edge veto length (5.15 ms is the frame "
+            "holdoff; 375 ms is the full absence-test context). The rule's value "
+            "was derived on TRAIN shots only; the rebuilt negatives on every "
+            "split, and the scored OOF negatives of the PhaseNet-style picker, "
+            "follow from the stored frame-holdoff masks without any refit:\n"
+        ),
+        context_lines(composition, models),
+        source(
+            "absent_composition.json",
+            "edge_context_sensitivity; benchmark.json "
+            "Tokamak-SI.saw-ours.edge_context_sensitivity; "
+            "edge_context_derivation.json",
+        ),
+        (
+            "The density guard uses the local field at the axis resonance "
+            "(F/R_axis) instead of the field at R0 wherever it is mapped, and an "
+            "ECE-side validity test removes time where a static channel-to-channel "
+            "calibration step or a cold axis channel shows the ECE core is not "
+            "resolved; dead channels are left out of that test. "
             "Core-observable seconds and what each guard removed:\n"
         ),
         guard_lines(composition),
         source("absent_composition.json", "guards"),
+        (
+            "Records by the density-guard branch they took. The cutoff uses the "
+            "local axis field wherever it is mapped; the other branches are the "
+            "fallbacks:\n"
+        ),
+        guard_status_lines(composition),
+        source("absent_composition.json", "guards.*.records_by_density_guard_status"),
         (
             "The guard accounting for each reviewed shot is in the radial-drop "
             "section below.\n"
@@ -882,8 +1184,10 @@ def report(args):
         ),
         (
             "EFIT01 conflict is q_min>1.4. Sustained q_min≥1.5 for at least 50 ms "
-            "is a prior, not an absence test: it marks time `absent_q_prior`, "
-            "which is exported uncertain and is never a benchmark negative. A "
+            "is a prior, not an absence test: it marks time "
+            "`q_prior_ece_contradicted` (inside the absence-test context of a "
+            "periodic edge or profile candidate) or `q_prior_untested`, exported "
+            "uncertain and never a benchmark negative. A "
             "magnetics-only reconstruction is not an "
             "MSE-constrained central-current measurement: the review-prescribed "
             "1.3–1.5 band replaces the unsupported 1.05 cutoff, rather than "
@@ -942,11 +1246,11 @@ def report(args):
         source("phase_null_audit.json"),
         "### Label states\n",
         (
-            "State seconds. `Absent` is tested absence; `absent_q_prior` is q-prior "
-            "only (exported as uncertain, no benchmark negatives).\n"
+            "State seconds. `Absent` is tested absence; the two q-prior states are "
+            "q-prior only (exported as uncertain, no benchmark negatives).\n"
         ),
-        "| Split | Shots | Present s | Absent s | Absent (q prior only) s | Uncertain s | Unassessed s | Assessed / observable |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|",
+        "| Split | Shots | Present s | Absent s | Q-prior, ECE-contradicted s | Q-prior, untested s | Uncertain s | Unassessed s | Assessed / observable |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for split in ("train", "val", "test"):
         row = data["splits"][split]
@@ -1018,6 +1322,7 @@ def report(args):
             "Thresholds, fitting/inner/scoring shot IDs and support counts "
             "are recorded for every fold. Always present supplies no crash time.\n"
         ),
+        *benchmark_framing(models),
         model_table(models),
         source("benchmark.json", "Tokamak-SI.*.crash_tolerance_2ms; assessment_totals"),
         (
@@ -1052,7 +1357,7 @@ def report(args):
         (
             "Benchmark negatives now come only from ECE-tested absence. The "
             "previous negatives were q-prior time: this table restores "
-            "`absent_q_prior` as scoring-only assessed time with no crashes, "
+            "the q-prior states as scoring-only assessed time with no crashes, "
             "using the same fitted models and thresholds. Models are not refit. "
             "A large gap shows how much of the earlier score came from "
             "q-prior time.\n"
@@ -1064,10 +1369,13 @@ def report(args):
             "Presence and crash thresholds are selected on each fold's inner "
             "shots. A wide presence-threshold range for saw-ours means its "
             "presence operating point is not stable across folds, so the pooled "
-            "presence F1 mixes operating points.\n"
+            "presence F1 mixes operating points. Per fold, presence at one fixed "
+            "threshold of 0.5 beside the inner-selected one:\n"
         ),
         operating_table(models),
         source("benchmark.json", "Tokamak-SI.*.operating_points"),
+        fixed_threshold_table(models),
+        source("benchmark.json", "Tokamak-SI.*.presence_fixed_threshold"),
         (
             "HL-3 is an adapted external architecture, replacing the paper's "
             "SXR pair with geometry-selected ECE plus Mirnov and Ip. It has "
@@ -1174,12 +1482,12 @@ def report(args):
         ),
         (
             f"Source: `{args.work}/shots/190637.json` → `state_seconds`; "
-            "`outputs/labeler/sawtooth/fix4/validation.json` → `expert.by_shot`.\n"
+            "`outputs/labeler/sawtooth/fix5/validation.json` → `expert.by_shot`.\n"
         ),
         "### Radial drop profiles of the reviewed spans\n",
         *radial_lines(radial),
         (
-            "Figures: `$LABELER_ROOT/round4/saw/fix4/figures/radial_drop_<shot>.pdf` "
+            "Figures: `$LABELER_ROOT/round4/saw/fix5/figures/radial_drop_<shot>.pdf` "
             "and `.png` for 186636, 189324, 190637 and 186532.\n"
         ),
         source("radial_drop_profiles.json"),
@@ -1207,9 +1515,9 @@ def report(args):
             "excludes a reader timestamp bug. The ledger separates missing "
             "raw edges, greedy 10 ms suppression and inversion-window "
             "rejection; only training shots enter the diagnostic holdoff "
-            "ablation. Current catalog v3 and the retained legacy v2 are "
-            "distinct detectors, so a catalog-wide defect cannot be inferred "
-            "from the legacy cache alone.\n"
+            "ablation. The current catalog detector and the retained legacy "
+            "detector are distinct, so a catalog-wide defect cannot be "
+            "inferred from the legacy cache alone.\n"
         ),
         source("legacy_reader_audit.json"),
         "Per-shot timing and gate diagnosis (old minus physics, ms):\n",
@@ -1277,7 +1585,7 @@ def report(args):
         source("crash_time_queue.json"),
         "### Artifacts, reproduction and verification\n",
         (
-            f"Complete labels: `$LABELER_ROOT/round4/saw/fix4/labels/`. "
+            f"Complete labels: `$LABELER_ROOT/round4/saw/fix5/labels/`. "
             f"Manifest `SHA256SUMS` sha256: `{manifest['manifest_sha256']}`. "
             f"{population_text} "
             "Population shards export current states without duplicate cohort "
@@ -1292,7 +1600,7 @@ def report(args):
         source("label_manifest.json"),
         (
             "Large signals, EFIT metadata, models, predictions, annotation "
-            "pack, PDFs and 150-dpi PNGs are under the same fix4 directory. "
+            "pack, PDFs and 150-dpi PNGs are under the same fix5 directory. "
             "Paper example, three old-rule figures, the 12-shot gallery and "
             "the four radial-profile figures were inspected; figure ledgers "
             "retain paths and hashes.\n"
@@ -1318,7 +1626,8 @@ def report(args):
         + "\n```\n",
         (
             "Reproduce with the prescribed pixi environment and TMPDIR. "
-            "Entrypoints: sawtooth_fix4_setup.py; "
+            "Entrypoints: sawtooth_edge_context.py run/derive (TRAIN only, "
+            "first); sawtooth_fix5_setup.py; "
             "sawtooth_geometry_fix3.py audit/frequency-audit/reference; "
             "sawtooth_physics.py labels (cohort, then population with "
             "sawtooth_population.sbatch); sawtooth_reference_rule.py; "
@@ -1410,6 +1719,28 @@ def best_crash_sentence(models):
     )
 
 
+def failure_breakdown(population):
+    """Why population shots carry no label, from the exclusion messages."""
+    groups = {
+        "absent waveform or incompatible clock": 0,
+        "insufficient physical or finite ECE core (core channels, finite window, "
+        "no ECE group)": 0,
+        "unreadable file or object": 0,
+        "other (for example a geometry time axis that is not increasing)": 0,
+    }
+    keys = list(groups)
+    for message, count in population["exclusion_messages"].items():
+        if "absent waveform" in message:
+            groups[keys[0]] += count
+        elif any(w in message for w in ("ECE core", "finite ECE", "no ECE group")):
+            groups[keys[1]] += count
+        elif "Unable to synchronously open" in message:
+            groups[keys[2]] += count
+        else:
+            groups[keys[3]] += count
+    return "; ".join(f"{count} × {name}" for name, count in groups.items() if count)
+
+
 def update_readme(manifest, population):
     path = REPO / "data/events/sawtooth_oscillation/README.md"
     text = path.read_text()
@@ -1444,7 +1775,8 @@ def update_readme(manifest, population):
     population_status = (
         f"The population run is complete: {population['processed_count']} of "
         f"{population['corpus_shots']} corpus shots have a usable record under the "
-        "final rule; the other shots have no readable ECE core and carry no label."
+        f"final rule. The other {population['excluded_records']} carry no label, "
+        f"for these reasons: {failure_breakdown(population)}."
         if population["complete"]
         else "The population run is NOT complete under the final rule: "
         f"{population['processed_count']} of {population['corpus_shots']} corpus "
@@ -1458,9 +1790,9 @@ Gude-style POSR, multichannel coincidence, core loss / outer gain, central drop,
 stable trains and nominal EFIT localization. It screens harmonic overlap and
 uses EFIT01 bias-aware q-min conflicts. POSR-qualified phase edges require
 ≥10 ms periods and a shuffled-time null that repeats the same group search.
-Geometry is nominal, with no flux calibration. Present / absent / absent_q_prior
-/ uncertain / unassessed states remain distinct. Production labels
-are not replaced. Old `ece_sawtooth` disagreement and its reader audit are in
+Geometry is nominal, with no flux calibration. Present / absent /
+q_prior_ece_contradicted / q_prior_untested / uncertain / unassessed states
+remain distinct. Production labels are not replaced. Old `ece_sawtooth` disagreement and its reader audit are in
 the report; the retained legacy rule and current catalog detector differ.
 Valid core ECE defines observability: missing ECE, low temperature and detected
 cutoff yield `unassessed`, and trains split at observability gaps. Native-rate
@@ -1469,21 +1801,27 @@ data exist, their drop/burst flags give optional corroboration; no SXR
 corroboration is claimed without verified core/edge spatial pairing. **Absent**
 means a tested absence: no POSR-periodic core edge on any valid ECE channel at
 nominal ρ<0.5 over a complete ±375 ms context, noise-resolved on at least two
-channels. Sustained EFIT01 q-min ≥ 1.5 is a prior, not a test: that time is
-`absent_q_prior`, exported as `uncertain` with reason `q_prior_only`, and it is
-never a benchmark negative. A density-cutoff guard uses the local field at the
-axis resonance and an ECE validity test (adjacent-channel step ratio above 2, or
-a near-axis channel below 0.6 of the profile maximum, sustained 20 ms) marks
-unresolved ECE `unassessed`. Ambiguous observable support remains uncertain. The
+channels (an edge counts only when its relative change is at least 2%, so a
+core relaxation train below 2% is called quiet). Sustained EFIT01 q-min ≥ 1.5 is
+a prior, not a test: that time is `q_prior_ece_contradicted` where it lies in
+the absence-test context of a periodic edge or profile candidate (the ECE shows
+relaxation evidence there) and `q_prior_untested` elsewhere; both are exported
+as `uncertain` with the state name as the reason and are never a benchmark
+negative. A density-cutoff guard uses the local field at the axis resonance
+where it is mapped (Bt at R0, then a fixed guard, only as fallbacks; the report
+gives the records by branch) and an ECE validity test (adjacent-channel step
+ratio above 2, or a near-axis channel below 0.6 of the profile maximum,
+sustained 20 ms; dead channels are excluded) marks unresolved ECE `unassessed`.
+Ambiguous observable support remains uncertain. The
 untracked exports in `extend_saw_physics/` hold the spans and crash points; they
 are additive research labels.
 
 {population_status}
 Population label shards are at
-`$LABELER_ROOT/round4/saw/fix4/labels/`{population_note}. Verify with
+`$LABELER_ROOT/round4/saw/fix5/labels/`{population_note}. Verify with
 `sha256sum -c SHA256SUMS` from that directory. The `SHA256SUMS` file has sha256
 `{manifest["manifest_sha256"]}`; individual CSV hashes are in
-`outputs/labeler/sawtooth/fix4/label_manifest.json`. The manifest also hashes
+`outputs/labeler/sawtooth/fix5/label_manifest.json`. The manifest also hashes
 `prior_inputs/fix2_inputs.json`, a snapshot of the earlier round's inputs the
 rule reads, and `freeze.json`. Cohort shards are the `cohort-*.csv` files in the
 same directory; `extend_saw_physics/` is the untracked integration copy. Git does
@@ -1508,11 +1846,14 @@ are exploratory and provide no independent crash-time precision/recall; the
 ## Blind crash-time annotation queue
 
 The prediction-free input pack is
-`$LABELER_ROOT/round4/saw/fix4/annotation_pack/`. It contains sensor windows,
+`$LABELER_ROOT/round4/saw/fix5/annotation_pack/`. It contains sensor windows,
 observable masks, nominal geometry and blank annotation targets. Random windows
 are frozen before prediction access. Candidate-free, model-negative, uncertain
-and disagreement cases supplement the primary probability sample. Keep the
-private `selection_audit/` directory and every detector/model prediction hidden.
+and disagreement cases supplement the primary probability sample. Annotators
+receive the annotation pack only: no repository outputs and no access to
+`round4/saw`. Keep the private `selection_audit/` directory and every
+detector/model prediction hidden (the `predictions/` directories are mode
+`go-rwx`).
 Mark crash times, timing tolerances, positive/negative observable spans and
 ambiguity masks; lock annotations before revealing picks. Use preregistered
 sampling weights and whole-shot bootstrap intervals. Approximately 97

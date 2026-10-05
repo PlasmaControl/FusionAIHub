@@ -22,9 +22,9 @@ from labeler.config import Paths
 from labeler.events import heuristics
 from labeler.sawtooth.metrics import event_cells, point_metrics, spans_at
 
-WORK4 = Paths.from_env().root / "round4/saw/fix4"
+WORK4 = Paths.from_env().root / "round4/saw/fix5"
 PREVIOUS = WORK4.parent / "fix2"
-OUTPUT = REPO / "outputs/labeler/sawtooth/fix4"
+OUTPUT = REPO / "outputs/labeler/sawtooth/fix5"
 LEGACY_SHOTS = [190602, 190604, 192090, 201948, 192154, 191384, 203349]
 WINDOW_SECONDS = 0.6
 MINIMUM_WINDOW_SECONDS = 0.15
@@ -338,6 +338,13 @@ def queue_base(args):
             ),
         },
         "source_prediction_hashes": "Freeze in completed_selection before annotation",
+        "annotator_access": (
+            "Annotators receive the annotation pack only: no repository outputs "
+            "(per-shot rule labels, benchmark cells, queue prediction records) "
+            "and no access to round4/saw. The predictions directories are mode "
+            "go-rwx until the annotations are locked, and the private "
+            "selection_audit directory stays closed"
+        ),
     }
     save_json(audit / "preregistered_evaluation.json", prereg)
     save_json(args.output / "blind_queue_preregistration.json", prereg)
@@ -885,13 +892,15 @@ def paper_example(args):
     fig.subplots_adjust(left=0.17, right=0.98, bottom=0.15, top=0.74, hspace=0.13)
     colors = {
         "present": "#009E73",
-        "absent": "#FFFFFF",
-        "absent_q_prior": "#CC79A7",
+        "absent": "#56B4E9",
+        "q_prior_ece_contradicted": "#CC79A7",
+        "q_prior_untested": "#CC79A7",
         "uncertain": "#E69F00",
         "unassessed": "#999999",
     }
     state_names = {
-        "absent_q_prior": "Q-prior only",
+        "q_prior_ece_contradicted": "q-prior, ECE-contradicted",
+        "q_prior_untested": "q-prior, untested",
         "absent": "Absent (ECE-tested)",
     }
     shown_states = set()

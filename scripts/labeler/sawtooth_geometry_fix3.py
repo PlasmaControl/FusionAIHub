@@ -1,7 +1,7 @@
 """Audit ECE setup and acquire only missing essential sawtooth geometry.
 
 Run ``fetch`` through the prescribed pixi ``fdp run`` wrapper. All fetched
-records live under round4/saw/fix4; production stores remain read-only.
+records live under round4/saw/fix5; production stores remain read-only.
 """
 
 from __future__ import annotations
@@ -22,8 +22,8 @@ import numpy as np
 import pandas as pd
 
 REPO = Path(__file__).resolve().parents[2]
-DEFAULT_WORK = Path("/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4")
-OUTPUT = REPO / "outputs/labeler/sawtooth/fix4"
+DEFAULT_WORK = Path("/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5")
+OUTPUT = REPO / "outputs/labeler/sawtooth/fix5"
 ARCHIVE = Path("/scratch/gpfs/nc1514/omnimode/data")
 FDP_MDS_RELAY = "fdp://fdp-d3d-origin.nationalresearchplatform.org:8443/mdsip"
 EQ_LEAVES = (

@@ -48,17 +48,19 @@ from labeler.sawtooth.preprocessing import (
 )
 
 REPO = Path(__file__).resolve().parents[2]
-WORK = Paths.from_env().root / "round4/saw/fix4"
-OUTPUT = REPO / "outputs/labeler/sawtooth/fix4"
+WORK = Paths.from_env().root / "round4/saw/fix5"
+OUTPUT = REPO / "outputs/labeler/sawtooth/fix5"
 READER_POLICY = (
     "native_FIR_fixed_grid_harmonic_mask_axis_core_bias_aware_q_POSR_phase_null_q_veto"
-    "_local_field_cutoff_ece_validity_tested_absence_q_prior_state"
+    "_local_field_cutoff_ece_validity_tested_absence_q_prior_split_dead_channels"
 )
 PRIOR_INPUTS = "prior_inputs/fix2_inputs.json"
+Q_PRIOR_STATES = ("q_prior_ece_contradicted", "q_prior_untested")
 ECE_GEOMETRY_ARCHIVE = Path(
     os.environ.get("LABELER_ECE_GEOMETRY_ROOT", str(REPO.parent / "omnimode/data"))
 )
 SEED = 20261003
+FIXED_DENSITY_GUARD_M3 = 8e19
 FS = 10000
 REVIEW = Paths.from_env().label_tables / "sawtooth_oscillation/review/labels.csv"
 
@@ -141,10 +143,14 @@ def density_support(file, t, shot, paths, rule, *, radius=None, frequency_hz=Non
     """Second-harmonic X-mode cutoff proxy from the Thomson density, no radius claim.
 
     The cutoff density uses the local field at the resonance, B0*R0/R at the
-    EFIT axis (``axis_field_T``), not Bt at R0. Where the axis field is
-    unmapped the reference field is used. Returns the observability mask, the
-    mask the superseded reference-field guard would have given (accounting
-    only, to measure what the change removes) and a record.
+    EFIT axis (``axis_field_T``), not Bt at R0. The axis field needs only the
+    mapped radius geometry and the channel frequencies, so it is computed
+    whether or not a Bt trace exists. Samples where it is unmapped fall back
+    to the reference field Bt(R0) when Bt exists and to the fixed guard
+    ``FIXED_DENSITY_GUARD_M3`` otherwise. Returns the observability mask, the
+    mask the superseded guard (Bt at R0, or the fixed guard without Bt) would
+    have given (accounting only, to measure what the change removes) and a
+    record whose ``status`` and ``cutoff_field`` name the branch taken.
     """
     support = np.ones(len(t), dtype=bool)
     reference_support = support.copy()
@@ -160,6 +166,7 @@ def density_support(file, t, shot, paths, rule, *, radius=None, frequency_hz=Non
     ne = np.full(len(tx), np.nan)
     ne[good] = np.nanquantile(y[:, good], 0.9, axis=0)
     density = ece_geometry.align_q(t, tx, ne[None])[0]
+    measured = np.isfinite(density)
     bt = local_scalar(shot, "bt", paths)
     if bt is None:
         # Read the local scalar archive without any remote resolver or writes.
@@ -169,38 +176,55 @@ def density_support(file, t, shot, paths, rule, *, radius=None, frequency_hz=Non
         if "bt" in arrays:
             a = equilibrium.canonical(arrays["bt"], "bt")
             bt = a.x, a.y[0]
+    fixed = np.full(len(t), FIXED_DENSITY_GUARD_M3)
+    reference = None
     if bt is not None:
         b = ece_geometry.align_q(t, bt[0], np.atleast_2d(bt[1]))[0]
         reference = x2_cutoff_density(b)
-        axis_field = axis_field_T(radius, frequency_hz)
-        if axis_field is not None:
-            cutoff = np.where(
-                np.isfinite(axis_field), x2_cutoff_density(axis_field), reference
-            )
-            info["status"] = "Thomson_90percentile_and_local_axis_field"
-            info["axis_field_samples"] = int(np.isfinite(axis_field).sum())
-        else:
-            cutoff = reference
-            info["status"] = "Thomson_90percentile_and_reference_bt_axis_unmapped"
-        old = np.isfinite(density) & (density >= reference)
-        reference_support[old] = False
-        info["high_density_samples_reference_field"] = int(old.sum())
+    fallback = fixed if reference is None else reference
+    # The guard the previous round applied: Bt at R0, else the fixed guard.
+    old = measured & (density >= fallback)
+    reference_support[old] = False
+    info["high_density_samples_reference_field"] = int(old.sum())
+    axis_field = axis_field_T(radius, frequency_hz)
+    mapped = (
+        np.isfinite(axis_field)
+        if axis_field is not None
+        else np.zeros(len(t), dtype=bool)
+    )
+    if mapped.any():
+        cutoff = np.where(mapped, x2_cutoff_density(axis_field), fallback)
+        info["status"] = "Thomson_90percentile_and_local_axis_field"
+        info["cutoff_field"] = "local field at the EFIT axis resonance (F/R_axis)"
+    elif reference is not None:
+        cutoff = reference
+        info["status"] = "Thomson_90percentile_and_reference_bt_axis_unmapped"
+        info["cutoff_field"] = "reference field Bt at R0 (axis field unmapped)"
     else:
-        # A train-frozen conservative high-density guard when Bt is unavailable.
-        cutoff = np.full(len(t), 8e19)
-        info["status"] = "Thomson_90percentile_fixed_density_guard_bt_missing"
-        reference_support = None
-    high = np.isfinite(density) & (density >= cutoff)
+        cutoff = fixed
+        info["status"] = (
+            "Thomson_90percentile_fixed_density_guard_axis_field_and_bt_unavailable"
+        )
+        info["cutoff_field"] = (
+            "none: fixed density guard (axis field and Bt both unavailable)"
+        )
+    info["axis_field_samples"] = int(mapped.sum())
+    info["fallback_samples"] = int((~mapped).sum())
+    info["fallback_guard"] = (
+        "none"
+        if mapped.all()
+        else "fixed_density_guard"
+        if reference is None
+        else "reference_field_Bt_at_R0"
+    )
+    high = measured & (density >= cutoff)
     support[high] = False
     info.update(
         high_density_samples=int(high.sum()),
-        density_samples=int(np.isfinite(density).sum()),
-        fixed_density_guard_m3=8e19,
+        density_samples=int(measured.sum()),
+        fixed_density_guard_m3=FIXED_DENSITY_GUARD_M3,
         margin=0.9,
-        cutoff_field="local field at the EFIT axis resonance (F/R_axis)",
     )
-    if reference_support is None:
-        reference_support = support.copy()
     return support, reference_support, info
 
 
@@ -322,13 +346,20 @@ def preserve_unverified_candidates(detected, t, prior_times, rule, shot):
                 )
             )
         detected.absent_mask[mask] = False
+        if detected.absent_holdoff_mask is not None:
+            detected.absent_holdoff_mask[mask] = False
         if detected.q_prior_mask is not None:
             detected.q_prior_mask[mask] = False
+        if detected.q_prior_contradicted_mask is not None:
+            detected.q_prior_contradicted_mask[mask] = False
         count += 1
     reasons = detected.absence_diagnostics["reason_samples"]
     reasons["tested_absence"] = int(detected.absent_mask.sum())
     if detected.q_prior_mask is not None:
         reasons["q_prior_only"] = int(detected.q_prior_mask.sum())
+        contradicted = detected.q_prior_contradicted_mask
+        reasons["q_prior_ece_contradicted"] = int(contradicted.sum())
+        reasons["q_prior_untested"] = int((detected.q_prior_mask & ~contradicted).sum())
     return count
 
 
@@ -591,6 +622,7 @@ def process_shot(job):
             # magnetic-core coverage. Its quietness cannot teach absence.
             suppressed = int(detected.absent_mask.sum())
             detected.absent_mask[:] = False
+            detected.absent_holdoff_mask[:] = False
             detected.absence_diagnostics["reason_samples"].update(
                 geometry_missing_absence_suppressed=suppressed,
                 tested_absence=0,
@@ -629,6 +661,7 @@ def process_shot(job):
             [(r["start_s"], r["end_s"]) for r in result["uncertain_intervals"]],
             absent=detected.absent_mask,
             q_prior=detected.q_prior_mask,
+            q_prior_contradicted=detected.q_prior_contradicted_mask,
         )
         result.update(
             states=states,
@@ -651,7 +684,11 @@ def process_shot(job):
                 observable=detected.observable,
                 assessed=assessed,
                 absent_evidence=detected.absent_mask,
+                absent_holdoff=detected.absent_holdoff_mask,
                 q_prior=detected.q_prior_mask & ~detected.absent_mask,
+                q_prior_contradicted=(
+                    detected.q_prior_contradicted_mask & ~detected.absent_mask
+                ),
                 core_channels=core.core_channels,
                 outer_channels=core.outer_channels,
                 central_channel=core.info["central_channel"],
@@ -705,7 +742,7 @@ def export_rows(record):
                 if index >= 0 and point["time_s"] < states[index]["end_s"]
                 else "unassessed"
             )
-            if state == "absent_q_prior":
+            if state in Q_PRIOR_STATES:
                 state = "uncertain"
             if state in ("uncertain", "unassessed") and attrs["state"] != state:
                 attrs["candidate_state"] = attrs["state"]
@@ -725,14 +762,14 @@ def export_rows(record):
         )
     if states:
         for span in states:
-            if span["state"] == "absent_q_prior":
+            if span["state"] in Q_PRIOR_STATES:
                 # Prior-only quiet time is exported as uncertain, never absent.
                 yield (
                     span["start_s"],
                     span["end_s"],
                     True,
                     1.0,
-                    {"state": "uncertain", "reason": "q_prior_only"},
+                    {"state": "uncertain", "reason": span["state"]},
                 )
                 continue
             if span["state"] != "present":
@@ -992,6 +1029,8 @@ def labels(args):
             "tested_absence_with_high_q",
             "tested_absence_without_high_q",
             "q_prior_only",
+            "q_prior_ece_contradicted",
+            "q_prior_untested",
             "sustained_high_q",
         )
     }

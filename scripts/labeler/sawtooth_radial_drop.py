@@ -25,6 +25,14 @@ and periodic core edges are used.
 
 Cutoff is a separate question: the fraction of the expert-positive span that is
 observable after the density and ECE-validity guards is reported beside it.
+
+D-alpha coincidence (Minor 2). The fraction of events within +/-1 ms of a
+filterscope D-alpha spike (a sample above the median of the surrounding +/-25 ms
+by 6 robust standard deviations, the rule's own burst z). The chance level is the
+same fraction at the event times shifted by +/-35, 50, 75 and 100 ms. A shot is
+read as marking edge-localized modes when at least half of its events coincide
+with a spike and the fraction is at least twice the chance level. The rule is
+fixed here, before any shot is read.
 """
 
 from __future__ import annotations
@@ -34,10 +42,19 @@ import json
 import warnings
 from pathlib import Path
 
+import h5py
 import numpy as np
 import pandas as pd
 from sawtooth_fix3_artifacts import save_plot, style
-from sawtooth_physics import ECE_GEOMETRY_ARCHIVE, FS, OUTPUT, REVIEW, WORK, save_json
+from sawtooth_physics import (
+    ECE_GEOMETRY_ARCHIVE,
+    FS,
+    OUTPUT,
+    REVIEW,
+    WORK,
+    sampled,
+    save_json,
+)
 
 from labeler.config import Paths
 from labeler.events.panels.ece_geometry import align_q
@@ -53,6 +70,12 @@ CENTRAL_DROP = -0.05
 OUTER_RISE = 0.02
 EDGE_SLOPE_TOLERANCE = 0.02
 EDGE_OUTERMOST = -0.15
+DALPHA_Z = 6.0
+DALPHA_HALF_WINDOW_S = 0.001
+DALPHA_BACKGROUND_S = 0.025
+CHANCE_SHIFTS_S = (-0.1, -0.075, -0.05, -0.035, 0.035, 0.05, 0.075, 0.1)
+ELM_FRACTION = 0.5
+ELM_OVER_CHANCE = 2.0
 OKABE = {"blue": "#0072B2", "orange": "#E69F00", "grey": "#666666", "red": "#D55E00"}
 
 
@@ -212,6 +235,72 @@ def verdict(rho, median):
     return result
 
 
+def dalpha_trace(shot):
+    """Mean of the first eight filterscope channels, as the rule reads D-alpha."""
+    with h5py.File(Paths.from_env().corpus_file(shot), "r", locking=False) as file:
+        if "filterscopes" not in file:
+            return None
+        td, yd = sampled(file["filterscopes"], rows=slice(0, 8))
+    finite = np.isfinite(yd)
+    counts = finite.sum(axis=0)
+    mean = np.divide(
+        np.where(finite, yd, 0).sum(axis=0),
+        counts,
+        out=np.full(len(td), np.nan),
+        where=counts > 0,
+    )
+    return np.asarray(td), mean
+
+
+def spike_within(trace, stamp, z=DALPHA_Z, half=DALPHA_HALF_WINDOW_S):
+    """True when D-alpha near ``stamp`` exceeds its +/-25 ms background by z sigma."""
+    tx, values = trace
+    lo, hi = np.searchsorted(
+        tx, [stamp - DALPHA_BACKGROUND_S, stamp + DALPHA_BACKGROUND_S]
+    )
+    background = values[lo:hi][np.isfinite(values[lo:hi])]
+    a, b = np.searchsorted(tx, [stamp - half, stamp + half])
+    near = values[a:b][np.isfinite(values[a:b])]
+    if len(background) <= 10 or not len(near):
+        return None
+    baseline = np.median(background)
+    scale = 1.4826 * np.median(abs(background - baseline))
+    return bool(np.max(near) > baseline + z * max(scale, 1e-9))
+
+
+def dalpha_coincidence(shot, times):
+    """Fraction of events with a D-alpha spike within +/-1 ms, and the chance level."""
+    trace = dalpha_trace(shot)
+    if trace is None or not len(times):
+        return {"status": "no_filterscope_or_no_events", "events": len(times)}
+
+    def fraction(shift):
+        hits = [spike_within(trace, stamp + shift) for stamp in times]
+        known = [h for h in hits if h is not None]
+        return (sum(known) / len(known) if known else None), len(known)
+
+    observed, evaluated = fraction(0.0)
+    chance = [fraction(shift)[0] for shift in CHANCE_SHIFTS_S]
+    chance = [c for c in chance if c is not None]
+    level = float(np.mean(chance)) if chance else None
+    return {
+        "status": "evaluated",
+        "events": len(times),
+        "events_evaluated": evaluated,
+        "coincident_fraction": observed,
+        "chance_fraction": level,
+        "chance_shifts_s": list(CHANCE_SHIFTS_S),
+        "dalpha_z": DALPHA_Z,
+        "window_s": DALPHA_HALF_WINDOW_S,
+        "marks_elms": bool(
+            observed is not None
+            and level is not None
+            and observed >= ELM_FRACTION
+            and observed >= ELM_OVER_CHANCE * level
+        ),
+    }
+
+
 def span_support(prof, spans):
     """Seconds of the expert-positive span, and how much remains observable."""
     clock, observable = prof["clock"], prof["observable"]
@@ -325,6 +414,7 @@ def main():
         "reference": {
             "shot": REFERENCE_SHOT,
             "events": len(reference["times"]),
+            "dalpha": dalpha_coincidence(REFERENCE_SHOT, reference["times"]),
             **reference_result,
         },
         "shots": {},
@@ -347,6 +437,7 @@ def main():
             "events": len(prof["times"]),
             "event_times_s": prof["times"],
             "support": span_support(prof, spans),
+            "dalpha": dalpha_coincidence(shot, prof["times"]),
             "state_seconds": prof["record"]["state_seconds"],
             "guard_accounting_samples": prof["record"]["absence_diagnostics"].get(
                 "guard_accounting"

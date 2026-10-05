@@ -2,14 +2,14 @@
 #SBATCH --job-name=saw-physics
 #SBATCH --partition=pppl
 #SBATCH --qos=pppl-short-stellar
-#SBATCH --array=0-3%2
+#SBATCH --array=0-3%4
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=24G
 #SBATCH --time=06:00:00
-#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/population_%A_%a.log
-#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix4/population_%A_%a.log
+#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/population_%A_%a.log
+#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/population_%A_%a.log
 
 # Four disjoint resumable population shards, then run
 # labels --population --records-only for the final JSON/CSV export.

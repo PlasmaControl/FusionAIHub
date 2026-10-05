@@ -9,6 +9,8 @@ amplitude against the published bands (85 +/- 5 ms, 0.35 +/- 0.02).
 
 A second rule row switches only the ECE-validity test off. It is a diagnostic
 of why the frozen rule abstains, not a rule: nothing here tunes the frozen rule.
+Every reference crash is also attributed to the gate that turned it down (or to
+the train test that dropped an edge the gates accepted), for both rows.
 """
 
 from __future__ import annotations
@@ -107,6 +109,37 @@ def agreement(times, others, span):
     return {"unconfirmed_picks_s": unconfirmed, "unpicked_reference_s": missed}
 
 
+def gate_attribution(found, picker, windows=WINDOWS, tolerance=MATCH_S):
+    """The gate that decided each reference crash inside the published windows.
+
+    A crash is ``found`` when the rule reports a crash within the tolerance. When
+    it is not, the nearest candidate edge cluster either passed every gate but
+    was not part of a stable train (``train_test``), or was turned down by the
+    named gate, or no two-channel edge cluster exists there (``no_edge_cluster``).
+    """
+    crashes = np.asarray([e.t0_s for e in found.crashes], dtype=float)
+    accepted = np.asarray(found.accepted_times_s or [], dtype=float)
+    events = found.rejected_events or []
+    rows = []
+    for time in np.asarray(picker, dtype=float):
+        if not any(left <= time <= right for left, right in windows):
+            continue
+        near = [gate for stamp, gate in events if abs(stamp - time) <= tolerance]
+        if len(crashes) and np.min(abs(crashes - time)) <= tolerance:
+            gate = "found"
+        elif len(accepted) and np.min(abs(accepted - time)) <= tolerance:
+            gate = "train_test"
+        elif near:
+            gate = near[0]
+        else:
+            gate = "no_edge_cluster"
+        rows.append({"time_s": float(time), "gate": gate, "gates_nearby": near})
+    counts = {}
+    for row in rows:
+        counts[row["gate"]] = counts.get(row["gate"], 0) + 1
+    return {"crashes": rows, "counts": counts}
+
+
 def run_rule(shot, clock, values, rule, work):
     padded = np.full((48, len(clock)), np.nan, dtype=np.float32)
     padded[:40] = values
@@ -153,6 +186,9 @@ def states_summary(found, clock):
         "observable_s": float(found.observable.sum() * dt),
         "absent_s": float(found.absent_mask.sum() * dt),
         "q_prior_only_s": float((found.q_prior_mask & ~found.absent_mask).sum() * dt),
+        "q_prior_ece_contradicted_s": float(
+            (found.q_prior_contradicted_mask & ~found.absent_mask).sum() * dt
+        ),
         "present_train_spans_s": [
             [float(e.t0_s), float(e.t1_s)] for e in found.intervals
         ],
@@ -226,6 +262,8 @@ def main():
                 "ece_validity": found.absence_diagnostics["ece_validity"],
                 "guard_accounting": found.absence_diagnostics["guard_accounting"],
                 "central_channel": core.info["central_channel"],
+                "rejected_by_gate": found.rejected,
+                "reference_crash_gates": gate_attribution(found, picker),
                 "crash_states": {
                     state: sum(e.attrs["state"] == state for e in found.crashes)
                     for state in ("present", "uncertain")

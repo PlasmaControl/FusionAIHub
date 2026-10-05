@@ -31,6 +31,17 @@ GREEN = "#009E73"
 ORANGE = "#E69F00"
 GRAY = "#999999"
 PURPLE = "#CC79A7"
+SKY = "#56B4E9"
+# colour, legend label, hatch, shading alpha for every label state; the tested
+# absence is a visible fill (a white fill cannot be seen on a white axis).
+STATE_STYLE = {
+    "present": (GREEN, "Present", None, 0.12),
+    "absent": (SKY, "Absent (ECE-tested)", None, 0.25),
+    "q_prior_ece_contradicted": (PURPLE, "q-prior, ECE-contradicted", None, 0.12),
+    "q_prior_untested": (PURPLE, "q-prior, untested", "////", 0.5),
+    "uncertain": (ORANGE, "Uncertain", None, 0.12),
+    "unassessed": (GRAY, "Unassessed", None, 0.12),
+}
 ORIGINAL_GALLERY_SHOTS = [
     186532,
     196405,
@@ -74,15 +85,22 @@ def state_spans(record):
 
 
 def shade_states(axis, t, observable, record):
-    colors = {
-        "present": GREEN,
-        "uncertain": ORANGE,
-        "unassessed": GRAY,
-        "absent_q_prior": PURPLE,
-    }
     for lo, hi, state in state_spans(record):
-        if state in colors:
-            axis.axvspan(lo * 1000, hi * 1000, color=colors[state], alpha=0.12, lw=0)
+        if state not in STATE_STYLE:
+            continue
+        color, _, hatch, alpha = STATE_STYLE[state]
+        if hatch:
+            axis.axvspan(
+                lo * 1000,
+                hi * 1000,
+                facecolor="none",
+                edgecolor=color,
+                hatch=hatch,
+                alpha=alpha,
+                lw=0,
+            )
+        else:
+            axis.axvspan(lo * 1000, hi * 1000, color=color, alpha=alpha, lw=0)
     dt = np.median(np.diff(t))
     for start, stop in runs(~observable):
         axis.axvspan(
@@ -141,16 +159,16 @@ def state_legend(record, window=None):
         for lo, hi, state in state_spans(record)
         if window is None or (lo < window[1] and hi > window[0])
     }
-    for state, color, label in (
-        ("present", GREEN, "Present"),
-        ("absent", "#FFFFFF", "Absent (ECE-tested)"),
-        ("absent_q_prior", PURPLE, "Q-prior only"),
-        ("uncertain", ORANGE, "Uncertain"),
-        ("unassessed", GRAY, "Unassessed"),
-    ):
+    for state, (color, label, hatch, _) in STATE_STYLE.items():
         if state in shown:
             handles.append(
-                Patch(facecolor=color, edgecolor="0.7", alpha=0.25, label=label)
+                Patch(
+                    facecolor="none" if hatch else color,
+                    edgecolor=color if hatch else "0.7",
+                    hatch=hatch,
+                    alpha=0.6 if hatch else 0.25,
+                    label=label,
+                )
             )
     return handles
 
@@ -526,12 +544,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--work", type=Path, default=WORK)
     parser.add_argument(
-        "--output", type=Path, default=REPO / "outputs/labeler/sawtooth/fix4"
+        "--output", type=Path, default=REPO / "outputs/labeler/sawtooth/fix5"
     )
     parser.add_argument(
         "--selection",
         type=Path,
-        default=REPO / "outputs/labeler/sawtooth/fix4/gallery.json",
+        default=REPO / "outputs/labeler/sawtooth/fix5/gallery.json",
     )
     parser.add_argument(
         "--confirm-inspection",

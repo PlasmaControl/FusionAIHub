@@ -26,6 +26,7 @@ from labeler.sawtooth.physics import DEFAULT_RULE
 from labeler.sawtooth.preprocessing import STATES
 
 OBSERVED_STATES = tuple(state for state in STATES if state != "unassessed")
+Q_PRIOR_STATES = ("q_prior_ece_contradicted", "q_prior_untested")
 
 
 def distribution(values, *, distance=False):
@@ -54,6 +55,7 @@ def state_totals(records):
         for state in STATES
     }
     observable = sum(seconds[s] for s in OBSERVED_STATES)
+    q_prior = sum(seconds[s] for s in Q_PRIOR_STATES)
     return {
         "state_seconds": seconds,
         "observable_seconds": observable,
@@ -67,8 +69,8 @@ def state_totals(records):
             else None
         ),
         "q_prior_only_fraction_of_absent_class": (
-            seconds["absent_q_prior"] / (seconds["absent"] + seconds["absent_q_prior"])
-            if seconds["absent"] + seconds["absent_q_prior"]
+            q_prior / (seconds["absent"] + q_prior)
+            if seconds["absent"] + q_prior
             else None
         ),
         "processed_count": sum("error" not in r for r in records),
@@ -108,8 +110,22 @@ def guard_totals(records):
         for a in accounts
         if a.get("core_observable_samples")
     ]
+    statuses = Counter(
+        r.get("density_guard", {}).get("status", "density_unavailable") for r in used
+    )
+    cutoff_fields = Counter(
+        r.get("density_guard", {}).get("cutoff_field", "none") for r in used
+    )
+    dead = [
+        r["absence_diagnostics"].get("ece_validity", {}).get("dead_channels", [])
+        for r in used
+    ]
     return {
         "unit": "seconds of core-observable time",
+        "records_by_density_guard_status": dict(sorted(statuses.items())),
+        "records_by_cutoff_field": dict(sorted(cutoff_fields.items())),
+        "records_with_dead_channels": sum(bool(d) for d in dead),
+        "dead_channels_total": sum(len(d) for d in dead),
         "seconds": {key: value / FS for key, value in totals.items()},
         "fraction_of_core_observable": {
             key: (value / core if core else None) for key, value in totals.items()
@@ -142,10 +158,14 @@ def absent_composition(records):
         "tested_absence_s": sum(x["absent"] for x in states),
         "tested_absence_with_high_q_s": seconds("tested_absence_with_high_q"),
         "tested_absence_without_high_q_s": seconds("tested_absence_without_high_q"),
-        "q_prior_only_s": sum(x["absent_q_prior"] for x in states),
+        "q_prior_only_s": sum(x[k] for x in states for k in Q_PRIOR_STATES),
+        "q_prior_ece_contradicted_s": sum(x["q_prior_ece_contradicted"] for x in states),
+        "q_prior_untested_s": sum(x["q_prior_untested"] for x in states),
         "sustained_high_q_s": seconds("sustained_high_q"),
         "shots_with_tested_absence": sum(x["absent"] > 0 for x in states),
-        "shots_with_q_prior_only": sum(x["absent_q_prior"] > 0 for x in states),
+        "shots_with_q_prior_only": sum(
+            sum(x[k] for k in Q_PRIOR_STATES) > 0 for x in states
+        ),
         "shots": len(used),
     }
 
@@ -322,10 +342,10 @@ def records(args):
                 f"{np.quantile(prior_q, 0.95):.2f}. "
                 "A prescribed 1.4 conflict threshold leaves this bias band unresolved "
                 "by the equilibrium. High q is no longer sufficient for absence: "
-                "sustained q_min >= 1.5 supplies only the q-prior state "
-                "absent_q_prior, which is uncertain on export and supplies no "
-                "benchmark negative. Thresholds are not fitted to expert or test "
-                "results."
+                "sustained q_min >= 1.5 supplies only the q-prior states "
+                "q_prior_ece_contradicted and q_prior_untested, which are uncertain "
+                "on export and supply no benchmark negative. Thresholds are not "
+                "fitted to expert or test results."
             ),
             "shot_186532": {
                 "state_seconds": shot186532.get("state_seconds"),
@@ -406,6 +426,7 @@ def verification(args):
             "test_sawtooth_benchmark.py",
             "test_sawtooth_classification.py",
             "test_sawtooth_masked_metrics.py",
+            "test_sawtooth_edge_context.py",
         ],
         "ruff": "all changed Python files passed",
         "format": "all new Python files passed",

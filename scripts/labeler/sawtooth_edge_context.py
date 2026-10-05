@@ -125,7 +125,7 @@ def edges_near(t, edges, absent, reach_s):
 
 
 def choose_context(rows, minimum_retained=MINIMUM_RETAINED):
-    """Longest candidate keeping at least ``minimum_retained`` of the shortest's time."""
+    """Longest candidate keeping ``minimum_retained`` of the shortest one's time."""
     rows = sorted(rows, key=lambda row: row["context_ms"])
     base = rows[0]["tested_absent_s"]
     for row in rows:

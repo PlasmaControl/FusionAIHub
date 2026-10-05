@@ -120,7 +120,13 @@ def main():
         r["state_seconds"][s]
         for r in records
         if "error" not in r
-        for s in ("present", "absent", "absent_q_prior", "uncertain")
+        for s in (
+            "present",
+            "absent",
+            "q_prior_ece_contradicted",
+            "q_prior_untested",
+            "uncertain",
+        )
     )
     example = [item for item in listing if item["shot"] == args.example]
     example_record = next((r for r in records if r["shot"] == args.example), None)
