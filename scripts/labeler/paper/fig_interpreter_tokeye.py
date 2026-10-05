@@ -2,21 +2,22 @@ r"""fig_interpreter (the teaser): raw signals -> TokEye-processed -> labelled.
 
     PYTHONPATH=src pixi run --frozen -e labelmaker \
         python scripts/labeler/paper/fig_interpreter_tokeye.py \
-        [--shot 201978] [--tmin MS --tmax MS] [--out DIR]
+        [--shot 199563] [--tmin MS --tmax MS] [--out DIR]
 
 One non-blind cohort shot over a few seconds, in three groups on one time axis:
 
-- **raw**: the Mirnov probe's spectrogram (MPI66M322D, 0-250 kHz, split at
-  `FOLD_KHZ`: the zoom pass below, the wide pass above), D-alpha and NBI power;
+- **raw**: the Mirnov probe's spectrogram (MPI66M322D, the wide pass) on one
+  linear 0-250 kHz axis, one colour scale, D-alpha and NBI power;
 - **processed**: the same spectrogram through TokEye (the network's mode mask,
   `labeler.paper.mode_tags`: transient burst removed, pickup removed,
   `skimage.morphology.remove_small_objects` and small-hole filling, connected
-  components), the toroidal-n view (the review page's n map, gated by the same
-  mask) in place of the 0-30 kHz band. Highlights intersect PRESENT label
+  components) on the same linear axis (the zoom pass below `ZOOM_TOP_KHZ`, the
+  wide pass above), the toroidal-n view (the review page's n map, gated by the
+  same mask) in the mask below 30 kHz. Highlights intersect PRESENT label
   times with AE >=60 kHz or NTM <=30 kHz; NTM requires dominant and pixel n=1 or 2.
   Optional ECE-supported, ELM-vetoed crash candidates appear on a thin strip. D-alpha
   carries the ELM label's span and the D-alpha peaks in
-  it, and the confinement regimes shade it;
+  it, and the confinement classes shade it;
 - **labels**: one track per event on the shot's time axis, from the best tier
   that holds the shot (`labeler.paper.label_figure.TRACKS`): present, absent or
   blank (unassessed / unobservable).
@@ -29,9 +30,10 @@ the repo keeps it. A tag says that a mode and a label coincide in time and band,
 not that the mode is that event.
 
 CONFINEMENT_RUN_DIR defaults to runs/labeler/confinement/v1 in the checkout
-containing LABELER_LABEL_TABLES. Missing required curated/fallback tables are
-errors. Curated four-class regimes win; otherwise the D-alpha L-H table is
-used, never the H-mode frame model. --sawtooth-source accepts read-only physics
+containing LABELER_LABEL_TABLES. Missing required curated/roster/fallback tables
+are errors. The confinement row is the saved four-class review, else the curated
+regimes, else the released confine-ours roster, else the D-alpha L-H table, never
+the H-mode frame model. --sawtooth-source accepts read-only physics
 JSONs, a JSON directory or cohort CSV shards; --sawtooth-evidence supplies full
 JSON evidence for the reduced cohort CSV schema. Expert sawtooth intervals take
 precedence over physics states; candidate ticks use separate physics evidence.
@@ -73,7 +75,7 @@ from labeler.paper import PAGE_IN, figure_sources, mode_tags, roster, style
 from labeler.paper import label_figure as lf
 
 STEM = "fig_interpreter"
-HEIGHT_IN = 5.5
+HEIGHT_IN = 5.6
 DPI_PNG = 150
 DPI_PDF = 300
 #: The window's margin the TokEye cache keeps beyond the figure's, ms.
@@ -83,16 +85,21 @@ CACHE_MARGIN_MS = 100.0
 PRESETS = {
     186636: (1300.0, 3900.0),
     201973: (1600.0, 3350.0),
+    199563: (700.0, 5800.0),
     201978: (1500.0, 3300.0),
     203187: (1700.0, 3150.0),
 }
-#: The spectrogram is folded here, at the AE/NTM split: below it the zoom pass
-#: (0.12 kHz/bin; its decimation filter rolls off from about 50 kHz, Nyquist
-#: 62.5 kHz), above it the wide pass (0.49 kHz/bin, to 250 kHz).
-FOLD_KHZ = 60.0
-#: The zoom pass is drawn up to here; its top few kHz are the decimation filter's
-#: roll-off (a dark strip), so the wide pass fills the rest of the 30-60 panel.
+#: The AE/NTM split (mode_tags.SPLIT_KHZ): AE is tinted at and above it, NTM and
+#: sawtooth below it. The frequency axis itself is linear and unbroken.
+SPLIT_KHZ = mode_tags.SPLIT_KHZ
+#: The tag analysis reads the zoom pass (0.12 kHz/bin; its decimation filter rolls
+#: off from about 50 kHz, Nyquist 62.5 kHz) below `SPLIT_KHZ`, the wide pass
+#: (0.49 kHz/bin, to 250 kHz) above it.
+#: The mask is drawn from the zoom pass up to here; its top few kHz are the
+#: decimation filter's roll-off (a dark strip), so the wide pass fills the rest.
 ZOOM_TOP_KHZ = 50.0
+#: Both spectrograms: one linear axis, these ticks.
+FREQ_TICKS_KHZ = [0, 50, 100, 150, 200, 250]
 TOP_KHZ = 250.0
 N_VIEW_KHZ = 30.0  # the n map's band
 #: The columns an image is pooled to for the page (a 3 s wide pass has 12,000).
@@ -116,8 +123,16 @@ EVENT_NAMES = {
     "edge_localized_mode": "ELMs",
 }
 TIER_NAMES = {lf.SILVER: "expert", lf.LEGACY: "imported", lf.GENERATED: "detector"}
-#: The confinement regimes, in grey: darker is better confined.
-REGIME_GREYS = {1: "#2e2e2e", 2: "#bcbcbc", 3: "#5c5c5c", 4: "#8c8c8c", 5: "#d8d8d8"}
+#: The confinement classes' colours, as the paper's other figures draw them; class 5
+#: (uncertain) is hatched, never coloured.
+CLASS_COLOURS = {
+    1: lf.COLOURS["H-mode"],
+    2: lf.COLOURS["L-mode"],
+    3: lf.COLOURS["QH-mode"],
+    4: lf.COLOURS["WPQH-mode"],
+}
+#: Legend order and compact names of the classes (L, H, QH, WPQH).
+CLASS_LEGEND = {2: "L", 1: "H", 3: "QH", 4: "WPQH"}
 ABSENT_GREY = "#e4e4e4"
 NTM_CONTOUR_COLOUR = EVENT_COLOURS[mode_tags.NTM]
 NTM_CONTOUR_LW = 0.9
@@ -370,7 +385,7 @@ class Band:
     def blobs(self, spans: dict, n_read=None) -> list[mode_tags.Blob]:
         """The blobs of this band's mask, tagged by `spans`' events."""
         found = mode_tags.blobs(self.lit_full, self.t, self.all_f)
-        # Keep whole components for dominant-n evidence across the display fold.
+        # Keep whole components for dominant-n evidence across the 60 kHz AE/NTM split.
         found = [b for b in found if (self.rows[b.component.rows]).any()]
         n = None
         if n_read is not None:
@@ -470,7 +485,7 @@ def display_support(ax, band, mask):
     """`mask` max-pooled to the print pixels of `ax` (so narrow ridges survive),
     holes filled, with the pooling indices, the labelled regions and their sizes."""
     pos = ax.get_position()
-    # The processed panel displays only 0–30 of the zoom band's 0–60 kHz.
+    # The band's share of the panel's linear frequency axis.
     visible_share = (band.f[-1] - band.f[0]) / np.diff(ax.get_ylim())[0]
     nf = min(
         len(band.f), max(1, round(pos.height * HEIGHT_IN * DPI_PNG * visible_share))
@@ -601,23 +616,6 @@ def clear_of(fixed, moved: list) -> None:
             text.set_x(inv.transform((box.x1, box.y0))[0] + 15.0)
 
 
-def leader(ax, text, xy, y=0.15):
-    """Text in the empty right margin, joined by a neutral leader."""
-    return ax.annotate(
-        text,
-        xy=xy,
-        xytext=(1.02, y),
-        textcoords="axes fraction",
-        fontsize=FONT,
-        color=INK,
-        ha="left",
-        va="center",
-        arrowprops={"arrowstyle": "->", "color": "#999999", "lw": 0.5},
-        zorder=9,
-        annotation_clip=False,
-    )
-
-
 def trace(ax, read, colour=INK, lw=0.5):
     low, high = read.values
     for c in range(len(low)):
@@ -652,7 +650,7 @@ def track_bars(ax, track: lf.Track, colour: str, regimes=None, bar=BAR) -> None:
             continue
         if regimes is not None:
             face = regimes.get(r.category, "#888888")
-            hatch = "////" if r.category == 5 else None
+            hatch = "//////" if r.category == 5 else None
         else:
             face = colour
             hatch = None
@@ -682,39 +680,19 @@ def track_bars(ax, track: lf.Track, colour: str, regimes=None, bar=BAR) -> None:
             )
 
 
-def draw_frequency_panels(ax, low: Band, high: Band, strip: Band) -> None:
-    """Matching frequency scales with marked magnification changes at 30/60 kHz."""
-    for prefix in ("raw", "pr"):
-        hi, mid, lo = (f"{prefix}_{part}" for part in ("hi", "mid", "lo"))
-        for name, limits, ticks in (
-            (hi, (FOLD_KHZ, TOP_KHZ), [100, 150, 200, 250]),
-            (mid, (N_VIEW_KHZ, FOLD_KHZ), [40, 60]),
-            (lo, (0, N_VIEW_KHZ), [0, 10, 20, 30]),
-        ):
-            ax[name].set_ylim(*limits)
-            ax[name].set_yticks(ticks)
-            ax[name].tick_params(bottom=False)
-        ax[hi].set_ylabel("kHz", labelpad=2)
-        ax[lo].set_ylabel("kHz", labelpad=2)
-        ax[hi].spines["bottom"].set_visible(False)
-        ax[mid].spines["bottom"].set_visible(False)
-        # Both seams change vertical magnification and carry matching glyphs.
-        for x in (0, 1):
-            for panel, y in ((hi, 0), (mid, 1), (mid, 0), (lo, 1)):
-                ax[panel].plot(
-                    [x - 0.007, x + 0.007],
-                    [y - 0.035, y + 0.035],
-                    transform=ax[panel].transAxes,
-                    color=INK,
-                    lw=0.7,
-                    clip_on=False,
-                    zorder=10,
-                )
-        painter = draw_raw if prefix == "raw" else draw_processed
-        painter(ax[hi], high)
-        painter(ax[mid], low)
-        painter(ax[mid], strip)  # 50-60 kHz from the wide pass, clear of the roll-off
-        painter(ax[lo], low)
+def draw_frequency_panels(ax, raw: Band, zoom: Band, top: Band) -> None:
+    """The raw spectrogram and the TokEye mask, each on one linear 0-250 kHz axis.
+
+    The raw panel is the wide pass alone on one colour scale. The mask panel takes
+    the zoom pass below `ZOOM_TOP_KHZ` and the wide pass above it (`top`, drawn
+    over the zoom pass's decimation roll-off); no axis break or stretching."""
+    for name in ("raw", "pr"):
+        ax[name].set_ylim(0, TOP_KHZ)
+        ax[name].set_yticks(FREQ_TICKS_KHZ)
+        ax[name].set_ylabel("kHz", labelpad=2)
+    draw_raw(ax["raw"], raw)
+    draw_processed(ax["pr"], zoom)
+    draw_processed(ax["pr"], top)
 
 
 def draw_legends(
@@ -727,8 +705,6 @@ def draw_legends(
     n_handles,
     visible,
     peaks,
-    shown,
-    regime_names,
     t0,
     t1,
     ntm_dashed=False,
@@ -788,7 +764,7 @@ def draw_legends(
             for h in event_handles
         ],
         handler_map={tuple: HandlerTuple(ndivide=1)},
-        bbox_to_anchor=(0.792, pos.y1 - 0.025),
+        bbox_to_anchor=(0.792, pos.y1 - 0.012),
         **legend_options,
     )
     if n_handles:
@@ -796,9 +772,10 @@ def draw_legends(
             handles=n_handles,
             title="toroidal mode number n\n(Mirnov array)",
             title_fontsize=FONT,
-            bbox_to_anchor=(0.792, ax["pr_lo"].get_position().y1 - 0.016),
+            bbox_to_anchor=(0.792, ax["pr"].get_position().y0),
             **{
                 **legend_options,
+                "loc": "lower left",
                 "ncols": 2,
                 "columnspacing": 0.4,
                 "handlelength": 0.7,
@@ -816,15 +793,6 @@ def draw_legends(
         fig.legend(
             handles=elm_handles,
             bbox_to_anchor=(0.792, da.get_position().y1),
-            **legend_options,
-        )
-    if by_key["confinement"].spec.title == "regime" and shown:
-        fig.legend(
-            handles=[
-                Patch(fc=REGIME_GREYS[c], lw=0, label=regime_names[c])
-                for c in sorted(shown)
-            ],
-            bbox_to_anchor=(0.792, ax["raw_lo"].get_position().y1 - 0.05),
             **legend_options,
         )
 
@@ -860,13 +828,26 @@ def draw_legends(
     if has_blank:
         handles.append(Patch(fc="white", ec="#999999", lw=0.5))
         display_keys.append("blank")
+    labels = [
+        "blank: unassessed / unobservable" if k == "blank" else k for k in display_keys
+    ]
+    # The confinement row's class colours, only those the row draws in the window.
+    drawn_classes = {
+        r.category
+        for r in by_key["confinement"].rows
+        if r.category in CLASS_LEGEND and r.t_end > t0 and r.t_start < t1
+    }
+    for c, name in CLASS_LEGEND.items():
+        if c in drawn_classes:
+            handles.append(Patch(fc=CLASS_COLOURS[c], lw=0))
+            labels.append(name)
     fig.legend(
         handles,
-        ["blank: unassessed / unobservable" if k == "blank" else k
-         for k in display_keys],
+        labels,
         handler_map={tuple: HandlerTuple(ndivide=None, pad=0)},
         loc="lower center", ncols=len(handles), frameon=False, fontsize=FONT,
-        bbox_to_anchor=(0.5, 0.0), columnspacing=1.2, handlelength=2.5,
+        bbox_to_anchor=(0.5, 0.0), columnspacing=1.0, handlelength=1.8,
+        handletextpad=0.5,
     )  # fmt: skip
     expert_crowd = (
         by_key[elm_key].source is not None
@@ -972,10 +953,12 @@ def draw(
         if t.spec.key != mode_tags.SAWTOOTH or show_sawtooth
     )
 
-    low = Band(z, "zoom", 0.0, FOLD_KHZ, t0, t1)
-    high = Band(z, "wide", FOLD_KHZ, TOP_KHZ + 1, t0, t1)
-    strip = Band(z, "wide", ZOOM_TOP_KHZ, FOLD_KHZ, t0, t1)
-    strip.edges = (ZOOM_TOP_KHZ, FOLD_KHZ)
+    low = Band(z, "zoom", 0.0, SPLIT_KHZ, t0, t1)
+    high = Band(z, "wide", SPLIT_KHZ, TOP_KHZ + 1, t0, t1)
+    # What is drawn: the wide pass on one colour scale over 0-250 kHz, and the mask
+    # from the zoom pass below ZOOM_TOP_KHZ and the wide pass above it.
+    raw_view = Band(z, "wide", 0.0, TOP_KHZ + 1, t0, t1)
+    mask_top = Band(z, "wide", ZOOM_TOP_KHZ, TOP_KHZ + 1, t0, t1)
     spans = {e: present_spans(by_key[e]) for e in (mode_tags.AE, mode_tags.NTM)}
     n_original = n_sig.rows[0] if n_sig.rows else None
     blobs_low = low.blobs(spans, n_original)
@@ -1016,12 +999,12 @@ def draw(
     n_read, n_kept = roster.gated(n_sig.rows[0], gate) if n_sig.rows else (None, None)
 
     layout = {
-        "h_raw": 0.32, "raw_hi": 1.12, "raw_mid": 0.78, "raw_lo": 1.35,
+        "h_raw": 0.32, "raw": 3.6,
         "g1": 0.1, "da_raw": 0.38,
         "g2": 0.2, "nbi": 0.38, "h_proc": 0.52,
-        "pr_hi": 1.12, "pr_mid": 0.78, "pr_lo": 1.35,
+        "pr": 3.6,
         "crashes": 0.24 if len(crashes) else 0.001,
-        "g3": 0.1, "da_pr": 0.52, "h_lab": 0.36,
+        "g3": 0.1, "da_pr": 0.55, "h_lab": 0.36,
     }  # fmt: skip
     names = [*layout, *[f"track{i}" for i in range(len(display_tracks))]]
     heights = [
@@ -1038,21 +1021,17 @@ def draw(
             left=0.14,
             right=0.78,
             top=0.985,
-            bottom=0.12,
+            bottom=0.095,
         )
         ax = {n: fig.add_subplot(gs[i]) for i, n in enumerate(names)}
         for n in ("h_raw", "g1", "g2", "h_proc", "g3", "h_lab"):
             ax[n].set_visible(False)
         track_axes = [ax[f"track{i}"] for i in range(len(display_tracks))]
         for n in (
-            "raw_hi",
-            "raw_mid",
-            "raw_lo",
+            "raw",
             "da_raw",
             "nbi",
-            "pr_hi",
-            "pr_mid",
-            "pr_lo",
+            "pr",
             "da_pr",
             "crashes",
         ):
@@ -1063,23 +1042,16 @@ def draw(
             style_axes(a)
 
         # ---- raw
-        draw_frequency_panels(ax, low, high, strip)
-        ax["raw_hi"].text(
+        draw_frequency_panels(ax, raw_view, low, mask_top)
+        ax["raw"].text(
             1.02,
-            0.85,
+            0.97,
             "Mirnov\nmagnetics",
-            transform=ax["raw_hi"].transAxes,
+            transform=ax["raw"].transAxes,
             fontsize=FONT,
             ha="left",
             va="top",
             color=INK,
-        )
-        scale_note = leader(
-            ax["raw_mid"],
-            "0–50 kHz: higher-\nresolution spectrogram;\n"
-            "0–30 stretched,\n30–60 compressed",
-            (t1, 45),
-            y=0.75,
         )
         if da_sig.rows:
             trace(ax["da_raw"], da_sig.rows[0])
@@ -1100,20 +1072,20 @@ def draw(
         keys = []
         if n_read is not None:
             names = n_read.meta["modes"]["n"]
-            keys = [f"n={names[i]}" for i in draw_n_view(ax["pr_lo"], n_read)]
+            keys = [f"n={names[i]}" for i in draw_n_view(ax["pr"], n_read)]
         n_handles = n_key(n_read) if n_read is not None else []
         rendered_ntm = {}
         ntm_outline_regions = {}
-        for panel, band in (("pr_hi", high), ("pr_lo", low)):
+        for band in (high, low):
             project(
-                ax[panel],
+                ax["pr"],
                 band,
                 projected[band.name][mode_tags.AE],
                 mode_tags.AE,
                 spans[mode_tags.AE],
             )
             rendered_ntm[band.name] = project(
-                ax[panel],
+                ax["pr"],
                 band,
                 projected[band.name][mode_tags.NTM],
                 mode_tags.NTM,
@@ -1256,7 +1228,11 @@ def draw(
             label = regime_names.get(category)
             # The L-H detector's pre-transition interval is explicitly a low
             # confinement cue; retain its binary H-mode categories in the track.
-            if by_key["confinement"].spec.title == "H-mode" and category == ABSENT:
+            if (
+                by_key["confinement"].spec.title
+                == figure_sources.BINARY_CONFINEMENT_TITLE
+                and category == ABSENT
+            ):
                 later_h = any(
                     h.category == PRESENT and h.t_start >= r.t_end - 1e-6
                     for h in by_key["confinement"].rows
@@ -1266,13 +1242,13 @@ def draw(
                     label = "L (inferred)"
                     lmode_inferred |= r.t_end > t0 and r.t_start < t1
             if category in regime_names:
-                da.axvspan(r.t_start, r.t_end, color=REGIME_GREYS[category],
+                da.axvspan(r.t_start, r.t_end, color=CLASS_COLOURS[category],
                            alpha=0.2, lw=0, zorder=0)  # fmt: skip
                 if r.t_end > t0 and r.t_start < t1:
                     shown.add(category)
                     a, b = max(r.t_start, t0), min(r.t_end, t1)
                     regime_regions.setdefault(category, []).append((a, b, label))
-        for regions in regime_regions.values():
+        for category, regions in regime_regions.items():
             # Adjacent source rows shade one continuous region; merge only
             # their label-placement bounds, preserving all original rows.
             continuous = []
@@ -1291,8 +1267,14 @@ def draw(
             region_width = (
                 da.transData.transform((b, 0))[0] - (da.transData.transform((a, 0))[0])
             )
-            if text.get_window_extent().width + 4 * fig.dpi / 72 > region_width:
+            pad_px = 4 * fig.dpi / 72
+            if text.get_window_extent().width + pad_px > region_width:
                 text.set_text(label.replace(" (inferred)", "\ninferred"))
+            if (
+                text.get_window_extent().width + pad_px > region_width
+                and category in CLASS_LEGEND
+            ):
+                text.set_text(CLASS_LEGEND[category])  # the class's short name
             regime_texts.append((text, a, b))
             if elm_chip is not None:
                 clear_of(text, [elm_chip])
@@ -1306,9 +1288,11 @@ def draw(
         for a, track in zip(track_axes, display_tracks, strict=True):
             key = track.spec.key
             track_bars(a, track, EVENT_COLOURS.get(key, "#888888"),
-                       REGIME_GREYS if key == "confinement" else None)  # fmt: skip
+                       CLASS_COLOURS if key == "confinement" else None)  # fmt: skip
             a.set_ylabel(titles[key], rotation=0, ha="right", va="center", labelpad=3)
             tier = "" if track.source is None else TIER_NAMES[track.source.tier]
+            if key == "confinement" and track.source is not None:
+                tier = figure_sources.confinement_row_source(track, (t0, t1)) or tier
             if key == mode_tags.NTM and tier == "detector":
                 tier = "detector (suggestions)"
             if (
@@ -1355,8 +1339,6 @@ def draw(
             n_handles,
             visible,
             peaks,
-            shown,
-            regime_names,
             t0,
             t1,
             ntm_dashed=any(
@@ -1373,7 +1355,7 @@ def draw(
                 for text in key.texts
                 if text.get_text().startswith("AE (detector-positive")
             )
-            ae_chip = ax["pr_hi"].text(
+            ae_chip = ax["pr"].text(
                 ae_annotation["time_ms"],
                 ae_annotation["frequency_khz"],
                 "AE",
@@ -1399,15 +1381,21 @@ def draw(
             None,
         )
         layout_record = {
-            "n_panel_height_units": layout["pr_lo"],
-            "n_panel_height_in": ax["pr_lo"].get_position().height * HEIGHT_IN,
-            "n_panel_band_khz": list(ax["pr_lo"].get_ylim()),
-            "scale_note": scale_note.get_text(),
-            "processed_omitted_band_khz": [],
-            "processed_restored_strip_khz": [N_VIEW_KHZ, FOLD_KHZ],
-            "frequency_scale_breaks_khz": [N_VIEW_KHZ, FOLD_KHZ],
-            "zoom_pass_top_khz": ZOOM_TOP_KHZ,
-            "wide_pass_strip_khz": [ZOOM_TOP_KHZ, FOLD_KHZ],
+            "frequency_axis": {
+                "scale": "linear",
+                "band_khz": list(ax["pr"].get_ylim()),
+                "scale_breaks_khz": [],
+                "ticks_khz": ax["pr"].get_yticks().tolist(),
+                "raw_spectrogram": "wide pass, one colour scale, 0-250 kHz",
+                "mask_zoom_pass_khz": [0.0, ZOOM_TOP_KHZ],
+                "mask_wide_pass_khz": [ZOOM_TOP_KHZ, TOP_KHZ],
+                "ae_ntm_split_khz": SPLIT_KHZ,
+                "n_view_top_khz": N_VIEW_KHZ,
+            },
+            "n_view_height_in": ax["pr"].get_position().height
+            * HEIGHT_IN
+            * N_VIEW_KHZ
+            / TOP_KHZ,
             "ece_candidate_key_placement": "in strip" if len(crashes) else None,
             "frequency_panels": {
                 name: {
@@ -1416,9 +1404,9 @@ def draw(
                     "bounds": list(ax[name].get_position().extents),
                     "ticks_khz": ax[name].get_yticks().tolist(),
                 }
-                for name in ("raw_hi", "raw_mid", "raw_lo", "pr_hi", "pr_mid", "pr_lo")
+                for name in ("raw", "pr")
             },
-            "lower_frequency_tick_bounds": {
+            "frequency_tick_bounds": {
                 prefix: [
                     {
                         "text": text.get_text(),
@@ -1428,8 +1416,7 @@ def draw(
                             .extents
                         ),
                     }
-                    for part in ("lo", "mid")
-                    for text in ax[f"{prefix}_{part}"].get_yticklabels()
+                    for text in ax[prefix].get_yticklabels()
                 ]
                 for prefix in ("raw", "pr")
             },
@@ -1528,7 +1515,6 @@ def draw(
                 }
                 for text in [
                     *fig.texts,
-                    scale_note,
                     *[text for key in fig.legends for text in key.texts],
                     *[
                         key.get_title()
@@ -1578,8 +1564,8 @@ def draw(
         "figure": [str(p) for p in paths_out],
         "figure_sha256": {str(p): sha256_of(p) for p in paths_out},
         "blobs": {
-            "wide_above_fold": len(blobs_high),
-            "zoom_below_fold": len(blobs_low),
+            "wide_above_split": len(blobs_high),
+            "zoom_below_split": len(blobs_low),
             "tagged": tags_count,
             "untagged": sum(not b.tags for b in blobs_high + blobs_low),
         },
@@ -1593,10 +1579,17 @@ def draw(
             [max(a, r.t_start, t0), min(b, r.t_end, t1)]
             for a, b in elm_spans
             for r in by_key["confinement"].rows
-            if by_key["confinement"].spec.title == "H-mode"
+            if by_key["confinement"].spec.title
+            == figure_sources.BINARY_CONFINEMENT_TITLE
             and r.category == ABSENT
             and min(b, r.t_end, t1) > max(a, r.t_start, t0)
         ],
+        "elm_qh_overlaps_ms": figure_sources.elm_qh_overlaps(
+            elm_spans,
+            by_key["confinement"].rows,
+            (t0, t1),
+            by_key["confinement"].spec.title == figure_sources.CONFINEMENT_TITLE,
+        ),
         "ae_physical_review_caveat": (annotations or {}).get(
             "ae_physical_review_caveat"
         ),
@@ -1770,6 +1763,9 @@ def track_record(track: lf.Track, window=None) -> dict | None:
     metadata = Path(track.file).with_suffix(".meta.json")
     meta = json.loads(metadata.read_text()) if metadata.is_file() else {}
     model = meta.get("method", track.source.what)
+    segments = getattr(track, "segments", None)
+    if segments is not None:
+        model = meta.get("model", model)
     physics = (
         json.loads(Path(track.file).read_text())
         if track.spec.key == mode_tags.SAWTOOTH and Path(track.file).suffix == ".json"
@@ -1833,6 +1829,26 @@ def track_record(track: lf.Track, window=None) -> dict | None:
         "state_intervals_ms": state_rows,
         "density_guard": physics.get("density_guard"),
         "present_spans_ms": [[round(a, 1), round(b, 1)] for a, b in present],
+        **(
+            {}
+            if segments is None
+            else {
+                "segments": list(segments),
+                "roster": {
+                    key: meta.get(key)
+                    for key in (
+                        "producer",
+                        "status",
+                        "made_at",
+                        "git_sha",
+                        "model",
+                        "segmentation",
+                        "categories",
+                        "columns_meaning",
+                    )
+                },
+            }
+        ),
     }
 
 
@@ -1853,13 +1869,15 @@ def main(argv=None) -> int:
 
     torch.set_num_threads(8)
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--shot", type=int, default=201978)
+    parser.add_argument("--shot", type=int, default=199563)
     parser.add_argument(
         "--tmin", "--start", type=float, help="ms; supply both bounds or neither"
     )
     parser.add_argument("--tmax", "--end", type=float)
-    parser.add_argument("--out", type=Path, help="folder; default round4/fig1")
-    parser.add_argument("--cache", type=Path, help="TokEye cache; default <out>/cache")
+    parser.add_argument("--out", type=Path, help="folder; default round4/fig1b")
+    parser.add_argument(
+        "--cache", type=Path, help="TokEye cache; default round4/fig1b/cache"
+    )
     parser.add_argument("--device", default="cpu", help="TokEye's device")
     parser.add_argument("--cache-only", action="store_true", help="TokEye, no figure")
     parser.add_argument("--png-dpi", type=int, default=DPI_PNG, help="the PNG's dpi")
@@ -1905,8 +1923,8 @@ def main(argv=None) -> int:
     clean_head = not subprocess.check_output(["git", "status", "--porcelain"]).strip()
 
     paths = Paths.from_env()
-    out = args.out or paths.root / "round4" / "fig1"
-    cache = args.cache or paths.root / "round4" / "fig1" / "cache"
+    out = args.out or paths.root / "round4" / "fig1b"
+    cache = args.cache or paths.root / "round4" / "fig1b" / "cache"
     found = [c for c in lf.candidates(paths) if c.shot == args.shot]
     if not found:
         raise SystemExit(f"{args.shot}: not a non-blind cohort shot")
@@ -2065,13 +2083,15 @@ def main(argv=None) -> int:
             "raw, end-exclusive intervals; independent of present_columns",
             "n_palette": N_COLOURS,
             "n_brightness_rule": "constant full colour for every measured n pixel",
-            "raw_normalisation": "3rd/99.8th percentiles separately in each band",
+            "raw_normalisation": "3rd/99.8th percentiles of the whole 0-250 kHz window, "
+            "one colour scale",
             "unkeyed_n_colour": N_OTHER,
             "bands_khz": {
                 k: [lo, None if math.isinf(hi) else hi]
                 for k, (lo, hi) in mode_tags.BANDS.items()
             },
-            "fold_khz": FOLD_KHZ,
+            "split_khz": SPLIT_KHZ,
+            "frequency_axis": "linear 0-250 kHz, no scale breaks",
             "elm_peaks": f"D-alpha less a {ELM_WINDOW}-sample running median, "
             f"over {ELM_MADS} MADs",
         },

@@ -38,8 +38,8 @@ SAWTOOTH = "sawtooth_oscillation"
 #: The band (kHz, lower edge included, upper edge excluded) each event's tag
 #: contains every highlighted pixel: AE >=60 kHz, NTM/sawtooth <60 kHz. The AE
 #: detector's own input band is 80-250 kHz; the display band starts where the
-#: owner put the AE/NTM split, so the 60 kHz scale break of the figure is the
-#: edge of the AE region.
+#: owner put the AE/NTM split (a tag band edge, not a break in the figure's
+#: linear frequency axis).
 SPLIT_KHZ = 60.0
 BANDS = {
     AE: (SPLIT_KHZ, math.inf),
@@ -232,8 +232,7 @@ def tag_mask(found, event, shape, t_ms, f_khz, spans, *, n_map=None) -> np.ndarr
 
     A component crossing an event-band edge is split at pixel level; one crossing
     an absent interval is split in time, regardless of its overall coverage.
-    The 60 kHz display fold coincides with the AE/NTM split and has no further
-    role in this decision.
+    The AE/NTM split is the only role of 60 kHz in this decision.
     """
     out = np.zeros(shape, bool)
     for blob in found:

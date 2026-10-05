@@ -1,0 +1,145 @@
+{
+ "selected_at_utc": "2026-10-05T03:03:43.859900+00:00",
+ "export_root": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5",
+ "export_sums_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/labels/SHA256SUMS",
+ "export_sums_sha256": "47081aebcad868911bf3e38817b3e0c79e4ba9f02efe5fcee84780ad00a0ef14",
+ "completion_record": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/cohort_labels.json",
+ "completion_snapshot_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1b/saw_source/cohort_labels.json",
+ "completion_sha256": "4c6a82bce2c4b823b8bfc78f779a4e3a87441dc274b5906b986dc17ae33b5417",
+ "completion_requested_count": 500,
+ "validation_status": "unvalidated_research_labels_owner_away",
+ "snapshot_source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1b/saw_source/shots",
+ "windows_ms": {
+  "199563": [
+   700,
+   5800
+  ]
+ },
+ "files": [
+  {
+   "shot": 199563,
+   "original_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/shots/199563.json",
+   "snapshot_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1b/saw_source/shots/199563.json",
+   "sha256": "90be9fe5aa72c32b8bd1adca465a94029dbf0c8eef47e22b91e61a7fe12744bf",
+   "population_shard": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/labels/population-100.csv",
+   "population_shard_snapshot_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1b/saw_source/labels/population-100.csv",
+   "population_shard_sha256": "d9c8e2e2afab1e4a047ecb20cf51e9909037cf4591ebc7bfb94747b63316612b",
+   "states_equal_population_shard": true,
+   "state_seconds": {
+    "present": 0.3659999913420764,
+    "absent": 0,
+    "q_prior_ece_contradicted": 0.5654999866227968,
+    "q_prior_untested": 0,
+    "uncertain": 4.46859989429289,
+    "unassessed": 0.7349999826131851
+   }
+  }
+ ],
+ "catalog_comparison": [
+  {
+   "model": "ece_sawtooth",
+   "version": "v3",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/ece_sawtooth/v3/sawtooth_oscillation_suggest_ece_sawtooth_v3.csv",
+   "sha256": "05c995be4de317eeed4b45591d0b803e9147906bd4674ed8c7b84ab477b8d38c",
+   "shots": {
+    "199563": [
+     {
+      "start_ms": 700,
+      "end_ms": 915.0,
+      "category": 2,
+      "state": "uncertain"
+     },
+     {
+      "start_ms": 915.0,
+      "end_ms": 2115.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 2115.0,
+      "end_ms": 2193.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 2193.0,
+      "end_ms": 2566.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 2566.0,
+      "end_ms": 3534.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 3534.0,
+      "end_ms": 3827.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 3827.0,
+      "end_ms": 5738.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 5738.0,
+      "end_ms": 5800,
+      "category": 0,
+      "state": "absent"
+     }
+    ]
+   }
+  },
+  {
+   "model": "sawtooth_frames",
+   "version": "v2",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/sawtooth_frames/v2/sawtooth_oscillation_suggest_sawtooth_frames_v2.csv",
+   "sha256": "a445f034fc90ce6eb8311f9c9331df7e6f206c05376cf48d900516f2d05b469f",
+   "shots": {
+    "199563": [
+     {
+      "start_ms": 700,
+      "end_ms": 2000.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 2000.0,
+      "end_ms": 4900.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 4900.0,
+      "end_ms": 4910.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 4910.0,
+      "end_ms": 4980.0,
+      "category": 1,
+      "state": "present"
+     },
+     {
+      "start_ms": 4980.0,
+      "end_ms": 5100.0,
+      "category": 0,
+      "state": "absent"
+     },
+     {
+      "start_ms": 5100.0,
+      "end_ms": 5800.0,
+      "category": 1,
+      "state": "present"
+     }
+    ]
+   }
+  }
+ ],
+ "integration_decision": "controller pins the sawtooth source shipped with the paper"
+}
