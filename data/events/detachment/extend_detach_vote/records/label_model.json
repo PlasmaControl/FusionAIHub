@@ -157,15 +157,15 @@
   },
   "rule": {
    "attached": 454,
-   "detached": 395,
+   "detached": 367,
    "marfe": 0,
-   "uncertain": 931
+   "uncertain": 959
   }
  },
  "rule_vs_label_model": {
   "bins": 1780,
-  "agreement": 0.5938202247191011,
-  "kappa": 0.18309907432621572,
+  "agreement": 0.6095505617977528,
+  "kappa": 0.1919728963764514,
   "rows_rule_columns_label_model": {
    "attached": {
     "attached": 57,
@@ -177,7 +177,7 @@
     "attached": 0,
     "detached": 69,
     "marfe": 0,
-    "uncertain": 326
+    "uncertain": 298
    },
    "marfe": {
     "attached": 0,
@@ -189,7 +189,7 @@
     "attached": 0,
     "detached": 0,
     "marfe": 0,
-    "uncertain": 931
+    "uncertain": 959
    }
   }
  },
@@ -228,10 +228,10 @@
  "primary_labeler": "rule",
  "state_lm_column": "legacy alias of primary rule; model is state_model_diagnostic",
  "tier_counts": {
-  "tangtv_only": 711,
+  "tangtv_only": 683,
   "lower_shelf_window": 325,
   "insufficient_support": 226,
-  "tangtv_only_lmode": 159,
+  "tangtv_only_lmode": 187,
   "certain": 138,
   "no_vote": 122,
   "candidate_marfe": 70,

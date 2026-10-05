@@ -21,17 +21,17 @@
   "fit_excluded_split": "test",
   "label_model_structure": "independent",
   "labeler": "rule",
-  "made_at": "2026-10-05T02:06:48+00:00",
+  "made_at": "2026-10-05T02:17:55+00:00",
   "made_by": "scripts/labeler/detach_label.py",
   "made_from": [
     {
       "code_dirty": false,
-      "git_sha": "3f67b4c7",
+      "git_sha": "1d470a9c",
       "producer": "detach_vote"
     }
   ],
   "n_requested_shots": 32,
-  "n_rows": 301,
+  "n_rows": 304,
   "n_shots": 32,
   "per_shot_files": {
     "axis_order": [

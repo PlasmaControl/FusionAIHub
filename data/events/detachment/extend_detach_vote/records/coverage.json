@@ -49,8 +49,8 @@
   "shots_with_20_valid_bins": 28,
   "invalid_reason_bins": {
    "no_inversion": 20530,
-   "surrogate_domain": 19074,
-   "efit_gap": 6173,
+   "surrogate_domain": 19117,
+   "efit_gap": 6130,
    "no_frames": 2462,
    "lower_shelf_window": 500,
    "efit_missing": 2
