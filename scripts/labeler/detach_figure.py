@@ -370,7 +370,7 @@ SUMMARY_CLASSES = (
     ("attached, TangTV only", 1 + SILVER_OFFSET),
     ("detached, TangTV + Afrac agreement", 2),
     ("detached, TangTV only", 2 + SILVER_OFFSET),
-    ("uncertain, TangTV detached in L-mode", LMODE_KEY),
+    ("uncertain, L-mode gate (TangTV detached)", LMODE_KEY),
     ("uncertain, other", 4),
 )
 

@@ -62,7 +62,7 @@ AGREEMENT_JSON = RESULTS / "detachment_benchmark.json"
 TE_JSON = RESULTS / "detachment_te_check.json"
 FDIV_JSON = RESULTS / "detachment_fdiv_check.json"
 CURRENT_JSON = RESULTS / "detachment_current.json"
-FIG_HEIGHT_IN = 8.3
+FIG_HEIGHT_IN = 8.8
 #: Colour and shapes of the f_div panel: not the Te panel's black circles.
 FDIV_COLOUR = "#0072B2"
 LF_NAMES = ("afrac", "prad", "tangtv")
@@ -343,7 +343,7 @@ def te_rows(te: dict) -> list[dict]:
         ),
         (
             "tangtv_vote_before_gate",
-            "TangTV vote, no gate",
+            "TangTV, no gate",
             "vote_before_gate",
             before["tangtv_vote_before_gate"],
             gate_note,
@@ -414,6 +414,15 @@ def te_rows(te: dict) -> list[dict]:
         finite = pooled["value"] is not None and np.isfinite(pooled["value"])
         ci = clean_ci(pooled["ci95"]) if finite else None
         shares = share_in_band(entry)
+        reason = None
+        if not finite:
+            reason = (
+                "no attached bins"
+                if not shares["attached"]["n_bins"]
+                else "no detached bins"
+                if not shares["detached"]["n_bins"]
+                else "one class in every resample"
+            )
         rows.append(
             {
                 "key": f"te_{key}",
@@ -423,6 +432,7 @@ def te_rows(te: dict) -> list[dict]:
                 "value": pooled["value"] if finite else None,
                 "ci95": ci,
                 "ci_note": None if ci or not finite else n_a(n_shots),
+                "not_estimable_reason": reason,
                 "n_bins": pooled["n_bins"],
                 "n_not_attached": pooled["n_not_attached"],
                 "n_shots": n_shots,
@@ -633,6 +643,18 @@ def interval_plot(ax, rows, colour_for, *, tick_for=None) -> None:
     for y, row in enumerate(rows):
         ax.plot([row["chance"]], [y], marker="|", ms=7, color=".6", mew=0.8, zorder=1)
         colour, face = colour_for(row)
+        if row["value"] is None:
+            # no AUROC (a class is empty): say why instead of leaving the row blank
+            ax.text(
+                0.22,
+                y,
+                f"n/a: {row['not_estimable_reason']}",
+                fontsize=7,
+                va="center",
+                zorder=4,
+                bbox={"fc": "white", "ec": "none", "pad": 0.6},
+            )
+            continue
         ax.plot(row["value"], y, "o", ms=4, color=colour, mfc=face, zorder=3)
         if row["ci95"] and all(np.isfinite(row["ci95"])):
             ax.hlines(y, *row["ci95"], color=colour, lw=1, zorder=2)
@@ -649,8 +671,8 @@ def te_tick(row: dict) -> str:
     detached votes at or below 5 eV (the L-mode row is the one that matters)."""
     text = f"{row['label']} ({row['n_shots']})"
     detached = row["share_in_band"]["detached"]
-    if row["population"] == "vote_before_gate" and detached["n_bins"]:
-        text += f"\ndetached \u2264 5 eV: {detached['n_in_band']}/{detached['n_bins']}"
+    if "_regime_" in row["key"] and detached["n_bins"]:
+        text += f"\ndetached \u22645 eV: {detached['n_in_band']}/{detached['n_bins']}"
     return text
 
 
@@ -669,7 +691,7 @@ def draw(data: dict, out: Path) -> None:
         3,
         1,
         figsize=(3.25, FIG_HEIGHT_IN),
-        gridspec_kw={"height_ratios": [1.2, 3.1, 1.5]},
+        gridspec_kw={"height_ratios": [1.2, 4.0, 1.5]},
     )
     coverage = data["coverage"]
     groups = (
@@ -723,7 +745,17 @@ def draw(data: dict, out: Path) -> None:
         handletextpad=0.4,
         labelspacing=0.3,
     )
-    te_rows_drawn = [row for row in data["te_agreement"] if row["drawn"]]
+    te_rows_drawn = [
+        row
+        for row in data["te_agreement"]
+        if row["drawn"]
+        or (
+            row["population"] == "vote_before_gate"
+            and row["value"] is None
+            and row["share_in_band"]["attached"]["n_bins"]
+            + row["share_in_band"]["detached"]["n_bins"]
+        )
+    ]
 
     def te_colour(row):
         filled = row["population"] == "vote_before_gate"
@@ -736,8 +768,8 @@ def draw(data: dict, out: Path) -> None:
             Line2D([], [], marker="o", ms=4, color="#222222", mfc="white", ls="-"),
         ],
         ["TangTV vote before the gate", "label tiers, indicator votes"],
-        loc="lower left",
-        bbox_to_anchor=(-0.02, 1.0),
+        loc="lower right",
+        bbox_to_anchor=(1.02, 1.0),
         ncol=1,
         frameon=False,
         fontsize=7,
@@ -747,7 +779,7 @@ def draw(data: dict, out: Path) -> None:
         borderaxespad=0.2,
     )
     te_ax.set_xlim(0.2, 1.02)
-    te_ax.set_xlabel(r"AUROC of $-T_e$, detached vs attached" "\n(shots in brackets)")
+    te_ax.set_xlabel(r"AUROC of $-T_e$" "\n(detached vs attached;\nshots in brackets)")
     rows = data["fdiv_corroborator"]
     for y, row in enumerate(rows):
         agreement_ax.plot(
@@ -792,11 +824,25 @@ def draw(data: dict, out: Path) -> None:
         min(max([*highs, 0.6]) + 0.02, 1.02),
     )
     agreement_ax.set_xlabel(
-        r"AUROC of $f_{\mathrm{div}}$"
-        "\nfilled diamond: pooled, open triangle: per shot"
-        "\n(shots: pooled / per shot)"
+        r"AUROC of $f_{\mathrm{div}}$" "\n(shots: pooled / per shot)"
     )
-    fig.subplots_adjust(left=0.43, right=0.97, top=0.89, bottom=0.12, hspace=0.85)
+    agreement_ax.legend(
+        [
+            Line2D([], [], marker="D", ms=3.6, color=FDIV_COLOUR, mfc=FDIV_COLOUR),
+            Line2D([], [], marker="^", ms=3.6, color=FDIV_COLOUR, mfc="white"),
+        ],
+        ["pooled", "per shot"],
+        loc="lower right",
+        bbox_to_anchor=(1.02, 1.0),
+        ncol=2,
+        frameon=False,
+        fontsize=7,
+        handlelength=1.4,
+        columnspacing=0.8,
+        handletextpad=0.4,
+        borderaxespad=0.2,
+    )
+    fig.subplots_adjust(left=0.5, right=0.97, top=0.89, bottom=0.11, hspace=0.85)
     out.mkdir(parents=True, exist_ok=True)
     fig.savefig(out / "fig_detachment_figure2.pdf", metadata={"CreationDate": None})
     fig.savefig(out / "fig_detachment_figure2.png", dpi=150)
