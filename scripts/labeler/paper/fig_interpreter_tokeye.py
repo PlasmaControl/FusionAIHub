@@ -1033,7 +1033,7 @@ def draw(
     n_read, n_kept = roster.gated(n_sig.rows[0], gate) if n_sig.rows else (None, None)
 
     layout = {
-        "h_raw": 0.32, "raw": 2.4, "g0": 0.22, "raw2": 2.1,
+        "h_raw": 0.32, "raw": 2.25, "g0": 0.22, "raw2": 2.25,
         "g1": 0.1, "da_raw": 0.38,
         "g2": 0.2, "nbi": 0.38, "h_proc": 0.52,
         "pr": 3.6,
@@ -1453,7 +1453,7 @@ def draw(
                     "bounds": list(ax[name].get_position().extents),
                     "ticks_khz": ax[name].get_yticks().tolist(),
                 }
-                for name in ("raw", "pr")
+                for name in ("raw", "raw2", "pr")
             },
             "frequency_tick_bounds": {
                 prefix: [
@@ -1467,7 +1467,7 @@ def draw(
                     }
                     for text in ax[prefix].get_yticklabels()
                 ]
-                for prefix in ("raw", "pr")
+                for prefix in ("raw", "raw2", "pr")
             },
             "regime_text_bounds": [
                 {

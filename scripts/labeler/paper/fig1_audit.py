@@ -345,12 +345,18 @@ def main():
             < 1e-6
         )
         raw_panel, processed = panels["raw"], panels["pr"]
-        assert raw_panel["band_khz"] == processed["band_khz"] == [0, 250]
-        assert abs(raw_panel["height_in"] - processed["height_in"]) < 1e-9
-        assert raw_panel["ticks_khz"] == processed["ticks_khz"] == AXIS_TICKS_KHZ
-        assert raw_panel["bounds"][0] == processed["bounds"][0]
-        assert raw_panel["bounds"][2] == processed["bounds"][2]
-        for prefix in ("raw", "pr"):
+        # two raw spectrograms (CO2, Mirnov) of one height, above the mask
+        raw_two = panels["raw2"]
+        assert raw_panel["band_khz"] == raw_two["band_khz"] == [0, 250]
+        assert processed["band_khz"] == [0, 250]
+        assert abs(raw_panel["height_in"] - raw_two["height_in"]) < 1e-9
+        assert raw_panel["height_in"] >= 1.0
+        assert raw_panel["ticks_khz"] == raw_two["ticks_khz"] == AXIS_TICKS_KHZ
+        assert processed["ticks_khz"] == AXIS_TICKS_KHZ
+        for panel in (raw_panel, raw_two):
+            assert panel["bounds"][0] == processed["bounds"][0]
+            assert panel["bounds"][2] == processed["bounds"][2]
+        for prefix in ("raw", "raw2", "pr"):
             ticks = sorted(
                 geometry["frequency_tick_bounds"][prefix],
                 key=lambda tick: tick["bounds"][1],
