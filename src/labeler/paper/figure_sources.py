@@ -286,10 +286,13 @@ def saw_source(source: Path, shot: int):
             (float(e["time_s"]) * 1000, e.get("attrs", {}), e.get("confidence"))
             for e in data["crashes"]
         ]
+        # The two q-prior states export as uncertain, with the state as the reason.
         codes = {
             "absent": ABSENT,
             "present": PRESENT,
             "uncertain": UNCERTAIN,
+            "q_prior_ece_contradicted": UNCERTAIN,
+            "q_prior_untested": UNCERTAIN,
             "unassessed": NOT_OBSERVABLE,
         }
         rows = tuple(
@@ -660,6 +663,13 @@ def harmonic_clause(drawn: dict) -> str:
     return ""
 
 
+def _elm_name(records: dict) -> str:
+    """Name the ELM source by its tier (expert, imported or detector intervals)."""
+    tier = (records.get("edge_localized_mode") or {}).get("tier")
+    kind = {lf.SILVER: "Expert", lf.LEGACY: "Imported", lf.GENERATED: "Detected"}
+    return f"{kind[tier]} ELM intervals" if tier in kind else "ELM intervals"
+
+
 def caption(shot: int, records: dict, drawn: dict) -> str:
     """Describe what is drawn; sources, thresholds and caveats are in the appendix.
 
@@ -675,9 +685,8 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
     sentences = [
         f"DIII-D shot {shot}.",
         (
-            "Top: raw Mirnov spectrogram (three frequency scales: 0–30 kHz "
-            "stretched, 30–60 and 60–250 kHz compressed; bands normalised "
-            "separately), D-alpha, NBI power."
+            "Top: raw Mirnov spectrogram (linear frequency axis, 0–250 kHz), "
+            "D-alpha, NBI power."
         ),
         (
             "Middle: TokEye coherent-mode mask after small-object removal; below "
@@ -717,7 +726,7 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
     sentences.append("Bottom: label tracks with sources.")
     if drawn.get("elm_hmode_conflicts_ms"):
         sentences.append(
-            "Expert ELM intervals and the H-mode detector disagree in parts of "
+            f"{_elm_name(records)} and the H-mode detector disagree in parts of "
             "this window."
         )
     if drawn.get("ae_physical_review_caveat"):
@@ -829,14 +838,14 @@ def appendix_notes(
     `training` is the record's `detector_training`: whether this shot was in each
     detector's training set."""
     notes = [
-        f"DIII-D shot {shot}. Raw bands are normalised separately.",
+        f"DIII-D shot {shot}. The raw spectrogram uses one colour scale.",
         (
             "Toroidal mode number n is measured by the Mirnov array. "
-            "The frequency axis has three scales: 0–30 kHz stretched, 30–60 kHz "
-            "and 60–250 kHz compressed; 0–50 kHz uses the higher-resolution "
-            "spectrogram and 50–60 kHz the wide-range one, because the "
-            "higher-resolution pass's decimation filter rolls off above about "
-            "50 kHz."
+            "The frequency axis is linear, 0–250 kHz, in both spectrograms, with "
+            "no scale break. The raw spectrogram is the wide-range pass; the mask "
+            "is drawn from the higher-resolution pass below 50 kHz and the "
+            "wide-range pass above it, because the higher-resolution pass's "
+            "decimation filter rolls off above about 50 kHz."
         ),
         _chain_note(drawn),
     ]
@@ -876,7 +885,7 @@ def appendix_notes(
         notes.append(text + ".")
         notes.append(
             "The detector's input band is 80–250 kHz; pink starts at 60 kHz (the "
-            "AE/NTM split and the scale break), so mask pixels at 60–80 kHz are "
+            "AE/NTM split), so mask pixels at 60–80 kHz are "
             "highlighted by time coincidence with the detector, not detected by it."
         )
         if ae_ours:
@@ -977,7 +986,7 @@ def appendix_notes(
         )
     if drawn.get("elm_hmode_conflicts_ms"):
         notes.append(
-            "Expert ELM intervals overlap H-mode-detector absent time; "
+            f"{_elm_name(records)} overlap H-mode-detector absent time; "
             "sources disagree."
         )
     if drawn.get("ae_physical_review_caveat"):
@@ -988,5 +997,6 @@ def appendix_notes(
     if drawn.get("elm_peaks_in_label"):
         marks.append("downward triangles mark threshold D-alpha peaks")
     if marks:
-        notes.append("; ".join(marks) + ".")
+        text = "; ".join(marks) + "."
+        notes.append(text[0].upper() + text[1:])
     return " ".join(notes)

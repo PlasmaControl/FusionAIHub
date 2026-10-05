@@ -1,6 +1,10 @@
 {
+  "199563": {
+    "publication_suitability": {"suitable_alternate": true, "role": "primary: the shot of the original Figure 1; linear frequency axis"},
+    "ae_label": {"time_ms": 3900, "frequency_khz": 200}
+  },
   "201978": {
-    "publication_suitability": {"suitable_alternate": true, "role": "primary"},
+    "publication_suitability": {"suitable_alternate": true, "role": "former primary (three frequency scales)"},
     "ae_label": {"time_ms": 2100, "frequency_khz": 200}
   },
   "201973": {

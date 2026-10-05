@@ -142,7 +142,7 @@ def test_spans_are_merged_where_they_touch():
 def test_projection_clips_absent_gaps_and_both_event_band_edges():
     f, t = _grid(20)
     lit = np.zeros((ROWS, 20), bool)
-    lit[110:164, :] = True  # 55-81.5 kHz: crosses the 60 kHz split and the fold
+    lit[110:164, :] = True  # 55-81.5 kHz: crosses the 60 kHz AE/NTM split
     spans = {mt.AE: [(2.0, 8.0), (12.0, 18.0)], mt.NTM: [(4.0, 16.0)]}
     found = mt.tag_blobs(mt.blobs(lit, t, f), spans, t, f, np.ones(lit.shape))
     ae = mt.tag_mask(found, mt.AE, lit.shape, t, f, spans[mt.AE])
