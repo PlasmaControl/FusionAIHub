@@ -766,10 +766,10 @@ def draw_legends(
     elm_key = "edge_localized_mode"
     pos = ax["pr"].get_position()
     event_handles = [
-        Patch(fc="white", ec=INK, lw=0.5, label="TokEye coherent")
+        Patch(fc="white", ec=INK, lw=0.5, label="coherent")
     ]
     if transient:
-        event_handles.append(Patch(fc=TRANSIENT_COLOUR, lw=0, label="TokEye transient"))
+        event_handles.append(Patch(fc=TRANSIENT_COLOUR, lw=0, label="transient"))
     if projected["wide"][mode_tags.AE].any():
         event_handles.append(
             Patch(

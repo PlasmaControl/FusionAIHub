@@ -435,8 +435,8 @@ def main():
         tags = drawn["blobs"]["tagged"]
         assert ("AE" in legend) == bool(tags[mt.AE])
         assert ("NTM" in legend) == bool(tags[mt.NTM])
-        assert "TokEye coherent" in legend and "ELM" in legend
-        assert ("TokEye transient" in legend) == drawn["tokeye_transient_drawn"]
+        assert "coherent" in legend and "ELM" in legend
+        assert ("transient" in legend) == drawn["tokeye_transient_drawn"]
         assert geometry["ntm_key_black_swatch"] == bool(tags[mt.NTM])
         png = Path(drawn["figure"][1])
         with Image.open(png) as native:
