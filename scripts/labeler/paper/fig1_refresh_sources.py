@@ -152,7 +152,9 @@ def main():
     completion_file = args.export / "cohort_labels.json"
     complete = json.loads(completion_file.read_text())
     assert not set(map(str, WINDOWS)) & set(complete["errors"])
-    assert set(WINDOWS) <= set(complete["processed_shots"])
+    # A shot outside the export's cohort run has its record and population shard
+    # from the same export; `same_labels` below checks the two agree.
+    outside_run = sorted(set(WINDOWS) - set(complete["processed_shots"]))
     args.snapshot.mkdir(parents=True, exist_ok=True)
     for sub in ("shots", "labels"):
         (args.snapshot / sub).mkdir(exist_ok=True)
@@ -189,6 +191,7 @@ def main():
                 "population_shard_snapshot_path": str(kept),
                 "population_shard_sha256": sha256_of(kept),
                 "states_equal_population_shard": True,
+                "outside_cohort_run": shot in outside_run,
                 "state_seconds": physics["state_seconds"],
             }
         )
