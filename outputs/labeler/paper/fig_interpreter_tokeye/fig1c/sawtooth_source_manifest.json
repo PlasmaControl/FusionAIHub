@@ -1,5 +1,5 @@
 {
- "selected_at_utc": "2026-10-05T14:19:36.714197+00:00",
+ "selected_at_utc": "2026-10-05T14:53:30.834453+00:00",
  "export_root": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5",
  "export_sums_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/labels/SHA256SUMS",
  "export_sums_sha256": "47081aebcad868911bf3e38817b3e0c79e4ba9f02efe5fcee84780ad00a0ef14",
@@ -11,7 +11,7 @@
  "snapshot_source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/saw_source/shots",
  "windows_ms": {
   "199563": [
-   700,
+   300,
    5800
   ]
  },
@@ -44,7 +44,7 @@
    "shots": {
     "199563": [
      {
-      "start_ms": 700,
+      "start_ms": 300,
       "end_ms": 915.0,
       "category": 2,
       "state": "uncertain"
@@ -102,7 +102,7 @@
    "shots": {
     "199563": [
      {
-      "start_ms": 700,
+      "start_ms": 300,
       "end_ms": 2000.0,
       "category": 0,
       "state": "absent"
