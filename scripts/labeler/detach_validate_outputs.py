@@ -136,24 +136,32 @@ def main():
     assert frame.loc[gated, "tangtv_vote"].eq(core.DETACHED).all()
     in_gate = frame.regime.isin(signals.GATED_REGIMES)
     assert not (in_gate & frame.state_rule.eq(core.DETACHED)).any()
-    # the probable-regime proxy is a pure function of the stored columns: typing every
-    # bin of the unknown-regime windows again from their ELM share and input power
-    # reproduces the regime and its source
+    # the probable-regime proxy is a pure function of the stored columns of the whole
+    # shot (its window is every unknown-regime bin of the shot with an ELM flag and an
+    # input power, labelled or not): typing the shot's bins again from their ELM share
+    # and input power reproduces the regime and its source, and the labelled rows
+    # carry those values
     for shot, rows in frame.groupby("shot"):
-        base = rows.regime.where(~rows.regime.str.startswith("probable_"), "unknown")
-        source = rows.regime_source.where(
-            ~rows.regime.str.startswith("probable_"), "unknown"
-        )
+        with np.load(ROOT / "bins" / f"{shot}.npz", allow_pickle=True) as z:
+            whole = {k: z[k] for k in z.files}
+        proxy = np.char.startswith(whole["regime"].astype(str), "probable_")
+        base = np.where(proxy, "unknown", whole["regime"].astype(str))
+        base_source = np.where(proxy, "unknown", whole["regime_source"].astype(str))
         again, again_source = signals.probable_regimes(
-            base.to_numpy(),
-            source.to_numpy(),
-            rows.aux_elm_known.to_numpy(bool),
-            rows.aux_elm_share.to_numpy(float),
-            rows.aux_p_in_w.to_numpy(float),
+            base,
+            base_source,
+            whole["aux_elm_known"].astype(bool),
+            whole["aux_elm_share"].astype(float),
+            whole["aux_p_in_w"].astype(float),
             core.BIN_MS,
         )
-        assert np.array_equal(again, rows.regime.to_numpy()), shot
-        assert np.array_equal(again_source, rows.regime_source.to_numpy()), shot
+        assert np.array_equal(again, whole["regime"].astype(str)), shot
+        assert np.array_equal(again_source, whole["regime_source"].astype(str)), shot
+        index = np.rint(rows.start_ms.to_numpy() / core.BIN_MS).astype(int)
+        starts = np.rint(whole["start_ms"].astype(float) / core.BIN_MS).astype(int)
+        where = pd.Series(np.arange(len(starts)), index=starts).loc[index].to_numpy()
+        assert np.array_equal(again[where], rows.regime.to_numpy()), shot
+        assert np.array_equal(again_source[where], rows.regime_source.to_numpy()), shot
     assert frame.loc[labelled, "tangtv_tier"].eq("upper_shelf").all()
     # certain: TangTV votes the state and a valid Afrac vote is compatible with it;
     # tangtv_only: Afrac casts no vote; f_div is not consulted
@@ -404,8 +412,10 @@ def main():
             "reference, figure, Figure 2 and current-state checksums match the labels",
             "candidate_marfe never carries a state",
             (
-                "tangtv_only_lmode: a detached TangTV vote on a known L-mode bin is "
-                "uncertain, and no detached state sits on a known L-mode bin"
+                "tangtv_only_lmode: a detached TangTV vote on a known L-mode bin or in "
+                "a probable-L window is uncertain, and no detached state sits on "
+                "either; the probable regimes are re-derived from each shot's whole "
+                "bins; Afrac is never valid on a probable-L bin"
             ),
             (
                 "f_div relative and absolute sensitivity columns (f_div added as a "

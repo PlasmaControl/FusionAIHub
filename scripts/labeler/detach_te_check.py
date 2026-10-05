@@ -23,18 +23,21 @@ shots carry a Te, the Te quantiles, the share inside the band, and a threshold-f
 AUROC of -Te for the detached against the attached bins (pooled and within shots,
 with shot-bootstrap intervals; the number of shots behind each within-shot figure is
 beside it). The tiers are `certain` (TangTV + Afrac agreement), `tangtv_only`
-(TangTV alone, silver), both together (the exported attached and detached bins),
-`tangtv_only_lmode` (the TangTV detached vote on a known L-mode bin, exported as
-uncertain) and the TangTV vote alone; a paired shot bootstrap says whether the
+(TangTV only, silver), both together (the exported attached and detached bins),
+`tangtv_only_lmode` (the TangTV detached vote on a bin of a known L-mode or a
+probable-L phase, exported as uncertain: `tangtv_vote_before_gate_in_gated_bins`)
+and the TangTV vote before the gate; a paired shot bootstrap says whether the
 second vote improves the agreement with Te, and is "not estimable" where the
 certain tier sits on fewer than `MIN_PAIRED_SHOTS` shots with a Te. The same
 numbers are given by regime (H, L, probable L, probable H, unknown; the regime
 source of the label model), for the TangTV vote before the gate
 (`tangtv_vote_before_gate`, every TangTV vote on the upper shelf, with no L-mode
-gate) and for the exported states (after the gate), and by DZ band for the TangTV detached votes: the
-gate itself was set a priori (the DZ cutoffs come from an H-mode shot; only the
+gate) and for the exported states (after the gate), and by DZ band for the TangTV
+detached votes, with the gated votes of each shot (`gated_detached_votes_by_shot`).
+The gate itself was set a priori (the DZ cutoffs come from an H-mode shot; only the
 detached vote is gated, because L-mode inner-SOL leakage biases DZ upward, so a
-low DZ stays trustworthy) and is only reported here, never tuned on Te. The
+low DZ stays trustworthy; probable L is a regime proxy fixed from the ELM flag and
+P_in, not from Te) and is only reported here, never tuned on Te. The
 before-gate rows are the check against Te; the after-gate shares are post-
 selection (the gate was added after this check flagged the L-mode bins). One row
 leaves the anchor shot 201081 out (it sets the DZ cliff). Shot 201081's two cliff
@@ -279,7 +282,7 @@ def tangtv_before_gate(frame: pd.DataFrame) -> pd.Series:
 
 
 def tier_scores(frame: pd.DataFrame) -> dict:
-    """Te agreement per label tier, TangTV alone, and the second vote's effect."""
+    """Te agreement per label tier, the TangTV vote before the gate, the second vote."""
     tangtv = tangtv_before_gate(frame)
     frame = frame.assign(tangtv_before_gate=tangtv)
     certain = frame.tier.eq("certain").to_numpy()

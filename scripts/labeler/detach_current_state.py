@@ -192,9 +192,87 @@ def population_block(labels: pd.DataFrame) -> dict:
             for regime in REGIMES
         },
         "regime_source_of_assessed_bins": counts(labels.regime_source),
+        "regime_source_shots": {
+            str(source): sorted(int(x) for x in rows.shot.unique())
+            for source, rows in labels.groupby("regime_source")
+        },
+        "regime_table_provenance": regime_table_provenance(labels),
         "bins_by_regime": counts(labels.regime),
     }
     return out
+
+
+#: The D-alpha detector table the confinement suggestion table falls back on.
+DETECTOR_TABLE = "suggestions/dalpha_lh/v1/confinement_suggest_dalpha_lh_v1.csv"
+
+
+def regime_table_provenance(labels: pd.DataFrame) -> dict:
+    """Where the regime-table rows of the assessed shots come from.
+
+    The confinement suggestion table opens a shot on the curated Gill and Butt
+    intervals when it has them and on the D-alpha detector's (`dalpha_lh`) rows
+    otherwise (its `meta.json` names both sources). A shot whose rows equal the
+    detector table's was not curated, so its regime comes from a D-alpha detector.
+    """
+    root = Path(os.environ["LABELER_ROOT"])
+    table = pd.read_csv(root / signals.REGIME_TABLE)
+    detector = pd.read_csv(root / DETECTOR_TABLE)
+    keys = ["category", "t_start", "t_end"]
+    from_table = labels.regime_source.eq("regime_table")
+    shots = sorted(int(x) for x in labels.loc[from_table, "shot"].unique())
+    rows = {}
+    for shot in shots:
+        mine = table[table.shot == shot][keys].sort_values(keys).reset_index(drop=True)
+        theirs = detector[detector.shot == shot][keys].sort_values(keys)
+        theirs = theirs.reset_index(drop=True)
+        rows[str(shot)] = {
+            "rows": len(mine),
+            "equal_to_detector_rows": bool(len(mine) and mine.equals(theirs)),
+        }
+    return {
+        "shots": rows,
+        "curated_shots": [
+            int(k) for k, v in rows.items() if not v["equal_to_detector_rows"]
+        ],
+    }
+
+
+def regime_proxy_block(bins: pd.DataFrame, labels: pd.DataFrame) -> dict:
+    """The window, the ELM flags and the input power behind each proxy label.
+
+    Per assessed shot that carries `probable_L` or `probable_H` bins: the bins of the
+    proxy window (unknown regime, ELM coverage and P_in both known), how many of
+    them carry an ELM flag (and the largest P_in among those), the window's median
+    P_in and the labelled TangTV detached votes of the shot.
+    """
+    cut_mw = thresholds.PROBABLE_L_MAX_P_IN_W / 1e6
+    detached = labels.tangtv_vote.eq(core.DETACHED) & labels.tangtv_valid.astype(bool)
+    shots = {}
+    for shot, rows in bins[bins.shot.isin(labels.shot.unique())].groupby("shot"):
+        window = rows[rows.regime.isin(("probable_L", "probable_H"))]
+        if window.empty:
+            continue
+        flagged = window[window.aux_elm_share > 0]
+        mine = labels[labels.shot == shot]
+        shots[str(int(shot))] = {
+            "regime": str(window.regime.iloc[0]),
+            "window_bins": len(window),
+            "elm_flag_bins": len(flagged),
+            "p_in_mw_at_flags_max": (
+                float(flagged.aux_p_in_w.max() / 1e6) if len(flagged) else None
+            ),
+            "median_p_in_mw": float(window.aux_p_in_w.median() / 1e6),
+            "tangtv_detached_votes": int(detached[mine.index].sum()),
+        }
+    return {
+        "p_in_cut_mw": cut_mw,
+        "shots": shots,
+        "probable_h_below_the_power_cut": sorted(
+            int(k)
+            for k, v in shots.items()
+            if v["regime"] == "probable_H" and v["median_p_in_mw"] < cut_mw
+        ),
+    }
 
 
 def frame_timing_block(shots) -> dict:
@@ -493,6 +571,7 @@ def main() -> None:
         "script": "scripts/labeler/detach_current_state.py",
         "scope": "exploratory labels; no independent benchmark",
         "population": population_block(labels),
+        "regime_proxy": regime_proxy_block(bins, labels),
         "frame_timing": frame_timing_block(labels.shot.unique()),
         "afrac": afrac_block(bins, labels),
         "prad": prad_block(bins, labels),
