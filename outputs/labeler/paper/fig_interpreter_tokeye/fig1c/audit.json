@@ -7,15 +7,15 @@
    "shot": 199563,
    "split": "train",
    "window_ms": [
-    700.0,
+    300.0,
     5800.0
    ],
    "record": "outputs/labeler/paper/fig_interpreter_tokeye/fig1c/199563.json",
-   "record_sha256": "3c42c3be6133a842502939b8c9e95a6543bc4c9729a1664b273b267b3b3534f5",
+   "record_sha256": "5e1477c8cb8e18d290143dec1695100dd37f8c9da64e6ab8bbdce279d5a9fc84",
    "ae_source": "ae-ours, CO2 activity predictions, p>=0.5",
    "tag_counts": {
-    "alfven_eigenmode": 216,
-    "neoclassical_tearing_mode": 7,
+    "alfven_eigenmode": 311,
+    "neoclassical_tearing_mode": 3,
     "sawtooth_oscillation": 0
    },
    "verified_crashes": 12,
@@ -23,12 +23,12 @@
    "caption_words": 100,
    "projection_violations": 0,
    "raster_ae_audit": {
-    "pink_pixels": 539,
+    "pink_pixels": 1251,
     "outside_present": 0,
     "below_detector_band": 0,
     "boundary_tolerance_pixels": 1,
-    "time_tolerance_ms": 7.874258893280632,
-    "frequency_tolerance_khz": 1.3895452874621823,
+    "time_tolerance_ms": 8.491847826086955,
+    "frequency_tolerance_khz": 1.281828598511625,
     "rule": "saved PNG pink RGB pixels in processed high-frequency axes"
    },
    "unmeasured_ntm_pixels": 0,
@@ -49,7 +49,7 @@
       200,
       250
      ],
-     "raw_spectrogram": "CO2 R0 x V3 cross-power, wide pass, one colour scale, 0-250 kHz",
+     "raw_spectrogram": "CO2 R0 x V1 cross-power, wide pass, one colour scale, 0-250 kHz",
      "mask_zoom_pass_khz": [
       0.0,
       50.0
@@ -61,7 +61,7 @@
      "ae_ntm_split_khz": 60.0,
      "n_view_top_khz": 30.0
     },
-    "n_view_height_in": 0.14393197674418595,
+    "n_view_height_in": 0.15602710084033608,
     "ece_candidate_key_placement": null,
     "frequency_panels": {
      "raw": {
@@ -69,10 +69,10 @@
        0.0,
        250.0
       ],
-      "height_in": 1.199433139534883,
+      "height_in": 1.3002258403361333,
       "bounds": [
        0.14,
-       0.7586918604651164,
+       0.7396743697478994,
        0.78,
        0.985
       ],
@@ -90,12 +90,12 @@
        0.0,
        250.0
       ],
-      "height_in": 1.199433139534883,
+      "height_in": 1.300225840336134,
       "bounds": [
        0.14,
-       0.5206492248062018,
+       0.4816281512605045,
        0.78,
-       0.7469573643410854
+       0.7269537815126053
       ],
       "ticks_khz": [
        0,
@@ -113,45 +113,45 @@
        "text": "0",
        "bounds": [
         0.12390946502057615,
-        0.7473165451807873,
+        0.7282990544635702,
         0.13279835390946504,
-        0.7656603606944141
+        0.7466428699771971
        ]
       },
       {
        "text": "50",
        "bounds": [
         0.11502057613168726,
-        0.792578173087764,
+        0.7773641805139904,
         0.13279835390946504,
-        0.8109219886013909
+        0.7957079960276172
        ]
       },
       {
        "text": "100",
        "bounds": [
         0.10613168724279837,
-        0.8378398009947406,
+        0.8264293065644104,
         0.13279835390946504,
-        0.8561836165083675
+        0.8447731220780372
        ]
       },
       {
        "text": "150",
        "bounds": [
         0.10613168724279837,
-        0.8831014289017174,
+        0.8754944326148306,
         0.13279835390946504,
-        0.9014452444153442
+        0.8938382481284575
        ]
       },
       {
        "text": "200",
        "bounds": [
         0.10613168724279837,
-        0.9283630568086941,
+        0.9245595586652506,
         0.13279835390946504,
-        0.946706872322321
+        0.9429033741788775
        ]
       },
       {
@@ -169,54 +169,54 @@
        "text": "0",
        "bounds": [
         0.12390946502057615,
-        0.5092739095218726,
+        0.47025283597617534,
         0.13279835390946504,
-        0.5276177250354994
+        0.48859665148980225
        ]
       },
       {
        "text": "50",
        "bounds": [
         0.11502057613168726,
-        0.5545355374288493,
+        0.5193179620265955,
         0.13279835390946504,
-        0.5728793529424762
+        0.5376617775402224
        ]
       },
       {
        "text": "100",
        "bounds": [
         0.10613168724279837,
-        0.5997971653358262,
+        0.5683830880770157,
         0.13279835390946504,
-        0.6181409808494529
+        0.5867269035906425
        ]
       },
       {
        "text": "150",
        "bounds": [
         0.10613168724279837,
-        0.6450587932428028,
+        0.6174482141274358,
         0.13279835390946504,
-        0.6634026087564296
+        0.6357920296410626
        ]
       },
       {
        "text": "200",
        "bounds": [
         0.10613168724279837,
-        0.6903204211497795,
+        0.666513340177856,
         0.13279835390946504,
-        0.7086642366634064
+        0.6848571556914829
        ]
       },
       {
        "text": "250",
        "bounds": [
         0.10613168724279837,
-        0.7355820490567563,
+        0.7155784662282761,
         0.13279835390946504,
-        0.7539258645703831
+        0.733922281741903
        ]
       }
      ]
@@ -225,27 +225,27 @@
      {
       "text": "L-mode",
       "bounds": [
-       0.1681360294117647,
-       0.48505504687271495,
-       0.22417769607843135,
-       0.5045562015503879
+       0.19372462121212122,
+       0.44613539994417606,
+       0.24976628787878788,
+       0.465636554621849
       ],
       "region_x_bounds": [
-       0.14,
-       0.2523137254901961
+       0.15280000000000002,
+       0.2906909090909091
       ]
      },
      {
       "text": "H-mode",
       "bounds": [
-       0.4422919389978214,
-       0.48505504687271495,
-       0.5015511982570806,
-       0.5045562015503879
+       0.4646976430976431,
+       0.44613539994417606,
+       0.5239569023569024,
+       0.465636554621849
       ],
       "region_x_bounds": [
-       0.3223372549019608,
-       0.6215058823529412
+       0.3556218181818182,
+       0.6330327272727273
       ]
      }
     ],
@@ -253,9 +253,9 @@
     "ntm_key_black_swatch": true,
     "n_key_bounds": [
      0.792,
-     0.4395630003031913,
+     0.39941496434462176,
      0.9080493827160494,
-     0.5072383720930236
+     0.46709033613445405
     ],
     "ae_in_panel_label": {
      "text": "AE",
@@ -264,87 +264,87 @@
       200
      ],
      "bounds": [
-      0.5302106027596223,
-      0.6903225708156601,
-      0.5529266521423384,
-      0.7130689020525574
+      0.5475510662177329,
+      0.6665154898437365,
+      0.570267115600449,
+      0.6892618210806338
      ]
     },
     "ae_margin_label": {
      "text": "AE",
      "bounds": [
       0.810724279835391,
-      0.7024519103316514,
+      0.6824483275031713,
       0.8299835390946503,
-      0.7207957258452783
+      0.7007921430167982
      ]
     },
     "elm_box_bounds": [
      [
-      0.3156862745098039,
-      0.3731298449612407,
-      0.3219607843137255,
-      0.47773449612403135
+      0.3494545454545454,
+      0.394401260504202,
+      0.35527272727272724,
+      0.43946848739495825
      ],
      [
-      0.32823529411764707,
-      0.3731298449612407,
-      0.33450980392156865,
-      0.47773449612403135
+      0.3610909090909091,
+      0.394401260504202,
+      0.3669090909090909,
+      0.43946848739495825
      ],
      [
-      0.35333333333333333,
-      0.3731298449612407,
-      0.3847058823529412,
-      0.47773449612403135
+      0.38436363636363635,
+      0.394401260504202,
+      0.4134545454545454,
+      0.43946848739495825
      ],
      [
-      0.40352941176470586,
-      0.3731298449612407,
-      0.40980392156862744,
-      0.47773449612403135
+      0.4309090909090909,
+      0.394401260504202,
+      0.43672727272727274,
+      0.43946848739495825
      ],
      [
-      0.416078431372549,
-      0.3731298449612407,
-      0.4286274509803922,
-      0.47773449612403135
+      0.4425454545454546,
+      0.394401260504202,
+      0.45418181818181824,
+      0.43946848739495825
      ],
      [
-      0.4349019607843137,
-      0.3731298449612407,
-      0.44745098039215686,
-      0.47773449612403135
+      0.45999999999999996,
+      0.394401260504202,
+      0.47163636363636363,
+      0.43946848739495825
      ],
      [
-      0.46627450980392154,
-      0.3731298449612407,
-      0.5227450980392156,
-      0.47773449612403135
+      0.4890909090909091,
+      0.394401260504202,
+      0.5414545454545454,
+      0.43946848739495825
      ],
      [
-      0.5729411764705882,
-      0.3731298449612407,
-      0.5792156862745098,
-      0.47773449612403135
+      0.588,
+      0.394401260504202,
+      0.5938181818181818,
+      0.43946848739495825
      ],
      [
-      0.5854901960784314,
-      0.3731298449612407,
-      0.591764705882353,
-      0.47773449612403135
+      0.5996363636363636,
+      0.394401260504202,
+      0.6054545454545455,
+      0.43946848739495825
      ],
      [
-      0.6168627450980393,
-      0.3731298449612407,
-      0.6231372549019608,
-      0.47773449612403135
+      0.6287272727272727,
+      0.394401260504202,
+      0.6345454545454545,
+      0.43946848739495825
      ],
      [
-      0.635686274509804,
-      0.3731298449612407,
-      0.6482352941176471,
-      0.47773449612403135
+      0.6461818181818182,
+      0.394401260504202,
+      0.6578181818181819,
+      0.43946848739495825
      ]
     ],
     "dalpha_peak_box_gap_pt": null,
@@ -387,9 +387,9 @@
       "font_pt": 7.0,
       "bounds": [
        0.012,
-       0.7274562096634124,
+       0.7074526268349323,
        0.03718518518518519,
-       0.7469573643410854
+       0.7269537815126053
       ]
      },
      {
@@ -397,9 +397,9 @@
       "font_pt": 7.0,
       "bounds": [
        0.012,
-       0.4877372174153506,
+       0.4475891814567811,
        0.0357037037037037,
-       0.5072383720930236
+       0.46709033613445405
       ]
      },
      {
@@ -407,9 +407,9 @@
       "font_pt": 7.0,
       "bounds": [
        0.012,
-       0.343570550748684,
+       0.3639967444819912,
        0.03718518518518519,
-       0.3630717054263569
+       0.38349789915966415
       ]
      },
      {
@@ -417,9 +417,9 @@
       "font_pt": 7.0,
       "bounds": [
        0.012,
-       0.2597527212913197,
+       0.2731353999441762,
        0.03718518518518519,
-       0.27925387596899265
+       0.2926365546218491
       ]
      },
      {
@@ -427,9 +427,9 @@
       "font_pt": 7.0,
       "bounds": [
        0.810724279835391,
-       0.7274562096634124,
+       0.7074526268349323,
        0.8616039094650206,
-       0.7469573643410854
+       0.7269537815126053
       ]
      },
      {
@@ -437,9 +437,9 @@
       "font_pt": 7.0,
       "bounds": [
        0.810724279835391,
-       0.7024519103316514,
+       0.6824483275031713,
        0.8299835390946503,
-       0.7207957258452783
+       0.7007921430167982
       ]
      },
      {
@@ -447,9 +447,9 @@
       "font_pt": 7.0,
       "bounds": [
        0.810724279835391,
-       0.6774476109998904,
+       0.6574440281714102,
        0.8433168724279836,
-       0.6957914265135172
+       0.6757878436850371
       ]
      },
      {
@@ -457,9 +457,9 @@
       "font_pt": 7.0,
       "bounds": [
        0.810724279835391,
-       0.6524433116681294,
+       0.6324397288396493,
        0.8800298353909466,
-       0.6707871271817563
+       0.6507835443532761
       ]
      },
      {
@@ -467,9 +467,9 @@
       "font_pt": 7.0,
       "bounds": [
        0.810724279835391,
-       0.6274390123363685,
+       0.6074354295078883,
        0.8418353909465022,
-       0.6457828278499953
+       0.6257792450215152
       ]
      },
      {
@@ -477,9 +477,9 @@
       "font_pt": 7.0,
       "bounds": [
        0.8064032921810699,
-       0.46365010885927094,
+       0.4235020729007014,
        0.8360329218106995,
-       0.48199392437289773
+       0.4418458884143282
       ]
      },
      {
@@ -487,9 +487,9 @@
       "font_pt": 7.0,
       "bounds": [
        0.8064032921810699,
-       0.4395630003031913,
+       0.39941496434462176,
        0.8360329218106995,
-       0.4579068158168181
+       0.41775877985824855
       ]
      },
      {
@@ -497,9 +497,9 @@
       "font_pt": 7.0,
       "bounds": [
        0.8561975308641975,
-       0.46365010885927094,
+       0.4235020729007014,
        0.885827160493827,
-       0.48199392437289773
+       0.4418458884143282
       ]
      },
      {
@@ -507,9 +507,9 @@
       "font_pt": 7.0,
       "bounds": [
        0.8561975308641975,
-       0.4395630003031913,
+       0.39941496434462176,
        0.9080493827160493,
-       0.4590641549808642
+       0.4189161190222947
       ]
      },
      {
@@ -577,9 +577,9 @@
       "font_pt": 7.0,
       "bounds": [
        0.8123742283950617,
-       0.4877372174153506,
+       0.4475891814567811,
        0.8876751543209876,
-       0.5072383720930236
+       0.46709033613445405
       ]
      }
     ]
@@ -593,17 +593,15 @@
     "minimum_support_ms": 50.0,
     "caption_frequency_step_khz": 1.0,
     "ridge_rule": "per-column pixel-weighted frequency of each measured n",
-    "support_ms": 38.9119998851761,
-    "joint_support_ms": 146.43199956789954,
-    "joint_columns": 143,
-    "passing_columns": 38,
-    "passing_fraction": 0.26573426573426573,
-    "n1_median_khz": 13.989257853780634,
-    "n2_median_khz": 28.015136801419345
+    "support_ms": 0.0,
+    "joint_support_ms": 104.44799969178848,
+    "joint_columns": 102,
+    "passing_columns": 0,
+    "passing_fraction": 0.0
    },
    "tokeye_cache": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/cache/tokeye_199563_600_5900.npz",
-    "sha256": "c10f8e046f776e053acc0d216bd50802c404fc430a4a70e75c0933ed107408ca",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/cache/tokeye_199563_200_5900.npz",
+    "sha256": "4f622d85a568cf20218f4c3f3b6d4a34d3e396178d24de2ab7d46ff088872387",
     "fingerprints": {
      "waveform": {
       "group": "co2",
@@ -614,8 +612,8 @@
       "fs_hz": 500000.00147544045,
       "start_s": -1.4499906301498413,
       "end_s": 7.550007343292236,
-      "partner_row": 3,
-      "partner_sample_sha256": "80af5f9bff6ad317764f4b423ea10ee552dad240fcd782f7cbb2e53bddbd8996",
+      "partner_row": 1,
+      "partner_sample_sha256": "89da473f1340d1f0ab5ae7f1d7a70a761e5773d12cba36b34a5f65fbd3090613",
       "partner_span": [
        500000.00147544045,
        -1.4499906301498413,
@@ -641,7 +639,7 @@
     }
    },
    "first_large_peak_before_expert_ms": null,
-   "largest_dalpha_peak_ms": 2070.488691329956,
+   "largest_dalpha_peak_ms": 2068.8865184783936,
    "expert_elm_start_ms": 2100.0,
    "lmode_inferred": false,
    "ae_physical_review_caveat": null,
@@ -693,7 +691,7 @@
    },
    "elm_hmode_conflicts_ms": [],
    "elm_qh_overlaps_ms": [],
-   "render_source_commit": "580bd835",
+   "render_source_commit": "5ad86a95",
    "sawtooth_source": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/saw_source/shots/199563.json",
@@ -707,7 +705,91 @@
    },
    "sawtooth_states": [
     {
-     "start_ms": 700.0,
+     "start_ms": 300.0,
+     "end_ms": 313.7999906490595,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 313.7999906490595,
+     "end_ms": 324.19999040304197,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 324.19999040304197,
+     "end_ms": 435.7999877630846,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 435.7999877630846,
+     "end_ms": 446.1999875170671,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 446.1999875170671,
+     "end_ms": 496.29998633192497,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 496.29998633192497,
+     "end_ms": 506.69998608590737,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 506.69998608590737,
+     "end_ms": 516.2999858588144,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 516.2999858588144,
+     "end_ms": 526.9999856057002,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 526.9999856057002,
+     "end_ms": 579.2999843685158,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 579.2999843685158,
+     "end_ms": 589.6999841224982,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 589.6999841224982,
+     "end_ms": 620.1999834010046,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 620.1999834010046,
+     "end_ms": 648.3999827339185,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 648.3999827339185,
+     "end_ms": 653.9999826014476,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 653.9999826014476,
+     "end_ms": 664.3999823554301,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 664.3999823554301,
      "end_ms": 702.2999814588854,
      "category": 2,
      "state": "uncertain"
@@ -4720,11 +4802,95 @@
    },
    "appendix": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/appendix.txt",
-    "sha256": "c90e439fc630bbfebe286fa91db0722821eb021baa260b4acc4bf3a2294ad842"
+    "sha256": "2b5adc973a5de8c0e54eabf58026a906cfa7023adbbeaed7a36765deef8bb6aa"
    },
    "sawtooth_display_intervals_ms": [
     {
-     "start_ms": 700.0,
+     "start_ms": 300.0,
+     "end_ms": 313.7999906490595,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 313.7999906490595,
+     "end_ms": 324.19999040304197,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 324.19999040304197,
+     "end_ms": 435.7999877630846,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 435.7999877630846,
+     "end_ms": 446.1999875170671,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 446.1999875170671,
+     "end_ms": 496.29998633192497,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 496.29998633192497,
+     "end_ms": 506.69998608590737,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 506.69998608590737,
+     "end_ms": 516.2999858588144,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 516.2999858588144,
+     "end_ms": 526.9999856057002,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 526.9999856057002,
+     "end_ms": 579.2999843685158,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 579.2999843685158,
+     "end_ms": 589.6999841224982,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 589.6999841224982,
+     "end_ms": 620.1999834010046,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 620.1999834010046,
+     "end_ms": 648.3999827339185,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 648.3999827339185,
+     "end_ms": 653.9999826014476,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 653.9999826014476,
+     "end_ms": 664.3999823554301,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 664.3999823554301,
      "end_ms": 702.2999814588854,
      "category": 2,
      "state": "uncertain"
@@ -4989,7 +5155,7 @@
    },
    "confinement_intervals_ms": [
     {
-     "start_ms": 700.0,
+     "start_ms": 410.0,
      "end_ms": 1595.0,
      "category": 2,
      "state": "L-mode"
@@ -5034,7 +5200,7 @@
    "sawtooth_state_duration_ms": {
     "present": 365.9999913420761,
     "absent": 0,
-    "uncertain": 4194.500021420083,
+    "uncertain": 4594.500021420084,
     "unassessed": 539.4999872378407
    },
    "sawtooth_density_proxy": {
@@ -5055,10 +5221,10 @@
      60.05859392722576,
      249.02343823483852
     ],
-    "pixels": 30950,
-    "columns": 2152,
-    "first_time_ms": 4209.657353149211,
-    "last_time_ms": 5797.881348462552,
+    "pixels": 32912,
+    "columns": 3339,
+    "first_time_ms": 4200.185353177162,
+    "last_time_ms": 5724.665348678604,
     "rule": "all coherent pixels in the AE detector band during late ABSENT times after the last PRESENT AE interval; no duration cutoff",
     "reason": "AE detector absent; time coincidence is required"
    },
@@ -5067,8 +5233,8 @@
     5.300000000000001
    ],
    "figure_sha256": {
-    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.pdf": "36c08ed71c3b4c2ea8c6f4b8bd427e4ae425a025a3d4d79f911606cb3c962837",
-    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.png": "70d184179bcd4477a5d24719dd068216e279df86f2702ee67f059e782b361728"
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.pdf": "ad2a2ed7ec21de4595dac48a3d531d52fb584c7e8e0791a283bb49701269ac5d",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.png": "945bb5572743e94acc2d3148f864cd8e6253cdc5692a778bca818d7be944ae10"
    }
   }
  ],
@@ -5088,12 +5254,12 @@
   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/elm_frames/v2/edge_localized_mode_suggest_elm_frames_v2.csv": "b63b93485b2320a6d27849a2f2d6b1e04b7c6a8c65373d55b3d2413dfc01de85",
   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/elm_frames/v2/edge_localized_mode_suggest_elm_frames_v2.meta.json": "ba4e660688292c0668b7750debeeb50aaca5f232bfb212a4f43fa03a9b37da7d",
   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/tokeye/big_tf_unet_251210.pt": "4afc3948ba53af40cb2787441b251757f8c77e764784e0aaa2602af0471229a9",
-  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/cache/tokeye_199563_600_5900.npz": "c10f8e046f776e053acc0d216bd50802c404fc430a4a70e75c0933ed107408ca"
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/cache/tokeye_199563_200_5900.npz": "4f622d85a568cf20218f4c3f3b6d4a34d3e396178d24de2ab7d46ff088872387"
  },
  "blind_test_shots_used": 0,
  "sawtooth_source_manifest": {
   "path": "outputs/labeler/paper/fig_interpreter_tokeye/fig1c/sawtooth_source_manifest.json",
-  "sha256": "5dd1fe7a9d20e214cec5d842af1f95dc7eab7ba087dd2eac5191fd20af0383ea",
+  "sha256": "1b594b7b7734519194a717a0f7ce343587cf37cdf6164477546149fb516c0501",
   "export_root": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5",
   "export_sums_sha256": "47081aebcad868911bf3e38817b3e0c79e4ba9f02efe5fcee84780ad00a0ef14",
   "snapshot_source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/saw_source/shots",
@@ -5111,7 +5277,7 @@
     "shots": {
      "199563": [
       {
-       "start_ms": 700,
+       "start_ms": 300,
        "end_ms": 915.0,
        "category": 2,
        "state": "uncertain"
@@ -5169,7 +5335,7 @@
     "shots": {
      "199563": [
       {
-       "start_ms": 700,
+       "start_ms": 300,
        "end_ms": 2000.0,
        "category": 0,
        "state": "absent"
@@ -5224,7 +5390,7 @@
    "--shot",
    "199563",
    "--tmin",
-   "700.0",
+   "300.0",
    "--tmax",
    "5800.0",
    "--out",
@@ -5237,12 +5403,12 @@
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/saw_source/shots/199563.json"
   ],
   "before": {
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.pdf": "36c08ed71c3b4c2ea8c6f4b8bd427e4ae425a025a3d4d79f911606cb3c962837",
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.png": "70d184179bcd4477a5d24719dd068216e279df86f2702ee67f059e782b361728"
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.pdf": "ad2a2ed7ec21de4595dac48a3d531d52fb584c7e8e0791a283bb49701269ac5d",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.png": "945bb5572743e94acc2d3148f864cd8e6253cdc5692a778bca818d7be944ae10"
   },
   "after": {
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.pdf": "36c08ed71c3b4c2ea8c6f4b8bd427e4ae425a025a3d4d79f911606cb3c962837",
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.png": "70d184179bcd4477a5d24719dd068216e279df86f2702ee67f059e782b361728"
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.pdf": "ad2a2ed7ec21de4595dac48a3d531d52fb584c7e8e0791a283bb49701269ac5d",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1c/fig_interpreter.png": "945bb5572743e94acc2d3148f864cd8e6253cdc5692a778bca818d7be944ae10"
   },
   "identical": true,
   "rebuild_files": [
