@@ -630,15 +630,18 @@ def main():
                 "(held-out F1 0.46, below our 0.7 bar, shown at 0.5) is positive."
                 in caption
             )
-            assert "Highlights mark time/band coincidence only." in caption
-            # 0 % of the jointly measured time pass the 5 % ratio test:
-            # below the 0.6 gate, so the caption makes no harmonic claim.
-            assert "harmonics" not in caption
-            assert drawn["n2_harmonic_consistent"] is False
+            assert (
+                "Highlights mark time/band coincidence only; the $n=2$ ridge is "
+                "consistent with a harmonic of the $n=1$ mode." in caption
+            )
+            # 94 % of the 219 ms with n=1 and n=2 measured together pass the 5 %
+            # ratio test, above the 0.6 gate; n=3 has no joint support (0 of 21 ms).
+            assert drawn["n2_harmonic_consistent"] is True
             assert drawn["n3_harmonic_consistent"] is False
-            # The NTM detector is positive for 100 ms only, with no n=1 and n=3
-            # measured together, so the appendix carries no ratio sentence.
-            assert "where both are measured" not in appendix
+            assert (
+                "n=2 lies within 5% of 2×f(n=1) in 207 of 219 ms where both are "
+                "measured (94%" in appendix
+            )
             assert "n=3 lies within" not in appendix
             assert "linear frequency axis, 0--250 kHz" in caption
             # No row of this shot is an expert review, so no D-alpha spike

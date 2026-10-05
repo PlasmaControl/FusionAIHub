@@ -3846,7 +3846,7 @@
   },
   "hole_area_px": 10,
   "components": "scipy.ndimage.label, 8-connected (3x3 structure)",
-  "tag_rule": "component AND PRESENT time pixels AND event band; NTM dominant measured n in {1,2} AND pixel n in {1,2} <=30 kHz; sawtooth crash ticks, no mode tag",
+  "tag_rule": "component AND PRESENT time pixels AND event band; TM dominant measured n in {1,2} AND pixel n in {1,2} <=30 kHz; sawtooth crash ticks, no mode tag",
   "ae_highlight_rule": "pixel tint only; no component bounding boxes",
   "outline_display_rule": "max pool measured n=1 or 2 support at 150-dpi axes resolution; fill holes; solid orange #E69F00 outer contour, 0.9 pt; clip to raw time/band spans; display only: regions under 100 print pixels are not outlined, tags unchanged; pixel audit covers outlined region support, not contour stroke",
   "projection_audit_rule": "enumerate projected coordinates against raw, end-exclusive intervals; independent of present_columns",
@@ -4068,10 +4068,10 @@
    "title": "NTM",
    "what": "the tearing-mode frame model, run on this shot alone",
    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/outside_rows/neoclassical_tearing_mode.csv",
-   "sha256": "198edca552c8e291a59baa28810df608803d3baf5f5b2a4b4b295ae15bd83d2c",
-   "rows": 6,
+   "sha256": "bfa111f173031104c7e073fc8340c521db0b1555c482213575f311db0ffcc1e9",
+   "rows": 10,
    "model": "ntm_frames",
-   "decision_threshold": 0.63,
+   "decision_threshold": 0.5,
    "crowd_semantics": null,
    "primary_bars": {
     "N1": false,
@@ -4080,7 +4080,7 @@
    },
    "temporal_bin_ms": null,
    "metadata": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/outside_rows/neoclassical_tearing_mode.meta.json",
-   "metadata_sha256": "a23ff8fc9da4fc56ba07e1f36d9be30ef663a8e08a0988c5e60de4525c3b7c44",
+   "metadata_sha256": "a6401ec031496de5195795ec40280212bbf43cbc57c922e098a5f64a8e26c8a9",
    "states": {
     "1": "present",
     "2": "uncertain",
@@ -4089,30 +4089,54 @@
    "state_intervals_ms": [
     {
      "start_ms": 100.0,
-     "end_ms": 3350.0,
+     "end_ms": 2850.0,
      "category": 0,
      "state": "absent"
     },
     {
-     "start_ms": 3350.0,
-     "end_ms": 3400.0,
+     "start_ms": 2850.0,
+     "end_ms": 2900.0,
      "category": 1,
      "state": "present"
     },
     {
-     "start_ms": 3400.0,
-     "end_ms": 3500.0,
+     "start_ms": 2900.0,
+     "end_ms": 3300.0,
      "category": 0,
      "state": "absent"
     },
     {
-     "start_ms": 3500.0,
+     "start_ms": 3300.0,
      "end_ms": 3550.0,
      "category": 1,
      "state": "present"
     },
     {
      "start_ms": 3550.0,
+     "end_ms": 3650.0,
+     "category": 0,
+     "state": "absent"
+    },
+    {
+     "start_ms": 3650.0,
+     "end_ms": 3800.0,
+     "category": 1,
+     "state": "present"
+    },
+    {
+     "start_ms": 3800.0,
+     "end_ms": 4400.0,
+     "category": 0,
+     "state": "absent"
+    },
+    {
+     "start_ms": 4400.0,
+     "end_ms": 4550.0,
+     "category": 1,
+     "state": "present"
+    },
+    {
+     "start_ms": 4550.0,
      "end_ms": 6200.0,
      "category": 0,
      "state": "absent"
@@ -4121,12 +4145,20 @@
    "density_guard": null,
    "present_spans_ms": [
     [
-     3350.0,
-     3400.0
+     2850.0,
+     2900.0
     ],
     [
-     3500.0,
+     3300.0,
      3550.0
+    ],
+    [
+     3650.0,
+     3800.0
+    ],
+    [
+     4400.0,
+     4550.0
     ]
    ]
   },
@@ -5632,11 +5664,11 @@
  },
  "caption": {
   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/caption.tex",
-  "sha256": "08439be9b22fc815af51f31073c83929fffe7657889b18912b2bb0929c19472b"
+  "sha256": "f4b34c878a89ce278b1906bcf22135b946a3e1138ac1b2087c03764bb7cdf1d9"
  },
  "appendix": {
   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/appendix.txt",
-  "sha256": "4c6501c75f88678c891248affbf474b09d9d5bde3d222a07f86f5839a2be540b"
+  "sha256": "5ca5e7aa04dc7b7e16442100caa5cb7b1107a83916c2df06b7dc15422bb0fda2"
  },
  "drawn": {
   "figure": [
@@ -5644,18 +5676,18 @@
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/fig_interpreter.png"
   ],
   "figure_sha256": {
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/fig_interpreter.pdf": "ec904aa64f39be7ce1eb979d81f7334d56f044dd1dba10f9e80adb83458b2641",
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/fig_interpreter.png": "b4e9b3dfd535374cc8a6823a07a10d0f8e8815bdb1c2d8fb304b443495343423"
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/fig_interpreter.pdf": "d7003d01d500eb31a3a2f703d9e1f9127a67c5349865cb635d3b1b38001b57ed",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/fig_interpreter.png": "84075d6bf4a229137fe3b188e4bf19656e84ec4181b472a66729ba4578e455c9"
   },
   "blobs": {
    "wide_above_split": 459,
    "zoom_below_split": 139,
    "tagged": {
     "alfven_eigenmode": 325,
-    "neoclassical_tearing_mode": 3,
+    "neoclassical_tearing_mode": 13,
     "sawtooth_oscillation": 0
    },
-   "untagged": 270
+   "untagged": 260
   },
   "beta_n": {
    "store": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/features/199597_features.h5",
@@ -6041,7 +6073,7 @@
     "coherent",
     "transient",
     "AE",
-    "NTM",
+    "TM",
     "ELM",
     "n=1",
     "n=2",
@@ -6152,12 +6184,12 @@
      ]
     },
     {
-     "text": "NTM",
+     "text": "TM",
      "font_pt": 7.0,
      "bounds": [
       0.810724279835391,
       0.6627274311791588,
-      0.8433168724279836,
+      0.8329465020576132,
       0.6796062892038501
      ]
     },
@@ -6296,20 +6328,20 @@
    "rule": "all coherent pixels in the AE detector band during late ABSENT times after the last PRESENT AE interval; no duration cutoff",
    "reason": "AE detector absent; time coincidence is required"
   },
-  "n2_harmonic_consistent": false,
+  "n2_harmonic_consistent": true,
   "n3_harmonic_consistent": false,
   "harmonic_support": {
    "frequency_ratio_tolerance": 0.1,
    "minimum_support_ms": 50.0,
    "caption_frequency_step_khz": 1.0,
    "ridge_rule": "per-column pixel-weighted frequency of each measured n",
-   "support_ms": 41.983999876111056,
-   "joint_support_ms": 41.983999876111056,
-   "joint_columns": 41,
-   "passing_columns": 41,
-   "passing_fraction": 1.0,
-   "n1_median_khz": 9.826660185247302,
-   "n2_median_khz": 19.836425839784926
+   "support_ms": 206.84799938962033,
+   "joint_support_ms": 219.13599935336015,
+   "joint_columns": 214,
+   "passing_columns": 202,
+   "passing_fraction": 0.9439252336448598,
+   "n1_median_khz": 10.070800810967732,
+   "n2_median_khz": 20.26367193479568
   },
   "harmonic3_support": {
    "frequency_ratio_tolerance": 0.15000000000000002,
@@ -6317,8 +6349,8 @@
    "caption_frequency_step_khz": 1.0,
    "ridge_rule": "per-column pixel-weighted frequency of each measured n",
    "support_ms": 0.0,
-   "joint_support_ms": 1.0239999969783184,
-   "joint_columns": 1,
+   "joint_support_ms": 21.503999936544687,
+   "joint_columns": 21,
    "passing_columns": 0,
    "passing_fraction": 0.0
   },
@@ -6329,22 +6361,29 @@
   "ntm_outline_display": {
    "rule": "display only: an outlined region needs at least min_px print pixels (150 dpi, after max pooling and hole filling); smaller regions are left unoutlined; tags and counts unchanged",
    "min_px": 100,
-   "omitted_fragments": 4,
-   "dashed_rule": "a thin dashed outline of the rest of a tagged component's measured n=1/2 support (all time, NTM band) where the detector-positive clip cuts it; display only",
-   "dashed_regions": 0,
+   "omitted_fragments": 11,
+   "dashed_rule": "a thin dashed outline of the rest of a tagged component's measured n=1/2 support (all time, TM band) where the detector-positive clip cuts it; display only",
+   "dashed_regions": 2,
    "bands": {
     "wide": {},
     "zoom": {
      "min_px": 100,
-     "regions": 4,
-     "omitted_fragments": 4,
+     "regions": 11,
+     "omitted_fragments": 11,
      "omitted_sizes_px": [
+      2,
       3,
       4,
+      4,
+      6,
       12,
-      12
+      13,
+      13,
+      24,
+      34,
+      60
      ],
-     "dashed_regions": 0
+     "dashed_regions": 2
     }
    }
   },
@@ -6365,8 +6404,8 @@
    "outside_support": "unknown; cannot supply dominant n evidence"
   },
   "ntm_dominant_n": {
-   "1": 1,
-   "2": 2
+   "1": 5,
+   "2": 8
   },
   "ae_boxes_ms_khz": [],
   "sawtooth_crashes": {
@@ -6414,7 +6453,7 @@
      "outside_band": 0
     },
     "neoclassical_tearing_mode": {
-     "pixels": 1116,
+     "pixels": 6304,
      "outside_present": 0,
      "outside_band": 0
     }
@@ -6469,11 +6508,11 @@
    }
   }
  },
- "git": "48d93581",
+ "git": "2ab54d3c",
  "render_started_from_clean_head": true,
  "render_code_sha256": {
-  "scripts/labeler/paper/fig_interpreter_tokeye.py": "67b752945610ebe55dd021b77ab931c5b46fc194b515d209567b1081f2acd864",
-  "src/labeler/paper/figure_sources.py": "db194418bca4d3975cbdb044a69ab6f1301c06ae81d3495bb614fb61bf650c5d",
+  "scripts/labeler/paper/fig_interpreter_tokeye.py": "4eea192faa9488c55d48c61e33d604d21c4712e4d1fa9fdac0d0303b2835a306",
+  "src/labeler/paper/figure_sources.py": "c6f60930eb665a016a52e7f196a3a03798ff027250889419ecbc051b9aa67ddc",
   "src/labeler/paper/mode_tags.py": "5a23d78ab919e93ab892633ea46e1891d2785227b91ff2552e891e476f6b4661"
  }
 }
