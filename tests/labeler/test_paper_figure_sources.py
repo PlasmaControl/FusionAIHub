@@ -659,7 +659,7 @@ def test_appendix_discloses_ae_bins_and_data_derived_late_band():
         {fs.mt.AE: record},
         {"late_untagged_high_frequency": {"band_khz": [80, 250]}},
     )
-    assert "Magnetic lines at 80–250 kHz remain visible" in primary
+    assert "Mask lines at 80–250 kHz remain visible" in primary
     assert "stay untagged because the CO2 AE detector is negative" in primary
     assert "magnetics-only" not in primary
     assert "170–250" not in text

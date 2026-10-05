@@ -670,7 +670,7 @@ def main():
             assert "cannot separate harmonics of one island from phase-locked" in (
                 appendix
             )
-            assert "linear frequency axis, 0--250 kHz" in caption
+            assert "linear frequency axes, 0--250 kHz" in caption
             # No row of this shot is an expert review, so no D-alpha spike
             # "precedes the expert span" and the ELM source is named a detector.
             assert drawn["first_large_peak_before_expert_ms"] is None
