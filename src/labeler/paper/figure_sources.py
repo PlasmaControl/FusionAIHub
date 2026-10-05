@@ -851,6 +851,8 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
             "30 kHz coloured by toroidal mode number n (Mirnov array)."
         ),
     ]
+    if drawn.get("tokeye_transient_drawn"):
+        sentences.append("Red: TokEye's transient channel.")
     if ae:
         if ae_record.get("tier") == lf.GENERATED:
             bin_ms = ae_record.get("temporal_bin_ms") or 25
@@ -967,18 +969,30 @@ def roster_note(record: dict) -> str | None:
     return " ".join(parts)
 
 
+def _tokeye_threshold(drawn: dict) -> float:
+    """The cut the figure applied to TokEye's channels; the network's operating
+    point where the record does not say."""
+    return drawn.get("tokeye_threshold", mt.PROB_THRESHOLD)
+
+
 def _chain_note(drawn: dict) -> str:
     """The mask chain's steps, with the persistent-row step and what it did."""
     share = round(mt.PERSISTENT_ROW_SHARE * 100)
     text = (
-        f"The mask chain is: TokEye coherent mask at ≥{mt.PROB_THRESHOLD:g} and not "
-        f"transient; persistent-row step (a row lit for over {share} % of the record "
+        f"The mask chain is: TokEye coherent mask at ≥{_tokeye_threshold(drawn):g} "
+        "and not transient; persistent-row step (a row lit for over "
+        f"{share} % of the record "
         "is a persistent-line candidate, not an identified pickup line, and is "
         "kept only where the rows above and below are both lit); removal of objects "
         f"under {mt.MIN_SIZE['wide']} (wide pass) or {mt.MIN_SIZE['zoom']} (zoom "
         f"pass) pixels; filling of holes under {mt.HOLE_AREA} pixels; components; "
         "time/band tags."
     )
+    if drawn.get("tokeye_transient_drawn"):
+        text += (
+            " Red: TokEye's transient channel at the same cut, after the same "
+            "small-object removal; the coherent mask excludes it."
+        )
     rows = drawn.get("persistent_line_rows")
     if rows is not None:
         if not any(rows.values()):
@@ -1083,7 +1097,7 @@ def appendix_notes(
     ntm = records.get(mt.NTM) or {}
     ae_detector = ae.get("tier") == lf.GENERATED
     ae_ours = ae.get("what", "").startswith("ae-ours")
-    thresholds = [f"TokEye {mt.PROB_THRESHOLD:g}"]
+    thresholds = [f"TokEye {_tokeye_threshold(drawn):g}"]
     if ae_detector:
         thresholds.append(f"AE {ae.get('decision_threshold') or AE_THRESHOLD:g}")
     if ntm.get("tier") == lf.GENERATED:

@@ -435,7 +435,8 @@ def main():
         tags = drawn["blobs"]["tagged"]
         assert ("AE" in legend) == bool(tags[mt.AE])
         assert ("NTM" in legend) == bool(tags[mt.NTM])
-        assert "TokEye" in legend and "ELM" in legend
+        assert "TokEye coherent" in legend and "ELM" in legend
+        assert ("TokEye transient" in legend) == drawn["tokeye_transient_drawn"]
         assert geometry["ntm_key_black_swatch"] == bool(tags[mt.NTM])
         png = Path(drawn["figure"][1])
         with Image.open(png) as native:
@@ -524,7 +525,12 @@ def main():
             shot, record["tracks"], drawn, record["detector_training"]
         )
         assert fs.sawtooth_caption(saw) in appendix
-        thresholds = ["TokEye 0.2"]
+        thresholds = [f"TokEye {drawn['tokeye_threshold']:g}"]
+        assert drawn["tokeye_threshold"] == renderer.TOKEYE_THRESHOLD
+        assert record["decision_thresholds"]["tokeye"] == renderer.TOKEYE_THRESHOLD
+        assert ("Red: TokEye's transient channel." in caption) == (
+            drawn["tokeye_transient_drawn"]
+        )
         for key, name in ((mt.AE, "AE"), (mt.NTM, "NTM")):
             if record["tracks"][key]["tier"] == lf.GENERATED:
                 value = record["tracks"][key]["decision_threshold"]

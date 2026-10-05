@@ -144,6 +144,11 @@ NTM_DASHED_STYLE = (0, (3, 1.6))
 NTM_OUTLINE_MIN_PX = 100
 #: The ELM interval boxes, in red so they read against the D-alpha trace.
 ELM_BOX_COLOUR = "#D62728"
+#: The probability TokEye's coherent and transient channels are cut at in this figure
+#: (the network's operating point is `mode_tags.PROB_THRESHOLD`, 0.2; the figure
+#: raises it to show less low-confidence noise), and the transient channel's colour.
+TOKEYE_THRESHOLD = 0.35
+TRANSIENT_COLOUR = "#E8262B"
 #: The share of the D-alpha panel's height the ELM boxes span; the regime names sit above.
 ELM_BOX_TOP = 0.62
 #: D-alpha's panel runs to this multiple of its own maximum (room for the regime names).
@@ -377,7 +382,14 @@ class Band:
             z[f"{name}_tra"].astype(np.float32),
             z[f"{name}_row_lit"],
             mode_tags.MIN_SIZE[name],
+            threshold=TOKEYE_THRESHOLD,
         )
+        # The transient channel at the same cut, after the same small-object removal.
+        tra = mode_tags.clean(
+            z[f"{name}_tra"].astype(np.float32) >= TOKEYE_THRESHOLD,
+            mode_tags.MIN_SIZE[name],
+        )
+        self.tra = tra[rows][:, cols]
         self.lit_all = lit
         self.lit = lit[rows][:, cols]
         self.lit_full = lit[:, cols]  # 512 rows: `tracks.components` wants them all
@@ -472,6 +484,29 @@ def draw_processed(ax, band: Band) -> None:
         extent=band.extent(),
         interpolation="nearest",
     )
+
+
+def draw_transient(ax, band: Band, below_khz: float | None = None) -> bool:
+    """TokEye's transient channel in red over the mask (transparent elsewhere);
+    `below_khz` leaves out rows at or above it. Returns whether any was drawn."""
+    tra = band.tra.copy()
+    if below_khz is not None:
+        tra[band.f >= below_khz] = False
+    if not tra.any():
+        return False
+    rgba = np.zeros((*tra.shape, 4), np.float32)
+    rgba[tra] = (*to_rgb(TRANSIENT_COLOUR), 1.0)
+    k = band.k
+    n = rgba.shape[1] // k * k
+    img = rgba[:, :n].reshape(rgba.shape[0], n // k, k, 4).max(2)
+    ax.imshow(
+        img,
+        origin="lower",
+        aspect="auto",
+        extent=band.extent(),
+        interpolation="nearest",
+    )
+    return True
 
 
 def event_clip(ax, spans, event):
@@ -694,12 +729,13 @@ def track_bars(ax, track: lf.Track, colour: str, regimes=None, bar=BAR) -> None:
             )
 
 
-def draw_frequency_panels(ax, raw: Band, zoom: Band, top: Band) -> None:
+def draw_frequency_panels(ax, raw: Band, zoom: Band, top: Band) -> bool:
     """The raw spectrogram and the TokEye mask, each on one linear 0-250 kHz axis.
 
     The raw panel is the wide pass alone on one colour scale. The mask panel takes
     the zoom pass below `ZOOM_TOP_KHZ` and the wide pass above it (`top`, drawn
-    over the zoom pass's decimation roll-off); no axis break or stretching."""
+    over the zoom pass's decimation roll-off); no axis break or stretching. The
+    transient channel is drawn over the mask in red; returns whether any shows."""
     for name in ("raw", "pr"):
         ax[name].set_ylim(0, TOP_KHZ)
         ax[name].set_yticks(FREQ_TICKS_KHZ)
@@ -707,6 +743,7 @@ def draw_frequency_panels(ax, raw: Band, zoom: Band, top: Band) -> None:
     draw_raw(ax["raw"], raw)
     draw_processed(ax["pr"], zoom)
     draw_processed(ax["pr"], top)
+    return draw_transient(ax["pr"], zoom, ZOOM_TOP_KHZ) | draw_transient(ax["pr"], top)
 
 
 def draw_legends(
@@ -722,14 +759,17 @@ def draw_legends(
     t0,
     t1,
     ntm_dashed=False,
+    transient=False,
 ):
     """Source-aware signal/event keys and aligned label-state keys."""
     da = ax["da_pr"]
     elm_key = "edge_localized_mode"
     pos = ax["pr"].get_position()
     event_handles = [
-        Patch(fc="white", ec=INK, lw=0.5, label="TokEye")
+        Patch(fc="white", ec=INK, lw=0.5, label="TokEye coherent")
     ]
+    if transient:
+        event_handles.append(Patch(fc=TRANSIENT_COLOUR, lw=0, label="TokEye transient"))
     if projected["wide"][mode_tags.AE].any():
         event_handles.append(
             Patch(
@@ -990,7 +1030,7 @@ def draw(
         low.lit_all,
         low.all_f,
         low.all_t,
-        {"mask": "TokEye zoom pass, filtered", "threshold": mode_tags.PROB_THRESHOLD},
+        {"mask": "TokEye zoom pass, filtered", "threshold": TOKEYE_THRESHOLD},
     )
     n_read, n_kept = roster.gated(n_sig.rows[0], gate) if n_sig.rows else (None, None)
 
@@ -1034,7 +1074,7 @@ def draw(
             style_axes(a)
 
         # ---- raw
-        draw_frequency_panels(ax, raw_view, low, mask_top)
+        transient_shown = draw_frequency_panels(ax, raw_view, low, mask_top)
         ax["raw"].text(
             1.02,
             0.97,
@@ -1259,6 +1299,7 @@ def draw(
             ntm_dashed=any(
                 r.get("dashed_regions", 0) for r in ntm_outline_regions.values()
             ),
+            transient=transient_shown,
         )
         fig.draw_without_rendering()
         ae_label = None
@@ -1484,6 +1525,8 @@ def draw(
             "tagged": tags_count,
             "untagged": sum(not b.tags for b in blobs_high + blobs_low),
         },
+        "tokeye_threshold": TOKEYE_THRESHOLD,
+        "tokeye_transient_drawn": transient_shown,
         "elm_peaks_in_label": len(peaks),
         "elm_peak_times_ms": peaks.tolist(),
         "first_large_peak_before_expert_ms": first_large_peak_before_expert_ms,
@@ -1956,7 +1999,7 @@ def main(argv=None) -> int:
             "ae": figure_sources.AE_THRESHOLD,
             "ntm": figure_sources.NTM_THRESHOLD,
             "sawtooth": figure_sources.SAWTOOTH_THRESHOLD,
-            "tokeye": mode_tags.PROB_THRESHOLD,
+            "tokeye": TOKEYE_THRESHOLD,
             "sawtooth_elm_veto_ms": figure_sources.ELM_VETO_MS,
             "ece_crash_match_ms": figure_sources.ECE_MATCH_MS,
         },
@@ -1976,7 +2019,7 @@ def main(argv=None) -> int:
             "checkpoint": str(checkpoint),
             "sha256": sha256_of(checkpoint),
             "probe": f"{SOURCE_GROUP} rows {SOURCE_ROW} and {PARTNER_ROW} ({SOURCE_TITLE})",
-            "threshold": mode_tags.PROB_THRESHOLD,
+            "threshold": TOKEYE_THRESHOLD,
             "cache": str(cache_file),
             "cache_sha256": sha256_of(cache_file),
             "fingerprints": json.loads(str(z["fingerprints"])),
