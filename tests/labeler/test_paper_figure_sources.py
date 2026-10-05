@@ -728,7 +728,7 @@ def _roster_record(tier="unreviewed"):
             }
         ],
         "roster": {
-            "model": "1D U-Net over D-alpha",
+            "model": "1D U-Net over D-alpha; docs/labeler/confinement_ours.md",
             "segmentation": {
                 "active": "total beam power >= 200000 W",
                 "confidence_floor": "a segment under 0.7 is category 5; `predicted` "
@@ -779,8 +779,9 @@ def test_caption_and_appendix_say_whose_labels_disagree_inside_qh():
 def test_appendix_describes_the_roster_row_from_its_own_metadata():
     records = {"confinement": _roster_record()}
     text = fs.appendix_notes(199563, records, {})
-    assert "Confinement: confinement model roster" in text
+    assert "Confinement: model roster" in text
     assert "Confinement: model labels from the released confinement roster" in text
+    assert "(1D U-Net over D-alpha)" in text and "docs/" not in text
     assert "a segment under 0.7 is category 5" in text
     assert "`" not in text
     assert "ensemble of the fold models" in text

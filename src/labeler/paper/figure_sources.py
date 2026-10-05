@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from dataclasses import dataclass, replace
 from importlib.metadata import version
 from pathlib import Path
@@ -905,9 +906,14 @@ def _source_name(key: str, record: dict) -> str:
         return "CO2 frame detector"
     if key == "confinement":
         if record.get("segments") is not None:
-            return "confinement model roster"
+            return "model roster"
         return "D-alpha detector"
     return "detector"
+
+
+def _model_text(model: str) -> str:
+    """The roster's model description without its pointer to a repo document."""
+    return re.sub(r";\s*docs/\S+", "", model).strip()
 
 
 def roster_note(record: dict) -> str | None:
@@ -919,7 +925,7 @@ def roster_note(record: dict) -> str | None:
     segmentation = meta.get("segmentation") or {}
     parts = [
         "Confinement: model labels from the released confinement roster"
-        + (f" ({meta['model']})" if meta.get("model") else "")
+        + (f" ({_model_text(meta['model'])})" if meta.get("model") else "")
         + "."
     ]
     if segmentation.get("active"):
