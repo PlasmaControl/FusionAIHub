@@ -17,6 +17,7 @@ from pathlib import Path
 
 import fig_interpreter_tokeye as renderer
 import numpy as np
+import pandas as pd
 from PIL import Image
 
 from labeler.ae.xpower.train import read_split
@@ -481,8 +482,19 @@ def main():
         )
         assert raster_ae["outside_present"] == raster_ae["below_detector_band"] == 0
         assert bool(raster_ae["pink_pixels"]) == bool(tags[mt.AE])
-        if confine["title"] == "regime":
-            assert set(drawn["regimes_shown"]) <= set(legend)
+        if confine["title"] == fs.CONFINEMENT_TITLE:
+            # The class swatches in the key are exactly the classes the row draws.
+            row_classes = {
+                r["category"]
+                for r in confine["state_intervals_ms"]
+                if r["category"] in renderer.CLASS_LEGEND
+            }
+            names = renderer.CLASS_LEGEND
+            assert {names[c] for c in row_classes} <= set(legend)
+            assert not {names[c] for c in names if c not in row_classes} & set(legend)
+            assert set(drawn["regimes_shown"]) <= {
+                lf.REGIMES[c] for c in lf.REGIMES if c != 5
+            }
         elm_expert = record["tracks"]["edge_localized_mode"]["tier"] == lf.SILVER
         crowd = bool(drawn["elm_crowd_spans_ms"])
         assert any("expert ELM" in name for name in legend) == (elm_expert and crowd)
@@ -655,10 +667,45 @@ def main():
             # "precedes the expert span" and the ELM source is named a detector.
             assert drawn["first_large_peak_before_expert_ms"] is None
             assert "precedes the expert span" not in appendix
-            assert "Detected ELM intervals and the H-mode detector disagree" in caption
-            assert "Detected ELM intervals overlap H-mode-detector absent time" in (
-                appendix
+            # The confinement row is the released roster, read independently here.
+            confinement = record["tracks"]["confinement"]
+            roster = Path(confinement["path"])
+            assert confinement["title"] == "confinement"
+            assert confinement["tier"] == lf.GENERATED
+            assert roster.parts[-2:] == ("extend_confine_ours", "roster.csv")
+            table = pd.read_csv(roster)
+            table = table[table.shot == shot]
+            assert [
+                (s["start_ms"], s["end_ms"], s["category"], s["tier"])
+                for s in confinement["segments"]
+            ] == list(zip(table.t_start, table.t_end, table.category, table.tier))
+            clipped = [
+                (max(a, record["window_ms"][0]), min(b, record["window_ms"][1]), c)
+                for a, b, c in zip(table.t_start, table.t_end, table.category)
+                if b > record["window_ms"][0] and a < record["window_ms"][1]
+            ]
+            assert [
+                (r["start_ms"], r["end_ms"], r["category"])
+                for r in confinement["state_intervals_ms"]
+            ] == clipped
+            assert sha256_of(roster) == confinement["sha256"]
+            qh = [(a, b) for a, b, c in clipped if c == 3]
+            assert qh == [(2153.0, 4537.0)]
+            source_text = sources_text["confinement"]["text"]
+            assert source_text == "model (unreviewed)"
+            # ELM boxes inside QH are disclosed, with whose labels they are.
+            assert drawn["elm_qh_overlaps_ms"], "ELM intervals overlap the QH span"
+            assert all(
+                o["category"] == 3
+                and qh[0][0] <= o["span_ms"][0] < o["span_ms"][1] <= qh[0][1]
+                for o in drawn["elm_qh_overlaps_ms"]
             )
+            assert "ELM intervals overlap the QH span; QH is ELM-free by" in caption
+            assert "the detector's and the QH label is the model's" in caption
+            assert "both unreviewed" in caption
+            assert "H-mode detector" not in caption + appendix
+            assert "Overlaps: " in appendix
+            assert not drawn["elm_hmode_conflicts_ms"]
             assert not any(
                 t["tier"] == lf.SILVER for t in record["tracks"].values() if t
             )
@@ -686,7 +733,7 @@ def main():
         assert sha256_of(caption_file) == record["caption"]["sha256"]
         layout = record["print_layout"]
         assert layout["width_in"] == 6.75 and layout["minimum_font_pt"] >= 7
-        assert layout["height_in"] <= 5.5
+        assert layout["height_in"] <= 5.6
         assert record["decision_thresholds"]["ae"] == AE_THRESHOLD
         external = Path(record["caption"]["path"]).parent / "fig_interpreter.json"
         assert external.read_bytes() == file.read_bytes()
@@ -744,7 +791,7 @@ def main():
         info = subprocess.check_output(["pdfinfo", str(pdf)], text=True)
         size = re.search(r"Page size:\s+([\d.]+) x ([\d.]+)", info)
         width, height = (float(v) / 72 for v in size.groups())
-        assert width == 6.75 and height <= 5.5
+        assert width == 6.75 and height <= 5.6
         audited.append(
             {
                 "shot": shot,
@@ -779,6 +826,7 @@ def main():
                 "ntm_performance": ntm["performance"],
                 "publication_suitability": record["publication_suitability"],
                 "elm_hmode_conflicts_ms": drawn["elm_hmode_conflicts_ms"],
+                "elm_qh_overlaps_ms": drawn["elm_qh_overlaps_ms"],
                 "render_source_commit": record["git"],
                 "sawtooth_source": crashes["files"],
                 "sawtooth_interval_source": {

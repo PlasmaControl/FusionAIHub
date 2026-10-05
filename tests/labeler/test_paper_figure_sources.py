@@ -22,6 +22,17 @@ def _paths(tmp_path, monkeypatch):
         "shot,category,t_start,t_end,confidence\n42,1,0,500,\n43,0,0,1799,\n"
         "43,1,1799,4470,\n43,5,4470,5346,\n"
     )
+    roster = fs.roster_file(p)
+    roster.parent.mkdir(parents=True)
+    roster.write_text(
+        ",".join(fs.ROSTER_COLUMNS) + "\n"
+        "42,2,0,50,0.9,2,held_out,model,False\n"
+        "44,2,410,1595,0.941,2,ensemble,model,True\n"
+        "44,5,1595,2153,0.61,3,ensemble,unreviewed,True\n"
+        "44,3,2153,4537,0.887,3,ensemble,unreviewed,True\n"
+        "44,1,4633,5001,0.869,1,ensemble,model,True\n"
+        "44,1,6000,6000,0.9,1,ensemble,model,True\n"
+    )
     return p
 
 
@@ -29,7 +40,8 @@ def test_curated_regimes_win_over_an_early_dalpha_interval(tmp_path, monkeypatch
     p = _paths(tmp_path, monkeypatch)
     track = fs.confinement_track(p, 42)
     assert [(r.t_start, r.category) for r in track.rows] == [(100, 2), (200, 1)]
-    assert track.spec.title == "regime"
+    assert track.spec.title == "confinement"
+    assert not hasattr(track, "segments")
 
 
 def test_dalpha_fallback_names_hmode_without_inventing_lmode(tmp_path, monkeypatch):
@@ -41,6 +53,74 @@ def test_dalpha_fallback_names_hmode_without_inventing_lmode(tmp_path, monkeypat
         (1799, 1),
         (4470, 5),
     ]
+
+
+def test_roster_supplies_the_four_classes_between_curated_and_dalpha(
+    tmp_path, monkeypatch
+):
+    p = _paths(tmp_path, monkeypatch)
+    track = fs.confinement_track(p, 44)
+    assert track.spec.title == fs.CONFINEMENT_TITLE == "confinement"
+    assert track.source.tier == fs.lf.GENERATED
+    assert track.file == fs.roster_file(p)
+    assert [(r.t_start, r.t_end, r.category) for r in track.rows] == [
+        (410, 1595, 2),
+        (1595, 2153, 5),
+        (2153, 4537, 3),
+        (4633, 5001, 1),
+    ]
+    assert [s["tier"] for s in track.segments] == [
+        "model",
+        "unreviewed",
+        "unreviewed",
+        "model",
+    ]
+    assert track.segments[2]["state"] == "QH-mode"
+    assert track.segments[2]["extrapolated"] is True
+    # Curated regimes still win, and a shot the roster lacks reaches D-alpha.
+    assert fs.confinement_track(p, 42).file.name == "merged_intervals.csv"
+    assert fs.confinement_track(p, 43).spec.title == "H-mode"
+
+
+def test_roster_row_leaves_unlabelled_time_blank_and_names_its_tiers(
+    tmp_path, monkeypatch
+):
+    p = _paths(tmp_path, monkeypatch)
+    track = fs.confinement_track(p, 44)
+    states = fs.state_intervals(track, (700, 5800))
+    assert [(r["start_ms"], r["end_ms"], r["state"]) for r in states] == [
+        (700, 1595, "L-mode"),
+        (1595, 2153, "uncertain"),
+        (2153, 4537, "QH-mode"),
+        (4633, 5001, "H-mode"),
+    ]
+    assert "unassessed" not in {r["state"] for r in states}
+    assert fs.confinement_row_source(track, (700, 5800)) == "model (unreviewed)"
+    assert fs.confinement_row_source(track, (4700, 5800)) == "model"
+    assert fs.confinement_row_source(fs.confinement_track(p, 43), (0, 1)) is None
+
+
+def test_roster_with_other_columns_or_tiers_is_refused(tmp_path, monkeypatch):
+    p = _paths(tmp_path, monkeypatch)
+    roster = fs.roster_file(p)
+    text = roster.read_text()
+    roster.write_text(text.replace(",tier,", ",grade,", 1))
+    with pytest.raises(ValueError, match="expected columns"):
+        fs.confinement_track(p, 44)
+    roster.write_text(text.replace("unreviewed", "checked"))
+    with pytest.raises(ValueError, match="unknown tiers"):
+        fs.confinement_track(p, 44)
+    roster.write_text(text.replace("44,3,2153", "44,9,2153"))
+    with pytest.raises(ValueError, match="unknown confinement classes"):
+        fs.confinement_track(p, 44)
+
+
+def test_missing_roster_fails_loudly_when_the_chain_reaches_it(tmp_path, monkeypatch):
+    p = _paths(tmp_path, monkeypatch)
+    fs.roster_file(p).unlink()
+    assert fs.confinement_track(p, 42).file.name == "merged_intervals.csv"
+    with pytest.raises(FileNotFoundError, match="confinement roster"):
+        fs.confinement_track(p, 43)
 
 
 def test_missing_confinement_source_fails_loudly(tmp_path, monkeypatch):
@@ -205,7 +285,7 @@ def test_caption_follows_sources_and_actual_acceptance_bars(tier):
         )
     }
     records[fs.mt.AE]["what"] = "ae-ours"
-    records["confinement"]["title"] = "regime"
+    records["confinement"]["title"] = "confinement"
     if tier == fs.lf.GENERATED:
         records[fs.mt.NTM]["primary_bars"] = {"N1": False, "all": False}
     text = fs.caption(
@@ -225,7 +305,7 @@ def test_caption_follows_sources_and_actual_acceptance_bars(tier):
     )
     assert len(text.split()) <= fs.CAPTION_MAX_WORDS
     sources = fs.appendix_notes(42, records, {})
-    assert "Regime:" in sources
+    assert "Confinement:" in sources
     assert "Ticks" not in text
     assert ("below its bar" in text) == (tier == fs.lf.GENERATED)
     assert "the n=2 ridge is consistent with a harmonic of the n=1 mode" in text
@@ -629,6 +709,88 @@ def test_elm_hmode_conflict_names_the_elm_source_by_its_tier():
             199563, records, drawn
         )
     assert "Expert" not in fs.caption(1, {}, drawn)
+
+
+def _roster_record(tier="unreviewed"):
+    return {
+        "tier": fs.lf.GENERATED,
+        "what": fs.ROSTER_WHAT,
+        "title": "confinement",
+        "segments": [
+            {
+                "start_ms": 2153.0,
+                "end_ms": 4537.0,
+                "category": 3,
+                "state": "QH-mode",
+                "tier": tier,
+                "source": "ensemble",
+                "extrapolated": True,
+            }
+        ],
+        "roster": {
+            "model": "1D U-Net over D-alpha",
+            "segmentation": {
+                "active": "total beam power >= 200000 W",
+                "confidence_floor": "a segment under 0.7 is category 5; `predicted` "
+                "keeps its class",
+            },
+        },
+    }
+
+
+def test_elm_qh_overlaps_are_the_elm_spans_inside_elm_free_classes():
+    rows = (
+        fs.lf.Row(410, 1595, 2),
+        fs.lf.Row(2153, 4537, 3),
+        fs.lf.Row(4633, 5001, 1),
+    )
+    elm = [(1000, 1100), (2200, 2250), (4500, 4600), (4650, 4700)]
+    found = fs.elm_qh_overlaps(elm, rows, (700, 5800))
+    assert found == [
+        {"span_ms": [2200, 2250], "category": 3},
+        {"span_ms": [4500, 4537], "category": 3},
+    ]
+    assert fs.elm_qh_overlaps(elm, rows, (700, 5800), four_class=False) == []
+    assert fs.elm_qh_overlaps(elm, rows, (2300, 4400)) == []
+
+
+def test_caption_and_appendix_say_whose_labels_disagree_inside_qh():
+    drawn = {"elm_qh_overlaps_ms": [{"span_ms": [2200, 2250], "category": 3}]}
+    records = {
+        "edge_localized_mode": {"tier": fs.lf.GENERATED, "what": "frame model"},
+        "confinement": _roster_record(),
+    }
+    caption = fs.caption(199563, records, drawn)
+    assert "ELM intervals overlap the QH span" in caption
+    assert "ELM-free by definition" in caption
+    assert "the detector's" in caption and "both unreviewed" in caption
+    appendix = fs.appendix_notes(199563, records, drawn)
+    assert "ELM-free by definition" in appendix
+    assert "Overlaps: 2200–2250 ms" in appendix
+    assert len(caption.split()) <= fs.CAPTION_MAX_WORDS
+    expert = {**records, "edge_localized_mode": {"tier": fs.lf.SILVER, "what": "e"}}
+    assert "Expert ELM intervals overlap the QH span" in fs.caption(
+        199563, expert, drawn
+    )
+    assert "H-mode detector" not in caption
+    assert "QH span" not in fs.caption(199563, records, {})
+
+
+def test_appendix_describes_the_roster_row_from_its_own_metadata():
+    records = {"confinement": _roster_record()}
+    text = fs.appendix_notes(199563, records, {})
+    assert "Confinement: confinement model roster" in text
+    assert "Confinement: model labels from the released confinement roster" in text
+    assert "a segment under 0.7 is category 5" in text
+    assert "`" not in text
+    assert "ensemble of the fold models" in text
+    assert "past the last curated shot" in text
+    assert "outside the curated set" in text
+    assert "beam-on" in text
+    reviewed = {"confinement": _roster_record("model")}
+    assert "outside the curated set" not in fs.appendix_notes(199563, reviewed, {})
+    binary = {"confinement": {"tier": fs.lf.GENERATED, "what": "D", "title": "H-mode"}}
+    assert "roster" not in fs.appendix_notes(199563, binary, {})
 
 
 def _primary_records(ae="ae-ours"):

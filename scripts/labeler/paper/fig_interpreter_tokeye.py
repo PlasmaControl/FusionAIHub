@@ -17,7 +17,7 @@ One non-blind cohort shot over a few seconds, in three groups on one time axis:
   times with AE >=60 kHz or NTM <=30 kHz; NTM requires dominant and pixel n=1 or 2.
   Optional ECE-supported, ELM-vetoed crash candidates appear on a thin strip. D-alpha
   carries the ELM label's span and the D-alpha peaks in
-  it, and the confinement regimes shade it;
+  it, and the confinement classes shade it;
 - **labels**: one track per event on the shot's time axis, from the best tier
   that holds the shot (`labeler.paper.label_figure.TRACKS`): present, absent or
   blank (unassessed / unobservable).
@@ -30,9 +30,10 @@ the repo keeps it. A tag says that a mode and a label coincide in time and band,
 not that the mode is that event.
 
 CONFINEMENT_RUN_DIR defaults to runs/labeler/confinement/v1 in the checkout
-containing LABELER_LABEL_TABLES. Missing required curated/fallback tables are
-errors. Curated four-class regimes win; otherwise the D-alpha L-H table is
-used, never the H-mode frame model. --sawtooth-source accepts read-only physics
+containing LABELER_LABEL_TABLES. Missing required curated/roster/fallback tables
+are errors. The confinement row is the saved four-class review, else the curated
+regimes, else the released confine-ours roster, else the D-alpha L-H table, never
+the H-mode frame model. --sawtooth-source accepts read-only physics
 JSONs, a JSON directory or cohort CSV shards; --sawtooth-evidence supplies full
 JSON evidence for the reduced cohort CSV schema. Expert sawtooth intervals take
 precedence over physics states; candidate ticks use separate physics evidence.
@@ -74,7 +75,7 @@ from labeler.paper import PAGE_IN, figure_sources, mode_tags, roster, style
 from labeler.paper import label_figure as lf
 
 STEM = "fig_interpreter"
-HEIGHT_IN = 5.5
+HEIGHT_IN = 5.6
 DPI_PNG = 150
 DPI_PDF = 300
 #: The window's margin the TokEye cache keeps beyond the figure's, ms.
@@ -122,8 +123,16 @@ EVENT_NAMES = {
     "edge_localized_mode": "ELMs",
 }
 TIER_NAMES = {lf.SILVER: "expert", lf.LEGACY: "imported", lf.GENERATED: "detector"}
-#: The confinement regimes, in grey: darker is better confined.
-REGIME_GREYS = {1: "#2e2e2e", 2: "#bcbcbc", 3: "#5c5c5c", 4: "#8c8c8c", 5: "#d8d8d8"}
+#: The confinement classes' colours, as the paper's other figures draw them; class 5
+#: (uncertain) is hatched, never coloured.
+CLASS_COLOURS = {
+    1: lf.COLOURS["H-mode"],
+    2: lf.COLOURS["L-mode"],
+    3: lf.COLOURS["QH-mode"],
+    4: lf.COLOURS["WPQH-mode"],
+}
+#: Legend order and compact names of the classes (L, H, QH, WPQH).
+CLASS_LEGEND = {2: "L", 1: "H", 3: "QH", 4: "WPQH"}
 ABSENT_GREY = "#e4e4e4"
 NTM_CONTOUR_COLOUR = EVENT_COLOURS[mode_tags.NTM]
 NTM_CONTOUR_LW = 0.9
@@ -641,7 +650,7 @@ def track_bars(ax, track: lf.Track, colour: str, regimes=None, bar=BAR) -> None:
             continue
         if regimes is not None:
             face = regimes.get(r.category, "#888888")
-            hatch = "////" if r.category == 5 else None
+            hatch = "//////" if r.category == 5 else None
         else:
             face = colour
             hatch = None
@@ -696,8 +705,6 @@ def draw_legends(
     n_handles,
     visible,
     peaks,
-    shown,
-    regime_names,
     t0,
     t1,
     ntm_dashed=False,
@@ -788,15 +795,6 @@ def draw_legends(
             bbox_to_anchor=(0.792, da.get_position().y1),
             **legend_options,
         )
-    if by_key["confinement"].spec.title == "regime" and shown:
-        fig.legend(
-            handles=[
-                Patch(fc=REGIME_GREYS[c], lw=0, label=regime_names[c])
-                for c in sorted(shown)
-            ],
-            bbox_to_anchor=(0.792, ax["raw"].get_position().y0),
-            **{**legend_options, "loc": "lower left"},
-        )
 
     colours = [
         EVENT_COLOURS[t.spec.key]
@@ -830,13 +828,26 @@ def draw_legends(
     if has_blank:
         handles.append(Patch(fc="white", ec="#999999", lw=0.5))
         display_keys.append("blank")
+    labels = [
+        "blank: unassessed / unobservable" if k == "blank" else k for k in display_keys
+    ]
+    # The confinement row's class colours, only those the row draws in the window.
+    drawn_classes = {
+        r.category
+        for r in by_key["confinement"].rows
+        if r.category in CLASS_LEGEND and r.t_end > t0 and r.t_start < t1
+    }
+    for c, name in CLASS_LEGEND.items():
+        if c in drawn_classes:
+            handles.append(Patch(fc=CLASS_COLOURS[c], lw=0))
+            labels.append(name)
     fig.legend(
         handles,
-        ["blank: unassessed / unobservable" if k == "blank" else k
-         for k in display_keys],
+        labels,
         handler_map={tuple: HandlerTuple(ndivide=None, pad=0)},
         loc="lower center", ncols=len(handles), frameon=False, fontsize=FONT,
-        bbox_to_anchor=(0.5, 0.0), columnspacing=1.2, handlelength=2.5,
+        bbox_to_anchor=(0.5, 0.0), columnspacing=1.0, handlelength=1.8,
+        handletextpad=0.5,
     )  # fmt: skip
     expert_crowd = (
         by_key[elm_key].source is not None
@@ -988,10 +999,10 @@ def draw(
     n_read, n_kept = roster.gated(n_sig.rows[0], gate) if n_sig.rows else (None, None)
 
     layout = {
-        "h_raw": 0.32, "raw": 3.25,
+        "h_raw": 0.32, "raw": 3.6,
         "g1": 0.1, "da_raw": 0.38,
         "g2": 0.2, "nbi": 0.38, "h_proc": 0.52,
-        "pr": 3.25,
+        "pr": 3.6,
         "crashes": 0.24 if len(crashes) else 0.001,
         "g3": 0.1, "da_pr": 0.52, "h_lab": 0.36,
     }  # fmt: skip
@@ -1010,7 +1021,7 @@ def draw(
             left=0.14,
             right=0.78,
             top=0.985,
-            bottom=0.12,
+            bottom=0.095,
         )
         ax = {n: fig.add_subplot(gs[i]) for i, n in enumerate(names)}
         for n in ("h_raw", "g1", "g2", "h_proc", "g3", "h_lab"):
@@ -1217,7 +1228,11 @@ def draw(
             label = regime_names.get(category)
             # The L-H detector's pre-transition interval is explicitly a low
             # confinement cue; retain its binary H-mode categories in the track.
-            if by_key["confinement"].spec.title == "H-mode" and category == ABSENT:
+            if (
+                by_key["confinement"].spec.title
+                == figure_sources.BINARY_CONFINEMENT_TITLE
+                and category == ABSENT
+            ):
                 later_h = any(
                     h.category == PRESENT and h.t_start >= r.t_end - 1e-6
                     for h in by_key["confinement"].rows
@@ -1227,7 +1242,7 @@ def draw(
                     label = "L (inferred)"
                     lmode_inferred |= r.t_end > t0 and r.t_start < t1
             if category in regime_names:
-                da.axvspan(r.t_start, r.t_end, color=REGIME_GREYS[category],
+                da.axvspan(r.t_start, r.t_end, color=CLASS_COLOURS[category],
                            alpha=0.2, lw=0, zorder=0)  # fmt: skip
                 if r.t_end > t0 and r.t_start < t1:
                     shown.add(category)
@@ -1267,9 +1282,11 @@ def draw(
         for a, track in zip(track_axes, display_tracks, strict=True):
             key = track.spec.key
             track_bars(a, track, EVENT_COLOURS.get(key, "#888888"),
-                       REGIME_GREYS if key == "confinement" else None)  # fmt: skip
+                       CLASS_COLOURS if key == "confinement" else None)  # fmt: skip
             a.set_ylabel(titles[key], rotation=0, ha="right", va="center", labelpad=3)
             tier = "" if track.source is None else TIER_NAMES[track.source.tier]
+            if key == "confinement" and track.source is not None:
+                tier = figure_sources.confinement_row_source(track, (t0, t1)) or tier
             if key == mode_tags.NTM and tier == "detector":
                 tier = "detector (suggestions)"
             if (
@@ -1316,8 +1333,6 @@ def draw(
             n_handles,
             visible,
             peaks,
-            shown,
-            regime_names,
             t0,
             t1,
             ntm_dashed=any(
@@ -1558,10 +1573,17 @@ def draw(
             [max(a, r.t_start, t0), min(b, r.t_end, t1)]
             for a, b in elm_spans
             for r in by_key["confinement"].rows
-            if by_key["confinement"].spec.title == "H-mode"
+            if by_key["confinement"].spec.title
+            == figure_sources.BINARY_CONFINEMENT_TITLE
             and r.category == ABSENT
             and min(b, r.t_end, t1) > max(a, r.t_start, t0)
         ],
+        "elm_qh_overlaps_ms": figure_sources.elm_qh_overlaps(
+            elm_spans,
+            by_key["confinement"].rows,
+            (t0, t1),
+            by_key["confinement"].spec.title == figure_sources.CONFINEMENT_TITLE,
+        ),
         "ae_physical_review_caveat": (annotations or {}).get(
             "ae_physical_review_caveat"
         ),
@@ -1735,6 +1757,9 @@ def track_record(track: lf.Track, window=None) -> dict | None:
     metadata = Path(track.file).with_suffix(".meta.json")
     meta = json.loads(metadata.read_text()) if metadata.is_file() else {}
     model = meta.get("method", track.source.what)
+    segments = getattr(track, "segments", None)
+    if segments is not None:
+        model = meta.get("model", model)
     physics = (
         json.loads(Path(track.file).read_text())
         if track.spec.key == mode_tags.SAWTOOTH and Path(track.file).suffix == ".json"
@@ -1798,6 +1823,26 @@ def track_record(track: lf.Track, window=None) -> dict | None:
         "state_intervals_ms": state_rows,
         "density_guard": physics.get("density_guard"),
         "present_spans_ms": [[round(a, 1), round(b, 1)] for a, b in present],
+        **(
+            {}
+            if segments is None
+            else {
+                "segments": list(segments),
+                "roster": {
+                    key: meta.get(key)
+                    for key in (
+                        "producer",
+                        "status",
+                        "made_at",
+                        "git_sha",
+                        "model",
+                        "segmentation",
+                        "categories",
+                        "columns_meaning",
+                    )
+                },
+            }
+        ),
     }
 
 

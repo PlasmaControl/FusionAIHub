@@ -1,8 +1,10 @@
 """Read-only source selection for the TokEye interpreter figure.
 
 CONFINEMENT_RUN_DIR defaults to runs/labeler/confinement/v1 in the checkout
-containing LABELER_LABEL_TABLES. Both curated and fallback files are required
-when needed; a missing file never silently substitutes the H-mode frame model.
+containing LABELER_LABEL_TABLES. The confinement row reads, in order, the saved
+four-class review, the curated regime table, the released confine-ours roster
+and, last, the D-alpha L-H table. Each file is required when the chain reaches
+it; a missing file never silently substitutes the H-mode frame model.
 """
 
 from __future__ import annotations
@@ -10,7 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from importlib.metadata import version
 from pathlib import Path
 
@@ -19,6 +21,7 @@ import pandas as pd
 
 from ..config import Paths, sha256_of
 from ..events.catalog.states import ABSENT, NOT_OBSERVABLE, PRESENT, UNCERTAIN
+from ..events.interval_tables import INTERVAL_COLUMNS, validate_intervals
 from ..events.verify import corpus_path
 from ..labels.store import read_label
 from . import label_figure as lf
@@ -38,6 +41,23 @@ HARMONIC_MIN_PASSING_FRACTION = 0.6
 #: A ridge passes where |f(n)/f(1) - n| <= this share of n.
 HARMONIC_RATIO_TOLERANCE = 0.05
 CAPTION_MAX_WORDS = 120
+#: The four-class confinement row's title; the binary D-alpha fallback is "H-mode".
+CONFINEMENT_TITLE = "confinement"
+BINARY_CONFINEMENT_TITLE = "H-mode"
+#: The released confine-ours roster: label tables root-relative path, its columns
+#: (the five interval columns, then each segment's provenance) and its tiers.
+ROSTER_TABLE = "confinement/extend_confine_ours/roster.csv"
+ROSTER_COLUMNS = (
+    *INTERVAL_COLUMNS,
+    "predicted",
+    "source",
+    "tier",
+    "extrapolated",
+)
+ROSTER_TIERS = ("model", "unreviewed")
+ROSTER_WHAT = "released confine-ours roster (1-D U-Net model labels)"
+#: Roster classes that are ELM-free by definition.
+ELM_FREE_CLASSES = (3, 4)
 
 
 def tokeye_fingerprints(paths, shot, group, row, inference_code) -> dict:
@@ -81,7 +101,7 @@ def tokeye_fingerprints(paths, shot, group, row, inference_code) -> dict:
 def state_intervals(track: lf.Track, window: tuple[float, float]) -> list[dict]:
     """Clipped source categories with the track's own state/regime names."""
     codes = {ABSENT: "absent", **track.spec.states}
-    if track.spec.key != "confinement" or track.spec.title == "H-mode":
+    if track.spec.key != "confinement" or track.spec.title == BINARY_CONFINEMENT_TITLE:
         codes[NOT_OBSERVABLE] = "unassessed"
     return [
         {
@@ -142,8 +162,75 @@ def dalpha_file(paths: Paths) -> Path:
     return paths.root / "suggestions/dalpha_lh/v1/confinement_suggest_dalpha_lh_v1.csv"
 
 
+def roster_file(paths: Paths) -> Path:
+    return paths.label_tables / ROSTER_TABLE
+
+
+def read_roster(path: Path, shot: int) -> tuple[dict, ...]:
+    """The released roster's segments of `shot`, in file order, validated.
+
+    `lf.read_rows` takes only the five interval columns; the roster adds each
+    segment's provenance, so it has its own reader. A zero-length segment is
+    dropped, as `lf.read_rows` drops it."""
+    frame = pd.read_csv(path, index_col=False)
+    if tuple(frame.columns) != ROSTER_COLUMNS:
+        raise ValueError(f"{path}: expected columns {ROSTER_COLUMNS}")
+    core = validate_intervals(frame[list(INTERVAL_COLUMNS)])
+    unknown = set(core["category"]) - set(lf.REGIMES)
+    if unknown:
+        raise ValueError(f"{path}: unknown confinement classes {sorted(unknown)}")
+    bad = set(frame["tier"]) - set(ROSTER_TIERS)
+    if bad:
+        raise ValueError(f"{path}: unknown tiers {sorted(bad)}")
+    segments = []
+    for i in np.flatnonzero((core["shot"] == shot).to_numpy()):
+        a, b = float(core["t_start"].iat[i]), float(core["t_end"].iat[i])
+        if b <= a:
+            continue
+        category = int(core["category"].iat[i])
+        segments.append(
+            {
+                "start_ms": a,
+                "end_ms": b,
+                "category": category,
+                "state": lf.REGIMES[category],
+                "confidence": float(core["confidence"].iat[i]),
+                "predicted": int(frame["predicted"].iat[i]),
+                "source": str(frame["source"].iat[i]),
+                "tier": str(frame["tier"].iat[i]),
+                "extrapolated": bool(frame["extrapolated"].iat[i]),
+            }
+        )
+    return tuple(segments)
+
+
+@dataclass(frozen=True)
+class RosterTrack(lf.Track):
+    """A confinement track read from the roster, with each segment's provenance
+    (`segments`, aligned with `rows`)."""
+
+    segments: tuple[dict, ...] = ()
+
+
+def roster_segments(track: lf.Track, window: tuple[float, float]) -> list[dict]:
+    """The roster segments of a roster track that overlap `window`."""
+    return [
+        s
+        for s in getattr(track, "segments", ())
+        if s["end_ms"] > window[0] and s["start_ms"] < window[1]
+    ]
+
+
+def confinement_row_source(track: lf.Track, window: tuple[float, float]) -> str | None:
+    """The roster row's source text from its own tiers; None for other rows."""
+    if not hasattr(track, "segments"):
+        return None
+    tiers = {s["tier"] for s in roster_segments(track, window)}
+    return "model (unreviewed)" if "unreviewed" in tiers else "model"
+
+
 def confinement_track(paths: Paths, shot: int) -> lf.Track:
-    """Saved four-class review, curated regime table, then D-alpha H-mode."""
+    """Saved four-class review, curated regimes, the roster, then D-alpha H-mode."""
     spec = next(s for s in lf.TRACKS if s.key == "confinement")
     reviewed = paths.label_tables / "confinement/review/labels.csv"
     rows = lf.read_rows(reviewed).get(shot)
@@ -151,7 +238,7 @@ def confinement_track(paths: Paths, shot: int) -> lf.Track:
         source = lf.Source(
             lf.SILVER, "curated four-class confinement review", lambda p: reviewed
         )
-        return lf.Track(replace(spec, title="regime"), source, reviewed, rows)
+        return lf.Track(spec, source, reviewed, rows)
     default = paths.label_tables.parents[1] / "runs/labeler/confinement/v1"
     run = Path(os.environ.get("CONFINEMENT_RUN_DIR", str(default)))
     curated = run / "merged_intervals.csv"
@@ -164,19 +251,33 @@ def confinement_track(paths: Paths, shot: int) -> lf.Track:
         source = lf.Source(
             lf.LEGACY, "Gill's and Butt's curated regime intervals", lambda p: curated
         )
-        return lf.Track(replace(spec, title="regime"), source, curated, rows)
+        return lf.Track(spec, source, curated, rows)
+    roster = roster_file(paths)
+    if not roster.is_file():
+        raise FileNotFoundError(f"required confinement roster missing: {roster}")
+    segments = read_roster(roster, shot)
+    if segments:
+        source = lf.Source(lf.GENERATED, ROSTER_WHAT, lambda p: roster)
+        rows = tuple(
+            lf.Row(s["start_ms"], s["end_ms"], s["category"]) for s in segments
+        )
+        return RosterTrack(spec, source, roster, rows, segments)
     fallback = dalpha_file(paths)
     if not fallback.is_file():
         raise FileNotFoundError(f"required D-alpha L-H fallback missing: {fallback}")
     rows = lf.read_rows(fallback).get(shot)
     if not rows:
-        raise ValueError(f"shot {shot}: no curated regime or D-alpha L-H coverage")
+        raise ValueError(
+            f"shot {shot}: no curated regime, roster or D-alpha L-H coverage"
+        )
     source = lf.Source(
         lf.GENERATED, "D-alpha L-H transition detector (dalpha_lh)", lambda p: fallback
     )
     return lf.Track(
         replace(
-            spec, title="H-mode", states={ABSENT: "absent", **lf.BINARY, 5: "uncertain"}
+            spec,
+            title=BINARY_CONFINEMENT_TITLE,
+            states={ABSENT: "absent", **lf.BINARY, 5: "uncertain"},
         ),
         source,
         fallback,
@@ -670,6 +771,53 @@ def _elm_name(records: dict) -> str:
     return f"{kind[tier]} ELM intervals" if tier in kind else "ELM intervals"
 
 
+def elm_qh_overlaps(
+    elm_spans, rows, window: tuple[float, float], four_class: bool = True
+) -> list[dict]:
+    """ELM present spans that overlap an ELM-free class (QH, WPQH), clipped to the
+    window, with the class. Only a four-class confinement row has such classes."""
+    if not four_class:
+        return []
+    out = []
+    for a, b in elm_spans:
+        for r in rows:
+            lo, hi = max(a, r.t_start, window[0]), min(b, r.t_end, window[1])
+            if r.category in ELM_FREE_CLASSES and hi > lo:
+                out.append({"span_ms": [lo, hi], "category": r.category})
+    return out
+
+
+def _elm_free_names(drawn: dict) -> str:
+    names = {3: "QH", 4: "WPQH"}
+    found = sorted({o["category"] for o in drawn.get("elm_qh_overlaps_ms", [])})
+    return "/".join(names[c] for c in found) or "QH"
+
+
+def _elm_free_unreviewed(records: dict) -> bool:
+    segments = (records.get("confinement") or {}).get("segments") or []
+    return any(
+        s["tier"] == "unreviewed" and s["category"] in ELM_FREE_CLASSES
+        for s in segments
+    )
+
+
+def elm_qh_sentence(records: dict, drawn: dict) -> str:
+    """ELM intervals inside an ELM-free class: say whose labels disagree."""
+    elm_tier = (records.get("edge_localized_mode") or {}).get("tier")
+    name = _elm_free_names(drawn)
+    qh_model = (records.get("confinement") or {}).get("segments") is not None
+    if elm_tier == lf.GENERATED and qh_model and _elm_free_unreviewed(records):
+        return (
+            f"ELM intervals overlap the {name} span; {name} is ELM-free by "
+            "definition, so the D-alpha ELM boxes inside it are the detector's "
+            f"and the {name} label is the model's, both unreviewed."
+        )
+    return (
+        f"{_elm_name(records)} overlap the {name} span; {name} is ELM-free by "
+        "definition, so the two sources disagree there."
+    )
+
+
 def caption(shot: int, records: dict, drawn: dict) -> str:
     """Describe what is drawn; sources, thresholds and caveats are in the appendix.
 
@@ -729,6 +877,8 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
             f"{_elm_name(records)} and the H-mode detector disagree in parts of "
             "this window."
         )
+    if drawn.get("elm_qh_overlaps_ms"):
+        sentences.append(elm_qh_sentence(records, drawn))
     if drawn.get("ae_physical_review_caveat"):
         sentences.append(drawn["ae_physical_review_caveat"])
     text = " ".join(sentences)
@@ -754,8 +904,49 @@ def _source_name(key: str, record: dict) -> str:
             return "CO2 neural detector"
         return "CO2 frame detector"
     if key == "confinement":
+        if record.get("segments") is not None:
+            return "confinement model roster"
         return "D-alpha detector"
     return "detector"
+
+
+def roster_note(record: dict) -> str | None:
+    """What the roster row is, from the record's own roster metadata and segments."""
+    segments = record.get("segments")
+    if segments is None:
+        return None
+    meta = record.get("roster") or {}
+    segmentation = meta.get("segmentation") or {}
+    parts = [
+        "Confinement: model labels from the released confinement roster"
+        + (f" ({meta['model']})" if meta.get("model") else "")
+        + "."
+    ]
+    if segmentation.get("active"):
+        parts.append(f"Active time: {segmentation['active']}.")
+    if segmentation.get("confidence_floor"):
+        parts.append(
+            "Confidence floor: "
+            + segmentation["confidence_floor"].replace("`", "")
+            + "."
+        )
+    sources = {s["source"] for s in segments}
+    if "ensemble" in sources:
+        text = "This shot is read by the ensemble of the fold models"
+        if any(s["extrapolated"] for s in segments):
+            text += (
+                ", and lies past the last curated shot, so the network never saw "
+                "its campaign"
+            )
+        parts.append(text + ".")
+    if any(s["tier"] == "unreviewed" for s in segments):
+        parts.append(
+            "Unreviewed marks a QH or WPQH segment outside the curated set, which "
+            "may hold ELM-free or quiescent H-modes the network reads as QH "
+            "(unverified)."
+        )
+    parts.append("Blank marks time outside the roster's beam-on segments.")
+    return " ".join(parts)
 
 
 def _chain_note(drawn: dict) -> str:
@@ -945,6 +1136,9 @@ def appendix_notes(
         notes.append(
             "L-mode (inferred) uses pre-transition H-mode-detector absent shading."
         )
+    confinement_note = roster_note(records.get("confinement") or {})
+    if confinement_note:
+        notes.append(confinement_note)
     if records.get(mt.SAWTOOTH) is not None:
         saw = records[mt.SAWTOOTH]
         notes.append(sawtooth_caption(saw))
@@ -989,6 +1183,12 @@ def appendix_notes(
             f"{_elm_name(records)} overlap H-mode-detector absent time; "
             "sources disagree."
         )
+    if drawn.get("elm_qh_overlaps_ms"):
+        spans = "; ".join(
+            f"{o['span_ms'][0]:.0f}–{o['span_ms'][1]:.0f} ms"
+            for o in drawn["elm_qh_overlaps_ms"]
+        )
+        notes.append(f"{elm_qh_sentence(records, drawn)} Overlaps: {spans}.")
     if drawn.get("ae_physical_review_caveat"):
         notes.append(drawn["ae_physical_review_caveat"])
     marks = []
