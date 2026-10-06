@@ -173,8 +173,9 @@ SAW_TRIVIAL = "saw-always-present"
 SAW_BLOCK = "crash_tolerance_2ms"  # holds the presence scores (the same at 1 ms)
 CLASSES = ("L", "H", "QH", "WP")
 METRICS = {"f1": "F1", "auroc": "AUROC", "auprc": "AUPRC"}
+SHOWN = {"legacy": "original"}  # the paper calls the earlier label sets "original"
 STATUS_TEXT = {
-    "none": "no legacy set",
+    "none": "no original set",
     "pending": "pending",
     "point_events": "point events",
 }
@@ -403,7 +404,7 @@ def group_labels(ax, centres, labels, below_pt=BELOW_PT) -> None:
     """The setting of each group of bars, under the bar names."""
     for c, text in zip(centres, labels):
         ax.annotate(
-            text,
+            SHOWN.get(text, text),
             xy=(c, 0),
             xycoords=("data", "axes fraction"),
             xytext=(0, -below_pt),
@@ -1012,7 +1013,7 @@ def draw_coverage(ax, cov: dict, rows: Rows, panel: str, field: str) -> None:
     set, log y: legacy against Tokamak-SI, each Tokamak-SI bar with a darker inner
     bar for its human-reviewed subset; a set with no value in a setting gets a
     hatched slot that says why."""
-    unit = "labelled shots" if field == "shots" else "labelled time (h)"
+    unit = "labeled shots" if field == "shots" else "labeled time (h)"
     scale = 1.0 if field == "shots" else 1.0 / S_PER_H
     order = cov["order"]
     value_of = {}
@@ -1137,7 +1138,7 @@ def row_axes(fig, fig_h, top_in, height_in, units):
 
 def legend_handles(reviewed: bool, bound: bool) -> list:
     handles = [
-        Patch(color=LEGACY, label="legacy"),
+        Patch(color=LEGACY, label=SHOWN["legacy"]),
         Patch(color=SI, label="Tokamak-SI"),
     ]
     if reviewed:
@@ -1191,7 +1192,8 @@ def tm_title(tm: dict) -> str:
     if len(legacy) != 1 or len(si) != 1:
         raise ValueError(f"the TM rows differ in bin width: {legacy}, {si}")
     return (
-        f"{TITLES['tm']} ({legacy.pop():g} ms legacy, {si.pop():g} ms Tokamak-SI bins)"
+        f"{TITLES['tm']} ({legacy.pop():g} ms {SHOWN['legacy']}, "
+        f"{si.pop():g} ms Tokamak-SI bins)"
     )
 
 

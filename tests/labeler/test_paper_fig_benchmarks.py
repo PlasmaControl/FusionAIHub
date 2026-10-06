@@ -220,7 +220,7 @@ def test_the_tm_title_states_the_two_bin_widths_the_record_gives():
     title = fig.tm_title(tm)
     legacy = {r["legacy"]["bin_ms"] for r in tm["rows"] if r.get("legacy")}
     si = {r["tokamak_si"]["bin_ms"] for r in tm["rows"]}
-    assert f"{legacy.pop():g} ms legacy" in title and f"{si.pop():g} ms" in title
+    assert f"{legacy.pop():g} ms original" in title and f"{si.pop():g} ms" in title
     odd = {"rows": [*tm["rows"], dict(tm["rows"][0], tokamak_si={"bin_ms": 99.0})]}
     with pytest.raises(ValueError, match="bin width"):
         fig.tm_title(odd)
@@ -420,7 +420,7 @@ def test_a_presence_block_that_differs_between_crash_tolerances_is_refused():
 
 def test_the_coverage_panels_draw_the_record_and_hatch_what_has_no_value():
     cov = fig.load(fig.SOURCES["coverage"])
-    for field, unit in (("shots", "labelled shots"), ("seconds", "labelled time (h)")):
+    for field, unit in (("shots", "labeled shots"), ("seconds", "labeled time (h)")):
         drawn, every, ax = drawn_rows(fig.draw_coverage, cov, metric=field)
         assert ax.get_yscale() == "log"
         scale = 1.0 if field == "shots" else 1 / 3600.0
