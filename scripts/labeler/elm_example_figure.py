@@ -234,7 +234,7 @@ def draw_shot(axes, shot, data, sets, oof, elmo, clock, panel) -> dict:
     bx.plot(tt[sl], event[sl], color=PROB, lw=1.0, label="elm-ours")
     bx.axhline(oof.threshold[shot], color=PROB, lw=0.8, ls="--")
     bx.set_ylim(-0.02, 1.02)
-    bx.set_ylabel("ELMy-occupancy\nprobability", fontsize=8)
+    bx.set_ylabel("ELMing\nprobability", fontsize=8)
     for y, spans, colour in (
         (0.93, elmo.get(shot), ELMO),
         (0.85, clock.get(shot), CLOCK),
@@ -403,12 +403,12 @@ def main(argv: list[str] | None = None) -> int:
     ]
     names = [
         "reviewed: crowd",
-        "reviewed: non-crowd present spans",
+        "reviewed: single ELM",
         "reviewed: absent",
         "elm-ours probability",
-        "CV threshold",
+        "fold threshold",
         "elm-elmo detections (ticks)",
-        "elm-clock present spans",
+        "peak-picker spans",
     ]
     visible_kinds = set()
     for panel in panels:

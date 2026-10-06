@@ -143,15 +143,15 @@ def label_text(composition: dict, state: int) -> str:
     """The bracket of a column title: what the exported label of its bins is."""
     n, name = composition["bins"], STATE_NAME[state]
     if composition["certain"] == n:
-        return f"label: {name}, TangTV +\nAfrac agreement"
+        return f"label: {name},\nTangTV and probes agree"
     if composition["tangtv_only"] == n:
         return f"label: {name}, TangTV only"
     if composition["lmode_gate"] == n:
-        return "label: uncertain (L-mode gate)"
+        return "label: uncertain (detached in L-mode)"
     if composition["uncertain"] == n:
         return "label: uncertain"
     return (
-        f"label: {composition['certain']} agreement, {composition['tangtv_only']} "
+        f"label: {composition['certain']} with probes, {composition['tangtv_only']} "
         f"TangTV only,\n{composition['uncertain']} uncertain of {n} bins"
     )
 
@@ -299,7 +299,7 @@ def timeline(fig, spec, group: pd.DataFrame, intervals: list[dict], te, cliffs) 
         "label": group.state_rule.to_numpy()
         + SILVER_OFFSET * silver
         + SILVER_OFFSET * lmode,
-        "Afrac": np.where(group.afrac_valid, group.afrac_vote, 0),
+        "probes": np.where(group.afrac_valid, group.afrac_vote, 0),
         "TangTV": np.where(group.tangtv_valid, group.tangtv_vote, 0),
     }
     for ax, (name, state) in zip(axes[:3], votes.items(), strict=True):
@@ -308,7 +308,7 @@ def timeline(fig, spec, group: pd.DataFrame, intervals: list[dict], te, cliffs) 
     dz = group.tangtv_value.to_numpy(float)
     series = [
         (
-            "$f_{\\mathrm{div}}$ / base.\n(not a vote)",
+            "$f_{\\mathrm{div}}$ /\nbaseline",
             np.where(group.prad_valid, group.prad_rel_value, np.nan),
             (
                 (thresholds.PRAD_REL_ATTACHED_MAX, "--"),
@@ -366,11 +366,11 @@ def timeline(fig, spec, group: pd.DataFrame, intervals: list[dict], te, cliffs) 
 
 #: Summary-bar categories: (legend name, colour key).
 SUMMARY_CLASSES = (
-    ("attached, TangTV + Afrac agreement", 1),
+    ("attached, TangTV and probes agree", 1),
     ("attached, TangTV only", 1 + SILVER_OFFSET),
-    ("detached, TangTV + Afrac agreement", 2),
+    ("detached, TangTV and probes agree", 2),
     ("detached, TangTV only", 2 + SILVER_OFFSET),
-    ("uncertain, L-mode gate (TangTV detached)", LMODE_KEY),
+    ("uncertain, detached in L-mode", LMODE_KEY),
     ("uncertain, other", 4),
 )
 
@@ -426,7 +426,7 @@ def summary(ax, frame: pd.DataFrame, shot: int) -> dict:
     ax.set_xlim(-0.5, len(share) - 0.5)
     ax.set_ylim(0, 1)
     ax.set_xlabel(
-        "shot (assessed bins at least 10), ordered by TangTV + Afrac agreement share",
+        "shot (at least 10 assessed bins), ordered by the share where TangTV and probes agree",
         labelpad=2,
     )
     ax.set_ylabel("share of bins")
@@ -895,7 +895,7 @@ def views_figure(shot, group, intervals, out) -> dict:
     handles, labels = ax.get_legend_handles_labels()
     if cliffs:
         handles.append(Line2D([], [], color=INK, lw=0.8, ls=(0, (1, 1.5))))
-        labels.append("Te cliffs (Chen 2026)")
+        labels.append("published Te drops")
     handles += [
         plt.Rectangle((0, 0), 1, 1, color=STATE_COLOUR[s], alpha=0.35) for s in (1, 2)
     ]

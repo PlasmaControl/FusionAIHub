@@ -207,7 +207,7 @@ def draw(out: Path, png: Path | None, shots: tuple[int, int] | None) -> None:
                 ax[1],
                 runs(ann),
                 tint(PRESENT_COLOUR),
-                "Heidbrink\nannotation" if first else None,
+                "annotation" if first else None,
             )
             track(
                 ax[2],

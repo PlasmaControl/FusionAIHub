@@ -361,14 +361,18 @@ def main(argv=None) -> int:
         plt.Line2D([], [], color=COLOUR[1], lw=1.5, label="n = 1"),
         plt.Line2D([], [], color=COLOUR[2], lw=1.5, label="n = 2"),
         plt.Line2D([], [], color="k", marker="v", ls="", ms=3.5, label="onset"),
-        plt.Line2D([], [], color=COLOUR[1], ls=":", lw=0.8, label="n = 1 seed (12 G)"),
-        plt.Line2D([], [], color=COLOUR[2], ls=":", lw=0.8, label="n = 2 seed (6 G)"),
-        plt.Line2D([], [], color=COLOUR[1], ls="--", lw=1.0, label="n = 1 release"),
-        plt.Line2D([], [], color=COLOUR[2], ls="--", lw=1.0, label="n = 2 release"),
+        plt.Line2D(
+            [], [], color=COLOUR[1], ls=":", lw=0.8, label="n = 1 start level (12 G)"
+        ),
+        plt.Line2D(
+            [], [], color=COLOUR[2], ls=":", lw=0.8, label="n = 2 start level (6 G)"
+        ),
+        plt.Line2D([], [], color=COLOUR[1], ls="--", lw=1.0, label="n = 1 end level"),
+        plt.Line2D([], [], color=COLOUR[2], ls="--", lw=1.0, label="n = 2 end level"),
         Patch(
             facecolor="0.8",
             edgecolor="none",
-            label="uncertain (rows merged)",
+            label="uncertain",
         ),
     ]
     if any(has_overlap(table[table.shot == shot]) for shot in shots):
@@ -389,12 +393,12 @@ def main(argv=None) -> int:
         (
             {"confirmed_locked_phase"},
             "////",
-            "locked, field step",
+            "locked (confirmed)",
         ),
         (
             {"locked_unseeded"},
             "xxxx",
-            "field step, no mode",
+            "field step, no mode seen",
         ),
         (
             {"post_collapse_lock_unknown", "rotation_after_lock_unassessed"},
