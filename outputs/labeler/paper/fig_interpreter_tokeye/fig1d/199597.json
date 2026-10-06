@@ -4167,7 +4167,7 @@
    "performance": null,
    "title": "confinement",
    "what": "released confine-ours roster (1-D U-Net model labels)",
-   "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/confinement/extend_confine_ours/roster.csv",
+   "path": "/scratch/gpfs/nc1514/FusionAIHub-fig1e/data/events/confinement/extend_confine_ours/roster.csv",
    "sha256": "9c44addafb15e19794298b7c7cebdd883273f818befbafa6ce40b7877d078f52",
    "rows": 2,
    "model": "1D U-Net (U-Time style) over D-alpha, line density, beta_N, W_MHD and injected power; 5 folds, each holding whole run days out; docs/labeler/confinement_ours.md",
@@ -4175,7 +4175,7 @@
    "crowd_semantics": null,
    "primary_bars": null,
    "temporal_bin_ms": null,
-   "metadata": "/scratch/gpfs/nc1514/FusionAIHub/data/events/confinement/extend_confine_ours/roster.meta.json",
+   "metadata": "/scratch/gpfs/nc1514/FusionAIHub-fig1e/data/events/confinement/extend_confine_ours/roster.meta.json",
    "metadata_sha256": "5f349960e7a1cf920129a27eb9bc8a78db07118508e6acfc008f6ea54090806a",
    "states": {
     "1": "H-mode",
@@ -5676,8 +5676,8 @@
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/fig_interpreter.png"
   ],
   "figure_sha256": {
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/fig_interpreter.pdf": "309825071a787294135e9612c9781ad3e863d15cdee42d80c56f6121a5e16181",
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/fig_interpreter.png": "2ce990b79e6c77c286e1c3dd1364dfcb8fc58d559eb5f95c28634389e057d761"
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/fig_interpreter.pdf": "7bbe2303a068394695f79daa4acae9f85218f53ab515daf2969ba59475affdfb",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1d/fig_interpreter.png": "8e2c3802e1bfeadc15b9226981b25a5a080061559ddacd64feb59ed31e4adaab"
   },
   "blobs": {
    "wide_above_split": 396,
@@ -5788,7 +5788,7 @@
      "bounds": [
       0.14,
       0.7612931034482759,
-      0.78,
+      0.98,
       0.985
      ],
      "ticks_khz": [
@@ -5807,7 +5807,7 @@
      "bounds": [
       0.14,
       0.5259865900383144,
-      0.78,
+      0.98,
       0.7496934865900384
      ],
      "ticks_khz": [
@@ -5900,143 +5900,329 @@
     {
      "text": "L",
      "bounds": [
-      0.15748342440801458,
+      0.16433588342440805,
       0.4945253565346958,
-      0.16637231329690347,
+      0.17322477231329692,
       0.5114042145593871
      ],
      "region_x_bounds": [
-      0.15049180327868855,
-      0.17336393442622955
+      0.15377049180327873,
+      0.18379016393442626
      ]
     },
     {
      "text": "H-mode",
      "bounds": [
-      0.4365605343047966,
+      0.5384949605343048,
       0.49346044376222276,
-      0.49581979356405587,
+      0.597754219793564,
       0.5114042145593871
      ],
      "region_x_bounds": [
-      0.17336393442622955,
-      0.759016393442623
+      0.18379016393442626,
+      0.9524590163934425
      ]
     }
    ],
    "track_source_text_bounds": [],
-   "ntm_key_black_swatch": true,
-   "n_key_bounds": [
-    0.792,
-    0.5259865900383144,
-    0.9080493827160494,
-    0.5882573314421531
+   "panel_b_labels": [
+    {
+     "text": "AE",
+     "colour_class": "AE",
+     "chip_colour": "#CC79A7",
+     "text_colour": "black",
+     "font_pt": 7,
+     "bounds": [
+      0.22845374001452434,
+      0.6302579671707199,
+      0.25116978939724033,
+      0.6511877511213372
+     ],
+     "region_px": 1489,
+     "region_ms": [
+      250.7058823529412,
+      1642.9411764705883
+     ],
+     "region_khz": [
+      60.30927835051547,
+      143.81443298969072
+     ],
+     "gap_px": 5.0,
+     "leader": null,
+     "covered_event_pixels": 0,
+     "covered_white_share": 0.0
+    },
+    {
+     "text": "transient",
+     "colour_class": "transient",
+     "chip_colour": "#E8262B",
+     "text_colour": "black",
+     "font_pt": 7,
+     "bounds": [
+      0.5661966594045025,
+      0.6856522349224143,
+      0.6348386347131445,
+      0.7076469316455046
+     ],
+     "region_px": 49,
+     "region_ms": [
+      3157.176470588235,
+      3164.3529411764707
+     ],
+     "region_khz": [
+      95.10309278350516,
+      132.98969072164948
+     ],
+     "gap_px": 5.0,
+     "leader": null,
+     "covered_event_pixels": 0,
+     "covered_white_share": 0.0
+    },
+    {
+     "text": "TM",
+     "colour_class": "TM",
+     "chip_colour": "#E69F00",
+     "text_colour": "black",
+     "font_pt": 7,
+     "bounds": [
+      0.5545722585330428,
+      0.5749078071991592,
+      0.5802512708787219,
+      0.5958375911497766
+     ],
+     "region_px": 441,
+     "region_ms": [
+      2798.3529411764707,
+      3781.529411764706
+     ],
+     "region_khz": [
+      6.958762886597924,
+      23.969072164948457
+     ],
+     "gap_px": 12.0,
+     "leader": {
+      "from": [
+       0.4970588235294118,
+       0.2190721649484536
+      ],
+      "to": [
+       0.4970588235294118,
+       0.15721649484536082
+      ],
+      "axes_fraction": true
+     },
+     "covered_event_pixels": 0,
+     "covered_white_share": 0.0
+    },
+    {
+     "text": "n=1",
+     "colour_class": "n=1",
+     "chip_colour": "#0072B2",
+     "text_colour": "white",
+     "font_pt": 7,
+     "bounds": [
+      0.5039273783587509,
+      0.5749078071991592,
+      0.5370137981118374,
+      0.5958375911497766
+     ],
+     "region_px": 153,
+     "region_ms": [
+      2475.4117647058824,
+      3702.5882352941176
+     ],
+     "region_khz": [
+      7.731958762886592,
+      13.917525773195877
+     ],
+     "gap_px": 25.0,
+     "leader": {
+      "from": [
+       0.4335294117647059,
+       0.2190721649484536
+      ],
+      "to": [
+       0.4335294117647059,
+       0.09020618556701032
+      ],
+      "axes_fraction": true
+     },
+     "covered_event_pixels": 0,
+     "covered_white_share": 0.0
+    },
+    {
+     "text": "n=2",
+     "colour_class": "n=2",
+     "chip_colour": "#009E73",
+     "text_colour": "black",
+     "font_pt": 7,
+     "bounds": [
+      0.5869391430646332,
+      0.5749078071991592,
+      0.6200255628177197,
+      0.5958375911497766
+     ],
+     "region_px": 49,
+     "region_ms": [
+      2884.470588235294,
+      3379.6470588235293
+     ],
+     "region_khz": [
+      18.556701030927826,
+      22.422680412371136
+     ],
+     "gap_px": 16.55294535724685,
+     "leader": {
+      "from": [
+       0.5323529411764706,
+       0.2190721649484536
+      ],
+      "to": [
+       0.5241176470588236,
+       0.14175257731958768
+      ],
+      "axes_fraction": true
+     },
+     "covered_event_pixels": 0,
+     "covered_white_share": 0.0
+    }
    ],
-   "ae_in_panel_label": null,
-   "ae_margin_label": null,
+   "panel_b_labels_skipped": {
+    "n=3": "largest region 8 px < 30 px (specks)",
+    "other n": "largest region 3 px < 30 px (specks)"
+   },
+   "panel_b_label_rule": "chips read from the panel's own pixels before they are drawn: each event colour's largest region (merged within 3 px, AE 10 px), named when it has at least 30 print pixels; AE and transient chips within 8 px of the region, TM and n chips above the 30 kHz band with a leader line; no chip on an event pixel, another chip or a leader",
+   "panel_b_label_regions": {
+    "AE": {
+     "pixels": 1711,
+     "largest_region_px": 1489,
+     "minimum_px": 30
+    },
+    "transient": {
+     "pixels": 155,
+     "largest_region_px": 49,
+     "minimum_px": 30
+    },
+    "TM": {
+     "pixels": 862,
+     "largest_region_px": 441,
+     "minimum_px": 30
+    },
+    "n=1": {
+     "pixels": 298,
+     "largest_region_px": 153,
+     "minimum_px": 30
+    },
+    "n=2": {
+     "pixels": 158,
+     "largest_region_px": 49,
+     "minimum_px": 30
+    },
+    "n=3": {
+     "pixels": 35,
+     "largest_region_px": 8,
+     "minimum_px": 30
+    },
+    "other n": {
+     "pixels": 6,
+     "largest_region_px": 3,
+     "minimum_px": 30
+    }
+   },
    "elm_box_bounds": [
     [
-     0.3078688524590164,
+     0.36032786885245904,
      0.44644636015325684,
-     0.31311475409836065,
+     0.36721311475409835,
      0.4875421455938698
     ],
     [
-     0.32885245901639343,
+     0.38786885245901637,
      0.44644636015325684,
-     0.35508196721311475,
+     0.42229508196721305,
      0.4875421455938698
     ],
     [
-     0.360327868852459,
+     0.42918032786885246,
      0.44644636015325684,
-     0.36557377049180323,
+     0.4360655737704918,
      0.4875421455938698
     ],
     [
-     0.3708196721311475,
+     0.4429508196721311,
      0.44644636015325684,
-     0.37606557377049177,
+     0.4498360655737705,
      0.4875421455938698
     ],
     [
-     0.381311475409836,
+     0.45672131147540984,
      0.44644636015325684,
-     0.39180327868852455,
+     0.4704918032786885,
      0.4875421455938698
     ],
     [
-     0.44426229508196724,
+     0.5393442622950819,
      0.44644636015325684,
-     0.44950819672131154,
+     0.5462295081967213,
      0.4875421455938698
     ],
     [
-     0.46524590163934426,
+     0.5668852459016394,
      0.44644636015325684,
-     0.48622950819672134,
+     0.5944262295081968,
      0.4875421455938698
     ],
     [
-     0.4914754098360655,
+     0.601311475409836,
      0.44644636015325684,
-     0.4967213114754098,
+     0.6081967213114754,
      0.4875421455938698
     ],
     [
-     0.501967213114754,
+     0.6150819672131148,
      0.44644636015325684,
-     0.5229508196721311,
+     0.6426229508196721,
      0.4875421455938698
     ],
     [
-     0.5281967213114754,
+     0.6495081967213114,
      0.44644636015325684,
-     0.5386885245901639,
+     0.6632786885245902,
      0.4875421455938698
     ],
     [
-     0.5754098360655737,
+     0.7114754098360655,
      0.44644636015325684,
-     0.5963934426229507,
+     0.7390163934426229,
      0.4875421455938698
     ],
     [
-     0.601639344262295,
+     0.7459016393442623,
      0.44644636015325684,
-     0.6121311475409835,
+     0.759672131147541,
      0.4875421455938698
     ],
     [
-     0.6173770491803278,
+     0.7665573770491803,
      0.44644636015325684,
-     0.6488524590163933,
+     0.8078688524590163,
      0.4875421455938698
     ],
     [
-     0.6540983606557377,
+     0.8147540983606557,
      0.44644636015325684,
-     0.680327868852459,
+     0.8491803278688526,
      0.4875421455938698
     ],
     [
-     0.6855737704918032,
+     0.8560655737704918,
      0.44644636015325684,
-     0.6908196721311475,
+     0.862950819672131,
      0.4875421455938698
     ]
    ],
    "dalpha_peak_box_gap_pt": null,
    "legend_labels": [
-    "coherent",
-    "transient",
-    "AE",
-    "TM",
-    "ELM",
-    "n=1",
-    "n=2",
-    "n=3",
-    "other n",
     "present",
     "uncertain",
     "absent",
@@ -6112,96 +6298,6 @@
      ]
     },
     {
-     "text": "coherent",
-     "font_pt": 7.0,
-     "bounds": [
-      0.810724279835391,
-      0.7317497157928741,
-      0.8755853909465021,
-      0.7496934865900384
-     ]
-    },
-    {
-     "text": "transient",
-     "font_pt": 7.0,
-     "bounds": [
-      0.810724279835391,
-      0.7087422875883023,
-      0.8759094650205762,
-      0.7266860583854666
-     ]
-    },
-    {
-     "text": "AE",
-     "font_pt": 7.0,
-     "bounds": [
-      0.810724279835391,
-      0.6857348593837305,
-      0.8299835390946503,
-      0.7026137174084218
-     ]
-    },
-    {
-     "text": "TM",
-     "font_pt": 7.0,
-     "bounds": [
-      0.810724279835391,
-      0.6627274311791588,
-      0.8329465020576132,
-      0.6796062892038501
-     ]
-    },
-    {
-     "text": "ELM",
-     "font_pt": 7.0,
-     "bounds": [
-      0.810724279835391,
-      0.639720002974587,
-      0.8418353909465022,
-      0.6565988609992783
-     ]
-    },
-    {
-     "text": "n=1",
-     "font_pt": 7.0,
-     "bounds": [
-      0.8064032921810699,
-      0.5481500753416515,
-      0.8360329218106995,
-      0.5650289333663429
-     ]
-    },
-    {
-     "text": "n=2",
-     "font_pt": 7.0,
-     "bounds": [
-      0.8064032921810699,
-      0.5259865900383143,
-      0.8360329218106995,
-      0.5428654480630057
-     ]
-    },
-    {
-     "text": "n=3",
-     "font_pt": 7.0,
-     "bounds": [
-      0.8561975308641975,
-      0.5481500753416515,
-      0.885827160493827,
-      0.5650289333663429
-     ]
-    },
-    {
-     "text": "other n",
-     "font_pt": 7.0,
-     "bounds": [
-      0.8561975308641975,
-      0.5259865900383143,
-      0.9080493827160493,
-      0.5439303608354787
-     ]
-    },
-    {
      "text": "present",
      "font_pt": 7.0,
      "bounds": [
@@ -6260,16 +6356,6 @@
       0.7737474279835391,
       0.03206983024691358
      ]
-    },
-    {
-     "text": "n",
-     "font_pt": 7.0,
-     "bounds": [
-      0.8455802469135802,
-      0.5703135606449887,
-      0.8544691358024691,
-      0.5871924186696801
-     ]
     }
    ]
   },
@@ -6321,7 +6407,7 @@
    "min_px": 100,
    "omitted_fragments": 11,
    "dashed_rule": "a thin dashed outline of the rest of a tagged component's measured n=1/2 support (all time, TM band) where the detector-positive clip cuts it; display only",
-   "dashed_regions": 2,
+   "dashed_regions": 3,
    "bands": {
     "wide": {},
     "zoom": {
@@ -6331,17 +6417,17 @@
      "omitted_sizes_px": [
       4,
       6,
-      6,
-      6,
-      6,
-      17,
-      19,
+      7,
+      7,
+      7,
       20,
-      25,
-      47,
-      73
+      22,
+      24,
+      33,
+      57,
+      91
      ],
-     "dashed_regions": 2
+     "dashed_regions": 3
     }
    }
   },
@@ -6466,10 +6552,10 @@
    }
   }
  },
- "git": "aec0da61",
+ "git": "44a5e001",
  "render_started_from_clean_head": true,
  "render_code_sha256": {
-  "scripts/labeler/paper/fig_interpreter_tokeye.py": "db7c5768a735f7df20e00a34ff4bf5d697b29b7fa5592fddbbdff41f704640a2",
+  "scripts/labeler/paper/fig_interpreter_tokeye.py": "ef60f16e1f4b6a1d9afba3d4f72831c034fdbbe70282e747b923ba3e7f8ff37b",
   "src/labeler/paper/figure_sources.py": "a69d992b9fa292c47f2edd252381dd663109318ad0ca5f5a1ebdca8596a38865",
   "src/labeler/paper/mode_tags.py": "5a23d78ab919e93ab892633ea46e1891d2785227b91ff2552e891e476f6b4661"
  }
