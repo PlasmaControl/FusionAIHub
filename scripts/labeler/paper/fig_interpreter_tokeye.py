@@ -16,6 +16,9 @@ One non-blind cohort shot over a few seconds, in three groups on one time axis:
   wide pass above), the toroidal-n view (the review page's n map, gated by the
   same mask) in the mask below 30 kHz. Highlights intersect PRESENT label
   times with AE >=60 kHz or NTM <=30 kHz; NTM requires dominant and pixel n=1 or 2.
+  Panel (b) has no key beside it: a chip in each event's colour names AE, TM,
+  transient and each n colour in place (`label_events`), read from the panel's own
+  pixels, and the panels run to the right margin (`RIGHT`).
   Optional ECE-supported, ELM-vetoed crash candidates appear on a thin strip. D-alpha
   carries the ELM label's span and the D-alpha peaks in
   it, and the confinement classes shade it;
@@ -46,6 +49,7 @@ from __future__ import annotations
 
 import argparse
 import inspect
+import io
 import json
 import math
 import re
@@ -53,8 +57,9 @@ import subprocess
 from dataclasses import replace
 from pathlib import Path
 
+import matplotlib.image as mpimg
 import numpy as np
-from matplotlib.colors import to_rgb
+from matplotlib.colors import rgb_to_hsv, to_rgb
 from matplotlib.figure import Figure
 from matplotlib.legend_handler import HandlerTuple
 from matplotlib.lines import Line2D
@@ -170,6 +175,28 @@ SOURCE_TITLE = "CO2 R0 x V1 cross-power"
 INK = "#222222"
 BAR = (0.12, 0.76)
 FONT = 7
+#: The gridspec's right edge: the panels run to it, nothing sits beside them.
+RIGHT = 0.98
+#: Panel (b) names its events in place with chips (`label_events`), measured in print
+#: pixels (the 150-dpi PNG): the largest gap between a chip and the pixels it names
+#: with no leader line, the margin kept to the panel edge, to other events' pixels
+#: and to other chips, the dilation that merges one event's specks into one region
+#: (AE is the sparsest), and the smallest region that is named (below it the colour
+#: is specks; the n=3 and other-n colours show only as 1-3 pixel scraps here);
+#: colours are told apart by hue, within `LABEL_HUE_TOL` degrees. Chips keep
+#: `LABEL_CHIP_GAP_PX` from one another and leader lines `LABEL_LEADER_CLEAR_PX`.
+LABEL_NEAR_PX = 8
+LABEL_MARGIN_PX = 4
+LABEL_CHIP_GAP_PX = 6
+LABEL_LEADER_CLEAR_PX = 2
+LABEL_MERGE_PX = {"AE": 10}
+LABEL_MERGE_DEFAULT_PX = 3
+LABEL_MIN_REGION_PX = 30
+LABEL_HUE_TOL = 6.0
+#: What covering a white (coherent-mask) pixel costs a chip, in px of distance from
+#: the event it names, per unit of the chip's area that is white.
+LABEL_WHITE_COST = 30.0
+LABEL_LEADER_LW = 0.5
 
 
 # ---------------------------------------------------------------------- TokEye
@@ -658,15 +685,15 @@ def project(ax, band, mask, event, spans, edge=False, record=None, full=None):
     return shown
 
 
-def chip(ax, x, y, text, colour, **kw):
+def chip(ax, x, y, text, colour, text_colour="black", alpha=0.95, **kw):
     """A label with a coloured background; returns the text."""
     return ax.text(
         x,
         y,
         text,
         fontsize=FONT,
-        color="black",
-        bbox={"boxstyle": "round,pad=0.12", "fc": colour, "ec": "none", "alpha": 0.95},
+        color=text_colour,
+        bbox={"boxstyle": "round,pad=0.12", "fc": colour, "ec": "none", "alpha": alpha},
         zorder=8,
         **kw,
     )
@@ -764,82 +791,308 @@ def draw_frequency_panels(ax, raw: Band, zoom: Band, top: Band) -> bool:
     return draw_transient(ax["pr"], zoom, ZOOM_TOP_KHZ) | draw_transient(ax["pr"], top)
 
 
-def draw_legends(
-    fig,
-    ax,
-    display_tracks,
-    by_key,
-    projected,
-    crashes,
-    n_handles,
-    visible,
-    peaks,
-    t0,
-    t1,
-    transient=False,
-):
-    """Source-aware signal/event keys and aligned label-state keys."""
-    elm_key = "edge_localized_mode"
-    pos = ax["pr"].get_position()
-    event_handles = [
-        Patch(fc="white", ec=INK, lw=0.5, label="coherent")
-    ]
-    if transient:
-        event_handles.append(Patch(fc=TRANSIENT_COLOUR, lw=0, label="transient"))
-    if projected["wide"][mode_tags.AE].any():
-        event_handles.append(
-            Patch(
-                fc=EVENT_COLOURS[mode_tags.AE],
-                label="AE",
-            )
-        )
-    if projected["zoom"][mode_tags.NTM].any():
-        event_handles.append(
-            (
-                Patch(fc="black", label="TM"),
-                Line2D([], [], color=NTM_CONTOUR_COLOUR, ls="-", lw=NTM_CONTOUR_LW),
-            )
-        )
-    if visible:
-        event_handles.append(
-            Patch(fc="none", ec=ELM_BOX_COLOUR, lw=0.8, label="ELM")
-        )
-    legend_options = {
-        "loc": "upper left",
-        "ncols": 1,
-        "frameon": False,
-        "fontsize": FONT,
-        "handlelength": 1.0,
-        "handletextpad": 0.3,
-        "borderpad": 0,
-        "borderaxespad": 0,
-        "labelspacing": 0.3,
+def panel_raster(fig, ax):
+    """The axes' interior as the 150-dpi PNG draws it: RGB floats, rows top to
+    bottom, with the interior's pixel box in the whole image."""
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=DPI_PNG)
+    buf.seek(0)
+    img = mpimg.imread(buf, format="png")[..., :3]
+    h, w = img.shape[:2]
+    x0, y0, x1, y1 = ax.get_position().extents
+    box = (round((1 - y1) * h), round((1 - y0) * h), round(x0 * w), round(x1 * w))
+    return img[box[0] : box[1], box[2] : box[3]], box, (h, w)
+
+
+def event_classes(rgb) -> dict[str, np.ndarray]:
+    """The pixels of each coloured event in a raster, by hue (the mask is grey)."""
+    hsv = rgb_to_hsv(rgb)
+    strong = (hsv[..., 1] > 0.3) & (hsv[..., 2] > 0.2)
+    hue = hsv[..., 0] * 360.0
+    palette = {
+        EVENT_NAMES[mode_tags.AE]: EVENT_COLOURS[mode_tags.AE],
+        "transient": TRANSIENT_COLOUR,
+        EVENT_NAMES[mode_tags.NTM]: EVENT_COLOURS[mode_tags.NTM],
+        **{f"n={n}": colour for n, colour in N_COLOURS.items()},
+        "other n": N_OTHER,
     }
-    fig.legend(
-        handles=event_handles,
-        labels=[
-            h[0].get_label() if isinstance(h, tuple) else h.get_label()
-            for h in event_handles
-        ],
-        handler_map={tuple: HandlerTuple(ndivide=1)},
-        bbox_to_anchor=(0.792, pos.y1),
-        **legend_options,
+    out = {}
+    for name, colour in palette.items():
+        centre = rgb_to_hsv(np.array(to_rgb(colour)))[0] * 360.0
+        delta = np.abs((hue - centre + 180.0) % 360.0 - 180.0)
+        out[name] = strong & (delta <= LABEL_HUE_TOL)
+    return out
+
+
+def largest_region(mask: np.ndarray, merge_px: int):
+    """The pixels of `mask` in its largest region (specks within `merge_px` of each
+    other are one region), and their count; None if `mask` is empty."""
+    if not mask.any():
+        return None
+    structure = np.ones((3, 3), bool)
+    grown = ndimage.binary_dilation(mask, structure, iterations=merge_px)
+    regions, count = ndimage.label(grown, structure)
+    sizes = np.bincount(regions[mask], minlength=count + 1)
+    sizes[0] = 0
+    best = int(sizes.argmax())
+    return mask & (regions == best), int(sizes[best])
+
+
+def text_colour_on(colour: str) -> str:
+    """Black or white, whichever reads better on `colour` (WCAG contrast)."""
+
+    def luminance(rgb):
+        lin = [c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4 for c in rgb]
+        return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+
+    lum = luminance(to_rgb(colour))
+    return "black" if (lum + 0.05) / 0.05 >= 1.05 / (lum + 0.05) else "white"
+
+
+def segment_pixels(a, b) -> list[tuple[int, int]]:
+    """The (row, col) pixels along the segment `a` to `b`."""
+    n = max(2, math.ceil(2 * math.hypot(b[0] - a[0], b[1] - a[1])))
+    t = np.linspace(0.0, 1.0, n)
+    rows = np.rint(a[0] + t * (b[0] - a[0])).astype(int)
+    cols = np.rint(a[1] + t * (b[1] - a[1])).astype(int)
+    return list(dict.fromkeys(zip(rows.tolist(), cols.tolist(), strict=True)))
+
+
+def find_chip_spot(target, size, blocked, white, avoid, floor, near_only):
+    """Where a chip of `size` (rows, cols) goes beside the pixels `target`.
+
+    A candidate keeps clear of `blocked` and of the panel edge, and, when `floor` is
+    given, sits wholly above that row (the crowded 0-30 kHz band below it). Cost is
+    its distance to `target` plus `LABEL_WHITE_COST` times its share of white mask
+    pixels; with `near_only` it must lie within `LABEL_NEAR_PX` of `target`, else a
+    farther one needs a straight leader to its nearest target pixel that crosses
+    nothing in `avoid`. Returns (top, left, gap_px, leader) or None; the leader is
+    (from, to) pixels, or None when the chip is near enough to need none."""
+    bh, bw = size
+    h, w = target.shape
+    dist, (near_r, near_c) = ndimage.distance_transform_edt(
+        ~target, return_indices=True
     )
-    if n_handles:
-        fig.legend(
-            handles=n_handles,
-            title="n",
-            title_fontsize=FONT,
-            bbox_to_anchor=(0.792, pos.y0),
-            **{
-                **legend_options,
-                "loc": "lower left",
-                "ncols": 2,
-                "columnspacing": 0.4,
-                "handlelength": 0.7,
-                "labelspacing": 0.25,
-            },
+    walls = blocked.copy()
+    edge = LABEL_MARGIN_PX + 1
+    walls[:edge] = walls[-edge:] = True
+    walls[:, :edge] = walls[:, -edge:] = True
+    hit = ndimage.maximum_filter(walls, size=(bh, bw), mode="constant", cval=True)
+    gap = ndimage.minimum_filter(dist, size=(bh, bw), mode="constant", cval=np.inf)
+    shade = ndimage.uniform_filter(
+        white.astype(float), size=(bh, bw), mode="constant", cval=0.0
+    )
+    rows, cols = np.mgrid[0:h, 0:w]
+    top = rows - bh // 2
+    ok = ~hit & np.isfinite(gap)
+    if floor is not None:
+        ok &= top + bh - 1 <= floor - LABEL_MARGIN_PX
+    if near_only:
+        ok &= gap <= LABEL_NEAR_PX
+    rr, cc = np.nonzero(target)
+    centre = (rr.mean(), cc.mean())
+    cost = gap + LABEL_WHITE_COST * shade
+    cost = cost + 0.02 * np.hypot(rows - centre[0], cols - centre[1])
+    cost = np.where(ok, cost, np.inf)
+    order = np.argsort(cost, axis=None, kind="stable")
+    for index in order[: min(int(ok.sum()), 4000)]:
+        r, c = divmod(int(index), w)
+        t, left = r - bh // 2, c - bw // 2
+        box = dist[t : t + bh, left : left + bw]
+        qr, qc = np.unravel_index(int(box.argmin()), box.shape)
+        q = (t + int(qr), left + int(qc))
+        p = (int(near_r[q]), int(near_c[q]))
+        if gap[r, c] <= LABEL_NEAR_PX:
+            return t, left, float(gap[r, c]), None
+        if near_only:
+            continue
+        crossed = [
+            pt
+            for pt in segment_pixels(q, p)
+            if avoid[pt]
+            and not target[pt]
+            and max(abs(pt[0] - p[0]), abs(pt[1] - p[1])) > 1
+        ]
+        if not crossed:
+            return t, left, float(gap[r, c]), (q, p)
+    return None
+
+
+def label_events(fig, pr, window, transient_drawn: bool) -> dict:
+    """Name panel (b)'s events in place: a chip (the event's colour, black or white
+    text) beside the largest region of each event colour, read from the panel's
+    own pixels so it follows what is drawn. Never on an event's pixels or on
+    another chip; AE and transient chips touch their region's neighbourhood, and TM
+    and the n lines, whose band is crowded, sit just above 30 kHz with a short leader
+    line to the nearest pixel of their region. A colour with no region of
+    `LABEL_MIN_REGION_PX` print pixels is left unnamed, and recorded."""
+    rgb, (r0, _, c0, _), (height, width) = panel_raster(fig, pr)
+    h, w = rgb.shape[:2]
+    classes = event_classes(rgb)
+    hsv = rgb_to_hsv(rgb)
+    white = (hsv[..., 1] < 0.2) & (hsv[..., 2] > 0.7)
+    structure = np.ones((3, 3), bool)
+    any_event = np.any(list(classes.values()), axis=0)
+    blocked = ndimage.binary_dilation(any_event, structure, iterations=LABEL_MARGIN_PX)
+    lo, hi = pr.get_ylim()
+    floor = round(h * (hi - N_VIEW_KHZ) / (hi - lo))
+    t0, t1 = window
+
+    def khz(row):
+        return hi - (hi - lo) * row / h
+
+    def ms(col):
+        return t0 + (t1 - t0) * col / w
+
+    # (text, colour class, chip colour, near-only): placed in this order
+    order = [
+        ("AE", "AE", EVENT_COLOURS[mode_tags.AE], True),
+        ("transient", "transient", TRANSIENT_COLOUR, True),
+        ("TM", "TM", EVENT_COLOURS[mode_tags.NTM], False),
+        *[(f"n={n}", f"n={n}", c, False) for n, c in N_COLOURS.items()],
+        ("other n", "other n", N_OTHER, False),
+    ]
+    regions, skipped, wanted = {}, {}, []
+    for text, key, colour, near_only in order:
+        found = largest_region(
+            classes[key], LABEL_MERGE_PX.get(key, LABEL_MERGE_DEFAULT_PX)
         )
+        regions[text] = {
+            "pixels": int(classes[key].sum()),
+            "largest_region_px": 0 if found is None else found[1],
+            "minimum_px": LABEL_MIN_REGION_PX,
+        }
+        if found is None:
+            continue
+        if found[1] < LABEL_MIN_REGION_PX:
+            skipped[text] = (
+                f"largest region {found[1]} px < {LABEL_MIN_REGION_PX} px (specks)"
+            )
+        elif text == "transient" and not transient_drawn:
+            skipped[text] = "transient channel not drawn"
+        else:
+            wanted.append((text, key, colour, near_only, found[0]))
+    chips = {}
+    for text, _, colour, _, _ in wanted:
+        chips[text] = chip(
+            pr,
+            0.5,
+            0.5,
+            text,
+            colour,
+            text_colour=text_colour_on(colour),
+            alpha=1.0,
+            transform=pr.transAxes,
+            ha="center",
+            va="center",
+        )
+    fig.draw_without_rendering()
+    scale = DPI_PNG / fig.dpi
+
+    def size_of(text):
+        extent = chips[text].get_bbox_patch().get_window_extent()
+        return math.ceil(extent.height * scale), math.ceil(extent.width * scale)
+
+    chip_area = np.zeros((h, w), bool)
+    leader_area = np.zeros((h, w), bool)
+    placed = []
+    for text, key, colour, near_only, target in wanted:
+        spot = find_chip_spot(
+            target,
+            size_of(text),
+            blocked
+            | ndimage.binary_dilation(
+                chip_area, structure, iterations=LABEL_CHIP_GAP_PX
+            )
+            | ndimage.binary_dilation(
+                leader_area, structure, iterations=LABEL_LEADER_CLEAR_PX
+            ),
+            white,
+            ndimage.binary_dilation(any_event & ~target, structure)
+            | chip_area
+            | leader_area,
+            None if near_only else floor,
+            near_only,
+        )
+        if spot is None:
+            chips.pop(text).remove()
+            skipped[text] = "no free position beside its region"
+            continue
+        top, left, gap, leader = spot
+        bh, bw = size_of(text)
+        chip_area[top : top + bh, left : left + bw] = True
+        chips[text].set_position(((left + bw / 2) / w, 1 - (top + bh / 2) / h))
+        if leader is not None:
+            (qr, qc), (tr, tc) = leader
+            pr.add_artist(
+                Line2D(
+                    [(qc + 0.5) / w, (tc + 0.5) / w],
+                    [1 - (qr + 0.5) / h, 1 - (tr + 0.5) / h],
+                    transform=pr.transAxes,
+                    color=colour,
+                    lw=LABEL_LEADER_LW,
+                    solid_capstyle="butt",
+                    zorder=7,
+                )
+            )
+            for point in segment_pixels(*leader):
+                leader_area[point] = True
+        rows_, cols_ = np.nonzero(target)
+        placed.append((text, key, colour, gap, leader, target, rows_, cols_))
+    fig.draw_without_rendering()
+    inverse = fig.transFigure.inverted()
+    records = []
+    for text, key, colour, gap, leader, target, rows_, cols_ in placed:
+        extent = chips[text].get_bbox_patch().get_window_extent().transformed(inverse)
+        # the chip's box in the panel's pixels, rounded outward, against the raster
+        # as it was before any chip: no event pixel may lie under it
+        x0, y0, x1, y1 = extent.extents
+        rows = slice(
+            max(0, math.floor((1 - y1) * height) - r0),
+            math.ceil((1 - y0) * height) - r0,
+        )
+        cols = slice(max(0, math.floor(x0 * width) - c0), math.ceil(x1 * width) - c0)
+        records.append(
+            {
+                "text": text,
+                "colour_class": key,
+                "chip_colour": colour,
+                "text_colour": text_colour_on(colour),
+                "font_pt": FONT,
+                "bounds": [x0, y0, x1, y1],
+                "region_px": int(target.sum()),
+                "region_ms": [ms(float(cols_.min())), ms(float(cols_.max() + 1))],
+                "region_khz": [khz(float(rows_.max() + 1)), khz(float(rows_.min()))],
+                "gap_px": gap,
+                "leader": None
+                if leader is None
+                else {
+                    "from": [(leader[0][1] + 0.5) / w, 1 - (leader[0][0] + 0.5) / h],
+                    "to": [(leader[1][1] + 0.5) / w, 1 - (leader[1][0] + 0.5) / h],
+                    "axes_fraction": True,
+                },
+                "covered_event_pixels": int(any_event[rows, cols].sum()),
+                "covered_white_share": float(white[rows, cols].mean()),
+            }
+        )
+    return {
+        "placed": records,
+        "skipped": skipped,
+        "regions": regions,
+        "rule": "chips read from the panel's own pixels before they are drawn: each "
+        "event colour's largest region (merged within "
+        f"{LABEL_MERGE_DEFAULT_PX} px, AE {LABEL_MERGE_PX['AE']} px), named when it "
+        f"has at least {LABEL_MIN_REGION_PX} print pixels; AE and transient chips "
+        f"within {LABEL_NEAR_PX} px of the region, TM and n chips above the "
+        f"{N_VIEW_KHZ:g} kHz band with a leader line; no chip on an event pixel, "
+        "another chip or a leader",
+    }
+
+
+def draw_legends(fig, display_tracks, by_key, t0, t1):
+    """The label rows' key (present, uncertain, absent, unassessed, L, H) below the
+    panels. The events of panel (b) are named in place (`label_events`), not here."""
+    elm_key = "edge_localized_mode"
     colours = [
         EVENT_COLOURS[t.spec.key]
         for t in display_tracks
@@ -1058,7 +1311,7 @@ def draw(
             height_ratios=heights,
             hspace=0.0,
             left=0.14,
-            right=0.78,
+            right=RIGHT,
             top=0.985,
             bottom=0.12,
         )
@@ -1081,16 +1334,6 @@ def draw(
 
         # ---- raw
         transient_shown = draw_frequency_panels(ax, raw_view, low, mask_top)
-        ax["raw"].text(
-            1.02,
-            0.97,
-            "CO$_2$\nR0$\\times$V1",
-            transform=ax["raw"].transAxes,
-            fontsize=FONT,
-            ha="left",
-            va="top",
-            color=INK,
-        )
         if nbi_sig.rows:
             trace(ax["nbi"], nbi_sig.rows[0], colour="#555555")
         ax["nbi"].set_ylabel(
@@ -1112,7 +1355,6 @@ def draw(
         if n_read is not None:
             names = n_read.meta["modes"]["n"]
             keys = [f"n={names[i]}" for i in draw_n_view(ax["pr"], n_read)]
-        n_handles = n_key(n_read) if n_read is not None else []
         rendered_ntm = {}
         ntm_outline_regions = {}
         for band in (high, low):
@@ -1298,29 +1540,10 @@ def draw(
             fig.text(0.012, pos.y1, letter, fontsize=FONT, fontweight="bold",
                      va="top", ha="left")  # fmt: skip
 
-        colours, display_keys = draw_legends(
-            fig,
-            ax,
-            display_tracks,
-            by_key,
-            projected,
-            crashes,
-            n_handles,
-            visible,
-            peaks,
-            t0,
-            t1,
-            transient=transient_shown,
-        )
+        colours, display_keys = draw_legends(fig, display_tracks, by_key, t0, t1)
+        # Panel (b)'s events are named in place, once everything else is drawn.
+        panel_labels = label_events(fig, ax["pr"], (t0, t1), transient_shown)
         fig.draw_without_rendering()
-        n_legend = next(
-            (
-                key
-                for key in fig.legends
-                if key.get_title().get_text() == "n"
-            ),
-            None,
-        )
         layout_record = {
             "frequency_axis": {
                 "scale": "linear",
@@ -1389,16 +1612,10 @@ def draw(
                 }
                 for key, text in []
             ],
-            "ntm_key_black_swatch": bool(projected["zoom"][mode_tags.NTM].any()),
-            "n_key_bounds": None
-            if n_legend is None
-            else list(
-                n_legend.get_window_extent()
-                .transformed(fig.transFigure.inverted())
-                .extents
-            ),
-            "ae_in_panel_label": None,
-            "ae_margin_label": None,
+            "panel_b_labels": panel_labels["placed"],
+            "panel_b_labels_skipped": panel_labels["skipped"],
+            "panel_b_label_rule": panel_labels["rule"],
+            "panel_b_label_regions": panel_labels["regions"],
             "elm_box_bounds": [
                 list(
                     box.get_window_extent()
@@ -1662,14 +1879,6 @@ def n_seen(read) -> list[int]:
     lit = codes[codes >= k] % k
     seen = set(lit.tolist())
     return [i for i, n in enumerate(modes["n"]) if n in N_COLOURS and i in seen]
-
-
-def n_key(read) -> list[Patch]:
-    modes = read.meta["modes"]
-    return [
-        Patch(fc=N_COLOURS[modes["n"][i]], lw=0, label=f"n={modes['n'][i]}")
-        for i in n_seen(read)
-    ] + [Patch(fc=N_OTHER, lw=0, label="other n")]
 
 
 def save_figure(fig: Figure, stem: Path, png_dpi: int = DPI_PNG) -> list[Path]:

@@ -392,14 +392,76 @@ def main():
                 shot,
                 "peak triangles touch box",
             )
-        # No floating AE chip in the processed panel; the legend names AE.
-        assert geometry["ae_in_panel_label"] is None
-        n_key = geometry["n_key_bounds"]
-        if n_key is not None:
-            # Right of the processed panel, inside its vertical extent.
-            panel = panels["pr"]["bounds"]
-            assert n_key[0] > panel[2]
-            assert panel[1] <= n_key[1] < n_key[3] <= panel[3]
+        # Nothing stands beside the panels: they run to the right margin, and the
+        # events of (b) are named in place, never by a key (the old key fields are
+        # gone from the record).
+        assert panels["pr"]["bounds"][2] >= 0.97
+        assert not {"n_key_bounds", "ntm_key_black_swatch"} & geometry.keys()
+        assert "ae_in_panel_label" not in geometry
+        panel = panels["pr"]["bounds"]
+        chips = geometry["panel_b_labels"]
+        chip_texts = [chip["text"] for chip in chips]
+        assert len(set(chip_texts)) == len(chip_texts), shot
+        chip_colours = {
+            "AE": renderer.EVENT_COLOURS[mt.AE],
+            "TM": renderer.EVENT_COLOURS[mt.NTM],
+            "transient": renderer.TRANSIENT_COLOUR,
+            **{f"n={n}": c for n, c in renderer.N_COLOURS.items()},
+            "other n": renderer.N_OTHER,
+        }
+        for chip in chips:
+            # Inside panel (b), at the paper's text size, in the event's colour,
+            # and on no event pixel (counted on the raster before the chip).
+            x0, y0, x1, y1 = chip["bounds"]
+            assert panel[0] <= x0 < x1 <= panel[2], (shot, chip["text"])
+            assert panel[1] <= y0 < y1 <= panel[3], (shot, chip["text"])
+            assert chip["font_pt"] >= 7 and chip["colour_class"] == chip["text"]
+            assert chip["chip_colour"] == chip_colours[chip["text"]]
+            assert chip["covered_event_pixels"] == 0, (shot, chip["text"])
+            assert chip["region_px"] >= renderer.LABEL_MIN_REGION_PX
+            if chip["leader"] is None:
+                assert chip["gap_px"] <= renderer.LABEL_NEAR_PX, chip["text"]
+            else:
+                # Only the crowded 0-30 kHz band's labels need a leader line.
+                assert chip["text"] in ("TM", "n=1", "n=2", "n=3", "other n")
+                assert chip["gap_px"] > renderer.LABEL_NEAR_PX
+                assert all(
+                    0 <= v <= 1
+                    for point in (chip["leader"]["from"], chip["leader"]["to"])
+                    for v in point
+                )
+            # TM and the n lines sit above the n view, AE and transient are free.
+            if chip["text"] in ("TM", "n=1", "n=2", "n=3", "other n"):
+                n_top = panel[1] + (panel[3] - panel[1]) * (
+                    axis["n_view_top_khz"] / axis["band_khz"][1]
+                )
+                assert y0 >= n_top, (shot, chip["text"], "chip over the n view")
+        for i, left in enumerate(chips):
+            for right in chips[i + 1 :]:
+                a, b = left["bounds"], right["bounds"]
+                width = min(a[2], b[2]) - max(a[0], b[0])
+                height = min(a[3], b[3]) - max(a[1], b[1])
+                assert width <= 0 or height <= 0, (left["text"], right["text"])
+        # AE's tint is checked on the saved PNG with its chip masked out below, so
+        # an AE or transient chip must not carry a pink leader line.
+        assert all(
+            c["leader"] is None for c in chips if c["text"] in ("AE", "transient")
+        )
+        regions = geometry["panel_b_label_regions"]
+        skipped = geometry["panel_b_labels_skipped"]
+        for text, info in regions.items():
+            assert info["minimum_px"] == renderer.LABEL_MIN_REGION_PX, text
+            big = info["largest_region_px"] >= info["minimum_px"]
+            assert (text in chip_texts) == (big and text not in skipped), (shot, text)
+        assert set(skipped) <= set(regions) - set(chip_texts)
+        for text, reason in skipped.items():
+            assert reason == "transient channel not drawn" or "(specks)" in reason, (
+                text,
+                reason,
+            )
+        n_texts = [t for t in chip_texts if t.startswith("n=") or t == "other n"]
+        assert n_texts == [x for x in ("n=1", "n=2", "n=3", "other n") if x in n_texts]
+        assert set(n_texts) <= set((drawn["n_map"] or {}).get("keys", []))
         # The figure carries no source text beside the rows; the appendix names them.
         assert geometry["track_source_text_bounds"] == []
         # No stretch/compression note: the axis needs none.
@@ -407,34 +469,50 @@ def main():
         for text in geometry["heading_and_legend_text_bounds"]:
             flat = text["text"].replace("\n", " ").lower()
             assert not any(word in flat for word in BROKEN_AXIS_WORDS), text["text"]
-        n_labels = [
-            x for x in geometry["legend_labels"] if x.startswith("n=") or x == "other n"
-        ]
-        assert n_labels == [
-            x for x in ("n=1", "n=2", "n=3", "other n") if x in n_labels
-        ]
         for text in geometry["heading_and_legend_text_bounds"]:
             assert text["font_pt"] >= 7
             x0, y0, x1, y1 = text["bounds"]
             assert 0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1, text["text"]
         text_bounds = geometry["heading_and_legend_text_bounds"]
+        for text in text_bounds:
+            # Nothing beside the panels, and no chip on a letter or key text.
+            assert text["bounds"][0] < panels["pr"]["bounds"][2], text["text"]
+            for chip in chips:
+                a, b = text["bounds"], chip["bounds"]
+                width = min(a[2], b[2]) - max(a[0], b[0])
+                height = min(a[3], b[3]) - max(a[1], b[1])
+                assert width <= 0 or height <= 0, (text["text"], chip["text"])
         for i, left in enumerate(text_bounds):
             for right in text_bounds[i + 1 :]:
                 a, b = left["bounds"], right["bounds"]
                 width = min(a[2], b[2]) - max(a[0], b[0])
                 height = min(a[3], b[3]) - max(a[1], b[1])
                 assert width <= 0 or height <= 0, (left["text"], right["text"])
+        # What remains of the legend is the label rows' key, below the panels.
         legend = [label.replace("\n", " ") for label in geometry["legend_labels"]]
+        assert not set(legend) & {"coherent", "transient", "AE", "TM", "ELM", "n"}
+        assert not {x for x in legend if x.startswith("n=") or x == "other n"}
         tags = drawn["blobs"]["tagged"]
-        assert ("AE" in legend) == bool(tags[mt.AE])
-        assert ("TM" in legend) == bool(tags[mt.NTM])
-        assert "coherent" in legend and "ELM" in legend
-        assert ("transient" in legend) == drawn["tokeye_transient_drawn"]
-        assert geometry["ntm_key_black_swatch"] == bool(tags[mt.NTM])
+        assert ("AE" in chip_texts) == bool(tags[mt.AE])
+        assert ("TM" in chip_texts) == bool(tags[mt.NTM])
+        assert ("transient" in chip_texts) == (
+            drawn["tokeye_transient_drawn"]
+            and regions["transient"]["largest_region_px"]
+            >= regions["transient"]["minimum_px"]
+        )
         png = Path(drawn["figure"][1])
         with Image.open(png) as native:
             assert all(abs(dpi - 150) < 0.1 for dpi in native.info["dpi"])
-            rgb = np.asarray(native.convert("RGB"))
+            rgb = np.asarray(native.convert("RGB")).copy()
+        # The chips are drawn in the events' colours (AE's is the tint's pink): mask
+        # their recorded boxes, one pixel out, so the pink audit reads the tint alone.
+        for chip in chips:
+            x0, y0, x1, y1 = chip["bounds"]
+            rows, cols = rgb.shape[:2]
+            rgb[
+                max(0, int((1 - y1) * rows) - 1) : int((1 - y0) * rows) + 2,
+                max(0, int(x0 * cols) - 1) : int(x1 * cols) + 2,
+            ] = 0
         # Read the processed panel above the n view (30-150 kHz): n hues are
         # excluded, but pink below the 60 kHz AE floor would still be caught.
         px0, py0, px1, py1 = panels["pr"]["bounds"]
