@@ -136,7 +136,9 @@ def spectrogram(shot: int, window, diagnostic="mhr"):
     return t_ms / 1000.0, f_hz / 1000.0, above_floor_db(power, 0.2, columns=columns)
 
 
-def draw_shot(fig, grid, shot, window, signals, frame, thresholds, diagnostic):
+def draw_shot(
+    fig, grid, shot, window, signals, frame, thresholds, diagnostic, levels=True
+):
     """The three rows of one shot in its cell of the figure."""
     sub = grid.subgridspec(3, 1, height_ratios=[0.35, 2.2, 2.6], hspace=0.08)
     strip, spec_ax, rms_ax = (fig.add_subplot(sub[i]) for i in range(3))
@@ -220,9 +222,9 @@ def draw_shot(fig, grid, shot, window, signals, frame, thresholds, diagnostic):
     t_ms, n1, n2 = signals
     for n, y in ((1, n1), (2, n2)):
         rms_ax.plot(t_ms / 1000, np.clip(y, 0.05, None), color=COLOUR[n], lw=0.6)
-    for rule_ in rule.RULES:
+    for rule_ in rule.RULES if levels else ():
         rms_ax.axhline(rule_.onset_g, color=COLOUR[rule_.n], lw=0.6, ls=":")
-    for item in thresholds:
+    for item in thresholds if levels else ():
         rms_ax.plot(
             [item.start_ms / 1000, item.end_ms / 1000],
             [item.release_g] * 2,
@@ -231,7 +233,8 @@ def draw_shot(fig, grid, shot, window, signals, frame, thresholds, diagnostic):
             ls="--",
         )
     rms_ax.set_yscale("log")
-    rms_ax.yaxis.set_major_locator(FixedLocator([0.1, 1, 6, 12, 100]))
+    ticks = [0.1, 1, 6, 12, 100] if levels else [0.1, 1, 10, 100]
+    rms_ax.yaxis.set_major_locator(FixedLocator(ticks))
     rms_ax.yaxis.set_major_formatter(FuncFormatter(lambda y, _: f"{y:g}"))
     rms_ax.yaxis.set_minor_formatter(NullFormatter())
     rms_ax.set_ylim(0.05, 150)
@@ -274,6 +277,11 @@ def main(argv=None) -> int:
         "--width", type=float, default=7.3, help="publication width in inches"
     )
     ap.add_argument("--diagnostic", choices=("mhr", "mirnov"), default="mhr")
+    ap.add_argument(
+        "--no-levels",
+        action="store_true",
+        help="leave out the onset and release levels (the paper's example figure)",
+    )
     args = ap.parse_args(argv)
 
     cohort = pd.read_csv(COHORT).set_index("shot")
@@ -356,11 +364,9 @@ def main(argv=None) -> int:
             frame,
             items,
             args.diagnostic,
+            levels=not args.no_levels,
         )
-    handles = [
-        plt.Line2D([], [], color=COLOUR[1], lw=1.5, label="n = 1"),
-        plt.Line2D([], [], color=COLOUR[2], lw=1.5, label="n = 2"),
-        plt.Line2D([], [], color="k", marker="v", ls="", ms=3.5, label="onset"),
+    levels = [
         plt.Line2D(
             [], [], color=COLOUR[1], ls=":", lw=0.8, label="n = 1 start level (12 G)"
         ),
@@ -369,12 +375,19 @@ def main(argv=None) -> int:
         ),
         plt.Line2D([], [], color=COLOUR[1], ls="--", lw=1.0, label="n = 1 end level"),
         plt.Line2D([], [], color=COLOUR[2], ls="--", lw=1.0, label="n = 2 end level"),
+    ]
+    handles = [
+        plt.Line2D([], [], color=COLOUR[1], lw=1.5, label="n = 1"),
+        plt.Line2D([], [], color=COLOUR[2], lw=1.5, label="n = 2"),
+        plt.Line2D([], [], color="k", marker="v", ls="", ms=3.5, label="onset"),
         Patch(
             facecolor="0.8",
             edgecolor="none",
             label="uncertain",
         ),
     ]
+    if not args.no_levels:
+        handles[3:3] = levels
     if any(has_overlap(table[table.shot == shot]) for shot in shots):
         handles.append(
             Patch(

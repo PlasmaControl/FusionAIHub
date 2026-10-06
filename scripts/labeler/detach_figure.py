@@ -143,7 +143,7 @@ def label_text(composition: dict, state: int) -> str:
     """The bracket of a column title: what the exported label of its bins is."""
     n, name = composition["bins"], STATE_NAME[state]
     if composition["certain"] == n:
-        return f"label: {name},\nTangTV and probes agree"
+        return f"label: {name},\nTangTV and Afrac agree"
     if composition["tangtv_only"] == n:
         return f"label: {name}, TangTV only"
     if composition["lmode_gate"] == n:
@@ -151,7 +151,7 @@ def label_text(composition: dict, state: int) -> str:
     if composition["uncertain"] == n:
         return "label: uncertain"
     return (
-        f"label: {composition['certain']} with probes, {composition['tangtv_only']} "
+        f"label: {composition['certain']} with Afrac, {composition['tangtv_only']} "
         f"TangTV only,\n{composition['uncertain']} uncertain of {n} bins"
     )
 
@@ -299,7 +299,7 @@ def timeline(fig, spec, group: pd.DataFrame, intervals: list[dict], te, cliffs) 
         "label": group.state_rule.to_numpy()
         + SILVER_OFFSET * silver
         + SILVER_OFFSET * lmode,
-        "probes": np.where(group.afrac_valid, group.afrac_vote, 0),
+        "Afrac": np.where(group.afrac_valid, group.afrac_vote, 0),
         "TangTV": np.where(group.tangtv_valid, group.tangtv_vote, 0),
     }
     for ax, (name, state) in zip(axes[:3], votes.items(), strict=True):
@@ -366,9 +366,9 @@ def timeline(fig, spec, group: pd.DataFrame, intervals: list[dict], te, cliffs) 
 
 #: Summary-bar categories: (legend name, colour key).
 SUMMARY_CLASSES = (
-    ("attached, TangTV and probes agree", 1),
+    ("attached, TangTV and Afrac agree", 1),
     ("attached, TangTV only", 1 + SILVER_OFFSET),
-    ("detached, TangTV and probes agree", 2),
+    ("detached, TangTV and Afrac agree", 2),
     ("detached, TangTV only", 2 + SILVER_OFFSET),
     ("uncertain, detached in L-mode", LMODE_KEY),
     ("uncertain, other", 4),
@@ -426,7 +426,7 @@ def summary(ax, frame: pd.DataFrame, shot: int) -> dict:
     ax.set_xlim(-0.5, len(share) - 0.5)
     ax.set_ylim(0, 1)
     ax.set_xlabel(
-        "shot (at least 10 assessed bins), ordered by the share where TangTV and probes agree",
+        "shot (at least 10 assessed bins), ordered by the share where TangTV and Afrac agree",
         labelpad=2,
     )
     ax.set_ylabel("share of bins")
