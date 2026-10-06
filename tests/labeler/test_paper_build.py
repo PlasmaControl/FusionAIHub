@@ -877,7 +877,7 @@ V1_DATASETS = (
     "AE & 3 & 3 & 3 & 1.8 & 1 & 0 & 2 & 0 & -- & -- \\\\\n"
     + "".join(
         f"{name} & \\multicolumn{{10}}{{c}}{{coming}} \\\\\n"
-        for name in ("NTM", "H-mode", "ELMing", "sawteeth")
+        for name in ("TM", "H-mode", "ELMing", "sawtooth")
     )
     + "\\bottomrule\n\\end{tabular}\n"
 )  # the `runs` tree's table_datasets.tex at 2258daf, before any folds were drawn,
