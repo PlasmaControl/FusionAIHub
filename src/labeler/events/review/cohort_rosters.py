@@ -5,7 +5,7 @@ shots in queue order, so any prefix of what has been reviewed is a random
 subsample of every group (`catalog.cohort`). The blind shots are left to v1's
 blind review and never get a suggestion (`spans`).
 
-    pixi run -e labelmaker python -m labeler.events.review.cohort_rosters \\
+    pixi run -e labeler python -m labeler.events.review.cohort_rosters \\
         --event high_confinement_mode --point
 
 writes `data/events/<event>/shots.csv`: the queue's shots in order, each keeping

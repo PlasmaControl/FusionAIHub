@@ -20,6 +20,8 @@ from . import (
     edge_localized_mode,
     fishbone,
     high_confinement_mode,
+    mhd,
+    mhd_1_1,
     minimum_safety_factor,
     neoclassical_tearing_mode,
     poloidal_beta,
@@ -33,11 +35,21 @@ BUILDERS = {
     "edge_localized_mode": edge_localized_mode,
     "fishbone": fishbone,
     "high_confinement_mode": high_confinement_mode,
+    "mhd_n1": mhd,
+    "mhd_n1.m1": mhd_1_1,
     "minimum_safety_factor": minimum_safety_factor,
     "neoclassical_tearing_mode": neoclassical_tearing_mode,
     "poloidal_beta": poloidal_beta,
     "resistive_wall_mode": resistive_wall_mode,
     "sawtooth_oscillation": sawtooth_oscillation,
+}
+
+#: Marker times a builder's event can draw on its rows, apart from the panels:
+#: `markers(shot, *, t_range, paths) -> [{"label": str, "t_ms": [float, ...]}]`,
+#: `[]` where the data are missing. The review page reads these.
+MARKERS = {
+    "mhd_n1.m1": mhd_1_1.markers,
+    "edge_localized_mode": edge_localized_mode.markers,
 }
 
 

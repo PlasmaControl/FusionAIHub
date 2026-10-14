@@ -712,7 +712,7 @@ def gpu_samples_path(job_id: str) -> Path:
     is the directory the sbatch `--output` line already points at. The labeler
     root is the fallback for a job submitted without the shot_design env.
     """
-    root = os.environ.get("SHOT_DESIGN_DATA_ROOT") or os.environ.get("IDEATE_DATA_ROOT")
+    root = os.environ.get("SHOT_DESIGN_DATA_ROOT")
     base = Path(root) / "runs" / "slurm" if root else default_out().parent
     return base / f"{job_id}.gpu.csv"
 

@@ -1,6 +1,6 @@
 """Read-only ae-ours inference for Figure 1; writes only an isolated CSV/JSON.
 
-Run through the frozen labelmaker pixi environment with this worktree's
+Run through the frozen labeler pixi environment with this worktree's
 src on PYTHONPATH. Calls the model adapter on CPU: transform, recurrent context,
 causal aggregation and validity rules. No training or network access.
 """

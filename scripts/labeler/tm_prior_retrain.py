@@ -27,7 +27,7 @@ Every number is written with its shots, bins and thresholds to
 ``$LABELER_ROOT/round4/tm/results/``. Run in the CUDA venv::
 
     PYTHONPATH=$PWD/src CUDA_VISIBLE_DEVICES=1 LABELER_ROOT=<main root> \\
-        /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/envs/phase3/bin/python \\
+        /scratch/gpfs/EKOLEMEN/nc1514/labeler/envs/phase3/bin/python \\
         scripts/labeler/tm_prior_retrain.py --model cnn
 """
 
@@ -53,7 +53,7 @@ from tm_cv_plan import load_plan
 
 from labeler.tearing import detectors, scoring
 
-ROOT = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker"))
+ROOT = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
 TM = ROOT / "round4/tm"
 INPUTS = TM / "detector_inputs"
 RESULTS = Path(os.environ.get("TM_RESULTS", TM / "results"))

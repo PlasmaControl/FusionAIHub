@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Compile every ELM table standalone and record hashes of all rendered pages.
 
-Run through the labelmaker pixi environment with TMPDIR set to the stream temp.
+Run through the labeler pixi environment with TMPDIR set to the stream temp.
 After inspecting every recorded PNG, --record-viewed marks the unchanged audit.
 Large PDF/PNG proofs stay under $LABELER_ROOT/round4/elm/table-proofs.
 """

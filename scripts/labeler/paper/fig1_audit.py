@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import subprocess
@@ -18,6 +19,7 @@ from pathlib import Path
 import fig_interpreter_tokeye as renderer
 import numpy as np
 import pandas as pd
+from matplotlib.colors import to_rgb
 from PIL import Image
 
 from labeler.ae.xpower.train import read_split
@@ -34,6 +36,94 @@ SHOTS = (PRIMARY,)
 AXIS_TICKS_KHZ = [0, 50, 100, 150]
 #: Words that would describe a broken, stretched or compressed frequency axis.
 BROKEN_AXIS_WORDS = ("stretched", "compressed", "scale break", "three frequency")
+#: A saved-PNG pixel is drawn in a class's colour where every channel is within
+#: this of it; an anti-aliased blend of two colours (a TM outline's edge over an
+#: n=1 ridge, which has n=3's hue) is not.
+CLASS_RGB_TOL = 0.04
+
+
+def panel_pixels_in_colour(rgb, panel, colour: str) -> int:
+    """The pixels of the saved PNG `rgb` inside panel (b)'s bounds (figure
+    fractions, y from the bottom) in `colour` (`CLASS_RGB_TOL`, every channel)."""
+    height, width = rgb.shape[:2]
+    x0, y0, x1, y1 = panel
+    inside = rgb[
+        math.floor((1 - y1) * height) : math.ceil((1 - y0) * height),
+        math.floor(x0 * width) : math.ceil(x1 * width),
+        :3,
+    ]
+    near = np.abs(inside / 255.0 - np.array(to_rgb(colour))).max(axis=-1)
+    return int((near <= CLASS_RGB_TOL).sum())
+
+
+def transient_overlay_on(record) -> bool:
+    """Whether the record's render drew panel (b)'s transient overlay: its own
+    flag (off by default, the owner's call of 2026-10-14); records from before the
+    flag had the overlay on where they carry a display cut."""
+    flag = record["tokeye"].get("transient_overlay")
+    if flag is not None:
+        return bool(flag)
+    return record["decision_thresholds"].get("tokeye_transient_display") is not None
+
+
+def chip_region_drawn(rgb, chip: dict, panel, window, band_khz) -> int:
+    """The pixels in the chip's class colour (`CLASS_RGB_TOL`) inside the region
+    the chip names, read on the saved PNG apart from the renderer's classes: the
+    recorded region box (`region_ms` x `region_khz`, one pixel out) mapped through
+    panel (b)'s bounds, less a pixel either side of the chip's leader line, which
+    is drawn in the same colour. `rgb` is the PNG with the chips masked out."""
+    height, width = rgb.shape[:2]
+    x0, y0, x1, y1 = panel
+    (t0, t1), (f0, f1) = window, band_khz
+
+    def col(t):
+        return (x0 + (t - t0) / (t1 - t0) * (x1 - x0)) * width
+
+    def row(f):
+        return (1 - y0 - (f - f0) / (f1 - f0) * (y1 - y0)) * height
+
+    c0 = max(0, math.floor(col(chip["region_ms"][0])) - 1)
+    c1 = math.ceil(col(chip["region_ms"][1])) + 1
+    r0 = max(0, math.floor(row(chip["region_khz"][1])) - 1)
+    r1 = math.ceil(row(chip["region_khz"][0])) + 1
+    colour = np.array(to_rgb(chip["chip_colour"]))
+    pure = np.abs(rgb[..., :3] / 255.0 - colour).max(axis=-1) <= CLASS_RGB_TOL
+    inside = np.zeros(pure.shape, bool)
+    inside[r0:r1, c0:c1] = True
+    if chip["leader"] is not None:
+        ends = [
+            ((x0 + fx * (x1 - x0)) * width, (1 - y0 - fy * (y1 - y0)) * height)
+            for fx, fy in (chip["leader"]["from"], chip["leader"]["to"])
+        ]
+        (ax_, ay), (bx, by) = ends
+        for t in np.linspace(0, 1, 4 * math.ceil(math.hypot(bx - ax_, by - ay)) + 2):
+            c, r = int(ax_ + t * (bx - ax_)), int(ay + t * (by - ay))
+            inside[max(0, r - 1) : r + 2, max(0, c - 1) : c + 2] = False
+    return int((pure & inside).sum())
+
+
+def replayed_tables(record) -> list[str]:
+    """The `--rows EVENT=CSV` items that replay the tables a record's rows came
+    from (`source_tables`: supplied with `--rows` or read through an event's
+    review source.json), each table first checked against its recorded sha256.
+    An event the render took no table for must still have none: a pointer that
+    now holds the shot would change the rebuild."""
+    tables = record.get("source_tables", {})
+    assert set(record.get("rows_supplied", {})) <= set(tables), "unrecorded --rows"
+    items = []
+    for event, table in tables.items():
+        assert sha256_of(Path(table["path"])) == table["sha256"], (
+            event,
+            "table changed since the render",
+            table["path"],
+        )
+        items.append(f"{event}={table['path']}")
+    paths = Paths.from_env()
+    for event in renderer.ROW_EVENTS:
+        if event not in tables:
+            now = renderer.table_track(paths, record["shot"], event)
+            assert now is None, (event, "a pointer now holds the shot", now.file)
+    return items
 
 
 def rebuild_primary(record):
@@ -44,7 +134,7 @@ def rebuild_primary(record):
     rebuild_dir.mkdir(parents=True, exist_ok=True)
     cmd = [
         "pixi", "run", "--frozen", "--no-install", "--manifest-path",
-        "/scratch/gpfs/nc1514/FusionAIHub/pyproject.toml", "-e", "labelmaker",
+        "/scratch/gpfs/nc1514/FusionAIHub/pyproject.toml", "-e", "labeler",
         "python", "scripts/labeler/paper/fig_interpreter_tokeye.py",
         "--shot", str(record["shot"]), "--tmin", str(record["window_ms"][0]),
         "--tmax", str(record["window_ms"][1]), "--out", str(rebuild_dir),
@@ -64,6 +154,16 @@ def rebuild_primary(record):
     evidence = record["drawn"]["sawtooth_crashes"].get("evidence_source")
     if evidence:
         cmd.extend(["--sawtooth-evidence", evidence])
+    for item in replayed_tables(record):
+        cmd.extend(["--rows", item])
+    # the TokEye cache the render read (its fingerprints are audited below)
+    cmd.extend(["--cache", str(Path(record["tokeye"]["cache"]).parent)])
+    # the overlay is off by default: a render that drew it is rebuilt with it
+    if transient_overlay_on(record):
+        cmd.append("--transient")
+        cut = record["decision_thresholds"].get("tokeye_transient_display")
+        if cut is not None:
+            cmd.extend(["--transient-cut", str(cut)])
     subprocess.run(cmd, check=True)
     rebuilt = [rebuild_dir / p.name for p in files]
     after = {str(p): sha256_of(q) for p, q in zip(files, rebuilt, strict=True)}
@@ -75,6 +175,72 @@ def rebuild_primary(record):
         "identical": True,
         "rebuild_files": [str(p) for p in rebuilt],
     }
+
+
+def audit_tables(record, tables: dict, shot: int) -> None:
+    """The rows read from event tables: each track names its recorded table,
+    whose bytes still hash as recorded, and its states are that table's rows on
+    the shot, clipped to the window; `--rows` and pointer tables are told apart;
+    the appendix names each by its plain name, never the method id or 'None'."""
+    supplied = record.get("rows_supplied", {})
+    appendix = Path(record["appendix"]["path"]).read_text()
+    for key, table in tables.items():
+        track = record["tracks"][key]
+        assert track["source_table"] == {
+            k: v for k, v in table.items() if k != "sha256"
+        }, key
+        assert track["path"] == table["path"], key
+        assert track["sha256"] == table["sha256"] == sha256_of(Path(table["path"]))
+        assert (key in supplied) == (table["how"] == renderer.SUPPLIED), key
+        if key in supplied:
+            assert supplied[key] == table["path"], key
+        rows = renderer.table_rows(Path(table["path"])).get(shot)
+        assert rows, (key, "no row for the shot")
+        spec = next(s for s in lf.TRACKS if s.key == key)
+        expected = fs.state_intervals(lf.Track(spec, rows=rows), record["window_ms"])
+        assert track["state_intervals_ms"] == expected, key
+        assert fs._source_name(key, track) in appendix, key
+        # a method id (elm_jump, tm_mhd, ...) never reaches the text; a one-word
+        # id ("regimes") may be an ordinary word there
+        if "_" in (table.get("method") or ""):
+            assert table["method"] not in appendix, (key, table["method"])
+    assert (
+        "None" not in appendix
+        and "None" not in Path(record["caption"]["path"]).read_text()
+    )
+
+
+def audit_no_q1(saw: dict, table: dict, shot: int, window, appendix: str) -> None:
+    """A q = 1-gated sawtooth table (the no-q=1-negatives view): the gate's rows
+    are the table's absent rows with a blank confidence, they total the
+    metadata's `no_q1_ms` for the shot, the row draws them as absent, and the
+    appendix says that absent time has no q = 1 surface."""
+    gate = table.get("no_q1_rows_ms")
+    meta_file = saw["metadata"]
+    meta = json.loads(Path(meta_file).read_text()) if meta_file else {}
+    if meta_file:
+        assert sha256_of(Path(meta_file)) == saw["metadata_sha256"]
+    gated = bool(((meta.get("rule") or {}).get("gate") or {}).get("no_q1"))
+    assert (gate is not None) == gated, "q = 1 gate recorded iff the table has one"
+    if gate is None:
+        assert "no_q1_intervals_ms" not in saw
+        return
+    frame = pd.read_csv(table["path"], index_col=False)
+    rows = frame[(frame.shot == shot) & (frame.category == 0) & frame.confidence.isna()]
+    assert gate == [[float(a), float(b)] for a, b in zip(rows.t_start, rows.t_end)]
+    total = meta["per_shot"][str(shot)]["no_q1_ms"]
+    assert table["no_q1_ms"] == total
+    assert abs(sum(b - a for a, b in gate) - total) < 1.0, (gate, total)
+    clipped = fs.clip_spans(gate, window)
+    assert saw["no_q1_intervals_ms"] == clipped
+    absent = [
+        (r["start_ms"], r["end_ms"])
+        for r in saw["state_intervals_ms"]
+        if r["state"] == "absent"
+    ]
+    for a, b in clipped:
+        assert any(x <= a and b <= y for x, y in absent), ("gate not absent", a, b)
+    assert ("no q = 1 surface" in appendix) == bool(clipped)
 
 
 def main():
@@ -92,6 +258,13 @@ def main():
     parser.add_argument(
         "--baseline-ref",
         help="git ref whose records must have identical scientific data",
+    )
+    parser.add_argument(
+        "--dirty-ok",
+        action="store_true",
+        help="accept a render from a dirty tree: skip the clean-head and committed-"
+        "code checks (the code files must still match the recorded sha256); "
+        "recorded in the output",
     )
     args = parser.parse_args()
     rendered = tuple(args.shots)
@@ -120,10 +293,15 @@ def main():
         assert sums[shard.name] == source["population_shard_sha256"]
         assert source["states_equal_population_shard"] is True
     catalog_comparison = manifest["catalog_comparison"]
+    # The comparison is about the rendered shots' rows: a catalog table rewritten
+    # since (another shot's rows) is recorded, and its rows on them still checked.
+    comparison_rewritten = {}
     for source in catalog_comparison:
         if source.get("missing"):
             continue
-        assert sha256_of(Path(source["path"])) == source["sha256"]
+        current = sha256_of(Path(source["path"]))
+        if current != source["sha256"]:
+            comparison_rewritten[source["path"]] = current
         spec = next(s for s in lf.TRACKS if s.key == mt.SAWTOOTH)
         raw = lf.read_rows(Path(source["path"]))
         for shot in rendered:
@@ -153,6 +331,8 @@ def main():
                 "render_started_from_clean_head",
                 "tracks",
             }
+            # Round 5: the tables a record's rows came from, and the gold flag.
+            presentation |= {"gold_shot", "rows_supplied", "source_tables"}
             for key in record.keys() - presentation:
                 new, old = record[key], baseline[key]
                 if key == "filter":
@@ -170,6 +350,10 @@ def main():
                         "split_khz",
                         "frequency_axis",
                         "raw_normalisation",
+                        # round 5: gist_heat, the transient cut, the label runs
+                        "raw_colormap",
+                        "transient_display_rule",
+                        "label_row_display_rule",
                     }
                     new = {k: v for k, v in new.items() if k not in moved}
                     old = {k: v for k, v in old.items() if k not in moved}
@@ -199,7 +383,14 @@ def main():
                 "ntm_measured_pixel_audit",
             }
             # Records added after the baseline; each is checked below.
-            added = {"harmonic3_support", "persistent_line_rows"}
+            added = {
+                "harmonic3_support",
+                "persistent_line_rows",
+                "tokeye_transient_threshold",
+                "tokeye_transient_print_columns",
+                "tokeye_transient_pass",
+                "tokeye_transient_overlay",  # round 5: off, owner 2026-10-14
+            }
             # The 60 kHz AE floor and split change what counts as AE: the tag
             # counts, the late untagged band and the projection audit.  The
             # harmonic gate is new.  Everything else must be unchanged.
@@ -209,6 +400,7 @@ def main():
                 "projection_audit",
                 "n2_harmonic_consistent",
                 "n3_harmonic_consistent",
+                "tokeye_transient_drawn",  # round 5: its own display cut
             }
             new_tags = record["drawn"]["blobs"]["tagged"]
             old_tags = baseline["drawn"]["blobs"]["tagged"]
@@ -226,18 +418,19 @@ def main():
                     "changed scientific drawing record",
                     key,
                 )
-        assert record["render_started_from_clean_head"]
+        assert record["render_started_from_clean_head"] or args.dirty_ok
         assert record["split"] in ("train", "val", "outside_cohort"), (
             f"blind shot {shot}"
         )
         drawn = record["drawn"]
         render_commits.add(record["git"])
         for path, digest in record["render_code_sha256"].items():
-            committed = subprocess.check_output(
-                ["git", "show", f"{record['git']}:{path}"]
-            )
-            assert hashlib.sha256(committed).hexdigest() == digest
-            assert sha256_of(Path(path)) == digest
+            if not args.dirty_ok:
+                committed = subprocess.check_output(
+                    ["git", "show", f"{record['git']}:{path}"]
+                )
+                assert hashlib.sha256(committed).hexdigest() == digest
+            assert sha256_of(Path(path)) == digest, f"changed code {path}"
         for path, digest in drawn["figure_sha256"].items():
             assert sha256_of(Path(path)) == digest, f"changed figure {path}"
         for band in drawn["projection_audit"].values():
@@ -253,17 +446,35 @@ def main():
         assert not set(shown) & set(crashes["rejected_elm_times_ms"])
         assert set(shown) <= set(crashes["ece_times_ms"])
         assert drawn["sawtooth_strip_shown"] is False
-        if shot == PRIMARY:
-            assert record["window_ms"] == [100, 6200]
+        if shot in renderer.PRESETS:
+            assert record["window_ms"] == list(renderer.PRESETS[shot])
         assert drawn["catalog_sawtooth_frame_model_shown"] is False
         saw = record["tracks"]["sawtooth_oscillation"]
         assert saw["state_intervals_ms"]
         for source in crashes["files"]:
             assert snapshot_hashes[source["path"]] == source["sha256"]
+        # Every row read from an event table (`--rows` or the review pointer):
+        # the table is the recorded one, unchanged, and the row is its states.
+        tables = record.get("source_tables", {})
+        audit_tables(record, tables, shot)
+        gold = record.get("gold_shot", False)
+        if gold:
+            # a gold evaluation shot draws no expert review
+            assert not any(
+                t["tier"] == lf.SILVER for t in record["tracks"].values() if t
+            ), shot
         spec = next(s for s in lf.TRACKS if s.key == mt.SAWTOOTH)
         review = spec.sources[0].locate(Paths.from_env())
-        reviewed = lf.read_rows(review).get(shot)
-        if reviewed:
+        reviewed = None if gold else lf.read_rows(review).get(shot)
+        if mt.SAWTOOTH in tables:
+            audit_no_q1(
+                saw,
+                tables[mt.SAWTOOTH],
+                shot,
+                record["window_ms"],
+                Path(record["appendix"]["path"]).read_text(),
+            )
+        elif reviewed:
             assert saw["path"] == str(review) and saw["tier"] == lf.SILVER
             expected = fs.state_intervals(
                 lf.Track(spec, rows=reviewed), record["window_ms"]
@@ -319,10 +530,10 @@ def main():
         assert saw["display_merge"]["minimum_duration_ms"] == 0
         assert changes == []
         assert saw["display_intervals_ms"] == saw["state_intervals_ms"]
-        vermillion = "#D55E00"
+        saw_colour = renderer.EVENT_COLOURS[mt.SAWTOOTH]
         saw_present_drawn = any(r["category"] == 1 for r in saw["display_intervals_ms"])
         assert (
-            vermillion in drawn["layout"]["present_chip_colours"]
+            saw_colour in drawn["layout"]["present_chip_colours"]
         ) == saw_present_drawn
         confine = record["tracks"]["confinement"]
         mapping = {int(k): v for k, v in confine["states"].items()}
@@ -340,6 +551,23 @@ def main():
         assert axis["ticks_khz"] == AXIS_TICKS_KHZ
         assert axis["mask_zoom_pass_khz"] == [0, 50]
         assert axis["mask_wide_pass_khz"] == [50, 150]
+        # The transient overlay is off by default (the owner, 2026-10-14: too
+        # distracting): the record says so, and names no pass or columns. Where a
+        # render turned it on (`--transient`) it is the wide pass's, over the whole
+        # band.
+        overlay = transient_overlay_on(record)
+        assert drawn["tokeye_transient_overlay"] == overlay, shot
+        if overlay:
+            assert axis["transient_pass_khz"] == {renderer.TRANSIENT_PASS: [0, 150]}
+            assert drawn["tokeye_transient_pass"] == renderer.TRANSIENT_PASS
+            assert set(drawn["tokeye_transient_print_columns"]) == {
+                renderer.TRANSIENT_PASS
+            }
+        else:
+            assert axis["transient_pass_khz"] == {}, shot
+            assert drawn["tokeye_transient_pass"] is None, shot
+            assert drawn["tokeye_transient_print_columns"] == {}, shot
+            assert drawn["tokeye_transient_drawn"] is False, shot
         assert axis["ae_ntm_split_khz"] == 60 and axis["n_view_top_khz"] == 30
         # The n view is the bottom 30 of 150 kHz of the processed panel.
         panels = geometry["frequency_panels"]
@@ -418,6 +646,10 @@ def main():
             assert chip["font_pt"] >= 7 and chip["colour_class"] == chip["text"]
             assert chip["chip_colour"] == chip_colours[chip["text"]]
             assert chip["covered_event_pixels"] == 0, (shot, chip["text"])
+            # only the TM and n chips (above the crowded band) may hide a few
+            # transient lines; the AE and transient chips sit clear of them
+            if chip["text"] in ("AE", "transient"):
+                assert chip["covered_transient_pixels"] == 0, (shot, chip["text"])
             assert chip["region_px"] >= renderer.LABEL_MIN_REGION_PX
             if chip["leader"] is None:
                 assert chip["gap_px"] <= renderer.LABEL_NEAR_PX, chip["text"]
@@ -455,10 +687,13 @@ def main():
             assert (text in chip_texts) == (big and text not in skipped), (shot, text)
         assert set(skipped) <= set(regions) - set(chip_texts)
         for text, reason in skipped.items():
-            assert reason == "transient channel not drawn" or "(specks)" in reason, (
-                text,
-                reason,
-            )
+            # a rare n colour in the crowded band may find no free spot: recorded
+            crowded = text in ("n=3", "other n")
+            assert (
+                reason == "transient channel not drawn"
+                or "(specks)" in reason
+                or (crowded and reason == "no free position beside its region")
+            ), (text, reason)
         n_texts = [t for t in chip_texts if t.startswith("n=") or t == "other n"]
         assert n_texts == [x for x in ("n=1", "n=2", "n=3", "other n") if x in n_texts]
         assert set(n_texts) <= set((drawn["n_map"] or {}).get("keys", []))
@@ -488,10 +723,9 @@ def main():
                 width = min(a[2], b[2]) - max(a[0], b[0])
                 height = min(a[3], b[3]) - max(a[1], b[1])
                 assert width <= 0 or height <= 0, (left["text"], right["text"])
-        # What remains of the legend is the label rows' key, below the panels.
+        # No key below the panels (round 5): the caption says what the rows draw.
         legend = [label.replace("\n", " ") for label in geometry["legend_labels"]]
-        assert not set(legend) & {"coherent", "transient", "AE", "TM", "ELM", "n"}
-        assert not {x for x in legend if x.startswith("n=") or x == "other n"}
+        assert legend == [], legend
         tags = drawn["blobs"]["tagged"]
         assert ("AE" in chip_texts) == bool(tags[mt.AE])
         assert ("TM" in chip_texts) == bool(tags[mt.NTM])
@@ -513,6 +747,26 @@ def main():
                 max(0, int((1 - y1) * rows) - 1) : int((1 - y0) * rows) + 2,
                 max(0, int(x0 * cols) - 1) : int(x1 * cols) + 2,
             ] = 0
+        # Every chip names drawn pixels of its class (C1): the region it records
+        # holds at least the named size in its class's own colour on the saved
+        # PNG, not a blend that shares the class's hue; the renderer's own counts
+        # agree (a class's drawn pixels are among its hue's, a region among them).
+        for chip in chips:
+            found = chip_region_drawn(
+                rgb, chip, panels["pr"]["bounds"], record["window_ms"], axis["band_khz"]
+            )
+            assert found >= renderer.LABEL_MIN_REGION_PX, (shot, chip["text"], found)
+            info = regions[chip["text"]]
+            assert chip["region_px"] <= info["pixels"] <= info["hue_pixels"], (
+                shot,
+                chip["text"],
+            )
+        # The transient red on the saved PNG, inside panel (b): none at all with
+        # the overlay off (the default), some where it was drawn.
+        red = panel_pixels_in_colour(
+            rgb, panels["pr"]["bounds"], renderer.TRANSIENT_COLOUR
+        )
+        assert (red > 0) == drawn["tokeye_transient_drawn"], (shot, "red pixels", red)
         # Read the processed panel above the n view (30-150 kHz): n hues are
         # excluded, but pink below the 60 kHz AE floor would still be caught.
         px0, py0, px1, py1 = panels["pr"]["bounds"]
@@ -528,21 +782,28 @@ def main():
         assert raster_ae["outside_present"] == raster_ae["below_detector_band"] == 0
         assert bool(raster_ae["pink_pixels"]) == bool(tags[mt.AE])
         if confine["title"] == fs.CONFINEMENT_TITLE:
-            # The class swatches in the key are exactly the classes the row draws.
+            # The class names are written on the row's own runs (L, H, QH, WPQH),
+            # each inside its run, and (c) names the shading the same way.
+            names = renderer.CLASS_LEGEND
+            runs = geometry["confinement_run_texts"]
             row_classes = {
                 r["category"]
                 for r in confine["state_intervals_ms"]
-                if r["category"] in renderer.CLASS_LEGEND
+                if r["category"] in names
             }
-            names = renderer.CLASS_LEGEND
-            assert {names[c] for c in row_classes} <= set(legend)
-            assert not {names[c] for c in names if c not in row_classes} & set(legend)
+            assert {r["category"] for r in runs} == row_classes
+            for run in runs:
+                assert run["text"] == names[run["category"]]
+                assert run["font_pt"] >= 7
+            assert any(r["bounds"] is not None for r in runs) == bool(row_classes)
             assert set(drawn["regimes_shown"]) <= {
                 lf.REGIMES[c] for c in lf.REGIMES if c != 5
             }
-        elm_expert = record["tracks"]["edge_localized_mode"]["tier"] == lf.SILVER
-        crowd = bool(drawn["elm_crowd_spans_ms"])
-        assert any("expert ELM" in name for name in legend) == (elm_expert and crowd)
+            for label in geometry["regime_text_bounds"]:
+                assert label["text"] in set(names.values()) | {
+                    "L (inferred)",
+                    "L\ninferred",
+                }, label["text"]
         late = drawn["late_untagged_high_frequency"]
         if late:
             assert late["pixels"] > 0
@@ -586,12 +847,17 @@ def main():
         assert "normalised" not in caption
         assert "(b) TokEye coherent-mode mask after small-object removal" in caption
         assert "toroidal mode number $n$ (Mirnov array)" in caption
-        assert "(e) Normalized beta. (f) Label rows; sources: appendix." in caption
+        # (f) has no legend: the caption keys each state the rows show
+        key = fs.row_key(drawn)
+        assert set(drawn["display_state_keys"]) <= set(fs.ROW_KEY)
+        assert all(fs.ROW_KEY[k] in key for k in drawn["display_state_keys"])
+        assert f"(e) Normalized beta. (f) Labels: {key}; sources: appendix." in caption
         assert "row omitted" not in caption and "shared inputs" not in caption
         assert "Circles:" not in caption and "Triangles:" not in caption
         appendix_file = args.records / f"{shot}.appendix.txt"
         appendix = appendix_file.read_text()
         assert "Tracks: AE: " in appendix  # the rows' sources are not in the figure
+        assert f"Label rows (f): {key}" in appendix
         assert appendix.strip() == fs.appendix_notes(
             shot, record["tracks"], drawn, record["detector_training"]
         )
@@ -599,11 +865,34 @@ def main():
         thresholds = [f"TokEye {drawn['tokeye_threshold']:g}"]
         assert drawn["tokeye_threshold"] == renderer.TOKEYE_THRESHOLD
         assert record["decision_thresholds"]["tokeye"] == renderer.TOKEYE_THRESHOLD
+        # Where drawn, the transient overlay has its own display cut, recorded and
+        # drawn; with the overlay off the record has no cut and neither the caption
+        # nor the appendix says anything of red transient lines.
+        cut = drawn["tokeye_transient_threshold"]
+        assert cut == record["decision_thresholds"]["tokeye_transient_display"]
+        assert cut == record["tokeye"]["transient_display_threshold"]
+        assert record["tokeye"]["transient_overlay"] == overlay
+        assert (cut is not None) == overlay
+        assert drawn["tokeye_transient_drawn"] == (
+            sum(drawn["tokeye_transient_print_columns"].values()) > 0
+        )
+        assert record["filter"]["raw_colormap"] == renderer.RAW_CMAP
         assert ("Red: TokEye's transient channel." in caption) == (
             drawn["tokeye_transient_drawn"]
         )
+        assert ("Red: TokEye's transient channel" in appendix) == (
+            drawn["tokeye_transient_drawn"]
+        )
+        if overlay:
+            assert (f"its own display cut, ≥{cut:g}" in appendix) == (
+                drawn["tokeye_transient_drawn"]
+            )
+        else:
+            assert "transient" not in caption.lower(), "no red lines in the caption"
+            assert "it is not drawn" in appendix and "display cut" not in appendix
+            assert record["filter"]["transient_display_rule"].startswith("not drawn")
         for key, name in ((mt.AE, "AE"), (mt.NTM, "TM")):
-            if record["tracks"][key]["tier"] == lf.GENERATED:
+            if fs.is_detector(record["tracks"][key]):
                 value = record["tracks"][key]["decision_threshold"]
                 thresholds.append(f"{name} {(value or AE_THRESHOLD):g}")
         assert ("Operating probability thresholds: " + "; ".join(thresholds)) in (
@@ -612,10 +901,10 @@ def main():
         # Detector-only thresholds: an imported NTM table has none to list.
         ntm_value = record["tracks"][mt.NTM]["decision_threshold"] or fs.NTM_THRESHOLD
         assert (f"TM {ntm_value:g}" in appendix) == (
-            record["tracks"][mt.NTM]["tier"] == lf.GENERATED
+            fs.is_detector(record["tracks"][mt.NTM])
         )
         ae_ours = record["tracks"][mt.AE]["what"].startswith("ae-ours")
-        ae_text = record["tracks"][mt.AE]["tier"] == lf.GENERATED and bool(tags[mt.AE])
+        ae_text = fs.is_detector(record["tracks"][mt.AE]) and bool(tags[mt.AE])
         assert ("AE targets used TokEye's mask" in appendix) == (ae_ours and ae_text)
         if ae_text and not ae_ours:
             assert "trained on the owner's reviewed AE labels" in appendix
@@ -670,15 +959,16 @@ def main():
         if drawn["elm_hmode_conflicts_ms"]:
             assert "sources disagree" in appendix
         ntm = record["tracks"][mt.NTM]
-        if ntm["tier"] == lf.GENERATED and tags[mt.NTM]:
+        if fs.is_detector(ntm) and tags[mt.NTM]:
             assert fs.ntm_qualification(ntm) in caption
             assert "held-out F1" in caption
             evaluation = json.loads(Path(ntm["performance"]["evaluation"]).read_text())
             assert ntm["performance"]["f1"] == evaluation["scores"]["ntm_frames"]["f1"]
-        # Every generated AE/NTM track records whether the shot was in the
-        # detector's training set, from the training list itself.
+        # Every detector AE/NTM track, a detector's table included, records
+        # whether the shot was in the detector's training set, from the training
+        # list itself (a table of labels has no detector of ours behind it).
         for key in (mt.AE, mt.NTM):
-            if record["tracks"][key]["tier"] != lf.GENERATED:
+            if not fs.is_detector(record["tracks"][key]):
                 assert key not in record["detector_training"]
                 continue
             training = record["detector_training"][key]
@@ -697,78 +987,49 @@ def main():
             )
         if record["detector_training"]:
             assert fs.training_note(record["detector_training"]) in appendix
-        if shot == PRIMARY:
-            assert "CO2 neural detector" in appendix
-            assert (
-                "Pink: mask pixels $\\geq$60 kHz while the CO2 AE detector "
-                "(80--250 kHz input band; trained on TokEye-mask-derived targets, "
-                "so not independent of TokEye) is positive (25 ms bins)." in caption
-            )
-            assert (
-                "(held-out F1 0.46, below our 0.7 bar, shown at 0.5) is positive."
-                in caption
-            )
-            assert (
-                "Highlights mark time/band coincidence only; the $n=2$ ridge is "
-                "consistent with a harmonic of the $n=1$ mode." in caption
-            )
-            # 94 % of the 219 ms with n=1 and n=2 measured together pass the 5 %
-            # ratio test, above the 0.6 gate; n=3 has no joint support (0 of 21 ms).
-            assert drawn["n2_harmonic_consistent"] is True
-            assert drawn["n3_harmonic_consistent"] is False
-            assert (
-                "n=2 lies within 5% of 2×f(n=1) in 207 of 219 ms where both are "
-                "measured (94%" in appendix
-            )
-            assert "n=3 lies within" not in appendix
-            assert "linear frequency axis, 0--150 kHz" in caption
-            # No row of this shot is an expert review, so no D-alpha spike
-            # "precedes the expert span" and the ELM source is named a detector.
+        # What the earlier rounds pinned as strings for the primary shot is
+        # recomputed from the record: the caption is its tracks' and drawing
+        # record's own, and the appendix states each harmonic ratio it measured.
+        assert caption == renderer.draft_caption(shot, record["tracks"], drawn)
+        for order, key in ((2, "harmonic_support"), (3, "harmonic3_support")):
+            ratio = fs._harmonic_text(drawn[key], order)
+            if record["tracks"][mt.NTM] is not None and ratio is not None:
+                assert ratio in appendix, (shot, order)
+            else:
+                assert f"n={order} lies within" not in appendix, (shot, order)
+        # No expert row: no D-alpha spike "precedes the expert span".
+        if not any(t["tier"] == lf.SILVER for t in record["tracks"].values() if t):
             assert drawn["first_large_peak_before_expert_ms"] is None
             assert "precedes the expert span" not in appendix
+        assert ("sources disagree" in appendix) == bool(drawn["elm_hmode_conflicts_ms"])
+        assert ("Overlaps:" in appendix) == bool(drawn["elm_qh_overlaps_ms"])
+        confinement = record["tracks"]["confinement"]
+        if confinement and confinement.get("segments") is not None:
             # The confinement row is the released roster, read independently here.
-            confinement = record["tracks"]["confinement"]
             roster = Path(confinement["path"])
-            assert confinement["title"] == "confinement"
             assert confinement["tier"] == lf.GENERATED
-            assert roster.parts[-2:] == ("extend_confine_ours", "roster.csv")
+            assert sha256_of(roster) == confinement["sha256"]
             table = pd.read_csv(roster)
             table = table[table.shot == shot]
             assert [
                 (s["start_ms"], s["end_ms"], s["category"], s["tier"])
                 for s in confinement["segments"]
             ] == list(zip(table.t_start, table.t_end, table.category, table.tier))
-            clipped = [
-                (max(a, record["window_ms"][0]), min(b, record["window_ms"][1]), c)
+            assert [
+                [r["start_ms"], r["end_ms"]] for r in confinement["state_intervals_ms"]
+            ] == fs.clip_spans(zip(table.t_start, table.t_end), record["window_ms"])
+            assert [r["category"] for r in confinement["state_intervals_ms"]] == [
+                c
                 for a, b, c in zip(table.t_start, table.t_end, table.category)
                 if b > record["window_ms"][0] and a < record["window_ms"][1]
             ]
-            assert [
-                (r["start_ms"], r["end_ms"], r["category"])
-                for r in confinement["state_intervals_ms"]
-            ] == clipped
-            assert sha256_of(roster) == confinement["sha256"]
-            # This shot has no QH or WPQH time: the row is L and H only.
-            assert not [1 for _, _, c in clipped if c in (3, 4)]
             assert ("Unreviewed marks a QH or WPQH segment" in appendix) == any(
                 t == "unreviewed" for t in table.tier
             )
-            assert not drawn["elm_qh_overlaps_ms"]
-            assert "QH" not in caption
-            assert "H-mode detector" not in caption + appendix
-            assert not drawn["elm_hmode_conflicts_ms"]
-            assert not any(
-                t["tier"] == lf.SILVER for t in record["tracks"].values() if t
-            )
-            assert (
-                "Sawtooth: present 44 ms, uncertain 1739 ms, unassessed 4260 ms"
-            ) in appendix
-            assert len(shown) == 2 and min(shown) > 6000
-            assert "detector F1" not in " ".join(legend)
-            for key in (mt.AE, mt.NTM):
-                assert record["detector_training"][key]["figure_shot_in_training"] is (
-                    False
-                )
+        if record["split"] == renderer.OUTSIDE_COHORT:
+            # a shot in no cohort split: no detector of ours trained on it
+            for training in record["detector_training"].values():
+                assert training["figure_shot_in_training"] is False
         assert (
             sha256_of(Path(record["annotations"]["path"]))
             == record["annotations"]["sha256"]
@@ -886,6 +1147,8 @@ def main():
                     "sha256": saw["sha256"],
                     "tier": saw["tier"],
                 },
+                "sawtooth_no_q1_intervals_ms": saw.get("no_q1_intervals_ms"),
+                "gold_shot": record.get("gold_shot", False),
                 "sawtooth_states": saw["state_intervals_ms"],
                 "sawtooth_track_shown": drawn["sawtooth_track_shown"],
                 "detector_training": record["detector_training"],
@@ -938,9 +1201,13 @@ def main():
                     },
                     "validation_status": manifest["validation_status"],
                     "catalog_comparison": catalog_comparison,
+                    "catalog_comparison_rewritten_sha256": comparison_rewritten,
                 },
                 "reproducibility": reproducibility,
                 "scientific_data_unchanged_from": args.baseline_ref,
+                # a render from a dirty tree: code checked by sha256 only
+                "dirty_ok": args.dirty_ok,
+                "primary_source_tables": primary.get("source_tables", {}),
             },
             indent=1,
         )

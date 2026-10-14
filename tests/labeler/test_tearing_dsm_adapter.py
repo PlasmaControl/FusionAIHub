@@ -126,7 +126,7 @@ def test_output_contract_and_card_match_including_units():
     assert [f.task for f in fields] == ["binary"] * 3 + ["regression"] * 14 + ["binary"] * 3
     assert [f.activation for f in fields] == ["none"] * 20
     assert [f.units for f in fields] == OUTPUT_UNITS
-    assert [f["units"] for f in registry.read_card(dsm.SLUG)["labelmaker"]["outputs"]] == OUTPUT_UNITS
+    assert [f["units"] for f in registry.read_card(dsm.SLUG)["labeler"]["outputs"]] == OUTPUT_UNITS
 
 
 def test_predict_publishes_all_mixture_columns(tmp_path, monkeypatch):

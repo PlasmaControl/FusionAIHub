@@ -1,20 +1,29 @@
 """The benchmark figure (paper Figure 2): the confine-cnn bars (the Tokamak-SI score
 is the ablation's protocol row, the paper's one confine-cnn score, read through a
 small adapter), the tearing-mode, sawtooth, RWM and ELM panels (each reads its
-stream's final record), the coverage row, the figure's size and text, and no typed
-score."""
+stream's final record), the detachment consistency panel (one bar, read from two
+records), one tick per model with paired bars, the coverage panel, plain panel
+titles, the figure's size and text (none under 7 pt, none overlapping), and no
+typed score."""
 
 from __future__ import annotations
 
 import ast
+import copy
 import importlib.util
+import itertools
 import re
 import sys
 from pathlib import Path
 
 import pytest
+from matplotlib import font_manager as fm
+from matplotlib.backends.backend_agg import FigureCanvasAgg
+from matplotlib.colors import to_hex
+from matplotlib.container import ErrorbarContainer
 from matplotlib.figure import Figure
 from matplotlib.text import Text
+from matplotlib.transforms import Bbox
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/labeler/paper/fig_benchmarks.py"
 spec = importlib.util.spec_from_file_location("fig_benchmarks", SCRIPT)
@@ -23,7 +32,13 @@ sys.modules[spec.name] = fig
 spec.loader.exec_module(fig)
 
 ROW = {
-    "own_population": {"macro_f1": 0.7, "ci95": {"macro_f1": [0.6, 0.8]}},
+    "own_population": {
+        "macro_f1": 0.7,
+        "ci95": {"macro_f1": [0.6, 0.8]},
+        "classes": {
+            c: {"support": n} for c, n in zip(("L", "H", "QH", "WP"), (40, 30, 20, 10))
+        },
+    },
     "ranking": {
         "auroc": {"macro": 0.9},
         "auprc": {"macro": 0.7},
@@ -42,6 +57,24 @@ def test_adapter_reads_the_protocol_rows_scores_and_intervals():
     assert si["ci95"]["macro_f1"] == [0.6, 0.8]
     assert si["ci95"]["macro_auroc"] == [0.8, 0.95]
     assert si["ci95"]["macro_auprc"] == [0.6, 0.8]
+
+
+def test_the_confinement_baselines_come_from_the_classes_supports():
+    """A constant predictor on the windows of the row: the majority class (0.4 of
+    them) scores its own F1 and the other three classes 0; the AUROC is the
+    chance level; the AUPRC the classes' mean prevalence."""
+    base = fig.confinement_si(ROW)["base"]
+    assert base["f1"] == pytest.approx((2 * 0.4 / 1.4) / 4)
+    assert base["auroc"] == 0.5
+    assert base["auprc"] == pytest.approx(0.25)
+
+
+def test_the_always_positive_f1_and_the_prevalence_baselines():
+    assert fig.always_f1(0.5) == pytest.approx(2 / 3)
+    assert fig.always_f1(1.0) == 1.0
+    assert fig.prevalence_base("f1", 0.2) == pytest.approx(0.4 / 1.2)
+    assert fig.prevalence_base("auroc", 0.2) == 0.5
+    assert fig.prevalence_base("auprc", 0.2) == 0.2
 
 
 def test_confinement_panel_draws_the_protocol_row_and_names_its_source():
@@ -105,15 +138,84 @@ def records():
 
 
 def drawn_rows(draw, *args, metric="f1", panel="x"):
-    """The rows a panel function drew and the axes it drew on."""
+    """The rows a panel function drew as bars (its trivial baselines, which are
+    drawn as dashes, are rows of their own and not in the first list), every row
+    it wrote, and the axes it drew on."""
     rows = fig.Rows()
     ax = Figure().add_subplot()
     draw(ax, *args, rows, panel, metric)
-    return [r for r in rows.rows if r["drawn"]], rows.rows, ax
+    bars = [r for r in rows.rows if r["drawn"] and r["series"] != fig.BASELINE]
+    return bars, rows.rows, ax
+
+
+def baseline_rows(every):
+    return [r for r in every if r["series"] == fig.BASELINE]
 
 
 def bar_heights(ax):
     return {round(p.get_height(), 12) for p in ax.patches}
+
+
+def baseline_segments(ax):
+    """The trivial-baseline dashes of a panel: (left, right, height) of each."""
+    return sorted(
+        (min(ln.get_xdata()), max(ln.get_xdata()), ln.get_ydata()[0])
+        for ln in ax.lines
+        if ln.get_linestyle() == "--" and ln.get_color() == "black"
+    )
+
+
+def baseline_values(ax):
+    return [y for _, _, y in baseline_segments(ax)]
+
+
+def reported_texts(ax):
+    """The REPORTED marks written along a panel's bars."""
+    return [t for t in ax.texts if t.get_text() == fig.REPORTED]
+
+
+def flat(text: str) -> str:
+    return " ".join(text.split())
+
+
+# one tick per model
+
+
+def test_each_model_is_one_tick_with_its_original_bar_left_of_its_tokamak_si_bar():
+    ae = records()[0]
+    _, _, ax = drawn_rows(fig.draw_ae, ae)
+    assert [t.get_text() for t in ax.get_xticklabels()] == [
+        fig.two_line(name) for _, name in fig.AE_MODELS
+    ]
+    bars = sorted(ax.patches, key=lambda p: p.get_x())
+    colours = [to_hex(p.get_facecolor()).upper() for p in bars]
+    assert colours == [fig.LEGACY, fig.SI] * len(fig.AE_MODELS)
+    for i in range(len(fig.AE_MODELS)):  # the pair sits on its model's tick
+        left, right = bars[2 * i], bars[2 * i + 1]
+        centre = (left.get_x() + right.get_x() + right.get_width()) / 2
+        assert centre == pytest.approx(i)
+    # no setting written under the names: the legend says which bar is which
+    assert not {"original", "Tokamak-SI", "legacy"} & {t.get_text() for t in ax.texts}
+
+
+def test_each_ae_bar_has_the_always_present_baseline_of_its_own_truth():
+    ae = records()[0]
+    for metric in ("f1", "auroc", "auprc"):
+        drawn, every, ax = drawn_rows(fig.draw_ae, ae, metric=metric)
+        rows = baseline_rows(every)
+        assert len(rows) == len(drawn) == 2 * len(fig.AE_MODELS)
+        for r in rows:
+            truth = next(t for s, t, *_ in fig.AE_SETTINGS if r["group"].endswith(s))
+            assert r["value"] == ae["results"][truth]["always"][metric]
+            assert r["key"] == f"results.{truth}.always.{metric}"
+            assert r["source"] == "outputs/labeler/ae/baselines/evaluation.json"
+        # one dash across each bar, at its own truth's baseline
+        bars = sorted(ax.patches, key=lambda p: p.get_x())
+        segments = baseline_segments(ax)
+        assert len(segments) == len(bars)
+        for bar, (left, right, _) in zip(bars, segments):
+            assert left == pytest.approx(bar.get_x())
+            assert right == pytest.approx(bar.get_x() + bar.get_width())
 
 
 # ELM
@@ -149,7 +251,7 @@ def test_a_legacy_f1_that_is_not_its_counts_or_precision_and_recall_is_refused()
 
 
 def test_the_elm_panel_reads_the_final_records_on_the_shots_with_bes():
-    _, _, _, elm, smith, _, _, _ = records()
+    _, _, _, elm, smith, *_ = records()
     drawn, every, ax = drawn_rows(fig.draw_elm, elm, smith)
     by = {(r["series"], r["group"]): r for r in drawn}
     assert set(by) == {
@@ -170,10 +272,21 @@ def test_the_elm_panel_reads_the_final_records_on_the_shots_with_bes():
     kept_out = [r for r in every if not r["drawn"]]
     assert any("all119" in r["key"] for r in kept_out)
     assert {round(r["value"], 12) for r in drawn} <= bar_heights(ax)
+    # each Tokamak-SI bar has the always-present predictor's score on the same
+    # bins as its baseline; the legacy bar, another dataset's, has none
+    always = bes["always present"]["point"]["f1"]
+    assert baseline_values(ax) == [always, always]
+    base = baseline_rows(every)
+    assert [r["group"] for r in base] == [
+        "elm-elmo, Tokamak-SI",
+        "elm-ours, Tokamak-SI",
+    ]
+    assert all(r["value"] == always for r in base)
+    assert all(r["key"] == "sets.bes73.methods.always present.point.f1" for r in base)
 
 
 def test_the_elm_auc_panel_has_no_legacy_bar_and_the_sweeps_values():
-    _, _, _, elm, smith, _, _, _ = records()
+    _, _, _, elm, smith, *_ = records()
     for metric in ("auroc", "auprc"):
         drawn, _, _ = drawn_rows(fig.draw_elm, elm, smith, metric=metric)
         assert {r["group"] for r in drawn} == {"Tokamak-SI"}
@@ -184,7 +297,7 @@ def test_the_elm_auc_panel_has_no_legacy_bar_and_the_sweeps_values():
 # tearing modes
 
 
-def test_the_tm_panel_draws_published_against_retrained_with_uncertain_diamonds():
+def test_the_tm_panel_draws_published_against_retrained_with_no_diamonds():
     tm = records()[5]
     by = {r["architecture"]: r for r in tm["rows"]}
     drawn, every, ax = drawn_rows(fig.draw_tm, tm)
@@ -198,32 +311,78 @@ def test_the_tm_panel_draws_published_against_retrained_with_uncertain_diamonds(
         si = series[name, "Tokamak-SI"]
         assert si["value"] == by[arch]["tokamak_si"]["f1"]["value"]
         assert si["key"] == f"rows[{arch}].tokamak_si.f1"
-        diamond = series[name, "Tokamak-SI, uncertain time scored negative"]
-        unc = by[arch]["tokamak_si_uncertain_negative"]["f1"]["value"]
-        assert diamond["value"] == unc and diamond["value"] < si["value"]
+        unc = next(  # the same models with uncertain time scored negative: CSV only
+            r
+            for r in every
+            if r["series"] == name
+            and r["group"] == "Tokamak-SI, uncertain time scored negative"
+        )
+        assert not unc["drawn"] and (name, unc["group"]) not in series
+        assert unc["value"] == by[arch]["tokamak_si_uncertain_negative"]["f1"]["value"]
+        assert unc["value"] < si["value"]
         legacy = series.get((name, "legacy"))
         if name == "tm-ours":
             assert legacy is None  # there is no published tm-ours
-        else:
+        elif name == "tm-dsm":
+            # the checkpoint has no published operating point: its 500 ms risk
+            # peaks at 0.279 on these bins (cap 0.323), so risk >= 0.3 never fires
+            # and its bar is the inner-validation threshold's
+            tuned = by[arch]["legacy"]["f1_tuned"]["value"]
+            assert legacy["value"] == tuned and round(tuned, 3) == 0.177
+            assert legacy["key"] == f"rows[{arch}].legacy.f1_tuned"
+            assert "no published operating point for this checkpoint" in legacy["note"]
+            assert "inner-validation threshold" in legacy["note"]
+            (zero,) = [
+                r
+                for r in every
+                if r["series"] == name and r["group"] == "legacy, published threshold"
+            ]
+            assert (
+                zero["value"] == by[arch]["legacy"]["f1_published_threshold"]["value"]
+            )
+            assert zero["value"] == 0.0 and not zero["drawn"]
+            assert zero["key"] == f"rows[{arch}].legacy.f1_published_threshold"
+            assert "risk >= 0.3 is an upstream helper default" in zero["note"]
+            assert "0.279" in zero["note"] and "0.323" in zero["note"]
+        else:  # the CNN: its card's published 0.5 threshold
             published = by[arch]["legacy"]["f1_published_threshold"]["value"]
             assert legacy["value"] == published
             assert legacy["key"] == f"rows[{arch}].legacy.f1_published_threshold"
     assert not [r for r in drawn if "n1" in r["series"] or "two" in r["series"]]
     tuned = [r for r in every if r["group"] == "legacy, tuned threshold"]
-    assert tuned and not any(r["drawn"] for r in tuned)  # in the CSV only
-    markers = [ln for ln in ax.lines if ln.get_marker() == "D"]
-    assert len(markers) == 3  # one open diamond on every Tokamak-SI bar
+    assert [r["series"] for r in tuned] == ["tm-onsetcnn"]  # the CNN's, CSV only
+    assert not any(r["drawn"] for r in tuned)
+    assert not [ln for ln in ax.lines if ln.get_marker() == "D"]  # no diamonds
+    assert len(ax.patches) == 5  # tm-onsetcnn and tm-dsm in pairs, tm-ours alone
 
 
-def test_the_tm_title_states_the_two_bin_widths_the_record_gives():
+def test_each_tm_bar_has_the_baseline_of_its_own_bins_prevalence():
     tm = records()[5]
-    title = fig.tm_title(tm)
-    legacy = {r["legacy"]["bin_ms"] for r in tm["rows"] if r.get("legacy")}
-    si = {r["tokamak_si"]["bin_ms"] for r in tm["rows"]}
-    assert f"{legacy.pop():g} ms original" in title and f"{si.pop():g} ms" in title
-    odd = {"rows": [*tm["rows"], dict(tm["rows"][0], tokamak_si={"bin_ms": 99.0})]}
-    with pytest.raises(ValueError, match="bin width"):
-        fig.tm_title(odd)
+    by = {r["architecture"]: r for r in tm["rows"]}
+    always_positive = {
+        "f1": fig.always_f1,
+        "auroc": lambda p: 0.5,
+        "auprc": lambda p: p,
+    }
+    for metric, expected in always_positive.items():
+        _, every, ax = drawn_rows(fig.draw_tm, tm, metric=metric)
+        rows = baseline_rows(every)
+        assert len(rows) == len(ax.patches) == len(baseline_segments(ax)) == 5
+        for r in rows:
+            name = r["group"].split(", ")[0]
+            arch = next(a for a, label in fig.TM_MODELS if label == name)
+            side = "legacy" if r["group"].endswith("legacy") else "tokamak_si"
+            p = by[arch][side]["prevalence"]["value"]  # that bar's own bins
+            assert r["value"] == pytest.approx(expected(p))
+            assert f"rows[{arch}].{side}.prevalence" in r["key"] or metric == "auroc"
+    # the retrained and the published model are scored on different bins
+    prevalences = {
+        by[a][side]["prevalence"]["value"]
+        for a in by
+        for side in ("legacy", "tokamak_si")
+        if by[a].get(side)
+    }
+    assert len(prevalences) > 1
 
 
 def test_the_tm_auc_panel_reads_the_records_auroc_and_auprc():
@@ -235,39 +394,89 @@ def test_the_tm_auc_panel_reads_the_records_auroc_and_auprc():
             r for r in drawn if r["series"] == "tm-dsm" and r["group"] == "legacy"
         )
         assert row["value"] == by["dsm"]["legacy"][metric]["value"]
+        assert row["key"] == f"rows[dsm].legacy.{metric}"  # threshold-free
 
 
 # resistive wall modes
 
 
-def test_the_rwm_panel_has_no_legacy_value_and_a_tick_at_the_elapsed_time_baseline():
+def test_the_rwm_f1_panel_is_one_bar_with_its_slices_prevalence_baseline():
     rwm = records()[6]
     drawn, every, ax = drawn_rows(fig.draw_rwm, rwm)
-    assert not [r for r in drawn if r["group"] == "legacy"]  # another machine
+    assert not [r for r in drawn if r["group"] == "legacy"]  # the NSTX forest: no F1
+    assert not any("other machine" in flat(t.get_text()) for t in ax.texts)
+    assert len(ax.patches) == 1 and not reported_texts(ax)
     legacy = [r for r in every if r["group"] == "legacy"]
     assert len(legacy) == 1 and legacy[0]["value"] is None
-    assert "not comparable" in legacy[0]["note"]
-    by = {r["series"]: r for r in drawn}
-    brf = rwm["configs"]["rwm-brf"]["metrics"]["slice_f1"]
-    clock = rwm["configs"]["rwm-rule-elapsed-time"]["metrics"]["slice_f1"]
-    assert by["rwm-brf"]["value"] == brf["estimate"]
-    assert by["rwm-brf"]["key"] == "configs.rwm-brf.metrics.slice_f1.estimate"
-    assert by["rwm-rule-elapsed-time"]["value"] == clock["estimate"]
-    assert any(
-        clock["estimate"] in ln.get_ydata() for ln in ax.lines
-    )  # the tick is drawn at it
+    assert "not comparable" in legacy[0]["note"] and not legacy[0]["drawn"]
+    (row,) = drawn
+    brf = rwm["configs"]["rwm-brf"]
+    assert row["series"] == "rwm-brf"
+    assert row["value"] == brf["metrics"]["slice_f1"]["estimate"]
+    assert row["key"] == "configs.rwm-brf.metrics.slice_f1.estimate"
+    # the elapsed-time rule is a rule, not a trivial baseline: CSV only, no dash
+    clock = rwm["configs"]["rwm-rule-elapsed-time"]["metrics"]["slice_f1"]["estimate"]
+    (rule,) = [r for r in every if r["series"] == "rwm-rule-elapsed-time"]
+    assert rule["value"] == clock and not rule["drawn"]
+    # the baseline is the prevalence of the slices the bar is scored on
+    counts = brf["counts"]
+    prevalence = counts["positive_slices"] / (
+        counts["positive_slices"] + counts["negative_slices"]
+    )
+    assert prevalence == pytest.approx(counts["prevalence"])
+    (base,) = baseline_rows(every)
+    assert base["value"] == pytest.approx(fig.always_f1(prevalence))
+    assert base["key"].endswith("configs.rwm-brf.counts.prevalence")
+    assert baseline_values(ax) == [base["value"]]
+    assert not [y for y in baseline_values(ax) if y == clock]
 
 
-def test_the_rwm_auc_panel_keeps_the_other_machines_auroc_out_of_the_figure():
+def test_the_rwm_baseline_of_the_slices_is_refused_when_it_is_not_their_counts():
+    rwm = copy.deepcopy(records()[6])
+    config = rwm["configs"]["rwm-brf"]
+    assert fig.rwm_prevalence(config) == config["counts"]["prevalence"]
+    config["counts"]["prevalence"] += 0.01
+    with pytest.raises(ValueError, match="prevalence"):
+        fig.rwm_prevalence(config)
+
+
+def test_the_rwm_auroc_panel_draws_the_nstx_forests_auroc_as_reported():
     rwm = records()[6]
-    _, every, _ = drawn_rows(fig.draw_rwm, rwm, metric="auroc")
+    drawn, every, ax = drawn_rows(fig.draw_rwm, rwm, metric="auroc")
+    legacy = [r for r in drawn if r["group"] == "legacy"]
+    assert len(legacy) == 1 and legacy[0]["value"] == rwm["legacy"]["slice_auroc"]
+    assert legacy[0]["key"] == "legacy.slice_auroc" and "REPORTED" in legacy[0]["note"]
+    assert len(reported_texts(ax)) == 1 and len(ax.patches) == 2
+    # one chance-level dash, on the Tokamak-SI bar alone
+    (base,) = baseline_rows(every)
+    assert base["value"] == 0.5 and baseline_values(ax) == [0.5]
+    ((left, right, _),) = baseline_segments(ax)
+    (si_bar,) = [p for p in ax.patches if to_hex(p.get_facecolor()).upper() == fig.SI]
+    assert left == pytest.approx(si_bar.get_x())
+    assert right == pytest.approx(si_bar.get_x() + si_bar.get_width())
+
+
+def test_the_rwm_auprc_panel_has_no_legacy_bar():
+    rwm = records()[6]
+    drawn, every, ax = drawn_rows(fig.draw_rwm, rwm, metric="auprc")
+    assert {r["group"] for r in drawn} == {"Tokamak-SI"}
     legacy = [r for r in every if r["group"] == "legacy"]
-    assert legacy[0]["value"] == rwm["legacy"]["slice_auroc"] and not legacy[0]["drawn"]
+    assert len(legacy) == 1 and legacy[0]["value"] is None and not legacy[0]["drawn"]
+    assert len(ax.patches) == 1 and not reported_texts(ax)
 
 
 # sawtooth
 
 SAW_SOURCE = "outputs/labeler/sawtooth/fix5/benchmark.json"
+
+
+def saw_block(saw, model):
+    """The record's presence block the panel draws for `model`, and its key."""
+    view = fig.saw_view(saw)
+    entry = saw["Tokamak-SI"][model]
+    entry = entry[view] if view else entry
+    where = f"Tokamak-SI.{model}.{view + '.' if view else ''}crash_tolerance_2ms"
+    return entry["crash_tolerance_2ms"], where
 
 
 def test_the_sawtooth_panel_draws_out_of_fold_presence_f1_from_the_record():
@@ -276,45 +485,121 @@ def test_the_sawtooth_panel_draws_out_of_fold_presence_f1_from_the_record():
     by = {(r["series"], r["group"]): r for r in drawn}
     for model in fig.SAW_MODELS:
         row = by[model, "Tokamak-SI"]
-        block = saw["Tokamak-SI"][model]["crash_tolerance_2ms"]
+        block, where = saw_block(saw, model)
         assert row["value"] == block["presence"]["f1"]
         assert (row["ci_lo"], row["ci_hi"]) == tuple(block["ci95"]["presence_f1"])
-        assert row["key"] == f"Tokamak-SI.{model}.crash_tolerance_2ms.presence.f1"
+        assert row["key"] == f"{where}.presence.f1"
         assert row["source"] == SAW_SOURCE
         assert "out of fold" in row["note"] and "inner-selection" in row["note"]
     assert [m for m, _ in by if m.startswith("saw-")][:3] == list(fig.SAW_MODELS)
-    assert {round(r["value"], 12) for r in drawn} <= bar_heights(ax) | {
-        round(by["saw-always-present", "Tokamak-SI, trivial baseline"]["value"], 12)
-    }
+    assert "saw-always-present" not in {m for m, _ in by}  # a dash, not a bar
+    assert {round(r["value"], 12) for r in drawn} <= bar_heights(ax)
 
 
-def test_the_sawtooth_panel_ticks_the_always_present_baseline_on_every_bar():
+def test_each_sawtooth_bar_has_the_always_present_dash_on_its_own_bins():
     saw = records()[7]
     for metric in ("f1", "auroc", "auprc"):
-        drawn, _, ax = drawn_rows(fig.draw_sawtooth, saw, metric=metric)
-        base = saw["Tokamak-SI"]["saw-always-present"]["crash_tolerance_2ms"][
-            "presence"
-        ][metric]
-        row = next(r for r in drawn if r["group"] == "Tokamak-SI, trivial baseline")
-        assert row["value"] == base
-        ticks = [ln for ln in ax.lines if list(ln.get_ydata()) == [base, base]]
-        assert len(ticks) == 2 * len(fig.SAW_MODELS)  # a white halo and a dark line
+        _, every, ax = drawn_rows(fig.draw_sawtooth, saw, metric=metric)
+        base = saw_block(saw, fig.SAW_TRIVIAL)[0]["presence"][metric]
+        rows = baseline_rows(every)
+        assert [r["group"] for r in rows] == [
+            f"{m}, Tokamak-SI" for m in fig.SAW_MODELS
+        ]
+        assert all(r["value"] == base for r in rows)
+        assert all(r["key"].endswith(f".presence.{metric}") for r in rows)
+        assert all(fig.SAW_TRIVIAL in r["key"] for r in rows)
+        si_bars = sorted(
+            (p for p in ax.patches if to_hex(p.get_facecolor()).upper() == fig.SI),
+            key=lambda p: p.get_x(),
+        )
+        segments = baseline_segments(ax)
+        assert len(segments) == len(si_bars) == len(fig.SAW_MODELS)
+        for bar, (left, right, y) in zip(si_bars, segments):
+            assert (left, right) == pytest.approx(
+                (bar.get_x(), bar.get_x() + bar.get_width())
+            )
+            assert y == base
 
 
-def test_the_sawtooth_legacy_slot_is_the_other_machine_with_no_drawn_value():
+def test_a_sawtooth_model_scored_on_other_bins_than_the_baseline_is_refused():
+    saw = copy.deepcopy(records()[7])
+    view = fig.saw_view(saw)
+    entry = saw["Tokamak-SI"][fig.SAW_MODELS[0]]
+    block = (entry[view] if view else entry)[fig.SAW_BLOCK]
+    # the 1 ms block must agree with the 2 ms one, so move both
+    twin = (entry[view] if view else entry)["crash_tolerance_1ms"]
+    for b in (block, twin):
+        b["presence"]["positive_bins"] += 1
+    with pytest.raises(ValueError, match="other bins"):
+        drawn_rows(fig.draw_sawtooth, saw)
+
+
+def test_the_no_q1_negatives_view_is_drawn_once_every_model_has_it():
+    saw = copy.deepcopy(records()[7])
+    assert fig.saw_view(saw) in (None, fig.SAW_VIEW)
+    models = saw["Tokamak-SI"]
+    for entry in models.values():
+        entry.pop(fig.SAW_VIEW, None)
+    assert fig.saw_view(saw) is None
+    # a stand-in view: the old-negatives block has the same shape
+    for entry in models.values():
+        entry[fig.SAW_VIEW] = copy.deepcopy(entry["old_negatives_sensitivity"])
+    assert fig.saw_view(saw) == fig.SAW_VIEW
+    drawn, _, ax = drawn_rows(fig.draw_sawtooth, saw)
+    by = {(r["series"], r["group"]): r for r in drawn}
+    for model in fig.SAW_MODELS:
+        view = models[model][fig.SAW_VIEW]["crash_tolerance_2ms"]
+        row = by[model, "Tokamak-SI"]
+        assert row["value"] == view["presence"]["f1"]
+        assert row["key"] == (
+            f"Tokamak-SI.{model}.{fig.SAW_VIEW}.crash_tolerance_2ms.presence.f1"
+        )
+        assert fig.SAW_VIEW in row["note"]
+    base = models[fig.SAW_TRIVIAL][fig.SAW_VIEW]["crash_tolerance_2ms"]["presence"]
+    assert baseline_values(ax) == [base["f1"]] * len(fig.SAW_MODELS)
+    del models[fig.SAW_HL3_ECE][fig.SAW_VIEW]  # a view only some models have
+    with pytest.raises(ValueError, match="only some"):
+        fig.saw_view(saw)
+
+
+def test_the_f1_panel_draws_the_hl3_papers_stated_accuracy_as_a_reported_bar():
     saw = records()[7]
     drawn, every, ax = drawn_rows(fig.draw_sawtooth, saw)
-    assert not [r for r in drawn if r["group"] == "legacy"]
-    assert any("other machine" in t.get_text() for t in ax.texts)
-    legacy = [r for r in every if r["group"] == "legacy"]
-    slot = [r for r in legacy if r["value"] is None]
-    assert len(slot) == 1 and slot[0]["key"] == "legacy"
-    stated = [r for r in legacy if r["value"] is not None]
-    assert {r["key"] for r in stated} == {
-        "legacy.real_time.accuracy_stated",
-        "legacy.offline.accuracy_stated",
-    }  # the paper's own three-class accuracy: in the CSV only, never an F1
-    assert all(not r["drawn"] and "not an F1" in r["note"] for r in stated)
+    assert not any("other machine" in flat(t.get_text()) for t in ax.texts)
+    assert not [p for p in ax.patches if p.get_hatch()]
+    (reported,) = [r for r in drawn if r["group"] == "legacy"]
+    stated = saw["legacy"]["offline"]["accuracy_stated"]
+    assert reported["series"] == fig.SAW_HL3 and round(stated, 3) == 0.956
+    assert reported["value"] == stated and reported["ci_lo"] is None
+    assert reported["key"] == "legacy.offline.accuracy_stated"
+    assert "three-class window accuracy" in reported["metric"]
+    assert "REPORTED" in reported["note"] and "not an F1" in reported["note"]
+    # the real-time figure of the same paper stays in the CSV
+    kept = [r for r in every if r["group"] == "legacy" and not r["drawn"]]
+    assert {r["key"] for r in kept} == {"legacy.real_time.accuracy_stated"}
+    assert all("not an F1" in r["note"] for r in kept)
+    # it is an original (coral) bar left of saw-hl3-full's own, marked, with no dash
+    (mark,) = reported_texts(ax)
+    tick = fig.SAW_MODELS.index(fig.SAW_HL3)
+    assert mark.get_position()[0] == pytest.approx(tick - fig.HALF)
+    original = [
+        p for p in ax.patches if to_hex(p.get_facecolor()).upper() == fig.LEGACY
+    ]
+    assert [p.get_height() for p in original] == [stated]
+    assert len(baseline_segments(ax)) == len(fig.SAW_MODELS)
+
+
+def test_the_sawtooth_auc_panels_have_no_hl3_paper_bar_and_no_reported_mark():
+    saw = records()[7]
+    for metric in ("auroc", "auprc"):
+        drawn, every, ax = drawn_rows(fig.draw_sawtooth, saw, metric=metric)
+        assert not [r for r in drawn if r["group"] == "legacy"]
+        assert not reported_texts(ax) and len(ax.patches) == len(fig.SAW_MODELS)
+        slot = [r for r in every if r["group"] == "legacy"]
+        assert (
+            len(slot) == 1 and slot[0]["value"] is None and slot[0]["key"] == "legacy"
+        )
+        assert not slot[0]["drawn"]
 
 
 def test_the_sawtooth_f1_csv_names_the_threshold_policy_and_keeps_the_fixed_one_out():
@@ -341,7 +626,7 @@ def test_the_sawtooth_auc_panels_read_the_records_presence_auroc_and_auprc():
             row = next(
                 r for r in drawn if r["series"] == model and r["group"] == "Tokamak-SI"
             )
-            block = saw["Tokamak-SI"][model]["crash_tolerance_2ms"]
+            block, _ = saw_block(saw, model)
             assert row["value"] == block["presence"][metric]
             assert (row["ci_lo"], row["ci_hi"]) == tuple(
                 block["ci95"][f"presence_{metric}"]
@@ -358,19 +643,15 @@ def test_the_hl3_bar_is_the_full_input_run_and_the_four_input_run_is_csv_only():
         assert fig.SAW_HL3_ECE not in {r["series"] for r in drawn}
         ece = [r for r in every if r["series"] == fig.SAW_HL3_ECE]
         presence = [r for r in ece if r["group"] == "Tokamak-SI, four-input run"]
-        block = saw["Tokamak-SI"][fig.SAW_HL3_ECE]["crash_tolerance_2ms"]
+        block, where = saw_block(saw, fig.SAW_HL3_ECE)
         assert len(presence) == 1 and not presence[0]["drawn"]
         assert presence[0]["value"] == block["presence"][metric]
         assert (presence[0]["ci_lo"], presence[0]["ci_hi"]) == tuple(
             block["ci95"][f"presence_{metric}"]
         )
-        assert presence[0]["key"] == (
-            f"Tokamak-SI.saw-hl3-ece.crash_tolerance_2ms.presence.{metric}"
-        )
+        assert presence[0]["key"] == f"{where}.presence.{metric}"
         # the bars are the drawn models' values: the CSV-only run adds none
-        assert {round(r["value"], 12) for r in drawn} <= bar_heights(ax) | {
-            round(r["value"], 12) for r in every if r["group"].endswith("baseline")
-        }
+        assert {round(r["value"], 12) for r in drawn} <= bar_heights(ax)
 
 
 def test_the_sawtooth_csv_keeps_three_class_accuracy_beside_its_majority_floor():
@@ -394,13 +675,6 @@ def test_the_sawtooth_csv_keeps_three_class_accuracy_beside_its_majority_floor()
         assert accuracy["source"] == SAW_SOURCE
 
 
-def test_the_sawtooth_title_states_the_bin_width_the_record_gives():
-    saw = records()[7]
-    title = fig.saw_title(saw)
-    assert title.startswith("Sawtooth")
-    assert f"{saw['protocol']['bin_ms']:g} ms bins" in title
-
-
 def test_a_presence_block_that_differs_between_crash_tolerances_is_refused():
     def entry(one, two):
         return {
@@ -415,49 +689,453 @@ def test_a_presence_block_that_differs_between_crash_tolerances_is_refused():
         fig.saw_presence({"Tokamak-SI": {"m": entry(0.9, 0.8)}}, "m")
 
 
+# detachment: a consistency check, not a benchmark
+
+DETACH_TE = "docs/labeler/results/detachment_te_check.json"
+DETACH_SOURCE = "docs/labeler/results/detachment_source_v3.json"
+
+
+def detachment_records():
+    """The two records and the check read from them (the test is skipped on a
+    checkout without them)."""
+    keys = ("detach_te", "detach_source")
+    missing = [fig.SOURCES[k].name for k in keys if not fig.SOURCES[k].is_file()]
+    if missing:
+        pytest.skip(f"records not on this checkout: {missing}")
+    te, source = (fig.load(fig.SOURCES[k]) for k in keys)
+    return te, source, fig.detachment_check(te, source)
+
+
+def test_the_detachment_adapter_reads_the_auroc_and_the_agreement_from_the_records():
+    te, source, det = detachment_records()
+    pooled = te["by_tier"]["tangtv_vote_before_gate"][
+        "auroc_neg_te_detached_vs_attached"
+    ]["pooled"]
+    assert det["auroc"]["value"] == pooled["value"]
+    assert det["auroc"]["ci"] == tuple(pooled["ci95"])
+    assert (det["auroc"]["bins"], det["auroc"]["shots"]) == (668, 23)
+    states = source["agreement_vote_vs_te"]["states"]
+    assert det["agreement"]["value"] == states["agreement"]
+    assert det["agreement"]["kappa"] == states["kappa"]
+    assert (det["agreement"]["agree"], det["agreement"]["bins"]) == (423, 448)
+    # the baseline: a vote that calls Te's majority state in every compared bin
+    by_te = source["agreement_vote_vs_te"]["vote_by_te"]
+    te_state = {
+        t: sum(by_te[v][t] for v in ("attached", "detached"))
+        for t in ("attached", "detached")
+    }
+    assert sum(te_state.values()) == 448
+    assert det["agreement"]["base"] == max(te_state.values()) / 448
+    assert det["agreement"]["base"] < det["agreement"]["value"]
+    # the numbers the paper states, to the digits it states them
+    assert [round(x, 2) for x in (pooled["value"], *pooled["ci95"])] == [
+        0.95,
+        0.91,
+        0.98,
+    ]
+    assert round(states["agreement"], 2) == 0.94 and round(states["kappa"], 2) == 0.87
+
+
+def test_an_agreement_that_is_not_its_counts_is_refused():
+    def source(agreement, table=None):
+        return {
+            "agreement_vote_vs_te": {
+                "states": {
+                    "agree": 90,
+                    "bins": 100,
+                    "agreement": agreement,
+                    "shots": 5,
+                    "kappa": 0.8,
+                },
+                "vote_by_te": table
+                or {
+                    "attached": {"attached": 50, "detached": 5},
+                    "detached": {"attached": 5, "detached": 40},
+                },
+            }
+        }
+
+    te = {
+        "by_tier": {
+            "tangtv_vote_before_gate": {
+                "auroc_neg_te_detached_vs_attached": {
+                    "pooled": {
+                        "value": 0.9,
+                        "ci95": [0.8, 0.95],
+                        "n_bins": 10,
+                        "n_shots": 2,
+                    }
+                }
+            }
+        }
+    }
+    ok = fig.detachment_check(te, source(0.9))["agreement"]
+    assert ok["value"] == 0.9 and ok["base"] == 0.55  # Te's majority state: 55 of 100
+    with pytest.raises(ValueError, match="counts"):
+        fig.detachment_check(te, source(0.95))
+    short = {
+        "attached": {"attached": 50, "detached": 5},
+        "detached": {"attached": 5, "detached": 30},
+    }
+    with pytest.raises(ValueError, match="compared bins"):
+        fig.detachment_check(te, source(0.9, short))
+
+
+def test_the_detachment_f1_panel_is_one_agreement_bar_with_no_interval_and_no_note():
+    _, source, det = detachment_records()
+    drawn, every, ax = drawn_rows(fig.draw_detachment, det, panel="h")
+    (row,) = drawn
+    states = source["agreement_vote_vs_te"]["states"]
+    assert row["group"] == "Tokamak-SI" and row["metric"] == "agreement"
+    assert row["value"] == states["agreement"]
+    assert (row["ci_lo"], row["ci_hi"]) == (None, None)  # the record has no interval
+    assert row["source"] == DETACH_SOURCE
+    assert row["key"] == "agreement_vote_vs_te.states.agreement"
+    assert "not a detector" in row["note"] and "Te informed" in row["note"]
+    (base,) = baseline_rows(every)  # the majority state's share of the 448 bins
+    assert base["value"] == det["agreement"]["base"] and base["source"] == DETACH_SOURCE
+    assert baseline_values(ax) == [base["value"]]
+    (bar,) = ax.patches  # no original bar
+    assert to_hex(bar.get_facecolor()).upper() == fig.SI
+    assert bar.get_height() == states["agreement"]
+    assert not [c for c in ax.containers if isinstance(c, ErrorbarContainer)]
+    shown = [flat(t.get_text()) for t in ax.texts]
+    assert shown == [f"{states['agreement']:.3f}".lstrip("0")]  # the value, no note
+    assert ax.get_ylabel() == "agreement"
+    assert [t.get_text() for t in ax.get_xticklabels()] == [fig.DETACH_NAME]
+    # kappa and the counts stay in the CSV, not in the figure
+    text = " ".join(shown)
+    assert not re.search(r"kappa|κ|423|448|\bshots\b", text), text
+    kept = {r["group"]: r for r in every if not r["drawn"]}
+    assert kept["Tokamak-SI, Cohen's kappa"]["value"] == states["kappa"]
+    assert kept["Tokamak-SI, Cohen's kappa"]["source"] == DETACH_SOURCE
+    assert kept["Tokamak-SI, AUROC"]["source"] == DETACH_TE
+
+
+def test_the_detachment_auroc_panel_draws_the_check_with_its_interval():
+    te, _, det = detachment_records()
+    pooled = te["by_tier"]["tangtv_vote_before_gate"][
+        "auroc_neg_te_detached_vs_attached"
+    ]["pooled"]
+    drawn, every, ax = drawn_rows(fig.draw_detachment, det, metric="auroc", panel="h0")
+    (row,) = drawn
+    (base,) = baseline_rows(every)
+    assert base["value"] == 0.5 and baseline_values(ax) == [0.5]
+    assert row["metric"] == "AUROC" and row["value"] == pooled["value"]
+    assert (row["ci_lo"], row["ci_hi"]) == tuple(pooled["ci95"])
+    assert row["source"] == DETACH_TE
+    assert row["key"] == (
+        "by_tier.tangtv_vote_before_gate.auroc_neg_te_detached_vs_attached.pooled.value"
+    )
+    assert "-Te against the TangTV vote" in row["note"]
+    assert [c for c in ax.containers if isinstance(c, ErrorbarContainer)]
+    assert ax.get_ylabel() == "AUROC"
+    assert not any("consistency" in flat(t.get_text()) for t in ax.texts)
+
+
+def test_the_detachment_auprc_panel_is_not_reported_like_the_others():
+    _, _, det = detachment_records()
+    drawn, every, ax = drawn_rows(fig.draw_detachment, det, metric="auprc", panel="h1")
+    assert not drawn and not ax.patches and not baseline_values(ax)
+    (row,) = every  # no bar, so no baseline row either
+    assert row["value"] is None and row["metric"] == "AUPRC" and not row["drawn"]
+    assert [flat(t.get_text()) for t in ax.texts] == ["not reported"]
+
+
+def panel_title(ax):
+    """A panel's title: at its left edge, but the one-tick RWM panel, narrower than
+    its name, ends it at its right edge."""
+    left, right = ax.get_title(loc="left"), ax.get_title(loc="right")
+    assert not (left and right), (left, right)
+    return left or right
+
+
+def top_row_titles(figure):
+    """The panel titles of a figure's axes, in the order they were made."""
+    return [panel_title(ax) for ax in figure.axes if panel_title(ax)]
+
+
+def test_both_figures_put_detachment_after_the_elms_in_the_top_row():
+    recs = records()
+    with fig.plot_style():
+        f1 = fig.figure_f1(recs, fig.load(fig.SOURCES["coverage"]), fig.Rows())
+        twin = fig.figure_auc(recs, fig.Rows())
+    for figure, blocks in ((f1, 1), (twin, 2)):
+        titles = top_row_titles(figure)
+        per_block = 7
+        for b in range(blocks):
+            names = titles[b * per_block : (b + 1) * per_block]
+            assert names[:4] == [
+                "Alfvén Eigenmodes",
+                "Confinement",
+                "Edge Localized Modes",
+                "Detachment",
+            ]
+        axes = figure.axes[:4]
+        tops = {round(ax.get_position().y1, 6) for ax in axes}
+        assert len(tops) == 1  # one row
+        lefts = [ax.get_position().x0 for ax in axes]
+        assert lefts == sorted(lefts)
+
+
+def test_every_panel_title_is_plain_with_no_parentheses_or_second_line():
+    recs = records()
+    with fig.plot_style():
+        f1 = fig.figure_f1(recs, fig.load(fig.SOURCES["coverage"]), fig.Rows())
+        twin = fig.figure_auc(recs, fig.Rows())
+    seen = []
+    for figure in (f1, twin):
+        for ax in figure.axes:
+            title = panel_title(ax)
+            if title:
+                seen.append(title)
+                assert "(" not in title and ")" not in title, title
+                assert "\n" not in title, title
+    assert {
+        "Alfvén Eigenmodes",
+        "Tearing Modes",
+        "Sawtooth",
+        "Resistive Wall Modes",
+        "Labeled data per set",
+    } <= set(seen)
+
+
+def test_no_panel_title_runs_off_the_page():
+    recs = records()
+    with fig.plot_style():
+        figures = (
+            fig.figure_f1(recs, fig.load(fig.SOURCES["coverage"]), fig.Rows()),
+            fig.figure_auc(recs, fig.Rows()),
+        )
+        for figure in figures:
+            renderer = FigureCanvasAgg(figure).get_renderer()
+            figure.draw(renderer)
+            page = figure.bbox
+            for ax in figure.axes:
+                for t in (ax.title, ax._left_title, ax._right_title):
+                    if t.get_text():
+                        box = t.get_window_extent(renderer)
+                        assert box.x0 >= page.x0 - 0.5, t.get_text()
+                        assert box.x1 <= page.x1 + 0.5, t.get_text()
+
+
+def test_a_tick_spacing_is_as_wide_in_every_panel_of_both_figures():
+    """The four panels of the top row and the three of the bottom one share one
+    tick spacing; the rows with room to spare spread their panels apart."""
+    recs = records()
+    with fig.plot_style():
+        figures = (
+            fig.figure_f1(recs, fig.load(fig.SOURCES["coverage"]), fig.Rows()),
+            fig.figure_auc(recs, fig.Rows()),
+        )
+    for figure in figures:
+        units = []
+        for ax in figure.axes:
+            if ax.get_yscale() == "log":  # the coverage panel has its own x axis
+                continue
+            lo, hi = ax.get_xlim()
+            units.append(ax.get_position().width * figure.get_figwidth() / (hi - lo))
+        assert units == pytest.approx([units[0]] * len(units))
+        for row in (figure.axes[:4], figure.axes[4:7]):
+            right = max(ax.get_position().x1 for ax in row)
+            assert right <= 1 - fig.RIGHT_IN / figure.get_figwidth() + 1e-9
+            for a, b in itertools.pairwise(row):
+                gap = (
+                    b.get_position().x0 - a.get_position().x1
+                ) * figure.get_figwidth()
+                assert gap >= fig.GAP_IN - 1e-9
+
+
+# REPORTED and the trivial baselines
+
+
+def score_panels(figure):
+    """A figure's score panels (the coverage panel, on a log axis, is not one):
+    seven per metric block."""
+    return [ax for ax in figure.axes if ax.get_yscale() != "log"]
+
+
+def interval_xs(ax):
+    """Where on the x axis a panel draws an error bar."""
+    return {
+        round(seg[0][0], 9)
+        for c in ax.containers
+        if isinstance(c, ErrorbarContainer)
+        for lc in c.lines[2]
+        for seg in lc.get_segments()
+    }
+
+
+def both_figures_drawn():
+    """The F1 figure and the AUC one, drawn, with their tables."""
+    recs = records()
+    rows = fig.Rows(), fig.Rows()
+    f1 = fig.figure_f1(recs, fig.load(fig.SOURCES["coverage"]), rows[0])
+    twin = fig.figure_auc(recs, rows[1])
+    for figure in (f1, twin):
+        figure.draw(FigureCanvasAgg(figure).get_renderer())
+    return (f1, rows[0]), (twin, rows[1])
+
+
+def test_reported_marks_the_original_bars_of_another_dataset_and_only_those():
+    with fig.plot_style():
+        (f1, _), (twin, _) = both_figures_drawn()
+        seen = {}
+        for name, figure in (("f1", f1), ("auc", twin)):
+            for i, ax in enumerate(score_panels(figure)):
+                marks = reported_texts(ax)
+                if marks:
+                    assert len(marks) == 1
+                    seen.setdefault(name, set()).add((i // 7, panel_title(ax)))
+        # F1: the confinement paper's .94, D. Smith's .992 and the HL-3 paper's
+        # stated .956 -- not AE (the same set) or TM (the same cohort rescored);
+        # AUROC: the confinement bound and the NSTX forest's slice AUROC
+        assert seen == {
+            "f1": {
+                (0, "Confinement"),
+                (0, "Edge Localized Modes"),
+                (0, "Sawtooth"),
+            },
+            "auc": {(0, "Confinement"), (0, "Resistive Wall Modes")},
+        }
+        for figure in (f1, twin):
+            renderer = figure.canvas.get_renderer()
+            for ax in score_panels(figure):
+                marks = reported_texts(ax)
+                intervals = interval_xs(ax)
+                segments = baseline_segments(ax)
+                marked_bars = []
+                for t in marks:
+                    x, y = t.get_position()
+                    (bar,) = [
+                        p
+                        for p in ax.patches
+                        if p.get_x() < x < p.get_x() + p.get_width()
+                    ]
+                    marked_bars.append(bar)
+                    assert to_hex(bar.get_facecolor()).upper() == fig.LEGACY
+                    assert (t.get_rotation(), t.get_color()) == (90, "white")
+                    assert t.get_fontweight() == "bold" and t.get_fontsize() >= 7
+                    # the face of the other labels (a sans), not a serif fallback
+                    face = fm.get_font(fm.findfont(t.get_fontproperties()))
+                    other = next(v for v in ax.texts if v.get_text().startswith("."))
+                    same = fm.get_font(fm.findfont(other.get_fontproperties()))
+                    assert face.family_name == same.family_name
+                    assert "serif" not in face.family_name.lower()
+                    assert y == pytest.approx(bar.get_height() / 2)  # centred in it
+                    inside, outer = (
+                        t.get_window_extent(renderer),
+                        bar.get_window_extent(renderer),
+                    )
+                    assert outer.x0 <= inside.x0 and inside.x1 <= outer.x1
+                    assert outer.y0 <= inside.y0 and inside.y1 <= outer.y1
+                    # no error bar and no baseline on a reported bar
+                    assert round(bar.get_x() + bar.get_width() / 2, 9) not in intervals
+                    assert not [g for g in segments if g[0] < x < g[1]]
+                # every other bar has exactly one dash across just its width
+                for bar in ax.patches:
+                    if bar in marked_bars:
+                        continue
+                    span = (bar.get_x(), bar.get_x() + bar.get_width())
+                    dashes = [g for g in segments if g[:2] == pytest.approx(span)]
+                    assert len(dashes) == 1, (panel_title(ax), span)
+                assert len(segments) == len(ax.patches) - len(marked_bars)
+
+
+def test_the_legend_has_one_trivial_baseline_entry_and_no_diamond_or_hatch():
+    with fig.plot_style():
+        (f1, _), (twin, _) = both_figures_drawn()
+        for figure, labels in (
+            (f1, ["original", "Tokamak-SI", "human-reviewed subset", fig.BASELINE]),
+            (twin, ["original", "Tokamak-SI", fig.BASELINE]),
+        ):
+            (legend,) = figure.legends
+            assert [t.get_text() for t in legend.get_texts()] == labels
+            (dash,) = [h for h in legend.legend_handles if h.get_linestyle() == "--"]
+            assert to_hex(dash.get_color()) == "#000000"
+            for h in legend.legend_handles:
+                assert not (hasattr(h, "get_hatch") and h.get_hatch())
+                assert not (hasattr(h, "get_marker") and h.get_marker() == "D")
+
+
+def test_every_baseline_dash_is_one_row_of_the_table_with_its_source():
+    with fig.plot_style():
+        figures = both_figures_drawn()
+    for figure, rows in figures:
+        dashes = sorted(
+            round(y, 9)
+            for ax in score_panels(figure)
+            for _, _, y in baseline_segments(ax)
+        )
+        table = [r for r in rows.rows if r["series"] == fig.BASELINE]
+        assert dashes == sorted(round(r["value"], 9) for r in table)
+        assert all(r["drawn"] and r["source"] and r["key"] for r in table)
+        assert all(", " in r["group"] for r in table)  # "<model>, <setting>"
+
+
 # coverage
 
 
-def test_the_coverage_panels_draw_the_record_and_hatch_what_has_no_value():
+def coverage_rows(cov):
+    rows = fig.Rows()
+    ax = Figure().add_subplot()
+    fig.draw_coverage(ax, cov, rows, "g")
+    return rows.rows, ax
+
+
+def test_the_coverage_panel_draws_hours_writes_shots_and_notes_what_has_no_value():
     cov = fig.load(fig.SOURCES["coverage"])
-    for field, unit in (("shots", "labeled shots"), ("seconds", "labeled time (h)")):
-        drawn, every, ax = drawn_rows(fig.draw_coverage, cov, metric=field)
-        assert ax.get_yscale() == "log"
-        scale = 1.0 if field == "shots" else 1 / 3600.0
-        for r in drawn:
-            if r["group"] == "Tokamak-SI, reviewed subset":
-                continue
-            side = "legacy" if r["group"] == "legacy" else "tokamak_si"
-            key = next(k for k in cov["order"] if cov["sets"][k]["name"] == r["series"])
-            block = cov["sets"][key][side]
-            if block[field] is None:
-                assert r["value"] is None  # a hatched slot, with its reason
+    every, ax = coverage_rows(cov)
+    assert ax.get_yscale() == "log"
+    texts = [flat(t.get_text()) for t in ax.texts]
+    for key in cov["order"]:
+        entry = cov["sets"][key]
+        for side, group in (("legacy", "legacy"), ("tokamak_si", "Tokamak-SI")):
+            block = entry[side]
+            mine = {
+                r["metric"]: r
+                for r in every
+                if r["series"] == entry["name"] and r["group"] == group
+            }
+            hours, shots = mine["labeled time (h)"], mine["labeled shots"]
+            assert hours["key"] == f"sets.{key}.{side}.seconds"
+            assert shots["key"] == f"sets.{key}.{side}.shots"
+            assert shots["value"] == block["shots"]
+            if block["seconds"] is None:  # a grey note says why, no bar
+                assert hours["value"] is None and not hours["drawn"]
+                status = fig.STATUS_TEXT[block["status"]]
+                assert any(t.startswith(status) for t in texts)
             else:
-                assert r["value"] == pytest.approx(block[field] * scale)
-                assert r["key"] == f"sets.{key}.{side}.{field}"
-        names = {r["series"] for r in every}
-        assert names == {cov["sets"][k]["name"] for k in cov["order"]}
-        assert {r["metric"] for r in every} == {unit}
-        reviewed = [r for r in every if r["group"] == "Tokamak-SI, reviewed subset"]
-        assert reviewed and all(
-            r["value"]
-            <= next(
-                s["value"]
-                for s in every
-                if s["series"] == r["series"] and s["group"] == "Tokamak-SI"
-            )
-            for r in reviewed
+                assert hours["value"] == pytest.approx(block["seconds"] / 3600.0)
+                assert str(block["shots"]) in texts  # written on its bar
+    assert not [p for p in ax.patches if p.get_hatch()]
+    reviewed = [
+        r
+        for r in every
+        if r["group"] == "Tokamak-SI, reviewed subset" and r["metric"].endswith("(h)")
+    ]
+    assert reviewed and all(
+        r["value"]
+        <= next(
+            s["value"]
+            for s in every
+            if s["series"] == r["series"]
+            and s["group"] == "Tokamak-SI"
+            and s["metric"] == r["metric"]
         )
+        for r in reviewed
+    )
 
 
 def test_the_coverage_axis_reaches_the_smallest_reviewed_subset():
     cov = fig.load(fig.SOURCES["coverage"])
-    for field in ("shots", "seconds"):
-        _, every, ax = drawn_rows(fig.draw_coverage, cov, metric=field)
-        low = ax.get_ylim()[0]
-        reviewed = [r for r in every if r["group"] == "Tokamak-SI, reviewed subset"]
-        assert reviewed and all(r["value"] >= low for r in reviewed)
-        assert {r["series"] for r in reviewed} >= {"sawtooth"}  # three shots
+    every, ax = coverage_rows(cov)
+    low = ax.get_ylim()[0]
+    reviewed = [
+        r for r in every if r["group"] == "Tokamak-SI, reviewed subset" and r["drawn"]
+    ]
+    assert reviewed and all(r["value"] >= low for r in reviewed)
+    assert {r["series"] for r in reviewed} >= {"sawtooth"}  # three shots
 
 
 # the whole figure
@@ -480,6 +1158,36 @@ def test_the_f1_figure_fits_the_main_text_and_every_text_is_at_least_7_pt():
             assert not small, small
     assert figure.get_figheight() <= 5.2
     assert {r["panel"] for r in rows.rows} == set("abcdefgh")
+
+
+def test_every_two_texts_keep_apart_in_either_figure():
+    """Every two texts, a value's white box included, are at least 1.5 pt apart
+    (the values of neighbouring pairs met in the AE AUROC panel)."""
+    recs = records()
+    with fig.plot_style():
+        figures = (
+            fig.figure_f1(recs, fig.load(fig.SOURCES["coverage"]), fig.Rows()),
+            fig.figure_auc(recs, fig.Rows()),
+        )
+        for f in figures:
+            renderer = FigureCanvasAgg(f).get_renderer()
+            f.draw(renderer)
+            pt = 72 / f.dpi
+            boxes = []
+            for t in f.findobj(Text):
+                if not (t.get_visible() and t.get_text().strip()):
+                    continue
+                box = t.get_window_extent(renderer)
+                if t.get_bbox_patch() is not None:
+                    box = Bbox.union([box, t.get_bbox_patch().get_window_extent()])
+                boxes.append((t.get_text(), box))
+            clash = [
+                (a, b)
+                for (a, ba), (b, bb) in itertools.combinations(boxes, 2)
+                if max(ba.x0 - bb.x1, bb.x0 - ba.x1, ba.y0 - bb.y1, bb.y0 - ba.y1) * pt
+                < 1.5
+            ]
+            assert not clash, clash
 
 
 def test_no_version_label_and_no_misspelling_in_the_text_or_the_table():
@@ -511,6 +1219,19 @@ def test_nothing_is_left_as_not_yet_scored_and_the_twin_has_the_sawtooth_panels(
     assert {r["panel"] for r in rows.rows if r["series"] == "saw-ours"} == {"e"}
 
 
+def test_the_auc_figure_heads_its_auroc_and_auprc_blocks():
+    """The two blocks repeat the panel titles: a heading names each metric, above
+    its block."""
+    with fig.plot_style():
+        twin = fig.figure_auc(records(), fig.Rows())
+    headings = [t for t in twin.texts if t.get_text()]
+    assert [t.get_text() for t in headings] == list(fig.AUC_HEADINGS.values())
+    auroc, auprc = (t.get_position()[1] for t in headings)
+    boxes = [ax.get_position() for ax in twin.axes]  # AUROC's seven, then AUPRC's
+    assert auroc > max(b.y1 for b in boxes[:4])
+    assert min(b.y0 for b in boxes[4:7]) > auprc > max(b.y1 for b in boxes[7:11])
+
+
 # the guard: a drawn score is read from a record, never typed
 
 
@@ -521,29 +1242,57 @@ def test_no_score_is_typed_into_the_script():
         rows = fig.Rows()
         fig.figure_f1(recs, cov, rows)
         fig.figure_auc(recs, rows)
-    # the always-present baseline's AUROC is the chance level 0.5 by definition (the
-    # record's own value); it coincides with the layout's 0.5s, so it is exempt
-    chance = {"AUROC": 0.5}
+    # a trivial baseline's AUROC is the chance level 0.5 by definition, and the
+    # confinement macro AUPRC's is 0.25 (four classes' prevalences sum to 1); these
+    # coincide with the layout's own tick values, so they are exempt
+    definitional = {"AUROC": 0.5, "macro AUROC": 0.5, "macro AUPRC": 0.25}
+
+    def by_definition(r):
+        return r["series"] == fig.BASELINE and r["value"] == pytest.approx(
+            definitional.get(r["metric"], -1)
+        )
+
     scores = {
         round(r["value"], 3)
         for r in rows.rows
         if r["drawn"]
-        and r["panel"] not in "gh"
+        and r["panel"] != "g"
         and 0 < (r["value"] or 0) < 1
-        and not (
-            r["group"] == "Tokamak-SI, trivial baseline"
-            and r["value"] == chance.get(r["metric"])
-        )
+        and not by_definition(r)
     }
     tree = ast.parse(SCRIPT.read_text())
+    # the layout's own constants (inches, tick spacings) are not scores: a record's
+    # 0.900 or 0.420 may meet HALF or GAP_IN
+    layout = {
+        id(n)
+        for a in tree.body
+        if isinstance(a, ast.Assign)
+        and all(
+            isinstance(t, ast.Name | ast.Tuple)
+            and all(
+                x.id.endswith("_IN") or x.id in ("HALF", "BAR", "MARGIN")
+                for x in (t.elts if isinstance(t, ast.Tuple) else [t])
+            )
+            for t in a.targets
+        )
+        for n in ast.walk(a.value)
+    }
     typed = {
         round(n.value, 3)
         for n in ast.walk(tree)
         if isinstance(n, ast.Constant)
         and isinstance(n.value, float)
         and 0 < n.value < 1
+        and id(n) not in layout
     }
+    assert typed, "the guard sees the script's other constants"
     assert not scores & typed, scores & typed
+
+
+def test_a_score_is_written_without_its_leading_zero():
+    assert fig.score_text(0.8357) == ".836"
+    assert fig.score_text(0.94, 2) == ".94"
+    assert fig.score_text(1.0) == "1.000"
 
 
 def test_a_name_with_two_hyphens_breaks_at_the_last_one():

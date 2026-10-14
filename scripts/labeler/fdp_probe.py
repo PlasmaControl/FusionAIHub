@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Probe explicit points serially through resolve_fdp; write metadata, not labels.
 
-Run on a login node under ``pixi run -e labelmaker fdp run python ...``.
+Run on a login node under ``pixi run -e labeler fdp run python ...``.
 The candidates JSON is a list of objects with ``row``, ``kind`` (ptdata/mds),
 ``node``, ``found_by``, and (for MDSplus) ``tree``. The shots JSON is a list
 of integers or objects containing ``shot``. Output is one JSON record per

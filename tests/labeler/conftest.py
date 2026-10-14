@@ -1,7 +1,7 @@
 """Opt-in gating for the tests that fetch live data through fdp.
 
 Everything else in this directory is hermetic: it must pass under a plain
-`pixi run -e labelmaker python -m pytest tests/labeler`, with no server,
+`pixi run -e labeler python -m pytest tests/labeler`, with no server,
 no token and no network. A live test is marked `live` and is skipped unless
 it is asked for explicitly, either with `--run-live` or with
 `LABELER_FDP=1` (the environment switch the plan's command blocks use).
@@ -10,8 +10,13 @@ A live run also needs the `fdp run` wrapper, which supplies the server
 configuration: without it PTDATA fails with `getservbyname failed for task
 'PTSERVER'` and MDSplus with `TREE-E-FOPENR`.
 
-    pixi run -e labelmaker fdp run python -m pytest tests/labeler \
+    pixi run -e labeler fdp run python -m pytest tests/labeler \
         -q -W error --run-live
+
+A test that reads the real label tables under `data/events` is marked
+`label_tables`. `data/` is not in git, so a fresh clone has no tables until
+`scripts/labeler/hf_publish.py pull` restores them; until then those tests are
+skipped, not failed.
 
 It is also where the fixtures more than one test module needs live: `wired`,
 a synthetic archive and corpus, and `synth_mask`, the drawn coherent map the
@@ -25,6 +30,7 @@ import warnings
 import numpy as np
 import pytest
 
+from labeler.config import DEFAULT_LABEL_TABLES
 from labeler.env import getenv
 
 # Starlette's test client still reads `anyio.abc.BlockingPortal`, an alias anyio 4.15
@@ -71,17 +77,28 @@ def pytest_configure(config) -> None:
         "markers",
         "live: fetches real data through fdp; needs `fdp run` and a SciToken",
     )
+    config.addinivalue_line(
+        "markers",
+        "label_tables: reads the real label tables under data/events (not in git); "
+        "skipped until `scripts/labeler/hf_publish.py pull` restores them",
+    )
 
 
 def pytest_collection_modifyitems(config, items) -> None:
-    if config.getoption("--run-live") or getenv(LIVE_ENV) == "1":
-        return
-    skip = pytest.mark.skip(
+    live = config.getoption("--run-live") or getenv(LIVE_ENV) == "1"
+    skip_live = pytest.mark.skip(
         reason="live fdp fetch is opt-in: --run-live or LABELER_FDP=1"
     )
+    skip_tables = pytest.mark.skip(
+        reason=f"no label tables at {DEFAULT_LABEL_TABLES} (data/ is not in git): "
+        "restore them with scripts/labeler/hf_publish.py pull"
+    )
+    tables = DEFAULT_LABEL_TABLES.is_dir()
     for item in items:
-        if "live" in item.keywords:
-            item.add_marker(skip)
+        if not live and "live" in item.keywords:
+            item.add_marker(skip_live)
+        if not tables and "label_tables" in item.keywords:
+            item.add_marker(skip_tables)
 
 
 @pytest.fixture
@@ -99,7 +116,7 @@ def wired(tmp_path, monkeypatch):
     monkeypatch.setattr(registry, "verify_artifacts", lambda slug, d: None)
     monkeypatch.setattr(
         registry, "read_card",
-        lambda slug: {"labelmaker": {"upstream": {"sha256": {"fake.h5": "00"}}}},
+        lambda slug: {"labeler": {"upstream": {"sha256": {"fake.h5": "00"}}}},
     )
     return {
         "archive": _archive(tmp_path),
@@ -417,7 +434,7 @@ def _isolate_package_environment():
     """
     with pytest.MonkeyPatch.context() as monkeypatch:
         for name in tuple(os.environ):
-            if name.startswith(("SHOT_DESIGN_", "IDEATE_", "LABELER_", "LABELMAKER_")):
+            if name.startswith(("SHOT_DESIGN_", "LABELER_")):
                 monkeypatch.delenv(name)
         yield
 

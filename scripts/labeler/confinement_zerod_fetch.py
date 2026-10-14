@@ -20,7 +20,7 @@ Output: ``$LABELER_ROOT/round4/conf/zerod/<shot>.npz``. A signal the shot does n
 is an empty array and is named in ``missing``. Run on the login node under fdp while
 logged in, with at most 3 workers in all::
 
-    pixi run --frozen -e labelmaker fdp run python \\
+    pixi run --frozen -e labeler fdp run python \\
         scripts/labeler/confinement_zerod_fetch.py --part 0/1 --pace 1
 
 It stops at the first authentication error. The cohort's blind ``test`` shots are never
@@ -46,7 +46,7 @@ if str(REPO / "src") not in sys.path:
 from labeler.confinement import bes_windows as bw
 
 LABELER = Path(
-    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")
+    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler")
 )
 DEFAULT_OUT = LABELER / "round4/conf/zerod"
 ROSTER = Path(

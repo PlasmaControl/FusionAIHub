@@ -115,6 +115,21 @@ def test_the_build_draws_what_its_inputs_allow(runs, tmp_path, capsys):
         assert all((out / f).is_file() for f in files), name
 
 
+def test_the_copy_never_overwrites_the_papers_figure_1(tmp_path):
+    """The roster figure has Figure 1's name: its PDF stays in `out`, so the
+    manuscript's TokEye Figure 1 (fig_interpreter_tokeye.py's) is kept."""
+    out, dest = tmp_path / "paper", tmp_path / "figures"
+    out.mkdir()
+    dest.mkdir()
+    for name in ("fig_interpreter.pdf", "fig_interpreter.png", "fig_scores.pdf"):
+        (out / name).write_text(f"drawn by the build: {name}")
+    (dest / "fig_interpreter.pdf").write_text("Figure 1")
+    products = {p: build.files_of(p) for p in ("fig_interpreter", "fig_scores")}
+    copied = build.copy_into(out, {"products": products}, dest)
+    assert copied == ["fig_scores.pdf"]
+    assert (dest / "fig_interpreter.pdf").read_text() == "Figure 1"
+
+
 def _skipped(record: dict) -> dict:
     """`skipped` without the frame models' example figures, which these tests
     leave to `test_paper_frame_examples`."""

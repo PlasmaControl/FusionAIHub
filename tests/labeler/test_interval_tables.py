@@ -214,7 +214,7 @@ raw_datasets:
     path: neoclassical_tearing_mode/raw/tm_labels.h5
     provenance: source
 """)
-    specs = load_manifest(tmp_path)
+    specs = load_manifest(tmp_path, manifest=tmp_path / "events.yaml")
     assert len(specs) == 1
     assert specs[0].phenomenon == "tearing"
     assert specs[0].format_stem == "tearing_v1"

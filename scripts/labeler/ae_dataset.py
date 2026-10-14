@@ -1069,10 +1069,10 @@ def main() -> None:
     p.add_argument(
         "--stage", choices=("probs", "dataset", "all", "jobstats"), default="all"
     )
-    p.add_argument("--root", default="/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/ae")
+    p.add_argument("--root", default="/scratch/gpfs/EKOLEMEN/nc1514/labeler/ae")
     p.add_argument(
         "--out-dir",
-        default="/scratch/gpfs/nc1514/FusionAIHub/outputs/labelmaker/ae/dataset",
+        default="/scratch/gpfs/nc1514/FusionAIHub/outputs/labeler/ae/dataset",
     )
     p.add_argument("--device", default="auto")
     p.add_argument("--batch", type=int, default=4, help="CO2 channels per forward pass")

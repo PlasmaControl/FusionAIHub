@@ -17,7 +17,7 @@ import pandas as pd
 
 from ...config import Paths
 from ..verify import Panel
-from ._shared import plasma_window
+from ._shared import plasma_window, with_caveat
 
 log = logging.getLogger(__name__)
 # Channel order from modalities.yaml. Calibrated spectroscopy units are recorded
@@ -33,7 +33,7 @@ TRACES = (
     ),
     (
         "co2",
-        "CO2 R0 density proxy (corpus DENUF)",
+        "CO2 R0 density",
         ["R0 DENUF"],
         "m·cm⁻³",
         1.0,
@@ -61,12 +61,12 @@ TRACES = (
 CSV_INDICATORS = (
     ("afrac", "Afrac", "dimensionless"),
     ("prad_div", "f_div = Prad,div / P_in", "dimensionless"),
-    ("tangtv_front_height", "TangTV normalized front DZ", "dimensionless"),
+    ("tangtv_front_height", "TangTV front DZ", "dimensionless"),
 )
 BIN_INDICATORS = (
     ("afrac", "Afrac", "dimensionless"),
     ("prad", "f_div = Prad,div / P_in", "dimensionless"),
-    ("tangtv", "TangTV normalized front DZ", "dimensionless"),
+    ("tangtv", "TangTV front DZ", "dimensionless"),
 )
 AFRAC_CAVEAT = (
     "Uncalibrated local proxies may use a within-shot reference. Check the "
@@ -223,8 +223,11 @@ def indicator_panels(shot, paths, t_range=None):
                     raise ValueError("tangtv_source: shape disagrees with clock")
                 metadata["tangtv_source"] = sources[keep].astype(str).tolist()
                 # Legacy CSVs omit provenance, so never infer an inversion from
-                # their height column. Bin titles visibly identify every source.
-                title = _tangtv_title(title, metadata["tangtv_source"])
+                # their height column. The row's caveat names every source.
+                metadata["caveat"] = (
+                    "Normalized front height from "
+                    + _tangtv_sources(metadata["tangtv_source"])
+                )
             if keep.any() and (np.isfinite(y[keep]).any() or "vote" in metadata):
                 built.append(
                     Panel(
@@ -241,17 +244,17 @@ def indicator_panels(shot, paths, t_range=None):
             for name, title, unit in (
                 (
                     "aux_ne",
-                    "CO2 density proxy (producer aux_ne)",
+                    "CO2 density (aux_ne)",
                     "m·cm⁻³",
                 ),
                 (
                     "aux_te_div",
-                    "Divertor Thomson Te (independent check; per-bin peak)",
+                    "Divertor Thomson Te",
                     "eV",
                 ),
                 (
                     "aux_jsat_peak",
-                    "Langmuir Jsat peak (probe may change by bin)",
+                    "Langmuir Jsat peak",
                     "producer units (uncalibrated)",
                 ),
             ):
@@ -334,8 +337,9 @@ def indicator_panels(shot, paths, t_range=None):
         ) from error
 
 
-def _tangtv_title(title, sources):
-    """Identify model readings, including traces whose source changes by bin."""
+def _tangtv_sources(sources):
+    """Name the front height's sources, including traces whose source changes by
+    bin (a model reading is said to be one)."""
     have = set(sources)
     descriptions = []
     if "inversion" in have:
@@ -344,7 +348,7 @@ def _tangtv_title(title, sources):
         descriptions.append("surrogate regression (model estimate)")
     if have - {"inversion", "surrogate", "none"}:
         descriptions.append("source not recorded")
-    return f"{title} ({' + '.join(descriptions) or 'no front-height source'})"
+    return " + ".join(descriptions) or "no front-height source"
 
 
 def _block_means(data, x, ids, start, stop, step, *, positive=False):
@@ -403,7 +407,7 @@ def _cached_density(shot, paths, t_range):
         y[~np.isfinite(y) | (y <= 0)] = np.nan
         if not np.isfinite(y[keep]).any():
             return None
-        title = "CO2 R0 density proxy (cached DENR0UF)"
+        title = "CO2 R0 density"
         unit = "m·cm⁻³"
         return Panel(
             title=title,
@@ -445,7 +449,7 @@ def panels(shot, *, t_range=None, paths=None):
         if "bolo" in source:
             panel = _context_panel(
                 source["bolo"],
-                "Bolometer raw chord voltages (uncalibrated)",
+                "Bolometer voltages",
                 [f"chord {i}" for i in range(48)],
                 "V",
                 1.0,
@@ -491,8 +495,8 @@ def panels(shot, *, t_range=None, paths=None):
                     ):
                         chord = legend.split()[0]
                         built.append(
-                            Panel(
-                                title=f"D-alpha {chord} (location not recorded)",
+                            with_caveat(Panel(
+                                title=f"D-alpha {chord}",
                                 x=panel.x,
                                 y=y[None, :],
                                 legend=[legend],
@@ -510,7 +514,8 @@ def panels(shot, *, t_range=None, paths=None):
                                     ),
                                     "layout": "one calibrated chord per row",
                                 },
-                            )
+                            ), "Chord location is not recorded in the corpus, so no "
+                            "divertor side is assumed")
                         )
                 else:
                     if name == "co2":
@@ -527,7 +532,7 @@ def panels(shot, *, t_range=None, paths=None):
         if not have_density and "ts_core_density" in source:
             panel = _context_panel(
                 source["ts_core_density"],
-                "Thomson core local density (not line-averaged)",
+                "Thomson core density",
                 [f"core channel {i}" for i in range(44)],
                 "m^-3",
                 1.0,
@@ -542,6 +547,10 @@ def panels(shot, *, t_range=None, paths=None):
                         "corpus_group": "ts_core_density",
                         "fallback_for": "CO2 density unavailable in plasma window",
                         "measurement": "local Thomson channels; not line-averaged",
+                        "caveat": (
+                            "Local Thomson channels, not line-averaged; they stand "
+                            "in for the CO2 density, unavailable in the plasma window."
+                        ),
                         "channel_selection": (
                             "up to eight channels ranked by positive native-sample "
                             "valid fraction; ties retain channel order"

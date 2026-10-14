@@ -7,8 +7,8 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=12G
 #SBATCH --time=00:45:00
-#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%A_%a.out
-#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%A_%a.out
+#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labeler/runs/slurm/%A_%a.out
+#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labeler/runs/slurm/%A_%a.out
 
 # One frame model's legacy stores (--stores), or every shot's features, one shard a task:
 #   python -m labeler.frames.prepare --method $METHOD [--stores] --index I --count N --workers W
@@ -44,8 +44,8 @@
 #                     10 submitted), where the pilots 2947615-2947625 went.
 set -euo pipefail
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
-ENV=/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker
-ROOT="$("$ENV/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")"
+ENV=/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler
+ROOT="$("$ENV/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labeler")"
 export LD_LIBRARY_PATH="$ENV/lib:${LD_LIBRARY_PATH:-}"
 export LABELER_ROOT="$ROOT" PYTHONPATH="$REPO/src"
 export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-/scratch/gpfs/nc1514/FusionAIHub/data/events}"

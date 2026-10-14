@@ -262,11 +262,11 @@
       "delta_ms": 0.0
     }
   ],
-  "labelmaker_sha": "a416837b98a5988191820ae071990f04c4393877",
+  "labeler_sha": "a416837b98a5988191820ae071990f04c4393877",
   "omnimode_sha": "8bbe10d53710c5154d93e8480671762204516a9f",
   "script": "sawtooth_reference_check.py",
   "port_rerun": {
-    "labelmaker_sha": "f6f30e811a316cfb110e805d4b607b43fbf20b65",
+    "labeler_sha": "f6f30e811a316cfb110e805d4b607b43fbf20b65",
     "dirty": false,
     "n": 47,
     "median_ms": 68.99999999999976,

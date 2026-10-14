@@ -152,7 +152,10 @@ def test_ae_ece_dataset_is_formatted_beside_the_pinned_co2_outputs(tmp_path):
         )
     )
     out = convert_category(
-        "alfven_eigenmode", tmp_path, dataset="alfven_eigenmode_ece_format_2026_v1"
+        "alfven_eigenmode",
+        tmp_path,
+        manifest=tmp_path / "events.yaml",
+        dataset="alfven_eigenmode_ece_format_2026_v1",
     )
     assert out == tmp_path / "alfven_eigenmode/format/alfven_eigenmode_ece_format_2026_v1.csv"
     meta = json.loads(out.with_suffix(".meta.json").read_text())
@@ -163,7 +166,12 @@ def test_ae_ece_dataset_is_formatted_beside_the_pinned_co2_outputs(tmp_path):
     grid = read_label_grid(out.parent / "ece_shots/170660.npz")
     np.testing.assert_equal(grid["label"][:, 0], [np.nan] * 6 + [1, 1, 1, 1])
     with pytest.raises(ValueError, match="No format dataset"):
-        convert_category("alfven_eigenmode", tmp_path, dataset="nope")
+        convert_category(
+            "alfven_eigenmode",
+            tmp_path,
+            manifest=tmp_path / "events.yaml",
+            dataset="nope",
+        )
 
 
 def test_tm_preserves_separate_sources_and_uses_last_sample_boundary(tmp_path):
@@ -252,17 +260,27 @@ def test_category_writer_respects_manifest_and_is_reproducible(tmp_path):
             }
         )
     )
-    out = convert_category("resistive_wall_mode", tmp_path)
+    out = convert_category(
+        "resistive_wall_mode", tmp_path, manifest=tmp_path / "events.yaml"
+    )
     assert out == tmp_path / "resistive_wall_mode/format/example_v1.csv"
     first = out.read_bytes(), out.with_suffix(".meta.json").read_bytes()
-    convert_category("resistive_wall_mode", tmp_path)
+    convert_category("resistive_wall_mode", tmp_path, manifest=tmp_path / "events.yaml")
     assert first == (out.read_bytes(), out.with_suffix(".meta.json").read_bytes())
     meta = json.loads(first[1])
+    assert meta["made_by"] == (
+        "python -m labeler.events.source_formatters resistive_wall_mode"
+    )
     assert meta["made_from"][0]["sha256"] == hashlib.sha256(before).hexdigest()
     assert meta["n_rows"] == meta["n_shots"] == 1
     assert pd.read_csv(out).t_start.tolist() == [2613.0]
     with pytest.raises(ValueError, match="raw"):
-        convert_category("resistive_wall_mode", tmp_path, output=raw)
+        convert_category(
+            "resistive_wall_mode",
+            tmp_path,
+            manifest=tmp_path / "events.yaml",
+            output=raw,
+        )
     assert raw.read_bytes() == before
 
 
@@ -287,6 +305,123 @@ def test_elm_deduplicates_wpqh_slices_and_counts_in_50ms_bins(tmp_path):
     subset.write_bytes(pickle.dumps({"123_0": {"times": times, "labels": labels}}))
     with pytest.raises(ValueError, match="conflicting"):
         list(read_elm(base, subset))
+
+
+def _challenge_key(path):
+    def case(shot, tstart, tend, **events):
+        return {
+            "device": "DIII-D", "shot": shot, "tstart": tstart, "tend": tend,
+            "time_units": "ms", **events,
+        }
+
+    def event(start, end, kind):
+        return {"start": [start, 0.1], "end": [end, 0.5], "type": kind}
+
+    key = {
+        "total": 5,
+        "__types__": {"1": "large ELM"},
+        "0": case(
+            111, 100.0, 300.0,
+            **{
+                "0": event(120.0, 125.0, 1),
+                "1": event(125.0, 130.0, 2),
+                "2": event(150.0, 160.0, 4),
+                "3": event(170.0, 175.0, 5),
+                "4": event(200.0, 210.0, 1),
+                "5": event(202.0, 204.0, 7),
+            },
+        ),
+        "1": case(222, 0.0, 50.0),
+        "2": {**case(333, 0.0, 10.0), "device": "NSTX"},
+    }
+    path.write_text(json.dumps(key))
+    return key
+
+
+def test_elm_challenge_cuts_windows_into_states_and_skips_other_devices(tmp_path):
+    from labeler.events.interval_tables import project_intervals
+    from labeler.events.source_formatters import (
+        elm_challenge_audit,
+        format_elm_challenge,
+        read_elm_challenge,
+    )
+
+    path = tmp_path / "key.json"
+    key = _challenge_key(path)
+    assert [c["shot"] for c in read_elm_challenge(path)] == [111, 222]
+    table = project_intervals(format_elm_challenge(path))
+    rows = table[table.shot == 111][["category", "t_start", "t_end"]]
+    # ELMs abut and join; "other" is uncertain; pellets and gaps are absent; a hidden
+    # pellet inside an ELM does not split it; nothing outside the window.
+    assert rows.values.tolist() == [
+        [0, 100, 120], [1, 120, 130], [0, 130, 150], [2, 150, 160],
+        [0, 160, 200], [1, 200, 210], [0, 210, 300],
+    ]
+    assert table[table.shot == 222][["category", "t_start", "t_end"]].values.tolist() == [
+        [0, 0, 50]
+    ]
+    audit = elm_challenge_audit(path)
+    assert audit["skipped_devices"] == ["NSTX"]
+    assert audit["cases_without_events"] == [222]
+    assert audit["events_by_type"] == {"1": 2, "2": 1, "4": 1, "5": 1, "7": 1}
+    key["0"]["6"] = {"start": [20.0, 0], "end": [30.0, 0], "type": 1}
+    path.write_text(json.dumps(key))
+    with pytest.raises(ValueError, match="not inside the window"):
+        read_elm_challenge(path)
+    del key["0"]["6"]
+    key["0"]["6"] = {"start": [180.0, 0], "end": [190.0, 0], "type": 99}
+    path.write_text(json.dumps(key))
+    with pytest.raises(ValueError, match="unknown type"):
+        read_elm_challenge(path)
+
+
+def test_elm_challenge_grids_sit_beside_the_pinned_elm_grids(tmp_path):
+    import yaml
+
+    from labeler.events.interval_tables import read_label_grid
+    from labeler.events.source_formatters import convert_category
+
+    raw = tmp_path / "edge_localized_mode/raw/key.json"
+    raw.parent.mkdir(parents=True)
+    _challenge_key(raw)
+    pinned = tmp_path / "edge_localized_mode/format/shots"
+    pinned.mkdir(parents=True)
+    (pinned / "111.npz").write_bytes(b"pinned grid")
+    (tmp_path / "events.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "version": 1,
+                "format_datasets": [
+                    {
+                        "name": "edge_localized_mode",
+                        "raw_path": "edge_localized_mode_challenge_format_2026_v1.csv",
+                        "date": "2026-10-08T00:00:00Z",
+                        "sources": ["elm_challenge_key"],
+                    }
+                ],
+                "raw_datasets": [
+                    {
+                        "stem": "elm_challenge_key",
+                        "path": "edge_localized_mode/raw/key.json",
+                        "provenance": "fixture",
+                    }
+                ],
+            }
+        )
+    )
+    out = convert_category(
+        "edge_localized_mode", tmp_path, manifest=tmp_path / "events.yaml"
+    )
+    meta = json.loads(out.with_suffix(".meta.json").read_text())
+    assert meta["categories"]["2"] == "uncertain"
+    assert meta["per_shot_files"]["path"] == "challenge_shots/<shot>.npz"
+    assert (pinned / "111.npz").read_bytes() == b"pinned grid"
+    grid = read_label_grid(out.parent / "challenge_shots/111.npz")
+    # 50 ms bins from 0: unassessed to 100, then 100-300. An ELM wins its bin (100,
+    # 200), the bin holding the uncertain 150-160 stretch is unknown, 250 is absent.
+    np.testing.assert_equal(
+        grid["label"][:, 0], [np.nan, np.nan, 1, np.nan, 1, 0]
+    )
 
 
 def test_confinement_preserves_unknown_and_uses_explicit_flags(tmp_path):

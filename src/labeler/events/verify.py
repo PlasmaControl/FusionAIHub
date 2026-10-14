@@ -127,7 +127,7 @@ MISSING_NODE_ERRORS = ("TreeNODATA", "TreeNNF")
 #: both fail outside it - PTDATA with `getservbyname failed for task
 #: 'PTSERVER'`, MDSplus with `TREE-E-FOPENR` - so this is what a reviewer
 #: who has not started under it needs to see.
-FDP_RESTART_COMMAND = "pixi run -e labelmaker fdp run jupyter lab"
+FDP_RESTART_COMMAND = "pixi run -e labeler fdp run jupyter lab"
 
 
 def fdp_signal(
@@ -234,6 +234,13 @@ def fdp_signal(
                     f"that would put every correction's timebase off."
                 )
             data = np.asarray(record["data"], dtype="float32")
+            if data.ndim == 0:
+                # A node with no time series (EFIT01 on a shot it never ran on)
+                # comes back as one number.
+                if missing_ok:
+                    rows.append(None)
+                    continue
+                raise NoDataError(f"shot {int(shot)} {expr!r} holds no time series")
             if expected_length is None:
                 expected_length = len(data)
                 first_expr = expr

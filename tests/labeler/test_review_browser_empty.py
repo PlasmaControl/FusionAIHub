@@ -31,10 +31,11 @@ def served_empty_event(tmp_path):
         logs_jsonl=tmp_path / "logs.jsonl",
         label_tables=tmp_path / "tables",
         raw_cache=tmp_path / "raw",
+        config_dir=tmp_path / "config",  # no events.yaml: an empty taxonomy
     )
     _store(paths, 170815)
     events = []
-    for name, count in (("alfven_eigenmode", 2), ("neoclassical_tearing_mode", 1)):
+    for name, count in (("alfven_eigenmode", 2), ("disruption", 1)):
         event = paths.label_tables / name
         (event / "format").mkdir(parents=True)
         (event / "shots.csv").write_text("\n".join(ROSTER.splitlines()[:count]) + "\n")
@@ -83,7 +84,7 @@ def test_empty_event_clears_and_settles_then_allows_navigation(
     checks = json.loads(result.stdout.splitlines()[-1])
     failed = [c for c in checks if not c["ok"]]
     assert not failed, json.dumps(failed, indent=2)
-    assert len(checks) == 42  # one check per page key, and Task 3.3 adds M
+    assert len(checks) == 43  # one check per page key; Task 3.3 added M, T is the markers key
     history = labels.read_history(event_a)
     assert len(history) == 2
     assert history[0]["intervals"] == [[100, 300, 1]]

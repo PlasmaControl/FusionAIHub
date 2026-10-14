@@ -29,7 +29,7 @@ Every number is written with its shots, bins and thresholds to
 Run in the CUDA venv (the library imports need only numpy, pandas and torch)::
 
     PYTHONPATH=$PWD/src CUDA_VISIBLE_DEVICES=1 \\
-        /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/envs/phase3/bin/python \\
+        /scratch/gpfs/EKOLEMEN/nc1514/labeler/envs/phase3/bin/python \\
         scripts/labeler/tm_ours.py --features magnetics
 """
 
@@ -54,7 +54,7 @@ from tm_cv_plan import load_plan
 
 from labeler.tearing import magfeatures, scoring
 
-ROOT = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker"))
+ROOT = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
 TM = ROOT / "round4/tm"
 CATALOG = REPO / "data/events/catalog"
 LABELS = (

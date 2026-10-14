@@ -43,7 +43,7 @@ from labeler.confinement import bes_windows as bw
 from labeler.confinement import scoring, segments, zerod
 
 LABELER = Path(
-    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")
+    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler")
 )
 WORK = LABELER / "round4/conf"
 RAW = LABELER / "raw"
@@ -521,6 +521,57 @@ ROSTER_COLUMNS = [
 ]
 INDEX_OF = {cat: idx for idx, cat in CATEGORY.items()}
 
+#: The roster columns beyond the five interval columns; in an extend table they go
+#: in the `attrs` cell, because the review page's table reader refuses any other
+#: column (it skips `roster.csv` for that reason).
+ATTR_COLUMNS = ["predicted", "source", "tier", "extrapolated"]
+#: The roster in that layout, which the review page reads; `roster.csv` itself
+#: stays as it is because the paper figures read its nine columns and pin its hash.
+REVIEW_TABLE = "roster_review"
+
+
+def to_extend_table(frame: pd.DataFrame) -> pd.DataFrame:
+    """The roster-format rows as an extend table: shot, category, t_start, t_end,
+    confidence and an `attrs` JSON object with the other four columns."""
+    keep = list(frame.columns[:5])
+    attrs = [
+        json.dumps(
+            {
+                "predicted": int(row.predicted),
+                "source": str(row.source),
+                "tier": str(row.tier),
+                "extrapolated": bool(row.extrapolated),
+            },
+            sort_keys=True,
+        )
+        for row in frame.itertuples()
+    ]
+    return frame[keep].assign(attrs=attrs)
+
+
+def write_review_table(directory: Path = EXTEND) -> pd.DataFrame:
+    """Write `roster_review.csv` and its meta from the `roster.csv` and
+    `roster.meta.json` in `directory`; the roster files are only read."""
+    frame = pd.read_csv(directory / "roster.csv")
+    table = to_extend_table(frame)
+    table.to_csv(directory / f"{REVIEW_TABLE}.csv", index=False)
+    meta = json.loads((directory / "roster.meta.json").read_text())
+    meta["columns"] = list(table.columns)
+    meta["attrs_keys"] = ATTR_COLUMNS
+    meta["derived_from"] = "roster.csv (the same rows; roster.csv is unchanged)"
+    meta["made_by"] = "scripts/labeler/confinement_ours.py review"
+    meta["columns_meaning"] = {
+        "attrs": "a JSON object with the roster's four extra columns, predicted, "
+        "source, tier and extrapolated (the review page's table reader accepts no "
+        "column beyond `attrs`, so roster.csv's own extra columns make it skip that "
+        "table); the keys are explained below",
+        **{
+            key: text for key, text in meta["columns_meaning"].items() if key != "attrs"
+        },
+    }
+    (directory / f"{REVIEW_TABLE}.meta.json").write_text(json.dumps(meta, indent=1))
+    return table
+
 
 def roster_rows(
     shot: int,
@@ -820,6 +871,7 @@ def apply(args: argparse.Namespace) -> None:
         "interval; the rest is the network's reading of time nobody curated.",
     }
     (EXTEND / "roster.meta.json").write_text(json.dumps(meta, indent=1))
+    write_review_table()
     print(
         f"{len(frame)} segments on {frame.shot.nunique()} of {len(roster)} roster "
         f"shots; {len(missing)} missing; {int((frame.category == UNCERTAIN).sum())} "
@@ -858,7 +910,15 @@ def main(argv: list[str] | None = None) -> int:
     a = sub.add_parser("apply")
     a.add_argument("--grouping", choices=tuple(OURS_DIRS), default="run_day")
     a.add_argument("--device", default="cuda:0")
+    sub.add_parser(
+        "review",
+        help="write roster_review.csv, the roster in the layout the review page "
+        "reads, from the roster.csv already there",
+    )
     args = ap.parse_args(argv)
+    if args.stage == "review":
+        print(f"{len(write_review_table())} rows written to {REVIEW_TABLE}.csv")
+        return 0
     {"build": build, "train": train, "score": score, "apply": apply}[args.stage](args)
     return 0
 

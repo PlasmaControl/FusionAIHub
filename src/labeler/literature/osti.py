@@ -21,8 +21,8 @@ type}]}`, or `{"shot", "error"}`.
   paper dated before its shot's year cannot name it: that pair is `predates`.
   The shots' years come from the population's `pool.csv` (`year_starts`).
 
-    pixi run -e labelmaker python -m labeler.literature.osti fetch
-    pixi run -e labelmaker python -m labeler.literature.osti links
+    pixi run -e labeler python -m labeler.literature.osti fetch
+    pixi run -e labeler python -m labeler.literature.osti links
 
 Copying `papers.csv` and `papers.meta.json` into `data/events/catalog/` is the
 owner's call.

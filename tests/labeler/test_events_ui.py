@@ -50,6 +50,7 @@ def _tmp_paths(tmp_path, tables):
         logs_jsonl=tmp_path / "logs.jsonl",
         label_tables=tables,
         raw_cache=tmp_path / "raw",
+        config_dir=tmp_path / "config",  # no events.yaml: an empty taxonomy
     )
 
 
@@ -93,7 +94,7 @@ def source(tables):
     return path
 
 
-def _built(paths, event="alfven_eigenmode", shot=170815):
+def _built(paths, event="alfven_eigenmode", shot=170815, markers=None, current=False):
     """A store file of two rows over 0-2000 ms at 1 ms: a 4-bin image and a trace."""
     image = ImageRow(
         "R0xV1", "R0 × V1", (np.arange(8000) % 256).reshape(4, 2000).astype("uint8"),
@@ -107,9 +108,10 @@ def _built(paths, event="alfven_eigenmode", shot=170815):
     review_rows.write(
         path, Grid(0.0, 1.0, 2000), [image, trace], event=event,
         **({"panel_version": review_build.PANEL_VERSIONS[event]}
-           if event == "detachment" else {}),
+           if event == "detachment" or current else {}),
         **({"panel_revision": review_build.PANEL_REVISIONS[event]}
            if event == "detachment" else {}),
+        **({"markers": markers} if markers else {}),
     )
     return path
 
@@ -269,11 +271,14 @@ def test_events_lists_each_roster_and_how_much_of_it_is_reviewed(client, source)
     states = {"1": "present", "2": "uncertain"}
     assert client.get("/api/events").json() == {
         "events": [
-            {"event": "alfven_eigenmode", "n_shots": 2, "n_reviewed": 0,
-             "categories": states},
-            {"event": "detachment", "n_shots": 1, "n_reviewed": 0,
+            {"event": "alfven_eigenmode", "display_name": "alfven_eigenmode",
+             "group": None, "n_shots": 2, "n_reviewed": 0, "categories": states,
+             "subcategories": []},
+            {"event": "detachment", "display_name": "detachment", "group": None,
+             "n_shots": 1, "n_reviewed": 0,
              "categories": {"1": "attached", "2": "detached", "3": "marfe",
-                            "4": "uncertain"}},
+                            "4": "uncertain"},
+             "subcategories": []},
         ]
     }
 
@@ -287,20 +292,22 @@ def test_the_confinement_regimes_are_one_event_not_four(client, tables):
     assert "low_confinement_mode" not in events
     assert events["confinement"]["categories"] == {
         "1": "high", "2": "low", "3": "qh", "4": "wpqh", "5": "uncertain",
+        "6": "imode",
     }
     refused = client.get("/api/queue?event=high_confinement_mode")
     assert refused.status_code == 404
     assert "reviewed as confinement" in refused.json()["error"]
 
 
-def test_tearing_menu_has_tm_display_name_and_preserves_saved_category(client, tables):
+def test_the_tearing_mode_event_is_reviewed_as_mhd_n1(client, tables):
     directory = tables / "neoclassical_tearing_mode"
     directory.mkdir()
     (directory / "shots.csv").write_text(OTHER_ROSTER)
-    row = next(r for r in client.get("/api/events").json()["events"]
-               if r["event"] == directory.name)
-    assert row["display_name"] == "Tearing mode (TM)"
-    assert row["event"] == "neoclassical_tearing_mode"
+    listed = [r["event"] for r in client.get("/api/events").json()["events"]]
+    assert "neoclassical_tearing_mode" not in listed
+    refused = client.get("/api/queue?event=neoclassical_tearing_mode")
+    assert refused.status_code == 404
+    assert "reviewed as mhd_n1" in refused.json()["error"]
 
 
 def test_the_queue_is_the_roster_in_order_with_where_to_resume(client, source):
@@ -326,7 +333,10 @@ def test_a_built_shot_opens_with_its_grid_its_rows_and_its_labels(
     assert [row["name"] for row in body["rows"]] == ["R0xV1", "p1"]
     # Opening an older row store applies the current review band's limits.
     assert body["rows"][0]["band"] == list(review_build.BANDS["alfven_eigenmode"])
-    assert body["source"] == {"window": [0, 2000], "intervals": [[100, 300, 1]]}
+    # AE labels without resolution open as spans.
+    assert body["source"] == {
+        "window": [0, 2000], "intervals": [[100, 300, 1]], "iscrowd": [1],
+    }
     assert (body["saved"], body["last_save"], body["state"]) == (
         None, None, "unreviewed"
     )
@@ -476,9 +486,11 @@ def test_a_bad_rows_request_is_refused_with_its_reason(
 def test_confirming_the_source_label_saves_it_as_a_format_table(
     client, tables, source
 ):
-    body = client.post("/api/label", json=_label()).json()
+    body = client.post("/api/label", json=_label(iscrowd=[1])).json()
     assert body["row"]["state"] == "confirmed" and body["row"]["tier"] == "gold"
-    assert body["saved"] == {"window": [0, 2000], "intervals": [[100, 300, 1]]}
+    assert body["saved"] == {
+        "window": [0, 2000], "intervals": [[100, 300, 1]], "iscrowd": [1],
+    }
     assert body["last_save"]["saved_at"] == body["row"]["saved_at"]
     table = pd.read_csv(tables / "alfven_eigenmode/review/labels.csv")
     written = validate_intervals(table)[["shot", "category", "t_start", "t_end"]]
@@ -499,16 +511,31 @@ def test_a_changed_label_is_saved_merged_and_shown_beside_its_source(
     _built(paths)
     client.post("/api/label", json=_label())
     client.post("/api/label", json=_label(shot=178642, intervals=[]))
-    changed = [[150, 250.4, 1], [240, 400, 1]]
+    changed = [[154, 250.4, 1], [240, 405, 1]]
     body = client.post("/api/label", json=_label(intervals=changed)).json()
-    assert body["saved"] == {"window": [0, 2000], "intervals": [[150, 400, 1]]}
+    assert body["saved"] == {"window": [0, 2000], "intervals": [[150, 410, 1]]}
     assert body["row"]["state"] == "changed"
     view = client.get("/api/shot?event=alfven_eigenmode&shot=170815").json()
     assert view["source"]["intervals"] == [[100, 300, 1]]
-    assert view["saved"]["intervals"] == [[150, 400, 1]]
+    assert view["saved"]["intervals"] == [[150, 410, 1]]
     assert view["state"] == "changed"
     history = labels.read_history(tables / "alfven_eigenmode")
     assert [entry["shot"] for entry in history] == [170815, 178642, 170815]
+
+
+def test_short_spans_save_and_reload_as_one_grid_frame(client, paths):
+    _built(paths)
+    response = client.post("/api/label", json=_label(
+        window=[3, 1997], intervals=[[221, 224, 1]], iscrowd=[0], overlap_edit=True,
+    ))
+    assert response.status_code == 200, response.text
+    expected = {
+        "window": [0, 2000], "intervals": [[220, 230, 1]], "iscrowd": [0],
+    }
+    assert response.json()["saved"] == expected
+    assert client.get("/api/shot?event=alfven_eigenmode&shot=170815").json()[
+        "saved"
+    ] == expected
 
 
 def test_saving_a_shot_with_attrs_returns_conflict_and_keeps_both_files(client, tables):
@@ -884,3 +911,37 @@ def test_serve_stays_quiet_when_it_is_under_the_fdp_wrapper(
         monkeypatch.setenv(marker, "set-by-fdp-run")
     serve.main(token="secret")
     assert "fdp" not in capsys.readouterr().out
+
+
+def test_an_unsaved_elm_shot_opens_with_its_onsets_as_individual_annotations(
+    client, tables, paths,
+):
+    directory = tables / "edge_localized_mode"
+    (directory / "format").mkdir(parents=True)
+    (directory / "shots.csv").write_text(OTHER_ROSTER)
+    (directory / "format/edge_localized_mode_format_2026_v1.csv").write_text(SOURCE)
+    markers = [{"label": "ELM onset", "t_ms": [150.4, 190.0, 1500.0]}]
+    _built(paths, event="edge_localized_mode", markers=markers, current=True)
+    url = "/api/shot?event=edge_localized_mode&shot=170815"
+    opened = client.get(url).json()
+    assert opened["markers"] == markers  # still drawn
+    assert opened["state"] == "unreviewed" and opened["onset_candidates"] == 3
+    draft = opened["source"]
+    assert {(tuple(span), flag) for span, flag in zip(
+        draft["intervals"], draft["iscrowd"], strict=True)} == {
+        ((100, 300, 1), 1), ((150, 160, 1), 0), ((190, 200, 1), 0),
+        ((1500, 1510, 1), 0),
+    }
+    # Saving the draft as it is keeps the onsets; the reloaded shot offers the plain
+    # source and the save, and no candidates, because the reviewer has decided.
+    saved = client.post("/api/label", json={
+        "event": "edge_localized_mode", "shot": 170815, "window": draft["window"],
+        "intervals": draft["intervals"], "iscrowd": draft["iscrowd"],
+        "overlap_edit": True,
+    })
+    assert saved.status_code == 200, saved.text
+    reopened = client.get(url).json()
+    assert "onset_candidates" not in reopened
+    assert reopened["source"]["intervals"] == [[100, 300, 1]]
+    assert reopened["saved"] == saved.json()["saved"]
+    assert len(reopened["saved"]["intervals"]) == 4

@@ -71,7 +71,7 @@ def test_exposed_physical_shots_cannot_be_reported_as_held_out():
     assert elm.ADAPTER.training_shots == (
         elm.TRAINING_SHOTS | elm.EARLY_STOPPING_SHOTS | elm.NORMALIZATION_SHOTS
     )
-    provenance = registry.read_card(elm.SLUG)["labelmaker"]["membership"]
+    provenance = registry.read_card(elm.SLUG)["labeler"]["membership"]
     assert provenance["exposed_physical_shots"] == len(elm.ADAPTER.training_shots)
     assert provenance["blind_cohort_normalization_shots"] == [190532, 190646]
 

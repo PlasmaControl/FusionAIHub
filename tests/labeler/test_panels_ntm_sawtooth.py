@@ -167,16 +167,18 @@ def test_sawteeth_draw_ece_and_the_sxr_chords_that_crash(tmp_path, monkeypatch):
     tree.no_fetch(monkeypatch)
     _sawtooth(p)
     built = panels.build("sawtooth_oscillation", SHOT, paths=p)
-    assert [x.title for x in built][:4] == [
-        f"ECE Te, inversion side {side}, ch {a}-{a + 3} (0.05 ms median; "
-        "q=1 mapping unavailable)"
-        for side, a in zip(("A", "A", "B", "B"), (20, 24, 28, 32), strict=True)
+    sides = list(zip(("A", "A", "B", "B"), (20, 24, 28, 32), strict=True))
+    assert [x.title for x in built][:4] == [f"ECE Te, ch {a}-{a + 3}" for _, a in sides]
+    assert [x.metadata["caveat"] for x in built][:4] == [
+        f"Inversion side {side}. 0.05 ms median. q=1 mapping unavailable."
+        for side, _ in sides
     ]
     ece = built[0]
     assert ece.y.shape == (4, 50_000), "every 500 kHz sample, at its own time"
     assert np.nanmax(ece.y) < 1.1, "the spike at 40 ms is gone"
     sxr = built[4]
-    assert sxr.title == "SXR SX90RP1F, the 4 chords with the most crash-like drops"
+    assert sxr.title == "SXR SX90RP1F"
+    assert sxr.metadata["caveat"] == "The 4 chords with the most crash-like drops."
     assert sxr.legend == [f"SX90RP1F{c}" for c in ("04", "06", "21", "26")]
 
 
@@ -188,9 +190,9 @@ def test_ece_rows_identify_fallback_inversion_sides_without_q1_geometry(
     _sawtooth(p, sxr=False)
     rows = saw.ece_panels(SHOT, paths=p)
     assert len(rows) == 4
-    assert all("q=1 mapping unavailable" in row.title for row in rows)
-    assert rows[0].title.startswith("ECE Te, inversion side A")
-    assert rows[-1].title.startswith("ECE Te, inversion side B")
+    assert all("q=1 mapping unavailable" in row.metadata["caveat"] for row in rows)
+    assert rows[0].metadata["caveat"].startswith("Inversion side A.")
+    assert rows[-1].metadata["caveat"].startswith("Inversion side B.")
 
 
 def test_the_te_row_is_thomsons_hottest_core_chords_in_kev(tmp_path, monkeypatch):
@@ -198,7 +200,8 @@ def test_the_te_row_is_thomsons_hottest_core_chords_in_kev(tmp_path, monkeypatch
     tree.no_fetch(monkeypatch)
     _sawtooth(p, ece=False, te=True)
     te, sxr = panels.build("sawtooth_oscillation", SHOT, paths=p)
-    assert te.title == "Te, Thomson core: the 4 hottest chords"
+    assert te.title == "Thomson core Te"
+    assert te.metadata["caveat"] == "The 4 hottest chords."
     assert te.ylabel == "keV"
     assert te.legend == ["chord 40", "chord 41", "chord 42", "chord 43"]
     assert te.y[1, 0] == pytest.approx(3.0 * np.exp(-0.04)) and te.y.shape == (4, 10)
@@ -224,7 +227,8 @@ def test_the_te_chords_are_the_windows_hottest_and_clipped_only_above(
     [te] = panels.build("sawtooth_oscillation", SHOT, paths=p)
     # The window's, not the record's (20's), a fixed 40-43, or a sparse chord's.
     assert te.legend == [f"chord {c}" for c in (37, 38, 39, 40)]
-    assert te.title.endswith(saw.TE_CLIPPED)
+    assert te.title == "Thomson core Te"
+    assert saw.TE_CLIPPED in te.metadata["caveat"]
     assert te.y[1, 1] == np.nanmax(te.y[1]) < 3.3, "the bad fit sits on the edge"
     assert te.y[1, 0] < 0.01, "a cooler Te is not raised to the window's range"
     [view] = panels.build("sawtooth_oscillation", SHOT, paths=p, t_range=(0, 45))
@@ -309,7 +313,7 @@ def test_a_shot_without_ece_or_sxr_draws_the_other(tmp_path, monkeypatch):
     _sawtooth(other, sxr=False)
     built = panels.build("sawtooth_oscillation", SHOT, paths=other)
     assert len(built) == 5
-    assert built[-1].title.startswith("ECE inversion side comparison")
+    assert built[-1].title == "ECE side comparison"
     none = tree.paths(tmp_path / "none")
     tree.write(none.corpus_file(SHOT), {"ip": ([0.0, 1.0], [[1.0, 1.0]])})
     with pytest.raises(NoDataError, match="no panels"):

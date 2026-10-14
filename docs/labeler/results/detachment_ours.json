@@ -881,7 +881,7 @@
  "fit_excluded_split": "test",
  "normalization": "mean and standard deviation fitted on training windows within each shot-held-out fold",
  "unscored_windows": 0,
- "eligibility": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/ours/eligibility.json",
+ "eligibility": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/ours/eligibility.json",
  "cv_shots": {
   "n_bins": 706,
   "n_shots": 22,
@@ -1234,7 +1234,7 @@
  },
  "dataset_fingerprint": "e1d84e1e560ba36ca72c4400970d0a6d6b622e2feb7eabf263944b32b0573fd8",
  "label_source": {
-  "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/labels_bins.csv.gz",
+  "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/labels_bins.csv.gz",
   "sha256": "a683b477dca02a2a2a1ce9c484b59280a2c59d71b0b9395e8b9891fcb34f981a"
  },
  "bootstrap_comparison": "model and majority use identical shot resamples with seed 1 within each population",

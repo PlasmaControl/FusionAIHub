@@ -16,7 +16,7 @@ metrics:
 model-index:
   - name: d3d-tearing-time-to-event-dsm
     results: []
-labelmaker:
+labeler:
   status: implemented
   slug: d3d_tearing_time_to_event_dsm
   card_id: plasmacontrol/d3d-tearing-time-to-event-dsm
@@ -155,8 +155,13 @@ labelmaker:
   - inputs are sampled on labeler's 25 ms grid as 50 ms window means, where upstream used the real-time
     data dictionary's 20 ms samples; the model has no temporal structure, so this changes which instants are
     labelled, not how
-  - the rotation profile is fed in the archive column's units (kHz, see features/namespace.py) and normalised
-    under upstream's `rotation_kms` constants, exactly as get_survival_from_shot.py does with the same column
+  - the rotation profile is ZIPFIT TROTFIT in krad/s (the archive column, whose metadata says kHz, see
+    features/namespace.py) normalised under upstream's `rotation_kms` constants, but upstream trained on
+    `cer_rot_csaps_1d` in km/s, about 1.7 to 2.2 times larger at the core (about R), so this is a unit and
+    definition mismatch and not what get_survival_from_shot.py does with that column; `ech_pwr_total` also
+    differs (2.62 MW upstream against 1.58 MW in labeler on shot 195040 at 3 s); both are unpriced, and
+    rescaling both changes the legacy 500 ms AUROC from 0.721 to 0.710-0.720 and leaves no bin at risk >= 0.3
+    (2026-10-14 DSM investigation, $LABELER_ROOT/scratch/claude-3ac94559/phase4/dsm_zero.md)
 ---
 
 # plasmacontrol/d3d-tearing-time-to-event-dsm
@@ -224,7 +229,11 @@ have (below).
 - Upstream's own evaluation is per **shot**, not per row (`metrics_helpers.py`):
   one verdict from the last label in the trace, a warning time from the final
   0-to-1 transition, a count of crossings that fail to persist 400 ms, FPR over
-  quiet shots and FNR over tearing shots, at a default threshold of 0.7. The
+  quiet shots and FNR over tearing shots, at a default threshold of 0.7. That
+  0.7 (survival <= 0.7, risk >= 0.3) is a keyword default of `fnr_fpr_calculator`
+  (`metrics_helpers.py:85`), not an operating point for this checkpoint: no
+  upstream run used it as one, and the 500 ms risk caps at 0.323 (on the benchmark's
+  legacy bins it reaches 0.279), so F1 at risk 0.3 is 0 by construction. The
   per-row F1 numbers below are therefore not comparable to any upstream figure.
 - This checkpoint is under-trained (Training details), but training it to
   convergence did not help: `d3d_tearing_time_to_event_dsm_continued` continues
@@ -234,7 +243,7 @@ have (below).
   (on held-out shots alone, 0.839 -> 0.692, 0.817 -> 0.672, 0.801 -> 0.688: the
   same verdict), with raw ECE on all pre-onset rows worse at every horizon. This model stays the
   default; the comparison is in that card and in
-  `outputs/labelmaker/presentation_continued/`.
+  `outputs/labeler/presentation_continued/`.
 - Calibration depends on the reported row set. The earlier full-pool 1 s
   figures were ECE 0.022 on all aligned pre-onset rows (5.5% positive), versus
   0.448 on onset-only shots (54% positive). The study below estimates the
@@ -416,7 +425,7 @@ hurt. What it does settle is that the pool numbers were not being carried by
 memorisation. Whether an honest by-shot retrain scores differently is Task 4b,
 not something these rows answer.
 
-Measured once outside `validate` (2026-09-05, `outputs/labelmaker/dsm_onset_quality.py`
+Measured once outside `validate` (2026-09-05, `outputs/labeler/dsm_onset_quality.py`
 in the FusionAIHub checkout): on the 486 aligned shots of the 500-shot pool,
 86 of which have an onset in their archived window, taking rows before the
 onset only (28,290 rows) and truth "onset within the next horizon":
@@ -460,7 +469,7 @@ onset while the archived countdown falls below the band. On 186545 the
 band widens markedly near onset, reaching much shorter lower-tail times
 while the median remains several thousand ms. Neither panel is evidence
 of epistemic uncertainty or a new held-out evaluation. The figures and full
-per-shot scores are in `outputs/labelmaker/analysis/{187199,186545}/` in the
+per-shot scores are in `outputs/labeler/analysis/{187199,186545}/` in the
 FusionAIHub checkout.
 
 ### Per shot, upstream's way
@@ -503,7 +512,7 @@ horizon integrals are in `$LABELER_ROOT/validation/d3d_tearing_time_to_event_dsm
 each of them under `labels.<name>.subsets.{all,held_out,in_training}`. The two
 tables above are the `all` subset; "Held out against in training" gives the
 same numbers split, and the held-out figures are in
-`outputs/labelmaker/presentation/held_out/`.
+`outputs/labeler/presentation/held_out/`.
 
 ## Technical specifications
 

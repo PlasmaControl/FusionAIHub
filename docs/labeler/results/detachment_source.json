@@ -1,0 +1,205 @@
+{
+ "schema": "detachment_review_source",
+ "made_at": "2026-10-14T05:05:28+00:00",
+ "git_sha": "7fab38d3",
+ "categories": {
+  "0": "unmarked (not assessed)",
+  "1": "attached",
+  "2": "detached",
+  "3": "marfe (candidate)",
+  "4": "uncertain"
+ },
+ "bin_ms": 50.0,
+ "detach_vote_v1": {
+  "rule": {
+   "input": "round-4 vote rows: the geometry-gated TangTV state with Afrac as the second vote (README of data/events/detachment)",
+   "states": "tiers certain, tangtv_only keep their state (1 or 2)",
+   "marfe": "tier candidate_marfe is 3, a candidate, never a MARFE state",
+   "uncertain": "every other tier is 4",
+   "unmarked": "time the vote did not assess is 0"
+  },
+  "coverage": {
+   "bins": 1780,
+   "shots": 32,
+   "attached": {
+    "bins": 454,
+    "shots": 19
+   },
+   "detached": {
+    "bins": 367,
+    "shots": 12
+   },
+   "marfe (candidate)": {
+    "bins": 70,
+    "shots": 4
+   },
+   "uncertain": {
+    "bins": 889,
+    "shots": 28
+   }
+  },
+  "bins_by_tier": {
+   "tangtv_only": 683,
+   "lower_shelf_window": 325,
+   "insufficient_support": 226,
+   "tangtv_only_lmode": 187,
+   "certain": 138,
+   "no_vote": 122,
+   "candidate_marfe": 70,
+   "conflict": 29
+  }
+ },
+ "detach_te_v1": {
+  "rule": {
+   "te": "processed divertor Thomson \\ELECTRONS::TSTE_DIV, the chords 1.5-5 cm above the shelf (Z = -1.25 m), a sample kept while its chord lies at 1.000 < psiN <= 1.05 and Te is 0.1-50 eV; a bin's Te is the median of its kept samples",
+   "states": "Te <= 5 eV detached (2), >= 10 eV attached (1), between uncertain (4)",
+   "flux": "EFIT02 where a slice lies within 40 ms, else EFIT01",
+   "unmarked": "bins with no kept sample are 0",
+   "source": "scripts/labeler/detach_te_check.py (round-4 check)"
+  },
+  "coverage": {
+   "bins": 7007,
+   "shots": 195,
+   "attached": {
+    "bins": 4622,
+    "shots": 185
+   },
+   "detached": {
+    "bins": 1403,
+    "shots": 153
+   },
+   "marfe (candidate)": {
+    "bins": 0,
+    "shots": 0
+   },
+   "uncertain": {
+    "bins": 982,
+    "shots": 129
+   }
+  },
+  "shots_requested": 500,
+  "skipped_counts": {
+   "no_dts": 285,
+   "strike_off_chords": 20
+  },
+  "bins_by_efit": {
+   "EFIT02": 4697,
+   "EFIT01": 2310
+  },
+  "te_ev_quantiles_10_50_90": [
+   2.092279624938965,
+   15.111694812774658,
+   31.237395095825196
+  ]
+ },
+ "detach_vote_v2": {
+  "rule": {
+   "vote": "detach_vote v1 wherever it assessed the bin, in any category",
+   "te": "detach_te v1 on the bins the vote did not assess"
+  },
+  "coverage": {
+   "bins": 8057,
+   "shots": 206,
+   "attached": {
+    "bins": 4686,
+    "shots": 187
+   },
+   "detached": {
+    "bins": 1525,
+    "shots": 153
+   },
+   "marfe (candidate)": {
+    "bins": 70,
+    "shots": 4
+   },
+   "uncertain": {
+    "bins": 1776,
+    "shots": 140
+   }
+  },
+  "bins_from": {
+   "detach_te": 6277,
+   "detach_vote": 1780
+  }
+ },
+ "agreement_vote_vs_te": {
+  "population": "bins the vote assessed (any category) that carry a Te",
+  "bins": 730,
+  "shots": 21,
+  "vote_by_te": {
+   "attached": {
+    "attached": 294,
+    "uncertain": 38,
+    "detached": 18
+   },
+   "detached": {
+    "detached": 141,
+    "uncertain": 16,
+    "attached": 10
+   },
+   "marfe (candidate)": {
+    "detached": 7
+   },
+   "uncertain": {
+    "attached": 86,
+    "detached": 79,
+    "uncertain": 41
+   }
+  },
+  "vote_uncertain_with_te_state": {
+   "bins": 165,
+   "by_tier": {
+    "conflict": {
+     "detached": 6,
+     "attached": 2,
+     "uncertain": 2
+    },
+    "insufficient_support": {
+     "attached": 36,
+     "detached": 15,
+     "uncertain": 5
+    },
+    "no_vote": {
+     "attached": 39,
+     "uncertain": 15,
+     "detached": 8
+    },
+    "tangtv_only_lmode": {
+     "detached": 50,
+     "uncertain": 19,
+     "attached": 9
+    }
+   }
+  },
+  "states": {
+   "bins": 463,
+   "shots": 20,
+   "agree": 435,
+   "agreement": 0.9395248380129589,
+   "kappa": 0.8642683641846051,
+   "by_tier": {
+    "certain": {
+     "bins": 88,
+     "shots": 5,
+     "agree": 84,
+     "agreement": 0.9545454545454546,
+     "kappa": 0.9085239085239086
+    },
+    "tangtv_only": {
+     "bins": 375,
+     "shots": 19,
+     "agree": 351,
+     "agreement": 0.936,
+     "kappa": 0.8432711061577043
+    }
+   }
+  }
+ },
+ "pointer": {
+  "table": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/suggestions/detach_vote/v2/detachment_suggest_detach_vote_v2.csv",
+  "method": "detach_vote",
+  "version": "v2",
+  "set_at": "2026-10-14T05:05:29+00:00",
+  "set_by": "nc1514"
+ }
+}

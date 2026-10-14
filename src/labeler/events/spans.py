@@ -58,11 +58,12 @@ the collapses (`collapses_ms`), and why a diagnostic did not run (`not_run`,
 only when one did not). Inputs come from the corpus, else the raw cache;
 nothing is fetched.
 
-    pixi run -e labelmaker python -m labeler.events.spans --event edge_localized_mode
+    pixi run -e labeler python -m labeler.events.spans --event edge_localized_mode
 
 runs over the frozen cohort's non-blind shots in queue order (`--limit N` takes
 the first N, `--shots` names them; `--windows population` takes the population
-instead) and merges into the method's table of `--version` (`VERSION` unless
+instead, `--windows silver` the population and the silver list's other shots, each
+windowed by its own Ip) and merges into the method's table of `--version` (`VERSION` unless
 named), so a table drafted under changed rules goes beside the one reviewers
 opened: v1's tables predate the dead-stretch and ramp-up rules, v2's have them.
 A table whose meta records other rules than the method's now is not run into
@@ -92,8 +93,8 @@ from ..scoring.frames import Assessment
 from . import coverage, equilibrium, heuristics, rwm, suggestions, transients
 from .catalog.cohort import read_cohort
 from .catalog.states import ABSENT, NOT_OBSERVABLE, PRESENT, UNCERTAIN
-from .interval_tables import category_labels
 from .catalog.window import FLATTOP_FRACTION, FLATTOP_MEAN_MS, _centred_mean
+from .interval_tables import category_labels
 from .review import agreement, labels
 from .verify import NoDataError, corpus_signal
 
@@ -550,8 +551,11 @@ def detect_window(shot: int, paths: Paths, window: Window | None = None) -> Foun
 
 @dataclass(frozen=True)
 class Method:
-    """An editor's method: `detect(shot, paths, window)`, its inputs, and the
-    constants its rule uses, as the table's meta records them."""
+    """An editor's method: `detect(shot, paths, window)`, its inputs (signal
+    names, which `equilibrium.main` prefetches), and the constants its rule
+    uses, as the table's meta records them. `summary(per_shot, paths)`, when
+    set, gives keys `run` adds to the meta from the whole table's per-shot
+    records."""
 
     event: str
     name: str
@@ -560,6 +564,7 @@ class Method:
     rule: dict = field(default_factory=dict)
     not_observable: int = NOT_OBSERVABLE
     unclassified: int = ABSENT
+    summary: Callable[[dict, Paths], dict] | None = None
 
 
 METHODS = {
@@ -617,10 +622,16 @@ METHODS = {
             {**equilibrium.RULE, "threshold": equilibrium.BETAP_THRESHOLD},
             unclassified=UNCERTAIN,
         ),
+        # Round five: the curated onsets with measured ends over the screen
+        # (`rwm.detect`, `rwm_candidates`, whose v1 table stays as drafted);
+        # v3 gates the screen on the mhd_modes v4 cache's n = 1 tracks (named
+        # in the rule and the meta's `screen_gate`, not a signal input).
         Method(
-            "resistive_wall_mode", "rwm_candidates", rwm.detect,
-            ("n1rms", "betan", "li", "ip"), rwm.RULE,
+            "resistive_wall_mode", "rwm_onsets", rwm.detect_onsets,
+            ("n1rms", "n2rms", "betan", "li", "ip"),
+            rwm.ONSET_RULE,
             unclassified=rwm.UNASSESSED,
+            summary=rwm.screen_gate_summary,
         ),
     )
 }
@@ -653,18 +664,40 @@ def population(paths: Paths) -> pd.DataFrame:
 
 
 def targets(event: str, paths: Paths, windows: str) -> pd.DataFrame:
-    """The review queue or population, plus RWM's curated reference shots.
+    """The review queue or population, plus RWM's curated reference shots and,
+    for `silver`, the silver list's other shots (`silver_windows`).
 
     Curated shots outside the corpus need display windows of their own. Blind
     shots remain excluded even if a database happens to name one.
     """
     frame = queue(paths) if windows == "cohort" else population(paths)
+    blind = set(read_cohort(cohort_path(paths)).query("blind").shot)
     if event == "resistive_wall_mode":
         extra = rwm.database_windows(paths)
-        blind = set(read_cohort(cohort_path(paths)).query("blind").shot)
         extra = extra[~extra.shot.isin(set(frame.shot) | blind)]
         frame = pd.concat([frame, extra], ignore_index=True)
+    if windows == "silver":
+        extra = silver_windows(paths, set(frame.shot) | blind)
+        frame = pd.concat([frame, extra], ignore_index=True)
     return frame
+
+
+def silver_windows(paths: Paths, have) -> pd.DataFrame:
+    """The silver list's shots not in `have`, each windowed by its own Ip as the
+    catalog's rule 4 windows a population shot (`frames.targets.window_for`); a
+    shot whose Ip cannot give one is left without a window."""
+    from ..frames.targets import window_for  # it imports this module
+    from .review.silver import read_silver
+
+    silver = read_silver(paths.label_tables)
+    rows = []
+    for shot in sorted(set(silver.shot) - set(have)):
+        try:
+            (lo, hi), _ = window_for(int(shot), paths, None, catalog={})
+        except ValueError:
+            lo = hi = np.nan
+        rows.append([int(shot), lo, hi])
+    return pd.DataFrame(rows, columns=["shot", "window_start_ms", "window_end_ms"])
 
 
 def suggest(method: Method, shot: int, window: Window, paths: Paths):
@@ -756,7 +789,8 @@ def run(
     scored: dict | None = None,
 ) -> dict:
     """Suggest `targets`' shots and merge them into the method's `version` table;
-    `scored` (`gold`) replaces the meta's gold score, which is otherwise kept.
+    `scored` (`gold`) replaces the meta's gold score, which is otherwise kept,
+    and `method.summary` adds its keys from the merged per-shot records.
     A table drafted under other rules is refused before anything runs
     (`check_rule`)."""
     path = suggestions.table_path(paths, method.event, method.name, version)
@@ -802,6 +836,8 @@ def run(
             sorted({**kept_info, **per_shot}.items(), key=lambda kv: int(kv[0]))
         ),
     }
+    if method.summary is not None:
+        meta.update(method.summary(meta["per_shot"], paths))
     scored = old_meta.get("gold") if scored is None else scored
     if scored is not None:
         meta["gold"] = scored
@@ -825,7 +861,9 @@ def _version(text: str) -> str:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--event", required=True, choices=sorted(METHODS))
-    parser.add_argument("--windows", choices=("cohort", "population"), default="cohort")
+    parser.add_argument(
+        "--windows", choices=("cohort", "population", "silver"), default="cohort"
+    )
     parser.add_argument("--shots", type=int, nargs="+", help="only these shots")
     parser.add_argument("--limit", type=int, default=0, help="only the first N")
     parser.add_argument("--force", action="store_true", help="rerun shots done")

@@ -7,8 +7,8 @@
 #SBATCH --cpus-per-task=3
 #SBATCH --mem=20G
 #SBATCH --time=00:45:00
-#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
-#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
+#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labeler/runs/slurm/%j.out
+#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labeler/runs/slurm/%j.out
 
 # Task I6b: labeler over the 500 recommender_v1 shots -- features, then infer for the four
 # shipped models (`shot_design labels join` wants the LABELS; the features stage alone writes none).
@@ -43,7 +43,7 @@
 # ------------------------------------------------------------------ sizing (measured 2026-09-07)
 #
 # Login node (stellar-vis2), `/usr/bin/time -v` plus a 0.5 s process-tree RSS sampler, over
-# `pixi run -e labelmaker fdp run python -m labeler.run all --models <the four> ...`, ten shots
+# `pixi run -e labeler fdp run python -m labeler.run all --models <the four> ...`, ten shots
 # spread across the list (every 50th), each set of ten never run before:
 #
 #   workers   wall      s/shot   CPU    max RSS (main)   tree peak RSS   features   infer (40 pairs)
@@ -80,8 +80,8 @@
 
 set -euo pipefail
 REPO=/scratch/gpfs/nc1514/FusionAIHub
-ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")"
-ENV="$REPO/.pixi/envs/labelmaker"
+ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labeler")"
+ENV="$REPO/.pixi/envs/labeler"
 MODELS="d3d_tearing_onset_cnn1d d3d_tearing_time_to_event_dsm d3d_elm_time_to_event_dsm d3d_ae_activity_seldnet"
 
 # The activation variable the fdp feature needs (GLIBCXX_3.4.29 for toksearch's pyxrootd), set

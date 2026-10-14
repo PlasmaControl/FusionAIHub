@@ -11,7 +11,7 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 UV=${UV:-/home/nc1514/.local/bin/uv}
-ROOT=$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")
+ROOT=$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labeler")
 VENV=${VENV:-$ROOT/envs/phase3}
 REQ="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/phase3-requirements.txt"
 

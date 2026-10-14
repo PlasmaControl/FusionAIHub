@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import warnings
 from collections.abc import Callable, Iterable
+from dataclasses import replace
 from fractions import Fraction
 
 import numpy as np
@@ -32,8 +33,27 @@ Z_DB = (-3.0, 27.0)
 #: 3.6 V against 0.02 V ELMs) would flatten everything else in the row.
 ROBUST_PERCENTILES = (0.5, 99.5)
 ROBUST_MARGIN = 1.0
-#: What a row's title says when `robust_clip` moved a sample of it.
-CLIPPED = ", clipped to its plasma range"
+#: What a row's caveat says when `robust_clip` moved a sample of it.
+CLIPPED = "Clipped to its plasma range"
+#: The longest a row's title may be: signal and diagnostic only. What qualifies
+#: it (a clip, a fallback, a smoothing, a channel list, a band) goes in the row's
+#: caveat (`with_caveat`), which the page shows as its tooltip.
+TITLE_MAX = 24
+
+
+def with_caveat(panel: Panel, *notes: str) -> Panel:
+    """`panel` with `notes` added to its `metadata["caveat"]`, the rest kept.
+
+    The notes join the panel's own caveat, if it has one, with spaces; empty
+    notes are left out, so `with_caveat(p, "")` changes nothing.
+    """
+    notes = [n.strip() for n in notes if n and n.strip()]
+    if not notes:
+        return panel
+    metadata = dict(panel.metadata or {})
+    have = [metadata["caveat"]] if metadata.get("caveat") else []
+    metadata["caveat"] = " ".join(have + [n if n.endswith(".") else n + "." for n in notes])
+    return replace(panel, metadata=metadata)
 
 
 def optional(what: str, shot: int, build: Callable[[], Iterable[Panel]]) -> list:

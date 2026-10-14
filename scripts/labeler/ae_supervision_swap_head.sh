@@ -8,8 +8,8 @@ GPU=${1:?GPU index required}
 shift
 REPO=${REPO:-/scratch/gpfs/nc1514/FusionAIHub}
 # Short on purpose: an AF_UNIX socket path must stay under 108 bytes.
-export TMPDIR=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/ae-sw
-export LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker
+export TMPDIR=/scratch/gpfs/EKOLEMEN/nc1514/labeler/scratch/ae-sw
+export LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labeler
 export LABELER_LABEL_TABLES=/scratch/gpfs/nc1514/FusionAIHub/data/events
 export LABELER_NO_FETCH=1 PYTHONPATH="$REPO/src" OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
 OUT="$LABELER_ROOT/round4/aeswap"

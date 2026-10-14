@@ -28,7 +28,7 @@ Three-state criterion (the paper decision): attached AND detached bins of the ti
 on at least 3 shots (the same shots), at least one of them in the cohort
 (`train`, `val` or `test` of `data/events/catalog/cohort.csv`).
 
-    pixi run --frozen -e labelmaker python scripts/labeler/detach_prad_sensitivity.py
+    pixi run --frozen -e labeler python scripts/labeler/detach_prad_sensitivity.py
 """
 
 from __future__ import annotations

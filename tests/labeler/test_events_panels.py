@@ -100,9 +100,12 @@ def test_an_unregistered_event_falls_back_to_the_generic_builder(monkeypatch):
 def test_the_registry_covers_the_events_with_bespoke_panels():
     assert set(registry.BUILDERS) == {
         "confinement",
+        "detachment",
         "edge_localized_mode",
         "fishbone",
         "high_confinement_mode",
+        "mhd_n1",
+        "mhd_n1.m1",
         "minimum_safety_factor",
         "neoclassical_tearing_mode",
         "poloidal_beta",
@@ -216,13 +219,13 @@ def test_sawtooth_draws_four_rows_of_four_adjacent_ece_channels(monkeypatch):
     built = registry.build("sawtooth_oscillation", 192238, t_range=window)
 
     assert [panel.title for panel in built] == [
-        "ECE Te, inversion side A, ch 20-23 (0.05 ms median; q=1 mapping unavailable)",
-        "ECE Te, inversion side A, ch 24-27 (0.05 ms median; q=1 mapping unavailable)",
-        "ECE Te, inversion side B, ch 28-31 (0.05 ms median; q=1 mapping unavailable)",
-        "ECE Te, inversion side B, ch 32-35 (0.05 ms median; q=1 mapping unavailable)",
-        "Te, Thomson core: the 4 hottest chords",
-        "SXR SX90RM1F, the 4 chords with the most crash-like drops",
-        "ECE inversion side comparison (q=1 mapping unavailable)",
+        "ECE Te, ch 20-23",
+        "ECE Te, ch 24-27",
+        "ECE Te, ch 28-31",
+        "ECE Te, ch 32-35",
+        "Thomson core Te",
+        "SXR SX90RM1F",
+        "ECE side comparison",
     ]
     # Adjacency is the point - the crash shows as inner channels dropping
     # while outer ones rise, which only reads if the four overplotted

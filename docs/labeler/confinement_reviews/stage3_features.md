@@ -14,7 +14,7 @@ I inspected `src/labeler/confinement/data.py`, data tests, the prospective train
 and inference implementation and tests, `features.json`, `features/all.csv`,
 `extraction.log`, the added diagnostic-eligibility documentation, and
 `feature_support.csv` under
-`/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/confinement/v1`.
+`/scratch/gpfs/EKOLEMEN/nc1514/labeler/confinement/v1`.
 
 Independent checks confirm the generated feature hash, extractor hash, and
 four input-artifact hashes. I recomputed eligibility, diagnostic patterns,
@@ -31,8 +31,8 @@ OMP_NUM_THREADS=4 pixi run --frozen -e shot-design-cpu python -m pytest \
   tests/labeler/test_confinement_train.py -q -W error
 ```
 
-returned **17 passed**. The six data tests also passed in `labelmaker`.
-`labelmaker` lacks scikit-learn and therefore cannot collect the training
+returned **17 passed**. The six data tests also passed in `labeler`.
+`labeler` lacks scikit-learn and therefore cannot collect the training
 tests; use the existing `shot-design-cpu` environment for that verification.
 No dependency installation was needed.
 

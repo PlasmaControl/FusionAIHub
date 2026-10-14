@@ -18,7 +18,7 @@ from labeler.tearing import rule, scoring
 
 REPO = Path(__file__).resolve().parents[2]
 TM = (
-    Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker"))
+    Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
     / "round4/tm"
 )
 LOCAL = REPO / "data/events/neoclassical_tearing_mode/benchmark"
@@ -241,7 +241,7 @@ def main():
     assert doc["source_sha256"] == sha(REPO / "scripts/labeler/tm_write_doc.py")
     assert doc["document_sha256"] == sha(REPO / doc["document"])
     assert doc["benchmark_sha256"] == sha(LOCAL / "tm_benchmark.json")
-    readme_path = REPO / "data/events/neoclassical_tearing_mode/README.md"
+    readme_path = REPO / "docs/labeler/events/neoclassical_tearing_mode/README.md"
     readme = readme_path.read_text()
     assert doc["readme_sha256"] == sha(readme_path)
     for span in ("veto", "paired"):

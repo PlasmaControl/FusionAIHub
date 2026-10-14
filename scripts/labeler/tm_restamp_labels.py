@@ -14,7 +14,7 @@ sha256 into the named records, keeping the old one beside it:
 * the per-bin targets and masks (`scoring.label_bins`, both modes) of every
   development shot are identical.
 
-    PYTHONPATH=$PWD/src pixi run --frozen --no-install -e labelmaker python \\
+    PYTHONPATH=$PWD/src pixi run --frozen --no-install -e labeler python \\
         scripts/labeler/tm_restamp_labels.py tm_ours_magnetics_cv ...
 
 With no record named it only checks the change and prints the number of rows it
@@ -39,7 +39,7 @@ from labeler.tearing import scoring
 
 REPO = Path(__file__).resolve().parents[2]
 TM = (
-    Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker"))
+    Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
     / "round4/tm"
 )
 LABELS = (

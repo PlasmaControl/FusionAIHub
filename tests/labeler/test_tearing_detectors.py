@@ -14,7 +14,8 @@ from labeler.models.runners import keras_h5
 from labeler.tearing import detectors
 
 
-def test_published_dsm_survival_alarm_is_converted_to_risk():
+def test_dsm_helper_default_survival_alarm_is_converted_to_risk():
+    # survival <= 0.7 is upstream's keyword default, not a published operating point
     assert detectors.DSM_SURVIVAL_THRESHOLD == pytest.approx(0.7)
     assert detectors.DSM_THRESHOLD == pytest.approx(0.3)
 

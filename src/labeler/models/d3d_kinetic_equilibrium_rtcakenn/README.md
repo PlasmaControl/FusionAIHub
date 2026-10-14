@@ -16,7 +16,7 @@ metrics:
 model-index:
   - name: d3d-kinetic-equilibrium-rtcakenn
     results: []
-labelmaker:
+labeler:
   status: scaffold
   slug: d3d_kinetic_equilibrium_rtcakenn
   card_id: plasmacontrol/d3d-kinetic-equilibrium-rtcakenn

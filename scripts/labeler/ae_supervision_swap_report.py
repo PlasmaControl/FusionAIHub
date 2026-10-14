@@ -1812,13 +1812,13 @@ def readme_block(record: dict) -> tuple[list[str], str]:
         "`$LABELER_ROOT/round4/aeswap/`: "
         + "; ".join(checkpoints)
         + ". Both references, all 60 shots, the input-free clock and paired "
-        "differences: [ae_supervision_swap.md](../../../docs/labeler/ae_supervision_swap.md)."
+        "differences: [ae_supervision_swap.md](../../ae_supervision_swap.md)."
     )
     return lines, note
 
 
 def write_readme(record: dict, repo: Path) -> None:
-    readme = repo / "data/events/alfven_eigenmode/README.md"
+    readme = repo / "docs/labeler/events/alfven_eigenmode/README.md"
     content = readme.read_text()
     lines, note = readme_block(record)
     for marker in (
@@ -1967,7 +1967,7 @@ def render_report(record: dict, manifest: dict, out: Path, repo: Path) -> None:
             "bash scripts/labeler/ae_supervision_swap_head.sh 0 legacy:2",
             "# float32 re-inference of every finished run (GPU, CUDA interpreter)",
             "python scripts/labeler/ae_supervision_swap.py infer-fp32",
-            "# CPU, pixi labelmaker environment",
+            "# CPU, pixi labeler environment",
             "python scripts/labeler/ae_supervision_swap.py verify",
             "python scripts/labeler/ae_supervision_swap.py audit-convergence",
             "python scripts/labeler/ae_supervision_swap.py evaluate",

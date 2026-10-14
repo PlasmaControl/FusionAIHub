@@ -1,5 +1,10 @@
 #!/usr/bin/env python
-"""Regenerate common-schema format/ tables from untouched manifest raw/ files."""
+"""Regenerate common-schema format/ tables from untouched manifest raw/ files.
+
+Every table the manifest lists: configs/labeler/events.yaml's format datasets
+(through `labeler.events.source_formatters`), or a legacy root's tables.yaml.
+`python -m labeler.events.source_formatters <category>` formats one category.
+"""
 from __future__ import annotations
 
 import argparse
@@ -10,6 +15,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from labeler.config import Paths
 from labeler.events.databases import (
     FORMAT_COLUMNS,
     FORMAT_SCHEMA_VERSION,
@@ -93,7 +99,7 @@ def convert(spec: TableSpec, root: Path) -> Path:
             "sha256": hashlib.sha256(raw_path.read_bytes()).hexdigest(),
         },
         # Stable provenance identifier: reproduces the committed metadata bytes.
-        "made_by": f"scripts/labelmaker/labels_format.py:{spec.converter}",
+        "made_by": f"scripts/labeler/labels_format.py:{spec.converter}",
         "made_at": spec.made_at,
     })
     return out
@@ -101,22 +107,27 @@ def convert(spec: TableSpec, root: Path) -> Path:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[2]
-                        / "data/events", help="Root containing tables.yaml")
+    paths = Paths.from_env()
+    parser.add_argument("--root", type=Path, default=paths.label_tables,
+                        help="the label tables (a legacy root holds its tables.yaml)")
+    parser.add_argument("--manifest", type=Path, default=paths.events_manifest,
+                        help="the events.yaml to read (default: configs/labeler)")
     parser.add_argument("--table", action="append", help="Convert only this stem")
     args = parser.parse_args(argv)
-    specs = load_manifest(args.root)
+    specs = load_manifest(args.root, args.manifest)
     if args.table:
         unknown = set(args.table) - {s.stem for s in specs}
         if unknown:
             parser.error(f"unknown table(s): {sorted(unknown)}")
         specs = tuple(s for s in specs if s.stem in args.table)
+    legacy = (args.root / "tables.yaml").exists()
     for spec in specs:
-        if (args.root / "events.yaml").exists():
-            from labeler.events.source_formatters import convert_category
-            print(convert_category(spec.dir, args.root))
-        else:
+        if legacy:
             print(convert(spec, args.root))
+        else:
+            from labeler.events.source_formatters import convert_category
+            print(convert_category(spec.dir, args.root, manifest=args.manifest,
+                                   dataset=spec.format_stem))
     return 0
 
 

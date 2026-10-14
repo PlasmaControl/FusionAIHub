@@ -16,7 +16,7 @@ metrics:
 model-index:
   - name: d3d-ech-beam-fate-mlp
     results: []
-labelmaker:
+labeler:
   status: scaffold
   slug: d3d_ech_beam_fate_mlp
   card_id: plasmacontrol/d3d-ech-beam-fate-mlp

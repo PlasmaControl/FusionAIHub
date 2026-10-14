@@ -62,7 +62,7 @@ from labeler.ae.supervision import (
 from labeler.events.catalog.states import ABSENT, PRESENT
 from labeler.events.review.labels import read_labels
 
-ROOT = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker"))
+ROOT = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
 TABLES = Path(
     os.environ.get(
         "LABELER_LABEL_TABLES", "/scratch/gpfs/nc1514/FusionAIHub/data/events"

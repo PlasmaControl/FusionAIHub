@@ -59,6 +59,7 @@ def test_overlapping_annotations_survive_csv_and_history_round_trip(tmp_path):
 def test_an_individual_eraser_leaves_the_overlapping_crowd_intact():
     label = labels.normalise(
         [0, 100], [[10, 80, 1], [30, 50, 1], [35, 40, 0]], iscrowd=[1, 0, 0],
+        grid_ms=1,
     )
     assert label.intervals == ((10, 80, 1), (30, 35, 1), (40, 50, 1))
     assert label.iscrowd == (1, 0, 0)
@@ -81,8 +82,8 @@ def test_an_unscoped_eraser_cuts_both_overlapping_annotation_lanes():
     }
     expected = {
         "window": [0, 100],
-        "intervals": [[10, 35, 1], [30, 35, 1], [40, 50, 1], [40, 80, 1]],
-        "iscrowd": [1, 0, 0, 1],
+        "intervals": [[10, 30, 1], [40, 50, 1], [40, 80, 1]],
+        "iscrowd": [1, 0, 1],
     }
     assert labels.normalise(
         case["window"], case["intervals"], iscrowd=case["iscrowd"],
@@ -174,6 +175,7 @@ def test_crowd_flags_follow_painting_and_zero_length_removal():
     label = labels.normalise(
         [0, 100], [[10, 80, 1], [30, 50, 2], [60, 70, 0], [90, 90.2, 1]],
         iscrowd=[1, 0, None, 0],
+        grid_ms=1,
     )
     assert label.intervals == (
         (10, 60, 1), (30, 50, 2), (70, 80, 1),

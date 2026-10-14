@@ -21,7 +21,7 @@ remove real 3/2 modes; `tm_rule_diagnostics.py` reports how many seeds it remove
 Only development shots from the frozen reference list of `calibration_dev_fix1.json`
 are read; no blind test shot is opened.
 
-    PYTHONPATH=$PWD/src LABELER_NO_FETCH=1 pixi run --frozen --no-install -e labelmaker \\
+    PYTHONPATH=$PWD/src LABELER_NO_FETCH=1 pixi run --frozen --no-install -e labeler \\
         python scripts/labeler/tm_harmonic_calibration.py
 """
 
@@ -50,7 +50,7 @@ from labeler.events.panels._shared import finite, stft
 from labeler.events.verify import NoDataError, corpus_signal
 from labeler.tearing import magfeatures
 
-ROOT = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker"))
+ROOT = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
 OUT = ROOT / "round4/tm"
 CATALOG = REPO / "data/events/catalog"
 SOURCES = REPO / "data/events/neoclassical_tearing_mode/benchmark/sources"

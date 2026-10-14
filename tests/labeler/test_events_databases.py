@@ -82,7 +82,7 @@ def test_tearing_abbreviations_resolve_to_the_existing_phenomenon(tmp_path, abbr
         }],
     }
     (tmp_path / "events.yaml").write_text(yaml.safe_dump(payload))
-    (spec,) = db.load_manifest(tmp_path)
+    (spec,) = db.load_manifest(tmp_path, manifest=tmp_path / "events.yaml")
     assert spec.phenomenon == "tearing"
     assert spec.dir == "neoclassical_tearing_mode"
 
@@ -154,7 +154,7 @@ def test_loader_reads_format_only_and_never_requires_raw(table):
 
 def test_a_missing_manifest_is_an_error_and_not_an_empty_answer(tmp_path):
     with pytest.raises(db.DatabaseError):
-        db.load_manifest(tmp_path / "nothing")
+        db.load_manifest(tmp_path / "nothing", manifest=tmp_path / "nothing.yaml")
 
 
 def test_a_duplicate_row_inside_one_table_is_kept(table):
@@ -317,21 +317,24 @@ def test_the_registered_outputs_include_rwm_ae_elm_and_tearing():
     specs = db.load_manifest(Paths().label_tables)
     assert {s.phenomenon for s in specs} == {"rwm", "ae", "elm", "tearing", "hmode", "lmode"}
     # the seventh is the ECE hand-drawn AE boxes (26 shots, dated 2022-01-24),
-    # registered with the confinement-review commit 43279081 with its provenance
+    # registered with the confinement-review commit 43279081 with its provenance;
+    # the eighth is the ELM detection challenge's answer key (24 shots, 2026-10-07)
     assert {s.stem for s in specs} == {
         "rwm_format_2026_v1",
         "alfven_eigenmode_format_2026_v1",
         "alfven_eigenmode_ece_format_2026_v1",
         "edge_localized_mode_format_2026_v1",
+        "edge_localized_mode_challenge_format_2026_v1",
         "neoclassical_tearing_mode_format_2026_v1",
         "high_confinement_mode_format_2026_v1",
         "low_confinement_mode_format_2026_v1",
     }
-    assert len(specs) == 7
+    assert len(specs) == 8
     assert all(s.kind == "interval" and s.t_units == "ms" for s in specs)
     assert all(s.provenance for s in specs)
 
 
+@pytest.mark.label_tables
 def test_the_committed_tables_parse_and_every_time_is_a_plausible_shot_time():
     # A data-integrity test, so a bad hand edit of a CSV fails here. 20 s is
     # generous: a DIII-D shot is ~5 s, and an onset time that arrived in
@@ -352,6 +355,7 @@ def test_the_committed_tables_parse_and_every_time_is_a_plausible_shot_time():
     assert (total, len(named)) == (56, 33)
 
 
+@pytest.mark.label_tables
 def test_the_rwm_tables_name_no_shot_the_corpus_holds():
     # Recorded, not fixed: the tables span 156785-176092 and the corpus
     # starts at 185601, so a `--databases-only` run over any corpus shot
@@ -394,16 +398,17 @@ def test_category_dirs_leave_out_what_events_yaml_registers(tmp_path):
     (tmp_path / "events.yaml").write_text(
         yaml.safe_dump({"version": 1, "non_category_dirs": ["catalog"]})
     )
-    assert [p.name for p in db.category_dirs(tmp_path)] == [
+    assert [p.name for p in db.category_dirs(tmp_path, tmp_path / "events.yaml")] == [
         "alfven_eigenmode", "fishbone"
     ]
 
 
 def test_without_a_registration_every_directory_is_a_category(tmp_path):
     (tmp_path / "catalog").mkdir()
-    assert [p.name for p in db.category_dirs(tmp_path)] == ["catalog"]
-    (tmp_path / "events.yaml").write_text(yaml.safe_dump({"version": 1}))
-    assert [p.name for p in db.category_dirs(tmp_path)] == ["catalog"]
+    manifest = tmp_path / "events.yaml"
+    assert [p.name for p in db.category_dirs(tmp_path, manifest)] == ["catalog"]
+    manifest.write_text(yaml.safe_dump({"version": 1}))
+    assert [p.name for p in db.category_dirs(tmp_path, manifest)] == ["catalog"]
 
 
 @pytest.mark.parametrize(
@@ -414,9 +419,10 @@ def test_a_registration_that_is_not_a_list_of_names_is_refused(tmp_path, entry):
         yaml.safe_dump({"version": 1, "non_category_dirs": entry})
     )
     with pytest.raises(db.DatabaseError, match="non_category_dirs"):
-        db.category_dirs(tmp_path)
+        db.category_dirs(tmp_path, tmp_path / "events.yaml")
 
 
+@pytest.mark.label_tables
 def test_the_repository_registers_the_catalog_directory():
     root = Paths().label_tables
     names = [p.name for p in db.category_dirs(root)]
@@ -424,10 +430,11 @@ def test_the_repository_registers_the_catalog_directory():
     assert "disruption" in names
 
 
+@pytest.mark.label_tables
 def test_events_yaml_gives_each_catalog_category_the_four_states():
     from labeler.events.catalog.states import PHENOMENA, STATE_NAMES
 
-    manifest = yaml.safe_load((Paths().label_tables / "events.yaml").read_text())
+    manifest = yaml.safe_load(Paths().events_manifest.read_text())
     classes = manifest["label_grid"]["classes"]
     for category in PHENOMENA:
         assert classes[category] == STATE_NAMES, category
@@ -438,7 +445,7 @@ def test_catalog_category_names_agree_between_code_manifest_and_states():
     from labeler.events.catalog.states import PHENOMENA, STATE_NAMES
     from labeler.events.interval_tables import category_labels
 
-    manifest = yaml.safe_load((Paths().label_tables / "events.yaml").read_text())
+    manifest = yaml.safe_load(Paths().events_manifest.read_text())
     classes = manifest["label_grid"]["classes"]
     for category in PHENOMENA:
         names = {int(k): v for k, v in category_labels(category).items()}

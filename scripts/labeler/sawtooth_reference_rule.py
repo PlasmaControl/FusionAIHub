@@ -29,7 +29,7 @@ from labeler.sawtooth.geometry import load_radius_geometry, select_core
 from labeler.sawtooth.physics import detect
 
 REFERENCE = Path(
-    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix3/reference"
+    "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/saw/fix3/reference"
 )  # read-only inputs of the earlier reference stage
 WINDOWS = ((2.7, 3.0), (4.55, 4.8))
 PERIOD_BAND_MS = (85.0, 5.0)

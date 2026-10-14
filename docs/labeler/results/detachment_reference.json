@@ -46,10 +46,10 @@
     }
   },
   "labels_record": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/labels_bins.csv.gz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/labels_bins.csv.gz",
     "sha256": "a683b477dca02a2a2a1ce9c484b59280a2c59d71b0b9395e8b9891fcb34f981a"
   },
-  "bin_directory": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins",
+  "bin_directory": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/bins",
   "matching": "Only the half-open bin [start_ms, start_ms+bin_ms) containing each published instant; no nearest-bin fallback or duration inference.",
   "consensus_column": "state_rule",
   "n_primary_reference_points": 10,
@@ -126,7 +126,7 @@
       "start_ms": 2400.0,
       "bin_ms": 50.0,
       "bins_source": {
-        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/180257.npz",
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/bins/180257.npz",
         "sha256": "3f8cb2b6107510540734ef4e5ae5726cdae936393e6f398d68fecc3639edafa5"
       },
       "gate_diagnostics": {
@@ -199,7 +199,7 @@
       "start_ms": 4800.0,
       "bin_ms": 50.0,
       "bins_source": {
-        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/180257.npz",
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/bins/180257.npz",
         "sha256": "3f8cb2b6107510540734ef4e5ae5726cdae936393e6f398d68fecc3639edafa5"
       },
       "gate_diagnostics": {
@@ -272,7 +272,7 @@
       "start_ms": 3700.0,
       "bin_ms": 50.0,
       "bins_source": {
-        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/199166.npz",
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/bins/199166.npz",
         "sha256": "c17ddf564a7178e6b0b02ed7342cde41fd0eb8d115509bb1a02c6e44e12166cf"
       },
       "gate_diagnostics": {
@@ -345,7 +345,7 @@
       "start_ms": 2300.0,
       "bin_ms": 50.0,
       "bins_source": {
-        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/201081.npz",
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/bins/201081.npz",
         "sha256": "06ad2d0fc2228594b6e6f2c1f240b6b6e0bea1d6490b27b6193d44114aa20a5a"
       },
       "gate_diagnostics": {
@@ -418,7 +418,7 @@
       "start_ms": 2500.0,
       "bin_ms": 50.0,
       "bins_source": {
-        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/201081.npz",
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/bins/201081.npz",
         "sha256": "06ad2d0fc2228594b6e6f2c1f240b6b6e0bea1d6490b27b6193d44114aa20a5a"
       },
       "gate_diagnostics": {
@@ -491,7 +491,7 @@
       "start_ms": 3000.0,
       "bin_ms": 50.0,
       "bins_source": {
-        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/201081.npz",
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/bins/201081.npz",
         "sha256": "06ad2d0fc2228594b6e6f2c1f240b6b6e0bea1d6490b27b6193d44114aa20a5a"
       },
       "gate_diagnostics": {
@@ -564,7 +564,7 @@
       "start_ms": 3500.0,
       "bin_ms": 50.0,
       "bins_source": {
-        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/201081.npz",
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/bins/201081.npz",
         "sha256": "06ad2d0fc2228594b6e6f2c1f240b6b6e0bea1d6490b27b6193d44114aa20a5a"
       },
       "gate_diagnostics": {
@@ -637,7 +637,7 @@
       "start_ms": 4000.0,
       "bin_ms": 50.0,
       "bins_source": {
-        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/201081.npz",
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/bins/201081.npz",
         "sha256": "06ad2d0fc2228594b6e6f2c1f240b6b6e0bea1d6490b27b6193d44114aa20a5a"
       },
       "gate_diagnostics": {
@@ -710,7 +710,7 @@
       "start_ms": 4900.0,
       "bin_ms": 50.0,
       "bins_source": {
-        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/201081.npz",
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/bins/201081.npz",
         "sha256": "06ad2d0fc2228594b6e6f2c1f240b6b6e0bea1d6490b27b6193d44114aa20a5a"
       },
       "gate_diagnostics": {
@@ -783,7 +783,7 @@
       "start_ms": 5100.0,
       "bin_ms": 50.0,
       "bins_source": {
-        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/201081.npz",
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/bins/201081.npz",
         "sha256": "06ad2d0fc2228594b6e6f2c1f240b6b6e0bea1d6490b27b6193d44114aa20a5a"
       },
       "gate_diagnostics": {
@@ -2381,12 +2381,12 @@
           "sha256": "217dedc765e5ef93151c29342cfdeb8561bb098178a93b956e29dde9fa9129c3"
         },
         "inversion": {
-          "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/189057.npz",
+          "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/189057.npz",
           "sha256": "b0a931acb71f98917072e9ff42b4e42840fcee88519d1921f5fbda090ff4d006"
         },
         "inversion_source_sav": "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw/emission_structure_pu_cam240perp_189057.sav",
         "bins": {
-          "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/189057.npz",
+          "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/bins/189057.npz",
           "sha256": "176ff02786af90ad8db216b925446ddd5a85294dc5d501cc5347692f916f13ca"
         },
         "n_manual_frame_points": 171,

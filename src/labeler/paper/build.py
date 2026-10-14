@@ -1,6 +1,6 @@
 """Every paper product into `$LABELER_ROOT/paper/`, and the copy for the manuscript.
 
-    PYTHONPATH=src pixi run -e labelmaker \\
+    PYTHONPATH=src pixi run -e labeler \\
         python scripts/labeler/paper/make_figures.py \\
         [--out DIR] [--shot SHOT] [--examples N] [--version V] \\
         [--seg-version V] [--interpreter-seg-version V] [--copy-to DIR]
@@ -178,8 +178,9 @@ that changed while the build ran (the owner saving, say) is listed under
 `changed_during_build`, with both sha256s, and `consistent` is false.
 
 `--copy-to` copies this run's PDFs and `.tex` tables into a directory (the
-manuscript's `dev/label_paper/figures/`); it never runs git there, so nothing is
-committed or pushed.
+manuscript's `dev/label_paper/figures/`), all but `fig_interpreter.pdf`: the
+paper's Figure 1 is `fig_interpreter_tokeye.py`'s, and the roster figure must not
+overwrite it. It never runs git there, so nothing is committed or pushed.
 """
 
 from __future__ import annotations
@@ -230,6 +231,10 @@ SEG_VERSION = ae_seg.VERSION  # the segmentation's; `--seg-version` names anothe
 #: another (`--interpreter-seg-version`).
 INTERPRETER_SEG_VERSION = roster.SEG_VERSION
 COPIED = (".pdf", ".tex")
+#: Never copied into the manuscript: the paper's Figure 1 is
+#: `scripts/labeler/paper/fig_interpreter_tokeye.py`'s, under the same name as the
+#: roster figure this build draws, which stays in `out` alone.
+NEVER_COPIED = frozenset({"fig_interpreter.pdf"})
 MANIFEST = "manifest.json"
 KEPT = "old_output_kept"  # in `build`'s answer and the JSON line
 KEPT_SAID = (
@@ -1281,13 +1286,14 @@ def _interpreter(
 
 
 def copy_into(out: Path, manifest: dict, dest: Path) -> list[str]:
-    """Copy this run's PDFs and tables into `dest`; the names copied."""
+    """Copy this run's PDFs and tables into `dest`, but `NEVER_COPIED`; the names
+    copied."""
     dest.mkdir(parents=True, exist_ok=True)
     names = sorted(
         name
         for files in manifest["products"].values()
         for name in files
-        if Path(name).suffix in COPIED
+        if Path(name).suffix in COPIED and name not in NEVER_COPIED
     )
     for name in names:
         shutil.copy2(out / name, dest / name)

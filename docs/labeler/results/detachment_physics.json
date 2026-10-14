@@ -1,6 +1,6 @@
 {
   "bin_width_ms": 50.0,
-  "bin_directory": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/physics_diagnostics",
+  "bin_directory": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/physics_diagnostics",
   "thresholds": {
     "elm_mask_half_width_ms": 2.0,
     "afrac_psi_window": 0.01,

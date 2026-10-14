@@ -13,7 +13,7 @@ at the first authentication error.
 
 Needs fdp, so run it on the login node while logged in::
 
-    pixi run --frozen -e labelmaker fdp run python scripts/labeler/tm_fetch.py \\
+    pixi run --frozen -e labeler fdp run python scripts/labeler/tm_fetch.py \\
         --from cohort --part 0/3
 
 ``--from cohort`` is the 500 cohort shots, ``--from population`` every population shot
@@ -40,7 +40,7 @@ from labeler.events.verify import NoDataError, fdp_signal
 from labeler.tearing.rule import LOCK_INVALID_RANGE, valid_lock_shot
 
 LABELER = Path(
-    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")
+    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler")
 )
 OUT_ROOT = LABELER / "round4/tm"
 CATALOG = REPO / "data/events/catalog"

@@ -1,5 +1,5 @@
 {
-  "features_root": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/features",
+  "features_root": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/features",
   "gated": {
     "qmin_elevated": 60,
     "qmin_high": 50,
@@ -12,7 +12,7 @@
     "ip": 0,
     "qmin": 0
   },
-  "note": "Written by scripts/labelmaker/qmin_regime_census.py. The `ungated` block is the rule with the Ip flat-top gate REMOVED and is the justification for having the gate at all.",
+  "note": "Written by scripts/labeler/qmin_regime_census.py. The `ungated` block is the rule with the Ip flat-top gate REMOVED and is the justification for having the gate at all.",
   "per_shot": {
     "185786": [
       "qmin_hybrid"
@@ -1234,7 +1234,7 @@
     ]
   },
   "seconds": 41.3,
-  "shot_file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/recommender_v1.txt",
+  "shot_file": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/recommender_v1.txt",
   "skipped": {},
   "thresholds": {
     "bands": [

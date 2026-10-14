@@ -42,7 +42,7 @@ __all__ = ["ADAPTER", "ARTIFACTS", "CARD_ID", "HORIZONS_MS", "INPUT_SPEC", "OUTP
 SLUG = "d3d_tearing_time_to_event_dsm_continued"
 CARD_ID = "plasmacontrol/d3d-tearing-time-to-event-dsm-continued"
 #: Trained here, not upstream: the artifact directory is labeler's own.
-UPSTREAM = Path("/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/"
+UPSTREAM = Path("/scratch/gpfs/EKOLEMEN/nc1514/labeler/models/"
                 "d3d_tearing_time_to_event_dsm_continued")
 ARTIFACTS = ("rt_fixed_rot_continued.pkl", "rt_normalizations_dict.pkl")
 

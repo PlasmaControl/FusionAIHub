@@ -30,7 +30,7 @@ SXR_WINDOW = (0.0, 300.0)
 SXR_SPIKE = slice(3400, 3450)
 #: The SXR chords that crash every 50 ms, and so the four the row draws.
 CRASHING = (3, 5, 20, 25)
-SXR_TITLE = "SXR SX90RP1F, the 4 chords with the most crash-like drops"
+SXR_TITLE = "SXR SX90RP1F"
 
 
 def _dalpha(p, *, spike: bool) -> np.ndarray:
@@ -72,11 +72,15 @@ def _limits(panel, raw, window) -> np.ndarray:
 
 
 def test_clipped_is_shared_and_the_elm_panel_uses_it():
-    assert _shared.CLIPPED == ", clipped to its plasma range"
+    assert _shared.CLIPPED == "Clipped to its plasma range"
     assert elm.CLIPPED is _shared.CLIPPED
 
 
-def test_a_dalpha_spike_is_clipped_to_the_plasma_range_and_the_title_says_so(
+def _caveat(panel) -> str:
+    return (panel.metadata or {}).get("caveat", "")
+
+
+def test_a_dalpha_spike_is_clipped_to_the_plasma_range_and_the_caveat_says_so(
     tmp_path, monkeypatch
 ):
     p = tree.paths(tmp_path)
@@ -91,7 +95,8 @@ def test_a_dalpha_spike_is_clipped_to_the_plasma_range_and_the_title_says_so(
     rest = np.ones(y.shape, dtype=bool)
     rest[1, DALPHA_SPIKE] = False
     assert np.array_equal(row.y[rest], y[rest]), "nothing else moves"
-    assert row.title == "D-alpha filterscopes" + _shared.CLIPPED
+    assert row.title == "D-alpha filterscopes"
+    assert _shared.CLIPPED in _caveat(row)
 
 
 def test_a_quiet_dalpha_is_drawn_as_it_is(tmp_path, monkeypatch):
@@ -101,9 +106,10 @@ def test_a_quiet_dalpha_is_drawn_as_it_is(tmp_path, monkeypatch):
     [row] = hmode.dalpha_panel(SHOT, paths=p)
     assert np.array_equal(row.y, y)
     assert row.title == "D-alpha filterscopes"
+    assert _shared.CLIPPED not in _caveat(row)
 
 
-def test_an_sxr_spike_is_clipped_to_the_plasma_range_and_the_title_says_so(
+def test_an_sxr_spike_is_clipped_to_the_plasma_range_and_the_caveat_says_so(
     tmp_path, monkeypatch
 ):
     p = tree.paths(tmp_path)
@@ -120,7 +126,8 @@ def test_an_sxr_spike_is_clipped_to_the_plasma_range_and_the_title_says_so(
     rest = np.ones(chosen.shape, dtype=bool)
     rest[1, SXR_SPIKE] = False
     assert np.array_equal(row.y[rest], chosen[rest]), "nothing else moves"
-    assert row.title == SXR_TITLE + _shared.CLIPPED
+    assert row.title == SXR_TITLE
+    assert _shared.CLIPPED in _caveat(row)
     # Clipped over the record, as the chords are chosen: a view cuts the same row.
     [view] = saw.sxr_panels(SHOT, paths=p, t_range=(330.0, 350.0))
     keep = (row.x >= 330.0) & (row.x <= 350.0)
@@ -135,6 +142,7 @@ def test_a_quiet_sxr_fan_is_drawn_as_it_is(tmp_path, monkeypatch):
     [row] = saw.sxr_panels(SHOT, paths=p)
     assert np.array_equal(row.y, fan[list(CRASHING)])
     assert row.title == SXR_TITLE
+    assert _shared.CLIPPED not in _caveat(row)
 
 
 def test_an_ece_burst_wider_than_the_median_is_kept_and_not_called_clipped(
@@ -149,11 +157,11 @@ def test_an_ece_burst_wider_than_the_median_is_kept_and_not_called_clipped(
     tree.cohort(p, [tree.queue_row(SHOT, 0, window=(20.0, 80.0))])
     rows = saw.ece_panels(SHOT, paths=p)
     first = rows[0]
-    assert first.title == (
-        "ECE Te, inversion side A, ch 20-23 "
-        "(0.05 ms median; q=1 mapping unavailable)"
+    assert first.title == "ECE Te, ch 20-23"
+    assert first.metadata["caveat"] == (
+        "Inversion side A. 0.05 ms median. q=1 mapping unavailable."
     )
-    assert not any(row.title.endswith(_shared.CLIPPED) for row in rows)
+    assert not any(_shared.CLIPPED in _caveat(row) for row in rows)
     ceiling = _shared.robust_limits(first.x, first.y, (20.0, 80.0))[1]
     assert ceiling[1] < 2, "a robust clip would have cut the burst to this"
     assert first.y[1].max() == pytest.approx(50.0), "a burst is a crash's extreme"

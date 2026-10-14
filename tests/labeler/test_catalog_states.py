@@ -166,7 +166,9 @@ def test_always_observable_phenomena_are_recorded_in_the_vocabulary():
 
 
 def test_data_guide_phenomena_table_agrees_with_the_vocabulary():
-    guide = (Path(__file__).resolve().parents[2] / "data/events/README.md").read_text()
+    guide = (
+        Path(__file__).resolve().parents[2] / "docs/labeler/events/README.md"
+    ).read_text()
     match = re.search(r'<table id="catalog-phenomena">.*?</table>', guide, re.DOTALL)
     assert match, "The data guide must list each phenomenon's attributes and points"
     table = ET.fromstring(match.group())

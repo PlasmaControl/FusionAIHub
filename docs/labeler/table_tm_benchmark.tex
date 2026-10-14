@@ -6,9 +6,9 @@
 \toprule
 Model & Shots / bins & AUROC [CI] & AUPRC [CI] & F1 [CI] & Segmental F1 [CI] \\
 \midrule
-\multicolumn{6}{l}{\emph{Legacy targets, at the published thresholds}} \\
+\multicolumn{6}{l}{\emph{Legacy targets: CNN at its card's threshold, DSM at its inner-validation threshold}} \\
 tm-onsetcnn-published (thr. 0.5)$\dagger$ & 79 / 5.6k & .897 [.832,.952] & .601 [.385,.799] & .611 [.437,.750] & -- \\
-tm-dsm-500ms-published (risk 0.3) & 80 / 8.4k & .721 [.614,.828] & .294 [.179,.442] & .000 [.000,.000] & -- \\
+tm-dsm-500ms-published & 80 / 8.4k & .721 [.614,.828] & .294 [.179,.442] & .177 [.107,.266] & -- \\
 \midrule
 \multicolumn{6}{l}{\emph{Tokamak-SI labels, uncertain time excluded}} \\
 tm-onsetcnn-published$\dagger$ & 278 / 31.0k & .974 [.959,.987] & .903 [.838,.948] & .779 [.689,.848] & .615 [.504,.713] \\
@@ -32,6 +32,6 @@ tm-rms-2line & 450 / 246.8k & .963 [.954,.971] & .632 [.559,.700] & .447 [.372,.
 tm-ours & 450 / 246.8k & .948 [.935,.960] & .512 [.394,.623] & .363 [.290,.431] & .229 [.182,.281] \\
 \bottomrule
 \end{tabular}
-\caption{Recovery of a strong rotating n=1/n=2 magnetic rule (a tearing-mode proxy), not independent identification. AUROC and AUPRC are primary; F1 uses inner-validation thresholds. Uncertain time (34.0\% of observable catalog-window time) is excluded in the middle block and scored as negative in the bottom block; the top block scores the legacy targets. Boundary placement is scored only by the bottom block. tm-rms-2line is max(n=1/12 G, n=2/6 G), no training. Published models saw thousands of shots, retrained ones 324 per fold. $\dagger$: training overlap unknown. Brackets: 95\% shot-bootstrap intervals. Shot sets: appendix.}
+\caption{Recovery of a strong rotating n=1/n=2 magnetic rule (a tearing-mode proxy), not independent identification. AUROC and AUPRC are primary; F1 uses inner-validation thresholds except thr. 0.5 (CNN card's); the DSM has none published. Uncertain time (34.0\% of observable catalog-window time) is excluded in the middle block and scored as negative in the bottom block; the top block has legacy targets. Boundary placement is scored only by the bottom block. tm-rms-2line is max(n=1/12 G, n=2/6 G), no training. Published models saw thousands of shots, retrained ones 324 per fold. $\dagger$: training overlap unknown. Brackets: 95\% shot-bootstrap intervals. Shot sets: appendix.}
 \label{tab:tm-benchmark}
 \end{table*}

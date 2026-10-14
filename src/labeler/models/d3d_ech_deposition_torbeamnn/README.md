@@ -16,7 +16,7 @@ metrics:
 model-index:
   - name: d3d-ech-deposition-torbeamnn
     results: []
-labelmaker:
+labeler:
   status: scaffold
   slug: d3d_ech_deposition_torbeamnn
   card_id: plasmacontrol/d3d-ech-deposition-torbeamnn

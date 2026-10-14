@@ -15,7 +15,7 @@ A shot whose BES fdp does not hold gets ``<shot>.missing.json`` and is not retri
 failed fetch is tried again on the next run. It stops at the first authentication error,
 so run it on the login node under fdp while logged in::
 
-    pixi run --frozen -e labelmaker fdp run python \\
+    pixi run --frozen -e labeler fdp run python \\
         scripts/labeler/confinement_bes_fetch.py --part 0/3 --pace 1
 
 The cohort's blind ``test`` shots are never fetched.
@@ -41,7 +41,7 @@ from labeler.confinement import bes_features as bf
 from labeler.confinement import bes_windows as bw
 
 LABELER = Path(
-    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")
+    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler")
 )
 DEFAULT_OUT = LABELER / "round4/conf/bes1mhz"
 CLASSES = ("L", "H", "QH", "WP")

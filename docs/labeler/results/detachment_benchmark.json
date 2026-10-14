@@ -11,9 +11,9 @@
  "n_assessed_bins": 1780,
  "scope": "exploratory coverage and indicator agreement",
  "sources": {
-  "labels": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/labels_bins.csv.gz",
+  "labels": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/labels_bins.csv.gz",
   "labels_sha256": "a683b477dca02a2a2a1ce9c484b59280a2c59d71b0b9395e8b9891fcb34f981a",
-  "bins_dir": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins",
+  "bins_dir": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/bins",
   "script": "scripts/labeler/detach_benchmark.py"
  },
  "independent_benchmark": false,

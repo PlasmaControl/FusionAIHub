@@ -1463,7 +1463,7 @@ def write_documentation(record, comparison):
         if count != 1:
             raise ValueError(f"expected one documentation block: {name}")
     doc.write_text(body)
-    readme = REPO / "data/events/resistive_wall_mode/README.md"
+    readme = REPO / "docs/labeler/events/resistive_wall_mode/README.md"
     clause = {
         "rwm-brf": brief_statement(record),
         "rwm-rule-elapsed-time": "its phase-controlled AUROC is the residual-phase "
@@ -1492,6 +1492,12 @@ def write_documentation(record, comparison):
             f"F1: {interval(config['metrics']['slice_f1'])} | "
             f"Limitation: {clause[name]}"
         )
+    # Round five's sensor forecast and onset-detection rows (`rwm_sensor_model.py`).
+    sensor = REPO / "outputs/labeler/rwm/sensor_model.json"
+    if sensor.is_file():
+        import rwm_sensor_model
+
+        model_lines += rwm_sensor_model.readme_lines(load_evaluation(sensor))
     models = (
         "## Models\n**stable**: none\n\n**latest**: rwm-brf\n\n**all**:\n\n"
         + "\n".join(model_lines)
@@ -1501,7 +1507,7 @@ def write_documentation(record, comparison):
         f"negatives, {protocol['phase_bin_ms']:g} ms phase bins with at least "
         f"{protocol['phase_min_slices']} slices; intervals are exploratory 95% "
         "shot-bootstrap intervals. Definitions, the split sensitivities and the "
-        "post-hoc bin choice are in [protocol and results](../../../docs/labeler/"
+        "post-hoc bin choice are in [protocol and results](../../"
         "rwm_baseline.md).\n\n"
     )
     body, count = re.subn(

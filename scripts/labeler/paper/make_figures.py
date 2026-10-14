@@ -1,6 +1,6 @@
 """Draw the paper's figures and tables into `$LABELER_ROOT/paper/`.
 
-    PYTHONPATH=src pixi run --frozen -e labelmaker \\
+    PYTHONPATH=src pixi run --frozen -e labeler \\
         python scripts/labeler/paper/make_figures.py \\
         [--version v1] --copy-to dev/label_paper/figures
 

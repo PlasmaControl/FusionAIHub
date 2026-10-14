@@ -7,8 +7,8 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
 #SBATCH --time=01:00:00
-#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
-#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
+#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labeler/runs/slurm/%j.out
+#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labeler/runs/slurm/%j.out
 
 # Task 7b: score every ae_seldnet_*.pt on the 60 validation shots and draw the
 # six-shot figure set. One whole-record forward pass per shot per checkpoint;
@@ -16,7 +16,7 @@
 
 set -euo pipefail
 
-ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker
+ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labeler
 REPO=/scratch/gpfs/nc1514/FusionAIHub
 export PYTHONPATH=$REPO/src
 export LABELER_GIT_SHA=$(git -C "$REPO" rev-parse HEAD)
@@ -28,6 +28,6 @@ echo "job ${SLURM_JOB_ID} on $(hostname) at $(date -Is)"
 srun "$ROOT/envs/phase3/bin/python" -u "$REPO/scripts/labeler/ae_evaluate.py" \
   --dataset-dir "$ROOT/ae/dataset" \
   --models-dir "$ROOT/models/d3d_ae_activity_seldnet" \
-  --fig-dir "$REPO/outputs/labelmaker/ae/training"
+  --fig-dir "$REPO/outputs/labeler/ae/training"
 
 echo "finished at $(date -Is)"

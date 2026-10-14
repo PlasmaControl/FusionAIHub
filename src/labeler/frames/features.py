@@ -2,9 +2,12 @@
 
 `features` reads the rows a spec's roles name, each the first row whose title
 starts with the role's (`find_role`), so a suffix such as `CLIPPED` does not
-matter. It reads them at the coarsest level that still puts `MIN_COLUMNS` of its
-columns in a sub-frame (`level_for`), over the whole 10 ms frames inside a window
-(`window_frames`); a column belongs to the sub-frame its centre falls in, as in
+matter. The ELM's `D-alpha FS` is the exception (`TITLE_PATTERNS`): the store
+holds the strike-point sum (`D-alpha FS strike sum`) beside the single chord
+`D-alpha FSnn`, and only the chord is the role's row. It reads them at the
+coarsest level that still puts `MIN_COLUMNS` of its columns in a sub-frame
+(`level_for`), over the whole 10 ms frames inside a window (`window_frames`); a
+column belongs to the sub-frame its centre falls in, as in
 `ae.xpower.data.frame_inputs`. The roles are walked in the spec's order, each
 giving its own block, since roles may share a name (the sawtooth's four "ece"):
 - a trace: each channel's minimum and maximum over each sub-frame, both scaled
@@ -30,6 +33,7 @@ returns them, `(grid, rows, ...)`: the population shots no store is written for
 from __future__ import annotations
 
 import json
+import re
 
 import h5py
 import numpy as np
@@ -41,6 +45,10 @@ from ..events.review.rows import LEVELS, Grid, pool
 from ..scoring.frames import FRAME_MS
 from . import EventSpec, Role
 
+#: The role titles matched by pattern, not by prefix: the ELM store's `D-alpha FSnn`
+#: (a filterscope chord, with an old store's `, clipped ...` suffix) is not its
+#: `D-alpha FS strike sum`, which a prefix match would take for it.
+TITLE_PATTERNS = {"D-alpha FS": re.compile(r"D-alpha FS\d\d(?:,|$)")}
 #: The n row's title before d9fb57d, when it held n values and no modes meta.
 STALE_TITLE = "toroidal mode number n"
 #: The band a modes row's levels are read over, kHz: the tearing-mode panel's.
@@ -64,10 +72,19 @@ def level_for(dt_ms_by_level: dict[int, float], sub_ms) -> int:
     return max(fits) if fits else min(dt_ms_by_level)
 
 
+def title_matches(title: str, role_title: str) -> bool:
+    """Whether a store row's `title` is a role's: it starts with the role's, or,
+    for a role in `TITLE_PATTERNS`, it is that pattern's."""
+    pattern = TITLE_PATTERNS.get(role_title)
+    if pattern is not None:
+        return pattern.match(title) is not None
+    return title.startswith(role_title)
+
+
 def find_role(rows, role: Role) -> dict | None:
     """The first of `rows` (a store's row descriptions, as `rows.meta` gives them)
-    whose title starts with the role's; None when none does."""
-    return next((row for row in rows if row["title"].startswith(role.title)), None)
+    whose title is the role's (`title_matches`); None when none does."""
+    return next((row for row in rows if title_matches(row["title"], role.title)), None)
 
 
 def features(store, spec: EventSpec, window) -> tuple[np.ndarray, np.ndarray]:

@@ -192,7 +192,7 @@ def test_infer_refuses_to_run_against_unverified_weights(tmp_path, monkeypatch):
     monkeypatch.setattr(registry, "load_adapter", lambda slug: _fake_adapter())
     monkeypatch.setattr(
         registry, "read_card",
-        lambda slug: {"labelmaker": {"upstream": {"sha256": {"absent.h5": "00" * 32}}}},
+        lambda slug: {"labeler": {"upstream": {"sha256": {"absent.h5": "00" * 32}}}},
     )
     archive, corpus, root = _archive(tmp_path), _corpus(tmp_path), tmp_path / "out"
     argv = [
@@ -214,7 +214,7 @@ def test_the_weight_guard_runs_before_the_features_stage(tmp_path, monkeypatch):
     monkeypatch.setattr(registry, "load_adapter", lambda slug: _fake_adapter())
     monkeypatch.setattr(
         registry, "read_card",
-        lambda slug: {"labelmaker": {"upstream": {"sha256": {"absent.h5": "00" * 32}}}},
+        lambda slug: {"labeler": {"upstream": {"sha256": {"absent.h5": "00" * 32}}}},
     )
     archive, corpus, root = _archive(tmp_path), _corpus(tmp_path), tmp_path / "out"
     argv = [
@@ -246,7 +246,7 @@ def test_the_weight_guard_is_called_for_every_model_before_any_shot(
     monkeypatch.setattr(registry, "verify_artifacts", recording_verify)
     monkeypatch.setattr(
         registry, "read_card",
-        lambda slug: {"labelmaker": {"upstream": {"sha256": {"fake.h5": "00"}}}},
+        lambda slug: {"labeler": {"upstream": {"sha256": {"fake.h5": "00"}}}},
     )
     archive, corpus, root = _archive(tmp_path), _corpus(tmp_path), tmp_path / "out"
     argv = [
@@ -306,7 +306,7 @@ def test_every_run_writes_a_manifest(wired):
     assert manifest["stage"] == "features"
     assert manifest["models"] == [SLUG]
     assert manifest["shots"] == [190000, 190001]
-    assert manifest["git_sha"] and manifest["labelmaker_version"]
+    assert manifest["git_sha"] and manifest["labeler_version"]
     assert manifest["hostname"]
     assert (runs[0] / "log.txt").exists()
 

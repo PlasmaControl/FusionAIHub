@@ -125,6 +125,15 @@ def state_intervals(track: lf.Track, window: tuple[float, float]) -> list[dict]:
     ]
 
 
+def clip_spans(spans, window: tuple[float, float]) -> list[list[float]]:
+    """[start, end] spans clipped to `window`; spans outside it are dropped."""
+    return [
+        [max(a, window[0]), min(b, window[1])]
+        for a, b in spans
+        if b > window[0] and a < window[1]
+    ]
+
+
 def has_present_time(track: lf.Track, window: tuple[float, float]) -> bool:
     """A source PRESENT interval has positive duration inside the view."""
     return any(
@@ -239,11 +248,12 @@ def confinement_row_source(track: lf.Track, window: tuple[float, float]) -> str 
     return "model (unreviewed)" if "unreviewed" in tiers else "model"
 
 
-def confinement_track(paths: Paths, shot: int) -> lf.Track:
-    """Saved four-class review, curated regimes, the roster, then D-alpha H-mode."""
+def confinement_track(paths: Paths, shot: int, expert: bool = True) -> lf.Track:
+    """Saved four-class review (unless not `expert`: a gold evaluation shot),
+    curated regimes, the roster, then D-alpha H-mode."""
     spec = next(s for s in lf.TRACKS if s.key == "confinement")
     reviewed = paths.label_tables / "confinement/review/labels.csv"
-    rows = lf.read_rows(reviewed).get(shot)
+    rows = lf.read_rows(reviewed).get(shot) if expert else None
     if rows:
         source = lf.Source(
             lf.SILVER, "curated four-class confinement review", lambda p: reviewed
@@ -334,13 +344,14 @@ def stored_ae_track(paths: Paths, shot: int) -> lf.Track | None:
 
 
 def reviewed_or_stored_ae(
-    paths: Paths, shot: int, predictions: Path | None = None
+    paths: Paths, shot: int, predictions: Path | None = None, expert: bool = True
 ) -> lf.Track | None:
-    """Expert review first, then isolated ae-ours inference or stored activity."""
+    """Expert review first (unless not `expert`: a gold evaluation shot), then
+    isolated ae-ours inference or stored activity."""
     spec = next(s for s in lf.TRACKS if s.key == mt.AE)
     source = spec.sources[0]
     path = source.locate(paths)
-    rows = lf.read_rows(path).get(shot)
+    rows = lf.read_rows(path).get(shot) if expert else None
     if rows:
         return lf.Track(spec, source, path, rows)
     if predictions is not None:
@@ -549,14 +560,17 @@ def crash_times(
     }
 
 
-def sawtooth_track(paths: Paths, shot: int, source: Path | None, verified_times):
-    """Expert review first, then physics states; crash candidates are separate."""
+def sawtooth_track(
+    paths: Paths, shot: int, source: Path | None, verified_times, expert: bool = True
+):
+    """Expert review first (unless not `expert`: a gold evaluation shot), then
+    physics states; crash candidates are separate."""
     spec = next(s for s in lf.TRACKS if s.key == mt.SAWTOOTH)
-    expert = spec.sources[0]
-    review = expert.locate(paths)
-    rows = lf.read_rows(review).get(shot)
+    review_source = spec.sources[0]
+    review = review_source.locate(paths)
+    rows = lf.read_rows(review).get(shot) if expert else None
     if rows:
-        return lf.Track(spec, expert, review, rows)
+        return lf.Track(spec, review_source, review, rows)
     if source is None:
         return lf.Track(spec)
     file, _, rows, _ = saw_source(source, shot)
@@ -728,6 +742,15 @@ def sawtooth_caption(record: dict) -> str:
         state: sum(r["end_ms"] - r["start_ms"] for r in rows if r["state"] == state)
         for state in ("present", "absent", "uncertain", "unassessed")
     }
+    # A q = 1-gated table's absent time is mostly the gate's (no q = 1 surface:
+    # the benchmark's no-q=1-negatives view), which the row draws as absent.
+    gate = record.get("no_q1_intervals_ms")
+    no_q1 = sum(b - a for a, b in gate or ())
+    gate_note = ""
+    if no_q1 and round(no_q1) == round(durations["absent"]):
+        gate_note = "; all of the absent time has no q = 1 surface"
+    elif no_q1:
+        gate_note = f"; {no_q1:.0f} ms of the absent time has no q = 1 surface"
     summary = (
         ", ".join(
             f"{state} {duration:.0f} ms"
@@ -737,7 +760,9 @@ def sawtooth_caption(record: dict) -> str:
         or "unassessed"
     )
     source = "physics labels"
-    if record.get("tier") == lf.SILVER:
+    if record.get("source_table"):
+        source = table_name(record)
+    elif record.get("tier") == lf.SILVER:
         source = "expert intervals"
     elif record.get("tier") == lf.LEGACY:
         source = "imported intervals"
@@ -748,7 +773,73 @@ def sawtooth_caption(record: dict) -> str:
         source += "; ECE density proxy"
         if "bt_missing" in guard.get("status", "").lower():
             source += "; Bt not in local corpus"
-    return f"Sawtooth: {summary} ({source})."
+    return f"Sawtooth: {summary} ({source}){gate_note}."
+
+
+#: What a table's rows are (`source_table["kind"]`, Figure 1's `table_kind`), as
+#: the appendix names them; a table without a kind holds labels.
+TABLE_KINDS = {
+    "detector": "detector output",
+    "curated": "curated labels",
+    "imported": "imported labels",
+    "labels": "labels",
+}
+#: Each label method's plain name for the paper's text (`table_name`): never the
+#: internal method id or its version, which the record keeps. A method missing here
+#: is named by its kind alone (`TABLE_KINDS`, "generated labels" for "labels"). No
+#: name claims a q = 1 gate: `table_name` adds `Q1_GATE_NAME` where the table's own
+#: metadata names one (Figure 1 records its no-q=1 rows, `no_q1_rows_ms`).
+METHOD_NAMES = {
+    # rules
+    "elm_jump": "D-alpha jump-and-hold rule",
+    "elm_clock": "D-alpha ELM-clock rule",
+    "saw_physics": "ECE physics rule",
+    "ece_sawtooth": "ECE crash rule",
+    "crash": "ECE crash rule",
+    "tm_mhd": "MHD resonant-mode rule",
+    "dalpha_lh": "D-alpha L-H rule",
+    "regimes": "confinement detector labels",
+    # frame models
+    "ae_xpower": "CO2 frame detector",
+    "ntm_frames": "tearing-mode frame detector",
+    "elm_frames": "ELM frame detector",
+    "sawtooth_frames": "sawtooth frame detector",
+    "hmode_frames": "H-mode frame detector",
+}
+
+
+#: What a q = 1-gated table's name adds (`table_name`).
+Q1_GATE_NAME = "with q = 1 gate"
+
+
+def is_detector(record: dict | None) -> bool:
+    """A generated row that is a detector's output at its threshold: the catalog's
+    detector, or a table (`source_table`, Figure 1's `--rows` or review source
+    table) whose metadata names the model behind it (kind "detector"). A table of
+    labels is not."""
+    record = record or {}
+    table = record.get("source_table")
+    return record.get("tier") == lf.GENERATED and (
+        not table or table.get("kind") == "detector"
+    )
+
+
+def table_name(record: dict) -> str:
+    """A table's plain name in the appendix: a curated or imported table by its
+    kind, any other by its method's plain name (`METHOD_NAMES`), else by its kind;
+    never the method id or version (the record keeps both). A method's name says
+    "with q = 1 gate" only where the table's metadata names the gate (its no-q=1
+    rows are recorded, `no_q1_rows_ms`, empty or not), so an ungated version
+    never claims one."""
+    table = record["source_table"]
+    kind = table.get("kind", "labels")
+    if kind in ("curated", "imported"):
+        return TABLE_KINDS[kind]
+    name = METHOD_NAMES.get(table.get("method"))
+    if name:
+        gated = table.get("no_q1_rows_ms") is not None
+        return f"{name} {Q1_GATE_NAME}" if gated else name
+    return "generated labels" if kind == "labels" else TABLE_KINDS[kind]
 
 
 def _has_present(record: dict | None) -> bool:
@@ -837,6 +928,24 @@ def elm_qh_sentence(records: dict, drawn: dict) -> str:
     )
 
 
+#: How the label rows (f) draw each state Figure 1's record lists
+#: (`display_state_keys`), in the order the key names them: the figure has no
+#: legend, so the caption's (f) sentence and the appendix say it (`row_key`).
+ROW_KEY = {
+    "present": "colour present",
+    "absent": "grey absent",
+    "uncertain": "hatched uncertain",
+    "blank": "blank unassessed",
+}
+
+
+def row_key(drawn: dict) -> str:
+    """The label rows' key: how each state they show is drawn (`ROW_KEY`, from the
+    record's `display_state_keys`; every state where the record has none)."""
+    shown = drawn.get("display_state_keys")
+    return ", ".join(v for k, v in ROW_KEY.items() if shown is None or k in shown)
+
+
 def caption(shot: int, records: dict, drawn: dict) -> str:
     """Describe what is drawn; sources, thresholds and caveats are in the appendix.
 
@@ -861,24 +970,25 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
         ),
     ]
     if drawn.get("tokeye_transient_drawn"):
+        # only with the overlay switched on (off by default, owner 2026-10-14)
         sentences.append("Red: TokEye's transient channel.")
     if ae:
-        if ae_record.get("tier") == lf.GENERATED:
-            bin_ms = ae_record.get("temporal_bin_ms") or 25
+        if is_detector(ae_record):
+            # its input band and bins are in the appendix
             trained = ""
             if ae_record.get("what", "").startswith("ae-ours"):
                 trained = (
-                    "; trained on TokEye-mask-derived targets, so not "
-                    "independent of TokEye"
+                    " (trained on TokEye-mask-derived targets, so not "
+                    "independent of TokEye)"
                 )
             sentences.append(
-                "Pink: mask pixels ≥60 kHz while the CO2 AE detector (80–250 kHz "
-                f"input band{trained}) is positive ({bin_ms:g} ms bins)."
+                f"Pink: mask pixels ≥60 kHz while the CO2 AE detector{trained} is "
+                "positive."
             )
         else:
             sentences.append("Pink: mask pixels ≥60 kHz inside labelled AE time.")
     if ntm:
-        if ntm_record.get("tier") == lf.GENERATED:
+        if is_detector(ntm_record):
             detector = "the TM detector"
             qualification = ntm_qualification(ntm_record)
             if qualification:
@@ -892,9 +1002,11 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
         text = "Highlights mark time/band coincidence only"
         clause = harmonic_clause(drawn) if ntm else ""
         sentences.append(text + (f"; {clause}." if clause else "."))
+    key = row_key(drawn)
     sentences.append(
         "(c) D-alpha, ELM intervals (red) and confinement regimes. (d) NBI "
-        "power. (e) Normalized beta. (f) Label rows; sources: appendix."
+        f"power. (e) Normalized beta. (f) Labels{': ' + key if key else ''}; "
+        "sources: appendix."
     )
     if drawn.get("elm_hmode_conflicts_ms"):
         sentences.append(
@@ -915,6 +1027,11 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
 
 def _source_name(key: str, record: dict) -> str:
     tier = record.get("tier")
+    # An AE or TM detector's table is named as the detector, with its score.
+    if record.get("source_table") and not (
+        is_detector(record) and key in (mt.AE, mt.NTM)
+    ):
+        return table_name(record)
     if tier == lf.SILVER:
         return "expert"
     if tier == lf.LEGACY:
@@ -997,10 +1114,28 @@ def _chain_note(drawn: dict) -> str:
         f"pass) pixels; filling of holes under {mt.HOLE_AREA} pixels; components; "
         "time/band tags."
     )
-    if drawn.get("tokeye_transient_drawn"):
+    cut = drawn.get("tokeye_transient_threshold")
+    if drawn.get("tokeye_transient_overlay") is False:
+        # the owner turned the overlay off (2026-10-14, too distracting): the
+        # channel still shapes the mask, but nothing of it is drawn
+        text += (
+            " The transient channel only removes pixels from the mask; it is not drawn."
+        )
+    elif drawn.get("tokeye_transient_drawn") and cut is None:
         text += (
             " Red: TokEye's transient channel at the same cut, after the same "
             "small-object removal; the coherent mask excludes it."
+        )
+    elif drawn.get("tokeye_transient_drawn"):
+        whole = (
+            " of the wide-range pass, over the whole 0–150 kHz band,"
+            if drawn.get("tokeye_transient_pass") == "wide"
+            else ""
+        )
+        text += (
+            f" Red: TokEye's transient channel{whole} at its own display cut, "
+            f"≥{cut:g}, after the same small-object removal, where the mask is not "
+            "lit, max-pooled to print pixels; display only, nothing is tagged from it."
         )
     rows = drawn.get("persistent_line_rows")
     if rows is not None:
@@ -1102,17 +1237,29 @@ def appendix_notes(
         sources.append(f"{name}: {_source_name(key, record)}")
     if sources:
         notes.append("Tracks: " + "; ".join(sources) + ".")
+    key = row_key(drawn)
+    if key:
+        classes = (records.get("confinement") or {}).get("title") == CONFINEMENT_TITLE
+        notes.append(
+            f"Label rows (f): {key}"
+            + (
+                "; the confinement row's colour is its class, named on the run "
+                "where it fits."
+                if classes
+                else "."
+            )
+        )
     ae = records.get(mt.AE) or {}
     ntm = records.get(mt.NTM) or {}
-    ae_detector = ae.get("tier") == lf.GENERATED
+    ae_detector = is_detector(ae)
     ae_ours = ae.get("what", "").startswith("ae-ours")
     thresholds = [f"TokEye {_tokeye_threshold(drawn):g}"]
     if ae_detector:
         thresholds.append(f"AE {ae.get('decision_threshold') or AE_THRESHOLD:g}")
-    if ntm.get("tier") == lf.GENERATED:
+    if is_detector(ntm):
         thresholds.append(f"TM {ntm.get('decision_threshold') or NTM_THRESHOLD:g}")
     notes.append("Operating probability thresholds: " + "; ".join(thresholds) + ".")
-    shown = ntm_shown_threshold(ntm) if ntm.get("tier") == lf.GENERATED else None
+    shown = ntm_shown_threshold(ntm) if is_detector(ntm) else None
     if shown is not None:
         notes.append(
             f"The TM threshold is {shown:g} here, not the model's {NTM_THRESHOLD:g}: "
@@ -1142,7 +1289,7 @@ def appendix_notes(
                 "TokEye's mask only up-weights its MHD-absent frames. Highlights "
                 "mark coincidence, not independent physical confirmation."
             )
-    if ntm.get("tier") == lf.GENERATED:
+    if is_detector(ntm):
         notes.append(
             "TM detector: "
             + ntm_qualification(ntm)
@@ -1196,8 +1343,7 @@ def appendix_notes(
         notes.append(sawtooth_caption(saw))
         notes.append(
             "The sawtooth row preserves all source intervals, including those "
-            "shorter than 10 ms, with no state smoothing. Hatching marks "
-            "uncertainty; blank marks unassessed time."
+            "shorter than 10 ms, with no state smoothing."
         )
         if saw.get("what", "").startswith("physics") and not _has_present(saw):
             notes.append(

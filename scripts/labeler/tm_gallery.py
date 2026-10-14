@@ -16,7 +16,7 @@ blend into a light grey, named in the legend ("n = 1 and 2 overlap"). MHR often
 covers only part of a pulse; its uncovered times are grey. `--diagnostic mirnov`
 gives a second gallery with the longer MPI66M322D record (corpus `mirnov` row 15).
 
-    PYTHONPATH=$PWD/src pixi run --frozen --no-install -e labelmaker python \\
+    PYTHONPATH=$PWD/src pixi run --frozen --no-install -e labeler python \\
         scripts/labeler/tm_gallery.py --n 12 --seed 3 --out <stem>
 """
 
@@ -47,19 +47,19 @@ from labeler.config import git_sha
 from labeler.events.interval_tables import parse_attrs
 from labeler.events.panels._shared import above_floor_db, finite, plasma_columns, stft
 from labeler.events.verify import NoDataError, corpus_signal
+from labeler.paper import theme
 from labeler.tearing import rule
 
-LABELER = Path(
-    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")
-)
+LABELER = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
 SIGNALS = LABELER / "round4/tm/signals"
 LABELS = (
     REPO / "data/events/neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
 )
 FULL = LABELER / "round4/tm/labels/tm_intervals_full_cohort.csv"
 COHORT = REPO / "data/events/catalog/cohort.csv"
-#: Okabe-Ito: n = 1 vermillion, n = 2 blue; the traces use the same colours.
-COLOUR = {1: "#D55E00", 2: "#0072B2"}
+#: The paper theme (`labeler.paper.theme`): n = 1 sea green, n = 2 coral; the traces use
+#: the same colours.
+COLOUR = {1: theme.SEA_GREEN, 2: theme.CORAL}
 PROBE_ROW = 15
 MHR_ROW = 2
 Z_DB = (-3.0, 42.0)

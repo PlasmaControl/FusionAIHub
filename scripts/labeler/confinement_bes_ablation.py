@@ -72,7 +72,7 @@ from labeler.confinement import bes_windows as bw
 from labeler.confinement import scoring
 
 LABELER = Path(
-    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")
+    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler")
 )
 WORK = LABELER / "round4/conf"
 DATASETS = WORK / "datasets"

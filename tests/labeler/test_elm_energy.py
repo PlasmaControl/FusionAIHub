@@ -224,7 +224,9 @@ def test_elm_panel_replaces_direct_efit_with_loop_energy_and_size_rows(
     monkeypatch.setenv("LABELER_NO_FETCH", "1")
     built = elm.panels(11, paths=paths)
     energy, loss, fraction = built[-3:]
-    assert "diamagnetic" in energy.title.lower() and energy.ylabel == "J"
+    assert [p.title for p in (energy, loss, fraction)] == list(elm.LOOP_TITLES)
+    assert energy.ylabel == "J"
+    assert "diamagnetic" in energy.metadata["caveat"].lower()
     assert "Stored energy, EFIT01 WMHD" not in [p.title for p in built]
     assert loss.ylabel == "kJ" and np.nanmax(loss.y) == pytest.approx(50, rel=1e-4)
     assert fraction.ylabel == "%" and np.nanmax(fraction.y) == pytest.approx(5, rel=1e-4)
@@ -235,7 +237,7 @@ def test_elm_panel_replaces_direct_efit_with_loop_energy_and_size_rows(
     assert np.max(cropped[1].y) == pytest.approx(50, rel=1e-4)
     assert cropped[0].metadata == energy.metadata
     _grid, _rows, info = panel_rows.build("edge_localized_mode", 11, paths)
-    assert any(m["method"] == "diamagnetic_loop_v2"
+    assert any(m.get("method") == "diamagnetic_loop_v2"
                for m in info["params"]["panel_metadata"].values())
 
 

@@ -8,8 +8,8 @@
 #SBATCH --mem=2800M
 #SBATCH --time=01:30:00
 #SBATCH --array=0-2
-#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%A_%a.out
-#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%A_%a.out
+#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labeler/runs/slurm/%A_%a.out
+#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labeler/runs/slurm/%A_%a.out
 # Scheduler: training jobs 2942484_2, 2942491_0 and 2942491_1 ran as submitted:
 # QOS pppl-short-stellar, partition serial (sacct). Only evaluate (2942492) and
 # gallery (2942516-2942518) went to partition all / QOS stellar-debug.
@@ -43,8 +43,8 @@
 #   time=01:30:00  32 min x 2.8.
 set -euo pipefail
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
-ENV=/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker
-ROOT="$("$ENV/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")"
+ENV=/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler
+ROOT="$("$ENV/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labeler")"
 export LD_LIBRARY_PATH="$ENV/lib:${LD_LIBRARY_PATH:-}"
 export LABELER_ROOT="$ROOT" PYTHONPATH="$REPO/src"
 export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-/scratch/gpfs/nc1514/FusionAIHub/data/events}"

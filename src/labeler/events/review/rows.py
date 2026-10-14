@@ -146,7 +146,11 @@ def write(path, grid: Grid, rows, *, video_corpus=None, **info) -> None:
 
 
 def meta(path, hide=frozenset()) -> dict:
-    """The grid, the time range and every row's description, less `hide`."""
+    """The grid, the time range, every row's description (less `hide`) and markers.
+
+    `markers` is `[{"label": str, "t_ms": [float, ...]}]` as the build stored it:
+    ticks the page draws over every row; `[]` for a store without any.
+    """
     with h5py.File(path, "r") as f:
         t0, dt, n = float(f.attrs["t0_ms"]), float(f.attrs["dt_ms"]), int(f.attrs["n"])
         rows = [
@@ -154,6 +158,7 @@ def meta(path, hide=frozenset()) -> dict:
             for name in _names(f, hide)
         ]
         params = json.loads(f.attrs.get("params", "{}"))
+        markers = json.loads(f.attrs.get("markers", "[]"))
         described = {
             key: params[key] for key in (
                 "detachment_geometry", "detachment_producer", "panel_metadata",
@@ -161,7 +166,7 @@ def meta(path, hide=frozenset()) -> dict:
         }
     grid = {"t0": t0, "dt": dt, "n": n}
     return {"grid": grid, "t_range": [t0, t0 + n * dt], "rows": rows,
-            **({"params": described} if described else {})}
+            "markers": markers, **({"params": described} if described else {})}
 
 
 def read_window(

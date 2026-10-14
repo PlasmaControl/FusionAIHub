@@ -7,8 +7,8 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=2G
 #SBATCH --time=01:30:00
-#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
-#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
+#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labeler/runs/slurm/%j.out
+#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labeler/runs/slurm/%j.out
 
 # The AE segmentation model, then its one scoring on the test shots:
 #   python -m labeler.ae.seg.train     the reviewed pseudo-masks
@@ -21,7 +21,7 @@
 #       -> evaluation.{json,md} beside the model
 # Nothing is fetched. CPU here: SegNet has ~0.28 M parameters, and a cluster GPU would idle
 # far below the 70 % gate. On the head node's GPUs instead (about 35x faster an epoch), from
-# the repo, through the default env (the labelmaker env's torch is CPU-only):
+# the repo, through the default env (the labeler env's torch is CPU-only):
 #   PYTHONPATH=$PWD/src pixi run --frozen --no-install -e default \
 #       python -m labeler.ae.seg.train --version <v> --device cuda
 #   (then labeler.ae.seg.evaluate --version <v> --device cuda the same way)
@@ -67,8 +67,8 @@
 #   full run from its training.json `peak_rss_mb` x 1.25.
 set -euo pipefail
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
-ENV=/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker
-ROOT="$("$ENV/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")"
+ENV=/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler
+ROOT="$("$ENV/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labeler")"
 export LD_LIBRARY_PATH="$ENV/lib:${LD_LIBRARY_PATH:-}"
 export LABELER_ROOT="$ROOT" PYTHONPATH="$REPO/src"
 export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-/scratch/gpfs/nc1514/FusionAIHub/data/events}"

@@ -28,6 +28,9 @@ from ..config import atomic_path, git_sha
 from . import namespace as ns
 
 MISSING_ATTR = "missing"
+#: The file attribute that held the package version before the 2026-10-09 rename
+#: (`labeler_version` now). Nothing reads it; a rewrite drops it.
+LEGACY_VERSION_ATTR = "labelmaker_version"
 
 
 @dataclass(frozen=True)
@@ -151,7 +154,8 @@ def _write_groups(f, shot, arrays, missing, replaced, now) -> None:
     for name in set(f) | set(arrays):
         kept_missing.pop(name, None)
     f.attrs["shot"] = int(shot)
-    f.attrs["labelmaker_version"] = __version__
+    f.attrs.pop(LEGACY_VERSION_ATTR, None)
+    f.attrs["labeler_version"] = __version__
     f.attrs["git_sha"] = git_sha()
     f.attrs["written_at"] = now
     f.attrs[MISSING_ATTR] = json.dumps(kept_missing, sort_keys=True)

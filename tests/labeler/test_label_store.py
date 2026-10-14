@@ -94,7 +94,7 @@ def test_provenance_attrs_on_the_file(tmp_path):
         assert f.attrs["shot"] == 190000
         assert f.attrs["run_id"] == "run-test"
         assert f.attrs["features_sha256"] == "f" * 64
-        assert f.attrs["labelmaker_version"] and f.attrs["git_sha"]
+        assert f.attrs["labeler_version"] and f.attrs["git_sha"]
         assert f[SLUG]["tm_prob"].attrs["ensemble_n"] == 10
         assert f[SLUG]["tm_prob"].attrs["time_step_ms"] == 25.0
         assert f[SLUG]["tm_prob"].attrs["artifact_sha256"] == "abc123"

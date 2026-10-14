@@ -14,7 +14,7 @@ import pandas as pd
 
 REPO = Path(__file__).resolve().parents[2]
 TM = (
-    Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker"))
+    Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
     / "round4/tm"
 )
 BENCH = REPO / "data/events/neoclassical_tearing_mode/benchmark/tm_benchmark.json"
@@ -22,7 +22,7 @@ DOC = REPO / "docs/labeler/tearing_detection.md"
 LABELS = (
     REPO / "data/events/neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
 )
-README = REPO / "data/events/neoclassical_tearing_mode/README.md"
+README = REPO / "docs/labeler/events/neoclassical_tearing_mode/README.md"
 SOURCES = "../../data/events/neoclassical_tearing_mode/benchmark/sources"
 LOCK_EXAMPLES = ("n = 1 decaying", "n = 1 locking")
 
@@ -892,8 +892,12 @@ def main():
                 "Each fit asserts a positive-bearing early-stopping validation set and "
                 "threshold selection raises on zero positives. The published CNN is "
                 "shown at its own 0.5 threshold and at the tuned one, in both target "
-                "groups. The DSM's published survival "
-                "threshold 0.7 corresponds to risk 0.3."
+                "groups. The DSM has no published operating point: its legacy and "
+                "like-for-like published F1 is at the inner-validation threshold. Risk "
+                "0.3 (survival 0.7) is only the keyword default of upstream's "
+                "shot-level `metrics_helpers.py:85`, never used upstream as this "
+                "checkpoint's operating point and never reached by its 500 ms risk; "
+                "its F1 there is a fixed-threshold row in the appendix."
             ),
             "",
             (
@@ -985,13 +989,16 @@ def main():
                 "defined above). It shares `tm-ours` inputs, so the primary group "
                 "emphasises strong modes against quiet magnetic time and can favour "
                 "the magnetic detector; the uncertain-as-negative group also scores "
-                "those hard cases. The +RMS row adds circular label inputs. The legacy rows "
-                "use their published thresholds as primary and tuned thresholds as "
-                "secondary (appendix); AUPRC is not compared across settings because "
+                "those hard cases. The +RMS row adds circular label inputs. The legacy "
+                "CNN row uses its card's 0.5 as primary and the tuned threshold as "
+                "secondary (appendix); the legacy DSM row uses the inner-validation "
+                "threshold, since the checkpoint has no published operating point. "
+                "AUPRC is not compared across settings because "
                 "prevalence differs, and `figure2_tm.json` records it beside each value. "
                 "Rows without a variant use the threshold tuned on inner validation. "
-                "The DSM raises no alarm at its published level (risk 0.3) on the "
-                "legacy bins, so its F1 there is 0 (recall 0, precision undefined)."
+                "At risk 0.3 (upstream's helper default, survival 0.7; appendix) the DSM "
+                "raises no alarm on the legacy bins, so its F1 there is 0 (recall 0, "
+                "precision undefined)."
             ),
             "",
             (
@@ -1081,7 +1088,9 @@ def main():
                 "For each architecture the published model and the retrained one are "
                 "scored on one target, one mask and one set of shots and bins (for the "
                 "DSM, outside the published training list). The published CNN is shown "
-                "at its own threshold and at the tuned one; the retrained twin at its "
+                "at its own threshold and at the tuned one; the DSM, which has no "
+                "published operating point, at the tuned one (its primary published F1) "
+                "and at risk 0.3, an upstream helper default; the retrained twin at its "
                 "tuned threshold."
             ),
             "",
@@ -1097,7 +1106,13 @@ def main():
             for label, name in (
                 (
                     "published_at_published_threshold",
-                    block["published_model"] + " (published threshold)",
+                    block["published_model"]
+                    + (
+                        " (published threshold)"
+                        if block["primary_published"]
+                        == "published_at_published_threshold"
+                        else " (risk 0.3, upstream helper default)"
+                    ),
                 ),
                 (
                     "published_at_tuned_threshold",
@@ -1244,7 +1259,7 @@ def main():
             "## Reproduction",
             "",
             (
-                "Use the frozen/no-install pixi `labelmaker` environment, the worktree "
+                "Use the frozen/no-install pixi `labeler` environment, the worktree "
                 "`PYTHONPATH`, a scratch `TMPDIR` and `LABELER_NO_FETCH=1`. Only the "
                 "`DUSBRADIAL` fetch unsets it and runs through `fdp run` on the login "
                 "node. Train on `CUDA_VISIBLE_DEVICES=1` with the phase3 CUDA venv."

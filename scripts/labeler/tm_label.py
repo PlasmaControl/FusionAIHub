@@ -11,7 +11,7 @@ Reads the fetched n = 1 / n = 2 RMS records (`tm_fetch.py`), applies the frozen 
 
 Run from the worktree::
 
-    PYTHONPATH=$PWD/src pixi run --frozen --no-install -e labelmaker python \\
+    PYTHONPATH=$PWD/src pixi run --frozen --no-install -e labeler python \\
         scripts/labeler/tm_label.py --from cohort
 """
 
@@ -40,7 +40,7 @@ from labeler.events.interval_tables import parse_attrs, write_interval_table
 from labeler.tearing import rule, scoring, surface
 
 LABELER = Path(
-    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")
+    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler")
 )
 OUT_ROOT = LABELER / "round4/tm"
 SIGNALS = OUT_ROOT / "signals"

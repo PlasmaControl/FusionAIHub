@@ -23,7 +23,7 @@ What it does:
 
     PYTHONPATH=$PWD/src \\
         pixi run --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \\
-        -e labelmaker python scripts/labeler/pin_unet.py
+        -e labeler python scripts/labeler/pin_unet.py
 
 Run it in the environment the **test suite** uses, so the golden's
 `max_abs_diff` is 0 there. Re-run it only when the checkpoint or the vendored

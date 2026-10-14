@@ -29,8 +29,8 @@
  "finite_json_files_checked": 21,
  "bootstrap_valid_count_fields_checked": 422,
  "covering_tests_passed": 116,
- "covering_test_log": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/logs/round4-covering-tests.log",
- "lint_log": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/logs/round4-ruff.log",
+ "covering_test_log": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/logs/round4-covering-tests.log",
+ "lint_log": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/logs/round4-ruff.log",
  "checks": [
   "rule reproduction and legacy alias",
   "valid assessed bins and abstention encoding",

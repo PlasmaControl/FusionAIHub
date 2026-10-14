@@ -12,13 +12,14 @@ shots' stores with `out=` (`labeler.frames.prepare`), outside `spectrograms/`.
 from __future__ import annotations
 
 import argparse
+import math
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import UTC, datetime
 from pathlib import Path
 
-from ...config import Paths, git_sha
-from .. import rosters
+from ...config import Paths, git_sha, store_event
+from .. import panels, rosters, taxonomy
 from . import alfven, detachment, panel_rows, rows
 
 BUILDERS = {"alfven_eigenmode": alfven.build, "detachment": detachment.build}
@@ -26,12 +27,20 @@ BUILDERS = {"alfven_eigenmode": alfven.build, "detachment": detachment.build}
 HIDDEN = {"alfven_eigenmode": alfven.DROPPED}
 # The band an event's image rows show, whatever band the stored rows were built with.
 BANDS = {"alfven_eigenmode": alfven.BAND_KHZ}
-# Changes to these diagnostic recipes replace earlier cached review rows.
+# Changes to these diagnostic recipes replace earlier cached review rows. Keyed by
+# the STORE event (`config.store_event`): `confinement` is `high_confinement_mode`,
+# `mhd_n2` is `mhd_n1`. The edge-Te row came to the H-mode panels with 1.
+# `detachment` 7: the row titles changed (qualifiers moved to the caveats);
+# `resistive_wall_mode` 1: its rows were retitled the same way. The folded events
+# (sawtooth, fishbone, NTM) are stored under their own parent and are not here.
 PANEL_VERSIONS = {
-    "edge_localized_mode": 3, "sawtooth_oscillation": 1, "detachment": 6,
+    "edge_localized_mode": 4, "sawtooth_oscillation": 1, "detachment": 7,
+    "high_confinement_mode": 1, "mhd_n1": 1, "mhd_n1.m1": 1,
+    "resistive_wall_mode": 1,
 }
-# Recipe 6 has not been delivered yet. Reject early recipe-6 stores lacking
-# the independent-review target/bolometer context introduced in this fix round.
+# Recipe 7 has not been delivered yet. Reject early recipe-7 stores lacking
+# the independent-review target/bolometer context introduced in the fix round
+# before it (revision 1 of recipe 6, kept for recipe 7's stores).
 PANEL_REVISIONS = {"detachment": 1}
 
 
@@ -39,6 +48,7 @@ def current(path: Path, event: str) -> bool:
     """Whether a review store exists and has the event's current panel recipe."""
     if not path.is_file():
         return False
+    event = store_event(event)
     version = PANEL_VERSIONS.get(event)
     if version is None:
         return True
@@ -51,6 +61,27 @@ def current(path: Path, event: str) -> bool:
         )
 
 
+def _markers(store: str, shot: int, grid, paths: Paths) -> dict:
+    """The store's marker sets, as the `markers` file attribute.
+
+    `panels.MARKERS[store]`, when a panel module registers one, is
+    `markers(shot, *, t_range, paths) -> [{"label": str, "t_ms": [float, ...]}]`:
+    thin ticks the page draws over every row. A store without a markers function
+    gets no attribute and reads back as `[]`. A markers function that fails fails
+    the build, like any panel: a store never keeps `[]` for markers it could not read.
+    """
+    found = getattr(panels, "MARKERS", {}).get(store)
+    if found is None:
+        return {}
+    t_range = (grid.t0_ms, grid.t0_ms + grid.n * grid.dt_ms)
+    sets = [
+        {"label": str(item["label"]),
+         "t_ms": sorted(float(t) for t in item["t_ms"] if math.isfinite(float(t)))}
+        for item in found(int(shot), t_range=t_range, paths=paths)
+    ]
+    return {"markers": sets}
+
+
 def build(
     event: str, shot: int, paths: Paths | None = None, *, force: bool = False,
     out: Path | None = None,
@@ -60,6 +91,9 @@ def build(
 
     The file is the review's (`spectrogram_file`), or `out/<shot>.h5` with `out`,
     which the review page never serves, so `out` may not be under `spectrograms/`.
+    The rows, recipe version and markers are those of the event's store
+    (`config.store_event`): `mhd_n2` builds as `mhd_n1`, `alfven_eigenmode.rsae` as
+    `alfven_eigenmode`.
     """
     paths = Paths.from_env() if paths is None else paths
     if out is None:
@@ -71,15 +105,17 @@ def build(
         path = Path(out) / f"{int(shot)}.h5"
     if not force and (path.is_file() if out is not None else current(path, event)):
         return path
-    builder = BUILDERS.get(event, panel_rows.build)
-    grid, built, info = builder(event, int(shot), paths)
+    store = store_event(event)
+    builder = BUILDERS.get(store, panel_rows.build)
+    grid, built, info = builder(store, int(shot), paths)
     rows.write(
-        path, grid, built, event=event, shot=int(shot),
+        path, grid, built, event=store, shot=int(shot),
         builder=builder.__module__.rsplit(".", 1)[-1], **info,
-        **({"panel_version": PANEL_VERSIONS[event]}
-           if event in PANEL_VERSIONS and out is None else {}),
-        **({"panel_revision": PANEL_REVISIONS[event]}
-           if event in PANEL_REVISIONS and out is None else {}),
+        **_markers(store, shot, grid, paths),
+        **({"panel_version": PANEL_VERSIONS[store]}
+           if store in PANEL_VERSIONS and out is None else {}),
+        **({"panel_revision": PANEL_REVISIONS[store]}
+           if store in PANEL_REVISIONS and out is None else {}),
         made_at=datetime.now(UTC).isoformat(timespec="seconds"), git_sha=git_sha(),
     )
     return path
@@ -105,7 +141,9 @@ def main(argv=None) -> int:
     parser.add_argument("--force", action="store_true", help="rebuild existing files")
     args = parser.parse_args(argv)
     paths = Paths.from_env()
-    roster = rosters.roster_path(args.event, root=paths.label_tables)
+    # A subcategory is labelled over its parent's roster.
+    parent = taxonomy.load(paths.events_manifest).parent(args.event)
+    roster = rosters.roster_path(parent or args.event, root=paths.label_tables)
     shots = args.shots or list(rosters.read_roster(roster).shot)
     todo = [
         int(shot) for shot in shots

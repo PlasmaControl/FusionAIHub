@@ -3,7 +3,7 @@
 The paper's build draws it (`paper.build`); this CLI draws a preview of it
 into a scratch build:
 
-    PYTHONPATH=src pixi run -e labelmaker python -m labeler.paper.roster \\
+    PYTHONPATH=src pixi run -e labeler python -m labeler.paper.roster \\
         --out DIR [--shot SHOT] [--version V] [--seg-version V] \\
         [--tables-version V]
 
@@ -49,8 +49,9 @@ the sawtooth's SXR chords are not drawn (the owner, 2026-09-29 23:51).
   says `NO_GATE`, "no TokEye data".
 - One D-alpha panel serves ELMs and H-mode: the ELM model's filterscope, the
   channel its spans read (`D-alpha FS01` on shot 199563), labelled by its
-  title; neither `D-alpha PCPHD03` nor H-mode's pooled filterscopes row is
-  drawn.
+  title (the store's `D-alpha FS strike sum` row is never it:
+  `frames.features.TITLE_PATTERNS`); neither `D-alpha PCPHD03` nor H-mode's
+  pooled filterscopes row is drawn.
 - H-mode's NBI power.
 - The sawtooth's four ECE Te rows in one panel, a colour per row with a
   small key.

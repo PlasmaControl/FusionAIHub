@@ -46,7 +46,6 @@ from labeler.events import raw, rosters, suggestions
 from labeler.events.catalog.cohort import POPULATION_COLUMNS
 from labeler.events.catalog.states import NOT_OBSERVABLE, PRESENT, UNCERTAIN
 from labeler.events.interval_tables import SAMPLE_MS, write_label_grid
-from labeler.events.panels._shared import CLIPPED
 from labeler.events.panels.neoclassical_tearing_mode import N_COLOURS, Z_DB
 from labeler.events.panels.sawtooth_oscillation import CHANNEL_ROWS, ECE_BIN_MS
 from labeler.events.review import labels, rows
@@ -55,6 +54,9 @@ from labeler.frames import grid_path
 
 from . import editor_tree
 
+#: What an old saved store's clipped row carried in its title (a new row says so in
+#: its caveat instead): the frames roles match by title prefix, so both read.
+OLD_CLIPPED = ", clipped to its plasma range"
 ELM = "edge_localized_mode"
 HMODE = "high_confinement_mode"
 LMODE = "low_confinement_mode"
@@ -168,7 +170,7 @@ def _elm_rows(t, rng) -> list:
             z_units="",
         ),
         _trace("p1", "D-alpha PCPHD03", pcphd03, "D-α"),
-        _trace("p2", "D-alpha FS01, the ELM spans' channel" + CLIPPED, fs01, "D-α"),
+        _trace("p2", "D-alpha FS01, the ELM spans' channel" + OLD_CLIPPED, fs01, "D-α"),
     ]
 
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from labeler.events import panels, spans
+from labeler.events import equilibrium, panels, raw, spans
 from labeler.events.panels import _shared
 from labeler.events.panels import edge_localized_mode as elm
 from labeler.events.review import panel_rows
@@ -14,6 +14,19 @@ from labeler.events.review.rows import ImageRow, TraceRow
 from . import editor_tree as tree
 
 SHOT = 201234
+FS_STRIKE_CAVEAT = "The strike points could not be used"
+
+
+@pytest.fixture(autouse=True)
+def no_archive(monkeypatch):
+    """The W_MHD row asks the archive and fdp; neither is there."""
+    nothing = lambda *args, **kwargs: ({}, {})
+    monkeypatch.setattr(equilibrium.resolve_archive, "resolve", nothing)
+    monkeypatch.setattr(equilibrium.resolve_fdp, "resolve", nothing)
+
+
+def _caveat(panel) -> str:
+    return (panel.metadata or {}).get("caveat", "")
 
 
 def _elm_shot(p, *, pcphd03="varies", fs01=True):
@@ -42,22 +55,24 @@ def _elm_shot(p, *, pcphd03="varies", fs01=True):
         tree.write(p.raw_cache / f"{SHOT}_processed.h5", {"pcphd03": (t, y)})
 
 
-def test_elm_draws_co2_power_to_125_khz_pcphd03_and_the_spans_filterscope(
-    tmp_path, monkeypatch
-):
+def test_elm_draws_dalpha_the_jump_pcphd03_density_and_co2_power(tmp_path, monkeypatch):
     p = tree.paths(tmp_path)
     tree.no_fetch(monkeypatch)
     _elm_shot(p)
-    power, pcphd03, fs = panels.build("edge_localized_mode", SHOT, paths=p)
+    fs, jump, pcphd03, density, power = panels.build("edge_localized_mode", SHOT, paths=p)
+    assert fs.title == "D-alpha FS01" and FS_STRIKE_CAVEAT in _caveat(fs)
+    assert fs.legend == ["FS01"] and fs.y.shape == (1, 2000)
+    assert jump.title == "ELM jump-and-hold" and jump.y.shape == (1, 2000)
+    assert jump.hlines == [elm.JUMP_THRESHOLD] and np.nanmax(jump.y) > 0
+    assert pcphd03.title == "D-alpha PCPHD03" and pcphd03.y.shape == (1, 10_000)
+    assert (density.title, density.ylabel) == ("CO2 R0 density", "n_e")
+    assert np.allclose(np.diff(density.x), elm.DENSITY_BIN_MS, atol=0.005)
     assert (power.title, power.kind, power.ylabel) == ("CO2 R0 power", "heatmap", "kHz")
     assert power.y[0] == 0 and 124 < power.y[-1] <= 125
     assert (power.zmin, power.zmax) == _shared.Z_DB
     assert np.all(np.diff(power.x) > 0) and 0 < power.x[0] < power.x[-1] < 200
     burst = (power.x > 100) & (power.x < 102)
     assert power.z[:, burst].mean() > power.z[:, ~burst].mean() + 10, "the burst"
-    assert pcphd03.title == "D-alpha PCPHD03" and pcphd03.y.shape == (1, 10_000)
-    assert fs.title == "D-alpha FS01, the ELM spans' channel"
-    assert fs.legend == ["FS01"] and fs.y.shape == (1, 2000)
 
 
 def test_the_filterscope_is_the_one_the_spans_read(tmp_path, monkeypatch):
@@ -66,18 +81,22 @@ def test_the_filterscope_is_the_one_the_spans_read(tmp_path, monkeypatch):
     _elm_shot(p, fs01=False)
     _t, y = spans.read(SHOT, "filterscopes", p, range(8))
     assert spans.dalpha_channel(y, SHOT) == 1
-    *_, fs = panels.build("edge_localized_mode", SHOT, paths=p)
-    assert fs.title == "D-alpha FS02, the ELM spans' channel" and fs.legend == ["FS02"]
+    fs = panels.build("edge_localized_mode", SHOT, paths=p)[0]
+    assert fs.title == "D-alpha FS02" and fs.legend == ["FS02"]
+    assert "the one filterscope the ELM spans read" in _caveat(fs)
     window = panels.build("edge_localized_mode", SHOT, t_range=(0, 1), paths=p)
-    assert window[-1].legend == ["FS02"], "chosen over the record, not the view"
+    assert window[0].legend == ["FS02"], "chosen over the record, not the view"
 
 
-def test_a_flat_pcphd03_is_left_out_and_the_title_says_so(tmp_path, monkeypatch):
+def test_a_flat_pcphd03_is_left_out_and_the_caveat_says_so(tmp_path, monkeypatch):
     p = tree.paths(tmp_path)
     tree.no_fetch(monkeypatch)
     _elm_shot(p, pcphd03="flat")
-    _power, fs = panels.build("edge_localized_mode", SHOT, paths=p)
-    assert fs.title == "D-alpha FS01, the ELM spans' channel (PCPHD03 flat, left out)"
+    built = panels.build("edge_localized_mode", SHOT, paths=p)
+    assert [x.title for x in built] == [
+        "D-alpha FS01", "ELM jump-and-hold", "CO2 R0 density", "CO2 R0 power"
+    ]
+    assert "PCPHD03 is flat over the plasma, so it is left out" in _caveat(built[0])
     t = tree.times(0.0, 200.0, 50_000)
     ramp = np.linspace(0.0, 1.0, len(t))[None]
     assert elm.flat(t, ramp * 0.01, None) and not elm.flat(t, ramp * 0.03, None)
@@ -89,28 +108,39 @@ def test_elm_falls_back_to_fs01_and_leaves_out_what_is_missing(tmp_path, monkeyp
     p = tree.paths(tmp_path)
     tried = tree.no_fetch(monkeypatch)
     _elm_shot(p, pcphd03=None)
-    power, dalpha = panels.build("edge_localized_mode", SHOT, paths=p)
-    assert power.title == "CO2 R0 power"
-    assert dalpha.title == "D-alpha FS01, the ELM spans' channel (PCPHD03 not found)"
-    assert tried == [(SHOT, ["PCPHD03"])] * 2, "one try and its retry"
+    dalpha, jump, density, power = panels.build("edge_localized_mode", SHOT, paths=p)
+    assert power.title == "CO2 R0 power" and density.title == "CO2 R0 density"
+    assert dalpha.title == "D-alpha FS01" and jump.title == "ELM jump-and-hold"
+    assert "PCPHD03 not found, so it is left out" in _caveat(dalpha)
+    assert tried == [
+        (SHOT, ["PCPHD03"]),
+        (SHOT, ["PCPHD03"]),
+        (SHOT, list(raw.FETCH_SPECS["strike_points"].exprs)),
+        (SHOT, list(raw.FETCH_SPECS["strike_points"].exprs)),
+        (SHOT, ["ip"]),
+        (SHOT, ["ip"]),
+    ], "each a try and its retry: PCPHD03, then the strike points, then Ip"
+    assert "Ip not found" in _caveat(jump)
     other = SHOT + 1
     slow = tree.times(0.0, 200.0, 10_000)
     tree.write(p.corpus_file(other), {"filterscopes": (slow, np.ones((104, 2000)))})
     [only] = panels.build("edge_localized_mode", other, paths=p)
-    assert only.title.startswith("D-alpha FS01"), "no CO2 anywhere: no spectrogram"
+    assert only.title == "D-alpha FS01", "no CO2 anywhere: no spectrogram, no jump"
 
 
-def test_elm_rows_are_an_image_and_two_traces(tmp_path, monkeypatch):
+def test_elm_rows_are_four_traces_and_an_image(tmp_path, monkeypatch):
     p = tree.paths(tmp_path)
     tree.no_fetch(monkeypatch)
     _elm_shot(p)
     grid, rows, info = panel_rows.build("edge_localized_mode", SHOT, p)
-    assert [type(row) for row in rows] == [ImageRow, TraceRow, TraceRow]
-    assert (rows[0].z_lo, rows[0].z_hi) == _shared.Z_DB
+    assert [type(row) for row in rows] == [TraceRow] * 4 + [ImageRow]
+    assert (rows[-1].z_lo, rows[-1].z_hi) == _shared.Z_DB
     assert grid.dt_ms == panel_rows.FINEST_DT_MS and info["params"]
 
 
-def test_elm_keeps_existing_rows_when_only_efit_energy_is_available(tmp_path, monkeypatch):
+def test_elm_draws_wmhd_from_efit_and_no_loop_energy_without_the_loop(
+    tmp_path, monkeypatch
+):
     p = tree.paths(tmp_path)
     tree.no_fetch(monkeypatch)
     _elm_shot(p)
@@ -118,10 +148,18 @@ def test_elm_keeps_existing_rows_when_only_efit_energy_is_available(tmp_path, mo
     wmhd = np.full_like(t, 1.0e6)
     wmhd[t >= 100.0] = 0.7e6
     tree.write(p.corpus_file(SHOT), {"wmhd": (t, wmhd[None])})
-    panels_for_shot = panels.build("edge_localized_mode", SHOT, paths=p)
-    assert [p.title for p in panels_for_shot] == [
-        "CO2 R0 power", "D-alpha PCPHD03", "D-alpha FS01, the ELM spans' channel",
+    built = panels.build("edge_localized_mode", SHOT, paths=p)
+    assert [x.title for x in built] == [
+        "D-alpha FS01",
+        "ELM jump-and-hold",
+        "D-alpha PCPHD03",
+        "CO2 R0 density",
+        "W_MHD",
+        "CO2 R0 power",
     ]
+    wmhd_row = built[4]
+    assert wmhd_row.ylabel == "J" and "EFIT01 stored energy" in _caveat(wmhd_row)
+    np.testing.assert_allclose(np.nanmax(wmhd_row.y), 1.0e6)
 
 
 def test_a_late_spike_does_not_set_the_traces_range(tmp_path, monkeypatch):
@@ -135,15 +173,17 @@ def test_a_late_spike_does_not_set_the_traces_range(tmp_path, monkeypatch):
         y += 0.2 * np.exp(-0.5 * ((t - peak) / 0.5) ** 2)
     y[(t > 195) & (t < 195.4)] = 5.0  # the end of the discharge
     tree.write(p.raw_cache / f"{SHOT}_processed.h5", {"pcphd03": (t, y)})
-    _power, pcphd03, _fs = panels.build("edge_localized_mode", SHOT, paths=p)
-    assert pcphd03.title == "D-alpha PCPHD03, clipped to its plasma range"
+    built = panels.build("edge_localized_mode", SHOT, paths=p)
+    pcphd03 = next(x for x in built if x.title == "D-alpha PCPHD03")
+    assert _shared.CLIPPED in _caveat(pcphd03)
     top = pcphd03.y.max()
     assert top < 1.0, "the spike is clipped"
     elms = pcphd03.y[0, (pcphd03.x > 30) & (pcphd03.x < 170)]
     assert elms.max() == pytest.approx(y[(t > 30) & (t < 170)].max()), "ELMs whole"
     assert elms.max() > 0.4 * top, "the ELMs fill the row the page autoscales"
     _grid, rows, _ = panel_rows.build("edge_localized_mode", SHOT, p)
-    assert np.nanmax(rows[1].values) == pytest.approx(top)
+    row = next(r for r in rows if r.title == "D-alpha PCPHD03")
+    assert np.nanmax(row.values) == pytest.approx(top)
     [[low], [high]] = _shared.robust_limits(t, y[None], None)
     assert low < 0.05 and 0.25 <= high < 1.0
 
@@ -199,7 +239,7 @@ def test_hmode_without_features_still_draws_the_rest(tmp_path, monkeypatch):
     titles = [x.title for x in panels.build("high_confinement_mode", SHOT, paths=p)]
     assert titles == [
         "D-alpha filterscopes",
-        "density, CO2 R0 (1 ms mean)",
+        "CO2 R0 density",
         "NBI power",
     ]
 

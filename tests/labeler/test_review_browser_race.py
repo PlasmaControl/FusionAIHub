@@ -32,13 +32,14 @@ def served_events(tmp_path):
         logs_jsonl=tmp_path / "logs.jsonl",
         label_tables=tmp_path / "tables",
         raw_cache=tmp_path / "raw",
+        config_dir=tmp_path / "config",  # no events.yaml: an empty taxonomy
     )
     for shot in (170815, 170816, 170817):
         _store(paths, shot)
     events = []
     for name, span in (
         ("alfven_eigenmode", (100, 300, 1)),
-        ("neoclassical_tearing_mode", (900, 1100, 1)),
+        ("disruption", (900, 1100, 1)),
     ):
         event = paths.label_tables / name
         (event / "format").mkdir(parents=True)

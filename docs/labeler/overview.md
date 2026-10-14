@@ -4,13 +4,12 @@ title: "labeler"
 
 # labeler
 
-Environment settings use `LABELER_*`. The corresponding `LABELMAKER_*` name
-remains a fallback when the new name is unset, with a one-line log warning.
-An explicitly empty new value still wins. The pixi environment remains
-`labelmaker` under the environment-rename fallback; Python modules use `labeler`.
-Data remains under `/scratch/gpfs/EKOLEMEN/nc1514/labelmaker`, including
-`envs/phase3` and `models/tokeye`. Stored keys such as `labelmaker_version`
-and the model-card `labelmaker:` block keep their names.
+Environment settings use `LABELER_*`. The pixi environment, the Python
+modules and the data root (`/scratch/gpfs/EKOLEMEN/nc1514/labeler`, including
+`envs/phase3` and `models/tokeye`) are all named `labeler`. The package was
+called `labelmaker` before 2026-09-15 and its data root kept that name until
+2026-10-09. The stored version key is `labeler_version`; label, feature and
+manifest files written before 2026-10-09 carry `labelmaker_version`.
 
 Runs the group's trained models over the FAITH shot corpus and writes their
 predictions as per-shot label files in the corpus HDF5 layout, with a measured
@@ -23,14 +22,14 @@ The AE frame model trained on the owner's reviewed labels, from its inputs to it
 ## Running it
 
 ```bash
-pixi install -e labelmaker              # once
-pixi run -e labelmaker fdp login        # once per token; only the fdp resolver needs it
+pixi install -e labeler              # once
+pixi run -e labeler fdp login        # once per token; only the fdp resolver needs it
 
-pixi run -e labelmaker label 199597     # the one-shot demo: every servable model on one shot
+pixi run -e labeler label 199597     # the one-shot demo: every servable model on one shot
 ```
 
 `label` runs the `analyze` stage over every model in `analyze_default.yaml`, then
-leaves four files in `outputs/labelmaker/analysis/<shot>/` in this repo (override the
+leaves four files in `outputs/labeler/analysis/<shot>/` in this repo (override the
 directory with `LABELER_DEMO_OUT`): `<shot>_labels.h5` (the labels file, `<slug>/<label>/{xdata,ydata}`
 plus `_spread`/`_valid`), `<shot>_labels.npz` (`time_s` plus one `"<slug>/<label>"` array
 per label), `<shot>_analysis.json` (per-label summary) and `<shot>_labels.png`, one
@@ -42,7 +41,7 @@ lack the CO2 interferometer channels the AE model reads, and some lack EFIT via 
 The full pipeline, stage by stage:
 
 ```bash
-pixi run -e labelmaker fdp run python -m labeler.run all \
+pixi run -e labeler fdp run python -m labeler.run all \
     --models d3d_tearing_onset_cnn1d \
     --overlap --sample 100 --seed 20260903 --workers 8 --timeout 300
 ```
@@ -102,7 +101,7 @@ Use the shared environment read-only, with this worktree's source selected:
 ```bash
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$PWD/src XDG_CACHE_HOME=/tmp/lc2/cache \
 pixi run --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \
-  --frozen --no-install -e labelmaker fdp run python -m labeler.run features \
+  --frozen --no-install -e labeler fdp run python -m labeler.run features \
   --features lh_power helicon_twapwr efc_n1_ka \
     efc_a1_c_ka efc_a1_iu_ka efc_a1_il_ka ecoil_a \
   --shot-file /tmp/lc2/pilot-shots.txt --root /tmp/lc2/pilot --workers 4
@@ -124,7 +123,7 @@ pilot measurements, commands, and preservation hashes.
 ## One shot, all the labels you asked for
 
 ```bash
-pixi run -e labelmaker fdp run python -m labeler.run analyze \
+pixi run -e labeler fdp run python -m labeler.run analyze \
     --shots 199597 --config my_labels.yaml --out /some/dir
 ```
 
@@ -164,7 +163,7 @@ it.
 ## What it writes
 
 Everything under `$LABELER_ROOT` (default
-`/scratch/gpfs/EKOLEMEN/nc1514/labelmaker`; `$LABELER_CORPUS` overrides the
+`/scratch/gpfs/EKOLEMEN/nc1514/labeler`; `$LABELER_CORPUS` overrides the
 corpus location):
 
 | path | contents |
@@ -199,7 +198,7 @@ with a start, an end, an optional frequency band and a named source, and the
 `events` stage is what produces them:
 
 ```bash
-pixi run -e labelmaker python -m labeler.run events \
+pixi run -e labeler python -m labeler.run events \
     --shot-file $LABELER_ROOT/recommender_v1.txt --limit 5 \
     --device cpu --tile-batch 8 --passes wide --timeout 900
 ```
@@ -394,7 +393,7 @@ Three things worth knowing before reading a row:
 
 Curated lists use the user's `data/events/<category>/{raw,format,extend_<model>}/`
 layout. `raw/` holds byte-identical originals; deterministic adapters in
-`scripts/labeler/labels_format.py` use `tables.yaml` to convert them into
+`scripts/labeler/labels_format.py` use `configs/labeler/events.yaml` to convert them into
 `format/`. `events/databases.py` reads only the common format CSVs, with parsed JSON
 attributes and the stored evidence kind. Its `FORMAT_COLUMNS` and validator define
 one schema for every dataset and producer: `shot, t0_s, t1_s, phenomenon,
@@ -404,12 +403,15 @@ creation time, row count, and shot count.
 
 Add an untouched raw file, declare its columns and format stem in the manifest,
 register an adapter if needed, run `PYTHONPATH=src python
-scripts/labeler/labels_format.py`, and commit raw, format CSV, sidecar, and
-converter changes together. Manifest `made_at` fixes the conversion revision time;
+scripts/labeler/labels_format.py`, and commit the converter and manifest
+changes; the raw file, format CSV and sidecar are data (git ignores `data/`) and
+ship in the next Hugging Face release (`scripts/labeler/hf_publish.py`). Manifest `made_at` fixes the conversion revision time;
 sorted rows, stable float/JSON formatting, and that timestamp make the CSV and
-sidecar byte-reproducible. See `data/events/README.md` (repository root, outside
-this docs tree) for the complete schema and examples. `config.Paths.label_tables`
-is the root; `LABELER_LABEL_TABLES` overrides it.
+sidecar byte-reproducible. See [`events/README.md`](events/README.md) for the complete schema
+and examples. `config.Paths.label_tables`
+is the root; `LABELER_LABEL_TABLES` overrides it. The manifest that names the
+tables, `configs/labeler/events.yaml`, is `config.Paths.events_manifest`;
+`LABELER_CONFIG_DIR` overrides its directory.
 
 Each `extend_<model>/` belongs to one producer task and holds that producer's result
 on the 500 `recommender_v1` shots. `scripts/labeler/labels_extend.py` reads
@@ -446,7 +448,7 @@ to ingest one is the standalone mode, which needs no corpus file, no U-Net and
 no GPU:
 
 ```bash
-pixi run -e labelmaker python -m labeler.run events --databases-only \
+pixi run -e labeler python -m labeler.run events --databases-only \
     --shot-file $LABELER_ROOT/recommender_v1.txt
 ```
 
@@ -518,7 +520,7 @@ queued inferred tail payloads when workers restart.
 `tokeye_masks.sbatch` uses a plain `ROOT` override before activated
 `LABELER_ROOT`. It resolves and prints that destination before running any
 writer. Read-only inputs are independent: `RUNTIME_ROOT` defaults to
-`/scratch/gpfs/EKOLEMEN/nc1514/labelmaker`, while `PHASE3_PYTHON` and `UNET` can
+`/scratch/gpfs/EKOLEMEN/nc1514/labeler`, while `PHASE3_PYTHON` and `UNET` can
 override its Python/checkpoint paths. A scratch output root therefore does not
 need copies of the environment or checkpoint. The corpus remains read-only.
 The script requires `PREP_WORKERS + TAIL_WORKERS + 1` CPUs and accepts `REPO`
@@ -552,9 +554,9 @@ its single GPU pilot and gates it manually, without a companion submission.
 ```bash
 cd /scratch/gpfs/nc1514/FusionAIHub-L14perf
 export REPO=$PWD
-export ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/l14perf/pilot-example
+export ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labeler/runs/l14perf/pilot-example
 export LABELER_ROOT="$ROOT"
-export SHOT_FILE=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/l12/pilot20.txt
+export SHOT_FILE=/scratch/gpfs/EKOLEMEN/nc1514/labeler/runs/slurm/l12/pilot20.txt
 export PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$PWD/src HF_HUB_OFFLINE=1
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
 export TMPDIR=/tmp/l14perf PIXI_CACHE_DIR=/tmp/l14perf/pixi-cache
@@ -574,7 +576,7 @@ CHECKID=$(sbatch --parsable --dependency=afterok:"$JOBID" \
 while [[ -n $(squeue -h -j "$JOBID,$CHECKID" -o %i) ]]; do sleep 20; done
 
 # The companion gates each GPU element; also gate the CPU companion itself.
-pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e labelmaker python -m labeler.jobstats \
+pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e labeler python -m labeler.jobstats \
   --job-id "$CHECKID" --pilot --wait-for-data 300 \
   --preserve-dir "$ROOT/runs/slurm" --out "$ROOT/runs/slurm/jobstats.json"
 ```
@@ -692,7 +694,7 @@ Because none of this needs the corpus or the network, there is a standalone
 mode for it, beside `--databases-only` and running the curated tables too:
 
 ```bash
-pixi run -e labelmaker python -m labeler.run events --rules-only \
+pixi run -e labeler python -m labeler.run events --rules-only \
     --shot-file $LABELER_ROOT/recommender_v1.txt
 ```
 
@@ -714,7 +716,7 @@ scratch root:
 ```bash
 mkdir -p /tmp/ld2/rules500
 ln -s "$LABELER_ROOT/features" /tmp/ld2/rules500/features
-pixi run -e labelmaker python -m labeler.run events --rules-only \
+pixi run -e labeler python -m labeler.run events --rules-only \
     --shot-file $LABELER_ROOT/recommender_v1.txt --root /tmp/ld2/rules500
 ```
 
@@ -781,7 +783,7 @@ one in its config.
 ## Adding a model
 
 1. `src/labeler/models/<device>_<phenomenon>_<predicted>_<arch>/`, with
-   `README.md` (HuggingFace card plus the `labelmaker:` block), `spec.py`
+   `README.md` (HuggingFace card plus the `labeler:` block), `spec.py`
    (`ADAPTER`), and an empty `__init__.py`. Copy the closest existing folder.
 2. Map each trained-on input name to a canonical feature in
    `features/namespace.py`. Add a `FeatureSpec` only if the quantity is
@@ -791,9 +793,9 @@ one in its config.
 4. Load the weights from their upstream location, copy them into
    `<root>/models/<slug>/`, and record the sha256 in the card - inference
    refuses to run against bytes the card does not know.
-5. `pixi run -e labelmaker python -m pytest tests/labeler -q -W error` - the
+5. `pixi run -e labeler python -m pytest tests/labeler -q -W error` - the
    registry tests check that the card and `spec.py` agree - and
-   `pixi run -e labelmaker ruff check src/labeler tests/labeler`.
+   `pixi run -e labeler ruff check src/labeler tests/labeler`.
 
 ## Known limits
 

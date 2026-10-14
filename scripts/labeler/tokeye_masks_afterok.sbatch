@@ -16,7 +16,7 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=512M
 #SBATCH --time=00:06:00
-#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
+#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labeler/runs/slurm/%j.out
 
 set -euo pipefail
 JOBID="${1:?pass the completed GPU array job id}"
@@ -28,7 +28,7 @@ elif [[ $# != 1 ]]; then
     exit 2
 fi
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
-ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")"
+ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labeler")"
 if [[ ! -x "$ROOT/runs/slurm/jobstats-client/jobstats" ]]; then
     echo "run tokeye_text_subset.sh on the login node first to stage jobstats" >&2
     exit 2
@@ -41,9 +41,9 @@ export PIXI_CACHE_DIR="${PIXI_CACHE_DIR:-/tmp/l12-pixi}"
 export XDG_CACHE_HOME="$ROOT/runs/slurm/cache/${SLURM_JOB_ID:-rebuild}"
 cd "$REPO"
 srun --cpu-bind=cores pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \
-    -e labelmaker python "$REPO/scripts/labeler/tokeye_masks.py" \
+    -e labeler python "$REPO/scripts/labeler/tokeye_masks.py" \
     --root "$ROOT" --rebuild-index --index-out "$ROOT/events/events_index.parquet"
 srun --cpu-bind=cores pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \
-    -e labelmaker python "$REPO/scripts/labeler/jobstats_check.py" \
+    -e labeler python "$REPO/scripts/labeler/jobstats_check.py" \
     --job-id "$JOBID" "${gate_mode[@]}" --wait-for-data 300 \
     --preserve-dir "$ROOT/runs/slurm" --out "$ROOT/runs/slurm/jobstats.json"

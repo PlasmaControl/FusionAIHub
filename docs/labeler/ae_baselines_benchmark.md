@@ -3,7 +3,7 @@
 Status: **run 2026-10-01.** The owner asked for the CO2 detectors that came before the
 SELDnet (an LSTM and an "RCN", the echo state network) to be benchmarked against it, and
 the numbers added to the AE README. Script: `scripts/labeler/ae_baselines_evaluate.py`
-(from the repository root, `pixi run --frozen -e labelmaker python
+(from the repository root, `pixi run --frozen -e labeler python
 scripts/labeler/ae_baselines_evaluate.py`); record:
 `outputs/labeler/ae/baselines/evaluation.json` (git `2b4da1d`).
 

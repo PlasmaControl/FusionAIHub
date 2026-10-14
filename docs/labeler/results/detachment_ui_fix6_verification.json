@@ -45,7 +45,7 @@
     {
       "command": [
         "bash",
-        "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/bin/pt.sh",
+        "/scratch/gpfs/EKOLEMEN/nc1514/labeler/scratch/bin/pt.sh",
         "/scratch/gpfs/nc1514/FusionAIHub-r4-detach-ui",
         "tests/labeler/test_review_detachment.py",
         "tests/labeler/test_review_detachment_browser.py",
@@ -69,7 +69,7 @@
         "-q",
         "-p",
         "no:cacheprovider",
-        "--junitxml=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/detach-ui/review-verification-smeoi837/pytest.xml"
+        "--junitxml=/scratch/gpfs/EKOLEMEN/nc1514/labeler/scratch/claude-89242e53/r4/tmp/detach-ui/review-verification-smeoi837/pytest.xml"
       ],
       "returncode": 0,
       "stdout_tail": "........................................................................ [ 21%]\n........................................................................ [ 43%]\n........................................................................ [ 65%]\n........................................................................ [ 87%]\n...........................................                              [100%]\n331 passed in 26.14s\n",
@@ -84,7 +84,7 @@
         "--manifest-path",
         "/scratch/gpfs/nc1514/FusionAIHub/pyproject.toml",
         "-e",
-        "labelmaker",
+        "labeler",
         "ruff",
         "check",
         "scripts/labeler/detachment_review_archive.py",
@@ -134,7 +134,7 @@
         "--manifest-path",
         "/scratch/gpfs/nc1514/FusionAIHub/pyproject.toml",
         "-e",
-        "labelmaker",
+        "labeler",
         "ruff",
         "format",
         "--check",

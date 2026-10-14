@@ -7,7 +7,7 @@
 #   scripts/labeler/label_shot.sh 187199 186545     # several
 #   LABELER_DEMO_OUT=/some/dir scripts/labeler/label_shot.sh 199597
 #
-# Output, per shot, under $LABELER_DEMO_OUT (default outputs/labelmaker/analysis in
+# Output, per shot, under $LABELER_DEMO_OUT (default outputs/labeler/analysis in
 # this repo; the cached features and the canonical labels file stay under $LABELER_ROOT):
 #   <shot>/<shot>_labels.h5        every label:  <model>/<label>/{xdata,ydata}
 #   <shot>/<shot>_labels.npz       the same as numpy: time_s + "<model>/<label>"
@@ -17,13 +17,13 @@
 #
 # Which models and labels: src/labeler/analyze_default.yaml (pass your own
 # with LABELER_DEMO_CONFIG=path). Fetching features that are not in the
-# corpus needs an fdp token (`pixi run -e labelmaker fdp login`, once).
+# corpus needs an fdp token (`pixi run -e labeler fdp login`, once).
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")"
-OUT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/labeler/env.py" LABELER_DEMO_OUT "$REPO/outputs/labelmaker/analysis")"
-CONFIG="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/labeler/env.py" LABELER_DEMO_CONFIG "$REPO/src/labeler/analyze_default.yaml")"
+ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labeler")"
+OUT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler/bin/python" "$REPO/src/labeler/env.py" LABELER_DEMO_OUT "$REPO/outputs/labeler/analysis")"
+CONFIG="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler/bin/python" "$REPO/src/labeler/env.py" LABELER_DEMO_CONFIG "$REPO/src/labeler/analyze_default.yaml")"
 
 if [ "$#" -lt 1 ]; then
     echo "usage: $(basename "$0") SHOT [SHOT ...]" >&2
@@ -36,13 +36,13 @@ for shot in "$@"; do
 done
 
 cd "$REPO"
-FORCE="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/labeler/env.py" LABELER_DEMO_FORCE)"
+FORCE="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler/bin/python" "$REPO/src/labeler/env.py" LABELER_DEMO_FORCE)"
 export LABELER_ROOT="$ROOT"
-pixi run -q -e labelmaker fdp run python -m labeler.run analyze \
+pixi run -q -e labeler fdp run python -m labeler.run analyze \
     --shots "$@" --config "$CONFIG" --out "$OUT" ${FORCE:+--force}
 
 # Put the canonical label file next to the figure, and a numpy copy of it.
-pixi run -q -e labelmaker python - "$ROOT" "$OUT" "$@" <<'PY'
+pixi run -q -e labeler python - "$ROOT" "$OUT" "$@" <<'PY'
 import shutil
 import sys
 from pathlib import Path

@@ -24,7 +24,7 @@ from labeler.tearing import detectors, scoring
 
 REPO = Path(__file__).resolve().parents[2]
 TM = (
-    Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker"))
+    Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
     / "round4/tm"
 )
 LABELS = (

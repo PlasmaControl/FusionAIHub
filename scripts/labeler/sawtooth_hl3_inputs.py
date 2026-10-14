@@ -22,7 +22,7 @@ A signal a shot lacks is a missing channel (NaN here, masked in the network);
 the shot is still built. No label, crash time or interval is read: the only
 inputs besides the signals are the benchmark's own `t` and `baseline`.
 
-    pixi run --frozen -e labelmaker python scripts/labeler/sawtooth_hl3_inputs.py \\
+    pixi run --frozen -e labeler python scripts/labeler/sawtooth_hl3_inputs.py \\
         --workers 6
     ... --aggregate     # write the shot-coverage record from the per-shot files
 """

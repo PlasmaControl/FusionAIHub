@@ -49,7 +49,7 @@ def test_stored_in_corpus_layout_with_provenance(tmp_path):
         assert f["ip"]["ydata"].dtype == np.float32
         assert f["ip"]["ydata"].shape == (1, 10)
         assert f.attrs["shot"] == 190000
-        assert f.attrs["labelmaker_version"] and f.attrs["git_sha"]
+        assert f.attrs["labeler_version"] and f.attrs["git_sha"]
         assert f["ip"].attrs["complete"] == 1
         assert f["ip"].attrs["fetched_at"]
 

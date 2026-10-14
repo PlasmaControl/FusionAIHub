@@ -38,6 +38,7 @@ def test_readers_refuse_structure_with_physical_lines(tmp_path, reader, columns,
         reader(path)
 
 
+@pytest.mark.label_tables
 @pytest.mark.parametrize("name", ["cohort", "population", "papers"])
 @pytest.mark.parametrize("stream", [False, True])
 def test_committed_reader_preserves_pandas_values(name, stream):

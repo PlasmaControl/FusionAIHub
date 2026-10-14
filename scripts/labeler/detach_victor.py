@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """detach-victor: can the detachment label be read from a single camera frame?
 
-    python scripts/labeler/detach_victor.py prep           # environment labelmaker
+    python scripts/labeler/detach_victor.py prep           # environment labeler
     CUDA_VISIBLE_DEVICES=1 $LABELER_ROOT/envs/phase3/bin/python \\
         scripts/labeler/detach_victor.py train              # torch, one GPU
     python scripts/labeler/detach_victor.py refresh         # unchanged arrays only

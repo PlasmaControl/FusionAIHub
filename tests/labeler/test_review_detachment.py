@@ -187,9 +187,8 @@ def test_panel_sampling_and_indicator_validity(tmp_path, monkeypatch):
     built = panels.panels(170815, paths=paths)
     by_title = {p.title: p for p in built}
     assert np.isnan(by_title["Afrac"].y[0, 1])
-    assert np.isnan(
-        by_title["TangTV normalized front DZ (source not recorded)"].y[0, 1]
-    )
+    assert np.isnan(by_title["TangTV front DZ"].y[0, 1])
+    assert "source not recorded" in by_title["TangTV front DZ"].metadata["caveat"]
     assert "f_div = Prad,div / P_in" not in by_title  # no validity mask
     assert not any("Langmuir" in title for title in by_title)
     assert np.min(by_title["Gas flow"].x) >= 0
@@ -210,7 +209,8 @@ def test_context_block_means_do_not_alias_fast_signal(tmp_path):
         np.testing.assert_allclose(np.diff(panel.x[:9]), 1.024)
         assert panel.legend == [f"FS{i:02d} (ph/(sr cm2 s))"]
         assert panel.ylabel == "ph/(sr cm2 s)"
-        assert panel.title == f"D-alpha FS{i:02d} (location not recorded)"
+        assert panel.title == f"D-alpha FS{i:02d}"
+        assert "location is not recorded" in panel.metadata["caveat"]
         assert panel.metadata["location"] == "not recorded in corpus"
         assert panel.x[-1] <= 10
 
@@ -228,8 +228,8 @@ def test_density_falls_back_to_local_thomson_when_co2_is_a_stub(tmp_path):
     density = [p for p in panels.panels(170815, paths=paths) if "density" in p.title]
     assert len(density) == 1
     panel = density[0]
-    assert "Thomson" in panel.title and "local" in panel.title
-    assert "not line-averaged" in panel.title
+    assert panel.title == "Thomson core density"
+    assert "not line-averaged" in panel.metadata["caveat"]
     assert panel.ylabel == "m^-3"
     np.testing.assert_allclose(panel.y, [[1e19, 2e19, 3e19], [np.nan, 4e19, 5e19]])
     assert panel.legend == ["core channel 0 (m^-3)", "core channel 1 (m^-3)"]
@@ -244,7 +244,7 @@ def test_usable_co2_density_keeps_the_line_average_instead_of_thomson(tmp_path):
             group["xdata"] = [0.0, 0.1, 0.2]
             group["ydata"] = np.ones((channels, 3))
     density = [p for p in panels.panels(170815, paths=paths) if "density" in p.title]
-    assert [p.title for p in density] == ["CO2 R0 density proxy (corpus DENUF)"]
+    assert [p.title for p in density] == ["CO2 R0 density"]
     assert density[0].ylabel == "m·cm⁻³"
 
 

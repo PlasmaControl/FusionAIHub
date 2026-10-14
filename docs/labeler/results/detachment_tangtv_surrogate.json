@@ -242,7 +242,7 @@
    },
    "replicates": 1000
   },
-  "rescore_source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/tv_surrogate/loso_sav.csv.gz"
+  "rescore_source": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/tv_surrogate/loso_sav.csv.gz"
  },
  "loso_corpus": {
   "n_frames": 210,
@@ -277,7 +277,7 @@
   "shots": [
    201081
   ],
-  "rescore_source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/tv_surrogate/loso_corpus.csv.gz"
+  "rescore_source": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/tv_surrogate/loso_corpus.csv.gz"
  },
  "predicted": {
   "180257": "no_frames",

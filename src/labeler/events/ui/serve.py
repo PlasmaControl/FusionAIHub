@@ -10,7 +10,7 @@ DEFAULT_PORT = 8811
 
 #: How to start the page so a live fdp fetch works: the task runs it under
 #: `fdp run`.
-FDP_COMMAND = "pixi run -e labelmaker labeler-verify"
+FDP_COMMAND = "pixi run -e labeler labeler-verify"
 
 #: What `fdp run` actually leaves in the environment (measured on stellar,
 #: 2026-09-18): the PTDATA client library and the MDSplus tree path. Either

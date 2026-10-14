@@ -5,8 +5,8 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
 #SBATCH --time=02:00:00
-#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
-#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
+#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labeler/runs/slurm/%j.out
+#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labeler/runs/slurm/%j.out
 
 # Task 7a: AE frame labels and dataset from big_tf_unet's cleaned coherent mask.
 #
@@ -21,7 +21,7 @@ set -euo pipefail
 
 REPO=/scratch/gpfs/nc1514/FusionAIHub
 PY=/scratch/gpfs/nc1514/tokeye/.venv/bin/python
-export PYTHONPATH=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/ae/pylibs:$REPO/src
+export PYTHONPATH=/scratch/gpfs/EKOLEMEN/nc1514/labeler/ae/pylibs:$REPO/src
 export OMP_NUM_THREADS=4
 export HF_HUB_OFFLINE=1   # the checkpoint is loaded from a local path
 
@@ -32,7 +32,7 @@ srun "$PY" "$REPO/scripts/labeler/ae_dataset.py" \
     --stage all \
     --device cuda \
     --batch 4 \
-    --root /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/ae \
-    --out-dir "$REPO/outputs/labelmaker/ae/dataset"
+    --root /scratch/gpfs/EKOLEMEN/nc1514/labeler/ae \
+    --out-dir "$REPO/outputs/labeler/ae/dataset"
 
 echo "finished at $(date -Is)"

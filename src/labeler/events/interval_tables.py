@@ -43,17 +43,26 @@ DETACHMENT_STATES = {
 }
 
 
+#: The MHD mode-number events; like a catalog phenomenon, their category is the state.
+MHD_EVENTS = ("mhd_n1", "mhd_n2", "mhd_n3")
+
+
 def category_labels(category: str) -> dict[str, str]:
-    """Names shared by CSV sidecars, sampled grids, and event documentation."""
-    if category in PHENOMENA:
+    """Names shared by CSV sidecars, sampled grids, and event documentation.
+
+    A subcategory (`<event>.<key>`, see `taxonomy`) has the states too: present or
+    uncertain, inside the time its parent's label marks.
+    """
+    if category in PHENOMENA or category in MHD_EVENTS or "." in category:
         return {str(k): v for k, v in STATE_NAMES.items()}
     if category == "minimum_safety_factor":
         return {"0": "absent", "1": "low", "2": "hybrid", "3": "elevated",
                 "4": "high", "5": "uncertain", "6": "not_observable"}
     if category == "confinement":
-        # The four regimes and uncertain; time marked none of them is category 0.
+        # The four regimes, uncertain and I-mode (appended: ids are never renumbered);
+        # time marked none of them is category 0.
         return {"0": "absent", "1": "high", "2": "low", "3": "qh", "4": "wpqh",
-                "5": "uncertain"}
+                "5": "uncertain", "6": "imode"}
     if category == "detachment":
         return dict(DETACHMENT_STATES)
     if category == "poloidal_beta":

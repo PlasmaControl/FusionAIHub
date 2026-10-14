@@ -2,7 +2,7 @@
 
 Hermetic: no tokeye, no data root, no real record. The pin against tokeye's
 own output on a real corpus record is a script, not a test -
-`outputs/labelmaker/ae/scripts/pin_transform.py`, whose measured result (max
+`outputs/labeler/ae/scripts/pin_transform.py`, whose measured result (max
 abs diff 0.0 at every stage) is quoted in the model card.
 """
 import numpy as np

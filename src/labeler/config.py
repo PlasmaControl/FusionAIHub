@@ -16,7 +16,7 @@ from pathlib import Path
 
 from .env import getenv
 
-DEFAULT_ROOT = Path("/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")
+DEFAULT_ROOT = Path("/scratch/gpfs/EKOLEMEN/nc1514/labeler")
 DEFAULT_CORPUS = Path("/scratch/gpfs/EKOLEMEN/foundation_model")
 #: The per-shot operator-text bundles `events/text_weak.py` reads. A third
 #: read-only input root beside the corpus, and separate from it because it
@@ -33,19 +33,53 @@ DEFAULT_TEXT = Path(
 DEFAULT_LOGS_JSONL = Path(
     "/scratch/gpfs/EKOLEMEN/big_d3d_data/foundation_model_text/sql/logs.jsonl"
 )
-#: The curated label tables `events/databases.py` reads: a `tables.yaml`
-#: manifest and one directory of CSVs per phenomenon. Label DATA, so it
-#: lives under `data/events/` and never under `src/`, and the default
-#: resolves relative to this FILE rather than to the caller's cwd - a run
-#: from a SLURM scratch directory finds the committed manifest the same way
-#: a run from the repo does. That resolution is a SOURCE CHECKOUT's (which
-#: is every way labeler is run today: `PYTHONPATH=$PWD/src`, or an
-#: editable install); from a non-editable wheel the tables are outside the
-#: package and `LABELER_LABEL_TABLES` is the answer. Overridable anyway,
-#: because a table too large or too restricted to commit lives on /scratch.
+#: The curated label tables `events/databases.py` reads: one directory of
+#: CSVs per phenomenon (the manifest that names them is `events.yaml` under
+#: `config_dir`). Label DATA, so it lives under `data/events/`, which git
+#: ignores: a fresh clone restores it from the Hugging Face release with
+#: `scripts/labeler/hf_publish.py pull`. The default resolves relative to
+#: this FILE rather than to the caller's cwd - a run from a SLURM scratch
+#: directory finds the tables the same way a run from the repo does. That
+#: resolution is a SOURCE CHECKOUT's (which is every way labeler is run
+#: today: `PYTHONPATH=$PWD/src`, or an editable install); from a non-editable
+#: wheel the tables are outside the package and `LABELER_LABEL_TABLES` is the
+#: answer.
 DEFAULT_LABEL_TABLES = Path(__file__).resolve().parents[2] / "data" / "events"
+#: The labeler's hand-kept configuration: `events.yaml` (the taxonomy, the label
+#: grid and the dataset manifest) and `best_models.yaml` (event -> best model ->
+#: inputs -> score). Source, not data, so it is tracked under `configs/labeler/`
+#: and resolves relative to this file like the label tables; `LABELER_CONFIG_DIR`
+#: overrides it (a test fixture, a scratch copy of the manifest).
+DEFAULT_CONFIG_DIR = Path(__file__).resolve().parents[2] / "configs" / "labeler"
 #: Review events whose rows are another event's: the same panels, built once.
-STORE_EVENTS = {"confinement": "high_confinement_mode"}
+#: `store_event` also resolves a subcategory (`<event>.<key>`) to its parent's.
+STORE_EVENTS = {
+    "confinement": "high_confinement_mode",
+    "mhd_n2": "mhd_n1",
+    "mhd_n3": "mhd_n1",
+}
+
+
+def store_event(event: str) -> str:
+    """The event whose review store, panel recipe and version `event` uses.
+
+    An explicit `STORE_EVENTS` entry wins. Otherwise a subcategory (`<parent>.<key>`)
+    has its own store only when a panel or review builder is registered for its id,
+    and shows its parent's rows when not. Every other event is its own store.
+    """
+    if event in STORE_EVENTS:
+        return STORE_EVENTS[event]
+    parent, dot, _ = event.partition(".")
+    if not dot:
+        return event
+    # Lazy and read with getattr: the builders import this module, and a panel
+    # module may not exist yet.
+    from .events import panels
+    from .events.review import build
+
+    if event in getattr(panels, "BUILDERS", {}) or event in build.BUILDERS:
+        return event
+    return store_event(parent)
 
 
 @dataclass(frozen=True)
@@ -57,6 +91,7 @@ class Paths:
     text_root: Path = DEFAULT_TEXT
     logs_jsonl: Path = DEFAULT_LOGS_JSONL
     label_tables: Path = DEFAULT_LABEL_TABLES
+    config_dir: Path = DEFAULT_CONFIG_DIR
     #: Where a live fetch parks a shot's raw record. None means `<root>/raw`, beside the
     #: prefetched AE shots; deleting it is safe, the next read refetches.
     raw_cache: Path | None = None
@@ -76,8 +111,22 @@ class Paths:
             label_tables=Path(
                 getenv("LABELER_LABEL_TABLES", str(DEFAULT_LABEL_TABLES))
             ),
+            config_dir=Path(getenv("LABELER_CONFIG_DIR", str(DEFAULT_CONFIG_DIR))),
             raw_cache=Path(raw_cache) if raw_cache else None,
         )
+
+    @property
+    def events_manifest(self) -> Path:
+        """`events.yaml`: the taxonomy, the label grid and the dataset manifest.
+
+        Its `raw_datasets` paths and category names are relative to `label_tables`.
+        """
+        return self.config_dir / "events.yaml"
+
+    @property
+    def best_models(self) -> Path:
+        """`best_models.yaml`: the best model per event, its inputs and its score."""
+        return self.config_dir / "best_models.yaml"
 
     @property
     def features(self) -> Path:
@@ -193,7 +242,7 @@ class Paths:
         return self.root / "catalog"
 
     def spectrogram_file(self, event: str, shot: int) -> Path:
-        return self.spectrograms / STORE_EVENTS.get(event, event) / f"{int(shot)}.h5"
+        return self.spectrograms / store_event(event) / f"{int(shot)}.h5"
 
     def mkdirs(self) -> None:
         for d in (

@@ -7,7 +7,7 @@ fraction) and compares each result with the survival labels' onsets (`tm_agreeme
 match, a 100 ms tolerance). The rule is frozen at the published numbers; this table is
 the evidence for keeping them, not a search for better ones.
 
-    PYTHONPATH=$PWD/src pixi run --frozen --no-install -e labelmaker python \\
+    PYTHONPATH=$PWD/src pixi run --frozen --no-install -e labeler python \\
         scripts/labeler/tm_sensitivity.py
 """
 
@@ -36,7 +36,7 @@ from labeler.config import git_sha
 from labeler.tearing import agreement, rule, scoring
 
 OUT_ROOT = (
-    Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker"))
+    Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
     / "round4/tm"
 )
 CATALOG = REPO / "data/events/catalog"

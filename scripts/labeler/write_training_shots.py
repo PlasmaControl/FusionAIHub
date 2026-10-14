@@ -13,7 +13,7 @@ The list is committed rather than read from `/projects` at import time because
 not mounted, and because a committed file is what makes the split reproducible.
 It is one integer per line, sorted ascending, unique.
 
-    pixi run -e labelmaker python scripts/labeler/write_training_shots.py
+    pixi run -e labeler python scripts/labeler/write_training_shots.py
 
 Prints the source pickle's sha256 and the line count; both belong in the card's
 `upstream.notes`. The retrained variant shares the file: it continued this fit

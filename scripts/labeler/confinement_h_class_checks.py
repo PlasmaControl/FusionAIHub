@@ -1,6 +1,6 @@
 r"""confinement_h_class_checks: what the corpus shots' I-coil currents say about our H.
 
-    PYTHONPATH=src pixi run --frozen --no-install -e labelmaker \
+    PYTHONPATH=src pixi run --frozen --no-install -e labeler \
         python scripts/labeler/confinement_h_class_checks.py [--out PATH.json]
 
 The paper's H-mode (Gill et al. 2024) is "standard ELMy H-mode": it leaves out
@@ -44,7 +44,7 @@ from labeler.config import git_sha
 from labeler.confinement import bes_windows as bw
 
 LABELER = Path(
-    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")
+    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler")
 )
 CORPUS = Path("/scratch/gpfs/EKOLEMEN/foundation_model")
 BES_CORPUS = LABELER / "round4/conf/bes500k"

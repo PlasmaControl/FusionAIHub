@@ -8,16 +8,16 @@
 #SBATCH --mem=48G
 #SBATCH --time=06:00:00
 #SBATCH --array=0-8%3
-#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/aeswap/slurm-%A_%a.out
-#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/aeswap/slurm-%A_%a.out
+#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/aeswap/slurm-%A_%a.out
+#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/aeswap/slurm-%A_%a.out
 
 set -euo pipefail
 REPO=${REPO:-/scratch/gpfs/nc1514/FusionAIHub}
 # Short on purpose: DataLoader workers add /pymp-*/listener-* to TMPDIR and an
 # AF_UNIX socket path must stay under 108 bytes.
-export TMPDIR=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/ae-sw
+export TMPDIR=/scratch/gpfs/EKOLEMEN/nc1514/labeler/scratch/ae-sw
 mkdir -p "$TMPDIR"
-export LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker
+export LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labeler
 export LABELER_LABEL_TABLES=/scratch/gpfs/nc1514/FusionAIHub/data/events
 export LABELER_NO_FETCH=1
 export PYTHONPATH="$REPO/src"

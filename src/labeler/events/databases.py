@@ -1,7 +1,9 @@
 """Load public interval CSVs and legacy event tables into internal events.
 
 Current public files contain shot, millisecond bounds and confidence; events.yaml
-supplies their dataset identity. Legacy tables.yaml and rich CSVs remain readable.
+(`Paths.events_manifest`, under configs/labeler/) supplies their dataset identity.
+Legacy tables.yaml (in the label-tables root it describes) and rich CSVs remain
+readable.
 Original sources are read only by formatters. Listing a shot never asserts full
 coverage, and missing shots never become negative labels.
 """
@@ -30,7 +32,7 @@ FORMAT_COLUMNS = (
 )
 FORMAT_SCHEMA_VERSION = 1
 
-#: The manifest's name inside the label-tables root.
+#: The legacy manifest's name inside the label-tables root it describes.
 MANIFEST = "tables.yaml"
 
 #: The events.yaml key that names the directories beside the categories that are
@@ -206,6 +208,11 @@ def _root(root=None) -> Path:
     return Path(Paths.from_env().label_tables if root is None else root)
 
 
+def _events_manifest(manifest=None) -> Path:
+    """`events.yaml`: `manifest` when given, else `Paths.from_env().events_manifest`."""
+    return Path(Paths.from_env().events_manifest if manifest is None else manifest)
+
+
 def _str(where: str, entry: Mapping[str, Any], key: str, *,
          required: bool = True) -> str:
     value = entry.get(key)
@@ -317,8 +324,11 @@ def _load_events_manifest(path: Path) -> tuple[TableSpec, ...]:
     return tuple(specs)
 
 
-def load_manifest(root=None) -> tuple[TableSpec, ...]:
-    """Every table `tables.yaml` declares; every problem names the file.
+def load_manifest(root=None, manifest=None) -> tuple[TableSpec, ...]:
+    """Every table the manifest declares; every problem names the file.
+
+    A label-tables root that holds a legacy `tables.yaml` is described by it;
+    any other root by `events.yaml` (`manifest`, default `Paths.events_manifest`).
 
     Checked rather than trusted, for the same reason `lexicon.py` checks
     itself: this file is edited by hand, by whoever was sent the next CSV,
@@ -327,10 +337,14 @@ def load_manifest(root=None) -> tuple[TableSpec, ...]:
     unique would give two tables one source and make a re-run of either
     replace the other's rows.
     """
-    current = _root(root) / "events.yaml"
-    if current.exists():
-        return _load_events_manifest(current)
     path = _root(root) / MANIFEST
+    current = _events_manifest(manifest)
+    if not path.exists():
+        if not current.exists():
+            raise DatabaseError(
+                f"label-table manifest not readable: neither {current} nor {path}"
+            )
+        return _load_events_manifest(current)
     try:
         raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
@@ -374,14 +388,15 @@ def load_manifest(root=None) -> tuple[TableSpec, ...]:
     return specs
 
 
-def category_dirs(root=None) -> list[Path]:
+def category_dirs(root=None, manifest=None) -> list[Path]:
     """The event-category directories under the label-tables root, by name.
 
-    A directory that events.yaml lists under `non_category_dirs`, such as
-    `catalog/` with its catalog-wide tables, is not a category and is left out.
+    A directory that events.yaml (`manifest`, default `Paths.events_manifest`)
+    lists under `non_category_dirs`, such as `catalog/` with its catalog-wide
+    tables, is not a category and is left out.
     """
     base = _root(root)
-    manifest = base / "events.yaml"
+    manifest = _events_manifest(manifest)
     raw = {}
     if manifest.exists():
         raw = yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}
@@ -448,19 +463,20 @@ def shots(spec: TableSpec, root=None) -> frozenset[int]:
     return frozenset(int(s) for s in _read_cached(spec, root)["shot"].tolist())
 
 
-def known_sources(root=None) -> tuple[str, ...]:
+def known_sources(root=None, manifest=None) -> tuple[str, ...]:
     """`database:<stem>` for every declared table.
 
     Documentation, like `schema.KNOWN_SOURCES` itself, and computed rather
     than listed there because the manifest changes without a code edit.
     """
-    return tuple(spec.source for spec in load_manifest(root))
+    return tuple(spec.source for spec in load_manifest(root, manifest))
 
 
 def events_for_shot(
     shot: int,
     specs: Sequence[TableSpec] | None = None,
     root=None,
+    manifest=None,
 ) -> tuple[list[Event], list[dict]]:
     """This shot's curated rows, and the record of which tables named it.
 
@@ -475,7 +491,7 @@ def events_for_shot(
     table owns since it reads no diagnostic.
     """
     shot = int(shot)
-    specs = load_manifest(root) if specs is None else tuple(specs)
+    specs = load_manifest(root, manifest) if specs is None else tuple(specs)
     events: list[Event] = []
     records: list[dict] = []
     for spec in specs:

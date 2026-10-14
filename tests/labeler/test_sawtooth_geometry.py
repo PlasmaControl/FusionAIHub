@@ -135,8 +135,8 @@ def test_mapped_panels_keep_time_varying_core_and_outside_membership(monkeypatch
     monkeypatch.setattr(saw.ece_geometry, "load_q", lambda shot, paths: (x, q))
     panels = saw._mapped_ece_panels(1)
     assert [panel.title for panel in panels] == [
-        "ECE Te, q<1 inversion group (measured q geometry)",
-        "ECE Te, q>1 inversion group (measured q geometry)",
+        "ECE Te, q<1 group",
+        "ECE Te, q>1 group",
     ]
     assert np.isfinite(panels[0].y[0, 0]) and np.isnan(panels[0].y[0, 1])
     assert np.isfinite(panels[0].y[4, 1]) and np.isnan(panels[0].y[4, 0])

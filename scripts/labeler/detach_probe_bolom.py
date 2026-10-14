@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """List the BOLOM tree's nodes for one shot, to find the chord geometry.
 
-    pixi run --frozen -e labelmaker fdp run python \\
+    pixi run --frozen -e labeler fdp run python \\
         scripts/labeler/detach_probe_bolom.py --shot 189057
 
 Run on the login node under the fdp wrapper, one connection. Writes

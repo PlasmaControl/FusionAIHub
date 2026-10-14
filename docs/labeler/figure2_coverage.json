@@ -1,8 +1,8 @@
 {
  "schema": "figure2_coverage",
  "made_by": "scripts/labeler/paper/fig2_coverage.py",
- "git": "ff5946df",
- "made_at": "2026-10-05T03:15:46+00:00",
+ "git": "7fab38d3",
+ "made_at": "2026-10-14T04:15:44+00:00",
  "definition": "Labelled time is, shot by shot, the union of the intervals a label table states present or absent (the four regimes for confinement); intervals stated uncertain, not observable or unassessed are not labelled time. Labelled shots are the shots with any labelled time. Tokamak-SI counts every released tier and split; the reviewed subset counts the shots whose labels a person reviewed.",
  "units": {
   "shots": "shots",
@@ -35,8 +35,8 @@
    "tokamak_si": {
     "status": "measured",
     "label": "expert-reviewed AE labels",
-    "shots": 180,
-    "seconds": 513.522,
+    "shots": 195,
+    "seconds": 547.91,
     "shared_definition": true,
     "definition": "shared definition",
     "paths": [
@@ -45,8 +45,8 @@
     ],
     "reviewed": {
      "status": "measured",
-     "shots": 180,
-     "seconds": 513.522,
+     "shots": 195,
+     "seconds": 547.91,
      "note": "every shot of the table was saved by a reviewer"
     }
    },
@@ -74,15 +74,15 @@
     "shared_definition": false,
     "definition": "the curated L, H, QH and WPQH intervals of the merged table, less the blind split (never read) and the one H/L conflict interval",
     "paths": [
-     "/scratch/gpfs/nc1514/FusionAIHub/runs/labeler/confinement/v1/merged_intervals.csv",
+     "runs/labeler/confinement/v1/merged_intervals.csv",
      "data/events/catalog/cohort.csv"
     ]
    },
    "tokamak_si": {
     "status": "experimental",
     "label": "confine-ours roster",
-    "shots": 798,
-    "seconds": 3368.409,
+    "shots": 799,
+    "seconds": 3374.209,
     "shared_definition": true,
     "definition": "shared definition on classes 1 to 4 (high, low, qh, wpqh) of the roster; class 5 (below the confidence floor) is uncertain; beam-on time only, other time is not assessed",
     "paths": [
@@ -118,8 +118,8 @@
    "tokamak_si": {
     "status": "measured",
     "label": "reviewed ELM spans",
-    "shots": 119,
-    "seconds": 648.353,
+    "shots": 120,
+    "seconds": 655.15,
     "shared_definition": true,
     "definition": "shared definition",
     "paths": [
@@ -128,8 +128,8 @@
     ],
     "reviewed": {
      "status": "measured",
-     "shots": 119,
-     "seconds": 648.353,
+     "shots": 120,
+     "seconds": 655.15,
      "note": "every shot of the table was saved by a reviewer"
     }
    },
@@ -238,7 +238,7 @@
     "reviewed": {
      "status": "measured",
      "shots": 3,
-     "seconds": 17.967,
+     "seconds": 17.96,
      "note": "the shots a person drew spans on, anchored to earlier rule suggestions"
     },
     "shards": 151,
@@ -332,26 +332,26 @@
   }
  },
  "sources": {
-  "/scratch/gpfs/nc1514/FusionAIHub/runs/labeler/confinement/v1/merged_intervals.csv": "72de466aeae391cb06852d0cfcf6a322d185fe2557d6f5b3c36d6ff690f663f2",
   "data/events/alfven_eigenmode/format/alfven_eigenmode_ece_format_2026_v1.csv": "3e2d5e3ce441073a3e6cf2cce110e229b9fcac1e322db073a027b534ca32433f",
   "data/events/alfven_eigenmode/format/alfven_eigenmode_format_2026_v1.csv": "8a52b8b785ddb78ba0932318e69ab58136fbaa0d3b19bcb7815159b2e6b72279",
-  "data/events/alfven_eigenmode/review/history.jsonl": "548a316324bccc71a505f84a9a61680f6c7a8a526f221a6fffe0126bcf60dd00",
-  "data/events/alfven_eigenmode/review/labels.csv": "b4308ff52d766779f33a92e9441a916bb07c854dcc1a98a2f61109bb6431e93a",
+  "data/events/alfven_eigenmode/review/history.jsonl": "27f6be8236b16e18dd8d4da5d384049db181f05737f1ad0d86c581c795f38d15",
+  "data/events/alfven_eigenmode/review/labels.csv": "f831229471cd36bdbf28e0ed6d1d1782c227a1408caf4beb65effef4516c14af",
   "data/events/catalog/cohort.csv": "b910527a9a2c7b4100cf5674aa6f57ec19b458f1ee952b23387341f1ed92bbda",
-  "data/events/confinement/extend_confine_ours/roster.csv": "8fcd23a3003f74b4d4e7ef4508ded19692b5fa9bffd82af60da9cd4e6a440793",
+  "data/events/confinement/extend_confine_ours/roster.csv": "9c44addafb15e19794298b7c7cebdd883273f818befbafa6ce40b7877d078f52",
   "data/events/confinement/extend_confine_ours/roster.meta.json": "5f349960e7a1cf920129a27eb9bc8a78db07118508e6acfc008f6ea54090806a",
   "data/events/edge_localized_mode/format/edge_localized_mode_format_2026_v1.csv": "e81df0c70cbfece4e056cc8f9b7d9339338154e3d43ed09cd842641e120b8e9f",
-  "data/events/edge_localized_mode/review/history.jsonl": "ec1f21a7fe7ca43a0816b01a893d2b113455bb050ad75bd0daef4368aec4f291",
-  "data/events/edge_localized_mode/review/labels.csv": "6ae3497e921eadd134959b248aab93c6ca06511e7689041a52270e58cfdae380",
+  "data/events/edge_localized_mode/review/history.jsonl": "ce11291756b61d576ec526e6adad5b4f8d672ee859e4df4c770f7e3c78c4759b",
+  "data/events/edge_localized_mode/review/labels.csv": "d483fed891d0bc8ec60604b5b9f3f7249ea3baadcb8008e455fd56da631c6276",
   "data/events/neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv": "decba8f2a5c4b5f69b23e284bf70cf0058bbe1f55c519b9624714420b53a173a",
   "data/events/resistive_wall_mode/extend_rwm_onset_window/rwm_windows.csv": "b372bbb707219c6269d7521ef70430b8ccea8c0df3f29b366fe2c352b6108c6e",
   "data/events/resistive_wall_mode/extend_rwm_onset_window/rwm_windows.meta.json": "7ec86fd2e10cab2376fe8f14d2d27d981f82a4490c2765ea132242d491be4139",
   "data/events/resistive_wall_mode/format/rwm_format_2026_v1.csv": "d88cf9c25dc97b6338f286403f1b4ecd2c6b14d1551a5b3b786ea622e35e5390",
   "data/events/sawtooth_oscillation/review/history.jsonl": "5eed09aeb201b181c232fe3d567d65a03ca8b815ebb8a646d9c85fe2ac0e68f8",
-  "data/events/sawtooth_oscillation/review/labels.csv": "dd602f56b59a6c20621ee7975d65ea5a47637c98ebf06455839aeb128e36345a",
-  "docs/labeler/figure2_detach.json": "30420c20cc39a62a33e943450840e718272b0136de6e52d379c2f2125802d42a",
+  "data/events/sawtooth_oscillation/review/labels.csv": "5984a2684cf660751cfdcc387bd397999db4fa23dcd03978a2ddd748f909c85a",
+  "docs/labeler/figure2_detach.json": "4a4c7fe49eba142657467918186961ede75e6b6f0e432bc6881957d9b1829321",
   "docs/labeler/figure2_tm.json": "5c423c157c78b457998095b3843e544d783d234e1843c6be394e86a882cdab41",
-  "outputs/labeler/elm/smith/evaluation.json": "95a745f4786fef2897e03729c7af8f85e51756b5ac282929f5f8bf4d9b70dcf3",
-  "outputs/labeler/sawtooth/fix5/label_manifest.json": "74587800265cf092bb71815a1765ef25f3ad31768a137dadc69179b61b931b34"
+  "outputs/labeler/elm/smith/evaluation.json": "91e26f7e404486d866d80d6f99b12692a88c0edd47abe9bd93de2594fcd8e800",
+  "outputs/labeler/sawtooth/fix5/label_manifest.json": "71a25d6fab5fb6bf67aeb9302c072f320eb1281a3ccf314cc36002870260726b",
+  "runs/labeler/confinement/v1/merged_intervals.csv": "72de466aeae391cb06852d0cfcf6a322d185fe2557d6f5b3c36d6ff690f663f2"
  }
 }

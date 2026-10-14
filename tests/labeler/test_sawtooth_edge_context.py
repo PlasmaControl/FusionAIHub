@@ -87,6 +87,7 @@ def test_freeze_refuses_a_value_the_derivation_did_not_choose():
         setup.edge_context_guard(derivation, {"isolated_edge_context_ms": 5.15})
 
 
+@pytest.mark.label_tables
 def test_packaged_rule_and_derivation_record_agree_and_read_only_train():
     path = REPO / "outputs/labeler/sawtooth/fix5/edge_context_derivation.json"
     if not path.exists():

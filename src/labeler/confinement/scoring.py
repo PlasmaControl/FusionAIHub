@@ -1,7 +1,7 @@
 """Rank metrics for the 4-class confinement scores, in plain numpy.
 
 ``auroc`` and ``average_precision`` are the Mann-Whitney AUROC and the step-wise average
-precision (the same definitions scikit-learn uses, which the labelmaker environment
+precision (the same definitions scikit-learn uses, which the labeler environment
 lacks); ``one_vs_rest`` gives them per class and averaged over the classes that occur.
 """
 

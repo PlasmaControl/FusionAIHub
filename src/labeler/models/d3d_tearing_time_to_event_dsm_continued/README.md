@@ -17,7 +17,7 @@ metrics:
 model-index:
   - name: d3d-tearing-time-to-event-dsm-continued
     results: []
-labelmaker:
+labeler:
   status: implemented
   slug: d3d_tearing_time_to_event_dsm_continued
   card_id: plasmacontrol/d3d-tearing-time-to-event-dsm-continued
@@ -25,7 +25,7 @@ labelmaker:
   time_step_ms: 25.0
   ensemble_n: 1
   upstream:
-    path: /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/d3d_tearing_time_to_event_dsm_continued
+    path: /scratch/gpfs/EKOLEMEN/nc1514/labeler/models/d3d_tearing_time_to_event_dsm_continued
     trained: 2026-09-05
     training_code: scripts/labeler/retrain_tearing_dsm.py
     reference_harness: /projects/EKOLEMEN/survival_tm/get_survival_from_shot.py
@@ -158,8 +158,13 @@ labelmaker:
   - inputs are sampled on labeler's 25 ms grid as 50 ms window means, where upstream used the real-time
     data dictionary's 20 ms samples; the model has no temporal structure, so this changes which instants are
     labelled, not how
-  - the rotation profile is fed in the archive column's units (kHz, see features/namespace.py) and normalised
-    under upstream's `rotation_kms` constants, exactly as get_survival_from_shot.py does with the same column
+  - the rotation profile is ZIPFIT TROTFIT in krad/s (the archive column, whose metadata says kHz, see
+    features/namespace.py) normalised under upstream's `rotation_kms` constants, but upstream trained on
+    `cer_rot_csaps_1d` in km/s, about 1.7 to 2.2 times larger at the core (about R), so this is a unit and
+    definition mismatch and not what get_survival_from_shot.py does with that column; `ech_pwr_total` also
+    differs (2.62 MW upstream against 1.58 MW in labeler on shot 195040 at 3 s); both are unpriced, and
+    rescaling both changes the legacy 500 ms AUROC from 0.721 to 0.710-0.720 and leaves no bin at risk >= 0.3
+    (2026-10-14 DSM investigation, $LABELER_ROOT/scratch/claude-3ac94559/phase4/dsm_zero.md)
 ---
 
 # plasmacontrol/d3d-tearing-time-to-event-dsm-continued
@@ -372,7 +377,7 @@ map. Full report:
 
 The seven Phase 2 figures re-rendered for this model, with the comparison
 table and the CNN panels unchanged, are in
-`outputs/labelmaker/presentation_continued/` in the FusionAIHub checkout; the
+`outputs/labeler/presentation_continued/` in the FusionAIHub checkout; the
 held-out-only rendering is in `presentation_continued/held_out/`.
 
 ## Technical specifications

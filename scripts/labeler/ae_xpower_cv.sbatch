@@ -8,8 +8,8 @@
 #SBATCH --mem=3500M
 #SBATCH --time=01:00:00
 #SBATCH --array=0-14
-#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%A_%a.out
-#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%A_%a.out
+#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labeler/runs/slurm/%A_%a.out
+#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labeler/runs/slurm/%A_%a.out
 
 # v2's five-fold cross-validation (the ledger's Deviation 11): one array task per
 # (candidate, fold), 3 candidates x 5 folds = 15 tasks. Task id K gives
@@ -110,8 +110,8 @@
 #                  from the pilot, whose peak under-predicts (v1: 1182 MB at 20 shots).
 set -euo pipefail
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
-ENV=/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker
-ROOT="$("$ENV/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")"
+ENV=/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler
+ROOT="$("$ENV/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labeler")"
 export LD_LIBRARY_PATH="$ENV/lib:${LD_LIBRARY_PATH:-}"
 export LABELER_ROOT="$ROOT" PYTHONPATH="$REPO/src"
 export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-/scratch/gpfs/nc1514/FusionAIHub/data/events}"

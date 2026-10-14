@@ -1,7 +1,13 @@
 """Read original AE, ELM, RWM and tearing labels and write the common event schema.
 
-The category-local formatter.py files provide the command-line entry points.
-No converter modifies raw files or extracts archives onto disk.
+One command formats any category's original labels:
+
+    python -m labeler.events.source_formatters <category> [--dataset STEM]
+
+It reads the dataset list from `configs/labeler/events.yaml` (`Paths.events_manifest`)
+and the raw files under the label tables (`Paths.label_tables`), and writes
+`<category>/format/<output>.csv` there. No converter modifies raw files or extracts
+archives onto disk.
 """
 
 from __future__ import annotations
@@ -21,6 +27,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from ..config import Paths
 from .databases import FORMAT_COLUMNS, FORMAT_SCHEMA_VERSION, validate_format
 from .interval_tables import (
     SAMPLE_MS,
@@ -325,6 +332,188 @@ def format_elm(*paths: Path) -> pd.DataFrame:
     return _frame(rows)
 
 
+ELM_CHALLENGE_STEM = "elm_challenge_key"
+#: The challenge key's event types as catalog states (0 absent, 1 present, 2 uncertain).
+#: Types 1, 2 and 6 are ELMs (large, small, pellet-triggered). Types 3 and 4 are
+#: "other" (back-transition transients, disruptions, unidentified blips): neither
+#: called ELM nor not-ELM, so uncertain. Types 5 and 7 are pellets with no ELM,
+#: and 8 is an unspecified event.
+ELM_CHALLENGE_STATES = {1: 1, 2: 1, 6: 1, 3: 2, 4: 2, 5: 0, 7: 0, 8: 2}
+ELM_CHALLENGE_DEVICE = "DIII-D"
+
+
+def _challenge_pair(where, event, name):
+    value = event.get(name)
+    if (
+        not isinstance(value, list)
+        or len(value) != 2
+        or not all(
+            isinstance(v, (int, float)) and not isinstance(v, bool) for v in value
+        )
+        or not np.isfinite(value).all()
+        or value[1] < 0
+    ):
+        raise ValueError(f"{where}: {name} must be [nominal, uncertainty]: {value!r}")
+    return float(value[0]), float(value[1])
+
+
+def read_elm_challenge(path: Path) -> list[dict]:
+    """The DIII-D cases of the ELM detection challenge's answer key.
+
+    Each case is one hand-timed window (`tstart`..`tend`, ms) of one shot with its
+    events, `(start, end, type)` at the nominal edge times. The edge uncertainties
+    are checked but not carried; the raw key keeps them. Other devices are skipped.
+    """
+    data = json.loads(Path(path).read_text())
+    cases, seen = [], set()
+    for key, case in data.items():
+        if (
+            key.startswith("__")
+            or not isinstance(case, dict)
+            or case.get("device") != ELM_CHALLENGE_DEVICE
+        ):
+            continue
+        where = f"ELM challenge case {key}"
+        shot = case.get("shot")
+        if not isinstance(shot, int) or isinstance(shot, bool) or shot < 0:
+            raise ValueError(f"{where}: invalid shot {shot!r}")
+        if shot in seen:
+            raise ValueError(f"{where}: shot {shot} appears twice")
+        seen.add(shot)
+        if case.get("time_units") != "ms":
+            raise ValueError(f"{where}: times must be in ms")
+        tstart, tend = case.get("tstart"), case.get("tend")
+        if not all(isinstance(v, (int, float)) for v in (tstart, tend)) or not (
+            np.isfinite([tstart, tend]).all() and tend > tstart
+        ):
+            raise ValueError(f"{where}: invalid window {tstart!r}..{tend!r}")
+        events = []
+        for name, event in case.items():
+            if not isinstance(event, dict) or "start" not in event:
+                continue
+            start, _ = _challenge_pair(f"{where} event {name}", event, "start")
+            end, _ = _challenge_pair(f"{where} event {name}", event, "end")
+            if event.get("type") not in ELM_CHALLENGE_STATES:
+                raise ValueError(
+                    f"{where} event {name}: unknown type {event.get('type')!r}"
+                )
+            if not tstart <= start < end <= tend:
+                raise ValueError(
+                    f"{where} event {name}: {start}..{end} is not inside the window"
+                )
+            events.append((start, end, event["type"]))
+        cases.append(
+            {
+                "shot": shot,
+                "tstart": float(tstart),
+                "tend": float(tend),
+                "events": events,
+            }
+        )
+    if not cases:
+        raise ValueError("no DIII-D cases in the ELM challenge key")
+    return cases
+
+
+def elm_challenge_segments(case: dict) -> list[tuple[int, float, float]]:
+    """The case's window cut at every event edge as `(state, start, end)` in ms.
+
+    Present beats uncertain beats absent where events overlap, so the segments do
+    not overlap; abutting segments of one state are joined. A window with no
+    events is absent throughout, and time outside the window is not assessed.
+    """
+    cuts = sorted(
+        {case["tstart"], case["tend"]}
+        | {edge for start, end, _ in case["events"] for edge in (start, end)}
+    )
+    segments = []
+    for begin, stop in pairwise(cuts):
+        states = {
+            ELM_CHALLENGE_STATES[kind]
+            for start, end, kind in case["events"]
+            if start < stop and end > begin
+        }
+        state = 1 if 1 in states else 2 if 2 in states else 0
+        if segments and segments[-1][0] == state:
+            segments[-1] = (state, segments[-1][1], stop)
+        else:
+            segments.append((state, begin, stop))
+    return segments
+
+
+def format_elm_challenge(path: Path) -> pd.DataFrame:
+    """Present, uncertain and absent segments of each challenge window, as events."""
+    rows = []
+    for case in read_elm_challenge(path):
+        for state, begin, stop in elm_challenge_segments(case):
+            rows.append(
+                _row(
+                    case["shot"],
+                    begin / 1000,
+                    stop / 1000,
+                    "elm",
+                    ELM_CHALLENGE_STEM,
+                    {"category": state, "raw_time_units": "ms"},
+                )
+            )
+    return _frame(rows)
+
+
+def elm_challenge_audit(path: Path) -> dict:
+    """What the key holds and what formatting leaves out, counted from the raw file."""
+    cases = read_elm_challenge(path)
+    data = json.loads(Path(path).read_text())
+    others = sorted(
+        {
+            str(case["device"])
+            for key, case in data.items()
+            if not key.startswith("__")
+            and isinstance(case, dict)
+            and case.get("device") not in (None, ELM_CHALLENGE_DEVICE)
+        }
+    )
+    repeats = {}
+    for case in cases:
+        counts = {}
+        for event in case["events"]:
+            counts[event] = counts.get(event, 0) + 1
+        if any(n > 1 for n in counts.values()):
+            repeats[str(case["shot"])] = sum(n - 1 for n in counts.values())
+    kinds = [kind for case in cases for _, _, kind in case["events"]]
+    return {
+        "n_cases": len(cases),
+        "n_events": len(kinds),
+        "events_by_type": {str(k): kinds.count(k) for k in sorted(set(kinds))},
+        "cases_without_events": sorted(c["shot"] for c in cases if not c["events"]),
+        "window_ms_total": sum(c["tend"] - c["tstart"] for c in cases),
+        "skipped_devices": others,
+        "identical_repeated_events": repeats,
+    }
+
+
+def elm_challenge_grids(intervals: pd.DataFrame):
+    """50 ms views of the challenge segments: 1 where any ELM touches the bin.
+
+    A bin touched by an uncertain segment and no ELM, or by no segment, is
+    unknown; 0 needs an absent segment and nothing else.
+    """
+    for shot, rows in intervals.groupby("shot", sort=True):
+        stop = np.ceil(rows.t_end.max() / SAMPLE_MS) * SAMPLE_MS
+        times = np.arange(0, stop, SAMPLE_MS)
+        touched = {}
+        for state in (0, 1, 2):
+            part = rows[rows.category == state]
+            events = pd.DataFrame(
+                {"t0_s": part.t_start / 1000, "t1_s": part.t_end / 1000}
+            )
+            touched[state] = sample_event_labels(events, times)["label"] > 0
+        label = np.full(len(times), np.nan)
+        label[touched[0]] = 0
+        label[touched[2]] = np.nan
+        label[touched[1]] = 1
+        yield int(shot), {"time_ms": times, "label": label}
+
+
 def read_tm_h5(path: Path, shots=None):
     """Yield (shot, time_ms, binary label, metadata), one HDF5 group at a time."""
     with h5py.File(path, "r") as store:
@@ -600,6 +789,7 @@ def convert_category(
     category: str,
     root: Path,
     *,
+    manifest=None,
     output=None,
     ae_start_s=0.0,
     ae_stop_s=2.0,
@@ -607,11 +797,16 @@ def convert_category(
 ) -> Path:
     """Use events.yaml names and source paths; emit CSV and checksum metadata.
 
-    A category may list several format datasets; `dataset` (an output stem or
-    file name) picks one, and None picks the first.
+    `manifest` is the events.yaml to read (default `Paths.events_manifest`); its
+    raw paths are relative to the label tables `root`. A category may list several
+    format datasets; `dataset` (an output stem or file name) picks one, and None
+    picks the first.
     """
     root = Path(root).resolve()
-    manifest = yaml.safe_load((root / "events.yaml").read_text())
+    manifest_file = Path(
+        Paths.from_env().events_manifest if manifest is None else manifest
+    )
+    manifest = yaml.safe_load(manifest_file.read_text())
     spec = next(
         (
             row
@@ -626,6 +821,7 @@ def convert_category(
     raw = {row["stem"]: row for row in manifest["raw_datasets"]}
     paths = {stem: root / raw[stem]["path"] for stem in spec["sources"]}
     ae_ece = category == "alfven_eigenmode" and AE_ECE_STEM in paths
+    elm_challenge = category == "edge_localized_mode" and ELM_CHALLENGE_STEM in paths
     confinement = None
     if category in {"high_confinement_mode", "low_confinement_mode"}:
         frame, grids, report = format_confinement(
@@ -647,6 +843,10 @@ def convert_category(
         frame = format_ae(
             paths["co2_detector_2021"], start_s=ae_start_s, stop_s=ae_stop_s
         )
+    elif elm_challenge:
+        if len(paths) != 1:
+            raise ValueError("The ELM challenge key is formatted on its own")
+        frame = format_elm_challenge(paths[ELM_CHALLENGE_STEM])
     elif category == "edge_localized_mode":
         frame = format_elm(*paths.values())
     elif category == "neoclassical_tearing_mode":
@@ -670,10 +870,31 @@ def convert_category(
         ],
         "category": category,
         "categories": category_labels(category),
-        "made_by": f"{category}/formatter.py",
+        "made_by": f"python -m labeler.events.source_formatters {category}",
         "made_at": spec.get("date") or CONVERSION_DATE,
     }
-    if category == "edge_localized_mode":
+    if elm_challenge:
+        meta["label_mapping"] = {
+            "time_units": "ms",
+            "scope": "DIII-D cases only; other devices in the key are skipped",
+            "window": "each case's tstart..tend is assessed; time outside it has no "
+            "row and is not assessed",
+            "states": "ELM types 1, 2 and 6 are present; types 3 and 4 (other "
+            "transients) and 8 are uncertain; types 5 and 7 (pellet, no ELM) and "
+            "event-free window time are absent",
+            "type_to_state": {str(k): v for k, v in ELM_CHALLENGE_STATES.items()},
+            "overlap": "present beats uncertain beats absent; segments do not "
+            "overlap and abutting segments of one state are joined",
+            "edges": "nominal start and end; the key's edge uncertainties are not "
+            "carried (the raw key has them) and event types are not carried either",
+            "confidence": "unknown",
+            "limitation": "Segments join abutting ELMs, so counts and types come "
+            "from the raw key, not this table",
+            "reserved": "evaluation set: the shots are holdout rows of the ELM roster "
+            "and are not used in fitting or tuning",
+        }
+        meta["source_audit"] = elm_challenge_audit(paths[ELM_CHALLENGE_STEM])
+    elif category == "edge_localized_mode":
         meta["label_mapping"] = {
             "time_units": "ms",
             "cadence_ms": 1,
@@ -718,7 +939,7 @@ def convert_category(
             "excluded_class": "lfm",
         }
     out.parent.mkdir(parents=True, exist_ok=True)
-    if category == "edge_localized_mode":
+    if category == "edge_localized_mode" and not elm_challenge:
         folder = out.parent / "shots"
         folder.mkdir(parents=True, exist_ok=True)
         for shot, times, labels in read_elm(*paths.values()):
@@ -738,6 +959,29 @@ def convert_category(
             "classes": category_labels(category),
             "rho_bins": 20,
             "radial_mapping": "broadcast scalar label across all rho bins",
+        }
+    if elm_challenge:
+        # Beside, never over, the pinned grids in `shots/`: 163518 is in both.
+        folder = out.parent / "challenge_shots"
+        folder.mkdir(parents=True, exist_ok=True)
+        grids = dict(elm_challenge_grids(project_intervals(validate_format(frame))))
+        for shot, grid in grids.items():
+            write_label_grid(
+                folder / f"{shot}.npz",
+                grid["time_ms"],
+                grid["label"],
+                categories=category_labels(category),
+            )
+        meta["per_shot_files"] = {
+            "path": "challenge_shots/<shot>.npz",
+            "n_shots": len(grids),
+            "sample_interval_ms": SAMPLE_MS,
+            "time_coordinate": "left edge of half-open bin",
+            "classes": category_labels(category),
+            "rho_bins": 20,
+            "radial_mapping": "broadcast scalar label across all rho bins",
+            "label_origin": "1 where any ELM touches the bin; 0 where only absent "
+            "segments do; uncertain-only and unassessed bins unknown",
         }
     if confinement is not None:
         grids, report = confinement
@@ -815,13 +1059,25 @@ def convert_category(
     return out
 
 
-def main(category: str, default_root: Path, argv=None) -> int:
-    parser = argparse.ArgumentParser(description=f"Format original {category} labels")
+def main(argv=None) -> int:
+    paths = Paths.from_env()
+    parser = argparse.ArgumentParser(
+        prog="python -m labeler.events.source_formatters",
+        description="Format one category's original labels into the interval schema",
+    )
+    parser.add_argument("category", help="the event directory, e.g. alfven_eigenmode")
     parser.add_argument(
         "--root",
         type=Path,
-        default=default_root,
-        help="Events directory containing events.yaml",
+        default=paths.label_tables,
+        help="the label tables the raw paths are relative to "
+        "(default: LABELER_LABEL_TABLES or data/events)",
+    )
+    parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=paths.events_manifest,
+        help="the events.yaml to read (default: configs/labeler/events.yaml)",
     )
     parser.add_argument("--output", type=Path, help="Override the output CSV path")
     parser.add_argument(
@@ -829,18 +1085,24 @@ def main(category: str, default_root: Path, argv=None) -> int:
         help="Format dataset (output stem or file name) when events.yaml lists "
         "several for the category; default: the first",
     )
-    if category == "alfven_eigenmode":
-        parser.add_argument("--start-s", type=float, default=0.0)
-        parser.add_argument("--stop-s", type=float, default=2.0)
+    parser.add_argument(
+        "--start-s", type=float, default=0.0, help="alfven_eigenmode only"
+    )
+    parser.add_argument("--stop-s", type=float, default=2.0, help="alfven_eigenmode only")
     args = parser.parse_args(argv)
     print(
         convert_category(
-            category,
+            args.category,
             args.root,
+            manifest=args.manifest,
             output=args.output,
             dataset=args.dataset,
-            ae_start_s=getattr(args, "start_s", 0.0),
-            ae_stop_s=getattr(args, "stop_s", 2.0),
+            ae_start_s=args.start_s,
+            ae_stop_s=args.stop_s,
         )
     )
     return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

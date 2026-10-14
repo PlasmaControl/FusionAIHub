@@ -1,7 +1,7 @@
 r"""fig_confinement_coverage: every curated-label shot, its L / H / QH / WPQH segments,
 whether BES and the beam gating are available, and the regime time by year.
 
-    PYTHONPATH=src pixi run --frozen --no-install -e labelmaker \
+    PYTHONPATH=src pixi run --frozen --no-install -e labeler \
         python scripts/labeler/paper/fig_confinement_coverage.py \
         [--out PATH.pdf] [--png PATH.png] [--table PATH.csv]
 
@@ -46,7 +46,7 @@ from labeler.confinement import bes_windows as bw
 from labeler.confinement import zerod
 
 LABELER = Path(
-    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")
+    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler")
 )
 WORK = LABELER / "round4/conf"
 DEFAULT_OUT = WORK / "fig_confinement_coverage.pdf"

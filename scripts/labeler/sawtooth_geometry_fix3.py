@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 
 REPO = Path(__file__).resolve().parents[2]
-DEFAULT_WORK = Path("/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5")
+DEFAULT_WORK = Path("/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/saw/fix5")
 OUTPUT = REPO / "outputs/labeler/sawtooth/fix5"
 ARCHIVE = Path("/scratch/gpfs/nc1514/omnimode/data")
 FDP_MDS_RELAY = "fdp://fdp-d3d-origin.nationalresearchplatform.org:8443/mdsip"

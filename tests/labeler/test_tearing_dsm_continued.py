@@ -46,8 +46,8 @@ def test_the_variant_reuses_the_base_specs_and_names_its_own_weights():
 def test_card_matches_the_spec_and_declares_the_same_columns_as_the_base_card():
     assert registry.card_discrepancies(cont.SLUG) == []
     assert cont.SLUG in registry.implemented()
-    got = registry.read_card(cont.SLUG)["labelmaker"]
-    want = registry.read_card(base.SLUG)["labelmaker"]
+    got = registry.read_card(cont.SLUG)["labeler"]
+    want = registry.read_card(base.SLUG)["labeler"]
     assert got["outputs"] == want["outputs"]
     assert got["inputs"] == want["inputs"]
     assert got["upstream"]["training_code"] == "scripts/labeler/retrain_tearing_dsm.py"

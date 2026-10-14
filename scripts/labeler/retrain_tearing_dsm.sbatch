@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
 #SBATCH --time=08:00:00
-#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
+#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labeler/runs/slurm/%j.out
 # CPU only: the model is 114k float64 parameters over 778k rows; the fork's
 # training loop is dense matmuls that thread well and never needed a GPU
 # (upstream's own run spent 7.5 s per epoch).
@@ -21,7 +21,7 @@ set -euo pipefail
 
 export OMP_NUM_THREADS=8
 export MKL_NUM_THREADS=8
-ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker
+ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labeler
 REPO=/scratch/gpfs/nc1514/FusionAIHub
 export LABELER_GIT_SHA=$(git -C "$REPO" rev-parse HEAD)
 

@@ -38,6 +38,7 @@ from ._shared import (
     plasma_window,
     robust_clip,
     robust_limits,
+    with_caveat,
 )
 
 #: Four rows of four ADJACENT channels covering 20-35, sixteen in all. The
@@ -80,7 +81,7 @@ ECE_BIN_MS = 0.05
 TE_GROUP = "ts_core_temp"
 TE_CHORDS = 4
 TE_MARGIN = 0.25
-TE_CLIPPED = ", clipped above its plasma range"
+TE_CLIPPED = "Clipped above its plasma range"
 #: The SXR fans tried in order, by their first row in the corpus's 320 (32
 #: chords each). The first with `MIN_CHORDS` chords finite over at least half
 #: the record is drawn: its `CHOSEN` chords with the most crash-like drops. The
@@ -137,16 +138,17 @@ def ece_panels(shot, *, t_range=None, paths=None) -> list[Panel]:
             int(shot), "ece", channels=list(row), t_range=t_range, paths=paths
         )
         built.append(
-            Panel(
-                title=(
-                    f"ECE Te, inversion side {ECE_INVERSION_SIDES[len(built)]}, "
-                    f"ch {row[0]}-{row[-1]} ({ECE_BIN_MS:g} ms median; "
-                    f"{ECE_GEOMETRY_NOTE})"
+            with_caveat(
+                Panel(
+                    title=f"ECE Te, ch {row[0]}-{row[-1]}",
+                    x=array.x,
+                    y=despike(array.x, array.y, ECE_BIN_MS),
+                    ylabel="keV",
+                    legend=[f"ch {c}" for c in row],
                 ),
-                x=array.x,
-                y=despike(array.x, array.y, ECE_BIN_MS),
-                ylabel="keV",
-                legend=[f"ch {c}" for c in row],
+                f"Inversion side {ECE_INVERSION_SIDES[len(built)]}",
+                f"{ECE_BIN_MS:g} ms median",
+                ECE_GEOMETRY_NOTE,
             )
         )
     return built
@@ -170,8 +172,8 @@ def _mapped_ece_panels(shot, *, t_range=None, paths=None) -> list[Panel]:
     values = despike(array.x, array.y, ECE_BIN_MS)
     panels = []
     names = (
-        ("q<1 inversion group", core),
-        ("q>1 inversion group", outside),
+        ("q<1 group", core),
+        ("q>1 group", outside),
     )
     if geometry.psi is not None:
         names = (("core q<1", core), ("outside q=1", outside))
@@ -182,12 +184,16 @@ def _mapped_ece_panels(shot, *, t_range=None, paths=None) -> list[Panel]:
             continue
         y = np.where(mask[selected[visible]], values[selected[visible]], np.nan)
         panels.append(
-            Panel(
-                title=f"ECE Te, {name} (measured q geometry)",
-                x=array.x,
-                y=y,
-                ylabel="keV",
-                legend=[f"ch {c}" for c in selected[visible]],
+            with_caveat(
+                Panel(
+                    title=f"ECE Te, {name}",
+                    x=array.x,
+                    y=y,
+                    ylabel="keV",
+                    legend=[f"ch {c}" for c in selected[visible]],
+                ),
+                f"{ECE_BIN_MS:g} ms median",
+                "Channels grouped by the measured q geometry",
             )
         )
     if not panels:
@@ -219,12 +225,16 @@ def ece_inversion_from_arrays(x, values, *, t_range=None):
 
 def _inversion_panel(x, y):
     return [
-        Panel(
-            title="ECE inversion side comparison (q=1 mapping unavailable)",
-            x=x,
-            y=y,
-            ylabel="ΔTe, baseline-subtracted (keV)",
-            legend=["side A: ch 20-27", "side B: ch 28-35"],
+        with_caveat(
+            Panel(
+                title="ECE side comparison",
+                x=x,
+                y=y,
+                ylabel="ΔTe, baseline-subtracted (keV)",
+                legend=["side A: ch 20-27", "side B: ch 28-35"],
+            ),
+            ECE_GEOMETRY_NOTE,
+            "Each channel's full-record mean is subtracted, then the two sides are compared",
         )
     ]
 
@@ -256,13 +266,16 @@ def te_panels(shot, *, t_range=None, paths=None) -> list[Panel]:
         clipped = bool((y > high).any())
         y = np.where(y > high, high, y).astype(np.float32)
     return [
-        Panel(
-            title=f"Te, Thomson core: the {len(top)} hottest chords"
-            + (TE_CLIPPED if clipped else ""),
-            x=x,
-            y=y,
-            ylabel="keV",
-            legend=[f"chord {c}" for c in top],
+        with_caveat(
+            Panel(
+                title="Thomson core Te",
+                x=x,
+                y=y,
+                ylabel="keV",
+                legend=[f"chord {c}" for c in top],
+            ),
+            f"The {len(top)} hottest chords",
+            TE_CLIPPED if clipped else "",
         )
     ]
 
@@ -290,12 +303,15 @@ def sxr_panels(shot, *, t_range=None, paths=None) -> list[Panel]:
             keep = (x >= t_range[0]) & (x <= t_range[1])
             x, chosen = x[keep], chosen[:, keep]
         return [
-            Panel(
-                title=f"SXR {name}, the {CHOSEN} chords with the most crash-like drops"
-                + (CLIPPED if clipped else ""),
-                x=x,
-                y=chosen,
-                legend=[f"{name}{c + 1:02d}" for c in top],
+            with_caveat(
+                Panel(
+                    title=f"SXR {name}",
+                    x=x,
+                    y=chosen,
+                    legend=[f"{name}{c + 1:02d}" for c in top],
+                ),
+                f"The {CHOSEN} chords with the most crash-like drops",
+                CLIPPED if clipped else "",
             )
         ]
     raise NoDataError(f"shot {int(shot)}: no SXR fan has {MIN_CHORDS} finite chords")

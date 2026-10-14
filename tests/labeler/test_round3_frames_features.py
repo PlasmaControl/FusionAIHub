@@ -10,7 +10,6 @@ import pytest
 
 from labeler import frames
 from labeler.ae.xpower.data import window_frames
-from labeler.events.panels._shared import CLIPPED
 from labeler.events.panels.neoclassical_tearing_mode import N_COLOURS, Z_DB
 from labeler.events.review import rows
 from labeler.frames.features import StaleStore, features, find_role, level_for
@@ -29,6 +28,7 @@ from .frames_tree import (
     NTM_BINS,
     NTM_DB,
     NTM_N,
+    OLD_CLIPPED,
     SAWTOOTH_MS,
     SHOTS,
     STORE_T0_MS,
@@ -259,8 +259,8 @@ def test_the_clipped_suffix_still_matches_by_prefix(tree):
     spec = frames.SPECS["elm_frames"]
     described = [
         {"name": "p1", "title": "D-alpha PCPHD03"},
-        {"name": "p2", "title": "D-alpha FS01, the ELM spans' channel" + CLIPPED},
-        {"name": "p3", "title": "D-alpha FS03" + CLIPPED},
+        {"name": "p2", "title": "D-alpha FS01, the ELM spans' channel" + OLD_CLIPPED},
+        {"name": "p3", "title": "D-alpha FS03" + OLD_CLIPPED},
     ]
     assert find_role(described, spec.roles[0])["name"] == "p2"  # the first
     assert find_role(described[:1], spec.roles[0]) is None
@@ -271,6 +271,32 @@ def test_the_clipped_suffix_still_matches_by_prefix(tree):
     # A store with no such row: the required role is missing.
     with pytest.raises(ValueError, match="D-alpha FS"):
         features(_store(tree, "sawtooth_frames"), spec, WINDOW)
+
+
+def test_a_v4_elm_store_with_the_strike_sum_feeds_the_model_the_single_chord(tmp_path):
+    """The ELM store keeps `D-alpha FSnn` right after `D-alpha FS strike sum`; the
+    `dalpha` role reads the chord, never the sum, and the sum alone is no row."""
+    spec = frames.SPECS["elm_frames"]
+    grid = rows.Grid(0.0, 0.5, 400)
+    t = (np.arange(grid.n) + 0.5) * grid.dt_ms
+    chord = 1.0 + 0.1 * np.sin(2 * np.pi * t / 7.0)
+    total = 50.0 + 5.0 * np.sin(2 * np.pi * t / 3.0)
+
+    def trace(name, title, y):
+        return rows.TraceRow(name, title, np.stack([y, y])[:, None].astype(np.float32))
+
+    both = [trace("p0", "D-alpha FS strike sum", total), trace("p1", "D-alpha FS01", chord)]
+    rows.write(tmp_path / "both.h5", grid, both)
+    rows.write(tmp_path / "chord.h5", grid, both[1:])
+    rows.write(tmp_path / "sum.h5", grid, both[:1])
+    with_sum, _ = features(tmp_path / "both.h5", spec, (0, 200))
+    alone, _ = features(tmp_path / "chord.h5", spec, (0, 200))
+    np.testing.assert_array_equal(with_sum, alone)
+    with pytest.raises(ValueError, match="D-alpha FS"):
+        features(tmp_path / "sum.h5", spec, (0, 200))
+    sum_first = [{"title": "D-alpha FS strike sum"}, {"title": "D-alpha FS07"}]
+    assert find_role(sum_first, spec.roles[0])["title"] == "D-alpha FS07"
+    assert find_role(sum_first[:1], spec.roles[0]) is None
 
 
 def test_the_four_ece_roles_give_four_blocks_in_the_spec_s_order(tree):

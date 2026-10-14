@@ -43,10 +43,10 @@
   "split": "producer_external",
   "cohort": "/scratch/gpfs/nc1514/FusionAIHub-r4-detach-ui/data/events/catalog/cohort.csv",
   "corpus": "/scratch/gpfs/EKOLEMEN/foundation_model/200977_processed.h5",
-  "indicator_root": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins",
+  "indicator_root": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/bins",
   "producer_snapshot": {
     "mode": "frozen snapshot; no producer reread or store rebuild",
-    "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui/browser-fix4-200977",
+    "source": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach-ui/browser-fix4-200977",
     "source_sha256": "34d564719752a1175b4441d1b5c8743aa7704ac33fdfbd0abf457f7d36151a42"
   },
   "neutral_reviewer": "Reviewer",
@@ -117,7 +117,7 @@
       ]
     }
   },
-  "store": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui/browser-fix5-200977/spectrograms/detachment/200977.h5",
+  "store": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach-ui/browser-fix5-200977/spectrograms/detachment/200977.h5",
   "store_bytes": 10290758,
   "store_sha256": "99105d67fa8949d89965d627c7b0aa3e8ea14baf2af3c96255164ae77ff575d1",
   "frozen_store_sha256": "99105d67fa8949d89965d627c7b0aa3e8ea14baf2af3c96255164ae77ff575d1",
@@ -287,7 +287,7 @@
     ],
     "params": {
       "detachment_geometry": {
-        "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/cache/200977.npz",
+        "source": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/cache/200977.npz",
         "window_ms": [
           100.0,
           6120.0
@@ -4123,7 +4123,7 @@
         ]
       },
       "detachment_producer": {
-        "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/labels_bins.csv.gz",
+        "source": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/labels_bins.csv.gz",
         "bin_width_ms": 50.0,
         "definitions": {},
         "recipe": {
@@ -4213,11 +4213,11 @@
           "documentation": "# Detachment protocol\n\nThis is an **unverified diagnostic consensus**, awaiting the detachment review\nstream. It is suitable for studying agreement and coverage; its posterior and\nmodel weights are not calibrated physical probabilities or diagnostic accuracy.\nThe fixed cohort's test shots are excluded from fitting, threshold validation,\nsurrogate selection and bin-policy analysis.\n\n## Definitions and export\n\nThe scalar lower-divertor state is attached (1), detached (2), MARFE (3), or\nuncertain (4). Absence (0 internally) means not assessed; missing time is never\ninterpreted as attached. Attached means the accepted diagnostics support a\nlow radiation front and an attached target. Detached means the front has lifted\nand another compatible indicator supports reduced target current or enhanced\ndivertor radiation. MARFE means a persistent high front with localized emission\ninside the separatrix near/above the X-point and a separate operational cue.\nThese definitions express the protocol, not independently established truth.\n\nBins are 50 ms, following the catalog grid and published diagnostic response\nscales. A full TangTV camera frame is approximately 30 Hz; the corpus 50 fps\nresampling does not create independent frames. Thus a bin holds roughly 1.5\nindependent camera frames, and a median alone cannot reject ELM contamination.\n\n`data/events/detachment/extend_detach_vote/detach_shots.csv` contains assessed\nintervals with the standard shot/category/start/end/confidence fields. Its\n`attrs` JSON includes `tier`. The large `labels_bins.csv.gz` has an explicit\n`tier` column, indicator value/valid/reason/vote columns, source and geometry\nprovenance, posterior columns, and a separate `state_temporal_imputation`.\nThe owned `shots.csv` is an unverified camera-review roster, not a gold table.\nThe interval table, sparse grids and per-shot indicator CSVs derive from the\nsame observed bin labels. Time bases are milliseconds in these outputs; corpus\nHDF5 time bases are converted from seconds.\n\n## Indicators and validity\n\n### Target current\n\nThe processed path reads `LANGMUIR::TOP.PROBE_*:{R,Z,JSAT,TIME}`. Invalid/zero\npositions are excluded. It uses the probe nearest the EFIT outer strike point,\nwith a maximum distance of 2 cm, and inter-ELM bin medians of processed Jsat\n(amps/cm\u00b2). Following the Eldon 2021 density-only DOD construction, the attached\nreference is `C ne\u00b2`, fitted separately for explicit L and H confinement labels\nin an attached pre-puff window. The window ends at the first corpus total-gas\nrise exceeding 10% of its shot excursion above the tenth-percentile floor.\nIt needs six quality-valid bins with an attached, valid TangTV vote per regime.\nUnknown confinement, missing gas timing, bad geometry, low power, ramping or\nELM contamination cannot fit C. This operational pre-puff recipe is explicit\nand should be checked by a human before interpreting C as a physical reference.\n\nIf that reference is unavailable, the output is **uncalibrated Jsat ratio\n(local proxy)**. Positioned processed traces use a nearest-probe density-scaled\nwhole-shot 90th-percentile reference; missing processed traces use the original\nraw swept-probe maximum with density and power scaling. Neither self-reference\nestablishes a wholly detached shot's attached current. The `afrac_method` field\nseparates `eldon_pre_puff_LH` from `local_proxy`; benchmark terminology defaults\nto the local proxy. It votes attached at ratio \u22650.75, detached at \u22640.5, and\nabstains between. It cannot vote MARFE. The nearest-probe quality and geometry\ngates still apply to the processed fallback.\n\n### Divertor radiation\n\n`f_div = PRAD_DIVL / P_in` uses calibrated lower-divertor bolometry and heating\npower (beams, ECH and ohmic power). It votes attached at \u22640.36 and detached at\n\u22650.50, abstaining between, and never votes MARFE. Eldon 2019 supplies the\nsensor definition, **not universal state thresholds**. These fixed thresholds\ncome from the local Chen 201081 worked example and are checked on cohort training and external development\nshots with true inversions; they are not optimized on that check.\nThe validation counts and binary kappa are reported below. Validity requires\ninput power \u22650.5 MW and acceptable samples/ELM share. The processed-target path\nuses density-only scaling; the legacy raw proxy uses P_SOL = P_in \u2212 dW/dt,\nwithout subtracting core radiation, another limitation of that fallback.\n\n### TangTV front\n\nC-III emissivity inversions give the SSA height ZE and\n`DZ = 1 \u2212 (ZX \u2212 ZE)/(ZX \u2212 ZS)`. The **upper shelf** is near Z=\u22121.25 m with\nouter strike R\u22651.37 m. The **lower shelf** is near Z=\u22121.363 m with R<1.37 m.\nLower-shelf inversions use plasma_tv's 2026 window `RX \u2264 R < SHELF_WALL_R`\n(`r_max=1.37 m`) and the actual lower-shelf strike height, excluding upper-shelf\nemission. All local lower-shelf inversion shots are attempted and checked\nagainst the other indicators below; unlocalized Thomson temperatures are not\nused as confirmation.\n\nBoth sources require lower-single-null geometry, a positive outer leg of at\nleast 10 cm, a valid shelf strike, finite emission, DZ\u2265\u22120.25, and a nearest\nEFIT slice within 40 ms. Camera geometry preferentially uses EFIT02, matching\nplasma_tv. Missing or single-slice EFIT02 records have an explicit EFIT01\nfallback for inversions, with source exported; the surrogate rejects this\nfallback. Heating/current calculations retain their original EFIT01 source.\nA bin requires at least half its camera frames to pass its frame gates.\n\nThe surrogate is a ridge regression of block-averaged raw frames to inversion\nZE. Features subtract the black level, take square-root block means and apply\nper-frame mean-zero/unit-standard-deviation normalization (ZE_Norm), plus RX.\nDeployment requires leg length, outer strike R and X-point R inside the\naccepted inversion training envelope, training-range brightness, less than 1%\nsaturation, and verified camera/filter provenance. Camera provenance is verified\nonly on matching SAV/corpus training shots. Predictions on other shots abstain:\nthere is no warranted exposure/camera transfer claim. Alpha selection is nested\nby shot: each outer held-out shot is excluded from three grouped inner folds,\nthen evaluated after a fit on the outer training shots. Final deployment alpha\nis selected on development data only. The reported error is a surrogate-to-\ninversion error, not detachment or MARFE accuracy.\n\nTangTV votes attached for DZ<0.35 and detached for 0.5\u2264DZ<1.2. The transition\nband abstains. DZ\u22651.2 alone is a **candidate MARFE**. A MARFE vote needs at least\ntwo consecutive bins satisfying high DZ, accepted-frame spatial evidence and\na second cue. Spatial evidence requires the inversion's global emission peak\nto have `0<psiN<1`, within 30 cm radially of X and between ZX\u22122 cm and ZX+30 cm,\nusing an EFIT02 flux map within 40 ms. Only frames accepted for DZ contribute;\nan excluded ELM frame cannot supply spatial evidence. The second cue is a\nrecorded H\u2013L back-transition within 200 ms, or fG\u22650.8 from unit-confirmed line\ndensity and Ip. Cached UF density lacks confirmed units, so it supplies no\nGreenwald cue. The implemented future SI-density chord approximation is not\nused to invent present fG values. Surrogate fronts lack spatial inversions and\ncannot confirm MARFE. The spatial window is an operational candidate test,\nnot proof of a localized instability or an expert MARFE label.\n\n### ELM mask\n\nRobust divertor D-alpha spikes are widened by 17 ms before and 50 ms after,\ncovering half a 30 Hz integration plus a conservative post-ELM recovery window.\nAccepted TangTV frames exclude this mask; bins with ELM share >50% are invalid\nand cannot become certain through TangTV. Target-current and radiation bins\nretain their explicit quality masks. The fixed recovery window is a conservative\nprotocol assumption and merits shot-specific development validation.\n\n## Redundancy, model and tiers\n\nThe label model exactly enumerates three states and indicator propensities,\nweights and optional pair correlations. Correlation structure uses shot-grouped\ndevelopment folds and the simplest structure within one standard error of the\nbest held-out marginal likelihood. The primary weight fit requests true\ninversion anchors with all three indicators valid and a fixed 1/2, 1/4, 1/4\nclass prior. With fewer than 300 anchors it uses an all-bin fallback, explicitly\nunidentified. Weight saturation is recorded. In either case TangTV's physical\naccuracy is **not identified**, and all posteriors are **uncalibrated**.\n\nAfter the posterior, a certain state requires at least two valid cast votes,\na valid in-domain TangTV vote agreeing with another indicator, no incompatible\nvote, a posterior-selected state compatible with those votes, and that state's\nposterior \u22650.7. `COMPATIBLE` treats a detached target-current/radiation vote as\ncompatible with a TangTV MARFE vote; an attached vote conflicts with either\nnot-attached state. Invalid votes do not participate. Thus all available cast\nvotes must have a common compatible state. Afrac plus Prad alone never produce\na certain state, even when both agree or the posterior is high.\n\n| Tier | Exported state | Meaning |\n|---|---|---|\n| `certain` | 1/2/3 | All certainty and physical gates pass |\n| `low_confidence_pair` | 4 | Target-current/radiation agreement without TangTV support |\n| `candidate_marfe` | 4 | High front without the full MARFE evidence/certainty chain |\n| `conflict` | 4 | Cast votes have no common compatible state |\n| `low_posterior` | 4 | Insufficient compatible vote support or posterior below threshold |\n| `no_vote` | 4 | No sufficient supported state |\n| `not_assessed` | absent | Fewer than two valid indicators |\n\nCandidate MARFE takes precedence in the tier field; indicator votes still reveal\nany conflict. The transparent `detach_rule` uses the same compatibility and\nphysical support conditions without fitted confidence. Primary states are\n**not smoothed**. A one-bin neighbour-fill suggestion is exported separately;\nit may cross a validity/confidence boundary and must never be promoted to an\nobserved certain label. Its count is audited separately.",
           "sources": {
             "recipe": {
-              "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/review_recipe.json",
+              "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/review_recipe.json",
               "sha256": null
             },
             "label_metadata": {
-              "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/labels_rule.meta.json",
+              "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/labels_rule.meta.json",
               "sha256": "ad5645cbb07064c7452180d8645a536cbbfe469ece305b8502a641774ae448ed"
             },
             "method_record": {
@@ -6082,7 +6082,7 @@
         ],
         "label_available": true,
         "note": "Unverified producer suggestions; label model primary, rule fallback.",
-        "vote_source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/200977.npz",
+        "vote_source": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/bins/200977.npz",
         "evidence": {
           "tier": [
             "",
@@ -6703,7 +6703,7 @@
       },
       "panel_metadata": {
         "p0": {
-          "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/200977.npz",
+          "source": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/bins/200977.npz",
           "schema": "detach_bins",
           "indicator": "afrac",
           "valid": [
@@ -7325,11 +7325,11 @@
           ],
           "recipe_sources": {
             "recipe": {
-              "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/review_recipe.json",
+              "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/review_recipe.json",
               "sha256": null
             },
             "label_metadata": {
-              "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/labels_rule.meta.json",
+              "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/labels_rule.meta.json",
               "sha256": "ad5645cbb07064c7452180d8645a536cbbfe469ece305b8502a641774ae448ed"
             },
             "method_record": {
@@ -7464,7 +7464,7 @@
           "interpretation": "See the stored producer recipe and bin votes."
         },
         "p1": {
-          "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/200977.npz",
+          "source": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/bins/200977.npz",
           "schema": "detach_bins",
           "indicator": "prad",
           "valid": [
@@ -8086,11 +8086,11 @@
           ],
           "recipe_sources": {
             "recipe": {
-              "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/review_recipe.json",
+              "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/review_recipe.json",
               "sha256": null
             },
             "label_metadata": {
-              "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/labels_rule.meta.json",
+              "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/labels_rule.meta.json",
               "sha256": "ad5645cbb07064c7452180d8645a536cbbfe469ece305b8502a641774ae448ed"
             },
             "method_record": {
@@ -8100,7 +8100,7 @@
           }
         },
         "p2": {
-          "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/200977.npz",
+          "source": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/bins/200977.npz",
           "schema": "detach_bins",
           "indicator": "tangtv",
           "valid": [
@@ -8722,11 +8722,11 @@
           ],
           "recipe_sources": {
             "recipe": {
-              "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/review_recipe.json",
+              "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/review_recipe.json",
               "sha256": null
             },
             "label_metadata": {
-              "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/labels_rule.meta.json",
+              "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/labels_rule.meta.json",
               "sha256": "ad5645cbb07064c7452180d8645a536cbbfe469ece305b8502a641774ae448ed"
             },
             "method_record": {
@@ -8859,7 +8859,7 @@
           ]
         },
         "p3": {
-          "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins/200977.npz",
+          "source": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/bins/200977.npz",
           "schema": "detach_bins",
           "quantity": "aux_ne",
           "missing_policy": "nonfinite and nonpositive values are missing",
@@ -9672,7 +9672,7 @@
     }
   ],
   "browser_returncode": 0,
-  "screenshot": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui/browser-fix5-200977/detachment_review_200977.png",
+  "screenshot": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach-ui/browser-fix5-200977/detachment_review_200977.png",
   "screenshot_viewport": [
     1366,
     768

@@ -396,8 +396,8 @@ def test_the_committed_reference_comparison_pins_the_sawtooth_acceptance():
     assert abs(rerun["median_ms"] - record["reference"]["median_period_ms"]) < 1e-6
     assert rerun["max_abs_dt_ms"] <= record["agree_tolerance_ms"]
     assert rerun["elapsed_s"] < 1.0
-    assert len(rerun["labelmaker_sha"]) == 40
-    # `labelmaker_sha` is HEAD at run time, which is the PARENT of the
+    assert len(rerun["labeler_sha"]) == 40
+    # `labeler_sha` is HEAD at run time, which is the PARENT of the
     # commit carrying the record - the script has to run before the commit
     # its output goes into. That names the tree that was MEASURED only if
     # nothing under `src/labeler` was uncommitted when it ran, so the

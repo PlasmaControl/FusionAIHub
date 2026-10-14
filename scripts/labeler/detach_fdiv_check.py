@@ -21,7 +21,7 @@ as a corroborator, shot by shot, with the shot counts beside every summary:
 
 Nothing here is fitted and no threshold is chosen.
 
-    pixi run --frozen -e labelmaker python scripts/labeler/detach_fdiv_check.py
+    pixi run --frozen -e labeler python scripts/labeler/detach_fdiv_check.py
 """
 
 from __future__ import annotations

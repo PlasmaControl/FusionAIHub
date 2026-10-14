@@ -14,7 +14,7 @@ last record.
 Code: `src/labeler/ae/xpower/` (`data`, `model`, `train`, `cv`, `evaluate`,
 `gallery`, `extend`, `posthoc`). Tests: `tests/labeler/test_ae_xpower_*.py`.
 Jobs: `scripts/labeler/ae_xpower_*.sbatch`. `$LABELER_ROOT` is
-`/scratch/gpfs/EKOLEMEN/nc1514/labelmaker`.
+`/scratch/gpfs/EKOLEMEN/nc1514/labeler`.
 
 There are four versions. **v1** trained three candidates, chose one on its
 validation shots and was tested once (A2 failed: it mistook MHD for AE). **v2**
@@ -310,7 +310,7 @@ variables (`VERSION`, `PILOT`, `SEED`, `MODELS`, `LIMIT`, `SHOTS`, `OF`) go on
 the sbatch line only. Pilots come first; each job is gated with
 `python -m labeler.jobstats --job-id <id> --cpu-only`. The `sbatch` lines run
 from `scripts/labeler/`; the `python -m` lines run on the login node, from the
-repository root, in the `labelmaker` environment (`pixi run -e labelmaker`).
+repository root, in the `labeler` environment (`pixi run -e labeler`).
 
 ```bash
 # 1. The folds, once, on the login node (seconds).

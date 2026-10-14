@@ -67,10 +67,15 @@ def _log_lines(path: Path):
 
 
 def saved_names(label_tables) -> list[str]:
-    """Every name in the events' review logs; a line that does not parse is skipped."""
+    """Every name in the events' review logs (and their subcategories'); a line
+    that does not parse is skipped."""
     found = []
     for log in LOGS:
-        for path in sorted(Path(label_tables).glob(f"*/{REVIEW}/{log}")):
+        paths = [
+            *Path(label_tables).glob(f"*/{REVIEW}/{log}"),
+            *Path(label_tables).glob(f"*/subcategories/*/{REVIEW}/{log}"),
+        ]
+        for path in sorted(paths):
             found.extend(entry.get("name") for entry in _log_lines(path))
     return _unique(_clean(found))
 

@@ -70,9 +70,9 @@ from labeler.ae.model import (
 )
 from labeler.env import getenv
 
-DEFAULT_DATASET = Path("/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/ae/dataset")
+DEFAULT_DATASET = Path("/scratch/gpfs/EKOLEMEN/nc1514/labeler/ae/dataset")
 DEFAULT_OUT = Path(
-    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/d3d_ae_activity_seldnet"
+    "/scratch/gpfs/EKOLEMEN/nc1514/labeler/models/d3d_ae_activity_seldnet"
 )
 
 

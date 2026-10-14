@@ -7,7 +7,7 @@ Reads each shot's six midplane Mirnov probes from the corpus (`mirnov` rows 15, 
 ``$LABELER_ROOT/round4/tm/magfeatures/<shot>.npz`` (`centres_ms`, `features`, `names`);
 a shot whose probes the corpus lacks gets ``<shot>.missing.json`` and is counted.
 
-    PYTHONPATH=$PWD/src pixi run --frozen --no-install -e labelmaker python \\
+    PYTHONPATH=$PWD/src pixi run --frozen --no-install -e labeler python \\
         scripts/labeler/tm_magfeatures.py --workers 6
 """
 
@@ -33,7 +33,7 @@ from labeler.events.verify import NoDataError, corpus_signal
 from labeler.tearing import magfeatures
 
 OUT = (
-    Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker"))
+    Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
     / "round4/tm/magfeatures"
 )
 CATALOG = REPO / "data/events/catalog"

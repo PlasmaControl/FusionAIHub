@@ -1,8 +1,8 @@
 r"""fig_interpreter (the teaser): raw signals -> TokEye-processed -> labelled.
 
-    PYTHONPATH=src pixi run --frozen -e labelmaker \
+    PYTHONPATH=src pixi run --frozen -e labeler \
         python scripts/labeler/paper/fig_interpreter_tokeye.py \
-        [--shot 199597] [--tmin MS --tmax MS] [--out DIR]
+        [--shot 199597] [--tmin MS --tmax MS] [--out DIR] [--rows EVENT=CSV ...]
 
 One non-blind cohort shot over a few seconds, in three groups on one time axis:
 
@@ -17,14 +17,32 @@ One non-blind cohort shot over a few seconds, in three groups on one time axis:
   same mask) in the mask below 30 kHz. Highlights intersect PRESENT label
   times with AE >=60 kHz or NTM <=30 kHz; NTM requires dominant and pixel n=1 or 2.
   Panel (b) has no key beside it: a chip in each event's colour names AE, TM,
-  transient and each n colour in place (`label_events`), read from the panel's own
-  pixels, and the panels run to the right margin (`RIGHT`).
+  transient (when drawn) and each n colour in place (`label_events`), read from the
+  panel's own pixels, and the panels run to the right margin (`RIGHT`).
   Optional ECE-supported, ELM-vetoed crash candidates appear on a thin strip. D-alpha
   carries the ELM label's span and the D-alpha peaks in
   it, and the confinement classes shade it;
-- **labels**: one track per event on the shot's time axis, from the best tier
-  that holds the shot (`labeler.paper.label_figure.TRACKS`): present, absent or
-  blank (unassessed / unobservable).
+- **labels**: one track per event on the shot's time axis: present, absent or
+  blank (unassessed / unobservable), adjacent rows of one state drawn as one run,
+  the confinement runs named in place (L, H, QH, WPQH). There is no key below the
+  panels. Each event's rows are `--rows EVENT=CSV` where given, else its review
+  page's source table (`data/events/<event>/review/source.json`) where that holds
+  the shot, else the tiers below (`labeler.paper.label_figure.TRACKS`). A table
+  whose metadata names a model (threshold, evaluation, checkpoint) is that
+  detector's output and keeps its threshold, held-out score and training check; a
+  curated or imported table is the legacy tier; any other table holds labels. A
+  gold evaluation shot never draws an expert review: its tiers skip that one.
+
+Panel (a) is drawn in `RAW_CMAP`. Panel (b) draws no transient overlay: the owner
+turned it off on 2026-10-14 as too distracting (`SHOW_TRANSIENT`, False; the red
+lines over the spectrogram), so the default figure, its record, caption draft and
+appendix say nothing of red transient lines. The transient channel still decides
+the mask (the coherent mask excludes it) and `--transient` draws the overlay again:
+the wide pass's transient channel over the whole 0-150 kHz band, at its own display
+cut (`TRANSIENT_THRESHOLD`, 0.35; `--transient-cut`, 0 < cut <= 1), max-pooled to
+the PNG's print pixels. The coherent mask and its tags stay at `TOKEYE_THRESHOLD`.
+Uncertain time is hatched with explicit line segments (`hatch_lines`), which every
+PDF viewer draws alike.
 
 TokEye runs once per shot and window, on the CPU (or `--device cuda` in a CUDA
 build: then `--cache-only` there, the drawing needs scikit-image), and is cached
@@ -43,6 +61,7 @@ JSON evidence for the reduced cohort CSV schema. Expert sawtooth intervals take
 precedence over physics states; candidate ticks use separate physics evidence.
 --ae-labels accepts isolated
 paper-model inference predictions. The catalog sawtooth frame model is not shown.
+`--rows` and the source tables come before all of these.
 """
 
 from __future__ import annotations
@@ -54,16 +73,18 @@ import json
 import math
 import re
 import subprocess
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import matplotlib.image as mpimg
 import numpy as np
+import pandas as pd
+from matplotlib import patheffects
+from matplotlib.collections import LineCollection
 from matplotlib.colors import rgb_to_hsv, to_rgb
 from matplotlib.figure import Figure
-from matplotlib.legend_handler import HandlerTuple
 from matplotlib.lines import Line2D
-from matplotlib.patches import Patch, Rectangle
+from matplotlib.patches import Rectangle
 from matplotlib.path import Path as PlotPath
 from scipy import ndimage, signal
 
@@ -71,17 +92,23 @@ from labeler.config import Paths, atomic_path, git_sha, sha256_of
 from labeler.events import equilibrium, masks, unet
 from labeler.events.catalog.cohort import read_cohort
 from labeler.events.catalog.states import ABSENT, NOT_OBSERVABLE, PRESENT, UNCERTAIN
+from labeler.events.review import labels
+from labeler.events.review.gold import is_gold
 from labeler.events.spans import cohort_path
 from labeler.events.verify import (
     NoDataError,
     corpus_path,
     corpus_signal,
 )
-from labeler.paper import PAGE_IN, figure_sources, mode_tags, roster, style
+from labeler.paper import PAGE_IN, figure_sources, mode_tags, roster, style, theme
 from labeler.paper import label_figure as lf
 
 STEM = "fig_interpreter"
-HEIGHT_IN = 5.76
+HEIGHT_IN = 5.43
+#: The page's margins above the panels and below them (the time axis and its label;
+#: there is no key below), inches.
+TOP_IN = 0.086
+BOTTOM_IN = 0.36
 DPI_PNG = 150
 DPI_PDF = 300
 #: The window's margin the TokEye cache keeps beyond the figure's, ms.
@@ -118,13 +145,14 @@ IMAGE_COLUMNS = 3000
 #: The ELM peaks: D-alpha less its running median, over this many MADs.
 ELM_WINDOW = 25
 ELM_MADS = 4.0
-#: Okabe-Ito blue, bluish-green and yellow; other n is purple, at full colour.
-N_COLOURS = {1: "#0072B2", 2: "#009E73", 3: "#F0E442"}
+#: The paper theme (`labeler.paper.theme`): n = 1 sea green, n = 2 sky (coral is the
+#: TM outline's), n = 3 saffron; other n is purple, at full colour.
+N_COLOURS = {1: theme.SEA_GREEN, 2: theme.SKY, 3: theme.SAFFRON}
 N_OTHER = "#8C6BB1"
 EVENT_COLOURS = {
-    mode_tags.AE: "#CC79A7",
-    mode_tags.NTM: "#E69F00",
-    mode_tags.SAWTOOTH: "#D55E00",
+    mode_tags.AE: theme.PLUM,
+    mode_tags.NTM: theme.CORAL,
+    mode_tags.SAWTOOTH: theme.SLATE,
     "edge_localized_mode": "#333333",
 }
 EVENT_NAMES = {
@@ -142,9 +170,23 @@ CLASS_COLOURS = {
     3: lf.COLOURS["QH-mode"],
     4: lf.COLOURS["WPQH-mode"],
 }
-#: Legend order and compact names of the classes (L, H, QH, WPQH).
+#: The classes' short names, written on their runs in (f) and their shading in (c).
 CLASS_LEGEND = {2: "L", 1: "H", 3: "QH", 4: "WPQH"}
 ABSENT_GREY = "#e4e4e4"
+#: Uncertain time: white, hatched in the event's colour with thin lines (an
+#: uncertain confinement class in `UNCERTAIN_CLASS_COLOUR`). The hatch is drawn as
+#: explicit line segments (`hatch_lines`), not a PDF hatch pattern, which poppler
+#: renders faint and grey: "/" lines `UNCERTAIN_HATCH_STEP_PT` apart along the row
+#: (the spacing matplotlib's "////" has), `UNCERTAIN_HATCH_LW` pt wide.
+UNCERTAIN_HATCH_STEP_PT = 6.0
+UNCERTAIN_HATCH_LW = 0.5
+#: A clipped hatch line shorter than this, pt, is dropped: a box corner's nub
+#: would print as a stub. A run too narrow to keep any line (under about 1.4 pt)
+#: gets one vertical line instead, so it never reads as blank (unassessed).
+UNCERTAIN_HATCH_MIN_PT = 2.0
+UNCERTAIN_CLASS_COLOUR = "#888888"
+#: A class name is written on its run only where it fits with this much room, pt.
+RUN_TEXT_PAD_PT = 2.0
 NTM_CONTOUR_COLOUR = EVENT_COLOURS[mode_tags.NTM]
 NTM_CONTOUR_LW = 0.9
 #: The thin dashed outline of the rest of a tagged component the detector clip cuts.
@@ -152,13 +194,57 @@ NTM_DASHED_LW = 0.7
 NTM_DASHED_STYLE = (0, (3, 1.6))
 #: Outlines enclosing fewer print pixels (150 dpi) than this are not drawn.
 NTM_OUTLINE_MIN_PX = 100
-#: The ELM interval boxes, in red so they read against the D-alpha trace.
-ELM_BOX_COLOUR = "#D62728"
-#: The probability TokEye's coherent and transient channels are cut at in this figure
-#: (the network's operating point is `mode_tags.PROB_THRESHOLD`, 0.2; the figure
-#: raises it to show less low-confidence noise), and the transient channel's colour.
+#: The ELM interval boxes, in coral so they read against the D-alpha trace.
+ELM_BOX_COLOUR = theme.CORAL
+#: The probability TokEye's coherent channel is cut at in this figure, for the mask,
+#: its tags and the transients it leaves out (the network's operating point is
+#: `mode_tags.PROB_THRESHOLD`, 0.2; the figure raises it to show less
+#: low-confidence noise).
 TOKEYE_THRESHOLD = 0.45
+#: Whether panel (b) draws the transient overlay at all. OFF: the owner turned it off
+#: on 2026-10-14 ("the red lines are actually too distracting ... just remove the
+#: transient portion from spectrogram"). The code path stays behind this constant and
+#: `--transient`, with `TRANSIENT_THRESHOLD` as its cut, so it can come back; the
+#: default render has no red lines, no "transient" chip and no sentence about them.
+SHOW_TRANSIENT = False
+#: The transient overlay's own display cut (used only where the overlay is drawn),
+#: between the network's operating point (0.2, where the bursts crowd the panel) and
+#: the mask's 0.45 (where few show); the owner chose 0.35 on 2026-10-14, the day he
+#: turned the overlay off (`SHOW_TRANSIENT`) as too distracting. Display only,
+#: nothing is tagged from it. Its colour. The overlay is the wide pass's transient
+#: channel over the whole band (`transient_overlay`): the zoom pass (1 ms columns)
+#: showed almost no transient below `ZOOM_TOP_KHZ`, so the red lines stopped at the
+#: pass seam.
+TRANSIENT_THRESHOLD = 0.35
 TRANSIENT_COLOUR = "#E8262B"
+TRANSIENT_PASS = "wide"
+#: Panel (b)'s layers, bottom to top: the black face of the axes, the red transient
+#: overlay (`TRANSIENT_Z`; only with `SHOW_TRANSIENT`), the white mask (`MASK_Z`, transparent where unlit), the
+#: n view (2), the AE tint (4), the TM outlines (4.5, 5), leaders (7) and chips (8).
+#: The mask lies over the red, so at any resolution no lit mask pixel turns red,
+#: however the red is pooled to print pixels.
+PANEL_FACE = "black"
+TRANSIENT_Z = 0.1
+MASK_Z = 0.2
+#: Panel (b)'s named classes are drawn by artists whose gid is this prefix and the
+#: class ("AE", "TM", "transient"; "n" for the n view, one image of every n colour):
+#: `drawn_classes` renders each alone, so a chip names a class only where that
+#: class's own artists draw it, never on a blend of two colours (`label_events`).
+DRAWN_GID = "panel-b:"
+#: A pixel is a class's where its artists alone cover at least this share of it,
+#: and (for the n view) its colour is within `DRAWN_RGB_TOL` of the class's.
+DRAWN_MIN_ALPHA = 0.5
+DRAWN_RGB_TOL = 0.03
+#: Panel (b)'s named classes and their colours (a chip is its class's colour).
+N_CLASS_COLOURS = {**{f"n={n}": c for n, c in N_COLOURS.items()}, "other n": N_OTHER}
+CLASS_PALETTE = {
+    EVENT_NAMES[mode_tags.AE]: EVENT_COLOURS[mode_tags.AE],
+    "transient": TRANSIENT_COLOUR,
+    EVENT_NAMES[mode_tags.NTM]: EVENT_COLOURS[mode_tags.NTM],
+    **N_CLASS_COLOURS,
+}
+#: Panel (a)'s colour map.
+RAW_CMAP = "gist_heat"
 #: The share of the D-alpha panel's height the ELM boxes span; the regime names sit above.
 ELM_BOX_TOP = 0.62
 #: D-alpha's panel runs to this multiple of its own maximum (room for the regime names).
@@ -183,7 +269,8 @@ RIGHT = 0.98
 #: and to other chips, the dilation that merges one event's specks into one region
 #: (AE is the sparsest), and the smallest region that is named (below it the colour
 #: is specks; the n=3 and other-n colours show only as 1-3 pixel scraps here);
-#: colours are told apart by hue, within `LABEL_HUE_TOL` degrees. Chips keep
+#: colours are told apart by hue, within `LABEL_HUE_TOL` degrees, and a pixel names
+#: a class only where that class's own artists draw it (`drawn_classes`). Chips keep
 #: `LABEL_CHIP_GAP_PX` from one another and leader lines `LABEL_LEADER_CLEAR_PX`.
 LABEL_NEAR_PX = 8
 LABEL_MARGIN_PX = 4
@@ -197,6 +284,10 @@ LABEL_HUE_TOL = 6.0
 #: the event it names, per unit of the chip's area that is white.
 LABEL_WHITE_COST = 30.0
 LABEL_LEADER_LW = 0.5
+#: A leader is stroked in the panel's black this far beyond each side, so where it
+#: crosses a red transient line no print pixel mixes the two (a blue leader over
+#: red would blend to a purple the AE audit reads as pink): over a pixel, at least.
+LABEL_LEADER_HALO_PT = 0.6
 
 
 # ---------------------------------------------------------------------- TokEye
@@ -310,6 +401,148 @@ def ae_rows_raw(paths: Paths, candidate: lf.Candidate) -> tuple[lf.Row, ...]:
     return tuple(lf.Row(float(a), float(b), int(c)) for _, c, a, b, _ in table)
 
 
+#: The events whose rows a table can supply, by track key (the event's folder under
+#: the label tables): `--rows EVENT=CSV`, else the review page's source table.
+ROW_EVENTS = (
+    mode_tags.AE,
+    mode_tags.NTM,
+    "confinement",
+    "edge_localized_mode",
+    mode_tags.SAWTOOTH,
+)
+SUPPLIED = "--rows"
+POINTER = "review source.json"
+#: Metadata keys that name a model behind a table's rows: its rows are that
+#: detector's output at a threshold (`table_kind`).
+DETECTOR_KEYS = ("threshold", "evaluation", "model", "checkpoint")
+
+
+@dataclass(frozen=True)
+class TableTrack(lf.Track):
+    """A track read whole from one table: `table` says which (`how`, `SUPPLIED`
+    or `POINTER`; `path`; the table's `method` and `version`; its `kind`,
+    `table_kind`)."""
+
+    table: dict | None = None
+
+
+def parse_rows(items) -> dict[str, Path]:
+    """`--rows EVENT=CSV` items as {event: table}: each a known event, once."""
+    found: dict[str, Path] = {}
+    for item in items or ():
+        event, sep, path = item.partition("=")
+        if not sep or event not in ROW_EVENTS:
+            raise SystemExit(
+                f"--rows {item}: want EVENT=CSV, EVENT one of {', '.join(ROW_EVENTS)}"
+            )
+        if event in found:
+            raise SystemExit(f"--rows: {event} is given twice")
+        if not Path(path).is_file():
+            raise SystemExit(f"--rows {item}: no such file")
+        found[event] = Path(path)
+    return found
+
+
+def table_rows(path: Path) -> dict[int, tuple[lf.Row, ...]]:
+    """A table's rows by shot: a format table, or a merged regime table (its
+    `regimes` letters, `label_figure.REGIME_CODES`)."""
+    with open(path) as handle:
+        header = handle.readline().strip().split(",")
+    return lf.read_rows(path, regimes="regimes" in header)
+
+
+def table_kind(path: Path, meta: dict, shot: int) -> str:
+    """What a table's rows on `shot` are, from its metadata: "detector" where it
+    names a model, threshold or held-out evaluation (`DETECTOR_KEYS`: a model's
+    output at a threshold, with that model's caveats); "imported" for an event's
+    `format/` table; "curated" where its curated source (`sources.curated.table`,
+    as the merged regime table's) holds the shot; else "labels", a rule's."""
+    if any(meta.get(k) is not None for k in DETECTOR_KEYS):
+        return "detector"
+    if path.parent.name == "format":
+        return "imported"
+    curated = ((meta.get("sources") or {}).get("curated") or {}).get("table")
+    if curated and Path(curated).is_file() and shot in table_rows(Path(curated)):
+        return "curated"
+    return "labels"
+
+
+def no_q1_rows(path: Path, meta: dict, shot: int) -> list[list[float]] | None:
+    """A q = 1-gated table's no-q=1 rows on `shot`: its absent rows with a blank
+    confidence (the gate's, not the physics rule's), as [start, end] ms; None
+    where the table has no such gate (its metadata names no `rule.gate.no_q1`)."""
+    if not ((meta.get("rule") or {}).get("gate") or {}).get("no_q1"):
+        return None
+    with open(path) as handle:
+        header = handle.readline().strip().split(",")
+    if "confidence" not in header:
+        return None
+    frame = pd.read_csv(path, index_col=False)
+    gate = frame[
+        (frame["shot"] == shot)
+        & (frame["category"] == ABSENT)
+        & frame["confidence"].isna()
+    ]
+    return [[float(a), float(b)] for a, b in zip(gate["t_start"], gate["t_end"])]
+
+
+def table_track(
+    paths: Paths, shot: int, key: str, supplied: Path | None = None
+) -> TableTrack | None:
+    """`key`'s rows on `shot` from `supplied` (`--rows`), else from the review
+    page's source table (`review/source.json`); the table's `.meta.json`, where
+    there is one, gives its method, version and kind (`table_kind`: a detector's
+    rows keep its threshold, a curated or imported table is the legacy tier).
+    None where the event has no pointer or its table holds no row for the shot;
+    a supplied table without the shot is an error."""
+    spec = next(s for s in lf.TRACKS if s.key == key)
+    if supplied is not None:
+        path, how = Path(supplied), SUPPLIED
+    else:
+        pointer = labels.pointer_path(paths.label_tables / key)
+        if not pointer.is_file():
+            return None
+        entry = json.loads(pointer.read_text())
+        path, how = Path(entry["table"]), POINTER
+        if not path.is_file():
+            raise FileNotFoundError(f"{pointer} names {path}, which does not exist")
+    meta_file = path.with_suffix(".meta.json")
+    meta = json.loads(meta_file.read_text()) if meta_file.is_file() else {}
+    if supplied is None:
+        meta = {**meta, "method": entry["method"], "version": entry["version"]}
+    method, version = meta.get("method"), meta.get("version")
+    rows = table_rows(path).get(shot)
+    if not rows:
+        if supplied is not None:
+            raise SystemExit(f"--rows {key}={path}: no row for shot {shot}")
+        return None
+    kind = table_kind(path, meta, shot)
+    name = " ".join(x for x in (method, version) if x) or path.name
+    if kind == "detector":
+        threshold = meta.get("threshold")
+        what = name + (f", p>={threshold:g}" if threshold is not None else "")
+    else:
+        what = f"{name} {figure_sources.TABLE_KINDS[kind]}"
+    tier = lf.LEGACY if kind in ("curated", "imported") else lf.GENERATED
+    source = lf.Source(tier, f"{what} ({how})", lambda p, t=path: t)
+    table = {
+        "how": how,
+        "path": str(path),
+        "method": method,
+        "version": version,
+        "kind": kind,
+    }
+    gate = no_q1_rows(path, meta, shot) if key == mode_tags.SAWTOOTH else None
+    if gate is not None:
+        # the no-q=1-negatives view: the gate's absent time, and the shot's total
+        # as the table's metadata states it
+        table["no_q1_rows_ms"] = gate
+        table["no_q1_ms"] = ((meta.get("per_shot") or {}).get(str(shot)) or {}).get(
+            "no_q1_ms"
+        )
+    return TableTrack(spec, source, path, rows, table)
+
+
 def shot_tracks(
     paths: Paths,
     candidate: lf.Candidate,
@@ -317,37 +550,99 @@ def shot_tracks(
     ae_labels: Path | None = None,
     show_sawtooth: bool = False,
     outside_rows: Path | None = None,
+    rows: dict[str, Path] | None = None,
 ) -> tuple[tuple[lf.Track, ...], Path | None]:
-    """The catalog's tracks on `candidate`: `label_figure`'s, the AE generated
-    from the corpus CO2, else from the raw cache; and the CO2 file the
-    generated AE track ran over (None where the AE track is not generated)."""
-    chosen_ae = figure_sources.reviewed_or_stored_ae(paths, candidate.shot, ae_labels)
-    confinement = figure_sources.confinement_track(paths, candidate.shot)
+    """The catalog's tracks on `candidate`: each event's table (`rows`, else its
+    review source table, `table_track`) where one holds the shot, else the
+    catalog's (`catalog_tracks`); and the CO2 file a generated AE track ran over
+    (None where the AE track is not generated). A table's sawtooth row is drawn
+    whether or not `show_sawtooth` asks for one. A gold evaluation shot draws no
+    expert review: the catalog skips that tier for it, and an expert row that
+    still reaches it is an error."""
+    rows = rows or {}
+    tables = {
+        key: track
+        for key in ROW_EVENTS
+        if (track := table_track(paths, candidate.shot, key, rows.get(key)))
+    }
+    gold = is_gold(paths.label_tables, candidate.shot)
+    tracks, co2 = catalog_tracks(
+        paths,
+        candidate,
+        sawtooth_labels,
+        ae_labels,
+        show_sawtooth,
+        outside_rows,
+        skip=frozenset(tables),
+        expert=not gold,
+    )
+    out = [*tracks, *tables.values()]
+    expert = [t.spec.key for t in out if t.source and t.source.tier == lf.SILVER]
+    if expert and gold:
+        raise SystemExit(
+            f"{candidate.shot} is a gold evaluation shot: the {', '.join(expert)} "
+            "row would draw the expert review; give it with --rows EVENT=CSV"
+        )
+    order = {s.key: i for i, s in enumerate(lf.TRACKS)}
+    return tuple(sorted(out, key=lambda t: order[t.spec.key])), co2
+
+
+def catalog_tracks(
+    paths: Paths,
+    candidate: lf.Candidate,
+    sawtooth_labels: Path | None = None,
+    ae_labels: Path | None = None,
+    show_sawtooth: bool = False,
+    outside_rows: Path | None = None,
+    skip: frozenset = frozenset(),
+    expert: bool = True,
+) -> tuple[tuple[lf.Track, ...], Path | None]:
+    """The tracks of the events not in `skip` (`shot_tracks`' tables):
+    `label_figure`'s, the AE generated from the corpus CO2, else from the raw
+    cache; and the CO2 file the generated AE track ran over (None where the AE
+    track is not generated). Not `expert` (a gold evaluation shot): no event's
+    expert review is read, each falls through to its next tier."""
+    chosen_ae = (
+        None
+        if mode_tags.AE in skip
+        else figure_sources.reviewed_or_stored_ae(
+            paths, candidate.shot, ae_labels, expert=expert
+        )
+    )
     specs = tuple(
         s
+        if expert
+        else replace(s, sources=tuple(x for x in s.sources if x.tier != lf.SILVER))
         for s in lf.TRACKS
-        if s.key not in ("confinement", mode_tags.SAWTOOTH)
+        if s.key not in ("confinement", mode_tags.SAWTOOTH, *skip)
         and (chosen_ae is None or s.key != mode_tags.AE)
     )
     read = lf.read_sources(paths, specs)
     read = lf.generate(paths, [candidate], read, specs)
     selected = {t.spec.key: t for t in lf.tracks_of(candidate.shot, read, specs)}
-    selected["confinement"] = confinement
+    if "confinement" not in skip:
+        selected["confinement"] = figure_sources.confinement_track(
+            paths, candidate.shot, expert=expert
+        )
     for key in (mode_tags.NTM, "edge_localized_mode"):
         # A shot in no cohort split has no row in the frame models' merged tables:
         # their rows for it come from a single-shot run saved beside its metadata.
         table = None if outside_rows is None else Path(outside_rows) / f"{key}.csv"
-        if selected[key].source is None and table is not None and table.is_file():
+        if key in skip or table is None or not table.is_file():
+            continue
+        if selected[key].source is None:
             held = lf.read_rows(table).get(candidate.shot)
             if held:
                 what = selected[key].spec.sources[-1].what
                 source = lf.Source(
-                    lf.GENERATED, f"{what}, run on this shot alone", lambda p, t=table: t
+                    lf.GENERATED,
+                    f"{what}, run on this shot alone",
+                    lambda p, t=table: t,
                 )
                 selected[key] = lf.Track(selected[key].spec, source, table, held)
-    if show_sawtooth:
+    if show_sawtooth and mode_tags.SAWTOOTH not in skip:
         selected[mode_tags.SAWTOOTH] = figure_sources.sawtooth_track(
-            paths, candidate.shot, sawtooth_labels, []
+            paths, candidate.shot, sawtooth_labels, [], expert=expert
         )
     if chosen_ae is not None:
         selected[mode_tags.AE] = chosen_ae
@@ -413,7 +708,16 @@ class Band:
     """One pass's rows `lo`-`hi` kHz over the window: the raw spectrogram, the
     filtered mask and the blobs, pooled to the page's columns."""
 
-    def __init__(self, z: dict, name: str, lo: float, hi: float, t0: float, t1: float):
+    def __init__(
+        self,
+        z: dict,
+        name: str,
+        lo: float,
+        hi: float,
+        t0: float,
+        t1: float,
+        transient_cut: float = TRANSIENT_THRESHOLD,
+    ):
         t, f = z[f"{name}_t_ms"], z[f"{name}_f_khz"]
         cols = (t >= t0) & (t <= t1)
         rows = (f >= lo) & (f < hi)
@@ -429,11 +733,13 @@ class Band:
             mode_tags.MIN_SIZE[name],
             threshold=TOKEYE_THRESHOLD,
         )
-        # The transient channel at the same cut, after the same small-object removal.
+        # The transient channel at its own display cut, after the same small-object
+        # removal; drawn only where the mask is not lit (the mask is drawn in full).
         tra = mode_tags.clean(
-            z[f"{name}_tra"].astype(np.float32) >= TOKEYE_THRESHOLD,
+            z[f"{name}_tra"].astype(np.float32) >= transient_cut,
             mode_tags.MIN_SIZE[name],
         )
+        tra &= ~lit
         self.tra = tra[rows][:, cols]
         self.lit_all = lit
         self.lit = lit[rows][:, cols]
@@ -501,7 +807,7 @@ def style_axes(ax, bottom: bool = False) -> None:
         ax.spines[side].set_visible(False)
 
 
-def draw_raw(ax, band: Band, cmap: str = "viridis") -> None:
+def draw_raw(ax, band: Band, cmap: str = RAW_CMAP) -> None:
     img = pool(band.norm, band.k)
     ax.imshow(
         img,
@@ -515,43 +821,94 @@ def draw_raw(ax, band: Band, cmap: str = "viridis") -> None:
     )
 
 
-def draw_processed(ax, band: Band) -> None:
-    """White coherent mask: white means n was not measured."""
-    rgb = np.zeros((*band.lit.shape, 3), np.float32)
-    rgb[band.lit] = 1.0
-    k = band.k
-    n = rgb.shape[1] // k * k
-    img = rgb[:, :n].reshape(rgb.shape[0], n // k, k, 3).max(2)
-    ax.imshow(
-        img,
+def draw_processed(ax, band: Band, below: float | None = None):
+    """White coherent mask: white means n was not measured. Transparent where the
+    mask is unlit, so the panel's black face shows there, and the red transient
+    overlay beneath it (`MASK_Z` over `TRANSIENT_Z`; drawn only with `SHOW_TRANSIENT`)
+    never covers a lit pixel.
+    `below` (kHz) clips the image to the frequencies under it, where the pass
+    above takes over. Returns the image."""
+    lit = pool(band.lit.astype(np.float32), band.k, "max")
+    rgba = np.ones((*lit.shape, 4), np.float32)
+    rgba[..., 3] = lit
+    x0, x1, y0, _ = extent = band.extent()
+    image = ax.imshow(
+        rgba,
         origin="lower",
         aspect="auto",
-        extent=band.extent(),
+        extent=extent,
         interpolation="nearest",
+        zorder=MASK_Z,
     )
+    if below is not None:
+        image.set_clip_path(
+            Rectangle((x0, y0), x1 - x0, below - y0, transform=ax.transData)
+        )
+    return image
 
 
-def draw_transient(ax, band: Band, below_khz: float | None = None) -> bool:
-    """TokEye's transient channel in red over the mask (transparent elsewhere);
-    `below_khz` leaves out rows at or above it. Returns whether any was drawn."""
-    tra = band.tra.copy()
-    if below_khz is not None:
-        tra[band.f >= below_khz] = False
+def print_pool(ax, band: Band, mask: np.ndarray) -> np.ndarray:
+    """`mask` max-pooled to the print pixels (`DPI_PNG`) its share of `ax` covers,
+    so a line one column wide survives at the page's size."""
+    pos = ax.get_position()
+    share = (band.f[-1] - band.f[0]) / np.diff(ax.get_ylim())[0]
+    nf = min(mask.shape[0], max(1, round(pos.height * HEIGHT_IN * DPI_PNG * share)))
+    nt = min(mask.shape[1], max(1, round(pos.width * PAGE_IN * DPI_PNG)))
+    ri = np.linspace(0, mask.shape[0], nf, endpoint=False).astype(int)
+    ci = np.linspace(0, mask.shape[1], nt, endpoint=False).astype(int)
+    return np.maximum.reduceat(np.maximum.reduceat(mask, ri, axis=0), ci, axis=1)
+
+
+def on_grid(mask, t_src, f_src, t_dst, f_dst) -> np.ndarray:
+    """`mask` (rows `f_src`, columns `t_src`) on the grid `f_dst` x `t_dst`: a cell
+    is lit where a source row inside its frequency cell (else the nearest source
+    row) is lit in the source column whose time is nearest; cells outside the
+    source's band are not lit."""
+    df = float(np.median(np.diff(f_dst))) if len(f_dst) > 1 else 0.0
+    lo = np.searchsorted(f_src, f_dst - df / 2)
+    hi = np.searchsorted(f_src, f_dst + df / 2)
+    nearest = np.abs(f_src[None, :] - f_dst[:, None]).argmin(axis=1)
+    lo, hi = np.where(hi > lo, lo, nearest), np.where(hi > lo, hi, nearest + 1)
+    cum = np.vstack([np.zeros((1, mask.shape[1]), np.int64), np.cumsum(mask, 0)])
+    rows = cum[hi] - cum[lo] > 0
+    df_src = float(np.median(np.diff(f_src))) if len(f_src) > 1 else 0.0
+    rows[(f_dst < f_src[0] - df_src / 2) | (f_dst > f_src[-1] + df_src / 2)] = False
+    i = np.clip(np.searchsorted(t_src, t_dst), 1, len(t_src) - 1)
+    cols = np.where(t_dst - t_src[i - 1] <= t_src[i] - t_dst, i - 1, i)
+    return rows[:, cols]
+
+
+def transient_overlay(wide: Band, zoom: Band) -> np.ndarray:
+    """The red overlay of (b) on `wide`'s grid, over its whole band: the wide pass's
+    transient pixels (`Band.tra`: at the display cut, small objects removed, where
+    the wide pass's mask is not lit) less where (b) draws the zoom pass's mask
+    instead (below `ZOOM_TOP_KHZ`), so red never covers a drawn mask pixel."""
+    tra = wide.tra.copy()
+    below = wide.f < ZOOM_TOP_KHZ
+    tra[below] &= ~on_grid(zoom.lit, zoom.t, zoom.f, wide.t, wide.f[below])
+    return tra
+
+
+def draw_transient(ax, band: Band, tra: np.ndarray) -> int:
+    """`tra` (on `band`'s grid) in red beneath the mask (`TRANSIENT_Z`; transparent
+    elsewhere), max-pooled to print pixels and drawn without interpolation: a print
+    pixel that pooling turns red under a lit mask pixel stays white. Returns the
+    print-pixel columns drawn red."""
     if not tra.any():
-        return False
-    rgba = np.zeros((*tra.shape, 4), np.float32)
-    rgba[tra] = (*to_rgb(TRANSIENT_COLOUR), 1.0)
-    k = band.k
-    n = rgba.shape[1] // k * k
-    img = rgba[:, :n].reshape(rgba.shape[0], n // k, k, 4).max(2)
+        return 0
+    pooled = print_pool(ax, band, tra)
+    rgba = np.zeros((*pooled.shape, 4), np.float32)
+    rgba[pooled] = (*to_rgb(TRANSIENT_COLOUR), 1.0)
     ax.imshow(
-        img,
+        rgba,
         origin="lower",
         aspect="auto",
         extent=band.extent(),
-        interpolation="nearest",
+        interpolation="none",
+        zorder=TRANSIENT_Z,
+        gid=DRAWN_GID + "transient",
     )
-    return True
+    return int(pooled.any(axis=0).sum())
 
 
 def event_clip(ax, spans, event):
@@ -651,7 +1008,7 @@ def project(ax, band, mask, event, spans, edge=False, record=None, full=None):
                     linewidths=NTM_DASHED_LW,
                     linestyles=[NTM_DASHED_STYLE],
                     zorder=4.5,
-                )
+                ).set_gid(DRAWN_GID + EVENT_NAMES[event])
         elif record is not None:
             record["dashed_regions"] = 0
         artist = contour_of(
@@ -663,6 +1020,7 @@ def project(ax, band, mask, event, spans, edge=False, record=None, full=None):
             zorder=5,
         )
         artist.set_clip_path(event_clip(ax, spans, event), ax.transData)
+        artist.set_gid(DRAWN_GID + EVENT_NAMES[event])
         # Audit the measured support of the outlined region; a contour stroke
         # borders that region and does not assign n to its surrounding pixels.
         keep_px = display[
@@ -680,6 +1038,7 @@ def project(ax, band, mask, event, spans, edge=False, record=None, full=None):
         extent=band.extent(),
         interpolation="nearest",
         zorder=4,
+        gid=DRAWN_GID + EVENT_NAMES[event],
     )
     artist.set_clip_path(event_clip(ax, spans, event), ax.transData)
     return shown
@@ -730,41 +1089,113 @@ def elm_peaks(read, spans) -> np.ndarray:
     return t[inside]
 
 
-def track_bars(ax, track: lf.Track, colour: str, regimes=None, bar=BAR) -> None:
+def display_runs(rows) -> list[lf.Row]:
+    """`rows` in time order, each run of adjacent rows (one ending where the next
+    starts) of one category and crowd flag drawn as one row; display only."""
+    runs: list[lf.Row] = []
+    for r in sorted(rows, key=lambda r: (r.t_start, r.t_end)):
+        last = runs[-1] if runs else None
+        if (
+            last is not None
+            and (last.category, last.crowd) == (r.category, r.crowd)
+            and r.t_start <= last.t_end + 1e-6
+        ):
+            runs[-1] = replace(last, t_end=max(last.t_end, r.t_end))
+        else:
+            runs.append(r)
+    return runs
+
+
+def hatch_segments(box, step: float) -> list[tuple[tuple, tuple]]:
+    """Slash lines (slope 1) across `box` (x0, y0, x1, y1, display pixels), one where
+    x - y is a multiple of `step` pixels on the page (so adjacent boxes' lines meet),
+    each clipped to the box: [((xa, ya), (xb, yb)), ...]."""
+    x0, y0, x1, y1 = box
+    if x1 <= x0 or y1 <= y0 or step <= 0:
+        return []
+    out = []
+    for c in np.arange(math.ceil((x0 - y1) / step) * step, x1 - y0, step):
+        a, b = max(x0, y0 + c), min(x1, y1 + c)
+        if b > a:
+            out.append(((a, a - c), (b, b - c)))
+    return out
+
+
+def hatch_lines(ax, x0, x1, y0, y1, colour, transform=None, zorder=2.5):
+    """Hatch the box `x0`-`x1` by `y0`-`y1` (in `transform`'s coordinates, the
+    axes' data by default, x clipped to the view) with explicit "/" line segments
+    `UNCERTAIN_HATCH_STEP_PT` apart, `UNCERTAIN_HATCH_LW` wide, in `colour`: every
+    PDF viewer draws them as Agg does (poppler draws a PDF hatch pattern faint).
+    A corner piece shorter than `UNCERTAIN_HATCH_MIN_PT` is dropped; a box too
+    narrow to keep any piece gets one vertical line at its middle instead, so
+    uncertain time never prints blank. Returns the LineCollection (None for a box
+    out of view or empty)."""
+    transform = transform or ax.transData
+    lo, hi = ax.get_xlim()
+    x0, x1 = max(x0, lo), min(x1, hi)
+    if x1 <= x0:
+        return None
+    (px0, py0), (px1, py1) = transform.transform([(x0, y0), (x1, y1)])
+    if py1 <= py0:
+        return None
+    step = UNCERTAIN_HATCH_STEP_PT * ax.figure.dpi / 72
+    shortest = UNCERTAIN_HATCH_MIN_PT * ax.figure.dpi / 72
+    segments = [
+        (a, b)
+        for a, b in hatch_segments((px0, py0, px1, py1), step)
+        if math.hypot(b[0] - a[0], b[1] - a[1]) >= shortest
+    ]
+    if not segments:
+        middle = (px0 + px1) / 2
+        segments = [((middle, py0), (middle, py1))]
+    inverse = transform.inverted()
+    lines = LineCollection(
+        [inverse.transform(np.asarray(s, float)) for s in segments],
+        colors=colour,
+        linewidths=UNCERTAIN_HATCH_LW,
+        capstyle="butt",
+        transform=transform,
+        zorder=zorder,
+    )
+    ax.add_collection(lines, autolim=False)
+    return lines
+
+
+def track_bars(ax, track: lf.Track, colour: str, regimes=None, bar=BAR) -> list:
+    """`track`'s runs (`display_runs`) as bars; returns the runs drawn."""
     ax.set_ylim(0, 1)
     ax.set_yticks([])
     for side in ("left", "top", "right", "bottom"):
         ax.spines[side].set_visible(False)
     if track.source is None:
-        return
-    for r in track.rows:
+        return []
+    runs = display_runs(track.rows)
+    for r in runs:
         span = [(r.t_start, r.t_end - r.t_start)]
         if r.category == ABSENT:
             ax.broken_barh(span, bar, facecolor=ABSENT_GREY, lw=0)
             continue
         if regimes is not None:
             face = regimes.get(r.category, "#888888")
-            hatch = "//////" if r.category == 5 else None
+            uncertain = r.category == 5
+            hatch_colour = UNCERTAIN_CLASS_COLOUR
         else:
             face = colour
-            hatch = None
-            if r.category == UNCERTAIN:
-                hatch = "//////"
-            elif r.category == NOT_OBSERVABLE:
+            uncertain = r.category == UNCERTAIN
+            hatch_colour = colour
+            if r.category == NOT_OBSERVABLE:
                 continue  # blank: no assessment; hatching only means uncertain
-        ax.broken_barh(
-            span,
-            bar,
-            facecolor=face if hatch is None else "white",
-            edgecolor=INK if hatch else face,
-            hatch=hatch,
-            lw=0.4 if hatch else 0,
-        )
+        if uncertain:
+            # white under explicit hatch lines (`hatch_lines`), no edge
+            ax.broken_barh(span, bar, facecolor="white", lw=0)
+            hatch_lines(ax, r.t_start, r.t_end, bar[0], bar[0] + bar[1], hatch_colour)
+        else:
+            ax.broken_barh(span, bar, facecolor=face, edgecolor=face, lw=0)
         if r.category in (PRESENT, UNCERTAIN) and r.crowd == 1 and regimes is None:
             ax.plot(
                 [r.t_start, r.t_end],
                 [bar[0] + bar[1] / 2] * 2,
-                color=colour if hatch else "white",
+                color=colour if uncertain else "white",
                 lw=0.4,
                 marker="o",
                 ms=1.8,
@@ -772,36 +1203,135 @@ def track_bars(ax, track: lf.Track, colour: str, regimes=None, bar=BAR) -> None:
                 markerfacecolor="white",
                 zorder=6,
             )
+    return runs
 
 
-def draw_frequency_panels(ax, raw: Band, zoom: Band, top: Band) -> bool:
+def ink_on(colour: str) -> str:
+    """Text that reads on `colour`: white on a dark fill, `INK` on a light one."""
+    r, g, b = to_rgb(colour)
+    return "white" if 0.2126 * r + 0.7152 * g + 0.0722 * b < 0.5 else INK
+
+
+def name_runs(ax, runs, t0: float, t1: float, bar=BAR) -> list[dict]:
+    """Write each confinement class's short name (`CLASS_LEGEND`) on its runs in
+    view where it fits with `RUN_TEXT_PAD_PT` to spare; each run's text and
+    bounds (None where it does not fit), for the record."""
+    fig = ax.figure
+    out = []
+    for r in runs:
+        a, b = max(r.t_start, t0), min(r.t_end, t1)
+        if r.category not in CLASS_LEGEND or b <= a:
+            continue
+        text = ax.text(
+            (a + b) / 2, bar[0] + bar[1] / 2, CLASS_LEGEND[r.category],
+            fontsize=FONT, ha="center", va="center_baseline",
+            color=ink_on(CLASS_COLOURS[r.category]), zorder=7,
+        )  # fmt: skip
+        fig.draw_without_rendering()
+        width = ax.transData.transform((b, 0))[0] - ax.transData.transform((a, 0))[0]
+        box = text.get_window_extent()
+        fits = box.width + 2 * RUN_TEXT_PAD_PT * fig.dpi / 72 <= width
+        if not fits:
+            text.remove()
+        out.append(
+            {
+                "text": CLASS_LEGEND[r.category],
+                "category": r.category,
+                "run_ms": [a, b],
+                "font_pt": FONT,
+                "bounds": list(box.transformed(fig.transFigure.inverted()).extents)
+                if fits
+                else None,
+            }
+        )
+    return out
+
+
+def draw_frequency_panels(
+    ax, raw: Band, zoom: Band, top: Band, transient: bool = SHOW_TRANSIENT
+) -> dict[str, int]:
     """The raw spectrogram and the TokEye mask, each on one linear 0-150 kHz axis.
 
     The raw panel is the wide pass alone on one colour scale. The mask panel takes
     the zoom pass below `ZOOM_TOP_KHZ` and the wide pass above it (`top`, drawn
-    over the zoom pass's decimation roll-off); no axis break or stretching. The
-    transient channel is drawn over the mask in red; returns whether any shows."""
+    in place of the zoom pass's decimation roll-off); no axis break or stretching.
+    With `transient` (off by default, `SHOW_TRANSIENT`) the wide pass's transient
+    channel is drawn in red across the whole band (`transient_overlay`), beneath
+    the mask, on the panel's black face; returns the print-pixel columns it draws
+    red, by pass (`draw_transient`), and nothing (an empty dict) without it."""
     for name in ("raw", "pr"):
         ax[name].set_ylim(0, TOP_KHZ)
         ax[name].set_yticks(FREQ_TICKS_KHZ)
         ax[name].set_ylabel("kHz", labelpad=2)
     draw_raw(ax["raw"], raw)
-    draw_processed(ax["pr"], zoom)
+    ax["pr"].set_facecolor(PANEL_FACE)
+    red = (
+        {TRANSIENT_PASS: draw_transient(ax["pr"], raw, transient_overlay(raw, zoom))}
+        if transient
+        else {}
+    )
+    draw_processed(ax["pr"], zoom, below=top.extent()[2])
     draw_processed(ax["pr"], top)
-    return draw_transient(ax["pr"], zoom, ZOOM_TOP_KHZ) | draw_transient(ax["pr"], top)
+    return red
 
 
-def panel_raster(fig, ax):
+def panel_raster(fig, ax, only=None):
     """The axes' interior as the 150-dpi PNG draws it: RGB floats, rows top to
-    bottom, with the interior's pixel box in the whole image."""
+    bottom, with the interior's pixel box in the whole image. With `only` (a list
+    of `ax`'s artists), those artists alone on a transparent page: RGBA floats
+    (straight alpha), every other artist hidden for the render and then restored."""
+    hidden = []
+    if only is not None:
+        keep = {id(a) for a in only}
+        for artist in fig.findobj(include_self=False):
+            if artist is ax or id(artist) in keep or not artist.get_visible():
+                continue
+            artist.set_visible(False)
+            hidden.append(artist)
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=DPI_PNG)
+    try:
+        fig.savefig(buf, format="png", dpi=DPI_PNG, transparent=only is not None)
+    finally:
+        for artist in hidden:
+            artist.set_visible(True)
     buf.seek(0)
-    img = mpimg.imread(buf, format="png")[..., :3]
+    img = mpimg.imread(buf, format="png")
+    img = img[..., :3] if only is None else img
     h, w = img.shape[:2]
     x0, y0, x1, y1 = ax.get_position().extents
     box = (round((1 - y1) * h), round((1 - y0) * h), round(x0 * w), round(x1 * w))
     return img[box[0] : box[1], box[2] : box[3]], box, (h, w)
+
+
+def drawn_classes(fig, ax) -> dict[str, np.ndarray]:
+    """Where each of panel (b)'s named classes is drawn, in `panel_raster`'s pixels:
+    its own artists (gid `DRAWN_GID` + class) rendered alone, the pixels they cover
+    at least `DRAWN_MIN_ALPHA`; the n view (one image of every n) split by colour,
+    within `DRAWN_RGB_TOL`. A blend of two classes' colours where they meet (an
+    anti-aliased TM outline over an n=1 ridge has n=3's hue) is neither's unless
+    one of them draws it."""
+    groups: dict[str, list] = {}
+    for artist in ax.get_children():
+        gid = artist.get_gid() or ""
+        if gid.startswith(DRAWN_GID):
+            groups.setdefault(gid.removeprefix(DRAWN_GID), []).append(artist)
+    shape = None
+    out = {}
+    for group, artists in groups.items():
+        rgba, _, _ = panel_raster(fig, ax, only=artists)
+        shape = rgba.shape[:2]
+        cover = rgba[..., 3] >= DRAWN_MIN_ALPHA
+        if group != "n":
+            out[group] = cover
+            continue
+        for name, colour in N_CLASS_COLOURS.items():
+            near = np.abs(rgba[..., :3] - np.array(to_rgb(colour))).max(axis=-1)
+            out[name] = cover & (near <= DRAWN_RGB_TOL)
+    if shape is not None:
+        empty = np.zeros(shape, bool)
+        for name in CLASS_PALETTE:
+            out.setdefault(name, empty)
+    return out
 
 
 def event_classes(rgb) -> dict[str, np.ndarray]:
@@ -809,15 +1339,8 @@ def event_classes(rgb) -> dict[str, np.ndarray]:
     hsv = rgb_to_hsv(rgb)
     strong = (hsv[..., 1] > 0.3) & (hsv[..., 2] > 0.2)
     hue = hsv[..., 0] * 360.0
-    palette = {
-        EVENT_NAMES[mode_tags.AE]: EVENT_COLOURS[mode_tags.AE],
-        "transient": TRANSIENT_COLOUR,
-        EVENT_NAMES[mode_tags.NTM]: EVENT_COLOURS[mode_tags.NTM],
-        **{f"n={n}": colour for n, colour in N_COLOURS.items()},
-        "other n": N_OTHER,
-    }
     out = {}
-    for name, colour in palette.items():
+    for name, colour in CLASS_PALETTE.items():
         centre = rgb_to_hsv(np.array(to_rgb(colour)))[0] * 360.0
         delta = np.abs((hue - centre + 180.0) % 360.0 - 180.0)
         out[name] = strong & (delta <= LABEL_HUE_TOL)
@@ -836,6 +1359,17 @@ def largest_region(mask: np.ndarray, merge_px: int):
     sizes[0] = 0
     best = int(sizes.argmax())
     return mask & (regions == best), int(sizes[best])
+
+
+def regions_at_least(mask: np.ndarray, merge_px: int, min_px: int) -> np.ndarray:
+    """The pixels of `mask` in every region (merged as in `largest_region`) of at
+    least `min_px` pixels."""
+    structure = np.ones((3, 3), bool)
+    grown = ndimage.binary_dilation(mask, structure, iterations=merge_px)
+    regions, count = ndimage.label(grown, structure)
+    sizes = np.bincount(regions[mask], minlength=count + 1)
+    sizes[0] = 0
+    return mask & (sizes >= min_px)[regions]
 
 
 def text_colour_on(colour: str) -> str:
@@ -920,20 +1454,41 @@ def find_chip_spot(target, size, blocked, white, avoid, floor, near_only):
 
 def label_events(fig, pr, window, transient_drawn: bool) -> dict:
     """Name panel (b)'s events in place: a chip (the event's colour, black or white
-    text) beside the largest region of each event colour, read from the panel's
-    own pixels so it follows what is drawn. Never on an event's pixels or on
-    another chip; AE and transient chips touch their region's neighbourhood, and TM
-    and the n lines, whose band is crowded, sit just above 30 kHz with a short leader
-    line to the nearest pixel of their region. A colour with no region of
-    `LABEL_MIN_REGION_PX` print pixels is left unnamed, and recorded."""
+    text) beside the largest region of each class, read from the panel's own
+    pixels so it follows what is drawn. A class's pixels are those of its hue that
+    its own artists draw (`drawn_classes`): a blend where two colours meet names
+    neither, so a chip names a class only where at least `LABEL_MIN_REGION_PX`
+    print pixels of it are drawn; a class with no such region is left unnamed, and
+    recorded. A chip never covers another chip, a leader, or a pixel of any event
+    colour but the transient's; the AE and transient chips cover no transient pixel
+    either, while the TM and n chips may cover a few of the one-pixel transient
+    lines (costed like white mask pixels; the record counts them). AE and transient
+    chips touch their region's neighbourhood; TM and the n lines, whose band is
+    crowded, sit just above 30 kHz with a short leader line to the nearest pixel of
+    their region."""
+    drawn = drawn_classes(fig, pr)
     rgb, (r0, _, c0, _), (height, width) = panel_raster(fig, pr)
     h, w = rgb.shape[:2]
+    # by hue, what any event colour paints (blends too): what a chip keeps clear of
     classes = event_classes(rgb)
+    # what names a class: its hue where its own artists draw it
+    named = {
+        k: v & drawn[k] if k in drawn else np.zeros_like(v) for k, v in classes.items()
+    }
     hsv = rgb_to_hsv(rgb)
     white = (hsv[..., 1] < 0.2) & (hsv[..., 2] > 0.7)
     structure = np.ones((3, 3), bool)
     any_event = np.any(list(classes.values()), axis=0)
     blocked = ndimage.binary_dilation(any_event, structure, iterations=LABEL_MARGIN_PX)
+    # The TM and n chips sit above the crowded 0-30 kHz band, where the transient
+    # lines (display only, one print pixel wide) run through the whole band: those
+    # chips may cover a few of them, at the white-pixel cost, rather than sit far
+    # away on a long leader; they keep clear of every other event.
+    transient = classes["transient"]
+    solid = any_event & ~transient
+    blocked_solid = ndimage.binary_dilation(
+        solid, structure, iterations=LABEL_MARGIN_PX
+    )
     lo, hi = pr.get_ylim()
     floor = round(h * (hi - N_VIEW_KHZ) / (hi - lo))
     t0, t1 = window
@@ -944,21 +1499,24 @@ def label_events(fig, pr, window, transient_drawn: bool) -> dict:
     def ms(col):
         return t0 + (t1 - t0) * col / w
 
-    # (text, colour class, chip colour, near-only): placed in this order
+    # (text, colour class, chip colour, near-only): placed in this order; the
+    # transient chip last, as its lines run through most of the panel and their
+    # chip fits beside any of them, the crowded band's chips beside few places
     order = [
         ("AE", "AE", EVENT_COLOURS[mode_tags.AE], True),
-        ("transient", "transient", TRANSIENT_COLOUR, True),
         ("TM", "TM", EVENT_COLOURS[mode_tags.NTM], False),
         *[(f"n={n}", f"n={n}", c, False) for n, c in N_COLOURS.items()],
         ("other n", "other n", N_OTHER, False),
+        ("transient", "transient", TRANSIENT_COLOUR, True),
     ]
     regions, skipped, wanted = {}, {}, []
     for text, key, colour, near_only in order:
         found = largest_region(
-            classes[key], LABEL_MERGE_PX.get(key, LABEL_MERGE_DEFAULT_PX)
+            named[key], LABEL_MERGE_PX.get(key, LABEL_MERGE_DEFAULT_PX)
         )
         regions[text] = {
-            "pixels": int(classes[key].sum()),
+            "pixels": int(named[key].sum()),
+            "hue_pixels": int(classes[key].sum()),
             "largest_region_px": 0 if found is None else found[1],
             "minimum_px": LABEL_MIN_REGION_PX,
         }
@@ -970,6 +1528,12 @@ def label_events(fig, pr, window, transient_drawn: bool) -> dict:
             )
         elif text == "transient" and not transient_drawn:
             skipped[text] = "transient channel not drawn"
+        elif text == "transient":
+            # the transient lines run through the whole band: the chip may sit
+            # beside any line of a named size, not only the densest cluster
+            merge = LABEL_MERGE_PX.get(key, LABEL_MERGE_DEFAULT_PX)
+            target = regions_at_least(named[key], merge, LABEL_MIN_REGION_PX)
+            wanted.append((text, key, colour, near_only, target))
         else:
             wanted.append((text, key, colour, near_only, found[0]))
     chips = {}
@@ -993,6 +1557,11 @@ def label_events(fig, pr, window, transient_drawn: bool) -> dict:
         extent = chips[text].get_bbox_patch().get_window_extent()
         return math.ceil(extent.height * scale), math.ceil(extent.width * scale)
 
+    # a leader may cross the transient lines (display only, one print pixel wide,
+    # and at TokEye's operating point they run through the whole band) and the TM
+    # outlines (they enclose the n=1 and n=2 pixels the n chips name, so a leader
+    # from above must cross one); a chip still sits clear of both
+    crossable = classes["transient"] | classes[EVENT_NAMES[mode_tags.NTM]]
     chip_area = np.zeros((h, w), bool)
     leader_area = np.zeros((h, w), bool)
     placed = []
@@ -1000,15 +1569,15 @@ def label_events(fig, pr, window, transient_drawn: bool) -> dict:
         spot = find_chip_spot(
             target,
             size_of(text),
-            blocked
+            (blocked if near_only else blocked_solid)
             | ndimage.binary_dilation(
                 chip_area, structure, iterations=LABEL_CHIP_GAP_PX
             )
             | ndimage.binary_dilation(
                 leader_area, structure, iterations=LABEL_LEADER_CLEAR_PX
             ),
-            white,
-            ndimage.binary_dilation(any_event & ~target, structure)
+            white if near_only else white | transient,
+            ndimage.binary_dilation(any_event & ~target & ~crossable, structure)
             | chip_area
             | leader_area,
             None if near_only else floor,
@@ -1033,6 +1602,13 @@ def label_events(fig, pr, window, transient_drawn: bool) -> dict:
                     lw=LABEL_LEADER_LW,
                     solid_capstyle="butt",
                     zorder=7,
+                    path_effects=[
+                        patheffects.withStroke(
+                            linewidth=LABEL_LEADER_LW + 2 * LABEL_LEADER_HALO_PT,
+                            foreground=PANEL_FACE,
+                            capstyle="butt",
+                        )
+                    ],
                 )
             )
             for point in segment_pixels(*leader):
@@ -1071,7 +1647,8 @@ def label_events(fig, pr, window, transient_drawn: bool) -> dict:
                     "to": [(leader[1][1] + 0.5) / w, 1 - (leader[1][0] + 0.5) / h],
                     "axes_fraction": True,
                 },
-                "covered_event_pixels": int(any_event[rows, cols].sum()),
+                "covered_event_pixels": int(solid[rows, cols].sum()),
+                "covered_transient_pixels": int(transient[rows, cols].sum()),
                 "covered_white_share": float(white[rows, cols].mean()),
             }
         )
@@ -1080,19 +1657,26 @@ def label_events(fig, pr, window, transient_drawn: bool) -> dict:
         "skipped": skipped,
         "regions": regions,
         "rule": "chips read from the panel's own pixels before they are drawn: each "
-        "event colour's largest region (merged within "
-        f"{LABEL_MERGE_DEFAULT_PX} px, AE {LABEL_MERGE_PX['AE']} px), named when it "
+        "class's largest region of pixels of its hue that its own artists draw "
+        "(rendered alone, covering at least half a pixel; a blend where two colours "
+        "meet names neither), merged within "
+        f"{LABEL_MERGE_DEFAULT_PX} px (AE {LABEL_MERGE_PX['AE']} px), named when it "
         f"has at least {LABEL_MIN_REGION_PX} print pixels; AE and transient chips "
-        f"within {LABEL_NEAR_PX} px of the region, TM and n chips above the "
+        f"within {LABEL_NEAR_PX} px of the region (the transient chip beside any "
+        "of its regions of that size), TM and n chips above the "
         f"{N_VIEW_KHZ:g} kHz band with a leader line; no chip on an event pixel, "
-        "another chip or a leader",
+        "another chip or a leader (the TM and n chips may cover transient lines, "
+        "costed like white pixels); a leader crosses no event pixel but the "
+        "transient lines and the TM outlines",
     }
 
 
-def draw_legends(fig, display_tracks, by_key, t0, t1):
-    """The label rows' key (present, uncertain, absent, unassessed, L, H) below the
-    panels. The events of panel (b) are named in place (`label_events`), not here."""
-    elm_key = "edge_localized_mode"
+def display_states(display_tracks, t0, t1):
+    """What the label rows draw, for the record: the present colours and which of
+    present, uncertain, absent and blank (unassessed) time shows. The figure has
+    no key for them: the draft caption's (f) sentence and the appendix name each
+    state shown (`figure_sources.row_key`: colour present, grey absent, hatched
+    uncertain, blank unassessed)."""
     colours = [
         EVENT_COLOURS[t.spec.key]
         for t in display_tracks
@@ -1102,15 +1686,11 @@ def draw_legends(fig, display_tracks, by_key, t0, t1):
         r for t in display_tracks for r in figure_sources.state_intervals(t, (t0, t1))
     ]
     display_keys = []
-    handles = []
     if colours:
-        handles.append(tuple(Patch(fc=c, lw=0) for c in colours))
         display_keys.append("present")
     if any(r["state"] == "uncertain" for r in display_states):
-        handles.append(Patch(fc="white", ec=INK, hatch="//////", lw=0.4))
         display_keys.append("uncertain")
     if any(r["state"] == "absent" for r in display_states):
-        handles.append(Patch(fc=ABSENT_GREY, lw=0))
         display_keys.append("absent")
     has_blank = any(
         t.source is None
@@ -1123,59 +1703,7 @@ def draw_legends(fig, display_tracks, by_key, t0, t1):
         for t in display_tracks
     )
     if has_blank:
-        handles.append(Patch(fc="white", ec="#999999", lw=0.5))
         display_keys.append("blank")
-    labels = [
-        "unassessed" if k == "blank" else k for k in display_keys
-    ]
-    # The confinement row's class colours, only those the row draws in the window.
-    drawn_classes = {
-        r.category
-        for r in by_key["confinement"].rows
-        if r.category in CLASS_LEGEND and r.t_end > t0 and r.t_start < t1
-    }
-    for c, name in CLASS_LEGEND.items():
-        if c in drawn_classes:
-            handles.append(Patch(fc=CLASS_COLOURS[c], lw=0))
-            labels.append(name)
-    fig.legend(
-        handles,
-        labels,
-        handler_map={tuple: HandlerTuple(ndivide=None, pad=0)},
-        loc="lower center", ncols=len(handles), frameon=False, fontsize=FONT,
-        bbox_to_anchor=(0.5, 0.0), columnspacing=1.0, handlelength=1.8,
-        handletextpad=0.5,
-    )  # fmt: skip
-    expert_crowd = (
-        by_key[elm_key].source is not None
-        and (by_key[elm_key].source.tier == lf.SILVER)
-        and any(
-            r.crowd == 1
-            and r.category in (PRESENT, UNCERTAIN)
-            and r.t_start < t1
-            and r.t_end > t0
-            for r in by_key[elm_key].rows
-        )
-    )
-    if expert_crowd:
-        fig.legend(
-            handles=[
-                Line2D(
-                    [],
-                    [],
-                    color=INK,
-                    lw=3,
-                    marker="o",
-                    ms=3,
-                    markerfacecolor="white",
-                    label="expert ELM interval (one span for many ELMs)",
-                )
-            ],
-            loc="lower center",
-            frameon=False,
-            fontsize=FONT,
-            bbox_to_anchor=(0.5, 0.034),
-        )
     return colours, display_keys
 
 
@@ -1191,8 +1719,14 @@ def draw(
     crash_source: Path | None = None,
     crash_evidence: Path | None = None,
     annotations: dict | None = None,
+    transient_cut: float = TRANSIENT_THRESHOLD,
+    transient: bool = SHOW_TRANSIENT,
 ) -> dict:
-    """The figure for `candidate` over `t0`-`t1` ms; returns what the record holds."""
+    """The figure for `candidate` over `t0`-`t1` ms; returns what the record holds.
+    Panel (b) draws the transient overlay, cut at `transient_cut`, only with
+    `transient` (off by default, `SHOW_TRANSIENT`)."""
+    if not 0 < transient_cut <= 1:
+        raise ValueError(f"transient cut {transient_cut}: want 0 < cut <= 1")
     by_key = {t.spec.key: t for t in tracks}
     # the review stores: the n map, D-alpha, NBI
     _, drawn, stores = lf.signals(paths, candidate.shot, t0 - 10, t1 + 10)
@@ -1247,12 +1781,12 @@ def draw(
         if t.spec.key != mode_tags.SAWTOOTH or show_sawtooth
     )
 
-    low = Band(z, "zoom", 0.0, SPLIT_KHZ, t0, t1)
-    high = Band(z, "wide", SPLIT_KHZ, TOP_KHZ + 1, t0, t1)
+    low = Band(z, "zoom", 0.0, SPLIT_KHZ, t0, t1, transient_cut)
+    high = Band(z, "wide", SPLIT_KHZ, TOP_KHZ + 1, t0, t1, transient_cut)
     # What is drawn: the wide pass on one colour scale over 0-150 kHz, and the mask
     # from the zoom pass below ZOOM_TOP_KHZ and the wide pass above it.
-    raw_view = Band(z, "wide", 0.0, TOP_KHZ + 1, t0, t1)
-    mask_top = Band(z, "wide", ZOOM_TOP_KHZ, TOP_KHZ + 1, t0, t1)
+    raw_view = Band(z, "wide", 0.0, TOP_KHZ + 1, t0, t1, transient_cut)
+    mask_top = Band(z, "wide", ZOOM_TOP_KHZ, TOP_KHZ + 1, t0, t1, transient_cut)
     spans = {e: present_spans(by_key[e]) for e in (mode_tags.AE, mode_tags.NTM)}
     n_original = n_sig.rows[0] if n_sig.rows else None
     blobs_low = low.blobs(spans, n_original)
@@ -1312,8 +1846,8 @@ def draw(
             hspace=0.0,
             left=0.14,
             right=RIGHT,
-            top=0.985,
-            bottom=0.12,
+            top=1 - TOP_IN / HEIGHT_IN,
+            bottom=BOTTOM_IN / HEIGHT_IN,
         )
         ax = {n: fig.add_subplot(gs[i]) for i, n in enumerate(names)}
         for n in ("g0", "g1", "g2", "g3", "g4"):
@@ -1333,11 +1867,14 @@ def draw(
             style_axes(a)
 
         # ---- raw
-        transient_shown = draw_frequency_panels(ax, raw_view, low, mask_top)
+        transient_columns = draw_frequency_panels(
+            ax, raw_view, low, mask_top, transient
+        )
+        transient_shown = any(transient_columns.values())
         if nbi_sig.rows:
             trace(ax["nbi"], nbi_sig.rows[0], colour="#555555")
         ax["nbi"].set_ylabel(
-            "NBI power\n(MW)", rotation=0, ha="right", va="center", labelpad=3
+            "NBI\n(MW)", rotation=0, ha="right", va="center", labelpad=3
         )
         ax["nbi"].set_ylim(bottom=0)
         beta = equilibrium.signal(candidate.shot, "betan", paths)
@@ -1435,7 +1972,6 @@ def draw(
                     ELM_BOX_TOP,
                     fc="#eeeeee",
                     ec="#aaaaaa",
-                    hatch="////",
                     lw=0.5,
                     alpha=0.55,
                     zorder=0.5,
@@ -1443,6 +1979,8 @@ def draw(
                 )
                 da.add_patch(box)
                 elm_boxes.append(box)
+                # explicit hatch lines, as the label rows' (`hatch_lines`)
+                hatch_lines(da, a, b, 0, ELM_BOX_TOP, "#aaaaaa", box_transform, 0.6)
             visible = [
                 (max(a, t0), min(b, t1)) for a, b in elm_spans if a < t1 and b > t0
             ]
@@ -1456,7 +1994,7 @@ def draw(
         da.set_ylabel(
             "D-alpha\n(a.u.)", rotation=0, ha="right", va="center", labelpad=3
         )
-        regime_names = {1: "H-mode", 2: "L-mode", 3: "QH-mode", 4: "WPQH-mode"}
+        regime_names = CLASS_LEGEND  # the names (f) writes on its runs
         shown = set()
         lmode_inferred = False
         regime_texts = []
@@ -1508,11 +2046,6 @@ def draw(
             pad_px = 4 * fig.dpi / 72
             if text.get_window_extent().width + pad_px > region_width:
                 text.set_text(label.replace(" (inferred)", "\ninferred"))
-            if (
-                text.get_window_extent().width + pad_px > region_width
-                and category in CLASS_LEGEND
-            ):
-                text.set_text(CLASS_LEGEND[category])  # the class's short name
             regime_texts.append((text, a, b))
 
         # ---- label tracks
@@ -1520,10 +2053,16 @@ def draw(
             mode_tags.AE: "AE", mode_tags.NTM: "TM", mode_tags.SAWTOOTH: "sawtooth",
             elm_key: "ELMs", "confinement": by_key["confinement"].spec.title,
         }  # fmt: skip
+        drawn_runs = {}
+        run_texts = []
         for a, track in zip(track_axes, display_tracks, strict=True):
             key = track.spec.key
-            track_bars(a, track, EVENT_COLOURS.get(key, "#888888"),
-                       CLASS_COLOURS if key == "confinement" else None)  # fmt: skip
+            drawn_runs[key] = track_bars(
+                a, track, EVENT_COLOURS.get(key, "#888888"),
+                CLASS_COLOURS if key == "confinement" else None,
+            )  # fmt: skip
+            if key == "confinement":
+                run_texts = name_runs(a, drawn_runs[key], t0, t1)
             a.set_ylabel(titles[key], rotation=0, ha="right", va="center", labelpad=3)
         track_axes[-1].tick_params(labelbottom=True, bottom=True)
         track_axes[-1].spines["bottom"].set_visible(True)
@@ -1540,7 +2079,7 @@ def draw(
             fig.text(0.012, pos.y1, letter, fontsize=FONT, fontweight="bold",
                      va="top", ha="left")  # fmt: skip
 
-        colours, display_keys = draw_legends(fig, display_tracks, by_key, t0, t1)
+        colours, display_keys = display_states(display_tracks, t0, t1)
         # Panel (b)'s events are named in place, once everything else is drawn.
         panel_labels = label_events(fig, ax["pr"], (t0, t1), transient_shown)
         fig.draw_without_rendering()
@@ -1553,6 +2092,9 @@ def draw(
                 "raw_spectrogram": "CO2 R0 x V1 cross-power, wide pass, one colour scale, 0-150 kHz",
                 "mask_zoom_pass_khz": [0.0, ZOOM_TOP_KHZ],
                 "mask_wide_pass_khz": [ZOOM_TOP_KHZ, TOP_KHZ],
+                "transient_pass_khz": {TRANSIENT_PASS: [0.0, TOP_KHZ]}
+                if transient
+                else {},
                 "ae_ntm_split_khz": SPLIT_KHZ,
                 "n_view_top_khz": N_VIEW_KHZ,
             },
@@ -1637,6 +2179,8 @@ def draw(
             - 0.4,
             "legend_labels": [t.get_text() for key in fig.legends for t in key.texts],
             "present_chip_colours": colours,
+            "confinement_run_texts": run_texts,
+            "label_row_runs": {key: len(runs) for key, runs in drawn_runs.items()},
             "heading_and_legend_text_bounds": [
                 {
                     "text": text.get_text(),
@@ -1710,7 +2254,13 @@ def draw(
             "samples_drawn": int(beta_in.sum()),
         },
         "tokeye_threshold": TOKEYE_THRESHOLD,
+        # the overlay is off by default (owner, 2026-10-14: too distracting): the
+        # record says so, with no cut or pass where nothing is drawn
+        "tokeye_transient_overlay": transient,
         "tokeye_transient_drawn": transient_shown,
+        "tokeye_transient_threshold": transient_cut if transient else None,
+        "tokeye_transient_pass": TRANSIENT_PASS if transient else None,
+        "tokeye_transient_print_columns": transient_columns,
         "elm_peaks_in_label": len(peaks),
         "elm_peak_times_ms": peaks.tolist(),
         "first_large_peak_before_expert_ms": first_large_peak_before_expert_ms,
@@ -1842,7 +2392,7 @@ def draw(
             }
             for band in (low, high)
         },
-        "regimes_shown": sorted(regime_names[c] for c in shown),
+        "regimes_shown": sorted(lf.REGIMES[c] for c in shown),
         "stores": {
             e: None if p is None else {"path": str(p), "sha256": sha256_of(p)}
             for e, p in stores.items()
@@ -1867,6 +2417,7 @@ def draw_n_view(ax, read) -> list[int]:
         extent=(t0, t1, f0, f0 + (f1 - f0) * keep / codes.shape[0]),
         interpolation="nearest",
         zorder=2,
+        gid=DRAWN_GID + "n",
     )
     return n_seen(read)
 
@@ -1924,8 +2475,16 @@ def track_record(track: lf.Track, window=None) -> dict | None:
         model = "CO2 xpower frame model (80-250 kHz)"
         ae_threshold = Model.load(Path(track.file), {}).threshold
         ae_bin_ms = FRAME_MS
+    # A table's rows (`TableTrack`) take their threshold and held-out score from
+    # the table's own metadata: a detector's table names them (`table_kind`), a
+    # table of labels has neither.
+    table = getattr(track, "table", None)
     performance = None
-    if track.spec.key == mode_tags.NTM and track.source.tier == lf.GENERATED:
+    if (
+        track.spec.key == mode_tags.NTM
+        and track.source.tier == lf.GENERATED
+        and (table is None or "evaluation" in meta)
+    ):
         evaluation = Path(meta["evaluation"])
         evaluated = json.loads(evaluation.read_text())
         performance = {
@@ -1946,7 +2505,9 @@ def track_record(track: lf.Track, window=None) -> dict | None:
         "rows": len(track.rows),
         "model": model,
         "decision_threshold": (
-            {
+            meta.get("threshold")
+            if table is not None
+            else {
                 mode_tags.AE: ae_threshold,
                 mode_tags.NTM: meta.get("threshold", figure_sources.NTM_THRESHOLD),
                 mode_tags.SAWTOOTH: figure_sources.SAWTOOTH_THRESHOLD,
@@ -1954,6 +2515,7 @@ def track_record(track: lf.Track, window=None) -> dict | None:
             if track.source.tier == lf.GENERATED
             else None
         ),
+        "source_table": table,
         "crowd_semantics": (
             "iscrowd=1 identifies the expert crowd lane; category 1 stays present, "
             "category 2 stays uncertain (hatching with a crowd marker)"
@@ -1966,6 +2528,15 @@ def track_record(track: lf.Track, window=None) -> dict | None:
         "metadata_sha256": sha256_of(metadata) if metadata.is_file() else None,
         "states": track.spec.states,
         "state_intervals_ms": state_rows,
+        **(
+            {}
+            if (table or {}).get("no_q1_rows_ms") is None
+            else {
+                "no_q1_intervals_ms": figure_sources.clip_spans(
+                    table["no_q1_rows_ms"], window or (-math.inf, math.inf)
+                )
+            }
+        ),
         "density_guard": physics.get("density_guard"),
         "present_spans_ms": [[round(a, 1), round(b, 1)] for a, b in present],
         **(
@@ -2001,6 +2572,18 @@ def draft_caption(shot: int, records, drawn) -> str:
     text = text.replace("<60", "$<60$")
     label = f"fig:interpreter-{shot}"
     return f"\\caption{{{text}}}\n\\label{{{label}}}\n"
+
+
+def display_cut(text: str) -> float:
+    """A `--transient-cut`: a probability above 0 and at most 1 (0 would paint
+    every pixel the mask leaves unlit)."""
+    try:
+        value = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a number") from None
+    if not 0 < value <= 1:
+        raise argparse.ArgumentTypeError(f"{text}: want 0 < cut <= 1")
+    return value
 
 
 def main(argv=None) -> int:
@@ -2063,7 +2646,29 @@ def main(argv=None) -> int:
         type=Path,
         help="full physics JSON evidence paired with cohort CSVs",
     )
+    parser.add_argument(
+        "--rows",
+        action="append",
+        metavar="EVENT=CSV",
+        help="an event's rows from this label table, before its review source "
+        f"table and the tiers (repeatable; EVENT one of {', '.join(ROW_EVENTS)})",
+    )
+    parser.add_argument(
+        "--transient",
+        action="store_true",
+        default=SHOW_TRANSIENT,
+        help="draw the transient overlay (red) in panel (b); off by default, the "
+        "owner turned it off on 2026-10-14 as too distracting",
+    )
+    parser.add_argument(
+        "--transient-cut",
+        type=display_cut,
+        default=TRANSIENT_THRESHOLD,
+        help="the transient overlay's display cut, 0 < cut <= 1, used with "
+        f"--transient (the mask stays at {TOKEYE_THRESHOLD:g})",
+    )
     args = parser.parse_args(argv)
+    supplied = parse_rows(args.rows)
     if (args.tmin is None) != (args.tmax is None):
         parser.error("supply both --tmin/--start and --tmax/--end, or neither")
     if args.tmin is not None and not (
@@ -2116,6 +2721,7 @@ def main(argv=None) -> int:
         args.ae_labels,
         args.show_sawtooth or saw_source is not None,
         args.outside_rows,
+        supplied,
     )
     out.mkdir(parents=True, exist_ok=True)
     drawn = draw(
@@ -2130,13 +2736,15 @@ def main(argv=None) -> int:
         saw_source,
         args.sawtooth_evidence,
         annotations,
+        args.transient_cut,
+        args.transient,
     )
     records = drawn.pop("tracks")
     detector_training = {}
     for key in (mode_tags.AE, mode_tags.NTM):
         track = records.get(key) or {}
-        if track.get("tier") != lf.GENERATED:
-            continue
+        if not figure_sources.is_detector(track):
+            continue  # labels, not a detector of ours: nothing it trained on
         if key == mode_tags.AE and track["what"].startswith("ae-ours"):
             training_file = Path(
                 "src/labeler/models/d3d_ae_activity_seldnet/training_shots.txt"
@@ -2144,10 +2752,14 @@ def main(argv=None) -> int:
             trained_shots = [int(s) for s in training_file.read_text().split()]
             weights = json.loads(Path(track["metadata"]).read_text())["checkpoint"]
         elif key == mode_tags.AE:
-            # The frame detector's own split: the shots it trained on.
+            # The frame detector's own split: the shots it trained on. A
+            # detector's table names its checkpoint in its metadata.
             from labeler.ae.xpower.train import read_split
 
             weights = Path(track["path"])
+            if track.get("source_table"):
+                meta = json.loads(Path(track["metadata"]).read_text())
+                weights = Path(meta.get("model") or meta["checkpoint"])
             training_file = weights.parent / "split.csv"
             trained_shots = sorted(
                 s for s, v in read_split(training_file).items() if v == "train"
@@ -2187,10 +2799,19 @@ def main(argv=None) -> int:
             if split != OUTSIDE_COHORT
             else {
                 "year": args.year,
-                "rows_dir": None if args.outside_rows is None else str(args.outside_rows),
+                "rows_dir": None
+                if args.outside_rows is None
+                else str(args.outside_rows),
             }
         ),
         "publication_suitability": annotations.get("publication_suitability", {}),
+        "gold_shot": is_gold(paths.label_tables, args.shot),
+        "rows_supplied": {key: str(path) for key, path in supplied.items()},
+        "source_tables": {
+            key: {**t["source_table"], "sha256": t["sha256"]}
+            for key, t in records.items()
+            if t is not None and t.get("source_table")
+        },
         "annotations": {
             "path": str(args.annotations),
             "sha256": sha256_of(args.annotations),
@@ -2202,6 +2823,7 @@ def main(argv=None) -> int:
             "ntm": figure_sources.NTM_THRESHOLD,
             "sawtooth": figure_sources.SAWTOOTH_THRESHOLD,
             "tokeye": TOKEYE_THRESHOLD,
+            "tokeye_transient_display": args.transient_cut if args.transient else None,
             "sawtooth_elm_veto_ms": figure_sources.ELM_VETO_MS,
             "ece_crash_match_ms": figure_sources.ECE_MATCH_MS,
         },
@@ -2222,6 +2844,10 @@ def main(argv=None) -> int:
             "sha256": sha256_of(checkpoint),
             "probe": f"{SOURCE_GROUP} rows {SOURCE_ROW} and {PARTNER_ROW} ({SOURCE_TITLE})",
             "threshold": TOKEYE_THRESHOLD,
+            "transient_overlay": args.transient,
+            "transient_display_threshold": args.transient_cut
+            if args.transient
+            else None,
             "cache": str(cache_file),
             "cache_sha256": sha256_of(cache_file),
             "fingerprints": json.loads(str(z["fingerprints"])),
@@ -2250,6 +2876,24 @@ def main(argv=None) -> int:
             "n_brightness_rule": "constant full colour for every measured n pixel",
             "raw_normalisation": "3rd/99.8th percentiles of the whole 0-150 kHz window, "
             "one colour scale",
+            "raw_colormap": RAW_CMAP,
+            "transient_display_rule": (
+                f"the {TRANSIENT_PASS} pass's transient over "
+                f"the whole 0-{TOP_KHZ:g} kHz band, >= its display cut, small "
+                "objects removed as the mask's, where neither the wide pass's mask "
+                f"nor the drawn zoom-pass mask (below {ZOOM_TOP_KHZ:g} kHz) is "
+                f"lit; max pooled to {DPI_PNG}-dpi print pixels, drawn with no "
+                "interpolation; display only"
+                if args.transient
+                else "not drawn: the owner turned the overlay off on 2026-10-14 "
+                "(too distracting); the transient channel still keeps its pixels "
+                "out of the coherent mask"
+            ),
+            "label_row_display_rule": "adjacent rows of one category and crowd flag "
+            "drawn as one run; confinement class names written on runs they fit; "
+            "uncertain time white, hatched in the event's colour with explicit "
+            f"line segments ({UNCERTAIN_HATCH_STEP_PT:g} pt apart, "
+            f"{UNCERTAIN_HATCH_LW:g} pt), not a PDF hatch pattern; no key",
             "unkeyed_n_colour": N_OTHER,
             "bands_khz": {
                 k: [lo, None if math.isinf(hi) else hi]

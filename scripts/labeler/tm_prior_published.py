@@ -4,7 +4,8 @@
 Reads the per-shot inputs and published outputs `tm_detector_inputs.py` wrote
 (``$TM_ROOT/detector_inputs``). Published weights remain fixed; every main F1 row
 uses a threshold chosen on the same cohort-wide CV inner validation shots as the
-learned rows. Fixed published thresholds are explicitly labelled extra results.
+learned rows. Fixed thresholds (the CNN card's 0.5; the DSM's risk 0.3, see below)
+are explicitly labelled extra results.
 
 * ``--setting legacy``: each model against the label it was built for, on shots it was
   not trained on where that can be told.
@@ -15,8 +16,12 @@ learned rows. Fixed published thresholds are explicitly labelled extra results.
     AUROC, AUPRC and F1 at the published 0.5.
   - `tm-dsm` against an onset within 250 ms / 500 ms / 1 s on the rows before the
     survival label's first onset (``raw/tm_labels.h5``), on shots outside the model's
-    ``training_shots.txt`` that the survival labels cover; F1 at the model's own
-    default survival alarm level, 0.7, equivalent to risk 0.3.
+    ``training_shots.txt`` that the survival labels cover. The checkpoint has no
+    published operating point, so its F1 is at the inner-validation threshold. Risk
+    >= 0.3 is only the keyword default survival <= 0.7 of upstream
+    ``metrics_helpers.py:85`` (``fnr_fpr_calculator``, shot-level); no upstream run
+    used it as this checkpoint's operating point, and its 500 ms risk cannot reach it
+    (cap 0.323). That F1 is a fixed-threshold extra, 0 by construction at 500 ms.
 
 * ``--setting tokamak-si``: the unretrained published outputs against the whole-interval
   labels at 10 ms bins. The CNN's score at ``t`` is read as the mode's presence at
@@ -27,7 +32,7 @@ Every number is written with its shots, bins and threshold to
 ``$LABELER_ROOT/round4/tm/results/``, with 95 % shot-bootstrap intervals.
 
     PYTHONPATH=$PWD/src LABELER_ROOT=<root> pixi run --frozen --no-install \\
-        -e labelmaker python scripts/labeler/tm_prior_published.py --setting tokamak-si
+        -e labeler python scripts/labeler/tm_prior_published.py --setting tokamak-si
 """
 
 from __future__ import annotations
@@ -53,7 +58,7 @@ from tm_cv_plan import load_plan
 from labeler.tearing import detectors, scoring
 
 TM = (
-    Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker"))
+    Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
     / "round4/tm"
 )
 INPUTS = Path(os.environ.get("TM_ROOT", TM)) / "detector_inputs"
@@ -77,10 +82,12 @@ SI_MODELS = {
     },
 }
 THRESHOLD_SOURCE = (
-    "published: the CNN card's F1 convention (tm_prob >= 0.5) and the DSM card's "
-    "upstream metrics_helpers.py:85 default survival <= 0.7, equivalent to "
-    "risk >= 0.3; "
-    "the previous benchmark incorrectly applied 0.7 to risk"
+    "a fixed threshold, reported beside the inner-validation one. CNN: the card's "
+    "F1 convention (tm_prob >= 0.5), a published operating point. DSM: no published "
+    "operating point; risk >= 0.3 is the upstream metrics_helpers.py:85 keyword "
+    "default survival <= 0.7 (fnr_fpr_calculator, shot-level), never used upstream "
+    "as this checkpoint's operating point and unreachable by its 500 ms risk (cap "
+    "0.323); the previous benchmark incorrectly applied 0.7 to risk"
 )
 CV_THRESHOLD_SOURCE = (
     "F1-maximising thresholds on shared cohort-450 fold inner validation shots only; "

@@ -292,6 +292,17 @@ def test_fdp_signal_rejects_unequal_lengths(monkeypatch):
         fdp_signal(178640, ["b", "a"])
 
 
+def test_fdp_signal_refuses_a_scalar_node(monkeypatch):
+    # EFIT01 on a shot it never ran on answers with one number, not a series.
+    records = {"a": {"data": np.float32(0.0), "dim0": np.float64(0.0),
+                     "units": {"data": "m", "dim0": "ms"}}}
+    monkeypatch.setattr(
+        "labeler.features.resolve_fdp._fetch_mds", _fake_fetch_mds(records, [])
+    )
+    with pytest.raises(NoDataError, match="no time series"):
+        fdp_signal(178640, ["a"])
+
+
 class TreeNODATA(Exception):
     """Stands in for MDSplus' error of that name, which is what `fdp_signal` matches."""
 
@@ -1115,19 +1126,24 @@ def test_marking_present_twice_on_one_selection_records_one_row(tmp_path):
 
 def test_every_category_has_a_verification_notebook():
     import json
+    from pathlib import Path
 
     from labeler.config import Paths
     from labeler.events.databases import category_dirs
 
-    root = Paths.from_env().label_tables
-    categories = [p.name for p in category_dirs(root)]
+    # The categories are the documented ones (docs/labeler/events/<category>/,
+    # tracked, unlike the label tables) less what events.yaml says is not one;
+    # their notebooks are source too, under examples/labeler/<category>/.
+    repo = Path(__file__).resolve().parents[2]
+    docs = repo / "docs" / "labeler" / "events"
+    categories = [p.name for p in category_dirs(docs, Paths().events_manifest)]
     # No count: a pinned 16 fails the next time a category is added or
     # removed, which happened twice while this surface was being built, and
     # fails as `assert 17 == 16`. The per-category assertions below are the
     # content of this test.
-    assert categories, f"no category directories under {root}"
+    assert categories, f"no category directories under {docs}"
     for category in categories:
-        path = root / category / "verification.ipynb"
+        path = repo / "examples" / "labeler" / category / "verification.ipynb"
         assert path.is_file(), f"{category} has no verification.ipynb"
         notebook = json.loads(path.read_text())
         assert notebook["nbformat"] == 4
@@ -1135,8 +1151,8 @@ def test_every_category_has_a_verification_notebook():
             "".join(cell["source"]) for cell in notebook["cells"]
         )
         assert "from labeler.events.verify import" in sources, category
-        # The kernel is still called "Python (FAITH labelmaker)" on purpose;
-        # what must not survive the rename is the MODULE path.
+        # The kernel is called "Python (FAITH labeler)" like the environment;
+        # what must not survive the rename is the old MODULE path.
         assert "labelmaker.events" not in sources, category
         assert "from labelmaker" not in sources, category
 
@@ -1220,17 +1236,13 @@ def test_notebooks_module_is_only_the_generic_helpers():
 
 def test_no_example_notebook_imports_plot_original():
     import json
+    from pathlib import Path
 
-    from labeler.config import Paths
-
-    root = Paths.from_env().label_tables
-    for path in sorted(root.glob("*/example.ipynb")):
-        try:
-            cells = json.loads(path.read_text())["cells"]
-        except json.JSONDecodeError:
-            # data/events/detachment/example.ipynb is a pre-existing empty
-            # file (not valid JSON); nothing about this task touches it.
-            continue
+    examples = Path(__file__).resolve().parents[2] / "examples" / "labeler"
+    found = sorted(examples.glob("*/example.ipynb"))
+    assert found, f"no example notebooks under {examples}"
+    for path in found:
+        cells = json.loads(path.read_text())["cells"]
         sources = "".join("".join(cell["source"]) for cell in cells)
         assert "plot_original" not in sources, path
         assert "labelmaker.events" not in sources, path

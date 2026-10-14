@@ -4,7 +4,7 @@
 # is staged unchanged in runs/ because it is not installed on compute nodes.
 set -euo pipefail
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
-ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")"
+ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labeler")"
 SHOT_FILE="${SHOT_FILE:-$ROOT/recommender_v1.txt}"
 export LABELER_ROOT="$ROOT" PYTHONPATH="$REPO/src"
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
@@ -21,5 +21,5 @@ install -m 600 "$JOBSTATS_SOURCE/config.py" "$JOBSTATS_SOURCE/jobstats.py" \
     "$JOBSTATS_SOURCE/output_formatters.py" "$ROOT/runs/slurm/jobstats-client/"
 install -m 700 "$JOBSTATS_SOURCE/jobstats" "$ROOT/runs/slurm/jobstats-client/jobstats"
 pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \
-    -e labelmaker python "$REPO/scripts/labeler/tokeye_masks.py" \
+    -e labeler python "$REPO/scripts/labeler/tokeye_masks.py" \
     --shot-file "$SHOT_FILE" --root "$ROOT" --device cpu --build-text-subset

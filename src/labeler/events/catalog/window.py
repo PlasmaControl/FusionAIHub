@@ -31,7 +31,7 @@ and short dips from splitting the plateau and reduces sampling-rate dependence.
 
 Measuring a shot list is a login-node job, under the fdp wrapper:
 
-    pixi run -e labelmaker fdp run python -m labeler.events.catalog.window \\
+    pixi run -e labeler fdp run python -m labeler.events.catalog.window \\
         --shot-file <one shot per line> [--workers 4] [--limit 20]
 
 Each shot appends one line to `$LABELER_ROOT/catalog/ip.jsonl`; a rerun skips the

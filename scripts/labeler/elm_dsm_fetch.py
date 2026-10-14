@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Fetch missing Ip/Bt for the reviewed DSM shots into an isolated evaluation store.
 
-Run on the login node via the mandated pixi labelmaker `fdp run python` wrapper.
+Run on the login node via the mandated pixi labeler `fdp run python` wrapper.
 Use `--workers 1 --pace 1`; at most three workers are accepted. No production data
 store is modified. Stop immediately when an authentication/login error is seen.
 """

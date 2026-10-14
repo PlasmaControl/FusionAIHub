@@ -1999,7 +1999,7 @@ def readme_model_lines(models):
 
 
 def update_readme(manifest, population, models):
-    path = REPO / "data/events/sawtooth_oscillation/README.md"
+    path = REPO / "docs/labeler/events/sawtooth_oscillation/README.md"
     text = path.read_text()
     kept = []
     for line in text.splitlines(keepends=True):
@@ -2068,7 +2068,7 @@ def update_readme(manifest, population, models):
     content = f"""## Physics-rule labels and validation
 
 These are **physics-rule labels validated only by the checks described** in the
-[current-state report](../../../docs/labeler/sawtooth_results.md). The rule uses
+[current-state report](../../sawtooth_results.md). The rule uses
 Gude-style POSR, multichannel coincidence, core loss / outer gain, central drop,
 stable trains and nominal EFIT localization. It screens harmonic overlap and
 uses EFIT01 bias-aware q-min conflicts. POSR-qualified phase edges require

@@ -293,7 +293,7 @@ def main() -> None:
         "sources_searched": [
             "data/events/resistive_wall_mode/raw/rwm_onsets_2017.csv",
             "data/events/resistive_wall_mode/raw/rwm_onsets_2024.csv",
-            "main:data/events/resistive_wall_mode/README.md",
+            "main:docs/labeler/events/resistive_wall_mode/README.md",
             "main:.tmp/label_papers/Piccione_2022_Nucl._Fusion_62_036002.md",
             "main:.tmp/label_papers/outside/Piccione_tsdw2021_RWM_poster.md",
         ],

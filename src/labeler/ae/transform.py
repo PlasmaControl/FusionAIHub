@@ -7,7 +7,7 @@ once per CO2 channel and then standardising the stack the way
 cannot depend on it at inference time - the pixi env has to run this on its
 own. ``compute_stft`` is fifteen lines of scipy, so it is ported here verbatim
 rather than reimplemented, and
-``outputs/labelmaker/ae/scripts/pin_transform.py`` runs both side by side on a
+``outputs/labeler/ae/scripts/pin_transform.py`` runs both side by side on a
 real corpus record and records the max absolute difference.
 
 The pipeline, in the order the dataset script applies it:

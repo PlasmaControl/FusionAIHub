@@ -6,10 +6,6 @@
 \toprule
 Model & Shots / bins & AUROC [CI] & AUPRC [CI] & F1 [CI] & Segmental F1 [CI] \\
 \midrule
-\multicolumn{6}{l}{\emph{Legacy targets, at the published thresholds}} \\
-tm-dsm-250ms-published (risk 0.3) & 80 / 8.4k & .743 [.643,.844] & .185 [.106,.322] & .000 [.000,.000] & -- \\
-tm-dsm-1s-published (risk 0.3) & 80 / 8.4k & .722 [.612,.833] & .405 [.263,.551] & .049 [.000,.143] & -- \\
-\midrule
 \multicolumn{6}{l}{\emph{Tokamak-SI labels, uncertain time excluded}} \\
 tm-dsm-250ms-published & 247 / 43.7k & .780 [.692,.854] & .409 [.288,.532] & .438 [.328,.531] & .272 [.150,.398] \\
 tm-dsm-1s-published & 247 / 43.7k & .777 [.693,.851] & .399 [.281,.522] & .439 [.325,.531] & .277 [.157,.404] \\
@@ -25,6 +21,11 @@ tm-dsm-250ms-published & 80 / 8.4k & .743 [.643,.844] & .185 [.106,.322] & .094 
 tm-dsm-500ms-published & 80 / 8.4k & .721 [.614,.828] & .294 [.179,.442] & .177 [.107,.266] & -- \\
 tm-dsm-1s-published & 80 / 8.4k & .722 [.612,.833] & .405 [.263,.551] & .306 [.195,.411] & -- \\
 \midrule
+\multicolumn{6}{l}{\emph{Legacy targets, DSM at risk 0.3 (upstream helper default, not an operating point)}} \\
+tm-dsm-250ms-published (risk 0.3) & 80 / 8.4k & .743 [.643,.844] & .185 [.106,.322] & .000 [.000,.000] & -- \\
+tm-dsm-500ms-published (risk 0.3) & 80 / 8.4k & .721 [.614,.828] & .294 [.179,.442] & .000 [.000,.000] & -- \\
+tm-dsm-1s-published (risk 0.3) & 80 / 8.4k & .722 [.612,.833] & .405 [.263,.551] & .049 [.000,.143] & -- \\
+\midrule
 \multicolumn{6}{l}{\emph{Tokamak-SI labels, fixed thresholds, uncertain time excluded}} \\
 tm-rms (12 G) & 450 / 162.8k & .985 [.977,.992] & .903 [.845,.943] & .523 [.425,.617] & .414 [.301,.534] \\
 tm-dsm-250ms-published (risk 0.3) & 247 / 43.7k & .780 [.692,.854] & .409 [.288,.532] & .000 [.000,.000] & .000 [.000,.000] \\
@@ -32,6 +33,6 @@ tm-dsm-500ms-published (risk 0.3) & 247 / 43.7k & .779 [.691,.852] & .405 [.285,
 tm-dsm-1s-published (risk 0.3) & 247 / 43.7k & .777 [.693,.851] & .399 [.281,.522] & .008 [.000,.021] & .000 [.000,.000] \\
 \bottomrule
 \end{tabular}
-\caption{Additional rows. Legacy rows at inner-validation thresholds, other DSM horizons, fixed-threshold results (DSM risk 0.3 equals upstream survival probability 0.7), and the uncertain-as-negative values of the rows not in the main table. Legacy bins are 25 ms, Tokamak-SI bins 10 ms. $\dagger$: published CNN training overlap unknown. Brackets: 95\% shot-bootstrap intervals.}
+\caption{Additional rows. Legacy rows at inner-validation thresholds, other DSM horizons, fixed-threshold results (DSM risk 0.3: upstream helper default survival 0.7, shot-level; the 500 ms risk never reaches it), and the uncertain-as-negative values of the rows not in the main table. Legacy bins are 25 ms, Tokamak-SI bins 10 ms. $\dagger$: published CNN training overlap unknown. Brackets: 95\% shot-bootstrap intervals.}
 \label{tab:tm-benchmark-appendix}
 \end{table*}

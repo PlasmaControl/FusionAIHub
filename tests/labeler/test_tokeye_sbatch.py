@@ -47,7 +47,7 @@ def test_prepass_builds_the_whole_list_on_cpu():
     assert "--build-text-subset" in text
     assert "--device cpu" in text
     assert "--chunk" not in text and "--limit" not in text
-    assert "-e labelmaker python" in text
+    assert "-e labeler python" in text
 
 
 def test_prepass_stages_the_site_jobstats_client_for_compute_nodes():
@@ -68,7 +68,7 @@ def test_afterok_rebuilds_before_the_gate_and_preserves_both_captures():
     for flag in ('--job-id "$JOBID"', '--preserve-dir "$ROOT/runs/slurm"',
                  '--out "$ROOT/runs/slurm/jobstats.json"', "--wait-for-data 300"):
         assert flag in text
-    assert "-e labelmaker python" in text
+    assert "-e labeler python" in text
     assert 'gate_mode+=(--pilot)' in text
     assert "--gpus" not in text
     assert text.count("srun --cpu-bind=cores pixi run") == 2

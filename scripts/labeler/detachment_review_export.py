@@ -35,7 +35,7 @@ from matplotlib.text import Text
 
 REPO = Path(__file__).resolve().parents[2]
 LABELER_ROOT = Path(
-    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")
+    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler")
 )
 PRODUCER = REPO
 STATE_NAMES = {

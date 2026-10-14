@@ -1,4 +1,4 @@
-"""Scaffold a category's verification.ipynb.
+"""Scaffold a category's verification.ipynb, at examples/labeler/<event>/.
 
 The generic notebook plots `ip`, `betan` and `pinj_total` from the feature store
 against the saved labels. That is enough to confirm a shot exists and that its
@@ -8,7 +8,7 @@ panel cell with the traces that actually settle it, the way
 `minimum_safety_factor`, `sawtooth_oscillation`, `alfven_eigenmode` and
 `fishbone` already have.
 
-    pixi run -e labelmaker python scripts/labeler/make_verification_notebook.py \
+    pixi run -e labeler python scripts/labeler/make_verification_notebook.py \
         --event detachment
 """
 
@@ -19,11 +19,12 @@ from pathlib import Path
 
 import nbformat
 
-from labeler.config import Paths
+#: Where the notebooks live: source, beside the package, not in the label tables.
+EXAMPLES = Path(__file__).resolve().parents[2] / "examples" / "labeler"
 
 HEADER = """# {title} - verification
 
-Use the **Python (FAITH labelmaker)** kernel. Set `shot` below, drag a time
+Use the **Python (FAITH labeler)** kernel. Set `shot` below, drag a time
 range on any panel, then press *Mark present* / *Mark absent*, *Verify* and
 *Save*.
 
@@ -98,9 +99,9 @@ def build(event: str) -> nbformat.NotebookNode:
         nbformat.v4.new_markdown_cell(FOOTER),
     ]
     notebook.metadata["kernelspec"] = {
-        "display_name": "Python (FAITH labelmaker)",
+        "display_name": "Python (FAITH labeler)",
         "language": "python",
-        "name": "faith-labelmaker",
+        "name": "faith-labeler",
     }
     return notebook
 
@@ -109,11 +110,15 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--event", required=True)
     parser.add_argument("--force", action="store_true")
-    parser.add_argument("--root", type=Path, default=None)
+    parser.add_argument(
+        "--examples",
+        type=Path,
+        default=EXAMPLES,
+        help="the notebooks' directory (default: examples/labeler)",
+    )
     args = parser.parse_args()
 
-    root = Paths.from_env().label_tables if args.root is None else args.root
-    path = root / args.event / "verification.ipynb"
+    path = args.examples / args.event / "verification.ipynb"
     if path.exists() and not args.force:
         raise SystemExit(f"{path} exists; pass --force to overwrite")
     path.parent.mkdir(parents=True, exist_ok=True)

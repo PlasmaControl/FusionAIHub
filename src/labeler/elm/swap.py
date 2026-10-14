@@ -4,7 +4,7 @@ The review's dense ELM spans are the reference this package scores against. The 
 older ELM annotation is the compiled legacy onset table (`edge_localized_mode/format`).
 The compiler counts original 1 ms onset labels in 50 ms bins, assigns category 1
 to nonzero counts, deduplicates matching WPQH subsets, and compresses consecutive
-equal bins into half-open intervals (data/events/README.md). It covers 8 of 119 reviewed
+equal bins into half-open intervals (docs/labeler/events/README.md). It covers 8 of 119 reviewed
 shots. The coverage audit uses per-bin majority occupancy over all legacy-covered
 bins in the review window. Detector comparisons report both the stricter benchmark
 bins and the known all-covered majority bins used by the AE-style audit.

@@ -367,7 +367,7 @@ const visit = async (event, shot) => {
 };
 
 async function navigationRace() {
-  const a = "alfven_eigenmode", b = "neoclassical_tearing_mode";
+  const a = "alfven_eigenmode", b = "disruption";
   await held("version");
   check("name is hidden while API version is pending", await js(`$("reviewer-name").hidden`));
   check("History is hidden while API version is pending", await js(`$("show-versions").hidden`));
@@ -575,7 +575,7 @@ async function inflight() {
 }
 
 async function eventQueueInflight() {
-  const b = "neoclassical_tearing_mode";
+  const b = "disruption";
   await arm("queue", b);
   await js(`$("event").value = "${b}"; $("event").dispatchEvent(new Event("change"))`);
   await held("queue");
@@ -619,7 +619,7 @@ async function pendingResponses() {
   if (["queue_fail", "queue_reject"].includes(CASE)) return pendingQueueFailure();
   if (CASE.startsWith("queue_")) return pendingQueue();
   if (["next_edit", "save_fail"].includes(CASE)) return pendingSaveMessage();
-  const a = "alfven_eigenmode", b = "neoclassical_tearing_mode";
+  const a = "alfven_eigenmode", b = "disruption";
   const key = `labeler:${a}:170815`;
   const original = await js("S.label");
   await draw(500, 800);
@@ -680,7 +680,7 @@ async function pendingResponses() {
 }
 
 async function pendingQueue() {
-  const a = "alfven_eigenmode", b = "neoclassical_tearing_mode";
+  const a = "alfven_eigenmode", b = "disruption";
   await visit(b, 170815);
   await arm("queue", a);
   await js(`$("event").value = "${a}"; $("event").dispatchEvent(new Event("change"))`);
@@ -791,7 +791,7 @@ async function pendingSaveMessage() {
 }
 
 async function pendingQueueFailure() {
-  const b = "neoclassical_tearing_mode";
+  const b = "disruption";
   await arm("queue", b);
   if (CASE === "queue_reject") await js("window.gates.queue.reject = true");
   await js(`$("event").value = "${b}"; $("event").dispatchEvent(new Event("change"))`);
@@ -921,7 +921,7 @@ async function moves() {
 }
 
 async function emptyEvent() {
-  const a = "alfven_eigenmode", b = "neoclassical_tearing_mode";
+  const a = "alfven_eigenmode", b = "disruption";
   await draw(500, 800);
   const edited = await js("S.label"), kept = await drafts();
   check("the previous shot has a label, an undo and a selection to clear", await js(`
@@ -947,8 +947,9 @@ async function emptyEvent() {
     $("rows").children.length === 1 && $("rows").firstElementChild.className === "failure" &&
     $("rows").textContent === "${b} has no shots to review."`), await js(`$("rows").textContent`));
   check("the old shot's top and label canvases are cleared", await js(`
-    [...document.querySelectorAll("#top canvas, .track canvas")].every((canvas) =>
-      canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data.every((v) => v === 0))`));
+    [...document.querySelectorAll("#top canvas, .track canvas")].filter((canvas) => canvas.width > 0)
+      .every((canvas) =>
+        canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data.every((v) => v === 0))`));
   check("empty navigation is finished", await js(`
     S.opened.ticket === S.ticket && S.opened.event === "${b}" && S.opened.shot === null &&
     !pendingNavigation()`), await js("[S.ticket, S.opened]"));
@@ -1100,7 +1101,9 @@ async function equilibriumEditors() {
   check("neighboring onsets have separate exact clickable annotations", same(buttons,
     [["900.1234 ms · n=1 · rwm", "curated"],
      ["900.6789 ms · n=2 · n2rwm", "curated"]]), buttons);
-  check("point annotations do not create a duration label", await js("S.meta.source === null"));
+  check("onsets in one frame draft one Individual annotation (round five, rwm_onsets)",
+    await js(`JSON.stringify([S.meta.source.intervals, S.meta.source.iscrowd])
+      === JSON.stringify([[[900, 910, 1]], [0]])`));
   const ticks = await js(`(() => {
     const canvas = $("source-track"), g = canvas.getContext("2d");
     const original = g.stroke, strokes = [];
@@ -1135,8 +1138,8 @@ async function equilibriumEditors() {
 }
 
 async function crowdAnnotations() {
-  check("legacy labels stay unspecified", await js(`
-    !S.label.iscrowd && !$("resolution-control").hidden`));
+  check("AE source labels without resolution open as spans", await js(`
+    same(S.label.iscrowd, [1]) && !$("resolution-control").hidden`));
   const select = async (t) => {
     const [x, y] = await js(`(() => {
       const i = S.label.intervals.findIndex(([a,b]) => a <= ${t} && ${t} <= b);
@@ -1151,27 +1154,27 @@ async function crowdAnnotations() {
     $("resolution").dispatchEvent(new Event("change", {bubbles: true}));
   `);
   await select(200);
-  await resolution("1");
-  check("the selected source span becomes a group", same(await js("S.label.iscrowd"), [1]));
+  await resolution("unspecified");
+  check("the selected source span can be made unspecified", await js("!S.label.iscrowd && dirty()"));
   await press("z", 2);
-  check("undo restores unspecified metadata", await js("!S.label.iscrowd && !dirty()"));
+  check("undo restores the span resolution", await js("same(S.label.iscrowd, [1]) && !dirty()"));
   await select(200);
-  await resolution("1");
+  await press("2");
+  check("changing category preserves span resolution", await js(`
+    S.label.intervals[0][2] === 2 && S.label.iscrowd[0] === 1`));
   await press("s");
   await until("!S.saving && !dirty()");
   await send("Page.reload");
   await opened(170815);
-  check("groups survive saving and reloading", same(await js("S.label.iscrowd"), [1]));
+  check("spans survive saving and reloading", await js(`
+    S.label.intervals[0][2] === 2 && same(S.label.iscrowd, [1])`));
   await select(200);
-  await press("2");
-  check("changing category preserves group resolution", await js(`
-    S.label.intervals[0][2] === 2 && S.label.iscrowd[0] === 1`));
   const [x0, x1, y] = await js(`(() => {
     const r = $("crowd-track").getBoundingClientRect();
     return [r.left + px(200), r.left + px(1200), r.top + 15];
   })()`);
   await drag(x0, x1, y);
-  check("moving an annotation keeps its group flag", await js(`
+  check("moving an annotation keeps its span flag", await js(`
     Math.abs(S.label.intervals[0][0] - 1100) <= 2 && S.label.iscrowd[0] === 1`));
   await press("z", 2);
   await press("1");
@@ -1198,7 +1201,7 @@ async function crowdAnnotations() {
   await press("h");
   await until(`$("versions").open`);
   await js(`$("version-list").querySelector('[data-version="1"]').click()`);
-  check("history restore brings back group metadata", await js(`
+  check("history restore brings back span metadata", await js(`
     S.label.intervals.length === 1 && same(S.label.iscrowd, [1]) && dirty()`));
   await press("z", 2);
   check("undo restores the individual boundaries after history restore", await js(`
@@ -1210,11 +1213,11 @@ async function crowdAnnotations() {
   await opened(170816);
   await press("j");
   await opened(170815);
-  check("navigation restores the draft with its group metadata", same(
+  check("navigation restores the draft with its span metadata", same(
     await js("S.label.iscrowd"), [1, 0, 0, 1]));
   await press("r");
-  check("revert restores the unspecified source", await js(`
-    S.label.intervals.length === 1 && !S.label.iscrowd`));
+  check("revert restores the span source", await js(`
+    S.label.intervals.length === 1 && same(S.label.iscrowd, [1])`));
   await press("z", 2);
   check("undo restores all draft annotation flags", same(
     await js("S.label.iscrowd"), [1, 0, 0, 1]));
@@ -1233,11 +1236,15 @@ async function overlappingAnnotations() {
     $("resolution").value = "${value}";
     $("resolution").dispatchEvent(new Event("change", {bubbles: true}));
   `);
-  check("the editor shows named individual and crowd lanes", await js(`
-    $("individual-lane-name").textContent === "Individual" && !$("crowd-lane").hidden`));
-  await select(200, 0);
+  check("the editor shows named individual and span lanes", await js(`
+    $("individual-lane-name").textContent === "Individual" && !$("crowd-lane").hidden &&
+    $("crowd-lane").querySelector(".name").textContent === "Span"`));
+  await select(200, 1);
+  await resolution("0");
+  check("switching resolution moves the selected annotation into the individual lane", await js(`
+    S.label.iscrowd[S.selected] === 0 && $("resolution").value === "0"`));
   await resolution("1");
-  check("switching resolution moves the selected span into the crowd lane", await js(`
+  check("switching resolution moves the selected annotation into the span lane", await js(`
     S.label.iscrowd[S.selected] === 1 && $("resolution").value === "1"`));
   await press("Escape");
   await draw(150, 200);
@@ -1307,8 +1314,9 @@ async function overlappingAnnotations() {
 async function detachmentCameras(shot = 170815, demo = false) {
   if (!demo) await visit("detachment", shot);
   await until(`S.video && S.video.cards.some(c => c.img?.naturalWidth > 0)`);
-  check("fresh detachment review starts empty despite Source suggestions", await js(`
-    S.meta.source.intervals.length > 0 && S.label.intervals.length === 0 && !dirty()`));
+  check("fresh detachment review opens on its Source states 1–3 as a recorded prefill", await js(`
+    S.meta.source.intervals.some(s => [1, 2, 3].includes(s[2])) && S.label.intervals.length > 0 &&
+    S.label.intervals.every(s => s[2] !== 4) && S.prefilled === true && !dirty()`));
   check("detachment offers all four states", same(await js("S.categories"),
     {1: "attached", 2: "detached", 3: "marfe", 4: "uncertain"}));
   check("CO2 rows display confirmed BCI line-integral units", await js(`
@@ -1341,10 +1349,11 @@ async function detachmentCameras(shot = 170815, demo = false) {
       })`));
     check("real-shot density uses line-density context before local Thomson", await js(`
       S.meta.rows.some(row => row.title.includes("CO2") && row.title.includes("density")) &&
-      !S.meta.rows.some(row => row.title.includes("Thomson core local density"))`));
-    check("TangTV front trace preserves its source identity", await js(`
+      !S.meta.rows.some(row => row.title.includes("Thomson core density"))`));
+    check("TangTV front trace preserves its source identity in its caveat", await js(`
       S.meta.rows.some(row => row.title.includes("TangTV") &&
-        (row.title.includes("regression") || row.title.includes("inversion")))`));
+        /inversion|regression|source not recorded/.test(
+          S.meta.params.panel_metadata[row.name]?.caveat || ""))`));
     check("draft Source lane is connected to producer labels", await js(`
       S.meta.source && S.meta.source.intervals.length > 0`));
   }
@@ -1483,8 +1492,9 @@ async function detachmentCameras(shot = 170815, demo = false) {
         return result;
       } finally { window.frameActive--; }
     }; seekVideo(${middle});`);
-  check("leaving blind mode restores producer context", await js(`
-    !$("source-lane").hidden && !$("detachment-strips").hidden && !$("detachment-details").hidden`));
+  check("leaving blind mode restores producer context and opens the untouched shot on its Source", await js(`
+    !$("source-lane").hidden && !$("detachment-strips").hidden && !$("detachment-details").hidden &&
+    S.label.intervals.length > 0 && S.label.intervals.every(s => s[2] !== 4) && S.prefilled === true && !dirty()`));
   check("detached and uncertain use distinct colour-blind-safe blue and orange", await js(`
     categoryColour(2) === "#0072b2" && categoryColour(4) === "#d55e00"`));
   check("start blank resets selection, preserves Crowd flags, permits category change and Undo", await js(`(() => {
@@ -1650,8 +1660,8 @@ async function detachmentCameras(shot = 170815, demo = false) {
   await until("!S.saving && !dirty()");
   check("detached labels are saved on the usual timeline", await js(`
     S.meta.saved.intervals.some(([a,b,c]) => c === 2 && Math.abs(a-80) <= 2 && Math.abs(b-160) <= 2)`));
-  check("detachment save versions record exposure without producer prefill", await js(`
-    S.meta.last_save.suggestions_shown === true && S.meta.last_save.prefilled === false`));
+  check("detachment save versions record exposure and the Source prefill", await js(`
+    S.meta.last_save.suggestions_shown === true && S.meta.last_save.prefilled === true`));
   check("saving removes exposure-bearing drafts", await js(`stored(draftKey(S.shot)) === null`));
   await js(`window.humanSaved = JSON.stringify(S.meta.saved); revert();
     $("blind-mode").click(); openShot(${shot});`);
@@ -1772,6 +1782,15 @@ try {
           window.api1Saves.push({ method: request.method, path, body: await request.clone().text() });
         }
         if (path === "/api/history") window.api1HistoryRequests++;
+        if (path === "/api/shot") {
+          // An older server knows no resolution, so it sends no span flags.
+          const response = await realFetch(input, options);
+          const body = await response.clone().json();
+          for (const key of ["source", "saved"]) if (body[key]) delete body[key].iscrowd;
+          return new Response(JSON.stringify(body), {
+            status: response.status, headers: { "content-type": "application/json" }
+          });
+        }
         return realFetch(input, options);
       };
     ` });

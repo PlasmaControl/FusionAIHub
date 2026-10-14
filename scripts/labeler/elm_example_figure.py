@@ -30,12 +30,15 @@ import numpy as np
 
 from labeler.config import Paths, git_sha, sha256_of
 from labeler.elm import compare, inputs, labels, methods, prepare, train
+from labeler.paper import theme
 
 WINDOW_MS = 1500.0
 LEAD_MS = 100.0
-#: Okabe-Ito colours: crowd, non-crowd, absent, probability, elm-elmo, clock.
-CROWD, NON_CROWD, ABSENT = "#E69F00", "#CC79A7", "#999999"
-PROB, ELMO, CLOCK = "#009E73", "#D55E00", "#56B4E9"
+#: The paper theme (`labeler.paper.theme`): the reviewed crowd shade sea green, a single
+#: ELM plum, absent grey; the elm-ours probability dark sea green, the elm-elmo ticks
+#: coral, the peak-finder spans slate.
+CROWD, NON_CROWD, ABSENT = theme.SEA_GREEN, theme.PLUM, "#999999"
+PROB, ELMO, CLOCK = theme.SEA_GREEN_DARK, theme.CORAL, theme.SLATE
 
 
 #: Reviewed non-crowd present spans that sit in a high-recycling phase, where ELM

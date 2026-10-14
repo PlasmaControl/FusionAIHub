@@ -68,7 +68,7 @@ model-index:
     - name: f1_at_0.5 (reconstructed inputs)
       type: f1
       value: 0.4858807709547288
-labelmaker:
+labeler:
   status: implemented
   slug: d3d_tearing_onset_cnn1d
   card_id: plasmacontrol/d3d-tearing-onset-cnn1d

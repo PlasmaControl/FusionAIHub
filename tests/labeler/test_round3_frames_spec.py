@@ -14,7 +14,7 @@ from labeler import frames
 from labeler.events import rosters
 from labeler.events.catalog.states import NOT_OBSERVABLE, PRESENT, UNCERTAIN
 from labeler.events.interval_tables import write_label_grid
-from labeler.events.panels._shared import CLIPPED, robust_limits
+from labeler.events.panels._shared import robust_limits
 from labeler.events.review import labels
 from labeler.frames import targets
 from labeler.frames.targets import ABSENT, PRESENT_T, UNCERTAIN_T, UNKNOWN
@@ -36,6 +36,7 @@ from .frames_tree import (
     LEGACY_HULL,
     LMODE,
     NTM,
+    OLD_CLIPPED,
     POPULATION_ONLY,
     POPULATION_WINDOW,
     SAWTOOTH,
@@ -97,7 +98,7 @@ SPECS = {
         NTM,
         (
             ("power", "MPI66M322D power", "image", False, 32, 1, False),
-            ("modes", "toroidal n, MPI66M probes", "modes", False, 10, 1, False),
+            ("modes", "toroidal n, MPI66M", "modes", False, 10, 1, False),
         ),
         "tearing_archive",
         5.0,
@@ -408,7 +409,7 @@ def test_the_tree_stores_hold_each_spec_s_rows(tree):
         assert saved[shot].window == WINDOW
     # The ELM role takes the filterscope, not PCPHD03, clipped suffix and all.
     assert matched["elm_frames", "D-alpha FS"]["title"] == (
-        "D-alpha FS01, the ELM spans' channel" + CLIPPED
+        "D-alpha FS01, the ELM spans' channel" + OLD_CLIPPED
     )
     # The pooled H-mode filterscopes: 7 lit channels, as on 186561.
     fs = matched["hmode_frames", "D-alpha filterscopes"]

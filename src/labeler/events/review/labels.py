@@ -11,9 +11,10 @@ table `review/source.json` points at (a suggestion table), else the newest
 from __future__ import annotations
 
 import getpass
+import hashlib
 import json
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
@@ -24,6 +25,7 @@ import pandas as pd
 from ...config import atomic_path
 from ..catalog.points import validate_csv_fields
 from ..catalog.states import NOT_OBSERVABLE, STATE_NAMES
+from ..grid import GRID_MS, snap, snap_span, snap_window
 from ..interval_tables import (
     INTERVAL_COLUMNS,
     WITH_ATTRS,
@@ -88,22 +90,29 @@ class Label:
 
 
 #: Events the page lists as one, each with the event it is reviewed as. The
-#: confinement regimes were four events; `confinement` carries them all, on the
-#: H-mode event's cohort and rows.
+#: confinement regimes (and I-mode, now its category 6) were separate events;
+#: `confinement` carries them all, on the H-mode event's cohort and rows. The
+#: sawtooth, fishbone and tearing-mode events are MHD n=1, whose subcategories
+#: (see `taxonomy`) say which (m, n) it is. Their saved data is untouched.
 FOLDED = {
     "high_confinement_mode": "confinement",
     "low_confinement_mode": "confinement",
     "quiescent_high_confinement_mode": "confinement",
     "wide_pedestal_quiescent_high_confinement_mode": "confinement",
+    "improved_energy_confinement_mode": "confinement",
+    "sawtooth_oscillation": "mhd_n1",
+    "fishbone": "mhd_n1",
+    "neoclassical_tearing_mode": "mhd_n1",
 }
 
 
 def categories(event: str) -> dict[int, str]:
     """The categories a span can carry; 0 (absent) is the gaps.
 
-    A catalog phenomenon's spans carry present and uncertain; q_min and
-    confinement add their regimes. Not observable is not offered: whatever the
-    reader marks neither present nor uncertain is a gap.
+    A catalog phenomenon's spans carry present and uncertain, as do the MHD n=1..3
+    events and every subcategory; q_min and confinement add their regimes. Not
+    observable is not offered: whatever the reader marks neither present nor
+    uncertain is a gap.
     """
     hidden = STATE_NAMES[NOT_OBSERVABLE]
     return {
@@ -132,15 +141,151 @@ def offered(event: str, label: Label | None) -> Label | None:
     )
 
 
+def on_grid(label: Label | None, grid_ms=GRID_MS) -> Label | None:
+    """`label` on the grid. Spans snap as `grid.snap_span` (a vanishing span keeps
+    its midpoint frame); an evidence-bearing label snaps each boundary and drops
+    the rows that collapse, so it still tiles its window."""
+    if label is None:
+        return None
+    window = snap_window(*label.window, grid_ms)
+    if label.attrs:
+        keep = [
+            (i, (snap(a, grid_ms), snap(b, grid_ms), c))
+            for i, (a, b, c) in enumerate(label.intervals)
+            if snap(b, grid_ms) > snap(a, grid_ms)
+        ]
+        return Label(
+            window, tuple(span for _, span in keep),
+            tuple(label.iscrowd[i] for i, _ in keep) if label.iscrowd else (),
+            tuple(label.attrs[i] for i, _ in keep),
+        )
+    spans = [(*snap_span(a, b, grid_ms), c) for a, b, c in label.intervals]
+    return normalise(window, spans, iscrowd=label.iscrowd or None, grid_ms=grid_ms)
+
+
+#: Events whose annotations are spans (`iscrowd` 1) wherever a table says nothing
+#: about resolution (owner 2026-10-11): an AE or a confinement regime is a stretch of
+#: activity, not one countable event. Their subcategories follow them.
+SPAN_EVENTS = frozenset({"alfven_eigenmode", "confinement"})
+
+
+def span_default(event: str, label: Label | None) -> Label | None:
+    """`label` with every annotation a span when it carries no resolution at all.
+    A table that sets any flag keeps its own; so do evidence-bearing tables."""
+    if (label is None or label.iscrowd or label.attrs or not label.intervals
+            or event.split(".")[0] not in SPAN_EVENTS):
+        return label
+    return replace(label, iscrowd=(1,) * len(label.intervals))
+
+
+def page_label(event: str, label: Label | None) -> Label | None:
+    """A whole-ms label as the page shows it: offered categories, on the grid,
+    spans where the event's default says so.
+    The page, its queues and the silver view all read through this one rule."""
+    return span_default(event, on_grid(offered(event, label)))
+
+
+#: Events whose rows file marks candidate onsets, with the marker label that holds them.
+#: The page opens a shot nobody has saved with each onset as an Individual annotation,
+#: so the candidates are edited like any source label rather than only drawn.
+ONSET_MARKERS = {"edge_localized_mode": "ELM onset"}
+#: Events whose curated onsets each start one mode that lasts (RWM: `rwm.onsets`, not
+#: a rows file's markers). Their draft makes each onset one Individual annotation over
+#: the source's present span from it (`with_onsets`'s `extend`).
+ONSET_EXTENTS = frozenset({"resistive_wall_mode"})
+#: What the page's save accepts per label (`LabelIn.intervals`); a draft above it is
+#: not offered.
+MAX_INTERVALS = 1000
+
+
+def onset_times(event: str, markers) -> list[float]:
+    """The event's candidate onsets, in ms, from a rows file's marker sets."""
+    name = ONSET_MARKERS.get(event)
+    return sorted(
+        float(t)
+        for item in markers or ()
+        if name is not None and item.get("label") == name
+        for t in item["t_ms"]
+    )
+
+
+def with_onsets(
+    label: Label | None, times, t_range, *, category: int = 1, grid_ms=GRID_MS,
+    extend: bool = False,
+) -> Label | None:
+    """`label` (or, with none, an empty label over `t_range`) as a draft: its spans
+    that carry no resolution become Span annotations, and each onset in `times` is an
+    Individual annotation of one frame. Onsets in the same frame make one; onsets
+    outside the window are left out. `label` itself when it carries evidence attrs,
+    when there are no onsets to add, or when the draft would be more than
+    `MAX_INTERVALS` annotations (the ticks are still drawn; a draft the page could not
+    save is not offered).
+
+    With `extend` (`ONSET_EXTENTS`) an onset starts at its nearest frame edge, as the
+    source's spans are snapped, and when a `category` Span holds that edge its
+    annotation runs to the Span's end; the Span keeps only the time no onset covers:
+    one mode, one annotation. An onset no such Span holds stays one frame."""
+    original = label
+    if label is not None and label.attrs:
+        return label
+    if label is None:
+        lo = grid_ms * int(np.floor(t_range[0] / grid_ms))
+        hi = grid_ms * int(np.ceil(t_range[1] / grid_ms))
+        label = Label((lo, min(hi, lo + LONGEST_WINDOW_MS)))
+    lo, hi = label.window
+    if extend:
+        frames = [f for f in sorted({snap(t, grid_ms) for t in times}) if lo <= f < hi]
+    else:
+        frames = sorted({
+            grid_ms * int(np.floor(t / grid_ms)) for t in times if lo <= t < hi
+        })
+    if not frames or len(label.intervals) + len(frames) > MAX_INTERVALS:
+        return original
+    flags = label.iscrowd or (None,) * len(label.intervals)
+    flags = [1 if flag is None else flag for flag in flags]
+    spans = list(label.intervals)
+    onsets = [(f, f + grid_ms) for f in frames]
+    if extend:
+        held = [(a, b) for (a, b, c), flag in zip(spans, flags)
+                if c == category and flag]
+        onsets = [(f, next((b for a, b in held if a <= f < b), f + grid_ms))
+                  for f in frames]
+        kept = [((x, y, c), flag)
+                for (a, b, c), flag in zip(spans, flags)
+                for x, y in (_less(a, b, onsets) if c == category and flag
+                             else [(a, b)])]
+        spans, flags = [span for span, _ in kept], [flag for _, flag in kept]
+    spans += [(a, b, category) for a, b in onsets]
+    flags += [0] * len(onsets)
+    return normalise(label.window, spans, iscrowd=flags, grid_ms=grid_ms)
+
+
+def _less(a, b, holes) -> list[tuple]:
+    """`[a, b)` without the time in `holes`, as pieces."""
+    pieces, cursor = [], a
+    for x, y in sorted(holes):
+        if y <= cursor or x >= b:
+            continue
+        if x > cursor:
+            pieces.append((cursor, x))
+        cursor = max(cursor, y)
+    if cursor < b:
+        pieces.append((cursor, b))
+    return pieces
+
+
 def _ms(t) -> int:
     """Whole ms, halves up (JavaScript's `Math.floor(t + 0.5)`, so the page agrees)."""
     return whole_ms(t)
 
 
 def normalise(
-    window, intervals, known: set[int] | None = None, *, iscrowd=None
+    window, intervals, known: set[int] | None = None, *, iscrowd=None, grid_ms=GRID_MS
 ) -> Label:
-    """Snap to whole ms, grow the window over every span, merge, and clip.
+    """Snap to the grid, grow the window over every span, merge, and clip.
+
+    With `grid_ms=1`, keep the legacy whole-ms rounding and drop spans that
+    round to nothing. On the review grid, short spans keep their midpoint frame.
 
     Later spans paint over earlier ones within the same annotation lane.
     Crowds overlap individual/unspecified annotations. An unscoped category-0
@@ -148,7 +293,10 @@ def normalise(
     Explicit annotation resolution retains each input annotation's boundaries.
     Legacy labels still merge equal categories; unspecified is not individual.
     """
-    lo, hi = _ms(window[0]), _ms(window[1])
+    lo, hi = (
+        (_ms(window[0]), _ms(window[1])) if grid_ms == 1
+        else snap_window(*window, grid_ms)
+    )
     intervals = list(intervals)
     if iscrowd is not None and len(iscrowd) != len(intervals):
         raise ValueError("iscrowd must have one flag per interval")
@@ -157,7 +305,8 @@ def normalise(
     ]
     spans, resolution = [], []
     for (a, b, c), flag in zip(intervals, flags, strict=True):
-        a, b, c = _ms(a), _ms(b), int(c)
+        a, b = (_ms(a), _ms(b)) if grid_ms == 1 else snap_span(a, b, grid_ms)
+        c = int(c)
         if b < a:
             raise ValueError(f"span {a}-{b} ms runs backwards")
         if known is not None and c and c not in known:
@@ -273,33 +422,36 @@ def write_pointer(event_dir, table, *, method: str, version: str) -> dict:
     return entry
 
 
-def read_source(event_dir) -> dict[int, Label]:
-    return _table(source_path(event_dir))
+def read_source(event_dir, *, grid_ms=1) -> dict[int, Label]:
+    """The pointer's table, whole ms by default: evaluations read it as written.
+    The page reads through `page_label`."""
+    return _table(source_path(event_dir), grid_ms=grid_ms)
 
 
-def read_saved(event_dir) -> dict[int, Label]:
-    return _table(labels_path(event_dir))
+def read_saved(event_dir, *, grid_ms=1) -> dict[int, Label]:
+    """Saved labels, whole ms by default: a model's frozen copy stays as trained on."""
+    return _table(labels_path(event_dir), grid_ms=grid_ms)
 
 
-def read_labels(path) -> dict[int, Label]:
+def read_labels(path, *, grid_ms=1) -> dict[int, Label]:
     """Read whole-ms labels; tiered tables retain attrs and explicit absent spans.
 
     Evidence-bearing tables must tile their window with explicit unassessed rows;
     gaps, overlaps, or missing evidence attributes are refused. Their `Label.attrs`
     is aligned to `Label.intervals` and survives `rows()` and `as_json()`.
     """
-    return _table(Path(path))
+    return _table(Path(path), grid_ms=grid_ms)
 
 
-def _table(path) -> dict[int, Label]:
+def _table(path, *, grid_ms) -> dict[int, Label]:
     if path is None or not path.is_file():
         return {}
     stat = path.stat()
-    return _read_table(path, stat.st_mtime_ns, stat.st_ino, stat.st_size)
+    return _read_table(path, stat.st_mtime_ns, stat.st_ino, stat.st_size, grid_ms)
 
 
-@lru_cache(maxsize=64)
-def _read_table(path, _mtime_ns, _ino, _size) -> dict[int, Label]:
+@lru_cache(maxsize=512)  # the silver view reads ~200 tables a shot
+def _read_table(path, _mtime_ns, _ino, _size, grid_ms) -> dict[int, Label]:
     """One label per shot of a format table; cached per file version, never mutate."""
     validate_csv_fields(path)
     frame = validate_intervals(pd.read_csv(path, index_col=False))
@@ -308,13 +460,16 @@ def _read_table(path, _mtime_ns, _ino, _size) -> dict[int, Label]:
         if "attrs" in rows and any(
             EVIDENCE_ATTRS.intersection(parse_attrs(cell)) for cell in rows["attrs"]
         ):
-            # Round before dropping tiny spans: a fractional unassessed interval
-            # can still occupy a whole-ms cell in the review representation.
-            rows = rows[rows.t_end.map(_ms) > rows.t_start.map(_ms)]
+            # Shared boundaries snap together so evidence still tiles its window.
+            boundary = _ms if grid_ms == 1 else lambda t: snap(t, grid_ms)
+            rows = rows[rows.t_end.map(boundary) > rows.t_start.map(boundary)]
             if len(rows):
-                found[int(shot)] = _evidence_label(int(shot), rows)
+                found[int(shot)] = _evidence_label(int(shot), rows, grid_ms=grid_ms)
             continue
-        rows = rows[rows.t_end - rows.t_start >= 1]  # point events are not editable
+        rows = rows[
+            rows.t_end - rows.t_start >= 1 if grid_ms == 1
+            else rows.t_end > rows.t_start
+        ]  # point events are not editable
         if not len(rows):
             continue
         spans = rows[rows.category != 0]
@@ -323,15 +478,17 @@ def _read_table(path, _mtime_ns, _ino, _size) -> dict[int, Label]:
             zip(spans.t_start, spans.t_end, spans.category),
             iscrowd=([parse_attrs(cell).get("iscrowd") for cell in spans["attrs"]]
                      if "attrs" in spans else None),
+            grid_ms=grid_ms,
         )
     return found
 
 
-def _evidence_label(shot: int, rows: pd.DataFrame) -> Label:
+def _evidence_label(shot: int, rows: pd.DataFrame, *, grid_ms=1) -> Label:
     """Keep tiered rows intact; never infer absent coverage across their gaps."""
     rows = rows.sort_values(["t_start", "t_end"], kind="stable")
     spans, attrs, flags = [], [], []
-    end = _ms(rows.t_start.iloc[0])
+    boundary = _ms if grid_ms == 1 else lambda t: snap(t, grid_ms)
+    end = boundary(rows.t_start.iloc[0])
     for row in rows.itertuples():
         evidence = parse_attrs(row.attrs)
         if (
@@ -343,7 +500,7 @@ def _evidence_label(shot: int, rows: pd.DataFrame) -> Label:
                 f"shot {shot} needs evidence_tier and boolean coverage_verified "
                 "on every evidence-bearing interval"
             )
-        a, b = _ms(row.t_start), _ms(row.t_end)
+        a, b = boundary(row.t_start), boundary(row.t_end)
         if a != end:
             raise ValueError(
                 f"shot {shot} evidence intervals must tile without overlaps; "
@@ -353,7 +510,7 @@ def _evidence_label(shot: int, rows: pd.DataFrame) -> Label:
         attrs.append(attrs_text(evidence))
         flags.append(evidence.get("iscrowd"))
         end = b
-    window = normalise((spans[0][0], end), []).window
+    window = normalise((spans[0][0], end), [], grid_ms=grid_ms).window
     return Label(
         window, tuple(spans),
         tuple(flags) if any(flag is not None for flag in flags) else (),
@@ -383,6 +540,7 @@ def save(
     crowd_edit: bool = False,
     suggestions_shown: bool | None = None,
     prefilled: bool | None = None,
+    extra: dict | None = None,
 ) -> dict:
     """Replace one shot's rows in `labels.csv` and append the save to history.
 
@@ -406,9 +564,15 @@ def save(
     `suggestions_shown` and `prefilled` record producer exposure and anchoring
     for each saved version. None preserves unknown provenance from old clients;
     it must never be interpreted as an independent blind review.
+
+    `extra` is more provenance for the history line (a subcategory save names the
+    parent version it was clipped to; see `parent_stamp`).
     """
     with _write_lock:
-        source_label = read_source(event_dir).get(int(shot))
+        try:
+            source_label = read_source(event_dir).get(int(shot))
+        except (ValueError, OSError):  # a broken pointer table has nothing to protect
+            source_label = None
         if label.attrs or (source_label is not None and source_label.attrs):
             raise SaveRefused(
                 f"shot {shot} has evidence attributes that the review page cannot "
@@ -465,6 +629,8 @@ def save(
         }
         if source_sha256 is not None:
             entry["source_sha256"] = source_sha256
+        if extra:
+            entry.update(extra)
         with history_path(event_dir).open("a") as stream:
             stream.write(json.dumps(entry) + "\n")
     return entry
@@ -478,9 +644,9 @@ def state(saved: Label | None, source: Label | None) -> str:
     return "confirmed" if saved == source else "changed"
 
 
-def queue(event_dir, roster: pd.DataFrame) -> dict:
+def queue(event_dir, roster: pd.DataFrame, *, event: str | None = None) -> dict:
     """The roster in order, each shot's state and last save, and where to resume."""
-    event = Path(event_dir).name
+    event = event or Path(event_dir).name
     saved, source = read_saved(event_dir), read_source(event_dir)
     history = read_history(event_dir)
     saved_at = {entry["shot"]: entry["saved_at"] for entry in history}
@@ -489,8 +655,8 @@ def queue(event_dir, roster: pd.DataFrame) -> dict:
             "shot": int(row.shot),
             "tier": row.tier,
             "state": state(
-                offered(event, saved.get(int(row.shot))),
-                offered(event, source.get(int(row.shot))),
+                page_label(event, saved.get(int(row.shot))),
+                page_label(event, source.get(int(row.shot))),
             ),
             "saved_at": saved_at.get(int(row.shot)),
         }
@@ -512,11 +678,24 @@ def resume(shots: list[dict], history: list[dict]) -> int | None:
     return last if last in order else order[0]
 
 
-def shot_labels(event_dir, shot: int, *, suppress_source=False) -> dict:
+def shot_labels(
+    event_dir, shot: int, *, suppress_source=False, event: str | None = None,
+    region: Region | None = None,
+) -> dict:
+    """A shot's source and saved labels, as the page opens them.
+
+    `event` names the categories on offer when the directory's name is not the
+    event's id (a subcategory's is). With `region`, both labels are clipped to it
+    and given its window: whatever the parent's label no longer marks is gone.
+    """
     shot = int(shot)
-    event = Path(event_dir).name
-    saved = offered(event, read_saved(event_dir).get(shot))
-    source = None if suppress_source else offered(event, read_source(event_dir).get(shot))
+    event = event or Path(event_dir).name
+    saved = page_label(event, read_saved(event_dir).get(shot))
+    source = None if suppress_source else page_label(
+        event, read_source(event_dir).get(shot)
+    )
+    if region is not None:
+        saved, source = region.clip(saved), region.clip(source)
     history = read_history(event_dir)
     last = next((entry for entry in reversed(history) if entry["shot"] == shot), None)
     return {
@@ -525,3 +704,100 @@ def shot_labels(event_dir, shot: int, *, suppress_source=False) -> dict:
         "state": state(saved, source),
         "last_save": last,
     }
+
+
+# ---- subcategories: a label inside its parent's label ----
+
+
+@dataclass(frozen=True)
+class Region:
+    """Where a subcategory may be labelled on one shot.
+
+    `window` is the parent's saved window and `spans` the merged union of its
+    saved spans with a category on offer (present or uncertain, both lanes);
+    the parent's absent gaps and anything it does not offer are outside it.
+    """
+
+    window: tuple[int, int]
+    spans: tuple[tuple[int, int], ...]
+
+    def clip(self, label: Label | None) -> Label | None:
+        """`label` cut to the region, on the region's window; a span that crosses a
+        gap in the region comes back as the pieces inside it, with its lane."""
+        if label is None:
+            return None
+        flags = label.iscrowd or (None,) * len(label.intervals)
+        pieces, kept = [], []
+        for (a, b, c), flag in zip(label.intervals, flags, strict=True):
+            for lo, hi in self.spans:
+                start, stop = max(a, lo), min(b, hi)
+                if stop > start:
+                    pieces.append((start, stop, c))
+                    kept.append(flag)
+        return normalise(
+            self.window, pieces,
+            iscrowd=kept if any(flag is not None for flag in kept) else None,
+        )
+
+    def as_json(self) -> list[list[int]]:
+        return [list(span) for span in self.spans]
+
+
+def region_of(parent_event: str, parent: Label | None) -> Region | None:
+    """The region a parent's saved label opens to its subcategories; None while the
+    parent is unsaved on the shot (an all-absent saved label is a region of nothing)."""
+    if parent is None:
+        return None
+    shown = categories(parent_event)
+    spans = sorted((a, b) for a, b, c in parent.intervals if c in shown)
+    merged: list[list[int]] = []
+    for a, b in spans:
+        if merged and a <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], b)
+        else:
+            merged.append([a, b])
+    return Region(parent.window, tuple((a, b) for a, b in merged))
+
+
+def parent_stamp(parent_event: str, parent_dir, shot: int, parent: Label) -> dict:
+    """What a subcategory save records of the parent version it was clipped to: the
+    parent's event, when its label for the shot was last saved and a digest of it."""
+    last = next(
+        (e for e in reversed(read_history(parent_dir)) if e.get("shot") == int(shot)),
+        None,
+    )
+    digest = hashlib.sha256(
+        json.dumps(parent.as_json(), sort_keys=True).encode()
+    ).hexdigest()
+    return {
+        "parent": parent_event,
+        "parent_saved_at": None if last is None else last.get("saved_at"),
+        "parent_sha256": digest,
+    }
+
+
+def child_queue(
+    event: str, event_dir, parent_event: str, parent_dir, roster: pd.DataFrame
+) -> dict:
+    """The subcategory's queue: the parent roster's shots whose saved parent label
+    marks something, each with the subcategory's own state and last save."""
+    parents = read_saved(parent_dir)
+    saved, source = read_saved(event_dir), read_source(event_dir)
+    history = read_history(event_dir)
+    saved_at = {entry["shot"]: entry["saved_at"] for entry in history}
+    shots = []
+    for row in roster.itertuples():
+        shot = int(row.shot)
+        region = region_of(parent_event, page_label(parent_event, parents.get(shot)))
+        if region is None or not region.spans:
+            continue
+        shots.append({
+            "shot": shot,
+            "tier": row.tier,
+            "state": state(
+                region.clip(page_label(event, saved.get(shot))),
+                region.clip(page_label(event, source.get(shot))),
+            ),
+            "saved_at": saved_at.get(shot),
+        })
+    return {"shots": shots, "resume": resume(shots, history)}

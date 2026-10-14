@@ -16,7 +16,7 @@ Outputs:
 
 * `data/events/detachment/extend_detach_vote/<list>.csv` (+ `.meta.json` and one
   50 ms grid per shot): the chosen labeler's states as intervals, schema of
-  `data/events/README.md`; coding 0 absent, 1 attached, 2 detached, 3 marfe,
+  `docs/labeler/events/README.md`; coding 0 absent, 1 attached, 2 detached, 3 marfe,
   4 uncertain; time that was not assessed has no row (unknown in the grids);
 * `data/events/detachment/extend_detach_vote/records/*.json`: coverage, indicator
   agreement, learned parameters, structure selection, rule-versus-model matrix;

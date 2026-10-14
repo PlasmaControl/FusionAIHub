@@ -294,6 +294,29 @@ def test_a_blind_shot_cannot_be_named(cohort_env, capsys):
     assert "not in the cohort (or blind): [1]" in capsys.readouterr().err
 
 
+def test_silver_windows_add_the_silver_shots_outside_the_population(cohort_env, capsys):
+    p, _, windows = cohort_env
+    p.catalog.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(
+        {"shot": [2, 3], "window_start_ms": [0, 0], "window_end_ms": [1000, 1000]}
+    ).to_csv(p.catalog / "population.csv", index=False)
+    (p.label_tables / "silver").mkdir(parents=True)
+    pd.DataFrame({
+        "shot": [3, SHOT, 7], "batch": 1, "order": [1, 2, 3], "pool": "corpus",
+        "classes": "", "sources": "", "notes": "",
+    }).to_csv(p.label_tables / "silver" / "silver_shots.csv", index=False)
+    _ip_ramp(p)
+    got = spans.targets("edge_localized_mode", p, "silver")
+    assert list(got.shot) == [2, 3, 7, SHOT]
+    summary = _run(capsys, "--windows", "silver", "--shots", str(SHOT), "7")
+    assert (summary["shots_run"], summary["skipped_run"]) == (1, 1)
+    lo, hi = windows[SHOT]
+    assert 10 < lo < 20 and 790 < hi <= 800, "the Ip ramp's own window"
+    path = suggestions.table_path(p, "edge_localized_mode", "elm_clock", "v1")
+    meta = json.loads(path.with_suffix(".meta.json").read_text())
+    assert meta["skipped"] == {"7": "no catalog window"} and meta["windows"] == "silver"
+
+
 def test_with_no_cohort_in_the_tables_the_checkouts_is_read(tmp_path, monkeypatch):
     p = tree.paths(tmp_path)
     own = tmp_path / "checkout" / "data" / "events"

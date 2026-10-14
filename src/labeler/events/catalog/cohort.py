@@ -28,7 +28,7 @@ random subsample of every group.
 Keys are hashes of (seed, purpose, shot), not draws from one generator, so a shot's
 key does not depend on which other shots are in the population.
 
-    pixi run -e labelmaker python -m labeler.events.catalog.cohort
+    pixi run -e labeler python -m labeler.events.catalog.cohort
 
 reads `$LABELER_ROOT/catalog/{pool.csv, ip.jsonl}`, `data/events/catalog/papers.csv`,
 `data/events/catalog/runaway.csv`

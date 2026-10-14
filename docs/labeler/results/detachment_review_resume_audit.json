@@ -2,7 +2,7 @@
   "made_at": "2026-10-05T03:12:45+00:00",
   "git_sha": "bbd258bcd134bcf0e7a4c9c567cce7482f3d9882",
   "script_sha256": "95018c0d668978b7f13bd243a43c42ccdd7f0766f85ccdef753fdbef3951aea7",
-  "build_record": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui/roster_build.json",
+  "build_record": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach-ui/roster_build.json",
   "resume_stores": 394,
   "resume_would_rebuild": 0,
   "recipes_refreshed": [],

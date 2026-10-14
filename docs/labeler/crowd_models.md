@@ -5,6 +5,9 @@ learned event class. It is relevant when an ELM burst train, a sawtooth
 sequence, or another unresolved event span is labeled as one group while
 some events in the span have individual times or masks.
 
+The review page calls a crowd a **span** (the Span lane and Resolution option, owner
+2026-10-11); the stored attribute, the API field and this note keep `iscrowd`.
+
 ## What COCO `iscrowd` means
 
 COCO does not define a `crowd` category. `iscrowd` is a per-annotation flag

@@ -1,7 +1,7 @@
 r"""fig2_coverage: how much labelled data each label set holds, legacy against
 Tokamak-SI, for the coverage row of Figure 2 (`fig_benchmarks.py`).
 
-    PYTHONPATH=src pixi run --frozen -e labelmaker \
+    PYTHONPATH=src pixi run --frozen -e labeler \
         python scripts/labeler/paper/fig2_coverage.py [--out PATH]
 
 One definition for every set (`DEFINITION`): a set's labelled time is, shot by

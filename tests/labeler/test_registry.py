@@ -3,16 +3,16 @@ import pytest
 
 from labeler.models import registry
 
-REQUIRED_TOP = ("pipeline_tag", "tags", "library_name", "labelmaker")
+REQUIRED_TOP = ("pipeline_tag", "tags", "library_name", "labeler")
 REQUIRED_LM = ("status", "slug", "card_id", "framework", "upstream", "inputs", "outputs")
 
 
 def test_front_matter_is_parsed():
     card = registry.parse_card(
-        "---\nlibrary_name: keras\nlabelmaker:\n  status: scaffold\n---\n\n# Title\n"
+        "---\nlibrary_name: keras\nlabeler:\n  status: scaffold\n---\n\n# Title\n"
     )
     assert card["library_name"] == "keras"
-    assert card["labelmaker"]["status"] == "scaffold"
+    assert card["labeler"]["status"] == "scaffold"
 
 
 def test_a_card_without_front_matter_is_an_error():
@@ -27,7 +27,7 @@ def test_every_model_folder_has_a_well_formed_card():
         card = registry.read_card(slug)
         for key in REQUIRED_TOP:
             assert key in card, f"{slug}: card is missing {key}"
-        lm = card["labelmaker"]
+        lm = card["labeler"]
         for key in REQUIRED_LM:
             assert key in lm, f"{slug}: labeler block is missing {key}"
         assert lm["slug"] == slug
@@ -47,7 +47,7 @@ def test_scaffolds_declare_what_blocks_them_and_refuse_to_load():
     assert registry.scaffolds(), "expected scaffolded models"
     for slug in registry.scaffolds():
         card = registry.read_card(slug)
-        assert card["labelmaker"]["blocked_on"], f"{slug}: no blocked_on entries"
+        assert card["labeler"]["blocked_on"], f"{slug}: no blocked_on entries"
         with pytest.raises(NotImplementedError, match=slug):
             registry.load_adapter(slug)
 

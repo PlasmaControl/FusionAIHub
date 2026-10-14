@@ -4,7 +4,7 @@
     # in the sbatch that submits the work
     JOBID=$(sbatch --parsable my_work.sbatch)
     sbatch --dependency=afterany:$JOBID --partition=serial --time=00:10:00 \
-        --wrap "pixi run -e labelmaker python scripts/labeler/jobstats_check.py \
+        --wrap "pixi run -e labeler python scripts/labeler/jobstats_check.py \
             --job-id $JOBID --wait-for-data 300 \
             --preserve-dir $LABELER_ROOT/runs/slurm"
 

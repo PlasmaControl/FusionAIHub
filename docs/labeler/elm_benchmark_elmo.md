@@ -40,7 +40,7 @@ kind of truth, and on our review labels.
   F1 0.856 (precision 0.818, recall 0.898), inside the intervals of the published setting.
 
 Reproduce: `python scripts/labeler/elmo_benchmark.py smith`, then `review`, then
-`sweep`, then `evaluate` (environment `labelmaker`; the inputs come from
+`sweep`, then `evaluate` (environment `labeler`; the inputs come from
 `scripts/labeler/elmo_fetch.py`). The record is `outputs/labeler/elm/elmo/evaluation.json`; the
 per-window and per-ELM tables are under `$LABELER_ROOT/benchmarks/elm/elmo/`.
 

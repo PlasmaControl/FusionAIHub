@@ -1,6 +1,6 @@
 """The paper's teaser figure, `fig_interpreter`: one shot with the catalog's labels.
 
-    PYTHONPATH=src pixi run --frozen -e labelmaker \\
+    PYTHONPATH=src pixi run --frozen -e labeler \\
         python -m labeler.paper.label_figure --out DIR [--shot SHOT] [--no-gate]
 
 It replaces the suggestions figure `paper.roster` drew, whose tracks were
@@ -78,7 +78,8 @@ from ..events.review import labels
 from ..events.review import rows as store_rows
 from ..events.spans import cohort_path
 from ..events.verify import NoDataError
-from . import LOGIN_THREADS, PAGE_IN, roster, save, style
+from ..frames.features import TITLE_PATTERNS, title_matches
+from . import LOGIN_THREADS, PAGE_IN, roster, save, style, theme
 from .roster import ROW_COLOURS, TRACE_LW, Read, Signal, read_row
 from .shots import MARGIN_MS, NO_DATA, Model, show_image, text_track
 
@@ -102,20 +103,29 @@ CO2_TITLE = "CO2 R0 power"
 CO2_TOP_KHZ = 125.0
 CO2_YLABEL = "CO2 R0 power\nkHz"
 #: The merged confinement table's regime letters, as the review page's
-#: confinement event numbers them (1 high, 2 low, 3 qh, 4 wpqh, 5 uncertain).
+#: confinement event numbers them (1 high, 2 low, 3 qh, 4 wpqh, 5 uncertain; the
+#: review page also has 6 I-mode, which the merged tables do not hold).
 REGIME_CODES = {"H": 1, "L": 2, "QH": 3, "WP": 4, "H|L": 5}
 ABSENT_NAME = "absent"
 BINARY = {PRESENT: "present", UNCERTAIN: "uncertain", NOT_OBSERVABLE: "not observable"}
-REGIMES = {1: "H-mode", 2: "L-mode", 3: "QH-mode", 4: "WPQH-mode", 5: "uncertain"}
+REGIMES = {
+    1: "H-mode",
+    2: "L-mode",
+    3: "QH-mode",
+    4: "WPQH-mode",
+    5: "uncertain",
+    6: "I-mode",
+}
 COLOURS = {
     ABSENT_NAME: "#e2e2e2",
     "present": STATE_COLOURS[PRESENT],
     "uncertain": STATE_COLOURS[UNCERTAIN],
     "not observable": STATE_COLOURS[NOT_OBSERVABLE],
-    "H-mode": "#2c7fb8",
-    "L-mode": "#a6d96a",
+    "H-mode": theme.SEA_GREEN,
+    "L-mode": theme.SEA_GREEN_LIGHT,
     "QH-mode": "#41b6c4",
     "WPQH-mode": "#253494",
+    "I-mode": theme.SAFFRON,
 }
 CROWD = "crowd (ELMing period)"
 CROWD_HATCH = "//////"
@@ -466,7 +476,10 @@ def pick(
 
 def matches(title: str, role_title: str) -> bool:
     """Whether a store row's `title` is the role's: it starts with the role's
-    first comma part and holds every other part."""
+    first comma part and holds every other part (the ELM's `D-alpha FS` is the
+    single chord `D-alpha FSnn`, never the strike sum: `frames.features`)."""
+    if role_title in TITLE_PATTERNS:
+        return title_matches(title, role_title)
     head, *rest = [p.strip() for p in role_title.split(",")]
     return title.startswith(head) and all(p in title for p in rest)
 
@@ -645,6 +658,7 @@ LEGEND_ORDER = (
     "L-mode",
     "QH-mode",
     "WPQH-mode",
+    "I-mode",
     CROWD,
     UNLABELLED,
 )

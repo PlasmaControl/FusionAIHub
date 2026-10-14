@@ -1,9 +1,9 @@
 {
   "mode": "frozen queue order only; producer not reread; stores unchanged",
   "script_sha256": "39b491262c3fab1c03915f8b6d9d04251a6d217c8b5457a819a76acd4f5046f7",
-  "scan": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui/corpus_scan.json",
+  "scan": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach-ui/corpus_scan.json",
   "scan_sha256": "8d2e94bffb23c6dc6b2c7c89e75e2343613eebd935003b19c6c362d7cacdc1cf",
-  "roster": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui/tables/detachment/shots.csv",
+  "roster": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach-ui/tables/detachment/shots.csv",
   "before_sha256": "222dcf9d9f85bb0e8cd52133ec92e50dff8eba32752bdfa22ef438cc759acd36",
   "after_sha256": "a5593f3113dbd2b6915ea6e36f42eff61e2c30a705f6245800f4e874ceda7685",
   "queue_count": 247,

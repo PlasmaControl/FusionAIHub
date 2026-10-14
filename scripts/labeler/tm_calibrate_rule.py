@@ -25,7 +25,7 @@ from scipy.ndimage import median_filter
 from labeler.tearing.magfeatures import FEATURE_NAMES
 
 REPO = Path(__file__).resolve().parents[2]
-ROOT = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker"))
+ROOT = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
 OUT = ROOT / "round4/tm"
 
 

@@ -17,7 +17,7 @@ and `tests/labeler/test_events_ui.py`.
 ## Opening it
 
 ```bash
-pixi run --frozen -e labelmaker labeler-verify
+pixi run --frozen -e labeler labeler-verify
 ```
 
 This prints a link carrying a fresh token and an `ssh -L 8811:localhost:8811 <node>`
@@ -117,43 +117,101 @@ that edit back. Restoring the current label leaves it alone.
 | `S` / `R` | save / revert to the source |
 | `←` `→` or `J` `K` / `U` | previous, next shot (an edit stays as a draft) / next unreviewed |
 | `H` | saved versions, and restore one |
+| `T` | show or hide the event markers (ticks over every row, one colour per label, listed in the header) |
 | `M` / click a mask region | AE: hide or show the pseudo-mask and TokEye layer / reject the region, or take that back |
 | `[` `]` | contrast |
 | `?` | this list |
 
-### Individual events and groups
+### Individual events and spans
 
-The **Resolution** selector applies to the selected span and to new spans.
-Choose **Individual** for one resolved event, **Group (crowd)** for an envelope
-whose constituent events have not been individually delineated, or
-**Unspecified** when that distinction has not been reviewed. Resolution is
-independent of the event category: the uncertain category still describes the
-evidence, while a group describes annotation granularity.
-The **Individual** and **Crowd** bars are separate editable lanes. Drag in the
-Individual bar to delineate an event inside a crowd envelope; the crowd stays
-intact. Drag in the Crowd bar to annotate a group over existing individuals.
-Clicking, moving, resizing or deleting a span affects its own lane. Switching
-the selected span's resolution moves it to the other lane. Each wide span
-shows its category and resolution; crowd spans are also hatched. Touching
-individual spans retain their separate boundaries, even when categories match.
-Within a lane, a newly drawn or moved span replaces the coverage it crosses.
+The **Resolution** selector applies to the selected annotation and to new ones.
+Choose **Span** for a stretch of events that have not been individually
+delineated (the stored `iscrowd` 1, COCO's "crowd"), **Individual** for one
+resolved event, or **Unspecified** when that distinction has not been reviewed.
+Resolution is independent of the event category: the uncertain category still
+describes the evidence, while a span describes annotation granularity.
+The **Individual** and **Span** bars are separate editable lanes. Drag in the
+Individual bar to delineate an event inside a span; the span stays intact.
+Drag in the Span bar to annotate a stretch over existing individuals.
+Clicking, moving, resizing or deleting an annotation affects its own lane.
+Switching the selected annotation's resolution moves it to the other lane. Each
+wide annotation shows its category and resolution; spans are also hatched.
+Touching individual annotations retain their separate boundaries, even when
+categories match. Within a lane, a newly drawn or moved annotation replaces the
+coverage it crosses.
 
-New ELM and sawtooth spans default to Group because their draft workflow
-identifies event trains; this sets the type for Shift-drag on diagnostic rows.
-Dragging directly in a label lane uses that lane's type. Other events default
-to Individual. Existing labels
-without resolution metadata remain Unspecified; opening or saving them does
-not invent individual events. Unspecified spans appear in the Individual bar
-with an Unspecified caption. Changing resolution, moving or resizing a span,
-undo, drafts and history restore preserve the distinction. To delineate two
-touching events, Shift-drag on the diagnostic rows; dragging an existing
-span's edge resizes it.
+**New annotations default to Span, for every event** (owner 2026-10-11; before,
+only ELM, sawtooth and MHD 1/1 did). This sets the type for Shift-drag on the
+diagnostic rows; dragging directly in a lane uses that lane's type. The
+**Alfvén eigenmode** and **confinement** events (and the AE subcategories) go
+further: a label from any layer (saved, format, extend, source, suggestion) that
+carries no resolution at all opens with every annotation a Span
+(`labels.SPAN_EVENTS`, `labels.span_default`). A table that sets any flag keeps
+its own, and nothing is written to the tables until a save. For other events,
+existing labels without resolution metadata remain Unspecified; opening or
+saving them does not invent individual events. Unspecified annotations appear in
+the Individual bar with an Unspecified caption. Changing resolution, moving or
+resizing an annotation, undo, drafts and history restore preserve the
+distinction. To delineate two touching events, Shift-drag on the diagnostic
+rows; dragging an existing annotation's edge resizes it.
 
-Annotation boundaries still snap to whole milliseconds. A group may contain
+**ELM onset candidates are in the draft** (owner 2026-10-11). The yellow ticks on
+the ELM page are the jump-and-hold onsets of the D-alpha detector
+(`panels.edge_localized_mode.markers`). A shot nobody has saved now opens with
+each onset as a one-frame **Individual** annotation (present, on the 10 ms frame
+that holds it) beside the source's ELMy-period spans, which open as **Span**
+annotations. They are edited like any source label (move, resize, delete,
+re-categorise, add), and Revert returns to this draft. The ticks are still drawn
+(T hides them). Onsets in one frame make one annotation, onsets outside the window
+are left out, and a draft of more than 1,000 annotations is not offered (the ticks
+remain). Once a shot is saved the page offers the plain source and the save, no
+candidates: `labels.with_onsets` is applied only by `/api/shot` to a shot with no
+save, never by a save or the queue, so an unedited draft that is saved counts as
+changed from the source table. `/api/shot` reports the number added as
+`onset_candidates`.
+
+Annotation boundaries still snap to whole milliseconds. A span may contain
 bursts finer than this grid; resolving sub-millisecond ELM boundaries would
 require a separate precision change. The selector records annotation facts;
 it does not change a trained model. Model options and proposed loss/evaluation
 semantics are in [Group versus individual event annotations](crowd_models.md).
+The page says "Span"; the stored attribute and the API field stay `iscrowd`
+(`{"iscrowd": 1}`), so saved tables, history and every reader are unchanged.
+
+## Subcategories
+
+A subcategory is a subset of its parent, not another category: whatever is on
+as the parent may also be on as a subcategory, and siblings overlap freely.
+The dropdown groups events (`MHD mode`: `mhd_n1`..`mhd_n3`); an event with
+subcategories shows a bar of chips under it, `all` and one per subcategory with
+its reviewed count (`1/1 (sawtooth, fishbone)`, `RSAE`). The chips and display
+names come from the `taxonomy:` block of `configs/labeler/events.yaml`
+(`labeler.events.taxonomy`); a new kind is one more entry there, and
+`review: false` leaves an event off the dropdown and the silver set (disruption
+and VDE). A subcategory
+id is `<event>.<key>` (`mhd_n1.m1`, `alfven_eigenmode.rsae`) and the address
+`#<id>/<shot>` opens it.
+
+Label the parent first. A chip opens on the shot on screen once the parent is
+saved on it with something marked; before that it is disabled (`review <event>
+first`). A subcategory's page shows the parent's saved label read-only above the
+label lane, over the parent's rows and window. Where the parent marks nothing
+is hatched, and drawing, moving and resizing stop at its edge; the server cuts
+every saved span (both lanes) to the parent's spans the same way. Its queue is
+the parent's shots with a saved, non-empty label. An AE subcategory draws the
+mask read-only: rejecting a region is a decision on AE.
+
+A subcategory's saves are in `<event>/subcategories/<key>/review/` (`labels.csv`,
+`history.jsonl`, an optional `source.json`); each history line names the parent
+version it was cut to (`parent_saved_at`, `parent_sha256`). Re-saving the parent
+smaller hides the child's spans outside it on read, and a later child save cannot
+bring them back; the file keeps them until then. In a child's table time that is
+not a span is a gap, not an assessed absence: read it with the parent's label.
+
+`sawtooth_oscillation`, `fishbone` and `neoclassical_tearing_mode` are reviewed
+as `mhd_n1` (1/1, 2/1 and 3/1 are its subcategories) and
+`improved_energy_confinement_mode` as `confinement`; their saved labels are not
+touched, and the page neither lists nor opens them.
 
 ## The cohort editors
 
@@ -302,14 +360,16 @@ mark the sawtooth or ELMs you see there by hand.
 - The page offers this editor as `confinement`, and not `high_confinement_mode`,
   `low_confinement_mode`, `quiescent_high_confinement_mode` or
   `wide_pedestal_quiescent_high_confinement_mode`: a span is 1 high, 2 low, 3 qh,
-  4 wpqh or 5 uncertain, and unmarked time is a gap. It shares these rows. Its
+  4 wpqh, 5 uncertain or 6 imode (I-mode; the former
+  `improved_energy_confinement_mode` event, folded in), and unmarked time is a
+  gap. It shares these rows. Its
   draft is this one renumbered (present is high, uncertain is 5, absent and not
   observable are left unmarked), except on the shots that have curated regime
   intervals (Gill's and Butt's: H, L, QH, WP), which open on those. Its roster is
   the 450 queue shots and then the 389 curated shots that have a D-alpha record
   (corpus or raw cache); the other 45 curated shots have none yet, and nothing
   fetches it for them while the page runs.
-  See `data/events/confinement/README.md`.
+  See `docs/labeler/events/confinement/README.md`.
 
 **Sawtooth** (`ece_sawtooth`).
 
@@ -404,20 +464,20 @@ provide this calibration, so those shots use the labeled fallback comparison.
 ```bash
 # The raw cache the ELM and H-mode rows draw (PCPHD03, and CO2 for old shots):
 # on the login node, one editor at a time.
-pixi run -e labelmaker fdp run python -m labeler.events.raw --event edge_localized_mode
-pixi run -e labelmaker fdp run python -m labeler.events.raw --event high_confinement_mode
+pixi run -e labeler fdp run python -m labeler.events.raw --event edge_localized_mode
+pixi run -e labeler fdp run python -m labeler.events.raw --event high_confinement_mode
 # The drafts, over the queue; --force redoes shots already drafted, --gold scores
 # the drafts on the roster's gold shots into the meta (sbatch: scripts/labeler/spans.sbatch).
 # --version v2 writes beside v1's tables, which refuse a rerun under today's rules.
-pixi run -e labelmaker python -m labeler.events.spans --event sawtooth_oscillation --version v2 --gold
+pixi run -e labeler python -m labeler.events.spans --event sawtooth_oscillation --version v2 --gold
 # The roster in queue order, and --point opens the page on the v1 draft.
-pixi run -e labelmaker python -m labeler.events.review.cohort_rosters \
+pixi run -e labeler python -m labeler.events.review.cohort_rosters \
     --event sawtooth_oscillation --point
 # The row store ahead of the review; --force rebuilds built shots
 # (sbatch: scripts/labeler/review_build.sbatch).
-pixi run -e labelmaker python -m labeler.events.review.build --event sawtooth_oscillation --workers 8
+pixi run -e labeler python -m labeler.events.review.build --event sawtooth_oscillation --workers 8
 # The gate: how close the saved labels came to the draft.
-pixi run -e labelmaker python -m labeler.events.review.agreement --event sawtooth_oscillation
+pixi run -e labeler python -m labeler.events.review.agreement --event sawtooth_oscillation
 ```
 
 `agreement` counts a saved shot only when its last save in
@@ -436,19 +496,45 @@ gold-tier shots. Its reference is the saved labels (`review/labels.csv`), or the
 label table whose path follows `--gold`. The ten gold sawtooth shots have no
 gold label yet, so their score counts 0 shots, and `missing` names the ten.
 
+## 10 ms grid
+
+Every review event and subcategory uses the same grid: frame k covers
+[10k, 10k+10) ms. Boundaries round to the nearest frame edge, halves up;
+a window's ends snap the same way. A short span that would vanish keeps the
+frame containing its midpoint; a zero-length point is dropped. The page
+and server use the same rule. Evidence-bearing tables snap shared boundaries
+and drop collapsed spans so their explicit coverage still tiles the window.
+The page, its queues and the silver view read every table through one rule,
+`labels.page_label` (the page's categories, then the grid). `read_labels`,
+`read_saved` and `read_source` keep whole-ms values by default, so evaluation,
+training and the models' frozen label copies read what was written.
+
+## Silver and gold sets
+
+The page's `Silver set` entry (first in the event list) opens the 450-shot list that is
+reviewed for every event, in five batches of 90 (`data/events/silver/`). The `Gold set`
+box beside the event list offers only the gold set's 50 shots (`data/events/gold/`:
+shots from 170000 up with hand labels or a curated source, every observed class, a few
+run days, about the same number from each shot-number decade 17xxxx-20xxxx, plus three the owner
+picked from the 2024-07-11 tearing-mode experiment) on
+whichever event is open, including those the event's own roster lacks; the choice is
+remembered in the browser. A shot on neither list is still opened by typing its number.
+Silver and gold share no shot.
+
 ## What a save writes
 
 Saves go under the event's directory in the label tables
 (`data/events/<event>/` unless `LABELER_LABEL_TABLES` says otherwise):
 
 - `review/labels.csv` holds the current label of every reviewed shot, in the
-  format-table schema (`shot, category, t_start, t_end, confidence`, whole ms).
+  format-table schema (`shot, category, t_start, t_end, confidence`, on the
+  10 ms grid since 2026-10-10).
   Explicit resolution adds the optional `attrs` JSON column, with
-  `{"iscrowd":0}` for an individual and `{"iscrowd":1}` for a group. Blank
-  attrs remain unspecified. Category 0 gaps carry no crowd flag. Other shots'
+  `{"iscrowd":0}` for an individual and `{"iscrowd":1}` for a span. Blank
+  attrs remain unspecified. Category 0 gaps carry no `iscrowd` flag. Other shots'
   attrs are preserved; editing a shot with additional unsupported attrs is
   refused so the editor cannot discard its metadata.
-  Individual/unspecified spans may overlap crowd spans. Shared category-0 gaps
+  Individual/unspecified annotations may overlap span annotations. Shared category-0 gaps
   cover only time outside both lanes. Each save replaces
   that shot's rows and rewrites the file atomically. The result validates like
   any other format table.
@@ -458,7 +544,8 @@ Saves go under the event's directory in the label tables
   file's sha256 (`source_sha256`; absent when the event has no source table).
   Explicit resolution is stored as a parallel `iscrowd` array aligned with
   the intervals, also returned by the label/history API; null entries mean
-  unspecified. Older history entries without it remain unspecified.
+  unspecified. Older history entries without it remain unspecified (the history view
+  restores them as spans for the span events above).
   It is only ever appended to: a shot's versions are its lines in order,
   numbered from 1, and `GET /api/history?event=&shot=` lists them. Lines
   written before names existed have no `name` and read as unnamed; lines
@@ -483,10 +570,10 @@ A page newer than its server asks `/api/version` first. From an older server it
 saves without a name, hides the name box and history, and says to restart the
 server, so a page reload before a restart never breaks a save. From a server
 older than the list of names the page keeps the typed name box.
-Crowd controls require API version 7; overlapping lanes require version 8.
+Span (`iscrowd`) controls require API version 7; overlapping lanes require version 8.
 An older client cannot overwrite
-crowd-bearing labels without supplying the resolution array, and a newer
-page refuses to send a crowd-bearing draft to an older server. Version-8 saves
+`iscrowd`-bearing labels without supplying the resolution array, and a newer
+page refuses to send an `iscrowd`-bearing draft to an older server. Version-8 saves
 send `overlap_edit: true`; clients without this marker cannot overwrite a shot
 whose saved or source annotations overlap. This prevents a cached older page
 from silently flattening the lanes. Restart an older server and reload the page
@@ -557,7 +644,7 @@ If calibration or previously missing diagnostic data are added later,
 rebuild the affected shots explicitly:
 
 ```bash
-pixi run --frozen -e labelmaker python -m labeler.events.review.build \
+pixi run --frozen -e labeler python -m labeler.events.review.build \
     --event sawtooth_oscillation --shots 192238 --force
 ```
 

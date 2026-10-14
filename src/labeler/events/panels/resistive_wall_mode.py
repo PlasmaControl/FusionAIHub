@@ -7,7 +7,7 @@ import numpy as np
 from ...config import Paths
 from .. import equilibrium, rwm
 from ..verify import Panel
-from ._shared import optional
+from ._shared import optional, with_caveat
 
 
 def onset_panels(shot, *, paths, t_range=None):
@@ -23,21 +23,28 @@ def onset_panels(shot, *, paths, t_range=None):
     if t_range is not None:
         keep = (x >= t_range[0]) & (x <= t_range[1])
         x, y = x[keep], y[:, keep]
-    return [Panel("curated RWM onsets (times only)", x=x, y=y,
-                  legend=["database onset"], ylabel="onset")]
+    return [with_caveat(
+        Panel("RWM onsets (curated)", x=x, y=y, legend=["database onset"], ylabel="onset"),
+        "Curated database onset times only: a mark at each time, not a label with a duration",
+    )]
 
 
 def panels(shot, *, t_range=None, paths=None):
     paths = Paths.from_env() if paths is None else paths
     kwargs = {"paths": paths, "t_range": t_range}
     built = []
-    for name, title, unit in (
-        ("n1rms", "n=1 magnetic RMS (not RWM-specific)", "G"),
-        ("n2rms", "n=2 magnetic RMS (not RWM-specific)", "G"),
-        ("betan", "beta_N", "β_N"), ("li", "internal inductance", "l_i"),
-        ("ip", "ip", "A"),
+    for name, title, unit, caveat in (
+        ("n1rms", "n=1 magnetic RMS", "G", "Not RWM-specific"),
+        ("n2rms", "n=2 magnetic RMS", "G", "Not RWM-specific"),
+        ("betan", "beta_N", "β_N", ""), ("li", "internal inductance", "l_i", ""),
+        ("ip", "ip", "A", ""),
     ):
-        built += optional(name, shot, lambda name=name, title=title, unit=unit:
-                          equilibrium.line_panel(shot, name, title, ylabel=unit,
-                                                 **kwargs))
+        built += optional(
+            name, shot,
+            lambda name=name, title=title, unit=unit, caveat=caveat: [
+                with_caveat(panel, caveat)
+                for panel in equilibrium.line_panel(shot, name, title, ylabel=unit,
+                                                    **kwargs)
+            ],
+        )
     return built + onset_panels(shot, **kwargs)

@@ -187,7 +187,7 @@ shots, 0.926 [0.89, 0.95] (L 0.93, H 0.97, QH 0.93, WPQH 0.88).
 
 `apply` writes `data/events/confinement/extend_confine_ours/roster.csv` and `roster.meta.json`,
 in the format of the other extend-model folders (see
-[data/events/README.md](../../data/events/README.md)), with these columns (times in ms):
+[docs/labeler/events/README.md](events/README.md)), with these columns (times in ms):
 
 | Column | Meaning |
 |---|---|
@@ -198,6 +198,8 @@ in the format of the other extend-model folders (see
 | `source` | `held_out`: a curated shot, read by the fold network that never saw its day; `ensemble`: any other shot, the mean of the five |
 | `tier` | `unreviewed`: a QH or WPQH segment on a shot outside the curated set; `model`: the rest |
 | `extrapolated` | the shot is past the last curated one (196493): none of these campaigns was seen in training |
+
+The review page's table reader accepts only the five interval columns and an `attrs` JSON cell, so it skips `roster.csv`. The same rows are in `roster_review.csv` (+ `.meta.json`), with `predicted`, `source`, `tier` and `extrapolated` in `attrs`; `apply` writes it after `roster.csv`, and `python scripts/labeler/confinement_ours.py review` writes it from the `roster.csv` already there (no GPU). `roster.csv` itself keeps its nine columns because the paper figures read them and pin its hash. Converted 2026-10-11.
 
 The full class probabilities of every labelled roster shot (float16, 1 ms) are in
 `$LABELER_ROOT/round4/conf/ours_runday/roster_probs.npz`, the fold networks and their training

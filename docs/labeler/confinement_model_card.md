@@ -58,14 +58,14 @@ and intervals quantify held-out shot uncertainty conditional on these models.
 From the repository root, choose a fresh experiment directory before any write
 step. Preserve the saved `v1` record: upstream label/extraction commands can
 overwrite files even though fitting refuses to refit an existing freeze.
-Source processing and exports use `labelmaker`:
+Source processing and exports use `labeler`:
 
 ```bash
 export CONFINEMENT_RUN_DIR=runs/labeler/confinement/reproduce_20261001
 # Use a new, previously nonexistent directory for each experiment.
-pixi run --frozen -e labelmaker python -m labeler.confinement labels
-pixi run --frozen -e labelmaker python -m labeler.confinement export
-pixi run --frozen -e labelmaker python -m labeler.confinement elm --legacy
+pixi run --frozen -e labeler python -m labeler.confinement labels
+pixi run --frozen -e labeler python -m labeler.confinement export
+pixi run --frozen -e labeler python -m labeler.confinement elm --legacy
 ```
 
 Extraction and training use the installed CPU environment:

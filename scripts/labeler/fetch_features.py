@@ -4,7 +4,7 @@
 WHY THIS EXISTS. `python -m labeler.run features --models ...` resolves only the features the
 named models consume. `shot_design` reads more than that: `corpus select`'s rule (d) needs `ip`, and
 `shot_design build --reader corpus` addresses the EFIT/plasma scalars `configs/shot_design/signals.yaml`
-names in its `labelmaker: {feature: ...}` blocks -- `bt betan kappa tritop tribot li qmin gapin
+names in its `labeler: {feature: ...}` blocks -- `bt betan kappa tritop tribot li qmin gapin
 aminor volume r0 pcbcoil ne_zipfit te_zipfit`. None of those is an input of any shipped model, so
 no features job ever fetches them, and I6b's build reported 4,615 (shot, field) pairs `pending`
 for exactly that reason. This script closes that gap and nothing else.
@@ -17,7 +17,7 @@ WHERE IT RUNS. The LOGIN node, not SLURM. The compute nodes have no route to DII
 server, so this is not a batch job and there are no jobstats for it. And it must run under the
 `fdp run` wrapper, which supplies the server configuration:
 
-    pixi run -e labelmaker fdp run python scripts/labeler/fetch_features.py \
+    pixi run -e labeler fdp run python scripts/labeler/fetch_features.py \
         --shot-file $LABELER_ROOT/recommender_v1.txt \
         --features bt betan kappa tritop tribot li qmin gapin aminor volume r0 pcbcoil \
                    ne_zipfit te_zipfit \

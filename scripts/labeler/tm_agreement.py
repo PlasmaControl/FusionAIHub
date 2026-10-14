@@ -13,7 +13,7 @@ Two references, each an onset per shot:
 
 Writes ``<out>/agreement_<reference>_<set>.json`` and a per-onset / per-interval CSV.
 
-    PYTHONPATH=$PWD/src pixi run --frozen --no-install -e labelmaker python \\
+    PYTHONPATH=$PWD/src pixi run --frozen --no-install -e labeler python \\
         scripts/labeler/tm_agreement.py --reference survival
 """
 
@@ -40,7 +40,7 @@ from labeler.tearing import agreement, rule
 from labeler.tearing.agreement import Reference
 
 LABELER = Path(
-    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")
+    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler")
 )
 OUT_ROOT = Path(os.environ.get("TM_OUT_ROOT", LABELER / "round4/tm"))
 CATALOG = REPO / "data/events/catalog"

@@ -1,4 +1,5 @@
-"""Signal-derived regimes and conservative RWM review drafts."""
+"""Signal-derived regimes and RWM review drafts: curated onsets to their measured
+end over a conservative screen."""
 
 from __future__ import annotations
 
@@ -140,15 +141,92 @@ def rwm_database(p):
     )
 
 
-def test_rwm_database_onsets_have_no_invented_duration_or_negatives(tmp_path):
+def flat(value):
+    return lambda t: np.full(t.size, value)
+
+
+def rwm_signals(p, n1rms, betan=None):
+    """N1RMS and beta_N as given on a 1 ms clock, l_i 1 (beta_N 2 is below 4 l_i:
+    no screen call) and a steady Ip."""
+    t = np.arange(0, 2001, 1.0)
+    betan = flat(2.0) if betan is None else betan
+    features(p, n1rms=(t, n1rms(t)), betan=(t, betan(t)), li=(t, flat(1.0)(t)),
+             ip=(t, flat(1e6)(t)))
+
+
+def late_excursion(t):
+    """N1RMS 1 G before 880 ms (the baseline), 0 from there, and 5 G over
+    [1000, 1100): below its baseline at the onset, its next excursion later."""
+    return np.where(t < 880, 1.0, np.where((t >= 1000) & (t < 1100), 5.0, 0.0))
+
+
+@pytest.mark.parametrize("n1rms,betan,end,why,after", [
+    # N1RMS rises at the onset and is back at its baseline once the 50 ms centred
+    # mean has left the excursion: 1000 + 25 ms.
+    (lambda t: np.where((t >= 900) & (t < 1000), 5.0, 0.0), flat(2.0), 1025, "n1rms",
+     None),
+    # beta_N loses 40 % of its onset value first.
+    (lambda t: np.where((t >= 900) & (t < 1000), 5.0, 0.0),
+     lambda t: np.where(t >= 960, 0.5, 2.0), 960, "betan", None),
+    # N1RMS never comes back: the 300 ms cap.
+    (lambda t: np.where(t >= 900, 5.0, 0.0), flat(2.0), 1200, "cap", None),
+    # No rise within 25 ms of the onset: the excursion at 1000 ms is another one.
+    # One frame is present and the rest uncertain to the next end, the cap.
+    (late_excursion, flat(2.0), 910, "no n1rms response", 1200),
+])
+def test_rwm_onsets_are_present_to_the_measured_end(tmp_path, n1rms, betan, end, why,
+                                                    after):
+    from labeler.events import rwm
+
     p = tree.paths(tmp_path)
     rwm_database(p)
+    # With no inputs nothing measures an end: the onset keeps one 10 ms frame.
     rows, info = draft(p, "resistive_wall_mode", (0, 1500))
-    assert rows == [[3, 0, 1500]]
-    assert info["onsets"] == [{"t_ms": 900.0, "source": "rwm_format_test.csv"}]
-    assert "resistive_wall_mode" in spans.METHODS
+    assert rows == [[3, 0, 880], [2, 880, 900], [1, 900, 910], [3, 910, 1500]]
+    assert info["onsets"] == [{"t_ms": 900.0, "source": "rwm_format_test.csv",
+                               "end_ms": 910.0, "end": "no inputs"}]
+    rwm_signals(p, n1rms, betan)
+    rows, info = draft(p, "resistive_wall_mode", (0, 1500))
+    stretch = [] if after is None else [[2, end, after]]
+    assert rows == [[4, 0, 880], [2, 880, 900], [1, 900, end], *stretch,
+                    [4, after or end, 1500]]
+    found = info["onsets"][0]
+    assert (found["end_ms"], found["end"], found.get("uncertain_to_ms")) == (
+        end, why, after)
+    assert found["n1rms_baseline_g"] == (0.0 if after is None else 1.0)
+    if after is not None:
+        # v1's reading, the first rise however late, ends on that excursion.
+        t = np.arange(0, 2001, 1.0)
+        assert rwm.onset_end(900.0, rms=(t, n1rms(t)), rise_ms=None)[:2] == (
+            1115.0, "n1rms")
+    # A shot with no curated onset is the screen alone: nothing ran, nothing drafted.
     found = spans.METHODS["resistive_wall_mode"].detect(SHOT + 1, p, (0, 1500))
     assert found.spans == () and found.measured == ()
+
+
+def test_rwm_draft_opens_each_onset_as_one_individual_annotation(tmp_path):
+    from labeler.events.ui import app
+
+    p = tree.paths(tmp_path)
+    rwm_database(p)
+    rwm_signals(p, lambda t: np.where((t >= 900) & (t < 1000), 5.0, 0.0))
+    tree.cohort(p, [tree.queue_row(SHOT + 1, 0)])
+    method = spans.METHODS["resistive_wall_mode"]
+    spans.run(method, spans.targets(method.event, p, "cohort"), p, windows="cohort")
+    cohort_rosters.build(method.event, p, point=True)
+    opened, _, _ = app.shot_labels(method.event, SHOT, p, onsets=[900.0],
+                                   t_range=(0, 1400))
+    draft = opened["source"]
+    # The present span is the onset's annotation, not also a Span under a tick.
+    assert {(tuple(span), flag) for span, flag in zip(
+        draft["intervals"], draft["iscrowd"], strict=True) if span[2] in (1, 2)} == {
+        ((880, 900, 2), 1), ((900, 1030, 1), 0)}
+    assert opened["onset_candidates"] == 1
+    # The ELM rule is unchanged: a one-frame tick over the Span it sits in.
+    plain = labels.with_onsets(labels.Label((0, 1400), ((900, 1030, 1),)), [900.0],
+                               (0, 1400))
+    assert set(zip(plain.intervals, plain.iscrowd, strict=True)) == {
+        ((900, 910, 1), 0), ((900, 1030, 1), 1)}
 
 
 def test_rwm_screen_is_uncertain_and_requires_high_beta(tmp_path):
@@ -166,6 +244,152 @@ def test_rwm_screen_is_uncertain_and_requires_high_beta(tmp_path):
     features(p, betan=(t, np.ones(t.size)))
     rows, _ = draft(p, "resistive_wall_mode", (0, 2000))
     assert rows == [[4, 0, 2000]], "a non-candidate is not a confirmed negative"
+
+
+def mhd_tracks(p, tracks=(), *, status="ok", mirnov_ms=(0.0, 2000.0), gaps=()):
+    """The mhd_modes pipeline cache's record of SHOT: its Mirnov status and
+    record (`mirnov_ms` less `gaps`, none when None) and `tracks`, each a dict
+    of the track's frame times `t_ms` and the columns it overrides (an m/n
+    n = 1 track with P(resonant) 0.95 by default)."""
+    from labeler.events import rwm
+
+    base = p.root / "mhd" / "labeler" / rwm.MHD_CACHE
+    base.mkdir(parents=True, exist_ok=True)
+    info = {"shot": SHOT, "status": status, "window": [0.0, 2000.0]}
+    if mirnov_ms is not None:
+        info |= {"mirnov_ms": list(mirnov_ms), "mirnov_gaps": [list(g) for g in gaps]}
+    (base / f"{SHOT}.json").write_text(json.dumps(info))
+    columns = {"n": 1, "line": False, "status": "m/n", "p_res": 0.95}
+    pd.DataFrame(
+        [{"shot": SHOT, "family_id": i, **columns,
+          **{k: v for k, v in track.items() if k != "t_ms"}}
+         for i, track in enumerate(tracks)],
+        columns=["shot", "family_id", *columns],
+    ).to_parquet(base / f"{SHOT}.tracks.parquet")
+    pd.DataFrame(
+        [{"shot": SHOT, "family_id": i, "t_ms": float(t)}
+         for i, track in enumerate(tracks) for t in track["t_ms"]],
+        columns=["shot", "family_id", "t_ms"],
+    ).to_parquet(base / f"{SHOT}.frames.parquet")
+
+
+@pytest.mark.parametrize("track,dropped", [
+    # A rotating n = 1 mode the co-rotation gate could not model (P(resonant)
+    # NaN): still a rotating mode, not an RWM, so the candidate is dropped.
+    ({"status": "", "p_res": np.nan}, True),
+    # No cache record of the shot: not assessed, the candidate stays uncertain.
+    (None, False),
+])
+def test_rwm_screen_drops_candidates_inside_n1_tracks(tmp_path, track, dropped):
+    p = tree.paths(tmp_path)
+    t = np.arange(0, 2001, 5)
+    amplitude = 0.1 + 0.001 * np.sin(t)
+    amplitude[(t >= 900) & (t <= 1000)] += np.linspace(0.0, 5.0, 21)
+    features(p, n1rms=(t, amplitude), betan=(t, np.full(t.size, 5.0)),
+             li=(t, np.ones(t.size)), ip=(t, np.full(t.size, 1e6)))
+    if track is not None:
+        mhd_tracks(p, [{"t_ms": np.arange(880, 1021, 4), **track}])
+    method = spans.METHODS["resistive_wall_mode"]
+    targets = pd.DataFrame({"shot": [SHOT], "window_start_ms": [0],
+                            "window_end_ms": [2000]})
+    summary = spans.run(method, targets, p, windows="test")
+    rows = pd.read_csv(summary["table"])[["category", "t_start", "t_end"]]
+    (a, b, cover, in_record, outcome), = summary["per_shot"][str(SHOT)][
+        "screen_gate"]["candidates"]
+    assert 900 <= a < b <= 1000
+    gate = summary["screen_gate"]  # spans.run writes it into the meta
+    assert method.inputs == ("n1rms", "n2rms", "betan", "li", "ip")
+    if dropped:
+        # Its time stays measured: unassessed, never absent or present.
+        assert (cover, in_record, outcome) == (1.0, 1.0, "dropped")
+        assert rows.values.tolist() == [[4, 0, 2000]]
+        assert gate["dropped"]["candidates"] == 1 and gate["mhd_source"]["files"] == 3
+    else:
+        assert (cover, in_record, outcome) == (None, None, "not assessed")
+        assert [2, int(np.floor(a)), int(np.ceil(b))] in rows.values.tolist()
+        assert 1 not in set(rows.category)
+        assert gate["kept_not_assessed"]["candidates"] == 1
+        assert gate["mhd_source"]["files"] == 0
+
+
+SPAN = np.arange(880, 1021, 4)  # frames spanning [878, 1022], past the candidate
+
+
+@pytest.mark.parametrize("tracks,record,want", [
+    # Every non-line n = 1 track counts, whatever its resonance status.
+    ([{"t_ms": SPAN, "status": "not resonant", "p_res": 0.02}], {},
+     [1.0, 1.0, "dropped"]),
+    # A fixed-frequency line, or an n = 2 track, is not an n = 1 mode.
+    ([{"t_ms": SPAN, "line": True}], {}, [0.0, 1.0, "kept"]),
+    ([{"t_ms": SPAN, "n": 2}], {}, [0.0, 1.0, "kept"]),
+    # A span over [850, 950] covers exactly half of [900, 1000] and drops it;
+    # one over [849, 949] covers 49 ms and keeps it.
+    ([{"t_ms": np.arange(852, 949, 4)}], {}, [0.5, 1.0, "dropped"]),
+    ([{"t_ms": np.arange(851, 948, 4)}], {}, [0.49, 1.0, "kept"]),
+    # Two runs of frames whose padded spans lie 18 ms apart merge into one that
+    # covers 52 ms of the candidate; 22 ms apart (> 20 ms) they stay split: 34 ms.
+    ([{"t_ms": np.r_[np.arange(880, 905, 4), np.arange(926, 951, 4)]}], {},
+     [0.52, 1.0, "dropped"]),
+    ([{"t_ms": np.r_[np.arange(880, 905, 4), np.arange(930, 955, 4)]}], {},
+     [0.34, 1.0, "kept"]),
+    # No Mirnov read: nothing assessed, whatever the tracks.
+    ([{"t_ms": SPAN}], {"status": "no corpus record", "mirnov_ms": None},
+     [None, None, "not assessed"]),
+    # Part of the candidate lies outside the Mirnov record, or in one of its
+    # gaps, where a track could not have been seen (and track time there does
+    # not count): kept, not assessed.
+    ([], {"mirnov_ms": (0.0, 950.0)}, [0.0, 0.5, "not assessed"]),
+    ([{"t_ms": SPAN}], {"gaps": [(890.0, 960.0)]}, [0.4, 0.4, "not assessed"]),
+])
+def test_rwm_screen_gate_counts_n1_track_time_inside_the_mirnov_record(
+        tmp_path, tracks, record, want):
+    from labeler.events import rwm
+
+    p = tree.paths(tmp_path)
+    mhd_tracks(p, tracks, **record)
+    candidate = (900.0, 1000.0, 2)
+    kept, gated = rwm.gate_screen([candidate], rwm.n1_tracks(SHOT, p)[0])
+    assert gated == [[900.0, 1000.0, *want]]
+    assert kept == ([] if want[2] == "dropped" else [candidate])
+
+
+def test_rwm_n2_onset_ends_on_n2rms_when_cached_else_flagged_n1rms(tmp_path):
+    p = tree.paths(tmp_path)
+    rwm_database(p)
+    raw_dir = p.label_tables / "resistive_wall_mode" / "raw"
+    raw_dir.mkdir()
+    (raw_dir / "onsets.csv").write_text(
+        f"SHOT,ONSET_TIME,NTOR,MODE_TYPE\n{SHOT},900,2,n2rwm\n")
+    meta = p.label_tables / "resistive_wall_mode" / "format" / "rwm_format_test.meta.json"
+    meta.write_text(json.dumps({"made_from": [{
+        "raw_file": "resistive_wall_mode/raw/onsets.csv", "source": "test_database",
+    }]}))
+    # N1RMS rises at the onset and never comes back (an n = 1 mode alongside).
+    rwm_signals(p, lambda t: np.where(t >= 900, 5.0, 0.0))
+    rows, info = draft(p, "resistive_wall_mode", (0, 1500))
+    found = info["onsets"][0]
+    # No N2RMS cached: measured on N1RMS, to the 300 ms cap, and flagged.
+    assert rows == [[4, 0, 880], [2, 880, 900], [1, 900, 1200], [4, 1200, 1500]]
+    assert (found["end"], found["end_rms"], found["n2_end_on_n1rms"]) == (
+        "cap", "n1rms", True)
+    t = np.arange(0, 2001, 1.0)
+    features(p, n2rms=(t, np.where((t >= 900) & (t < 1000), 5.0, 0.0)))
+    rows, info = draft(p, "resistive_wall_mode", (0, 1500))
+    found = info["onsets"][0]
+    # With N2RMS: back at its baseline once the 50 ms mean leaves the excursion.
+    assert rows == [[4, 0, 880], [2, 880, 900], [1, 900, 1025], [4, 1025, 1500]]
+    assert (found["end_ms"], found["end"], found["end_rms"]) == (1025, "n2rms", "n2rms")
+    assert found["n2rms_baseline_g"] == 0.0 and "n2_end_on_n1rms" not in found
+    assert "n2rms" in info["ends_from"]
+    # N2RMS cached but with no sample in the baseline stretch [830, 880): it
+    # cannot measure this onset's end, so N1RMS does, flagged.
+    late = t >= 890
+    features(p, n2rms=(t[late], np.where(t[late] < 1000, 5.0, 0.0)))
+    rows, info = draft(p, "resistive_wall_mode", (0, 1500))
+    found = info["onsets"][0]
+    assert rows == [[4, 0, 880], [2, 880, 900], [1, 900, 1200], [4, 1200, 1500]]
+    assert (found["end"], found["end_rms"], found["n2_end_on_n1rms"]) == (
+        "cap", "n1rms", True)
 
 
 def test_rwm_database_only_shot_still_has_a_review_row(tmp_path, monkeypatch):
@@ -191,13 +415,22 @@ def test_rwm_onset_survives_the_review_rows_grid(tmp_path, monkeypatch):
 
 
 def test_rwm_queue_includes_curated_shots_beyond_the_cohort(tmp_path):
+    from labeler.events import raw
+
     p = tree.paths(tmp_path)
     rwm_database(p)
     tree.cohort(p, [tree.queue_row(SHOT + 1, 0)])
     assert "resistive_wall_mode" in spans.METHODS
     targets = spans.targets("resistive_wall_mode", p, "cohort")
     assert targets.shot.tolist() == [SHOT + 1, SHOT]
+    # No Ip record: the onset less and plus 500 ms.
     assert targets.iloc[1].window_end_ms == 1400
+    t = np.arange(0, 4001, 1.0)
+    raw.write_group(raw.cache_path(SHOT, paths=p), "ip", t,
+                    np.where((t >= 100) & (t <= 3000), 1e6, 0.0)[None])
+    targets = spans.targets("resistive_wall_mode", p, "cohort")
+    # With one, the shot's own Ip window, not the last onset + 500 ms.
+    assert targets.iloc[1][["window_start_ms", "window_end_ms"]].tolist() == [100, 3000]
     method = spans.METHODS["resistive_wall_mode"]
     spans.run(method, targets, p, windows="cohort")
     cohort_rosters.build(method.event, p, point=True)
@@ -368,6 +601,7 @@ def test_qmin_panel_uses_the_same_valid_fallback_as_the_draft(tmp_path, monkeypa
 
 def test_malformed_q_profile_in_raw_fallback_is_optional(tmp_path, monkeypatch):
     import h5py
+
     from labeler.events import raw
 
     monkeypatch.setenv("LABELER_NO_FETCH", "1")
@@ -429,9 +663,11 @@ def test_rwm_screen_errors_keep_database_evidence(tmp_path):
     _, missing = equilibrium._prepare((SHOT, ("n1rms",), p))
     assert "n1rms" in missing
     rows, info = draft(p, "resistive_wall_mode", (0, 1500))
-    assert rows == [[3, 0, 1500]]
+    # Without N1RMS nothing measured the mode: one frame, then uncertain to the cap.
+    assert rows[:4] == [[3, 0, 880], [2, 880, 900], [1, 900, 910], [2, 910, 1200]]
     assert info["onsets"][0]["t_ms"] == 900
-    assert "not_run" in info
+    assert info["onsets"][0]["end"] == "no n1rms response"
+    assert info["ends_from"] == ["ip"] and "not_run" in info
 
 
 def test_rwm_onsets_keep_mode_number_and_original_type(tmp_path):
@@ -465,6 +701,7 @@ def test_qmin_binary_scoring_is_refused_with_a_clear_message(tmp_path):
 
 def test_rwm_shot_api_exposes_exact_database_onsets(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
+
     from labeler.events.review import build
     from labeler.events.ui.app import COOKIE, create_app
 

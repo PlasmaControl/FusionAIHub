@@ -17,7 +17,7 @@ metrics:
 model-index:
   - name: d3d-ae-activity-seldnet
     results: []
-labelmaker:
+labeler:
   status: implemented
   slug: d3d_ae_activity_seldnet
   card_id: plasmacontrol/d3d-ae-activity-seldnet
@@ -25,7 +25,7 @@ labelmaker:
   time_step_ms: 25.0
   ensemble_n: 1
   upstream:
-    path: /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/d3d_ae_activity_seldnet
+    path: /scratch/gpfs/EKOLEMEN/nc1514/labeler/models/d3d_ae_activity_seldnet
     trained: 2026-09-06
     training_code: scripts/labeler/ae_train.py
     reference_harness: scripts/labeler/ae_evaluate.py
@@ -153,8 +153,8 @@ real corpus record**: shot 198279, 0-6 s, `(4, 512, 23445)`, values 23.60 to
 29.40 - **max absolute difference 0.0** at every stage (raw STFT,
 standardised, band-restricted), across two different Python and scipy versions
 (3.13/scipy 1.18.0 in the tokeye venv against 3.12/scipy 1.17.1 in the pixi
-env). Evidence: `outputs/labelmaker/ae/scripts/pin_transform.py` and
-`outputs/labelmaker/ae/transform_pin.json`.
+env). Evidence: `outputs/labeler/ae/scripts/pin_transform.py` and
+`outputs/labeler/ae/transform_pin.json`.
 
 ## How it scored
 

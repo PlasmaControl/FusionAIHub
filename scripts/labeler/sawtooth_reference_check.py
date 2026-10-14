@@ -25,13 +25,13 @@ What it does:
    time difference, the largest of them, and anything unpaired;
 5. prints counts, median and mean periods and elapsed times, and with
    `--json` writes the lot - plus both repositories' git shas - as the
-   committed record. `labelmaker_sha` is HEAD at RUN time, which is the
+   committed record. `labeler_sha` is HEAD at RUN time, which is the
    PARENT of the commit that carries the record: the script has to run
    before the commit its output goes into.
 
     PYTHONPATH=$PWD/src \\
         pixi run --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \\
-        -e labelmaker python scripts/labeler/sawtooth_reference_check.py \\
+        -e labeler python scripts/labeler/sawtooth_reference_check.py \\
         --shot 198658 --json
 
 It checks v2 (`heuristics.sawtooth_events`) and stays on v2: v2 is the
@@ -61,7 +61,7 @@ rather than waiting for somebody to spend the eight minutes.
 
     PYTHONPATH=$PWD/src \\
         pixi run --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \\
-        -e labelmaker python scripts/labeler/sawtooth_reference_check.py \\
+        -e labeler python scripts/labeler/sawtooth_reference_check.py \\
         --port-only
 """
 from __future__ import annotations
@@ -168,7 +168,7 @@ def git_sha(repo: Path) -> str:
 def git_dirty(repo: Path, pathspec: str) -> bool:
     """Is anything under `pathspec` uncommitted? True where git cannot say.
 
-    `labelmaker_sha` alone is a claim the record cannot back: HEAD names a
+    `labeler_sha` alone is a claim the record cannot back: HEAD names a
     tree, and the code that actually ran is HEAD plus whatever was sitting
     in the working tree. So the stanza carries both, and a `dirty` record
     is a measurement of code nobody can get back. Unknown counts as dirty:
@@ -190,7 +190,7 @@ def port_rerun(record_path: Path, corpus: Path) -> int:
     The shot, the corpus file and the `--max-seconds` prefix come from the
     record rather than from the command line, so the re-run is the same
     measurement as the one it is amending and not a second, differently
-    scoped one. `labelmaker_sha` is HEAD at RUN time, which is the PARENT of
+    scoped one. `labeler_sha` is HEAD at RUN time, which is the PARENT of
     the commit that carries the amended record - the same convention as the
     full run's.
 
@@ -214,7 +214,7 @@ def port_rerun(record_path: Path, corpus: Path) -> int:
     rows = pair(was_ms, ours_ms)
     deltas = np.array([r["delta_ms"] for r in rows], dtype=np.float64)
     record["port_rerun"] = {
-        "labelmaker_sha": git_sha(REPO),
+        "labeler_sha": git_sha(REPO),
         "dirty": git_dirty(REPO, "src/labeler"),
         "n": stats["n"],
         "median_ms": stats["median_period_ms"],
@@ -227,7 +227,7 @@ def port_rerun(record_path: Path, corpus: Path) -> int:
           f"median {stats['median_period_ms']:.1f} ms")
     print(f"recorded      {record['reference']['n']:4d} reference crashes   "
           f"max |dt| {record['port_rerun']['max_abs_dt_ms']:.3e} ms")
-    print(f"tree          {record['port_rerun']['labelmaker_sha'][:12]}"
+    print(f"tree          {record['port_rerun']['labeler_sha'][:12]}"
           f"{'  DIRTY' if record['port_rerun']['dirty'] else '  clean'}")
     print(f"amended       {record_path}")
     return 0
@@ -327,7 +327,7 @@ def main(argv: list[str] | None = None) -> int:
             "bitwise_identical": identical,
             "max_abs_delta_ms": max_abs,
             "crashes": rows,
-            "labelmaker_sha": git_sha(REPO),
+            "labeler_sha": git_sha(REPO),
             "omnimode_sha": git_sha(args.omnimode_src.parent),
             "script": Path(__file__).name,
         }

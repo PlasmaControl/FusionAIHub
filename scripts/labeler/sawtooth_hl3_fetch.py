@@ -5,7 +5,7 @@ between fetches, and stop at the first authentication error (the owner's login h
 lapsed; the run then continues with what is on disk):
 
     LABELER_RAW_CACHE=$LABELER_ROOT/round4/hl3/raw \\
-    pixi run --frozen -e labelmaker fdp run python \\
+    pixi run --frozen -e labeler fdp run python \\
         scripts/labeler/sawtooth_hl3_fetch.py --workers 3 --pace 1
 
 Only the shots the benchmark uses are fetched (its train folds, the supported

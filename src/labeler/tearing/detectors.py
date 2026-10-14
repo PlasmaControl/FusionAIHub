@@ -32,9 +32,11 @@ from . import scoring
 
 #: The onset CNN's score at `t` describes the mode's presence at `t + 25 ms`.
 CNN_SHIFT_MS = 25.0
-#: Published alarm levels: the CNN's `tm_prob` at 0.5 (its card's F1 convention) and the
-#: DSM's upstream alarm is survival <= 0.7, equivalent to risk >= 0.3
-#: (/projects/EKOLEMEN/survival_tm/metrics_helpers.py, survival threshold).
+#: Fixed alarm levels: the CNN's `tm_prob` at 0.5 is its card's F1 convention, a
+#: published operating point. The DSM has none: survival <= 0.7 (risk >= 0.3) is only
+#: the keyword default of upstream `metrics_helpers.py:85` `fnr_fpr_calculator`
+#: (/projects/EKOLEMEN/survival_tm/metrics_helpers.py, shot-level), never used upstream
+#: as this checkpoint's operating point, and its 500 ms risk cannot exceed 0.323.
 CNN_THRESHOLD = 0.5
 DSM_SURVIVAL_THRESHOLD = 0.7
 DSM_THRESHOLD = 1.0 - DSM_SURVIVAL_THRESHOLD

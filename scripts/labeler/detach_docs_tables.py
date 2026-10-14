@@ -5,7 +5,9 @@
 
 Every number in the SUMMARY, RESULTS, BASELINES and MODELS blocks is read from a
 committed JSON record under `docs/labeler/results/` (written by the scripts named in
-the protocol); the prose outside the blocks is static. Rerun after any record changes.
+the protocol; the review-source paragraph and model lines from `SOURCE_RECORD`, written
+by `labeler.events.detachment.source merge --record`); the prose outside the blocks is
+static. Rerun after any record changes.
 """
 
 from __future__ import annotations
@@ -20,8 +22,10 @@ from detach_benchmark import MIN_INTERVAL_SHOTS
 REPO = Path(__file__).resolve().parents[2]
 RESULTS = REPO / "docs/labeler/results"
 DOC = REPO / "docs/labeler/detachment.md"
-README = REPO / "data/events/detachment/README.md"
+README = REPO / "docs/labeler/events/detachment/README.md"
 FIGURE2 = REPO / "docs/labeler/figure2_detach.json"
+#: The review-source record (`labeler.events.detachment.source merge --record`).
+SOURCE_RECORD = "source_v3"
 MODEL_DATE = "2026_10_04"
 AUROC = "auroc_neg_te_detached_vs_attached"
 
@@ -2063,20 +2067,178 @@ def models(rec: Records) -> str:
         f"tier {ce}. No MARFE state is exported. No independent benchmark.\n"
         f"- detach_rule | {MODEL_DATE}: alias of the primary rule.\n\n"
         "Class support, agreement tables and intervals are in "
-        "[the protocol](../../../docs/labeler/detachment.md) and its linked JSON "
+        "[the protocol](../../detachment.md) and its linked JSON "
         "records."
+    )
+
+
+def classes(cov: dict, marfe: bool = False) -> str:
+    """`attached 3,452 bins on 154 shots, detached ...` of a coverage block."""
+    names = ["attached", "detached", *(["marfe (candidate)"] if marfe else [])]
+    names.append("uncertain")
+    parts = [
+        f"{n.replace('marfe (candidate)', 'MARFE candidate')} {cov[n]['bins']:,}"
+        + (" bins" if i == 0 else "")
+        + f" on {cov[n]['shots']}"
+        + (" shots" if i == 0 else "")
+        for i, n in enumerate(names)
+    ]
+    return ", ".join(parts)
+
+
+def short_classes(cov: dict, marfe: bool = False) -> str:
+    """`attached 3,452/154, ...` of a coverage block (the MODELS lines)."""
+    names = ["attached", "detached", *(["marfe (candidate)"] if marfe else [])]
+    names.append("uncertain")
+    return ", ".join(
+        f"{n.replace('marfe (candidate)', 'MARFE candidate')} "
+        f"{cov[n]['bins']:,}/{cov[n]['shots']}"
+        for n in names
+    )
+
+
+def agreement_text(state: dict) -> str:
+    """`423 of 448 (0.94, 20 shots)`."""
+    return (
+        f"{state['agree']} of {state['bins']} ({state['agreement']:.2f}, "
+        f"{shots_text(state['shots'])})"
+    )
+
+
+def review_source(src: dict) -> str:
+    """The SUMMARY paragraph on the review source, from its record."""
+    v1, v2, v3 = (src[f"detach_vote_{v}"] for v in ("v1", "v2", "v3"))
+    te1, te2 = src["detach_te_v1"], src["detach_te_v2"]
+    agree = src["agreement_vote_vs_te"]
+    states, unc = agree["states"], agree["vote_uncertain_with_te"]
+    skip, dropped = te2["skipped_counts"], te2["bins_dropped"]
+    off, nogeo = (
+        skip.get("not_selected:off_shelf", 0),
+        skip.get("not_selected:no_geometry", 0),
+    )
+    parked = te2["shots_requested"] - off - nogeo - skip.get("not_fetched", 0)
+    q10, q50, q90 = te2["te_ev_quantiles_10_50_90"]
+    fills = v3["abstentions_filled"]
+    filled_by = {
+        name: sum(tier.get(name, 0) for tier in fills.values())
+        for name in ("attached", "detached", "uncertain")
+    }
+    lmode = unc["by_tier"].get("tangtv_only_lmode", {})
+    by_te = unc["by_tier"]
+    te_says = {
+        name: sum(tier.get(name, 0) for tier in by_te.values())
+        for name in ("attached", "detached", "uncertain")
+    }
+    return (
+        "**Review source (round 5).** `review/source.json` points the review page "
+        "at `detach_vote` v3 (written by `labeler.events.detachment.source`, on the "
+        "50 ms bins, categories 1 attached, 2 detached, 3 MARFE candidate, 4 "
+        "uncertain, unassessed time unmarked). The label set above uses no Te: "
+        "divertor Thomson Te fills only this review source, on the bins the vote "
+        "did not assess and on the vote's abstentions. `detach_vote` v1 is the vote "
+        "rows above with their tiers mapped: `certain` and `tangtv_only` keep their "
+        "state, `candidate_marfe` is 3 and every other tier is 4. It has "
+        f"{v1['coverage']['bins']:,} bins on {v1['coverage']['shots']} shots: "
+        f"{classes(v1['coverage'], marfe=True)}. `detach_te` v2 is the divertor "
+        "Thomson Te of the silver and gold shots, by the Te check's own selection "
+        "(chords 1.5-5 cm above the shelf, a sample kept while its chord sits at "
+        "1.000 < psiN <= 1.05, 0.1-50 eV, the bin median), with Te <= 5 eV "
+        "detached, >= 10 eV attached and between them uncertain, on the bins that "
+        "lie wholly inside the shot's labeler plasma window (the catalog's rule-4 "
+        f"window on {te2['windows_from'].get('catalog', 0)} shots, the Ip window on "
+        f"{te2['windows_from'].get('ip', 0)}) and rest on at least two kept samples "
+        f"(chord x laser time). Divertor Thomson records exist for {parked} of the "
+        f"{te2['shots_requested']} shots; of the others {off} were never selected "
+        f"for the fetch (the strike is off the chords' shelf) and {nogeo} had no "
+        "geometry to decide. "
+        f"{skip.get('no_dts_node', 0)} records have no Te node (TreeNODATA) and on "
+        f"{skip.get('strike_off_chords', 0)} the strike never sits on the chords. "
+        f"Of the {dropped['bins_with_te']:,} bins with a Te on "
+        f"{te1['coverage']['shots']} shots (`detach_te` v1, which had neither "
+        "gate) the "
+        f"window removes {dropped['outside_window']:,} and the sample minimum "
+        f"{dropped['too_few_samples']:,} ({skip.get('too_few_samples', 0)} shots "
+        f"lose every bin), leaving {te2['coverage']['bins']:,} bins on "
+        f"{te2['coverage']['shots']} shots: {classes(te2['coverage'])} (Te 10th, "
+        f"50th and 90th percentiles {q10:.1f}, {q50:.1f} and {q90:.1f} eV). "
+        "`detach_vote` v3 takes the vote first, but Te also replaces the vote's "
+        "abstentions (category 4 of tier `no_vote` or `insufficient_support`) where "
+        "it has a bin, and fills the bins the vote did not assess; `conflict`, "
+        "`tangtv_only_lmode` and `lower_shelf_window` stay as voted. It has "
+        f"{v3['coverage']['bins']:,} bins on {v3['coverage']['shots']} shots "
+        f"({v3['bins_from']['detach_vote']:,} from the vote, "
+        f"{v3['bins_from']['detach_te']:,} from Te, of which "
+        f"{sum(filled_by.values())} replace vote abstentions: "
+        f"{filled_by['attached']} attached, {filled_by['detached']} detached, "
+        f"{filled_by['uncertain']} uncertain): {classes(v3['coverage'], marfe=True)}"
+        f" (v2, the vote in every category and Te v1 elsewhere, had "
+        f"{v2['coverage']['bins']:,} bins on {v2['coverage']['shots']} shots). "
+        f"{v1['coverage']['shots'] - agree['shots']} of the "
+        f"{v1['coverage']['shots']} vote shots carry no Te bin. **Vote against "
+        f"Te** (v2) on the {agree['bins']} vote bins ({agree['shots']} shots) that "
+        f"carry a Te: where both name a state ({states['bins']} bins, "
+        f"{states['shots']} shots) they agree on {states['agree']} "
+        f"({states['agreement']:.2f}, Cohen's kappa {states['kappa']:.2f}); "
+        f"TangTV + Afrac agreement {agreement_text(states['by_tier']['certain'])}, "
+        f"TangTV only {agreement_text(states['by_tier']['tangtv_only'])}. On the "
+        f"{unc['bins']} vote-uncertain bins with a Te ({unc['bins_with_te_state']} "
+        f"with a Te state), Te says attached on {te_says['attached']}, detached on "
+        f"{te_says['detached']} and uncertain on {te_says['uncertain']}; the "
+        "`tangtv_only_lmode` bins are Te-detached on "
+        f"{lmode.get('detached', 0)} of {sum(lmode.values())}. This is not an "
+        "independent test: the round-4 Te check informed rule decisions (the "
+        "L-mode gate above). No human has reviewed v3."
+    )
+
+
+def source_models(src: dict) -> str:
+    """The MODELS lines of the review-source tables, newest first."""
+    v1, v2, v3 = (src[f"detach_vote_{v}"] for v in ("v1", "v2", "v3"))
+    te1, te2 = src["detach_te_v1"], src["detach_te_v2"]
+    states = src["agreement_vote_vs_te"]["states"]
+
+    def total(entry) -> str:
+        return f"{entry['coverage']['bins']:,} bins/{entry['coverage']['shots']} shots"
+
+    return (
+        "- detach_vote | v3: review source; the vote (detach_vote v1) first, "
+        "detach_te v2 on the bins it did not assess and on its no_vote and "
+        f"insufficient_support abstentions; {total(v3)} "
+        f"({v3['bins_from']['detach_vote']:,} from the vote, "
+        f"{v3['bins_from']['detach_te']:,} from Te): "
+        f"{short_classes(v3['coverage'], marfe=True)}. Vote against Te v2 where "
+        f"both name a state: {states['agree']} of {states['bins']} bins agree "
+        f"({states['agreement']:.2f}, kappa {states['kappa']:.2f}, "
+        f"{states['shots']} shots); not independent (Te informed the round-4 "
+        "rule).\n"
+        "- detach_te | v2: detach_te v1's rule inside the labeler plasma window, "
+        f"bins with at least two kept samples; {total(te2)}: "
+        f"{short_classes(te2['coverage'])}.\n"
+        "- detach_vote | v2: detach_vote v1 wherever the vote assessed a bin, "
+        f"detach_te v1 on the other bins; {total(v2)} "
+        f"({v2['bins_from']['detach_vote']:,} from the vote, "
+        f"{v2['bins_from']['detach_te']:,} from Te): "
+        f"{short_classes(v2['coverage'], marfe=True)}.\n"
+        "- detach_te | v1: divertor Thomson Te of the silver and gold shots on the "
+        "shelf chords (1.000 < psiN <= 1.05), Te <= 5 eV detached, >= 10 eV "
+        f"attached, else uncertain; {total(te1)}: {short_classes(te1['coverage'])}."
+        "\n"
+        "- detach_vote | v1: the 2026_10_04 vote rows as page categories (certain "
+        "and TangTV only keep their state, candidate_marfe is 3, other tiers 4); "
+        f"{total(v1)}: {short_classes(v1['coverage'], marfe=True)}."
     )
 
 
 def main() -> None:
     rec = Records()
-    text = summary(rec)
+    src = load(SOURCE_RECORD)
+    text = summary(rec) + "\n\n" + review_source(src)
     replace_block(DOC, "SUMMARY", text)
     replace_block(README, "SUMMARY", text)
     replace_block(DOC, "RESULTS", results(rec))
     replace_block(DOC, "LIMITATIONS", limitations(rec))
     replace_block(DOC, "BASELINES", baselines(rec))
-    replace_block(README, "MODELS", models(rec))
+    replace_block(README, "MODELS", source_models(src) + "\n\n" + models(rec))
     print("wrote", DOC, "and", README)
 
 

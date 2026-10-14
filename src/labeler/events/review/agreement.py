@@ -17,13 +17,17 @@ such saves by the name of the table they were made against. The table is hashed
 when the save is made, not when the page opened the shot, so a draft begun
 before a pointer moved counts against the new table.
 
+`unchanged` compares the two as the page shows them (`labels.page_label`: on
+the 10 ms grid, the event's offered categories only), so a save that only
+snapped a suggestion counts as unchanged.
+
 The saves started from these suggestions, so this is an upper bound on what a
 blind reader would measure: a reviewer who confirms without looking agrees
 perfectly. It answers whether the method's output is close to what the reviewer
 settles on, the question for extending it to more shots. It is not the paper's
 accuracy (v1 Part 9 scores methods on the blind test split).
 
-    pixi run -e labelmaker python -m labeler.events.review.agreement \\
+    pixi run -e labeler python -m labeler.events.review.agreement \\
         --event high_confinement_mode
 
 prints the counts, precision and recall, the shots saved unchanged, and
@@ -89,7 +93,8 @@ def _opened_here(
 
 
 def agreement(event_dir: Path) -> dict:
-    require_binary(Path(event_dir).name)
+    event = Path(event_dir).name
+    require_binary(event)
     saved, source = labels.read_saved(event_dir), labels.read_source(event_dir)
     table = labels.source_path(event_dir)
     name = None if table is None else table.name
@@ -112,7 +117,10 @@ def agreement(event_dir: Path) -> dict:
         "event": Path(event_dir).name,
         "table": None if table is None else str(table),
         "shots": len(shots),
-        "unchanged": sum(saved[shot] == source[shot] for shot in shots),
+        "unchanged": sum(
+            labels.page_label(event, saved[shot]) == labels.page_label(event, source[shot])
+            for shot in shots
+        ),
         **scores,
         "excluded_saves": dict(sorted(excluded.items())),
         "ready": len(shots) >= MIN_SHOTS

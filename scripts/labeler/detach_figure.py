@@ -43,19 +43,27 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
 from labeler.events.detachment import core, thresholds
+from labeler.paper import theme
 
-#: Okabe-Ito: attached blue, detached orange, MARFE reddish purple, uncertain grey.
+#: The paper theme (`labeler.paper.theme`): attached sea green, detached coral, MARFE
+#: plum, uncertain grey.
 STATE_COLOUR = {
-    1: "#0072B2",
-    2: "#E69F00",
-    3: "#CC79A7",
+    1: theme.SEA_GREEN,
+    2: theme.CORAL,
+    3: theme.PLUM,
     4: "#999999",
     # silver (tangtv_only) tints of attached and detached
-    11: "#8EC1E3",
-    12: "#F4D58D",
+    11: theme.SEA_GREEN_LIGHT,
+    12: theme.CORAL_LIGHT,
     # uncertain because TangTV votes detached on a known L-mode or probable-L phase
-    14: "#009E73",
+    14: theme.SLATE,
 }
+#: The EFIT flux surfaces and wall (drawn over a magma image) and the C-III height line.
+FLUX_COLOUR = theme.MINT
+HEIGHT_COLOUR = theme.CORAL
+#: The radiated powers: total sea green, divertor (lower) coral.
+PRAD_TOTAL_COLOUR = theme.SEA_GREEN
+PRAD_DIVL_COLOUR = theme.CORAL
 STATE_NAME = {1: "attached", 2: "detached", 3: "MARFE", 4: "uncertain"}
 SILVER_OFFSET = 10
 #: Colour key of the uncertain bins the L-mode gate sets (tier tangtv_only_lmode).
@@ -521,7 +529,7 @@ def witness_inversion(ax, shot: int, time: float, row: pd.Series) -> dict:
             efit["z"],
             efit["psin"],
             levels=[1.0],
-            colors="#56B4E9",
+            colors=FLUX_COLOUR,
             linewidths=1.0,
         )
         ax.contour(
@@ -529,17 +537,17 @@ def witness_inversion(ax, shot: int, time: float, row: pd.Series) -> dict:
             efit["z"],
             efit["psin"],
             levels=[0.98, 1.02, 1.05, 1.1],
-            colors="#56B4E9",
+            colors=FLUX_COLOUR,
             linewidths=0.4,
         )
         if efit["lim"] is not None:
-            ax.plot(efit["lim"][:, 0], efit["lim"][:, 1], color="#56B4E9", lw=1)
+            ax.plot(efit["lim"][:, 0], efit["lim"][:, 1], color=FLUX_COLOUR, lw=1)
     markers = mark_geometry(ax, row)
     if np.isfinite(row.tangtv_value) and np.isfinite(row.aux_zxpt1):
         height = row.aux_zxpt1 - (1 - row.tangtv_value) * (
             row.aux_zxpt1 - row.aux_zvsod
         )
-        ax.axhline(height, color="#E69F00", lw=0.8, ls="--")
+        ax.axhline(height, color=HEIGHT_COLOUR, lw=0.8, ls="--")
     ax.set_xlabel("R (m)")
     ax.set_ylabel("Z (m)")
     ax.text(
@@ -674,10 +682,10 @@ def marfe_witness(frame: pd.DataFrame, out: Path) -> dict:
         }
     fig.legend(
         [
-            Line2D([], [], color="#56B4E9", lw=1),
+            Line2D([], [], color=FLUX_COLOUR, lw=1),
             Line2D([], [], color="0.3", marker="x", ls="none", ms=5),
             Line2D([], [], color="0.3", marker="o", mfc="none", ls="none", ms=5),
-            Line2D([], [], color="#E69F00", ls="--", lw=0.8),
+            Line2D([], [], color=HEIGHT_COLOUR, ls="--", lw=0.8),
         ],
         [r"EFIT $\psi_N$ and wall", "X-point", "outer strike point", "C-III height"],
         loc="lower center",
@@ -736,8 +744,8 @@ def marfe_witness(frame: pd.DataFrame, out: Path) -> dict:
         "height_in": 4.1,
         "min_font_pt": 7,
         "selections": records,
-        "flux_legend": "blue: EFIT psi_N/wall; white x: X-point; white o: "
-        "outer strike point; dashed orange: extracted C-III front height",
+        "flux_legend": "mint: EFIT psi_N/wall; white x: X-point; white o: "
+        "outer strike point; dashed coral: extracted C-III front height",
         "labels_source": str(root() / "labels_bins.csv.gz"),
         "labels_sha256": hashlib.sha256(
             (root() / "labels_bins.csv.gz").read_bytes()
@@ -775,7 +783,7 @@ def draw_inversion(ax, shot, group, run, inv, efit_t) -> dict:
             efit["z"],
             efit["psin"],
             levels=[1.0],
-            colors="#56B4E9",
+            colors=FLUX_COLOUR,
             linewidths=1.0,
         )
         ax.contour(
@@ -783,16 +791,16 @@ def draw_inversion(ax, shot, group, run, inv, efit_t) -> dict:
             efit["z"],
             efit["psin"],
             levels=[0.98, 1.02, 1.05, 1.1],
-            colors="#56B4E9",
+            colors=FLUX_COLOUR,
             linewidths=0.4,
         )
         if efit["lim"] is not None:
-            ax.plot(efit["lim"][:, 0], efit["lim"][:, 1], color="#56B4E9", lw=1.0)
+            ax.plot(efit["lim"][:, 0], efit["lim"][:, 1], color=FLUX_COLOUR, lw=1.0)
     markers = mark_geometry(ax, row)
     dz = float(np.nanmedian(inside.tangtv_value))
     if np.isfinite(dz) and np.isfinite(row.aux_zxpt1):
         height = row.aux_zxpt1 - (1 - dz) * (row.aux_zxpt1 - row.aux_zvsod)
-        ax.axhline(height, color="#E69F00", lw=0.8, ls="--")
+        ax.axhline(height, color=HEIGHT_COLOUR, lw=0.8, ls="--")
     ax.set_xlim(max(radii[0], 1.0), min(radii[-1], 1.8))
     ax.set_ylim(elev[0], VIEW_ZMAX)
     ax.set_xticks([1.0, 1.2, 1.4, 1.6])
@@ -865,8 +873,12 @@ def views_figure(shot, group, intervals, out) -> dict:
     centre = group.start_ms.to_numpy(float) + core.BIN_MS / 2
     divl = group.aux_prad_divl_w.to_numpy(float) / 1e6
     total = group.aux_prad_tot_w.to_numpy(float) / 1e6
-    ax.plot(centre, total, color="#0072B2", lw=1.0, label=r"$P_{\mathrm{rad,tot}}$")
-    ax.plot(centre, divl, color="#D55E00", lw=1.0, label=r"$P_{\mathrm{rad,div,L}}$")
+    ax.plot(
+        centre, total, color=PRAD_TOTAL_COLOUR, lw=1.0, label=r"$P_{\mathrm{rad,tot}}$"
+    )
+    ax.plot(
+        centre, divl, color=PRAD_DIVL_COLOUR, lw=1.0, label=r"$P_{\mathrm{rad,div,L}}$"
+    )
     for col, run in enumerate(intervals):
         ax.axvspan(
             run["start_ms"],
@@ -910,10 +922,10 @@ def views_figure(shot, group, intervals, out) -> dict:
     )
     fig.legend(
         [
-            Line2D([], [], color="#56B4E9", lw=1),
+            Line2D([], [], color=FLUX_COLOUR, lw=1),
             Line2D([], [], color="0.3", marker="x", ls="none", ms=4),
             Line2D([], [], color="0.3", marker="o", mfc="none", ls="none", ms=4),
-            Line2D([], [], color="#E69F00", ls="--", lw=0.8),
+            Line2D([], [], color=HEIGHT_COLOUR, ls="--", lw=0.8),
         ],
         [r"EFIT $\psi_N$ and wall", "X-point", "outer strike point", "C-III height"],
         loc="lower center",
@@ -990,7 +1002,7 @@ def main() -> None:
                     "Columns are titled by the TangTV vote with the exported label of "
                     "the same bins in brackets; a column can be a TangTV vote the "
                     "label calls uncertain. The summary bars below the timeline use "
-                    "the exported label and tier (silver = TangTV only; green = "
+                    "the exported label and tier (silver = TangTV only; slate = "
                     "uncertain because TangTV votes detached on a known L-mode "
                     "or probable-L phase). The IRTV heat-flux row is omitted "
                     "because the fetch "

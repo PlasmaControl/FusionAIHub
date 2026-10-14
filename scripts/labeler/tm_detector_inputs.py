@@ -19,7 +19,7 @@ as more feature files land (a file under two minutes old is left for the next pa
 Run in the pixi env (it imports `labeler.run`)::
 
     PYTHONPATH=$PWD/src LABELER_ROOT=$TM_ROOT/lroot pixi run --frozen --no-install \\
-        -e labelmaker python scripts/labeler/tm_detector_inputs.py
+        -e labeler python scripts/labeler/tm_detector_inputs.py
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ from labeler.config import Paths
 from labeler.models import registry
 from labeler.models.runners import dsm_pickle
 
-TM_ROOT = Path("/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm")
+TM_ROOT = Path("/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/tm")
 OUT = Path(os.environ.get("TM_ROOT", TM_ROOT)) / "detector_inputs"
 CATALOG = REPO / "data/events/catalog"
 CNN = "d3d_tearing_onset_cnn1d"

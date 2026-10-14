@@ -12,6 +12,7 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts/labeler"))
 import sawtooth_benchmark as benchmark
 
+from labeler.sawtooth import qgate
 from labeler.sawtooth.metrics import (
     aggregate,
     bootstrap_cells,
@@ -599,6 +600,13 @@ def test_evaluation_exports_peer_baselines_fixed_holdout_and_excluded_picks(
     monkeypatch.setattr(benchmark, "REPO", tmp_path)
     monkeypatch.setattr(benchmark, "REVIEW", review)
     monkeypatch.setattr(benchmark, "OUTPUT", tmp_path / "output")
+    # No q = 1 surface from 100 to 200 ms (EFIT02 q_min 2.0), past the assessed time.
+    efit02 = (np.array([100.0, 200.0]), np.array([2.0, 2.0]))
+    monkeypatch.setattr(
+        benchmark,
+        "q_gate",
+        lambda shot, signal: qgate.sample(signal["t"] * 1e3, efit02),
+    )
     work = tmp_path / "work"
     (work / "signals").mkdir(parents=True)
     (work / "shots").mkdir()
@@ -727,6 +735,26 @@ def test_evaluation_exports_peer_baselines_fixed_holdout_and_excluded_picks(
         > scores["saw-ours"]["assessment_totals"]["assessed_bins"]
     )
     assert "crash_tolerance_2ms" in sensitivity
+    gated = scores["saw-ours"]["no_q1_negatives"]
+    primary_bins = scores["saw-ours"]["assessment_totals"]["assessed_bins"]
+    assert gated["assessment_totals"]["assessed_bins"] > primary_bins
+    assert gated["gate_shots"] == {"efit02": 3, "efit02er": 0, "efit01": 0, "none": 0}
+    # 100-200 ms of each of the three shots, all decided by EFIT02.
+    assert gated["added_seconds_by_tree"] == {
+        "efit02": pytest.approx(0.3),
+        "efit02er": 0.0,
+        "efit01": 0.0,
+    }
+    assert gated["equilibria"]["files_by_tree"] == {
+        "efit02": 0,
+        "efit02er": 0,
+        "efit01": 0,
+    }
+    assert (
+        gated["crash_tolerance_2ms"]["presence"]["negative_bins"]
+        > (scores["saw-ours"]["crash_tolerance_2ms"]["presence"]["negative_bins"])
+    )
+    assert "no_q1_negatives" in scores["saw-ours"]["fixed_validation"]
     context = scores["saw-ours"]["edge_context_sensitivity"]
     assert context["contexts_ms"] == [5.15, 50.0, 375.0]
     # No qualified edges in this fixture: every veto reproduces the assessed set.
@@ -800,3 +828,33 @@ def test_edge_context_sensitivity_vetoes_absence_only_near_qualified_edges():
     assert not both[t < 0.02].any() and not both[(t >= 0.03) & (t < 0.035)].any()
     with pytest.raises(ValueError, match="absent_holdoff"):
         benchmark.with_edge_context({"t": t}, rec, 5.15)
+
+
+def test_no_q1_view_adds_only_observable_gated_time():
+    t = np.arange(2000) * 0.0001
+    present = (t >= 0.04) & (t < 0.08)
+    signal = {
+        "t": t,
+        "observable": t < 0.15,
+        "assessed": present,
+    }
+    efit = np.arange(0.0, 201.0, 20.0)
+    gate = qgate.sample(t * 1e3, (efit, np.full(len(efit), 1.5)))
+    assessed = benchmark.with_q_gate(signal, gate)["assessed"]
+    assert assessed[present].all() and assessed[t < 0.15].all()
+    assert not assessed[t >= 0.15].any()  # gated but unobservable
+    with pytest.raises(ValueError, match="signal grid"):
+        benchmark.with_q_gate(signal, qgate.sample(t[:10] * 1e3))
+
+
+@pytest.mark.parametrize("stage", ["train", "predict"])
+def test_write_to_is_refused_outside_evaluate(stage, tmp_path, monkeypatch, capsys):
+    ran = []
+    for name in ("train", "evaluate", "predict"):
+        monkeypatch.setattr(benchmark, name, lambda args, name=name: ran.append(name))
+    monkeypatch.setattr(
+        sys, "argv", ["sawtooth_benchmark.py", stage, "--write-to", str(tmp_path)]
+    )
+    with pytest.raises(SystemExit):
+        benchmark.main()
+    assert ran == [] and "--write-to" in capsys.readouterr().err

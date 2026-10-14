@@ -369,7 +369,9 @@ def databases_block(shot: int, paths: Paths) -> tuple[list[Event], list[dict]]:
     that), `n_events`, and coverage NaN, which is the signal. They are also
     kept on `ShotResult.database_sources` for the run JSON.
     """
-    return databases.events_for_shot(shot, root=paths.label_tables)
+    return databases.events_for_shot(
+        shot, root=paths.label_tables, manifest=paths.events_manifest
+    )
 
 
 def features_block(

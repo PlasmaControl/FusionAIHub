@@ -665,9 +665,9 @@ def verification(args):
                 "-q -p no:cacheprovider"
             ),
             "lint_command": "pixi run --frozen --no-install <main manifest> "
-            "-e labelmaker ruff check --extend-select E501 <changed .py>",
+            "-e labeler ruff check --extend-select E501 <changed .py>",
             "format_command": "pixi run --frozen --no-install <main manifest> "
-            "-e labelmaker ruff format --check <new .py>",
+            "-e labeler ruff format --check <new .py>",
         },
     )
 
@@ -1068,7 +1068,7 @@ def main():
         "--report",
         type=Path,
         default=Path(
-            "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/reports/saw.md"
+            "/scratch/gpfs/EKOLEMEN/nc1514/labeler/scratch/claude-89242e53/r4/reports/saw.md"
         ),
     )
     args = parser.parse_args()

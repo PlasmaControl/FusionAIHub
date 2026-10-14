@@ -309,8 +309,8 @@ replaces it. Records without a `git` field (`dsm/native_fetch.json`,
 `ours/seed_repeats.json`, `table_render_verification.json`, `training_history.json`)
 name their sources and digests instead.
 
-Run through the pixi labelmaker wrapper with `LABELER_NO_FETCH=1`: read the frozen run
-from `ours/evaluation.json:run`, then `elm_ours_evaluate.py --run <run>`,
+Run through the pixi labeler wrapper with `LABELER_NO_FETCH=1`: read the frozen run from
+`ours/evaluation.json:run`, then `elm_ours_evaluate.py --run <run>`,
 `elm_dsm_evaluate.py --run <run> --rescore`, `elm_feature_evaluate.py`,
 `elm_moved_boundary_stratum.py`, `elm_tiled_inference.py`, `elm_run_day_summary.py`
 (after `elm_ours_evaluate.py --run cv2_runday`), `elm_dsm_baseline_seeds.py`,

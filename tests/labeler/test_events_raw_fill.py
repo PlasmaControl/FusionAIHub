@@ -7,6 +7,7 @@ import json
 import numpy as np
 
 from labeler.events import raw
+from labeler.events.panels import edge_localized_mode as elm
 from labeler.events.verify import NoDataError
 from labeler.features.store import FeatureArray
 
@@ -58,13 +59,50 @@ def test_main_fills_the_roster_and_counts(tmp_path, monkeypatch, capsys):
     assert raw.main(["--event", "high_confinement_mode", "--pace", "0"]) == 0
     lines = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
     assert lines == [
-        {"shot": 5, "co2": "fetched"},
-        {"shot": 4, "co2": "fetched"},
-        {"shots": 2, "fetched": 2},
+        {"shot": 5, "co2": "fetched", "ece_edge": "fetched"},
+        {"shot": 4, "co2": "fetched", "ece_edge": "fetched"},
+        {"shots": 2, "fetched": 4},
     ]
     assert raw.main(["--event", "high_confinement_mode", "--limit", "1"]) == 0
-    assert capsys.readouterr().out.splitlines()[-1] == '{"shots": 1, "cache": 1}'
-    assert len(calls) == 2
+    assert capsys.readouterr().out.splitlines()[-1] == '{"shots": 1, "cache": 2}'
+    assert len(calls) == 4
+
+
+def test_ece_edge_is_not_fetched_where_the_corpus_or_the_cache_holds_ece(
+    tmp_path, monkeypatch
+):
+    p = tree.paths(tmp_path)
+    calls = []
+    monkeypatch.setattr(raw, "fdp_signal", _fake_fdp(calls))
+    t = tree.times(0.0, 100.0, 10_000)
+    ece = (t, np.ones((48, len(t))))
+    tree.write(p.corpus_file(1), {"ece": ece})
+    tree.write(raw.cache_path(2, paths=p), {"ece": ece})
+    assert raw.fill_cache(1, ("ece_edge",), p) == {
+        "ece_edge": "skipped: ece in the corpus"
+    }
+    assert raw.fill_cache(2, ("ece_edge",), p) == {"ece_edge": "skipped: ece in the cache"}
+    assert calls == []
+    assert raw.fill_cache(3, ("ece_edge",), p) == {"ece_edge": "fetched"}
+    assert [shot for shot, _ in calls] == [3]
+    assert raw.fill_cache(3, ("ece_edge",), p) == {"ece_edge": "cache"}
+
+
+def test_the_new_fetch_specs_are_the_measured_mds_nodes():
+    up = raw.FETCH_SPECS["filterscopes_up"]
+    assert (up.via, up.tree, up.missing_ok) == ("mds", "SPECTROSCOPY", True)
+    assert up.exprs == tuple(
+        rf"\SPECTROSCOPY::FS{n}UP" for n in ("13", "12", "11", "00", "01", "02", "03", "04")
+    )
+    strike = raw.FETCH_SPECS["strike_points"]
+    assert (strike.via, strike.tree) == ("mds", "EFIT01")
+    assert strike.exprs == (
+        r"\EFIT01::TOP.RESULTS.AEQDSK:RVSOUT",
+        r"\EFIT01::TOP.RESULTS.AEQDSK:RVSIN",
+        r"\EFIT01::TOP.RESULTS.AEQDSK:ZVSOUT",
+    )
+    # The panel reads the upper chords in this order, and the strike points by row.
+    assert tuple(e.rsplit("::", 1)[1] for e in up.exprs) == elm.UPPER_FETCHED
 
 
 def test_main_fills_the_alfven_roster_with_co2_and_honours_shots(

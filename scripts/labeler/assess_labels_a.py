@@ -77,8 +77,8 @@ def census(paths, db, shots):
         "event_sources_rows": len(sources),
         "observed_shots": int(events[events.evidence_kind.isin(["detector", "heuristic"])].shot.nunique()),
         "forecast_shots": int(events[events.evidence_kind == "forecast"].shot.nunique()),
-        "labelmaker_event_files": inventory,
-        "labelmaker_sources_files": len(list(paths.events.glob("*_sources.parquet"))),
+        "labeler_event_files": inventory,
+        "labeler_sources_files": len(list(paths.events.glob("*_sources.parquet"))),
         "label_file_model_shots": dict(label_groups), "feature_group_shots": dict(feature_names),
         "ece_feature_metadata": ece_metadata, "corpus_groups": presence,
         "input_sha256": {name: sha256_of(db / name) for name in [

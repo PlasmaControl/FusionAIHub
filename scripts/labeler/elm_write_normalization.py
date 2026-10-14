@@ -40,7 +40,7 @@ from labeler.models import elm_inputs
 
 NORMS_PKL = Path("/projects/EKOLEMEN/wpqh_elm_hiro/data/testing_model.pkl")
 SPLIT_PKL = Path("/projects/EKOLEMEN/wpqh_elm_hiro/data/train_test_split_model10.pkl")
-OUT_DIR = Path("/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/d3d_elm_time_to_event_dsm")
+OUT_DIR = Path("/scratch/gpfs/EKOLEMEN/nc1514/labeler/models/d3d_elm_time_to_event_dsm")
 
 
 def sha256_of(path: Path) -> str:

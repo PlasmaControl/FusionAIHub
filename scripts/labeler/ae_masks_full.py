@@ -8,7 +8,7 @@ The GPU job, in the tokeye repo's own venv, as `ae_dataset.sbatch` runs v1:
         [--shots 170720,176053 | --pilot] [--device auto] [--batch 2] \\
         [--tile-ms 0] [--workers 4] [--overwrite]
 
-and then the check against v1, in the labelmaker env:
+and then the check against v1, in the labeler env:
 `python -m labeler.ae.full --check`.
 
 v1 (`ae_dataset.py --stage probs`) ran TokEye over the aemodes arrow cache,

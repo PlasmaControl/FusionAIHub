@@ -3,7 +3,7 @@
 
 Run on the login node under the fdp wrapper, never in a SLURM job:
 
-    pixi run --frozen -e labelmaker fdp run python \\
+    pixi run --frozen -e labeler fdp run python \\
         scripts/labeler/detach_fetch_efit.py --shots 189057 189100 --pace 1
 
 Per shot, one ``<shot>.npz`` under ``$LABELER_ROOT/round4/detach/efit`` with the

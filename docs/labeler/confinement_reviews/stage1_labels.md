@@ -14,13 +14,13 @@ artifacts at that scope.
 I read `confinement_analysis.md`, `src/labeler/confinement/labels.py`, its focused
 tests, and the saved `labels.json`, source/merged/conflict intervals, targets,
 split, and per-shot comparisons under
-`/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/confinement/v1`.
+`/scratch/gpfs/EKOLEMEN/nc1514/labeler/confinement/v1`.
 I independently recomputed CSV hashes, source counts, workbook containment,
 merged interval non-overlap, coverage/conflict constraints, split support,
 reserved-shot membership, and training-weight totals from those outputs.
 
 Fresh validation:
-`pixi run --frozen -e labelmaker pytest tests/labeler/test_confinement_labels.py -q -W error`
+`pixi run --frozen -e labeler pytest tests/labeler/test_confinement_labels.py -q -W error`
 returned **7 passed**. All six saved CSV hashes match the manifest. I did not
 rerun every large raw HDF import or rehash every raw HDF file; raw sample and
 duplicate-file findings were assessed through the importer, tests, recorded

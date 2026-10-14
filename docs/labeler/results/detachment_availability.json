@@ -1,5 +1,5 @@
 {
- "survey_source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/survey/corpus_survey.csv",
+ "survey_source": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/survey/corpus_survey.csv",
  "shots": [
   {
    "shot": 189057,
@@ -27,7 +27,7 @@
     "live_channels": 47
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/189057.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/189057.npz",
     "usable": true,
     "frames": 171,
     "time_range_ms": [
@@ -59,7 +59,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/189057.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/189057.npz",
     "usable": true,
     "source": "EFIT02",
     "slices": 175
@@ -91,7 +91,7 @@
     "live_channels": 47
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/189061.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/189061.npz",
     "usable": true,
     "frames": 171,
     "time_range_ms": [
@@ -123,7 +123,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/189061.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/189061.npz",
     "usable": true,
     "source": "EFIT02",
     "slices": 194
@@ -155,7 +155,7 @@
     "live_channels": 47
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/189062.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/189062.npz",
     "usable": true,
     "frames": 121,
     "time_range_ms": [
@@ -187,7 +187,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/189062.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/189062.npz",
     "usable": true,
     "source": "EFIT02",
     "slices": 168
@@ -219,7 +219,7 @@
     "live_channels": 47
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/189081.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/189081.npz",
     "usable": true,
     "frames": 171,
     "time_range_ms": [
@@ -251,7 +251,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/189081.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/189081.npz",
     "usable": true,
     "source": "EFIT02",
     "slices": 184
@@ -283,7 +283,7 @@
     "live_channels": 47
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/189088.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/189088.npz",
     "usable": true,
     "frames": 121,
     "time_range_ms": [
@@ -315,7 +315,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/189088.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/189088.npz",
     "usable": true,
     "source": "EFIT02",
     "slices": 184
@@ -347,7 +347,7 @@
     "live_channels": 47
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/189090.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/189090.npz",
     "usable": true,
     "frames": 171,
     "time_range_ms": [
@@ -379,7 +379,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/189090.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/189090.npz",
     "usable": true,
     "source": "EFIT01",
     "slices": 260
@@ -411,7 +411,7 @@
     "live_channels": 47
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/189093.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/189093.npz",
     "usable": true,
     "frames": 171,
     "time_range_ms": [
@@ -443,7 +443,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/189093.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/189093.npz",
     "usable": true,
     "source": "EFIT02",
     "slices": 152
@@ -475,7 +475,7 @@
     "live_channels": 47
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/189094.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/189094.npz",
     "usable": true,
     "frames": 171,
     "time_range_ms": [
@@ -507,7 +507,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/189094.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/189094.npz",
     "usable": true,
     "source": "EFIT02",
     "slices": 146
@@ -539,7 +539,7 @@
     "live_channels": 47
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/189097.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/189097.npz",
     "usable": true,
     "frames": 171,
     "time_range_ms": [
@@ -571,7 +571,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/189097.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/189097.npz",
     "usable": true,
     "source": "EFIT02",
     "slices": 184
@@ -603,7 +603,7 @@
     "live_channels": 47
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/189100.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/189100.npz",
     "usable": true,
     "frames": 201,
     "time_range_ms": [
@@ -635,7 +635,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/189100.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/189100.npz",
     "usable": true,
     "source": "EFIT02",
     "slices": 121
@@ -667,7 +667,7 @@
     "live_channels": 47
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/189101.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/189101.npz",
     "usable": true,
     "frames": 201,
     "time_range_ms": [
@@ -699,7 +699,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/189101.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/189101.npz",
     "usable": true,
     "source": "EFIT02",
     "slices": 163
@@ -731,7 +731,7 @@
     "live_channels": 47
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/189448.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/189448.npz",
     "usable": true,
     "frames": 120,
     "time_range_ms": [
@@ -763,7 +763,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/189448.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/189448.npz",
     "usable": true,
     "source": "EFIT01",
     "slices": 252
@@ -795,7 +795,7 @@
     "live_channels": 47
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/189451.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/189451.npz",
     "usable": true,
     "frames": 120,
     "time_range_ms": [
@@ -827,7 +827,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/189451.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/189451.npz",
     "usable": true,
     "source": "EFIT01",
     "slices": 255
@@ -859,7 +859,7 @@
     "live_channels": 47
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/190109.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/190109.npz",
     "usable": true,
     "frames": 120,
     "time_range_ms": [
@@ -891,7 +891,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/190109.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/190109.npz",
     "usable": true,
     "source": "EFIT01",
     "slices": 244
@@ -923,7 +923,7 @@
     "live_channels": 47
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/190110.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/190110.npz",
     "usable": true,
     "frames": 120,
     "time_range_ms": [
@@ -955,7 +955,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/190110.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/190110.npz",
     "usable": true,
     "source": "EFIT01",
     "slices": 172
@@ -987,7 +987,7 @@
     "live_channels": 47
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/190113.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/190113.npz",
     "usable": true,
     "frames": 121,
     "time_range_ms": [
@@ -1019,7 +1019,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/190113.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/190113.npz",
     "usable": true,
     "source": "EFIT01",
     "slices": 182
@@ -1051,7 +1051,7 @@
     "live_channels": 47
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/190114.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/190114.npz",
     "usable": true,
     "frames": 121,
     "time_range_ms": [
@@ -1083,7 +1083,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/190114.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/190114.npz",
     "usable": true,
     "source": "EFIT01",
     "slices": 164
@@ -1115,7 +1115,7 @@
     "live_channels": 47
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/190115.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/190115.npz",
     "usable": true,
     "frames": 119,
     "time_range_ms": [
@@ -1147,7 +1147,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/190115.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/190115.npz",
     "usable": true,
     "source": "EFIT01",
     "slices": 200
@@ -1179,7 +1179,7 @@
     "live_channels": 47
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/190116.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/190116.npz",
     "usable": true,
     "frames": 120,
     "time_range_ms": [
@@ -1211,7 +1211,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/190116.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/190116.npz",
     "usable": true,
     "source": "EFIT01",
     "slices": 243
@@ -1243,7 +1243,7 @@
     "live_channels": 47
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/195952.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/195952.npz",
     "usable": true,
     "frames": 201,
     "time_range_ms": [
@@ -1275,7 +1275,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/195952.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/195952.npz",
     "usable": true,
     "source": "EFIT02",
     "slices": 95
@@ -1307,7 +1307,7 @@
     "live_channels": 47
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/195954.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/195954.npz",
     "usable": true,
     "frames": 201,
     "time_range_ms": [
@@ -1339,7 +1339,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/195954.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/195954.npz",
     "usable": true,
     "source": "EFIT02",
     "slices": 95
@@ -1371,7 +1371,7 @@
     "live_channels": 47
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/195956.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/195956.npz",
     "usable": true,
     "frames": 201,
     "time_range_ms": [
@@ -1403,7 +1403,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/195956.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/195956.npz",
     "usable": true,
     "source": "EFIT02",
     "slices": 20
@@ -1435,7 +1435,7 @@
     "live_channels": 47
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/195959.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/195959.npz",
     "usable": true,
     "frames": 201,
     "time_range_ms": [
@@ -1467,7 +1467,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/195959.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/195959.npz",
     "usable": true,
     "source": "EFIT02",
     "slices": 15
@@ -1499,7 +1499,7 @@
     "live_channels": 47
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/195961.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/195961.npz",
     "usable": true,
     "frames": 201,
     "time_range_ms": [
@@ -1531,7 +1531,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/195961.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/195961.npz",
     "usable": true,
     "source": "EFIT02",
     "slices": 19
@@ -1563,7 +1563,7 @@
     "live_channels": 47
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/195963.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/195963.npz",
     "usable": true,
     "frames": 201,
     "time_range_ms": [
@@ -1595,7 +1595,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/195963.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/195963.npz",
     "usable": true,
     "source": "EFIT02",
     "slices": 23
@@ -1627,7 +1627,7 @@
     "live_channels": 47
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/199166.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/199166.npz",
     "usable": true,
     "frames": 120,
     "time_range_ms": [
@@ -1659,7 +1659,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/199166.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/199166.npz",
     "usable": true,
     "source": "EFIT01",
     "slices": 272
@@ -1691,7 +1691,7 @@
     "live_channels": 47
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/199171.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/199171.npz",
     "usable": true,
     "frames": 119,
     "time_range_ms": [
@@ -1723,7 +1723,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/199171.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/199171.npz",
     "usable": true,
     "source": "EFIT01",
     "slices": 271
@@ -1755,7 +1755,7 @@
     "live_channels": 47
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/199172.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/199172.npz",
     "usable": true,
     "frames": 120,
     "time_range_ms": [
@@ -1787,7 +1787,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/199172.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/199172.npz",
     "usable": true,
     "source": "EFIT01",
     "slices": 268
@@ -1819,7 +1819,7 @@
     "live_channels": 47
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/199351.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/199351.npz",
     "usable": true,
     "frames": 120,
     "time_range_ms": [
@@ -1851,7 +1851,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/199351.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/199351.npz",
     "usable": true,
     "source": "EFIT01",
     "slices": 274
@@ -1883,7 +1883,7 @@
     "live_channels": 47
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/199352.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/199352.npz",
     "usable": true,
     "frames": 120,
     "time_range_ms": [
@@ -1915,7 +1915,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/199352.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/199352.npz",
     "usable": true,
     "source": "EFIT01",
     "slices": 271
@@ -1947,7 +1947,7 @@
     "live_channels": 47
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/199353.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/199353.npz",
     "usable": true,
     "frames": 120,
     "time_range_ms": [
@@ -1979,7 +1979,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/199353.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/199353.npz",
     "usable": true,
     "source": "EFIT01",
     "slices": 266
@@ -2011,7 +2011,7 @@
     "live_channels": 47
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/199354.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/199354.npz",
     "usable": true,
     "frames": 119,
     "time_range_ms": [
@@ -2043,7 +2043,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/199354.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/199354.npz",
     "usable": true,
     "source": "EFIT01",
     "slices": 270
@@ -2075,7 +2075,7 @@
     "live_channels": 47
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/200977.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/200977.npz",
     "usable": true,
     "frames": 210,
     "time_range_ms": [
@@ -2107,7 +2107,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/200977.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/200977.npz",
     "usable": true,
     "source": "EFIT01",
     "slices": 293
@@ -2139,7 +2139,7 @@
     "live_channels": 47
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/201081.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/201081.npz",
     "usable": true,
     "frames": 210,
     "time_range_ms": [
@@ -2171,7 +2171,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/201081.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/201081.npz",
     "usable": true,
     "source": "EFIT02",
     "slices": 243
@@ -2203,7 +2203,7 @@
     "live_channels": 0
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/206879.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/206879.npz",
     "usable": true,
     "frames": 180,
     "time_range_ms": [
@@ -2235,7 +2235,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/206879.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/206879.npz",
     "usable": true,
     "source": "EFIT02",
     "slices": 241
@@ -2267,7 +2267,7 @@
     "live_channels": 0
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/206880.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/206880.npz",
     "usable": true,
     "frames": 180,
     "time_range_ms": [
@@ -2299,7 +2299,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/206880.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/206880.npz",
     "usable": true,
     "source": "EFIT02",
     "slices": 238
@@ -2331,7 +2331,7 @@
     "live_channels": 0
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/206886.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/206886.npz",
     "usable": true,
     "frames": 180,
     "time_range_ms": [
@@ -2363,7 +2363,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/206886.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/206886.npz",
     "usable": true,
     "source": "EFIT02",
     "slices": 241
@@ -2395,7 +2395,7 @@
     "live_channels": 0
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/206891.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/206891.npz",
     "usable": true,
     "frames": 180,
     "time_range_ms": [
@@ -2427,7 +2427,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/206891.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/206891.npz",
     "usable": true,
     "source": "EFIT02",
     "slices": 234
@@ -2459,7 +2459,7 @@
     "live_channels": 0
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/206892.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/206892.npz",
     "usable": true,
     "frames": 180,
     "time_range_ms": [
@@ -2491,7 +2491,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/206892.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/206892.npz",
     "usable": true,
     "source": "EFIT02",
     "slices": 240
@@ -2523,7 +2523,7 @@
     "live_channels": 0
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/206893.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/206893.npz",
     "usable": true,
     "frames": 180,
     "time_range_ms": [
@@ -2555,7 +2555,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/206893.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/206893.npz",
     "usable": true,
     "source": "EFIT02",
     "slices": 241
@@ -2587,7 +2587,7 @@
     "live_channels": 0
    },
    "inversion": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/inversions/206894.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/inversions/206894.npz",
     "usable": true,
     "frames": 180,
     "time_range_ms": [
@@ -2619,7 +2619,7 @@
     ]
    },
    "flux_map": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/efit/206894.npz",
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/efit/206894.npz",
     "usable": true,
     "source": "EFIT02",
     "slices": 237

@@ -5,10 +5,10 @@
     "rows[].architecture": "key shared by the legacy and Tokamak-SI model",
     "rows[].legacy_model": "published model scored on its own legacy target (null: none)",
     "rows[].tokamak_si_model": "model scored on the Tokamak-SI labels (retrained twin or ours)",
-    "rows[].legacy": "f1_published_threshold (primary), f1_tuned (secondary), auroc, auprc, prevalence (beside AUPRC: it differs from the Tokamak-SI target), shots, bins, bin_ms (25), held_out",
+    "rows[].legacy": "f1_published_threshold (CNN: its card's 0.5; DSM: risk 0.3, an upstream helper default, not an operating point), f1_tuned (inner-validation threshold), primary_f1 (which of the two is the primary F1: the CNN's f1_published_threshold, the DSM's f1_tuned), f1_published_threshold_is (what the fixed threshold is), auroc, auprc, prevalence (beside AUPRC: it differs from the Tokamak-SI target), shots, bins, bin_ms (25), held_out",
     "rows[].tokamak_si": "f1 (inner-validation threshold), auroc, auprc, prevalence, shots, bins, bin_ms (10), uncertain time excluded",
     "rows[].tokamak_si_uncertain_negative": "the same with uncertain time scored as negative",
-    "rows[].like_for_like": "published model and retrained twin on one target, mask and shot set: primary and uncertain_negative, each with the published model at its published and tuned thresholds and the retrained model",
+    "rows[].like_for_like": "published model and retrained twin on one target, mask and shot set: primary and uncertain_negative, each with the published model at its fixed and tuned thresholds and the retrained model; primary_published names the published model's primary F1 (the CNN's fixed threshold, the DSM's tuned one) and published_threshold_is says what the fixed threshold is",
     "paired_common_shots": "full_set (tm-ours and the two-line baseline, every development shot) and cnn_subset (tm-ours and the retrained CNN, the shots and bins where the CNN has inputs), each with a primary block (uncertain time excluded) and an uncertain_negative block; every block has the shots, bins, the models' metrics and the paired differences with their 95% intervals",
     "metric cells": "{value, lo, hi}, 95% shot-bootstrap, 1000 draws"
   },
@@ -32,6 +32,8 @@
           "hi": 0.6146195840108301,
           "valid_replicates": 1000
         },
+        "primary_f1": "f1_published_threshold",
+        "f1_published_threshold_is": "the model card's F1 convention, tm_prob >= 0.5",
         "auroc": {
           "value": 0.8968035688370362,
           "lo": 0.8315918896655798,
@@ -119,6 +121,8 @@
         "published_model": "tm-onsetcnn-published",
         "retrained_model": "tm-onsetcnn-retrained",
         "published_threshold": 0.5,
+        "published_threshold_is": "the model card's F1 convention, tm_prob >= 0.5",
+        "primary_published": "published_at_published_threshold",
         "primary": {
           "shots": 273,
           "bins": 27715,
@@ -316,6 +320,8 @@
           "hi": 0.26572944845902047,
           "valid_replicates": 1000
         },
+        "primary_f1": "f1_tuned",
+        "f1_published_threshold_is": "risk >= 0.3 (survival <= 0.7) is the keyword default of upstream metrics_helpers.py:85 fnr_fpr_calculator, shot-level; no upstream run used it as this checkpoint's operating point and its 500 ms risk cannot exceed 0.323 (0.279 on the scored legacy bins), so F1 there is 0 by construction",
         "auroc": {
           "value": 0.7210915415580395,
           "lo": 0.6144684942301608,
@@ -403,6 +409,8 @@
         "published_model": "tm-dsm-500ms-published",
         "retrained_model": "tm-dsm-retrained",
         "published_threshold": 0.3,
+        "published_threshold_is": "risk >= 0.3 (survival <= 0.7) is the keyword default of upstream metrics_helpers.py:85 fnr_fpr_calculator, shot-level; no upstream run used it as this checkpoint's operating point and its 500 ms risk cannot exceed 0.323 (0.279 on the scored legacy bins), so F1 there is 0 by construction",
+        "primary_published": "published_at_tuned_threshold",
         "primary": {
           "shots": 247,
           "bins": 43680,
@@ -864,7 +872,7 @@
       "common_labelled_seconds": 411.42
     }
   },
-  "threshold_policy": "Legacy F1 at the model's published threshold (CNN 0.5, DSM risk 0.3) is primary and the inner-validation value secondary; Tokamak-SI F1 at positive-bearing presence-stratified inner-validation thresholds.",
+  "threshold_policy": "Legacy F1: the CNN at its card's published threshold (0.5) is primary and its inner-validation value secondary. The DSM has no published operating point: its inner-validation F1 is primary (legacy.primary_f1 = f1_tuned) and so is its published F1 in the like-for-like pair (like_for_like.primary_published). Risk 0.3 (survival 0.7) is an upstream helper default (metrics_helpers.py:85, shot-level) that this checkpoint's 500 ms risk never reaches (cap 0.323), reported in the appendix only (legacy.f1_published_threshold for the DSM). Tokamak-SI F1 at positive-bearing presence-stratified inner-validation thresholds.",
   "primary_comparison": "AUROC and AUPRC, with prevalence beside AUPRC",
   "paired_common_shots": {
     "full_set": {

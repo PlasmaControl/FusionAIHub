@@ -123,7 +123,7 @@ gain and calibration residual, settings, source/unit provenance, losses and
 unmatched D-alpha peaks. Review HDF5 stores retain it in
 `params.panel_metadata`. Each loss records both loop and D-alpha times,
 pre/post energies, loss in J and fractional loss. These measurements are
-separate from manually reviewed individual/group annotations.
+separate from manually reviewed individual/span annotations.
 
 ELM review row version 3 replaces earlier caches, including version 2 rows
 that used full-record noise or displayed energy outside the calibration regime.

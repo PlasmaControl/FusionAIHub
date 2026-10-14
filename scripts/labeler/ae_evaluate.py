@@ -211,7 +211,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--dataset-dir", type=Path, default=DEFAULT_DATASET)
     p.add_argument("--models-dir", type=Path, default=DEFAULT_OUT)
     p.add_argument(
-        "--fig-dir", type=Path, default=REPO / "outputs" / "labelmaker" / "ae" / "training"
+        "--fig-dir", type=Path, default=REPO / "outputs" / "labeler" / "ae" / "training"
     )
     p.add_argument("--device", default="cuda")
     p.add_argument("--no-figures", action="store_true")

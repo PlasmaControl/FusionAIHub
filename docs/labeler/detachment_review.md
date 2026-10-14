@@ -4,15 +4,18 @@ The review page offers **1 attached, 2 detached, 3 MARFE, 4 uncertain** on an
 exclusive state track. Unmarked time is not reviewed. The primary producer
 suggestion is **unverified**, with its rule comparison and three indicator votes
 shown directly below the video. Review edits remain in the usual annotation
-lanes. The Individual lane starts **empty** unless a saved human review exists.
-Source state 4 is a machine abstention and is never copied into the human lane.
-**Use Source (1–3)** is an explicit, exposed prefill action; it copies only states
-1–3. **Start blank** clears Individual/unspecified spans and preserves Crowd
+lanes. A shot with no saved human review and Blind mode off opens on its
+**Source's states 1–3**, and that opening is recorded as a producer prefill
+(`prefilled` true). Source state 4 is a machine abstention and is never copied
+into the human lane. **Use Source (1–3)** restores that prefill after edits.
+**Start blank** clears Individual/unspecified spans and preserves Crowd
 spans. **Blind mode** implies Start blank, disables Use Source and clears Undo,
 and suppresses Source, producer strips, reading, recipe, indicator plots,
 Source comparison bars, and Source-based queue/history comparisons until unblinded.
 A fresh blind load without saved human labels starts empty, including when an
-old producer-prefilled browser draft exists. Saved human reviews remain available.
+old producer-prefilled browser draft exists. Toggling Blind on an untouched,
+unsaved shot switches between the two fresh openings (empty or the Source).
+Saved human reviews remain available and open as saved.
 Each saved version records `suggestions_shown` (any exposure during this review
 or inherited exposure in the saved/draft version) and `prefilled` (producer
 prefill used in its lineage). Prior exposure is never cleared by Start blank,
@@ -20,6 +23,32 @@ Blind mode or Undo. Old saves/clients without flags retain null (unknown), never
 false. Split agreement by these flags; exposed or prefilled labels do not establish
 independent human validation. New detachment clients require API 10 for saving.
 Binary agreement scoring refuses this multiclass editor.
+
+## Review source
+
+`data/events/detachment/review/source.json` names the Source table
+(`labels.write_pointer`). Since round 5 (2026-10-14) it is `detach_vote` v3, made by
+`python -m labeler.events.detachment.source` on the producer's 50 ms bins. The vote
+comes first: the round-4 vote (`detach_vote` v1, read from its written table; tiers
+`certain` and `tangtv_only` keep their state, `candidate_marfe` is 3, every other
+tier is 4). Divertor Thomson Te (`detach_te` v2: <= 5 eV detached, >= 10 eV
+attached, else 4, only while the shelf chords sit at 1.000 < psiN <= 1.05, only on
+bins wholly inside the shot's labeler plasma window and with at least two kept
+samples) **fills the bins the vote did not assess and the vote's abstentions**
+(category 4 of tier `no_vote` or `insufficient_support`). The vote's `conflict`,
+`tangtv_only_lmode` and `lower_shelf_window` bins stay 4 as voted. The curated label
+set (`extend_detach_vote`) uses no Te; only this Source does. v3 covers 6,367 bins
+on 175 shots: 1,665 from the vote and 4,702 from Te, of which 115 replace vote
+abstentions. v2 (vote in every category, ungated Te v1 elsewhere) covered 8,057 bins
+on 206 shots. Where the vote and Te v2 both name a state they agree on 423 of 448
+bins (0.94, kappa 0.87, 20 shots). The plasma window keeps the current ramps, so
+Te-detached bins early in a shot remain; check them against the camera. Coverage
+per class and the agreement table are in
+`docs/labeler/results/detachment_source_v3.json` (v2: `detachment_source.json`)
+and the event README. All these tables are unverified machine drafts. An unedited
+save of a prefilled shot is flagged `prefilled` and does not count as independent
+review. On a shot whose Source came from Te, the saved label is not an independent
+check against Te either.
 
 ## Human camera review protocol
 
@@ -172,8 +201,9 @@ Thomson channels are ranked by positive native-sample valid fraction (up to eigh
 stable channel-order ties). No local trace is renamed as a line average.
 
 Divertor Thomson Te (`aux_te_div`, eV, per-bin peak over channel medians) is shown
-as an **independent check**, not a fourth voter; zero is a failed fit and is
-missing. Filterscopes FS01–FS08 have separate scales and calibrated
+as a **check**, not a fourth voter of the label set; zero is a failed fit and is
+missing. It is not independent of the Source on bins the Source took from Te
+(`detach_te`, above). Filterscopes FS01–FS08 have separate scales and calibrated
 **ph/(sr cm² s)** units from the local SPECTROSCOPY source and
 `configs/shot_design/signals.yaml` (`dalpha`). Chord locations are not recorded.
 Dead/nonpositive-median chords are omitted by an explicit availability screen:
@@ -277,13 +307,13 @@ To repeat it after a producer change, run this one command from the integrated
 repository (replace `$PWD` only if using a different checkout):
 
 ```bash
-TMPDIR=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/detach-ui \
-LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker \
+TMPDIR=/scratch/gpfs/EKOLEMEN/nc1514/labeler/scratch/claude-89242e53/r4/tmp/detach-ui \
+LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labeler \
 LABELER_LABEL_TABLES=/scratch/gpfs/nc1514/FusionAIHub/data/events \
 LABELER_NO_FETCH=1 PYTHONPATH="$PWD/src" OMP_NUM_THREADS=4 \
 pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \
-  -e labelmaker python scripts/labeler/detachment_review_roster.py \
-  --out /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui \
+  -e labeler python scripts/labeler/detachment_review_roster.py \
+  --out /scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach-ui \
   --producer-roster /scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/shots.csv \
   --build --rebuild-existing --resume-build --workers 4 \
   --record docs/labeler/results/detachment_review_queue.json
@@ -316,12 +346,12 @@ For UI-only verification while the producer changes, copy and serve the existing
 frozen example. This prohibits every store build and preserves its bytes:
 
 ```bash
-export TMPDIR=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/detach-ui
-export LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker
+export TMPDIR=/scratch/gpfs/EKOLEMEN/nc1514/labeler/scratch/claude-89242e53/r4/tmp/detach-ui
+export LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labeler
 export LABELER_LABEL_TABLES=/scratch/gpfs/nc1514/FusionAIHub/data/events
 export LABELER_NO_FETCH=1 PYTHONPATH="$PWD/src" OMP_NUM_THREADS=4
 pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \
-  -e labelmaker python scripts/labeler/detachment_review_demo.py --shot 200977 \
+  -e labeler python scripts/labeler/detachment_review_demo.py --shot 200977 \
   --frozen-from "$LABELER_ROOT/round4/detach-ui/archive/browser-fix5-200977" \
   --out "$LABELER_ROOT/round4/detach-ui/browser-fix6-200977" --verify
 ```
@@ -339,14 +369,14 @@ f_div > 1 footnote only when valid plotted bins actually exceed one.
 After the resume build, launch on a free port:
 
 ```bash
-LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui \
-LABELER_LABEL_TABLES=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach-ui/tables \
-LABELER_DETACHMENT_LABELS=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/labels_bins.csv.gz \
-LABELER_DETACHMENT_INDICATORS=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins \
-LABELER_DETACHMENT_GEOMETRY_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/cache \
-LABELER_DETACHMENT_CACHE_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/cache \
+LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach-ui \
+LABELER_LABEL_TABLES=/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach-ui/tables \
+LABELER_DETACHMENT_LABELS=/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/labels_bins.csv.gz \
+LABELER_DETACHMENT_INDICATORS=/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/bins \
+LABELER_DETACHMENT_GEOMETRY_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/cache \
+LABELER_DETACHMENT_CACHE_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/cache \
 LABELER_NO_FETCH=1 PYTHONPATH="$PWD/src" pixi run --frozen --no-install \
-  --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e labelmaker \
+  --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e labeler \
   python -m labeler.events.ui --port 8812
 ```
 

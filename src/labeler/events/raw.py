@@ -84,6 +84,29 @@ class FetchSpec:
     missing_ok: bool = False
 
 
+#: `ece_edge`'s rows: ECE channels 1-8, the largest-R (lowest-frequency) ones, as
+#: corpus `ece` rows 0-7. The H-mode editor's edge Te row reads them where the
+#: corpus lacks the shot; the MDS node is slow (a minute a channel), so only
+#: these are fetched, not all 48.
+ECE_EDGE_ROWS = tuple(range(1, 9))
+
+#: The upper-divertor filterscope chords David Eldon's ELM module sums when the
+#: strike point is on top (`panels.edge_localized_mode.UPPER_FETCHED`), their
+#: nodes in the SPECTROSCOPY tree, in his order.
+UPPER_FILTERSCOPES = tuple(
+    rf"\SPECTROSCOPY::{name}"
+    for name in (
+        "FS13UP", "FS12UP", "FS11UP", "FS00UP", "FS01UP", "FS02UP", "FS03UP", "FS04UP"
+    )
+)
+#: EFIT01's strike points, in the row order the ELM panel reads: the outer strike
+#: point's major radius, the inner's, and the outer's height. Metres, on one
+#: time base in ms (steps of about 20 ms); RVSOUT and RVSIN are 0.0 at the times
+#: with no strike point, which is missing, not a position.
+STRIKE_POINTS = tuple(
+    rf"\EFIT01::TOP.RESULTS.AEQDSK:{name}" for name in ("RVSOUT", "RVSIN", "ZVSOUT")
+)
+
 #: The eight neutral beams, in the corpus `pinj` group's row order.
 NBI_BEAMS = ("15L", "15R", "21L", "21R", "30L", "30R", "33L", "33R")
 
@@ -114,6 +137,28 @@ FETCH_SPECS: dict[str, FetchSpec] = {
         tree="SPECTROSCOPY",
         missing_ok=True,
     ),
+    # TECEF01-TECEF08, the edge of the plasma on the low-field side: the H-mode
+    # editor's edge Te row. MEASURED 2026-10-09 on 189323: the eight MDS nodes
+    # (`ECE_POINT`'s, the ones `ece` uses) answer, 3.1 M samples each. Not
+    # fetched for a shot whose corpus or cache holds `ece` (`fill_cache`).
+    "ece_edge": FetchSpec(
+        exprs=tuple(ECE_POINT.format(channel=c) for c in ECE_EDGE_ROWS),
+        via="mds",
+        missing_ok=True,
+    ),
+    # The upper-divertor D-alpha chords (`UPPER_FILTERSCOPES`), FS13UP ... FS04UP, as
+    # the ELM module of OMFIT reads them (adaptation_of_omfit_elm.py). MEASURED
+    # 2026-10-09 on 163518 and 189323 (the PTDATA route fails on both: its PTSERVER
+    # lookup): the SPECTROSCOPY nodes answer, 400 k samples on 163518, and FS04UP
+    # holds nothing on 189323, a NaN row. Only fetched when the strike point is on top.
+    "filterscopes_up": FetchSpec(
+        exprs=UPPER_FILTERSCOPES, via="mds", tree="SPECTROSCOPY", missing_ok=True
+    ),
+    # EFIT01's strike points the ELM editor chooses its chords from
+    # (`STRIKE_POINTS`: RVSOUT, RVSIN, ZVSOUT). MEASURED 2026-10-09 on 163518 and
+    # 189323: one time base, 20 ms steps, metres; the PTDATA names `rvsout` ...
+    # fail there (PTSERVER lookup), the EFIT01 tree answers.
+    "strike_points": FetchSpec(exprs=STRIKE_POINTS, via="mds", tree="EFIT01"),
     # Injected power per beam, in watts, rows in the corpus' beam order. MEASURED on
     # shot 187018: every beam's maximum equals the corpus' to float32 rounding. The
     # PTDATA `PINJ` total is not in the archive the fdp wrapper reaches.
@@ -350,7 +395,7 @@ RETRY_DELAY_S = 2.0
 #: How to restart the browser server so a live fetch can work. `fdp_signal`
 #: names the notebook kernel's command in its own hint, which is the wrong
 #: thing to tell someone looking at the browser page.
-FDP_UI_COMMAND = "pixi run -e labelmaker labeler-verify"
+FDP_UI_COMMAND = "pixi run -e labeler labeler-verify"
 
 
 def _fetch_with_one_retry(shot, spec: FetchSpec, total: int) -> FeatureArray:
@@ -430,17 +475,31 @@ def _fetch(shot, group, *, channels, t_range, paths) -> FeatureArray:
 #: login node fills the cache ahead of a review (`main`).
 EDITOR_FETCHES = {
     "alfven_eigenmode": ("co2",),
-    "confinement": ("filterscopes", "pinj", "co2"),
-    "edge_localized_mode": ("co2", "pcphd03"),
-    "high_confinement_mode": ("co2",),
+    "confinement": ("filterscopes", "pinj", "co2", "ece_edge"),
+    "edge_localized_mode": (
+        "co2", "pcphd03", "ip", "strike_points", "filterscopes_up",
+    ),
+    "high_confinement_mode": ("co2", "ece_edge"),
 }
 
 
+#: A group the cache fill leaves out where another group already holds its rows:
+#: the H-mode edge Te row reads `ece_edge` only for a shot with no `ece`.
+COVERED_BY = {"ece_edge": "ece"}
+
+
 def fill_cache(shot: int, groups: Sequence[str], paths: Paths) -> dict[str, str]:
-    """Fetch into the cache each group neither tier holds; say where each is."""
+    """Fetch into the cache each group neither tier holds; say where each is.
+
+    A group in `COVERED_BY` is skipped (`"skipped: ece in the corpus"`) where its
+    cover is in the corpus or the cache: the minute a channel is for nothing."""
     where = {}
     for group in groups:
-        if _holds_record(shot, group, paths.corpus):
+        cover = COVERED_BY.get(group)
+        tier = None if cover is None else record_tier(shot, cover, paths=paths)
+        if tier is not None:
+            where[group] = f"skipped: {cover} in the {tier}"
+        elif _holds_record(shot, group, paths.corpus):
             where[group] = "corpus"
         elif _holds_record(shot, group, paths.raw_cache):
             where[group] = "cache"

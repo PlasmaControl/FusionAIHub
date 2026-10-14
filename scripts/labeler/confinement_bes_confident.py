@@ -2,7 +2,7 @@
 """Confident learning over the BES classifier's held-out predictions: which labelled
 confinement intervals does the signal disagree with?
 
-    PYTHONPATH=src pixi run --frozen --no-install -e labelmaker \
+    PYTHONPATH=src pixi run --frozen --no-install -e labeler \
         python scripts/labeler/confinement_bes_confident.py [--row full_cum_abcdrge]
 
 Reads the shot-grouped 5-fold predictions of one ablation row (every shot is predicted
@@ -48,7 +48,7 @@ from labeler.confinement import bes_windows as bw
 from labeler.confinement import confident
 
 LABELER = Path(
-    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")
+    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler")
 )
 WORK = LABELER / "round4/conf"
 DEFAULT_OUT = REPO / "outputs/labeler/confinement/bes"

@@ -188,6 +188,7 @@ def test_a_campaign_year_outside_the_cells_is_refused():
         cohort.assign_groups(frame, {}, {})
 
 
+@pytest.mark.label_tables
 def test_the_legacy_sets_are_the_registered_tables():
     root = REPO / "data" / "events"
     legacy, specs = cohort.legacy_sets(root)
@@ -1323,6 +1324,7 @@ def test_command_refuses_extra_papers_field_names_the_file(
     assert not out.exists()
 
 
+@pytest.mark.label_tables
 def test_committed_release_hashes_and_exact_redraw():
     root = REPO / "data/events/catalog"
     doc = yaml.safe_load((root / "cohort_manifest.yaml").read_text())
@@ -1441,6 +1443,7 @@ def test_cohort_fingerprints_bytes_consumed_when_input_replaced(
     assert doc["inputs"][key]["sha256"] == digest
 
 
+@pytest.mark.label_tables
 def test_legacy_membership_and_hash_use_same_bytes(tmp_path, monkeypatch):
     spec = databases.load_manifest(REPO / "data/events")[0]
     path = spec.path(tmp_path)

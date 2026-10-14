@@ -4,18 +4,34 @@
 // ---- The label rules, as the server applies them; exported for the tests ----
 
 const LONGEST_WINDOW_MS = 20000;
+const GRID_MS = 10;
 const HANDLE_BAND = 10; // px at the foot of the label track that hold the window's edges
 const GRAB = 5; // px either side of an edge that grab it
 const CLICK_PX = 4; // a press that moves less than this is a click; a click this close picks a region
 const MASK_EVENT = "alfven_eigenmode"; // the one event with pseudo-masks
+/** The silver list's pools, as their tags (`silver.POOLS`). */
+const SILVER_POOLS = { ae_audited: "AE audited", ae_ece_box: "AE ECE box", rwm_onsets: "RWM onset" };
 const INFERNO = [
   "000004", "0b0724", "210c4a", "3d0965", "57106e", "71196e", "8a226a", "a32c61", "bc3754",
   "d24644", "e45a31", "f1731d", "f98e09", "fcac11", "f9cb35", "f2ea69", "fcffa4",
 ];
 
-/** Whole ms, halves up, as the server's `_ms`. */
+/** Nearest 10 ms edge, halves up, as `grid.snap`. */
 function ms(t) {
-  return Math.floor(Number(t) + 0.5);
+  return Math.floor(Number(t) / GRID_MS + 0.5) * GRID_MS;
+}
+
+function snapSpan(a, b) {
+  if (![a, b].every(Number.isFinite) || b < a) return null;
+  const [lo, hi] = [ms(a), ms(b)];
+  if (hi > lo || a === b) return [lo, hi];
+  const start = Math.floor((a + b) / 2 / GRID_MS) * GRID_MS;
+  return [start, start + GRID_MS];
+}
+
+/** A window's ends, snapped as a span's are (`grid.snap_window`). */
+function snapWindow(lo, hi) {
+  return snapSpan(lo, hi);
 }
 
 /** One cell per ms of the window, holding the category painted there last. */
@@ -43,17 +59,21 @@ function runs(cells) {
 }
 
 /** The server's `normalise`: snap and clip, with later annotations painting only
- * their own lane. Individual/unspecified spans overlap crowds. */
+ * their own lane. Individual/unspecified annotations overlap spans. */
 function normalise(window, intervals, known, iscrowd) {
-  let lo = ms(window[0]);
-  let hi = ms(window[1]);
+  const snapped = snapWindow(...window.map(Number));
+  if (!snapped) return null;
+  let [lo, hi] = snapped;
   if (iscrowd != null && (iscrowd.length !== intervals.length ||
     iscrowd.some((flag) => flag != null && ![0, 1, false, true].includes(flag)))) return null;
   const spans = [];
   const flags = [];
   for (let i = 0; i < intervals.length; i++) {
     const [a0, b0, c0] = intervals[i];
-    const [a, b, c] = [ms(a0), ms(b0), Math.trunc(c0)];
+    const edges = snapSpan(Number(a0), Number(b0));
+    if (!edges) return null;
+    const [a, b] = edges;
+    const c = Math.trunc(c0);
     if (b < a || (known && c && !known.includes(c))) return null;
     if (b > a) {
       spans.push([a, b, c]);
@@ -158,6 +178,36 @@ function hasOverlaps(label) {
   return false;
 }
 
+/** `intervals` cut to the ranges in `allowed` ([[a, b], ...], sorted and disjoint): a span
+ * that crosses a gap comes back as its pieces, each keeping its category and lane flag.
+ * The server's `Region.clip`; a subcategory may be labelled only inside its parent. */
+function clipToAllowed(intervals, iscrowd, allowed) {
+  const kept = [];
+  const flags = [];
+  intervals.forEach(([a, b, c], i) => {
+    for (const [lo, hi] of allowed) {
+      const [start, stop] = [Math.max(a, lo), Math.min(b, hi)];
+      if (stop > start) {
+        kept.push([start, stop, c]);
+        flags.push(iscrowd?.[i] ?? null);
+      }
+    }
+  });
+  return { intervals: kept, iscrowd: iscrowd ? flags : undefined };
+}
+
+/** The ranges of `window` that `allowed` leaves out, where a subcategory cannot be labelled. */
+function gaps(window, allowed) {
+  const out = [];
+  let from = window[0];
+  for (const [a, b] of allowed) {
+    if (a > from) out.push([from, Math.min(a, window[1])]);
+    from = Math.max(from, b);
+  }
+  if (from < window[1]) out.push([from, window[1]]);
+  return out.filter(([a, b]) => b > a);
+}
+
 /** The pseudo-mask region with a pixel nearest bin `j`, column `k`, at most `tj` bins
  * and `tk` columns away; null if none. A region's `runs` are `[bin, first column,
  * length]`; on a tie the lower-numbered region wins. */
@@ -210,8 +260,9 @@ const RIGHT = 12;
 const IMAGE_H = 150;
 const TRACE_H = 110;
 const CATEGORY_COLOURS = {
-  2: "#e69f00", 3: "#cc79a7", 4: "#56b4e9", 5: "#d55e00",
-}; // 1 is --label; q_min and confinement keep 1-4 as their bands, 5 is uncertain.
+  2: "#e69f00", 3: "#cc79a7", 4: "#56b4e9", 5: "#d55e00", 6: "#009e73",
+}; // 1 is --label; q_min and confinement keep 1-4 as their bands, 5 is uncertain, 6 is I-mode.
+const MARKER_COLOURS = ["#e69f00", "#56b4e9", "#cc79a7", "#009e73", "#d55e00", "#0072b2"];
 const TRACE_COLOURS = ["#0072b2", "#d55e00", "#009e73", "#cc79a7", "#e69f00", "#56b4e9"];
 const FONT = "11px system-ui, sans-serif";
 const GUTTER_LINE = 14; // px between the lines of a row's title and units
@@ -221,8 +272,9 @@ const S = {
   event: null,
   categories: {},
   category: 1,
-  crowd: 0, // resolution for new annotations: 0 individual, 1 group, null unspecified
-  queue: [],
+  crowd: 1, // resolution for new annotations: 0 individual, 1 span (iscrowd), null unspecified
+  queue: [], // what the page offers: `allQueue`, or only its gold shots when "Gold set" is ticked
+  allQueue: [], // the event's whole queue, as the server sent it
   queueEvent: null, // whose queue has arrived; null while loading
   saveCount: 0,
   savedRows: new Map(), // event -> shot -> {count, row}, from acknowledged saves
@@ -255,7 +307,11 @@ const S = {
   masks: null, // the open AE shot's pseudo-mask regions, as /api/masks gave them (api 3)
   tokeye: null, // TokEye's lines over the whole shot, as /api/tokeye gave them (api 4)
   showMasks: true, // M shows and hides both; the browser remembers which
+  showMarkers: true, // T shows and hides the event markers; the browser remembers which
 };
+const Silver = { mode: false, context: false, batch: 1, shot: null,
+  data: null, overview: null, layers: false, sequence: 0 };
+const Gold = { only: false, shots: null }; // the "Gold set" box; the gold shot numbers, once read
 let T = {}; // colour tokens, read from the stylesheet
 const $ = (id) => document.getElementById(id);
 const enc = encodeURIComponent;
@@ -263,6 +319,20 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const sleep = (delay) => new Promise((done) => setTimeout(done, delay));
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const known = () => Object.keys(S.categories).map(Number);
+const EDGE_MARKERS = new Set(["ELM onset"]); // marker sets drawn as short ticks on a row's lower edge
+const EDGE_TICK = 6; // their height, px
+const markerColour = (i) => MARKER_COLOURS[i % MARKER_COLOURS.length];
+
+/** Where `event` sits in the events listing: its row, and its chip if it is a subcategory. */
+function locate(event) {
+  for (const row of S.events) {
+    if (row.event === event) return { row, chip: null };
+    const chip = row.subcategories?.find((sub) => sub.event === event);
+    if (chip) return { row, chip };
+  }
+  return null;
+}
+const hasEvent = (event) => Boolean(locate(event)) && !locate(event).row.error;
 const draftKey = (shot) => `labeler:${S.event}:${shot}${S.event === "detachment" ? ":independent" : ""}`;
 const exposureKey = (shot) => `${draftKey(shot)}:exposure`;
 
@@ -350,14 +420,53 @@ function fit() {
 // -- the label
 
 function emptyLabel() {
-  const lo = ms(S.meta.t_range[0]);
-  return { window: [lo, Math.min(ms(S.meta.t_range[1]), lo + LONGEST_WINDOW_MS)], intervals: [] };
+  // A subcategory is looked at over its parent's saved window, nothing else.
+  if (S.meta.parent) return { window: [...S.meta.parent.label.window], intervals: [] };
+  // The whole frames the shot's data touch.
+  const [t0, t1] = S.meta.t_range;
+  const [lo, hi] = [Math.floor(t0 / GRID_MS) * GRID_MS, Math.ceil(t1 / GRID_MS) * GRID_MS];
+  return { window: [lo, Math.min(hi, lo + LONGEST_WINDOW_MS)], intervals: [] };
+}
+
+/** A subcategory's label, as the page may make it: the parent's window, and only spans
+ * inside the parent's saved spans (the server's rule, applied as the reviewer draws). */
+function constrain(window, intervals, iscrowd) {
+  const parent = S.meta?.parent;
+  if (!parent) return [window, intervals, iscrowd];
+  const kept = clipToAllowed(intervals, iscrowd, S.meta.allowed);
+  return [parent.label.window, kept.intervals, kept.iscrowd];
+}
+
+/** The label `normalise` makes of these arguments once `constrain` has had them; null if refused. */
+function constrained(window, intervals, iscrowd) {
+  const [w, spans, flags] = constrain(window, intervals, iscrowd);
+  return normalise(w, spans, known(), flags);
 }
 
 const independent = () => S.event === "detachment";
 const isBlind = () => independent() && S.blind;
-const baseline = () => S.meta.saved || (independent() ? emptyLabel() : S.meta.source || emptyLabel());
+// Unsaved detachment opens on its Source's states 1–3 (a recorded prefill), empty in Blind mode.
+const baseline = () => S.meta.saved ||
+  (independent() ? (S.blind ? emptyLabel() : sourceCopy()) : S.meta.source || emptyLabel());
 const dirty = () => Boolean(S.meta) && !same(S.label, baseline());
+
+/** The Source's states 1–3 as an editable label; state 4 is a machine abstention. */
+function sourceCopy() {
+  const source = S.meta.source;
+  const keep = source ? source.intervals.map((_, i) => i).filter(i => [1, 2, 3].includes(source.intervals[i][2])) : [];
+  if (!keep.length) return emptyLabel();
+  return constrained(source.window, keep.map(i => source.intervals[i]),
+    source.iscrowd && keep.map(i => source.iscrowd[i])) || emptyLabel();
+}
+
+/** An untouched, unsaved detachment shot as a fresh load opens it in the current mode. */
+function reopenFresh() {
+  if (stillOpening() || !S.meta) return;
+  S.label = baseline();
+  S.selected = -1;
+  if (!S.blind && S.label.intervals.length) S.prefilled = mergeExposure(S.prefilled, true);
+  touch();
+}
 
 function keepExposure() {
   if (independent() && S.meta) store(exposureKey(S.shot), JSON.stringify({
@@ -380,7 +489,7 @@ function draft(shot) {
       S.suggestionsShown = mergeExposure(S.suggestionsShown, label.suggestions_shown);
       S.prefilled = mergeExposure(S.prefilled, label.prefilled);
     }
-    return label && normalise(label.window, label.intervals, known(), label.iscrowd);
+    return label && constrained(label.window, label.intervals, label.iscrowd);
   } catch {
     return null;
   }
@@ -395,7 +504,7 @@ function keepForUndo(label) {
 function edit(window, intervals, iscrowd) {
   if (stillOpening()) return;
   if (!S.meta) return;
-  const next = normalise(window, intervals, known(), iscrowd);
+  const next = constrained(window, intervals, iscrowd);
   if (!next) return;
   keepForUndo(S.label);
   S.label = next;
@@ -435,18 +544,18 @@ function revert() {
   if (isBlind()) return;
   const source = S.meta.source || emptyLabel();
   if (independent()) {
-    const keep = source.intervals.map((_, i) => i).filter(i => [1, 2, 3].includes(source.intervals[i][2]));
-    S.prefilled = mergeExposure(S.prefilled, keep.length > 0);
+    const copy = sourceCopy();
+    S.prefilled = mergeExposure(S.prefilled, copy.intervals.length > 0);
     S.suggestionsShown = true;
     S.selected = -1;
-    edit(source.window, keep.map(i => source.intervals[i]), source.iscrowd && keep.map(i => source.iscrowd[i]));
+    edit(copy.window, copy.intervals, copy.iscrowd);
     return;
   }
   S.selected = -1;
   edit(source.window, source.intervals, source.iscrowd);
 }
 
-/** Clear only Individual/unspecified annotations, retaining the Crowd lane. */
+/** Clear only Individual/unspecified annotations, retaining the Span lane. */
 function startBlank() {
   if (stillOpening() || !S.meta) return;
   const crowd = S.label.intervals.filter((_, i) => S.label.iscrowd?.[i] === 1);
@@ -498,7 +607,7 @@ function renderResolution() {
   $("crowd-lane").hidden = S.api < 8;
   $("individual-lane-name").textContent = S.api >= 8 ? "Individual" : "Label";
   const selected = S.selected >= 0 && S.label?.intervals[S.selected];
-  $("resolution-label").textContent = selected ? "Selected span" : "New spans";
+  $("resolution-label").textContent = selected ? "Selected annotation" : "New annotations";
   const flag = selected ? S.label.iscrowd?.[S.selected] ?? null : S.crowd;
   $("resolution").value = flag == null ? "unspecified" : String(flag);
   $("resolution").disabled = !S.meta || pendingNavigation();
@@ -514,6 +623,275 @@ function contrast(delta) {
 
 // -- loading
 
+function showSilverMode() {
+  document.body.classList.toggle("silver-mode", Silver.mode);
+  $("silver-page").hidden = !Silver.mode;
+  $("top").hidden = $("bottom").hidden = Silver.mode;
+  $("silver-breadcrumb").hidden = !Silver.context;
+  $("silver-breadcrumb").textContent = `Silver · batch ${Silver.batch} · shot ${Silver.shot}`;
+  $("silver-next-event").hidden = !Silver.context || !S.meta?.saved;
+}
+
+function silverAddress(event) {
+  history.replaceState(null, "", `#silver/${Silver.batch}/${Silver.shot || ""}${event ? `/${event}` : ""}`);
+}
+
+async function openSilver(batch = 1, shot = null, event = null) {
+  const ticket = ++S.ticket;
+  leave();
+  busy(null);
+  Object.assign(S, { meta: null, label: null, event: "silver", data: null, overview: null });
+  Object.assign(Silver, { mode: true, context: false, batch: clamp(batch, 1, 5), shot, overview: null });
+  Silver.sequence++;
+  $("event").value = "silver";
+  $("silver-strips").replaceChildren();
+  $("silver-title").textContent = "Silver set";
+  showSilverMode();
+  silverAddress();
+  try {
+    const data = await (await api("/api/silver")).json();
+    if (ticket !== S.ticket) return;
+    Silver.data = data;
+    renderSilverList();
+    if (data.error) return say(data.error, true);
+    say("");
+    if (shot != null) {
+      await selectSilverShot(shot);
+      if (event && ticket === S.ticket && hasEvent(event)) await openSilverEvent(event);
+    }
+  } catch (error) {
+    if (ticket === S.ticket) say(error.message, true);
+  }
+}
+
+function renderSilverList() {
+  $("silver-batches").replaceChildren(...(Silver.data?.batches || []).map(batch => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = `${batch.batch} · ${batch.shots.filter(shot => shot.done).length}/${batch.shots.length} done`;
+    button.setAttribute("aria-pressed", String(batch.batch === Silver.batch));
+    button.addEventListener("click", () => openSilver(batch.batch));
+    return button;
+  }));
+  const shots = Silver.data?.batches.find(batch => batch.batch === Silver.batch)?.shots || [];
+  $("silver-shots").replaceChildren(...shots.map(shot => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `silver-shot${shot.shot === Silver.shot ? " current" : ""}`;
+    button.dataset.shot = shot.shot;
+    button.setAttribute("aria-pressed", String(shot.shot === Silver.shot));
+    const order = Object.assign(document.createElement("span"), { textContent: shot.order, className: "silver-order" });
+    const number = Object.assign(document.createElement("strong"), { textContent: shot.shot });
+    const classes = Object.assign(document.createElement("span"), { className: "silver-classes" });
+    if (SILVER_POOLS[shot.pool]) classes.append(Object.assign(document.createElement("span"), {
+      textContent: SILVER_POOLS[shot.pool], className: "silver-tag",
+    }));
+    for (const name of shot.classes) {
+      const [event, category] = name.split(":");
+      const short = event.replace("alfven_eigenmode", "AE").replace("edge_localized_mode", "ELM")
+        .replace("minimum_safety_factor", "q min").replace("confinement", "conf");
+      const chip = Object.assign(document.createElement("span"), {
+        textContent: `${short}:${category}`, className: "silver-class",
+      });
+      chip.setAttribute("aria-label", name);
+      classes.append(chip);
+    }
+    const progress = Object.assign(document.createElement("span"), {
+      textContent: `${shot.saved}/${shot.total}${shot.done ? " ✓" : ""}`, className: "silver-progress",
+    });
+    button.append(order, number, classes, progress);
+    button.addEventListener("click", () => selectSilverShot(shot.shot));
+    return button;
+  }));
+}
+
+async function selectSilverShot(shot) {
+  const sequence = ++Silver.sequence;
+  Silver.shot = shot;
+  Silver.overview = null;
+  $("silver-strips").replaceChildren();
+  $("silver-title").textContent = `Shot ${shot}`;
+  renderSilverList();
+  silverAddress();
+  try {
+    const overview = await (await api(`/api/silver/shot?shot=${shot}`)).json();
+    if (!Silver.mode || sequence !== Silver.sequence) return;
+    Silver.overview = overview;
+    Silver.batch = overview.batch;
+    silverAddress();
+    renderSilverList();
+    renderSilverOverview();
+    say("");
+  } catch (error) {
+    if (Silver.mode && sequence === Silver.sequence) say(error.message, true);
+  }
+}
+
+/** One common grid; a higher layer's unassessed frames fall through. */
+function silverFrames(event, range, layers = event.layers) {
+  const [lo, hi] = range;
+  const n = Math.max(0, (hi - lo) / GRID_MS);
+  const cells = new Int8Array(n).fill(-1), origin = new Int16Array(n).fill(-1);
+  const index = t => clamp((t - lo) / GRID_MS, 0, n);
+  layers.forEach((layer, i) => {
+    const label = layer.label;
+    const values = new Int8Array(n).fill(-1);
+    values.fill(0, index(label.window[0]), index(label.window[1]));
+    for (const [a, b, c] of label.intervals) values.fill(c, index(a), index(b));
+    // A table's not-observable stretches say nothing: a lower layer may. The
+    // owner's own in a save (held) stay unassessed: no lower layer fills them.
+    for (const [a, b] of layer.unknown || []) values.fill(-1, index(a), index(b));
+    const held = new Uint8Array(n);
+    for (const [a, b] of layer.held || []) held.fill(1, index(a), index(b));
+    for (let k = 0; k < n; k++) {
+      const t = lo + k * GRID_MS;
+      if (event.allowed && !event.allowed.some(([a, b]) => a <= t && t < b)) continue;
+      if (origin[k] !== -1) continue;
+      if (values[k] !== -1) { cells[k] = values[k]; origin[k] = i; } else if (held[k]) origin[k] = i;
+    }
+  });
+  return { cells, origin };
+}
+
+function drawSilverCanvas(canvas, event, layers = event.layers) {
+  const range = Silver.overview.t_range;
+  const { cells, origin } = silverFrames(event, range, layers);
+  const ratio = window.devicePixelRatio || 1;
+  canvas.width = Math.round(canvas.clientWidth * ratio);
+  canvas.height = Math.round(canvas.clientHeight * ratio);
+  const g = context(canvas), w = canvas.clientWidth, h = canvas.clientHeight;
+  const x = k => k / Math.max(1, cells.length) * w;
+  for (const [a, b, c] of runs(cells)) {
+    if (c === -1) {
+      g.save(); g.beginPath(); g.rect(x(a), 0, x(b) - x(a), h); g.clip();
+      g.strokeStyle = T.rule;
+      for (let edge = x(a) - h; edge < x(b); edge += 7) {
+        g.beginPath(); g.moveTo(edge, h); g.lineTo(edge + h, 0); g.stroke();
+      }
+      g.restore();
+    } else {
+      g.fillStyle = c === 0 ? T.unreviewed : categoryColour(c, event.event, event.categories);
+      g.fillRect(x(a), 0, x(b) - x(a), h);
+    }
+  }
+  return [...new Set(origin)].filter(i => i >= 0).map(i => layers[i].name).join(" · ") || "unassessed";
+}
+
+function renderSilverOverview() {
+  if (!Silver.mode || !Silver.overview) return;
+  const overview = Silver.overview;
+  $("silver-title").textContent = `Shot ${overview.shot}`;
+  $("silver-time").textContent = `${overview.t_range[0]}–${overview.t_range[1]} ms · 10 ms frames`;
+  $("silver-strips").replaceChildren(...overview.events.map(event => {
+    const section = document.createElement("section");
+    section.className = `silver-event${event.parent ? " child" : ""}${event.locked ? " locked" : ""}`;
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "silver-strip";
+    row.disabled = event.locked;
+    const name = Object.assign(document.createElement("span"), {
+      textContent: `${event.display_name.slice(0, 24)}${event.saved ? " ✓" : ""}`, className: "silver-event-name",
+    });
+    row.setAttribute("aria-label", event.display_name);
+    const canvas = document.createElement("canvas");
+    const origin = Object.assign(document.createElement("span"), { className: "silver-origin" });
+    row.append(name, canvas, origin);
+    row.addEventListener("click", () => openSilverEvent(event.event));
+    section.append(row);
+    if (Silver.layers) for (const layer of event.layers) {
+      const item = Object.assign(document.createElement("div"), { className: "silver-strip silver-layer" });
+      const caption = Object.assign(document.createElement("span"), { textContent: layer.kind });
+      const canvas = document.createElement("canvas");
+      const origin = Object.assign(document.createElement("span"), {
+        textContent: layer.name, className: "silver-origin",
+      });
+      item.append(caption, canvas, origin);
+      item.dataset.layer = event.layers.indexOf(layer);
+      section.append(item);
+    }
+    section.dataset.event = event.event;
+    return section;
+  }));
+  requestAnimationFrame(drawSilverOverview);
+}
+
+function drawSilverOverview() {
+  if (!Silver.mode || !Silver.overview) return;
+  for (const section of $("silver-strips").children) {
+    const event = Silver.overview.events.find(event => event.event === section.dataset.event);
+    const row = section.firstChild;
+    row.lastChild.textContent = event.locked ? "Review parent first" : drawSilverCanvas(row.querySelector("canvas"), event);
+    for (const item of [...section.children].slice(1))
+      drawSilverCanvas(item.querySelector("canvas"), event, [event.layers[Number(item.dataset.layer)]]);
+  }
+  const canvas = $("silver-axis"), ratio = window.devicePixelRatio || 1;
+  canvas.width = Math.round(canvas.clientWidth * ratio);
+  canvas.height = Math.round(canvas.clientHeight * ratio);
+  const g = context(canvas), [lo, hi] = Silver.overview.t_range;
+  const step = niceStep(hi - lo, 6);
+  g.fillStyle = T.muted; g.font = FONT;
+  for (let t = Math.ceil(lo / step) * step; t <= hi; t += step) {
+    const x = (t - lo) / (hi - lo) * canvas.clientWidth;
+    g.fillRect(x, 0, 1, 5);
+    g.fillText(`${t}`, clamp(x + 3, 0, Math.max(0, canvas.clientWidth - 45)), 19);
+  }
+}
+
+async function openSilverEvent(event) {
+  const shot = Silver.shot;
+  Silver.context = true;
+  Silver.mode = false;
+  await openEvent(event, shot, true);
+}
+
+async function nextSilverEvent() {
+  const shot = Silver.shot, event = S.event;
+  const overview = await (await api(`/api/silver/shot?shot=${shot}`)).json();
+  if (!Silver.context || Silver.shot !== shot || S.event !== event) return;
+  const index = overview.events.findIndex(row => row.event === event);
+  const ordered = [...overview.events.slice(index + 1), ...overview.events.slice(0, index)];
+  const next = ordered.find(row => !row.saved && !row.locked);
+  if (next) return openSilverEvent(next.event);
+  Silver.data = await (await api("/api/silver")).json();
+  if (!Silver.context || Silver.shot !== shot || S.event !== event) return;
+  const shots = Silver.data.batches.flatMap(batch => batch.shots.map(shot => ({ ...shot, batch: batch.batch })));
+  const at = shots.findIndex(row => row.shot === shot);
+  const after = [...shots.slice(at + 1), ...shots.slice(0, at)].find(row => !row.done);
+  await openSilver(after?.batch || Silver.batch, after?.shot || null);
+  if (after && Silver.overview) {
+    const next = Silver.overview.events.find(row => !row.saved && !row.locked);
+    if (next) await openSilverEvent(next.event);
+  }
+}
+
+function silverKey(key) {
+  if (!Silver.mode) {
+    if (Silver.context && ["g", "Escape"].includes(key)) { openSilver(Silver.batch, Silver.shot); return true; }
+    return false;
+  }
+  const shots = Silver.data?.batches.find(batch => batch.batch === Silver.batch)?.shots || [];
+  if (["ArrowDown", "ArrowUp", "j", "k"].includes(key)) {
+    const at = shots.findIndex(row => row.shot === Silver.shot);
+    const delta = ["ArrowDown", "j"].includes(key) ? 1 : -1;
+    const next = shots[(at + delta + shots.length) % shots.length];
+    if (next) selectSilverShot(next.shot);
+  } else if (key === "Enter") {
+    if (!Silver.overview && shots.length) selectSilverShot(Silver.shot || shots[0].shot);
+    else {
+      const next = Silver.overview?.events.find(row => !row.saved && !row.locked)
+        || Silver.overview?.events.find(row => !row.locked);
+      if (next) openSilverEvent(next.event);
+    }
+  } else if (["g", "Escape"].includes(key)) {
+    if (Silver.shot) openSilver(Silver.batch);
+    else {
+      const event = [stored("labeler:event"), ...S.events.map(row => row.event)].find(hasEvent);
+      if (event) openEvent(event);
+    }
+  } else return false;
+  return true;
+}
+
 async function boot() {
   readTokens();
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
@@ -528,6 +906,7 @@ async function boot() {
   $("reviewer-name").value = S.name;
   S.showMasks = stored("labeler:masks") !== "hidden";
   S.blind = stored("labeler:detachment-blind") === "true";
+  Gold.only = $("gold-only").checked = stored("labeler:gold-only") === "1";
   wire();
   try {
     S.api = (await (await api("/api/version")).json()).api;
@@ -541,27 +920,23 @@ async function boot() {
   $("stale").textContent = S.api < 2
     ? "Restart the server for names and history"
     : S.api < 5 ? "Restart the server for the list of names"
-    : "Restart the server for individual/group annotations";
+    : "Restart the server for individual/span annotations";
   if (S.api >= 5) {
     showName();
     if (!S.picked) chooseName(); // not awaited: the shot loads behind the list
   }
   try {
     S.events = (await (await api("/api/events")).json()).events;
-    $("event").replaceChildren(
-      ...S.events.map((row) => {
-        const name = row.display_name || row.event;
-        const option = new Option(row.error ? `${name} (broken)` : name, row.event);
-        option.disabled = Boolean(row.error);
-        option.title = row.error || "";
-        return option;
-      })
-    );
+    fillEvents();
+    if (location.hash.startsWith("#silver/")) {
+      const [, batch, shot, event] = location.hash.slice(1).split("/");
+      return await openSilver(Number(batch) || 1, Number(shot) || null, event);
+    }
     const usable = S.events.filter((row) => !row.error);
     if (!usable.length) return say("no events", true);
     const [hashEvent, hashShot] = fromHash();
     const pick =
-      [hashEvent, stored("labeler:event")].find((name) => usable.some((r) => r.event === name)) ||
+      [hashEvent, stored("labeler:event")].find(hasEvent) ||
       usable.reduce((a, b) => (b.n_shots > a.n_shots ? b : a)).event;
     await openEvent(pick, hashShot);
   } catch (error) {
@@ -569,16 +944,52 @@ async function boot() {
   }
 }
 
+/** The event dropdown: one `<optgroup>` per group the taxonomy names, the events that
+ * belong to none first and by name. Subcategories are not listed: the bar under it has them. */
+function fillEvents() {
+  const option = (row) => {
+    const name = row.display_name || row.event;
+    const found = new Option(row.error ? `${name} (broken)` : name, row.event);
+    found.disabled = Boolean(row.error);
+    found.title = row.error || "";
+    return found;
+  };
+  const byName = (a, b) => (a.display_name || a.event).localeCompare(b.display_name || b.event);
+  const groups = new Map();
+  for (const row of [...S.events].sort(byName)) {
+    const key = row.group || "";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(row);
+  }
+  const loose = (groups.get("") || []).map(option);
+  groups.delete("");
+  $("event").replaceChildren(new Option("Silver set", "silver"), ...loose, ...[...groups].map(([name, rows]) => {
+    const group = document.createElement("optgroup");
+    group.label = name;
+    group.append(...rows.map(option));
+    return group;
+  }));
+}
+
 /** `#event/shot`, the address of what is open. */
 function fromHash() {
-  const [event, shot] = decodeURIComponent(location.hash.slice(1)).split("/");
+  const parts = decodeURIComponent(location.hash.slice(1)).split("/");
+  const [event, shot] = parts[0] === "silver" ? [parts[3] || "silver", parts[2]] : parts;
   return [event, Number(shot) || null];
 }
 
 /** A link pasted into the address bar opens what it names. */
 function followHash() {
+  if (location.hash.startsWith("#silver/")) {
+    const [, batch, shot, event] = location.hash.slice(1).split("/");
+    if (Silver.batch === Number(batch) && Silver.shot === Number(shot) &&
+      (Silver.mode && !event || Silver.context && S.event === event && S.shot === Number(shot))) return;
+    openSilver(Number(batch) || 1, Number(shot) || null, event).catch(error => say(error.message, true));
+    return;
+  }
+  Silver.context = false;
   const [event, shot] = fromHash();
-  if (event !== S.event && S.events.some((row) => row.event === event && !row.error)) {
+  if (event !== S.event && hasEvent(event)) {
     openEvent(event, shot).catch((error) => say(error.message, true));
   } else if (event === S.event && shot && shot !== S.shot) {
     openShot(shot);
@@ -603,16 +1014,21 @@ function leave() {
   clearTimeout(S.timer);
 }
 
-async function openEvent(event, shot) {
+async function openEvent(event, shot, silverReview = false) {
+  if (event === "silver") return openSilver(Silver.batch, Silver.shot);
+  Silver.context = silverReview || (Silver.context && Silver.shot === shot);
+  Silver.mode = false;
+  showSilverMode();
   const ticket = ++S.ticket;
   leave();
-  S.queue = [];
+  S.queue = S.allQueue = [];
   S.queueEvent = null;
   S.event = event;
-  S.categories = S.events.find((row) => row.event === event).categories;
+  const { row } = locate(event);
+  S.categories = row.categories; // a subcategory offers its parent's present and uncertain
   S.category = known()[0] || 1;
-  S.crowd = ["edge_localized_mode", "sawtooth_oscillation"].includes(event) ? 1 : 0;
-  $("event").value = event;
+  S.crowd = 1; // a span; the Resolution selector picks Individual or Unspecified
+  $("event").value = row.event; // the dropdown holds the parent; the bar under it, the child
   store("labeler:event", event);
   renderSwatches();
   renderQueue();
@@ -629,16 +1045,68 @@ async function openEvent(event, shot) {
   }
   if (S.event !== event) return;
   const saved = S.savedRows.get(event);
-  S.queue = queue.shots.map((row) => {
+  S.allQueue = queue.shots.map((row) => {
     const newer = saved?.get(row.shot);
     return newer && newer.count > saveCount ? newer.row : row;
   });
+  if (Gold.only) {
+    try {
+      await loadGoldShots();
+    } catch (error) {
+      say(`the gold shots could not be read: ${error.message}`, true);
+    }
+    if (S.event !== event) return;
+  }
+  filterQueue();
   S.queueEvent = event;
   if ($("status").textContent === "the queue is still loading") say("");
   renderQueue();
   showHeader();
   if (ticket !== S.ticket) return;
-  await openShot(S.queue.some((row) => row.shot === shot) ? shot : queue.resume);
+  await openShot(shot || (inQueue(queue.resume) ? queue.resume : firstToReview()));
+}
+
+const inQueue = (shot) => S.queue.some((row) => row.shot === shot);
+
+/** The first unreviewed shot on offer, else the first shot on offer. */
+function firstToReview() {
+  return (S.queue.find((row) => row.state === "unreviewed") || S.queue[0])?.shot ?? null;
+}
+
+async function loadGoldShots() {
+  if (Gold.shots) return;
+  const found = await (await api("/api/gold/shots")).json();
+  if (found.error) throw new Error(found.error);
+  Gold.shots = new Set(found.shots);
+}
+
+/** The queue the page offers: with "Gold set" ticked, only the gold list's shots. */
+function filterQueue() {
+  // `extra` rows are gold shots the event's roster lacks: offered only with the box ticked
+  S.queue = Gold.only && Gold.shots
+    ? S.allQueue.filter((row) => Gold.shots.has(row.shot))
+    : S.allQueue.filter((row) => !row.extra);
+}
+
+async function toggleGoldOnly() {
+  Gold.only = $("gold-only").checked;
+  store("labeler:gold-only", Gold.only ? "1" : null);
+  if (Silver.mode || S.queueEvent !== S.event) return; // the silver page lists silver anyway; a loading queue filters on arrival
+  if (Gold.only) {
+    try {
+      await loadGoldShots();
+    } catch (error) {
+      Gold.only = $("gold-only").checked = false;
+      store("labeler:gold-only", null);
+      return say(`the gold shots could not be read: ${error.message}`, true);
+    }
+  }
+  filterQueue();
+  renderQueue();
+  showHeader();
+  if (!S.queue.length) return say(`no gold shots on ${S.event}'s list`);
+  say("");
+  if (S.shot == null || !inQueue(S.shot)) await openShot(firstToReview());
 }
 
 /** Show `shot` (or no shot) with nothing to edit, and the note `text` where the rows go. */
@@ -661,7 +1129,10 @@ async function openShot(shot) {
   const ticket = ++S.ticket;
   leave();
   if (shot == null) {
-    showNothing(null, `${S.event} has no shots to review.`);
+    const { row, chip } = locate(S.event);
+    showNothing(null, chip
+      ? `No shot has ${row.display_name || row.event} saved yet: save it on a shot, then come back to ${chip.display_name}.`
+      : `${S.event} has no shots to review.`);
     return;
   }
   try {
@@ -678,6 +1149,11 @@ async function openShot(shot) {
     }
     Object.assign(S, { shot, meta, data: null, overview: null, asked: "", undo: [], selected: -1, masks: null,
       tokeye: null });
+    if (meta.categories) { // a subcategory says what it offers
+      S.categories = meta.categories;
+      if (!known().includes(S.category)) S.category = known()[0] || 1;
+      renderSwatches();
+    }
     // Confirmed BCI units also apply to frozen stores whose old UI called
     // the CO2 line integral's native units unverified; preserve store bytes.
     if (independent()) for (const row of meta.rows) {
@@ -685,7 +1161,7 @@ async function openShot(shot) {
       if (!metadata?.measurement?.includes("CO2 line-integrated")) continue;
       row.y_units = "m·cm⁻³";
       row.legend = row.legend.map(text => text.replace("native units (unverified)", "m·cm⁻³"));
-      metadata.caveat = "BCI line integral in m·cm⁻³ (configs/shot_design/signals.yaml); no chord-length division. Upstream density context, not a line average or local Thomson measurement.";
+      metadata.caveat = "BCI line integral in m·cm⁻³; no chord-length division, not a line average.";
     }
     const exposure = independent() ? previousExposure(shot) : null;
     S.suggestionsShown = independent() ? mergeExposure(exposure ? exposure.suggestions_shown : false,
@@ -695,6 +1171,8 @@ async function openShot(shot) {
     const pending = draft(shot);
     S.label = isBlind() ? baseline() : pending || baseline();
     if (independent() && !S.blind) S.suggestionsShown = true;
+    if (independent() && !S.blind && !pending && !meta.saved && S.label.intervals.length)
+      S.prefilled = mergeExposure(S.prefilled, true); // opened on the Source
     keepExposure();
     buildRows();
     arrive();
@@ -716,7 +1194,11 @@ function arrive() {
   busy(null);
   $("cursor").hidden ||= !S.meta;
   for (const id of ["save", "revert", "show-versions"]) $(id).disabled = !S.meta;
-  history.replaceState(null, "", `#${S.event}${S.shot == null ? "" : `/${S.shot}`}`);
+  if (Silver.context && Silver.shot !== S.shot) Silver.context = false;
+  showSilverMode();
+  history.replaceState(null, "", Silver.context
+    ? `#silver/${Silver.batch}/${S.shot}/${S.event}`
+    : `#${S.event}${S.shot == null ? "" : `/${S.shot}`}`);
   $("shot").value = S.shot ?? "";
   showHeader();
   if (S.api >= 7) {
@@ -817,7 +1299,7 @@ async function save(next) {
   if (stillOpening()) return;
   if (!S.meta || S.saving) return;
   if (S.api < 7 && S.label.iscrowd) {
-    return say("Restart the server before saving individual/group annotations", true);
+    return say("Restart the server before saving individual/span annotations", true);
   }
   if (S.api < 8 && [S.label, S.meta.source, S.meta.saved].some(hasOverlaps)) {
     return say("Restart the server before saving overlapping annotations", true);
@@ -862,11 +1344,19 @@ async function save(next) {
       }
     }
     if (S.event === event) {
-      S.queue = S.queue.map((row) => (row.shot === shot ? body.row : row));
+      const before = S.queue.find((row) => row.shot === shot)?.state;
+      S.allQueue = S.allQueue.map((row) => (row.shot === shot ? body.row : row));
+      filterQueue();
+      const chip = locate(event)?.chip;
+      if (chip && before === "unreviewed") chip.n_reviewed += 1;
       renderQueue();
       showHeader();
     }
-    if (next && ticket === S.ticket) await go(1);
+    if (Silver.context && Silver.shot === shot) $("silver-next-event").hidden = false;
+    if (next && ticket === S.ticket) {
+      if (Silver.context) await nextSilverEvent();
+      else await go(1);
+    }
   } catch (error) {
     say(`${shot} not saved: ${error.message}`, true);
   } finally {
@@ -921,18 +1411,21 @@ function render() {
   if (S.frame || !S.meta) return;
   S.frame = requestAnimationFrame(() => {
     S.frame = 0;
+    if (!S.meta) return; // the silver page closed the shot before this frame
     drawRows();
     drawAxis();
     drawTrack($("source-track"), isBlind() ? null : S.meta.source, false);
     drawProducerStrips();
+    if (S.meta.parent) drawTrack($("parent-track"), S.meta.parent.label, false);
     drawTrack($("label-track"), S.label, true, S.api >= 8 ? 0 : undefined);
     if (S.api >= 8) drawTrack($("crowd-track"), S.label, true, 1);
     showVideoCursor();
   });
 }
 
-const categoryColour = (c) => (S.event === "detachment" && S.categories[c] === "detached" ? "#0072b2" :
-  S.event === "detachment" && S.categories[c] === "uncertain" ? CATEGORY_COLOURS[5] :
+const categoryColour = (c, event = S.event, categories = S.categories) =>
+  (event === "detachment" && categories[c] === "detached" ? "#0072b2" :
+  event === "detachment" && categories[c] === "uncertain" ? CATEGORY_COLOURS[5] :
   c === 1 ? T.label : CATEGORY_COLOURS[c] || T.muted);
 
 function drawRows() {
@@ -1091,7 +1584,7 @@ function indicatorNote(row, time) {
   const metadata = S.meta.params?.panel_metadata?.[row.name];
   if (metadata?.quantity === "aux_jsat_peak") {
     const i = metadata.bin_start_ms?.findIndex((start, i) => start <= time && time < metadata.bin_end_ms[i]) ?? -1;
-    return `Jsat peak probe: ${metadata.probe_id?.[i] ?? "unavailable at cursor"} · probe switching cannot establish rollover`;
+    return `Jsat peak probe: ${metadata.probe_id?.[i] ?? "unavailable at cursor"} · switching is not rollover`;
   }
   if (metadata?.indicator === "prad") {
     const values = S.data?.rows[S.meta.rows.indexOf(row)];
@@ -1187,6 +1680,25 @@ function drawOverlay(g, w, h) {
     g.fillRect(px(a) - width / 2, 0, width, h);
     g.fillRect(px(b) - width / 2, 0, width, h);
   });
+  drawMarkers(g, w, h);
+}
+
+/** Each marker set as thin ticks over the row, one colour per label (T hides them). A dense
+ * set (ELM onsets, dozens a shot) is a short tick on the row's lower edge, not a line down it. */
+function drawMarkers(g, w, h) {
+  if (!S.showMarkers || !S.meta?.markers) return;
+  g.save();
+  S.meta.markers.forEach((set, i) => {
+    const edge = EDGE_MARKERS.has(set.label);
+    g.globalAlpha = edge ? 0.55 : 0.75;
+    g.fillStyle = markerColour(i);
+    const [top, height] = edge ? [Math.max(0, h - EDGE_TICK), Math.min(h, EDGE_TICK)] : [0, h];
+    for (const t of set.t_ms) {
+      if (t < S.view[0] || t > S.view[1]) continue;
+      g.fillRect(Math.round(px(t)) - 0.5, top, 1, height);
+    }
+  });
+  g.restore();
 }
 
 function ticks(lo, hi, n) {
@@ -1307,6 +1819,14 @@ function drawTrack(canvas, label, editable, lane) {
   const [top, foot] = editable ? [5, HANDLE_BAND + 2] : [4, 4];
   g.fillStyle = T.panel;
   g.fillRect(px(lo), 0, px(hi) - px(lo), h);
+  if (editable && S.meta.allowed) {
+    // Time the parent does not mark: veiled and hatched, nothing can be drawn there.
+    g.fillStyle = T.veil;
+    for (const [a, b] of gaps(label.window, S.meta.allowed)) {
+      g.fillRect(px(a), 0, px(b) - px(a), h);
+      hatch(g, px(a), 0, px(b) - px(a), h);
+    }
+  }
   const split = !editable && hasOverlaps(label);
   label.intervals.forEach(([a, b, c], i) => {
     const flag = label.iscrowd?.[i];
@@ -1331,7 +1851,7 @@ function drawTrack(canvas, label, editable, lane) {
     }
     if (editable && px(b) - px(a) > 45) {
       const width = px(b) - px(a) - 8;
-      const text = `${S.categories[c]} · ${flag === 1 ? "Crowd" : flag === 0 ? "Individual" : "Unspecified"}`;
+      const text = `${S.categories[c]} · ${flag === 1 ? "Span" : flag === 0 ? "Individual" : "Unspecified"}`;
       g.save();
       g.font = FONT;
       const title = capped(g, wrapped(g, text, width), width, 1)[0];
@@ -1347,8 +1867,10 @@ function drawTrack(canvas, label, editable, lane) {
   });
   if (editable) {
     g.fillStyle = T.ink;
-    g.fillRect(px(lo), h - HANDLE_BAND / 2 - 0.5, px(hi) - px(lo), 1);
-    for (const t of label.window) g.fillRect(px(t) - 2, h - HANDLE_BAND, 4, HANDLE_BAND);
+    if (!S.meta.parent) { // a subcategory's window is its parent's: no handles to move
+      g.fillRect(px(lo), h - HANDLE_BAND / 2 - 0.5, px(hi) - px(lo), 1);
+      for (const t of label.window) g.fillRect(px(t) - 2, h - HANDLE_BAND, 4, HANDLE_BAND);
+    }
     if (!isBlind()) {
       const source = S.meta.source || { window: label.window, intervals: [] };
       g.fillStyle = T.changed;
@@ -1387,12 +1909,86 @@ function hatch(g, x, y, width, height) {
   g.restore();
 }
 
+/** The bar of subcategory chips under the dropdown: "all" (the parent) and one per child. A
+ * child opens on the shot on screen, once the parent is saved on it with something marked. */
+function renderSubbar() {
+  const bar = $("subbar");
+  const { row } = locate(S.event) || {};
+  const subs = row?.subcategories || [];
+  bar.hidden = !subs.length;
+  bar.replaceChildren();
+  if (!subs.length) return;
+  const name = row.display_name || row.event;
+  const parent = S.meta?.parent;
+  const saved = parent ? parent.label : S.meta?.saved;
+  const ready = Boolean(saved?.intervals.length);
+  const chip = (event, text, title, disabled) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "sub";
+    button.textContent = text;
+    button.title = title;
+    button.disabled = disabled;
+    button.setAttribute("aria-pressed", String(event === S.event));
+    button.addEventListener("click", () => {
+      if (event !== S.event) openEvent(event, S.shot).catch((error) => say(error.message, true));
+    });
+    return button;
+  };
+  bar.append(chip(row.event, "all", `All of ${name}`, false));
+  for (const sub of subs) {
+    const title = ready ? `${sub.display_name}: label inside ${name}`
+      : saved ? `${name} marks nothing on this shot` : `review ${name} first`;
+    bar.append(chip(sub.event, `${sub.display_name} · ${sub.n_reviewed}`, title,
+      !ready && sub.event !== S.event));
+  }
+}
+
+/** The parent's read-only lane above the label lane, on a subcategory's page only. */
+function showParent() {
+  const parent = S.meta?.parent;
+  const lane = $("parent-lane");
+  const was = lane.hidden;
+  lane.hidden = !parent;
+  $("parent-lane-name").textContent = parent ? parent.display_name : "";
+  lane.title = parent ? `${parent.display_name}: saved, read-only` : "";
+  if (was !== lane.hidden) sizeCanvases();
+}
+
+/** The legend of the open shot's markers: one colour per label, T hides the ticks. */
+function showMarkers() {
+  const line = $("markers");
+  const sets = S.meta?.markers || [];
+  line.hidden = !sets.length;
+  line.replaceChildren();
+  sets.forEach((set, i) => {
+    const key = document.createElement("span");
+    key.className = "marker-key";
+    key.style.setProperty("--c", markerColour(i));
+    key.textContent = `${set.label} ${set.t_ms.length}`;
+    if (S.meta.onset_candidates) key.title = "These onsets are also in the draft, as Individual annotations";
+    line.append(key);
+  });
+  line.classList.toggle("off", !S.showMarkers);
+}
+
+function toggleMarkers() {
+  if (!S.meta?.markers?.length) return say("this shot has no markers");
+  S.showMarkers = !S.showMarkers;
+  store("labeler:markers", S.showMarkers ? null : "hidden");
+  showMarkers();
+  render();
+}
+
 function showHeader() {
   renderResolution();
+  renderSubbar();
+  showParent();
+  showMarkers();
   $("detachment-help").hidden = S.event !== "detachment";
   const next = neighbour(1);
   $("next-shot").textContent = next == null || next === S.shot ? "" : `→ ${next}`;
-  const row = S.queue.find((r) => r.shot === S.shot) || {};
+  const row = S.queue.find((r) => r.shot === S.shot) || S.meta || {};
   const last = S.meta?.last_save;
   $("tier").textContent = row.tier || "";
   const state = isBlind() && row.state && row.state !== "unreviewed" ? "reviewed" : row.state;
@@ -1500,6 +2096,7 @@ function onLabelDown(event) {
   const rect = event.currentTarget.getBoundingClientRect();
   const lane = S.api >= 8 ? Number(event.currentTarget.dataset.lane) : undefined;
   const hit = hitTest(S.label, event.clientX - rect.left, event.clientY - rect.top, rect.height, px, lane);
+  if (hit.kind === "window" && S.meta.parent) hit.kind = "new"; // the parent's window is fixed
   S.selected = hit.kind === "edge" || hit.kind === "move" ? hit.index : -1;
   const crowd = lane == null ? S.crowd : lane === 0 && S.crowd == null ? null : lane;
   if (hit.kind === "new") S.crowd = crowd;
@@ -1512,13 +2109,14 @@ function onLabelHover(event) {
   const rect = event.currentTarget.getBoundingClientRect();
   const lane = S.api >= 8 ? Number(event.currentTarget.dataset.lane) : undefined;
   const hit = hitTest(S.label, event.clientX - rect.left, event.clientY - rect.top, rect.height, px, lane);
+  if (hit.kind === "window" && S.meta.parent) hit.kind = "new";
   const cursors = { edge: "ew-resize", window: "ew-resize", move: "grab", new: "crosshair" };
   event.currentTarget.style.cursor = cursors[hit.kind];
   const span = S.label.intervals[hit.index];
   const flag = S.label.iscrowd?.[hit.index];
   event.currentTarget.title = span
-    ? `${span[0]}–${span[1]} ms · ${S.categories[span[2]]} · ${flag === 1 ? "group" : flag === 0 ? "individual" : "resolution unspecified"}`
-    : `Drag to add ${lane === 1 ? "a crowd" : lane === 0 ? "an individual" : "a span"}`;
+    ? `${span[0]}–${span[1]} ms · ${S.categories[span[2]]} · ${flag === 1 ? "span" : flag === 0 ? "individual" : "resolution unspecified"}`
+    : `Drag to add ${lane === 1 ? "a span" : lane === 0 ? "an individual" : "an annotation"}`;
 }
 
 function dragTo(clientX) {
@@ -1553,8 +2151,8 @@ function dragTo(clientX) {
   if (d.kind === "window") {
     const [lo, hi] = edges;
     edges[d.edge] = d.edge
-      ? clamp(t, lo + 1, lo + LONGEST_WINDOW_MS)
-      : clamp(t, hi - LONGEST_WINDOW_MS, hi - 1);
+      ? clamp(ms(t), lo + GRID_MS, lo + LONGEST_WINDOW_MS)
+      : clamp(ms(t), hi - LONGEST_WINDOW_MS, hi - GRID_MS);
     // The window is the edge of what was looked at: spans are cut back to it.
     for (const span of spans) [span[0], span[1]] = [0, 1].map((k) => clamp(span[k], ...edges));
   }
@@ -1562,7 +2160,7 @@ function dragTo(clientX) {
     spans.push(moved); // last, so it paints over its own lane
     flags.push(flag);
   }
-  const next = normalise(edges, spans, known(), flags);
+  const next = constrained(edges, spans, flags);
   if (!next) return;
   S.label = next;
   if (moved) selectAt((moved[0] + moved[1]) / 2, flag);
@@ -1588,7 +2186,7 @@ const maskErrors = new Map(); // shot -> last failed save, until a successful re
 
 /** The open shot's pseudo-mask (api 3) and TokEye layer (api 4), if the server has them (AE only). */
 async function loadMasks(ticket) {
-  if (S.api >= 3 && S.event === MASK_EVENT) {
+  if (S.api >= 3 && (S.meta?.parent?.event ?? S.event) === MASK_EVENT) {
     const event = S.event, shot = S.shot;
     // Once per shot: a reload after a save conflict keeps the layer it has.
     const layer = S.api >= 4 && S.tokeye?.shot !== shot ? loadTokeye(event, shot) : null;
@@ -1650,6 +2248,7 @@ function toggleMasks() {
 
 /** A click on an image row, not a drag: reject the region under it, or take that back. */
 function clickMask(d) {
+  if (S.meta?.parent) return; // an AE subcategory shows the mask; rejecting is a decision on AE
   if (maskSaves.has(S.shot)) return say("mask is saving; wait for it to finish");
   const m = S.masks;
   if (!m || !S.showMasks || m.saving) return;
@@ -1980,7 +2579,7 @@ function buildProducerStrips() {
   $("detachment-machine-help").textContent = recipe?.reason ||
     [recipe?.documentation, recipe?.record && Object.keys(recipe.record).length ?
       JSON.stringify(recipe.record, null, 2) : ""].filter(Boolean).join("\n\n") ||
-    "Producer interpretation record unavailable; inspect the stored votes and reasons.";
+    "Producer interpretation record unavailable.";
   $("detachment-strips").hidden = S.blind;
   $("detachment-lanes").replaceChildren(...PRODUCER_LANES.map(([key, title]) => {
     const canvas = document.createElement("canvas");
@@ -2330,6 +2929,7 @@ const KEYS = {
   r: revert,
   h: toggleVersions,
   m: toggleMasks,
+  t: toggleMarkers,
   j: () => go(-1),
   k: () => go(1),
   ArrowLeft: () => go(-1),
@@ -2372,6 +2972,10 @@ function onKey(event) {
   }
   if (target.closest("button") && (key === "Enter" || key === " ")) return;
   if (key === "?" || $("keys").open) return key === "?" && toggleKeys();
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && silverKey(key)) {
+    event.preventDefault();
+    return;
+  }
   const mod = event.ctrlKey || event.metaKey;
   if (event.altKey || (mod && key !== "z") || (!S.meta && !MOVES.has(key))) return;
   if (mod) {
@@ -2427,10 +3031,12 @@ function wire() {
   $("video-play").addEventListener("click", playVideo);
   $("start-blank").addEventListener("click", startBlank);
   $("blind-mode").addEventListener("change", () => {
+    // An untouched, unsaved shot switches between its two fresh openings: Source or empty.
+    const fresh = Boolean(S.meta) && !S.meta.saved && !dirty();
     S.blind = $("blind-mode").checked;
     store("labeler:detachment-blind", String(S.blind));
-    if (S.blind) { startBlank(); S.undo = []; }
-    else S.suggestionsShown = true;
+    if (S.blind) { if (fresh) reopenFresh(); else startBlank(); S.undo = []; }
+    else { S.suggestionsShown = true; if (fresh) reopenFresh(); }
     keepExposure();
     showBlindMode(); showHeader(); renderQueue(); sizeCanvases(); render();
   });
@@ -2441,6 +3047,13 @@ function wire() {
   $("event").addEventListener("change", () =>
     openEvent($("event").value, null).catch((error) => say(error.message, true))
   );
+  $("silver-breadcrumb").addEventListener("click", () => openSilver(Silver.batch, Silver.shot));
+  $("silver-next-event").addEventListener("click", () => nextSilverEvent().catch(error => say(error.message, true)));
+  $("gold-only").addEventListener("change", () => toggleGoldOnly().catch((error) => say(error.message, true)));
+  $("silver-all-layers").addEventListener("change", () => {
+    Silver.layers = $("silver-all-layers").checked;
+    renderSilverOverview();
+  });
   $("shot").addEventListener("keydown", (event) => {
     const typed = $("shot").value.trim();
     if (event.key === "Enter" && /^\d+$/.test(typed)) openShot(Number(typed));
@@ -2491,10 +3104,11 @@ function wire() {
     sizeCanvases();
     render();
   }).observe($("video-panel"));
+  new ResizeObserver(drawSilverOverview).observe($("silver-strips"));
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { ms, paint, runs, normalise, diffRuns, versionChanges, niceStep, hitTest, hasOverlaps, regionAt, lut, modeLut, producerAt };
+  module.exports = { ms, snapSpan, snapWindow, silverFrames, paint, runs, normalise, diffRuns, versionChanges, niceStep, hitTest, hasOverlaps, regionAt, lut, modeLut, producerAt, clipToAllowed, gaps };
 } else {
   boot();
 }

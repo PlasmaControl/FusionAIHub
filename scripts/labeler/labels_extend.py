@@ -90,8 +90,12 @@ def _bound(values, *, last=False) -> float:
     return (max(finite) if last else min(finite)) if finite else float("nan")
 
 
-def database_sources(root, category, producer):
-    """Resolve curated producer IDs from the current or legacy manifest."""
+def database_sources(root, category, producer, manifest=None):
+    """Resolve curated producer IDs from the current or legacy manifest.
+
+    A root with a legacy `tables.yaml` is read by it; any other by events.yaml
+    (`manifest`, default `Paths.events_manifest`).
+    """
     root = Path(root)
     if (root / "tables.yaml").exists():
         return {
@@ -99,7 +103,7 @@ def database_sources(root, category, producer):
             for s in load_manifest(root)
             if s.dir == category and producer in (s.source, s.phenomenon)
         }
-    path = root / "events.yaml"
+    path = Path(Paths.from_env().events_manifest if manifest is None else manifest)
     if not path.exists():
         return set()
     manifest = yaml.safe_load(path.read_text())

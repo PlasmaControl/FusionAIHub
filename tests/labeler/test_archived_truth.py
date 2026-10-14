@@ -135,7 +135,7 @@ def test_scoring_an_unavailable_truth_repeats_its_reason(monkeypatch):
     assert got["scored"] is False and got["reason"] == "no archived rows"
 
 
-def test_only_rows_labelmaker_would_publish_are_scored(monkeypatch):
+def test_only_rows_labeler_would_publish_are_scored(monkeypatch):
     """A row the validity mask rejects is not a prediction labeler stands
     behind, so it must not count for or against the model."""
     _fake_match(monkeypatch, tm_label=[0, 0, 0, 1, 1, 0])

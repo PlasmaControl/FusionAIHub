@@ -46,7 +46,7 @@ fitted here. Every shot bootstrap uses the fresh generator of
 `detach_benchmark.boot_rng`, so a population has one interval; a population on
 fewer than `detach_benchmark.MIN_INTERVAL_SHOTS` shots has none ("n/a (N shots)").
 
-    pixi run --frozen -e labelmaker python scripts/labeler/detach_te_check.py
+    pixi run --frozen -e labeler python scripts/labeler/detach_te_check.py
 """
 
 from __future__ import annotations

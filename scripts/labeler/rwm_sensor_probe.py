@@ -5,7 +5,7 @@ The node inventory establishes locators, not their physical meaning. These
 OPERATIONS channels are therefore candidates only, never registered RWM sensors
 or model inputs. The probe checks units, cadence and coverage on three Hanson
 shots. New arrays go only to $LABELER_ROOT/round4/rwm/sensor_probe. Run on the
-login node under pixi's labelmaker environment and ``fdp run python`` with
+login node under pixi's labeler environment and ``fdp run python`` with
 TMPDIR=$LABELER_ROOT/scratch/tmp-fetch. Fetching is serial, paced by one second,
 and stops at the first authentication error without retrying.
 
@@ -36,7 +36,7 @@ from labeler.events.raw import FetchSpec
 from labeler.features.resolve_fdp import _fetch_mds
 
 MAIN = Path("/scratch/gpfs/nc1514/FusionAIHub")
-SCRATCH = Path("/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4")
+SCRATCH = Path("/scratch/gpfs/EKOLEMEN/nc1514/labeler/scratch/claude-89242e53/r4")
 INVENTORY = SCRATCH / "tmp/detach/d3d_nodes_199166.txt"
 REPORT = REPO / "outputs/labeler/rwm/sensor_probe.json"
 SHOTS = (156785, 158021, 176068)
@@ -56,7 +56,7 @@ def source_audit() -> dict:
     sources = [
         MAIN / "data/events/resistive_wall_mode/raw/rwm_onsets_2017.csv",
         MAIN / "data/events/resistive_wall_mode/raw/rwm_onsets_2024.csv",
-        MAIN / "data/events/resistive_wall_mode/README.md",
+        MAIN / "docs/labeler/events/resistive_wall_mode/README.md",
         MAIN / ".tmp/label_papers/Piccione_2022_Nucl._Fusion_62_036002.md",
         MAIN / ".tmp/label_papers/outside/Piccione_tsdw2021_RWM_poster.md",
         REPO / "src/labeler/features/namespace.py",

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """detach-ours: can the detachment label be read from cheap 0-D signals alone?
 
-    python scripts/labeler/detach_ours.py prep            # environment labelmaker
+    python scripts/labeler/detach_ours.py prep            # environment labeler
     CUDA_VISIBLE_DEVICES=1 $LABELER_ROOT/envs/phase3/bin/python \\
         scripts/labeler/detach_ours.py train               # torch, one GPU
     python scripts/labeler/detach_ours.py refresh          # unchanged arrays only

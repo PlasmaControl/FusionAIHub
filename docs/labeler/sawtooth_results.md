@@ -338,7 +338,7 @@ Source: `outputs/labeler/sawtooth/fix5/benchmark.json` → `Tokamak-SI.*.expert.
 
 Shots ranked inverted (AUROC below 0.5) by both HL-3 runs: 190637. The physics rule calls no definite-present phase on shot 190637 while the reviewed spans contain substantial positive support. The radial profile below resolves which side the data support.
 
-Source: `/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix5/shots/190637.json` → `state_seconds`; `outputs/labeler/sawtooth/fix5/validation.json` → `expert.by_shot`.
+Source: `/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/saw/fix5/shots/190637.json` → `state_seconds`; `outputs/labeler/sawtooth/fix5/validation.json` → `expert.by_shot`.
 
 ## Radial drop profiles of the reviewed spans
 
@@ -467,7 +467,7 @@ Source: `outputs/labeler/sawtooth/fix5/verification.json`.
 ........................................................................ [ 85%]
 ........................                                                 [100%]
 168 passed in 14.95s
-/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/lib/python3.11/site-packages/XRootD/client/finalize.py:46: FutureWarning: `torch.distributed.reduce_op` is deprecated, please use `torch.distributed.ReduceOp` instead
+/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler/lib/python3.11/site-packages/XRootD/client/finalize.py:46: FutureWarning: `torch.distributed.reduce_op` is deprecated, please use `torch.distributed.ReduceOp` instead
   if isinstance(obj, File) and obj.is_open():
 All checks passed!
 3 files already formatted

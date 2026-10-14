@@ -20,6 +20,8 @@ from scipy.ndimage import gaussian_filter1d, maximum_filter1d
 from scipy.signal import find_peaks
 from torch.nn import functional as F
 
+from labeler.config import Paths
+from labeler.sawtooth import qgate
 from labeler.sawtooth.metrics import (
     aggregate,
     bin_times,
@@ -74,6 +76,15 @@ OLD_NEGATIVES = (
     "scoring-only sensitivity: assessed bins plus observable time that is absent "
     "only by the EFIT01 q_min >= 1.5 prior, scored as no-crash negatives, which "
     "reproduces the earlier absent class; models are not refit on it"
+)
+NO_Q1_NEGATIVES = (
+    "scoring-only sensitivity: assessed bins plus observable time with no q = 1 "
+    "surface (labeler.sawtooth.qgate: each whole-ms cell decided by the best "
+    "equilibrium covering it, EFIT02 q_min >= 1.2, else EFIT02ER >= 1.2, else "
+    "EFIT01 >= 2.0, sustained >= 100 ms), scored with the labels unchanged, so it "
+    "adds no-crash negatives except where a present span reaches into it "
+    "(present is never overridden); q-prior time outside the gate stays "
+    "excluded; models are not refit on it; equilibria records the files read"
 )
 EDGE_CONTEXT_SENSITIVITY = (
     "scoring-only sensitivity: tested absence rebuilt with an isolated-edge veto of "
@@ -141,7 +152,8 @@ def usable_signal_shots(work):
     return usable
 
 
-def manifest(work):
+def manifest(work, out_dir=None):
+    """The split; saved in `work` and the outputs, or only in `out_dir` (a dry run)."""
     cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
     reviewed = {int(s) for s in pd.read_csv(REVIEW).shot}
     usable = usable_signal_shots(work)
@@ -172,6 +184,9 @@ def manifest(work):
         "unusable_val": sorted(set(cohort[cohort.split == "val"].shot) - usable),
         "all_reviewed_excluded": sorted(reviewed),
     }
+    if out_dir is not None:
+        save_json(Path(out_dir) / "split_manifest.json", data)
+        return data
     save_json(work / "split_manifest.json", data)
     save_json(OUTPUT / "split_manifest.json", data)
     return data
@@ -363,6 +378,86 @@ def with_q_prior(signal):
     extra = np.asarray(signal["q_prior"], dtype=bool)
     extra &= np.asarray(signal["observable"], dtype=bool)
     return {**signal, "assessed": np.asarray(signal["assessed"], dtype=bool) | extra}
+
+
+_GATES: dict[tuple, qgate.Gate] = {}
+
+
+def q_gate(shot, signal):
+    """The q = 1 gate on the signal's native grid, read once per shot and grid."""
+    t = np.asarray(signal["t"], float)
+    key = (int(shot), len(t), float(t[0]), float(t[-1]))
+    if key not in _GATES:
+        _GATES[key] = qgate.q1_gate(shot, Paths.from_env(), t * 1000.0)
+    return _GATES[key]
+
+
+def with_q_gate(signal, gate):
+    """Scoring-only sensitivity: time with no q = 1 surface as negatives.
+
+    No q = 1 surface, no sawtooth: observable time the gate calls `no_q1` joins
+    the assessed bins whatever the rule called it (uncertain, either q-prior
+    state). The labels are unchanged, as in the review source: the added time
+    has no crashes except where a present span reaches into it. Unobservable
+    time stays out (its inputs are masked). Models are not refit on it.
+    """
+    if len(gate.state) != len(signal["t"]):
+        raise ValueError("the q gate must be sampled on the signal grid")
+    extra = gate.no_q1 & np.asarray(signal["observable"], dtype=bool)
+    return {**signal, "assessed": np.asarray(signal["assessed"], dtype=bool) | extra}
+
+
+def gate_record(shot, gate, signal):
+    """What the gate adds to one shot: seconds of observable, not yet assessed
+    no-q = 1 time per deciding tree, and the equilibrium files it read."""
+    added = (
+        gate.no_q1
+        & np.asarray(signal["observable"], dtype=bool)
+        & ~np.asarray(signal["assessed"], dtype=bool)
+    )
+    t = np.asarray(signal["t"], float)
+    step = float(np.median(np.diff(t))) if len(t) > 1 else 0.0
+    return {
+        "shot": int(shot),
+        "added_s": {
+            tree: float((added & (gate.source == tree)).sum()) * step
+            for tree in qgate.TREES
+        },
+        "files": [
+            (int(shot), f["tree"], f["sha256"], f.get("series_sha256", ""))
+            for f in gate.files
+        ],
+    }
+
+
+def gate_totals(records):
+    """Shots by the best tree that decided any of their added negatives
+    ("none": the gate added nothing)."""
+    found = {**{tree: 0 for tree in qgate.TREES}, "none": 0}
+    for record in records:
+        decided = [tree for tree in qgate.TREES if record["added_s"][tree] > 0]
+        found[decided[0] if decided else "none"] += 1
+    return found
+
+
+def gate_seconds(records):
+    """Seconds of added negatives by deciding tree."""
+    return {
+        tree: round(sum(r["added_s"][tree] for r in records), 3) for tree in qgate.TREES
+    }
+
+
+def gate_equilibria(records):
+    """The equilibrium files behind the view: counts by tree and digests over
+    `shot tree sha256` lines of the files and of the q_min series read."""
+    files = sorted({row for record in records for row in record["files"]})
+    return {
+        "files_by_tree": {
+            tree: sum(row[1] == tree for row in files) for tree in qgate.TREES
+        },
+        "digest": qgate.files_digest(row[:3] for row in files),
+        "series_digest": qgate.files_digest((*row[:2], row[3]) for row in files),
+    }
 
 
 def with_edge_context(signal, rec, context_ms):
@@ -1483,7 +1578,7 @@ def heldout_prediction(work, name, shot, summaries):
 
 
 def evaluate(args):
-    split = manifest(args.work)
+    split = manifest(args.work, getattr(args, "write_to", None))
     output = {
         "legacy": LEGACY,
         "Tokamak-SI": {},
@@ -1593,6 +1688,8 @@ def evaluate(args):
         rows = {1: [], 2: []}
         old_rows = {1: [], 2: []}
         old_by_shot = []
+        gate_rows = {1: [], 2: []}
+        gate_by_shot, gates = [], []
         context_rows = {c: {1: [], 2: []} for c in EDGE_CONTEXTS_MS}
         context_by_shot = {c: [] for c in EDGE_CONTEXTS_MS}
         fold_rows = {fold: [] for fold in range(3)}
@@ -1629,6 +1726,19 @@ def evaluate(args):
             for tolerance in (1, 2):
                 old_rows[tolerance].append(old_shot_rows[tolerance])
             old_by_shot.append(old_shot_result)
+            gate = q_gate(shot, signal)
+            gates.append(gate_record(shot, gate, signal))
+            gate_shot_rows, gate_shot_result = score_prediction(
+                shot,
+                name,
+                pred,
+                with_q_gate(signal, gate),
+                rec,
+                presence_threshold,
+            )
+            for tolerance in (1, 2):
+                gate_rows[tolerance].append(gate_shot_rows[tolerance])
+            gate_by_shot.append(gate_shot_result)
             for context in EDGE_CONTEXTS_MS:
                 alt_rows, alt_result = score_prediction(
                     shot,
@@ -1705,6 +1815,17 @@ def evaluate(args):
                 for tolerance in (1, 2)
             },
             "assessment_totals": assessment_totals(old_by_shot),
+        }
+        score["no_q1_negatives"] = {
+            "definition": NO_Q1_NEGATIVES,
+            **{
+                f"crash_tolerance_{tolerance}ms": aggregate(gate_rows[tolerance])
+                for tolerance in (1, 2)
+            },
+            "assessment_totals": assessment_totals(gate_by_shot),
+            "gate_shots": gate_totals(gates),
+            "added_seconds_by_tree": gate_seconds(gates),
+            "equilibria": gate_equilibria(gates),
         }
         score["edge_context_sensitivity"] = {
             "definition": EDGE_CONTEXT_SENSITIVITY,
@@ -1837,6 +1958,8 @@ def evaluate(args):
         fixed_rows = {1: [], 2: []}
         fixed_old_rows = {1: [], 2: []}
         fixed_old_by_shot = []
+        fixed_gate_rows = {1: [], 2: []}
+        fixed_gate_by_shot, fixed_gates = [], []
         fixed_by_shot = []
         for shot in split["fixed_validation_nonexpert"]:
             if shot not in split["fixed_validation_supported"]:
@@ -1867,6 +1990,19 @@ def evaluate(args):
             fixed_old_by_shot.append(old_shot_result)
             for tolerance in (1, 2):
                 fixed_old_rows[tolerance].append(old_shot_rows[tolerance])
+            gate = q_gate(shot, signal)
+            fixed_gates.append(gate_record(shot, gate, signal))
+            gate_shot_rows, gate_shot_result = score_prediction(
+                shot,
+                name,
+                prediction,
+                with_q_gate(signal, gate),
+                record(args.work, shot),
+                presence_threshold,
+            )
+            fixed_gate_by_shot.append(gate_shot_result)
+            for tolerance in (1, 2):
+                fixed_gate_rows[tolerance].append(gate_shot_rows[tolerance])
         score["fixed_validation"] = {
             **{
                 f"crash_tolerance_{tolerance}ms": aggregate(fixed_rows[tolerance])
@@ -1884,6 +2020,19 @@ def evaluate(args):
                     for tolerance in (1, 2)
                 },
                 "assessment_totals": assessment_totals(fixed_old_by_shot),
+            },
+            "no_q1_negatives": {
+                "definition": NO_Q1_NEGATIVES,
+                **{
+                    f"crash_tolerance_{tolerance}ms": aggregate(
+                        fixed_gate_rows[tolerance]
+                    )
+                    for tolerance in (1, 2)
+                },
+                "assessment_totals": assessment_totals(fixed_gate_by_shot),
+                "gate_shots": gate_totals(fixed_gates),
+                "added_seconds_by_tree": gate_seconds(fixed_gates),
+                "equilibria": gate_equilibria(fixed_gates),
             },
             "score_label": output["protocol"]["primary"],
             "protocol": (
@@ -2098,7 +2247,9 @@ def evaluate(args):
             RECORD_NAMES.get(name, name): result
             for name, result in output["Tokamak-SI"].items()
         }
-    save_json(args.work / "benchmark.json", output)
+    detail = args.work / "benchmark.json"
+    out_dir = getattr(args, "write_to", None)
+    save_json(out_dir / "benchmark_detail.json" if out_dir else detail, output)
     summary = dict(output)
     summary["Tokamak-SI"] = {}
     for name, result in output["Tokamak-SI"].items():
@@ -2106,9 +2257,9 @@ def evaluate(args):
             **{key: value for key, value in result.items() if key != "by_shot"},
             "by_shot_count": len(result["by_shot"]),
             "out_of_fold_shots": result["coverage"]["supported_shot_ids"],
-            "by_shot_details": str(args.work / "benchmark.json"),
+            "by_shot_details": str(detail),
         }
-    save_json(OUTPUT / "benchmark.json", summary)
+    save_json((out_dir or OUTPUT) / "benchmark.json", summary)
     print(
         json.dumps(
             {
@@ -2234,7 +2385,16 @@ def main():
     parser.add_argument("--windows-per-shot", type=int, default=64)
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--prediction-shots", nargs="+", type=int, default=[])
+    parser.add_argument(
+        "--write-to",
+        type=Path,
+        help="evaluate: a dry run that writes benchmark.json, benchmark_detail.json "
+        "and split_manifest.json here, for a diff against the installed files, and "
+        "nothing anywhere else",
+    )
     args = parser.parse_args()
+    if args.write_to is not None and args.stage != "evaluate":
+        parser.error("--write-to is a dry run of evaluate only")
     if not 1 <= args.threads <= 8:
         parser.error("threads must be 1..8")
     if args.patience < 1 or args.min_delta <= 0 or args.max_epochs < 1:

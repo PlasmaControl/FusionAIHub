@@ -1695,7 +1695,7 @@ def main(argv=None) -> int:
         "stage": "events",
         "driver": "tokeye_masks",
         "git_sha": git_sha(),
-        "labelmaker_version": __version__,
+        "labeler_version": __version__,
         "hostname": socket.gethostname(),
         "platform": platform.platform(),
         "started_at": datetime.now(UTC).isoformat(timespec="seconds"),

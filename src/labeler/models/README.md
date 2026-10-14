@@ -4,7 +4,7 @@ One folder per trained model. A folder is `<slug>/` with:
 
 | file | contents |
 |---|---|
-| `README.md` | HuggingFace-style model card. YAML front matter plus a custom `labelmaker:` block; the front matter is what `registry.py` parses. |
+| `README.md` | HuggingFace-style model card. YAML front matter plus a custom `labeler:` block; the front matter is what `registry.py` parses. |
 | `spec.py` | the only per-model code: name mapping, lag structure, training domain, output columns, loader. Exposes `ADAPTER`. |
 | `__init__.py` | empty. |
 

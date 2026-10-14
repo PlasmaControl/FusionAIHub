@@ -125,7 +125,7 @@ EXIT_FIDELITY_FAILED = 5
 #: exited 0 - `fidelity.get("passed") is False` is false for an error dict
 #: just as it is for a real pass.
 EXIT_VALIDATE_ERRORED = 6
-#: `--databases-only`: the `tables.yaml` manifest, or a CSV it names, cannot
+#: `--databases-only`: the label-table manifest, or a CSV it names, cannot
 #: be believed. Run-level like a bad model and for the same reason - it is
 #: one file, it is wrong for every shot, and discovering it per shot would
 #: bury the cause under N identical errors.
@@ -246,7 +246,7 @@ def build_parser() -> ArgumentParser:
                              "<stage>-<timestamp>-<pid>")
     events.add_argument("--databases-only", action="store_true",
                         help="ingest the curated label tables "
-                             "(data/events/tables.yaml) over the shot list "
+                             "(configs/labeler/events.yaml) over the shot list "
                              "and write nothing else: no corpus read, no "
                              "U-Net, no masks. Seconds over 10,000 shots, "
                              "and the only way a table reaches a shot whose "
@@ -431,7 +431,7 @@ def _predictor(slug: str, ctx: RunContext):
         # mid-run.
         registry.verify_artifacts(slug, model_dir)
         adapter = registry.load_adapter(slug)
-        sha_map = (registry.read_card(slug)["labelmaker"].get("upstream") or {}).get(
+        sha_map = (registry.read_card(slug)["labeler"].get("upstream") or {}).get(
             "sha256"
         ) or {}
         predict = adapter.load(model_dir)
@@ -724,7 +724,9 @@ def databases_stage(shots, ctx: RunContext) -> tuple[list[dict], dict]:
 
     paths = ctx.paths
     try:
-        specs = databases.load_manifest(paths.label_tables)
+        specs = databases.load_manifest(
+            paths.label_tables, manifest=paths.events_manifest
+        )
         # Validate every input before writing any shot; read_table warms the
         # shared cache, so the shot loop does not parse these CSVs again.
         for spec in specs:
@@ -1057,7 +1059,7 @@ def main(argv=None) -> int:
             "stage": args.stage,
             "run_id": run_id,
             "started_at": datetime.now(UTC).isoformat(timespec="seconds"),
-            "labelmaker_version": __version__,
+            "labeler_version": __version__,
             "git_sha": git_sha(),
             "hostname": socket.gethostname(),
             "platform": platform.platform(),
@@ -1068,7 +1070,7 @@ def main(argv=None) -> int:
             "models": list(args.models),
             "analyze_config": cfg.as_dict() if cfg is not None else None,
             "cards": {
-                slug: card["labelmaker"].get("upstream", {})
+                slug: card["labeler"].get("upstream", {})
                 for slug, card in cards.items()
             },
             "features": names,
@@ -1099,7 +1101,7 @@ def main(argv=None) -> int:
             "run_id": run_id,
             "stage": "events",
             "git_sha": git_sha(),
-            "labelmaker_version": __version__,
+            "labeler_version": __version__,
             "hostname": socket.gethostname(),
             "started_at": datetime.now(UTC).isoformat(timespec="seconds"),
             "settings": {
@@ -1126,7 +1128,7 @@ def main(argv=None) -> int:
             "run_id": run_id,
             "stage": "events",
             "git_sha": git_sha(),
-            "labelmaker_version": __version__,
+            "labeler_version": __version__,
             "hostname": socket.gethostname(),
             "started_at": datetime.now(UTC).isoformat(timespec="seconds"),
             "settings": {
@@ -1153,7 +1155,7 @@ def main(argv=None) -> int:
             "run_id": run_id,
             "stage": "events",
             "git_sha": git_sha(),
-            "labelmaker_version": __version__,
+            "labeler_version": __version__,
             "hostname": socket.gethostname(),
             "started_at": datetime.now(UTC).isoformat(timespec="seconds"),
             "settings": {

@@ -2,7 +2,7 @@
 """Render the ELM summaries from the canonical JSON records.
 
 Writes `docs/labeler/elm_ours.md`, patches the `## Models` block of
-`data/events/edge_localized_mode/README.md` and the evaluation section of the DSM
+`docs/labeler/events/edge_localized_mode/README.md` and the evaluation section of the DSM
 adapter card, and records the sources in `outputs/labeler/elm/protocol.json`. Every
 figure is read from the evaluation records (through `labeler.elm.facts` or the
 record itself); a re-run of an evaluation changes the text with it.
@@ -22,9 +22,11 @@ from labeler.elm import facts as F
 REPO = Path(__file__).resolve().parents[2]
 OUTPUTS = REPO / "outputs/labeler/elm"
 DOC = REPO / "docs/labeler/elm_ours.md"
-README = REPO / "data/events/edge_localized_mode/README.md"
+README = REPO / "docs/labeler/events/edge_localized_mode/README.md"
 CARD = REPO / "src/labeler/models/d3d_elm_time_to_event_dsm/README.md"
 DATE = "2026_10_03"
+#: The date of the review-source candidates' entries (`labeler.elm.sources`).
+SOURCES_DATE = "2026_10_14"
 WIDTH = 88
 LOWER_BOUND = (
     "These DSM detection rows are lower bounds on DSM detection skill under our "
@@ -589,7 +591,56 @@ def model_lines(records: dict, fx: dict) -> list[str]:
         f"- elm-feature | {DATE} | {triple(control['elm-feature-only'])} "
         f"(control; primary all119; {scope('all119')})"
     )
+    if records.get("review_sources"):
+        lines += source_lines(records["review_sources"], triple)
     return lines
+
+
+def source_lines(record: dict, triple) -> list[str]:
+    """README entries of the review-source candidates, scored on the live review
+    labels by `python -m labeler.elm.sources` (`sources/evaluation.json`)."""
+    full = record["sets"]["all119"]
+    scope = f"{full['n_shots']} shots / {full['bins']:,} bins"
+
+    def sides(key):
+        return ", ".join(
+            f"{side} {block['n_shots']} shots {metric(block['methods'][key], 'f1')}"
+            for side, block in record["by_side"].items()
+        )
+
+    jump, clock = full["methods"]["elm-jump"], full["methods"]["elm-clock"]
+    gap = full["paired"]["elm-jump - elm-clock: f1"]
+    review = (
+        "review source since 2026-10-14; "
+        if record["decision"]["elm_jump_beats_clock_v1"]
+        else ""
+    )
+    return [
+        (
+            f"- elm_jump | {SOURCES_DATE} | {triple(jump)} ({review}in-sample: its "
+            "run rule and gate were chosen on these shots; precision "
+            f"{plain(jump, 'precision')}, recall {plain(jump, 'recall')}; primary "
+            f"all119 on the regridded review labels, {scope}, where the clock scores "
+            f"F1 {plain(clock, 'f1')} and elm_jump minus the clock is "
+            f"{F.fmt(*F.paired(gap), signed=True)}; F1 by divertor side: "
+            f"{sides('elm-jump')}; the clock by side: {sides('elm-clock')})"
+        ),
+        (
+            f"- elm-clock-v2 | {SOURCES_DATE} | "
+            f"{triple(full['methods']['elm-clock-v2'])} (primary all119 on the "
+            f"regridded review labels, {scope}; its present spans call the same bins "
+            "as v1's there)"
+        )
+        if all(
+            full["methods"]["elm-clock-v2"]["counts"][k] == clock["counts"][k]
+            for k in ("tp", "fp", "fn", "tn")
+        )
+        else (
+            f"- elm-clock-v2 | {SOURCES_DATE} | "
+            f"{triple(full['methods']['elm-clock-v2'])} (primary all119 on the "
+            f"regridded review labels, {scope})"
+        ),
+    ]
 
 
 def caveat(records: dict, fx: dict) -> str:
@@ -627,6 +678,18 @@ def caveat(records: dict, fx: dict) -> str:
             "our recipe."
         ),
     ]
+    sources = records.get("review_sources")
+    if sources and sources["decision"]["elm_jump_beats_clock_v1"]:
+        parts.append(
+            "elm_jump (the page's side-aware jump-and-hold onsets in runs of at least "
+            "five, gated by the confinement layers) replaced the clock as the review "
+            "source on 2026-10-14, since its all119 F1 beat the clock's; the clock's "
+            "edges seeded the review, which favours the clock in that comparison. "
+            "elm_jump's run rule and gate were chosen among five variants scored on "
+            "these 119 reviewed shots (10 ms frames, F1 .733 to .805), so its scores "
+            "are in-sample for that choice. "
+            "Rule and scores: [elm_jump.md](../../elm_jump.md)."
+        )
     tiled = fx["tiled"]
     if tiled:
         parts.append(
@@ -640,7 +703,7 @@ def caveat(records: dict, fx: dict) -> str:
         "precision/F1 is conditional on selected windows; continuous-discharge "
         "precision/F1 is unavailable. The experimental Smith onset head is omitted "
         "from catalog model claims. Inputs, run-day sharing and timing limits: "
-        "[elm_ours.md](../../../docs/labeler/elm_ours.md)."
+        "[elm_ours.md](../../elm_ours.md)."
     )
     return " ".join(parts)
 
@@ -1215,7 +1278,7 @@ def sources_section(doc: Doc, records: dict) -> None:
     )
     doc.para(provenance_note(records))
     doc.para(
-        "Run through the pixi labelmaker wrapper with `LABELER_NO_FETCH=1`: read "
+        "Run through the pixi labeler wrapper with `LABELER_NO_FETCH=1`: read "
         "the frozen run from `ours/evaluation.json:run`, then `elm_ours_evaluate.py "
         "--run <run>`, `elm_dsm_evaluate.py --run <run> --rescore`, "
         "`elm_feature_evaluate.py`, `elm_moved_boundary_stratum.py`, "

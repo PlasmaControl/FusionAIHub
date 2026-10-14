@@ -12,7 +12,7 @@ hundred KB at most. A shot whose BES positions or flux map the archive lacks get
 the first authentication error, so run it on the login node under fdp while logged in,
 at most 3 workers at pace 1::
 
-    pixi run --frozen -e labelmaker fdp run python \\
+    pixi run --frozen -e labeler fdp run python \\
         scripts/labeler/confinement_bes_geometry_fetch.py --part 0/3 --pace 1
 
 The cohort's blind ``test`` shots are never fetched.
@@ -36,7 +36,7 @@ if str(REPO / "src") not in sys.path:
 from labeler.confinement import bes_geometry as geo
 
 LABELER = Path(
-    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")
+    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler")
 )
 WORK = LABELER / "round4/conf"
 DEFAULT_OUT = WORK / "geometry"

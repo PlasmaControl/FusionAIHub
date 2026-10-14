@@ -8,8 +8,8 @@
 #SBATCH --mem=48G
 #SBATCH --time=06:00:00
 #SBATCH --array=0-3
-#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%A_%a.out
-#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%A_%a.out
+#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labeler/runs/slurm/%A_%a.out
+#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labeler/runs/slurm/%A_%a.out
 
 # Task 7b: the three AE SELDNet runs, as three array tasks.
 #
@@ -34,7 +34,7 @@
 
 set -euo pipefail
 
-ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker
+ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labeler
 REPO=/scratch/gpfs/nc1514/FusionAIHub
 export PYTHONPATH=$REPO/src
 export LABELER_GIT_SHA=$(git -C "$REPO" rev-parse HEAD)

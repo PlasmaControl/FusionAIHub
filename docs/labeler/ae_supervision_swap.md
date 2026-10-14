@@ -37,7 +37,7 @@ The table above and the decisions it records used the bfloat16 outputs; every sc
 
 ## Frozen protocol
 
-**Dense label counts.** The paper's 943 intervals are the 943 rows of the table its audit scored, the ae_xpower v2 review table (`/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/ae_xpower/v2/review/labels.csv`, SHA256 `5f52a26831cd9173f3d67b1e540ba23ee4aa1adab9159b1312a663cf88eee1de`): 407 present and 536 absent rows over 180 shots. Its any-touch prevalence (present among present and absent 10 ms frames) is 0.409 on the 120 training and selection shots (the paper's 0.41) and 0.696 on the 60 evaluation shots (0.70). The current table (`review/labels.csv`, SHA256 `b4308ff52d766779f33a92e9441a916bb07c854dcc1a98a2f61109bb6431e93a`) has 877 rows over 180 shots, 371 present and 506 absent; every present row is a merged crowd span (`iscrowd`), so rows are not individual boxes. It differs from the snapshot on 29 of the 120 training and selection shots (870 frames, a net +548 present frames; prevalence 0.432) and on 1 of the 60 evaluation shots (4 frames, a net -4; shot 170667), and on 0 of the 19 shared held-out shots. The evaluation reference therefore matches the paper's audit; the training labels are a later version of it. The paper's second count, 954 "after later review", matches neither table. Source: `dense_counts`, `dense_reconciliation` and `dense_history` in evaluation.json.
+**Dense label counts.** The paper's 943 intervals are the 943 rows of the table its audit scored, the ae_xpower v2 review table (`/scratch/gpfs/EKOLEMEN/nc1514/labeler/models/ae_xpower/v2/review/labels.csv`, SHA256 `5f52a26831cd9173f3d67b1e540ba23ee4aa1adab9159b1312a663cf88eee1de`): 407 present and 536 absent rows over 180 shots. Its any-touch prevalence (present among present and absent 10 ms frames) is 0.409 on the 120 training and selection shots (the paper's 0.41) and 0.696 on the 60 evaluation shots (0.70). The current table (`review/labels.csv`, SHA256 `b4308ff52d766779f33a92e9441a916bb07c854dcc1a98a2f61109bb6431e93a`) has 877 rows over 180 shots, 371 present and 506 absent; every present row is a merged crowd span (`iscrowd`), so rows are not individual boxes. It differs from the snapshot on 29 of the 120 training and selection shots (870 frames, a net +548 present frames; prevalence 0.432) and on 1 of the 60 evaluation shots (4 frames, a net -4; shot 170667), and on 0 of the 19 shared held-out shots. The evaluation reference therefore matches the paper's audit; the training labels are a later version of it. The paper's second count, 954 "after later review", matches neither table. Source: `dense_counts`, `dense_reconciliation` and `dense_history` in evaluation.json.
 
 NumPy split seed 20261003 freezes 100 training, 20 selection and 60 evaluation shots; none is in the fixed catalog's blind test split. Seeds 0, 1 and 2 change initialisation and the sampled windows; every arm uses the same split. The original one-seed manifest was archived before the seed list was extended.
 
@@ -393,7 +393,7 @@ sbatch scripts/labeler/ae_supervision_swap.sbatch
 bash scripts/labeler/ae_supervision_swap_head.sh 0 legacy:2
 # float32 re-inference of every finished run (GPU, CUDA interpreter)
 python scripts/labeler/ae_supervision_swap.py infer-fp32
-# CPU, pixi labelmaker environment
+# CPU, pixi labeler environment
 python scripts/labeler/ae_supervision_swap.py verify
 python scripts/labeler/ae_supervision_swap.py audit-convergence
 python scripts/labeler/ae_supervision_swap.py evaluate

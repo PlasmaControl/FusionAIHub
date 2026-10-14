@@ -205,6 +205,7 @@ def test_the_tracks_are_the_frame_models_in_the_papers_order():
     assert not [f for f in build.OWNED if "roster" in f], "one interpreter figure"
 
 
+@pytest.mark.label_tables
 def test_the_candidates_are_the_non_blind_roster_with_corpus_co2(tree):
     found = roster.candidates(tree)
     numbers = [c.shot for c in found]
@@ -214,6 +215,7 @@ def test_the_candidates_are_the_non_blind_roster_with_corpus_co2(tree):
     assert roster.Candidate(SHOT, 2024, (9, 5935)) in found
 
 
+@pytest.mark.label_tables
 def test_each_table_is_read_by_shot_and_a_missing_one_is_none(tree):
     tables = roster.read_tables(tree)
     assert list(tables) == list(roster.TABLES)
@@ -261,6 +263,7 @@ def _shot(paths, seg_file=None):
     )
 
 
+@pytest.mark.label_tables
 def test_the_shot_runs_ae_over_its_corpus_rows_and_reads_the_tables(tree):
     s = _shot(tree)
     assert (s.first, len(s.prob), s.threshold) == (0, 100, 0.5)
@@ -277,6 +280,7 @@ def test_the_shot_runs_ae_over_its_corpus_rows_and_reads_the_tables(tree):
     assert s.grid.dt_ms == pytest.approx(shots.PICTURE_LEVEL * 0.256, rel=0.05)
 
 
+@pytest.mark.label_tables
 def test_the_mask_is_segnet_over_the_whole_spectrogram(tree):
     # A blob naming 80-250 kHz, v1's band, at threshold 0: the roster's mask
     # holds the rows below 80 kHz too; the paper's figures keep the blob's band.
@@ -321,6 +325,7 @@ def _labels(fig) -> set[str]:
     }
 
 
+@pytest.mark.label_tables
 def test_the_figure_says_suggestions_and_has_no_band_line(tree, tmp_path):
     s = _shot(tree)
     fig = roster.draw(s, tmp_path / "roster")
@@ -348,6 +353,7 @@ def test_the_figure_says_suggestions_and_has_no_band_line(tree, tmp_path):
     assert (tmp_path / "roster.pdf").is_file() and (tmp_path / "roster.png").is_file()
 
 
+@pytest.mark.label_tables
 def test_the_signal_panels_are_the_rows_the_frame_models_read(
     tree, tmp_path, monkeypatch
 ):
@@ -405,6 +411,7 @@ def test_the_signal_panels_are_the_rows_the_frame_models_read(
     assert width == PAGE_IN and height > 3.4
 
 
+@pytest.mark.label_tables
 def test_no_mirnov_spectrogram_and_no_sxr_panel(tree, tmp_path, monkeypatch):
     # The stores hold both, and the frame models still read both; neither is drawn.
     _stores(tree, sxr=True)
@@ -508,6 +515,7 @@ def test_the_key_counts_only_the_cells_the_gate_keeps():
     assert kept == pytest.approx(4 / 12, abs=1e-4)
 
 
+@pytest.mark.label_tables
 def test_the_gate_is_tokeye_s_zoom_pass_over_the_probe(tree, monkeypatch):
     assert roster.GATE_ROW == next(iter(PROBES)) == 15
     assert (roster.GATE_GROUP, roster.GATE_TITLE) == ("mirnov", "MPI66M322D")
@@ -536,6 +544,7 @@ def test_the_gate_is_tokeye_s_zoom_pass_over_the_probe(tree, monkeypatch):
     }
 
 
+@pytest.mark.label_tables
 def test_the_shot_s_n_map_is_gated(tree, monkeypatch):
     _stores(tree)
     _mirnov(tree)
@@ -550,6 +559,7 @@ def test_the_shot_s_n_map_is_gated(tree, monkeypatch):
     assert s.n_gate["row"] == {"group": "mirnov", "row": 15, "title": "MPI66M322D"}
 
 
+@pytest.mark.label_tables
 def test_without_a_gate_the_n_panel_says_so(tree, tmp_path, monkeypatch):
     _stores(tree)
     s = _shot(tree)  # no checkpoint
@@ -574,6 +584,7 @@ def test_without_a_gate_the_n_panel_says_so(tree, tmp_path, monkeypatch):
     assert json.loads((out / roster.MANIFEST).read_text())["n_gate"] is None
 
 
+@pytest.mark.label_tables
 def test_main_refuses_the_papers_directory_and_a_shot_off_the_list(tree, tmp_path):
     for out in (paper_dir(tree), paper_dir(tree) / "roster"):
         with pytest.raises(roster.ScratchOnly):
@@ -585,6 +596,7 @@ def test_main_refuses_the_papers_directory_and_a_shot_off_the_list(tree, tmp_pat
     assert not (tmp_path / "b").exists()
 
 
+@pytest.mark.label_tables
 def test_main_picks_draws_and_records(tree, tmp_path, monkeypatch, capsys):
     # OTHER suggests H-mode alone, 1000 ms; SHOT suggests ELMs and sawtooth
     found = [roster.Candidate(s, 2024, WINDOW) for s in (OTHER, SHOT)]
@@ -634,6 +646,7 @@ def test_main_picks_draws_and_records(tree, tmp_path, monkeypatch, capsys):
     }
 
 
+@pytest.mark.label_tables
 def test_the_build_draws_the_roster_figure_as_fig_interpreter(tree, tmp_path):
     stores = _stores(tree)
     out = tmp_path / "paper"
@@ -706,6 +719,7 @@ def test_the_build_draws_the_roster_figure_as_fig_interpreter(tree, tmp_path):
     ]
 
 
+@pytest.mark.label_tables
 def test_the_build_picks_the_roster_shot_or_skips_one_off_the_list(tree, tmp_path):
     manifest = build.build(tree, tmp_path / "a", version="v2")
     got = manifest["interpreter"]
@@ -742,6 +756,7 @@ def _opened(monkeypatch) -> Counter:
     return opened
 
 
+@pytest.mark.label_tables
 def test_the_build_pins_every_file_the_figure_reads_but_the_corpus(
     tree, tmp_path, monkeypatch
 ):

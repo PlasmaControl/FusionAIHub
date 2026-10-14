@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from labeler.paper import label_figure as lf
-from labeler.paper import roster
+from labeler.paper import roster, theme
 from labeler.paper.roster import Read, Signal
 
 HEADER = "shot,category,t_start,t_end,confidence,attrs\n"
@@ -93,6 +93,9 @@ def test_a_row_is_found_by_every_part_of_its_role():
     assert lf.matches(title, "ECE Te, ch 20-23")
     assert not lf.matches(title, "ECE Te, ch 24-27")
     assert lf.matches("D-alpha FS02, the ELM spans' channel", "D-alpha FS")
+    # The ELM store's strike-point sum is not the single chord the role names.
+    assert lf.matches("D-alpha FS01", "D-alpha FS")
+    assert not lf.matches("D-alpha FS strike sum", "D-alpha FS")
     assert lf._trace_name(title) == "ch 20-23"
 
 
@@ -187,3 +190,9 @@ def test_the_generated_tier_is_a_source_of_every_track():
     for spec in lf.TRACKS:
         assert spec.sources[-1].tier == lf.GENERATED
     assert "no model output" not in lf.TITLE
+
+
+def test_the_review_pages_i_mode_is_a_regime_with_its_own_colour():
+    assert lf.REGIMES[6] == "I-mode" and lf.COLOURS["I-mode"] == theme.SAFFRON
+    assert "I-mode" in lf.LEGEND_ORDER
+    assert set(lf.REGIMES.values()) <= set(lf.COLOURS)

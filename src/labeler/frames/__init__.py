@@ -48,7 +48,8 @@ SEED = 20260923
 
 @dataclass(frozen=True)
 class Role:
-    """A store row a method reads: the row whose title starts with `title`.
+    """A store row a method reads: the row whose title starts with `title` (the
+    ELM's `D-alpha FS` is matched by pattern instead, `features.TITLE_PATTERNS`).
 
     `kind` is "image", "trace" or "modes" (an image row whose bytes are
     `verify.mode_bytes`' codes); an image is pooled to `groups` frequency groups,
@@ -145,7 +146,7 @@ SPECS: dict[str, EventSpec] = {
         store_event="neoclassical_tearing_mode",
         roles=(
             Role("power", "MPI66M322D power", "image", groups=32),
-            Role("modes", "toroidal n, MPI66M probes", "modes", groups=10),
+            Role("modes", "toroidal n, MPI66M", "modes", groups=10),
         ),
         target="tearing_archive",
         sub_ms=5.0,

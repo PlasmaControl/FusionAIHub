@@ -2,7 +2,7 @@
 """Repeat ELM CV training seeds on fixed partitions and record shot-bootstrap CIs.
 
 Run ``--train`` with the approved CUDA interpreter, then ``--aggregate`` through
-the labelmaker pixi environment. Each repeat keeps cv2's outer and inner shot
+the labeler pixi environment. Each repeat keeps cv2's outer and inner shot
 partitions and changes only initialisation, dropout, crop and augmentation seeds.
 Per-run predictions, evaluations and logs stay under LABELER_ROOT/round4/elm.
 """
@@ -137,7 +137,7 @@ def train_repeats(args, root, source_dir, source):
         subprocess.run(
             [
                 "bash",
-                "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/bin/tmpsweep.sh",
+                "/scratch/gpfs/EKOLEMEN/nc1514/labeler/scratch/bin/tmpsweep.sh",
             ],
             check=True,
         )

@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 import sys
+from collections import Counter
 from dataclasses import replace
 from pathlib import Path
 
@@ -32,22 +33,86 @@ from tm_cv_plan import load_plan
 
 from labeler.config import Paths, git_sha
 from labeler.tearing import scoring
+from labeler.tearing import source as mhd_source
 from labeler.validate import archived_truth
 
-ROOT = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker"))
+ROOT = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
 TM = ROOT / "round4/tm"
 LOCAL = REPO / "data/events/neoclassical_tearing_mode/benchmark"
 DOCS = REPO / "docs/labeler"
 LABELS = (
     REPO / "data/events/neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
 )
+#: The tearing-mode review source (`scripts/labeler/tm_source.py`, decision S5) whose
+#: present and absent resolve rule-uncertain time in the `mhd_resolved` view (S6): the
+#: `tm_mhd` version `--mhd-version` names, by default the one the event's review pointer
+#: names (`POINTER`). `main` sets `MHD_VERSION`; None (or no table) skips the view.
+MHD_METHOD = "tm_mhd"
+POINTER = REPO / "data/events/neoclassical_tearing_mode/review/source.json"
+MHD_VERSION: str | None = None
+#: `--write-to`: every file the run writes goes under this folder instead (`repo/...` and
+#: `root/...` mirrors), and reads prefer what the run wrote there; None writes in place.
+WRITE_TO: Path | None = None
+
+
+def out_path(path) -> Path:
+    """Where a write of `path` goes (itself, or its `WRITE_TO` mirror)."""
+    path = Path(path)
+    if WRITE_TO is None:
+        return path
+    for base, name in ((REPO, "repo"), (ROOT, "root")):
+        if path.is_relative_to(base):
+            return WRITE_TO / name / path.relative_to(base)
+    raise ValueError(f"{path} is outside the repository and LABELER_ROOT")
+
+
+def mhd_source_path(version: str) -> Path:
+    """The `tm_mhd` table of `version` (`labeler.events.suggestions.table_path`)."""
+    name = f"neoclassical_tearing_mode_suggest_{MHD_METHOD}_{version}.csv"
+    return ROOT / "suggestions" / MHD_METHOD / version / name
+
+
+def pointer_version() -> str | None:
+    """The `tm_mhd` version the review pointer names; None when it names another."""
+    if not POINTER.is_file():
+        return None
+    entry = json.loads(POINTER.read_text())
+    return entry.get("version") if entry.get("method") == MHD_METHOD else None
+
+
+def mhd_resolved_skip() -> str | None:
+    """Why the `mhd_resolved` view cannot be scored (no version, no table); None when
+    it can."""
+    if MHD_VERSION is None:
+        return f"the review pointer {POINTER} names no {MHD_METHOD} table"
+    path = mhd_source_path(MHD_VERSION)
+    if not path.is_file():
+        return f"no {MHD_METHOD} {MHD_VERSION} table at {path}"
+    return None
+
+
+def view_stem(key, view):
+    """A sensitivity record's stem, `<key>_<view>_dev`; the `mhd_resolved` records of
+    tm_mhd v2 on carry the version (`<key>_mhd_resolved_v2_dev`), v1's predate it."""
+    if view == "mhd_resolved" and MHD_VERSION != "v1":
+        return f"{key}_{view}_{MHD_VERSION}_dev"
+    return f"{key}_{view}_dev"
 
 
 def read(path):
-    return json.loads(path.read_text())
+    mirror = out_path(path)
+    return json.loads((mirror if mirror.is_file() else Path(path)).read_text())
+
+
+def write_text(path, text):
+    path = out_path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
 
 
 def write(path, record):
+    path = out_path(path)
+
     def clean(value):
         if isinstance(value, float) and not np.isfinite(value):
             return None
@@ -98,9 +163,10 @@ def rule_audit_bundle():
         record = read(TM / "labels" / filename)
         destination = LOCAL / "sources" / filename
         write(destination, record)
-        if destination.stat().st_size > 2_000_000:
-            destination.write_text(json.dumps(record, separators=(",", ":")) + "\n")
-        assert destination.stat().st_size <= 2_000_000
+        written = out_path(destination)
+        if written.stat().st_size > 2_000_000:
+            written.write_text(json.dumps(record, separators=(",", ":")) + "\n")
+        assert written.stat().st_size <= 2_000_000
         result["sources"][filename] = str(destination.relative_to(REPO))
         result[filename.removesuffix(".json")] = {
             key: value for key, value in record.items() if key != "details"
@@ -123,6 +189,60 @@ UNCERTAIN_NEGATIVE_POLICY = (
 )
 
 
+def mhd_resolved_policy():
+    """The `mhd_resolved` view's policy, naming the `MHD_VERSION` table."""
+    version = f" {MHD_VERSION}" if MHD_VERSION else ""
+    return (
+        "the primary targets (category 2 uncertain and 3 not observable excluded), "
+        "except that a bin the rule leaves uncertain (not one it calls not observable) "
+        f"is scored as positive where the {MHD_METHOD}{version} review source is "
+        "present there and as negative where it is absent; elsewhere it stays "
+        "unscored. The same fitted models and the same inner-validation thresholds as "
+        "the primary row; a sensitivity view, not a co-primary target"
+    )
+
+
+def view_policy(view):
+    """A sensitivity record's `policy`."""
+    if view == "uncertain_negative":
+        return UNCERTAIN_NEGATIVE_POLICY
+    return mhd_resolved_policy()
+
+
+#: The Tokamak-SI rows scored again under each sensitivity view: (record key, model,
+#: variant, in the main table, shot set).
+SENSITIVITY_ROWS = (
+    (
+        "tm_prior_published_tm-onsetcnn_tokamak-si_tuned",
+        "tm-onsetcnn-published",
+        "",
+        True,
+        "si_published",
+    ),
+    (
+        "tm_prior_published_tm-onsetcnn_tokamak-si_fixed",
+        "tm-onsetcnn-published",
+        "thr. 0.5",
+        True,
+        "si_published",
+    ),
+    (
+        "tm_prior_published_tm-dsm-500ms_tokamak-si_tuned",
+        "tm-dsm-500ms-published",
+        "",
+        True,
+        "si_dsm",
+    ),
+    ("tm_prior_retrained_tm-onsetcnn", "tm-onsetcnn-retrained", "", True, "retrained"),
+    ("tm_prior_retrained_tm-dsm", "tm-dsm-retrained", "", True, "retrained"),
+    ("tm_baseline_tworms_cv_tuned", "tm-rms-2line", "", True, "rms"),
+    ("tm_baseline_tworms_seed", "tm-rms-2line", "seed levels", False, "rms"),
+    ("tm_baseline_n1rms_cv_tuned", "tm-rms", "", False, "rms"),
+    ("tm_ours_magnetics", "tm-ours", "", True, "ours"),
+    ("tm_ours_magnetics_rms", "tm-ours-rms", "", False, "ours"),
+)
+
+
 def uncertain_negative_records(cohort):
     """Every Tokamak-SI row of the main table again, with uncertain time as negatives.
 
@@ -130,35 +250,91 @@ def uncertain_negative_records(cohort):
     scores and thresholds are those of the primary row, only the target mask changes.
     Returns `{row key: stem}`.
     """
+    return view_records(cohort, "uncertain_negative")
+
+
+def mhd_resolved_records(cohort):
+    """Every Tokamak-SI row again under the `mhd_resolved` view (decision S6): the
+    rule-uncertain bins take the `MHD_VERSION` tm_mhd source's present or absent.
+
+    Writes ``results/<view_stem>.json`` per row (with the resolved bin counts); scores
+    and thresholds are the primary row's. Returns `{row key: stem}`.
+    """
+    return view_records(cohort, "mhd_resolved")
+
+
+def view_records(cohort, view):
+    """`uncertain_negative_records` or `mhd_resolved_records`, by `view`."""
     dev = sorted(int(s) for s in cohort.query("split != 'test'").shot)
     table = pd.read_csv(LABELS)
     rows = {int(s): g for s, g in table.groupby("shot")}
     nothing = table.iloc[:0]
     stems = {}
+    if view == "mhd_resolved":
+        mhd_path = mhd_source_path(MHD_VERSION)
+        resolver = pd.read_csv(mhd_path)
+        assert not set(resolver.shot) & set(cohort.query("split == 'test'").shot)
+        resolving = {int(s): g for s, g in resolver.groupby("shot")}
+        mhd_table = {
+            "path": str(mhd_path),
+            "sha256": hashlib.sha256(mhd_path.read_bytes()).hexdigest(),
+            "method": MHD_METHOD,
+            "version": MHD_VERSION,
+        }
 
     def emit(key, model, shots, centres, scores, thresholds, finite=None, **extra):
-        y, valid = {}, {}
+        y, valid, counts = {}, {}, Counter()
         for s in shots:
-            y[s], valid[s] = scoring.label_bins(
-                rows.get(s, nothing), centres[s], uncertain_negative=True
-            )
+            rule = rows.get(s, nothing)
+            if view == "uncertain_negative":
+                y[s], valid[s] = scoring.label_bins(
+                    rule, centres[s], uncertain_negative=True
+                )
+            else:
+                y[s], valid[s] = mhd_source.resolved_bins(
+                    rule, resolving.get(s, resolver.iloc[:0]), centres[s]
+                )
             if finite is not None:
                 valid[s] &= finite[s]
+            if view == "mhd_resolved":
+                # Counted on the bins the model scores, as `evaluate` counts them.
+                has = np.isfinite(np.asarray(scores[s], dtype=float))
+                if finite is not None:
+                    has &= finite[s]
+                _, primary = scoring.label_bins(rule, centres[s])
+                _, open_ = scoring.label_bins(rule, centres[s], uncertain_negative=True)
+                primary, open_ = primary & has, open_ & has
+                new = valid[s] & has & ~primary
+                counts["primary_bins"] += int(primary.sum())
+                counts["rule_uncertain_bins"] += int((open_ & ~primary).sum())
+                counts["resolved_positive_bins"] += int((new & (y[s] == 1)).sum())
+                counts["resolved_negative_bins"] += int((new & (y[s] == 0)).sum())
+                counts["shots_resolved"] += int(new.any())
         metrics = scoring.evaluate(shots, y, valid, scores, thresholds, n=1000, seed=0)
-        stem = f"{key}_uncertain_negative_dev"
-        write(
-            TM / "results" / f"{stem}.json",
-            {
-                "made_by": "scripts/labeler/tm_benchmark.py",
-                "git_sha": git_sha(),
-                "model": model,
-                "shots": shots,
-                "labels_sha256": hashlib.sha256(LABELS.read_bytes()).hexdigest(),
-                "policy": UNCERTAIN_NEGATIVE_POLICY,
-                "metrics": metrics,
-                **extra,
-            },
-        )
+        stem = view_stem(key, view)
+        record = {
+            "made_by": "scripts/labeler/tm_benchmark.py",
+            "git_sha": git_sha(),
+            "model": model,
+            "shots": shots,
+            "labels_sha256": hashlib.sha256(LABELS.read_bytes()).hexdigest(),
+            "policy": view_policy(view),
+            "metrics": metrics,
+            **extra,
+        }
+        if view == "mhd_resolved":
+            record["mhd_source"] = mhd_table
+            record["resolution"] = {
+                k: counts[k]
+                for k in (
+                    "primary_bins",
+                    "rule_uncertain_bins",
+                    "resolved_positive_bins",
+                    "resolved_negative_bins",
+                    "shots_resolved",
+                )
+            }
+        write(TM / "results" / f"{stem}.json", record)
         stems[key] = stem
 
     def by_fold(record, shots):
@@ -693,8 +869,11 @@ def like_for_like(cohort, kind):
     Both are scored on the Tokamak-SI labels, on exactly the shots and bins both have
     a score for (for the DSM, outside the published model's training list), with the
     uncertain time excluded (primary) and scored as negative. The published model is
-    shown at its own threshold and at the fold-tuned one; the retrained twin at its
-    fold-tuned threshold.
+    shown at its fixed threshold and at the fold-tuned one; the retrained twin at its
+    fold-tuned threshold. The CNN's fixed 0.5 is its card's own F1 convention and is
+    its primary published F1; the DSM has no published operating point (its fixed 0.3
+    is an upstream helper default its 500 ms risk never reaches), so its primary
+    published F1 is the fold-tuned one (`primary_published`).
     """
     dev = sorted(int(s) for s in cohort.query("split != 'test'").shot)
     name, slug, column, shift, fixed = {
@@ -727,6 +906,14 @@ def like_for_like(cohort, kind):
         "published_model": f"{name}{horizon}-published",
         "retrained_model": f"{name}-retrained",
         "published_threshold": fixed,
+        "published_threshold_is": (
+            CNN_THRESHOLD_MEANING if kind == "cnn" else DSM_RISK_03_MEANING
+        ),
+        "primary_published": (
+            "published_at_published_threshold"
+            if kind == "cnn"
+            else "published_at_tuned_threshold"
+        ),
     }
     for mode, negative in (("primary", False), ("uncertain_negative", True)):
         y, valid = {}, {}
@@ -762,6 +949,77 @@ def like_for_like(cohort, kind):
     return out
 
 
+def mhd_resolved_block(stems, find, uncertain_setting):
+    """The summary's `mhd_resolved` key: each sensitivity row's `mhd_resolved` metrics
+    beside its primary and uncertain-as-negative ones (`find(model, setting, variant)`
+    gives those rows). The records are snapshotted under the benchmark's sources."""
+    keys = ("n_shots", "auroc", "auprc", "f1", "segf1_0.5")
+    keys += ("bins_scored", "bins_positive")
+
+    def brief(metrics):
+        return {k: metrics[k] for k in keys}
+
+    out, mhd = [], None
+    for key, model, variant, in_main, shot_set in SENSITIVITY_ROWS:
+        source = TM / "results" / f"{stems[key]}.json"
+        record = read(source)
+        assert mhd in (None, record["mhd_source"]), key
+        mhd = record["mhd_source"]
+        snapshot = LOCAL / "sources" / source.name
+        write(snapshot, record)
+        metrics = record["metrics"]
+        empty = set(metrics["shots_without_a_scored_bin"])
+        out.append(
+            {
+                "model": model,
+                "variant": variant,
+                "setting": "Tokamak-SI, MHD-resolved",
+                "in_main_table": in_main,
+                "shot_set": SHOTS[shot_set],
+                "source": str(snapshot.relative_to(REPO)),
+                "original_source": str(source),
+                "metrics": metrics,
+                "shots": [s for s in record["shots"] if s not in empty],
+                "resolution": record["resolution"],
+                "compare": {
+                    "primary": brief(find(model, "Tokamak-SI", variant)["metrics"]),
+                    "uncertain_negative": brief(
+                        find(model, uncertain_setting, variant)["metrics"]
+                    ),
+                    "mhd_resolved": brief(metrics),
+                },
+            }
+        )
+    return {
+        "policy": mhd_resolved_policy(),
+        "source": mhd,
+        "meaning": (
+            "Sensitivity, not a co-primary target: the rule's labels with the "
+            f"rule-uncertain time the {MHD_METHOD} {MHD_VERSION} review source decides "
+            "(present from a co-rotating resonant 2/1, 3/1, 3/2, 4/3 or 4/2 track that "
+            "is not a 1/1 harmonic; absent where the MHD analysis observed the time and "
+            "saw only 1/1 or non-resonant tracks, outside the rule's locked phases). "
+            "Only rule-uncertain bins change: rule-absent bins stay negative even "
+            f"where {MHD_METHOD} is present, rule-present bins stay positive and "
+            "not-observable bins stay unscored. The RMS rule does see n = 2: most "
+            "positives the MHD source adds are sub-seed or vetoed 3/2, which the rule "
+            "leaves uncertain, and n = 3, which the rule does not look at at all (here "
+            "only where a rule-uncertain bin holds it); the rest is 2/1 and 3/1 time "
+            "the rule left uncertain."
+        ),
+        "rows": out,
+    }
+
+
+def mhd_resolved_skipped(note):
+    """The summary's `mhd_resolved` key when the view cannot be scored."""
+    return {
+        "policy": mhd_resolved_policy(),
+        "skipped": note,
+        "rows": [],
+    }
+
+
 def short_number(value):
     """Three decimals without the leading zero; a rounded zero has no sign."""
     text = f"{value:.3f}"
@@ -779,9 +1037,15 @@ def display(metric):
 
 #: Row setting -> the heading of its group in the tables.
 SETTING_TITLE = {
-    "Legacy": "Legacy targets, at the published thresholds",
+    "Legacy": (
+        "Legacy targets: CNN at its card's threshold, DSM at its inner-validation "
+        "threshold"
+    ),
     "Legacy, tuned": "Legacy targets, inner-validation thresholds",
-    "Legacy, fixed": "Legacy targets, at the published thresholds",
+    "Legacy, fixed": (
+        "Legacy targets, DSM at risk 0.3 (upstream helper default, not an "
+        "operating point)"
+    ),
     "Tokamak-SI": "Tokamak-SI labels, uncertain time excluded",
     "Tokamak-SI, uncertain = negative": "Tokamak-SI labels, uncertain time scored as negative",
     "Tokamak-SI, fixed": "Tokamak-SI labels, fixed thresholds, uncertain time excluded",
@@ -910,6 +1174,7 @@ SETTING_ORDER = (
     "Tokamak-SI",
     "Tokamak-SI, uncertain = negative",
     "Legacy, tuned",
+    "Legacy, fixed",
     "Tokamak-SI, fixed",
     "Tokamak-SI, uncertain = negative, fixed",
 )
@@ -925,13 +1190,46 @@ SHOTS = {
     "ours": "development shots with Mirnov features; out-of-fold",
     "rms": "development shots with N1RMS and N2RMS records",
 }
+#: The DSM checkpoint has no published operating point. Risk >= 0.3 (survival <= 0.7)
+#: is the keyword default of upstream `metrics_helpers.py:85` `fnr_fpr_calculator`
+#: (shot-level), never used upstream as this checkpoint's operating point; the
+#: checkpoint's 500 ms risk cannot exceed 0.323 (0.279 on the scored legacy bins), so
+#: F1 there is 0 by construction. The DSM's primary F1 is the inner-validation one.
+DSM_RISK_03_NOTE = (
+    "DSM risk 0.3: upstream helper default survival 0.7 (metrics_helpers.py:85), "
+    "shot-level; the 500 ms risk never reaches it. The checkpoint has no published "
+    "operating point."
+)
+DSM_RISK_03_MEANING = (
+    "risk >= 0.3 (survival <= 0.7) is the keyword default of upstream "
+    "metrics_helpers.py:85 fnr_fpr_calculator, shot-level; no upstream run used it as "
+    "this checkpoint's operating point and its 500 ms risk cannot exceed 0.323 (0.279 "
+    "on the scored legacy bins), so F1 there is 0 by construction"
+)
+CNN_THRESHOLD_MEANING = "the model card's F1 convention, tm_prob >= 0.5"
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--rescore", action="store_true")
     ap.add_argument("--gallery-reviewed", action="store_true")
+    ap.add_argument(
+        "--mhd-version",
+        help=f"the {MHD_METHOD} version the mhd_resolved view reads (default: the "
+        "one the review pointer names; the view is skipped without a table)",
+    )
+    ap.add_argument(
+        "--write-to",
+        type=Path,
+        help="write every output under this folder (repo/ and root/ mirrors) instead "
+        "of in place, for a dry run to diff",
+    )
     args = ap.parse_args(argv)
+    global WRITE_TO, MHD_VERSION
+    WRITE_TO = args.write_to
+    MHD_VERSION = args.mhd_version or pointer_version()
+    if WRITE_TO is not None:
+        print("dry run: writes go to", WRITE_TO / "repo", "and", WRITE_TO / "root")
     cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
     blind = set(cohort.query("split == 'test'").shot)
     if args.rescore:
@@ -943,6 +1241,17 @@ def main(argv=None):
         ):
             rescore_oof(stem, cohort)
     uncertain = uncertain_negative_records(cohort)
+    skip = mhd_resolved_skip()
+    if skip:
+        print("mhd_resolved view skipped:", skip, flush=True)
+        resolved = None
+    else:
+        print(
+            f"mhd_resolved view from {MHD_METHOD} {MHD_VERSION}:",
+            mhd_source_path(MHD_VERSION),
+            flush=True,
+        )
+        resolved = mhd_resolved_records(cohort)
     rows, appendix = [], []
 
     def add(
@@ -1016,8 +1325,10 @@ def main(argv=None):
     UN = "Tokamak-SI, uncertain = negative"
     cnn = "tm_prior_published_tm-onsetcnn"
     dsm500 = "tm_prior_published_tm-dsm-500ms"
-    # Legacy targets, published thresholds (the CNN card's 0.5, the DSM card's 0.7
-    # survival level = risk 0.3).
+    # Legacy targets: the CNN at its card's 0.5 (its real F1 convention); the DSM has
+    # no published operating point, so its primary F1 is the inner-validation one. Its
+    # risk >= 0.3 (an upstream helper default, never reached by the 500 ms risk) is in
+    # the appendix.
     add(
         f"{cnn}_legacy_cohort",
         "tm-onsetcnn-published",
@@ -1032,20 +1343,20 @@ def main(argv=None):
         f"{dsm500}_legacy",
         "tm-dsm-500ms-published",
         "Legacy",
-        metric_key="metrics_fixed_published",
-        variant="risk 0.3",
         shot_set=SHOTS["legacy_dsm"],
-        note="Outside the published training list; cohort blind test excluded.",
+        note="Outside the published training list; cohort blind test excluded. No "
+        "published operating point: inner-validation threshold.",
     )
-    for horizon in ("250ms", "1s"):
+    for horizon in ("250ms", "500ms", "1s"):
         add(
             f"tm_prior_published_tm-dsm-{horizon}_legacy",
             f"tm-dsm-{horizon}-published",
-            "Legacy",
+            "Legacy, fixed",
             metric_key="metrics_fixed_published",
             variant="risk 0.3",
             shot_set=SHOTS["legacy_dsm"],
             extra=True,
+            note=DSM_RISK_03_NOTE,
         )
     # Legacy at an inner-validation threshold, secondary.
     add(
@@ -1143,30 +1454,7 @@ def main(argv=None):
         note="Circular input ablation: the RMS defines the label.",
     )
     # Tokamak-SI labels, uncertain time scored as negative (co-primary).
-    for key, model, variant, in_main, shot_set in (
-        (f"{cnn}_tokamak-si_tuned", "tm-onsetcnn-published", "", True, "si_published"),
-        (
-            f"{cnn}_tokamak-si_fixed",
-            "tm-onsetcnn-published",
-            "thr. 0.5",
-            True,
-            "si_published",
-        ),
-        (f"{dsm500}_tokamak-si_tuned", "tm-dsm-500ms-published", "", True, "si_dsm"),
-        (
-            "tm_prior_retrained_tm-onsetcnn",
-            "tm-onsetcnn-retrained",
-            "",
-            True,
-            "retrained",
-        ),
-        ("tm_prior_retrained_tm-dsm", "tm-dsm-retrained", "", True, "retrained"),
-        ("tm_baseline_tworms_cv_tuned", "tm-rms-2line", "", True, "rms"),
-        ("tm_baseline_tworms_seed", "tm-rms-2line", "seed levels", False, "rms"),
-        ("tm_baseline_n1rms_cv_tuned", "tm-rms", "", False, "rms"),
-        ("tm_ours_magnetics", "tm-ours", "", True, "ours"),
-        ("tm_ours_magnetics_rms", "tm-ours-rms", "", False, "ours"),
-    ):
+    for key, model, variant, in_main, shot_set in SENSITIVITY_ROWS:
         add(
             uncertain[key],
             model,
@@ -1195,7 +1483,7 @@ def main(argv=None):
             metric_key="metrics_outside_training:fixed",
             shot_set=SHOTS["si_dsm"],
             extra=True,
-            note="DSM survival threshold 0.7 corresponds to risk threshold 0.3.",
+            note=DSM_RISK_03_NOTE,
         )
     rows.sort(key=lambda r: SETTING_ORDER.index(r["setting"]))
     appendix.sort(key=lambda r: SETTING_ORDER.index(r["setting"]))
@@ -1369,6 +1657,9 @@ def main(argv=None):
             ),
         },
     }
+    summary["mhd_resolved"] = (
+        mhd_resolved_skipped(skip) if skip else mhd_resolved_block(resolved, find, UN)
+    )
     write(LOCAL / "tm_benchmark.json", summary)
     write(TM / "results/tm_benchmark.json", summary)
     uncertain_share = diagnostics["uncertain_fraction"]["after"]["window"][
@@ -1378,41 +1669,44 @@ def main(argv=None):
     caption = (
         "Recovery of a strong rotating n=1/n=2 magnetic rule (a tearing-mode "
         "proxy), not independent identification. AUROC and AUPRC are primary; "
-        "F1 uses inner-validation thresholds. Uncertain time "
+        "F1 uses inner-validation thresholds except thr. 0.5 (CNN card's); the DSM "
+        "has none published. Uncertain time "
         f"({100 * uncertain_share:.1f}\\% of observable catalog-window time) is "
         "excluded in the "
-        "middle block and scored as negative in the bottom block; the top block "
-        "scores the legacy targets. Boundary placement is scored only by the "
+        "middle block and scored as negative in the bottom block; the top block has "
+        "legacy targets. Boundary placement is scored only by the "
         "bottom block. tm-rms-2line is max(n=1/12 G, n=2/6 G), no "
         f"training. Published models saw thousands of shots, retrained ones "
         f"{train_per_fold} per fold. $\\dagger$: training overlap unknown. Brackets: "
         "95\\% shot-bootstrap intervals. Shot sets: appendix."
     )
     assert len(caption.split()) <= 100, len(caption.split())
-    DOCS.mkdir(parents=True, exist_ok=True)
-    (DOCS / "table_tm_benchmark.tex").write_text(
-        table_tex(rows, caption, "tab:tm-benchmark")
+    write_text(
+        DOCS / "table_tm_benchmark.tex", table_tex(rows, caption, "tab:tm-benchmark")
     )
-    (DOCS / "table_tm_benchmark_appendix.tex").write_text(
+    write_text(
+        DOCS / "table_tm_benchmark_appendix.tex",
         table_tex(
             appendix,
             "Additional rows. Legacy rows at inner-validation thresholds, other DSM "
-            "horizons, fixed-threshold results (DSM risk 0.3 equals upstream survival "
-            "probability 0.7), and the uncertain-as-negative values of the rows not "
-            "in the main table. Legacy bins are 25 ms, Tokamak-SI bins 10 ms. "
+            "horizons, fixed-threshold results (DSM risk 0.3: upstream helper default "
+            "survival 0.7, shot-level; the 500 ms risk never reaches it), and the "
+            "uncertain-as-negative values of the rows not in the main table. Legacy "
+            "bins are 25 ms, Tokamak-SI bins 10 ms. "
             "$\\dagger$: published CNN training overlap unknown. Brackets: 95\\% "
             "shot-bootstrap intervals.",
             "tab:tm-benchmark-appendix",
-        )
+        ),
     )
-    (DOCS / "table_tm_shot_sets.tex").write_text(
+    write_text(
+        DOCS / "table_tm_shot_sets.tex",
         shot_sets_tex(
             rows + appendix,
             "Shot set of every benchmark row. Every set is a subset of the 450 "
             "development shots (the 50 blind shots are never opened); the shot lists "
             "are in each row's source JSON.",
             "tab:tm-shot-sets",
-        )
+        ),
     )
     keys = ("auroc", "auprc", "f1", "segf1_0.5")
     paired_rows = []
@@ -1449,7 +1743,8 @@ def main(argv=None):
                         "shots_text": count,
                     }
                 )
-    (DOCS / "table_tm_paired.tex").write_text(
+    write_text(
+        DOCS / "table_tm_paired.tex",
         table_tex(
             paired_rows,
             "Paired comparisons on development shots, with uncertain time excluded "
@@ -1462,7 +1757,7 @@ def main(argv=None):
             "paired, and a difference whose interval spans zero is not resolved. "
             "Unavailable bins are hard barriers for segmental IoU 0.5.",
             "tab:tm-paired",
-        )
+        ),
     )
 
     def cell(row):
@@ -1501,15 +1796,20 @@ def main(argv=None):
         if legacy_model is None:
             legacy = None
         else:
-            fixed = find(
-                legacy_model, "Legacy", "thr. 0.5" if kind == "cnn" else "risk 0.3"
-            )
+            if kind == "cnn":
+                fixed = find(legacy_model, "Legacy", "thr. 0.5")
+                primary, fixed_is = "f1_published_threshold", CNN_THRESHOLD_MEANING
+            else:
+                fixed = find(legacy_model, "Legacy, fixed", "risk 0.3")
+                primary, fixed_is = "f1_tuned", DSM_RISK_03_MEANING
             tuned = find(legacy_model, "Legacy, tuned")
             legacy = {
                 "model": legacy_model,
                 "held_out": fixed["held_out"],
                 "f1_published_threshold": fixed["metrics"]["f1"],
                 "f1_tuned": tuned["metrics"]["f1"],
+                "primary_f1": primary,
+                "f1_published_threshold_is": fixed_is,
                 "auroc": fixed["metrics"]["auroc"],
                 "auprc": fixed["metrics"]["auprc"],
                 "prevalence": fixed["metrics"]["prevalence"],
@@ -1574,9 +1874,16 @@ def main(argv=None):
                 if k.startswith("legacy")
             },
             "threshold_policy": (
-                "Legacy F1 at the model's published threshold (CNN 0.5, DSM risk 0.3) "
-                "is primary and the inner-validation value secondary; Tokamak-SI F1 "
-                "at positive-bearing presence-stratified inner-validation thresholds."
+                "Legacy F1: the CNN at its card's published threshold (0.5) is primary "
+                "and its inner-validation value secondary. The DSM has no published "
+                "operating point: its inner-validation F1 is primary "
+                "(legacy.primary_f1 = f1_tuned) and so is its published F1 in the "
+                "like-for-like pair (like_for_like.primary_published). Risk 0.3 "
+                "(survival 0.7) is an upstream helper default "
+                "(metrics_helpers.py:85, shot-level) that this checkpoint's 500 ms risk "
+                "never reaches (cap 0.323), reported in the appendix only "
+                "(legacy.f1_published_threshold for the DSM). Tokamak-SI F1 at "
+                "positive-bearing presence-stratified inner-validation thresholds."
             ),
             "primary_comparison": "AUROC and AUPRC, with prevalence beside AUPRC",
             "paired_common_shots": paired,
@@ -1592,9 +1899,9 @@ def main(argv=None):
     )
     print(
         "paper exports:",
-        LOCAL / "tm_benchmark.json",
-        DOCS / "table_tm_benchmark.tex",
-        DOCS / "figure2_tm.json",
+        out_path(LOCAL / "tm_benchmark.json"),
+        out_path(DOCS / "table_tm_benchmark.tex"),
+        out_path(DOCS / "figure2_tm.json"),
     )
 
 
@@ -1604,16 +1911,21 @@ FIGURE2_SCHEMA = {
     "rows[].legacy_model": "published model scored on its own legacy target (null: none)",
     "rows[].tokamak_si_model": "model scored on the Tokamak-SI labels (retrained twin "
     "or ours)",
-    "rows[].legacy": "f1_published_threshold (primary), f1_tuned (secondary), auroc, "
-    "auprc, prevalence (beside AUPRC: it differs from the Tokamak-SI target), shots, "
-    "bins, bin_ms (25), held_out",
+    "rows[].legacy": "f1_published_threshold (CNN: its card's 0.5; DSM: risk 0.3, an "
+    "upstream helper default, not an operating point), f1_tuned (inner-validation "
+    "threshold), primary_f1 (which of the two is the primary F1: the CNN's "
+    "f1_published_threshold, the DSM's f1_tuned), f1_published_threshold_is (what the "
+    "fixed threshold is), auroc, auprc, prevalence (beside AUPRC: it differs from the "
+    "Tokamak-SI target), shots, bins, bin_ms (25), held_out",
     "rows[].tokamak_si": "f1 (inner-validation threshold), auroc, auprc, prevalence, "
     "shots, bins, bin_ms (10), uncertain time excluded",
     "rows[].tokamak_si_uncertain_negative": "the same with uncertain time scored as "
     "negative",
     "rows[].like_for_like": "published model and retrained twin on one target, mask and "
     "shot set: primary and uncertain_negative, each with the published model at its "
-    "published and tuned thresholds and the retrained model",
+    "fixed and tuned thresholds and the retrained model; primary_published names the "
+    "published model's primary F1 (the CNN's fixed threshold, the DSM's tuned one) and "
+    "published_threshold_is says what the fixed threshold is",
     "paired_common_shots": "full_set (tm-ours and the two-line baseline, every "
     "development shot) and cnn_subset (tm-ours and the retrained CNN, the shots and "
     "bins where the CNN has inputs), each with a primary block (uncertain time "
@@ -1629,6 +1941,8 @@ def like_cell_pair(block):
         "published_model": block["published_model"],
         "retrained_model": block["retrained_model"],
         "published_threshold": block["published_threshold"],
+        "published_threshold_is": block["published_threshold_is"],
+        "primary_published": block["primary_published"],
     }
     for mode in ("primary", "uncertain_negative"):
         part = block[mode]

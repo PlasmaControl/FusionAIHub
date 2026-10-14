@@ -16,7 +16,7 @@ The shots are David Smith's labelled ELM windows (``--from smith``: 211 shots) a
 shots of the ELM review labels (``--from review``). Fetching needs fdp, so run it on the
 login node while logged in; it stops at the first authentication error::
 
-    pixi run --frozen -e labelmaker fdp run python scripts/labeler/elmo_fetch.py \\
+    pixi run --frozen -e labeler fdp run python scripts/labeler/elmo_fetch.py \\
         --from smith --part 0/2
 """
 from __future__ import annotations
@@ -38,7 +38,7 @@ if str(REPO / "src") not in sys.path:
 
 from labeler.events.verify import NoDataError, fdp_signal
 
-LABELER = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker"))
+LABELER = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
 DEFAULT_OUT = LABELER / "benchmarks/elm/elmo/signals"
 SMITH_DIR = Path("/projects/EKOLEMEN/dsmith/data")
 SMITH_FILES = ("labeled-elm-events.hdf5", "labeled_elm_events_long_windows_20220921.hdf5")

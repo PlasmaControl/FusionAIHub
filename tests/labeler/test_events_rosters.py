@@ -165,6 +165,7 @@ def test_notes_stay_on_one_line(tmp_path):
         record_review(path, 1, "alice", on=date(2026, 1, 1), notes="two\nlines")
 
 
+@pytest.mark.label_tables
 def test_every_category_has_a_valid_roster():
     from labeler.config import Paths
     from labeler.events.databases import category_dirs

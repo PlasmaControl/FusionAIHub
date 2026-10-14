@@ -12,7 +12,7 @@ from labeler.events.catalog.points import validate_csv_fields
 
 def test_default_root_is_group_storage():
     p = Paths()
-    assert p.root == Path("/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")
+    assert p.root == Path("/scratch/gpfs/EKOLEMEN/nc1514/labeler")
     assert p.corpus == Path("/scratch/gpfs/EKOLEMEN/foundation_model")
 
 
@@ -102,19 +102,33 @@ def test_the_label_tables_root_is_the_repo_and_is_overridable(
     tmp_path,
 ):
     # Curated label tables are DATA and live under `data/events/`, never
-    # under `src/`. The default resolves relative to the package rather
-    # than to the caller's cwd, so a run from anywhere finds the committed
-    # manifest; a table too large or too restricted to commit lives on
-    # /scratch and the root moves with it.
+    # under `src/`, and git ignores them (a clone restores them from the
+    # Hugging Face release). The default resolves relative to the package
+    # rather than to the caller's cwd, so a run from anywhere finds them; a
+    # table too large or too restricted to keep here lives on /scratch and
+    # the root moves with it.
     default = Paths().label_tables
     assert default.name == "events" and default.parent.name == "data"
-    assert (default / "events.yaml").is_file()
+    assert default.parent.parent == Paths().config_dir.parents[1]
     tables = tmp_path / "elsewhere"
     monkeypatch.setenv("LABELER_LABEL_TABLES", str(tables))
     assert Paths.from_env().label_tables == tables
     # An input, like the corpus and the bundles: `mkdirs` does not make it.
     Paths(root=tmp_path, label_tables=tables).mkdirs()
     assert not tables.exists()
+
+
+def test_the_manifests_are_tracked_config_and_overridable(monkeypatch, tmp_path):
+    # events.yaml and best_models.yaml are source: configs/labeler/, beside the
+    # package, never in the git-ignored label tables.
+    paths = Paths()
+    assert paths.config_dir.parts[-2:] == ("configs", "labeler")
+    assert paths.events_manifest == paths.config_dir / "events.yaml"
+    assert paths.best_models == paths.config_dir / "best_models.yaml"
+    assert paths.events_manifest.is_file() and paths.best_models.is_file()
+    monkeypatch.setenv("LABELER_CONFIG_DIR", str(tmp_path))
+    assert Paths.from_env().events_manifest == tmp_path / "events.yaml"
+    assert Paths.from_env().label_tables == paths.label_tables
 
 
 def test_raw_cache_follows_the_root(tmp_path):

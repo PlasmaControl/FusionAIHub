@@ -99,15 +99,15 @@ Archive-capable legacy raw-cache signals without a recorded resolver are also
 unavailable until refreshed, because their timestamps cannot be aligned safely.
 
 ```bash
-pixi run --frozen -e labelmaker fdp run python -m labeler.events.equilibrium \
+pixi run --frozen -e labeler fdp run python -m labeler.events.equilibrium \
     --event poloidal_beta --workers 8
-pixi run --frozen -e labelmaker python -m labeler.events.spans \
+pixi run --frozen -e labeler python -m labeler.events.spans \
     --event poloidal_beta --workers 8
-pixi run --frozen -e labelmaker python -m labeler.events.review.cohort_rosters \
+pixi run --frozen -e labeler python -m labeler.events.review.cohort_rosters \
     --event poloidal_beta --point
-pixi run --frozen -e labelmaker fdp run python -m labeler.events.review.build \
+pixi run --frozen -e labeler fdp run python -m labeler.events.review.build \
     --event poloidal_beta --workers 8
-pixi run --frozen -e labelmaker labeler-verify
+pixi run --frozen -e labeler labeler-verify
 ```
 
 `equilibrium --limit N` prepares a pilot; `--shots` restricts it to specified
@@ -127,7 +127,7 @@ locator and clock-correction metadata follow the signals into the cache and
 draft sidecars. Source stores remain untouched.
 
 If FDP reports expired credentials, run
-`pixi run --frozen -e labelmaker fdp login`, then repeat preparation. A draft
+`pixi run --frozen -e labeler fdp login`, then repeat preparation. A draft
 already written with unavailable inputs is kept by default. Write a new draft
 version and select it with `cohort_rosters --version v2 --point`; rebuild rows
 with `review.build --force` to display newly fetched signals. Existing saved

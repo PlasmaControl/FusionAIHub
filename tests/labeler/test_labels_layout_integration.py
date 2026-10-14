@@ -1,4 +1,4 @@
-"""The committed format inputs retain the RWM CLI contract on both shot sets."""
+"""The label tables retain the RWM CLI contract on both shot sets; git keeps them out."""
 import csv
 import json
 import runpy
@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 
 import pandas as pd
+import pytest
 import yaml
 
 from labeler import run
@@ -14,6 +15,7 @@ from labeler.events import schema
 
 REPO = Path(__file__).resolve().parents[2]
 
+@pytest.mark.label_tables
 def test_databases_only_on_all_committed_rwm_shots_writes_56_events_33_sources(
     tmp_path, monkeypatch,
 ):
@@ -40,6 +42,7 @@ def test_databases_only_on_all_committed_rwm_shots_writes_56_events_33_sources(
     assert events.t_cov0_s.isna().all() and sources.t_cov1_s.isna().all()
 
 
+@pytest.mark.label_tables
 def test_rwm_500_scan_exports_empty_table_with_completed_run_provenance(
     tmp_path, monkeypatch,
 ):
@@ -67,16 +70,41 @@ def test_rwm_500_scan_exports_empty_table_with_completed_run_provenance(
         assert (schema.read_events(path).source != "database:rwm_format_2026_v1").all()
 
 
-def test_gitignore_allows_new_label_tables_to_be_tracked():
-    # --no-index also checks tracked paths; the novel name catches future tables.
-    result = subprocess.run([
-        "git", "check-ignore", "--no-index", "data/events/tables.yaml",
-        "data/events/future_category/raw/future_table.csv",
-    ], cwd=REPO, capture_output=True, text=True, check=False)
-    assert result.returncode == 1, result.stdout + result.stderr
-    assert result.stdout == ""
+def _ignored(*paths):
+    """The paths git ignores; --no-index also checks tracked paths."""
+    result = subprocess.run(
+        ["git", "check-ignore", "--no-index", *paths],
+        cwd=REPO, capture_output=True, text=True, check=False,
+    )
+    assert result.returncode in (0, 1), result.stderr
+    return set(result.stdout.split())
 
 
+def test_gitignore_keeps_the_data_out_and_the_source_in():
+    # The label tables are data, published on Hugging Face, never in git: every
+    # path under data/ is ignored, with no exception carved back out.
+    data = [
+        "data/anything.csv",
+        "data/events/x/format/y.csv",
+        "data/events/detachment/raw/emission_structure_1.sav",
+        "data/events/events.yaml",
+        ".streamlit/secrets.toml",
+    ]
+    assert _ignored(*data) == set(data)
+    # What used to sit beside the tables is source and stays tracked.
+    source = [
+        "configs/labeler/events.yaml",
+        "configs/labeler/best_models.yaml",
+        "docs/labeler/events/README.md",
+        "docs/labeler/events/x/README.md",
+        "examples/labeler/x/verification.ipynb",
+        "scripts/labeler/osti_probe.py",
+        "docs/paper_facts/FACT_SHEET.md",
+    ]
+    assert _ignored(*source) == set()
+
+
+@pytest.mark.label_tables
 def test_discrete_label_inventory_has_the_roadmap_input_schema():
     with (REPO / "data/events/discrete_labels.csv").open(newline="") as stream:
         reader = csv.DictReader(stream)
@@ -93,7 +121,7 @@ def test_discrete_label_inventory_has_the_roadmap_input_schema():
 
 def test_every_category_readme_has_a_title_and_at_most_one_tables_section():
     """The READMEs are hand-edited; the formatter only appends one `## Tables` block."""
-    readmes = sorted((REPO / "data/events").glob("*/README.md"))
+    readmes = sorted((REPO / "docs/labeler/events").glob("*/README.md"))
     assert len(readmes) >= 16
     for path in readmes:
         lines = path.read_text().splitlines()

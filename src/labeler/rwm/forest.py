@@ -1,6 +1,6 @@
 """A balanced random forest in numpy.
 
-The labelmaker environment has no scikit-learn or imbalanced-learn, so this is the
+The labeler environment has no scikit-learn or imbalanced-learn, so this is the
 estimator of Chen et al. 2004 as Piccione et al. 2022 use it (imblearn's
 `BalancedRandomForestClassifier`), written from that description: every tree is
 grown on its own balanced sample, a bootstrap of the minority class plus an equal

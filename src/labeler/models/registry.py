@@ -2,7 +2,7 @@
 
 A model folder is `models/<slug>/` with a `README.md` whose YAML front
 matter follows the HuggingFace model-card standard plus one custom
-`labelmaker:` block, and a `spec.py` exposing `ADAPTER`. The card is the
+`labeler:` block, and a `spec.py` exposing `ADAPTER`. The card is the
 single place a physicist reads to learn what a model is, where its weights
 came from, what it consumes, and how its labels scored; `card_discrepancies`
 keeps the card honest about the first two.
@@ -59,7 +59,7 @@ def read_card(slug: str) -> dict:
 
 
 def status(slug: str) -> str:
-    return read_card(slug)["labelmaker"]["status"]
+    return read_card(slug)["labeler"]["status"]
 
 
 def implemented() -> list[str]:
@@ -91,7 +91,7 @@ def card_discrepancies(slug: str) -> list[str]:
     the ensemble size and the time step. A card that drifts from the code is worse than no
     card, so a test fails on any entry here.
     """
-    card = read_card(slug)["labelmaker"]
+    card = read_card(slug)["labeler"]
     adapter = load_adapter(slug)
     out: list[str] = []
     want_in = [f"{f.model_name} <- {f.canonical}" for f in adapter.input_spec.fields]
@@ -132,7 +132,7 @@ def verify_artifacts(slug: str, model_dir) -> None:
     producing a label file whose provenance is wrong. Absence and corruption
     are reported separately: they are different failures.
     """
-    card = read_card(slug)["labelmaker"]
+    card = read_card(slug)["labeler"]
     expected = (card.get("upstream") or {}).get("sha256") or {}
     if not expected:
         raise ValueError(f"{slug}: card records no sha256 for its artifacts")

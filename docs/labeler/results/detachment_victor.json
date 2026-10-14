@@ -994,7 +994,7 @@
  },
  "dataset_fingerprint": "5f021ab35b982b26916b36ce9e81b3b6924f8b7baa850c59477d5acd6259fa28",
  "label_source": {
-  "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/labels_bins.csv.gz",
+  "path": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/labels_bins.csv.gz",
   "sha256": "a683b477dca02a2a2a1ce9c484b59280a2c59d71b0b9395e8b9891fcb34f981a"
  },
  "bootstrap_comparison": "model and majority use identical shot resamples with seed 1 within each population",

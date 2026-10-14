@@ -3,7 +3,7 @@
 
 Run on the login node under the fdp wrapper, one worker, `timeout` around it:
 
-    timeout 3600 pixi run --frozen -e labelmaker fdp run python \\
+    timeout 3600 pixi run --frozen -e labeler fdp run python \\
         scripts/labeler/detach_fetch_round4.py --stage all
 
 * `bms`: the total injected neutral-beam power, PTDATA `BMSPINJ`, for every cached

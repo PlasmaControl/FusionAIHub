@@ -51,7 +51,7 @@ intervals use the same shot draws as the bin scores.
     python scripts/labeler/elmo_benchmark.py sweep
     python scripts/labeler/elmo_benchmark.py evaluate
 
-Needs numpy, scipy, pandas and h5py (``-e labelmaker``).
+Needs numpy, scipy, pandas and h5py (``-e labeler``).
 """
 from __future__ import annotations
 
@@ -72,7 +72,7 @@ from scipy.fft import dct, idct
 from scipy.ndimage import maximum_filter1d
 
 REPO = Path(__file__).resolve().parents[2]
-LABELER = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker"))
+LABELER = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
 CORPUS = Path("/scratch/gpfs/EKOLEMEN/foundation_model")
 SMITH_DIR = Path("/projects/EKOLEMEN/dsmith/data")
 SMITH_FILES = ("labeled-elm-events.hdf5", "labeled_elm_events_long_windows_20220921.hdf5")

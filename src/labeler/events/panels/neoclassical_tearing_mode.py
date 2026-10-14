@@ -19,6 +19,8 @@ names come with v1 Part 7.
 
 from __future__ import annotations
 
+from typing import NamedTuple
+
 import numpy as np
 
 from ..raw import raw_signal
@@ -65,9 +67,14 @@ FLOOR_QUANTILE = 0.2
 #: The spectrograms' scale, higher than the shared (-3, 27): a flat top's broadband
 #: power runs 27-40 dB over that floor on loud shots and would hide the lines.
 Z_DB = (-3.0, 42.0)
+#: The rows' titles. The n row's is the frames' role prefix
+#: (`frames.SPECS["ntm_frames"]`), so the two change together.
+POWER_TITLE = "MPI66M322D power"
+N_TITLE = "toroidal n, MPI66M"
+TITLES = (POWER_TITLE, N_TITLE, "beta_N")
 
 
-def mode_numbers(spec, phi_deg) -> np.ndarray:
+def mode_numbers(spec, phi_deg, with_score: bool = False):
     """`(F, T)` int8: each time-frequency cell's n, pyspecview's way.
 
     `spec` is `(P, F, T)`, the probes' complex STFTs. Each n in `N_VALUES`
@@ -75,6 +82,9 @@ def mode_numbers(spec, phi_deg) -> np.ndarray:
     phases turn exactly n times round the torus, and the best score wins; the
     cell's power plays no part. pyspecview (`update_image`) scores
     `exp(i (arg A_k + n phi_k))`, the same fit on the opposite sign.
+
+    With `with_score`, `(n, score)`: the winning score of each cell too, `(F, T)`
+    float32 in 0..1, which is what the n=1..3 amplitude row gates on.
     """
     unit = spec / np.maximum(np.abs(spec), 1e-30)
     phi = np.deg2rad(np.asarray(phi_deg, dtype=float))
@@ -85,10 +95,24 @@ def mode_numbers(spec, phi_deg) -> np.ndarray:
         fit = np.abs(np.tensordot(turns, unit, axes=(0, 0)))
         index[fit > best] = i
         np.maximum(best, fit, out=best)
-    return N_VALUES[index].astype(np.int8)
+    modes = N_VALUES[index].astype(np.int8)
+    if not with_score:
+        return modes
+    return modes, (best / len(phi)).astype(np.float32)
 
 
-def magnetics_panels(shot, *, t_range=None, paths=None) -> list[Panel]:
+class Spectra(NamedTuple):
+    """The six midplane probes' STFTs below `MAX_KHZ`, and what floors them."""
+
+    t_ms: np.ndarray
+    f_khz: np.ndarray
+    spec: np.ndarray  # (P, F, T) complex64
+    power: np.ndarray  # (P, F, T)
+    plasma: np.ndarray  # (T,) bool: the columns a floor is taken over
+
+
+def spectra(shot, *, t_range=None, paths=None) -> Spectra:
+    """The probes' spectra of one shot (`NoDataError` when it has none)."""
     rows = list(PROBES)
     mirnov = raw_signal(
         int(shot), "mirnov", channels=rows, t_range=t_range, paths=paths
@@ -99,30 +123,40 @@ def magnetics_panels(shot, *, t_range=None, paths=None) -> list[Panel]:
     spec = spec[:, keep].astype(np.complex64)
     power = np.abs(spec) ** 2
     plasma = plasma_columns(t_ms, power[0].sum(axis=0), plasma_window(shot, paths))
+    return Spectra(t_ms, f_hz[keep] / 1000, spec, power, plasma)
+
+
+def heatmaps(s: Spectra, modes) -> list[Panel]:
+    """MPI66M322D's power, and the probes' mean power coloured by `modes`."""
     return [
         Panel(
-            title="MPI66M322D power",
+            title=POWER_TITLE,
             kind="heatmap",
-            x=t_ms,
-            y=f_hz[keep] / 1000,
-            z=above_floor_db(power[0], FLOOR_QUANTILE, columns=plasma),
+            x=s.t_ms,
+            y=s.f_khz,
+            z=above_floor_db(s.power[0], FLOOR_QUANTILE, columns=s.plasma),
             ylabel="kHz",
             zmin=Z_DB[0],
             zmax=Z_DB[1],
         ),
         Panel(
-            title="toroidal n, MPI66M probes",
+            title=N_TITLE,
             kind="heatmap",
-            x=t_ms,
-            y=f_hz[keep] / 1000,
-            z=above_floor_db(power.mean(axis=0), FLOOR_QUANTILE, columns=plasma),
+            x=s.t_ms,
+            y=s.f_khz,
+            z=above_floor_db(s.power.mean(axis=0), FLOOR_QUANTILE, columns=s.plasma),
             ylabel="kHz",
             zmin=Z_DB[0],
             zmax=Z_DB[1],
-            modes=mode_numbers(spec, list(PROBES.values())),
+            modes=modes,
             mode_colours=N_COLOURS,
         ),
     ]
+
+
+def magnetics_panels(shot, *, t_range=None, paths=None) -> list[Panel]:
+    s = spectra(shot, t_range=t_range, paths=paths)
+    return heatmaps(s, mode_numbers(s.spec, list(PROBES.values())))
 
 
 def panels(shot, *, t_range=None, paths=None):

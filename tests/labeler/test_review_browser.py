@@ -85,6 +85,8 @@ def served(tmp_path):
         logs_jsonl=tmp_path / "logs.jsonl",
         label_tables=tmp_path / "tables",
         raw_cache=tmp_path / "raw",
+        # No events.yaml there: an empty taxonomy, not the real one.
+        config_dir=tmp_path / "config",
     )
     event = paths.label_tables / "alfven_eigenmode"
     (event / "format").mkdir(parents=True)
@@ -147,6 +149,7 @@ def test_equilibrium_classes_and_exact_rwm_onsets_in_the_browser(
         root=tmp_path / "root", corpus=tmp_path / "corpus",
         text_root=tmp_path / "text", logs_jsonl=tmp_path / "logs.jsonl",
         label_tables=existing.parent, raw_cache=tmp_path / "raw",
+        config_dir=tmp_path / "config",
     )
     t = np.arange(0, 2001, 25) / 1000
     write_features(paths.features_file(170815), 170815, {

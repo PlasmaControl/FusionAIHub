@@ -1,6 +1,6 @@
 """D2e: measure cold runaway-electron plateaus before drawing the population.
 
-    pixi run -e labelmaker python -m labeler.events.catalog.runaway
+    pixi run -e labeler python -m labeler.events.catalog.runaway
 
 Reads the pool, Ip log and corpus through the package's configured paths. Only
 `data/events/catalog/{runaway.csv,runaway.meta.json}` is written by default.

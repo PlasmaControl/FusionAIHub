@@ -20,7 +20,7 @@ snapshotted under ``round4/tm/fix3_original``) and after (the current tables):
 Only development shots are read. Writes ``<sources>/rule_diagnostics_fix4.json``.
 
     PYTHONPATH=$PWD/src LABELER_NO_FETCH=1 pixi run --frozen --no-install \\
-        -e labelmaker python scripts/labeler/tm_rule_diagnostics.py
+        -e labeler python scripts/labeler/tm_rule_diagnostics.py
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ from labeler.config import git_sha
 from labeler.events.interval_tables import parse_attrs
 from labeler.tearing import rule, scoring
 
-ROOT = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker"))
+ROOT = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
 OUT = ROOT / "round4/tm"
 BEFORE = OUT / "fix3_original"
 CATALOG = REPO / "data/events/catalog"

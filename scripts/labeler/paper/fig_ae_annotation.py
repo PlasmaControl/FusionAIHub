@@ -1,6 +1,6 @@
 r"""fig_ae_annotation: why the dense AE labels and the Heidbrink annotation differ.
 
-    PYTHONPATH=src pixi run --frozen -e labelmaker \
+    PYTHONPATH=src pixi run --frozen -e labeler \
         python scripts/labeler/paper/fig_ae_annotation.py \
         [--out dev/label_paper/figures/fig_ae_annotation.pdf] [--png PATH] \
         [--shots A B]
@@ -33,7 +33,6 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from matplotlib.colors import to_rgb
 from matplotlib.figure import Figure
 from matplotlib.patches import Patch, Rectangle
 
@@ -42,7 +41,7 @@ from labeler.config import Paths
 from labeler.events.catalog.states import ABSENT, PRESENT
 from labeler.events.review import labels as review_labels
 from labeler.events.review import rows as store_rows
-from labeler.paper import PAGE_IN, style
+from labeler.paper import PAGE_IN, style, theme
 from labeler.paper.roster import read_row
 from labeler.paper.shots import show_image
 from labeler.scoring.frames import FRAME_MS
@@ -61,16 +60,14 @@ PICK_RULE = (
     "share is under the 19 shots' mean"
 )
 
-PRESENT_COLOUR = "#d62728"  # the catalog figures' present
-ABSENT_COLOUR = "#e2e2e2"  # and their absent
-LIGHTER = 0.5  # the annotation's tint: this share of the colour, the rest white
+#: The paper theme (`labeler.paper.theme`): the dense labels are ours, sea green; the
+#: annotation is the other set, coral.
+PRESENT_COLOUR = theme.SEA_GREEN  # the dense labels' present
+ANNOTATION_COLOUR = theme.CORAL  # the annotation's present
+ABSENT_COLOUR = "#e2e2e2"  # the dense labels' absent
 INK = "#333333"
 EDGE = "#999999"
 BAR = (0.12, 0.76)
-
-
-def tint(colour: str, share: float = LIGHTER) -> tuple[float, ...]:
-    return tuple(share * c + (1 - share) for c in to_rgb(colour))
 
 
 def frame_mean(values: np.ndarray) -> np.ndarray:
@@ -206,7 +203,7 @@ def draw(out: Path, png: Path | None, shots: tuple[int, int] | None) -> None:
             track(
                 ax[1],
                 runs(ann),
-                tint(PRESENT_COLOUR),
+                ANNOTATION_COLOUR,
                 "annotation" if first else None,
             )
             track(
@@ -244,7 +241,7 @@ def draw(out: Path, png: Path | None, shots: tuple[int, int] | None) -> None:
         fig.legend(
             handles=[
                 Patch(color=PRESENT_COLOUR, label="present (dense labels)"),
-                Patch(color=tint(PRESENT_COLOUR), label="present (annotation)"),
+                Patch(color=ANNOTATION_COLOUR, label="present (annotation)"),
                 Patch(color=ABSENT_COLOUR, label="absent (dense labels)"),
                 Patch(
                     facecolor="none",

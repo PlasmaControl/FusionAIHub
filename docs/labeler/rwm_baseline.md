@@ -405,7 +405,7 @@ comparison-negative sensitivity, and is left as future work.
 
 ## Reproduction and paper outputs
 
-Run from this worktree using the frozen/no-install main-manifest pixi labelmaker
+Run from this worktree using the frozen/no-install main-manifest pixi labeler
 environment, this worktree's `src`, prescribed stream TMPDIR,
 `LABELER_ROOT` and main `LABELER_LABEL_TABLES`; retain `LABELER_NO_FETCH=1`.
 The tables, figure and audits use only cached inputs and saved predictions:
@@ -436,3 +436,75 @@ collapses inside assumed-absent time (see *Collapses inside category 0*; the
 caption states the detector). The orange proxy line uses
 the right axis, not a score threshold (F). Sensor timing, onset meaning, stable
 coverage and termination need expert review before operational claims.
+
+## Round five: review source, ONSBRADIAL and onset detection
+
+The review page's source moved from `rwm_candidates` v1 (the screen alone) to
+`rwm_onsets` v2 (`scripts/labeler/rwm_onsets_source.py`,
+`outputs/labeler/rwm/onsets_source_v2.json`). At each Hanson onset o, [o−20, o) is
+uncertain. The mode is present from o to the first of four ends: the 50 ms
+centred mean of N1RMS back at or below its mean over [o−70, o−20) after rising
+above it within 25 ms of o; βN at most 60% of its last value at or before o;
+|Ip| below 50 kA; o + 300 ms. If the mean does not rise within 25 ms, o is
+present for 10 ms, and the time from there to the first of the other ends is
+uncertain. All 56 onsets get a present span. Their ends are N1RMS 19, βN 4, the
+cap 5, the 10 ms minimum 2 and no N1RMS response 26. The median present
+duration is 12.1 ms (quartiles 10.0 and 40.4 ms), and 28 spans are 10 ms long.
+The median depends on the rise window: 10.0 ms with a 10 ms window, 12.1 ms with
+25 ms, 19.1 ms with 50 ms and 38.5 ms with no bound.
+
+v1 had no bound. It took the first rise however late, and drafted an onset
+whose N1RMS never rose as present up to its other ends. Its median was 38.5 ms
+(quartiles 23.8 and 167.4 ms, `onsets_source_v1.json`). When N1RMS was below its
+baseline at the onset, that end came from a later excursion. 176070 at 3013.5 ms
+is an example: it was present to 3180 ms in v1 and is present for 10 ms in v2.
+Of the 26 onsets with no response in v2, v1 ended 17 on the βN collapse, 5 at
+the cap and 4 on N1RMS. The v1 table stays on disk. The screen still marks only
+uncertain time. This review source does not change the Dataset 2 export or any
+score above.
+
+The page's source is now `rwm_onsets` v4 (`onsets_source_v4.json`; v2 and v3
+stay on disk). v3 kept v2's rule with two changes. First, a screen candidate at
+least half of whose time lies inside n=1 tracks of the mhd_modes v4 pipeline
+cache is dropped as a rotating mode. Second, an n=2 onset's end is measured on
+N2RMS when the shot has it cached, else on N1RMS with a flag in the meta. All
+six n=2 onsets have N2RMS. Their median present duration falls from 68.5 ms to
+31.8 ms, and no n=1 onset's span changes. v3 counted only the tracks whose
+co-rotation P(resonant) was at least 0.9, and dropped 13 of the 47 candidates
+(0.389 s on 5 shots). v4 counts every n=1 track other than fixed-frequency
+lines, whatever its resonance status, as `mhd_n1` does, and only track time
+inside the Mirnov record. It drops 27 candidates, 1.285 s on 7 shots, none of
+them Hanson shots. No Hanson shot has a Mirnov record in that cache, so the 16
+candidates on Hanson shots stay unchecked. v4 also measures an n=2 end on N1RMS
+when N2RMS has no sample in the onset's baseline stretch; no onset needs that.
+Present spans and onset ends are the same as in v3. The detection benchmark
+below still reads v2's ends.
+
+PTDATA `ONSBRADIAL` was fetched for the 207 study shots
+(`scripts/labeler/rwm_sensor_fetch.py`). The 85 2018 shots return it. On all 122
+2014 shots fdp fails with a PTSERVER lookup error. That error is the PTDATA
+client's fallback when the archive's pointname index does not list a point; an
+invented point name on a 2018 shot fails the same way. The index fdp reads
+(`json_indexes_2026-06-23`) holds all 122 2014 shots and lists `DUSBRADIAL` on
+each, but not `ONSBRADIAL`; on 156785 it lists no ONS* point at all. The point
+is therefore absent from the archive fdp reaches for 2014, and each shot's
+`<shot>.missing.json` records the check. The separation probe (`scripts/labeler/rwm_sensor_separation.py`,
+`outputs/labeler/rwm/sensor_separation.json`) compares 22 merged n=1 onsets on
+12 shots with 84 matched comparison times on 47 shots. Its onset jump gives
+AUC 0.659 [0.545, 0.777], just above the 0.65 bar fixed before the run. N1RMS
+gives 0.755 [0.565, 0.918] on the same points.
+
+`scripts/labeler/rwm_sensor_model.py` (`outputs/labeler/rwm/sensor_model.json`)
+refits the reference-split forest with four ONSBRADIAL columns
+(`rwm-brf-onsb`). The paired change in phase-controlled AUROC is −0.005
+[−0.035, 0.020]. It also adds an onset ±20 ms detection benchmark on held-out
+Hanson slices with the reference folds and no tuning. Slices from 20 ms after
+an onset to its `rwm_onsets` v2 end, or to the end of its uncertain stretch, are
+excluded. That leaves 13,046 slices, 196 of them positive. The forest scores
+detection AUROC 0.798 [0.740, 0.849] without the sensor and 0.801
+[0.745, 0.851] with it (difference 0.003 [−0.007, 0.013]; AUPRC 0.049 and 0.047
+at a positive base rate of 0.015). Single-column rules score 0.580 for the N1RMS
+20 ms maximum and 0.492 for the ONSBRADIAL 20 ms maximum (0.575 on the 2018
+shots). With v1's ends (13,106 slices) the two forests scored 0.794 and 0.795.
+The forecast results do not use the ends and are unchanged.
+`evaluation.json` and its tables are unchanged.

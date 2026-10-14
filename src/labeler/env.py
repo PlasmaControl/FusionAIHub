@@ -1,28 +1,17 @@
-"""Resolve renamed environment settings for Python readers and shell launchers."""
+"""Resolve environment settings for Python readers and shell launchers."""
 
 from __future__ import annotations
 
-import logging
 import os
 import sys
 
 
 def getenv(name: str, default: str | None = None) -> str | None:
-    """Prefer LABELER_* even when empty; warn only when LABELMAKER_* supplies it.
+    """Return the environment value of `name`, or `default` when it is unset.
 
-    Accept either spelling so an older interpolated configuration also observes
-    the new name's precedence. Unrelated environment names pass through unchanged.
+    An empty value counts as set. Shell launchers call this module as a script.
     """
-    if name.startswith("LABELMAKER_"):
-        name = "LABELER_" + name[len("LABELMAKER_"):]
-    if name in os.environ:
-        return os.environ[name]
-    if name.startswith("LABELER_"):
-        old = "LABELMAKER_" + name[len("LABELER_"):]
-        if old in os.environ:
-            logging.getLogger(__name__).warning("%s is deprecated; use %s", old, name)
-            return os.environ[old]
-    return default
+    return os.environ.get(name, default)
 
 
 if __name__ == "__main__":

@@ -13,13 +13,13 @@ that scope after the reporting corrections below.
 I inspected `src/labeler/confinement/elm.py`, `test_confinement_elm.py`, the
 Confinement–ELM section of `confinement_analysis.md`, all study CSVs and
 `study.json` under
-`/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/confinement/v1/elm_study`, and the refreshed
+`/scratch/gpfs/EKOLEMEN/nc1514/labeler/confinement/v1/elm_study`, and the refreshed
 `figures/elm_consistency.png`. I also read the original onset archive through
 `read_elm` and independently recomputed raw sample intersections with the
 unambiguous exact confinement intervals.
 
 Fresh validation:
-`pixi run --frozen -e labelmaker pytest tests/labeler/test_confinement_elm.py -q -W error`
+`pixi run --frozen -e labeler pytest tests/labeler/test_confinement_elm.py -q -W error`
 returned **4 passed**. The saved confinement hash and all seven study CSV hashes
 match the manifest. The reviewed ELM snapshot is pinned separately from the live
 review table.

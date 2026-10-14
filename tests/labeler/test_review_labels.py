@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import json
+import runpy
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
@@ -30,7 +34,9 @@ def event_dir(tmp_path):
 
 
 def test_edges_snap_to_whole_milliseconds_half_up():
-    assert normalise((0, 100), [(10.4, 20.5, 1)]).intervals == ((10, 21, 1),)
+    assert normalise((0, 100), [(10.4, 20.5, 1)], grid_ms=1).intervals == (
+        (10, 21, 1),
+    )
 
 
 def test_overlapping_and_touching_spans_merge():
@@ -53,7 +59,37 @@ def test_the_window_grows_to_cover_every_span():
 
 
 def test_a_zero_length_span_is_dropped():
-    assert normalise((0, 100), [(10, 10.2, 1)]).intervals == ()
+    assert normalise((0, 100), [(10, 10.2, 1)], grid_ms=1).intervals == ()
+
+
+def test_the_default_grid_rounds_edges_and_expands_the_window():
+    assert normalise((3, 96), [(14.9, 25, 1)]) == Label(
+        (0, 100), ((10, 30, 1),),
+    )
+
+
+def test_short_individual_elms_keep_their_midpoint_frame_and_later_spans_win():
+    label = normalise(
+        (0, 100), [(21, 24, 1), (22, 23, 2), (35, 35, 1)], iscrowd=[0, 0, 0],
+    )
+    assert label == Label((0, 100), ((20, 30, 2),), (0,))
+    assert normalise((0, 100), [(21, 24, 1)], iscrowd=[0]) == Label(
+        (0, 100), ((20, 30, 1),), (0,),
+    )
+
+
+def test_short_individuals_and_crowds_keep_separate_lanes_on_the_grid():
+    label = normalise(
+        (0, 100), [(21, 24, 1), (22, 23, 2)], iscrowd=[1, 0],
+    )
+    assert label == Label((0, 100), ((20, 30, 2), (20, 30, 1)), (0, 1))
+
+
+def test_the_window_limit_is_checked_after_snapping():
+    assert normalise((1, 20004), []).window == (0, 20000)
+    with pytest.raises(ValueError, match="not 1 to 20000 ms"):
+        normalise((1, 20006), [])
+    assert normalise((1, 20001), [], grid_ms=1).window == (1, 20001)
 
 
 @pytest.mark.parametrize(
@@ -62,7 +98,7 @@ def test_a_zero_length_span_is_dropped():
         ((0, 100), [(30, 20, 1)], None, "runs backwards"),
         ((0, 100), [(10, 20, 7)], {1}, "category 7"),
         ((100, 100), [], None, "not 1 to 20000 ms"),
-        ((0, 20001), [], None, "not 1 to 20000 ms"),
+        ((0, 20006), [], None, "not 1 to 20000 ms"),
     ],
 )
 def test_normalise_refuses(window, intervals, known, match):
@@ -87,6 +123,43 @@ def test_the_source_is_read_per_shot_and_point_events_are_ignored(event_dir):
         170815: Label((0, 2000), ((100, 300, 1),)),
         178642: Label((0, 2000)),
     }
+
+
+def test_readers_keep_whole_ms_and_the_page_reads_on_the_grid(event_dir):
+    """A model's frozen copy (`models/*/review/labels.csv`, 1 ms) reads as trained on."""
+    path = labels.labels_path(event_dir)
+    path.parent.mkdir()
+    path.write_text(
+        "shot,category,t_start,t_end,confidence\n"
+        "7,0,3,21,\n7,1,21,24,\n7,0,24,96,\n7,1,55,55,\n"
+    )
+    source = event_dir / "format" / "alfven_eigenmode_format_2027_v1.csv"
+    source.write_bytes(path.read_bytes())
+    whole = Label((3, 96), ((21, 24, 1),))
+    snapped = Label((0, 100), ((20, 30, 1),))
+    spans = Label((0, 100), ((20, 30, 1),), (1,))  # AE labels without resolution
+    assert labels.read_labels(path)[7] == whole
+    assert labels.read_saved(event_dir)[7] == whole
+    assert labels.read_source(event_dir)[7] == whole
+    assert labels.read_saved(event_dir, grid_ms=10)[7] == snapped
+    assert labels.page_label("alfven_eigenmode", whole) == spans
+    assert labels.shot_labels(event_dir, 7)["saved"] == spans.as_json()
+    assert labels.read_labels(path, grid_ms=10)[7] == snapped
+    assert labels.read_labels(path)[7] == whole, "the cache distinguishes grids"
+
+
+def test_ae_and_confinement_labels_without_resolution_are_spans():
+    bare = Label((0, 2000), ((100, 300, 1), (800, 1000, 2)))
+    spans = Label((0, 2000), ((100, 300, 1), (800, 1000, 2)), (1, 1))
+    for event in ("alfven_eigenmode", "alfven_eigenmode.tae", "confinement"):
+        assert labels.page_label(event, bare) == spans
+    for event in ("edge_localized_mode", "minimum_safety_factor"):
+        assert labels.page_label(event, bare) == bare
+    # A table that sets any flag keeps its own; an empty or missing label stays so.
+    flagged = Label((0, 2000), ((100, 300, 1), (800, 1000, 2)), (0, None))
+    assert labels.page_label("alfven_eigenmode", flagged) == flagged
+    assert labels.page_label("alfven_eigenmode", Label((0, 2000))) == Label((0, 2000))
+    assert labels.page_label("confinement", None) is None
 
 
 def test_rwm_export_reader_round_trip_keeps_unassessed_time_and_evidence(tmp_path):
@@ -166,6 +239,22 @@ def test_a_fractional_unassessed_span_survives_whole_ms_sampling(tmp_path):
     ).to_csv(path, index=False)
     label = labels.read_labels(path)[7]
     assert label.intervals == ((0, 10, 0), (10, 11, 4), (11, 30, 1))
+
+
+def test_evidence_boundaries_snap_without_midpoint_claims_and_still_tile(tmp_path):
+    path = tmp_path / "evidence.csv"
+    attrs = attrs_text({"evidence_tier": "reviewed", "coverage_verified": True})
+    pd.DataFrame(
+        [[7, 0, 3, 21, "", attrs], [7, 4, 21, 24, "", attrs],
+         [7, 1, 24, 96, "", attrs]],
+        columns=WITH_ATTRS,
+    ).to_csv(path, index=False)
+    whole = labels.read_labels(path)[7]
+    assert whole.window == (3, 96) and len(whole.intervals) == 3
+    snapped = labels.read_labels(path, grid_ms=10)[7]
+    assert snapped.window == (0, 100)
+    assert snapped.intervals == ((0, 20, 0), (20, 100, 1))
+    assert snapped.attrs == (attrs, attrs)
 
 
 def test_reader_refuses_implicit_coverage_in_an_evidence_table(tmp_path):
@@ -311,7 +400,7 @@ def test_the_queue_follows_the_roster_and_resumes(event_dir):
 
 def test_shot_labels_carries_source_saved_state_and_last_save(event_dir):
     assert labels.shot_labels(event_dir, 170815) == {
-        "source": {"window": [0, 2000], "intervals": [[100, 300, 1]]},
+        "source": {"window": [0, 2000], "intervals": [[100, 300, 1]], "iscrowd": [1]},
         "saved": None,
         "state": "unreviewed",
         "last_save": None,
@@ -319,7 +408,9 @@ def test_shot_labels_carries_source_saved_state_and_last_save(event_dir):
     label = normalise((0, 2000), [(100, 250, 1)])
     entry = labels.save(event_dir, 170815, label, source="x.csv")
     view = labels.shot_labels(event_dir, 170815)
-    assert view["saved"] == {"window": [0, 2000], "intervals": [[100, 250, 1]]}
+    assert view["saved"] == {
+        "window": [0, 2000], "intervals": [[100, 250, 1]], "iscrowd": [1],
+    }
     assert view["state"] == "changed"
     assert view["last_save"] == entry
 
@@ -337,8 +428,10 @@ def test_categories_leave_out_absent_and_not_observable():
         5: "uncertain",
     }
     assert labels.categories("confinement") == {
-        1: "high", 2: "low", 3: "qh", 4: "wpqh", 5: "uncertain",
+        1: "high", 2: "low", 3: "qh", 4: "wpqh", 5: "uncertain", 6: "imode",
     }
+    for event in ("mhd_n1", "mhd_n3", "mhd_n1.m1", "alfven_eigenmode.rsae"):
+        assert labels.categories(event) == {1: "present", 2: "uncertain"}
 
 
 def test_a_span_in_a_category_the_page_does_not_offer_is_a_gap(event_dir):
@@ -452,3 +545,208 @@ def test_saving_a_shot_with_attrs_refuses_without_changing_either_file(tmp_path,
     with pytest.raises(ValueError, match="190001.*attrs"):
         labels.save(event, 190001, normalise([0, 100], [[20, 40, 2]]), source=None)
     assert {name: (review / name).read_bytes() for name in before} == before
+
+
+@pytest.fixture
+def regrid():
+    script = Path(__file__).resolve().parents[2] / "scripts/labeler/regrid_saved_labels.py"
+    return runpy.run_path(str(script))["regrid"]
+
+
+@pytest.fixture
+def regrid_tables(tmp_path):
+    root = tmp_path / "tables"
+    files = {
+        "edge_localized_mode/review/labels.csv": (
+            "shot,category,t_start,t_end,confidence,attrs\n"
+            "7,0,3,21,,\n"
+            '7,1,21,24,,"{""iscrowd"": 0}"\n'
+            '7,1,22,23,,"{""iscrowd"": 1}"\n'
+            "7,0,24,96,,\n7,1,55,55,,\n"
+            '8,1,0,100,,"{""iscrowd"": 1}"\n'
+        ),
+        "mhd_n1/review/labels.csv": (
+            "shot,category,t_start,t_end,confidence\n"
+            "7,0,0,14,\n7,1,14,76,\n7,0,76,100,\n"
+        ),
+        "mhd_n1/subcategories/m1/review/labels.csv": (
+            "shot,category,t_start,t_end,confidence\n"
+            "7,0,0,13,\n7,1,13,24,\n7,0,24,100,\n"
+        ),
+        "mhd_n1/subcategories/m2/review/labels.csv": (
+            "shot,category,t_start,t_end,confidence\n"
+            "7,0,0,5,\n7,1,5,24,\n7,0,24,100,\n"
+        ),
+        "sawtooth_oscillation/review/labels.csv": (
+            "shot,category,t_start,t_end,confidence\n9,1,23,68,\n"
+        ),
+    }
+    for name, content in files.items():
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+        path.with_name("history.jsonl").write_text('{"shot": 7, "reviewer": "a"}\n')
+    # This child crosses the snapped parent's boundary without being clipped.
+    (root / "mhd_n1/subcategories/m2/review/labels.csv").write_text(
+        "shot,category,t_start,t_end,confidence\n"
+        "7,1,1,24,\n7,0,24,100,\n"
+    )
+    return root
+
+
+def _contents(root):
+    return {str(path.relative_to(root)): path.read_bytes()
+            for path in root.rglob("*") if path.is_file()}
+
+
+def test_regrid_dry_run_writes_nothing_and_reports_children_and_midpoints(
+    regrid, regrid_tables, tmp_path,
+):
+    before = _contents(tmp_path)
+    report = regrid(regrid_tables, backup_root=tmp_path / "backups")
+    assert _contents(tmp_path) == before
+    files = {row["path"]: row for row in report["files"]}
+    elm = files["edge_localized_mode/review/labels.csv"]
+    assert elm["rows_before"] == 6 and elm["rows_after"] == 5
+    assert elm["shots_changed"] == [7]
+    assert elm["midpoint_claims"] == 2 and elm["spans_dropped"] == 1
+    assert files["mhd_n1/subcategories/m1/review/labels.csv"]["child_violations"] == []
+    violations = files["mhd_n1/subcategories/m2/review/labels.csv"]["child_violations"]
+    assert len(violations) == 1 and violations[0]["shot"] == 7
+    assert violations[0]["outside"] == [[0, 10]]
+    order = [row["path"] for row in report["files"]]
+    assert order.index("mhd_n1/review/labels.csv") < order.index(
+        "mhd_n1/subcategories/m1/review/labels.csv"
+    )
+    assert "sawtooth_oscillation/review/labels.csv" in files
+
+
+def test_regrid_apply_backs_up_preserves_lanes_and_history_and_is_idempotent(
+    regrid, regrid_tables, tmp_path,
+):
+    before = _contents(regrid_tables)
+    backups = tmp_path / "backups"
+    report = regrid(regrid_tables, apply=True, backup_root=backups)
+    assert json.loads((backups / "report.json").read_text()) == report
+    for name, content in before.items():
+        if name.endswith("labels.csv"):
+            assert (backups / name).read_bytes() == content
+            frame = pd.read_csv(regrid_tables / name)
+            assert (frame.t_start % 10 == 0).all() and (frame.t_end % 10 == 0).all()
+        else:
+            assert (regrid_tables / name).read_bytes() == content
+    elm = labels.read_saved(regrid_tables / "edge_localized_mode", grid_ms=10)
+    assert elm[7] == Label((0, 100), ((20, 30, 1), (20, 30, 1)), (0, 1))
+    assert elm[8] == Label((0, 100), ((0, 100, 1),), (1,))
+    child = labels.read_saved(regrid_tables / "mhd_n1/subcategories/m2", grid_ms=10)[7]
+    assert child.intervals == ((0, 20, 1),), "violations are reported, never clipped"
+    written = _contents(regrid_tables)
+    with pytest.raises(FileExistsError, match="backup"):
+        regrid(regrid_tables, apply=True, backup_root=backups)
+    assert _contents(regrid_tables) == written
+    second = regrid(regrid_tables, apply=True, force=True, backup_root=backups)
+    assert all(row["shots_changed"] == [] for row in second["files"])
+    assert json.loads((backups / "report.json").read_text()) == report, "first kept"
+    [rerun] = backups.glob("report.rerun-*.json")
+    assert json.loads(rerun.read_text()) == second
+    assert _contents(regrid_tables) == written
+    for name, content in before.items():
+        if name.endswith("labels.csv"):
+            assert (backups / name).read_bytes() == content, "a rerun keeps the original"
+
+
+def test_regrid_keeps_evidence_attrs_when_tiny_spans_collapse(regrid, tmp_path):
+    root = tmp_path / "tables"
+    path = root / "resistive_wall_mode/review/labels.csv"
+    path.parent.mkdir(parents=True)
+    attrs = attrs_text({"evidence_tier": "reviewed", "coverage_verified": True})
+    pd.DataFrame(
+        [[7, 0, 3, 21, "", attrs], [7, 4, 21, 24, "", attrs],
+         [7, 1, 24, 96, "", attrs]], columns=WITH_ATTRS,
+    ).to_csv(path, index=False)
+    report = regrid(root, apply=True, backup_root=tmp_path / "backups")
+    [entry] = report["files"]
+    assert entry["midpoint_claims"] == 0 and entry["spans_dropped"] == 1
+    label = labels.read_labels(path)[7]
+    assert label.intervals == ((0, 20, 0), (20, 100, 1))
+    assert label.attrs == (attrs, attrs)
+
+
+def test_regrid_keeps_extra_attrs_on_adjacent_annotations(regrid, tmp_path):
+    root = tmp_path / "tables"
+    path = root / "alfven_eigenmode/review/labels.csv"
+    path.parent.mkdir(parents=True)
+    attrs = [attrs_text({"type": kind}) for kind in ("TAE", "RSAE")]
+    pd.DataFrame(
+        [[7, 1, 1, 21, "", attrs[0]], [7, 1, 21, 39, "", attrs[1]]],
+        columns=WITH_ATTRS,
+    ).to_csv(path, index=False)
+    regrid(root, apply=True, backup_root=tmp_path / "backups")
+    frame = pd.read_csv(path)
+    assert frame[["t_start", "t_end"]].values.tolist() == [[0, 20], [20, 40]]
+    assert frame["attrs"].tolist() == attrs
+
+
+def test_regrid_reports_an_individual_overwritten_in_its_midpoint_frame(
+    regrid, tmp_path,
+):
+    root = tmp_path / "tables"
+    path = root / "edge_localized_mode/review/labels.csv"
+    path.parent.mkdir(parents=True)
+    pd.DataFrame(
+        [[7, 1, 21, 24, "", '{"iscrowd": 0}'],
+         [7, 1, 22, 23, "", '{"iscrowd": 0}']], columns=WITH_ATTRS,
+    ).to_csv(path, index=False)
+    [entry] = regrid(root)["files"]
+    assert entry["midpoint_claims"] == 2 and entry["spans_dropped"] == 1
+
+
+def test_onset_times_are_the_events_own_marker_sorted():
+    markers = [
+        {"label": "ELM onset", "t_ms": [30.0, 10.0]},
+        {"label": "other", "t_ms": [5.0]},
+        {"label": "ELM onset", "t_ms": [20.0]},
+    ]
+    assert labels.onset_times("edge_localized_mode", markers) == [10.0, 20.0, 30.0]
+    assert labels.onset_times("alfven_eigenmode", markers) == []
+    assert labels.onset_times("edge_localized_mode", None) == []
+
+
+def test_with_onsets_drafts_the_source_as_spans_and_each_onset_as_an_individual():
+    source = Label((0, 1000), ((100, 300, 1),))
+    draft = labels.with_onsets(source, [105.0, 109.9, 250.0, 2000.0], (0, 1000))
+    # the unflagged source span is a Span; 105 and 109.9 share a frame; 2000 is outside
+    assert draft.window == (0, 1000)
+    assert sorted(zip(draft.intervals, draft.iscrowd, strict=True)) == [
+        ((100, 110, 1), 0), ((100, 300, 1), 1), ((250, 260, 1), 0),
+    ]
+    assert source.iscrowd == ()  # the label it was given is not touched
+
+
+def test_with_onsets_keeps_the_source_flags_that_are_set():
+    source = Label((0, 1000), ((100, 300, 1), (400, 500, 2)), (0, None))
+    draft = labels.with_onsets(source, [700.0], (0, 1000))
+    assert dict(zip(draft.intervals, draft.iscrowd, strict=True)) == {
+        (100, 300, 1): 0, (400, 500, 2): 1, (700, 710, 1): 0,
+    }
+
+
+def test_with_onsets_over_no_source_opens_the_shots_frames_with_only_the_onsets():
+    draft = labels.with_onsets(None, [105.0, 400.0], (3.0, 1000.0))
+    assert draft.window == (0, 1000)
+    assert draft.intervals == ((100, 110, 1), (400, 410, 1))
+    assert draft.iscrowd == (0, 0)
+    long_shot = labels.with_onsets(None, [105.0], (0.0, 30_000.0))
+    assert long_shot.window == (0, labels.LONGEST_WINDOW_MS)
+
+
+def test_with_onsets_offers_no_draft_it_could_not_save_or_edit():
+    source = Label((0, 20_000), ((100, 300, 1),))
+    assert labels.with_onsets(source, [], (0, 20_000)) is source
+    assert labels.with_onsets(None, [], (0, 1000)) is None
+    assert labels.with_onsets(None, [5000.0], (0, 1000)) is None  # outside the window
+    many = [float(t) for t in range(0, 10 * (labels.MAX_INTERVALS + 1), 10)]
+    assert labels.with_onsets(source, many, (0, 20_000)) is source
+    assert labels.with_onsets(None, many, (0, 20_000)) is None
+    evidence = Label((0, 100), ((0, 100, 1),), (), ('{"evidence_tier": "a"}',))
+    assert labels.with_onsets(evidence, [10.0], (0, 100)) is evidence

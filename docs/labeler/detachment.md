@@ -18,6 +18,8 @@
 
 **Three-state label set.** Not offered: agreement-tier attached and detached bins coexist on 2 shots, 0 of them in the fixed cohort, against a requirement of at least three shots including one cohort shot. The result is an indicator-agreement appendix.
 
+**Review source (round 5).** `review/source.json` points the review page at `detach_vote` v3 (written by `labeler.events.detachment.source`, on the 50 ms bins, categories 1 attached, 2 detached, 3 MARFE candidate, 4 uncertain, unassessed time unmarked). The label set above uses no Te: divertor Thomson Te fills only this review source, on the bins the vote did not assess and on the vote's abstentions. `detach_vote` v1 is the vote rows above with their tiers mapped: `certain` and `tangtv_only` keep their state, `candidate_marfe` is 3 and every other tier is 4. It has 1,780 bins on 32 shots: attached 454 bins on 19 shots, detached 367 on 12, MARFE candidate 70 on 4, uncertain 889 on 28. `detach_te` v2 is the divertor Thomson Te of the silver and gold shots, by the Te check's own selection (chords 1.5-5 cm above the shelf, a sample kept while its chord sits at 1.000 < psiN <= 1.05, 0.1-50 eV, the bin median), with Te <= 5 eV detached, >= 10 eV attached and between them uncertain, on the bins that lie wholly inside the shot's labeler plasma window (the catalog's rule-4 window on 381 shots, the Ip window on 119) and rest on at least two kept samples (chord x laser time). Divertor Thomson records exist for 241 of the 500 shots; of the others 232 were never selected for the fetch (the strike is off the chords' shelf) and 27 had no geometry to decide. 26 records have no Te node (TreeNODATA) and on 20 the strike never sits on the chords. Of the 7,007 bins with a Te on 195 shots (`detach_te` v1, which had neither gate) the window removes 23 and the sample minimum 1,691 (31 shots lose every bin), leaving 5,293 bins on 164 shots: attached 3,452 bins on 154 shots, detached 1,062 on 91, uncertain 779 on 106 (Te 10th, 50th and 90th percentiles 2.0, 14.6 and 29.6 eV). `detach_vote` v3 takes the vote first, but Te also replaces the vote's abstentions (category 4 of tier `no_vote` or `insufficient_support`) where it has a bin, and fills the bins the vote did not assess; `conflict`, `tangtv_only_lmode` and `lower_shelf_window` stay as voted. It has 6,367 bins on 175 shots (1,665 from the vote, 4,702 from Te, of which 115 replace vote abstentions: 74 attached, 21 detached, 20 uncertain): attached 3,597 bins on 156 shots, detached 1,217 on 91, MARFE candidate 70 on 4, uncertain 1,483 on 117 (v2, the vote in every category and Te v1 elsewhere, had 8,057 bins on 206 shots). 11 of the 32 vote shots carry no Te bin. **Vote against Te** (v2) on the 706 vote bins (21 shots) that carry a Te: where both name a state (448 bins, 20 shots) they agree on 423 (0.94, Cohen's kappa 0.87); TangTV + Afrac agreement 82 of 85 (0.96, 5 shots), TangTV only 341 of 363 (0.94, 19 shots). On the 202 vote-uncertain bins with a Te (161 with a Te state), Te says attached on 85, detached on 76 and uncertain on 41; the `tangtv_only_lmode` bins are Te-detached on 49 of 77. This is not an independent test: the round-4 Te check informed rule decisions (the L-mode gate above). No human has reviewed v3.
+
 <!-- /SUMMARY -->
 
 The fixed 500-shot cohort's test split is excluded from fitting, threshold
@@ -69,6 +71,19 @@ independent divertor Thomson Te check: scoring an indicator against a label buil
 from it is circular, while Te is read by none of the three indicators. The
 single-indicator agreement tables remain as agreement diagnostics, and the learned
 baselines are retrained on this label set (appendix).
+
+**Te in the review source (round 5).** The label set (`extend_detach_vote`) uses no
+Te, so the Te check stays a check of the labels. The review page's Source does use
+Te. `review/source.json` points at `detach_vote` v3
+(`python -m labeler.events.detachment.source`), which takes the vote first. Divertor
+Thomson Te (`detach_te` v2: the Te check's chord selection and bands, only on bins
+wholly inside the shot's labeler plasma window and with at least two kept samples)
+fills the bins the vote did not assess and the vote's abstentions (tiers `no_vote`
+and `insufficient_support`). `conflict`, `tangtv_only_lmode` and `lower_shelf_window`
+stay as voted. Te is therefore not an independent check of labels a reviewer saves
+from that Source; split such saves by their `prefilled` and `suggestions_shown`
+flags (`docs/labeler/detachment_review.md`). Coverage and the vote-against-Te
+agreement are in the summary and `docs/labeler/results/detachment_source_v3.json`.
 
 Bins are 50 ms, following the catalog grid. The camera is a 60 Hz interlaced
 camera captured as 30 Hz full frames (Chen 2026), but the parked inversions are

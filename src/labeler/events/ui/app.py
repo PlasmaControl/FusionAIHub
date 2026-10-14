@@ -12,6 +12,12 @@ an AE shot's pseudo-mask regions (pseudo-v1-full: pseudo-v1's rules over the
 whole window, 60-250 kHz) and the reviewer's last
 word on them (see `labeler.ae.seg.regions`); `GET /api/tokeye` gives TokEye's
 lines over the whole shot, drawn under them (see `labeler.ae.seg.whole`).
+
+A subcategory (`mhd_n1.m1`, `alfven_eigenmode.rsae`; see `taxonomy`) is a subset of its
+parent: it is read and saved only inside the time the parent's SAVED label marks (see
+`review.labels.Region`), over the parent's roster, window and rows; the parent unsaved
+on a shot is a 409. `GET /api/events` lists top-level events, each with its display
+name, group and subcategories.
 """
 
 from __future__ import annotations
@@ -25,6 +31,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Annotated
 
+import pandas as pd
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.gzip import GZipMiddleware
@@ -36,10 +43,10 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from ...ae import seg
 from ...ae.seg import regions, whole
 from ...ae.seg.pseudo import PseudoMask
-from ...config import Paths, sha256_of
-from .. import raw, rosters, rwm
+from ...config import Paths, sha256_of, store_event
+from .. import grid, raw, rosters, rwm, taxonomy
 from ..review import build as review_build
-from ..review import labels, reviewers, rows, versions, video
+from ..review import gold, labels, reviewers, rows, silver, versions, video
 
 STATIC = Path(__file__).parent / "static"
 COOKIE = "labeler_verify_token"
@@ -54,7 +61,7 @@ BAD_TOKEN = "bad token"
 #: name and hides the history instead of failing every save. 3 added the masks,
 #: 4 the whole-shot TokEye layer, 5 the list of names the page asks from,
 #: 6 the exact RWM onset annotations, 7 individual/group annotation resolution,
-#: 8 independent, overlapping individual and crowd annotation lanes,
+#: 8 independent, overlapping individual and span (iscrowd) annotation lanes,
 #: 9 detachment camera manifests and lazy frame requests.
 #: 10 saved suggestion exposure and producer-prefill provenance.
 API_VERSION = 10
@@ -105,6 +112,7 @@ class Builds:
 
     def status(self, event: str, shot: int) -> tuple[Path | None, str | None]:
         """`(path, None)` once built, `(None, error)` once failed, else building."""
+        event = store_event(event)
         key = (event, shot)
         path = self.paths.spectrogram_file(event, shot)
         with self.lock:
@@ -130,11 +138,22 @@ class Builds:
 
 
 def require_event(event: str, paths: Paths) -> Path:
-    """The event's directory, else 404; decided on the name before any join."""
+    """The event's directory, else 404; decided on the name before any join.
+
+    A subcategory (`<parent>.<key>`) is looked up in the taxonomy, never joined from
+    the request: its directory is `taxonomy.Taxonomy.child_dir`, which need not exist
+    until the first save. Its parent must be a known event.
+    """
     if event != Path(event).name or event in {"", ".", ".."} or "\0" in event:
         raise HTTPException(404, f"unknown event {event!r}")
     if event in labels.FOLDED:
         raise HTTPException(404, f"{event} is reviewed as {labels.FOLDED[event]}")
+    if "." in event:
+        tree = _taxonomy(paths)
+        if not tree.is_child(event):
+            raise HTTPException(404, f"unknown event {event!r}")
+        require_event(tree.parent(event), paths)
+        return tree.child_dir(paths.label_tables, event)
     directory = paths.label_tables / event
     try:
         found = (directory / rosters.ROSTER_NAME).is_file()
@@ -145,8 +164,42 @@ def require_event(event: str, paths: Paths) -> Path:
     return directory
 
 
+def _taxonomy(paths: Paths) -> taxonomy.Taxonomy:
+    try:
+        return taxonomy.load(paths.events_manifest)
+    except taxonomy.TaxonomyError as error:
+        raise HTTPException(500, str(error)) from None
+
+
+def roster_directory(event: str, paths: Paths) -> Path:
+    """Where the roster of `event` lives: a subcategory shares its parent's."""
+    parent = _taxonomy(paths).parent(event)
+    return require_event(event if parent is None else parent, paths)
+
+
 def _roster(directory: Path):
     return rosters.read_roster(directory / rosters.ROSTER_NAME)
+
+
+def _region(
+    event: str, shot: int, paths: Paths
+) -> tuple[str, Path, labels.Label, labels.Region]:
+    """`(parent, parent directory, parent label, region)` a subcategory shot may use.
+
+    The region is where the parent's SAVED label marks something; a parent that is
+    not saved on the shot opens nothing (409), so a subcategory is never labelled
+    before its parent is.
+    """
+    tree = _taxonomy(paths)
+    parent = tree.parent(event)
+    directory = require_event(parent, paths)
+    saved = labels.page_label(
+        parent, labels.read_labels(labels.labels_path(directory)).get(int(shot))
+    )
+    region = labels.region_of(parent, saved)
+    if region is None:
+        raise HTTPException(409, f"review {tree.display(parent)} first")
+    return parent, directory, saved, region
 
 
 def roster_tier(roster, shot: int) -> str:
@@ -154,6 +207,69 @@ def roster_tier(roster, shot: int) -> str:
     if match.empty:
         raise HTTPException(404, f"shot {int(shot)} is not on this event's roster")
     return str(match.tier.iloc[0])
+
+
+def in_review_sets(paths: Paths, shot: int) -> bool:
+    """A silver or gold shot may be reviewed on any event, on its roster or not."""
+    return silver.is_silver(paths.label_tables, shot) or gold.is_gold(paths.label_tables, shot)
+
+
+def shot_tier(event: str, shot: int, paths: Paths) -> str:
+    roster = _roster(roster_directory(event, paths))
+    if in_review_sets(paths, shot) and not (roster.shot == shot).any():
+        return "unverified"
+    return roster_tier(roster, shot)
+
+
+def shot_labels(event: str, shot: int, paths: Paths, *, suppress_source=False,
+                region=None, onsets=None,
+                t_range=None) -> tuple[dict, Path | None, str | None]:
+    """Snapped page labels, with a silver fallback and its exact source table.
+
+    `onsets` (ms) are the rows file's candidate onsets, or RWM's curated ones: a shot
+    with no save opens with them in its draft as Individual annotations
+    (`labels.with_onsets`, each over its present span for `labels.ONSET_EXTENTS`),
+    over `t_range` when it has no source label. Only `/api/shot` passes them; a save
+    compares with the source table as it is."""
+    directory = require_event(event, paths)
+    saved = labels.page_label(
+        event, labels.read_labels(labels.labels_path(directory)).get(shot)
+    )
+    source, table, origin = None, None, None
+    if not suppress_source:
+        try:
+            table = labels.source_path(directory)
+            source = labels.page_label(
+                event, labels.read_labels(table).get(shot) if table else None
+            )
+        except (ValueError, OSError) as error:
+            if not in_review_sets(paths, shot):
+                raise
+            log.warning("silver source skipped for %s/%s: %s", event, shot, error)
+        if source is None and in_review_sets(paths, shot):
+            found = silver.draft(paths, event, shot)
+            if found is not None:
+                source, layer = found
+                source = labels.span_default(event, source)
+                table, origin = silver.layer_file(paths, layer), layer.name
+    if region is not None:
+        saved, source = region.clip(saved), region.clip(source)
+    candidates = 0
+    if onsets and saved is None and not suppress_source:
+        drafted = labels.with_onsets(source, onsets, t_range,
+                                     extend=event in labels.ONSET_EXTENTS)
+        if drafted is not source:
+            candidates = sum(flag == 0 for flag in drafted.iscrowd)
+        source = drafted
+    last = next((entry for entry in reversed(labels.read_history(directory))
+                 if entry["shot"] == shot), None)
+    return ({
+        "source": None if source is None else source.as_json(),
+        "saved": None if saved is None else saved.as_json(),
+        "state": labels.state(saved, source), "last_save": last,
+        **({"source_origin": origin} if origin is not None else {}),
+        **({"onset_candidates": candidates} if candidates else {}),
+    }, table, origin)
 
 
 def _admit(request: Request, token: str) -> Response | None:
@@ -185,6 +301,8 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
     app.state.paths = paths
     app.state.token = token or secrets.token_hex(16)
     app.state.builds = Builds(paths)
+    if (paths.label_tables / silver.SILVER_FILE).is_file():
+        threading.Thread(target=silver.warm, args=(paths,), daemon=True).start()
     app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=1)
 
     @app.middleware("http")
@@ -239,17 +357,20 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
 
     @app.get("/api/events")
     def events():
+        tree = _taxonomy(paths)
         try:
             directories = sorted(
                 p
                 for p in paths.label_tables.iterdir()
                 if p.name not in labels.FOLDED and (p / rosters.ROSTER_NAME).is_file()
+                and tree.reviewed(p.name)
             )
         except OSError:
             return {"events": []}
         found = []
         for directory in directories:
             event = directory.name
+            named = {"display_name": tree.display(event), "group": tree.group(event)}
             try:
                 roster = _roster(directory)
                 saved = labels.read_saved(directory)
@@ -257,51 +378,179 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
                 found.append(
                     {
                         "event": event,
-                        **({"display_name": "Tearing mode (TM)"}
-                           if event == "neoclassical_tearing_mode" else {}),
+                        **named,
                         "n_shots": len(roster),
                         "n_reviewed": int(roster.shot.isin(list(saved)).sum()),
                         "categories": {str(k): v for k, v in categories.items()},
+                        "subcategories": [
+                            _subcategory(tree, child, roster) for child in
+                            tree.children(event)
+                        ],
                     }
                 )
             # One bad roster must not hide the rest.
             except Exception as error:  # noqa: BLE001
                 message = str(error) or type(error).__name__
-                found.append({"event": event, "error": message})
+                found.append({"event": event, **named, "error": message})
         return {"events": found}
+
+    def _subcategory(tree: taxonomy.Taxonomy, child: str, roster) -> dict:
+        """One chip of the subcategory bar: its name and how many shots it has saved."""
+        entry = {"event": child, "display_name": tree.display(child)}
+        try:
+            saved = labels.read_saved(tree.child_dir(paths.label_tables, child))
+            return {**entry, "n_reviewed": int(roster.shot.isin(list(saved)).sum())}
+        except Exception as error:  # noqa: BLE001 - one bad chip must not hide the event
+            return {**entry, "n_reviewed": 0, "error": str(error) or type(error).__name__}
+
+    def _gold_extras(directory: Path, roster) -> list[dict]:
+        """Gold shots this event's roster lacks, flagged `extra`: the page offers them
+        only with "Gold set" ticked, since a gold shot is reviewable on every event."""
+        try:
+            listed = sorted(int(s) for s in gold.read_gold(paths.label_tables).shot)
+        except (FileNotFoundError, ValueError, OSError):
+            return []
+        missing = [s for s in listed if s not in set(roster.shot)]
+        if not missing:
+            return []
+        rows = pd.DataFrame({"shot": missing, "tier": "unverified", "holdout": "false",
+                             "reviewers": "", "verified_on": "", "notes": ""})
+        return [{**row, "extra": True} for row in labels.queue(directory, rows)["shots"]]
 
     @app.get("/api/queue")
     def queue(event: str):
         directory = require_event(event, paths)
-        return labels.queue(directory, _roster(directory))
+        parent = _taxonomy(paths).parent(event)
+        if parent is None:
+            roster = _roster(directory)
+            found = labels.queue(directory, roster)
+            return {**found, "shots": found["shots"] + _gold_extras(directory, roster)}
+        parent_dir = require_event(parent, paths)
+        return labels.child_queue(
+            event, directory, parent, parent_dir, _roster(parent_dir)
+        )
+
+    def silver_events():
+        tree = _taxonomy(paths)
+        return [{"event": event, "display_name": tree.display(event),
+                 "parent": tree.parent(event)}
+                for event in silver.review_events(paths)]
+
+    @app.get("/api/silver")
+    def silver_view():
+        try:
+            frame = silver.read_silver(paths.label_tables)
+        except FileNotFoundError:
+            return {"grid_ms": grid.GRID_MS, "events": silver_events(), "batches": [],
+                    "error": "Silver list missing: silver/silver_shots.csv"}
+        batches = []
+        for batch in range(1, 6):
+            shots = []
+            for row in frame[frame.batch == batch].itertuples():
+                progress = silver.progress(paths, int(row.shot))
+                saved, total = len(progress["saved"]), progress["total"]
+                shots.append({
+                    "shot": int(row.shot), "order": int(row.order), "pool": row.pool,
+                    "classes": [part for part in row.classes.split(";") if part],
+                    "saved": saved, "total": total, "done": saved == total,
+                })
+            batches.append({"batch": batch, "shots": shots})
+        return {"grid_ms": grid.GRID_MS, "events": silver_events(), "batches": batches}
+
+    @app.get("/api/gold/shots")
+    def gold_shots():
+        """Just the gold shot numbers, for the event page's gold-only queue."""
+        try:
+            return {"shots": sorted(int(shot) for shot in gold.read_gold(paths.label_tables).shot)}
+        except FileNotFoundError:
+            return {"shots": [], "error": "Gold list missing: gold/gold_shots.csv"}
+        except ValueError as error:
+            return {"shots": [], "error": str(error)}
+
+    @app.get("/api/silver/shot")
+    def silver_shot_view(shot: int):
+        if not silver.is_silver(paths.label_tables, shot):
+            raise HTTPException(404, f"shot {shot} is not in the silver set")
+        row = silver.read_silver(paths.label_tables).query("shot == @shot").iloc[0]
+        events, groups = [], []
+        for entry in silver_events():
+            event = entry["event"]
+            layers = silver.layers(paths, event, shot)
+            groups.append(layers)
+            region = silver.parent_region(paths, event, shot)
+            events.append({
+                **entry, "saved": any(layer.kind == "saved" for layer in layers),
+                "locked": silver.locked(paths, event, shot),
+                "categories": {"0": "absent", **{
+                    str(k): v for k, v in labels.categories(event).items()
+                }},
+                **({"allowed": region.as_json()} if region is not None else {}),
+                "layers": [{"kind": layer.kind, "name": layer.name,
+                            "label": layer.label.as_json(),
+                            "unknown": [list(span) for span in layer.unknown],
+                            "held": [list(span) for span in layer.held]}
+                           for layer in layers],
+            })
+        return {
+            "shot": shot, "batch": int(row.batch), "order": int(row.order),
+            "pool": row.pool, "classes": [p for p in row.classes.split(";") if p],
+            "grid_ms": grid.GRID_MS, "t_range": list(silver.time_range(groups)),
+            "events": events,
+        }
 
     @app.get("/api/shot")
     def shot_view(event: str, shot: int):
         directory = require_event(event, paths)
-        tier = roster_tier(_roster(directory), shot)
+        tier = shot_tier(event, shot, paths)
+        # A subcategory opens only once its parent is saved on the shot.
+        child = _region(event, shot, paths) if _taxonomy(paths).is_child(event) else None
+        store = store_event(event)
         path, error = app.state.builds.status(event, shot)
         if error is not None:
             return JSONResponse({"error": error}, status_code=502)
         if path is None:
             body = {"building": True, "progress": raw.progress_for(shot)}
             return JSONResponse(body, status_code=202)
-        described = rows.meta(path, review_build.HIDDEN.get(event, frozenset()))
-        band = review_build.BANDS.get(event)
+        described = rows.meta(path, review_build.HIDDEN.get(store, frozenset()))
+        band = review_build.BANDS.get(store)
         for row in described["rows"]:
             if band is not None and "band" in row:
                 row["band"] = list(band)
         producer = described.get("params", {}).get("detachment_producer", {})
         suppress_source = event == "detachment" and producer.get("source_suppressed", False)
+        under_parent = {}
+        if child is not None:
+            parent, _, parent_label, region = child
+            under_parent = {
+                "parent": {
+                    "event": parent,
+                    "display_name": _taxonomy(paths).display(parent),
+                    "label": parent_label.as_json(),
+                },
+                "allowed": region.as_json(),
+                "categories": {
+                    str(k): v for k, v in labels.categories(event).items()
+                },
+            }
+        curated = rwm.onsets(shot, paths) if event == "resistive_wall_mode" else None
+        reviewed, _, _ = shot_labels(
+            event, shot, paths, suppress_source=suppress_source,
+            region=None if child is None else child[3],
+            onsets=(labels.onset_times(event, described.get("markers"))
+                    if curated is None else [point["t_ms"] for point in curated]),
+            t_range=described.get("t_range"),
+        )
         return {
             "event": event,
             "shot": shot,
             "tier": tier,
+            "silver": silver.is_silver(paths.label_tables, shot),
             **described,
             **({"video": video.meta(path)} if event == "detachment" else {}),
-            **labels.shot_labels(directory, shot, suppress_source=suppress_source),
+            **reviewed,
+            **under_parent,
             "reviewers": reviewers.shot_reviewers(directory, shot),
-            **({"onsets": rwm.onsets(shot, paths)}
-               if event == "resistive_wall_mode" else {}),
+            **({"onsets": curated} if curated is not None else {}),
         }
 
     @app.get("/api/rows")
@@ -313,11 +562,12 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
         cols: Annotated[int, Query(ge=16, le=8192)] = 1500,
     ):
         require_event(event, paths)
+        shot_tier(event, shot, paths)
         path = paths.spectrogram_file(event, shot)
         if not path.is_file():
             raise HTTPException(404, f"shot {shot} has no rows yet: open it first")
         try:
-            hide = review_build.HIDDEN.get(event, frozenset())
+            hide = review_build.HIDDEN.get(store_event(event), frozenset())
             data, grid = rows.read_window(path, t0, t1, cols, hide)
         except (ValueError, OverflowError) as error:
             raise HTTPException(400, str(error)) from None
@@ -333,8 +583,8 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
         channel: Annotated[int, Query(ge=0, le=255)] = 0,
         t_ms: float = 0.0,
     ):
-        directory = require_event(event, paths)
-        roster_tier(_roster(directory), shot)
+        require_event(event, paths)
+        shot_tier(event, shot, paths)
         if event != "detachment":
             raise HTTPException(404, "this event has no camera previews")
         path = paths.spectrogram_file(event, shot)
@@ -354,20 +604,41 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
     @app.post("/api/label")
     def save_label(body: LabelIn):
         directory = require_event(body.event, paths)
-        tier = roster_tier(_roster(directory), body.shot)
+        tier = shot_tier(body.event, body.shot, paths)
         known = set(labels.categories(body.event))
         try:
             label = labels.normalise(
-                body.window, body.intervals, known=known, iscrowd=body.iscrowd
+                grid.snap_window(*body.window),
+                [(*grid.snap_span(a, b), c) for a, b, c in body.intervals],
+                known=known, iscrowd=body.iscrowd,
             )
             name = versions.clean_name(body.name)
         except ValueError as error:
             raise HTTPException(400, str(error)) from None
-        table = labels.source_path(directory)
+        extra, region = None, None
+        if _taxonomy(paths).is_child(body.event):
+            # A subcategory is a subset of its parent: whatever lies outside the
+            # parent's saved spans (either lane) is dropped, and the window is the
+            # parent's. Checked after `normalise`, so a bad span is still a 400.
+            parent, parent_dir, parent_label, region = _region(
+                body.event, body.shot, paths
+            )
+            label = region.clip(label)
+            extra = labels.parent_stamp(parent, parent_dir, body.shot, parent_label)
+        reviewed, table, origin = shot_labels(
+            body.event, body.shot, paths, region=region
+        )
+        source = (labels.Label(
+            tuple(reviewed["source"]["window"]),
+            tuple(tuple(span) for span in reviewed["source"]["intervals"]),
+            tuple(reviewed["source"].get("iscrowd", ())),
+        ) if reviewed["source"] else None)
+        if source is not None and reviewed["source"].get("attrs"):
+            raise HTTPException(409, "The review page cannot edit evidence attributes")
         if not body.overlap_edit and any(labels.has_overlaps(value) for value in (
             label,
             labels.read_saved(directory).get(body.shot),
-            labels.read_source(directory).get(body.shot),
+            source,
         )):
             raise HTTPException(
                 409, "Reload the review page before editing overlapping annotations"
@@ -377,22 +648,22 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
                 directory,
                 body.shot,
                 label,
-                source=table.name if table else None,
+                source=origin or (table.name if table else None),
                 name=name,
                 source_sha256=sha256_of(table) if table else None,
                 crowd_edit=body.iscrowd is not None,
                 suggestions_shown=body.suggestions_shown,
                 prefilled=body.prefilled,
+                extra=extra,
             )
         except labels.SaveRefused as error:
             raise HTTPException(409, str(error)) from None
-        source = labels.offered(
-            body.event, labels.read_source(directory).get(body.shot)
-        )
         row = {
             "shot": body.shot,
             "tier": tier,
-            "state": labels.state(label, source),
+            # As the queue will show it on reload: a silver fallback is not the
+            # event's own source.
+            "state": labels.state(label, None if origin else source),
             "saved_at": entry["saved_at"],
         }
         return {
@@ -405,15 +676,26 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
     @app.get("/api/history")
     def history_view(event: str, shot: int):
         directory = require_event(event, paths)
-        roster_tier(_roster(directory), shot)
-        return {"shot": shot, "versions": versions.shot_versions(directory, shot)}
+        shot_tier(event, shot, paths)
+        found = versions.shot_versions(directory, shot)
+        if event.split(".")[0] in labels.SPAN_EVENTS:
+            # An older save without resolution restores as spans, as the page opens it.
+            found = [v if "iscrowd" in v or not v["intervals"]
+                     else {**v, "iscrowd": [1] * len(v["intervals"])} for v in found]
+        return {"shot": shot, "versions": found}
 
-    def mask_file(event: str, shot: int) -> tuple[Path, Path]:
-        directory = require_event(event, paths)
-        roster_tier(_roster(directory), shot)
+    def mask_file(event: str, shot: int, *, write: bool = False) -> tuple[Path, Path]:
+        """The AE pseudo-mask of `shot`. A subcategory of AE reads its parent's mask and
+        decisions, read-only: rejecting a region is a decision on the parent."""
+        require_event(event, paths)
+        owner = _taxonomy(paths).parent(event) or event
+        directory = require_event(owner, paths)
+        shot_tier(owner, shot, paths)
         path = whole.review_file(paths, shot)
-        if event != seg.EVENT or not path.is_file():
+        if owner != seg.EVENT or not path.is_file():
             raise HTTPException(404, f"shot {int(shot)} has no {event} pseudo-mask")
+        if write and owner != event:
+            raise HTTPException(404, f"reject regions on {owner}, not on {event}")
         return directory, path
 
     @app.get("/api/masks")
@@ -426,16 +708,17 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
 
     @app.get("/api/tokeye")
     def tokeye_view(event: str, shot: int):
-        directory = require_event(event, paths)
-        roster_tier(_roster(directory), shot)
-        found = whole.view(paths, shot) if event == seg.EVENT else None
+        require_event(event, paths)
+        owner = _taxonomy(paths).parent(event) or event
+        shot_tier(owner, shot, paths)
+        found = whole.view(paths, shot) if owner == seg.EVENT else None
         if found is None:
             raise HTTPException(404, f"shot {int(shot)} has no {event} TokEye layer")
         return found
 
     @app.post("/api/masks")
     def save_masks(body: MaskIn):
-        directory, path = mask_file(body.event, body.shot)
+        directory, path = mask_file(body.event, body.shot, write=True)
         with mask_lock:
             revision = len(regions.shot_history(directory, body.shot))
             if revision != body.revision:

@@ -331,7 +331,7 @@ def main():
     assert model["fit"]["anchor_bins"] == int(valid.all(axis=1).sum()) or (
         not model["fit"]["used_anchor"]
     )
-    readme = (dl.REPO / "data/events/detachment/README.md").read_text()
+    readme = (dl.REPO / "docs/labeler/events/detachment/README.md").read_text()
     models = readme.split("<!-- MODELS -->")[1].split("<!-- /MODELS -->")[0]
     assert "detach-ours" not in models and "detach-victor" not in models
     handoff = (ROOT / "HANDOFF.md").read_text()

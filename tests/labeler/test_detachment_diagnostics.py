@@ -156,7 +156,7 @@ def test_legacy_csv_indicators_have_ratio_units(tmp_path, monkeypatch):
         ),
     ],
 )
-def test_tangtv_title_and_bin_provenance_follow_source(
+def test_tangtv_caveat_and_bin_provenance_follow_source(
     tmp_path, monkeypatch, sources, title_terms
 ):
     monkeypatch.delenv("LABELER_DETACHMENT_INDICATORS", raising=False)
@@ -170,7 +170,8 @@ def test_tangtv_title_and_bin_provenance_follow_source(
         tangtv_source=sources,
     )
     panel = detachment.indicator_panels(170815, paths)[0]
-    assert all(term in panel.title.lower() for term in title_terms)
+    assert panel.title == "TangTV front DZ"
+    assert all(term in panel.metadata["caveat"].lower() for term in title_terms)
     assert panel.metadata["tangtv_source"] == sources
     assert panel.metadata["indicator"] == "tangtv"
     assert panel.metadata["valid"] == [True, True, False]
@@ -181,7 +182,8 @@ def test_tangtv_unknown_source_does_not_claim_an_inversion(tmp_path, monkeypatch
     paths = _paths(tmp_path)
     _bins(paths, tangtv_value=[0.2, 0.6, 0.7], tangtv_valid=[True] * 3)
     panel = detachment.indicator_panels(170815, paths)[0]
-    assert "source not recorded" in panel.title.lower()
+    assert panel.title == "TangTV front DZ"
+    assert "source not recorded" in panel.metadata["caveat"].lower()
     assert panel.metadata["tangtv_source"] == ["unknown"] * 3
 
 
@@ -201,14 +203,15 @@ def test_aux_density_precedes_other_sources_and_te_is_independent(
     built = detachment.panels(170815, paths=paths, t_range=(0.0, 150.0))
     density = [p for p in built if "density" in p.title.lower()]
     assert len(density) == 1
-    assert "producer aux_ne" in density[0].title
+    assert density[0].title == "CO2 density (aux_ne)"
     assert density[0].ylabel == "m·cm⁻³"
     assert density[0].metadata["source"] == str(path)
     assert density[0].metadata["measurement"] == "CO2 line-integrated density proxy"
     assert "V2" in density[0].metadata["source_selection"]
     np.testing.assert_allclose(density[0].y, [[1e14, np.nan, 3e14]], equal_nan=True)
     te = [p for p in built if "Thomson Te" in p.title]
-    assert len(te) == 1 and "independent check" in te[0].title.lower()
+    assert len(te) == 1 and te[0].title == "Divertor Thomson Te"
+    assert "independent temperature check" in te[0].metadata["caveat"].lower()
     assert te[0].ylabel == "eV"
     assert te[0].metadata["independent_check"] is True
     assert "indicator" not in te[0].metadata
@@ -231,7 +234,8 @@ def test_cache_r0_density_precedes_local_corpus_fallbacks(tmp_path, monkeypatch)
     )
     built = detachment.panels(170815, paths=paths, t_range=(0.0, 150.0))
     density = [p for p in built if "density" in p.title.lower()]
-    assert len(density) == 1 and "DENR0UF" in density[0].title
+    assert len(density) == 1 and density[0].title == "CO2 R0 density"
+    assert density[0].metadata["node"] == "DENR0UF"
     assert density[0].metadata["source"] == str(cache)
     np.testing.assert_allclose(density[0].y, [[1e14, np.nan, 2e14]], equal_nan=True)
 
@@ -265,7 +269,7 @@ def test_corpus_co2_masks_nonpositive_samples_and_discloses_native_units(tmp_pat
     )
     panel = detachment.panels(170815, paths=paths, t_range=(0.0, 2.0))[0]
     np.testing.assert_allclose(panel.y, [[3e14, np.nan]], equal_nan=True)
-    assert "R0 density proxy" in panel.title
+    assert panel.title == "CO2 R0 density"
     assert panel.ylabel == "m·cm⁻³"
     assert panel.metadata["source"] == str(path)
     assert "line integral" in panel.metadata["caveat"]

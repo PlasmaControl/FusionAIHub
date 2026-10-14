@@ -1,5 +1,10 @@
-#!/usr/bin/env python3
-"""Write the adjusted AE labels; run with the labelmaker environment.
+"""Write the adjusted AE labels; run with the labeler environment.
+
+    pixi run -e labeler python scripts/labeler/ae_adjust_labels.py
+
+Reads the `co2_detector_2021` raw pickle that configs/labeler/events.yaml names
+and writes `co2_250_detector_adjust.pkl` (and its .meta.json) beside it under the
+label tables' `alfven_eigenmode/raw/`.
 
 Two changes to the original annotations, and nothing else:
 
@@ -33,16 +38,16 @@ and time only, so it is under a megabyte instead of 2.9 GB.
 import json
 import pickle
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
 import yaml
 
-REPO = Path(__file__).resolve().parents[3]
+REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "src"))
 
-from labeler.config import Paths  # noqa: E402
+from labeler.config import Paths
 
 #: Original class order in the pickle's `(3905, 5)` label arrays.
 AE_CLASSES = ("lfm", "bae", "eae", "rsae", "tae")
@@ -73,7 +78,7 @@ def frame_times_ms():
 
 def shift_frames(shift_ms=SHIFT_MS):
     lo, hi = WINDOW_MS
-    return int(round(shift_ms / ((hi - lo) / N_FRAMES)))
+    return round(shift_ms / ((hi - lo) / N_FRAMES))
 
 
 def roll(labels, frames):
@@ -90,8 +95,9 @@ def roll(labels, frames):
 
 
 def main():
-    root = Paths.from_env().label_tables
-    manifest = yaml.safe_load((root / "events.yaml").read_text())
+    paths = Paths.from_env()
+    root = paths.label_tables
+    manifest = yaml.safe_load(paths.events_manifest.read_text())
     source = next(r for r in manifest["raw_datasets"] if r["stem"] == SOURCE_STEM)
     source_path = root / source["path"]
     output_path = source_path.parent / OUTPUT_NAME
@@ -122,7 +128,7 @@ def main():
         "shift_ms": SHIFT_MS,
         "source": source["path"],
         "collapsed_classes": AE_CLASSES[1:],
-        "written": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "written": datetime.now(UTC).isoformat(timespec="seconds"),
     }
     with output_path.open("wb") as stream:
         pickle.dump(adjusted, stream, protocol=pickle.HIGHEST_PROTOCOL)
@@ -130,7 +136,7 @@ def main():
     meta = {
         "name": OUTPUT_NAME,
         "derived_from": source["path"],
-        "written_by": "alfven_eigenmode/adjust_labels.py",
+        "written_by": "scripts/labeler/ae_adjust_labels.py",
         "written": adjusted["written"],
         "shots": len(adjusted["shots"]),
         "frames_per_shot": N_FRAMES,

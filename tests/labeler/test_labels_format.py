@@ -10,6 +10,7 @@ import pandas as pd
 import pytest
 import yaml
 
+from labeler.config import Paths
 from labeler.events import databases as db
 from labeler.events.interval_tables import validate_intervals
 
@@ -20,28 +21,31 @@ def converter():
     return runpy.run_path(str(REPO / "scripts/labeler/labels_format.py"))["main"]
 
 
+@pytest.mark.label_tables
 def test_rwm_raw_bytes_match_original_commit_and_format_regenerates(tmp_path):
     root = tmp_path / "labels"
     root.mkdir()
-    manifest = yaml.safe_load((REPO / "data/events/events.yaml").read_text())
+    manifest = yaml.safe_load(Paths().events_manifest.read_text())
     manifest["format_datasets"] = [r for r in manifest["format_datasets"]
                                    if r["name"] == "resistive_wall_mode"]
     manifest["raw_datasets"] = [r for r in manifest["raw_datasets"]
                                 if r["stem"].startswith("rwm_onsets_")]
-    (root / "events.yaml").write_text(yaml.safe_dump(manifest))
+    events = root / "events.yaml"
+    events.write_text(yaml.safe_dump(manifest))
     for row in manifest["raw_datasets"]:
         raw = root / row["path"]
         raw.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(REPO / "data/events" / row["path"], raw)
+        shutil.copyfile(Paths().label_tables / row["path"], raw)
         original = subprocess.check_output([
             "git", "show", f"6de489d:data/labels/resistive_wall_mode/{raw.name}",
         ], cwd=REPO)
         assert raw.read_bytes() == original
-    assert converter()(["--root", str(root)]) == 0
-    (spec,) = db.load_manifest(root)
+    args = ["--root", str(root), "--manifest", str(events)]
+    assert converter()(args) == 0
+    (spec,) = db.load_manifest(root, manifest=events)
     out = spec.path(root)
     snapshots = out.read_bytes(), out.with_suffix(".meta.json").read_bytes()
-    assert converter()(["--root", str(root)]) == 0
+    assert converter()(args) == 0
     assert snapshots == (out.read_bytes(), out.with_suffix(".meta.json").read_bytes())
     meta = json.loads(snapshots[1])
     assert meta["n_rows"] == 56 and meta["n_shots"] == 33

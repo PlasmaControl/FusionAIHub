@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/labeler/confinement_ours.py"
 spec = importlib.util.spec_from_file_location("confinement_ours", SCRIPT)
@@ -104,3 +106,39 @@ def test_by_population_splits_the_scores_on_the_corpus_bes_shots(monkeypatch):
     assert got["corpus_shots"]["shots"] == 2 and got["other_shots"]["shots"] == 3
     assert got["corpus_shots"]["windows"] == 600
     assert got["other_shots"]["macro_f1"] == 1.0
+
+
+def test_write_review_table_reads_the_roster_and_leaves_it_alone(tmp_path):
+    from labeler.events.interval_tables import parse_attrs, validate_intervals
+
+    roster = pd.DataFrame(
+        {
+            "shot": [1, 1],
+            "category": [1, 5],
+            "t_start": [0.0, 500.0],
+            "t_end": [500.0, 800.0],
+            "confidence": [0.9, 0.6],
+            "predicted": [1, 3],
+            "source": ["ensemble", "held_out"],
+            "tier": ["model", "unreviewed"],
+            "extrapolated": [False, True],
+        }
+    )
+    roster.to_csv(tmp_path / "roster.csv", index=False)
+    meta = {
+        "columns": list(roster.columns),
+        "columns_meaning": {"attrs": "old", "tier": "what tier means"},
+    }
+    (tmp_path / "roster.meta.json").write_text(json.dumps(meta))
+    names = ("roster.csv", "roster.meta.json")
+    before = [(tmp_path / name).read_bytes() for name in names]
+    table = ours.write_review_table(tmp_path)
+    assert [(tmp_path / name).read_bytes() for name in names] == before
+    written = pd.read_csv(tmp_path / "roster_review.csv")
+    assert list(written.columns) == [*roster.columns[:5], "attrs"]
+    assert len(validate_intervals(written)) == 2  # the page's reader accepts it
+    assert parse_attrs(table["attrs"].iloc[1])["tier"] == "unreviewed"
+    review_meta = json.loads((tmp_path / "roster_review.meta.json").read_text())
+    assert review_meta["columns"] == list(written.columns)
+    assert review_meta["columns_meaning"]["tier"] == "what tier means"
+    assert "attrs" in review_meta["columns_meaning"] and "derived_from" in review_meta

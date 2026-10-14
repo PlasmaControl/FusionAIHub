@@ -9,7 +9,7 @@ rotation profile and the locked-mode detector. Fetching needs fdp, so run it on 
 node while logged in; it stops after several shots in a row fetch nothing, which is what a
 lapsed login looks like::
 
-    pixi run --frozen -e labelmaker fdp run python scripts/labeler/rwm_fetch.py \\
+    pixi run --frozen -e labeler fdp run python scripts/labeler/rwm_fetch.py \\
         --shots-csv $LABELER_ROOT/round4/rwm/shots_pool.csv --workers 3 --pace 1
 """
 

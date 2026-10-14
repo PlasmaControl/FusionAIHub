@@ -5,9 +5,9 @@ set -euo pipefail
 JOB_ID=${1:?array job ID required}
 DEADLINE=$(( $(date -d "${2:?submit timestamp required}" +%s) + 1800 ))
 REPO=${REPO:-/scratch/gpfs/nc1514/FusionAIHub}
-export TMPDIR=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/ae-sw  # short: AF_UNIX
+export TMPDIR=/scratch/gpfs/EKOLEMEN/nc1514/labeler/scratch/ae-sw  # short: AF_UNIX
 mkdir -p "$TMPDIR"
-export LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker
+export LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labeler
 export LABELER_LABEL_TABLES=/scratch/gpfs/nc1514/FusionAIHub/data/events
 export LABELER_NO_FETCH=1 PYTHONPATH="$REPO/src" OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
 OUT="$LABELER_ROOT/round4/aeswap"

@@ -31,6 +31,7 @@ REQUIRED = {
     "seeds": "ours/seed_repeats.json",
 }
 OPTIONAL = {
+    "review_sources": "sources/evaluation.json",
     "native": "dsm/native_evaluation.json",
     "smith": "smith/evaluation.json",
     "moved": "ours/moved_boundary_stratum.json",

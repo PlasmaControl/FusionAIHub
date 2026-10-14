@@ -113,7 +113,7 @@ def provenance():
 
 def verify(out):
     """Run only covering files and persist commands/results as JSON evidence."""
-    runner = Path("/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/bin/pt.sh")
+    runner = Path("/scratch/gpfs/EKOLEMEN/nc1514/labeler/scratch/bin/pt.sh")
     pixi = [
         "pixi",
         "run",
@@ -122,7 +122,7 @@ def verify(out):
         "--manifest-path",
         "/scratch/gpfs/nc1514/FusionAIHub/pyproject.toml",
         "-e",
-        "labelmaker",
+        "labeler",
     ]
     record = {**provenance(), "checks": []}
     with tempfile.TemporaryDirectory(

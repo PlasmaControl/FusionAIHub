@@ -4915,8 +4915,8 @@
   "prad_averaging_ms": 250.0
  },
  "sources": {
-  "labels": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/labels_bins.csv.gz",
-  "bins": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/detach/bins",
+  "labels": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/labels_bins.csv.gz",
+  "bins": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/bins",
   "labels_sha256": "a683b477dca02a2a2a1ce9c484b59280a2c59d71b0b9395e8b9891fcb34f981a",
   "benchmark": "/scratch/gpfs/nc1514/FusionAIHub-r4-detach/docs/labeler/results/detachment_benchmark.json",
   "te_check": "/scratch/gpfs/nc1514/FusionAIHub-r4-detach/docs/labeler/results/detachment_te_check.json",

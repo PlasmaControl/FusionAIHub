@@ -3,7 +3,7 @@
 
 Run on the login node under the fdp wrapper, never in a SLURM job:
 
-    pixi run --frozen -e labelmaker fdp run python scripts/labeler/detach_fetch.py \
+    pixi run --frozen -e labeler fdp run python scripts/labeler/detach_fetch.py \
         --shots-file shots.txt --workers 3 --pace 1
 
 What is fetched, per shot (everything else comes from the corpus):

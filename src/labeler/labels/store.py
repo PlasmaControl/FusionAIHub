@@ -24,6 +24,10 @@ from .schema import LabelSpec
 #: Every label group has two of these beside it; they are not labels.
 COMPANION_SUFFIXES = ("_spread", "_valid")
 
+#: The file attribute that held the package version before the 2026-10-09 rename
+#: (`labeler_version` now). Nothing reads it; a merged rewrite drops it.
+LEGACY_VERSION_ATTR = "labelmaker_version"
+
 #: What identifies a row of `labels_index.parquet`.
 INDEX_KEYS = ("shot", "slug", "label")
 
@@ -72,12 +76,13 @@ def write_labels(
         if merge and path.exists():
             with h5py.File(path, "r") as old:
                 for key, value in old.attrs.items():
-                    f.attrs[key] = value
+                    if key != LEGACY_VERSION_ATTR:
+                        f.attrs[key] = value
                 for group in old:
                     if group != slug:
                         old.copy(group, f, name=group)
         f.attrs["shot"] = int(shot)
-        f.attrs["labelmaker_version"] = __version__
+        f.attrs["labeler_version"] = __version__
         f.attrs["git_sha"] = git_sha()
         f.attrs["written_at"] = now
         f.attrs["run_id"] = run_id

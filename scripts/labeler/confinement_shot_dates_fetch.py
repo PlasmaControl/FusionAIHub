@@ -14,7 +14,7 @@ written without a time zone: it is not UTC (the stamps fall between 08:00 and 21
 none in the night hours). A single worker; run on the login node under fdp while logged in; it stops
 at the first authentication error::
 
-    pixi run --frozen -e labelmaker fdp run python \\
+    pixi run --frozen -e labeler fdp run python \\
         scripts/labeler/confinement_shot_dates_fetch.py
 
 The cohort's blind ``test`` shots are never fetched.
@@ -39,7 +39,7 @@ if str(REPO / "src") not in sys.path:
 from labeler.confinement import bes_windows as bw
 
 LABELER = Path(
-    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")
+    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler")
 )
 DEFAULT_OUT = LABELER / "round4/conf/dates.csv"
 VMS_EPOCH = datetime(1858, 11, 17)  # noqa: DTZ001 (server local time, no zone)

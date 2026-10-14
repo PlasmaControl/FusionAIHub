@@ -569,6 +569,7 @@ def _frozen_release():
     return cohort, manifest["cells"]
 
 
+@pytest.mark.label_tables
 def test_frozen_release_blind_weights_equal_manifest_d25():
     from fractions import Fraction
 

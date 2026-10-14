@@ -113,6 +113,12 @@ def test_roster_with_other_columns_or_tiers_is_refused(tmp_path, monkeypatch):
     roster.write_text(text.replace("44,3,2153", "44,9,2153"))
     with pytest.raises(ValueError, match="unknown confinement classes"):
         fs.confinement_track(p, 44)
+    # 6 is the review page's I-mode, a class the roster may hold.
+    roster.write_text(text.replace("44,3,2153", "44,6,2153"))
+    states = fs.state_intervals(fs.confinement_track(p, 44), (700, 5800))
+    assert (2153, 4537, "I-mode") in [
+        (r["start_ms"], r["end_ms"], r["state"]) for r in states
+    ]
 
 
 def test_missing_roster_fails_loudly_when_the_chain_reaches_it(tmp_path, monkeypatch):
@@ -848,14 +854,19 @@ def test_primary_caption_describes_the_figure_and_its_highlights():
         "(linear frequency axis, 0–150 kHz). (b) TokEye "
         "coherent-mode mask after small-object removal; below 30 kHz coloured by "
         "toroidal mode number n (Mirnov array). Pink: mask pixels ≥60 kHz while "
-        "the CO2 AE detector (80–250 kHz input band; trained on TokEye-mask-"
-        "derived targets, so not independent of TokEye) is positive (25 ms "
-        "bins). Orange outlines: n=1/2 pixels while the TM detector (held-out "
-        "F1 0.46, below our 0.7 bar) is positive. Highlights mark time/band "
-        "coincidence only. (c) D-alpha, ELM intervals (red) and confinement "
-        "regimes. (d) NBI power. (e) Normalized beta. (f) Label rows; sources: "
-        "appendix."
+        "the CO2 AE detector (trained on TokEye-mask-derived targets, so not "
+        "independent of TokEye) is positive. Orange outlines: n=1/2 pixels while "
+        "the TM detector (held-out F1 0.46, below our 0.7 bar) is positive. "
+        "Highlights mark time/band coincidence only. (c) D-alpha, ELM intervals "
+        "(red) and confinement regimes. (d) NBI power. (e) Normalized beta. (f) "
+        "Labels: colour present, grey absent, hatched uncertain, blank "
+        "unassessed; sources: appendix."
     )
+    # the key names only the states the rows show
+    shown = fs.caption(
+        199563, _primary_records(), {**drawn, "display_state_keys": ["present"]}
+    )
+    assert shown.endswith("(f) Labels: colour present; sources: appendix.")
     # One linear axis: no scale break, stretching or compression is described.
     for broken in ("three frequency", "stretched", "compressed", "normalised"):
         assert broken not in text
@@ -950,6 +961,77 @@ def test_thresholds_are_listed_only_for_detector_tracks():
     assert "TM detector" not in text and "AE highlights" not in text
 
 
+def test_a_tables_rows_are_labels_not_a_detector():
+    records = _primary_records()
+    for key, method, version in (
+        (fs.mt.AE, "ae_xpower", "v2"),
+        (fs.mt.NTM, "tm_mhd", "v1"),
+    ):
+        records[key]["source_table"] = {"method": method, "version": version}
+    drawn = {"tokeye_threshold": 0.45, "tokeye_transient_drawn": True}
+    text = fs.caption(1, records, drawn)
+    assert "Pink: mask pixels ≥60 kHz inside labelled AE time." in text
+    assert "Orange outlines: n=1/2 pixels inside labelled TM time." in text
+    assert "detector" not in text.split("(c)")[0]
+    notes = fs.appendix_notes(1, records, {**drawn, "tokeye_transient_threshold": 0.2})
+    # plain names, never the method id or its version
+    assert "AE: CO2 frame detector; TM: MHD resonant-mode rule" in notes
+    assert not [w for w in ("ae_xpower", "tm_mhd", " v1", " v2", "None") if w in notes]
+    assert "Operating probability thresholds: TokEye 0.45." in notes
+    assert "TM detector" not in notes and "AE highlights" not in notes
+    assert "transient channel at its own display cut, ≥0.2," in notes
+
+    # a detector's table (its metadata names the model) keeps the detector's text
+    for key in (fs.mt.AE, fs.mt.NTM):
+        records[key]["source_table"]["kind"] = "detector"
+    records[fs.mt.AE]["decision_threshold"] = 0.5
+    text = fs.caption(1, records, drawn)
+    assert "trained on TokEye-mask-derived targets" in text
+    assert "while the TM detector (held-out F1 0.46, below our 0.7 bar)" in text
+    notes = fs.appendix_notes(1, records, drawn)
+    assert "Operating probability thresholds: TokEye 0.45; AE 0.5; TM 0.63." in notes
+    assert "AE: CO2 neural detector; TM: detector (suggestions" in notes
+    assert "AE targets used TokEye's mask" in notes
+    records["confinement"]["source_table"] = {"method": "regimes", "kind": "curated"}
+    assert "H-mode: curated labels" in fs.appendix_notes(1, records, drawn)
+    # a table whose metadata names no method or version: its kind, never 'None'
+    records[fs.mt.AE]["source_table"] = {"method": None, "version": None}
+    notes = fs.appendix_notes(1, records, drawn)
+    assert "AE: generated labels;" in notes and "None" not in notes
+
+
+def test_a_figure_without_the_transient_overlay_says_nothing_of_red_lines():
+    """The owner turned the overlay off on 2026-10-14 (too distracting): neither the
+    caption nor the appendix mentions red transient lines, and the appendix says the
+    channel is not drawn; with the overlay on (`--transient`) both say it again."""
+    records = _primary_records()
+    off = {
+        "tokeye_threshold": 0.45,
+        "tokeye_transient_overlay": False,
+        "tokeye_transient_drawn": False,
+        "tokeye_transient_threshold": None,
+        "tokeye_transient_pass": None,
+        "tokeye_transient_print_columns": {},
+    }
+    caption = fs.caption(1, records, off)
+    assert "transient" not in caption.lower() and "Red:" not in caption
+    notes = fs.appendix_notes(1, records, off)
+    assert "Red: TokEye" not in notes and "display cut" not in notes
+    assert "The transient channel only removes pixels from the mask; it is not" in notes
+    assert "TokEye coherent mask at ≥0.45 and not transient" in notes
+    on = {
+        **off,
+        "tokeye_transient_overlay": True,
+        "tokeye_transient_drawn": True,
+        "tokeye_transient_threshold": 0.35,
+        "tokeye_transient_pass": "wide",
+    }
+    assert "Red: TokEye's transient channel." in fs.caption(1, records, on)
+    notes = fs.appendix_notes(1, records, on)
+    assert "channel of the wide-range pass, over the whole 0–150 kHz band, " in notes
+    assert "at its own display cut, ≥0.35" in notes and "it is not drawn" not in notes
+
+
 def test_appendix_states_the_persistent_row_step_and_its_effect():
     quiet = fs.appendix_notes(1, {}, {"persistent_line_rows": {"wide": 0, "zoom": 0}})
     assert "persistent-row step" in quiet and "not an identified pickup line" in quiet
@@ -1035,10 +1117,14 @@ def test_appendix_pink_floor_is_the_split_and_explains_the_detector_band():
     assert "input band is 80–250 kHz" in text and "60–80 kHz" in text
     assert "stay white" not in text
     caption = fs.caption(1, _primary_records(), {})
-    assert "Pink: mask pixels ≥60 kHz while the CO2 AE detector (80–250 kHz" in caption
+    # the caption leaves the input band and bins to the appendix (word cap)
+    assert "Pink: mask pixels ≥60 kHz while the CO2 AE detector (trained" in caption
     assert "trained on TokEye-mask-derived targets" in caption
-    frame = fs.caption(1, _primary_records("the AE frame model"), {})
-    assert "80–250 kHz input band)" in frame and "TokEye-mask" not in frame
+    assert "80–250 kHz" not in caption
+    records = _primary_records("the AE frame model")
+    frame = fs.caption(1, records, {})
+    assert "the CO2 AE detector is positive." in frame and "TokEye-mask" not in frame
+    assert "input band is 80–250 kHz" in fs.appendix_notes(1, records, {})
 
 
 def test_appendix_drops_the_ae_sentences_where_nothing_is_pink():
@@ -1137,4 +1223,15 @@ def test_raster_ae_audit_accepts_no_ae_tint():
     )
     assert (
         got["pink_pixels"] == got["outside_present"] == got["below_detector_band"] == 0
+    )
+
+
+def test_the_appendix_keys_the_label_rows_as_the_caption_does():
+    four = {"display_state_keys": ["present", "uncertain", "absent", "blank"]}
+    key = "colour present, grey absent, hatched uncertain, blank unassessed"
+    assert fs.row_key(four) == key == fs.row_key({})
+    assert f"(f) Labels: {key}; sources: appendix." in fs.caption(42, {}, four)
+    assert f"Label rows (f): {key}." in fs.appendix_notes(42, {}, four)
+    assert fs.row_key({"display_state_keys": ["absent", "blank"]}) == (
+        "grey absent, blank unassessed"
     )

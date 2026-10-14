@@ -44,9 +44,9 @@ def test_real_shot_cpu_output_identity():
     if not requested:
         pytest.skip("set L14PERF_REAL_ROOT to an l14perf scratch directory")
     root = Path(requested).resolve()
-    assert root.is_relative_to("/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/l14perf")
+    assert root.is_relative_to("/scratch/gpfs/EKOLEMEN/nc1514/labeler/runs/l14perf")
     print(f"Resolved real identity root: {root}", flush=True)
-    production = Path("/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")
+    production = Path("/scratch/gpfs/EKOLEMEN/nc1514/labeler")
     shot = 185786
     device = os.environ.get("L14PERF_REAL_DEVICE", "cpu")
     batch = int(os.environ.get("L14PERF_REAL_BATCH", "8"))

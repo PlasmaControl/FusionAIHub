@@ -18,7 +18,7 @@ averaging the labels use:
 The record (`docs/labeler/results/detachment_prad_anchor.json`) carries the
 measured values beside the published ones; `thresholds.py` takes its anchor
 constants from the measured values and a test checks they agree. Run through
-`pixi run --frozen -e labelmaker python scripts/labeler/detach_prad_anchor.py`.
+`pixi run --frozen -e labeler python scripts/labeler/detach_prad_anchor.py`.
 """
 
 from __future__ import annotations

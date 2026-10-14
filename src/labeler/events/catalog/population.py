@@ -31,7 +31,7 @@ for every rule-4 shot into `data/events/catalog/runaway.csv`; `catalog.cohort`
 reads that committed input before drawing. `n_profile` counts usable profiles;
 shots with none remain eligible and are counted as `no_thomson`.
 
-    pixi run -e labelmaker python -m labeler.events.catalog.population
+    pixi run -e labeler python -m labeler.events.catalog.population
 
 writes `$LABELER_ROOT/catalog/pool.csv`, every corpus shot in range with the rules it
 fails; `pool_shots.txt`, the shots that pass rules 1-3, for the Ip fetch; and

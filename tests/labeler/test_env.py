@@ -1,6 +1,7 @@
-"""Environment migration preserves old deployments and gives new names priority."""
+"""Environment settings are read under their LABELER_* names."""
 
-import logging
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -15,72 +16,45 @@ from labeler.config import Paths
     ("LOGS_JSONL", "logs_jsonl"),
     ("LABEL_TABLES", "label_tables"),
 ])
-@pytest.mark.parametrize("mode", ["new", "old", "both"])
-def test_paths_use_new_names_first_and_warn_only_for_legacy(
-    suffix, field, mode, monkeypatch, caplog, tmp_path,
-):
-    new, old = f"LABELER_{suffix}", f"LABELMAKER_{suffix}"
-    monkeypatch.delenv(new, raising=False)
-    monkeypatch.delenv(old, raising=False)
-    if mode in ("new", "both"):
-        monkeypatch.setenv(new, str(tmp_path / "new"))
-    if mode in ("old", "both"):
-        monkeypatch.setenv(old, str(tmp_path / "old"))
-    with caplog.at_level(logging.WARNING):
-        paths = Paths.from_env()
-    assert getattr(paths, field) == tmp_path / ("old" if mode == "old" else "new")
-    notices = [r.getMessage() for r in caplog.records if old in r.getMessage()]
-    assert len(notices) == (1 if mode == "old" else 0)
-    if notices:
-        assert new in notices[0] and "\n" not in notices[0]
+@pytest.mark.parametrize("mode", ["set", "unset"])
+def test_paths_read_the_labeler_names(suffix, field, mode, monkeypatch, tmp_path):
+    name = f"LABELER_{suffix}"
+    monkeypatch.delenv(name, raising=False)
+    default = getattr(Paths.from_env(), field)
+    if mode == "set":
+        monkeypatch.setenv(name, str(tmp_path / "value"))
+    expected = tmp_path / "value" if mode == "set" else default
+    assert getattr(Paths.from_env(), field) == expected
 
 
-def test_empty_new_root_does_not_fall_back(monkeypatch, caplog):
+def test_empty_root_is_an_empty_path_not_the_default(monkeypatch):
     monkeypatch.setenv("LABELER_ROOT", "")
-    monkeypatch.setenv("LABELMAKER_ROOT", "/unused")
     assert Paths.from_env().root == Path("")
-    assert not any("LABELMAKER_ROOT" in r.getMessage() for r in caplog.records)
 
 
-@pytest.mark.parametrize("suffix", ['ROOT', 'CORPUS', 'TEXT_ROOT', 'LOGS_JSONL', 'LABEL_TABLES', 'FDP', 'GIT_SHA', 'DEMO_OUT', 'DEMO_CONFIG', 'DEMO_FORCE'])
-@pytest.mark.parametrize("query_legacy", [False, True])
-@pytest.mark.parametrize("mode", ["new", "old", "both", "empty", "unset"])
-def test_environment_lookup_supports_either_spelling(
-    suffix, query_legacy, mode, monkeypatch, caplog,
-):
+@pytest.mark.parametrize("suffix", [
+    "ROOT", "CORPUS", "TEXT_ROOT", "LOGS_JSONL", "LABEL_TABLES", "FDP", "GIT_SHA",
+    "DEMO_OUT", "DEMO_CONFIG", "DEMO_FORCE",
+])
+@pytest.mark.parametrize("mode", ["set", "empty", "unset"])
+def test_environment_lookup(suffix, mode, monkeypatch):
     from labeler.env import getenv
 
-    new, old = "LABELER_" + suffix, "LABELMAKER_" + suffix
-    monkeypatch.delenv(new, raising=False)
-    monkeypatch.delenv(old, raising=False)
-    if mode in ("new", "both", "empty"):
-        monkeypatch.setenv(new, "" if mode == "empty" else "new-value")
-    if mode in ("old", "both", "empty"):
-        monkeypatch.setenv(old, "old-value")
-    want = {"new": "new-value", "old": "old-value", "both": "new-value",
-            "empty": "", "unset": "default"}[mode]
-    assert getenv(old if query_legacy else new, "default") == want
-    assert len(caplog.records) == (1 if mode == "old" else 0)
-    if caplog.records:
-        message = caplog.records[0].getMessage()
-        assert old in message and new in message
-        assert "old-value" not in message and "\n" not in message
+    name = "LABELER_" + suffix
+    monkeypatch.delenv(name, raising=False)
+    if mode != "unset":
+        monkeypatch.setenv(name, "" if mode == "empty" else "value")
+    want = {"set": "value", "empty": "", "unset": "default"}[mode]
+    assert getenv(name, "default") == want
 
 
-@pytest.mark.parametrize("legacy", [False, True])
-def test_shell_entrypoint_resolves_settings_without_importing_the_package(
-    legacy, monkeypatch,
-):
-    import subprocess
-    import sys
-
+def test_shell_entrypoint_resolves_settings_without_importing_the_package(monkeypatch):
     from labeler import env
 
-    monkeypatch.setenv("LABELMAKER_ROOT" if legacy else "LABELER_ROOT", "a path with spaces")
+    monkeypatch.setenv("LABELER_ROOT", "a path with spaces")
     result = subprocess.run(
         [sys.executable, env.__file__, "LABELER_ROOT", "default"],
         capture_output=True, text=True, check=True,
     )
     assert result.stdout == "a path with spaces\n"
-    assert bool(result.stderr) == legacy
-    assert len(result.stderr.splitlines()) == int(legacy)
+    assert result.stderr == ""

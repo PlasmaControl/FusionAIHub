@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import html
 import json
 import random
+import re
 import shutil
 import subprocess
 
@@ -40,6 +42,20 @@ def _node(expression: str, payload=None):
 def test_the_page_loads_nothing_from_the_network():
     for name in ("index.html", "app.js", "style.css"):
         assert "http" not in (STATIC / name).read_text().lower(), name
+
+
+def test_every_help_line_in_the_page_is_one_short_line():
+    """Tooltips and help paragraphs say what a control does in at most 80 characters."""
+    text = (STATIC / "index.html").read_text()
+    lines = [m.group(1) for m in re.finditer(r'\btitle="([^"]*)"', text)]
+    lines += [
+        re.sub(r"<[^>]+>", "", m.group(2))
+        for m in re.finditer(r"<(p|dd|td|li)\b[^>]*>(.*?)</\1>", text, re.DOTALL)
+    ]
+    assert lines, "the pattern found no help text"
+    too_long = [line for line in map(html.unescape, lines)
+                if len(" ".join(line.split())) > 80]
+    assert not too_long, too_long
 
 
 @needs_node
@@ -86,9 +102,11 @@ def _cases():
             a = rng.uniform(-100, 1000)
             spans.append([a, a + rng.uniform(-3, 200), rng.choice([0, 1, 1, 1, 2])])
         cases.append({"window": [lo, lo + width], "intervals": spans})
-    # Halves round up on both sides, and a span may land on the window's edge.
+    # Grid halves round up; tiny spans retain their midpoint frame.
     cases.append({"window": [0.5, 10.5], "intervals": [[1.5, 2.5, 1], [-0.5, 0.5, 1]]})
     cases.append({"window": [-2.5, 2.5], "intervals": [[-1.5, -0.5, 1], [0.5, 0.5, 1]]})
+    cases.append({"window": [5, 25], "intervals": [[11, 14, 1], [25, 35, 1]]})
+    cases.append({"window": [-15, 15], "intervals": [[-14, -11, 1], [1, 2, 1]]})
     return cases
 
 
@@ -107,6 +125,25 @@ def test_the_page_normalises_a_label_exactly_as_the_server_does():
     server = [_server(case) for case in cases]
     assert page == server
     assert None in server and any(server)
+
+
+@needs_node
+def test_grid_edges_short_spans_and_windows_match_the_grid_rule():
+    assert _node("[-15,-5,5,15].map(m.ms)") == [-10, 0, 10, 20]
+    assert _node("[m.snapSpan(11,14), m.snapSpan(14,14), m.snapWindow(3,31)]") == [
+        [10, 20], [10, 10], [0, 30],
+    ]
+
+
+@needs_node
+def test_snapped_overlap_lanes_equal_the_server_after_a_save():
+    case = {"window": [3, 43], "intervals": [[11, 14, 1], [5, 35, 1]],
+            "iscrowd": [0, 1]}
+    page = _node("m.normalise(input.window, input.intervals, [1], input.iscrowd)", case)
+    assert page == normalise(
+        case["window"], case["intervals"], known={1}, iscrowd=case["iscrowd"],
+    ).as_json()
+    assert _node("m.normalise(input.window, input.intervals, [1], input.iscrowd)", page) == page
 
 
 @needs_node

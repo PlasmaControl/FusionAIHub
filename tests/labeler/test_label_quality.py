@@ -414,7 +414,7 @@ def test_update_model_index_rewrites_only_the_results(tmp_path, monkeypatch):
         "model-index:\n"
         "  - name: d3d-tearing-onset-cnn1d\n"
         "    results: []\n"
-        "labelmaker:\n"
+        "labeler:\n"
         "  status: implemented\n"
         "  slug: s\n"
         "---\n\n# Title\n\nProse that must survive.\n"
@@ -435,7 +435,7 @@ def test_update_model_index_rewrites_only_the_results(tmp_path, monkeypatch):
     assert "Prose that must survive." in text
     parsed = registry.parse_card(text)
     assert parsed["model-index"][0]["results"][0]["metrics"][0]["value"] == 0.91
-    assert parsed["labelmaker"]["status"] == "implemented"
+    assert parsed["labeler"]["status"] == "implemented"
     assert parsed["library_name"] == "keras"
 
 
@@ -477,7 +477,7 @@ def test_update_model_index_preserves_approximations_content(monkeypatch, tmp_pa
     """
     real = registry.card_path("d3d_tearing_onset_cnn1d")
     text_before = real.read_text()
-    approximations_before = registry.parse_card(text_before)["labelmaker"][
+    approximations_before = registry.parse_card(text_before)["labeler"][
         "approximations"
     ]
     assert len(approximations_before) >= 12  # the block is substantial, not a stub
@@ -500,7 +500,7 @@ def test_update_model_index_preserves_approximations_content(monkeypatch, tmp_pa
         }
     )
     registry.update_model_index("d3d_tearing_onset_cnn1d", results)
-    approximations_after = registry.parse_card(copy.read_text())["labelmaker"][
+    approximations_after = registry.parse_card(copy.read_text())["labeler"][
         "approximations"
     ]
     assert approximations_after == approximations_before

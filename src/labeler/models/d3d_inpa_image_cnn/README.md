@@ -16,7 +16,7 @@ metrics:
 model-index:
   - name: d3d-inpa-image-cnn
     results: []
-labelmaker:
+labeler:
   status: scaffold
   slug: d3d_inpa_image_cnn
   card_id: plasmacontrol/d3d-inpa-image-cnn
