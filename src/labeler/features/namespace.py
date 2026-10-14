@@ -291,6 +291,18 @@ FEATURES: tuple[FeatureSpec, ...] = (
               "to rho with geqdsk `rhovn` was tried and is 7x WORSE "
               "(6.9e-2); see `resolve_fdp`'s docstring for the table",
     ),
+    # Added for RWM v5 (2026-10-14): the map that places a q surface, found on
+    # `qpsi`'s normalized-psi grid, on the ZIPFIT rho axis of `rot_zipfit`.
+    FeatureSpec(
+        name="rhovn", kind="profile", units="",
+        sources=("fdp",),
+        locators=(r"\efit01::top.results.geqdsk:rhovn",),
+        notes="EFIT01 normalized toroidal-flux radius rho_N on the same "
+              "33-point NORMALIZED PSI grid as `qpsi` (the even indices of the "
+              "geqdsk 65-point axis): the psi -> rho map. Not a model input; "
+              "rwm-ours reads the rotation at the q = 2 surface "
+              "through it",
+    ),
     FeatureSpec(
         name="pres", kind="profile", units="Pa",
         sources=("archive", "fdp"),
@@ -376,6 +388,67 @@ FEATURES: tuple[FeatureSpec, ...] = (
         notes="PTDATA locked-mode (n=1) radial-field detector signal, in volts "
               "as the node reports them, decimated to 1 ms. Not calibrated to "
               "gauss; read as an indicator of a locked or very slow mode",
+    ),
+    # Added for RWM v5 (2026-10-14): the resistive wall mode's own sensor
+    # (Okabayashi et al. 2005, sec. 3-4), the low-frequency n = 1 delta-Bp of
+    # the midplane poloidal-field probe differences B(phi) - B(phi + 180 deg).
+    # MEASURED on 2003-04, 2014 and 2018 shots (phase4/rwm_inputs.md): all four
+    # in the PTDATA index of every shot checked; 0.1 ms (2003-04), 0.05 ms (2014),
+    # 0.02 ms (2018); tesla, the units field blank. Stored as 0.5 ms bin means.
+    # `labeler.rwm.bp` fits the n = 1 shape to them.
+    *(
+        FeatureSpec(
+            name=f"mpid{angle}u", kind="scalar", units="T",
+            sources=("fdp",), locators=(f"MPID{angle}U",),
+            step=0.0005,
+            notes=f"PTDATA midplane poloidal-field probe difference at {angle} "
+                  "deg minus the probe 180 deg away, tesla (the source's units "
+                  "field is blank), 0.5 ms bin means. Carries 5-20 G static "
+                  "offsets and direct I-coil pickup; `labeler.rwm.bp` removes "
+                  "both before reading an n = 1 amplitude",
+        )
+        for angle in ("067", "097", "127", "157")
+    ),
+    # The fast integrated single probes behind those differences (RWM v5
+    # follow-up, 2026-10-14). From 2021 (185805 on) PTDATA has no MPID*U points
+    # but keeps these. MEASURED on 176088 and 178872 (2018, both records), after a
+    # 100 ms running median: MPID{a}U = 0.46-0.49 x (MPI66M{a}F - partner),
+    # correlation 0.98-0.99; the slow MPI66M{a} correlate at only 0.67-0.76 and
+    # the D points are dB/dt. No MPI66M337F from 2018 on: the 340 deg probe is
+    # the 157.6 deg probe's partner. 0.02 ms, tesla (units "t" from 2021, blank
+    # before); none on 2014 shots. `labeler.rwm.bp.differences` forms them.
+    *(
+        FeatureSpec(
+            name=f"mpi66m{angle}f", kind="scalar", units="T",
+            sources=("fdp",), locators=(f"MPI66M{angle}F",),
+            step=0.0005,
+            notes=f"PTDATA fast integrated midplane poloidal-field probe at "
+                  f"{angle} deg, tesla, 0.5 ms bin means. Read only where the "
+                  "MPID*U difference is missing (2021 on): half the difference "
+                  "with its partner 180 deg away stands in for it",
+        )
+        for angle in ("067", "097", "127", "157", "247", "277", "307", "340")
+    ),
+    # The coil currents that pick up on those probes (RWM v5). MEASURED on
+    # 156787 (2014) and 176088 (2018): IU30/IU210, IL30/IL210 and IU90/IU270
+    # correlate at -1.00 (antiparallel n = 1 pairs), so the three upper and three
+    # lower I-coils at 30, 90 and 150 deg carry every independent I-coil current;
+    # the C-coils correlate at -0.97 (C79/C259) and -0.71 (C139/C319), so all six
+    # are kept. I-coils: amps, 0.01 ms (2014) or 0.5 ms (2018), stored as 0.5 ms
+    # bin means. C-coils: 5 ms (2014, near zero on 156787) or 0.5 ms (2018), kept
+    # at their native rate (a 0.5 ms bin of a 5 ms record would be mostly empty).
+    *(
+        FeatureSpec(
+            name=coil.lower(), kind="scalar", units="A",
+            sources=("fdp",), locators=(coil,),
+            step=0.0005 if coil.startswith("I") else 0.0,
+            notes=f"PTDATA {coil} coil current, amps (blank units field on the "
+                  "2018 C-coils), no conversion. Read only to regress applied-"
+                  "field pickup out of the MPID probe differences, and as the "
+                  "coil-activity context of rwm-ours",
+        )
+        for coil in ("IU30", "IU90", "IU150", "IL30", "IL90", "IL150",
+                     "C19", "C79", "C139", "C199", "C259", "C319")
     ),
     FeatureSpec(
         name="qmin", kind="scalar", units="",

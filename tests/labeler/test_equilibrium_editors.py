@@ -145,39 +145,49 @@ def flat(value):
     return lambda t: np.full(t.size, value)
 
 
-def rwm_signals(p, n1rms, betan=None):
-    """N1RMS and beta_N as given on a 1 ms clock, l_i 1 (beta_N 2 is below 4 l_i:
-    no screen call) and a steady Ip."""
+def burst(lo, hi, size=20.0):
+    """An n = 1 delta-Bp of `size` G over [lo, hi), shorter than half the
+    100 ms running median so the median does not absorb it."""
+    return lambda t: np.where((t >= lo) & (t < hi), size, 0.0)
+
+
+def probes(p, amplitude, t=None):
+    """The four midplane probe differences (tesla, 0.5 ms clock) of an n = 1
+    field of `amplitude(t)` G at a fixed phase, on static offsets."""
+    from labeler.rwm import bp
+
+    t = np.arange(0, 2000.5, bp.STEP_MS) if t is None else t
+    phase = np.deg2rad(40.0)
+    features(p, **{
+        name: (t, (2 * amplitude(t) * np.cos(np.deg2rad(phi) - phase) + offset)
+               / bp.T_TO_G)
+        for (name, phi), offset in zip(bp.ANGLES_DEG.items(), (5.0, -12.0, 8.0, 20.0),
+                                       strict=True)})
+
+
+def rwm_signals(p, n1rms=None, betan=None, bp=None):
+    """The delta-Bp probes (`bp`, none by default), N1RMS when given and beta_N
+    as given on a 1 ms clock, l_i 1 (beta_N 2 is below `rwm.BP_START_LI` l_i: no
+    screen call) and a steady Ip."""
     t = np.arange(0, 2001, 1.0)
     betan = flat(2.0) if betan is None else betan
-    features(p, n1rms=(t, n1rms(t)), betan=(t, betan(t)), li=(t, flat(1.0)(t)),
-             ip=(t, flat(1e6)(t)))
+    probes(p, flat(0.0) if bp is None else bp)
+    features(p, betan=(t, betan(t)), li=(t, flat(1.0)(t)), ip=(t, flat(1e6)(t)),
+             **({} if n1rms is None else {"n1rms": (t, n1rms(t))}))
 
 
-def late_excursion(t):
-    """N1RMS 1 G before 880 ms (the baseline), 0 from there, and 5 G over
-    [1000, 1100): below its baseline at the onset, its next excursion later."""
-    return np.where(t < 880, 1.0, np.where((t >= 1000) & (t < 1100), 5.0, 0.0))
-
-
-@pytest.mark.parametrize("n1rms,betan,end,why,after", [
-    # N1RMS rises at the onset and is back at its baseline once the 50 ms centred
-    # mean has left the excursion: 1000 + 25 ms.
-    (lambda t: np.where((t >= 900) & (t < 1000), 5.0, 0.0), flat(2.0), 1025, "n1rms",
-     None),
+@pytest.mark.parametrize("bp,betan,end,why,after", [
+    # delta-Bp rises at the onset and falls back under the threshold (the 5 G
+    # floor) at 940.5 ms, the 2 ms boxcar spreading the edge by a sample.
+    (burst(900, 940), flat(2.0), 941, "bp_n1", None),
     # beta_N loses 40 % of its onset value first.
-    (lambda t: np.where((t >= 900) & (t < 1000), 5.0, 0.0),
-     lambda t: np.where(t >= 960, 0.5, 2.0), 960, "betan", None),
-    # N1RMS never comes back: the 300 ms cap.
-    (lambda t: np.where(t >= 900, 5.0, 0.0), flat(2.0), 1200, "cap", None),
-    # No rise within 25 ms of the onset: the excursion at 1000 ms is another one.
+    (burst(900, 940), lambda t: np.where(t >= 920, 0.5, 2.0), 920, "betan", None),
+    # No rise within 25 ms of the onset: the burst at 950 ms is another one.
     # One frame is present and the rest uncertain to the next end, the cap.
-    (late_excursion, flat(2.0), 910, "no n1rms response", 1200),
+    (burst(950, 980), flat(2.0), 910, "no bp_n1 response", 1200),
 ])
-def test_rwm_onsets_are_present_to_the_measured_end(tmp_path, n1rms, betan, end, why,
+def test_rwm_onsets_are_present_to_the_measured_end(tmp_path, bp, betan, end, why,
                                                     after):
-    from labeler.events import rwm
-
     p = tree.paths(tmp_path)
     rwm_database(p)
     # With no inputs nothing measures an end: the onset keeps one 10 ms frame.
@@ -185,20 +195,18 @@ def test_rwm_onsets_are_present_to_the_measured_end(tmp_path, n1rms, betan, end,
     assert rows == [[3, 0, 880], [2, 880, 900], [1, 900, 910], [3, 910, 1500]]
     assert info["onsets"] == [{"t_ms": 900.0, "source": "rwm_format_test.csv",
                                "end_ms": 910.0, "end": "no inputs"}]
-    rwm_signals(p, n1rms, betan)
+    rwm_signals(p, betan=betan, bp=bp)
     rows, info = draft(p, "resistive_wall_mode", (0, 1500))
     stretch = [] if after is None else [[2, end, after]]
     assert rows == [[4, 0, 880], [2, 880, 900], [1, 900, end], *stretch,
                     [4, after or end, 1500]]
     found = info["onsets"][0]
-    assert (found["end_ms"], found["end"], found.get("uncertain_to_ms")) == (
-        end, why, after)
-    assert found["n1rms_baseline_g"] == (0.0 if after is None else 1.0)
-    if after is not None:
-        # v1's reading, the first rise however late, ends on that excursion.
-        t = np.arange(0, 2001, 1.0)
-        assert rwm.onset_end(900.0, rms=(t, n1rms(t)), rise_ms=None)[:2] == (
-            1115.0, "n1rms")
+    assert found["end"] == why and found.get("uncertain_to_ms") == after
+    assert found["end_ms"] == pytest.approx(end, abs=1.0)
+    if after is None:
+        assert found["bp_rise_ms"] == pytest.approx(0.0, abs=1.0)
+        assert found["bp_peak_g"] == pytest.approx(20.0, rel=0.01)
+    assert info["screen"] == "bp_n1_high_beta" and info["bp_threshold_g"] == 5.0
     # A shot with no curated onset is the screen alone: nothing ran, nothing drafted.
     found = spans.METHODS["resistive_wall_mode"].detect(SHOT + 1, p, (0, 1500))
     assert found.spans == () and found.measured == ()
@@ -209,7 +217,7 @@ def test_rwm_draft_opens_each_onset_as_one_individual_annotation(tmp_path):
 
     p = tree.paths(tmp_path)
     rwm_database(p)
-    rwm_signals(p, lambda t: np.where((t >= 900) & (t < 1000), 5.0, 0.0))
+    rwm_signals(p, bp=burst(900, 940))
     tree.cohort(p, [tree.queue_row(SHOT + 1, 0)])
     method = spans.METHODS["resistive_wall_mode"]
     spans.run(method, spans.targets(method.event, p, "cohort"), p, windows="cohort")
@@ -220,7 +228,7 @@ def test_rwm_draft_opens_each_onset_as_one_individual_annotation(tmp_path):
     # The present span is the onset's annotation, not also a Span under a tick.
     assert {(tuple(span), flag) for span, flag in zip(
         draft["intervals"], draft["iscrowd"], strict=True) if span[2] in (1, 2)} == {
-        ((880, 900, 2), 1), ((900, 1030, 1), 0)}
+        ((880, 900, 2), 1), ((900, 940, 1), 0)}
     assert opened["onset_candidates"] == 1
     # The ELM rule is unchanged: a one-frame tick over the Span it sits in.
     plain = labels.with_onsets(labels.Label((0, 1400), ((900, 1030, 1),)), [900.0],
@@ -229,21 +237,42 @@ def test_rwm_draft_opens_each_onset_as_one_individual_annotation(tmp_path):
         ((900, 910, 1), 0), ((900, 1030, 1), 1)}
 
 
+def high_beta(p, betan=5.0):
+    """beta_N `betan`, l_i 1 and a steady Ip on a 5 ms clock."""
+    t = np.arange(0, 2001, 5)
+    features(p, betan=(t, np.full(t.size, betan)), li=(t, np.ones(t.size)),
+             ip=(t, np.full(t.size, 1e6)))
+
+
 def test_rwm_screen_is_uncertain_and_requires_high_beta(tmp_path):
     p = tree.paths(tmp_path)
-    t = np.arange(0, 2001, 5)
-    amplitude = 0.1 + 0.001 * np.sin(t)
-    amplitude[(t >= 900) & (t <= 1000)] += np.linspace(0.0, 5.0, 21)
-    features(p, n1rms=(t, amplitude), betan=(t, np.full(t.size, 5.0)),
-             li=(t, np.ones(t.size)), ip=(t, np.full(t.size, 1e6)))
+    probes(p, burst(900, 940))
+    high_beta(p)
     rows, info = draft(p, "resistive_wall_mode", (0, 2000))
-    assert any(state == 2 and start >= 900 and stop <= 1000
+    assert any(state == 2 and 895 <= start and stop <= 945
                for state, start, stop in rows)
     assert all(state != 1 for state, _, _ in rows)
-    assert info["screen"] == "n1rms_high_beta"
-    features(p, betan=(t, np.ones(t.size)))
-    rows, _ = draft(p, "resistive_wall_mode", (0, 2000))
+    assert info["screen"] == "bp_n1_high_beta" and info["bp_runs"] == 1
+    assert info["start"] == {"passed": 1, "untested": [], "failed": 0}
+    assert info["n1rms_cover"][0][2] is None  # no N1RMS cached
+    # N1RMS above its own level over the burst (a crash inside the run, as at
+    # the paper's terminal RWMs) is recorded, not a reason to drop it.
+    t = np.arange(0, 2001, 1.0)
+    features(p, n1rms=(t, np.where((t >= 895) & (t < 945), 5.0, 0.1)))
+    rows, info = draft(p, "resistive_wall_mode", (0, 2000))
+    assert any(state == 2 for state, _, _ in rows)
+    assert info["n1rms_cover"][0][2] == 1.0
+    # EFIT ends before the run: the start condition is untested, not false.
+    early = np.arange(0, 801, 5)
+    features(p, betan=(early, np.full(early.size, 1.0)),
+             li=(early, np.ones(early.size)))
+    rows, info = draft(p, "resistive_wall_mode", (0, 2000))
+    assert any(state == 2 for state, _, _ in rows)
+    assert info["start"]["passed"] == 0 and len(info["start"]["untested"]) == 1
+    high_beta(p, betan=1.0)
+    rows, info = draft(p, "resistive_wall_mode", (0, 2000))
     assert rows == [[4, 0, 2000]], "a non-candidate is not a confirmed negative"
+    assert info["start"]["failed"] == 1
 
 
 def mhd_tracks(p, tracks=(), *, status="ok", mirnov_ms=(0.0, 2000.0), gaps=()):
@@ -281,12 +310,11 @@ def mhd_tracks(p, tracks=(), *, status="ok", mirnov_ms=(0.0, 2000.0), gaps=()):
     (None, False),
 ])
 def test_rwm_screen_drops_candidates_inside_n1_tracks(tmp_path, track, dropped):
+    from labeler.events import rwm
+
     p = tree.paths(tmp_path)
-    t = np.arange(0, 2001, 5)
-    amplitude = 0.1 + 0.001 * np.sin(t)
-    amplitude[(t >= 900) & (t <= 1000)] += np.linspace(0.0, 5.0, 21)
-    features(p, n1rms=(t, amplitude), betan=(t, np.full(t.size, 5.0)),
-             li=(t, np.ones(t.size)), ip=(t, np.full(t.size, 1e6)))
+    probes(p, burst(900, 940))
+    high_beta(p)
     if track is not None:
         mhd_tracks(p, [{"t_ms": np.arange(880, 1021, 4), **track}])
     method = spans.METHODS["resistive_wall_mode"]
@@ -296,9 +324,9 @@ def test_rwm_screen_drops_candidates_inside_n1_tracks(tmp_path, track, dropped):
     rows = pd.read_csv(summary["table"])[["category", "t_start", "t_end"]]
     (a, b, cover, in_record, outcome), = summary["per_shot"][str(SHOT)][
         "screen_gate"]["candidates"]
-    assert 900 <= a < b <= 1000
+    assert 899 <= a < b <= 1000  # the boxcar starts the run a sample early
     gate = summary["screen_gate"]  # spans.run writes it into the meta
-    assert method.inputs == ("n1rms", "n2rms", "betan", "li", "ip")
+    assert method.inputs == ("n1rms", "n2rms", "betan", "li", "ip", *rwm.BP_INPUTS)
     if dropped:
         # Its time stays measured: unassessed, never absent or present.
         assert (cover, in_record, outcome) == (1.0, 1.0, "dropped")
@@ -364,7 +392,8 @@ def test_rwm_n2_onset_ends_on_n2rms_when_cached_else_flagged_n1rms(tmp_path):
     meta.write_text(json.dumps({"made_from": [{
         "raw_file": "resistive_wall_mode/raw/onsets.csv", "source": "test_database",
     }]}))
-    # N1RMS rises at the onset and never comes back (an n = 1 mode alongside).
+    # N1RMS rises at the onset and never comes back (an n = 1 mode alongside);
+    # delta-Bp is quiet (it measures n = 1 only and the screen's time).
     rwm_signals(p, lambda t: np.where(t >= 900, 5.0, 0.0))
     rows, info = draft(p, "resistive_wall_mode", (0, 1500))
     found = info["onsets"][0]
@@ -663,10 +692,11 @@ def test_rwm_screen_errors_keep_database_evidence(tmp_path):
     _, missing = equilibrium._prepare((SHOT, ("n1rms",), p))
     assert "n1rms" in missing
     rows, info = draft(p, "resistive_wall_mode", (0, 1500))
-    # Without N1RMS nothing measured the mode: one frame, then uncertain to the cap.
+    # Without the delta-Bp probes nothing measured the mode: one frame, then
+    # uncertain to the cap.
     assert rows[:4] == [[3, 0, 880], [2, 880, 900], [1, 900, 910], [2, 910, 1200]]
     assert info["onsets"][0]["t_ms"] == 900
-    assert info["onsets"][0]["end"] == "no n1rms response"
+    assert info["onsets"][0]["end"] == "no bp_n1"
     assert info["ends_from"] == ["ip"] and "not_run" in info
 
 

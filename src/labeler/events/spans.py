@@ -625,10 +625,11 @@ METHODS = {
         # Round five: the curated onsets with measured ends over the screen
         # (`rwm.detect`, `rwm_candidates`, whose v1 table stays as drafted);
         # v3 gates the screen on the mhd_modes v4 cache's n = 1 tracks (named
-        # in the rule and the meta's `screen_gate`, not a signal input).
+        # in the rule and the meta's `screen_gate`, not a signal input); v5
+        # screens and ends n = 1 onsets on the delta-Bp probes (`rwm.BP_INPUTS`).
         Method(
             "resistive_wall_mode", "rwm_onsets", rwm.detect_onsets,
-            ("n1rms", "n2rms", "betan", "li", "ip"),
+            ("n1rms", "n2rms", "betan", "li", "ip", *rwm.BP_INPUTS),
             rwm.ONSET_RULE,
             unclassified=rwm.UNASSESSED,
             summary=rwm.screen_gate_summary,

@@ -25,6 +25,29 @@ Mirnov track the mhd_n1 parent counts, whatever its resonance status
 candidate not wholly inside the record is not assessed (`gate_screen`). An
 n = 2 onset also falls back to N1RMS when N2RMS has no sample in its baseline
 stretch.
+
+v5 (round five, delta-Bp; phase4/rwm_inputs.md): N1RMS is an FFT band from
+0.5 kHz and is blind to the RWM, which grows in 1-4 ms and rotates below 30 Hz.
+The screen and the n = 1 ends now read the RWM's own sensor, the n = 1 delta-Bp
+of the midplane probe differences with the coil pickup regressed out
+(`labeler.rwm.bp`): a screen candidate is delta-Bp above max(median +
+`BP_NOISE_MAD` MAD, `BP_FLOOR_G`) for at least `BP_MIN_MS` (dips shorter than
+that bridged) starting with beta_N > `BP_START_LI` l_i (`bp_screen`), and the
+Mirnov track gate stays. A curated n = 1 onset is present to delta-Bp back
+under the same threshold (`bp_end`); n = 2 onsets, which the probe differences
+cannot see, keep v4's N2RMS end.
+
+The v5 follow-up (2026-10-14) checked the rule on the paper's 2003-04 reference
+RWMs (Okabayashi et al. 2005) and the Hanson onsets (`round5/rwm/checks`,
+`rule_survey.csv`): beta_N > 4 l_i was false at every reference RWM (beta_N/l_i
+2.76-5.15 there), the N1RMS rotating-mode check dropped five of the seven (the
+crash's N1RMS falls inside the run), and requiring beta_N and l_i in the measured
+time cut the terminal ones where EFIT01 ends first. So the measured time is
+delta-Bp and the plasma only; the start condition is `BP_START_LI`, untested
+(kept, counted) where no EFIT sample lies in the lead-in; N1RMS no longer drops a
+candidate, its cover is only recorded (`n1rms_cover`). Below 2021 the four
+differences are PTDATA's MPID points; from 2021 they are formed from the single
+probes (`bp.differences`).
 """
 
 from __future__ import annotations
@@ -39,6 +62,7 @@ import pandas as pd
 from ..config import Paths
 from ..mhd import pipeline as mhd_pipeline
 from ..mhd import rows as mhd_rows
+from ..rwm import bp
 from ..rwm.features import COLLAPSE_DROP
 from ..rwm.labels import ONSET_WINDOW_MS, PRESENT_MS
 from . import coverage, equilibrium
@@ -84,23 +108,98 @@ MHD_CACHE = "v4"
 #: A screen candidate at least this much (in time) inside n = 1 track time
 #: within the Mirnov record is dropped.
 TRACK_COVER = 0.5
-ONSET_RULE = {
-    **RULE,
-    "database": "curated onsets present from the onset to the measured end",
+#: v5: the delta-Bp threshold is the measured time's median plus this many
+#: median absolute deviations (the N1RMS screen's NOISE_MAD) ...
+BP_NOISE_MAD = NOISE_MAD
+#: ... and at least this (G): the level above which the check report's 2014
+#: bursts stay for 18-32 ms; a quiet shot's MAD (0.05-0.5 G) would otherwise
+#: put the threshold inside ordinary flat-top excursions.
+BP_FLOOR_G = 5.0
+#: A candidate lasts at least this long above the threshold, and a dip below it
+#: shorter than this does not end one (the brief's 2-3 ms; the mode grows in
+#: 1-4 ms and `bp.SMOOTH_MS` already spreads a single-bin spike over 2 ms).
+BP_MIN_MS = 3.0
+#: A curated n = 1 onset's delta-Bp response: above the threshold somewhere in
+#: [o - PRE_ONSET_MS, o + BP_RISE_MS]. Of the 50 Hanson n = 1 onsets, the first
+#: run starts within -21 to +8 ms of 39, at +10.6, +15.5 and +22 ms on three,
+#: at +31 to +37 ms on four (another excursion) and not within 100 ms on four;
+#: 25 ms keeps the three and is v4's `RISE_MS`.
+BP_RISE_MS = 25.0
+#: A screen candidate starts with beta_N above this many l_i somewhere in its
+#: lead-in [start - PRE_ONSET_MS, start] (nearest EFIT samples). Chosen on the
+#: references: the largest one-decimal margin that keeps the seven 2003-04
+#: reference RWMs (lowest beta_N/l_i 2.76, 114329) and all 44 Hanson n = 1
+#: onsets a run reaches (lowest 2.46, 156785). 4 l_i, v5's first margin, kept
+#: none of the references. No EFIT sample in the lead-in (EFIT01 ends before a
+#: terminal mode) leaves the condition untested, and the candidate is kept.
+BP_START_LI = 2.4
+#: The cached inputs `bp.amplitude` reads (the single probes stand in for a
+#: missing difference from 2021 on, `bp.differences`).
+BP_INPUTS = (*bp.ANGLES_DEG, *bp.SINGLE_NAMES, *bp.COILS)
+BP_RULE = {
+    **equilibrium.RULE,
+    "screen": "bp_n1_high_beta",
+    "sensor": ("the n = 1 delta-Bp of MPID067U/097U/127U/157U (labeler.rwm.bp): "
+               "0.5 ms bin means less a centred baseline_ms running median, the "
+               "I-coil and odd C-coil pickup regressed out per shot (two-pass "
+               "trimmed least squares, whole shot, no onset time), a centred "
+               "smooth_ms boxcar, a least-squares fit of 2 A cos(phi - phi0)"),
+    "baseline_ms": bp.BASELINE_MS,
+    "bp_smooth_ms": bp.SMOOTH_MS,
+    "pickup_trim_mad": bp.TRIM_MAD,
+    "pickup_coils": [*bp.ICOILS, *("-".join(pair) for pair in bp.CCOIL_PAIRS)],
+    "measured": "delta-Bp finite and |Ip| at least ip_end_a",
+    "probes": ("MPID067U/097U/127U/157U; where a point is missing (2021 on), "
+               "difference_gain x (MPI66M{a}F - its partner 180 deg away; "
+               "MPI66M340F for 157) on the same scale"),
+    "difference_gain": bp.DIFFERENCE_GAIN,
+    "threshold": ("max(median + noise_mad median absolute deviations of delta-Bp "
+                  "over the measured time, floor_g)"),
+    "noise_mad": BP_NOISE_MAD,
+    "floor_g": BP_FLOOR_G,
+    "min_ms": BP_MIN_MS,
+    "runs": ("delta-Bp above the threshold, dips shorter than min_ms inside the "
+             "measured time bridged, at least min_ms long"),
+    "beta_n_over_li": BP_START_LI,
+    "high_beta": ("beta_N > beta_n_over_li l_i (nearest EFIT samples) somewhere in "
+                  "[start - pre_onset_ms, start]; untested, and the candidate "
+                  "kept, where no EFIT sample lies there"),
+    "n1rms_cover": ("recorded, not used: the fraction of the candidate's N1RMS "
+                    "samples above N1RMS's median + noise_mad MAD over the "
+                    "measured time (it dropped five of the seven paper reference "
+                    "RWMs, whose crash falls inside the run)"),
+    "ip_end_a": WINDOW_IP_A,
     "pre_onset_ms": PRE_ONSET_MS,
-    "end": ("the first of: the SMOOTH_MS centred mean of the end amplitude "
-            "(end_amplitude) back at or below its "
-            "mean over [o - PRE_ONSET_MS - SMOOTH_MS, o - PRE_ONSET_MS) after being "
-            "above it in [o, o + rise_ms]; the first "
+    "classification": "uncertain candidates only; the rest is unassessed",
+    "limitations": (
+        "delta-Bp also sees a locked or slowly rotating (below ~1 kHz) tearing "
+        "mode and residual applied-field pickup; the running median absorbs a "
+        "perturbation lasting longer than about half of baseline_ms, so a "
+        "saturated mode's run ends by then; n = 2 is invisible to the probe "
+        "differences"),
+    "timing": "0.5 ms bins; the centred median and boxcar look up to 50 ms ahead",
+}
+ONSET_RULE = {
+    **BP_RULE,
+    "database": "curated onsets present from the onset to the measured end",
+    "end": ("n = 1: the first of delta-Bp back at or below the screen threshold "
+            "(the first sample after max(o, rise) outside the bridged runs) "
+            "after it was above it in [o - pre_onset_ms, o + rise_ms]; the first "
             "beta_N sample after o at most (1 - collapse_drop) of the last one at "
             "or before o; the first |Ip| sample after o below ip_end_a"),
-    "end_amplitude": ("N1RMS for an n = 1 onset; N2RMS for an n = 2 onset when the "
-                      "shot has it cached with a finite sample in "
-                      "[o - PRE_ONSET_MS - SMOOTH_MS, o - PRE_ONSET_MS), else "
-                      "N1RMS, the onset's meta record flagged n2_end_on_n1rms"),
-    "no_n1rms_response": ("the end amplitude not above the baseline in "
-                          "[o, o + rise_ms], or none: present for min_present_ms, "
-                          "then uncertain to the first of the other ends"),
+    "rise_ms": BP_RISE_MS,
+    "no_bp_response": ("delta-Bp not above the threshold in "
+                       "[o - pre_onset_ms, o + rise_ms], or no delta-Bp: present "
+                       "for min_present_ms, then uncertain to the first of the "
+                       "other ends"),
+    "n2_end": ("v4's, which the probe differences cannot see: the first of the "
+               "SMOOTH_MS centred mean of N2RMS (N1RMS when N2RMS has no finite "
+               "sample in [o - pre_onset_ms - n2_smooth_ms, o - pre_onset_ms), "
+               "flagged n2_end_on_n1rms) back at or below its mean there after "
+               "being above it in [o, o + n2_rise_ms], the beta_N collapse and "
+               "the Ip end"),
+    "n2_smooth_ms": SMOOTH_MS,
+    "n2_rise_ms": RISE_MS,
     "screen_gate": {
         "drop": ("a screen candidate at least cover of whose time lies inside n = 1 "
                  "track time within the Mirnov record: a rotating mode, not an RWM; "
@@ -118,10 +217,7 @@ ONSET_RULE = {
                      "candidate on a shot with no cache record or no Mirnov read, "
                      "or with time outside the record, is not assessed"),
     },
-    "smooth_ms": SMOOTH_MS,
-    "rise_ms": RISE_MS,
     "collapse_drop": COLLAPSE_DROP,
-    "ip_end_a": WINDOW_IP_A,
     "max_present_ms": MAX_PRESENT_MS,
     "min_present_ms": MIN_PRESENT_MS,
     "classification": ("screen candidates and the pre-onset stretches uncertain, "
@@ -239,6 +335,21 @@ def _first_after(t, hit, onset: float) -> float | None:
     return float(t[found[0]]) if found.size else None
 
 
+def _other_ends(onset: float, betan=None, ip=None) -> dict:
+    """`onset_end`'s ends that are not the amplitude's: the cap, the beta_N
+    collapse and the end of the plasma current."""
+    ends = {"cap": onset + MAX_PRESENT_MS}
+    if betan is not None:
+        t, y = betan
+        at = np.flatnonzero(np.isfinite(y) & (t <= onset))
+        if at.size:
+            ends["betan"] = _first_after(t, y <= (1 - COLLAPSE_DROP) * y[at[-1]], onset)
+    if ip is not None:
+        t, y = ip
+        ends["ip"] = _first_after(t, np.abs(y) < WINDOW_IP_A, onset)
+    return {why: end for why, end in ends.items() if end is not None}
+
+
 def onset_end(onset: float, *, rms=None, betan=None, ip=None, rise_ms=RISE_MS,
               rms_name="n1rms"):
     """`(end_ms, why, baseline_g, uncertain_to_ms)`: where the mode a curated
@@ -261,16 +372,7 @@ def onset_end(onset: float, *, rms=None, betan=None, ip=None, rise_ms=RISE_MS,
     without `rms` before the onset."""
     if rms is None and betan is None and ip is None:
         return onset + MIN_PRESENT_MS, "no inputs", None, None
-    ends = {"cap": onset + MAX_PRESENT_MS}
-    if betan is not None:
-        t, y = betan
-        at = np.flatnonzero(np.isfinite(y) & (t <= onset))
-        if at.size:
-            ends["betan"] = _first_after(t, y <= (1 - COLLAPSE_DROP) * y[at[-1]], onset)
-    if ip is not None:
-        t, y = ip
-        ends["ip"] = _first_after(t, np.abs(y) < WINDOW_IP_A, onset)
-    ends = {why: end for why, end in ends.items() if end is not None}
+    ends = _other_ends(onset, betan, ip)
     baseline, rose = None, np.array([], dtype=int)
     if rms is not None:
         t, y = rms
@@ -336,6 +438,196 @@ def point_end(point: dict, signals: dict, rise_ms=RISE_MS):
     got = onset_end(float(point["t_ms"]), rms=signals.get(name), **ends,
                     rise_ms=rise_ms, rms_name=name)
     return (*got, name, flag)
+
+
+
+def bp_signals(shot: int, paths: Paths, names=BP_INPUTS) -> dict:
+    """`{name: (t_ms, y)}`: the cached probe differences and coil currents
+    `bp.amplitude` reads; a name not cached is left out."""
+    signals = {}
+    for name in names:
+        try:
+            array = equilibrium.signal(shot, name, paths)
+        except (NoDataError, KeyError, ValueError, OSError):
+            continue
+        signals[name] = (array.x * 1000, np.asarray(array.y[0], dtype=float))
+    return signals
+
+
+def bp_runs(t, above, finite, min_ms=BP_MIN_MS) -> list[tuple[float, float]]:
+    """`(first, last)` sample times of the runs of `above` on the uniform grid
+    `t`, a dip shorter than `min_ms` between two runs bridged when every sample
+    in it is `finite`, and only runs at least `min_ms` long."""
+    above = np.asarray(above, dtype=bool)
+    index = np.flatnonzero(above)
+    if not index.size:
+        return []
+    groups = np.split(index, np.flatnonzero(np.diff(index) > 1) + 1)
+    merged = [[groups[0][0], groups[0][-1]]]
+    for group in groups[1:]:
+        last = merged[-1][1]
+        if (t[group[0]] - t[last] < min_ms - 1e-9
+                and np.all(finite[last + 1:group[0]])):
+            merged[-1][1] = group[-1]
+        else:
+            merged.append([group[0], group[-1]])
+    return [(float(t[a]), float(t[b])) for a, b in merged
+            if t[b] - t[a] >= min_ms - 1e-6]
+
+
+def bp_series(shot: int, paths: Paths):
+    """`(t_ms, amp_g, measured, threshold_g, info)` of the shot's centred n = 1
+    delta-Bp over what it and the plasma (|Ip| >= `WINDOW_IP_A`) measured, with
+    the screen threshold; raises `NoDataError` without them."""
+    got = bp.amplitude(bp_signals(shot, paths))
+    if got is None:
+        raise NoDataError(f"shot {shot}: no delta-Bp probes (mpid067u ...)")
+    t, y = got["t_ms"], got["amp_g"]
+    measured = equilibrium.sample_runs(t, y)
+    inputs = {}
+    for name in ("ip",):
+        array = equilibrium.signal(shot, name, paths)
+        inputs[name] = dict(array.attrs)
+        values = np.asarray(array.y[0], dtype=float)
+        if name == "ip":
+            values = np.where(np.abs(values) >= WINDOW_IP_A, values, np.nan)
+        measured = coverage.intersect_intervals(
+            measured, equilibrium.sample_runs(array.x * 1000, values[None]))
+    inside = np.zeros(len(t), dtype=bool)
+    for a, b in measured:
+        inside |= (t >= a) & (t <= b)
+    base = y[inside & np.isfinite(y)]
+    if not base.size:
+        raise NoDataError(f"shot {shot}: no delta-Bp inside the measured plasma")
+    median = float(np.median(base))
+    mad = float(np.median(np.abs(base - median)))
+    threshold = max(median + BP_NOISE_MAD * mad, BP_FLOOR_G)
+    pickup = got["pickup"]
+    info = {"inputs": inputs, "probes": got["probes"],
+            "bp_median_g": round(median, 4),
+            "bp_mad_g": round(mad, 4), "bp_threshold_g": round(threshold, 4),
+            "pickup": {"removed": pickup.get("removed", False),
+                       "regressors": pickup.get("regressors", []),
+                       "variance_removed": [
+                           None if c is None else round(c["variance_removed"], 3)
+                           for c in pickup.get("channels", [])]}}
+    return t, np.where(inside, y, np.nan), measured, threshold, info
+
+
+def _n1rms_cover(shot: int, paths: Paths, candidates, measured):
+    """`[start, stop, cover]` per candidate: the fraction of its N1RMS samples
+    above N1RMS's median + `NOISE_MAD` MAD over `measured` (None without N1RMS
+    there). Recorded for the reviewer, not used to drop a candidate."""
+    try:
+        array = equilibrium.signal(shot, "n1rms", paths)
+    except (NoDataError, KeyError, ValueError, OSError):
+        return [[a, b, None] for a, b, _ in candidates]
+    t, y = array.x * 1000, np.asarray(array.y[0], dtype=float)
+    inside = np.zeros(len(t), dtype=bool)
+    for a, b in measured:
+        inside |= (t >= a) & (t <= b)
+    base = y[inside & np.isfinite(y)]
+    if not base.size:
+        return [[a, b, None] for a, b, _ in candidates]
+    median = float(np.median(base))
+    level = median + NOISE_MAD * float(np.median(np.abs(base - median)))
+    records = []
+    for a, b, _ in candidates:
+        during = (t >= a) & (t <= b) & np.isfinite(y)
+        cover = float(np.mean(y[during] > level)) if during.any() else None
+        records.append([a, b, None if cover is None else round(cover, 3)])
+    return records
+
+
+def _screen(shot: int, paths: Paths):
+    """`(found, series)`: `bp_screen`'s result and the delta-Bp it read,
+    `(t_ms, amp_g, threshold_g)`, or None without it."""
+    from .spans import Found
+
+    info = {"onsets": onsets(shot, paths), "screen": "bp_n1_high_beta"}
+    try:
+        t, y, measured, threshold, details = bp_series(shot, paths)
+    except (NoDataError, KeyError, ValueError, OSError) as error:
+        return Found((), (), {**info, "not_run": str(error)}), None
+    info.update(details)
+    margin = np.full(len(t), np.nan)
+    try:
+        beta, li = (_nearest(equilibrium.signal(shot, n, paths), t)
+                    for n in ("betan", "li"))
+        margin = beta - BP_START_LI * li
+    except (NoDataError, KeyError, ValueError, OSError) as error:
+        info["start_inputs"] = str(error)
+    runs = bp_runs(t, np.isfinite(y) & (y > threshold), np.isfinite(y))
+    candidates, start = [], {"passed": 0, "untested": [], "failed": 0}
+    for a, b in runs:
+        lead = margin[(t >= a - PRE_ONSET_MS) & (t <= a)]
+        if not np.isfinite(lead).any():
+            start["untested"].append([a, b])
+            candidates.append((a, b, UNCERTAIN))
+        elif np.nanmax(lead) > 0:
+            start["passed"] += 1
+            candidates.append((a, b, UNCERTAIN))
+        else:
+            start["failed"] += 1
+    info["bp_runs"] = len(runs)
+    info["start"] = start
+    if candidates:
+        info["n1rms_cover"] = _n1rms_cover(shot, paths, candidates, measured)
+    return Found(tuple(candidates), measured, info), (t, y, threshold)
+
+
+def bp_screen(shot: int, paths: Paths, window=None):
+    """The v5 screen: uncertain runs of the n = 1 delta-Bp above the shot's
+    threshold that start at beta_N > `BP_START_LI` l_i, or with no EFIT sample
+    in the lead-in (untested); the measured time is what delta-Bp and the plasma
+    share (`BP_RULE`). `window` is not used: `spans.run` clips to it."""
+    return _screen(shot, paths)[0]
+
+
+def bp_end(onset: float, *, series=None, betan=None, ip=None, rise_ms=BP_RISE_MS):
+    """`(end_ms, why, rise_ms, peak_g, uncertain_to_ms)` of a curated n = 1 onset
+    on the delta-Bp `series` (`(t_ms, amp_g, threshold_g)`, or None).
+
+    The mode responded when delta-Bp is above the threshold somewhere in
+    `[onset - PRE_ONSET_MS, onset + rise_ms]` (`rise_ms` the first such time less
+    the onset). Its end is the first of: the first sample after the onset, and
+    after that first rise, outside the runs above the threshold (`bp_runs`'
+    bridging, no minimum) ("bp_n1"); `_other_ends`. An end within
+    `MIN_PRESENT_MS` is moved there ("min"). With no response, or no delta-Bp,
+    the end is `MIN_PRESENT_MS` after the onset and `uncertain_to_ms` the first
+    of the other ends ("no bp_n1 response", "no bp_n1"); with no input at all,
+    "no inputs". `peak_g` is the largest delta-Bp in `[onset, end)`."""
+    if series is None and betan is None and ip is None:
+        return onset + MIN_PRESENT_MS, "no inputs", None, None, None
+    ends = _other_ends(onset, betan, ip)
+    rise = None
+    why_none = "no bp_n1"
+    if series is not None:
+        t, y, threshold = series
+        finite = np.isfinite(y)
+        runs = bp_runs(t, finite & (y > threshold), finite, min_ms=0.0)
+        soon = [(a, b) for a, b in runs
+                if b >= onset - PRE_ONSET_MS and a <= onset + rise_ms]
+        why_none = "no bp_n1 response"
+        if soon:
+            rise = soon[0][0]
+            inside = np.zeros(len(t), dtype=bool)
+            for a, b in runs:
+                inside |= (t >= a) & (t <= b)
+            out = np.flatnonzero((t >= max(onset, rise)) & ~inside)
+            if out.size:
+                ends["bp_n1"] = float(t[out[0]])
+    if rise is None:
+        end = onset + MIN_PRESENT_MS
+        later = min(ends.values())
+        return end, why_none, None, None, later if later > end else None
+    why = min(ends, key=lambda key: ends[key])
+    end = ends[why]
+    if end < onset + MIN_PRESENT_MS:
+        end, why = onset + MIN_PRESENT_MS, "min"
+    during = (t >= onset) & (t < end) & np.isfinite(y)
+    peak = float(np.max(y[during])) if during.any() else None
+    return end, why, rise - onset, peak, None
 
 
 def _sha256(path) -> str:
@@ -423,12 +715,19 @@ def gate_screen(candidates, tracks) -> tuple[list, list]:
 def screen_gate_summary(per_shot: dict, paths: Paths) -> dict:
     """The table meta's `screen_gate`: the gate's outcomes counted over the
     per-shot records (candidates as the screen found them, before the window
-    clip) and the MHD cache files read, each file's sha256 and one sha256 over
+    clip), the start condition's (`start`: runs that passed, failed and were
+    untested for want of an EFIT sample) and the MHD cache files
+    read, each file's sha256 and one sha256 over
     the sorted `<shot>.<kind> <sha256>` lines (`spans.run` adds it, so a rerun
     of the table reproduces it)."""
     groups = {"dropped": [], "kept": [], "not assessed": []}
+    start = {"passed": 0, "failed": 0, "untested": []}
     files = {}
     for shot, info in per_shot.items():
+        record = info.get("start", {})
+        start["passed"] += record.get("passed", 0)
+        start["failed"] += record.get("failed", 0)
+        start["untested"] += [(int(shot), b - a) for a, b in record.get("untested", ())]
         gate = info.get("screen_gate")
         if gate is None:
             continue
@@ -447,28 +746,36 @@ def screen_gate_summary(per_shot: dict, paths: Paths) -> dict:
             "sha256_of": "the sorted '<shot>.<kind> <file sha256>' lines",
             "file_sha256": dict(sorted(files.items())),
         },
-        **{names[key]: {"candidates": len(items),
-                        "seconds": round(sum(d for _, d in items) / 1000, 3),
-                        "shots": len({shot for shot, _ in items})}
-           for key, items in groups.items()},
+        **{names[key]: _counted(items) for key, items in groups.items()},
+        "start": {"passed_runs": start["passed"], "failed_runs": start["failed"],
+                  "untested": _counted(start["untested"])},
     }}
 
 
+def _counted(items) -> dict:
+    """Candidates, seconds and shots of `(shot, duration_ms)` items."""
+    return {"candidates": len(items),
+            "seconds": round(sum(d for _, d in items) / 1000, 3),
+            "shots": len({shot for shot, _ in items})}
+
+
 def detect_onsets(shot: int, paths: Paths, window=None):
-    """`rwm_onsets`: `detect`'s screen candidates less those inside n = 1
-    Mirnov tracks (`n1_tracks`, `gate_screen`), uncertain, then each curated
-    onset's `[o - PRE_ONSET_MS, o)` uncertain, its `[end, uncertain_to)`
-    uncertain when its amplitude did not respond, and `[o, end)` present
-    (`point_end`), painted in that order, so a present span outlasts another
-    onset's uncertain stretches. A dropped candidate's time stays measured:
-    unassessed. The onsets are evidence where the screen could not run: their
-    stretches join what the method measured. The meta's onsets record each end,
-    why it ended, where its uncertain stretch ends and, for n = 2, the amplitude
-    measured (`end_rms`); `screen_gate` records each candidate's cover and
+    """`rwm_onsets` v5: `bp_screen`'s candidates less those inside n = 1 Mirnov
+    tracks (`n1_tracks`, `gate_screen`), uncertain, then each curated onset's
+    `[o - PRE_ONSET_MS, o)` uncertain, its `[end, uncertain_to)` uncertain when
+    it did not respond, and `[o, end)` present, painted in that order, so a
+    present span outlasts another onset's uncertain stretches. An n = 1 onset
+    ends on delta-Bp (`bp_end`), an n = 2 one on v4's N2RMS (`point_end`). A
+    dropped candidate's time stays measured: unassessed. The onsets are
+    evidence where the screen could not run: their stretches join what the
+    method measured. The meta's onsets record each end, why it ended, where its
+    uncertain stretch ends, the delta-Bp rise (ms from the onset) and peak or,
+    for n = 2, the amplitude measured (`end_rms`); `start`, `n1rms_cover` and
+    `screen_gate` record each candidate's start condition, N1RMS cover, gate
     outcome and the MHD files read."""
     from .spans import Found
 
-    screen = detect(shot, paths, window)
+    screen, series = _screen(shot, paths)
     info = dict(screen.info)
     candidates = screen.spans
     if candidates:
@@ -479,10 +786,19 @@ def detect_onsets(shot: int, paths: Paths, window=None):
     if not points:
         return Found(tuple(candidates), screen.measured, info)
     signals = end_signals(shot, paths, points)
+    others = {k: signals[k] for k in ("betan", "ip") if k in signals}
     pre, after, present, recorded, seen = [], [], [], [], []
     for point in points:
         onset = float(point["t_ms"])
-        end, why, baseline, uncertain_to, name, flag = point_end(point, signals)
+        extra = {}
+        if int(point.get("ntor", 1)) == 2:
+            end, why, baseline, uncertain_to, name, flag = point_end(point, signals)
+            extra = {**({} if baseline is None
+                        else {f"{name}_baseline_g": round(baseline, 3)}), **flag}
+        else:
+            end, why, rise, peak, uncertain_to = bp_end(onset, series=series, **others)
+            if rise is not None:
+                extra = {"bp_rise_ms": round(rise, 1), "bp_peak_g": round(peak, 2)}
         pre.append((onset - PRE_ONSET_MS, onset, UNCERTAIN))
         present.append((onset, end, PRESENT))
         if uncertain_to is not None:
@@ -491,12 +807,11 @@ def detect_onsets(shot: int, paths: Paths, window=None):
         recorded.append({**point, "end_ms": round(end, 1), "end": why,
                          **({} if uncertain_to is None
                             else {"uncertain_to_ms": round(uncertain_to, 1)}),
-                         **({} if baseline is None
-                            else {f"{name}_baseline_g": round(baseline, 3)}),
-                         **flag})
+                         **extra})
     measured = coverage.union_intervals(screen.measured, seen)
+    ends_from = sorted({*signals, *(("bp_n1",) if series is not None else ())})
     return Found((*candidates, *pre, *after, *present), measured,
-                 {**info, "onsets": recorded, "ends_from": sorted(signals)})
+                 {**info, "onsets": recorded, "ends_from": ends_from})
 
 
 def database_windows(paths: Paths) -> pd.DataFrame:

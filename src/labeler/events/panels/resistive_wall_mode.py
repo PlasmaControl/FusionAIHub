@@ -1,12 +1,14 @@
-"""RWM review: magnetic amplitudes, beta_N/inductance and curated onset markers."""
+"""RWM review: the n = 1 delta-Bp, magnetic amplitudes, beta_N/inductance and
+curated onset markers."""
 
 from __future__ import annotations
 
 import numpy as np
 
 from ...config import Paths
+from ...rwm import bp
 from .. import equilibrium, rwm
-from ..verify import Panel
+from ..verify import NoDataError, Panel
 from ._shared import optional, with_caveat
 
 
@@ -29,10 +31,45 @@ def onset_panels(shot, *, paths, t_range=None):
     )]
 
 
+def bp_panels(shot, *, paths, t_range=None):
+    """The v5 sensor: the centred n = 1 delta-Bp with its screen threshold
+    (`rwm.bp_series`), each probe and coil fetched live when not cached (the
+    single probes only for a difference that is missing, as from 2021); the
+    plasma's own threshold line. NoDataError without the four differences."""
+    missing = set()
+    for name in rwm.BP_INPUTS:
+        needed_by = [d for d, pair in bp.SINGLES.items() if name in pair]
+        if needed_by and needed_by[0] not in missing:
+            continue
+        try:
+            equilibrium.signal(int(shot), name, paths, fetch=True)
+        except (NoDataError, ValueError, KeyError, OSError):
+            if name in bp.ANGLES_DEG:
+                missing.add(name)
+    _, _, _, threshold, info = rwm.bp_series(int(shot), paths)
+    got = bp.amplitude(rwm.bp_signals(int(shot), paths))
+    x, y = got["t_ms"], got["amp_g"][None]
+    if t_range is not None:
+        keep = (x >= t_range[0]) & (x <= t_range[1])
+        x, y = x[keep], y[:, keep]
+    removed = info["pickup"]["regressors"]
+    return [with_caveat(
+        Panel("n=1 delta-Bp (midplane probes)", x=x, y=y, ylabel="G",
+              hlines=[threshold]),
+        "The RWM's own sensor (Okabayashi 2005): MPID067U-157U less a 100 ms "
+        "running median, n = 1 fit; a locked or slow tearing mode reaches it too",
+        *([("Probe differences formed from the single probes MPI66M*F (no MPID "
+            "points from 2021)")] if got["probes"] != "MPID" else []),
+        f"Coil pickup removed ({', '.join(removed)})" if removed
+        else "No coil record: pickup not removed",
+        f"Dashed: the v5 screen threshold, {threshold:.1f} G",
+    )]
+
+
 def panels(shot, *, t_range=None, paths=None):
     paths = Paths.from_env() if paths is None else paths
     kwargs = {"paths": paths, "t_range": t_range}
-    built = []
+    built = optional("bp_n1", shot, lambda: bp_panels(shot, **kwargs))
     for name, title, unit, caveat in (
         ("n1rms", "n=1 magnetic RMS", "G", "Not RWM-specific"),
         ("n2rms", "n=2 magnetic RMS", "G", "Not RWM-specific"),

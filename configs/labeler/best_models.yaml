@@ -355,14 +355,27 @@ events:
     source: docs/labeler/events/poloidal_beta/README.md
 
   resistive_wall_mode:
-    model: rwm-brf
-    version: "2026_10_03"
-    task: forecast
-    output: risk of an RWM onset ahead, per 10 ms bin
+    model: rwm-ours
+    version: "2026_10_14"
+    task: detector
+    output: RWM presence per 10 ms bin
     inputs:
-      - name: EFIT01 scalars
+      - name: midplane poloidal-field probe differences
+        tree: PTDATA
+        pointnames: [MPID067U, MPID097U, MPID127U, MPID157U]
+        used_as: "n = 1 delta-Bp (labeler.rwm.bp): 0.5 ms bins less a trailing 100 ms median, coil pickup regressed out per shot, 2 ms trailing boxcar, a fit of 2 A cos(phi - phi0); 5 ms mean, 20 ms maximum and log slope"
+      - name: midplane single probes (stand-in from 2021, when PTDATA has no MPID points)
+        tree: PTDATA
+        pointnames: [MPI66M067F, MPI66M097F, MPI66M127F, MPI66M157F, MPI66M247F, MPI66M277F, MPI66M307F, MPI66M340F]
+        used_as: "half of each opposite pair's difference stands in for its MPID point (gain 0.49 and correlation 0.98-0.99 against MPID after the running median on 176088 and 178872); not read on the 33 scored shots, which all have MPID"
+      - name: I-coil and C-coil currents
+        tree: PTDATA
+        pointnames: [IU30, IU90, IU150, IL30, IL90, IL150, C19, C79, C139, C199, C259, C319]
+        used_as: pickup regressors for delta-Bp, and the I-coil activity (largest deviation from a trailing median, 5 ms maximum; rms level, 5 ms mean)
+      - name: EFIT01 scalars and q profile
         tree: EFIT01
-        pointnames: ['\efit01::top.results.aeqdsk:betan', '\efit01::top.results.aeqdsk:li', '\efit01::top.results.aeqdsk:q95', '\efit01::top.results.aeqdsk:qmin', '\efit01::top.results.aeqdsk:wmhd']
+        pointnames: ['\efit01::top.results.aeqdsk:betan', '\efit01::top.results.aeqdsk:li', '\efit01::top.results.aeqdsk:q95', '\efit01::top.results.aeqdsk:qmin', '\efit01::top.results.aeqdsk:wmhd', '\efit01::top.results.geqdsk:qpsi', '\efit01::top.results.geqdsk:rhovn']
+        used_as: held 50 ms; beta_N/l_i and beta_N - 4 l_i derived; qpsi and rhovn locate the outermost q = 2 surface
       - name: plasma current
         tree: PTDATA
         pointnames: [ip]
@@ -370,24 +383,25 @@ events:
         tree: MHD
         pointnames: ['\MHD::N1RMS', '\MHD::N2RMS']
         rate_hz: 1000
-      - name: ZIPFIT toroidal rotation at rho 0.25 and 0.625
+      - name: ZIPFIT toroidal rotation at rho 0.25, 0.625 and the q = 2 surface
         tree: ZIPFIT01
         pointnames: ['\ZIPFIT01::TOP.PROFILES.TROTFIT']
     bin_ms: 10
-    n_shots: null
-    headline: "phase-controlled AUROC 0.534 [0.436, 0.625]: no skill beyond elapsed time"
+    n_shots: 33
+    headline: "F1 0.529 [0.432, 0.609], AUROC 0.967 [0.946, 0.986] for RWM presence on Hanson's 33 shots, against labels whose present spans end on the same delta-Bp"
     scores:
-      reference: Hanson RWM onset tables (2017, 2024), reference split seed 0; phase-controlled AUROC is the headline
-      interval: exploratory 95 % shot bootstrap
-      phase_controlled_auroc: {value: 0.534, lo: 0.436, hi: 0.625}
-      auroc: {value: 0.760, lo: 0.706, hi: 0.809}
-      auprc: {value: 0.163, lo: 0.123, hi: 0.220}
-      f1: {value: 0.275, lo: 0.227, hi: 0.337}
+      reference: rwm_onsets v5 on Hanson's 33 shots (93 present, 14,082 negative 10 ms bins; uncertain and not observable time left out), one calendar run day held out at a time (3 folds), the F1 cut chosen on the training days
+      interval: 95 % whole-shot bootstrap, 1,000 draws
+      auroc: {value: 0.967, lo: 0.946, hi: 0.986}
+      auprc: {value: 0.523, lo: 0.403, hi: 0.644}
+      f1: {value: 0.529, lo: 0.432, hi: 0.609}
     caveats:
-      - No demonstrated skill beyond elapsed time or beta_N/l_i under phase control; no input senses the RWM.
-      - "The review page's source, rwm_onsets v4, is a rule on the Hanson onset times, not a model, and no one has reviewed it (628 shots, 2,076 rows: 54 present, 94 uncertain). Only the onset time is curated evidence: each present span runs to the first of the amplitude's return to baseline, a beta_N collapse, Ip below 50 kA or 300 ms, measured on N1RMS or N2RMS, beta_N and Ip, none RWM-specific. The screen's candidates are uncertain, never present."
-      - "ONSBRADIAL (fetched for the 85 shots of 2018, none of 2014): rwm-brf-onsb changes the phase-controlled AUROC by -0.005 [-0.035, 0.020], so the sensor adds no measurable forecast skill; rwm-det-brf, onset +-20 ms detection on held-out Hanson slices, has AUROC 0.798 [0.740, 0.849]."
-    source: docs/labeler/events/resistive_wall_mode/README.md; docs/labeler/rwm_baseline.md
+      - "rwm-ours reads the labels' own sensor: the v5 present spans end where delta-Bp falls back under the screen threshold and the uncertain stretches are delta-Bp runs, so the score is partly agreement with the v5 rule, not an independent truth. Trivial baseline at the bins' prevalence 0.0066: F1 0.013, AUPRC 0.0066."
+      - "rwm-brf, the NSTX forest's recipe (Piccione 2022) on the round-four inputs (EFIT01 scalars, N1RMS/N2RMS, ZIPFIT rotation; no delta-Bp) retrained as a presence classifier on the same bins: F1 0.034 [0.014, 0.060], AUROC 0.711 [0.661, 0.760], AUPRC 0.014 [0.009, 0.021]; rwm-ours minus rwm-brf F1 +0.495 [+0.403, +0.577], AUROC +0.257 [+0.200, +0.315]. The NSTX forest reported slice AUROC 0.918 for a 100 ms forecast on NSTX, another machine."
+      - "Negatives are assumed: Hanson's lists are taken as complete on his shots (the table marks that time unassessed). With uncertain time scored negative, F1 0.260 [0.189, 0.339], AUROC 0.954 [0.930, 0.975]."
+      - "The review page's source, rwm_onsets v5, is a rule on the n = 1 delta-Bp and Hanson's onset times, and no one has reviewed it. Screen candidates (delta-Bp runs above the shot's threshold starting at beta_N > 2.4 l_i, or with no EFIT01 sample before them) are uncertain, never present; Okabayashi 2005's two negatives (120290's internal mode, 119666's runs) stay uncertain candidates."
+      - "Round four's forecaster (a 100 ms horizon, phase-controlled AUROC 0.534 [0.436, 0.625]) is superseded: every RWM model is a presence classifier since 2026-10-14."
+    source: docs/labeler/events/resistive_wall_mode/README.md; docs/labeler/results/rwm_classifier.json
 
   disruption:
     model: null

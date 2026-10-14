@@ -304,7 +304,7 @@
      },
      "point": {
       "f1": 0.0,
-      "precision": NaN,
+      "precision": null,
       "recall": 0.0,
       "auroc": 0.7545239968528717,
       "auprc": 0.04893928953594499,

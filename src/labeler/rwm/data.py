@@ -9,11 +9,26 @@ from ..config import Paths
 from ..events import equilibrium
 from ..events.verify import NoDataError
 from ..features import namespace
-from . import features, labels
+from . import bp, features, labels
 
 #: What a shot's file must hold for its slices to be usable at all.
 REQUIRED = ("ip", "betan", "li", "n1rms")
-OPTIONAL = ("q95", "qmin", "wmhd", "n2rms", "rot_zipfit", "dusbradial")
+OPTIONAL = (
+    "q95",
+    "qmin",
+    "wmhd",
+    "n2rms",
+    "rot_zipfit",
+    "dusbradial",
+    # v5: the delta-Bp probes (from 2021 the single probes they are formed
+    # from), the coils whose pickup they carry (`rwm.bp`), and the q profile
+    # with its rho map (`features.bp_columns`).
+    *bp.ANGLES_DEG,
+    *bp.SINGLE_NAMES,
+    *bp.COILS,
+    "qpsi",
+    "rhovn",
+)
 
 
 def load_signals(shot: int, paths: Paths) -> dict:

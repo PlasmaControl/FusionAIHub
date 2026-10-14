@@ -23,6 +23,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from . import bp
+
 #: Grid step of the slice table, in ms (the paper uses 5 ms; DIII-D's EFIT is 20 ms).
 STEP_MS = 10.0
 #: A held EFIT or ZIPFIT value older than this is missing, not stale.
@@ -61,6 +63,26 @@ FEATURES = (
     "rot_mid_khz",
     "lock_v",
 )
+#: v5 (round five): the RWM's own sensor and its context, appended to FEATURES
+#: for rwm-ours, the presence classifier (`labeler.rwm.classify`; the round-four
+#: slices and record keep FEATURES).
+#: The n = 1 delta-Bp (`labeler.rwm.bp`, trailing running median and boxcar; the
+#: whole-shot pickup coupling is its one non-causal step) as a `RMS_WINDOW_MS`
+#: mean, a `GROWTH_WINDOW_MS` maximum and log slope; the ZIPFIT rotation at the
+#: outermost q = 2 surface (EFIT01 q profile mapped to rho by its rhovn; NaN
+#: with q above 2 everywhere); the I-coil activity (`bp.coil_activity`: the
+#: largest deviation from a trailing median over `RMS_WINDOW_MS`, and the rms
+#: level). beta_N - 4 l_i is FEATURES' `betan_minus_4li`; N1RMS stays as
+#: tearing-mode context.
+BP_FEATURES = (
+    "bp_n1_g",
+    "bp_n1_max_g",
+    "bp_n1_growth_per_s",
+    "rot_q2_khz",
+    "icoil_dev_ka",
+    "icoil_level_ka",
+)
+V5_FEATURES = (*FEATURES, *BP_FEATURES)
 
 
 def bracketed_interpolate(t_src_ms, y_src, t_grid_ms, max_gap_ms):
@@ -350,3 +372,68 @@ def slice_table(signals, *, step_ms=STEP_MS, ip_fraction=0.5):
         table["lock_v"] = nan
     table[TIME_COLUMN] = time_since_flattop(ip_t, ip_y, grid)
     return pd.DataFrame(table, columns=["t_ms", *FEATURES, TIME_COLUMN])
+
+
+def q_surface_rho(q, rho, value=2.0):
+    """The rho of the outermost crossing of q = `value` in each column of the
+    `(R, T)` profiles `q` and `rho` (one radial grid), linearly interpolated
+    between grid points; NaN where q never crosses it."""
+    s = np.asarray(q, dtype=float) - value
+    rho = np.asarray(rho, dtype=float)
+    out = np.full(s.shape[1], np.nan)
+    with np.errstate(invalid="ignore"):
+        cross = (s[:-1] * s[1:] <= 0) & (s[:-1] != s[1:])
+    for j in range(s.shape[1]):
+        index = np.flatnonzero(cross[:, j])
+        if index.size:
+            i = index[-1]
+            weight = s[i, j] / (s[i, j] - s[i + 1, j])
+            out[j] = rho[i, j] + weight * (rho[i + 1, j] - rho[i, j])
+    return out
+
+
+def profile_along(t_src_ms, profile, rho_grid, rho, t_grid_ms, max_age_ms):
+    """A held `(R, T)` profile at a radius `rho` that changes with each grid
+    time, by linear interpolation; NaN where `rho` is."""
+    t_src = np.asarray(t_src_ms, dtype=float)
+    profile = np.asarray(profile, dtype=float)
+    rho_grid = np.asarray(rho_grid, dtype=float)
+    grid = np.asarray(t_grid_ms, dtype=float)
+    column = np.searchsorted(t_src, grid, side="right") - 1
+    ok = (column >= 0) & np.isfinite(rho)
+    column = np.clip(column, 0, len(t_src) - 1)
+    ok &= grid - t_src[column] <= max_age_ms
+    r = np.clip(np.where(ok, rho, rho_grid[0]), rho_grid[0], rho_grid[-1])
+    low = np.clip(np.searchsorted(rho_grid, r, side="right") - 1, 0, len(rho_grid) - 2)
+    weight = (r - rho_grid[low]) / (rho_grid[low + 1] - rho_grid[low])
+    value = (1 - weight) * profile[low, column] + weight * profile[low + 1, column]
+    return np.where(ok, value, np.nan)
+
+
+def bp_columns(signals, t_grid_ms):
+    """The `BP_FEATURES` columns on the slice grid from `signals` (`slice_table`'s
+    mapping, with the probe, coil, `qpsi` and `rhovn` records `rwm.data` loads);
+    an all-NaN column for what a shot lacks."""
+    grid = np.asarray(t_grid_ms, dtype=float)
+    out = {name: np.full(len(grid), np.nan) for name in BP_FEATURES}
+    _, causal = bp.both(signals)
+    if causal is not None:
+        t, amplitude = causal["t_ms"], causal["amp_g"]
+        out["bp_n1_g"] = trailing_mean(t, amplitude, grid, RMS_WINDOW_MS)
+        out["bp_n1_max_g"] = trailing_max(t, amplitude, grid, GROWTH_WINDOW_MS)
+        out["bp_n1_growth_per_s"] = trailing_log_slope(
+            t, amplitude, grid, GROWTH_WINDOW_MS, LOG_FLOOR_G
+        )
+        deviation, level = bp.coil_activity(signals, t, causal=True)
+        out["icoil_dev_ka"] = trailing_max(t, deviation, grid, RMS_WINDOW_MS)
+        out["icoil_level_ka"] = trailing_mean(t, level, grid, RMS_WINDOW_MS)
+    if all(k in signals for k in ("qpsi", "rhovn", "rot_zipfit", "rho_grid")):
+        t_q, q = signals["qpsi"]
+        t_r, rho = signals["rhovn"]
+        if q.shape == rho.shape and np.array_equal(t_q, t_r):
+            rho_q2 = hold(t_q, q_surface_rho(q, rho), grid, EFIT_MAX_AGE_MS)
+            t, profile = signals["rot_zipfit"]
+            out["rot_q2_khz"] = profile_along(
+                t, profile, signals["rho_grid"], rho_q2, grid, ZIPFIT_MAX_AGE_MS
+            )
+    return out
