@@ -48,7 +48,8 @@ rises in the outer ones; the 1/1 precursor is visible on magnetics at 2-20 kHz.
 - saw_physics v4 | 2026_10_14 (the review source since 2026-10-14: v3 rebuilt after 21 of its shots got an EFIT02ER or EFIT01 fallback file where EFIT02 has one slice; rows differ on 2 shots, 199166 and 199353; on silver+gold 845.7 s absent, 200.2 s present, 921.3 s uncertain, 786.4 s not observable)
 - saw-hl3-full | 2026_10_05 | AUROC: 0.870 [0.827, 0.908] | AUPRC: 0.949 [0.929, 0.966] | F1: 0.870 [0.835, 0.899] (OuYang HL-3 CNN + bidirectional LSTM on the paper's nine offline inputs, label-free SXR chords; presence out of fold on 2 ms bins, 390 shots, conditional agreement with the physics rule on assessed bins (not an independent truth); crash F1 ±2 ms 0.894 [0.874, 0.910] (derivative picker gated by HL-3); three-class window accuracy 0.715 [0.662, 0.769] against 0.522 [0.447, 0.589] for the majority class; always present AUROC 0.500, AUPRC 0.736, F1 0.848; no-q = 1-negatives view (EFIT02 -> EFIT02ER -> EFIT01 gate) F1 0.483 [0.427, 0.537], AUROC 0.752 [0.703, 0.799], crash F1 ±2 ms 0.679 [0.611, 0.746])
 - saw-hl3-ece | 2026_10_04 | AUROC: 0.765 [0.697, 0.823] | AUPRC: 0.890 [0.853, 0.919] | F1: 0.843 [0.796, 0.881] (the same network on the earlier four-input ECE adaptation; presence out of fold on 2 ms bins, 390 shots, conditional agreement with the physics rule on assessed bins (not an independent truth); crash F1 ±2 ms 0.894 [0.872, 0.912] (derivative picker gated by HL-3); three-class window accuracy 0.644 [0.591, 0.697] against 0.522 [0.447, 0.589] for the majority class; always present AUROC 0.500, AUPRC 0.736, F1 0.848; no-q = 1-negatives view (EFIT02 -> EFIT02ER -> EFIT01 gate) F1 0.411 [0.362, 0.464], AUROC 0.574 [0.520, 0.632], crash F1 ±2 ms 0.656 [0.583, 0.727])
-- saw-ours | 2026_10_04 (PhaseNet-style multichannel ECE crash picker and train-presence head; GPU fit)
+- saw-ours | 2026_10_04 (superseded by saw-ours v2 on 2026_10_14: PhaseNet-style multichannel ECE crash picker and train-presence head; GPU fit; record `outputs/labeler/sawtooth/fix5`, kept in fix6 as `saw-ours-fix5`; no-q = 1-negatives view F1 0.685 [0.623, 0.737], AUROC 0.899 [0.880, 0.918])
+- saw-ours v2 | 2026_10_14 | AUROC: 0.988 [0.982, 0.993] | AUPRC: 0.994 [0.990, 0.997] | F1: 0.974 [0.961, 0.982] (the same picker combined with the derivative picker: two derivative input channels, a 400 ms window, no-q = 1 time in the supervision mask, and presence kept only where an axis-channel edge of at least the inner-selected z lies within ±125 ms; CPU fit; presence out of fold on 2 ms bins, 390 shots, conditional agreement with the physics rule on assessed bins (not an independent truth); crash F1 ±2 ms 0.905 [0.889, 0.918]; always present AUROC 0.500, AUPRC 0.736, F1 0.848; no-q = 1-negatives view (EFIT02 -> EFIT02ER -> EFIT01 gate) F1 0.958 [0.941, 0.970], AUROC 0.984 [0.976, 0.991], crash F1 ±2 ms 0.891 [0.872, 0.907], paired +0.272 [0.223, 0.326] F1 over saw-ours 2026_10_04 and +0.229 [0.174, 0.284] over the derivative picker alone; primary-view F1 0.020 [0.011, 0.032] below the derivative picker alone; the derivative picker reads the same ECE edges the physics-rule labels are built from, so the combined model inherits that partial circularity; on the three reviewed shots (exploratory) F1 0.486, AUROC 0.586 against 0.688, 0.751 for saw-ours 2026_10_04; record `outputs/labeler/sawtooth/fix6`, key `saw-ours`)
 
 ## Inputs
 **ece_sawtooth**:
@@ -77,6 +78,10 @@ rises in the outer ones; the 1/1 precursor is visible on magnetics at 2-20 kHz.
 **saw-ours**:
 - The physical first-40-channel ECE array, 100 ms context at 10 kHz; unverified
   channels 40–47 and third-harmonic overlap samples are masked
+- v2 (2026_10_14) adds two channels from the axis-selected ECE channel, the
+  derivative picker's Gaussian-derivative z-trace and its ±125 ms edge score (the
+  largest observable edge z within reach), both log1p-compressed, and reads
+  400 ms of context
 
 ## Method
 `ece_sawtooth` (`labeler.events.heuristics.sawtooth_events`), a port of the
