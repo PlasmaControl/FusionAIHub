@@ -1,17 +1,15 @@
-"""Actuator counterfactual hook: the ``--actuator_mode`` transforms + the PAIRING contract.
-
-Separate file from test_phaseb_dataset.py because this covers the EVAL side (eval_dynamics),
-not the cache/dataset side; it follows the existing one-file-per-concern test_phaseb_* layout.
-
-The whole counterfactual programme rests on one property: two rollouts with the same seed must
-differ ONLY through the actuator conditioning. If that silently breaks, every effect size measured
-afterwards is noise wearing a lab coat — and it would break invisibly, because a rollout that
-diverges for RNG reasons looks exactly like one that diverges for actuator reasons. Hence the
-``act_embed``-zeroed test below, which pins the causal path rather than merely observing it.
+"""Actuator counterfactual hook: the ``--actuator_mode`` transforms + the PAIRING
+contract.
+Separate file from test_phaseb_dataset.py because this covers the EVAL side
+(eval_dynamics), not the cache/dataset side; it follows the existing
+one-file-per-concern test_phaseb_* layout.
+The whole counterfactual programme rests on one property: two rollouts with the same
+seed must differ ONLY through the actuator conditioning. If that silently breaks, every
+effect size measured afterwards is noise wearing a lab coat — and it would break
+invisibly, because a rollout that diverges for RNG reasons looks exactly like one that
+diverges for actuator reasons. Hence the ``act_embed``-zeroed test below, which pins the
+causal path rather than merely observing it.
 """
-
-from pathlib import Path
-import tempfile
 
 import pytest
 import torch
@@ -38,18 +36,21 @@ def _group_cols(name):
     raise KeyError(name)
 
 
-# --------------------------------------------------------------------------- transforms ---
+# --------------------------------------------------------------------------- transforms
+# ---
 def test_real_is_identity_but_not_an_alias():
     a = _act()
     out = ed.apply_actuator_mode(a, "real", K0, F=F)
     assert torch.equal(out, a)
-    assert out.data_ptr() != a.data_ptr(), "must not hand back the caller's tensor to mutate"
+    assert out.data_ptr() != a.data_ptr(), (
+        "must not hand back the caller's tensor to mutate"
+    )
 
 
 @pytest.mark.parametrize("mode", ["zero", "freeze", "shuffle", "group_zero:rmp"])
 def test_seed_region_is_never_touched(mode):
-    """Every mode edits [K0, F) ONLY — the model must receive identical context in both arms,
-    or the comparison confounds conditioning with a different starting state."""
+    """Every mode edits [K0, F) ONLY — the model must receive identical context in both
+    arms, or the comparison confounds conditioning with a different starting state."""
     a = _act()
     out = ed.apply_actuator_mode(a, mode, K0, F=F)
     assert torch.equal(out[:K0], a[:K0])
@@ -69,7 +70,9 @@ def test_shuffle_is_a_permutation_and_deterministic():
     # a permutation preserves the column sums exactly; it must also actually reorder
     assert torch.allclose(s[K0:F].sum(0), a[K0:F].sum(0), atol=1e-5)
     assert not torch.equal(s[K0:F], a[K0:F])
-    assert torch.equal(s, ed.apply_actuator_mode(a, "shuffle", K0, F=F)), "must be reproducible"
+    assert torch.equal(s, ed.apply_actuator_mode(a, "shuffle", K0, F=F)), (
+        "must be reproducible"
+    )
 
 
 def test_group_zero_touches_only_its_own_columns():
@@ -95,28 +98,51 @@ def test_unknown_modes_raise(bad):
         ed.apply_actuator_mode(_act(), bad, K0, F=F)
 
 
-# ------------------------------------------------------- pairing + causal-path contract ---
+# ------------------------------------------------------- pairing + causal-path contract
+# ---
 def _tiny_setup():
     cfg = DynamicsConfig(
-        modalities=(ModalitySpec("a", "spectro", 6, 32), ModalitySpec("b", "slowts", 3, 16)),
-        d_model=32, depth=2, n_heads=4, k0_seed=4, n_predict=6, actuator_dim=70,
-        grad_checkpointing=False, maskgit_decode_steps=3,
+        modalities=(
+            ModalitySpec("a", "spectro", 6, 32),
+            ModalitySpec("b", "slowts", 3, 16),
+        ),
+        d_model=32,
+        depth=2,
+        n_heads=4,
+        k0_seed=4,
+        n_predict=6,
+        actuator_dim=70,
+        grad_checkpointing=False,
+        maskgit_decode_steps=3,
     )
     torch.manual_seed(0)
     model = MaskGITDynamics(cfg).eval()
     g = torch.Generator().manual_seed(0)
     n = cfg.max_frames
-    cache = {"codes": {m.name: torch.randint(0, m.codebook_size, (n, m.n_tok), generator=g)
-                       for m in cfg.modalities},
-             "actuators": torch.randn(n, 70, generator=g), "n_frames": n}
+    cache = {
+        "codes": {
+            m.name: torch.randint(0, m.codebook_size, (n, m.n_tok), generator=g)
+            for m in cfg.modalities
+        },
+        "actuators": torch.randn(n, 70, generator=g),
+        "n_frames": n,
+    }
     return cfg, model, cache
 
 
 def _roll(cfg, model, cache, mode, seed=0, cache_dir=None):
     gen = torch.Generator().manual_seed(seed)
-    _gt, pred, _k, _f = ed.rollout_shot(model, cfg, cache, cfg.k0_seed, 0.9, gen,
-                                        torch.device("cpu"), actuator_mode=mode,
-                                        cache_dir=cache_dir)
+    _gt, pred, _k, _f = ed.rollout_shot(
+        model,
+        cfg,
+        cache,
+        cfg.k0_seed,
+        0.9,
+        gen,
+        torch.device("cpu"),
+        actuator_mode=mode,
+        cache_dir=cache_dir,
+    )
     return pred
 
 
@@ -133,18 +159,20 @@ def test_rollout_actually_consumes_the_generator():
     """Guards the opposite failure: a rollout that ignores the seed would make every
     comparison trivially 'reproducible' and the pairing test vacuous."""
     cfg, model, cache = _tiny_setup()
-    assert not _same(_roll(cfg, model, cache, "real", seed=0),
-                     _roll(cfg, model, cache, "real", seed=1))
+    assert not _same(
+        _roll(cfg, model, cache, "real", seed=0),
+        _roll(cfg, model, cache, "real", seed=1),
+    )
 
 
 def test_actuators_influence_the_rollout_ONLY_through_act_embed():
     """The core contract, pinned from both sides.
-
-    With act_embed zeroed, the actuator tensor cannot reach the network, so 'zero' and 'real'
-    must be BITWISE identical — which simultaneously proves (a) there is no second path by which
-    actuators leak into the rollout and (b) the two arms consume an identical RNG stream, so a
-    later divergence is attributable to conditioning alone. Restoring and amplifying act_embed
-    must then make them differ, or the test would pass for a model that simply ignores its input.
+    With act_embed zeroed, the actuator tensor cannot reach the network, so 'zero' and
+    'real' must be BITWISE identical — which simultaneously proves (a) there is no
+    second path by which actuators leak into the rollout and (b) the two arms consume an
+    identical RNG stream, so a later divergence is attributable to conditioning alone.
+    Restoring and amplifying act_embed must then make them differ, or the test would
+    pass for a model that simply ignores its input.
     """
     cfg, model, cache = _tiny_setup()
     saved = {k: v.clone() for k, v in model.backbone.act_embed.state_dict().items()}
@@ -152,8 +180,8 @@ def test_actuators_influence_the_rollout_ONLY_through_act_embed():
         model.backbone.act_embed.weight.zero_()
         model.backbone.act_embed.bias.zero_()
     assert _same(_roll(cfg, model, cache, "zero"), _roll(cfg, model, cache, "real")), (
-        "actuators changed the rollout with act_embed zeroed — either a leakage path exists "
-        "or the two arms drew different RNG"
+        "actuators changed the rollout with act_embed zeroed — either a leakage path "
+        "exists or the two arms drew different RNG"
     )
     with torch.no_grad():
         model.backbone.act_embed.load_state_dict(saved)
@@ -169,10 +197,12 @@ def test_every_mode_produces_a_full_trajectory(mode):
         assert pred[m.name].shape == (cfg.max_frames, m.n_tok)
 
 
-# ------------------------------------------------- dataset-wide normalised actuators ---
+# ------------------------------------------------- dataset-wide normalised actuators
+# ---
 def test_rollout_reads_global_actuators_by_shot(tmp_path, monkeypatch):
-    """With IGNITE_ACT_GLOBAL set, the rollout is driven by the side-cache actuators of THAT
-    shot (regression: rollout_shot referenced an undefined ``shot`` and crashed)."""
+    """With IGNITE_ACT_GLOBAL set, the rollout is driven by the side-cache actuators of
+    THAT shot (regression: rollout_shot referenced an undefined ``shot`` and crashed).
+    """
     cfg, model, cache = _tiny_setup()
     n = cfg.max_frames
     glob = torch.randn(n, 70, generator=torch.Generator().manual_seed(7))
@@ -181,10 +211,18 @@ def test_rollout_reads_global_actuators_by_shot(tmp_path, monkeypatch):
     monkeypatch.setenv("IGNITE_ACT_GLOBAL", str(tmp_path))
     gen = torch.Generator().manual_seed(0)
     c = dict(cache)
-    _gt, pred, _k, _f = ed.rollout_shot(model, cfg, c, cfg.k0_seed, 0.9, gen,
-                                        torch.device("cpu"), shot="123")
-    assert torch.equal(c["actuators"], glob.half()[:, :70])     # side cache was used
-    assert not _same(pred, per_shot)                              # and it drives the rollout
+    _gt, pred, _k, _f = ed.rollout_shot(
+        model, cfg, c, cfg.k0_seed, 0.9, gen, torch.device("cpu"), shot="123"
+    )
+    assert torch.equal(c["actuators"], glob.half()[:, :70])  # side cache was used
+    assert not _same(pred, per_shot)  # and it drives the rollout
     with pytest.raises(ValueError, match="shot id"):
-        ed.rollout_shot(model, cfg, dict(cache), cfg.k0_seed, 0.9,
-                        torch.Generator().manual_seed(0), torch.device("cpu"))
+        ed.rollout_shot(
+            model,
+            cfg,
+            dict(cache),
+            cfg.k0_seed,
+            0.9,
+            torch.Generator().manual_seed(0),
+            torch.device("cpu"),
+        )

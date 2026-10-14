@@ -1,4 +1,5 @@
-"""Phase-B foundation: DynamicsConfig frame layout + FrameTokenizer embed/logits round-trip."""
+"""Phase-B foundation: DynamicsConfig frame layout + FrameTokenizer embed/logits
+round-trip."""
 
 import pytest
 import torch
@@ -11,17 +12,17 @@ from tokamak_foundation_model.ignite.dynamics_config import (
 from tokamak_foundation_model.ignite.frame_layout import FrameTokenizer
 
 
-def test_frame_layout_totals_1017():
+def test_frame_layout_totals_1209():
     cfg = DynamicsConfig()
-    assert cfg.tokens_per_frame == 1017           # 192*4 + 108*2 + 4*7 + 5*1 (fast-TS)
-    assert cfg.n_modalities == 14                 # 4 spectro + 2 video + 7 slow-TS + 1 fast-TS
+    assert cfg.tokens_per_frame == 1209  # 192*5 + 108*2 + 4*7 + 5*1 (fast-TS)
+    assert cfg.n_modalities == 15  # 5 spectro + 2 video + 7 slow-TS + 1 fast-TS
     assert cfg.max_frames == cfg.k0_seed + cfg.n_predict == 100  # 20 + 80
 
 
 def test_confirmed_hyperparams():
     cfg = DynamicsConfig()
     assert cfg.d_model == 1024
-    assert cfg.depth == 24            # start value; configurable for the depth study
+    assert cfg.depth == 24  # start value; configurable for the depth study
     assert cfg.k0_seed == 20
     assert cfg.maskgit_decode_steps == 10
     assert cfg.ss_ramp_final_frac == pytest.approx(0.15)
@@ -38,8 +39,8 @@ def test_modality_slices_are_contiguous_and_cover_the_frame():
     slices = cfg.modality_token_slices()
     assert slices[0][0] == 0
     assert slices[-1][1] == cfg.tokens_per_frame
-    for (a0, a1), (b0, b1) in zip(slices, slices[1:]):
-        assert a1 == b0                          # no gaps / overlaps
+    for (_a0, a1), (b0, _b1) in zip(slices, slices[1:]):
+        assert a1 == b0  # no gaps / overlaps
     assert [e - s for s, e in slices] == [m.n_tok for m in cfg.modalities]
 
 
@@ -85,8 +86,10 @@ def test_position_embeddings_distinguish_tokens():
     # two identical codes at different within-modality positions must embed differently
     cfg = DynamicsConfig(modalities=(ModalitySpec("x", "spectro", 4, 8),), d_model=16)
     tok = FrameTokenizer(cfg)
-    codes = {"x": torch.zeros(1, 1, 4, dtype=torch.long)}  # same code at all 4 positions
-    emb = tok.embed(codes)[0, 0]                            # (4, d)
+    codes = {
+        "x": torch.zeros(1, 1, 4, dtype=torch.long)
+    }  # same code at all 4 positions
+    emb = tok.embed(codes)[0, 0]  # (4, d)
     # positions differ -> rows differ (pos_embed breaks the tie)
     assert not torch.allclose(emb[0], emb[1])
 
@@ -94,8 +97,12 @@ def test_position_embeddings_distinguish_tokens():
 def test_all_four_codec_families_present():
     names = [m.name for m in FROZEN_MODALITIES]
     assert "mse" in names and "co2" in names and "filterscopes" in names
-    assert "tangtv_lower" in names and "tangtv_upper" in names          # video included
-    assert len([m for m in FROZEN_MODALITIES if m.family == "spectro"]) == 4
+    assert "tangtv_lower" in names and "tangtv_upper" in names  # video included
+    assert (
+        len([m for m in FROZEN_MODALITIES if m.family == "spectro"]) == 5
+    )  # incl. mirnov
     assert len([m for m in FROZEN_MODALITIES if m.family == "video"]) == 2
     assert len([m for m in FROZEN_MODALITIES if m.family == "slowts"]) == 7
-    assert len([m for m in FROZEN_MODALITIES if m.family == "fastts"]) == 1   # the missed 4th family
+    assert (
+        len([m for m in FROZEN_MODALITIES if m.family == "fastts"]) == 1
+    )  # the missed 4th family

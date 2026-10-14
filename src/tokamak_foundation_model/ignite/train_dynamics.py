@@ -1,1062 +1,1413 @@
-"""IGNITE Phase-B trainer + smoke test: stream real shots -> FROZEN-codec-encode each modality
-into frame codes + 70-ch actuators -> MaskGIT training loop with the scheduled-sampling ramp.
+"""Trainer, frame-code cache builder and smoke test of the IGNITE dynamics model.
 
-The frozen Phase-A codecs are read-only here (eval, no_grad): each modality's 50 ms window is
-encoded to its FLAT FSQ index (``codec.quantizer.fsq(codec.encode(x))[1]``, in [0, codebook_size)),
-which is exactly the token vocab the FrameTokenizer/MaskGIT consume. Frame *t* = chunk *t* of a
-shot (all modalities share the 50 ms windowing), so a single-shot per-modality codec dataset
-yields consecutive frames by index. Actuators are the 7 raw actuator signals (70 ch) averaged
-over each frame window.
+The frozen codecs encode every 50 ms window of each modality to flat FSQ codes,
+which :func:`precompute_frame_codes` caches per shot together with the frame-mean
+actuators. :func:`train` then trains :class:`~.maskgit.MaskGITDynamics` on windows of
+that cache, with scheduled sampling, optional loss masks and periodic validation.
 
-`smoke()` proves the whole path end-to-end on a few REAL shots (a handful of MaskGIT steps →
-finite, decreasing loss → a short rollout of valid committed codes) BEFORE any real training run.
+Environment
+-----------
+IGNITE_ACT_GLOBAL
+    Directory of dataset-wide normalised actuators (built by
+    ``models/ignite_bandpower/build_actglobal.py``). When set, they replace the
+    per-shot z-scored actuators of the cache, whose whole-shot statistics leak the
+    future. A shot missing from it is an error. Read once at import.
+IGNITE_DETECT_ANOMALY
+    Enable ``torch.autograd.set_detect_anomaly`` during training.
 """
 
 from __future__ import annotations
 
-import os
+import argparse
+import dataclasses
+import enum
+import json
 import math
+import os
+import random
+import signal
 import time
+from collections import Counter
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, NamedTuple, Optional, Tuple
 
 import numpy as np
 import torch
+import torch.distributed as dist
+from torch.utils.data import DataLoader, DistributedSampler
 
 from . import spike
 from . import train_codec as tc
-from .dynamics_config import DynamicsConfig
+from .dynamics_config import FROZEN_MODALITIES, DynamicsConfig, ModalitySpec
 from .maskgit import MaskGITDynamics
 
-_M = Path("/lustre/orion/fus187/proj-shared/models")
-# best-ckpt manifest for the FROZEN codec set (2026-07-27). family drives the loader + dataset.
+# Fallback checkpoints of the frozen codec set: name -> (family, repo-relative path).
 FROZEN_CODEC_CKPTS: Dict[str, Tuple[str, str]] = {
     "ece": ("spectro", "eval_runs/ignite_d5_ece/codec_best.pt"),
     "bes": ("spectro", "eval_runs/ignite_d5_bes/codec_best.pt"),
     "mhr": ("spectro", "eval_runs/ignite_d5_mhr/codec_best.pt"),
     "co2": ("spectro", "eval_runs/ignite_co2_rawstd192/codec_best.pt"),
-    "tangtv_lower": ("video", "eval_runs/ignite_d4_tangtv_lower/codec_best.pt"),  # 108 tok, best 2.07
-    "tangtv_upper": ("video", "eval_runs/ignite_d4_tangtv_upper/codec_best.pt"),  # 108 tok, best 1.66
+    "tangtv_lower": ("video", "eval_runs/ignite_d4_tangtv_lower/codec_best.pt"),
+    "tangtv_upper": ("video", "eval_runs/ignite_d4_tangtv_upper/codec_best.pt"),
     "ts_core_density": ("slowts", "eval_runs/ignite_d5_ts_core_density/codec_best.pt"),
     "ts_core_temp": ("slowts", "eval_runs/ignite_d5_ts_core_temp/codec_best.pt"),
-    "ts_tangential_density": ("slowts", "eval_runs/ignite_d5_ts_tangential_density/codec_best.pt"),
-    "ts_tangential_temp": ("slowts", "eval_runs/ignite_d5_ts_tangential_temp/codec_best.pt"),
+    "ts_tangential_density": (
+        "slowts",
+        "eval_runs/ignite_d5_ts_tangential_density/codec_best.pt",
+    ),
+    "ts_tangential_temp": (
+        "slowts",
+        "eval_runs/ignite_d5_ts_tangential_temp/codec_best.pt",
+    ),
     "cer_ti": ("slowts", "eval_runs/ignite_d5_cer_ti/codec_best.pt"),
     "cer_rot": ("slowts", "eval_runs/ignite_d5_cer_rot/codec_best.pt"),
     "mse": ("slowts", "eval_runs/ignite_mse_ent5/codec_best.pt"),
-    # fast-TS (4th family). PENDING: no codec_best.pt yet (collapsed, needs a fix like co2/mse);
-    # smoke skips it until then, but it IS part of the frame layout.
     "filterscopes": ("fastts", "eval_runs/ignite_fastts_filterscopes/codec_best.pt"),
 }
 
-# RESERVED-SLOT modalities: part of the 1017-token frame layout, but whose codec is NOT yet frozen
-# (pending a redesign). Their n_tok slots are filled with a CONSTANT placeholder code during
-# precompute so the frame keeps its full width; when the real codec lands, swap placeholder->real
-# codes WITHOUT changing frame dimensions and the model finetunes into them (no full retrain).
-# filterscopes (fast-TS ELM envelope) collapsed to 1 code on real data — the random-init encoder
-# under-spreads the standardized envelope near the FSQ centre (feats std 0.13 vs 0.84 on varied
-# input; diagnosed 2026-07-27, NOT a config fix) -> reserved until the codec is redesigned.
+# Reserved-slot modalities: without a resolved codec they are cached as a constant
+# code, so the frame keeps its width and a real codec can be swapped in later.
 PLACEHOLDER_MODALITIES: Tuple[str, ...] = ("filterscopes",)
 _PLACEHOLDER_CODE = 0
 
-# (H5 group key, n_channels) for the 7 actuator signals -> 70 ch. Keys are the ACTUAL hdf5_keys
-# (SignalConfig name 'pin'->'pinj', 'tin'->'tinj'); the rest match. Some shots miss some -> zeros.
-# CHANGING THIS CHANGES THE ACTUATOR WIDTH, which is baked into every cached shot AND into
-# act_embed = Linear(actuator_dim, d_model). Caches built before a change keep their old width,
-# so `actuator_dim` is derived from the cache at train time (see train()) rather than trusted
-# from the config default — otherwise an old cache meets a new spec and the Linear mismatches.
-# i_coil added 2026-08-15 (18 ch): error-field/RMP coil currents, present and varying in 100% of
-# production shots, previously unused. 70 -> 88.
-# Load actuators from a DATASET-WIDE-normalised side cache instead of the per-shot z-scored
-# column stored in the frame-code cache. `actuator_frames` z-scores each shot on its own, which
-# deletes the ABSOLUTE control level (38.7% of actuator variance is between-shot, measured over
-# 750 shots x 88 channels) and uses whole-shot statistics that are not causally available at
-# inference. Build the side cache with models/ignite_bandpower/build_actglobal.py.
-# Empty = unchanged behaviour. A shot missing from the side cache is a HARD ERROR, never a
-# silent fall-back to the per-shot column: mixing the two would confound the very A/B this exists
-# to run.
 _ACT_GLOBAL_DIR = os.environ.get("IGNITE_ACT_GLOBAL", "").strip()
 
-_ACT_SPEC = (("ech_power", 12), ("pinj", 8), ("beam_voltage", 8), ("tinj", 8),
-             ("gas_flow", 11), ("gas_raw", 11), ("rmp", 12), ("i_coil", 18))
+# (H5 group, channels) of the actuator signals, in cache column order. Changing it
+# changes the actuator width; the trainer reads the width from the cache instead.
+_ACT_SPEC = (
+    ("ech_power", 12),
+    ("pinj", 8),
+    ("beam_voltage", 8),
+    ("tinj", 8),
+    ("gas_flow", 11),
+    ("gas_raw", 11),
+    ("rmp", 12),
+    ("i_coil", 18),
+)
+
+_FRAME_S = 0.05
+_DEFAULT_SAMPLE_RATE = 10_000.0
+_MIN_CACHED_FRAMES = 8
+_LOG_EVERY = 50
+_PROFILED_FIRST_STEPS = 5
+# Seeds of the per-epoch window draw and of the fixed validation masks.
+_WINDOW_SEED_BASE = 0x16117E * 1000003
+_VALIDATION_SEED = 1234
+
+
+class FrozenCodec(NamedTuple):
+    """A loaded frozen codec with its configuration and family."""
+
+    codec: torch.nn.Module
+    cfg: object
+    family: str
+
+
+def _silent(*args, **kwargs) -> None:
+    """Logger that discards everything, for non-zero ranks."""
 
 
 def _load_codec(family: str, path: Path):
-    """Rebuild a FROZEN codec from its best-ckpt (eval, no grad). Reuses the codec class per family."""
-    ck = torch.load(path, map_location="cpu", weights_only=False)
-    cfg = ck["cfg"]
+    """Load a frozen codec checkpoint in eval mode with gradients disabled.
+
+    Parameters
+    ----------
+    family : {"spectro", "video", "slowts", "fastts"}
+        Codec family.
+    path : Path
+        Checkpoint path.
+
+    Returns
+    -------
+    codec : torch.nn.Module
+        The codec.
+    cfg : object
+        Its configuration.
+    """
+    checkpoint = torch.load(path, map_location="cpu", weights_only=False)
+    codec_cfg = checkpoint["cfg"]
     if family == "spectro":
-        from .codec import SpectroCodec
-        codec = SpectroCodec(cfg)
+        from .codec import SpectroCodec as codec_class
     elif family == "video":
-        from .video_codec import VideoCodec
-        codec = VideoCodec(cfg)
+        from .video_codec import VideoCodec as codec_class
     elif family == "slowts":
-        from .slow_ts_codec import SlowTSCodec
-        codec = SlowTSCodec(cfg)
+        from .slow_ts_codec import SlowTSCodec as codec_class
     elif family == "fastts":
-        from .fastts_codec import FastTSCodec
-        codec = FastTSCodec(cfg)
+        from .fastts_codec import FastTSCodec as codec_class
     else:
         raise ValueError(f"unknown codec family {family!r}")
-    codec.load_state_dict(ck["codec"])
+    codec = codec_class(codec_cfg)
+    codec.load_state_dict(checkpoint["codec"])
     codec.eval()
-    for p in codec.parameters():
-        p.requires_grad_(False)
-    return codec, cfg
+    for parameter in codec.parameters():
+        parameter.requires_grad_(False)
+    return codec, codec_cfg
 
 
 def resolve_codec_path(name: str, repo: Path, tmpl: str = None):
-    """-> repo-relative checkpoint path for ``name``, or None.
+    """Return the repo-relative checkpoint of a modality's codec, or None.
 
-    ``tmpl`` (e.g. ``eval_runs/ignite_codec_{m}_v6/codec_best.pt`` or a pinned snapshot
-    ``.../codecs/{m}/codec_best.pt``) is tried FIRST; the frozen manifest is the fallback.
-    A PLACEHOLDER modality becomes REAL when a template checkpoint exists for it (e.g.
-    filterscopes since its v6 gate-passing codec)."""
+    Parameters
+    ----------
+    name : str
+        Modality name.
+    repo : Path
+        Repository root the paths are relative to.
+    tmpl : str, default=None
+        Template such as ``"eval_runs/ignite_codec_{m}_v6/codec_best.pt"``, tried
+        before :data:`FROZEN_CODEC_CKPTS`. A placeholder modality resolves only
+        through it.
+
+    Returns
+    -------
+    rel : str or None
+        Path of an existing checkpoint.
+    """
     if tmpl:
-        rel = tmpl.format(m=name)
-        if (repo / rel).exists():
-            return rel
-    if name in PLACEHOLDER_MODALITIES:
+        templated = tmpl.format(m=name)
+        if (repo / templated).exists():
+            return templated
+    if name in PLACEHOLDER_MODALITIES or name not in FROZEN_CODEC_CKPTS:
         return None
-    # .get, NOT [name]: FROZEN_MODALITIES can carry a layout entry with NO frozen-manifest
-    # checkpoint (mirnov was added to the layout for the band-power caches on 2026-08-17 but
-    # never got a FROZEN_CODEC_CKPTS row). Indexing raised KeyError: 'mirnov' on EVERY rank of
-    # run_precompute before a single shot was encoded, which is how a cache rebuild that
-    # deliberately excludes a modality used to die.
-    ent = FROZEN_CODEC_CKPTS.get(name)
-    if ent is None:
-        return None
-    rel = ent[1]
-    return rel if (repo / rel).exists() else None
+    fallback = FROZEN_CODEC_CKPTS[name][1]
+    return fallback if (repo / fallback).exists() else None
 
 
-def load_frozen_codecs(names: List[str], repo: Path = None, tmpl: str = None):
-    """{name: (codec, cfg, family)} for every name whose checkpoint resolves (see
-    :func:`resolve_codec_path`); unresolved names are skipped (precompute emits them as
-    placeholder constants; eval simply doesn't render them)."""
+def load_frozen_codecs(
+    names: List[str], repo: Path = None, tmpl: str = None
+) -> Dict[str, FrozenCodec]:
+    """Load the codecs of ``names`` whose checkpoint resolves.
+
+    Parameters
+    ----------
+    names : list of str
+        Modalities to load; unresolved ones are skipped.
+    repo : Path, default=None
+        Repository root; defaults to the working directory.
+    tmpl : str, default=None
+        Checkpoint template, see :func:`resolve_codec_path`.
+
+    Returns
+    -------
+    codecs : dict of str to FrozenCodec
+        The loaded codecs, which unpack as ``(codec, cfg, family)``.
+    """
     repo = repo or Path.cwd()
-    out = {}
-    for n in names:
-        rel = resolve_codec_path(n, repo, tmpl)
-        if rel is None:
+    layout_family = {m.name: m.family for m in FROZEN_MODALITIES}
+    codecs = {}
+    for name in names:
+        checkpoint = resolve_codec_path(name, repo, tmpl)
+        if checkpoint is None:
             continue
-        # Family comes from FROZEN_MODALITIES (the declared layout, which carries `family`),
-        # NOT from FROZEN_CODEC_CKPTS -- that table only supplies FALLBACK checkpoint paths and
-        # has no entry for modalities added later. Indexing it here made `mirnov` impossible to
-        # include even when the codec_tmpl resolved its checkpoint (KeyError, job 5445250).
-        from .dynamics_config import FROZEN_MODALITIES
-        fam = next((m.family for m in FROZEN_MODALITIES if m.name == n), None)
-        if fam is None:
-            fam = FROZEN_CODEC_CKPTS[n][0]
-        out[n] = (*(_load_codec(fam, repo / rel)), fam)
-    return out
+        # The layout carries the family; the manifest has no row for late additions.
+        family = layout_family.get(name) or FROZEN_CODEC_CKPTS[name][0]
+        codecs[name] = FrozenCodec(*_load_codec(family, repo / checkpoint), family)
+    return codecs
 
 
 @torch.no_grad()
 def encode_flat(codec, x: torch.Tensor) -> torch.Tensor:
-    """(B, ...) modality window -> (B, n_tok) FLAT FSQ code index in [0, codebook_size).
+    """Encode a batch of modality windows to flat FSQ codes.
 
-    Device-safe: moves the input to the codec's device (codecs may be on GPU for fast precompute)
-    and returns the codes on CPU (the cache is CPU int16).
+    Parameters
+    ----------
+    codec : torch.nn.Module
+        Frozen codec, on any device.
+    x : torch.Tensor of shape (B, ...)
+        Modality windows.
+
+    Returns
+    -------
+    codes : torch.LongTensor of shape (B, n_tok)
+        Codes in ``[0, codebook_size)``, on the CPU.
     """
-    dev = next(codec.parameters()).device
-    feats = codec.encode(x.to(dev))
-    return codec.quantizer.fsq(feats)[1].long().cpu()
+    device = next(codec.parameters()).device
+    features = codec.encode(x.to(device))
+    return codec.quantizer.fsq(features)[1].long().cpu()
 
 
-def _single_shot_dataset(name: str, fam: str, cfg, shot: str, data_dir, t0_start: float = 1.0):
-    """``t0_start`` is the window origin in shot time (default 1.0 = the production warmup
-    skip; 0.0 = include the ramp-up second, e.g. for a seed-from-shot-start eval)."""
+def _single_shot_dataset(
+    name: str, fam: str, cfg, shot: str, data_dir, t0_start: float = 1.0
+):
+    """Return the codec dataset of one shot; item ``t`` is the window of frame ``t``.
+
+    ``t0_start`` is the shot time of frame 0 (1.0 skips the ramp-up second).
+    """
+    common = dict(data_dir=data_dir, lengths_cache_path=None, t0_start=t0_start)
     if fam == "spectro":
-        return tc.CodecPairDataset(name, [shot], cfg, data_dir=data_dir,
-                                   lengths_cache_path=None, t0_start=t0_start)
+        return tc.CodecPairDataset(name, [shot], cfg, **common)
     if fam == "video":
-        return tc.VideoCodecPairDataset(name, [shot], cfg, data_dir=data_dir,
-                                        lengths_cache_path=None, t0_start=t0_start)
+        return tc.VideoCodecPairDataset(name, [shot], cfg, **common)
     if fam == "fastts":
-        from .fastts_train import FastTSCodecPairDataset  # shots-first signature (only filterscopes)
-        return FastTSCodecPairDataset([shot], cfg, data_dir=data_dir,
-                                      lengths_cache_path=None, t0_start=t0_start)
-    return tc.SlowTSCodecPairDataset(name, [shot], cfg, data_dir=data_dir,
-                                     lengths_cache_path=None, t0_start=t0_start)
+        from .fastts_train import FastTSCodecPairDataset
+
+        return FastTSCodecPairDataset([shot], cfg, **common)
+    return tc.SlowTSCodecPairDataset(name, [shot], cfg, **common)
+
+
+def _window(item) -> torch.Tensor:
+    """The signal window of a codec-dataset item, which may carry a mask too."""
+    return item[0] if isinstance(item, tuple) else item
+
+
+def _encode_frames(dataset, codec, n_frames: int) -> torch.Tensor:
+    """Encode the first ``n_frames`` windows of a dataset, shape (n_frames, n_tok)."""
+    frames = [
+        encode_flat(codec, _window(dataset[t]).unsqueeze(0))[0] for t in range(n_frames)
+    ]
+    return torch.stack(frames, 0)
 
 
 @torch.no_grad()
-def build_frame_codes(shot: str, codecs: Dict, n_frames: int, data_dir) -> Dict[str, torch.Tensor]:
-    """One shot -> {modality: (n_frames, n_tok)} flat codes over consecutive frames (chunks)."""
-    out = {}
-    for name, (codec, cfg, fam) in codecs.items():
-        ds = _single_shot_dataset(name, fam, cfg, shot, data_dir)
-        if len(ds) < n_frames:
-            raise RuntimeError(f"{name}@{shot}: only {len(ds)} frames < {n_frames}")
-        frames = []
-        for t in range(n_frames):
-            item = ds[t]
-            x = (item[0] if isinstance(item, tuple) else item).unsqueeze(0)  # (1, ...) window
-            frames.append(encode_flat(codec, x)[0])                          # (n_tok,)
-        out[name] = torch.stack(frames, 0)                                    # (n_frames, n_tok)
-    return out
+def build_frame_codes(
+    shot: str, codecs: Dict, n_frames: int, data_dir
+) -> Dict[str, torch.Tensor]:
+    """Encode the first ``n_frames`` frames of a shot, ``{name: (n_frames, n_tok)}``."""
+    codes = {}
+    for name, (codec, codec_cfg, family) in codecs.items():
+        dataset = _single_shot_dataset(name, family, codec_cfg, shot, data_dir)
+        if len(dataset) < n_frames:
+            raise RuntimeError(
+                f"{name}@{shot}: only {len(dataset)} frames < {n_frames}"
+            )
+        codes[name] = _encode_frames(dataset, codec, n_frames)
+    return codes
 
 
-def actuator_frames(shot: str, n_frames: int, data_dir, t0_start: float = 1.0,
-                    return_stats: bool = False):
-    """(n_frames, 70): the 7 actuator signals averaged over each frame's 50 ms window.
+def _frame_bounds(times, n_samples, n_frames, t0_start, legacy):
+    """Return the ``[start, stop)`` sample range of every frame window of a record."""
+    frame_starts = [float(t0_start) + t * _FRAME_S for t in range(n_frames)]
+    if legacy:
+        rate = (
+            1.0 / np.median(np.diff(times)) if times.size > 1 else _DEFAULT_SAMPLE_RATE
+        )
+        return [(int(t * rate), int((t + _FRAME_S) * rate)) for t in frame_starts]
+    span = float(times[-1] - times[0]) if times.size > 1 else 0.0
+    rate = (times.size - 1) / span if span > 0 else _DEFAULT_SAMPLE_RATE
+    record_start = float(times[0]) if times.size else 0.0
 
-    Uses the ACTUAL H5 group keys (SignalConfig hdf5_keys) and zero-fills any signal a shot lacks,
-    so the actuator vector is always the fixed 70 channels regardless of per-shot availability.
-    ``t0_start`` must match the code windows' origin (default 1.0 = production warmup skip).
+    def sample_index(t):
+        return min(max(int(round((t - record_start) * rate)), 0), n_samples)
 
-    TIME BASE (FIXED 2026-08-11 — was a real misalignment, see below). Windows are resolved in
-    SHOT time exactly as the diagnostics loader resolves them (``data_loader._load_signal_raw``):
-    index ``round((t - xdata[0]) * fs)`` with ``fs = (n - 1) / (xdata[-1] - xdata[0])``. Both
-    halves of that convention are load-bearing:
-      * The actuator groups do NOT start at t=0, so the old ``int(t * fs)`` (index counted from
-        the ARRAY START) read actuators from seconds BEFORE the frame's shot time. Measured over
-        40 random shots: gas_flow/gas_raw start at -10.0 s, beam_voltage ~-6.3 s, rmp ~-1.04 s
-        and SHOT-DEPENDENT (-0.91..-1.15, so not even a learnable constant lag), ech_power
-        -0.1 s; only pinj/tinj start at 0.0. On the 219-frame production cache window of shot
-        200729 that left ~83% of the actuator input VARIANCE decorrelated from the true
-        trajectory (corr: rmp +0.24, gas_raw -0.11, gas_flow +0.02, beam_voltage -0.28), with
-        gas read entirely from pre-shot idle.
-      * ``xdata`` is float32, so ``1/median(diff(x))`` loses the sample step to cancellation and
-        is off by up to +0.82% (gas) — a GROWING drift, ~1.8 frames by the end of an 11 s window.
-        The span-based rate is exact (10000.00 Hz for every actuator group).
-    Indices are CLAMPED into the record: a negative index would silently wrap to the array tail.
+    return [(sample_index(t), sample_index(t + _FRAME_S)) for t in frame_starts]
+
+
+def _raw_actuators(
+    shot: str, n_frames: int, data_dir, t0_start: float, legacy: bool = False
+) -> np.ndarray:
+    """Average every actuator channel over each frame window, shape (n_frames, C).
+
+    Missing signals are zero-filled, so the width is always the one of
+    :data:`_ACT_SPEC`. Windows are located in shot time like the diagnostics:
+    sample ``round((t - x[0]) * fs)`` with ``fs`` from the record span, clamped
+    into the record. ``legacy=True`` reproduces the pre-2026-08-11 misaligned
+    indexing ``int(t * fs)`` with ``fs = 1 / median(diff(x))``, which is only
+    used to verify old caches before patching them.
     """
     import h5py
-    frame_s, warmup = 0.05, float(t0_start)
-    cols = []
-    with h5py.File(Path(data_dir) / f"{shot}_processed.h5", "r") as f:
-        for key, nch in _ACT_SPEC:
-            if key in f and "ydata" in f[key] and f[key]["ydata"].shape[-1] > 1:
-                y = np.asarray(f[key]["ydata"], dtype=np.float64)      # (C, T_raw)
-                x = np.asarray(f[key].get("xdata", np.arange(y.shape[-1]) / 1e4), dtype=np.float64)
-                span = float(x[-1] - x[0]) if x.size > 1 else 0.0
-                fs = (x.size - 1) / span if span > 0 else 10_000.0
-                x0 = float(x[0]) if x.size else 0.0                   # record start in SHOT time
-                t_raw = y.shape[-1]
-                frames = []
-                for t in range(n_frames):
-                    t0 = warmup + t * frame_s
-                    i0 = min(max(int(round((t0 - x0) * fs)), 0), t_raw)
-                    i1 = min(max(int(round((t0 + frame_s - x0) * fs)), 0), t_raw)
-                    seg = y[:, i0:i1]
-                    frames.append(np.nan_to_num(seg).mean(axis=1) if seg.size else np.zeros(y.shape[0]))
-                col = np.stack(frames, 0)                              # (n_frames, C_actual)
-                if col.shape[1] != nch:                               # normalize to the fixed width
-                    fixed = np.zeros((n_frames, nch))
-                    fixed[:, : min(nch, col.shape[1])] = col[:, :nch]
-                    col = fixed
-            else:
-                col = np.zeros((n_frames, nch))                       # missing actuator -> zeros
-            cols.append(col)
-    act = np.concatenate(cols, axis=1)                                # (n_frames, 70)
-    mu, sd = act.mean(0, keepdims=True), act.std(0, keepdims=True)
-    act = (act - mu) / (sd + 1e-6)
+
+    columns = []
+    with h5py.File(Path(data_dir) / f"{shot}_processed.h5", "r") as h5:
+        for key, n_channels in _ACT_SPEC:
+            if not (
+                key in h5 and "ydata" in h5[key] and h5[key]["ydata"].shape[-1] > 1
+            ):
+                columns.append(np.zeros((n_frames, n_channels)))
+                continue
+            values = np.asarray(h5[key]["ydata"], dtype=np.float64)
+            default_times = np.arange(values.shape[-1]) / 1e4
+            times = np.asarray(h5[key].get("xdata", default_times), dtype=np.float64)
+            bounds = _frame_bounds(times, values.shape[-1], n_frames, t0_start, legacy)
+            frame_means = []
+            for start, stop in bounds:
+                segment = values[:, start:stop]
+                frame_means.append(
+                    np.nan_to_num(segment).mean(axis=1)
+                    if segment.size
+                    else np.zeros(values.shape[0])
+                )
+            column = np.stack(frame_means, 0)
+            if column.shape[1] != n_channels:
+                fixed_width = np.zeros((n_frames, n_channels))
+                kept = min(n_channels, column.shape[1])
+                fixed_width[:, :kept] = column[:, :n_channels]
+                column = fixed_width
+            columns.append(column)
+    return np.concatenate(columns, axis=1)
+
+
+def actuator_frames(
+    shot: str,
+    n_frames: int,
+    data_dir,
+    t0_start: float = 1.0,
+    return_stats: bool = False,
+):
+    """Return the frame-mean actuators of a shot, z-scored per shot and channel.
+
+    Parameters
+    ----------
+    shot : str
+        Shot number.
+    n_frames : int
+        Number of frames from ``t0_start``.
+    data_dir : path-like
+        Directory of the ``{shot}_processed.h5`` files.
+    t0_start : float, default=1.0
+        Shot time of frame 0; must match the code windows.
+    return_stats : bool, default=False
+        Also return the per-channel mean and standard deviation, so that
+        ``raw = z * (sd + 1e-6) + mu``.
+
+    Returns
+    -------
+    act : torch.FloatTensor of shape (n_frames, n_channels)
+        Normalised actuators.
+    mu, sd : ndarray of shape (n_channels,)
+        Only if ``return_stats``.
+    """
+    raw = _raw_actuators(shot, n_frames, data_dir, t0_start)
+    mean, std = raw.mean(0, keepdims=True), raw.std(0, keepdims=True)
+    normalised = torch.tensor((raw - mean) / (std + 1e-6), dtype=torch.float32)
     if return_stats:
-        # the per-shot, per-channel z-scoring is the ONLY thing between the cache and physical
-        # units: raw = z * (sd + 1e-6) + mu. Returned so plots and counterfactual amplitudes can
-        # be expressed in MW / physical gas units instead of shot-relative sigmas.
-        return torch.tensor(act, dtype=torch.float32), mu[0].copy(), sd[0].copy()
-    return torch.tensor(act, dtype=torch.float32)
+        return normalised, mean[0].copy(), std[0].copy()
+    return normalised
+
+
+def _legacy_actuator_frames(shot: str, n_frames: int, data_dir, t0_start: float = 1.0):
+    """Return the pre-2026-08-11 misaligned actuators, to verify an old cache entry.
+
+    Wrong on purpose; used only by :func:`patch_cache_actuators`.
+    """
+    raw = _raw_actuators(shot, n_frames, data_dir, t0_start, legacy=True)
+    normalised = (raw - raw.mean(0, keepdims=True)) / (raw.std(0, keepdims=True) + 1e-6)
+    return torch.tensor(normalised, dtype=torch.float32)
 
 
 def build_batch(shots: List[str], codecs: Dict, n_frames: int, data_dir):
-    """-> ({modality:(B,F,n_tok)}, actuators (B,F,70)) over B shots."""
-    per_shot_codes, acts = [], []
-    for s in shots:
-        per_shot_codes.append(build_frame_codes(s, codecs, n_frames, data_dir))
-        acts.append(actuator_frames(s, n_frames, data_dir))
-    codes = {n: torch.stack([c[n] for c in per_shot_codes], 0) for n in per_shot_codes[0]}
-    return codes, torch.stack(acts, 0)
+    """Encode a batch of shots, ``({name: (B, F, n_tok)}, actuators (B, F, C))``."""
+    per_shot = [build_frame_codes(s, codecs, n_frames, data_dir) for s in shots]
+    actuators = [actuator_frames(s, n_frames, data_dir) for s in shots]
+    codes = {
+        name: torch.stack([shot_codes[name] for shot_codes in per_shot], 0)
+        for name in per_shot[0]
+    }
+    return codes, torch.stack(actuators, 0)
 
 
 class _ShotTimeout(Exception):
-    """A single shot exceeded the per-shot encode budget (pathological H5 / redraw loop)."""
+    """A shot exceeded its encode budget."""
+
+
+def _install_shot_timeout(budget_s: int, log) -> bool:
+    """Make ``SIGALRM`` raise :class:`_ShotTimeout`; False outside the main thread."""
+
+    def on_alarm(_signum, _frame):
+        raise _ShotTimeout(f"shot exceeded {budget_s}s encode budget")
+
+    try:
+        signal.signal(signal.SIGALRM, on_alarm)
+    except ValueError:
+        log("[precompute] NOTE: not in main thread — per-shot timeout guard disabled")
+        return False
+    return True
+
+
+def _encode_shot(shot, codecs, data_dir, placeholder_specs, t0_start):
+    """Encode one shot over the frames every codec covers; None if too short."""
+    datasets = {}
+    n_frames = None
+    for name, (codec, codec_cfg, family) in codecs.items():
+        dataset = _single_shot_dataset(
+            name, family, codec_cfg, shot, data_dir, t0_start=t0_start
+        )
+        datasets[name] = (dataset, codec)
+        n_frames = len(dataset) if n_frames is None else min(n_frames, len(dataset))
+    if not n_frames or n_frames < _MIN_CACHED_FRAMES:
+        return None
+    codes = {
+        name: _encode_frames(dataset, codec, n_frames).to(torch.int32)
+        for name, (dataset, codec) in datasets.items()
+    }
+    for name, n_tok in placeholder_specs.items():
+        codes[name] = torch.full(
+            (n_frames, n_tok), _PLACEHOLDER_CODE, dtype=torch.int32
+        )
+    vocabs = {
+        name: int(codec.quantizer.fsq.codebook_size)
+        for name, (_dataset, codec) in datasets.items()
+    }
+    actuators = actuator_frames(shot, n_frames, data_dir, t0_start=t0_start)
+    return {
+        "codes": codes,
+        "actuators": actuators.to(torch.float16),
+        "n_frames": n_frames,
+        "vocabs": vocabs,
+    }
+
+
+def _save_atomically(obj, path: Path) -> None:
+    """``torch.save`` to a temporary file, then rename it over ``path``."""
+    tmp = path.with_name(path.name + ".tmp")
+    torch.save(obj, tmp)
+    tmp.replace(path)
 
 
 @torch.no_grad()
-def precompute_frame_codes(shots: List[str], codecs: Dict, out_dir, data_dir,
-                           placeholder_specs: Dict[str, int] = None,
-                           shot_timeout_s: int = 900, t0_start: float = 1.0,
-                           log=print) -> int:
-    """Encode every frame of each shot ONCE with the frozen codecs -> per-shot code cache.
+def precompute_frame_codes(
+    shots: List[str],
+    codecs: Dict,
+    out_dir,
+    data_dir,
+    placeholder_specs: Dict[str, int] = None,
+    shot_timeout_s: int = 900,
+    t0_start: float = 1.0,
+    log=print,
+) -> int:
+    """Encode every frame of each shot once and cache it.
 
-    The codecs are frozen, so the codes are fixed; pre-encoding removes the codec forward from the
-    training hot loop (Phase-B then trains on cached int codes only). Writes {shot}.pt =
-    {'codes': {modality: int16 (F, n_tok)}, 'actuators': float16 (F, 70), 'n_frames': F}. Skips a
-    shot if any modality has too few frames. ``placeholder_specs`` (name -> n_tok) are RESERVED-SLOT
-    modalities emitted as a constant code (no codec yet) so the frame keeps its full width. Returns
-    the number of shots cached.
+    Writes ``{shot}.pt`` holding ``codes`` (``{name: int32 (F, n_tok)}``),
+    ``actuators`` (float16 (F, C)), ``n_frames`` and ``vocabs``. Shots already
+    cached are skipped, as are shots with fewer than 8 frames or whose encoding
+    raises or exceeds ``shot_timeout_s``.
+
+    Parameters
+    ----------
+    shots : list of str
+        Shots to encode.
+    codecs : dict
+        Output of :func:`load_frozen_codecs`.
+    out_dir : path-like
+        Cache directory.
+    data_dir : path-like
+        Directory of the H5 files.
+    placeholder_specs : dict of str to int, default=None
+        Reserved-slot modalities and their token counts, cached as a constant.
+    shot_timeout_s : int, default=900
+        Per-shot wall-time budget, enforced with ``SIGALRM`` in the main thread.
+    t0_start : float, default=1.0
+        Shot time of frame 0.
+    log : callable, default=print
+        Logger.
+
+    Returns
+    -------
+    n_ok : int
+        Number of shots cached, including those already present.
     """
-    out = Path(out_dir); out.mkdir(parents=True, exist_ok=True)
+    cache = Path(out_dir)
+    cache.mkdir(parents=True, exist_ok=True)
     placeholder_specs = placeholder_specs or {}
-    # Per-shot wall-time guard: ~56 of the first 3000 shots HANG during encode (measured
-    # 2026-08-08/09 — 2 h with no file and no exception). SIGALRM turns a hang into a
-    # logged skip so a full-dataset sweep cannot stall on one shot. Main-thread only.
-    import signal
-
-    def _on_alarm(_sig, _frm):
-        raise _ShotTimeout(f"shot exceeded {shot_timeout_s}s encode budget")
-    can_alarm = False
-    try:
-        signal.signal(signal.SIGALRM, _on_alarm)
-        can_alarm = True
-    except ValueError:
-        log("[precompute] NOTE: not in main thread — per-shot timeout guard disabled")
-    n_ok = 0
-    for si, shot in enumerate(shots):
-        p = out / f"{shot}.pt"
-        if p.exists():
-            n_ok += 1
+    can_alarm = _install_shot_timeout(shot_timeout_s, log)
+    n_cached = 0
+    for index, shot in enumerate(shots):
+        path = cache / f"{shot}.pt"
+        if path.exists():
+            n_cached += 1
             continue
         if can_alarm:
             signal.alarm(shot_timeout_s)
         try:
-            # frames available = min over REAL modalities of their single-shot dataset length
-            per = {}
-            nmin = None
-            for name, (codec, cfg, fam) in codecs.items():
-                ds = _single_shot_dataset(name, fam, cfg, shot, data_dir, t0_start=t0_start)
-                per[name] = (ds, codec)
-                nmin = len(ds) if nmin is None else min(nmin, len(ds))
-            if not nmin or nmin < 8:
+            entry = _encode_shot(shot, codecs, data_dir, placeholder_specs, t0_start)
+            if entry is None:
                 continue
-            codes = {}
-            for name, (ds, codec) in per.items():
-                frames = []
-                for t in range(nmin):
-                    item = ds[t]
-                    x = (item[0] if isinstance(item, tuple) else item).unsqueeze(0)
-                    frames.append(encode_flat(codec, x)[0].to(torch.int32))
-                codes[name] = torch.stack(frames, 0)                      # (nmin, n_tok)
-            for pname, ptok in placeholder_specs.items():                 # reserved slots -> constant
-                codes[pname] = torch.full((nmin, ptok), _PLACEHOLDER_CODE, dtype=torch.int32)
-            # per-modality vocab sizes ride along so the trainer derives the layout from the
-            # cache (v6+ codecs change n_tok/vocab vs the static FROZEN_MODALITIES table).
-            vocabs = {name: int(codec.quantizer.fsq.codebook_size)
-                      for name, (ds, codec) in per.items()}
-            act = actuator_frames(shot, nmin, data_dir,
-                                  t0_start=t0_start).to(torch.float16)  # (nmin, 70)
-            tmp = out / f"{shot}.pt.tmp"
-            torch.save({"codes": codes, "actuators": act, "n_frames": nmin,
-                        "vocabs": vocabs}, tmp)
-            tmp.replace(p)
-            n_ok += 1
+            _save_atomically(entry, path)
+            n_cached += 1
         except Exception as e:
             log(f"[precompute] skip {shot}: {type(e).__name__}: {e}")
         finally:
             if can_alarm:
                 signal.alarm(0)
-        if (si + 1) % 50 == 0:
-            log(f"[precompute] {si + 1}/{len(shots)} shots, {n_ok} cached")
-    return n_ok
+        if (index + 1) % 50 == 0:
+            log(f"[precompute] {index + 1}/{len(shots)} shots, {n_cached} cached")
+    return n_cached
 
 
-def split_shots(cache_dir, val_n: int, split_seed: int = 0, train_cap: int = 0,
-                test_n: int = 0, pin_val=(), pin_train=(), pin_both=()):
-    """Deterministic (train, val, test) shot split over the cached pool.
+def split_shots(
+    cache_dir,
+    val_n: int,
+    split_seed: int = 0,
+    train_cap: int = 0,
+    test_n: int = 0,
+    pin_val=(),
+    pin_train=(),
+    pin_both=(),
+):
+    """Split the cached shots into train, validation and test.
 
-    ``split_seed = 0`` keeps the legacy sorted split (val = the sorted tail — the probe-v1
-    behavior). ``split_seed > 0`` SHUFFLES the sorted list with that seed before splitting,
-    so the partitions are uniform random subsets of the pool (user convention 2026-08-09:
-    randomly selected validation/test subsets; also avoids the sorted-first-N campaign bias).
-    ``train_cap`` keeps only the first N train shots (the N-shots probe arms).
+    Parameters
+    ----------
+    cache_dir : path-like
+        Frame-code cache.
+    val_n : int
+        Validation size, pinned shots included.
+    split_seed : int, default=0
+        0 keeps the sorted order (validation is the sorted tail); otherwise the
+        shots are shuffled with this seed first.
+    train_cap : int, default=0
+        Keep only the first ``train_cap`` training shots (0 keeps all).
+    test_n : int, default=0
+        Size of the held-out test partition.
+    pin_val : sequence of str, default=()
+        Shots forced into validation.
+    pin_train : sequence of str, default=()
+        Shots forced into training, placed first so ``train_cap`` keeps them.
+        ``pin_val`` wins over it.
+    pin_both : sequence of str, default=()
+        Shots placed in both training and validation, so that train and
+        validation losses can be compared on the same shots. They do not count
+        towards ``val_n`` and override both other pins. Validation metrics over
+        them are not held out.
 
-    ``test_n`` carves a THIRD partition that nothing in training or validation ever touches
-    (production fractions 0.90/0.05/0.05, user 2026-08-09). ``pin_val`` forces named shots
-    into val whatever the shuffle says — the standing example shots (200729) must never be
-    trained on. Pinned shots COUNT toward ``val_n`` so the val size stays as requested.
-
-    ``pin_both`` puts named shots in BOTH train and val. This is deliberate leakage, requested
-    repeatedly by the user: it makes train CE and val CE directly comparable ON THE SAME SHOTS,
-    so the generalisation gap can be read off identical data instead of inferred across two
-    different populations. Such shots are hoisted to the FRONT of train (so ``train_cap`` can
-    never drop them) AND kept in val. They do NOT count toward ``val_n``.
-    **Any val metric computed over a pool containing these shots is NOT fully held out** — that
-    is the point, but it must be stated whenever such a number is quoted.
-    ``pin_both`` overrides both ``pin_val`` and ``pin_train`` for a shot named in more than one.
+    Returns
+    -------
+    train, val, test : list of str
+        The partitions.
     """
     shots = sorted(p.stem for p in Path(cache_dir).glob("*.pt"))
     if split_seed:
-        import random as _random
-        _random.Random(split_seed).shuffle(shots)
-    # Pin first so a pinned shot can never be drawn into train or test.
-    pinned = [s for s in dict.fromkeys(pin_val) if s in set(shots)]
-    rest = [s for s in shots if s not in set(pinned)]
-    # NOTE the explicit `if n else` guards throughout: `xs[:-0]` is [], not xs.
+        random.Random(split_seed).shuffle(shots)
+    cached = set(shots)
+
+    def pinned(names):
+        return [s for s in dict.fromkeys(names) if s in cached]
+
+    def without(partition, removed):
+        return [s for s in partition if s not in removed]
+
+    val_pins = pinned(pin_val)
+    rest = without(shots, set(val_pins))
+    # Explicit guards: xs[:-0] is [], not xs.
     test = rest[-test_n:] if test_n else []
     pool = rest[:-test_n] if test_n else rest
-    take = max(0, val_n - len(pinned))
-    val = pinned + (pool[-take:] if take else [])
-    train = pool[:-take] if take else pool
-    # pin_train: RECLAIM from val/test if the shuffle put them there, then hoist to the FRONT so
-    # train_cap can never drop them. Hoisting alone is not enough -- measured 2026-08-19, 190734
-    # landed in val/test by shuffle and silently broke the neighbour stratification (10/11).
-    # pin_val always wins: a shot named in both stays in val.
-    pt = [s for s in dict.fromkeys(pin_train) if s in set(shots) and s not in set(val)]
-    if pt:
-        spt = set(pt)
-        val = [s for s in val if s not in spt]
-        test = [s for s in test if s not in spt]
-        train = pt + [s for s in train if s not in spt]
-    # pin_both LAST (before the cap) so it wins over pin_val's "never trained" rule and over
-    # pin_train's "reclaim from val". Front of train => survives train_cap; also present in val.
-    pb = [s for s in dict.fromkeys(pin_both) if s in set(shots)]
-    if pb:
-        spb = set(pb)
-        train = pb + [s for s in train if s not in spb]
-        val = pb + [s for s in val if s not in spb]
-        test = [s for s in test if s not in spb]
+    n_drawn = max(0, val_n - len(val_pins))
+    val = val_pins + (pool[-n_drawn:] if n_drawn else [])
+    train = pool[:-n_drawn] if n_drawn else pool
+    train_pins = [s for s in pinned(pin_train) if s not in set(val)]
+    if train_pins:
+        moved = set(train_pins)
+        val, test = without(val, moved), without(test, moved)
+        train = train_pins + without(train, moved)
+    shared = pinned(pin_both)
+    if shared:
+        moved = set(shared)
+        train = shared + without(train, moved)
+        val = shared + without(val, moved)
+        test = without(test, moved)
     if train_cap:
         train = train[:train_cap]
     return train, val, test
 
 
-def _log_overlap(tr, va, log) -> None:
-    """Announce a deliberate train/val overlap in the RUN LOG, on EVERY leg.
+def _log_overlap(train, val, log) -> None:
+    """Log the shots present in both training and validation."""
+    in_val = set(val)
+    overlap = [s for s in train if s in in_val]
+    if overlap:
+        log(
+            f"[dynamics] NOTE {len(overlap)} shot(s) in BOTH train and val: "
+            f"{','.join(overlap[:8])}{'...' if len(overlap) > 8 else ''} "
+            f"-- val CE on these is NOT held out"
+        )
 
-    A shot in both partitions is a legitimate request (fit it AND watch it, via --pin_both), but
-    its val CE is not held out. This used to fire only on the RELOAD path, so the leg that FROZE
-    the split -- the first leg, the one whose log a reader opens first -- said nothing.
+
+def resolve_split(
+    cache_dir,
+    out_dir,
+    val_n: int,
+    split_seed: int = 0,
+    train_cap: int = 0,
+    test_n: int = 0,
+    pin_val=(),
+    pin_train=(),
+    pin_both=(),
+    write: bool = True,
+    log=print,
+):
+    """Return the run's split, computed once and then frozen to ``out_dir``.
+
+    A seeded shuffle is only stable for a fixed pool, and the cache may grow
+    between chained legs, so the first leg persists the uncapped partitions to
+    ``split_shots.json`` and later legs reload them, intersected with what is
+    cached. See :func:`split_shots` for the parameters.
+
+    Parameters
+    ----------
+    write : bool, default=True
+        Persist the split. Must be True on exactly one rank; the others compute
+        the identical split in memory.
+    log : callable, default=print
+        Logger.
+
+    Returns
+    -------
+    train, val, test : list of str
+        The partitions, with ``train_cap`` applied.
     """
-    ov = [q for q in tr if q in set(va)]
-    if ov:
-        log(f"[dynamics] NOTE {len(ov)} shot(s) in BOTH train and val: "
-            f"{','.join(ov[:8])}{'...' if len(ov) > 8 else ''} "
-            f"-- val CE on these is NOT held out")
-
-
-def resolve_split(cache_dir, out_dir, val_n: int, split_seed: int = 0, train_cap: int = 0,
-                  test_n: int = 0, pin_val=(), pin_train=(), pin_both=(),
-                write: bool = True, log=print):
-    """The split actually used by a run — computed ONCE, then frozen to ``out_dir``.
-
-    A seeded shuffle is only stable for a FIXED pool. The production cache is built by a
-    chained precompute, so a split recomputed while it grows would reassign shots between
-    partitions between legs — silently leaking test shots into train. Persisting the lists
-    on first use (and reloading them afterwards) makes the split immune to cache growth and
-    gives the run an auditable record, which is what the 3-way convention requires.
-
-    Returns (train, val, test). Reloaded lists are intersected with what is actually cached,
-    so a run started mid-precompute trains on what exists without ever re-drawing.
-
-    DDP: ``write`` must be True on EXACTLY ONE rank (job 5224307 died when all 128 ranks
-    raced on a single shared ``.tmp`` — one rank's replace() moved it away and the next
-    rank's failed with FileNotFoundError). Non-writing ranks recompute the split in memory;
-    it is a pure function of (cache contents, val_n, split_seed, test_n, pin_val), so every
-    rank derives byte-identical partitions without touching the filesystem.
-    """
-    import json
-    import os as _os
-    p = Path(out_dir) / "split_shots.json"
-    if p.exists():
-        d = json.loads(p.read_text())
-        have = {q.stem for q in Path(cache_dir).glob("*.pt")}
-        tr = [s for s in d["train"] if s in have]
-        va = [s for s in d["val"] if s in have]
-        te = [s for s in d["test"] if s in have]
-        miss = len(d["train"]) - len(tr)
-        log(f"[dynamics] split RELOADED from {p} (train {len(tr)}/val {len(va)}/test {len(te)}"
-            + (f"; {miss} train shots not yet cached" if miss else "") + ")")
-        if train_cap:
-            tr = tr[:train_cap]
-        # Report a deliberate train/val overlap in the RUN LOG (nowhere else -- not in the frozen
-        # split file, not in the loss history). A shot present in both partitions is a legitimate
-        # request (fit it AND watch it), but its val CE is not held out, so the log has to say so
-        # on every leg or a later reader will take the val aggregate at face value.
-        _log_overlap(tr, va, log)
-        return tr, va, te
-    # Freeze the UNCAPPED partitions: train_cap is a per-run knob (the N-shots probe arms),
-    # not a property of the split. Baking it in would leave a resumed run permanently
-    # restricted to the capped pool. Apply it after persisting, exactly as the reload path does.
-    tr, va, te = split_shots(cache_dir, val_n, split_seed=split_seed, train_cap=0,
-                             test_n=test_n, pin_val=pin_val, pin_train=pin_train,
-                             pin_both=pin_both)
-    if write:
-        Path(out_dir).mkdir(parents=True, exist_ok=True)
-        # PID-unique tmp so a stray concurrent writer can never clobber ours mid-flight.
-        tmp = p.with_suffix(f".json.tmp.{_os.getpid()}")
-        tmp.write_text(json.dumps({"split_seed": split_seed, "val_n": val_n, "test_n": test_n,
-                                   "pin_val": list(pin_val), "pin_train": list(pin_train),
-                                   "pin_both": list(pin_both), "cache_dir": str(cache_dir),
-                                   "train": tr, "val": va, "test": te}, indent=1))
-        tmp.replace(p)                       # atomic within a rank; only one rank does this
-        log(f"[dynamics] split FROZEN -> {p} (train {len(tr)}/val {len(va)}/test {len(te)}, "
-            f"seed={split_seed}, pinned={list(pin_val)})")
+    path = Path(out_dir) / "split_shots.json"
+    if path.exists():
+        frozen = json.loads(path.read_text())
+        cached = {p.stem for p in Path(cache_dir).glob("*.pt")}
+        train, val, test = (
+            [s for s in frozen[part] if s in cached]
+            for part in ("train", "val", "test")
+        )
+        n_missing = len(frozen["train"]) - len(train)
+        log(
+            f"[dynamics] split RELOADED from {path} (train {len(train)}/val {len(val)}/"
+            f"test {len(test)}"
+            + (f"; {n_missing} train shots not yet cached" if n_missing else "")
+            + ")"
+        )
     else:
-        log(f"[dynamics] split computed in memory (train {len(tr)}/val {len(va)}/"
-            f"test {len(te)}); rank 0 persists it")
+        train, val, test = split_shots(
+            cache_dir,
+            val_n,
+            split_seed=split_seed,
+            train_cap=0,
+            test_n=test_n,
+            pin_val=pin_val,
+            pin_train=pin_train,
+            pin_both=pin_both,
+        )
+        sizes = f"train {len(train)}/val {len(val)}/test {len(test)}"
+        if write:
+            Path(out_dir).mkdir(parents=True, exist_ok=True)
+            record = {
+                "split_seed": split_seed,
+                "val_n": val_n,
+                "test_n": test_n,
+                "pin_val": list(pin_val),
+                "pin_train": list(pin_train),
+                "pin_both": list(pin_both),
+                "cache_dir": str(cache_dir),
+                "train": train,
+                "val": val,
+                "test": test,
+            }
+            tmp = path.with_suffix(f".json.tmp.{os.getpid()}")
+            tmp.write_text(json.dumps(record, indent=1))
+            tmp.replace(path)
+            log(
+                f"[dynamics] split FROZEN -> {path} ({sizes}, seed={split_seed}, "
+                f"pinned={list(pin_val)})"
+            )
+        else:
+            log(f"[dynamics] split computed in memory ({sizes}); rank 0 persists it")
     if train_cap:
-        tr = tr[:train_cap]
-    _log_overlap(tr, va, log)
-    return tr, va, te
+        train = train[:train_cap]
+    _log_overlap(train, val, log)
+    return train, val, test
 
 
 class _EnvRank:
-    """Plain env-var shard identity for the embarrassingly-parallel cache passes.
+    """Shard identity from environment variables, for the per-shot cache passes.
 
-    NO torch.distributed: these passes write per-shot .pt files (tmp+replace) and ranks finish
-    at very different times. An initialized NCCL group kills the run at teardown: with a
-    trailing barrier, idle ranks hit the 600 s watchdog (5208340/41); WITHOUT it, ranks that
-    exit break the survivors' communicators (DistBackendError, 5218815). Env sharding has
-    neither failure mode.
+    No process group is created: ranks finish at very different times, and an
+    NCCL group then fails at teardown either way (barrier timeouts or broken
+    communicators).
     """
 
     def __init__(self):
-        import os as _os
-        self.rank = int(_os.environ.get("RANK", _os.environ.get("SLURM_PROCID", 0)))
-        self.world_size = int(_os.environ.get("WORLD_SIZE", "1"))
-        local = int(_os.environ.get("LOCAL_RANK", 0))
-        idx = local if torch.cuda.device_count() > 1 else 0
-        self.device = torch.device(f"cuda:{idx}" if torch.cuda.is_available() else "cpu")
+        self.rank = int(os.environ.get("RANK", os.environ.get("SLURM_PROCID", 0)))
+        self.world_size = int(os.environ.get("WORLD_SIZE", "1"))
+        local_rank = int(os.environ.get("LOCAL_RANK", 0))
+        device_index = local_rank if torch.cuda.device_count() > 1 else 0
+        self.device = torch.device(
+            f"cuda:{device_index}" if torch.cuda.is_available() else "cpu"
+        )
         self.is_main = self.rank == 0
         if torch.cuda.is_available():
             torch.cuda.set_device(self.device)
 
 
-def _legacy_actuator_frames(shot: str, n_frames: int, data_dir, t0_start: float = 1.0):
-    """The PRE-2026-08-11 (misaligned) actuator windowing, kept ONLY to verify a cache entry
-    before :func:`patch_cache_actuators` overwrites it.
+def _patch_one_entry(shot, path, data_dir, t0_start, verify, log):
+    """Return ``(status, entry, old_actuators)`` for one cache entry."""
+    entry = torch.load(path, map_location="cpu", weights_only=False)
+    n_frames = int(entry["n_frames"])
+    stored = entry["actuators"]
+    if verify:
+        legacy = _legacy_actuator_frames(shot, n_frames, data_dir, t0_start=t0_start)
+        tolerance = 1e-2 + 1e-3 * float(stored.float().abs().max())
+        deviation = float((legacy - stored.float()).abs().max())
+        if deviation > tolerance:
+            log(
+                f"[patch_act] MISMATCH {shot}: stored actuators are not the legacy "
+                f"t0={t0_start} output (max dev {deviation:.4g} > tol "
+                f"{tolerance:.4g}) — SKIPPED"
+            )
+            return "mismatch", None, None
+    aligned = actuator_frames(shot, n_frames, data_dir, t0_start=t0_start)
+    aligned = aligned.to(stored.dtype)
+    if aligned.shape != stored.shape:
+        log(
+            f"[patch_act] SHAPE {shot}: {tuple(stored.shape)} -> "
+            f"{tuple(aligned.shape)} — SKIPPED"
+        )
+        return "mismatch", None, None
+    entry["actuators"] = aligned
+    return "patched", entry, stored.clone()
 
-    Reproduces the exact indexing the buggy :func:`actuator_frames` used — ``int(t * fs)`` from
-    the array start with ``fs = 1/median(diff(xdata))`` — so the patch can PROVE each cached
-    ``actuators`` block was produced by the known code path (and by the manifest's ``t0_start``)
-    rather than assuming it. Do not use for anything else; it is wrong on purpose.
+
+def patch_cache_actuators(
+    shots: List[str],
+    cache_dir,
+    data_dir,
+    t0_start: float,
+    backup_path=None,
+    verify: bool = True,
+    dry_run: bool = False,
+    log=print,
+) -> Dict[str, int]:
+    """Rewrite only the ``actuators`` of existing cache entries with the aligned ones.
+
+    Parameters
+    ----------
+    shots : list of str
+        Shots to patch.
+    cache_dir, data_dir : path-like
+        Cache and H5 directories.
+    t0_start : float
+        Shot time of frame 0 of the cache.
+    backup_path : path-like, default=None
+        Where to save the replaced actuators, so the pass can be undone.
+    verify : bool, default=True
+        Patch an entry only if its stored actuators match the legacy output to
+        float16 resolution; otherwise count it as a mismatch and skip it.
+    dry_run : bool, default=False
+        Verify and count without writing.
+    log : callable, default=print
+        Logger.
+
+    Returns
+    -------
+    counts : dict of str to int
+        Counts of ``patched``, ``mismatch``, ``missing`` and ``error`` shots.
     """
-    import h5py
-    frame_s, warmup = 0.05, float(t0_start)
-    cols = []
-    with h5py.File(Path(data_dir) / f"{shot}_processed.h5", "r") as f:
-        for key, nch in _ACT_SPEC:
-            if key in f and "ydata" in f[key] and f[key]["ydata"].shape[-1] > 1:
-                y = np.asarray(f[key]["ydata"], dtype=np.float64)
-                x = np.asarray(f[key].get("xdata", np.arange(y.shape[-1]) / 1e4), dtype=np.float64)
-                fs = 1.0 / np.median(np.diff(x)) if x.size > 1 else 10_000.0
-                frames = []
-                for t in range(n_frames):
-                    t0 = warmup + t * frame_s
-                    i0, i1 = int(t0 * fs), int((t0 + frame_s) * fs)
-                    seg = y[:, i0:i1]
-                    frames.append(np.nan_to_num(seg).mean(axis=1) if seg.size else np.zeros(y.shape[0]))
-                col = np.stack(frames, 0)
-                if col.shape[1] != nch:
-                    fixed = np.zeros((n_frames, nch))
-                    fixed[:, : min(nch, col.shape[1])] = col[:, :nch]
-                    col = fixed
-            else:
-                col = np.zeros((n_frames, nch))
-            cols.append(col)
-    act = np.concatenate(cols, axis=1)
-    act = (act - act.mean(0, keepdims=True)) / (act.std(0, keepdims=True) + 1e-6)
-    return torch.tensor(act, dtype=torch.float32)
-
-
-def patch_cache_actuators(shots: List[str], cache_dir, data_dir, t0_start: float,
-                          backup_path=None, verify: bool = True, dry_run: bool = False,
-                          log=print) -> Dict[str, int]:
-    """Rewrite ONLY the ``actuators`` block of existing frame-code cache entries in place.
-
-    The 2026-08-11 time-base fix in :func:`actuator_frames` changes the actuators but NOT the
-    codes (diagnostics were always windowed on the correct absolute-time base), so the cache is
-    repaired without any codec re-encode — an I/O pass, not a re-precompute.
-
-    Safety contract:
-      * ``verify`` recomputes the LEGACY (misaligned) actuators and requires the stored block to
-        match them before overwriting. An entry that does not match was not produced by the code
-        path this patch assumes, so it is SKIPPED rather than rewritten (counted as ``mismatch``).
-        Tolerance is float16 resolution on the stored values.
-      * ``backup_path`` receives {shot: old actuators} so the pass is reversible without
-        duplicating the (much larger) codes.
-      * Writes are tmp+replace, and ``codes`` / ``n_frames`` / ``vocabs`` are carried through
-        untouched.
-    """
-    out = {"patched": 0, "mismatch": 0, "missing": 0, "error": 0}
+    counts = {"patched": 0, "mismatch": 0, "missing": 0, "error": 0}
     backup = {}
-    for si, shot in enumerate(shots):
-        p = Path(cache_dir) / f"{shot}.pt"
-        if not p.exists():
-            out["missing"] += 1
+    for index, shot in enumerate(shots):
+        path = Path(cache_dir) / f"{shot}.pt"
+        if not path.exists():
+            counts["missing"] += 1
             continue
         try:
-            d = torch.load(p, map_location="cpu", weights_only=False)
-            n = int(d["n_frames"])
-            old = d["actuators"]
-            if verify:
-                legacy = _legacy_actuator_frames(shot, n, data_dir, t0_start=t0_start)
-                # stored as float16: compare at float16 resolution of the stored magnitudes
-                tol = 1e-2 + 1e-3 * float(old.float().abs().max())
-                dev = float((legacy - old.float()).abs().max())
-                if dev > tol:
-                    log(f"[patch_act] MISMATCH {shot}: stored actuators are not the legacy "
-                        f"t0={t0_start} output (max dev {dev:.4g} > tol {tol:.4g}) — SKIPPED")
-                    out["mismatch"] += 1
-                    continue
-            new = actuator_frames(shot, n, data_dir, t0_start=t0_start).to(old.dtype)
-            if new.shape != old.shape:
-                log(f"[patch_act] SHAPE {shot}: {tuple(old.shape)} -> {tuple(new.shape)} — SKIPPED")
-                out["mismatch"] += 1
-                continue
-            backup[shot] = old.clone()
-            if not dry_run:
-                d["actuators"] = new
-                tmp = p.with_suffix(".pt.tmp")
-                torch.save(d, tmp)
-                tmp.replace(p)
-            out["patched"] += 1
-        except Exception as e:                                   # noqa: BLE001 (per-shot isolation)
+            status, entry, old = _patch_one_entry(
+                shot, path, data_dir, t0_start, verify, log
+            )
+            if status == "patched":
+                backup[shot] = old
+                if not dry_run:
+                    _save_atomically(entry, path)
+            counts[status] += 1
+        except Exception as e:  # noqa: BLE001 (per-shot isolation)
             log(f"[patch_act] skip {shot}: {type(e).__name__}: {e}")
-            out["error"] += 1
-        if (si + 1) % 200 == 0:
-            log(f"[patch_act] {si + 1}/{len(shots)} shots, {out['patched']} patched")
+            counts["error"] += 1
+        if (index + 1) % 200 == 0:
+            log(
+                f"[patch_act] {index + 1}/{len(shots)} shots, "
+                f"{counts['patched']} patched"
+            )
     if backup_path is not None and backup and not dry_run:
         Path(backup_path).parent.mkdir(parents=True, exist_ok=True)
-        torch.save({"actuators": backup, "t0_start": t0_start,
-                    "note": "pre-2026-08-11 misaligned actuators; restore to undo the time-base fix"},
-                   backup_path)
-    return out
+        torch.save(
+            {
+                "actuators": backup,
+                "t0_start": t0_start,
+                "note": "pre-2026-08-11 misaligned actuators; restore to undo the "
+                "time-base fix",
+            },
+            backup_path,
+        )
+    return counts
+
+
+def _manifest_path(cache_dir) -> Path:
+    return Path(cache_dir) / "_codec_manifest.json"
+
+
+def _manifest_t0(cache_dir) -> float:
+    """Return ``t0_start`` from a cache's ``_codec_manifest.json`` (default 1.0)."""
+    manifest = _manifest_path(cache_dir)
+    if not manifest.exists():
+        return 1.0
+    return float(json.loads(manifest.read_text()).get("t0_start", 1.0))
 
 
 def run_patch_actuators(cache_dir, data_dir, dry_run: bool = False, log=print) -> int:
-    """Distributed driver for :func:`patch_cache_actuators`: shard the cache's shots across ranks.
+    """Shard :func:`patch_cache_actuators` over ranks; return the shots patched.
 
-    ``t0_start`` is read from the cache's own ``_codec_manifest.json`` (written by
-    :func:`run_precompute`) — never guessed, since the wrong origin would silently write
-    actuators for the wrong window.
+    ``t0_start`` comes from the cache manifest, never from a guess.
     """
-    import json
-    ddp = _EnvRank()
-    cdir = Path(cache_dir)
-    man = cdir / "_codec_manifest.json"
-    if not man.exists():
-        raise SystemExit(f"--patch_actuators needs {man} to recover the cache's t0_start")
-    with open(man) as f:
-        t0_start = float(json.load(f)["t0_start"])
-    shots = sorted(p.stem for p in cdir.glob("[0-9]*.pt"))
-    shard = shots[ddp.rank::ddp.world_size]
-    if ddp.is_main:
-        log(f"[patch_act] {len(shots)} cached shots / {ddp.world_size} ranks "
-            f"(~{len(shard)}/rank); t0_start={t0_start} cache={cdir} dry_run={dry_run}", flush=True)
-    bak = cdir / "_actuators_prefix_backup" / f"rank{ddp.rank:03d}.pt"
-    res = patch_cache_actuators(shard, cdir, data_dir, t0_start, backup_path=bak,
-                                dry_run=dry_run, log=log)
-    log(f"[patch_act rank {ddp.rank}] {res} (backup -> {bak})")
-    return res["patched"]
+    shard_id = _EnvRank()
+    cache = Path(cache_dir)
+    manifest = _manifest_path(cache)
+    if not manifest.exists():
+        raise SystemExit(
+            f"--patch_actuators needs {manifest} to recover the cache's t0_start"
+        )
+    t0_start = float(json.loads(manifest.read_text())["t0_start"])
+    shots = sorted(p.stem for p in cache.glob("[0-9]*.pt"))
+    shard = shots[shard_id.rank :: shard_id.world_size]
+    if shard_id.is_main:
+        log(
+            f"[patch_act] {len(shots)} cached shots / {shard_id.world_size} ranks "
+            f"(~{len(shard)}/rank); t0_start={t0_start} cache={cache} "
+            f"dry_run={dry_run}",
+            flush=True,
+        )
+    backup = cache / "_actuators_prefix_backup" / f"rank{shard_id.rank:03d}.pt"
+    counts = patch_cache_actuators(
+        shard, cache, data_dir, t0_start, backup_path=backup, dry_run=dry_run, log=log
+    )
+    log(f"[patch_act rank {shard_id.rank}] {counts} (backup -> {backup})")
+    return counts["patched"]
 
 
-def run_precompute(cache_dir, data_dir, max_shots: int = 0, codec_tmpl: str = None,
-                   shot_sample: int = 0, shot_seed: int = 0, t0_start: float = 1.0,
-                   shot_timeout_s: int = 900, log=print) -> int:
-    """Distributed frame-code precompute: shard shots across ranks, each encodes its shard on GPU.
+def run_precompute(
+    cache_dir,
+    data_dir,
+    max_shots: int = 0,
+    codec_tmpl: str = None,
+    shot_sample: int = 0,
+    shot_seed: int = 0,
+    t0_start: float = 1.0,
+    shot_timeout_s: int = 900,
+    log=print,
+) -> int:
+    """Build the frame-code cache, sharding the shots over ranks.
 
-    Embarrassingly parallel (per-shot .pt files, tmp+replace) so no inter-rank comm beyond a final
-    barrier. Real codecs are loaded once per rank and moved to the rank's device; modalities whose
-    checkpoint does NOT resolve (see :func:`resolve_codec_path`; ``codec_tmpl`` is tried first)
-    are emitted as a constant placeholder code so the frame keeps its full width. Rank 0 writes
-    ``_codec_manifest.json`` (resolved checkpoint per modality) into the cache for provenance.
+    Modalities whose codec does not resolve are cached as a constant if they are
+    reserved slots (:data:`PLACEHOLDER_MODALITIES`) and excluded from the frame
+    otherwise. Rank 0 writes ``_codec_manifest.json``. Ranks exit independently;
+    a final barrier would hit the NCCL watchdog on uneven shards.
+
+    Parameters
+    ----------
+    cache_dir, data_dir : path-like
+        Cache and H5 directories.
+    max_shots : int, default=0
+        Keep only the first shots (0 = all).
+    codec_tmpl : str, default=None
+        Checkpoint template, see :func:`resolve_codec_path`.
+    shot_sample : int, default=0
+        Seeded random sample of this many shots; overrides ``max_shots``.
+    shot_seed : int, default=0
+        Seed of ``shot_sample``.
+    t0_start : float, default=1.0
+        Shot time of frame 0.
+    shot_timeout_s : int, default=900
+        Per-shot encode budget.
+    log : callable, default=print
+        Logger.
+
+    Returns
+    -------
+    n : int
+        Shots cached on this rank's shard.
     """
-    import json
-    from .dynamics_config import FROZEN_MODALITIES
-
-    ddp = _EnvRank()
+    shard_id = _EnvRank()
     repo = Path.cwd()
-    resolved = {m.name: resolve_codec_path(m.name, repo, codec_tmpl) for m in FROZEN_MODALITIES}
-    real = [n for n, rel in resolved.items() if rel is not None]
-    # RESERVED SLOTS vs EXCLUDED modalities. A PLACEHOLDER_MODALITIES entry with no checkpoint
-    # keeps its n_tok slots filled with a constant code, so the real codec can be swapped in later
-    # WITHOUT changing frame dimensions. Any OTHER unresolved modality is EXCLUDED from the frame
-    # entirely: widening the frame by a block of constants would (a) cost sequence length for zero
-    # information and (b) hand the CE a free ~1.0 accuracy term per frame. This used to be one
-    # rule for both, so pinning a codec snapshot that omits a modality quietly bought a dead
-    # 192-token block instead of dropping it.
-    placeholder_specs = {m.name: m.n_tok for m in FROZEN_MODALITIES
-                         if resolved[m.name] is None and m.name in PLACEHOLDER_MODALITIES}
-    excluded = [m.name for m in FROZEN_MODALITIES
-                if resolved[m.name] is None and m.name not in PLACEHOLDER_MODALITIES]
+    resolved = {
+        m.name: resolve_codec_path(m.name, repo, codec_tmpl) for m in FROZEN_MODALITIES
+    }
+    unresolved = [m for m in FROZEN_MODALITIES if resolved[m.name] is None]
+    real = [name for name, path in resolved.items() if path is not None]
+    placeholder_specs = {
+        m.name: m.n_tok for m in unresolved if m.name in PLACEHOLDER_MODALITIES
+    }
+    excluded = [m.name for m in unresolved if m.name not in PLACEHOLDER_MODALITIES]
     codecs = load_frozen_codecs(real, repo=repo, tmpl=codec_tmpl)
-    if ddp.is_main:
+    if shard_id.is_main:
         Path(cache_dir).mkdir(parents=True, exist_ok=True)
-        with open(Path(cache_dir) / "_codec_manifest.json", "w") as f:
-            json.dump({"resolved": resolved, "codec_tmpl": codec_tmpl,
-                       "t0_start": t0_start, "placeholders": sorted(placeholder_specs),
-                       "excluded": excluded,
-                       "frame_tokens": sum(int(c[1].n_tok) for c in codecs.values()
-                                           if hasattr(c[1], "n_tok"))
-                       + sum(placeholder_specs.values())}, f, indent=2)
-    for _n, (c, _cfg, _fam) in codecs.items():
-        c.to(ddp.device)
+        frame_tokens = sum(
+            int(c.cfg.n_tok) for c in codecs.values() if hasattr(c.cfg, "n_tok")
+        ) + sum(placeholder_specs.values())
+        manifest = {
+            "resolved": resolved,
+            "codec_tmpl": codec_tmpl,
+            "t0_start": t0_start,
+            "placeholders": sorted(placeholder_specs),
+            "excluded": excluded,
+            "frame_tokens": frame_tokens,
+        }
+        with open(_manifest_path(cache_dir), "w") as f:
+            json.dump(manifest, f, indent=2)
+    for frozen in codecs.values():
+        frozen.codec.to(shard_id.device)
     all_shots = sorted(spike.discover_shots(data_dir))
     if shot_sample:
-        # seeded uniform random sample over the WHOLE dataset (all campaigns) — the
-        # random-selection probe / production convention (user 2026-08-09).
-        import random as _random
-        all_shots = sorted(_random.Random(shot_seed).sample(
-            all_shots, min(shot_sample, len(all_shots))))
+        n_sampled = min(shot_sample, len(all_shots))
+        all_shots = sorted(random.Random(shot_seed).sample(all_shots, n_sampled))
     elif max_shots:
-        all_shots = all_shots[:max_shots]           # sanity-run cap (0 = full dataset)
-    shard = all_shots[ddp.rank::ddp.world_size]
-    if ddp.is_main:
-        log(f"[precompute] {len(all_shots)} shots / {ddp.world_size} ranks (~{len(shard)}/rank); "
-            f"real={len(real)} placeholders={list(placeholder_specs)} cache={cache_dir}", flush=True)
+        all_shots = all_shots[:max_shots]
+    shard = all_shots[shard_id.rank :: shard_id.world_size]
+    if shard_id.is_main:
+        log(
+            f"[precompute] {len(all_shots)} shots / {shard_id.world_size} ranks "
+            f"(~{len(shard)}/rank); real={len(real)} "
+            f"placeholders={list(placeholder_specs)} cache={cache_dir}",
+            flush=True,
+        )
         log(f"[precompute] REAL modalities ({len(real)}): {sorted(real)}", flush=True)
         if excluded:
-            # LOUD on purpose: the all-spectrogram cache once built a 3072-token frame and trained
-            # on 4 of its 5 modalities with no warning at all.
-            log(f"[precompute] EXCLUDED from the frame (no codec resolved, not a reserved slot): "
-                f"{excluded} — confirm this is intended before training on this cache",
-                flush=True)
-    n = precompute_frame_codes(shard, codecs, cache_dir, data_dir,
-                               placeholder_specs=placeholder_specs, t0_start=t0_start,
-                               shot_timeout_s=shot_timeout_s,
-                               log=log)
-    log(f"[precompute rank {ddp.rank}] cached {n}/{len(shard)} shots on this shard")
-    # NO trailing dist.barrier(): shards are embarrassingly parallel and finish at very
-    # different times (video-heavy shots) — idle ranks waiting in the barrier hit the NCCL
-    # watchdog timeout (600 s) and the whole step gets killed mid-encode (measured on legs
-    # 5208340/41, 2026-08-08). Ranks simply exit; srun ends when the slowest rank is done.
-    return n
+            log(
+                f"[precompute] EXCLUDED from the frame (no codec resolved, not a "
+                f"reserved slot): {excluded} — confirm this is intended before "
+                f"training on this cache",
+                flush=True,
+            )
+    n_cached = precompute_frame_codes(
+        shard,
+        codecs,
+        cache_dir,
+        data_dir,
+        placeholder_specs=placeholder_specs,
+        t0_start=t0_start,
+        shot_timeout_s=shot_timeout_s,
+        log=log,
+    )
+    log(
+        f"[precompute rank {shard_id.rank}] cached {n_cached}/{len(shard)} shots "
+        f"on this shard"
+    )
+    return n_cached
 
 
 def build_presence(cache_dir, out_path=None, log=print) -> Dict[str, Dict[str, bool]]:
-    """Per-(shot, modality) PRESENCE mask, derived from the null codeword of each modality.
+    """Find which diagnostics each cached shot actually recorded.
 
-    A diagnostic that did not record feeds a constant input to its frozen codec, so it
-    encodes to a byte-identical frame vector in every shot where it is missing. Measured on
-    the production cache, the frequently-absent modalities are the SMALL ones — and because
-    ``training_loss`` averages per-modality means (each modality weighted EQUALLY regardless
-    of token count), roughly 38% of the loss terms are computed on those constants.
+    A diagnostic that did not record encodes to the same constant frame in every
+    shot. A shot's modality is absent if all its frames equal that modality's
+    null pattern, the most common pattern among constant shots; a diagnostic that
+    is merely flat with another value counts as present.
 
-    A shot's modality is ABSENT iff every frame equals that modality's null codeword. This is
-    stricter than "the codes never change": a real diagnostic that happens to sit flat over a
-    window is NOT null, because its constant value is not the shared null pattern.
+    Parameters
+    ----------
+    cache_dir : path-like
+        Frame-code cache.
+    out_path : path-like, default=None
+        If given, write ``{"cache_dir": ..., "presence": ...}`` there as JSON.
+    log : callable, default=print
+        Logger.
 
-    Single pass: each shot is loaded once. Returns {shot: {modality: True if PRESENT}}.
+    Returns
+    -------
+    presence : dict of str to dict of str to bool
+        ``{shot: {modality: True if present}}``.
     """
-    import json
-    import os as _os
-    from collections import Counter
     cache = Path(cache_dir)
     stems = sorted(p.stem for p in cache.glob("*.pt") if not p.stem.startswith("_"))
-    frozen_hash: Dict[str, Counter] = {}
+    constant_patterns: Dict[str, Counter] = {}
     per_shot: Dict[str, Dict[str, tuple]] = {}
-    for s in stems:
+    for shot in stems:
         try:
-            codes = torch.load(cache / f"{s}.pt", map_location="cpu")["codes"]
+            codes = torch.load(cache / f"{shot}.pt", map_location="cpu")["codes"]
         except Exception as e:
-            log(f"[presence] skip {s}: {type(e).__name__}: {e}")
+            log(f"[presence] skip {shot}: {type(e).__name__}: {e}")
             continue
-        rec = {}
-        for m, a in codes.items():
-            is_frozen = bool((a == a[0:1]).all())
-            h = hash(a[0].numpy().tobytes())
-            rec[m] = (is_frozen, h)
-            if is_frozen:
-                frozen_hash.setdefault(m, Counter())[h] += 1
-        per_shot[s] = rec
-    # The null codeword per modality = the dominant pattern among frozen shots.
-    null_of = {m: c.most_common(1)[0][0] for m, c in frozen_hash.items() if c}
-    presence = {s: {m: not (fr and null_of.get(m) == h) for m, (fr, h) in rec.items()}
-                for s, rec in per_shot.items()}
+        shot_record = {}
+        for modality, frames in codes.items():
+            is_constant = bool((frames == frames[0:1]).all())
+            pattern = hash(frames[0].numpy().tobytes())
+            shot_record[modality] = (is_constant, pattern)
+            if is_constant:
+                constant_patterns.setdefault(modality, Counter())[pattern] += 1
+        per_shot[shot] = shot_record
+    null_pattern = {
+        modality: counts.most_common(1)[0][0]
+        for modality, counts in constant_patterns.items()
+        if counts
+    }
+    presence = {
+        shot: {
+            modality: not (is_constant and null_pattern.get(modality) == pattern)
+            for modality, (is_constant, pattern) in shot_record.items()
+        }
+        for shot, shot_record in per_shot.items()
+    }
     if per_shot:
-        mods = sorted(next(iter(per_shot.values())))
-        log(f"[presence] {len(presence)} shots x {len(mods)} modalities")
-        for m in mods:
-            absent = sum(1 for s in presence if not presence[s][m])
-            share = len(frozen_hash.get(m, {})) or 0
-            log(f"[presence]   {m:<22} absent in {absent:5d}/{len(presence)} "
-                f"({100*absent/max(1,len(presence)):4.1f}%)  distinct frozen patterns={share}")
-        mean_absent = sum(1 for s in presence for m in mods if not presence[s][m]) \
-            / max(1, len(presence) * len(mods))
-        log(f"[presence] MEAN per-modality absence = {100*mean_absent:.1f}% "
-            f"(= the share of loss TERMS that would score constants)")
+        _log_presence(presence, constant_patterns, log)
     if out_path:
-        tmp = Path(str(out_path) + f".tmp.{_os.getpid()}")
+        tmp = Path(str(out_path) + f".tmp.{os.getpid()}")
         tmp.parent.mkdir(parents=True, exist_ok=True)
-        tmp.write_text(json.dumps({"cache_dir": str(cache), "presence": presence}, indent=0))
+        tmp.write_text(
+            json.dumps({"cache_dir": str(cache), "presence": presence}, indent=0)
+        )
         tmp.replace(Path(out_path))
         log(f"[presence] -> {out_path}")
     return presence
 
 
+def _log_presence(presence, constant_patterns, log) -> None:
+    modalities = sorted(next(iter(presence.values())))
+    n_shots = len(presence)
+    log(f"[presence] {n_shots} shots x {len(modalities)} modalities")
+    for modality in modalities:
+        n_absent = sum(1 for shot in presence if not presence[shot][modality])
+        n_patterns = len(constant_patterns.get(modality, {})) or 0
+        log(
+            f"[presence]   {modality:<22} absent in {n_absent:5d}/{n_shots} "
+            f"({100 * n_absent / max(1, n_shots):4.1f}%)  "
+            f"distinct frozen patterns={n_patterns}"
+        )
+    n_absent_total = sum(
+        1 for shot in presence for m in modalities if not presence[shot][m]
+    )
+    mean_absent = n_absent_total / max(1, n_shots * len(modalities))
+    log(
+        f"[presence] MEAN per-modality absence = {100 * mean_absent:.1f}% "
+        f"(= the share of loss TERMS that would score constants)"
+    )
+
+
+def _n_live_frames(n_frames: int, t_end, t0_start: float, frame_s: float) -> int:
+    """Return the number of leading frames before the plasma end ``t_end``.
+
+    ``None`` means not measured: every frame counts as live. The ``1e-9`` keeps a
+    frame that lands exactly on ``t_end`` despite binary rounding.
+    """
+    if t_end is None:
+        return int(n_frames)
+    last_live = math.floor((float(t_end) - t0_start) / frame_s + 1e-9)
+    return int(max(0, min(int(n_frames), last_live + 1)))
+
+
+class WindowSample(enum.StrEnum):
+    """Which windows each shot contributes per epoch, see :class:`FrameCodeDataset`."""
+
+    RANDOM = "random"
+    FIRST = "first"
+    LIVE = "live"
+
+
+def _narrowest_int(codes: torch.Tensor, vocab: int) -> torch.Tensor:
+    """Cast codes to the smallest integer type holding ``vocab`` values."""
+    if vocab <= torch.iinfo(torch.uint8).max + 1:
+        return codes.to(torch.uint8)
+    if vocab <= torch.iinfo(torch.int16).max + 1:
+        return codes.to(torch.int16)
+    return codes
+
+
+def _global_actuators(shot, cached: torch.Tensor) -> torch.Tensor:
+    """Dataset-wide normalised actuators of a shot, truncated to the cache width."""
+    side_entry = Path(_ACT_GLOBAL_DIR) / f"{shot}.pt"
+    if not side_entry.exists():
+        raise FileNotFoundError(
+            f"IGNITE_ACT_GLOBAL={_ACT_GLOBAL_DIR} has no entry for shot {shot}. "
+            f"Refusing to fall back to the per-shot z-scored actuators, which "
+            f"would silently mix two normalisations within one run."
+        )
+    width = cached.shape[-1]
+    loaded = torch.load(side_entry, map_location="cpu", weights_only=False)
+    return loaded["actuators_global"][:, :width].to(cached.dtype)
+
+
 class FrameCodeDataset(torch.utils.data.Dataset):
-    """Streams (shot, start_frame) windows of length cfg.max_frames from the pre-encoded cache.
+    """Windows of ``cfg.max_frames`` frames from the frame-code cache.
 
-    Loads all cached shots into RAM once, so __getitem__ is a cheap slice — no codec forward, no
-    HDF5 read in the training loop.
+    All selected shots are loaded into memory once, so an item is a slice. Codes
+    are narrowed to the smallest integer type holding the vocabulary, since every
+    rank holds the whole split.
 
-    EVERY RANK HOLDS THE WHOLE SPLIT (DistributedSampler shards the index, not the data), so host
-    RAM is 8x this on a Frontier node. Caches are written as int32; at 8316 shots x 239 frames x
-    4000 tokens that is 31.8 GB per rank, 254 GB per node, which OOM-killed the all-spectrogram
-    run before step 50. Codes are narrowed to the smallest dtype that holds the modality's vocab
-    (band-power vocab 8 -> uint8, a 4x cut); __getitem__ casts back to long, so this is invisible
-    downstream. FSQ caches with vocab > 32767 keep int32 and are unaffected.
+    Parameters
+    ----------
+    cache_dir : path-like
+        Frame-code cache.
+    shots : list of str
+        Shots to load; shots not cached or not covering the layout are skipped.
+    cfg : DynamicsConfig
+        Model configuration (layout and window length).
+    presence : dict, default=None
+        Output of :func:`build_presence`; None marks everything present.
+    stride : int, default=1
+        Frames between consecutive window starts.
+    windows_per_shot : int, default=0
+        Windows each shot contributes per epoch (0 = every start).
+    window_sample : {"random", "first", "live"}, default="random"
+        Which starts, if ``windows_per_shot`` is set. ``"first"`` takes starts
+        ``0..n-1``, the region a rollout seeded at the shot start covers.
+        ``"random"`` redraws ``n`` of all starts each epoch. ``"live"`` redraws
+        them from the starts whose window is at least half before the plasma
+        end, plus starts ``0..n-1``; it is meant for training only.
+    live_end : dict of str to float, default=None
+        Plasma end time of each shot; later frames get zero loss weight. Shots
+        not listed count as live throughout.
+    t0_start : float, default=1.0
+        Shot time of frame 0 of the cache.
+    frame_s : float, default=0.05
+        Frame duration in seconds.
+
+    Notes
+    -----
+    With ``IGNITE_ACT_GLOBAL`` set, actuators come from that side cache,
+    truncated to the cache's actuator width.
     """
 
-    @staticmethod
-    def _narrow(v, vocab):
-        if vocab <= torch.iinfo(torch.uint8).max + 1:
-            return v.to(torch.uint8)
-        if vocab <= torch.iinfo(torch.int16).max + 1:
-            return v.to(torch.int16)
-        return v
-
-    def __init__(self, cache_dir, shots, cfg: DynamicsConfig, presence=None, stride: int = 1,
-                 windows_per_shot: int = 0, window_sample: str = "random",
-                 live_end=None, t0_start: float = 1.0, frame_s: float = 0.05):
+    def __init__(
+        self,
+        cache_dir,
+        shots,
+        cfg: DynamicsConfig,
+        presence=None,
+        stride: int = 1,
+        windows_per_shot: int = 0,
+        window_sample: str = "random",
+        live_end=None,
+        t0_start: float = 1.0,
+        frame_s: float = 0.05,
+    ):
         self.cfg = cfg
         self.win = cfg.max_frames
-        # Window STRIDE. At stride 1 consecutive windows share win-1 frames (99% at win=100), so
-        # a 239-frame shot yields 140 near-duplicate samples and one "epoch" views every frame
-        # ~59 times. A larger stride shrinks the sample pool without discarding much distinct
-        # content; it does NOT reduce cost per optimizer step.
         self.stride = max(int(stride), 1)
-        # WINDOWS PER SHOT. Keep only the FIRST n windows of each shot (start frames 0..n-1 at
-        # stride 1), instead of all n_frames-win+1 of them. Rationale (user 2026-08-22): a
-        # deployment rollout seeds at the SHOT START and predicts k0+n_predict = 100 frames = 5 s,
-        # so it only ever traverses frames 0..~108. Windows starting at frame 139 train the
-        # conditional 'given 1 s of context from t=6.95 s, predict t=7.95-11.90 s', which is never
-        # requested. This is NOT `stride`: stride spreads the same count across the shot (and at
-        # stride 10 neighbours still share 90 frames), whereas this clips to the deployment region.
-        # 0 = keep all (previous behaviour). TRAIN ONLY -- the val dataset never receives it, so
-        # the val metric stays a fixed protocol across arms.
         self.windows_per_shot = max(int(windows_per_shot), 0)
-        # 'first'  = starts 0..n-1, the DEPLOYMENT REGION (a rollout seeds at the shot start and
-        #            only traverses frames 0..k0+n_predict). Pair it with val_windows_per_shot=n
-        #            so validation scores the same region -- training on the deployment window
-        #            while validating on all 140 offsets scores a task never trained.
-        # 'random' = n offsets redrawn from all of them each epoch.
-        # 'live'   = n offsets redrawn each epoch from the starts whose window is at least HALF
-        #            inside the live plasma (st + win/2 <= n_live), plus the deployment starts
-        #            0..n-1. A shot with no measured t_end keeps the deployment starts only, so
-        #            dead post-shot padding (median discharge ends at 5.47 s of an 11.9 s cache)
-        #            is never drawn. Same COUNT per epoch as 'first' => same cost per epoch, but
-        #            many more distinct dynamics phases. TRAIN-ONLY: validation is forced to
-        #            'first' (deployment protocol) when this is selected, see train().
-        self.window_sample = str(window_sample).lower()
-        self._live_starts = []                              # per shot: pool for 'live'
-        self.shots = []
-        # Shot IDs parallel to self.shots. The dataset otherwise keeps only the loaded dicts, so
-        # nothing downstream can say WHICH shot a window came from -- needed by any analysis that
-        # joins windows to per-shot facts (e.g. plasma t_end in analysis/live_frame_bias.py).
-        # Appended in lockstep with self.shots, AFTER the same skip conditions.
-        self.shot_ids = []
-        # POST-SHOT MASKING. live_end maps shot -> plasma end time (s). The cache is a fixed
-        # 219 frames from the ACQUISITION grid (t 1.00-11.90 s) while the median discharge ends
-        # at 5.47 s, so a large minority of frames are dead time that is cheap to predict and
-        # inflates every CE. n_live[i] = number of LEADING live frames for shot i; frames at or
-        # beyond it are zero-weighted in the loss.
-        # A shot MISSING from live_end is treated as FULLY LIVE -- never mask what was not
-        # measured (only 195 of 438 val shots had two agreeing diagnostics).
+        self.window_sample = WindowSample(str(window_sample).lower())
         self.live_end = dict(live_end or {})
         self.t0_start, self.frame_s = float(t0_start), float(frame_s)
+        self.shots = []
+        self.shot_ids = []
         self.n_live = []
-        self.index = []                                     # (shot_i, start_frame)
-        self._starts = []                                   # per shot: EVERY legal start offset
-        self.presence = []                                  # per shot: (n_modalities,) float mask
-        names = {m.name for m in cfg.modalities}
-        for s in shots:
-            p = Path(cache_dir) / f"{s}.pt"
-            if not p.exists():
+        self.index = []
+        self._starts = []
+        self._live_starts = []
+        self.presence = []
+        presence = presence or {}
+        for shot in shots:
+            entry = self._load_entry(Path(cache_dir) / f"{shot}.pt")
+            if entry is None:
                 continue
-            d = torch.load(p, map_location="cpu", weights_only=False)
-            if not names.issubset(d["codes"]):              # cache must cover this frame layout
-                continue
-            # Drop modalities outside the layout and narrow the rest before anything is retained,
-            # so the peak is one shot's int32 codes rather than the whole split's.
-            d["codes"] = {m.name: self._narrow(d["codes"][m.name], m.codebook_size)
-                          for m in cfg.modalities}
-            if _ACT_GLOBAL_DIR:
-                # TRUNCATE to the cache width so normalisation is the ONLY difference: _ACT_SPEC
-                # grew 70 -> 88 (i_coil) after these caches were built, and letting the extra
-                # channels in here would confound the A/B with a feature-set change.
-                ag = Path(_ACT_GLOBAL_DIR) / f"{s}.pt"
-                if not ag.exists():
-                    raise FileNotFoundError(
-                        f"IGNITE_ACT_GLOBAL={_ACT_GLOBAL_DIR} has no entry for shot {s}. Refusing "
-                        f"to fall back to the per-shot z-scored actuators, which would silently "
-                        f"mix two normalisations within one run.")
-                w = d["actuators"].shape[-1]
-                g = torch.load(ag, map_location="cpu", weights_only=False)["actuators_global"]
-                d["actuators"] = g[:, :w].to(d["actuators"].dtype)
-            self.shots.append(d)
-            self.shot_ids.append(str(s))
-            _te = self.live_end.get(str(s))
-            # +1e-9 before the floor: (1.20 - 1.00)/0.05 evaluates to 3.9999999999999996 in
-            # binary floating point, so a frame landing exactly on t_end would be dropped.
-            # Caught by test_live_end_masks_post_shot_frames.
-            self.n_live.append(int(d["n_frames"]) if _te is None else
-                               int(max(0, min(int(d["n_frames"]),
-                                              math.floor((float(_te) - self.t0_start)
-                                                         / self.frame_s + 1e-9) + 1))))
-            # 1.0 = this diagnostic recorded in this shot, 0.0 = absent (null codeword).
-            # No presence map => everything present, i.e. the pre-masking behaviour.
-            pr = (presence or {}).get(str(s), {})
-            self.presence.append(torch.tensor(
-                [1.0 if pr.get(m.name, True) else 0.0 for m in cfg.modalities]))
-            si = len(self.shots) - 1
-            starts = list(range(0, d["n_frames"] - self.win + 1, self.stride))
+            shot_index = len(self.shots)
+            self.shots.append(entry)
+            self.shot_ids.append(str(shot))
+            t_end = self.live_end.get(str(shot))
+            n_live = _n_live_frames(
+                entry["n_frames"], t_end, self.t0_start, self.frame_s
+            )
+            self.n_live.append(n_live)
+            recorded = presence.get(str(shot), {})
+            self.presence.append(
+                torch.tensor(
+                    [1.0 if recorded.get(m.name, True) else 0.0 for m in cfg.modalities]
+                )
+            )
+            starts = list(range(0, entry["n_frames"] - self.win + 1, self.stride))
             self._starts.append(starts)
-            _first = starts[: max(self.windows_per_shot, 1)]
-            _lv = ([st for st in starts if st + self.win / 2.0 <= self.n_live[si]]
-                   if _te is not None else [])
-            self._live_starts.append(sorted(set(_lv) | set(_first)))
+            deployment_starts = starts[: max(self.windows_per_shot, 1)]
+            live_starts = (
+                [s for s in starts if s + self.win / 2.0 <= n_live]
+                if t_end is not None
+                else []
+            )
+            self._live_starts.append(sorted(set(live_starts) | set(deployment_starts)))
             if not self.windows_per_shot:
-                for st in starts:
-                    self.index.append((si, st))
+                self.index.extend((shot_index, start) for start in starts)
         if self.windows_per_shot:
             self.set_epoch(0)
 
+    def _load_entry(self, path: Path):
+        """Load a cache entry restricted to the layout, or None if unusable."""
+        if not path.exists():
+            return None
+        entry = torch.load(path, map_location="cpu", weights_only=False)
+        modalities = self.cfg.modalities
+        if not {m.name for m in modalities}.issubset(entry["codes"]):
+            return None
+        entry["codes"] = {
+            m.name: _narrowest_int(entry["codes"][m.name], m.codebook_size)
+            for m in modalities
+        }
+        if _ACT_GLOBAL_DIR:
+            entry["actuators"] = _global_actuators(path.stem, entry["actuators"])
+        return entry
+
     def set_epoch(self, epoch: int) -> None:
-        """Re-draw WHICH windows_per_shot windows each shot contributes, once per pass.
+        """Redraw the windows of every shot for an epoch.
 
-        This used to be `starts[:n]` -- the FIRST n offsets. Measured 2026-08-24: at n=10 and
-        win=100 that trained frames 0..109 of 239 (46% of the discharge, 7.1% of the 140 offsets,
-        and the ten windows overlap 90% so unique content is ~1.1 windows/shot), while validation
-        scored all 140 offsets. A paired 24-shot probe put the unseen-phase penalty at +0.36 nats
-        at the best checkpoint and +1.36 to +2.15 at the last one -- larger than the shot-level
-        overfitting it was being read as. Drawing the same COUNT at random from all 140 keeps the
-        cost per epoch identical and multiplies the distinct start positions by 14x.
-
-        SEEDED ON `epoch` ALONE, never on rank: DistributedSampler shards the INDEX, so a
-        rank-dependent draw would hand different ranks different data for the same index and
-        silently corrupt the epoch. len(self.index) is invariant, so the sampler's length and the
-        step accounting do not move.
-
-        Safe with the DataLoader's worker processes because persistent_workers is left at its
-        default False: workers re-fork when the iterator is created, which happens AFTER this
-        call, so they inherit the new index rather than a stale copy.
+        The draw is seeded on ``epoch`` alone, so every rank sees the same index
+        and the sampler's sharding stays consistent. Call it before creating the
+        loader iterator, so that worker processes fork with the new index.
         """
         if not self.windows_per_shot:
-            return                                          # every window is already in the index
-        if self.window_sample == "first":
-            self.index = [(si, st) for si, starts in enumerate(self._starts)
-                          for st in starts[: self.windows_per_shot]]
             return
-        import random
-        g = random.Random(0x16117E * 1000003 + int(epoch))
-        idx = []
-        pools = self._live_starts if self.window_sample == "live" else self._starts
-        for si, starts in enumerate(pools):
-            k = min(self.windows_per_shot, len(starts))
-            idx.extend((si, st) for st in sorted(g.sample(starts, k)))
-        self.index = idx
+        if self.window_sample is WindowSample.FIRST:
+            self.index = [
+                (shot_index, start)
+                for shot_index, starts in enumerate(self._starts)
+                for start in starts[: self.windows_per_shot]
+            ]
+            return
+        rng = random.Random(_WINDOW_SEED_BASE + int(epoch))
+        pools = (
+            self._live_starts
+            if self.window_sample is WindowSample.LIVE
+            else self._starts
+        )
+        index = []
+        for shot_index, starts in enumerate(pools):
+            n_drawn = min(self.windows_per_shot, len(starts))
+            index.extend((shot_index, s) for s in sorted(rng.sample(starts, n_drawn)))
+        self.index = index
 
     def __len__(self):
         return len(self.index)
 
     def __getitem__(self, i):
-        si, st = self.index[i]
-        d = self.shots[si]
-        codes = {m.name: d["codes"][m.name][st: st + self.win].long() for m in self.cfg.modalities}
-        act = d["actuators"][st: st + self.win].float()
-        # (win,) 1.0 while the plasma is live. Absolute frame index st+k is live iff
-        # st+k < n_live[si]; with no measured t_end n_live == n_frames, so this is all-ones
-        # and the loss is bit-identical to the unmasked path.
-        live = (torch.arange(st, st + self.win) < self.n_live[si]).float()
-        return codes, act, self.presence[si], live
+        """Return ``(codes, actuators, presence, live)`` of window ``i``."""
+        shot_index, start = self.index[i]
+        entry = self.shots[shot_index]
+        stop = start + self.win
+        codes = {
+            m.name: entry["codes"][m.name][start:stop].long()
+            for m in self.cfg.modalities
+        }
+        actuators = entry["actuators"][start:stop].float()
+        live = (torch.arange(start, stop) < self.n_live[shot_index]).float()
+        return codes, actuators, self.presence[shot_index], live
 
 
 def _collate_frames(batch):
-    codes = {n: torch.stack([b[0][n] for b in batch], 0) for n in batch[0][0]}
-    act = torch.stack([b[1] for b in batch], 0)
-    present = torch.stack([b[2] for b in batch], 0)          # (B, n_modalities)
-    live = torch.stack([b[3] for b in batch], 0)             # (B, win)
-    return codes, act, present, live
+    codes = {name: torch.stack([b[0][name] for b in batch], 0) for name in batch[0][0]}
+    actuators = torch.stack([b[1] for b in batch], 0)
+    present = torch.stack([b[2] for b in batch], 0)
+    live = torch.stack([b[3] for b in batch], 0)
+    return codes, actuators, present, live
 
 
-def smoke(n_shots: int = 2, n_steps: int = 30, depth: int = 4, d_model: int = 128, seed: int = 0):
-    """End-to-end proof on REAL frames: encode -> MaskGIT train (loss ↓) -> rollout (valid codes).
+def smoke(
+    n_shots: int = 2,
+    n_steps: int = 30,
+    depth: int = 4,
+    d_model: int = 128,
+    seed: int = 0,
+):
+    """Train a small model briefly on real frames and roll it out, on the CPU.
 
-    Runs on CPU with a SMALL d_model — the goal is to prove the data+model pipeline, not d1024
-    capacity (production trains d_model=1024 on GPU). Frozen codecs + frame layout are unchanged.
+    Returns
+    -------
+    losses : list of float
+        Training losses.
+    ok : bool
+        Whether every committed rollout code is inside its vocabulary.
     """
+    from ..data.multi_file_dataset import filter_signal_present_files
+
     torch.manual_seed(seed)
-    dd = spike.DEFAULT_DATA_DIR
+    data_dir = spike.DEFAULT_DATA_DIR
     repo = Path(__file__).resolve().parents[3]
-    from .dynamics_config import FROZEN_MODALITIES
-    # use only modalities whose FROZEN ckpt exists (video ckpts pending path/format resolution);
-    # the model is modality-agnostic, so this still proves the pipeline end-to-end.
-    avail = tuple(m for m in FROZEN_MODALITIES if (repo / FROZEN_CODEC_CKPTS[m.name][1]).exists())
-    skipped = [m.name for m in FROZEN_MODALITIES if m not in avail]
+    available = tuple(
+        m for m in FROZEN_MODALITIES if resolve_codec_path(m.name, repo) is not None
+    )
+    skipped = [m.name for m in FROZEN_MODALITIES if m not in available]
     if skipped:
         print(f"[smoke] NOTE skipping (no ckpt yet): {skipped}", flush=True)
-    cfg = DynamicsConfig(modalities=avail, d_model=d_model, depth=depth, k0_seed=4, n_predict=3)
+    cfg = DynamicsConfig(
+        modalities=available, d_model=d_model, depth=depth, k0_seed=4, n_predict=3
+    )
     names = [m.name for m in cfg.modalities]
     print(f"[smoke] loading {len(names)} frozen codecs ...", flush=True)
     codecs = load_frozen_codecs(names, repo=repo)
-    n_frames = cfg.max_frames                                       # 4 + 3 = 7
-    # pick co2-present shots so every modality (incl co2) has real data
-    from .train_codec import _shot_paths
-    from ..data.multi_file_dataset import filter_signal_present_files
-    present = [p.name.split("_")[0] for p in filter_signal_present_files(
-        _shot_paths(spike.discover_shots(dd), dd), "co2",
-        cache_path=Path("/lustre/orion/fus187/proj-shared/foundation_model_meta/codec_co2_present.pt"))]
-    shots = present[:n_shots]
-    print(f"[smoke] building real frame codes for shots {shots} ({n_frames} frames) ...", flush=True)
-    codes, act = build_batch(shots, codecs, n_frames, dd)
-    print(f"[smoke] frame codes ok: co2 {tuple(codes['co2'].shape)} mse {tuple(codes['mse'].shape)} "
-          f"actuators {tuple(act.shape)}", flush=True)
+    n_frames = cfg.max_frames
+    meta = Path("/lustre/orion/fus187/proj-shared/foundation_model_meta")
+    co2_files = filter_signal_present_files(
+        tc._shot_paths(spike.discover_shots(data_dir), data_dir),
+        "co2",
+        cache_path=meta / "codec_co2_present.pt",
+    )
+    shots = [p.name.split("_")[0] for p in co2_files][:n_shots]
+    print(
+        f"[smoke] building real frame codes for shots {shots} ({n_frames} frames) ...",
+        flush=True,
+    )
+    codes, actuators = build_batch(shots, codecs, n_frames, data_dir)
+    print(
+        f"[smoke] frame codes ok: co2 {tuple(codes['co2'].shape)} "
+        f"mse {tuple(codes['mse'].shape)} actuators {tuple(actuators.shape)}",
+        flush=True,
+    )
 
     model = MaskGITDynamics(cfg).train()
-    opt = torch.optim.AdamW(model.parameters(), lr=3e-4)
-    gen = torch.Generator().manual_seed(seed)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
+    generator = torch.Generator().manual_seed(seed)
     losses = []
     for step in range(n_steps):
-        opt.zero_grad()
-        loss = model.training_loss(codes, act, generator=gen, ss_frac=model.ss_fraction(step))
-        loss.backward(); opt.step()
+        optimizer.zero_grad()
+        loss = model.training_loss(
+            codes, actuators, generator=generator, ss_frac=model.ss_fraction(step)
+        )
+        loss.backward()
+        optimizer.step()
         losses.append(loss.item())
-    print(f"[smoke] MaskGIT loss: start {losses[0]:.3f} -> end {losses[-1]:.3f} "
-          f"(min {min(losses):.3f}) over {n_steps} steps", flush=True)
+    print(
+        f"[smoke] MaskGIT loss: start {losses[0]:.3f} -> end {losses[-1]:.3f} "
+        f"(min {min(losses):.3f}) over {n_steps} steps",
+        flush=True,
+    )
 
     model.eval()
-    seed_codes = {n: codes[n][:, : cfg.k0_seed] for n in codes}
-    traj = model.rollout(seed_codes, act, n_predict=cfg.n_predict, generator=gen)
-    ok = all(int(v[:, cfg.k0_seed:].min()) >= 0 and
-             int(v[:, cfg.k0_seed:].max()) < dict((m.name, m.codebook_size) for m in cfg.modalities)[n]
-             for n, v in traj.items())
-    print(f"[smoke] rollout -> {tuple(traj['co2'].shape)} per modality; all committed codes valid: {ok}",
-          flush=True)
-    print(f"[smoke] RESULT: loss decreased={losses[-1] < losses[0]}  rollout_valid={ok}", flush=True)
+    seed_codes = {name: c[:, : cfg.k0_seed] for name, c in codes.items()}
+    trajectory = model.rollout(
+        seed_codes, actuators, n_predict=cfg.n_predict, generator=generator
+    )
+    vocab = {m.name: m.codebook_size for m in cfg.modalities}
+    ok = all(
+        int(c[:, cfg.k0_seed :].min()) >= 0
+        and int(c[:, cfg.k0_seed :].max()) < vocab[name]
+        for name, c in trajectory.items()
+    )
+    print(
+        f"[smoke] rollout -> {tuple(trajectory['co2'].shape)} per modality; "
+        f"all committed codes valid: {ok}",
+        flush=True,
+    )
+    print(
+        f"[smoke] RESULT: loss decreased={losses[-1] < losses[0]}  rollout_valid={ok}",
+        flush=True,
+    )
     return losses, ok
 
 
 def _render_loss_curve(hist_path, png_path) -> None:
-    """Render train/val masked-CE curves from ``loss_history.jsonl`` (overwritten in place).
-
-    The jsonl is the durable loss record (survives 2 h chain legs; resume truncates entries
-    past the restart step, so the curve is exact across a whole chain). Train points are the
-    per-50-step logged losses (raw + EMA); val points are the fixed-batch masked CE."""
-    import json as _json
-
+    """Plot the train and validation losses of ``loss_history.jsonl`` to a PNG."""
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    tr_s, tr_v, va_s, va_v = [], [], [], []
+
+    train_steps, train_losses, val_steps, val_losses = [], [], [], []
     with open(hist_path) as f:
         for line in f:
             if not line.strip():
                 continue
-            r = _json.loads(line)
-            if "val_loss" in r:
-                va_s.append(r["step"]); va_v.append(r["val_loss"])
-            elif "loss" in r:
-                tr_s.append(r["step"]); tr_v.append(r["loss"])
-    if not tr_s:
+            record = json.loads(line)
+            if "val_loss" in record:
+                val_steps.append(record["step"])
+                val_losses.append(record["val_loss"])
+            elif "loss" in record:
+                train_steps.append(record["step"])
+                train_losses.append(record["loss"])
+    if not train_steps:
         return
     fig, ax = plt.subplots(figsize=(9, 4.5))
-    ax.plot(tr_s, tr_v, color="C0", alpha=0.3, lw=0.8, label="train masked CE (per-log)")
-    ema, sm = None, []
-    for v in tr_v:
-        ema = v if ema is None else 0.98 * ema + 0.02 * v
-        sm.append(ema)
-    ax.plot(tr_s, sm, color="C0", lw=1.6, label="train (EMA)")
-    if va_s:
-        ax.plot(va_s, va_v, "o-", color="C1", ms=3, lw=1.2, label="val masked CE")
-    # Log scale only when every plotted value is positive: the latent head's Gaussian NLL is
-    # a density and goes negative (-3.7 is normal), which made this figure blank for lat600.
-    if min(tr_v) > 0 and (not va_v or min(va_v) > 0):
+    ax.plot(
+        train_steps,
+        train_losses,
+        color="C0",
+        alpha=0.3,
+        lw=0.8,
+        label="train masked CE (per-log)",
+    )
+    smoothed, ema = [], None
+    for value in train_losses:
+        ema = value if ema is None else 0.98 * ema + 0.02 * value
+        smoothed.append(ema)
+    ax.plot(train_steps, smoothed, color="C0", lw=1.6, label="train (EMA)")
+    if val_steps:
+        ax.plot(
+            val_steps, val_losses, "o-", color="C1", ms=3, lw=1.2, label="val masked CE"
+        )
+    # The latent head's Gaussian NLL can be negative, which a log axis cannot show.
+    if min(train_losses) > 0 and (not val_losses or min(val_losses) > 0):
         ax.set_yscale("log")
     ax.set_xlabel("step")
     ax.set_ylabel("masked-token CE  (latent head: Gaussian NLL, may be < 0)")
@@ -1068,1143 +1419,1402 @@ def _render_loss_curve(hist_path, png_path) -> None:
 
 
 def cache_modality_specs(cache_dir):
-    """Derive the frame layout from the cache itself: (ModalitySpec tuple, in canonical order).
+    """Derive the frame layout from a cache.
 
-    n_tok comes from each modality's code shape and vocab from the cache's ``vocabs`` entry
-    (written at precompute since the v6 codecs; older caches fall back to the static
-    FROZEN_MODALITIES codebook sizes). This keeps the trainer correct when the codec set
-    changes the layout (ece 768 tok, fsq6 64k vocabs)."""
-    from .dynamics_config import FROZEN_MODALITIES, ModalitySpec
+    Token counts come from the cached code shapes and vocabularies from the
+    ``vocabs`` entry, falling back to :data:`FROZEN_MODALITIES` for old caches.
+
+    Returns
+    -------
+    specs : tuple of ModalitySpec
+        Layout in canonical order, restricted to the cached modalities.
+    """
     files = sorted(Path(cache_dir).glob("*.pt"))
     if not files:
         raise FileNotFoundError(f"no cached shots under {cache_dir}")
-    d = torch.load(files[0], map_location="cpu", weights_only=False)
-    vocabs = d.get("vocabs", {})
-    static = {m.name: m for m in FROZEN_MODALITIES}
-    specs = []
-    for m in FROZEN_MODALITIES:
-        if m.name not in d["codes"]:
-            continue
-        specs.append(ModalitySpec(m.name, m.family, int(d["codes"][m.name].shape[1]),
-                                  int(vocabs.get(m.name, static[m.name].codebook_size))))
-    return tuple(specs)
+    entry = torch.load(files[0], map_location="cpu", weights_only=False)
+    vocabs = entry.get("vocabs", {})
+    return tuple(
+        ModalitySpec(
+            m.name,
+            m.family,
+            int(entry["codes"][m.name].shape[1]),
+            int(vocabs.get(m.name, m.codebook_size)),
+        )
+        for m in FROZEN_MODALITIES
+        if m.name in entry["codes"]
+    )
+
+
+def _mean_one(raw: Dict[str, float], names: List[str]) -> Dict[str, float]:
+    """Scale weights to mean 1, so the loss scale and LR behaviour are unchanged."""
+    scale = len(names) / sum(raw.values())
+    return {name: raw[name] * scale for name in names}
 
 
 def resolve_mod_weights(spec: str, names: List[str]) -> Dict[str, float]:
-    """Explicit per-modality loss weights from a JSON file path or an inline JSON object.
+    """Parse explicit per-modality loss weights.
 
-    WHY THIS EXISTS. Capacity is the binding constraint on this model (881M params holds
-    220-440 MB at 2-4 bits/param; the full v4 cache is ~0.8-1.7 GB of token entropy), so WHERE
-    the capacity goes decides whether fitting deeper buys transferable structure or memorised
-    realization noise. ``--mod_weight_pow`` weights by token COUNT, which is only a proxy;
-    measured predictability is the thing itself. Per ``analysis/forecastability_cache.py``
-    (2026-09-08, v4, 40 held-out shots) the per-flip bigram return spans 18x -- cer_ti 2.15 nats
-    vs mirnov 0.12 -- while an equal-weight CE spends identical capacity on both.
+    Parameters
+    ----------
+    spec : str
+        Path to a JSON file, or an inline JSON object ``{modality: weight}``.
+        Prefer the path: ``sbatch --export`` splits values on commas.
+    names : list of str
+        Modalities of the layout. Missing ones weigh 1; keys starting with
+        ``_`` are metadata and ignored; unknown names are an error.
 
-    PREFER THE PATH FORM. Inline JSON contains COMMAS and ``sbatch --export`` splits on commas,
-    so an inline value passed that way is silently truncated -- the same failure mode that
-    killed 7 jobs via act_cross_attn/lag_embed_k.
-
-    Keys starting with ``_`` are METADATA (provenance), not modalities. Modalities absent from
-    the object default to 1.0. UNKNOWN keys are a hard error: a typo'd modality name would
-    otherwise weight nothing at all and pass silently. Result is normalised to mean 1 so the
-    loss scale, and therefore LR behaviour, stays comparable to an equal-weighted run.
+    Returns
+    -------
+    weights : dict of str to float
+        Non-negative weights scaled to mean 1.
     """
-    import json as _json_w
-    raw_txt = str(spec).strip()
-    if not raw_txt:
+    text = str(spec).strip()
+    if not text:
         raise ValueError("resolve_mod_weights: empty spec")
-    # Anything that LOOKS like JSON is parsed as JSON, so a malformed inline value reports a
-    # JSON error instead of "no such file [1, 2]" -- a path lookup is the wrong diagnosis and
-    # sends you hunting for a missing file that was never meant to exist.
-    if raw_txt[0] not in "{[":
-        p_w = Path(raw_txt)
-        if not p_w.exists():
-            raise FileNotFoundError(f"--mod_weights_json: no such file {p_w}")
-        raw_txt = p_w.read_text()
-    given = _json_w.loads(raw_txt)
+    # Anything that looks like JSON is parsed as JSON, so a typo is a JSON error.
+    if text[0] not in "{[":
+        path = Path(text)
+        if not path.exists():
+            raise FileNotFoundError(f"--mod_weights_json: no such file {path}")
+        text = path.read_text()
+    given = json.loads(text)
     if not isinstance(given, dict) or not given:
-        raise ValueError("--mod_weights_json must be a non-empty JSON object {modality: weight}")
+        raise ValueError(
+            "--mod_weights_json must be a non-empty JSON object {modality: weight}"
+        )
     given = {k: v for k, v in given.items() if not str(k).startswith("_")}
     if not given:
         raise ValueError("--mod_weights_json: object contains only metadata keys")
     unknown = sorted(set(given) - set(names))
     if unknown:
-        raise ValueError(f"--mod_weights_json has unknown modalities {unknown}; "
-                         f"this cache/config has {names}")
-    bad = {k: v for k, v in given.items()
-           if isinstance(v, bool) or not isinstance(v, (int, float)) or v < 0}
-    if bad:
-        raise ValueError(f"--mod_weights_json weights must be non-negative numbers; got {bad}")
-    raw = {n: float(given.get(n, 1.0)) for n in names}
+        raise ValueError(
+            f"--mod_weights_json has unknown modalities {unknown}; "
+            f"this cache/config has {names}"
+        )
+    invalid = {
+        k: v
+        for k, v in given.items()
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or v < 0
+    }
+    if invalid:
+        raise ValueError(
+            f"--mod_weights_json weights must be non-negative numbers; got {invalid}"
+        )
+    raw = {name: float(given.get(name, 1.0)) for name in names}
     if sum(raw.values()) <= 0:
         raise ValueError("--mod_weights_json: weights sum to zero")
-    scale = len(names) / sum(raw.values())
-    return {n: raw[n] * scale for n in names}
+    return _mean_one(raw, names)
 
 
-def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: float = 3e-4,
-          depth: int = 24, d_model: int = 1024, val_frac: float = 0.05, num_workers: int = 4,
-          ckpt_every: int = 1000, ss_final_frac: float = None, ss_ramp_steps: int = None,
-          gen_mask_p: float = None, gen_horizon_alpha: float = None,
-          gen_horizon_max: int = None, act_cross_attn: bool = None,
-          grad_ckpt: int = None, n_heads: int = None,
-          k0_seed: int = None, n_predict: int = None, train_cap: int = 0, val_n: int = 0,
-          split_seed: int = 0, warmup_steps: int = 0, min_lr_ratio: float = 0.01,
-          beta2: float = 0.999, weight_decay: float = 0.01, patience: int = 0,
-          test_n: int = 0, test_frac: float = 0.0, pin_val=(), pin_train=(), pin_both=(),
-          mask_absent: bool = False, presence_path: str = None,
-          accum_steps: int = 1, val_windows: int = 32, dropout: float = 0.0,
-          best_metric: str = "masked", lag_embed_k: int = None, latent_head: int = None,
-          balance_presence: bool = False, window_stride: int = 1,
-          windows_per_shot: int = 0, window_sample: str = "random",
-          val_window_sample: str = "",
-          mod_weight_pow: float = 0.0, mod_weights_json: str = "",
-          live_end_json: str = "",
-          lr_decay_from: int = 0,
-          wd_exclude_norms: bool = False,
-          label_smoothing: float = 0.0, val_windows_per_shot: int = 0,
-          grad_clip: float = 0.0, log=print):
-    """Production Phase-B training over the pre-encoded code cache (DDP, streaming, checkpointing).
+_SAME_AS_DEFAULT = object()
 
-    Reuses the codec trainer's DDP wrapper; streams FrameCodeDataset windows; MaskGIT loss with the
-    scheduled-sampling ramp; cosine LR; resumes from + writes ``dynamics_latest.pt``.
+
+def _option(
+    default,
+    description: str,
+    *,
+    cli: bool = True,
+    cli_default=_SAME_AS_DEFAULT,
+    cli_type=None,
+    choices=None,
+    from_cli=None,
+):
+    """A :class:`TrainConfig` field with the metadata its command-line flag needs.
+
+    Parameters
+    ----------
+    default : object
+        Default of the field.
+    description : str
+        Help text of the flag.
+    cli : bool, default=True
+        Whether the field has a flag.
+    cli_default : object, optional
+        Default of the flag, if it differs from the field's.
+    cli_type : callable, default=None
+        Type of the flag; inferred from the default when it is an int, float or
+        str. A bool default becomes a ``store_true`` flag.
+    choices : sequence, default=None
+        Allowed values of the flag.
+    from_cli : callable, default=None
+        Converts the parsed value to the field's type.
     """
-    import torch.distributed as dist
-    from torch.utils.data import DataLoader, DistributedSampler
-    from .train_codec import _DDPState
+    metadata = dict(
+        help=description,
+        cli=cli,
+        cli_default=default if cli_default is _SAME_AS_DEFAULT else cli_default,
+        cli_type=cli_type,
+        choices=choices,
+        from_cli=from_cli,
+    )
+    return dataclasses.field(default=default, metadata=metadata)
 
-    ddp = _DDPState()
-    device = ddp.device
-    # layout DERIVED from the cache (v6 codecs change n_tok/vocab vs the static table)
-    specs = cache_modality_specs(cache_dir)
-    cfg_kw = dict(modalities=specs, d_model=d_model, depth=depth)
-    # ACTUATOR WIDTH IS DERIVED FROM THE CACHE, never assumed. _ACT_SPEC grew 70 -> 88 (i_coil)
-    # on 2026-08-15; caches built before that still store 70 columns, and act_embed is
-    # Linear(actuator_dim, d_model), so trusting the config default would mismatch the Linear
-    # against an older cache (and silently break every resume of an in-flight arm).
-    _probe = next(Path(cache_dir).glob("*.pt"), None)
-    if _probe is not None:
-        _aw = int(torch.load(_probe, map_location="cpu", weights_only=False)["actuators"].shape[-1])
-        cfg_kw["actuator_dim"] = _aw
-        if ddp.is_main and _aw != sum(n for _k, n in _ACT_SPEC):
-            log(f"[dynamics] cache actuator width {_aw} != current _ACT_SPEC "
-                f"{sum(n for _k, n in _ACT_SPEC)} — using the CACHE width (rebuild the cache "
-                f"to pick up new actuator channels)")
-    if n_heads:
-        cfg_kw["n_heads"] = n_heads
-    if k0_seed:
-        cfg_kw["k0_seed"] = k0_seed
-    if n_predict:
-        cfg_kw["n_predict"] = n_predict
-    cfg = DynamicsConfig(**cfg_kw)
-    if dropout:
-        # REGULARISATION (2026-08-14). dropout has been wired into both attentions and the FFN
-        # since the build but defaulted to 0.0 and was unreachable, so no IGNITE run has ever
-        # used it. The band-power run opened a memorisation gap at step 2750 (train 0.69 vs
-        # val 1.01) on 500 shots; dropout is the standard lever for exactly that.
-        cfg.dropout = float(dropout)
-    if ss_final_frac is not None:
-        # Scheduled sampling = rollout-drift mitigation: the model trains on its OWN codes so it
-        # is not purely teacher-forced while being evaluated purely autoregressively. The old
-        # full-logits path (~400 GB at F=100) is fixed as of 2026-08-15, as is the autocast
-        # weight-cache bug that silently cut grad-norm 10x underneath it — see
-        # MaskGITDynamics._scheduled_sample_context.
-        cfg.ss_ramp_final_frac = float(ss_final_frac)
-    if ss_ramp_steps is not None:
-        # MUST be set relative to the run length: the 40k default on a 20k-step run only ever
-        # reaches HALF the requested fraction, so the arm silently tests a weaker schedule.
-        cfg.ss_ramp_steps = int(ss_ramp_steps)
-    if gen_mask_p is not None:
-        cfg.gen_mask_p = float(gen_mask_p)
-    if gen_horizon_alpha is not None:
-        cfg.gen_horizon_alpha = float(gen_horizon_alpha)
-    if gen_horizon_max is not None:
-        cfg.gen_horizon_max = int(gen_horizon_max)
-    if act_cross_attn is not None:
-        cfg.act_cross_attn = bool(act_cross_attn)
-    if grad_ckpt is not None:
-        # MANDATORY at the production shape: d_model x depth = 1024 x 16 = 16384, four times the
-        # 4096 threshold above which the un-checkpointed per-block activation stack stops fitting
-        # a 64 GiB GCD. Exposed (rather than left as the DynamicsConfig default) so the launcher
-        # is the single record of the run and so a small-shape probe can turn it off deliberately
-        # instead of by editing a dataclass.
-        cfg.grad_checkpointing = bool(int(grad_ckpt))
-    if latent_head is not None:
-        cfg.latent_head = bool(int(latent_head))
-        if cfg.latent_head and ddp.is_main:
-            log("[dynamics] LATENT HEAD ON: Gaussian regression of the FSQ grid coordinate "
-                f"(levels {tuple(cfg.fsq_levels)}) replaces the 1000-way classifier. Train/val "
-                "CE are Gaussian NLL in coordinate space -- NOT comparable to token-CE arms.")
-    if lag_embed_k is not None:
-        # Changes the PARAMETER SET (adds per-modality lag tables), so a run cannot switch this
-        # mid-chain: a checkpoint saved with k=0 has no lag_embed keys to load into k=3.
-        cfg.lag_embed_k = int(lag_embed_k)
-    n_all = len(list(Path(cache_dir).glob("*.pt")))
-    n_val = val_n if val_n else max(1, int(n_all * val_frac))
-    n_test = test_n if test_n else (max(1, int(n_all * test_frac)) if test_frac else 0)
-    # split_seed > 0 => seeded-random subsets (identical val across probe arms); 0 => legacy
-    # sorted-tail split. Frozen to out_dir on first use so a growing cache cannot reshuffle
-    # it mid-chain. See split_shots / resolve_split.
-    train_shots, val_shots, test_shots = resolve_split(
-        cache_dir, out_dir, n_val, split_seed=split_seed, train_cap=train_cap,
-        test_n=n_test, pin_val=pin_val, pin_train=pin_train, pin_both=pin_both,
-        write=ddp.is_main,
-        log=(log if ddp.is_main else (lambda *a, **k: None)))
-    # Presence mask (absent diagnostics excluded from the CE; see build_presence /
-    # MaskGITDynamics.training_loss). Built once next to the cache and reused; mask_absent=0
-    # keeps the historical behaviour so old runs stay reproducible.
-    # POST-SHOT FRAME MASKING (opt-in). live_end_json maps shot -> plasma end time in seconds
-    # (analysis/shot_duration.py --out). The cache holds a fixed 219 frames/shot from the
-    # ACQUISITION grid (t 1.00-11.90 s) while the median discharge ends at 5.47 s, so a large
-    # minority of scored frames are dead time. Measured 2026-09-10 with
-    # analysis/live_frame_bias.py: dead windows are markedly cheaper, and including them makes
-    # the forecast metric OPTIMISTIC BY ~0.24 nats (monotone across liveness bins, corr +0.235).
-    # Default OFF so no existing arm changes silently; a shot absent from the table is treated
-    # as fully live, so partial coverage is safe.
-    live_end, use_live = None, False
-    if str(live_end_json).strip():
-        import json as _json_l
-        _lp = Path(str(live_end_json).strip())
-        if not _lp.exists():
-            raise FileNotFoundError(f"--live_end_json: no such file {_lp}")
-        live_end = {str(k): float(v) for k, v in _json_l.load(open(_lp)).items()}
-        if not live_end:
-            raise ValueError(f"--live_end_json: {_lp} is empty")
-        use_live = True
-    # t0_start MUST come from the cache manifest: the frame->time map is t0 + 0.05*f, and a
-    # wrong t0 would mask the wrong frames. v2 used 0.0, v4 uses 1.0.
-    _t0 = 1.0
-    _man = Path(cache_dir) / "_codec_manifest.json"
-    if _man.exists():
-        import json as _json_m
-        _t0 = float(_json_m.load(open(_man)).get("t0_start", 1.0))
-    presence, use_presence = None, bool(mask_absent)
-    if use_presence:
-        import json as _json
-        pth = Path(presence_path) if presence_path else Path(cache_dir) / "_presence.json"
-        if not pth.exists():
-            if ddp.is_main:
-                log(f"[dynamics] no presence map at {pth} — building it once (single pass)")
-                build_presence(cache_dir, out_path=pth, log=log)
-            if ddp.world_size > 1:
-                dist.barrier()                 # ranks wait for rank 0 to finish writing
-        presence = _json.loads(pth.read_text())["presence"]
-        if ddp.is_main:
-            log(f"[dynamics] MASK_ABSENT on: presence map {pth} ({len(presence)} shots)")
-    # PRESENCE-BALANCED MODALITY WEIGHTS. With mask_absent the CE skips a modality in every
-    # sample that lacks it, so a diagnostic recorded in a fraction f of shots receives only f as
-    # much gradient as one recorded everywhere. MEASURED 2026-08-16 on the union cache: bes is in
-    # 37.8% of shots and is the ONLY diagnostic that loses to its own bigram at matched 1-step
-    # conditions (1.3066 vs 1.2809) DESPITE having the lowest count-table floor of all five
-    # (1.0889) — i.e. the model fails on the most predictable diagnostic, purely from exposure.
-    # Weighting each modality by 1/f equalises expected gradient (f * 1/f = 1 for every
-    # modality). Weights are normalised to mean 1 so the loss scale, and thus LR behaviour,
-    # stays comparable to unbalanced runs.
-    mod_weights = None
-    # TOKEN-PROPORTIONAL LOSS WEIGHTING. training_loss averages per MODALITY with equal weight,
-    # so the 8 modalities that cost 4-5 tokens each (33 of 1017 = 3.2% of the frame) receive
-    # 8/14 = 57% of the gradient, while the 6 modalities holding 984 tokens receive 43%.
-    # Measured 2026-08-26: the cheap group OVERFITS (train/val gap +0.10..+0.42) and the
-    # expensive group UNDERFITS (negative gap) -- both symptoms of that split. weight ~ n_tok**a
-    # interpolates: a=0 reproduces the equal weighting exactly (DEFAULT, no behaviour change),
-    # a=1 is fully token-proportional. Normalised to mean 1 so the loss scale, and therefore LR
-    # behaviour, stays comparable across settings.
-    if mod_weight_pow and abs(float(mod_weight_pow)) > 1e-9:
-        names = [m.name for m in cfg.modalities]
-        raw = {m.name: float(m.n_tok) ** float(mod_weight_pow) for m in cfg.modalities}
-        scale = len(names) / sum(raw.values())
-        mod_weights = {n: raw[n] * scale for n in names}
-        if ddp.is_main:
-            log(f"[dynamics] token-weighted loss (n_tok**{float(mod_weight_pow):g}): "
-                + "  ".join(f"{n} x{mod_weights[n]:.3f}" for n in names))
-    if use_presence and balance_presence:
-        names = [m.name for m in cfg.modalities]
-        tr = set(str(s) for s in train_shots)
-        fr = {}
-        for n in names:
-            got = sum(1 for s, d in presence.items() if s in tr and d.get(n, False))
-            fr[n] = max(got / max(len(tr), 1), 1e-3)      # floor: never divide by ~0
-        raw = {n: 1.0 / fr[n] for n in names}
-        scale = len(names) / sum(raw.values())
-        mod_weights = {n: raw[n] * scale for n in names}
-        if ddp.is_main:
-            log("[dynamics] presence-balanced weights: "
-                + "  ".join(f"{n} {100*fr[n]:.1f}%->x{mod_weights[n]:.2f}" for n in names))
-    # Explicit weights come LAST so they OVERRIDE --mod_weight_pow and --balance_presence
-    # rather than being silently overridden by them. See resolve_mod_weights for the rationale.
-    if str(mod_weights_json).strip():
-        _names = [m.name for m in cfg.modalities]
-        mod_weights = resolve_mod_weights(mod_weights_json, _names)
-        if ddp.is_main:
-            log("[dynamics] EXPLICIT mod_weights (normalised to mean 1): "
-                + "  ".join(f"{n} x{mod_weights[n]:.3f}" for n in _names))
-            log("[dynamics]   NOTE val/gen CE are scored EQUAL-WEIGHT regardless, so they stay "
-                "comparable to every historical arm; judge this from the per-modality readout.")
 
-    ds = FrameCodeDataset(cache_dir, train_shots, cfg, presence=presence,
-                          stride=window_stride, windows_per_shot=windows_per_shot,
-                          window_sample=window_sample, live_end=live_end, t0_start=_t0)
-    if use_live and ddp.is_main:
-        _cov = sum(1 for sid in ds.shot_ids if sid in live_end)
-        _frac = [n / max(d["n_frames"], 1) for n, d in zip(ds.n_live, ds.shots)]
-        log(f"[dynamics] POST-SHOT MASKING ON (t0_start={_t0}): {_cov}/{len(ds.shot_ids)} train "
-            f"shots have a measured t_end; mean live fraction "
-            f"{sum(_frac)/max(len(_frac),1):.3f}. **THIS REDEFINES val/gen CE** -- numbers are "
-            f"NOT comparable to arms trained without it.")
-    if ddp.is_main:
-        log(f"[dynamics] cache={cache_dir} shots={n_all} split_seed={split_seed} "
-            f"(train {len(train_shots)}/val {len(val_shots)}/test {len(test_shots)} HELD OUT) "
-            f"windows={len(ds)} d_model={d_model} depth={depth} heads={cfg.n_heads} "
-            f"frame_tokens={cfg.tokens_per_frame} win={cfg.max_frames}")
-        if windows_per_shot:
-            # Recorded explicitly: an arm's window COVERAGE is invisible from `windows=` alone
-            # (10/shot reads the same whether the offsets are 0..9 or spread over all 140), and
-            # the old first-n behaviour cost +0.36 to +2.15 nats of unseen-phase penalty.
-            if window_sample == "first":
-                log(f"[dynamics] window offsets FIRST {windows_per_shot} ONLY (deployment region): "
-                    f"starts 0..{windows_per_shot - 1} = frames "
-                    f"0..{windows_per_shot - 1 + cfg.max_frames - 1}; "
-                    f"val_windows_per_shot={val_windows_per_shot}")
-            elif window_sample == "live":
-                _ps = [len(p) for p in ds._live_starts]
-                _nte = sum(1 for p in ds._live_starts if len(p) > windows_per_shot)
-                log(f"[dynamics] window offsets LIVE-RESAMPLED EACH EPOCH: {windows_per_shot}/shot "
-                    f"drawn from the live-plasma starts (>=50% of the window before t_end) + starts "
-                    f"0..{windows_per_shot - 1}; pool mean {sum(_ps)/max(len(_ps),1):.1f} "
-                    f"(min {min(_ps) if _ps else 0}, max {max(_ps) if _ps else 0}); {_nte}/{len(_ps)} "
-                    f"shots have a pool wider than the deployment region; "
-                    f"val_windows_per_shot={val_windows_per_shot}")
+def _comma_separated(text: str) -> tuple:
+    return tuple(item.strip() for item in text.split(",") if item.strip())
+
+
+@dataclasses.dataclass
+class TrainConfig:
+    """Options of :func:`train`; ``None`` keeps the :class:`DynamicsConfig` default.
+
+    Every field with a flag is exposed by :func:`build_arg_parser`, so the help
+    texts below are the command-line documentation.
+    """
+
+    # Run length and optimisation.
+    steps: int = _option(200_000, "optimizer steps")
+    batch_size: int = _option(8, "micro-batch per rank")
+    lr: float = _option(3e-4, "peak learning rate")
+    warmup_steps: int = _option(0, "linear LR warmup steps")
+    min_lr_ratio: float = _option(0.01, "cosine floor as a fraction of the peak LR")
+    lr_decay_from: int = _option(
+        0,
+        "step at which the cosine starts at full LR (0 = end of warmup); set to "
+        "the resume step of a warm-started fork",
+    )
+    beta2: float = _option(0.999, "AdamW beta2")
+    weight_decay: float = _option(0.01, "AdamW weight decay")
+    wd_exclude_norms: bool = _option(
+        False,
+        "1 = no weight decay on norms and biases; changes the param groups, so "
+        "toggling it mid-chain resets the Adam moments",
+        cli_default=0,
+        cli_type=int,
+        from_cli=bool,
+    )
+    grad_clip: float = _option(
+        0.0,
+        "clip the all-reduced gradient norm; 0 = off. Typical norms are ~0.05, so "
+        "1.0 never fires",
+    )
+    accum_steps: int = _option(
+        1, "gradient-accumulation micro-steps per optimizer step"
+    )
+    num_workers: int = _option(4, "data-loader workers")
+    ckpt_every: int = _option(
+        1000,
+        "checkpoint and validation cadence in steps; keep it below the steps of one "
+        "chained job, or a resume restarts from step 0",
+        cli_default=200,
+    )
+    patience: int = _option(
+        0, "stop after this many evaluations without improvement; 0 = never"
+    )
+    # Model.
+    depth: int = _option(24, "transformer blocks")
+    d_model: int = _option(1024, "model width")
+    n_heads: Optional[int] = _option(None, "attention heads", cli_type=int)
+    k0_seed: Optional[int] = _option(None, "seed frames", cli_type=int)
+    n_predict: Optional[int] = _option(None, "predicted frames", cli_type=int)
+    dropout: float = _option(0.0, "attention and FFN dropout")
+    grad_ckpt: Optional[int] = _option(
+        None,
+        "1 = gradient checkpointing (needed once d_model*depth >= 4096)",
+        cli_type=int,
+    )
+    act_cross_attn: Optional[int] = _option(
+        None, "1 = per-token cross-attention over the actuator channels", cli_type=int
+    )
+    latent_head: Optional[int] = _option(
+        None,
+        "1 = Gaussian head over the FSQ grid coordinate; its loss is a Gaussian NLL, "
+        "not comparable to token CE",
+        cli_type=int,
+    )
+    lag_embed_k: Optional[int] = _option(
+        None,
+        "own-column history embeddings per token; changes the parameter set",
+        cli_type=int,
+    )
+    # Objective.
+    ss_final_frac: Optional[float] = _option(
+        None, "final scheduled-sampling fraction; 0 disables it", cli_type=float
+    )
+    ss_ramp_steps: Optional[int] = _option(
+        None,
+        "steps of the scheduled-sampling ramp; set it to the run length",
+        cli_type=int,
+    )
+    gen_mask_p: Optional[float] = _option(
+        None,
+        "fraction of samples masked like a rollout; 0 = cosine prior only",
+        cli_type=float,
+    )
+    gen_horizon_alpha: Optional[float] = _option(
+        None,
+        "generation-mode horizon exponent, p(h) ~ h**-alpha; 0 = uniform split",
+        cli_type=float,
+    )
+    gen_horizon_max: Optional[int] = _option(
+        None, "generation-mode horizon uniform in [1, N]", cli_type=int
+    )
+    label_smoothing: float = _option(
+        0.0, "cross-entropy label smoothing, training only"
+    )
+    mask_absent: bool = _option(
+        False,
+        "exclude absent diagnostics from the loss (they stay in the input); builds "
+        "or loads <cache>/_presence.json",
+    )
+    presence_path: Optional[str] = _option(
+        None, "presence map (default <cache_dir>/_presence.json)"
+    )
+    balance_presence: bool = _option(
+        False,
+        "weight each modality by 1 / (fraction of train shots recording it); "
+        "requires --mask_absent",
+    )
+    mod_weight_pow: float = _option(
+        0.0, "per-modality loss weight n_tok**a; 0 = equal weighting"
+    )
+    mod_weights_json: str = _option(
+        "",
+        "explicit loss weights {modality: weight} as a file path (preferred) or "
+        "inline JSON; overrides --mod_weight_pow and --balance_presence",
+    )
+    live_end_json: str = _option(
+        "",
+        "JSON {shot: plasma end [s]}; zero-weights post-shot frames in train and val "
+        "loss. Redefines val/gen CE",
+    )
+    # Data split.
+    val_frac: float = _option(0.05, "validation fraction if val_n is 0", cli=False)
+    val_n: int = _option(0, "validation size in shots; 0 = val_frac of the cache")
+    test_n: int = _option(0, "held-out test size in shots (overrides --test_frac)")
+    test_frac: float = _option(0.0, "held-out test size as a fraction of the cache")
+    split_seed: int = _option(0, "seed of a random split; 0 = sorted split")
+    train_cap: int = _option(0, "train on the first N train shots")
+    pin_val: tuple = _option(
+        (),
+        "comma-separated shots forced into val",
+        cli_default="",
+        cli_type=str,
+        from_cli=_comma_separated,
+    )
+    pin_train: tuple = _option(
+        (),
+        "comma-separated shots forced into train, first in order",
+        cli_default="",
+        cli_type=str,
+        from_cli=_comma_separated,
+    )
+    pin_both: tuple = _option(
+        (),
+        "comma-separated shots in both train and val (not held out)",
+        cli_default="",
+        cli_type=str,
+        from_cli=_comma_separated,
+    )
+    # Windows.
+    window_stride: int = _option(1, "frames between training-window starts")
+    windows_per_shot: int = _option(0, "training windows per shot and epoch; 0 = all")
+    window_sample: str = _option(
+        "random",
+        "which --windows_per_shot windows a shot contributes: 'first' = starts "
+        "0..n-1, 'random' = redrawn from all starts each epoch, 'live' = redrawn "
+        "from starts at least half before the plasma end (train only)",
+        choices=["random", "first", "live"],
+    )
+    val_window_sample: str = _option(
+        "",
+        "window sampling of validation; '' = same as --window_sample",
+        choices=["", "random", "first"],
+    )
+    val_windows: int = _option(32, "fixed validation windows")
+    val_windows_per_shot: int = _option(
+        0, "windows per validation shot; 0 = all starts. Redefines val CE"
+    )
+    best_metric: str = _option(
+        "masked",
+        "metric ranking dynamics_best.pt: 'masked' (cosine-prior infilling) or "
+        "'gen' (whole frame unknown, real history: the rollout condition)",
+        choices=("masked", "gen"),
+    )
+
+    @classmethod
+    def from_cli(cls, args: argparse.Namespace) -> TrainConfig:
+        """Build the config from parsed command-line arguments."""
+        values = {}
+        for field in dataclasses.fields(cls):
+            if not field.metadata["cli"]:
+                continue
+            value = getattr(args, field.name)
+            convert = field.metadata["from_cli"]
+            values[field.name] = convert(value) if convert else value
+        return cls(**values)
+
+
+class BestMetric(enum.StrEnum):
+    """Validation metric that ranks ``dynamics_best.pt``."""
+
+    MASKED = "masked"
+    GEN = "gen"
+
+
+class ValScore(NamedTuple):
+    """Equal-weight validation loss and its per-modality breakdown."""
+
+    loss: float
+    per_modality: Dict[str, float]
+
+
+class _PhaseTimer:
+    """Wall time per training phase, accumulated on profiled steps only."""
+
+    PHASES = ("data", "h2d", "fb", "sync", "gn", "opt")
+
+    def __init__(self, device):
+        self.cuda = device.type == "cuda"
+        self.reset()
+        self.mark()
+
+    def reset(self):
+        self.seconds = dict.fromkeys(self.PHASES, 0.0)
+
+    def mark(self):
+        self._last = time.perf_counter()
+
+    def lap(self, phase, sync=False):
+        if sync and self.cuda:
+            torch.cuda.synchronize()
+        now = time.perf_counter()
+        self.seconds[phase] += now - self._last
+        self._last = now
+
+    def total(self) -> float:
+        return sum(self.seconds.values())
+
+    def summary(self) -> str:
+        if self.total() <= 0:
+            return ""
+        s = self.seconds
+        return (
+            f" t={self.total():.1f}s(data {s['data']:.1f} h2d {s['h2d']:.2f} "
+            f"fb {s['fb']:.1f} sync {s['sync']:.2f} gn {s['gn']:.2f} "
+            f"opt {s['opt']:.2f})"
+        )
+
+
+def _append_jsonl(path, record) -> None:
+    with open(path, "a") as f:
+        f.write(json.dumps(record) + "\n")
+
+
+def _build_model_config(cache_dir, config: TrainConfig, is_main, log) -> DynamicsConfig:
+    """The model configuration: layout and actuator width come from the cache."""
+    model_kwargs = dict(
+        modalities=cache_modality_specs(cache_dir),
+        d_model=config.d_model,
+        depth=config.depth,
+    )
+    probe = next(Path(cache_dir).glob("*.pt"), None)
+    if probe is not None:
+        cached = torch.load(probe, map_location="cpu", weights_only=False)
+        cache_width = int(cached["actuators"].shape[-1])
+        model_kwargs["actuator_dim"] = cache_width
+        spec_width = sum(n for _key, n in _ACT_SPEC)
+        if is_main and cache_width != spec_width:
+            log(
+                f"[dynamics] cache actuator width {cache_width} != current _ACT_SPEC "
+                f"{spec_width} — using the CACHE width (rebuild the cache "
+                f"to pick up new actuator channels)"
+            )
+    for name in ("n_heads", "k0_seed", "n_predict"):
+        if getattr(config, name):
+            model_kwargs[name] = getattr(config, name)
+    model_cfg = DynamicsConfig(**model_kwargs)
+    if config.dropout:
+        model_cfg.dropout = float(config.dropout)
+    if config.ss_final_frac is not None:
+        model_cfg.ss_ramp_final_frac = float(config.ss_final_frac)
+    if config.ss_ramp_steps is not None:
+        model_cfg.ss_ramp_steps = int(config.ss_ramp_steps)
+    if config.gen_mask_p is not None:
+        model_cfg.gen_mask_p = float(config.gen_mask_p)
+    if config.gen_horizon_alpha is not None:
+        model_cfg.gen_horizon_alpha = float(config.gen_horizon_alpha)
+    if config.gen_horizon_max is not None:
+        model_cfg.gen_horizon_max = int(config.gen_horizon_max)
+    if config.act_cross_attn is not None:
+        model_cfg.act_cross_attn = bool(config.act_cross_attn)
+    if config.grad_ckpt is not None:
+        model_cfg.grad_checkpointing = bool(int(config.grad_ckpt))
+    if config.latent_head is not None:
+        model_cfg.latent_head = bool(int(config.latent_head))
+        if model_cfg.latent_head and is_main:
+            log(
+                "[dynamics] LATENT HEAD ON: Gaussian regression of the FSQ grid "
+                f"coordinate (levels {tuple(model_cfg.fsq_levels)}) replaces the "
+                "1000-way classifier. Train/val CE are Gaussian NLL in coordinate "
+                "space -- NOT comparable to token-CE arms."
+            )
+    if config.lag_embed_k is not None:
+        model_cfg.lag_embed_k = int(config.lag_embed_k)
+    return model_cfg
+
+
+def _loss_weights(model_cfg, config: TrainConfig, train_shots, presence, is_main, log):
+    """Per-modality training-loss weights, or None for equal weighting.
+
+    Later sources override earlier ones: ``n_tok**mod_weight_pow``, then the
+    inverse presence fraction over the training shots, then explicit weights.
+    Validation is always scored with equal weights.
+    """
+    names = [m.name for m in model_cfg.modalities]
+    weights = None
+    power = config.mod_weight_pow
+    if power and abs(float(power)) > 1e-9:
+        raw = {m.name: float(m.n_tok) ** float(power) for m in model_cfg.modalities}
+        weights = _mean_one(raw, names)
+        if is_main:
+            log(
+                f"[dynamics] token-weighted loss (n_tok**{float(power):g}): "
+                + "  ".join(f"{n} x{weights[n]:.3f}" for n in names)
+            )
+    if presence is not None and config.balance_presence:
+        train_set = {str(s) for s in train_shots}
+        recorded_fraction = {}
+        for name in names:
+            n_recorded = sum(
+                1
+                for shot, flags in presence.items()
+                if shot in train_set and flags.get(name, False)
+            )
+            recorded_fraction[name] = max(n_recorded / max(len(train_set), 1), 1e-3)
+        weights = _mean_one({n: 1.0 / recorded_fraction[n] for n in names}, names)
+        if is_main:
+            log(
+                "[dynamics] presence-balanced weights: "
+                + "  ".join(
+                    f"{n} {100 * recorded_fraction[n]:.1f}%->x{weights[n]:.2f}"
+                    for n in names
+                )
+            )
+    if str(config.mod_weights_json).strip():
+        weights = resolve_mod_weights(config.mod_weights_json, names)
+        if is_main:
+            log(
+                "[dynamics] EXPLICIT mod_weights (normalised to mean 1): "
+                + "  ".join(f"{n} x{weights[n]:.3f}" for n in names)
+            )
+            log(
+                "[dynamics]   NOTE val/gen CE are scored EQUAL-WEIGHT regardless, so "
+                "they stay comparable to every historical arm; judge this from the "
+                "per-modality readout."
+            )
+    return weights
+
+
+def _load_live_end(path_text: str):
+    """Read ``{shot: plasma end time}``; None when no file is given."""
+    if not str(path_text).strip():
+        return None
+    path = Path(str(path_text).strip())
+    if not path.exists():
+        raise FileNotFoundError(f"--live_end_json: no such file {path}")
+    live_end = {str(k): float(v) for k, v in json.loads(path.read_text()).items()}
+    if not live_end:
+        raise ValueError(f"--live_end_json: {path} is empty")
+    return live_end
+
+
+class Trainer:
+    """Train the dynamics model on a frame-code cache, resuming from ``out_dir``.
+
+    Gradients are averaged across ranks by an explicit all-reduce: DDP's hooks
+    break the gradient-checkpoint recompute. Each optimizer step accumulates
+    ``accum_steps`` micro-batches under bf16 autocast, and validation runs every
+    ``ckpt_every`` steps on fixed windows and masks.
+
+    Parameters
+    ----------
+    cache_dir : path-like
+        Frame-code cache.
+    out_dir : path-like
+        Run directory: checkpoints, loss history, loss curve and frozen split.
+    config : TrainConfig
+        Options of the run.
+    log : callable, default=print
+        Logger.
+    """
+
+    def __init__(self, cache_dir, out_dir, config: TrainConfig, log=print):
+        self.cache_dir = cache_dir
+        self.out_dir = out_dir
+        self.config = config
+        self.log = log
+        self.ddp = tc._DDPState()
+        self.device = self.ddp.device
+        self.is_main = self.ddp.is_main
+
+    def fit(self) -> int:
+        """Run (or resume) training; return the last optimizer step."""
+        self._setup_model_config()
+        self._setup_split()
+        self._setup_loss_masks()
+        self._setup_train_data()
+        self._setup_model()
+        self._setup_optimizer()
+        self._setup_history()
+        self._setup_validation()
+        self._restore_best()
+        return self._train_loop()
+
+    # Set-up, in the order the steps must run.
+
+    def _setup_model_config(self):
+        self.model_cfg = _build_model_config(
+            self.cache_dir, self.config, self.is_main, self.log
+        )
+
+    def _setup_split(self):
+        config = self.config
+        self.n_cached = len(list(Path(self.cache_dir).glob("*.pt")))
+        n_val = config.val_n or max(1, int(self.n_cached * config.val_frac))
+        if config.test_n:
+            n_test = config.test_n
+        elif config.test_frac:
+            n_test = max(1, int(self.n_cached * config.test_frac))
+        else:
+            n_test = 0
+        self.train_shots, self.val_shots, self.test_shots = resolve_split(
+            self.cache_dir,
+            self.out_dir,
+            n_val,
+            split_seed=config.split_seed,
+            train_cap=config.train_cap,
+            test_n=n_test,
+            pin_val=config.pin_val,
+            pin_train=config.pin_train,
+            pin_both=config.pin_both,
+            write=self.is_main,
+            log=self.log if self.is_main else _silent,
+        )
+
+    def _setup_loss_masks(self):
+        config = self.config
+        self.live_end = _load_live_end(config.live_end_json)
+        self.use_live = self.live_end is not None
+        # The frame-to-time map must come from the cache, or wrong frames are masked.
+        self.t0_start = _manifest_t0(self.cache_dir)
+        self.use_presence = bool(config.mask_absent)
+        self.presence = self._load_presence() if self.use_presence else None
+        self.mod_weights = _loss_weights(
+            self.model_cfg,
+            config,
+            self.train_shots,
+            self.presence,
+            self.is_main,
+            self.log,
+        )
+
+    def _load_presence(self):
+        if self.config.presence_path:
+            path = Path(self.config.presence_path)
+        else:
+            path = Path(self.cache_dir) / "_presence.json"
+        if not path.exists():
+            if self.is_main:
+                self.log(
+                    f"[dynamics] no presence map at {path} — building it once "
+                    f"(single pass)"
+                )
+                build_presence(self.cache_dir, out_path=path, log=self.log)
+            if self.ddp.world_size > 1:
+                dist.barrier()
+        presence = json.loads(path.read_text())["presence"]
+        if self.is_main:
+            self.log(
+                f"[dynamics] MASK_ABSENT on: presence map {path} "
+                f"({len(presence)} shots)"
+            )
+        return presence
+
+    def _dataset(self, shots, **window_options) -> FrameCodeDataset:
+        return FrameCodeDataset(
+            self.cache_dir,
+            shots,
+            self.model_cfg,
+            presence=self.presence,
+            live_end=self.live_end,
+            t0_start=self.t0_start,
+            **window_options,
+        )
+
+    def _setup_train_data(self):
+        config = self.config
+        self.train_ds = self._dataset(
+            self.train_shots,
+            stride=config.window_stride,
+            windows_per_shot=config.windows_per_shot,
+            window_sample=config.window_sample,
+        )
+        if self.use_live and self.is_main:
+            dataset = self.train_ds
+            n_measured = sum(1 for shot in dataset.shot_ids if shot in self.live_end)
+            live_fractions = [
+                n_live / max(entry["n_frames"], 1)
+                for n_live, entry in zip(dataset.n_live, dataset.shots)
+            ]
+            mean_live = sum(live_fractions) / max(len(live_fractions), 1)
+            self.log(
+                f"[dynamics] POST-SHOT MASKING ON (t0_start={self.t0_start}): "
+                f"{n_measured}/{len(dataset.shot_ids)} train shots have a measured "
+                f"t_end; mean live fraction {mean_live:.3f}. **THIS REDEFINES val/gen "
+                f"CE** -- numbers are NOT comparable to arms trained without it."
+            )
+        if self.is_main:
+            self._log_run_setup()
+        world_size = self.ddp.world_size
+        self.sampler = (
+            DistributedSampler(
+                self.train_ds, num_replicas=world_size, rank=self.ddp.rank, shuffle=True
+            )
+            if world_size > 1
+            else None
+        )
+        self.loader = DataLoader(
+            self.train_ds,
+            batch_size=config.batch_size,
+            sampler=self.sampler,
+            shuffle=self.sampler is None,
+            num_workers=config.num_workers,
+            collate_fn=_collate_frames,
+            drop_last=True,
+        )
+
+    def _log_run_setup(self):
+        config, model_cfg, dataset, log = (
+            self.config,
+            self.model_cfg,
+            self.train_ds,
+            self.log,
+        )
+        log(
+            f"[dynamics] cache={self.cache_dir} shots={self.n_cached} "
+            f"split_seed={config.split_seed} (train {len(self.train_shots)}/val "
+            f"{len(self.val_shots)}/test {len(self.test_shots)} HELD OUT) "
+            f"windows={len(dataset)} d_model={config.d_model} depth={config.depth} "
+            f"heads={model_cfg.n_heads} frame_tokens={model_cfg.tokens_per_frame} "
+            f"win={model_cfg.max_frames}"
+        )
+        n = config.windows_per_shot
+        if n:
+            per_val = f"val_windows_per_shot={config.val_windows_per_shot}"
+            if config.window_sample == WindowSample.FIRST:
+                log(
+                    f"[dynamics] window offsets FIRST {n} ONLY (deployment region): "
+                    f"starts 0..{n - 1} = frames "
+                    f"0..{n - 1 + model_cfg.max_frames - 1}; "
+                    f"{per_val}"
+                )
+            elif config.window_sample == WindowSample.LIVE:
+                pool_sizes = [len(pool) for pool in dataset._live_starts]
+                n_wide = sum(1 for size in pool_sizes if size > n)
+                log(
+                    f"[dynamics] window offsets LIVE-RESAMPLED EACH EPOCH: {n}/shot "
+                    f"drawn from the live-plasma starts (>=50% of the window before "
+                    f"t_end) + starts 0..{n - 1}; pool mean "
+                    f"{sum(pool_sizes) / max(len(pool_sizes), 1):.1f} (min "
+                    f"{min(pool_sizes) if pool_sizes else 0}, max "
+                    f"{max(pool_sizes) if pool_sizes else 0}); {n_wide}/"
+                    f"{len(pool_sizes)} shots have a pool wider than the deployment "
+                    f"region; {per_val}"
+                )
             else:
-                log(f"[dynamics] window offsets RESAMPLED EACH EPOCH: {windows_per_shot}/shot drawn "
-                    f"from all {len(ds._starts[0])} start offsets, seeded on epoch; "
-                    f"val_windows_per_shot={val_windows_per_shot}")
-        # OBJECTIVE-SHAPING KNOBS, logged explicitly. Without this line the only way to tell
-        # whether an arm actually ran with generation-mode masking or scheduled sampling is to
-        # reconstruct the launcher/env from sacct and compare file mtimes against the submit
-        # time — which is exactly the ambiguity that arose for bp128_gm on 2026-08-15.
-        log(f"[dynamics] objective: gen_mask_p={cfg.gen_mask_p} "
-            f"label_smoothing={label_smoothing} "
-            f"gen_horizon_alpha={cfg.gen_horizon_alpha} "
-            f"gen_horizon_max={cfg.gen_horizon_max} "
-            f"ss_final_frac={cfg.ss_ramp_final_frac} ss_ramp_steps={cfg.ss_ramp_steps} "
-            f"dropout={cfg.dropout} mask_absent={int(use_presence)} "
-            f"(val is ALWAYS scored at gen_mask_p=0 so arms stay comparable)")
-    if ddp.is_main:
-        log(f"[dynamics] batch: micro={batch_size} x ranks={ddp.world_size} "
-            f"x accum={accum_steps} -> EFFECTIVE {batch_size * ddp.world_size * accum_steps}"
-            + (f"  ({accum_steps} fwd/bwd per optimizer step)" if accum_steps > 1 else ""))
-        # Report the allocator config AS SEEN BY THE RANK PROCESS. The launcher's echo runs in
-        # the batch step, NOT inside the srun tasks, so it cannot prove the ranks got it —
-        # and job 5233441 OOM'd with 19.26 GiB reserved-but-unallocated (fragmentation) while
-        # the submitting shell had expandable_segments set.
-        import os as _o
-        log(f"[dynamics] RANK-SEEN PYTORCH_ALLOC_CONF="
-            f"{_o.environ.get('PYTORCH_ALLOC_CONF', '<UNSET>')} "
-            f"(HIP={_o.environ.get('PYTORCH_HIP_ALLOC_CONF', '<unset>')})")
-    sampler = DistributedSampler(ds, num_replicas=ddp.world_size, rank=ddp.rank, shuffle=True) \
-        if ddp.world_size > 1 else None
-    loader = DataLoader(ds, batch_size=batch_size, sampler=sampler, shuffle=(sampler is None),
-                        num_workers=num_workers, collate_fn=_collate_frames, drop_last=True)
+                log(
+                    f"[dynamics] window offsets RESAMPLED EACH EPOCH: {n}/shot drawn "
+                    f"from all {len(dataset._starts[0])} start offsets, seeded on "
+                    f"epoch; {per_val}"
+                )
+        log(
+            f"[dynamics] objective: gen_mask_p={model_cfg.gen_mask_p} "
+            f"label_smoothing={config.label_smoothing} "
+            f"gen_horizon_alpha={model_cfg.gen_horizon_alpha} "
+            f"gen_horizon_max={model_cfg.gen_horizon_max} "
+            f"ss_final_frac={model_cfg.ss_ramp_final_frac} "
+            f"ss_ramp_steps={model_cfg.ss_ramp_steps} "
+            f"dropout={model_cfg.dropout} mask_absent={int(self.use_presence)} "
+            f"(val is ALWAYS scored at gen_mask_p=0 so arms stay comparable)"
+        )
+        world_size, accum = self.ddp.world_size, config.accum_steps
+        log(
+            f"[dynamics] batch: micro={config.batch_size} x ranks={world_size} "
+            f"x accum={accum} -> EFFECTIVE {config.batch_size * world_size * accum}"
+            + (f"  ({accum} fwd/bwd per optimizer step)" if accum > 1 else "")
+        )
+        # The allocator config as the rank process sees it, not the launching shell.
+        log(
+            f"[dynamics] RANK-SEEN PYTORCH_ALLOC_CONF="
+            f"{os.environ.get('PYTORCH_ALLOC_CONF', '<UNSET>')} "
+            f"(HIP={os.environ.get('PYTORCH_HIP_ALLOC_CONF', '<unset>')})"
+        )
 
-    model = MaskGITDynamics(cfg).to(device)
-    latest = Path(out_dir) / "dynamics_latest.pt"
-    start_step = 0
-    ck = None
-    if latest.exists():
-        ck = torch.load(latest, map_location=device, weights_only=False)
-        model.load_state_dict(ck["model"]); start_step = int(ck.get("step", 0))
-        if ddp.is_main:
-            log(f"[dynamics] resumed from {latest} @ step {start_step}")
-    # MANUAL gradient sync (no DDP wrapper). torch DDP's autograd hooks are fundamentally
-    # incompatible with gradient checkpointing here: non-reentrant corrupts the recompute
-    # (t()-on-4D / addmm), reentrant needs static_graph but the graph varies (scheduled sampling)
-    # AND drops grads on out-of-checkpoint params (act_embed + all heads, per TORCH_DISTRIBUTED_DEBUG
-    # =DETAIL). Checkpointing works perfectly BARE, so run the bare model and all-reduce grads by
-    # hand after backward — identical math to DDP (average across ranks), ~100 ms/step for 433M
-    # params on Slingshot. Also needs no loss-adapter / static_graph / find_unused gymnastics.
-    def _sync_grads():
-        if ddp.world_size <= 1:
-            return
-        for p in model.parameters():
-            if p.grad is not None:
-                dist.all_reduce(p.grad, op=dist.ReduceOp.SUM)
-                p.grad /= ddp.world_size
-    # Optimizer / schedule. Defaults preserve the historical recipe (no warmup, wd 0.01,
-    # beta2 0.999, cosine to 1% of peak) so existing runs are unchanged; the Genie-style
-    # recipe is opt-in per argument (warmup_steps > 0, beta2 0.9, wd 1e-4, min_lr 10%).
-    # The schedule is ONE LambdaLR whose factor is a pure function of the step index —
-    # resume-safe by construction (no SequentialLR milestone state to desync across the
-    # 2 h chain legs; that class of bug bit the FAITH chain).
-    # PARAM GROUPS. A single group decays EVERYTHING, including LayerNorm scales and biases.
-    # At the wd=1e-4 every arm so far ran that was harmless -- lr*wd = 1e-7/step is a 0.05%
-    # shrink over 5k steps, i.e. no regularisation at all -- but at wd=0.1 it decays norms and
-    # biases toward zero and would read as a failed experiment. Convention: decay tensors with
-    # ndim >= 2 (matrices/embeddings), never ndim < 2.
-    # OPT-IN, because splitting changes the param-group COUNT and opt.load_state_dict() requires
-    # it to match; flipping it on globally would break resume for every existing chain.
-    if wd_exclude_norms and weight_decay > 0:
-        decay = [q for q in model.parameters() if q.requires_grad and q.ndim >= 2]
-        plain = [q for q in model.parameters() if q.requires_grad and q.ndim < 2]
-        opt = torch.optim.AdamW([{"params": decay, "weight_decay": weight_decay},
-                                 {"params": plain, "weight_decay": 0.0}],
-                                lr=lr, betas=(0.9, beta2))
-        if ddp.is_main:
-            log(f"[dynamics] wd groups: {len(decay)} decayed (wd={weight_decay}) / "
-                f"{len(plain)} undecayed (norms+biases)")
-    else:
-        opt = torch.optim.AdamW(model.parameters(), lr=lr, betas=(0.9, beta2),
-                                weight_decay=weight_decay)
+    def _setup_model(self):
+        self.model = MaskGITDynamics(self.model_cfg).to(self.device)
+        self.latest_path = Path(self.out_dir) / "dynamics_latest.pt"
+        self.best_path = Path(self.out_dir) / "dynamics_best.pt"
+        self.resumed = None
+        self.start_step = 0
+        if self.latest_path.exists():
+            self.resumed = torch.load(
+                self.latest_path, map_location=self.device, weights_only=False
+            )
+            self.model.load_state_dict(self.resumed["model"])
+            self.start_step = int(self.resumed.get("step", 0))
+            if self.is_main:
+                self.log(
+                    f"[dynamics] resumed from {self.latest_path} @ step "
+                    f"{self.start_step}"
+                )
 
-    # DECAY ANCHOR. The cosine measures progress from step 0, so a WARM START at step N begins
-    # partway down the curve -- resuming at 6800 with steps=19116 would give 0.72x the requested
-    # rate, not 1.0x. lr_decay_from pins the top of the cosine to a chosen step so a fork gets the
-    # full rate and decays to min_lr_ratio over the remaining span. Default 0 = anchor at warmup,
-    # i.e. exactly the previous behaviour.
-    _anchor = float(lr_decay_from) if lr_decay_from else float(warmup_steps)
+    def _setup_optimizer(self):
+        config = self.config
+        lr, betas = config.lr, (0.9, config.beta2)
+        # Decaying norms and biases is opt-in: it changes the param-group count,
+        # which the optimizer state of an existing chain must match.
+        if config.wd_exclude_norms and config.weight_decay > 0:
+            parameters = [p for p in self.model.parameters() if p.requires_grad]
+            decayed = [p for p in parameters if p.ndim >= 2]
+            undecayed = [p for p in parameters if p.ndim < 2]
+            self.optimizer = torch.optim.AdamW(
+                [
+                    {"params": decayed, "weight_decay": config.weight_decay},
+                    {"params": undecayed, "weight_decay": 0.0},
+                ],
+                lr=lr,
+                betas=betas,
+            )
+            if self.is_main:
+                self.log(
+                    f"[dynamics] wd groups: {len(decayed)} decayed "
+                    f"(wd={config.weight_decay}) / {len(undecayed)} undecayed "
+                    f"(norms+biases)"
+                )
+        else:
+            self.optimizer = torch.optim.AdamW(
+                self.model.parameters(),
+                lr=lr,
+                betas=betas,
+                weight_decay=config.weight_decay,
+            )
+        self.scheduler = torch.optim.lr_scheduler.LambdaLR(
+            self.optimizer, self._lr_factor
+        )
+        self._restore_optimizer()
 
-    def _lr_factor(step: int) -> float:
-        if warmup_steps and step < warmup_steps:
-            return (step + 1) / float(warmup_steps)          # linear warmup from ~0
-        prog = (step - _anchor) / max(1.0, steps - _anchor)
-        cos = 0.5 * (1.0 + math.cos(math.pi * min(max(prog, 0.0), 1.0)))
-        return min_lr_ratio + (1.0 - min_lr_ratio) * cos     # cosine peak -> min_lr_ratio
-    sched = torch.optim.lr_scheduler.LambdaLR(opt, _lr_factor)
-    if ck is not None and "opt" in ck:
-        # restore optimizer (Adam moments) + scheduler so a 2 h-job chain doesn't reset them each
-        # resume; without this Adam m/v reset every ~700 steps -> unstable. See checkpoint-deadlock.
-        try:
-            opt.load_state_dict(ck["opt"])
-        except (ValueError, KeyError) as e:
-            # param-group layout changed between runs (--wd_exclude_norms toggled). Adam
-            # moments are not portable across a regrouping: restart them rather than die,
-            # and say so loudly since it is a real discontinuity.
-            log(f"[dynamics] optimizer state INCOMPATIBLE ({type(e).__name__}: {e}); "
-                f"Adam moments restart from zero at step {start_step}")
-        # The scheduler state may come from a DIFFERENT scheduler class than the one this
-        # run builds (checkpoints written before the warmup+cosine LambdaLR carry
-        # CosineAnnealingLR state, whose dict has no 'lr_lambdas' -> KeyError; that broke
-        # every ngen2 resume on 2026-08-10). Our LR factor is a PURE FUNCTION of the step
-        # index, so replaying start_step steps reproduces the exact schedule either way.
-        loaded = False
-        if "sched" in ck:
+    def _lr_factor(self, step: int) -> float:
+        """Linear warmup, then a cosine from the decay anchor to ``min_lr_ratio``.
+
+        A pure function of the step, so resuming reproduces the schedule. The
+        anchor lets a warm-started fork begin its cosine at full rate.
+        """
+        config = self.config
+        if config.warmup_steps and step < config.warmup_steps:
+            return (step + 1) / float(config.warmup_steps)
+        anchor = float(config.lr_decay_from or config.warmup_steps)
+        progress = (step - anchor) / max(1.0, config.steps - anchor)
+        cosine = 0.5 * (1.0 + math.cos(math.pi * min(max(progress, 0.0), 1.0)))
+        return config.min_lr_ratio + (1.0 - config.min_lr_ratio) * cosine
+
+    def _restore_optimizer(self):
+        checkpoint, start_step = self.resumed, self.start_step
+        scheduler_restored = False
+        if checkpoint is not None and "opt" in checkpoint:
             try:
-                sched.load_state_dict(ck["sched"])
-                loaded = True
-            except Exception as e:                       # incompatible scheduler state
-                log(f"[dynamics] scheduler state incompatible ({type(e).__name__}: {e}); "
-                    f"replaying {start_step} steps instead")
-        if not loaded:
+                self.optimizer.load_state_dict(checkpoint["opt"])
+            except (ValueError, KeyError) as e:
+                self.log(
+                    f"[dynamics] optimizer state INCOMPATIBLE ({type(e).__name__}: "
+                    f"{e}); Adam moments restart from zero at step {start_step}"
+                )
+            if "sched" in checkpoint:
+                try:
+                    self.scheduler.load_state_dict(checkpoint["sched"])
+                    scheduler_restored = True
+                except Exception as e:
+                    self.log(
+                        f"[dynamics] scheduler state incompatible ({type(e).__name__}"
+                        f": {e}); replaying {start_step} steps instead"
+                    )
+        if not scheduler_restored:
             for _ in range(start_step):
-                sched.step()
-    else:
-        for _ in range(start_step):
-            sched.step()
-    # THE REQUESTED --lr MUST WIN OVER THE CHECKPOINT'S. opt.load_state_dict restores the
-    # parent's param_groups (lr AND initial_lr), and LambdaLR.state_dict carries base_lrs, so a
-    # fork that changes the learning rate silently trains at the PARENT's rate. Measured
-    # 2026-08-26: prod_nfullhilr requested 2e-3, logged lr=1.00e-03 for every step. Re-pin all
-    # three after every restore path. No-op when the rate is unchanged (every ordinary resume).
-    _prev = float(opt.param_groups[0]["lr"])
-    for _g in opt.param_groups:
-        _g["lr"] = lr * _lr_factor(start_step)
-        _g["initial_lr"] = lr
-    sched.base_lrs = [lr for _ in opt.param_groups]
-    if ddp.is_main and ck is not None and abs(_prev - lr * _lr_factor(start_step)) > 1e-12:
-        log(f"[dynamics] LR OVERRIDE on resume: checkpoint carried {_prev:.3e}, "
-            f"requested base lr={lr:.3e} -> {lr * _lr_factor(start_step):.3e} at step {start_step}")
+                self.scheduler.step()
+        # The requested --lr wins over the one restored from the checkpoint.
+        lr = self.config.lr
+        restored_lr = float(self.optimizer.param_groups[0]["lr"])
+        current_lr = lr * self._lr_factor(start_step)
+        for group in self.optimizer.param_groups:
+            group["lr"] = current_lr
+            group["initial_lr"] = lr
+        self.scheduler.base_lrs = [lr for _ in self.optimizer.param_groups]
+        if (
+            self.is_main
+            and checkpoint is not None
+            and abs(restored_lr - current_lr) > 1e-12
+        ):
+            self.log(
+                f"[dynamics] LR OVERRIDE on resume: checkpoint carried "
+                f"{restored_lr:.3e}, requested base lr={lr:.3e} -> {current_lr:.3e} "
+                f"at step {start_step}"
+            )
 
-    Path(out_dir).mkdir(parents=True, exist_ok=True)
-    import os
-    if os.environ.get("IGNITE_DETECT_ANOMALY"):        # debug: pinpoint the offending forward op
-        torch.autograd.set_detect_anomaly(True)
+    def _setup_history(self):
+        Path(self.out_dir).mkdir(parents=True, exist_ok=True)
+        if os.environ.get("IGNITE_DETECT_ANOMALY"):
+            torch.autograd.set_detect_anomaly(True)
+        self.history_path = Path(self.out_dir) / "loss_history.jsonl"
+        if self.is_main and self.start_step and self.history_path.exists():
+            # Drop entries past the restart step, so overlapping legs do not repeat.
+            kept = [
+                line
+                for line in self.history_path.read_text().splitlines()
+                if line.strip() and json.loads(line).get("step", 0) <= self.start_step
+            ]
+            self.history_path.write_text("\n".join(kept) + ("\n" if kept else ""))
 
-    import json
-    # ---- loss curves: durable jsonl history + fixed-batch validation ------------------------ #
-    hist_path = Path(out_dir) / "loss_history.jsonl"
-    if ddp.is_main and start_step and hist_path.exists():
-        # resume: drop entries past the restart step so chain-leg overlaps don't duplicate
-        kept = [l for l in hist_path.read_text().splitlines()
-                if l.strip() and json.loads(l).get("step", 0) <= start_step]
-        hist_path.write_text("\n".join(kept) + ("\n" if kept else ""))
-    # fixed validation batches: identical windows on every rank and every eval, masked with a
-    # freshly re-seeded generator each time -> the val series is comparable across the run.
-    # VALIDATION WINDOW SET. Default 0 = every start offset (0..139 for a 239-frame shot), which
-    # is what every arm before 2026-08-23 used. Setting 1 keeps ONLY start offset 0, i.e. one
-    # window per val shot seeded at the shot start -- the deployment condition. This matters for
-    # arms trained with --windows_per_shot n: they only ever see starts 0..n-1, so scoring them on
-    # all 140 offsets measures a train/test mismatch (93% unseen starts at n=10) rather than
-    # generalisation to new shots. NOTE: this REDEFINES val CE, so numbers are not comparable
-    # across the change.
-    # TRAIN AND VAL WINDOW SAMPLING ARE SEPARABLE. They used to share `window_sample`, which
-    # forced an all-or-nothing choice: either both resample (validation then scores a task the
-    # deployment never runs) or both take the first 10 (the model sees 7.1% of the start offsets
-    # and memorises them). The deployment constraint -- a rollout seeds at the SHOT START -- binds
-    # what we VALIDATE on, not what we train on. --val_window_sample first with --window_sample
-    # random trains on all 140 offsets while scoring only the deployment region.
-    # Defaults to window_sample, so every existing arm is unaffected.
-    _vws = str(val_window_sample or window_sample).lower()
-    if _vws == "live":
-        # 'live' is a TRAINING augmentation. Validation must stay a fixed deployment protocol.
-        _vws = "first"
-        log("[dynamics] window_sample=live is train-only; validation forced to 'first'")
-    val_ds = FrameCodeDataset(cache_dir, val_shots, cfg, presence=presence,
-                              windows_per_shot=val_windows_per_shot,
-                              window_sample=_vws, live_end=live_end, t0_start=_t0)
-    val_batches = []
-    if len(val_ds):
-        # VAL SIZE IS INDEPENDENT OF BATCH SIZE. It used to be 4 * batch_size, which tied the
-        # statistical power of the val estimate to a MEMORY parameter: moving to batch_size=1
-        # for gradient accumulation would have silently cut val from 8 windows to 4. The val
-        # series drives best-checkpoint selection and early stopping, and at 8 windows a
-        # +0.016 move was already inside the noise (capacity arm, step 1400).
-        n_val_win = min(val_windows, len(val_ds))
-        if ddp.is_main:
-            log(f"[dynamics] val protocol: {len(val_ds)} candidate windows "
-                f"(val_windows_per_shot={val_windows_per_shot}, sample={_vws}"
-                f"{' = train' if _vws == str(window_sample).lower() else ' != train'}"
-                f"), scoring {n_val_win}")
-        vi = [int(i) for i in torch.linspace(0, len(val_ds) - 1, steps=n_val_win).tolist()]
-        items = [val_ds[i] for i in vi]
-        for s in range(0, len(items), batch_size):
-            val_batches.append(_collate_frames(items[s:s + batch_size]))
-    if ddp.is_main:
-        log(f"[dynamics] loss history -> {hist_path} (+ loss_curve.png each ckpt); "
-            f"val: {sum(b[1].shape[0] for b in val_batches)} fixed windows")
+    def _setup_validation(self):
+        config = self.config
+        val_sample = WindowSample(
+            str(config.val_window_sample or config.window_sample).lower()
+        )
+        if val_sample is WindowSample.LIVE:
+            val_sample = WindowSample.FIRST
+            self.log(
+                "[dynamics] window_sample=live is train-only; validation forced to "
+                "'first'"
+            )
+        val_ds = self._dataset(
+            self.val_shots,
+            windows_per_shot=config.val_windows_per_shot,
+            window_sample=val_sample,
+        )
+        # Fixed windows, identical on every rank and every evaluation.
+        self.val_batches = []
+        if len(val_ds):
+            n_windows = min(config.val_windows, len(val_ds))
+            if self.is_main:
+                same = val_sample == str(config.window_sample).lower()
+                self.log(
+                    f"[dynamics] val protocol: {len(val_ds)} candidate windows "
+                    f"(val_windows_per_shot={config.val_windows_per_shot}, "
+                    f"sample={val_sample}{' = train' if same else ' != train'}), "
+                    f"scoring {n_windows}"
+                )
+            positions = torch.linspace(0, len(val_ds) - 1, steps=n_windows).tolist()
+            items = [val_ds[int(i)] for i in positions]
+            for start in range(0, len(items), config.batch_size):
+                self.val_batches.append(
+                    _collate_frames(items[start : start + config.batch_size])
+                )
+        if self.is_main:
+            n_fixed = sum(batch[1].shape[0] for batch in self.val_batches)
+            self.log(
+                f"[dynamics] loss history -> {self.history_path} (+ loss_curve.png "
+                f"each ckpt); val: {n_fixed} fixed windows"
+            )
+
+    def _restore_best(self):
+        self.best_metric = BestMetric(str(self.config.best_metric).lower())
+        self.best_loss, self.best_step = float("inf"), -1
+        self.evals_since_best = 0
+        if not self.best_path.exists():
+            return
+        try:
+            best = torch.load(self.best_path, map_location="cpu", weights_only=False)
+            ranked_on = str(best.get("best_metric", "masked"))
+            if ranked_on != self.best_metric:
+                if self.is_main:
+                    self.log(
+                        f"[dynamics] best.pt was ranked on {ranked_on!r} but this "
+                        f"leg selects on {str(self.best_metric)!r} — best tracking "
+                        f"RESTARTS"
+                    )
+            else:
+                self.best_loss = float(best.get("val_loss", float("inf")))
+                self.best_step = int(best.get("step", -1))
+                if self.is_main:
+                    self.log(
+                        f"[dynamics] resumed BEST {self.best_metric}_ce="
+                        f"{self.best_loss:.4f} @ step {self.best_step}"
+                    )
+        except Exception as e:
+            self.log(
+                f"[dynamics] could not read {self.best_path} ({type(e).__name__}); "
+                f"best tracking restarts"
+            )
+
+    # Training.
+
+    def _train_loop(self) -> int:
+        self.step = self.start_step
+        # `step` counts optimizer steps, so schedule, cadence and resume ignore
+        # accum_steps.
+        self.micro_step = 0
+        self.accumulated_loss = 0.0
+        self.equal_weight_losses = []
+        # Profiling only on logged steps, which already synchronise for the norm.
+        self.timer = _PhaseTimer(self.device)
+        self.model.train()
+        stop = False
+        while self.step < self.config.steps and not stop:
+            if self.sampler is not None:
+                self.sampler.set_epoch(self.step)
+            # Must precede iterating the loader, which forks the workers.
+            self.train_ds.set_epoch(self.step)
+            for batch in self.loader:
+                stop = self._train_on_batch(*batch)
+                if stop:
+                    break
+        if self.is_main:
+            best = (
+                f" | best val {self.best_metric}_ce {self.best_loss:.4f} @ step "
+                f"{self.best_step} -> dynamics_best.pt"
+                if math.isfinite(self.best_loss)
+                else ""
+            )
+            self.log(f"[dynamics] done @ step {self.step}{best}")
+        return self.step
+
+    def _is_logged_step(self) -> bool:
+        return (self.step + 1) % _LOG_EVERY == 0
+
+    def _train_on_batch(self, codes, actuators, present, live) -> bool:
+        """Accumulate one micro-batch; step when the group is full. True = stop."""
+        config, timer = self.config, self.timer
+        profile = self._is_logged_step() or self.step < _PROFILED_FIRST_STEPS
+        if profile:
+            timer.lap("data")
+        codes = {name: c.to(self.device) for name, c in codes.items()}
+        actuators = actuators.to(self.device)
+        present = present.to(self.device) if self.use_presence else None
+        live = live.to(self.device) if self.use_live else None
+        if profile:
+            timer.lap("h2d", sync=True)
+        if self.micro_step == 0:
+            self.optimizer.zero_grad()
+        self.ss_fraction = self.model.ss_fraction(self.step)
+        # Unweighted per-modality terms give the train loss comparable across
+        # arms; each forces a device sync, so collect them on logged steps only.
+        per_modality = {} if self._is_logged_step() else None
+        with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+            loss = self.model.training_loss(
+                codes,
+                actuators,
+                generator=None,
+                ss_frac=self.ss_fraction,
+                label_smoothing=config.label_smoothing,
+                present=present,
+                live=live,
+                mod_weights=self.mod_weights,
+                per_modality=per_modality,
+            )
+        if per_modality:
+            self.equal_weight_losses.append(
+                sum(per_modality.values()) / len(per_modality)
+            )
+        (loss / config.accum_steps).backward()
+        self.accumulated_loss += float(loss.item())
+        if profile:
+            timer.lap("fb")
+        self.micro_step += 1
+        if self.micro_step < config.accum_steps:
+            timer.mark()
+            return False
+        self.micro_step = 0
+        grad_norm = self._optimizer_step(profile)
+        self.step += 1
+        return self._after_step(grad_norm)
+
+    def _optimizer_step(self, profile: bool):
+        """All-reduce, optionally measure and clip, then step; return the norm."""
+        self._all_reduce_gradients()
+        if profile:
+            self.timer.lap("sync", sync=True)
+        grad_norm = None
+        if profile:
+            grad_norm = self._gradient_norm()
+            self.timer.lap("gn")
+        # Clip the averaged gradient. Measured norms are ~0.05, so 1.0 never fires.
+        if self.config.grad_clip and self.config.grad_clip > 0:
+            torch.nn.utils.clip_grad_norm_(
+                self.model.parameters(), self.config.grad_clip
+            )
+        self.optimizer.step()
+        self.scheduler.step()
+        if profile:
+            self.timer.lap("opt", sync=True)
+        return grad_norm
+
+    def _all_reduce_gradients(self):
+        world_size = self.ddp.world_size
+        if world_size <= 1:
+            return
+        for parameter in self.model.parameters():
+            if parameter.grad is not None:
+                dist.all_reduce(parameter.grad, op=dist.ReduceOp.SUM)
+                parameter.grad /= world_size
 
     @torch.no_grad()
-    def _val_loss() -> Tuple[float, Dict[str, float]]:
-        """Equal-weight masked CE plus its PER-MODALITY breakdown.
+    def _gradient_norm(self) -> float:
+        squared = torch.zeros((), device=self.device, dtype=torch.float32)
+        for parameter in self.model.parameters():
+            if parameter.grad is not None:
+                squared += parameter.grad.detach().float().pow(2).sum()
+        return float(squared.sqrt())
 
-        SCORED WITH ``mod_weights=None`` ON PURPOSE. This used to pass the TRAINING weights
-        into the metric, so any arm with `--mod_weight_pow`/`--mod_weights_json`/
-        `--balance_presence` reported val and gen CE on a reweighted quantity and was ranked
-        against arms measured on a different one -- in both directions. That is why the
-        `mod_weight_pow 0.5` arm read as "no gain": it was compared on a metric it no longer
-        optimised. Equal weighting keeps every arm comparable to every historical number
-        REGARDLESS of how it was trained, and the per-modality dict below makes the weighted
-        view exactly reconstructible offline (sum w_i*ce_i / sum w_i).
-        Arms that never set weights (`mod_weights is None`) are numerically UNCHANGED.
+    def _after_step(self, grad_norm) -> bool:
+        """Validate, log and checkpoint after an optimizer step. True = stop."""
+        config, step = self.config, self.step
+        masked = generation = None
+        if step % config.ckpt_every == 0:
+            # Validation runs on every rank to keep them in lockstep.
+            masked = self._validate()
+            generation = self._validate(
+                mask_ratio=1.0, history_frames=self.model_cfg.k0_seed
+            )
+        train_loss = self.accumulated_loss / max(1, config.accum_steps)
+        equal_weight = (
+            sum(self.equal_weight_losses) / len(self.equal_weight_losses)
+            if self.equal_weight_losses
+            else None
+        )
+        self.accumulated_loss = 0.0
+        self.equal_weight_losses = []
+        if self.is_main and step % _LOG_EVERY == 0:
+            self._log_train_step(train_loss, equal_weight, grad_norm)
+        if self.is_main and masked is not None:
+            self._log_validation(masked, generation)
+        self.timer.reset()
+        stop = False
+        if self.is_main and step % config.ckpt_every == 0:
+            stop = self._save_checkpoints(masked, generation)
+        # Re-arm after validation and checkpointing, so they are not charged to
+        # the next step's data time.
+        self.timer.mark()
+        return stop or step >= config.steps
+
+    def _validate(self, **mask_options) -> ValScore:
+        """Equal-weight validation loss over the fixed windows.
+
+        Training weights are never applied, so every arm is scored on the same
+        quantity. ``cache_enabled=False`` stops the no-grad autocast pass from
+        filling the bf16 weight cache with detached weights that the next
+        training forward would reuse.
         """
-        if not val_batches:
-            return float("nan"), {}
-        model.eval()
-        g = torch.Generator(device=device)
-        g.manual_seed(1234)                     # same masks every eval + every rank (lockstep)
-        tot = 0.0
-        _pm_sum: Dict[str, float] = {}
-        _pm_cnt: Dict[str, int] = {}
-        # no_grad: model.eval() does NOT disable autograd, so this used to build a full graph per
-        # val forward and hold it until the float() cast. That headroom was what let a SECOND val
-        # pass (_gen_val_loss) OOM at 62.5/64 GiB.
-        # cache_enabled=False is MANDATORY once no_grad wraps an autocast region: the bf16 weight
-        # cache would otherwise be filled with DETACHED weights that the next TRAINING forward
-        # reuses, severing gradients at an identical loss — the exact silent bug that kept
-        # scheduled sampling broken (grad-norm 0.926 -> 0.087). See
-        # MaskGITDynamics._scheduled_sample_context.
-        with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.bfloat16,
-                                             enabled=(device.type == "cuda"),
-                                             cache_enabled=False):
-            for cv, av, pv, lv in val_batches:
-                cd = {k: v.to(device) for k, v in cv.items()}
-                # gen_mask_p=0.0 PINS the validation masking to the historical cosine prior on
-                # every frame. Without it an arm trained with generation mode would be scored on
-                # a different (harder) distribution than every earlier run, and val CE — the
-                # metric arms are ranked by — would stop being comparable.
-                pm: Dict[str, float] = {}
-                tot += float(model.training_loss(cd, av.to(device), generator=g, ss_frac=0.0,
-                                                 present=pv.to(device) if use_presence else None,
-                                                 live=lv.to(device) if use_live else None,
-                                                 mod_weights=None, per_modality=pm,
-                                                 gen_mask_p=0.0))
-                for _n, _v in pm.items():
-                    _pm_sum[_n] = _pm_sum.get(_n, 0.0) + _v
-                    _pm_cnt[_n] = _pm_cnt.get(_n, 0) + 1
-        model.train()
-        return (tot / len(val_batches),
-                {n: _pm_sum[n] / _pm_cnt[n] for n in sorted(_pm_sum)})
+        if not self.val_batches:
+            return ValScore(float("nan"), {})
+        self.model.eval()
+        generator = torch.Generator(device=self.device)
+        generator.manual_seed(_VALIDATION_SEED)
+        total = 0.0
+        sums: Dict[str, float] = {}
+        counts: Dict[str, int] = {}
+        with (
+            torch.no_grad(),
+            torch.autocast(
+                device_type="cuda",
+                dtype=torch.bfloat16,
+                enabled=self.device.type == "cuda",
+                cache_enabled=False,
+            ),
+        ):
+            for codes, actuators, present, live in self.val_batches:
+                per_modality: Dict[str, float] = {}
+                total += float(
+                    self.model.training_loss(
+                        {name: c.to(self.device) for name, c in codes.items()},
+                        actuators.to(self.device),
+                        generator=generator,
+                        ss_frac=0.0,
+                        present=present.to(self.device) if self.use_presence else None,
+                        live=live.to(self.device) if self.use_live else None,
+                        mod_weights=None,
+                        per_modality=per_modality,
+                        gen_mask_p=0.0,
+                        **mask_options,
+                    )
+                )
+                for name, value in per_modality.items():
+                    sums[name] = sums.get(name, 0.0) + value
+                    counts[name] = counts.get(name, 0) + 1
+        self.model.train()
+        return ValScore(
+            total / len(self.val_batches),
+            {name: sums[name] / counts[name] for name in sorted(sums)},
+        )
 
-    def _gen_val_loss() -> Tuple[float, Dict[str, float]]:
-        """CE at the condition a rollout actually performs: whole frame unknown, history real.
+    def _log_train_step(self, train_loss, equal_weight, grad_norm):
+        memory = ""
+        if self.device.type == "cuda":
+            allocated = torch.cuda.max_memory_allocated() / 2**30
+            reserved = torch.cuda.max_memory_reserved() / 2**30
+            memory = (
+                f" mem_alloc={allocated:.1f}G mem_resv={reserved:.1f}G "
+                f"frag={reserved - allocated:.1f}G"
+            )
+        norm = f" gnorm={grad_norm:.4f}" if grad_norm is not None else ""
+        lr = self.scheduler.get_last_lr()[0]
+        self.log(
+            f"[dynamics] step {self.step}/{self.config.steps}{norm} "
+            f"loss={train_loss:.4f} ss={self.ss_fraction:.3f} lr={lr:.2e}{memory}"
+            f"{self.timer.summary()}"
+        )
+        record = {
+            "step": self.step,
+            "loss": train_loss,
+            "loss_eqw": equal_weight,
+            "ss": self.ss_fraction,
+            "grad_norm": grad_norm,
+            "t_total": round(self.timer.total(), 3),
+        }
+        record.update(
+            {f"t_{phase}": round(s, 3) for phase, s in self.timer.seconds.items()}
+        )
+        record["lr"] = lr
+        _append_jsonl(self.history_path, record)
 
-        Equal-weighted and broken out per modality for the same reason as `_val_loss` -- see
-        its docstring for why passing the training weights into the metric was a measurement
-        bug rather than a choice.
+    def _log_validation(self, masked: ValScore, generation: ValScore):
+        self.log(
+            f"[dynamics] step {self.step} VAL masked_ce={masked.loss:.4f} "
+            f"gen_ce={generation.loss:.4f} (gap {generation.loss - masked.loss:+.4f}; "
+            f"selecting on {self.best_metric}; EQUAL-WEIGHT metric)"
+        )
+        per_modality = generation.per_modality
+        if per_modality:
+            worst_first = sorted(per_modality, key=lambda name: -per_modality[name])
+            self.log(
+                "[dynamics]   per-modality gen_ce: "
+                + "  ".join(f"{name} {per_modality[name]:.3f}" for name in worst_first)
+            )
+        _append_jsonl(
+            self.history_path,
+            {
+                "step": self.step,
+                "val_loss": masked.loss,
+                "gen_loss": generation.loss,
+                "val_permod": masked.per_modality,
+                "gen_permod": generation.per_modality,
+            },
+        )
+        _render_loss_curve(self.history_path, Path(self.out_dir) / "loss_curve.png")
 
-        `_val_loss` scores the cosine prior, i.e. mostly INFILLING with part of the target frame
-        already visible. A 4 s prediction never gets that — it builds every frame from nothing.
-        Measured on the converged band-power model the two differ by ~0.7 nats, and the gap GROWS
-        with training (cold-start CE is flat after ~step 500 while the infilling CE keeps
-        falling), so the tracked metric improves while prediction does not. Selecting
-        `dynamics_best.pt` on it picks the best INFILLER. This scores the other task so an arm can
-        be judged, and selected, on prediction.
-        """
-        if not val_batches:
-            return float("nan"), {}
-        model.eval()
-        g = torch.Generator(device=device)
-        g.manual_seed(1234)
-        tot = 0.0
-        _pm_sum: Dict[str, float] = {}
-        _pm_cnt: Dict[str, int] = {}
-        # See _val_loss for why no_grad + cache_enabled=False are both required. This pass is the
-        # more memory-hungry of the two: mask_ratio=1.0 masks EVERY token of every frame from
-        # k0_seed on (~102k positions vs ~82k under the cosine prior), so it is the one that
-        # actually hit the 64 GiB ceiling.
-        with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.bfloat16,
-                                             enabled=(device.type == "cuda"),
-                                             cache_enabled=False):
-            for cv, av, pv, lv in val_batches:
-                cd = {k: v.to(device) for k, v in cv.items()}
-                pm: Dict[str, float] = {}
-                tot += float(model.training_loss(cd, av.to(device), generator=g, ss_frac=0.0,
-                                                 present=pv.to(device) if use_presence else None,
-                                                 live=lv.to(device) if use_live else None,
-                                                 mod_weights=None, per_modality=pm,
-                                                 mask_ratio=1.0, history_frames=cfg.k0_seed,
-                                                 gen_mask_p=0.0))
-                for _n, _v in pm.items():
-                    _pm_sum[_n] = _pm_sum.get(_n, 0.0) + _v
-                    _pm_cnt[_n] = _pm_cnt.get(_n, 0) + 1
-        model.train()
-        return (tot / len(val_batches),
-                {n: _pm_sum[n] / _pm_cnt[n] for n in sorted(_pm_sum)})
+    def _checkpoint_payload(self) -> dict:
+        """Weights, optimizer state and the configuration to rebuild the model."""
+        model_cfg, config = self.model_cfg, self.config
+        return {
+            "model": self.model.state_dict(),
+            "opt": self.optimizer.state_dict(),
+            "sched": self.scheduler.state_dict(),
+            "step": self.step,
+            "cfg_gen_mask_p": float(model_cfg.gen_mask_p),
+            "cfg_gen_horizon_alpha": float(model_cfg.gen_horizon_alpha),
+            "cfg_gen_horizon_max": int(model_cfg.gen_horizon_max),
+            "cfg_ss_final_frac": float(model_cfg.ss_ramp_final_frac),
+            "cfg_ss_ramp_steps": int(model_cfg.ss_ramp_steps),
+            "cfg_act_cross_attn": bool(model_cfg.act_cross_attn),
+            "cfg_latent_head": bool(model_cfg.latent_head),
+            # "" = per-shot z-scored actuators; else the side cache the model
+            # trained on. eval_dynamics refuses a mismatch.
+            "cfg_act_global": _ACT_GLOBAL_DIR,
+            "cfg_fsq_levels": [int(level) for level in model_cfg.fsq_levels],
+            "cfg_grad_checkpointing": bool(model_cfg.grad_checkpointing),
+            "cfg_dropout": float(model_cfg.dropout),
+            "cfg_depth": config.depth,
+            "cfg_d_model": config.d_model,
+            "cfg_n_heads": model_cfg.n_heads,
+            "cfg_k0": model_cfg.k0_seed,
+            "cfg_n_predict": model_cfg.n_predict,
+            "modalities": [
+                (m.name, m.family, m.n_tok, m.codebook_size)
+                for m in model_cfg.modalities
+            ],
+        }
 
-    best_metric = str(best_metric).lower()
-    if best_metric not in ("masked", "gen"):
-        raise ValueError(f"best_metric must be 'masked' or 'gen', got {best_metric!r}")
-    best_val, best_step, since_improve, stop_now = float("inf"), -1, 0, False
-    _bp = Path(out_dir) / "dynamics_best.pt"
-    if _bp.exists():
-        try:                                        # chain-safe: keep the global best
-            _b = torch.load(_bp, map_location="cpu", weights_only=False)
-            _prev = str(_b.get("best_metric", "masked"))
-            if _prev != best_metric:
-                # The stored best was ranked on a DIFFERENT task, so its value is not comparable
-                # to what this leg computes; inheriting it would freeze the best file forever (or
-                # overwrite a genuinely better one). Restart tracking rather than compare apples
-                # to oranges.
-                if ddp.is_main:
-                    log(f"[dynamics] best.pt was ranked on {_prev!r} but this leg selects on "
-                        f"{best_metric!r} — best tracking RESTARTS")
-            else:
-                best_val, best_step = (float(_b.get("val_loss", float("inf"))),
-                                       int(_b.get("step", -1)))
-                if ddp.is_main:
-                    log(f"[dynamics] resumed BEST {best_metric}_ce={best_val:.4f} @ step {best_step}")
-        except Exception as e:
-            log(f"[dynamics] could not read {_bp} ({type(e).__name__}); best tracking restarts")
-    gen = torch.Generator(device="cpu")
-    step = start_step
-    # Accumulation state. `step` counts OPTIMIZER steps, never micro-batches, so the LR
-    # schedule, ckpt_every, val cadence and resume are all unaffected by accum_steps.
-    micro, accum_loss, accum_eqw = 0, 0.0, []
-    # PER-PHASE STEP TIMING. Always on, deliberately NOT behind a flag: the queued chain legs
-    # carry frozen --export lines, so a new env knob would not reach them and the measurement
-    # would not start until every arm was resubmitted.
-    # Cost is bounded by profiling ONLY the steps that already log (every 50, plus the first 5).
-    # Those steps already pay a full device sync for the grad-norm reduction, so the added
-    # torch.cuda.synchronize() calls introduce no synchronisation point on any step that was
-    # not already synchronising; the other 98% of steps execute two integer comparisons.
-    # Motivation: a step is 20.6 s wall, the manual all-reduce accounts for ~0.35 s of it, and
-    # nothing in the trainer measured where the remaining ~18 s went.
-    # NOTE gn is charged only on profiled steps (the grad-norm pass is itself profile-only), so
-    # a profiled step is SLOWER than a typical one -- subtract gn to compare against 20.6 s.
-    _ph = {"data": 0.0, "h2d": 0.0, "fb": 0.0, "sync": 0.0, "gn": 0.0, "opt": 0.0}
+    def _save_checkpoints(self, masked: ValScore, generation: ValScore) -> bool:
+        """Save the rolling and best checkpoints; True when early stopping fires."""
+        payload = self._checkpoint_payload()
+        _save_atomically(payload, self.latest_path)
+        selected = (generation if self.best_metric is BestMetric.GEN else masked).loss
+        if not math.isfinite(selected):
+            return False
+        if selected < self.best_loss - 1e-6:
+            self.best_loss, self.best_step = selected, self.step
+            self.evals_since_best = 0
+            best = {
+                **payload,
+                "val_loss": selected,
+                "masked_ce": masked.loss,
+                "gen_ce": generation.loss,
+                "best_metric": str(self.best_metric),
+            }
+            _save_atomically(best, self.best_path)
+            _append_jsonl(
+                self.history_path,
+                {
+                    "step": self.step,
+                    "best_val_loss": selected,
+                    "best_metric": str(self.best_metric),
+                },
+            )
+            self.log(
+                f"[dynamics] new BEST {self.best_metric}_ce={selected:.4f} @ step "
+                f"{self.step} (masked {masked.loss:.4f} / gen {generation.loss:.4f})"
+            )
+            return False
+        self.evals_since_best += 1
+        patience = self.config.patience
+        if patience and self.evals_since_best >= patience:
+            self.log(
+                f"[dynamics] EARLY STOP: {self.evals_since_best} evals without "
+                f"improvement (best {self.best_loss:.4f} @ step {self.best_step}); "
+                f"stopping at step {self.step}"
+            )
+            return True
+        return False
 
-    def _psync():
-        if device.type == "cuda":
-            torch.cuda.synchronize()
-    _tmark = time.perf_counter()
-    model.train()
-    while step < steps:
-        if sampler is not None:
-            sampler.set_epoch(step)
-        # Re-draw the per-shot window offsets for this pass. MUST come before the `for ... in
-        # loader` below, which is where the worker processes fork and snapshot the dataset.
-        ds.set_epoch(step)
-        for codes, act, present, live in loader:
-            _prof = ((step + 1) % 50 == 0 or step < 5)
-            _t0 = time.perf_counter()
-            if _prof:
-                _ph["data"] += _t0 - _tmark
-            codes = {k: v.to(device) for k, v in codes.items()}
-            act = act.to(device)
-            present = present.to(device) if use_presence else None
-            live = live.to(device) if use_live else None
-            if _prof:
-                _psync()
-                _t1 = time.perf_counter()
-                _ph["h2d"] += _t1 - _t0
-                _t0 = _t1
-            if micro == 0:
-                opt.zero_grad()                         # only at the START of an accumulation group
-            ssf = model.ss_fraction(step)               # 0 for the whole run if ss_final_frac=0
-            # bf16 autocast: ~2-3x faster + ~2x less activation memory on MI250X; bf16 has fp32
-            # dynamic range so no GradScaler needed (unlike fp16). Frozen codes are int (unaffected).
-            # EQUAL-WEIGHT TRAIN CE. `loss` is the WEIGHTED mean whenever mod_weights is set,
-            # so it is NOT comparable across arms with different weights -- down-weighting a
-            # high-CE modality lowers it mechanically without the model fitting any better.
-            # The train/val GAP is the quantity being judged, and val is always equal-weight,
-            # so a weighted train would corrupt it. per_modality terms are UNWEIGHTED, so their
-            # plain mean is the comparable train figure. Collected ONLY on logged steps:
-            # float(term.detach()) forces a device sync per modality.
-            _tr_pm = {} if (step + 1) % 50 == 0 else None
-            with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-                loss = model.training_loss(codes, act, generator=None, ss_frac=ssf,
-                                           label_smoothing=label_smoothing,
-                                           present=present, live=live,
-                                           mod_weights=mod_weights,
-                                           per_modality=_tr_pm)
-            if _tr_pm:
-                accum_eqw.append(sum(_tr_pm.values()) / len(_tr_pm))
-            # GRADIENT ACCUMULATION: effective batch = batch_size x world_size x accum_steps.
-            # Scaling by 1/accum makes the summed grads equal the mean over the whole effective
-            # batch, so the update is IDENTICAL to running the large batch in one go. Memory
-            # stays at the micro-batch level: measured bs1 30.0 GiB allocated vs bs2 49.0 GiB,
-            # and bs2 sat at 62.7/64 GiB reserved — unsurvivable (job 5233441).
-            (loss / accum_steps).backward()
-            accum_loss += float(loss.item())            # already a full device sync
-            if _prof:
-                _t1 = time.perf_counter()
-                _ph["fb"] += _t1 - _t0
-                _t0 = _t1
-            micro += 1
-            if micro < accum_steps:
-                _tmark = time.perf_counter()
-                continue                                # keep accumulating; no sync, no step
-            micro = 0
-            _sync_grads()                               # manual all-reduce (replaces DDP)
-            if _prof:
-                _psync()
-                _t1 = time.perf_counter()
-                _ph["sync"] += _t1 - _t0
-                _t0 = _t1
-            # GRAD-NORM TELEMETRY. Scheduled sampling once severed gradients silently: a no_grad
-            # forward under autocast poisoned the bf16 weight cache and grad-norm fell 0.926 ->
-            # 0.087 at an IDENTICAL loss and identical mask fraction. Nothing in the loss curve
-            # showed it, and the ss path is still unverified under multi-node DDP. Without this
-            # number there is no way to tell a working ss run from a broken one.
-            gnorm = None
-            # (step + 1), NOT step: `step` is incremented below, and the logging block tests the
-            # INCREMENTED value. Matching on `step` computes the norm one optimizer step before
-            # every log line and prints nothing at all.
-            if (step + 1) % 50 == 0 or step < 5:
-                with torch.no_grad():
-                    sq = torch.zeros((), device=device, dtype=torch.float32)
-                    for p_ in model.parameters():
-                        if p_.grad is not None:
-                            sq += p_.grad.detach().float().pow(2).sum()
-                    gnorm = float(sq.sqrt())
-                if _prof:
-                    _t1 = time.perf_counter()
-                    _ph["gn"] += _t1 - _t0
-                    _t0 = _t1
-            # GRADIENT CLIPPING, applied AFTER the manual all-reduce so it clips the averaged
-            # gradient (clipping per-rank first would scale each shard differently and change the
-            # effective step). NOTE THE SCALE: measured over two full runs, gnorm has median 0.049
-            # and max 0.43, so the conventional clip of 1.0 NEVER fires and is a silent no-op --
-            # the same trap as weight_decay=1e-4. 0.1 clips the top ~14% of steps, 0.2 the top ~2%.
-            if grad_clip and grad_clip > 0:
-                torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
-            opt.step(); sched.step()
-            if _prof:
-                _psync()
-                _ph["opt"] += time.perf_counter() - _t0
-            step += 1
-            # validation runs on ALL ranks (identical fixed batches -> ranks stay in lockstep)
-            vl, vpm = _val_loss() if step % ckpt_every == 0 else (None, None)
-            gl, gpm = _gen_val_loss() if vl is not None else (None, None)
-            lv = accum_loss / max(1, accum_steps)       # mean over the accumulation group
-            lv_eqw = (sum(accum_eqw) / len(accum_eqw)) if accum_eqw else None
-            accum_loss = 0.0
-            accum_eqw = []
-            if ddp.is_main and step % 50 == 0:
-                # Memory telemetry: the RESERVED-minus-ALLOCATED gap is the fragmentation that
-                # killed 5233441 (40.85 alloc / 19.26 reserved-unallocated of 64 GiB). With
-                # expandable_segments working, reserved should track allocated closely.
-                mem = ""
-                if device.type == "cuda":
-                    ga = torch.cuda.max_memory_allocated() / 2**30
-                    gr = torch.cuda.max_memory_reserved() / 2**30
-                    mem = f" mem_alloc={ga:.1f}G mem_resv={gr:.1f}G frag={gr - ga:.1f}G"
-                gn = f" gnorm={gnorm:.4f}" if gnorm is not None else ""
-                # PHASE BREAKDOWN. data = time blocked on the loader; h2d = host->device copy;
-                # fb = forward+backward summed over the accumulation group; sync = the manual
-                # all-reduce; gn = the grad-norm pass (PROFILE-ONLY, subtract it to compare a
-                # profiled step against a normal one); opt = grad clip + optimizer + scheduler.
-                _tt = sum(_ph.values())
-                tm = (f" t={_tt:.1f}s(data {_ph['data']:.1f} h2d {_ph['h2d']:.2f} "
-                      f"fb {_ph['fb']:.1f} sync {_ph['sync']:.2f} gn {_ph['gn']:.2f} "
-                      f"opt {_ph['opt']:.2f})") if _tt > 0 else ""
-                log(f"[dynamics] step {step}/{steps}{gn} loss={lv:.4f} "
-                    f"ss={ssf:.3f} lr={sched.get_last_lr()[0]:.2e}{mem}{tm}")
-                with open(hist_path, "a") as f:
-                    f.write(json.dumps({"step": step, "loss": lv, "loss_eqw": lv_eqw,
-                                        "ss": ssf,
-                                        "grad_norm": gnorm,
-                                        "t_total": round(_tt, 3),
-                                        "t_data": round(_ph["data"], 3),
-                                        "t_h2d": round(_ph["h2d"], 3),
-                                        "t_fb": round(_ph["fb"], 3),
-                                        "t_sync": round(_ph["sync"], 3),
-                                        "t_gn": round(_ph["gn"], 3),
-                                        "t_opt": round(_ph["opt"], 3),
-                                        "lr": sched.get_last_lr()[0]}) + "\n")
-            if ddp.is_main and vl is not None:
-                log(f"[dynamics] step {step} VAL masked_ce={vl:.4f} gen_ce={gl:.4f} "
-                    f"(gap {gl - vl:+.4f}; selecting on {best_metric}; EQUAL-WEIGHT metric)")
-                # PER-MODALITY READOUT. The equal-weight mean hides that the 15 modalities sit
-                # 1.5-4.5 nats apart at the marginal, so a reweighting arm CANNOT be judged from
-                # the aggregate -- it moves the mean by construction. Sorted worst-first: that
-                # ordering is what says whether down-weighting a modality bought structure
-                # elsewhere or merely traded its accuracy away.
-                if gpm:
-                    log("[dynamics]   per-modality gen_ce: "
-                        + "  ".join(f"{n} {gpm[n]:.3f}"
-                                    for n in sorted(gpm, key=lambda k: -gpm[k])))
-                with open(hist_path, "a") as f:
-                    f.write(json.dumps({"step": step, "val_loss": vl, "gen_loss": gl,
-                                        "val_permod": vpm, "gen_permod": gpm}) + "\n")
-                _render_loss_curve(hist_path, Path(out_dir) / "loss_curve.png")
-            for _k in _ph:
-                _ph[_k] = 0.0
-            if ddp.is_main and step % ckpt_every == 0:
-                payload = {"model": model.state_dict(), "opt": opt.state_dict(),
-                           "sched": sched.state_dict(), "step": step,
-                           # objective-shaping knobs travel WITH the weights: a checkpoint whose
-                           # training objective cannot be recovered is not reproducible
-                           "cfg_gen_mask_p": float(cfg.gen_mask_p),
-                           "cfg_gen_horizon_alpha": float(cfg.gen_horizon_alpha),
-                           "cfg_gen_horizon_max": int(cfg.gen_horizon_max),
-                           "cfg_ss_final_frac": float(cfg.ss_ramp_final_frac),
-                           "cfg_ss_ramp_steps": int(cfg.ss_ramp_steps),
-                           "cfg_act_cross_attn": bool(getattr(cfg, "act_cross_attn", False)),
-                           "cfg_latent_head": bool(getattr(cfg, "latent_head", False)),
-                           # Actuator normalisation the model was TRAINED on: "" = per-shot
-                           # z-score (whole-shot stats, the future leak), else the side-cache dir
-                           # of dataset-wide stats. eval_dynamics refuses a mismatch.
-                           "cfg_act_global": _ACT_GLOBAL_DIR,
-                           "cfg_fsq_levels": [int(x) for x in getattr(cfg, "fsq_levels", (8, 5, 5, 5))],
-                           "cfg_grad_checkpointing": bool(getattr(cfg, "grad_checkpointing", False)),
-            "cfg_dropout": float(cfg.dropout),
-                           "cfg_depth": depth, "cfg_d_model": d_model,
-                           "cfg_n_heads": cfg.n_heads, "cfg_k0": cfg.k0_seed,
-                           "cfg_n_predict": cfg.n_predict,
-                           "modalities": [(s.name, s.family, s.n_tok, s.codebook_size)
-                                          for s in specs]}
-                tmp = Path(out_dir) / "dynamics_latest.pt.tmp"
-                torch.save(payload, tmp)
-                tmp.replace(latest)
-                # BEST-CHECKPOINT RETENTION. dynamics_latest.pt is a ROLLING file, so a run
-                # that overfits destroys its own best weights (measured: the ngen2 N=100 arm
-                # bottomed at val CE 1.77 @ step 4.6k and was at 2.63 by 8k — those weights
-                # were unrecoverable). Keep a separate best-on-validation copy.
-                sel = gl if best_metric == "gen" else vl
-                if sel is not None and math.isfinite(sel) and sel < best_val - 1e-6:
-                    best_val, best_step, since_improve = sel, step, 0
-                    btmp = Path(out_dir) / "dynamics_best.pt.tmp"
-                    # val_loss stays the SELECTION metric so the resume path below reads back the
-                    # same quantity it compares against; gen_ce/masked_ce are both recorded so a
-                    # checkpoint is never ambiguous about which task ranked it.
-                    torch.save({**payload, "val_loss": sel, "masked_ce": vl, "gen_ce": gl,
-                                "best_metric": best_metric}, btmp)
-                    btmp.replace(Path(out_dir) / "dynamics_best.pt")
-                    with open(hist_path, "a") as f:
-                        f.write(json.dumps({"step": step, "best_val_loss": sel,
-                                            "best_metric": best_metric}) + "\n")
-                    log(f"[dynamics] new BEST {best_metric}_ce={sel:.4f} @ step {step} "
-                        f"(masked {vl:.4f} / gen {gl:.4f})")
-                elif sel is not None and math.isfinite(sel):
-                    since_improve += 1
-                    if patience and since_improve >= patience:
-                        log(f"[dynamics] EARLY STOP: {since_improve} evals without "
-                            f"improvement (best {best_val:.4f} @ step {best_step}); "
-                            f"stopping at step {step}")
-                        stop_now = True
-            # Re-arm the loader-wait mark HERE, after validation and the 10.5 GB checkpoint
-            # save, so their cost is never charged to the next step's "data" bucket.
-            _tmark = time.perf_counter()
-            if stop_now or step >= steps:
-                break
-        if stop_now:
-            break
-    if ddp.is_main:
-        log(f"[dynamics] done @ step {step}"
-            # Label the metric that ACTUALLY ranked best.pt. This line hardcoded "masked_ce"
-            # while BEST_METRIC=gen runs rank on gen_ce, so every Genie-objective arm printed a
-            # gen_ce value under a masked_ce label -- and masked_ce is ~0.58 where gen_ce is
-            # ~1.26, so the two are trivially confusable in a log skim.
-            + (f" | best val {best_metric}_ce {best_val:.4f} @ step {best_step} "
-               f"-> dynamics_best.pt" if math.isfinite(best_val) else ""))
-    return step
+
+def train(
+    cache_dir, out_dir, config: Optional[TrainConfig] = None, log=print, **options
+):
+    """Train the dynamics model on a frame-code cache, resuming from ``out_dir``.
+
+    Writes ``dynamics_latest.pt``, ``dynamics_best.pt``, ``loss_history.jsonl``,
+    ``loss_curve.png`` and ``split_shots.json``.
+
+    Parameters
+    ----------
+    cache_dir : path-like
+        Frame-code cache.
+    out_dir : path-like
+        Run directory.
+    config : TrainConfig, default=None
+        Options of the run; defaults to ``TrainConfig()``.
+    log : callable, default=print
+        Logger.
+    **options
+        Overrides of individual :class:`TrainConfig` fields.
+
+    Returns
+    -------
+    step : int
+        The last optimizer step.
+    """
+    config = dataclasses.replace(config or TrainConfig(), **options)
+    return Trainer(cache_dir, out_dir, config, log=log).fit()
+
+
+def _add_config_flags(parser: argparse.ArgumentParser) -> None:
+    """Add one flag per :class:`TrainConfig` field that has one."""
+    for field in dataclasses.fields(TrainConfig):
+        meta = field.metadata
+        if not meta["cli"]:
+            continue
+        default = meta["cli_default"]
+        kwargs = {"help": meta["help"]}
+        if isinstance(default, bool) and meta["cli_type"] is None:
+            kwargs["action"] = "store_true"
+        else:
+            kwargs["default"] = default
+            flag_type = meta["cli_type"]
+            if flag_type is None and isinstance(default, (int, float, str)):
+                flag_type = type(default)
+            if flag_type is not None:
+                kwargs["type"] = flag_type
+            if meta["choices"] is not None:
+                kwargs["choices"] = meta["choices"]
+        parser.add_argument(f"--{field.name}", **kwargs)
 
 
 def build_arg_parser():
-    import argparse
-    p = argparse.ArgumentParser("IGNITE Phase-B dynamics trainer")
-    p.add_argument("--cache_dir", required=True, help="pre-encoded frame-code cache dir")
-    p.add_argument("--out_dir", default=None, help="model output dir (required for training, not --precompute)")
-    p.add_argument("--steps", type=int, default=200_000)
-    p.add_argument("--batch_size", type=int, default=8)
-    p.add_argument("--lr", type=float, default=3e-4)
-    p.add_argument("--depth", type=int, default=24)      # the depth-study knob
-    p.add_argument("--d_model", type=int, default=1024)
-    p.add_argument("--num_workers", type=int, default=4)
-    p.add_argument("--ckpt_every", type=int, default=200,
-                   help="checkpoint cadence (steps). MUST be < steps-per-job (~700 at 2h/g1) or a "
-                        "chained run never checkpoints and every resume restarts from step 0.")
-    p.add_argument("--ss_final_frac", type=float, default=None,
-                   help="override DynamicsConfig.ss_ramp_final_frac; 0 DISABLES scheduled "
-                        "sampling. The memory-efficient sampling path landed 2026-08-15.")
-    p.add_argument("--best_metric", type=str, default="masked", choices=("masked", "gen"),
-                   help="which validation metric ranks dynamics_best.pt. 'masked' = the cosine "
-                        "prior (mostly INFILLING with part of the target frame visible) and is "
-                        "the historical default. 'gen' = whole frame unknown with real history, "
-                        "the condition a rollout actually performs. The two differ by ~0.7 nats "
-                        "and the gap GROWS during training, so 'masked' selects the best "
-                        "infiller, not the best predictor. Both are always logged.")
-    p.add_argument("--window_stride", type=int, default=1,
-                   help="frames between consecutive training-window starts. 1 (default) makes "
-                        "neighbouring windows share win-1 frames — 140 near-duplicate samples per "
-                        "239-frame shot. Larger strides shrink the sample pool with little loss of "
-                        "distinct content. Affects the TRAIN set only; val windows are unchanged.")
-    p.add_argument("--lr_decay_from", type=int, default=0,
-                   help="step at which the cosine decay starts at full LR. 0 = anchor "
-                        "at warmup (previous behaviour). Set to the resume step on a "
-                        "warm-started fork so it begins at the requested rate.")
-    p.add_argument("--mod_weight_pow", type=float, default=0.0,
-                   help="per-modality loss weight ~ n_tok**a. 0 = equal weighting "
-                        "(default, unchanged); 1 = token-proportional.")
-    p.add_argument("--live_end_json", type=str, default="",
-                   help="PATH to {shot: plasma_end_seconds} JSON (analysis/shot_duration.py "
-                        "--out). Zero-weights post-shot frames in BOTH train and val loss. "
-                        "Shots absent from the table count as fully live. REDEFINES val/gen CE "
-                        "-- results are not comparable to arms without it. Default off.")
-    p.add_argument("--mod_weights_json", type=str, default="",
-                   help="explicit per-modality loss weights: a PATH to a JSON file, or inline "
-                        "JSON {modality: weight}. Overrides --mod_weight_pow and "
-                        "--balance_presence. Normalised to mean 1. Unknown modality names are a "
-                        "hard error. Prefer the path form: inline JSON contains commas and "
-                        "`sbatch --export` splits on commas.")
-    p.add_argument("--val_window_sample", type=str, default="", choices=["", "random", "first"],
-                   help="window sampling for VALIDATION only; '' = same as --window_sample. Set "
-                        "'first' with --window_sample random to train on all offsets while "
-                        "scoring the deployment region (starts 0..val_windows_per_shot-1).")
-    p.add_argument("--window_sample", type=str, default="random", choices=["random", "first", "live"],
-                   help="which windows_per_shot windows each shot contributes: 'first' = starts "
-                        "0..n-1 (the deployment region, pair with --val_windows_per_shot n), "
-                        "'random' = n redrawn from all offsets each epoch.")
-    p.add_argument("--windows_per_shot", type=int, default=0,
-                   help="keep only the FIRST n training windows of each shot (start frames 0..n-1 "
-                        "at stride 1); 0 = all. A deployment rollout seeds at the shot start and "
-                        "spans 100 frames, so windows starting mid-shot train a conditional that is "
-                        "never requested. Distinct from --window_stride, which spreads the same "
-                        "count across the whole shot. TRAIN set only; val is unchanged.")
-    p.add_argument("--grad_clip", type=float, default=0.0,
-                   help="clip the all-reduced gradient norm; 0 = off. SCALE MATTERS: measured gnorm "
-                        "here is median 0.049 / max 0.43, so the usual 1.0 never fires. 0.1 clips "
-                        "the top ~14%% of steps, 0.2 the top ~2%%.")
-    p.add_argument("--val_windows_per_shot", type=int, default=0,
-                   help="windows per VAL shot: 0 = all start offsets (historical default), "
-                        "1 = only offset 0, one window per shot seeded at the shot start. Use 1 "
-                        "with --windows_per_shot so train and val cover the same start offsets. "
-                        "REDEFINES val CE -- not comparable to arms run with 0.")
-    p.add_argument("--label_smoothing", type=float, default=0.0,
-                   help="CE label smoothing, TRAIN ONLY. Raises the achievable loss floor by about "
-                        "eps*ln(vocab): at eps=0.1 that is 1.02 nats for the vocab-1000 modalities "
-                        "and 1.43 for vocab-64000, ~1.15 on the equal-weight mean. Validation is "
-                        "NEVER smoothed, so val CE stays comparable across arms.")
-    p.add_argument("--wd_exclude_norms", type=int, default=0,
-                   help="1 = LayerNorm scales and biases go in a no-decay param group. Only "
-                        "meaningful once weight_decay can act: the per-step shrink is lr*wd, so at "
-                        "lr 1e-3 wd 1e-4 is 1e-7/step (no effect) and wd 0.1 is 1e-4/step. Changes "
-                        "the param-group count, so toggling mid-chain discards Adam moments.")
-    p.add_argument("--balance_presence", action="store_true",
-                   help="weight each modality by 1/(fraction of TRAIN shots that recorded it), "
-                        "so a diagnostic present in 38%% of shots stops receiving 38%% of the "
-                        "gradient. Requires --mask_absent. Measured motivation: bes is the only "
-                        "diagnostic that loses to its own bigram, despite the LOWEST table floor "
-                        "of the five. Weights normalise to mean 1 so the loss scale is unchanged.")
-    p.add_argument("--act_cross_attn", type=int, default=None,
-                   help="1 = per-token cross-attention over the 70 actuator channels (zero-init)")
-    p.add_argument("--grad_ckpt", type=int, default=None,
-                   help="1 = recompute each block in backward (REQUIRED once d_model*depth >= "
-                        "4096; production d1024xL16 = 16384). Omit to keep the config default.")
-    p.add_argument("--gen_horizon_max", type=int, default=None,
-                   help="horizon UNIFORM in [1,N]; keeps horizons short without collapsing the scored-frame count")
-    p.add_argument("--gen_horizon_alpha", type=float, default=None,
-                   help="generation-mode horizon exponent: h ~ h^-alpha, t = F-h. "
-                        "0 = uniform split (historical). ~2 concentrates on the "
-                        "one-step task rollout() performs.")
-    p.add_argument("--latent_head", type=int, default=None,
-                   help="1 = Gaussian regression of each token's FSQ grid coordinate instead of "
-                        "a codebook-size classifier (see DynamicsConfig.latent_head). Predictions "
-                        "round back to codes so cache/decoders/eval are unchanged. The tracked "
-                        "CE becomes a Gaussian NLL and is NOT comparable to token-CE arms.")
-    p.add_argument("--lag_embed_k", type=int, default=None,
-                   help="add k per-column OWN-HISTORY code embeddings in FrameTokenizer.embed, "
-                        "so token n at frame f directly sees token n at frames f-1..f-k. 0/None "
-                        "= off and adds NO parameters. Targets the measured cold-start failure: "
-                        "a per-column table over a column's own last 3 codes scores 1.5539 vs "
-                        "the model's 1.6090. Changes the parameter set, so it cannot be turned "
-                        "on mid-chain.")
-    p.add_argument("--gen_mask_p", type=float, default=None,
-                   help="fraction of samples masked like rollout() does: history before a split "
-                        "point stays visible and unscored, target frames ride the reveal ladder "
-                        "including a full cold start. 0 = historical scheme (bit-identical).")
-    p.add_argument("--ss_ramp_steps", type=int, default=None,
-                   help="override DynamicsConfig.ss_ramp_steps (default 40000). Set this to the "
-                        "run length: the default on a 20000-step run reaches only HALF of "
-                        "--ss_final_frac.")
-    p.add_argument("--precompute", action="store_true",
-                   help="run the distributed frame-code precompute (build the cache) then exit")
-    p.add_argument("--data_dir", default=None,
-                   help="H5 dir for --precompute (default: spike.DEFAULT_DATA_DIR)")
-    p.add_argument("--max_shots", type=int, default=0,
-                   help="cap total shots for a --precompute sanity run (0 = full dataset)")
-    p.add_argument("--codec_tmpl", default=None,
-                   help="codec ckpt template tried before the frozen manifest during "
-                        "--precompute, e.g. 'path/codecs/{m}/codec_best.pt' (pinned snapshot)")
-    p.add_argument("--n_heads", type=int, default=None, help="override DynamicsConfig.n_heads")
-    p.add_argument("--k0_seed", type=int, default=None, help="override seed frames (window sizing)")
-    p.add_argument("--n_predict", type=int, default=None,
-                   help="override predicted frames (window = k0_seed + n_predict)")
-    p.add_argument("--train_cap", type=int, default=0,
-                   help="N-shots generalization probe: train on only the FIRST N train shots")
-    p.add_argument("--val_n", type=int, default=0,
-                   help="FIXED validation tail size (shots); 0 = val_frac fraction")
-    p.add_argument("--split_seed", type=int, default=0,
-                   help=">0: seeded-RANDOM train/val split over the cache (0 = sorted tail)")
-    p.add_argument("--warmup_steps", type=int, default=0,
-                   help="linear LR warmup steps (0 = none, the historical recipe)")
-    p.add_argument("--min_lr_ratio", type=float, default=0.01,
-                   help="cosine floor as a fraction of peak LR (Genie recipe: 0.1)")
-    p.add_argument("--beta2", type=float, default=0.999,
-                   help="AdamW beta2 (Genie recipe: 0.9)")
-    p.add_argument("--weight_decay", type=float, default=0.01,
-                   help="AdamW weight decay (Genie recipe: 1e-4)")
-    p.add_argument("--patience", type=int, default=0,
-                   help="EARLY STOP after this many validation evals with no improvement "
-                        "(0 = never stop; dynamics_best.pt is written either way)")
-    p.add_argument("--shot_sample", type=int, default=0,
-                   help="--precompute: seeded uniform random sample of this many shots "
-                        "from the WHOLE dataset (overrides --max_shots)")
-    p.add_argument("--shot_seed", type=int, default=0, help="seed for --shot_sample")
-    p.add_argument("--t0_start", type=float, default=1.0,
-                   help="window origin in shot time [s] for --precompute. 0.0 = include the "
-                        "ramp-up second so a K0=20 seed spans [0,1) s and PREDICTION STARTS "
-                        "AT t=1.0 s (the standing convention). NOTE: the frozen codecs never "
-                        "trained on ramp-up windows.")
-    p.add_argument("--dropout", type=float, default=0.0,
-                   help="attention + FFN dropout (DynamicsConfig.dropout). 0 = the historical "
-                        "behaviour every run so far used; >0 regularises against memorisation.")
-    p.add_argument("--val_windows", type=int, default=32,
-                   help="fixed validation windows, INDEPENDENT of batch_size. Was "
-                        "4*batch_size, which tied val's statistical power to a memory "
-                        "knob — bs1 would have given only 4 windows while val drives "
-                        "best-checkpoint selection and early stopping.")
-    p.add_argument("--accum_steps", type=int, default=1,
-                   help="gradient-accumulation micro-steps per optimizer step. Effective batch "
-                        "= batch_size x world_size x accum_steps, at the MEMORY cost of "
-                        "batch_size alone (measured: bs1 30.0 GiB vs bs2 49.0 GiB allocated; "
-                        "bs2 reserved 62.7/64 GiB, which killed job 5233441). Throughput is "
-                        "~unchanged: step time scales linearly with batch at this sequence "
-                        "length (200 steps: bs1 13:57 vs bs2 26:42).")
-    p.add_argument("--mask_absent", action="store_true",
-                   help="exclude ABSENT diagnostics from the masked-CE (they encode to a "
-                        "constant null codeword; ~38%% of loss TERMS on the production cache, "
-                        "since the loss weights every modality equally). Their tokens still "
-                        "enter the model as input. Builds/loads <cache>/_presence.json.")
-    p.add_argument("--presence_path", default=None,
-                   help="override the presence-map location (default <cache_dir>/_presence.json)")
-    p.add_argument("--build_presence", action="store_true",
-                   help="build the presence map for --cache_dir and exit (no training)")
-    p.add_argument("--test_n", type=int, default=0,
-                   help="size of the HELD-OUT test partition in shots (overrides "
-                        "--test_frac). Nothing in training or validation ever touches it.")
-    p.add_argument("--test_frac", type=float, default=0.0,
-                   help="test partition as a fraction of the cached pool; production "
-                        "convention is 0.05 alongside --val_frac 0.05 (0.90/0.05/0.05)")
-    p.add_argument("--pin_train", type=str, default="",
-                   help="comma-separated shots FORCED into TRAIN and placed at the FRONT so "
-                        "train_cap cannot drop them (neighbour stratification; pin_val wins).")
-    p.add_argument("--pin_both", type=str, default="",
-                   help="comma-separated shots placed in BOTH train and val. Deliberate "
-                        "leakage so train/val CE are comparable ON THE SAME SHOTS. Hoisted to "
-                        "the front of train (survives --train_cap) and kept in val. Overrides "
-                        "--pin_val/--pin_train. Any val number from a pool containing these is "
-                        "NOT fully held out -- say so when quoting it.")
-    p.add_argument("--pin_val", type=str, default="",
-                   help="comma-separated shots FORCED into val whatever the shuffle says "
-                        "(standing example shots, e.g. 200729, must never be trained on)")
-    p.add_argument("--patch_actuators", action="store_true",
-                   help="rewrite ONLY the 'actuators' block of an EXISTING frame-code cache "
-                        "with the 2026-08-11 time-base fix (see actuator_frames). Codes are "
-                        "untouched, so no codec re-encode. t0_start comes from the cache's own "
-                        "_codec_manifest.json; each entry is verified against the legacy output "
-                        "before being overwritten, and the old block is backed up under "
-                        "<cache>/_actuators_prefix_backup/.")
-    p.add_argument("--dry_run", action="store_true",
-                   help="--patch_actuators: verify + report, write nothing")
-    p.add_argument("--shot_timeout_s", type=int, default=900,
-                   help="--precompute: per-shot SIGALRM encode budget [s]. A shot exceeding it "
-                        "is logged and skipped so a full sweep cannot stall. Raise it for a "
-                        "RECOVERY pass over shots the first sweep timed out on (precompute "
-                        "skips shots already in the cache, so a re-run only retries the gaps).")
-    return p
+    """Return the command-line parser of the trainer and cache tools."""
+    parser = argparse.ArgumentParser("IGNITE Phase-B dynamics trainer")
+    add = parser.add_argument
+    add("--cache_dir", required=True, help="pre-encoded frame-code cache dir")
+    add("--out_dir", default=None, help="run directory (not needed with --precompute)")
+    _add_config_flags(parser)
+    tools = parser.add_argument_group("cache tools (each runs instead of training)")
+    tools.add_argument(
+        "--precompute", action="store_true", help="build the frame-code cache"
+    )
+    tools.add_argument(
+        "--build_presence", action="store_true", help="build the presence map"
+    )
+    tools.add_argument(
+        "--patch_actuators",
+        action="store_true",
+        help="rewrite only the actuators of an existing cache with the aligned time "
+        "base, verifying and backing up each entry",
+    )
+    tools.add_argument(
+        "--data_dir",
+        default=None,
+        help="H5 directory (default: spike.DEFAULT_DATA_DIR)",
+    )
+    tools.add_argument(
+        "--max_shots", type=int, default=0, help="--precompute: first N shots (0 = all)"
+    )
+    tools.add_argument(
+        "--codec_tmpl",
+        default=None,
+        help="--precompute: codec checkpoint template tried before the frozen "
+        "manifest, e.g. 'path/codecs/{m}/codec_best.pt'",
+    )
+    tools.add_argument(
+        "--shot_sample",
+        type=int,
+        default=0,
+        help="--precompute: seeded random sample of N shots (overrides --max_shots)",
+    )
+    tools.add_argument("--shot_seed", type=int, default=0, help="seed of --shot_sample")
+    tools.add_argument(
+        "--t0_start",
+        type=float,
+        default=1.0,
+        help="--precompute: shot time [s] of frame 0",
+    )
+    tools.add_argument(
+        "--shot_timeout_s",
+        type=int,
+        default=900,
+        help="--precompute: per-shot encode budget [s]",
+    )
+    tools.add_argument(
+        "--dry_run",
+        action="store_true",
+        help="--patch_actuators: verify and report, write nothing",
+    )
+    return parser
 
 
 def main(argv=None):
+    """Run the tool selected by the command line."""
     args = build_arg_parser().parse_args(argv)
+    data_dir = args.data_dir or spike.DEFAULT_DATA_DIR
     if args.build_presence:
         out = args.presence_path or (Path(args.cache_dir) / "_presence.json")
         build_presence(args.cache_dir, out_path=out)
         return 0
     if args.patch_actuators:
-        return run_patch_actuators(args.cache_dir, args.data_dir or spike.DEFAULT_DATA_DIR,
-                                   dry_run=args.dry_run)
+        return run_patch_actuators(args.cache_dir, data_dir, dry_run=args.dry_run)
     if args.precompute:
-        return run_precompute(args.cache_dir, args.data_dir or spike.DEFAULT_DATA_DIR,
-                              max_shots=args.max_shots, codec_tmpl=args.codec_tmpl,
-                              shot_sample=args.shot_sample, shot_seed=args.shot_seed,
-                              t0_start=args.t0_start, shot_timeout_s=args.shot_timeout_s)
+        return run_precompute(
+            args.cache_dir,
+            data_dir,
+            max_shots=args.max_shots,
+            codec_tmpl=args.codec_tmpl,
+            shot_sample=args.shot_sample,
+            shot_seed=args.shot_seed,
+            t0_start=args.t0_start,
+            shot_timeout_s=args.shot_timeout_s,
+        )
     if not args.out_dir:
-        raise SystemExit("--out_dir is required for training (omit only with --precompute)")
-    return train(args.cache_dir, args.out_dir, steps=args.steps, batch_size=args.batch_size,
-                 lr=args.lr, depth=args.depth, d_model=args.d_model, num_workers=args.num_workers,
-                 ckpt_every=args.ckpt_every, ss_final_frac=args.ss_final_frac,
-                 ss_ramp_steps=args.ss_ramp_steps, gen_mask_p=args.gen_mask_p,
-                 n_heads=args.n_heads, k0_seed=args.k0_seed, n_predict=args.n_predict,
-                 train_cap=args.train_cap, val_n=args.val_n, split_seed=args.split_seed,
-                 warmup_steps=args.warmup_steps, min_lr_ratio=args.min_lr_ratio,
-                 beta2=args.beta2, weight_decay=args.weight_decay,
-                 patience=args.patience, test_n=args.test_n, test_frac=args.test_frac,
-                 pin_both=tuple(s.strip() for s in args.pin_both.split(",") if s.strip()),
-                 pin_val=tuple(s.strip() for s in args.pin_val.split(",") if s.strip()),
-                 pin_train=tuple(s.strip() for s in args.pin_train.split(",") if s.strip()),
-                 mask_absent=args.mask_absent, presence_path=args.presence_path,
-                 accum_steps=args.accum_steps, val_windows=args.val_windows,
-                 dropout=args.dropout, best_metric=args.best_metric,
-                 gen_horizon_alpha=args.gen_horizon_alpha,
-                 gen_horizon_max=args.gen_horizon_max,
-                 act_cross_attn=args.act_cross_attn,
-                 grad_ckpt=args.grad_ckpt,
-                 lag_embed_k=args.lag_embed_k,
-                 latent_head=args.latent_head,
-                 balance_presence=args.balance_presence,
-                 window_stride=args.window_stride,
-                 windows_per_shot=args.windows_per_shot,
-                 window_sample=args.window_sample,
-                 val_window_sample=args.val_window_sample,
-                 mod_weight_pow=args.mod_weight_pow,
-                 mod_weights_json=args.mod_weights_json,
-                 live_end_json=args.live_end_json,
-                 lr_decay_from=args.lr_decay_from,
-                 wd_exclude_norms=bool(args.wd_exclude_norms),
-                 label_smoothing=args.label_smoothing,
-                 val_windows_per_shot=args.val_windows_per_shot,
-                 grad_clip=args.grad_clip)
+        raise SystemExit(
+            "--out_dir is required for training (omit only with --precompute)"
+        )
+    return train(args.cache_dir, args.out_dir, config=TrainConfig.from_cli(args))
 
 
 if __name__ == "__main__":

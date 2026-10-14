@@ -1,697 +1,898 @@
-"""IGNITE Phase-B (MaskGIT dynamics) EVALUATION harness.
+r"""Evaluation of the IGNITE dynamics model: rollouts, metrics and comparison figures.
 
-Loads a trained dynamics checkpoint, seeds K0 real frames from the frame-code cache, rolls out
-the world model, and decodes BOTH the ground-truth codes and the predicted codes through the
-FROZEN Phase-A codecs, then renders per-modality GT-vs-pred panels.
+Loads a checkpoint, seeds ``K0`` real frames from the frame-code cache, rolls the
+model out and decodes the ground-truth and predicted codes through the frozen
+codecs. Token accuracy and decoded nRMSE are reported against persistence (the last
+seed frame held constant), and a ground-truth versus prediction figure is rendered.
 
-Decoding BOTH gt and pred codes through the SAME frozen codec places them in an identical
-normalized space, so they are directly comparable and the figure/metrics ISOLATE the dynamics
-model's error from the codec's reconstruction error. No denormalization is applied (nor needed).
-
-Usage (under the pixi frontier env)::
+Usage, in the frontier pixi environment::
 
     python -m tokamak_foundation_model.ignite.eval_dynamics \
-        --ckpt /lustre/orion/fus187/proj-shared/models/ignite_production/runs/prod_d512L8/dynamics_latest.pt \
-        --shot 200729 --out_dir eval_runs/ignite_dynamics_eval
+        --ckpt <run>/dynamics_latest.pt --shot 200729 --out_dir <dir>
 
-See docs/IGNITE_DESIGN.md §5 for the frame layout / rollout contract.
+Environment
+-----------
+IGNITE_EVAL_MODALITIES
+    Comma-separated modalities to decode and score.
+IGNITE_EVAL_RAW_GT
+    ``0`` scores against the codec round-trip instead of the measured signal.
+IGNITE_DATA_DIR
+    H5 directory of the measured signals.
+IGNITE_EVAL_BF16
+    ``1`` runs the rollout under bf16 autocast, which lowers accuracy.
+IGNITE_ACT_GLOBAL
+    Must match training, see :func:`load_model`.
+IGNITE_FIG_*, IGNITE_CMAP_*
+    Figure options, see :class:`FigureOptions`.
 """
 
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
+import math
 import os
+import time
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, NamedTuple, Tuple
 
 import numpy as np
 import torch
 
-from .train_dynamics import load_frozen_codecs
-from .dynamics_config import DynamicsConfig, FROZEN_MODALITIES  # noqa: F401 (FROZEN_MODALITIES: API contract)
+from . import spike
+from . import train_dynamics as td
+from .dynamics_config import (
+    FROZEN_MODALITIES,  # noqa: F401 (re-exported)
+    DynamicsConfig,
+    ModalitySpec,
+)
 from .maskgit import MaskGITDynamics
 
-# The exactly-11 modalities to render, and their family grouping for panel layout.
-# IGNITE_EVAL_MODALITIES restricts the set (comma-separated). Needed because a single broken
-# decoder aborts the WHOLE eval before any modality is scored: `ece` is channel-factorized
-# (channel_groups=4 -> 4x192=768 tokens) and decode_flat feeds the flat 768 straight into a
-# decoder whose pos_emb is 192, so it raises and takes every other modality down with it.
-# Restricting the set is the workaround; fixing decode_flat's group reshape is the real repair.
+# Modalities decoded and scored. A codec that fails to decode aborts the whole
+# evaluation, so IGNITE_EVAL_MODALITIES can restrict the set.
 EVAL_MODALITIES: Tuple[str, ...] = tuple(
-    m for m in os.environ.get(
+    name
+    for name in os.environ.get(
         "IGNITE_EVAL_MODALITIES",
         "ece,bes,mhr,co2,ts_core_density,ts_core_temp,ts_tangential_density,"
-        "ts_tangential_temp,cer_ti,tangtv_lower,tangtv_upper").split(",") if m.strip()
+        "ts_tangential_temp,cer_ti,tangtv_lower,tangtv_upper",
+    ).split(",")
+    if name.strip()
 )
 SPECTRO = ("ece", "bes", "mhr", "co2")
 VIDEO = ("tangtv_lower", "tangtv_upper")
-SLOWTS = ("ts_core_density", "ts_core_temp", "ts_tangential_density", "ts_tangential_temp", "cer_ti")
-
-# ---- FIGURE ECONOMY (2026-08-10) ------------------------------------------------------------ #
-# A one-page figure has a fixed ink budget: every extra panel costs RESOLUTION in the others.
-# Rendering all 11 modalities forced the spectrograms side-by-side at ~2.2 in wide, which
-# destroyed exactly what the figure exists to show (rollout quality on a 5 s, 512-bin image).
-# So the figure renders a SELECTION at full width — stacked GT over PRED — and the metrics
-# json still carries every modality. Override per run with IGNITE_FIG_SPECTRO / _SLOWTS
-# (comma-separated names, or "all").
-def _fig_sel(env: str, default: Tuple[str, ...], allowed: Tuple[str, ...]) -> Tuple[str, ...]:
-    import os
-    v = os.environ.get(env)
-    if not v:
-        return default
-    if v.strip().lower() == "all":
-        return allowed
-    return tuple(n for n in (x.strip() for x in v.split(",")) if n in allowed)
-
-
-FIG_SPECTRO = _fig_sel("IGNITE_FIG_SPECTRO", ("ece", "mhr"), SPECTRO)
-FIG_SLOWTS = _fig_sel("IGNITE_FIG_SLOWTS",
-                      ("ts_core_density", "ts_core_temp", "cer_ti"), SLOWTS)
-
-# PAPER GEOMETRY: the PDF must drop into \includegraphics at natural size, so the canvas
-# width IS the target width (no bbox_inches="tight", which expands past it) and the font
-# size is the printed point size. Defaults: 6.5 in = \textwidth for letter/1in margins,
-# 12 pt to match body text. Times New Roman is not installed on Frontier; Liberation Serif
-# is METRICALLY IDENTICAL to it (same advance widths) and is the standard substitute.
-import os as _os
-FIG_W_IN = float(_os.environ.get("IGNITE_FIG_WIDTH_IN", "6.5"))
-# IGNITE_FIG_SKILL=0 drops the "· skill +x.xx" tail from every panel annotation. Skill is a
-# claim about beating persistence and belongs in a results table, not on a comparison figure.
-_SHOW_SKILL = _os.environ.get("IGNITE_FIG_SKILL", "1") != "0"
-# IGNITE_FIG_R=0 drops the Pearson "r x.xxx ·" prefix from spectro/video annotations.
-_SHOW_R = _os.environ.get("IGNITE_FIG_R", "1") != "0"
-# IGNITE_FIG_CH=0 hides the best-channel index on the slow-TS traces.
-_SHOW_CH = _os.environ.get("IGNITE_FIG_CH", "1") != "0"
-# IGNITE_FIG_VRMSE=1 adds the per-frame video nRMSE(t) row under the video panels.
-_SHOW_VRMSE = _os.environ.get("IGNITE_FIG_VRMSE", "0") != "0"
-# GROUND-TRUTH-ONLY VARIANT. Draws the SAME figure with every prediction artist omitted:
-# no orange trace, no Prediction strip/frame, no per-panel r/nRMSE/skill annotation, no
-# video-nRMSE row, and a one-entry legend. Row set, row heights, fonts, colours, colormaps
-# and time axes are untouched -- a GT panel is byte-identical to the one in the full figure,
-# it just occupies the width its Prediction twin used to share.
-_GT_ONLY = _os.environ.get("IGNITE_FIG_GT_ONLY", "0") != "0"
-# IGNITE_FIG_TAG=0 drops the slow-TS location tag ("core", "tangential") from the
-# corner annotation; the ylabel already carries the quantity and its units.
-_SHOW_TAG = _os.environ.get("IGNITE_FIG_TAG", "1") != "0"
-FIG_PT = float(_os.environ.get("IGNITE_FIG_FONT_PT", "12"))
-# Colour maps (user 2026-08-12): spectrograms in a colourblind-safe sequential scheme,
-# video in greyscale (raw camera counts read naturally as luminance), differences on a
-# diverging map centred at zero. Overridable per-run via env.
-CMAP_SPECTRO = _os.environ.get("IGNITE_CMAP_SPECTRO", "Blues")
-CMAP_VIDEO = _os.environ.get("IGNITE_CMAP_VIDEO", "gray")
-CMAP_DIFF = _os.environ.get("IGNITE_CMAP_DIFF", "RdBu_r")
-FIG_SERIF = ["Times New Roman", "Liberation Serif", "STIXGeneral", "DejaVu Serif"]
+SLOWTS = (
+    "ts_core_density",
+    "ts_core_temp",
+    "ts_tangential_density",
+    "ts_tangential_temp",
+    "cer_ti",
+)
 
 _DEFAULT_CACHE = "/lustre/orion/fus187/proj-shared/models/ignite_production/frame_codes"
-# chunk the decode along the time (frame) axis so a codec never sees the whole rollout at once
 _DECODE_CHUNK = 16
-FRAME_S = 0.05           # one frame = one 50 ms chunk (the shared codec windowing)
+_SHUFFLE_SEED = 1234
+_MERGE_TIMEOUT_S = 3600
+_MERGE_POLL_S = 10
+FRAME_S = 0.05
+WARMUP_S = 1.0
 
 
-# --------------------------------------------------------------------------------------------- #
-# decode
-# --------------------------------------------------------------------------------------------- #
+def _env_flag(name: str, default: str) -> bool:
+    return os.environ.get(name, default) != "0"
+
+
+def _env_selection(name: str, default: Tuple[str, ...], allowed: Tuple[str, ...]):
+    """Read a figure selection: comma-separated names, or ``"all"``."""
+    value = os.environ.get(name)
+    if not value:
+        return default
+    if value.strip().lower() == "all":
+        return allowed
+    return tuple(n for n in (x.strip() for x in value.split(",")) if n in allowed)
+
+
+@dataclasses.dataclass(frozen=True)
+class FigureOptions:
+    """Options of the comparison figure, read once from ``IGNITE_FIG_*``.
+
+    Parameters
+    ----------
+    spectro, slowts : tuple of str
+        Modalities drawn (the metrics cover all of them).
+    width_in, font_pt : float
+        Printed width and font size; the canvas is the delivered size.
+    show_skill, show_r, show_channel, show_tag : bool
+        Parts of the panel annotations.
+    show_video_nrmse : bool
+        Add the per-frame video nRMSE row.
+    gt_only : bool
+        Draw the same figure without any prediction artist.
+    cmap_spectro, cmap_video, cmap_diff : str
+        Colour maps.
+    legend_loc : str
+        Location of the legend in the first panel.
+    """
+
+    spectro: Tuple[str, ...]
+    slowts: Tuple[str, ...]
+    width_in: float
+    font_pt: float
+    show_skill: bool
+    show_r: bool
+    show_channel: bool
+    show_tag: bool
+    show_video_nrmse: bool
+    gt_only: bool
+    cmap_spectro: str
+    cmap_video: str
+    cmap_diff: str
+    legend_loc: str
+
+    @classmethod
+    def from_env(cls) -> FigureOptions:
+        """Read the options from the environment."""
+        env = os.environ.get
+        return cls(
+            spectro=_env_selection("IGNITE_FIG_SPECTRO", ("ece", "mhr"), SPECTRO),
+            slowts=_env_selection(
+                "IGNITE_FIG_SLOWTS",
+                ("ts_core_density", "ts_core_temp", "cer_ti"),
+                SLOWTS,
+            ),
+            width_in=float(env("IGNITE_FIG_WIDTH_IN", "6.5")),
+            font_pt=float(env("IGNITE_FIG_FONT_PT", "12")),
+            show_skill=_env_flag("IGNITE_FIG_SKILL", "1"),
+            show_r=_env_flag("IGNITE_FIG_R", "1"),
+            show_channel=_env_flag("IGNITE_FIG_CH", "1"),
+            show_tag=_env_flag("IGNITE_FIG_TAG", "1"),
+            show_video_nrmse=_env_flag("IGNITE_FIG_VRMSE", "0"),
+            gt_only=_env_flag("IGNITE_FIG_GT_ONLY", "0"),
+            cmap_spectro=env("IGNITE_CMAP_SPECTRO", "Blues"),
+            cmap_video=env("IGNITE_CMAP_VIDEO", "gray"),
+            cmap_diff=env("IGNITE_CMAP_DIFF", "RdBu_r"),
+            legend_loc=env("IGNITE_FIG_LEGEND_LOC", "upper left"),
+        )
+
+
+FIGURE_OPTIONS = FigureOptions.from_env()
+FIG_SPECTRO = FIGURE_OPTIONS.spectro
+FIG_SLOWTS = FIGURE_OPTIONS.slowts
+FIG_W_IN = FIGURE_OPTIONS.width_in
+FIG_PT = FIGURE_OPTIONS.font_pt
+# Liberation Serif is metrically identical to Times New Roman, absent on Frontier.
+FIG_SERIF = ["Times New Roman", "Liberation Serif", "STIXGeneral", "DejaVu Serif"]
+
+
 @torch.no_grad()
 def decode_flat(codec, flat: torch.Tensor) -> torch.Tensor:
-    """Flat FSQ code indices -> decoded signal (in the codec's normalized recon space).
-
-    flat: (T, n_tok) long. Returns SpectroCodec->(T,C,Fr,Tb) / VideoCodec->(T,C,Tv,H,W) /
-    SlowTSCodec->(T,C,Tt).
-    """
-    quant = codec.quantizer.fsq.indices_to_codes(flat)   # (T, n_tok, d_model)
-    return codec.decode(quant)
+    """Decode flat FSQ codes of shape (T, n_tok) into the codec's normalised space."""
+    return codec.decode(codec.quantizer.fsq.indices_to_codes(flat))
 
 
 @torch.no_grad()
-def decode_flat_chunked(codec, flat: torch.Tensor, device, chunk: int = _DECODE_CHUNK) -> np.ndarray:
-    """decode_flat over time in ``chunk``-frame slices -> a single cpu float32 numpy array.
-
-    Codecs are frozen / no_grad, so chunking only bounds peak memory; the result is identical to a
-    single call. ``flat`` is (T, n_tok) long (any device); output leading axis is T.
-    """
-    outs = []
-    T = flat.shape[0]
-    for i in range(0, T, chunk):
-        sub = flat[i: i + chunk].to(device).long()
-        rec = decode_flat(codec, sub)                    # (t, ...)
-        outs.append(rec.float().cpu())
-    return torch.cat(outs, dim=0).numpy()
+def decode_flat_chunked(
+    codec, flat: torch.Tensor, device, chunk: int = _DECODE_CHUNK
+) -> np.ndarray:
+    """Decode (T, n_tok) codes in chunks of frames; same result, bounded memory."""
+    decoded = [
+        decode_flat(codec, flat[start : start + chunk].to(device).long()).float().cpu()
+        for start in range(0, flat.shape[0], chunk)
+    ]
+    return torch.cat(decoded, dim=0).numpy()
 
 
-# --------------------------------------------------------------------------------------------- #
-# load + rollout
-# --------------------------------------------------------------------------------------------- #
-def load_model(ckpt_path: Path, device) -> Tuple[MaskGITDynamics, DynamicsConfig, int]:
-    ck = torch.load(ckpt_path, map_location=device, weights_only=False)
-    kw = dict(depth=int(ck["cfg_depth"]), d_model=int(ck["cfg_d_model"]))
-    if "modalities" in ck:
-        # checkpoints since 2026-08-08 carry the trained frame layout (v6 codecs change
-        # n_tok/vocab vs the static table) + heads/horizon; older ckpts fall back to defaults.
-        from .dynamics_config import ModalitySpec
-        kw["modalities"] = tuple(ModalitySpec(*t) for t in ck["modalities"])
-    for src, dst in (("cfg_n_heads", "n_heads"), ("cfg_k0", "k0_seed"),
-                     ("cfg_n_predict", "n_predict")):
-        if src in ck:
-            kw[dst] = int(ck[src])
-    cfg = DynamicsConfig(**kw)
-    cfg.grad_checkpointing = False                        # inference: no recompute
-    # ARCHITECTURE FROM THE WEIGHTS, never from a default. _ACT_SPEC grew 70 -> 88 channels when
-    # i_coil was added, so a DynamicsConfig default of 70 fails to load an 88-channel checkpoint
-    # with "size mismatch for backbone.act_embed.weight" and takes the whole eval down (job
-    # 5329757, all 4 checkpoints, 2026-08-23). Same class of failure as act_cross_attn and
-    # lag_embed_k before it: read the shape rather than trusting a config three files away.
-    sd = ck["model"]
-    if "backbone.act_embed.weight" in sd:
-        adim = int(sd["backbone.act_embed.weight"].shape[1])
-        if adim != int(getattr(cfg, "actuator_dim", -1)):
-            print(f"[eval] actuator_dim {getattr(cfg, 'actuator_dim', '?')} -> {adim} "
-                  f"(inferred from backbone.act_embed.weight)", flush=True)
-            cfg.actuator_dim = adim
-    for flag, key in (("act_cross_attn", "cfg_act_cross_attn"),
-                      ("dropout", "cfg_dropout")):
-        if key in ck:
-            setattr(cfg, flag, type(getattr(cfg, flag))(ck[key]))
-    # LATENT HEAD -- read it off the WEIGHTS first (the rule since act_cross_attn/lag_embed_k
-    # killed 7 jobs): a latent-head checkpoint's heads.<m>.weight is (2*D, d) instead of
-    # (codebook_size, d). The persisted cfg_latent_head is a cross-check, not the source of truth.
-    if "cfg_fsq_levels" in ck:
-        cfg.fsq_levels = tuple(int(x) for x in ck["cfg_fsq_levels"])
-    _m0 = cfg.modalities[0].name
-    _hw = sd.get(f"backbone.tok.heads.{_m0}.weight")
-    if _hw is not None:
-        _inferred = int(_hw.shape[0]) == 2 * len(cfg.fsq_levels)
-        _persisted = bool(ck.get("cfg_latent_head", _inferred))
-        if _inferred != _persisted:
-            print(f"[eval] WARNING cfg_latent_head={_persisted} but head width {int(_hw.shape[0])} "
-                  f"says {_inferred}; trusting the weights", flush=True)
-        cfg.latent_head = _inferred
-        if cfg.latent_head:
-            print(f"[eval] LATENT HEAD checkpoint (head width {int(_hw.shape[0])}, "
-                  f"fsq_levels {cfg.fsq_levels}); predictions round to codes", flush=True)
-    # ACTUATOR NORMALISATION must match training. A checkpoint trained on the dataset-wide side
-    # cache, scored with per-shot z-scored actuators (or the reverse), sees an input distribution
-    # it never trained on and the score is silently wrong. Checkpoints written before 2026-10-13
-    # carry no key; every one of them was trained per-shot ("").
-    _trained_ag = str(ck.get("cfg_act_global", "") or "")
-    _eval_ag = os.environ.get("IGNITE_ACT_GLOBAL", "").strip()
-    if bool(_trained_ag) != bool(_eval_ag):
+def _infer_actuator_dim(cfg, state_dict) -> None:
+    weight = state_dict.get("backbone.act_embed.weight")
+    if weight is None:
+        return
+    width = int(weight.shape[1])
+    if width != int(cfg.actuator_dim):
+        print(
+            f"[eval] actuator_dim {cfg.actuator_dim} -> {width} "
+            f"(inferred from backbone.act_embed.weight)",
+            flush=True,
+        )
+        cfg.actuator_dim = width
+
+
+def _infer_head_type(cfg, checkpoint) -> None:
+    head = checkpoint["model"].get(
+        f"backbone.tok.heads.{cfg.modalities[0].name}.weight"
+    )
+    if head is None:
+        return
+    width = int(head.shape[0])
+    is_latent = width == 2 * len(cfg.fsq_levels)
+    persisted = bool(checkpoint.get("cfg_latent_head", is_latent))
+    if is_latent != persisted:
+        print(
+            f"[eval] WARNING cfg_latent_head={persisted} but head width {width} "
+            f"says {is_latent}; trusting the weights",
+            flush=True,
+        )
+    cfg.latent_head = is_latent
+    if cfg.latent_head:
+        print(
+            f"[eval] LATENT HEAD checkpoint (head width {width}, "
+            f"fsq_levels {cfg.fsq_levels}); predictions round to codes",
+            flush=True,
+        )
+
+
+def _check_actuator_normalisation(checkpoint) -> None:
+    """Refuse to score a model on actuators normalised differently from training."""
+    # Checkpoints without the key were all trained on per-shot actuators ("").
+    trained = str(checkpoint.get("cfg_act_global", "") or "")
+    evaluated = os.environ.get("IGNITE_ACT_GLOBAL", "").strip()
+
+    def describe(side_cache):
+        if side_cache:
+            return "IGNITE_ACT_GLOBAL=" + side_cache
+        return "PER-SHOT z-scored actuators"
+
+    if bool(trained) != bool(evaluated):
         raise RuntimeError(
             f"actuator normalisation mismatch: checkpoint trained with "
-            f"{'IGNITE_ACT_GLOBAL=' + _trained_ag if _trained_ag else 'PER-SHOT z-scored actuators'}, "
-            f"eval run with {'IGNITE_ACT_GLOBAL=' + _eval_ag if _eval_ag else 'PER-SHOT z-scored actuators'}. "
-            f"Set IGNITE_ACT_GLOBAL to match.")
-    if _trained_ag:
-        print(f"[eval] actuators: dataset-wide normalised side cache {_eval_ag} "
-              f"(trained on {_trained_ag})", flush=True)
-    cfg.dropout = 0.0                                     # inference: dropout off regardless
+            f"{describe(trained)}, eval run with {describe(evaluated)}. "
+            f"Set IGNITE_ACT_GLOBAL to match."
+        )
+    if trained:
+        print(
+            f"[eval] actuators: dataset-wide normalised side cache {evaluated} "
+            f"(trained on {trained})",
+            flush=True,
+        )
+
+
+def load_model(ckpt_path: Path, device) -> Tuple[MaskGITDynamics, DynamicsConfig, int]:
+    """Rebuild a trained model from its checkpoint.
+
+    The architecture is inferred from the weights where possible (actuator width,
+    latent versus classifier heads), so a stale config default cannot break a
+    load.
+
+    Parameters
+    ----------
+    ckpt_path : Path
+        ``dynamics_latest.pt`` or ``dynamics_best.pt``.
+    device : torch.device
+        Target device.
+
+    Returns
+    -------
+    model : MaskGITDynamics
+        The model in eval mode, with dropout and checkpointing off.
+    cfg : DynamicsConfig
+        Its configuration.
+    step : int
+        Training step of the checkpoint.
+
+    Raises
+    ------
+    RuntimeError
+        If ``IGNITE_ACT_GLOBAL`` is set for evaluation but not for training, or
+        the reverse: the model would see actuators it was not trained on.
+    """
+    checkpoint = torch.load(ckpt_path, map_location=device, weights_only=False)
+    model_kwargs = dict(
+        depth=int(checkpoint["cfg_depth"]), d_model=int(checkpoint["cfg_d_model"])
+    )
+    if "modalities" in checkpoint:
+        model_kwargs["modalities"] = tuple(
+            ModalitySpec(*spec) for spec in checkpoint["modalities"]
+        )
+    for key, field in (
+        ("cfg_n_heads", "n_heads"),
+        ("cfg_k0", "k0_seed"),
+        ("cfg_n_predict", "n_predict"),
+    ):
+        if key in checkpoint:
+            model_kwargs[field] = int(checkpoint[key])
+    cfg = DynamicsConfig(**model_kwargs)
+    cfg.grad_checkpointing = False
+    _infer_actuator_dim(cfg, checkpoint["model"])
+    if "cfg_act_cross_attn" in checkpoint:
+        cfg.act_cross_attn = bool(checkpoint["cfg_act_cross_attn"])
+    if "cfg_dropout" in checkpoint:
+        cfg.dropout = float(checkpoint["cfg_dropout"])
+    if "cfg_fsq_levels" in checkpoint:
+        cfg.fsq_levels = tuple(int(level) for level in checkpoint["cfg_fsq_levels"])
+    _infer_head_type(cfg, checkpoint)
+    _check_actuator_normalisation(checkpoint)
+    cfg.dropout = 0.0
     model = MaskGITDynamics(cfg).to(device).eval()
-    model.load_state_dict(ck["model"])
-    step = int(ck.get("step", 0))
-    return model, cfg, step
+    model.load_state_dict(checkpoint["model"])
+    return model, cfg, int(checkpoint.get("step", 0))
 
 
 def load_shot_cache(cache_dir: Path, shot: str) -> Dict:
-    p = Path(cache_dir) / f"{shot}.pt"
-    if not p.exists():
-        raise FileNotFoundError(f"frame-code cache not found: {p}")
-    return torch.load(p, map_location="cpu", weights_only=False)
+    """Load one shot's frame-code cache entry."""
+    path = Path(cache_dir) / f"{shot}.pt"
+    if not path.exists():
+        raise FileNotFoundError(f"frame-code cache not found: {path}")
+    return torch.load(path, map_location="cpu", weights_only=False)
 
 
-# --------------------------------------------------------------------------------------------- #
-# actuator counterfactuals
-# --------------------------------------------------------------------------------------------- #
-# The cache stores actuators ALREADY z-scored per shot over the cached window (train_dynamics.
-# actuator_frames), so an edit here is POST-normalization: editing the predicted region cannot
-# feed back into the seed frames. (The seed/predict coupling only exists if you re-derive
-# actuators from the H5 with edited raw signals — a different, harder experiment.)
-#
-# Because the per-shot z-score already removed level and scale, a counterfactual that MULTIPLIES
-# or OFFSETS a channel is a NO-OP by construction. Only trajectory SHAPE is expressible, which is
-# why the modes below are structural (zero / freeze / shuffle / donor / per-group) rather than
-# gain-based.
-ACTUATOR_MODES = ("real", "zero", "freeze", "shuffle", "donor:<shot>", "group_zero:<group>")
+# Cached actuators are z-scored per shot, so gain or offset edits are no-ops; the
+# counterfactuals are structural.
+ACTUATOR_MODES = (
+    "real",
+    "zero",
+    "freeze",
+    "shuffle",
+    "donor:<shot>",
+    "group_zero:<group>",
+)
 
 
-def apply_actuator_mode(act: torch.Tensor, mode: str, K0: int, cache_dir=None,
-                        F: int = None) -> torch.Tensor:
-    """(F, 70) cached actuators -> counterfactual (F, 70). ``act`` is not modified in place.
+def _actuator_group_columns(group: str) -> slice:
+    """Columns of one :data:`~.train_dynamics._ACT_SPEC` group."""
+    offset = 0
+    for key, n_channels in td._ACT_SPEC:
+        if key == group:
+            return slice(offset, offset + n_channels)
+        offset += n_channels
+    known = [key for key, _ in td._ACT_SPEC]
+    raise ValueError(f"unknown actuator group {group!r}; known: {known}")
 
-    real                 unchanged (baseline)
-    zero                 all actuators zeroed over the PREDICTED region [K0, F) — the seed
-                         region is left real so the model gets the same context and only the
-                         control input differs.
-    freeze               hold the last seed frame's actuators across [K0, F): "control stopped".
-    shuffle              randomly permute the predicted region's frames (destroys the temporal
-                         trajectory, preserves the marginal distribution).
-    donor:<shot>         splice another shot's actuators over [K0, F) — the in-distribution
-                         counterfactual (a real control trajectory, just not this shot's).
-    group_zero:<g>       zero ONE actuator group over [K0, F) (g in _ACT_SPEC: ech_power, pinj,
-                         beam_voltage, tinj, gas_flow, gas_raw, rmp) — per-actuator attribution.
+
+def apply_actuator_mode(
+    act: torch.Tensor, mode: str, K0: int, cache_dir=None, F: int = None
+) -> torch.Tensor:
+    """Return a counterfactual copy of the actuators over the predicted frames.
+
+    Parameters
+    ----------
+    act : torch.Tensor of shape (F, n_channels)
+        Cached actuators; not modified.
+    mode : str
+        ``"real"`` (unchanged), ``"zero"``, ``"freeze"`` (hold the last seed
+        frame), ``"shuffle"`` (seeded permutation of the predicted frames),
+        ``"donor:<shot>"`` (another shot's actuators) or ``"group_zero:<group>"``
+        (zero one :data:`~.train_dynamics._ACT_SPEC` group).
+    K0 : int
+        First predicted frame; the seed frames stay real.
+    cache_dir : path-like, default=None
+        Cache holding the donor shot.
+    F : int, default=None
+        End of the predicted region; defaults to ``len(act)``.
+
+    Returns
+    -------
+    out : torch.Tensor of shape (F, n_channels)
+        The edited actuators.
     """
-    from .train_dynamics import _ACT_SPEC
-    F = int(act.shape[0]) if F is None else F
-    out = act.clone()
+    n_frames = int(act.shape[0]) if F is None else F
+    predicted = slice(K0, n_frames)
+    edited = act.clone()
+    kind, has_argument, argument = mode.partition(":")
     if mode == "real":
-        return out
-    if mode == "zero":
-        out[K0:F] = 0.0
-        return out
-    if mode == "freeze":
-        out[K0:F] = act[K0 - 1:K0]
-        return out
-    if mode == "shuffle":
-        # deterministic permutation (seeded by F) so a run is reproducible
-        g = torch.Generator().manual_seed(1234 + F)
-        idx = torch.randperm(F - K0, generator=g) + K0
-        out[K0:F] = act[idx]
-        return out
-    if mode.startswith("donor:"):
-        donor = mode.split(":", 1)[1]
+        pass
+    elif mode == "zero":
+        edited[predicted] = 0.0
+    elif mode == "freeze":
+        edited[predicted] = act[K0 - 1 : K0]
+    elif mode == "shuffle":
+        generator = torch.Generator().manual_seed(_SHUFFLE_SEED + n_frames)
+        edited[predicted] = act[torch.randperm(n_frames - K0, generator=generator) + K0]
+    elif kind == "donor" and has_argument:
         if cache_dir is None:
             raise ValueError("donor mode needs cache_dir")
-        d = load_shot_cache(Path(cache_dir), donor)
-        da = d["actuators"].float()
-        if da.shape[0] < F:
-            raise RuntimeError(f"donor {donor} has {da.shape[0]} frames < F={F}")
-        out[K0:F] = da[K0:F]
-        return out
-    if mode.startswith("group_zero:"):
-        g = mode.split(":", 1)[1]
-        off = 0
-        for key, nch in _ACT_SPEC:
-            if key == g:
-                out[K0:F, off:off + nch] = 0.0
-                return out
-            off += nch
-        raise ValueError(f"unknown actuator group {g!r}; known: {[k for k, _ in _ACT_SPEC]}")
-    raise ValueError(f"unknown actuator_mode {mode!r}; expected one of {ACTUATOR_MODES}")
+        donor = load_shot_cache(Path(cache_dir), argument)["actuators"].float()
+        if donor.shape[0] < n_frames:
+            raise RuntimeError(
+                f"donor {argument} has {donor.shape[0]} frames < F={n_frames}"
+            )
+        edited[predicted] = donor[predicted]
+    elif kind == "group_zero" and has_argument:
+        edited[predicted, _actuator_group_columns(argument)] = 0.0
+    else:
+        raise ValueError(
+            f"unknown actuator_mode {mode!r}; expected one of {ACTUATOR_MODES}"
+        )
+    return edited
+
+
+class Rollout(NamedTuple):
+    """Ground-truth and predicted codes of one rollout, ``(F, n_tok)`` each."""
+
+    gt_codes: Dict[str, torch.Tensor]
+    pred_codes: Dict[str, torch.Tensor]
+    k0: int
+    n_frames: int
+
+
+def _load_global_actuators(cache: Dict, shot) -> None:
+    """Replace the cached actuators by the ``IGNITE_ACT_GLOBAL`` ones, in place."""
+    side_cache = os.environ.get("IGNITE_ACT_GLOBAL", "").strip()
+    if not side_cache:
+        return
+    if shot is None:
+        raise ValueError("IGNITE_ACT_GLOBAL is set: rollout_shot needs the shot id")
+    entry = Path(side_cache) / f"{shot}.pt"
+    if not entry.exists():
+        raise FileNotFoundError(
+            f"IGNITE_ACT_GLOBAL={side_cache} has no entry for shot {shot}"
+        )
+    width = cache["actuators"].shape[-1]
+    loaded = torch.load(entry, map_location="cpu", weights_only=False)
+    cache["actuators"] = loaded["actuators_global"][:, :width]
 
 
 @torch.no_grad()
-def rollout_shot(model: MaskGITDynamics, cfg: DynamicsConfig, cache: Dict, K0: int,
-                 temperature: float, generator: torch.Generator, device,
-                 actuator_mode: str = "real", cache_dir=None, shot=None
-                 ) -> Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor], int, int]:
-    """Seed K0 real frames, roll out, return (gt_codes, pred_codes, K0, F) as cpu long tensors.
+def rollout_shot(
+    model: MaskGITDynamics,
+    cfg: DynamicsConfig,
+    cache: Dict,
+    K0: int,
+    temperature: float,
+    generator: torch.Generator,
+    device,
+    actuator_mode: str = "real",
+    cache_dir=None,
+    shot=None,
+) -> Rollout:
+    """Seed ``K0`` real frames of a shot and roll the model out.
 
-    gt_codes[name] / pred_codes[name]: (F, n_tok) over the FULL window [0, F). F = min(cfg.max_frames,
-    n_frames). Both are compared over the PREDICTED region [K0, F) downstream.
+    The rollout draws the same random numbers whatever ``actuator_mode`` is, so
+    two runs with the same seed differ only through the actuators.
 
-    ``actuator_mode`` applies a counterfactual to the actuators over [K0, F) — see
-    :func:`apply_actuator_mode`. The rollout consumes an IDENTICAL number of RNG draws whichever
-    mode is used (the decode loop is a fixed number of multinomial calls), so two runs with the
-    same seed differ ONLY through the actuator conditioning — the comparison is exactly paired.
+    Parameters
+    ----------
+    model : MaskGITDynamics
+        Trained model.
+    cfg : DynamicsConfig
+        Its configuration.
+    cache : dict
+        The shot's cache entry. With ``IGNITE_ACT_GLOBAL`` set its actuators
+        are replaced in place by the side-cache ones.
+    K0 : int
+        Seed frames.
+    temperature : float
+        Sampling temperature.
+    generator : torch.Generator
+        Source of randomness.
+    device : torch.device
+        Device of the model.
+    actuator_mode : str, default="real"
+        Counterfactual, see :func:`apply_actuator_mode`.
+    cache_dir : path-like, default=None
+        Cache directory, for donor counterfactuals.
+    shot : str, default=None
+        Shot id; required when ``IGNITE_ACT_GLOBAL`` is set.
+
+    Returns
+    -------
+    rollout : Rollout
+        Codes over the whole window ``[0, F)`` on the CPU, ``K0`` and the window
+        length ``F = min(cfg.max_frames, n_frames)``; unpacks as a 4-tuple.
     """
-    F = min(cfg.max_frames, int(cache["n_frames"]))
-    if F <= K0:
-        raise RuntimeError(f"shot has F={F} frames <= K0={K0}; nothing to predict")
-    n_predict = F - K0
+    n_frames = min(cfg.max_frames, int(cache["n_frames"]))
+    if n_frames <= K0:
+        raise RuntimeError(
+            f"shot has F={n_frames} frames <= K0={K0}; nothing to predict"
+        )
     names = [m.name for m in cfg.modalities]
-
     codes = cache["codes"]
-    seed_codes = {n: codes[n][:K0].long().unsqueeze(0).to(device) for n in names}   # (1, K0, n_tok)
-    # Must match TRAINING: if the arm trained on dataset-wide-normalised actuators, scoring it
-    # with the per-shot z-scored column feeds the model a different input distribution than it
-    # ever saw. Same hard-error policy as the training path.
-    _agd = os.environ.get("IGNITE_ACT_GLOBAL", "").strip()
-    if _agd:
-        if shot is None:
-            raise ValueError("IGNITE_ACT_GLOBAL is set: rollout_shot needs the shot id")
-        _agp = Path(_agd) / f"{shot}.pt"
-        if not _agp.exists():
-            raise FileNotFoundError(f"IGNITE_ACT_GLOBAL={_agd} has no entry for shot {shot}")
-        _w = cache["actuators"].shape[-1]
-        cache["actuators"] = torch.load(_agp, map_location="cpu",
-                                        weights_only=False)["actuators_global"][:, :_w]
-    act = cache["actuators"][:F].float()                                            # (F, 70)
-    act = apply_actuator_mode(act, actuator_mode, K0, cache_dir=cache_dir, F=F)
-    actuators = act.unsqueeze(0).to(device)                                         # (1, F, 70)
+    seed_codes = {
+        name: codes[name][:K0].long().unsqueeze(0).to(device) for name in names
+    }
+    _load_global_actuators(cache, shot)
+    actuators = apply_actuator_mode(
+        cache["actuators"][:n_frames].float(),
+        actuator_mode,
+        K0,
+        cache_dir=cache_dir,
+        F=n_frames,
+    )
+    trajectory = model.rollout(
+        seed_codes,
+        actuators.unsqueeze(0).to(device),
+        n_predict=n_frames - K0,
+        temperature=temperature,
+        generator=generator,
+    )
+    return Rollout(
+        gt_codes={name: codes[name][:n_frames].long().cpu() for name in names},
+        pred_codes={
+            name: trajectory[name][0, :n_frames].long().cpu() for name in names
+        },
+        k0=K0,
+        n_frames=n_frames,
+    )
 
-    traj = model.rollout(seed_codes, actuators, n_predict=n_predict,
-                         temperature=temperature, generator=generator)
-    gt_codes = {n: codes[n][:F].long().cpu() for n in names}
-    pred_codes = {n: traj[n][0, :F].long().cpu() for n in names}
-    return gt_codes, pred_codes, K0, F
 
-
-# --------------------------------------------------------------------------------------------- #
-# decode both + metrics
-# --------------------------------------------------------------------------------------------- #
 def _nrmse(pred: np.ndarray, gt: np.ndarray) -> float:
-    """rmse(pred - gt) / std(gt) over finite entries, in float64.
+    """Return ``rmse(pred - gt) / std(gt)`` over finite entries, in float64.
 
-    float64 is REQUIRED: physical-unit decodes reach ~1e19 (Thomson density), whose square
-    overflows float32 (inf/inf -> nan nRMSE — the 2026-08-03 density-nan failure)."""
+    float64 is required: physical densities reach ~1e19 and overflow float32.
+    """
     finite = np.isfinite(pred) & np.isfinite(gt)
     if not finite.any():
         return float("nan")
-    p = pred[finite].astype(np.float64)
-    g = gt[finite].astype(np.float64)
-    d = p - g
-    std = float(np.std(g))
-    rmse = float(np.sqrt(np.mean(d * d)))
-    return rmse / (std + 1e-12)
+    predicted = pred[finite].astype(np.float64)
+    truth = gt[finite].astype(np.float64)
+    error = predicted - truth
+    return float(np.sqrt(np.mean(error * error))) / (float(np.std(truth)) + 1e-12)
 
 
 @torch.no_grad()
 def raw_to_output_space(fam: str, raw, denorm_fn=None, mask=None) -> np.ndarray:
-    """Map a codec's RAW INPUT window into the SAME space as the denormalized decode.
+    """Map a codec's raw input window into the space of the denormalised decode.
 
-    The families do NOT agree on what their dataset hands back, so a single rule silently
-    corrupts two of them (measured on shot 200729, per-family pre-denorm ranges):
+    Video inputs are already camera counts and pass through; spectrogram and
+    slow time-series inputs are standardised and go through ``denorm_fn``.
 
-      video   : raw is ALREADY physical camera counts (16 … 235, std 48) while the decode is
-                standardized (std ~1). Applying the decode's denorm to raw inflated it to
-                65 … 17 400 — a ~60x error that blew out the shared colour limits and made
-                the correctly-scaled prediction render as SOLID BLACK.
-      slow-TS : raw is standardized, same space as the decode -> denorm applies. But raw also
-                carries MISSING-DATA sentinels the codec smooths away (min -5.66 vs decoded
-                -4.47); left in, a fully-missing channel plots as a flat line and can win the
-                "most variable channel" pick.
-      spectro : raw is instance-normalized and denorm maps it correctly (denormed raw vs
-                decode: mean -1.217 vs -1.212, std 1.03 vs 1.15).
+    Parameters
+    ----------
+    fam : str
+        Codec family.
+    raw : array-like
+        Raw input window(s).
+    denorm_fn : callable, default=None
+        Inverse normalisation of the modality.
+    mask : array-like of bool, default=None
+        True where valid, of the shape of ``raw`` or of its leading axes. Invalid
+        samples become NaN, which plotting and scoring treat as absent.
 
-    ``mask`` (True = valid) is applied as NaN so missing samples are neither plotted nor
-    scored; the renderer and _nrmse both treat NaN as absent.
+    Returns
+    -------
+    out : ndarray of float32
+        The signal in output space.
     """
-    a = np.asarray(raw, dtype=np.float32)
+    signal = np.asarray(raw, dtype=np.float32)
     if mask is not None:
-        m = np.asarray(mask)
-        if m.shape == a.shape:
-            a = np.where(m.astype(bool), a, np.nan)
-        elif m.shape == a.shape[:m.ndim]:                 # per-frame / per-channel mask
-            a = np.where(m.astype(bool).reshape(m.shape + (1,) * (a.ndim - m.ndim)), a, np.nan)
+        valid = np.asarray(mask)
+        if valid.shape == signal.shape:
+            signal = np.where(valid.astype(bool), signal, np.nan)
+        elif valid.shape == signal.shape[: valid.ndim]:
+            trailing = (1,) * (signal.ndim - valid.ndim)
+            signal = np.where(
+                valid.astype(bool).reshape(valid.shape + trailing), signal, np.nan
+            )
     if fam == "video":
-        return a                                          # already raw camera counts
-    return np.asarray(denorm_fn(a), dtype=np.float32) if denorm_fn else a
+        return signal
+    return np.asarray(denorm_fn(signal), dtype=np.float32) if denorm_fn else signal
 
 
 @torch.no_grad()
-def load_raw_gt(shot: str, codecs: Dict, F: int, data_dir, t0_start: float = 1.0,
-                denorm: Dict = None, log=print) -> Dict[str, np.ndarray]:
-    """The MEASURED input signal per modality, (F, ...) — NOT the codec round-trip.
+def load_raw_gt(
+    shot: str,
+    codecs: Dict,
+    F: int,
+    data_dir,
+    t0_start: float = 1.0,
+    denorm: Dict = None,
+    log=print,
+) -> Dict[str, np.ndarray]:
+    """Return the measured input signal of each modality, ``{name: (F, ...)}``.
 
-    The figure's reference should be the diagnostic as recorded, so the panels show what the
-    model predicts against REALITY rather than against a reconstruction (user 2026-08-12).
-    This is the same tensor the precompute encodes, taken straight from the codec's input
-    dataset and never passed through encode/decode, so the GT-vs-pred difference now contains
-    the codec's reconstruction error as well as the dynamics error — the honest end-to-end
-    quantity.
-
-    ``t0_start`` MUST match the cache's ``_codec_manifest.json``: it sets the window origin,
-    and a mismatch silently shifts the raw frames against the codes (the probe and production
-    caches differ by exactly 20 frames for this reason).
+    These are the codec input windows, never encoded, so scoring against them
+    includes the codec's reconstruction error. ``t0_start`` must match the
+    cache manifest, or the frames shift against the codes. A modality that
+    fails to load is logged and skipped.
     """
-    from .train_dynamics import _single_shot_dataset
-    out = {}
-    for name, (_codec, cfg, fam) in codecs.items():
+    measured = {}
+    for name, (_codec, codec_cfg, family) in codecs.items():
         try:
-            ds = _single_shot_dataset(name, fam, cfg, shot, data_dir, t0_start=t0_start)
-            if len(ds) < F:
-                log(f"[eval] raw GT {name}@{shot}: only {len(ds)} frames < {F}; skipping")
+            dataset = td._single_shot_dataset(
+                name, family, codec_cfg, shot, data_dir, t0_start=t0_start
+            )
+            if len(dataset) < F:
+                log(
+                    f"[eval] raw GT {name}@{shot}: only {len(dataset)} frames < {F}; "
+                    f"skipping"
+                )
                 continue
             frames, masks = [], []
             for t in range(F):
-                item = ds[t]
-                x = item[0] if isinstance(item, tuple) else item
-                frames.append(np.asarray(x, dtype=np.float32))
-                if isinstance(item, tuple) and len(item) > 1 and fam in ("video", "slowts"):
+                item = dataset[t]
+                frames.append(np.asarray(td._window(item), dtype=np.float32))
+                if (
+                    isinstance(item, tuple)
+                    and len(item) > 1
+                    and family in ("video", "slowts")
+                ):
                     masks.append(np.asarray(item[1]))
-            arr = np.stack(frames, 0)
-            msk = np.stack(masks, 0) if masks else None
-            # Family-specific mapping into the decode's output space (see raw_to_output_space):
-            # video raw is already physical, the others need the denorm, and missing samples
-            # become NaN so they are neither plotted nor scored.
-            out[name] = raw_to_output_space(fam, arr, denorm_fn=(denorm or {}).get(name),
-                                            mask=msk)
-        except Exception as e:                       # a missing diagnostic must not kill the eval
+            measured[name] = raw_to_output_space(
+                family,
+                np.stack(frames, 0),
+                denorm_fn=(denorm or {}).get(name),
+                mask=np.stack(masks, 0) if masks else None,
+            )
+        except Exception as e:
             log(f"[eval] raw GT {name}@{shot} unavailable ({type(e).__name__}: {e})")
-    return out
+    return measured
 
 
 def bandpower_levels(edges: np.ndarray) -> np.ndarray:
-    """(N_LEV-1, D) interior quantile edges -> (N_LEV, D) representative value per level.
+    """Turn (N_LEV-1, D) interior quantile edges into (N_LEV, D) level values.
 
-    Band-power tokens are quantile bin INDICES, not FSQ codes — there is no learned decoder.
-    Interior levels take the bin midpoint; the two open-ended outer bins extrapolate by half
-    the adjacent bin width, which is the only choice that keeps the reconstruction monotone
-    in the level index.
+    Interior levels take the bin midpoint; the two open outer bins extrapolate by
+    half the adjacent bin width, which keeps the values monotone in the level.
     """
     q = np.asarray(edges, dtype=np.float64)
-    mid = 0.5 * (q[:-1] + q[1:])                                  # levels 1 .. N_LEV-2
-    first = q[0] - 0.5 * (q[1] - q[0])
-    last = q[-1] + 0.5 * (q[-1] - q[-2])
-    return np.concatenate([first[None, :], mid, last[None, :]], axis=0)
+    midpoints = 0.5 * (q[:-1] + q[1:])
+    lowest = q[0] - 0.5 * (q[1] - q[0])
+    highest = q[-1] + 0.5 * (q[-1] - q[-2])
+    return np.concatenate([lowest[None, :], midpoints, highest[None, :]], axis=0)
 
 
-def decode_bandpower(spec: Tuple[np.ndarray, int, int], codes: torch.Tensor) -> np.ndarray:
-    """Band-power token levels -> (F, C, n_band, 1) mean log-power.
+def decode_bandpower(
+    spec: Tuple[np.ndarray, int, int], codes: torch.Tensor
+) -> np.ndarray:
+    """Decode band-power levels to log power of shape (F, C, n_band, 1).
 
-    The trailing length-1 axis is the intra-frame time axis the spectro renderer stitches
-    along, so a band-power frame contributes ONE column and ``_stitch`` yields a
-    (n_band, F) image — identical downstream handling to a real spectrogram decode.
+    The trailing axis is the intra-frame time axis, so a frame becomes one column
+    of the stitched spectrogram.
     """
-    values, C, n_band = spec
-    tk = np.asarray(codes.detach().cpu(), dtype=np.int64)          # (F, D)
-    D = tk.shape[1]
-    v = values[np.clip(tk, 0, values.shape[0] - 1), np.arange(D)[None, :]]
-    return v.reshape(tk.shape[0], C, n_band)[..., None].astype(np.float32)
+    level_values, n_channels, n_bands = spec
+    levels = np.asarray(codes.detach().cpu(), dtype=np.int64)
+    n_columns = levels.shape[1]
+    values = level_values[
+        np.clip(levels, 0, level_values.shape[0] - 1), np.arange(n_columns)[None, :]
+    ]
+    return values.reshape(levels.shape[0], n_channels, n_bands)[..., None].astype(
+        np.float32
+    )
 
 
-def decode_all(codecs: Dict, gt_codes: Dict, pred_codes: Dict, K0: int, F: int, device,
-               denorm: Dict = None, raw_gt: Dict = None,
-               bandpower: Dict = None) -> Dict[str, Dict[str, np.ndarray]]:
-    """Decode BOTH gt + pred codes for every EVAL modality over the FULL window [0, F).
+def _scored(gt, pred, persistence, K0, gt_source, family, space) -> Dict:
+    """Decoded arrays of one modality with their scores over the predicted frames."""
+    nrmse = _nrmse(pred[K0:], gt[K0:])
+    nrmse_persistence = _nrmse(persistence[K0:], gt[K0:])
+    return {
+        "gt": gt,
+        "pred": pred,
+        "gt_source": gt_source,
+        "nrmse": nrmse,
+        "nrmse_persistence": nrmse_persistence,
+        "nrmse_skill": (
+            1.0 - nrmse / nrmse_persistence if nrmse_persistence > 0 else float("nan")
+        ),
+        # Read before skill: skill alone prefers a flat prediction.
+        "activity": _temporal_activity(pred[K0:], gt[K0:]),
+        "family": family,
+        "space": space,
+    }
 
-    The seed region [0, K0) is included (pred codes == real codes there) so the figure can show
-    the rollout taking over from real context; ``nrmse`` is computed over the PREDICTED region
-    [K0, F) only. ``denorm`` optionally maps a modality's decoded array from the codec's
-    normalized recon space back to PHYSICAL units ({name: callable(arr) -> arr}); per-window
-    normalizations (spectro instance norm, video per-clip std) are inverted with the GT frame's
-    stats — for predictions this assumes the true frame's scale, the honest eval convention
-    (the codes deliberately do not carry absolute scale). Skips modalities absent from
-    ``codecs`` (e.g. placeholder / not requested).
 
-    Returns {name: {"gt": arr, "pred": arr, "nrmse": float, "family": fam, "space": str}}
-    with arr leading axis = F frames and space in {"normalized", "physical"}.
+def _match_raw_width(raw: np.ndarray, gt: np.ndarray):
+    """NaN-pad or truncate the channel axis of a raw window to the decode's width.
+
+    Returns None if the shapes differ in any other way.
     """
-    out = {}
+    measured = np.asarray(raw, dtype=np.float32)
+    if (
+        measured.ndim != gt.ndim
+        or measured.shape[0] != gt.shape[0]
+        or measured.shape[2:] != gt.shape[2:]
+    ):
+        return None
+    missing = gt.shape[1] - measured.shape[1]
+    if missing > 0:
+        pad_shape = (measured.shape[0], missing) + measured.shape[2:]
+        return np.concatenate(
+            [measured, np.full(pad_shape, np.nan, dtype=np.float32)], axis=1
+        )
+    if missing < 0:
+        return measured[:, : gt.shape[1]]
+    return None
+
+
+def decode_all(
+    codecs: Dict,
+    gt_codes: Dict,
+    pred_codes: Dict,
+    K0: int,
+    F: int,
+    device,
+    denorm: Dict = None,
+    raw_gt: Dict = None,
+    bandpower: Dict = None,
+) -> Dict[str, Dict[str, np.ndarray]]:
+    """Decode and score the ground truth, prediction and persistence of each modality.
+
+    Parameters
+    ----------
+    codecs : dict
+        ``{name: (codec, cfg, family)}``; modalities without a codec are skipped.
+    gt_codes, pred_codes : dict of str to torch.LongTensor of shape (F, n_tok)
+        Codes over the whole window, seed frames included.
+    K0 : int
+        First predicted frame; scores cover ``[K0, F)``.
+    F : int
+        Window length.
+    device : torch.device
+        Device of the codecs.
+    denorm : dict of str to callable, default=None
+        Maps a decode to physical units. Per-window normalisations are inverted
+        with the ground-truth frame's statistics.
+    raw_gt : dict of str to ndarray, default=None
+        Measured signals in output space (see :func:`load_raw_gt`), used as the
+        reference when their shape matches the decode.
+    bandpower : dict, default=None
+        ``{name: (levels, C, n_band)}`` for band-power modalities, which have no
+        learned decoder.
+
+    Returns
+    -------
+    decoded : dict of str to dict
+        Per modality: ``gt``, ``pred`` (leading axis F), ``gt_source``,
+        ``nrmse``, ``nrmse_persistence``, ``nrmse_skill``, ``activity``,
+        ``family`` and ``space``.
+    """
+    raw_gt = dict(raw_gt or {})
+    decoded = {}
     for name in EVAL_MODALITIES:
-        # BAND-POWER modalities carry quantile-bin levels, not FSQ codes, so they bypass the
-        # codec path entirely (there is no learned decoder to run). Everything downstream —
-        # persistence, nRMSE, skill, panel layout — is identical.
-        bp = (bandpower or {}).get(name)
-        if bp is not None:
-            gt = decode_bandpower(bp, gt_codes[name][:F])
-            pred = decode_bandpower(bp, pred_codes[name][:F])
-            pers = np.repeat(decode_bandpower(bp, gt_codes[name][K0 - 1:K0]), F, axis=0)
-            nr, nr_p = _nrmse(pred[K0:], gt[K0:]), _nrmse(pers[K0:], gt[K0:])
-            out[name] = {"gt": gt, "pred": pred, "gt_source": "decoded",
-                         "nrmse": nr, "nrmse_persistence": nr_p,
-                         "nrmse_skill": (1.0 - nr / nr_p) if nr_p > 0 else float("nan"),
-                         "activity": _temporal_activity(pred[K0:], gt[K0:]),
-                         "family": "spectro", "space": "band power"}
+        last_seed = slice(K0 - 1, K0)
+        spec = (bandpower or {}).get(name)
+        if spec is not None:
+            gt = decode_bandpower(spec, gt_codes[name][:F])
+            pred = decode_bandpower(spec, pred_codes[name][:F])
+            persistence = np.repeat(
+                decode_bandpower(spec, gt_codes[name][last_seed]), F, axis=0
+            )
+            decoded[name] = _scored(
+                gt, pred, persistence, K0, "decoded", "spectro", "band power"
+            )
             continue
         if name not in codecs:
             continue
-        codec, _cfg, fam = codecs[name]
-        gt = decode_flat_chunked(codec, gt_codes[name][:F], device)       # (F, ...)
+        codec, _codec_cfg, family = codecs[name]
+        gt = decode_flat_chunked(codec, gt_codes[name][:F], device)
         pred = decode_flat_chunked(codec, pred_codes[name][:F], device)
-        # PERSISTENCE BASELINE — the do-nothing rollout: freeze the last seed frame for the
-        # whole predicted region. The decoder is deterministic, so decoding that ONE frame
-        # and tiling is exact and ~(F-K0)x cheaper than decoding the frozen sequence.
-        # Denorm is applied to the tiled array so the baseline gets the SAME per-frame GT
-        # stats treatment the prediction gets (fair comparison; see decode_all docstring).
-        pers1 = decode_flat_chunked(codec, gt_codes[name][K0 - 1:K0], device)
-        pers = np.repeat(pers1, F, axis=0)
-        # GROUND TRUTH = the MEASURED input when available (user 2026-08-12), falling back to
-        # the codec round-trip. Both live in the same normalized space (the codec is an
-        # autoencoder), so the shared denorm below applies unchanged. Swapping the reference
-        # also moves the metrics: nrmse/persistence/skill are now measured against reality,
-        # so they include codec reconstruction error and are NOT comparable to numbers from
-        # runs that scored against the decoded GT.
-        # raw_gt entries arrive ALREADY in the output space (see raw_to_output_space) — the
-        # per-family conversion cannot live here because it needs the mask and the family's
-        # own denorm. So denorm applies to the decode path only.
-        gt_src = "decoded"
+        # Persistence: decoding is deterministic, so tile the decoded last seed frame.
+        persistence = np.repeat(
+            decode_flat_chunked(codec, gt_codes[name][last_seed], device), F, axis=0
+        )
         space = "normalized"
         if denorm and name in denorm:
-            gt, pred, pers = denorm[name](gt), denorm[name](pred), denorm[name](pers)
+            gt, pred = denorm[name](gt), denorm[name](pred)
+            persistence = denorm[name](persistence)
             space = "physical"
-        # Shapes must be compared AFTER denorm: the slow-TS inverse DROPS the padded
-        # radial-zone tail, so the decoded array narrows (12 -> 10 channels) partway through.
-        # Comparing before denorm padded the raw window to the pre-denorm width and produced a
-        # 12-vs-10 mismatch at the nRMSE.
-        if raw_gt and name in raw_gt and raw_gt[name].shape != gt.shape:
-            r = np.asarray(raw_gt[name], dtype=np.float32)
-            if (r.ndim == gt.ndim and r.shape[0] == gt.shape[0]
-                    and r.shape[2:] == gt.shape[2:] and r.shape[1] < gt.shape[1]):
-                # measured signal narrower than the decode -> NaN-pad; NaN already reads as
-                # "absent" to the renderer and _nrmse, so the pad is ignored, not scored.
-                pad = np.full((r.shape[0], gt.shape[1] - r.shape[1]) + r.shape[2:],
-                              np.nan, dtype=np.float32)
-                raw_gt = {**raw_gt, name: np.concatenate([r, pad], axis=1)}
-            elif r.shape[1] > gt.shape[1] and r.shape[0] == gt.shape[0] \
-                    and r.shape[2:] == gt.shape[2:]:
-                raw_gt = {**raw_gt, name: r[:, :gt.shape[1]]}      # drop the same tail
-        use_raw = bool(raw_gt) and name in raw_gt and raw_gt[name].shape == gt.shape
-        if raw_gt and name in raw_gt and not use_raw:
-            # a shape disagreement we cannot reconcile means the raw window and the codes are
-            # not aligned; using it would silently compare different things.
-            print(f"[eval] raw GT {name}: shape {raw_gt[name].shape} != decoded {gt.shape}"
-                  " — falling back to the decoded round-trip", flush=True)
-        if use_raw:
-            gt, gt_src = np.asarray(raw_gt[name], dtype=np.float32), "measured"
-        nr, nr_p = _nrmse(pred[K0:], gt[K0:]), _nrmse(pers[K0:], gt[K0:])
-        out[name] = {"gt": gt, "pred": pred, "gt_source": gt_src,
-                     "nrmse": nr, "nrmse_persistence": nr_p,
-                     # skill > 0 => better than freezing; 1.0 => perfect; < 0 => worse
-                     "nrmse_skill": (1.0 - nr / nr_p) if nr_p > 0 else float("nan"),
-                     # temporal amplitude ratio: 0 = frozen prediction, 1 = right amplitude.
-                     # Read this BEFORE skill -- skill alone prefers a flat trace.
-                     "activity": _temporal_activity(pred[K0:], gt[K0:]),
-                     "family": fam, "space": space}
-    return out
+        gt_source = "decoded"
+        if name in raw_gt:
+            # Compare after denorm, which drops the padded channels of slow-TS.
+            if raw_gt[name].shape != gt.shape:
+                matched = _match_raw_width(raw_gt[name], gt)
+                if matched is not None:
+                    raw_gt[name] = matched
+            if raw_gt[name].shape == gt.shape:
+                gt, gt_source = np.asarray(raw_gt[name], dtype=np.float32), "measured"
+            else:
+                print(
+                    f"[eval] raw GT {name}: shape {raw_gt[name].shape} != decoded "
+                    f"{gt.shape} — falling back to the decoded round-trip",
+                    flush=True,
+                )
+        decoded[name] = _scored(gt, pred, persistence, K0, gt_source, family, space)
+    return decoded
 
 
 def _temporal_activity(pred: np.ndarray, gt: np.ndarray) -> float:
-    """mean(std(pred, axis=time)) / mean(std(gt, axis=time)) over the SCORED frames.
+    """Return the ratio of mean temporal standard deviations, prediction over truth.
 
-    THE metric that separates a forecast from a well-chosen constant. 0 = the prediction is
-    frozen in time; 1 = it reproduces the ground truth's temporal amplitude. Recorded 2026-08-18:
-    R2, nRMSE and skill ALL rank the FLATTEST model highest, because predicting the right LEVEL is
-    most of the variance -- an arm with 5.8% of GT temporal amplitude won on R2 over one with 85%.
-    So nrmse_skill must never be read without this alongside it.
-    MUST be the std ALONG TIME per column, not over the flattened array: the flattened form is
-    dominated by static cross-channel structure and read 0.853 for a prediction that was visibly
-    flat (that error produced a retracted result).
+    0 means a prediction frozen in time and 1 the right temporal amplitude. The
+    standard deviation is taken along time per element (axis 0), not over the
+    flattened array, which static cross-channel structure would dominate.
     """
-    a, b = np.asarray(pred, dtype=np.float64), np.asarray(gt, dtype=np.float64)
-    if a.shape != b.shape or a.shape[0] < 2:
+    predicted = np.asarray(pred, dtype=np.float64)
+    truth = np.asarray(gt, dtype=np.float64)
+    if predicted.shape != truth.shape or predicted.shape[0] < 2:
         return float("nan")
-    sp = np.nanstd(a, axis=0)                      # axis 0 IS time here (frames, ...)
-    sg = np.nanstd(b, axis=0)
-    m = np.isfinite(sp) & np.isfinite(sg) & (sg > 0)
-    if not m.any():
+    predicted_std = np.nanstd(predicted, axis=0)
+    truth_std = np.nanstd(truth, axis=0)
+    usable = np.isfinite(predicted_std) & np.isfinite(truth_std) & (truth_std > 0)
+    if not usable.any():
         return float("nan")
-    return float(np.nanmean(sp[m]) / np.nanmean(sg[m]))
+    return float(np.nanmean(predicted_std[usable]) / np.nanmean(truth_std[usable]))
 
 
 def self_check(decoded: Dict[str, Dict[str, np.ndarray]]) -> None:
-    """Guard a broken DECODE path: decoded GT must be finite + non-constant (spectro/slowts).
+    """Assert that decoded spectrogram and slow-TS ground truth is finite and varies.
 
-    The non-constant invariant holds for the codec ROUND-TRIP only. With measured ground truth
-    (``gt_source == "measured"``) a constant is LEGITIMATE — it is exactly what an absent
-    diagnostic looks like, and ~37% of (shot, modality) pairs are absent in this dataset. So a
-    constant measured signal is reported, not asserted on; the static screening downstream
-    (see curate_core / the presence map) is what handles those. Asserting here killed eval
-    5245138 on the first val shot, where ece simply was not recorded.
+    A constant or all-missing measured signal is an absent diagnostic and is only
+    reported; for a decoded round-trip it indicates a broken decode path.
+
+    Raises
+    ------
+    AssertionError
+        If a decoded ground truth is constant or has no finite value, or no
+        spectrogram or slow-TS modality was decoded.
     """
-    checked, constant_measured = 0, []
-    for name, d in decoded.items():
-        if d["family"] not in ("spectro", "slowts"):
+    n_checked, absent = 0, []
+    for name, entry in decoded.items():
+        if entry["family"] not in ("spectro", "slowts"):
             continue
-        gt = d["gt"]
-        measured = d.get("gt_source") == "measured"
-        finite = gt[np.isfinite(gt)]
+        measured = entry.get("gt_source") == "measured"
+        finite = entry["gt"][np.isfinite(entry["gt"])]
         if not finite.size:
-            # ALL-NaN measured GT = the diagnostic recorded nothing in this shot (missing
-            # samples are masked to NaN by raw_to_output_space). Legitimate, and downstream
-            # already treats it as absent: _nrmse returns NaN and the curve/figure filter it.
-            # An all-NaN DECODED array is still a genuine fault.
             if measured:
-                constant_measured.append(f"{name}(all-missing)")
+                absent.append(f"{name}(all-missing)")
                 continue
-            raise AssertionError(f"[self-check] {name}: DECODED GT has NO finite values")
+            raise AssertionError(
+                f"[self-check] {name}: DECODED GT has NO finite values"
+            )
         if float(finite.std()) > 0.0:
-            checked += 1
-            continue
-        if d.get("gt_source") == "measured":
-            constant_measured.append(name)          # absent diagnostic — expected, not a fault
-            continue
-        raise AssertionError(
-            f"[self-check] {name}: DECODED GT is constant (std=0) — broken decode path")
-    assert checked > 0 or constant_measured, \
+            n_checked += 1
+        elif measured:
+            absent.append(name)
+        else:
+            raise AssertionError(
+                f"[self-check] {name}: DECODED GT is constant (std=0) — broken "
+                f"decode path"
+            )
+    assert n_checked > 0 or absent, (
         "[self-check] no spectro/slowts modalities decoded — nothing to validate"
-    msg = f"[self-check] OK: {checked} spectro/slowts GT are finite + non-constant"
-    if constant_measured:
-        msg += (f"; {len(constant_measured)} constant because the diagnostic is ABSENT in this "
-                f"shot ({', '.join(sorted(constant_measured))})")
-    print(msg, flush=True)
+    )
+    message = (
+        f"[self-check] OK: {n_checked} spectro/slowts GT are finite + non-constant"
+    )
+    if absent:
+        message += (
+            f"; {len(absent)} constant because the diagnostic is ABSENT in "
+            f"this shot ({', '.join(sorted(absent))})"
+        )
+    print(message, flush=True)
 
 
-# --------------------------------------------------------------------------------------------- #
-# render
-# --------------------------------------------------------------------------------------------- #
-# static-detection threshold: a GT decode whose temporal std (mean-reduced over all
-# non-frame axes) is below this FRACTION of its overall signal scale (max|.|) is treated as
-# STATIC — the codec collapsed the whole shot to ~1 constant code, so there is no dynamics to
-# render. Verified: ece/co2 for shot 200729 have temporal-std EXACTLY 0.0.
+# A ground truth whose temporal std is below this fraction of its scale is static.
 _STATIC_EPS = 1e-4
 
 
 def _temporal_variation(gt: np.ndarray) -> Tuple[float, float]:
-    """Return (temporal_std, signal_scale) of a GT decode with leading axis = frames.
-
-    temporal_std = mean over all non-frame elements of the per-element std across frames (masking
-    non-finite). signal_scale = max|.| over finite entries (a robust magnitude reference).
-    """
-    a = np.asarray(gt, dtype=np.float64)
-    finite = np.isfinite(a)
+    """Return the mean temporal std and the max absolute value of finite entries."""
+    values = np.asarray(gt, dtype=np.float64)
+    finite = np.isfinite(values)
     if not finite.any():
         return 0.0, 0.0
-    scale = float(np.max(np.abs(a[finite])))
-    masked = np.where(finite, a, np.nan)
+    scale = float(np.max(np.abs(values[finite])))
     with np.errstate(invalid="ignore"):
-        per_elem_std = np.nanstd(masked, axis=0)              # std over the frame axis
-        tstd = float(np.nanmean(per_elem_std))
-    if not np.isfinite(tstd):
-        tstd = 0.0
-    return tstd, scale
+        temporal_std = float(
+            np.nanmean(np.nanstd(np.where(finite, values, np.nan), axis=0))
+        )
+    if not np.isfinite(temporal_std):
+        temporal_std = 0.0
+    return temporal_std, scale
 
 
 def _is_static(gt: np.ndarray) -> bool:
-    """True if the GT decode is temporally ~constant (below _STATIC_EPS relative to its scale)."""
-    tstd, scale = _temporal_variation(gt)
-    return tstd <= _STATIC_EPS * max(scale, 1e-12)
+    """Return whether a ground truth is constant in time, relative to its scale."""
+    temporal_std, scale = _temporal_variation(gt)
+    return temporal_std <= _STATIC_EPS * max(scale, 1e-12)
 
 
-def _annotate_static(ax, name: str) -> None:
-    """Draw the honest 'no dynamics to show' annotation panel for a collapsed modality."""
-    import matplotlib.pyplot as plt
-    ax.axis("off")
-    ax.add_patch(plt.Rectangle((0.02, 0.02), 0.96, 0.96, transform=ax.transAxes,
-                               fill=True, facecolor="0.93", edgecolor="0.55", lw=1.2))
-    ax.text(0.5, 0.5,
-            f"{name}: STATIC\ncodec encodes this shot to a constant\n(no dynamics to show)",
-            transform=ax.transAxes, ha="center", va="center", fontsize=11,
-            color="0.30", fontweight="bold", wrap=True)
+# Okabe-Ito palette, shared with the learning-curve figure (epoch_curve.py).
+OKABE = {
+    "blue": "#0072B2",
+    "orange": "#E69F00",
+    "green": "#009E73",
+    "vermillion": "#D55E00",
+    "purple": "#CC79A7",
+    "sky": "#56B4E9",
+    "black": "#000000",
+}
+_GT_COLOR, _PRED_COLOR = "#1A1A1A", OKABE["vermillion"]
+_VIDEO_COLOR = {"tangtv_lower": OKABE["blue"], "tangtv_upper": OKABE["vermillion"]}
+LW_PRIMARY, LW_SECONDARY = 1.6, 1.2
+AX_LW, GRID_LW, GRID_ALPHA = 0.8, 0.5, 0.25
+DASH_SECONDARY = (0, (3.2, 1.5))
 
+_DISPLAY_NAMES = {
+    "ece": "ECE",
+    "mhr": "MHR",
+    "bes": "BES",
+    "co2": "CO2",
+    "mirnov": "Mirnov",
+    "tangtv_lower": "tangTV\nlower divertor",
+    "tangtv_upper": "tangTV\nupper divertor",
+}
 
-WARMUP_S = 1.0                     # window origin in shot time (windowing convention)
-# LINE + COLOUR SYSTEM. Okabe-Ito (colourblind-safe) throughout, and IDENTICAL to the
-# learning-curve figure (epoch_curve.py) so the two read as one system in the paper: same
-# palette, same weights, same dash for the secondary series. Change both together.
-OKABE = {"blue": "#0072B2", "orange": "#E69F00", "green": "#009E73",
-         "vermillion": "#D55E00", "purple": "#CC79A7", "sky": "#56B4E9", "black": "#000000"}
-_GT_C, _PR_C = "#1A1A1A", OKABE["vermillion"]   # ground truth ink / prediction
-_VID_C = {"tangtv_lower": OKABE["blue"], "tangtv_upper": OKABE["vermillion"]}
-LW_PRIMARY, LW_SECONDARY = 1.6, 1.2             # ground truth / prediction
-AX_LW, GRID_LW, GRID_ALPHA = 0.8, 0.5, 0.25     # spines/ticks, grid -- shared too
-DASH_SECONDARY = (0, (3.2, 1.5))                # the prediction dash, everywhere
-
-# DISPLAY NAMES: instrument acronyms are uppercase in the text, so they are uppercase here.
-_DISPLAY = {"ece": "ECE", "mhr": "MHR", "bes": "BES", "co2": "CO2", "mirnov": "Mirnov",
-            "tangtv_lower": "tangTV\nlower divertor",
-            "tangtv_upper": "tangTV\nupper divertor"}
-
-
-def _disp(name: str) -> str:
-    return _DISPLAY.get(name, name)
-# slow-TS display units: (scale, label) — the H5 stores eV / m^-3; temperatures display as
-# keV (x1e-3), matching eval_e2e_animation_tokamak._TRACE_SCALES / _TRACE_LABELS.
-_SLOWTS_UNITS = {  # (display scale, SHORT ylabel, region tag for the corner annotation)
+# Slow-TS display: (scale, ylabel, region tag). The H5 stores eV and m^-3.
+_SLOWTS_UNITS = {
     "ts_core_density": (1.0, r"$n_e$ (m$^{-3}$)", "core"),
     "ts_core_temp": (1e-3, r"$T_e$ (keV)", "core"),
     "ts_tangential_density": (1.0, r"$n_e$ (m$^{-3}$)", "tang."),
@@ -699,813 +900,1294 @@ _SLOWTS_UNITS = {  # (display scale, SHORT ylabel, region tag for the corner ann
     "cer_ti": (1e-3, r"$T_i$ (keV)", ""),
 }
 
+# Row heights in inches at the 12 pt design point; scaled mildly with the font.
+_ROW_HEIGHTS = {"slow": 0.58, "spec": 1.05, "vid": 0.90, "vrmse": 0.60}
+_SECTION_GAP_IN = 0.46
+_ROW_SPACING = 0.28
+_MAX_STITCHED_COLUMNS = 4096
 
-def render_figure(decoded: Dict[str, Dict[str, np.ndarray]], shot: str, step: int,
-                  temperature: float, K0: int, F: int, out_dir: Path,
-                  t_origin: float = WARMUP_S) -> Tuple[Path, Path]:
-    """Comparison figure in the 200729_comparison style (the FAITH-era reference layout).
 
-    Every time panel shares ONE aligned absolute shot-time axis (warmup 1.0 s origin) with a
-    dashed 'prediction start' marker; ground truth is ink-black, prediction orange, throughout.
-    Sections: (a..) slow-TS best-channel physical traces; then per spectro modality a
-    GT | prediction strip pair (stitched across the whole timeline) + a time-mean power-
-    spectrum side panel over the predicted region; then per video camera GT | prediction |
-    difference at mid-rollout; then per-frame video nRMSE(t). Static (codec-collapsed)
-    modalities get an honest annotation strip. Saves PNG + PDF; returns paths.
+def _display_name(name: str) -> str:
+    return _DISPLAY_NAMES.get(name, name)
+
+
+def _best_channel(gt: np.ndarray, reduce_axes: Tuple[int, ...]) -> int:
+    """Return the channel whose frame means vary most over time."""
+    values = np.where(np.isfinite(gt), gt, np.nan)
+    with np.errstate(invalid="ignore"):
+        variance = np.nanvar(np.nanmean(values, axis=reduce_axes), axis=0)
+    variance = np.where(np.isfinite(variance), variance, -np.inf)
+    return int(np.argmax(variance)) if np.isfinite(variance).any() else 0
+
+
+def _corr(a: np.ndarray, b: np.ndarray) -> float:
+    """Pearson r over the elements finite in both arrays."""
+    usable = np.isfinite(a) & np.isfinite(b)
+    if usable.sum() < 2:
+        return float("nan")
+    x = a[usable].astype(np.float64).ravel()
+    y = b[usable].astype(np.float64).ravel()
+    std_x, std_y = x.std(), y.std()
+    if std_x <= 0 or std_y <= 0:
+        return float("nan")
+    return float(((x - x.mean()) * (y - y.mean())).mean() / (std_x * std_y))
+
+
+def _stitch(spectrogram: np.ndarray, channel: int) -> np.ndarray:
+    """Concatenate one channel's frames along time, keeping at most ~4096 columns."""
+    image = np.concatenate(list(spectrogram[:, channel]), axis=-1)
+    return image[:, :: max(1, image.shape[-1] // _MAX_STITCHED_COLUMNS)]
+
+
+def _robust_limits(image: np.ndarray, upper_percentile: float):
+    finite = image[np.isfinite(image)]
+    if not finite.size:
+        return 0.0, 1.0
+    return float(np.percentile(finite, 1.0)), float(
+        np.percentile(finite, upper_percentile)
+    )
+
+
+class _Figure:
+    """Canvas, row layout and shared time axis of one comparison figure.
+
+    Rows come in a fixed order, so panel k shows the same modality in every
+    figure: slow-TS traces, spectrograms, cameras, then the optional video nRMSE.
+    A gap row separates sections.
     """
-    import string
 
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
+    def __init__(self, decoded, K0, F, t_origin, options: FigureOptions):
+        import string
 
-    n_pred = F - K0
-    t0, t1 = t_origin, t_origin + F * FRAME_S
-    t_roll = t_origin + K0 * FRAME_S
-    ts = t_origin + np.arange(F) * FRAME_S
-    mid = K0 + n_pred // 2
-    from .config import STFT_FS, STFT_N_FFT
-    khz_per_bin = (STFT_FS / STFT_N_FFT) / 1e3            # 0.488 kHz/bin at 500 kHz / 1024
+        import matplotlib
 
-    # PAPER-READY: designed at PRINT size (7.2 in = full text width, placed 1:1 — never
-    # shrunk), so these font sizes are the printed sizes.
-    _p = FIG_PT
-    plt.rcParams.update({
-        "font.family": "serif", "font.serif": FIG_SERIF,
-        "mathtext.fontset": "stix",              # Times-compatible math
-        "font.size": _p, "axes.labelsize": _p, "axes.titlesize": _p,
-        "xtick.labelsize": _p - 1, "ytick.labelsize": _p - 1, "legend.fontsize": _p - 1,
-        "axes.spines.top": False, "axes.spines.right": False,
-        "axes.linewidth": AX_LW, "xtick.major.width": AX_LW, "ytick.major.width": AX_LW,
-        "pdf.fonttype": 42, "ps.fonttype": 42,
-    })
-    _fs = _p / 7.0                                # row heights scale with type size
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        from matplotlib.gridspec import GridSpec
 
-    # FIG_* selections keep the one-page ink budget spent on RESOLUTION, not panel count
-    # (every modality is still scored in eval_metrics.json). "all" via IGNITE_FIG_* env.
-    spectro = [n for n in FIG_SPECTRO if n in decoded]
-    video = [n for n in VIDEO if n in decoded]
-    slowts = [n for n in FIG_SLOWTS if n in decoded]
-    static = {n: _is_static(decoded[n]["gt"]) for n in decoded}
-    # FIXED LAYOUT (2026-08-12). The row set is a property of the FIGURE, not of the shot.
-    # Static modalities used to be pulled out of their row into a compact 3-across block at the
-    # bottom, so the row count, row order and page height all changed with whichever diagnostics
-    # happened to be flat in that shot — measured on the production eval list: 8 distinct
-    # availability patterns across 10 shots, i.e. 8 structurally different figures. Comparing
-    # panels ACROSS shots is the point of this figure (seen vs unseen discharges), and that
-    # requires panel k to be the same modality in every render. Every selected modality now
-    # keeps its own row in a fixed order; a static one still draws (a flat trace / constant
-    # image is the honest picture) and is marked STATIC in its ylabel by _static_ylab.
-    dyn_slow, dyn_spec, dyn_vid = slowts, spectro, video
-    statics: list = []                            # compact static block retired by the above
+        from .config import STFT_FS, STFT_N_FFT
 
-    def _static_ylab(name: str, lab: str) -> str:
-        """Keep the collapsed-modality signal that the retired static block used to carry."""
-        return f"{lab}  [STATIC]" if static.get(name) else lab
-    any_phys = any(d.get("space") == "physical" for d in decoded.values())
-    unit = "phys" if any_phys else "norm"
+        self.plt = plt
+        self.options = options
+        self.decoded = decoded
+        self.K0, self.F = K0, F
+        self.t_start, self.t_end = t_origin, t_origin + F * FRAME_S
+        self.t_rollout = t_origin + K0 * FRAME_S
+        self.times = t_origin + np.arange(F) * FRAME_S
+        self.mid_frame = K0 + (F - K0) // 2
+        self.t_origin = t_origin
+        self.khz_per_bin = (STFT_FS / STFT_N_FFT) / 1e3
+        self.pt = options.font_pt
+        self._set_paper_style()
+        self.spectro = [n for n in options.spectro if n in decoded]
+        self.video = [n for n in VIDEO if n in decoded]
+        self.slowts = [n for n in options.slowts if n in decoded]
+        self.static = {name: _is_static(entry["gt"]) for name, entry in decoded.items()}
+        self.unit = (
+            "phys"
+            if any(e.get("space") == "physical" for e in decoded.values())
+            else "norm"
+        )
+        self.rows = self._layout_rows()
+        scale = 0.55 + 0.45 * (self.pt / 12.0)
+        heights = [
+            _SECTION_GAP_IN if kind == "gap" else _ROW_HEIGHTS[kind] * scale
+            for kind, _name in self.rows
+        ]
+        margin_left = 0.10 + 0.075 * self.pt
+        margin_right = 0.10 + 0.030 * self.pt
+        margin_bottom, margin_top = 0.06 + 0.046 * self.pt, 0.06 + 0.015 * self.pt
+        n_rows = max(len(self.rows), 1)
+        height = (
+            sum(heights) * (1.0 + _ROW_SPACING * (n_rows - 1) / n_rows)
+            + margin_bottom
+            + margin_top
+        )
+        width = options.width_in
+        self.fig = plt.figure(figsize=(width, height))
+        self.grid = GridSpec(
+            len(self.rows),
+            1,
+            figure=self.fig,
+            height_ratios=heights,
+            hspace=_ROW_SPACING,
+            left=margin_left / width,
+            right=1.0 - margin_right / width,
+            top=1.0 - margin_top / height,
+            bottom=margin_bottom / height,
+        )
+        self.letters = iter(string.ascii_lowercase)
+        self.legend_host = None
 
-    def _best_channel(gt: np.ndarray, axis_reduce: Tuple[int, ...]) -> int:
-        a = np.where(np.isfinite(gt), gt, np.nan)
-        with np.errstate(invalid="ignore"):
-            per_fc = np.nanmean(a, axis=axis_reduce)
-            var_c = np.nanvar(per_fc, axis=0)
-        var_c = np.where(np.isfinite(var_c), var_c, -np.inf)
-        return int(np.argmax(var_c)) if np.isfinite(var_c).any() else 0
+    def _set_paper_style(self):
+        pt = self.pt
+        self.plt.rcParams.update(
+            {
+                "font.family": "serif",
+                "font.serif": FIG_SERIF,
+                "mathtext.fontset": "stix",
+                "font.size": pt,
+                "axes.labelsize": pt,
+                "axes.titlesize": pt,
+                "xtick.labelsize": pt - 1,
+                "ytick.labelsize": pt - 1,
+                "legend.fontsize": pt - 1,
+                "axes.spines.top": False,
+                "axes.spines.right": False,
+                "axes.linewidth": AX_LW,
+                "xtick.major.width": AX_LW,
+                "ytick.major.width": AX_LW,
+                "pdf.fonttype": 42,
+                "ps.fonttype": 42,
+            }
+        )
 
-    def _corr(a: np.ndarray, b: np.ndarray) -> float:
-        """Pearson r over finite elements — the agreement the figure must make visible."""
-        m = np.isfinite(a) & np.isfinite(b)
-        if m.sum() < 2:
-            return float("nan")
-        x, y = a[m].astype(np.float64).ravel(), b[m].astype(np.float64).ravel()
-        sx, sy = x.std(), y.std()
-        if sx <= 0 or sy <= 0:
-            return float("nan")
-        return float(((x - x.mean()) * (y - y.mean())).mean() / (sx * sy))
+    def _layout_rows(self):
+        rows = (
+            [("slow", n) for n in self.slowts]
+            + [("spec", n) for n in self.spectro]
+            + [("vid", n) for n in self.video]
+        )
+        if self.video and self.options.show_video_nrmse and not self.options.gt_only:
+            rows.append(("vrmse", None))
+        section = {"vrmse": "vid"}
+        with_gaps = []
+        for kind, name in rows:
+            if with_gaps and section.get(
+                with_gaps[-1][0], with_gaps[-1][0]
+            ) != section.get(kind, kind):
+                with_gaps.append(("gap", None))
+            with_gaps.append((kind, name))
+        return with_gaps
 
-    def _stitch(arr: np.ndarray, ch: int) -> np.ndarray:
-        g = np.concatenate(list(arr[:, ch]), axis=-1)          # (Fr, F*Tb)
-        stride = max(1, g.shape[-1] // 4096)
-        return g[:, ::stride]
+    def rows_of(self, kind):
+        """``(row index, modality)`` of every row of one kind."""
+        return [(i, name) for i, (k, name) in enumerate(self.rows) if k == kind]
 
-    # ---- layout: one column of aligned-time rows ------------------------------------------- #
-    # spectro gets TWO FULL-WIDTH rows per modality (GT stacked over PRED). Side-by-side
-    # thirds cut each strip to ~2.2 in and made the rollout quality unreadable — the whole
-    # point of the figure. The power spectra move to one compact row at the end.
-    base_rows: list = ([("slow", n) for n in dyn_slow]
-                       + [("spec", n) for n in dyn_spec]
-                       + [("vid", n) for n in dyn_vid]
-                       + ([("vrmse", None)] if (dyn_vid and _SHOW_VRMSE and not _GT_ONLY) else [])
-                       + ([("static", None)] if statics else []))
-    rows: list = []                # spacer rows between sections stop title/label collisions
-    # vrmse belongs to the video SECTION, so no section gap is inserted before it
-    _sect = {"vrmse": "vid"}                      # (spectro is one row per modality)
-    for k, n in base_rows:
-        if rows and _sect.get(rows[-1][0], rows[-1][0]) != _sect.get(k, k):
-            rows.append(("gap", None))
-        rows.append((k, n))
-    # per-row heights in INCHES (the figure must fit ONE page at 100% scale: <= ~9.5 in
-    # after bbox trim, so the 7 pt fonts are the printed sizes)
-    # row heights in INCHES, scaled with type size so panels stay proportionate at 12 pt
-    # row heights in INCHES at the 12 pt design point (a 12 pt axis needs ~0.45 in for the
-    # frame plus ~0.25 in for tick labels); they scale mildly if FIG_PT is changed.
-    _k = 0.55 + 0.45 * (_p / 12.0)
-    heights = {"slow": 0.58 * _k, "spec": 1.05 * _k,
-               "psrow": 0.62 * _k, "vid": 0.90 * _k, "vrmse": 0.60 * _k,
-               "gap": 0.42 * _k,
-               "static": 0.6 * _k * ((len(statics) + 2) // 3 or 1)}
-    # section gap must clear a section's x-label AND the next section's titles
-    # 0.20 in was too tight: a section's x-label ("Time (s)") collided with the NEXT
-    # section's panel titles ("Ground truth (t = ... s)") — visible on every overfit figure.
-    # A section gap must clear one x-label plus one title line.
-    heights["gap"] = 0.46
-    hr = [heights[k] for k, _n in rows]
-    # EXACT delivered size: the canvas IS the figure (no bbox_inches="tight", which grows
-    # past the target and is why the PDF came out ~75 pt too wide for \includegraphics).
-    # Margins are in inches -> converted to fractions, so they hold at any font size.
-    _mar_l = 0.10 + 0.075 * _p                        # inches (ylabel + tick labels)
-    _mar_r = 0.10 + 0.030 * _p                        # colorbar tick labels live here
-    _mar_b, _mar_t = 0.06 + 0.046 * _p, 0.06 + 0.015 * _p
-    _hsp = 0.28                                   # fraction of MEAN row height
-    n_rows = max(len(rows), 1)
-    fig_h = (sum(hr) * (1.0 + _hsp * (n_rows - 1) / n_rows)) + _mar_b + _mar_t
-    fig = plt.figure(figsize=(FIG_W_IN, fig_h))
-    outer = GridSpec(len(rows), 1, figure=fig, height_ratios=hr, hspace=_hsp,
-                     left=_mar_l / FIG_W_IN, right=1.0 - _mar_r / FIG_W_IN,
-                     top=1.0 - _mar_t / fig_h, bottom=_mar_b / fig_h)
-    letters = iter(string.ascii_lowercase)
+    def label_static(self, name: str, label: str) -> str:
+        return f"{label}  [STATIC]" if self.static.get(name) else label
 
-    def _letter(ax):
-        # figure-relative x (left edge) + row top: independent of this axis' ylabel width,
-        # so letters never sit on a neighbouring row's label.
-        bb = ax.get_position()
-        fig.text(0.012, bb.y1 + 0.004, next(letters), fontsize=_p, fontweight="bold",
-                 va="bottom", ha="left")
+    def letter(self, ax):
+        """Panel letter at the figure's left edge, level with the row top."""
+        top = ax.get_position().y1
+        self.fig.text(
+            0.012,
+            top + 0.004,
+            next(self.letters),
+            fontsize=self.pt,
+            fontweight="bold",
+            va="bottom",
+            ha="left",
+        )
 
-    def _time_axis(ax, ticks: bool, xlabel: bool = False):
-        ax.set_xlim(t0, t1)
-        ax.axvline(t_roll, color="0.45", ls="--", lw=0.9)
+    def time_axis(self, ax, ticks: bool, xlabel: bool = False):
+        ax.set_xlim(self.t_start, self.t_end)
+        ax.axvline(self.t_rollout, color="0.45", ls="--", lw=0.9)
         ax.tick_params(labelbottom=ticks)
         if xlabel:
             ax.set_xlabel("Time (s)")
 
-    last_of = {k: max(i for i, (kk, _n) in enumerate(rows) if kk == k)
-               for k in {k for k, _n in rows}}
-    legend_host = None                          # first drawn time panel hosts the GT/pred legend
+    def metric_box(self, ax, x, y, prediction, truth, entry, va, alpha):
+        """Boxed r / nRMSE / skill annotation of a prediction panel."""
+        options = self.options
+        skill = entry.get("nrmse_skill") if options.show_skill else None
+        text = (
+            (f"r {_corr(prediction, truth):.3f} · " if options.show_r else "")
+            + f"nRMSE {entry['nrmse']:.3f}"
+            + (
+                f" · skill {skill:+.2f}"
+                if skill is not None and np.isfinite(skill)
+                else ""
+            )
+        )
+        ax.text(
+            x,
+            y,
+            text,
+            transform=ax.transAxes,
+            ha="right",
+            va=va,
+            fontsize=self.pt - 3,
+            color="0.15",
+            bbox=dict(boxstyle="square,pad=0.18", fc="white", ec="none", alpha=alpha),
+        )
 
-    # ---- slow-TS traces --------------------------------------------------------------------- #
-    for i, (kind, name) in enumerate(rows):
-        if kind != "slow":
-            continue
-        d = decoded[name]
-        ax = fig.add_subplot(outer[i])
-        gt_m = np.where(np.isfinite(d["gt"]), d["gt"], np.nan)
-        pr_m = np.where(np.isfinite(d["pred"]), d["pred"], np.nan)
-        bc = _best_channel(d["gt"], axis_reduce=(2,))
+
+def _draw_slowts_rows(figure: _Figure) -> None:
+    """Most variable channel of each slow time series, truth and prediction."""
+    options, pt = figure.options, figure.pt
+    rows = figure.rows_of("slow")
+    last_row = rows[-1][0] if rows else None
+    for i, name in rows:
+        entry = figure.decoded[name]
+        ax = figure.fig.add_subplot(figure.grid[i])
+        truth = np.where(np.isfinite(entry["gt"]), entry["gt"], np.nan)
+        prediction = np.where(np.isfinite(entry["pred"]), entry["pred"], np.nan)
+        channel = _best_channel(entry["gt"], reduce_axes=(2,))
         with np.errstate(invalid="ignore"):
-            tr_gt = np.nanmean(gt_m[:, bc, :], axis=-1)
-            tr_pr = np.nanmean(pr_m[:, bc, :], axis=-1)
+            truth_trace = np.nanmean(truth[:, channel, :], axis=-1)
+            prediction_trace = np.nanmean(prediction[:, channel, :], axis=-1)
         tag = ""
-        if d.get("space") == "physical" and name in _SLOWTS_UNITS:
-            scale, ylab, tag = _SLOWTS_UNITS[name]
-            tr_gt, tr_pr = tr_gt * scale, tr_pr * scale   # e.g. eV -> keV (display only)
+        if entry.get("space") == "physical" and name in _SLOWTS_UNITS:
+            scale, ylabel, tag = _SLOWTS_UNITS[name]
+            truth_trace, prediction_trace = (
+                truth_trace * scale,
+                prediction_trace * scale,
+            )
         else:
-            ylab = f"{name} ({unit})"
-        ax.plot(ts, tr_gt, color=_GT_C, lw=LW_PRIMARY, solid_capstyle="round", zorder=2)
-        if not _GT_ONLY:
-            ax.plot(ts, tr_pr, color=_PR_C, lw=LW_SECONDARY, ls=DASH_SECONDARY, zorder=3)
-        if legend_host is None:
-            legend_host = ax
-        # single-line ylabel (two-line labels bleed into neighbor rows on the one-page
-        # canvas); the channel tag rides with the nRMSE corner annotation instead.
-        ax.set_ylabel(_static_ylab(name, ylab))
-        sk = d.get("nrmse_skill") if _SHOW_SKILL else None
-        # join only the parts that exist: a modality with no unit tag (cer_ti) and no channel
-        # index used to render a dangling "· nRMSE ...".
-        _bits = [b for b in (tag if _SHOW_TAG else "",
-                             f"ch{bc:02d}" if _SHOW_CH else "") if b]
-        _bits.append(f"nRMSE {d['nrmse']:.3f}")
-        if sk is not None and np.isfinite(sk):
-            _bits.append(f"skill {sk:+.2f}")
-        corner = " · ".join(_bits)
-        ax.text(0.995, 1.04, corner, transform=ax.transAxes, ha="right", va="bottom",
-                fontsize=_p - 3, color="0.35")
-        _time_axis(ax, ticks=(i == last_of["slow"]), xlabel=False)
-        _letter(ax)
+            ylabel = f"{name} ({figure.unit})"
+        ax.plot(
+            figure.times,
+            truth_trace,
+            color=_GT_COLOR,
+            lw=LW_PRIMARY,
+            solid_capstyle="round",
+            zorder=2,
+        )
+        if not options.gt_only:
+            ax.plot(
+                figure.times,
+                prediction_trace,
+                color=_PRED_COLOR,
+                lw=LW_SECONDARY,
+                ls=DASH_SECONDARY,
+                zorder=3,
+            )
+        if figure.legend_host is None:
+            figure.legend_host = ax
+        ax.set_ylabel(figure.label_static(name, ylabel))
+        skill = entry.get("nrmse_skill") if options.show_skill else None
+        parts = [
+            part
+            for part in (
+                tag if options.show_tag else "",
+                f"ch{channel:02d}" if options.show_channel else "",
+            )
+            if part
+        ]
+        parts.append(f"nRMSE {entry['nrmse']:.3f}")
+        if skill is not None and np.isfinite(skill):
+            parts.append(f"skill {skill:+.2f}")
+        ax.text(
+            0.995,
+            1.04,
+            " · ".join(parts),
+            transform=ax.transAxes,
+            ha="right",
+            va="bottom",
+            fontsize=pt - 3,
+            color="0.35",
+        )
+        figure.time_axis(ax, ticks=(i == last_row), xlabel=False)
+        figure.letter(ax)
         if i == 0:
-            ax.text(t_roll + 0.02, 1.04, "prediction start",
-                    transform=ax.get_xaxis_transform(), fontsize=_p - 3, color="0.45",
-                    va="bottom", ha="left")
+            ax.text(
+                figure.t_rollout + 0.02,
+                1.04,
+                "prediction start",
+                transform=ax.get_xaxis_transform(),
+                fontsize=pt - 3,
+                color="0.45",
+                va="bottom",
+                ha="left",
+            )
         ax.grid(alpha=GRID_ALPHA, lw=GRID_LW)
 
-    # ---- spectro: GT (left) | PREDICTION (right), shared colour scale ----------------------- #
-    first_spec = min((i for i, (k, _n) in enumerate(rows) if k == "spec"), default=None)
-    last_spec = max((i for i, (k, _n) in enumerate(rows) if k == "spec"), default=-1)
-    _spec_ref: list = []                          # first GT axis: the shared-x reference
-    for i, (kind, name) in enumerate(rows):
-        if kind != "spec":
-            continue
-        d = decoded[name]
-        inner = GridSpecFromSubplotSpec(1, 1 if _GT_ONLY else 2, subplot_spec=outer[i], wspace=0.06)
-        bc = _best_channel(d["gt"], axis_reduce=(2, 3))
-        g_img, p_img = _stitch(d["gt"], bc), _stitch(d["pred"], bc)
-        fin = g_img[np.isfinite(g_img)]
-        vmin, vmax = (float(np.percentile(fin, 1.0)), float(np.percentile(fin, 99.5))) \
-            if fin.size else (0.0, 1.0)
-        ext = (t0, t1, 0.0, float(d["gt"].shape[2]) * khz_per_bin)
-        # TRUE shared axes: prediction shares x AND y with its ground truth, and every
-        # spectro row shares x with the first, so all time axes are locked together
-        # (identical limits/ticks by construction, not by coincidence).
-        ax_g = fig.add_subplot(inner[0], sharex=(_spec_ref[0] if _spec_ref else None))
-        ax_p = None if _GT_ONLY else fig.add_subplot(inner[1], sharex=ax_g, sharey=ax_g)
-        if not _spec_ref:
-            _spec_ref.append(ax_g)
-        for ax, img in (((ax_g, g_img),) if _GT_ONLY else ((ax_g, g_img), (ax_p, p_img))):
-            ax.imshow(img, aspect="auto", origin="lower", cmap=CMAP_SPECTRO, vmin=vmin,
-                      vmax=vmax, extent=ext, interpolation="none")
-            ax.axvline(t_roll, color="w", ls="--", lw=0.9)
-            ax.set_xlim(t0, t1)
-            ax.tick_params(labelbottom=(i == last_spec))
-            if i == last_spec:
+
+def _draw_spectro_rows(figure: _Figure) -> None:
+    """Stitched spectrogram strips; truth and prediction share scale and axes."""
+    from matplotlib.gridspec import GridSpecFromSubplotSpec
+    from matplotlib.ticker import MaxNLocator
+
+    options, K0 = figure.options, figure.K0
+    rows = figure.rows_of("spec")
+    first_row = rows[0][0] if rows else None
+    last_row = rows[-1][0] if rows else -1
+    shared_time_axis = None
+    for i, name in rows:
+        entry = figure.decoded[name]
+        panels = GridSpecFromSubplotSpec(
+            1, 1 if options.gt_only else 2, subplot_spec=figure.grid[i], wspace=0.06
+        )
+        channel = _best_channel(entry["gt"], reduce_axes=(2, 3))
+        truth_image = _stitch(entry["gt"], channel)
+        prediction_image = _stitch(entry["pred"], channel)
+        vmin, vmax = _robust_limits(truth_image, 99.5)
+        extent = (
+            figure.t_start,
+            figure.t_end,
+            0.0,
+            float(entry["gt"].shape[2]) * figure.khz_per_bin,
+        )
+        ax_truth = figure.fig.add_subplot(panels[0], sharex=shared_time_axis)
+        ax_prediction = (
+            None
+            if options.gt_only
+            else figure.fig.add_subplot(panels[1], sharex=ax_truth, sharey=ax_truth)
+        )
+        if shared_time_axis is None:
+            shared_time_axis = ax_truth
+        images = [(ax_truth, truth_image)]
+        if not options.gt_only:
+            images.append((ax_prediction, prediction_image))
+        for ax, image in images:
+            ax.imshow(
+                image,
+                aspect="auto",
+                origin="lower",
+                cmap=options.cmap_spectro,
+                vmin=vmin,
+                vmax=vmax,
+                extent=extent,
+                interpolation="none",
+            )
+            ax.axvline(figure.t_rollout, color="w", ls="--", lw=0.9)
+            ax.set_xlim(figure.t_start, figure.t_end)
+            ax.tick_params(labelbottom=(i == last_row))
+            if i == last_row:
                 ax.set_xlabel("Time (s)")
-        from matplotlib.ticker import MaxNLocator
-        if not _GT_ONLY:
-            ax_p.tick_params(labelleft=False)      # shared scale -> one y-axis is enough
-            ax_p.xaxis.set_major_locator(MaxNLocator(nbins=5, prune="lower"))
-        ax_g.xaxis.set_major_locator(MaxNLocator(nbins=5, prune="upper"))  # no "1.00.0"
-        ax_g.set_ylabel(_static_ylab(name, f"{_disp(name)}\nFreq (kHz)"))
-        _r = _corr(d["pred"][K0:], d["gt"][K0:])
-        _sk = d.get("nrmse_skill") if _SHOW_SKILL else None
-        if not _GT_ONLY:
-                ax_p.text(0.98, 0.94, (f"r {_r:.3f} · " if _SHOW_R else "")
-                      + f"nRMSE {d['nrmse']:.3f}"
-                      + (f" · skill {_sk:+.2f}" if _sk is not None and np.isfinite(_sk) else ""),
-                      transform=ax_p.transAxes, ha="right", va="top", fontsize=_p - 3,
-                      color="0.15", bbox=dict(boxstyle="square,pad=0.18", fc="white",
-                                              ec="none", alpha=0.8))
-        if i == first_spec:
-            ax_g.set_title("Ground truth")
-            if not _GT_ONLY:
-                ax_p.set_title("Prediction")
-        _letter(ax_g)
+        if not options.gt_only:
+            ax_prediction.tick_params(labelleft=False)
+            ax_prediction.xaxis.set_major_locator(MaxNLocator(nbins=5, prune="lower"))
+        ax_truth.xaxis.set_major_locator(MaxNLocator(nbins=5, prune="upper"))
+        ax_truth.set_ylabel(
+            figure.label_static(name, f"{_display_name(name)}\nFreq (kHz)")
+        )
+        if not options.gt_only:
+            figure.metric_box(
+                ax_prediction,
+                0.98,
+                0.94,
+                entry["pred"][K0:],
+                entry["gt"][K0:],
+                entry,
+                "top",
+                0.8,
+            )
+        if i == first_row:
+            ax_truth.set_title("Ground truth")
+            if not options.gt_only:
+                ax_prediction.set_title("Prediction")
+        figure.letter(ax_truth)
 
-    # ---- one compact row of time-mean power spectra (statistics check) ---------------------- #
-    for i, (kind, _n) in enumerate(rows):
-        if kind != "psrow":
-            continue
-        inner = GridSpecFromSubplotSpec(1, max(len(dyn_spec), 1), subplot_spec=outer[i],
-                                        wspace=0.34)
-        for j, name in enumerate(dyn_spec):
-            d = decoded[name]
-            bc = _spec_scale.get(name, (0, 0, 1))[0]
-            ax_s = fig.add_subplot(inner[j])
-            with np.errstate(invalid="ignore"):
-                ps_g = np.nanmean(np.where(np.isfinite(d["gt"][K0:, bc]),
-                                           d["gt"][K0:, bc], np.nan), axis=(0, 2))
-                ps_p = np.nanmean(np.where(np.isfinite(d["pred"][K0:, bc]),
-                                           d["pred"][K0:, bc], np.nan), axis=(0, 2))
-            fb = np.arange(len(ps_g)) * khz_per_bin
-            ax_s.plot(fb, ps_g, color=_GT_C, lw=LW_PRIMARY, solid_capstyle="round", zorder=2)
-            ax_s.plot(fb, ps_p, color=_PR_C, lw=LW_SECONDARY, ls=DASH_SECONDARY, zorder=3)
-            ax_s.set_xlabel("Freq (kHz)", fontsize=6.5)
-            ax_s.tick_params(labelsize=6)
-            ax_s.grid(alpha=GRID_ALPHA, lw=GRID_LW)
-            ax_s.set_title(f"{name} power spectrum", fontsize=6.5)
-            if j == 0:
-                ax_s.set_ylabel("log power", fontsize=6.5)
-                _letter(ax_s)
 
-    # ---- video: GT | PRED | difference at mid-rollout --------------------------------------- #
-    first_vid = min((i for i, (k, _n) in enumerate(rows) if k == "vid"), default=None)
-    for i, (kind, name) in enumerate(rows):
-        if kind != "vid":
-            continue
-        d = decoded[name]
-        # colorbars get their OWN columns NEXT TO their panel: attaching them with
-        # ax=... steals width from the image axes and knocks this row out of alignment
-        # with the spectro/trace rows (measured 2026-08-10: right edge 0.970 vs 0.985).
-        # DIFFERENCE PANEL REMOVED (2026-08-14, user): pred − GT on a single mid-rollout frame
-        # reads as a spatial error map, but the prediction is a SAMPLE of a stochastic field —
-        # the difference is dominated by which realization was drawn, not by where the model is
-        # wrong. It made a collapsed prediction look like a structured error. GT | PRED only.
-        inner = (GridSpecFromSubplotSpec(1, 2, subplot_spec=outer[i], wspace=0.30,
-                                         width_ratios=[1.0, 0.05]) if _GT_ONLY
-                 else GridSpecFromSubplotSpec(1, 3, subplot_spec=outer[i], wspace=0.30,
-                                              width_ratios=[1.0, 1.0, 0.05]))
-        gt, pr = d["gt"], d["pred"]
-        mid_t = gt.shape[2] // 2
-        img_g, img_p = gt[mid, 0, mid_t], pr[mid, 0, mid_t]
-        fin = img_g[np.isfinite(img_g)]
-        vmin, vmax = (float(np.percentile(fin, 1.0)), float(np.percentile(fin, 99.0))) \
-            if fin.size else (0.0, 1.0)
-        ax_g = fig.add_subplot(inner[0])
-        ax_p = None if _GT_ONLY else fig.add_subplot(inner[1])
-        cax_p = fig.add_subplot(inner[1 if _GT_ONLY else 2])
-        im_g = ax_g.imshow(img_g, cmap=CMAP_VIDEO, vmin=vmin, vmax=vmax, aspect="auto")
-        im_p = im_g if _GT_ONLY else ax_p.imshow(img_p, cmap=CMAP_VIDEO, vmin=vmin,
-                                                 vmax=vmax, aspect="auto")
-        for a in ((ax_g,) if _GT_ONLY else (ax_g, ax_p)):
-            a.set_xticks([]); a.set_yticks([])
-        ax_g.set_ylabel(_static_ylab(name, _disp(name)))
-        _rv = _corr(pr[K0:], gt[K0:])
-        _skv = d.get("nrmse_skill") if _SHOW_SKILL else None
-        if not _GT_ONLY:
-                ax_p.text(0.99, 0.04, (f"r {_rv:.3f} · " if _SHOW_R else "")
-                      + f"nRMSE {d['nrmse']:.3f}"
-                      + (f" · skill {_skv:+.2f}" if _skv is not None and np.isfinite(_skv) else ""),
-                      transform=ax_p.transAxes, ha="right", va="bottom", fontsize=_p - 3,
-                      color="0.15", bbox=dict(boxstyle="square,pad=0.18", fc="white",
-                                              ec="none", alpha=0.78))
-        if i == first_vid:
-            ax_g.set_title(f"Ground truth (t = {t_origin + mid * FRAME_S:.2f} s)")
-            if not _GT_ONLY:
-                ax_p.set_title("Prediction")
-        for cb, im in ((cax_p, im_p),):
-            fig.colorbar(im, cax=cb)
-            cb.tick_params(labelsize=5.5, length=2, pad=1)
-        _letter(ax_g)
+def _draw_video_rows(figure: _Figure) -> None:
+    """Mid-rollout camera frame, truth and prediction, with a colour bar."""
+    from matplotlib.gridspec import GridSpecFromSubplotSpec
 
-    # ---- video nRMSE(t): per-frame error across the rollout --------------------------------- #
-    for i, (kind, _n) in enumerate(rows):
-        if kind != "vrmse":
+    options, K0, mid = figure.options, figure.K0, figure.mid_frame
+    rows = figure.rows_of("vid")
+    first_row = rows[0][0] if rows else None
+    for i, name in rows:
+        entry = figure.decoded[name]
+        if options.gt_only:
+            panels = GridSpecFromSubplotSpec(
+                1, 2, subplot_spec=figure.grid[i], wspace=0.30, width_ratios=[1.0, 0.05]
+            )
+        else:
+            panels = GridSpecFromSubplotSpec(
+                1,
+                3,
+                subplot_spec=figure.grid[i],
+                wspace=0.30,
+                width_ratios=[1.0, 1.0, 0.05],
+            )
+        truth, prediction = entry["gt"], entry["pred"]
+        mid_time = truth.shape[2] // 2
+        truth_frame = truth[mid, 0, mid_time]
+        prediction_frame = prediction[mid, 0, mid_time]
+        vmin, vmax = _robust_limits(truth_frame, 99.0)
+        ax_truth = figure.fig.add_subplot(panels[0])
+        ax_prediction = None if options.gt_only else figure.fig.add_subplot(panels[1])
+        colorbar_ax = figure.fig.add_subplot(panels[1 if options.gt_only else 2])
+        image_style = dict(cmap=options.cmap_video, vmin=vmin, vmax=vmax, aspect="auto")
+        truth_image = ax_truth.imshow(truth_frame, **image_style)
+        prediction_image = (
+            truth_image
+            if options.gt_only
+            else ax_prediction.imshow(prediction_frame, **image_style)
+        )
+        for ax in (ax_truth,) if options.gt_only else (ax_truth, ax_prediction):
+            ax.set_xticks([])
+            ax.set_yticks([])
+        ax_truth.set_ylabel(figure.label_static(name, _display_name(name)))
+        if not options.gt_only:
+            figure.metric_box(
+                ax_prediction,
+                0.99,
+                0.04,
+                prediction[K0:],
+                truth[K0:],
+                entry,
+                "bottom",
+                0.78,
+            )
+        if i == first_row:
+            ax_truth.set_title(
+                f"Ground truth (t = {figure.t_origin + mid * FRAME_S:.2f} s)"
+            )
+            if not options.gt_only:
+                ax_prediction.set_title("Prediction")
+        figure.fig.colorbar(prediction_image, cax=colorbar_ax)
+        colorbar_ax.tick_params(labelsize=5.5, length=2, pad=1)
+        figure.letter(ax_truth)
+
+
+def _video_nrmse_per_frame(truth: np.ndarray, prediction: np.ndarray, K0: int, F: int):
+    errors = []
+    for frame in range(K0, F):
+        usable = np.isfinite(truth[frame]) & np.isfinite(prediction[frame])
+        if not usable.any():
+            errors.append(np.nan)
             continue
-        ax = fig.add_subplot(outer[i])
-        for name in dyn_vid:
-            gt, pr = decoded[name]["gt"], decoded[name]["pred"]
-            per = []
-            for f in range(K0, F):
-                m = np.isfinite(gt[f]) & np.isfinite(pr[f])
-                if not m.any():
-                    per.append(np.nan)
-                    continue
-                g = gt[f][m].astype(np.float64)
-                p = pr[f][m].astype(np.float64)
-                per.append(float(np.sqrt(np.mean((p - g) ** 2)) / (np.std(g) + 1e-12)))
-            ax.plot(ts[K0:], per, color=_VID_C.get(name, _GT_C), lw=LW_PRIMARY,
-                    label=name.replace("tangtv_", "").capitalize() + " divertor")
+        t = truth[frame][usable].astype(np.float64)
+        p = prediction[frame][usable].astype(np.float64)
+        errors.append(float(np.sqrt(np.mean((p - t) ** 2)) / (np.std(t) + 1e-12)))
+    return errors
+
+
+def _draw_video_nrmse_row(figure: _Figure) -> None:
+    for i, _name in figure.rows_of("vrmse"):
+        ax = figure.fig.add_subplot(figure.grid[i])
+        for name in figure.video:
+            entry = figure.decoded[name]
+            ax.plot(
+                figure.times[figure.K0 :],
+                _video_nrmse_per_frame(entry["gt"], entry["pred"], figure.K0, figure.F),
+                color=_VIDEO_COLOR.get(name, _GT_COLOR),
+                lw=LW_PRIMARY,
+                label=name.replace("tangtv_", "").capitalize() + " divertor",
+            )
         ax.set_ylabel("video nRMSE")
         ax.set_ylim(bottom=0.0)
         ax.legend(frameon=False, fontsize=6.5, loc="upper left")
         ax.grid(alpha=GRID_ALPHA, lw=GRID_LW)
-        _time_axis(ax, ticks=True, xlabel=True)
-        _letter(ax)
+        figure.time_axis(ax, ticks=True, xlabel=True)
+        figure.letter(ax)
 
-    # ---- static (codec-collapsed) annotation strip ------------------------------------------ #
-    for i, (kind, _n) in enumerate(rows):
-        if kind != "static":
-            continue
-        inner = GridSpecFromSubplotSpec((len(statics) + 2) // 3, 3, subplot_spec=outer[i],
-                                        wspace=0.12, hspace=0.35)
-        for j, name in enumerate(statics):
-            _annotate_static(fig.add_subplot(inner[j // 3, j % 3]), name)
 
-    # GT/prediction legend INSIDE the first panel (no figure-level header text — run
-    # metadata belongs in the paper caption, not the figure)
-    if legend_host is not None:
-        handles = [plt.Line2D([], [], color=_GT_C, lw=LW_PRIMARY, label="Ground truth")]
-        if not _GT_ONLY:
-            handles.append(plt.Line2D([], [], color=_PR_C, lw=LW_SECONDARY,
-                                      ls=DASH_SECONDARY, label="Prediction"))
-        legend_host.legend(handles=handles,
-                           loc=_os.environ.get("IGNITE_FIG_LEGEND_LOC", "upper left"),
-                           frameon=True, ncol=1 if _GT_ONLY else 2,
-                           fontsize=_p - 2, borderaxespad=0.25, handlelength=1.6,
-                           columnspacing=0.8, framealpha=0.9, edgecolor="none")
+def _draw_legend(figure: _Figure) -> None:
+    """Ground-truth / prediction legend inside the first time panel."""
+    if figure.legend_host is None:
+        return
+    line = figure.plt.Line2D
+    handles = [line([], [], color=_GT_COLOR, lw=LW_PRIMARY, label="Ground truth")]
+    if not figure.options.gt_only:
+        handles.append(
+            line(
+                [],
+                [],
+                color=_PRED_COLOR,
+                lw=LW_SECONDARY,
+                ls=DASH_SECONDARY,
+                label="Prediction",
+            )
+        )
+    figure.legend_host.legend(
+        handles=handles,
+        loc=figure.options.legend_loc,
+        frameon=True,
+        ncol=1 if figure.options.gt_only else 2,
+        fontsize=figure.pt - 2,
+        borderaxespad=0.25,
+        handlelength=1.6,
+        columnspacing=0.8,
+        framealpha=0.9,
+        edgecolor="none",
+    )
+
+
+def render_figure(
+    decoded: Dict[str, Dict[str, np.ndarray]],
+    shot: str,
+    step: int,
+    temperature: float,
+    K0: int,
+    F: int,
+    out_dir: Path,
+    t_origin: float = WARMUP_S,
+) -> Tuple[Path, Path]:
+    """Render the ground-truth versus prediction figure of one shot.
+
+    Parameters
+    ----------
+    decoded : dict
+        Output of :func:`decode_all`.
+    shot : str
+        Shot id, used in the file names.
+    step : int
+        Checkpoint step, used in the file names.
+    temperature : float
+        Sampling temperature (unused; kept for callers).
+    K0 : int
+        First predicted frame.
+    F : int
+        Window length.
+    out_dir : Path
+        Output directory.
+    t_origin : float, default=WARMUP_S
+        Shot time of frame 0.
+
+    Returns
+    -------
+    png, pdf : Path
+        Paths of the written figure files.
+    """
+    figure = _Figure(decoded, K0, F, t_origin, FIGURE_OPTIONS)
+    for draw in (
+        _draw_slowts_rows,
+        _draw_spectro_rows,
+        _draw_video_rows,
+        _draw_video_nrmse_row,
+        _draw_legend,
+    ):
+        draw(figure)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     png = out_dir / f"dynamics_eval_{shot}_step{step}.png"
     pdf = out_dir / f"dynamics_eval_{shot}_step{step}.pdf"
-    fig.savefig(png, dpi=200)          # NO bbox_inches: delivered size == FIG_W_IN exactly
-    fig.savefig(pdf)
-    plt.close(fig)
+    figure.fig.savefig(png, dpi=200)
+    figure.fig.savefig(pdf)
+    figure.plt.close(figure.fig)
     return png, pdf
 
 
-# --------------------------------------------------------------------------------------------- #
-# driver
-# --------------------------------------------------------------------------------------------- #
-def run(ckpt: str, shot: str, cache_dir: str, out_dir: str,
-        temperature: float = 1.0, seed: int = 0, k0: int = 0, codec_tmpl: str = None,
-        render_all: bool = False, val_tail: int = 0, val_n: int = 0,
-        split_seed: int = 0, actuator_mode: str = "real", log=print) -> Dict:
-    """Evaluate a trained dynamics ckpt on one or more shots (comma-separated ``shot``).
+def _read_manifest(cache_dir):
+    """Return ``(manifest, error)`` for a cache's ``_codec_manifest.json``."""
+    path = Path(cache_dir) / "_codec_manifest.json"
+    if not path.exists():
+        return {}, None
+    try:
+        manifest = json.loads(path.read_text())
+    except Exception as e:  # noqa: BLE001 - the manifest is advisory
+        return {}, e
+    if not isinstance(manifest, dict):
+        return {}, TypeError(f"manifest is a {type(manifest).__name__}, not an object")
+    return manifest, None
 
-    Per shot: rollout from K0 real frames, per-modality TOKEN ACCURACY over the predicted
-    region (all modalities in the ckpt's layout — no codec needed), decoded nRMSE + figure
-    for the EVAL_MODALITIES whose codec resolves (``codec_tmpl`` tried before the frozen
-    manifest — MUST match the cache's _codec_manifest.json codecs, or codes and decoder
-    disagree). Figures render for the first shot only unless ``render_all``. Writes
-    ``eval_metrics.json`` (per-shot + mean) to ``out_dir``.
+
+def _load_bandpower(cache_dir, codecs, log) -> Dict:
+    """Band-power decode specs from a ``bin_edges*.npz`` beside the cache, if any."""
+    cache_dir = Path(cache_dir)
+    candidates = (
+        cache_dir / "bin_edges_128.npz",
+        cache_dir.parent / "bin_edges_128.npz",
+        cache_dir / "bin_edges.npz",
+        cache_dir.parent / "bin_edges.npz",
+    )
+    edges_file = next((path for path in candidates if path.exists()), None)
+    bandpower: Dict = {}
+    if edges_file is None:
+        return bandpower
+    edges = np.load(edges_file)
+    for name in edges.files:
+        if name not in EVAL_MODALITIES or name not in codecs:
+            continue
+        modality_edges = edges[name]
+        n_channels = int(getattr(codecs[name][1], "channels", 0) or 0)
+        if (
+            n_channels <= 0
+            or modality_edges.ndim != 2
+            or modality_edges.shape[1] % n_channels
+        ):
+            log(
+                f"[eval] band-power {name}: edges {modality_edges.shape} not divisible "
+                f"by C={n_channels} — falling back to the FSQ codec",
+                flush=True,
+            )
+            continue
+        bandpower[name] = (
+            bandpower_levels(modality_edges),
+            n_channels,
+            modality_edges.shape[1] // n_channels,
+        )
+    if bandpower:
+        log(
+            f"[eval] band-power decode from {edges_file.name} for "
+            + ", ".join(
+                f"{name} (C={spec[1]}, {spec[2]} bands)"
+                for name, spec in sorted(bandpower.items())
+            ),
+            flush=True,
+        )
+    return bandpower
+
+
+def _resolve_val_shots(ckpt, cache_dir, val_tail, val_n, split_seed, log) -> str:
+    """Return the last ``val_tail`` validation shots of the run, comma-separated.
+
+    The split frozen next to the checkpoint is preferred; recomputing it is only
+    valid if the cache has not changed since training.
     """
-    import json
+    split_file = Path(ckpt).parent / "split_shots.json"
+    if split_file.exists():
+        split = json.loads(split_file.read_text())
+        cached = {path.stem for path in Path(cache_dir).glob("*.pt")}
+        val = [shot for shot in split["val"] if shot in cached]
+        log(
+            f"[eval] split from {split_file} (frozen by the run): val={len(val)} "
+            f"test={len(split.get('test', []))} HELD OUT, "
+            f"seed={split.get('split_seed')}",
+            flush=True,
+        )
+    else:
+        _train, val, _test = td.split_shots(
+            cache_dir, val_n or val_tail, split_seed=split_seed
+        )
+        log(
+            f"[eval] NO split_shots.json next to the ckpt — RECOMPUTED the split "
+            f"(val_n={val_n or val_tail}, split_seed={split_seed}). Valid only if the "
+            f"cache is unchanged since training.",
+            flush=True,
+        )
+    shots = ",".join(val[-val_tail:])
+    log(f"[eval] val_tail={val_tail} -> shots: {shots}", flush=True)
+    return shots
+
+
+def _merge_rank_parts(out_dir, per_shot, all_shots, rank, world_size, log) -> bool:
+    """Write this rank's results; rank 0 waits for and merges every part.
+
+    Returns False on non-zero ranks, which are done after writing their part.
+    """
+    part = out_dir / f"_eval_part_rank{rank}.json"
+    tmp = out_dir / f"_eval_part_rank{rank}.json.tmp"
+    with open(tmp, "w") as f:
+        json.dump(per_shot, f)
+    tmp.replace(part)
+    if rank != 0:
+        log(f"[eval] rank {rank}: part written, exiting", flush=True)
+        return False
+    deadline = time.time() + _MERGE_TIMEOUT_S
+    while time.time() < deadline:
+        if len(sorted(out_dir.glob("_eval_part_rank*.json"))) >= world_size:
+            break
+        time.sleep(_MERGE_POLL_S)
+    for part_file in sorted(out_dir.glob("_eval_part_rank*.json")):
+        per_shot.update(json.loads(part_file.read_text()))
+        part_file.unlink()
+    missing = [shot for shot in all_shots if shot not in per_shot]
+    if missing:
+        log(
+            f"[eval] WARNING: no results from {len(missing)} shots: {missing}",
+            flush=True,
+        )
+    return True
+
+
+def _scored_values(per_shot: Dict, field: str) -> Dict[str, list]:
+    """Collect the non-NaN values of ``field`` per modality across shots.
+
+    An absent diagnostic gives NaN for its shot, which must not poison the mean.
+    """
+    modalities = set().union(*(per_shot[shot][field] for shot in per_shot))
+    values = {}
+    for modality in sorted(modalities):
+        shot_values = (
+            per_shot[shot][field][modality]
+            for shot in per_shot
+            if modality in per_shot[shot][field]
+        )
+        values[modality] = [v for v in shot_values if not math.isnan(v)]
+    return values
+
+
+def _fraction(names, compare) -> Dict[str, float]:
+    """Mean of a per-token boolean comparison, per modality."""
+    return {name: float(compare(name).float().mean()) for name in names}
+
+
+@dataclasses.dataclass
+class _EvalContext:
+    """Everything the per-shot evaluation needs, resolved once per run."""
+
+    model: MaskGITDynamics
+    cfg: DynamicsConfig
+    step: int
+    codecs: Dict
+    bandpower: Dict
+    device: torch.device
+    n_seed: int
+    temperature: float
+    seed: int
+    actuator_mode: str
+    cache_dir: str
+    out_dir: str
+    use_raw_gt: bool
+    data_dir: object
+    cache_t0: float
+    log: object
+
+
+def _rollouts(context: _EvalContext, cache, shot):
+    """The rollout, and the real-actuator baseline of a counterfactual (or None)."""
+
+    def rollout(actuator_mode):
+        generator = torch.Generator(device=context.device).manual_seed(
+            int(context.seed)
+        )
+        return rollout_shot(
+            context.model,
+            context.cfg,
+            cache,
+            context.n_seed,
+            context.temperature,
+            generator,
+            context.device,
+            actuator_mode=actuator_mode,
+            cache_dir=context.cache_dir,
+            shot=shot,
+        )
+
+    # bf16 rollouts measurably lower accuracy, so they are opt-in.
+    bf16 = context.device.type == "cuda" and os.environ.get("IGNITE_EVAL_BF16") == "1"
+    with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=bf16):
+        result = rollout(context.actuator_mode)
+        # A counterfactual is measured against the same rollout under the real
+        # actuators, with an identical random stream.
+        baseline = None if context.actuator_mode == "real" else rollout("real")
+    return result, baseline
+
+
+def _archive_codes(context: _EvalContext, shot, result: Rollout) -> None:
+    """Save the codes, so a figure can be re-rendered without a new rollout."""
+    try:
+        np.savez_compressed(
+            Path(context.out_dir) / f"codes_{shot}_step{context.step}.npz",
+            K0=np.int32(result.k0),
+            F=np.int32(result.n_frames),
+            step=np.int32(context.step),
+            shot=str(shot),
+            temperature=np.float32(context.temperature),
+            **{
+                f"gt__{name}": codes.cpu().numpy().astype(np.int32)
+                for name, codes in result.gt_codes.items()
+            },
+            **{
+                f"pred__{name}": codes.cpu().numpy().astype(np.int32)
+                for name, codes in result.pred_codes.items()
+            },
+        )
+    except Exception as e:
+        context.log(
+            f"[eval] WARNING: could not archive codes for {shot}: "
+            f"{type(e).__name__}: {e}"
+        )
+
+
+def _evaluate_shot(context: _EvalContext, shot, is_first: bool, render: bool) -> Dict:
+    """Roll out, score and optionally render one shot; return its metrics entry."""
+    cache = load_shot_cache(Path(context.cache_dir), shot)
+    result, baseline = _rollouts(context, cache, shot)
+    gt, pred = result.gt_codes, result.pred_codes
+    K0, F = result.k0, result.n_frames
+    predicted = slice(K0, F)
+    token_accuracy = _fraction(gt, lambda n: pred[n][predicted] == gt[n][predicted])
+    # Codes are highly persistent, so accuracy only means something as skill.
+    persistence = _fraction(gt, lambda n: gt[n][predicted] == gt[n][K0 - 1 : K0])
+    _archive_codes(context, shot, result)
+    measured = (
+        load_raw_gt(
+            shot,
+            context.codecs,
+            F,
+            context.data_dir,
+            t0_start=context.cache_t0,
+            log=context.log,
+        )
+        if context.use_raw_gt
+        else None
+    )
+    decoded = decode_all(
+        context.codecs,
+        gt,
+        pred,
+        K0,
+        F,
+        context.device,
+        raw_gt=measured,
+        bandpower=context.bandpower,
+    )
+    if is_first:
+        self_check(decoded)
+    entry = {
+        "token_accuracy": token_accuracy,
+        "token_accuracy_persistence": persistence,
+        "token_accuracy_skill": {
+            n: token_accuracy[n] - persistence[n] for n in token_accuracy
+        },
+        "nrmse": {n: d["nrmse"] for n, d in decoded.items()},
+        "nrmse_persistence": {n: d["nrmse_persistence"] for n, d in decoded.items()},
+        "nrmse_skill": {n: d["nrmse_skill"] for n, d in decoded.items()},
+        "K0": K0,
+        "F": F,
+    }
+    if baseline is not None:
+        real = baseline.pred_codes
+        entry["actuator_mode"] = context.actuator_mode
+        entry["divergence_vs_real"] = _fraction(
+            pred, lambda n: pred[n][predicted] != real[n][predicted]
+        )
+        entry["token_accuracy_real_actuators"] = _fraction(
+            pred, lambda n: real[n][predicted] == gt[n][predicted]
+        )
+    if render:
+        png, _pdf = render_figure(
+            decoded,
+            shot,
+            context.step,
+            context.temperature,
+            K0,
+            F,
+            Path(context.out_dir),
+        )
+        entry["figure"] = str(png)
+    return entry
+
+
+def _summarise(per_shot, ckpt, step, temperature, seed, codec_tmpl) -> Dict:
+    """Run-level metrics: means over the shots where each modality was scored."""
+
+    def mean(field):
+        return {
+            modality: float(np.mean(values)) if values else float("nan")
+            for modality, values in _scored_values(per_shot, field).items()
+        }
+
+    return {
+        "ckpt": str(ckpt),
+        "step": step,
+        "temperature": temperature,
+        "seed": int(seed),
+        "codec_tmpl": codec_tmpl,
+        "n_shots": len(per_shot),
+        "shots": sorted(per_shot),
+        "mean_token_accuracy": mean("token_accuracy"),
+        "mean_nrmse": mean("nrmse"),
+        "mean_token_accuracy_persistence": mean("token_accuracy_persistence"),
+        "mean_token_accuracy_skill": mean("token_accuracy_skill"),
+        "mean_nrmse_persistence": mean("nrmse_persistence"),
+        "mean_nrmse_skill": mean("nrmse_skill"),
+        "n_shots_scored_nrmse": {
+            modality: len(values)
+            for modality, values in _scored_values(per_shot, "nrmse").items()
+        },
+        "per_shot": per_shot,
+    }
+
+
+def _log_summary(metrics: Dict, log) -> None:
+    log(
+        "[eval] predicted region — model vs PERSISTENCE (freeze last seed frame):",
+        flush=True,
+    )
+    log(
+        f"  {'modality':24s} {'tok_acc':>8s} {'pers':>8s} {'skill':>8s} "
+        f"{'nRMSE':>8s} {'pers':>8s} {'skill':>7s}",
+        flush=True,
+    )
+    for name, accuracy in metrics["mean_token_accuracy"].items():
+        nrmse = metrics["mean_nrmse"].get(name)
+        decoded_columns = (
+            f"{nrmse:8.3f} {metrics['mean_nrmse_persistence'][name]:8.3f} "
+            f"{metrics['mean_nrmse_skill'][name]:+7.3f}"
+            if nrmse is not None
+            else " " * 25
+        )
+        log(
+            f"  {name:24s} {accuracy:8.3f} "
+            f"{metrics['mean_token_accuracy_persistence'][name]:8.3f} "
+            f"{metrics['mean_token_accuracy_skill'][name]:+8.3f} " + decoded_columns,
+            flush=True,
+        )
+
+
+def _codec_template(codec_tmpl, manifest, manifest_error, log):
+    """The requested template, else the one that encoded the cache."""
+    if codec_tmpl is not None:
+        return codec_tmpl
+    if manifest_error is not None:
+        log(
+            f"[eval] WARNING unreadable _codec_manifest.json ({manifest_error})",
+            flush=True,
+        )
+        return None
+    template = manifest.get("codec_tmpl") or None
+    if template:
+        log(f"[eval] codec_tmpl from cache manifest: {template}", flush=True)
+    return template
+
+
+def run(
+    ckpt: str,
+    shot: str,
+    cache_dir: str,
+    out_dir: str,
+    temperature: float = 1.0,
+    seed: int = 0,
+    k0: int = 0,
+    codec_tmpl: str = None,
+    render_all: bool = False,
+    val_tail: int = 0,
+    val_n: int = 0,
+    split_seed: int = 0,
+    actuator_mode: str = "real",
+    log=print,
+) -> Dict:
+    """Evaluate a checkpoint on one or more shots and write ``eval_metrics.json``.
+
+    Per shot: a rollout from ``K0`` real frames, token accuracy of every modality
+    over the predicted frames, decoded nRMSE of the :data:`EVAL_MODALITIES` whose
+    codec resolves, each against persistence, and the archived codes. Shots are
+    sharded over ``RANK``/``WORLD_SIZE`` and merged by rank 0.
+
+    Parameters
+    ----------
+    ckpt : str
+        Checkpoint path.
+    shot : str
+        Comma-separated shot ids.
+    cache_dir, out_dir : str
+        Frame-code cache and output directory.
+    temperature : float, default=1.0
+        Sampling temperature.
+    seed : int, default=0
+        Rollout seed.
+    k0 : int, default=0
+        Seed frames; 0 uses the checkpoint's ``k0_seed``.
+    codec_tmpl : str, default=None
+        Codec checkpoint template; defaults to the one in the cache manifest, so
+        the decoders match the codecs that wrote the cache.
+    render_all : bool, default=False
+        Render a figure for every shot instead of the first only.
+    val_tail : int, default=0
+        If positive, evaluate the last ``val_tail`` validation shots of the run
+        instead of ``shot``.
+    val_n, split_seed : int, default=0
+        Split parameters, used only when the run froze no split.
+    actuator_mode : str, default="real"
+        Counterfactual (:func:`apply_actuator_mode`); any other mode also runs
+        the real-actuator rollout with the same seed and reports the divergence.
+    log : callable, default=print
+        Logger.
+
+    Returns
+    -------
+    metrics : dict
+        Contents of ``eval_metrics.json``; on non-zero ranks only this rank's
+        per-shot results.
+    """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     log(f"[eval] device={device} ckpt={ckpt} actuator_mode={actuator_mode}", flush=True)
-
     if val_tail:
-        # Resolve the held-out shots from the SAME split the trainer used. PREFER the
-        # split_shots.json the run froze next to its checkpoint: recomputing from a cache
-        # that has grown since training would hand back DIFFERENT shots — some of which the
-        # model trained on. Fall back to recomputing only for runs that predate the freeze.
-        from .train_dynamics import split_shots
-        sp = Path(ckpt).parent / "split_shots.json"
-        if sp.exists():
-            d = json.loads(sp.read_text())
-            have = {q.stem for q in Path(cache_dir).glob("*.pt")}
-            val = [s for s in d["val"] if s in have]
-            log(f"[eval] split from {sp} (frozen by the run): val={len(val)} "
-                f"test={len(d.get('test', []))} HELD OUT, seed={d.get('split_seed')}",
-                flush=True)
-        else:
-            _train, val, _test = split_shots(cache_dir, val_n or val_tail,
-                                             split_seed=split_seed)
-            log(f"[eval] NO split_shots.json next to the ckpt — RECOMPUTED the split "
-                f"(val_n={val_n or val_tail}, split_seed={split_seed}). Valid only if the "
-                f"cache is unchanged since training.", flush=True)
-        shot = ",".join(val[-val_tail:])
-        log(f"[eval] val_tail={val_tail} -> shots: {shot}", flush=True)
-
-    # RAW-GT reference (user 2026-08-12). t0_start MUST come from the cache manifest: it fixes
-    # the window origin, and reading raw frames on a different origin would shift them against
-    # the codes (probe vs production caches differ by exactly 20 frames). If the manifest does
-    # not record it, fall back to the historical 1.0 default.
-    import os as _o2
-    from . import spike as _spike
-    use_raw_gt = _o2.environ.get("IGNITE_EVAL_RAW_GT", "1") != "0"
-    data_dir = _o2.environ.get("IGNITE_DATA_DIR") or _spike.DEFAULT_DATA_DIR
-    cache_t0 = 1.0
-    _man = Path(cache_dir) / "_codec_manifest.json"
-    if _man.exists():
-        try:
-            cache_t0 = float(json.loads(_man.read_text()).get("t0_start", 1.0))
-        except Exception:
-            pass
+        shot = _resolve_val_shots(ckpt, cache_dir, val_tail, val_n, split_seed, log)
+    # Measured ground truth needs the cache's frame origin.
+    manifest, manifest_error = _read_manifest(cache_dir)
+    try:
+        cache_t0 = float(manifest.get("t0_start", 1.0))
+    except (TypeError, ValueError):
+        cache_t0 = 1.0
+    use_raw_gt = os.environ.get("IGNITE_EVAL_RAW_GT", "1") != "0"
     if use_raw_gt:
-        log(f"[eval] GROUND TRUTH = measured input (t0_start={cache_t0} from the cache "
-            f"manifest); metrics therefore include codec reconstruction error and are NOT "
-            f"comparable to decoded-GT runs. Set IGNITE_EVAL_RAW_GT=0 for the old behaviour.",
-            flush=True)
-
-    repo = Path.cwd()
+        log(
+            f"[eval] GROUND TRUTH = measured input (t0_start={cache_t0} from the cache "
+            f"manifest); metrics therefore include codec reconstruction error and are "
+            f"NOT comparable to decoded-GT runs. Set IGNITE_EVAL_RAW_GT=0 for the old "
+            f"behaviour.",
+            flush=True,
+        )
     model, cfg, step = load_model(Path(ckpt), device)
-    K0_req = int(k0) if k0 else cfg.k0_seed
-    log(f"[eval] model loaded: d_model={cfg.d_model} depth={cfg.depth} heads={cfg.n_heads} "
-        f"step={step} K0={K0_req} max_frames={cfg.max_frames} "
-        f"frame_tokens={cfg.tokens_per_frame}", flush=True)
+    n_seed = int(k0) if k0 else cfg.k0_seed
+    log(
+        f"[eval] model loaded: d_model={cfg.d_model} depth={cfg.depth} "
+        f"heads={cfg.n_heads} step={step} K0={n_seed} max_frames={cfg.max_frames} "
+        f"frame_tokens={cfg.tokens_per_frame}",
+        flush=True,
+    )
+    codec_tmpl = _codec_template(codec_tmpl, manifest, manifest_error, log)
+    codecs = td.load_frozen_codecs(
+        list(EVAL_MODALITIES), repo=Path.cwd(), tmpl=codec_tmpl
+    )
+    for codec, _codec_cfg, _family in codecs.values():
+        codec.to(device)
+    log(
+        f"[eval] loaded {len(codecs)} frozen codecs "
+        f"(tmpl={codec_tmpl or 'manifest'}): {sorted(codecs)}",
+        flush=True,
+    )
+    context = _EvalContext(
+        model=model,
+        cfg=cfg,
+        step=step,
+        codecs=codecs,
+        bandpower=_load_bandpower(cache_dir, codecs, log),
+        device=device,
+        n_seed=n_seed,
+        temperature=temperature,
+        seed=seed,
+        actuator_mode=actuator_mode,
+        cache_dir=cache_dir,
+        out_dir=out_dir,
+        use_raw_gt=use_raw_gt,
+        data_dir=os.environ.get("IGNITE_DATA_DIR") or spike.DEFAULT_DATA_DIR,
+        cache_t0=cache_t0,
+        log=log,
+    )
 
-    from .train_dynamics import load_frozen_codecs as _lfc
-    # DEFAULT THE TEMPLATE FROM THE CACHE'S OWN MANIFEST. Without it resolve_codec_path prefers a
-    # repo-local path and can silently load a DIFFERENT codec than the one that encoded the cache:
-    # 2026-08-17 it picked eval_runs/ignite_d5_ece (192 tok, channel_groups=1) for a cache written
-    # by the 768-token g=4 ece codec, so decode raised a shape error that aborted the ENTIRE eval
-    # before any modality was scored. The cache records the right template -- use it.
-    if codec_tmpl is None:
-        _man = Path(cache_dir) / "_codec_manifest.json"
-        if _man.exists():
-            try:
-                codec_tmpl = json.loads(_man.read_text()).get("codec_tmpl") or None
-                if codec_tmpl:
-                    log(f"[eval] codec_tmpl from cache manifest: {codec_tmpl}", flush=True)
-            except Exception as _e:                     # noqa: BLE001 - manifest is advisory
-                log(f"[eval] WARNING unreadable _codec_manifest.json ({_e})", flush=True)
-    codecs = _lfc(list(EVAL_MODALITIES), repo=repo, tmpl=codec_tmpl)
-    for _n, (c, _c2, _f) in codecs.items():
-        c.to(device)
-    log(f"[eval] loaded {len(codecs)} frozen codecs "
-        f"(tmpl={codec_tmpl or 'manifest'}): {sorted(codecs)}", flush=True)
-
-    # BAND-POWER modalities carry quantile-bin levels instead of FSQ codes, so no learned
-    # decoder exists for them. Detected from a bin_edges*.npz shipped beside the cache; the
-    # codec is still loaded (its cfg supplies the channel count) but is never run on them.
-    bandpower: Dict = {}
-    _edp = next((f for f in (Path(cache_dir) / "bin_edges_128.npz",
-                             Path(cache_dir).parent / "bin_edges_128.npz",
-                             Path(cache_dir) / "bin_edges.npz",
-                             Path(cache_dir).parent / "bin_edges.npz") if f.exists()), None)
-    if _edp is not None:
-        _ez = np.load(_edp)
-        for _n in _ez.files:
-            if _n not in EVAL_MODALITIES or _n not in codecs:
-                continue
-            _q = _ez[_n]
-            _C = int(getattr(codecs[_n][1], "channels", 0) or 0)
-            if _C <= 0 or _q.ndim != 2 or _q.shape[1] % _C:
-                log(f"[eval] band-power {_n}: edges {_q.shape} not divisible by C={_C}"
-                    " — falling back to the FSQ codec", flush=True)
-                continue
-            bandpower[_n] = (bandpower_levels(_q), _C, _q.shape[1] // _C)
-        if bandpower:
-            log(f"[eval] band-power decode from {_edp.name} for "
-                + ", ".join(f"{k} (C={v[1]}, {v[2]} bands)" for k, v in sorted(bandpower.items())),
-                flush=True)
-
-    shots_all = [s.strip() for s in str(shot).split(",") if s.strip()]
-    # (a) multi-GCD parallel eval (user go 2026-08-09): under the srun rank wrapper each
-    # rank evaluates shots_all[RANK::WORLD_SIZE]; rank 0 merges via part files (no process
-    # group — an idle-rank NCCL watchdog cannot bite an embarrassingly parallel eval).
-    import os as _os
-    rank = int(_os.environ.get("RANK", "0"))
-    world = int(_os.environ.get("WORLD_SIZE", "1"))
-    shots = shots_all[rank::world]
-    log(f"[eval] rank {rank}/{world}: {len(shots)}/{len(shots_all)} shots", flush=True)
+    all_shots = [s.strip() for s in str(shot).split(",") if s.strip()]
+    rank = int(os.environ.get("RANK", "0"))
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    shots = all_shots[rank::world_size]
+    log(
+        f"[eval] rank {rank}/{world_size}: {len(shots)}/{len(all_shots)} shots",
+        flush=True,
+    )
     per_shot: Dict[str, Dict] = {}
-    fig_paths = []
-    for si, sh in enumerate(shots):
-        cache = load_shot_cache(Path(cache_dir), sh)
-        gen = torch.Generator(device=device).manual_seed(int(seed))
-        # bf16 rollout is OPT-IN ONLY (IGNITE_EVAL_BF16=1) and NOT recommended: the A/B on
-        # the probe N1000 ckpt (job 5218866 vs stored fp32, same shots/seed/T) measured a
-        # SYSTEMATIC accuracy drop — all 14 modalities negative, mean -0.040, max -0.069.
-        # Coarse bf16 logits perturb sampling + the confidence-unmask ordering, and 40
-        # autoregressive frames compound it. Default = fp32; speed comes from multi-rank
-        # sharding instead (fidelity-free 8x).
-        with torch.autocast(device_type="cuda", dtype=torch.bfloat16,
-                            enabled=(device.type == "cuda"
-                                     and _os.environ.get("IGNITE_EVAL_BF16") == "1")):
-            gt_codes, pred_codes, K0, F = rollout_shot(model, cfg, cache, K0_req,
-                                                       temperature, gen, device,
-                                                       actuator_mode=actuator_mode,
-                                                       cache_dir=cache_dir, shot=sh)
-            # ACTUATOR COUNTERFACTUAL: the effect size is the divergence from the SAME rollout
-            # under real actuators, not the divergence from GT. Re-seed so the two runs share an
-            # identical RNG stream — the rollout draws the same number of samples either way, so
-            # any difference is attributable to the conditioning alone.
-            base_codes = None
-            if actuator_mode != "real":
-                gen_b = torch.Generator(device=device).manual_seed(int(seed))
-                _gt, base_codes, _K, _F = rollout_shot(model, cfg, cache, K0_req,
-                                                       temperature, gen_b, device,
-                                                       actuator_mode="real",
-                                                       cache_dir=cache_dir, shot=sh)
-        tok_acc = {n: float((pred_codes[n][K0:F] == gt_codes[n][K0:F]).float().mean())
-                   for n in gt_codes}
-        # persistence baseline in CODE space: fraction of tokens that simply do not change
-        # from the last seed frame. Discrete codes at 50 ms are highly persistent, so raw
-        # token accuracy is NOT interpretable without this (measured 2026-08-10: freezing
-        # scores ~0.58 slow-TS on held-out shots) — report the SKILL, not the raw number.
-        pers_acc = {n: float((gt_codes[n][K0:F] == gt_codes[n][K0 - 1:K0]).float().mean())
-                    for n in gt_codes}
-        # RE-RENDER WITHOUT RE-ROLLING-OUT (2026-08-12). The figure design is still in flux, and a
-        # render iteration must not cost a fresh rollout — 80 generated frames x 10 MaskGIT decode
-        # steps per shot, and by then dynamics_latest.pt has advanced several chain legs, so the
-        # "new" figure would show a DIFFERENT model than the one it is being compared with.
-        # Codes are the compact, decoder-independent state (~640 KB per shot per side), so archive
-        # them beside the metrics: any later render decodes from these in seconds, pinned to
-        # exactly this checkpoint. Ranks never collide — the filename carries shot and step.
-        try:
-            np.savez_compressed(
-                Path(out_dir) / f"codes_{sh}_step{step}.npz",
-                K0=np.int32(K0), F=np.int32(F), step=np.int32(step), shot=str(sh),
-                temperature=np.float32(temperature),
-                **{f"gt__{n}": v.cpu().numpy().astype(np.int32) for n, v in gt_codes.items()},
-                **{f"pred__{n}": v.cpu().numpy().astype(np.int32) for n, v in pred_codes.items()})
-        except Exception as e:                   # archiving must never take an eval down with it
-            log(f"[eval] WARNING: could not archive codes for {sh}: {type(e).__name__}: {e}")
-        raw = load_raw_gt(sh, codecs, F, data_dir, t0_start=cache_t0, log=log) \
-            if use_raw_gt else None
-        decoded = decode_all(codecs, gt_codes, pred_codes, K0, F, device, raw_gt=raw,
-                             bandpower=bandpower)
-        if si == 0:
-            self_check(decoded)
-        entry = {"token_accuracy": tok_acc,
-                 "token_accuracy_persistence": pers_acc,
-                 "token_accuracy_skill": {n: tok_acc[n] - pers_acc[n] for n in tok_acc},
-                 "nrmse": {n: d["nrmse"] for n, d in decoded.items()},
-                 "nrmse_persistence": {n: d["nrmse_persistence"] for n, d in decoded.items()},
-                 "nrmse_skill": {n: d["nrmse_skill"] for n, d in decoded.items()},
-                 "K0": K0, "F": F}
-        if base_codes is not None:
-            # per-modality fraction of predicted-region tokens that CHANGED when the actuators
-            # changed. 0.0 = the conditioning had literally no effect (the paired RNG makes that
-            # an exact statement, not an approximation).
-            entry["actuator_mode"] = actuator_mode
-            entry["divergence_vs_real"] = {
-                n: float((pred_codes[n][K0:F] != base_codes[n][K0:F]).float().mean())
-                for n in pred_codes}
-            entry["token_accuracy_real_actuators"] = {
-                n: float((base_codes[n][K0:F] == gt_codes[n][K0:F]).float().mean())
-                for n in pred_codes}
-        if si == 0 or render_all:
-            png, pdf = render_figure(decoded, sh, step, temperature, K0, F, Path(out_dir))
-            fig_paths.append(str(png))
-            entry["figure"] = str(png)
-        per_shot[sh] = entry
-        log(f"[eval] shot {sh}: acc(mean)="
-            f"{sum(tok_acc.values()) / max(len(tok_acc), 1):.3f} "
-            f"({si + 1}/{len(shots)})", flush=True)
+    figures = []
+    for index, shot_id in enumerate(shots):
+        entry = _evaluate_shot(
+            context, shot_id, is_first=index == 0, render=index == 0 or render_all
+        )
+        if "figure" in entry:
+            figures.append(entry["figure"])
+        per_shot[shot_id] = entry
+        accuracy = entry["token_accuracy"]
+        log(
+            f"[eval] shot {shot_id}: acc(mean)="
+            f"{sum(accuracy.values()) / max(len(accuracy), 1):.3f} "
+            f"({index + 1}/{len(shots)})",
+            flush=True,
+        )
 
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    if world > 1:
-        # rank part file (tmp+rename), then rank 0 collects all parts and merges.
-        part = out / f"_eval_part_rank{rank}.json"
-        tmp = out / f"_eval_part_rank{rank}.json.tmp"
-        with open(tmp, "w") as f:
-            json.dump(per_shot, f)
-        tmp.replace(part)
-        if rank != 0:
-            log(f"[eval] rank {rank}: part written, exiting", flush=True)
-            return {"per_shot": per_shot, "rank": rank}
-        import time
-        deadline = time.time() + 3600
-        while time.time() < deadline:
-            parts = sorted(out.glob("_eval_part_rank*.json"))
-            if len(parts) >= world:
-                break
-            time.sleep(10)
-        for pf in sorted(out.glob("_eval_part_rank*.json")):
-            per_shot.update(json.loads(pf.read_text()))
-            pf.unlink()
-        missing = [s for s in shots_all if s not in per_shot]
-        if missing:
-            log(f"[eval] WARNING: no results from {len(missing)} shots: {missing}", flush=True)
-
-    # aggregate means across shots (per modality)
-    def _mean(field):
-        # NAN-AWARE: with measured GT an ABSENT diagnostic yields NaN for that (shot, modality)
-        # — a plain mean then poisons the whole modality (measured: 5/11 mean_nrmse came back
-        # NaN because each was missing in at least one of 16 shots). Average the shots where
-        # the modality was actually recorded; NaN only if it was recorded nowhere.
-        keys = set().union(*(per_shot[s][field] for s in per_shot))
-        out = {}
-        for k in sorted(keys):
-            vals = [per_shot[s][field][k] for s in per_shot if k in per_shot[s][field]]
-            fin = [v for v in vals if v == v]                  # drop NaN
-            out[k] = float(np.mean(fin)) if fin else float("nan")
-        return out
-
-    def _n_scored(field):
-        """How many shots actually contributed to each modality's mean (provenance for _mean)."""
-        keys = set().union(*(per_shot[s][field] for s in per_shot))
-        return {k: int(sum(1 for s in per_shot
-                           if k in per_shot[s][field] and per_shot[s][field][k] == per_shot[s][field][k]))
-                for k in sorted(keys)}
-    metrics = {"ckpt": str(ckpt), "step": step, "temperature": temperature,
-               "seed": int(seed), "codec_tmpl": codec_tmpl, "n_shots": len(per_shot),
-               "shots": sorted(per_shot), "mean_token_accuracy": _mean("token_accuracy"),
-               "mean_nrmse": _mean("nrmse"),
-               # skill vs the frozen-last-seed-frame rollout — the headline numbers.
-               "mean_token_accuracy_persistence": _mean("token_accuracy_persistence"),
-               "mean_token_accuracy_skill": _mean("token_accuracy_skill"),
-               "mean_nrmse_persistence": _mean("nrmse_persistence"),
-               "mean_nrmse_skill": _mean("nrmse_skill"),
-               # shots contributing to each nRMSE mean — a modality present in only a few
-               # shots has a far noisier mean, and that must be visible in the record.
-               "n_shots_scored_nrmse": _n_scored("nrmse"),
-               "per_shot": per_shot}
+    if world_size > 1 and not _merge_rank_parts(
+        out, per_shot, all_shots, rank, world_size, log
+    ):
+        return {"per_shot": per_shot, "rank": rank}
+    metrics = _summarise(per_shot, ckpt, step, temperature, seed, codec_tmpl)
     with open(out / "eval_metrics.json", "w") as f:
         json.dump(metrics, f, indent=2)
-    log("[eval] predicted region — model vs PERSISTENCE (freeze last seed frame):", flush=True)
-    log(f"  {'modality':24s} {'tok_acc':>8s} {'pers':>8s} {'skill':>8s} "
-        f"{'nRMSE':>8s} {'pers':>8s} {'skill':>7s}", flush=True)
-    for n, v in metrics["mean_token_accuracy"].items():
-        nr = metrics["mean_nrmse"].get(n)
-        log(f"  {n:24s} {v:8.3f} {metrics['mean_token_accuracy_persistence'][n]:8.3f} "
-            f"{metrics['mean_token_accuracy_skill'][n]:+8.3f} "
-            + (f"{nr:8.3f} {metrics['mean_nrmse_persistence'][n]:8.3f} "
-               f"{metrics['mean_nrmse_skill'][n]:+7.3f}" if nr is not None else " " * 25),
-            flush=True)
-    log(f"[eval] metrics: {out / 'eval_metrics.json'}"
-        + (f"\n[eval] figure: {fig_paths[0]}" if fig_paths else ""), flush=True)
+    _log_summary(metrics, log)
+    log(
+        f"[eval] metrics: {out / 'eval_metrics.json'}"
+        + (f"\n[eval] figure: {figures[0]}" if figures else ""),
+        flush=True,
+    )
     return metrics
 
 
-def curate_core(cache_dir, out_path=None, k0: int = 20, n_frames: int = 60,
-                thresh: float = 0.999, shots=None, require_all: bool = True, log=print):
-    """Shots whose EVERY modality genuinely CHANGES over the eval window.
+def curate_core(
+    cache_dir,
+    out_path=None,
+    k0: int = 20,
+    n_frames: int = 60,
+    thresh: float = 0.999,
+    shots=None,
+    require_all: bool = True,
+    log=print,
+):
+    """List the cached shots in which every modality changes over the eval window.
 
-    A missing or parked diagnostic encodes to a frozen code sequence. That hands the model
-    AND the persistence baseline a free 1.000 token accuracy, so any average over such shots
-    overstates raw accuracy and understates skill (measured on the v2 probe: 9/16 eval shots
-    had dead video). The standing rule is that eval/figure shots must have every modality
-    present AND dynamic — this screens for exactly that, straight from the code cache.
+    A missing or parked diagnostic encodes to frozen codes, which hands model and
+    persistence a free accuracy of 1. The statistic is the persistence accuracy
+    of :func:`run`: the fraction of tokens in ``[k0, F)`` equal to frame
+    ``k0 - 1``; a modality is dynamic below ``thresh``.
 
-    The statistic computed here is the SAME quantity ``decode_all`` reports as
-    ``token_accuracy_persistence``: the fraction of tokens in the predicted region [k0, F)
-    equal to the last seed frame (k0-1). 1.0 => frozen. No model or codec is needed.
+    Parameters
+    ----------
+    cache_dir : path-like
+        Frame-code cache.
+    out_path : path-like, default=None
+        If given, write the list and report there as JSON.
+    k0 : int, default=20
+        First predicted frame.
+    n_frames : int, default=60
+        Window length.
+    thresh : float, default=0.999
+        Persistence accuracy at or above which a modality counts as frozen.
+    shots : list of str, default=None
+        Shots to screen; None screens the whole cache.
+    require_all : bool, default=True
+        Require every modality to be dynamic, instead of at least one.
+    log : callable, default=print
+        Logger.
 
-    Returns ``(curated, report)`` where report maps shot -> {modality: persistence_accuracy}.
+    Returns
+    -------
+    curated : list of str
+        Shots passing the screen.
+    report : dict
+        ``{shot: {modality: persistence_accuracy}}``.
     """
-    import json
     cache = Path(cache_dir)
     stems = sorted(p.stem for p in cache.glob("*.pt")) if shots is None else list(shots)
-    curated, report, skipped_short = [], {}, 0
-    for s in stems:
+    curated, report, n_too_short = [], {}, 0
+    for shot in stems:
         try:
-            d = torch.load(cache / f"{s}.pt", map_location="cpu")
+            entry = torch.load(cache / f"{shot}.pt", map_location="cpu")
         except Exception as e:
-            log(f"[curate] skip {s}: {type(e).__name__}: {e}")
+            log(f"[curate] skip {shot}: {type(e).__name__}: {e}")
             continue
-        codes = d["codes"]
-        F = min(int(d.get("n_frames", 0)) or n_frames, n_frames)
-        if F <= k0:                     # too short to have a predicted region at all
-            skipped_short += 1
+        window = min(int(entry.get("n_frames", 0)) or n_frames, n_frames)
+        if window <= k0:
+            n_too_short += 1
             continue
-        per = {}
-        for m, arr in codes.items():
-            if arr.shape[0] < F:
-                per[m] = float("nan")
+        persistence = {}
+        for modality, codes in entry["codes"].items():
+            if codes.shape[0] < window:
+                persistence[modality] = float("nan")
                 continue
-            frozen = arr[k0 - 1:k0]                       # the last seed frame
-            per[m] = float((arr[k0:F] == frozen).float().mean())
-        report[s] = per
-        vals = [v for v in per.values() if v == v]         # drop NaN (too-short modalities)
-        alive = [m for m, v in per.items() if v == v and v < thresh]
-        ok = (len(alive) == len(vals)) if require_all else bool(alive)
-        if ok and len(vals) == len(per):
-            curated.append(s)
-    log(f"[curate] {len(curated)}/{len(report)} shots have ALL {len(next(iter(report.values()), {}))} "
-        f"modalities dynamic over frames [{k0},{n_frames}) "
-        f"(+{skipped_short} too short)")
+            persistence[modality] = float(
+                (codes[k0:window] == codes[k0 - 1 : k0]).float().mean()
+            )
+        report[shot] = persistence
+        scored = [v for v in persistence.values() if not math.isnan(v)]
+        dynamic = [v for v in scored if v < thresh]
+        passes = len(dynamic) == len(scored) if require_all else bool(dynamic)
+        if passes and len(scored) == len(persistence):
+            curated.append(shot)
+    n_modalities = len(next(iter(report.values()), {}))
+    log(
+        f"[curate] {len(curated)}/{len(report)} shots have ALL {n_modalities} "
+        f"modalities dynamic over frames [{k0},{n_frames}) (+{n_too_short} too short)"
+    )
     if report:
-        n_mod = {}
-        for s, per in report.items():
-            for m, v in per.items():
-                n_mod[m] = n_mod.get(m, 0) + (1 if (v == v and v >= thresh) else 0)
-        worst = sorted(n_mod.items(), key=lambda kv: -kv[1])[:6]
-        log("[curate] most frequently FROZEN modalities: "
-            + ", ".join(f"{m} {c}/{len(report)}" for m, c in worst))
+        n_frozen = {}
+        for persistence in report.values():
+            for modality, value in persistence.items():
+                frozen = not math.isnan(value) and value >= thresh
+                n_frozen[modality] = n_frozen.get(modality, 0) + int(frozen)
+        most_frozen = sorted(n_frozen.items(), key=lambda item: -item[1])[:6]
+        log(
+            "[curate] most frequently FROZEN modalities: "
+            + ", ".join(f"{m} {count}/{len(report)}" for m, count in most_frozen)
+        )
     if out_path:
         Path(out_path).parent.mkdir(parents=True, exist_ok=True)
         tmp = Path(str(out_path) + ".tmp")
-        tmp.write_text(json.dumps({"cache_dir": str(cache), "k0": k0, "n_frames": n_frames,
-                                   "threshold": thresh, "require_all": require_all,
-                                   "curated": curated, "per_shot": report}, indent=1))
+        record = {
+            "cache_dir": str(cache),
+            "k0": k0,
+            "n_frames": n_frames,
+            "threshold": thresh,
+            "require_all": require_all,
+            "curated": curated,
+            "per_shot": report,
+        }
+        tmp.write_text(json.dumps(record, indent=1))
         tmp.replace(Path(out_path))
         log(f"[curate] -> {out_path}")
     return curated, report
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser("IGNITE Phase-B dynamics evaluation")
-    p.add_argument("--ckpt", help="trained dynamics checkpoint (dynamics_latest.pt); "
-                                  "not required with --curate")
-    p.add_argument("--shot", default="200729",
-                   help="shot id(s) to evaluate, comma-separated (figure: first shot only "
-                        "unless --render_all)")
-    p.add_argument("--cache_dir", default=_DEFAULT_CACHE, help="pre-encoded frame-code cache dir")
-    p.add_argument("--out_dir", required=True, help="output dir for figure + eval_metrics.json")
-    p.add_argument("--temperature", type=float, default=1.0, help="rollout sampling temperature")
-    p.add_argument("--seed", type=int, default=0, help="rollout RNG seed (reproducible)")
-    p.add_argument("--k0", type=int, default=0, help="seed frames (0 => use cfg.k0_seed)")
-    p.add_argument("--codec_tmpl", default=None,
-                   help="codec ckpt template tried before the frozen manifest — must match "
-                        "the cache's _codec_manifest.json")
-    p.add_argument("--render_all", action="store_true", help="render a figure for every shot")
-    p.add_argument("--val_tail", type=int, default=0,
-                   help=">0: evaluate the last N shots of the trainer's validation split "
-                        "(overrides --shot)")
-    p.add_argument("--val_n", type=int, default=0, help="validation split size (with --val_tail)")
-    p.add_argument("--curate", action="store_true",
-                   help="CURATION MODE (no model): scan the code cache and list shots whose "
-                        "every modality actually CHANGES over the eval window. Frozen "
-                        "diagnostics give model and persistence a free 1.000 and must not "
-                        "enter an eval core or a figure.")
-    p.add_argument("--curate_out", default=None,
-                   help="where to write the curated list (default <out_dir>/eval_core.json)")
-    p.add_argument("--curate_frames", type=int, default=60,
-                   help="window length F for the dynamism test (default 60 = the 2 s eval)")
-    p.add_argument("--curate_split", default=None,
-                   help="a run's split_shots.json — screen only one of its partitions so "
-                        "the eval core cannot accidentally contain training shots")
-    p.add_argument("--curate_partition", default="val", choices=("train", "val", "test"),
-                   help="which partition of --curate_split to screen (default val)")
-    p.add_argument("--actuator_mode", default="real",
-                   help="ACTUATOR COUNTERFACTUAL applied over the predicted region "
-                        "[K0,F): real | zero | freeze | shuffle | donor:<shot> | "
-                        "group_zero:<ech_power|pinj|beam_voltage|tinj|gas_flow|gas_raw|rmp>. "
-                        "Anything but 'real' ALSO runs the real-actuator rollout with the "
-                        "same seed and reports divergence_vs_real (the effect size). NOTE: "
-                        "cached actuators are already per-shot z-scored, so gain/offset "
-                        "edits would be no-ops — these modes are structural.")
-    p.add_argument("--split_seed", type=int, default=0,
-                   help="split seed — must match the training run's --split_seed")
-    return p
+    """Return the command-line parser of the evaluation."""
+    parser = argparse.ArgumentParser("IGNITE Phase-B dynamics evaluation")
+    add = parser.add_argument
+    add("--ckpt", help="dynamics checkpoint; not needed with --curate")
+    add(
+        "--shot",
+        default="200729",
+        help="comma-separated shots; the figure covers the first unless --render_all",
+    )
+    add("--cache_dir", default=_DEFAULT_CACHE, help="pre-encoded frame-code cache dir")
+    add("--out_dir", required=True, help="output dir for figures and eval_metrics.json")
+    add("--temperature", type=float, default=1.0, help="rollout sampling temperature")
+    add("--seed", type=int, default=0, help="rollout seed")
+    add("--k0", type=int, default=0, help="seed frames; 0 = the checkpoint's k0_seed")
+    add(
+        "--codec_tmpl",
+        default=None,
+        help="codec checkpoint template; defaults to the cache manifest's",
+    )
+    add("--render_all", action="store_true", help="render a figure for every shot")
+    add(
+        "--val_tail",
+        type=int,
+        default=0,
+        help="evaluate the last N validation shots of the run (overrides --shot)",
+    )
+    add("--val_n", type=int, default=0, help="validation size, with --val_tail")
+    add(
+        "--split_seed",
+        type=int,
+        default=0,
+        help="split seed of the run, used if it froze no split",
+    )
+    add(
+        "--actuator_mode",
+        default="real",
+        help="actuator counterfactual over the predicted frames: real | zero | "
+        "freeze | shuffle | donor:<shot> | group_zero:<group>",
+    )
+    curate = parser.add_argument_group("curation (runs instead of an evaluation)")
+    curate.add_argument(
+        "--curate",
+        action="store_true",
+        help="list the shots whose every modality changes over the eval window, "
+        "without a model",
+    )
+    curate.add_argument(
+        "--curate_out",
+        default=None,
+        help="curated list output (default <out_dir>/eval_core.json)",
+    )
+    curate.add_argument(
+        "--curate_frames", type=int, default=60, help="window length of --curate"
+    )
+    curate.add_argument(
+        "--curate_split",
+        default=None,
+        help="a run's split_shots.json; screen only one of its partitions",
+    )
+    curate.add_argument(
+        "--curate_partition",
+        default="val",
+        choices=("train", "val", "test"),
+        help="partition of --curate_split to screen",
+    )
+    return parser
 
 
 def main(argv=None):
+    """Run the evaluation or the curation selected by the command line."""
     args = build_arg_parser().parse_args(argv)
     if args.curate:
         shots = None
-        if args.curate_split:                    # screen only a partition of a frozen split
-            import json
-            d = json.loads(Path(args.curate_split).read_text())
-            shots = d[args.curate_partition]
-            print(f"[curate] screening the '{args.curate_partition}' partition of "
-                  f"{args.curate_split}: {len(shots)} shots", flush=True)
-        curated, _ = curate_core(args.cache_dir,
-                                 out_path=args.curate_out or (Path(args.out_dir) / "eval_core.json"),
-                                 k0=args.k0 or 20, n_frames=args.curate_frames,
-                                 shots=shots)
+        if args.curate_split:
+            split = json.loads(Path(args.curate_split).read_text())
+            shots = split[args.curate_partition]
+            print(
+                f"[curate] screening the '{args.curate_partition}' partition of "
+                f"{args.curate_split}: {len(shots)} shots",
+                flush=True,
+            )
+        curated, _report = curate_core(
+            args.cache_dir,
+            out_path=args.curate_out or (Path(args.out_dir) / "eval_core.json"),
+            k0=args.k0 or 20,
+            n_frames=args.curate_frames,
+            shots=shots,
+        )
         return 0 if curated else 1
     if not args.ckpt:
         raise SystemExit("--ckpt is required (omit only with --curate)")
-    return run(args.ckpt, args.shot, args.cache_dir, args.out_dir,
-               temperature=args.temperature, seed=args.seed, k0=args.k0,
-               codec_tmpl=args.codec_tmpl, render_all=args.render_all,
-               val_tail=args.val_tail, val_n=args.val_n, split_seed=args.split_seed,
-               actuator_mode=args.actuator_mode)
+    return run(
+        args.ckpt,
+        args.shot,
+        args.cache_dir,
+        args.out_dir,
+        temperature=args.temperature,
+        seed=args.seed,
+        k0=args.k0,
+        codec_tmpl=args.codec_tmpl,
+        render_all=args.render_all,
+        val_tail=args.val_tail,
+        val_n=args.val_n,
+        split_seed=args.split_seed,
+        actuator_mode=args.actuator_mode,
+    )
 
 
 if __name__ == "__main__":
