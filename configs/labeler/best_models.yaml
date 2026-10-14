@@ -1,0 +1,493 @@
+# The best model for each event and subcategory: what it is, what it reads and how it
+# scores. Hand-kept from each event's README (`## Models`, `## Inputs`) and the records
+# they cite; `labeler.events.hf_export` copies it into the Hugging Face release as
+# `signals.yaml` and renders it into the dataset card.
+#
+# Per entry:
+#   model, version   the model's short name and date (as in the README's Models block);
+#                    null when the event has no model.
+#   task             detector (labels the time it reads), forecast (a risk ahead of the
+#                    time it reads), rule (a fixed physics or threshold rule) or none.
+#   inputs           one row per signal: tree (MDSplus tree, PTDATA or EFIT), pointnames,
+#                    native rate_hz where known (rate_source says where the rate comes
+#                    from), and how the model reads it.
+#   bin_ms, n_shots  the scoring bin and the number of shots scored.
+#   headline         the one result to quote, with what it means (the card prints it
+#                    first: several scores are agreement with a rule, or show no skill).
+#   scores           {value, lo, hi}: lo/hi are the interval `interval` names, null where
+#                    the source gives none. `reference` says what they are against.
+#   caveats          what the score does not mean (the card prints the first).
+#   source           where the numbers come from (paths in the FusionAIHub repository,
+#                    not files of the release).
+#   reads_tables     other suggestion tables the label set rests on, as "<method> <version>"
+#                    (the review page's own source table is not listed: the card prints
+#                    it from the shipped review pointer); the build fails when the
+#                    release does not ship one of them.
+#   todo             present while a round-5 stream is still changing the entry; the
+#                    release card lists it as pending and `hf_publish.py upload` refuses
+#                    to send a release that still carries one unless told to.
+# Folded events (the review page shows them as another event's category or subcategory)
+# name the event they fold into, as `review.silver.FOLD` and the grid do (sawtooth,
+# fishbone and tearing fold into mhd_n1).
+
+version: 1
+
+events:
+  alfven_eigenmode:
+    model: d3d_ae_activity_seldnet
+    version: "2026_09_06"
+    task: detector
+    output: AE activity per 10 ms frame (any mode type)
+    inputs:
+      - name: CO2 interferometer chords R0, V1, V2, V3 (unfiltered line density)
+        tree: D3D
+        pointnames:
+          - '\D3D::TOP.ELECTRONS.BCI.DPD.R0:DENUF'
+          - '\D3D::TOP.ELECTRONS.BCI.DPD.V1:DENUF'
+          - '\D3D::TOP.ELECTRONS.BCI.DPD.V2:DENUF'
+          - '\D3D::TOP.ELECTRONS.BCI.DPD.V3:DENUF'
+        ptdata_fallback: [DENR0UF, DENV1UF, DENV2UF, DENV3UF]
+        rate_hz: 500000
+    bin_ms: 10
+    n_shots: 19
+    headline: "AUROC 0.982 [0.96, 0.99] against owner-reviewed AE labels on 19 validation shots"
+    scores:
+      reference: owner-reviewed AE labels, 3,800 frames of the 19 validation shots the older detectors did not train on
+      interval: 95 % shot bootstrap, 2,000 replicates
+      auroc: {value: 0.982, lo: 0.96, hi: 0.99}
+      auprc: {value: 0.992, lo: 0.98, hi: 1.00}
+      f1: {value: 0.944, lo: 0.90, hi: 0.98}
+    caveats:
+      - On all 60 validation shots AUROC 0.980, AUPRC 0.992, F1 0.951; against the raw Heidbrink annotation, which under-counts, AUROC 0.68.
+      - The reviewed labels were made with the detector's output on screen.
+    source: docs/labeler/events/alfven_eigenmode/README.md; docs/labeler/ae_baselines_benchmark.md
+
+  alfven_eigenmode.tae:
+    model: null
+    version: null
+    task: none
+    caveats:
+      - No model separates TAE from RSAE; the review source is the 2022 ECE hand-drawn boxes (26 shots), positives only.
+    source: docs/labeler/events/alfven_eigenmode/README.md
+
+  alfven_eigenmode.rsae:
+    model: null
+    version: null
+    task: none
+    caveats:
+      - As for alfven_eigenmode.tae.
+    source: docs/labeler/events/alfven_eigenmode/README.md
+
+  confinement:
+    model: confine-ours
+    version: "2026_10_03"
+    task: detector
+    output: L, H, QH or WPQH per 1 ms bin (category 1 high, 2 low, 3 qh, 4 wpqh)
+    inputs:
+      - name: D-alpha filterscope (first live of FS01-FS08)
+        tree: D3D
+        pointnames: ['\SPECTROSCOPY::FS01', '\SPECTROSCOPY::FS02', '\SPECTROSCOPY::FS03', '\SPECTROSCOPY::FS04', '\SPECTROSCOPY::FS05', '\SPECTROSCOPY::FS06', '\SPECTROSCOPY::FS07', '\SPECTROSCOPY::FS08']
+        rate_hz: 50000
+        used_as: 1 ms mean, maximum and standard deviation over the shot's own 95th percentile
+      - name: CO2 interferometer line density, chord V2
+        tree: D3D
+        pointnames: ['\BCI::DENV2F']
+        rate_hz: 100000
+        rate_source: "the same chord as the ELM entry's: scripts/labeler/elmo_fetch.py states 100 kS/s and the records it stored are spaced 0.01 ms (checked on 5 shots, 2026-10-14); scripts/labeler/confinement_zerod_fetch.py averages it to 1 ms and states no rate"
+        used_as: 1 ms mean / 1e14
+      - name: EFIT01 beta_N and stored energy
+        tree: EFIT01
+        pointnames: ['\efit01::top.results.aeqdsk:betan', '\efit01::top.results.aeqdsk:wmhd']
+        used_as: interpolated across gaps up to 100 ms
+      - name: injected beam power, eight beams summed
+        tree: D3D
+        pointnames: ['\D3D::TOP.NB.NB15L:PINJ_15L', '\D3D::TOP.NB.NB15R:PINJ_15R', '\D3D::TOP.NB.NB21L:PINJ_21L', '\D3D::TOP.NB.NB21R:PINJ_21R', '\D3D::TOP.NB.NB30L:PINJ_30L', '\D3D::TOP.NB.NB30R:PINJ_30R', '\D3D::TOP.NB.NB33L:PINJ_33L', '\D3D::TOP.NB.NB33R:PINJ_33R']
+        rate_hz: 10000
+        used_as: 1 ms mean / 3e6 W
+    bin_ms: 1
+    n_shots: 401
+    headline: "macro F1 0.885 [0.855, 0.914] against the curated expert intervals, run days held out; not independent of them (same traces)"
+    scores:
+      reference: curated intervals (Gill and Butt tables, merged), 5-fold cross-validation holding out whole run days; macro over L, H, QH, WPQH
+      interval: 95 % shot bootstrap, 1,000 replicates; F1 only
+      auroc: {value: 0.964, lo: null, hi: null}
+      auprc: {value: 0.913, lo: null, hi: null}
+      f1: {value: 0.885, lo: 0.855, hi: 0.914}
+      per_class_f1: {L: 0.895, H: 0.953, QH: 0.892, WPQH: 0.801}
+    caveats:
+      - Experimental; reads the traces the experts used, so it is not independent of the curated intervals.
+      - Benchmark confine-cnn (BES, Gill et al. 2024 rebuilt): macro AUROC 0.889, AUPRC 0.713, F1 0.703 [0.587, 0.794] on 142 test shots.
+    source: docs/labeler/events/confinement/README.md; docs/labeler/confinement_ours.md
+
+  detachment:
+    model: detach_vote
+    version: "2026_10_04"
+    task: rule
+    output: attached or detached per 50 ms bin, TangTV state gated by geometry (the detector's label set). The source table that ships, detach_vote v3, is not that label set (see caveats)
+    inputs:
+      - name: TangTV C-III front height (upper-shelf inversion)
+        tree: TANGTV
+        rate_hz: 50
+        used_as: attached below 0.35, detached 0.5 to 1.2
+      - name: Langmuir probe Jsat (Afrac proxy, inter-ELM)
+        tree: PTDATA
+        pointnames: [TPLANG01 .. TPLANG72]
+        used_as: second vote; attached >= 0.75, detached <= 0.5 of the probe's own attached level
+      - name: divertor radiated power over input power (f_div)
+        used_as: within-shot corroborator, not a vote
+      - name: divertor Thomson Te, processed (chords 1.5-5 cm above the shelf)
+        tree: ELECTRONS
+        pointnames: ['\ELECTRONS::TSTE_DIV']
+        used_as: no vote in the label set (the round-4 check); detach_te v2 thresholds it (<= 5 eV detached, >= 10 eV attached, between uncertain) into the shipped source table
+    bin_ms: 50
+    n_shots: 23
+    headline: "no detector score: AUROC 0.95 [0.91, 0.98] is a consistency check of the TangTV vote against divertor Thomson Te on 23 shots"
+    scores:
+      reference: no independent benchmark; AUROC of -Te (divertor Thomson) against the TangTV vote is a consistency check
+      interval: 95 % shot bootstrap
+      auroc: {value: 0.95, lo: 0.91, hi: 0.98}
+      auprc: null
+      f1: null
+    caveats:
+      - The detachment table that ships, detach_vote v3, is a merge of divertor Thomson Te thresholds (detach_te v2) and the TangTV vote (detach_vote v1), not this label set, and no human has reviewed it. The score above is for the TangTV vote alone.
+      - The label set is 821 labelled bins on 23 shots. The detector does not export MARFE, but the detach_vote v3 source table ships a few category-3 "marfe (candidate)" rows (an uncertain tier, never a state).
+      - "The vote against divertor Thomson Te v2 where both name a state: 423 of 448 bins agree (0.94, kappa 0.87, 20 shots). Not independent: Te informed the round-4 rule. The shipped v3 source takes Te on the vote's unassessed bins and on its no_vote and insufficient_support abstentions; the label set uses no Te."
+      - "Early-shot excess: in the first second 34.9 % of the Te v2 bins are detached against 17.7 % later (v1: 31.5 % against 18.1 %), because the plasma window keeps the current ramps; no ramp-up gate was added."
+    source: docs/labeler/events/detachment/README.md; docs/labeler/detachment.md; docs/labeler/results/detachment_source_v3.json
+
+  edge_localized_mode:
+    model: elm-ours
+    version: "2026_10_03"
+    task: detector
+    output: ELMy-period presence per 10 ms bin (occupancy, not onsets)
+    inputs:
+      - name: D-alpha filterscopes FS02, FS03, FS04
+        tree: D3D
+        pointnames: ['\SPECTROSCOPY::FS02', '\SPECTROSCOPY::FS03', '\SPECTROSCOPY::FS04']
+        rate_hz: 50000
+        used_as: clipped log level and contrast to a 0.5 s running median, on a 10 kHz grid
+      - name: CO2 interferometer fast chords V2, V3
+        tree: D3D
+        pointnames: ['\BCI::DENV2F', '\BCI::DENV3F']
+        rate_hz: 100000
+        rate_source: "scripts/labeler/elmo_fetch.py states 100 kS/s for DENV2F/DENV3F, and the records it stores (which this model reads) are spaced 0.01 ms (checked on 5 shots, 2026-10-14)"
+        used_as: density / 1e14 and its 0.2 s high-pass, on a 10 kHz grid
+    bin_ms: 10
+    n_shots: 119
+    headline: "AUROC 0.941 [0.906, 0.967], F1 0.830 [0.778, 0.871] against owner-reviewed labels on 119 shots whose review the D-alpha clock seeded"
+    scores:
+      reference: owner-reviewed ELM labels on 119 shots (12,409 bins), shot cross-validation
+      interval: 95 % shot bootstrap, 1,000 draws
+      auroc: {value: 0.941, lo: 0.906, hi: 0.967}
+      auprc: {value: 0.877, lo: 0.774, hi: 0.949}
+      f1: {value: 0.830, lo: 0.778, hi: 0.871}
+    caveats:
+      - The review was seeded by the D-alpha clock, which favours D-alpha models; 97 % of positive bins lie in crowd (span) annotations.
+      - Benchmark elm-elmo (BES, 73 shots) F1 0.842 [0.789, 0.885]; the paired difference includes zero.
+      - No BES input.
+      - "The review page's source since 2026-10-14 is elm_jump v2, a rule on D-alpha jumps and not a model score: F1 0.823 [0.768, 0.869] on the 119 reviewed shots (precision 0.768, recall 0.886), in-sample because its run rule and gate were chosen on these shots. Minus the D-alpha clock (F1 0.755) it is +0.068 [-0.016, +0.151]; minus elm-ours -0.005 [-0.050, +0.043]; both intervals include zero."
+      - "By divertor side (75 lower, 44 upper shots; outputs/labeler/elm/sources/evaluation.json) F1 is, lower then upper: elm-ours 0.793 [0.714, 0.851] and 0.877 [0.807, 0.931]; elm_jump v2 0.831 [0.761, 0.889] and 0.811 [0.718, 0.887]; the D-alpha clock 0.696 [0.580, 0.796] and 0.825 [0.723, 0.897]; always-present 0.526 and 0.579."
+    source: docs/labeler/events/edge_localized_mode/README.md; docs/labeler/elm_ours.md; docs/labeler/elm_jump.md; outputs/labeler/elm/sources/evaluation.json
+
+  locked_mode:
+    model: null
+    version: null
+    task: none
+    source: docs/labeler/events/locked_mode/README.md
+
+  mhd_n1:
+    model: mhd_modes
+    version: v5
+    task: rule
+    output: any coherent n=1 mode per 10 ms frame (union of gated Mirnov tracks and the q-gated crash v3 table)
+    reads_tables: [crash v3]
+    inputs:
+      - name: toroidal Mirnov array (midplane probes)
+        tree: PTDATA
+        pointnames: [MPI66M322D, MPI66M132D, MPI66M312D, MPI66M020D, MPI66M097D, MPI66M307D]
+        rate_hz: 500000
+    bin_ms: 10
+    n_shots: null
+    scores: null
+    caveats:
+      - "A rule over Mirnov tracks, not scored against labels. On the 608 shots it ran on: present 1,331.3 s on 543 shots (425.9 s of it only from crash v3 and the union's merged gaps), absent 1,672.1 s, not observable 368.8 s."
+    source: docs/labeler/events/mhd_n1/README.md
+
+  mhd_n1.m1:
+    model: mhd_modes
+    version: v5
+    task: rule
+    output: 1/1 (sawtooth, fishbone) inside n=1 time; resonant 1/1 tracks union the q-gated crash v3 table
+    reads_tables: [crash v3]
+    see: sawtooth_oscillation
+    inputs:
+      - name: toroidal Mirnov array
+        tree: PTDATA
+        pointnames: [MPI66M322D, MPI66M132D, MPI66M312D, MPI66M020D, MPI66M097D, MPI66M307D]
+      - name: EFIT02 q profile (q=1 surface gate; EFIT02ER, else EFIT01, where EFIT02 is missing or holds under two slices)
+        tree: EFIT02
+        pointnames: ['\efit02::top.results.aeqdsk:qmin']
+      - name: ECE electron temperature (crash table)
+        tree: D3D
+        pointnames: ['\D3D::TOP.ELECTRONS.ECE.TECEF:TECEF01 .. TECEF48']
+        rate_hz: 500000
+    bin_ms: 10
+    n_shots: null
+    scores: null
+    caveats:
+      - "A rule, not scored against labels. Present 774.2 s on 434 shots (536.4 s of it only from crash v3), uncertain 117.5 s on 286 shots, absent 1,947.0 s, not observable 533.6 s."
+    source: docs/labeler/events/mhd_n1/README.md
+
+  mhd_n1.m2:
+    model: mhd_modes
+    version: v5
+    task: rule
+    output: 2/1 tearing inside n=1 time (co-rotating resonant tracks)
+    see: neoclassical_tearing_mode
+    bin_ms: 10
+    n_shots: null
+    scores: null
+    caveats:
+      - "A rule, not scored against labels. Present 155.8 s on 213 shots, uncertain 124.0 s on 406 shots, absent 2,553.7 s, not observable 538.8 s."
+    source: docs/labeler/events/mhd_n1/README.md
+
+  mhd_n1.m3:
+    model: mhd_modes
+    version: v5
+    task: rule
+    output: 3/1 inside n=1 time
+    bin_ms: 10
+    n_shots: null
+    scores: null
+    caveats:
+      - "A rule, not scored against labels. Present 85.3 s on 95 shots, uncertain 133.7 s on 385 shots, absent 2,600.5 s, not observable 552.7 s."
+    source: docs/labeler/events/mhd_n1/README.md
+
+  mhd_n2:
+    model: mhd_modes
+    version: v5
+    task: rule
+    output: any coherent n=2 mode per 10 ms frame
+    bin_ms: 10
+    n_shots: null
+    scores: null
+    caveats:
+      - "A rule, not scored against labels. Present 886.6 s on 446 shots, absent 2,111.3 s, not observable 374.3 s (the same rows as v4)."
+    source: docs/labeler/events/mhd_n2/README.md
+
+  mhd_n2.m3:
+    model: mhd_modes
+    version: v5
+    task: rule
+    output: 3/2 tearing inside n=2 time
+    bin_ms: 10
+    n_shots: null
+    scores: null
+    caveats:
+      - "A rule, not scored against labels. Present 428.9 s on 272 shots, uncertain 68.8 s on 246 shots, absent 2,377.6 s, not observable 497.0 s."
+    source: docs/labeler/events/mhd_n2/README.md
+
+  mhd_n3:
+    model: mhd_modes
+    version: v5
+    task: rule
+    output: any coherent n=3 mode per 10 ms frame
+    bin_ms: 10
+    n_shots: null
+    scores: null
+    caveats:
+      - "A rule, not scored against labels. Present 492.2 s on 416 shots, absent 2,505.8 s, not observable 374.3 s (the same rows as v4)."
+    source: docs/labeler/events/mhd_n3/README.md
+
+  mhd_n3.m4:
+    model: mhd_modes
+    version: v5
+    task: rule
+    output: 4/3 tearing inside n=3 time
+    bin_ms: 10
+    n_shots: null
+    scores: null
+    caveats:
+      - "A rule, not scored against labels. Present 155.5 s on 216 shots, uncertain 90.2 s on 255 shots, absent 2,687.3 s, not observable 439.3 s."
+    source: docs/labeler/events/mhd_n3/README.md
+
+  minimum_safety_factor:
+    model: qmin_rule
+    version: "2026_09_13"
+    task: rule
+    output: q_min band (low, hybrid, elevated, high) over the flat-top, 500 ms minimum
+    inputs:
+      - name: EFIT01 q_min
+        tree: EFIT01
+        pointnames: ['\efit01::top.results.aeqdsk:qmin']
+      - name: plasma current (flat-top gate)
+        tree: PTDATA
+        pointnames: [ip]
+    bin_ms: null
+    n_shots: null
+    scores: null
+    caveats:
+      - A rule on the equilibrium reconstruction; no score.
+    source: docs/labeler/events/minimum_safety_factor/README.md
+
+  poloidal_beta:
+    model: betap_rule
+    version: v1
+    task: rule
+    output: beta_p > 1 over the flat-top, 500 ms minimum
+    inputs:
+      - name: EFIT01 poloidal beta
+        tree: EFIT01
+        pointnames: ['\efit01::top.results.aeqdsk:betap']
+      - name: plasma current (flat-top gate)
+        tree: PTDATA
+        pointnames: [ip]
+    bin_ms: null
+    n_shots: null
+    scores: null
+    caveats:
+      - A rule; no score.
+    source: docs/labeler/events/poloidal_beta/README.md
+
+  resistive_wall_mode:
+    model: rwm-brf
+    version: "2026_10_03"
+    task: forecast
+    output: risk of an RWM onset ahead, per 10 ms bin
+    inputs:
+      - name: EFIT01 scalars
+        tree: EFIT01
+        pointnames: ['\efit01::top.results.aeqdsk:betan', '\efit01::top.results.aeqdsk:li', '\efit01::top.results.aeqdsk:q95', '\efit01::top.results.aeqdsk:qmin', '\efit01::top.results.aeqdsk:wmhd']
+      - name: plasma current
+        tree: PTDATA
+        pointnames: [ip]
+      - name: n=1 and n=2 magnetic RMS
+        tree: MHD
+        pointnames: ['\MHD::N1RMS', '\MHD::N2RMS']
+        rate_hz: 1000
+      - name: ZIPFIT toroidal rotation at rho 0.25 and 0.625
+        tree: ZIPFIT01
+        pointnames: ['\ZIPFIT01::TOP.PROFILES.TROTFIT']
+    bin_ms: 10
+    n_shots: null
+    headline: "phase-controlled AUROC 0.534 [0.436, 0.625]: no skill beyond elapsed time"
+    scores:
+      reference: Hanson RWM onset tables (2017, 2024), reference split seed 0; phase-controlled AUROC is the headline
+      interval: exploratory 95 % shot bootstrap
+      phase_controlled_auroc: {value: 0.534, lo: 0.436, hi: 0.625}
+      auroc: {value: 0.760, lo: 0.706, hi: 0.809}
+      auprc: {value: 0.163, lo: 0.123, hi: 0.220}
+      f1: {value: 0.275, lo: 0.227, hi: 0.337}
+    caveats:
+      - No demonstrated skill beyond elapsed time or beta_N/l_i under phase control; no input senses the RWM.
+      - "The review page's source, rwm_onsets v4, is a rule on the Hanson onset times, not a model, and no one has reviewed it (628 shots, 2,076 rows: 54 present, 94 uncertain). Only the onset time is curated evidence: each present span runs to the first of the amplitude's return to baseline, a beta_N collapse, Ip below 50 kA or 300 ms, measured on N1RMS or N2RMS, beta_N and Ip, none RWM-specific. The screen's candidates are uncertain, never present."
+      - "ONSBRADIAL (fetched for the 85 shots of 2018, none of 2014): rwm-brf-onsb changes the phase-controlled AUROC by -0.005 [-0.035, 0.020], so the sensor adds no measurable forecast skill; rwm-det-brf, onset +-20 ms detection on held-out Hanson slices, has AUROC 0.798 [0.740, 0.849]."
+    source: docs/labeler/events/resistive_wall_mode/README.md; docs/labeler/rwm_baseline.md
+
+  disruption:
+    model: null
+    version: null
+    task: none
+    caveats:
+      - Not on the review page (review false); its folder and tables are kept.
+    source: docs/labeler/events/disruption/README.md
+
+  vertical_displacement_event:
+    model: null
+    version: null
+    task: none
+    caveats:
+      - Not on the review page (review false).
+    source: docs/labeler/events/vertical_displacement_event/README.md
+
+  sawtooth_oscillation:
+    folded_into: mhd_n1
+    model: saw-hl3-full
+    version: "2026_10_05"
+    task: detector
+    output: sawtooth presence per 2 ms bin
+    reads_tables: [crash v3]
+    inputs:
+      - name: plasma current
+        tree: PTDATA
+        pointnames: [ip]
+        rate_hz: 10000
+      - name: CO2 interferometer line density, chord V2
+        tree: D3D
+        pointnames: ['\D3D::TOP.ELECTRONS.BCI.DPD.V2:DENUF']
+        rate_hz: 500000
+        used_as: FIR-decimated to 10 kHz, / 1e14
+      - name: Mirnov rows 0 and 1, mean
+        tree: PTDATA
+        pointnames: [MPI1A322D, MPI3A322D]
+        rate_hz: 500000
+        used_as: FIR-decimated to 10 kHz
+      - name: SXR core and edge chords (label-free choice per shot from the SX90 fans)
+        tree: D3D
+        pointnames: ['\D3D::TOP.SPECTROSCOPY.SXR:SX90RM1F', '\D3D::TOP.SPECTROSCOPY.SXR:SX90RP1F']
+        rate_hz: 10000
+      - name: EFIT01 stored energy
+        tree: EFIT01
+        pointnames: ['\efit01::top.results.aeqdsk:wmhd']
+      - name: ECE core electron temperature (EFIT-axis rule)
+        tree: D3D
+        pointnames: ['\D3D::TOP.ELECTRONS.ECE.TECEF:TECEF01 .. TECEF48']
+      - name: beam power (summed) and ECH power (summed gyrotrons)
+        tree: D3D
+        pointnames: ['\D3D::TOP.NB.<beam>:PINJ_<beam>', '\D3D::TOP.RF.ECH.<gyrotron>:EC<gyr>FPWRC']
+        ptdata_fallback: [BMSPINJ]
+    bin_ms: 2
+    n_shots: 390
+    headline: "agreement with the saw_physics rule, AUROC 0.870 [0.827, 0.908]; not an independent score"
+    scores:
+      reference: the saw_physics rule on its assessed bins, out of fold (agreement, not an independent truth)
+      interval: 95 % whole-shot bootstrap, 1,000 draws
+      auroc: {value: 0.870, lo: 0.827, hi: 0.908}
+      auprc: {value: 0.949, lo: 0.929, hi: 0.966}
+      f1: {value: 0.870, lo: 0.835, hi: 0.899}
+    caveats:
+      - Agreement with the physics rule, not a score against an independent label; always-present scores AUPRC 0.736, F1 0.848.
+      - "In the no_q1_negatives view (observable time with no q = 1 surface, from the EFIT02, EFIT02ER, EFIT01 gate, added as negatives; models not refit) out-of-fold presence F1 is 0.483 [0.427, 0.537] and AUROC 0.752 [0.703, 0.799] for this model, against saw-ours 0.685 [0.623, 0.737] (AUROC 0.899), the derivative picker 0.729 [0.667, 0.785] (AUROC 0.870) and always-present 0.411 [0.358, 0.464]; crash F1 at +-2 ms is 0.679 [0.611, 0.746] for this model and 0.742 for saw-ours."
+      - "The review page's source, saw_physics v4, is a physics rule and not a model: on the 500 silver and gold shots 845.7 s absent, 200.2 s present, 921.3 s uncertain and 786.4 s not observable, with every no-q = 1 second absent. The crash times are the q-gated crash v3 table. Crash-time accuracy is unvalidated (annotation pending)."
+    source: docs/labeler/events/sawtooth_oscillation/README.md; outputs/labeler/sawtooth/fix5/benchmark.json
+
+  neoclassical_tearing_mode:
+    folded_into: mhd_n1
+    model: tm-ours
+    version: "2026_10_04"
+    task: detector
+    output: strong rotating n=1/n=2 magnetic mode per 10 ms bin (tearing-mode proxy)
+    inputs:
+      - name: six midplane Mirnov probes
+        tree: PTDATA
+        pointnames: [MPI66M322D, MPI66M132D, MPI66M312D, MPI66M020D, MPI66M097D, MPI66M307D]
+        rate_hz: 500000
+        used_as: STFT at 100 kHz (1,024 samples, hop 256, up to 30 kHz); 33 features per 10 ms bin
+    bin_ms: 10
+    n_shots: 450
+    headline: "agreement with the tm_interval magnetic rule, AUROC 0.999 [0.997, 1.000]; it matches the two-line RMS baseline and is not a better tearing detector"
+    scores:
+      reference: the tm_interval magnetic rule (N1RMS/N2RMS), uncertain time excluded, 162,840 bins; 5-fold CV
+      interval: 95 % whole-shot bootstrap, 1,000 draws
+      auroc: {value: 0.999, lo: 0.997, hi: 1.000}
+      auprc: {value: 0.994, lo: 0.989, hi: 0.997}
+      f1: {value: 0.960, lo: 0.930, hi: 0.980}
+    caveats:
+      - Recovers the magnetic rule; matches the two-line RMS baseline (AUROC difference 0.000 [-0.001, +0.001]); not a better tearing detector.
+      - With uncertain time scored as negative AUROC 0.948 [0.935, 0.960], F1 0.363 [0.290, 0.431].
+      - "The review page's source, tm_mhd v2, is the tm_interval rule joined with the mhd_modes v5 mode tracks, not a model, and no one has reviewed it (606 shots, 4,943 rows: 1,728.8 s absent, 720.3 s present, 541.9 s uncertain, 368.3 s not observable). Beside the rule's own present time it counts co-rotating resonant 2/1, 3/1, 3/2, 4/3 and 4/2 tracks as present; a wider definition of the event than the rule's."
+      - "Sensitivity view mhd_resolved (a rule-uncertain bin is positive where tm_mhd v2 is present and negative where absent; 49,068 of 83,961 rule-uncertain bins on the 450 development shots; the primary rows are unchanged): tm-ours AUROC 0.977 [0.970, 0.983], AUPRC 0.941 [0.923, 0.957], F1 0.843 [0.814, 0.870], segmental F1 0.603 [0.556, 0.649]; the two-line baseline 0.968, 0.923, 0.739, 0.514. The thresholds were tuned on the rule's targets, not on this view."
+    source: data/events/neoclassical_tearing_mode/benchmark/tm_benchmark.json; docs/labeler/events/neoclassical_tearing_mode/README.md; docs/labeler/tearing_detection.md
+
+  fishbone:
+    folded_into: mhd_n1
+    model: null
+    version: null
+    task: none
+    source: docs/labeler/events/fishbone/README.md
+
+  high_confinement_mode: {folded_into: confinement, model: null, version: null, task: none, see: confinement}
+  low_confinement_mode: {folded_into: confinement, model: null, version: null, task: none, see: confinement}
+  quiescent_high_confinement_mode: {folded_into: confinement, model: null, version: null, task: none, see: confinement}
+  wide_pedestal_quiescent_high_confinement_mode: {folded_into: confinement, model: null, version: null, task: none, see: confinement}
+  improved_energy_confinement_mode: {folded_into: confinement, model: null, version: null, task: none, see: confinement}

@@ -1,0 +1,273 @@
+# The label tables' manifest: the interval schema, the label grid, the review
+# taxonomy, and the format and raw datasets. Source, so it is tracked here; the
+# tables themselves live under the label-tables root (`data/events/` by default,
+# `LABELER_LABEL_TABLES` otherwise), which git ignores. Every category name and
+# every `raw_datasets` path below is relative to that root. Read through
+# `labeler.config.Paths.events_manifest` (`LABELER_CONFIG_DIR` overrides the
+# directory). Docs: docs/labeler/events/README.md.
+version: 1
+
+interval_schema:
+  version: 1
+  columns:
+    - shot
+    - category
+    - t_start
+    - t_end
+    - confidence
+  time_units: ms
+
+label_grid:
+  formatted_shots: "format/shots/<shot>.npz"
+  extended_shots: "extend_<producer>/<shot-list>/<shot>.npz"
+  version: 1
+  sample_interval_ms: 50
+  axis_order: [time, rho]
+  time_units: ms
+  rho_bins: 20
+  rho_range: [0.0, 1.0]
+  classes:
+    default:
+      0: absent
+      1: present
+    minimum_safety_factor:
+      0: absent
+      1: low
+      2: hybrid
+      3: elevated
+      4: high
+    detachment:
+      0: absent
+      1: attached
+      2: detached
+      3: marfe
+      4: uncertain
+    # The event catalog's six phenomena: in their tables the category is the state.
+    alfven_eigenmode: &catalog_states
+      0: absent
+      1: present
+      2: uncertain
+      3: not_observable
+    neoclassical_tearing_mode: *catalog_states
+    high_confinement_mode: *catalog_states
+    edge_localized_mode: *catalog_states
+    sawtooth_oscillation: *catalog_states
+    disruption: *catalog_states
+
+# Directories here that are not event categories; category scans skip them.
+non_category_dirs:
+  - catalog
+  # Shared raw confinement sources (their reconciliation notebook is
+  # examples/labeler/confinement/); also the review page's `confinement` event
+  # (its roster and source pointer).
+  - confinement
+  # The silver set: 450 shots reviewed for every event
+  # (docs/labeler/events/silver/README.md); the gold set (50 hand-labeled shots,
+  # docs/labeler/events/gold/README.md) is a list, not a category.
+  - silver
+  - gold
+
+# What the review page calls each event, how its dropdown groups them, and the
+# subcategories nested under one (read by `labeler.events.taxonomy`). A
+# subcategory is labelled only inside its parent's labelled time; siblings
+# overlap freely. Its id is `<event>.<key>` and its files live in
+# `<event>/subcategories/<key>/review/`. A new kind (an ELM type) is one more entry.
+# `review: false` keeps an event's folder and tables but leaves it off the page and
+# the silver set (disruption and VDE, owner 2026-10-11).
+taxonomy:
+  mhd_n1:
+    display: "MHD n=1"
+    group: "MHD mode"
+    subcategories:
+      m1: {display: "1/1 (sawtooth, fishbone)", m: 1, n: 1}
+      m2: {display: "2/1 (tearing)", m: 2, n: 1}
+      m3: {display: "3/1 (tearing, external kink)", m: 3, n: 1}
+  mhd_n2:
+    display: "MHD n=2"
+    group: "MHD mode"
+    subcategories:
+      m3: {display: "3/2 (tearing)", m: 3, n: 2}
+  mhd_n3:
+    display: "MHD n=3"
+    group: "MHD mode"
+    subcategories:
+      m4: {display: "4/3 (tearing)", m: 4, n: 3}
+  alfven_eigenmode:
+    display: "Alfvén eigenmode (AE)"
+    subcategories:
+      tae: {display: "TAE (toroidal AE)"}
+      rsae: {display: "RSAE (reversed-shear AE)"}
+  confinement: {display: "Confinement regime"}
+  detachment: {display: "Detachment"}
+  edge_localized_mode: {display: "ELM"}
+  minimum_safety_factor: {display: "q_min regime"}
+  poloidal_beta: {display: "Poloidal beta"}
+  resistive_wall_mode: {display: "RWM"}
+  disruption: {display: "Disruption", review: false}
+  locked_mode: {display: "Locked mode"}
+  vertical_displacement_event: {display: "VDE", review: false}
+
+format_datasets:
+  - name: resistive_wall_mode
+    raw_path: rwm_format_2026_v1.csv
+    date: "2026-09-14T00:00:00Z"
+    abbreviation: rwm
+    sources:
+      - rwm_onsets_2017
+      - rwm_onsets_2024
+  
+  - name: alfven_eigenmode
+    raw_path: alfven_eigenmode_format_2026_v1.csv
+    date: "2026-09-14T00:00:00Z"
+    abbreviation: ae
+    sources:
+      - co2_detector_2021
+
+  - name: alfven_eigenmode
+    raw_path: alfven_eigenmode_ece_format_2026_v1.csv
+    date: "2026-10-01T00:00:00Z"
+    abbreviation: ae
+    sources:
+      - ece_labels_2022
+
+  - name: edge_localized_mode
+    raw_path: edge_localized_mode_format_2026_v1.csv
+    date: "2026-09-14T00:00:00Z"
+    abbreviation: elm
+    sources:
+      - elm_labels
+      - elm_labels_wpqh
+
+  - name: edge_localized_mode
+    raw_path: edge_localized_mode_challenge_format_2026_v1.csv
+    date: "2026-10-08T00:00:00Z"
+    abbreviation: elm
+    sources:
+      - elm_challenge_key
+
+  - name: wide_pedestal_quiescent_high_confinement_mode
+    raw_path: wide_pedestal_quiescent_high_confinement_mode_format_2026_v1.csv
+    date:
+    abbreviation: wpqh
+    sources:
+      - wpqh_on_off_times
+      - wpqh_phases
+
+  - name: neoclassical_tearing_mode
+    raw_path: neoclassical_tearing_mode_format_2026_v1.csv
+    date: "2026-09-14T00:00:00Z"
+    abbreviation: tm
+    sources:
+      - tm_labels_archive
+      - tm_labels_h5
+
+  - name: high_confinement_mode
+    raw_path: high_confinement_mode_format_2026_v1.csv
+    date: "2026-09-14T00:00:00Z"
+    abbreviation: hmode
+    sources:
+      - jalal_hmode_confinement_2024
+
+  - name: low_confinement_mode
+    raw_path: low_confinement_mode_format_2026_v1.csv
+    date: "2026-09-14T00:00:00Z"
+    abbreviation: lmode
+    sources:
+      - jalal_lmode_confinement_2024
+
+  - name: vertical_displacement_event
+    raw_path: vertical_displacement_event_format_2026_v1.csv
+    date:
+    abbreviation: vde
+    sources: []
+
+raw_datasets:
+  - stem: rwm_onsets_2017
+    path: resistive_wall_mode/raw/rwm_onsets_2017.csv
+    formatter: python -m labeler.events.source_formatters resistive_wall_mode
+    provenance: "Jeremy Hansen, 2017 campaign RWM onset database"
+    citation:
+
+  - stem: rwm_onsets_2024
+    path: resistive_wall_mode/raw/rwm_onsets_2024.csv
+    formatter: python -m labeler.events.source_formatters resistive_wall_mode
+    provenance: "Jeremy Hansen, 2024 campaign RWM onset database"
+    citation:
+
+  - stem: co2_detector_2021
+    path: alfven_eigenmode/raw/co2_250_detector.pkl
+    formatter: python -m labeler.events.source_formatters alfven_eigenmode
+    provenance: "Azarakhsh Jalalvand, CO2 alfven eigenmode detector data from 2021"
+    citation:
+
+  - stem: ece_labels_2022
+    path: alfven_eigenmode/raw/ece_all_labels
+    formatter: python -m labeler.events.source_formatters alfven_eigenmode
+    provenance: "Copied unchanged from /projects/EKOLEMEN/ece_cnn/all_labels/: 26 per-shot files of hand-drawn time-frequency boxes (TAE, RSAE, BAE, EAE, LFM) on ECE spectrograms, dated 2022-01-24; the annotator is not recorded in them"
+    citation:
+
+  - stem: elm_labels
+    path: edge_localized_mode/raw/elm_labels_dict.pkl
+    formatter: python -m labeler.events.source_formatters edge_localized_mode
+    provenance: "Copied unchanged from /projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/data/elm_labels_dict.pkl"
+    citation:
+
+  - stem: elm_labels_wpqh
+    path: edge_localized_mode/raw/elm_labels_dict_wpqh.pkl
+    formatter: python -m labeler.events.source_formatters edge_localized_mode
+    provenance: "Copied unchanged from /projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/data/elm_labels_dict_wpqh.pkl"
+    citation:
+
+  - stem: elm_survival_labels
+    path: edge_localized_mode/raw/elm_survival_labels.pkl
+    formatter:
+    provenance: "Copied unchanged from /projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/data/elm_survival_labels.pkl"
+    citation:
+
+  - stem: elm_survival_labels_wpqh
+    path: edge_localized_mode/raw/elm_survival_labels_wpqh.pkl
+    formatter:
+    provenance: "Copied unchanged from /projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/data/elm_survival_labels_wpqh.pkl"
+    citation:
+
+  - stem: elm_challenge_key
+    path: edge_localized_mode/raw/elm_challenge_key_b71f991.json
+    formatter: python -m labeler.events.source_formatters edge_localized_mode
+    provenance: "David Eldon (General Atomics), hand-timed and classified ELM answer key of the DIII-D ELM detection challenge, copied unchanged from src/elm_detection_challenge/answer_key/ELM_database.json at commit b71f9911b213e6b3369bcb486e8c778bd2190a54 (2026-10-07) of git@github.com:DIII-D/elm_detection_challenge.git; used with the maintainers' permission; the key is still being extended upstream, so a newer commit is a new dated dataset"
+    citation:
+
+  - stem: wpqh_on_off_times
+    path: wide_pedestal_quiescent_high_confinement_mode/raw/wpqh_on_off_times.pkl
+    formatter:
+    provenance: "Copied unchanged from /projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/data/wpqh_on_off_times.pkl; also hard-linked in edge_localized_mode/raw/"
+    citation:
+
+  - stem: wpqh_phases
+    path: wide_pedestal_quiescent_high_confinement_mode/raw/WPQHphases-tau_min500-tau_inter250-pewid_max4.0-pewid_min3.0-tinj_wpqh2.1
+    formatter:
+    provenance: "Original phase-table directory copied unchanged from /projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/; possibly Jalal Butt's newer WPQH tables (attribution unconfirmed)"
+    citation:
+
+  - stem: tm_labels_archive
+    path: neoclassical_tearing_mode/raw/tm_labels.tar
+    formatter: python -m labeler.events.source_formatters neoclassical_tearing_mode
+    provenance: "Copied unchanged from /projects/EKOLEMEN/survival_tm_2/tm_labels.tar; retained as an archive to save space"
+    citation:
+
+  - stem: tm_labels_h5
+    path: neoclassical_tearing_mode/raw/tm_labels.h5
+    formatter: python -m labeler.events.source_formatters neoclassical_tearing_mode
+    provenance: "Copied unchanged from /projects/EKOLEMEN/survival_tm_2/tm_labels.h5"
+    citation:
+
+  - stem: jalal_hmode_confinement_2024
+    path: high_confinement_mode/raw/Jalal_28042024_confinement_regime_shotlist.csv
+    formatter: python -m labeler.events.source_formatters high_confinement_mode
+    provenance: "User-provided Jalal confinement regime interval table dated 28 April 2024"
+    citation:
+
+  - stem: jalal_lmode_confinement_2024
+    path: low_confinement_mode/raw/Jalal_28042024_confinement_regime_shotlist.csv
+    formatter: python -m labeler.events.source_formatters low_confinement_mode
+    provenance: "User-provided Jalal confinement regime interval table dated 28 April 2024"
+    citation:

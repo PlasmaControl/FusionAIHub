@@ -4,7 +4,7 @@ _Artifact-grounded. Every number was extracted from checkpoints / model code or 
 building the model and counting — not recalled. The d512 pilot rebuild reproduces its
 checkpoint `state_dict` key-for-key; the d1024/48L production numbers are from an actual CPU
 build with all six real FSQ codecs loaded (zero projections). Raw detail:
-`eval_runs/paper_facts/FACT_SHEET.md` (pilot) and `eval_runs/paper_facts/FACT_SHEET_production.md`
+`docs/paper_facts/FACT_SHEET.md` (pilot) and `docs/paper_facts/FACT_SHEET_production.md`
 (production); reproducible counters `build_and_count.py` / `build_and_count_production.py`._
 
 **Two configurations, reported side by side:**
