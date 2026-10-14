@@ -119,3 +119,25 @@ def test_rank_with_ci_brackets_the_point_estimate_and_resamples_whole_shots():
     assert lo <= out["auroc"]["macro"] <= hi
     assert 0.5 < lo and hi <= 1.0
     assert out["replicates"] == 60
+
+
+def test_paired_rank_difference_draws_the_same_shots_as_rank_with_ci():
+    """Each model's own interval from the paired draws is rank_with_ci's, and a
+    model against itself differs by exactly zero in every replicate."""
+    rng = np.random.default_rng(5)
+    shots = np.repeat(np.arange(10), 30)
+    truth = np.tile(np.arange(4), 75)
+    good = rng.dirichlet(np.ones(4), size=300) * 0.3
+    good[np.arange(300), truth] += 0.7
+    weak = rng.dirichlet(np.ones(4), size=300)
+    out = scoring.paired_rank_difference(good, weak, truth, shots, replicates=40)
+    for probs, side in ((good, "a"), (weak, "b")):
+        alone = scoring.rank_with_ci(probs, truth, shots, replicates=40)
+        for key in ("auroc", "auprc"):
+            assert out[key][f"{side}_ci95"] == pytest.approx(alone["ci95"][key])
+    lo, hi = out["auroc"]["ci95"]
+    assert 0 < lo <= out["auroc"]["difference"] <= hi
+    assert out["auroc"]["share_not_above_zero"] == 0.0
+    same = scoring.paired_rank_difference(good, good, truth, shots, replicates=10)
+    assert same["auprc"]["difference"] == 0.0
+    assert same["auprc"]["ci95"] == [0.0, 0.0]

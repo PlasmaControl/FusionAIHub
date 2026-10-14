@@ -1,7 +1,10 @@
 # confine-ours: a dense confinement segmenter over 0D signals
 
 Status: **experimental. Trained and scored 2026-10-03; rescored 2026-10-04 with folds that keep
-whole run days together, and the roster relabelled with a confidence floor and tiers.**
+whole run days together, and the roster relabelled with a confidence floor and tiers.
+2026-10-14: retrained on 416 curated shots with three seeds per fold (`base3`) and scored on
+`confine-cnn`'s own protocol: macro F1 0.909 against 0.703, paired +0.207 [+0.090, +0.314]
+(section "On confine-cnn's protocol"). The roster labels are still the 2026-10-03 networks'.**
 `confine-ours` is a U-Time-style 1D U-Net that labels every millisecond of a shot L, H, QH or
 WPQH from signals nearly every shot has, so it can run on the whole roster (839 shots) where the
 BES classifier (`confine-cnn`, [confinement_bes_benchmark.md](confinement_bes_benchmark.md)) can
@@ -11,7 +14,8 @@ only 42 % of its label time falls inside a curated interval, the shots past the 
 (above 196493) are extrapolation, and its QH and WPQH on shots outside the curated set are weakly
 supported (section "Roster labels"). `confine-cnn` is the predecessor it is benchmarked against.
 Script:
-`scripts/labeler/confinement_ours.py` (stages `build`, `train`, `score`, `apply`); fetch:
+`scripts/labeler/confinement_ours.py` (stages `build`, `train`, `score`, `protocol`, `select`,
+`apply`; `--variant` names the recipe); fetch:
 `scripts/labeler/confinement_zerod_fetch.py`, `scripts/labeler/confinement_shot_dates_fetch.py`;
 library: `src/labeler/confinement/{zerod,unet,segments,scoring}.py`; scores:
 `outputs/labeler/confinement/ours/scores.json` (folds by run day, the headline) and
@@ -140,6 +144,95 @@ The two split rows (`cum_abcdrgef`, `full_cum_abcdrgef`) pool the test sets of f
 overlap (142 distinct shots in 200 shot-tests for the Table 3 row), so their windows count a shot once
 per draw that tests it and the paired difference weights it the same way
 ([confinement_bes_benchmark.md](confinement_bes_benchmark.md), "Overlap of the five test draws").
+This table covers only the shots both networks scored (124 of the Table 3 row's 142); the next
+section scores all 142 on the row's own windows.
+
+## On confine-cnn's protocol (2026-10-14)
+
+`protocol` scores `confine-ours` on exactly the windows of the Table 3 row `full_cum_abcdrgef`, the
+one `confine-cnn` score of the paper and the figure:
+
+- the same 142 test shots;
+- the same 152,863 windows: each draw's test windows that the CNN's gate and margins keep, pooled
+  over the five overlapping draws (`score_ok` of `split*_predictions.csv`);
+- the same labels (the windows' own);
+- the same pooled macro F1, 1,000-replicate shot bootstrap (seed 20261001), and one-vs-rest macro
+  AUROC and AUPRC.
+
+`confine-ours` is read at the 1 ms bin that holds each window's centre. Every one of the 150,735
+windows on shots with a grid has the label `confine-ours`'s own bin has.
+
+The protocol scores 104,104 of `confine-ours`'s 309,729 labelled bins on those 139 shots: the other
+205,625 bins (66 %) are outside the CNN's coverage and are dropped. The 2.048 ms stride alone halves
+the bins, and the gate and margins drop more.
+
+Every shot is predicted only by networks that never trained or validated on a shot of its run day:
+- 139 by the fold that held it out;
+- 3 (174601, 179216, 179314: no D-alpha record anywhere) by a twin with the D-alpha channels zeroed
+  (`base_no_da`, one seed per fold), as the mean of the folds that never saw their run day.
+
+The CNN's numbers on these windows equal the row's record to the last digit; `protocol` refuses to
+run otherwise. Record: `outputs/labeler/confinement/ours/protocol_base3.json`.
+
+| Model | Macro F1 [95 % CI] | L | H | QH | WPQH | Macro AUROC [95 % CI] | Macro AUPRC [95 % CI] |
+|---|---|---|---|---|---|---|---|
+| `confine-cnn` (Table 3 row) | 0.703 [0.588, 0.794] | 0.795 | 0.858 | 0.766 | 0.391 | 0.889 [0.810, 0.949] | 0.713 [0.615, 0.829] |
+| `confine-ours` (`base3`) | **0.909 [0.794, 0.964]** | 0.973 | 0.981 | 0.961 | 0.722 | 0.987 [0.964, 0.997] | 0.939 [0.837, 0.991] |
+| Ours minus CNN, paired | **+0.207 [+0.090, +0.314]** | | | | | +0.097 [+0.043, +0.159] | +0.226 [+0.123, +0.314] |
+
+The paired interval draws the same shots for both models in every replicate. No replicate of the
+macro F1 difference is at or below zero; for AUROC, 2 of 1,000 are. Macro AUROC and AUPRC are the
+mean over the four classes of the one-vs-rest score. Supports are L 23,693, H 79,557, QH 44,061 and
+WPQH 5,552 windows; WPQH is on 7 shots, so its F1 drives most of the interval's width.
+
+**What changed.** The recipe is unchanged; the improvements are data, folds and seeds.
+
+1. **More shots.** D-alpha and beam power were fetched for the 15 curated shots that had none, so
+   416 shots train and test (840,017 labelled bins). Every protocol shot with D-alpha now has a fold
+   that held it out.
+2. **Three seeds per fold, averaged.** The folds are dealt again over the 416 shots (110 run days).
+3. **Counter beams tried and dropped.** The 21L + 21R sources inject counter to the current, so
+   their power sets the torque that QH-mode needs low. Adding their power as an input
+   (`zerod.beam_group`, `beams`) lowered the inner-validation score.
+
+Choices were made on inner validation only (`select`, `selection.json`): per fold, the networks'
+macro F1 on the run days that validated it, never on its test days, pooled over folds. The column
+"outside" leaves out the protocol's 142 shots.
+
+| Variant | Pooled | Outside | Per fold |
+|---|---|---|---|
+| `base` (one seed) | 0.945 | 0.938 | 0.986, 0.916, 0.917, 0.954, 0.952 |
+| `beams` (+ counter-beam power) | 0.927 | 0.923 | 0.982, 0.877, 0.919, 0.900, 0.949 |
+| **`base3`** (three seeds) | **0.951** | **0.941** | 0.981, 0.923, 0.935, 0.955, 0.950 |
+| `base_no_da` (twin) | 0.913 | 0.911 | 0.968, 0.924, 0.879, 0.914, 0.897 |
+
+These are the checkpoints' own validation shots, so they are optimistic; they rank the variants and
+are not a score.
+
+**Spread between networks.** On the 139 protocol shots with a grid, each single seed of `base3`
+scores 0.899, 0.861 and 0.887, and their mean 0.909. The 2026-10-03 networks (one seed, the
+earlier folds over 401 shots) score lower:
+- 0.794 on the 124 shots they held out;
+- 0.780 [0.708, 0.850] on the 139, the other 15 averaged over the folds that never saw their run
+  day;
+- paired +0.079 [-0.043, +0.206] over the CNN, an interval that holds zero
+  (`protocol_run_day.json`).
+
+The same recipe on other folds gives a different WPQH F1 (0.28 against 0.62 to 0.72), mostly
+through three shots:
+- 182660: all WPQH, missed by the earlier networks;
+- 189645: all H, called WPQH by them;
+- 190514.
+
+So the shot bootstrap does not hold the model-to-model spread, which is mostly WPQH. Single
+networks differ by 0.04 between seeds and by about 0.1 between fold dealings. Every seed of the
+retrain is at least 0.16 above the CNN, but the size of the margin rests on 7 WPQH shots.
+
+**All 416 shots, run-day folds** (`score --variant base3`, `scores_base3.json`):
+- per bin: macro F1 0.910 [0.882, 0.936] (L 0.924, H 0.968, QH 0.914, WPQH 0.836), AUROC 0.980,
+  AUPRC 0.948, against 0.885 for the 2026-10-03 networks on 401;
+- segment F1@25 after the mode filter: 0.832;
+- by population: 0.756 on the 117 corpus BES shots and 0.940 on the other 299.
 
 **By population** (per 1 ms bin, all labelled bins, run-day folds): on the 117 shots the corpus
 holds BES for, 0.689 [0.59, 0.77] (L 0.84, H 0.94, QH 0.49, WPQH 0.48); on the other 284 curated
@@ -157,10 +250,11 @@ shots, 0.926 [0.89, 0.95] (L 0.93, H 0.97, QH 0.93, WPQH 0.88).
 - **Against the BES network** `confine-ours` is ahead on the larger sets and level on the
   smallest: paired +0.046 [+0.01, +0.09] on 400 shots without a gate, +0.081 [+0.02, +0.14] on the
   280 shots of the paper-training 5-fold row, -0.029 [-0.13, +0.07] on the 117 corpus shots, and
-  +0.092 [-0.04, +0.24] on the 124 test shots of the Table 3 row, whose interval holds zero. The
-  margin depends on the windows, and the comparison is not independent: the two score different
-  windows (the BES row's gate and margins), hold out different units (run days against shots) and
-  both learned from the same labels.
+  +0.092 [-0.04, +0.24] on the 124 test shots of the Table 3 row, whose interval holds zero (the
+  2026-10-03 networks). The 2026-10-14 retrain (`base3`) is ahead on all 142 shots of that row, on its
+  own windows: +0.207 [+0.090, +0.314] (section "On confine-cnn's protocol"). The margin depends on
+  the windows and on the networks, and the comparison is not independent: the two hold out
+  different units (run days against shots) and both learned from the same labels.
 - **The corpus-shot deficit is shared.** `confine-ours` scores 0.689 on the 117 corpus shots
   against 0.926 on the other 284, the same ordering the BES network shows (0.44 to 0.46 under the
   paper's whole selection on the corpus shots against 0.74 to 0.83 on the others, in the four
@@ -273,6 +367,14 @@ PYTHONPATH=src python scripts/labeler/confinement_ours.py score --cnn-prediction
 PYTHONPATH=src python scripts/labeler/confinement_ours.py apply
 # the first version's folds by shot (the leakage comparison)
 PYTHONPATH=src python scripts/labeler/confinement_ours.py score --grouping shot
+# 2026-10-14, on CPU in the pixi environment (about 18-27 min a network): seed 0 of each fold, then
+# seeds 1-2 and the D-alpha-free twin; inner-validation choice; confine-cnn's protocol; all shots
+pixi run --frozen -e labeler python scripts/labeler/confinement_ours.py train --variant base --device cpu
+pixi run --frozen -e labeler python scripts/labeler/confinement_ours.py train --variant base3 --seeds 1 2 --device cpu
+pixi run --frozen -e labeler python scripts/labeler/confinement_ours.py train --variant base_no_da --device cpu
+pixi run --frozen -e labeler python scripts/labeler/confinement_ours.py select --variants base beams base3 base_no_da
+pixi run --frozen -e labeler python scripts/labeler/confinement_ours.py protocol --variant base3 --twin base_no_da
+pixi run --frozen -e labeler python scripts/labeler/confinement_ours.py score --variant base3
 ```
 
 ## Not done
@@ -289,7 +391,10 @@ PYTHONPATH=src python scripts/labeler/confinement_ours.py score --grouping shot
 - **No independent check of the roster labels outside the curated shots**, and no held-out
   campaign. The 0.885 is for run days of the campaigns the curated set covers; the roster
   includes 142 shots past them.
-- Nothing was tuned: one architecture, one loss weighting, one seed per fold; no ablation of
-  the channels or the loss terms; no second seed.
+- Little was tuned: one architecture, one loss weighting; the 2026-10-03 networks have one seed
+  per fold, `base3` three; the one channel tried since (the counter beams' power) was dropped on
+  inner validation; no ablation of the other channels or of the loss terms.
+- **The roster labels are not re-applied.** `extend_confine_ours/roster.csv` is still the 2026-10-03
+  networks' (the paper pins it); `apply --variant base3` would write the retrain's.
 - 33 roster shots lack a beam record; fetching their injected power would let the segmenter run
   on them.

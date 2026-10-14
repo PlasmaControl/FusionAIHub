@@ -40,6 +40,13 @@ MAX_GAP_MS = 100.0
 CORPUS = Path("/scratch/gpfs/EKOLEMEN/foundation_model")
 SCALES = {"dens": 1e14, "betan": 1.5, "wmhd": 5e5, "pinj": 3e6}
 D_ALPHA_ROWS = 8
+#: The rows of a ``pinj`` record (the corpus' beam order, which the raw cache and the
+#: 0D fetch keep).
+BEAMS = ("15L", "15R", "21L", "21R", "30L", "30R", "33L", "33R")
+#: The 210 beamline's two sources, which inject opposite to the other six (counter to
+#: the plasma current in the usual configuration): their share of the power sets the
+#: torque, which QH-mode needs low or reversed.
+COUNTER_BEAMS = ("21L", "21R")
 
 
 def bin_stats(
@@ -158,31 +165,83 @@ def read_beam_power(shot: int, raw_dir: Path, zerod_dir: Path, corpus: Path = CO
     return None if got is None else (got[0], np.nansum(got[1], axis=0))
 
 
+def beam_group(
+    shot: int,
+    n: int,
+    raw_dir: Path,
+    zerod_dir: Path,
+    beams: tuple[str, ...] = COUNTER_BEAMS,
+    corpus: Path = CORPUS,
+) -> np.ndarray:
+    """The summed power of ``beams`` on the shot's ``n`` 1 ms bins, / ``SCALES["pinj"]``;
+    NaN where the shot has no beam record."""
+    got = read_beams(shot, raw_dir, zerod_dir, corpus)
+    if got is None:
+        return np.full(n, np.nan, dtype=np.float32)
+    rows = [BEAMS.index(b) for b in beams]
+    total = np.nansum(got[1][rows], axis=0)
+    mean, _, _ = bin_stats(got[0], total, n)
+    return mean / SCALES["pinj"]
+
+
+def _record_end_ms(shot: int, raw_dir: Path, zerod_dir: Path, corpus: Path) -> float:
+    """The last time (ms) any 0D record of a shot other than D-alpha reaches, or 0."""
+    ends = [0.0]
+    beams = read_beams(shot, raw_dir, zerod_dir, corpus)
+    if beams is not None and beams[0].size:
+        ends.append(float(np.nanmax(beams[0])))
+    zpath = zerod_dir / f"{shot}.npz"
+    if zpath.exists():
+        with np.load(zpath) as d:
+            if "dens" in d.files:
+                ends.append(float(d["dens_t0_ms"]) + len(d["dens"]) * BIN_MS)
+            for name in ("betan", "wmhd"):
+                if f"{name}_t_ms" in d.files and d[f"{name}_t_ms"].size:
+                    ends.append(float(np.nanmax(d[f"{name}_t_ms"])))
+    return max(ends)
+
+
 def assemble(
-    shot: int, raw_dir: Path, zerod_dir: Path, corpus: Path = CORPUS
+    shot: int,
+    raw_dir: Path,
+    zerod_dir: Path,
+    corpus: Path = CORPUS,
+    *,
+    require_d_alpha: bool = True,
 ) -> dict | None:
     """The ``(len(CHANNELS), n)`` grid of a shot, or None without D-alpha.
 
     ``n`` runs to the end of the D-alpha record. Also returns which D-alpha chord was
-    read and the channels the shot lacks.
+    read and the channels the shot lacks. With ``require_d_alpha`` off, a shot with no
+    D-alpha record still gets a grid, its D-alpha rows NaN and ``n`` running to the
+    end of its other records (None if it has none): the input of a network that does
+    not read D-alpha.
     """
     da = read_d_alpha(shot, raw_dir, corpus)
-    if da is None:
+    if da is None and require_d_alpha:
         return None
-    t_ms, y, source = da
-    n = int(np.floor(t_ms[-1] / BIN_MS)) + 1
-    mean, peak, std = bin_stats(t_ms, y, n)
-    ref = (
-        float(np.nanpercentile(y[np.isfinite(y) & (y > 0)], 95))
-        if (y > 0).any()
-        else 1.0
-    )
-    ref = max(ref, 1e-30)
-    grid = np.full((len(CHANNELS), n), np.nan, dtype=np.float32)
-    grid[0] = np.log10(np.maximum(mean, 0) / ref + 0.01)
-    grid[1] = np.log10(np.maximum(peak, 0) / ref + 0.01)
-    grid[2] = np.minimum(std / ref, 3.0)
-    lacks: list[str] = []
+    if da is None:
+        end = _record_end_ms(shot, raw_dir, zerod_dir, corpus)
+        if end <= 0:
+            return None
+        n = int(np.floor(end / BIN_MS)) + 1
+        grid = np.full((len(CHANNELS), n), np.nan, dtype=np.float32)
+        source, ref = None, None
+    else:
+        t_ms, y, source = da
+        n = int(np.floor(t_ms[-1] / BIN_MS)) + 1
+        mean, peak, std = bin_stats(t_ms, y, n)
+        ref = (
+            float(np.nanpercentile(y[np.isfinite(y) & (y > 0)], 95))
+            if (y > 0).any()
+            else 1.0
+        )
+        ref = max(ref, 1e-30)
+        grid = np.full((len(CHANNELS), n), np.nan, dtype=np.float32)
+        grid[0] = np.log10(np.maximum(mean, 0) / ref + 0.01)
+        grid[1] = np.log10(np.maximum(peak, 0) / ref + 0.01)
+        grid[2] = np.minimum(std / ref, 3.0)
+    lacks: list[str] = [] if da is not None else ["d_alpha"]
     zpath = zerod_dir / f"{shot}.npz"
     if zpath.exists():
         with np.load(zpath) as d:

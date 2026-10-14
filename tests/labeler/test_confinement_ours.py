@@ -1,9 +1,11 @@
-"""The segmenting steps of ``scripts/labeler/confinement_ours.py`` on small cases."""
+"""The segmenting steps of ``scripts/labeler/confinement_ours.py`` on small cases, and
+the helpers that score it on confine-cnn's protocol."""
 
 from __future__ import annotations
 
 import importlib.util
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -12,6 +14,7 @@ import pandas as pd
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/labeler/confinement_ours.py"
 spec = importlib.util.spec_from_file_location("confinement_ours", SCRIPT)
 ours = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = ours  # its dataclass looks itself up there
 spec.loader.exec_module(ours)
 
 
@@ -142,3 +145,89 @@ def test_write_review_table_reads_the_roster_and_leaves_it_alone(tmp_path):
     assert review_meta["columns"] == list(written.columns)
     assert review_meta["columns_meaning"]["tier"] == "what tier means"
     assert "attrs" in review_meta["columns_meaning"] and "derived_from" in review_meta
+
+
+# confine-ours on confine-cnn's protocol
+
+
+def test_at_windows_reads_the_bin_holding_each_window_centre():
+    probs = {7: np.arange(40, dtype=np.float32).reshape(4, 10)}
+    windows = pd.DataFrame({"shot": [7, 7, 7, 8], "center_ms": [0.5, 3.99, 25.0, 1.0]})
+    got = ours.at_windows(probs, windows)
+    assert got[0].tolist() == probs[7][:, 0].tolist()
+    assert got[1].tolist() == probs[7][:, 3].tolist()
+    assert got[2].tolist() == probs[7][:, 9].tolist()  # past the end: the last bin
+    assert np.isnan(got[3]).all()  # a shot with no probabilities
+
+
+def test_protocol_bins_counts_the_labelled_bins_the_protocol_drops():
+    ys = {7: np.array([0, 0, 1, 1, -1, 2])}
+    windows = pd.DataFrame(
+        {"shot": [7, 7, 7], "center_ms": [0.5, 2.5, 4.5], "label": [0, 1, 0]}
+    )
+    out = ours.protocol_bins(ys, windows)
+    assert (out["labelled_bins"], out["scored_bins"], out["dropped_bins"]) == (5, 2, 3)
+    assert out["windows_checked"] == 3
+    assert out["windows_whose_label_is_ours"] == 2  # bin 4 is unlabelled
+
+
+def test_protocol_scores_pairs_the_two_models_on_the_windows_ours_covers():
+    rng = np.random.default_rng(0)
+    n = 400
+    windows = pd.DataFrame(
+        {"shot": np.repeat(np.arange(10), 40), "label": np.tile(np.arange(4), 100)}
+    )
+    noise = rng.dirichlet(np.ones(4), size=n)
+    for i, c in enumerate(["L", "H", "QH", "WP"]):
+        windows[f"p_{c}"] = noise[:, i]
+    mine = np.full((n, 4), 0.05, dtype=np.float32)
+    mine[np.arange(n), windows.label] = 0.85
+    mine[:40] = np.nan  # shot 0 not covered
+    out = ours.protocol_scores(windows, mine, replicates=20)
+    assert out["windows"] == 360 and out["shots"] == 9
+    assert out["confine-ours"]["macro_f1"] == 1.0
+    assert out["confine-cnn"]["windows"] == 360
+    d = out["ours_minus_cnn"]
+    assert d["macro_f1"]["ci95"][0] > 0 and d["auroc"]["difference"] > 0
+    assert out["confine-ours"]["ranking"]["ci95"]["auroc"] == [1.0, 1.0]
+
+
+def test_clean_folds_are_those_that_never_saw_the_run_day(monkeypatch):
+    records = {
+        0: {"train_shots_list": [1, 2], "val_shots_list": [3]},
+        1: {"train_shots_list": [4], "val_shots_list": [5]},
+    }
+    monkeypatch.setattr(ours, "FOLDS", 2)
+    monkeypatch.setattr(ours, "fold_record", lambda variant, fold: records[fold])
+    days = {1: 10, 2: 10, 3: 11, 4: 12, 5: 13, 9: 11}
+    assert ours.clean_folds(None, 11, days) == [1]  # fold 0 validated on day 11
+    assert ours.clean_folds(None, 14, days) == [0, 1]
+
+
+def test_fold_roles_keeps_the_recorded_test_folds_and_leaves_new_shots_out(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        ours, "deal_folds", lambda ids, ys, grouping: ({s: 0 for s in ids}, {}, {})
+    )
+    monkeypatch.setattr(ours, "recorded_test_folds", lambda variant: {1: 3, 2: 4})
+    test, _, _ = ours.fold_roles([1, 2, 3], [None] * 3)
+    assert test == {1: 3, 2: 4}
+    monkeypatch.setattr(ours, "recorded_test_folds", lambda variant: None)
+    assert ours.fold_roles([1, 2, 3], [None] * 3)[0] == {1: 0, 2: 0, 3: 0}
+
+
+def test_network_input_appends_the_counter_beams_and_zeroes_d_alpha_for_the_twin(
+    monkeypatch,
+):
+    grid = np.ones((len(ours.zerod.CHANNELS), 5), dtype=np.float32)
+    counter = np.array([0.0, 1.0, np.nan, 2.0, 20.0], dtype=np.float32)
+    monkeypatch.setattr(ours, "counter_channel", lambda shot, n: counter)
+    twin = ours.Variant(Path("."), counter_beams=True, d_alpha=False)
+    x = ours.network_input(grid, 1, twin)
+    assert x.shape == (twin.channels, 5) == (ours.zerod.N_INPUT + 2, 5)
+    assert (x[:3] == 0).all() and (x[3] == 1).all()
+    assert x[-2].tolist() == [0.0, 1.0, 0.0, 2.0, 8.0]  # NaN to 0, clipped at 8
+    assert x[-1].tolist() == [1.0, 1.0, 0.0, 1.0, 1.0]
+    plain = ours.network_input(grid, 1, ours.VARIANTS["run_day"])
+    assert plain.shape == (ours.zerod.N_INPUT, 5) and (plain[:3] == 1).all()

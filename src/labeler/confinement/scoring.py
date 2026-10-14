@@ -71,16 +71,12 @@ def rank_with_ci(
     AUROC and AUPRC (a replicate draws the shots with replacement and keeps all of each
     drawn shot's windows)."""
     out = one_vs_rest(probs, truth)
-    ids = np.unique(shots)
-    order = np.argsort(shots, kind="stable")
-    bounds = np.searchsorted(shots[order], ids)
-    ends = np.r_[bounds[1:], len(order)]
-    members = [order[a:b] for a, b in zip(bounds, ends, strict=True)]
+    members = _shot_members(shots)
     rng = np.random.default_rng(seed)
     macro = {"auroc": [], "auprc": []}
     for _ in range(replicates):
         pick = np.concatenate(
-            [members[i] for i in rng.integers(len(ids), size=len(ids))]
+            [members[i] for i in rng.integers(len(members), size=len(members))]
         )
         draw = one_vs_rest(probs[pick], truth[pick])
         for key, values in macro.items():
@@ -89,5 +85,62 @@ def rank_with_ci(
         key: [float(np.nanpercentile(v, 2.5)), float(np.nanpercentile(v, 97.5))]
         for key, v in macro.items()
     }
+    out["replicates"] = replicates
+    return out
+
+
+def _shot_members(shots: np.ndarray) -> list[np.ndarray]:
+    """The window indices of each shot, shots in ascending order."""
+    ids = np.unique(shots)
+    order = np.argsort(shots, kind="stable")
+    bounds = np.searchsorted(shots[order], ids)
+    ends = np.r_[bounds[1:], len(order)]
+    return [order[a:b] for a, b in zip(bounds, ends, strict=True)]
+
+
+def paired_rank_difference(
+    probs_a: np.ndarray,
+    probs_b: np.ndarray,
+    truth: np.ndarray,
+    shots: np.ndarray,
+    *,
+    replicates: int = 1000,
+    seed: int = 20261001,
+) -> dict:
+    """Macro AUROC and AUPRC of ``a`` minus those of ``b`` on the same windows, with
+    95 % shot-bootstrap intervals of the difference: a replicate draws the same shots
+    (all of each drawn shot's windows) for both, as ``rank_with_ci`` draws them, so
+    each model's own interval from this seed (``a_ci95``, ``b_ci95``) is
+    ``rank_with_ci``'s."""
+    a, b = one_vs_rest(probs_a, truth), one_vs_rest(probs_b, truth)
+    members = _shot_members(shots)
+    rng = np.random.default_rng(seed)
+    draws = {key: {"a": [], "b": []} for key in ("auroc", "auprc")}
+    for _ in range(replicates):
+        pick = np.concatenate(
+            [members[i] for i in rng.integers(len(members), size=len(members))]
+        )
+        da = one_vs_rest(probs_a[pick], truth[pick])
+        db = one_vs_rest(probs_b[pick], truth[pick])
+        for key, values in draws.items():
+            values["a"].append(da[key]["macro"])
+            values["b"].append(db[key]["macro"])
+
+    def ci(values) -> list[float]:
+        return [
+            float(np.nanpercentile(values, 2.5)),
+            float(np.nanpercentile(values, 97.5)),
+        ]
+
+    out: dict = {}
+    for key, values in draws.items():
+        va, vb = np.asarray(values["a"]), np.asarray(values["b"])
+        out[key] = {
+            "difference": a[key]["macro"] - b[key]["macro"],
+            "ci95": ci(va - vb),
+            "share_not_above_zero": float(np.nanmean(va - vb <= 0)),
+            "a_ci95": ci(va),
+            "b_ci95": ci(vb),
+        }
     out["replicates"] = replicates
     return out

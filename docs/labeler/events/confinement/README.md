@@ -86,6 +86,7 @@ their evaluation are in that same run directory.
 **latest**: confine-ours (experimental, see below)
 
 **all**:
+- confine-ours | 2026_10_14 | AUROC: 0.987 | AUPRC: 0.939 | F1: 0.909 (on confine-cnn's 142 test shots and windows, paired +0.207 [+0.090, +0.314]; three seeds per run-day fold, 416 shots; not yet applied to the roster, see [confinement_ours.md](../../confinement_ours.md))
 - confine-ours | 2026_10_03 | AUROC: 0.964 | AUPRC: 0.913 | F1: 0.885
 - confine-cnn | 2026_10_03 | AUROC: 0.889 | AUPRC: 0.713 | F1: 0.703
 - confine-cnn | 2026_10_01 | AUROC: 0.926 | AUPRC: 0.701 | F1: 0.678 (read 2 blind test shots; the same recipe without them, 117 shots: 0.717)

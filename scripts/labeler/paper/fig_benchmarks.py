@@ -32,6 +32,10 @@ AUPRC = p), and `--table` has one row per bar, series "trivial baseline":
   confine-cnn score of the paper. The first retrain's own score is not drawn.
   Its baseline: the always-majority predictor's macro F1 (the majority class's
   F1 over the four classes), from the classes' supports on the same windows.
+  `confine-ours` (Tokamak-SI only) is scored on exactly those windows, labels and
+  bootstrap (`confinement_ours.py protocol`; each shot predicted by networks that
+  never trained on its run day); its record must hold confine-cnn's own score on
+  the same windows, and the paired difference of the two is in the CSV only.
 - ELMs: `elm-elmo` and `elm-ours` from the ELM stream's final records. Legacy =
   D. Smith's windows at the published setting (`reimplemented_elmo_overlap` of
   `smith/evaluation.json`: overlap-region F1, conditional on the selected
@@ -53,12 +57,12 @@ AUPRC = p), and `--table` has one row per bar, series "trivial baseline":
   (`counts.prevalence`, checked against the positive and negative slice counts);
   the elapsed-time rule's score is in the CSV only. The legacy forest was scored
   on another machine and has no F1: nothing is drawn for it in the F1 figure.
-- Sawtooth: `saw-derivative` (the single-channel derivative picker, which reads the same
-  ECE edges the labels are built from), `saw-hl3-full` (the OuYang 2025 HL-3 network,
-  replicated, on the paper's nine offline inputs; the earlier four-input run,
-  `saw-hl3-ece`, is in the CSV only) and `saw-ours`
+- Sawtooth: `saw-hl3-full` (the OuYang 2025 HL-3 network, replicated, on the paper's
+  nine offline inputs; the earlier four-input run, `saw-hl3-ece`, is in the CSV only)
+  and `saw-ours` (v2: the ECE network with the derivative picker's edge score as
+  input and gate, which reads the same ECE edges the labels are built from)
   on the Tokamak-SI labels, from the sawtooth stream's benchmark record
-  (`outputs/labeler/sawtooth/fix5/benchmark.json`): presence F1 on 2 ms bins,
+  (`outputs/labeler/sawtooth/fix6/benchmark.json`): presence F1 on 2 ms bins,
   out of fold over the shot-grouped three-fold split of the TRAIN shots (the
   record's `crash_tolerance_2ms.presence`; the presence threshold is selected
   per fold on inner-selection shots), with the record's 95 % shot-bootstrap
@@ -136,13 +140,15 @@ SOURCES = {
     / "bes"
     / "ablation_rows"
     / "full_cum_abcdrgef.json",
+    # confine-ours on that row's windows (confinement_ours.py protocol)
+    "confinement_ours": OUTPUTS / "confinement" / "ours" / "protocol_base3.json",
     # the ELM stream's final records, the ones its paper tables read
     "elm": OUTPUTS / "elm" / "ours" / "evaluation.json",
     "elm_smith": OUTPUTS / "elm" / "smith" / "evaluation.json",
     "tm": REPO / "docs" / "labeler" / "figure2_tm.json",
     "rwm": OUTPUTS / "rwm" / "evaluation.json",
     # the sawtooth stream's benchmark: out-of-fold presence scores per model
-    "saw": OUTPUTS / "sawtooth" / "fix5" / "benchmark.json",
+    "saw": OUTPUTS / "sawtooth" / "fix6" / "benchmark.json",
     "coverage": REPO / "docs" / "labeler" / "figure2_coverage.json",
     # the detachment consistency check: AUROC of -Te against the TangTV vote (with
     # its shot-bootstrap interval), and the vote's agreement with Te's state
@@ -226,7 +232,6 @@ TM_TUNED_LEGACY = ("dsm",)
 SAW_HL3 = "saw-hl3-full"  # the HL-3 bar: the paper's full offline inputs
 SAW_HL3_ECE = "saw-hl3-ece"  # the earlier four-input run: in the CSV only
 SAW_MODELS = (  # the models of the record, named "<task>-<model>" there
-    "saw-derivative",
     SAW_HL3,
     "saw-ours",
 )
@@ -555,6 +560,40 @@ def confinement_si(record: dict) -> dict:
     }
 
 
+def confinement_ours(record: dict, row: dict) -> dict:
+    """confine-ours on confine-cnn's protocol (`confinement_ours.py protocol`) as
+    `confinement_si` reads the row: its macro scores, intervals and baselines from
+    the record's `confine-ours` entry, and the paired difference ours minus the CNN
+    (`ours_minus_cnn`) with its interval. The record's own `confine-cnn` entry must
+    be the protocol row's score on the same windows (windows, shots and macro F1),
+    or the two bars would not share them: it is refused otherwise."""
+    cnn, own = record["confine-cnn"], row["own_population"]
+    same = (cnn["windows"], cnn["shots"]) == (own["windows"], own["shots"])
+    if not same or abs(cnn["macro_f1"] - own["macro_f1"]) > 1e-9:
+        raise ValueError(
+            f"confine-ours's record scores confine-cnn {cnn['macro_f1']} on "
+            f"{cnn['windows']} windows of {cnn['shots']} shots, the protocol row "
+            f"{own['macro_f1']} on {own['windows']} of {own['shots']}"
+        )
+    entry = record["confine-ours"]
+    out = confinement_si({"own_population": entry, "ranking": entry["ranking"]})
+    out["keys"] = {
+        "f1": "confine-ours.macro_f1",
+        "auroc": "confine-ours.ranking.auroc.macro",
+        "auprc": "confine-ours.ranking.auprc.macro",
+    }
+    out["base_keys"] = {
+        k: v.replace("own_population.", "confine-ours.")
+        for k, v in out["base_keys"].items()
+    }
+    diff = record["ours_minus_cnn"]
+    out["difference"] = {
+        metric: (diff[key]["difference"], tuple(diff[key]["ci95"]))
+        for metric, key in (("f1", "macro_f1"), ("auroc", "auroc"), ("auprc", "auprc"))
+    }
+    return out
+
+
 def draw_confinement(
     ax, conf: dict, si: dict, rows: Rows, panel: str, metric: str = "f1"
 ) -> None:
@@ -562,7 +601,9 @@ def draw_confinement(
     F1, REPORTED; for AUROC only its bound of 0.99 per class, one-vs-rest, no macro
     value, REPORTED as a bound; no AUPRC) and our reimplementation under its
     selection and split (Tokamak-SI, from `si`, see `confinement_si`; with its
-    baseline)."""
+    baseline); then, when `si` holds it (`si["ours"]`, see `confinement_ours`),
+    confine-ours on the same windows, one Tokamak-SI bar on its own tick, and the
+    paired difference in the CSV only."""
     name = "macro " + METRICS[metric]
     if metric == "f1":
         published = conf["paper"]
@@ -619,7 +660,51 @@ def draw_confinement(
         si["base_keys"][metric],
         "a constant predictor on the same windows",
     )
-    finish(ax, ["confine-cnn"], name, margin=2 * HALF + BAR)  # room for "≥ 0.99"
+    ours = si.get("ours")
+    if ours is None:
+        finish(ax, ["confine-cnn"], name, margin=2 * HALF + BAR)  # room for "≥ 0.99"
+        return
+    value = ours["macro"][metric]
+    ci = ours["ci95"][f"macro_{metric}"]
+    scored_bar(ax, 1, value, ci, SI, base=ours["base"][metric])
+    rows.add(
+        panel,
+        "confine-ours",
+        "Tokamak-SI",
+        name,
+        value,
+        ci,
+        SOURCES["confinement_ours"],
+        ours["keys"][metric],
+        note="confine-cnn's windows, labels and shot bootstrap; each shot "
+        "predicted by networks that never trained on its run day",
+    )
+    baseline_row(
+        rows,
+        panel,
+        "confine-ours",
+        "Tokamak-SI",
+        name,
+        ours["base"][metric],
+        SOURCES["confinement_ours"],
+        ours["base_keys"][metric],
+        "a constant predictor on the same windows",
+    )
+    diff, diff_ci = ours["difference"][metric]
+    rows.add(
+        panel,
+        "confine-ours minus confine-cnn",
+        "Tokamak-SI",
+        name,
+        diff,
+        diff_ci,
+        SOURCES["confinement_ours"],
+        f"ours_minus_cnn.{'macro_f1' if metric == 'f1' else metric}.difference",
+        note="paired shot bootstrap: the same shots drawn for both models",
+        drawn=False,
+    )
+    finish(ax, ["confine-cnn", "confine-ours"], name)
+    ax.set_xlim(-(2 * HALF + BAR), 1 + MARGIN)  # room for "≥ 0.99" on the left
 
 
 def smith_legacy(smith: dict) -> tuple[float, tuple]:
@@ -1014,7 +1099,7 @@ def saw_presence(saw: dict, model: str, view: str | None = None) -> tuple[dict, 
 
 
 def draw_sawtooth(ax, saw: dict, rows: Rows, panel: str, metric: str = "f1") -> None:
-    """The derivative baseline, `saw-hl3-full` and `saw-ours` on the Tokamak-SI labels
+    """`saw-hl3-full` and `saw-ours` on the Tokamak-SI labels
     (presence, out of fold, in the record's `saw_view`), each with the
     always-present baseline on its own bins; in the F1 figure `saw-hl3-full` has
     beside it the HL-3 paper's stated offline three-class window accuracy (REPORTED:
@@ -1523,7 +1608,9 @@ def read_records():
         load(SOURCES[k])
         for k in ("ae", "confinement", "elm", "elm_smith", "tm", "rwm", "saw")
     )
-    si = confinement_si(load(SOURCES["confinement_si"]))
+    row = load(SOURCES["confinement_si"])
+    si = confinement_si(row)
+    si["ours"] = confinement_ours(load(SOURCES["confinement_ours"]), row)
     det = detachment_check(load(SOURCES["detach_te"]), load(SOURCES["detach_source"]))
     return ae, conf, si, elm, smith, tm, rwm, saw, det
 

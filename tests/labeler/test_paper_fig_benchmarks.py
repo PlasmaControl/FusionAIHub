@@ -130,6 +130,82 @@ def test_the_published_values_are_committed_and_drawn_from_the_branch():
     assert abs(legacy[0]["value"] - 0.9375) < 1e-12
 
 
+# confine-ours on the protocol row's windows
+
+ROW_FULL = copy.deepcopy(ROW)
+ROW_FULL["own_population"] |= {"windows": 100, "shots": 7}
+OURS = {
+    "confine-cnn": {"macro_f1": 0.7, "windows": 100, "shots": 7},
+    "confine-ours": {
+        "macro_f1": 0.85,
+        "windows": 100,
+        "shots": 7,
+        "ci95": {"macro_f1": [0.8, 0.9]},
+        "classes": ROW["own_population"]["classes"],
+        "ranking": {
+            "auroc": {"macro": 0.96},
+            "auprc": {"macro": 0.88},
+            "ci95": {"auroc": [0.94, 0.97], "auprc": [0.84, 0.91]},
+        },
+    },
+    "ours_minus_cnn": {
+        "macro_f1": {"difference": 0.15, "ci95": [0.1, 0.2]},
+        "auroc": {"difference": 0.06, "ci95": [0.03, 0.09]},
+        "auprc": {"difference": 0.18, "ci95": [0.12, 0.24]},
+    },
+}
+
+
+def test_the_ours_adapter_reads_its_scores_baselines_and_paired_difference():
+    ours = fig.confinement_ours(OURS, ROW_FULL)
+    assert ours["macro"] == {"f1": 0.85, "auroc": 0.96, "auprc": 0.88}
+    assert ours["ci95"]["macro_auprc"] == [0.84, 0.91]
+    assert ours["keys"]["f1"] == "confine-ours.macro_f1"
+    # the same windows, so the same supports and baselines as confine-cnn's
+    assert ours["base"] == fig.confinement_si(ROW)["base"]
+    keys = ours["base_keys"]
+    assert keys["f1"].startswith("confine-ours.classes")
+    assert keys["auprc"].startswith("confine-ours.classes")
+    assert keys["auroc"] == "chance level by definition"
+    assert ours["difference"]["f1"] == (0.15, (0.1, 0.2))
+    assert ours["difference"]["auprc"] == (0.18, (0.12, 0.24))
+
+
+def test_an_ours_record_scored_on_other_windows_than_the_row_is_refused():
+    for change in ({"windows": 99}, {"shots": 6}, {"macro_f1": 0.71}):
+        record = copy.deepcopy(OURS)
+        record["confine-cnn"] |= change
+        with pytest.raises(ValueError, match="protocol row"):
+            fig.confinement_ours(record, ROW_FULL)
+
+
+def test_the_confinement_panel_draws_confine_ours_on_its_own_tick():
+    si = fig.confinement_si(ROW) | {"ours": fig.confinement_ours(OURS, ROW_FULL)}
+    for metric, value, diff in (
+        ("f1", 0.85, 0.15),
+        ("auroc", 0.96, 0.06),
+        ("auprc", 0.88, 0.18),
+    ):
+        bars, every, ax = drawn_rows(fig.draw_confinement, LEGACY, si, metric=metric)
+        assert [t.get_text() for t in ax.get_xticklabels()] == [
+            fig.two_line("confine-cnn"),
+            fig.two_line("confine-ours"),
+        ]
+        (mine,) = [r for r in bars if r["series"] == "confine-ours"]
+        assert mine["value"] == value and mine["group"] == "Tokamak-SI"
+        assert mine["source"].endswith(fig.SOURCES["confinement_ours"].name)
+        (bar,) = [p for p in ax.patches if p.get_x() < 1 < p.get_x() + p.get_width()]
+        assert bar.get_height() == pytest.approx(value)
+        assert to_hex(bar.get_facecolor()).upper() == fig.SI
+        # its dash across just its bar, and a row of the table for it
+        span = (bar.get_x(), bar.get_x() + bar.get_width())
+        assert [g[2] for g in baseline_segments(ax) if g[:2] == pytest.approx(span)]
+        assert [r for r in baseline_rows(every) if r["group"].startswith("confine-o")]
+        (d,) = [r for r in every if r["series"].startswith("confine-ours minus")]
+        assert d["value"] == diff and not d["drawn"]
+    assert fig.SOURCES["confinement_ours"].parent.name == "ours"
+
+
 def records():
     missing = [p.name for p in fig.SOURCES.values() if not p.is_file()]
     if missing:
@@ -467,7 +543,7 @@ def test_the_rwm_auprc_panel_has_no_legacy_bar():
 
 # sawtooth
 
-SAW_SOURCE = "outputs/labeler/sawtooth/fix5/benchmark.json"
+SAW_SOURCE = "outputs/labeler/sawtooth/fix6/benchmark.json"
 
 
 def saw_block(saw, model):
@@ -491,7 +567,8 @@ def test_the_sawtooth_panel_draws_out_of_fold_presence_f1_from_the_record():
         assert row["key"] == f"{where}.presence.f1"
         assert row["source"] == SAW_SOURCE
         assert "out of fold" in row["note"] and "inner-selection" in row["note"]
-    assert [m for m, _ in by if m.startswith("saw-")][:3] == list(fig.SAW_MODELS)
+    saw_series = dict.fromkeys(m for m, _ in by if m.startswith("saw-"))
+    assert list(saw_series) == list(fig.SAW_MODELS)
     assert "saw-always-present" not in {m for m, _ in by}  # a dash, not a bar
     assert {round(r["value"], 12) for r in drawn} <= bar_heights(ax)
 

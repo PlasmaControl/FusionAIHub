@@ -80,7 +80,7 @@ events:
 
   confinement:
     model: confine-ours
-    version: "2026_10_03"
+    version: "2026_10_14"
     task: detector
     output: L, H, QH or WPQH per 1 ms bin (category 1 high, 2 low, 3 qh, 4 wpqh)
     inputs:
@@ -105,19 +105,24 @@ events:
         rate_hz: 10000
         used_as: 1 ms mean / 3e6 W
     bin_ms: 1
-    n_shots: 401
-    headline: "macro F1 0.885 [0.855, 0.914] against the curated expert intervals, run days held out; not independent of them (same traces)"
+    n_shots: 142
+    headline: "macro F1 0.909 [0.794, 0.964] on confine-cnn's own protocol (its 142 test shots and 152,863 windows), against confine-cnn's 0.703 [0.588, 0.794]: paired +0.207 [+0.090, +0.314]; not independent of the curated intervals (same traces)"
     scores:
-      reference: curated intervals (Gill and Butt tables, merged), 5-fold cross-validation holding out whole run days; macro over L, H, QH, WPQH
-      interval: 95 % shot bootstrap, 1,000 replicates; F1 only
-      auroc: {value: 0.964, lo: null, hi: null}
-      auprc: {value: 0.913, lo: null, hi: null}
-      f1: {value: 0.885, lo: 0.855, hi: 0.914}
-      per_class_f1: {L: 0.895, H: 0.953, QH: 0.892, WPQH: 0.801}
+      reference: "confine-cnn's Table 3 protocol (ablation row full_cum_abcdrgef): its 142 test shots and windows pooled over five overlapping draws, the curated labels; each shot predicted by the 2026-10-14 networks (base3: 416 curated shots, 5 run-day folds, three seeds averaged) that never trained on its run day; macro over L, H, QH, WPQH"
+      interval: 95 % shot bootstrap, 1,000 replicates, seed 20261001; the difference paired (the same shots drawn for both)
+      auroc: {value: 0.987, lo: 0.964, hi: 0.997}
+      auprc: {value: 0.939, lo: 0.837, hi: 0.991}
+      f1: {value: 0.909, lo: 0.794, hi: 0.964}
+      f1_minus_confine_cnn: {value: 0.207, lo: 0.090, hi: 0.314}
+      per_class_f1: {L: 0.973, H: 0.981, QH: 0.961, WPQH: 0.722}
+      run_day_cv_f1_416_shots: {value: 0.910, lo: 0.882, hi: 0.936}
     caveats:
       - Experimental; reads the traces the experts used, so it is not independent of the curated intervals.
-      - Benchmark confine-cnn (BES, Gill et al. 2024 rebuilt): macro AUROC 0.889, AUPRC 0.713, F1 0.703 [0.587, 0.794] on 142 test shots.
-    source: docs/labeler/events/confinement/README.md; docs/labeler/confinement_ours.md
+      - "The roster labels (extend_confine_ours) are still the 2026-10-03 networks' (one seed per fold, 401 shots; run-day CV macro F1 0.885 [0.855, 0.914]); on the protocol's 139 shots with D-alpha they score 0.780, paired +0.079 [-0.043, +0.206] over confine-cnn. base3 has not been applied to the roster."
+      - "Model-to-model spread exceeds the shot bootstrap: single base3 seeds score 0.861 to 0.899 on the 139 shots; WPQH is 5,552 windows on 7 shots and drives the width."
+      - Three protocol shots with no D-alpha record (174601, 179216, 179314) are predicted by a D-alpha-free twin (one seed per fold).
+      - Benchmark confine-cnn (BES, Gill et al. 2024 rebuilt) on the same windows: macro AUROC 0.889 [0.810, 0.949], AUPRC 0.713 [0.615, 0.829], F1 0.703 [0.588, 0.794].
+    source: docs/labeler/confinement_ours.md; outputs/labeler/confinement/ours/protocol_base3.json; docs/labeler/events/confinement/README.md
 
   detachment:
     model: detach_vote

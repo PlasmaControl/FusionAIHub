@@ -141,8 +141,9 @@ class Corpus:
         self.length = int(max(self.n.max(), window))
         self.length += (-self.length) % STRIDE
         s = len(inputs)
+        channels = inputs[0].shape[0] if inputs else zerod.N_INPUT
         self.x = torch.zeros(
-            (s, zerod.N_INPUT, self.length), dtype=torch.float32, device=device
+            (s, channels, self.length), dtype=torch.float32, device=device
         )
         self.y = torch.full((s, self.length), -1, dtype=torch.int8, device=device)
         for i, (x, y) in enumerate(zip(inputs, labels, strict=True)):
@@ -225,7 +226,7 @@ def train(
     torch.manual_seed(cfg.seed)
     gen = torch.Generator(device=device)
     gen.manual_seed(cfg.seed)
-    model = UNet1d(dropout=cfg.dropout).to(device)
+    model = UNet1d(c_in=corpus.x.shape[1], dropout=cfg.dropout).to(device)
     opt = torch.optim.AdamW(
         model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay
     )
