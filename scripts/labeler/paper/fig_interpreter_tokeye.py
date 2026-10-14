@@ -196,6 +196,8 @@ NTM_DASHED_STYLE = (0, (3, 1.6))
 NTM_OUTLINE_MIN_PX = 100
 #: The ELM interval boxes, in coral so they read against the D-alpha trace.
 ELM_BOX_COLOUR = theme.CORAL
+#: The boxes' name, written once over the first box.
+ELM_BOX_TEXT = "ELMs"
 #: The probability TokEye's coherent channel is cut at in this figure, for the mask,
 #: its tags and the transients it leaves out (the network's operating point is
 #: `mode_tags.PROB_THRESHOLD`, 0.2; the figure raises it to show less
@@ -1965,6 +1967,21 @@ def draw(
                 )
                 da.add_patch(box)
                 elm_boxes.append(box)
+            # name the boxes once, over the first one's top-left corner (owner,
+            # 2026-10-14: say what the coral box is)
+            shown_elm = [a for a, b in elm_spans if a < t1 and b > t0]
+            if shown_elm:
+                da.annotate(
+                    ELM_BOX_TEXT,
+                    xy=(max(min(shown_elm), t0), ELM_BOX_TOP),
+                    xycoords=box_transform,
+                    xytext=(2, 1),
+                    textcoords="offset points",
+                    ha="left",
+                    va="bottom",
+                    fontsize=FONT,
+                    color=ELM_BOX_COLOUR,
+                )
             for a, b in uncertain_elm:
                 box = Rectangle(
                     (a, 0),

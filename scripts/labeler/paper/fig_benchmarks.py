@@ -18,9 +18,9 @@ segment across just that bar, computed on the bins or slices the bar is scored o
 (the F1 of calling everything positive, 2p / (1 + p) at prevalence p; AUROC 0.5;
 AUPRC = p), and `--table` has one row per bar, series "trivial baseline":
 
-- AE: `ae-ours` (the SELDnet model), `ae-rcn` and `ae-lstm` (chord
-  spectrogram, each chord scored) on the 19 held-out shots, 10 ms frames;
-  legacy = against the Heidbrink annotation (`results.annotated`), Tokamak-SI =
+- AE: `ae-rcn` and `ae-lstm` (chord spectrogram, each chord scored) and
+  `ae-ours` (the SELDnet model), in that order, on the 19 held-out shots, 10 ms
+  frames; legacy = against the Heidbrink annotation (`results.annotated`), Tokamak-SI =
   against the dense labels (`results.reviewed`).
 - Confinement: `confine-cnn`; legacy = the earlier paper's macro F1, the mean
   of its four per-class F1 (`paper` in `gill_2024_published.json`, its results
@@ -214,10 +214,10 @@ AUC_HEADINGS = {
     "auprc": "AUPRC: area under the precision–recall curve",
 }
 
-AE_MODELS = (  # (key in the evaluation, "<task>-<model>")
-    ("seldnet", "ae-ours"),
+AE_MODELS = (  # (key in the evaluation, "<task>-<model>"); ours last, as every panel's
     ("rcn_spec_each", "ae-rcn"),
     ("lstm_spec_each", "ae-lstm"),
+    ("seldnet", "ae-ours"),
 )
 AE_SETTINGS = (  # (setting, truth block, what it is scored against, colour)
     ("legacy", "annotated", "Heidbrink annotation", LEGACY),
@@ -495,7 +495,7 @@ def cell(c: dict) -> tuple[float, tuple | None]:
 
 
 def draw_ae(ax, ae: dict, rows: Rows, panel: str, metric: str = "f1") -> None:
-    """ae-ours, ae-rcn and ae-lstm, each against the legacy truth and the
+    """ae-rcn, ae-lstm and ae-ours, each against the legacy truth and the
     Tokamak-SI truth: a pair of bars per model, each with the baseline of the
     always-present predictor on its own truth (`results.<truth>.always`)."""
     for i, (key, name) in enumerate(AE_MODELS):
