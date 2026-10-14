@@ -141,7 +141,14 @@ def load_frozen_codecs(names: List[str], repo: Path = None, tmpl: str = None):
         rel = resolve_codec_path(n, repo, tmpl)
         if rel is None:
             continue
-        fam = FROZEN_CODEC_CKPTS[n][0]
+        # Family comes from FROZEN_MODALITIES (the declared layout, which carries `family`),
+        # NOT from FROZEN_CODEC_CKPTS -- that table only supplies FALLBACK checkpoint paths and
+        # has no entry for modalities added later. Indexing it here made `mirnov` impossible to
+        # include even when the codec_tmpl resolved its checkpoint (KeyError, job 5445250).
+        from .dynamics_config import FROZEN_MODALITIES
+        fam = next((m.family for m in FROZEN_MODALITIES if m.name == n), None)
+        if fam is None:
+            fam = FROZEN_CODEC_CKPTS[n][0]
         out[n] = (*(_load_codec(fam, repo / rel)), fam)
     return out
 
@@ -348,7 +355,7 @@ def precompute_frame_codes(shots: List[str], codecs: Dict, out_dir, data_dir,
 
 
 def split_shots(cache_dir, val_n: int, split_seed: int = 0, train_cap: int = 0,
-                test_n: int = 0, pin_val=(), pin_train=()):
+                test_n: int = 0, pin_val=(), pin_train=(), pin_both=()):
     """Deterministic (train, val, test) shot split over the cached pool.
 
     ``split_seed = 0`` keeps the legacy sorted split (val = the sorted tail — the probe-v1
@@ -361,6 +368,15 @@ def split_shots(cache_dir, val_n: int, split_seed: int = 0, train_cap: int = 0,
     (production fractions 0.90/0.05/0.05, user 2026-08-09). ``pin_val`` forces named shots
     into val whatever the shuffle says — the standing example shots (200729) must never be
     trained on. Pinned shots COUNT toward ``val_n`` so the val size stays as requested.
+
+    ``pin_both`` puts named shots in BOTH train and val. This is deliberate leakage, requested
+    repeatedly by the user: it makes train CE and val CE directly comparable ON THE SAME SHOTS,
+    so the generalisation gap can be read off identical data instead of inferred across two
+    different populations. Such shots are hoisted to the FRONT of train (so ``train_cap`` can
+    never drop them) AND kept in val. They do NOT count toward ``val_n``.
+    **Any val metric computed over a pool containing these shots is NOT fully held out** — that
+    is the point, but it must be stated whenever such a number is quoted.
+    ``pin_both`` overrides both ``pin_val`` and ``pin_train`` for a shot named in more than one.
     """
     shots = sorted(p.stem for p in Path(cache_dir).glob("*.pt"))
     if split_seed:
@@ -385,13 +401,36 @@ def split_shots(cache_dir, val_n: int, split_seed: int = 0, train_cap: int = 0,
         val = [s for s in val if s not in spt]
         test = [s for s in test if s not in spt]
         train = pt + [s for s in train if s not in spt]
+    # pin_both LAST (before the cap) so it wins over pin_val's "never trained" rule and over
+    # pin_train's "reclaim from val". Front of train => survives train_cap; also present in val.
+    pb = [s for s in dict.fromkeys(pin_both) if s in set(shots)]
+    if pb:
+        spb = set(pb)
+        train = pb + [s for s in train if s not in spb]
+        val = pb + [s for s in val if s not in spb]
+        test = [s for s in test if s not in spb]
     if train_cap:
         train = train[:train_cap]
     return train, val, test
 
 
+def _log_overlap(tr, va, log) -> None:
+    """Announce a deliberate train/val overlap in the RUN LOG, on EVERY leg.
+
+    A shot in both partitions is a legitimate request (fit it AND watch it, via --pin_both), but
+    its val CE is not held out. This used to fire only on the RELOAD path, so the leg that FROZE
+    the split -- the first leg, the one whose log a reader opens first -- said nothing.
+    """
+    ov = [q for q in tr if q in set(va)]
+    if ov:
+        log(f"[dynamics] NOTE {len(ov)} shot(s) in BOTH train and val: "
+            f"{','.join(ov[:8])}{'...' if len(ov) > 8 else ''} "
+            f"-- val CE on these is NOT held out")
+
+
 def resolve_split(cache_dir, out_dir, val_n: int, split_seed: int = 0, train_cap: int = 0,
-                  test_n: int = 0, pin_val=(), pin_train=(), write: bool = True, log=print):
+                  test_n: int = 0, pin_val=(), pin_train=(), pin_both=(),
+                write: bool = True, log=print):
     """The split actually used by a run — computed ONCE, then frozen to ``out_dir``.
 
     A seeded shuffle is only stable for a FIXED pool. The production cache is built by a
@@ -427,23 +466,21 @@ def resolve_split(cache_dir, out_dir, val_n: int, split_seed: int = 0, train_cap
         # split file, not in the loss history). A shot present in both partitions is a legitimate
         # request (fit it AND watch it), but its val CE is not held out, so the log has to say so
         # on every leg or a later reader will take the val aggregate at face value.
-        ov = [q for q in tr if q in set(va)]
-        if ov:
-            log(f"[dynamics] NOTE {len(ov)} shot(s) in BOTH train and val: "
-                f"{','.join(ov[:8])}{'...' if len(ov) > 8 else ''} "
-                f"-- val CE on these is NOT held out")
+        _log_overlap(tr, va, log)
         return tr, va, te
     # Freeze the UNCAPPED partitions: train_cap is a per-run knob (the N-shots probe arms),
     # not a property of the split. Baking it in would leave a resumed run permanently
     # restricted to the capped pool. Apply it after persisting, exactly as the reload path does.
     tr, va, te = split_shots(cache_dir, val_n, split_seed=split_seed, train_cap=0,
-                             test_n=test_n, pin_val=pin_val, pin_train=pin_train)
+                             test_n=test_n, pin_val=pin_val, pin_train=pin_train,
+                             pin_both=pin_both)
     if write:
         Path(out_dir).mkdir(parents=True, exist_ok=True)
         # PID-unique tmp so a stray concurrent writer can never clobber ours mid-flight.
         tmp = p.with_suffix(f".json.tmp.{_os.getpid()}")
         tmp.write_text(json.dumps({"split_seed": split_seed, "val_n": val_n, "test_n": test_n,
-                                   "pin_val": list(pin_val), "pin_train": list(pin_train), "cache_dir": str(cache_dir),
+                                   "pin_val": list(pin_val), "pin_train": list(pin_train),
+                                   "pin_both": list(pin_both), "cache_dir": str(cache_dir),
                                    "train": tr, "val": va, "test": te}, indent=1))
         tmp.replace(p)                       # atomic within a rank; only one rank does this
         log(f"[dynamics] split FROZEN -> {p} (train {len(tr)}/val {len(va)}/test {len(te)}, "
@@ -453,6 +490,7 @@ def resolve_split(cache_dir, out_dir, val_n: int, split_seed: int = 0, train_cap
             f"test {len(te)}); rank 0 persists it")
     if train_cap:
         tr = tr[:train_cap]
+    _log_overlap(tr, va, log)
     return tr, va, te
 
 
@@ -764,7 +802,8 @@ class FrameCodeDataset(torch.utils.data.Dataset):
         return v
 
     def __init__(self, cache_dir, shots, cfg: DynamicsConfig, presence=None, stride: int = 1,
-                 windows_per_shot: int = 0, window_sample: str = "random"):
+                 windows_per_shot: int = 0, window_sample: str = "random",
+                 live_end=None, t0_start: float = 1.0, frame_s: float = 0.05):
         self.cfg = cfg
         self.win = cfg.max_frames
         # Window STRIDE. At stride 1 consecutive windows share win-1 frames (99% at win=100), so
@@ -787,8 +826,31 @@ class FrameCodeDataset(torch.utils.data.Dataset):
         #            so validation scores the same region -- training on the deployment window
         #            while validating on all 140 offsets scores a task never trained.
         # 'random' = n offsets redrawn from all of them each epoch.
+        # 'live'   = n offsets redrawn each epoch from the starts whose window is at least HALF
+        #            inside the live plasma (st + win/2 <= n_live), plus the deployment starts
+        #            0..n-1. A shot with no measured t_end keeps the deployment starts only, so
+        #            dead post-shot padding (median discharge ends at 5.47 s of an 11.9 s cache)
+        #            is never drawn. Same COUNT per epoch as 'first' => same cost per epoch, but
+        #            many more distinct dynamics phases. TRAIN-ONLY: validation is forced to
+        #            'first' (deployment protocol) when this is selected, see train().
         self.window_sample = str(window_sample).lower()
+        self._live_starts = []                              # per shot: pool for 'live'
         self.shots = []
+        # Shot IDs parallel to self.shots. The dataset otherwise keeps only the loaded dicts, so
+        # nothing downstream can say WHICH shot a window came from -- needed by any analysis that
+        # joins windows to per-shot facts (e.g. plasma t_end in analysis/live_frame_bias.py).
+        # Appended in lockstep with self.shots, AFTER the same skip conditions.
+        self.shot_ids = []
+        # POST-SHOT MASKING. live_end maps shot -> plasma end time (s). The cache is a fixed
+        # 219 frames from the ACQUISITION grid (t 1.00-11.90 s) while the median discharge ends
+        # at 5.47 s, so a large minority of frames are dead time that is cheap to predict and
+        # inflates every CE. n_live[i] = number of LEADING live frames for shot i; frames at or
+        # beyond it are zero-weighted in the loss.
+        # A shot MISSING from live_end is treated as FULLY LIVE -- never mask what was not
+        # measured (only 195 of 438 val shots had two agreeing diagnostics).
+        self.live_end = dict(live_end or {})
+        self.t0_start, self.frame_s = float(t0_start), float(frame_s)
+        self.n_live = []
         self.index = []                                     # (shot_i, start_frame)
         self._starts = []                                   # per shot: EVERY legal start offset
         self.presence = []                                  # per shot: (n_modalities,) float mask
@@ -818,6 +880,15 @@ class FrameCodeDataset(torch.utils.data.Dataset):
                 g = torch.load(ag, map_location="cpu", weights_only=False)["actuators_global"]
                 d["actuators"] = g[:, :w].to(d["actuators"].dtype)
             self.shots.append(d)
+            self.shot_ids.append(str(s))
+            _te = self.live_end.get(str(s))
+            # +1e-9 before the floor: (1.20 - 1.00)/0.05 evaluates to 3.9999999999999996 in
+            # binary floating point, so a frame landing exactly on t_end would be dropped.
+            # Caught by test_live_end_masks_post_shot_frames.
+            self.n_live.append(int(d["n_frames"]) if _te is None else
+                               int(max(0, min(int(d["n_frames"]),
+                                              math.floor((float(_te) - self.t0_start)
+                                                         / self.frame_s + 1e-9) + 1))))
             # 1.0 = this diagnostic recorded in this shot, 0.0 = absent (null codeword).
             # No presence map => everything present, i.e. the pre-masking behaviour.
             pr = (presence or {}).get(str(s), {})
@@ -826,6 +897,10 @@ class FrameCodeDataset(torch.utils.data.Dataset):
             si = len(self.shots) - 1
             starts = list(range(0, d["n_frames"] - self.win + 1, self.stride))
             self._starts.append(starts)
+            _first = starts[: max(self.windows_per_shot, 1)]
+            _lv = ([st for st in starts if st + self.win / 2.0 <= self.n_live[si]]
+                   if _te is not None else [])
+            self._live_starts.append(sorted(set(_lv) | set(_first)))
             if not self.windows_per_shot:
                 for st in starts:
                     self.index.append((si, st))
@@ -861,7 +936,8 @@ class FrameCodeDataset(torch.utils.data.Dataset):
         import random
         g = random.Random(0x16117E * 1000003 + int(epoch))
         idx = []
-        for si, starts in enumerate(self._starts):
+        pools = self._live_starts if self.window_sample == "live" else self._starts
+        for si, starts in enumerate(pools):
             k = min(self.windows_per_shot, len(starts))
             idx.extend((si, st) for st in sorted(g.sample(starts, k)))
         self.index = idx
@@ -874,14 +950,19 @@ class FrameCodeDataset(torch.utils.data.Dataset):
         d = self.shots[si]
         codes = {m.name: d["codes"][m.name][st: st + self.win].long() for m in self.cfg.modalities}
         act = d["actuators"][st: st + self.win].float()
-        return codes, act, self.presence[si]
+        # (win,) 1.0 while the plasma is live. Absolute frame index st+k is live iff
+        # st+k < n_live[si]; with no measured t_end n_live == n_frames, so this is all-ones
+        # and the loss is bit-identical to the unmasked path.
+        live = (torch.arange(st, st + self.win) < self.n_live[si]).float()
+        return codes, act, self.presence[si], live
 
 
 def _collate_frames(batch):
     codes = {n: torch.stack([b[0][n] for b in batch], 0) for n in batch[0][0]}
     act = torch.stack([b[1] for b in batch], 0)
     present = torch.stack([b[2] for b in batch], 0)          # (B, n_modalities)
-    return codes, act, present
+    live = torch.stack([b[3] for b in batch], 0)             # (B, win)
+    return codes, act, present, live
 
 
 def smoke(n_shots: int = 2, n_steps: int = 30, depth: int = 4, d_model: int = 128, seed: int = 0):
@@ -973,9 +1054,12 @@ def _render_loss_curve(hist_path, png_path) -> None:
     ax.plot(tr_s, sm, color="C0", lw=1.6, label="train (EMA)")
     if va_s:
         ax.plot(va_s, va_v, "o-", color="C1", ms=3, lw=1.2, label="val masked CE")
-    ax.set_yscale("log")
+    # Log scale only when every plotted value is positive: the latent head's Gaussian NLL is
+    # a density and goes negative (-3.7 is normal), which made this figure blank for lat600.
+    if min(tr_v) > 0 and (not va_v or min(va_v) > 0):
+        ax.set_yscale("log")
     ax.set_xlabel("step")
-    ax.set_ylabel("masked-token CE")
+    ax.set_ylabel("masked-token CE  (latent head: Gaussian NLL, may be < 0)")
     ax.grid(alpha=0.3, which="both")
     ax.legend(fontsize=9)
     fig.tight_layout()
@@ -1006,6 +1090,59 @@ def cache_modality_specs(cache_dir):
     return tuple(specs)
 
 
+def resolve_mod_weights(spec: str, names: List[str]) -> Dict[str, float]:
+    """Explicit per-modality loss weights from a JSON file path or an inline JSON object.
+
+    WHY THIS EXISTS. Capacity is the binding constraint on this model (881M params holds
+    220-440 MB at 2-4 bits/param; the full v4 cache is ~0.8-1.7 GB of token entropy), so WHERE
+    the capacity goes decides whether fitting deeper buys transferable structure or memorised
+    realization noise. ``--mod_weight_pow`` weights by token COUNT, which is only a proxy;
+    measured predictability is the thing itself. Per ``analysis/forecastability_cache.py``
+    (2026-09-08, v4, 40 held-out shots) the per-flip bigram return spans 18x -- cer_ti 2.15 nats
+    vs mirnov 0.12 -- while an equal-weight CE spends identical capacity on both.
+
+    PREFER THE PATH FORM. Inline JSON contains COMMAS and ``sbatch --export`` splits on commas,
+    so an inline value passed that way is silently truncated -- the same failure mode that
+    killed 7 jobs via act_cross_attn/lag_embed_k.
+
+    Keys starting with ``_`` are METADATA (provenance), not modalities. Modalities absent from
+    the object default to 1.0. UNKNOWN keys are a hard error: a typo'd modality name would
+    otherwise weight nothing at all and pass silently. Result is normalised to mean 1 so the
+    loss scale, and therefore LR behaviour, stays comparable to an equal-weighted run.
+    """
+    import json as _json_w
+    raw_txt = str(spec).strip()
+    if not raw_txt:
+        raise ValueError("resolve_mod_weights: empty spec")
+    # Anything that LOOKS like JSON is parsed as JSON, so a malformed inline value reports a
+    # JSON error instead of "no such file [1, 2]" -- a path lookup is the wrong diagnosis and
+    # sends you hunting for a missing file that was never meant to exist.
+    if raw_txt[0] not in "{[":
+        p_w = Path(raw_txt)
+        if not p_w.exists():
+            raise FileNotFoundError(f"--mod_weights_json: no such file {p_w}")
+        raw_txt = p_w.read_text()
+    given = _json_w.loads(raw_txt)
+    if not isinstance(given, dict) or not given:
+        raise ValueError("--mod_weights_json must be a non-empty JSON object {modality: weight}")
+    given = {k: v for k, v in given.items() if not str(k).startswith("_")}
+    if not given:
+        raise ValueError("--mod_weights_json: object contains only metadata keys")
+    unknown = sorted(set(given) - set(names))
+    if unknown:
+        raise ValueError(f"--mod_weights_json has unknown modalities {unknown}; "
+                         f"this cache/config has {names}")
+    bad = {k: v for k, v in given.items()
+           if isinstance(v, bool) or not isinstance(v, (int, float)) or v < 0}
+    if bad:
+        raise ValueError(f"--mod_weights_json weights must be non-negative numbers; got {bad}")
+    raw = {n: float(given.get(n, 1.0)) for n in names}
+    if sum(raw.values()) <= 0:
+        raise ValueError("--mod_weights_json: weights sum to zero")
+    scale = len(names) / sum(raw.values())
+    return {n: raw[n] * scale for n in names}
+
+
 def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: float = 3e-4,
           depth: int = 24, d_model: int = 1024, val_frac: float = 0.05, num_workers: int = 4,
           ckpt_every: int = 1000, ss_final_frac: float = None, ss_ramp_steps: int = None,
@@ -1015,14 +1152,16 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
           k0_seed: int = None, n_predict: int = None, train_cap: int = 0, val_n: int = 0,
           split_seed: int = 0, warmup_steps: int = 0, min_lr_ratio: float = 0.01,
           beta2: float = 0.999, weight_decay: float = 0.01, patience: int = 0,
-          test_n: int = 0, test_frac: float = 0.0, pin_val=(), pin_train=(),
+          test_n: int = 0, test_frac: float = 0.0, pin_val=(), pin_train=(), pin_both=(),
           mask_absent: bool = False, presence_path: str = None,
           accum_steps: int = 1, val_windows: int = 32, dropout: float = 0.0,
-          best_metric: str = "masked", lag_embed_k: int = None,
+          best_metric: str = "masked", lag_embed_k: int = None, latent_head: int = None,
           balance_presence: bool = False, window_stride: int = 1,
           windows_per_shot: int = 0, window_sample: str = "random",
           val_window_sample: str = "",
-          mod_weight_pow: float = 0.0, lr_decay_from: int = 0,
+          mod_weight_pow: float = 0.0, mod_weights_json: str = "",
+          live_end_json: str = "",
+          lr_decay_from: int = 0,
           wd_exclude_norms: bool = False,
           label_smoothing: float = 0.0, val_windows_per_shot: int = 0,
           grad_clip: float = 0.0, log=print):
@@ -1091,6 +1230,12 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
         # is the single record of the run and so a small-shape probe can turn it off deliberately
         # instead of by editing a dataclass.
         cfg.grad_checkpointing = bool(int(grad_ckpt))
+    if latent_head is not None:
+        cfg.latent_head = bool(int(latent_head))
+        if cfg.latent_head and ddp.is_main:
+            log("[dynamics] LATENT HEAD ON: Gaussian regression of the FSQ grid coordinate "
+                f"(levels {tuple(cfg.fsq_levels)}) replaces the 1000-way classifier. Train/val "
+                "CE are Gaussian NLL in coordinate space -- NOT comparable to token-CE arms.")
     if lag_embed_k is not None:
         # Changes the PARAMETER SET (adds per-modality lag tables), so a run cannot switch this
         # mid-chain: a checkpoint saved with k=0 has no lag_embed keys to load into k=3.
@@ -1103,11 +1248,37 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
     # it mid-chain. See split_shots / resolve_split.
     train_shots, val_shots, test_shots = resolve_split(
         cache_dir, out_dir, n_val, split_seed=split_seed, train_cap=train_cap,
-        test_n=n_test, pin_val=pin_val, pin_train=pin_train, write=ddp.is_main,
+        test_n=n_test, pin_val=pin_val, pin_train=pin_train, pin_both=pin_both,
+        write=ddp.is_main,
         log=(log if ddp.is_main else (lambda *a, **k: None)))
     # Presence mask (absent diagnostics excluded from the CE; see build_presence /
     # MaskGITDynamics.training_loss). Built once next to the cache and reused; mask_absent=0
     # keeps the historical behaviour so old runs stay reproducible.
+    # POST-SHOT FRAME MASKING (opt-in). live_end_json maps shot -> plasma end time in seconds
+    # (analysis/shot_duration.py --out). The cache holds a fixed 219 frames/shot from the
+    # ACQUISITION grid (t 1.00-11.90 s) while the median discharge ends at 5.47 s, so a large
+    # minority of scored frames are dead time. Measured 2026-09-10 with
+    # analysis/live_frame_bias.py: dead windows are markedly cheaper, and including them makes
+    # the forecast metric OPTIMISTIC BY ~0.24 nats (monotone across liveness bins, corr +0.235).
+    # Default OFF so no existing arm changes silently; a shot absent from the table is treated
+    # as fully live, so partial coverage is safe.
+    live_end, use_live = None, False
+    if str(live_end_json).strip():
+        import json as _json_l
+        _lp = Path(str(live_end_json).strip())
+        if not _lp.exists():
+            raise FileNotFoundError(f"--live_end_json: no such file {_lp}")
+        live_end = {str(k): float(v) for k, v in _json_l.load(open(_lp)).items()}
+        if not live_end:
+            raise ValueError(f"--live_end_json: {_lp} is empty")
+        use_live = True
+    # t0_start MUST come from the cache manifest: the frame->time map is t0 + 0.05*f, and a
+    # wrong t0 would mask the wrong frames. v2 used 0.0, v4 uses 1.0.
+    _t0 = 1.0
+    _man = Path(cache_dir) / "_codec_manifest.json"
+    if _man.exists():
+        import json as _json_m
+        _t0 = float(_json_m.load(open(_man)).get("t0_start", 1.0))
     presence, use_presence = None, bool(mask_absent)
     if use_presence:
         import json as _json
@@ -1160,9 +1331,27 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
         if ddp.is_main:
             log("[dynamics] presence-balanced weights: "
                 + "  ".join(f"{n} {100*fr[n]:.1f}%->x{mod_weights[n]:.2f}" for n in names))
+    # Explicit weights come LAST so they OVERRIDE --mod_weight_pow and --balance_presence
+    # rather than being silently overridden by them. See resolve_mod_weights for the rationale.
+    if str(mod_weights_json).strip():
+        _names = [m.name for m in cfg.modalities]
+        mod_weights = resolve_mod_weights(mod_weights_json, _names)
+        if ddp.is_main:
+            log("[dynamics] EXPLICIT mod_weights (normalised to mean 1): "
+                + "  ".join(f"{n} x{mod_weights[n]:.3f}" for n in _names))
+            log("[dynamics]   NOTE val/gen CE are scored EQUAL-WEIGHT regardless, so they stay "
+                "comparable to every historical arm; judge this from the per-modality readout.")
+
     ds = FrameCodeDataset(cache_dir, train_shots, cfg, presence=presence,
                           stride=window_stride, windows_per_shot=windows_per_shot,
-                          window_sample=window_sample)
+                          window_sample=window_sample, live_end=live_end, t0_start=_t0)
+    if use_live and ddp.is_main:
+        _cov = sum(1 for sid in ds.shot_ids if sid in live_end)
+        _frac = [n / max(d["n_frames"], 1) for n, d in zip(ds.n_live, ds.shots)]
+        log(f"[dynamics] POST-SHOT MASKING ON (t0_start={_t0}): {_cov}/{len(ds.shot_ids)} train "
+            f"shots have a measured t_end; mean live fraction "
+            f"{sum(_frac)/max(len(_frac),1):.3f}. **THIS REDEFINES val/gen CE** -- numbers are "
+            f"NOT comparable to arms trained without it.")
     if ddp.is_main:
         log(f"[dynamics] cache={cache_dir} shots={n_all} split_seed={split_seed} "
             f"(train {len(train_shots)}/val {len(val_shots)}/test {len(test_shots)} HELD OUT) "
@@ -1176,6 +1365,15 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
                 log(f"[dynamics] window offsets FIRST {windows_per_shot} ONLY (deployment region): "
                     f"starts 0..{windows_per_shot - 1} = frames "
                     f"0..{windows_per_shot - 1 + cfg.max_frames - 1}; "
+                    f"val_windows_per_shot={val_windows_per_shot}")
+            elif window_sample == "live":
+                _ps = [len(p) for p in ds._live_starts]
+                _nte = sum(1 for p in ds._live_starts if len(p) > windows_per_shot)
+                log(f"[dynamics] window offsets LIVE-RESAMPLED EACH EPOCH: {windows_per_shot}/shot "
+                    f"drawn from the live-plasma starts (>=50% of the window before t_end) + starts "
+                    f"0..{windows_per_shot - 1}; pool mean {sum(_ps)/max(len(_ps),1):.1f} "
+                    f"(min {min(_ps) if _ps else 0}, max {max(_ps) if _ps else 0}); {_nte}/{len(_ps)} "
+                    f"shots have a pool wider than the deployment region; "
                     f"val_windows_per_shot={val_windows_per_shot}")
             else:
                 log(f"[dynamics] window offsets RESAMPLED EACH EPOCH: {windows_per_shot}/shot drawn "
@@ -1346,9 +1544,13 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
     # random trains on all 140 offsets while scoring only the deployment region.
     # Defaults to window_sample, so every existing arm is unaffected.
     _vws = str(val_window_sample or window_sample).lower()
+    if _vws == "live":
+        # 'live' is a TRAINING augmentation. Validation must stay a fixed deployment protocol.
+        _vws = "first"
+        log("[dynamics] window_sample=live is train-only; validation forced to 'first'")
     val_ds = FrameCodeDataset(cache_dir, val_shots, cfg, presence=presence,
                               windows_per_shot=val_windows_per_shot,
-                              window_sample=_vws)
+                              window_sample=_vws, live_end=live_end, t0_start=_t0)
     val_batches = []
     if len(val_ds):
         # VAL SIZE IS INDEPENDENT OF BATCH SIZE. It used to be 4 * batch_size, which tied the
@@ -1371,13 +1573,27 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
             f"val: {sum(b[1].shape[0] for b in val_batches)} fixed windows")
 
     @torch.no_grad()
-    def _val_loss() -> float:
+    def _val_loss() -> Tuple[float, Dict[str, float]]:
+        """Equal-weight masked CE plus its PER-MODALITY breakdown.
+
+        SCORED WITH ``mod_weights=None`` ON PURPOSE. This used to pass the TRAINING weights
+        into the metric, so any arm with `--mod_weight_pow`/`--mod_weights_json`/
+        `--balance_presence` reported val and gen CE on a reweighted quantity and was ranked
+        against arms measured on a different one -- in both directions. That is why the
+        `mod_weight_pow 0.5` arm read as "no gain": it was compared on a metric it no longer
+        optimised. Equal weighting keeps every arm comparable to every historical number
+        REGARDLESS of how it was trained, and the per-modality dict below makes the weighted
+        view exactly reconstructible offline (sum w_i*ce_i / sum w_i).
+        Arms that never set weights (`mod_weights is None`) are numerically UNCHANGED.
+        """
         if not val_batches:
-            return float("nan")
+            return float("nan"), {}
         model.eval()
         g = torch.Generator(device=device)
         g.manual_seed(1234)                     # same masks every eval + every rank (lockstep)
         tot = 0.0
+        _pm_sum: Dict[str, float] = {}
+        _pm_cnt: Dict[str, int] = {}
         # no_grad: model.eval() does NOT disable autograd, so this used to build a full graph per
         # val forward and hold it until the float() cast. That headroom was what let a SECOND val
         # pass (_gen_val_loss) OOM at 62.5/64 GiB.
@@ -1389,20 +1605,31 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
         with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.bfloat16,
                                              enabled=(device.type == "cuda"),
                                              cache_enabled=False):
-            for cv, av, pv in val_batches:
+            for cv, av, pv, lv in val_batches:
                 cd = {k: v.to(device) for k, v in cv.items()}
                 # gen_mask_p=0.0 PINS the validation masking to the historical cosine prior on
                 # every frame. Without it an arm trained with generation mode would be scored on
                 # a different (harder) distribution than every earlier run, and val CE — the
                 # metric arms are ranked by — would stop being comparable.
+                pm: Dict[str, float] = {}
                 tot += float(model.training_loss(cd, av.to(device), generator=g, ss_frac=0.0,
                                                  present=pv.to(device) if use_presence else None,
-                                                 mod_weights=mod_weights, gen_mask_p=0.0))
+                                                 live=lv.to(device) if use_live else None,
+                                                 mod_weights=None, per_modality=pm,
+                                                 gen_mask_p=0.0))
+                for _n, _v in pm.items():
+                    _pm_sum[_n] = _pm_sum.get(_n, 0.0) + _v
+                    _pm_cnt[_n] = _pm_cnt.get(_n, 0) + 1
         model.train()
-        return tot / len(val_batches)
+        return (tot / len(val_batches),
+                {n: _pm_sum[n] / _pm_cnt[n] for n in sorted(_pm_sum)})
 
-    def _gen_val_loss() -> float:
+    def _gen_val_loss() -> Tuple[float, Dict[str, float]]:
         """CE at the condition a rollout actually performs: whole frame unknown, history real.
+
+        Equal-weighted and broken out per modality for the same reason as `_val_loss` -- see
+        its docstring for why passing the training weights into the metric was a measurement
+        bug rather than a choice.
 
         `_val_loss` scores the cosine prior, i.e. mostly INFILLING with part of the target frame
         already visible. A 4 s prediction never gets that — it builds every frame from nothing.
@@ -1413,11 +1640,13 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
         be judged, and selected, on prediction.
         """
         if not val_batches:
-            return float("nan")
+            return float("nan"), {}
         model.eval()
         g = torch.Generator(device=device)
         g.manual_seed(1234)
         tot = 0.0
+        _pm_sum: Dict[str, float] = {}
+        _pm_cnt: Dict[str, int] = {}
         # See _val_loss for why no_grad + cache_enabled=False are both required. This pass is the
         # more memory-hungry of the two: mask_ratio=1.0 masks EVERY token of every frame from
         # k0_seed on (~102k positions vs ~82k under the cosine prior), so it is the one that
@@ -1425,15 +1654,21 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
         with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.bfloat16,
                                              enabled=(device.type == "cuda"),
                                              cache_enabled=False):
-            for cv, av, pv in val_batches:
+            for cv, av, pv, lv in val_batches:
                 cd = {k: v.to(device) for k, v in cv.items()}
+                pm: Dict[str, float] = {}
                 tot += float(model.training_loss(cd, av.to(device), generator=g, ss_frac=0.0,
                                                  present=pv.to(device) if use_presence else None,
-                                                 mod_weights=mod_weights,
+                                                 live=lv.to(device) if use_live else None,
+                                                 mod_weights=None, per_modality=pm,
                                                  mask_ratio=1.0, history_frames=cfg.k0_seed,
                                                  gen_mask_p=0.0))
+                for _n, _v in pm.items():
+                    _pm_sum[_n] = _pm_sum.get(_n, 0.0) + _v
+                    _pm_cnt[_n] = _pm_cnt.get(_n, 0) + 1
         model.train()
-        return tot / len(val_batches)
+        return (tot / len(val_batches),
+                {n: _pm_sum[n] / _pm_cnt[n] for n in sorted(_pm_sum)})
 
     best_metric = str(best_metric).lower()
     if best_metric not in ("masked", "gen"):
@@ -1463,7 +1698,7 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
     step = start_step
     # Accumulation state. `step` counts OPTIMIZER steps, never micro-batches, so the LR
     # schedule, ckpt_every, val cadence and resume are all unaffected by accum_steps.
-    micro, accum_loss = 0, 0.0
+    micro, accum_loss, accum_eqw = 0, 0.0, []
     # PER-PHASE STEP TIMING. Always on, deliberately NOT behind a flag: the queued chain legs
     # carry frozen --export lines, so a new env knob would not reach them and the measurement
     # would not start until every arm was resubmitted.
@@ -1488,7 +1723,7 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
         # Re-draw the per-shot window offsets for this pass. MUST come before the `for ... in
         # loader` below, which is where the worker processes fork and snapshot the dataset.
         ds.set_epoch(step)
-        for codes, act, present in loader:
+        for codes, act, present, live in loader:
             _prof = ((step + 1) % 50 == 0 or step < 5)
             _t0 = time.perf_counter()
             if _prof:
@@ -1496,6 +1731,7 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
             codes = {k: v.to(device) for k, v in codes.items()}
             act = act.to(device)
             present = present.to(device) if use_presence else None
+            live = live.to(device) if use_live else None
             if _prof:
                 _psync()
                 _t1 = time.perf_counter()
@@ -1506,10 +1742,22 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
             ssf = model.ss_fraction(step)               # 0 for the whole run if ss_final_frac=0
             # bf16 autocast: ~2-3x faster + ~2x less activation memory on MI250X; bf16 has fp32
             # dynamic range so no GradScaler needed (unlike fp16). Frozen codes are int (unaffected).
+            # EQUAL-WEIGHT TRAIN CE. `loss` is the WEIGHTED mean whenever mod_weights is set,
+            # so it is NOT comparable across arms with different weights -- down-weighting a
+            # high-CE modality lowers it mechanically without the model fitting any better.
+            # The train/val GAP is the quantity being judged, and val is always equal-weight,
+            # so a weighted train would corrupt it. per_modality terms are UNWEIGHTED, so their
+            # plain mean is the comparable train figure. Collected ONLY on logged steps:
+            # float(term.detach()) forces a device sync per modality.
+            _tr_pm = {} if (step + 1) % 50 == 0 else None
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                 loss = model.training_loss(codes, act, generator=None, ss_frac=ssf,
                                            label_smoothing=label_smoothing,
-                                           present=present, mod_weights=mod_weights)
+                                           present=present, live=live,
+                                           mod_weights=mod_weights,
+                                           per_modality=_tr_pm)
+            if _tr_pm:
+                accum_eqw.append(sum(_tr_pm.values()) / len(_tr_pm))
             # GRADIENT ACCUMULATION: effective batch = batch_size x world_size x accum_steps.
             # Scaling by 1/accum makes the summed grads equal the mean over the whole effective
             # batch, so the update is IDENTICAL to running the large batch in one go. Memory
@@ -1565,10 +1813,12 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
                 _ph["opt"] += time.perf_counter() - _t0
             step += 1
             # validation runs on ALL ranks (identical fixed batches -> ranks stay in lockstep)
-            vl = _val_loss() if step % ckpt_every == 0 else None
-            gl = _gen_val_loss() if vl is not None else None
+            vl, vpm = _val_loss() if step % ckpt_every == 0 else (None, None)
+            gl, gpm = _gen_val_loss() if vl is not None else (None, None)
             lv = accum_loss / max(1, accum_steps)       # mean over the accumulation group
+            lv_eqw = (sum(accum_eqw) / len(accum_eqw)) if accum_eqw else None
             accum_loss = 0.0
+            accum_eqw = []
             if ddp.is_main and step % 50 == 0:
                 # Memory telemetry: the RESERVED-minus-ALLOCATED gap is the fragmentation that
                 # killed 5233441 (40.85 alloc / 19.26 reserved-unallocated of 64 GiB). With
@@ -1590,7 +1840,8 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
                 log(f"[dynamics] step {step}/{steps}{gn} loss={lv:.4f} "
                     f"ss={ssf:.3f} lr={sched.get_last_lr()[0]:.2e}{mem}{tm}")
                 with open(hist_path, "a") as f:
-                    f.write(json.dumps({"step": step, "loss": lv, "ss": ssf,
+                    f.write(json.dumps({"step": step, "loss": lv, "loss_eqw": lv_eqw,
+                                        "ss": ssf,
                                         "grad_norm": gnorm,
                                         "t_total": round(_tt, 3),
                                         "t_data": round(_ph["data"], 3),
@@ -1602,9 +1853,19 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
                                         "lr": sched.get_last_lr()[0]}) + "\n")
             if ddp.is_main and vl is not None:
                 log(f"[dynamics] step {step} VAL masked_ce={vl:.4f} gen_ce={gl:.4f} "
-                    f"(gap {gl - vl:+.4f}; selecting on {best_metric})")
+                    f"(gap {gl - vl:+.4f}; selecting on {best_metric}; EQUAL-WEIGHT metric)")
+                # PER-MODALITY READOUT. The equal-weight mean hides that the 15 modalities sit
+                # 1.5-4.5 nats apart at the marginal, so a reweighting arm CANNOT be judged from
+                # the aggregate -- it moves the mean by construction. Sorted worst-first: that
+                # ordering is what says whether down-weighting a modality bought structure
+                # elsewhere or merely traded its accuracy away.
+                if gpm:
+                    log("[dynamics]   per-modality gen_ce: "
+                        + "  ".join(f"{n} {gpm[n]:.3f}"
+                                    for n in sorted(gpm, key=lambda k: -gpm[k])))
                 with open(hist_path, "a") as f:
-                    f.write(json.dumps({"step": step, "val_loss": vl, "gen_loss": gl}) + "\n")
+                    f.write(json.dumps({"step": step, "val_loss": vl, "gen_loss": gl,
+                                        "val_permod": vpm, "gen_permod": gpm}) + "\n")
                 _render_loss_curve(hist_path, Path(out_dir) / "loss_curve.png")
             for _k in _ph:
                 _ph[_k] = 0.0
@@ -1619,6 +1880,12 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
                            "cfg_ss_final_frac": float(cfg.ss_ramp_final_frac),
                            "cfg_ss_ramp_steps": int(cfg.ss_ramp_steps),
                            "cfg_act_cross_attn": bool(getattr(cfg, "act_cross_attn", False)),
+                           "cfg_latent_head": bool(getattr(cfg, "latent_head", False)),
+                           # Actuator normalisation the model was TRAINED on: "" = per-shot
+                           # z-score (whole-shot stats, the future leak), else the side-cache dir
+                           # of dataset-wide stats. eval_dynamics refuses a mismatch.
+                           "cfg_act_global": _ACT_GLOBAL_DIR,
+                           "cfg_fsq_levels": [int(x) for x in getattr(cfg, "fsq_levels", (8, 5, 5, 5))],
                            "cfg_grad_checkpointing": bool(getattr(cfg, "grad_checkpointing", False)),
             "cfg_dropout": float(cfg.dropout),
                            "cfg_depth": depth, "cfg_d_model": d_model,
@@ -1709,11 +1976,22 @@ def build_arg_parser():
     p.add_argument("--mod_weight_pow", type=float, default=0.0,
                    help="per-modality loss weight ~ n_tok**a. 0 = equal weighting "
                         "(default, unchanged); 1 = token-proportional.")
+    p.add_argument("--live_end_json", type=str, default="",
+                   help="PATH to {shot: plasma_end_seconds} JSON (analysis/shot_duration.py "
+                        "--out). Zero-weights post-shot frames in BOTH train and val loss. "
+                        "Shots absent from the table count as fully live. REDEFINES val/gen CE "
+                        "-- results are not comparable to arms without it. Default off.")
+    p.add_argument("--mod_weights_json", type=str, default="",
+                   help="explicit per-modality loss weights: a PATH to a JSON file, or inline "
+                        "JSON {modality: weight}. Overrides --mod_weight_pow and "
+                        "--balance_presence. Normalised to mean 1. Unknown modality names are a "
+                        "hard error. Prefer the path form: inline JSON contains commas and "
+                        "`sbatch --export` splits on commas.")
     p.add_argument("--val_window_sample", type=str, default="", choices=["", "random", "first"],
                    help="window sampling for VALIDATION only; '' = same as --window_sample. Set "
                         "'first' with --window_sample random to train on all offsets while "
                         "scoring the deployment region (starts 0..val_windows_per_shot-1).")
-    p.add_argument("--window_sample", type=str, default="random", choices=["random", "first"],
+    p.add_argument("--window_sample", type=str, default="random", choices=["random", "first", "live"],
                    help="which windows_per_shot windows each shot contributes: 'first' = starts "
                         "0..n-1 (the deployment region, pair with --val_windows_per_shot n), "
                         "'random' = n redrawn from all offsets each epoch.")
@@ -1759,6 +2037,11 @@ def build_arg_parser():
                    help="generation-mode horizon exponent: h ~ h^-alpha, t = F-h. "
                         "0 = uniform split (historical). ~2 concentrates on the "
                         "one-step task rollout() performs.")
+    p.add_argument("--latent_head", type=int, default=None,
+                   help="1 = Gaussian regression of each token's FSQ grid coordinate instead of "
+                        "a codebook-size classifier (see DynamicsConfig.latent_head). Predictions "
+                        "round back to codes so cache/decoders/eval are unchanged. The tracked "
+                        "CE becomes a Gaussian NLL and is NOT comparable to token-CE arms.")
     p.add_argument("--lag_embed_k", type=int, default=None,
                    help="add k per-column OWN-HISTORY code embeddings in FrameTokenizer.embed, "
                         "so token n at frame f directly sees token n at frames f-1..f-k. 0/None "
@@ -1846,6 +2129,12 @@ def build_arg_parser():
     p.add_argument("--pin_train", type=str, default="",
                    help="comma-separated shots FORCED into TRAIN and placed at the FRONT so "
                         "train_cap cannot drop them (neighbour stratification; pin_val wins).")
+    p.add_argument("--pin_both", type=str, default="",
+                   help="comma-separated shots placed in BOTH train and val. Deliberate "
+                        "leakage so train/val CE are comparable ON THE SAME SHOTS. Hoisted to "
+                        "the front of train (survives --train_cap) and kept in val. Overrides "
+                        "--pin_val/--pin_train. Any val number from a pool containing these is "
+                        "NOT fully held out -- say so when quoting it.")
     p.add_argument("--pin_val", type=str, default="",
                    help="comma-separated shots FORCED into val whatever the shuffle says "
                         "(standing example shots, e.g. 200729, must never be trained on)")
@@ -1891,6 +2180,7 @@ def main(argv=None):
                  warmup_steps=args.warmup_steps, min_lr_ratio=args.min_lr_ratio,
                  beta2=args.beta2, weight_decay=args.weight_decay,
                  patience=args.patience, test_n=args.test_n, test_frac=args.test_frac,
+                 pin_both=tuple(s.strip() for s in args.pin_both.split(",") if s.strip()),
                  pin_val=tuple(s.strip() for s in args.pin_val.split(",") if s.strip()),
                  pin_train=tuple(s.strip() for s in args.pin_train.split(",") if s.strip()),
                  mask_absent=args.mask_absent, presence_path=args.presence_path,
@@ -1901,12 +2191,15 @@ def main(argv=None):
                  act_cross_attn=args.act_cross_attn,
                  grad_ckpt=args.grad_ckpt,
                  lag_embed_k=args.lag_embed_k,
+                 latent_head=args.latent_head,
                  balance_presence=args.balance_presence,
                  window_stride=args.window_stride,
                  windows_per_shot=args.windows_per_shot,
                  window_sample=args.window_sample,
                  val_window_sample=args.val_window_sample,
                  mod_weight_pow=args.mod_weight_pow,
+                 mod_weights_json=args.mod_weights_json,
+                 live_end_json=args.live_end_json,
                  lr_decay_from=args.lr_decay_from,
                  wd_exclude_norms=bool(args.wd_exclude_norms),
                  label_smoothing=args.label_smoothing,

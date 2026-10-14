@@ -22,6 +22,35 @@ import torch.nn as nn
 from .dynamics_config import DynamicsConfig
 
 
+def fsq_radix(levels) -> torch.Tensor:
+    """Mixed-radix multipliers for FSQ levels: [8,5,5,5] -> [1, 8, 40, 200]."""
+    r, acc = [], 1
+    for L in levels:
+        r.append(acc); acc *= int(L)
+    return torch.tensor(r, dtype=torch.long)
+
+
+def code_to_coords(idx: torch.Tensor, levels) -> torch.Tensor:
+    """Flat FSQ code -> per-dim grid coordinate, NORMALISED to [0, 1] per dim.
+
+    ``idx`` (...,) long in [0, prod(levels)) -> (..., D) float. dim i holds
+    (idx // radix_i) % L_i / (L_i - 1). Exact inverse of :func:`coords_to_code` on the grid.
+    """
+    radix = fsq_radix(levels).to(idx.device)
+    L = torch.tensor(list(levels), dtype=torch.long, device=idx.device)
+    digits = (idx.unsqueeze(-1) // radix) % L                        # (..., D) long
+    return digits.float() / (L.float() - 1.0).clamp_min(1.0)
+
+
+def coords_to_code(coords: torch.Tensor, levels) -> torch.Tensor:
+    """Normalised (..., D) coordinate -> nearest flat FSQ code (round, clamp, mixed-radix pack)."""
+    radix = fsq_radix(levels).to(coords.device)
+    L = torch.tensor(list(levels), dtype=torch.long, device=coords.device)
+    digits = torch.round(coords.float() * (L.float() - 1.0)).long()
+    digits = torch.minimum(torch.clamp_min(digits, 0), L - 1)
+    return (digits * radix).sum(-1)
+
+
 class FrameTokenizer(nn.Module):
     def __init__(self, cfg: DynamicsConfig):
         super().__init__()
@@ -33,8 +62,17 @@ class FrameTokenizer(nn.Module):
         self.code_embed = nn.ModuleDict(
             {m.name: nn.Embedding(m.codebook_size + 1, d) for m in cfg.modalities}
         )
+        # LATENT HEAD (cfg.latent_head): (d -> 2*D) Gaussian over the token's FSQ grid coordinate
+        # -- mean and log-variance per FSQ dim -- instead of a codebook_size-way classifier. See
+        # DynamicsConfig.latent_head for the measurement that motivates it. Same attribute name,
+        # so state_dict keys are stable; the WEIGHT SHAPE (2*D vs codebook_size) is what tells a
+        # loader which head a checkpoint carries (eval_dynamics.load_model infers it from that).
+        self.latent_head = bool(getattr(cfg, "latent_head", False))
+        self.fsq_levels = tuple(int(x) for x in getattr(cfg, "fsq_levels", (8, 5, 5, 5)))
+        head_out = (2 * len(self.fsq_levels)) if self.latent_head else None
         self.heads = nn.ModuleDict(
-            {m.name: nn.Linear(d, m.codebook_size) for m in cfg.modalities}
+            {m.name: nn.Linear(d, head_out if self.latent_head else m.codebook_size)
+             for m in cfg.modalities}
         )
         self.mask_ids = {m.name: m.codebook_size for m in cfg.modalities}
         # per-modality within-frame position (freq/time-patch for spectro, zone for slow-TS, ...)

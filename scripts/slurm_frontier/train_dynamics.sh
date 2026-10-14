@@ -176,6 +176,7 @@ EXTRA=()
 [ -n "${SHOT_TIMEOUT_S:-}" ] && EXTRA+=(--shot_timeout_s "${SHOT_TIMEOUT_S}")
 [ -n "${TEST_N:-}" ] && EXTRA+=(--test_n "${TEST_N}")
 [ -n "${TEST_FRAC:-}" ] && EXTRA+=(--test_frac "${TEST_FRAC}")
+[ -n "${PIN_BOTH:-}" ] && EXTRA+=(--pin_both "${PIN_BOTH}")
 [ -n "${PIN_VAL:-}" ] && EXTRA+=(--pin_val "${PIN_VAL}")
 [ -n "${PIN_TRAIN:-}" ] && EXTRA+=(--pin_train "${PIN_TRAIN}")
 [ -n "${VAL_WINDOWS:-}" ] && EXTRA+=(--val_windows "${VAL_WINDOWS}")
@@ -251,11 +252,14 @@ ss_ramp=${SS_RAMP_STEPS} mask_absent=${MASK_ABSENT}"
        --gen_horizon_max "${GEN_HORIZON_MAX:-0}" \
        --act_cross_attn "${ACT_CROSS_ATTN:-0}" \
        --lag_embed_k "${LAG_EMBED_K:-0}" \
+       --latent_head "${LATENT_HEAD:-0}" \
        --window_stride "${WINDOW_STRIDE:-1}" \
        --windows_per_shot "${WINDOWS_PER_SHOT}" \
        --window_sample "${WINDOW_SAMPLE:-random}" \
        --val_window_sample "${VAL_WINDOW_SAMPLE:-}" \
        --mod_weight_pow "${MOD_WEIGHT_POW:-0}" \
+       --mod_weights_json "${MOD_WEIGHTS_JSON:-}" \
+       --live_end_json "${LIVE_END_JSON:-}" \
        --lr_decay_from "${LR_DECAY_FROM:-0}" \
        --wd_exclude_norms "${WD_EXCLUDE_NORMS:-0}" \
        --label_smoothing "${LABEL_SMOOTHING:-0}" \

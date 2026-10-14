@@ -172,6 +172,38 @@ def load_model(ckpt_path: Path, device) -> Tuple[MaskGITDynamics, DynamicsConfig
                       ("dropout", "cfg_dropout")):
         if key in ck:
             setattr(cfg, flag, type(getattr(cfg, flag))(ck[key]))
+    # LATENT HEAD -- read it off the WEIGHTS first (the rule since act_cross_attn/lag_embed_k
+    # killed 7 jobs): a latent-head checkpoint's heads.<m>.weight is (2*D, d) instead of
+    # (codebook_size, d). The persisted cfg_latent_head is a cross-check, not the source of truth.
+    if "cfg_fsq_levels" in ck:
+        cfg.fsq_levels = tuple(int(x) for x in ck["cfg_fsq_levels"])
+    _m0 = cfg.modalities[0].name
+    _hw = sd.get(f"backbone.tok.heads.{_m0}.weight")
+    if _hw is not None:
+        _inferred = int(_hw.shape[0]) == 2 * len(cfg.fsq_levels)
+        _persisted = bool(ck.get("cfg_latent_head", _inferred))
+        if _inferred != _persisted:
+            print(f"[eval] WARNING cfg_latent_head={_persisted} but head width {int(_hw.shape[0])} "
+                  f"says {_inferred}; trusting the weights", flush=True)
+        cfg.latent_head = _inferred
+        if cfg.latent_head:
+            print(f"[eval] LATENT HEAD checkpoint (head width {int(_hw.shape[0])}, "
+                  f"fsq_levels {cfg.fsq_levels}); predictions round to codes", flush=True)
+    # ACTUATOR NORMALISATION must match training. A checkpoint trained on the dataset-wide side
+    # cache, scored with per-shot z-scored actuators (or the reverse), sees an input distribution
+    # it never trained on and the score is silently wrong. Checkpoints written before 2026-10-13
+    # carry no key; every one of them was trained per-shot ("").
+    _trained_ag = str(ck.get("cfg_act_global", "") or "")
+    _eval_ag = os.environ.get("IGNITE_ACT_GLOBAL", "").strip()
+    if bool(_trained_ag) != bool(_eval_ag):
+        raise RuntimeError(
+            f"actuator normalisation mismatch: checkpoint trained with "
+            f"{'IGNITE_ACT_GLOBAL=' + _trained_ag if _trained_ag else 'PER-SHOT z-scored actuators'}, "
+            f"eval run with {'IGNITE_ACT_GLOBAL=' + _eval_ag if _eval_ag else 'PER-SHOT z-scored actuators'}. "
+            f"Set IGNITE_ACT_GLOBAL to match.")
+    if _trained_ag:
+        print(f"[eval] actuators: dataset-wide normalised side cache {_eval_ag} "
+              f"(trained on {_trained_ag})", flush=True)
     cfg.dropout = 0.0                                     # inference: dropout off regardless
     model = MaskGITDynamics(cfg).to(device).eval()
     model.load_state_dict(ck["model"])

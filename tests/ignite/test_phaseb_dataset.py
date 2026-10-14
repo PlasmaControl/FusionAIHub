@@ -40,16 +40,76 @@ def test_item_and_collate_shapes(tmp_path):
     cfg = _tiny()
     _write_cache(tmp_path, "s1", cfg.max_frames + 1, cfg)
     ds = FrameCodeDataset(tmp_path, ["s1"], cfg)
-    codes, act = ds[0]
+    codes, act, present, live = ds[0]
     for m in cfg.modalities:
         assert codes[m.name].shape == (cfg.max_frames, m.n_tok)
         assert codes[m.name].dtype == torch.long           # decompressed from int16 cache
     assert act.shape == (cfg.max_frames, cfg.actuator_dim)
-    cb, ab = _collate_frames([ds[0], ds[1]])
+    assert present.shape == (len(cfg.modalities),)
+    # with no live_end table every frame is live, so the loss is bit-identical to the old path
+    assert live.shape == (cfg.max_frames,) and bool((live == 1.0).all())
+    cb, ab, pb, lb = _collate_frames([ds[0], ds[1]])
     for m in cfg.modalities:
         assert cb[m.name].shape == (2, cfg.max_frames, m.n_tok)
     assert ab.shape == (2, cfg.max_frames, cfg.actuator_dim)
+    assert lb.shape == (2, cfg.max_frames)
 
+
+def test_live_end_masks_post_shot_frames(tmp_path):
+    """A measured plasma end time zero-weights the frames after it; absent shots stay all-live."""
+    cfg = _tiny()
+    n = cfg.max_frames + 4
+    _write_cache(tmp_path, "s1", n, cfg)
+    _write_cache(tmp_path, "s2", n, cfg)
+    # frame f maps to t = t0 + frame_s*f, so f is live iff t <= t_end. Derive the expected
+    # count from cfg rather than hardcoding: n_frames here is small and would clamp it.
+    n_expect = max(1, n - 3)                          # leave 3 dead frames at the end
+    t_end = 1.0 + 0.05 * (n_expect - 1)
+    ds = FrameCodeDataset(tmp_path, ["s1", "s2"], cfg,
+                          live_end={"s1": t_end}, t0_start=1.0, frame_s=0.05)
+    i1 = ds.shot_ids.index("s1")
+    i2 = ds.shot_ids.index("s2")
+    assert ds.n_live[i1] == n_expect                 # measured -> truncated
+    assert ds.n_live[i2] == n                        # NOT in the table -> fully live
+
+    w1 = next(k for k, (si, st) in enumerate(ds.index) if si == i1 and st == 0)
+    live = ds[w1][3]
+    assert bool((live[:n_expect] == 1.0).all()) and bool((live[n_expect:] == 0.0).all())
+    w2 = next(k for k, (si, st) in enumerate(ds.index) if si == i2 and st == 0)
+    assert bool((ds[w2][3] == 1.0).all())
+
+
+
+def test_live_window_sample_draws_only_live_starts(tmp_path):
+    """window_sample='live' draws from starts >=50% inside the plasma, plus the deployment
+    starts; a shot without a measured t_end keeps the deployment starts only."""
+    cfg = _tiny()
+    win = cfg.max_frames
+    n = win + 40                                       # 41 legal start offsets
+    _write_cache(tmp_path, "s1", n, cfg)
+    _write_cache(tmp_path, "s2", n, cfg)
+    n_live = win + 10                                  # plasma ends 10 frames after a full window
+    t_end = 1.0 + 0.05 * (n_live - 1)
+    k = 3
+    ds = FrameCodeDataset(tmp_path, ["s1", "s2"], cfg, windows_per_shot=k, window_sample="live",
+                          live_end={"s1": t_end}, t0_start=1.0, frame_s=0.05)
+    i1, i2 = ds.shot_ids.index("s1"), ds.shot_ids.index("s2")
+    assert ds.n_live[i1] == n_live
+    pool1 = ds._live_starts[i1]
+    assert pool1 == sorted(set(st for st in range(n - win + 1) if st + win / 2.0 <= n_live) | {0, 1, 2})
+    assert max(pool1) == int(n_live - win / 2.0)       # last start still half live
+    assert ds._live_starts[i2] == [0, 1, 2]            # no t_end -> deployment starts only
+    seen1 = set()
+    for ep in range(20):
+        ds.set_epoch(ep)
+        per = {}
+        for si, st in ds.index:
+            per.setdefault(si, []).append(st)
+        assert all(len(v) == k for v in per.values())  # same COUNT per epoch as 'first'
+        assert set(per[i1]) <= set(pool1)
+        assert set(per[i2]) == {0, 1, 2}
+        seen1 |= set(per[i1])
+    assert len(seen1) > k                              # draws really move beyond 0..k-1
 
 def test_incomplete_cache_skipped(tmp_path):
     # a shot whose cache lacks a required modality is dropped (frame layout must be complete)
@@ -64,8 +124,8 @@ def test_sliding_windows_are_offset(tmp_path):
     cfg = _tiny()
     _write_cache(tmp_path, "s1", cfg.max_frames + 2, cfg)
     ds = FrameCodeDataset(tmp_path, ["s1"], cfg)
-    c0, _ = ds[0]
-    c1, _ = ds[1]
+    c0 = ds[0][0]                # items are (codes, act, presence, live)
+    c1 = ds[1][0]
     # window 1 is window 0 shifted by one frame -> frame1 of w0 == frame0 of w1
     assert torch.equal(c0["a"][1], c1["a"][0])
 

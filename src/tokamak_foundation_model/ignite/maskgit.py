@@ -24,6 +24,40 @@ import torch.nn.functional as F
 
 from .dynamics import DynamicsBackbone
 from .dynamics_config import DynamicsConfig
+from .frame_layout import code_to_coords, coords_to_code
+
+
+def _latent_nll(out: torch.Tensor, tg: torch.Tensor, levels) -> torch.Tensor:
+    """Per-token Gaussian NLL of the token's NORMALISED FSQ grid coordinate.
+
+    ``out`` (n, 2D) = [mean | log-variance] per FSQ dim, ``tg`` (n,) flat codes -> (n,) nats.
+    This is the latent-head replacement for cross-entropy. A prediction one grid cell off costs
+    ~(1/(L-1))^2 / (2 var) instead of a full -log p(neighbour); that is the whole point
+    (DynamicsConfig.latent_head). log-var is clamped so a single confident miss cannot blow up.
+    """
+    D = len(levels)
+    mu = out[..., :D].float()
+    logvar = out[..., D:].float().clamp(-10.0, 10.0)
+    c = code_to_coords(tg, levels)                                   # (n, D) in [0, 1]
+    return 0.5 * (((mu - c) ** 2) * torch.exp(-logvar) + logvar).sum(-1)
+
+
+def _latent_sample(out: torch.Tensor, levels, temperature: float, generator):
+    """Draw codes from the latent head. Returns (sampled codes, confidence, mean codes).
+
+    Coordinate = mean + temperature * std * eps, then ROUND to the nearest grid cell and pack to a
+    flat code, so everything downstream (cache format, decoders, eval) is unchanged.
+    Confidence for the MaskGIT reveal order = -sum(log-var): low variance reveals first.
+    """
+    D = len(levels)
+    mu = out[..., :D].float()
+    logvar = out[..., D:].float().clamp(-10.0, 10.0)
+    if temperature > 0.0:
+        eps = torch.randn(mu.shape, generator=generator, device=mu.device, dtype=mu.dtype)
+        coords = mu + float(temperature) * torch.exp(0.5 * logvar) * eps
+    else:
+        coords = mu
+    return coords_to_code(coords, levels), -logvar.sum(-1), coords_to_code(mu, levels)
 
 
 def _cosine_keep_fractions(n_steps: int) -> list:
@@ -214,12 +248,15 @@ class MaskGITDynamics(nn.Module):
             if lg.numel() == 0:
                 out[m.name] = codes[m.name]
                 continue
-            # chunk the categorical draw: vocab reaches 64000, so a one-shot softmax over every
-            # selected position is hundreds of MB in fp32 for no benefit.
-            samp = torch.empty(lg.shape[0], dtype=torch.long, device=lg.device)
-            for i in range(0, lg.shape[0], 4096):
-                p = lg[i:i + 4096].float().softmax(-1)
-                samp[i:i + 4096] = torch.multinomial(p, 1, generator=gen).squeeze(-1)
+            if self.backbone.tok.latent_head:
+                samp = _latent_sample(lg, self.backbone.tok.fsq_levels, 1.0, gen)[0]
+            else:
+                # chunk the categorical draw: vocab reaches 64000, so a one-shot softmax over
+                # every selected position is hundreds of MB in fp32 for no benefit.
+                samp = torch.empty(lg.shape[0], dtype=torch.long, device=lg.device)
+                for i in range(0, lg.shape[0], 4096):
+                    p = lg[i:i + 4096].float().softmax(-1)
+                    samp[i:i + 4096] = torch.multinomial(p, 1, generator=gen).squeeze(-1)
             c = codes[m.name].clone()
             c[sel[m.name]] = samp.to(c.dtype)
             out[m.name] = c
@@ -234,6 +271,7 @@ class MaskGITDynamics(nn.Module):
                       history_frames: int = 0,
                       mod_weights: Optional[Dict[str, float]] = None,
                       gen_mask_p: Optional[float] = None,
+                      live: Optional[torch.Tensor] = None,
                       label_smoothing: float = 0.0) -> torch.Tensor:
         """Masked-token cross-entropy over the masked positions, summed per modality, mean-reduced.
 
@@ -255,6 +293,18 @@ class MaskGITDynamics(nn.Module):
         Absent modalities are zero-WEIGHTED rather than skipped: a skipped modality's output
         head would receive no gradient, which trips DDP's unused-parameter detection. A
         zero-weighted term keeps every parameter in the graph with a zero gradient.
+
+        ``live`` (B, F), 1.0 = this FRAME is before the plasma ended, 0.0 = post-shot. The v4
+        cache is a fixed 219 frames/shot taken from the ACQUISITION grid (t 1.00-11.90 s) while
+        the median discharge ends at 5.47 s, so a large minority of scored frames are dead time.
+        Measured 2026-09-10 (analysis/live_frame_bias.py): dead windows are markedly CHEAPER to
+        predict, and including them makes the forecast metric optimistic by ~0.24 nats, with a
+        clean monotone ordering across liveness bins. Zero-weighting them stops the model
+        spending capacity on reproducing a flatlined plasma -- capacity it cannot spare at
+        349 MB of content against 75-150 MB of parameters.
+
+        ``live`` and ``present`` MULTIPLY: a token counts only if its diagnostic was recorded
+        AND its frame is before the discharge ended.
         """
         context = self._scheduled_sample_context(codes, actuators, ss_frac, generator)
         masked, mask = self._random_mask(context, generator, ratio_override=mask_ratio,
@@ -271,8 +321,12 @@ class MaskGITDynamics(nn.Module):
                 continue
             lg = mlogits[m.name]                                      # (n_masked, vocab)
             tg = codes[m.name][mk]                                    # (n_masked,)
-            if present is None:
-                term = F.cross_entropy(lg, tg, label_smoothing=label_smoothing)
+            _tok = self.backbone.tok
+            if present is None and live is None:
+                if _tok.latent_head:
+                    term = _latent_nll(lg, tg, _tok.fsq_levels).mean()
+                else:
+                    term = F.cross_entropy(lg, tg, label_smoothing=label_smoothing)
                 wt = 1.0 if mod_weights is None else float(mod_weights.get(m.name, 1.0))
                 total = total + wt * term
                 count += wt
@@ -282,15 +336,24 @@ class MaskGITDynamics(nn.Module):
             # Per-SAMPLE presence: a batch mixes shots, so weight each masked token by
             # whether its own shot recorded this diagnostic. Broadcast (B,) over (B, F, n_tok)
             # and gather with the same boolean mask used to gather the logits, so weights and
-            # tokens stay aligned.
+            # tokens stay aligned. `live` broadcasts the same way but over (B, F).
             B = mk.shape[0]
-            w = present[:, mi].view(B, *([1] * (mk.dim() - 1))).expand_as(mk)[mk].to(lg.dtype)
+            wfull = None
+            if present is not None:
+                wfull = present[:, mi].view(B, *([1] * (mk.dim() - 1))).expand_as(mk)
+            if live is not None:
+                wl = live.view(B, live.shape[1], *([1] * (mk.dim() - 2))).expand_as(mk)
+                wfull = wl if wfull is None else wfull * wl
+            w = wfull[mk].to(lg.dtype)
             denom = w.sum()
-            if not bool(denom > 0):        # absent in EVERY sample of this batch
+            if not bool(denom > 0):        # absent in every sample, or every frame dead
                 total = total + 0.0 * lg.sum()        # keep the head in the autograd graph
                 continue
-            ce = F.cross_entropy(lg, tg, reduction="none",
-                                 label_smoothing=label_smoothing)   # (n_masked,)
+            if _tok.latent_head:
+                ce = _latent_nll(lg, tg, _tok.fsq_levels)                          # (n_masked,)
+            else:
+                ce = F.cross_entropy(lg, tg, reduction="none",
+                                     label_smoothing=label_smoothing)   # (n_masked,)
             term = (ce * w).sum() / denom
             wt = 1.0 if mod_weights is None else float(mod_weights.get(m.name, 1.0))
             total = total + wt * term
@@ -326,11 +389,17 @@ class MaskGITDynamics(nn.Module):
                 # .float(): the backbone may run under bf16 autocast (eval speed, matches
                 # training numerics) but softmax/multinomial sample in fp32 — multinomial
                 # does not support bf16 and low-precision probs would skew sampling.
-                lg = logits[m.name][:, -1].float() / max(temperature, 1e-6)
-                prob = lg.softmax(-1)
-                samp = torch.multinomial(prob.reshape(-1, prob.shape[-1]), 1,
-                                         generator=generator).reshape(B, m.n_tok)
-                conf = prob.gather(-1, samp.unsqueeze(-1)).squeeze(-1)  # (B, n_tok)
+                _lat = self.backbone.tok.latent_head
+                if _lat:
+                    samp, conf, _ = _latent_sample(logits[m.name][:, -1],
+                                                   self.backbone.tok.fsq_levels,
+                                                   temperature, generator)
+                else:
+                    lg = logits[m.name][:, -1].float() / max(temperature, 1e-6)
+                    prob = lg.softmax(-1)
+                    samp = torch.multinomial(prob.reshape(-1, prob.shape[-1]), 1,
+                                             generator=generator).reshape(B, m.n_tok)
+                    conf = prob.gather(-1, samp.unsqueeze(-1)).squeeze(-1)  # (B, n_tok)
                 # ANNEALED-GUMBEL REVEAL (canonical MaskGIT; opt-in via IGNITE_MASKGIT_GUMBEL).
                 # Ranking purely on p(sampled) is deterministic-greedy: the tokens revealed first
                 # are those whose sample happened to land on the MARGINAL MODE, and the remaining
@@ -344,7 +413,10 @@ class MaskGITDynamics(nn.Module):
                 if _GUMBEL_SCALE > 0.0:
                     u = torch.rand(conf.shape, generator=generator, device=dev).clamp_(1e-9, 1 - 1e-9)
                     ann = _GUMBEL_SCALE * (1.0 - step / max(1, len(keep_masked)))
-                    conf = conf.clamp_min(1e-12).log() + ann * (-torch.log(-torch.log(u)))
+                    _g = -torch.log(-torch.log(u))
+                    # latent conf is -sum(log-var), already log-scale and may be negative: add
+                    # the annealed Gumbel noise directly rather than log() it.
+                    conf = (conf + ann * _g) if _lat else (conf.clamp_min(1e-12).log() + ann * _g)
                 conf = conf.masked_fill(revealed[m.name], float("inf"))  # keep already-revealed
                 n_reveal = m.n_tok - int(round(frac * m.n_tok))
                 # reveal the n_reveal most-confident still-masked tokens
@@ -361,7 +433,11 @@ class MaskGITDynamics(nn.Module):
             if bool(still.any()):
                 seq = {n: torch.cat([past_codes[n], cur[n].unsqueeze(1)], dim=1) for n in cur}
                 lg = self.backbone(seq, actuators)[m.name][:, -1]
-                cur[m.name] = torch.where(still, lg.argmax(-1), cur[m.name])
+                if self.backbone.tok.latent_head:
+                    fill = _latent_sample(lg, self.backbone.tok.fsq_levels, 0.0, generator)[2]
+                else:
+                    fill = lg.argmax(-1)
+                cur[m.name] = torch.where(still, fill, cur[m.name])
         return cur
 
     @torch.no_grad()

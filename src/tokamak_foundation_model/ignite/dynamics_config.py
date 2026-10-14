@@ -112,6 +112,25 @@ class DynamicsConfig:
     # the next one. 20% of val weight sits at mask ratio > 0.95 and carries a third of the loss.
     gen_mask_p: float = 0.0
 
+    # --- LATENT HEAD: regress the FSQ grid coordinate instead of classifying the code -------------
+    # MEASURED 2026-09-23 (analysis/latent_temporal_consistency.py, all 15 v4 codecs): the encoders
+    # make the signal MORE temporally consistent than the raw data (lag-1 ac 0.486 -> 0.749) and the
+    # discrete token throws it away (flip rate 0.878 while the quantised latent stays 0.686
+    # correlated). Two mechanisms: the FSQ grid shatters a stable latent (the 4 spectro codecs,
+    # ts_core_density), and codes flip to NEIGHBOURING cells (7 modalities) -- a tiny move in
+    # latent space that a 1000-way cross-entropy charges the same as a wild miss.
+    # latent_head=True replaces each modality's (d -> codebook_size) classifier with a
+    # (d -> 2*len(fsq_levels)) Gaussian head over the token's grid COORDINATE (mean, log-var per
+    # FSQ dim, coordinate normalised to [0,1] per dim). A neighbour miss is then cheap by
+    # construction. Predictions are ROUNDED back to a code, so the cache, the decoders and every
+    # eval path are unchanged. False = the historical classifier, bit-for-bit.
+    latent_head: bool = False
+    # The FSQ levels are a property of the CODECS, not of this model; every v4 codec uses
+    # [8,5,5,5] (=1000, matching codebook_size on all 15 ModalitySpecs). Kept here so the head
+    # can unpack/pack codes without loading a codec. Mixed radix [1,8,40,200]; round-trip is
+    # exact for all 1000 codes (verified in analysis/forecastability_cache.py).
+    fsq_levels: Tuple[int, ...] = (8, 5, 5, 5)
+
     # Lag-k own-column code embeddings added in FrameTokenizer.embed (0 = off, no new params).
     # At the generation condition a per-column count table over a column's own last 3 codes beats
     # the 270M model (1.5539 vs 1.6090), and the per-modality deficit tracks own-history value
