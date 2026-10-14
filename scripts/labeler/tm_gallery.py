@@ -40,6 +40,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib import patheffects
 from matplotlib.patches import Patch
 from matplotlib.ticker import FixedLocator, FuncFormatter, NullFormatter
 
@@ -60,6 +61,7 @@ COHORT = REPO / "data/events/catalog/cohort.csv"
 #: The paper theme (`labeler.paper.theme`): n = 1 sea green, n = 2 coral; the traces use
 #: the same colours.
 COLOUR = {1: theme.SEA_GREEN, 2: theme.CORAL}
+EDGE_HALO = [patheffects.withStroke(linewidth=1.5, foreground="white")]
 PROBE_ROW = 15
 MHR_ROW = 2
 Z_DB = (-3.0, 42.0)
@@ -216,7 +218,10 @@ def draw_shot(
     for t0, t1, n, _, _ in spans:
         spec_ax.axvspan(t0 / 1000, t1 / 1000, color=COLOUR[n], alpha=0.12, lw=0)
         for edge in (t0, t1):
-            spec_ax.axvline(edge / 1000, color=COLOUR[n], lw=0.6, ls="--")
+            # a white halo, so a sea-green edge still reads on viridis
+            spec_ax.axvline(
+                edge / 1000, color=COLOUR[n], lw=0.6, ls="--", path_effects=EDGE_HALO
+            )
     spec_ax.set_ylabel("kHz", fontsize=FONT, labelpad=1)
     spec_ax.set_xticklabels([])
     t_ms, n1, n2 = signals

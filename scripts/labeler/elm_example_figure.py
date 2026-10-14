@@ -35,10 +35,10 @@ from labeler.paper import theme
 WINDOW_MS = 1500.0
 LEAD_MS = 100.0
 #: The paper theme (`labeler.paper.theme`): the reviewed crowd shade sea green, a single
-#: ELM plum, absent grey; the elm-ours probability dark sea green, the elm-elmo ticks
+#: ELM plum, absent grey; the elm-ours probability sea green, the elm-elmo ticks
 #: coral, the peak-finder spans slate.
 CROWD, NON_CROWD, ABSENT = theme.SEA_GREEN, theme.PLUM, "#999999"
-PROB, ELMO, CLOCK = theme.SEA_GREEN_DARK, theme.CORAL, theme.SLATE
+PROB, ELMO, CLOCK = theme.SEA_GREEN, theme.CORAL, theme.SLATE
 
 
 #: Reviewed non-crowd present spans that sit in a high-recycling phase, where ELM
@@ -368,15 +368,27 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--run", required=True)
     ap.add_argument("--out-dir", type=Path)
+    ap.add_argument(
+        "--shots",
+        type=int,
+        nargs=2,
+        help="draw these two shots instead of the percentile rule's (the paper "
+        "keeps 195111 and 200427, picked before the reviewed spans were regridded)",
+    )
     args = ap.parse_args(argv)
     paths = Paths.from_env()
     out_dir = args.out_dir or paths.root / "round4" / "elm" / "figures"
     out_dir.mkdir(parents=True, exist_ok=True)
-    data = train.load(paths)
     oof = methods.Oof(paths.root / "round4" / "elm" / "cv" / args.run)
+    # the run's own shots: a shot reviewed after the run has no prediction (and
+    # 189093 no input), so it cannot be drawn or ranked
+    data = train.load(paths, shots=set(oof.fold_of))
     sets = compare.load_sets(paths, data)
     elmo, clock = compare.load_detected(paths)
     shots, info = pick_shots(data, sets, oof)
+    if args.shots:
+        shots = list(args.shots)
+        info["rule"] = f"pinned with --shots {shots[0]} {shots[1]}; " + info["rule"]
 
     fig, axes = plt.subplots(
         2, 2, figsize=(7.0, 4.6), sharex="col", gridspec_kw={"height_ratios": [1, 1]}
@@ -506,7 +518,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     (out_dir / "fig_elm_examples_caption.tex").write_text(caption + "\n")
     (out_dir / "fig_elm_examples.json").write_text(json.dumps(info, indent=1))
-    print("shots", shots, {s: round(info["per_shot_f1"][str(s)], 3) for s in shots})
+    f1 = info["per_shot_f1"]
+    print("shots", shots, {s: round(f1[str(s)], 3) for s in shots if str(s) in f1})
     return 0
 
 
