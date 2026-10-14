@@ -1,0 +1,508 @@
+{
+ "script": "scripts/labeler/rwm_classify.py",
+ "made_at": "2026-10-14T17:20:36+00:00",
+ "git_sha": "00e503fc",
+ "task": "detector: RWM presence per 10 ms bin",
+ "labels": {
+  "table": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/suggestions/rwm_onsets/v5/resistive_wall_mode_suggest_rwm_onsets_v5.csv",
+  "method": "rwm_onsets",
+  "version": "v5",
+  "table_git_sha": "00e503fc",
+  "positive": "present (1)",
+  "negative": "unassessed (4) or absent (0) on Hanson's shots: Hanson's lists taken as complete there, as round four assumed",
+  "excluded": "uncertain (2) and not observable (3), and bins outside the table's window",
+  "bin": "the slice at t is the frame [t - 10, t) its trailing inputs read",
+  "audit": {
+   "table_shots_hanson": 33,
+   "bins_by_category": {
+    "1": 93,
+    "2": 744,
+    "4": 14082
+   },
+   "present_ms_in_table": 988.0,
+   "present_bins_scored": 93,
+   "note": "the slices span the high-current window (|Ip| at least half its flat-top value, `features.slice_table`); category -1 is a bin outside the table's window"
+  }
+ },
+ "protocol": {
+  "shots": "Hanson's 33 shots (round four's roster, role hanson)",
+  "folds": "leave one calendar run day out: 20140421 (11 shots), 20140620 (9 shots), 20180314 (13 shots); the run records 20180314 and 20180314A share a day",
+  "cut": "per fold, the F1-best cut on an inner leave-one-day-out over the training days",
+  "model": {
+   "name": "balanced random forest",
+   "n_estimators": 300,
+   "max_depth": 8,
+   "min_leaf": 5,
+   "seed": 0,
+   "imputer": "training-fold medians"
+  },
+  "bootstrap": "1000 whole-shot resamples, seed 0, percentile 95 % intervals; paired: the same shots drawn for both"
+ },
+ "counts": {
+  "shots": 33,
+  "positive_shots": 32,
+  "positive_bins": 93,
+  "negative_bins": 14082,
+  "prevalence": 0.0065608465608465606
+ },
+ "baseline": {
+  "f1": 0.013036164844407063,
+  "auroc": 0.5,
+  "auprc": 0.0065608465608465606
+ },
+ "baseline_uncertain_negative": {
+  "f1": 0.012390087929656273,
+  "auroc": 0.5,
+  "auprc": 0.006233661773577317
+ },
+ "models": {
+  "rwm-ours": {
+   "inputs": [
+    "betan",
+    "li",
+    "q95",
+    "qmin",
+    "wmhd_mj",
+    "betan_over_li",
+    "betan_minus_4li",
+    "ip_ma",
+    "n1rms_g",
+    "n1rms_max_g",
+    "n1rms_growth_per_s",
+    "n2rms_g",
+    "rot_core_khz",
+    "rot_mid_khz",
+    "bp_n1_g",
+    "bp_n1_max_g",
+    "bp_n1_growth_per_s",
+    "rot_q2_khz",
+    "icoil_dev_ka",
+    "icoil_level_ka"
+   ],
+   "counts": {
+    "shots": 33,
+    "positive_shots": 32,
+    "positive_bins": 93,
+    "negative_bins": 14082,
+    "prevalence": 0.0065608465608465606
+   },
+   "metrics": {
+    "f1": {
+     "estimate": 0.5291479820627802,
+     "low": 0.4321522384650525,
+     "high": 0.6091017316017316,
+     "n_finite": 1000
+    },
+    "precision": {
+     "estimate": 0.45384615384615384,
+     "low": 0.35040160642570284,
+     "high": 0.5526507409299949,
+     "n_finite": 1000
+    },
+    "recall": {
+     "estimate": 0.6344086021505376,
+     "low": 0.5325913506012951,
+     "high": 0.7342438374417055,
+     "n_finite": 1000
+    },
+    "auroc": {
+     "estimate": 0.9673952716271669,
+     "low": 0.9462584884484979,
+     "high": 0.9856627937086242,
+     "n_finite": 1000
+    },
+    "auprc": {
+     "estimate": 0.5229994922380312,
+     "low": 0.40253584981738705,
+     "high": 0.6441454451784775,
+     "n_finite": 1000
+    },
+    "prevalence": {
+     "estimate": 0.0065608465608465606,
+     "low": 0.0047977696757372365,
+     "high": 0.008567114860057092,
+     "n_finite": 1000
+    }
+   },
+   "by_day": {
+    "20140421": {
+     "counts": {
+      "shots": 11,
+      "positive_shots": 11,
+      "positive_bins": 31,
+      "negative_bins": 3403,
+      "prevalence": 0.00902737332556785
+     },
+     "point": {
+      "f1": 0.6666666666666666,
+      "precision": 0.65625,
+      "recall": 0.6774193548387096,
+      "auroc": 0.9906534082830141,
+      "auprc": 0.7202241418291099,
+      "prevalence": 0.00902737332556785
+     }
+    },
+    "20140620": {
+     "counts": {
+      "shots": 9,
+      "positive_shots": 8,
+      "positive_bins": 14,
+      "negative_bins": 3665,
+      "prevalence": 0.0038053818972546886
+     },
+     "point": {
+      "f1": 0.5294117647058824,
+      "precision": 0.45,
+      "recall": 0.6428571428571429,
+      "auroc": 0.973572403040343,
+      "auprc": 0.5845297822580615,
+      "prevalence": 0.0038053818972546886
+     }
+    },
+    "20180314": {
+     "counts": {
+      "shots": 13,
+      "positive_shots": 13,
+      "positive_bins": 48,
+      "negative_bins": 7014,
+      "prevalence": 0.006796941376380629
+     },
+     "point": {
+      "f1": 0.4603174603174603,
+      "precision": 0.3717948717948718,
+      "recall": 0.6041666666666666,
+      "auroc": 0.9485998241612014,
+      "auprc": 0.4680447575672355,
+      "prevalence": 0.006796941376380629
+     }
+    }
+   },
+   "cuts": {
+    "20140421": 0.7225648148148154,
+    "20140620": 0.7917526455026458,
+    "20180314": 0.7714457671957676
+   },
+   "uncertain_negative": {
+    "counts": {
+     "shots": 33,
+     "positive_shots": 32,
+     "positive_bins": 93,
+     "negative_bins": 14826,
+     "prevalence": 0.006233661773577317
+    },
+    "metrics": {
+     "f1": {
+      "estimate": 0.2599118942731278,
+      "low": 0.18896313364055303,
+      "high": 0.33875508075044036,
+      "n_finite": 1000
+     },
+     "precision": {
+      "estimate": 0.1634349030470914,
+      "low": 0.1134747094818391,
+      "high": 0.2271002632070994,
+      "n_finite": 1000
+     },
+     "recall": {
+      "estimate": 0.6344086021505376,
+      "low": 0.5325913506012951,
+      "high": 0.7342438374417055,
+      "n_finite": 1000
+     },
+     "auroc": {
+      "estimate": 0.9535145320122017,
+      "low": 0.9302350103708562,
+      "high": 0.9746834818683111,
+      "n_finite": 1000
+     },
+     "auprc": {
+      "estimate": 0.227828518796147,
+      "low": 0.1355119936919156,
+      "high": 0.3568048221894052,
+      "n_finite": 1000
+     },
+     "prevalence": {
+      "estimate": 0.006233661773577317,
+      "low": 0.004563031926295134,
+      "high": 0.00813157714017723,
+      "n_finite": 1000
+     }
+    }
+   },
+   "predictions": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round5/rwm/classifier_rwm-ours.parquet"
+  },
+  "rwm-brf": {
+   "inputs": [
+    "betan",
+    "li",
+    "q95",
+    "qmin",
+    "wmhd_mj",
+    "betan_over_li",
+    "betan_minus_4li",
+    "ip_ma",
+    "n1rms_g",
+    "n1rms_max_g",
+    "n1rms_growth_per_s",
+    "n2rms_g",
+    "rot_core_khz",
+    "rot_mid_khz"
+   ],
+   "counts": {
+    "shots": 33,
+    "positive_shots": 32,
+    "positive_bins": 93,
+    "negative_bins": 14082,
+    "prevalence": 0.0065608465608465606
+   },
+   "metrics": {
+    "f1": {
+     "estimate": 0.03428571428571429,
+     "low": 0.014284696784696784,
+     "high": 0.0598351017910415,
+     "n_finite": 1000
+    },
+    "precision": {
+     "estimate": 0.019769357495881382,
+     "low": 0.008431514089045869,
+     "high": 0.03643747752068097,
+     "n_finite": 1000
+    },
+    "recall": {
+     "estimate": 0.12903225806451613,
+     "low": 0.052171648550724634,
+     "high": 0.20883458646616537,
+     "n_finite": 1000
+    },
+    "auroc": {
+     "estimate": 0.7106788502977186,
+     "low": 0.6605567844742838,
+     "high": 0.760484644961,
+     "n_finite": 1000
+    },
+    "auprc": {
+     "estimate": 0.013550683138918915,
+     "low": 0.009431348082921747,
+     "high": 0.021249224121150916,
+     "n_finite": 1000
+    },
+    "prevalence": {
+     "estimate": 0.0065608465608465606,
+     "low": 0.0047977696757372365,
+     "high": 0.008567114860057092,
+     "n_finite": 1000
+    }
+   },
+   "by_day": {
+    "20140421": {
+     "counts": {
+      "shots": 11,
+      "positive_shots": 11,
+      "positive_bins": 31,
+      "negative_bins": 3403,
+      "prevalence": 0.00902737332556785
+     },
+     "point": {
+      "f1": 0.0,
+      "precision": NaN,
+      "recall": 0.0,
+      "auroc": 0.7545239968528717,
+      "auprc": 0.04893928953594499,
+      "prevalence": 0.00902737332556785
+     }
+    },
+    "20140620": {
+     "counts": {
+      "shots": 9,
+      "positive_shots": 8,
+      "positive_bins": 14,
+      "negative_bins": 3665,
+      "prevalence": 0.0038053818972546886
+     },
+     "point": {
+      "f1": 0.10526315789473684,
+      "precision": 0.06,
+      "recall": 0.42857142857142855,
+      "auroc": 0.8275774702786981,
+      "auprc": 0.04049536721664509,
+      "prevalence": 0.0038053818972546886
+     }
+    },
+    "20180314": {
+     "counts": {
+      "shots": 13,
+      "positive_shots": 13,
+      "positive_bins": 48,
+      "negative_bins": 7014,
+      "prevalence": 0.006796941376380629
+     },
+     "point": {
+      "f1": 0.021621621621621623,
+      "precision": 0.011834319526627219,
+      "recall": 0.125,
+      "auroc": 0.6665790442923677,
+      "auprc": 0.011425293828688097,
+      "prevalence": 0.006796941376380629
+     }
+    }
+   },
+   "cuts": {
+    "20140421": 0.6543452380952378,
+    "20140620": 0.642699494949495,
+    "20180314": 0.6731613756613758
+   },
+   "uncertain_negative": {
+    "counts": {
+     "shots": 33,
+     "positive_shots": 32,
+     "positive_bins": 93,
+     "negative_bins": 14826,
+     "prevalence": 0.006233661773577317
+    },
+    "metrics": {
+     "f1": {
+      "estimate": 0.029447852760736196,
+      "low": 0.012461058599701362,
+      "high": 0.050965637811698064,
+      "n_finite": 1000
+     },
+     "precision": {
+      "estimate": 0.01662049861495845,
+      "low": 0.007025167681002302,
+      "high": 0.029763595779220775,
+      "n_finite": 1000
+     },
+     "recall": {
+      "estimate": 0.12903225806451613,
+      "low": 0.052171648550724634,
+      "high": 0.20883458646616537,
+      "n_finite": 1000
+     },
+     "auroc": {
+      "estimate": 0.6992957011005079,
+      "low": 0.6480596720068588,
+      "high": 0.7512664677144186,
+      "n_finite": 1000
+     },
+     "auprc": {
+      "estimate": 0.01200815564193481,
+      "low": 0.008483972565230147,
+      "high": 0.018317543065513964,
+      "n_finite": 1000
+     },
+     "prevalence": {
+      "estimate": 0.006233661773577317,
+      "low": 0.004563031926295134,
+      "high": 0.00813157714017723,
+      "n_finite": 1000
+     }
+    }
+   },
+   "predictions": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/round5/rwm/classifier_rwm-brf.parquet"
+  }
+ },
+ "paired": {
+  "rwm-ours_minus_rwm-brf": {
+   "primary": {
+    "f1": {
+     "estimate": 0.49486226777706593,
+     "low": 0.4028996908830502,
+     "high": 0.5772762485442275,
+     "n_finite": 1000
+    },
+    "precision": {
+     "estimate": 0.43407679635027246,
+     "low": 0.33298516997082456,
+     "high": 0.5331660185351982,
+     "n_finite": 1000
+    },
+    "recall": {
+     "estimate": 0.5053763440860215,
+     "low": 0.38156328320802,
+     "high": 0.6296423135464231,
+     "n_finite": 1000
+    },
+    "auroc": {
+     "estimate": 0.2567164213294483,
+     "low": 0.19962634753030048,
+     "high": 0.3153415364947442,
+     "n_finite": 1000
+    },
+    "auprc": {
+     "estimate": 0.5094488090991123,
+     "low": 0.39203630030835035,
+     "high": 0.6250476601178008,
+     "n_finite": 1000
+    },
+    "prevalence": {
+     "estimate": 0.0,
+     "low": 0.0,
+     "high": 0.0,
+     "n_finite": 1000
+    }
+   },
+   "uncertain_negative": {
+    "f1": {
+     "estimate": 0.23046404151239158,
+     "low": 0.16328440674246422,
+     "high": 0.3075383015767945,
+     "n_finite": 1000
+    },
+    "precision": {
+     "estimate": 0.14681440443213295,
+     "low": 0.09914807335450376,
+     "high": 0.20562827589956367,
+     "n_finite": 1000
+    },
+    "recall": {
+     "estimate": 0.5053763440860215,
+     "low": 0.38156328320802,
+     "high": 0.6296423135464231,
+     "n_finite": 1000
+    },
+    "auroc": {
+     "estimate": 0.25421883091169384,
+     "low": 0.1959288078826323,
+     "high": 0.31115467673350083,
+     "n_finite": 1000
+    },
+    "auprc": {
+     "estimate": 0.21582036315421219,
+     "low": 0.12382907392275962,
+     "high": 0.34237452796819773,
+     "n_finite": 1000
+    },
+    "prevalence": {
+     "estimate": 0.0,
+     "low": 0.0,
+     "high": 0.0,
+     "n_finite": 1000
+    }
+   }
+  }
+ },
+ "legacy": {
+  "model": "NSTX RUS forest",
+  "slice_auroc": 0.918,
+  "slice_tpr": 0.924,
+  "slice_fpr": 0.214,
+  "onsets_warned": 10,
+  "target_onsets": 11,
+  "stable_shots_with_an_alarm": 2,
+  "stable_shots": 17,
+  "slice_f1": null,
+  "date": "2022",
+  "source": "/scratch/gpfs/nc1514/FusionAIHub/.tmp/label_papers/Piccione_2022_Nucl._Fusion_62_036002.md",
+  "doi": "10.1088/1741-4326/ac44af",
+  "context": "different machine, expert-reviewed stable shots, not comparable",
+  "validation": "106 training and 28 test shots; seven NSTX inputs; 5 ms slices, 100 ms forecast; separate slice cutoff 0.450 and hysteresis 0.36/0.71/60 ms",
+  "task": "forecast: a 100 ms forecast on NSTX, another machine; slice AUROC only (no F1, no AUPRC), not comparable with a DIII-D presence score",
+  "record": "outputs/labeler/rwm/evaluation.json"
+ },
+ "caveats": [
+  "The v5 present spans end where the delta-Bp falls back below the screen threshold and the uncertain stretches are delta-Bp runs, so rwm-ours reads the labels' own sensor: its score is partly agreement with the delta-Bp rule, not an independent truth.",
+  "Negatives are assumed: Hanson's lists are taken as complete on his shots; no rule tested absence there.",
+  "Three calendar days, 33 shots: the intervals resample shots at fixed held-out predictions, not run days."
+ ],
+ "dropped": "the forecaster (100 ms horizon), the 20 ms onset gap, the gap-aware alarms and the phase-controlled AUROC (owner, 2026-10-14 12:58)"
+}

@@ -475,61 +475,83 @@ def test_the_tm_auc_panel_reads_the_records_auroc_and_auprc():
 
 # resistive wall modes
 
+RWM_MODELS = ("rwm-brf", "rwm-ours")
 
-def test_the_rwm_f1_panel_is_one_bar_with_its_slices_prevalence_baseline():
+
+def test_the_rwm_f1_panel_draws_both_classifiers_with_their_bins_baseline():
     rwm = records()[6]
     drawn, every, ax = drawn_rows(fig.draw_rwm, rwm)
-    assert not [r for r in drawn if r["group"] == "legacy"]  # the NSTX forest: no F1
-    assert not any("other machine" in flat(t.get_text()) for t in ax.texts)
-    assert len(ax.patches) == 1 and not reported_texts(ax)
+    # the NSTX forest has no F1: a row, not a bar
     legacy = [r for r in every if r["group"] == "legacy"]
-    assert len(legacy) == 1 and legacy[0]["value"] is None
-    assert "not comparable" in legacy[0]["note"] and not legacy[0]["drawn"]
-    (row,) = drawn
-    brf = rwm["configs"]["rwm-brf"]
-    assert row["series"] == "rwm-brf"
-    assert row["value"] == brf["metrics"]["slice_f1"]["estimate"]
-    assert row["key"] == "configs.rwm-brf.metrics.slice_f1.estimate"
-    # the elapsed-time rule is a rule, not a trivial baseline: CSV only, no dash
-    clock = rwm["configs"]["rwm-rule-elapsed-time"]["metrics"]["slice_f1"]["estimate"]
-    (rule,) = [r for r in every if r["series"] == "rwm-rule-elapsed-time"]
-    assert rule["value"] == clock and not rule["drawn"]
-    # the baseline is the prevalence of the slices the bar is scored on
-    counts = brf["counts"]
-    prevalence = counts["positive_slices"] / (
-        counts["positive_slices"] + counts["negative_slices"]
+    assert len(legacy) == 1 and legacy[0]["value"] is None and not legacy[0]["drawn"]
+    assert "another machine" in legacy[0]["note"] and "forecast" in legacy[0]["note"]
+    assert len(ax.patches) == 2 and not reported_texts(ax)
+    assert [t.get_text() for t in ax.get_xticklabels()] == [
+        fig.two_line(m) for m in RWM_MODELS
+    ]
+    assert [r["series"] for r in drawn] == list(RWM_MODELS)
+    for row in drawn:
+        model = rwm["models"][row["series"]]
+        assert row["group"] == "Tokamak-SI"
+        assert row["value"] == model["metrics"]["f1"]["estimate"]
+        assert row["key"] == f"models.{row['series']}.metrics.f1.estimate"
+    assert not any(
+        "horizon" in r["note"] or "phase-controlled" in r["note"] for r in every
+    )
+    # one prevalence, of the bins both are scored on, under each bar
+    counts = rwm["counts"]
+    prevalence = counts["positive_bins"] / (
+        counts["positive_bins"] + counts["negative_bins"]
     )
     assert prevalence == pytest.approx(counts["prevalence"])
-    (base,) = baseline_rows(every)
-    assert base["value"] == pytest.approx(fig.always_f1(prevalence))
-    assert base["key"].endswith("configs.rwm-brf.counts.prevalence")
-    assert baseline_values(ax) == [base["value"]]
-    assert not [y for y in baseline_values(ax) if y == clock]
+    bases = baseline_rows(every)
+    assert len(bases) == 2 and all(
+        b["key"].endswith("counts.prevalence") for b in bases
+    )
+    assert baseline_values(ax) == pytest.approx([fig.always_f1(prevalence)] * 2)
+    # the paired difference and the uncertain-negative view: CSV only
+    (paired,) = [r for r in every if r["series"] == "rwm-ours minus rwm-brf"]
+    assert not paired["drawn"]
+    diff = rwm["paired"]["rwm-ours_minus_rwm-brf"]["primary"]["f1"]
+    assert paired["value"] == diff["estimate"]
+    unc = [r for r in every if r["group"].endswith("uncertain time scored negative")]
+    assert len(unc) == 2 and not any(r["drawn"] for r in unc)
 
 
-def test_the_rwm_baseline_of_the_slices_is_refused_when_it_is_not_their_counts():
+def test_the_rwm_baseline_is_refused_when_it_is_not_the_bins_counts():
     rwm = copy.deepcopy(records()[6])
-    config = rwm["configs"]["rwm-brf"]
-    assert fig.rwm_prevalence(config) == config["counts"]["prevalence"]
-    config["counts"]["prevalence"] += 0.01
+    assert fig.rwm_prevalence(rwm) == rwm["counts"]["prevalence"]
+    other = copy.deepcopy(rwm)
+    other["counts"]["prevalence"] += 0.01
     with pytest.raises(ValueError, match="prevalence"):
-        fig.rwm_prevalence(config)
+        fig.rwm_prevalence(other)
+    rwm["models"]["rwm-ours"]["counts"]["negative_bins"] += 1
+    with pytest.raises(ValueError, match="other bins"):
+        fig.rwm_prevalence(rwm)
 
 
-def test_the_rwm_auroc_panel_draws_the_nstx_forests_auroc_as_reported():
+def test_the_rwm_auroc_panel_draws_the_nstx_forecast_as_reported_beside_rwm_brf():
     rwm = records()[6]
     drawn, every, ax = drawn_rows(fig.draw_rwm, rwm, metric="auroc")
     legacy = [r for r in drawn if r["group"] == "legacy"]
     assert len(legacy) == 1 and legacy[0]["value"] == rwm["legacy"]["slice_auroc"]
     assert legacy[0]["key"] == "legacy.slice_auroc" and "REPORTED" in legacy[0]["note"]
-    assert len(reported_texts(ax)) == 1 and len(ax.patches) == 2
-    # one chance-level dash, on the Tokamak-SI bar alone
-    (base,) = baseline_rows(every)
-    assert base["value"] == 0.5 and baseline_values(ax) == [0.5]
-    ((left, right, _),) = baseline_segments(ax)
-    (si_bar,) = [p for p in ax.patches if to_hex(p.get_facecolor()).upper() == fig.SI]
-    assert left == pytest.approx(si_bar.get_x())
-    assert right == pytest.approx(si_bar.get_x() + si_bar.get_width())
+    assert "forecast" in legacy[0]["note"] and "another machine" in legacy[0]["note"]
+    assert len(reported_texts(ax)) == 1 and len(ax.patches) == 3
+    bars = sorted(ax.patches, key=lambda p: p.get_x())
+    colours = [to_hex(p.get_facecolor()).upper() for p in bars]
+    assert colours == [fig.LEGACY, fig.SI, fig.SI]
+    # the pair sits on rwm-brf's tick, rwm-ours alone on its own
+    centre = (bars[0].get_x() + bars[1].get_x() + bars[1].get_width()) / 2
+    assert centre == pytest.approx(0)
+    assert bars[2].get_x() + bars[2].get_width() / 2 == pytest.approx(1)
+    # chance-level dashes on the Tokamak-SI bars alone
+    assert [b["value"] for b in baseline_rows(every)] == [0.5, 0.5]
+    segments = baseline_segments(ax)
+    assert [y for _, _, y in segments] == [0.5, 0.5]
+    for (left, right, _), bar in zip(segments, bars[1:], strict=True):
+        assert left == pytest.approx(bar.get_x())
+        assert right == pytest.approx(bar.get_x() + bar.get_width())
 
 
 def test_the_rwm_auprc_panel_has_no_legacy_bar():
@@ -538,7 +560,8 @@ def test_the_rwm_auprc_panel_has_no_legacy_bar():
     assert {r["group"] for r in drawn} == {"Tokamak-SI"}
     legacy = [r for r in every if r["group"] == "legacy"]
     assert len(legacy) == 1 and legacy[0]["value"] is None and not legacy[0]["drawn"]
-    assert len(ax.patches) == 1 and not reported_texts(ax)
+    assert len(ax.patches) == 2 and not reported_texts(ax)
+    assert baseline_values(ax) == pytest.approx([rwm["counts"]["prevalence"]] * 2)
 
 
 # sawtooth

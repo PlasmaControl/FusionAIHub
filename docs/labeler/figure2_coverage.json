@@ -252,15 +252,13 @@
   },
   "rwm": {
    "legacy": {
-    "status": "point_events",
-    "label": "Hanson onset list",
-    "shots": 33,
+    "status": "none",
+    "label": "no legacy label set",
+    "shots": null,
     "seconds": null,
     "shared_definition": false,
-    "definition": "onset times only: a shot count, no labelled time",
-    "paths": [
-     "data/events/resistive_wall_mode/format/rwm_format_2026_v1.csv"
-    ]
+    "definition": "Hanson's onset list holds onset times only, no labelled time",
+    "paths": []
    },
    "tokamak_si": {
     "status": "measured",
@@ -345,7 +343,6 @@
   "data/events/neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv": "decba8f2a5c4b5f69b23e284bf70cf0058bbe1f55c519b9624714420b53a173a",
   "data/events/resistive_wall_mode/extend_rwm_onset_window/rwm_windows.csv": "b372bbb707219c6269d7521ef70430b8ccea8c0df3f29b366fe2c352b6108c6e",
   "data/events/resistive_wall_mode/extend_rwm_onset_window/rwm_windows.meta.json": "7ec86fd2e10cab2376fe8f14d2d27d981f82a4490c2765ea132242d491be4139",
-  "data/events/resistive_wall_mode/format/rwm_format_2026_v1.csv": "d88cf9c25dc97b6338f286403f1b4ecd2c6b14d1551a5b3b786ea622e35e5390",
   "data/events/sawtooth_oscillation/review/history.jsonl": "5eed09aeb201b181c232fe3d567d65a03ca8b815ebb8a646d9c85fe2ac0e68f8",
   "data/events/sawtooth_oscillation/review/labels.csv": "5984a2684cf660751cfdcc387bd397999db4fa23dcd03978a2ddd748f909c85a",
   "docs/labeler/figure2_detach.json": "4a4c7fe49eba142657467918186961ede75e6b6f0e432bc6881957d9b1829321",

@@ -471,18 +471,16 @@ def sawtooth() -> dict:
 
 
 def rwm() -> dict:
-    legacy_path = table("resistive_wall_mode/format/rwm_format_2026_v1.csv")
     windows = table("resistive_wall_mode/extend_rwm_onset_window/rwm_windows.csv")
     meta = windows.with_suffix(".meta.json")
-    onsets = pd.read_csv(legacy_path)
     return {
+        # owner, 2026-10-14: "no original", as for sawtooth and detachment;
+        # Hanson's list holds onset times only, no labelled time
         "legacy": side(
-            "point_events",
-            "Hanson onset list",
-            "onset times only: a shot count, no labelled time",
-            [legacy_path],
-            shots=int(onsets.shot.nunique()),
-            seconds=None,
+            "none",
+            "no legacy label set",
+            "Hanson's onset list holds onset times only, no labelled time",
+            [],
         ),
         "tokamak_si": side(
             "measured",

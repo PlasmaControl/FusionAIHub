@@ -52,11 +52,18 @@ AUPRC = p), and `--table` has one row per bar, series "trivial baseline":
   on DIII-D shots, so none is REPORTED; each baseline is its own bins'
   `prevalence`. The Tokamak-SI F1 excludes uncertain time; the same model with
   uncertain time scored negative is in the CSV only.
-- RWM: `rwm-brf` on the Tokamak-SI labels (`outputs/labeler/rwm/evaluation.json`),
-  pooled slice F1, its baseline the prevalence of the slices it is scored on
-  (`counts.prevalence`, checked against the positive and negative slice counts);
-  the elapsed-time rule's score is in the CSV only. The legacy forest was scored
-  on another machine and has no F1: nothing is drawn for it in the F1 figure.
+- RWM: presence classifiers at t (owner, 2026-10-14), from
+  `docs/labeler/results/rwm_classifier.json` (`rwm_classify.py`): `rwm-brf`, the
+  NSTX balanced-forest recipe on the round-four (N1RMS-based) inputs retrained on
+  the Tokamak-SI labels, and `rwm-ours`, the same forest on the v5 inputs with the
+  n = 1 delta-Bp, alone on its tick. Bin-level F1, AUROC and AUPRC on 10 ms bins
+  of Hanson's shots, one calendar run day held out at a time, with 95 %
+  whole-shot bootstrap intervals; one baseline, the prevalence of the bins both
+  are scored on (`counts.prevalence`, checked against its bin counts and each
+  model's). The paired difference and the uncertain-scored-negative view are in
+  the CSV only. The NSTX forest was a forecast on another machine and reported a
+  slice AUROC only: a REPORTED bar beside `rwm-brf` in the AUROC figure, nothing
+  in the F1 and AUPRC figures.
 - Sawtooth: `saw-hl3` (record `saw-hl3-full`: the OuYang 2025 HL-3 network,
   replicated, on the paper's nine offline inputs; the earlier four-input run,
   `saw-hl3-ece`, is in the CSV only)
@@ -93,12 +100,11 @@ labelled shot count written on each bar.
 `--metric auc` draws the same sets for AUROC and AUPRC (no coverage panel) into
 `fig_benchmarks_auc.pdf`: an original score only where its paper reported one
 (confine-cnn's and elm-elmo's AUPRC, elm-elmo's AUROC are notes; the NSTX
-forest's slice AUROC is another machine: a REPORTED bar). The
+forest's slice AUROC, a forecast on another machine: a REPORTED bar). The
 confine-cnn paper reported a one-vs-rest AUC of at least 0.99 for every class and
 no macro value, so its original AUROC is a REPORTED bar at 0.99 written as that
-bound (≥ .99), not a macro score (`auc_one_vs_rest` in `gill_2024_published.json`);
-the RWM AUROC is the phase-controlled one. elm-elmo's AUROC and AUPRC come from a
-sweep of its threshold.
+bound (≥ .99), not a macro score (`auc_one_vs_rest` in `gill_2024_published.json`).
+elm-elmo's AUROC and AUPRC come from a sweep of its threshold.
 
 A value not available is a short grey note where its bar would be. A score is
 written above its bar without the leading zero (.836): a pair's two values at
@@ -146,7 +152,8 @@ SOURCES = {
     "elm": OUTPUTS / "elm" / "ours" / "evaluation.json",
     "elm_smith": OUTPUTS / "elm" / "smith" / "evaluation.json",
     "tm": REPO / "docs" / "labeler" / "figure2_tm.json",
-    "rwm": OUTPUTS / "rwm" / "evaluation.json",
+    # rwm-brf and rwm-ours, presence per 10 ms bin (rwm_classify.py)
+    "rwm": REPO / "docs" / "labeler" / "results" / "rwm_classifier.json",
     # the sawtooth stream's benchmark: out-of-fold presence scores per model
     "saw": OUTPUTS / "sawtooth" / "fix6" / "benchmark.json",
     "coverage": REPO / "docs" / "labeler" / "figure2_coverage.json",
@@ -973,105 +980,119 @@ def draw_tm(ax, tm: dict, rows: Rows, panel: str, metric: str = "f1") -> None:
     finish(ax, [label for _, label in TM_MODELS], name)
 
 
-def rwm_cell(config: dict, metric: str) -> tuple[float, tuple, str]:
-    """rwm-brf's (or a baseline's) value, interval and key for `metric`: pooled
-    slice F1 and AUPRC, and the phase-controlled AUROC the paper's table reports."""
-    if metric == "auroc":
-        c, key = config["phase_controlled_auroc"], "phase_controlled_auroc"
-    else:
-        key = {"f1": "metrics.slice_f1", "auprc": "metrics.slice_auprc"}[metric]
-        c = config["metrics"][key.split(".")[1]]
-    return c["estimate"], (c["low"], c["high"]), key + ".estimate"
+def rwm_cell(model: dict, metric: str) -> tuple[float, tuple, str]:
+    """A presence classifier's bin-level `metric` (F1 at its folds' cuts, AUROC,
+    AUPRC): its value, 95 % whole-shot interval and key under the model."""
+    c = model["metrics"][metric]
+    return c["estimate"], (c["low"], c["high"]), f"metrics.{metric}.estimate"
 
 
-def rwm_prevalence(config: dict) -> float:
-    """The prevalence of the slices the pooled slice scores are computed on
-    (`counts.prevalence`, which must be its own positive and negative counts)."""
-    counts = config["counts"]
-    own = counts["positive_slices"] / (
-        counts["positive_slices"] + counts["negative_slices"]
-    )
+def rwm_prevalence(record: dict) -> float:
+    """The prevalence of the bins both classifiers are scored on (`counts.
+    prevalence`, which must be its own present and negative bin counts, and every
+    model's counts must be the record's)."""
+    counts = record["counts"]
+    own = counts["positive_bins"] / (counts["positive_bins"] + counts["negative_bins"])
     if abs(counts["prevalence"] - own) > 1e-9:
         raise ValueError(
             f"RWM prevalence {counts['prevalence']} is not its counts' {own}"
         )
+    for name, model in record["models"].items():
+        if model["counts"] != counts:
+            raise ValueError(f"{name} is scored on other bins than the record's")
     return counts["prevalence"]
 
 
 def draw_rwm(ax, rwm: dict, rows: Rows, panel: str, metric: str = "f1") -> None:
-    """rwm-brf on the Tokamak-SI labels, with the baseline of its slices' own
-    prevalence, and for AUROC the NSTX forest's reported slice AUROC beside it
-    (REPORTED: another machine; it has no F1 and no AUPRC). The elapsed-time rule
-    is in the table only."""
+    """The presence classifiers on the Tokamak-SI labels: `rwm-brf` (the NSTX
+    forest's recipe on the round-four inputs) and `rwm-ours` (delta-Bp), each with
+    the baseline of the bins' prevalence; for AUROC the NSTX forest's reported
+    slice AUROC beside rwm-brf (REPORTED: a forecast on another machine; it has
+    no F1 and no AUPRC). The paired difference and the uncertain-scored-negative
+    view are in the table only."""
     name = METRICS[metric]
     src = SOURCES["rwm"]
     legacy = rwm["legacy"]
-    legacy_key = {"f1": "slice_f1", "auroc": "slice_auroc", "auprc": None}[metric]
-    brf, clock = (rwm["configs"][k] for k in ("rwm-brf", "rwm-rule-elapsed-time"))
-    x, side = 0, 0
-    if metric == "auroc":
-        x, side = HALF, 1
+    prevalence = rwm_prevalence(rwm)
+    base = prevalence_base(metric, prevalence)
+    counts = rwm["counts"]
+    reported = metric == "auroc"  # the NSTX forest reported a slice AUROC only
+    if reported:
         reported_bar(ax, -HALF, legacy["slice_auroc"], side=-1)
     rows.add(
         panel,
         "rwm-brf",
         "legacy",
         name,
-        legacy[legacy_key] if legacy_key else None,
+        legacy["slice_auroc"] if reported else None,
         None,
         src,
-        f"legacy.{legacy_key}" if legacy_key else "legacy",
+        "legacy.slice_auroc" if reported else "legacy",
         note=(
-            f"REPORTED: {legacy['model']}, {legacy['context']}"
-            if metric == "auroc"
-            else f"{legacy['model']}: {legacy['context']}; no {name}; not drawn"
+            f"REPORTED: {legacy['model']}, {legacy['task']}"
+            if reported
+            else f"{legacy['model']}: {legacy['task']}; no {name}; not drawn"
         ),
-        drawn=metric == "auroc",
+        drawn=reported,
     )
-    value, ci, key = rwm_cell(brf, metric)
-    prevalence = rwm_prevalence(brf)
-    base = prevalence_base(metric, prevalence)
-    scored_bar(ax, x, value, ci, SI, side=side, base=base)
+    for tick, model in enumerate(("rwm-brf", "rwm-ours")):
+        entry = rwm["models"][model]
+        value, ci, key = rwm_cell(entry, metric)
+        x, side = (HALF, 1) if reported and tick == 0 else (tick, 0)
+        scored_bar(ax, x, value, ci, SI, side=side, base=base)
+        rows.add(
+            panel,
+            model,
+            "Tokamak-SI",
+            name,
+            value,
+            ci,
+            src,
+            f"models.{model}.{key}",
+            note=f"presence per 10 ms bin, {counts['shots']} Hanson shots, one "
+            "calendar run day held out at a time"
+            + ("; cut chosen on the training days" if metric == "f1" else ""),
+        )
+        baseline_row(
+            rows,
+            panel,
+            model,
+            "Tokamak-SI",
+            name,
+            base,
+            src,
+            prevalence_key(metric, "counts.prevalence"),
+            f"prevalence {prevalence:.4f} of the bins both models are scored on "
+            f"({counts['positive_bins']} present, {counts['negative_bins']} "
+            "negative)",
+        )
+        unc = entry["uncertain_negative"]["metrics"][metric]
+        rows.add(
+            panel,
+            model,
+            "Tokamak-SI, uncertain time scored negative",
+            name,
+            unc["estimate"],
+            (unc["low"], unc["high"]),
+            src,
+            f"models.{model}.uncertain_negative.metrics.{metric}.estimate",
+            note="the same predictions; kept out of the figure",
+            drawn=False,
+        )
+    diff = rwm["paired"]["rwm-ours_minus_rwm-brf"]["primary"][metric]
     rows.add(
         panel,
-        "rwm-brf",
+        "rwm-ours minus rwm-brf",
         "Tokamak-SI",
         name,
-        value,
-        ci,
+        diff["estimate"],
+        (diff["low"], diff["high"]),
         src,
-        f"configs.rwm-brf.{key}",
-        note="100 ms horizon; "
-        + ("phase-controlled" if metric == "auroc" else "pooled slices"),
-    )
-    baseline_row(
-        rows,
-        panel,
-        "rwm-brf",
-        "Tokamak-SI",
-        name,
-        base,
-        src,
-        prevalence_key(metric, "configs.rwm-brf.counts.prevalence"),
-        f"prevalence {prevalence:.4f} of the slices it is scored on "
-        f"({brf['counts']['positive_slices']} positive, "
-        f"{brf['counts']['negative_slices']} negative)",
-    )
-    elapsed, _, elapsed_key = rwm_cell(clock, metric)
-    rows.add(
-        panel,
-        "rwm-rule-elapsed-time",
-        "Tokamak-SI, elapsed-time rule",
-        name,
-        elapsed,
-        None,
-        src,
-        f"configs.rwm-rule-elapsed-time.{elapsed_key}",
-        note="a rule on time since flat-top, not a trivial baseline; "
-        "kept out of the figure",
+        f"paired.rwm-ours_minus_rwm-brf.primary.{metric}.estimate",
+        note="paired shot bootstrap: the same shots drawn for both models",
         drawn=False,
     )
-    finish(ax, ["rwm-brf"], name)
+    finish(ax, ["rwm-brf", "rwm-ours"], name)
 
 
 def saw_view(saw: dict) -> str | None:
