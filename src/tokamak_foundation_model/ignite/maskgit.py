@@ -378,6 +378,51 @@ class MaskGITDynamics(nn.Module):
             out[m.name] = context
         return out
 
+    @torch.no_grad()
+    def _forecast_context(self, codes, actuators, ss_frac, gen):
+        """Replace a fraction of history frames by the model's own one-step forecasts.
+
+        Every frame is forecast in one block-forcing pass from the real frames
+        before it, with nothing of the frame itself visible, and sampled at
+        temperature 1. Training on such a history scores forecasts made from the
+        model's own earlier forecasts. ``cache_enabled=False`` as in
+        :meth:`_scheduled_sample_context`.
+        """
+        if ss_frac <= 0.0:
+            return codes
+        reference = codes[self.cfg.modalities[0].name]
+        batch, n_frames, _ = reference.shape
+        replaced = (
+            torch.rand((batch, n_frames), generator=gen, device=reference.device)
+            < ss_frac
+        )
+        if not bool(replaced.any()):
+            return codes
+        selection = {
+            m.name: replaced.unsqueeze(-1).expand_as(codes[m.name]).contiguous()
+            for m in self.cfg.modalities
+        }
+        blank = {
+            m.name: torch.full_like(codes[m.name], self._mask_id(m.name))
+            for m in self.cfg.modalities
+        }
+        with torch.autocast(
+            device_type=reference.device.type,
+            dtype=torch.bfloat16,
+            enabled=torch.is_autocast_enabled(),
+            cache_enabled=False,
+        ):
+            hidden = self.backbone.encode_block_forcing(codes, blank, actuators)
+            selected_logits = self.backbone.tok.masked_logits(hidden, selection)
+        history = {}
+        for m in self.cfg.modalities:
+            frames = codes[m.name].clone()
+            frames[selection[m.name]] = self.output.sample_flat(
+                selected_logits[m.name], gen
+            ).to(frames.dtype)
+            history[m.name] = frames
+        return history
+
     def training_loss(
         self,
         codes: Dict[str, torch.Tensor],
@@ -392,6 +437,7 @@ class MaskGITDynamics(nn.Module):
         gen_mask_p: Optional[float] = None,
         live: Optional[torch.Tensor] = None,
         label_smoothing: float = 0.0,
+        block_forcing: bool = False,
     ) -> torch.Tensor:
         """Masked-token loss, averaged per modality and then across modalities.
 
@@ -423,6 +469,12 @@ class MaskGITDynamics(nn.Module):
         label_smoothing : float, default=0.0
             Label smoothing of the cross-entropy. Passed explicitly so that
             validation, which calls this method too, is never smoothed.
+        block_forcing : bool, default=False
+            Block teacher forcing: every frame is predicted from a fully visible
+            history of strictly earlier frames (:meth:`DynamicsBackbone.
+            encode_block_forcing`), the condition of a rollout. Scheduled sampling
+            then replaces history frames by the model's own one-step forecasts
+            (:meth:`_forecast_context`) instead of samples that saw the answer.
 
         Returns
         -------
@@ -434,15 +486,30 @@ class MaskGITDynamics(nn.Module):
         A modality with zero total weight contributes ``0 * logits.sum()`` so its
         head stays in the autograd graph, as DDP requires.
         """
-        context = self._scheduled_sample_context(codes, actuators, ss_frac, generator)
-        masked, mask = self._random_mask(
-            context,
-            generator,
-            ratio_override=mask_ratio,
-            history_frames=history_frames,
-            gen_mask_p=gen_mask_p,
-        )
-        hidden = self.backbone.encode(masked, actuators)
+        if block_forcing:
+            history = self._forecast_context(codes, actuators, ss_frac, generator)
+            # The query stream reveals real codes, as MaskGIT decoding of the
+            # target frame does; the history carries the model's forecasts.
+            query, mask = self._random_mask(
+                codes,
+                generator,
+                ratio_override=mask_ratio,
+                history_frames=history_frames,
+                gen_mask_p=gen_mask_p,
+            )
+            hidden = self.backbone.encode_block_forcing(history, query, actuators)
+        else:
+            context = self._scheduled_sample_context(
+                codes, actuators, ss_frac, generator
+            )
+            masked, mask = self._random_mask(
+                context,
+                generator,
+                ratio_override=mask_ratio,
+                history_frames=history_frames,
+                gen_mask_p=gen_mask_p,
+            )
+            hidden = self.backbone.encode(masked, actuators)
         masked_logits = self.backbone.tok.masked_logits(hidden, mask)
         total = codes[self.cfg.modalities[0].name].new_zeros((), dtype=torch.float32)
         total_weight = 0.0

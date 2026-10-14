@@ -40,6 +40,8 @@ export DROPOUT=${DROPOUT:-0.1} GRAD_CLIP=${GRAD_CLIP:-1.0} LABEL_SMOOTHING=${LAB
 export MOD_WEIGHT_POW=${MOD_WEIGHT_POW:-0} GEN_MASK_P=${GEN_MASK_P:-0.0}
 # --- THE recipe axis: scheduled sampling (the infiller recipe had SS_FINAL_FRAC=0 and rolled out flat) ---
 export SS_FINAL_FRAC=${SS_FINAL_FRAC:-0.75} SS_RAMP_STEPS=${SS_RAMP_STEPS:-2000}
+# BLOCK_FORCING=1: every frame predicted from earlier frames only; SS then uses the model's own forecasts.
+export BLOCK_FORCING=${BLOCK_FORCING:-0}
 # --- data / windows / split ---
 export CACHE_DIR=${CACHE_DIR:-/lustre/orion/fus187/proj-shared/models/ignite_prod_v4/frame_codes}
 export LIVE_END_JSON=${LIVE_END_JSON:-/lustre/orion/fus187/proj-shared/ps9551/Flow/FusionAIHub/eval_runs/tend_all.json}

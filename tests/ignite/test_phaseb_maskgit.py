@@ -552,3 +552,98 @@ def test_latent_sample_temperature_zero_is_the_mean_code():
         mean_codes, codes
     )
     assert conf.shape == (3,) and bool((conf == 8.0).all())  # -sum(logvar) = -4*(-2)
+
+
+# ---------------------------------------------------------------- block teacher forcing
+
+
+def _btf_cfg(**kw):
+    return DynamicsConfig(
+        modalities=(
+            ModalitySpec("a", "spectro", 3, 5),
+            ModalitySpec("b", "slowts", 2, 4),
+        ),
+        d_model=16,
+        depth=2,
+        n_heads=2,
+        ffn_mult=2,
+        k0_seed=2,
+        n_predict=3,
+        actuator_dim=6,
+        grad_checkpointing=False,
+        **kw,
+    )
+
+
+@pytest.mark.parametrize("cross", [False, True])
+def test_block_forcing_query_equals_standard_forward_on_the_past(cross):
+    """Query frame t must see exactly what inference sees: frames < t, plus itself."""
+    torch.manual_seed(0)
+    cfg = _btf_cfg(act_cross_attn=cross)
+    model = MaskGITDynamics(cfg).eval()
+    gen = torch.Generator().manual_seed(1)
+    real = _codes(cfg, 2, cfg.max_frames, gen)
+    query, _mask = model._random_mask(real, gen)
+    act = torch.randn(2, cfg.max_frames, 6, generator=gen)
+    with torch.no_grad():
+        hidden = model.backbone.encode_block_forcing(real, query, act)
+        for t in range(cfg.max_frames):
+            sequence = {
+                n: torch.cat([real[n][:, :t], query[n][:, t : t + 1]], dim=1)
+                for n in real
+            }
+            reference = model.backbone.encode(sequence, act[:, : t + 1])[:, -1]
+            assert torch.allclose(hidden[:, t], reference, atol=1e-5), t
+
+
+def test_block_forcing_loss_is_finite_and_trains_every_parameter():
+    torch.manual_seed(0)
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg).train()
+    gen = torch.Generator().manual_seed(2)
+    codes = _codes(cfg, 2, cfg.max_frames, gen)
+    act = torch.randn(2, cfg.max_frames, 6, generator=gen)
+    loss = model.training_loss(
+        codes, act, generator=gen, ss_frac=0.75, block_forcing=True
+    )
+    assert torch.isfinite(loss)
+    loss.backward()
+    without_grad = [n for n, p in model.named_parameters() if p.grad is None]
+    assert not without_grad, without_grad
+
+
+def test_block_forcing_gradients_match_with_checkpointing():
+    grads = []
+    for checkpointing in (False, True):
+        torch.manual_seed(0)
+        cfg = _btf_cfg()
+        cfg.grad_checkpointing = checkpointing
+        model = MaskGITDynamics(cfg).train()
+        gen = torch.Generator().manual_seed(3)
+        codes = _codes(cfg, 2, cfg.max_frames, gen)
+        act = torch.randn(2, cfg.max_frames, 6, generator=gen)
+        loss = model.training_loss(
+            codes, act, generator=gen, ss_frac=0.5, block_forcing=True
+        )
+        loss.backward()
+        grads.append(torch.cat([p.grad.flatten() for p in model.parameters()]))
+    assert torch.allclose(grads[0], grads[1], atol=1e-6)
+
+
+def test_forecast_context_never_sees_the_frame_it_replaces():
+    """A replaced history frame must be a forecast from earlier frames only."""
+    torch.manual_seed(0)
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg).eval()
+    codes = _codes(cfg, 1, cfg.max_frames, torch.Generator().manual_seed(4))
+    act = torch.zeros(1, cfg.max_frames, 6)
+    altered = {n: c.clone() for n, c in codes.items()}
+    last = cfg.max_frames - 1
+    for n in altered:
+        altered[n][:, last] = (altered[n][:, last] + 1) % 4
+    first = model._forecast_context(codes, act, 1.0, torch.Generator().manual_seed(5))
+    second = model._forecast_context(
+        altered, act, 1.0, torch.Generator().manual_seed(5)
+    )
+    for n in codes:
+        assert torch.equal(first[n][:, last], second[n][:, last])

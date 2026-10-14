@@ -229,7 +229,7 @@ cache=${CACHE_DIR} out=${OUT_DIR} depth=${DEPTH} d_model=${D_MODEL} n_heads=${N_
 k0=${K0} n_predict=${N_PREDICT} steps=${STEPS} bs=${BATCH_SIZE} accum=${ACCUM_STEPS} \
 grad_ckpt=${GRAD_CKPT} lr=${LR} warmup=${WARMUP_STEPS} min_lr_ratio=${MIN_LR_RATIO} \
 beta2=${BETA2} wd=${WEIGHT_DECAY} gen_mask_p=${GEN_MASK_P} ss_final=${SS_FINAL_FRAC} \
-ss_ramp=${SS_RAMP_STEPS} mask_absent=${MASK_ABSENT}"
+ss_ramp=${SS_RAMP_STEPS} mask_absent=${MASK_ABSENT} block_forcing=${BLOCK_FORCING:-0}"
   srun -N "$SLURM_JOB_NUM_NODES" -n "$SLURM_NTASKS" -c "$SLURM_CPUS_PER_TASK" \
        --gpus-per-task=1 --gpu-bind=closest \
        scripts/slurm_frontier/_srun_rank_wrapper.sh \
@@ -265,6 +265,7 @@ ss_ramp=${SS_RAMP_STEPS} mask_absent=${MASK_ABSENT}"
        --label_smoothing "${LABEL_SMOOTHING:-0}" \
        --val_windows_per_shot "${VAL_WINDOWS_PER_SHOT:-0}" \
        --grad_clip "${GRAD_CLIP:-0}" \
+       --block_forcing "${BLOCK_FORCING:-0}" \
        --train_cap "${TRAIN_CAP}" \
        --val_n "${VAL_N}" "${EXTRA[@]}"
 fi

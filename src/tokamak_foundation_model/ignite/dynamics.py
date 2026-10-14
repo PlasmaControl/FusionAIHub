@@ -42,13 +42,60 @@ class _MHA(nn.Module):
         self.proj = nn.Linear(d_model, d_model, bias=False)
         self.attn_drop = nn.Dropout(dropout)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        B, L, d = x.shape
+    def _project(self, x: torch.Tensor):
+        B, L, _d = x.shape
         qkv = self.qkv(x).reshape(B, L, 3, self.n_heads, self.head_dim)
         qkv = qkv.permute(2, 0, 3, 1, 4)
-        q, k, v = qkv[0], qkv[1], qkv[2]
+        return qkv[0], qkv[1], qkv[2]
+
+    def _output(self, attended: torch.Tensor, shape) -> torch.Tensor:
+        return self.attn_drop(self.proj(attended.transpose(1, 2).reshape(shape)))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        q, k, v = self._project(x)
         attended = F.scaled_dot_product_attention(q, k, v, is_causal=self.causal)
-        return self.attn_drop(self.proj(attended.transpose(1, 2).reshape(B, L, d)))
+        return self._output(attended, x.shape)
+
+    def forward_with_history(self, history: torch.Tensor, query: torch.Tensor):
+        """Causal attention of a history sequence, plus a query sequence on it.
+
+        Position ``i`` of ``query`` attends to the history positions before ``i``
+        and to itself, never to history position ``i``: it predicts frame ``i``
+        from strictly earlier frames, as a rollout does.
+
+        Parameters
+        ----------
+        history, query : torch.Tensor of shape (B, L, d)
+            The two streams, aligned position by position.
+
+        Returns
+        -------
+        history_out, query_out : torch.Tensor of shape (B, L, d)
+            Attention outputs of both streams.
+        """
+        history_q, history_k, history_v = self._project(history)
+        query_q, query_k, query_v = self._project(query)
+        history_out = self._output(
+            F.scaled_dot_product_attention(
+                history_q, history_k, history_v, is_causal=self.causal
+            ),
+            history.shape,
+        )
+        length = query.shape[1]
+        position = torch.arange(length, device=query.device)
+        earlier = position.view(1, -1) < position.view(-1, 1)
+        itself = position.view(1, -1) == position.view(-1, 1)
+        allowed = torch.cat([earlier, itself], dim=1)
+        query_out = self._output(
+            F.scaled_dot_product_attention(
+                query_q,
+                torch.cat([history_k, query_k], dim=2),
+                torch.cat([history_v, query_v], dim=2),
+                attn_mask=allowed,
+            ),
+            query.shape,
+        )
+        return history_out, query_out
 
 
 class _FFN(nn.Module):
@@ -98,6 +145,31 @@ class FactorizedSTBlock(nn.Module):
         flat = x.reshape(B * Fr * N, d)
         flat = flat + self.ffn(self.fn(flat))
         return flat.reshape(B, Fr, N, d)
+
+    def forward_two_stream(self, history: torch.Tensor, query: torch.Tensor):
+        """Apply the block to a history and a query stream of shape (B, F, N, d).
+
+        The streams share every weight. Spatial attention and the FFN act on each
+        stream on its own; in temporal attention the query frame ``t`` attends to
+        history frames before ``t`` and to itself (see
+        :meth:`_MHA.forward_with_history`).
+        """
+        B, Fr, N, d = history.shape
+        both = torch.cat([history, query], dim=0)
+        per_frame = both.reshape(2 * B * Fr, N, d)
+        per_frame = per_frame + self.spatial(self.sn(per_frame))
+        both = per_frame.reshape(2 * B, Fr, N, d)
+        per_token = both.permute(0, 2, 1, 3).reshape(2 * B * N, Fr, d)
+        normed = self.tn(per_token)
+        history_out, query_out = self.temporal.forward_with_history(
+            normed[: B * N], normed[B * N :]
+        )
+        per_token = per_token + torch.cat([history_out, query_out], dim=0)
+        both = per_token.reshape(2 * B, N, Fr, d).permute(0, 2, 1, 3)
+        flat = both.reshape(2 * B * Fr * N, d)
+        flat = flat + self.ffn(self.fn(flat))
+        both = flat.reshape(2 * B, Fr, N, d)
+        return both[:B], both[B:]
 
 
 class ActuatorCrossAttention(nn.Module):
@@ -177,6 +249,50 @@ class DynamicsBackbone(nn.Module):
         actuators : torch.Tensor of shape (B, F, actuator_dim)
             Actuators of each frame.
         """
+        x = self._embed(codes, actuators)
+        recompute = self.training and self.cfg.grad_checkpointing and x.requires_grad
+        for block in self.blocks:
+            x = self._checkpointed(block, recompute, x)
+        return self.out_norm(x)
+
+    def encode_block_forcing(
+        self,
+        history_codes: Dict[str, torch.Tensor],
+        query_codes: Dict[str, torch.Tensor],
+        actuators: torch.Tensor,
+    ) -> torch.Tensor:
+        """Return query-stream hidden states for block teacher forcing.
+
+        Every query frame is predicted from history frames strictly before it, so
+        all frames of the window are one-step forecasts in a single pass, under
+        the condition of a rollout.
+
+        Parameters
+        ----------
+        history_codes : dict of str to torch.LongTensor of shape (B, F, n_tok)
+            Fully visible history frames.
+        query_codes : dict of str to torch.LongTensor of shape (B, F, n_tok)
+            The frames to predict, with masked positions set to ``[MASK]``.
+        actuators : torch.Tensor of shape (B, F, actuator_dim)
+            Actuators of each frame, shared by both streams.
+
+        Returns
+        -------
+        hidden : torch.Tensor of shape (B, F, tokens_per_frame, d_model)
+            Query-stream hidden states.
+        """
+        history = self._embed(history_codes, actuators)
+        query = self._embed(query_codes, actuators)
+        recompute = (
+            self.training and self.cfg.grad_checkpointing and query.requires_grad
+        )
+        for block in self.blocks:
+            history, query = self._checkpointed(
+                block.forward_two_stream, recompute, history, query
+            )
+        return self.out_norm(query)
+
+    def _embed(self, codes, actuators) -> torch.Tensor:
         x = self.tok.embed(codes)
         B, Fr, N, d = x.shape
         if actuators.shape != (B, Fr, self.cfg.actuator_dim):
@@ -187,22 +303,21 @@ class DynamicsBackbone(nn.Module):
         x = x + self.act_embed(actuators).unsqueeze(2)
         if self.act_cross is not None:
             x = x + self.act_cross(x, actuators)
-        recompute = self.training and self.cfg.grad_checkpointing and x.requires_grad
-        for block in self.blocks:
-            if recompute:
-                # The trainer all-reduces gradients by hand: DDP hooks corrupt the
-                # recompute. The RNG state must be preserved whenever dropout is on,
-                # or the recompute draws a different mask than the forward pass.
-                x = torch.utils.checkpoint.checkpoint(
-                    block,
-                    x,
-                    use_reentrant=False,
-                    determinism_check="none",
-                    preserve_rng_state=float(self.cfg.dropout) > 0.0,
-                )
-            else:
-                x = block(x)
-        return self.out_norm(x)
+        return x
+
+    def _checkpointed(self, function, recompute: bool, *inputs):
+        if not recompute:
+            return function(*inputs)
+        # The trainer all-reduces gradients by hand: DDP hooks corrupt the
+        # recompute. The RNG state must be preserved whenever dropout is on, or the
+        # recompute draws a different mask than the forward pass.
+        return torch.utils.checkpoint.checkpoint(
+            function,
+            *inputs,
+            use_reentrant=False,
+            determinism_check="none",
+            preserve_rng_state=float(self.cfg.dropout) > 0.0,
+        )
 
     def forward(self, codes: Dict[str, torch.Tensor], actuators: torch.Tensor):
         """Return per-modality head outputs for every position."""

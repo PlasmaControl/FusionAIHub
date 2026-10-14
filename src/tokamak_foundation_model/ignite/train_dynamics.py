@@ -1653,6 +1653,15 @@ class TrainConfig:
     label_smoothing: float = _option(
         0.0, "cross-entropy label smoothing, training only"
     )
+    block_forcing: bool = _option(
+        False,
+        "1 = block teacher forcing: every frame is predicted from a fully visible "
+        "history of earlier frames, and scheduled sampling fills that history "
+        "with the model's own one-step forecasts. Roughly doubles the step cost",
+        cli_default=0,
+        cli_type=int,
+        from_cli=bool,
+    )
     mask_absent: bool = _option(
         False,
         "exclude absent diagnostics from the loss (they stay in the input); builds "
@@ -2137,6 +2146,7 @@ class Trainer:
             f"ss_final_frac={model_cfg.ss_ramp_final_frac} "
             f"ss_ramp_steps={model_cfg.ss_ramp_steps} "
             f"dropout={model_cfg.dropout} mask_absent={int(self.use_presence)} "
+            f"block_forcing={int(config.block_forcing)} "
             f"(val is ALWAYS scored at gen_mask_p=0 so arms stay comparable)"
         )
         world_size, accum = self.ddp.world_size, config.accum_steps
@@ -2410,6 +2420,7 @@ class Trainer:
                 live=live,
                 mod_weights=self.mod_weights,
                 per_modality=per_modality,
+                block_forcing=config.block_forcing,
             )
         if per_modality:
             self.equal_weight_losses.append(
@@ -2622,6 +2633,7 @@ class Trainer:
             "cfg_fsq_levels": [int(level) for level in model_cfg.fsq_levels],
             "cfg_grad_checkpointing": bool(model_cfg.grad_checkpointing),
             "cfg_dropout": float(model_cfg.dropout),
+            "cfg_block_forcing": bool(config.block_forcing),
             "cfg_depth": config.depth,
             "cfg_d_model": config.d_model,
             "cfg_n_heads": model_cfg.n_heads,
