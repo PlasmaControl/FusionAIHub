@@ -4,12 +4,10 @@ title: "shot_design"
 
 # shot_design
 
-Environment settings use the `SHOT_DESIGN_*` prefix. Legacy `IDEATE_*` settings
-remain fallbacks when the corresponding new name is unset; an explicitly empty
-new setting still wins. A fallback emits one log line naming the replacement.
+Environment settings use the `SHOT_DESIGN_*` prefix; the legacy `IDEATE_*` names are no longer read.
 The pixi environments are `shot-design` and `shot-design-cpu` (and `shot-design-frontier`
 on Frontier): pixi rejects underscores in an environment name. Tasks and Python modules use `shot_design`.
-The production data directory remains `/scratch/gpfs/EKOLEMEN/nc1514/ideate`.
+The production data directory is `/scratch/gpfs/EKOLEMEN/nc1514/shot_design` (called `ideate` until 2026-10-09).
 
 A shot database and retrieval layer for DIII-D: build a queryable record of a set of discharges
 from the local raw stores, then find shots by what happened in them — a description, a reference
@@ -413,8 +411,8 @@ updating it. Start it on Stellar from this worktree:
 ```bash
 cd /scratch/gpfs/nc1514/FusionAIHub
 export PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$PWD/src
-export HF_HUB_OFFLINE=1 SHOT_DESIGN_DATA_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/ideate \
-       LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker \
+export HF_HUB_OFFLINE=1 SHOT_DESIGN_DATA_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/shot_design \
+       LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labeler \
        SHOT_DESIGN_CORPUS=/scratch/gpfs/EKOLEMEN/foundation_model
 pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \
   -e shot-design-cpu python -m shot_design serve --port 8765
@@ -602,7 +600,7 @@ unscaled registry strings: `ip_mean: "A"`, `ip_slope: "A/s"`,
 
 Error dictionaries remain HTTP 200. `/api/locate` preserves the CLI's
 bare JSON list and existing hit fields, adding only the per-shot `domain` described
-above. CLI stderr notes travel as the JSON-encoded `X-Ideate-Caveats`
+above. CLI stderr notes travel as the JSON-encoded `X-Shot-Design-Caveats`
 response header and are displayed above the hits. `/api/meta` summarizes the
 manifest and registry; `/api/phenomena` lists registry IDs, titles, aliases and
 sources. Unknown API paths return JSON 404.

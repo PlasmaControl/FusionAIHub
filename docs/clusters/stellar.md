@@ -34,8 +34,8 @@ detectors, database builds) runs on `pppl`.
 | `/scratch/gpfs/EKOLEMEN/foundation_model` | DIII-D per-shot HDF5, `<shot>_processed.h5` | 16,911 shots, 53 TB |
 | `/scratch/gpfs/EKOLEMEN/big_d3d_data/foundation_model_text` | logbook / text corpus | 27 GB |
 | `/projects/EKOLEMEN/foundation_model/preprocessing_stats.pt` | normalization stats used by training | small |
-| `/scratch/gpfs/EKOLEMEN/nc1514/labelmaker` | `LABELER_ROOT`: detector features, masks, labels, models, runs | 46 GB |
-| `/scratch/gpfs/EKOLEMEN/nc1514/ideate` | `SHOT_DESIGN_DATA_ROOT`: the Shot Designer database and caches | 625 MB |
+| `/scratch/gpfs/EKOLEMEN/nc1514/labeler` | `LABELER_ROOT`: detector features, masks, labels, models, runs | 46 GB |
+| `/scratch/gpfs/EKOLEMEN/nc1514/shot_design` | `SHOT_DESIGN_DATA_ROOT`: the Shot Designer database and caches | 625 MB |
 | `/scratch/gpfs/EKOLEMEN/nc1514/shot-recommender` | Ollama binary, models, home (LLM blurbs) | 128 GB |
 
 Rule that has held since Sep 2026: nothing new under `/scratch/gpfs/nc1514`
@@ -44,7 +44,7 @@ except repo source. Data goes under `/scratch/gpfs/EKOLEMEN/nc1514/`.
 Layout of the two workstream roots:
 
 ```
-labelmaker/                     ideate/
+labeler/                        shot_design/
   features/    29 GB              db/           94 MB   shots/events parquet + embeddings
   envs/        6.8 GB             frame_codes/  489 MB
   ae/          5.5 GB             llm/          17 MB   endpoint.json, blurb backups
@@ -62,7 +62,7 @@ labelmaker/                     ideate/
 |---|---|---|
 | `default` | cuda (torch cu124) | foundation-model training on NVIDIA |
 | `fdp` | fdp + cuda | direct DIII-D access via `toksearch` (ga-fdp channel, needs MDSplus) |
-| `labelmaker` | labelmaker + fdp | `labeler` package, CPU only |
+| `labeler` | labeler + fdp | `labeler` package, CPU only |
 | `shot-design` | shot-design + cuda | `shot_design` package with GPU |
 | `shot-design-cpu` | shot-design | `shot_design` on login node / CPU |
 | `shot-design-frontier` | shot-design-frontier + shot-design (torch rocm7.1) | `shot_design` and `labeler` on Frontier; the only environment installed there |
@@ -70,18 +70,18 @@ labelmaker/                     ideate/
 | `rocm` | (della-milan) | MI210 variant |
 
 Packages were renamed 2026-09-15: `ideate` -> `shot_design`, `labelmaker` ->
-`labeler`; the environments followed on 2026-09-19. An environment name uses the
-dash form (`shot-design`, not `shot_design`) because pixi rejects underscores in
-one; the package it installs is still `shot_design`. The `labelmaker` environment
-keeps its old name, its package having become `labeler`.
+`labeler`; the environments followed (`shot-design` on 2026-09-19, `labeler` on
+2026-10-09, when the two data roots were renamed too). An environment name uses
+the dash form (`shot-design`, not `shot_design`) because pixi rejects underscores
+in one; the package it installs is still `shot_design`.
 
 ## Environment variables
 
 The `shot-design`/`shot-design-cpu` envs default these on activation:
 
 ```
-SHOT_DESIGN_DATA_ROOT = /scratch/gpfs/EKOLEMEN/nc1514/ideate
-LABELER_ROOT          = /scratch/gpfs/EKOLEMEN/nc1514/labelmaker
+SHOT_DESIGN_DATA_ROOT = /scratch/gpfs/EKOLEMEN/nc1514/shot_design
+LABELER_ROOT          = /scratch/gpfs/EKOLEMEN/nc1514/labeler
 SHOT_DESIGN_CORPUS    = /scratch/gpfs/EKOLEMEN/foundation_model
 ```
 
@@ -115,7 +115,7 @@ redirect `HF_HOME`:
 
 ```bash
 pixi run -e shot-design-cpu pytest tests/shot_design
-pixi run -e labelmaker pytest tests/labeler
+pixi run -e labeler pytest tests/labeler
 ```
 
 ## SLURM conventions
@@ -139,7 +139,7 @@ pixi run -e labelmaker pytest tests/labeler
   `SHOT_DESIGN_DATA_ROOT/db`.
 - **LLM blurbs**: `sbatch scripts/shot_design/serve_llm.sbatch` starts Ollama
   (Gemma 4 26b) on one A100 for 4 h and writes the endpoint to
-  `/scratch/gpfs/EKOLEMEN/nc1514/ideate/llm/endpoint.json`; CPU clients on the login node read that file.
+  `/scratch/gpfs/EKOLEMEN/nc1514/shot_design/llm/endpoint.json`; CPU clients on the login node read that file.
   Binary and weights live under `shot-recommender/`. Ollama/Gemma is
   Stellar-only — Frontier uses Gemini Flash via the `agy` CLI instead (see
   [Frontier](./frontier.md) and

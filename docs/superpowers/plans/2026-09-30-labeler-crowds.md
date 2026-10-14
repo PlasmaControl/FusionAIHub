@@ -88,7 +88,7 @@ recognize binary `iscrowd`, and respect individual-scoped absent rows.
 - [x] Independent read-only review, scoped Ruff, JS syntax and whitespace checks.
 - [x] Complete the fresh full labeler-suite run and record its result.
 
-The fresh `pixi run --frozen -e labelmaker labeler-test` run, with CPU thread
+The fresh `pixi run --frozen -e labeler labeler-test` run, with CPU thread
 counts limited to one, finished with **4,616 passed, 10 skipped and 5 failed**
 in 32 minutes 28 seconds. The five failures are exactly the existing workspace
 failures listed above. The annotation, catalog, API, energy, geometry and browser

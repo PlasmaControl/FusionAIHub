@@ -14,7 +14,7 @@ tree is still `src/tokamak_foundation_model/` (see
 |---|---|---|
 | `default` | NVIDIA/CUDA | foundation-model training (`pixi install`) |
 | `fdp` | NVIDIA/CUDA + `ga-fdp` channel | direct DIII-D access via `toksearch` (needs MDSplus) |
-| `labelmaker` | CPU only | the `labeler` package |
+| `labeler` | CPU only | the `labeler` package |
 | `shot-design` | NVIDIA/CUDA | `shot_design` with GPU (`design_rollout`) |
 | `shot-design-cpu` | CPU | `shot_design` on a login node |
 | `shot-design-frontier` | AMD/ROCm (Frontier) | `shot_design` and `labeler` on Frontier — the only environment installed there for that workstream |
@@ -33,7 +33,7 @@ pixi shell                 # activate it
 python scripts/run_demo.py # basic inference demo
 ```
 
-`fdp`, `labelmaker`, `shot-design` and `shot-design-cpu` install the same
+`fdp`, `labeler`, `shot-design` and `shot-design-cpu` install the same
 way: `pixi install -e <env>`. See [Stellar](../clusters/stellar.md) for the
 Stellar-specific paths and modules these environments assume.
 

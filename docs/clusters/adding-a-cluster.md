@@ -20,8 +20,8 @@ worked example for what a new cluster's own map should look like.
 | `/scratch/gpfs/nc1514/FusionAIHub` | `/lustre/orion/fus187/scratch/$USER/FusionAIHub` |
 | `/scratch/gpfs/EKOLEMEN/foundation_model` | `/lustre/orion/fus187/proj-shared/foundation_model` |
 | `/projects/EKOLEMEN/foundation_model/preprocessing_stats.pt` | `/lustre/orion/fus187/proj-shared/foundation_model_meta/preprocessing_stats.pt` |
-| `/scratch/gpfs/EKOLEMEN/nc1514/labelmaker` | `/lustre/orion/fus187/proj-shared/nchen/labeler` |
-| `/scratch/gpfs/EKOLEMEN/nc1514/ideate` | `/lustre/orion/fus187/proj-shared/nchen/shot_design` |
+| `/scratch/gpfs/EKOLEMEN/nc1514/labeler` | `/lustre/orion/fus187/proj-shared/nchen/labeler` |
+| `/scratch/gpfs/EKOLEMEN/nc1514/shot_design` | `/lustre/orion/fus187/proj-shared/nchen/shot_design` |
 | `/scratch/gpfs/EKOLEMEN/nc1514/shot-recommender/{bin,models,ollama_home}` | not ported — Frontier uses Gemini Flash via `agy` instead of Ollama (see [LLM providers](../shot-design/llm-providers.md)) |
 | `module load pixi` | pixi installed in `$HOME` via `curl -fsSL https://pixi.sh/install.sh` |
 | `-p gpu --gres=gpu:1 --qos=gpu-stellar` | `-A fus187 -p batch --gres=gpu:1 --gpu-bind=closest` |
@@ -92,15 +92,15 @@ Frontier list:
 
 | Source on Stellar | Size | Needed for |
 |---|---|---|
-| `EKOLEMEN/nc1514/ideate` | 625 MB | Shot Designer database, run the GUI/MCP at once |
-| `EKOLEMEN/nc1514/labelmaker/{labels,events,models,*.txt}` | ~600 MB | labels join, detector models, shot lists |
-| `EKOLEMEN/nc1514/labelmaker/{masks,ae}` | 9 GB | rerunning detectors |
-| `EKOLEMEN/nc1514/labelmaker/features` | 29 GB | feature-based detectors; skip until needed |
+| `EKOLEMEN/nc1514/shot_design` | 625 MB | Shot Designer database, run the GUI/MCP at once |
+| `EKOLEMEN/nc1514/labeler/{labels,events,models,*.txt}` | ~600 MB | labels join, detector models, shot lists |
+| `EKOLEMEN/nc1514/labeler/{masks,ae}` | 9 GB | rerunning detectors |
+| `EKOLEMEN/nc1514/labeler/features` | 29 GB | feature-based detectors; skip until needed |
 | `EKOLEMEN/big_d3d_data/foundation_model_text` | 27 GB | text corpus for the database build |
 | `EKOLEMEN/foundation_model` | 53 TB | already on Frontier as `proj-shared/foundation_model`; check shot coverage matches before relying on it |
 | Repo-local raw label sources (below) | ~4 GB | re-running the event formatters |
 
-Raw label sources listed in `data/events/events.yaml` are kept out of git
+Raw label sources listed in `configs/labeler/events.yaml` are kept out of git
 (several exceed GitHub's 100 MB limit). They sit in the Stellar checkout
 under `data/events/<event>/raw/` and must be copied by hand if a formatter
 is rerun:
@@ -113,4 +113,7 @@ is rerun:
 | `edge_localized_mode/raw/*.pkl`, `wide_pedestal_.../raw/*.pkl`, `WPQHphases-*/` | 53 MB pkl, 37 MB of `.dat` |
 
 The formatted outputs (`data/events/*/format/*_format_2026_v1.csv` and
-`.meta.json`) are in git, so a database build does not need the raw files.
+`.meta.json`) are not in git either (git ignores all of `data/`): they ship in
+the private Hugging Face release, and `scripts/labeler/hf_publish.py pull`
+restores them into `data/events/`, so a database build does not need the raw
+files.

@@ -8,8 +8,8 @@
 #SBATCH --mem=10G
 #SBATCH --time=01:50:00
 #SBATCH --array=0-9%10
-#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/ideate/runs/slurm/%A_%a.out
-#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/ideate/runs/slurm/%A_%a.out
+#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/shot_design/runs/slurm/%A_%a.out
+#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/shot_design/runs/slurm/%A_%a.out
 
 # IGNITE frame-code caches for the 500 recommender_v1 shots, encoded on CPU. This is the
 # alternative to `scripts/shot_design/encode.sbatch` (same command, `--device cuda`, `gpu` partition);
@@ -128,8 +128,8 @@ set -euo pipefail
 # REPO may point at a clean worktree snapshot (the controller runs the job from one while the
 # branch is under review); the pixi environment always lives in the main checkout.
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
-ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/shot_design/env.py" SHOT_DESIGN_DATA_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/ideate")"
-ENV="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/shot_design/env.py" SHOT_DESIGN_ENV "/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/shot-design")"
+ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler/bin/python" "$REPO/src/shot_design/env.py" SHOT_DESIGN_DATA_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/shot_design")"
+ENV="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler/bin/python" "$REPO/src/shot_design/env.py" SHOT_DESIGN_ENV "/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/shot-design")"
 export LD_LIBRARY_PATH="$ENV/lib:${LD_LIBRARY_PATH:-}"
 export SHOT_DESIGN_DATA_ROOT="$ROOT"
 export HF_HUB_OFFLINE=1 TOKENIZERS_PARALLELISM=false HDF5_USE_FILE_LOCKING=FALSE

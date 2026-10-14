@@ -326,7 +326,7 @@ def test_a_rebuild_has_nothing_to_reuse_without_a_previous_encoded_database(path
 
 
 def test_build_record_from_the_corpus_reader(
-    paths, signal_corpus, labelmaker_features, stub_embeddings
+    paths, signal_corpus, labeler_features, stub_embeddings
 ):
     """The whole record, built through `CorpusSignalReader`: segments off a labeler `ip`,
     actuator totals off the corpus's channel arrays, and the provenance of both written down."""
@@ -348,7 +348,7 @@ def test_build_record_from_the_corpus_reader(
 
 
 def test_an_efit_scalar_from_the_archive_is_flagged_assumed(
-    paths, signal_corpus, labelmaker_features, stub_embeddings
+    paths, signal_corpus, labeler_features, stub_embeddings
 ):
     """A labeler feature resolved from the archive store carries no EFIT run id either -- the
     same claim the staged files' `assumed_for_staged` makes, and the same answer."""
@@ -362,7 +362,7 @@ def test_an_efit_scalar_from_the_archive_is_flagged_assumed(
 
 
 def test_build_many_constructs_the_corpus_reader_inside_each_worker(
-    paths, signal_corpus, labelmaker_features, stub_embeddings
+    paths, signal_corpus, labeler_features, stub_embeddings
 ):
     """The reader is not pickled and shipped -- an open HDF5 handle must never be forked -- so
     what crosses the process boundary is `reader_kind` plus `paths`."""
@@ -383,7 +383,7 @@ def test_build_many_constructs_the_corpus_reader_inside_each_worker(
 
 
 def test_shots_parquet_carries_the_corpus_coverage_columns(
-    paths, signal_corpus, labelmaker_features, text_fixtures, stub_embeddings
+    paths, signal_corpus, labeler_features, text_fixtures, stub_embeddings
 ):
     report = build.build(
         [signal_corpus],
@@ -409,7 +409,7 @@ def test_shots_parquet_carries_the_corpus_coverage_columns(
 
 
 def test_has_frame_codes_is_the_file_on_disk(
-    paths, signal_corpus, labelmaker_features, stub_embeddings
+    paths, signal_corpus, labeler_features, stub_embeddings
 ):
     (paths.data_root / "frame_codes").mkdir(parents=True, exist_ok=True)
     (paths.data_root / "frame_codes" / f"{signal_corpus}.pt").write_bytes(b"")

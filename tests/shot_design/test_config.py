@@ -114,7 +114,7 @@ def test_default_models_and_corpus_paths_remain_read_only(monkeypatch):
     monkeypatch.delenv("SHOT_DESIGN_PATHS", raising=False)
     monkeypatch.delenv("SHOT_DESIGN_DATA_ROOT", raising=False)
     paths = config.load_paths()
-    assert paths.data_root == Path("/scratch/gpfs/EKOLEMEN/nc1514/ideate")
+    assert paths.data_root == Path("/scratch/gpfs/EKOLEMEN/nc1514/shot_design")
     assert paths.models_dir / "IGNITE_v4" == Path("/scratch/gpfs/EKOLEMEN/nc1514/shot-recommender/models/IGNITE_v4")
     assert paths.shotsummary_raw_dir == Path("/scratch/gpfs/EKOLEMEN/big_d3d_data/foundation_model_text/shotsummary/raw")
     assert paths.sentence_transformers_model == "sentence-transformers/all-MiniLM-L6-v2"

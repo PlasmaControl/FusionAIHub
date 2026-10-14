@@ -675,7 +675,7 @@ def write_feature_file(features_dir: Path, shot: int, arrays: dict, missing: dic
 
 
 @pytest.fixture
-def labelmaker_features(tmp_path: Path, monkeypatch) -> Path:
+def labeler_features(tmp_path: Path, monkeypatch) -> Path:
     """`$LABELER_ROOT/features` with one file for `CORPUS_SIGNAL_SHOT`.
 
     Written to cover all four statuses in one shot: stored scalars (`bt`, `betan`), a profile
@@ -683,7 +683,7 @@ def labelmaker_features(tmp_path: Path, monkeypatch) -> Path:
     (`kappa`), a transiently missed one (`qmin` -- fdp is worth another attempt), a permanently
     missed one (`volume`), and one that was never attempted at all (`li`).
     """
-    root = tmp_path / "labelmaker"
+    root = tmp_path / "labeler"
     monkeypatch.setenv("LABELER_ROOT", str(root))
     x = np.arange(0, 6.0, 0.025)  # the 25 ms grid, in seconds
     n = x.size
@@ -876,6 +876,6 @@ def _isolate_package_environment():
     """
     with pytest.MonkeyPatch.context() as monkeypatch:
         for name in tuple(os.environ):
-            if name.startswith(("SHOT_DESIGN_", "IDEATE_", "LABELER_", "LABELMAKER_")):
+            if name.startswith(("SHOT_DESIGN_", "LABELER_")):
                 monkeypatch.delenv(name)
         yield

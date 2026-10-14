@@ -167,7 +167,7 @@ def test_a_corpus_file_that_cannot_be_read_is_a_failed_shot_not_an_absent_diagno
 # --------------------------------------------------------------- the labeler address kind
 
 
-def test_a_stored_feature_is_read_with_its_resolver(paths, signal_corpus, labelmaker_features):
+def test_a_stored_feature_is_read_with_its_resolver(paths, signal_corpus, labeler_features):
     r = CorpusSignalReader(paths)
     bt = r.read_signal(signal_corpus, spec_named(signal_corpus, "bt"))
     assert bt is not None
@@ -176,7 +176,7 @@ def test_a_stored_feature_is_read_with_its_resolver(paths, signal_corpus, labelm
     assert bt.source == "labelmaker" and bt.resolver == "labelmaker:archive"
 
 
-def test_a_labelmaker_scale_is_not_the_legacy_one(paths, signal_corpus, labelmaker_features):
+def test_a_labeler_scale_is_not_the_legacy_one(paths, signal_corpus, labeler_features):
     """`ip`'s registry `scale: 1e6` corrects a d3d_fusion_data storage convention (megaamps in a
     column declared amps). labeler's `ip` is already amps; applying that scale would report a
     1.2 MA shot as 1.2 TA."""
@@ -185,7 +185,7 @@ def test_a_labelmaker_scale_is_not_the_legacy_one(paths, signal_corpus, labelmak
     assert 1.0e6 < float(np.nanmax(ip.y)) < 2.0e6
 
 
-def test_segments_are_found_from_a_labelmaker_ip(paths, signal_corpus, labelmaker_features):
+def test_segments_are_found_from_a_labeler_ip(paths, signal_corpus, labeler_features):
     from shot_design.shotdb import build, features
 
     r = CorpusSignalReader(paths)
@@ -195,7 +195,7 @@ def test_segments_are_found_from_a_labelmaker_ip(paths, signal_corpus, labelmake
     assert flat.t1_ms - flat.t0_ms > 3000.0  # the fixture's trapezoid is flat 500-4500 ms
 
 
-def test_a_missing_feature_file_is_pending_never_zero(paths, signal_corpus, labelmaker_features):
+def test_a_missing_feature_file_is_pending_never_zero(paths, signal_corpus, labeler_features):
     """`CORPUS_BARE_SHOT` has no feature file at all: fdp can still fetch every one of them."""
     r = CorpusSignalReader(paths)
     signals, coverage = r.read_shot(CORPUS_BARE_SHOT, registry(CORPUS_BARE_SHOT))
@@ -205,7 +205,7 @@ def test_a_missing_feature_file_is_pending_never_zero(paths, signal_corpus, labe
 
 
 def test_the_recorded_cause_of_a_miss_decides_pending_from_unavailable(
-    paths, signal_corpus, labelmaker_features
+    paths, signal_corpus, labeler_features
 ):
     r = CorpusSignalReader(paths)
     _, coverage = r.read_shot(signal_corpus, registry(signal_corpus))
@@ -214,7 +214,7 @@ def test_the_recorded_cause_of_a_miss_decides_pending_from_unavailable(
     assert coverage["li"] == "pending"  # never attempted
 
 
-def test_a_feature_with_no_finite_sample_is_unavailable(paths, signal_corpus, labelmaker_features):
+def test_a_feature_with_no_finite_sample_is_unavailable(paths, signal_corpus, labeler_features):
     r = CorpusSignalReader(paths)
     signals, coverage = r.read_shot(signal_corpus, registry(signal_corpus))
     assert signals["kappa"] is None and coverage["kappa"] == "unavailable"
@@ -224,24 +224,24 @@ def test_a_feature_with_no_finite_sample_is_unavailable(paths, signal_corpus, la
     ("reduce", "expected"), [("core", 10.0), ("edge", 1.0), ("peak", 12.0)]
 )
 def test_a_profile_feature_is_reduced_to_a_scalar(
-    paths, signal_corpus, labelmaker_features, reduce, expected
+    paths, signal_corpus, labeler_features, reduce, expected
 ):
     """`ne_zipfit` is (33 rho, T). core is rho = 0, edge is rho = 1, peak is the largest of the
     33 -- the fixture puts its peak at rho index 16 so the three cannot alias."""
     spec = config.SignalSpec(
-        name="ne_probe", labelmaker={"feature": "ne_zipfit", "reduce": reduce}
+        name="ne_probe", labeler={"feature": "ne_zipfit", "reduce": reduce}
     )
     sig = CorpusSignalReader(paths).read_signal(signal_corpus, spec)
     assert sig is not None and np.allclose(sig.y, expected)
 
 
-def test_the_registry_reduces_a_profile_the_same_way(paths, signal_corpus, labelmaker_features):
+def test_the_registry_reduces_a_profile_the_same_way(paths, signal_corpus, labeler_features):
     """`ne0` is the on-axis density: the same quantity the staged `edensfit0.00` column is."""
     r = CorpusSignalReader(paths)
     assert np.allclose(r.read_signal(signal_corpus, spec_named(signal_corpus, "ne0")).y, 10.0)
 
 
-def test_a_signal_status_matches_the_read(paths, signal_corpus, labelmaker_features):
+def test_a_signal_status_matches_the_read(paths, signal_corpus, labeler_features):
     r = CorpusSignalReader(paths)
     for name in ("bt", "qmin", "pnbi_15L", "q95"):
         spec = spec_named(signal_corpus, name)
@@ -253,7 +253,7 @@ def test_a_signal_status_matches_the_read(paths, signal_corpus, labelmaker_featu
 
 
 def test_read_shot_answers_in_the_same_shape_the_legacy_reader_does(
-    paths, signal_corpus, labelmaker_features, staged_shot_a
+    paths, signal_corpus, labeler_features, staged_shot_a
 ):
     """Same keys, same value types, same status vocabulary -- which is why `build_record` needs
     no branch on which reader it was handed."""
@@ -351,27 +351,27 @@ def test_a_group_stored_three_dimensional_is_unavailable_not_a_failed_shot(paths
 
 
 def test_the_corpus_answers_first_when_a_spec_carries_both_addresses(
-    paths, signal_corpus, labelmaker_features
+    paths, signal_corpus, labeler_features
 ):
     """The documented rule: corpus first, labeler as the fallback."""
     spec = config.SignalSpec(
         name="ip",
         units="A",
         corpus=config.CorpusAddress(group="pinj", channels=[0], reduce="first"),
-        labelmaker=config.LabelerAddress(feature="ip"),
+        labeler=config.LabelerAddress(feature="ip"),
     )
     sig = CorpusSignalReader(paths).read_signal(signal_corpus, spec)
     assert sig is not None and sig.source == "corpus" and np.allclose(sig.y, 1.0e5)
 
 
-def test_a_corpus_miss_falls_back_to_the_feature_store(paths, signal_corpus, labelmaker_features):
+def test_a_corpus_miss_falls_back_to_the_feature_store(paths, signal_corpus, labeler_features):
     """Same rule, other half: a corpus address that misses must not shadow a feature the store
     has -- `unavailable` where the value is on disk is the worst answer of the four."""
     spec = config.SignalSpec(
         name="ip",
         units="A",
         corpus=config.CorpusAddress(group="not_a_corpus_group", reduce="first"),
-        labelmaker=config.LabelerAddress(feature="ip"),
+        labeler=config.LabelerAddress(feature="ip"),
     )
     r = CorpusSignalReader(paths)
     sig = r.read_signal(signal_corpus, spec)

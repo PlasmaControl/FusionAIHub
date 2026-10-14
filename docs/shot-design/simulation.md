@@ -131,17 +131,17 @@ utilisation gates. Time grows about linearly with `--members` and
 
 The Stellar batch scripts under `scripts/shot_design/` run the interpreter
 directly and REQUIRE `SHOT_DESIGN_DATA_ROOT` to name a batch root such as
-`/scratch/gpfs/EKOLEMEN/nc1514/ideate/experiments/<name>`; the production
+`/scratch/gpfs/EKOLEMEN/nc1514/shot_design/experiments/<name>`; the production
 root is refused (`_stellar_common.sh`). A full batch, from a shot list to a
 summary table:
 
 ```bash
-export SHOT_DESIGN_DATA_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/ideate/experiments/stellar_v4_batch
+export SHOT_DESIGN_DATA_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/shot_design/experiments/stellar_v4_batch
 PY=.pixi/envs/shot-design/bin/python
 # 1. a diverse list (login node, ~20 s); §5.7's per-run-day/per-mpid caps set the ceiling
 $PY -m shot_design corpus select --n 1000 --name stellar_v4_batch --seed 20260920 \
-    --census /scratch/gpfs/EKOLEMEN/nc1514/ideate/db/corpus_coverage.parquet \
-    --frame-codes /scratch/gpfs/EKOLEMEN/nc1514/ideate/frame_codes
+    --census /scratch/gpfs/EKOLEMEN/nc1514/shot_design/db/corpus_coverage.parquet \
+    --frame-codes /scratch/gpfs/EKOLEMEN/nc1514/shot_design/frame_codes
 # 2. database + labels join into the batch root (CPU job)
 LIST=stellar_v4_batch sbatch scripts/shot_design/build_batch.sbatch
 # 3. frame codes for the shots that have none (4 GPUs, one job)

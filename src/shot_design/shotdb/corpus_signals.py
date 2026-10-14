@@ -185,7 +185,7 @@ class CorpusSignalReader(CorpusReader):
         # Corpus first, feature store second -- for a spec that carries BOTH addresses as well as
         # for one that carries only the labeler's. A corpus miss must not shadow a feature that
         # is on disk: `unavailable` where the value exists is the worst of the four answers.
-        labeler = [s for s in installed if s.labelmaker is not None and signals[s.name] is None]
+        labeler = [s for s in installed if s.labeler is not None and signals[s.name] is None]
         for name, sig, st in self._read_features(shot, labeler):
             signals[name] = sig
             if sig is None:
@@ -348,7 +348,7 @@ class CorpusSignalReader(CorpusReader):
             return [(s.name, None, "pending") for s in specs]
         out: list[tuple[str, Signal | None, Status]] = []
         for spec in specs:
-            feature = spec.labelmaker.feature
+            feature = spec.labeler.feature
             if feature not in present:
                 cause = missing.get(feature)
                 retry = cause is None or store.is_transient(cause)
@@ -359,8 +359,8 @@ class CorpusSignalReader(CorpusReader):
             except (OSError, KeyError):
                 out.append((spec.name, None, "pending"))
                 continue
-            y = _reduce(_prepare(np.atleast_2d(arr.y), spec, spec.labelmaker.scale),
-                        spec.labelmaker.reduce)
+            y = _reduce(_prepare(np.atleast_2d(arr.y), spec, spec.labeler.scale),
+                        spec.labeler.reduce)
             if not np.isfinite(y).any():
                 out.append((spec.name, None, "unavailable"))
                 continue
@@ -368,7 +368,7 @@ class CorpusSignalReader(CorpusReader):
             sig = Signal(
                 np.asarray(arr.x, dtype=np.float64).ravel() * 1000.0,  # seconds -> ms
                 y.astype(DTYPE),
-                spec.labelmaker.units or arr.attrs.get("units") or spec.units,
+                spec.labeler.units or arr.attrs.get("units") or spec.units,
                 "labelmaker",
                 feature,
                 spec.col or spec.name,

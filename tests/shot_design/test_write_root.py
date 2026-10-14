@@ -70,7 +70,7 @@ def writing_inputs(paths, staged_shot_a, text_fixtures, monkeypatch):
     monkeypatch.setattr(
         text, "embed_texts", lambda texts: np.zeros((len(texts), 384), np.float32)
     )
-    monkeypatch.setenv("LABELER_ROOT", str(paths.data_root / "labelmaker"))
+    monkeypatch.setenv("LABELER_ROOT", str(paths.data_root / "labeler"))
     monkeypatch.setenv("SHOT_DESIGN_CORPUS", str(paths.foundation_model_processed_dir))
     return paths
 
@@ -120,7 +120,7 @@ def test_writers_name_the_root_before_writing(
         assert cli.main(["build", "--shots", "900001", "--workers", "1", "--no-encode"]) == 0
         argv = ["add", "900001", "--workers", "1"]
     elif command == "labels join":
-        lm = paths.data_root / "labelmaker"
+        lm = paths.data_root / "labeler"
         (lm / "labels").mkdir(parents=True)
         argv = ["labels", "join", "--shots", "900001", "--labeler-root", str(lm), "--no-text"]
     elif command == "encode":

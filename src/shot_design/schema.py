@@ -104,6 +104,8 @@ class ShotRecord(BaseModel):
     campaign: str
     segments: list[Segment]
     derived_provenance: dict[str, Provenance] = Field(default_factory=dict)
+    # "labelmaker" is the persisted name of the labeler layer (built databases hold it in
+    # `record_json`, and this Literal validates it on read); it kept its pre-rename spelling.
     raw_sources: dict[str, Literal["staged", "fetched", "corpus", "labelmaker"]] = Field(
         default_factory=dict
     )

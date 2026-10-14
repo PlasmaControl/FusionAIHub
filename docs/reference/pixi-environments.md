@@ -12,17 +12,17 @@ comment. This page keeps the measurements behind those lines.
 | `default` | `cuda` | the model code, cu124 torch |
 | `fdp` | `fdp`, `cuda` | direct DIII-D data access (fdp, toksearch) |
 | `frontier` | `frontier` | Frontier training, ROCm 7.1 torch |
-| `labelmaker` | `labelmaker`, `fdp` | `labeler`, CPU torch |
+| `labeler` | `labeler`, `fdp` | `labeler`, CPU torch |
 | `shot-design` | `shot-design`, `cuda` | `shot_design` with a GPU (IGNITE rollouts) |
 | `shot-design-cpu` | `shot-design`, `shot-design-cpu` | `shot_design` on a CPU |
 | `shot-design-frontier` | `shot-design-frontier`, `shot-design` | `shot_design` and `labeler` on Frontier |
 
 | Task | Environment | Runs |
 |---|---|---|
-| `label` | `labelmaker` | `scripts/labeler/label_shot.sh`: every labeler model on the given shots |
-| `labeler-verify` | `labelmaker` | the [label review page](../labeler/review.md), under `fdp run` |
-| `labeler-spectrograms` | `labelmaker` | `python -m labeler.events.review.build`, the review page's row store |
-| `labeler-test` | `labelmaker` | `python -m pytest tests/labeler -q -W error` |
+| `label` | `labeler` | `scripts/labeler/label_shot.sh`: every labeler model on the given shots |
+| `labeler-verify` | `labeler` | the [label review page](../labeler/review.md), under `fdp run` |
+| `labeler-spectrograms` | `labeler` | `python -m labeler.events.review.build`, the review page's row store |
+| `labeler-test` | `labeler` | `python -m pytest tests/labeler -q -W error` |
 | `shot_design` | the `shot-design` three | `python -m shot_design` |
 | `shot_design-mcp` | the `shot-design` three | the MCP server, stdio |
 | `shot_design-test` | the `shot-design` three | `python -m pytest tests/shot_design -q -W error` |
@@ -30,7 +30,7 @@ comment. This page keeps the measurements behind those lines.
 
 A task runs in the checkout that holds the manifest. To test a worktree, run the
 suite in the worktree itself:
-`PYTHONPATH=$PWD/src pixi run --frozen --no-install --manifest-path <main checkout>/pyproject.toml -e labelmaker python -m pytest tests/labeler -q -W error`.
+`PYTHONPATH=$PWD/src pixi run --frozen --no-install --manifest-path <main checkout>/pyproject.toml -e labeler python -m pytest tests/labeler -q -W error`.
 
 ## Always `--frozen`
 
@@ -85,7 +85,7 @@ feature.shot-design's own activation block sets the three roots to their STELLAR
 values, so one of the two blocks has to win. MEASURED 2026-09-19 with pixi 0.73:
 the FIRST feature listed for the environment wins, not the last -- with
 `shot-design-frontier = ["shot-design", "shot-design-frontier"]` the environment
-came up with `/scratch/gpfs/EKOLEMEN/nc1514/ideate`, the Stellar root. That is why
+came up with `/scratch/gpfs/EKOLEMEN/nc1514/shot_design`, the Stellar root. That is why
 [tool.pixi.environments] lists `shot-design-frontier` FIRST; reordering it
 silently sends every job at the Stellar paths, which do not exist there.
 Measured again 2026-09-22 with pixi 0.76.1 on a two-feature manifest: still the
@@ -102,7 +102,7 @@ fails to open a read-only file the way it does on GPFS.
 
 `FDP_NO_AUTO_LOGIN=1` disables automatic Pelican OAuth prompts. FDP uses an
 existing `BEARER_TOKEN`, a valid device token in `~/.fdp/cache/`, or
-`~/.fdp/token`. Use `pixi run --frozen -e labelmaker fdp run <command>` for
+`~/.fdp/token`. Use `pixi run --frozen -e labeler fdp run <command>` for
 data access with those credentials. Explicit `fdp login` always requests a
 fresh token through Pelican, even when existing credentials are valid; it
 is unnecessary when you already have access. This setting disables token
@@ -121,7 +121,7 @@ followed by `fdp`, `toksearch`, `toksearch_d3d` and `scipy` all import, which
 means torch's extensions carry `DT_RUNPATH` (which `LD_LIBRARY_PATH` overrides),
 not `DT_RPATH` (which it would not). Scoped to this feature - not the shared
 workspace - because it is `fdp`'s own packages (toksearch/toksearch_d3d, via
-pyxrootd) that need the symbol; both the `fdp` and `labelmaker` environments
+pyxrootd) that need the symbol; both the `fdp` and `labeler` environments
 include this feature, so both are covered. Prepended, never overwritten: an
 inherited `LD_LIBRARY_PATH` (e.g. from a module-loaded library on a SLURM node)
 must still take effect first for anything it already covers.
@@ -132,12 +132,12 @@ imports it at module scope, so leaving it out resolved an env where
 `import toksearch_d3d` raised ModuleNotFoundError while `toksearch` imported fine
 - the fdp path was unreachable and nothing said so.
 
-## feature.labelmaker
+## feature.labeler
 
 `labeler-verify` runs the page under `fdp run`, which sets `PTDATA_LIBRARY` and
 `default_tree_path` and nothing interactive (measured 2026-09-22 on
 stellar-vis2). A shot outside the corpus and the fetch cache can then be fetched
-live. Arguments after the task name reach the page: `pixi run -e labelmaker
+live. Arguments after the task name reach the page: `pixi run -e labeler
 labeler-verify --port 8812`.
 
 `pyarrow`: labels_index.parquet. pandas 3 can write parquet only through
@@ -149,7 +149,7 @@ omegaconf, and hydra-core is declared in [project] for IGNITE's benefit, not
 labeler's - anyone tidying IGNITE's dependencies would silently break every card
 read in this package. Declare it directly.
 
-`protobuf`: solving `labelmaker` (labelmaker + fdp + the implicit default
+`protobuf`: solving `labeler` (labeler + fdp + the implicit default
 feature) against live conda-forge picks up protobuf 7.35.1, published to
 conda-forge sometime after pixi.lock's other environments were last solved
 (2026-07-31, per `git log -- pixi.lock`). The shared [project.dependencies] pin
@@ -179,7 +179,7 @@ over an SSH forward. Same ranges as feature.shot-design, which runs shot_design'
 UI, so an environment holding both cannot want two different majors.
 
 CPU torch: the workspace installs `faith` editable into every environment, which
-drags torch in. Labelmaker never uses a GPU (its heaviest model is 12k
+drags torch in. Labeler never uses a GPU (its heaviest model is 12k
 parameters evaluated in torch on CPU, see models/runners/keras_h5.py), so take
 the CPU wheels and save ~3 GB in an environment that would otherwise duplicate
 cu124.
@@ -208,11 +208,11 @@ is the one that also chooses this environment's python. The single exception is
 `sentence-transformers`, which has to come from pypi (below).
 
 - `pyarrow`: shots.parquet and the per-segment tables. Same range as
-  feature.labelmaker so the two packages cannot end up wanting different pyarrow
+  feature.labeler so the two packages cannot end up wanting different pyarrow
   majors in an environment that includes both; shotrec only asks for
   `pyarrow>=16`.
 - `pyyaml`: phenomena.yaml, actuators.yaml and the model cards shot_design reads.
-  Declared directly for the same reason feature.labelmaker declares it.
+  Declared directly for the same reason feature.labeler declares it.
 - `pydantic`: the schema layer (PhenomenonHit, DesignReport, CircumstanceReport,
   ...). >=2.12 is also conda-forge `mcp`'s own floor, so this is not a free
   choice.
@@ -233,7 +233,7 @@ is the one that also chooses this environment's python. The single exception is
   point, is gone, so a solve that fell back to mcp 1.x would import-error rather
   than merely behave differently.
 - `protobuf`: the same channel-drift pin, and the same reason, as
-  feature.labelmaker.
+  feature.labeler.
 - `duckdb`: the shot/segment/label store shot_design queries. conda-forge ships
   the Python bindings as `duckdb`.
 
@@ -261,7 +261,7 @@ already decide which wheel each environment gets.
 
 ## feature.shot-design-cpu
 
-A CPU-only twin of the `shot-design` environment, exactly as feature.labelmaker
+A CPU-only twin of the `shot-design` environment, exactly as feature.labeler
 does it. The workspace installs `faith` editable everywhere, which drags torch
 in, and the cu124 wheels are ~3 GB that a laptop-shaped run of shot_design -
 phenomenon search, the events tables, the MiniLM encoder - never touches. Only
@@ -299,7 +299,7 @@ the one line that differs. Same rocm7.1 pins as feature.frontier, so the two
 environments on that machine run the same torch and a checkpoint written by one
 loads in the other.
 
-`plotly`: on Stellar the labeler runs in its own `labelmaker` environment, which
+`plotly`: on Stellar the labeler runs in its own `labeler` environment, which
 pins it; on Frontier there is one environment for both packages, so the pin is
 repeated here rather than the suite being split (`tests/labeler` imports plotly
 at collection).

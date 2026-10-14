@@ -98,18 +98,18 @@ fdp = { version = ">=0.5.1,<0.6", channel = "ga-fdp" }
 toksearch = { version = ">=2.8.1,<3", channel = "ga-fdp" }
 toksearch_d3d = { version = ">=0.10.1,<0.11", channel = "ga-fdp" }
 
-[tool.pixi.feature.labelmaker]
+[tool.pixi.feature.labeler]
 platforms = ["linux-64"]
 
-[tool.pixi.feature.labelmaker.tasks]
+[tool.pixi.feature.labeler.tasks]
 label = { cmd = "bash scripts/labeler/label_shot.sh", description = "Every labeler model on the given shots: labels, a summary and a figure per shot" }
 labeler-verify = { cmd = "fdp run python -m labeler.events.ui", description = "The label review page, under the fdp wrapper so any shot can be fetched" }
 labeler-spectrograms = { cmd = "python -m labeler.events.review.build", description = "Build the review page's row store: --event EVENT [--shots ...] [--force]" }
 # pytest's temporary files go to GPFS scratch, not the head node's shared /tmp, and each
 # test's folder is removed when the test ends.
-labeler-test = { cmd = "python -m pytest tests/labeler -q -W error -o tmp_path_retention_policy=none", env = { PYTEST_DEBUG_TEMPROOT = "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/pytest" }, description = "The labeler suite, in the checkout that holds this manifest" }
+labeler-test = { cmd = "python -m pytest tests/labeler -q -W error -o tmp_path_retention_policy=none", env = { PYTEST_DEBUG_TEMPROOT = "/scratch/gpfs/EKOLEMEN/nc1514/labeler/scratch/pytest" }, description = "The labeler suite, in the checkout that holds this manifest" }
 
-[tool.pixi.feature.labelmaker.dependencies]
+[tool.pixi.feature.labeler.dependencies]
 # pandas 3 writes parquet only through pyarrow.
 pyarrow = ">=17,<22"
 # Model cards' front matter; declared rather than left to arrive through hydra-core.
@@ -124,7 +124,7 @@ pypdf = ">=4,<7"
 # pypdf decrypts AES-encrypted PDFs only through cryptography (>=3.1).
 cryptography = ">=3.1"
 
-[tool.pixi.feature.labelmaker.pypi-dependencies]
+[tool.pixi.feature.labeler.pypi-dependencies]
 # CPU wheels: labeler never uses a GPU.
 torch = { version = ">=2.5.1", index = "https://download.pytorch.org/whl/cpu" }
 torchvision = { version = ">=0.20.1", index = "https://download.pytorch.org/whl/cpu" }
@@ -159,7 +159,7 @@ uvicorn = ">=0.30,<1"
 # 2.x only: FastMCP, the 1.x entry point, is gone.
 mcp = ">=2.1,<3"
 pytest = ">=9,<10"
-# The same protobuf pin as feature.labelmaker.
+# The same protobuf pin as feature.labeler.
 protobuf = "<7"
 duckdb = ">=1.1,<2"
 
@@ -169,8 +169,8 @@ sentence-transformers = ">=6,<7"
 
 # Stellar roots as defaults: a root the caller exports wins. Offline, or the MiniLM load hangs.
 [tool.pixi.feature.shot-design.target.unix.activation.env]
-SHOT_DESIGN_DATA_ROOT = "${SHOT_DESIGN_DATA_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/ideate}"
-LABELER_ROOT = "${LABELER_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/labelmaker}"
+SHOT_DESIGN_DATA_ROOT = "${SHOT_DESIGN_DATA_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/shot_design}"
+LABELER_ROOT = "${LABELER_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/labeler}"
 SHOT_DESIGN_CORPUS = "${SHOT_DESIGN_CORPUS:-/scratch/gpfs/EKOLEMEN/foundation_model}"
 HF_HUB_OFFLINE = "1"
 TOKENIZERS_PARALLELISM = "false"
@@ -236,7 +236,7 @@ HDF5_USE_FILE_LOCKING = "FALSE"
 default = ["cuda"]
 fdp = ["fdp", "cuda"]
 frontier = ["frontier"]
-labelmaker = ["labelmaker", "fdp"]
+labeler = ["labeler", "fdp"]
 shot-design = ["shot-design", "cuda"]
 shot-design-cpu = ["shot-design", "shot-design-cpu"]
 # First: the first feature listed wins the activation env.

@@ -246,7 +246,7 @@ def phen_db(shot_design_db: Path) -> store.ShotDB:
 # -------------------------------------------------------------------------- registry validation
 
 
-def test_the_registry_names_exactly_labelmakers_round_one_phenomena():
+def test_the_registry_names_exactly_labelers_round_one_phenomena():
     from labeler.events.lexicon import PHENOMENON_IDS
 
     reg = ph.registry()
@@ -1118,8 +1118,8 @@ def rwm_tables(tmp_path, monkeypatch):
 
 
 def test_the_shipped_registry_names_the_combined_rwm_table_in_the_manifest():
-    """The registry entry and `data/events/tables.yaml` are two files that have to agree, and
-    nothing else checks that they do: a stem typo here is a silent empty set, not an error."""
+    """The registry entry and `configs/labeler/events.yaml` are two files that have to agree,
+    and nothing else checks that they do: a stem typo here is a silent empty set, not an error."""
     from labeler.events import databases as label_tables
 
     entry = ph.registry()["rwm"].database

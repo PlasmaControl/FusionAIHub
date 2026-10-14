@@ -54,7 +54,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from labeler.config import Paths as LabelmakerPaths
+from labeler.config import Paths as LabelerPaths
 from labeler.config import atomic_path
 from labeler.events import schema as events_schema
 from labeler.labels import store as label_store
@@ -96,9 +96,9 @@ LABELS_WIDE_COLUMNS: tuple[str, ...] = tuple(LABELS_WIDE_DTYPES)
 #: returns also names the missing shots; the file keeps the counts, because at full corpus the
 #: names are 17,000 integers nobody reads out of a manifest.
 MANIFEST_KEYS: tuple[str, ...] = (
-    "labelmaker_root", "n_shots", "n_shots_with_labels", "n_shots_with_events",
+    "labeler_root", "n_shots", "n_shots_with_labels", "n_shots_with_events",
     "n_labels_wide_rows", "n_events", "n_forecast_events", "n_text_claims",
-    "n_shots_missing_labels", "n_shots_missing_events", "labelmaker_git_sha",
+    "n_shots_missing_labels", "n_shots_missing_events", "labeler_git_sha",
     "thresholds_from_card", "thresholds_from_config", "thresholds", "forecast_rules", "lexicon",
     "n_event_source_rows", "n_shots_with_source_rows", "n_shots_with_observed_products",
     "n_shots_unprocessed", "n_sources_ok", "n_sources_skipped", "n_sources_error",
@@ -146,8 +146,8 @@ class JoinResult:
 # ------------------------------------------------------------------------------ small helpers
 
 
-def _paths(labelmaker_root) -> LabelmakerPaths:
-    return LabelmakerPaths(root=Path(labelmaker_root))
+def _paths(labeler_root) -> LabelerPaths:
+    return LabelerPaths(root=Path(labeler_root))
 
 
 def _shots(shots: Iterable[int]) -> list[int]:
@@ -206,11 +206,11 @@ def _series(
 def thresholds_from_card(card: Mapping) -> dict[str, float]:
     """`"<slug>/<label>" -> threshold` for the outputs of one model card that record one.
 
-    A card records its operating point as `threshold:` on an entry of its `labelmaker.outputs`
+    A card records its operating point as `threshold:` on an entry of its `labeler.outputs`
     list. Absence is the normal case and means "this model's authors did not name an operating
     point", which is a fact about the model, not a reason to invent 0.5.
     """
-    block = dict(card.get("labelmaker") or {})
+    block = dict(card.get("labeler") or {})
     slug = str(block.get("slug") or "")
     out: dict[str, float] = {}
     for entry in block.get("outputs") or []:
@@ -369,7 +369,7 @@ def _summary(
 
 
 def labels_wide(
-    shots: Iterable[int], *, labelmaker_root,
+    shots: Iterable[int], *, labeler_root,
     thresholds: Mapping[str, tuple[float, str]] | None = None,
 ) -> pd.DataFrame:
     """One row per (shot, slug, label) of every shot that has a labels file.
@@ -383,7 +383,7 @@ def labels_wide(
     `forecasts:` block's, so the risk labels an alarm is actually built on carry the alarm's own
     threshold -- and `thr_source` says, row by row, which of the two the number is.
     """
-    paths = _paths(labelmaker_root)
+    paths = _paths(labeler_root)
     thr_by_key = _normalise_thresholds(thresholds)
     rows: list[dict] = []
     for shot in _shots(shots):
@@ -409,7 +409,7 @@ def _run_id() -> str:
 
 
 def label_forecast_events(
-    shots: Iterable[int], *, labelmaker_root, rules: Sequence[ForecastRule],
+    shots: Iterable[int], *, labeler_root, rules: Sequence[ForecastRule],
     thresholds: Mapping[str, tuple[float, str]] | None = None,
     run_id: str | None = None,
 ) -> pd.DataFrame:
@@ -424,7 +424,7 @@ def label_forecast_events(
     never be raised at two different numbers. Without it every rule stands at its own `thr`, which
     is `config`'s by definition. Both the number and its source go into the event's `attrs`.
     """
-    paths = _paths(labelmaker_root)
+    paths = _paths(labeler_root)
     thresholds = dict(thresholds or {})
     run_id = run_id or _run_id()
     frames: list[pd.DataFrame] = []
@@ -487,7 +487,7 @@ def label_forecast_events(
 
 
 def events_union(
-    shots: Iterable[int], *, labelmaker_root, forecasts: pd.DataFrame
+    shots: Iterable[int], *, labeler_root, forecasts: pd.DataFrame
 ) -> pd.DataFrame:
     """Every shot's `events/<shot>_events.parquet` plus the forecast rows, in one typed frame.
 
@@ -499,7 +499,7 @@ def events_union(
     raised at two different thresholds over the same stretch of the same shot into one table --
     with `event_id`s that collide, since the schema numbers per source.
     """
-    paths = _paths(labelmaker_root)
+    paths = _paths(labeler_root)
     parts = []
     for shot in _shots(shots):
         disk = events_schema.read_events(paths.events_file(shot))
@@ -533,7 +533,7 @@ def _git_sha_of(events: pd.DataFrame) -> str | None:
 def join(
     shots: Iterable[int],
     *,
-    labelmaker_root,
+    labeler_root,
     rules: Sequence[ForecastRule] | None = None,
     text_root=None,
     lexicon_path=None,
@@ -544,17 +544,17 @@ def join(
     it is what a run on a machine without the text corpus asks for.
     """
     shots = _shots(shots)
-    paths = _paths(labelmaker_root)
+    paths = _paths(labeler_root)
     rules_path = forecast_rules_path() if rules is None else None
     rules = forecast_rules() if rules is None else tuple(rules)
     from_card = card_thresholds()
     thresholds = _threshold_map(rules, from_card)
 
-    wide = labels_wide(shots, labelmaker_root=labelmaker_root, thresholds=thresholds)
+    wide = labels_wide(shots, labeler_root=labeler_root, thresholds=thresholds)
     forecasts = label_forecast_events(
-        shots, labelmaker_root=labelmaker_root, rules=rules, thresholds=thresholds
+        shots, labeler_root=labeler_root, rules=rules, thresholds=thresholds
     )
-    events = events_union(shots, labelmaker_root=labelmaker_root, forecasts=forecasts)
+    events = events_union(shots, labeler_root=labeler_root, forecasts=forecasts)
 
     lexicon = None
     if text_root is None:
@@ -573,7 +573,7 @@ def join(
     missing_labels = [s for s in shots if not paths.labels_file(s).exists()]
     missing_events = [s for s in shots if not paths.events_file(s).exists()]
     manifest = {
-        "labelmaker_root": str(Path(labelmaker_root)),
+        "labeler_root": str(Path(labeler_root)),
         "n_shots": len(shots),
         "n_shots_with_labels": len(shots) - len(missing_labels),
         "n_shots_with_events": len(shots) - len(missing_events),
@@ -585,7 +585,7 @@ def join(
         "n_shots_missing_events": len(missing_events),
         "labels_missing": missing_labels,
         "events_missing": missing_events,
-        "labelmaker_git_sha": _git_sha_of(events),
+        "labeler_git_sha": _git_sha_of(events),
         "thresholds_from_card": sum(1 for _, src in thresholds.values() if src == "card"),
         "thresholds_from_config": sum(1 for _, src in thresholds.values() if src == "config"),
         # Per key, not just the two counts: a `frac_above` is only readable beside the number it

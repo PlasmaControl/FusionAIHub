@@ -33,7 +33,7 @@ PRODUCTION_VOCABS = {
 @pytest.fixture
 def program_source(paths, monkeypatch):
     monkeypatch.delenv("SHOT_DESIGN_CORPUS", raising=False)
-    monkeypatch.delenv("IDEATE_CORPUS", raising=False)
+    monkeypatch.delenv("SHOT_DESIGN_CORPUS", raising=False)
     root = paths.foundation_model_processed_dir
     root.mkdir(parents=True)
     # 120 complete frames, 50 samples/frame. Mean=150, std=50 for pinj[0].

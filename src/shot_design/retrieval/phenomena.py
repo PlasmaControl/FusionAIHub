@@ -1163,7 +1163,7 @@ def _table_shots(stems: tuple[str, ...]) -> frozenset[int]:
     """The shots labeler's curated tables name, by manifest stem.
 
     The second way a `database:` block can point at a list, and the one new tables use:
-    `data/events/tables.yaml` already declares where the CSV is and what its columns mean, so
+    `configs/labeler/events.yaml` already declares where the CSV is and what its columns mean, so
     the registry names the STEM and labeler resolves it. A stem the manifest does not know,
     or a manifest that cannot be read at all, is an empty set and not an exception -- the
     tables are optional data and a database built without them must still rank.

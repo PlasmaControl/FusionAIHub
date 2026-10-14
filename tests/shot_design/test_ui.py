@@ -48,7 +48,7 @@ def local_auxiliary_paths(shot_design_db, tmp_path, monkeypatch):
     path = tmp_path / "paths.yaml"
     path.write_text(yaml.safe_dump(values))
     monkeypatch.setenv("SHOT_DESIGN_PATHS", str(path))
-    monkeypatch.setenv("LABELER_ROOT", str(tmp_path / "labelmaker"))
+    monkeypatch.setenv("LABELER_ROOT", str(tmp_path / "labeler"))
     monkeypatch.setenv("SHOT_DESIGN_CORPUS", str(tmp_path / "corpus"))
     tools.reset_cache()
     phenomena._database_shots.cache_clear()
@@ -172,7 +172,7 @@ def test_locate_is_cli_json_with_reply_notes(client, event_db, capsys, name, avo
     assert response.json(), "CLI equality must exercise real hits, not two empty lists"
     if name == "eho":
         assert response.json()[0]["intervals"]
-    assert json.loads(response.headers["X-Ideate-Caveats"]) == output.err.splitlines()
+    assert json.loads(response.headers["X-Shot-Design-Caveats"]) == output.err.splitlines()
 
 
 def test_registry_classification_and_literal_events_stay_distinct(client, event_db):

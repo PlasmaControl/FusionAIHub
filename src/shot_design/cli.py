@@ -1555,7 +1555,7 @@ def cmd_labels(args) -> int:
     Succeeds with `n_shots_with_events = 0` when `$LABELER_ROOT/events/` does not exist -- it
     does not until the mask job has run, and the labels are useful before then.
     """
-    from labeler.config import Paths as LabelmakerPaths
+    from labeler.config import Paths as LabelerPaths
 
     from .labels import join as join_mod
 
@@ -1564,7 +1564,7 @@ def cmd_labels(args) -> int:
     if not shots:
         print("no shots selected", file=sys.stderr)
         return 1
-    root = Path(args.labeler_root) if args.labeler_root else LabelmakerPaths.from_env().root
+    root = Path(args.labeler_root) if args.labeler_root else LabelerPaths.from_env().root
     if not (root / "labels").is_dir():
         print(f"no labels directory at {root / 'labels'}", file=sys.stderr)
         return 1
@@ -1577,7 +1577,7 @@ def cmd_labels(args) -> int:
 
     started = time.perf_counter()
     result = join_mod.join(
-        shots, labelmaker_root=root, text_root=text_root, lexicon_path=args.lexicon
+        shots, labeler_root=root, text_root=text_root, lexicon_path=args.lexicon
     )
     # The join is the step that runs AFTER the long jobs and republishes, so it is where a
     # `has_frame_codes` column set at build time -- 13 true while all 500 caches existed -- gets
@@ -1694,9 +1694,9 @@ def cmd_eval(args) -> int:
     db = store.ShotDB.load(db_dir)
 
     if args.what == "recall":
-        from labeler.config import Paths as LabelmakerPaths
+        from labeler.config import Paths as LabelerPaths
 
-        root = Path(args.labeler_root) if args.labeler_root else LabelmakerPaths.from_env().root
+        root = Path(args.labeler_root) if args.labeler_root else LabelerPaths.from_env().root
         try:
             report = rec_mod.recall(args.phenomenon, db, root, segment=args.segment)
         except KeyError:

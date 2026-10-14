@@ -114,7 +114,7 @@ class Lexicon:
 # ----------------------------------------------------------------------------------- lexicon
 
 
-def labelmaker_lexicon_path() -> Path:
+def labeler_lexicon_path() -> Path:
     """Where labeler's `events/lexicons.yaml` is, whether or not it exists yet."""
     from labeler import events as lm_events
 
@@ -126,7 +126,7 @@ def default_lexicon_path() -> Path:
 
     Single source, one direction: shot_design reads labeler's aliases, never the other way round.
     """
-    path = labelmaker_lexicon_path()
+    path = labeler_lexicon_path()
     return path if path.exists() else config.CONFIG_DIR / "labels.yaml"
 
 
@@ -385,7 +385,7 @@ __all__ = [
     "Lexicon",
     "default_lexicon_path",
     "empty_claims",
-    "labelmaker_lexicon_path",
+    "labeler_lexicon_path",
     "load_lexicon",
     "text_claims",
 ]

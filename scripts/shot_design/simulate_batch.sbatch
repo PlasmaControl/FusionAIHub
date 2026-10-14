@@ -8,8 +8,8 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem-per-cpu=8G
 #SBATCH --time=06:00:00
-#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/ideate/experiments/slurm/%j.out
-#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/ideate/experiments/slurm/%j.out
+#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/shot_design/experiments/slurm/%j.out
+#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/shot_design/experiments/slurm/%j.out
 # Paired real/proposed IGNITE rollouts for MANY saved designs: one design id per line in
 # $IDENTS, 4 GPUs on one node, task i taking lines i, i+4, i+8, ... and skipping any design
 # whose outputs/<ident>/simulation/status.json already says "complete". The Stellar twin of

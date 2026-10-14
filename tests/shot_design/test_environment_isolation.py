@@ -12,7 +12,7 @@ def caller_package_variables():
     """Snapshot caller settings before the module fixture adds its own root."""
     return [
         name for name in os.environ
-        if name.startswith(("SHOT_DESIGN_", "IDEATE_", "LABELER_", "LABELMAKER_"))
+        if name.startswith(("SHOT_DESIGN_", "LABELER_"))
     ]
 
 

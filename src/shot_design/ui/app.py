@@ -292,7 +292,7 @@ def create_app(
             phenomena._database_shots.cache_clear()
             payload = tools.never_raises(run)()
         # CLI stderr becomes a header; the bare hit list adds only UI domains.
-        return _json(payload, headers={"X-Ideate-Caveats": json.dumps(notes)})
+        return _json(payload, headers={"X-Shot-Design-Caveats": json.dumps(notes)})
 
     from .assistant_routes import router as assistant_router
     from .design_routes import router as design_router

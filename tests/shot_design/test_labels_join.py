@@ -105,7 +105,7 @@ def test_statistics_are_over_the_valid_samples_only(tmp_path):
     write_labels(tmp_path, 900001, "slug_a", {"p": y}, v)
 
     df = join.labels_wide(
-        [900001], labelmaker_root=tmp_path, thresholds={"slug_a/p": (0.5, "card")}
+        [900001], labeler_root=tmp_path, thresholds={"slug_a/p": (0.5, "card")}
     )
 
     assert len(df) == 1
@@ -130,7 +130,7 @@ def test_a_threshold_free_label_leaves_the_alarm_columns_nan(tmp_path):
     `n_intervals` must be null, not 0 -- a reader that sees 0 concludes the alarm never fired."""
     write_labels(tmp_path, 900001, "slug_a", {"p": np.full(T.size, 0.9)}, np.ones(T.size, bool))
 
-    row = join.labels_wide([900001], labelmaker_root=tmp_path, thresholds={}).iloc[0]
+    row = join.labels_wide([900001], labeler_root=tmp_path, thresholds={}).iloc[0]
 
     assert np.isnan(row["thr"])
     assert np.isnan(row["frac_above"])
@@ -144,7 +144,7 @@ def test_a_label_with_no_valid_sample_summarises_to_nan_not_zero(tmp_path):
     write_labels(tmp_path, 900001, "slug_a", {"p": np.full(T.size, 0.9)}, np.zeros(T.size, bool))
 
     row = join.labels_wide(
-        [900001], labelmaker_root=tmp_path, thresholds={"slug_a/p": (0.5, "card")}
+        [900001], labeler_root=tmp_path, thresholds={"slug_a/p": (0.5, "card")}
     ).iloc[0]
 
     assert row["n_valid"] == 0
@@ -162,7 +162,7 @@ def test_a_non_finite_valid_sample_nulls_the_alarm_columns(tmp_path):
     write_labels(tmp_path, 900001, "slug_a", {"p": y}, np.ones(T.size, bool))
 
     row = join.labels_wide(
-        [900001], labelmaker_root=tmp_path, thresholds={"slug_a/p": (0.5, "card")}
+        [900001], labeler_root=tmp_path, thresholds={"slug_a/p": (0.5, "card")}
     ).iloc[0]
 
     assert row["n_valid"] == 6
@@ -175,7 +175,7 @@ def test_a_non_finite_valid_sample_nulls_the_alarm_columns(tmp_path):
 def test_a_shot_with_no_labels_file_produces_no_rows_and_is_named(tmp_path):
     write_labels(tmp_path, 900001, "slug_a", {"p": np.full(T.size, 0.5)}, np.ones(T.size, bool))
 
-    result = join.join([900001, 900002], labelmaker_root=tmp_path)
+    result = join.join([900001, 900002], labeler_root=tmp_path)
 
     assert sorted(set(result.labels_wide["shot"])) == [900001]
     assert result.manifest["labels_missing"] == [900002]
@@ -184,8 +184,8 @@ def test_a_shot_with_no_labels_file_produces_no_rows_and_is_named(tmp_path):
 
 def test_columns_and_dtypes_are_the_contract(tmp_path):
     write_labels(tmp_path, 900001, "slug_a", {"p": np.full(T.size, 0.5)}, np.ones(T.size, bool))
-    df = join.labels_wide([900001], labelmaker_root=tmp_path)
-    empty = join.labels_wide([], labelmaker_root=tmp_path)
+    df = join.labels_wide([900001], labeler_root=tmp_path)
+    empty = join.labels_wide([], labeler_root=tmp_path)
 
     assert list(df.columns) == list(join.LABELS_WIDE_COLUMNS)
     assert list(empty.columns) == list(join.LABELS_WIDE_COLUMNS)
@@ -198,7 +198,7 @@ def test_every_label_of_every_model_in_the_file_is_summarised(tmp_path):
     write_labels(tmp_path, 900001, "slug_a", {"p": T, "q": T}, np.ones(T.size, bool))
     write_labels(tmp_path, 900001, "slug_b", {"r": T}, np.ones(T.size, bool))
 
-    df = join.labels_wide([900001], labelmaker_root=tmp_path)
+    df = join.labels_wide([900001], labeler_root=tmp_path)
 
     assert sorted(zip(df["slug"], df["label"], strict=True)) == [
         ("slug_a", "p"), ("slug_a", "q"), ("slug_b", "r")
@@ -207,7 +207,7 @@ def test_every_label_of_every_model_in_the_file_is_summarised(tmp_path):
 
 def test_the_valid_companion_is_not_summarised_as_a_label(tmp_path):
     write_labels(tmp_path, 900001, "slug_a", {"p": T}, np.ones(T.size, bool))
-    df = join.labels_wide([900001], labelmaker_root=tmp_path)
+    df = join.labels_wide([900001], labeler_root=tmp_path)
     assert set(df["label"]) == {"p"}
 
 
@@ -219,7 +219,7 @@ def test_a_run_above_the_threshold_becomes_one_forecast_event(tmp_path):
     write_labels(tmp_path, 900001, "d3d_tearing_time_to_event_dsm", {"tm_risk_250ms": y},
                  np.ones(T.size, bool))
 
-    df = join.label_forecast_events([900001], labelmaker_root=tmp_path, rules=[rule()])
+    df = join.label_forecast_events([900001], labeler_root=tmp_path, rules=[rule()])
 
     assert len(df) == 2
     first, second = df.iloc[0], df.iloc[1]
@@ -235,7 +235,7 @@ def test_a_forecast_is_never_a_detection(tmp_path):
     write_labels(tmp_path, 900001, "d3d_tearing_time_to_event_dsm",
                  {"tm_risk_250ms": np.full(T.size, 0.9)}, np.ones(T.size, bool))
 
-    df = join.label_forecast_events([900001], labelmaker_root=tmp_path, rules=[rule()])
+    df = join.label_forecast_events([900001], labeler_root=tmp_path, rules=[rule()])
 
     assert set(df["evidence_kind"]) == {"forecast"}
     assert "detector" not in set(df["evidence_kind"])
@@ -252,7 +252,7 @@ def test_an_invalid_sample_breaks_a_forecast_run(tmp_path):
     v = np.array([1, 1, 0, 1, 1, 1], bool)
     write_labels(tmp_path, 900001, "d3d_tearing_time_to_event_dsm", {"tm_risk_250ms": y}, v)
 
-    df = join.label_forecast_events([900001], labelmaker_root=tmp_path, rules=[rule()])
+    df = join.label_forecast_events([900001], labeler_root=tmp_path, rules=[rule()])
 
     assert len(df) == 2
     assert df["t0_s"].tolist() == [pytest.approx(0.0), pytest.approx(0.3)]
@@ -262,7 +262,7 @@ def test_an_invalid_sample_breaks_a_forecast_run(tmp_path):
 
 def test_a_rule_naming_a_label_the_file_does_not_carry_is_silent(tmp_path):
     write_labels(tmp_path, 900001, "slug_a", {"p": np.full(T.size, 0.9)}, np.ones(T.size, bool))
-    df = join.label_forecast_events([900001], labelmaker_root=tmp_path, rules=[rule()])
+    df = join.label_forecast_events([900001], labeler_root=tmp_path, rules=[rule()])
     assert df.empty
     assert list(df.columns) == list(ev.COLUMNS)
 
@@ -271,7 +271,7 @@ def test_forecast_rows_carry_the_labels_provenance(tmp_path):
     write_labels(tmp_path, 900001, "d3d_tearing_time_to_event_dsm",
                  {"tm_risk_250ms": np.full(T.size, 0.9)}, np.ones(T.size, bool), sha="c0ffee")
 
-    df = join.label_forecast_events([900001], labelmaker_root=tmp_path, rules=[rule()])
+    df = join.label_forecast_events([900001], labeler_root=tmp_path, rules=[rule()])
 
     attrs = json.loads(df["attrs"].iloc[0])
     assert attrs["slug"] == "d3d_tearing_time_to_event_dsm"
@@ -290,7 +290,7 @@ def test_forecast_attrs_carry_the_labels_queried_at_ms_when_it_has_one(tmp_path)
     write_labels(tmp_path, 900002, "d3d_tearing_time_to_event_dsm", {"tm_risk_250ms": y},
                  np.ones(T.size, bool))
 
-    df = join.label_forecast_events([900001, 900002], labelmaker_root=tmp_path, rules=[rule()])
+    df = join.label_forecast_events([900001, 900002], labeler_root=tmp_path, rules=[rule()])
 
     assert json.loads(df["attrs"].iloc[0])["queried_at_ms"] == "251"
     assert "queried_at_ms" not in json.loads(df["attrs"].iloc[1])
@@ -306,15 +306,15 @@ def _detector_event(shot: int, t0: float) -> ev.Event:
     )
 
 
-def test_union_of_labelmaker_events_and_forecasts_keeps_labelmakers_dtypes(tmp_path):
+def test_union_of_labeler_events_and_forecasts_keeps_labelers_dtypes(tmp_path):
     write_labels(tmp_path, 900001, "d3d_tearing_time_to_event_dsm",
                  {"tm_risk_250ms": np.full(T.size, 0.9)}, np.ones(T.size, bool))
     (tmp_path / "events").mkdir()
     ev.write_events(tmp_path / "events" / "900001_events.parquet", 900001,
                     [_detector_event(900001, 1.0)], run_id="test-run")
 
-    forecasts = join.label_forecast_events([900001], labelmaker_root=tmp_path, rules=[rule()])
-    df = join.events_union([900001], labelmaker_root=tmp_path, forecasts=forecasts)
+    forecasts = join.label_forecast_events([900001], labeler_root=tmp_path, rules=[rule()])
+    df = join.events_union([900001], labeler_root=tmp_path, forecasts=forecasts)
 
     assert list(df.columns) == list(ev.COLUMNS)
     assert {c: str(d) for c, d in df.dtypes.items()} == dict(ev.DTYPES)
@@ -329,7 +329,7 @@ def test_union_sorts_by_shot_then_time(tmp_path):
                         [_detector_event(shot, 2.0), _detector_event(shot, 1.0)],
                         run_id="test-run")
 
-    df = join.events_union([900001, 900002], labelmaker_root=tmp_path,
+    df = join.events_union([900001, 900002], labeler_root=tmp_path,
                            forecasts=join.empty_events())
 
     assert list(zip(df["shot"], df["t0_s"], strict=True)) == [
@@ -352,8 +352,8 @@ def test_a_forecast_row_on_disk_is_replaced_by_this_joins_own(tmp_path):
     ev.write_events(tmp_path / "events" / "900001_events.parquet", 900001,
                     [stale, _detector_event(900001, 1.0)], run_id="test-run")
 
-    forecasts = join.label_forecast_events([900001], labelmaker_root=tmp_path, rules=[rule()])
-    df = join.events_union([900001], labelmaker_root=tmp_path, forecasts=forecasts)
+    forecasts = join.label_forecast_events([900001], labeler_root=tmp_path, rules=[rule()])
+    df = join.events_union([900001], labeler_root=tmp_path, forecasts=forecasts)
 
     assert len(df) == 2
     assert sorted(df["source"]) == ["label_forecast", "tokeye_track"]
@@ -364,7 +364,7 @@ def test_no_events_directory_at_all_is_an_empty_typed_frame(tmp_path):
     """`events/` does not exist until the mask job has run. Everything must still work."""
     assert not (tmp_path / "events").exists()
 
-    result = join.join([900001, 900002], labelmaker_root=tmp_path)
+    result = join.join([900001, 900002], labeler_root=tmp_path)
 
     assert result.events.empty
     assert list(result.events.columns) == list(ev.COLUMNS)
@@ -391,7 +391,7 @@ def test_a_curated_table_row_reaches_the_union_with_its_coverage_still_null(tmp_
     ev.write_events(tmp_path / "events" / "900001_events.parquet", 900001,
                     [curated, _detector_event(900001, 1.0)], run_id="test-run")
 
-    df = join.events_union([900001], labelmaker_root=tmp_path, forecasts=join.empty_events())
+    df = join.events_union([900001], labeler_root=tmp_path, forecasts=join.empty_events())
 
     row = df[df["evidence_kind"] == "database"]
     assert len(row) == 1
@@ -424,7 +424,7 @@ def test_the_join_ingests_every_source_file_that_exists_and_counts_the_rest(tmp_
         es.source_row(900002, "tokeye_track", status="error", reason="mhr read failed"),
     ])
 
-    result = join.join([900001, 900002, 900003], labelmaker_root=tmp_path)
+    result = join.join([900001, 900002, 900003], labeler_root=tmp_path)
 
     assert list(result.sources.columns) == list(es.SOURCES_COLUMNS)
     assert len(result.sources) == 3
@@ -442,17 +442,17 @@ def test_the_join_ingests_every_source_file_that_exists_and_counts_the_rest(tmp_
     }
 
 
-def test_a_sources_file_labelmaker_itself_wrote_is_ingested_as_is(tmp_path):
+def test_a_sources_file_labeler_itself_wrote_is_ingested_as_is(tmp_path):
     """The other tests here build the table through shot_design's fixture writer. This one writes it
     through labeler's REAL `schema.write_sources` - the producer - and reads it back through
     the join, so the two sides' definitions of the contract cannot drift apart unnoticed: the
     columns, their order, their dtypes, and the file's name and place."""
-    from labeler.config import Paths as LabelmakerPaths
+    from labeler.config import Paths as LabelerPaths
     from shot_design.labels import event_sources as es
 
     assert tuple(ev.SOURCE_COLUMNS) == es.SOURCES_COLUMNS
     assert dict(ev.SOURCE_DTYPES) == es.SOURCES_DTYPES
-    lm = LabelmakerPaths(root=tmp_path, corpus=tmp_path / "corpus",
+    lm = LabelerPaths(root=tmp_path, corpus=tmp_path / "corpus",
                          text_root=tmp_path / "bundles", logs_jsonl=tmp_path / "logs.jsonl")
     assert lm.sources_file(900001) == es.sources_file(tmp_path / "events", 900001)
 
@@ -464,7 +464,7 @@ def test_a_sources_file_labelmaker_itself_wrote_is_ingested_as_is(tmp_path):
          "status": "skipped", "reason": "KeyError: no group 'co2'", "n_events": 0},
     ], run_id="test-run")
 
-    result = join.join([900001, 900002], labelmaker_root=tmp_path)
+    result = join.join([900001, 900002], labeler_root=tmp_path)
     src = result.sources
     assert list(src.columns) == list(es.SOURCES_COLUMNS)
     assert src.dtypes.astype(str).to_dict() == es.SOURCES_DTYPES
@@ -481,7 +481,7 @@ def test_a_join_with_no_source_files_at_all_still_writes_a_typed_empty_table(tmp
 
     db = tmp_path / "db"
     db.mkdir()
-    result = join.join([900001], labelmaker_root=tmp_path)
+    result = join.join([900001], labeler_root=tmp_path)
     join.write_tables(db, result.labels_wide, result.events, result.claims, result.manifest,
                       sources_df=result.sources)
     back = pd.read_parquet(db / "event_sources.parquet")
@@ -544,7 +544,7 @@ def test_write_tables_records_the_refreshed_count_in_its_own_manifest_block(tmp_
     db = tmp_path / "db"
     db.mkdir()
     (db / "manifest.json").write_text(json.dumps({"n_shots": 2}))
-    result = join.join([], labelmaker_root=tmp_path)
+    result = join.join([], labeler_root=tmp_path)
     join.write_tables(
         db, result.labels_wide, result.events, result.claims, result.manifest,
         sources_df=result.sources,
@@ -565,7 +565,7 @@ def test_write_tables_writes_three_tables_and_merges_the_counts(tmp_path):
     (db / "manifest.json").write_text(json.dumps({"n_shots": 2, "built_at": "yesterday"}))
     write_labels(tmp_path, 900001, "d3d_tearing_time_to_event_dsm",
                  {"tm_risk_250ms": np.full(T.size, 0.9)}, np.ones(T.size, bool))
-    result = join.join([900001], labelmaker_root=tmp_path, rules=[rule()])
+    result = join.join([900001], labeler_root=tmp_path, rules=[rule()])
 
     join.write_tables(db, result.labels_wide, result.events, result.claims, result.manifest)
 
@@ -591,7 +591,7 @@ def test_write_tables_writes_three_tables_and_merges_the_counts(tmp_path):
 def test_a_failed_write_leaves_the_old_tables_in_place(tmp_path, monkeypatch):
     db = tmp_path / "db"
     db.mkdir()
-    empty = join.join([], labelmaker_root=tmp_path)
+    empty = join.join([], labeler_root=tmp_path)
     join.write_tables(db, empty.labels_wide, empty.events, empty.claims, empty.manifest)
     before = (db / "labels_wide.parquet").read_bytes()
 
@@ -614,7 +614,7 @@ def test_a_failed_write_leaves_the_old_tables_in_place(tmp_path, monkeypatch):
 
 
 def test_a_threshold_comes_from_the_cards_own_outputs_block():
-    card = {"labelmaker": {"slug": "d3d_x", "outputs": [
+    card = {"labeler": {"slug": "d3d_x", "outputs": [
         {"name": "p", "task": "binary", "threshold": 0.7},
         {"name": "q", "task": "regression"},
     ]}}
@@ -636,7 +636,7 @@ def test_the_configured_forecast_rules_name_real_models_and_real_labels():
     rules = join.forecast_rules()
     assert rules, "labels.yaml records no forecast rules"
     for r in rules:
-        card = registry.read_card(r.slug)["labelmaker"]
+        card = registry.read_card(r.slug)["labeler"]
         assert card["status"] == "implemented"
         assert r.label in {o["name"] for o in card["outputs"]}
         assert 0.0 < r.thr < 1.0
@@ -656,7 +656,7 @@ def test_a_card_threshold_and_a_config_threshold_are_told_apart(tmp_path):
     write_labels(tmp_path, 900001, "slug_a", {"p": y, "q": y, "r": y}, np.ones(T.size, bool))
 
     df = join.labels_wide(
-        [900001], labelmaker_root=tmp_path,
+        [900001], labeler_root=tmp_path,
         thresholds={"slug_a/p": (0.7, "card"), "slug_a/q": (0.2, "config")},
     ).set_index("label")
 
@@ -670,7 +670,7 @@ def test_a_threshold_must_name_its_source(tmp_path):
     is the confusion `thr_source` exists to end."""
     write_labels(tmp_path, 900001, "slug_a", {"p": T}, np.ones(T.size, bool))
     with pytest.raises(ValueError, match="source"):
-        join.labels_wide([900001], labelmaker_root=tmp_path, thresholds={"slug_a/p": 0.5})
+        join.labels_wide([900001], labeler_root=tmp_path, thresholds={"slug_a/p": 0.5})
 
 
 def test_a_card_threshold_beats_the_config_in_both_tables_at_once(tmp_path, monkeypatch):
@@ -682,7 +682,7 @@ def test_a_card_threshold_beats_the_config_in_both_tables_at_once(tmp_path, monk
                  np.ones(T.size, bool))
     monkeypatch.setattr(join, "card_thresholds", lambda: {TM: 0.25})
 
-    result = join.join([900001], labelmaker_root=tmp_path, rules=[rule(thr=0.2)])
+    result = join.join([900001], labeler_root=tmp_path, rules=[rule(thr=0.2)])
 
     row = result.labels_wide.iloc[0]
     assert (row["thr"], row["thr_source"]) == (pytest.approx(0.25), "card")
@@ -702,7 +702,7 @@ def test_the_manifest_records_every_threshold_with_its_source(tmp_path, monkeypa
                  {"tm_risk_250ms": np.full(T.size, 0.9)}, np.ones(T.size, bool))
     monkeypatch.setattr(join, "card_thresholds", lambda: {"slug_a/p": 0.7})
 
-    result = join.join([900001], labelmaker_root=tmp_path, rules=[rule(thr=0.2)])
+    result = join.join([900001], labeler_root=tmp_path, rules=[rule(thr=0.2)])
 
     assert result.manifest["thresholds"] == {
         "slug_a/p": [pytest.approx(0.7), "card"],
@@ -720,16 +720,16 @@ def test_the_manifest_records_every_threshold_with_its_source(tmp_path, monkeypa
 def test_the_manifest_records_which_forecast_rules_were_applied(tmp_path):
     """The rule set is a file that will be edited. A table built from it has to say which version
     of it it was built from, or a `frac_above` from last week is unattributable."""
-    from_config = join.join([], labelmaker_root=tmp_path).manifest["forecast_rules"]
+    from_config = join.join([], labeler_root=tmp_path).manifest["forecast_rules"]
     assert from_config["path"].endswith("labels.yaml")
     assert len(from_config["sha256"]) == 64
     assert from_config["n_rules"] == len(join.forecast_rules())
 
-    explicit = join.join([], labelmaker_root=tmp_path, rules=[rule()]).manifest["forecast_rules"]
+    explicit = join.join([], labeler_root=tmp_path, rules=[rule()]).manifest["forecast_rules"]
     assert explicit["path"] is None                 # no file said so
     assert explicit["n_rules"] == 1
     assert explicit["sha256"] != from_config["sha256"]
-    changed = join.join([], labelmaker_root=tmp_path, rules=[rule(thr=0.3)])
+    changed = join.join([], labeler_root=tmp_path, rules=[rule(thr=0.3)])
     assert changed.manifest["forecast_rules"]["sha256"] != explicit["sha256"]
 
 

@@ -221,7 +221,7 @@ async function api(path, options = {}) {
     error.status = response.status;
     throw error;
   }
-  return { data, notes: JSON.parse(response.headers.get("X-Ideate-Caveats") || "[]") };
+  return { data, notes: JSON.parse(response.headers.get("X-Shot-Design-Caveats") || "[]") };
 }
 
 function caveats(items) {

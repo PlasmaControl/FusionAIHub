@@ -101,7 +101,7 @@ summary:
   n_featured: 879
   n_frame_codes: 500
   frame_codes_by_dir:
-    /scratch/gpfs/EKOLEMEN/nc1514/ideate/frame_codes: 500
+    /scratch/gpfs/EKOLEMEN/nc1514/shot_design/frame_codes: 500
   feature_store:
     n_files: 879
     max_mtime: '2026-09-14T15:19:27+00:00'

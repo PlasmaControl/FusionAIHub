@@ -7,8 +7,8 @@
 #SBATCH --cpus-per-task=3
 #SBATCH --mem=2800M
 #SBATCH --time=00:15:00
-#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/ideate/runs/slurm/%j.out
-#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/ideate/runs/slurm/%j.out
+#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/shot_design/runs/slurm/%j.out
+#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/shot_design/runs/slurm/%j.out
 
 # Task I6b: the recommender_v1 shot database, built from the FAITH corpus + labeler's feature
 # store -- `shot_design build --list recommender_v1 --reader corpus --no-encode`.
@@ -90,8 +90,8 @@ set -euo pipefail
 # REPO may point at a clean worktree snapshot (the controller does this while another task edits
 # the main checkout); SHOT_DESIGN_PY is the interpreter, which always lives in the main checkout.
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
-SHOT_DESIGN_PY="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/shot_design/env.py" SHOT_DESIGN_PY "/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/shot-design-cpu/bin/python")"
-SHOT_DESIGN_DATA_ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/shot_design/env.py" SHOT_DESIGN_DATA_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/ideate")"
+SHOT_DESIGN_PY="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler/bin/python" "$REPO/src/shot_design/env.py" SHOT_DESIGN_PY "/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/shot-design-cpu/bin/python")"
+SHOT_DESIGN_DATA_ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler/bin/python" "$REPO/src/shot_design/env.py" SHOT_DESIGN_DATA_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/shot_design")"
 LIST="${LIST:-recommender_v1}"
 
 cd "$REPO"
@@ -102,7 +102,7 @@ echo "job ${SLURM_JOB_ID:-none} on $(hostname) at $(date -Is)"
 # with the build's own pool otherwise and warns on every shot.
 export HF_HUB_OFFLINE=1 TOKENIZERS_PARALLELISM=false
 export SHOT_DESIGN_DATA_ROOT="$SHOT_DESIGN_DATA_ROOT"
-export LABELER_ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")"
+export LABELER_ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labeler")"
 # One thread per worker: the work is numpy over one shot's arrays, and 8 workers x 6 OpenMP
 # threads on 6 allocated cpus is pure contention.
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1

@@ -60,7 +60,7 @@ on Frontier, and training ran from an uncommitted tree.
 ## Evidence
 
 All numbers are medians over the 16 complete v4 rollouts (4 named shots in
-`ideate/experiments/showcase4_v4`, 12 batch designs in `ideate/experiments/stellar_1k_v4`),
+`shot_design/experiments/showcase4_v4`, 12 batch designs in `shot_design/experiments/stellar_1k_v4`),
 60 predicted frames from 2.00 s, unless stated.
 
 ### Decoded error against persistence

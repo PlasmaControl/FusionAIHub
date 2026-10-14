@@ -271,7 +271,7 @@ def test_the_same_sentence_is_not_claimed_twice(text_root, lexicon_path):
 # -------------------------------------------------------------------------------- lexicon
 
 
-def test_the_lexicon_reads_labelmakers_shape(lexicon_path):
+def test_the_lexicon_reads_labelers_shape(lexicon_path):
     lex = claims.load_lexicon(lexicon_path)
     assert lex.source == lexicon_path
     assert lex.aliases["eho"] == ("edge harmonic oscillation", "eho")  # longest first
@@ -303,7 +303,7 @@ def test_the_lexicon_falls_back_to_shot_designs_own_themes(tmp_path):
 def test_the_default_lexicon_resolves_to_a_file_that_exists_and_loads():
     """Whichever of the two it is today, `join()` must be able to read it without being told."""
     path = claims.default_lexicon_path()
-    assert path in (claims.labelmaker_lexicon_path(), config_dir() / "labels.yaml")
+    assert path in (claims.labeler_lexicon_path(), config_dir() / "labels.yaml")
     assert path.exists()
     assert claims.load_lexicon(path).aliases
 

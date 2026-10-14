@@ -9,8 +9,8 @@
 #SBATCH --mem-per-cpu=2G
 #SBATCH --time=03:00:00
 #SBATCH --array=0-1%2
-#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/ideate/runs/slurm/%A_%a.out
-#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/ideate/runs/slurm/%A_%a.out
+#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/shot_design/runs/slurm/%A_%a.out
+#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/shot_design/runs/slurm/%A_%a.out
 
 # IGNITE frame-code caches for the 500 recommender_v1 shots: the per-shot seeds a Phase-5
 # rollout starts from. Each array task takes one contiguous half of the sorted list
@@ -87,7 +87,7 @@
 
 set -euo pipefail
 REPO=/scratch/gpfs/nc1514/FusionAIHub
-ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/bin/python" "$REPO/src/shot_design/env.py" SHOT_DESIGN_DATA_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/ideate")"
+ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler/bin/python" "$REPO/src/shot_design/env.py" SHOT_DESIGN_DATA_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/shot_design")"
 ENV="$REPO/.pixi/envs/shot-design"
 export LD_LIBRARY_PATH="$ENV/lib:${LD_LIBRARY_PATH:-}"
 export SHOT_DESIGN_DATA_ROOT="$ROOT"

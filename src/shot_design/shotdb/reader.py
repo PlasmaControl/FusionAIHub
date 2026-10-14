@@ -72,7 +72,8 @@ class Signal:
     units: str | None
     # Which layer produced the samples. "staged"/"fetched" are the two d3d_fusion_data locations
     # (who WROTE the file, per `legacy_raw.is_ours`, not where it was found); "corpus" is a FAITH
-    # <shot>_processed.h5 group and "labelmaker" a canonical feature of <shot>_features.h5.
+    # <shot>_processed.h5 group and "labelmaker" a canonical feature of <shot>_features.h5
+    # (the labeler layer; the tag keeps its pre-rename spelling because built databases persist it).
     source: Literal["staged", "fetched", "corpus", "labelmaker"]
     group: str
     col: str

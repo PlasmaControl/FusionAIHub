@@ -57,7 +57,7 @@ Stellar file and is unaffected by anything written to the Frontier one.
 dependencies) is the **only** environment installed on Frontier for the CLI,
 the tests and the GPU jobs; `frontier` stays separate for IGNITE training.
 `shot-design`/`shot-design-cpu` are Stellar-only (CUDA/CPU torch) and are not
-materialised here. The `fdp`/`labelmaker` envs depend on the `ga-fdp` conda
+materialised here. The `fdp`/`labeler` envs depend on the `ga-fdp` conda
 channel (`toksearch`, MDSplus) and would install but cannot fetch — DIII-D
 MDSplus is not reachable from OLCF, so all fetching stays on Stellar. The
 Hugging Face cache (`sentence-transformers/all-MiniLM-L6-v2`) is
@@ -135,7 +135,7 @@ sequence and the exact commands.
 ## Data transfer notes (not in git)
 
 The Stellar-to-Frontier data transfer needed for the recommender workstream —
-the `ideate`/`labelmaker` subdirectories and raw label sources — is listed in
+the `shot_design`/`labeler` subdirectories and raw label sources — is listed in
 [Adding a cluster](./adding-a-cluster.md#data-to-transfer). The DIII-D HDF5
 corpus itself (53 TB) is already on Frontier as
 `proj-shared/foundation_model`.

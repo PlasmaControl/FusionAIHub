@@ -7,8 +7,8 @@
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=48G
 #SBATCH --time=02:00:00
-#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/ideate/experiments/slurm/%j.out
-#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/ideate/experiments/slurm/%j.out
+#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/shot_design/experiments/slurm/%j.out
+#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/shot_design/experiments/slurm/%j.out
 # Build a shot list's database into a BATCH data root on Stellar, then join labeler's
 # labels/events. Usage (from the repo root):
 #   SHOT_DESIGN_DATA_ROOT=.../experiments/<name> LIST=<shot list> sbatch scripts/shot_design/build_batch.sbatch

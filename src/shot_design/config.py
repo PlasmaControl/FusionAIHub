@@ -10,7 +10,6 @@ Ported from shot-recommender-system (shotrec) @565d548.
 from __future__ import annotations
 
 import copy
-import os
 import re
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -40,7 +39,7 @@ def _interpolate(values: dict[str, Any]) -> dict[str, Any]:
             if isinstance(v, str) and "${" in v:
                 new = _VAR.sub(
                     lambda m: str(out[m[1]] if m[1] in out else (
-                        labeler_getenv if m[1].startswith(("LABELER_", "LABELMAKER_"))
+                        labeler_getenv if m[1].startswith("LABELER_")
                         else getenv
                     )(m[1], m[0])), v
                 )
@@ -119,12 +118,10 @@ def data_root_origin() -> str:
     root one level up.
     """
     if getenv("SHOT_DESIGN_DATA_ROOT"):
-        name = "SHOT_DESIGN_DATA_ROOT" if "SHOT_DESIGN_DATA_ROOT" in os.environ else "IDEATE_DATA_ROOT"
-        return f"{name} env"
+        return "SHOT_DESIGN_DATA_ROOT env"
     path = getenv("SHOT_DESIGN_PATHS")
     if path:
-        name = "SHOT_DESIGN_PATHS" if "SHOT_DESIGN_PATHS" in os.environ else "IDEATE_PATHS"
-        return f"{name}={path}"
+        return f"SHOT_DESIGN_PATHS={path}"
     return f"{CONFIG_DIR / 'paths.yaml'} default"
 
 
@@ -201,7 +198,7 @@ class SignalSpec(BaseModel):
     # The other two raw layouts. Absent means "this signal has no address there", which is a
     # coverage fact and not a fetchable gap -- see `corpus_signals` for the status rules.
     corpus: CorpusAddress | None = None
-    labelmaker: LabelerAddress | None = None
+    labeler: LabelerAddress | None = None
     units: str | None = None
     tier: str = "raw"  # "raw" | "derived"
     abs: bool = False

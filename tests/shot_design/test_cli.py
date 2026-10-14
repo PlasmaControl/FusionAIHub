@@ -76,7 +76,7 @@ def test_build_all_overrides_the_skip(paths, text_fixtures, stub_embeddings, cap
 
 
 def test_build_reader_corpus_reads_the_corpus_and_says_so(
-    paths, signal_corpus, labelmaker_features, text_fixtures, stub_embeddings, capsys
+    paths, signal_corpus, labeler_features, text_fixtures, stub_embeddings, capsys
 ):
     """`--reader corpus` has to reach the Ip-on-disk filter too: that check is what decides
     whether a shot is built at all, and asking the legacy layout about a corpus shot would skip

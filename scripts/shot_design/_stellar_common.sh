@@ -6,20 +6,20 @@
 #
 # SHOT_DESIGN_DATA_ROOT is REQUIRED from the caller: a batch run writes a database, frame
 # codes, designs and simulations, and none of that may land in the production root
-# (/scratch/gpfs/EKOLEMEN/nc1514/ideate) without the owner's say-so. The batch roots live
-# beside it under /scratch/gpfs/EKOLEMEN/nc1514/ideate/experiments/<name>.
+# (/scratch/gpfs/EKOLEMEN/nc1514/shot_design) without the owner's say-so. The batch roots live
+# beside it under /scratch/gpfs/EKOLEMEN/nc1514/shot_design/experiments/<name>.
 #
 set -euo pipefail
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
 cd "$REPO"
 : "${SHOT_DESIGN_DATA_ROOT:?set SHOT_DESIGN_DATA_ROOT to the batch root (never the production root)}"
 case "$SHOT_DESIGN_DATA_ROOT" in
-  /scratch/gpfs/EKOLEMEN/nc1514/ideate|/scratch/gpfs/EKOLEMEN/nc1514/ideate/)
+  /scratch/gpfs/EKOLEMEN/nc1514/shot_design|/scratch/gpfs/EKOLEMEN/nc1514/shot_design/)
     echo "refusing to run a batch against the production data root $SHOT_DESIGN_DATA_ROOT" >&2
     exit 2 ;;
 esac
 export SHOT_DESIGN_DATA_ROOT
-export LABELER_ROOT="${LABELER_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/labelmaker}"
+export LABELER_ROOT="${LABELER_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/labeler}"
 export SHOT_DESIGN_CORPUS="${SHOT_DESIGN_CORPUS:-/scratch/gpfs/EKOLEMEN/foundation_model}"
 export HF_HUB_OFFLINE=1 TOKENIZERS_PARALLELISM=false HDF5_USE_FILE_LOCKING=FALSE
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}" MKL_NUM_THREADS="${MKL_NUM_THREADS:-1}"
