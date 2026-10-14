@@ -1,0 +1,88 @@
+{
+  "_provenance": {
+    "measured_by": "analysis/forecastability_cache.py",
+    "measured_on": "2026-09-08",
+    "cache": "/lustre/orion/fus187/proj-shared/models/ignite_prod_v4/frame_codes",
+    "sample": "40 held-out shots, SEQ=40, FSQ digits unpacked (levels [8,5,5,5])",
+    "formula": "w ~ bigram_gain_nats ** 0.5  (half-strength; a=0 would be equal weighting)",
+    "normalisation": "mean 1 over the 15 modalities",
+    "caveat": "bigram gain is a LOWER BOUND on predictability -- one frame of context, no cross-position information, no actuator conditioning. These weights encode relative ORDER, which is the robust part, not absolute headroom.",
+    "source_table": {
+      "bes": {
+        "flip_rate": 0.322,
+        "bigram_gain_nats": 0.5074
+      },
+      "cer_rot": {
+        "flip_rate": 0.287,
+        "bigram_gain_nats": 0.5913
+      },
+      "cer_ti": {
+        "flip_rate": 0.296,
+        "bigram_gain_nats": 0.635
+      },
+      "co2": {
+        "flip_rate": 0.47,
+        "bigram_gain_nats": 0.4417
+      },
+      "ece": {
+        "flip_rate": 0.718,
+        "bigram_gain_nats": 0.5015
+      },
+      "filterscopes": {
+        "flip_rate": 0.773,
+        "bigram_gain_nats": 0.1656
+      },
+      "mhr": {
+        "flip_rate": 0.743,
+        "bigram_gain_nats": 0.553
+      },
+      "mirnov": {
+        "flip_rate": 0.905,
+        "bigram_gain_nats": 0.1069
+      },
+      "mse": {
+        "flip_rate": 0.287,
+        "bigram_gain_nats": 0.4022
+      },
+      "tangtv_lower": {
+        "flip_rate": 0.32,
+        "bigram_gain_nats": 0.7536
+      },
+      "tangtv_upper": {
+        "flip_rate": 0.17,
+        "bigram_gain_nats": 0.4131
+      },
+      "ts_core_density": {
+        "flip_rate": 0.507,
+        "bigram_gain_nats": 0.3975
+      },
+      "ts_core_temp": {
+        "flip_rate": 0.492,
+        "bigram_gain_nats": 0.4633
+      },
+      "ts_tangential_density": {
+        "flip_rate": 0.397,
+        "bigram_gain_nats": 0.3983
+      },
+      "ts_tangential_temp": {
+        "flip_rate": 0.415,
+        "bigram_gain_nats": 0.3345
+      }
+    }
+  },
+  "bes": 1.0909,
+  "cer_rot": 1.1777,
+  "cer_ti": 1.2204,
+  "co2": 1.0179,
+  "ece": 1.0846,
+  "filterscopes": 0.6232,
+  "mhr": 1.1389,
+  "mirnov": 0.5007,
+  "mse": 0.9713,
+  "tangtv_lower": 1.3295,
+  "tangtv_upper": 0.9844,
+  "ts_core_density": 0.9656,
+  "ts_core_temp": 1.0425,
+  "ts_tangential_density": 0.9666,
+  "ts_tangential_temp": 0.8858
+}
