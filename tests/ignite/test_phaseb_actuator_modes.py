@@ -167,3 +167,24 @@ def test_every_mode_produces_a_full_trajectory(mode):
     pred = _roll(cfg, model, cache, mode)
     for m in cfg.modalities:
         assert pred[m.name].shape == (cfg.max_frames, m.n_tok)
+
+
+# ------------------------------------------------- dataset-wide normalised actuators ---
+def test_rollout_reads_global_actuators_by_shot(tmp_path, monkeypatch):
+    """With IGNITE_ACT_GLOBAL set, the rollout is driven by the side-cache actuators of THAT
+    shot (regression: rollout_shot referenced an undefined ``shot`` and crashed)."""
+    cfg, model, cache = _tiny_setup()
+    n = cfg.max_frames
+    glob = torch.randn(n, 70, generator=torch.Generator().manual_seed(7))
+    torch.save({"actuators_global": glob.half()}, tmp_path / "123.pt")
+    per_shot = _roll(cfg, model, dict(cache), "real")
+    monkeypatch.setenv("IGNITE_ACT_GLOBAL", str(tmp_path))
+    gen = torch.Generator().manual_seed(0)
+    c = dict(cache)
+    _gt, pred, _k, _f = ed.rollout_shot(model, cfg, c, cfg.k0_seed, 0.9, gen,
+                                        torch.device("cpu"), shot="123")
+    assert torch.equal(c["actuators"], glob.half()[:, :70])     # side cache was used
+    assert not _same(pred, per_shot)                              # and it drives the rollout
+    with pytest.raises(ValueError, match="shot id"):
+        ed.rollout_shot(model, cfg, dict(cache), cfg.k0_seed, 0.9,
+                        torch.Generator().manual_seed(0), torch.device("cpu"))

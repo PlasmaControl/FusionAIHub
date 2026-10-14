@@ -291,7 +291,7 @@ def apply_actuator_mode(act: torch.Tensor, mode: str, K0: int, cache_dir=None,
 @torch.no_grad()
 def rollout_shot(model: MaskGITDynamics, cfg: DynamicsConfig, cache: Dict, K0: int,
                  temperature: float, generator: torch.Generator, device,
-                 actuator_mode: str = "real", cache_dir=None
+                 actuator_mode: str = "real", cache_dir=None, shot=None
                  ) -> Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor], int, int]:
     """Seed K0 real frames, roll out, return (gt_codes, pred_codes, K0, F) as cpu long tensors.
 
@@ -316,6 +316,8 @@ def rollout_shot(model: MaskGITDynamics, cfg: DynamicsConfig, cache: Dict, K0: i
     # ever saw. Same hard-error policy as the training path.
     _agd = os.environ.get("IGNITE_ACT_GLOBAL", "").strip()
     if _agd:
+        if shot is None:
+            raise ValueError("IGNITE_ACT_GLOBAL is set: rollout_shot needs the shot id")
         _agp = Path(_agd) / f"{shot}.pt"
         if not _agp.exists():
             raise FileNotFoundError(f"IGNITE_ACT_GLOBAL={_agd} has no entry for shot {shot}")
@@ -1224,7 +1226,7 @@ def run(ckpt: str, shot: str, cache_dir: str, out_dir: str,
             gt_codes, pred_codes, K0, F = rollout_shot(model, cfg, cache, K0_req,
                                                        temperature, gen, device,
                                                        actuator_mode=actuator_mode,
-                                                       cache_dir=cache_dir)
+                                                       cache_dir=cache_dir, shot=sh)
             # ACTUATOR COUNTERFACTUAL: the effect size is the divergence from the SAME rollout
             # under real actuators, not the divergence from GT. Re-seed so the two runs share an
             # identical RNG stream — the rollout draws the same number of samples either way, so
@@ -1235,7 +1237,7 @@ def run(ckpt: str, shot: str, cache_dir: str, out_dir: str,
                 _gt, base_codes, _K, _F = rollout_shot(model, cfg, cache, K0_req,
                                                        temperature, gen_b, device,
                                                        actuator_mode="real",
-                                                       cache_dir=cache_dir)
+                                                       cache_dir=cache_dir, shot=sh)
         tok_acc = {n: float((pred_codes[n][K0:F] == gt_codes[n][K0:F]).float().mean())
                    for n in gt_codes}
         # persistence baseline in CODE space: fraction of tokens that simply do not change
