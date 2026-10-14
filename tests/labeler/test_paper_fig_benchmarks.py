@@ -379,7 +379,7 @@ def test_the_tm_panel_draws_published_against_retrained_with_no_diamonds():
     drawn, every, ax = drawn_rows(fig.draw_tm, tm)
     series = {(r["series"], r["group"]): r for r in drawn}
     models = {
-        "tm-onsetcnn": "onsetcnn",
+        "tm-cnn": "onsetcnn",
         "tm-dsm": "dsm",
         "tm-ours": "magnetic-detector",
     }
@@ -426,10 +426,10 @@ def test_the_tm_panel_draws_published_against_retrained_with_no_diamonds():
             assert legacy["key"] == f"rows[{arch}].legacy.f1_published_threshold"
     assert not [r for r in drawn if "n1" in r["series"] or "two" in r["series"]]
     tuned = [r for r in every if r["group"] == "legacy, tuned threshold"]
-    assert [r["series"] for r in tuned] == ["tm-onsetcnn"]  # the CNN's, CSV only
+    assert [r["series"] for r in tuned] == ["tm-cnn"]  # the CNN's, CSV only
     assert not any(r["drawn"] for r in tuned)
     assert not [ln for ln in ax.lines if ln.get_marker() == "D"]  # no diamonds
-    assert len(ax.patches) == 5  # tm-onsetcnn and tm-dsm in pairs, tm-ours alone
+    assert len(ax.patches) == 5  # tm-cnn and tm-dsm in pairs, tm-ours alone
 
 
 def test_each_tm_bar_has_the_baseline_of_its_own_bins_prevalence():
@@ -878,8 +878,10 @@ def test_the_detachment_f1_panel_is_one_agreement_bar_with_no_interval_and_no_no
     assert not [c for c in ax.containers if isinstance(c, ErrorbarContainer)]
     shown = [flat(t.get_text()) for t in ax.texts]
     assert shown == [f"{states['agreement']:.3f}".lstrip("0")]  # the value, no note
-    assert ax.get_ylabel() == "agreement"
-    assert [t.get_text() for t in ax.get_xticklabels()] == [fig.DETACH_NAME]
+    assert ax.get_ylabel() == "F1"  # every panel's axis names the metric
+    assert [t.get_text() for t in ax.get_xticklabels()] == [
+        fig.two_line(fig.DETACH_NAME)
+    ]
     # kappa and the counts stay in the CSV, not in the figure
     text = " ".join(shown)
     assert not re.search(r"kappa|κ|423|448|\bshots\b", text), text
@@ -927,32 +929,36 @@ def panel_title(ax):
     return left or right
 
 
-def top_row_titles(figure):
+def panel_titles(figure):
     """The panel titles of a figure's axes, in the order they were made."""
     return [panel_title(ax) for ax in figure.axes if panel_title(ax)]
 
 
-def test_both_figures_put_detachment_after_the_elms_in_the_top_row():
+def test_both_figures_put_detachment_last_in_the_bottom_row():
+    # the owner's layout (2026-10-14): three panels over four
     recs = records()
     with fig.plot_style():
         f1 = fig.figure_f1(recs, fig.load(fig.SOURCES["coverage"]), fig.Rows())
         twin = fig.figure_auc(recs, fig.Rows())
     for figure, blocks in ((f1, 1), (twin, 2)):
-        titles = top_row_titles(figure)
+        titles = panel_titles(figure)
         per_block = 7
         for b in range(blocks):
             names = titles[b * per_block : (b + 1) * per_block]
-            assert names[:4] == [
+            assert names == [
                 "Alfvén Eigenmodes",
                 "Confinement",
                 "Edge Localized Modes",
+                "Tearing Modes",
+                "Sawtooth",
+                "Resistive Wall Modes",
                 "Detachment",
             ]
-        axes = figure.axes[:4]
-        tops = {round(ax.get_position().y1, 6) for ax in axes}
-        assert len(tops) == 1  # one row
-        lefts = [ax.get_position().x0 for ax in axes]
-        assert lefts == sorted(lefts)
+        for row in (figure.axes[:3], figure.axes[3:7]):
+            tops = {round(ax.get_position().y1, 6) for ax in row}
+            assert len(tops) == 1  # one row
+            lefts = [ax.get_position().x0 for ax in row]
+            assert lefts == sorted(lefts)
 
 
 def test_every_panel_title_is_plain_with_no_parentheses_or_second_line():
@@ -997,7 +1003,7 @@ def test_no_panel_title_runs_off_the_page():
 
 
 def test_a_tick_spacing_is_as_wide_in_every_panel_of_both_figures():
-    """The four panels of the top row and the three of the bottom one share one
+    """The three panels of the top row and the four of the bottom one share one
     tick spacing; the rows with room to spare spread their panels apart."""
     recs = records()
     with fig.plot_style():
@@ -1013,7 +1019,7 @@ def test_a_tick_spacing_is_as_wide_in_every_panel_of_both_figures():
             lo, hi = ax.get_xlim()
             units.append(ax.get_position().width * figure.get_figwidth() / (hi - lo))
         assert units == pytest.approx([units[0]] * len(units))
-        for row in (figure.axes[:4], figure.axes[4:7]):
+        for row in (figure.axes[:3], figure.axes[3:7]):
             right = max(ax.get_position().x1 for ax in row)
             assert right <= 1 - fig.RIGHT_IN / figure.get_figwidth() + 1e-9
             for a, b in itertools.pairwise(row):

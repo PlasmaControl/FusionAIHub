@@ -45,7 +45,7 @@ AUPRC = p), and `--table` has one row per bar, series "trivial baseline":
   models are scored on (`sets.bes73` of `ours/evaluation.json`, baseline its
   `always present` method); `elm-ours` has no legacy bar, and its score on all
   119 reviewed shots is in the CSV only.
-- Tearing modes: `tm-onsetcnn` and `tm-dsm` (published model at its published
+- Tearing modes: `tm-cnn` (the records' `onsetcnn`) and `tm-dsm` (published model at its published
   threshold on the Seo cohort, 25 ms bins, against the retrained twin on the
   Tokamak-SI labels, 10 ms bins) and `tm-ours` (Tokamak-SI only), from
   `docs/labeler/figure2_tm.json`. Both legacy and Tokamak-SI bars are scored by us
@@ -57,8 +57,9 @@ AUPRC = p), and `--table` has one row per bar, series "trivial baseline":
   (`counts.prevalence`, checked against the positive and negative slice counts);
   the elapsed-time rule's score is in the CSV only. The legacy forest was scored
   on another machine and has no F1: nothing is drawn for it in the F1 figure.
-- Sawtooth: `saw-hl3-full` (the OuYang 2025 HL-3 network, replicated, on the paper's
-  nine offline inputs; the earlier four-input run, `saw-hl3-ece`, is in the CSV only)
+- Sawtooth: `saw-hl3` (record `saw-hl3-full`: the OuYang 2025 HL-3 network,
+  replicated, on the paper's nine offline inputs; the earlier four-input run,
+  `saw-hl3-ece`, is in the CSV only)
   and `saw-ours` (v2: the ECE network with the derivative picker's edge score as
   input and gate, which reads the same ECE edges the labels are built from)
   on the Tokamak-SI labels, from the sawtooth stream's benchmark record
@@ -75,8 +76,9 @@ AUPRC = p), and `--table` has one row per bar, series "trivial baseline":
   stated offline three-class window accuracy (`legacy.offline.accuracy_stated`,
   not an F1) is drawn as a REPORTED bar beside `saw-hl3-full` in the F1 figure.
 - Detachment: no detector and no original label set, so no benchmark: one
-  Tokamak-SI bar, the consistency check of the TangTV vote against divertor
-  Thomson Te (`detachment_check`), beside a grey note that says so. F1 figure: the
+  Tokamak-SI bar, `detach-ours`, the consistency check of the TangTV vote against
+  divertor Thomson Te (`detachment_check`). Its axis says F1 like every panel's
+  (the owner's choice, 2026-10-14) though the F1 figure draws the
   agreement of the vote with Te's state where both name one (423 of 448 bins,
   `agreement_vote_vs_te.states` of `docs/labeler/results/detachment_source_v3.json`;
   its baseline the share of Te's majority state among them), no interval (the
@@ -215,7 +217,7 @@ AE_SETTINGS = (  # (setting, truth block, what it is scored against, colour)
     ("Tokamak-SI", "reviewed", "dense labels", SI),
 )
 TM_MODELS = (  # (architecture in the record, "<task>-<model>")
-    ("onsetcnn", "tm-onsetcnn"),
+    ("onsetcnn", "tm-cnn"),  # Seo et al.'s onset CNN; the record keeps "onsetcnn"
     ("dsm", "tm-dsm"),
     ("magnetic-detector", "tm-ours"),
 )
@@ -231,6 +233,7 @@ TM_KEYS = {
 TM_TUNED_LEGACY = ("dsm",)
 SAW_HL3 = "saw-hl3-full"  # the HL-3 bar: the paper's full offline inputs
 SAW_HL3_ECE = "saw-hl3-ece"  # the earlier four-input run: in the CSV only
+SAW_TICKS = {SAW_HL3: "saw-hl3"}  # the tick's name where it is not the record's
 SAW_MODELS = (  # the models of the record, named "<task>-<model>" there
     SAW_HL3,
     "saw-ours",
@@ -662,7 +665,7 @@ def draw_confinement(
     )
     ours = si.get("ours")
     if ours is None:
-        finish(ax, ["confine-cnn"], name, margin=2 * HALF + BAR)  # room for "≥ 0.99"
+        finish(ax, ["confine-cnn"], METRICS[metric], margin=2 * HALF + BAR)  # "≥ 0.99"
         return
     value = ours["macro"][metric]
     ci = ours["ci95"][f"macro_{metric}"]
@@ -703,7 +706,7 @@ def draw_confinement(
         note="paired shot bootstrap: the same shots drawn for both models",
         drawn=False,
     )
-    finish(ax, ["confine-cnn", "confine-ours"], name)
+    finish(ax, ["confine-cnn", "confine-ours"], METRICS[metric])  # axis: no "macro"
     ax.set_xlim(-(2 * HALF + BAR), 1 + MARGIN)  # room for "≥ 0.99" on the left
 
 
@@ -851,7 +854,7 @@ def prevalence_key(metric: str, key: str) -> str:
 
 
 def draw_tm(ax, tm: dict, rows: Rows, panel: str, metric: str = "f1") -> None:
-    """tm-onsetcnn and tm-dsm as the published model on its own labels (legacy, at
+    """tm-cnn and tm-dsm as the published model on its own labels (legacy, at
     its published threshold, scored by us on the Seo cohort) beside the retrained
     twin on the Tokamak-SI labels, a pair of bars per model, and tm-ours on
     Tokamak-SI only; each bar has the baseline of its own bins' prevalence. The
@@ -1263,11 +1266,11 @@ def draw_sawtooth(ax, saw: dict, rows: Rows, panel: str, metric: str = "f1") -> 
                 ),
                 drawn=offline,
             )
-    finish(ax, SAW_MODELS, name)
+    finish(ax, [SAW_TICKS.get(m, m) for m in SAW_MODELS], name)
 
 
 DETACH_TIER = "tangtv_vote_before_gate"  # the check: every valid TangTV vote
-DETACH_NAME = "TangTV vote\nvs $T_\\mathrm{e}$"  # the one tick of the panel
+DETACH_NAME = "detach-ours"  # the one tick of the panel
 
 
 def detachment_check(te: dict, source: dict) -> dict:
@@ -1316,12 +1319,13 @@ def detachment_check(te: dict, source: dict) -> dict:
 
 
 def draw_detachment(ax, det: dict, rows: Rows, panel: str, metric: str = "f1") -> None:
-    """The detachment consistency check, one Tokamak-SI bar and no original (there
-    is no detector and no earlier label set; its slot stays empty, unlabelled). F1 figure: the vote's agreement with Te's state, no interval
-    (the record has none), with the majority-state share as its baseline. AUROC:
-    -Te against the vote, with its interval and the chance level. AUPRC: not
+    """The detachment consistency check, `detach-ours`: one Tokamak-SI bar on its
+    own tick (there is no detector and no earlier label set), the axis named by the
+    metric like every panel's. F1 figure: the vote's agreement with Te's state, no
+    interval (the record has none), with the majority-state share as its baseline.
+    AUROC: -Te against the vote, with its interval and the chance level. AUPRC: not
     reported. The check is not independent of the vote: Te informed its rule."""
-    series = "detach-vote"
+    series = DETACH_NAME
     agree, auroc = det["agreement"], det["auroc"]
     kind = "consistency check, not a detector score; Te informed the vote's rule"
     base = base_src = base_key = None
@@ -1346,9 +1350,9 @@ def draw_detachment(ax, det: dict, rows: Rows, panel: str, metric: str = "f1") -
         src, key = SOURCES["detach_te"], "-"
         where = "no AUPRC is stored for the check; not drawn"
     if value is None:
-        note(ax, HALF, "not reported")
+        note(ax, 0, "not reported")
     else:
-        scored_bar(ax, HALF, value, ci, SI, side=1, base=base)
+        scored_bar(ax, 0, value, ci, SI, base=base)
     rows.add(
         panel,
         series,
@@ -1399,7 +1403,7 @@ def draw_detachment(ax, det: dict, rows: Rows, panel: str, metric: str = "f1") -
             note="the same bins as the agreement; kept out of the figure",
             drawn=False,
         )
-    finish(ax, [DETACH_NAME], "agreement" if metric == "f1" else name)
+    finish(ax, [DETACH_NAME], METRICS[metric])
 
 
 def draw_coverage(ax, cov: dict, rows: Rows, panel: str) -> None:
@@ -1576,29 +1580,29 @@ def save(fig, out: Path, png: Path | None) -> None:
 
 
 def panels(axes, records, rows, metric, tag):
-    """The seven panels of one metric: AE, confinement, ELM, detachment over TM,
-    sawtooth, RWM."""
+    """The seven panels of one metric: AE, confinement, ELM over TM, sawtooth, RWM,
+    detachment."""
     ae, conf, si, elm, smith, tm, rwm, saw, det = records
     top, bottom = axes
     draw_ae(top[0], ae, rows, f"a{tag}", metric)
     draw_confinement(top[1], conf, si, rows, f"b{tag}", metric)
     draw_elm(top[2], elm, smith, rows, f"c{tag}", metric)
-    draw_detachment(top[3], det, rows, f"h{tag}", metric)
     draw_tm(bottom[0], tm, rows, f"d{tag}", metric)
     draw_sawtooth(bottom[1], saw, rows, f"e{tag}", metric)
     draw_rwm(bottom[2], rwm, rows, f"f{tag}", metric)
+    draw_detachment(bottom[3], det, rows, f"h{tag}", metric)
     titles = (
         TITLES["ae"],
         TITLES["conf"],
         TITLES["elm"],
-        TITLES["detach"],
         TITLES["tm"],
         TITLES["sawtooth"],
         TITLES["rwm"],
+        TITLES["detach"],
     )
     for ax, text in zip([*top, *bottom], titles):
-        # the one-tick RWM panel is narrower than its name: end the name at the
-        # page's right edge rather than run off it
+        # the one-tick panels are narrower than their names: the RWM name ends
+        # at its panel's right edge rather than run into the detachment panel
         loc = "right" if ax is bottom[2] else "left"
         ax.set_title(text, loc=loc, fontsize=FONT_PT, pad=4)
 
@@ -1645,7 +1649,7 @@ def figure_f1(records, cov: dict, rows: Rows) -> Figure:
     block = TITLE_IN + AXES_IN + NAMES_IN
     fig_h = LEGEND_IN + 2 * block + TITLE_IN + COVER_IN + COVER_NAMES_IN + 0.04
     fig = Figure(figsize=(PAGE_IN, fig_h))
-    axes = [[fig.add_axes((0, 0, 1, 1)) for _ in range(n)] for n in (4, 3)]
+    axes = [[fig.add_axes((0, 0, 1, 1)) for _ in range(n)] for n in (3, 4)]
     panels(axes, records, rows, "f1", "")
     tops = [LEGEND_IN + TITLE_IN, LEGEND_IN + block + TITLE_IN]
     place_rows(axes, fig_h, tops, AXES_IN)
@@ -1668,7 +1672,7 @@ def figure_auc(records, rows: Rows) -> Figure:
     fig = Figure(figsize=(PAGE_IN, fig_h))
     axes = []
     for metric, tag in (("auroc", "0"), ("auprc", "1")):
-        pair = [[fig.add_axes((0, 0, 1, 1)) for _ in range(n)] for n in (4, 3)]
+        pair = [[fig.add_axes((0, 0, 1, 1)) for _ in range(n)] for n in (3, 4)]
         panels(pair, records, rows, metric, tag)
         axes += pair
     # each block's first row has its heading above it
