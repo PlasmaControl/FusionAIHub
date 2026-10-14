@@ -75,17 +75,15 @@ AUPRC = p), and `--table` has one row per bar, series "trivial baseline":
   not an independent truth. HL-3's own paper was scored on another machine: its
   stated offline three-class window accuracy (`legacy.offline.accuracy_stated`,
   not an F1) is drawn as a REPORTED bar beside `saw-hl3-full` in the F1 figure.
-- Detachment: no detector and no original label set, so no benchmark: one
-  Tokamak-SI bar, `detach-ours`, the consistency check of the TangTV vote against
-  divertor Thomson Te (`detachment_check`). Its axis says F1 like every panel's
-  (the owner's choice, 2026-10-14) though the F1 figure draws the
-  agreement of the vote with Te's state where both name one (423 of 448 bins,
-  `agreement_vote_vs_te.states` of `docs/labeler/results/detachment_source_v3.json`;
-  its baseline the share of Te's majority state among them), no interval (the
-  record has none); kappa and the counts are in the CSV only. AUC figure: the
-  AUROC of -Te against the vote before the L-mode gate, with its shot-bootstrap
-  interval (`by_tier.tangtv_vote_before_gate` of `detachment_te_check.json`); no
-  AUPRC. Te informed the vote's rule, so the check is not independent.
+- Detachment: `detach-ours` (windows of 0-D signals, `detach_ours.py`), one
+  Tokamak-SI bar on its own tick, as no earlier detector or label set exists:
+  macro F1 from 5-fold shot-grouped cross-validation on the detachment labels
+  (`cv_shots.macro_f1` of `docs/labeler/results/detachment_ours.json`), with its
+  shot-bootstrap interval and the always-majority baseline on the same bins
+  (owner, 2026-10-14: the panel shows a model named and scored like the others).
+  No AUROC or AUPRC is stored for it. The consistency check of the TangTV vote
+  against divertor Thomson Te (`detachment_check`: agreement, kappa, and the
+  AUROC of -Te before the L-mode gate) is in the CSV only.
 
 The coverage panel reads `docs/labeler/figure2_coverage.json` (written by
 `fig2_coverage.py`): labelled hours per set (bars, log y), original against
@@ -152,8 +150,10 @@ SOURCES = {
     # the sawtooth stream's benchmark: out-of-fold presence scores per model
     "saw": OUTPUTS / "sawtooth" / "fix6" / "benchmark.json",
     "coverage": REPO / "docs" / "labeler" / "figure2_coverage.json",
-    # the detachment consistency check: AUROC of -Te against the TangTV vote (with
-    # its shot-bootstrap interval), and the vote's agreement with Te's state
+    # detach-ours, the panel's bar: 5-fold shot-grouped CV on the detachment labels
+    "detach_ours": REPO / "docs" / "labeler" / "results" / "detachment_ours.json",
+    # the detachment consistency check, CSV only: AUROC of -Te against the TangTV
+    # vote (with its shot-bootstrap interval), and the vote's agreement with Te's state
     "detach_te": REPO / "docs" / "labeler" / "results" / "detachment_te_check.json",
     "detach_source": REPO
     / "docs"
@@ -1270,7 +1270,8 @@ def draw_sawtooth(ax, saw: dict, rows: Rows, panel: str, metric: str = "f1") -> 
 
 
 DETACH_TIER = "tangtv_vote_before_gate"  # the check: every valid TangTV vote
-DETACH_NAME = "detach-ours"  # the one tick of the panel
+DETACH_NAME = "detach-ours"  # the one tick of the panel: the 0-D window model
+DETACH_VOTE = "detach-vote"  # the TangTV vote's consistency check, CSV only
 
 
 def detachment_check(te: dict, source: dict) -> dict:
@@ -1318,69 +1319,104 @@ def detachment_check(te: dict, source: dict) -> dict:
     }
 
 
+def detachment_ours(record: dict) -> dict:
+    """detach-ours (`detach_ours.py`: windows of 0-D signals, 5-fold shot-grouped
+    cross-validation on the detachment labels) as `draw_detachment` reads it: its
+    macro F1 with the shot-bootstrap interval, and the always-majority predictor's
+    macro F1 on the same bins (the confinement panel's baseline), from the record's
+    class supports, which must be its bins."""
+    cv = record["cv_shots"]
+    support = [cv["class_support"][c]["n_bins"] for c in cv["reference_classes"]]
+    if sum(support) != cv["n_bins"]:
+        raise ValueError(
+            f"detach-ours's class supports {support} are not its {cv['n_bins']} bins"
+        )
+    return {
+        "value": cv["macro_f1"]["value"],
+        "ci": tuple(cv["macro_f1"]["ci95"]),
+        "bins": cv["n_bins"],
+        "shots": cv["n_shots"],
+        "key": "cv_shots.macro_f1",
+        "base": always_f1(max(support) / sum(support)) / len(support),
+        "base_key": "cv_shots.class_support: always-majority macro F1",
+    }
+
+
 def draw_detachment(ax, det: dict, rows: Rows, panel: str, metric: str = "f1") -> None:
-    """The detachment consistency check, `detach-ours`: one Tokamak-SI bar on its
-    own tick (there is no detector and no earlier label set), the axis named by the
-    metric like every panel's. F1 figure: the vote's agreement with Te's state, no
-    interval (the record has none), with the majority-state share as its baseline.
-    AUROC: -Te against the vote, with its interval and the chance level. AUPRC: not
-    reported. The check is not independent of the vote: Te informed its rule."""
-    series = DETACH_NAME
-    agree, auroc = det["agreement"], det["auroc"]
-    kind = "consistency check, not a detector score; Te informed the vote's rule"
-    base = base_src = base_key = None
+    """detach-ours on the detachment labels, one Tokamak-SI bar on its own tick
+    (there is no earlier detector or label set to set beside it). F1 figure: its
+    macro F1 with its interval and the always-majority baseline. AUROC, AUPRC: not
+    reported (the record holds none). The consistency check of the TangTV vote
+    against divertor Thomson Te (`detachment_check`: the agreement and kappa, and
+    the AUROC of -Te) stays in the CSV only."""
+    name = METRICS[metric]
     if metric == "f1":
-        name, value, ci = "agreement", agree["value"], None
-        src, key = SOURCES["detach_source"], f"{agree['key']}.agreement"
-        base, base_src, base_key = agree["base"], src, agree["base_key"]
-        where = (
-            f"TangTV vote against divertor Thomson Te state where both name one: "
-            f"{agree['agree']} of {agree['bins']} bins, {agree['shots']} shots; {kind}"
+        ours = det["ours"]
+        src = SOURCES["detach_ours"]
+        scored_bar(ax, 0, ours["value"], ours["ci"], SI, base=ours["base"])
+        rows.add(
+            panel,
+            DETACH_NAME,
+            "Tokamak-SI",
+            "macro F1",
+            ours["value"],
+            ours["ci"],
+            src,
+            f"{ours['key']}.value",
+            note=f"5-fold shot-grouped CV on the detachment labels, {ours['bins']} "
+            f"bins, {ours['shots']} shots; agreement with constructed labels",
         )
-    elif metric == "auroc":
-        name, value, ci = "AUROC", auroc["value"], auroc["ci"]
-        src, key = SOURCES["detach_te"], f"{auroc['key']}.value"
-        base, base_src, base_key = CHANCE_AUROC, src, "chance level by definition"
-        where = (
-            f"-Te against the TangTV vote before the L-mode gate, {auroc['bins']} "
-            f"bins, {auroc['shots']} shots; {kind}"
-        )
-    else:
-        name, value, ci = "AUPRC", None, None
-        src, key = SOURCES["detach_te"], "-"
-        where = "no AUPRC is stored for the check; not drawn"
-    if value is None:
-        note(ax, 0, "not reported")
-    else:
-        scored_bar(ax, 0, value, ci, SI, base=base)
-    rows.add(
-        panel,
-        series,
-        "Tokamak-SI",
-        name,
-        value,
-        ci,
-        src,
-        key,
-        note=where,
-        drawn=value is not None,
-    )
-    if base is not None:
         baseline_row(
             rows,
             panel,
-            series,
+            DETACH_NAME,
             "Tokamak-SI",
-            name,
-            base,
-            base_src,
-            base_key,
+            "macro F1",
+            ours["base"],
+            src,
+            ours["base_key"],
             "a constant predictor on the same bins",
         )
-    if metric == "f1":
+    else:
+        note(ax, 0, "not reported")
         rows.add(
             panel,
-            series,
+            DETACH_NAME,
+            "Tokamak-SI",
+            name,
+            None,
+            None,
+            SOURCES["detach_ours"],
+            "-",
+            note=f"no {name} is stored for detach-ours; not drawn",
+            drawn=False,
+        )
+    check = (
+        "consistency check of the TangTV vote, not a detector; kept out of the figure"
+    )
+    agree, auroc = det["agreement"], det["auroc"]
+    if metric == "f1":
+        for group, value, key in (
+            ("agreement", agree["value"], f"{agree['key']}.agreement"),
+            ("Cohen's kappa", agree["kappa"], f"{agree['key']}.kappa"),
+        ):
+            rows.add(
+                panel,
+                DETACH_VOTE,
+                f"Tokamak-SI, {group}",
+                group,
+                value,
+                None,
+                SOURCES["detach_source"],
+                key,
+                note=f"TangTV vote against divertor Thomson Te state where both name "
+                f"one: {agree['agree']} of {agree['bins']} bins; {check}",
+                drawn=False,
+            )
+    elif metric == "auroc":
+        rows.add(
+            panel,
+            DETACH_VOTE,
             "Tokamak-SI, AUROC",
             "AUROC",
             auroc["value"],
@@ -1388,22 +1424,10 @@ def draw_detachment(ax, det: dict, rows: Rows, panel: str, metric: str = "f1") -
             SOURCES["detach_te"],
             f"{auroc['key']}.value",
             note=f"-Te against the TangTV vote before the L-mode gate, "
-            f"{auroc['bins']} bins, {auroc['shots']} shots; kept out of the F1 figure",
+            f"{auroc['bins']} bins, {auroc['shots']} shots; {check}",
             drawn=False,
         )
-        rows.add(
-            panel,
-            series,
-            "Tokamak-SI, Cohen's kappa",
-            "kappa",
-            agree["kappa"],
-            None,
-            SOURCES["detach_source"],
-            f"{agree['key']}.kappa",
-            note="the same bins as the agreement; kept out of the figure",
-            drawn=False,
-        )
-    finish(ax, [DETACH_NAME], METRICS[metric])
+    finish(ax, [DETACH_NAME], name)
 
 
 def draw_coverage(ax, cov: dict, rows: Rows, panel: str) -> None:
@@ -1616,6 +1640,7 @@ def read_records():
     si = confinement_si(row)
     si["ours"] = confinement_ours(load(SOURCES["confinement_ours"]), row)
     det = detachment_check(load(SOURCES["detach_te"]), load(SOURCES["detach_source"]))
+    det["ours"] = detachment_ours(load(SOURCES["detach_ours"]))
     return ae, conf, si, elm, smith, tm, rwm, saw, det
 
 

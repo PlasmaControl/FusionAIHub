@@ -766,7 +766,7 @@ def test_a_presence_block_that_differs_between_crash_tolerances_is_refused():
         fig.saw_presence({"Tokamak-SI": {"m": entry(0.9, 0.8)}}, "m")
 
 
-# detachment: a consistency check, not a benchmark
+# detachment: detach-ours, and the TangTV vote's consistency check (CSV only)
 
 DETACH_TE = "docs/labeler/results/detachment_te_check.json"
 DETACH_SOURCE = "docs/labeler/results/detachment_source_v3.json"
@@ -858,67 +858,78 @@ def test_an_agreement_that_is_not_its_counts_is_refused():
         fig.detachment_check(te, source(0.9, short))
 
 
-def test_the_detachment_f1_panel_is_one_agreement_bar_with_no_interval_and_no_note():
+DETACH_OURS = "docs/labeler/results/detachment_ours.json"
+
+
+def detachment_panel_records():
+    """The check with detach-ours read in, as `read_records` gives the panel."""
+    if not fig.SOURCES["detach_ours"].is_file():
+        pytest.skip("detachment_ours.json not on this checkout")
     _, source, det = detachment_records()
+    ours = fig.load(fig.SOURCES["detach_ours"])
+    return source, ours, {**det, "ours": fig.detachment_ours(ours)}
+
+
+def test_the_detachment_adapter_reads_detach_ours_macro_f1_and_its_majority_base():
+    _, ours, det = detachment_panel_records()
+    cv = ours["cv_shots"]
+    assert det["ours"]["value"] == cv["macro_f1"]["value"]
+    assert det["ours"]["ci"] == tuple(cv["macro_f1"]["ci95"])
+    assert (det["ours"]["bins"], det["ours"]["shots"]) == (706, 22)
+    # always attached (417 of 706 bins): F1 2p/(1+p) on attached, 0 on detached
+    p = 417 / 706
+    assert det["ours"]["base"] == pytest.approx(2 * p / (1 + p) / 2)
+    assert det["ours"]["base"] < det["ours"]["value"]
+    broken = {"cv_shots": {**cv, "n_bins": 700}}
+    with pytest.raises(ValueError, match="class supports"):
+        fig.detachment_ours(broken)
+
+
+def test_the_detachment_f1_panel_is_detach_ours_alone_with_its_interval():
+    source, ours, det = detachment_panel_records()
     drawn, every, ax = drawn_rows(fig.draw_detachment, det, panel="h")
     (row,) = drawn
-    states = source["agreement_vote_vs_te"]["states"]
-    assert row["group"] == "Tokamak-SI" and row["metric"] == "agreement"
-    assert row["value"] == states["agreement"]
-    assert (row["ci_lo"], row["ci_hi"]) == (None, None)  # the record has no interval
-    assert row["source"] == DETACH_SOURCE
-    assert row["key"] == "agreement_vote_vs_te.states.agreement"
-    assert "not a detector" in row["note"] and "Te informed" in row["note"]
-    (base,) = baseline_rows(every)  # the majority state's share of the 448 bins
-    assert base["value"] == det["agreement"]["base"] and base["source"] == DETACH_SOURCE
+    assert row["series"] == fig.DETACH_NAME == "detach-ours"
+    assert row["group"] == "Tokamak-SI" and row["metric"] == "macro F1"
+    assert row["value"] == ours["cv_shots"]["macro_f1"]["value"]
+    assert (row["ci_lo"], row["ci_hi"]) == tuple(ours["cv_shots"]["macro_f1"]["ci95"])
+    assert row["source"] == DETACH_OURS and row["key"] == "cv_shots.macro_f1.value"
+    (base,) = baseline_rows(every)
+    assert base["value"] == det["ours"]["base"] and base["source"] == DETACH_OURS
     assert baseline_values(ax) == [base["value"]]
     (bar,) = ax.patches  # no original bar
     assert to_hex(bar.get_facecolor()).upper() == fig.SI
-    assert bar.get_height() == states["agreement"]
-    assert not [c for c in ax.containers if isinstance(c, ErrorbarContainer)]
-    shown = [flat(t.get_text()) for t in ax.texts]
-    assert shown == [f"{states['agreement']:.3f}".lstrip("0")]  # the value, no note
+    assert bar.get_x() + bar.get_width() / 2 == pytest.approx(0)  # on its tick
+    assert [c for c in ax.containers if isinstance(c, ErrorbarContainer)]
     assert ax.get_ylabel() == "F1"  # every panel's axis names the metric
     assert [t.get_text() for t in ax.get_xticklabels()] == [
         fig.two_line(fig.DETACH_NAME)
     ]
-    # kappa and the counts stay in the CSV, not in the figure
-    text = " ".join(shown)
-    assert not re.search(r"kappa|κ|423|448|\bshots\b", text), text
+    # the vote's consistency check stays in the CSV
     kept = {r["group"]: r for r in every if not r["drawn"]}
+    states = source["agreement_vote_vs_te"]["states"]
+    assert kept["Tokamak-SI, agreement"]["value"] == states["agreement"]
     assert kept["Tokamak-SI, Cohen's kappa"]["value"] == states["kappa"]
-    assert kept["Tokamak-SI, Cohen's kappa"]["source"] == DETACH_SOURCE
-    assert kept["Tokamak-SI, AUROC"]["source"] == DETACH_TE
+    assert {r["series"] for r in kept.values()} == {fig.DETACH_VOTE}
+    text = " ".join(flat(t.get_text()) for t in ax.texts)
+    assert not re.search(r"kappa|κ|agreement|\bshots\b", text), text
 
 
-def test_the_detachment_auroc_panel_draws_the_check_with_its_interval():
-    te, _, det = detachment_records()
-    pooled = te["by_tier"]["tangtv_vote_before_gate"][
-        "auroc_neg_te_detached_vs_attached"
-    ]["pooled"]
-    drawn, every, ax = drawn_rows(fig.draw_detachment, det, metric="auroc", panel="h0")
-    (row,) = drawn
-    (base,) = baseline_rows(every)
-    assert base["value"] == 0.5 and baseline_values(ax) == [0.5]
-    assert row["metric"] == "AUROC" and row["value"] == pooled["value"]
-    assert (row["ci_lo"], row["ci_hi"]) == tuple(pooled["ci95"])
-    assert row["source"] == DETACH_TE
-    assert row["key"] == (
-        "by_tier.tangtv_vote_before_gate.auroc_neg_te_detached_vs_attached.pooled.value"
-    )
-    assert "-Te against the TangTV vote" in row["note"]
-    assert [c for c in ax.containers if isinstance(c, ErrorbarContainer)]
-    assert ax.get_ylabel() == "AUROC"
-    assert not any("consistency" in flat(t.get_text()) for t in ax.texts)
-
-
-def test_the_detachment_auprc_panel_is_not_reported_like_the_others():
-    _, _, det = detachment_records()
-    drawn, every, ax = drawn_rows(fig.draw_detachment, det, metric="auprc", panel="h1")
+@pytest.mark.parametrize("metric", ["auroc", "auprc"])
+def test_the_detachment_auc_panels_are_not_reported(metric):
+    _, _, det = detachment_panel_records()
+    drawn, every, ax = drawn_rows(fig.draw_detachment, det, metric=metric, panel="h0")
     assert not drawn and not ax.patches and not baseline_values(ax)
-    (row,) = every  # no bar, so no baseline row either
-    assert row["value"] is None and row["metric"] == "AUPRC" and not row["drawn"]
     assert [flat(t.get_text()) for t in ax.texts] == ["not reported"]
+    assert ax.get_ylabel() == fig.METRICS[metric]
+    (own,) = [r for r in every if r["series"] == fig.DETACH_NAME]
+    assert own["value"] is None and not own["drawn"]
+    check = [r for r in every if r["series"] == fig.DETACH_VOTE]
+    if metric == "auroc":  # the -Te check, in the CSV only
+        (row,) = check
+        assert row["source"] == DETACH_TE and not row["drawn"]
+    else:
+        assert not check
 
 
 def panel_title(ax):
