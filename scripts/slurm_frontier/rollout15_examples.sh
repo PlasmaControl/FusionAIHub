@@ -17,7 +17,8 @@
 # Overrides: CKPT (path), TEMPERATURE, SHOT.
 # =====================================================================================
 set -uo pipefail
-cd /lustre/orion/fus187/proj-shared/ps9551/Flow/FusionAIHub
+# REPO_DIR: repository root (other clusters set it, see scripts/slurm_stellarai/).
+cd "${REPO_DIR:-/lustre/orion/fus187/proj-shared/ps9551/Flow/FusionAIHub}"
 RUN=${RUN:-ss75full}
 export IGNITE_EVAL_MODALITIES="bes,cer_rot,cer_ti,co2,ece,filterscopes,mhr,mirnov,mse,tangtv_lower,tangtv_upper,ts_core_density,ts_core_temp,ts_tangential_density,ts_tangential_temp"
 export SHOT=${SHOT:-"190729,190735,190736,192238,203727,192042,200328,190872,203860,192945,193650,203213"}

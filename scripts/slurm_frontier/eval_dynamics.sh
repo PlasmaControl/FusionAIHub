@@ -19,7 +19,8 @@
 set -euo pipefail
 PROJECT_DIR="${SLURM_SUBMIT_DIR:-$PWD}"
 cd "${PROJECT_DIR}"
-source scripts/slurm_frontier/_frontier_common.sh
+# CLUSTER_ENV: environment hook of the cluster (default Frontier/ROCm).
+source "${CLUSTER_ENV:-scripts/slurm_frontier/_frontier_common.sh}"
 
 CKPT="${CKPT:-/lustre/orion/fus187/proj-shared/models/ignite_production/runs/prod_d512L8/dynamics_latest.pt}"
 OUT_DIR="${OUT_DIR:-eval_runs/ignite_dynamics_eval}"
