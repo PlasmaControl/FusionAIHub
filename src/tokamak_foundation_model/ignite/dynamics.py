@@ -20,6 +20,37 @@ from .dynamics_config import DynamicsConfig
 from .frame_layout import FrameTokenizer
 
 
+def _attend_earlier_and_self(q, history_k, history_v, self_k, self_v):
+    """Attention of position ``i`` over history positions ``< i`` and its own key.
+
+    Computed explicitly rather than with a masked ``scaled_dot_product_attention``,
+    whose backward fails with "HIP error: invalid argument" on Frontier's ROCm
+    build. The own key enters as one extra column, so the scores are
+    ``(L, L + 1)`` instead of ``(L, 2L)``; the softmax runs in fp32.
+
+    Parameters
+    ----------
+    q, self_k, self_v : torch.Tensor of shape (B, heads, L, head_dim)
+        Query-stream projections.
+    history_k, history_v : torch.Tensor of shape (B, heads, L, head_dim)
+        History-stream keys and values.
+
+    Returns
+    -------
+    attended : torch.Tensor of shape (B, heads, L, head_dim)
+    """
+    length = q.shape[-2]
+    scale = q.shape[-1] ** -0.5
+    history_scores = (q @ history_k.transpose(-1, -2)) * scale
+    position = torch.arange(length, device=q.device)
+    earlier = position.view(1, -1) < position.view(-1, 1)
+    history_scores = history_scores.masked_fill(~earlier, float("-inf"))
+    self_scores = (q * self_k).sum(-1, keepdim=True) * scale
+    weights = torch.cat([history_scores, self_scores], dim=-1).float().softmax(-1)
+    weights = weights.to(q.dtype)
+    return weights[..., :length] @ history_v + weights[..., length:] * self_v
+
+
 class _MHA(nn.Module):
     """Multi-head self-attention over the middle axis of a (B, L, d) tensor.
 
@@ -81,18 +112,8 @@ class _MHA(nn.Module):
             ),
             history.shape,
         )
-        length = query.shape[1]
-        position = torch.arange(length, device=query.device)
-        earlier = position.view(1, -1) < position.view(-1, 1)
-        itself = position.view(1, -1) == position.view(-1, 1)
-        allowed = torch.cat([earlier, itself], dim=1)
         query_out = self._output(
-            F.scaled_dot_product_attention(
-                query_q,
-                torch.cat([history_k, query_k], dim=2),
-                torch.cat([history_v, query_v], dim=2),
-                attn_mask=allowed,
-            ),
+            _attend_earlier_and_self(query_q, history_k, history_v, query_k, query_v),
             query.shape,
         )
         return history_out, query_out

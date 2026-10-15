@@ -647,3 +647,22 @@ def test_forecast_context_never_sees_the_frame_it_replaces():
     )
     for n in codes:
         assert torch.equal(first[n][:, last], second[n][:, last])
+
+
+def test_explicit_earlier_and_self_attention_matches_masked_sdpa():
+    import torch.nn.functional as F
+
+    from tokamak_foundation_model.ignite.dynamics import _attend_earlier_and_self
+
+    torch.manual_seed(0)
+    q, hk, hv, sk, sv = (torch.randn(3, 2, 7, 4) for _ in range(5))
+    pos = torch.arange(7)
+    mask = torch.cat(
+        [pos.view(1, -1) < pos.view(-1, 1), pos.view(1, -1) == pos.view(-1, 1)], 1
+    )
+    reference = F.scaled_dot_product_attention(
+        q, torch.cat([hk, sk], 2), torch.cat([hv, sv], 2), attn_mask=mask
+    )
+    assert torch.allclose(
+        _attend_earlier_and_self(q, hk, hv, sk, sv), reference, atol=1e-6
+    )
