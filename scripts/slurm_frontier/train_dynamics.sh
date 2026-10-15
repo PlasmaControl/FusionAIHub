@@ -24,7 +24,9 @@
 set -euo pipefail
 PROJECT_DIR="${SLURM_SUBMIT_DIR:-$PWD}"
 cd "${PROJECT_DIR}"
-source scripts/slurm_frontier/_frontier_common.sh
+# CLUSTER_ENV: environment hook of the cluster (default Frontier/ROCm; StellarAI sets
+# scripts/slurm_stellarai/_stellarai_common.sh).
+source "${CLUSTER_ENV:-scripts/slurm_frontier/_frontier_common.sh}"
 
 # ============================================================================================
 # LOCKED PRODUCTION CONFIGURATION (user decision, 2026-08-19). Every value below stays env-

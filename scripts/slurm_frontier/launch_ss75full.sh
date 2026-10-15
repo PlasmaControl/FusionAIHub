@@ -25,7 +25,8 @@
 #   --export=ALL,RUN=ss75full scripts/slurm_frontier/rollout15_examples.sh
 # =====================================================================================
 set -uo pipefail
-cd /lustre/orion/fus187/proj-shared/ps9551/Flow/FusionAIHub
+# REPO_DIR: repository root (other clusters set it, see scripts/slurm_stellarai/).
+cd "${REPO_DIR:-/lustre/orion/fus187/proj-shared/ps9551/Flow/FusionAIHub}"
 export SLURM_CPUS_PER_TASK=${SLURM_CPUS_PER_TASK:-7}
 
 # --- architecture (persisted in the checkpoint; eval infers them from weights) ---
