@@ -1,0 +1,34 @@
+# Read-only preset views for the review page (plan sections B and D.3), served by
+# `GET /api/views` after the reviewer's own views, each with `preset: true`.
+# Read by `labeler.events.review.views`. A preset cannot be saved over, renamed or
+# deleted; "Save as" copies it into the reviewer's views.
+#
+# `presets: {<event>: [{name, layout}]}`. A layout is the page's stored view (plan D.3):
+# store rows keyed `store:<title>` (titles, not positions), catalog rows `cat:<id>`,
+# free rows `custom:<PTDATA>` or `mds:<TREE>:<node>`, and the dock's panels. Every key
+# below was checked: the store titles against the mhd_n1 store, the ids against
+# configs/labeler/signals.yaml, DUSBRADIAL against the raw cache's `locator` attribute.
+
+presets:
+  mhd_n1:
+    - name: "q and Te"
+      layout:
+        v: 1
+        name: "q and Te"
+        event: mhd_n1
+        rows:
+          - {key: "store:MPI66M322D power", h: 150}
+          - {key: "store:toroidal n, MPI66M", h: 110}
+          - {key: "cat:betan", h: 110}
+          - {key: "custom:DUSBRADIAL", h: 80}
+          - {key: "cat:ece_map", h: 150, draw: map}
+          - {key: "store:n=1..3 amplitude", hidden: true}
+        other_store_rows: end
+        dock:
+          open: true
+          width: 461
+          follow: cursor
+          panels:
+            - {kind: profile, id: q_profile, h: 200}
+            - {kind: profile, id: ts_core_te, h: 200}
+            - {kind: values}

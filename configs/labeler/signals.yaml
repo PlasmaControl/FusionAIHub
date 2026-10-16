@@ -1,0 +1,471 @@
+# The review page's signal catalog: what "Add signal" offers (plan sections B and D.A).
+# Read and validated by `labeler.events.review.catalog`; served by `/api/catalog`,
+# `/api/signal` and `/api/profile` (docs/labeler/workspace.md).
+#
+# Every locator here was checked before it was listed: on disk (a corpus group, a raw
+# cache or features-store group whose `locator` attribute names it, the MHD park), or
+# by stream B's fdp smoke fetch (2026-10-16). An entry whose source is unverified stays
+# out. Sources are tried in order; local tiers come before a fetch.
+#
+# Source kinds:
+#   corpus: <group>, rows       foundation_model/<shot>_processed.h5 rows (total: sums them)
+#   raw: <group>, rows          $LABELER_ROOT/raw/<shot>_processed.h5, same layout
+#   feature: <name>             the features store, then corpus, then raw cache
+#                               (`events.equilibrium.signal`: archive lag removed)
+#   park: a_q95 | a_qmin        the MHD park's A-EQDSK scalars (EFIT02, else the fallback)
+#   ptdata: <NAME>              a PTDATA point, through the fetch worker (30 s)
+#   mds: <node>, tree: <TREE>   an MDSplus node, through the fetch worker (30 s)
+#   recipe: <name>              a profile reader in `review.profiles`
+# `scale` takes a source's values into the entry's units; `tag` is shown after the label.
+
+signals:
+  # ---- Plasma ----
+  - id: ip
+    label: "Plasma current I_p"
+    group: Plasma
+    units: MA
+    kind: trace
+    events: [edge_localized_mode, resistive_wall_mode, locked_mode, poloidal_beta, detachment]
+    sources:
+      - {feature: ip, scale: 1.0e-6}
+      - {ptdata: ip, scale: 1.0e-6}
+  - id: bt
+    label: "Toroidal field B_T"
+    group: Plasma
+    units: T
+    kind: trace
+    sources:
+      - {feature: bt}
+      - {ptdata: bt}
+  - id: density
+    label: "Line-integrated density, CO2 R0"
+    group: Plasma
+    units: "cm^-2"
+    kind: trace
+    events: [alfven_eigenmode, edge_localized_mode, confinement, high_confinement_mode, detachment]
+    sources:
+      - {corpus: co2, rows: 0}
+      - {raw: co2, rows: 0}
+      - {feature: co2_r0}
+      - {ptdata: DENR0UF}
+  - id: wmhd
+    label: "Stored energy W_MHD"
+    group: Plasma
+    units: MJ
+    kind: trace
+    events: [edge_localized_mode, confinement, high_confinement_mode, poloidal_beta]
+    sources:
+      - {feature: wmhd, scale: 1.0e-6, tag: EFIT01}
+      - {mds: '\efit01::top.results.aeqdsk:wmhd', tree: EFIT01, scale: 1.0e-6, tag: EFIT01}
+  - id: betan
+    label: "beta_N"
+    group: Equilibrium
+    units: ""
+    kind: trace
+    events: [mhd_n1, neoclassical_tearing_mode, resistive_wall_mode, minimum_safety_factor,
+             poloidal_beta, alfven_eigenmode, confinement, high_confinement_mode]
+    sources:
+      - {feature: betan, tag: EFIT01}
+      - {mds: '\efit01::top.results.aeqdsk:betan', tree: EFIT01, tag: EFIT01}
+  - id: betap
+    label: "beta_p"
+    group: Equilibrium
+    units: ""
+    kind: trace
+    events: [poloidal_beta, minimum_safety_factor]
+    sources:
+      - {feature: betap, tag: EFIT01}
+      - {mds: '\efit01::top.results.aeqdsk:betap', tree: EFIT01, tag: EFIT01}
+  - id: li
+    label: "Internal inductance l_i"
+    group: Equilibrium
+    units: ""
+    kind: trace
+    events: [resistive_wall_mode, poloidal_beta]
+    sources:
+      - {feature: li, tag: EFIT01}
+      - {mds: '\efit01::top.results.aeqdsk:li', tree: EFIT01, tag: EFIT01}
+  - id: q95
+    label: "q95"
+    group: Equilibrium
+    units: ""
+    kind: trace
+    events: [mhd_n1, neoclassical_tearing_mode, minimum_safety_factor, locked_mode]
+    sources:
+      - {park: a_q95}
+      - {feature: q95, tag: EFIT01}
+      - {mds: '\efit01::top.results.aeqdsk:q95', tree: EFIT01, tag: EFIT01}
+  - id: qmin
+    label: "q_min"
+    group: Equilibrium
+    units: ""
+    kind: trace
+    events: [mhd_n1, neoclassical_tearing_mode, minimum_safety_factor, alfven_eigenmode,
+             sawtooth_oscillation]
+    sources:
+      - {park: a_qmin}
+      - {feature: qmin, tag: EFIT01}
+      - {mds: '\efit01::top.results.aeqdsk:qmin', tree: EFIT01, tag: EFIT01}
+  - id: kappa
+    label: "Elongation kappa"
+    group: Equilibrium
+    units: ""
+    kind: trace
+    sources:
+      - {feature: kappa, tag: EFIT01}
+      - {mds: '\efit01::top.results.aeqdsk:kappa', tree: EFIT01, tag: EFIT01}
+  - id: tritop
+    label: "Upper triangularity"
+    group: Equilibrium
+    units: ""
+    kind: trace
+    sources:
+      - {feature: tritop, tag: EFIT01}
+      - {mds: '\efit01::top.results.aeqdsk:tritop', tree: EFIT01, tag: EFIT01}
+  - id: tribot
+    label: "Lower triangularity"
+    group: Equilibrium
+    units: ""
+    kind: trace
+    sources:
+      - {feature: tribot, tag: EFIT01}
+      - {mds: '\efit01::top.results.aeqdsk:tribot', tree: EFIT01, tag: EFIT01}
+
+  # ---- Heating ----
+  - id: pinj_total
+    label: "NBI power, 8 beams summed"
+    group: Heating
+    units: MW
+    kind: trace
+    events: [alfven_eigenmode, edge_localized_mode, confinement, high_confinement_mode,
+             resistive_wall_mode, detachment]
+    sources:
+      - {corpus: pinj, rows: "0-7", total: true, scale: 1.0e-6}
+      - {raw: pinj, rows: "0-7", total: true, scale: 1.0e-6}
+      - {feature: pinj_total, scale: 1.0e-3}
+  - id: pinj_beams
+    label: "NBI power per beam"
+    group: Heating
+    units: MW
+    kind: trace
+    legend: [15L, 15R, 21L, 21R, 30L, 30R, 33L, 33R]
+    sources:
+      - {corpus: pinj, rows: "0-7", scale: 1.0e-6}
+      - {raw: pinj, rows: "0-7", scale: 1.0e-6}
+  - id: tinj_total
+    label: "NBI torque, 8 beams summed"
+    group: Heating
+    units: "N m"
+    kind: trace
+    events: [resistive_wall_mode, locked_mode]
+    sources:
+      - {corpus: tinj, rows: "0-7", total: true}
+      - {feature: tinj_total}
+  - id: ech_total
+    label: "ECH power, 12 gyrotrons summed"
+    group: Heating
+    units: MW
+    kind: trace
+    events: [confinement, high_confinement_mode, sawtooth_oscillation]
+    sources:
+      - {corpus: ech_power, rows: "0-11", total: true, scale: 1.0e-6}
+      - {feature: ech_power_total, scale: 1.0e-6}
+
+  # ---- Magnetics ----
+  - id: n1rms
+    label: "n=1 RMS"
+    group: Magnetics
+    units: G
+    kind: trace
+    events: [mhd_n1, neoclassical_tearing_mode, resistive_wall_mode, locked_mode,
+             sawtooth_oscillation]
+    sources:
+      - {feature: n1rms}
+      - {mds: '\MHD::N1RMS', tree: MHD}
+  - id: n2rms
+    label: "n=2 RMS"
+    group: Magnetics
+    units: G
+    kind: trace
+    events: [mhd_n1, neoclassical_tearing_mode, resistive_wall_mode]
+    sources:
+      - {feature: n2rms}
+      - {mds: '\MHD::N2RMS', tree: MHD}
+  - id: mpi66m322d
+    label: "Mirnov probe MPI66M322D"
+    group: Magnetics
+    units: ""
+    kind: trace
+    events: [mhd_n1, neoclassical_tearing_mode, locked_mode]
+    sources:
+      - {corpus: mirnov, rows: 15}
+      - {ptdata: MPI66M322D}
+
+  # ---- Edge ----
+  - id: fs01
+    label: "D-alpha filterscope FS01"
+    group: Edge
+    units: "ph/(sr cm^2 s)"
+    kind: trace
+    events: [edge_localized_mode, confinement, high_confinement_mode]
+    sources:
+      - {corpus: filterscopes, rows: 0}
+      - {raw: filterscopes, rows: 0}
+      - {mds: '\SPECTROSCOPY::FS01', tree: SPECTROSCOPY}
+  - id: fs02
+    label: "D-alpha filterscope FS02"
+    group: Edge
+    units: "ph/(sr cm^2 s)"
+    kind: trace
+    events: [edge_localized_mode, confinement, high_confinement_mode]
+    sources:
+      - {corpus: filterscopes, rows: 1}
+      - {raw: filterscopes, rows: 1}
+      - {mds: '\SPECTROSCOPY::FS02', tree: SPECTROSCOPY}
+  - id: fs03
+    label: "D-alpha filterscope FS03"
+    group: Edge
+    units: "ph/(sr cm^2 s)"
+    kind: trace
+    events: [edge_localized_mode, confinement, high_confinement_mode]
+    sources:
+      - {corpus: filterscopes, rows: 2}
+      - {raw: filterscopes, rows: 2}
+      - {mds: '\SPECTROSCOPY::FS03', tree: SPECTROSCOPY}
+  - id: fs04
+    label: "D-alpha filterscope FS04"
+    group: Edge
+    units: "ph/(sr cm^2 s)"
+    kind: trace
+    events: [edge_localized_mode, confinement, high_confinement_mode]
+    sources:
+      - {corpus: filterscopes, rows: 3}
+      - {raw: filterscopes, rows: 3}
+      - {mds: '\SPECTROSCOPY::FS04', tree: SPECTROSCOPY}
+  - id: fs05
+    label: "D-alpha filterscope FS05"
+    group: Edge
+    units: "ph/(sr cm^2 s)"
+    kind: trace
+    events: [edge_localized_mode]
+    sources:
+      - {corpus: filterscopes, rows: 4}
+      - {raw: filterscopes, rows: 4}
+      - {mds: '\SPECTROSCOPY::FS05', tree: SPECTROSCOPY}
+  - id: fs06
+    label: "D-alpha filterscope FS06"
+    group: Edge
+    units: "ph/(sr cm^2 s)"
+    kind: trace
+    events: [edge_localized_mode]
+    sources:
+      - {corpus: filterscopes, rows: 5}
+      - {raw: filterscopes, rows: 5}
+      - {mds: '\SPECTROSCOPY::FS06', tree: SPECTROSCOPY}
+  - id: fs07
+    label: "D-alpha filterscope FS07"
+    group: Edge
+    units: "ph/(sr cm^2 s)"
+    kind: trace
+    events: [edge_localized_mode]
+    sources:
+      - {corpus: filterscopes, rows: 6}
+      - {raw: filterscopes, rows: 6}
+      - {mds: '\SPECTROSCOPY::FS07', tree: SPECTROSCOPY}
+  - id: fs08
+    label: "D-alpha filterscope FS08"
+    group: Edge
+    units: "ph/(sr cm^2 s)"
+    kind: trace
+    events: [edge_localized_mode]
+    sources:
+      - {corpus: filterscopes, rows: 7}
+      - {raw: filterscopes, rows: 7}
+      - {mds: '\SPECTROSCOPY::FS08', tree: SPECTROSCOPY}
+  - id: fs_all
+    label: "D-alpha filterscopes FS01-FS08"
+    group: Edge
+    units: "ph/(sr cm^2 s)"
+    kind: trace
+    draw: lines
+    events: [edge_localized_mode, confinement, high_confinement_mode, detachment]
+    legend: [FS01, FS02, FS03, FS04, FS05, FS06, FS07, FS08]
+    sources:
+      - {corpus: filterscopes, rows: "0-7"}
+      - {raw: filterscopes, rows: "0-7"}
+  - id: pcphd03
+    label: "Divertor D-alpha photodiode PCPHD03"
+    group: Edge
+    units: ""
+    kind: trace
+    events: [edge_localized_mode]
+    sources:
+      - {raw: pcphd03, rows: 0}
+      - {ptdata: PCPHD03}
+  - id: gas_flow
+    label: "Gas flow per valve"
+    group: Edge
+    units: "Torr L/s"
+    kind: trace
+    events: [detachment]
+    legend: [GASA, GASB, GASC, GASD, GASE, LOB1, LOB2, PFX1, PFX2, PFX3, UOB]
+    sources:
+      - {corpus: gas_flow, rows: "0-10"}
+
+  # ---- Core ----
+  - id: ece_map
+    label: "ECE Te, channels 1-40"
+    group: Core
+    units: keV
+    kind: trace
+    draw: map
+    events: [mhd_n1, neoclassical_tearing_mode, sawtooth_oscillation, alfven_eigenmode]
+    legend: [TECEF01, TECEF02, TECEF03, TECEF04, TECEF05, TECEF06, TECEF07, TECEF08,
+             TECEF09, TECEF10, TECEF11, TECEF12, TECEF13, TECEF14, TECEF15, TECEF16,
+             TECEF17, TECEF18, TECEF19, TECEF20, TECEF21, TECEF22, TECEF23, TECEF24,
+             TECEF25, TECEF26, TECEF27, TECEF28, TECEF29, TECEF30, TECEF31, TECEF32,
+             TECEF33, TECEF34, TECEF35, TECEF36, TECEF37, TECEF38, TECEF39, TECEF40]
+    sources:
+      - {corpus: ece, rows: "0-39"}
+      - {raw: ece, rows: "0-39"}
+  - id: ts_core_te_ch
+    label: "Thomson core Te, 44 chords"
+    group: Core
+    units: keV
+    kind: trace
+    draw: map
+    events: [sawtooth_oscillation, confinement, high_confinement_mode]
+    sources:
+      - {corpus: ts_core_temp, rows: "0-43", scale: 1.0e-3}
+  - id: ts_core_ne_ch
+    label: "Thomson core n_e, 44 chords"
+    group: Core
+    units: "1e19 m^-3"
+    kind: trace
+    draw: map
+    events: [confinement, high_confinement_mode]
+    sources:
+      - {corpus: ts_core_density, rows: "0-43", scale: 1.0e-19}
+  - id: sxr_90rm1f
+    label: "SXR SX90RM1F, 32 chords"
+    group: Core
+    units: ""
+    kind: trace
+    draw: map
+    events: [sawtooth_oscillation]
+    sources:
+      - {corpus: sxr, rows: "192-223"}
+  - id: sxr_90rp1f
+    label: "SXR SX90RP1F, 32 chords"
+    group: Core
+    units: ""
+    kind: trace
+    draw: map
+    events: [sawtooth_oscillation]
+    sources:
+      - {corpus: sxr, rows: "256-287"}
+  - id: sxr_90rm1s
+    label: "SXR SX90RM1S, 32 chords"
+    group: Core
+    units: ""
+    kind: trace
+    draw: map
+    events: [sawtooth_oscillation]
+    sources:
+      - {corpus: sxr, rows: "224-255"}
+  - id: sxr_90rp1s
+    label: "SXR SX90RP1S, 32 chords"
+    group: Core
+    units: ""
+    kind: trace
+    draw: map
+    events: [sawtooth_oscillation]
+    sources:
+      - {corpus: sxr, rows: "288-319"}
+
+  # ---- Radiation ----
+  - id: bolo
+    label: "Bolometer chords, 48"
+    group: Radiation
+    units: V
+    kind: trace
+    draw: map
+    events: [detachment]
+    legend: [BOL_L01, BOL_L02, BOL_L03, BOL_L04, BOL_L05, BOL_L06, BOL_L07, BOL_L08,
+             BOL_L09, BOL_L10, BOL_L11, BOL_L12, BOL_L13, BOL_L14, BOL_L15, BOL_L16,
+             BOL_L17, BOL_L18, BOL_L19, BOL_L20, BOL_L21, BOL_L22, BOL_L23, BOL_L24,
+             BOL_U01, BOL_U02, BOL_U03, BOL_U04, BOL_U05, BOL_U06, BOL_U07, BOL_U08,
+             BOL_U09, BOL_U10, BOL_U11, BOL_U12, BOL_U13, BOL_U14, BOL_U15, BOL_U16,
+             BOL_U17, BOL_U18, BOL_U19, BOL_U20, BOL_U21, BOL_U22, BOL_U23, BOL_U24]
+    sources:
+      - {corpus: bolo, rows: "0-47"}
+  - id: prad_divl
+    label: "Radiated power, lower divertor"
+    group: Radiation
+    units: MW
+    kind: trace
+    events: [detachment]
+    sources:
+      - {mds: '\BOLOM::PRAD_DIVL', tree: BOLOM, scale: 1.0e-6}
+  - id: prad_divu
+    label: "Radiated power, upper divertor"
+    group: Radiation
+    units: MW
+    kind: trace
+    events: [detachment]
+    sources:
+      - {mds: '\BOLOM::PRAD_DIVU', tree: BOLOM, scale: 1.0e-6}
+
+  # ---- Profiles (a dock panel at the cursor; never a row) ----
+  - id: q_profile
+    label: "q"
+    group: Profiles
+    units: ""
+    kind: profile
+    axis: psi_n
+    channels: 65
+    events: [mhd_n1, neoclassical_tearing_mode, minimum_safety_factor, alfven_eigenmode,
+             sawtooth_oscillation]
+    sources:
+      - {recipe: park_q}
+      - {recipe: efit01_q}
+  - id: ts_core_te
+    label: "Thomson core Te"
+    group: Profiles
+    units: keV
+    kind: profile
+    axis: R_m
+    channels: 44
+    events: [mhd_n1, neoclassical_tearing_mode, sawtooth_oscillation, confinement,
+             high_confinement_mode]
+    sources:
+      - {recipe: thomson_te}
+  - id: ts_core_ne
+    label: "Thomson core n_e"
+    group: Profiles
+    units: "1e19 m^-3"
+    kind: profile
+    axis: R_m
+    channels: 44
+    events: [confinement, high_confinement_mode]
+    sources:
+      - {recipe: thomson_ne}
+  - id: rotation
+    label: "Toroidal rotation"
+    group: Profiles
+    units: "krad/s"
+    kind: profile
+    axis: rho
+    events: [mhd_n1, neoclassical_tearing_mode, locked_mode, alfven_eigenmode]
+    sources:
+      - {recipe: zipfit_rotation}
+  - id: ece_te_r
+    label: "ECE Te"
+    group: Profiles
+    units: keV
+    kind: profile
+    axis: R_m
+    channels: 40
+    events: [mhd_n1, neoclassical_tearing_mode, sawtooth_oscillation]
+    sources:
+      - {recipe: ece_te}
