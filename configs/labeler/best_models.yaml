@@ -61,6 +61,116 @@ events:
       - On all 60 validation shots AUROC 0.980, AUPRC 0.992, F1 0.951; against the raw Heidbrink annotation, which under-counts, AUROC 0.68.
       - The reviewed labels were made with the detector's output on screen.
     source: docs/labeler/events/alfven_eigenmode/README.md; docs/labeler/ae_baselines_benchmark.md
+    # The shipped checkpoint (ae_seldnet_threeway_sce) on the event's named shot lists
+    # (configs/labeler/shotlists.yaml), held out: a listed shot the model trained on is
+    # not scored (trained_on), nor one without an input (no_input), nor one whose
+    # reviewed truth this model prefilled (prefilled; no_reference). Two chains, never
+    # pooled: each list's own fields are the dataset chain (the staged 2 s CO2 npz of the
+    # AE dataset), its corpus_chain row the deployed chain (ae_gold_extend.py's per-shot
+    # caches over the whole CO2 record, as the extend tables are made).
+    lists:
+      record: outputs/labeler/ae/shotlists/evaluation.json (scripts/labeler/ae_evaluate.py --shotlist; dataset chain SLURM job 2966166, float32, the same numbers as 2965787; corpus block --chain corpus, job 2966167, caches from runs/ae_gold_extend, runs/silver_infer/ae_seldnet/work and GPU job 2965792, each checked to come from the shipped checkpoint f2d5314a)
+      reference: data/events/alfven_eigenmode/review/labels.csv (live owner-reviewed table, sha256 d23a4b018ea4b731d14c056a5f4321899fc634a90e07169468f7b8c020fee59e)
+      frames: 10 ms frames of 0-2 s with a present or absent reviewed state (the corpus chain only those inside the shot's window, so its frame counts can be lower)
+      interval: 95 % shot bootstrap, 2,000 replicates
+      corpus_chain_trained_on: every listed train-split shot, with or without a cache (the record's envelope files the ones without under no_input)
+      prefilled: "Both chains leave out a shot whose reviewed truth was prefilled from this model's own output (review/history.jsonl: a save prefilled from extend_ae_seldnet, whose sidecar names the checkpoint). Once anchored a shot stays out: a later save starts from the saved label, and the AE page records prefilled false on any reopened saved shot, so a later save does not clear it; only the owner can, by naming a shot re-labelled from scratch with ae_evaluate.py --independent-truth. 13 shots: 176070, 189081, 189094, 192755 (on no list), 195016, 200958, 202098, 202100, 202102, 204497, 204499, 204501, 204503, each saved once from the gold extend table; the record's unscorable names each. Only gold's corpus row changes."
+      agreement: "dataset vs corpus chain on the 60 validation shots both have (11,728 frames): frame means r 0.993, hard calls agree 0.992 (kappa 0.981); on those frames AUROC 0.985 [0.976, 0.991] vs 0.983 [0.974, 0.991], F1 0.957 vs 0.955"
+      ae_ece:
+        n_listed: 26
+        n_scored: 5
+        trained_on: 8
+        no_input: 13
+        n_frames: 1000
+        auroc: {value: 0.932, lo: 0.896, hi: 0.978}
+        auprc: {value: 0.955, lo: 0.935, hi: 0.986}
+        f1: {value: 0.835, lo: 0.708, hi: 0.936}
+        note: Five shots only. 13 of the 26 ECE-box shots are not among the 180 CO2-annotated shots the AE dataset is built from, so they have no npz; 8 more are training shots. The corpus_chain row scores those 13 too.
+        corpus_chain:
+          n_scored: 18
+          trained_on: 8
+          no_input: 0
+          no_reference: 0
+          n_frames: 2854
+          auroc: {value: 0.940, lo: 0.903, hi: 0.962}
+          auprc: {value: 0.984, lo: 0.974, hi: 0.991}
+          f1: {value: 0.910, lo: 0.865, hi: 0.945}
+      ae_co2:
+        n_listed: 180
+        n_scored: 60
+        trained_on: 120
+        no_input: 0
+        n_frames: 12000
+        auroc: {value: 0.981, lo: 0.969, hi: 0.990}
+        auprc: {value: 0.991, lo: 0.984, hi: 0.996}
+        f1: {value: 0.952, lo: 0.929, hi: 0.970}
+        corpus_chain:
+          n_scored: 60
+          trained_on: 120
+          no_input: 0
+          no_reference: 0
+          n_frames: 11728
+          auroc: {value: 0.983, lo: 0.974, hi: 0.991}
+          auprc: {value: 0.993, lo: 0.988, hi: 0.997}
+          f1: {value: 0.955, lo: 0.933, hi: 0.973}
+      ae_co2_ece:
+        n_listed: 193
+        n_scored: 60
+        trained_on: 120
+        no_input: 13
+        n_frames: 12000
+        auroc: {value: 0.981, lo: 0.969, hi: 0.990}
+        auprc: {value: 0.991, lo: 0.984, hi: 0.996}
+        f1: {value: 0.952, lo: 0.929, hi: 0.970}
+        note: The same 60 shots as ae_co2; the 13 ECE-only shots have no npz.
+        corpus_chain:
+          n_scored: 73
+          trained_on: 120
+          no_input: 0
+          no_reference: 0
+          n_frames: 13582
+          auroc: {value: 0.980, lo: 0.971, hi: 0.987}
+          auprc: {value: 0.993, lo: 0.988, hi: 0.996}
+          f1: {value: 0.951, lo: 0.933, hi: 0.967}
+      ae_valid_fair:
+        n_listed: 19
+        n_scored: 19
+        trained_on: 0
+        no_input: 0
+        n_frames: 3800
+        auroc: {value: 0.983, lo: 0.966, hi: 0.994}
+        auprc: {value: 0.992, lo: 0.981, hi: 0.998}
+        f1: {value: 0.945, lo: 0.903, hi: 0.977}
+        note: The headline's 19 shots; against the v2 review snapshot it used, this run gives the headline's 0.982 / 0.992 / 0.944 exactly.
+        corpus_chain:
+          n_scored: 19
+          trained_on: 0
+          no_input: 0
+          no_reference: 0
+          n_frames: 3733
+          auroc: {value: 0.984, lo: 0.969, hi: 0.995}
+          auprc: {value: 0.993, lo: 0.983, hi: 0.998}
+          f1: {value: 0.942, lo: 0.899, hi: 0.974}
+      gold:
+        n_listed: 50
+        n_scored: 6
+        trained_on: 6
+        no_input: 38
+        n_frames: 1200
+        auroc: {value: 0.928, lo: 0.900, hi: 0.958}
+        auprc: {value: 0.944, lo: 0.913, hi: 0.968}
+        f1: {value: 0.816, lo: 0.715, hi: 0.904}
+        note: Six shots only; 38 gold shots are not CO2-annotated shots and have no npz.
+        corpus_chain:
+          n_scored: 6
+          trained_on: 6
+          no_input: 0
+          no_reference: 38
+          n_frames: 1200
+          auroc: {value: 0.931, lo: 0.898, hi: 0.972}
+          auprc: {value: 0.946, lo: 0.916, hi: 0.976}
+          f1: {value: 0.817, lo: 0.707, hi: 0.910}
+          note: "The same 6 shots as the dataset chain, so the corpus chain adds no independent gold shot. Of the 38 not scored, 12 have truth prefilled from this model (176070, 189081, 189094, 195016, 200958, 202098, 202100, 202102, 204497, 204499, 204501, 204503: saved once each from the gold extend table; scored against it they gave 0.978 / 0.891 / 0.886, self-agreement) and 26 are not in the owner-reviewed AE table. It replaces round 1's 18-shot 0.964 / 0.923 / 0.848."
 
   alfven_eigenmode.tae:
     model: null

@@ -111,7 +111,7 @@ CROWD_COLUMNS = ("shot", "category", "t_start", "t_end", "crowd", "confidence", 
 PLACEHOLDER = re.compile(r"^\s*EXAMPLE\b")
 PLACEHOLDER_TEXT = re.compile(r"EXAMPLE - replace with a real shot")
 #: Directories of the label tables that hold no event.
-NON_EVENTS = frozenset({"catalog", "silver", "gold"})
+NON_EVENTS = frozenset({"catalog", "silver", "gold", "shotlists"})
 #: Silver layer kind -> release tier.
 TIERS = {
     "saved": "reviewed",

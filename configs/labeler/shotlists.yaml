@@ -1,0 +1,134 @@
+# The named shot lists and the ones each review event offers first. Read by
+# `labeler.events.shotlists` (`Paths.shotlists_manifest`; `LABELER_CONFIG_DIR`
+# overrides the directory). Source, so it is tracked here; the lists themselves are
+# label data under the label-tables root (`shotlists/<name>.csv` or `.txt`, each with
+# the `<name>.meta.json` sidecar `make` writes), which git ignores.
+#
+#   python -m labeler.events.shotlists list     # every list, its size and kind
+#   python -m labeler.events.shotlists check    # this file against the lists
+#
+# lists.<name>:
+#   title        what the page calls the list
+#   file         only for a list kept outside shotlists/ (gold and silver stay put)
+#   parent       the list it is drawn from; `check` keeps it inside
+#   rule         how `make` derived it, exactly as its sidecar records it
+#   kind         curated | derived | dataset
+#   protect      test | holdout: `make` never overwrites it
+#   description  what is in it and where it came from
+# A list file this registry does not name still shows, under "Other lists".
+#
+# events.<event>:
+#   recommended  offered first on the page, in this order
+#   default      the list the page opens on; `roster` is the event's own roster, the
+#                default unless a list holds exactly the roster's shots
+#   evaluate     the lists the event's evaluator scores (`shotlists.plan`)
+# A subcategory takes its parent's entry; an event with none recommends silver and
+# gold and opens on its roster.
+
+lists:
+  gold:
+    title: "Gold set"
+    file: gold/gold_shots.csv
+    kind: curated
+    protect: test
+    description: "50 evaluation shots labelled by hand on every event (docs/labeler/events/gold/README.md)"
+  silver:
+    title: "Silver set"
+    file: silver/silver_shots.csv
+    kind: curated
+    description: "450 shots reviewed on every event, in five batches (docs/labeler/events/silver/README.md)"
+  silver_batch_1: {title: "Silver batch 1", parent: silver, kind: derived, rule: "where(silver, batch==1)"}
+  silver_batch_2: {title: "Silver batch 2", parent: silver, kind: derived, rule: "where(silver, batch==2)"}
+  silver_batch_3: {title: "Silver batch 3", parent: silver, kind: derived, rule: "where(silver, batch==3)"}
+  silver_batch_4: {title: "Silver batch 4", parent: silver, kind: derived, rule: "where(silver, batch==4)"}
+  silver_batch_5: {title: "Silver batch 5", parent: silver, kind: derived, rule: "where(silver, batch==5)"}
+  cohort:
+    title: "Catalog cohort"
+    kind: derived
+    rule: "sort(where(table(catalog/cohort.csv), blind==False), queue_rank)"
+    description: "The event catalog's 450 non-blind shots in queue order: the q_min and poloidal-beta rosters"
+  ae_co2:
+    title: "AE CO2 (Heidbrink)"
+    kind: dataset
+    rule: "table(alfven_eigenmode/format/alfven_eigenmode_format_2026_v1.csv)"
+    description: "The 180 shots of the CO2 interferometer AE annotation (events.yaml co2_detector_2021); the AE model's dataset holds exactly these (120 train, 60 valid)"
+  ae_ece:
+    title: "AE ECE boxes (2022)"
+    kind: dataset
+    rule: "table(alfven_eigenmode/format/alfven_eigenmode_ece_format_2026_v1.csv)"
+    description: "The 26 shots with hand-drawn time-frequency boxes on ECE spectrograms dated 2022-01-24 (events.yaml ece_labels_2022); 13 are also CO2 shots"
+  ae_co2_ece:
+    title: "AE CO2 + ECE"
+    kind: derived
+    rule: "union(ae_co2, ae_ece)"
+    description: "Both AE sources, CO2 first: the AE roster's 193 shots in its order"
+  ae_valid:
+    title: "AE model validation (60)"
+    parent: ae_co2
+    kind: dataset
+    rule: "shots"
+    description: "The AE model dataset's validation split ($LABELER_ROOT/ae/dataset/<shot>_valid.npz)"
+  ae_valid_fair:
+    title: "AE fair validation (19)"
+    parent: ae_co2
+    kind: dataset
+    rule: "shots"
+    description: "The 19 validation shots none of the older AE detectors trained on: the headline AE score's shots (outputs/labeler/ae/baselines/evaluation.json shots.fair)"
+  elm:
+    title: "ELM labels"
+    kind: dataset
+    rule: "table(edge_localized_mode/format/edge_localized_mode_format_2026_v1.csv)"
+    description: "The shots of the ELM label tables (events.yaml elm_labels, elm_labels_wpqh), less the catalog's blind test shots"
+  elm_challenge:
+    title: "ELM challenge key (Eldon)"
+    kind: dataset
+    protect: holdout
+    rule: "table(edge_localized_mode/format/edge_localized_mode_challenge_format_2026_v1.csv)"
+    description: "The 24 shots of the DIII-D ELM detection challenge's answer key (events.yaml elm_challenge_key): the ELM holdout benchmark"
+  rwm_hanson:
+    title: "RWM onsets (Hanson)"
+    kind: dataset
+    rule: "table(resistive_wall_mode/format/rwm_format_2026_v1.csv)"
+    description: "The 33 shots of the RWM onset databases (events.yaml rwm_onsets_2017, rwm_onsets_2024)"
+  confinement_jalal:
+    title: "Confinement regimes (Jalal Butt, 2024)"
+    kind: dataset
+    rule: "table(high_confinement_mode/raw/Jalal_28042024_confinement_regime_shotlist.csv)"
+    description: "The shots of Jalal Butt's confinement regime table of 28 April 2024 (events.yaml jalal_hmode_confinement_2024), less the catalog's blind test shots"
+
+events:
+  alfven_eigenmode:
+    recommended: [ae_co2_ece, ae_co2, ae_ece, ae_valid, ae_valid_fair, silver, gold]
+    default: ae_co2_ece
+    evaluate: [ae_co2, ae_ece, ae_co2_ece, ae_valid_fair, gold]
+  confinement:
+    recommended: [confinement_jalal, silver, gold]
+    default: roster
+    evaluate: [confinement_jalal, gold]
+  detachment:
+    recommended: [silver, gold]
+    default: roster
+    evaluate: [gold]
+  edge_localized_mode:
+    recommended: [elm, elm_challenge, silver, gold]
+    default: roster
+    evaluate: [elm_challenge, gold]
+  locked_mode:
+    recommended: [silver, gold]
+    default: roster
+    evaluate: []
+  mhd_n1: &mhd
+    recommended: [silver, gold, cohort]
+    default: roster
+    evaluate: [gold]
+  mhd_n2: *mhd
+  mhd_n3: *mhd
+  minimum_safety_factor: &cohort
+    recommended: [cohort, silver, gold]
+    default: cohort
+    evaluate: [gold]
+  poloidal_beta: *cohort
+  resistive_wall_mode:
+    recommended: [rwm_hanson, silver, gold]
+    default: roster
+    evaluate: [rwm_hanson, gold]

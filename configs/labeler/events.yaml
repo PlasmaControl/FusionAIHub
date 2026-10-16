@@ -66,6 +66,8 @@ non_category_dirs:
   # docs/labeler/events/gold/README.md) is a list, not a category.
   - silver
   - gold
+  # Named shot lists (`labeler.events.shotlists`; registry configs/labeler/shotlists.yaml).
+  - shotlists
 
 # What the review page calls each event, how its dropdown groups them, and the
 # subcategories nested under one (read by `labeler.events.taxonomy`). A

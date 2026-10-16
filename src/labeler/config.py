@@ -129,6 +129,18 @@ class Paths:
         return self.config_dir / "best_models.yaml"
 
     @property
+    def shotlists_manifest(self) -> Path:
+        """`shotlists.yaml`: the named shot lists and the ones each event recommends
+        (`events.shotlists`)."""
+        return self.config_dir / "shotlists.yaml"
+
+    @property
+    def shotlists(self) -> Path:
+        """The named shot lists, `<name>.csv` or `<name>.txt` each, beside the label
+        tables they name shots of. Gold and silver stay at their own paths."""
+        return self.label_tables / "shotlists"
+
+    @property
     def features(self) -> Path:
         return self.root / "features"
 
