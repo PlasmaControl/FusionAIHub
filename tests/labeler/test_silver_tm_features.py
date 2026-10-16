@@ -95,7 +95,9 @@ def test_a_corpus_shot_is_read_from_the_corpus(world):
 def test_a_shot_without_mirnov_gets_a_missing_file_naming_why(world):
     for shot in (102, 104):
         assert silver.tm_feature_one(shot)[1] == "missing"
-        reason = (silver.RUN / "tm" / "magfeatures" / f"{shot}.missing.json").read_text()
+        reason = (
+            silver.RUN / "tm" / "magfeatures" / f"{shot}.missing.json"
+        ).read_text()
         assert "mirnov" in reason
     assert not (silver.RUN / "tm" / "magfeatures" / "104.npz").exists()
 
