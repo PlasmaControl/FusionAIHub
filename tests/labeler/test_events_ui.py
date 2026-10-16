@@ -319,6 +319,11 @@ def test_the_queue_is_the_roster_in_order_with_where_to_resume(client, source):
              "saved_at": None},
         ],
         "resume": 170815,
+        # No shot list exists, so the event's own roster is the only one offered.
+        "list": "roster",
+        "lists": [{"name": "roster", "title": "Event roster", "n": 2, "kind": "roster",
+                   "recommended": False, "default": True, "parent": None,
+                   "protect": None, "n_saved": 0}],
     }
 
 
@@ -383,7 +388,7 @@ def test_a_shot_with_no_rows_is_built_on_first_open(client, app, monkeypatch):
     monkeypatch.setitem(review_build.BUILDERS, "detachment", _one_trace)
     first = client.get("/api/shot?event=detachment&shot=170815")
     assert first.status_code == 202
-    assert first.json() == {"building": True, "progress": None}
+    assert {"building": True, "progress": None}.items() <= first.json().items()
     app.state.builds.running[("detachment", 170815)].result()
     body = client.get("/api/shot?event=detachment&shot=170815").json()
     assert body["grid"] == {"t0": 0.0, "dt": 1.0, "n": 10}

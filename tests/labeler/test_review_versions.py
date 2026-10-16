@@ -139,7 +139,8 @@ def test_a_history_line_written_before_names_existed_reads_as_unnamed(event_dir)
 
 
 def test_the_server_reports_its_api_version(client):
-    assert client.get("/api/version").json() == {"api": API_VERSION} == {"api": 10}
+    # The body also carries the workspace's fields (`fdp`, `workspace`) from api 11.
+    assert client.get("/api/version").json()["api"] == API_VERSION == 11
 
 
 def test_the_history_route_is_behind_the_gate(client):

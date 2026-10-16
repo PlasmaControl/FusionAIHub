@@ -44,9 +44,10 @@ from ...ae import seg
 from ...ae.seg import regions, whole
 from ...ae.seg.pseudo import PseudoMask
 from ...config import Paths, sha256_of, store_event
-from .. import grid, raw, rosters, rwm, taxonomy
+from .. import grid, raw, rosters, rwm, shotlists, taxonomy
 from ..review import build as review_build
 from ..review import gold, labels, reviewers, rows, silver, versions, video
+from . import overlay_routes, shotlist_routes, workspace_routes
 
 STATIC = Path(__file__).parent / "static"
 COOKIE = "labeler_verify_token"
@@ -64,7 +65,9 @@ BAD_TOKEN = "bad token"
 #: 8 independent, overlapping individual and span (iscrowd) annotation lanes,
 #: 9 detachment camera manifests and lazy frame requests.
 #: 10 saved suggestion exposure and producer-prefill provenance.
-API_VERSION = 10
+#: 11 named shot lists (the queue's `list=`, `/api/shotlists`, `/api/overview`),
+#: build status, TokEye row states and the signal workspace.
+API_VERSION = 11
 
 log = logging.getLogger(__name__)
 
@@ -102,13 +105,45 @@ class NameIn(BaseModel):
 
 
 class Builds:
-    """Store files built on first open, two at a time, off the request thread."""
+    """Store files built on first open, two at a time, off the request thread.
+    `progress` says where one stands, for the 202 body."""
 
     def __init__(self, paths: Paths):
         self.paths = paths
         self.pool = ThreadPoolExecutor(max_workers=2)
         self.running: dict = {}
         self.lock = threading.Lock()
+        #: Each build's submit order and time, and when a worker took it.
+        self.asked: dict = {}
+        self.started: dict = {}
+        self.order = 0
+
+    def _build(self, key: tuple, event: str, shot: int) -> Path:
+        with self.lock:
+            self.started[key] = time.monotonic()
+        return review_build.build(event, shot, self.paths)
+
+    def progress(self, event: str, shot: int) -> dict:
+        """`stage` (queued, reading, fetching, building or writing), `elapsed_s` since
+        it was asked for, `queue_position` (0 while it runs, else its place among the
+        waiting) and `prebuilt` (a registered shot list holds the shot)."""
+        key = (store_event(event), shot)
+        now = time.monotonic()
+        with self.lock:
+            order, asked = self.asked.get(key, (self.order + 1, now))
+            started = key in self.started
+            ahead = sum(
+                1 for other, (o, _) in self.asked.items()
+                if o < order and other not in self.started
+                and other in self.running and not self.running[other].done()
+            )
+        stage = overlay_routes.build_stage(self.paths, key[0], shot) if started else "queued"
+        return {
+            "stage": stage,
+            "elapsed_s": round(now - asked, 1),
+            "queue_position": 0 if started else ahead + 1,
+            "prebuilt": overlay_routes.prebuilt(self.paths, shot),
+        }
 
     def status(self, event: str, shot: int) -> tuple[Path | None, str | None]:
         """`(path, None)` once built, `(None, error)` once failed, else building."""
@@ -120,6 +155,8 @@ class Builds:
             if future is not None and not future.done():
                 return None, None
             self.running.pop(key, None)
+            self.asked.pop(key, None)
+            self.started.pop(key, None)
             if future is not None and future.exception() is not None:
                 error = future.exception()
                 return None, f"{type(error).__name__}: {error}"
@@ -131,9 +168,9 @@ class Builds:
                     "overwrites it. The controller must run the documented "
                     "resume-build after the producer is final."
                 )
-            self.running[key] = self.pool.submit(
-                review_build.build, event, shot, self.paths
-            )
+            self.order += 1
+            self.asked[key] = (self.order, time.monotonic())
+            self.running[key] = self.pool.submit(self._build, key, event, shot)
             return None, None
 
 
@@ -209,16 +246,25 @@ def roster_tier(roster, shot: int) -> str:
     return str(match.tier.iloc[0])
 
 
-def in_review_sets(paths: Paths, shot: int) -> bool:
-    """A silver or gold shot may be reviewed on any event, on its roster or not."""
-    return silver.is_silver(paths.label_tables, shot) or gold.is_gold(paths.label_tables, shot)
-
-
 def shot_tier(event: str, shot: int, paths: Paths) -> str:
+    """The shot's roster tier; a shot on any shot list may be reviewed on any event,
+    on its roster or not (`shotlists.in_any`), and is unverified off it."""
     roster = _roster(roster_directory(event, paths))
-    if in_review_sets(paths, shot) and not (roster.shot == shot).any():
+    if not (roster.shot == shot).any() and shotlists.in_any(paths, shot):
         return "unverified"
     return roster_tier(roster, shot)
+
+
+def borrowed(event: str, shot: int, paths: Paths) -> bool:
+    """Whether `event` reviews `shot` though it is not its own: a silver or gold shot,
+    or one off the event's roster that some list holds. Only such a shot skips a
+    broken source pointer and may open on a silver draft; a roster shot keeps its
+    source table (`labels.source_path` raises on a pointer to a missing table)."""
+    tables = paths.label_tables
+    if silver.is_silver(tables, shot) or gold.is_gold(tables, shot):
+        return True
+    roster = _roster(roster_directory(event, paths))
+    return not (roster.shot == shot).any() and shotlists.in_any(paths, shot)
 
 
 def shot_labels(event: str, shot: int, paths: Paths, *, suppress_source=False,
@@ -237,17 +283,18 @@ def shot_labels(event: str, shot: int, paths: Paths, *, suppress_source=False,
     )
     source, table, origin = None, None, None
     if not suppress_source:
+        other = borrowed(event, shot, paths)
         try:
             table = labels.source_path(directory)
             source = labels.page_label(
                 event, labels.read_labels(table).get(shot) if table else None
             )
         except (ValueError, OSError) as error:
-            if not in_review_sets(paths, shot):
+            if not other:
                 raise
             log.warning("silver source skipped for %s/%s: %s", event, shot, error)
-        if source is None and in_review_sets(paths, shot):
-            found = silver.draft(paths, event, shot)
+        if source is None and other:
+            found = shotlist_routes.draft(paths, event, shot)
             if found is not None:
                 source, layer = found
                 source = labels.span_default(event, source)
@@ -312,7 +359,7 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
         response = _admit(request, app.state.token)
         if response is None:
             response = await call_next(request)
-        response.headers["Cache-Control"] = "no-store"
+        response.headers["Cache-Control"] = overlay_routes.cache_control(request, response)
         log.info(
             "%s %s -> %d in %.1fs",
             request.method,
@@ -340,7 +387,7 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
 
     @app.get("/api/version")
     def version():
-        return {"api": API_VERSION}
+        return {"api": API_VERSION, **workspace_routes.version_extra(paths)}
 
     @app.get("/api/names")
     def names_view():
@@ -355,6 +402,9 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
                 raise HTTPException(400, str(error)) from None
         return {"names": names, "name": name}
 
+    #: The events list, until the taxonomy, a roster or a saves table changes.
+    events_cache = shotlist_routes.Stamped(size=1)
+
     @app.get("/api/events")
     def events():
         tree = _taxonomy(paths)
@@ -367,6 +417,16 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
             )
         except OSError:
             return {"events": []}
+        inputs = [Path(paths.events_manifest), Path(paths.label_tables)]
+        for directory in directories:
+            inputs += [directory / rosters.ROSTER_NAME, labels.labels_path(directory)]
+            inputs += [labels.labels_path(tree.child_dir(paths.label_tables, child))
+                       for child in tree.children(directory.name)]
+        return events_cache.get(
+            "events", inputs, lambda: {"events": _events(tree, directories)}
+        )
+
+    def _events(tree: taxonomy.Taxonomy, directories: list[Path]) -> list[dict]:
         found = []
         for directory in directories:
             event = directory.name
@@ -392,7 +452,7 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
             except Exception as error:  # noqa: BLE001
                 message = str(error) or type(error).__name__
                 found.append({"event": event, **named, "error": message})
-        return {"events": found}
+        return found
 
     def _subcategory(tree: taxonomy.Taxonomy, child: str, roster) -> dict:
         """One chip of the subcategory bar: its name and how many shots it has saved."""
@@ -417,24 +477,51 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
                              "reviewers": "", "verified_on": "", "notes": ""})
         return [{**row, "extra": True} for row in labels.queue(directory, rows)["shots"]]
 
+    #: Each event's queue per list asked for, until a file it was read from changes.
+    queues = shotlist_routes.Stamped()
+
     @app.get("/api/queue")
-    def queue(event: str):
+    def queue(event: str, shotlist: Annotated[str | None, Query(alias="list")] = None):
+        """The event's queue. With no `list` it is the roster as before, with the gold
+        shots it lacks flagged `extra`; with one, that list's shots in its order, the
+        ones off the roster flagged `extra` (a subcategory's: those whose parent's
+        label marks something). Either way `list` names what is shown, `lists` is
+        `/api/shotlists` and `note` says why a list asked for is not shown."""
         directory = require_event(event, paths)
         parent = _taxonomy(paths).parent(event)
-        if parent is None:
-            roster = _roster(directory)
-            found = labels.queue(directory, roster)
-            return {**found, "shots": found["shots"] + _gold_extras(directory, roster)}
-        parent_dir = require_event(parent, paths)
-        return labels.child_queue(
-            event, directory, parent, parent_dir, _roster(parent_dir)
+        parent_dir = None if parent is None else require_event(parent, paths)
+        requested = shotlist or None
+        return queues.get(
+            (event, requested),
+            shotlist_routes.queue_inputs(paths, directory, parent_dir),
+            lambda: _queue(event, requested, directory, parent, parent_dir),
         )
 
+    def _queue(event: str, requested: str | None, directory: Path,
+               parent: str | None, parent_dir: Path | None) -> dict:
+        roster = _roster(directory if parent_dir is None else parent_dir)
+        offered = shotlist_routes.offer(
+            paths, event, labels.read_saved(directory), roster
+        )
+        name, note = shotlist_routes.choose(paths, event, requested, offered)
+        listed = name == requested and name != shotlists.ROSTER
+        rows = (shotlist_routes.as_roster(roster, shotlists.shots(paths, name))
+                if listed else roster)
+        if parent_dir is not None:
+            found = labels.child_queue(event, directory, parent, parent_dir, rows)
+        else:
+            found = labels.queue(directory, rows)
+            if not listed:
+                found["shots"] += _gold_extras(directory, roster)
+        if listed:
+            on_roster = {int(shot) for shot in roster.shot}
+            found["shots"] = [row if row["shot"] in on_roster else {**row, "extra": True}
+                              for row in found["shots"]]
+        return {**found, "list": name, "lists": offered,
+                **({"note": note} if note else {})}
+
     def silver_events():
-        tree = _taxonomy(paths)
-        return [{"event": event, "display_name": tree.display(event),
-                 "parent": tree.parent(event)}
-                for event in silver.review_events(paths)]
+        return shotlist_routes.review_events(paths)
 
     @app.get("/api/silver")
     def silver_view():
@@ -472,30 +559,11 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
         if not silver.is_silver(paths.label_tables, shot):
             raise HTTPException(404, f"shot {shot} is not in the silver set")
         row = silver.read_silver(paths.label_tables).query("shot == @shot").iloc[0]
-        events, groups = [], []
-        for entry in silver_events():
-            event = entry["event"]
-            layers = silver.layers(paths, event, shot)
-            groups.append(layers)
-            region = silver.parent_region(paths, event, shot)
-            events.append({
-                **entry, "saved": any(layer.kind == "saved" for layer in layers),
-                "locked": silver.locked(paths, event, shot),
-                "categories": {"0": "absent", **{
-                    str(k): v for k, v in labels.categories(event).items()
-                }},
-                **({"allowed": region.as_json()} if region is not None else {}),
-                "layers": [{"kind": layer.kind, "name": layer.name,
-                            "label": layer.label.as_json(),
-                            "unknown": [list(span) for span in layer.unknown],
-                            "held": [list(span) for span in layer.held]}
-                           for layer in layers],
-            })
+        events, t_range = shotlist_routes.shot_events(paths, shot)
         return {
             "shot": shot, "batch": int(row.batch), "order": int(row.order),
             "pool": row.pool, "classes": [p for p in row.classes.split(";") if p],
-            "grid_ms": grid.GRID_MS, "t_range": list(silver.time_range(groups)),
-            "events": events,
+            "grid_ms": grid.GRID_MS, "t_range": t_range, "events": events,
         }
 
     @app.get("/api/shot")
@@ -509,13 +577,15 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
         if error is not None:
             return JSONResponse({"error": error}, status_code=502)
         if path is None:
-            body = {"building": True, "progress": raw.progress_for(shot)}
+            body = {"building": True, "progress": raw.progress_for(shot),
+                    **app.state.builds.progress(event, shot)}
             return JSONResponse(body, status_code=202)
         described = rows.meta(path, review_build.HIDDEN.get(store, frozenset()))
         band = review_build.BANDS.get(store)
         for row in described["rows"]:
             if band is not None and "band" in row:
                 row["band"] = list(band)
+        overlay_routes.annotate(paths, event, shot, described["rows"])
         producer = described.get("params", {}).get("detachment_producer", {})
         suppress_source = event == "detachment" and producer.get("source_suppressed", False)
         under_parent = {}
@@ -711,7 +781,8 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
         require_event(event, paths)
         owner = _taxonomy(paths).parent(event) or event
         shot_tier(owner, shot, paths)
-        found = whole.view(paths, shot) if owner == seg.EVENT else None
+        # AE and its children: one layer; any other event: {rows: {name: layer}}.
+        found = overlay_routes.tokeye(paths, event, owner, shot)
         if found is None:
             raise HTTPException(404, f"shot {int(shot)} has no {event} TokEye layer")
         return found
@@ -761,5 +832,9 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
 
     mask_lock = threading.Lock()
     names_lock = threading.Lock()
+    # Each feature module owns its routes; they must precede the static mount.
+    shotlist_routes.install(app, paths)
+    workspace_routes.install(app, paths)
+    overlay_routes.install(app, paths)
     app.mount("/", StaticFiles(directory=STATIC, html=True), name="static")
     return app

@@ -254,10 +254,10 @@ def test_the_child_queue_is_the_parents_saved_non_empty_shots(client, paths):
     absent = _post(client, "mhd_n1", [], shot=170816)
     assert absent.status_code == 200 and absent.json()["saved"]["intervals"] == []
     queue = client.get("/api/queue?event=mhd_n1.m1").json()
-    assert queue == {
+    assert {key: queue[key] for key in ("shots", "resume", "list")} == {
         "shots": [{"shot": SHOT, "tier": "gold", "state": "unreviewed",
                    "saved_at": None}],
-        "resume": SHOT,
+        "resume": SHOT, "list": "roster",
     }, "unsaved 170817 and all-absent 170816 are not offered, and nothing crashes"
     assert [row["shot"] for row in client.get("/api/queue?event=mhd_n1").json()["shots"]
             ] == [SHOT, 170816, 170817]
@@ -436,8 +436,8 @@ def test_a_child_with_its_own_recipe_is_stale_by_its_own_version(
     assert review_build.PANEL_VERSIONS["mhd_n1.m1"] == 1
     assert review_build.PANEL_VERSIONS["edge_localized_mode"] == 4
     assert review_build.PANEL_VERSIONS["high_confinement_mode"] == 1
-    assert review_build.PANEL_VERSIONS["detachment"] == 7
-    assert review_build.PANEL_VERSIONS["resistive_wall_mode"] == 1
+    assert review_build.PANEL_VERSIONS["detachment"] == 9
+    assert review_build.PANEL_VERSIONS["resistive_wall_mode"] == 2
     assert review_build.PANEL_VERSIONS["sawtooth_oscillation"] == 1  # folded: untouched
     assert review_build.PANEL_REVISIONS == {"detachment": 1}
 
