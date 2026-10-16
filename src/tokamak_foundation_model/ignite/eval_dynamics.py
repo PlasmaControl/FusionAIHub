@@ -35,7 +35,7 @@ import math
 import os
 import time
 from pathlib import Path
-from typing import Dict, NamedTuple, Tuple
+from typing import Dict, NamedTuple, Optional, Tuple
 
 import numpy as np
 import torch
@@ -103,8 +103,9 @@ class FigureOptions:
         Modalities drawn (the metrics cover all of them).
     width_in, font_pt : float
         Printed width and font size; the canvas is the delivered size.
-    show_skill, show_r, show_channel, show_tag : bool
-        Parts of the panel annotations.
+    show_skill, show_r, show_nrmse, show_channel, show_tag : bool
+        Parts of the panel annotations, all off by default (``IGNITE_FIG_SKILL``,
+        ``_R``, ``_NRMSE``, ``_CH``, ``_TAG`` = 1 turns one on).
     show_video_nrmse : bool
         Add the per-frame video nRMSE row.
     gt_only : bool
@@ -121,6 +122,7 @@ class FigureOptions:
     font_pt: float
     show_skill: bool
     show_r: bool
+    show_nrmse: bool
     show_channel: bool
     show_tag: bool
     show_video_nrmse: bool
@@ -143,10 +145,11 @@ class FigureOptions:
             ),
             width_in=float(env("IGNITE_FIG_WIDTH_IN", "6.5")),
             font_pt=float(env("IGNITE_FIG_FONT_PT", "12")),
-            show_skill=_env_flag("IGNITE_FIG_SKILL", "1"),
-            show_r=_env_flag("IGNITE_FIG_R", "1"),
-            show_channel=_env_flag("IGNITE_FIG_CH", "1"),
-            show_tag=_env_flag("IGNITE_FIG_TAG", "1"),
+            show_skill=_env_flag("IGNITE_FIG_SKILL", "0"),
+            show_r=_env_flag("IGNITE_FIG_R", "0"),
+            show_nrmse=_env_flag("IGNITE_FIG_NRMSE", "0"),
+            show_channel=_env_flag("IGNITE_FIG_CH", "0"),
+            show_tag=_env_flag("IGNITE_FIG_TAG", "0"),
             show_video_nrmse=_env_flag("IGNITE_FIG_VRMSE", "0"),
             gt_only=_env_flag("IGNITE_FIG_GT_ONLY", "0"),
             cmap_spectro=env("IGNITE_CMAP_SPECTRO", "Blues"),
@@ -754,7 +757,10 @@ def decode_all(
             persistence = denorm[name](persistence)
             space = "physical"
         gt_source = "decoded"
-        if name in raw_gt:
+        # Measured camera frames are raw counts; without a denorm the prediction stays
+        # in the codec's normalised space, so the two would not share a colour scale.
+        comparable = family != "video" or space == "physical"
+        if name in raw_gt and comparable:
             # Compare after denorm, which drops the padded channels of slow-TS.
             if raw_gt[name].shape != gt.shape:
                 matched = _match_raw_width(raw_gt[name], gt)
@@ -887,8 +893,8 @@ _DISPLAY_NAMES = {
     "bes": "BES",
     "co2": "CO2",
     "mirnov": "Mirnov",
-    "tangtv_lower": "tangTV\nlower divertor",
-    "tangtv_upper": "tangTV\nupper divertor",
+    "tangtv_lower": "Lower\ndivertor",
+    "tangtv_upper": "Upper\ndivertor",
 }
 
 # Slow-TS display: (scale, ylabel, region tag). The H5 stores eV and m^-3.
@@ -900,11 +906,47 @@ _SLOWTS_UNITS = {
     "cer_ti": (1e-3, r"$T_i$ (keV)", ""),
 }
 
+# One-line labels of the slow time series in normalised units.
+_SLOWTS_SHORT = {
+    "ts_core_density": r"Core $n_e$",
+    "ts_core_temp": r"Core $T_e$",
+    "ts_tangential_density": r"Tang. $n_e$",
+    "ts_tangential_temp": r"Tang. $T_e$",
+    "cer_ti": r"$T_i$",
+    "cer_rot": r"$v_\phi$",
+    "mse": "MSE",
+}
+
 # Row heights in inches at the 12 pt design point; scaled mildly with the font.
 _ROW_HEIGHTS = {"slow": 0.58, "spec": 1.05, "vid": 0.90, "vrmse": 0.60}
 _SECTION_GAP_IN = 0.46
 _ROW_SPACING = 0.28
 _MAX_STITCHED_COLUMNS = 4096
+
+
+_PLASMA_END_CACHE: Dict[str, Optional[Dict[str, float]]] = {}
+
+
+def _plasma_end(shot) -> Optional[float]:
+    """Plasma end time [s] of a shot, or None if unknown.
+
+    Read from ``IGNITE_PLASMA_END_JSON`` (``{shot: seconds}``) if it is set, for
+    example the ``eval_runs/tend_all.json`` the trainer masks post-shot frames with.
+    Off by default: that table covers only some shots, so figures would be shaded
+    inconsistently.
+    """
+    path = os.environ.get("IGNITE_PLASMA_END_JSON", "").strip()
+    if not path:
+        return None
+    if path not in _PLASMA_END_CACHE:
+        try:
+            _PLASMA_END_CACHE[path] = {
+                str(k): float(v) for k, v in json.loads(Path(path).read_text()).items()
+            }
+        except (OSError, ValueError):
+            _PLASMA_END_CACHE[path] = None
+    table = _PLASMA_END_CACHE[path]
+    return None if table is None else table.get(str(shot))
 
 
 def _display_name(name: str) -> str:
@@ -956,7 +998,9 @@ class _Figure:
     A gap row separates sections.
     """
 
-    def __init__(self, decoded, K0, F, t_origin, options: FigureOptions):
+    def __init__(
+        self, decoded, K0, F, t_origin, options: FigureOptions, plasma_end=None
+    ):
         import string
 
         import matplotlib
@@ -976,6 +1020,12 @@ class _Figure:
         self.times = t_origin + np.arange(F) * FRAME_S
         self.mid_frame = K0 + (F - K0) // 2
         self.t_origin = t_origin
+        self.plasma_end = plasma_end
+        if plasma_end is not None:
+            # Show the camera frame in the middle of the predicted LIVE plasma.
+            last_live = int((plasma_end - t_origin) / FRAME_S)
+            if K0 < last_live < F:
+                self.mid_frame = K0 + (last_live - K0) // 2
         self.khz_per_bin = (STFT_FS / STFT_N_FFT) / 1e3
         self.pt = options.font_pt
         self._set_paper_style()
@@ -1064,8 +1114,29 @@ class _Figure:
         """``(row index, modality)`` of every row of one kind."""
         return [(i, name) for i, (k, name) in enumerate(self.rows) if k == kind]
 
-    def label_static(self, name: str, label: str) -> str:
-        return f"{label}  [STATIC]" if self.static.get(name) else label
+    def is_absent(self, name: str) -> bool:
+        """Whether a diagnostic has nothing to show: no valid sample, or constant.
+
+        An unrecorded diagnostic is missing when measured and constant when decoded;
+        its prediction is then drawn from nothing and is not shown either.
+        """
+        entry = self.decoded[name]
+        return bool(not np.isfinite(entry["gt"]).any() or self.static.get(name))
+
+    def not_recorded(self, ax):
+        """Grey panel standing in for a diagnostic the shot did not record."""
+        ax.set_facecolor("0.94")
+        ax.text(
+            0.5,
+            0.5,
+            "not recorded",
+            transform=ax.transAxes,
+            ha="center",
+            va="center",
+            fontsize=self.pt - 2,
+            color="0.45",
+        )
+        ax.set_yticks([])
 
     def letter(self, ax):
         """Panel letter at the figure's left edge, level with the row top."""
@@ -1083,23 +1154,38 @@ class _Figure:
     def time_axis(self, ax, ticks: bool, xlabel: bool = False):
         ax.set_xlim(self.t_start, self.t_end)
         ax.axvline(self.t_rollout, color="0.45", ls="--", lw=0.9)
+        self.shade_after_plasma(ax)
         ax.tick_params(labelbottom=ticks)
         if xlabel:
             ax.set_xlabel("Time (s)")
 
+    def shade_after_plasma(self, ax):
+        """Grey out the frames after the plasma ended (the vessel is empty)."""
+        if self.plasma_end is None or self.plasma_end >= self.t_end:
+            return
+        ax.axvspan(
+            max(self.plasma_end, self.t_start),
+            self.t_end,
+            color="0.82",
+            alpha=0.75,
+            lw=0,
+            zorder=5,
+        )
+
     def metric_box(self, ax, x, y, prediction, truth, entry, va, alpha):
-        """Boxed r / nRMSE / skill annotation of a prediction panel."""
+        """Boxed r / nRMSE / skill annotation of a prediction panel, if enabled."""
         options = self.options
         skill = entry.get("nrmse_skill") if options.show_skill else None
-        text = (
-            (f"r {_corr(prediction, truth):.3f} · " if options.show_r else "")
-            + f"nRMSE {entry['nrmse']:.3f}"
-            + (
-                f" · skill {skill:+.2f}"
-                if skill is not None and np.isfinite(skill)
-                else ""
-            )
-        )
+        parts = []
+        if options.show_r:
+            parts.append(f"r {_corr(prediction, truth):.3f}")
+        if options.show_nrmse:
+            parts.append(f"nRMSE {entry['nrmse']:.3f}")
+        if skill is not None and np.isfinite(skill):
+            parts.append(f"skill {skill:+.2f}")
+        if not parts:
+            return
+        text = " · ".join(parts)
         ax.text(
             x,
             y,
@@ -1121,66 +1207,76 @@ def _draw_slowts_rows(figure: _Figure) -> None:
     for i, name in rows:
         entry = figure.decoded[name]
         ax = figure.fig.add_subplot(figure.grid[i])
-        truth = np.where(np.isfinite(entry["gt"]), entry["gt"], np.nan)
-        prediction = np.where(np.isfinite(entry["pred"]), entry["pred"], np.nan)
-        channel = _best_channel(entry["gt"], reduce_axes=(2,))
-        with np.errstate(invalid="ignore"):
-            truth_trace = np.nanmean(truth[:, channel, :], axis=-1)
-            prediction_trace = np.nanmean(prediction[:, channel, :], axis=-1)
+        absent = figure.is_absent(name)
         tag = ""
         if entry.get("space") == "physical" and name in _SLOWTS_UNITS:
             scale, ylabel, tag = _SLOWTS_UNITS[name]
-            truth_trace, prediction_trace = (
-                truth_trace * scale,
-                prediction_trace * scale,
-            )
         else:
-            ylabel = f"{name} ({figure.unit})"
-        ax.plot(
-            figure.times,
-            truth_trace,
-            color=_GT_COLOR,
-            lw=LW_PRIMARY,
-            solid_capstyle="round",
-            zorder=2,
-        )
-        if not options.gt_only:
+            scale, ylabel = 1.0, _SLOWTS_SHORT.get(name, name)
+        channel = 0
+        if absent:
+            figure.not_recorded(ax)
+        else:
+            truth = np.where(np.isfinite(entry["gt"]), entry["gt"], np.nan)
+            prediction = np.where(np.isfinite(entry["pred"]), entry["pred"], np.nan)
+            channel = _best_channel(entry["gt"], reduce_axes=(2,))
+            with np.errstate(invalid="ignore"):
+                truth_trace = np.nanmean(truth[:, channel, :], axis=-1) * scale
+                prediction_trace = (
+                    np.nanmean(prediction[:, channel, :], axis=-1) * scale
+                )
+            # Missing measured samples are skipped, so the trace stays one line.
+            valid = np.isfinite(truth_trace)
             ax.plot(
-                figure.times,
-                prediction_trace,
-                color=_PRED_COLOR,
-                lw=LW_SECONDARY,
-                ls=DASH_SECONDARY,
-                zorder=3,
+                figure.times[valid],
+                truth_trace[valid],
+                color=_GT_COLOR,
+                lw=LW_PRIMARY,
+                solid_capstyle="round",
+                zorder=2,
             )
-        if figure.legend_host is None:
-            figure.legend_host = ax
-        ax.set_ylabel(figure.label_static(name, ylabel))
+            if not options.gt_only:
+                ax.plot(
+                    figure.times,
+                    prediction_trace,
+                    color=_PRED_COLOR,
+                    lw=LW_SECONDARY,
+                    ls=DASH_SECONDARY,
+                    zorder=3,
+                )
+            if figure.legend_host is None:
+                figure.legend_host = ax
+            ax.grid(alpha=GRID_ALPHA, lw=GRID_LW)
+        ax.set_ylabel(ylabel)
         skill = entry.get("nrmse_skill") if options.show_skill else None
         parts = [
             part
             for part in (
                 tag if options.show_tag else "",
-                f"ch{channel:02d}" if options.show_channel else "",
+                f"ch{channel:02d}" if options.show_channel and not absent else "",
+                f"nRMSE {entry['nrmse']:.3f}"
+                if options.show_nrmse and not absent
+                else "",
+                f"skill {skill:+.2f}"
+                if skill is not None and np.isfinite(skill) and not absent
+                else "",
             )
             if part
         ]
-        parts.append(f"nRMSE {entry['nrmse']:.3f}")
-        if skill is not None and np.isfinite(skill):
-            parts.append(f"skill {skill:+.2f}")
-        ax.text(
-            0.995,
-            1.04,
-            " · ".join(parts),
-            transform=ax.transAxes,
-            ha="right",
-            va="bottom",
-            fontsize=pt - 3,
-            color="0.35",
-        )
+        if parts:
+            ax.text(
+                0.995,
+                1.04,
+                " · ".join(parts),
+                transform=ax.transAxes,
+                ha="right",
+                va="bottom",
+                fontsize=pt - 3,
+                color="0.35",
+            )
         figure.time_axis(ax, ticks=(i == last_row), xlabel=False)
         figure.letter(ax)
-        if i == 0:
+        if i == rows[0][0]:
             ax.text(
                 figure.t_rollout + 0.02,
                 1.04,
@@ -1191,7 +1287,17 @@ def _draw_slowts_rows(figure: _Figure) -> None:
                 va="bottom",
                 ha="left",
             )
-        ax.grid(alpha=GRID_ALPHA, lw=GRID_LW)
+            if figure.plasma_end is not None and figure.plasma_end < figure.t_end:
+                ax.text(
+                    figure.plasma_end + 0.02,
+                    1.04,
+                    "plasma ended",
+                    transform=ax.get_xaxis_transform(),
+                    fontsize=pt - 3,
+                    color="0.45",
+                    va="bottom",
+                    ha="left",
+                )
 
 
 def _draw_spectro_rows(figure: _Figure) -> None:
@@ -1206,13 +1312,10 @@ def _draw_spectro_rows(figure: _Figure) -> None:
     shared_time_axis = None
     for i, name in rows:
         entry = figure.decoded[name]
+        absent = figure.is_absent(name)
         panels = GridSpecFromSubplotSpec(
             1, 1 if options.gt_only else 2, subplot_spec=figure.grid[i], wspace=0.06
         )
-        channel = _best_channel(entry["gt"], reduce_axes=(2, 3))
-        truth_image = _stitch(entry["gt"], channel)
-        prediction_image = _stitch(entry["pred"], channel)
-        vmin, vmax = _robust_limits(truth_image, 99.5)
         extent = (
             figure.t_start,
             figure.t_end,
@@ -1227,21 +1330,33 @@ def _draw_spectro_rows(figure: _Figure) -> None:
         )
         if shared_time_axis is None:
             shared_time_axis = ax_truth
-        images = [(ax_truth, truth_image)]
-        if not options.gt_only:
-            images.append((ax_prediction, prediction_image))
-        for ax, image in images:
-            ax.imshow(
-                image,
-                aspect="auto",
-                origin="lower",
-                cmap=options.cmap_spectro,
-                vmin=vmin,
-                vmax=vmax,
-                extent=extent,
-                interpolation="none",
-            )
-            ax.axvline(figure.t_rollout, color="w", ls="--", lw=0.9)
+        axes = [ax_truth] if options.gt_only else [ax_truth, ax_prediction]
+        if absent:
+            for ax in axes:
+                figure.not_recorded(ax)
+                ax.set_xlim(figure.t_start, figure.t_end)
+                ax.set_ylim(extent[2], extent[3])
+        else:
+            channel = _best_channel(entry["gt"], reduce_axes=(2, 3))
+            truth_image = _stitch(entry["gt"], channel)
+            vmin, vmax = _robust_limits(truth_image, 99.5)
+            images = [truth_image]
+            if not options.gt_only:
+                images.append(_stitch(entry["pred"], channel))
+            for ax, image in zip(axes, images):
+                ax.imshow(
+                    image,
+                    aspect="auto",
+                    origin="lower",
+                    cmap=options.cmap_spectro,
+                    vmin=vmin,
+                    vmax=vmax,
+                    extent=extent,
+                    interpolation="none",
+                )
+                ax.axvline(figure.t_rollout, color="w", ls="--", lw=0.9)
+                figure.shade_after_plasma(ax)
+        for ax in axes:
             ax.set_xlim(figure.t_start, figure.t_end)
             ax.tick_params(labelbottom=(i == last_row))
             if i == last_row:
@@ -1250,10 +1365,10 @@ def _draw_spectro_rows(figure: _Figure) -> None:
             ax_prediction.tick_params(labelleft=False)
             ax_prediction.xaxis.set_major_locator(MaxNLocator(nbins=5, prune="lower"))
         ax_truth.xaxis.set_major_locator(MaxNLocator(nbins=5, prune="upper"))
-        ax_truth.set_ylabel(
-            figure.label_static(name, f"{_display_name(name)}\nFreq (kHz)")
-        )
-        if not options.gt_only:
+        ax_truth.set_ylabel(f"{_display_name(name)}\nFreq (kHz)")
+        if absent:
+            ax_truth.set_yticks([0, 10, 20] if extent[3] < 40 else [0, 100, 200])
+        if not options.gt_only and not absent:
             figure.metric_box(
                 ax_prediction,
                 0.98,
@@ -1280,6 +1395,7 @@ def _draw_video_rows(figure: _Figure) -> None:
     first_row = rows[0][0] if rows else None
     for i, name in rows:
         entry = figure.decoded[name]
+        absent = figure.is_absent(name)
         if options.gt_only:
             panels = GridSpecFromSubplotSpec(
                 1, 2, subplot_spec=figure.grid[i], wspace=0.30, width_ratios=[1.0, 0.05]
@@ -1293,25 +1409,32 @@ def _draw_video_rows(figure: _Figure) -> None:
                 width_ratios=[1.0, 1.0, 0.05],
             )
         truth, prediction = entry["gt"], entry["pred"]
-        mid_time = truth.shape[2] // 2
-        truth_frame = truth[mid, 0, mid_time]
-        prediction_frame = prediction[mid, 0, mid_time]
-        vmin, vmax = _robust_limits(truth_frame, 99.0)
         ax_truth = figure.fig.add_subplot(panels[0])
         ax_prediction = None if options.gt_only else figure.fig.add_subplot(panels[1])
         colorbar_ax = figure.fig.add_subplot(panels[1 if options.gt_only else 2])
-        image_style = dict(cmap=options.cmap_video, vmin=vmin, vmax=vmax, aspect="auto")
-        truth_image = ax_truth.imshow(truth_frame, **image_style)
-        prediction_image = (
-            truth_image
-            if options.gt_only
-            else ax_prediction.imshow(prediction_frame, **image_style)
-        )
-        for ax in (ax_truth,) if options.gt_only else (ax_truth, ax_prediction):
+        axes = [ax_truth] if options.gt_only else [ax_truth, ax_prediction]
+        if absent:
+            for ax in axes:
+                figure.not_recorded(ax)
+            colorbar_ax.set_axis_off()
+        else:
+            mid_time = truth.shape[2] // 2
+            vmin, vmax = _robust_limits(truth[mid, 0, mid_time], 99.0)
+            image_style = dict(
+                cmap=options.cmap_video, vmin=vmin, vmax=vmax, aspect="auto"
+            )
+            image = ax_truth.imshow(truth[mid, 0, mid_time], **image_style)
+            if not options.gt_only:
+                image = ax_prediction.imshow(
+                    prediction[mid, 0, mid_time], **image_style
+                )
+            figure.fig.colorbar(image, cax=colorbar_ax)
+            colorbar_ax.tick_params(labelsize=5.5, length=2, pad=1)
+        for ax in axes:
             ax.set_xticks([])
             ax.set_yticks([])
-        ax_truth.set_ylabel(figure.label_static(name, _display_name(name)))
-        if not options.gt_only:
+        ax_truth.set_ylabel(_display_name(name))
+        if not options.gt_only and not absent:
             figure.metric_box(
                 ax_prediction,
                 0.99,
@@ -1328,8 +1451,6 @@ def _draw_video_rows(figure: _Figure) -> None:
             )
             if not options.gt_only:
                 ax_prediction.set_title("Prediction")
-        figure.fig.colorbar(prediction_image, cax=colorbar_ax)
-        colorbar_ax.tick_params(labelsize=5.5, length=2, pad=1)
         figure.letter(ax_truth)
 
 
@@ -1350,6 +1471,8 @@ def _draw_video_nrmse_row(figure: _Figure) -> None:
     for i, _name in figure.rows_of("vrmse"):
         ax = figure.fig.add_subplot(figure.grid[i])
         for name in figure.video:
+            if figure.is_absent(name):
+                continue
             entry = figure.decoded[name]
             ax.plot(
                 figure.times[figure.K0 :],
@@ -1406,8 +1529,12 @@ def render_figure(
     F: int,
     out_dir: Path,
     t_origin: float = WARMUP_S,
+    plasma_end: Optional[float] = None,
 ) -> Tuple[Path, Path]:
     """Render the ground-truth versus prediction figure of one shot.
+
+    Frames after the plasma end are greyed out; ``plasma_end`` defaults to the
+    shot's entry in ``IGNITE_PLASMA_END_JSON`` (see :func:`_plasma_end`).
 
     Parameters
     ----------
@@ -1427,13 +1554,17 @@ def render_figure(
         Output directory.
     t_origin : float, default=WARMUP_S
         Shot time of frame 0.
+    plasma_end : float, default=None
+        Plasma end time [s]; looked up by shot if None.
 
     Returns
     -------
     png, pdf : Path
         Paths of the written figure files.
     """
-    figure = _Figure(decoded, K0, F, t_origin, FIGURE_OPTIONS)
+    if plasma_end is None:
+        plasma_end = _plasma_end(shot)
+    figure = _Figure(decoded, K0, F, t_origin, FIGURE_OPTIONS, plasma_end=plasma_end)
     for draw in (
         _draw_slowts_rows,
         _draw_spectro_rows,
@@ -1977,6 +2108,72 @@ def run(
     return metrics
 
 
+def rerender(eval_dir: str, cache_dir: str, codec_tmpl: str = None, log=print) -> list:
+    """Redraw the figures of a finished evaluation from its archived codes.
+
+    No rollout is run: every ``codes_<shot>_step<N>.npz`` in ``eval_dir`` is
+    decoded and rendered again, in place, with the current figure code. Shots are
+    sharded over ``RANK``/``WORLD_SIZE``.
+
+    Parameters
+    ----------
+    eval_dir : str
+        Folder of a finished :func:`run`.
+    cache_dir : str
+        Frame-code cache the evaluation used (for the manifest and frame origin).
+    codec_tmpl : str, default=None
+        Codec checkpoint template; defaults to the cache manifest's.
+    log : callable, default=print
+        Logger.
+
+    Returns
+    -------
+    figures : list of str
+        PNG paths written by this rank.
+    """
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    manifest, manifest_error = _read_manifest(cache_dir)
+    cache_t0 = float(manifest.get("t0_start", 1.0)) if manifest else 1.0
+    codec_tmpl = _codec_template(codec_tmpl, manifest, manifest_error, log)
+    codecs = td.load_frozen_codecs(
+        list(EVAL_MODALITIES), repo=Path.cwd(), tmpl=codec_tmpl
+    )
+    for codec, _codec_cfg, _family in codecs.values():
+        codec.to(device)
+    use_raw_gt = os.environ.get("IGNITE_EVAL_RAW_GT", "1") != "0"
+    data_dir = os.environ.get("IGNITE_DATA_DIR") or spike.DEFAULT_DATA_DIR
+    archives = sorted(Path(eval_dir).glob("codes_*_step*.npz"))
+    rank = int(os.environ.get("RANK", "0"))
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    figures = []
+    for archive in archives[rank::world_size]:
+        codes = np.load(archive, allow_pickle=True)
+        shot, step = str(codes["shot"]), int(codes["step"])
+        K0, F = int(codes["K0"]), int(codes["F"])
+        gt = {
+            key[4:]: torch.from_numpy(codes[key]).long()
+            for key in codes.files
+            if key.startswith("gt__")
+        }
+        pred = {
+            key[6:]: torch.from_numpy(codes[key]).long()
+            for key in codes.files
+            if key.startswith("pred__")
+        }
+        measured = (
+            load_raw_gt(shot, codecs, F, data_dir, t0_start=cache_t0, log=log)
+            if use_raw_gt
+            else None
+        )
+        decoded = decode_all(codecs, gt, pred, K0, F, device, raw_gt=measured)
+        png, _pdf = render_figure(
+            decoded, shot, step, float(codes["temperature"]), K0, F, Path(eval_dir)
+        )
+        figures.append(str(png))
+        log(f"[rerender] {png}", flush=True)
+    return figures
+
+
 def curate_core(
     cache_dir,
     out_path=None,
@@ -2121,6 +2318,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="actuator counterfactual over the predicted frames: real | zero | "
         "freeze | shuffle | donor:<shot> | group_zero:<group>",
     )
+    add(
+        "--rerender",
+        action="store_true",
+        help="redraw the figures of the finished evaluation in --out_dir from its "
+        "archived codes, without a new rollout",
+    )
     curate = parser.add_argument_group("curation (runs instead of an evaluation)")
     curate.add_argument(
         "--curate",
@@ -2171,8 +2374,11 @@ def main(argv=None):
             shots=shots,
         )
         return 0 if curated else 1
+    if args.rerender:
+        rerender(args.out_dir, args.cache_dir, codec_tmpl=args.codec_tmpl)
+        return 0
     if not args.ckpt:
-        raise SystemExit("--ckpt is required (omit only with --curate)")
+        raise SystemExit("--ckpt is required (omit only with --curate or --rerender)")
     return run(
         args.ckpt,
         args.shot,
