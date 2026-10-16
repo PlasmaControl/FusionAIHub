@@ -25,22 +25,40 @@ than masking does, so ``label`` never uses it.
 Stages::
 
     label  --shots FILE --name STEM [--unlabelled [--include SHOT... --include-reason T]]
-           [--missing skip|mask]
+           [--missing skip|mask] [--variant run_day|base3|...]
+           [--workers N] [--batch N] [--check N]
            [--input-check FILE] [--out-dir DIR]
            -> data/events/confinement/extend_confine_ours/<STEM>.csv + <STEM>.meta.json
               (shot, category, t_start, t_end, confidence, attrs: the review page's
               table reader takes no other column, so the roster's predicted,
-              source, tier and extrapolated go in the `attrs` JSON)
-    check  --sample N --out FILE --scratch DIR
+              source, tier and extrapolated go in the `attrs` JSON); another variant
+              than run_day writes to extend_confine_<variant>/ by default
+    check  --sample N --out FILE --scratch DIR [--variant ...]
            -> agreement of the labels made from disk inputs with those from the
               fetched ones, on N roster shots outside the curated set
+
+``--shots-file`` is another name for ``--shots``. ``--variant`` names the networks
+(``confinement_ours.VARIANTS``): ``run_day``, the 2026-10-03 networks of the roster and
+gold labels, is the default; ``base3`` is the 2026-10-14 retrain, three seeds per fold,
+which each fold averages (``confinement_ours.predict_mean``). Only the variants that
+read this script's seven-channel input as it stands are offered.
+
+By default a shot is read, then run through the networks, one at a time. For a long
+list on a GPU, ``--workers N`` reads and assembles the shots in N processes, ahead of
+the networks, and ``--batch N`` runs the networks over N shots at a time on the device,
+in full float32 (no TF32): ``to_input``'s clipping and masks are taken there and every
+network reads the whole batch, each shot as if alone (``forward_alone``). ``--check N``
+recomputes the first N shots one at a time, on the device and on the CPU, and records
+in the meta how far the batched labels are from them.
 """
 
 from __future__ import annotations
 
 import argparse
+import functools
 import hashlib
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -70,6 +88,24 @@ SPARSE_SOURCES = ("dens", "betan", "wmhd")
 #: interquartile range 330-368 kJ, 8 % to 12 % spread within an era).
 WMHD_PER_BETAN_MA = 357e3
 LABELLED_KINDS = ("saved", "format", "extend", "source")
+#: The variants whose networks read ``zerod.to_input`` of the seven-channel grid as it
+#: stands (D-alpha on, no counter-beam channel), the input this script builds, with
+#: folds that hold whole run days out (as the meta says).
+INPUT_VARIANTS = tuple(
+    name
+    for name, v in ours.VARIANTS.items()
+    if v.d_alpha and not v.counter_beams and v.grouping == "run_day"
+)
+
+
+def default_out_dir(variant: str) -> Path:
+    """Where ``label`` writes unless told: ``extend_confine_ours`` for the 2026-10-03
+    networks, ``extend_confine_<variant>`` beside it for any other."""
+    return (
+        ours.EXTEND
+        if variant == "run_day"
+        else ours.EXTEND.with_name(f"extend_confine_{variant}")
+    )
 
 
 def _read_group(path: Path, group: str, row: int = 0):
@@ -247,13 +283,246 @@ def segment_grid(grid: np.ndarray, probs: np.ndarray):
 
 
 def predict(x: np.ndarray, models, device, fold: int | None = None) -> np.ndarray:
-    """Class probabilities of one shot: the fold network that never saw it (a curated
-    shot), else the mean of all five."""
+    """Class probabilities of one shot: the fold that never saw it (a curated shot),
+    else the mean of all five. ``models`` holds each fold's networks
+    (``confinement_ours.fold_networks``); a fold's networks, one per seed, are
+    averaged first (``predict_mean``), so a one-seed variant gives its network's own."""
+    if fold is not None:
+        return ours.predict_mean(models[fold], x, device)
+    return np.mean([ours.predict_mean(nets, x, device) for nets in models], axis=0)
+
+
+def to_input_torch(grid):
+    """``zerod.to_input`` of a batch of grids ``(B, 7, L)``, on their device: NaN to
+    0, the same clipping, a mask per sparse channel; ``(B, 11, L)``."""
+    import torch
+
+    values = torch.nan_to_num(grid, nan=0.0, posinf=0.0, neginf=0.0)
+    values[:, 0:2] = values[:, 0:2].clamp(-2.5, 2.5)
+    values[:, 3:] = values[:, 3:].clamp(-1.0, 8.0)
+    rows = [zerod.CHANNELS.index(c) for c in zerod.SPARSE]
+    masks = torch.isfinite(grid[:, rows]).to(values.dtype)
+    return torch.cat([values, masks], dim=1)
+
+
+def _within(lengths, size: int, scale: int):
+    """``(B, 1, size)``: 1 where a bin ``scale`` times coarser than the input lies
+    within its shot's padded length, else 0."""
+    import torch
+
+    at = torch.arange(size, device=lengths.device)
+    return (at[None, :] < (lengths[:, None] // scale))[:, None, :].float()
+
+
+def _block_alone(block, x, keep):
+    """A ``unet._block`` with every activation past a shot's end zeroed after each
+    ReLU, before the next convolution reads it."""
+    import torch
+
+    for layer in block:
+        x = layer(x)
+        if isinstance(layer, torch.nn.ReLU):
+            x = x * keep
+    return x
+
+
+def forward_alone(model, x, lengths):
+    """The logits ``model(x)`` gives each shot of a batch on its own (as
+    ``unet.predict_shot`` runs it), within the shot's length.
+
+    ``x`` ``(B, C, L)`` is zero past each shot's ``lengths`` (multiples of
+    ``unet.STRIDE``; ``L`` the largest). Alone, a shot's convolutions read zero
+    padding past its end; here the activations past its end are zeroed before each
+    convolution, so its bins read the same. Max pooling (kernel = stride, every
+    length a multiple of each) and nearest upsampling (exact factors) never mix a
+    shot's bins with those past its end."""
+    import torch
+    from torch.nn import functional as F
+
+    scale, skips = 1, []
+    for i, block in enumerate(model.enc):
+        x = _block_alone(block, x, _within(lengths, x.shape[-1], scale))
+        if i < len(model.pools):
+            skips.append((x, scale))
+            x = F.max_pool1d(x, model.pools[i])
+            scale *= model.pools[i]
+    for j, (up, dec) in enumerate(zip(model.up, model.dec, strict=True)):
+        skip, scale = skips[-1 - j]
+        keep = _within(lengths, skip.shape[-1], scale)
+        x = F.interpolate(x, size=skip.shape[-1], mode="nearest")
+        x = _block_alone(dec, torch.cat([skip, up(x) * keep], dim=1), keep)
+    return model.head(model.drop(x))
+
+
+def predict_batch(grids, folds, models, device) -> list[np.ndarray]:
+    """``predict`` of several shots at once, one ``(4, n)`` array per shot: the grids,
+    padded to one length, go to ``device``, where ``to_input_torch`` makes the input
+    and every network reads the whole batch (``forward_alone``); a fold's seeds are
+    averaged, then, for a shot no fold held out (``folds`` None), the five folds."""
+    import torch
+
     from labeler.confinement import unet
 
-    if fold is not None:
-        return unet.predict_shot(models[fold], x, device)
-    return np.mean([unet.predict_shot(m, x, device) for m in models], axis=0)
+    n = [g.shape[1] for g in grids]
+    lengths = [k + (-k) % unet.STRIDE for k in n]
+    batch = torch.full((len(grids), len(zerod.CHANNELS), max(lengths)), float("nan"))
+    for i, g in enumerate(grids):
+        batch[i, :, : n[i]] = torch.from_numpy(g)
+    x = to_input_torch(batch.to(device))
+    at = torch.tensor(lengths, device=device)
+    with torch.no_grad():
+        per_fold = torch.stack(
+            [
+                torch.stack(
+                    [torch.softmax(forward_alone(m, x, at), 1) for m in nets]
+                ).mean(0)
+                for nets in models
+            ]
+        )
+        chosen = torch.stack(
+            [
+                per_fold[fold, i] if fold is not None else per_fold[:, i].mean(0)
+                for i, fold in enumerate(folds)
+            ]
+        )
+    probs = chosen.cpu().numpy()
+    return [probs[i, :, :k] for i, k in enumerate(n)]
+
+
+def _stop_pool(pool) -> None:
+    """Shut a process pool down without waiting and kill its workers: after a worker
+    dies, ``ProcessPoolExecutor`` can leave its other workers waiting for ever."""
+    # shutdown() sets pool._processes to None, so take the workers first
+    processes = list((getattr(pool, "_processes", None) or {}).values())
+    pool.shutdown(wait=False, cancel_futures=True)
+    for process in processes:
+        process.kill()
+
+
+def read_shots(
+    shots: list[int],
+    workers: int,
+    fetched_dir: Path | None,
+    *,
+    read=None,
+    ahead: int | None = None,
+):
+    """``(shot, assemble_disk(shot))`` in the order of ``shots``: read in ``workers``
+    processes, which run at most ``ahead`` shots (default 4 a worker) ahead of the
+    caller, or here when ``workers`` is 0. If a worker dies (the kernel's out-of-memory
+    kill, say) the pool is shut down at once and the run stops with a message and a
+    non-zero exit, rather than the job sitting on its GPU until its time limit
+    (job 2965499)."""
+    read = read or functools.partial(
+        assemble_disk, zerod_dir=ZEROD_DISK, fetched_dir=fetched_dir
+    )
+    if workers <= 0:
+        for shot in shots:
+            yield shot, read(shot)
+        return
+    import collections
+    import itertools
+    import multiprocessing
+    from concurrent.futures import ProcessPoolExecutor
+    from concurrent.futures.process import BrokenProcessPool
+
+    # spawned, not forked: a worker never shares the parent's CUDA state
+    context = multiprocessing.get_context("spawn")
+    pool = ProcessPoolExecutor(workers, mp_context=context)
+    todo = iter(shots)
+    flying = collections.deque(
+        (shot, pool.submit(read, shot))
+        for shot in itertools.islice(todo, ahead or 4 * workers)
+    )
+    done = False
+    try:
+        while flying:
+            shot, future = flying.popleft()
+            result = future.result()
+            for later in itertools.islice(todo, 1):
+                flying.append((later, pool.submit(read, later)))
+            yield shot, result
+        done = True
+    except BrokenProcessPool as error:
+        _stop_pool(pool)
+        raise SystemExit(
+            f"stopping at once: a reading worker died (probably killed for memory; "
+            f"{error}); shots not yet read: {len(flying) + 1} in flight (the one "
+            f"that failed included) and "
+            f"{sum(1 for _ in todo)} not started. Nothing was written."
+        ) from error
+    finally:
+        if done:
+            pool.shutdown()
+        else:
+            _stop_pool(pool)
+
+
+def batch_check(kept: dict, models, device, variant: str) -> dict:
+    """How far the batched labels of ``kept`` (``{shot: (grid, fold, probs)}``) are
+    from those of one shot at a time: ``to_input_torch`` against ``zerod.to_input``,
+    and the probabilities and table rows against ``predict`` on ``device`` and on the
+    CPU (the networks loaded there)."""
+    import torch
+
+    cpu = torch.device("cpu")
+    on_cpu = fold_networks(cpu, variant)
+    worst = {"input": 0.0, "probs_alone_same_device": 0.0, "probs_cpu": 0.0}
+    bins = differ = same = 0
+    for shot, (grid, fold, probs) in kept.items():
+        x = zerod.to_input(grid)
+        got = to_input_torch(torch.from_numpy(grid)[None].to(device))[0].cpu().numpy()
+        worst["input"] = max(worst["input"], float(np.abs(got - x).max()))
+        alone = predict(x, models, device, fold)
+        worst["probs_alone_same_device"] = max(
+            worst["probs_alone_same_device"], float(np.abs(alone - probs).max())
+        )
+        ref = predict(x, on_cpu, cpu, fold)
+        worst["probs_cpu"] = max(worst["probs_cpu"], float(np.abs(ref - probs).max()))
+        bins += ref.shape[1]
+        differ += int((ref.argmax(0) != probs.argmax(0)).sum())
+        rows = [
+            ours.roster_rows(
+                shot, segment_grid(grid, p)[0], curated=fold is not None, last_curated=0
+            )
+            for p in (probs, ref)
+        ]
+        same += rows[0] == rows[1]
+    return {
+        "shots": sorted(kept),
+        "device": str(device),
+        "max_abs_diff": {k: float(f"{v:.3g}") for k, v in worst.items()},
+        "argmax_bins_differing_from_cpu": differ,
+        "bins": bins,
+        "shots_with_the_same_rows_as_cpu": same,
+        "what": "the batched run against the one-shot-at-a-time chain (zerod.to_input "
+        "in numpy, then predict) on the same device and on the CPU; rows are the "
+        "table rows (category, times, confidence to 3 decimals, attrs)",
+    }
+
+
+def fold_networks(device, variant: str) -> list[list]:
+    """Every fold's networks of ``variant``; exits unless all five folds have all of
+    theirs."""
+    models = ours.fold_networks(device, variant)
+    if len(models) < ours.FOLDS:
+        raise SystemExit(
+            f"{variant}: {len(models)} of {ours.FOLDS} folds have all their networks"
+        )
+    return models
+
+
+def checkpoint_record(variant: str) -> dict:
+    """Path and sha256 of each network of ``variant``, by file stem (``fold0`` for the
+    first seed, ``fold0_s1`` for the next, ...)."""
+    spec = ours.VARIANTS[variant]
+    out = {}
+    for fold in range(ours.FOLDS):
+        for seed in range(spec.seeds):
+            stem = ours.seed_stem(fold, seed)
+            path = spec.directory / f"{stem}_model.pt"
+            out[stem] = {"path": str(path), "sha256": sha256(path)}
+    return out
 
 
 def sha256(path: Path) -> str:
@@ -266,6 +535,11 @@ def sha256(path: Path) -> str:
 
 def read_shot_list(path: Path) -> list[int]:
     return sorted({int(s) for s in pd.read_csv(path).shot})
+
+
+def _stamp() -> str:
+    """Local time as ``nvidia-smi --query-gpu=timestamp`` prints it."""
+    return datetime.now(UTC).astimezone().strftime("%Y/%m/%d %H:%M:%S.%f")[:-3]
 
 
 def already_labelled(exclude: Path) -> set[int]:
@@ -368,17 +642,33 @@ def input_summary(inputs: dict[int, dict]) -> dict:
 
 
 def label(args: argparse.Namespace) -> None:
+    import time
+
     import torch
 
+    started = time.monotonic()
     device = torch.device(
         args.device or ("cuda:0" if torch.cuda.is_available() else "cpu")
     )
-    models = ours.mean_models(device, "run_day")
-    if len(models) < ours.FOLDS:
-        raise SystemExit(f"{len(models)} of {ours.FOLDS} fold models found")
+    if args.batch:
+        # full float32: under TF32, cuDNN's kernels (chosen by tensor shape) moved a
+        # shot's probabilities by up to 4e-3 with the shots sharing its batch (pilot
+        # 2965489); in float32 the batched labels are the one-at-a-time CPU ones
+        torch.backends.cudnn.allow_tf32 = False
+        torch.backends.cuda.matmul.allow_tf32 = False
+    variant = ours.VARIANTS[args.variant]
+    models = fold_networks(device, args.variant)
+    print(
+        f"{args.variant}: {sum(len(n) for n in models)} networks in {len(models)} "
+        f"folds on {device} (cuda available: {torch.cuda.is_available()}); "
+        f"{len(os.sched_getaffinity(0))} CPUs, {args.workers} reading workers, "
+        f"batches of {args.batch or 'one'} shot(s)",
+        flush=True,
+    )
     ids, _, ys, _ = ours.load_curated()
-    test_of, _, _ = ours.fold_roles(ids, ys, "run_day")
+    test_of, _, _ = ours.fold_roles(ids, ys, args.variant)
     last_curated = int(ours.bw.curated_intervals().shot.max())
+    args.out_dir = args.out_dir or default_out_dir(args.variant)
     out_csv = args.out_dir / f"{args.name}.csv"
     on_list = read_shot_list(args.shots)
     listed = len(on_list)
@@ -388,12 +678,58 @@ def label(args: argparse.Namespace) -> None:
     shots = select_shots(
         on_list, already_labelled(out_csv) if args.unlabelled else None, args.include
     )
+    set_up = time.monotonic() - started
+    print(f"{len(shots)} shots to run; set-up {set_up:.0f} s", flush=True)
+    looped = time.monotonic()
+    print(f"shot loop from {_stamp()}", flush=True)
     rows, missing, inputs = [], {}, {}
     stats = {"curated_held_out": 0, "ensemble": 0}
-    for shot in shots:
-        result = assemble_disk(
-            shot, ZEROD_DISK, fetched_dir=ours.ZEROD if args.use_fetched else None
-        )
+    spent = {"waiting_for_reads": 0.0, "networks": 0.0, "segments": 0.0}
+    queue, kept = [], {}
+
+    def run(queue: list) -> None:
+        """The networks over the queued ``(shot, grid, fold)``, then their rows."""
+        tick = time.monotonic()
+        grids = [grid for _, grid, _ in queue]
+        folds = [fold for _, _, fold in queue]
+        if args.batch:
+            probs = predict_batch(grids, folds, models, device)
+        else:
+            probs = [
+                predict(zerod.to_input(g), models, device, f)
+                for g, f in zip(grids, folds, strict=True)
+            ]
+        took = time.monotonic() - tick
+        spent["networks"] += took
+        if args.batch:
+            print(
+                f"  {len(queue)} shots, up to {max(g.shape[1] for g in grids)} bins: "
+                f"networks {took:.2f} s",
+                flush=True,
+            )
+        tick = time.monotonic()
+        for (shot, grid, fold), p in zip(queue, probs, strict=True):
+            stats["curated_held_out" if fold is not None else "ensemble"] += 1
+            found, why = segment_grid(grid, p)
+            if why is not None:
+                missing[shot] = why
+            rows.extend(
+                ours.roster_rows(
+                    shot, found, curated=fold is not None, last_curated=last_curated
+                )
+            )
+            if len(kept) < args.check:
+                kept[shot] = (grid, fold, p)
+        spent["segments"] += time.monotonic() - tick
+
+    reads = read_shots(shots, args.workers, ours.ZEROD if args.use_fetched else None)
+    while True:
+        tick = time.monotonic()
+        got = next(reads, None)
+        spent["waiting_for_reads"] += time.monotonic() - tick
+        if got is None:
+            break
+        shot, result = got
         if result is None:
             missing[shot] = "no D-alpha record"
             continue
@@ -402,16 +738,25 @@ def label(args: argparse.Namespace) -> None:
         if why is not None and args.missing == "skip":
             missing[shot] = why
             continue
-        grid = result["grid"]
-        fold = test_of.get(shot)
-        probs = predict(zerod.to_input(grid), models, device, fold)
-        stats["curated_held_out" if fold is not None else "ensemble"] += 1
-        found, why = segment_grid(grid, probs)
-        if why is not None:
-            missing[shot] = why
-        rows += ours.roster_rows(
-            shot, found, curated=fold is not None, last_curated=last_curated
-        )
+        queue.append((shot, result["grid"], test_of.get(shot)))
+        if len(queue) >= max(args.batch, 1):
+            run(queue)
+            queue = []
+    if queue:
+        run(queue)
+    shot_loop = time.monotonic() - looped
+    print(
+        f"shot loop to {_stamp()}: {shot_loop:.1f} s ("
+        + ", ".join(f"{k} {v:.1f} s" for k, v in spent.items())
+        + ")",
+        flush=True,
+    )
+    check = None
+    if args.check:
+        tick = time.monotonic()
+        check = batch_check(kept, models, device, args.variant)
+        spent["check"] = time.monotonic() - tick
+        print(f"check ({spent['check']:.1f} s): {json.dumps(check)}", flush=True)
     frame = pd.DataFrame(rows, columns=ours.ROSTER_COLUMNS)
     args.out_dir.mkdir(parents=True, exist_ok=True)
     table = to_extend_table(frame)
@@ -431,13 +776,13 @@ def label(args: argparse.Namespace) -> None:
         }
     summary_inputs = input_summary(inputs)
     surrogate = bool(summary_inputs["shots_not_fetched"])
-    checkpoints = {
-        f"fold{k}": {
-            "path": str(ours.ours_dir("run_day") / f"fold{k}_model.pt"),
-            "sha256": sha256(ours.ours_dir("run_day") / f"fold{k}_model.pt"),
-        }
-        for k in range(ours.FOLDS)
-    }
+    # a one-seed variant (run_day) keeps the 2026-10-03 wording
+    seeds = (
+        f" (a fold model is the mean of its {variant.seeds} networks, one per seed)"
+        if variant.seeds > 1
+        else ""
+    )
+    record = ours.OUT / f"protocol_{args.variant}.json"
     meta = {
         "category": "confinement",
         "categories": {
@@ -456,9 +801,17 @@ def label(args: argparse.Namespace) -> None:
         "producer": "confine-ours",
         "status": "experimental",
         "model": "1D U-Net (U-Time style) over D-alpha, line density, beta_N, W_MHD "
-        "and injected power; 5 folds, each holding whole run days out; "
+        f"and injected power; 5 folds, each holding whole run days out{seeds}; "
         "docs/labeler/confinement_ours.md",
-        "checkpoints": checkpoints,
+        "variant": {
+            "name": args.variant,
+            "directory": str(variant.directory),
+            "seeds_per_fold": variant.seeds,
+            "protocol_record": str(record.relative_to(ours.REPO))
+            if record.exists()
+            else None,
+        },
+        "checkpoints": checkpoint_record(args.variant),
         "shot_list": {
             "file": str(args.shots),
             "shots_listed": listed,
@@ -522,7 +875,7 @@ def label(args: argparse.Namespace) -> None:
             "category": "1 high, 2 low, 3 qh, 4 wpqh, 5 uncertain (under the floor)",
             "predicted": "the segment's class, before the confidence floor",
             "source": "held_out: a curated shot, read by the fold model that never "
-            "saw it; ensemble: any other shot, the mean of the five fold models",
+            f"saw it; ensemble: any other shot, the mean of the five fold models{seeds}",
             "tier": "unreviewed: a QH or WPQH segment on a shot outside the curated "
             "set (the curated set may not contain ELM-free and other quiescent "
             "H-modes the network could read as QH (unverified)); model: the rest",
@@ -536,8 +889,20 @@ def label(args: argparse.Namespace) -> None:
         },
         "prediction_source": {
             "curated shots": "the fold model that never saw the shot",
-            "other shots": "mean of the five fold models",
+            "other shots": f"mean of the five fold models{seeds}",
             **stats,
+        },
+        "run": {
+            "device": str(device),
+            "tf32": bool(torch.backends.cudnn.allow_tf32),
+            "reading_workers": args.workers,
+            "batch_shots": args.batch,
+            "seconds": {
+                "set_up": round(set_up, 1),
+                "shot_loop": round(shot_loop, 1),
+                **{k: round(v, 1) for k, v in spent.items()},
+            },
+            "batched_check": check,
         },
         "summary": summarise(frame),
         "per_shot": per_shot,
@@ -575,7 +940,8 @@ def label(args: argparse.Namespace) -> None:
     print(
         f"{s['segments']} segments on {frame.shot.nunique()} of {len(shots)} shots "
         f"({listed} listed); {len(missing)} missing; "
-        f"{s['segments_under_floor']} under the floor; {s['label_seconds']} s"
+        f"{s['segments_under_floor']} under the floor; {s['label_seconds']} s; "
+        f"shots took {shot_loop:.0f} s"
     )
     for shot, why in sorted(missing.items()):
         print(f"  missing {shot}: {why}")
@@ -612,9 +978,9 @@ def check(args: argparse.Namespace) -> None:
     device = torch.device(
         args.device or ("cuda:0" if torch.cuda.is_available() else "cpu")
     )
-    models = ours.mean_models(device, "run_day")
+    models = fold_networks(device, args.variant)
     ids, _, ys, _ = ours.load_curated()
-    test_of, _, _ = ours.fold_roles(ids, ys, "run_day")
+    test_of, _, _ = ours.fold_roles(ids, ys, args.variant)
     roster = sorted(int(s) for s in pd.read_csv(ours.ROSTER).shot)
     rng = np.random.default_rng(ours.SEED)
     pool = [
@@ -707,6 +1073,7 @@ def check(args: argparse.Namespace) -> None:
     summary = {
         "what": "labels of N roster shots outside the curated set (five-network mean) "
         "from the fetched traces, against the same from disk inputs",
+        "variant": args.variant,
         "shots": len(kept),
         "variants": VARIANTS,
         "wmhd_estimate": f"{WMHD_PER_BETAN_MA / 1e3:.0f} kJ x beta_N x I_p[MA]",
@@ -741,8 +1108,26 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="stage", required=True)
     lb = sub.add_parser("label")
-    lb.add_argument("--shots", type=Path, required=True, help="CSV with a shot column")
-    lb.add_argument("--name", required=True, help="output stem in extend_confine_ours")
+    lb.add_argument(
+        "--shots",
+        "--shots-file",
+        dest="shots",
+        type=Path,
+        required=True,
+        help="CSV with a shot column (a named shot list, such as "
+        "data/events/silver/silver_shots.csv)",
+    )
+    lb.add_argument(
+        "--name",
+        required=True,
+        help="output stem: <out-dir>/<name>.csv and <name>.meta.json",
+    )
+    lb.add_argument(
+        "--variant",
+        choices=INPUT_VARIANTS,
+        default="run_day",
+        help="the networks (confinement_ours.VARIANTS); a fold's seeds are averaged",
+    )
     lb.add_argument(
         "--unlabelled",
         action="store_true",
@@ -774,12 +1159,35 @@ def main(argv: list[str] | None = None) -> int:
     lb.add_argument(
         "--out-dir",
         type=Path,
-        default=ours.EXTEND,
-        help="where the table and its meta go (default: extend_confine_ours)",
+        default=None,
+        help="where the table and its meta go (default: extend_confine_ours for "
+        "run_day, extend_confine_<variant> for another variant)",
     )
     lb.add_argument("--input-check", type=Path, help="JSON written by `check`")
     lb.add_argument("--device", help="default: cuda:0 if there is one, else cpu")
+    lb.add_argument(
+        "--workers",
+        type=int,
+        default=0,
+        help="processes that read and assemble the shots ahead of the networks "
+        "(default 0: one shot at a time, here)",
+    )
+    lb.add_argument(
+        "--batch",
+        type=int,
+        default=0,
+        help="shots the networks read at once on the device, each as if alone "
+        "(default 0: one at a time)",
+    )
+    lb.add_argument(
+        "--check",
+        type=int,
+        default=0,
+        help="recompute the first N shots one at a time, on the device and on the "
+        "CPU, and record the difference in the meta",
+    )
     ck = sub.add_parser("check")
+    ck.add_argument("--variant", choices=INPUT_VARIANTS, default="run_day")
     ck.add_argument("--sample", type=int, default=100)
     ck.add_argument("--out", type=Path, required=True)
     ck.add_argument(

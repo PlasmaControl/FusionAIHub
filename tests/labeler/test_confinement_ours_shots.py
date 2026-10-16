@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 from pathlib import Path
 
 import h5py
 import numpy as np
 import pandas as pd
+import pytest
 
 from labeler.confinement import zerod
 
@@ -276,3 +278,216 @@ def test_select_shots_drops_the_labelled_ones_but_keeps_what_is_included():
     assert shots.select_shots(listed, None) == [1, 2, 3, 4]
     assert shots.select_shots(listed, {2, 3}) == [1, 4]
     assert shots.select_shots(listed, {2, 3}, [3, 9]) == [1, 3, 4]  # 9 is not listed
+
+
+def test_predict_averages_a_folds_seeds_then_the_folds(monkeypatch):
+    # a "network" here is the probabilities it gives; predict_mean averages them
+    monkeypatch.setattr(
+        shots.ours, "predict_mean", lambda nets, x, device: np.mean(nets, axis=0)
+    )
+    x = np.zeros((zerod.N_INPUT, 3), dtype=np.float32)
+    three = [[np.full((4, 3), 10.0 * f + s) for s in range(3)] for f in range(5)]
+    assert np.allclose(shots.predict(x, three, "cpu", fold=3), 31.0)  # its fold only
+    assert np.allclose(shots.predict(x, three, "cpu"), 21.0)  # folds 1, 11, ..., 41
+    one = [[np.full((4, 3), float(f))] for f in range(5)]  # run_day: a seed a fold
+    assert np.allclose(shots.predict(x, one, "cpu", fold=4), 4.0)
+    assert np.allclose(shots.predict(x, one, "cpu"), 2.0)
+
+
+def test_checkpoint_record_names_every_seed_of_every_fold(tmp_path, monkeypatch):
+    three = shots.ours.Variant(tmp_path, seeds=3)
+    monkeypatch.setitem(shots.ours.VARIANTS, "three", three)
+    for fold in range(shots.ours.FOLDS):
+        for seed in range(3):
+            stem = shots.ours.seed_stem(fold, seed)
+            (tmp_path / f"{stem}_model.pt").write_bytes(b"%d%d" % (fold, seed))
+    got = shots.checkpoint_record("three")
+    assert len(got) == 15 and list(got)[:3] == ["fold0", "fold0_s1", "fold0_s2"]
+    assert got["fold4_s2"] == {
+        "path": str(tmp_path / "fold4_s2_model.pt"),
+        "sha256": hashlib.sha256(b"42").hexdigest(),
+    }
+
+
+def test_only_seven_channel_run_day_variants_are_offered_and_base3_sorts_first():
+    assert {"run_day", "base3"} <= set(shots.INPUT_VARIANTS)
+    assert not {"beams", "base_no_da", "shot"} & set(shots.INPUT_VARIANTS)
+    assert shots.default_out_dir("run_day") == shots.ours.EXTEND
+    base3 = shots.default_out_dir("base3")
+    assert base3 == shots.ours.EXTEND.parent / "extend_confine_base3"
+    # the review page ranks extend tables of one kind by sorted path
+    assert min(shots.ours.EXTEND.name, base3.name) == base3.name
+
+
+def test_label_takes_a_named_shot_list_and_a_variant(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(shots, "label", lambda args: seen.update(vars(args)))
+    shots.main(
+        ["label", "--shots-file", "s.csv", "--name", "silver", "--variant", "base3"]
+    )
+    assert seen["shots"] == Path("s.csv") and seen["variant"] == "base3"
+    assert seen["out_dir"] is None  # label() resolves it by the variant
+    shots.main(["label", "--shots", "gold.csv", "--name", "gold_shots"])
+    assert seen["shots"] == Path("gold.csv") and seen["variant"] == "run_day"
+    # the gold run's one-shot-at-a-time path stays the default
+    assert (seen["workers"], seen["batch"], seen["check"]) == (0, 0, 0)
+    shots.main(
+        ["label", "--shots", "s.csv", "--name", "n"]
+        + ["--workers", "8", "--batch", "64", "--check", "20"]
+    )
+    assert (seen["workers"], seen["batch"], seen["check"]) == (8, 64, 20)
+
+
+def _grids(rng, lengths):
+    """Shots' 1 ms grids of different lengths: D-alpha rows inside and outside the
+    clipping, sparse channels with gaps, an infinity and values past 8."""
+    out = []
+    for n in lengths:
+        grid = rng.normal(0.0, 2.0, (len(zerod.CHANNELS), n)).astype(np.float32)
+        grid[3:, : n // 5] = np.nan  # no density, beta_N, W_MHD or beams early on
+        grid[zerod.CHANNELS.index("wmhd"), n // 2 :] = np.nan
+        grid[0, 3], grid[4, -2], grid[6, n // 3] = np.inf, -np.inf, 12.0
+        out.append(grid)
+    return out
+
+
+def _network(seed: int):
+    """A small U-Net in eval mode whose batch norms shift and scale, so a padded bin
+    past a shot's end comes out of a block far from zero."""
+    import torch
+
+    from labeler.confinement import unet
+
+    torch.manual_seed(seed)
+    net = unet.UNet1d()
+    for m in net.modules():
+        if isinstance(m, torch.nn.BatchNorm1d):
+            m.running_mean.uniform_(-1.0, 1.0)
+            m.running_var.uniform_(0.5, 2.0)
+            m.weight.data.uniform_(0.5, 1.5)
+            m.bias.data.uniform_(-0.5, 0.5)
+    return net.eval()
+
+
+def test_to_input_torch_is_to_input_on_a_batch():
+    import torch
+
+    grids = _grids(np.random.default_rng(0), [300, 300])
+    got = shots.to_input_torch(torch.from_numpy(np.stack(grids))).numpy()
+    for g, x in zip(grids, got, strict=True):
+        assert np.array_equal(x, zerod.to_input(g))
+
+
+def test_forward_alone_gives_each_shot_what_it_gets_alone():
+    import torch
+
+    from labeler.confinement import unet
+
+    net = _network(1)
+    n = [130, 515, 384]  # padded to 256, 640 and 384 bins
+    lengths = [k + (-k) % unet.STRIDE for k in n]
+    batch = torch.full((3, len(zerod.CHANNELS), max(lengths)), float("nan"))
+    for i, g in enumerate(_grids(np.random.default_rng(2), n)):
+        batch[i, :, : n[i]] = torch.from_numpy(g)
+    x = shots.to_input_torch(batch)
+    with torch.no_grad():
+        logits = shots.forward_alone(net, x, torch.tensor(lengths))
+        naive = net(x)
+    moved = 0.0
+    for i, k in enumerate(n):
+        alone = unet.predict_shot(net, x[i, :, :k].numpy(), "cpu")
+        got = torch.softmax(logits, 1)[i, :, :k].numpy()
+        assert np.abs(got - alone).max() < 1e-5
+        moved = max(
+            moved, np.abs(torch.softmax(naive, 1)[i, :, :k].numpy() - alone).max()
+        )
+    # padding the shorter shots without the masks changes what they get
+    assert moved > 1e-3
+
+
+def test_predict_batch_is_predict_shot_by_shot():
+    import torch
+
+    models = [[_network(10 * f + s) for s in range(2)] for f in range(shots.ours.FOLDS)]
+    n = [200, 450, 129, 384]
+    grids = _grids(np.random.default_rng(3), n)
+    folds = [None, 3, None, 0]  # two shots a fold held out, two for the ensemble
+    got = shots.predict_batch(grids, folds, models, torch.device("cpu"))
+    for g, f, p in zip(grids, folds, got, strict=True):
+        want = shots.predict(zerod.to_input(g), models, "cpu", f)
+        assert p.shape == want.shape == (4, g.shape[1])
+        assert np.abs(p - want).max() < 1e-5
+
+
+def test_read_shots_keeps_the_order_and_reads_here_without_workers(monkeypatch):
+    seen = []
+
+    def fake(shot, zerod_dir, *, fetched_dir=None):
+        seen.append((shot, zerod_dir, fetched_dir))
+        return {"shot": shot}
+
+    monkeypatch.setattr(shots, "assemble_disk", fake)
+    got = list(shots.read_shots([5, 2, 9], 0, Path("fetched")))
+    assert got == [(5, {"shot": 5}), (2, {"shot": 2}), (9, {"shot": 9})]
+    assert seen[0] == (5, shots.ZEROD_DISK, Path("fetched"))
+
+
+class _FakeProcess:
+    killed = False
+
+    def kill(self):
+        self.killed = True
+
+
+def _fake_pool(monkeypatch, dies_on=None):
+    """A stand-in process pool whose futures are done at once; reading ``dies_on``
+    raises what a pool does after the kernel kills one of its workers."""
+    import concurrent.futures as cf
+    from concurrent.futures.process import BrokenProcessPool
+
+    made: list = []
+
+    class Pool:
+        def __init__(self, workers, mp_context=None):
+            self._processes = {1: _FakeProcess(), 2: _FakeProcess()}
+            self.submitted, self.stopped = [], None
+            made.append(self)
+
+        def submit(self, fn, shot):
+            self.submitted.append(shot)
+            future = cf.Future()
+            if shot == dies_on:
+                future.set_exception(BrokenProcessPool("a worker was killed"))
+            else:
+                future.set_result(fn(shot))
+            return future
+
+        def shutdown(self, wait=True, *, cancel_futures=False):
+            self.stopped = (wait, cancel_futures)
+            if self._processes is not None:  # as CPython 3.11, a second call finds None
+                self.workers, self._processes = self._processes, None
+
+    monkeypatch.setattr(cf, "ProcessPoolExecutor", Pool)
+    return made
+
+
+def test_read_shots_runs_a_bounded_number_ahead_of_the_caller(monkeypatch):
+    pools = _fake_pool(monkeypatch)
+    reads = shots.read_shots(list(range(20)), 2, None, read=lambda s: s, ahead=3)
+    assert next(reads) == (0, 0)
+    assert pools[0].submitted == [0, 1, 2, 3]  # 3 in flight, one more per result
+    assert [s for s, _ in reads] == list(range(1, 20))
+    assert pools[0].stopped == (True, False)
+
+
+def test_read_shots_stops_at_once_when_a_worker_dies(monkeypatch):
+    pools = _fake_pool(monkeypatch, dies_on=3)
+    seen = []
+    with pytest.raises(SystemExit, match="stopping at once"):
+        for shot, _ in shots.read_shots(list(range(9)), 2, None, read=lambda s: s):
+            seen.append(shot)
+    assert seen == [0, 1, 2]
+    made = pools[0]
+    assert made.stopped == (False, True)  # no wait, futures cancelled
+    assert made._processes is None and len(made.workers) == 2
+    assert all(p.killed for p in made.workers.values())
