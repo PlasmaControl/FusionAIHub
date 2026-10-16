@@ -1134,6 +1134,10 @@ class FrameCodeDataset(torch.utils.data.Dataset):
     live_end : dict of str to float, default=None
         Plasma end time of each shot; later frames get zero loss weight. Shots
         not listed count as live throughout.
+    window_jitter : int, default=0
+        Augmentation for ``"first"``: each epoch draws the ``n`` starts of a shot
+        from ``0..n-1+window_jitter`` instead of taking ``0..n-1``. Ignored by the
+        other modes, which redraw their starts anyway.
     t0_start : float, default=1.0
         Shot time of frame 0 of the cache.
     frame_s : float, default=0.05
@@ -1155,10 +1159,12 @@ class FrameCodeDataset(torch.utils.data.Dataset):
         windows_per_shot: int = 0,
         window_sample: str = "random",
         live_end=None,
+        window_jitter: int = 0,
         t0_start: float = 1.0,
         frame_s: float = 0.05,
     ):
         self.cfg = cfg
+        self.window_jitter = max(int(window_jitter), 0)
         self.win = cfg.max_frames
         self.stride = max(int(stride), 1)
         self.windows_per_shot = max(int(windows_per_shot), 0)
@@ -1230,14 +1236,19 @@ class FrameCodeDataset(torch.utils.data.Dataset):
         """
         if not self.windows_per_shot:
             return
+        rng = random.Random(_WINDOW_SEED_BASE + int(epoch))
         if self.window_sample is WindowSample.FIRST:
+            n, pool = self.windows_per_shot, self.windows_per_shot + self.window_jitter
             self.index = [
                 (shot_index, start)
                 for shot_index, starts in enumerate(self._starts)
-                for start in starts[: self.windows_per_shot]
+                for start in (
+                    sorted(rng.sample(starts[:pool], min(n, len(starts[:pool]))))
+                    if self.window_jitter
+                    else starts[:n]
+                )
             ]
             return
-        rng = random.Random(_WINDOW_SEED_BASE + int(epoch))
         pools = (
             self._live_starts
             if self.window_sample is WindowSample.LIVE
@@ -1662,6 +1673,22 @@ class TrainConfig:
         cli_type=int,
         from_cli=bool,
     )
+    seed_drop_p: float = _option(
+        0.0,
+        "augmentation: probability of hiding a whole modality from the input in the "
+        "seed frames (first k0); hidden tokens are scored, so the model learns to "
+        "predict a modality missing from the seed",
+    )
+    seed_column_drop_p: float = _option(
+        0.0,
+        "augmentation: probability of hiding a random fraction of a modality's token "
+        "positions in every seed frame; hidden tokens are scored",
+    )
+    actuator_noise: float = _option(
+        0.0,
+        "augmentation: std of Gaussian noise added to the normalised actuators, on "
+        "channels that vary within the window; training only",
+    )
     mask_absent: bool = _option(
         False,
         "exclude absent diagnostics from the loss (they stay in the input); builds "
@@ -1725,6 +1752,11 @@ class TrainConfig:
         "0..n-1, 'random' = redrawn from all starts each epoch, 'live' = redrawn "
         "from starts at least half before the plasma end (train only)",
         choices=["random", "first", "live"],
+    )
+    window_jitter: int = _option(
+        0,
+        "augmentation for --window_sample first: draw each shot's starts from "
+        "0..n-1+J each epoch instead of 0..n-1",
     )
     val_window_sample: str = _option(
         "",
@@ -2059,6 +2091,7 @@ class Trainer:
             stride=config.window_stride,
             windows_per_shot=config.windows_per_shot,
             window_sample=config.window_sample,
+            window_jitter=config.window_jitter,
         )
         if self.use_live and self.is_main:
             dataset = self.train_ds
@@ -2148,6 +2181,17 @@ class Trainer:
             f"dropout={model_cfg.dropout} mask_absent={int(self.use_presence)} "
             f"block_forcing={int(config.block_forcing)} "
             f"(val is ALWAYS scored at gen_mask_p=0 so arms stay comparable)"
+        )
+        jitter_note = (
+            ""
+            if config.window_sample == WindowSample.FIRST or not config.window_jitter
+            else " (IGNORED: only --window_sample first uses it)"
+        )
+        log(
+            f"[dynamics] augmentation (train only): seed_drop_p={config.seed_drop_p} "
+            f"seed_column_drop_p={config.seed_column_drop_p} "
+            f"actuator_noise={config.actuator_noise} "
+            f"window_jitter={config.window_jitter}{jitter_note}"
         )
         world_size, accum = self.ddp.world_size, config.accum_steps
         log(
@@ -2398,7 +2442,7 @@ class Trainer:
         if profile:
             timer.lap("data")
         codes = {name: c.to(self.device) for name, c in codes.items()}
-        actuators = actuators.to(self.device)
+        actuators = self._noisy(actuators.to(self.device))
         present = present.to(self.device) if self.use_presence else None
         live = live.to(self.device) if self.use_live else None
         if profile:
@@ -2421,6 +2465,8 @@ class Trainer:
                 mod_weights=self.mod_weights,
                 per_modality=per_modality,
                 block_forcing=config.block_forcing,
+                seed_drop_p=config.seed_drop_p,
+                seed_column_drop_p=config.seed_column_drop_p,
             )
         if per_modality:
             self.equal_weight_losses.append(
@@ -2438,6 +2484,18 @@ class Trainer:
         grad_norm = self._optimizer_step(profile)
         self.step += 1
         return self._after_step(grad_norm)
+
+    def _noisy(self, actuators: torch.Tensor) -> torch.Tensor:
+        """Add the actuator-noise augmentation to channels varying in the window.
+
+        Channels constant over the window (dead or held) stay exact, so the model
+        can still tell a missing actuator from a live one.
+        """
+        sigma = float(self.config.actuator_noise)
+        if sigma <= 0.0:
+            return actuators
+        varies = (actuators.amax(dim=1) != actuators.amin(dim=1)).unsqueeze(1)
+        return actuators + sigma * torch.randn_like(actuators) * varies
 
     def _optimizer_step(self, profile: bool):
         """All-reduce, optionally measure and clip, then step; return the norm."""
@@ -2634,6 +2692,11 @@ class Trainer:
             "cfg_grad_checkpointing": bool(model_cfg.grad_checkpointing),
             "cfg_dropout": float(model_cfg.dropout),
             "cfg_block_forcing": bool(config.block_forcing),
+            # Training-only augmentation, kept for the record.
+            "cfg_seed_drop_p": float(config.seed_drop_p),
+            "cfg_seed_column_drop_p": float(config.seed_column_drop_p),
+            "cfg_actuator_noise": float(config.actuator_noise),
+            "cfg_window_jitter": int(config.window_jitter),
             "cfg_depth": config.depth,
             "cfg_d_model": config.d_model,
             "cfg_n_heads": model_cfg.n_heads,

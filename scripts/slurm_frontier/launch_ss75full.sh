@@ -43,6 +43,12 @@ export MOD_WEIGHT_POW=${MOD_WEIGHT_POW:-0} GEN_MASK_P=${GEN_MASK_P:-0.0}
 export SS_FINAL_FRAC=${SS_FINAL_FRAC:-0.75} SS_RAMP_STEPS=${SS_RAMP_STEPS:-2000}
 # BLOCK_FORCING=1: every frame predicted from earlier frames only; SS then uses the model's own forecasts.
 export BLOCK_FORCING=${BLOCK_FORCING:-0}
+# --- augmentation (training only; 0 = off). SEED_DROP_P / SEED_COLUMN_DROP_P hide a whole modality /
+# a random share of its token positions from the input in the seed frames and SCORE them, so the
+# model learns to predict a modality missing from the seed. ACTUATOR_NOISE = std in normalised units
+# on channels that vary in the window. WINDOW_JITTER widens WINDOW_SAMPLE=first to starts 0..9+J.
+export SEED_DROP_P=${SEED_DROP_P:-0} SEED_COLUMN_DROP_P=${SEED_COLUMN_DROP_P:-0}
+export ACTUATOR_NOISE=${ACTUATOR_NOISE:-0} WINDOW_JITTER=${WINDOW_JITTER:-0}
 # --- data / windows / split ---
 export CACHE_DIR=${CACHE_DIR:-/lustre/orion/fus187/proj-shared/models/ignite_prod_v4/frame_codes}
 export LIVE_END_JSON=${LIVE_END_JSON:-/lustre/orion/fus187/proj-shared/ps9551/Flow/FusionAIHub/eval_runs/tend_all.json}

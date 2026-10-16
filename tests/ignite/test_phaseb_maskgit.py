@@ -666,3 +666,90 @@ def test_explicit_earlier_and_self_attention_matches_masked_sdpa():
     assert torch.allclose(
         _attend_earlier_and_self(q, hk, hv, sk, sv), reference, atol=1e-6
     )
+
+
+def test_seed_dropout_off_leaves_the_loss_bit_identical():
+    torch.manual_seed(0)
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg).train()
+    codes = _codes(cfg, 2, cfg.max_frames, torch.Generator().manual_seed(3))
+    act = torch.randn(2, cfg.max_frames, 6)
+    losses = []
+    for options in ({}, {"seed_drop_p": 0.0, "seed_column_drop_p": 0.0}):
+        torch.manual_seed(5)
+        gen = torch.Generator().manual_seed(4)
+        losses.append(model.training_loss(codes, act, generator=gen, **options))
+    assert torch.equal(losses[0], losses[1])
+
+
+def test_seed_dropout_hides_only_seed_frames_of_varying_modalities():
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg)
+    codes = _codes(cfg, 3, cfg.max_frames, torch.Generator().manual_seed(0))
+    codes["b"][1] = 2  # constant over the window: absent or static, never hidden
+    gen = torch.Generator().manual_seed(1)
+    hidden = model._seed_dropout(codes, 1.0, 0.0, gen)
+    k0 = cfg.k0_seed
+    assert hidden["a"][:, :k0].all() and not hidden["a"][:, k0:].any()
+    assert hidden["b"][[0, 2], :k0].all() and not hidden["b"][1].any()
+    assert model._seed_dropout(codes, 0.0, 0.0, gen) is None
+
+
+def test_column_dropout_hides_the_same_columns_in_every_seed_frame():
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg)
+    codes = _codes(cfg, 64, cfg.max_frames, torch.Generator().manual_seed(0))
+    hidden = model._seed_dropout(codes, 0.0, 1.0, torch.Generator().manual_seed(2))
+    for frames in hidden.values():
+        assert torch.equal(frames[:, 0], frames[:, cfg.k0_seed - 1])
+        assert not frames[:, cfg.k0_seed :].any()
+    a = hidden["a"][:, 0]
+    assert a.any() and not a.all()  # a random share, not all or nothing
+
+
+@pytest.mark.parametrize("block_forcing", [False, True])
+def test_dropped_seed_tokens_are_invisible_and_scored(monkeypatch, block_forcing):
+    """The point of the augmentation: a hidden seed modality must be predicted, from
+    nothing of itself, even when scheduled sampling refills its frames."""
+    torch.manual_seed(0)
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg).train()
+    codes = _codes(cfg, 2, cfg.max_frames, torch.Generator().manual_seed(1))
+    act = torch.randn(2, cfg.max_frames, 6)
+    seen = {}
+    backbone, tok = model.backbone, model.backbone.tok
+    encode, encode_bf = backbone.encode, backbone.encode_block_forcing
+    masked_logits = tok.masked_logits
+
+    def spy_encode(inputs, actuators):
+        if torch.is_grad_enabled():
+            seen["inputs"] = [inputs]
+        return encode(inputs, actuators)
+
+    def spy_encode_bf(history, query, actuators):
+        if torch.is_grad_enabled():
+            seen["inputs"] = [history, query]
+        return encode_bf(history, query, actuators)
+
+    def spy_logits(hidden, mask):
+        if torch.is_grad_enabled():
+            seen["mask"] = mask
+        return masked_logits(hidden, mask)
+
+    monkeypatch.setattr(backbone, "encode", spy_encode)
+    monkeypatch.setattr(backbone, "encode_block_forcing", spy_encode_bf)
+    monkeypatch.setattr(tok, "masked_logits", spy_logits)
+    loss = model.training_loss(
+        codes,
+        act,
+        generator=torch.Generator().manual_seed(2),
+        ss_frac=1.0,
+        block_forcing=block_forcing,
+        seed_drop_p=1.0,
+    )
+    assert torch.isfinite(loss)
+    k0 = cfg.k0_seed
+    for m in cfg.modalities:
+        for stream in seen["inputs"]:
+            assert (stream[m.name][:, :k0] == m.codebook_size).all()
+        assert seen["mask"][m.name][:, :k0].all()

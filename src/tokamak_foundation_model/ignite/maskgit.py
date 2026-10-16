@@ -325,6 +325,65 @@ class MaskGITDynamics(nn.Module):
             mask[m.name] = modality_mask
         return masked, mask
 
+    def _seed_dropout(self, codes, drop_p: float, column_p: float, gen):
+        """Draw the seed tokens hidden from the input, or None if nothing is hidden.
+
+        Per sample and modality, the whole modality is hidden in the seed frames
+        with probability ``drop_p``; otherwise, with probability ``column_p``, a
+        random fraction (uniform in ``[0, 1)``) of its token positions is hidden in
+        every seed frame, so those columns cannot be copied from their own history.
+        A modality constant over the seed (absent or static) is never hidden.
+
+        Parameters
+        ----------
+        codes : dict of str to torch.LongTensor of shape (B, F, n_tok)
+            Real codes.
+        drop_p, column_p : float
+            Probabilities of hiding the whole modality or some of its columns.
+        gen : torch.Generator or None
+            Source of randomness.
+
+        Returns
+        -------
+        hidden : dict of str to torch.BoolTensor of shape (B, F, n_tok), or None
+            True at hidden positions, all within the first ``k0_seed`` frames.
+        """
+        if drop_p <= 0.0 and column_p <= 0.0:
+            return None
+        cfg = self.cfg
+        reference = codes[cfg.modalities[0].name]
+        batch, n_frames, _ = reference.shape
+        device = reference.device
+        n_seed = int(min(max(cfg.k0_seed, 0), n_frames))
+        if n_seed == 0:
+            return None
+        in_seed = (torch.arange(n_frames, device=device) < n_seed).view(1, -1, 1)
+        hidden = {}
+        for m in cfg.modalities:
+            seed = codes[m.name][:, :n_seed]
+            varies = ~(seed == seed[:, :1]).flatten(1).all(dim=1)
+            whole = torch.rand(batch, generator=gen, device=device) < drop_p
+            partial = ~whole & (
+                torch.rand(batch, generator=gen, device=device) < column_p
+            )
+            fraction = torch.rand((batch, 1), generator=gen, device=device)
+            columns = (
+                torch.rand((batch, m.n_tok), generator=gen, device=device) < fraction
+            )
+            columns = whole.view(-1, 1) | (partial.view(-1, 1) & columns)
+            columns = columns & varies.view(-1, 1)
+            hidden[m.name] = columns.unsqueeze(1) & in_seed
+        return hidden
+
+    def _hide(self, codes, hidden):
+        """Set the ``hidden`` positions of ``codes`` to each modality's ``[MASK]``."""
+        return {
+            name: torch.where(
+                hidden[name], torch.full_like(frames, self._mask_id(name)), frames
+            )
+            for name, frames in codes.items()
+        }
+
     def ss_fraction(self, step: int) -> float:
         """Return the scheduled-sampling fraction at ``step`` (linear ramp)."""
         cfg = self.cfg
@@ -438,6 +497,8 @@ class MaskGITDynamics(nn.Module):
         live: Optional[torch.Tensor] = None,
         label_smoothing: float = 0.0,
         block_forcing: bool = False,
+        seed_drop_p: float = 0.0,
+        seed_column_drop_p: float = 0.0,
     ) -> torch.Tensor:
         """Masked-token loss, averaged per modality and then across modalities.
 
@@ -475,6 +536,13 @@ class MaskGITDynamics(nn.Module):
             encode_block_forcing`), the condition of a rollout. Scheduled sampling
             then replaces history frames by the model's own one-step forecasts
             (:meth:`_forecast_context`) instead of samples that saw the answer.
+        seed_drop_p : float, default=0.0
+            Augmentation: probability of hiding a whole modality from the input in
+            the seed frames (:meth:`_seed_dropout`). Hidden positions are always
+            scored, so the model learns to predict a modality missing from the seed.
+        seed_column_drop_p : float, default=0.0
+            Augmentation: probability of hiding a random fraction of a modality's
+            token positions in the seed frames, scored likewise.
 
         Returns
         -------
@@ -486,8 +554,12 @@ class MaskGITDynamics(nn.Module):
         A modality with zero total weight contributes ``0 * logits.sum()`` so its
         head stays in the autograd graph, as DDP requires.
         """
+        dropped = self._seed_dropout(
+            codes, seed_drop_p, seed_column_drop_p, generator
+        )
+        inputs = codes if dropped is None else self._hide(codes, dropped)
         if block_forcing:
-            history = self._forecast_context(codes, actuators, ss_frac, generator)
+            history = self._forecast_context(inputs, actuators, ss_frac, generator)
             # The query stream reveals real codes, as MaskGIT decoding of the
             # target frame does; the history carries the model's forecasts.
             query, mask = self._random_mask(
@@ -497,10 +569,12 @@ class MaskGITDynamics(nn.Module):
                 history_frames=history_frames,
                 gen_mask_p=gen_mask_p,
             )
+            if dropped is not None:
+                history, query = self._hide(history, dropped), self._hide(query, dropped)
             hidden = self.backbone.encode_block_forcing(history, query, actuators)
         else:
             context = self._scheduled_sample_context(
-                codes, actuators, ss_frac, generator
+                inputs, actuators, ss_frac, generator
             )
             masked, mask = self._random_mask(
                 context,
@@ -509,7 +583,12 @@ class MaskGITDynamics(nn.Module):
                 history_frames=history_frames,
                 gen_mask_p=gen_mask_p,
             )
+            if dropped is not None:
+                # Scheduled sampling may have refilled hidden positions.
+                masked = self._hide(masked, dropped)
             hidden = self.backbone.encode(masked, actuators)
+        if dropped is not None:
+            mask = {name: mask[name] | dropped[name] for name in mask}
         masked_logits = self.backbone.tok.masked_logits(hidden, mask)
         total = codes[self.cfg.modalities[0].name].new_zeros((), dtype=torch.float32)
         total_weight = 0.0

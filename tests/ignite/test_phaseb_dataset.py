@@ -472,3 +472,43 @@ def test_actuator_frames_real_shot_matches_reference():
     assert cors.min() > 0.95, (
         f"worst channel corr {cors.min():.4f} (col {live[cors.argmin()]})"
     )
+
+
+def test_window_jitter_widens_first_starts_and_keeps_the_count(tmp_path):
+    cfg = _tiny()
+    _write_cache(tmp_path, "s1", cfg.max_frames + 40, cfg)
+    k, jitter = 3, 5
+    plain = FrameCodeDataset(
+        tmp_path, ["s1"], cfg, windows_per_shot=k, window_sample="first"
+    )
+    jittered = FrameCodeDataset(
+        tmp_path,
+        ["s1"],
+        cfg,
+        windows_per_shot=k,
+        window_sample="first",
+        window_jitter=jitter,
+    )
+    seen = set()
+    for epoch in range(20):
+        plain.set_epoch(epoch)
+        jittered.set_epoch(epoch)
+        assert [start for _, start in plain.index] == [0, 1, 2]
+        starts = [start for _, start in jittered.index]
+        assert len(starts) == k and set(starts) <= set(range(k + jitter))
+        seen |= set(starts)
+    assert max(seen) >= k  # draws really move beyond 0..k-1
+
+
+def test_actuator_noise_spares_constant_channels():
+    trainer = object.__new__(td.Trainer)
+    trainer.config = td.TrainConfig(actuator_noise=0.5)
+    actuators = torch.randn(2, 6, 4)
+    actuators[:, :, 1] = 0.0  # dead channel
+    actuators[0, :, 2] = 3.0  # held in sample 0 only
+    noisy = trainer._noisy(actuators)
+    assert torch.equal(noisy[:, :, 1], actuators[:, :, 1])
+    assert torch.equal(noisy[0, :, 2], actuators[0, :, 2])
+    assert not torch.equal(noisy[:, :, 0], actuators[:, :, 0])
+    trainer.config = td.TrainConfig()
+    assert trainer._noisy(actuators) is actuators
