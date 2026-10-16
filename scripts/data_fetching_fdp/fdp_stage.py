@@ -34,6 +34,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -165,9 +166,14 @@ def mds_object_urls(tree: str, shot: int,
                     templates: Optional[list[str]] = None) -> list[str]:
     """Return candidate URLs for one tree's three files, across all layouts.
 
-    Only one layout holds a given tree, so the others simply fail to stage --
-    which is cheaper than knowing in advance whether a tree is a per-shot or a
-    between-shot tree (``aot`` looks like a diagnostic but is a code tree).
+    .. warning::
+       Do not stage these URLs into one directory.  **More than one layout can
+       hold the same tree** -- the assumption that only one does was wrong, and
+       since every layout spells the three files identically, a flat concurrent
+       transfer lets structure and data land from different layouts.  Measured
+       on a two-layout fixture: 2 distinct outcomes from 12 identical runs,
+       one of them a mixed set.  Use :func:`stage_trees`, which picks one
+       layout per tree.  This function remains for enumerating candidates.
 
     Parameters
     ----------
@@ -379,6 +385,135 @@ def stage_objects(
     return failures
 
 
+def _fetch_to_targets(pairs, workers: int = 6,
+                      timeout: float = 600.0) -> None:
+    """Fetch ``(url, destination directory)`` pairs in parallel, ignoring misses.
+
+    Unlike :func:`stage_objects` every pair names its own directory, which is
+    what lets the same basename be fetched from several layouts without the
+    copies overwriting one another.  A miss is normal here -- most layouts do
+    not hold most trees -- so nothing is reported.
+    """
+    binary = pelican_binary()
+
+    def fetch(pair) -> None:
+        url, target = pair
+        try:
+            subprocess.run([binary, "object", "get", url, str(target) + "/"],
+                           capture_output=True, text=True, timeout=timeout)
+        except Exception:  # noqa: BLE001
+            return
+
+    pairs = list(pairs)
+    if not pairs:
+        return
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+        list(pool.map(fetch, pairs))
+
+
+def stage_trees(shot: int, trees: Iterable[str], dest_dir: Path,
+                workers: int = 6,
+                templates: Optional[list[str]] = None) -> dict:
+    """Stage each tree's files, taking all of them from a single layout.
+
+    A tree is three files -- ``.tree`` (structure), ``.characteristics`` and
+    ``.datafile`` (data) -- and more than one archive layout can hold a given
+    tree for a given shot.  Every layout yields the *same three basenames*, so
+    fetching all layouts' URLs concurrently into one directory lets the three
+    files race independently and land from **different layouts**: a structure
+    file from one, a data file from another.  MDSplus then opens the tree
+    happily and reports ``TreeNODATA`` for nodes whose data lives in the
+    datafile that did not win -- which is exactly the ECE symptom on shot
+    146918, where ``\\ECE::ECPTNAMF`` read empty locally while the federation
+    served it intact.  Being a thread race it is also nondeterministic, which
+    is why the same shot behaved differently across runs.
+
+    So layout choice is made once per tree and the whole set comes from it.
+    The two small files are fetched from every candidate layout first (a
+    ``.tree`` is kilobytes), the first layout in template order that yields
+    both is selected, and only then is that layout's ``.datafile`` -- which can
+    be gigabytes -- transferred.  Picking by template order rather than by
+    arrival makes the result reproducible.
+
+    Parameters
+    ----------
+    shot : int
+        Shot number.
+    trees : iterable of str
+        Tree names.
+    dest_dir : Path
+        Staging directory.
+    workers : int, default 6
+        Concurrent transfers.
+    templates : list of str, optional
+        Defaults to :func:`tree_templates`.
+
+    Returns
+    -------
+    dict
+        ``tree -> layout directory`` for each tree that staged, so the choice
+        is visible rather than implicit.
+    """
+    templates = templates if templates is not None else tree_templates()
+    dest_dir = Path(dest_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    probe_root = dest_dir / ".layout_probe"
+    # Materialised and lower-cased: the loops below walk `trees` more than once,
+    # and expand_template lower-cases the name, so the basenames must match.
+    trees = [t.lower() for t in dict.fromkeys(trees)]
+
+    # Phase 1: the two small files from every candidate layout, in parallel.
+    probe_jobs: list[tuple[str, int, str, Path]] = []
+    for tree in trees:
+        for number, template in enumerate(templates):
+            directory = expand_template(template, tree, shot)
+            target = probe_root / tree / str(number)
+            for extension in ("tree", "characteristics"):
+                probe_jobs.append(
+                    (tree, number,
+                     f"{directory}/{tree}_{shot}.{extension}", target))
+
+    for _, _, _, target in probe_jobs:
+        target.mkdir(parents=True, exist_ok=True)
+    _fetch_to_targets([(url, target) for _, _, url, target in probe_jobs],
+                      workers=workers)
+
+    # Phase 2: rank each tree's layouts by template order -- MDSplus's own
+    # search order -- so the choice is reproducible rather than whichever
+    # transfer happened to finish first.
+    candidates: dict[str, list[int]] = {}
+    for tree in trees:
+        for number in range(len(templates)):
+            structure = probe_root / tree / str(number) / f"{tree}_{shot}.tree"
+            if structure.is_file() and structure.stat().st_size > 0:
+                candidates.setdefault(tree, []).append(number)
+
+    # Phase 3: take the first candidate layout whose datafile also lands, and
+    # take the whole set from it.  A layout holding a structure file but no
+    # usable datafile is precisely the state that yields TreeNODATA, so it is
+    # skipped rather than accepted.
+    chosen: dict[str, str] = {}
+    for tree, numbers in candidates.items():
+        for number in numbers:
+            directory = expand_template(templates[number], tree, shot)
+            failures = stage_objects(
+                [f"{directory}/{tree}_{shot}.datafile"], dest_dir,
+                workers=1, skip_existing=False)
+            datafile = dest_dir / f"{tree}_{shot}.datafile"
+            if failures or not (datafile.is_file()
+                                and datafile.stat().st_size > 0):
+                datafile.unlink(missing_ok=True)
+                continue
+            folder = probe_root / tree / str(number)
+            for item in folder.glob(f"{tree}_{shot}.*"):
+                shutil.move(str(item), str(dest_dir / item.name))
+            chosen[tree] = directory
+            break
+
+    shutil.rmtree(probe_root, ignore_errors=True)
+    return chosen
+
+
 def stage_shot(
     shot: int,
     trees: Iterable[str],
@@ -416,10 +551,11 @@ def stage_shot(
     urls, sources, missing = ptdata_objects(index, pointnames)
 
     templates = tree_templates()
-    for tree in trees:
-        urls.extend(mds_object_urls(tree, shot, templates))
-
+    # PTDATA objects have unique basenames so they can all go at once; trees
+    # cannot, because every layout spells them the same -- see stage_trees.
     stage_objects(urls, dest_dir, workers=workers)
+    layouts = stage_trees(shot, trees, dest_dir, workers=workers,
+                          templates=templates)
 
     available = {t for t in trees if (dest_dir / f"{t}_{shot}.tree").is_file()}
     staged_bytes = sum(p.stat().st_size for p in dest_dir.glob("*") if p.is_file())
@@ -431,6 +567,7 @@ def stage_shot(
         "missing_pointnames": missing,
         "bytes": staged_bytes,
         "seconds": time.time() - started,
+        "tree_layouts": layouts,
     }
 
 
