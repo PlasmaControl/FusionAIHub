@@ -11,21 +11,27 @@ Three steps, each a dry run until `--apply`:
     import   the archive's phases as confinement labels, saved as the page saves one.
 
 The archive is `WPQHphasesMay262026.tar` (Jalal Butt, 2026-05-26), unpacked read-only
-under `$LABELER_ROOT/raw_external/jalal_wpqh_2026-05-26/`. Per shot, `<shot>-wpqh1.dat`
-lists the WPQH phases, `ON OFF` in ms (the shot has WPQH); `<shot>-wpqh0.dat` is a shot
-with none (its lines, when it has any, are blocks too short to count: not WPQH). The
-`.pkl` files are the detector's diagnostics (inputs, conditions, `auto_spans`: the same
-phases), not a regime timeline, so only class 4 comes from the archive. Both files for
-one shot (four shots): `wpqh1` is the later run and wins. `postprocessed_2/` (the same
-phases with close blocks merged) is not read.
+under `$LABELER_ROOT/raw_external/jalal_wpqh_2026-05-26/`. His final version is
+`postprocessed_2/<shot>-wpqh1-pp.dat` (the shot has WPQH, one `ON OFF` phase per line,
+in ms) or `<shot>-wpqh0-pp.dat` (it has none; its lines, when it has any, are blocks
+too short to count: not WPQH). The detector's own output (`<shot>-wpqh[01].dat`
+directly under the archive, close blocks not yet merged) fills a shot that
+`postprocessed_2` lacks (one shot, 184971) and is read alone with `final=False`. The
+`.pkl` files are the detector's diagnostics (inputs, conditions, `auto_spans`: the raw
+phases), not a regime timeline, so only class 4 comes from the archive.
 
-A shot's label starts from what the page shows: its saved label, else its draft. Its
-class-4 (WPQH) spans are replaced by the archive's; every other class stays. It is
-saved under the name "Jalal Butt" with `labels.save`, the call the page's
-`POST /api/label` ends in, and its history line also carries `verified: true` and
-`note: "WPQHphasesMay262026"` (`extra`). The archive says nothing about other classes,
-so a wpqh0 shot with no label to start from is not saved: an empty saved label would
-assert that no regime at all was present (`--save-empty` saves it anyway). A shot whose
+A shot's label starts from a human label only: its saved label, else its draft when
+the draft is a person's (the event's source table for a shot it draws from a curated
+table, or a format table). A model's suggestion is never a start: such a shot starts
+empty, with only his WPQH spans over 1000-5000 ms, grown to hold them. A saved label
+made by this import is no start either (it is derived): the shot starts again from
+its human draft, so a rerun replaces it. The start's class-4 (WPQH) spans are replaced
+by the archive's; every other class stays. It is saved under the name "Jalal Butt" with
+`labels.save`, the call the page's `POST /api/label` ends in, and its history line also
+carries `verified: true` and `note: "WPQHphasesMay262026"` (`extra`). The archive says
+nothing about other classes, so a wpqh0 shot with no human start is not saved (an empty
+saved label would assert that no regime at all was present; `--save-empty` saves it
+anyway), and an earlier save of this import for such a shot is withdrawn. A shot whose
 history has a save under any other name is a conflict and is left as it is.
 """
 
@@ -39,6 +45,8 @@ import shutil
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+
+import pandas as pd
 
 REPO = Path(__file__).resolve().parents[2]
 if str(REPO / "src") not in sys.path:
@@ -59,7 +67,8 @@ ARCHIVE = Path(
     "/scratch/gpfs/EKOLEMEN/nc1514/labeler/raw_external/jalal_wpqh_2026-05-26"
 )
 BACKUP_ROOT = Path("/scratch/gpfs/EKOLEMEN/nc1514/labeler/backups/jalal_2026-10-17")
-_DAT = re.compile(r"(\d+)-wpqh([01])\.dat\Z")
+FINAL = "postprocessed_2"
+_DAT = re.compile(r"(\d+)-wpqh([01])(?:-pp)?\.dat\Z")
 
 
 # ---- the saved name ----
@@ -186,19 +195,34 @@ def read_dat(path) -> tuple[tuple[float, float], ...]:
     return tuple(spans)
 
 
-def read_archive(directory=ARCHIVE) -> dict[int, Phases]:
-    """Every shot with a `<shot>-wpqh0.dat` or `<shot>-wpqh1.dat` directly under
-    `directory`; `wpqh1` wins when a shot has both."""
+def _scan(folder: Path) -> dict[int, dict[int, Path]]:
+    """`{shot: {flag: file}}` of the `<shot>-wpqh[01][-pp].dat` files in `folder`."""
     found: dict[int, dict[int, Path]] = {}
-    for path in sorted(Path(directory).iterdir()):
-        match = _DAT.match(path.name)
-        if match:
-            found.setdefault(int(match[1]), {})[int(match[2])] = path
+    if folder.is_dir():
+        for path in sorted(folder.iterdir()):
+            match = _DAT.match(path.name)
+            if match:
+                found.setdefault(int(match[1]), {})[int(match[2])] = path
+    return found
+
+
+def read_archive(directory=ARCHIVE, *, final: bool = True) -> dict[int, Phases]:
+    """Every shot of the archive. With `final` (the default) a shot's phases are its
+    `postprocessed_2/<shot>-wpqh[01]-pp.dat`, and a shot that folder lacks keeps its
+    detector file; with `final=False` only the detector's `<shot>-wpqh[01].dat` files
+    directly under `directory` are read. `wpqh1` wins when a shot has both files."""
+    directory = Path(directory)
+    raw = _scan(directory)
+    merged = {**raw, **_scan(directory / FINAL)} if final else raw
     result = {}
-    for shot, files in sorted(found.items()):
+    for shot, files in sorted(merged.items()):
         flag = 1 if 1 in files else 0
         result[shot] = Phases(
-            shot, flag, read_dat(files[flag]), len(files) == 2, files[flag].name
+            shot,
+            flag,
+            read_dat(files[flag]),
+            len(files) == 2,
+            files[flag].relative_to(directory).as_posix(),
         )
     return result
 
@@ -281,6 +305,7 @@ class Row:
     n_phases: int
     wpqh_ms: float
     base: str = "none"
+    dropped: str = ""
     action: str = ""
     reason: str = ""
     before_ms: int = 0
@@ -297,6 +322,7 @@ COLUMNS = (
     "n_phases",
     "wpqh_ms",
     "base",
+    "dropped",
     "action",
     "reason",
     "before_ms",
@@ -315,6 +341,73 @@ def save_names(history: list[dict]) -> dict[int, list]:
     return found
 
 
+def _own(entry: dict | None) -> bool:
+    """True for a save made by this import (it carries `SOURCE_NOTE`)."""
+    return (
+        entry is not None
+        and entry.get("note") == SOURCE_NOTE
+        and entry.get("name") == NEW_NAME
+    )
+
+
+def curated_shots(directory) -> set[int] | None:
+    """The shots whose rows in the event's source table come from a person's table.
+
+    The page's source table is a machine suggestion that carries a person's curated
+    intervals where there are any (its sidecar names that table and its sha256: a
+    mismatch raises). None when the source is no suggestion table (no pointer): a
+    format table, every row a person's."""
+    pointer = labels.pointer_path(directory)
+    if not pointer.is_file():
+        return None
+    table = Path(json.loads(pointer.read_text())["table"])
+    sidecar = table.with_suffix(".meta.json")
+    meta = json.loads(sidecar.read_text()) if sidecar.is_file() else {}
+    curated = (meta.get("sources") or {}).get("curated")
+    if not curated:
+        return set()
+    path = Path(curated["table"])
+    if sha256_of(path) != curated["sha256"]:
+        raise ValueError(f"{path} is not the table {sidecar} was made from")
+    with path.open(newline="") as stream:
+        return {int(row["shot"]) for row in csv.DictReader(stream)}
+
+
+def human_draft(origin: str | None, shot: int, curated: set[int] | None) -> bool:
+    """True when the page's draft for `shot` is a person's label. `origin` is what
+    `ui.app.shot_labels` returns: None for the event's source table, else the silver
+    layer's name (`format:...` is a person's table; `suggest:`, `extend:` ... are not)."""
+    if origin is None:
+        return curated is None or shot in curated
+    return origin.startswith("format:")
+
+
+def withdraw(directory, shot: int) -> None:
+    """Take this import's saves of `shot` back: its rows leave `labels.csv` and its
+    lines leave `history.jsonl`, as if it had not been saved. Refuses a shot with any
+    other save in its history."""
+    shot = int(shot)
+    with labels._write_lock:  # the page's lock: its saves rewrite the same files
+        history = labels.history_path(directory)
+        lines = history.read_text().splitlines(keepends=True) if history.is_file() else []
+        kept, own = [], 0
+        for line in lines:
+            entry = json.loads(line) if line.strip() else {}
+            if entry.get("shot") != shot:
+                kept.append(line)
+            elif _own(entry):
+                own += 1
+            else:
+                raise ValueError(f"shot {shot} has a save that is not this import's")
+        path = labels.labels_path(directory)
+        frame = pd.read_csv(path, dtype=str, keep_default_na=False, index_col=False)
+        rows = pd.to_numeric(frame.shot, errors="coerce") == shot
+        with atomic_path(path) as tmp:
+            frame.loc[~rows].to_csv(tmp, index=False)
+        with atomic_path(history) as tmp:
+            tmp.write_text("".join(kept))
+
+
 def import_shot(
     phases: Phases,
     reviewed: dict,
@@ -327,11 +420,14 @@ def import_shot(
     known=None,
     save_empty: bool = False,
     last_save: dict | None = None,
+    human: bool = True,
     apply: bool,
 ) -> Row:
     """Plan, and with `apply` save, one shot. `reviewed` is the page's
     `{saved, source}` for the shot (`ui.app.shot_labels`), `names` the `name` of each
-    of its saves, `table` and `origin` what the page would record as the save's source."""
+    of its saves, `table` and `origin` what the page would record as the save's source.
+    `human` says whether the draft `source` is a person's (`human_draft`); a model's
+    draft, and a saved label this import made (`last_save`), are no start."""
     row = Row(
         phases.shot,
         phases.flag,
@@ -347,15 +443,20 @@ def import_shot(
         )
         return row
     others = sorted({str(n) for n in names if n not in (OLD_NAME, NEW_NAME)})
-    base = saved if saved is not None else source
+    own = _own(last_save)
+    start = None if own else saved
+    draft = source if human else None
+    base = start if start is not None else draft
     row.base = (
         "saved"
-        if saved is not None
+        if start is not None
         else f"draft:{origin or 'source'}"
-        if source is not None
+        if draft is not None
         else "none"
     )
-    row.before_ms = spans_ms(base)
+    if source is not None and not human and start is None:
+        row.dropped = origin or "source"
+    row.before_ms = spans_ms(saved if saved is not None else source)
     if others:
         row.action = "conflict"
         row.reason = f"saved by {', '.join(others)}"
@@ -370,20 +471,27 @@ def import_shot(
         row.action, row.reason = "refused", str(error)
         return row
     if label is None and not save_empty:
+        if own:
+            row.action = "withdraw"
+            row.reason = (
+                "wpqh0 and no human start: this import's earlier save is taken back"
+            )
+            if apply:
+                try:
+                    withdraw(directory, phases.shot)
+                except ValueError as error:
+                    row.action, row.reason = "refused", str(error)
+            return row
         row.action = "skip_no_label"
         row.reason = (
-            "wpqh0 and no label to start from: an empty save would assert no regime"
+            "wpqh0 and no human label to start from: an empty save would assert "
+            "no regime"
         )
         return row
     if label is None:
         label = labels.normalise(grid.snap_window(*ANALYSIS_WINDOW), [], known=known)
     row.after_ms = spans_ms(label)
-    if (
-        saved == label
-        and last_save
-        and last_save.get("note") == SOURCE_NOTE
-        and last_save.get("name") == NEW_NAME
-    ):
+    if saved == label and own:
         row.action, row.reason = "already", "this label is already the last save"
         return row
     row.action = "save"
@@ -403,7 +511,9 @@ def import_shot(
                     "verified": True,
                     "note": SOURCE_NOTE,
                     "wpqh_flag": phases.flag,
+                    "phases_file": phases.file,
                     "base": row.base,
+                    **({"dropped_draft": row.dropped} if row.dropped else {}),
                 },
             )
         except labels.SaveRefused as error:
@@ -461,14 +571,14 @@ def make_list(archive: dict[int, Phases], *, apply: bool, root=None) -> Path:
     return source
 
 
-def backup(paths: Paths, files) -> list[Path]:
-    """Copy each existing file under the label tables into `BACKUP_ROOT`, keeping
-    the first copy of a file that is already there."""
+def backup(paths: Paths, files, root: Path = BACKUP_ROOT) -> list[Path]:
+    """Copy each existing file under the label tables into `root`, keeping the first
+    copy of a file that is already there."""
     kept = []
     for path in map(Path, files):
         if not path.is_file():
             continue
-        target = BACKUP_ROOT / "events" / path.relative_to(paths.label_tables)
+        target = Path(root) / "events" / path.relative_to(paths.label_tables)
         if not target.exists():
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(path, target)
@@ -484,11 +594,16 @@ def _import(args, paths: Paths) -> int:
 
     from labeler.events.ui import app  # the page's own reading of a shot
 
-    archive = read_archive(args.archive)
+    archive = read_archive(args.archive, final=not args.raw)
     shots = args.shots or sorted(archive)
     directory = app.require_event(EVENT, paths)
     if args.apply:
-        backup(paths, [labels.labels_path(directory), labels.history_path(directory)])
+        backup(
+            paths,
+            [labels.labels_path(directory), labels.history_path(directory)],
+            args.backup_root,
+        )
+    curated = curated_shots(directory)
     history = labels.read_history(directory)
     names = save_names(history)
     last = {int(e["shot"]): e for e in history}
@@ -514,6 +629,7 @@ def _import(args, paths: Paths) -> int:
             known=known,
             save_empty=args.save_empty,
             last_save=last.get(shot),
+            human=human_draft(origin, shot, curated),
             apply=args.apply,
         )
         rows.append(row)
@@ -545,6 +661,17 @@ def main(argv=None) -> int:
     imported.add_argument("--shots", nargs="+", type=int, help="only these shots")
     imported.add_argument(
         "--table", type=Path, help="write one row per shot here (CSV)"
+    )
+    imported.add_argument(
+        "--backup-root",
+        type=Path,
+        default=BACKUP_ROOT,
+        help="where --apply first copies labels.csv and history.jsonl",
+    )
+    imported.add_argument(
+        "--raw",
+        action="store_true",
+        help="read the detector's own .dat files, not postprocessed_2",
     )
     imported.add_argument(
         "--save-empty",
