@@ -468,6 +468,7 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
                         "n_shots": len(roster),
                         "n_reviewed": int(roster.shot.isin(list(saved)).sum()),
                         "categories": {str(k): v for k, v in categories.items()},
+                        "default": tree.default(event),
                         "subcategories": [
                             _subcategory(tree, child, roster) for child in
                             tree.children(event)
@@ -642,6 +643,7 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
             "shot": shot,
             "tier": tier,
             "silver": silver.is_silver(paths.label_tables, shot),
+            "default": _taxonomy(paths).default(event),
             **described,
             **({"video": video.meta(path)} if event == "detachment" else {}),
             **reviewed,

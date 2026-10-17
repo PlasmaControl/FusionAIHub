@@ -30,7 +30,9 @@ selection, surrogate selection and bin-policy analysis.
 The label set is the **geometry-gated TangTV state, checked against divertor
 Thomson Te**. The exported lower-divertor states are attached (1), detached (2) and
 uncertain (4); the interval schema keeps code 3 (MARFE) but no bin carries it.
-Missing intervals are unassessed, never attached. These are operational
+Missing intervals of this label set are unassessed, never attached; the owner's saved
+human review is different: its unmarked time inside its window reads as 1 attached (the
+event's `default:`). These are operational
 definitions: attached is a low accepted C-III front (DZ < 0.35 on the upper shelf),
 detached a lifted one (0.5 <= DZ < 1.2). The tier says what supports the state:
 `certain` when a valid Afrac vote agrees with TangTV (the paper text calls this

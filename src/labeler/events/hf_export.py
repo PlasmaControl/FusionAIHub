@@ -1064,6 +1064,8 @@ def _taxonomy(paths: Paths, event_ids: list[str], release: str = RELEASE) -> dic
         }
         if child is not None and child.m is not None:
             entry.update({"m": child.m, "n": child.n})
+        if tree.default(event):  # what unmarked time in the owner's save reads as
+            entry["default"] = tree.default(event)
         if event in silver.FOLD:
             parent, mapping = silver.FOLD[event]
             entry["folded_into"] = {"event": parent, "categories": dict(mapping)}
@@ -1075,10 +1077,8 @@ def _taxonomy(paths: Paths, event_ids: list[str], release: str = RELEASE) -> dic
             "unassessed": grid.UNASSESSED,
             "rule": silver.GRID_RULE,
             "precedence": list(silver.PRECEDENCE),
-            "zero": {
-                e: silver.ZERO.get(e, "absent: assessed and not seen")
-                for e in silver.review_events(paths)
-            },
+            "zero": {e: silver.zero_text(tree, e) for e in silver.review_events(paths)},
+            "default": {e: tree.default(e) for e in silver.review_events(paths)},
         },
         "tiers": dict(TIER_TEXT),
         "attrs": dict(ATTRS),
@@ -1262,14 +1262,19 @@ def mixed_sources(found: list[Table]) -> list[dict]:
     return out
 
 
-def zero_exceptions(provenance: list[dict]) -> dict[str, dict]:
+def zero_exceptions(
+    provenance: list[dict], tree: taxonomy.Taxonomy | None = None
+) -> dict[str, dict]:
     """The events whose category 0 does not say assessed-absent: those `silver.ZERO`
     names (a regime or state table's 0 only says nothing was marked there, and the
-    grid maps it to -1) and any other event a shipped table gives a 0 name other than
-    `absent`. Per event: the owner's-save meaning (None where `ZERO` has none) and
-    the names its shipped tables give 0."""
+    grid maps it to -1), those `tree` gives a default class (the owner's unmarked time
+    reads as that class), and any other event a shipped table gives a 0 name other
+    than `absent`. Per event: the owner's-save meaning (`silver.zero_text`; None where
+    there is none) and the names its shipped tables give 0."""
+    tree = taxonomy.Taxonomy() if tree is None else tree
     found = {
-        event: {"owner": text, "names": set()} for event, text in silver.ZERO.items()
+        event: {"owner": silver.zero_text(tree, event), "names": set()}
+        for event in sorted({*silver.ZERO, *(e for e in tree.top if tree.default(e))})
     }
     for item in provenance:
         zero = json.loads(item["categories"]).get("0")
@@ -1522,7 +1527,9 @@ def _write(
             }
         )
     report["mixed_sources"] = mixed_sources(found)
-    report["zero_exceptions"] = zero_exceptions(provenance)
+    report["zero_exceptions"] = zero_exceptions(
+        provenance, taxonomy.load(paths.events_manifest)
+    )
     report["review_sources"] = review_sources(pointed, provenance)
     spans = pd.concat(frames, ignore_index=True).sort_values(
         ["event", "dataset", "shot", "t_start_ms", "t_end_ms", "category"],
@@ -2019,7 +2026,9 @@ def _zero_text(exceptions: dict[str, dict]) -> str:
             ", and not even then for the events whose 0 only says nothing was marked: "
             + "; ".join(each)
             + ". The 10 ms grid already maps those 0s to -1 (unassessed) in every "
-            "table but the owner's save, where 0 stays 0 as no regime or state saved"
+            "table but the owner's save, where the unmarked time inside its window is "
+            "0 (no regime or state saved) or, for an event with a default class, that "
+            "class"
         )
     return (
         text + ". Time no row covers was not assessed by that table, whatever its "

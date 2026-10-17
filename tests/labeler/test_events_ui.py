@@ -273,12 +273,12 @@ def test_events_lists_each_roster_and_how_much_of_it_is_reviewed(client, source)
         "events": [
             {"event": "alfven_eigenmode", "display_name": "alfven_eigenmode",
              "group": None, "n_shots": 2, "n_reviewed": 0, "categories": states,
-             "subcategories": []},
+             "default": 0, "subcategories": []},
             {"event": "detachment", "display_name": "detachment", "group": None,
              "n_shots": 1, "n_reviewed": 0,
              "categories": {"1": "attached", "2": "detached", "3": "marfe",
                             "4": "uncertain"},
-             "subcategories": []},
+             "default": 0, "subcategories": []},
         ]
     }
 

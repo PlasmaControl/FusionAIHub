@@ -115,6 +115,26 @@ def test_no_label_to_start_from():
     assert jw.with_wpqh(None, (), known=CATEGORIES) is None
 
 
+def test_the_rest_of_a_window_with_no_human_start_is_uncertain():
+    label = jw.with_wpqh(None, [(2000.0, 2152.0), (3000.0, 3500.0)], known=CATEGORIES)
+    rest = jw.with_rest_uncertain(label, known=CATEGORIES)
+    assert rest.window == (1000, 5000)
+    assert rest.intervals == (
+        (1000, 2000, 5),
+        (2000, 2150, 4),
+        (2150, 3000, 5),
+        (3000, 3500, 4),
+        (3500, 5000, 5),
+    )
+    assert rest.iscrowd == (1,) * 5  # Spans, as every confinement regime is
+    assert jw.with_rest_uncertain(rest, known=CATEGORIES) == rest  # nothing left
+    # A label with nothing in it is all not assessed.
+    empty = labels.normalise((1000, 5000), [], known=CATEGORIES)
+    assert jw.with_rest_uncertain(empty, known=CATEGORIES).intervals == (
+        (1000, 5000, 5),
+    )
+
+
 def test_the_window_grows_over_a_phase_past_it():
     label = jw.with_wpqh(
         jw.label_of({"window": [0, 3000], "intervals": []}), [(2900.0, 3500.0)]
@@ -239,8 +259,11 @@ def test_a_wpqh0_shot_with_no_label_is_not_saved_unless_asked(tmp_path):
     row = run(tmp_path, none)
     assert row.action == "skip_no_label" and not labels.labels_path(tmp_path).exists()
     row = run(tmp_path, none, save_empty=True)
-    assert row.action == "save"
-    assert labels.read_saved(tmp_path, grid_ms=10)[200].intervals == ()
+    assert row.action == "save" and row.uncertain_ms == 4000
+    # All of it is not assessed: an empty save would read as L-mode.
+    assert labels.read_saved(tmp_path, grid_ms=10)[200].intervals == (
+        (1000, 5000, 5),
+    )
     assert labels.read_history(tmp_path)[-1]["window"] == [1000, 5000]
 
 
@@ -294,9 +317,12 @@ def test_a_model_draft_is_not_a_start(tmp_path):
     row = run(tmp_path, phases(), {"source": BASE}, human=False, origin="suggest:x/v2")
     assert row.action == "save" and row.base == "none" and row.dropped == "suggest:x/v2"
     saved = labels.read_saved(tmp_path, grid_ms=10)[200]
-    assert saved.window == (1000, 5000) and saved.intervals == ((2000, 2500, 4),)
+    assert saved.window == (1000, 5000) and saved.intervals == (
+        (1000, 2000, 5), (2000, 2500, 4), (2500, 5000, 5),
+    )
     entry = labels.read_history(tmp_path)[-1]
     assert entry["base"] == "none" and entry["dropped_draft"] == "suggest:x/v2"
+    assert entry["rest_class"] == 5
     # wpqh0 on a model draft has nothing of his to say: no save.
     shut = run(tmp_path, phases(0, (), shot=201), {"source": BASE}, human=False)
     assert shut.action == "skip_no_label" and shut.before_ms == 500
@@ -324,7 +350,36 @@ def test_a_save_of_this_import_is_not_a_start(tmp_path):
         tmp_path, phases(), both, names=["Jalal Butt"], last_save=last, human=False
     )
     assert redone.action == "save" and redone.base == "none"
-    assert labels.read_saved(tmp_path, grid_ms=10)[200].intervals == ((2000, 2500, 4),)
+    assert labels.read_saved(tmp_path, grid_ms=10)[200].intervals == (
+        (1000, 2000, 5), (2000, 2500, 4), (2500, 5000, 5),
+    )
+
+
+def test_a_save_with_no_human_start_leaves_no_time_unmarked(tmp_path):
+    """Its window is his phases and 5 (not assessed), never a 0 gap that would read
+    as L-mode; a human start keeps its own classes and gaps."""
+    run(tmp_path, phases(), {"source": BASE}, human=False)
+    frame = labels.labels_path(tmp_path).read_text().splitlines()
+    assert [row.split(",")[1] for row in frame[1:]] == ["5", "4", "5"]
+    row = run(tmp_path, phases(shot=201), {"source": BASE}, human=True)
+    assert row.base == "draft:source" and row.uncertain_ms == 0
+    assert 5 not in [c for _, _, c in labels.read_saved(tmp_path)[201].intervals]
+
+
+def test_an_old_wpqh_only_save_is_replaced_by_one_with_the_rest_uncertain(tmp_path):
+    old = {"window": [1000, 5000], "intervals": [[2000, 2500, 4]], "iscrowd": [1]}
+    last = {"shot": 200, "name": "Jalal Butt", "note": jw.SOURCE_NOTE}
+    row = run(
+        tmp_path, phases(), {"saved": old}, names=["Jalal Butt"], last_save=last,
+        human=False,
+    )
+    assert row.action == "save" and row.uncertain_ms == 3500
+    saved = labels.read_saved(tmp_path, grid_ms=10)[200]
+    again = run(
+        tmp_path, phases(), {"saved": labels.page_label("confinement", saved).as_json()},
+        names=["Jalal Butt"], last_save=labels.read_history(tmp_path)[-1], human=False,
+    )
+    assert again.action == "already"
 
 
 def test_a_label_he_saved_himself_is_a_start(tmp_path):

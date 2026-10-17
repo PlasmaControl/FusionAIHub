@@ -76,6 +76,9 @@ non_category_dirs:
 # `<event>/subcategories/<key>/review/`. A new kind (an ELM type) is one more entry.
 # `review: false` keeps an event's folder and tables but leaves it off the page and
 # the silver set (disruption and VDE, owner 2026-10-11).
+# `default: <class>` is what the time a saved label's window leaves unmarked reads
+# as (owner 2026-10-17); an event without it reads 0, absent. The stored label is
+# unchanged. It must be one of the event's classes (`labeler.events.taxonomy`).
 taxonomy:
   mhd_n1:
     display: "MHD n=1"
@@ -99,8 +102,9 @@ taxonomy:
     subcategories:
       tae: {display: "TAE (toroidal AE)"}
       rsae: {display: "RSAE (reversed-shear AE)"}
-  confinement: {display: "Confinement regime"}
-  detachment: {display: "Detachment"}
+  # Defaults: confinement 2 (low, L-mode, the baseline regime), detachment 1 (attached).
+  confinement: {display: "Confinement regime", default: 2}
+  detachment: {display: "Detachment", default: 1}
   edge_localized_mode: {display: "ELM"}
   minimum_safety_factor: {display: "q_min regime"}
   poloidal_beta: {display: "Poloidal beta"}

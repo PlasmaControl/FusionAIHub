@@ -28,7 +28,7 @@
 
 <!-- /SUMMARY -->
 
-Missing intervals are unassessed. Expert review is pending.
+Missing intervals are unassessed. Expert review is pending. In a saved human review (`review/`) the time left unmarked inside its window reads as 1 attached, the event's `default:` in `configs/labeler/events.yaml`; the stored label is unchanged, and the source and extension tables keep their own meaning.
 
 ## Data Provenance
 

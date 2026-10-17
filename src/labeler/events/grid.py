@@ -49,10 +49,12 @@ def snap_window(lo, hi, grid_ms: int = GRID_MS) -> tuple[int, int]:
 
 
 def frames(window, intervals, t0_ms: int, n: int, grid_ms: int = GRID_MS,
-           unknown=()) -> np.ndarray:
+           unknown=(), fill: int = 0) -> np.ndarray:
     """`n` frames from `t0_ms` (a frame edge): UNASSESSED outside the window,
-    0 inside it, and each span's category, later spans painting over earlier;
-    `unknown` spans (a table's not-observable stretches) are UNASSESSED again."""
+    `fill` inside it (0, absent, unless the event's default says another class,
+    `taxonomy.Taxonomy.default`), and each span's category, later spans painting
+    over earlier; `unknown` spans (a table's not-observable stretches) are
+    UNASSESSED again."""
     if t0_ms % grid_ms:
         raise ValueError(f"t0 {t0_ms} ms is not a frame edge")
     out = np.full(n, UNASSESSED, dtype=np.int8)
@@ -61,7 +63,7 @@ def frames(window, intervals, t0_ms: int, n: int, grid_ms: int = GRID_MS,
         return min(max((t - t0_ms) // grid_ms, 0), n)
 
     lo, hi = snap_window(*window, grid_ms)
-    out[index(lo):index(hi)] = 0
+    out[index(lo):index(hi)] = fill
     for a, b, c in intervals:
         a, b = snap_span(a, b, grid_ms)
         out[index(a):index(b)] = c

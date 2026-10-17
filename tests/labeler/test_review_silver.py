@@ -381,6 +381,92 @@ def test_a_regime_tables_zero_falls_through_but_the_owners_does_not(paths, tmp_p
     assert _exported(paths, tmp_path, "confinement") == [0] * 6
 
 
+def _with_defaults(paths):
+    """The shipped defaults: confinement reads unmarked time as low (2), detachment as
+    attached (1). The fixture has no detachment roster yet."""
+    directory = paths.label_tables / "detachment"
+    directory.mkdir(exist_ok=True)
+    (directory / "shots.csv").write_text(
+        "shot,tier,holdout,reviewers,verified_on,notes\n"
+        f"{SHOT},unverified,false,,,\n"
+    )
+    paths.events_manifest.write_text(
+        paths.events_manifest.read_text()
+        + "  confinement: {default: 2}\n  detachment: {default: 1}\n"
+    )
+
+
+def test_the_owners_unmarked_time_is_the_events_default_class(paths, tmp_path):
+    save = paths.label_tables / "confinement/review/labels.csv"
+    table(save, [(0, 20, 1), (20, 60, 0)])
+    assert _exported(paths, tmp_path, "confinement") == [1, 1, 0, 0, 0, 0]  # no default
+    _with_defaults(paths)
+    assert _exported(paths, tmp_path, "confinement") == [1, 1, 2, 2, 2, 2]
+    table(paths.label_tables / "detachment/review/labels.csv",
+          [(0, 20, 2), (20, 60, 0)])
+    assert _exported(paths, tmp_path, "detachment") == [2, 2, 1, 1, 1, 1]
+    # An all-gap save, as Butt's WPQH-only saves were, now says L-mode throughout...
+    table(save, [(0, 60, 0)])
+    assert _exported(paths, tmp_path, "confinement") == [2] * 6
+    # ...and 5 (uncertain) is its own class, never overwritten by the default.
+    table(save, [(0, 20, 5), (20, 40, 4), (40, 60, 0)])
+    assert _exported(paths, tmp_path, "confinement") == [5, 5, 4, 4, 2, 2]
+    # The stored label is untouched; only the grid reads the 0 as the default.
+    assert labels.read_saved(paths.label_tables / "confinement")[SHOT].intervals == (
+        (0, 20, 5), (20, 40, 4),
+    )
+
+
+def test_other_tables_zero_and_other_events_keep_their_meaning_beside_a_default(
+    paths, tmp_path
+):
+    _with_defaults(paths)
+    table(paths.label_tables / "confinement/format/f.csv", [(0, 30, 1), (30, 60, 0)])
+    table(paths.label_tables / "confinement/extend_x/e.csv", [(0, 60, 3)])
+    # No save: a regime table's 0 still falls through to the next table (no default).
+    assert _exported(paths, tmp_path, "confinement") == [1, 1, 1, 3, 3, 3]
+    layers = silver.layers(paths, "confinement", SHOT)
+    assert [(layer.kind, layer.fill) for layer in layers] == [
+        ("format", 0), ("extend", 0),
+    ]
+    table(paths.label_tables / "confinement/review/labels.csv", [(0, 20, 4), (20, 60, 0)])
+    assert _exported(paths, tmp_path, "confinement") == [4, 4, 2, 2, 2, 2]
+    assert [(layer.kind, layer.fill) for layer in silver.layers(
+        paths, "confinement", SHOT)] == [("saved", 2), ("format", 0), ("extend", 0)]
+    # An event with no default reads its save's 0 as absent, as before.
+    table(paths.label_tables / "disruption/review/labels.csv", [(0, 30, 0)])
+    assert _exported(paths, tmp_path, "disruption") == [0, 0, 0, -1, -1, -1]
+    assert [layer.fill for layer in silver.layers(paths, "disruption", SHOT)] == [0]
+
+
+def test_the_export_index_names_the_default_and_the_zero_it_changes(paths, tmp_path):
+    _with_defaults(paths)
+    silver.export(paths, [SHOT], tmp_path / "export")
+    index = json.loads((tmp_path / "export" / "index.json").read_text())
+    assert index["default"]["confinement"] == 2 and index["default"]["detachment"] == 1
+    assert index["default"]["mhd_n1"] == index["default"]["disruption"] == 0
+    assert index["zero"]["confinement"].startswith("low (2), the event's default")
+    assert index["zero"]["detachment"].startswith("attached (1), the event's default")
+    assert "another table's 0 says nothing" in index["zero"]["confinement"]
+    assert index["zero"]["disruption"].startswith("absent")
+    assert "default" in index["grid_rule"]
+
+
+def test_the_by_shot_view_sends_each_layers_fill(client, paths):
+    _with_defaults(paths)
+    table(paths.label_tables / "confinement/review/labels.csv", [(0, 20, 1), (20, 60, 0)])
+    table(paths.label_tables / "confinement/format/f.csv", [(0, 60, 3)])
+    found = client.get(f"/api/silver/shot?shot={SHOT}").json()
+    event = next(row for row in found["events"] if row["event"] == "confinement")
+    assert event["default"] == 2
+    assert [(layer["kind"], layer["fill"]) for layer in event["layers"]] == [
+        ("saved", 2), ("format", 0),
+    ]
+    assert event["layers"][0]["label"]["intervals"] == [[0, 20, 1]]  # as stored
+    assert next(row for row in found["events"]
+                if row["event"] == "disruption")["default"] == 0
+
+
 def test_a_child_table_says_nothing_past_its_own_window(paths, tmp_path):
     table(paths.label_tables / "mhd_n1/review/labels.csv", [(0, 100, 1)])
     table(paths.label_tables / "mhd_n1/subcategories/m1/format/c.csv",
@@ -435,7 +521,10 @@ def test_silver_api_shapes_locked_children_and_token_gate(client, paths):
     overview = client.get(f"/api/silver/shot?shot={SHOT}").json()
     parent = next(row for row in overview["events"] if row["event"] == "mhd_n1")
     assert parent["saved"] and parent["layers"][0]["kind"] == "saved"
-    assert set(parent["layers"][0]) == {"kind", "name", "label", "unknown", "held"}
+    assert set(parent["layers"][0]) == {
+        "kind", "name", "label", "fill", "unknown", "held",
+    }
+    assert parent["default"] == parent["layers"][0]["fill"] == 0
     assert overview["t_range"] == [0, 100]
     assert client.get("/api/silver/shot?shot=99").status_code == 404
     assert client.get("/api/gold/shots").json() == {"shots": [SHOT, GOLD_OFF_ROSTER]}

@@ -53,7 +53,9 @@ GRID_RULE = (
     "parent's saved spans (all of it when the parent is saved absent) or its "
     "own table's window, and where a folded table, or a confinement or "
     "detachment table other than the owner's save, marks nothing; "
-    "0 is what `zero` names per event; first assessing layer wins, in the order "
+    "0 is what `zero` names per event, and an event with a `default` class reads "
+    "the owner's unmarked time inside a saved window as that class, so its saved "
+    "frames are never 0; first assessing layer wins, in the order "
     "saved, folded saves, format, extend, source, suggest"
 )
 #: The order layers win in: the owner's saves, then curated tables, then machines.
@@ -61,13 +63,28 @@ GRID_RULE = (
 PRECEDENCE = ("saved", "folded", "format", "extend", "source", "suggest")
 #: What 0 means where it differs from "assessed and not seen". Only the owner's
 #: save says it there: another table's 0 names no regime, so it is -1 and a lower
-#: layer may speak.
+#: layer may speak. With the event's `default` class (`taxonomy`), the owner's
+#: 0 is that class instead (`zero_text`), and no frame of its save is 0.
 ZERO = {
     "confinement": "the owner saved no regime here",
     "detachment": "the owner saved no state here",
 }
 #: Category names that say nobody assessed the time (RWM's 4): -1 in the grid.
 UNASSESSED_NAMES = {"unassessed", "not_observable"}
+
+
+def zero_text(tree: taxonomy.Taxonomy, event: str) -> str:
+    """What category 0 says for `event` in the grid and its index: `ZERO`'s text, or
+    "absent: assessed and not seen"; with a default class, that the owner's unmarked
+    time reads as that class and no frame of its save is 0."""
+    fill = tree.default(event)
+    if not fill:
+        return ZERO.get(event, "absent: assessed and not seen")
+    return (
+        f"{labels.categories(event)[fill]} ({fill}), the event's default: the time "
+        "the owner's save leaves unmarked inside its window, so none of its frames "
+        "is 0" + ("; another table's 0 says nothing and is -1" if event in ZERO else "")
+    )
 
 
 @dataclass(frozen=True)
@@ -82,6 +99,9 @@ class Layer:
     #: The owner's own "not observable" or "unassessed" in a save of this event:
     #: -1 that no layer under it fills.
     held: tuple[tuple[int, int], ...] = ()
+    #: What the window's unmarked time reads as: the event's default class in the
+    #: owner's save (`taxonomy.Taxonomy.default`), else 0.
+    fill: int = 0
 
 
 def read_silver(label_tables) -> pd.DataFrame:
@@ -372,8 +392,11 @@ def layers(paths: Paths, event: str, shot: int) -> list[Layer]:
                 if label is None:
                     continue
                 label = labels.span_default(event, label)
+                # The owner's unmarked time is the event's default class; every
+                # other table's 0 keeps its meaning above.
                 found.append(Layer(kind, _name(paths, kind, path), label, split.unknown,
-                                   split.held if kind == "saved" else ()))
+                                   split.held if kind == "saved" else (),
+                                   tree.default(event) if kind == "saved" else 0))
             except Exception as error:  # noqa: BLE001
                 log.warning("skipping %s: %s", path, error)
     return sorted(found, key=lambda layer: PRECEDENCE.index(layer.kind))
@@ -469,7 +492,7 @@ def paint(group, t0: int, n: int, allowed=None) -> tuple[np.ndarray, np.ndarray]
     taken = np.full(n, -1, dtype=np.int16)
     for k, layer in enumerate(group):
         cells = grid.frames(layer.label.window, layer.label.intervals, t0, n,
-                            unknown=layer.unknown)
+                            unknown=layer.unknown, fill=layer.fill)
         free = taken == -1
         if allowed is not None:
             free &= allowed
@@ -508,6 +531,7 @@ def draft(paths: Paths, event: str, shot: int) -> tuple[labels.Label, Layer] | N
 
 def export(paths: Paths, shots, out_dir):
     """Write one compressed grid per shot and its readable dataset index."""
+    tree = taxonomy.load(paths.events_manifest)
     events = review_events(paths)
     shots = [int(shot) for shot in shots]
     out_dir = Path(out_dir)
@@ -542,8 +566,8 @@ def export(paths: Paths, shots, out_dir):
         "categories": {event: {"0": "absent", **{
             str(k): v for k, v in labels.categories(event).items()
         }} for event in events},
-        "zero": {event: ZERO.get(event, "absent: assessed and not seen")
-                 for event in events},
+        "zero": {event: zero_text(tree, event) for event in events},
+        "default": {event: tree.default(event) for event in events},
         "grid_ms": grid.GRID_MS, "grid_rule": GRID_RULE,
         "shots": shots, "origins": origins,
         "made_at": datetime.now(UTC).isoformat(timespec="seconds"),

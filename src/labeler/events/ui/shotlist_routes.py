@@ -239,10 +239,11 @@ def draft(paths: Paths, event: str, shot: int):
 
 
 def review_events(paths: Paths) -> list[dict]:
-    """The page's review events, each parent followed by its subcategories."""
+    """The page's review events, each parent followed by its subcategories, each with
+    its `default` class: what time a saved label leaves unmarked reads as (0 absent)."""
     tree = taxonomy.load(paths.events_manifest)
     return [{"event": event, "display_name": tree.display(event),
-             "parent": tree.parent(event)}
+             "parent": tree.parent(event), "default": tree.default(event)}
             for event in silver.review_events(paths)]
 
 
@@ -250,7 +251,8 @@ def shot_events(paths: Paths, shot: int) -> tuple[list[dict], list[int]]:
     """`(events, t_range)`: every review event of `shot` as the by-shot view draws
     it (its layers in precedence order, saved or not, locked behind its parent, the
     parent's region) and the time all the layers span. A withheld table's layer is
-    left out."""
+    left out. Each event carries its `default` class and each layer its `fill`, what
+    the time its label's window leaves unmarked reads as (0 absent)."""
     events, groups = [], []
     for entry in review_events(paths):
         event = entry["event"]
@@ -266,7 +268,7 @@ def shot_events(paths: Paths, shot: int) -> tuple[list[dict], list[int]]:
             }},
             **({"allowed": region.as_json()} if region is not None else {}),
             "layers": [{"kind": layer.kind, "name": layer.name,
-                        "label": layer.label.as_json(),
+                        "label": layer.label.as_json(), "fill": layer.fill,
                         "unknown": [list(span) for span in layer.unknown],
                         "held": [list(span) for span in layer.held]}
                        for layer in layers],

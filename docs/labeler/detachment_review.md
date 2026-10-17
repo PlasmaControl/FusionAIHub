@@ -1,7 +1,8 @@
 # Detachment camera review
 
 The review page offers **1 attached, 2 detached, 3 MARFE, 4 uncertain** on an
-exclusive state track. Unmarked time is not reviewed. The primary producer
+exclusive state track. Unmarked time inside a saved review's window reads as 1
+attached (the event's `default:`); time outside the window is not reviewed. The primary producer
 suggestion is **unverified**, with its rule comparison and three indicator votes
 shown directly below the video. Review edits remain in the usual annotation
 lanes. A shot with no saved human review and Blind mode off opens on its
@@ -60,13 +61,14 @@ Use the camera together with diagnostics and geometry to mark what you can decid
 | 2 | detached | Front lifted toward the X-point, with target ion-flux (Afrac/Jsat) rollover or low target Te. |
 | 3 | MARFE | Localized radiation inside the separatrix near/above the X-point (high-field side), persisting over several frames. |
 | 4 | uncertain | The reviewer cannot decide: view blocked or evidence conflicts. |
-| — | unmarked | Not reviewed. |
+| — | unmarked | Inside a saved window: attached (the default). Outside it: not reviewed. |
 
 MARFE is physically detached but has a distinct stage in this exclusive track.
 Partial and full detachment share code 2. Missing evidence never means attached.
 If target ion-flux/temperature evidence is absent or its target location cannot
-be established, a camera lift alone is **uncertain**, not detached. Leave time
-unmarked until actually reviewed; use state 4 after assessing the missing evidence.
+be established, a camera lift alone is **uncertain**, not detached. Time
+left unmarked inside a saved window reads as attached, so mark state 4 on any stretch
+whose evidence is missing or unassessed.
 For attached, “emission peaked at target” is filter dependent: TangTV's filter is
 not recorded, and a D-alpha filter can show target recombination emission during
 detachment. Target-bright images alone cannot establish attachment; check target

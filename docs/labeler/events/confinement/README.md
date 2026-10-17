@@ -21,8 +21,9 @@ The review page offers confinement as one event, `confinement`, in place of
 those four; their tables and rosters are untouched, and the frame models and the
 paper still read them). A span is 1 high, 2 low, 3 qh, 4 wpqh, 5 uncertain or
 6 imode (I-mode; appended, so 1-5 keep their numbers; the former
-`improved_energy_confinement_mode` event is folded into it); time left unmarked is
-category 0 (absent), and nothing in it is observable.
+`improved_energy_confinement_mode` event is folded into it); time left unmarked
+inside a saved label's window is 2 low (L-mode, the event's `default:`), and time
+outside every window is not assessed (-1 on the grid).
 
 - `shots.csv` is the roster: the H-mode roster's 450 shots, in its order, then
   389 curated shots outside it (unverified, not held out), then 117 shots from an

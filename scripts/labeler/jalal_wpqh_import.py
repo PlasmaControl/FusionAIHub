@@ -24,15 +24,18 @@ phases), not a regime timeline, so only class 4 comes from the archive.
 A shot's label starts from a human label only: its saved label, else its draft when
 the draft is a person's (the event's source table for a shot it draws from a curated
 table, or a format table). A model's suggestion is never a start: such a shot starts
-empty, with only his WPQH spans over 1000-5000 ms, grown to hold them. A saved label
+empty, with only his WPQH spans over 1000-5000 ms, grown to hold them, and the rest of
+that window marked 5 (uncertain: not assessed for H vs L; since 2026-10-17 the time a
+save leaves unmarked reads as L-mode, which he never said). A saved label
 made by this import is no start either (it is derived): the shot starts again from
 its human draft, so a rerun replaces it. The start's class-4 (WPQH) spans are replaced
-by the archive's; every other class stays. It is saved under the name "Jalal Butt" with
+by the archive's; every other class stays (a human start's unmarked time is L-mode, as
+for any save). It is saved under the name "Jalal Butt" with
 `labels.save`, the call the page's `POST /api/label` ends in, and its history line also
 carries `verified: true` and `note: "WPQHphasesMay262026"` (`extra`). The archive says
-nothing about other classes, so a wpqh0 shot with no human start is not saved (an empty
-saved label would assert that no regime at all was present; `--save-empty` saves it
-anyway), and an earlier save of this import for such a shot is withdrawn. A shot whose
+nothing about other classes, so a wpqh0 shot with no human start is not saved (an
+all-uncertain window would assert no regime either; `--save-empty` saves it anyway),
+and an earlier save of this import for such a shot is withdrawn. A shot whose
 history has a save under any other name is a conflict and is left as it is.
 """
 
@@ -59,6 +62,8 @@ from labeler.events.review import labels, reviewers
 
 EVENT = "confinement"
 WPQH = 4
+#: Confinement class 5: not assessed for H vs L. The rest of a save with no human start.
+UNCERTAIN = 5
 OLD_NAME, NEW_NAME = "Jalal", "Jalal Butt"
 SOURCE_NOTE = "WPQHphasesMay262026"
 LIST_NAME = "confine_butt"
@@ -272,6 +277,27 @@ def with_wpqh(
     )
 
 
+def with_rest_uncertain(label: labels.Label, *, known=None) -> labels.Label:
+    """`label` with every stretch of its window no annotation covers marked 5
+    (uncertain), as Spans. The confinement event reads a saved label's unmarked time
+    as L-mode (`taxonomy` default), which a label of his WPQH phases alone never
+    said: the rest of its window was not assessed for H vs L."""
+    gaps, at = [], label.window[0]
+    for a, b, _ in sorted(label.intervals):
+        if a > at:
+            gaps.append((at, a))
+        at = max(at, b)
+    if at < label.window[1]:
+        gaps.append((at, label.window[1]))
+    flags = list(label.iscrowd) or [1] * len(label.intervals)
+    return labels.normalise(
+        label.window,
+        [*label.intervals, *((a, b, UNCERTAIN) for a, b in gaps)],
+        known=known,
+        iscrowd=[*flags, *([1] * len(gaps))],
+    )
+
+
 def label_of(body: dict | None) -> labels.Label | None:
     """A `Label` from the JSON the page serves (`Label.as_json`)."""
     if body is None:
@@ -315,6 +341,8 @@ class Row:
     reason: str = ""
     before_ms: int = 0
     after_ms: int = 0
+    #: The ms of the saved window marked 5 (uncertain): the rest, with no human start.
+    uncertain_ms: int = 0
     jalal: str = ""
     existing: str = ""
     saved_at: str = ""
@@ -332,6 +360,7 @@ COLUMNS = (
     "reason",
     "before_ms",
     "after_ms",
+    "uncertain_ms",
     "jalal",
     "existing",
     "saved_at",
@@ -493,9 +522,13 @@ def import_shot(
             "no regime"
         )
         return row
-    if label is None:
-        label = labels.normalise(grid.snap_window(*ANALYSIS_WINDOW), [], known=known)
+    if label is None:  # `--save-empty`: nothing of his, all of it not assessed
+        window = grid.snap_window(*ANALYSIS_WINDOW)
+        label = labels.normalise(window, [], known=known)
+    if base is None:  # no human start: the rest of the window is not L-mode
+        label = with_rest_uncertain(label, known=known)
     row.after_ms = spans_ms(label)
+    row.uncertain_ms = spans_ms(label, UNCERTAIN)
     if saved == label and own:
         row.action, row.reason = "already", "this label is already the last save"
         return row
@@ -518,6 +551,7 @@ def import_shot(
                     "wpqh_flag": phases.flag,
                     "phases_file": phases.file,
                     "base": row.base,
+                    **({"rest_class": UNCERTAIN} if base is None else {}),
                     **({"dropped_draft": row.dropped} if row.dropped else {}),
                 },
             )

@@ -164,6 +164,39 @@ def test_the_taxonomy_is_reread_when_the_file_changes_and_refuses_a_bad_entry(ta
     assert taxonomy.load(tables / "events.yaml").children("mhd_n1") == []
 
 
+def test_an_events_default_is_one_of_its_classes_and_zero_without_one(tables):
+    manifest = tables / "events.yaml"
+    tree = taxonomy.load(manifest)
+    assert tree.default("confinement") == 0 and tree.default("nothing") == 0
+    manifest.write_text(TAXONOMY + "  detachment: {display: D, default: 1}\n")
+    tree = taxonomy.load(manifest)
+    assert tree.default("detachment") == 1 and tree.default("mhd_n1") == 0
+    manifest.write_text(TAXONOMY.replace(
+        'confinement: {display: "Confinement regime"}',
+        'confinement: {display: "Confinement regime", default: 2}'))
+    assert taxonomy.load(manifest).default("confinement") == 2
+    for bad in ("7", "'low'", "true", "1.5", "-1"):
+        manifest.write_text(TAXONOMY + f"  confinement: {{default: {bad}}}\n")
+        with pytest.raises(taxonomy.TaxonomyError, match="confinement.default must be"):
+            taxonomy.load(manifest)
+    # 0 is always allowed; a parent with subcategories takes no default.
+    manifest.write_text(TAXONOMY + "  disruption: {default: 0}\n")
+    assert taxonomy.load(manifest).default("disruption") == 0
+    manifest.write_text(TAXONOMY.replace(
+        'display: "MHD n=1"\n', 'display: "MHD n=1"\n    default: 1\n', 1))
+    with pytest.raises(taxonomy.TaxonomyError, match="mhd_n1 has subcategories"):
+        taxonomy.load(manifest)
+
+
+def test_the_shipped_taxonomy_defaults_detachment_to_attached_and_confinement_to_low():
+    tree = taxonomy.load(Paths().events_manifest)
+    assert tree.default("detachment") == 1 and tree.default("confinement") == 2
+    assert labels.categories("detachment")[1] == "attached"
+    assert labels.categories("confinement")[2] == "low"
+    assert all(tree.default(event) == 0 for event in tree.top
+               if event not in {"detachment", "confinement"})
+
+
 def test_the_shipped_taxonomy_lists_the_mhd_modes_and_ae_children():
     tree = taxonomy.load(Paths().events_manifest)
     assert tree.children("mhd_n1") == ["mhd_n1.m1", "mhd_n1.m2", "mhd_n1.m3"]
@@ -316,7 +349,7 @@ def test_only_a_name_in_the_taxonomy_is_a_child(client, paths):
             response = client.get(f"/api/{route}", params={"event": event, "shot": SHOT})
             assert response.status_code == 404, (event, response.text)
     assert _post(client, "mhd_n1.m9", [[100, 300, 1]]).status_code == 404
-    off_roster = client.get("/api/shot?event=mhd_n1.m1&shot=999999")
+    off_roster = client.get("/api/shot?event=mhd_n1.m1&shot=999")  # not an open six-digit shot
     assert off_roster.status_code == 404
     assert _post(client, "mhd_n1.m1", [[100, 300, 7]]).status_code == 400
 
@@ -342,10 +375,35 @@ def test_events_lists_the_top_level_events_with_groups_and_subcategories(client)
             ] == ["TAE", "RSAE"]
     assert events["disruption"] == {
         "event": "disruption", "display_name": "disruption", "group": None,
-        "n_shots": 3, "n_reviewed": 0,
+        "n_shots": 3, "n_reviewed": 0, "default": 0,
         "categories": {"1": "present", "2": "uncertain"}, "subcategories": [],
     }
     assert events["mhd_n1"]["categories"] == {"1": "present", "2": "uncertain"}
+
+
+def test_an_events_default_class_travels_to_the_events_list_and_the_shot_view(
+    client, paths
+):
+    events = {row["event"]: row["default"]
+              for row in client.get("/api/events").json()["events"]}
+    assert set(events.values()) == {0}
+    _store(paths, "high_confinement_mode")
+    _store(paths, "mhd_n1")
+    assert client.get(f"/api/shot?event=confinement&shot={SHOT}").json()["default"] == 0
+    paths.events_manifest.write_text(TAXONOMY.replace(
+        'confinement: {display: "Confinement regime"}',
+        'confinement: {display: "Confinement regime", default: 2}'))
+    events = {row["event"]: row["default"]
+              for row in client.get("/api/events").json()["events"]}
+    assert events["confinement"] == 2 and events["mhd_n1"] == 0
+    assert client.get(f"/api/shot?event=confinement&shot={SHOT}").json()["default"] == 2
+    # The saved label is stored as the page sent it: the default is only how it reads.
+    saved = _post(client, "confinement", [[200, 400, 1]], window=(0, 600))
+    assert saved.json()["saved"]["intervals"] == [[200, 400, 1]]
+    assert saved.json()["saved"]["window"] == [0, 600]
+    stored = labels.labels_path(paths.label_tables / "confinement").read_text()
+    assert [row.split(",")[1] for row in stored.splitlines()[1:]] == ["0", "1", "0"]
+    assert client.get(f"/api/shot?event=mhd_n1&shot={SHOT}").json()["default"] == 0
 
 
 def test_an_event_marked_review_false_is_not_offered(client, paths):

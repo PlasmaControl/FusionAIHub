@@ -188,7 +188,10 @@ its reviewed count (`1/1 (sawtooth, fishbone)`, `RSAE`). The chips and display
 names come from the `taxonomy:` block of `configs/labeler/events.yaml`
 (`labeler.events.taxonomy`); a new kind is one more entry there, and
 `review: false` leaves an event off the dropdown and the silver set (disruption
-and VDE). A subcategory
+and VDE). `default: <class>` names the class a saved label's unmarked time reads
+as inside its window: detachment 1 (attached), confinement 2 (low), every other
+event 0 (absent); the stored label is unchanged, and the page reads it from the
+event's `default` field. A subcategory
 id is `<event>.<key>` (`mhd_n1.m1`, `alfven_eigenmode.rsae`) and the address
 `#<id>/<shot>` opens it.
 
@@ -361,8 +364,9 @@ mark the sawtooth or ELMs you see there by hand.
   `low_confinement_mode`, `quiescent_high_confinement_mode` or
   `wide_pedestal_quiescent_high_confinement_mode`: a span is 1 high, 2 low, 3 qh,
   4 wpqh, 5 uncertain or 6 imode (I-mode; the former
-  `improved_energy_confinement_mode` event, folded in), and unmarked time is a
-  gap. It shares these rows. Its
+  `improved_energy_confinement_mode` event, folded in), and unmarked time inside a
+  saved label's window is 2 low (the event's default; outside the window it is a
+  gap). It shares these rows. Its
   draft is this one renumbered (present is high, uncertain is 5, absent and not
   observable are left unmarked), except on the shots that have curated regime
   intervals (Gill's and Butt's: H, L, QH, WP), which open on those. Its roster is
@@ -582,7 +586,8 @@ to use overlapping annotations.
 ## Detachment cameras
 
 The `detachment` editor offers spans **1 attached, 2 detached, 3 marfe,
-4 uncertain**; unmarked time is not reviewed. The Individual lane starts from
+4 uncertain**; unmarked time inside a saved review's window reads as 1 attached
+(the event's default), and time outside it is not reviewed. The Individual lane starts from
 the producer label, so reviewers correct suggestions. **Start blank** clears
 the editable lane while keeping Source visible. Drag **Time (ms)** or click the
 timeline to seek the nearest camera frame and move the cursor across all

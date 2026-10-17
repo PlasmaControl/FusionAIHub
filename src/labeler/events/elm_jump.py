@@ -20,7 +20,9 @@ The gate paints the shot's confinement layers on the 10 ms grid as the silver
 export does (`review.silver.paint`: each frame takes the first layer that assessed
 it, in the order the owner's saves, folded saves, format tables, extend tables, the
 review source, other suggestions; confine-ours' `roster_review.csv` and
-`gold_shots.csv` are extend tables there), then confine-ours' tables the silver page
+`gold_shots.csv` are extend tables there; the time an owner's save leaves unmarked
+inside its window reads as the event's default class, L-mode (2), since 2026-10-17,
+so it is a hole too), then confine-ours' tables the silver page
 does not read (`CONFINE_OURS`: `roster.csv`, in another schema). Nothing the D-alpha
 L-H detector (`dalpha_lh`) drew is read: not a table named for it, and not the rows
 another table took from it (`dalpha_lh_shots`: the confinement review source,

@@ -18,7 +18,7 @@ import pandas as pd
 import pytest
 
 from labeler.config import Paths
-from labeler.events import hf_export
+from labeler.events import hf_export, taxonomy
 from labeler.events.review import labels, silver
 
 SHOT, OTHER, GOLD, BLIND, CHALLENGE_SHOT = 170815, 170816, 171234, 180001, 172000
@@ -739,6 +739,42 @@ def test_card_says_a_merged_source_is_not_a_label_set_and_what_category_zero_mea
         "unmarked (not assessed)"
     ]
     assert set(report["zero_exceptions"]) == {"confinement", "detachment"}
+
+
+def test_a_default_class_is_in_the_taxonomy_the_zero_exceptions_and_the_card(paths):
+    events = paths.events_manifest
+    events.write_text(
+        events.read_text().replace(
+            "taxonomy:\n",
+            "taxonomy:\n  detachment:\n    display: Detachment\n    default: 1\n",
+            1,
+        )
+    )
+    detachment = paths.label_tables / "detachment"
+    detachment.mkdir()
+    (detachment / "shots.csv").write_text(
+        "shot,tier,holdout,reviewers,verified_on,notes\n"
+    )
+    tax = hf_export._taxonomy(paths, ["detachment", "disruption"])
+    assert tax["events"]["detachment"]["default"] == 1
+    assert "default" not in tax["events"]["disruption"]
+    assert tax["grid"]["default"]["detachment"] == 1
+    assert tax["grid"]["default"]["disruption"] == 0
+    assert tax["grid"]["zero"]["detachment"].startswith(
+        "attached (1), the event's default"
+    )
+    assert tax["grid"]["zero"]["disruption"].startswith("absent")
+    found = hf_export.zero_exceptions([], taxonomy.load(events))
+    assert set(found) == {"confinement", "detachment"}
+    assert found["detachment"]["owner"].startswith("attached (1)")
+    assert found["confinement"]["owner"] == silver.ZERO["confinement"]  # no default
+    text = hf_export._zero_text(found)
+    assert "`detachment` (attached (1), the event's default" in text
+    assert "or, for an event with a default class, that class" in text
+    # With no taxonomy to ask, the exceptions are the ones `silver.ZERO` names.
+    assert {e: v["owner"] for e, v in hf_export.zero_exceptions([]).items()} == (
+        silver.ZERO
+    )
 
 
 def test_card_names_the_review_source_and_checks_the_tables_an_entry_reads():

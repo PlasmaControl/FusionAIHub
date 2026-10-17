@@ -11,6 +11,13 @@ subcategories:
 An event with `review: false` keeps its directory and tables but is not offered
 on the review page or in the silver set (disruption and VDE, owner 2026-10-11).
 
+An event's `default:` is the class its unmarked time reads as inside a saved label's
+window (owner 2026-10-17): 0, absent, unless the entry names another of the event's
+classes (detachment 1, attached; confinement 2, low). The stored label stays as the
+page saved it, window and intervals; the default is how the 0 inside the window is
+read (`review.silver`, the grid export, the page). An event with subcategories takes
+none: their region is the parent's marked spans.
+
 A subcategory is a SUBSET of its parent, not an exclusive category: it is labelled
 only inside the time its parent's saved label marks, and sibling subcategories
 overlap freely. Its id is `<parent>.<key>` (`mhd_n1.m1`) and its review files live
@@ -26,6 +33,8 @@ from functools import lru_cache
 from pathlib import Path
 
 import yaml
+
+from .review import labels
 
 MANIFEST = "events.yaml"
 SUBDIR = "subcategories"
@@ -57,6 +66,8 @@ class Entry:
     group: str | None
     children: tuple[Child, ...] = ()
     review: bool = True
+    #: What unmarked time inside a saved window reads as: 0 absent, else a class.
+    default: int = 0
 
 
 @dataclass(frozen=True)
@@ -79,6 +90,13 @@ class Taxonomy:
         parent = self.parent(event)
         entry = self.top.get(event if parent is None else parent)
         return None if entry is None else entry.group
+
+    def default(self, event: str) -> int:
+        """The class `event`'s unmarked time reads as inside a saved window; 0
+        (absent) for an event the block does not name, gives no default, or that is
+        a subcategory."""
+        entry = self.top.get(event)
+        return 0 if entry is None else entry.default
 
     def reviewed(self, event: str) -> bool:
         """Whether the page offers `event` (a subcategory goes with its parent)."""
@@ -167,11 +185,18 @@ def parse(block, *, where: str = "taxonomy") -> Taxonomy:
         review = spec.get("review", True)
         if type(review) is not bool:
             raise TaxonomyError(f"{where}: {event}.review must be true or false")
+        default = _default(spec.get("default"), event, where)
+        if default and children:
+            raise TaxonomyError(
+                f"{where}: {event} has subcategories, so it takes no default: their "
+                "region is the parent's marked spans"
+            )
         top[event] = Entry(
             display=_text(spec.get("display", event), f"{event}.display", where),
             group=None if group is None else _text(group, f"{event}.group", where),
             children=tuple(children),
             review=review,
+            default=default,
         )
     return Taxonomy(top, kids)
 
@@ -179,6 +204,19 @@ def parse(block, *, where: str = "taxonomy") -> Taxonomy:
 def _text(value, name: str, where: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise TaxonomyError(f"{where}: {name} must be a non-empty string")
+    return value
+
+
+def _default(value, event: str, where: str) -> int:
+    """An event's `default:`: 0 (absent, also when missing) or one of its classes."""
+    if value is None:
+        return 0
+    classes = labels.categories(event)
+    if type(value) is not int or (value and value not in classes):
+        raise TaxonomyError(
+            f"{where}: {event}.default must be 0 or one of its classes "
+            f"{dict(sorted(classes.items()))}, not {value!r}"
+        )
     return value
 
 
