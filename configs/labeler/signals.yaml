@@ -4,8 +4,19 @@
 #
 # Every locator here was checked before it was listed: on disk (a corpus group, a raw
 # cache or features-store group whose `locator` attribute names it, the MHD park), or
-# by stream B's fdp smoke fetch (2026-10-16). An entry whose source is unverified stays
-# out. Sources are tried in order; local tiers come before a fetch.
+# by an fdp fetch (stream B's smoke fetch 2026-10-16; R2_CATALOG's probe 2026-10-17,
+# which tried every PTDATA point and MDS node below on two reference shots). An entry
+# whose source is unverified stays out. Sources are tried in order; local tiers come
+# before a fetch.
+#
+# Entry keys: id, label, group, units, kind (trace | profile), draw (lines | map),
+# axis, channels, events (the events it is suggested for), legend, `description` (one
+# line, at most 240 characters; the page searches it) and `avail`: which of the two
+# reference shots, 170659 (early, 2017) and 200958 (late, 2020), returned data from
+# one of the entry's fetched sources: both | early | late. An entry with no fetched
+# source (corpus, raw or feature only) has no `avail`. A name typed into the page
+# (custom:<PTDATA>, mds:<TREE>:<node>) needs no entry here; add one to make it
+# searchable by label and description.
 #
 # Source kinds:
 #   corpus: <group>, rows       foundation_model/<shot>_processed.h5 rows (total: sums them)
@@ -14,8 +25,11 @@
 #                               (`events.equilibrium.signal`: archive lag removed)
 #   park: a_q95 | a_qmin        the MHD park's A-EQDSK scalars (EFIT02, else the fallback)
 #   ptdata: <NAME>              a PTDATA point, through the fetch worker (30 s)
-#   mds: <node>, tree: <TREE>   an MDSplus node, through the fetch worker (30 s)
-#   recipe: <name>              a profile reader in `review.profiles`
+#   mds: <node>, tree: <TREE>   an MDSplus node, through the fetch worker (30 s);
+#                               `free: true` runs it as a free node (120 s, and a 2-D
+#                               record is read with its own dimensions)
+#   recipe: <name>              a profile reader in `review.profiles` (local) or in
+#                               `review.profile_fetch` (fetched: efit0N_*, zipfit0N_*)
 # `scale` takes a source's values into the entry's units; `tag` is shown after the label.
 
 signals:
@@ -25,7 +39,10 @@ signals:
     group: Plasma
     units: MA
     kind: trace
-    events: [edge_localized_mode, resistive_wall_mode, locked_mode, poloidal_beta, detachment]
+    events: [edge_localized_mode, resistive_wall_mode, locked_mode, poloidal_beta,
+             detachment]
+    description: "Plasma current from the PTDATA point ip (the features store, the archive read when the shot is not stored)."
+    avail: both
     sources:
       - {feature: ip, scale: 1.0e-6}
       - {ptdata: ip, scale: 1.0e-6}
@@ -34,6 +51,8 @@ signals:
     group: Plasma
     units: T
     kind: trace
+    description: "Toroidal field at the machine axis (PTDATA bt)."
+    avail: both
     sources:
       - {feature: bt}
       - {ptdata: bt}
@@ -42,7 +61,10 @@ signals:
     group: Plasma
     units: "cm^-2"
     kind: trace
-    events: [alfven_eigenmode, edge_localized_mode, confinement, high_confinement_mode, detachment]
+    events: [alfven_eigenmode, edge_localized_mode, confinement, high_confinement_mode,
+             detachment]
+    description: "CO2 interferometer R0 chord line-integrated density, stored units (PTDATA DENR0UF)."
+    avail: both
     sources:
       - {corpus: co2, rows: 0}
       - {raw: co2, rows: 0}
@@ -54,25 +76,108 @@ signals:
     units: MJ
     kind: trace
     events: [edge_localized_mode, confinement, high_confinement_mode, poloidal_beta]
+    description: "Stored energy from the EFIT01 equilibrium (A-EQDSK WMHD), joules scaled to megajoules."
+    avail: both
     sources:
       - {feature: wmhd, scale: 1.0e-6, tag: EFIT01}
       - {mds: '\efit01::top.results.aeqdsk:wmhd', tree: EFIT01, scale: 1.0e-6, tag: EFIT01}
+  - id: vloop
+    label: "Loop voltage"
+    group: Plasma
+    units: V
+    kind: trace
+    description: "Loop voltage (PTDATA VLOOP), archive units as stored."
+    avail: both
+    sources:
+      - {ptdata: VLOOP}
+  - id: diamag
+    label: "Diamagnetic flux"
+    group: Plasma
+    units: "mV s"
+    kind: trace
+    description: "Diamagnetic flux from the DIAMAG3 loop (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {ptdata: DIAMAG3}
+  - id: bcoil
+    label: "Toroidal-field coil current"
+    group: Plasma
+    units: A
+    kind: trace
+    description: "Current in the toroidal-field coil (PTDATA BCOIL), archive units as stored."
+    avail: both
+    sources:
+      - {ptdata: BCOIL}
+  - id: ecoil
+    label: "Ohmic E-coil current"
+    group: Plasma
+    units: A
+    kind: trace
+    description: "Ohmic-heating E-coil current (PTDATA ECOIL), archive units as stored."
+    avail: both
+    sources:
+      - {ptdata: ECOIL}
+  - id: wdiafix
+    label: "Stored energy, diamagnetic (fixed)"
+    group: Plasma
+    units: J
+    kind: trace
+    description: "Diamagnetic value from the MHD tree (WDIAFIX), archive units as stored."
+    avail: late
+    sources:
+      - {mds: '\MHD::WDIAFIX', tree: MHD}
+  - id: betapdfix
+    label: "Poloidal beta, diamagnetic (fixed)"
+    group: Plasma
+    units: ""
+    kind: trace
+    description: "Diamagnetic value from the MHD tree (BETAPDFIX), archive units as stored."
+    avail: late
+    sources:
+      - {mds: '\MHD::BETAPDFIX', tree: MHD}
+  - id: tau_e_transport
+    label: "Energy confinement time (TRANSPORT)"
+    group: Plasma
+    units: s
+    kind: trace
+    events: [confinement, high_confinement_mode]
+    description: "Energy confinement time of the TRANSPORT tree (TAUE), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\TRANSPORT::TAUE', tree: TRANSPORT}
+  - id: tau_th_transport
+    label: "Thermal energy confinement time (TRANSPORT)"
+    group: Plasma
+    units: s
+    kind: trace
+    events: [confinement, high_confinement_mode]
+    description: "Thermal energy confinement time of the TRANSPORT tree (TAUTH), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\TRANSPORT::TAUTH', tree: TRANSPORT}
+
+  # ---- Equilibrium (EFIT01 A-EQDSK scalars, then EFIT02) ----
   - id: betan
-    label: "beta_N"
+    label: beta_N
     group: Equilibrium
     units: ""
     kind: trace
-    events: [mhd_n1, neoclassical_tearing_mode, resistive_wall_mode, minimum_safety_factor,
-             poloidal_beta, alfven_eigenmode, confinement, high_confinement_mode]
+    events: [mhd_n1, neoclassical_tearing_mode, resistive_wall_mode,
+             minimum_safety_factor, poloidal_beta, alfven_eigenmode, confinement,
+             high_confinement_mode]
+    description: "Normalised beta from EFIT01 (A-EQDSK BETAN)."
+    avail: both
     sources:
       - {feature: betan, tag: EFIT01}
       - {mds: '\efit01::top.results.aeqdsk:betan', tree: EFIT01, tag: EFIT01}
   - id: betap
-    label: "beta_p"
+    label: beta_p
     group: Equilibrium
     units: ""
     kind: trace
     events: [poloidal_beta, minimum_safety_factor]
+    description: "Poloidal beta from EFIT01 (A-EQDSK BETAP)."
+    avail: both
     sources:
       - {feature: betap, tag: EFIT01}
       - {mds: '\efit01::top.results.aeqdsk:betap', tree: EFIT01, tag: EFIT01}
@@ -82,26 +187,32 @@ signals:
     units: ""
     kind: trace
     events: [resistive_wall_mode, poloidal_beta]
+    description: "Internal inductance from EFIT01 (A-EQDSK LI)."
+    avail: both
     sources:
       - {feature: li, tag: EFIT01}
       - {mds: '\efit01::top.results.aeqdsk:li', tree: EFIT01, tag: EFIT01}
   - id: q95
-    label: "q95"
+    label: q95
     group: Equilibrium
     units: ""
     kind: trace
     events: [mhd_n1, neoclassical_tearing_mode, minimum_safety_factor, locked_mode]
+    description: "Safety factor at the 95 % flux surface, EFIT02 from the MHD park else EFIT01 (A-EQDSK Q95)."
+    avail: both
     sources:
       - {park: a_q95}
       - {feature: q95, tag: EFIT01}
       - {mds: '\efit01::top.results.aeqdsk:q95', tree: EFIT01, tag: EFIT01}
   - id: qmin
-    label: "q_min"
+    label: q_min
     group: Equilibrium
     units: ""
     kind: trace
     events: [mhd_n1, neoclassical_tearing_mode, minimum_safety_factor, alfven_eigenmode,
              sawtooth_oscillation]
+    description: "Minimum safety factor, EFIT02 from the MHD park else EFIT01 (A-EQDSK QMIN)."
+    avail: both
     sources:
       - {park: a_qmin}
       - {feature: qmin, tag: EFIT01}
@@ -111,6 +222,8 @@ signals:
     group: Equilibrium
     units: ""
     kind: trace
+    description: "Plasma elongation from EFIT01 (A-EQDSK KAPPA)."
+    avail: both
     sources:
       - {feature: kappa, tag: EFIT01}
       - {mds: '\efit01::top.results.aeqdsk:kappa', tree: EFIT01, tag: EFIT01}
@@ -119,6 +232,8 @@ signals:
     group: Equilibrium
     units: ""
     kind: trace
+    description: "Upper triangularity from EFIT01 (A-EQDSK TRITOP)."
+    avail: both
     sources:
       - {feature: tritop, tag: EFIT01}
       - {mds: '\efit01::top.results.aeqdsk:tritop', tree: EFIT01, tag: EFIT01}
@@ -127,9 +242,551 @@ signals:
     group: Equilibrium
     units: ""
     kind: trace
+    description: "Lower triangularity from EFIT01 (A-EQDSK TRIBOT)."
+    avail: both
     sources:
       - {feature: tribot, tag: EFIT01}
       - {mds: '\efit01::top.results.aeqdsk:tribot', tree: EFIT01, tag: EFIT01}
+  - id: aminor
+    label: "Minor radius a"
+    group: Equilibrium
+    units: m
+    kind: trace
+    description: "Plasma minor radius. EFIT01 A-EQDSK AMINOR."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:AMINOR', tree: EFIT01, tag: EFIT01}
+  - id: area
+    label: "Plasma cross-section area"
+    group: Equilibrium
+    units: "m^2"
+    kind: trace
+    description: "Area of the last closed flux surface in the poloidal plane. EFIT01 A-EQDSK AREA."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:AREA', tree: EFIT01, tag: EFIT01}
+  - id: bcentr
+    label: "Toroidal field at R0"
+    group: Equilibrium
+    units: T
+    kind: trace
+    description: "Vacuum toroidal field at the reference radius. EFIT01 A-EQDSK BCENTR."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:BCENTR', tree: EFIT01, tag: EFIT01}
+  - id: betat
+    label: beta_t
+    group: Equilibrium
+    units: ""
+    kind: trace
+    description: "Toroidal beta. EFIT01 A-EQDSK BETAT."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:BETAT', tree: EFIT01, tag: EFIT01}
+  - id: bpolav
+    label: "Average poloidal field"
+    group: Equilibrium
+    units: T
+    kind: trace
+    description: "Flux-surface averaged poloidal field at the boundary. EFIT01 A-EQDSK BPOLAV."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:BPOLAV', tree: EFIT01, tag: EFIT01}
+  - id: efit_ip
+    label: "Plasma current (EFIT)"
+    group: Equilibrium
+    units: A
+    kind: trace
+    description: "Plasma current as fitted by EFIT01. EFIT01 G-EQDSK CPASMA."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.GEQDSK:CPASMA', tree: EFIT01, tag: EFIT01}
+  - id: efit_density
+    label: "Line-average density (EFIT)"
+    group: Equilibrium
+    units: "cm^-3"
+    kind: trace
+    description: "Line-averaged density EFIT01 took from the interferometers. EFIT01 A-EQDSK DENSITY."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:DENSITY', tree: EFIT01, tag: EFIT01, free: true}
+  - id: efit_diamag
+    label: "Diamagnetic flux (EFIT)"
+    group: Equilibrium
+    units: ""
+    kind: trace
+    description: "Diamagnetic flux EFIT01 used. EFIT01 A-EQDSK DIAMAG."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:DIAMAG', tree: EFIT01, tag: EFIT01}
+  - id: drsep
+    label: "Separatrix separation dr_sep"
+    group: Equilibrium
+    units: m
+    kind: trace
+    description: "Distance between the two flux surfaces through the upper and lower X-points, outboard midplane. EFIT01 A-EQDSK DRSEP."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:DRSEP', tree: EFIT01, tag: EFIT01}
+  - id: gapin
+    label: "Inner gap"
+    group: Equilibrium
+    units: m
+    kind: trace
+    description: "Gap between the plasma and the inner wall at the midplane. EFIT01 A-EQDSK GAPIN."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:GAPIN', tree: EFIT01, tag: EFIT01}
+  - id: gapout
+    label: "Outer gap"
+    group: Equilibrium
+    units: m
+    kind: trace
+    description: "Gap between the plasma and the outer wall at the midplane. EFIT01 A-EQDSK GAPOUT."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:GAPOUT', tree: EFIT01, tag: EFIT01}
+  - id: gaptop
+    label: "Top gap"
+    group: Equilibrium
+    units: m
+    kind: trace
+    description: "Gap between the plasma and the top of the vessel. EFIT01 A-EQDSK GAPTOP."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:GAPTOP', tree: EFIT01, tag: EFIT01}
+  - id: gapbot
+    label: "Bottom gap"
+    group: Equilibrium
+    units: m
+    kind: trace
+    description: "Gap between the plasma and the bottom of the vessel. EFIT01 A-EQDSK GAPBOT."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:GAPBOT', tree: EFIT01, tag: EFIT01}
+  - id: li3
+    label: "Internal inductance l_i(3)"
+    group: Equilibrium
+    units: ""
+    kind: trace
+    description: "ITER-convention internal inductance. EFIT01 A-EQDSK LI3."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:LI3', tree: EFIT01, tag: EFIT01}
+  - id: q0
+    label: "q on axis"
+    group: Equilibrium
+    units: ""
+    kind: trace
+    description: "Safety factor at the magnetic axis. EFIT01 A-EQDSK Q0."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:Q0', tree: EFIT01, tag: EFIT01}
+  - id: qstar
+    label: q-star
+    group: Equilibrium
+    units: ""
+    kind: trace
+    description: "Cylindrical (kink) safety factor at the boundary. EFIT01 A-EQDSK QSTAR."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:QSTAR', tree: EFIT01, tag: EFIT01}
+  - id: rmaxis
+    label: "Magnetic axis R"
+    group: Equilibrium
+    units: m
+    kind: trace
+    description: "Major radius of the magnetic axis. EFIT01 G-EQDSK RMAXIS."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.GEQDSK:RMAXIS', tree: EFIT01, tag: EFIT01}
+  - id: zmaxis
+    label: "Magnetic axis Z"
+    group: Equilibrium
+    units: m
+    kind: trace
+    description: "Height of the magnetic axis. EFIT01 G-EQDSK ZMAXIS."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.GEQDSK:ZMAXIS', tree: EFIT01, tag: EFIT01}
+  - id: rvsin
+    label: "Inner strike point R"
+    group: Equilibrium
+    units: m
+    kind: trace
+    description: "Major radius of the inner strike point (0 when there is none). EFIT01 A-EQDSK RVSIN."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:RVSIN', tree: EFIT01, tag: EFIT01}
+  - id: rvsout
+    label: "Outer strike point R"
+    group: Equilibrium
+    units: m
+    kind: trace
+    description: "Major radius of the outer strike point (0 when there is none). EFIT01 A-EQDSK RVSOUT."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:RVSOUT', tree: EFIT01, tag: EFIT01}
+  - id: zvsin
+    label: "Inner strike point Z"
+    group: Equilibrium
+    units: m
+    kind: trace
+    description: "Height of the inner strike point. EFIT01 A-EQDSK ZVSIN."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:ZVSIN', tree: EFIT01, tag: EFIT01}
+  - id: zvsout
+    label: "Outer strike point Z"
+    group: Equilibrium
+    units: m
+    kind: trace
+    description: "Height of the outer strike point. EFIT01 A-EQDSK ZVSOUT."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:ZVSOUT', tree: EFIT01, tag: EFIT01}
+  - id: rxpt1
+    label: "Lower X-point R"
+    group: Equilibrium
+    units: m
+    kind: trace
+    description: "Major radius of the first (lower) X-point. EFIT01 A-EQDSK RXPT1."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:RXPT1', tree: EFIT01, tag: EFIT01}
+  - id: zxpt1
+    label: "Lower X-point Z"
+    group: Equilibrium
+    units: m
+    kind: trace
+    description: "Height of the first (lower) X-point. EFIT01 A-EQDSK ZXPT1."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:ZXPT1', tree: EFIT01, tag: EFIT01}
+  - id: rxpt2
+    label: "Upper X-point R"
+    group: Equilibrium
+    units: m
+    kind: trace
+    description: "Major radius of the second (upper) X-point. EFIT01 A-EQDSK RXPT2."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:RXPT2', tree: EFIT01, tag: EFIT01}
+  - id: zxpt2
+    label: "Upper X-point Z"
+    group: Equilibrium
+    units: m
+    kind: trace
+    description: "Height of the second (upper) X-point. EFIT01 A-EQDSK ZXPT2."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:ZXPT2', tree: EFIT01, tag: EFIT01}
+  - id: volume
+    label: "Plasma volume"
+    group: Equilibrium
+    units: "m^3"
+    kind: trace
+    description: "Volume inside the last closed flux surface. EFIT01 A-EQDSK VOLUME."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:VOLUME', tree: EFIT01, tag: EFIT01}
+  - id: taumhd
+    label: "Energy confinement time (MHD)"
+    group: Equilibrium
+    units: s
+    kind: trace
+    description: "Stored energy over total input power, from the equilibrium. EFIT01 A-EQDSK TAUMHD."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:TAUMHD', tree: EFIT01, tag: EFIT01}
+  - id: sibdry
+    label: "Boundary flux psi_b"
+    group: Equilibrium
+    units: "V s/rad"
+    kind: trace
+    description: "Poloidal flux at the plasma boundary. EFIT01 G-EQDSK SSIBRY."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.GEQDSK:SSIBRY', tree: EFIT01, tag: EFIT01}
+  - id: zcurrt
+    label: "Current centroid Z"
+    group: Equilibrium
+    units: "V s/rad"
+    kind: trace
+    description: "Height of the plasma current centroid. EFIT01 A-EQDSK ZCURRT."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:ZCURRT', tree: EFIT01, tag: EFIT01}
+  - id: efit_pbinj
+    label: "Beam power (EFIT)"
+    group: Equilibrium
+    units: W
+    kind: trace
+    description: "Injected beam power EFIT01 used. EFIT01 A-EQDSK PBINJ."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:PBINJ', tree: EFIT01, tag: EFIT01}
+  - id: ssimag
+    label: "Axis flux psi_axis"
+    group: Equilibrium
+    units: "V s/rad"
+    kind: trace
+    description: "Poloidal flux at the magnetic axis. EFIT01 G-EQDSK SSIMAG."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.GEQDSK:SSIMAG', tree: EFIT01, tag: EFIT01}
+  - id: rzero
+    label: "Reference radius R0"
+    group: Equilibrium
+    units: m
+    kind: trace
+    description: "Reference major radius of the equilibrium. EFIT01 G-EQDSK RZERO."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.GEQDSK:RZERO', tree: EFIT01, tag: EFIT01}
+  - id: rq1
+    label: "q=1 surface position"
+    group: Equilibrium
+    units: m
+    kind: trace
+    description: "Position of the q=1 surface. EFIT01 A-EQDSK RQ1, archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:RQ1', tree: EFIT01, tag: EFIT01}
+  - id: rq2
+    label: "q=2 surface position"
+    group: Equilibrium
+    units: m
+    kind: trace
+    description: "Position of the q=2 surface. EFIT01 A-EQDSK RQ2, archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:RQ2', tree: EFIT01, tag: EFIT01}
+  - id: rq3
+    label: "q=3 surface position"
+    group: Equilibrium
+    units: m
+    kind: trace
+    description: "Position of the q=3 surface. EFIT01 A-EQDSK RQ3, archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:RQ3', tree: EFIT01, tag: EFIT01}
+  - id: psin21
+    label: "q=2 surface flux psi_N"
+    group: Equilibrium
+    units: ""
+    kind: trace
+    description: "Normalised flux of the q=2 surface. EFIT01 A-EQDSK PSIN21, archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:PSIN21', tree: EFIT01, tag: EFIT01}
+  - id: psin32
+    label: "q=3/2 surface flux psi_N"
+    group: Equilibrium
+    units: ""
+    kind: trace
+    description: "Normalised flux of the q=3/2 surface. EFIT01 A-EQDSK PSIN32, archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:PSIN32', tree: EFIT01, tag: EFIT01}
+  - id: betapd
+    label: "Poloidal beta, diamagnetic"
+    group: Equilibrium
+    units: ""
+    kind: trace
+    description: "Poloidal beta from the diamagnetic measurement. EFIT01 A-EQDSK BETAPD, archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:BETAPD', tree: EFIT01, tag: EFIT01}
+  - id: betatd
+    label: "Toroidal beta, diamagnetic"
+    group: Equilibrium
+    units: ""
+    kind: trace
+    description: "Toroidal beta from the diamagnetic measurement. EFIT01 A-EQDSK BETATD, archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:BETATD', tree: EFIT01, tag: EFIT01}
+  - id: wdia
+    label: "Stored energy, diamagnetic"
+    group: Equilibrium
+    units: J
+    kind: trace
+    description: "Stored energy from the diamagnetic measurement. EFIT01 A-EQDSK WDIA, archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:WDIA', tree: EFIT01, tag: EFIT01}
+  - id: poh_efit
+    label: "Ohmic power (EFIT)"
+    group: Equilibrium
+    units: W
+    kind: trace
+    description: "Ohmic power EFIT01 used. EFIT01 A-EQDSK POH, archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:POH', tree: EFIT01, tag: EFIT01}
+  - id: vloop_efit
+    label: "Loop voltage (EFIT)"
+    group: Equilibrium
+    units: V
+    kind: trace
+    description: "Loop voltage EFIT01 used. EFIT01 A-EQDSK VLOOPMHD, archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:VLOOPMHD', tree: EFIT01, tag: EFIT01}
+  - id: tflux
+    label: "Toroidal flux"
+    group: Equilibrium
+    units: ""
+    kind: trace
+    description: "Toroidal flux inside the boundary. EFIT01 A-EQDSK TFLUX, archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:TFLUX', tree: EFIT01, tag: EFIT01}
+  - id: j0n
+    label: "Normalised current density, axis"
+    group: Equilibrium
+    units: ""
+    kind: trace
+    description: "Normalised current density on axis. EFIT01 A-EQDSK J0N, archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:J0N', tree: EFIT01, tag: EFIT01}
+  - id: j95n
+    label: "Normalised current density, 95 %"
+    group: Equilibrium
+    units: ""
+    kind: trace
+    description: "Normalised current density at the 95 % surface. EFIT01 A-EQDSK J95N, archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:J95N', tree: EFIT01, tag: EFIT01}
+  - id: seplim
+    label: "Separatrix-limiter distance"
+    group: Equilibrium
+    units: m
+    kind: trace
+    description: "Distance between the separatrix and the limiter. EFIT01 A-EQDSK SEPLIM, archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:SEPLIM', tree: EFIT01, tag: EFIT01}
+  - id: sepexp
+    label: "Separatrix expansion"
+    group: Equilibrium
+    units: m
+    kind: trace
+    description: "Separatrix expansion value. EFIT01 A-EQDSK SEPEXP, archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:SEPEXP', tree: EFIT01, tag: EFIT01}
+  - id: kappa0
+    label: "Elongation on axis"
+    group: Equilibrium
+    units: ""
+    kind: trace
+    description: "Elongation on the axis. EFIT01 A-EQDSK KAPPA0, archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:KAPPA0', tree: EFIT01, tag: EFIT01}
+  - id: wb
+    label: "Magnetic stored energy"
+    group: Equilibrium
+    units: J
+    kind: trace
+    description: "Magnetic energy in the plasma. EFIT01 A-EQDSK WB, archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\EFIT01::TOP.RESULTS.AEQDSK:WB', tree: EFIT01, tag: EFIT01}
+  - id: betan_efit02
+    label: "beta_N (EFIT02)"
+    group: Equilibrium
+    units: ""
+    kind: trace
+    description: "The same scalar from the EFIT02 equilibrium (A-EQDSK BETAN)."
+    avail: both
+    sources:
+      - {mds: '\EFIT02::TOP.RESULTS.AEQDSK:BETAN', tree: EFIT02, tag: EFIT02}
+  - id: li_efit02
+    label: "Internal inductance (EFIT02)"
+    group: Equilibrium
+    units: ""
+    kind: trace
+    description: "The same scalar from the EFIT02 equilibrium (A-EQDSK LI)."
+    avail: both
+    sources:
+      - {mds: '\EFIT02::TOP.RESULTS.AEQDSK:LI', tree: EFIT02, tag: EFIT02}
+  - id: wmhd_efit02
+    label: "Stored energy (EFIT02)"
+    group: Equilibrium
+    units: MJ
+    kind: trace
+    description: "The same scalar from the EFIT02 equilibrium (A-EQDSK WMHD)."
+    avail: both
+    sources:
+      - {mds: '\EFIT02::TOP.RESULTS.AEQDSK:WMHD', tree: EFIT02, scale: 1.0e-6, tag: EFIT02}
+  - id: q95_efit02
+    label: "q95 (EFIT02)"
+    group: Equilibrium
+    units: ""
+    kind: trace
+    description: "The same scalar from the EFIT02 equilibrium (A-EQDSK Q95)."
+    avail: both
+    sources:
+      - {mds: '\EFIT02::TOP.RESULTS.AEQDSK:Q95', tree: EFIT02, tag: EFIT02}
+  - id: qmin_efit02
+    label: "q_min (EFIT02)"
+    group: Equilibrium
+    units: ""
+    kind: trace
+    description: "The same scalar from the EFIT02 equilibrium (A-EQDSK QMIN)."
+    avail: both
+    sources:
+      - {mds: '\EFIT02::TOP.RESULTS.AEQDSK:QMIN', tree: EFIT02, tag: EFIT02}
+  - id: kappa_efit02
+    label: "Elongation (EFIT02)"
+    group: Equilibrium
+    units: ""
+    kind: trace
+    description: "The same scalar from the EFIT02 equilibrium (A-EQDSK KAPPA)."
+    avail: both
+    sources:
+      - {mds: '\EFIT02::TOP.RESULTS.AEQDSK:KAPPA', tree: EFIT02, tag: EFIT02}
+  - id: gapout_efit02
+    label: "Outer gap (EFIT02)"
+    group: Equilibrium
+    units: m
+    kind: trace
+    description: "The same scalar from the EFIT02 equilibrium (A-EQDSK GAPOUT)."
+    avail: both
+    sources:
+      - {mds: '\EFIT02::TOP.RESULTS.AEQDSK:GAPOUT', tree: EFIT02, tag: EFIT02}
+  - id: rvsout_efit02
+    label: "Outer strike point R (EFIT02)"
+    group: Equilibrium
+    units: m
+    kind: trace
+    description: "The same scalar from the EFIT02 equilibrium (A-EQDSK RVSOUT)."
+    avail: both
+    sources:
+      - {mds: '\EFIT02::TOP.RESULTS.AEQDSK:RVSOUT', tree: EFIT02, tag: EFIT02}
+  - id: qmin_efit02er
+    label: "q_min (EFIT02ER)"
+    group: Equilibrium
+    units: ""
+    kind: trace
+    description: "q_min from the EFIT02ER equilibrium (A-EQDSK QMIN)."
+    avail: both
+    sources:
+      - {mds: '\EFIT02ER::TOP.RESULTS.AEQDSK:QMIN', tree: EFIT02ER, tag: EFIT02ER}
+  - id: rmaxis_efit02er
+    label: "Magnetic axis R (EFIT02ER)"
+    group: Equilibrium
+    units: m
+    kind: trace
+    description: "Major radius of the magnetic axis from EFIT02ER (G-EQDSK RMAXIS)."
+    avail: both
+    sources:
+      - {mds: '\EFIT02ER::TOP.RESULTS.GEQDSK:RMAXIS', tree: EFIT02ER, tag: EFIT02ER}
 
   # ---- Heating ----
   - id: pinj_total
@@ -139,6 +796,7 @@ signals:
     kind: trace
     events: [alfven_eigenmode, edge_localized_mode, confinement, high_confinement_mode,
              resistive_wall_mode, detachment]
+    description: "Neutral-beam injected power summed over the eight beams, watts scaled to megawatts."
     sources:
       - {corpus: pinj, rows: "0-7", total: true, scale: 1.0e-6}
       - {raw: pinj, rows: "0-7", total: true, scale: 1.0e-6}
@@ -149,6 +807,7 @@ signals:
     units: MW
     kind: trace
     legend: [15L, 15R, 21L, 21R, 30L, 30R, 33L, 33R]
+    description: "Neutral-beam injected power of each of the eight beams (15L 15R 21L 21R 30L 30R 33L 33R), one line each."
     sources:
       - {corpus: pinj, rows: "0-7", scale: 1.0e-6}
       - {raw: pinj, rows: "0-7", scale: 1.0e-6}
@@ -158,6 +817,7 @@ signals:
     units: "N m"
     kind: trace
     events: [resistive_wall_mode, locked_mode]
+    description: "Neutral-beam injected torque summed over the eight beams."
     sources:
       - {corpus: tinj, rows: "0-7", total: true}
       - {feature: tinj_total}
@@ -167,221 +827,811 @@ signals:
     units: MW
     kind: trace
     events: [confinement, high_confinement_mode, sawtooth_oscillation]
+    description: "Electron-cyclotron power summed over the twelve gyrotrons, watts scaled to megawatts."
     sources:
       - {corpus: ech_power, rows: "0-11", total: true, scale: 1.0e-6}
       - {feature: ech_power_total, scale: 1.0e-6}
-
-  # ---- Magnetics ----
-  - id: n1rms
-    label: "n=1 RMS"
-    group: Magnetics
-    units: G
+  - id: pinj_15l
+    label: "NBI power, beam 15L"
+    group: Heating
+    units: MW
     kind: trace
-    events: [mhd_n1, neoclassical_tearing_mode, resistive_wall_mode, locked_mode,
-             sawtooth_oscillation]
+    description: "Injected power of neutral beam 15L, watts scaled to megawatts (D3D tree NB15L PINJ_15L)."
+    avail: both
     sources:
-      - {feature: n1rms}
-      - {mds: '\MHD::N1RMS', tree: MHD}
-  - id: n2rms
-    label: "n=2 RMS"
-    group: Magnetics
-    units: G
+      - {corpus: pinj, rows: 0, scale: 1.0e-6}
+      - {raw: pinj, rows: 0, scale: 1.0e-6}
+      - {mds: '\D3D::TOP.NB.NB15L:PINJ_15L', tree: D3D, scale: 1.0e-6}
+  - id: pinj_15r
+    label: "NBI power, beam 15R"
+    group: Heating
+    units: MW
     kind: trace
-    events: [mhd_n1, neoclassical_tearing_mode, resistive_wall_mode]
+    description: "Injected power of neutral beam 15R, watts scaled to megawatts (D3D tree NB15R PINJ_15R)."
+    avail: both
     sources:
-      - {feature: n2rms}
-      - {mds: '\MHD::N2RMS', tree: MHD}
-  - id: mpi66m322d
-    label: "Mirnov probe MPI66M322D"
-    group: Magnetics
+      - {corpus: pinj, rows: 1, scale: 1.0e-6}
+      - {raw: pinj, rows: 1, scale: 1.0e-6}
+      - {mds: '\D3D::TOP.NB.NB15R:PINJ_15R', tree: D3D, scale: 1.0e-6}
+  - id: pinj_21l
+    label: "NBI power, beam 21L"
+    group: Heating
+    units: MW
+    kind: trace
+    description: "Injected power of neutral beam 21L, watts scaled to megawatts (D3D tree NB21L PINJ_21L)."
+    avail: both
+    sources:
+      - {corpus: pinj, rows: 2, scale: 1.0e-6}
+      - {raw: pinj, rows: 2, scale: 1.0e-6}
+      - {mds: '\D3D::TOP.NB.NB21L:PINJ_21L', tree: D3D, scale: 1.0e-6}
+  - id: pinj_21r
+    label: "NBI power, beam 21R"
+    group: Heating
+    units: MW
+    kind: trace
+    description: "Injected power of neutral beam 21R, watts scaled to megawatts (D3D tree NB21R PINJ_21R)."
+    avail: both
+    sources:
+      - {corpus: pinj, rows: 3, scale: 1.0e-6}
+      - {raw: pinj, rows: 3, scale: 1.0e-6}
+      - {mds: '\D3D::TOP.NB.NB21R:PINJ_21R', tree: D3D, scale: 1.0e-6}
+  - id: pinj_30l
+    label: "NBI power, beam 30L"
+    group: Heating
+    units: MW
+    kind: trace
+    events: [alfven_eigenmode, confinement, high_confinement_mode]
+    description: "Injected power of neutral beam 30L, watts scaled to megawatts (D3D tree NB30L PINJ_30L)."
+    avail: both
+    sources:
+      - {corpus: pinj, rows: 4, scale: 1.0e-6}
+      - {raw: pinj, rows: 4, scale: 1.0e-6}
+      - {mds: '\D3D::TOP.NB.NB30L:PINJ_30L', tree: D3D, scale: 1.0e-6}
+  - id: pinj_30r
+    label: "NBI power, beam 30R"
+    group: Heating
+    units: MW
+    kind: trace
+    events: [alfven_eigenmode, confinement, high_confinement_mode]
+    description: "Injected power of neutral beam 30R, watts scaled to megawatts (D3D tree NB30R PINJ_30R)."
+    avail: both
+    sources:
+      - {corpus: pinj, rows: 5, scale: 1.0e-6}
+      - {raw: pinj, rows: 5, scale: 1.0e-6}
+      - {mds: '\D3D::TOP.NB.NB30R:PINJ_30R', tree: D3D, scale: 1.0e-6}
+  - id: pinj_33l
+    label: "NBI power, beam 33L"
+    group: Heating
+    units: MW
+    kind: trace
+    description: "Injected power of neutral beam 33L, watts scaled to megawatts (D3D tree NB33L PINJ_33L)."
+    avail: both
+    sources:
+      - {corpus: pinj, rows: 6, scale: 1.0e-6}
+      - {raw: pinj, rows: 6, scale: 1.0e-6}
+      - {mds: '\D3D::TOP.NB.NB33L:PINJ_33L', tree: D3D, scale: 1.0e-6}
+  - id: pinj_33r
+    label: "NBI power, beam 33R"
+    group: Heating
+    units: MW
+    kind: trace
+    description: "Injected power of neutral beam 33R, watts scaled to megawatts (D3D tree NB33R PINJ_33R)."
+    avail: both
+    sources:
+      - {corpus: pinj, rows: 7, scale: 1.0e-6}
+      - {raw: pinj, rows: 7, scale: 1.0e-6}
+      - {mds: '\D3D::TOP.NB.NB33R:PINJ_33R', tree: D3D, scale: 1.0e-6}
+  - id: vbeam_15l
+    label: "NBI voltage, beam 15L"
+    group: Heating
+    units: V
+    kind: trace
+    description: "Calibrated acceleration voltage of neutral beam 15L (D3D tree NB15L VOLTAGE_CAL)."
+    avail: both
+    sources:
+      - {corpus: beam_voltage, rows: 0}
+      - {mds: '\D3D::TOP.NB.NB15L:VOLTAGE_CAL', tree: D3D, free: true}
+  - id: vbeam_15r
+    label: "NBI voltage, beam 15R"
+    group: Heating
+    units: V
+    kind: trace
+    description: "Calibrated acceleration voltage of neutral beam 15R (D3D tree NB15R VOLTAGE_CAL)."
+    avail: both
+    sources:
+      - {corpus: beam_voltage, rows: 1}
+      - {mds: '\D3D::TOP.NB.NB15R:VOLTAGE_CAL', tree: D3D, free: true}
+  - id: vbeam_21l
+    label: "NBI voltage, beam 21L"
+    group: Heating
     units: ""
     kind: trace
-    events: [mhd_n1, neoclassical_tearing_mode, locked_mode]
+    description: "Calibrated acceleration voltage of neutral beam 21L (D3D tree NB21L VOLTAGE_CAL)."
+    avail: both
     sources:
-      - {corpus: mirnov, rows: 15}
-      - {ptdata: MPI66M322D}
-
-  # ---- Edge ----
-  - id: fs01
-    label: "D-alpha filterscope FS01"
-    group: Edge
-    units: "ph/(sr cm^2 s)"
+      - {corpus: beam_voltage, rows: 2}
+      - {mds: '\D3D::TOP.NB.NB21L:VOLTAGE_CAL', tree: D3D, free: true}
+  - id: vbeam_21r
+    label: "NBI voltage, beam 21R"
+    group: Heating
+    units: ""
     kind: trace
-    events: [edge_localized_mode, confinement, high_confinement_mode]
+    description: "Calibrated acceleration voltage of neutral beam 21R (D3D tree NB21R VOLTAGE_CAL)."
+    avail: both
     sources:
-      - {corpus: filterscopes, rows: 0}
-      - {raw: filterscopes, rows: 0}
-      - {mds: '\SPECTROSCOPY::FS01', tree: SPECTROSCOPY}
-  - id: fs02
-    label: "D-alpha filterscope FS02"
-    group: Edge
-    units: "ph/(sr cm^2 s)"
+      - {corpus: beam_voltage, rows: 3}
+      - {mds: '\D3D::TOP.NB.NB21R:VOLTAGE_CAL', tree: D3D, free: true}
+  - id: vbeam_30l
+    label: "NBI voltage, beam 30L"
+    group: Heating
+    units: V
     kind: trace
-    events: [edge_localized_mode, confinement, high_confinement_mode]
+    description: "Calibrated acceleration voltage of neutral beam 30L (D3D tree NB30L VOLTAGE_CAL)."
+    avail: both
     sources:
-      - {corpus: filterscopes, rows: 1}
-      - {raw: filterscopes, rows: 1}
-      - {mds: '\SPECTROSCOPY::FS02', tree: SPECTROSCOPY}
-  - id: fs03
-    label: "D-alpha filterscope FS03"
-    group: Edge
-    units: "ph/(sr cm^2 s)"
+      - {corpus: beam_voltage, rows: 4}
+      - {mds: '\D3D::TOP.NB.NB30L:VOLTAGE_CAL', tree: D3D, free: true}
+  - id: vbeam_30r
+    label: "NBI voltage, beam 30R"
+    group: Heating
+    units: V
     kind: trace
-    events: [edge_localized_mode, confinement, high_confinement_mode]
+    description: "Calibrated acceleration voltage of neutral beam 30R (D3D tree NB30R VOLTAGE_CAL)."
+    avail: both
     sources:
-      - {corpus: filterscopes, rows: 2}
-      - {raw: filterscopes, rows: 2}
-      - {mds: '\SPECTROSCOPY::FS03', tree: SPECTROSCOPY}
-  - id: fs04
-    label: "D-alpha filterscope FS04"
-    group: Edge
-    units: "ph/(sr cm^2 s)"
+      - {corpus: beam_voltage, rows: 5}
+      - {mds: '\D3D::TOP.NB.NB30R:VOLTAGE_CAL', tree: D3D, free: true}
+  - id: vbeam_33l
+    label: "NBI voltage, beam 33L"
+    group: Heating
+    units: V
     kind: trace
-    events: [edge_localized_mode, confinement, high_confinement_mode]
+    description: "Calibrated acceleration voltage of neutral beam 33L (D3D tree NB33L VOLTAGE_CAL)."
+    avail: both
     sources:
-      - {corpus: filterscopes, rows: 3}
-      - {raw: filterscopes, rows: 3}
-      - {mds: '\SPECTROSCOPY::FS04', tree: SPECTROSCOPY}
-  - id: fs05
-    label: "D-alpha filterscope FS05"
-    group: Edge
-    units: "ph/(sr cm^2 s)"
+      - {corpus: beam_voltage, rows: 6}
+      - {mds: '\D3D::TOP.NB.NB33L:VOLTAGE_CAL', tree: D3D, free: true}
+  - id: vbeam_33r
+    label: "NBI voltage, beam 33R"
+    group: Heating
+    units: V
     kind: trace
-    events: [edge_localized_mode]
+    description: "Calibrated acceleration voltage of neutral beam 33R (D3D tree NB33R VOLTAGE_CAL)."
+    avail: both
     sources:
-      - {corpus: filterscopes, rows: 4}
-      - {raw: filterscopes, rows: 4}
-      - {mds: '\SPECTROSCOPY::FS05', tree: SPECTROSCOPY}
-  - id: fs06
-    label: "D-alpha filterscope FS06"
-    group: Edge
-    units: "ph/(sr cm^2 s)"
+      - {corpus: beam_voltage, rows: 7}
+      - {mds: '\D3D::TOP.NB.NB33R:VOLTAGE_CAL', tree: D3D, free: true}
+  - id: tinj_15l
+    label: "NBI torque, beam 15L"
+    group: Heating
+    units: "N m"
     kind: trace
-    events: [edge_localized_mode]
+    description: "Injected torque of neutral beam 15L (D3D tree NB15L TINJ_15L)."
+    avail: both
     sources:
-      - {corpus: filterscopes, rows: 5}
-      - {raw: filterscopes, rows: 5}
-      - {mds: '\SPECTROSCOPY::FS06', tree: SPECTROSCOPY}
-  - id: fs07
-    label: "D-alpha filterscope FS07"
-    group: Edge
-    units: "ph/(sr cm^2 s)"
+      - {corpus: tinj, rows: 0}
+      - {mds: '\D3D::TOP.NB.NB15L:TINJ_15L', tree: D3D}
+  - id: tinj_15r
+    label: "NBI torque, beam 15R"
+    group: Heating
+    units: "N m"
     kind: trace
-    events: [edge_localized_mode]
+    description: "Injected torque of neutral beam 15R (D3D tree NB15R TINJ_15R)."
+    avail: both
     sources:
-      - {corpus: filterscopes, rows: 6}
-      - {raw: filterscopes, rows: 6}
-      - {mds: '\SPECTROSCOPY::FS07', tree: SPECTROSCOPY}
-  - id: fs08
-    label: "D-alpha filterscope FS08"
-    group: Edge
-    units: "ph/(sr cm^2 s)"
+      - {corpus: tinj, rows: 1}
+      - {mds: '\D3D::TOP.NB.NB15R:TINJ_15R', tree: D3D}
+  - id: tinj_21l
+    label: "NBI torque, beam 21L"
+    group: Heating
+    units: "N m"
     kind: trace
-    events: [edge_localized_mode]
+    description: "Injected torque of neutral beam 21L (D3D tree NB21L TINJ_21L)."
+    avail: both
     sources:
-      - {corpus: filterscopes, rows: 7}
-      - {raw: filterscopes, rows: 7}
-      - {mds: '\SPECTROSCOPY::FS08', tree: SPECTROSCOPY}
-  - id: fs_all
-    label: "D-alpha filterscopes FS01-FS08"
-    group: Edge
-    units: "ph/(sr cm^2 s)"
+      - {corpus: tinj, rows: 2}
+      - {mds: '\D3D::TOP.NB.NB21L:TINJ_21L', tree: D3D}
+  - id: tinj_21r
+    label: "NBI torque, beam 21R"
+    group: Heating
+    units: "N m"
+    kind: trace
+    description: "Injected torque of neutral beam 21R (D3D tree NB21R TINJ_21R)."
+    avail: both
+    sources:
+      - {corpus: tinj, rows: 3}
+      - {mds: '\D3D::TOP.NB.NB21R:TINJ_21R', tree: D3D}
+  - id: tinj_30l
+    label: "NBI torque, beam 30L"
+    group: Heating
+    units: "N m"
+    kind: trace
+    description: "Injected torque of neutral beam 30L (D3D tree NB30L TINJ_30L)."
+    avail: both
+    sources:
+      - {corpus: tinj, rows: 4}
+      - {mds: '\D3D::TOP.NB.NB30L:TINJ_30L', tree: D3D}
+  - id: tinj_30r
+    label: "NBI torque, beam 30R"
+    group: Heating
+    units: "N m"
+    kind: trace
+    description: "Injected torque of neutral beam 30R (D3D tree NB30R TINJ_30R)."
+    avail: both
+    sources:
+      - {corpus: tinj, rows: 5}
+      - {mds: '\D3D::TOP.NB.NB30R:TINJ_30R', tree: D3D}
+  - id: tinj_33l
+    label: "NBI torque, beam 33L"
+    group: Heating
+    units: "N m"
+    kind: trace
+    description: "Injected torque of neutral beam 33L (D3D tree NB33L TINJ_33L)."
+    avail: both
+    sources:
+      - {corpus: tinj, rows: 6}
+      - {mds: '\D3D::TOP.NB.NB33L:TINJ_33L', tree: D3D}
+  - id: tinj_33r
+    label: "NBI torque, beam 33R"
+    group: Heating
+    units: "N m"
+    kind: trace
+    description: "Injected torque of neutral beam 33R (D3D tree NB33R TINJ_33R)."
+    avail: both
+    sources:
+      - {corpus: tinj, rows: 7}
+      - {mds: '\D3D::TOP.NB.NB33R:TINJ_33R', tree: D3D}
+  - id: ech_boris
+    label: "ECH power, gyrotron Boris"
+    group: Heating
+    units: MW
+    kind: trace
+    description: "Forward power of gyrotron Boris, watts scaled to megawatts (D3D tree RF.ECH.BORIS ECBORFPWRC)."
+    avail: both
+    sources:
+      - {corpus: ech_power, rows: 0, scale: 1.0e-6}
+      - {mds: '\D3D::TOP.RF.ECH.BORIS:ECBORFPWRC', tree: D3D, scale: 1.0e-6}
+  - id: ech_chewbacca
+    label: "ECH power, gyrotron Chewbacca"
+    group: Heating
+    units: MW
+    kind: trace
+    description: "Forward power of gyrotron Chewbacca, watts scaled to megawatts (D3D tree RF.ECH.CHEWBACCA ECCHEFPWRC)."
+    avail: both
+    sources:
+      - {corpus: ech_power, rows: 1, scale: 1.0e-6}
+      - {mds: '\D3D::TOP.RF.ECH.CHEWBACCA:ECCHEFPWRC', tree: D3D, scale: 1.0e-6}
+  - id: ech_dorothy
+    label: "ECH power, gyrotron Dorothy"
+    group: Heating
+    units: MW
+    kind: trace
+    description: "Forward power of gyrotron Dorothy, watts scaled to megawatts (D3D tree RF.ECH.DOROTHY ECDORFPWRC)."
+    avail: both
+    sources:
+      - {corpus: ech_power, rows: 2, scale: 1.0e-6}
+      - {mds: '\D3D::TOP.RF.ECH.DOROTHY:ECDORFPWRC', tree: D3D, scale: 1.0e-6}
+  - id: ech_han
+    label: "ECH power, gyrotron Han"
+    group: Heating
+    units: MW
+    kind: trace
+    description: "Forward power of gyrotron Han, watts scaled to megawatts (D3D tree RF.ECH.HAN ECHANDLFPWRC)."
+    sources:
+      - {corpus: ech_power, rows: 3, scale: 1.0e-6}
+  - id: ech_katya
+    label: "ECH power, gyrotron Katya"
+    group: Heating
+    units: MW
+    kind: trace
+    description: "Forward power of gyrotron Katya, watts scaled to megawatts (D3D tree RF.ECH.KATYA ECKATFPWRC)."
+    avail: both
+    sources:
+      - {corpus: ech_power, rows: 4, scale: 1.0e-6}
+      - {mds: '\D3D::TOP.RF.ECH.KATYA:ECKATFPWRC', tree: D3D, scale: 1.0e-6}
+  - id: ech_leia
+    label: "ECH power, gyrotron Leia"
+    group: Heating
+    units: MW
+    kind: trace
+    description: "Forward power of gyrotron Leia, watts scaled to megawatts (D3D tree RF.ECH.LEIA ECLEIFPWRC)."
+    avail: both
+    sources:
+      - {corpus: ech_power, rows: 5, scale: 1.0e-6}
+      - {mds: '\D3D::TOP.RF.ECH.LEIA:ECLEIFPWRC', tree: D3D, scale: 1.0e-6}
+  - id: ech_lion
+    label: "ECH power, gyrotron Lion"
+    group: Heating
+    units: MW
+    kind: trace
+    description: "Forward power of gyrotron Lion, watts scaled to megawatts (D3D tree RF.ECH.LION ECLIOFPWRC)."
+    avail: both
+    sources:
+      - {corpus: ech_power, rows: 6, scale: 1.0e-6}
+      - {mds: '\D3D::TOP.RF.ECH.LION:ECLIOFPWRC', tree: D3D, scale: 1.0e-6}
+  - id: ech_luke
+    label: "ECH power, gyrotron Luke"
+    group: Heating
+    units: MW
+    kind: trace
+    description: "Forward power of gyrotron Luke, watts scaled to megawatts (D3D tree RF.ECH.LUKE ECLUKFPWRC)."
+    avail: both
+    sources:
+      - {corpus: ech_power, rows: 7, scale: 1.0e-6}
+      - {mds: '\D3D::TOP.RF.ECH.LUKE:ECLUKFPWRC', tree: D3D, scale: 1.0e-6}
+  - id: ech_nasa
+    label: "ECH power, gyrotron Nasa"
+    group: Heating
+    units: MW
+    kind: trace
+    description: "Forward power of gyrotron Nasa, watts scaled to megawatts (D3D tree RF.ECH.NASA ECNASFPWRC)."
+    avail: both
+    sources:
+      - {corpus: ech_power, rows: 8, scale: 1.0e-6}
+      - {mds: '\D3D::TOP.RF.ECH.NASA:ECNASFPWRC', tree: D3D, scale: 1.0e-6}
+  - id: ech_natasha
+    label: "ECH power, gyrotron Natasha"
+    group: Heating
+    units: MW
+    kind: trace
+    description: "Forward power of gyrotron Natasha, watts scaled to megawatts (D3D tree RF.ECH.NATASHA ECNATFPWRC)."
+    avail: both
+    sources:
+      - {corpus: ech_power, rows: 9, scale: 1.0e-6}
+      - {mds: '\D3D::TOP.RF.ECH.NATASHA:ECNATFPWRC', tree: D3D, scale: 1.0e-6}
+  - id: ech_r2d2
+    label: "ECH power, gyrotron R2D2"
+    group: Heating
+    units: MW
+    kind: trace
+    description: "Forward power of gyrotron R2D2, watts scaled to megawatts (D3D tree RF.ECH.R2D2 ECR2DFPWRC)."
+    avail: both
+    sources:
+      - {corpus: ech_power, rows: 10, scale: 1.0e-6}
+      - {mds: '\D3D::TOP.RF.ECH.R2D2:ECR2DFPWRC', tree: D3D, scale: 1.0e-6}
+  - id: ech_scarecrow
+    label: "ECH power, gyrotron Scarecrow"
+    group: Heating
+    units: MW
+    kind: trace
+    description: "Forward power of gyrotron Scarecrow, watts scaled to megawatts (D3D tree RF.ECH.SCARECROW ECSCAFPWRC)."
+    avail: both
+    sources:
+      - {corpus: ech_power, rows: 11, scale: 1.0e-6}
+      - {mds: '\D3D::TOP.RF.ECH.SCARECROW:ECSCAFPWRC', tree: D3D, scale: 1.0e-6}
+  - id: ech_power_each
+    label: "ECH power, 12 gyrotrons"
+    group: Heating
+    units: MW
     kind: trace
     draw: lines
-    events: [edge_localized_mode, confinement, high_confinement_mode, detachment]
-    legend: [FS01, FS02, FS03, FS04, FS05, FS06, FS07, FS08]
+    legend: [Boris, Chewbacca, Dorothy, Han, Katya, Leia, Lion, Luke, Nasa, Natasha,
+             R2D2, Scarecrow]
+    description: "Forward power of each of the twelve gyrotrons, one line each."
+    avail: both
     sources:
-      - {corpus: filterscopes, rows: "0-7"}
-      - {raw: filterscopes, rows: "0-7"}
-  - id: pcphd03
-    label: "Divertor D-alpha photodiode PCPHD03"
-    group: Edge
+      - {corpus: ech_power, rows: "0-11", scale: 1.0e-6}
+  - id: ech_tor_angle
+    label: "ECH toroidal angle, 12 gyrotrons"
+    group: Heating
     units: ""
     kind: trace
-    events: [edge_localized_mode]
+    draw: lines
+    legend: [Boris, Chewbacca, Dorothy, Han, Katya, Leia, Lion, Luke, Nasa, Natasha,
+             R2D2, Scarecrow]
+    description: "Toroidal (azimuthal) launch angle of each gyrotron, one line each."
+    avail: both
     sources:
-      - {raw: pcphd03, rows: 0}
-      - {ptdata: PCPHD03}
+      - {corpus: ech_tor_angle, rows: "0-11"}
+  - id: ech_pol_angle
+    label: "ECH poloidal angle, 12 gyrotrons"
+    group: Heating
+    units: ""
+    kind: trace
+    draw: lines
+    legend: [Boris, Chewbacca, Dorothy, Han, Katya, Leia, Lion, Luke, Nasa, Natasha,
+             R2D2, Scarecrow]
+    description: "Poloidal launch angle of each gyrotron, one line each."
+    avail: both
+    sources:
+      - {corpus: ech_pol_angle, rows: "0-11"}
+  - id: ech_xm_frac
+    label: "ECH X-mode fraction, 12 gyrotrons"
+    group: Heating
+    units: ""
+    kind: trace
+    draw: lines
+    legend: [Boris, Chewbacca, Dorothy, Han, Katya, Leia, Lion, Luke, Nasa, Natasha,
+             R2D2, Scarecrow]
+    description: "X-mode fraction of each gyrotron's polarisation, one line each."
+    avail: both
+    sources:
+      - {corpus: ech_polarization, rows: "0-11"}
+  - id: echpwr
+    label: "ECH power (PTDATA total)"
+    group: Heating
+    units: V
+    kind: trace
+    description: "Total electron-cyclotron power from the PTDATA point ECHPWR, archive units as stored."
+    avail: both
+    sources:
+      - {ptdata: ECHPWR}
+  - id: ich_power
+    label: "ICRF power"
+    group: Heating
+    kind: trace
+    description: "Ion-cyclotron (ICRF) power from the D3D tree RF.ICH ICHPWR."
+    sources:
+      - {corpus: ich, rows: 0}
+  - id: nb_pinj
+    label: "NBI power (NB tree)"
+    group: Heating
+    units: kW
+    kind: trace
+    description: "Total injected beam power from the NB tree (PINJ)."
+    avail: both
+    sources:
+      - {mds: '\NB::PINJ', tree: NB}
+  - id: nbi_total_d3d
+    label: "NBI power (D3D tree total)"
+    group: Heating
+    units: kW
+    kind: trace
+    description: "Total injected beam power from the D3D tree NB branch (PINJ)."
+    avail: both
+    sources:
+      - {mds: '\D3D::TOP.NB:PINJ', tree: D3D}
+  - id: tinj_total_d3d
+    label: "NBI torque (D3D tree total)"
+    group: Heating
+    units: "N m"
+    kind: trace
+    description: "Total injected beam torque from the D3D tree NB branch (TINJ)."
+    avail: both
+    sources:
+      - {mds: '\D3D::TOP.NB:TINJ', tree: D3D}
+  - id: p_nbi_transport
+    label: "Beam power (TRANSPORT)"
+    group: Heating
+    units: W
+    kind: trace
+    description: "Neutral-beam power from the TRANSPORT tree (GLOBAL.POWER PNBI), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\TRANSPORT::GLOBAL.POWER:PNBI', tree: TRANSPORT}
+  - id: p_ohm_transport
+    label: "Ohmic power (TRANSPORT)"
+    group: Heating
+    units: W
+    kind: trace
+    description: "Ohmic power from the TRANSPORT tree (GLOBAL.POWER POH), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\TRANSPORT::GLOBAL.POWER:POH', tree: TRANSPORT}
+  - id: ech_pwrc
+    label: "ECH power (RF tree total)"
+    group: Heating
+    units: W
+    kind: trace
+    description: "Total electron-cyclotron power from the RF tree (ECHPWRC), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\RF::ECHPWRC', tree: RF}
+  - id: nb_pabs
+    label: "Beam power absorbed"
+    group: Heating
+    units: kW
+    kind: trace
+    description: "Absorbed neutral-beam power from the NB tree (PABS), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\NB::PABS', tree: NB}
+  - id: nb_pshine
+    label: "Beam shine-through power"
+    group: Heating
+    units: kW
+    kind: trace
+    description: "Neutral-beam shine-through power from the NB tree (PSHINE), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\NB::PSHINE', tree: NB}
+  - id: nb_pinjf
+    label: "NBI power, filtered"
+    group: Heating
+    units: kW
+    kind: trace
+    description: "Filtered total injected beam power from the NB tree (PINJF), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\NB::PINJF', tree: NB}
+  - id: nb_tinj
+    label: "NBI torque (NB tree)"
+    group: Heating
+    units: "N m"
+    kind: trace
+    description: "Total injected beam torque from the NB tree (TINJ), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\NB::TINJ', tree: NB}
+
+  # ---- Fuelling ----
   - id: gas_flow
     label: "Gas flow per valve"
-    group: Edge
+    group: Fuelling
     units: "Torr L/s"
     kind: trace
     events: [detachment]
     legend: [GASA, GASB, GASC, GASD, GASE, LOB1, LOB2, PFX1, PFX2, PFX3, UOB]
+    description: "Gas flow through each of the eleven valves (GASA to GASE, LOB1 LOB2, PFX1 to PFX3, UOB), one line each."
     sources:
       - {corpus: gas_flow, rows: "0-10"}
+  - id: gas_gasa
+    label: "Gas flow, valve GASA"
+    group: Fuelling
+    units: "Torr L/s"
+    kind: trace
+    events: [detachment]
+    description: "Calibrated gas flow through valve GASA (D3D tree NEUTRALS.GASFLOW)."
+    avail: both
+    sources:
+      - {corpus: gas_flow, rows: 0}
+      - {mds: '\D3D::TOP.NEUTRALS.GASFLOW.GASA:FLOW', tree: D3D, free: true}
+  - id: gas_gasb
+    label: "Gas flow, valve GASB"
+    group: Fuelling
+    units: "Torr L/s"
+    kind: trace
+    events: [detachment]
+    description: "Calibrated gas flow through valve GASB (D3D tree NEUTRALS.GASFLOW)."
+    avail: late
+    sources:
+      - {corpus: gas_flow, rows: 1}
+      - {mds: '\D3D::TOP.NEUTRALS.GASFLOW.GASB:FLOW', tree: D3D, free: true}
+  - id: gas_gasc
+    label: "Gas flow, valve GASC"
+    group: Fuelling
+    units: "Torr L/s"
+    kind: trace
+    events: [detachment]
+    description: "Calibrated gas flow through valve GASC (D3D tree NEUTRALS.GASFLOW)."
+    avail: late
+    sources:
+      - {corpus: gas_flow, rows: 2}
+      - {mds: '\D3D::TOP.NEUTRALS.GASFLOW.GASC:FLOW', tree: D3D, free: true}
+  - id: gas_gasd
+    label: "Gas flow, valve GASD"
+    group: Fuelling
+    units: "Torr L/s"
+    kind: trace
+    description: "Calibrated gas flow through valve GASD (D3D tree NEUTRALS.GASFLOW)."
+    avail: both
+    sources:
+      - {corpus: gas_flow, rows: 3}
+      - {mds: '\D3D::TOP.NEUTRALS.GASFLOW.GASD:FLOW', tree: D3D, free: true}
+  - id: gas_gase
+    label: "Gas flow, valve GASE"
+    group: Fuelling
+    units: "Torr L/s"
+    kind: trace
+    description: "Calibrated gas flow through valve GASE (D3D tree NEUTRALS.GASFLOW)."
+    avail: late
+    sources:
+      - {corpus: gas_flow, rows: 4}
+      - {mds: '\D3D::TOP.NEUTRALS.GASFLOW.GASE:FLOW', tree: D3D, free: true}
+  - id: gas_lob1
+    label: "Gas flow, valve LOB1"
+    group: Fuelling
+    units: "Torr L/s"
+    kind: trace
+    description: "Calibrated gas flow through valve LOB1 (D3D tree NEUTRALS.GASFLOW)."
+    avail: late
+    sources:
+      - {corpus: gas_flow, rows: 5}
+      - {mds: '\D3D::TOP.NEUTRALS.GASFLOW.LOB1:FLOW', tree: D3D, free: true}
+  - id: gas_lob2
+    label: "Gas flow, valve LOB2"
+    group: Fuelling
+    units: "Torr L/s"
+    kind: trace
+    description: "Calibrated gas flow through valve LOB2 (D3D tree NEUTRALS.GASFLOW)."
+    avail: late
+    sources:
+      - {corpus: gas_flow, rows: 6}
+      - {mds: '\D3D::TOP.NEUTRALS.GASFLOW.LOB2:FLOW', tree: D3D, free: true}
+  - id: gas_pfx1
+    label: "Gas flow, valve PFX1"
+    group: Fuelling
+    units: "Torr L/s"
+    kind: trace
+    description: "Calibrated gas flow through valve PFX1 (D3D tree NEUTRALS.GASFLOW)."
+    avail: early
+    sources:
+      - {corpus: gas_flow, rows: 7}
+      - {mds: '\D3D::TOP.NEUTRALS.GASFLOW.PFX1:FLOW', tree: D3D, free: true}
+  - id: gas_pfx2
+    label: "Gas flow, valve PFX2"
+    group: Fuelling
+    units: "Torr L/s"
+    kind: trace
+    description: "Calibrated gas flow through valve PFX2 (D3D tree NEUTRALS.GASFLOW)."
+    sources:
+      - {corpus: gas_flow, rows: 8}
+  - id: gas_pfx3
+    label: "Gas flow, valve PFX3"
+    group: Fuelling
+    units: "Torr L/s"
+    kind: trace
+    description: "Calibrated gas flow through valve PFX3 (D3D tree NEUTRALS.GASFLOW)."
+    sources:
+      - {corpus: gas_flow, rows: 9}
+  - id: gas_uob
+    label: "Gas flow, valve UOB"
+    group: Fuelling
+    units: "Torr L/s"
+    kind: trace
+    description: "Calibrated gas flow through valve UOB (D3D tree NEUTRALS.GASFLOW)."
+    avail: both
+    sources:
+      - {corpus: gas_flow, rows: 10}
+      - {mds: '\D3D::TOP.NEUTRALS.GASFLOW.UOB:FLOW', tree: D3D, free: true}
+  - id: gas_total
+    label: "Gas flow, all valves summed"
+    group: Fuelling
+    units: "Torr L/s"
+    kind: trace
+    description: "Calibrated gas flow summed over the eleven valves."
+    avail: both
+    sources:
+      - {corpus: gas_flow, rows: "0-10", total: true}
+  - id: gasraw_gasa
+    label: "Gas valve command, GASA"
+    group: Fuelling
+    units: ""
+    kind: trace
+    description: "Raw valve signal of GASA (D3D tree NEUTRALS.GASFLOW, RAW), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\D3D::TOP.NEUTRALS.GASFLOW.GASA:RAW', tree: D3D, free: true}
+  - id: gasraw_gasb
+    label: "Gas valve command, GASB"
+    group: Fuelling
+    units: ""
+    kind: trace
+    description: "Raw valve signal of GASB (D3D tree NEUTRALS.GASFLOW, RAW), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\D3D::TOP.NEUTRALS.GASFLOW.GASB:RAW', tree: D3D, free: true}
+  - id: gasraw_gasc
+    label: "Gas valve command, GASC"
+    group: Fuelling
+    units: ""
+    kind: trace
+    description: "Raw valve signal of GASC (D3D tree NEUTRALS.GASFLOW, RAW), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\D3D::TOP.NEUTRALS.GASFLOW.GASC:RAW', tree: D3D, free: true}
+  - id: gasraw_gasd
+    label: "Gas valve command, GASD"
+    group: Fuelling
+    units: ""
+    kind: trace
+    description: "Raw valve signal of GASD (D3D tree NEUTRALS.GASFLOW, RAW), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\D3D::TOP.NEUTRALS.GASFLOW.GASD:RAW', tree: D3D, free: true}
+  - id: gasraw_gase
+    label: "Gas valve command, GASE"
+    group: Fuelling
+    units: ""
+    kind: trace
+    description: "Raw valve signal of GASE (D3D tree NEUTRALS.GASFLOW, RAW), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\D3D::TOP.NEUTRALS.GASFLOW.GASE:RAW', tree: D3D, free: true}
+  - id: ptgas_gasa
+    label: "Gas GASA (PTDATA)"
+    group: Fuelling
+    units: V
+    kind: trace
+    description: "PTDATA point GASA, the gas valve's raw voltage."
+    avail: both
+    sources:
+      - {ptdata: GASA}
+  - id: ptgas_gasb
+    label: "Gas GASB (PTDATA)"
+    group: Fuelling
+    units: V
+    kind: trace
+    description: "PTDATA point GASB, the gas valve's raw voltage."
+    avail: both
+    sources:
+      - {ptdata: GASB}
+  - id: ptgas_gasc
+    label: "Gas GASC (PTDATA)"
+    group: Fuelling
+    units: V
+    kind: trace
+    description: "PTDATA point GASC, the gas valve's raw voltage."
+    avail: both
+    sources:
+      - {ptdata: GASC}
+  - id: ptgas_gasd
+    label: "Gas GASD (PTDATA)"
+    group: Fuelling
+    units: V
+    kind: trace
+    description: "PTDATA point GASD, the gas valve's raw voltage."
+    avail: both
+    sources:
+      - {ptdata: GASD}
+  - id: ptgas_gase
+    label: "Gas GASE (PTDATA)"
+    group: Fuelling
+    units: V
+    kind: trace
+    description: "PTDATA point GASE, the gas valve's raw voltage."
+    avail: both
+    sources:
+      - {ptdata: GASE}
+  - id: gastotal_pcs
+    label: "Gas total (PCS)"
+    group: Fuelling
+    units: V
+    kind: trace
+    description: "PCS-computed gas total (PTDATA GASTOTAL), archive units as stored."
+    avail: both
+    sources:
+      - {ptdata: GASTOTAL}
 
-  # ---- Core ----
-  - id: ece_map
-    label: "ECE Te, channels 1-40"
-    group: Core
-    units: keV
+  # ---- Density ----
+  - id: co2_v1
+    label: "Line-integrated density, CO2 V1"
+    group: Density
+    units: "cm^-2"
     kind: trace
-    draw: map
-    events: [mhd_n1, neoclassical_tearing_mode, sawtooth_oscillation, alfven_eigenmode]
-    legend: [TECEF01, TECEF02, TECEF03, TECEF04, TECEF05, TECEF06, TECEF07, TECEF08,
-             TECEF09, TECEF10, TECEF11, TECEF12, TECEF13, TECEF14, TECEF15, TECEF16,
-             TECEF17, TECEF18, TECEF19, TECEF20, TECEF21, TECEF22, TECEF23, TECEF24,
-             TECEF25, TECEF26, TECEF27, TECEF28, TECEF29, TECEF30, TECEF31, TECEF32,
-             TECEF33, TECEF34, TECEF35, TECEF36, TECEF37, TECEF38, TECEF39, TECEF40]
+    events: [confinement, high_confinement_mode, edge_localized_mode]
+    description: "CO2 interferometer V1 chord, line-integrated density in stored units (PTDATA DENV1UF)."
+    avail: both
     sources:
-      - {corpus: ece, rows: "0-39"}
-      - {raw: ece, rows: "0-39"}
-  - id: ts_core_te_ch
-    label: "Thomson core Te, 44 chords"
-    group: Core
-    units: keV
+      - {corpus: co2, rows: 1}
+      - {raw: co2, rows: 1}
+      - {ptdata: DENV1UF}
+  - id: co2_v2
+    label: "Line-integrated density, CO2 V2"
+    group: Density
+    units: "cm^-2"
     kind: trace
-    draw: map
-    events: [sawtooth_oscillation, confinement, high_confinement_mode]
+    events: [confinement, high_confinement_mode, edge_localized_mode]
+    description: "CO2 interferometer V2 chord, line-integrated density in stored units (PTDATA DENV2UF)."
+    avail: both
     sources:
-      - {corpus: ts_core_temp, rows: "0-43", scale: 1.0e-3}
-  - id: ts_core_ne_ch
-    label: "Thomson core n_e, 44 chords"
-    group: Core
-    units: "1e19 m^-3"
+      - {corpus: co2, rows: 2}
+      - {raw: co2, rows: 2}
+      - {ptdata: DENV2UF}
+  - id: co2_v3
+    label: "Line-integrated density, CO2 V3"
+    group: Density
+    units: "cm^-2"
     kind: trace
-    draw: map
-    events: [confinement, high_confinement_mode]
+    events: [confinement, high_confinement_mode, edge_localized_mode]
+    description: "CO2 interferometer V3 chord, line-integrated density in stored units (PTDATA DENV3UF)."
+    avail: both
     sources:
-      - {corpus: ts_core_density, rows: "0-43", scale: 1.0e-19}
-  - id: sxr_90rm1f
-    label: "SXR SX90RM1F, 32 chords"
-    group: Core
-    units: ""
+      - {corpus: co2, rows: 3}
+      - {raw: co2, rows: 3}
+      - {ptdata: DENV3UF}
+  - id: co2_all
+    label: "Line-integrated density, 4 CO2 chords"
+    group: Density
+    units: "cm^-2"
     kind: trace
-    draw: map
-    events: [sawtooth_oscillation]
+    draw: lines
+    legend: [R0, V1, V2, V3]
+    description: "The four CO2 interferometer chords R0 V1 V2 V3, one line each."
+    avail: both
     sources:
-      - {corpus: sxr, rows: "192-223"}
-  - id: sxr_90rp1f
-    label: "SXR SX90RP1F, 32 chords"
-    group: Core
-    units: ""
-    kind: trace
-    draw: map
-    events: [sawtooth_oscillation]
-    sources:
-      - {corpus: sxr, rows: "256-287"}
-  - id: sxr_90rm1s
-    label: "SXR SX90RM1S, 32 chords"
-    group: Core
-    units: ""
-    kind: trace
-    draw: map
-    events: [sawtooth_oscillation]
-    sources:
-      - {corpus: sxr, rows: "224-255"}
-  - id: sxr_90rp1s
-    label: "SXR SX90RP1S, 32 chords"
-    group: Core
-    units: ""
-    kind: trace
-    draw: map
-    events: [sawtooth_oscillation]
-    sources:
-      - {corpus: sxr, rows: "288-319"}
+      - {corpus: co2, rows: "0-3"}
+      - {raw: co2, rows: "0-3"}
 
   # ---- Radiation ----
   - id: bolo
@@ -397,6 +1647,7 @@ signals:
              BOL_U01, BOL_U02, BOL_U03, BOL_U04, BOL_U05, BOL_U06, BOL_U07, BOL_U08,
              BOL_U09, BOL_U10, BOL_U11, BOL_U12, BOL_U13, BOL_U14, BOL_U15, BOL_U16,
              BOL_U17, BOL_U18, BOL_U19, BOL_U20, BOL_U21, BOL_U22, BOL_U23, BOL_U24]
+    description: "The 48 raw bolometer chords (L01 to L24, U01 to U24), volts, as a heat map."
     sources:
       - {corpus: bolo, rows: "0-47"}
   - id: prad_divl
@@ -405,6 +1656,8 @@ signals:
     units: MW
     kind: trace
     events: [detachment]
+    description: "Radiated power of the lower divertor from the BOLOM tree, watts scaled to megawatts."
+    avail: both
     sources:
       - {mds: '\BOLOM::PRAD_DIVL', tree: BOLOM, scale: 1.0e-6}
   - id: prad_divu
@@ -413,12 +1666,2385 @@ signals:
     units: MW
     kind: trace
     events: [detachment]
+    description: "Radiated power of the upper divertor from the BOLOM tree, watts scaled to megawatts."
+    avail: both
     sources:
       - {mds: '\BOLOM::PRAD_DIVU', tree: BOLOM, scale: 1.0e-6}
+  - id: prad_tot
+    label: "Radiated power, total"
+    group: Radiation
+    units: MW
+    kind: trace
+    events: [detachment]
+    description: "Radiated power of the total region from the BOLOM tree (PRAD_TOT), watts scaled to megawatts."
+    avail: both
+    sources:
+      - {mds: '\BOLOM::PRAD_TOT', tree: BOLOM, scale: 1.0e-6}
+  - id: prad_core
+    label: "Radiated power, core"
+    group: Radiation
+    units: MW
+    kind: trace
+    description: "Radiated power of the core region from the BOLOM tree (PRAD_CORE), watts scaled to megawatts."
+    avail: both
+    sources:
+      - {mds: '\BOLOM::PRAD_CORE', tree: BOLOM, scale: 1.0e-6}
+  - id: bolo_l01
+    label: "Bolometer chord BOL_L01"
+    group: Radiation
+    units: V
+    kind: trace
+    description: "Raw voltage of bolometer chord L01 (lower array)."
+    avail: both
+    sources:
+      - {corpus: bolo, rows: 0}
+      - {mds: '\D3D::TOP.SPECTROSCOPY.PRAD.BOLOM.RAW:BOL_L01_V', tree: D3D, free: true}
+  - id: bolo_l06
+    label: "Bolometer chord BOL_L06"
+    group: Radiation
+    units: V
+    kind: trace
+    description: "Raw voltage of bolometer chord L06 (lower array)."
+    avail: both
+    sources:
+      - {corpus: bolo, rows: 5}
+      - {mds: '\D3D::TOP.SPECTROSCOPY.PRAD.BOLOM.RAW:BOL_L06_V', tree: D3D, free: true}
+  - id: bolo_l12
+    label: "Bolometer chord BOL_L12"
+    group: Radiation
+    units: V
+    kind: trace
+    description: "Raw voltage of bolometer chord L12 (lower array)."
+    avail: both
+    sources:
+      - {corpus: bolo, rows: 11}
+      - {mds: '\D3D::TOP.SPECTROSCOPY.PRAD.BOLOM.RAW:BOL_L12_V', tree: D3D, free: true}
+  - id: bolo_l18
+    label: "Bolometer chord BOL_L18"
+    group: Radiation
+    units: V
+    kind: trace
+    description: "Raw voltage of bolometer chord L18 (lower array)."
+    avail: both
+    sources:
+      - {corpus: bolo, rows: 17}
+      - {mds: '\D3D::TOP.SPECTROSCOPY.PRAD.BOLOM.RAW:BOL_L18_V', tree: D3D, free: true}
+  - id: bolo_l24
+    label: "Bolometer chord BOL_L24"
+    group: Radiation
+    units: V
+    kind: trace
+    description: "Raw voltage of bolometer chord L24 (lower array)."
+    avail: both
+    sources:
+      - {corpus: bolo, rows: 23}
+      - {mds: '\D3D::TOP.SPECTROSCOPY.PRAD.BOLOM.RAW:BOL_L24_V', tree: D3D, free: true}
+  - id: bolo_u01
+    label: "Bolometer chord BOL_U01"
+    group: Radiation
+    units: V
+    kind: trace
+    description: "Raw voltage of bolometer chord U01 (upper array)."
+    avail: both
+    sources:
+      - {corpus: bolo, rows: 24}
+      - {mds: '\D3D::TOP.SPECTROSCOPY.PRAD.BOLOM.RAW:BOL_U01_V', tree: D3D, free: true}
+  - id: bolo_u08
+    label: "Bolometer chord BOL_U08"
+    group: Radiation
+    units: V
+    kind: trace
+    description: "Raw voltage of bolometer chord U08 (upper array)."
+    avail: both
+    sources:
+      - {corpus: bolo, rows: 31}
+      - {mds: '\D3D::TOP.SPECTROSCOPY.PRAD.BOLOM.RAW:BOL_U08_V', tree: D3D, free: true}
+  - id: bolo_u16
+    label: "Bolometer chord BOL_U16"
+    group: Radiation
+    units: V
+    kind: trace
+    description: "Raw voltage of bolometer chord U16 (upper array)."
+    avail: both
+    sources:
+      - {corpus: bolo, rows: 39}
+      - {mds: '\D3D::TOP.SPECTROSCOPY.PRAD.BOLOM.RAW:BOL_U16_V', tree: D3D, free: true}
+  - id: bolo_u24
+    label: "Bolometer chord BOL_U24"
+    group: Radiation
+    units: V
+    kind: trace
+    description: "Raw voltage of bolometer chord U24 (upper array)."
+    avail: both
+    sources:
+      - {corpus: bolo, rows: 47}
+      - {mds: '\D3D::TOP.SPECTROSCOPY.PRAD.BOLOM.RAW:BOL_U24_V', tree: D3D, free: true}
+  - id: zeff_01
+    label: "Zeff, visible bremsstrahlung chord 01"
+    group: Radiation
+    units: ""
+    kind: trace
+    description: "Effective charge from visible-bremsstrahlung chord 01 (D3D tree SPECTROSCOPY.VB.ZEFF)."
+    avail: both
+    sources:
+      - {corpus: vib, rows: 0}
+      - {mds: '\D3D::TOP.SPECTROSCOPY.VB.ZEFF:ZEFF_01', tree: D3D}
+  - id: zeff_08
+    label: "Zeff, visible bremsstrahlung chord 08"
+    group: Radiation
+    units: ""
+    kind: trace
+    description: "Effective charge from visible-bremsstrahlung chord 08 (D3D tree SPECTROSCOPY.VB.ZEFF)."
+    avail: both
+    sources:
+      - {corpus: vib, rows: 7}
+      - {mds: '\D3D::TOP.SPECTROSCOPY.VB.ZEFF:ZEFF_08', tree: D3D}
+  - id: zeff_16
+    label: "Zeff, visible bremsstrahlung chord 16"
+    group: Radiation
+    units: ""
+    kind: trace
+    description: "Effective charge from visible-bremsstrahlung chord 16 (D3D tree SPECTROSCOPY.VB.ZEFF)."
+    avail: early
+    sources:
+      - {corpus: vib, rows: 15}
+      - {mds: '\D3D::TOP.SPECTROSCOPY.VB.ZEFF:ZEFF_16', tree: D3D}
+  - id: zeff_24
+    label: "Zeff, visible bremsstrahlung chord 24"
+    group: Radiation
+    units: ""
+    kind: trace
+    description: "Effective charge from visible-bremsstrahlung chord 24 (D3D tree SPECTROSCOPY.VB.ZEFF)."
+    sources:
+      - {corpus: vib, rows: 23}
+  - id: zeff_all
+    label: "Zeff, 24 visible-bremsstrahlung chords"
+    group: Radiation
+    units: ""
+    kind: trace
+    draw: map
+    description: "Effective charge from the 24 visible-bremsstrahlung chords as a heat map."
+    avail: both
+    sources:
+      - {corpus: vib, rows: "0-23"}
+  - id: prad_sol
+    label: "Radiated power, scrape-off layer"
+    group: Radiation
+    units: MW
+    kind: trace
+    description: "Radiated power of the scrape-off layer from the BOLOM tree (PRAD_SOL), watts scaled to megawatts."
+    avail: both
+    sources:
+      - {mds: '\BOLOM::PRAD_SOL', tree: BOLOM, scale: 1.0e-6}
+  - id: bolp_l01
+    label: "Bolometer chord L01 power"
+    group: Radiation
+    units: W
+    kind: trace
+    description: "Calibrated power on bolometer chord L01 (BOLOM tree BOL_L01_P), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\BOLOM::BOL_L01_P', tree: BOLOM}
+  - id: bolp_l12
+    label: "Bolometer chord L12 power"
+    group: Radiation
+    units: W
+    kind: trace
+    description: "Calibrated power on bolometer chord L12 (BOLOM tree BOL_L12_P), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\BOLOM::BOL_L12_P', tree: BOLOM}
+  - id: bolp_l24
+    label: "Bolometer chord L24 power"
+    group: Radiation
+    units: W
+    kind: trace
+    description: "Calibrated power on bolometer chord L24 (BOLOM tree BOL_L24_P), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\BOLOM::BOL_L24_P', tree: BOLOM}
+  - id: bolp_u01
+    label: "Bolometer chord U01 power"
+    group: Radiation
+    units: W
+    kind: trace
+    description: "Calibrated power on bolometer chord U01 (BOLOM tree BOL_U01_P), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\BOLOM::BOL_U01_P', tree: BOLOM}
+  - id: bolp_u16
+    label: "Bolometer chord U16 power"
+    group: Radiation
+    units: W
+    kind: trace
+    description: "Calibrated power on bolometer chord U16 (BOLOM tree BOL_U16_P), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\BOLOM::BOL_U16_P', tree: BOLOM}
+  - id: bolp_u24
+    label: "Bolometer chord U24 power"
+    group: Radiation
+    units: W
+    kind: trace
+    description: "Calibrated power on bolometer chord U24 (BOLOM tree BOL_U24_P), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\BOLOM::BOL_U24_P', tree: BOLOM}
+
+  # ---- Magnetics ----
+  - id: n1rms
+    label: "n=1 RMS"
+    group: Magnetics
+    units: G
+    kind: trace
+    events: [mhd_n1, neoclassical_tearing_mode, resistive_wall_mode, locked_mode,
+             sawtooth_oscillation]
+    description: "n=1 RMS amplitude of the toroidal Mirnov array, MHD tree N1RMS."
+    avail: both
+    sources:
+      - {feature: n1rms}
+      - {mds: '\MHD::N1RMS', tree: MHD}
+  - id: n2rms
+    label: "n=2 RMS"
+    group: Magnetics
+    units: G
+    kind: trace
+    events: [mhd_n1, neoclassical_tearing_mode, resistive_wall_mode]
+    description: "n=2 RMS amplitude of the toroidal Mirnov array, MHD tree N2RMS."
+    avail: both
+    sources:
+      - {feature: n2rms}
+      - {mds: '\MHD::N2RMS', tree: MHD}
+  - id: mpi66m322d
+    label: "Mirnov probe MPI66M322D"
+    group: Magnetics
+    units: ""
+    kind: trace
+    events: [mhd_n1, neoclassical_tearing_mode, locked_mode]
+    description: "Midplane toroidal Mirnov probe MPI66M322D (the array's reference coil, 322 degrees)."
+    avail: both
+    sources:
+      - {corpus: mirnov, rows: 15}
+      - {ptdata: MPI66M322D}
+  - id: mpi1a322d
+    label: "Mirnov probe MPI1A322D"
+    group: Magnetics
+    units: "T/s"
+    kind: trace
+    description: "Magnetic pickup-coil probe MPI1A322D (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {corpus: mirnov, rows: 0}
+      - {ptdata: MPI1A322D}
+  - id: mpi3a322d
+    label: "Mirnov probe MPI3A322D"
+    group: Magnetics
+    units: "T/s"
+    kind: trace
+    description: "Magnetic pickup-coil probe MPI3A322D (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {corpus: mirnov, rows: 1}
+      - {ptdata: MPI3A322D}
+  - id: mpi5a322d
+    label: "Mirnov probe MPI5A322D"
+    group: Magnetics
+    units: "T/s"
+    kind: trace
+    description: "Magnetic pickup-coil probe MPI5A322D (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {corpus: mirnov, rows: 2}
+      - {ptdata: MPI5A322D}
+  - id: mpi89a322d
+    label: "Mirnov probe MPI89A322D"
+    group: Magnetics
+    units: "T/s"
+    kind: trace
+    description: "Magnetic pickup-coil probe MPI89A322D (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {corpus: mirnov, rows: 3}
+      - {ptdata: MPI89A322D}
+  - id: mpi79fa322d
+    label: "Mirnov probe MPI79FA322D"
+    group: Magnetics
+    units: T
+    kind: trace
+    description: "Magnetic pickup-coil probe MPI79FA322D (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {corpus: mirnov, rows: 4}
+      - {ptdata: MPI79FA322D}
+  - id: mpi7fa322d
+    label: "Mirnov probe MPI7FA322D"
+    group: Magnetics
+    units: "T/s"
+    kind: trace
+    description: "Magnetic pickup-coil probe MPI7FA322D (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {corpus: mirnov, rows: 5}
+      - {ptdata: MPI7FA322D}
+  - id: mpi67a322d
+    label: "Mirnov probe MPI67A322D"
+    group: Magnetics
+    units: "T/s"
+    kind: trace
+    description: "Magnetic pickup-coil probe MPI67A322D (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {corpus: mirnov, rows: 6}
+      - {ptdata: MPI67A322D}
+  - id: mpi6na322d
+    label: "Mirnov probe MPI6NA322D"
+    group: Magnetics
+    units: "T/s"
+    kind: trace
+    description: "Magnetic pickup-coil probe MPI6NA322D (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {corpus: mirnov, rows: 7}
+      - {ptdata: MPI6NA322D}
+  - id: mpi1b322d
+    label: "Mirnov probe MPI1B322D"
+    group: Magnetics
+    units: "T/s"
+    kind: trace
+    description: "Magnetic pickup-coil probe MPI1B322D (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {corpus: mirnov, rows: 8}
+      - {ptdata: MPI1B322D}
+  - id: mpi3b322d
+    label: "Mirnov probe MPI3B322D"
+    group: Magnetics
+    units: "T/s"
+    kind: trace
+    description: "Magnetic pickup-coil probe MPI3B322D (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {corpus: mirnov, rows: 9}
+      - {ptdata: MPI3B322D}
+  - id: mpi5b322d
+    label: "Mirnov probe MPI5B322D"
+    group: Magnetics
+    units: "T/s"
+    kind: trace
+    description: "Magnetic pickup-coil probe MPI5B322D (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {corpus: mirnov, rows: 10}
+      - {ptdata: MPI5B322D}
+  - id: mpi89b322d
+    label: "Mirnov probe MPI89B322D"
+    group: Magnetics
+    units: "T/s"
+    kind: trace
+    description: "Magnetic pickup-coil probe MPI89B322D (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {corpus: mirnov, rows: 11}
+      - {ptdata: MPI89B322D}
+  - id: mpi79b322d
+    label: "Mirnov probe MPI79B322D"
+    group: Magnetics
+    units: "T/s"
+    kind: trace
+    description: "Magnetic pickup-coil probe MPI79B322D (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {corpus: mirnov, rows: 12}
+      - {ptdata: MPI79B322D}
+  - id: mpi7nb322d
+    label: "Mirnov probe MPI7NB322D"
+    group: Magnetics
+    units: "T/s"
+    kind: trace
+    description: "Magnetic pickup-coil probe MPI7NB322D (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {corpus: mirnov, rows: 13}
+      - {ptdata: MPI7NB322D}
+  - id: mpi6fb322d
+    label: "Mirnov probe MPI6FB322D"
+    group: Magnetics
+    units: "T/s"
+    kind: trace
+    description: "Magnetic pickup-coil probe MPI6FB322D (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {corpus: mirnov, rows: 14}
+      - {ptdata: MPI6FB322D}
+  - id: mpi66m132d
+    label: "Mirnov probe MPI66M132D"
+    group: Magnetics
+    units: "T/s"
+    kind: trace
+    description: "Magnetic pickup-coil probe MPI66M132D (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {corpus: mirnov, rows: 16}
+      - {ptdata: MPI66M132D}
+  - id: mpi66b137d
+    label: "Mirnov probe MPI66B137D"
+    group: Magnetics
+    units: "T/s"
+    kind: trace
+    description: "Magnetic pickup-coil probe MPI66B137D (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {corpus: mirnov, rows: 17}
+      - {ptdata: MPI66B137D}
+  - id: mpi66m312d
+    label: "Mirnov probe MPI66M312D"
+    group: Magnetics
+    units: "T/s"
+    kind: trace
+    description: "Magnetic pickup-coil probe MPI66M312D (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {corpus: mirnov, rows: 18}
+      - {ptdata: MPI66M312D}
+  - id: mpi66b312d
+    label: "Mirnov probe MPI66B312D"
+    group: Magnetics
+    units: "T/s"
+    kind: trace
+    description: "Magnetic pickup-coil probe MPI66B312D (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {corpus: mirnov, rows: 19}
+      - {ptdata: MPI66B312D}
+  - id: mpi66m020d
+    label: "Mirnov probe MPI66M020D"
+    group: Magnetics
+    units: "T/s"
+    kind: trace
+    description: "Magnetic pickup-coil probe MPI66M020D (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {corpus: mirnov, rows: 20}
+      - {ptdata: MPI66M020D}
+  - id: mpi66m097d
+    label: "Mirnov probe MPI66M097D"
+    group: Magnetics
+    units: "T/s"
+    kind: trace
+    description: "Magnetic pickup-coil probe MPI66M097D (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {corpus: mirnov, rows: 21}
+      - {ptdata: MPI66M097D}
+  - id: mpi66m307d
+    label: "Mirnov probe MPI66M307D"
+    group: Magnetics
+    units: "T/s"
+    kind: trace
+    description: "Magnetic pickup-coil probe MPI66M307D (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {corpus: mirnov, rows: 22}
+      - {ptdata: MPI66M307D}
+  - id: mpi1a011d
+    label: "Mirnov probe MPI1A011D"
+    group: Magnetics
+    units: "T/s"
+    kind: trace
+    description: "Magnetic pickup-coil probe MPI1A011D (PTDATA), archive units as stored."
+    avail: late
+    sources:
+      - {corpus: mirnov, rows: 23}
+      - {ptdata: MPI1A011D}
+  - id: mpi1a274d
+    label: "Mirnov probe MPI1A274D"
+    group: Magnetics
+    units: "T/s"
+    kind: trace
+    description: "Magnetic pickup-coil probe MPI1A274D (PTDATA), archive units as stored."
+    avail: late
+    sources:
+      - {corpus: mirnov, rows: 24}
+      - {ptdata: MPI1A274D}
+  - id: mpi1a109d
+    label: "Mirnov probe MPI1A109D"
+    group: Magnetics
+    units: "T/s"
+    kind: trace
+    description: "Magnetic pickup-coil probe MPI1A109D (PTDATA), archive units as stored."
+    avail: late
+    sources:
+      - {corpus: mirnov, rows: 25}
+      - {ptdata: MPI1A109D}
+  - id: mpi1a199d
+    label: "Mirnov probe MPI1A199D"
+    group: Magnetics
+    units: "T/s"
+    kind: trace
+    description: "Magnetic pickup-coil probe MPI1A199D (PTDATA), archive units as stored."
+    avail: late
+    sources:
+      - {corpus: mirnov, rows: 26}
+      - {ptdata: MPI1A199D}
+  - id: mpi1a341d
+    label: "Mirnov probe MPI1A341D"
+    group: Magnetics
+    units: "T/s"
+    kind: trace
+    description: "Magnetic pickup-coil probe MPI1A341D (PTDATA), archive units as stored."
+    avail: late
+    sources:
+      - {corpus: mirnov, rows: 28}
+      - {ptdata: MPI1A341D}
+  - id: n3rms
+    label: "n=3 RMS"
+    group: Magnetics
+    units: G
+    kind: trace
+    events: [mhd_n1, locked_mode]
+    description: "Toroidal Mirnov array mode analysis, MHD tree N3RMS."
+    avail: both
+    sources:
+      - {mds: '\MHD::N3RMS', tree: MHD}
+  - id: mhr_all
+    label: "High-resolution magnetics B1-B8"
+    group: Magnetics
+    units: ""
+    kind: trace
+    draw: lines
+    legend: [B1, B2, B3, B4, B5, B6, B7, B8]
+    description: "Eight high-resolution magnetic probes B1 to B8 (PTDATA), one line each."
+    avail: both
+    sources:
+      - {corpus: mhr, rows: "0-7"}
+  - id: mhr_b1
+    label: "High-resolution magnetic probe B1"
+    group: Magnetics
+    units: ""
+    kind: trace
+    description: "High-resolution magnetic probe B1 (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {corpus: mhr, rows: 0}
+      - {ptdata: B1}
+  - id: mhr_b2
+    label: "High-resolution magnetic probe B2"
+    group: Magnetics
+    units: ""
+    kind: trace
+    description: "High-resolution magnetic probe B2 (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {corpus: mhr, rows: 1}
+      - {ptdata: B2}
+  - id: mhr_b8
+    label: "High-resolution magnetic probe B8"
+    group: Magnetics
+    units: ""
+    kind: trace
+    description: "High-resolution magnetic probe B8 (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {corpus: mhr, rows: 7}
+      - {ptdata: B8}
+  - id: dusbradial
+    label: "Locked-mode detector DUSBRADIAL"
+    group: Magnetics
+    units: V
+    kind: trace
+    events: [locked_mode, resistive_wall_mode]
+    description: "Locked-mode detector signal DUSBRADIAL (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {ptdata: DUSBRADIAL}
+  - id: onsbradial
+    label: "Locked-mode detector ONSBRADIAL"
+    group: Magnetics
+    units: V
+    kind: trace
+    events: [locked_mode, resistive_wall_mode]
+    description: "Locked-mode detector signal ONSBRADIAL (PTDATA), archive units as stored."
+    avail: late
+    sources:
+      - {ptdata: ONSBRADIAL}
+  - id: mpi66m067f
+    label: "Midplane Mirnov probe MPI66M067F"
+    group: Magnetics
+    units: T
+    kind: trace
+    description: "Midplane toroidal Mirnov probe at 67 degrees, the F record (PTDATA MPI66M067F), archive units as stored."
+    avail: both
+    sources:
+      - {ptdata: MPI66M067F}
+  - id: mpi66m097f
+    label: "Midplane Mirnov probe MPI66M097F"
+    group: Magnetics
+    units: T
+    kind: trace
+    description: "Midplane toroidal Mirnov probe at 97 degrees, the F record (PTDATA MPI66M097F), archive units as stored."
+    avail: both
+    sources:
+      - {ptdata: MPI66M097F}
+  - id: mpi66m127f
+    label: "Midplane Mirnov probe MPI66M127F"
+    group: Magnetics
+    units: T
+    kind: trace
+    description: "Midplane toroidal Mirnov probe at 127 degrees, the F record (PTDATA MPI66M127F), archive units as stored."
+    avail: both
+    sources:
+      - {ptdata: MPI66M127F}
+  - id: mpi66m157f
+    label: "Midplane Mirnov probe MPI66M157F"
+    group: Magnetics
+    units: T
+    kind: trace
+    description: "Midplane toroidal Mirnov probe at 157 degrees, the F record (PTDATA MPI66M157F), archive units as stored."
+    avail: both
+    sources:
+      - {ptdata: MPI66M157F}
+  - id: mpi66m247f
+    label: "Midplane Mirnov probe MPI66M247F"
+    group: Magnetics
+    units: T
+    kind: trace
+    description: "Midplane toroidal Mirnov probe at 247 degrees, the F record (PTDATA MPI66M247F), archive units as stored."
+    avail: both
+    sources:
+      - {ptdata: MPI66M247F}
+  - id: mpi66m277f
+    label: "Midplane Mirnov probe MPI66M277F"
+    group: Magnetics
+    units: T
+    kind: trace
+    description: "Midplane toroidal Mirnov probe at 277 degrees, the F record (PTDATA MPI66M277F), archive units as stored."
+    avail: both
+    sources:
+      - {ptdata: MPI66M277F}
+  - id: mpi66m307f
+    label: "Midplane Mirnov probe MPI66M307F"
+    group: Magnetics
+    units: T
+    kind: trace
+    description: "Midplane toroidal Mirnov probe at 307 degrees, the F record (PTDATA MPI66M307F), archive units as stored."
+    avail: both
+    sources:
+      - {ptdata: MPI66M307F}
+  - id: mpi66m340f
+    label: "Midplane Mirnov probe MPI66M340F"
+    group: Magnetics
+    units: T
+    kind: trace
+    description: "Midplane toroidal Mirnov probe at 340 degrees, the F record (PTDATA MPI66M340F), archive units as stored."
+    avail: both
+    sources:
+      - {ptdata: MPI66M340F}
+  - id: mpid067u
+    label: "Mirnov difference probe MPID067U"
+    group: Magnetics
+    units: ""
+    kind: trace
+    description: "Mirnov difference probe at 67 degrees (PTDATA MPID067U), archive units as stored."
+    avail: early
+    sources:
+      - {ptdata: MPID067U}
+  - id: mpid097u
+    label: "Mirnov difference probe MPID097U"
+    group: Magnetics
+    units: ""
+    kind: trace
+    description: "Mirnov difference probe at 97 degrees (PTDATA MPID097U), archive units as stored."
+    avail: early
+    sources:
+      - {ptdata: MPID097U}
+  - id: mpid127u
+    label: "Mirnov difference probe MPID127U"
+    group: Magnetics
+    units: ""
+    kind: trace
+    description: "Mirnov difference probe at 127 degrees (PTDATA MPID127U), archive units as stored."
+    avail: early
+    sources:
+      - {ptdata: MPID127U}
+  - id: mpid157u
+    label: "Mirnov difference probe MPID157U"
+    group: Magnetics
+    units: ""
+    kind: trace
+    description: "Mirnov difference probe at 157 degrees (PTDATA MPID157U), archive units as stored."
+    avail: early
+    sources:
+      - {ptdata: MPID157U}
+  - id: icoil_c19f
+    label: "C-coil current C19F"
+    group: Magnetics
+    units: A
+    kind: trace
+    events: [resistive_wall_mode]
+    description: "C-coil segment current C19F (PTDATA), the n=1/2/3 control and RMP coils."
+    avail: both
+    sources:
+      - {corpus: i_coil, rows: 0}
+      - {ptdata: C19F}
+  - id: icoil_c79f
+    label: "C-coil current C79F"
+    group: Magnetics
+    units: A
+    kind: trace
+    events: [resistive_wall_mode]
+    description: "C-coil segment current C79F (PTDATA), the n=1/2/3 control and RMP coils."
+    avail: both
+    sources:
+      - {corpus: i_coil, rows: 1}
+      - {ptdata: C79F}
+  - id: icoil_c139f
+    label: "C-coil current C139F"
+    group: Magnetics
+    units: A
+    kind: trace
+    events: [resistive_wall_mode]
+    description: "C-coil segment current C139F (PTDATA), the n=1/2/3 control and RMP coils."
+    avail: both
+    sources:
+      - {corpus: i_coil, rows: 2}
+      - {ptdata: C139F}
+  - id: icoil_c199f
+    label: "C-coil current C199F"
+    group: Magnetics
+    units: A
+    kind: trace
+    events: [resistive_wall_mode]
+    description: "C-coil segment current C199F (PTDATA), the n=1/2/3 control and RMP coils."
+    avail: both
+    sources:
+      - {corpus: i_coil, rows: 3}
+      - {ptdata: C199F}
+  - id: icoil_c259f
+    label: "C-coil current C259F"
+    group: Magnetics
+    units: A
+    kind: trace
+    events: [resistive_wall_mode]
+    description: "C-coil segment current C259F (PTDATA), the n=1/2/3 control and RMP coils."
+    avail: both
+    sources:
+      - {corpus: i_coil, rows: 4}
+      - {ptdata: C259F}
+  - id: icoil_c319f
+    label: "C-coil current C319F"
+    group: Magnetics
+    units: A
+    kind: trace
+    events: [resistive_wall_mode]
+    description: "C-coil segment current C319F (PTDATA), the n=1/2/3 control and RMP coils."
+    avail: both
+    sources:
+      - {corpus: i_coil, rows: 5}
+      - {ptdata: C319F}
+  - id: icoil_iu30f
+    label: "I-coil upper current IU30F"
+    group: Magnetics
+    units: A
+    kind: trace
+    events: [resistive_wall_mode]
+    description: "I-coil upper segment current IU30F (PTDATA), the n=1/2/3 control and RMP coils."
+    avail: both
+    sources:
+      - {corpus: i_coil, rows: 6}
+      - {ptdata: IU30F}
+  - id: icoil_iu90f
+    label: "I-coil upper current IU90F"
+    group: Magnetics
+    units: A
+    kind: trace
+    events: [resistive_wall_mode]
+    description: "I-coil upper segment current IU90F (PTDATA), the n=1/2/3 control and RMP coils."
+    avail: both
+    sources:
+      - {corpus: i_coil, rows: 7}
+      - {ptdata: IU90F}
+  - id: icoil_iu150f
+    label: "I-coil upper current IU150F"
+    group: Magnetics
+    units: A
+    kind: trace
+    events: [resistive_wall_mode]
+    description: "I-coil upper segment current IU150F (PTDATA), the n=1/2/3 control and RMP coils."
+    avail: both
+    sources:
+      - {corpus: i_coil, rows: 8}
+      - {ptdata: IU150F}
+  - id: icoil_iu210f
+    label: "I-coil upper current IU210F"
+    group: Magnetics
+    units: A
+    kind: trace
+    events: [resistive_wall_mode]
+    description: "I-coil upper segment current IU210F (PTDATA), the n=1/2/3 control and RMP coils."
+    avail: both
+    sources:
+      - {corpus: i_coil, rows: 9}
+      - {ptdata: IU210F}
+  - id: icoil_iu270f
+    label: "I-coil upper current IU270F"
+    group: Magnetics
+    units: A
+    kind: trace
+    events: [resistive_wall_mode]
+    description: "I-coil upper segment current IU270F (PTDATA), the n=1/2/3 control and RMP coils."
+    avail: both
+    sources:
+      - {corpus: i_coil, rows: 10}
+      - {ptdata: IU270F}
+  - id: icoil_iu330f
+    label: "I-coil upper current IU330F"
+    group: Magnetics
+    units: A
+    kind: trace
+    events: [resistive_wall_mode]
+    description: "I-coil upper segment current IU330F (PTDATA), the n=1/2/3 control and RMP coils."
+    avail: both
+    sources:
+      - {corpus: i_coil, rows: 11}
+      - {ptdata: IU330F}
+  - id: icoil_il30f
+    label: "I-coil lower current IL30F"
+    group: Magnetics
+    units: A
+    kind: trace
+    events: [resistive_wall_mode]
+    description: "I-coil lower segment current IL30F (PTDATA), the n=1/2/3 control and RMP coils."
+    avail: both
+    sources:
+      - {corpus: i_coil, rows: 12}
+      - {ptdata: IL30F}
+  - id: icoil_il90f
+    label: "I-coil lower current IL90F"
+    group: Magnetics
+    units: A
+    kind: trace
+    events: [resistive_wall_mode]
+    description: "I-coil lower segment current IL90F (PTDATA), the n=1/2/3 control and RMP coils."
+    avail: both
+    sources:
+      - {corpus: i_coil, rows: 13}
+      - {ptdata: IL90F}
+  - id: icoil_il150f
+    label: "I-coil lower current IL150F"
+    group: Magnetics
+    units: A
+    kind: trace
+    events: [resistive_wall_mode]
+    description: "I-coil lower segment current IL150F (PTDATA), the n=1/2/3 control and RMP coils."
+    avail: both
+    sources:
+      - {corpus: i_coil, rows: 14}
+      - {ptdata: IL150F}
+  - id: icoil_il210f
+    label: "I-coil lower current IL210F"
+    group: Magnetics
+    units: A
+    kind: trace
+    events: [resistive_wall_mode]
+    description: "I-coil lower segment current IL210F (PTDATA), the n=1/2/3 control and RMP coils."
+    avail: both
+    sources:
+      - {corpus: i_coil, rows: 15}
+      - {ptdata: IL210F}
+  - id: icoil_il270f
+    label: "I-coil lower current IL270F"
+    group: Magnetics
+    units: A
+    kind: trace
+    events: [resistive_wall_mode]
+    description: "I-coil lower segment current IL270F (PTDATA), the n=1/2/3 control and RMP coils."
+    avail: both
+    sources:
+      - {corpus: i_coil, rows: 16}
+      - {ptdata: IL270F}
+  - id: icoil_il330
+    label: "I-coil lower current IL330"
+    group: Magnetics
+    units: A
+    kind: trace
+    events: [resistive_wall_mode]
+    description: "I-coil lower segment current IL330 (PTDATA), the n=1/2/3 control and RMP coils."
+    avail: both
+    sources:
+      - {corpus: i_coil, rows: 17}
+      - {ptdata: IL330}
+  - id: icoil_rmp_all
+    label: "I-coil currents, 12 segments"
+    group: Magnetics
+    units: A
+    kind: trace
+    draw: lines
+    legend: [IU30F, IU90F, IU150F, IU210F, IU270F, IU330F, IL30F, IL90F, IL150F, IL210F,
+             IL270F, IL330F]
+    description: "The twelve I-coil segment currents (upper IU, lower IL), one line each."
+    avail: both
+    sources:
+      - {corpus: rmp, rows: "0-11"}
+  - id: icoil_iun1iamp
+    label: "I-coil IU n=1 amplitude"
+    group: Magnetics
+    units: A
+    kind: trace
+    description: "Toroidal-harmonic n=1 amplitude of the upper I-coil currents (D3D tree OPERATIONS.ICOIL.TORHARMS)."
+    avail: both
+    sources:
+      - {mds: '\D3D::TOP.OPERATIONS.ICOIL.TORHARMS.IUN1IAMP', tree: D3D}
+  - id: icoil_iun2iamp
+    label: "I-coil IU n=2 amplitude"
+    group: Magnetics
+    units: A
+    kind: trace
+    description: "Toroidal-harmonic n=2 amplitude of the upper I-coil currents (D3D tree OPERATIONS.ICOIL.TORHARMS)."
+    avail: both
+    sources:
+      - {mds: '\D3D::TOP.OPERATIONS.ICOIL.TORHARMS.IUN2IAMP', tree: D3D}
+  - id: icoil_iun3iamp
+    label: "I-coil IU n=3 amplitude"
+    group: Magnetics
+    units: A
+    kind: trace
+    description: "Toroidal-harmonic n=3 amplitude of the upper I-coil currents (D3D tree OPERATIONS.ICOIL.TORHARMS)."
+    avail: both
+    sources:
+      - {mds: '\D3D::TOP.OPERATIONS.ICOIL.TORHARMS.IUN3IAMP', tree: D3D}
+  - id: icoil_iln1iamp
+    label: "I-coil IL n=1 amplitude"
+    group: Magnetics
+    units: A
+    kind: trace
+    description: "Toroidal-harmonic n=1 amplitude of the lower I-coil currents (D3D tree OPERATIONS.ICOIL.TORHARMS)."
+    avail: both
+    sources:
+      - {mds: '\D3D::TOP.OPERATIONS.ICOIL.TORHARMS.ILN1IAMP', tree: D3D}
+  - id: icoil_iln2iamp
+    label: "I-coil IL n=2 amplitude"
+    group: Magnetics
+    units: A
+    kind: trace
+    description: "Toroidal-harmonic n=2 amplitude of the lower I-coil currents (D3D tree OPERATIONS.ICOIL.TORHARMS)."
+    avail: both
+    sources:
+      - {mds: '\D3D::TOP.OPERATIONS.ICOIL.TORHARMS.ILN2IAMP', tree: D3D}
+  - id: icoil_iln3iamp
+    label: "I-coil IL n=3 amplitude"
+    group: Magnetics
+    units: A
+    kind: trace
+    description: "Toroidal-harmonic n=3 amplitude of the lower I-coil currents (D3D tree OPERATIONS.ICOIL.TORHARMS)."
+    avail: both
+    sources:
+      - {mds: '\D3D::TOP.OPERATIONS.ICOIL.TORHARMS.ILN3IAMP', tree: D3D}
+  - id: n1freq
+    label: "n=1 frequency"
+    group: Magnetics
+    units: kHz
+    kind: trace
+    events: [mhd_n1]
+    description: "n=1 mode frequency of the toroidal Mirnov array (MHD tree N1FREQ), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\MHD::N1FREQ', tree: MHD}
+  - id: n2freq
+    label: "n=2 frequency"
+    group: Magnetics
+    units: kHz
+    kind: trace
+    events: [mhd_n2]
+    description: "n=2 mode frequency of the toroidal Mirnov array (MHD tree N2FREQ), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\MHD::N2FREQ', tree: MHD}
+  - id: n3freq
+    label: "n=3 frequency"
+    group: Magnetics
+    units: kHz
+    kind: trace
+    events: [mhd_n3]
+    description: "n=3 mode frequency of the toroidal Mirnov array (MHD tree N3FREQ), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\MHD::N3FREQ', tree: MHD}
+  - id: n4rms
+    label: "n=4 RMS"
+    group: Magnetics
+    units: G
+    kind: trace
+    description: "n=4 RMS amplitude of the toroidal Mirnov array (MHD tree N4RMS), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\MHD::N4RMS', tree: MHD}
+  - id: n4freq
+    label: "n=4 frequency"
+    group: Magnetics
+    units: kHz
+    kind: trace
+    description: "n=4 mode frequency of the toroidal Mirnov array (MHD tree N4FREQ), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\MHD::N4FREQ', tree: MHD}
+  - id: n5rms
+    label: "n=5 RMS"
+    group: Magnetics
+    units: G
+    kind: trace
+    description: "n=5 RMS amplitude of the toroidal Mirnov array (MHD tree N5RMS), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\MHD::N5RMS', tree: MHD}
+  - id: nm1rms
+    label: "n=-1 RMS"
+    group: Magnetics
+    units: G
+    kind: trace
+    description: "n=-1 (counter-rotating) RMS amplitude of the toroidal Mirnov array (MHD tree NM1RMS), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\MHD::NM1RMS', tree: MHD}
+  - id: totmhdampl
+    label: "Total MHD amplitude"
+    group: Magnetics
+    units: G
+    kind: trace
+    description: "Total MHD amplitude of the toroidal Mirnov array (MHD tree TOTMHDAMPL), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\MHD::TOTMHDAMPL', tree: MHD}
+  - id: maxmhdfreq
+    label: "Dominant MHD frequency"
+    group: Magnetics
+    units: kHz
+    kind: trace
+    description: "Frequency of the strongest MHD line of the toroidal Mirnov array (MHD tree MAXMHDFREQ), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\MHD::MAXMHDFREQ', tree: MHD}
+  - id: fftmhdmode
+    label: "MHD mode number (FFT)"
+    group: Magnetics
+    units: ""
+    kind: trace
+    draw: map
+    channels: 200
+    description: "Toroidal mode number from the FFT analysis of the toroidal Mirnov array (MHD tree FFTMHDMODE), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\MHD::FFTMHDMODE', tree: MHD}
+  - id: fftmhdampl
+    label: "MHD amplitude (FFT)"
+    group: Magnetics
+    units: "T**2/kHz"
+    kind: trace
+    draw: map
+    channels: 200
+    description: "MHD amplitude from the FFT analysis of the toroidal Mirnov array (MHD tree FFTMHDAMPL), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\MHD::FFTMHDAMPL', tree: MHD}
+
+  # ---- Edge ----
+  - id: fs01
+    label: "D-alpha filterscope FS01"
+    group: Edge
+    units: "ph/(sr cm^2 s)"
+    kind: trace
+    events: [edge_localized_mode, confinement, high_confinement_mode]
+    description: "D-alpha filterscope chord FS01 from the SPECTROSCOPY tree."
+    avail: both
+    sources:
+      - {corpus: filterscopes, rows: 0}
+      - {raw: filterscopes, rows: 0}
+      - {mds: '\SPECTROSCOPY::FS01', tree: SPECTROSCOPY}
+  - id: fs02
+    label: "D-alpha filterscope FS02"
+    group: Edge
+    units: "ph/(sr cm^2 s)"
+    kind: trace
+    events: [edge_localized_mode, confinement, high_confinement_mode]
+    description: "D-alpha filterscope chord FS02 from the SPECTROSCOPY tree."
+    avail: both
+    sources:
+      - {corpus: filterscopes, rows: 1}
+      - {raw: filterscopes, rows: 1}
+      - {mds: '\SPECTROSCOPY::FS02', tree: SPECTROSCOPY}
+  - id: fs03
+    label: "D-alpha filterscope FS03"
+    group: Edge
+    units: "ph/(sr cm^2 s)"
+    kind: trace
+    events: [edge_localized_mode, confinement, high_confinement_mode]
+    description: "D-alpha filterscope chord FS03 from the SPECTROSCOPY tree."
+    avail: both
+    sources:
+      - {corpus: filterscopes, rows: 2}
+      - {raw: filterscopes, rows: 2}
+      - {mds: '\SPECTROSCOPY::FS03', tree: SPECTROSCOPY}
+  - id: fs04
+    label: "D-alpha filterscope FS04"
+    group: Edge
+    units: "ph/(sr cm^2 s)"
+    kind: trace
+    events: [edge_localized_mode, confinement, high_confinement_mode]
+    description: "D-alpha filterscope chord FS04 from the SPECTROSCOPY tree."
+    avail: both
+    sources:
+      - {corpus: filterscopes, rows: 3}
+      - {raw: filterscopes, rows: 3}
+      - {mds: '\SPECTROSCOPY::FS04', tree: SPECTROSCOPY}
+  - id: fs05
+    label: "D-alpha filterscope FS05"
+    group: Edge
+    units: "ph/(sr cm^2 s)"
+    kind: trace
+    events: [edge_localized_mode]
+    description: "D-alpha filterscope chord FS05 from the SPECTROSCOPY tree."
+    avail: both
+    sources:
+      - {corpus: filterscopes, rows: 4}
+      - {raw: filterscopes, rows: 4}
+      - {mds: '\SPECTROSCOPY::FS05', tree: SPECTROSCOPY}
+  - id: fs06
+    label: "D-alpha filterscope FS06"
+    group: Edge
+    units: "ph/(sr cm^2 s)"
+    kind: trace
+    events: [edge_localized_mode]
+    description: "D-alpha filterscope chord FS06 from the SPECTROSCOPY tree."
+    avail: both
+    sources:
+      - {corpus: filterscopes, rows: 5}
+      - {raw: filterscopes, rows: 5}
+      - {mds: '\SPECTROSCOPY::FS06', tree: SPECTROSCOPY}
+  - id: fs07
+    label: "D-alpha filterscope FS07"
+    group: Edge
+    units: "ph/(sr cm^2 s)"
+    kind: trace
+    events: [edge_localized_mode]
+    description: "D-alpha filterscope chord FS07 from the SPECTROSCOPY tree."
+    avail: both
+    sources:
+      - {corpus: filterscopes, rows: 6}
+      - {raw: filterscopes, rows: 6}
+      - {mds: '\SPECTROSCOPY::FS07', tree: SPECTROSCOPY}
+  - id: fs08
+    label: "D-alpha filterscope FS08"
+    group: Edge
+    units: "ph/(sr cm^2 s)"
+    kind: trace
+    events: [edge_localized_mode]
+    description: "D-alpha filterscope chord FS08 from the SPECTROSCOPY tree."
+    avail: both
+    sources:
+      - {corpus: filterscopes, rows: 7}
+      - {raw: filterscopes, rows: 7}
+      - {mds: '\SPECTROSCOPY::FS08', tree: SPECTROSCOPY}
+  - id: fs_all
+    label: "D-alpha filterscopes FS01-FS08"
+    group: Edge
+    units: "ph/(sr cm^2 s)"
+    kind: trace
+    draw: lines
+    events: [edge_localized_mode, confinement, high_confinement_mode, detachment]
+    legend: [FS01, FS02, FS03, FS04, FS05, FS06, FS07, FS08]
+    description: "The eight D-alpha filterscope chords FS01 to FS08 as one row of lines."
+    sources:
+      - {corpus: filterscopes, rows: "0-7"}
+      - {raw: filterscopes, rows: "0-7"}
+  - id: pcphd03
+    label: "Divertor D-alpha photodiode PCPHD03"
+    group: Edge
+    units: ""
+    kind: trace
+    events: [edge_localized_mode]
+    description: "Divertor D-alpha photodiode PCPHD03 (PTDATA), the ELM review's divertor trace."
+    avail: both
+    sources:
+      - {raw: pcphd03, rows: 0}
+      - {ptdata: PCPHD03}
+  - id: fs13up
+    label: "D-alpha filterscope FS13UP (upper divertor)"
+    group: Edge
+    units: "ph/(sr cm^2 s)"
+    kind: trace
+    events: [edge_localized_mode]
+    description: "Upper-divertor D-alpha filterscope chord FS13UP (SPECTROSCOPY tree)."
+    avail: both
+    sources:
+      - {mds: '\SPECTROSCOPY::FS13UP', tree: SPECTROSCOPY}
+  - id: fs12up
+    label: "D-alpha filterscope FS12UP (upper divertor)"
+    group: Edge
+    units: "ph/(sr cm^2 s)"
+    kind: trace
+    events: [edge_localized_mode]
+    description: "Upper-divertor D-alpha filterscope chord FS12UP (SPECTROSCOPY tree)."
+    avail: both
+    sources:
+      - {mds: '\SPECTROSCOPY::FS12UP', tree: SPECTROSCOPY}
+  - id: fs11up
+    label: "D-alpha filterscope FS11UP (upper divertor)"
+    group: Edge
+    units: "ph/(sr cm^2 s)"
+    kind: trace
+    events: [edge_localized_mode]
+    description: "Upper-divertor D-alpha filterscope chord FS11UP (SPECTROSCOPY tree)."
+    avail: both
+    sources:
+      - {mds: '\SPECTROSCOPY::FS11UP', tree: SPECTROSCOPY}
+  - id: fs00up
+    label: "D-alpha filterscope FS00UP (upper divertor)"
+    group: Edge
+    units: "ph/(sr cm^2 s)"
+    kind: trace
+    events: [edge_localized_mode]
+    description: "Upper-divertor D-alpha filterscope chord FS00UP (SPECTROSCOPY tree)."
+    avail: both
+    sources:
+      - {mds: '\SPECTROSCOPY::FS00UP', tree: SPECTROSCOPY}
+  - id: fs01up
+    label: "D-alpha filterscope FS01UP (upper divertor)"
+    group: Edge
+    units: "ph/(sr cm^2 s)"
+    kind: trace
+    events: [edge_localized_mode]
+    description: "Upper-divertor D-alpha filterscope chord FS01UP (SPECTROSCOPY tree)."
+    avail: both
+    sources:
+      - {mds: '\SPECTROSCOPY::FS01UP', tree: SPECTROSCOPY}
+  - id: fs02up
+    label: "D-alpha filterscope FS02UP (upper divertor)"
+    group: Edge
+    units: "ph/(sr cm^2 s)"
+    kind: trace
+    events: [edge_localized_mode]
+    description: "Upper-divertor D-alpha filterscope chord FS02UP (SPECTROSCOPY tree)."
+    avail: both
+    sources:
+      - {mds: '\SPECTROSCOPY::FS02UP', tree: SPECTROSCOPY}
+  - id: fs03up
+    label: "D-alpha filterscope FS03UP (upper divertor)"
+    group: Edge
+    units: "ph/(sr cm^2 s)"
+    kind: trace
+    events: [edge_localized_mode]
+    description: "Upper-divertor D-alpha filterscope chord FS03UP (SPECTROSCOPY tree)."
+    avail: both
+    sources:
+      - {mds: '\SPECTROSCOPY::FS03UP', tree: SPECTROSCOPY}
+  - id: fs04up
+    label: "D-alpha filterscope FS04UP (upper divertor)"
+    group: Edge
+    units: "ph/(sr cm^2 s)"
+    kind: trace
+    events: [edge_localized_mode]
+    description: "Upper-divertor D-alpha filterscope chord FS04UP (SPECTROSCOPY tree)."
+    avail: early
+    sources:
+      - {mds: '\SPECTROSCOPY::FS04UP', tree: SPECTROSCOPY}
+  - id: pcphd02
+    label: "Divertor D-alpha photodiode PCPHD02"
+    group: Edge
+    units: ""
+    kind: trace
+    events: [edge_localized_mode]
+    description: "Divertor D-alpha photodiode PCPHD02 (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {ptdata: PCPHD02}
+  - id: tplang01
+    label: "Langmuir probe TPLANG01"
+    group: Edge
+    units: ""
+    kind: trace
+    description: "Divertor Langmuir probe TPLANG01 (PTDATA), archive units as stored."
+    sources:
+      - {corpus: langmuir, rows: 0}
+  - id: tplang02
+    label: "Langmuir probe TPLANG02"
+    group: Edge
+    units: ""
+    kind: trace
+    description: "Divertor Langmuir probe TPLANG02 (PTDATA), archive units as stored."
+    sources:
+      - {corpus: langmuir, rows: 1}
+  - id: tplang03
+    label: "Langmuir probe TPLANG03"
+    group: Edge
+    units: ""
+    kind: trace
+    description: "Divertor Langmuir probe TPLANG03 (PTDATA), archive units as stored."
+    sources:
+      - {corpus: langmuir, rows: 2}
+  - id: tplang04
+    label: "Langmuir probe TPLANG04"
+    group: Edge
+    units: ""
+    kind: trace
+    description: "Divertor Langmuir probe TPLANG04 (PTDATA), archive units as stored."
+    sources:
+      - {corpus: langmuir, rows: 3}
+  - id: tplang25
+    label: "Langmuir probe TPLANG25"
+    group: Edge
+    units: ""
+    kind: trace
+    description: "Divertor Langmuir probe TPLANG25 (PTDATA), archive units as stored."
+    sources:
+      - {corpus: langmuir, rows: 24}
+  - id: tplang26
+    label: "Langmuir probe TPLANG26"
+    group: Edge
+    units: ""
+    kind: trace
+    description: "Divertor Langmuir probe TPLANG26 (PTDATA), archive units as stored."
+    sources:
+      - {corpus: langmuir, rows: 25}
+  - id: tplang49
+    label: "Langmuir probe TPLANG49"
+    group: Edge
+    units: ""
+    kind: trace
+    description: "Divertor Langmuir probe TPLANG49 (PTDATA), archive units as stored."
+    sources:
+      - {corpus: langmuir, rows: 48}
+  - id: tplang72
+    label: "Langmuir probe TPLANG72"
+    group: Edge
+    units: ""
+    kind: trace
+    description: "Divertor Langmuir probe TPLANG72 (PTDATA), archive units as stored."
+    sources:
+      - {corpus: langmuir, rows: 71}
+  - id: langmuir_all
+    label: "Langmuir probes TPLANG01-72"
+    group: Edge
+    units: ""
+    kind: trace
+    draw: map
+    description: "All 72 divertor Langmuir probes as a heat map (PTDATA TPLANG01 to TPLANG72)."
+    sources:
+      - {corpus: langmuir, rows: "0-71"}
+
+  # ---- Divertor ----
+  - id: ts_div_te
+    label: "Thomson divertor Te"
+    group: Divertor
+    units: eV
+    kind: trace
+    draw: map
+    channels: 16
+    events: [detachment]
+    description: "Divertor Thomson electron temperature, all channels (D3D tree ELECTRONS.TS.BLESSED.DIVERTOR TEMP)."
+    avail: late
+    sources:
+      - {mds: '\D3D::TOP.ELECTRONS.TS.BLESSED.DIVERTOR:TEMP', tree: D3D, free: true}
+  - id: ts_div_ne
+    label: "Thomson divertor n_e"
+    group: Divertor
+    units: "m^-3"
+    kind: trace
+    draw: map
+    channels: 16
+    events: [detachment]
+    description: "Divertor Thomson electron density, all channels (D3D tree ELECTRONS.TS.BLESSED.DIVERTOR DENSITY)."
+    avail: late
+    sources:
+      - {mds: '\D3D::TOP.ELECTRONS.TS.BLESSED.DIVERTOR:DENSITY', tree: D3D, free: true}
+  - id: tssdivte00
+    label: "Divertor Thomson Te, real-time chord 0"
+    group: Divertor
+    units: V
+    kind: trace
+    events: [detachment]
+    description: "Real-time divertor Thomson temperature chord 0 (PTDATA TSSDIVTE00)."
+    avail: late
+    sources:
+      - {ptdata: TSSDIVTE00}
+  - id: tssdivne00
+    label: "Divertor Thomson n_e, real-time chord 0"
+    group: Divertor
+    units: V
+    kind: trace
+    events: [detachment]
+    description: "Real-time divertor Thomson density chord 0 (PTDATA TSSDIVNE00)."
+    avail: late
+    sources:
+      - {ptdata: TSSDIVNE00}
+  - id: tssdivte01
+    label: "Divertor Thomson Te, real-time chord 1"
+    group: Divertor
+    units: V
+    kind: trace
+    events: [detachment]
+    description: "Real-time divertor Thomson temperature chord 1 (PTDATA TSSDIVTE01)."
+    avail: late
+    sources:
+      - {ptdata: TSSDIVTE01}
+  - id: tssdivne01
+    label: "Divertor Thomson n_e, real-time chord 1"
+    group: Divertor
+    units: V
+    kind: trace
+    events: [detachment]
+    description: "Real-time divertor Thomson density chord 1 (PTDATA TSSDIVNE01)."
+    avail: late
+    sources:
+      - {ptdata: TSSDIVNE01}
+  - id: tssdivte02
+    label: "Divertor Thomson Te, real-time chord 2"
+    group: Divertor
+    units: V
+    kind: trace
+    events: [detachment]
+    description: "Real-time divertor Thomson temperature chord 2 (PTDATA TSSDIVTE02)."
+    avail: late
+    sources:
+      - {ptdata: TSSDIVTE02}
+  - id: tssdivne02
+    label: "Divertor Thomson n_e, real-time chord 2"
+    group: Divertor
+    units: V
+    kind: trace
+    events: [detachment]
+    description: "Real-time divertor Thomson density chord 2 (PTDATA TSSDIVNE02)."
+    avail: late
+    sources:
+      - {ptdata: TSSDIVNE02}
+  - id: tssdivte03
+    label: "Divertor Thomson Te, real-time chord 3"
+    group: Divertor
+    units: V
+    kind: trace
+    events: [detachment]
+    description: "Real-time divertor Thomson temperature chord 3 (PTDATA TSSDIVTE03)."
+    avail: late
+    sources:
+      - {ptdata: TSSDIVTE03}
+  - id: tssdivne03
+    label: "Divertor Thomson n_e, real-time chord 3"
+    group: Divertor
+    units: V
+    kind: trace
+    events: [detachment]
+    description: "Real-time divertor Thomson density chord 3 (PTDATA TSSDIVNE03)."
+    avail: late
+    sources:
+      - {ptdata: TSSDIVNE03}
+  - id: tssdivte04
+    label: "Divertor Thomson Te, real-time chord 4"
+    group: Divertor
+    units: V
+    kind: trace
+    events: [detachment]
+    description: "Real-time divertor Thomson temperature chord 4 (PTDATA TSSDIVTE04)."
+    avail: late
+    sources:
+      - {ptdata: TSSDIVTE04}
+  - id: tssdivne04
+    label: "Divertor Thomson n_e, real-time chord 4"
+    group: Divertor
+    units: V
+    kind: trace
+    events: [detachment]
+    description: "Real-time divertor Thomson density chord 4 (PTDATA TSSDIVNE04)."
+    avail: late
+    sources:
+      - {ptdata: TSSDIVNE04}
+  - id: tssdivte05
+    label: "Divertor Thomson Te, real-time chord 5"
+    group: Divertor
+    units: V
+    kind: trace
+    events: [detachment]
+    description: "Real-time divertor Thomson temperature chord 5 (PTDATA TSSDIVTE05)."
+    avail: late
+    sources:
+      - {ptdata: TSSDIVTE05}
+  - id: tssdivne05
+    label: "Divertor Thomson n_e, real-time chord 5"
+    group: Divertor
+    units: V
+    kind: trace
+    events: [detachment]
+    description: "Real-time divertor Thomson density chord 5 (PTDATA TSSDIVNE05)."
+    avail: late
+    sources:
+      - {ptdata: TSSDIVNE05}
+  - id: tste_div
+    label: "Thomson divertor Te (ELECTRONS tree)"
+    group: Divertor
+    units: eV
+    kind: trace
+    draw: map
+    channels: 16
+    description: "Divertor Thomson Te (ELECTRONS tree TSTE_DIV)."
+    avail: late
+    sources:
+      - {mds: '\ELECTRONS::TSTE_DIV', tree: ELECTRONS, free: true}
+  - id: tsne_div
+    label: "Thomson divertor n_e (ELECTRONS tree)"
+    group: Divertor
+    units: "m^-3"
+    kind: trace
+    draw: map
+    channels: 16
+    description: "Divertor Thomson n_e (ELECTRONS tree TSNE_DIV)."
+    avail: late
+    sources:
+      - {mds: '\ELECTRONS::TSNE_DIV', tree: ELECTRONS, free: true}
+  - id: tstime_div
+    label: "Thomson divertor time (ELECTRONS tree)"
+    group: Divertor
+    units: ms
+    kind: trace
+    description: "Divertor Thomson time (ELECTRONS tree TSTIME_DIV)."
+    avail: late
+    sources:
+      - {mds: '\ELECTRONS::TSTIME_DIV', tree: ELECTRONS, free: true}
+
+  # ---- Core ----
+  - id: ece_map
+    label: "ECE Te, channels 1-40"
+    group: Core
+    units: keV
+    kind: trace
+    draw: map
+    events: [mhd_n1, neoclassical_tearing_mode, sawtooth_oscillation, alfven_eigenmode]
+    legend: [TECEF01, TECEF02, TECEF03, TECEF04, TECEF05, TECEF06, TECEF07, TECEF08,
+             TECEF09, TECEF10, TECEF11, TECEF12, TECEF13, TECEF14, TECEF15, TECEF16,
+             TECEF17, TECEF18, TECEF19, TECEF20, TECEF21, TECEF22, TECEF23, TECEF24,
+             TECEF25, TECEF26, TECEF27, TECEF28, TECEF29, TECEF30, TECEF31, TECEF32,
+             TECEF33, TECEF34, TECEF35, TECEF36, TECEF37, TECEF38, TECEF39, TECEF40]
+    description: "ECE electron temperature, radiometer channels 1 to 40 as a heat map (TECEF01 to TECEF40)."
+    sources:
+      - {corpus: ece, rows: "0-39"}
+      - {raw: ece, rows: "0-39"}
+  - id: ts_core_te_ch
+    label: "Thomson core Te, 44 chords"
+    group: Core
+    units: keV
+    kind: trace
+    draw: map
+    events: [sawtooth_oscillation, confinement, high_confinement_mode]
+    description: "Core Thomson electron temperature, the 44 vertical chords as a heat map, eV scaled to keV."
+    sources:
+      - {corpus: ts_core_temp, rows: "0-43", scale: 1.0e-3}
+  - id: ts_core_ne_ch
+    label: "Thomson core n_e, 44 chords"
+    group: Core
+    units: "1e19 m^-3"
+    kind: trace
+    draw: map
+    events: [confinement, high_confinement_mode]
+    description: "Core Thomson electron density, the 44 vertical chords as a heat map."
+    sources:
+      - {corpus: ts_core_density, rows: "0-43", scale: 1.0e-19}
+  - id: sxr_90rm1f
+    label: "SXR SX90RM1F, 32 chords"
+    group: Core
+    units: ""
+    kind: trace
+    draw: map
+    events: [sawtooth_oscillation]
+    description: "Soft x-ray array SX90RM1F, 32 chords (fast), as a heat map."
+    sources:
+      - {corpus: sxr, rows: "192-223"}
+  - id: sxr_90rp1f
+    label: "SXR SX90RP1F, 32 chords"
+    group: Core
+    units: ""
+    kind: trace
+    draw: map
+    events: [sawtooth_oscillation]
+    description: "Soft x-ray array SX90RP1F, 32 chords (fast), as a heat map."
+    sources:
+      - {corpus: sxr, rows: "256-287"}
+  - id: sxr_90rm1s
+    label: "SXR SX90RM1S, 32 chords"
+    group: Core
+    units: ""
+    kind: trace
+    draw: map
+    events: [sawtooth_oscillation]
+    description: "Soft x-ray array SX90RM1S, 32 chords (slow), as a heat map."
+    sources:
+      - {corpus: sxr, rows: "224-255"}
+  - id: sxr_90rp1s
+    label: "SXR SX90RP1S, 32 chords"
+    group: Core
+    units: ""
+    kind: trace
+    draw: map
+    events: [sawtooth_oscillation]
+    description: "Soft x-ray array SX90RP1S, 32 chords (slow), as a heat map."
+    sources:
+      - {corpus: sxr, rows: "288-319"}
+  - id: ecevs01
+    label: "ECE radiometer voltage ECEVS01"
+    group: Core
+    units: V
+    kind: trace
+    description: "Raw radiometer voltage of ECE channel 01 (PTDATA ECEVS01); the calibrated Te is TECEF."
+    avail: both
+    sources:
+      - {ptdata: ECEVS01}
+  - id: ecevs05
+    label: "ECE radiometer voltage ECEVS05"
+    group: Core
+    units: V
+    kind: trace
+    description: "Raw radiometer voltage of ECE channel 05 (PTDATA ECEVS05); the calibrated Te is TECEF."
+    avail: both
+    sources:
+      - {ptdata: ECEVS05}
+  - id: ecevs10
+    label: "ECE radiometer voltage ECEVS10"
+    group: Core
+    units: V
+    kind: trace
+    events: [sawtooth_oscillation]
+    description: "Raw radiometer voltage of ECE channel 10 (PTDATA ECEVS10); the calibrated Te is TECEF."
+    avail: both
+    sources:
+      - {ptdata: ECEVS10}
+  - id: ecevs15
+    label: "ECE radiometer voltage ECEVS15"
+    group: Core
+    units: V
+    kind: trace
+    description: "Raw radiometer voltage of ECE channel 15 (PTDATA ECEVS15); the calibrated Te is TECEF."
+    avail: both
+    sources:
+      - {ptdata: ECEVS15}
+  - id: ecevs20
+    label: "ECE radiometer voltage ECEVS20"
+    group: Core
+    units: V
+    kind: trace
+    events: [sawtooth_oscillation]
+    description: "Raw radiometer voltage of ECE channel 20 (PTDATA ECEVS20); the calibrated Te is TECEF."
+    avail: both
+    sources:
+      - {ptdata: ECEVS20}
+  - id: ecevs25
+    label: "ECE radiometer voltage ECEVS25"
+    group: Core
+    units: V
+    kind: trace
+    description: "Raw radiometer voltage of ECE channel 25 (PTDATA ECEVS25); the calibrated Te is TECEF."
+    avail: both
+    sources:
+      - {ptdata: ECEVS25}
+  - id: ecevs30
+    label: "ECE radiometer voltage ECEVS30"
+    group: Core
+    units: V
+    kind: trace
+    description: "Raw radiometer voltage of ECE channel 30 (PTDATA ECEVS30); the calibrated Te is TECEF."
+    avail: both
+    sources:
+      - {ptdata: ECEVS30}
+  - id: ecevs35
+    label: "ECE radiometer voltage ECEVS35"
+    group: Core
+    units: V
+    kind: trace
+    description: "Raw radiometer voltage of ECE channel 35 (PTDATA ECEVS35); the calibrated Te is TECEF."
+    avail: both
+    sources:
+      - {ptdata: ECEVS35}
+  - id: ecevs40
+    label: "ECE radiometer voltage ECEVS40"
+    group: Core
+    units: V
+    kind: trace
+    description: "Raw radiometer voltage of ECE channel 40 (PTDATA ECEVS40); the calibrated Te is TECEF."
+    avail: both
+    sources:
+      - {ptdata: ECEVS40}
+  - id: tecef_20
+    label: "ECE Te, channel 20"
+    group: Core
+    units: keV
+    kind: trace
+    events: [sawtooth_oscillation]
+    description: "Calibrated electron temperature of ECE radiometer channel 20 (D3D tree ELECTRONS.ECE TECEF20); the node is slow, about a minute."
+    avail: both
+    sources:
+      - {corpus: ece, rows: 19}
+      - {raw: ece, rows: 19}
+      - {mds: '\D3D::TOP.ELECTRONS.ECE.TECEF:TECEF20', tree: D3D, free: true}
+  - id: pcece1
+    label: "ECE PCS point PCECE1"
+    group: Core
+    units: ""
+    kind: trace
+    description: "Plasma-control ECE point PCECE1 (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {ptdata: PCECE1}
+  - id: pcece10
+    label: "ECE PCS point PCECE10"
+    group: Core
+    units: ""
+    kind: trace
+    description: "Plasma-control ECE point PCECE10 (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {ptdata: PCECE10}
+  - id: pcece20
+    label: "ECE PCS point PCECE20"
+    group: Core
+    units: ""
+    kind: trace
+    description: "Plasma-control ECE point PCECE20 (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {ptdata: PCECE20}
+  - id: pcece30
+    label: "ECE PCS point PCECE30"
+    group: Core
+    units: ""
+    kind: trace
+    description: "Plasma-control ECE point PCECE30 (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {ptdata: PCECE30}
+  - id: pcece40
+    label: "ECE PCS point PCECE40"
+    group: Core
+    units: ""
+    kind: trace
+    description: "Plasma-control ECE point PCECE40 (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {ptdata: PCECE40}
+  - id: ts_tangential_te
+    label: "Thomson tangential Te"
+    group: Core
+    units: keV
+    kind: trace
+    draw: map
+    description: "Tangential Thomson electron temperature chords as a heat map, eV scaled to keV."
+    avail: both
+    sources:
+      - {corpus: ts_tangential_temp, rows: "0-9", scale: 1.0e-3}
+  - id: ts_tangential_ne
+    label: "Thomson tangential n_e"
+    group: Core
+    units: "1e19 m^-3"
+    kind: trace
+    draw: map
+    description: "Tangential Thomson electron density chords as a heat map."
+    avail: both
+    sources:
+      - {corpus: ts_tangential_density, rows: "0-9", scale: 1.0e-19}
+  - id: sx90rm1f16
+    label: "SXR chord SX90RM1F16"
+    group: Core
+    units: ""
+    kind: trace
+    events: [sawtooth_oscillation]
+    description: "Soft x-ray chord 16 of the SX90RM1F array (D3D tree SPECTROSCOPY.SXR)."
+    sources:
+      - {corpus: sxr, rows: 207}
+  - id: sx165r1f16
+    label: "SXR chord SX165R1F16"
+    group: Core
+    units: ""
+    kind: trace
+    events: [sawtooth_oscillation]
+    description: "Soft x-ray chord 16 of the SX165R1F array (D3D tree SPECTROSCOPY.SXR)."
+    sources:
+      - {corpus: sxr, rows: 15}
+  - id: tece_01
+    label: "ECE Te (slow record), channel 01"
+    group: Core
+    units: keV
+    kind: trace
+    description: "Electron temperature of ECE radiometer channel 01, the slow record (ECE tree TECE01), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\ECE::TECE01', tree: ECE, free: true}
+  - id: tece_05
+    label: "ECE Te (slow record), channel 05"
+    group: Core
+    units: keV
+    kind: trace
+    description: "Electron temperature of ECE radiometer channel 05, the slow record (ECE tree TECE05), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\ECE::TECE05', tree: ECE, free: true}
+  - id: tece_10
+    label: "ECE Te (slow record), channel 10"
+    group: Core
+    units: keV
+    kind: trace
+    events: [sawtooth_oscillation]
+    description: "Electron temperature of ECE radiometer channel 10, the slow record (ECE tree TECE10), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\ECE::TECE10', tree: ECE, free: true}
+  - id: tece_15
+    label: "ECE Te (slow record), channel 15"
+    group: Core
+    units: keV
+    kind: trace
+    description: "Electron temperature of ECE radiometer channel 15, the slow record (ECE tree TECE15), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\ECE::TECE15', tree: ECE, free: true}
+  - id: tece_20
+    label: "ECE Te (slow record), channel 20"
+    group: Core
+    units: keV
+    kind: trace
+    events: [sawtooth_oscillation]
+    description: "Electron temperature of ECE radiometer channel 20, the slow record (ECE tree TECE20), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\ECE::TECE20', tree: ECE, free: true}
+  - id: tece_25
+    label: "ECE Te (slow record), channel 25"
+    group: Core
+    units: keV
+    kind: trace
+    description: "Electron temperature of ECE radiometer channel 25, the slow record (ECE tree TECE25), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\ECE::TECE25', tree: ECE, free: true}
+  - id: tece_30
+    label: "ECE Te (slow record), channel 30"
+    group: Core
+    units: keV
+    kind: trace
+    description: "Electron temperature of ECE radiometer channel 30, the slow record (ECE tree TECE30), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\ECE::TECE30', tree: ECE, free: true}
+  - id: tece_35
+    label: "ECE Te (slow record), channel 35"
+    group: Core
+    units: keV
+    kind: trace
+    description: "Electron temperature of ECE radiometer channel 35, the slow record (ECE tree TECE35), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\ECE::TECE35', tree: ECE, free: true}
+  - id: tece_40
+    label: "ECE Te (slow record), channel 40"
+    group: Core
+    units: keV
+    kind: trace
+    description: "Electron temperature of ECE radiometer channel 40, the slow record (ECE tree TECE40), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\ECE::TECE40', tree: ECE, free: true}
+  - id: tece_45
+    label: "ECE Te (slow record), channel 45"
+    group: Core
+    units: keV
+    kind: trace
+    description: "Electron temperature of ECE radiometer channel 45, the slow record (ECE tree TECE45), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\ECE::TECE45', tree: ECE, free: true}
+
+  # ---- Ions (CER, MSE) ----
+  - id: cer_ti_01
+    label: "CER ion temperature, channel 01"
+    group: Ions
+    units: eV
+    kind: trace
+    description: "Carbon-charge-exchange ion temperature of tangential channel 01 (D3D tree IONS.CER.CERAUTO.TANGENTIAL TEMP); samples are the beam-on times."
+    avail: both
+    sources:
+      - {corpus: cer_ti, rows: 0}
+      - {mds: '\D3D::TOP.IONS.CER.CERAUTO.TANGENTIAL.CHANNEL01:TEMP', tree: D3D}
+  - id: cer_rot_01
+    label: "CER toroidal rotation, channel 01"
+    group: Ions
+    units: "km/s"
+    kind: trace
+    description: "Carbon-charge-exchange toroidal rotation of tangential channel 01 (D3D tree IONS.CER.CERAUTO.TANGENTIAL ROT); samples are the beam-on times."
+    avail: both
+    sources:
+      - {corpus: cer_rot, rows: 0}
+      - {mds: '\D3D::TOP.IONS.CER.CERAUTO.TANGENTIAL.CHANNEL01:ROT', tree: D3D}
+  - id: cer_ti_12
+    label: "CER ion temperature, channel 12"
+    group: Ions
+    units: eV
+    kind: trace
+    description: "Carbon-charge-exchange ion temperature of tangential channel 12 (D3D tree IONS.CER.CERAUTO.TANGENTIAL TEMP); samples are the beam-on times."
+    avail: both
+    sources:
+      - {corpus: cer_ti, rows: 11}
+      - {mds: '\D3D::TOP.IONS.CER.CERAUTO.TANGENTIAL.CHANNEL12:TEMP', tree: D3D}
+  - id: cer_rot_12
+    label: "CER toroidal rotation, channel 12"
+    group: Ions
+    units: "km/s"
+    kind: trace
+    description: "Carbon-charge-exchange toroidal rotation of tangential channel 12 (D3D tree IONS.CER.CERAUTO.TANGENTIAL ROT); samples are the beam-on times."
+    avail: both
+    sources:
+      - {corpus: cer_rot, rows: 11}
+      - {mds: '\D3D::TOP.IONS.CER.CERAUTO.TANGENTIAL.CHANNEL12:ROT', tree: D3D}
+  - id: cer_ti_24
+    label: "CER ion temperature, channel 24"
+    group: Ions
+    units: eV
+    kind: trace
+    description: "Carbon-charge-exchange ion temperature of tangential channel 24 (D3D tree IONS.CER.CERAUTO.TANGENTIAL TEMP); samples are the beam-on times."
+    avail: both
+    sources:
+      - {corpus: cer_ti, rows: 23}
+      - {mds: '\D3D::TOP.IONS.CER.CERAUTO.TANGENTIAL.CHANNEL24:TEMP', tree: D3D}
+  - id: cer_rot_24
+    label: "CER toroidal rotation, channel 24"
+    group: Ions
+    units: "km/s"
+    kind: trace
+    description: "Carbon-charge-exchange toroidal rotation of tangential channel 24 (D3D tree IONS.CER.CERAUTO.TANGENTIAL ROT); samples are the beam-on times."
+    avail: both
+    sources:
+      - {corpus: cer_rot, rows: 23}
+      - {mds: '\D3D::TOP.IONS.CER.CERAUTO.TANGENTIAL.CHANNEL24:ROT', tree: D3D}
+  - id: cer_ti_36
+    label: "CER ion temperature, channel 36"
+    group: Ions
+    units: eV
+    kind: trace
+    description: "Carbon-charge-exchange ion temperature of tangential channel 36 (D3D tree IONS.CER.CERAUTO.TANGENTIAL TEMP); samples are the beam-on times."
+    avail: late
+    sources:
+      - {corpus: cer_ti, rows: 35}
+      - {mds: '\D3D::TOP.IONS.CER.CERAUTO.TANGENTIAL.CHANNEL36:TEMP', tree: D3D}
+  - id: cer_rot_36
+    label: "CER toroidal rotation, channel 36"
+    group: Ions
+    units: "km/s"
+    kind: trace
+    description: "Carbon-charge-exchange toroidal rotation of tangential channel 36 (D3D tree IONS.CER.CERAUTO.TANGENTIAL ROT); samples are the beam-on times."
+    avail: late
+    sources:
+      - {corpus: cer_rot, rows: 35}
+      - {mds: '\D3D::TOP.IONS.CER.CERAUTO.TANGENTIAL.CHANNEL36:ROT', tree: D3D}
+  - id: cer_ti_48
+    label: "CER ion temperature, channel 48"
+    group: Ions
+    units: eV
+    kind: trace
+    description: "Carbon-charge-exchange ion temperature of tangential channel 48 (D3D tree IONS.CER.CERAUTO.TANGENTIAL TEMP); samples are the beam-on times."
+    avail: both
+    sources:
+      - {corpus: cer_ti, rows: 47}
+      - {mds: '\D3D::TOP.IONS.CER.CERAUTO.TANGENTIAL.CHANNEL48:TEMP', tree: D3D}
+  - id: cer_rot_48
+    label: "CER toroidal rotation, channel 48"
+    group: Ions
+    units: "km/s"
+    kind: trace
+    description: "Carbon-charge-exchange toroidal rotation of tangential channel 48 (D3D tree IONS.CER.CERAUTO.TANGENTIAL ROT); samples are the beam-on times."
+    avail: both
+    sources:
+      - {corpus: cer_rot, rows: 47}
+      - {mds: '\D3D::TOP.IONS.CER.CERAUTO.TANGENTIAL.CHANNEL48:ROT', tree: D3D}
+  - id: cer_ti_all
+    label: "CER ion temperature, 48 channels"
+    group: Ions
+    units: eV
+    kind: trace
+    draw: map
+    description: "Carbon-charge-exchange ion temperature of the 48 tangential channels as a heat map."
+    avail: both
+    sources:
+      - {corpus: cer_ti, rows: "0-47"}
+  - id: cer_rot_all
+    label: "CER toroidal rotation, 48 channels"
+    group: Ions
+    units: "km/s"
+    kind: trace
+    draw: map
+    description: "Carbon-charge-exchange toroidal rotation of the 48 tangential channels as a heat map."
+    avail: both
+    sources:
+      - {corpus: cer_rot, rows: "0-47"}
+  - id: mse_pitch_01
+    label: "MSE pitch angle, channel 01"
+    group: Ions
+    units: degrees
+    kind: trace
+    description: "Motional-Stark-effect pitch angle of channel 01 (D3D tree MSE ANALYSIS_01 MSEP)."
+    avail: both
+    sources:
+      - {corpus: mse, rows: 0}
+      - {mds: '\D3D::TOP.MSE.ANALYSIS_01:MSEP01', tree: D3D}
+  - id: mse_pitch_10
+    label: "MSE pitch angle, channel 10"
+    group: Ions
+    units: degrees
+    kind: trace
+    description: "Motional-Stark-effect pitch angle of channel 10 (D3D tree MSE ANALYSIS_01 MSEP)."
+    avail: both
+    sources:
+      - {corpus: mse, rows: 9}
+      - {mds: '\D3D::TOP.MSE.ANALYSIS_01:MSEP10', tree: D3D}
+  - id: mse_pitch_20
+    label: "MSE pitch angle, channel 20"
+    group: Ions
+    units: degrees
+    kind: trace
+    description: "Motional-Stark-effect pitch angle of channel 20 (D3D tree MSE ANALYSIS_01 MSEP)."
+    avail: both
+    sources:
+      - {corpus: mse, rows: 19}
+      - {mds: '\D3D::TOP.MSE.ANALYSIS_01:MSEP20', tree: D3D}
+  - id: mse_pitch_35
+    label: "MSE pitch angle, channel 35"
+    group: Ions
+    units: degrees
+    kind: trace
+    description: "Motional-Stark-effect pitch angle of channel 35 (D3D tree MSE ANALYSIS_01 MSEP)."
+    avail: both
+    sources:
+      - {corpus: mse, rows: 34}
+      - {mds: '\D3D::TOP.MSE.ANALYSIS_01:MSEP35', tree: D3D}
+  - id: mse_pitch_all
+    label: "MSE pitch angle, 69 channels"
+    group: Ions
+    units: degrees
+    kind: trace
+    draw: map
+    description: "Motional-Stark-effect pitch angle of the 69 channels as a heat map."
+    avail: both
+    sources:
+      - {corpus: mse, rows: "0-68"}
+  - id: cer_amp_24
+    label: "CER line amplitude, channel 24"
+    group: Ions
+    units: "ph/s/m**2/sr"
+    kind: trace
+    description: "Fitted line amplitude of CER tangential channel 24 (IONS tree CERAAMPT24), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\IONS::CERAAMPT24', tree: IONS}
+  - id: cer_r_24
+    label: "CER view radius, channel 24"
+    group: Ions
+    units: m
+    kind: trace
+    description: "Major radius of CER tangential channel 24 (IONS tree CERART24), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\IONS::CERART24', tree: IONS}
+  - id: cer_ti_err_24
+    label: "CER ion temperature error, channel 24"
+    group: Ions
+    units: eV
+    kind: trace
+    description: "Fit uncertainty of the ion temperature of CER tangential channel 24 (IONS tree CERASTIT24), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\IONS::CERASTIT24', tree: IONS}
+  - id: cer_rot_err_24
+    label: "CER rotation error, channel 24"
+    group: Ions
+    units: "km/s"
+    kind: trace
+    description: "Fit uncertainty of the toroidal rotation of CER tangential channel 24 (IONS tree CERASROTT24), archive units as stored."
+    avail: both
+    sources:
+      - {mds: '\IONS::CERASROTT24', tree: IONS}
+
+  # ---- Fluctuations ----
+  - id: besfu01
+    label: "BES channel BESFU01"
+    group: Fluctuations
+    units: ""
+    kind: trace
+    description: "Beam-emission-spectroscopy density-fluctuation channel BESFU01 (PTDATA), archive units as stored."
+    avail: early
+    sources:
+      - {corpus: bes, rows: 0}
+      - {ptdata: BESFU01}
+  - id: besfu08
+    label: "BES channel BESFU08"
+    group: Fluctuations
+    units: ""
+    kind: trace
+    description: "Beam-emission-spectroscopy density-fluctuation channel BESFU08 (PTDATA), archive units as stored."
+    avail: early
+    sources:
+      - {corpus: bes, rows: 7}
+      - {ptdata: BESFU08}
+  - id: besfu16
+    label: "BES channel BESFU16"
+    group: Fluctuations
+    units: ""
+    kind: trace
+    description: "Beam-emission-spectroscopy density-fluctuation channel BESFU16 (PTDATA), archive units as stored."
+    avail: early
+    sources:
+      - {corpus: bes, rows: 15}
+      - {ptdata: BESFU16}
+  - id: besfu24
+    label: "BES channel BESFU24"
+    group: Fluctuations
+    units: ""
+    kind: trace
+    events: [alfven_eigenmode, edge_localized_mode]
+    description: "Beam-emission-spectroscopy density-fluctuation channel BESFU24 (PTDATA), archive units as stored."
+    avail: early
+    sources:
+      - {corpus: bes, rows: 23}
+      - {ptdata: BESFU24}
+  - id: besfu32
+    label: "BES channel BESFU32"
+    group: Fluctuations
+    units: ""
+    kind: trace
+    events: [alfven_eigenmode, edge_localized_mode]
+    description: "Beam-emission-spectroscopy density-fluctuation channel BESFU32 (PTDATA), archive units as stored."
+    avail: early
+    sources:
+      - {corpus: bes, rows: 31}
+      - {ptdata: BESFU32}
+  - id: besfu40
+    label: "BES channel BESFU40"
+    group: Fluctuations
+    units: ""
+    kind: trace
+    description: "Beam-emission-spectroscopy density-fluctuation channel BESFU40 (PTDATA), archive units as stored."
+    avail: early
+    sources:
+      - {corpus: bes, rows: 39}
+      - {ptdata: BESFU40}
+  - id: besfu48
+    label: "BES channel BESFU48"
+    group: Fluctuations
+    units: ""
+    kind: trace
+    description: "Beam-emission-spectroscopy density-fluctuation channel BESFU48 (PTDATA), archive units as stored."
+    avail: early
+    sources:
+      - {corpus: bes, rows: 47}
+      - {ptdata: BESFU48}
+  - id: besfu56
+    label: "BES channel BESFU56"
+    group: Fluctuations
+    units: ""
+    kind: trace
+    description: "Beam-emission-spectroscopy density-fluctuation channel BESFU56 (PTDATA), archive units as stored."
+    avail: early
+    sources:
+      - {corpus: bes, rows: 55}
+      - {ptdata: BESFU56}
+  - id: besfu64
+    label: "BES channel BESFU64"
+    group: Fluctuations
+    units: ""
+    kind: trace
+    description: "Beam-emission-spectroscopy density-fluctuation channel BESFU64 (PTDATA), archive units as stored."
+    avail: early
+    sources:
+      - {corpus: bes, rows: 63}
+      - {ptdata: BESFU64}
+  - id: bes_all
+    label: "BES, 64 channels"
+    group: Fluctuations
+    units: ""
+    kind: trace
+    draw: map
+    description: "All 64 beam-emission-spectroscopy channels as a heat map (PTDATA BESFU01 to BESFU64)."
+    avail: early
+    sources:
+      - {corpus: bes, rows: "0-63"}
+  - id: ftae
+    label: "TAE quantity FTAE"
+    group: Fluctuations
+    units: ""
+    kind: trace
+    events: [alfven_eigenmode]
+    description: "FTAE of the MHD tree, named for the toroidal Alfven eigenmode frequency; archive units as stored."
+    avail: late
+    sources:
+      - {mds: '\MHD::FTAE', tree: MHD, free: true}
+  - id: valf
+    label: "Alfven quantity VALF"
+    group: Fluctuations
+    units: ""
+    kind: trace
+    events: [alfven_eigenmode]
+    description: "VALF of the MHD tree, named for the Alfven velocity; archive units as stored."
+    avail: late
+    sources:
+      - {mds: '\MHD::VALF', tree: MHD, free: true}
+
+  # ---- Control ----
+  - id: pcbcoil
+    label: "PCS toroidal-field coil current"
+    group: Control
+    units: ""
+    kind: trace
+    description: "Plasma-control-system point PCBCOIL (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {ptdata: PCBCOIL}
+  - id: ipsip
+    label: "PCS Ip point IPSIP"
+    group: Control
+    units: V
+    kind: trace
+    description: "Plasma-control-system point IPSIP (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {ptdata: IPSIP}
+  - id: iptipp
+    label: "PCS Ip point IPTIPP"
+    group: Control
+    units: V
+    kind: trace
+    description: "Plasma-control-system point IPTIPP (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {ptdata: IPTIPP}
+  - id: ipsiptargt
+    label: "PCS Ip target IPSIPTARGT"
+    group: Control
+    units: V
+    kind: trace
+    description: "Plasma-control-system point IPSIPTARGT (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {ptdata: IPSIPTARGT}
+  - id: ipimode
+    label: "PCS Ip mode IPIMODE"
+    group: Control
+    units: V
+    kind: trace
+    description: "Plasma-control-system point IPIMODE (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {ptdata: IPIMODE}
+  - id: dssdenest
+    label: "PCS density estimate DSSDENEST"
+    group: Control
+    units: V
+    kind: trace
+    description: "Plasma-control-system point DSSDENEST (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {ptdata: DSSDENEST}
+  - id: dssdene
+    label: "PCS density point DSSDENE"
+    group: Control
+    units: V
+    kind: trace
+    description: "Plasma-control-system point DSSDENE (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {ptdata: DSSDENE}
+  - id: plasticfix
+    label: "PCS point PLASTICFIX"
+    group: Control
+    units: ""
+    kind: trace
+    description: "Plasma-control-system point PLASTICFIX (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {ptdata: PLASTICFIX}
+  - id: fzns
+    label: "PCS point FZNS"
+    group: Control
+    units: ""
+    kind: trace
+    description: "Plasma-control-system point FZNS (PTDATA), archive units as stored."
+    avail: both
+    sources:
+      - {ptdata: FZNS}
+
+  # ---- Disruption and runaway ----
+  - id: i_halo_tot
+    label: "Halo current, total"
+    group: Disruption
+    units: A
+    kind: trace
+    description: "Total halo current of a disruption (MHD tree I_HALO_TOT), archive units as stored."
+    avail: late
+    sources:
+      - {mds: '\MHD::I_HALO_TOT', tree: MHD}
+  - id: halo_force
+    label: "Halo force"
+    group: Disruption
+    units: A
+    kind: trace
+    description: "HALO_FORCE of the MHD tree, a halo-current signal of the disruption analysis; the archive labels it A, taken as stored."
+    avail: both
+    sources:
+      - {mds: '\MHD::HALO_FORCE', tree: MHD, free: true}
+
+  # ---- Neutrons ----
+  - id: neutronrate1
+    label: "Neutron rate, 1"
+    group: Neutrons
+    units: "n/s"
+    kind: trace
+    description: "Neutron rate (NEUTRONRATE1, D3D tree IONS.NEUTRONS.FIP)."
+    avail: late
+    sources:
+      - {corpus: neutron_rate, rows: 0}
+      - {mds: '\D3D::TOP.IONS.NEUTRONS.FIP:NEUTRONRATE1', tree: D3D}
+  - id: neutronrate3
+    label: "Neutron rate, 3"
+    group: Neutrons
+    units: "n/s"
+    kind: trace
+    description: "Neutron rate (NEUTRONRATE3, D3D tree IONS.NEUTRONS.FIP)."
+    avail: late
+    sources:
+      - {corpus: neutron_rate, rows: 1}
+      - {mds: '\D3D::TOP.IONS.NEUTRONS.FIP:NEUTRONRATE3', tree: D3D}
+  - id: neutronrate4
+    label: "Neutron rate, 4"
+    group: Neutrons
+    units: "n/s"
+    kind: trace
+    description: "Neutron rate (NEUTRONRATE4, D3D tree IONS.NEUTRONS.FIP)."
+    avail: late
+    sources:
+      - {corpus: neutron_rate, rows: 2}
+      - {mds: '\D3D::TOP.IONS.NEUTRONS.FIP:NEUTRONRATE4', tree: D3D}
+  - id: neutronsrate
+    label: "Neutron rate"
+    group: Neutrons
+    units: "n/s"
+    kind: trace
+    events: [confinement, high_confinement_mode]
+    description: "Neutron rate (NEUTRONSRATE, D3D tree IONS.NEUTRONS.FIP)."
+    avail: both
+    sources:
+      - {corpus: neutron_rate, rows: 3}
+      - {mds: '\D3D::TOP.IONS.NEUTRONS.FIP:NEUTRONSRATE', tree: D3D}
+  - id: neutronsrate2
+    label: "Neutron rate, 2"
+    group: Neutrons
+    units: cps
+    kind: trace
+    description: "Neutron rate of the second fission-chamber channel (IONS tree NEUTRONSRATE2), archive units as stored."
+    avail: late
+    sources:
+      - {mds: '\IONS::NEUTRONSRATE2', tree: IONS}
 
   # ---- Profiles (a dock panel at the cursor; never a row) ----
   - id: q_profile
-    label: "q"
+    label: q
     group: Profiles
     units: ""
     kind: profile
@@ -426,6 +4052,8 @@ signals:
     channels: 65
     events: [mhd_n1, neoclassical_tearing_mode, minimum_safety_factor, alfven_eigenmode,
              sawtooth_oscillation]
+    description: "Safety-factor profile against normalised poloidal flux, from the MHD park else EFIT01."
+    avail: both
     sources:
       - {recipe: park_q}
       - {recipe: efit01_q}
@@ -438,6 +4066,7 @@ signals:
     channels: 44
     events: [mhd_n1, neoclassical_tearing_mode, sawtooth_oscillation, confinement,
              high_confinement_mode]
+    description: "Core Thomson electron-temperature profile against major radius at the plasma midplane."
     sources:
       - {recipe: thomson_te}
   - id: ts_core_ne
@@ -448,6 +4077,7 @@ signals:
     axis: R_m
     channels: 44
     events: [confinement, high_confinement_mode]
+    description: "Core Thomson electron-density profile against major radius at the plasma midplane."
     sources:
       - {recipe: thomson_ne}
   - id: rotation
@@ -457,8 +4087,12 @@ signals:
     kind: profile
     axis: rho
     events: [mhd_n1, neoclassical_tearing_mode, locked_mode, alfven_eigenmode]
+    description: "ZIPFIT toroidal rotation profile against rho (krad/s)."
+    avail: both
     sources:
       - {recipe: zipfit_rotation}
+      - {recipe: zipfit01_rot}
+      - {recipe: zipfit02_rot}
   - id: ece_te_r
     label: "ECE Te"
     group: Profiles
@@ -467,5 +4101,149 @@ signals:
     axis: R_m
     channels: 40
     events: [mhd_n1, neoclassical_tearing_mode, sawtooth_oscillation]
+    description: "ECE electron-temperature profile against major radius from the second-harmonic resonance of channels 1 to 40."
     sources:
       - {recipe: ece_te}
+  - id: pressure_efit
+    label: Pressure
+    group: Profiles
+    units: kPa
+    kind: profile
+    axis: psi_n
+    events: [neoclassical_tearing_mode, mhd_n1, confinement, high_confinement_mode]
+    description: "Plasma pressure (G-EQDSK PRES, Pa scaled to kPa) against normalised flux; EFIT02, which may cover only part of the shot, else EFIT01."
+    avail: both
+    sources:
+      - {recipe: efit02_pres, scale: 1.0e-3}
+      - {recipe: efit01_pres, scale: 1.0e-3}
+  - id: pprime_efit
+    label: "Pressure gradient p'"
+    group: Profiles
+    units: "Pa/(V s/rad)"
+    kind: profile
+    axis: psi_n
+    description: "Pressure gradient with respect to poloidal flux (G-EQDSK PPRIME) against normalised flux; EFIT02, which may cover only part of the shot, else EFIT01."
+    avail: both
+    sources:
+      - {recipe: efit02_pprime}
+      - {recipe: efit01_pprime}
+  - id: ffprime_efit
+    label: "FF'"
+    group: Profiles
+    units: "(T m)^2/(V s/rad)"
+    kind: profile
+    axis: psi_n
+    description: "F dF/dpsi, the toroidal-current source term (G-EQDSK FFPRIM) against normalised flux; EFIT02, which may cover only part of the shot, else EFIT01."
+    avail: both
+    sources:
+      - {recipe: efit02_ffprim}
+      - {recipe: efit01_ffprim}
+  - id: fpol_efit
+    label: "Poloidal current function F"
+    group: Profiles
+    units: "T m"
+    kind: profile
+    axis: psi_n
+    description: "F = R B_phi (G-EQDSK FPOL) against normalised flux; EFIT02, which may cover only part of the shot, else EFIT01."
+    avail: both
+    sources:
+      - {recipe: efit02_fpol}
+      - {recipe: efit01_fpol}
+  - id: pressure_efit01
+    label: "Pressure, whole shot"
+    group: Profiles
+    units: kPa
+    kind: profile
+    axis: psi_n
+    description: "Plasma pressure (G-EQDSK PRES, Pa scaled to kPa) against normalised flux from EFIT01, which covers the whole shot."
+    avail: both
+    sources:
+      - {recipe: efit01_pres, scale: 1.0e-3}
+  - id: pprime_efit01
+    label: "Pressure gradient p', whole shot"
+    group: Profiles
+    units: "Pa/(V s/rad)"
+    kind: profile
+    axis: psi_n
+    description: "Pressure gradient with respect to poloidal flux (G-EQDSK PPRIME) against normalised flux from EFIT01, which covers the whole shot."
+    avail: both
+    sources:
+      - {recipe: efit01_pprime}
+  - id: ffprime_efit01
+    label: "FF', whole shot"
+    group: Profiles
+    units: "(T m)^2/(V s/rad)"
+    kind: profile
+    axis: psi_n
+    description: "F dF/dpsi, the toroidal-current source term (G-EQDSK FFPRIM) against normalised flux from EFIT01, which covers the whole shot."
+    avail: both
+    sources:
+      - {recipe: efit01_ffprim}
+  - id: fpol_efit01
+    label: "Poloidal current function F, whole shot"
+    group: Profiles
+    units: "T m"
+    kind: profile
+    axis: psi_n
+    description: "F = R B_phi (G-EQDSK FPOL) against normalised flux from EFIT01, which covers the whole shot."
+    avail: both
+    sources:
+      - {recipe: efit01_fpol}
+  - id: q_efit01
+    label: "q, whole shot"
+    group: Profiles
+    units: ""
+    kind: profile
+    axis: psi_n
+    events: [minimum_safety_factor, neoclassical_tearing_mode]
+    description: "Safety-factor profile against normalised flux from EFIT01, which covers the whole shot; the sign is dropped."
+    avail: both
+    sources:
+      - {recipe: efit01_q}
+  - id: q_efit02
+    label: "q, EFIT02 first"
+    group: Profiles
+    units: ""
+    kind: profile
+    axis: psi_n
+    events: [minimum_safety_factor, neoclassical_tearing_mode]
+    description: "Safety-factor profile against normalised flux from EFIT02, which may cover only part of the shot, else EFIT01; the sign is dropped."
+    avail: both
+    sources:
+      - {recipe: efit02_q}
+      - {recipe: efit01_q}
+  - id: ne_zipfit
+    label: "n_e (ZIPFIT)"
+    group: Profiles
+    units: "1e19 m^-3"
+    kind: profile
+    axis: rho
+    events: [confinement, high_confinement_mode]
+    description: "Electron-density profile fit (ZIPFIT EDENSFIT) against rho; ZIPFIT01, else ZIPFIT02."
+    avail: both
+    sources:
+      - {recipe: zipfit01_ne}
+      - {recipe: zipfit02_ne}
+  - id: te_zipfit
+    label: "Te (ZIPFIT)"
+    group: Profiles
+    units: keV
+    kind: profile
+    axis: rho
+    events: [confinement, high_confinement_mode]
+    description: "Electron-temperature profile fit (ZIPFIT ETEMPFIT) against rho; ZIPFIT01, else ZIPFIT02."
+    avail: both
+    sources:
+      - {recipe: zipfit01_te}
+      - {recipe: zipfit02_te}
+  - id: ti_zipfit
+    label: "Ti (ZIPFIT, from CER)"
+    group: Profiles
+    units: keV
+    kind: profile
+    axis: rho
+    description: "Ion-temperature profile fit (ZIPFIT ITEMPFIT, from the CER data) against rho; ZIPFIT01, else ZIPFIT02; only where CER ran."
+    avail: both
+    sources:
+      - {recipe: zipfit01_ti}
+      - {recipe: zipfit02_ti}

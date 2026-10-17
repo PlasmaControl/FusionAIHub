@@ -56,6 +56,7 @@ import numpy as np
 from ...config import Paths
 from .. import raw
 from . import catalog as cat
+from . import profile_fetch
 from .fetch_worker import (
     LONG_S,
     SHORT_S,
@@ -501,7 +502,8 @@ class Signals:
                  watch: FdpWatch | None = None, cache: Cache | None = None):
         self.paths = paths
         self.watch = WATCH if watch is None else watch
-        self.fetcher = Fetcher(watch=self.watch) if fetcher is None else fetcher
+        self.fetcher = fetcher if fetcher is not None else Fetcher(
+            target=profile_fetch.serve, watch=self.watch)
         self.cache = Cache(paths.root / SIGNALS_DIR) if cache is None else cache
         self.pyramids = _Lru(PYRAMID_BYTES)
         self._probes: dict = {}

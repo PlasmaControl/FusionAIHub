@@ -4,8 +4,10 @@ catalog, on-demand signals, profiles at a time slice and saved views.
 `install` adds them to the app that `app.create_app` builds, before the static mount.
 
 - `GET /api/catalog?event&shot`: the entries the picker offers, each with whether the
-  shot has it on disk, would fetch it or lacks it; the MDS trees and the patterns a
-  free id must match.
+  shot has it on disk, would fetch it or lacks it, its one-line `description`, the
+  PTDATA names and MDS nodes it fetches (`points`, for a typed name to match) and,
+  when it was probed, `avail` (both, early, late or none: the reference shots 170659 and
+  200958); the MDS trees and the patterns a free id must match.
 - `GET /api/signal?shot&id&t0&t1&cols`: a trace window in the `/api/rows` format, with
   `X-Grid` and `X-Signal`; 202 `{state, stage, elapsed_s, queue_position}` while it is
   fetched.
@@ -134,7 +136,9 @@ def install(app: FastAPI, paths: Paths) -> None:
                 "units": entry.units, "kind": entry.kind, "channels": entry.channels,
                 "axis": entry.axis, "suggested": entry.suggested(event),
                 "source": source.wire, "where": source.where(), "local": local,
+                "description": entry.description, "points": list(entry.points),
                 **({"draw": entry.draw} if entry.draw else {}),
+                **({"avail": entry.avail} if entry.avail else {}),
             })
         return {"entries": entries, "trees": list(cat.TREES),
                 "ptdata_pattern": cat.PTDATA.pattern, "node_pattern": cat.NODE_PATTERN,

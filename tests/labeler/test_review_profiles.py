@@ -198,7 +198,7 @@ def test_efit01_q_is_fetched_when_the_park_has_none(service):
 
 def test_no_profile_is_missing_and_a_trace_is_invalid(service):
     with pytest.raises(FetchError) as caught:
-        profiles.read(service, 190004, "rotation")
+        profiles.read(service, 190004, "ts_core_te")
     assert caught.value.kind == "missing"
     with pytest.raises(FetchError) as caught:
         profiles.read(service, SHOT, "ip")

@@ -123,7 +123,9 @@ def test_the_catalog_for_an_event_and_a_shot(client):
     assert got["node_pattern"] == cat.NODE_PATTERN
     by_id = {e["id"]: e for e in got["entries"]}
     assert set(by_id["fast"]) == {"id", "label", "group", "units", "kind", "channels",
-                                  "axis", "suggested", "source", "where", "local"}
+                                  "axis", "suggested", "source", "where", "local",
+                                  "description", "points"}
+    assert by_id["fast"]["points"] == [] and by_id["point"]["points"] == ["PT1"]
     assert (by_id["fast"]["local"], by_id["fast"]["suggested"]) == ("disk", True)
     assert (by_id["fast"]["channels"], by_id["fast"]["source"]) == (3, "corpus")
     assert (by_id["point"]["local"], by_id["point"]["suggested"]) == ("fetch", False)

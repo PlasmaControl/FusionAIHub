@@ -20,6 +20,10 @@ cache, the features store, the MHD park), then DIII-D through the fetch worker
 (`ptdata`, `mds`). A profile's sources are `recipe`s, the fixed readers in
 `review.profiles`. Each source may scale its values into the entry's units, and may
 carry a `tag` (the EFIT tree, say) that the page shows after the label.
+
+An entry also carries a one-line `description` and, for what was probed, `avail`: on
+which of the two reference shots (170659, 200958) the entry's fetched sources
+returned data (docs/labeler/workspace.md, "Adding a pointname to the catalog").
 """
 
 from __future__ import annotations
@@ -35,6 +39,7 @@ from pathlib import Path
 import yaml
 
 from ...config import store_event
+from .profile_fetch import SPECS as FETCHED_PROFILES
 
 #: The catalog file in the config directory (`Paths.config_dir`).
 CATALOG_FILE = "signals.yaml"
@@ -58,12 +63,18 @@ REFUSED_SEGMENTS = ("DIM_OF", "PTDATA2")
 #: The MDSplus trees a node may come from (plan B).
 TREES = (
     "EFIT01", "EFIT02", "EFIT02ER", "MHD", "SPECTROSCOPY", "ELECTRONS", "IONS", "D3D",
-    "ZIPFIT01", "ZIPFIT02", "ECE", "BOLOM",
+    "ZIPFIT01", "ZIPFIT02", "ECE", "BOLOM", "RF", "NB", "TRANSPORT", "OPERATIONS",
 )
 CUSTOM_PREFIX = "custom:"
 MDS_PREFIX = "mds:"
 
 KINDS = ("trace", "profile")
+#: Where a fetched entry was seen on the two reference shots (170659 and 200958, the
+#: `early` and `late` era): `both`, `early` or `late` only, or `none`; absent when the
+#: entry reads local data only and was not probed.
+AVAIL = ("both", "early", "late", "none")
+#: The longest `description`.
+DESCRIPTION_MAX = 240
 #: A profile's x axis (the `/api/profile` header's `x_kind`).
 X_KINDS = ("psi_n", "rho", "R_m", "channel")
 DRAWS = ("lines", "map")
@@ -80,9 +91,11 @@ RECIPES = {
     "thomson_ne": "corpus",
     "zipfit_rotation": "park",
     "ece_te": "corpus",
+    **dict.fromkeys(FETCHED_PROFILES, "mds"),
 }
-#: A recipe that fetches (the EFIT01 q fallback) runs under the long limit.
-FETCHING_RECIPES = ("efit01_q",)
+#: A recipe that fetches (the EFIT01 q fallback, the EFIT and ZIPFIT profiles of
+#: `review.profile_fetch`) runs under the long limit.
+FETCHING_RECIPES = ("efit01_q", *FETCHED_PROFILES)
 #: What the contract calls each source kind (`source` in the catalog and headers):
 #: the features store is a local cache like the raw cache.
 WIRE = {"corpus": "corpus", "raw": "raw", "feature": "raw", "park": "park",
@@ -110,6 +123,8 @@ class Source:
     scale: float = 1.0
     tag: str = ""
     free: bool = False
+    #: 2-D records and slow nodes: the 120 s limit and a dims retry (a yaml
+    #: `free: true`); a typed `mds:` node is always free.
 
     @property
     def local(self) -> bool:
@@ -182,6 +197,14 @@ class Entry:
     channels: int | None = None
     axis: str = "time"
     draw: str | None = None
+    description: str = ""
+    avail: str | None = None
+
+    @property
+    def points(self) -> tuple[str, ...]:
+        """The PTDATA names and MDS nodes the entry fetches, for a client that matches
+        a typed pointname against the catalog (upper-cased: the archive ignores case)."""
+        return tuple(s.name.upper() for s in self.sources if s.kind in FETCHED)
 
     def suggested(self, event: str | None) -> bool:
         """Whether this entry is suggested for `event`: named for it, for the store it
@@ -336,7 +359,7 @@ def parse(raw, *, where: str = CATALOG_FILE) -> Catalog:
 
 
 ENTRY_KEYS = {"id", "label", "group", "units", "kind", "events", "sources", "legend",
-              "channels", "axis", "draw"}
+              "channels", "axis", "draw", "description", "avail"}
 
 
 def _entry(item, where: str) -> Entry:
@@ -382,7 +405,9 @@ def _entry(item, where: str) -> Entry:
     ):
         raise CatalogError(f"{where}: channels must be a positive integer")
     if kind == "trace":
-        widths = {1 if s.total or s.rows is None else len(s.rows) for s in parsed}
+        # A fetched record's width is only known once it arrives, so an entry that
+        # lists `channels` says it; one that does not is a single channel.
+        widths = {_width(s, channels) for s in parsed}
         if len(widths) > 1 or (channels is not None and channels not in widths):
             raise CatalogError(f"{where}: its sources give different channel counts")
         channels = widths.pop()
@@ -397,14 +422,29 @@ def _entry(item, where: str) -> Entry:
     draw = item.get("draw")
     if draw is not None and (draw not in DRAWS or kind != "trace"):
         raise CatalogError(f"{where}: draw is one of {DRAWS}, for a trace")
+    description = item.get("description", "")
+    if not isinstance(description, str) or len(description.strip()) > DESCRIPTION_MAX:
+        raise CatalogError(f"{where}: description is one line of text, at most "
+                           f"{DESCRIPTION_MAX} characters")
+    avail = item.get("avail")
+    if avail is not None and avail not in AVAIL:
+        raise CatalogError(f"{where}: avail is one of {AVAIL}")
     return Entry(
         id=ident, label=item["label"].strip(), group=item["group"].strip(),
         units=units, kind=kind, sources=parsed, events=tuple(events), legend=legend,
-        channels=channels, axis=axis, draw=draw,
+        channels=channels, axis=axis, draw=draw, description=" ".join(description.split()),
+        avail=avail,
     )
 
 
-SOURCE_KEYS = {"rows", "total", "scale", "tag", "tree"}
+def _width(source: Source, channels: int | None) -> int:
+    """The channels one source gives a trace entry."""
+    if source.kind in FETCHED:
+        return channels or 1
+    return 1 if source.total or source.rows is None else len(source.rows)
+
+
+SOURCE_KEYS = {"rows", "total", "scale", "tag", "tree", "free"}
 
 
 def _source(item, where: str) -> Source:
@@ -426,6 +466,9 @@ def _source(item, where: str) -> Source:
     tag = item.get("tag", "")
     if not isinstance(tag, str):
         raise CatalogError(f"{where}: tag must be text")
+    free = item.get("free", False)
+    if not isinstance(free, bool) or (free and kind != "mds"):
+        raise CatalogError(f"{where}: free is true or false, for an mds source")
     rows, total, tree = None, bool(item.get("total", False)), item.get("tree")
     if not isinstance(item.get("total", False), bool):
         raise CatalogError(f"{where}: total is true or false")
@@ -455,7 +498,7 @@ def _source(item, where: str) -> Source:
     elif tree is not None:
         raise CatalogError(f"{where}: tree is for an mds source")
     return Source(kind, name, tree=tree, rows=rows, total=total, scale=float(scale),
-                  tag=tag.strip())
+                  tag=tag.strip(), free=free)
 
 
 def _rows(value, where: str) -> tuple[int, ...] | None:

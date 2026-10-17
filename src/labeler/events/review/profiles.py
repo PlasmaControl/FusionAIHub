@@ -18,6 +18,10 @@ The readers (`recipe` sources in configs/labeler/signals.yaml):
   time. Without the park's equilibrium or `mhd/fusion/ts_geom.csv` the x is the
   chord number (`channel`).
 - `zipfit_rotation`: ZIPFIT toroidal rotation (krad/s) against rho, from the park.
+- `efit01_q` and the recipes of `profile_fetch.SPECS` (`efit0N_pres`, `_pprime`, `_ffprim`,
+  `_fpol`, `_q`; `zipfit0N_ne`, `_te`, `_ti`, `_rot`): fetched through the fetch worker and
+  cached in the signals cache, against psi_N (EFIT) or rho (ZIPFIT). A catalog source's
+  `scale` takes the record's units into the entry's.
 - `ece_te`: ECE Te (keV) of channels 1-40 at 1 ms (the features store, else the
   corpus or raw cache averaged to 1 ms) against each channel's major radius from the
   park's equilibrium (`mhd.equilibrium.Equilibrium.slice`, the second-harmonic
@@ -38,6 +42,7 @@ from ...config import Paths
 from ...mhd import equilibrium as mhd_eq
 from .. import raw
 from .fetch_worker import FetchError
+from .profile_fetch import TAGS
 from .signals import CHUNK, Pending, Signals, invalid
 
 #: ECE channels shown (the park's `ece_freq` gives their resonance for these).
@@ -89,15 +94,24 @@ def read(signals: Signals, shot: int, ident) -> Profile | Pending:
             if isinstance(got, Pending):
                 return got
             if got is not None:
-                return Profile(np.asarray(got["t_ms"]), np.asarray(got["x"]),
-                               np.asarray(got["y"]), entry.axis, "", source.wire,
-                               "EFIT01")
+                return _scaled(Profile(
+                    np.asarray(got["t_ms"]), np.asarray(got["x"]), np.asarray(got["y"]),
+                    entry.axis, "", source.wire, source.tag or TAGS.get(source.name, "")
+                ), source)
             continue
         found = READERS[source.name](signals.paths, int(shot))
         if found is not None:
-            return found
+            return _scaled(found, source)
     wheres = "; ".join(s.where() for s in entry.sources)
     raise FetchError("missing", f"shot {shot} has no {entry.label} profile ({wheres})")
+
+
+def _scaled(profile: Profile, source) -> Profile:
+    """The profile in the entry's units: the source's `scale` applied to its values."""
+    if source.scale != 1.0:
+        profile.y = (np.asarray(profile.y) * np.float32(source.scale)).astype(
+            np.float32)
+    return profile
 
 
 def available(paths: Paths, shot: int, recipe: str) -> bool:
