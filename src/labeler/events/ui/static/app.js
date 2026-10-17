@@ -208,6 +208,17 @@ function gaps(window, allowed) {
   return out.filter(([a, b]) => b > a);
 }
 
+/** The time inside `label`'s window that no annotation marks, as [[a, b], ...]: what an
+ * event with a default class reads as that class (`grid.frames`' fill), never a span. */
+function unmarked(label) {
+  const marked = [];
+  for (const [a, b] of label.intervals.map(([a, b]) => [a, b]).sort((x, y) => x[0] - y[0])) {
+    if (marked.length && a <= marked.at(-1)[1]) marked.at(-1)[1] = Math.max(marked.at(-1)[1], b);
+    else marked.push([a, b]);
+  }
+  return gaps(label.window, marked);
+}
+
 /** The pseudo-mask region with a pixel nearest bin `j`, column `k`, at most `tj` bins
  * and `tk` columns away; null if none. A region's `runs` are `[bin, first column,
  * length]`; on a tie the lower-numbered region wins. */
@@ -334,6 +345,13 @@ function locate(event) {
   return null;
 }
 const hasEvent = (event) => Boolean(locate(event)) && !locate(event).row.error;
+/** The class the open event's unmarked time inside a saved window reads as (`default` in
+ * /api/events, owner 2026-10-17), or 0: absent, and drawn as now. A subcategory has none. */
+function unmarkedClass() {
+  const found = locate(S.event);
+  const fill = found && !found.chip ? Number(found.row.default) || 0 : 0;
+  return known().includes(fill) ? fill : 0;
+}
 const draftKey = (shot) => `labeler:${S.event}:${shot}${S.event === "detachment" ? ":independent" : ""}`;
 const exposureKey = (shot) => `${draftKey(shot)}:exposure`;
 
@@ -1333,7 +1351,7 @@ function arrive() {
     $("stale").textContent = cameras ? "Restart the server for detachment cameras" : Activity.staleText(S.api);
   }
   renderQueue();
-  $("queue").querySelector(".current")?.scrollIntoView({ block: "nearest" });
+  revealChip();
 }
 
 /** Dim the shot on screen while the next one builds. */
@@ -2084,6 +2102,13 @@ function drawTrack(canvas, label, editable, lane) {
       hatch(g, px(a), 0, px(b) - px(a), h);
     }
   }
+  const fill = editable ? unmarkedClass() : 0;
+  if (fill) { // the default class where nothing is marked: lighter than a span, never one
+    g.globalAlpha = 0.5;
+    g.fillStyle = categoryColour(fill);
+    for (const [a, b] of unmarked(label)) g.fillRect(px(a), top, px(b) - px(a), h - top - foot);
+    g.globalAlpha = 1;
+  }
   const split = !editable && hasOverlaps(label);
   label.intervals.forEach(([a, b, c], i) => {
     const flag = label.iscrowd?.[i];
@@ -2331,30 +2356,30 @@ function showContributors() {
   );
 }
 
+let queueChips = null; // the LongList drawing #queue
+
+/** The shot chips under the label: made again for another list or new rows (api 11: another
+ * list of the same length must not keep the old chips' shots), else only marked. */
 function renderQueue() {
-  const nav = $("queue");
-  // api 11: another list of the same length must not keep the old chips' shots
-  const key = S.api >= 11 ? Lists.queueKey(S.event) : null;
-  if (nav.children.length !== S.queue.length || key !== S.queueKey) {
-    S.queueKey = key;
-    nav.replaceChildren(
-      ...S.queue.map((row) => {
-        const chip = document.createElement("button");
-        chip.type = "button";
-        chip.dataset.shot = row.shot;
-        chip.textContent = row.shot;
-        return chip;
-      })
-    );
-  }
-  S.queue.forEach((row, i) => {
-    const chip = nav.children[i];
+  queueChips ??= new LongList($("queue"), (row) => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.dataset.shot = row.shot;
+    chip.textContent = row.shot;
+    return chip;
+  }, (chip, row) => {
     const state = isBlind() && row.state !== "unreviewed" ? "reviewed" : row.state;
     const extra = S.api >= 11 && row.extra; // on the list, not on this event's roster
     const marks = [state, row.shot === S.shot && "current", stored(draftKey(row.shot)) && "dirty", extra && "extra"];
     chip.className = ["chip", ...marks.filter(Boolean)].join(" ");
     chip.title = extra ? "Not on this event's roster" : row.tier;
   });
+  queueChips.draw(S.queue, S.api >= 11 ? Lists.queueKey(S.event) : null);
+}
+
+/** The open shot's chip in view (its lines drawn first on a long list). */
+function revealChip() {
+  queueChips?.reveal(S.queue.findIndex((row) => row.shot === S.shot));
 }
 
 function renderSwatches() {
@@ -2370,11 +2395,20 @@ function renderSwatches() {
       return button;
     })
   );
+  const fill = unmarkedClass();
+  if (!fill) return;
+  const note = Object.assign(document.createElement("span"), { id: "unmarked", textContent: `Unmarked: ${S.categories[fill]}`,
+    title: `Time no annotation marks inside the window reads as ${S.categories[fill]}; Save stores only the annotations` });
+  note.style.setProperty("--c", categoryColour(fill));
+  $("swatches").append(note);
 }
 
 // -- input
 
 function startDrag(event, drag) {
+  // A press on the plot leaves the dropdowns, Resolution and Find shot, as a click elsewhere
+  // does: preventDefault below keeps the focus, and the control would take Delete (R2_CHIPS).
+  document.activeElement?.closest?.("input, select, textarea")?.blur();
   if (stillOpening()) return;
   S.drag = { ...drag, base: S.label };
   event.currentTarget.setPointerCapture(event.pointerId);
@@ -3663,7 +3697,7 @@ function wire() {
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { ms, snapSpan, snapWindow, silverFrames, paint, runs, normalise, diffRuns, versionChanges, niceStep, hitTest, hasOverlaps, regionAt, lut, modeLut, producerAt, clipToAllowed, gaps };
+  module.exports = { ms, snapSpan, snapWindow, silverFrames, paint, runs, normalise, diffRuns, versionChanges, niceStep, hitTest, hasOverlaps, regionAt, lut, modeLut, producerAt, clipToAllowed, gaps, unmarked };
 } else {
   boot();
 }

@@ -12,6 +12,7 @@ import subprocess
 import numpy as np
 import pytest
 
+from labeler.events import grid
 from labeler.events.review.labels import normalise
 from labeler.events.ui.app import STATIC
 from labeler.events.verify import mode_palette
@@ -213,6 +214,21 @@ def test_a_press_on_the_label_grabs_the_nearest_thing():
         {"kind": "move", "index": 1},
         {"kind": "edge", "index": 0, "edge": 1},
     ]
+
+
+@needs_node
+def test_unmarked_time_is_what_the_grid_fills_with_the_default_class():
+    """The page draws an event's default class where `unmarked` says (R2_CHIPS): the
+    window's time no annotation of either lane marks, the frames `grid.frames` fills."""
+    label = {"window": [0, 400], "intervals": [[50, 100, 1], [80, 150, 2], [300, 310, 1]],
+             "iscrowd": [1, 0, 1]}
+    found = _node("[m.unmarked(input), m.unmarked({ window: [0, 400], intervals: [] })]",
+                  label)
+    assert found == [[[0, 50], [150, 300], [310, 400]], [[0, 400]]]
+    cells = grid.frames(label["window"], label["intervals"], 0, 40, fill=7)
+    assert {10 * int(k) for k in np.flatnonzero(cells == 7)} == {
+        t for a, b in found[0] for t in range(a, b, 10)
+    }
 
 
 @needs_node

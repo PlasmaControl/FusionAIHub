@@ -22,8 +22,8 @@ needs_node = pytest.mark.skipif(NODE is None, reason="node runs the page's scrip
 #: The page's new scripts, in load order, and the globals plan D.7 gives each.
 GLOBALS = {
     "status.js": {"Activity", "ERROR_COPY", "rowNote", "renderActivity", "stopWaiting"},
-    "lists.js": {"Lists", "fillLists", "chooseList", "toggleByShot", "openByShot", "byShotKey",
-                 "listAddress"},
+    "lists.js": {"Lists", "LongList", "fillLists", "chooseList", "toggleByShot", "openByShot",
+                 "byShotKey", "listAddress"},
     "overlays.js": {"Overlays", "overlayNote", "loadOverlays", "requestOverlay",
                     "pollOverlays"},
 }

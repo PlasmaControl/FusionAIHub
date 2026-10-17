@@ -304,29 +304,38 @@ const Activity = {
   /** Where #activity shows: on the bar's line when the room left there holds its text and Stop
    * waiting (or `ROOM_PX` of them), else as a strip just under the bar, at the slot's left and
    * kept inside the bar's width, left of an open #dock (its head stays uncovered). It never
-   * makes the bar taller and nothing covers Stop. */
+   * makes the bar taller and nothing covers Stop.
+   * Every read comes before the writes, and a write that changes nothing is not made (R2_CHIPS):
+   * a read after a write lays the page out again, which took seconds a call with 28,000 chips
+   * drawn. Only the switch to the strip reads once more, for its text at the strip's size. */
   place() {
     const { box, body, text, stop, detail } = Activity.parts;
     if (box.hidden) {
       box.classList.remove("under");
       return;
     }
-    const gap = 6;
-    const need = Math.min(Activity.ROOM_PX, text.scrollWidth + (stop.hidden ? 0 : stop.offsetWidth + gap));
-    const under = box.clientWidth - 14 < need; // 14: the text's margin, the bar's gap taken back
+    const gap = 6, bar = box.parentElement, dock = document.getElementById("dock");
+    const was = box.classList.contains("under");
+    const extra = stop.hidden ? 0 : stop.offsetWidth + gap;
+    let wide = text.scrollWidth, below = was ? body.offsetTop + body.offsetHeight : 0;
+    const under = box.clientWidth - 14 < Math.min(Activity.ROOM_PX, wide + extra); // 14: the text's margin, the bar's gap taken back
+    const slot = box.offsetLeft;
+    const end = dock && !dock.hidden
+      ? Math.min(bar.clientWidth, dock.getBoundingClientRect().left - bar.getBoundingClientRect().left) : bar.clientWidth;
+    const set = (element, values) => {
+      for (const [name, value] of Object.entries(values)) if (element.style[name] !== value) element.style[name] = value;
+    };
     box.classList.toggle("under", under);
-    const bar = box.parentElement;
+    let left = slot;
     if (under) {
-      const dock = document.getElementById("dock");
-      const end = dock && !dock.hidden
-        ? Math.min(bar.clientWidth, dock.getBoundingClientRect().left - bar.getBoundingClientRect().left) : bar.clientWidth;
-      body.style.maxWidth = `${Math.max(120, end - 24)}px`;
-      body.style.left = "12px"; // its width first, at the widest it may be
-      const most = end - body.offsetWidth - 12;
-      body.style.left = `${Math.max(12, Math.min(box.offsetLeft + 14, most))}px`;
-    } else [body.style.left, body.style.maxWidth] = ["", ""];
-    detail.style.top = under ? `${body.offsetTop + body.offsetHeight}px` : "";
-    if (Activity.detail) detail.style.left = `${under ? body.offsetLeft : box.offsetLeft}px`;
+      if (!was) [wide, below] = [text.scrollWidth, body.offsetTop + body.offsetHeight];
+      const style = getComputedStyle(body), px = (name) => parseFloat(style[name]) || 0;
+      const most = Math.max(120, end - 24);
+      const own = Math.min(most, wide + extra + px("paddingLeft") + px("paddingRight") + px("borderLeftWidth") + px("borderRightWidth"));
+      left = Math.round(Math.max(12, Math.min(slot + 14, end - own - 12)));
+      set(body, { left: `${left}px`, maxWidth: `${Math.round(most)}px` });
+    } else set(body, { left: "", maxWidth: "" });
+    set(detail, { top: under ? `${Math.round(below)}px` : "", ...(Activity.detail ? { left: `${left}px` } : {}) });
   },
 
   /** Open or close the detail list; a press outside it closes it. */

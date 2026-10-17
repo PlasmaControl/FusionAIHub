@@ -285,6 +285,9 @@ body.busy .row-chip { pointer-events: none; }
 .swatch { display: inline-flex; align-items: center; gap: 6px; }
 .swatch::before { content: ""; width: 11px; height: 11px; border-radius: 2px; background: var(--c); }
 .swatch[aria-pressed="true"] { border-color: var(--ink); }
+/* The event's default class, implied where nothing is marked: the label draws it lighter. */
+#unmarked { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); white-space: nowrap; }
+#unmarked::before { content: ""; width: 11px; height: 11px; border-radius: 2px; background: var(--c); opacity: 0.5; }
 button.primary { background: var(--label); border-color: var(--label); color: #fff; }
 
 #queue {
@@ -311,6 +314,11 @@ button.primary { background: var(--label); border-color: var(--label); color: #f
 /* On the list but not on this event's roster (api 11). */
 #queue .chip.extra { border-style: dashed; border-color: var(--muted); }
 #queue .chip.extra.current { border-color: var(--ink); }
+/* A long list draws only the lines near the view between two spacers (LongList, R2_CHIPS):
+ * the chips then sit in a fixed number of columns, so each line holds the rows it is drawn with. */
+#queue.long { display: grid; grid-template-columns: repeat(var(--per-line, 1), max-content); }
+#queue.long, #silver-shots.long { overflow-anchor: none; scrollbar-gutter: stable; }
+.long-gap { grid-column: 1 / -1; }
 .chip.dirty::after {
   content: "";
   position: absolute;
@@ -392,6 +400,9 @@ body.silver-mode #stale { display: none; }
   gap: 7px; align-items: center; width: 100%; text-align: left; margin-bottom: 4px;
   padding: 6px; background: var(--panel); }
 .silver-shot.current { border-color: var(--label); background: var(--paper); }
+/* A long list's rows keep one line each, so every row has the height LongList measured. */
+#silver-shots.long .silver-shot { white-space: nowrap; }
+#silver-shots.long .silver-classes { flex-wrap: nowrap; overflow: hidden; }
 .silver-order, .silver-progress { color: var(--muted); font-size: 11px; }
 .silver-progress { text-align: right; }
 .silver-classes { display: flex; gap: 3px; flex-wrap: wrap; }

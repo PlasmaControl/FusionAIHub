@@ -232,7 +232,42 @@ const Lists = {
     Activity.fail(what, error.message);
   },
 
-  /** The family buttons and the list's shots, each with its classes and progress. */
+  /** One of the list's shots, with its classes and progress (`markShot` marks the current). */
+  shotRow(row, i) {
+    const button = Object.assign(document.createElement("button"), { type: "button", className: "silver-shot" });
+    button.dataset.shot = row.shot;
+    const order = Object.assign(document.createElement("span"), { textContent: row.order ?? i + 1, className: "silver-order" });
+    const number = Object.assign(document.createElement("strong"), { textContent: row.shot });
+    const classes = Object.assign(document.createElement("span"), { className: "silver-classes" });
+    if (SILVER_POOLS[row.pool]) {
+      classes.append(Object.assign(document.createElement("span"), { textContent: SILVER_POOLS[row.pool], className: "silver-tag" }));
+    }
+    for (const name of Lists.classes(row.classes)) {
+      const [event, category] = name.split(":");
+      const chip = Object.assign(document.createElement("span"), {
+        textContent: category ? `${Lists.short(event)}:${category}` : Lists.short(event), className: "silver-class",
+      });
+      chip.setAttribute("aria-label", name);
+      classes.append(chip);
+    }
+    const progress = Object.assign(document.createElement("span"), { // a roster row has no counts
+      textContent: row.total == null ? (row.done ? "✓" : "") : `${row.saved}/${row.total}${row.done ? " ✓" : ""}`,
+      className: "silver-progress",
+    });
+    button.append(order, number, classes, progress);
+    button.addEventListener("click", () => Lists.select(row.shot));
+    return button;
+  },
+
+  markShot(button, row) {
+    const current = row.shot === Lists.shot;
+    button.classList.toggle("current", current);
+    button.setAttribute("aria-pressed", String(current));
+  },
+
+  shotRows: null, // the LongList drawing #silver-shots
+
+  /** The family buttons and the list's shots; a step to another shot only marks them. */
   renderShots() {
     $("silver-batches").replaceChildren(...Lists.family(Lists.name, Lists.overview, Lists.lists).map((member) => {
       const button = Object.assign(document.createElement("button"), { type: "button", textContent: member.text });
@@ -241,35 +276,9 @@ const Lists = {
       return button;
     }));
     const shots = Lists.overview?.shots || [];
-    $("silver-shots").replaceChildren(...shots.map((row, i) => {
-      const button = Object.assign(document.createElement("button"), {
-        type: "button", className: `silver-shot${row.shot === Lists.shot ? " current" : ""}`,
-      });
-      button.dataset.shot = row.shot;
-      button.setAttribute("aria-pressed", String(row.shot === Lists.shot));
-      const order = Object.assign(document.createElement("span"), { textContent: row.order ?? i + 1, className: "silver-order" });
-      const number = Object.assign(document.createElement("strong"), { textContent: row.shot });
-      const classes = Object.assign(document.createElement("span"), { className: "silver-classes" });
-      if (SILVER_POOLS[row.pool]) {
-        classes.append(Object.assign(document.createElement("span"), { textContent: SILVER_POOLS[row.pool], className: "silver-tag" }));
-      }
-      for (const name of Lists.classes(row.classes)) {
-        const [event, category] = name.split(":");
-        const chip = Object.assign(document.createElement("span"), {
-          textContent: category ? `${Lists.short(event)}:${category}` : Lists.short(event), className: "silver-class",
-        });
-        chip.setAttribute("aria-label", name);
-        classes.append(chip);
-      }
-      const progress = Object.assign(document.createElement("span"), { // a roster row has no counts
-        textContent: row.total == null ? (row.done ? "✓" : "") : `${row.saved}/${row.total}${row.done ? " ✓" : ""}`,
-        className: "silver-progress",
-      });
-      button.append(order, number, classes, progress);
-      button.addEventListener("click", () => Lists.select(row.shot));
-      return button;
-    }));
-    $("silver-shots").querySelector(".current")?.scrollIntoView({ block: "nearest" });
+    Lists.shotRows ??= new LongList($("silver-shots"), Lists.shotRow, Lists.markShot);
+    Lists.shotRows.draw(shots, Lists.overview?.list ?? null);
+    Lists.shotRows.reveal(shots.findIndex((row) => row.shot === Lists.shot));
     // As on an event: Next names the shot K opens, the bar and the box the shot on screen.
     const next = Lists.step(shots, Lists.shot, 1);
     if ($("all-next-shot")) $("all-next-shot").textContent = next == null || next === Lists.shot ? "" : `→ ${next}`;
@@ -467,6 +476,163 @@ const Lists = {
   },
 };
 
+/** A shot list drawn in part once it is long (R2_CHIPS): the label panel's chips and All's
+ * shots. Up to `WHOLE` rows are drawn whole, as before. A longer list draws, in `box` (its own
+ * scroller), the lines in view and `margin()` lines either side between two spacers that keep
+ * its scroll height, and draws again as it scrolls, so 28,000 shots put a few hundred elements
+ * in the page. `make(row, i)` builds row i's element (rows are {shot, ...}); `mark(element, row,
+ * i)` sets its state (current, done) and runs on every drawn element at each `draw`, so a step
+ * to another shot only marks. */
+class LongList {
+  static WHOLE = 500;
+  static MARGIN = 4; // lines drawn past each edge of the view, at least
+
+  constructor(box, make, mark) {
+    Object.assign(this, { box, make, mark, rows: [], key: undefined, size: null, first: 0, last: -1 });
+    box.addEventListener("scroll", () => this.follow(), { passive: true });
+    if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => this.resized()).observe(box);
+  }
+
+  get long() {
+    return this.rows.length > LongList.WHOLE;
+  }
+
+  /** Draw `rows`, the list `key` names: the elements are made again when the key or the rows
+   * changed, else only marked. A long list starts at its top when the key changed. */
+  draw(rows, key = null) {
+    const was = this.long, other = key !== this.key, fresh = other || rows !== this.rows;
+    Object.assign(this, { rows, key });
+    this.box.classList.toggle("long", this.long);
+    if (!this.long) {
+      if (fresh || was) this.box.replaceChildren(...rows.map((row, i) => this.make(row, i)));
+      this.marks();
+      return;
+    }
+    if (!fresh && was && this.size) return this.marks();
+    if (other || !was) [this.size, this.box.scrollTop] = [null, 0]; // another list: its widest row measured again
+    if (!this.size) {
+      if (!this.measure()) return this.box.replaceChildren(); // hidden: drawn once shown
+      [this.first, this.last] = [0, this.lines() + this.margin()];
+    }
+    this.draws(this.first, this.last);
+  }
+
+  /** The element drawn for row `i`, or null. */
+  item(i) {
+    if (!this.long) return this.box.children[i] || null;
+    if (!this.size) return null;
+    const start = this.first * this.size.per, end = (this.last + 1) * this.size.per;
+    return i >= start && i < end ? this.box.children[(this.first ? 1 : 0) + i - start] || null : null;
+  }
+
+  /** Bring row `i` into view (the nearest edge, as scrollIntoView does, so the scrollers around
+   * the box follow too), drawing the lines around it first when they are not drawn. */
+  reveal(i) {
+    if (i < 0 || i >= this.rows.length) return;
+    if (this.long && this.size) {
+      const at = Math.floor(i / this.size.per), view = this.lines(), last = this.count() - 1;
+      if ((this.first > 0 && at - view < this.first) || (this.last < last && at + view > this.last)) {
+        this.draws(at - view - this.margin(), at + view + this.margin());
+      }
+    }
+    this.item(i)?.scrollIntoView({ block: "nearest" });
+  }
+
+  /** Lines of the list, lines in view, and lines drawn past each edge of the view. */
+  count() {
+    return Math.ceil(this.rows.length / this.size.per);
+  }
+
+  lines() {
+    return Math.max(1, Math.ceil(this.size.view / this.size.line));
+  }
+
+  margin() {
+    return Math.max(LongList.MARGIN, this.lines());
+  }
+
+  /** Draw lines `first` to `last` (clamped) between the spacers, and mark them. */
+  draws(first, last) {
+    const { per, line, gap } = this.size, count = this.count();
+    first = Math.max(0, Math.min(first, count - 1));
+    last = Math.max(first, Math.min(last, count - 1));
+    Object.assign(this, { first, last });
+    const spacer = (lines) => {
+      const element = Object.assign(document.createElement("div"), { className: "long-gap" });
+      element.style.height = `${lines * line - gap}px`; // the box's row gap follows it
+      element.setAttribute("aria-hidden", "true");
+      return element;
+    };
+    const start = first * per;
+    this.box.replaceChildren(
+      ...(first ? [spacer(first)] : []),
+      ...this.rows.slice(start, (last + 1) * per).map((row, k) => this.make(row, start + k)),
+      ...(last < count - 1 ? [spacer(count - 1 - last)] : []),
+    );
+    this.marks();
+  }
+
+  /** Mark every drawn element. */
+  marks() {
+    const start = this.long ? this.first * this.size.per : 0;
+    const end = this.long ? Math.min(this.rows.length, (this.last + 1) * this.size.per) : this.rows.length;
+    const skip = this.long && this.first ? 1 : 0;
+    for (let i = start; i < end; i++) this.mark(this.box.children[skip + i - start], this.rows[i], i);
+  }
+
+  /** Measure the widest row (the largest shot) once in the box: how many fit on a line, a
+   * line's height and the view's. False while the box is hidden. */
+  measure() {
+    const box = this.box;
+    if (!box.clientWidth) return false;
+    let widest = 0;
+    this.rows.forEach((row, i) => {
+      if (row.shot > this.rows[widest].shot) widest = i;
+    });
+    const probe = this.make(this.rows[widest], widest);
+    box.append(probe);
+    const rect = probe.getBoundingClientRect(), item = getComputedStyle(probe), own = getComputedStyle(box);
+    const px = (value) => parseFloat(value) || 0;
+    const across = px(own.columnGap), gap = px(own.rowGap);
+    const room = box.clientWidth - px(own.paddingLeft) - px(own.paddingRight) + across - 1; // 1: a rounding pixel never wraps a line
+    const per = Math.max(1, Math.floor(room / (rect.width + px(item.marginLeft) + px(item.marginRight) + across)));
+    const line = rect.height + px(item.marginTop) + px(item.marginBottom) + gap;
+    this.size = { per, line, gap, view: this.view(), width: box.clientWidth };
+    probe.remove();
+    box.style.setProperty("--per-line", String(per));
+    return true;
+  }
+
+  /** The most of the box in view: its max-height, at most the window's. */
+  view() {
+    return Math.min(innerHeight, parseFloat(getComputedStyle(this.box).maxHeight) || innerHeight);
+  }
+
+  /** Scrolled: draw again once the view nears a drawn edge. */
+  follow() {
+    if (!this.long || !this.size) return;
+    const top = this.box.scrollTop, line = this.size.line, half = this.margin() / 2;
+    const a = Math.floor(top / line), b = Math.floor((top + this.box.clientHeight) / line);
+    if ((this.first > 0 && a - this.first < half) || (this.last < this.count() - 1 && this.last - b < half)) {
+      this.draws(a - this.margin(), b + this.margin());
+    }
+  }
+
+  /** The box changed size (the window, the dock, shown again): measure again when its width or
+   * view did, keeping the first row in view at the top. */
+  resized() {
+    if (!this.long || !this.box.clientWidth) return;
+    const old = this.size;
+    if (old && old.width === this.box.clientWidth && old.view === this.view()) return;
+    const at = old ? Math.floor(this.box.scrollTop / old.line) * old.per : 0;
+    this.size = null;
+    if (!this.measure()) return;
+    const line = Math.floor(at / this.size.per);
+    this.draws(line - this.margin(), line + this.lines() + this.margin());
+    this.box.scrollTop = line * this.size.line;
+  }
+}
+
 /** Fill #shotlist from a queue answer (or {list, lists}) for `event`: the groups, the list in
  * use, how the closed control looks and the server's fallback note. */
 function fillLists(body, event = S.event) {
@@ -554,12 +720,20 @@ async function openByShot(name = Lists.name, shot = null, event = null) {
   Lists.renderShots();
   history.replaceState(null, "", listAddress(name, shot));
   try {
-    if (S.event && (Lists.event !== S.event || !Lists.lists.some((entry) => entry.name === name))) await Lists.load(S.event);
+    // A named list's shots are asked first, so they show before the lists offered arrive (the
+    // family buttons then follow; R2_CHIPS); the roster's overview needs the lists first.
+    const stale = S.event && (Lists.event !== S.event || !Lists.lists.some((entry) => entry.name === name));
+    if (stale && name === Lists.ROSTER) await Lists.load(S.event);
     const overview = await Lists.fetchOverview(name);
     if (ticket !== S.ticket || sequence !== Lists.sequence) return;
     Lists.overview = overview;
     $("silver-title").textContent = overview.title || name;
     Lists.renderShots();
+    if (stale && name !== Lists.ROSTER) {
+      await Lists.load(S.event);
+      if (ticket !== S.ticket || sequence !== Lists.sequence) return;
+      Lists.renderShots();
+    }
     if (shot == null) return;
     await Lists.select(shot);
     if (event && ticket === S.ticket && Lists.strips && hasEvent(event)) await Lists.openEvent(event);
@@ -604,5 +778,5 @@ function listAddress(name, shot = null, event = null) {
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { Lists, fillLists, chooseList, toggleByShot, openByShot, byShotKey, listAddress };
+  module.exports = { Lists, LongList, fillLists, chooseList, toggleByShot, openByShot, byShotKey, listAddress };
 }
