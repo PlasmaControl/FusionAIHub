@@ -1,8 +1,9 @@
-// Plan D.8's twelve D1 checks: shot lists, By shot, #activity and the TokEye chips. Appended
+// Plan D.8's twelve D1 checks (shot lists, All (once By shot), #activity and the TokEye chips) and
+// 13, the flat event dropdown with All. Appended
 // to review_browser.mjs's transport (everything before its `const opened =`) by
 // test_review_page_d1_browser.py, and run as
 //   node <script> <base-url> <token> <headless-shell> <profile-dir>
-// Prints one JSON line: the twelve checks, [{name, ok, detail}], in D.8's order.
+// Prints one JSON line: the thirteen checks, [{name, ok, detail}], in order.
 
 const AE = "alfven_eigenmode", LOCK = "locked_mode";
 const results = new Map();
@@ -83,7 +84,7 @@ const barHeights = () => js(`(() => {
     return [c.id || c.tagName, Math.round(r.top), Math.round(r.left), Math.round(r.width)];
   });
   const now = height(), lines = layout();
-  const swap = [["shotlist", true], ["by-shot", true], ["activity", true], ["view", true], ["gold-only-label", false]];
+  const swap = [["shotlist", true], ["activity", true], ["view", true], ["gold-only-label", false]];
   const before = swap.map(([id]) => $(id).hidden), saved = $("saved").textContent, title = $("saved").title;
   swap.forEach(([id, hide]) => { $(id).hidden = hide; });
   $("saved").textContent = title || saved;
@@ -143,7 +144,7 @@ try {
       await quiet();
       runs[label] = await snapshot();
       if (label === "api10" && event === AE) {
-        older = await js(`({ shotlist: $("shotlist").hidden, byShot: $("by-shot").hidden, activity: $("activity").hidden,
+        older = await js(`({ shotlist: $("shotlist").hidden, all: [...$("event").options].some((o) => o.value === Lists.ALL), activity: $("activity").hidden,
           line: $("activity-line").hidden, gold: $("gold-only-label").hidden, stale: [$("stale").hidden, $("stale").textContent],
           silver: $("event").options[0].textContent, chips: document.querySelectorAll("#row-ui .row-chip").length,
           enabled: Activity.enabled })`);
@@ -164,8 +165,8 @@ try {
   await navigate(`#${AE}/170815`, { fixed: { version: { status: 500, body: { error: "fixture version failure" } } }, reset: true });
   await opened(170815, AE);
   const failed = await js(`[$("stale").hidden, $("stale").textContent, S.api, $("shotlist").hidden]`);
-  check(9, "an api-10 server shows no list, By shot or activity controls and #stale says why; a failing /api/version shows the version copy",
-    older.shotlist && older.byShot && older.activity && older.line && !older.gold && older.silver === "Silver set" &&
+  check(9, "an api-10 server shows no list, All or activity controls and #stale says why; a failing /api/version shows the version copy",
+    older.shotlist && !older.all && older.activity && older.line && !older.gold && older.silver === "Silver set" &&
       older.chips === 0 && !older.enabled &&
       same(older.stale, [false, "Restart the server for shot lists, TokEye status and views"]) &&
       same(failed, [false, "Could not read the server version (fixture version failure). Reload the page.", 1, true]),
@@ -401,10 +402,10 @@ try {
       same(roster.extra, []),
     { migrated, a, b, reloaded, roster });
 
-  // 8: By shot, from an old #silver/ address.
+  // 8: All (once By shot), from an old #silver/ address.
   await navigate("#silver/2/170899", { reset: true });
   await until(`Lists.byShot && Lists.strips?.shot === 170899`);
-  const walk = await js(`({ hash: location.hash, top: $("top").hidden, pressed: $("by-shot").getAttribute("aria-pressed"),
+  const walk = await js(`({ hash: location.hash, top: $("top").hidden, pressed: $("event").value === Lists.ALL,
     batches: [...$("silver-batches").children].map((b) => [b.textContent, b.getAttribute("aria-pressed")]),
     audited: $("silver-shots").textContent.includes("AE audited"),
     strips: [...$("silver-strips").children].map((s) => s.dataset.event) })`);
@@ -422,17 +423,69 @@ try {
   await until(`Lists.byShot && Lists.shot === null && Lists.overview?.list === "silver_batch_2"`);
   await press("Escape");
   await until(`!Lists.byShot && S.data !== null && S.opened?.ticket === S.ticket`);
-  const left = await js(`[location.hash, $("top").hidden, $("by-shot").getAttribute("aria-pressed")]`);
-  check(8, "By shot: #silver/2/170899 redirects to #list/, Enter opens the event, Save goes to the next event, g and Escape go back",
-    walk.hash === "#list/silver_batch_2/170899" && walk.top && walk.pressed === "true" && walk.audited &&
+  const left = await js(`[location.hash, $("top").hidden, $("event").value === Lists.ALL]`);
+  check(8, "All: #silver/2/170899 redirects to #list/, Enter opens the event, Save goes to the next event, g and Escape go back",
+    walk.hash === "#list/silver_batch_2/170899" && walk.top && walk.pressed && walk.audited &&
       walk.batches.length === 3 && same(walk.batches[2], ["Silver batch 2 · 0/1 done", "true"]) &&
       same(walk.strips, [AE, LOCK]) &&
-      inside.hash === `#list/silver_batch_2/170899/${AE}` && same(inside.crumb, [false, "← 170899 overview"]) &&
+      inside.hash === `#list/silver_batch_2/170899/${AE}` && same(inside.crumb, [false, "← All · 170899"]) &&
       same(inside.queue, [[170899, true]]) && !inside.top &&
       next.hash === `#list/silver_batch_2/170899/${LOCK}` && next.context &&
       back.hash === "#list/silver_batch_2/170899" && back.saved === true &&
-      /^#[a-z_]+\/\d+$/.test(left[0]) && !left[1] && left[2] === "false",
+      /^#[a-z_]+\/\d+$/.test(left[0]) && !left[1] && !left[2],
     { walk, inside, next, back, left });
+
+  // 13: the event dropdown is one flat list with All first; All shows the open shot on every
+  // event over the event's list, with the Find shot box above the list's shots (its matches on
+  // screen, Enter selects the match), K steps the list, and picking an event leaves All at the
+  // shot, with the way back.
+  await navigate(`#${AE}/170815`, { reset: true });
+  await opened(170815, AE);
+  await quiet();
+  const all = { menu: await js(`({ groups: $("event").querySelectorAll("optgroup").length,
+    first: [$("event").options[0].value, $("event").options[0].textContent],
+    events: [...$("event").options].slice(1).map((o) => o.value),
+    sorted: [...S.events].sort((a, b) => (a.display_name || a.event).localeCompare(b.display_name || b.event)).map((r) => r.event),
+    button: document.getElementById("by-shot") === null })`) };
+  await js(`$("event").value = Lists.ALL; $("event").dispatchEvent(new Event("change")); void 0`);
+  await until(`Lists.byShot && Lists.strips?.shot === 170815`);
+  all.opened = await js(`({ hash: location.hash, top: $("top").hidden, value: $("event").value, list: Lists.name,
+    title: $("silver-page").getAttribute("aria-label"), strips: [...$("silver-strips").children].map((s) => s.dataset.event),
+    find: $("silver-find").contains($("shot-find")) && $("shot").getClientRects().length > 0, box: $("shot").value,
+    now: $("shot-now").textContent, shots: [...$("silver-shots").children].map((b) => Number(b.dataset.shot)),
+    current: $("silver-shots").querySelector(".current")?.dataset.shot ?? null, shotlist: !$("shotlist").hidden && !$("shotlist").disabled })`);
+  await js(`window.stubs["shots/search"] = async () => window.json({ shots: [{ shot: 170816, lists: ["ae_a", "ae_b"], cached: true }] }); void 0`);
+  await js(`(() => { const box = $("shot"); box.focus(); box.value = "1708"; box.dispatchEvent(new Event("input")); })()`);
+  await until(`$("shot-matches") && !$("shot-matches").hidden`); // the list is made on the first answer
+  all.search = await js(`(() => {
+    const list = $("shot-matches").getBoundingClientRect();
+    return { shown: [...document.querySelectorAll("#shot-matches li")].map((li) => li.dataset.shot),
+      onScreen: list.top >= 0 && list.bottom <= innerHeight && list.height > 0 };
+  })()`);
+  await js(`$("shot").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); void 0`);
+  await until(`Lists.byShot && Lists.strips?.shot === 170816`);
+  all.found = await js(`({ hash: location.hash, now: $("shot-now").textContent, box: $("shot").value, closed: $("shot-matches").hidden,
+    next: Lists.step(Lists.overview.shots, 170816, 1), label: $("all-next").textContent })`);
+  await press("k");
+  await until(`Lists.byShot && Lists.strips?.shot === ${all.found.next}`);
+  await press("j");
+  await until(`Lists.byShot && Lists.strips?.shot === 170816`);
+  await js(`$("event").value = "${LOCK}"; $("event").dispatchEvent(new Event("change")); void 0`);
+  await opened(170816, LOCK);
+  all.left = await js(`({ byShot: Lists.byShot, value: $("event").value, top: $("top").hidden, hash: location.hash,
+    find: $("bottom").contains($("shot-find")), side: $("silver-find").hidden,
+    crumb: [$("silver-breadcrumb").hidden, $("silver-breadcrumb").textContent] })`);
+  check(13, "the event dropdown is flat with All first; All opens the open shot on every event, the Find shot box shows above the list's shots and Enter selects a match, K and J step, picking an event leaves All at the shot",
+    all.menu.groups === 0 && same(all.menu.first, ["__all", "All"]) && same(all.menu.events, all.menu.sorted) && all.menu.button &&
+      all.opened.top && all.opened.value === "__all" && all.opened.title === "All" && all.opened.hash.startsWith(`#list/`) &&
+      all.opened.hash.endsWith("/170815") && same(all.opened.strips, [AE, LOCK]) && all.opened.find && all.opened.box === "170815" &&
+      all.opened.now === "Shot 170815" && all.opened.shots.includes(170815) && all.opened.current === "170815" && all.opened.shotlist &&
+      same(all.search.shown, ["170816"]) && all.search.onScreen &&
+      all.found.hash.endsWith("/170816") && all.found.now === "Shot 170816" && all.found.box === "170816" && all.found.closed &&
+      all.found.next !== 170816 && all.found.label.includes(`→ ${all.found.next}`) &&
+      !all.left.byShot && all.left.value === LOCK && !all.left.top && all.left.find && all.left.side &&
+      all.left.hash.endsWith(`/170816/${LOCK}`) && same(all.left.crumb, [false, "← All · 170816"]),
+    all);
 
   // 12: the bar's height at 1440, 1400 and 1280 px, on AE (saved under a name, the mask shown;
   // measured after the save and again on a fresh open of the saved shot once its mask is

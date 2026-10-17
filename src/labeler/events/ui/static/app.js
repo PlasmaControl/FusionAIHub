@@ -958,13 +958,13 @@ async function boot() {
   $("show-versions").hidden = S.api < 2;
   $("reviewer-name").hidden = S.api < 2 || S.api >= 5;
   $("reviewer").hidden = S.api < 5;
-  // api 11: shot lists, By shot, the activity line and TokEye chips (status.js, lists.js,
+  // api 11: shot lists, All, the activity line and TokEye chips (status.js, lists.js,
   // overlays.js); an older server keeps the page it had, and #stale says what a restart adds.
   const failed = versionError && Activity.versionNote(versionError);
   $("stale").hidden = S.api >= 11 && !failed;
   $("stale").textContent = failed || (Activity.staleText(S.api) ?? "");
   Activity.enabled = S.api >= 11;
-  $("shotlist").hidden = $("by-shot").hidden = S.api < 11;
+  $("shotlist").hidden = $("all-key").hidden = S.api < 11;
   $("gold-only-label").hidden = S.api >= 11;
   if (S.api >= 11) {
     Gold.only = $("gold-only").checked = false; // the "Gold set" box became the gold list
@@ -1007,8 +1007,9 @@ async function boot() {
   }
 }
 
-/** The event dropdown: one `<optgroup>` per group the taxonomy names, the events that
- * belong to none first and by name. Subcategories are not listed: the bar under it has them. */
+/** The event dropdown: All first (every event's label on the open shot; "Silver set" before
+ * api 11), then every event by name in one flat list (the taxonomy's `group` is not shown).
+ * Subcategories are not listed: the bar under it has them. */
 function fillEvents() {
   const option = (row) => {
     const name = row.display_name || row.event;
@@ -1018,21 +1019,10 @@ function fillEvents() {
     return found;
   };
   const byName = (a, b) => (a.display_name || a.event).localeCompare(b.display_name || b.event);
-  const groups = new Map();
-  for (const row of [...S.events].sort(byName)) {
-    const key = row.group || "";
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(row);
-  }
-  const loose = (groups.get("") || []).map(option);
-  groups.delete("");
-  const silver = S.api >= 11 ? [] : [new Option("Silver set", "silver")]; // api 11: a shot list
-  $("event").replaceChildren(...silver, ...loose, ...[...groups].map(([name, rows]) => {
-    const group = document.createElement("optgroup");
-    group.label = name;
-    group.append(...rows.map(option));
-    return group;
-  }));
+  const first = S.api >= 11
+    ? Object.assign(new Option("All", Lists.ALL), { title: "Every event's label on the shot" })
+    : new Option("Silver set", "silver");
+  $("event").replaceChildren(first, ...[...S.events].sort(byName).map(option));
 }
 
 /** `#event/shot`, the address of what is open (`#list/<name>/<shot>/<event>` at api 11). */
@@ -3390,6 +3380,7 @@ const ShotSearch = {
     ShotSearch.serial++;
     ShotSearch.show([]);
     $("shot").blur();
+    if (Lists.byShot) return Lists.select(shot); // All: the shot on every event
     if (shot === S.shot && S.meta?.event === S.event) return; // after an event change the shot opens anew
     openShot(shot);
   },
@@ -3408,7 +3399,7 @@ const ShotSearch = {
       else if (first != null) ShotSearch.open(first);
       else if (/^\d+$/.test(typed)) ShotSearch.open(Number(typed));
     } else if (event.key === "Escape") {
-      $("shot").value = S.shot ?? "";
+      $("shot").value = (Lists.byShot ? Lists.shot : S.shot) ?? "";
       ShotSearch.show([]);
       $("shot").blur();
     }
@@ -3571,14 +3562,16 @@ function wire() {
   window.addEventListener("pointerup", endDrag);
   window.addEventListener("pointercancel", endDrag);
   document.addEventListener("keydown", onKey);
-  $("event").addEventListener("change", () =>
-    // By shot (api 11) opens the event at the shot it has selected
-    (Lists.byShot ? Lists.openEvent($("event").value) : openEvent($("event").value, null))
-      .catch((error) => say(error.message, true))
-  );
   const listFailed = (error) => Activity.note("list", error.message, "error");
+  $("event").addEventListener("change", () => {
+    const value = $("event").value;
+    $("event").blur(); // the keys go to the page, as after a click on it
+    // All (api 11) shows the shot on every event; an event picked from All opens at its shot
+    if (value === Lists.ALL) return toggleByShot(true).catch(listFailed);
+    (Lists.byShot ? Lists.openEvent(value) : openEvent(value, null)).catch((error) => say(error.message, true));
+  });
   $("shotlist").addEventListener("change", () => chooseList($("shotlist").value).catch(listFailed));
-  $("by-shot").addEventListener("click", () => toggleByShot().catch(listFailed));
+  $("all-next").addEventListener("click", () => Lists.stepShot(1));
   $("silver-breadcrumb").addEventListener("click", () =>
     (S.api >= 11 ? openByShot(Lists.name, Lists.shot).catch(listFailed) : openSilver(Silver.batch, Silver.shot)));
   $("silver-next-event").addEventListener("click", () =>
@@ -3593,6 +3586,7 @@ function wire() {
   $("shot").addEventListener("input", ShotSearch.typed);
   $("shot").addEventListener("focus", () => $("shot").select());
   $("bottom").addEventListener("scroll", ShotSearch.place);
+  $("silver-page").addEventListener("scroll", ShotSearch.place);
   window.addEventListener("resize", ShotSearch.place);
   $("shot").addEventListener("blur", () => setTimeout(() => {
     if (document.activeElement !== $("shot")) ShotSearch.show([]);

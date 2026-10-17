@@ -1,5 +1,5 @@
-"""Plan D.8's twelve D1 checks in a real browser: shot lists, By shot, the activity
-line and the TokEye chips, against an api-11 server (with stubbed api-10, failing and
+"""Plan D.8's twelve D1 checks in a real browser (shot lists, All, the activity line and
+the TokEye chips) and 13 (the flat event dropdown with All), against an api-11 server (with stubbed api-10, failing and
 expired-fdp answers where a check needs them). The scenario is review_page_d1.mjs,
 run on review_browser.mjs's transport as test_review_silver.py runs its own."""
 
@@ -141,6 +141,6 @@ def test_the_d1_page_in_a_browser(served, tmp_path):
     checks = json.loads(result.stdout.splitlines()[-1])
     print(json.dumps(checks, indent=1))  # the report's numbers (pytest -rP)
     assert [c for c in checks if not c["ok"]] == [], checks
-    assert [c["name"].split(".")[0] for c in checks] == [str(n) for n in range(1, 13)]
+    assert [c["name"].split(".")[0] for c in checks] == [str(n) for n in range(1, 14)]
     saved = labels.read_saved(paths.label_tables / "alfven_eigenmode")
     assert 170899 in saved, "By shot's save reached the event's table"

@@ -1,22 +1,26 @@
-// Named shot lists on the review page (plan D.5): the list dropdown and its memory, and By shot,
-// which walks a list shot by shot across every event over the #silver-page DOM. A classic script
-// loaded before app.js: it only defines names, and app.js calls them (api 11).
+// Named shot lists on the review page (plan D.5): the list dropdown and its memory, and All (the
+// event dropdown's first entry, once the By shot button), which walks a list shot by shot across
+// every event over the #silver-page DOM. A classic script loaded before app.js: it only defines
+// names, and app.js calls them (api 11).
 "use strict";
 
-/** The list the queue shows and the By-shot walk. `name` and `lists` come from the last
+/** The list the queue shows and the walk All makes of it. `name` and `lists` come from the last
  * /api/queue answer (`list`, `lists`) for `event`; `overview` and `strips` are the
- * /api/overview answers for the list and for its selected `shot`. */
+ * /api/overview answers for the list and for its selected `shot` (`byShot`, `openByShot` and
+ * the `by-shot` notes keep the old name). */
 const Lists = {
+  ALL: "__all", // the event dropdown's All
+  ROSTER: "roster", // the event's own list: All walks it from the event's queue
   name: null, // the list the queue shows, as the server named it ("roster" for the event's own)
   lists: [], // the lists offered on `event`: /api/shotlists?event=
   event: null,
-  byShot: false, // By shot is pressed: #silver-page shows the list
-  context: false, // an event opened from By shot: the breadcrumb leads back to its shot
+  byShot: false, // All is chosen: #silver-page shows the list and the shot on every event
+  context: false, // an event opened from All: the breadcrumb leads back to its shot
   own: true, // the queue is the event's own view (no list, the roster or a fallback): gold extras stay out of it
-  shot: null, // the shot By shot has selected
+  shot: null, // the shot All has selected
   overview: null, // /api/overview?list=
   strips: null, // /api/overview?list=&shot=
-  sequence: 0, // the latest By-shot request; an older answer is dropped
+  sequence: 0, // the latest All request; an older answer is dropped
   INDENT: " ", // an em space per level a child list sits under its parent
 
   /** Where the browser keeps the list chosen on `event`; nothing kept means its default. */
@@ -29,6 +33,10 @@ const Lists = {
   queueKey: (event, name = Lists.name) => `${event}/${name ?? ""}`,
 
   /** An option's text: "elm · 576 · 120 saved" (the roster by its title). */
+  /** A strip layer's origin in one word (its full name is the tooltip). */
+  originText: (layer) => ({ saved: "saved", folded: "saved", format: "curated", extend: "model",
+    source: "source", suggest: "suggestion" })[layer.kind] || layer.kind,
+
   optionText: (entry) => `${entry.kind === "roster" ? entry.title : entry.name} · ${entry.n} · ${entry.n_saved ?? 0} saved`,
 
   /** The dropdown's three groups, [{label, options: [{value, text, title}]}], empty ones left out:
@@ -61,7 +69,7 @@ const Lists = {
     return { recommended: Boolean(entry.recommended), title };
   },
 
-  /** `#list/<name>[/<shot>[/<event>]]`, the address of a By-shot walk. */
+  /** `#list/<name>[/<shot>[/<event>]]`, the address of All on a list (once By shot's). */
   listAddress(name, shot = null, event = null) {
     const tail = shot == null ? "" : `/${shot}${event ? `/${encodeURIComponent(event)}` : ""}`;
     return `#list/${encodeURIComponent(name)}${tail}`;
@@ -192,16 +200,28 @@ const Lists = {
     showHeader();
   },
 
-  /** Show or hide the By-shot page in place of the rows; with an event open from it, the
-   * breadcrumb back to its shot and Next event. */
+  /** Show or hide All in place of the rows (the event dropdown says All, and the Find shot box
+   * moves above the list's shots, as it sits above the chips on an event); with an event open
+   * from it, the breadcrumb back to its shot and Next event. */
   show() {
-    document.body.classList.toggle("silver-mode", Lists.byShot);
-    $("silver-page").hidden = !Lists.byShot;
-    $("top").hidden = $("bottom").hidden = Lists.byShot;
-    $("by-shot")?.setAttribute("aria-pressed", String(Lists.byShot));
+    const all = Lists.byShot;
+    document.body.classList.toggle("silver-mode", all);
+    $("silver-page").hidden = !all;
+    $("top").hidden = $("bottom").hidden = all;
+    if (all) {
+      $("event").value = Lists.ALL;
+      $("silver-page").setAttribute("aria-label", "All");
+      $("silver-help").textContent = "J/K step · U next not done · Enter opens · Esc back";
+    }
+    const find = $("shot-find"), side = $("silver-find");
+    if (find && side && (find.parentElement === side) !== all) {
+      if (all) side.prepend(find);
+      else $("bottom").insertBefore(find, $("queue"));
+    }
+    if (side) side.hidden = !all;
     $("silver-breadcrumb").hidden = !Lists.context;
-    $("silver-breadcrumb").textContent = `← ${Lists.shot} overview`;
-    $("silver-breadcrumb").title = "Back to this shot on every event (G)";
+    $("silver-breadcrumb").textContent = `← All · ${Lists.shot}`;
+    $("silver-breadcrumb").title = "Back to All on this shot (G)";
     $("silver-next-event").hidden = !Lists.context || !S.meta?.saved;
   },
 
@@ -241,14 +261,54 @@ const Lists = {
         chip.setAttribute("aria-label", name);
         classes.append(chip);
       }
-      const progress = Object.assign(document.createElement("span"), {
-        textContent: `${row.saved}/${row.total}${row.done ? " ✓" : ""}`, className: "silver-progress",
+      const progress = Object.assign(document.createElement("span"), { // a roster row has no counts
+        textContent: row.total == null ? (row.done ? "✓" : "") : `${row.saved}/${row.total}${row.done ? " ✓" : ""}`,
+        className: "silver-progress",
       });
       button.append(order, number, classes, progress);
       button.addEventListener("click", () => Lists.select(row.shot));
       return button;
     }));
     $("silver-shots").querySelector(".current")?.scrollIntoView({ block: "nearest" });
+    // As on an event: Next names the shot K opens, the bar and the box the shot on screen.
+    const next = Lists.step(shots, Lists.shot, 1);
+    if ($("all-next-shot")) $("all-next-shot").textContent = next == null || next === Lists.shot ? "" : `→ ${next}`;
+    $("shot-now").textContent = Lists.shot == null ? "" : `Shot ${Lists.shot}`;
+    if (document.activeElement !== $("shot")) $("shot").value = Lists.shot ?? "";
+  },
+
+  /** K/J and Next: the list's next or previous shot (wrapping). */
+  stepShot(delta) {
+    const next = Lists.step(Lists.overview?.shots || [], Lists.shot, delta);
+    if (next != null) Lists.select(next);
+  },
+
+  /** A named list for /api/overview?list=&shot=: the strips are the same on every list, but the
+   * route takes a named one and the roster has none. The walked list, else the smallest list
+   * offered with shots. */
+  stripsList() {
+    if (Lists.name && Lists.name !== Lists.ROSTER) return Lists.name;
+    const named = Lists.lists.filter((entry) => entry.kind !== "roster" && entry.n > 0);
+    return named.length ? named.reduce((a, b) => (b.n < a.n ? b : a)).name : null;
+  },
+
+  /** The walked list's shots: /api/overview?list= for a named list; for the roster (each
+   * event's own), the event's queue in its order, done once saved (no counts across events). */
+  async fetchOverview(name, event = S.event) {
+    if (name !== Lists.ROSTER) return (await api(`/api/overview?list=${encodeURIComponent(name)}`)).json();
+    const queue = await (await api(Lists.queueUrl(event, Lists.ROSTER))).json();
+    const rows = (queue.shots || []).filter((row) => !row.extra);
+    return {
+      list: Lists.ROSTER, title: Lists.lists.find((entry) => entry.kind === "roster")?.title || "Event roster",
+      shots: rows.map((row, i) => ({ shot: row.shot, order: i + 1, classes: [], done: row.state !== "unreviewed" })),
+    };
+  },
+
+  /** /api/overview?list=&shot=: `shot` on every event. */
+  async fetchStrips(shot) {
+    const list = Lists.stripsList();
+    if (!list) throw new Error("this event offers no shot list");
+    return (await api(`/api/overview?list=${encodeURIComponent(list)}&shot=${shot}`)).json();
   },
 
   /** Select `shot`: its strips on every event, from /api/overview?list=&shot=. */
@@ -261,7 +321,7 @@ const Lists = {
     Lists.renderShots();
     history.replaceState(null, "", listAddress(name, shot));
     try {
-      const strips = await (await api(`/api/overview?list=${encodeURIComponent(name)}&shot=${shot}`)).json();
+      const strips = await Lists.fetchStrips(shot);
       if (!Lists.byShot || sequence !== Lists.sequence) return;
       Lists.strips = strips;
       Lists.renderStrips();
@@ -298,7 +358,9 @@ const Lists = {
           item.append(
             Object.assign(document.createElement("span"), { textContent: layer.kind }),
             document.createElement("canvas"),
-            Object.assign(document.createElement("span"), { textContent: layer.name, className: "silver-origin" }),
+            Object.assign(document.createElement("span"), {
+              textContent: Lists.originText(layer), title: layer.name, className: "silver-origin",
+            }),
           );
           item.dataset.layer = i;
           section.append(item);
@@ -318,7 +380,10 @@ const Lists = {
       const event = Lists.strips.events.find((found) => found.event === section.dataset.event);
       if (!event) continue;
       const row = section.firstChild;
-      row.lastChild.textContent = event.locked ? "Review parent first" : Lists.drawStrip(row.querySelector("canvas"), event, range);
+      const used = event.locked ? [] : Lists.drawStrip(row.querySelector("canvas"), event, range);
+      row.lastChild.textContent = event.locked ? "Review parent first"
+        : [...new Set(used.map(Lists.originText))].join(" · ") || "unassessed";
+      row.lastChild.title = used.map((layer) => layer.name).join("\n");
       for (const item of [...section.children].slice(1)) {
         Lists.drawStrip(item.querySelector("canvas"), event, range, [event.layers[Number(item.dataset.layer)]]);
       }
@@ -338,7 +403,7 @@ const Lists = {
   },
 
   /** One strip: each 10 ms frame in its category's colour, hatched where nothing assessed it.
-   * Returns the layers it drew from, as the strip's caption. */
+   * Returns the layers it drew from. */
   drawStrip(canvas, event, range, layers = event.layers) {
     const { cells, origin } = silverFrames(event, range, layers);
     const ratio = window.devicePixelRatio || 1;
@@ -365,11 +430,11 @@ const Lists = {
         g.fillRect(x(a), 0, x(b) - x(a), h);
       }
     }
-    return [...new Set(origin)].filter((i) => i >= 0).map((i) => layers[i].name).join(" · ") || "unassessed";
+    return [...new Set(origin)].filter((i) => i >= 0).map((i) => layers[i]);
   },
 
-  /** Open `event` at the selected shot, leaving By shot with the way back; with no shot
-   * selected, the event as usual. */
+  /** Open `event` at the selected shot, leaving All with the way back; with no shot selected,
+   * the event as usual. */
   async openEvent(event) {
     if (Lists.shot == null) {
       Object.assign(Lists, { byShot: false, context: false });
@@ -379,17 +444,17 @@ const Lists = {
     return openEvent(event, Lists.shot, true);
   },
 
-  /** After a save in an event opened from By shot: the shot's next event still to review, else
-   * the list's next shot not done, on its first such event. A failure says so and stays. */
+  /** After a save in an event opened from All: the shot's next event still to review, else the
+   * list's next shot not done, on its first such event. A failure says so and stays. */
   async nextEvent() {
     const shot = Lists.shot, event = S.event, name = Lists.name;
     const still = () => Lists.context && Lists.shot === shot && S.event === event;
     try {
-      const strips = await (await api(`/api/overview?list=${encodeURIComponent(name)}&shot=${shot}`)).json();
+      const strips = await Lists.fetchStrips(shot);
       if (!still()) return;
       const next = Lists.nextOnShot(strips.events, event);
       if (next) return await Lists.openEvent(next.event);
-      const overview = await (await api(`/api/overview?list=${encodeURIComponent(name)}`)).json();
+      const overview = await Lists.fetchOverview(name, event);
       if (!still()) return;
       Lists.overview = overview;
       const after = Lists.nextShot(overview.shots, shot);
@@ -397,14 +462,13 @@ const Lists = {
       const first = after && Lists.byShot && Lists.strips ? Lists.nextOnShot(Lists.strips.events, null) : null;
       if (first) await Lists.openEvent(first.event);
     } catch (error) {
-      Activity.note("by-shot", `Could not open the next event: ${error.message}. G goes back to the shot.`, "error");
+      Activity.note("by-shot", `Could not open the next event: ${error.message}. G goes back to All.`, "error");
     }
   },
 };
 
 /** Fill #shotlist from a queue answer (or {list, lists}) for `event`: the groups, the list in
- * use, how the closed control looks, the server's fallback note, and whether By shot can walk
- * it (the roster is each event's own, so it cannot). */
+ * use, how the closed control looks and the server's fallback note. */
 function fillLists(body, event = S.event) {
   Object.assign(Lists, { event, lists: body?.lists || [], name: body?.list ?? null });
   Activity.note("list", body?.note || null);
@@ -422,23 +486,16 @@ function fillLists(body, event = S.event) {
   const look = Lists.mark(Lists.lists.find((entry) => entry.name === Lists.name));
   select.classList.toggle("recommended", look.recommended);
   select.title = look.title;
-  const byShot = $("by-shot");
-  if (byShot) {
-    byShot.disabled = !Lists.name || Lists.name === "roster";
-    byShot.title = byShot.disabled
-      ? "By shot needs a named list: choose one first"
-      : "Walk this list shot by shot across every event (G goes back)";
-  }
 }
 
 /** The list dropdown changed: remember the choice (nothing for the default) and show the list,
- * with one queue request, keeping the old queue usable until it arrives; in By shot, walk the
- * new list. A failure says so and puts the dropdown back. */
+ * with one queue request, keeping the old queue usable until it arrives; in All, walk the new
+ * list. A failure says so and puts the dropdown back. */
 async function chooseList(name) {
   const event = S.event;
   if (!event || (name === Lists.name && !Lists.byShot)) return;
   store(Lists.storageKey(event), Lists.lists.find((entry) => entry.name === name)?.default ? null : name);
-  if (Lists.byShot) return openByShot(name);
+  if (Lists.byShot) return openByShot(name, Lists.shot); // the strips are the shot's on any list
   if (Lists.context) {
     Lists.context = false;
     Lists.show();
@@ -459,16 +516,10 @@ async function chooseList(name) {
   await openShot(inQueue(queue.resume) ? queue.resume : firstToReview());
 }
 
-/** Turn By shot on (at the open shot when the list has it) or off (the event at the shot By
- * shot selected). */
+/** Turn All on (the list the queue shows, at the open shot) or off (the event, at the shot All
+ * selected). */
 function toggleByShot(on = !Lists.byShot) {
-  if (on) {
-    if (!Lists.name || Lists.name === "roster") {
-      Activity.note("by-shot", "By shot needs a named list. Choose one first.");
-      return Promise.resolve();
-    }
-    return openByShot(Lists.name, S.shot != null && inQueue(S.shot) ? S.shot : null);
-  }
+  if (on) return Lists.byShot ? Promise.resolve() : openByShot(Lists.name || Lists.ROSTER, S.shot ?? null);
   const event = [S.event, stored("labeler:event"), ...S.events.map((row) => row.event)].find((found) => found && hasEvent(found));
   Object.assign(Lists, { byShot: false, context: false });
   if (!event) {
@@ -478,10 +529,11 @@ function toggleByShot(on = !Lists.byShot) {
   return openEvent(event, Lists.shot);
 }
 
-/** Show list `name` shot by shot over #silver-page: its shots with their progress, its family
+/** All: list `name` shot by shot over #silver-page: its shots with their progress, its family
  * as the batch buttons, `shot` selected and, with `event`, that event opened at it. The event
- * dropdown keeps the event; the shot on screen is closed. */
+ * dropdown says All; the shot on screen is closed. */
 async function openByShot(name = Lists.name, shot = null, event = null) {
+  name ||= Lists.ROSTER;
   const ticket = ++S.ticket;
   leave();
   document.body.classList.remove("busy"); // as busy(null) does, without writing #status
@@ -493,10 +545,7 @@ async function openByShot(name = Lists.name, shot = null, event = null) {
   Activity.clear("by-shot");
   if (!S.event) {
     const pick = [stored("labeler:event"), ...S.events.map((row) => row.event)].find((found) => found && hasEvent(found));
-    if (pick) {
-      S.event = pick;
-      $("event").value = locate(pick).row.event;
-    }
+    if (pick) S.event = pick; // the event whose lists are offered (and whose roster All walks)
   }
   $("silver-strips").replaceChildren();
   $("silver-time").textContent = "";
@@ -506,7 +555,7 @@ async function openByShot(name = Lists.name, shot = null, event = null) {
   history.replaceState(null, "", listAddress(name, shot));
   try {
     if (S.event && (Lists.event !== S.event || !Lists.lists.some((entry) => entry.name === name))) await Lists.load(S.event);
-    const overview = await (await api(`/api/overview?list=${encodeURIComponent(name)}`)).json();
+    const overview = await Lists.fetchOverview(name);
     if (ticket !== S.ticket || sequence !== Lists.sequence) return;
     Lists.overview = overview;
     $("silver-title").textContent = overview.title || name;
@@ -519,8 +568,8 @@ async function openByShot(name = Lists.name, shot = null, event = null) {
   }
 }
 
-/** By shot's keys (silverKey's at api 11): ↑/↓ or j/k move, Enter opens, g or Escape go back.
- * True when the key was By shot's. */
+/** All's keys (silverKey's at api 11), as on an event: K, → or ↓ the next shot, J, ← or ↑ the
+ * previous, U the next not done; Enter opens, g or Escape go back. True when the key was All's. */
 function byShotKey(key) {
   if (!Lists.byShot) {
     if (Lists.context && ["g", "Escape"].includes(key)) {
@@ -530,9 +579,11 @@ function byShotKey(key) {
     return false;
   }
   const shots = Lists.overview?.shots || [];
-  if (["ArrowDown", "ArrowUp", "j", "k"].includes(key)) {
-    const next = Lists.step(shots, Lists.shot, ["ArrowDown", "j"].includes(key) ? 1 : -1);
-    if (next != null) Lists.select(next);
+  if (["ArrowDown", "ArrowUp", "ArrowRight", "ArrowLeft", "j", "k"].includes(key)) {
+    Lists.stepShot(["ArrowDown", "ArrowRight", "k"].includes(key) ? 1 : -1);
+  } else if (key === "u") {
+    const next = Lists.nextShot(shots, Lists.shot);
+    if (next) Lists.select(next.shot);
   } else if (key === "Enter") {
     if (!Lists.strips && shots.length) Lists.select(Lists.shot ?? shots[0].shot);
     else {

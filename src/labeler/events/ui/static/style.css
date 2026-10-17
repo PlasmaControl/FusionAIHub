@@ -126,11 +126,10 @@ kbd { font: inherit; font-size: 11px; opacity: 0.7; }
 /* Shot lists (api 11): the closed control's border says whether the list is recommended. */
 #shotlist { max-width: 12em; }
 #shotlist.recommended { border-color: var(--label); }
-#shotlist[hidden], #by-shot[hidden] { display: none; }
+#shotlist[hidden] { display: none; }
 /* The view (api 11, workspace): narrow, so the bar keeps its one line at 1280 px. */
 #view { max-width: 8.5em; text-overflow: ellipsis; }
 #view[hidden] { display: none; }
-#by-shot[aria-pressed="true"] { background: var(--label); border-color: var(--label); color: #fff; }
 
 /* What is loading (api 11). A zero basis, and a margin that takes back the bar's 10px gap: it
    takes only the room left on the bar's line, so it never wraps the bar onto a new one. When
@@ -381,7 +380,14 @@ body.silver-mode #stale { display: none; }
 #silver-batches [aria-pressed="true"] { background: var(--label); color: #fff; }
 #silver-help, #silver-time { color: var(--muted); margin: 8px 0; }
 #silver-layout { display: grid; grid-template-columns: minmax(260px, 32%) minmax(0, 1fr); gap: 16px; }
-#silver-shots { max-height: calc(100dvh - 130px); overflow: auto; }
+#silver-shots { max-height: calc(100dvh - 170px); overflow: auto; }
+/* All (api 11): the Find shot box and Next sit above the list's shots, as above the chips on an
+ * event. */
+#silver-side { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+#silver-find { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+#silver-find[hidden] { display: none; }
+#silver-find #shot-find { margin: 0; padding: 0; }
+#all-next-shot { color: var(--muted); font-variant-numeric: tabular-nums; }
 .silver-shot { display: grid; grid-template-columns: 25px 55px minmax(0, 1fr) 45px;
   gap: 7px; align-items: center; width: 100%; text-align: left; margin-bottom: 4px;
   padding: 6px; background: var(--panel); }
@@ -501,7 +507,7 @@ body.silver-mode #stale { display: none; }
   #dock-resize { display: none; }
 }
 body.silver-mode #dock, body.silver-mode #pins, body.silver-mode #view, body.silver-mode #dock-tab,
-body.silver-mode #add-row, body.silver-mode #shot-matches { display: none; }
+body.silver-mode #add-row { display: none; }
 
 /* ---- R2: the dock tab, the dock's Add menu, popped-out rows, row select and Add row ---- */
 /* The tab on the dock's left edge (the window's right edge while it is closed): always there. */

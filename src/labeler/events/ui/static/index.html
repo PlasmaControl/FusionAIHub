@@ -10,7 +10,6 @@
 <header id="bar">
   <select id="event" aria-label="Event"></select>
   <select id="shotlist" aria-label="Shot list" hidden></select>
-  <button id="by-shot" type="button" aria-pressed="false" hidden>By shot</button>
   <select id="view" aria-label="View" title="View: which rows show, and the dock" hidden></select>
   <label id="gold-only-label" title="Only the 50 gold-set shots"><input id="gold-only" type="checkbox"> Gold set</label>
   <button id="silver-breadcrumb" type="button" title="Back to silver" hidden></button>
@@ -66,7 +65,10 @@
   <nav id="silver-batches" aria-label="Batches"></nav>
   <p id="silver-help">↑/↓ or j/k move · Enter opens · Esc or g back</p>
   <div id="silver-layout">
-    <nav id="silver-shots" aria-label="Silver shots"></nav>
+    <div id="silver-side">
+      <div id="silver-find" hidden><button id="all-next" type="button" title="Next shot (K)">Next <span id="all-next-shot"></span></button></div>
+      <nav id="silver-shots" aria-label="List shots"></nav>
+    </div>
     <section id="silver-overview" aria-label="Shot overview">
       <div id="silver-heading">
         <h1 id="silver-title">Silver set</h1>
@@ -120,6 +122,7 @@
     <tr><td><kbd>U</kbd></td><td>Next unreviewed shot</td></tr>
     <tr><td><kbd>H</kbd></td><td>Saved versions: who saved what, and restore one</td></tr>
     <tr><td>Find shot</td><td>Type digits to find a shot; Enter opens it</td></tr>
+    <tr id="all-key" hidden><td>All (event list)</td><td>Every event's label on one shot; click a strip to open it, <kbd>G</kbd> comes back</td></tr>
     <tr><td><kbd>M</kbd></td><td>AE: show or hide the mask and TokEye lines</td></tr>
     <tr><td><kbd>T</kbd></td><td>Show or hide the event markers</td></tr>
     <tr><td>Click a mask region</td><td>Reject it, or take that back (saved at once)</td></tr>

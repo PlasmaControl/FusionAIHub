@@ -451,7 +451,8 @@ def test_a_gold_shot_off_an_events_roster_is_an_extra_row_that_opens_and_saves(c
     assert next(r for r in again if r["shot"] == GOLD_OFF_ROSTER)["state"] != "unreviewed"
     (paths.label_tables / "gold/gold_shots.csv").unlink()
     assert not any(r.get("extra") for r in client.get("/api/queue?event=disruption").json()["shots"])
-    assert client.get(f"/api/shot?{query}").status_code == 404
+    # Off gold it is no longer an extra row, but as an open six-digit shot it still opens.
+    assert client.get(f"/api/shot?{query}").status_code == 200
 
 
 def test_silver_fallback_uses_source_row_before_other_layers(client, paths):
@@ -582,7 +583,7 @@ await send("Page.navigate", { url: `${BASE}/?token=${TOKEN}#silver/2/170899` });
 await until(strips(170899));
 assert.equal(await js('location.hash'), '#list/silver_batch_2/170899');
 assert.equal(await js('[...$("event").options].some((o) => o.value === "silver")'), false);
-assert.equal(await js('$("by-shot").getAttribute("aria-pressed")'), "true");
+assert.equal(await js('$("event").value'), "__all");
 assert.deepEqual(await js('[...$("silver-batches").children].map((b) => b.getAttribute("aria-pressed"))'),
   ["false", "false", "true"]);
 assert.equal(await js('$("silver-shots").textContent.includes("AE audited")'), true);
@@ -617,7 +618,7 @@ await js('byShotKey("g")');
 await until(strips(170815));
 await js('byShotKey("Escape")');
 await until('Lists.byShot && Lists.shot === null && Lists.overview?.list === "silver_batch_2"');
-await js('byShotKey("j")');
+await js('byShotKey("k")');
 await until(strips(170899));
 await js('location.hash = "#alfven_eigenmode/170899"');
 await until('S.shot === 170899 && S.meta && !Lists.byShot && !Lists.context');
