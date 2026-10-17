@@ -308,6 +308,7 @@ const S = {
   tokeye: null, // TokEye's lines over the whole shot, as /api/tokeye gave them (api 4)
   showMasks: true, // M shows and hides both; the browser remembers which
   showMarkers: true, // T shows and hides the event markers; the browser remembers which
+  workspace: false, // /api/version said `workspace: true`: views, the dock and pins (api 11)
 };
 const Silver = { mode: false, context: false, batch: 1, shot: null,
   data: null, overview: null, layers: false, sequence: 0 };
@@ -353,14 +354,27 @@ function store(key, value) {
   }
 }
 
-async function api(path, options) {
-  const response = await fetch(path, { credentials: "same-origin", ...options });
+/** One request: the global fetch, once. `Activity` tracks it (a `quiet` one, such as a
+ * prefetch or a poll, is tracked but never shown); a failure keeps the server's `kind`. */
+async function api(path, options = {}) {
+  const { quiet = false, ...rest } = options || {};
+  const id = Activity.start(path, { quiet, method: rest.method });
+  let response;
+  try {
+    response = await fetch(path, { credentials: "same-origin", ...rest });
+  } catch (error) {
+    Activity.end(id, error);
+    throw error;
+  }
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     const error = new Error(body.error || `${response.status} ${response.statusText}`);
     error.status = response.status;
+    if (body.kind) error.kind = body.kind;
+    Activity.end(id, error);
     throw error;
   }
+  Activity.end(id);
   return response;
 }
 
@@ -383,7 +397,11 @@ function readTokens() {
 
 // -- time and geometry
 
-const plotWidth = () => Math.max(1, $("axis-row").clientWidth - GUTTER - RIGHT);
+/** The workspace (views, dock, pins) is on: api 11 and a server that says so. */
+const ws = () => S.api >= 11 && S.workspace;
+/** The px right of every plot: RIGHT, plus the cut margin while the dock shows one. */
+const right = () => RIGHT + (ws() ? Slice.margin : 0);
+const plotWidth = () => Math.max(1, $("axis-row").clientWidth - GUTTER - right());
 const px = (t) => GUTTER + ((t - S.view[0]) / (S.view[1] - S.view[0])) * plotWidth();
 const middle = () => (S.view[0] + S.view[1]) / 2;
 
@@ -908,19 +926,40 @@ async function boot() {
   S.blind = stored("labeler:detachment-blind") === "true";
   Gold.only = $("gold-only").checked = stored("labeler:gold-only") === "1";
   wire();
+  let version = null, versionError = null;
   try {
-    S.api = (await (await api("/api/version")).json()).api;
-  } catch {
+    version = await (await api("/api/version")).json();
+    S.api = version.api;
+    S.workspace = version.workspace === true;
+  } catch (error) {
     S.api = 1; // a server older than this page: save without a name, no history
+    versionError = error;
   }
   $("show-versions").hidden = S.api < 2;
   $("reviewer-name").hidden = S.api < 2 || S.api >= 5;
   $("reviewer").hidden = S.api < 5;
-  $("stale").hidden = S.api >= 7;
-  $("stale").textContent = S.api < 2
-    ? "Restart the server for names and history"
-    : S.api < 5 ? "Restart the server for the list of names"
-    : "Restart the server for individual/span annotations";
+  // api 11: shot lists, By shot, the activity line and TokEye chips (status.js, lists.js,
+  // overlays.js); an older server keeps the page it had, and #stale says what a restart adds.
+  const failed = versionError && Activity.versionNote(versionError);
+  $("stale").hidden = S.api >= 11 && !failed;
+  $("stale").textContent = failed || (Activity.staleText(S.api) ?? "");
+  Activity.enabled = S.api >= 11;
+  $("shotlist").hidden = $("by-shot").hidden = S.api < 11;
+  $("gold-only-label").hidden = S.api >= 11;
+  if (S.api >= 11) {
+    Gold.only = $("gold-only").checked = false; // the "Gold set" box became the gold list
+    const fdp = Activity.fdpNote(version?.fdp);
+    if (fdp) Activity.note("fdp", fdp.text, fdp.tone);
+  }
+  if (ws()) {
+    // Views, the dock and pins (signals.js, slice.js, dock.js, views.js); without them the page
+    // is today's. #view lists Default and Edit view… until it gets focus (no request here).
+    $("view").hidden = false;
+    Views.fillSelect();
+    buildDock();
+    for (const line of document.querySelectorAll("#keys .workspace-key")) line.hidden = false;
+  }
+  renderActivity();
   if (S.api >= 5) {
     showName();
     if (!S.picked) chooseName(); // not awaited: the shot loads behind the list
@@ -928,7 +967,11 @@ async function boot() {
   try {
     S.events = (await (await api("/api/events")).json()).events;
     fillEvents();
-    if (location.hash.startsWith("#silver/")) {
+    if (S.api >= 11) {
+      Lists.migrate(stored, store, S.events);
+      const at = Lists.parseAddress(location.hash); // #list/…, or #silver/… redirected to it
+      if (at) return await openByShot(at.list, at.shot, at.event);
+    } else if (location.hash.startsWith("#silver/")) {
       const [, batch, shot, event] = location.hash.slice(1).split("/");
       return await openSilver(Number(batch) || 1, Number(shot) || null, event);
     }
@@ -963,7 +1006,8 @@ function fillEvents() {
   }
   const loose = (groups.get("") || []).map(option);
   groups.delete("");
-  $("event").replaceChildren(new Option("Silver set", "silver"), ...loose, ...[...groups].map(([name, rows]) => {
+  const silver = S.api >= 11 ? [] : [new Option("Silver set", "silver")]; // api 11: a shot list
+  $("event").replaceChildren(...silver, ...loose, ...[...groups].map(([name, rows]) => {
     const group = document.createElement("optgroup");
     group.label = name;
     group.append(...rows.map(option));
@@ -971,8 +1015,10 @@ function fillEvents() {
   }));
 }
 
-/** `#event/shot`, the address of what is open. */
+/** `#event/shot`, the address of what is open (`#list/<name>/<shot>/<event>` at api 11). */
 function fromHash() {
+  const at = S.api >= 11 && location.hash.startsWith("#list/") ? Lists.parseAddress(location.hash) : null;
+  if (at) return [at.event, at.shot];
   const parts = decodeURIComponent(location.hash.slice(1)).split("/");
   const [event, shot] = parts[0] === "silver" ? [parts[3] || "silver", parts[2]] : parts;
   return [event, Number(shot) || null];
@@ -980,7 +1026,15 @@ function fromHash() {
 
 /** A link pasted into the address bar opens what it names. */
 function followHash() {
-  if (location.hash.startsWith("#silver/")) {
+  const at = S.api >= 11 ? Lists.parseAddress(location.hash) : null;
+  if (at) {
+    const shown = Lists.name === at.list && (Lists.byShot
+      ? Lists.shot === at.shot && !at.event
+      : Lists.context && Lists.shot === at.shot && S.event === at.event && S.shot === at.shot);
+    if (!shown) openByShot(at.list, at.shot, at.event).catch((error) => Activity.note("by-shot", error.message, "error"));
+    return;
+  }
+  if (S.api < 11 && location.hash.startsWith("#silver/")) {
     const [, batch, shot, event] = location.hash.slice(1).split("/");
     if (Silver.batch === Number(batch) && Silver.shot === Number(shot) &&
       (Silver.mode && !event || Silver.context && S.event === event && S.shot === Number(shot))) return;
@@ -988,8 +1042,9 @@ function followHash() {
     return;
   }
   Silver.context = false;
+  Lists.context = false;
   const [event, shot] = fromHash();
-  if (event !== S.event && hasEvent(event)) {
+  if ((event !== S.event || Lists.byShot) && hasEvent(event)) {
     openEvent(event, shot).catch((error) => say(error.message, true));
   } else if (event === S.event && shot && shot !== S.shot) {
     openShot(shot);
@@ -1016,14 +1071,22 @@ function leave() {
 
 async function openEvent(event, shot, silverReview = false) {
   if (event === "silver") return openSilver(Silver.batch, Silver.shot);
-  Silver.context = silverReview || (Silver.context && Silver.shot === shot);
-  Silver.mode = false;
-  showSilverMode();
+  if (S.api >= 11) {
+    // `silverReview`: opened from By shot, so the queue is By shot's list and G goes back
+    Lists.context = silverReview || (Lists.context && Lists.shot === shot);
+    Lists.byShot = false;
+    Lists.show();
+  } else {
+    Silver.context = silverReview || (Silver.context && Silver.shot === shot);
+    Silver.mode = false;
+    showSilverMode();
+  }
   const ticket = ++S.ticket;
   leave();
   S.queue = S.allQueue = [];
   S.queueEvent = null;
   S.event = event;
+  if (ws()) Views.restore(event); // Default asks nothing; a saved view asks /api/views once
   const { row } = locate(event);
   S.categories = row.categories; // a subcategory offers its parent's present and uncertain
   S.category = known()[0] || 1;
@@ -1034,16 +1097,27 @@ async function openEvent(event, shot, silverReview = false) {
   renderQueue();
   showHeader();
   const saveCount = S.saveCount;
+  // api 11: `list=` only for a list other than the event's default, so a default open asks
+  // today's exact URL; the answer carries the lists for the dropdown.
+  const asked = S.api >= 11 ? (Lists.context ? Lists.name : Lists.chosen(event)) : null;
+  if (S.api >= 11) $("shotlist").disabled = true; // the lists are the event's once its queue is in
   let queue;
   try {
-    queue = await (await api(`/api/queue?event=${enc(event)}`)).json();
+    queue = await (await api(S.api >= 11 ? Lists.queueUrl(event, asked) : `/api/queue?event=${enc(event)}`)).json();
   } catch (error) {
     if (S.event !== event) return;
     S.queueEvent = event;
+    if (S.api >= 11) fillLists({ list: null, lists: [] }, event);
     showNothing(null, `${event}: the queue could not be read: ${error.message}. Choose the event again to retry.`);
     return;
   }
   if (S.event !== event) return;
+  if (S.api >= 11) {
+    Lists.take(event, queue, saveCount, asked);
+    if ($("status").textContent === "the queue is still loading") say("");
+    if (ticket !== S.ticket) return;
+    return await openShot(shot || (inQueue(queue.resume) ? queue.resume : firstToReview()));
+  }
   const saved = S.savedRows.get(event);
   S.allQueue = queue.shots.map((row) => {
     const newer = saved?.get(row.shot);
@@ -1082,6 +1156,12 @@ async function loadGoldShots() {
 
 /** The queue the page offers: with "Gold set" ticked, only the gold list's shots. */
 function filterQueue() {
+  // api 11: the server applied the list; the event's own view still leaves out the gold shots
+  // its roster lacks, as before, while a list's off-roster shots are its own
+  if (S.api >= 11) {
+    S.queue = Lists.own ? S.allQueue.filter((row) => !row.extra) : S.allQueue;
+    return;
+  }
   // `extra` rows are gold shots the event's roster lacks: offered only with the box ticked
   S.queue = Gold.only && Gold.shots
     ? S.allQueue.filter((row) => Gold.shots.has(row.shot))
@@ -1115,6 +1195,7 @@ function showNothing(shot, text) {
   cancelAnimationFrame(S.frame);
   Object.assign(S, { shot, meta: null, data: null, overview: null, label: null,
     undo: [], selected: -1, asked: "", frame: 0, masks: null, tokeye: null });
+  Overlays.open(null); // no chips, no poll
   showMasks();
   const note = document.createElement("p");
   note.className = "failure";
@@ -1128,6 +1209,7 @@ async function openShot(shot) {
   clearVideo();
   const ticket = ++S.ticket;
   leave();
+  Activity.clear("prefetch", "masks", "layers"); // notes about the shot left behind
   if (shot == null) {
     const { row, chip } = locate(S.event);
     showNothing(null, chip
@@ -1135,6 +1217,7 @@ async function openShot(shot) {
       : `${S.event} has no shots to review.`);
     return;
   }
+  let wait = null; // the bar's item for a store build, with Stop waiting (api 11)
   try {
     let response, meta;
     for (;;) {
@@ -1144,11 +1227,17 @@ async function openShot(shot) {
       if (response.status !== 202) break;
       const p = meta.progress;
       busy(`${shot}: building${p ? ` ${p.done}/${p.total} ${p.stage}` : ""}`);
+      if (S.api >= 11) {
+        const found = locate(S.event);
+        wait = Activity.build(wait, { shot, name: found?.chip?.display_name || found?.row.display_name || S.event, body: meta });
+      }
       await sleep(800);
       if (ticket !== S.ticket) return;
     }
+    if (wait) wait = Activity.end(wait);
     Object.assign(S, { shot, meta, data: null, overview: null, asked: "", undo: [], selected: -1, masks: null,
       tokeye: null });
+    if (S.api >= 11) Overlays.open(meta, ticket); // the rows' TokEye states, before the rows are built
     if (meta.categories) { // a subcategory says what it offers
       S.categories = meta.categories;
       if (!known().includes(S.category)) S.category = known()[0] || 1;
@@ -1175,16 +1264,20 @@ async function openShot(shot) {
       S.prefilled = mergeExposure(S.prefilled, true); // opened on the Source
     keepExposure();
     buildRows();
+    if (ws()) applyView(); // order, heights and added rows; the dock; a new shot's pins reset
     arrive();
     fit();
     buildVideo();
     fetchRows(0);
     prefetch();
     loadMasks(ticket);
+    loadOverlays(ticket);
   } catch (error) {
     if (ticket !== S.ticket) return;
     // Stay on the shot, with nothing to edit, so J, K and U carry on from it.
     showNothing(shot, `${shot} has nothing to show: ${error.message}. K opens the next shot.`);
+  } finally {
+    if (wait) Activity.end(wait); // a newer shot or Stop waiting ended the wait
   }
 }
 
@@ -1195,15 +1288,20 @@ function arrive() {
   $("cursor").hidden ||= !S.meta;
   for (const id of ["save", "revert", "show-versions"]) $(id).disabled = !S.meta;
   if (Silver.context && Silver.shot !== S.shot) Silver.context = false;
-  showSilverMode();
-  history.replaceState(null, "", Silver.context
+  if (Lists.context && Lists.shot !== S.shot) Lists.context = false;
+  if (S.api >= 11) Lists.show();
+  else showSilverMode();
+  history.replaceState(null, "", Lists.context
+    ? listAddress(Lists.name, S.shot, S.event)
+    : Silver.context
     ? `#silver/${Silver.batch}/${S.shot}/${S.event}`
     : `#${S.event}${S.shot == null ? "" : `/${S.shot}`}`);
   $("shot").value = S.shot ?? "";
   showHeader();
-  if (S.api >= 7) {
-    $("stale").hidden = S.event !== "detachment" || S.api >= 9;
-    $("stale").textContent = "Restart the server for detachment cameras";
+  if (S.api >= 7 && S.api < 11) { // older servers: what a restart adds
+    const cameras = S.event === "detachment" && S.api < 9;
+    $("stale").hidden = false;
+    $("stale").textContent = cameras ? "Restart the server for detachment cameras" : Activity.staleText(S.api);
   }
   renderQueue();
   $("queue").querySelector(".current")?.scrollIntoView({ block: "nearest" });
@@ -1218,7 +1316,11 @@ function busy(text) {
 /** Ask for the next shot now, so a build it needs is done when the reviewer gets there. */
 function prefetch() {
   const next = neighbour(1);
-  if (next != null && next !== S.shot) api(`/api/shot?event=${enc(S.event)}&shot=${next}`).catch(() => {});
+  if (next == null || next === S.shot) return;
+  // Quiet: the bar does not show it; a failed build says so there (api 11), muted.
+  api(`/api/shot?event=${enc(S.event)}&shot=${next}`, { quiet: true }).catch((error) => {
+    if (S.api >= 11) Activity.note("prefetch", ERROR_COPY.prefetch({ shot: next, message: error.message }));
+  });
 }
 
 function stillLoadingQueue() {
@@ -1256,6 +1358,7 @@ function fetchRows(delay = 90) {
 
 async function loadRows() {
   if (!S.meta || pendingNavigation()) return;
+  if (ws()) Views.fetchAdded(); // an unchanged window asks nothing
   const [v0, v1] = S.view;
   // A fifth wider than the view either side, so a pan has data while the next one loads.
   const t0 = Math.max(S.meta.t_range[0], v0 - (v1 - v0) * 0.2);
@@ -1345,7 +1448,9 @@ async function save(next) {
     }
     if (S.event === event) {
       const before = S.queue.find((row) => row.shot === shot)?.state;
-      S.allQueue = S.allQueue.map((row) => (row.shot === shot ? body.row : row));
+      // a list's off-roster shot stays marked as one (api 11)
+      const keep = (row) => (row.extra && S.api >= 11 ? { ...body.row, extra: true } : body.row);
+      S.allQueue = S.allQueue.map((row) => (row.shot === shot ? keep(row) : row));
       filterQueue();
       const chip = locate(event)?.chip;
       if (chip && before === "unreviewed") chip.n_reviewed += 1;
@@ -1353,8 +1458,10 @@ async function save(next) {
       showHeader();
     }
     if (Silver.context && Silver.shot === shot) $("silver-next-event").hidden = false;
+    if (Lists.context && Lists.shot === shot) $("silver-next-event").hidden = false;
     if (next && ticket === S.ticket) {
-      if (Silver.context) await nextSilverEvent();
+      if (Lists.context) await Lists.nextEvent(); // its own catch: the save stands either way
+      else if (Silver.context) await nextSilverEvent();
       else await go(1);
     }
   } catch (error) {
@@ -1370,7 +1477,7 @@ function buildRows() {
   $("rows").replaceChildren(...S.meta.rows.map(row => {
     const canvas = document.createElement("canvas");
     const metadata = S.meta.params?.panel_metadata?.[row.name];
-    canvas.title = metadata?.caveat || "";
+    canvas.title = [metadata?.caveat, Overlays.title(row)].filter(Boolean).join(" · ");
     return canvas;
   }));
   sizeCanvases();
@@ -1382,6 +1489,19 @@ function sizeRows() {
   const base = S.meta.rows.map((row) => (isBlind() && S.meta.params?.panel_metadata?.[row.name]?.indicator
     ? 0 : row.kind === "image" ? IMAGE_H : TRACE_H));
   const room = $("top").clientHeight - $("axis-row").offsetHeight - $("video-panel").offsetHeight;
+  if (ws()) {
+    // The view's heights (layoutRows): store rows at theirs or today's, hidden ones at 0, added
+    // rows after them; only the rows not fixed scale up to fill the view.
+    const plan = layoutRows().map((item, i) => ({ fixed: item.fixed,
+      h: item.hidden || base[i] === 0 ? 0 : item.h ?? base[i] ?? TRACE_H }));
+    const fixed = plan.reduce((sum, item) => sum + (item.fixed ? item.h : 0), 0);
+    const flexible = plan.reduce((sum, item) => sum + (item.fixed ? 0 : item.h), 0);
+    const grow = Math.max(1, (room - fixed) / (flexible || 1));
+    [...$("rows").children].forEach((canvas, i) => {
+      canvas.style.height = `${Math.floor(plan[i].fixed ? plan[i].h : plan[i].h * grow)}px`;
+    });
+    return;
+  }
   const scale = Math.max(1, room / (base.reduce((a, b) => a + b, 0) || 1));
   [...$("rows").children].forEach((canvas, i) => {
     canvas.style.height = `${Math.floor(base[i] * scale)}px`;
@@ -1420,6 +1540,12 @@ function render() {
     drawTrack($("label-track"), S.label, true, S.api >= 8 ? 0 : undefined);
     if (S.api >= 8) drawTrack($("crowd-track"), S.label, true, 1);
     showVideoCursor();
+    if (ws()) {
+      drawDock();
+      placePinTabs();
+      drawMargins();
+      if (!Slice.inRows && !S.drag) Slice.showHeld(); // where a zoom or pan moved the held time
+    }
   });
 }
 
@@ -1430,29 +1556,33 @@ const categoryColour = (c, event = S.event, categories = S.categories) =>
 
 function drawRows() {
   const canvases = $("rows").children;
+  const workspace = ws();
   S.meta.rows.forEach((row, i) => {
     const canvas = canvases[i];
     const [w, h] = [canvas.clientWidth, canvas.clientHeight];
     const g = context(canvas);
     if (isBlind() && S.meta.params?.panel_metadata?.[row.name]?.indicator) return;
+    if (workspace && canvas.classList.contains("view-hidden")) return;
     const values = S.data && S.data.rows[i];
     const range = row.kind === "image" ? imageRange(row) : values && traceRange(row, values);
     g.save();
     g.beginPath();
-    g.rect(GUTTER, 0, w - GUTTER - RIGHT, h);
+    g.rect(GUTTER, 0, w - GUTTER - right(), h);
     g.clip();
     if (row.kind === "image") drawImage(g, row, i, h);
     if (row.kind === "image") drawTokeye(g, row, w, h, true);
     if (row.kind === "image") drawMasks(g, row, h);
     if (values && row.kind === "trace") drawTrace(g, row, values, range, w, h);
+    drawUngated(g, row, h);
     drawOverlay(g, w, h);
     if (row.kind === "image") drawTokeye(g, row, w, h, false);
+    if (workspace) drawPins(g, h);
     g.restore();
     drawGutter(g, row, range, h);
     const note = S.event === "detachment" && indicatorNote(row, S.video?.time);
     if (note) {
       g.font = FONT; g.textAlign = "left";
-      const width = w - GUTTER - RIGHT - 10;
+      const width = w - GUTTER - right() - 10;
       g.fillStyle = T.panel;
       g.fillRect(GUTTER + 3, 1, Math.min(width, g.measureText(note).width + 4), 15);
       g.fillStyle = T.muted;
@@ -1461,6 +1591,24 @@ function drawRows() {
     g.fillStyle = T.rule;
     g.fillRect(0, h - 1, w, 1);
   });
+  if (workspace) drawAddedRows();
+}
+
+/** Afrac lower's bins drawn from the ungated ratio, where the producer marked the bin invalid
+ * (stream E's per-bin `metadata.ungated`): hatched, like the invalid votes on the strips, so the
+ * second line reads as a weak aid. The reason is in the "Afrac method" readout. */
+function drawUngated(g, row, h) {
+  const metadata = S.meta.params?.panel_metadata?.[row.name];
+  const flags = metadata?.indicator === "afrac" ? metadata.ungated : null;
+  if (!flags?.length || !metadata.bin_start_ms) return;
+  for (let i = 0; i < flags.length; i++) {
+    if (!flags[i]) continue;
+    let k = i; // a run of ungated bins is one hatch, so its marks run on across bin edges
+    while (flags[k + 1] && metadata.bin_start_ms[k + 1] <= metadata.bin_end_ms[k]) k++;
+    const [a, b] = [px(metadata.bin_start_ms[i]), px(metadata.bin_end_ms[k])];
+    hatch(g, a, 0, b - a, h - 1);
+    i = k;
+  }
 }
 
 /** The bins an image row shows, [first, stop): its band if it has one, else all. */
@@ -1491,7 +1639,7 @@ function drawImage(g, row, i, h) {
  * label's window under the pseudo-mask and the label's lines, and outside it over the veil,
  * which would otherwise wash it out where the pseudo-mask never reaches. */
 function drawTokeye(g, row, w, h, inside) {
-  const t = S.tokeye;
+  const t = Overlays.layerFor(row) ?? S.tokeye; // a row's own layer (api 11), else AE's
   if (!t || !S.showMasks) return;
   const [lo, hi] = imageRange(row);
   const y = (f) => t.n_y - ((f - t.y0_khz) / t.dy_khz + 0.5); // the layer's own pixel rows
@@ -1601,11 +1749,11 @@ function indicatorNote(row, time) {
   return `Afrac method: ${metadata.afrac_method?.[i] || "not recorded at cursor"}`;
 }
 
-function traceRange(row, values) {
-  const n = S.data.n;
-  const step = (S.data.t1 - S.data.t0) / n;
-  const j0 = clamp(Math.floor((S.view[0] - S.data.t0) / step), 0, n);
-  const j1 = clamp(Math.ceil((S.view[1] - S.data.t0) / step), 0, n);
+function traceRange(row, values, data = S.data) {
+  const n = data.n;
+  const step = (data.t1 - data.t0) / n;
+  const j0 = clamp(Math.floor((S.view[0] - data.t0) / step), 0, n);
+  const j1 = clamp(Math.ceil((S.view[1] - data.t0) / step), 0, n);
   let [lo, hi] = [Math.min(Infinity, ...traceGuides(row)), Math.max(-Infinity, ...traceGuides(row))];
   for (let p = 0; p < 2 * row.n_channels; p++) {
     for (let j = j0; j < j1; j++) {
@@ -1619,9 +1767,10 @@ function traceRange(row, values) {
   return [lo - pad, hi + pad];
 }
 
-function drawTrace(g, row, values, [lo, hi], w, h) {
-  const [n, channels] = [S.data.n, row.n_channels];
-  const step = (S.data.t1 - S.data.t0) / n;
+/** A trace row's channels on `data`'s grid (S.data's, or an added row's own). */
+function drawTrace(g, row, values, [lo, hi], w, h, data = S.data) {
+  const [n, channels] = [data.n, row.n_channels];
+  const step = (data.t1 - data.t0) / n;
   const y = (v) => ((hi - v) / (hi - lo)) * (h - 1);
   g.lineWidth = 1;
   g.strokeStyle = T.muted;
@@ -1644,7 +1793,7 @@ function drawTrace(g, row, values, [lo, hi], w, h) {
         pen = false;
         continue;
       }
-      const x = px(S.data.t0 + (j + 0.5) * step);
+      const x = px(data.t0 + (j + 0.5) * step);
       if (pen) g.lineTo(x, y(low));
       else g.moveTo(x, y(low));
       g.lineTo(x, y(high));
@@ -1659,7 +1808,7 @@ function drawTrace(g, row, values, [lo, hi], w, h) {
   if (row.legend.length < 2) return;
   g.font = FONT;
   g.textAlign = "right";
-  let x = w - RIGHT - 6;
+  let x = w - right() - 6;
   for (let c = row.legend.length - 1; c >= 0; c--) {
     g.fillStyle = TRACE_COLOURS[c % TRACE_COLOURS.length];
     g.fillText(row.legend[c], x, 14);
@@ -1757,6 +1906,9 @@ function drawGutter(g, row, range, h) {
   g.fillStyle = T.muted;
   capped(g, wrapped(g, row.y_units, width), width, most - title.length).forEach(line);
   if (row.modes) modeKey(g, row.modes, width, y, text);
+  // The row's TokEye chip (api 11) sits under that text; the y ticks keep clear of it too.
+  const slot = Overlays.slot(row, Math.max(6, ...text.map((r) => r[2])) + 4, g.canvas);
+  if (slot) text.push(slot);
   if (!range) return;
   const [lo, hi] = range;
   g.textAlign = "right";
@@ -1796,7 +1948,7 @@ function drawAxis() {
   g.textAlign = "center";
   for (const [t, text] of ticks(S.view[0], S.view[1], plotWidth() / 90)) {
     const x = px(t);
-    if (x < GUTTER || x > canvas.clientWidth - RIGHT) continue;
+    if (x < GUTTER || x > canvas.clientWidth - right()) continue;
     g.fillRect(x, 0, 1, 4);
     g.fillText(text, x, 16);
   }
@@ -1813,7 +1965,7 @@ function drawTrack(canvas, label, editable, lane) {
   }
   g.save();
   g.beginPath();
-  g.rect(GUTTER, 0, w - GUTTER - RIGHT, h);
+  g.rect(GUTTER, 0, w - GUTTER - right(), h);
   g.clip();
   const [lo, hi] = label.window;
   const [top, foot] = editable ? [5, HANDLE_BAND + 2] : [4, 4];
@@ -1886,6 +2038,7 @@ function drawTrack(canvas, label, editable, lane) {
       g.stroke();
     }
   }
+  if (ws()) drawPins(g, h);
   g.restore();
 }
 
@@ -1994,12 +2147,47 @@ function showHeader() {
   const state = isBlind() && row.state && row.state !== "unreviewed" ? "reviewed" : row.state;
   $("state").textContent = S.queueEvent !== S.event ? "the queue is still loading" : state || "";
   $("state").className = `pill ${state || ""}`;
-  $("saved").textContent = last ? `saved ${when(last.saved_at)}${last.name ? ` by ${last.name}` : ""}` : "";
   $("dirty").hidden = !dirty();
   showContributors();
   showOnsets();
   const reviewed = S.queue.filter((row) => row.state !== "unreviewed").length;
   $("count").textContent = `${reviewed}/${S.queue.length}`;
+  showSaved(last);
+}
+
+/** #saved: "saved <when> by <name>". At api 11, when that would put the bar on more lines
+ * than the shortest form does, the longest form that does not: the day or time (today's
+ * save) with the name, then without it; the full text is then the title. */
+function showSaved(last = S.meta?.last_save) {
+  const saved = $("saved");
+  const by = last?.name ? ` by ${last.name}` : "";
+  const full = last ? `saved ${when(last.saved_at)}${by}` : "";
+  saved.textContent = full;
+  saved.title = "";
+  if (!full || S.api < 11) return;
+  const at = new Date(last.saved_at);
+  const brief = at.toLocaleString([], new Date().toDateString() === at.toDateString()
+    ? { hour: "2-digit", minute: "2-digit" } : { month: "short", day: "numeric" });
+  const forms = [full, `saved ${brief}${by}`, `saved ${brief}`];
+  const heights = forms.map((text) => {
+    saved.textContent = text;
+    return $("bar").getBoundingClientRect().height;
+  });
+  const fits = heights.findIndex((height) => height <= heights[heights.length - 1]);
+  saved.textContent = forms[fits];
+  saved.title = fits ? full : "";
+}
+
+let savedFrame = 0; // the pending fitSaved
+
+/** Choose #saved's form again on the next frame (api 11): the bar's width changed, or an item
+ * beside it did (#masks arrives after the header; #status, #view and #stale change). */
+function fitSaved() {
+  if (savedFrame || S.api < 11) return;
+  savedFrame = requestAnimationFrame(() => {
+    savedFrame = 0;
+    if (S.meta) showSaved();
+  });
 }
 
 /** Exact database times remain available even when two ticks share a pixel. */
@@ -2040,7 +2228,10 @@ function showContributors() {
 
 function renderQueue() {
   const nav = $("queue");
-  if (nav.children.length !== S.queue.length) {
+  // api 11: another list of the same length must not keep the old chips' shots
+  const key = S.api >= 11 ? Lists.queueKey(S.event) : null;
+  if (nav.children.length !== S.queue.length || key !== S.queueKey) {
+    S.queueKey = key;
     nav.replaceChildren(
       ...S.queue.map((row) => {
         const chip = document.createElement("button");
@@ -2054,9 +2245,10 @@ function renderQueue() {
   S.queue.forEach((row, i) => {
     const chip = nav.children[i];
     const state = isBlind() && row.state !== "unreviewed" ? "reviewed" : row.state;
-    const marks = [state, row.shot === S.shot && "current", stored(draftKey(row.shot)) && "dirty"];
+    const extra = S.api >= 11 && row.extra; // on the list, not on this event's roster
+    const marks = [state, row.shot === S.shot && "current", stored(draftKey(row.shot)) && "dirty", extra && "extra"];
     chip.className = ["chip", ...marks.filter(Boolean)].join(" ");
-    chip.title = row.tier;
+    chip.title = extra ? "Not on this event's roster" : row.tier;
   });
 }
 
@@ -2086,12 +2278,15 @@ function startDrag(event, drag) {
 
 function onRowsDown(event) {
   if (event.button !== 0 || !S.meta || event.target.tagName !== "CANVAS") return;
+  if (ws() && Slice.inMargin(event.clientX)) return; // the cut margin is not time
+  if (ws() && event.altKey) return pinAt(timeAt(event.clientX));
   if (event.shiftKey) startDrag(event, { kind: "new", from: timeAt(event.clientX) });
   else startDrag(event, { kind: "pan", x: event.clientX, y: event.clientY, view: S.view, canvas: event.target });
 }
 
 function onLabelDown(event) {
   if (event.button !== 0 || !S.meta) return;
+  if (ws() && event.altKey) return pinAt(timeAt(event.clientX)); // a pin, never an edit
   if (S.video) { pauseVideo(); seekVideo(timeAt(event.clientX)); }
   const rect = event.currentTarget.getBoundingClientRect();
   const lane = S.api >= 8 ? Number(event.currentTarget.dataset.lane) : undefined;
@@ -2172,6 +2367,7 @@ function endDrag(event) {
   S.drag = null;
   if (d?.kind === "pan" && !d.moved && event?.type === "pointerup") {
     if (S.video) { pauseVideo(); return seekVideo(timeAt(event.clientX)); }
+    if (ws() && d.canvas?.id === "axis-row") return axisClickPin(timeAt(event.clientX));
     if (d.canvas) return clickMask(d);
   }
   if (!d || d.kind === "pan" || same(d.base, S.label)) return;
@@ -2196,10 +2392,14 @@ async function loadMasks(ticket) {
       const body = await (await api(`/api/masks?event=${enc(event)}&shot=${shot}`)).json();
       if (ticket !== S.ticket) return;
       S.masks = body;
+      Activity.clear("masks");
       const failure = maskErrors.get(shot);
       if (failure) say(failure, true);
-    } catch {
-      // no pseudo-mask for this shot: nothing to draw
+    } catch (error) {
+      // a 404: no pseudo-mask for this shot, nothing to draw; anything else says so (api 11)
+      if (S.api >= 11 && ticket === S.ticket && error?.status !== 404) {
+        Activity.note("masks", ERROR_COPY.mask({ message: error.message }), "error");
+      }
     }
     if (ticket !== S.ticket) return;
     showMasks();
@@ -2208,17 +2408,24 @@ async function loadMasks(ticket) {
     const tokeye = await layer;
     if (ticket !== S.ticket) return;
     S.tokeye = tokeye;
+    if (S.api >= 11) Overlays.check(); // a row the server calls done, with no layer here, says so
   }
   if (ticket !== S.ticket) return;
   showMasks();
   render();
 }
 
-/** The shot's whole-shot TokEye layer, or null. */
+/** The shot's whole-shot TokEye layer, or null. At api 11 an answer that is not a layer is
+ * null too, and a failure other than a 404 goes on the done rows' chips. */
 async function loadTokeye(event, shot) {
   try {
-    return await (await api(`/api/tokeye?event=${enc(event)}&shot=${shot}`)).json();
-  } catch {
+    const body = await (await api(`/api/tokeye?event=${enc(event)}&shot=${shot}`)).json();
+    return S.api >= 11 && !Overlays.layer(body) ? null : body;
+  } catch (error) {
+    if (S.api >= 11 && error?.status !== 404 && S.event === event && S.shot === shot) {
+      Overlays.mark(Overlays.named("done"), { state: "failed", reason: `the layer could not be loaded: ${error.message}`, local: true });
+      Overlays.renderChips();
+    }
     return null; // no layer for this shot: nothing to draw
   }
 }
@@ -2239,10 +2446,18 @@ function showMasks() {
 }
 
 function toggleMasks() {
-  if (!S.masks && !S.tokeye) return say("this shot has no pseudo-mask");
+  if (S.api >= 11 && Activity.notes.has("masks")) { // the mask failed to load: M retries
+    Activity.clear("masks");
+    return loadMasks(S.ticket);
+  }
+  if (!S.masks && !S.tokeye && !Overlays.any()) {
+    if (S.api >= 11) return Activity.note("layers", "This shot has no pseudo-mask or TokEye layer.");
+    return say("this shot has no pseudo-mask");
+  }
   S.showMasks = !S.showMasks;
   store("labeler:masks", S.showMasks ? null : "hidden");
   showMasks();
+  Overlays.renderChips(); // "TokEye hidden (M)"
   render();
 }
 
@@ -2353,7 +2568,7 @@ function showCursor(clientX, hover = false) {
   const cursor = $(hover ? "hover-cursor" : "cursor");
   const axis = $("axis-row").getBoundingClientRect();
   const x = clientX - axis.left;
-  cursor.hidden = !S.meta || x < GUTTER || x > axis.width - RIGHT;
+  cursor.hidden = !S.meta || x < GUTTER || x > axis.width - right();
   if (cursor.hidden) return;
   const viewport = $("top").getBoundingClientRect();
   const videoBottom = S.video ? $("video-panel").getBoundingClientRect().bottom : viewport.top;
@@ -2470,8 +2685,8 @@ function buildVideo() {
   S.video = { cards, times: [], timer: null, playing: false, epoch: 0, seekSeq: 0 };
   videoTimes();
   $("video-cameras").replaceChildren(...cards.map((card) => card.figure));
-  $("video-panel").hidden = false;
   buildProducerStrips();
+  fitVideoPanel();
   const slider = $("video-time");
   [slider.min, slider.max] = S.meta.t_range;
   slider.disabled = !S.video.times.length;
@@ -2479,6 +2694,15 @@ function buildVideo() {
   $("video-clock").textContent = "";
   sizeCanvases();
   seekVideo(S.video.times[0] ?? S.meta.t_range[0]);
+}
+
+/** #video-panel shows while it holds something: the cameras and their controls, unless the
+ * dock has adopted them (api 11, workspace; plan D.B), then the producer strips and details,
+ * which blind mode hides. */
+function fitVideoPanel() {
+  const panel = $("video-panel");
+  const hidden = !S.video || ![...panel.children].some((child) => !child.hidden);
+  if (panel.hidden !== hidden) panel.hidden = hidden;
 }
 
 function videoTimes() {
@@ -2601,7 +2825,7 @@ function drawProducerStrips() {
     const g = context(canvas), h = canvas.clientHeight, w = canvas.clientWidth;
     g.font = FONT; g.fillStyle = T.muted;
     g.fillText(title, 8, h / 2 + 4);
-    g.save(); g.beginPath(); g.rect(GUTTER, 0, w - GUTTER - RIGHT, h); g.clip();
+    g.save(); g.beginPath(); g.rect(GUTTER, 0, w - GUTTER - right(), h); g.clip();
     (data?.bin_start_ms || []).forEach((start, i) => {
       const a = px(start), b = px(data.bin_end_ms[i]);
       const vote = data.votes[key];
@@ -2720,6 +2944,7 @@ function showBlindMode() {
   if (active) for (const canvas of [$("source-track"), ...$("detachment-lanes").children]) {
     canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
   }
+  fitVideoPanel();
 }
 
 async function playVideo() {
@@ -2955,6 +3180,15 @@ const KEYS = {
   0: fit,
 };
 
+/** The workspace's keys, read by onKey only when the server has the workspace (ws()). They
+ * stay out of KEYS so a page without the workspace has exactly today's keys. */
+const WORKSPACE_KEYS = {
+  p: () => pinAt(Slice.hover ?? middle()),
+  x: () => unpinNear(Slice.hover ?? middle()),
+  l: () => Slice.toggleFollow(),
+  d: () => toggleDock(),
+};
+
 // The keys that work on a shot with nothing to show.
 const MOVES = new Set(["j", "k", "u", "ArrowLeft", "ArrowRight"]);
 
@@ -2972,7 +3206,7 @@ function onKey(event) {
   }
   if (target.closest("button") && (key === "Enter" || key === " ")) return;
   if (key === "?" || $("keys").open) return key === "?" && toggleKeys();
-  if (!event.ctrlKey && !event.metaKey && !event.altKey && silverKey(key)) {
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && (S.api >= 11 ? byShotKey(key) : silverKey(key))) {
     event.preventDefault();
     return;
   }
@@ -2983,9 +3217,10 @@ function onKey(event) {
     return undo();
   }
   if (/^[1-9]$/.test(key)) return setCategory(Number(key));
-  if (KEYS[key]) {
+  const action = KEYS[key] || (ws() && WORKSPACE_KEYS[key]);
+  if (action) {
     event.preventDefault();
-    KEYS[key]();
+    action();
   }
 }
 
@@ -2999,7 +3234,11 @@ function wire() {
   for (const track of tracks) {
     track.addEventListener("wheel", (event) => onWheel(event, true), { passive: false });
   }
-  for (const target of [top, ...tracks]) target.addEventListener("dblclick", () => S.meta && fit());
+  for (const target of [top, ...tracks, $("pins")]) target.addEventListener("dblclick", () => {
+    if (!S.meta) return;
+    if (ws()) undoAxisClicks(); // a double-click on the axis takes back its two pins
+    fit();
+  });
   tracks[0].addEventListener("pointerdown", (event) => {
     if (event.button === 0 && S.meta) startDrag(event, { kind: "pan", x: event.clientX, view: S.view });
   });
@@ -3008,20 +3247,30 @@ function wire() {
     track.addEventListener("pointermove", onLabelHover);
   }
   window.addEventListener("pointermove", (event) => {
+    if (ws()) notePointer(event);
     if (S.drag) dragTo(event.clientX);
+    // Out of the rows with the dock open, the hover line holds at the rest time (dotted).
     if (S.video) {
       showVideoCursor();
-      if (S.drag || event.target.closest?.("#rows, .track, #axis-row")) showCursor(event.clientX, true);
-      else $("hover-cursor").hidden = true;
+      if (S.drag || event.target.closest?.("#rows, .track, #axis-row")) {
+        $("hover-cursor").classList.remove("held");
+        showCursor(event.clientX, true);
+      } else if (!(ws() && Slice.showHeld())) $("hover-cursor").hidden = true;
       return;
     }
-    if (S.drag || event.target.closest?.("#top, .track")) showCursor(event.clientX);
-    else $("cursor").hidden = true;
+    if (S.drag || event.target.closest?.("#top, .track")) {
+      $("cursor").classList.remove("held");
+      showCursor(event.clientX);
+    } else if (!(ws() && Slice.showHeld())) $("cursor").hidden = true;
   });
   window.addEventListener("hashchange", followHash);
   document.documentElement.addEventListener("pointerleave", () => {
     $("hover-cursor").hidden = true;
     if (!S.video) $("cursor").hidden = true;
+    if (ws()) {
+      Slice.inRows = false;
+      Slice.redraw();
+    }
   });
   $("video-time").addEventListener("input", () => {
     const requested = $("video-time").value;
@@ -3045,14 +3294,22 @@ function wire() {
   window.addEventListener("pointercancel", endDrag);
   document.addEventListener("keydown", onKey);
   $("event").addEventListener("change", () =>
-    openEvent($("event").value, null).catch((error) => say(error.message, true))
+    // By shot (api 11) opens the event at the shot it has selected
+    (Lists.byShot ? Lists.openEvent($("event").value) : openEvent($("event").value, null))
+      .catch((error) => say(error.message, true))
   );
-  $("silver-breadcrumb").addEventListener("click", () => openSilver(Silver.batch, Silver.shot));
-  $("silver-next-event").addEventListener("click", () => nextSilverEvent().catch(error => say(error.message, true)));
+  const listFailed = (error) => Activity.note("list", error.message, "error");
+  $("shotlist").addEventListener("change", () => chooseList($("shotlist").value).catch(listFailed));
+  $("by-shot").addEventListener("click", () => toggleByShot().catch(listFailed));
+  $("silver-breadcrumb").addEventListener("click", () =>
+    (S.api >= 11 ? openByShot(Lists.name, Lists.shot).catch(listFailed) : openSilver(Silver.batch, Silver.shot)));
+  $("silver-next-event").addEventListener("click", () =>
+    (S.api >= 11 ? Lists.nextEvent() : nextSilverEvent()).catch(error => say(error.message, true)));
   $("gold-only").addEventListener("change", () => toggleGoldOnly().catch((error) => say(error.message, true)));
   $("silver-all-layers").addEventListener("change", () => {
     Silver.layers = $("silver-all-layers").checked;
-    renderSilverOverview();
+    if (S.api >= 11) Lists.renderStrips();
+    else renderSilverOverview();
   });
   $("shot").addEventListener("keydown", (event) => {
     const typed = $("shot").value.trim();
@@ -3104,7 +3361,28 @@ function wire() {
     sizeCanvases();
     render();
   }).observe($("video-panel"));
-  new ResizeObserver(drawSilverOverview).observe($("silver-strips"));
+  new ResizeObserver(() => {
+    sizeCanvases();
+    drawDock();
+  }).observe($("dock"));
+  $("view").addEventListener("change", (event) => {
+    if (ws()) Views.choose(event.target.value).catch((error) => Activity.note("view", error.message, "error"));
+  });
+  $("view").addEventListener("focus", () => ws() && Views.ensureList());
+  new ResizeObserver(() => {
+    drawSilverOverview();
+    Lists.drawStrips();
+  }).observe($("silver-strips"));
+  renderActivity(); // #activity's line, Stop waiting and detail list
+  // The short #saved follows the bar: its width (a resize), and the items beside it. #saved's own
+  // text and #activity (which takes no room on the line) are left out, so a fit never refits.
+  new ResizeObserver(fitSaved).observe($("bar"));
+  const own = (node) => (node.nodeType === 1 ? node : node.parentElement)
+    ?.closest("#saved, #activity, #activity-detail, #activity-line");
+  new MutationObserver((records) => {
+    if (records.some((record) => !own(record.target))) fitSaved();
+  }).observe($("bar"), { subtree: true, childList: true, characterData: true, attributes: true,
+    attributeFilter: ["hidden", "class"] });
 }
 
 if (typeof module !== "undefined") {

@@ -1,4 +1,15 @@
-"""Detachment playback, timeline seek, asynchronous frames and label editing."""
+"""Detachment playback, timeline seek, asynchronous frames and label editing.
+
+Plan D.B (2026-10-16) moved the cameras out of the panel above the rows into the dock, the
+right-hand column, and left that panel holding only the producer strips. Two checks of
+review_browser.mjs's "detachment" scenario measured the cameras in the top panel and now
+measure them where they are: "camera, full diagnostic, time axis and annotations fit at
+1366x768" and "... at 1400x900" find the camera image inside #dock (inside the top panel only
+when the dock is closed), and "video stays visible and cursor starts below the sticky panel
+while scrolling" also asks that the docked camera stays on screen while the rows scroll. Their
+names and the scenario's 45 checks are unchanged. The dock itself (open by default, the
+inversion and EFIT slices, the cursor driving them) is checked by review_workspace.mjs.
+"""
 
 from __future__ import annotations
 
@@ -35,9 +46,65 @@ def test_video_slider_playback_clicks_and_labels(
     paths = Paths(
         root=tmp_path / "root", corpus=tmp_path / "corpus", label_tables=existing.parent
     )
+    event = detachment_store(
+        paths, tmp_path, monkeypatch, atomic=scenario != "detachment"
+    )
+    result = subprocess.run(
+        [
+            NODE,
+            str(DRIVER),
+            base,
+            TOKEN,
+            str(SHELLS[-1]),
+            str(tmp_path / "video-profile"),
+            scenario,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=180,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr[-2000:]
+    checks = json.loads(result.stdout.splitlines()[-1])
+    expected = {
+        "detachment": (
+            45,
+            {
+                "human camera protocol and stored machine recipe are separate",
+                "camera, full diagnostic, time axis and annotations fit at 1366x768",
+                "camera, full diagnostic, time axis and annotations fit at 1400x900",
+                "start blank resets selection, preserves Crowd flags, permits category change and Undo",
+                "detached labels are saved on the usual timeline",
+                "no script error",
+            },
+        ),
+        "detachment-atomic": (
+            9,
+            {
+                "Play stays disabled before the first complete camera transaction",
+                "pause between deliveries discards staged images and preserves both captions and clock",
+                "all cameras and the shared clock publish together after resume",
+                "no script error",
+            },
+        ),
+    }
+    count, names = expected[scenario]
+    assert len(checks) == count, checks
+    assert names <= {c["name"] for c in checks}, checks
+    failed = [c for c in checks if not c["ok"]]
+    assert not failed, failed
+    if scenario == "detachment":
+        assert any(c == 2 for _, _, c in labels.read_saved(event)[170815].intervals)
+
+
+def detachment_store(paths: Paths, tmp_path, monkeypatch, *, atomic: bool = False):
+    """Detachment shot 170815 built into `paths`: the corpus cameras (IRTV one frame per
+    20 ms when `atomic`), its roster and Source, the strike-point geometry, the producer's
+    labels and indicators (their environment variables set through `monkeypatch`). Returns
+    the event's table directory."""
     source = corpus(paths)
     with h5py.File(source, "a") as store:
-        if scenario == "detachment-atomic":
+        if atomic:
             del store["irtv"]
             camera = store.create_group("irtv")
             camera["xdata"] = np.arange(13) * 0.02
@@ -102,49 +169,4 @@ def test_video_slider_playback_clicks_and_labels(
     )
     monkeypatch.setenv("LABELER_DETACHMENT_INDICATORS", str(indicators))
     build.build("detachment", 170815, paths)
-    result = subprocess.run(
-        [
-            NODE,
-            str(DRIVER),
-            base,
-            TOKEN,
-            str(SHELLS[-1]),
-            str(tmp_path / "video-profile"),
-            scenario,
-        ],
-        capture_output=True,
-        text=True,
-        timeout=180,
-        check=False,
-    )
-    assert result.returncode == 0, result.stdout + result.stderr[-2000:]
-    checks = json.loads(result.stdout.splitlines()[-1])
-    expected = {
-        "detachment": (
-            45,
-            {
-                "human camera protocol and stored machine recipe are separate",
-                "camera, full diagnostic, time axis and annotations fit at 1366x768",
-                "camera, full diagnostic, time axis and annotations fit at 1400x900",
-                "start blank resets selection, preserves Crowd flags, permits category change and Undo",
-                "detached labels are saved on the usual timeline",
-                "no script error",
-            },
-        ),
-        "detachment-atomic": (
-            9,
-            {
-                "Play stays disabled before the first complete camera transaction",
-                "pause between deliveries discards staged images and preserves both captions and clock",
-                "all cameras and the shared clock publish together after resume",
-                "no script error",
-            },
-        ),
-    }
-    count, names = expected[scenario]
-    assert len(checks) == count, checks
-    assert names <= {c["name"] for c in checks}, checks
-    failed = [c for c in checks if not c["ok"]]
-    assert not failed, failed
-    if scenario == "detachment":
-        assert any(c == 2 for _, _, c in labels.read_saved(event)[170815].intervals)
+    return event

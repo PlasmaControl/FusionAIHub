@@ -102,9 +102,9 @@ def test_external_producer_shot_is_trimmed_to_cached_current_window(
         ipmeas__y=[0, 600000, 600000, 600000, 0],
     )
     with h5py.File(source, "a") as store:
-        group = store.create_group("co2")
+        group = store.create_group("gas_flow")
         group["xdata"] = [0, 0.06, 0.12, 0.18, 0.24]
-        group["ydata"] = np.ones((4, 5))
+        group["ydata"] = np.ones((11, 5))
     path = build.build("detachment", 170815, paths)
     assert rows.meta(path)["t_range"] == [60, 180]
     np.testing.assert_allclose(
@@ -186,56 +186,36 @@ def test_panel_sampling_and_indicator_validity(tmp_path, monkeypatch):
     monkeypatch.setenv("LABELER_DETACHMENT_INDICATORS", str(indicator_root))
     built = panels.panels(170815, paths=paths)
     by_title = {p.title: p for p in built}
-    assert np.isnan(by_title["Afrac"].y[0, 1])
-    assert np.isnan(by_title["TangTV front DZ"].y[0, 1])
-    assert "source not recorded" in by_title["TangTV front DZ"].metadata["caveat"]
-    assert "f_div = Prad,div / P_in" not in by_title  # no validity mask
-    assert not any("Langmuir" in title for title in by_title)
-    assert np.min(by_title["Gas flow"].x) >= 0
+    assert list(by_title) == ["Afrac lower", "Gas total (valve sum)"]
+    assert np.isnan(by_title["Afrac lower"].y[0, 1])
+    assert "not the published Eldon Afrac" in by_title["Afrac lower"].metadata["caveat"]
+    assert np.min(by_title["Gas total (valve sum)"].x) >= 0
+    # The producer's other indicators left the default but still read.
+    indicators = {p.title: p for p in panels.indicator_panels(170815, paths)}
+    assert np.isnan(indicators["TangTV front DZ"].y[0, 1])
+    assert "source not recorded" in indicators["TangTV front DZ"].metadata["caveat"]
+    assert "f_div = Prad,div / P_in" not in indicators  # no validity mask
+    assert not any("Langmuir" in title for title in indicators)
 
 
 def test_context_block_means_do_not_alias_fast_signal(tmp_path):
     paths = Paths(root=tmp_path, corpus=tmp_path / "corpus")
     source = corpus(paths)
     with h5py.File(source, "a") as store:
-        group = store.create_group("filterscopes")
-        group["xdata"] = np.arange(40) * 0.000256
-        group["ydata"] = np.tile([0, 2], (8, 20))
-    built = panels.panels(170815, paths=paths, t_range=(0, 10))
-    built = [p for p in built if p.metadata.get("corpus_group") == "filterscopes"]
-    assert len(built) == 8  # Unknown chord locations must not share one scale.
-    for i, panel in enumerate(built, 1):
-        np.testing.assert_allclose(panel.y[:, :9], 1)
-        np.testing.assert_allclose(np.diff(panel.x[:9]), 1.024)
-        assert panel.legend == [f"FS{i:02d} (ph/(sr cm2 s))"]
-        assert panel.ylabel == "ph/(sr cm2 s)"
-        assert panel.title == f"D-alpha FS{i:02d}"
-        assert "location is not recorded" in panel.metadata["caveat"]
-        assert panel.metadata["location"] == "not recorded in corpus"
-        assert panel.x[-1] <= 10
+        for name, channels in (("filterscopes", 8), ("gas_flow", 11)):
+            group = store.create_group(name)
+            group["xdata"] = np.arange(40) * 0.000256
+            group["ydata"] = np.tile([0, 2], (channels, 20))
+    afrac, panel = panels.panels(170815, paths=paths, t_range=(0, 10))
+    assert afrac.title == "Afrac lower" and np.isnan(afrac.y).all()  # no bins: a note
+    assert panel.title == "Gas total (valve sum)"  # D-alpha chords left the default
+    np.testing.assert_allclose(panel.y[:, :9], 11)  # eleven valves, each mean 1
+    np.testing.assert_allclose(np.diff(panel.x[:9]), 1.024)
+    assert panel.legend == ["+".join(panels.GAS_VALVES) + " (Torr L/s) · offset uncorrected"]
+    assert panel.x[-1] <= 10
 
 
-def test_density_falls_back_to_local_thomson_when_co2_is_a_stub(tmp_path):
-    paths = Paths(root=tmp_path, corpus=tmp_path / "corpus")
-    source = corpus(paths)
-    with h5py.File(source, "a") as store:
-        co2 = store.create_group("co2")
-        co2["xdata"] = [0.0]
-        co2["ydata"] = np.full((4, 1), np.nan)
-        ts = store.create_group("ts_core_density")
-        ts["xdata"] = [0.0, 0.1, 0.2]
-        ts["ydata"] = np.array([[1e19, 2e19, 3e19], [np.nan, 4e19, 5e19]])
-    density = [p for p in panels.panels(170815, paths=paths) if "density" in p.title]
-    assert len(density) == 1
-    panel = density[0]
-    assert panel.title == "Thomson core density"
-    assert "not line-averaged" in panel.metadata["caveat"]
-    assert panel.ylabel == "m^-3"
-    np.testing.assert_allclose(panel.y, [[1e19, 2e19, 3e19], [np.nan, 4e19, 5e19]])
-    assert panel.legend == ["core channel 0 (m^-3)", "core channel 1 (m^-3)"]
-
-
-def test_usable_co2_density_keeps_the_line_average_instead_of_thomson(tmp_path):
+def test_density_and_thomson_left_the_default(tmp_path):
     paths = Paths(root=tmp_path, corpus=tmp_path / "corpus")
     source = corpus(paths)
     with h5py.File(source, "a") as store:
@@ -243,9 +223,7 @@ def test_usable_co2_density_keeps_the_line_average_instead_of_thomson(tmp_path):
             group = store.create_group(name)
             group["xdata"] = [0.0, 0.1, 0.2]
             group["ydata"] = np.ones((channels, 3))
-    density = [p for p in panels.panels(170815, paths=paths) if "density" in p.title]
-    assert [p.title for p in density] == ["CO2 R0 density"]
-    assert density[0].ylabel == "m·cm⁻³"
+    assert panels.panels(170815, paths=paths) == []
 
 
 @pytest.mark.parametrize("width", [20.0, 50.0, 100.0])
@@ -269,7 +247,8 @@ def test_indicator_bin_width_is_inferred_and_clipped_by_bin_overlap(
     assert panel.metadata["trace_style"] == "step"
     assert panel.metadata["bin_start_ms"] == [100.0]
     assert panel.metadata["bin_end_ms"] == [100 + width / 4]
-    np.testing.assert_allclose(panel.y, [[0.1]])
+    # The second line is the ungated ratio on invalid bins (none in the window).
+    np.testing.assert_allclose(panel.y, [[0.1], [np.nan]], equal_nan=True)
 
 
 def test_video_store_drops_frames_outside_the_plasma_window(tmp_path):

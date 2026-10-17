@@ -9,6 +9,9 @@
 <body>
 <header id="bar">
   <select id="event" aria-label="Event"></select>
+  <select id="shotlist" aria-label="Shot list" hidden></select>
+  <button id="by-shot" type="button" aria-pressed="false" hidden>By shot</button>
+  <select id="view" aria-label="View" title="View: which rows show, and the dock" hidden></select>
   <label id="gold-only-label" title="Offer only the shots in the gold set (50)"><input id="gold-only" type="checkbox"> Gold set</label>
   <button id="silver-breadcrumb" type="button" title="Back to silver" hidden></button>
   <button id="silver-next-event" type="button" title="Next unsaved event" hidden>Next event</button>
@@ -21,6 +24,7 @@
   <span id="masks" hidden title="AE mask: click a region to reject it; M hides it"></span>
   <span id="markers" hidden title="Event markers on every row; T shows or hides them"></span>
   <span id="status" role="status" aria-live="polite"></span>
+  <span id="activity" hidden></span>
   <span id="stale" hidden>Restart the server for names and history</span>
   <span id="bar-end">
   <input id="reviewer-name" placeholder="Your name" maxlength="64" autocomplete="name" spellcheck="false"
@@ -29,6 +33,7 @@
   <button id="help" type="button" aria-label="Keys">?</button>
   </span>
   <nav id="subbar" aria-label="Subcategories" hidden></nav>
+  <div id="activity-line" hidden></div>
 </header>
 <main id="top">
   <section id="video-panel" aria-label="Detachment cameras" hidden>
@@ -54,6 +59,7 @@
     </details>
   </section>
   <div id="rows"></div>
+  <div id="row-ui"></div>
   <canvas id="axis-row" aria-hidden="true"></canvas>
 </main>
 <main id="silver-page" aria-label="Silver set" hidden>
@@ -98,8 +104,10 @@
   <p id="contributors" aria-live="polite"></p>
   <p id="onsets" hidden></p>
 </footer>
+<aside id="dock" hidden aria-label="Workspace dock"></aside>
 <div id="cursor" hidden><span id="cursor-time"></span></div>
 <div id="hover-cursor" hidden><span id="hover-time"></span></div>
+<div id="pins"></div>
 <dialog id="keys">
   <table>
     <tr><td><kbd>Enter</kbd></td><td>Save, then open the next shot in the queue (Save and Next in one)</td></tr>
@@ -125,10 +133,16 @@
     <tr><td><kbd>Delete</kbd></td><td>Remove the annotation</td></tr>
     <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>Contrast</td></tr>
     <tr><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd> <kbd>Z</kbd></td><td>Undo</td></tr>
+    <tr class="workspace-key" hidden><td><kbd>P</kbd></td><td>Pin A, then B (the nearer moves)</td></tr>
+    <tr class="workspace-key" hidden><td><kbd>X</kbd></td><td>Remove the nearest pin</td></tr>
+    <tr class="workspace-key" hidden><td><kbd>L</kbd></td><td>Follow A / the cursor</td></tr>
+    <tr class="workspace-key" hidden><td><kbd>D</kbd></td><td>Dock</td></tr>
+    <tr class="workspace-key" hidden><td><kbd>Alt</kbd>+click</td><td>Pin</td></tr>
+    <tr class="workspace-key" hidden><td>Double-click the axis</td><td>Undo its pins and fit</td></tr>
   </table>
   <section id="detachment-help" hidden>
     <h3>Detachment: lower outer divertor leg</h3>
-    <p>Review the lower outer leg. D-alpha chord locations are not recorded.</p>
+    <p>Review the lower outer leg.</p>
     <dl>
       <dt>Attached</dt><dd>Emission peaked at the target strike point, with target evidence.</dd>
       <dt>Detached</dt><dd>Front lifted to the X-point; ion-flux (Afrac/Jsat) rollover or low target Te.</dd>
@@ -165,6 +179,13 @@
   <p id="who-error" role="alert"></p>
   <div class="who-go"><button id="who-continue" class="primary" type="button" disabled>Continue</button></div>
 </dialog>
+<script src="/status.js"></script>
+<script src="/lists.js"></script>
+<script src="/overlays.js"></script>
+<script src="/signals.js"></script>
+<script src="/slice.js"></script>
+<script src="/dock.js"></script>
+<script src="/views.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

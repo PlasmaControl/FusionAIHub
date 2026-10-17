@@ -1334,7 +1334,7 @@ async function detachmentCameras(shot = 170815, demo = false) {
     $("detachment-help").textContent.includes("target strike point") &&
     $("detachment-help").textContent.includes("ion-flux (Afrac/Jsat) rollover or low target Te") &&
     $("detachment-help").textContent.includes("inside the separatrix") &&
-    $("detachment-help").textContent.includes("D-alpha chord locations are not recorded") &&
+    !$("detachment-help").textContent.includes("D-alpha chord locations") &&
     !$("detachment-help").textContent.includes("shelf gate invalid") &&
     $("detachment-help").textContent.includes("Not reviewed") &&
     $("detachment-machine-help").textContent.length > 0 &&
@@ -1423,6 +1423,8 @@ async function detachmentCameras(shot = 170815, demo = false) {
   })()`));
   check("f_div warning appears only for valid values above one in view", await js(`(() => {
     const row = S.meta.rows.find(row => S.meta.params.panel_metadata?.[row.name]?.indicator === "prad");
+    // Stream E's default rows (2026-10-16) carry no "prad" indicator: then no row may warn.
+    if (!row) return S.meta.rows.every(row => !indicatorNote(row, S.video.time).startsWith("f_div"));
     const original = S.view;
     const metadata = S.meta.params.panel_metadata[row.name];
     const full = indicatorNote(row);
@@ -1517,14 +1519,18 @@ async function detachmentCameras(shot = 170815, demo = false) {
     await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });
     await js(`$("top").scrollTop = 0; $("detachment-details").open = false;`);
     await sleep(100);
+    // Plan D.B: the cameras are in the dock beside the rows (the slim sticky panel above the rows
+    // keeps the producer strips); with no dock they are in that panel, as before.
     const layout = await js(`(() => {
       const rect = id => $(id).getBoundingClientRect();
       const panel = rect("video-panel"), axis = rect("axis-row"), main = rect("top");
-      const camera = S.video.cards.find(c => c.channel).img.getBoundingClientRect();
+      const img = S.video.cards.find(c => c.channel).img, camera = img.getBoundingClientRect();
+      const holder = $("dock").contains(img) ? rect("dock") : { ...main.toJSON(), bottom: panel.bottom };
       const row = $("rows").children[0].getBoundingClientRect();
       const controls = rect("controls"), annotations = rect("label-track");
-      return { panel: panel.height, main: main.height, row: row.height,
-        cameraVisible: camera.top >= main.top && camera.bottom <= panel.bottom,
+      return { panel: panel.height, main: main.height, row: row.height, docked: $("dock").contains(img),
+        cameraVisible: camera.height > 0 && camera.top >= holder.top && camera.bottom <= holder.bottom &&
+          camera.left >= holder.left - 1 && camera.right <= holder.right + 1,
         diagnosticVisible: row.top >= panel.bottom - 1 && row.bottom <= axis.top + 1,
         axisVisible: axis.top >= panel.bottom && axis.bottom <= main.bottom,
         annotationVisible: annotations.top >= main.bottom && controls.bottom <= innerHeight };
@@ -1565,9 +1571,13 @@ async function detachmentCameras(shot = 170815, demo = false) {
     Math.abs(S.video.time - ${middle}) < 0.01`));
   await js(`$("top").scrollTop = 10000`);
   await sleep(50);
-  check("video stays visible and cursor starts below the sticky panel while scrolling", await js(`
-    Math.abs($("video-panel").getBoundingClientRect().top - $("top").getBoundingClientRect().top) < 1 &&
-    parseFloat($("cursor").style.top) >= $("video-panel").getBoundingClientRect().bottom - 1`));
+  check("video stays visible and cursor starts below the sticky panel while scrolling", await js(`(() => {
+    const img = S.video.cards.find(c => c.channel).img.getBoundingClientRect();
+    const dock = $("dock").contains(S.video.cards.find(c => c.channel).img) ? $("dock").getBoundingClientRect() : null;
+    return Math.abs($("video-panel").getBoundingClientRect().top - $("top").getBoundingClientRect().top) < 1 &&
+      parseFloat($("cursor").style.top) >= $("video-panel").getBoundingClientRect().bottom - 1 &&
+      (!dock || (img.height > 0 && img.top >= dock.top && img.top < dock.bottom));
+  })()`));
   await js(`$("top").scrollTop = 0`);
   await sleep(50);
   const channelCard = await js(`S.video.cards.findIndex(c => c.camera.channels.length > 1)`);

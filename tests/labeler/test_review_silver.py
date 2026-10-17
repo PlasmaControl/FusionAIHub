@@ -521,8 +521,12 @@ def test_silver_strip_unknown_stretches_fall_through():
 
 @pytest.mark.skipif(NODE is None or not SHELLS, reason="needs node and headless Chromium")
 def test_silver_page_navigation_reload_off_roster_save_and_next_event(
-    served_browser, tmp_path,  # noqa: F811
+    served_browser, tmp_path, monkeypatch,  # noqa: F811
 ):
+    """The silver set at api 11: a `#silver/` link opens its batch's shot list in By
+    shot, an off-roster shot opens, saves and reloads there, Next event walks on to
+    the list's next shot, and the gold list stands in for the old "Gold set" box."""
+    monkeypatch.setenv("LABELER_NO_FETCH", "1")  # a shot with no store fails its build
     base, event = served_browser
     shot = 170899
     listing = event.parent / "silver/silver_shots.csv"
@@ -547,70 +551,96 @@ def test_silver_page_navigation_reload_off_roster_save_and_next_event(
         config_dir=tmp_path / "config",
     )
     _store(paths, shot)
+    # The batches as named lists (api 11); batch 2 walks on to 170815 after 170899.
+    lists = event.parent / "shotlists"
+    lists.mkdir()
+    (lists / "silver_batch_1.csv").write_text(
+        f"shot,batch,order,pool,classes\n{SHOT},1,1,corpus,alfven_eigenmode:present\n"
+    )
+    (lists / "silver_batch_2.csv").write_text(
+        "shot,batch,order,pool,classes\n"
+        f"{shot},2,1,ae_audited,alfven_eigenmode:present\n"
+        f"{SHOT},2,2,corpus,alfven_eigenmode:present\n"
+    )
+    paths.shotlists_manifest.parent.mkdir(parents=True, exist_ok=True)
+    paths.shotlists_manifest.write_text(
+        "lists:\n"
+        "  silver_batch_1: {title: \"Silver batch 1\", parent: silver}\n"
+        "  silver_batch_2: {title: \"Silver batch 2\", parent: silver}\n"
+    )
     script = tmp_path / "silver-browser.mjs"
     # Reuse the existing driver's browser transport, without its scenarios.
     prefix = DRIVER.read_text().split("const opened =", 1)[0]
-    script.write_text(prefix + r'''
+    script.write_text(prefix + r"""
 await send("Runtime.enable");
 await send("Page.enable");
 await send("Page.addScriptToEvaluateOnNewDocument", {
   source: 'sessionStorage.setItem("labeler:who", "Silver reviewer")',
 });
+const strips = (shot) => `typeof Lists !== "undefined" && Lists.byShot && Lists.strips?.shot === ${shot}`;
 await send("Page.navigate", { url: `${BASE}/?token=${TOKEN}#silver/2/170899` });
-await until('typeof Silver !== "undefined" && Silver.mode && Silver.overview?.shot === 170899');
-assert.equal(await js('$("event").options[0].textContent'), "Silver set");
-assert.equal(await js('$("silver-batches").children.length'), 5);
+await until(strips(170899));
+assert.equal(await js('location.hash'), '#list/silver_batch_2/170899');
+assert.equal(await js('[...$("event").options].some((o) => o.value === "silver")'), false);
+assert.equal(await js('$("by-shot").getAttribute("aria-pressed")'), "true");
+assert.deepEqual(await js('[...$("silver-batches").children].map((b) => b.getAttribute("aria-pressed"))'),
+  ["false", "false", "true"]);
 assert.equal(await js('$("silver-shots").textContent.includes("AE audited")'), true);
 assert.equal(await js('$("silver-shots").textContent.includes("0/1")'), true);
 await until('document.querySelector("#silver-strips canvas").width > 0');
 await js('$("silver-all-layers").checked = true; $("silver-all-layers").dispatchEvent(new Event("change"))');
 assert.equal(await js('document.querySelectorAll(".silver-layer").length > 0'), true);
 await send("Page.reload");
-await until('typeof Silver !== "undefined" && Silver.mode && Silver.overview?.shot === 170899');
+await until(strips(170899));
 await js('document.querySelector(".silver-strip").click()');
-await until('S.shot === 170899 && S.meta && S.opened?.ticket === S.ticket');
+await until('S.shot === 170899 && S.meta && S.opened?.ticket === S.ticket && Lists.context');
 assert.equal(await js('S.meta.silver && S.meta.tier === "unverified"'), true);
-assert.equal(await js('location.hash'), '#silver/2/170899/alfven_eigenmode');
+assert.equal(await js('location.hash'), '#list/silver_batch_2/170899/alfven_eigenmode');
 assert.equal(await js('S.meta.source_origin'), 'format:alfven_eigenmode/extra');
+assert.deepEqual(await js('S.queue.map((row) => [row.shot, Boolean(row.extra)])'), [[170899, true], [170815, false]]);
 await js('edit([3,1501], [[1001,1004,1]]); save(false)');
 await until('!S.saving && S.meta.saved?.intervals[0]?.[0] === 1000');
 assert.equal(await js('dirty()'), false);
 assert.equal(await js('S.meta.saved.intervals[0][1]'), 1010);
 assert.equal(await js('$("silver-next-event").hidden'), false);
 await js('$("silver-breadcrumb").click()');
-await until('Silver.mode && Silver.overview?.shot === 170899');
-assert.equal(await js('$("silver-batches").children[1].textContent'), '2 · 1/1 done');
-await js('silverKey("Enter")');
-await until('Silver.context && S.shot === 170899 && S.opened?.ticket === S.ticket');
+await until(strips(170899));
+assert.equal(await js('$("silver-batches").children[2].textContent'), 'Silver batch 2 · 1/2 done');
+await js('byShotKey("Enter")');
+await until('Lists.context && S.shot === 170899 && S.opened?.ticket === S.ticket');
 await js('$("silver-next-event").click()');
-await until('Silver.context && S.shot === 170815 && S.opened?.ticket === S.ticket');
-assert.equal(await js('location.hash'), '#silver/1/170815/alfven_eigenmode');
+await until('Lists.context && S.shot === 170815 && S.opened?.ticket === S.ticket');
+assert.equal(await js('location.hash'), '#list/silver_batch_2/170815/alfven_eigenmode');
 await send("Page.reload");
-await until('typeof Silver !== "undefined" && Silver.context && S.shot === 170815 && S.meta');
-await js('silverKey("g")');
-await until('Silver.mode && Silver.overview?.shot === 170815');
-await js('silverKey("Escape")');
-await until('Silver.mode && Silver.shot === null && Silver.data');
-await js('silverKey("j")');
-await until('Silver.overview?.shot === 170815');
+await until('typeof Lists !== "undefined" && Lists.context && S.shot === 170815 && S.meta');
+await js('byShotKey("g")');
+await until(strips(170815));
+await js('byShotKey("Escape")');
+await until('Lists.byShot && Lists.shot === null && Lists.overview?.list === "silver_batch_2"');
+await js('byShotKey("j")');
+await until(strips(170899));
 await js('location.hash = "#alfven_eigenmode/170899"');
-await until('S.shot === 170899 && S.meta && !Silver.mode && !Silver.context');
+await until('S.shot === 170899 && S.meta && !Lists.byShot && !Lists.context');
 assert.equal(await js('S.meta.saved.intervals[0][1]'), 1010);
+// The gold list, not a "Gold set" box: its off-roster shot is an extra chip.
+assert.equal(await js('$("gold-only-label").hidden'), true);
 const offered = 'S.queue.map(row => row.shot).join()';
 const everything = await js(offered);
-await js('$("gold-only").checked = true; $("gold-only").dispatchEvent(new Event("change"))');
-await until('Gold.only && Gold.shots && S.queue.every(row => Gold.shots.has(row.shot))');
-assert.equal(await js('S.queue.length <= S.allQueue.length'), true);
+const choose = (name) => js(`$("shotlist").value = "${name}"; $("shotlist").dispatchEvent(new Event("change")); void 0`);
+await choose("gold");
+await until('Lists.name === "gold" && S.queue.length === 2 && S.opened?.ticket === S.ticket');
 assert.equal(await js('S.queue.some(row => row.shot === 171234 && row.extra)'), true);
 assert.equal(await js('$("queue").children.length === S.queue.length'), true);
-assert.equal(await js('stored("labeler:gold-only")'), "1");
-await js('$("gold-only").checked = false; $("gold-only").dispatchEvent(new Event("change"))');
-await until(`!Gold.only && ${offered} === ${JSON.stringify(everything)}`);
+assert.equal(await js('$("queue").querySelector(\'[data-shot="171234"]\').classList.contains("extra")'), true);
+assert.equal(await js('stored("labeler:list:alfven_eigenmode")'), "gold");
+await choose("roster");
+await until(`Lists.name === "roster" && ${offered} === ${JSON.stringify(everything)}`);
+assert.equal(await js('stored("labeler:list:alfven_eigenmode")'), null);
 assert.deepEqual(errors, []);
 ws.close();
 browser.kill();
 console.log("silver browser passed");
-''')
+""")
     result = subprocess.run(
         [NODE, str(script), base, TOKEN, str(SHELLS[-1]), str(tmp_path / "profile")],
         capture_output=True, text=True, timeout=180, check=False,

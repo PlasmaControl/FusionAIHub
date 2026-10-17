@@ -39,9 +39,16 @@ def _node(expression: str, payload=None):
     return json.loads(result.stdout)
 
 
+def _page_files(*patterns: str) -> list:
+    """The page's own files in STATIC matching `patterns`, by name."""
+    return sorted(path for pattern in patterns for path in STATIC.glob(pattern))
+
+
 def test_the_page_loads_nothing_from_the_network():
-    for name in ("index.html", "app.js", "style.css"):
-        assert "http" not in (STATIC / name).read_text().lower(), name
+    files = _page_files("*.html", "*.js", "*.css")
+    assert {"index.html", "app.js", "style.css"} <= {path.name for path in files}
+    for path in files:
+        assert "http" not in path.read_text().lower(), path.name
 
 
 def test_every_help_line_in_the_page_is_one_short_line():
@@ -60,7 +67,10 @@ def test_every_help_line_in_the_page_is_one_short_line():
 
 @needs_node
 def test_the_script_parses():
-    subprocess.run([NODE, "--check", str(APP)], check=True, timeout=30)
+    scripts = _page_files("*.js")
+    assert APP in scripts
+    for path in scripts:
+        subprocess.run([NODE, "--check", str(path)], check=True, timeout=30)
 
 
 @needs_node

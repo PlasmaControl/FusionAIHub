@@ -47,10 +47,16 @@ body {
   height: 100dvh;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
+  /* The dock (api 11, workspace) is the second column; --dock-w is 0px while it is closed. */
+  grid-template-columns: minmax(0, 1fr) var(--dock-w, 0px);
   background: var(--paper);
   color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
+#bar { grid-column: 1 / -1; }
+#top { grid-column: 1; grid-row: 2; }
+#silver-page { grid-column: 1 / -1; grid-row: 2 / 4; }
+#bottom { grid-column: 1; grid-row: 3; }
 
 button, select, input {
   font: inherit;
@@ -77,6 +83,8 @@ kbd { font: inherit; font-size: 11px; opacity: 0.7; }
   /* A narrow window wraps the bar onto a second line, the name kept on screen. */
   flex-wrap: wrap;
   row-gap: 4px;
+  position: relative; /* #activity-line runs along its bottom edge */
+  min-width: 0; /* a long #status or #activity text is cut, never widens the page */
 }
 
 #shot { width: 7em; margin-left: 4px; }
@@ -92,12 +100,55 @@ kbd { font: inherit; font-size: 11px; opacity: 0.7; }
 #subbar .sub[aria-pressed="true"] { background: var(--label); border-color: var(--label); color: #fff; }
 #dirty { color: var(--unsaved); font-size: 16px; line-height: 1; }
 #status { flex: 1 1 8em; min-width: 0; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+#status:empty { flex-basis: 0; } /* an empty status keeps no room on the bar's line */
 #bar-end { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 #status.error { color: var(--error); }
 #help { width: 28px; padding: 3px 0; }
 #reviewer-name { width: 11em; }
 #reviewer { max-width: 14em; overflow: hidden; text-overflow: ellipsis; }
 #stale { color: var(--unsaved); }
+
+/* Shot lists (api 11): the closed control's border says whether the list is recommended. */
+#shotlist { max-width: 12em; }
+#shotlist.recommended { border-color: var(--label); }
+#shotlist[hidden], #by-shot[hidden] { display: none; }
+/* The view (api 11, workspace): narrow, so the bar keeps its one line at 1280 px. */
+#view { max-width: 8.5em; text-overflow: ellipsis; }
+#view[hidden] { display: none; }
+#by-shot[aria-pressed="true"] { background: var(--label); border-color: var(--label); color: #fff; }
+
+/* What is loading (api 11). A zero basis, and a margin that takes back the bar's 14px gap: it
+   takes only the room left on the bar's line, so it never wraps the bar onto a new one. When
+   that room cannot hold its text and Stop waiting, Activity.place shows it as a strip under
+   the bar instead (.under), over the top of the rows. */
+#activity { flex: 3 1 0; min-width: 0; margin-left: -14px; display: flex; align-items: center;
+  color: var(--muted); }
+#activity[hidden] { display: none; }
+#activity.error { color: var(--error); }
+.activity-body { display: flex; align-items: center; gap: 6px; min-width: 0; margin-left: 14px;
+  overflow: hidden; }
+#activity.under .activity-body { position: absolute; top: 100%; z-index: 21; max-width: calc(100% - 24px);
+  margin: 0; padding: 2px 8px; background: var(--panel); border: 1px solid var(--rule); border-top: 0;
+  border-radius: 0 0 3px 3px; font-size: 12px; }
+.activity-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; padding: 0;
+  border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.activity-stop { flex: none; padding: 0 6px; font-size: 12px; }
+.activity-stop[hidden] { display: none; }
+#activity-line { position: absolute; left: 0; bottom: 0; width: 0; height: 2px; background: var(--label);
+  transition: width 0.3s; pointer-events: none; }
+#activity-line[hidden] { display: none; }
+#activity-line.indeterminate { width: 30%; animation: activity-slide 1.4s ease-in-out infinite; }
+@keyframes activity-slide { from { left: -30%; } to { left: 100%; } }
+@media (prefers-reduced-motion: reduce) {
+  #activity-line { transition: none; }
+  #activity-line.indeterminate { width: 100%; left: 0; animation: none; opacity: 0.5; }
+}
+#activity-detail { position: absolute; top: 100%; z-index: 20; max-width: min(36em, calc(100vw - 24px));
+  max-height: 50vh; overflow-y: auto; padding: 6px 10px; white-space: normal; background: var(--panel);
+  border: 1px solid var(--rule); border-radius: 3px; font-size: 12px; }
+#activity-detail[hidden] { display: none; }
+#activity-detail ul { margin: 0 0 6px; padding-left: 1.2em; }
+.activity-heading { margin: 4px 0 2px; color: var(--muted); font-size: 11px; }
 #next-shot { font-variant-numeric: tabular-nums; }
 
 .pill { padding: 1px 9px; border-radius: 999px; background: var(--unreviewed); }
@@ -106,6 +157,7 @@ kbd { font: inherit; font-size: 11px; opacity: 0.7; }
 .pill.changed { background: var(--changed); color: #fff; }
 
 #top {
+  position: relative; /* #row-ui's chips are placed against it */
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-gutter: stable;
@@ -154,7 +206,20 @@ canvas { display: block; width: 100%; }
 body.busy #video-panel { opacity: 0.35; pointer-events: none; }
 
 #rows .failure { margin: 0; padding: 40px 12px 40px var(--gutter); color: var(--muted); }
+/* TokEye chips in the gutter (api 11): a zero-size layer over #top, so it never takes a row's place. */
+#row-ui { position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none; }
+/* max-content: #row-ui is 0 px wide, so a shrink-to-fit width would be the longest word (or,
+ * with overflow-wrap: anywhere, one letter); max-width then wraps the text at the gutter. */
+.row-chip { position: absolute; width: max-content; max-width: calc(var(--gutter) - 12px); font-size: 11px; line-height: 1.3;
+  color: var(--muted); white-space: normal; overflow-wrap: anywhere; pointer-events: auto;
+  background: var(--panel); } /* legible where a short row puts it over the row's title */
+.row-chip.error { color: var(--error); }
+.row-chip.queued { font-style: italic; }
+.row-chip button { display: block; margin-top: 2px; padding: 0 5px; font-size: 11px; }
+.row-chip button[hidden] { display: none; }
 body.busy #rows, body.busy .track canvas { opacity: 0.35; pointer-events: none; }
+body.busy #row-ui { opacity: 0.35; }
+body.busy .row-chip { pointer-events: none; }
 
 #axis-row {
   position: sticky;
@@ -223,6 +288,9 @@ button.primary { background: var(--label); border-color: var(--label); color: #f
 .chip.confirmed { background: var(--confirmed); color: #fff; }
 .chip.changed { background: var(--changed); color: #fff; }
 .chip.current { border-color: var(--ink); }
+/* On the list but not on this event's roster (api 11). */
+#queue .chip.extra { border-style: dashed; border-color: var(--muted); }
+#queue .chip.extra.current { border-color: var(--ink); }
 .chip.dirty::after {
   content: "";
   position: absolute;
@@ -241,6 +309,8 @@ button.primary { background: var(--label); border-color: var(--label); color: #f
   opacity: 0.5;
   pointer-events: none;
 }
+/* Out of the rows with the dock open, the hover line holds at the rest time. */
+#cursor.held, #hover-cursor.held { width: 0; background: none; border-left: 1px dotted var(--ink); }
 #cursor-time, #hover-time {
   position: absolute;
   top: 2px;
@@ -325,3 +395,89 @@ body.silver-mode #stale { display: none; }
   #silver-shots { max-height: 28dvh; }
   .silver-strip { grid-template-columns: 130px minmax(0, 1fr) 130px; }
 }
+
+/* ---- The workspace (api 11): views, the dock, pins and cut margins (D2) ---- */
+#rows { display: flex; flex-direction: column; } /* a view reorders rows with `order` alone */
+#rows .view-hidden { display: none; }
+#pins { position: fixed; inset: 0; z-index: 4; pointer-events: none; }
+.pin-tab { position: absolute; display: inline-flex; align-items: center; gap: 4px; padding: 0 4px;
+  transform: translate(-50%, -100%); font: 11px system-ui, sans-serif; white-space: nowrap;
+  color: var(--ink); background: var(--panel); border: 1px solid var(--ink); border-radius: 3px;
+  pointer-events: auto; cursor: ew-resize; touch-action: none; }
+.pin-tab[hidden] { display: none; }
+.pin-tab.pin-b { border-style: dashed; }
+.pin-tab button { padding: 0 3px; font-size: 11px; border: 0; background: none; color: var(--ink); }
+.pin-tab button[hidden] { display: none; }
+.pin-tab .pin-copy { color: var(--label); text-decoration: underline; }
+.cut-margin { z-index: 3; }
+
+#dock { grid-column: 2; grid-row: 2 / 4; position: relative; min-width: 0; min-height: 0;
+  display: flex; flex-direction: column; overflow: hidden; padding-left: 6px;
+  background: var(--panel); border-left: 1px solid var(--rule); }
+#dock[hidden] { display: none; }
+#dock-resize { position: absolute; left: 0; top: 0; bottom: 0; width: 6px; cursor: col-resize;
+  touch-action: none; }
+#dock-resize:hover { background: var(--rule); }
+#dock-head { flex: none; padding: 6px 8px 4px; border-bottom: 1px solid var(--rule); }
+.dock-head-line { display: flex; align-items: center; gap: 8px; }
+.dock-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-weight: 600; }
+.dock-head-line label { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.dock-follow { padding: 1px 4px; font-size: 12px; }
+.dock-close { width: 26px; padding: 1px 0; }
+.dock-reading { min-height: 1.35em; margin-top: 2px; color: var(--muted); font-size: 12px; white-space: pre;
+  overflow: hidden; text-overflow: ellipsis; }
+#dock-panels, #dock-edit { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+#dock-panels[hidden], #dock-edit[hidden] { display: none; }
+#dock-edit { padding: 6px 8px; }
+.dock-panel { padding: 4px 8px 8px; border-bottom: 1px solid var(--rule); }
+.dock-panel-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 3px; }
+.dock-panel-title { flex: none; font-weight: 600; font-size: 12px; }
+.dock-panel-note { flex: 1 1 auto; min-width: 0; color: var(--muted); font-size: 11px; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; text-align: right; }
+.dock-plot { width: 100%; }
+.dock-values { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+.dock-values th { text-align: left; font-weight: normal; color: var(--muted); }
+.dock-values td { padding: 1px 4px; text-align: right; white-space: nowrap; }
+.dock-values td.wrap { white-space: normal; } /* "peak 60 kHz · 238" may take two lines in a narrow dock */
+.dock-values td:first-child { text-align: left; white-space: normal; }
+.dock-values .fold { padding: 0 4px; font-size: 11px; border: 0; background: none; color: var(--muted); }
+.row-chip.dock-chip { position: static; width: auto; max-width: none; margin: 2px 0; }
+/* An added row's status line, centred over its plot (views.js sets its max-width to the plot's):
+ * the button follows the text, so a collapsed 28 px row holds both on one line. */
+.row-chip.signal-chip { overflow-wrap: normal; }
+.row-chip.signal-chip button { display: inline-block; margin: 0 0 0 8px; }
+/* The detachment cameras in the dock: one under another, at the dock's width. */
+.dock-cameras #video-controls { flex-wrap: wrap; gap: 6px 10px; }
+.dock-cameras #video-cameras { flex-direction: column; flex-wrap: nowrap; gap: 6px; }
+.dock-cameras .camera, .dock-cameras .camera.unavailable { flex: none; width: 100%; }
+.dock-cameras .camera img { height: 150px; }
+
+/* The view editor and the signal picker, in the dock. */
+.editor-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.editor-table th { text-align: left; font-weight: normal; color: var(--muted); }
+.editor-table td { padding: 2px 4px 2px 0; border-top: 1px solid var(--rule); }
+.editor-table select, .editor-table input, .editor-table button { padding: 0 4px; font-size: 12px; }
+.grip { cursor: grab; border: 0; background: none; color: var(--muted); }
+.editor-panels { margin: 8px 0; }
+.editor-panels li { display: flex; align-items: center; gap: 6px; }
+#view-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+#view-name { flex: 1 1 10em; min-width: 0; }
+.view-label { flex: 1 0 100%; font-weight: 600; }
+.view-message { flex: 1 0 100%; margin: 2px 0 0; min-height: 1.35em; color: var(--muted); }
+.picker-bar { display: flex; gap: 6px; }
+.picker-bar input { flex: 1; min-width: 0; }
+.picker-results { margin: 6px 0; }
+.picker-results h4 { margin: 8px 0 2px; font-size: 11px; font-weight: normal; color: var(--muted); }
+.picker-result { display: block; width: 100%; margin: 2px 0; text-align: left; font-size: 12px; }
+#dock .hint, #copy-values .hint { color: var(--muted); }
+#dock .error { color: var(--error); }
+#copy-values textarea { display: block; width: min(640px, 80vw); font: 12px ui-monospace, monospace; }
+
+/* Below 1,100 px the dock lies over the right of the rows instead of narrowing them (D toggles it). */
+@media (max-width: 1100px) {
+  body { grid-template-columns: minmax(0, 1fr) 0px; }
+  #dock { grid-column: 1; justify-self: end; width: min(420px, 92vw); z-index: 15; padding-left: 0; }
+  #dock-resize { display: none; }
+}
+body.silver-mode #dock, body.silver-mode #pins, body.silver-mode #view { display: none; }
