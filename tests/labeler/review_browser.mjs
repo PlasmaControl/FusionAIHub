@@ -1002,7 +1002,7 @@ async function emptyEvent() {
   await press("Enter");
   await until(`S.shot === 170815 && S.opened.ticket === S.ticket`);
   check("a shot typed from empty uses the normal missing-shot path", await js(`
-    S.meta === null && $("rows").textContent.includes("170815 has nothing to show:") &&
+    S.meta === null && Boolean($("rows").querySelector(".failure")?.textContent.includes("170815")) &&
     location.hash === "#${b}/170815" && window.requests.at(-1).kind === "shot"`));
   await js(`openShot(null).then(() => document.activeElement.blur())`);
   await js(`location.hash = "#${a}/170815"`);
@@ -1013,7 +1013,7 @@ async function emptyEvent() {
   await js(`location.hash = "#${b}/170815"`);
   await until(`S.shot === 170815 && S.opened.ticket === S.ticket`);
   check("an address opens a shot in the same empty event through the normal error path", await js(`
-    S.meta === null && $("rows").textContent.includes("170815 has nothing to show:")`));
+    S.meta === null && Boolean($("rows").querySelector(".failure")?.textContent.includes("170815"))`));
   await js("openShot(null)");
   await js(`$("event").value = "${a}"; $("event").dispatchEvent(new Event("change"))`);
   await settled(a, 170815);

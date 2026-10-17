@@ -2,7 +2,11 @@
 bar and value readout (24) and plan D.B's dock checks in a real browser: views,
 the dock, pins, the Values readout, the cut margins, added signals with their fetch and
 error states, saved views, the narrow overlay, and on detachment the dock that opens with
-the TangTV inversion, the EFIT equilibrium and the cameras. The scenario is
+the TangTV inversion, the EFIT equilibrium and the cameras; and round R2's page (R1-R9): the
+shot box's search, the dock tab, the slices of a shot without camera frames, row select and
+Delete and Pop out, q in the dock by default on mhd_n1, the Add row box (a pointname finds
+its catalog entry), one selection for rows and annotations, a failed popped-out row's chip,
+and the row undo kept to its layout. The scenario is
 review_workspace.mjs, run on review_browser.mjs's transport as test_review_page_d1_browser.py
 runs its own, against an api-11 workspace server whose fetch worker is a stand-in: a
 PTDATA point is queued, then fetching, then answered, and nothing leaves the machine."""
@@ -256,6 +260,7 @@ def test_the_d2_workspace_in_a_browser(served, tmp_path):
     print(json.dumps(checks, indent=1))  # the report's numbers (pytest -rP)
     assert [c for c in checks if not c["ok"]] == [], checks
     names = [c["name"].split(".")[0] for c in checks]
-    assert names == [str(n) for n in range(1, 25)] + [f"B{n}" for n in range(1, 6)] + ["E"]
+    assert names == ([str(n) for n in range(1, 25)] + [f"B{n}" for n in range(1, 6)]
+                     + [f"R{n}" for n in range(1, 10)] + ["E"])
     spans = labels.read_saved(paths.label_tables / AE)[170815].intervals
     assert {(1240, 1360), (500, 600)} <= {(a, b) for a, b, *_ in spans}, spans

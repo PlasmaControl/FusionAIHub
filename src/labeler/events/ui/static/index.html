@@ -12,25 +12,25 @@
   <select id="shotlist" aria-label="Shot list" hidden></select>
   <button id="by-shot" type="button" aria-pressed="false" hidden>By shot</button>
   <select id="view" aria-label="View" title="View: which rows show, and the dock" hidden></select>
-  <label id="gold-only-label" title="Offer only the shots in the gold set (50)"><input id="gold-only" type="checkbox"> Gold set</label>
+  <label id="gold-only-label" title="Only the 50 gold-set shots"><input id="gold-only" type="checkbox"> Gold set</label>
   <button id="silver-breadcrumb" type="button" title="Back to silver" hidden></button>
   <button id="silver-next-event" type="button" title="Next unsaved event" hidden>Next event</button>
   <span id="count"></span>
-  <label>Shot <input id="shot" inputmode="numeric" autocomplete="off"></label>
+  <span id="shot-now"></span>
   <span id="dirty" title="Unsaved" hidden>●</span>
   <span id="tier"></span>
   <span id="state" class="pill"></span>
   <span id="saved"></span>
-  <span id="masks" hidden title="AE mask: click a region to reject it; M hides it"></span>
-  <span id="markers" hidden title="Event markers on every row; T shows or hides them"></span>
+  <span id="masks" hidden title="AE mask: click a region to reject it. M hides it."></span>
+  <span id="markers" hidden title="Event markers on every row. T shows or hides them."></span>
   <span id="status" role="status" aria-live="polite"></span>
   <span id="activity" hidden></span>
   <span id="stale" hidden>Restart the server for names and history</span>
   <span id="bar-end">
   <input id="reviewer-name" placeholder="Your name" maxlength="64" autocomplete="name" spellcheck="false"
-         aria-label="Your name, recorded with each save" title="Recorded with each save" hidden>
-  <button id="reviewer" type="button" title="Recorded with each save: click to change" hidden></button>
-  <button id="help" type="button" aria-label="Keys">?</button>
+         aria-label="Your name, saved with each label" title="Saved with each label" hidden>
+  <button id="reviewer" type="button" title="Saved with each label. Click to change." hidden></button>
+  <button id="help" type="button" aria-label="Keys" title="Keys">?</button>
   </span>
   <nav id="subbar" aria-label="Subcategories" hidden></nav>
   <div id="activity-line" hidden></div>
@@ -50,7 +50,7 @@
       <div id="detachment-lanes"></div>
     </div>
     <details id="detachment-details">
-      <summary>Producer reading and diagnostic details (unverified)</summary>
+      <summary>Producer reading and diagnostics (unverified)</summary>
       <div class="detail-scroll">
         <p class="strip-legend"><span style="color:#0e8a8c">■ attached</span> · <span style="color:#0072b2">■ detached</span> · <span style="color:#cc79a7">■ MARFE</span> · <span style="color:#d55e00">■ uncertain</span> · grey abstain · hatched invalid</p>
         <p id="detachment-reading"></p>
@@ -100,6 +100,9 @@
     <button id="start-blank" type="button" hidden title="Clear Individual annotations and keep Span; Undo restores them.">Start blank</button>
     <button id="show-versions" type="button" hidden>History <kbd>H</kbd></button>
   </div>
+  <div id="shot-find"><label id="shot-label">Find shot <input id="shot" inputmode="numeric" autocomplete="off"
+         spellcheck="false" maxlength="6" role="combobox" aria-autocomplete="list" aria-controls="shot-matches"
+         aria-expanded="false" title="Type digits to find a shot; Enter opens it"></label></div>
   <nav id="queue" aria-label="Shots"></nav>
   <p id="contributors" aria-live="polite"></p>
   <p id="onsets" hidden></p>
@@ -110,35 +113,39 @@
 <div id="pins"></div>
 <dialog id="keys">
   <table>
-    <tr><td><kbd>Enter</kbd></td><td>Save, then open the next shot in the queue (Save and Next in one)</td></tr>
+    <tr><td><kbd>Enter</kbd></td><td>Save and open the next shot</td></tr>
     <tr><td><kbd>S</kbd></td><td>Save</td></tr>
-    <tr><td><kbd>R</kbd></td><td>Revert to source</td></tr>
-    <tr><td><kbd>←</kbd> <kbd>→</kbd> or <kbd>J</kbd> <kbd>K</kbd></td><td>Previous, next shot; an edit stays as a draft</td></tr>
-    <tr><td><kbd>U</kbd></td><td>Next unreviewed</td></tr>
+    <tr><td><kbd>R</kbd></td><td>Revert to the source labels</td></tr>
+    <tr><td><kbd>←</kbd> <kbd>→</kbd> or <kbd>J</kbd> <kbd>K</kbd></td><td>Previous or next shot (edits stay as a draft)</td></tr>
+    <tr><td><kbd>U</kbd></td><td>Next unreviewed shot</td></tr>
     <tr><td><kbd>H</kbd></td><td>Saved versions: who saved what, and restore one</td></tr>
-    <tr><td><kbd>M</kbd></td><td>AE: show or hide the pseudo-mask and TokEye lines</td></tr>
-    <tr><td><kbd>T</kbd></td><td>Show or hide the event markers drawn over every row</td></tr>
-    <tr><td>Click a mask region</td><td>Reject it, or take that back; saved at once, with your name</td></tr>
-    <tr><td>Drag on a label lane</td><td>Add, move or resize a span in that lane</td></tr>
-    <tr><td>Subcategory chips</td><td>Label only inside the parent's spans; the rest is hatched</td></tr>
+    <tr><td>Find shot</td><td>Type digits to find a shot; Enter opens it</td></tr>
+    <tr><td><kbd>M</kbd></td><td>AE: show or hide the mask and TokEye lines</td></tr>
+    <tr><td><kbd>T</kbd></td><td>Show or hide the event markers</td></tr>
+    <tr><td>Click a mask region</td><td>Reject it, or take that back (saved at once)</td></tr>
+    <tr><td>Drag on a label lane</td><td>Add, move or resize a span</td></tr>
+    <tr><td>Subcategory chips</td><td>Label inside the parent's spans only (the rest is hatched)</td></tr>
     <tr><td>Shift-drag on the rows</td><td>Add a span</td></tr>
     <tr><td>Drag on the rows</td><td>Pan</td></tr>
-    <tr><td>Detachment cameras</td><td>Drag the slider or click the timeline to seek; Play steps frames</td></tr>
+    <tr><td>Detachment cameras</td><td>Drag the slider or click the timeline; Play steps frames</td></tr>
     <tr><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd> wheel</td><td>Zoom</td></tr>
     <tr><td>Double-click</td><td>Fit the window</td></tr>
     <tr><td><kbd>Shift</kbd> <kbd>←</kbd> <kbd>→</kbd></td><td>Pan</td></tr>
     <tr><td><kbd>-</kbd> <kbd>=</kbd> <kbd>0</kbd></td><td>Zoom out, in, fit</td></tr>
     <tr><td><kbd>1</kbd>-<kbd>9</kbd></td><td>Category</td></tr>
-    <tr><td>Annotation resolution</td><td>Sets the selected or new annotation to Individual or Span</td></tr>
-    <tr><td><kbd>Delete</kbd></td><td>Remove the annotation</td></tr>
+    <tr><td>New annotations</td><td>Individual or Span, for the selected or the next annotation</td></tr>
+    <tr><td><kbd>Delete</kbd></td><td>Remove the selected annotation or row</td></tr>
     <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>Contrast</td></tr>
     <tr><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd> <kbd>Z</kbd></td><td>Undo</td></tr>
-    <tr class="workspace-key" hidden><td><kbd>P</kbd></td><td>Pin A, then B (the nearer moves)</td></tr>
+    <tr class="workspace-key" hidden><td><kbd>P</kbd></td><td>Pin A, then B (the nearer pin moves)</td></tr>
     <tr class="workspace-key" hidden><td><kbd>X</kbd></td><td>Remove the nearest pin</td></tr>
-    <tr class="workspace-key" hidden><td><kbd>L</kbd></td><td>Follow A / the cursor</td></tr>
-    <tr class="workspace-key" hidden><td><kbd>D</kbd></td><td>Dock</td></tr>
+    <tr class="workspace-key" hidden><td><kbd>L</kbd></td><td>Follow pin A or the cursor</td></tr>
     <tr class="workspace-key" hidden><td><kbd>Alt</kbd>+click</td><td>Pin</td></tr>
-    <tr class="workspace-key" hidden><td>Double-click the axis</td><td>Undo its pins and fit</td></tr>
+    <tr class="workspace-key" hidden><td>Double-click the axis</td><td>Clear the pins made there and fit</td></tr>
+    <tr class="workspace-key" hidden><td>Click a row's name</td><td>Select the row: Delete removes it, Ctrl+Z puts it back</td></tr>
+    <tr class="workspace-key" hidden><td>+ Add row</td><td>A signal, a PTDATA name (ECEVS01) or an MDS node (EFIT01::BETAN)</td></tr>
+    <tr class="workspace-key" hidden><td><kbd>D</kbd> or the ‹ tab</td><td>Open or close the dock</td></tr>
+    <tr class="workspace-key" hidden><td>Dock: Add</td><td>A profile, a slice view or a row popped out of the stack</td></tr>
   </table>
   <section id="detachment-help" hidden>
     <h3>Detachment: lower outer divertor leg</h3>
@@ -150,7 +157,7 @@
       <dt>Uncertain</dt><dd>Cannot decide: view blocked, evidence conflicts or no corroboration.</dd>
       <dt>Unmarked</dt><dd>Not reviewed.</dd>
     </dl>
-    <p>Start blank clears Individual and keeps Span; Blind mode hides Source.</p>
+    <p>Start blank clears Individual and keeps Span. Blind mode hides Source.</p>
     <h3>What the machine label means</h3>
     <pre id="detachment-machine-help">Open a shot to read its stored producer recipe.</pre>
   </section>
@@ -168,13 +175,13 @@
 </dialog>
 <dialog id="who" aria-labelledby="who-title">
   <h2 id="who-title">Who is reviewing?</h2>
-  <p class="hint">Your name is saved with each label and mask.</p>
+  <p class="hint">Your name is saved with each label and mask decision.</p>
   <select id="who-names" size="6" aria-label="Names"></select>
-  <p id="who-empty" class="hint" hidden>No names yet: add yours.</p>
+  <p id="who-empty" class="hint" hidden>No names yet. Add yours.</p>
   <div class="who-add">
     <input id="who-new" placeholder="Name not listed?" maxlength="64" autocomplete="name" spellcheck="false"
            aria-label="A name not on the list">
-    <button id="who-add" type="button">Add Name</button>
+    <button id="who-add" type="button">Add name</button>
   </div>
   <p id="who-error" role="alert"></p>
   <div class="who-go"><button id="who-continue" class="primary" type="button" disabled>Continue</button></div>

@@ -207,7 +207,7 @@ const Lists = {
 
   /** Say on the page why the list or shot could not be shown, and keep it with the failures. */
   fail(what, error) {
-    const text = `${what} could not be loaded: ${error.message}. Choose it again to retry.`;
+    const text = `Could not load ${what.charAt(0).toLowerCase()}${what.slice(1)}: ${error.message}. Choose it again to retry.`;
     $("silver-strips").replaceChildren(Object.assign(document.createElement("p"), { className: "failure", textContent: text }));
     Activity.fail(what, error.message);
   },
@@ -397,7 +397,7 @@ const Lists = {
       const first = after && Lists.byShot && Lists.strips ? Lists.nextOnShot(Lists.strips.events, null) : null;
       if (first) await Lists.openEvent(first.event);
     } catch (error) {
-      Activity.note("by-shot", `The next event could not be opened: ${error.message}. G goes back to the shot's overview.`, "error");
+      Activity.note("by-shot", `Could not open the next event: ${error.message}. G goes back to the shot.`, "error");
     }
   },
 };
@@ -426,8 +426,8 @@ function fillLists(body, event = S.event) {
   if (byShot) {
     byShot.disabled = !Lists.name || Lists.name === "roster";
     byShot.title = byShot.disabled
-      ? "By shot walks a named list: choose one in the list menu first"
-      : "Walk this list shot by shot, across every event (G goes back)";
+      ? "By shot needs a named list: choose one first"
+      : "Walk this list shot by shot across every event (G goes back)";
   }
 }
 
@@ -450,7 +450,7 @@ async function chooseList(name) {
   } catch (error) {
     if (S.event !== event) return;
     fillLists({ list: Lists.name, lists: Lists.lists }, event);
-    Activity.note("list", `The list ${name} could not be loaded: ${error.message}. Choose it again to retry.`, "error");
+    Activity.note("list", `Could not load the list ${name}: ${error.message}. Choose it again to retry.`, "error");
     return;
   }
   if (S.event !== event) return;
@@ -464,7 +464,7 @@ async function chooseList(name) {
 function toggleByShot(on = !Lists.byShot) {
   if (on) {
     if (!Lists.name || Lists.name === "roster") {
-      Activity.note("by-shot", "By shot walks a named list: choose one in the list menu first.");
+      Activity.note("by-shot", "By shot needs a named list. Choose one first.");
       return Promise.resolve();
     }
     return openByShot(Lists.name, S.shot != null && inQueue(S.shot) ? S.shot : null);

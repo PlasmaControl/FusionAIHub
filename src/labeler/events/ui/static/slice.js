@@ -482,6 +482,15 @@ function restAfter(anchor, x, t, ts) {
  * probe from the cut margin. Never makes a request; redraws the dock and the margins. */
 function notePointer(event) {
   if (!S.meta) return;
+  // A row popped out into the dock is the rows' time too: its hover is the cursor (R2).
+  const docked = typeof Dock !== "undefined" ? Dock.pointerTime(event) : null;
+  if (docked != null) {
+    Slice.inRows = true;
+    Slice.hover = docked;
+    Slice.anchor = null;
+    Slice.redraw();
+    return;
+  }
   const axis = $("axis-row").getBoundingClientRect();
   const x = event.clientX - axis.left;
   const over = Boolean(event.target?.closest?.("#rows, #axis-row, .track, #row-ui"));

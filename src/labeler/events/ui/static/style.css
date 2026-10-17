@@ -75,7 +75,7 @@ kbd { font: inherit; font-size: 11px; opacity: 0.7; }
 #bar {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
   padding: 6px 12px;
   background: var(--panel);
   border-bottom: 1px solid var(--rule);
@@ -87,7 +87,22 @@ kbd { font: inherit; font-size: 11px; opacity: 0.7; }
   min-width: 0; /* a long #status or #activity text is cut, never widens the page */
 }
 
-#shot { width: 7em; margin-left: 4px; }
+#shot { width: 6em; margin-left: 4px; }
+#shot-now { font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* The shot box's matches (R2): fixed over the page, above the box when it has more room there
+ * (ShotSearch.place); ↑/↓ pick, Enter opens. */
+#shot-matches { position: fixed; z-index: 22; margin: 0; padding: 2px 0;
+  list-style: none; overflow-y: auto; background: var(--panel);
+  border: 1px solid var(--rule); border-radius: 4px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18); }
+#shot-matches[hidden] { display: none; }
+#shot-matches li { display: grid; grid-template-columns: 4.2em minmax(0, 1fr) auto; gap: 8px;
+  align-items: baseline; padding: 2px 8px; cursor: pointer; }
+#shot-matches li:hover, #shot-matches li[aria-selected="true"] { background: var(--paper); }
+#shot-matches li[aria-selected="true"] { box-shadow: inset 2px 0 0 var(--label); }
+#shot-matches b { font-weight: 600; }
+#shot-matches span { max-width: 22em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted);
+  font-size: 12px; }
+#shot-matches small { color: var(--unsaved); font-size: 11px; }
 #count, #tier, #saved, #masks { color: var(--muted); }
 #markers { display: inline-flex; gap: 10px; color: var(--muted); }
 #markers[hidden] { display: none; }
@@ -117,15 +132,15 @@ kbd { font: inherit; font-size: 11px; opacity: 0.7; }
 #view[hidden] { display: none; }
 #by-shot[aria-pressed="true"] { background: var(--label); border-color: var(--label); color: #fff; }
 
-/* What is loading (api 11). A zero basis, and a margin that takes back the bar's 14px gap: it
+/* What is loading (api 11). A zero basis, and a margin that takes back the bar's 10px gap: it
    takes only the room left on the bar's line, so it never wraps the bar onto a new one. When
    that room cannot hold its text and Stop waiting, Activity.place shows it as a strip under
    the bar instead (.under), over the top of the rows. */
-#activity { flex: 3 1 0; min-width: 0; margin-left: -14px; display: flex; align-items: center;
+#activity { flex: 3 1 0; min-width: 0; margin-left: -10px; display: flex; align-items: center;
   color: var(--muted); }
 #activity[hidden] { display: none; }
 #activity.error { color: var(--error); }
-.activity-body { display: flex; align-items: center; gap: 6px; min-width: 0; margin-left: 14px;
+.activity-body { display: flex; align-items: center; gap: 6px; min-width: 0; margin-left: 10px;
   overflow: hidden; }
 #activity.under .activity-body { position: absolute; top: 100%; z-index: 21; max-width: calc(100% - 24px);
   margin: 0; padding: 2px 8px; background: var(--panel); border: 1px solid var(--rule); border-top: 0;
@@ -206,6 +221,10 @@ canvas { display: block; width: 100%; }
 body.busy #video-panel { opacity: 0.35; pointer-events: none; }
 
 #rows .failure { margin: 0; padding: 40px 12px 40px var(--gutter); color: var(--muted); }
+/* A failure's full server text, behind a small "details" toggle (contract §4). */
+#rows .failure-detail, .dock-chip .failure-detail { display: inline; font-size: 12px; }
+#rows .failure-detail summary, .dock-chip .failure-detail summary { display: inline; cursor: pointer; text-decoration: underline dotted; }
+#rows .failure-detail pre, .dock-chip .failure-detail pre { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 11px ui-monospace, monospace; }
 /* TokEye chips in the gutter (api 11): a zero-size layer over #top, so it never takes a row's place. */
 #row-ui { position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none; }
 /* max-content: #row-ui is 0 px wide, so a shrink-to-fit width would be the longest word (or,
@@ -251,7 +270,9 @@ body.busy .row-chip { pointer-events: none; }
 #source-track, #parent-track { height: 22px; }
 #label-track, #crowd-track { height: 40px; cursor: crosshair; touch-action: none; }
 
-#controls, #queue, #contributors { padding: 0 12px 0 var(--gutter); }
+#controls, #queue, #contributors, #shot-find { padding: 0 12px 0 var(--gutter); }
+/* The search sits above the shot chips, left of the dock, so the dock never covers it (R2). */
+#shot-find { margin: 0 0 6px; color: var(--muted); }
 /* One line always held, so the rows keep their height as it fills and empties. */
 #contributors { margin: 8px 0 0; min-height: 1.35em; color: var(--muted); white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis; }
@@ -424,7 +445,6 @@ body.silver-mode #stale { display: none; }
   font-weight: 600; }
 .dock-head-line label { color: var(--muted); font-size: 12px; white-space: nowrap; }
 .dock-follow { padding: 1px 4px; font-size: 12px; }
-.dock-close { width: 26px; padding: 1px 0; }
 .dock-reading { min-height: 1.35em; margin-top: 2px; color: var(--muted); font-size: 12px; white-space: pre;
   overflow: hidden; text-overflow: ellipsis; }
 #dock-panels, #dock-edit { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
@@ -480,4 +500,58 @@ body.silver-mode #stale { display: none; }
   #dock { grid-column: 1; justify-self: end; width: min(420px, 92vw); z-index: 15; padding-left: 0; }
   #dock-resize { display: none; }
 }
-body.silver-mode #dock, body.silver-mode #pins, body.silver-mode #view { display: none; }
+body.silver-mode #dock, body.silver-mode #pins, body.silver-mode #view, body.silver-mode #dock-tab,
+body.silver-mode #add-row, body.silver-mode #shot-matches { display: none; }
+
+/* ---- R2: the dock tab, the dock's Add menu, popped-out rows, row select and Add row ---- */
+/* The tab on the dock's left edge (the window's right edge while it is closed): always there. */
+#dock-tab { position: fixed; top: 50%; right: var(--dock-w, 0px); z-index: 16; width: 14px; height: 44px;
+  margin-top: -22px; padding: 0; border-right: 0; border-radius: 4px 0 0 4px; background: var(--panel);
+  color: var(--muted); font-size: 14px; line-height: 1; box-shadow: -1px 0 3px rgba(0, 0, 0, 0.12); }
+#dock-tab:hover { color: var(--ink); background: var(--paper); }
+#dock-tab[hidden] { display: none; }
+@media (max-width: 1100px) {
+  body:has(#dock:not([hidden])) #dock-tab { right: min(420px, 92vw); }
+}
+.dock-add { padding: 1px 8px; font-size: 12px; }
+.dock-add[aria-expanded="true"] { background: var(--label); border-color: var(--label); color: #fff; }
+.dock-menu { position: absolute; z-index: 5; left: 8px; right: 8px; max-height: 60vh; overflow-y: auto;
+  margin-top: 4px; padding: 4px 8px 8px; background: var(--panel); border: 1px solid var(--rule);
+  border-radius: 4px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18); }
+.dock-menu[hidden] { display: none; }
+.dock-menu h4 { margin: 6px 0 2px; font-size: 11px; font-weight: normal; color: var(--muted); }
+.dock-menu button { display: block; width: 100%; margin: 1px 0; padding: 2px 6px; text-align: left;
+  font-size: 12px; border-color: transparent; background: none; }
+.dock-menu button:hover:not(:disabled) { background: var(--paper); border-color: var(--rule); }
+.dock-menu p { margin: 2px 6px; color: var(--muted); font-size: 12px; }
+#dock-head { position: relative; } /* the Add menu hangs from it */
+.dock-panel-close { flex: none; width: 20px; height: 18px; padding: 0; font-size: 13px; line-height: 1;
+  border-color: transparent; background: none; color: var(--muted); }
+.dock-panel-close:hover { color: var(--ink); border-color: var(--rule); }
+.dock-empty { margin: 16px 8px; color: var(--muted); font-size: 12px; }
+.dock-row canvas { cursor: crosshair; }
+/* A row picked by its name box: Delete removes it from the view, Pop out moves it to the dock. */
+#rows canvas.row-selected { outline: 2px solid var(--label); outline-offset: -2px; }
+.row-chip.row-select { display: flex; gap: 4px; max-width: none; padding: 1px; border-radius: 3px; }
+.row-chip.row-select button { display: inline-block; margin: 0; }
+/* Add row: a box in the axis row's gutter, widening while it is used; matches open above it. */
+#add-row { position: fixed; z-index: 6; width: 70px; }
+#add-row[hidden] { display: none; }
+#add-row.open { width: min(300px, calc(100vw - 24px)); }
+#add-row-input { width: 100%; height: 20px; padding: 0 4px; font-size: 11px; background: var(--panel); }
+#add-row.open #add-row-input { font-size: 12px; padding: 0 6px; }
+#add-row-input::placeholder { color: var(--muted); }
+/* The matches and the note stack above the box (the axis row is the page's bottom edge). */
+.add-row-above { position: absolute; left: 0; bottom: 100%; width: 100%; display: flex; flex-direction: column;
+  gap: 2px; margin-bottom: 2px; }
+#add-row-list, #add-row-note { margin: 0; background: var(--panel); border: 1px solid var(--rule);
+  border-radius: 4px; box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.15); }
+#add-row-list { list-style: none; padding: 2px 0; max-height: 50vh; overflow-y: auto; }
+#add-row-list[hidden], #add-row-note[hidden] { display: none; }
+#add-row-list li { padding: 2px 8px; font-size: 12px; cursor: pointer; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+#add-row-list li small { margin-left: 6px; color: var(--muted); }
+#add-row-list li:hover, #add-row-list li[aria-selected="true"] { background: var(--paper); }
+#add-row-list li[aria-selected="true"] { box-shadow: inset 2px 0 0 var(--label); }
+#add-row-note { padding: 3px 8px; font-size: 12px; color: var(--muted); }
+#add-row-note.error { color: var(--error); }

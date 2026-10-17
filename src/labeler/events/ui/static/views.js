@@ -18,6 +18,8 @@ const Views = {
   SEGMENT: /^[A-Za-z][A-Za-z0-9_]*$/,
   NODE_MAX: 96,
   REFUSED: ["DIM_OF", "PTDATA2"],
+  Q_EVENTS: ["minimum_safety_factor", "poloidal_beta", "mhd_n1", "mhd_n2", "mhd_n3"], // q in the dock by default
+  SUGGEST: 8, // matches the Add row box lists
   SOURCES: { corpus: "corpus", raw: "raw cache", feature: "features", park: "MHD park", recipe: "recipe", mds: "MDS",
     ptdata: "PTDATA" },
   event: null,
@@ -34,6 +36,7 @@ const Views = {
   bitmaps: new Map(), // key -> {data, lo, canvas}: a map row's picture
   catalog: null, // /api/catalog for `catalogFor`
   catalogFor: "",
+  catalogFailed: "", // the event/shot whose /api/catalog failed (the Add menu and box say so)
   shot: null, // the shot the layout was last applied to
   editing: false,
   openBefore: false, // the dock was open when the editor opened
@@ -41,6 +44,9 @@ const Views = {
   pending: true, // the layout's dock is still to be applied (a view was chosen)
   picking: null, // the picker's state while it shows: {query, source}
   message: "", // the editor's last message
+  selected: null, // the row key picked by a click on its name box (R2)
+  removed: [], // rows Delete took out of this event's layout, newest last: {key, at, row, depth}; Ctrl+Z puts one back
+  box: null, // the Add row box's parts, made on first use
 
   // -- pure helpers (node tests)
 
@@ -109,7 +115,7 @@ const Views = {
    * is one. Mirrors the server's rule (plan D.A). */
   nodeProblem(tree, node, trees) {
     const generic = `${node} is not an MDS node name: use letters, digits and _ in parts that start with a letter, up to 96 characters.`;
-    if (!trees.includes(String(tree).toUpperCase())) return `${tree} is not an allowed MDS tree: ${trees.join(", ")}.`;
+    if (!trees.includes(String(tree).toUpperCase())) return `${tree} is not an allowed MDS tree${trees.length ? `: ${trees.join(", ")}` : ""}.`;
     if (!node || node.length > Views.NODE_MAX) return generic;
     const path = node.replace(/^\\/, "");
     const at = path.indexOf("::");
@@ -122,6 +128,42 @@ const Views = {
       return `${node}: DIM_OF and PTDATA2 are not fetched; name the node itself.`;
     }
     return null;
+  },
+
+  /** A name typed in Add row as the server fetches it: an MDS node ("\\EFIT01::BETAN" or
+   * "EFIT01::BETAN") as {id: "mds:<TREE>:<node>", text}, a PTDATA point ("ecevs01") as
+   * {id: "custom:<NAME>", text}, else {refusal}; null for nothing typed. */
+  parsePoint(typed, trees = []) {
+    const text = String(typed ?? "").trim();
+    if (!text) return null;
+    const allowed = trees.map((name) => String(name).toUpperCase());
+    if (text.includes("::")) {
+      const bare = text.replace(/^\\/, "");
+      const tree = bare.slice(0, bare.indexOf("::")).toUpperCase();
+      const node = `\\${tree}${bare.slice(bare.indexOf("::"))}`.toUpperCase();
+      const problem = Views.nodeProblem(tree, node, allowed);
+      return problem ? { refusal: problem } : { id: `mds:${tree}:${node}`, text: `MDS ${node}` };
+    }
+    if (text.startsWith("\\")) return { refusal: `Add the tree, e.g. EFIT01::${text.slice(1).toUpperCase()}` };
+    if (Views.PTDATA.test(text)) return { id: `custom:${text.toUpperCase()}`, text: `PTDATA ${text.toUpperCase()}` };
+    return { refusal: "Not a PTDATA name or an MDS node (TREE::NODE)." };
+  },
+
+  /** A pointname as the catalog's `points` are compared: no leading \\, lower case. */
+  pointKey: (text) => String(text ?? "").trim().replace(/^\\/, "").toLowerCase(),
+
+  /** The names a catalog entry answers to as a pointname: each of its `points` (a PTDATA name,
+   * or an MDS node also as TREE::LAST and LAST, so EFIT01::BETAN finds
+   * \\efit01::top.results.aeqdsk:betan). */
+  pointKeys(entry) {
+    const keys = [];
+    for (const point of entry?.points || []) {
+      const key = Views.pointKey(point);
+      const last = key.split(/::|[.:]/).pop();
+      keys.push(key);
+      if (key.includes("::")) keys.push(`${key.slice(0, key.indexOf("::"))}::${last}`, last);
+    }
+    return keys;
   },
 
   /** A copy of a layout (views keep JSON only). */
@@ -192,7 +234,7 @@ const Views = {
   async restore(event) {
     Views.event = event;
     Object.assign(Views, { current: null, changed: false, layout: defaultLayout(event), list: null, listFor: "",
-      pending: true });
+      pending: true, removed: [] }); // Ctrl+Z never puts a row of another event's layout here
     Activity.clear("view", "view-rows");
     const saved = stored(Views.storeKey(event));
     if (saved) {
@@ -202,7 +244,7 @@ const Views = {
       if (found) Object.assign(Views, { current: found, layout: Views.clone(found.layout), pending: true });
       else {
         store(Views.storeKey(event), null);
-        Activity.note("view", `The view ${saved.replace(/^(view|preset):/, "")} is gone; showing Default.`);
+        Activity.note("view", `The view ${saved.replace(/^(view|preset):/, "")} is gone. Showing Default.`);
       }
       if (S.meta && S.event === event) {
         applyView();
@@ -247,7 +289,7 @@ const Views = {
     }
     if (value && !Views.find(value)) await Views.loadList();
     const view = value ? Views.find(value) : null;
-    Object.assign(Views, { current: view, changed: false, pending: true,
+    Object.assign(Views, { current: view, changed: false, pending: true, removed: [], // Ctrl+Z stays in this layout
       layout: view ? Views.clone(view.layout) : defaultLayout(S.event) });
     store(Views.storeKey(S.event), view ? value : null);
     Activity.clear("view", "view-rows");
@@ -336,7 +378,7 @@ const Views = {
       return null;
     }
     if (name.toLowerCase() === "default") {
-      Views.say("Default is the store's own layout: pick another name.", true);
+      Views.say("Default is built in. Pick another name.", true);
       return null;
     }
     return name;
@@ -742,7 +784,9 @@ const Views = {
       const body = await (await api(`/api/catalog?event=${encodeURIComponent(S.event)}&shot=${S.shot}`)).json();
       Views.catalog = body;
       Views.catalogFor = at;
+      Views.catalogFailed = "";
     } catch (error) {
+      Views.catalogFailed = at;
       Views.say(`Could not load the signal list: ${error.message}. Try again in a minute.`, true);
     }
     return Views.catalog;
@@ -825,7 +869,7 @@ const Views = {
     if (!matches.length && !offer && !refusal && state.query.trim()) {
       out.push(el("p", { className: "hint", textContent: state.source === "ptdata"
         ? "No signal in the list matches."
-        : "No signal in the list matches. Type a node of this tree, or ask the owner to add this node to configs/labeler/signals.yaml." }));
+        : "No signal in the list matches. Type a node of this tree: TREE::NODE." }));
     }
     return out;
   },
@@ -842,7 +886,7 @@ const Views = {
     Views.touch();
     applyView();
     Views.fetchAdded();
-    Views.say(`Added ${entry?.label || id.replace(/^custom:/, "")} below the event's rows.`);
+    Views.say(`Added ${entry?.label || id.replace(/^(custom|mds:[^:]+):/, "")} below the rows.`);
     Views.picking = null;
     Views.renderEditor();
   },
@@ -855,15 +899,250 @@ const Views = {
     Views.picking = null;
     Views.renderEditor();
   },
+
+  // -- row editing on the rows themselves (R2): select by the name box, Delete, Ctrl+Z
+
+  /** The view key of a row's canvas in #rows, or null. */
+  keyOf(canvas) {
+    return Slice.rows(true).find((item) => item.canvas === canvas)?.key || null;
+  },
+
+  /** Select the row `key` (a click on its name box; again, or Escape, lets go): it is outlined,
+   * with Pop out and Remove beside its name. */
+  selectRow(key) {
+    Views.selected = key || null;
+    if (key && typeof S !== "undefined") S.selected = -1; // one selection at a time (Delete)
+    for (const item of Slice.rows(true)) item.canvas?.classList.toggle("row-selected", item.key === Views.selected);
+    Views.placeRowChip();
+  },
+
+  /** The selected row's chip: Pop out (to the dock) and Remove (Delete), over its name box. */
+  placeRowChip() {
+    const ui = typeof document === "undefined" ? null : $("row-ui");
+    if (!ui) return;
+    let chip = $("row-select");
+    const item = Views.selected ? Slice.rows().find((found) => found.key === Views.selected) : null;
+    if (!item) {
+      if (Views.selected && !Slice.rows(true).some((found) => found.key === Views.selected)) Views.selected = null;
+      chip?.remove();
+      return;
+    }
+    if (!chip) {
+      chip = Object.assign(document.createElement("div"), { id: "row-select", className: "row-chip row-select" });
+      const pop = Object.assign(document.createElement("button"), { type: "button", textContent: "Pop out", title: "Show this row in the dock" });
+      pop.addEventListener("click", () => {
+        const key = Views.selected;
+        Views.selectRow(null);
+        Dock.popRow(key);
+      });
+      const remove = Object.assign(document.createElement("button"), { type: "button", textContent: "Remove", title: "Remove from the view (Delete); Ctrl+Z undoes" });
+      remove.addEventListener("click", () => Views.removeSelectedRow());
+      chip.append(pop, remove);
+      ui.append(chip);
+    }
+    const canvas = item.canvas;
+    let [x, y] = [0, 0];
+    for (let at = canvas; at && at !== ui.offsetParent; at = at.offsetParent) [x, y] = [x + at.offsetLeft, y + at.offsetTop];
+    chip.style.left = `${x + GUTTER + 6}px`;
+    chip.style.top = `${y + 4}px`;
+  },
+
+  /** Delete on a selected row: take it out of the view (a store row hides, an added row goes);
+   * Ctrl+Z puts it back, and Reset to default always does. False with no row selected. */
+  removeSelectedRow() {
+    const key = Views.selected;
+    if (!key || !Views.layout || !S.meta) return false;
+    Views.materialize();
+    const at = Views.layout.rows.findIndex((row) => row.key === key);
+    if (at < 0) return false;
+    const title = Slice.rows(true).find((item) => item.key === key)?.title || key;
+    Views.removed.push({ key, at, row: Views.clone(Views.layout.rows[at]), depth: S.undo.depth ?? S.undo.length });
+    Views.selectRow(null);
+    if (key.startsWith("store:")) Views.layout.rows[at].hidden = true;
+    else Views.layout.rows.splice(at, 1);
+    Views.touch();
+    applyView();
+    Views.renderEditor();
+    Activity.note("view", `Removed ${title}. Ctrl+Z puts it back.`);
+    return true;
+  },
+
+  /** Ctrl+Z after Delete on a row, before any later label edit: the row comes back where it
+   * was. False when the last undoable change was not a row. */
+  undoRow() {
+    const last = Views.removed[Views.removed.length - 1];
+    if (!last || last.depth !== (S.undo.depth ?? S.undo.length) || !Views.layout || !S.meta) return false;
+    Views.removed.pop();
+    Views.materialize();
+    const rows = Views.layout.rows;
+    const at = rows.findIndex((row) => row.key === last.key);
+    if (at >= 0) rows[at] = last.row;
+    else rows.splice(Math.min(last.at, rows.length), 0, last.row);
+    Views.touch();
+    applyView();
+    Views.fetchAdded();
+    Views.renderEditor();
+    Activity.note("view", null);
+    return true;
+  },
+
+  // -- Add row: a box under the rows' names that takes any fdp pointname (R2)
+
+  /** The Add row box, made once, fixed over the time axis's left gutter. */
+  addBox() {
+    if (typeof document === "undefined" || !document.body) return null;
+    if (Views.box) return Views.box;
+    const wrap = Object.assign(document.createElement("div"), { id: "add-row" });
+    const input = Object.assign(document.createElement("input"), { id: "add-row-input", type: "text", placeholder: "+ Add row",
+      autocomplete: "off", spellcheck: false, title: "Add a row: a signal, a PTDATA name (ECEVS01) or an MDS node (EFIT01::BETAN)" });
+    input.setAttribute("aria-label", "Add a row by signal or point name");
+    input.setAttribute("role", "combobox");
+    input.setAttribute("aria-autocomplete", "list");
+    input.setAttribute("aria-controls", "add-row-list");
+    input.setAttribute("aria-expanded", "false");
+    const list = Object.assign(document.createElement("ul"), { id: "add-row-list", hidden: true });
+    list.setAttribute("role", "listbox");
+    const note = Object.assign(document.createElement("p"), { id: "add-row-note", hidden: true });
+    note.setAttribute("role", "status");
+    const above = Object.assign(document.createElement("div"), { className: "add-row-above" }); // opens upward
+    above.append(list, note);
+    wrap.append(above, input);
+    document.body.append(wrap);
+    const state = { input, list, note, wrap, options: [], active: -1 };
+    input.addEventListener("focus", async () => {
+      wrap.classList.add("open");
+      if (!Views.catalog || Views.catalogFor !== `${S.event}/${S.shot}`) await Views.loadCatalog();
+      Views.suggest();
+    });
+    input.addEventListener("blur", () => setTimeout(() => {
+      if (document.activeElement === input) return;
+      wrap.classList.remove("open");
+      list.hidden = true;
+      input.setAttribute("aria-expanded", "false");
+    }, 150));
+    input.addEventListener("input", async () => {
+      if (Views.catalogFailed === `${S.event}/${S.shot}`) await Views.loadCatalog(); // typing retries
+      Views.suggest();
+    });
+    input.addEventListener("keydown", (event) => {
+      const n = state.options.length;
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        if (!n) return;
+        const down = event.key === "ArrowDown";
+        state.active = state.active < 0 ? (down ? 0 : n - 1) : (state.active + (down ? 1 : n - 1)) % n;
+        Views.showSuggestions();
+      } else if (event.key === "Enter") {
+        event.preventDefault();
+        Views.takeSuggestion(state.options[Math.max(0, state.active)]);
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        input.value = "";
+        note.hidden = true;
+        input.blur();
+      }
+    });
+    Views.box = state;
+    return state;
+  },
+
+  /** Place the Add row box over the time axis's gutter; shown on a shot with the workspace. */
+  placeAddBox() {
+    const show = typeof document !== "undefined" && Boolean(S.meta) && ws() && !$("top").hidden;
+    if (!show && !Views.box) return;
+    const box = Views.addBox();
+    if (!box) return;
+    box.wrap.hidden = !show;
+    if (!show) return;
+    const axis = $("axis-row").getBoundingClientRect();
+    box.wrap.style.left = `${axis.left + 2}px`;
+    box.wrap.style.top = `${axis.top + 2}px`;
+  },
+
+  /** The box's suggestions for what is typed: catalog rows that match (suggested first), then
+   * the typed name as a PTDATA point or an MDS node, which the server checks when it fetches. */
+  suggest() {
+    const box = Views.box;
+    if (!box) return;
+    const typed = box.input.value.trim();
+    const entries = (Views.catalog?.entries || []).filter((entry) => entry.kind !== "profile");
+    const inView = new Set(Views.order().filter((row) => !row.hidden).map((row) => Views.idOf(row.key)).filter(Boolean));
+    const found = typed ? matchCatalog(entries, typed).matches : [];
+    const matches = found.filter((entry) => !inView.has(entry.id)).slice(0, Views.SUGGEST);
+    // A pointname the catalog curates is that entry, never a second raw row of it.
+    const exact = found.filter((entry) => Views.pointKeys(entry).includes(Views.pointKey(typed)));
+    const known = exact.length && exact.every((entry) => inView.has(entry.id)) ? exact[0] : null;
+    const parsed = exact.length ? null : Views.parsePoint(typed, Views.catalog?.trees || []);
+    const options = matches.map((entry) => ({ id: entry.id, entry, text: entry.label,
+      detail: [entry.units, Views.SOURCES[entry.source] || entry.source].filter(Boolean).join(" · ") }));
+    if (parsed?.id && !matches.some((entry) => entry.id === parsed.id)) options.push({ id: parsed.id, text: parsed.text, detail: "fetch with fdp" });
+    box.options = options;
+    box.active = options.length ? 0 : -1;
+    box.note.hidden = !(parsed?.refusal && !matches.length);
+    box.note.className = "error";
+    box.note.textContent = parsed?.refusal && !matches.length ? parsed.refusal : "";
+    const failed = Views.catalogFailed === `${S.event}/${S.shot}`;
+    if ((!Views.catalog || failed) && typed) {
+      box.note.hidden = false;
+      box.note.className = failed ? "error" : "hint";
+      box.note.textContent = failed ? "Could not load the signal list. Type to try again." : "Loading the signal list…";
+    }
+    if (known) {
+      box.note.hidden = false;
+      box.note.className = "hint";
+      box.note.textContent = `${known.label || known.id} is already in the view.`;
+    }
+    Views.showSuggestions();
+  },
+
+  showSuggestions() {
+    const box = Views.box;
+    box.list.replaceChildren(...box.options.map((option, k) => {
+      const li = Object.assign(document.createElement("li"), { id: `add-row-option-${k}` });
+      li.setAttribute("role", "option");
+      li.setAttribute("aria-selected", String(k === box.active));
+      li.append(Object.assign(document.createElement("span"), { textContent: option.text }),
+        Object.assign(document.createElement("small"), { textContent: option.detail || "" }));
+      li.addEventListener("pointerdown", (event) => {
+        event.preventDefault(); // the input keeps focus
+        Views.takeSuggestion(option);
+      });
+      return li;
+    }));
+    box.list.hidden = !box.options.length;
+    box.input.setAttribute("aria-expanded", String(!box.list.hidden));
+    if (box.active >= 0) box.input.setAttribute("aria-activedescendant", `add-row-option-${box.active}`);
+    else box.input.removeAttribute("aria-activedescendant");
+  },
+
+  /** Add the chosen suggestion as a row of the view; the server fetches it, and its chip says
+   * why if it cannot. */
+  takeSuggestion(option) {
+    const box = Views.box;
+    if (!option || !box) {
+      if (box && box.input.value.trim()) Views.suggest();
+      return;
+    }
+    if (!Views.layout || !S.meta) return;
+    Views.addRow(option.id, option.entry || null);
+    box.input.value = "";
+    box.options = [];
+    box.note.hidden = true;
+    Views.showSuggestions();
+  },
 };
 
 /** The default layout of `event`: the store's rows in store order at today's heights, and no
  * dock; detachment's opens the dock with the TangTV inversion and EFIT, then the cameras
- * (plan D.B). */
+ * (plan D.B); q_min, poloidal beta and the MHD events (their subcategories too) open it with
+ * the q profile (R2). */
 function defaultLayout(event) {
-  const dock = event === "detachment"
+  const family = String(event ?? "").split(".")[0];
+  const dock = family === "detachment"
     ? { open: true, width: null, follow: "cursor", panels: [{ kind: "slice", id: "inversion", h: 300 }, { kind: "cameras" }] }
-    : { open: false, width: null, follow: "cursor", panels: [] };
+    : Views.Q_EVENTS.includes(family)
+      ? { open: true, width: null, follow: "cursor", panels: [{ kind: "profile", id: "q_profile", h: 200 }] }
+      : { open: false, width: null, follow: "cursor", panels: [] };
   return { v: 1, name: "Default", event, rows: [], other_store_rows: "end", dock };
 }
 
@@ -874,11 +1153,14 @@ function applyView(layout = null) {
   if (layout) Views.layout = Views.clone(layout);
   if (!S.meta) return;
   if (layout) Views.pending = true;
-  if (!Views.layout || Views.layout.event !== S.event) Object.assign(Views, { layout: defaultLayout(S.event), pending: true });
+  if (!Views.layout || Views.layout.event !== S.event) Object.assign(Views, { layout: defaultLayout(S.event), pending: true, removed: [] });
   if (Views.shot !== S.shot) {
     Views.shot = S.shot;
     Slice.reset();
     Dock.shotChanged();
+    // A new shot starts a new label undo: a row taken out before it comes back first.
+    Views.removed = Views.removed.map((removed) => ({ ...removed, depth: 0 }));
+    Views.selected = null;
     for (const chip of Views.chips.values()) chip.remove();
     Views.chips.clear();
   }
@@ -911,12 +1193,14 @@ function applyView(layout = null) {
     }
   }
   Views.added = added;
+  Views.selectRow(Views.selected); // the outline and chip follow the row (or go with it)
   const notes = Views.notes(plan);
   Activity.note("view-rows", [notes.missing, notes.fresh].filter(Boolean).join(". ") || null);
   if (Views.pending) {
     // A view was chosen: its dock replaces the one shown. Between shots the dock stays as the
     // reviewer left it (`d`, the resize handle and Follow are changes to the view).
     Views.pending = false;
+    Dock.reopen = false;
     const dock = Views.layout.dock || {};
     Dock.panels = Views.clone(dock.panels || []);
     Dock.width = Number(dock.width) > 0 ? Number(dock.width) : null;
@@ -926,6 +1210,9 @@ function applyView(layout = null) {
       Dock.layout();
       Dock.relayout();
     }
+  } else if (Dock.reopen) {
+    Dock.reopen = false; // a failed shot closed it (showNothing): this shot opens it again
+    if (!Dock.open) Dock.show(true);
   }
   if (cutMargin()) fetchRows();
   sizeCanvases();
@@ -1054,15 +1341,16 @@ async function openPicker(query = "") {
   }
 }
 
-/** Search the catalog `entries` for `query` (every word in the id, label, group, units or
- * node); suggested entries first. With no match, a name typed for `source` ("ptdata" or an
+/** Search the catalog `entries` for `query` (every word in the id, label, group, units, node,
+ * description or pointnames, a leading \\ ignored); suggested entries first. With no match, a name typed for `source` ("ptdata" or an
  * allowed tree of `trees`) is offered as {id, text} ("Add PTDATA DUSBRADIAL", custom:<NAME>;
  * "Add MDS \EFIT01::BETAN", mds:<TREE>:<node>) or refused before any request. Returns
  * {matches, offer, refusal}. */
 function matchCatalog(entries, query, source = "ptdata", trees = []) {
   const text = String(query ?? "").trim();
-  const words = text.toLowerCase().split(/\s+/).filter(Boolean);
-  const haystack = (entry) => [entry.id, entry.label, entry.group, entry.units, entry.where].join(" ").toLowerCase();
+  const words = text.toLowerCase().split(/\s+/).filter(Boolean).map((word) => word.replace(/^\\/, ""));
+  const haystack = (entry) => [entry.id, entry.label, entry.group, entry.units, entry.where, entry.description,
+    ...Views.pointKeys(entry)].join(" ").toLowerCase();
   const matches = !words.length ? (entries || []).slice()
     : (entries || []).filter((entry) => words.every((word) => haystack(entry).includes(word)));
   matches.sort((a, b) => Number(Boolean(b.suggested)) - Number(Boolean(a.suggested)));

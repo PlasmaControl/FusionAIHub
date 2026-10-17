@@ -13,7 +13,7 @@ const Activity = {
   TICK_MS: 250,
   STUCK_S: 120, // a build whose stage has not moved for this long may be stuck
   KEEP: 10, // failures kept for the detail list
-  ABSENT: new Set(["masks", "tokeye", "version"]), // kinds whose 404 means "nothing here", not a failure
+  ABSENT: new Set(["masks", "tokeye", "version", "shots/search"]), // kinds whose 404 means "nothing here", not a failure
   STAGES: { queued: "queued", reading: "reading from disk", fetching: "fetching signals",
     building: "building rows", writing: "writing the store" }, // a /api/shot 202 `stage`, as the bar says it
   PLURALS: { signal: (n) => `Fetching ${n} signals`, profile: (n) => `Loading ${n} profiles`,
@@ -60,6 +60,7 @@ const Activity = {
       case "fetch/status": return "Checking the fdp login";
       case "slices": return "Reading what the shot has";
       case "slice": return "Loading a slice";
+      case "shots/search": return "Searching shots";
       default: return "Waiting for the server";
     }
   },
@@ -106,22 +107,25 @@ const Activity = {
     return `${shown.length} loading · longest: ${longest.what}${since}`;
   },
 
-  /** A store build's text from a /api/shot 202 `body` (stage, progress, elapsed_s,
-   * queue_position, prebuilt). `stalled` is how long, in seconds, its stage has not moved. */
+  /** A store build's text from a /api/shot 202 `body` (stage, note, progress, elapsed_s,
+   * queue_position, prebuilt). The server's short `note` ("Fetching pinj_total") says what it
+   * does when it has one. `stalled` is how long, in seconds, its stage has not moved. */
   buildText(shot, name, body = {}, stalled = 0) {
     if (stalled >= Activity.STUCK_S) return ERROR_COPY.stuck();
     const p = body.progress;
-    const doing = p?.stage || Activity.STAGES[body.stage] || "building";
+    const note = typeof body.note === "string" ? body.note.trim().replace(/\.$/, "") : "";
+    // "Fetching pinj_total" reads "fetching pinj_total" after the colon; "EFIT01 …" stays.
+    const said = note && /^[A-Z][a-z]/.test(note) ? `${note.charAt(0).toLowerCase()}${note.slice(1)}` : note;
+    const doing = p?.stage || said || Activity.STAGES[body.stage] || "building";
     const count = p?.total > 0 ? ` (${p.done} of ${p.total})` : "";
     const since = body.elapsed_s >= Activity.CLOCK_MS / 1000 ? ` · ${Activity.clock(body.elapsed_s)}` : "";
     // queue_position is the place among the waiting builds (0 while it runs), as a chip says it
-    const place = body.queue_position > 0 ? ` · ${Activity.ordinal(body.queue_position)} in line` : "";
-    const head = `Building ${shot}${name ? ` for ${name}` : ""}: ${doing}${count}${since}${place}`;
-    return body.prebuilt === false ? `${head}. This shot is not in a pre-built list.` : head;
+    const place = body.queue_position > 0 && !/queue|ahead|in line/i.test(note) ? ` · ${Activity.ordinal(body.queue_position)} in line` : "";
+    return `Building ${shot}${name ? ` for ${name}` : ""}: ${doing}${count}${since}${place}`;
   },
 
-  /** What the bar says after Stop waiting on a build of `shot`. */
-  stopped: (shot) => `${shot} is still building on the server. K opens the next shot; come back to this one later.`,
+  /** What the rows say after Stop waiting on a build of `shot`. */
+  stopped: (shot) => `${shot} is still building on the server. Open it again later.`,
 
   /** The fdp login's note from /api/version's `fdp` block, {text, tone}, or null: nothing to
    * say, or a server without the block. */
@@ -214,7 +218,7 @@ const Activity = {
     const now = Activity.now();
     const item = Activity.items.get(id);
     const p = body?.progress;
-    const key = JSON.stringify([body?.stage, p?.stage, p?.done, body?.queue_position]);
+    const key = JSON.stringify([body?.stage, body?.note, p?.stage, p?.done, body?.queue_position]);
     const moved = !item || item.key !== key ? now : item.moved;
     return Activity.hold(id, {
       kind: "build", what: `Building ${shot}`, shot, key, moved,
@@ -250,7 +254,7 @@ const Activity = {
       }
       Activity.note("fdp", note.text, note.tone);
     } catch (error) {
-      Activity.note("fdp", `Could not check the fdp login: ${error.message}. Try again in a minute.`, "error");
+      Activity.note("fdp", "Could not check the fdp login. Try again in a minute.", "error");
     }
     return false;
   },
@@ -367,21 +371,20 @@ const Activity = {
  * /api/profile errors (an added row's chip) and the page's own (the bar and #stale). Each
  * takes the facts it names. */
 const ERROR_COPY = {
-  auth: () => "fdp login has expired, so this signal cannot be fetched. Run fdp login on the server host. Rows on disk still work.",
-  missing: ({ name, shot }) => `No ${name} data for shot ${shot}.`,
-  upstream: ({ message }) => `The data server returned an error: ${message}. Try again in a minute.`,
-  timeout: ({ limit_s = 30 } = {}) => `The fetch took over ${Activity.clock(limit_s)} and was stopped. ${limit_s < 120
-    ? "A formula node can take up to 2 min." : "Try again in a minute."}`,
+  auth: () => "fdp login expired. Run fdp login on the server, then Retry.",
+  missing: ({ name, shot }) => `No ${name} for ${shot}.`,
+  upstream: ({ message }) => `The data server failed: ${String(message).replace(/\.$/, "")}. Try again soon.`,
+  timeout: ({ limit_s = 30 } = {}) => `Stopped after ${Activity.clock(limit_s)}. ${limit_s < 120
+    ? "A formula node can take 2 min." : "Try again soon."}`,
   invalid: ({ name, source = "ptdata", message } = {}) => (message ? Activity.sentence(message)
-    : source === "mds"
-      ? `${name} is not an MDS node name: use letters, digits and _ in parts that start with a letter, up to 96 characters.`
-      : `${name} is not a PTDATA point name: use a letter, then letters, digits or _, up to 12 characters.`),
-  version: ({ message }) => `Could not read the server version: ${message}. Reload the page; if this persists, restart the server.`,
-  mask: ({ message }) => `AE mask could not be loaded: ${message}. Press M to retry.`,
-  prefetch: ({ shot, message }) => `Next shot ${shot}: build failed: ${message}`,
-  fdp_expired: () => "fdp login has expired: new signals cannot be fetched. Run fdp login on the server host, then press Retry on a row.",
-  fdp_unavailable: () => "This server cannot fetch new signals: restart it with pixi run -e labeler labeler-verify.",
-  stuck: () => `Still building after ${Activity.clock(Activity.STUCK_S)}. The server may be stuck: check its log, or open another shot.`,
+    : source === "mds" ? `${name} is not a valid MDS node: letters, digits and _, each part starting with a letter.`
+      : `${name} is not a valid PTDATA name: a letter, then letters, digits or _, up to 12.`),
+  version: ({ message }) => `Could not read the server version (${message}). Reload the page.`,
+  mask: () => "Could not load the AE mask. Press M to retry.",
+  prefetch: ({ shot, message }) => `Next shot ${shot} failed to build: ${message}`,
+  fdp_expired: () => "fdp login expired: no new signals. Run fdp login on the server, then Retry.",
+  fdp_unavailable: () => "This server cannot fetch new signals. Restart it with pixi run -e labeler labeler-verify.",
+  stuck: () => `Still building after ${Activity.clock(Activity.STUCK_S)}. The server may be stuck.`,
 };
 
 /** An added row's chip (D2): {text, button, tone, collapse?} for `kind` ("queued", "loading" or

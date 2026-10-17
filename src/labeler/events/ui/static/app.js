@@ -355,7 +355,9 @@ function store(key, value) {
 }
 
 /** One request: the global fetch, once. `Activity` tracks it (a `quiet` one, such as a
- * prefetch or a poll, is tracked but never shown); a failure keeps the server's `kind`. */
+ * prefetch or a poll, is tracked but never shown); a failure keeps the server's short `error`
+ * as its message, and its `kind`, `code` and full `detail` (a string FastAPI `detail` is the
+ * message when there is no `error`). */
 async function api(path, options = {}) {
   const { quiet = false, ...rest } = options || {};
   const id = Activity.start(path, { quiet, method: rest.method });
@@ -368,9 +370,12 @@ async function api(path, options = {}) {
   }
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    const error = new Error(body.error || `${response.status} ${response.statusText}`);
+    const plain = typeof body.detail === "string" ? body.detail : "";
+    const error = new Error(body.error || plain || `${response.status} ${response.statusText}`);
     error.status = response.status;
     if (body.kind) error.kind = body.kind;
+    if (body.code) error.code = body.code;
+    if (body.error && plain && plain !== body.error) error.detail = plain;
     Activity.end(id, error);
     throw error;
   }
@@ -514,8 +519,16 @@ function draft(shot) {
 }
 
 function keepForUndo(label) {
+  // `depth` counts the edits Ctrl+Z can step back through, past the 100 kept: a row taken
+  // out (Views.removed) compares with it, so the cap never makes a later edit look older.
+  S.undo.depth = undoDepth() + 1;
   S.undo.push(label);
   if (S.undo.length > 100) S.undo.shift();
+}
+
+/** How many label edits deep the undo is (a new `S.undo` array starts at its length). */
+function undoDepth() {
+  return S.undo.depth ?? S.undo.length;
 }
 
 /** Take a new label if the server would accept it. */
@@ -551,7 +564,9 @@ function selectAt(t, flag) {
 function undo() {
   if (stillOpening()) return;
   if (!S.undo.length) return;
+  const depth = undoDepth() - 1;
   S.label = S.undo.pop();
+  S.undo.depth = depth;
   S.selected = -1;
   touch();
 }
@@ -579,6 +594,11 @@ function startBlank() {
   const crowd = S.label.intervals.filter((_, i) => S.label.iscrowd?.[i] === 1);
   S.selected = -1;
   edit(S.label.window, crowd, crowd.map(() => 1));
+}
+
+/** Delete or Backspace: the selected annotation, else the selected row (workspace). */
+function deleteSelected() {
+  if (S.selected >= 0 || !(ws() && Views.removeSelectedRow())) removeSelected();
 }
 
 function removeSelected() {
@@ -1127,7 +1147,7 @@ async function openEvent(event, shot, silverReview = false) {
     try {
       await loadGoldShots();
     } catch (error) {
-      say(`the gold shots could not be read: ${error.message}`, true);
+      say(`Could not read the gold shots: ${error.message}`, true);
     }
     if (S.event !== event) return;
   }
@@ -1178,19 +1198,20 @@ async function toggleGoldOnly() {
     } catch (error) {
       Gold.only = $("gold-only").checked = false;
       store("labeler:gold-only", null);
-      return say(`the gold shots could not be read: ${error.message}`, true);
+      return say(`Could not read the gold shots: ${error.message}`, true);
     }
   }
   filterQueue();
   renderQueue();
   showHeader();
-  if (!S.queue.length) return say(`no gold shots on ${S.event}'s list`);
+  if (!S.queue.length) return say(`No gold shots on ${S.event}'s list.`);
   say("");
   if (S.shot == null || !inQueue(S.shot)) await openShot(firstToReview());
 }
 
-/** Show `shot` (or no shot) with nothing to edit, and the note `text` where the rows go. */
-function showNothing(shot, text) {
+/** Show `shot` (or no shot) with nothing to edit, and the note `text` where the rows go; a
+ * `detail` (the server's full text) sits behind a small "details" toggle. */
+function showNothing(shot, text, detail = "") {
   clearVideo();
   cancelAnimationFrame(S.frame);
   Object.assign(S, { shot, meta: null, data: null, overview: null, label: null,
@@ -1200,8 +1221,23 @@ function showNothing(shot, text) {
   const note = document.createElement("p");
   note.className = "failure";
   note.textContent = text;
+  if (detail && detail !== text) {
+    const more = Object.assign(document.createElement("details"), { className: "failure-detail" });
+    more.append(Object.assign(document.createElement("summary"), { textContent: "details" }),
+      Object.assign(document.createElement("pre"), { textContent: detail }));
+    note.append(" ", more);
+  }
   $("rows").replaceChildren(note);
   for (const canvas of document.querySelectorAll("#top canvas, .track canvas")) context(canvas);
+  if (typeof Dock !== "undefined") {
+    // Its panels are the last shot's and D needs a shot: the dock closes, the next shot opens it.
+    if (Dock.open && Dock.show(false)) Dock.reopen = true;
+    Dock.placeTab(); // no shot: no dock tab, no Add row
+  }
+  if (typeof Views !== "undefined") {
+    Views.shot = null; // the next shot, even this one again, starts fresh (slices, pins, row undo)
+    Views.placeAddBox();
+  }
   arrive();
 }
 
@@ -1274,8 +1310,10 @@ async function openShot(shot) {
     loadOverlays(ticket);
   } catch (error) {
     if (ticket !== S.ticket) return;
-    // Stay on the shot, with nothing to edit, so J, K and U carry on from it.
-    showNothing(shot, `${shot} has nothing to show: ${error.message}. K opens the next shot.`);
+    // Stay on the shot, with nothing to edit, so J, K and U carry on from it. The server's
+    // short `error` only (it may name the shot already); its full text behind "details".
+    const said = Activity.sentence(String(error.message || "it failed"));
+    showNothing(shot, said.includes(String(shot)) ? said : `${shot}: ${said}`, error.detail || "");
   } finally {
     if (wait) Activity.end(wait); // a newer shot or Stop waiting ended the wait
   }
@@ -1297,6 +1335,7 @@ function arrive() {
     ? `#silver/${Silver.batch}/${S.shot}/${S.event}`
     : `#${S.event}${S.shot == null ? "" : `/${S.shot}`}`);
   $("shot").value = S.shot ?? "";
+  $("shot-now").textContent = S.shot == null ? "" : `Shot ${S.shot}`;
   showHeader();
   if (S.api >= 7 && S.api < 11) { // older servers: what a restart adds
     const cameras = S.event === "detachment" && S.api < 9;
@@ -1540,9 +1579,12 @@ function render() {
     drawTrack($("label-track"), S.label, true, S.api >= 8 ? 0 : undefined);
     if (S.api >= 8) drawTrack($("crowd-track"), S.label, true, 1);
     showVideoCursor();
+    if (typeof Dock !== "undefined") Dock.placeTab();
+    if (typeof Views !== "undefined") Views.placeAddBox();
     if (ws()) {
       drawDock();
       placePinTabs();
+      Views.placeRowChip();
       drawMargins();
       if (!Slice.inRows && !S.drag) Slice.showHeld(); // where a zoom or pan moved the held time
     }
@@ -2016,7 +2058,8 @@ function drawAxis() {
   const g = context(canvas);
   g.font = FONT;
   g.fillStyle = T.muted;
-  g.fillText("ms", 8, 16);
+  g.textAlign = "right"; // at the gutter's right end: its left holds the Add row box (R2)
+  g.fillText("ms", GUTTER - 4, 16);
   g.textAlign = "center";
   for (const [t, text] of ticks(S.view[0], S.view[1], plotWidth() / 90)) {
     const x = px(t);
@@ -2198,7 +2241,7 @@ function showMarkers() {
 }
 
 function toggleMarkers() {
-  if (!S.meta?.markers?.length) return say("this shot has no markers");
+  if (!S.meta?.markers?.length) return say("This shot has no markers.");
   S.showMarkers = !S.showMarkers;
   store("labeler:markers", S.showMarkers ? null : "hidden");
   showMarkers();
@@ -2350,6 +2393,15 @@ function startDrag(event, drag) {
 
 function onRowsDown(event) {
   if (event.button !== 0 || !S.meta || event.target.tagName !== "CANVAS") return;
+  if (ws() && event.target.parentNode === $("rows") && !event.shiftKey && !event.altKey &&
+      event.clientX - event.target.getBoundingClientRect().left < GUTTER) {
+    // A click on a row's name box selects the row (again: lets go); Delete removes it (R2).
+    // The selection waits for the release, so a drag from the name box still pans.
+    const key = Views.keyOf(event.target);
+    return startDrag(event, { kind: "pan", x: event.clientX, y: event.clientY, view: S.view, canvas: event.target,
+      select: key && key !== Views.selected ? key : null });
+  }
+  if (ws() && Views.selected) Views.selectRow(null);
   if (ws() && Slice.inMargin(event.clientX)) return; // the cut margin is not time
   if (ws() && event.altKey) return pinAt(timeAt(event.clientX));
   if (event.shiftKey) startDrag(event, { kind: "new", from: timeAt(event.clientX) });
@@ -2359,6 +2411,7 @@ function onRowsDown(event) {
 function onLabelDown(event) {
   if (event.button !== 0 || !S.meta) return;
   if (ws() && event.altKey) return pinAt(timeAt(event.clientX)); // a pin, never an edit
+  if (ws() && Views.selected) Views.selectRow(null); // one selection: Delete acts on the annotation
   if (S.video) { pauseVideo(); seekVideo(timeAt(event.clientX)); }
   const rect = event.currentTarget.getBoundingClientRect();
   const lane = S.api >= 8 ? Number(event.currentTarget.dataset.lane) : undefined;
@@ -2438,6 +2491,12 @@ function endDrag(event) {
   const d = S.drag;
   S.drag = null;
   if (d?.kind === "pan" && !d.moved && event?.type === "pointerup") {
+    if (d.select !== undefined) { // a click on a row's name box: the row, never an annotation
+      const had = S.selected >= 0;
+      Views.selectRow(d.select);
+      if (had) render();
+      return;
+    }
     if (S.video) { pauseVideo(); return seekVideo(timeAt(event.clientX)); }
     if (ws() && d.canvas?.id === "axis-row") return axisClickPin(timeAt(event.clientX));
     if (d.canvas) return clickMask(d);
@@ -2536,7 +2595,7 @@ function toggleMasks() {
 /** A click on an image row, not a drag: reject the region under it, or take that back. */
 function clickMask(d) {
   if (S.meta?.parent) return; // an AE subcategory shows the mask; rejecting is a decision on AE
-  if (maskSaves.has(S.shot)) return say("mask is saving; wait for it to finish");
+  if (maskSaves.has(S.shot)) return say("The mask is saving. Wait a moment.");
   const m = S.masks;
   if (!m || !S.showMasks || m.saving) return;
   const row = S.meta.rows[[...$("rows").children].indexOf(d.canvas)];
@@ -2558,7 +2617,7 @@ function clickMask(d) {
 
 /** Save the rejected regions at once, with the reviewer's name; drawn before the answer. */
 function saveMasks(m, rejected) {
-  if (maskSaves.has(m.shot)) return say("mask is saving; wait for it to finish");
+  if (maskSaves.has(m.shot)) return say("The mask is saving. Wait a moment.");
   const pending = persistMasks(m, rejected, S.event);
   maskSaves.set(m.shot, pending);
   return pending;
@@ -2596,7 +2655,7 @@ async function persistMasks(m, rejected, event) {
       showHeader();
     }
     const n = body.rejected.length;
-    if (current()) say(`mask saved: ${n} region${n === 1 ? "" : "s"} rejected`);
+    if (current()) say(`Mask saved: ${n} region${n === 1 ? "" : "s"} rejected.`);
   } catch (error) {
     m.rejected = before;
     conflict = error.status === 409;
@@ -3207,24 +3266,154 @@ function restoreVersion(number) {
   if (stillOpening()) return;
   const at = S.versionsAt;
   if (!at || at !== S.opened || at.event !== S.event || at.shot !== S.shot) {
-    return say("this history belongs to a shot that is no longer open");
+    return say("These versions are for a shot that is no longer open.");
   }
   const found = S.versions.find((version) => version.version === number);
   if (!found || !S.meta) return;
   closeDialog($("versions"));
   const label = normalise(found.window, found.intervals, known(), found.iscrowd);
-  if (!label) return say(`version ${number} does not fit this event's categories`, true);
+  if (!label) return say(`Version ${number} does not fit this event's categories.`, true);
   if (independent()) {
     S.suggestionsShown = mergeExposure(S.suggestionsShown, found.suggestions_shown);
     S.prefilled = mergeExposure(S.prefilled, found.prefilled);
     keepExposure();
   }
-  if (same(label, S.label)) return say(`version ${number} is already the current label`);
-  const replaced = dirty() ? "; replaced an unsaved edit; Ctrl+Z brings it back" : "";
+  if (same(label, S.label)) return say(`Version ${number} is already the current label.`);
+  const replaced = dirty() ? " It replaced an unsaved edit: Ctrl+Z brings that back." : "";
   S.selected = -1;
   edit(label.window, label.intervals, label.iscrowd);
-  say(`version ${number} restored as a draft: Enter or S saves it as a new version${replaced}`);
+  say(`Version ${number} restored as a draft. S saves it as a new version.${replaced}`);
 }
+
+/** The shot box's search (R2, contract §3): digits typed in #shot list up to `SHOW` shots
+ * from GET /api/shots/search, gold, silver and the roster first, each with the lists that hold
+ * it; ↑/↓ pick, Enter or a click opens `#<event>/<shot>`. An older server without the route
+ * (404) leaves the box as it was: Enter opens the number typed. */
+const ShotSearch = {
+  SHOW: 8,
+  DELAY_MS: 150,
+  off: false, // this server has no /api/shots/search
+  timer: 0,
+  serial: 0, // the latest request; an older answer is dropped
+  shots: [], // the matches shown: [{shot, lists, cached}]
+  active: -1, // the match ↑/↓ picked, or -1
+
+  /** The list of matches, made once at the end of the body (#bottom scrolls and would cut it). */
+  list() {
+    let list = $("shot-matches");
+    if (!list) {
+      list = Object.assign(document.createElement("ul"), { id: "shot-matches", hidden: true });
+      list.setAttribute("role", "listbox");
+      list.setAttribute("aria-label", "Matching shots");
+      document.body.append(list);
+    }
+    return list;
+  },
+
+  /** The box changed: ask for its digits after a short pause. */
+  typed() {
+    clearTimeout(ShotSearch.timer);
+    const q = $("shot").value.trim();
+    if (ShotSearch.off || !/^\d{2,6}$/.test(q) || S.api < 11) return ShotSearch.show([]);
+    ShotSearch.timer = setTimeout(() => ShotSearch.ask(q), ShotSearch.DELAY_MS);
+  },
+
+  async ask(q) {
+    const serial = ++ShotSearch.serial;
+    try {
+      const response = await api(`/api/shots/search?q=${q}&event=${enc(S.event || "")}&limit=20`, { quiet: true });
+      const body = await response.json();
+      if (serial !== ShotSearch.serial || $("shot").value.trim() !== q) return;
+      ShotSearch.show((body.shots || []).filter((row) => Number.isInteger(row?.shot)).slice(0, ShotSearch.SHOW));
+    } catch (error) {
+      if (serial !== ShotSearch.serial) return;
+      if (error.status === 404 || error.status === 405) ShotSearch.off = true; // an older server
+      ShotSearch.show([]);
+    }
+  },
+
+  /** A match's lists as the menu says them. */
+  tags: (lists) => (lists || []).map((name) => (name === "catalog" ? "all" : name)).join(" · "),
+
+  /** Show `shots` under the box (none hides it). */
+  show(shots) {
+    ShotSearch.shots = shots;
+    ShotSearch.active = -1;
+    const list = ShotSearch.list();
+    const input = $("shot");
+    list.replaceChildren(...shots.map((row, k) => {
+      const item = Object.assign(document.createElement("li"), { id: `shot-match-${k}` });
+      item.setAttribute("role", "option");
+      item.setAttribute("aria-selected", "false");
+      item.dataset.shot = row.shot;
+      item.append(Object.assign(document.createElement("b"), { textContent: String(row.shot) }),
+        Object.assign(document.createElement("span"), { textContent: ShotSearch.tags(row.lists), title: ShotSearch.tags(row.lists) }),
+        Object.assign(document.createElement("small"), { textContent: row.cached === false ? "fetch" : "" }));
+      item.title = row.cached === false ? "Not on disk: opening it fetches its data" : "";
+      item.addEventListener("pointerdown", (event) => {
+        event.preventDefault(); // the box keeps focus until the shot opens
+        ShotSearch.open(row.shot);
+      });
+      return item;
+    }));
+    list.hidden = !shots.length || document.activeElement !== input;
+    ShotSearch.place();
+    input.setAttribute("aria-expanded", String(!list.hidden));
+    input.removeAttribute("aria-activedescendant");
+  },
+
+  /** Put the list against the box, on the side with more room (above, as the box sits low in
+   * the label panel), never past the window's edge. */
+  place() {
+    const list = $("shot-matches");
+    if (!list || list.hidden) return;
+    const box = $("shot").getBoundingClientRect();
+    const above = box.top - 8, below = innerHeight - box.bottom - 8;
+    const up = above >= below;
+    Object.assign(list.style, { left: `${Math.max(4, Math.min(box.left, innerWidth - list.offsetWidth - 4))}px`,
+      minWidth: `${box.width}px`, maxHeight: `${Math.max(above, below)}px`,
+      top: up ? "" : `${box.bottom + 2}px`, bottom: up ? `${innerHeight - box.top + 2}px` : "" });
+  },
+
+  /** ↑/↓ move the pick; the box keeps the typed digits. */
+  move(step) {
+    const n = ShotSearch.shots.length;
+    if (!n) return;
+    ShotSearch.active = ShotSearch.active < 0 ? (step > 0 ? 0 : n - 1) : (ShotSearch.active + step + n) % n;
+    [...ShotSearch.list().children].forEach((item, k) => item.setAttribute("aria-selected", String(k === ShotSearch.active)));
+    $("shot").setAttribute("aria-activedescendant", `shot-match-${ShotSearch.active}`);
+  },
+
+  /** Open `shot` on the event, as the address #<event>/<shot> does. */
+  open(shot) {
+    clearTimeout(ShotSearch.timer);
+    ShotSearch.serial++;
+    ShotSearch.show([]);
+    $("shot").blur();
+    if (shot === S.shot && S.meta?.event === S.event) return; // after an event change the shot opens anew
+    openShot(shot);
+  },
+
+  /** The box's keys: ↑/↓, Enter (the pick, else the number typed), Escape. */
+  key(event) {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      ShotSearch.move(event.key === "ArrowDown" ? 1 : -1);
+    } else if (event.key === "Enter") {
+      const typed = $("shot").value.trim();
+      const picked = ShotSearch.shots[ShotSearch.active]?.shot;
+      // A partial number opens the first match shown; six digits open as typed.
+      const first = typed.length < 6 && !ShotSearch.list().hidden ? ShotSearch.shots[0]?.shot : null;
+      if (picked != null) ShotSearch.open(picked);
+      else if (first != null) ShotSearch.open(first);
+      else if (/^\d+$/.test(typed)) ShotSearch.open(Number(typed));
+    } else if (event.key === "Escape") {
+      $("shot").value = S.shot ?? "";
+      ShotSearch.show([]);
+      $("shot").blur();
+    }
+  },
+};
 
 const KEYS = {
   Enter: () => save(true),
@@ -3246,10 +3435,12 @@ const KEYS = {
   "]": () => contrast(16),
   Escape: () => {
     S.selected = -1;
+    if (ws() && Views.selected) Views.selectRow(null);
     render();
   },
-  Delete: removeSelected,
-  Backspace: removeSelected,
+  // The selected annotation, else a row picked by its name box (R2); the two never coexist.
+  Delete: () => deleteSelected(),
+  Backspace: () => deleteSelected(),
   "Shift+ArrowLeft": () => pan(-0.1),
   "Shift+ArrowRight": () => pan(0.1),
   "-": () => zoomAt(middle(), 1.25),
@@ -3292,7 +3483,7 @@ function onKey(event) {
   if (event.altKey || (mod && key !== "z") || (!S.meta && !MOVES.has(key))) return;
   if (mod) {
     event.preventDefault();
-    return undo();
+    return (ws() && Views.undoRow()) || undo();
   }
   if (/^[1-9]$/.test(key)) return setCategory(Number(key));
   const action = KEYS[key] || (ws() && WORKSPACE_KEYS[key]);
@@ -3327,6 +3518,15 @@ function wire() {
   window.addEventListener("pointermove", (event) => {
     if (ws()) notePointer(event);
     if (S.drag) dragTo(event.clientX);
+    // Over a row popped out into the dock, the rows' cursor follows its time (R2).
+    const docked = ws() && !S.drag ? Dock.pointerTime(event) : null;
+    if (docked != null) {
+      const line = $(S.video ? "hover-cursor" : "cursor");
+      line.classList.remove("held");
+      if (docked >= S.view[0] && docked <= S.view[1]) showCursor($("axis-row").getBoundingClientRect().left + px(docked), Boolean(S.video));
+      else line.hidden = true;
+      return;
+    }
     // Out of the rows with the dock open, the hover line holds at the rest time (dotted).
     if (S.video) {
       showVideoCursor();
@@ -3389,10 +3589,14 @@ function wire() {
     if (S.api >= 11) Lists.renderStrips();
     else renderSilverOverview();
   });
-  $("shot").addEventListener("keydown", (event) => {
-    const typed = $("shot").value.trim();
-    if (event.key === "Enter" && /^\d+$/.test(typed)) openShot(Number(typed));
-  });
+  $("shot").addEventListener("keydown", ShotSearch.key);
+  $("shot").addEventListener("input", ShotSearch.typed);
+  $("shot").addEventListener("focus", () => $("shot").select());
+  $("bottom").addEventListener("scroll", ShotSearch.place);
+  window.addEventListener("resize", ShotSearch.place);
+  $("shot").addEventListener("blur", () => setTimeout(() => {
+    if (document.activeElement !== $("shot")) ShotSearch.show([]);
+  }, 100));
   $("queue").addEventListener("click", (event) => {
     const chip = event.target.closest(".chip");
     if (chip) openShot(Number(chip.dataset.shot));

@@ -168,7 +168,7 @@ try {
     older.shotlist && older.byShot && older.activity && older.line && !older.gold && older.silver === "Silver set" &&
       older.chips === 0 && !older.enabled &&
       same(older.stale, [false, "Restart the server for shot lists, TokEye status and views"]) &&
-      same(failed, [false, "Could not read the server version: fixture version failure. Reload the page; if this persists, restart the server.", 1, true]),
+      same(failed, [false, "Could not read the server version (fixture version failure). Reload the page.", 1, true]),
     { older, failed });
 
   // 2: a held /api/rows.
@@ -205,8 +205,8 @@ try {
   const retried = { chips: await chips(), masks: await js(`$("masks").hidden`) };
   const chip = silent.chips.R0xV1 || {};
   check(10, "a failed prefetch, a mask 500 and a TokEye 500 each give their note; M retries the mask",
-    silent.prefetch?.text === "Next shot 170816: build failed: fixture build failure" && silent.prefetch.tone === "" &&
-      silent.mask?.text === "AE mask could not be loaded: fixture mask failure. Press M to retry." && silent.mask.tone === "error" &&
+    silent.prefetch?.text === "Next shot 170816 failed to build: fixture build failure" && silent.prefetch.tone === "" &&
+      silent.mask?.text === "Could not load the AE mask. Press M to retry." && silent.mask.tone === "error" &&
       chip.text?.startsWith("TokEye failed: the layer could not be loaded") && chip.title.includes("fixture layer failure") &&
       chip.className.includes("error") && chip.button === "Retry" &&
       same(silent.status, ["", ""]) && silent.masks && silent.tokeye === null &&
@@ -246,10 +246,10 @@ try {
   await js("window.stubs = {}");
   await send("Emulation.clearDeviceMetricsOverride");
   await sleep(300);
-  check(3, "a 202 shows its stage, progress, queue and pre-built note; #status keeps \"<shot>: building\"; at 1280 px Stop waiting is hit-testable and a real click on it ends the poll; 120 s still gives the stuck copy",
-    /^Building 170817 for .+: fetching mirnov \(2 of 5\) · 14 s · 1st in line\. This shot is not in a pre-built list\.$/.test(building.text) &&
+  check(3, "a 202 shows its stage, progress and queue; #status keeps \"<shot>: building\"; at 1280 px Stop waiting is hit-testable and a real click on it ends the poll; 120 s still gives the stuck copy",
+    /^Building 170817 for .+: fetching mirnov \(2 of 5\) · 14 s · 1st in line$/.test(building.text) &&
       building.stop && building.status.startsWith("170817: building") && building.width === "40%" &&
-      stuck.text === "Still building after 2 min. The server may be stuck: check its log, or open another shot." &&
+      stuck.text === "Still building after 2 min. The server may be stuck." &&
       stop.hit && stop.text >= 40 && stop.width === 1280 &&
       after.later === after.asked && !after.activity.text.includes("Building") && after.status === "",
     { building, stuck, stop, after });
@@ -360,7 +360,7 @@ try {
   const fdp = { ...(await activity()), stale: await js(`$("stale").hidden`) };
   check(11, "an expired fdp login shows the activity message, in the error colour",
     !fdp.hidden && fdp.error && fdp.stale &&
-      fdp.text === "fdp login has expired: new signals cannot be fetched. Run fdp login on the server host, then press Retry on a row.",
+      fdp.text === "fdp login expired: no new signals. Run fdp login on the server, then Retry.",
     fdp);
 
   // 6: the list dropdown, the Gold set migration, equal-length lists, the recommendation.

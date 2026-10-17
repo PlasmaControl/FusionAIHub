@@ -129,7 +129,7 @@ const Signals = {
           if (entry.gone || entry.state === "stopped") break;
           if (query !== entry.want) continue; // the view moved on: ask for the new window
           entry.state = "error";
-          entry.error = { kind: Signals.kindOf(error), message: error.message, status: error.status };
+          entry.error = { kind: Signals.kindOf(error), message: error.message, status: error.status, detail: error.detail || "" };
           entry.asked = query;
           failure = error;
           Signals.changed(entry);

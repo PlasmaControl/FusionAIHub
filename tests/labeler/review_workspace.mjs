@@ -7,7 +7,7 @@
 // test_review_workspace_browser.py, and run as
 //   node <script> <base-url> <token> <headless-shell> <profile-dir> checks
 //   node <script> <base-url> <token> <headless-shell> <profile-dir> shots <out-dir>
-// "checks" prints one JSON line: [{name, ok, detail}] in the order 1-24, B1-B5, E (22-24 are
+// "checks" prints one JSON line: [{name, ok, detail}] in the order 1-24, B1-B5, R1-R9, E (22-24 are
 // review D2B's dock width at 1280 and D2C's colour bar). "shots"
 // saves a "q and Te" view on mhd_n1 and writes d2_<w>x<h>.png at three window sizes into
 // <out-dir>, then prints what it saw.
@@ -16,7 +16,9 @@ const AE = "alfven_eigenmode", MHD = "mhd_n1", DET = "detachment", EMPTY = "disr
 const INVERSION_MS = [0, 50, 100, 150, 200, 240], EFIT_MS = [0, 30, 80, 110, 190, 240];
 const API10 = { version: { body: { api: 10 } } };
 const FORBIDDEN = ["views", "catalog", "signal", "profile", "slices", "slice", "fetch/status"];
-const ORDER = [...Array.from({ length: 24 }, (_, k) => String(k + 1)), "B1", "B2", "B3", "B4", "B5", "E"];
+const ORDER = [...Array.from({ length: 24 }, (_, k) => String(k + 1)), "B1", "B2", "B3", "B4", "B5",
+  "R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8", "R9", "E"];
+const Q_DEFAULT = [{ kind: "profile", id: "q_profile", h: 200 }];
 const results = new Map();
 const check = (n, name, ok, detail) => results.set(String(n), { name: `${n}. ${name}`, ok: Boolean(ok), detail });
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -54,7 +56,7 @@ async function drag(x0, y0, x1, y1, modifiers = 0) {
 async function key(name, { modifiers = 0, blur = true } = {}) {
   if (blur) await js("document.activeElement?.blur?.()");
   const named = { Enter: [13, "\r"], Escape: [27, ""], ArrowUp: [38, ""], ArrowDown: [40, ""],
-    ArrowLeft: [37, ""], ArrowRight: [39, ""] }[name];
+    ArrowLeft: [37, ""], ArrowRight: [39, ""], Delete: [46, ""], Backspace: [8, ""] }[name];
   const [code, text] = named || [name.toUpperCase().charCodeAt(0), name];
   const event = { key: name, code: named ? name : `Key${name.toUpperCase()}`, windowsVirtualKeyCode: code, modifiers };
   await send("Input.dispatchKeyEvent", { type: "keyDown", ...event, ...(modifiers || !text ? {} : { text }) });
@@ -159,6 +161,7 @@ async function checks() {
         requests: window.requests.map((r) => JSON.stringify(r)).sort(),
         kinds: [...new Set(window.requests.map((r) => r.kind))],
         dock: [$("dock").hidden, typeof Dock === "undefined" ? false : Dock.open], right: right(),
+        panels: typeof Dock === "undefined" ? [] : Dock.panels,
         margin: typeof Slice === "undefined" ? 0 : Slice.margin,
         view: [$("view").hidden, $("view").selectedOptions[0]?.textContent ?? null],
         plain: [...$("rows").children].every((c) => !c.style.order && !c.classList.contains("view-hidden")),
@@ -166,11 +169,19 @@ async function checks() {
     }
     const { api10, api11 } = runs;
     opens[event] = { kinds: api11.kinds, sameRequests: same(api10.requests, api11.requests), api11: { ...api11, requests: undefined } };
-    opens[event].ok = opens[event].sameRequests && !api11.kinds.some((kind) => FORBIDDEN.includes(kind)) &&
-      same(api11.dock, [true, false]) && api11.right === 12 && api11.margin === 0 &&
-      same(api11.view, [false, "Default"]) && api11.plain;
+    if (event === AE) {
+      opens[event].ok = opens[event].sameRequests && !api11.kinds.some((kind) => FORBIDDEN.includes(kind)) &&
+        same(api11.dock, [true, false]) && api11.right === 12 && api11.margin === 0 &&
+        same(api11.view, [false, "Default"]) && api11.plain;
+    } else {
+      // R2: q on mhd_n1 (and the q_min and poloidal-beta events) opens the dock with q, which
+      // adds /api/profile and nothing else that api 10 does not ask.
+      opens[event].ok = api11.kinds.every((kind) => kind === "profile" || api10.kinds.includes(kind)) &&
+        api11.kinds.includes("profile") && !api11.kinds.some((kind) => kind !== "profile" && FORBIDDEN.includes(kind)) &&
+        same(api11.dock, [false, true]) && same(api11.panels, Q_DEFAULT) && same(api11.view, [false, "Default"]) && api11.plain;
+    }
   }
-  check(1, "a default open at api 11 makes api 10's requests (no views, catalog, signal, profile or slice request); the dock is hidden, right() is 12, #view says Default and no row is reordered or hidden",
+  check(1, "a default open at api 11 makes api 10's requests on AE (no views, catalog, signal, profile or slice request; the dock hidden, right() 12); on mhd_n1 it adds only /api/profile for the q panel the dock opens with; #view says Default and no row is reordered or hidden",
     opens[AE].ok && opens[MHD].ok, opens);
 
   // 2: every key on an event with no shots asks nothing and throws nothing.
@@ -556,13 +567,41 @@ async function checks() {
     narrow);
 
   // mhd_n1: the margins on spectrograms and modes, profiles, added signals.
+  const beforeMHD = await mark();
   await js(`void openEvent("${MHD}", 180001)`);
   await opened(180001, MHD);
   await quiet();
+  await until(`Signals.entry(Profiles.shots, "profile", S.shot, "q_profile")?.state === "done"`);
+  await frames();
+
+  // R5: q is in the dock by default on mhd_n1, asked once; its readout follows the cursor.
+  const qDefault = await js(`({ open: Dock.open, panels: Dock.panels, view: $("view").selectedOptions[0]?.textContent,
+    title: Dock.nodes.get("profile:q_profile")?.name.textContent ?? null })`);
+  qDefault.asked = (await requests(beforeMHD)).filter((r) => r.kind === "profile").map((r) => r.id ?? r.name ?? r.signal ?? "");
+  await move(await X(1000), await rowY(2));
+  await frames();
+  await sleep(250); // a dwell: the rows' time rests at 1,000 ms while the pointer is in the dock
+  const qCanvas = await js(`(() => { const r = Dock.nodes.get("profile:q_profile").canvas.getBoundingClientRect();
+    return [r.left + r.width * 0.6, r.top + r.height / 2]; })()`);
+  await move(qCanvas[0], qCanvas[1]);
+  await frames();
+  qDefault.probe = await js("Slice.probe && { kind: Slice.probe.kind, from: Slice.probe.from }");
+  qDefault.note = await js(`Dock.nodes.get("profile:q_profile")?.note.textContent ?? ""`);
+  qDefault.readout = await js(`(() => {
+    const texts = [], proto = CanvasRenderingContext2D.prototype, real = proto.fillText;
+    proto.fillText = function (text, ...rest) { texts.push(String(text)); return real.call(this, text, ...rest); };
+    try { drawDock(); } finally { proto.fillText = real; }
+    return texts.filter((text) => text.startsWith("ψN "));
+  })()`);
+  check("R5", "mhd_n1 opens with q in the dock (one /api/profile), following the cursor (nearest slice 1,000 ms); a pointer on the panel gives its own ψN · q readout",
+    qDefault.open && same(qDefault.panels, Q_DEFAULT) && qDefault.view === "Default" && qDefault.asked.length === 1 &&
+      /^q/.test(qDefault.title || "") && /1,000 ms/.test(qDefault.note) && qDefault.probe?.kind === "psi_n" &&
+      qDefault.readout.length === 1 && / · /.test(qDefault.readout[0]),
+    qDefault);
 
   // 13: the cut at A, the margin's pixels, a probe from the margin, n at A in Values.
-  await key("d");
-  await until("Dock.open && Slice.margin > 0");
+  await js("Views.setPanels([{ kind: \"values\" }]); void 0");
+  await until("Dock.open && Slice.margin > 0 && Dock.panels.length === 1 && Dock.panels[0].kind === \"values\"");
   await js("Slice.setPins({ A: 1000, B: null }); void 0");
   await quiet();
   await frames();
@@ -650,8 +689,9 @@ async function checks() {
       bar.peak && near(bar.peak[0], 92, 4) && bar.peak[1] < 5 && bar.want === bar.cell && bar.modes === null && bar.blank,
     bar);
 
-  // 14: a profile panel: one request, nearest slice, the q marks.
-  const before14 = await mark();
+  // 14: a profile panel: one request, nearest slice, the q marks. The q panel mhd_n1 opens
+  // with (R5) asked for it already, so the one request is counted from the shot's open.
+  const before14 = beforeMHD;
   await js(`void openPicker("q")`);
   await until(`[...document.querySelectorAll("#dock-edit .picker-result")].some((r) => r.querySelector("span")?.textContent === "q")`);
   await js(`[...document.querySelectorAll("#dock-edit .picker-result")].find((r) => r.querySelector("span")?.textContent === "q").querySelector("button").click()`);
@@ -776,15 +816,16 @@ async function checks() {
   await quiet();
   check(16, "invalid, missing, auth, upstream and timeout each give their chip copy and button; a missing row collapses to 28 px",
     failed.BADPT.text === failed.sentence && failed.BADPT.button === "Edit" && failed.BADPT.error &&
-      failed.GONEPT.text === "No GONEPT data for shot 180001." && failed.GONEPT.button === "Remove from view" && failed.GONEPT.height === 28 &&
-      failed.AUTHPT.text === "fdp login has expired, so this signal cannot be fetched. Run fdp login on the server host. Rows on disk still work." &&
+      failed.GONEPT.text === "No GONEPT for 180001." && failed.GONEPT.button === "Remove from view" && failed.GONEPT.height === 28 &&
+      failed.AUTHPT.text === "fdp login expired. Run fdp login on the server, then Retry." &&
       failed.AUTHPT.button === "Retry" &&
-      failed.UPPT.text === "The data server returned an error: fixture upstream failure. Try again in a minute." && failed.UPPT.button === "Retry" &&
-      failed.SLOWPT.text?.startsWith("The fetch took over ") && failed.SLOWPT.button === "Retry",
+      failed.UPPT.text === "The data server failed: fixture upstream failure. Try again soon." && failed.UPPT.button === "Retry" &&
+      failed.SLOWPT.text?.startsWith("Stopped after ") && failed.SLOWPT.button === "Retry",
     failed);
 
   // 21: the margin follows the image rows; a ≥ 8-channel catalog trace draws as a map in the page's colours.
-  await key("d");
+  // (Default on mhd_n1 opens the dock with q since R2; d opens it otherwise.)
+  if (!(await js("Dock.open"))) await key("d");
   await until("Dock.open");
   await quiet();
   const mapped = { open: await js("Slice.margin") };
@@ -837,6 +878,55 @@ async function checks() {
   check(23, "a view with a 1,100 px dock opened at 1280 px is capped (at most 60vw and the window less 820 px): the plot keeps at least 400 px",
     capped.width === 1100 && capped.dock <= 0.6 * capped.vw && Math.abs(capped.dock - capped.most) <= 1 && capped.plot >= 400, capped);
 
+  // R6: the Add row box in the axis row's gutter: catalog matches, any PTDATA name or MDS node
+  // offered as is, a bare tag refused with its fix, and Enter adds the pick to the view.
+  const typeInto = async (text) => {
+    await js(`(() => { const box = $("add-row-input"); box.focus(); box.value = ""; box.dispatchEvent(new Event("input")); })()`);
+    for (const ch of text) await key(ch, { blur: false });
+    await frames();
+  };
+  await js("resetView()"); // Default on mhd_n1: beta_N is not in it yet
+  await quiet();
+  // The fixture's beta_N reads the corpus; give it the MDS node the real catalog lists as its
+  // `points` (review fix I4: a typed pointname finds the curated entry).
+  await js(`window.stubs.catalog = async (params, request) => {
+    const response = await window.realFetch(request.url, { credentials: "same-origin" });
+    const body = await response.json();
+    for (const entry of body.entries || []) if (entry.id === "betan") entry.points = ["\\\\efit01::top.results.aeqdsk:betan"];
+    return window.json(body, response.status);
+  }; Views.catalog = null; Views.loadCatalog().then(() => true)`);
+  const addBox = { shown: await js(`!$("add-row").hidden && $("add-row").getBoundingClientRect().left < GUTTER`) };
+  const listed = () => js(`[...document.querySelectorAll("#add-row-list li")].filter(() => !$("add-row-list").hidden).map((li) => li.firstChild.textContent)`);
+  const said = () => js(`[$("add-row-note").hidden, $("add-row-note").className, $("add-row-note").textContent]`);
+  await typeInto("beta");
+  await until(`!$("add-row-list").hidden`);
+  addBox.beta = await listed();
+  await typeInto("ECEVS01");
+  addBox.ptdata = await js(`[...document.querySelectorAll("#add-row-list li")].map((li) => li.textContent)`);
+  await typeInto("\\BETAN");
+  addBox.tag = { list: await listed(), note: await said() };
+  await typeInto("EFIT01::BETAN");
+  addBox.node = await listed();
+  await typeInto("\\ZZQ9");
+  addBox.bare = await said();
+  await typeInto("beta");
+  await until(`!$("add-row-list").hidden`);
+  await key("Enter", { blur: false });
+  await until(`Views.added.some((a) => a.id === "betan")`);
+  addBox.added = await js(`({ ids: Views.added.map((a) => a.id), inLayout: Views.layout.rows.some((r) => r.key === "cat:betan"),
+    value: $("add-row-input").value })`);
+  await typeInto("efit01::betan");
+  addBox.known = { list: await listed(), note: await said() };
+  await key("Escape", { blur: false });
+  await js("delete window.stubs.catalog; Views.catalog = null; void 0");
+  check("R6", "the Add row box offers beta_N from the catalog, PTDATA ECEVS01 to fetch; \\BETAN and EFIT01::BETAN find beta_N by its points (no MDS row offered), a bare \\ZZQ9 is refused with its fix; Enter adds beta_N, after which its pointname says it is in the view",
+    addBox.shown && addBox.beta.includes("beta_N") && addBox.ptdata.some((t) => t.startsWith("PTDATA ECEVS01")) &&
+      same(addBox.tag.list, ["beta_N"]) && addBox.tag.note[0] && same(addBox.node, ["beta_N"]) &&
+      same(addBox.bare, [false, "error", "Add the tree, e.g. EFIT01::ZZQ9"]) &&
+      addBox.added.ids.includes("betan") && addBox.added.inLayout && addBox.added.value === "" &&
+      same(addBox.known.list, []) && same(addBox.known.note, [false, "hint", "beta_N is already in the view."]),
+    addBox);
+
   // detachment: the dock opens with the inversion, EFIT and the cameras.
   const det = {};
   for (const [label, fixed] of [["api10", API10], ["api11", {}]]) {
@@ -871,8 +961,8 @@ async function checks() {
     const fit = Dock.fitRZ(record.r_range, record.z_range, w - 6 - 34, h - 20 - 6);
     fit.left += 34;
     fit.top += 6;
-    const ink = window.rgb(T.ink);
-    const inked = (r, z) => {
+    const inked = (r, z, colour) => {
+      const ink = window.rgb(colour);
       const [x, y] = Dock.toPixel(fit, r, z);
       const box = window.pixels(canvas, Math.round(x) - 1, Math.round(y) - 1, 3, 3);
       for (let k = 0; k < box.length; k += 4) {
@@ -881,10 +971,11 @@ async function checks() {
       return false;
     };
     const [ix, iy] = Dock.toPixel(fit, 1.85, -1.3);
-    return { note: node.note.textContent, title: node.name.textContent, xpoint: inked(1.4, -1.1), boundary: inked(1.7, -0.9),
+    return { note: node.note.textContent, title: node.name.textContent,
+      xpoint: inked(1.4, -1.1, Dock.OVERLAY.xpoint), boundary: inked(1.7, -0.9, Dock.OVERLAY.boundary),
       image: window.pixels(canvas, Math.round(ix), Math.round(iy), 1, 1)[3], r: record.r_range, z: record.z_range };
   })()`);
-  check("B2", "the inversion is drawn with the EFIT02 separatrix and X-point over it, and both are named with their times",
+  check("B2", "the inversion is drawn with the EFIT02 separatrix (orange) and X-point (sky blue) over it, and both are named with their times",
     drawn2.title === "TangTV inversion and EFIT" && /TangTV [\d,]+ ms/.test(drawn2.note) && /EFIT02 [\d,]+ ms/.test(drawn2.note) &&
       drawn2.xpoint && drawn2.boundary && drawn2.image === 255,
     drawn2);
@@ -944,6 +1035,266 @@ async function checks() {
     !back.open && back.hidden && same(back.panels, []) && back.video && back.cameras === "video-panel" && back.margin === 0 &&
       back.right === 12 && !back.made.some((kind) => FORBIDDEN.includes(kind)),
     back);
+
+  // R2: the dock tab at the window's right edge (the dock's left edge when open) opens and
+  // closes the dock; an event with no shot hides it.
+  const tabState = () => js(`(() => { const tab = $("dock-tab"), r = tab?.getBoundingClientRect();
+    return tab && { hidden: tab.hidden || !r.width, text: tab.textContent, expanded: tab.getAttribute("aria-expanded"), label: tab.getAttribute("aria-label"),
+      right: Math.round(r.right), x: r.left + r.width / 2, y: r.top + r.height / 2, open: Dock.open,
+      dockLeft: Math.round($("dock").getBoundingClientRect().left), width: window.innerWidth }; })()`);
+  const tab = { closed: await tabState() };
+  await click(tab.closed.x, tab.closed.y);
+  await until("Dock.open");
+  await frames();
+  tab.opened = await tabState();
+  await click(tab.opened.x, tab.opened.y);
+  await until("!Dock.open");
+  await frames();
+  tab.again = await tabState();
+  await js(`$("event").value = "${EMPTY}"; $("event").dispatchEvent(new Event("change")); void 0`);
+  await until(`S.event === "${EMPTY}" && S.meta === null`);
+  await quiet();
+  tab.empty = await tabState();
+  await js(`void openEvent("${AE}", 170815)`);
+  await opened(170815, AE);
+  await quiet();
+  check("R2", "the dock tab sits at the window's right edge (‹, Open the dock), a click opens the dock with the tab on its left edge (›), a second closes it; no shot, no tab",
+    !tab.closed.hidden && tab.closed.text === "‹" && tab.closed.expanded === "false" && tab.closed.label === "Open the dock (D)" &&
+      Math.abs(tab.closed.right - tab.closed.width) <= 1 && tab.opened.open && tab.opened.text === "›" &&
+      tab.opened.expanded === "true" && Math.abs(tab.opened.right - tab.opened.dockLeft) <= 1 &&
+      !tab.again.open && tab.again.text === "‹" && tab.empty.hidden,
+    tab);
+
+  // R4: a click on a row's name box selects it; Delete removes it from the view, Ctrl+Z puts it
+  // back and the label is untouched; Pop out moves it to the dock and × puts it back.
+  const firstKey = await js("Slice.rows()[0].key");
+  const label4 = await js("JSON.stringify(S.label)");
+  await click(30, await rowY(0));
+  await frames();
+  const sel = { picked: await js(`[Views.selected, document.querySelectorAll("#rows canvas.row-selected").length, Boolean($("row-select"))]`) };
+  await key("Delete");
+  await frames();
+  sel.removed = await js(`({ rows: Slice.rows().map((r) => r.key), hidden: Views.layout.rows.find((r) => r.key === "${firstKey}")?.hidden ?? null,
+    selected: Views.selected, note: Activity.notes.get("view")?.text ?? "" })`);
+  await key("z", { modifiers: 2 });
+  await frames();
+  sel.back = await js(`({ rows: Slice.rows().map((r) => r.key), label: JSON.stringify(S.label) === ${JSON.stringify(label4)} })`);
+  await click(30, await rowY(0));
+  await frames();
+  await js(`[...$("row-select").querySelectorAll("button")].find((b) => b.textContent === "Pop out").click()`);
+  await until(`Dock.open && Dock.nodes.has("row:${firstKey}")`);
+  await frames();
+  sel.popped = await js(`({ panels: Dock.panels, inRows: Slice.rows().some((r) => r.key === "${firstKey}"),
+    note: Dock.nodes.get("row:${firstKey}").note.textContent, title: Dock.nodes.get("row:${firstKey}").name.textContent })`);
+  await js(`Dock.nodes.get("row:${firstKey}").close.click()`);
+  await frames();
+  sel.returned = await js(`({ inRows: Slice.rows().some((r) => r.key === "${firstKey}"), panels: Dock.panels })`);
+  if (await js("Dock.open")) await key("d");
+  await until("!Dock.open");
+  check("R4", "a click on a row's name selects it; Delete hides it from the view and Ctrl+Z brings it back (the label kept); Pop out shows it in the dock and its × puts it back",
+    sel.picked[0] === firstKey && sel.picked[1] === 1 && sel.picked[2] && !sel.removed.rows.includes(firstKey) &&
+      sel.removed.hidden === true && sel.removed.note.startsWith("Removed ") && sel.back.rows[0] === firstKey && sel.back.label &&
+      sel.popped.panels.some((p) => p.kind === "row" && p.id === firstKey) && !sel.popped.inRows && sel.popped.title.length > 0 &&
+      sel.returned.inRows && !sel.returned.panels.some((p) => p.kind === "row"),
+    sel);
+
+  // R7 (review fix I1): one selection. A row and an annotation clear each other, so Delete
+  // acts on what was clicked last; Ctrl+Z puts each back.
+  const lane7 = await js(`(() => { const r = $("label-track").getBoundingClientRect(); return r.top + r.height / 2; })()`);
+  const one = { n: await js("S.label.intervals.length"), at: await js("S.label.intervals.findIndex((s) => s[0] === 1240 && s[1] === 1360)"),
+    rows: await js("Slice.rows().map((r) => r.key)") };
+  const label7 = await js("JSON.stringify(S.label)");
+  await click(await X(1300), lane7);
+  await frames();
+  await click(30, await rowY(0));
+  await frames();
+  one.rowLast = await js(`[Views.selected, S.selected]`);
+  const key7 = one.rowLast[0];
+  await key("Delete");
+  await frames();
+  one.rowGone = await js(`({ n: S.label.intervals.length, hidden: Views.layout.rows.find((r) => r.key === ${JSON.stringify(key7)})?.hidden ?? null })`);
+  await key("z", { modifiers: 2 });
+  await frames();
+  one.rowBack = await js(`Slice.rows().map((r) => r.key)`);
+  await click(30, await rowY(0));
+  await frames();
+  await click(await X(1300), lane7);
+  await frames();
+  one.spanLast = await js(`[Views.selected, S.selected, document.querySelectorAll("#rows canvas.row-selected").length, Boolean($("row-select")?.offsetParent)]`);
+  await key("Delete");
+  await frames();
+  one.spanGone = await js(`({ n: S.label.intervals.length, gone: !S.label.intervals.some((s) => s[0] === 1240 && s[1] === 1360),
+    rows: Slice.rows().map((r) => r.key) })`);
+  await key("z", { modifiers: 2 });
+  await frames();
+  one.spanBack = await js(`({ n: S.label.intervals.length, same: JSON.stringify(S.label) === ${JSON.stringify(label7)}, undo: S.undo.length })`);
+  check("R7", "a row click clears the annotation selection and an annotation click the row's: Delete removes the row (label kept), then the annotation (rows kept); Ctrl+Z restores each",
+    one.at >= 0 && key7 && one.rowLast[1] === -1 && one.rowGone.n === one.n && one.rowGone.hidden === true && same(one.rowBack, one.rows) &&
+      same(one.spanLast, [null, one.at, 0, false]) && one.spanGone.n === one.n - 1 && one.spanGone.gone && same(one.spanGone.rows, one.rows) &&
+      one.spanBack.n === one.n && one.spanBack.same,
+    one);
+
+  // R8 (review fix I2): a popped-out added row whose fetch failed shows the entry's chip (its
+  // copy, Retry, the server's detail behind a toggle), not a "Loading…" that never ends; Retry
+  // fetches it and the chip goes.
+  await js(`window.stubs.signal = (p) => p.id === "custom:UPPT"
+    ? window.json({ error: "fixture upstream failure", kind: "upstream", detail: "fixture traceback, line 1" }, 502) : null;
+    Views.addRow("custom:UPPT"); void 0`);
+  await until(`Views.added.find((a) => a.id === "custom:UPPT")?.entry?.state === "error"`);
+  const upKey = await js(`Views.added.find((a) => a.id === "custom:UPPT").key`);
+  await js(`Dock.popRow(${JSON.stringify(upKey)}); void 0`);
+  await until(`Dock.open && Dock.nodes.has("row:" + ${JSON.stringify(upKey)})`);
+  await js(`window.tagged = []; window.realTag = Dock.tag; Dock.tag = (g, text, ...rest) => { window.tagged.push(text); return window.realTag(g, text, ...rest); }; Dock.redraw(); void 0`);
+  await frames();
+  await frames();
+  const upChip = `Dock.nodes.get("row:" + ${JSON.stringify(upKey)}).chip`;
+  const failedRow = await js(`(() => { const chip = ${upChip};
+    return { text: chip?.firstChild.textContent ?? null, button: chip && !chip.lastChild.hidden ? chip.lastChild.textContent : null,
+      error: chip?.classList.contains("error") ?? null, toggle: chip?.querySelector(".failure-detail summary")?.textContent ?? null,
+      detail: chip?.querySelector(".failure-detail pre")?.textContent ?? null, closed: chip ? !chip.querySelector(".failure-detail").open : null,
+      tags: window.tagged.slice() };
+  })()`);
+  await js(`Dock.tag = window.realTag; delete window.stubs.signal; ${upChip}.lastChild.click(); void 0`);
+  await until(`Views.added.find((a) => a.id === "custom:UPPT")?.entry?.state === "done"`, 30000);
+  await frames();
+  failedRow.retried = await js(`({ chip: !${upChip}, panel: Dock.panels.some((p) => p.kind === "row" && p.id === ${JSON.stringify(upKey)}) })`);
+  await js(`Dock.nodes.get("row:" + ${JSON.stringify(upKey)}).close.click(); void 0`);
+  await frames();
+  await js(`Views.removeKey("custom:UPPT"); void 0`);
+  if (await js("Dock.open")) await key("d");
+  await until("!Dock.open");
+  check("R8", "a popped-out row whose fetch failed (502) shows the chip \"The data server failed: … Try again soon.\" with Retry and its detail behind a closed toggle, never \"Loading…\"; Retry fetches it and the chip goes",
+    failedRow.text === "The data server failed: fixture upstream failure. Try again soon." && failedRow.button === "Retry" && failedRow.error &&
+      failedRow.toggle === "details" && failedRow.detail === "fixture traceback, line 1" && failedRow.closed &&
+      !failedRow.tags.includes("Loading…") && failedRow.retried.chip && failedRow.retried.panel,
+    failedRow);
+
+  // R9 (review fix I3): the removed-rows undo belongs to its layout: after Reset (a view
+  // choice) or an event change Ctrl+Z puts no row into the new layout.
+  await click(30, await rowY(0));
+  await frames();
+  const undo9 = { key: await js("Views.selected") };
+  await key("Delete");
+  await frames();
+  undo9.removed = await js("Views.removed.length");
+  await js("void resetView()");
+  await quiet();
+  const rows9 = await js("JSON.stringify(Views.layout.rows)");
+  const label9 = await js("JSON.stringify(S.label)");
+  undo9.afterReset = await js("[Views.removed.length, S.undo.length]");
+  await key("z", { modifiers: 2 });
+  await frames();
+  undo9.same = await js(`[JSON.stringify(Views.layout.rows) === ${JSON.stringify(rows9)}, Views.changed, JSON.stringify(S.label) === ${JSON.stringify(label9)}]`);
+  await click(30, await rowY(0));
+  await frames();
+  await key("Delete");
+  await frames();
+  undo9.again = await js("Views.removed.length");
+  await js(`void openEvent("${MHD}", 180001)`);
+  await opened(180001, MHD);
+  await quiet();
+  undo9.otherEvent = await js("Views.removed.length");
+  await js(`void openEvent("${AE}", 170815)`);
+  await opened(170815, AE);
+  await quiet();
+  undo9.back = await js("[Views.removed.length, Slice.rows().some((r) => r.key === " + JSON.stringify(undo9.key) + ")]");
+  check("R9", "a row removed before Reset or before an event change stays out of Ctrl+Z: the undo list empties and Ctrl+Z changes neither the new layout nor the label",
+    undo9.key && undo9.removed === 1 && same(undo9.afterReset, [0, 0]) && same(undo9.same, [true, false, true]) &&
+      undo9.again === 1 && undo9.otherEvent === 0 && undo9.back[0] === 0,
+    undo9);
+  if (await js("Dock.open")) await key("d");
+
+  // R1: the shot box's search: digits ask /api/shots/search for the event, up to 8 matches
+  // show with their lists, ↓ and Enter open the pick; a server without the route (404) leaves
+  // the box opening the number typed, with no error. The box sits in the label panel above the
+  // shot chips, uncovered with the dock open, its list opens upward on screen, and the bar
+  // shows the open shot as text.
+  const dockWasOpen = await js("Dock.open");
+  if (!dockWasOpen) await key("d");
+  await js(`window.stubs["shots/search"] = async (params) => window.json({ shots: [
+    { shot: 170815, lists: ["gold", "roster"], cached: true }, { shot: 170816, lists: ["roster"], cached: true },
+    ...Array.from({ length: 10 }, (_, k) => ({ shot: 170820 + k, lists: [], cached: false })) ] }); void 0`);
+  const since1 = await mark();
+  const typeShot = async (text) => {
+    await js(`(() => { const box = $("shot"); box.focus(); box.value = ""; })()`);
+    for (const ch of text) await key(ch, { blur: false });
+  };
+  await typeShot("1708");
+  await until(`!$("shot-matches").hidden`);
+  const search = { asked: (await requests(since1)).filter((r) => r.kind === "shots/search"),
+    shown: await js(`[...document.querySelectorAll("#shot-matches li")].map((li) => [li.dataset.shot, li.querySelector("span").textContent, li.querySelector("small").textContent])`),
+    bar: await js(`Math.round($("bar").getBoundingClientRect().height)`),
+    place: await js(`(() => {
+      const box = $("shot").getBoundingClientRect(), list = $("shot-matches").getBoundingClientRect();
+      const find = $("shot-find").getBoundingClientRect(), chip = $("queue").firstElementChild.getBoundingClientRect();
+      const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+      return { panel: $("bottom").contains($("shot")) && !$("bar").contains($("shot")),
+        above: find.bottom <= $("queue").getBoundingClientRect().top + 1,
+        aligned: Math.abs($("shot-label").getBoundingClientRect().left - chip.left) <= 2,
+        dock: Dock.open, uncovered: hit === $("shot"), right: Math.round(box.right),
+        dockLeft: Math.round($("dock").getBoundingClientRect().left),
+        up: list.bottom <= box.top, onScreen: list.top >= 0 && list.bottom <= innerHeight };
+    })()`) };
+  await key("ArrowDown", { blur: false });
+  await key("ArrowDown", { blur: false });
+  search.active = await js(`$("shot").getAttribute("aria-activedescendant")`);
+  await key("Enter", { blur: false });
+  await opened(170816, AE);
+  search.hash = await js("location.hash");
+  search.now = await js(`[$("shot-now").textContent, $("bar").querySelector("input#shot") === null]`);
+  search.closed = await js(`$("shot-matches").hidden`);
+  await js(`window.stubs["shots/search"] = async () => window.json({ detail: "Not Found" }, 404); void 0`);
+  await typeShot("170815");
+  await sleep(500);
+  await key("Enter", { blur: false });
+  await opened(170815, AE);
+  await quiet();
+  search.old = await js(`({ off: ShotSearch.off, hash: location.hash, hidden: $("shot-matches").hidden, error: $("activity").classList.contains("error") })`);
+  check("R1", "typing 1708 in the label panel's box (above the chips, left of the open dock) asks /api/shots/search for the event; 8 of 12 matches show upward on screen with their lists and \"fetch\" for shots not on disk; ↓↓ Enter opens 170816 and the bar says Shot 170816; on a 404 the box still opens the typed shot, quietly",
+    search.asked.length >= 1 && search.asked.at(-1).q === "1708" && search.asked.every((r) => r.event === AE && r.limit === "20") && search.shown.length === 8 &&
+      same(search.shown[0], ["170815", "gold · roster", ""]) && same(search.shown[2], ["170820", "", "fetch"]) &&
+      search.active === "shot-match-1" && search.hash === `#${AE}/170816` && search.closed &&
+      search.old.off && search.old.hash === `#${AE}/170815` && search.old.hidden && !search.old.error &&
+      search.place.panel && search.place.above && search.place.aligned && search.place.dock && search.place.uncovered &&
+      search.place.right < search.place.dockLeft && search.place.up && search.place.onScreen &&
+      same(search.now, ["Shot 170816", true]),
+    search);
+  if (!dockWasOpen && (await js("Dock.open"))) await key("d");
+
+  // R3: a detachment shot without camera frames (as 170659): the slices follow the rows'
+  // cursor, never stay "Loading…", and show the TangTV inversion and EFIT at the cursor.
+  await js(`window.stubs.shot = async (params, request) => {
+    if (params.event !== "${DET}") return null;
+    const response = await window.realFetch(request.url, { credentials: "same-origin" });
+    const body = await response.json();
+    for (const camera of body.video?.cameras || []) Object.assign(camera, { channels: [], views: [], reason: "camera group missing" });
+    return window.json(body, response.status);
+  }; void 0`);
+  await js(`void openEvent("${DET}", 170815)`);
+  await opened(170815, DET);
+  await quiet();
+  await frames();
+  const efit = { before: await js(`({ led: Dock.videoLed(), following: Dock.following(), open: Dock.open,
+    note: Dock.nodes.get("slice:inversion")?.note.textContent ?? null, kinds: (Dock.kinds || []).map((k) => k.kind) })`) };
+  const since3 = await mark();
+  await move(await X(95), await rowY(0));
+  try {
+    await until(`Dock.nodes.get("slice:inversion").note.textContent.includes("TangTV 100 ms") &&
+      Dock.nodes.get("slice:inversion").note.textContent.includes("EFIT02 80 ms")`, 8000);
+    efit.shown = true;
+  } catch {
+    efit.shown = false;
+  }
+  await quiet();
+  efit.after = await js(`({ note: Dock.nodes.get("slice:inversion").note.textContent, time: Dock.time() })`);
+  efit.asked = (await requests(since3)).filter((r) => r.kind === "slice").map((r) => [r.slice, r.t_ms]);
+  const [r3x, r3y] = await barPoint();
+  await move(r3x, r3y);
+  check("R3", "with no camera frames the detachment dock follows the rows' cursor: it asks /api/slice at the cursor (95 ms) and shows TangTV 100 ms and EFIT02 80 ms, never stuck on Loading",
+    !efit.before.led && efit.before.following === "cursor" && efit.before.open && !/Loading/.test(efit.before.note || "") &&
+      efit.shown && efit.asked.length >= 2 && efit.asked.every(([, t]) => Math.abs(Number(t) - 95) <= 1),
+    efit);
+  await js("delete window.stubs.shot; void 0");
 
   check("E", "no script error", errors.length === 0, errors);
 }

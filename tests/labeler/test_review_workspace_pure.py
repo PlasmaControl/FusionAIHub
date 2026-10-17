@@ -547,9 +547,9 @@ def test_a_profile_note_names_the_diagnostic_not_the_radius_map():
         ".concat([Dock.sliceNote({ label: 'q (EFIT02)' }, { i: 3, t: 1900 }, { i: 3 }, { i: 3 }, 1900)])",
         setup="var S = { video: null };",
     )
-    assert got == ["EFIT 1,900 ms, 100 ms from cursor", "TS 1,900 ms, 100 ms from cursor",
-                   "ECE 1,900 ms, 100 ms from cursor", "ZIPFIT 1,900 ms, 100 ms from cursor",
-                   "EFIT 1,900 ms, 100 ms from cursor", "slice 1,900 ms, 100 ms from cursor",
+    assert got == ["EFIT 1,900 ms (100 ms from cursor)", "TS 1,900 ms (100 ms from cursor)",
+                   "ECE 1,900 ms (100 ms from cursor)", "ZIPFIT 1,900 ms (100 ms from cursor)",
+                   "EFIT 1,900 ms (100 ms from cursor)", "slice 1,900 ms (100 ms from cursor)",
                    "A and B share one EFIT slice"]
 
 
@@ -566,6 +566,74 @@ def test_default_layouts():
     assert detachment["rows"] == [] and other["rows"] == []
     assert other["dock"] == {"open": False, "width": None, "follow": "cursor", "panels": []}
     assert {detachment["v"], other["other_store_rows"]} == {1, "end"}
+
+
+@needs_node
+def test_q_is_in_the_dock_by_default_on_the_q_min_poloidal_beta_and_mhd_events():
+    """R2: the q profile opens in the dock on q_min, poloidal beta and the MHD events (their
+    subcategories too); other events keep a closed, empty dock."""
+    events = ["minimum_safety_factor", "poloidal_beta", "mhd_n1", "mhd_n2", "mhd_n3",
+              "mhd_n1.m2", "alfven_eigenmode", "edge_localized_mode"]
+    got = _page(f"{json.dumps(events)}.map((event) => defaultLayout(event).dock)")
+    q = {"open": True, "width": None, "follow": "cursor",
+         "panels": [{"kind": "profile", "id": "q_profile", "h": 200}]}
+    closed = {"open": False, "width": None, "follow": "cursor", "panels": []}
+    assert got == [q] * 6 + [closed] * 2
+
+
+@needs_node
+def test_the_add_row_box_reads_any_fdp_pointname():
+    """R2: a PTDATA name or an MDS node (TREE::NODE, with or without the backslash) is offered
+    as typed, upper-cased; a bare tag, an unknown tree or anything else is refused with a fix."""
+    got = _page(
+        "['ECEVS01', 'ecevs01', 'efit01::betan', '\\\\EFIT01::Q95', '\\\\BETAN', 'NOTATREE::X',"
+        " '9bad', '', 'two words'].map((typed) => Views.parsePoint(typed, ['EFIT01', 'EFIT02']))"
+    )
+    assert got[:4] == [
+        {"id": "custom:ECEVS01", "text": "PTDATA ECEVS01"},
+        {"id": "custom:ECEVS01", "text": "PTDATA ECEVS01"},
+        {"id": "mds:EFIT01:\\EFIT01::BETAN", "text": "MDS \\EFIT01::BETAN"},
+        {"id": "mds:EFIT01:\\EFIT01::Q95", "text": "MDS \\EFIT01::Q95"},
+    ]
+    assert got[4] == {"refusal": "Add the tree, e.g. EFIT01::BETAN"}
+    assert "not an allowed MDS tree" in got[5]["refusal"]
+    assert got[6] == got[8] == {"refusal": "Not a PTDATA name or an MDS node (TREE::NODE)."}
+    assert got[7] is None
+
+
+@needs_node
+def test_a_profile_reads_between_its_points_and_an_equilibrium_without_ranges_has_an_extent():
+    got = _page(
+        "[Dock.interpolate([0, 0.5, 1], [1, 2, 4], 0.75), Dock.interpolate([0, 0.5, 1], [1, 2, 4], 0),"
+        " Dock.interpolate([0, 1], [1, 2], 1.5), Dock.interpolate([0, NaN, 1], [1, 2, 3], 0.5),"
+        " Dock.extentOf({ r_range: [1, 2.4], z_range: [-1.4, 1.4] }),"
+        " Dock.extentOf({ wall: [[1, -1], [2.5, 0], [1.2, 1.3]] }),"
+        " Dock.extentOf({ boundary: [[1.1, -1.2], [2.2, 0.1]] }), Dock.extentOf({ wall: [] }),"
+        " Dock.extentOf(null)]"
+    )
+    assert got[:4] == [3, 1, None, None]
+    assert got[4] == [[1, 2.4], [-1.4, 1.4]]
+    assert got[5] == [[1, 2.5], [-1, 1.3]]
+    assert got[6] == [[1.1, 2.2], [-1.2, 0.1]]
+    assert got[7] is None and got[8] is None
+
+
+@needs_node
+def test_the_dock_follows_the_video_only_when_the_shot_has_frames():
+    """The EFIT fix (R2): with no camera frames the slices follow the rows' cursor, not the
+    video time stuck at the store's start, which no slice is near."""
+    got = _page(
+        "(() => {"
+        " const out = [];"
+        " for (const video of [null, { times: [], time: -1.35 }, { times: [0, 40], time: 40 }]) {"
+        "   S.video = video; Slice.hover = 1000; Slice.inRows = true;"
+        "   out.push([Dock.videoLed(), Dock.following(), Dock.time()]);"
+        " }"
+        " return out;"
+        "})()",
+        setup="globalThis.S = { video: null, meta: {}, view: [0, 2000] };",
+    )
+    assert got == [[False, "cursor", 1000], [False, "cursor", 1000], [True, "video", 40]]
 
 
 @needs_node
@@ -651,6 +719,34 @@ def test_the_picker_searches_every_word_suggested_first():
     assert [m["id"] for m in _match("global")["matches"]] == ["ip", "betan"]
     found = _match("plasma")
     assert found["offer"] is None and found["refusal"] is None
+
+
+POINTED = [
+    {"id": "density", "label": "Line-averaged density", "group": "Plasma", "units": "1e19 m^-3",
+     "source": "corpus", "where": "density", "points": ["DENR0UF"],
+     "description": "CO2 interferometer, central chord"},
+    {"id": "betan", "label": "beta_N", "group": "Equilibrium", "units": "", "source": "corpus",
+     "where": "betan", "points": ["\\efit01::top.results.aeqdsk:betan"], "description": ""},
+]
+
+
+@needs_node
+@pytest.mark.parametrize(("typed", "found"), [
+    ("DENR0UF", "density"), ("denr0uf", "density"), ("EFIT01::BETAN", "betan"),
+    ("\\EFIT01::BETAN", "betan"), ("\\BETAN", "betan"), ("interferometer", "density"),
+])
+def test_a_typed_pointname_finds_the_catalog_entry_that_fetches_it(typed, found):
+    """R2 fix I4: the catalog's points (PTDATA names and MDS nodes, read from the field) and its
+    description are searched, so a typed pointname finds the curated entry, not a custom row."""
+    got = _page(
+        "({ match: matchCatalog(input.entries, input.typed, 'ptdata', ['EFIT01']),"
+        " exact: input.entries.filter((e) => Views.pointKeys(e).includes(Views.pointKey(input.typed)))"
+        ".map((e) => e.id) })",
+        {"entries": POINTED, "typed": typed},
+    )
+    assert [m["id"] for m in got["match"]["matches"]] == [found]
+    assert got["match"]["offer"] is None and got["match"]["refusal"] is None
+    assert got["exact"] == ([] if typed == "interferometer" else [found])
 
 
 @needs_node

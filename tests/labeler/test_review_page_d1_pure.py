@@ -243,16 +243,23 @@ def test_a_store_build_says_its_stage_queue_and_list():
         Activity.buildText(170816, "ELM", { stage: "writing", elapsed_s: 75, queue_position: 0 }),
         Activity.buildText(170816, "ELM", { stage: "fetching" }, 120),
         Activity.stopped(189081),
+        Activity.buildText(170816, "ELM", { stage: "fetching", fetching: ["pinj_total"],
+            note: "Fetching pinj_total", elapsed_s: 4, queue_position: 0 }),
+        Activity.buildText(170816, "ELM", { stage: "building", note: "Building the store.",
+            elapsed_s: 4, queue_position: 0 }),
+        Activity.buildText(170816, "ELM", { stage: "queued", note: "Queued, 2 ahead", queue_position: 3 }),
     ]""")
     assert found == [
-        ("Building 189081 for Tearing (n=1): fetching mirnov (2 of 5) · 14 s · 1st in line. "
-         "This shot is not in a pre-built list."),
+        "Building 189081 for Tearing (n=1): fetching mirnov (2 of 5) · 14 s · 1st in line",
         "Building 170816 for ELM: queued · 3rd in line",
         "Building 170816 for ELM: writing the store · 1 min 15 s",
-        ("Still building after 2 min. The server may be stuck: check its log, or open another "
-         "shot."),
-        ("189081 is still building on the server. K opens the next shot; come back to this one "
-         "later."),
+        "Still building after 2 min. The server may be stuck.",
+        "189081 is still building on the server. Open it again later.",
+        # R2 (contract §2): the 202's short `note` says what the server is doing.
+        "Building 170816 for ELM: fetching pinj_total · 4 s",
+        "Building 170816 for ELM: building the store · 4 s",
+        # A note that gives the queue is not followed by the place in line (review R2 M8).
+        "Building 170816 for ELM: queued, 2 ahead",
     ]
 
 
@@ -276,8 +283,7 @@ def test_a_build_without_a_stage_change_for_two_minutes_may_be_stuck():
     assert found == [
         "Building 1 for ELM: fetching mirnov (2 of 5) · 3 s",
         0.4,
-        ("Still building after 2 min. The server may be stuck: check its log, or open another "
-         "shot."),
+        "Still building after 2 min. The server may be stuck.",
         "Building 1 for ELM: fetching mirnov (3 of 5) · 3 s",
         True,
         True,
@@ -322,10 +328,10 @@ def test_notes_show_while_nothing_loads_and_an_error_note_first():
         Activity.clear("fdp");
         return [idle, busy.text, after.text, Activity.summary(clock), Activity.errors[0].message];
     })()""")
-    assert found[0] == {"text": "Next shot 170816: build failed: 500 boom", "tone": "error",
+    assert found[0] == {"text": "Next shot 170816 failed to build: 500 boom", "tone": "error",
                         "busy": False, "stop": False, "fraction": None}
     assert found[1:] == ["Loading rows", "fdp login expires in 5 h", None,
-                         "Next shot 170816: build failed: 500 boom"]
+                         "Next shot 170816 failed to build: 500 boom"]
 
 
 @needs_node
@@ -344,10 +350,9 @@ def test_the_fdp_note():
         ];
     })()""")
     assert found == [
-        {"text": "This server cannot fetch new signals: restart it with pixi run -e labeler "
-                 "labeler-verify.", "tone": ""},
-        {"text": "fdp login has expired: new signals cannot be fetched. Run fdp login on the "
-                 "server host, then press Retry on a row.", "tone": "error"},
+        {"text": "This server cannot fetch new signals. Restart it with pixi run -e labeler labeler-verify.", "tone": ""},
+        {"text": "fdp login expired: no new signals. Run fdp login on the server, then Retry.",
+         "tone": "error"},
         {"text": "fdp login expires in 5 h", "tone": ""},
         {"text": "fdp login expires in 30 min", "tone": ""},
         None, None, None,
@@ -380,12 +385,10 @@ def test_the_fetch_status_reason_wins_over_the_generic_copy():
         {"text": "The fdp token has expired: run 'fdp login', then try again.",
          "tone": "error"},
         {"text": "This server was not started under the fdp wrapper.", "tone": ""},
-        {"text": "fdp login has expired: new signals cannot be fetched. Run fdp login on the "
-                 "server host, then press Retry on a row.", "tone": "error"},
-        {"text": "This server cannot fetch new signals: restart it with pixi run -e labeler "
-                 "labeler-verify.", "tone": ""},
-        {"text": "This server cannot fetch new signals: restart it with pixi run -e labeler "
-                 "labeler-verify.", "tone": ""},
+        {"text": "fdp login expired: no new signals. Run fdp login on the server, then Retry.",
+         "tone": "error"},
+        {"text": "This server cannot fetch new signals. Restart it with pixi run -e labeler labeler-verify.", "tone": ""},
+        {"text": "This server cannot fetch new signals. Restart it with pixi run -e labeler labeler-verify.", "tone": ""},
         None,
     ]
 
@@ -428,10 +431,8 @@ def test_stale_server_and_version_copy():
          "Restart the server for shot lists, TokEye status and views",
          None],
         None,
-        ("Could not read the server version: 500 Internal Server Error. Reload the page; if this "
-         "persists, restart the server."),
-        ("Could not read the server version: Failed to fetch. Reload the page; if this persists, "
-         "restart the server."),
+        "Could not read the server version (500 Internal Server Error). Reload the page.",
+        "Could not read the server version (Failed to fetch). Reload the page.",
     ]
 
 
@@ -457,20 +458,20 @@ def test_row_chips_for_added_rows():
         {"text": "Fetching from PTDATA · 9 s", "button": "Stop waiting", "tone": "queued"},
         {"text": "Fetching from MDS (EFIT01) · 12 s", "button": "Stop waiting", "tone": "queued"},
         {"text": "Reading from disk", "button": "Stop waiting", "tone": "queued"},
-        {"text": "fdp login has expired, so this signal cannot be fetched. Run fdp login on the "
-                 "server host. Rows on disk still work.", "button": "Retry", "tone": "error"},
-        {"text": "No DUSBRADIAL data for shot 180625.", "button": "Remove from view", "tone": "",
+        {"text": "fdp login expired. Run fdp login on the server, then Retry.",
+         "button": "Retry", "tone": "error"},
+        {"text": "No DUSBRADIAL for 180625.", "button": "Remove from view", "tone": "",
          "collapse": True},
-        {"text": "The data server returned an error: MDSplus said no. Try again in a minute.",
+        {"text": "The data server failed: MDSplus said no. Try again soon.",
          "button": "Retry", "tone": "error"},
-        {"text": "The fetch took over 30 s and was stopped. A formula node can take up to 2 min.",
+        {"text": "Stopped after 30 s. A formula node can take 2 min.",
          "button": "Retry", "tone": "error"},
-        {"text": "DUSB-RADIAL is not a PTDATA point name: use a letter, then letters, digits or _, "
-                 "up to 12 characters.", "button": "Edit", "tone": "error"},
+        {"text": "DUSB-RADIAL is not a valid PTDATA name: a letter, then letters, digits or _, up to 12.",
+         "button": "Edit", "tone": "error"},
         {"text": "The formula does not parse.", "button": "Edit", "tone": "error"},
         None,
-        "AE mask could not be loaded: 500 Internal Server Error. Press M to retry.",
-        "The fetch took over 2 min and was stopped. Try again in a minute.",
+        "Could not load the AE mask. Press M to retry.",
+        "Stopped after 2 min. Try again soon.",
     ]
 
 
