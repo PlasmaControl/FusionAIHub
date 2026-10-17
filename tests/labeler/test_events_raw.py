@@ -117,6 +117,34 @@ def test_write_group_stores_seconds_so_the_corpus_can_read_it(tmp_path):
         assert np.allclose(f["co2"]["xdata"][:], [0.0, 1.0])
 
 
+def test_write_group_places_rows_in_a_wider_group_and_allocates_only_those(tmp_path):
+    path = tmp_path / "9_processed.h5"
+    values = np.arange(2 * 2048, dtype="float32").reshape(2, 2048)
+    raw.write_group(
+        path, "mirnov", np.arange(2048.0), values, rows=[1, 4], n_rows=6
+    )
+    with h5py.File(path, "r") as f:
+        y = f["mirnov"]["ydata"]
+        assert y.shape == (6, 2048)
+        assert np.array_equal(y[[1, 4]], values)
+        assert np.isnan(y[[0, 2, 3, 5]]).all()
+        assert y.id.get_storage_size() == values.nbytes, "unwritten rows cost nothing"
+
+
+@pytest.mark.parametrize(
+    ("rows", "n_rows"), [([1], 4), ([1, 1], 4), ([1, 4], 4), ([-1, 2], 4), ([1, 2], None)]
+)
+def test_write_group_refuses_rows_that_do_not_fit_before_touching_disk(
+    tmp_path, rows, n_rows
+):
+    path = tmp_path / "10_processed.h5"
+    with pytest.raises(ValueError, match="do not place"):
+        raw.write_group(
+            path, "mirnov", np.arange(4.0), np.zeros((2, 4)), rows=rows, n_rows=n_rows
+        )
+    assert list(tmp_path.glob("*")) == []
+
+
 def test_write_group_leaves_no_partial_file_when_the_h5py_write_fails(
     tmp_path, monkeypatch
 ):

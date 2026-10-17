@@ -82,6 +82,10 @@ class FetchSpec:
     #: A point that holds nothing on this shot is a NaN row, as in the corpus,
     #: not a failed fetch (`fdp_signal`'s `missing_ok`).
     missing_ok: bool = False
+    #: Where `exprs` sit among the corpus group's `n_rows` rows, when the group is
+    #: wider than what is fetched (`write_group`'s `rows`); None is rows 0-N in order.
+    rows: tuple[int, ...] | None = None
+    n_rows: int = 0
 
 
 #: `ece_edge`'s rows: ECE channels 1-8, the largest-R (lowest-frequency) ones, as
@@ -109,6 +113,26 @@ STRIKE_POINTS = tuple(
 
 #: The eight neutral beams, in the corpus `pinj` group's row order.
 NBI_BEAMS = ("15L", "15R", "21L", "21R", "30L", "30R", "33L", "33R")
+
+#: The corpus `mirnov` group's first 23 points, in its row order
+#: (`modalities.yaml`'s `mirnov.input_key`; the group has 29 rows, 23-28 are none of
+#: the readers' here). Row 15 is MPI66M322D, the toroidal array's reference probe.
+MIRNOV_POINTS = (
+    "MPI1A322D", "MPI3A322D", "MPI5A322D", "MPI89A322D", "MPI79FA322D", "MPI7FA322D",
+    "MPI67A322D", "MPI6NA322D", "MPI1B322D", "MPI3B322D", "MPI5B322D", "MPI89B322D",
+    "MPI79B322D", "MPI7NB322D", "MPI6FB322D", "MPI66M322D", "MPI66M132D",
+    "MPI66B137D", "MPI66M312D", "MPI66B312D", "MPI66M020D", "MPI66M097D", "MPI66M307D",
+)
+MIRNOV_WIDTH = 29
+#: The rows fetched: the six midplane toroidal probes
+#: (`panels.neoclassical_tearing_mode.PROBES`: the MPI66M probes at 322, 132, 312,
+#: 020, 097 and 307 degrees), which are what the tearing review rows and
+#: `tearing.magfeatures` read. Only these: a shot is then 6 of its 29 records, the
+#: other rows stay NaN as a dead channel does, and the reference coils (rows 0 and 8,
+#: MPI1A322D and MPI1B322D) are left out because on shots before about 2010 they are
+#: sampled at a sixteenth of the midplane probes' rate (MEASURED 2026-10-16 on 132240:
+#: 131072 against 2097152 samples), which one time base cannot hold.
+MIRNOV_ROWS = (15, 16, 18, 20, 21, 22)
 
 #: Only groups listed here can be fetched. An unlisted group missing from
 #: both tiers raises rather than guessing at a point name: a wrong guess
@@ -168,6 +192,18 @@ FETCH_SPECS: dict[str, FetchSpec] = {
         tree="D3D",
         missing_ok=True,
     ),
+    # The corpus `mirnov` group's `MIRNOV_ROWS`, for the shots before the corpus
+    # (the tearing-mode review rows and the tm-ours features read them). PTDATA, as
+    # the corpus' own build does (`modalities.yaml`). Written into a corpus-shaped
+    # (29, T) group, so a reader's row index means what it means in the corpus. No
+    # `missing_ok`: one dead probe fails the shot, with the point's name, and the
+    # six must share one time base (`fdp_signal` checks their lengths).
+    "mirnov": FetchSpec(
+        exprs=tuple(MIRNOV_POINTS[row] for row in MIRNOV_ROWS),
+        via="ptdata",
+        rows=MIRNOV_ROWS,
+        n_rows=MIRNOV_WIDTH,
+    ),
 }
 
 #: One lock per resolved path, so two `write_group` calls for different
@@ -195,7 +231,9 @@ def cache_path(shot: int, *, paths: Paths | None = None) -> Path:
     return paths.raw_cache / f"{int(shot)}_processed.h5"
 
 
-def write_group(path, group: str, times_ms, values) -> None:
+def write_group(
+    path, group: str, times_ms, values, *, rows=None, n_rows: int | None = None
+) -> None:
     """Add one group to a corpus-layout file, atomically and additively.
 
     Additive because the server fetches groups one panel at a time: asking
@@ -218,6 +256,12 @@ def write_group(path, group: str, times_ms, values) -> None:
     `fdp_signal` both return, and is stored in SECONDS, the convention the
     corpus file itself uses. That conversion is the whole reason this
     function exists rather than a bare h5py call.
+
+    With `rows` (distinct row indices, one per row of `values`) and `n_rows`,
+    `ydata` is the corpus group's `(n_rows, T)` shape with `values` at those rows
+    and NaN in the rest. The chunks are one row each and only the written ones are
+    allocated, so the other rows cost nothing on disk (the group's fill value reads
+    back as NaN, a dead channel).
     """
     import h5py
 
@@ -232,6 +276,18 @@ def write_group(path, group: str, times_ms, values) -> None:
         raise ValueError(
             f"{group!r} xdata {times_ms.shape} and ydata {values.shape} disagree"
         )
+    if rows is not None:
+        rows = [int(row) for row in rows]
+        if (
+            n_rows is None
+            or len(rows) != values.shape[0]
+            or len(set(rows)) != len(rows)
+            or not all(0 <= row < n_rows for row in rows)
+        ):
+            raise ValueError(
+                f"{group!r} rows {rows} do not place {values.shape[0]} distinct rows "
+                f"in a group of {n_rows}"
+            )
 
     path.parent.mkdir(parents=True, exist_ok=True)
     # uuid4, not id(values): id() is a memory address, not a unique token -
@@ -264,11 +320,19 @@ def write_group(path, group: str, times_ms, values) -> None:
                 # chunks and a time slice touches one chunk per channel. No
                 # compression - the record is broadband noise that gzip barely
                 # shrinks while costing minutes per shot.
-                g.create_dataset(
-                    "ydata",
-                    data=values,
-                    chunks=(1, min(values.shape[-1], 1 << 20)),
-                )
+                chunks = (1, min(values.shape[-1], 1 << 20))
+                if rows is None:
+                    g.create_dataset("ydata", data=values, chunks=chunks)
+                else:
+                    ydata = g.create_dataset(
+                        "ydata",
+                        shape=(n_rows, values.shape[-1]),
+                        dtype="float32",
+                        chunks=chunks,
+                        fillvalue=np.nan,
+                    )
+                    for row, trace in zip(rows, values, strict=True):
+                        ydata[row] = trace
             scratch.replace(path)
         finally:
             scratch.unlink(missing_ok=True)
@@ -458,7 +522,14 @@ def _fetch(shot, group, *, channels, t_range, paths) -> FeatureArray:
     try:
         fetched = _fetch_with_one_retry(shot, spec, total)
         _report(shot, total - 1, total, "writing the cache")
-        write_group(cache_path(shot, paths=paths), group, fetched.x, fetched.y)
+        write_group(
+            cache_path(shot, paths=paths),
+            group,
+            fetched.x,
+            fetched.y,
+            rows=spec.rows,
+            n_rows=spec.n_rows or None,
+        )
     finally:
         _forget(shot)
     array = corpus_signal(

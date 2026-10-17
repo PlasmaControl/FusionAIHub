@@ -30,13 +30,18 @@ BANDS = {"alfven_eigenmode": alfven.BAND_KHZ}
 # Changes to these diagnostic recipes replace earlier cached review rows. Keyed by
 # the STORE event (`config.store_event`): `confinement` is `high_confinement_mode`,
 # `mhd_n2` is `mhd_n1`. The edge-Te row came to the H-mode panels with 1.
-# `detachment` 7: the row titles changed (qualifiers moved to the caveats);
-# `resistive_wall_mode` 1: its rows were retitled the same way. The folded events
+# `detachment` 7: the row titles changed (qualifiers moved to the caveats), 8: plan
+# D.B's default rows (Afrac lower, Prad,div lower and upper in MW, the gas total);
+# the bolometer and D-alpha chords left the default; 9: the ungated Afrac on
+# invalid bins (second line), the divertor Te (DTS) and IRTV heat-flux rows, and a
+# gas total that needs every valve;
+# `resistive_wall_mode` 1: its rows were retitled the same way, 2: RWM v5 added the
+# n=1 delta-Bp row (0c058984). The folded events
 # (sawtooth, fishbone, NTM) are stored under their own parent and are not here.
 PANEL_VERSIONS = {
-    "edge_localized_mode": 4, "sawtooth_oscillation": 1, "detachment": 7,
+    "edge_localized_mode": 4, "sawtooth_oscillation": 1, "detachment": 9,
     "high_confinement_mode": 1, "mhd_n1": 1, "mhd_n1.m1": 1,
-    "resistive_wall_mode": 1,
+    "resistive_wall_mode": 2,
 }
 # Recipe 7 has not been delivered yet. Reject early recipe-7 stores lacking
 # the independent-review target/bolometer context introduced in the fix round

@@ -134,3 +134,60 @@ def test_main_groups_overrides_the_events_default(tmp_path, monkeypatch, capsys)
         "pinj": "fetched",
     }
     assert calls == [(7, r"\D3D::TOP.NB.NB15L:PINJ_15L")]
+
+
+def test_the_mirnov_spec_is_the_corpus_rows_the_readers_use():
+    from pathlib import Path
+
+    import yaml
+
+    from labeler.events.panels import neoclassical_tearing_mode as ntm
+    from labeler.mhd import tracks
+
+    spec = raw.FETCH_SPECS["mirnov"]
+    assert (spec.via, spec.missing_ok, spec.n_rows) == ("ptdata", False, 29)
+    assert spec.rows == raw.MIRNOV_ROWS
+    # The six toroidal probes the tearing review rows and features read, nothing
+    # else: the reference coils (rows 0, 8 of the mode tracks) can run at another rate.
+    assert spec.rows == tuple(ntm.PROBES)
+    assert set(spec.rows) < set(tracks.ROWS)
+    assert not {0, 8} & set(spec.rows)
+    # Each point is the one the corpus' own build put at that row.
+    modalities = (
+        Path(__file__).resolve().parents[2]
+        / "src/tokamak_foundation_model/data/config/modalities/modalities.yaml"
+    )
+    keys = yaml.safe_load(modalities.read_text())["signals"]["mirnov"]["input_key"]
+    assert len(keys) == raw.MIRNOV_WIDTH
+    assert list(raw.MIRNOV_POINTS) == keys[: len(raw.MIRNOV_POINTS)]
+    assert spec.exprs == tuple(keys[row] for row in spec.rows)
+    assert keys[15] == "MPI66M322D"
+
+
+def test_a_fetched_mirnov_reads_back_by_the_corpus_row_index(tmp_path, monkeypatch):
+    from labeler.events.panels import neoclassical_tearing_mode as ntm
+
+    p = tree.paths(tmp_path)
+    calls = []
+    spec = raw.FETCH_SPECS["mirnov"]
+    t = np.arange(0.0, 100.0, 0.5)
+
+    def fdp_signal(shot, exprs, *, tree, via, **kwargs):
+        calls.append((shot, list(exprs), via))
+        y = np.arange(1, len(exprs) + 1, dtype="float32")[:, None] * np.ones(len(t))
+        return FeatureArray(x=t, y=y, attrs={})
+
+    monkeypatch.setattr(raw, "fdp_signal", fdp_signal)
+    assert raw.fill_cache(7, ("mirnov",), p) == {"mirnov": "fetched"}
+    assert calls == [(7, list(spec.exprs), "ptdata")]
+    probes = list(ntm.PROBES)
+    got = raw.raw_signal(7, "mirnov", channels=probes, paths=p)
+    assert got.attrs["tier"] == "cache"
+    # The fetch's k-th point landed on the corpus row spec.rows[k]: row 15 is the
+    # first fetched point (value 1), row 22 the last (value 6).
+    assert [float(row[0]) for row in got.y] == [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+    unfetched = raw.raw_signal(7, "mirnov", channels=[1, 23], paths=p)
+    assert np.isnan(unfetched.y).all()
+    assert raw.fill_cache(7, ("mirnov",), p) == {"mirnov": "cache"}
+    assert len(calls) == 1, "a cached group is not fetched again"
+

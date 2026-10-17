@@ -79,7 +79,8 @@ def test_jsat_peak_keeps_probe_identity_and_missing_bins(tmp_path, detachment_in
     assert np.isnan(panel.y[0, 1:3]).all()
 
 
-def test_bolo_raw_chords_become_a_heatmap_not_power(tmp_path, detachment_inputs):
+def test_bolo_raw_chords_left_the_default(tmp_path, detachment_inputs):
+    # Plan D.B: the bolometer chords leave the default; the picker reaches them.
     paths = Paths(root=tmp_path, corpus=tmp_path / "corpus")
     path = paths.corpus_file(200977)
     path.parent.mkdir(parents=True)
@@ -87,16 +88,4 @@ def test_bolo_raw_chords_become_a_heatmap_not_power(tmp_path, detachment_inputs)
         group = store.create_group("bolo")
         group["xdata"] = np.arange(10) * 0.001
         group["ydata"] = np.arange(480).reshape(48, 10)
-    [panel] = detachment.panels(200977, paths=paths)
-    assert panel.kind == "heatmap" and panel.z.shape == (48, 10)
-    assert "voltage" in panel.title.lower()
-    assert "power" in panel.metadata["caveat"]
-    with h5py.File(path, "a") as store:
-        del store["bolo/ydata"]
-        voltage = np.arange(480, dtype=float).reshape(48, 10)
-        voltage[[0, 12]] = np.nan
-        store["bolo/ydata"] = voltage
-    [panel] = detachment.panels(200977, paths=paths)
-    assert panel.z.shape == (48, 10)
-    assert np.isnan(panel.z[[0, 12]]).all()
-    np.testing.assert_array_equal(panel.z[13], voltage[13])
+    assert detachment.panels(200977, paths=paths) == []

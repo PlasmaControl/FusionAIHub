@@ -26,6 +26,13 @@ def context_sources(shot, paths):
         "geometry": geometry.source_path(shot, paths),
         "indicators": panels.detachment.indicator_path(shot, paths),
         "density_cache": panels.detachment.density_cache_path(shot, paths),
+        "default_inputs": panels.detachment.default_inputs_path(shot, paths),
+        "dts": panels.detachment.dts_path(shot, paths),
+        "irtv": panels.detachment.irtv_path(shot, paths),
+        # The ungated Afrac's inputs beyond the bins and the cache.
+        "probes": panels.detachment.probes_path(shot, paths),
+        "flux_map": paths.root / "round4/detach/efit" / f"{int(shot)}.npz",
+        "equilibrium": paths.root / "equilibria" / f"{int(shot)}.npz",
         "labels": producer.source_path(paths),
     }
     fingerprints = {

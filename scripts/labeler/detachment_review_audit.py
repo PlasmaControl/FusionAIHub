@@ -15,6 +15,7 @@ import pandas as pd
 from detachment_review_roster import build_store
 
 from labeler.config import Paths, git_sha, sha256_of
+from labeler.events.panels import detachment as detachment_panels
 from labeler.events.review import build, detachment, rows
 
 REPO = Path(__file__).resolve().parents[2]
@@ -200,27 +201,38 @@ def main():
             gas.append(entry)
             continue
         meta = rows.meta(store_path)
-        row = next(r for r in meta["rows"] if r["title"] == "Gas flow")
-        channel = next(
-            i for i, name in enumerate(row["legend"]) if name.startswith("LOB2 ")
+        # Since panel version 8 the store holds one gas row, the valve sum; each
+        # valve's pre-plasma baseline is in its metadata (`valves` order).
+        row = next(
+            (r for r in meta["rows"] if r["title"] == detachment_panels.GAS_TITLE), None
         )
-        stored = meta["params"]["panel_metadata"][row["name"]]["preplasma_baseline"][
-            channel
-        ]
+        if row is None:
+            gas.append({**entry, "gas_row": False})
+            continue
+        metadata = meta["params"]["panel_metadata"][row["name"]]
+        if "LOB2" not in metadata["valves"]:
+            gas.append({**entry, "gas_row": True, "lob2_in_sum": False})
+            continue
+        stored = metadata["preplasma_baseline"][metadata["valves"].index("LOB2")]
         with h5py.File(paths.corpus_file(shot), "r") as corpus:
             group = corpus["gas_flow"]
             stop = int(np.searchsorted(group["xdata"][:], 0))
-            native = group["ydata"][6, :stop]
+            native = group["ydata"][detachment_panels.GAS_VALVES.index("LOB2"), :stop]
             baseline = float(np.median(native[np.isfinite(native)].astype(float)))
         with h5py.File(store_path, "r") as store:
-            values = store[f"rows/{row['name']}/1"][:, channel]
+            values = store[f"rows/{row['name']}/1"][:, 0]
         entry.update(
+            gas_row=True,
+            lob2_in_sum=True,
             preplasma_samples=stop,
             native_baseline=baseline,
             stored_baseline=stored,
-            baseline_matches=bool(np.isclose(stored, baseline, rtol=0, atol=1e-9)),
-            corrected_min=float(np.nanmin(values)),
-            corrected_max=float(np.nanmax(values)),
+            baseline_matches=bool(
+                stored is not None
+                and np.isclose(stored, baseline, rtol=0, atol=1e-9)
+            ),
+            total_min=float(np.nanmin(values)),
+            total_max=float(np.nanmax(values)),
         )
         gas.append(entry)
     suggestions = pd.read_csv(args.out / "tables/detachment/review/suggestions.csv")

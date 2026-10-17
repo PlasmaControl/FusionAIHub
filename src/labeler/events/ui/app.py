@@ -47,7 +47,7 @@ from ...config import Paths, sha256_of, store_event
 from .. import grid, raw, rosters, rwm, shotlists, taxonomy
 from ..review import build as review_build
 from ..review import gold, labels, reviewers, rows, silver, versions, video
-from . import overlay_routes, shotlist_routes, workspace_routes
+from . import overlay_routes, shotlist_routes, slice_routes, workspace_routes
 
 STATIC = Path(__file__).parent / "static"
 COOKIE = "labeler_verify_token"
@@ -836,5 +836,6 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
     shotlist_routes.install(app, paths)
     workspace_routes.install(app, paths)
     overlay_routes.install(app, paths)
+    slice_routes.install(app, paths)
     app.mount("/", StaticFiles(directory=STATIC, html=True), name="static")
     return app

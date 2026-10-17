@@ -189,6 +189,15 @@ UPCEN/UPDIV. IRTV suffix is `:DIGITAL_CAM:DIGITAL_RAW`.
 
 ## Diagnostic context and geometry
 
+Since panel version 8 the review stores draw the default rows of
+[detachment_view.md](detachment_view.md) (Afrac lower, Prad,div lower and upper, the
+gas total, the divertor Te from the control system and the IRTV heat-flux map). The
+density, filterscope, per-valve gas and bolometer-chord rows described below left the
+default; the paragraphs record how they were read for the panel-6/7 stores and how the
+corpus groups still read in the picker. The gas row is now one valve sum
+(`Gas total (valve sum)`, its per-valve pre-plasma medians in
+`metadata.preplasma_baseline`).
+
 Density priority is **producer `aux_ne` → cached `denr0uf` → corpus CO2 →
 local Thomson core density**. This provides the producer's CO2 upstream-density
 context before the local fallback. It selects V2, then R0, then V3; older bins
@@ -330,7 +339,8 @@ Controller checklist (run only after final producer integration):
    coherent producer snapshot; use the integrated producer document.
 2. Record hashes of `tables/detachment/review/labels.csv` and `history.jsonl`
    before resume; back up the delivery under its archive directory.
-3. Run the command above, then the committed `detachment_review_audit.py` and
+3. Run the command above, then the committed `detachment_review_audit.py` (it
+   checks the LOB2 pre-plasma baseline inside `Gas total (valve sum)`) and
    record results; verify all retained stores have recipe 6, `panel_revision=1`
    (Jsat/bolo context), and final input hashes. Early recipe-6 files without the
    revision stamp also require resume; opening them never overwrites them.
@@ -339,7 +349,7 @@ Controller checklist (run only after final producer integration):
    files retain their hashes. `detachment_review_queue.json` is a **future rebuild
    output**, not evidence for the frozen fix-five counts.
 5. Generate fresh 200977 browser evidence without `--frozen-from`; check 40 ms
-   previews, pre-plasma median gas baselines, target evidence and blind canvas
+   previews, the gas total's pre-plasma median baselines, target evidence and blind canvas
    pixels. Inspect the PNGs, refresh the delivery audit and report before launch.
 
 For UI-only verification while the producer changes, copy and serve the existing
