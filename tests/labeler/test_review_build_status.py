@@ -1,7 +1,8 @@
 """Build status in `/api/shot`'s 202 body (plan section C): where a store build stands
 (`stage`), how long since it was asked for (`elapsed_s`), its place among the waiting
-(`queue_position`, 0 while it runs) and whether a registered shot list holds the shot
-(`prebuilt`)."""
+(`queue_position`, 0 while it runs), whether a registered shot list holds the shot
+(`prebuilt`), the signals being fetched (`fetching`) and the activity bar's line
+(`note`)."""
 
 from __future__ import annotations
 
@@ -79,8 +80,9 @@ def test_waiting_and_running_builds_say_where_they_stand(client, app, held, monk
         assert first.status_code == 202
         body = first.json()
         assert body["building"] is True and body["progress"] is None
-        assert set(body) == {"building", "progress", "stage", "elapsed_s",
-                             "queue_position", "prebuilt"}
+        assert set(body) == {"building", "progress", "stage", "fetching", "note",
+                             "elapsed_s", "queue_position", "prebuilt"}
+        assert body["fetching"] == [] and len(body["note"]) <= 40
     _until(lambda: len(started) == 2)  # a pool of two: the third waits
     running, waiting = _open(client, SHOTS[0]).json(), _open(client, SHOTS[2]).json()
     assert running["stage"] == "building" and running["queue_position"] == 0
@@ -99,7 +101,7 @@ def test_waiting_and_running_builds_say_where_they_stand(client, app, held, monk
     assert ("detachment", SHOTS[2]) not in app.state.builds.started
 
 
-def test_a_running_build_shows_fetching_then_writing(client, app, paths, held, monkeypatch):
+def test_a_running_build_shows_fetching_then_building(client, app, paths, held, monkeypatch):
     gate, started = held
     shot = SHOTS[1]
     _open(client, shot)
@@ -108,13 +110,14 @@ def test_a_running_build_shows_fetching_then_writing(client, app, paths, held, m
     monkeypatch.setattr(raw, "progress_for", lambda s: dict(fetch) if s == shot else None)
     body = _open(client, shot).json()
     assert body["stage"] == "fetching" and body["progress"] == fetch
+    assert body["fetching"] == ["co2"] and body["note"] == "Fetching co2"
     monkeypatch.setattr(raw, "progress_for", lambda s: None)
     store = paths.spectrogram_file("detachment", shot)
     tmp = store.with_name(store.name + ".tmp")
     tmp.parent.mkdir(parents=True, exist_ok=True)
     tmp.write_bytes(b"")
     try:
-        assert _open(client, shot).json()["stage"] == "writing"
+        assert _open(client, shot).json()["stage"] == "building"
     finally:
         tmp.unlink()
     gate.set()

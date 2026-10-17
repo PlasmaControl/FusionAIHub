@@ -28,6 +28,7 @@ import secrets
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from pathlib import Path
 from typing import Annotated
 
@@ -44,7 +45,7 @@ from ...ae import seg
 from ...ae.seg import regions, whole
 from ...ae.seg.pseudo import PseudoMask
 from ...config import Paths, sha256_of, store_event
-from .. import grid, raw, rosters, rwm, shotlists, taxonomy
+from .. import grid, ondemand, raw, rosters, rwm, shotlists, taxonomy
 from ..review import build as review_build
 from ..review import gold, labels, reviewers, rows, silver, versions, video
 from . import overlay_routes, shotlist_routes, slice_routes, workspace_routes
@@ -67,7 +68,10 @@ BAD_TOKEN = "bad token"
 #: 10 saved suggestion exposure and producer-prefill provenance.
 #: 11 named shot lists (the queue's `list=`, `/api/shotlists`, `/api/overview`),
 #: build status, TokEye row states and the signal workspace.
-API_VERSION = 11
+#: 12 on-demand shots: `/api/shots/search`, the 202 body's `stage` (queued, fetching
+#: or building only), `fetching` and `note`, the 502 body's `detail` and `code`, and
+#: any six-digit shot opening on any event.
+API_VERSION = 12
 
 log = logging.getLogger(__name__)
 
@@ -121,12 +125,14 @@ class Builds:
     def _build(self, key: tuple, event: str, shot: int) -> Path:
         with self.lock:
             self.started[key] = time.monotonic()
-        return review_build.build(event, shot, self.paths)
+        return ondemand.build(event, shot, self.paths)
 
     def progress(self, event: str, shot: int) -> dict:
-        """`stage` (queued, reading, fetching, building or writing), `elapsed_s` since
-        it was asked for, `queue_position` (0 while it runs, else its place among the
-        waiting) and `prebuilt` (a registered shot list holds the shot)."""
+        """`stage` (queued, fetching or building), `fetching` (the signals being
+        fetched), `note` (a line of at most `ondemand.NOTE_MAX` characters for the
+        activity bar), `elapsed_s` since it was asked for, `queue_position` (0 while it runs,
+        else its place among the waiting) and `prebuilt` (a registered shot list
+        holds the shot)."""
         key = (store_event(event), shot)
         now = time.monotonic()
         with self.lock:
@@ -137,9 +143,17 @@ class Builds:
                 if o < order and other not in self.started
                 and other in self.running and not self.running[other].done()
             )
-        stage = overlay_routes.build_stage(self.paths, key[0], shot) if started else "queued"
+        fetching = ondemand.fetching_signals(shot) if started else []
+        if not started:
+            stage = "queued"
+        elif fetching or overlay_routes.build_stage(self.paths, key[0], shot) == "fetching":
+            stage = "fetching"
+        else:
+            stage = "building"
         return {
             "stage": stage,
+            "fetching": fetching,
+            "note": ondemand.note(stage, fetching, ahead),
             "elapsed_s": round(now - asked, 1),
             "queue_position": 0 if started else ahead + 1,
             "prebuilt": overlay_routes.prebuilt(self.paths, shot),
@@ -158,15 +172,19 @@ class Builds:
             self.asked.pop(key, None)
             self.started.pop(key, None)
             if future is not None and future.exception() is not None:
-                error = future.exception()
-                return None, f"{type(error).__name__}: {error}"
+                return None, ondemand.explain(future.exception(), event, shot)
             if review_build.current(path, event):
+                if ondemand.in_cache(self.paths, path):
+                    ondemand.touch(self.paths, shot)
                 return path, None
-            if event == "detachment" and path.is_file():
-                return None, (
+            if event == "detachment" and path.is_file() and not ondemand.in_cache(
+                    self.paths, path):
+                return None, ondemand.BuildFailure(
+                    f"The detachment store for {shot} is out of date",
                     f"Stale frozen detachment store: {path}. Opening a shot never "
                     "overwrites it. The controller must run the documented "
-                    "resume-build after the producer is final."
+                    "resume-build after the producer is final.",
+                    "build_failed",
                 )
             self.order += 1
             self.asked[key] = (self.order, time.monotonic())
@@ -248,23 +266,28 @@ def roster_tier(roster, shot: int) -> str:
 
 def shot_tier(event: str, shot: int, paths: Paths) -> str:
     """The shot's roster tier; a shot on any shot list may be reviewed on any event,
-    on its roster or not (`shotlists.in_any`), and is unverified off it."""
+    on its roster or not (`shotlists.in_any`), and so may any six-digit shot that is not
+    blind (`ondemand.openable`: it builds if fdp has data); it is unverified off the
+    roster."""
     roster = _roster(roster_directory(event, paths))
-    if not (roster.shot == shot).any() and shotlists.in_any(paths, shot):
+    if not (roster.shot == shot).any() and (
+            shotlists.in_any(paths, shot) or ondemand.openable(paths, shot)):
         return "unverified"
     return roster_tier(roster, shot)
 
 
 def borrowed(event: str, shot: int, paths: Paths) -> bool:
     """Whether `event` reviews `shot` though it is not its own: a silver or gold shot,
-    or one off the event's roster that some list holds. Only such a shot skips a
-    broken source pointer and may open on a silver draft; a roster shot keeps its
-    source table (`labels.source_path` raises on a pointer to a missing table)."""
+    or one off the event's roster that some list holds or that is any open six-digit
+    shot. Only such a shot skips a broken source pointer and may open on a silver
+    draft; a roster shot keeps its source table (`labels.source_path` raises on a
+    pointer to a missing table)."""
     tables = paths.label_tables
     if silver.is_silver(tables, shot) or gold.is_gold(tables, shot):
         return True
     roster = _roster(roster_directory(event, paths))
-    return not (roster.shot == shot).any() and shotlists.in_any(paths, shot)
+    return not (roster.shot == shot).any() and (
+        shotlists.in_any(paths, shot) or ondemand.openable(paths, shot))
 
 
 def shot_labels(event: str, shot: int, paths: Paths, *, suppress_source=False,
@@ -342,6 +365,9 @@ def _admit(request: Request, token: str) -> Response | None:
 
 def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
     paths = Paths.from_env() if paths is None else paths
+    # The server serves the shots it built on demand from the temporary cache; no other
+    # code's `Paths` (pipelines, the prebuild CLI, the paper) finds the cache.
+    paths = replace(paths, read_cache=True)
     app = FastAPI(
         title="labeler review", docs_url=None, redoc_url=None, openapi_url=None
     )
@@ -575,7 +601,7 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
         store = store_event(event)
         path, error = app.state.builds.status(event, shot)
         if error is not None:
-            return JSONResponse({"error": error}, status_code=502)
+            return JSONResponse(error.body(), status_code=502)
         if path is None:
             body = {"building": True, "progress": raw.progress_for(shot),
                     **app.state.builds.progress(event, shot)}

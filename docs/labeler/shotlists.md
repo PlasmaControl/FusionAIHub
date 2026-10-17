@@ -35,9 +35,11 @@ on lists. Code: `src/labeler/events/shotlists.py`. Routes:
 ## Registry: `configs/labeler/shotlists.yaml`
 
 ```yaml
-lists:      # title, kind (curated | derived | dataset), parent, rule, protect, file, sha256
+lists:      # title, kind (curated | derived | dataset), parent, rule, protect, hidden, file, sha256
   gold: {title: "Gold set", file: gold/gold_shots.csv, protect: test}
-  silver_batch_1: {title: "Silver batch 1", parent: silver, rule: "where(silver, batch==1)"}
+  silver_batch_1: {title: "Silver batch 1", parent: silver, hidden: true,
+                   rule: "where(silver, batch==1)"}
+  catalog: {title: "All shots", kind: dataset, rule: "table(catalog/population.csv)"}
   elm_challenge: {title: "ELM challenge key (Eldon)", kind: dataset, protect: holdout}
 events:     # what the page recommends, opens on, and what evaluators score on
   alfven_eigenmode: {recommended: [ae_co2_ece, ae_co2, ..., silver, gold],
@@ -47,7 +49,20 @@ events:     # what the page recommends, opens on, and what evaluators score on
 - A list file that the registry does not name is still a list. The page shows it
   under "Other lists" with kind `other`.
 - A subcategory with no entry uses its parent's entry. An event with no entry
-  recommends silver and gold and opens on its roster.
+  recommends silver, gold and `catalog` and opens on its roster.
+- `hidden: true` keeps a list's file and name but leaves it out of the dropdown and a
+  parent's children. A request for it (`/api/queue?list=`) falls back to the event's
+  default, with the note "is not offered any more". The five `silver_batch_*` lists
+  are hidden: `silver` is one list of 450, and Next walks the selected list end to end.
+- `catalog` ("All shots", kind `dataset`) is every shot of the v1 event catalog,
+  `data/events/catalog/population.csv` (4,872 shots), less the 50 blind test shots:
+  **4,822 shots**. It is the last recommended list of every event. No store is built
+  for it ahead of time: opening one of its shots builds the store on demand
+  (`shotlists.ON_DEMAND`, docs/labeler/on_demand.md), so the status line does not call
+  a catalog shot "pre-built". It was made with
+  `python -m labeler.events.shotlists make catalog --from-table
+  data/events/catalog/population.csv --drop-blind --kind dataset --title "All shots"`;
+  the list file is data and is not tracked.
 - `default` is the virtual `roster` unless a list equals the event's roster. The AE
   roster is `ae_co2_ece`, and the q_min and beta_p rosters are `cohort`, in the same
   order.
@@ -70,7 +85,7 @@ blind shots out and counts them; without it, a blind shot is refused. `check` re
 derived list as stale when an input changed after the list was made. It also reports a
 child list holding shots that are not in its parent.
 
-## Routes (API 11)
+## Routes (API 12)
 
 - `GET /api/shotlists?event=E` returns
   `[{name, title, n, kind, recommended, default, parent, protect, n_saved}]`.
@@ -89,6 +104,16 @@ child list holding shots that are not in its parent.
     something are included.
   - An unknown or unreadable `N` falls back to the default. `note` then says why, for
     example "List ae_old no longer exists; showing ae_co2_ece.".
+- `GET /api/shots/search?q=<digits>&event=E&limit=20` returns
+  `{"shots": [{"shot", "lists", "cached"}]}`: the shots whose number starts with `q`,
+  the gold, silver and event-roster shots first, then by number. `lists` names the
+  registered, not hidden, lists that hold the shot (`roster` first for the event's
+  own); `cached` says whether `E`'s store for it is built and current (any event's with
+  no `event`). A full six-digit number that no list holds, and that is not a blind
+  test shot, still comes back as `{"shot": n, "lists": [], "cached": false}`: opening
+  it builds on demand and succeeds if fdp has data. `q` is one to six ASCII digits
+  (else 400 "q must be one to six digits"), `limit` is 1 to 100, an unknown `event` is
+  404. A blind shot is never returned.
 - `GET /api/shotlist?name=N` returns
   `{name, title, kind, rows: [{shot, ...columns}], meta}`.
 - `GET /api/overview?list=N` returns `{list, title, grid_ms, events, shots: [{shot,
@@ -129,7 +154,8 @@ Every listed shot that is not scored is named under `missing` or `trained_on`.
 
 | list | shots | from |
 |---|---:|---|
-| gold, silver (+ silver_batch_1..5, 90 each) | 50, 450 | their own files; batches `--from silver --where batch==N` |
+| gold, silver (+ silver_batch_1..5, 90 each, hidden) | 50, 450 | their own files; batches `--from silver --where batch==N` |
+| catalog (All shots) | 4,822 | `catalog/population.csv` (4,872), blind dropped; made 2026-10-17 |
 | cohort | 450 | catalog cohort, not blind, by queue_rank |
 | ae_co2 / ae_ece / ae_co2_ece | 180 / 26 / 193 | AE format tables; union |
 | ae_valid / ae_valid_fair (parent ae_co2) | 60 / 19 | the AE model validation sets |

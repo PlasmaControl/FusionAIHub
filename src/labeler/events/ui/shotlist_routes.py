@@ -7,6 +7,8 @@ dropdown, per-list queues and the by-shot overview.
     GET /api/shotlist?name=N         one list's rows and sidecar
     GET /api/overview?list=N         a list shot by shot: how many events each has saved
     GET /api/overview?list=N&shot=S  one shot on every event, as the by-shot strips
+    GET /api/shots/search?q=&event=  shots whose number starts with q (digits), the
+                                     gold, silver and roster ones first
 
 `/api/queue?event&list=` stays in `app.py`; `offer`, `choose`, `as_roster` and
 `queue_inputs` below are its list half. Answers that read many files are kept in a
@@ -17,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import threading
 from collections import OrderedDict
 from pathlib import Path
@@ -27,13 +30,15 @@ import pandas as pd
 from fastapi import FastAPI, HTTPException, Query
 
 from ...config import Paths
-from .. import grid, hf_export, rosters, shotlists, taxonomy
+from .. import grid, hf_export, ondemand, rosters, shotlists, taxonomy
 from ..review import gold, labels, silver
 
 log = logging.getLogger(__name__)
 
 #: What the page calls the virtual list of an event's own roster.
 ROSTER_TITLE = "Event roster"
+#: A search query: one to six ASCII digits, nothing else reaches a lookup.
+SEARCH_QUERY = re.compile(r"[0-9]{1,6}\Z")
 
 
 def versions(files) -> tuple:
@@ -128,9 +133,11 @@ def choose(paths: Paths, event: str, requested: str | None,
         return requested, None
     try:
         known = requested in shotlists.names(paths)
-    except shotlists.ShotListError:
-        known = False
-    reason = "cannot be read" if known else "no longer exists"
+        hidden = known and shotlists.entry(paths, requested).hidden
+    except (shotlists.ShotListError, KeyError):
+        known = hidden = False
+    reason = ("is not offered any more" if hidden
+              else "cannot be read" if known else "no longer exists")
     return fallback, f"List {requested[:64]} {reason}; showing {fallback}."
 
 
@@ -276,9 +283,48 @@ def overview(paths: Paths, item: shotlists.Entry) -> dict:
     sizes = shotlists.members(paths)
     children = [{"name": child.name, "title": child.title, "n": len(sizes[child.name])}
                 for child in shotlists.entries(paths)
-                if child.parent == item.name and child.name in sizes]
+                if child.parent == item.name and child.name in sizes
+                and not child.hidden]
     return {"list": item.name, "title": item.title, "grid_ms": grid.GRID_MS,
             "events": review_events(paths), "shots": shots, "children": children}
+
+
+def search(paths: Paths, query: str, *, event: str | None = None, roster=(),
+           limit: int = 20) -> dict:
+    """The `/api/shots/search` body: up to `limit` shots whose number starts with
+    `query` (digits), as `{"shot", "lists", "cached"}`, the gold, silver and `event`'s
+    roster shots first, then by number. A shot is any on a list or the roster, the
+    blind test shots excepted; `lists` names the registered lists holding it (and
+    `roster` for the event's own), `cached` says whether `event`'s review store for
+    it is built and current (any store, with no event). A full six-digit number no
+    list holds still comes back, `lists` empty and `cached` false: the page may try to
+    open it, and it opens if fdp has data (`ondemand.openable`)."""
+    sets = shotlists.members(paths)
+    on_roster = {int(shot) for shot in roster}
+    blind = shotlists.blind_set(paths)
+    pool = set().union(*sets.values(), on_roster) - blind
+    first = on_roster | sets.get("gold", frozenset()) | sets.get("silver", frozenset())
+    found = sorted((shot for shot in pool if str(shot).startswith(query)),
+                   key=lambda shot: (shot not in first, shot))
+    typed = int(query) if len(query) == 6 else None
+    try:
+        hidden = {item.name for item in shotlists.entries(paths) if item.hidden}
+    except (shotlists.ShotListError, OSError):
+        hidden = set()
+    found = found[:limit]
+    if typed is not None and typed in found:  # the exact number first
+        found.remove(typed)
+        found.insert(0, typed)
+    shots = [{
+        "shot": shot,
+        "lists": [*(["roster"] if shot in on_roster else []),
+                  *(name for name in shotlists.holding(paths, shot) if name not in hidden)],
+        "cached": ondemand.has_store(paths, shot, event),
+    } for shot in found]
+    if typed is not None and typed not in pool and ondemand.openable(paths, typed):
+        shots.insert(0, {"shot": typed, "lists": [], "cached": False})
+        del shots[limit:]
+    return {"shots": shots}
 
 
 def install(app: FastAPI, paths: Paths) -> None:
@@ -335,3 +381,16 @@ def install(app: FastAPI, paths: Paths) -> None:
         return {**{k: v for k, v in row.items() if k != "shot"},
                 "list": item.name, "shot": shot, "grid_ms": grid.GRID_MS,
                 "t_range": t_range, "events": events}
+
+    @app.get("/api/shots/search")
+    def shots_search(q: str, event: str = "",
+                     limit: Annotated[int, Query(ge=1, le=100)] = 20):
+        if not SEARCH_QUERY.match(q):
+            raise HTTPException(400, "q must be one to six digits")
+        roster = ()
+        if event:
+            require_event(event, paths)
+            roster = rosters.read_roster(
+                roster_directory(event, paths) / rosters.ROSTER_NAME
+            ).shot
+        return search(paths, q, event=event or None, roster=roster, limit=limit)

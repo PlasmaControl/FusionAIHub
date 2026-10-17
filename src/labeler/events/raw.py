@@ -20,6 +20,7 @@ from pathlib import Path
 import numpy as np
 
 from ..config import Paths
+from ..features.resolve_fdp import FdpBusy
 from ..features.store import FeatureArray
 from .verify import (
     CO2_CHORDS,
@@ -214,6 +215,12 @@ _write_locks: dict[Path, threading.Lock] = {}
 #: the SAME new path for the first time could each create their own Lock,
 #: defeating the point - both would proceed thinking they hold "the" lock.
 _write_locks_guard = threading.Lock()
+
+
+#: A callable that returns why a live fetch must not start now, else None. The review
+#: server's on-demand builds set it (`ondemand`: an fdp token that was refused stays
+#: refused until it changes). One fdp call at a time is `resolve_fdp.FETCH_LOCK`.
+FETCH_GATE = None
 
 
 def _lock_for(path: Path) -> threading.Lock:
@@ -431,15 +438,18 @@ _progress_guard = threading.Lock()
 
 
 def progress_for(shot: int) -> dict | None:
-    """`{"done", "total", "stage"}` for a fetch in flight, else None."""
+    """`{"done", "total", "stage", "group"}` for a fetch in flight, else None; `group`
+    is the raw group being fetched ("" when the caller did not say)."""
     with _progress_guard:
         record = _progress.get(int(shot))
         return None if record is None else dict(record)
 
 
-def _report(shot: int, done: int, total: int, stage: str) -> None:
+def _report(shot: int, done: int, total: int, stage: str, group: str = "") -> None:
     with _progress_guard:
-        _progress[int(shot)] = {"done": int(done), "total": int(total), "stage": stage}
+        _progress[int(shot)] = {
+            "done": int(done), "total": int(total), "stage": stage, "group": group,
+        }
 
 
 def _forget(shot: int) -> None:
@@ -462,7 +472,9 @@ RETRY_DELAY_S = 2.0
 FDP_UI_COMMAND = "pixi run -e labeler labeler-verify"
 
 
-def _fetch_with_one_retry(shot, spec: FetchSpec, total: int) -> FeatureArray:
+def _fetch_with_one_retry(
+    shot, spec: FetchSpec, total: int, group: str = ""
+) -> FeatureArray:
     last: NoDataError | None = None
     for attempt in (1, 2):
         try:
@@ -473,21 +485,24 @@ def _fetch_with_one_retry(shot, spec: FetchSpec, total: int) -> FeatureArray:
                 via=spec.via,
                 missing_ok=spec.missing_ok,
                 on_progress=lambda done, _n, expr: _report(
-                    shot, done, total, f"fetching {expr}"
+                    shot, done, total, f"fetching {expr}", group
                 ),
             )
         except NoDataError as error:
             last = error
+            if isinstance(error.__cause__, FdpBusy):
+                break  # it already waited for the fdp lock: a second wait doubles it
             if attempt == 1:
-                _report(shot, 0, total, "fetch failed, retrying once")
+                _report(shot, 0, total, "fetch failed, retrying once", group)
                 time.sleep(RETRY_DELAY_S)
     # fdp being unreachable, or answering with nothing, is the one failure
     # here that is about the upstream rather than about this shot not
     # existing on disk. The kernel hint is cut off and replaced with the
     # server's own.
     message = str(last).split(". If this kernel")[0]
+    tried = "" if isinstance(last.__cause__, FdpBusy) else " (tried twice)"
     raise UpstreamError(
-        f"{message} (tried twice). This is usually a passing failure to "
+        f"{message}{tried}. This is usually a passing failure to "
         f"reach the fdp archive: pick the shot again to retry. If the "
         f"server was not started under '{FDP_UI_COMMAND}', restart it that "
         f"way."
@@ -508,6 +523,8 @@ def _fetch(shot, group, *, channels, t_range, paths) -> FeatureArray:
             f"shot {int(shot)} has no {group!r} in the corpus or the cache, and "
             f"fetching is off ({NO_FETCH_ENV}={os.environ[NO_FETCH_ENV]!r})"
         )
+    if FETCH_GATE is not None and (why := FETCH_GATE()):
+        raise FetchDisabledError(why)
     spec = FETCH_SPECS.get(group)
     if spec is None:
         raise NoDataError(
@@ -518,10 +535,10 @@ def _fetch(shot, group, *, channels, t_range, paths) -> FeatureArray:
     # One step per point plus one for writing the cache. The render that
     # follows is not counted: it is seconds against a fetch of minutes.
     total = len(spec.exprs) + 1
-    _report(shot, 0, total, f"fetching {group}")
+    _report(shot, 0, total, f"fetching {group}", group)
     try:
-        fetched = _fetch_with_one_retry(shot, spec, total)
-        _report(shot, total - 1, total, "writing the cache")
+        fetched = _fetch_with_one_retry(shot, spec, total, group)
+        _report(shot, total - 1, total, "writing the cache", group)
         write_group(
             cache_path(shot, paths=paths),
             group,

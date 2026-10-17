@@ -240,6 +240,8 @@ no fdp locator by design, and the ECH questions are on hold.
 """
 from __future__ import annotations
 
+import contextlib
+import threading
 from collections.abc import Callable, Sequence
 
 import numpy as np
@@ -282,6 +284,34 @@ _TIME_SCALE = {"ms": 1.0 / MS_PER_S, "s": 1.0, "sec": 1.0, "secs": 1.0,
 #: there. 200 matches `run._guarded`'s existing `str(exc)[:200]` bound on a
 #: per-shot error detail.
 _CAUSE_MAX_LEN = 200
+
+
+#: One toksearch call at a time in this process: toksearch's MdsTreeRegistry is
+#: process-global and unlocked (`events.review.fetch_worker` runs the workspace's
+#: fetches in a child for that reason), and the review server builds on two threads.
+#: Every in-process fetch (`events.verify.fdp_signal`, `resolve`) goes through
+#: `_fetch_ptdata` or `_fetch_mds`, so the lock is taken there.
+FETCH_LOCK = threading.RLock()
+#: How long a call waits for `FETCH_LOCK`. A fetch that hangs holds it; the others
+#: give up with `FdpBusy` after this long instead of queueing behind it for good.
+LOCK_TIMEOUT_S = 120.0
+
+
+class FdpBusy(RuntimeError):
+    """Another fetch held this process's fdp lock for `LOCK_TIMEOUT_S`."""
+
+
+@contextlib.contextmanager
+def one_call():
+    """Hold `FETCH_LOCK` for one toksearch call, or raise `FdpBusy` after waiting
+    `LOCK_TIMEOUT_S`."""
+    if not FETCH_LOCK.acquire(timeout=LOCK_TIMEOUT_S):
+        raise FdpBusy(f"fdp is busy: another fetch has held this server's fdp session "
+                      f"for {LOCK_TIMEOUT_S:g} s")
+    try:
+        yield
+    finally:
+        FETCH_LOCK.release()
 
 
 class ShortRecord(ValueError):
@@ -339,7 +369,8 @@ def _fetch_ptdata(name: str, shot: int) -> dict:
     """One PTDATA point, as toksearch returns it."""
     from toksearch_d3d import PtDataSignal
 
-    return PtDataSignal(name).fetch(int(shot))
+    with one_call():
+        return PtDataSignal(name).fetch(int(shot))
 
 
 def _fetch_mds(expr: str, tree: str, shot: int, dims: Sequence[str] = ()) -> dict:
@@ -350,7 +381,8 @@ def _fetch_mds(expr: str, tree: str, shot: int, dims: Sequence[str] = ()) -> dic
     from toksearch import MdsSignal
 
     signal = MdsSignal(expr, tree, dims=list(dims)) if dims else MdsSignal(expr, tree)
-    return signal.fetch(int(shot))
+    with one_call():
+        return signal.fetch(int(shot))
 
 
 def _as_f64(values) -> np.ndarray:
@@ -665,6 +697,7 @@ def resolve(
     names: Sequence[str],
     *,
     retries: int = 1,
+    on_error: Callable[[str, Exception], None] | None = None,
 ) -> tuple[dict[str, FeatureArray], dict[str, str]]:
     """Fetch the requested canonical features for one shot through fdp.
 
@@ -672,6 +705,11 @@ def resolve(
     cause, so one unreachable signal costs a shot that signal and nothing
     else. Asking for a feature with no fdp source is a KeyError, raised
     before any fetch: that is a programming error, not a per-shot gap.
+
+    `on_error(name, exc)`, when given, is called with each exception that cost a
+    feature its fetch, which `missing` keeps only as a class name. A call that found
+    the fdp lock held for `LOCK_TIMEOUT_S` (`FdpBusy`) is not retried, and the signals
+    after it are not tried (each would wait as long).
     """
     specs = [ns.by_name(n) for n in names]
     locators = {spec.name: spec.locator_for(SOURCE) for spec in specs}
@@ -694,8 +732,14 @@ def resolve(
             records[key] = thunk()
         return records[key]
 
+    busy: Exception | None = None  # the first FdpBusy: later signals do not wait again
     for spec in specs:
         locator = locators[spec.name]
+        if busy is not None:
+            missing[spec.name] = type(busy).__name__
+            if on_error is not None:
+                on_error(spec.name, busy)
+            continue
         for _ in range(max(retries, 0) + 1):
             try:
                 arrays[spec.name] = cached(
@@ -709,6 +753,11 @@ def resolve(
                 # raised, none of it a documented type, and one bad signal
                 # must never cost the shot its other features.
                 missing[spec.name] = type(exc).__name__
+                if on_error is not None:
+                    on_error(spec.name, exc)
+                if isinstance(exc, FdpBusy):
+                    busy = exc
+                    break
             else:
                 missing.pop(spec.name, None)
                 break

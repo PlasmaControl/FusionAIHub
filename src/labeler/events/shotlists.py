@@ -14,7 +14,7 @@ source, so it is tracked:
 
     lists:
       gold: {title: "Gold set", file: gold/gold_shots.csv, protect: test}
-      silver_batch_1: {title: "Silver batch 1", parent: silver,
+      silver_batch_1: {title: "Silver batch 1", parent: silver, hidden: true,
                        rule: "where(silver, batch==1)"}
     events:
       alfven_eigenmode: {recommended: [ae_co2_ece, silver, gold],
@@ -24,8 +24,10 @@ source, so it is tracked:
 where they are and keep their stricter readers (`review.gold`, `review.silver`), and
 without a registry they are still lists. A list file the registry does not name is
 still a list ("Other lists" on the page, kind `other`). A subcategory with no
-`events:` entry takes its parent's; an event with none recommends silver and gold and
-defaults to its roster. `protect: test | holdout` lists are never overwritten by `make`.
+`events:` entry takes its parent's; an event with none recommends silver, gold and
+`catalog` ("All shots") and defaults to its roster. `protect: test | holdout` lists are
+never overwritten by `make`. `hidden: true` keeps a list's file and name but leaves it out of the page's dropdown and
+a parent's children (`offered`); a request for it falls back to the default.
 
 No list holds a blind test shot (`review.silver.blind_shots`): when the catalog is
 present, `read` refuses a list that does, and `make` will not write one (it fails
@@ -84,7 +86,10 @@ BUILTIN = {
     "silver": {"title": "Silver set", "file": silver.SILVER_FILE, "kind": "curated"},
 }
 LIST_KEYS = frozenset({"title", "file", "parent", "rule", "protect", "kind", "sha256",
-                       "description"})
+                       "description", "hidden"})
+#: Lists whose shots have no pre-built review store: the review server builds one
+#: when a shot is opened (`ondemand`), so holding a shot says nothing about its store.
+ON_DEMAND = frozenset({"catalog"})
 EVENT_KEYS = frozenset({"recommended", "default", "evaluate"})
 SCORING = ("heldout", "oof")
 #: An event id: a plain name, or a subcategory's `<event>.<key>`.
@@ -110,6 +115,8 @@ class Entry:
     protect: str | None = None
     #: A digest the registry pins the file to (`check` compares it).
     sha256: str | None = None
+    #: Left out of the page's dropdown (`offered`); the file and name stay.
+    hidden: bool = False
 
 
 @dataclass(frozen=True)
@@ -184,6 +191,8 @@ def parse(raw, *, where: str = "shotlists.yaml") -> Registry:
             raise ShotListError(f"{where}: {name}.kind must be one of {KINDS}")
         if "sha256" in spec and not SHA256.match(str(spec["sha256"])):
             raise ShotListError(f"{where}: {name}.sha256 must be 64 hex digits")
+        if not isinstance(spec.get("hidden", False), bool):
+            raise ShotListError(f"{where}: {name}.hidden must be true or false")
         lists[name] = dict(spec)
     # Gold and silver keep their files and gold its protection unless the entry says
     # otherwise; an entry that only retitles one does not move it.
@@ -229,13 +238,14 @@ def check_name(name, *, where: str = "shot list") -> str:
 
 
 def event_lists(paths: Paths, event: str) -> EventLists:
-    """What the registry says of `event`, else of its parent, else silver and gold
-    recommended, the roster as default and nothing to evaluate."""
+    """What the registry says of `event`, else of its parent, else silver, gold and
+    the all-shots list recommended, the roster as default and nothing to evaluate."""
     found = registry(paths)
     entry_ = found.events.get(event) or found.events.get(event.partition(".")[0])
     if entry_ is not None:
         return entry_
-    return EventLists(tuple(name for name in ("silver", "gold") if name in found.lists))
+    return EventLists(tuple(name for name in ("silver", "gold", "catalog")
+                            if name in found.lists))
 
 
 def recommended(paths: Paths, event: str) -> list[str]:
@@ -313,6 +323,7 @@ def entry(paths: Paths, name: str) -> Entry:
         registered=name in registry(paths).lists,
         kind=spec.get("kind") or meta.get("kind"), parent=spec.get("parent"),
         rule=spec.get("rule"), protect=spec.get("protect"), sha256=spec.get("sha256"),
+        hidden=bool(spec.get("hidden")),
     )
 
 
@@ -528,7 +539,8 @@ def held_out(paths: Paths, shot: int) -> bool:
 
 def holding(paths: Paths, shot: int) -> list[str]:
     """The registered lists `shot` is on, in `names` order (their stores are the
-    ones prebuilt in SLURM); cheap, from the cached `members`."""
+    ones prebuilt in SLURM, except those of the `ON_DEMAND` lists); cheap, from the
+    cached `members`."""
     shot = int(shot)
     if shot in blind_set(paths):
         return []
@@ -547,9 +559,10 @@ def offered(paths: Paths, event: str) -> list[tuple[Entry, bool]]:
     A child of a recommended list opens the rest, in its parent's order: as near its
     parent as the recommended lists coming first allows. Raises ShotListError when
     the registry cannot be read."""
-    found = {item.name: item for item in entries(paths)}
+    found = {item.name: item for item in entries(paths) if not item.hidden}
     readable = members(paths)
-    first = [name for name in event_lists(paths, event).recommended if name in readable]
+    first = [name for name in event_lists(paths, event).recommended
+             if name in readable and name in found]
     rest = [name for name in found if name in readable and name not in first]
     ordered: list[str] = []
 

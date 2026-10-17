@@ -58,6 +58,9 @@ def test_generic_panels_converts_units_and_clips_t_range(monkeypatch, tmp_path):
         return FeatureArray(x=_SECONDS.copy(), y=_SIGNALS[name].copy())
 
     monkeypatch.setattr(registry._generic, "read_feature", fake_read_feature)
+    # The panel names every trace the file lacks before it reads any (one fetch covers
+    # them); the stubbed read stands for a file that holds all three.
+    monkeypatch.setattr(registry._generic, "present", lambda path: set(_SIGNALS))
     paths = _tmp_paths(tmp_path)
 
     built = registry._generic.panels(12345, paths=paths)

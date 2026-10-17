@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import hashlib
 import io
+import os
 import subprocess
+import threading
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -95,6 +97,17 @@ class Paths:
     #: Where a live fetch parks a shot's raw record. None means `<root>/raw`, beside the
     #: prefetched AE shots; deleting it is safe, the next read refetches.
     raw_cache: Path | None = None
+    #: One on-demand shot's directory in the temporary cache (`ondemand`), set by
+    #: `events.ondemand.overlay_paths` while the review server builds a shot no
+    #: protected list holds: its review store, features and fetched raw groups are
+    #: written under it and not under the data root. None everywhere else.
+    overlay: Path | None = None
+    #: Whether `features_file` and `spectrogram_file` fall back to the temporary cache
+    #: where the data root holds no file. Only the review server's `Paths` set it
+    #: (`ui.app.create_app`), so that it serves a shot it built on demand; the
+    #: pipelines, the prebuild CLI and everything that reads or writes production
+    #: data (`Paths.from_env()`) see the data root alone.
+    read_cache: bool = False
 
     def __post_init__(self) -> None:
         if self.raw_cache is None:
@@ -143,6 +156,13 @@ class Paths:
     @property
     def features(self) -> Path:
         return self.root / "features"
+
+    @property
+    def ondemand(self) -> Path:
+        """The review server's temporary cache: one `<shot>/` directory per shot it
+        built on demand (its store, features and raw groups), capped and evicted by
+        `events.ondemand`. Safe to delete; the next open rebuilds."""
+        return self.root / "cache" / "ondemand"
 
     @property
     def labels(self) -> Path:
@@ -210,8 +230,20 @@ class Paths:
     def events_index(self) -> Path:
         return self.root / "events_index.parquet"
 
+    def _temp(self, shot: int, *parts: str) -> Path:
+        return self.ondemand / str(int(shot)) / Path(*parts)
+
     def features_file(self, shot: int) -> Path:
-        return self.features / f"{shot}_features.h5"
+        """The shot's feature file: the overlay's while one is set; else the data
+        root's, or with `read_cache` the temporary cache's when only that holds it."""
+        name = f"{shot}_features.h5"
+        if self.overlay is not None:
+            return self.overlay / "features" / name
+        main = self.features / name
+        if self.read_cache and not main.exists() and (
+                self._temp(shot, "features", name).exists()):
+            return self._temp(shot, "features", name)
+        return main
 
     def labels_file(self, shot: int) -> Path:
         return self.labels / f"{shot}_labels.h5"
@@ -254,7 +286,16 @@ class Paths:
         return self.root / "catalog"
 
     def spectrogram_file(self, event: str, shot: int) -> Path:
-        return self.spectrograms / store_event(event) / f"{int(shot)}.h5"
+        """The shot's review store: the overlay's while one is set; else the data
+        root's, or with `read_cache` the temporary cache's when only that holds it."""
+        where = Path(store_event(event)) / f"{int(shot)}.h5"
+        if self.overlay is not None:
+            return self.overlay / "spectrograms" / where
+        main = self.spectrograms / where
+        if self.read_cache and not main.exists() and (
+                self._temp(shot, "spectrograms", *where.parts).exists()):
+            return self._temp(shot, "spectrograms", *where.parts)
+        return main
 
     def mkdirs(self) -> None:
         for d in (
@@ -283,8 +324,10 @@ class NamedBytes(io.BytesIO):
 
 
 @contextmanager
-def atomic_path(path):
-    """Yield a temporary sibling to write, then rename it into place.
+def atomic_path(path, *, unique: bool = False):
+    """Yield a temporary sibling to write, then rename it into place. With `unique`
+    the sibling's name carries the process and thread ids, so writers of one file
+    that do not share a lock never write into the same temporary file.
 
     The rename is what makes a write atomic: a reader sees either the whole
     old file or the whole new one, never a half-written one. If the body
@@ -296,7 +339,9 @@ def atomic_path(path):
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
+    tmp = path.with_name(
+        f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp" if unique
+        else path.name + ".tmp")
     done = False
     try:
         yield tmp

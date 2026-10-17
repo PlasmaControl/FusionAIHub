@@ -425,7 +425,11 @@ def test_a_shot_that_cannot_be_built_says_why_and_is_retried(
             app.state.builds.running[("detachment", 170815)].result()
         response = client.get(url)
         assert response.status_code == 502
-        assert response.json() == {"error": "NoDataError: no features for 170815"}
+        assert response.json() == {
+            "error": "No data for shot 170815",
+            "detail": "NoDataError: no features for 170815",
+            "code": "no_data",
+        }
 
 
 def test_a_shot_off_the_roster_is_not_found_and_not_built(client, app):

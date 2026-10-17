@@ -14,6 +14,7 @@
 #   rule         how `make` derived it, exactly as its sidecar records it
 #   kind         curated | derived | dataset
 #   protect      test | holdout: `make` never overwrites it
+#   hidden       true leaves the list out of the page's dropdown (its file and name stay)
 #   description  what is in it and where it came from
 # A list file this registry does not name still shows, under "Other lists".
 #
@@ -37,11 +38,11 @@ lists:
     file: silver/silver_shots.csv
     kind: curated
     description: "450 shots reviewed on every event, in five batches (docs/labeler/events/silver/README.md)"
-  silver_batch_1: {title: "Silver batch 1", parent: silver, kind: derived, rule: "where(silver, batch==1)"}
-  silver_batch_2: {title: "Silver batch 2", parent: silver, kind: derived, rule: "where(silver, batch==2)"}
-  silver_batch_3: {title: "Silver batch 3", parent: silver, kind: derived, rule: "where(silver, batch==3)"}
-  silver_batch_4: {title: "Silver batch 4", parent: silver, kind: derived, rule: "where(silver, batch==4)"}
-  silver_batch_5: {title: "Silver batch 5", parent: silver, kind: derived, rule: "where(silver, batch==5)"}
+  silver_batch_1: {title: "Silver batch 1", parent: silver, kind: derived, hidden: true, rule: "where(silver, batch==1)"}
+  silver_batch_2: {title: "Silver batch 2", parent: silver, kind: derived, hidden: true, rule: "where(silver, batch==2)"}
+  silver_batch_3: {title: "Silver batch 3", parent: silver, kind: derived, hidden: true, rule: "where(silver, batch==3)"}
+  silver_batch_4: {title: "Silver batch 4", parent: silver, kind: derived, hidden: true, rule: "where(silver, batch==4)"}
+  silver_batch_5: {title: "Silver batch 5", parent: silver, kind: derived, hidden: true, rule: "where(silver, batch==5)"}
   cohort:
     title: "Catalog cohort"
     kind: derived
@@ -95,40 +96,55 @@ lists:
     kind: dataset
     rule: "table(high_confinement_mode/raw/Jalal_28042024_confinement_regime_shotlist.csv)"
     description: "The shots of Jalal Butt's confinement regime table of 28 April 2024 (events.yaml jalal_hmode_confinement_2024), less the catalog's blind test shots"
+  confinement_jalal_wpqh:
+    title: "Jalal Butt's WPQH phases (26 May 2026)"
+    kind: dataset
+    rule: "txt($LABELER_ROOT/raw_external/jalal_wpqh_2026-05-26_shots.txt)"
+    description: "The 769 shots of Jalal Butt's WPQH phase archive of 26 May 2026 (WPQHphasesMay262026.tar), less the catalog's 3 blind test shots; their confinement labels are saved under his name as verified"
+  detach_tangtv:
+    title: "Detachment TangTV inversions"
+    kind: dataset
+    rule: "shots"
+    description: "The 41 discharges of the owner's plasma_tv project that have a TangTV C-III inversion (an emission_structure .sav, packed in $LABELER_ROOT/round4/detach/inversions): 11 H-mode (189057-189101), 8 L-mode (189448-190116), 7 campaign 24 (199166-199354), 6 'issues' (195952-195963), the 12_03_2024 experiment's 200977 and 201081, and the 7 N-injection shots of 2026 (206879-206894)"
+  catalog:
+    title: "All shots"
+    kind: dataset
+    rule: "table(catalog/population.csv)"
+    description: "Every shot of the DIII-D event catalog v1's population (185799-204944), less the 50 blind test shots; recommended on every event after its own lists. Stores are built when a shot is opened and, off the protected lists, kept in a capped temporary cache (docs/labeler/on_demand.md)"
 
 events:
   alfven_eigenmode:
-    recommended: [ae_co2_ece, ae_co2, ae_ece, ae_valid, ae_valid_fair, silver, gold]
+    recommended: [ae_co2_ece, ae_co2, ae_ece, ae_valid, ae_valid_fair, silver, gold, catalog]
     default: ae_co2_ece
     evaluate: [ae_co2, ae_ece, ae_co2_ece, ae_valid_fair, gold]
   confinement:
-    recommended: [confinement_jalal, silver, gold]
+    recommended: [confinement_jalal, confinement_jalal_wpqh, silver, gold, catalog]
     default: roster
     evaluate: [confinement_jalal, gold]
   detachment:
-    recommended: [silver, gold]
+    recommended: [detach_tangtv, silver, gold, catalog]
     default: roster
     evaluate: [gold]
   edge_localized_mode:
-    recommended: [elm, elm_challenge, silver, gold]
+    recommended: [elm, elm_challenge, silver, gold, catalog]
     default: roster
     evaluate: [elm_challenge, gold]
   locked_mode:
-    recommended: [silver, gold]
+    recommended: [silver, gold, catalog]
     default: roster
     evaluate: []
   mhd_n1: &mhd
-    recommended: [silver, gold, cohort]
+    recommended: [silver, gold, cohort, catalog]
     default: roster
     evaluate: [gold]
   mhd_n2: *mhd
   mhd_n3: *mhd
   minimum_safety_factor: &cohort
-    recommended: [cohort, silver, gold]
+    recommended: [cohort, silver, gold, catalog]
     default: cohort
     evaluate: [gold]
   poloidal_beta: *cohort
   resistive_wall_mode:
-    recommended: [rwm_hanson, silver, gold]
+    recommended: [rwm_hanson, silver, gold, catalog]
     default: roster
     evaluate: [rwm_hanson, gold]

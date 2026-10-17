@@ -286,7 +286,9 @@ def test_a_live_fetch_reports_progress_only_while_it_runs(roots, monkeypatch):
     assert raw.progress_for(9) is None, "a finished fetch leaves no entry"
 
     total = len(raw.FETCH_SPECS["co2"].exprs) + 1
-    assert snapshots[0] == {"done": 0, "total": total, "stage": "fetching co2"}
+    assert snapshots[0] == {
+        "done": 0, "total": total, "stage": "fetching co2", "group": "co2",
+    }
     assert [s["done"] for s in snapshots[1:]] == list(range(total - 1))
     assert all(s["total"] == total for s in snapshots)
     assert snapshots[1]["stage"] == f"fetching {raw.FETCH_SPECS['co2'].exprs[0]}"

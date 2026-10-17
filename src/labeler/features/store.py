@@ -108,8 +108,11 @@ def write_features(
     missing: dict[str, str],
     *,
     merge: bool = True,
+    unique_tmp: bool = False,
 ) -> None:
-    """Write a feature file atomically.
+    """Write a feature file atomically. `unique_tmp` names the working copy after the
+    process and thread (`config.atomic_path`), for a caller whose writers of one
+    shot do not share a lock.
 
     With `merge`, groups already in the file are kept and any name now
     resolved is dropped from the recorded misses, so a rerun that fetches
@@ -137,7 +140,7 @@ def write_features(
         missing[name] = f"OneSampleAmbiguous({arrays[name].y.shape[-1]})"
         del arrays[name]
     now = datetime.now(UTC).isoformat(timespec="seconds")
-    with atomic_path(path) as tmp:
+    with atomic_path(path, unique=unique_tmp) as tmp:
         if merge and path.exists():
             shutil.copyfile(path, tmp)
         with h5py.File(tmp, "a" if merge and path.exists() else "w") as f:
@@ -178,11 +181,34 @@ def _write_groups(f, shot, arrays, missing, replaced, now) -> None:
             g.create_dataset("rho", data=ns.RHO_GRID)
 
 
+class MissingFeature(KeyError):
+    """A feature a reader needs is not in the shot's feature file.
+
+    A KeyError, as `read_feature` always raised, so every `except KeyError` stays right.
+    `names` lists everything the reader found missing when it checked several at once
+    (the review server fetches them together, once), `path` is the file.
+    """
+
+    def __init__(self, name: str, path=None, *, names=None):
+        self.names = tuple(names) if names else (name,)
+        self.name = self.names[0]
+        self.path = path
+        what = ", ".join(self.names)
+        super().__init__(what if path is None else f"{what} not in {path}")
+
+
+class MissingFeatureFile(MissingFeature, FileNotFoundError):
+    """`MissingFeature` for a shot with no feature file at all; still a
+    FileNotFoundError, as opening it was before."""
+
+
 def read_feature(path, name: str) -> FeatureArray:
-    """One feature out of a feature file, or KeyError."""
+    """One feature out of a feature file, or `MissingFeature` (a KeyError)."""
+    if not Path(path).exists():
+        raise MissingFeatureFile(name, path)
     with h5py.File(path, "r") as f:
         if name not in f:
-            raise KeyError(f"{name} not in {path}")
+            raise MissingFeature(name, path)
         return _read_group(f[name], float32=_is_waveform(name))
 
 

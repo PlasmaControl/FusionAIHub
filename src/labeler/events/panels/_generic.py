@@ -9,7 +9,7 @@ traces settle it.
 from __future__ import annotations
 
 from ...config import Paths
-from ...features.store import read_feature
+from ...features.store import MissingFeature, present, read_feature
 from ..verify import Panel
 
 TRACES = (("ip", "A"), ("betan", ""), ("pinj_total", "kW"))
@@ -19,6 +19,11 @@ def panels(shot, *, t_range=None, paths=None):
     """One panel per scalar feature; seconds on disk, milliseconds on screen."""
     paths = Paths.from_env() if paths is None else paths
     features = paths.features_file(int(shot))
+    # Every trace is needed, so all that are missing are named at once: the review
+    # server fetches them together and rebuilds, rather than once per trace.
+    missing = [name for name, _ in TRACES if name not in present(features)]
+    if missing:
+        raise MissingFeature(missing[0], features, names=missing)
     built = []
     for name, ylabel in TRACES:
         array = read_feature(features, name)
