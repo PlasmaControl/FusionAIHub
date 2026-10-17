@@ -35,7 +35,7 @@ signature, and on the radial saddle loops once locked.
 
 **Author**: Jaemin Seo
 
-**Description**: Jaemin Seo tearing archive (`tm_label`, 8,505 shots 147000-190997 for the CNN's training; 1,503 overlap shots with the FAITH corpus for evaluation). Models are upstream PlasmaControl artefacts, re-served by labeler with pinned preprocessing.
+**Description**: Jaemin Seo tearing archive (`tm_label`, 8,505 shots 147000-190997 for the CNN's training; 1,503 overlap shots with the FAITH corpus for evaluation). Models are upstream PlasmaControl artefacts, re-served by labeler with pinned preprocessing. The review page's shot list `n1_seo` holds every shot of the archive (8,505 less 12 blind test shots: 8,493, positive or not; 1,801 have a positive sample; 824 are in the event catalog).
 
 **Publications**:
 
@@ -45,7 +45,7 @@ signature, and on the radial saddle loops once locked.
 
 **Author**:
 
-**Description**: `raw/tm_labels.tar` and `raw/tm_labels.h5` now contain original sampled labels from `/projects/EKOLEMEN/survival_tm_2/`.
+**Description**: `raw/tm_labels.tar` and `raw/tm_labels.h5` now contain original sampled labels from `/projects/EKOLEMEN/survival_tm_2/` (Hiro Farre's directory): one 1 ms `<shot>_ntm.npy` in the tar for each of 28,521 shots (140000-195501), 4,820 with a positive label, the shots of the format table; the h5 holds 18,064 of them at 20 ms. The review page's shot list `n1_farre` holds every shot of the tar (28,488 after 33 blind test shots, positive or not; 2,236 are in the event catalog) and `n1_farre_seo` the two lists together (28,494). The two label sets are not the same: 8,487 shots are in both, and 1,671 of Seo's 1,801 positive shots are also positive in the tar (`docs/labeler/shotlists.md`).
 
 **Publications**:
 

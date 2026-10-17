@@ -205,7 +205,7 @@ raw_datasets:
   - stem: ece_labels_2022
     path: alfven_eigenmode/raw/ece_all_labels
     formatter: python -m labeler.events.source_formatters alfven_eigenmode
-    provenance: "Copied unchanged from /projects/EKOLEMEN/ece_cnn/all_labels/: 26 per-shot files of hand-drawn time-frequency boxes (TAE, RSAE, BAE, EAE, LFM) on ECE spectrograms, dated 2022-01-24; the annotator is not recorded in them"
+    provenance: "Copied unchanged from /projects/EKOLEMEN/ece_cnn/all_labels/: 26 per-shot files of hand-drawn time-frequency boxes (TAE, RSAE, BAE, EAE, LFM) on ECE spectrograms, dated 2022-01-24; the files do not name the annotator, the owner confirmed (2026-10-17) that it is Alan Kaptanoglu"
     citation:
 
   - stem: elm_labels

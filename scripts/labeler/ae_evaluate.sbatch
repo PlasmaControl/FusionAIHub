@@ -37,7 +37,7 @@
 # (LOOP_WARM to LOOP_END: CUDA start-up and cuDNN's first kernels are before it).
 #
 #   run:   sbatch scripts/labeler/ae_evaluate.sbatch
-#          SHOTLIST=ae_ece,gold INCLUDE_TRAINED=1 OUT=/path/evaluation_leaky.json sbatch <this>
+#          SHOTLIST=ae_kaptanoglu,gold INCLUDE_TRAINED=1 OUT=/path/evaluation_leaky.json sbatch <this>
 #          (PRECISION=bf16|fp32, BATCH=<shots a forward pass>)
 #          INDEPENDENT_TRUTH=204503,... sbatch <this>: the owner's call that those shots, once
 #          prefilled from this model, were re-labelled from scratch, so they count again
@@ -51,7 +51,7 @@
 #   job 2:48, loop 129 s (2.1 s a checkpoint a batch: the bf16 GRU steps one kernel launch at a
 #   time), loader wait 0.000 s after the first batch, GPU 34.6 % over the loop (2 s sampler) and
 #   34.2 % (0.2 s); GPU memory 3.6 GB; MaxRSS 1.92 GiB. jobstats: CPU 11 %, GPU 25.5 %: FAIL.
-#   2965786 (pilot: ae_valid_fair, 19 shots, fp32, 8 a batch): loop 1.7 s (0.09 s a checkpoint a
+#   2965786 (pilot: ae_valid_fair, a 19-shot list since dropped, fp32, 8 a batch): loop 1.7 s (0.09 s a checkpoint a
 #   batch, cuDNN's GRU), GPU after the first batch 90.7 % (0.2 s sampler; 3 samples), 42.8 % over
 #   the whole loop (the first batch holds CUDA and cuDNN start-up); GPU memory 11.9 GB; MaxRSS
 #   1.55 GiB. Its threeway_sce frame means differ from 2965782's bf16 ones by 2e-4 on average
@@ -68,7 +68,7 @@ set -euo pipefail
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
 ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labeler
 PY="$ROOT/envs/phase3/bin/python"  # torch 2.14 + CUDA 12.6; the pixi env's torch is CPU-only
-SHOTLIST="${SHOTLIST:-ae_ece,ae_co2,ae_co2_ece,ae_valid_fair,gold}"
+SHOTLIST="${SHOTLIST:-ae_heidbrink,ae_kaptanoglu,ae_heidbrink_kaptanoglu,gold}"
 OUT="${OUT:-$REPO/outputs/labeler/ae/shotlists/evaluation.json}"
 export LABELER_ROOT="$ROOT" PYTHONPATH="$REPO/src"
 export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-$REPO/data/events}"

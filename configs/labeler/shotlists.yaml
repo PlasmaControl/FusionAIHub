@@ -7,6 +7,14 @@
 #   python -m labeler.events.shotlists list     # every list, its size and kind
 #   python -m labeler.events.shotlists check    # this file against the lists
 #
+# Names (owner, 2026-10-17): a dataset list is `<event>_<source>`. The event is its
+# prefix (ae, confine, detach, elm, rwm, n1, n2, n3, qmin, betap, lm); the source is the
+# annotator's surname in lower case, `chen` for a list the owner's pipeline made. An
+# event with two or more sources also has the union `<event>_<a>_<b>`, surnames in
+# alphabetical order, and a subset of a list adds a suffix (`<event>_<source>_<subset>`).
+# `gold`, `silver`, `silver_batch_*` and `catalog` are sets, not sources, and keep
+# their names.
+#
 # lists.<name>:
 #   title        what the page calls the list
 #   file         only for a list kept outside shotlists/ (gold and silver stay put)
@@ -15,6 +23,9 @@
 #   kind         curated | derived | dataset
 #   protect      test | holdout: `make` never overwrites it
 #   hidden       true leaves the list out of the page's dropdown (its file and name stay)
+#   on_demand    true when the list's shots mostly have no pre-built review store: the
+#                server builds one when a shot is opened (docs/labeler/on_demand.md),
+#                and the status line does not call such a shot "pre-built"
 #   description  what is in it and where it came from
 # A list file this registry does not name still shows, under "Other lists".
 #
@@ -25,6 +36,13 @@
 #   evaluate     the lists the event's evaluator scores (`shotlists.plan`)
 # A subcategory takes its parent's entry; an event with none recommends silver and
 # gold and opens on its roster.
+#
+# renamed: {old: new}
+#   An old list name that still arrives (page addresses #list/<old>/..., saved views,
+#   API calls, make --union / --from) is taken to `new`. A value may instead be a
+#   mapping of event id to list with a `default`, for an old name that became one list
+#   per event. A name that is still a list wins; `check` reports it, and a list file
+#   left under an old name. `make` will not write an old name.
 
 lists:
   gold:
@@ -43,108 +61,154 @@ lists:
   silver_batch_3: {title: "Silver batch 3", parent: silver, kind: derived, hidden: true, rule: "where(silver, batch==3)"}
   silver_batch_4: {title: "Silver batch 4", parent: silver, kind: derived, hidden: true, rule: "where(silver, batch==4)"}
   silver_batch_5: {title: "Silver batch 5", parent: silver, kind: derived, hidden: true, rule: "where(silver, batch==5)"}
-  cohort:
-    title: "Catalog cohort"
+  qmin_chen:
+    title: "Chen (qmin cohort)"
     kind: derived
     rule: "sort(where(table(catalog/cohort.csv), blind==False), queue_rank)"
-    description: "The event catalog's 450 non-blind shots in queue order: the q_min and poloidal-beta rosters"
-  ae_co2:
-    title: "AE CO2 (Heidbrink)"
+    description: "The event catalog's 450 non-blind shots in queue order, the minimum-safety-factor roster (the owner's pipeline made it, so the source is chen; once called cohort, shared with betap_chen)"
+  betap_chen:
+    title: "Chen (betap cohort)"
+    kind: derived
+    rule: "sort(where(table(catalog/cohort.csv), blind==False), queue_rank)"
+    description: "The event catalog's 450 non-blind shots in queue order, the poloidal-beta roster (the owner's pipeline made it, so the source is chen; once called cohort, shared with qmin_chen)"
+  ae_heidbrink:
+    title: "Heidbrink (AE, CO2)"
     kind: dataset
     rule: "table(alfven_eigenmode/format/alfven_eigenmode_format_2026_v1.csv)"
-    description: "The 180 shots of the CO2 interferometer AE annotation (events.yaml co2_detector_2021); the AE model's dataset holds exactly these (120 train, 60 valid)"
-  ae_ece:
-    title: "AE ECE boxes (2022)"
+    description: "The 180 shots of W. W. Heidbrink's CO2 interferometer AE annotation (events.yaml co2_detector_2021); the AE model's dataset holds exactly these (120 train, 60 valid)"
+  ae_kaptanoglu:
+    title: "Kaptanoglu (AE, ECE boxes)"
     kind: dataset
     rule: "table(alfven_eigenmode/format/alfven_eigenmode_ece_format_2026_v1.csv)"
-    description: "The 26 shots with hand-drawn time-frequency boxes on ECE spectrograms dated 2022-01-24 (events.yaml ece_labels_2022); 13 are also CO2 shots"
-  ae_co2_ece:
-    title: "AE CO2 + ECE"
+    description: "The 26 shots with Alan Kaptanoglu's hand-drawn time-frequency boxes on ECE spectrograms, dated 2022-01-24 (events.yaml ece_labels_2022; the owner confirmed him as the annotator on 2026-10-17); 13 are also CO2 shots"
+  ae_heidbrink_kaptanoglu:
+    title: "Heidbrink + Kaptanoglu (AE)"
     kind: derived
-    rule: "union(ae_co2, ae_ece)"
-    description: "Both AE sources, CO2 first: the AE roster's 193 shots in its order"
-  ae_valid:
-    title: "AE model validation (60)"
-    parent: ae_co2
+    rule: "union(ae_heidbrink, ae_kaptanoglu)"
+    description: "Both AE sources, Heidbrink's first: the AE roster's 193 shots in its order"
+  elm_farre:
+    title: "Farre (ELM)"
     kind: dataset
-    rule: "shots"
-    description: "The AE model dataset's validation split ($LABELER_ROOT/ae/dataset/<shot>_valid.npz)"
-  ae_valid_fair:
-    title: "AE fair validation (19)"
-    parent: ae_co2
-    kind: dataset
-    rule: "shots"
-    description: "The 19 validation shots none of the older AE detectors trained on: the headline AE score's shots (outputs/labeler/ae/baselines/evaluation.json shots.fair)"
-  elm:
-    title: "ELM labels"
-    kind: dataset
+    on_demand: true
     rule: "table(edge_localized_mode/format/edge_localized_mode_format_2026_v1.csv)"
-    description: "The shots of the ELM label tables (events.yaml elm_labels, elm_labels_wpqh), less the catalog's blind test shots"
-  elm_challenge:
-    title: "ELM challenge key (Eldon)"
+    description: "The 572 shots of Hiro Farre Josep Kaga's ELM label dicts (events.yaml elm_labels, elm_labels_wpqh; 576 in the table, 4 blind test shots left out); 38 have an ELM review store, the rest build on demand"
+  elm_eldon:
+    title: "Eldon (ELM challenge key)"
     kind: dataset
     protect: holdout
     rule: "table(edge_localized_mode/format/edge_localized_mode_challenge_format_2026_v1.csv)"
-    description: "The 24 shots of the DIII-D ELM detection challenge's answer key (events.yaml elm_challenge_key): the ELM holdout benchmark"
+    description: "The 24 shots of David Eldon's DIII-D ELM detection challenge answer key (events.yaml elm_challenge_key): the ELM holdout benchmark"
+  elm_eldon_farre:
+    title: "Eldon + Farre (ELM)"
+    kind: derived
+    on_demand: true
+    rule: "union(elm_eldon, elm_farre)"
+    description: "Both ELM sources, 595 shots (163518 is in both), for browsing only; elm_eldon stays the holdout, so no draft opens on its shots and evaluators score on elm_eldon, not on this union"
   rwm_hanson:
     title: "RWM onsets (Hanson)"
     kind: dataset
     rule: "table(resistive_wall_mode/format/rwm_format_2026_v1.csv)"
     description: "The 33 shots of the RWM onset databases (events.yaml rwm_onsets_2017, rwm_onsets_2024)"
-  confinement_jalal:
-    title: "Confinement regimes (Jalal Butt, 2024)"
+  confine_butt:
+    title: "Butt (confinement)"
     kind: dataset
-    rule: "table(high_confinement_mode/raw/Jalal_28042024_confinement_regime_shotlist.csv)"
-    description: "The shots of Jalal Butt's confinement regime table of 28 April 2024 (events.yaml jalal_hmode_confinement_2024), less the catalog's blind test shots"
-  confinement_jalal_wpqh:
-    title: "Jalal Butt's WPQH phases (26 May 2026)"
+    on_demand: true
+    rule: "union(table(high_confinement_mode/raw/Jalal_28042024_confinement_regime_shotlist.csv), txt($LABELER_ROOT/raw_external/jalal_wpqh_2026-05-26_shots.txt))"
+    description: "Every shot Jalal Butt labelled: the union of his confinement regime table of 28 April 2024 (events.yaml jalal_hmode_confinement_2024) and his WPQH phase archive of 26 May 2026 (WPQHphasesMay262026.tar; their confinement labels are saved under his name as verified), less the catalog's blind test shots. 1,113 shots: 432 from the table, 769 from the archive, 88 in both, 5 blind shots left out"
+  confine_gill:
+    title: "Gill (confinement)"
     kind: dataset
-    rule: "txt($LABELER_ROOT/raw_external/jalal_wpqh_2026-05-26_shots.txt)"
-    description: "The 769 shots of Jalal Butt's WPQH phase archive of 26 May 2026 (WPQHphasesMay262026.tar), less the catalog's 3 blind test shots; their confinement labels are saved under his name as verified"
-  detach_tangtv:
-    title: "Detachment TangTV inversions"
+    rule: "txt($LABELER_ROOT/raw_external/gill_confinement_database_shots.txt)"
+    description: "The shots of Kevin Gill's confinement database workbook (data/events/confinement/raw/confinement_mode_database.xlsx, read as the confinement source table's kevin_workbook rows), 426 shots, 424 after the 2 blind test shots. His BES-time clips (82 more shots, 20 not in the workbook) are not included"
+  confine_butt_gill:
+    title: "Butt + Gill (confinement)"
+    kind: derived
+    on_demand: true
+    rule: "union(confine_butt, confine_gill)"
+    description: "Both confinement sources, Butt's first: 1,113 shots. All 424 workbook shots are inside Butt's lists, so it holds the same shots as confine_butt"
+  detach_chen:
+    title: "Chen (detachment, TangTV)"
     kind: dataset
     rule: "shots"
     description: "The 41 discharges of the owner's plasma_tv project that have a TangTV C-III inversion (an emission_structure .sav, packed in $LABELER_ROOT/round4/detach/inversions): 11 H-mode (189057-189101), 8 L-mode (189448-190116), 7 campaign 24 (199166-199354), 6 'issues' (195952-195963), the 12_03_2024 experiment's 200977 and 201081, and the 7 N-injection shots of 2026 (206879-206894)"
+  n1_seo:
+    title: "Seo (n=1 tearing)"
+    kind: dataset
+    on_demand: true
+    rule: "txt($LABELER_ROOT/raw_external/n1_seo_tm_data_shots.txt)"
+    description: "Every shot of Jaemin Seo's n=1 tearing archive (/projects/EKOLEMEN/tm_data, the CNN's training samples; 8,505 shots 147000-190997, 1,801 with a positive sample), less the 12 blind test shots: 8,493; 824 are in the catalog"
+  n1_farre:
+    title: "Farre (n=1 tearing)"
+    kind: dataset
+    on_demand: true
+    rule: "txt($LABELER_ROOT/raw_external/n1_farre_survival_tm_2_shots.txt)"
+    description: "Every shot of Hiro Farre Josep Kaga's n=1 tearing labels (/projects/EKOLEMEN/survival_tm_2 tm_labels.tar, 28,521 shots 140000-195501, 4,820 with a positive label; tm_labels.h5 is its 20 ms resample of 18,064), less the 33 blind test shots: 28,488; 2,236 are in the catalog"
+  n1_farre_seo:
+    title: "Farre + Seo (n=1 tearing)"
+    kind: derived
+    on_demand: true
+    rule: "union(n1_farre, n1_seo)"
+    description: "Both n=1 tearing sources, Farre's first: 28,494 shots (Seo's 8,493 less 6 that are not in Farre's tar); 2,237 are in the catalog"
   catalog:
     title: "All shots"
     kind: dataset
+    on_demand: true
     rule: "table(catalog/population.csv)"
     description: "Every shot of the DIII-D event catalog v1's population (185799-204944), less the 50 blind test shots; recommended on every event after its own lists. Stores are built when a shot is opened and, off the protected lists, kept in a capped temporary cache (docs/labeler/on_demand.md)"
 
 events:
   alfven_eigenmode:
-    recommended: [ae_co2_ece, ae_co2, ae_ece, ae_valid, ae_valid_fair, silver, gold, catalog]
-    default: ae_co2_ece
-    evaluate: [ae_co2, ae_ece, ae_co2_ece, ae_valid_fair, gold]
+    recommended: [ae_heidbrink_kaptanoglu, ae_heidbrink, ae_kaptanoglu, silver, gold, catalog]
+    default: ae_heidbrink_kaptanoglu
+    evaluate: [ae_heidbrink, ae_kaptanoglu, ae_heidbrink_kaptanoglu, gold]
   confinement:
-    recommended: [confinement_jalal, confinement_jalal_wpqh, silver, gold, catalog]
+    recommended: [confine_butt_gill, confine_butt, confine_gill, silver, gold, catalog]
     default: roster
-    evaluate: [confinement_jalal, gold]
+    evaluate: [confine_butt, confine_gill, gold]
   detachment:
-    recommended: [detach_tangtv, silver, gold, catalog]
+    recommended: [detach_chen, silver, gold, catalog]
     default: roster
     evaluate: [gold]
   edge_localized_mode:
-    recommended: [elm, elm_challenge, silver, gold, catalog]
+    recommended: [elm_eldon_farre, elm_farre, elm_eldon, silver, gold, catalog]
     default: roster
-    evaluate: [elm_challenge, gold]
+    evaluate: [elm_eldon, gold]
   locked_mode:
     recommended: [silver, gold, catalog]
     default: roster
     evaluate: []
-  mhd_n1: &mhd
-    recommended: [silver, gold, cohort, catalog]
+  mhd_n1:
+    recommended: [n1_farre_seo, n1_farre, n1_seo, silver, gold, catalog]
     default: roster
     evaluate: [gold]
-  mhd_n2: *mhd
-  mhd_n3: *mhd
-  minimum_safety_factor: &cohort
-    recommended: [cohort, silver, gold, catalog]
-    default: cohort
+  mhd_n2:
+    recommended: [silver, gold, catalog]
+    default: roster
     evaluate: [gold]
-  poloidal_beta: *cohort
+  mhd_n3:
+    recommended: [silver, gold, catalog]
+    default: roster
+    evaluate: [gold]
+  minimum_safety_factor:
+    recommended: [qmin_chen, silver, gold, catalog]
+    default: qmin_chen
+    evaluate: [gold]
+  poloidal_beta:
+    recommended: [betap_chen, silver, gold, catalog]
+    default: betap_chen
+    evaluate: [gold]
   resistive_wall_mode:
     recommended: [rwm_hanson, silver, gold, catalog]
     default: roster
     evaluate: [rwm_hanson, gold]
+
+renamed:
+  ae_co2: ae_heidbrink
+  ae_ece: ae_kaptanoglu
+  ae_co2_ece: ae_heidbrink_kaptanoglu
+  confinement_jalal: confine_butt
+  confinement_jalal_wpqh: confine_butt
+  elm: elm_farre
+  elm_challenge: elm_eldon
+  detach_tangtv: detach_chen
+  cohort: {minimum_safety_factor: qmin_chen, poloidal_beta: betap_chen, default: qmin_chen}

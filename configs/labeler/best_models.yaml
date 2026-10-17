@@ -68,6 +68,8 @@ events:
     # pooled: each list's own fields are the dataset chain (the staged 2 s CO2 npz of the
     # AE dataset), its corpus_chain row the deployed chain (ae_gold_extend.py's per-shot
     # caches over the whole CO2 record, as the extend tables are made).
+    # The record's own set names are the old ones: ae_co2 (here ae_heidbrink), ae_ece
+    # (ae_kaptanoglu), ae_co2_ece (ae_heidbrink_kaptanoglu); the lists were renamed on 2026-10-17.
     lists:
       record: outputs/labeler/ae/shotlists/evaluation.json (scripts/labeler/ae_evaluate.py --shotlist; dataset chain SLURM job 2966166, float32, the same numbers as 2965787; corpus block --chain corpus, job 2966167, caches from runs/ae_gold_extend, runs/silver_infer/ae_seldnet/work and GPU job 2965792, each checked to come from the shipped checkpoint f2d5314a)
       reference: data/events/alfven_eigenmode/review/labels.csv (live owner-reviewed table, sha256 d23a4b018ea4b731d14c056a5f4321899fc634a90e07169468f7b8c020fee59e)
@@ -76,7 +78,7 @@ events:
       corpus_chain_trained_on: every listed train-split shot, with or without a cache (the record's envelope files the ones without under no_input)
       prefilled: "Both chains leave out a shot whose reviewed truth was prefilled from this model's own output (review/history.jsonl: a save prefilled from extend_ae_seldnet, whose sidecar names the checkpoint). Once anchored a shot stays out: a later save starts from the saved label, and the AE page records prefilled false on any reopened saved shot, so a later save does not clear it; only the owner can, by naming a shot re-labelled from scratch with ae_evaluate.py --independent-truth. 13 shots: 176070, 189081, 189094, 192755 (on no list), 195016, 200958, 202098, 202100, 202102, 204497, 204499, 204501, 204503, each saved once from the gold extend table; the record's unscorable names each. Only gold's corpus row changes."
       agreement: "dataset vs corpus chain on the 60 validation shots both have (11,728 frames): frame means r 0.993, hard calls agree 0.992 (kappa 0.981); on those frames AUROC 0.985 [0.976, 0.991] vs 0.983 [0.974, 0.991], F1 0.957 vs 0.955"
-      ae_ece:
+      ae_kaptanoglu:
         n_listed: 26
         n_scored: 5
         trained_on: 8
@@ -95,7 +97,7 @@ events:
           auroc: {value: 0.940, lo: 0.903, hi: 0.962}
           auprc: {value: 0.984, lo: 0.974, hi: 0.991}
           f1: {value: 0.910, lo: 0.865, hi: 0.945}
-      ae_co2:
+      ae_heidbrink:
         n_listed: 180
         n_scored: 60
         trained_on: 120
@@ -113,7 +115,7 @@ events:
           auroc: {value: 0.983, lo: 0.974, hi: 0.991}
           auprc: {value: 0.993, lo: 0.988, hi: 0.997}
           f1: {value: 0.955, lo: 0.933, hi: 0.973}
-      ae_co2_ece:
+      ae_heidbrink_kaptanoglu:
         n_listed: 193
         n_scored: 60
         trained_on: 120
@@ -122,7 +124,7 @@ events:
         auroc: {value: 0.981, lo: 0.969, hi: 0.990}
         auprc: {value: 0.991, lo: 0.984, hi: 0.996}
         f1: {value: 0.952, lo: 0.929, hi: 0.970}
-        note: The same 60 shots as ae_co2; the 13 ECE-only shots have no npz.
+        note: The same 60 shots as ae_heidbrink; the 13 ECE-only shots have no npz.
         corpus_chain:
           n_scored: 73
           trained_on: 120
@@ -132,7 +134,7 @@ events:
           auroc: {value: 0.980, lo: 0.971, hi: 0.987}
           auprc: {value: 0.993, lo: 0.988, hi: 0.996}
           f1: {value: 0.951, lo: 0.933, hi: 0.967}
-      ae_valid_fair:
+      fair_19:
         n_listed: 19
         n_scored: 19
         trained_on: 0
@@ -141,7 +143,7 @@ events:
         auroc: {value: 0.983, lo: 0.966, hi: 0.994}
         auprc: {value: 0.992, lo: 0.981, hi: 0.998}
         f1: {value: 0.945, lo: 0.903, hi: 0.977}
-        note: The headline's 19 shots; against the v2 review snapshot it used, this run gives the headline's 0.982 / 0.992 / 0.944 exactly.
+        note: The headline's 19 shots, the validation shots none of the older CO2 detectors trained on (outputs/labeler/ae/baselines/evaluation.json shots.fair; the record's set name is ae_valid_fair, a shot list dropped on 2026-10-17). Against the v2 review snapshot it used, this run gives the headline's 0.982 / 0.992 / 0.944 exactly.
         corpus_chain:
           n_scored: 19
           trained_on: 0

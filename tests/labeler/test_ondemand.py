@@ -55,7 +55,7 @@ ROSTER = (
 )
 REGISTRY = """\
 lists:
-  catalog: {title: "All shots", kind: dataset}
+  catalog: {title: "All shots", kind: dataset, on_demand: true}
   held: {title: "Held", kind: dataset, protect: holdout}
   silver_batch_1: {title: "Silver batch 1", parent: silver, kind: derived, hidden: true}
 events:
@@ -1025,9 +1025,36 @@ def test_an_event_the_registry_does_not_name_recommends_all_shots_last(client):
 def test_a_list_of_on_demand_shots_does_not_count_as_prebuilt(paths):
     from labeler.events.ui import overlay_routes
 
-    assert shotlists.ON_DEMAND == frozenset({"catalog"})
+    assert shotlists.on_demand(paths) == frozenset({"catalog"})
     assert overlay_routes.prebuilt(paths, OTHER_CATALOG) is False
     assert overlay_routes.prebuilt(paths, SILVER) is True
+
+
+def test_any_list_the_registry_flags_opens_by_the_on_demand_build(client, paths):
+    """A shot of a flagged list off the catalog (n1_seo's) builds into the temporary
+    cache, and the status line does not call it prebuilt; a shot silver also holds
+    still is."""
+    from labeler.events.ui import overlay_routes
+
+    far = 160001
+    _write(paths.label_tables / "shotlists/far.csv", f"shot\n{far}\n{SILVER}\n")
+    _write(paths.label_tables / "shotlists.yaml", REGISTRY.replace(
+        "  held:", '  far: {title: "Far", kind: dataset, on_demand: true}\n  held:'))
+    assert shotlists.on_demand(paths) == frozenset({"catalog", "far"})
+    assert shotlists.holding(paths, far) == ["far"] and shotlists.in_any(paths, far)
+    assert not ondemand.protected(paths, "detachment", far), "the cache, not the data root"
+    assert ondemand.overlay_paths(paths, far).spectrogram_file(
+        "detachment", far).is_relative_to(paths.ondemand)
+    assert overlay_routes.prebuilt(paths, far) is False
+    assert overlay_routes.prebuilt(paths, SILVER) is True, "silver holds it too"
+    assert [item["name"] for item in client.get(
+        "/api/shotlists?event=detachment").json()].count("far") == 1
+    queue = client.get("/api/queue?event=detachment&list=far").json()
+    assert queue["list"] == "far" and [row["shot"] for row in queue["shots"]] == [far, SILVER]
+    # Dropping the flag makes the same shot count as prebuilt.
+    _write(paths.label_tables / "shotlists.yaml", REGISTRY.replace(
+        "  held:", '  far: {title: "Far", kind: dataset}\n  held:'))
+    assert overlay_routes.prebuilt(paths, far) is True
 
 
 # ---- the search ----

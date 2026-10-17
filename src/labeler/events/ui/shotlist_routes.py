@@ -118,8 +118,9 @@ def offer(paths: Paths, event: str, saved, roster: pd.DataFrame) -> list[dict]:
 def choose(paths: Paths, event: str, requested: str | None,
            offered: list[dict]) -> tuple[str, str | None]:
     """`(name, note)`: the list `/api/queue` shows, out of `offer`'s entries, and why
-    it is not the one asked for. No request shows the default; one the page does not
-    offer falls back to the default, and so does a default that cannot be read."""
+    it is not the one asked for. No request shows the default; an old name that
+    `renamed` has moved shows its list, with a note; one the page does not offer falls
+    back to the default, and so does a default that cannot be read."""
     fallback = next(item["name"] for item in offered if item["default"])
     if requested is None:
         try:
@@ -131,9 +132,12 @@ def choose(paths: Paths, event: str, requested: str | None,
         return fallback, None
     if any(item["name"] == requested for item in offered):
         return requested, None
+    current = shotlists.resolve(paths, requested, event)
+    if current != requested and any(item["name"] == current for item in offered):
+        return current, f"List {requested[:64]} is now {current}."
     try:
-        known = requested in shotlists.names(paths)
-        hidden = known and shotlists.entry(paths, requested).hidden
+        known = current in shotlists.names(paths)
+        hidden = known and shotlists.entry(paths, current).hidden
     except (shotlists.ShotListError, KeyError):
         known = hidden = False
     reason = ("is not offered any more" if hidden

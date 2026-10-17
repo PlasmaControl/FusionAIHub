@@ -32,9 +32,9 @@ Typically found via magnetics (Mirnov / MHR probes), CO2 interferometer chords, 
 
 **Dataset File(s)**: `ece_all_labels/labels_<shot>.txt` (26 files)
 
-**Author**:
+**Author**: Alan Kaptanoglu
 
-**Description**: 26 hand-annotated DIII-D shots (132240-178872) on ECE spectrograms, not CO2: 1,330 time-frequency boxes (`tae` 441, `rsae` 415, `bae` 329, `lfm` 143, `eae` 2) on ECE channels 1-40, 0-250 kHz, 0.21-1.9 s. Copied unchanged from `/projects/EKOLEMEN/ece_cnn/all_labels/` (files dated 2022-01-24; the annotator is not recorded in them). 13 of the 26 shots are also in Dataset 1. Boxes only: a time with no box is unknown, not absent.
+**Description**: 26 hand-annotated DIII-D shots (132240-178872) on ECE spectrograms, not CO2: 1,330 time-frequency boxes (`tae` 441, `rsae` 415, `bae` 329, `lfm` 143, `eae` 2) on ECE channels 1-40, 0-250 kHz, 0.21-1.9 s. Copied unchanged from `/projects/EKOLEMEN/ece_cnn/all_labels/` (files dated 2022-01-24; they do not name the annotator, the owner confirmed on 2026-10-17 that it is Alan Kaptanoglu). 13 of the 26 shots are also in Dataset 1. Boxes only: a time with no box is unknown, not absent.
 
 **Publications**:
 

@@ -16,9 +16,20 @@ source, so it is tracked:
       gold: {title: "Gold set", file: gold/gold_shots.csv, protect: test}
       silver_batch_1: {title: "Silver batch 1", parent: silver, hidden: true,
                        rule: "where(silver, batch==1)"}
+      n1_seo: {title: "n=1 tearing (Seo)", on_demand: true, rule: "txt(...)"}
     events:
-      alfven_eigenmode: {recommended: [ae_co2_ece, silver, gold],
-                         default: ae_co2_ece, evaluate: [ae_co2, gold]}
+      alfven_eigenmode: {recommended: [ae_heidbrink_kaptanoglu, silver, gold],
+                         default: ae_heidbrink_kaptanoglu,
+                         evaluate: [ae_heidbrink, gold]}
+    renamed:
+      ae_co2: ae_heidbrink
+      cohort: {minimum_safety_factor: qmin_chen, poloidal_beta: betap_chen,
+               default: qmin_chen}
+
+A list is named `<event>_<source>`: the event's short prefix, then the annotator's
+surname in lower case (`chen` for a list the owner's pipeline made); an event with two
+sources also has the union `<event>_<a>_<b>` (alphabetical), a subset adds a suffix.
+`gold`, `silver`, `silver_batch_*` and `catalog` keep their names.
 
 `file:` registers a list kept elsewhere under the label tables: gold and silver stay
 where they are and keep their stricter readers (`review.gold`, `review.silver`), and
@@ -26,8 +37,18 @@ without a registry they are still lists. A list file the registry does not name 
 still a list ("Other lists" on the page, kind `other`). A subcategory with no
 `events:` entry takes its parent's; an event with none recommends silver, gold and
 `catalog` ("All shots") and defaults to its roster. `protect: test | holdout` lists are
-never overwritten by `make`. `hidden: true` keeps a list's file and name but leaves it out of the page's dropdown and
-a parent's children (`offered`); a request for it falls back to the default.
+never overwritten by `make`. `hidden: true` keeps a list's file and name but leaves it
+out of the page's dropdown and a parent's children (`offered`); a request for it falls
+back to the default. `on_demand: true` marks a list whose shots mostly have no
+pre-built store (the review server builds one when a shot is opened, `ondemand`), so
+holding such a shot does not make it "prebuilt" (`on_demand`).
+
+`renamed: {old: new}` keeps an old list name working: `resolve` (and so `entry`, `read`,
+`shots`, `plan` and the routes) takes `old` to `new`. A value may be a mapping of
+event id to list with a `default` (one old name that became one list per event); the
+event is the page's, else `default` answers. A name that is still a list wins over
+`renamed` and `check` reports it, and so does a file left under an old name. `make`
+will not write an old name: it names the list to make instead.
 
 No list holds a blind test shot (`review.silver.blind_shots`): when the catalog is
 present, `read` refuses a list that does, and `make` will not write one (it fails
@@ -41,9 +62,13 @@ a list.
     python -m labeler.events.shotlists list
     python -m labeler.events.shotlists show NAME
     python -m labeler.events.shotlists make NAME (--from-txt F | --from-table F
-        | --shots S [S ...] | --union A,B | --from LIST) [--where EXPR]
+        | --shots S [S ...] | --union A,B[,...] | --from LIST) [--where EXPR]
         [--sort COLUMN] [--title T] [--kind K] [--provenance TEXT] [--drop-blind]
     python -m labeler.events.shotlists check
+
+`--union` takes list names, `table(PATH)` (the shot column, `--column`) and `txt(PATH)`
+terms, so a union can run over source files as well as lists; its rule and
+`derived_from` name each term as `check` re-reads it.
 """
 
 from __future__ import annotations
@@ -55,7 +80,7 @@ import logging
 import os
 import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
@@ -86,10 +111,9 @@ BUILTIN = {
     "silver": {"title": "Silver set", "file": silver.SILVER_FILE, "kind": "curated"},
 }
 LIST_KEYS = frozenset({"title", "file", "parent", "rule", "protect", "kind", "sha256",
-                       "description", "hidden"})
-#: Lists whose shots have no pre-built review store: the review server builds one
-#: when a shot is opened (`ondemand`), so holding a shot says nothing about its store.
-ON_DEMAND = frozenset({"catalog"})
+                       "description", "hidden", "on_demand"})
+#: The key of a `renamed` mapping that answers for an event it does not name.
+RENAMED_DEFAULT = "default"
 EVENT_KEYS = frozenset({"recommended", "default", "evaluate"})
 SCORING = ("heldout", "oof")
 #: An event id: a plain name, or a subcategory's `<event>.<key>`.
@@ -117,6 +141,8 @@ class Entry:
     sha256: str | None = None
     #: Left out of the page's dropdown (`offered`); the file and name stay.
     hidden: bool = False
+    #: Its shots mostly have no pre-built store: opening one builds it (`on_demand`).
+    on_demand: bool = False
 
 
 @dataclass(frozen=True)
@@ -132,6 +158,8 @@ class EventLists:
 class Registry:
     lists: dict[str, dict]
     events: dict[str, EventLists]
+    #: Old list name -> the list that replaced it, or {event id | default: list}.
+    renamed: dict[str, str | dict[str, str]] = field(default_factory=dict)
 
 
 # ---- the registry ----
@@ -160,8 +188,10 @@ def parse(raw, *, where: str = "shotlists.yaml") -> Registry:
     if not isinstance(raw, dict):
         raise ShotListError(f"{where}: must be a mapping")
     block, events_block = raw.get("lists") or {}, raw.get("events") or {}
-    if not isinstance(block, dict) or not isinstance(events_block, dict):
-        raise ShotListError(f"{where}: `lists` and `events` must be mappings")
+    renamed_block = raw.get("renamed") or {}
+    if not all(isinstance(found, dict)
+               for found in (block, events_block, renamed_block)):
+        raise ShotListError(f"{where}: `lists`, `events` and `renamed` must be mappings")
     lists: dict[str, dict] = {}
     for name, spec in block.items():
         check_name(name, where=where)
@@ -191,8 +221,9 @@ def parse(raw, *, where: str = "shotlists.yaml") -> Registry:
             raise ShotListError(f"{where}: {name}.kind must be one of {KINDS}")
         if "sha256" in spec and not SHA256.match(str(spec["sha256"])):
             raise ShotListError(f"{where}: {name}.sha256 must be 64 hex digits")
-        if not isinstance(spec.get("hidden", False), bool):
-            raise ShotListError(f"{where}: {name}.hidden must be true or false")
+        for flag in ("hidden", "on_demand"):
+            if not isinstance(spec.get(flag, False), bool):
+                raise ShotListError(f"{where}: {name}.{flag} must be true or false")
         lists[name] = dict(spec)
     # Gold and silver keep their files and gold its protection unless the entry says
     # otherwise; an entry that only retitles one does not move it.
@@ -226,7 +257,25 @@ def parse(raw, *, where: str = "shotlists.yaml") -> Registry:
                 f"{where}: events.{event}.default must be {ROSTER} or a registered list"
             )
         events[event] = EventLists(found["recommended"], default, found["evaluate"])
-    return Registry(lists, events)
+    renamed = {}
+    for old, new in renamed_block.items():
+        check_name(old, where=f"{where}: renamed")
+        targets = new if isinstance(new, dict) else {RENAMED_DEFAULT: new}
+        if isinstance(new, dict) and RENAMED_DEFAULT not in new:
+            raise ShotListError(
+                f"{where}: renamed.{old} needs a `{RENAMED_DEFAULT}` list for the "
+                "events it does not name"
+            )
+        for key, target in targets.items():
+            if key != RENAMED_DEFAULT and not (isinstance(key, str)
+                                               and EVENT.match(key)):
+                raise ShotListError(f"{where}: renamed.{old}: {key!r} is not an event id")
+            if not isinstance(target, str) or target not in lists:
+                raise ShotListError(
+                    f"{where}: renamed.{old} -> {target!r} is not a registered list"
+                )
+        renamed[old] = dict(new) if isinstance(new, dict) else new
+    return Registry(lists, events, renamed)
 
 
 def check_name(name, *, where: str = "shot list") -> str:
@@ -288,18 +337,60 @@ def _files(paths: Paths, *, sidecars: bool = False) -> list[Path]:
 
 def names(paths: Paths) -> list[str]:
     """Every list: the registry's in its order, then each other file's by name. A
-    file whose stem is not a plain name, or is reserved, is not one (`check` says
-    so)."""
-    found = list(registry(paths).lists)
+    file whose stem is not a plain name, or is reserved, or is an old name `renamed`
+    has moved, is not one (`check` says so)."""
+    found_registry = registry(paths)
+    found = list(found_registry.lists)
     for path in _files(paths):
         stem = path.stem
-        if stem not in found and NAME.match(stem) and stem not in RESERVED:
+        if (stem not in found and stem not in found_registry.renamed
+                and NAME.match(stem) and stem not in RESERVED):
             found.append(stem)
     return found
 
 
-def entry(paths: Paths, name: str) -> Entry:
-    """List `name`; KeyError when there is no such list."""
+def resolve(paths: Paths, name, event: str | None = None):
+    """The list `name` stands for: itself when it is a list of the registry (that
+    wins over `renamed`; `check` reports the clash), else what `renamed` maps it to.
+    A mapping answers with `event`'s list, its parent event's, else its `default`.
+    Anything else, and an unreadable registry, gives `name` back unchanged."""
+    try:
+        found = registry(paths)
+    except ValueError:
+        return name
+    if not isinstance(name, str) or name in found.lists:
+        return name
+    target = found.renamed.get(name)
+    if not isinstance(target, dict):
+        return name if target is None else target
+    for key in (event, event.partition(".")[0] if event else None):
+        if key in target:
+            return target[key]
+    return target[RENAMED_DEFAULT]
+
+
+def renamed_to(found: Registry, name: str) -> str:
+    """Where `renamed` sends `name`, for a message: the list, or the lists."""
+    target = found.renamed[name]
+    return target if isinstance(target, str) else ", ".join(sorted(set(target.values())))
+
+
+def on_demand(paths: Paths) -> frozenset[str]:
+    """The lists whose registry entry says `on_demand: true`: their shots mostly have
+    no pre-built store, so the review server builds one when a shot is opened
+    (`ondemand`) and holding a shot says nothing about its store. Empty when the
+    registry cannot be read."""
+    try:
+        found = registry(paths).lists
+    except ValueError:
+        return frozenset()
+    return frozenset(name for name, spec in found.items() if spec.get("on_demand"))
+
+
+def entry(paths: Paths, name: str, event: str | None = None) -> Entry:
+    """List `name` (`resolve`d, so an old name finds its list); KeyError when there is
+    no such list."""
+    name = resolve(paths, name, event)
     spec = registry(paths).lists.get(name)
     if spec is None and (not isinstance(name, str) or len(name) > MAX_NAME
                          or not NAME.match(name) or name in RESERVED):
@@ -323,7 +414,7 @@ def entry(paths: Paths, name: str) -> Entry:
         registered=name in registry(paths).lists,
         kind=spec.get("kind") or meta.get("kind"), parent=spec.get("parent"),
         rule=spec.get("rule"), protect=spec.get("protect"), sha256=spec.get("sha256"),
-        hidden=bool(spec.get("hidden")),
+        hidden=bool(spec.get("hidden")), on_demand=bool(spec.get("on_demand")),
     )
 
 
@@ -539,7 +630,7 @@ def held_out(paths: Paths, shot: int) -> bool:
 
 def holding(paths: Paths, shot: int) -> list[str]:
     """The registered lists `shot` is on, in `names` order (their stores are the
-    ones prebuilt in SLURM, except those of the `ON_DEMAND` lists); cheap, from the
+    ones prebuilt in SLURM, except those of the `on_demand` lists); cheap, from the
     cached `members`."""
     shot = int(shot)
     if shot in blind_set(paths):
@@ -625,6 +716,7 @@ def plan(paths: Paths, names, population, trained_on, reference, *,
     scored, sets = {}, {}
     for name in names:
         found = entry(paths, name)
+        name = found.name  # an old name is answered under its list's name
         listed = [int(shot) for shot in _read_entry(paths, found).shot]
         missing = {"no_input": [], "not_in_cv": [], "no_reference": []}
         trained, keep = [], []
@@ -729,6 +821,45 @@ def _table_shots(path: Path, column: str | None) -> pd.DataFrame:
     return frame.rename(columns={column: "shot"})
 
 
+_TERM = re.compile(r"(table|txt)\((.+)\)\Z")
+
+
+def _terms(text: str) -> list[str]:
+    """`text` split at the commas outside parentheses, each part stripped."""
+    parts, depth, start = [], 0, 0
+    for index, char in enumerate(text):
+        depth += (char == "(") - (char == ")")
+        if char == "," and depth == 0:
+            parts.append(text[start:index])
+            start = index + 1
+    parts.append(text[start:])
+    return [part.strip() for part in parts if part.strip()]
+
+
+def _union(paths: Paths, text: str, column: str | None):
+    """`(rows, rule, inputs)` of `--union`: each term is a list (an old name is
+    resolved, and the rule and the inputs name the list), `table(PATH)` or
+    `txt(PATH)`; a path is recorded as `display` writes it, and `check` re-reads it."""
+    parts = _terms(text)
+    if len(parts) < 2:
+        raise ShotListError("--union needs two or more terms, comma-separated")
+    frames, labels, inputs = [], [], {}
+    for part in parts:
+        found = _TERM.fullmatch(part)
+        if found is None:
+            item = entry(paths, part)
+            frames.append(_read_entry(paths, item)[["shot"]])
+            label, inputs[item.name] = item.name, item.path
+        else:
+            kind, path = found[1], Path(found[2].strip())
+            frames.append(pd.DataFrame({"shot": _txt_shots(path)}) if kind == "txt"
+                          else _table_shots(path, column)[["shot"]])
+            label = f"{kind}({display(paths, path)})"
+            inputs[display(paths, path)] = path
+        labels.append(label)
+    return pd.concat(frames, ignore_index=True), f"union({', '.join(labels)})", inputs
+
+
 def source(paths: Paths, args) -> tuple[pd.DataFrame, str, dict, bool]:
     """`(rows, rule, derived_from, keep_columns)` for `make`'s source options."""
     if args.from_txt:
@@ -742,17 +873,12 @@ def source(paths: Paths, args) -> tuple[pd.DataFrame, str, dict, bool]:
     elif args.shots:
         frame, rule, inputs = pd.DataFrame({"shot": args.shots}), "shots", {}
     elif args.union:
-        parts = [part.strip() for part in args.union.split(",") if part.strip()]
-        if len(parts) < 2:
-            raise ShotListError("--union needs two or more lists, comma-separated")
-        frame = pd.concat([read(paths, part)[["shot"]] for part in parts],
-                          ignore_index=True)
-        rule = f"union({', '.join(parts)})"
-        inputs = {part: entry(paths, part).path for part in parts}
+        frame, rule, inputs = _union(paths, args.union, args.column)
     else:
-        frame = read(paths, args.from_list).copy()
-        rule = args.from_list
-        inputs = {args.from_list: entry(paths, args.from_list).path}
+        found = entry(paths, args.from_list)
+        frame = _read_entry(paths, found).copy()
+        rule = found.name
+        inputs = {found.name: found.path}
     keep_columns = bool(args.from_list)
     if args.where:
         frame = where(frame, args.where)
@@ -774,11 +900,16 @@ def make(paths: Paths, name: str, frame: pd.DataFrame, *, rule: str,
          provenance: str | None = None, made_by: str | None = None,
          drop_blind: bool = False) -> dict:
     """Write list `name` under `shotlists/` with its sidecar, both atomically, and
-    return the sidecar. Refuses a reserved or `file:`-registered name, a protected
-    list that exists, blind shots (unless `drop_blind`: they are left out and
-    counted) and an empty list."""
+    return the sidecar. Refuses a reserved, old (`renamed`) or `file:`-registered
+    name, a protected list that exists, blind shots (unless `drop_blind`: they are left
+    out and counted) and an empty list."""
     check_name(name, where="make")
-    spec = registry(paths).lists.get(name, {})
+    found = registry(paths)
+    spec = found.lists.get(name, {})
+    if name in found.renamed and name not in found.lists:
+        raise ShotListError(
+            f"{name} is an old name, renamed to {renamed_to(found, name)}: make that"
+        )
     if spec.get("file"):
         raise ShotListError(
             f"{name} is kept at {spec['file']}; make writes only under {DIRECTORY}/"
@@ -842,6 +973,14 @@ def check(paths: Paths) -> tuple[list[str], list[str]]:
     for path in _files(paths):
         if not NAME.match(path.stem) or path.stem in RESERVED:
             problems.append(f"{path.name}: {path.stem!r} is not a usable list name")
+    stems = {path.stem for path in _files(paths)}
+    for old in found.renamed:
+        also = ("a list of the registry" if old in found.lists
+                else f"a file under {DIRECTORY}/" if old in stems else None)
+        if also:
+            problems.append(
+                f"{old}: renamed to {renamed_to(found, old)}, but it is also {also}"
+            )
     read_ok: dict[str, set[int]] = {}
     for name in names(paths):
         try:
@@ -903,9 +1042,12 @@ def main(argv=None) -> int:
     sources.add_argument("--from-table",
                          help="a CSV table's shot column (one row each)")
     sources.add_argument("--shots", nargs="+", type=int, help="the shots themselves")
-    sources.add_argument("--union", help="two or more lists, comma-separated")
+    sources.add_argument("--union", help="two or more lists, table(F) or txt(F) terms, "
+                         "comma-separated")
     sources.add_argument("--from", dest="from_list", help="a list, keeping its columns")
-    made.add_argument("--column", help="--from-table's shot column (default: shot)")
+    made.add_argument("--column",
+                      help="the shot column of --from-table and table() terms "
+                      "(default: shot)")
     made.add_argument("--where", help="keep rows meeting `column OP value [and ...]`")
     made.add_argument("--sort", help="order by this column (numeric when it is)")
     made.add_argument("--title")
@@ -927,6 +1069,7 @@ def main(argv=None) -> int:
                 flags = [flag for flag in (
                     item.kind, item.protect and f"protect:{item.protect}",
                     item.parent and f"parent:{item.parent}",
+                    item.on_demand and "on_demand",
                     None if item.registered else "other",
                 ) if flag]
                 print(f"{item.name:20} {count:>6}  {item.title}  [{', '.join(flags)}]")

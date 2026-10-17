@@ -99,6 +99,9 @@ record, all under `cache/ondemand/194216/`, nothing in the data root.
 `fetching` is always a list (empty unless fetching). `note` is at most 40 characters,
 for the activity bar. `stage` is `fetching` while a feature or raw group is being
 fetched. The older `reading` and `writing` stages are `building` now.
+`prebuilt` is true when a registered shot list that is not flagged `on_demand: true` in
+`configs/labeler/shotlists.yaml` holds the shot (a flagged list, such as `catalog` or
+`n1_seo`, is one whose shots mostly have no store; docs/labeler/shotlists.md).
 
 On failure, 502 with `{"error", "detail", "code"}`:
 

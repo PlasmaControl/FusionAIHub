@@ -6,8 +6,9 @@ Three steps, each a dry run until `--apply`:
     rename   every saved reviewer name exactly "Jalal" becomes "Jalal Butt": the
              review logs of every event (`review/history.jsonl`, `masks.jsonl`, a
              subcategory's too) and the list `reviewers.txt` behind `/api/names`.
-    list     the shot list `confinement_jalal_wpqh`: every shot of the archive, so
-             each opens on the review page (written as `shotlists make` writes it).
+    list     the shot list `confine_butt`: every shot of the archive and of his
+             2024 regime table, so each opens on the review page, and `confine_butt_gill`
+             over it (written as `shotlists make` writes them).
     import   the archive's phases as confinement labels, saved as the page saves one.
 
 The archive is `WPQHphasesMay262026.tar` (Jalal Butt, 2026-05-26), unpacked read-only
@@ -60,7 +61,11 @@ EVENT = "confinement"
 WPQH = 4
 OLD_NAME, NEW_NAME = "Jalal", "Jalal Butt"
 SOURCE_NOTE = "WPQHphasesMay262026"
-LIST_NAME = "confinement_jalal_wpqh"
+LIST_NAME = "confine_butt"
+#: The union over `LIST_NAME` and Kevin Gill's list; it is made again with it.
+UNION_NAME = "confine_butt_gill"
+#: Butt's 2024 regime table, the other source of `LIST_NAME` (under the label tables).
+REGIME_TABLE = "high_confinement_mode/raw/Jalal_28042024_confinement_regime_shotlist.csv"
 #: The detector looked at 1000-5000 ms of every shot (`t0_ms`, `tf_ms` in the pkl inputs).
 ANALYSIS_WINDOW = (1000, 5000)
 ARCHIVE = Path(
@@ -535,8 +540,10 @@ def write_table(rows: list[Row], path) -> None:
 
 
 def make_list(archive: dict[int, Phases], *, apply: bool, root=None) -> Path:
-    """`confinement_jalal_wpqh`: every archive shot, as `shotlists make` writes a list
-    (the blind test shots are left out and counted)."""
+    """`confine_butt`: every archive shot and every shot of his 2024 regime table, then
+    `confine_butt_gill` over it, as `shotlists make` writes lists (the blind test shots
+    are left out and counted). The archive's shots are kept in `raw_external/` as the
+    list's input."""
     paths = Paths.from_env()
     root = Path(paths.root if root is None else root)
     source = root / "raw_external" / "jalal_wpqh_2026-05-26_shots.txt"
@@ -545,27 +552,30 @@ def make_list(archive: dict[int, Phases], *, apply: bool, root=None) -> Path:
         source.parent.mkdir(parents=True, exist_ok=True)
         with atomic_path(source) as tmp:
             tmp.write_text(text)
-        code = shotlists.main(
+        for command in (
             [
                 "make",
                 LIST_NAME,
-                "--from-txt",
-                str(source),
-                "--kind",
-                "dataset",
-                "--title",
-                "Jalal Butt's WPQH phases (26 May 2026)",
+                "--union",
+                f"table({Path(paths.label_tables) / REGIME_TABLE}),txt({source})",
                 "--drop-blind",
                 "--provenance",
                 (
-                    "WPQHphasesMay262026.tar (Jalal Butt, /projects/EKOLEMEN/jalal/), "
-                    "unpacked to $LABELER_ROOT/raw_external/jalal_wpqh_2026-05-26: every "
-                    "shot with a -wpqh0.dat or -wpqh1.dat file"
+                    "Jalal Butt's confinement regime table of 28 April 2024 "
+                    "(events.yaml jalal_hmode_confinement_2024) and WPQHphasesMay262026"
+                    ".tar (/projects/EKOLEMEN/jalal/, unpacked to $LABELER_ROOT/"
+                    "raw_external/jalal_wpqh_2026-05-26: every shot with a -wpqh0.dat "
+                    "or -wpqh1.dat file)"
                 ),
                 "--made-by",
                 "nc1514 (scripts/labeler/jalal_wpqh_import.py list)",
-            ]
-        )
+            ],
+            ["make", UNION_NAME, "--union", f"{LIST_NAME},confine_gill",
+             "--made-by", "nc1514 (scripts/labeler/jalal_wpqh_import.py list)"],
+        ):
+            code = shotlists.main(command)
+            if code:
+                break
         if code:
             raise SystemExit(code)
     return source
@@ -701,12 +711,13 @@ def main(argv=None) -> int:
             backup(
                 paths,
                 [
-                    paths.shotlists / f"{LIST_NAME}.csv",
-                    paths.shotlists / f"{LIST_NAME}.meta.json",
+                    paths.shotlists / f"{name}{suffix}"
+                    for name in (LIST_NAME, UNION_NAME)
+                    for suffix in (".csv", ".meta.json")
                 ],
             )
         source = make_list(archive, apply=args.apply)
-        print(f"{len(archive)} archive shots -> {LIST_NAME} (from {source})")
+        print(f"{len(archive)} archive shots -> {LIST_NAME}, {UNION_NAME} (from {source})")
     else:
         return _import(args, paths)
     return 0

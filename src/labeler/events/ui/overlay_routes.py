@@ -137,13 +137,14 @@ def build_stage(paths: Paths, store: str, shot: int) -> str:
 
 
 def prebuilt(paths: Paths, shot: int) -> bool:
-    """Whether a registered shot list holds the shot (its stores are pre-built); the
-    all-shots list does not count, its stores are built when a shot is opened."""
+    """Whether a registered shot list holds the shot (its stores are pre-built); a
+    list flagged `on_demand` (the all-shots list, n=1 tearing) does not count, its
+    stores are built when a shot is opened."""
     try:
         from .. import shotlists
 
-        return any(name not in shotlists.ON_DEMAND
-                   for name in shotlists.holding(paths, shot))
+        built = shotlists.on_demand(paths)
+        return any(name not in built for name in shotlists.holding(paths, shot))
     except Exception:  # noqa: BLE001 - a status line must not fail on a bad list file
         return False
 

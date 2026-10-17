@@ -530,7 +530,8 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
             paths, event, labels.read_saved(directory), roster
         )
         name, note = shotlist_routes.choose(paths, event, requested, offered)
-        listed = name == requested and name != shotlists.ROSTER
+        listed = (requested is not None and name != shotlists.ROSTER
+                  and name == shotlists.resolve(paths, requested, event))
         rows = (shotlist_routes.as_roster(roster, shotlists.shots(paths, name))
                 if listed else roster)
         if parent_dir is not None:

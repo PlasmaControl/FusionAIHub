@@ -109,6 +109,13 @@ def test_gold_and_silver_are_lists_without_a_registry_and_keep_their_files(paths
     ({"events": {"elm": {"default": "nope"}}}, "default"),
     ({"events": {"elm": {"recommended": ["nope"]}}}, "registered lists"),
     ({"events": {"Elm!": {}}}, "not an event id"),
+    ({"lists": {"a": {"on_demand": "yes"}}}, "on_demand must be true or false"),
+    ({"renamed": ["old"]}, "must be mappings"),
+    ({"renamed": {"Bad-Name": "a"}, "lists": {"a": {}}}, "plain list name"),
+    ({"renamed": {"old": "nope"}}, "'nope' is not a registered list"),
+    ({"renamed": {"old": {"elm": "a"}}, "lists": {"a": {}}}, "needs a `default`"),
+    ({"renamed": {"old": {"Elm!": "a", "default": "a"}}, "lists": {"a": {}}},
+     "not an event id"),
 ])
 def test_the_registry_names_every_mistake(raw, match):
     with pytest.raises(ShotListError, match=match):
@@ -251,3 +258,129 @@ def test_derived_lists_keep_columns_record_inputs_and_go_stale(paths, cli, capsy
     out = capsys.readouterr().out
     assert "PROBLEM: base_2: stale, base changed" in out
     assert "not a usable list name" in out and "base: no sidecar" in out
+
+
+RENAMES = (
+    "lists:\n  new: {title: New}\n  qmin: {}\n  beta: {}\n"
+    "renamed:\n  old: new\n  cohort: {minimum_safety_factor: qmin, poloidal_beta: beta,"
+    " default: qmin}\n"
+)
+
+
+def test_an_old_name_resolves_to_its_list_and_a_list_still_wins(paths):
+    _write(paths.shotlists_manifest, RENAMES)
+    for name in ("new", "qmin", "beta"):
+        _write(paths.shotlists / f"{name}.txt", "1\n2\n")
+    assert shotlists.resolve(paths, "old") == "new"
+    assert shotlists.resolve(paths, "new") == "new", "a list resolves to itself"
+    assert shotlists.resolve(paths, "nothing") == "nothing"
+    assert shotlists.resolve(paths, "cohort") == "qmin", "no event: the default"
+    assert shotlists.resolve(paths, "cohort", "poloidal_beta") == "beta"
+    assert shotlists.resolve(paths, "cohort", "minimum_safety_factor.q") == "qmin"
+    assert shotlists.resolve(paths, "cohort", "locked_mode") == "qmin"
+    assert shotlists.resolve(paths, 7) == 7
+    found = shotlists.entry(paths, "old")
+    assert found.name == "new" and found.title == "New"
+    assert shotlists.entry(paths, "cohort", "poloidal_beta").name == "beta"
+    assert shotlists.read(paths, "old").shot.tolist() == [1, 2]
+    assert shotlists.shots(paths, "cohort") == [1, 2]
+    with pytest.raises(KeyError):
+        shotlists.entry(paths, "never_was")
+    # A leftover file under an old name is no list of its own; the registry's name wins.
+    _write(paths.shotlists / "old.txt", "9\n")
+    assert "old" not in shotlists.names(paths)
+    assert shotlists.shots(paths, "old") == [1, 2]
+    _write(paths.shotlists_manifest, RENAMES + "  nolist: new\n")
+    assert shotlists.resolve(paths, "nolist") == "new"
+    _write(paths.shotlists_manifest,
+           RENAMES.replace("lists:\n", "lists:\n  old: {title: Old}\n", 1))
+    assert shotlists.resolve(paths, "old") == "old", "still a list: it wins"
+
+
+def test_the_on_demand_flag_comes_from_the_registry(paths):
+    assert shotlists.on_demand(paths) == frozenset()
+    _write(paths.shotlists_manifest,
+           "lists:\n  far: {on_demand: true}\n  near: {on_demand: false}\n  also: {}\n")
+    assert shotlists.on_demand(paths) == frozenset({"far"})
+    assert shotlists.entry(paths, "far").on_demand
+    assert not shotlists.entry(paths, "near").on_demand
+    _write(paths.shotlists_manifest, "lists: [")  # unreadable: nothing is flagged
+    assert shotlists.on_demand(paths) == frozenset()
+
+
+def test_plan_answers_under_the_lists_own_name(paths):
+    _write(paths.shotlists_manifest, RENAMES)
+    _write(paths.shotlists / "new.txt", "1\n2\n")
+    scored, sets = shotlists.plan(paths, ["old"], {1, 2}, set(), {1, 2})
+    assert scored == {"new": [1, 2]} and sets["new"]["list"] == "new"
+
+
+def test_make_refuses_an_old_name_but_reads_it_as_an_input(paths, cli, capsys):
+    _cohort(paths)
+    _write(paths.shotlists_manifest, RENAMES)
+    assert cli("make", "new", "--shots", "1", "2") == 0
+    capsys.readouterr()
+    assert cli("make", "old", "--shots", "5") == 2
+    assert "old name, renamed to new: make that" in capsys.readouterr().err
+    assert cli("make", "cohort", "--shots", "5") == 2
+    assert "renamed to beta, qmin" in capsys.readouterr().err
+    assert cli("make", "both", "--union", "old,qmin") != 0, "qmin is not made yet"
+    capsys.readouterr()
+    assert cli("make", "qmin", "--shots", "2", "3") == 0
+    assert cli("make", "both", "--union", "old,qmin") == 0
+    meta = json.loads((paths.shotlists / "both.meta.json").read_text())
+    assert meta["rule"] == "union(new, qmin)", "the rule names the lists, not the alias"
+    assert set(meta["derived_from"]) == {"new", "qmin"}
+    assert shotlists.shots(paths, "both") == [1, 2, 3]
+    assert cli("make", "copy", "--from", "old") == 0
+    assert json.loads((paths.shotlists / "copy.meta.json").read_text())["rule"] == "new"
+
+
+def test_a_union_runs_over_tables_and_text_files_too(paths, cli, capsys):
+    _cohort(paths)
+    _write(paths.label_tables / "gold/gold_shots.csv", GOLD)
+    _write(paths.label_tables / "silver/silver_shots.csv", SILVER)
+    table = _write(paths.label_tables / "events_a/raw/table.csv",
+                   "regime,Shot\nL,5\nH,6\nH,6\n")
+    hand = _write(paths.root / "raw_external/hand.txt", "# by hand\n6\n7\n")
+    assert cli("make", "mixed", "--union", f"table({table}),txt({hand})",
+               "--column", "Shot") == 0
+    assert shotlists.shots(paths, "mixed") == [5, 6, 7]
+    meta = json.loads((paths.shotlists / "mixed.meta.json").read_text())
+    assert meta["rule"] == (
+        "union(table(events_a/raw/table.csv), txt($LABELER_ROOT/raw_external/hand.txt))")
+    assert set(meta["derived_from"]) == {
+        "events_a/raw/table.csv", "$LABELER_ROOT/raw_external/hand.txt"}
+    _write(paths.shotlists_manifest,
+           f"lists:\n  mixed: {{rule: \"{meta['rule']}\"}}\n")
+    capsys.readouterr()
+    assert cli("check") == 0
+    hand.write_text("6\n8\n")
+    assert cli("check") == 1
+    assert "mixed: stale, $LABELER_ROOT/raw_external/hand.txt changed" in (
+        capsys.readouterr().out)
+    assert cli("make", "single", "--union", f"txt({hand})") == 2
+    assert "two or more terms" in capsys.readouterr().err
+
+
+def test_check_reports_a_renamed_name_that_is_also_a_list(paths, cli, capsys):
+    _write(paths.label_tables / "gold/gold_shots.csv", GOLD)
+    _write(paths.label_tables / "silver/silver_shots.csv", SILVER)
+    _write(paths.shotlists_manifest, RENAMES)
+    _write(paths.shotlists / "new.txt", "1\n")
+    _write(paths.shotlists / "qmin.txt", "1\n")
+    _write(paths.shotlists / "beta.txt", "1\n")
+    assert cli("check") == 0
+    capsys.readouterr()
+    _write(paths.shotlists / "cohort.csv", "shot\n1\n")  # a file left behind
+    assert cli("check") == 1
+    out = capsys.readouterr().out
+    assert ("PROBLEM: cohort: renamed to beta, qmin, but it is also a file under "
+            "shotlists/") in out
+    (paths.shotlists / "cohort.csv").unlink()
+    _write(paths.shotlists_manifest,
+           RENAMES.replace("lists:\n", "lists:\n  old: {title: Old}\n", 1))
+    _write(paths.shotlists / "old.txt", "1\n")
+    assert cli("check") == 1
+    assert "old: renamed to new, but it is also a list of the registry" in (
+        capsys.readouterr().out)

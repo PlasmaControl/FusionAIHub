@@ -29,6 +29,9 @@ lists:
   ae_list: {title: "AE list", kind: dataset}
 events:
   alfven_eigenmode: {recommended: [ae_list, silver, gold], default: ae_list}
+renamed:
+  ae_was: ae_list
+  split_was: {alfven_eigenmode: ae_list, default: ae_small}
 """
 
 
@@ -167,6 +170,25 @@ def test_a_list_that_is_gone_or_unreadable_falls_back_with_a_note(client, paths)
         queue = client.get(f"/api/queue?event=alfven_eigenmode{query}").json()
         assert queue["list"] == "roster" and queue["shots"] == today["shots"]
         assert queue["note"] == "List ae_list cannot be read; showing roster."
+
+
+def test_an_old_list_name_opens_its_list_with_a_note(client):
+    now = client.get("/api/queue?event=alfven_eigenmode&list=ae_list").json()
+    queue = client.get("/api/queue?event=alfven_eigenmode&list=ae_was").json()
+    assert queue["list"] == "ae_list" and queue["shots"] == now["shots"]
+    assert queue["note"] == "List ae_was is now ae_list."
+    # An old name that became one list per event answers with the event's own.
+    queue = client.get("/api/queue?event=alfven_eigenmode&list=split_was").json()
+    assert queue["list"] == "ae_list" and queue["note"] == "List split_was is now ae_list."
+    queue = client.get("/api/queue?event=edge_localized_mode&list=split_was").json()
+    assert queue["list"] == "ae_small" and _rows(queue) == [(LISTED, True)]
+    assert queue["note"] == "List split_was is now ae_small."
+    # The other routes take it too; a list that was dropped is not renamed.
+    assert client.get("/api/shotlist?name=ae_was").json()["name"] == "ae_list"
+    assert client.get("/api/overview?list=ae_was").json()["list"] == "ae_list"
+    assert client.get("/api/shotlist?name=ae_never").status_code == 404
+    gone = client.get("/api/queue?event=alfven_eigenmode&list=ae_valid").json()
+    assert gone["note"] == "List ae_valid no longer exists; showing ae_list."
 
 
 def test_a_subcategorys_list_queue_keeps_the_shots_its_parent_marks(client):
