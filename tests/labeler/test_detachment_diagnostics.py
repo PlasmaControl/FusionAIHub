@@ -448,71 +448,125 @@ def test_the_gas_total_needs_every_listed_valve(tmp_path):
     assert "any of them" in panel.metadata["sum_policy"]
 
 
-def _dts(paths, *, chords=True):
-    """tssdivte at 0.25 ms, held between updates every 20 ms from t = 10 ms; 00 is
-    dead, 02 lags 01 by one sample and drops out (0) at its third update."""
-    t = np.arange(-20.0, 100.0, 0.25)
-    path = paths.root / "detach_default/dts/170815.npz"
+def _dts(paths, *, z=(0.99, -1.24, -1.22, -1.18), dead=1, profiles=None):
+    """The blessed divertor Te: a profile every 20 ms from t = 10 ms, chord k at
+    10 (k + 1) eV times the profile number; chord `dead` has no fit (0)."""
+    t = 10.0 + 20.0 * np.arange(profiles or 5)
+    temp = 10.0 * (np.arange(len(z))[:, None] + 1) * (np.arange(len(t)) + 1)
+    temp[dead] = 0.0
+    path = paths.root / "detach_default/dts_blessed/170815.npz"
     path.parent.mkdir(parents=True)
-    held = np.where(t >= 10, np.floor((t - 10) / 20) + 1, 0)  # 1, 2, ... per update
-    lagged = np.where(t >= 10.25, np.floor((t - 10.25) / 20) + 1, 0)
-    ch02 = 30 * lagged
-    ch02[(lagged == 3)] = 0
-    arrays = {
-        "tssdivte00__t": t, "tssdivte00__y": np.zeros_like(t),
-        "tssdivte01__t": t, "tssdivte01__y": 10 * held,
-        "tssdivte02__t": t, "tssdivte02__y": ch02,
-    }
-    if chords:
-        arrays |= {
-            "chord_r_m": np.full(16, 1.485),
-            "chord_z_m": np.r_[0.993, 0.965, -1.242, np.zeros(13)],
-        }
-    np.savez(path, **arrays)
+    np.savez(path, temp=temp.astype(np.float32), t_ms=t.astype(np.float32),
+             r_m=np.full(len(z), 1.485, dtype=np.float32),
+             z_m=np.asarray(z, dtype=np.float32), phi_deg=np.full(len(z), 120.0),
+             units=np.asarray("eV"))
+    return temp
 
 
-def test_divertor_te_steps_between_the_control_system_updates(tmp_path):
+def test_divertor_te_is_a_z_by_time_map_of_the_blessed_chords(tmp_path):
+    paths = _paths(tmp_path)
+    temp = _dts(paths)
+    panel = detachment.dts_panel(170815, paths, t_range=(0.0, 95.0))
+    assert panel.kind == "heatmap" and panel.title == "Divertor Te (blessed)"
+    assert panel.ylabel == "Z (m)" and (panel.zmin, panel.zmax) == (0.5, 100.0)
+    np.testing.assert_allclose(panel.x, [10, 30, 50, 70, 90])
+    np.testing.assert_allclose(np.diff(panel.y), 0.005)  # uniform for the image row
+    assert panel.z.shape == (len(panel.y), 5)
+    assert panel.metadata["z_scale"] == "log" and panel.metadata["units"] == "eV"
+    # The dead chord (-1.24) is left out; the others keep their order in Z.
+    assert panel.metadata["chords"] == 3
+    assert panel.metadata["chord_z_m"] == pytest.approx([-1.22, -1.18, 0.99])
+
+    def at(z):
+        return panel.z[int(np.argmin(np.abs(panel.y - z)))]
+
+    np.testing.assert_allclose(at(-1.22), temp[2])
+    np.testing.assert_allclose(at(-1.18), temp[3])
+    np.testing.assert_allclose(at(0.99), temp[0])
+    # A chord reaches 1.5 cm: -1.21 is the bins of -1.22, -1.17 those of -1.18; the
+    # 4 cm between them (-1.20) and the 2 m between the arrays stay empty.
+    np.testing.assert_allclose(at(-1.21), temp[2])
+    np.testing.assert_allclose(at(-1.17), temp[3])
+    assert np.isnan(at(-1.20)).all() and np.isnan(at(-1.0)).all()
+    assert np.isnan(at(0.5)).all()
+    assert panel.y[0] - 0.0025 <= -1.22 - 0.015 + 1e-9  # the first bin holds the reach
+    assert panel.y[-1] + 0.0025 >= 0.99 + 0.015 - 1e-9
+    caveat = panel.metadata["caveat"]
+    assert caveat.startswith("Blessed divertor Thomson Te") and "0.5 to 100 eV" in caveat
+    # The lone upper chord (a minor array) lies outside the displayed band, which
+    # covers the lower array's bins; its values stay in z.
+    [(low, high)] = panel.bands
+    assert panel.metadata["band_z_m"] == [low, high]
+    assert low <= -1.22 and high >= -1.18 and high < 0.5
+    assert panel.metadata["chords_outside_band_z_m"] == pytest.approx([0.99])
+    assert "1 of the 3 chords (Z +0.99 m, a minor array)" in caveat
+
+
+def test_the_band_follows_the_main_array_and_two_big_arrays_show_everything(tmp_path):
+    lower = list(np.linspace(-1.24, -1.01, 14))
+    upper = list(np.linspace(1.0, 1.1, 6))
+    # An upper-divertor shot: five live upper chords (the first has no fit) and
+    # three lower ones left over.
+    paths = _paths(tmp_path / "usn")
+    _dts(paths, z=[*upper, -1.05, -1.03, -1.01], dead=0, profiles=4)
+    [(low, high)] = detachment.dts_panel(170815, paths, (0.0, 95.0)).bands
+    assert low > 0.9 and high >= 1.1
+    # Two arrays of at least five chords: no band, the whole axis.
+    both = _paths(tmp_path / "both")
+    _dts(both, z=[*lower[:6], *upper], dead=0, profiles=4)
+    panel = detachment.dts_panel(170815, both, (0.0, 95.0))
+    assert len(panel.bands) == 0 and panel.metadata["band_z_m"] is None
+    assert panel.metadata["chords_outside_band_z_m"] == []
+    # One array (no gap above 0.3 m): no band either.
+    single = _paths(tmp_path / "single")
+    _dts(single, z=lower, dead=0, profiles=4)
+    assert len(detachment.dts_panel(170815, single, (0.0, 95.0)).bands) == 0
+
+
+def test_a_zero_fit_is_empty_and_a_window_without_two_profiles_has_no_row(tmp_path):
+    paths = _paths(tmp_path)
+    temp = _dts(paths, z=(-1.2, -1.15), dead=0)
+    temp[1, 2] = 0.0  # chord 1 has no fit at the third profile
+    np.savez(
+        paths.root / "detach_default/dts_blessed/170815.npz",
+        temp=temp.astype(np.float32), t_ms=np.array([10.0, 30, 50, 70, 90], np.float32),
+        r_m=np.full(2, 1.485), z_m=np.array([-1.2, -1.15]), phi_deg=np.full(2, 120.0),
+    )
+    panel = detachment.dts_panel(170815, paths)
+    assert panel.metadata["units"] == "eV"  # the default when the file has none
+    column = panel.z[int(np.argmin(np.abs(panel.y + 1.15)))]
+    np.testing.assert_allclose(column, [20, 40, np.nan, 80, 100], equal_nan=True)
+    assert detachment.dts_panel(170815, paths, t_range=(10.0, 20.0)) is None  # one profile
+    assert detachment.dts_panel(170815, paths, t_range=(200.0, 300.0)) is None
+    assert detachment.dts_panel(170815, _paths(tmp_path / "none")) is None
+
+
+def test_a_blessed_file_whose_shapes_disagree_is_refused(tmp_path):
     paths = _paths(tmp_path)
     _dts(paths)
-    panel = detachment.dts_panel(170815, paths, t_range=(0.0, 95.0))
-    assert panel.title == "Divertor Te (DTS)" and panel.ylabel == "eV"
-    assert panel.legend == ["01 Z +0.965 m (eV)", "02 Z -1.242 m (eV)"]  # 00 dead
-    starts = panel.metadata["bin_start_ms"]
-    np.testing.assert_allclose(starts, [10.25, 30.25, 50.25, 70.25, 90.25])
-    np.testing.assert_allclose(panel.metadata["bin_end_ms"][:-1], starts[1:])
-    np.testing.assert_allclose(
-        panel.y, [[10, 20, 30, 40, 50], [30, 60, np.nan, 120, 150]], equal_nan=True
-    )  # a 0 is a gap, not 0 eV
-    assert panel.metadata["trace_style"] == "step"
-    assert panel.metadata["chord_z_m"] == pytest.approx([0.965, -1.242])
-    assert "real-time" in panel.metadata["caveat"]
-    _dts(_paths(tmp_path / "bare"), chords=False)
-    bare = detachment.dts_panel(170815, _paths(tmp_path / "bare"), (0.0, 95.0))
-    assert bare.legend == ["01 (eV)", "02 (eV)"]
-    assert bare.metadata["chord_z_m"] is None
+    path = paths.root / "detach_default/dts_blessed/170815.npz"
+    np.savez(path, temp=np.ones((2, 5)), t_ms=np.arange(5.0), r_m=np.ones(3),
+             z_m=np.ones(3), phi_deg=np.ones(3))
+    with pytest.raises(ValueError, match="clock and chords disagree"):
+        detachment.dts_panel(170815, paths)
 
 
-def test_a_held_value_older_than_two_periods_is_a_gap(tmp_path):
-    paths = _paths(tmp_path)
-    path = paths.root / "detach_default/dts/170815.npz"
-    path.parent.mkdir(parents=True)
-    t = np.array([0.0, 20.0, 40.0, 60.0, 200.0])
-    np.savez(path, tssdivte01__t=t, tssdivte01__y=[1.0, 2.0, 3.0, 4.0, 5.0])
-    panel = detachment.dts_panel(170815, paths)
-    np.testing.assert_allclose(panel.metadata["bin_end_ms"], [20, 40, 60, 100, 220])
-
-
-def _irtv(paths):
-    """10 pixels up the centre post at R = 104.7 cm, then 20 along the floor."""
+def _irtv(paths, quantity="heat_flux", offset=0.0):
+    """10 pixels up the centre post at R = 104.7 cm, then 20 along the floor; the
+    heat flux is R - 100 W/cm^2 and the temperature R + 200 deg C (`offset` shifts
+    either)."""
     r = np.r_[np.full(10, 104.7), np.linspace(105.1, 114.6, 20)]
     z = np.r_[np.linspace(-80.0, -110.0, 10), np.full(20, -125.0)]
     t = np.arange(0.5, 100.0, 1.0) + 0.04  # block mean times, off the centre
-    flux = np.broadcast_to(r - 100.0, (len(t), len(r))).astype(np.float16)
-    path = paths.root / "detach_default/irtv/170815.npz"
-    path.parent.mkdir(parents=True)
-    np.savez(path, heat_flux=flux, t_ms=t.astype(np.float32), r_cm=r, z_cm=z,
-             node=np.asarray(r"\IRTVQ2DR2"), system=np.asarray("DIGITAL_CAM"),
-             units=np.asarray("W/cm^2"))
+    heat = quantity == "heat_flux"
+    value = (r - 100.0) if heat else (r + 200.0)
+    data = np.broadcast_to(value + offset, (len(t), len(r))).astype(np.float16)
+    path = paths.root / "detach_default" / ("irtv" if heat else "irtv_temp") / "170815.npz"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    np.savez(path, **{quantity: data}, t_ms=t.astype(np.float32), r_cm=r, z_cm=z,
+             node=np.asarray(r"\IRTVQ2DR2" if heat else r"\IRTVAT2DR2"),
+             system=np.asarray("DIGITAL_CAM"),
+             units=np.asarray("W/cm^2" if heat else "Degrees C"))
 
 
 def test_irtv_heat_flux_is_an_r_by_time_map_without_the_centre_post(tmp_path):
@@ -536,7 +590,33 @@ def test_irtv_heat_flux_is_an_r_by_time_map_without_the_centre_post(tmp_path):
     assert panel.metadata["node"] == r"\IRTVQ2DR2" and panel.metadata["units"] == "W/cm²"
 
 
-def test_default_rows_end_with_divertor_te_and_irtv(tmp_path, monkeypatch):
+def test_irtv_temperature_is_the_heat_flux_maps_twin(tmp_path):
+    paths = _paths(tmp_path)
+    _irtv(paths)
+    _irtv(paths, "temperature")
+    flux = detachment.irtv_panel(170815, paths, t_range=(10.0, 60.0))
+    panel = detachment.irtv_panel(170815, paths, (10.0, 60.0), "temperature")
+    assert panel.kind == "heatmap" and panel.title == "IRTV temperature (°C)"
+    assert panel.ylabel == "R (cm)" and panel.zmin is None and panel.zmax is None
+    # The same time blocks, radial bins and left-out wall as the heat flux.
+    np.testing.assert_array_equal(panel.x, flux.x)
+    np.testing.assert_array_equal(panel.y, flux.y)
+    assert panel.metadata["wall_left_out"] == flux.metadata["wall_left_out"]
+    np.testing.assert_array_equal(np.isnan(panel.z), np.isnan(flux.z))
+    # R + 200 against R - 100: the same bin means 300 apart (float16 steps of 0.1).
+    both = np.isfinite(panel.z) & np.isfinite(flux.z)
+    assert both.sum() > 300
+    np.testing.assert_allclose((panel.z - flux.z)[both], 300.0, atol=0.3)
+    assert panel.metadata["node"] == r"\IRTVAT2DR2"
+    assert panel.metadata["units"] == "°C"
+    assert panel.metadata["quantity"] == "absolute surface temperature"
+    assert "1st to 99.5th percentile" in panel.metadata["caveat"]
+    assert detachment.irtv_panel(170815, _paths(tmp_path / "none"), None, "temperature") is None
+
+
+def test_default_rows_put_the_blessed_te_then_both_irtv_maps_after_the_gas_total(
+    tmp_path, monkeypatch
+):
     monkeypatch.delenv("LABELER_DETACHMENT_INDICATORS", raising=False)
     monkeypatch.delenv("LABELER_DETACHMENT_CACHE_ROOT", raising=False)
     paths = _paths(tmp_path)
@@ -545,10 +625,18 @@ def test_default_rows_end_with_divertor_te_and_irtv(tmp_path, monkeypatch):
     _corpus(paths, {"gas_flow": (np.arange(10) * 0.01, np.ones((11, 10)))})
     _dts(paths)
     _irtv(paths)
+    _irtv(paths, "temperature")
     built = detachment.panels(170815, paths=paths, t_range=(0.0, 95.0))
     assert [p.title for p in built] == [
         "Afrac lower", "Prad,div lower", "Prad,div upper", "Gas total (valve sum)",
-        "Divertor Te (DTS)", "IRTV heat flux (W/cm²)",
+        "Divertor Te (blessed)", "IRTV heat flux (W/cm²)", "IRTV temperature (°C)",
+    ]
+    # The retired real-time tssdivte files, if present, add nothing.
+    old = paths.root / "detach_default/dts/170815.npz"
+    old.parent.mkdir(parents=True)
+    np.savez(old, tssdivte01__t=[0.0, 20.0], tssdivte01__y=[1.0, 2.0])
+    assert [p.title for p in detachment.panels(170815, paths=paths, t_range=(0.0, 95.0))] == [
+        p.title for p in built
     ]
 
 
@@ -590,6 +678,13 @@ def test_the_fetch_log_resumes_by_part(tmp_path):
         '{"shot": 1, "done_parts": ["dts"], "done": false}\n'
     )
     assert module.logged_parts(log) == {1: {"equilibrium", "prad", "dts"}, 2: set()}
+
+
+def test_the_default_fetch_parts_leave_the_real_time_dts_out():
+    module = _fetch_script()
+    assert module.DEFAULT_PARTS == ("equilibrium", "prad", "irtv", "dts_blessed", "irtv_temp")
+    assert "dts" in module.PARTS and "dts" not in module.DEFAULT_PARTS
+    assert module.IRTV_TEMPERATURE[0] == ("DIGITAL_CAM", r"\IRTVAT2DR2")
 
 
 def test_irtv_block_means_skip_nonfinite_samples():

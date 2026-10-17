@@ -113,6 +113,38 @@ def test_heatmap_edges_become_centres():
     assert (row.y0, row.dy) == (0.25, 0.5)
 
 
+def test_a_log_heatmap_is_scaled_in_log10_and_reports_its_limits_in_its_units():
+    z = np.array([[0.0, 1.0, 10.0, 100.0, 1000.0, np.nan]])
+    panel = Panel("Te", x=np.arange(6.0), y=np.array([-1.0]), kind="heatmap", z=z,
+                  zmin=1.0, zmax=100.0, metadata={"z_scale": "log"})
+    row = panel_rows._image("p0", panel, panel.x, Grid(-0.5, 1.0, 6))
+    # 0 and nan are empty (byte 0), 1 is the floor, 10 half-way, 100 and 1000 the top.
+    assert row.values.tolist() == [[0, 0, 128, 255, 255, 0]]
+    assert (row.z_lo, row.z_hi) == pytest.approx((1.0, 100.0))
+    # Without the flag the same panel is linear.
+    linear = Panel("Te", x=np.arange(6.0), y=np.array([-1.0]), kind="heatmap", z=z,
+                   zmin=1.0, zmax=100.0)
+    row = panel_rows._image("p0", linear, linear.x, Grid(-0.5, 1.0, 6))
+    assert row.values.tolist() == [[0, 0, 23, 255, 255, 0]]
+    assert (row.z_lo, row.z_hi) == (1.0, 100.0)
+
+
+def test_a_log_heatmap_needs_a_positive_floor_and_has_no_modes():
+    flag = {"z_scale": "log"}
+    base = {"x": np.arange(2.0), "y": np.array([1.0]), "kind": "heatmap",
+            "z": np.ones((1, 2))}
+    with pytest.raises(ValueError, match="zmin > 0"):
+        panel_rows._image("p0", Panel("T", zmin=0.0, metadata=flag, **base),
+                          np.arange(2.0), Grid(-0.5, 1.0, 2))
+    with pytest.raises(ValueError, match="no modes"):
+        panel_rows._image(
+            "p0",
+            Panel("T", zmin=1.0, zmax=2.0, metadata=flag, modes=np.ones((1, 2), int),
+                  mode_colours={1: "#ff0000"}, **base),
+            np.arange(2.0), Grid(-0.5, 1.0, 2),
+        )
+
+
 def test_the_colour_limits_are_the_1st_and_99_5th_percentiles():
     assert panel_rows._limits(np.arange(1000.0)) == pytest.approx((9.99, 994.005))
     assert panel_rows._limits(np.full(4, 2.0)) == (2.0, 3.0)

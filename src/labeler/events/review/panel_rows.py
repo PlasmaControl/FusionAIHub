@@ -2,7 +2,9 @@
 
 Heatmaps become image rows, scaled over their 1st-99.5th percentile unless
 the panel pins `zmin`/`zmax`, or coded by `verify.mode_bytes` when the panel
-has `modes`; lines become trace rows. Every row goes onto
+has `modes`; a heatmap whose metadata says `z_scale: "log"` is scaled in log10
+(`zmin`/`zmax` and the row's limits stay in the panel's own units); lines
+become trace rows. Every row goes onto
 one grid at the finest panel spacing, but no finer than 0.05 ms: finer data
 is min/max-binned, coarser data is interpolated (lines) or nearest-sampled
 (heatmaps). Explicit indicator bins remain steps over their full intervals,
@@ -136,9 +138,27 @@ def _limits(z, zmin=None, zmax=None) -> tuple[float, float]:
     return (lo, hi) if hi > lo else (lo, lo + 1.0)
 
 
+def _log(panel, z):
+    """`z` as log10 (non-positive cells NaN, so empty) and the pins likewise, for a
+    heatmap whose metadata asks `z_scale: "log"`; the ImageRow then reports the
+    limits in the panel's own units."""
+    if panel.modes is not None:
+        raise ValueError(f"panel {panel.title!r}: a log colour scale has no modes")
+    pins = [None if v is None else float(v) for v in (panel.zmin, panel.zmax)]
+    if any(v is not None and v <= 0 for v in pins):
+        raise ValueError(f"panel {panel.title!r}: a log colour scale needs zmin > 0")
+    with np.errstate(divide="ignore", invalid="ignore"):
+        z = np.where(z > 0, np.log10(z), np.nan)
+    return z, [None if v is None else float(np.log10(v)) for v in pins]
+
+
 def _image(name: str, panel, x, grid: Grid) -> ImageRow:
     z = np.asarray(panel.z, dtype=float)
-    lo, hi = _limits(z, panel.zmin, panel.zmax)
+    log = (panel.metadata or {}).get("z_scale") == "log"
+    zmin, zmax = panel.zmin, panel.zmax
+    if log:
+        z, (zmin, zmax) = _log(panel, z)
+    lo, hi = _limits(z, zmin, zmax)
     modes = None
     if panel.modes is not None:
         q = mode_bytes(z, panel.modes, panel.mode_colours, lo, hi)
@@ -162,6 +182,8 @@ def _image(name: str, panel, x, grid: Grid) -> ImageRow:
     y = _centred(panel.y, z.shape[0])
     dy = float(y[1] - y[0]) if len(y) > 1 else 1.0
     band = tuple(panel.bands[0]) if panel.bands else None
+    if log:
+        lo, hi = 10.0**lo, 10.0**hi
     return ImageRow(name, panel.title, values, y0=float(y[0]), dy=dy,
                     y_units=panel.ylabel, z_lo=lo, z_hi=hi, z_units="", band=band,
                     modes=modes)

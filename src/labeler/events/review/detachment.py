@@ -27,8 +27,9 @@ def context_sources(shot, paths):
         "indicators": panels.detachment.indicator_path(shot, paths),
         "density_cache": panels.detachment.density_cache_path(shot, paths),
         "default_inputs": panels.detachment.default_inputs_path(shot, paths),
-        "dts": panels.detachment.dts_path(shot, paths),
+        "dts_blessed": panels.detachment.dts_path(shot, paths),
         "irtv": panels.detachment.irtv_path(shot, paths),
+        "irtv_temp": panels.detachment.irtv_path(shot, paths, "temperature"),
         # The ungated Afrac's inputs beyond the bins and the cache.
         "probes": panels.detachment.probes_path(shot, paths),
         "flux_map": paths.root / "round4/detach/efit" / f"{int(shot)}.npz",

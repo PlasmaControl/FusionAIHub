@@ -6,7 +6,8 @@
 
 Run under the fdp wrapper, never in a SLURM job. The shots default to the round-4
 roster, the TangTV inversion shots, then every other detachment review store.
-`--parts` picks from `equilibrium`, `prad`, `dts` and `irtv` (all by default). Per shot:
+`--parts` picks from `equilibrium`, `prad`, `irtv`, `dts_blessed` and `irtv_temp` (the
+default) or the retired `dts` (not in the default since 2026-10-17). Per shot:
 
 * `equilibrium`: `$LABELER_ROOT/equilibria/<shot>.npz`, what `review/slices.py` draws
   in the dock: `t_ms` (the G-EQDSK clock), `tree` (EFIT02 or EFIT01) and `source` (the
@@ -23,19 +24,27 @@ roster, the TangTV inversion shots, then every other detachment review store.
   `status`, only for a shot whose producer cache (`round4/detach/cache`) lacks them.
   The node declares "MW" but holds W, as the producer reads it (3.7e6 at peak on
   189061).
-* `dts`: `$LABELER_ROOT/detach_default/dts/<shot>.npz`: the plasma control system's
-  divertor Thomson Te, PTDATA `tssdivte00`..`tssdivte05`, as `<name>__t` (ms) and
-  `<name>__y` (eV, though PTDATA labels them "vo"; 0 is no measurement), and the
-  blessed divertor chords' `chord_r_m`/`chord_z_m`/`chord_phi_m`
-  (`\\ELECTRONS::TOP.TS.BLESSED.DIVERTOR:R/Z/PHI`): channel k follows chord k. The
-  pointnames are absent before about shot 176000 (PTDATA then reports the
-  `PTSERVER` service lookup), which is logged, not an error.
+* `dts_blessed`: `$LABELER_ROOT/detach_default/dts_blessed/<shot>.npz`: the blessed
+  divertor Thomson Te, `\\ELECTRONS::TOP.TS.BLESSED.DIVERTOR:TEMP` (eV, 0 is no fit):
+  `temp` (chord, time) float32, `t_ms` (`:TIME`), and each chord's `r_m`/`z_m`/`phi_deg`
+  (`:R`, `:Z`, `:PHI`); 8-82 chords, a new profile about every 20 ms. Absent on the
+  shots the system did not read (logged, not an error).
+* `dts` (retired from the default 2026-10-17, files kept): `$LABELER_ROOT/detach_default/
+  dts/<shot>.npz`: the plasma control system's real-time divertor Thomson Te, PTDATA
+  `tssdivte00`..`tssdivte05`, as `<name>__t` (ms) and `<name>__y` (eV, though PTDATA
+  labels them "vo"; 0 is no measurement), and the blessed divertor chords'
+  `chord_r_m`/`chord_z_m`/`chord_phi_m`: channel k follows chord k. The pointnames are
+  absent before about shot 176000 (PTDATA then reports the `PTSERVER` service lookup),
+  which is logged, not an error.
 * `irtv`: `$LABELER_ROOT/detach_default/irtv/<shot>.npz`: the lower outer divertor
   infrared heat flux, `\\IRTVQ2DR2` (`\\IRTV::TOP.IRTV:LODIV_60RP2:DIGITAL_CAM:
   HEAT_FLUX2D`, W/cm^2), else `\\IRTVQ2DR201` (DIG_CAM_01): `heat_flux` (block,
   pixel) float16, the 1 ms block means of every pixel (`IRTV_BLOCK_MS`), `t_ms` the
   block centres, `r_cm`/`z_cm` each pixel's position (dimensions 0 and 2 of the
   record), and `node`/`system`/`units`.
+* `irtv_temp`: `$LABELER_ROOT/detach_default/irtv_temp/<shot>.npz`: the twin map, the
+  absolute surface temperature `\\IRTVAT2DR2` (`...:DIGITAL_CAM:ABS_T_2D`, deg C), else
+  `\\IRTVAT2DR201`; the same arrays with `temperature` in place of `heat_flux`.
 
 Resumable: a part logged as done for a shot is skipped, and so is a file already
 written. One JSONL line per shot in `$LABELER_ROOT/runs/detach_default/fetch_log.jsonl`
@@ -76,12 +85,16 @@ AEQDSK = (
 )
 FLUX = ("psirz", "ssimag", "ssibry", "rmaxis", "zmaxis")
 PRAD = (("prad_divl", r"\BOLOM::PRAD_DIVL"), ("prad_divu", r"\BOLOM::PRAD_DIVU"))
-PARTS = ("equilibrium", "prad", "dts", "irtv")
+PARTS = ("equilibrium", "prad", "dts", "irtv", "dts_blessed", "irtv_temp")
+#: What `--parts` runs when unnamed: the retired tssdivte `dts` part is left out.
+DEFAULT_PARTS = ("equilibrium", "prad", "irtv", "dts_blessed", "irtv_temp")
 DTS_POINTNAMES = tuple(f"tssdivte{k:02d}" for k in range(6))
 DTS_CHORDS = r"\ELECTRONS::TOP.TS.BLESSED.DIVERTOR"
 #: The lower outer divertor heat flux, (system, tag) in order of preference: the
 #: DIGITAL_CAM analysis (re-run 2025-11-28), else DIG_CAM_01.
 IRTV_HEAT_FLUX = (("DIGITAL_CAM", r"\IRTVQ2DR2"), ("DIG_CAM_01", r"\IRTVQ2DR201"))
+#: Its twin, the absolute surface temperature map (ABS_T_2D, deg C), same shape.
+IRTV_TEMPERATURE = (("DIGITAL_CAM", r"\IRTVAT2DR2"), ("DIG_CAM_01", r"\IRTVAT2DR201"))
 IRTV_BLOCK_MS = 1.0
 #: float16 holds the 1 ms means; a value beyond this is clipped (and counted).
 FLOAT16_MAX = 65000.0
@@ -288,6 +301,45 @@ def dts(shot: int) -> tuple[dict | None, dict]:
     return arrays, {"status": status}
 
 
+def dts_blessed(shot: int) -> tuple[dict | None, dict]:
+    """The blessed divertor Thomson Te, one profile per laser pulse: (chord, time)."""
+    import MDSplus
+
+    try:
+        tree = MDSplus.Tree("electrons", shot, "readonly")
+        temp = tree.getNode(f"{DTS_CHORDS}:TEMP")
+        if int(temp.getLength()) == 0:
+            return None, {"error": "empty"}
+        leaves = {
+            name: np.asarray(tree.getNode(f"{DTS_CHORDS}:{leaf}").data())
+            for name, leaf in (
+                ("t_ms", "TIME"), ("r_m", "R"), ("z_m", "Z"), ("phi_deg", "PHI")
+            )
+        }
+        data = np.asarray(temp.data(), dtype=np.float32)
+        units = str(tree.tdiExecute(f"units_of({DTS_CHORDS}:TEMP)").data()).strip()
+    except Exception as error:  # noqa: BLE001  a shot without the blessed fit is data
+        return None, {"error": checked(error)}
+    t, z = leaves["t_ms"].ravel().astype(np.float64), leaves["z_m"].ravel()
+    if data.shape == (t.size, z.size) and t.size != z.size:
+        data = data.T
+    if data.shape != (z.size, t.size) or t.size < 2:
+        return None, {"error": f"shape {data.shape}, {t.size} times, {z.size} chords"}
+    if leaves["r_m"].size != z.size or leaves["phi_deg"].size != z.size:
+        return None, {"error": "R, Z and PHI differ in length"}
+    arrays = {
+        "temp": data,
+        "t_ms": t.astype(np.float32),
+        "r_m": leaves["r_m"].ravel().astype(np.float32),
+        "z_m": z.astype(np.float32),
+        "phi_deg": leaves["phi_deg"].ravel().astype(np.float32),
+        "units": units,
+    }
+    live = int((np.isfinite(data) & (data > 0)).sum())
+    return arrays, {"chords": int(z.size), "profiles": int(t.size), "units": units,
+                    "live": live}
+
+
 def block_means(t: np.ndarray, data: np.ndarray, block_ms: float):
     """Means of the finite samples in each `block_ms` block of `t` (time, pixel)."""
     order = np.argsort(t, kind="stable")
@@ -303,8 +355,12 @@ def block_means(t: np.ndarray, data: np.ndarray, block_ms: float):
     return centres, means
 
 
-def irtv(shot: int) -> tuple[dict | None, dict]:
-    """The lower outer divertor heat flux map, 1 ms block means of every pixel."""
+def irtv(
+    shot: int, key: str = "heat_flux", candidates: tuple = IRTV_HEAT_FLUX
+) -> tuple[dict | None, dict]:
+    """The lower outer divertor infrared map named by `candidates` ((system, tag) in
+    order of preference; the heat flux or, with `IRTV_TEMPERATURE`, the surface
+    temperature), 1 ms block means of every pixel stored as `key`."""
     import MDSplus
 
     try:
@@ -312,7 +368,7 @@ def irtv(shot: int) -> tuple[dict | None, dict]:
     except Exception as error:  # noqa: BLE001  a shot without the tree is data
         return None, {"error": checked(error)}
     tried = {}
-    for system, tag in IRTV_HEAT_FLUX:
+    for system, tag in candidates:
         try:
             node = tree.getNode(tag)
             if int(node.getLength()) == 0:
@@ -335,7 +391,7 @@ def irtv(shot: int) -> tuple[dict | None, dict]:
         clipped = int((np.abs(means) > FLOAT16_MAX).sum())
         means = np.clip(means, -FLOAT16_MAX, FLOAT16_MAX)
         arrays = {
-            "heat_flux": means.astype(np.float16),
+            key: means.astype(np.float16),
             "t_ms": centres.astype(np.float32),
             "r_cm": r,
             "z_cm": z,
@@ -404,14 +460,19 @@ def fetch_part(part: str, shot: int, redo: bool) -> tuple[dict, bool]:
         except Exception as error:  # noqa: BLE001  record it, keep going
             return {"error": checked(error)}, False
         return info, True
-    path = {
-        "prad": root() / "detach_default" / f"{shot}.npz",
-        "dts": root() / "detach_default" / "dts" / f"{shot}.npz",
-        "irtv": root() / "detach_default" / "irtv" / f"{shot}.npz",
-    }[part]
+    folder = {"prad": "", "dts": "dts", "irtv": "irtv", "dts_blessed": "dts_blessed",
+              "irtv_temp": "irtv_temp"}[part]
+    path = root() / "detach_default" / folder / f"{shot}.npz"
     if path.is_file() and not redo:
         return {"kept": str(path)}, True
-    arrays, info = {"prad": prad, "dts": dts, "irtv": irtv}[part](shot)
+    fetch = {
+        "prad": prad,
+        "dts": dts,
+        "irtv": irtv,
+        "dts_blessed": dts_blessed,
+        "irtv_temp": lambda shot: irtv(shot, "temperature", IRTV_TEMPERATURE),
+    }[part]
+    arrays, info = fetch(shot)
     if arrays:
         if "status" in info:
             arrays = {**arrays, "status": json.dumps(info["status"])}
@@ -422,7 +483,9 @@ def fetch_part(part: str, shot: int, redo: bool) -> tuple[dict, bool]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--shots", type=int, nargs="+")
-    parser.add_argument("--parts", nargs="+", choices=PARTS, default=list(PARTS))
+    parser.add_argument(
+        "--parts", nargs="+", choices=PARTS, default=list(DEFAULT_PARTS)
+    )
     parser.add_argument("--pace", type=float, default=1.0)
     parser.add_argument("--redo", action="store_true")
     args = parser.parse_args()

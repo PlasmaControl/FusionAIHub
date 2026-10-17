@@ -436,7 +436,7 @@ def test_a_child_with_its_own_recipe_is_stale_by_its_own_version(
     assert review_build.PANEL_VERSIONS["mhd_n1.m1"] == 1
     assert review_build.PANEL_VERSIONS["edge_localized_mode"] == 4
     assert review_build.PANEL_VERSIONS["high_confinement_mode"] == 1
-    assert review_build.PANEL_VERSIONS["detachment"] == 9
+    assert review_build.PANEL_VERSIONS["detachment"] == 10
     assert review_build.PANEL_VERSIONS["resistive_wall_mode"] == 2
     assert review_build.PANEL_VERSIONS["sawtooth_oscillation"] == 1  # folded: untouched
     assert review_build.PANEL_REVISIONS == {"detachment": 1}

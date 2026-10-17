@@ -1,13 +1,15 @@
 """Detachment's default rows (plan D.B) and the producer's indicators.
 
 The default is Afrac lower, Prad,div lower and upper (\\BOLOM::PRAD_DIVL/U, in
-MW), the gas total, the divertor Thomson Te the plasma control system receives
-(PTDATA tssdivte00-05) and the lower outer divertor infrared heat flux map
-(\\IRTVQ2DR2), in that order. Afrac upper is left out (owner, 2026-10-16); the
-bolometer and D-alpha chords left the default (the picker reaches them).
-`indicator_panels` still reads every producer indicator. Raw TPLANG sweeps are
-omitted. This view never fetches or votes: scripts/labeler/detach_default_fetch.py
-fetches.
+MW), the gas total, the blessed divertor Thomson Te (a chord x time map,
+\\ELECTRONS::TOP.TS.BLESSED.DIVERTOR:TEMP), and the lower outer divertor
+infrared maps, the heat flux (\\IRTVQ2DR2) and the absolute surface temperature
+(\\IRTVAT2DR2), in that order. Afrac upper is left out (owner, 2026-10-16); the
+bolometer and D-alpha chords left the default (the picker reaches them), and so
+did the control system's real-time tssdivte00-05 (owner, 2026-10-17; the fetched
+files stay). `indicator_panels` still reads every producer indicator. Raw TPLANG
+sweeps are omitted. This view never fetches or votes:
+scripts/labeler/detach_default_fetch.py fetches.
 """
 
 from __future__ import annotations
@@ -42,27 +44,39 @@ PRAD_UNITS_NOTE = (
     "BOLOM labels these nodes MW but stores W (3.7e6 at the peak on 189061), as "
     "the producer reads them; the row divides by 1e6."
 )
-DTS_TITLE = "Divertor Te (DTS)"
-DTS_POINTNAMES = tuple(f"tssdivte{k:02d}" for k in range(6))
-#: Update instants closer than this merge (the later one stands): the channels of
-#: one laser pulse can reach the control system a sample or two apart.
-DTS_MERGE_MS = 1.0
-#: A held value older than this many median update periods is a gap, not data.
-DTS_HOLD_PERIODS = 2.0
+DTS_TITLE = "Divertor Te (blessed)"
+#: The Te map's vertical bin and how far a chord's value reaches into the bins
+#: around it: the chords are 0.8-3 cm apart, so each chord fills its neighbourhood
+#: up to this and a wider gap (the upper and lower arrays) stays empty.
+DTS_Z_BIN_M = 0.005
+DTS_REACH_M = 0.015
+#: Chords more than this apart belong to different arrays (upper and lower are
+#: about 2 m apart; within an array they are 0.8-3 cm apart).
+DTS_ARRAY_GAP_M = 0.3
+#: An array of fewer chords than this (the 1-4 chords beside the main array: the
+#: upper chords of a lower-divertor shot, the lower ones of an upper-divertor shot)
+#: lies outside the row's displayed Z band, so the main array is not a thin strip in
+#: 2 m of empty axis; the row still holds its values.
+DTS_MINOR_CHORDS = 5
+#: The log colour scale, pinned so one colour is one Te on every shot: black at or
+#: below the floor (and for no measurement), the top colour at or above the ceiling.
+DTS_FLOOR_EV = 0.5
+DTS_CEIL_EV = 100.0
 DTS_CAVEAT = (
-    "The plasma control system's real-time divertor Thomson Te (PTDATA "
-    "tssdivte00-05; eV, though PTDATA labels them 'vo'; 0 is no measurement, "
-    "drawn as a gap). Channel k is closest to blessed divertor chord k on 84 % "
-    "of the 371 channel-shots checked (median difference 9 %); on the rest no "
-    "chord comes within 19 %. A real-time estimate, not the blessed fit: compare with "
-    "the blessed Te before reading a value. The chords move with the Thomson "
-    "configuration (upper, lower or split), so read each line's Z."
+    "Blessed divertor Thomson Te, one profile per laser pulse (about 20 ms), "
+    "\\ELECTRONS::TOP.TS.BLESSED.DIVERTOR:TEMP in eV, drawn against each chord's Z "
+    "(m) in 0.5 cm bins: a chord's value fills the bins within 1.5 cm of it and "
+    "wider gaps stay empty; 0 (no fit) is empty. Log colour from 0.5 to 100 eV "
+    "(black is no measurement or below 0.5 eV, the top colour is 100 eV or more). "
+    "Fits above 100 eV occur and can be spurious; the chords move with the Thomson "
+    "configuration (upper, lower or split)."
 )
 IRTV_TITLE = "IRTV heat flux (W/cm²)"
+IRTV_TEMP_TITLE = "IRTV temperature (°C)"
 #: The fetch's time blocks (detach_default_fetch.IRTV_BLOCK_MS), aligned to
 #: multiples of it; the row puts each block at its centre.
 IRTV_BLOCK_MS = 1.0
-#: Radial bin of the heat-flux map; the pixels are about 0.2 cm apart.
+#: Radial bin of the IRTV maps; the pixels are about 0.2 cm apart.
 IRTV_R_BIN_CM = 0.5
 #: A radial bin whose pixels span more than this in Z lies on a vertical wall.
 IRTV_WALL_SPAN_CM = 2.0
@@ -72,6 +86,26 @@ IRTV_CAVEAT = (
     "mean in 0.5 cm radial bins; the centre post's vertical wall (one radius, "
     "many heights) is left out. Colour from 0 to the window's 99.5th percentile."
 )
+IRTV_TEMP_CAVEAT = (
+    "Infrared absolute surface temperature of the lower divertor tiles seen by "
+    "the 60-degree camera (IRTV analysis ABS_T_2D, °C), the heat-flux row's "
+    "twin: 1 ms means of each pixel, then the pixel mean in 0.5 cm radial bins; "
+    "the centre post's vertical wall is left out. Colour from the window's 1st to "
+    "99.5th percentile."
+)
+#: The two IRTV maps: the fetched folder and array, what the row shows, its title,
+#: units, caveat and pinned colour floor (the temperature has no physical zero).
+IRTV_MAPS = {
+    "heat_flux": {
+        "folder": "irtv", "key": "heat_flux", "what": "surface heat flux",
+        "title": IRTV_TITLE, "units": "W/cm²", "caveat": IRTV_CAVEAT, "zmin": 0.0,
+    },
+    "temperature": {
+        "folder": "irtv_temp", "key": "temperature",
+        "what": "absolute surface temperature", "title": IRTV_TEMP_TITLE,
+        "units": "°C", "caveat": IRTV_TEMP_CAVEAT, "zmin": None,
+    },
+}
 CSV_INDICATORS = (
     ("afrac", "Afrac lower", "dimensionless"),
     ("prad_div", "f_div = Prad,div / P_in", "dimensionless"),
@@ -148,13 +182,14 @@ def default_inputs_path(shot, paths):
 
 
 def dts_path(shot, paths):
-    """detach_default_fetch.py's tssdivte00-05 and blessed chord positions."""
-    return paths.root / "detach_default" / "dts" / f"{int(shot)}.npz"
+    """detach_default_fetch.py's blessed divertor Thomson Te (chord x time)."""
+    return paths.root / "detach_default" / "dts_blessed" / f"{int(shot)}.npz"
 
 
-def irtv_path(shot, paths):
-    """detach_default_fetch.py's 1 ms block means of the IRTV heat flux map."""
-    return paths.root / "detach_default" / "irtv" / f"{int(shot)}.npz"
+def irtv_path(shot, paths, quantity="heat_flux"):
+    """detach_default_fetch.py's 1 ms block means of an IRTV map (`IRTV_MAPS`)."""
+    folder = IRTV_MAPS[quantity]["folder"]
+    return paths.root / "detach_default" / folder / f"{int(shot)}.npz"
 
 
 def probes_path(shot, paths):
@@ -713,114 +748,110 @@ def gas_total(source, path, t_range):
 
 
 def dts_panel(shot, paths, t_range=None):
-    """Divertor Te from tssdivte00-05 as steps between the control system's updates.
+    """The blessed divertor Thomson Te as a Z x time map on uniform Z bins.
 
-    The pointnames are sample-and-hold at 0.25 ms; the row keeps only the instants
-    a value changes (one per laser pulse, about 20 ms apart), so it never refines
-    the store grid. Each line is labelled with its blessed chord's Z when the
-    fetch found the chords. None without the fetched file or a live channel.
+    One column per laser pulse (the blessed profiles, about 20 ms apart; the row
+    holds each over its interval, as for any coarse heatmap). Each chord fills the
+    bins within `DTS_REACH_M` of it by nearest chord, so the map reads as the chord
+    array it is and a gap wider than that (upper against lower) stays empty. A 0
+    is no fit, empty. Chords with no fit in the window are left out. None without
+    the fetched file, a live chord or two profiles in the window.
     """
     path = dts_path(shot, paths)
     if not path.is_file():
         return None
     with np.load(path, allow_pickle=False) as data:
-        channels = {
-            name: (
-                np.asarray(data[f"{name}__t"], dtype=float),
-                np.asarray(data[f"{name}__y"], dtype=float),
-            )
-            for name in DTS_POINTNAMES
-            if {f"{name}__t", f"{name}__y"} <= set(data.files)
-        }
-        chords = {
-            key: np.asarray(data[key], dtype=float)
-            for key in ("chord_r_m", "chord_z_m")
-            if key in data.files
-        }
-    for name, (t, y) in channels.items():
-        if t.ndim != 1 or t.shape != y.shape or not np.isfinite(t).all():
-            raise ValueError(f"shot {shot}: {name} clock/value shapes disagree at {path}")
-        if np.any(np.diff(t) < 0):
-            raise ValueError(f"shot {shot}: {name} clock decreases at {path}")
-    if not channels:
-        return None
+        temp = np.asarray(data["temp"], dtype=np.float32)
+        t = np.asarray(data["t_ms"], dtype=float)
+        z = np.asarray(data["z_m"], dtype=float)
+        r = np.asarray(data["r_m"], dtype=float)
+        units = str(data["units"]) if "units" in data.files else "eV"
+    if (
+        t.ndim != 1
+        or z.ndim != 1
+        or r.shape != z.shape
+        or temp.shape != (len(z), len(t))
+        or not np.isfinite(t).all()
+        or np.any(np.diff(t) <= 0)
+    ):
+        raise ValueError(f"shot {shot}: blessed Te, clock and chords disagree at {path}")
     lo, hi = t_range if t_range is not None else (0.0, np.inf)
-    x = np.unique(
-        np.concatenate(
-            [t[np.r_[True, np.diff(y) != 0]] for t, y in channels.values() if len(t)]
+    keep = (t >= lo) & (t <= hi)
+    te = np.where(np.isfinite(temp) & (temp > 0), temp, np.nan)[:, keep]
+    live = np.isfinite(z) & np.isfinite(te).any(axis=1)
+    if keep.sum() < 2 or not live.any():
+        return None
+    order = np.flatnonzero(live)[np.argsort(z[live], kind="stable")]
+    z_live, te = z[order], te[order]
+    z0 = np.floor((z_live[0] - DTS_REACH_M) / DTS_Z_BIN_M) * DTS_Z_BIN_M
+    n = int(np.ceil((z_live[-1] + DTS_REACH_M - z0) / DTS_Z_BIN_M - 1e-9))
+    centres = z0 + (np.arange(n) + 0.5) * DTS_Z_BIN_M
+    gap = np.abs(centres[:, None] - z_live[None, :])
+    nearest = gap.argmin(axis=1)
+    reached = gap[np.arange(n), nearest] <= DTS_REACH_M
+    filled = np.where(reached[:, None], te[nearest], np.nan)
+    band, hidden = None, []
+    cuts = np.flatnonzero(np.diff(z_live) > DTS_ARRAY_GAP_M) + 1
+    arrays = np.split(np.arange(len(z_live)), cuts)
+    if len(arrays) > 1:
+        major = [a for a in arrays if len(a) >= DTS_MINOR_CHORDS]
+        major = major or [max(arrays, key=len)]
+        shown = np.flatnonzero(reached & np.isin(nearest, np.concatenate(major)))
+        first, last = int(shown.min()), int(shown.max())
+        chord_bin = np.clip(np.floor((z_live - z0) / DTS_Z_BIN_M).astype(int), 0, n - 1)
+        hidden = np.flatnonzero((chord_bin < first) | (chord_bin > last))
+        if len(hidden):
+            band = (float(centres[first]), float(centres[last]))
+    caveat = DTS_CAVEAT
+    if len(hidden):
+        caveat += (
+            f" {len(hidden)} of the {len(z_live)} chords (Z "
+            + ", ".join(f"{z_live[i]:+.2f}" for i in hidden)
+            + " m, a minor array) lie outside the displayed Z band; the row holds them."
         )
-    )
-    x = x[(x >= lo) & (x <= hi)]
-    x = x[np.r_[np.diff(x) >= DTS_MERGE_MS, True]] if len(x) else x
-    if len(x) < 2:
-        return None
-    rows = []
-    for t, y in channels.values():
-        j = np.searchsorted(t, x, side="right") - 1
-        value = np.where(j >= 0, y[np.maximum(j, 0)], np.nan)
-        rows.append(np.where(np.isfinite(value) & (value > 0), value, np.nan))
-    rows = np.asarray(rows)
-    live = np.flatnonzero(np.isfinite(rows).any(axis=1))
-    if not len(live):
-        return None
-    period = float(np.median(np.diff(x)))
-    ends = np.minimum(np.r_[x[1:], x[-1] + period], x + DTS_HOLD_PERIODS * period)
-    names = list(channels)
-    k = [int(names[i][-2:]) for i in live]
-    position = {
-        key: [
-            float(values[c]) if c < len(values) and np.isfinite(values[c]) else None
-            for c in k
-        ]
-        for key, values in chords.items()
-    }
-    z = position.get("chord_z_m", [None] * len(k))
     return Panel(
         title=DTS_TITLE,
-        x=(x + ends) / 2,
-        y=rows[live],
-        ylabel="eV",
-        legend=[
-            f"{c:02d} Z {zc:+.3f} m (eV)" if zc is not None else f"{c:02d} (eV)"
-            for c, zc in zip(k, z, strict=True)
-        ],
+        kind="heatmap",
+        x=t[keep],
+        y=centres,
+        z=filled,
+        ylabel="Z (m)",
+        zmin=DTS_FLOOR_EV,
+        zmax=DTS_CEIL_EV,
+        bands=[band] if band else (),
         metadata={
             "source": str(path),
-            "pointnames": [names[i] for i in live],
-            "units": "eV",
-            "units_note": "PTDATA labels tssdivte 'vo' (the control system's "
-            "default); the values are Te in eV",
-            "chord": "blessed divertor chord k (\\ELECTRONS::TOP.TS.BLESSED."
-            "DIVERTOR:R/Z) for channel k",
-            "chord_r_m": position.get("chord_r_m"),
-            "chord_z_m": position.get("chord_z_m"),
-            "update_policy": (
-                "steps from each update instant (a value changes; instants under "
-                f"{DTS_MERGE_MS:g} ms apart merge) to the next, at most "
-                f"{DTS_HOLD_PERIODS:g} median periods"
-            ),
-            "trace_style": "step",
-            "bin_width_ms": period,
-            "bin_start_ms": x.tolist(),
-            "bin_end_ms": ends.tolist(),
-            "caveat": DTS_CAVEAT,
+            "node": r"\ELECTRONS::TOP.TS.BLESSED.DIVERTOR:TEMP",
+            "quantity": "divertor Thomson Te, blessed fit",
+            "units": units,
+            "z_scale": "log",
+            "z_bin_m": DTS_Z_BIN_M,
+            "z_reach_m": DTS_REACH_M,
+            "chords": len(z_live),
+            "chord_z_m": [round(float(v), 4) for v in z_live],
+            "chord_r_m": [round(float(v), 4) for v in r[order]],
+            "band_z_m": list(band) if band else None,
+            "chords_outside_band_z_m": [round(float(z_live[i]), 4) for i in hidden],
+            "caveat": caveat,
         },
     )
 
 
-def irtv_panel(shot, paths, t_range=None):
-    """The IRTV heat flux as an R x time map on uniform radial bins.
+def irtv_panel(shot, paths, t_range=None, quantity="heat_flux"):
+    """An IRTV map (`IRTV_MAPS`: the heat flux or the surface temperature) as an R x
+    time map on uniform radial bins.
 
     The fetch keeps 1 ms means of every pixel; here each `IRTV_R_BIN_CM` bin is
     the mean of its pixels, and a bin whose pixels span more than
     `IRTV_WALL_SPAN_CM` in Z (the centre post, seen edge-on in R) is left out.
     None without the fetched file or two blocks in the window.
     """
-    path = irtv_path(shot, paths)
+    spec = IRTV_MAPS[quantity]
+    path = irtv_path(shot, paths, quantity)
     if not path.is_file():
         return None
     with np.load(path, allow_pickle=False) as data:
-        flux = np.asarray(data["heat_flux"], dtype=np.float32)
+        flux = np.asarray(data[spec["key"]], dtype=np.float32)
         t = np.asarray(data["t_ms"], dtype=float)
         r = np.asarray(data["r_cm"], dtype=float)
         z = np.asarray(data["z_cm"], dtype=float)
@@ -872,23 +903,23 @@ def irtv_panel(shot, paths, t_range=None):
     if not np.isfinite(mean).any():
         return None
     return Panel(
-        title=IRTV_TITLE,
+        title=spec["title"],
         kind="heatmap",
         x=t,
         y=r0 + (np.arange(n) + 0.5) * IRTV_R_BIN_CM,
         z=mean.T,
         ylabel="R (cm)",
-        zmin=0.0,
+        zmin=spec["zmin"],
         metadata={
             "source": str(path),
             **about,
             "view": "LODIV_60RP2 (lower divertor, 60-degree camera)",
-            "quantity": "surface heat flux",
-            "units": "W/cm²",
+            "quantity": spec["what"],
+            "units": spec["units"],
             "time_block_ms": IRTV_BLOCK_MS,
             "r_bin_cm": IRTV_R_BIN_CM,
             "wall_left_out": wall,
-            "caveat": IRTV_CAVEAT,
+            "caveat": spec["caveat"],
         },
     )
 
@@ -938,7 +969,11 @@ def panels(shot, *, t_range=None, paths=None):
             panel = gas_total(source, path, t_range)
         if panel is not None:
             built.append(panel)
-    for panel in (dts_panel(shot, paths, t_range), irtv_panel(shot, paths, t_range)):
+    for panel in (
+        dts_panel(shot, paths, t_range),
+        irtv_panel(shot, paths, t_range),
+        irtv_panel(shot, paths, t_range, "temperature"),
+    ):
         if panel is not None:
             built.append(panel)
     if not afrac:
