@@ -316,7 +316,8 @@ button.primary { background: var(--label); border-color: var(--label); color: #f
 #queue .chip.extra.current { border-color: var(--ink); }
 /* A long list draws only the lines near the view between two spacers (LongList, R2_CHIPS):
  * the chips then sit in a fixed number of columns, so each line holds the rows it is drawn with. */
-#queue.long { display: grid; grid-template-columns: repeat(var(--per-line, 1), max-content); }
+#queue.long { display: grid; grid-template-columns: repeat(var(--per-line, 1), max-content);
+  scroll-snap-type: none; } /* only drawn chips snap: a jump past them would be pulled back */
 #queue.long, #silver-shots.long { overflow-anchor: none; scrollbar-gutter: stable; }
 .long-gap { grid-column: 1 / -1; }
 .chip.dirty::after {

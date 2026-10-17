@@ -217,6 +217,26 @@ def test_a_press_on_the_label_grabs_the_nearest_thing():
 
 
 @needs_node
+def test_a_press_on_dense_spans_grabs_the_one_under_it_or_the_nearest_edge():
+    """A span narrower than two grabs is taken by a press inside it (10 ms drafts at the fit
+    view), not by a neighbour's edge; otherwise the nearest edge wins, not the last span's."""
+    dense = {"window": [0, 1000], "intervals": [[100, 102, 1], [102, 104, 2], [104, 106, 1]]}
+    apart = {"window": [0, 1000], "intervals": [[100, 304, 1], [306, 400, 1]]}
+    found = _node(
+        "[[input.dense, 103], [input.dense, 101], [input.dense, 98], [input.apart, 303],"
+        " [input.apart, 306]].map(([label, x]) => m.hitTest(label, x, 5, 40, (t) => t))",
+        {"dense": dense, "apart": apart},
+    )
+    assert found == [
+        {"kind": "move", "index": 1},
+        {"kind": "move", "index": 0},
+        {"kind": "edge", "index": 0, "edge": 0},
+        {"kind": "edge", "index": 0, "edge": 1},
+        {"kind": "edge", "index": 1, "edge": 0},
+    ]
+
+
+@needs_node
 def test_unmarked_time_is_what_the_grid_fills_with_the_default_class():
     """The page draws an event's default class where `unmarked` says (R2_CHIPS): the
     window's time no annotation of either lane marks, the frames `grid.frames` fills."""

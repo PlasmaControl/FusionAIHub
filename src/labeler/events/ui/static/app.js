@@ -153,12 +153,21 @@ function hitTest(label, x, y, height, px, lane) {
   }
   const spans = label.intervals;
   const matches = (i) => lane == null || (label.iscrowd?.[i] === 1 ? 1 : 0) === lane;
+  // A span narrower than two grabs is taken by a press inside it: its neighbours' edges would
+  // otherwise take every press on it (dense 10 ms drafts at the fit view). Then the nearest edge.
+  for (let index = spans.length - 1; index >= 0; index--) {
+    const a = px(spans[index][0]), b = px(spans[index][1]);
+    if (matches(index) && b - a < 2 * GRAB && x > a && x < b) return { kind: "move", index };
+  }
+  let near = null, best = GRAB;
   for (let index = spans.length - 1; index >= 0; index--) {
     if (!matches(index)) continue;
     for (const edge of [0, 1]) {
-      if (Math.abs(x - px(spans[index][edge])) <= GRAB) return { kind: "edge", index, edge };
+      const off = Math.abs(x - px(spans[index][edge]));
+      if (off < best || (off === best && !near)) [near, best] = [{ kind: "edge", index, edge }, off];
     }
   }
+  if (near) return near;
   for (let index = spans.length - 1; index >= 0; index--) {
     if (!matches(index)) continue;
     if (x > px(spans[index][0]) && x < px(spans[index][1])) return { kind: "move", index };
@@ -783,17 +792,23 @@ async function selectSilverShot(shot) {
   }
 }
 
-/** One common grid; a higher layer's unassessed frames fall through. */
+/** One common grid; a higher layer's unassessed frames fall through. A layer's unmarked
+ * time inside its window reads as its `fill` (the event's default class in a save, else
+ * 0), as in the export; `implied` marks the frames that a nonzero fill gave. */
 function silverFrames(event, range, layers = event.layers) {
   const [lo, hi] = range;
   const n = Math.max(0, (hi - lo) / GRID_MS);
   const cells = new Int8Array(n).fill(-1), origin = new Int16Array(n).fill(-1);
+  const implied = new Uint8Array(n);
   const index = t => clamp((t - lo) / GRID_MS, 0, n);
   layers.forEach((layer, i) => {
-    const label = layer.label;
-    const values = new Int8Array(n).fill(-1);
-    values.fill(0, index(label.window[0]), index(label.window[1]));
-    for (const [a, b, c] of label.intervals) values.fill(c, index(a), index(b));
+    const label = layer.label, fill = Number(layer.fill) || 0;
+    const values = new Int8Array(n).fill(-1), drawn = new Uint8Array(n);
+    values.fill(fill, index(label.window[0]), index(label.window[1]));
+    for (const [a, b, c] of label.intervals) {
+      values.fill(c, index(a), index(b));
+      drawn.fill(1, index(a), index(b));
+    }
     // A table's not-observable stretches say nothing: a lower layer may. The
     // owner's own in a save (held) stay unassessed: no lower layer fills them.
     for (const [a, b] of layer.unknown || []) values.fill(-1, index(a), index(b));
@@ -803,21 +818,32 @@ function silverFrames(event, range, layers = event.layers) {
       const t = lo + k * GRID_MS;
       if (event.allowed && !event.allowed.some(([a, b]) => a <= t && t < b)) continue;
       if (origin[k] !== -1) continue;
-      if (values[k] !== -1) { cells[k] = values[k]; origin[k] = i; } else if (held[k]) origin[k] = i;
+      if (values[k] !== -1) {
+        cells[k] = values[k];
+        origin[k] = i;
+        implied[k] = fill !== 0 && !drawn[k];
+      } else if (held[k]) origin[k] = i;
     }
   });
-  return { cells, origin };
+  return { cells, origin, implied };
+}
+
+/** `runs` of `silverFrames`, each with whether it is implied (drawn lighter, as the event
+ * page draws the default class). */
+function frameRuns({ cells, implied }) {
+  return runs(Int16Array.from(cells, (c, k) => (implied[k] ? 256 + c : c)))
+    .map(([a, b, key]) => (key >= 256 ? [a, b, key - 256, true] : [a, b, key, false]));
 }
 
 function drawSilverCanvas(canvas, event, layers = event.layers) {
   const range = Silver.overview.t_range;
-  const { cells, origin } = silverFrames(event, range, layers);
+  const frames = silverFrames(event, range, layers), { cells, origin } = frames;
   const ratio = window.devicePixelRatio || 1;
   canvas.width = Math.round(canvas.clientWidth * ratio);
   canvas.height = Math.round(canvas.clientHeight * ratio);
   const g = context(canvas), w = canvas.clientWidth, h = canvas.clientHeight;
   const x = k => k / Math.max(1, cells.length) * w;
-  for (const [a, b, c] of runs(cells)) {
+  for (const [a, b, c, light] of frameRuns(frames)) {
     if (c === -1) {
       g.save(); g.beginPath(); g.rect(x(a), 0, x(b) - x(a), h); g.clip();
       g.strokeStyle = T.rule;
@@ -826,8 +852,10 @@ function drawSilverCanvas(canvas, event, layers = event.layers) {
       }
       g.restore();
     } else {
+      g.globalAlpha = light ? 0.5 : 1;
       g.fillStyle = c === 0 ? T.unreviewed : categoryColour(c, event.event, event.categories);
       g.fillRect(x(a), 0, x(b) - x(a), h);
+      g.globalAlpha = 1;
     }
   }
   return [...new Set(origin)].filter(i => i >= 0).map(i => layers[i].name).join(" · ") || "unassessed";
@@ -1100,7 +1128,7 @@ function leave() {
 async function openEvent(event, shot, silverReview = false) {
   if (event === "silver") return openSilver(Silver.batch, Silver.shot);
   if (S.api >= 11) {
-    // `silverReview`: opened from By shot, so the queue is By shot's list and G goes back
+    // `silverReview`: opened from All, so the queue is the list All walks and G goes back
     Lists.context = silverReview || (Lists.context && Lists.shot === shot);
     Lists.byShot = false;
     Lists.show();
@@ -3321,6 +3349,7 @@ const ShotSearch = {
   serial: 0, // the latest request; an older answer is dropped
   shots: [], // the matches shown: [{shot, lists, cached}]
   active: -1, // the match ↑/↓ picked, or -1
+  opening: false, // open() is blurring the box
 
   /** The list of matches, made once at the end of the body (#bottom scrolls and would cut it). */
   list() {
@@ -3413,7 +3442,9 @@ const ShotSearch = {
     clearTimeout(ShotSearch.timer);
     ShotSearch.serial++;
     ShotSearch.show([]);
+    ShotSearch.opening = true; // the blur keeps the number typed: the shot it opens says it next
     $("shot").blur();
+    ShotSearch.opening = false;
     if (Lists.byShot) return Lists.select(shot); // All: the shot on every event
     if (shot === S.shot && S.meta?.event === S.event) return; // after an event change the shot opens anew
     openShot(shot);
@@ -3433,10 +3464,15 @@ const ShotSearch = {
       else if (first != null) ShotSearch.open(first);
       else if (/^\d+$/.test(typed)) ShotSearch.open(Number(typed));
     } else if (event.key === "Escape") {
-      $("shot").value = (Lists.byShot ? Lists.shot : S.shot) ?? "";
+      ShotSearch.restore();
       ShotSearch.show([]);
       $("shot").blur();
     }
+  },
+
+  /** The box says the shot on screen again (Escape, or a blur that opened nothing). */
+  restore() {
+    $("shot").value = (Lists.byShot ? Lists.shot : S.shot) ?? "";
   },
 };
 
@@ -3622,9 +3658,12 @@ function wire() {
   $("bottom").addEventListener("scroll", ShotSearch.place);
   $("silver-page").addEventListener("scroll", ShotSearch.place);
   window.addEventListener("resize", ShotSearch.place);
-  $("shot").addEventListener("blur", () => setTimeout(() => {
-    if (document.activeElement !== $("shot")) ShotSearch.show([]);
-  }, 100));
+  $("shot").addEventListener("blur", () => {
+    if (!ShotSearch.opening) ShotSearch.restore(); // a press elsewhere mid-typing leaves no digits behind
+    setTimeout(() => {
+      if (document.activeElement !== $("shot")) ShotSearch.show([]);
+    }, 100);
+  });
   $("queue").addEventListener("click", (event) => {
     const chip = event.target.closest(".chip");
     if (chip) openShot(Number(chip.dataset.shot));
@@ -3649,6 +3688,16 @@ function wire() {
   document.addEventListener("click", (event) => {
     const button = event.target.closest?.("button");
     if (button && event.detail > 0) button.blur();
+  });
+  // So does a pick from a dropdown or a tick in a box (the list, Resolution, View, the editor's):
+  // left focused, the control takes K, the arrows and Delete (R2_CHIPS I2). Text boxes (Find shot,
+  // Add row, the editor's) and a dialog's controls (the names list takes Enter) keep their keys.
+  document.addEventListener("change", (event) => {
+    const control = event.target;
+    if (control.closest?.("dialog")) return;
+    if (control.matches?.("select:not([size]):not([multiple]), input[type=checkbox], input[type=radio], input[type=range]")) {
+      control.blur();
+    }
   });
   $("version-list").addEventListener("click", (event) => {
     const button = event.target.closest("[data-version]");
@@ -3697,7 +3746,7 @@ function wire() {
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { ms, snapSpan, snapWindow, silverFrames, paint, runs, normalise, diffRuns, versionChanges, niceStep, hitTest, hasOverlaps, regionAt, lut, modeLut, producerAt, clipToAllowed, gaps, unmarked };
+  module.exports = { ms, snapSpan, snapWindow, silverFrames, frameRuns, paint, runs, normalise, diffRuns, versionChanges, niceStep, hitTest, hasOverlaps, regionAt, lut, modeLut, producerAt, clipToAllowed, gaps, unmarked };
 } else {
   boot();
 }

@@ -32,11 +32,15 @@ const Lists = {
   /** What renderQueue compares to rebuild every chip when the event or its list changes. */
   queueKey: (event, name = Lists.name) => `${event}/${name ?? ""}`,
 
-  /** An option's text: "elm · 576 · 120 saved" (the roster by its title). */
+  /** What All's shot rows are drawn for: the list, and the event a roster is of (each event has
+   * its own). */
+  walkKey: (overview) => (overview ? `${overview.list}/${overview.event ?? ""}` : null),
+
   /** A strip layer's origin in one word (its full name is the tooltip). */
   originText: (layer) => ({ saved: "saved", folded: "saved", format: "curated", extend: "model",
     source: "source", suggest: "suggestion" })[layer.kind] || layer.kind,
 
+  /** An option's text: "elm · 576 · 120 saved" (the roster by its title). */
   optionText: (entry) => `${entry.kind === "roster" ? entry.title : entry.name} · ${entry.n} · ${entry.n_saved ?? 0} saved`,
 
   /** The dropdown's three groups, [{label, options: [{value, text, title}]}], empty ones left out:
@@ -277,7 +281,7 @@ const Lists = {
     }));
     const shots = Lists.overview?.shots || [];
     Lists.shotRows ??= new LongList($("silver-shots"), Lists.shotRow, Lists.markShot);
-    Lists.shotRows.draw(shots, Lists.overview?.list ?? null);
+    Lists.shotRows.draw(shots, Lists.walkKey(Lists.overview));
     Lists.shotRows.reveal(shots.findIndex((row) => row.shot === Lists.shot));
     // As on an event: Next names the shot K opens, the bar and the box the shot on screen.
     const next = Lists.step(shots, Lists.shot, 1);
@@ -302,13 +306,14 @@ const Lists = {
   },
 
   /** The walked list's shots: /api/overview?list= for a named list; for the roster (each
-   * event's own), the event's queue in its order, done once saved (no counts across events). */
+   * event's own, so the answer names its `event`), the event's queue in its order, done once
+   * saved (no counts across events). */
   async fetchOverview(name, event = S.event) {
     if (name !== Lists.ROSTER) return (await api(`/api/overview?list=${encodeURIComponent(name)}`)).json();
     const queue = await (await api(Lists.queueUrl(event, Lists.ROSTER))).json();
     const rows = (queue.shots || []).filter((row) => !row.extra);
     return {
-      list: Lists.ROSTER, title: Lists.lists.find((entry) => entry.kind === "roster")?.title || "Event roster",
+      list: Lists.ROSTER, event, title: Lists.lists.find((entry) => entry.kind === "roster")?.title || "Event roster",
       shots: rows.map((row, i) => ({ shot: row.shot, order: i + 1, classes: [], done: row.state !== "unreviewed" })),
     };
   },
@@ -411,16 +416,17 @@ const Lists = {
     }
   },
 
-  /** One strip: each 10 ms frame in its category's colour, hatched where nothing assessed it.
-   * Returns the layers it drew from. */
+  /** One strip: each 10 ms frame in its category's colour, lighter where a save's unmarked
+   * time reads as the event's default class, hatched where nothing assessed it. Returns the
+   * layers it drew from. */
   drawStrip(canvas, event, range, layers = event.layers) {
-    const { cells, origin } = silverFrames(event, range, layers);
+    const frames = silverFrames(event, range, layers), { cells, origin } = frames;
     const ratio = window.devicePixelRatio || 1;
     canvas.width = Math.round(canvas.clientWidth * ratio);
     canvas.height = Math.round(canvas.clientHeight * ratio);
     const g = context(canvas), w = canvas.clientWidth, h = canvas.clientHeight;
     const x = (k) => (k / Math.max(1, cells.length)) * w;
-    for (const [a, b, c] of runs(cells)) {
+    for (const [a, b, c, light] of frameRuns(frames)) {
       if (c === -1) {
         g.save();
         g.beginPath();
@@ -435,8 +441,10 @@ const Lists = {
         }
         g.restore();
       } else {
+        g.globalAlpha = light ? 0.5 : 1;
         g.fillStyle = c === 0 ? T.unreviewed : categoryColour(c, event.event, event.categories);
         g.fillRect(x(a), 0, x(b) - x(a), h);
+        g.globalAlpha = 1;
       }
     }
     return [...new Set(origin)].filter((i) => i >= 0).map((i) => layers[i]);
@@ -590,6 +598,7 @@ class LongList {
       if (row.shot > this.rows[widest].shot) widest = i;
     });
     const probe = this.make(this.rows[widest], widest);
+    this.mark(probe, this.rows[widest], widest); // its class sets its size (a chip is 20 px)
     box.append(probe);
     const rect = probe.getBoundingClientRect(), item = getComputedStyle(probe), own = getComputedStyle(box);
     const px = (value) => parseFloat(value) || 0;
@@ -678,7 +687,8 @@ async function chooseList(name) {
   }
   if (S.event !== event) return;
   Lists.take(event, queue, saveCount, Lists.chosen(event));
-  if (ticket !== S.ticket || (S.shot != null && inQueue(S.shot))) return;
+  if (ticket !== S.ticket) return;
+  if (S.shot != null && inQueue(S.shot)) return revealChip(); // the open shot stays, its chip in view
   await openShot(inQueue(queue.resume) ? queue.resume : firstToReview());
 }
 
@@ -704,14 +714,17 @@ async function openByShot(name = Lists.name, shot = null, event = null) {
   leave();
   document.body.classList.remove("busy"); // as busy(null) does, without writing #status
   Object.assign(S, { meta: null, label: null, data: null, overview: null });
-  Object.assign(Lists, {
-    byShot: true, context: false, name, shot, strips: null, overview: Lists.overview?.list === name ? Lists.overview : null,
-  });
-  const sequence = ++Lists.sequence;
+  Object.assign(Lists, { byShot: true, context: false, name, shot, strips: null });
+  const sequence = ++Lists.sequence; // a step or a click after this chooses the shot instead
   Activity.clear("by-shot");
   if (!S.event) {
     const pick = [stored("labeler:event"), ...S.events.map((row) => row.event)].find((found) => found && hasEvent(found));
     if (pick) S.event = pick; // the event whose lists are offered (and whose roster All walks)
+  }
+  // The shots in hand show until the answer: the same named list, or this event's roster (G
+  // from another event walks that event's roster).
+  if (Lists.walkKey(Lists.overview) !== Lists.walkKey({ list: name, event: name === Lists.ROSTER ? S.event : null })) {
+    Lists.overview = null;
   }
   $("silver-strips").replaceChildren();
   $("silver-time").textContent = "";
@@ -724,17 +737,19 @@ async function openByShot(name = Lists.name, shot = null, event = null) {
     // family buttons then follow; R2_CHIPS); the roster's overview needs the lists first.
     const stale = S.event && (Lists.event !== S.event || !Lists.lists.some((entry) => entry.name === name));
     if (stale && name === Lists.ROSTER) await Lists.load(S.event);
+    // Only another opening drops the answer (S.ticket): a K or a click while it is on its way
+    // drops the older strips request, never this one (R2_CHIPS I3).
     const overview = await Lists.fetchOverview(name);
-    if (ticket !== S.ticket || sequence !== Lists.sequence) return;
+    if (ticket !== S.ticket) return;
     Lists.overview = overview;
     $("silver-title").textContent = overview.title || name;
     Lists.renderShots();
     if (stale && name !== Lists.ROSTER) {
       await Lists.load(S.event);
-      if (ticket !== S.ticket || sequence !== Lists.sequence) return;
+      if (ticket !== S.ticket) return;
       Lists.renderShots();
     }
-    if (shot == null) return;
+    if (shot == null || sequence !== Lists.sequence) return; // a step or a click chose since
     await Lists.select(shot);
     if (event && ticket === S.ticket && Lists.strips && hasEvent(event)) await Lists.openEvent(event);
   } catch (error) {

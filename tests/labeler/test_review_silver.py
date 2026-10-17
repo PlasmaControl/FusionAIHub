@@ -658,6 +658,24 @@ def test_silver_strip_unknown_stretches_fall_through():
     assert found == [[1, -1, 1], [0, 0, 0]], "the owner's own stays unassessed"
 
 
+@needs_node
+def test_silver_strip_unmarked_time_reads_as_the_layers_fill():
+    """A save's unmarked time inside its window is the layer's `fill` (the event's
+    default class), as in the export, and drawn lighter; a fill of 0 is as before."""
+    event = {"layers": [
+        {"label": {"window": [0, 50], "intervals": [[20, 30, 1]]}, "fill": 2},
+        {"label": {"window": [0, 60], "intervals": [[50, 60, 3]]}, "fill": 0},
+    ]}
+    found = _node(
+        "(() => {const r = m.silverFrames(input, [0,60]); "
+        "return [Array.from(r.cells), Array.from(r.implied), m.frameRuns(r)];})()", event,
+    )
+    assert found == [
+        [2, 2, 1, 2, 2, 3], [1, 1, 0, 1, 1, 0],
+        [[0, 2, 2, True], [2, 3, 1, False], [3, 5, 2, True], [5, 6, 3, False]],
+    ]
+
+
 @pytest.mark.skipif(NODE is None or not SHELLS, reason="needs node and headless Chromium")
 def test_silver_page_navigation_reload_off_roster_save_and_next_event(
     served_browser, tmp_path, monkeypatch,  # noqa: F811

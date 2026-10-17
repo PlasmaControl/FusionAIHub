@@ -1,8 +1,10 @@
 """R2_CHIPS in a real browser: a list of `N` shots on the event page's chips and in All (drawn
-in part; K and Find shot keep the open shot's chip or row in view and marked), the owner's
-Delete on a drafted span with the focus left in the event dropdown (Save writes the label
-without it), and an event's default class drawn in its unmarked time. The scenario is
-review_long_list.mjs, run on review_browser.mjs's transport as the D1 checks are."""
+in part; K and Find shot keep the open shot's chip or row in view and marked; the chips' line
+measured on a real chip), the owner's Delete on a drafted span with the focus left in the event
+dropdown or in Resolution (Save writes the label without it), keys after a pick in the list
+dropdown, an event's default class drawn in its unmarked time on the event page and in All, and
+All's roster walk across events. The scenario is review_long_list.mjs, run on
+review_browser.mjs's transport as the D1 checks are."""
 
 from __future__ import annotations
 
@@ -100,7 +102,7 @@ def test_a_long_list_and_the_label_in_a_browser(served, tmp_path):
     checks = json.loads(result.stdout.strip().splitlines()[-1])
     failed = [item for item in checks if not item["ok"]]
     assert not failed, json.dumps(failed, indent=1)[:6000]
-    assert len(checks) == 7
+    assert len(checks) == 12
     # Save wrote the drafted label without its span: the window alone, nothing marked (the
     # unmarked time's default class is how it reads, never a stored span).
     saved = labels.read_labels(labels.labels_path(paths.label_tables / "alfven_eigenmode"))
