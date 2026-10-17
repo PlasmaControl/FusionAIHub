@@ -1,4 +1,5 @@
-"""Plan D.8's twenty-one D2 checks and plan D.B's dock checks in a real browser: views,
+"""Plan D.8's twenty-one D2 checks, review D2B's dock width at 1280 (22, 23), D2C's colour
+bar and value readout (24) and plan D.B's dock checks in a real browser: views,
 the dock, pins, the Values readout, the cut margins, added signals with their fetch and
 error states, saved views, the narrow overlay, and on detachment the dock that opens with
 the TangTV inversion, the EFIT equilibrium and the cameras. The scenario is
@@ -255,6 +256,6 @@ def test_the_d2_workspace_in_a_browser(served, tmp_path):
     print(json.dumps(checks, indent=1))  # the report's numbers (pytest -rP)
     assert [c for c in checks if not c["ok"]] == [], checks
     names = [c["name"].split(".")[0] for c in checks]
-    assert names == [str(n) for n in range(1, 22)] + [f"B{n}" for n in range(1, 6)] + ["E"]
+    assert names == [str(n) for n in range(1, 25)] + [f"B{n}" for n in range(1, 6)] + ["E"]
     spans = labels.read_saved(paths.label_tables / AE)[170815].intervals
     assert {(1240, 1360), (500, 600)} <= {(a, b) for a, b, *_ in spans}, spans

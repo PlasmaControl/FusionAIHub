@@ -1579,6 +1579,7 @@ function drawRows() {
     if (workspace) drawPins(g, h);
     g.restore();
     drawGutter(g, row, range, h);
+    if (row.kind === "image" && !row.modes) drawColourBar(g, row, w, h);
     const note = S.event === "detachment" && indicatorNote(row, S.video?.time);
     if (note) {
       g.font = FONT; g.textAlign = "left";
@@ -1592,6 +1593,77 @@ function drawRows() {
     g.fillRect(0, h - 1, w, 1);
   });
   if (workspace) drawAddedRows();
+}
+
+/** The colours of `S.lut` as a 1 x 256 canvas, z_hi at the top; remade when S.lut changes. */
+const colourBar = { lut: null, canvas: null };
+
+/** An image row's colour bar (a modes row keeps its key in the gutter instead): a 6 px strip of
+ * the row's colours, contrast floor included, in the row's 12 px right edge (RIGHT), so the plot
+ * keeps its width; z_hi with z_units at the top right corner of the plot and z_lo at the bottom
+ * (", log" on a log row). The cut margin, when open, lies over the two labels and names the
+ * scale itself; the strip stays in view. Nothing on a row without a usable z_lo < z_hi. */
+function drawColourBar(g, row, w, h) {
+  const scale = Slice.zScale(row);
+  if (!scale || h < 12) return;
+  if (colourBar.lut !== S.lut) {
+    const canvas = document.createElement("canvas");
+    [canvas.width, canvas.height] = [1, 256];
+    const c = canvas.getContext("2d");
+    const image = c.createImageData(1, 256);
+    const pixels = new Uint32Array(image.data.buffer);
+    for (let y = 0; y < 256; y++) pixels[y] = S.lut[255 - y];
+    c.putImageData(image, 0, 0);
+    Object.assign(colourBar, { lut: S.lut, canvas });
+  }
+  const [x, top, height] = [w - RIGHT + 3, 1, h - 3];
+  g.save();
+  g.imageSmoothingEnabled = false;
+  g.drawImage(colourBar.canvas, 0, 0, 1, 256, x, top, 6, height);
+  g.strokeStyle = T.rule;
+  g.lineWidth = 1;
+  g.strokeRect(x - 0.5, top - 0.5, 7, height + 1);
+  if (h >= 36) {
+    const units = scale.units ? ` ${scale.units}` : "";
+    const edge = w - RIGHT - 2;
+    g.font = FONT;
+    g.textAlign = "right";
+    for (const [text, y] of [[`${Slice.number(scale.hi)}${units}`, 12],
+      [`${Slice.number(scale.lo)}${units}${scale.log ? ", log" : ""}`, h - 5]]) {
+      const width = Math.min(g.measureText(text).width, w - GUTTER - RIGHT - 8);
+      g.globalAlpha = 0.85;
+      g.fillStyle = T.panel;
+      g.fillRect(edge - width - 3, y - 10, width + 5, 13);
+      g.globalAlpha = 1;
+      g.fillStyle = T.ink;
+      g.fillText(text, edge, y, width);
+    }
+  }
+  g.restore();
+}
+
+/** The value under the pointer on an image row with a z scale, for the cursor's label:
+ * " · 8.12 kHz · −12.3 dB", the byte drawn there mapped back through z_lo..z_hi (log-aware);
+ * "" off such a row. */
+function cursorValue(event) {
+  const canvas = event?.target?.closest?.("#rows > canvas");
+  const i = canvas ? Array.prototype.indexOf.call($("rows").children, canvas) : -1;
+  const row = S.meta?.rows?.[i];
+  const scale = row?.kind === "image" ? Slice.zScale(row) : null;
+  if (!scale) return "";
+  const r = canvas.getBoundingClientRect();
+  const x = event.clientX - r.left;
+  if (x < GUTTER || x > r.width - right()) return "";
+  const t = timeAt(event.clientX);
+  const data = Slice.storeData(i, t);
+  const j = data ? Slice.bucket(data, t) : -1;
+  if (j < 0) return "";
+  // drawImage puts bins [first, stop) over the row's h - 1 px, the highest at the top.
+  const [first, stop] = bandBins(row);
+  const f = clamp((event.clientY - r.top) / Math.max(1, r.height - 1), 0, 1 - 1e-9);
+  const bin = stop - 1 - Math.floor(f * (stop - first));
+  const y = `${Slice.number(row.y0 + bin * row.dy)}${row.y_units ? ` ${row.y_units}` : ""}`;
+  return ` · ${y} · ${Slice.zText(scale, data.rows[i][bin * data.n + j])}`;
 }
 
 /** Afrac lower's bins drawn from the ungated ratio, where the producer marked the bin invalid
@@ -2564,7 +2636,7 @@ function onWheel(event, zoomAlways) {
   zoomAt(timeAt(event.clientX), Math.exp(dy * 0.002));
 }
 
-function showCursor(clientX, hover = false) {
+function showCursor(clientX, hover = false, pointer = null) {
   const cursor = $(hover ? "hover-cursor" : "cursor");
   const axis = $("axis-row").getBoundingClientRect();
   const x = clientX - axis.left;
@@ -2575,7 +2647,13 @@ function showCursor(clientX, hover = false) {
   const top = Math.max(viewport.top, videoBottom, $("rows").getBoundingClientRect().top);
   const bottom = $(S.api >= 8 ? "crowd-track" : "label-track").getBoundingClientRect().bottom;
   Object.assign(cursor.style, { left: `${clientX}px`, top: `${top}px`, height: `${bottom - top}px` });
-  $(hover ? "hover-time" : "cursor-time").textContent = `${Math.round(timeAt(clientX))} ms`;
+  // On an image row the label adds the value under the pointer; near the right end it turns
+  // to the left of the line so it stays over the rows.
+  const value = pointer ? cursorValue(pointer) : "";
+  const label = $(hover ? "hover-time" : "cursor-time");
+  label.textContent = `${Math.round(timeAt(clientX))} ms${value}`;
+  label.style.left = "";
+  if (value && clientX + 5 + label.offsetWidth > axis.right - RIGHT) label.style.left = `${-5 - label.offsetWidth}px`;
 }
 
 // -- detachment cameras: small manifests, one lazy frame per camera
@@ -3254,13 +3332,13 @@ function wire() {
       showVideoCursor();
       if (S.drag || event.target.closest?.("#rows, .track, #axis-row")) {
         $("hover-cursor").classList.remove("held");
-        showCursor(event.clientX, true);
+        showCursor(event.clientX, true, event);
       } else if (!(ws() && Slice.showHeld())) $("hover-cursor").hidden = true;
       return;
     }
     if (S.drag || event.target.closest?.("#top, .track")) {
       $("cursor").classList.remove("held");
-      showCursor(event.clientX);
+      showCursor(event.clientX, false, event);
     } else if (!(ws() && Slice.showHeld())) $("cursor").hidden = true;
   });
   window.addEventListener("hashchange", followHash);
@@ -3352,6 +3430,7 @@ function wire() {
     if (event.key === "Enter" || event.key === "Escape") $("reviewer-name").blur();
   });
   new ResizeObserver(() => {
+    if (ws()) cutMargin(); // the cut margin follows the window (review D2B M2); the refetch below covers it
     sizeCanvases();
     render();
     fetchRows();

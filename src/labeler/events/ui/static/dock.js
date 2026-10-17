@@ -13,6 +13,7 @@ const Dock = {
   WIDTH: "clamp(320px, 24vw, 480px)", // the default width; a dragged width is in px
   HANDLE_PX: 6,
   MIN_PX: 280,
+  KEEP_TIME_PX: 820, // a stored width never leaves the time column narrower than this (review D2B I1)
   PROFILE_H: 200,
   SLICE_H: 300,
   NEAR_MS: 40, // a slice farther than this from the time asked is not shown
@@ -103,10 +104,22 @@ const Dock = {
     return S.video ? "video" : "cursor";
   },
 
-  /** The dock's width as the body grid takes it (`--dock-w`), handle included. */
+  /** The dock's width as the body grid takes it (`--dock-w`), handle included. A stored width
+   * (dragged, or from a view saved on another screen) is capped in CSS, so the cap follows the
+   * window: at most 60vw and at most the window less `KEEP_TIME_PX`, but never below the default
+   * width (review D2B I1: a 1,100 px width saved at 1920 left a 1 px plot at 1280). */
   gridWidth() {
     if (!Dock.open) return "0px";
-    return Dock.width ? `${Dock.width + Dock.HANDLE_PX}px` : `calc(${Dock.WIDTH} + ${Dock.HANDLE_PX}px)`;
+    const handle = Dock.HANDLE_PX;
+    if (!Dock.width) return `calc(${Dock.WIDTH} + ${handle}px)`;
+    const cap = `max(calc(${Dock.WIDTH} + ${handle}px), min(60vw, calc(100vw - ${Dock.KEEP_TIME_PX}px)))`;
+    return `min(${Dock.width + handle}px, ${cap})`;
+  },
+
+  /** The cap of `gridWidth` in px for this window, handle included (the drag stops there). */
+  maxGridPx(width = window.innerWidth) {
+    const base = Math.min(480, Math.max(320, width * 0.24)) + Dock.HANDLE_PX;
+    return Math.max(base, Math.min(width * 0.6, width - Dock.KEEP_TIME_PX));
   },
 
   /** Lay the page out again after the dock opened, closed or changed width: the cut margin,
@@ -345,6 +358,10 @@ const Dock = {
   drawValues(node) {
     const { A, B } = Slice.pins;
     const t = Slice.cursorTime();
+    // On detachment this column follows the hover while the slices follow the video (D2B M6).
+    const heading = node.el.querySelector("thead th:nth-child(2)");
+    const named = S.video ? "Hover" : "Cursor";
+    if (heading && heading.textContent !== named) heading.textContent = named;
     const lines = [["t", "t (ms)", [t, A, B].map(Slice.time).concat(A != null && B != null ? Slice.signed(B - A).replace(/ ms$/, "") : "–"), ""]];
     for (const item of Slice.rows()) {
       const values = [valueAt(item, t), valueAt(item, A), valueAt(item, B)];
@@ -424,11 +441,12 @@ const Dock = {
   kind: (name) => Dock.kinds?.find((kind) => kind.kind === name) || null,
 
   /** The cache of one slice kind: `items` by the slice time the server answered with (oldest
-   * use first), `asked` each ms asked -> that slice time (null: none within NEAR_MS). */
+   * use first), `asked` each ms asked -> that slice time (null: none within NEAR_MS), `failed`
+   * the ms whose request last failed for a reason other than 404 (asked again after a move). */
   sliceCache(kind) {
     let cache = Dock.slices.get(kind);
     if (!cache) {
-      cache = { items: new Map(), asked: new Map(), want: null, busy: false, error: null };
+      cache = { items: new Map(), asked: new Map(), want: null, busy: false, error: null, failed: null };
       Dock.slices.set(kind, cache);
     }
     return cache;
@@ -439,6 +457,7 @@ const Dock = {
    * (X-Slice, or the equilibrium's own), never by the time asked. */
   async askSlice(kind, pick) {
     const cache = Dock.sliceCache(kind);
+    if (pick.t_ms === cache.failed) return; // it failed just now; the redraw does not retry it
     cache.want = pick.t_ms;
     if (cache.busy || Dock.answered(cache, pick.t_ms) !== undefined) return;
     cache.busy = true;
@@ -457,11 +476,20 @@ const Dock = {
           cache.items.set(t, item);
           cache.asked.set(ms, t);
           cache.error = null;
+          cache.failed = null;
           Dock.trim(cache);
         } catch (error) {
           if (ticket !== S.ticket) return;
-          cache.error = error.status === 404 ? null : error.message;
-          cache.asked.set(ms, null);
+          if (error.status === 404) {
+            cache.error = null;
+            cache.asked.set(ms, null); // the server has no slice near ms: a lasting answer
+          } else {
+            // A transient failure (5xx, the network) is not an answer (review D2B M4): say so,
+            // leave ms unasked and stop; the next pointer or video move asks again.
+            cache.error = error.message;
+            cache.failed = ms;
+            cache.want = null;
+          }
         }
         Dock.redraw();
       }
@@ -583,17 +611,20 @@ const Dock = {
     g.fillText("R (m)", x1, y1 + 21 > h ? h - 2 : y1 + 21);
     g.textAlign = "left";
     g.fillText("Z (m)", 2, box.top + 8);
+    // Each slice's offset from the time followed sits by its own time (review D2B M11).
+    const from = (shown) => {
+      const off = Math.round(Math.abs(shown - t));
+      return off ? ` (${Slice.time(off)} ms from ${Dock.following()})` : "";
+    };
     if (image) {
       const r = image.record;
-      notes.push(`TangTV ${Slice.time(r.t_ms)} ms`);
+      notes.push(`TangTV ${Slice.time(r.t_ms)} ms${from(r.t_ms)}`);
       node.el.title = `${r.source || ""}${r.units ? ` · ${r.vmin}–${r.vmax} ${r.units}` : ""}`.trim();
     }
-    if (eq) notes.push(`${eq.source || "EFIT"} ${Slice.time(eq.t_ms)} ms`);
+    if (eq) notes.push(`${eq.source || "EFIT"} ${Slice.time(eq.t_ms)} ms${from(eq.t_ms)}`);
     else if (equilibrium && none("equilibrium", pickE)) notes.push(`no EFIT within ${Dock.NEAR_MS} ms`);
     else if (equilibrium) notes.push("EFIT loading");
-    const shown = image?.record.t_ms ?? eq?.t_ms;
-    const off = Math.round(Math.abs(shown - t));
-    node.note.textContent = `${notes.join(" · ")}${off ? `, ${Slice.time(off)} ms from ${Dock.following()}` : ""}`;
+    node.note.textContent = notes.join(" · ");
   },
 
   /** The cached item of `kind` for the asked `ms`: the slice the server answers for it when
@@ -782,7 +813,8 @@ const Dock = {
       event.preventDefault();
       handle.setPointerCapture(event.pointerId);
       const move = (e) => {
-        Dock.width = Math.round(clamp(window.innerWidth - e.clientX - Dock.HANDLE_PX, Dock.MIN_PX, window.innerWidth * 0.6));
+        const most = Dock.maxGridPx() - Dock.HANDLE_PX;
+        Dock.width = Math.round(clamp(window.innerWidth - e.clientX - Dock.HANDLE_PX, Math.min(Dock.MIN_PX, most), most));
         document.body.style.setProperty("--dock-w", Dock.gridWidth());
       };
       const up = () => {
@@ -901,7 +933,7 @@ function panelValues(panel) {
   const table = Object.assign(document.createElement("table"), { className: "dock-values" });
   const head = document.createElement("thead");
   const tr = document.createElement("tr");
-  for (const text of ["", "Cursor", "A", "B", "B−A"]) tr.append(Object.assign(document.createElement("th"), { scope: "col", textContent: text }));
+  for (const text of ["", S.video ? "Hover" : "Cursor", "A", "B", "B−A"]) tr.append(Object.assign(document.createElement("th"), { scope: "col", textContent: text }));
   head.append(tr);
   const body = document.createElement("tbody");
   table.append(head, body);

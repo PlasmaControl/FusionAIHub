@@ -12,7 +12,7 @@
 const Slice = {
   REST_MS: 120, // a pointer still this long has dwelt
   REST_PX: 3, // a move this small is still a dwell
-  UNDO_MS: 500, // axis clicks this recent are undone by a double-click
+  UNDO_MS: 900, // axis clicks this recent are undone by a double-click (as slow as desktops allow)
   MARGIN_PX: [96, 120], // the cut margin's width, and its width on a wide time column
   WIDE_PX: 1300, // a time column at least this wide gets the wider margin
   NARROW_PX: 1100, // below this window width there is no margin (the dock covers the rows)
@@ -29,6 +29,7 @@ const Slice = {
   frame: 0, // the pending redraw of the dock and the margins
   tabs: null, // the pin tabs in #pins, made on first use
   drag: null, // a tab being dragged: {pin, pointerId}
+  ranges: new WeakMap(), // a store trace row's range per data array, for the readout
 
   // -- pure helpers (node tests)
 
@@ -100,6 +101,52 @@ const Slice = {
 
   /** A value for copying: plain digits and a hyphen minus, empty for no data. */
   plain: (v) => (Number.isFinite(v) ? String(Number(v.toPrecision(6))) : ""),
+
+  /** An image row's value scale from its meta: {lo, hi, units, log}, or null for a modes row
+   * (its byte is a mode code) or a row without a usable z_lo < z_hi. The byte is linear in z
+   * from z_lo (0) to z_hi (255), or linear in log10 z when `z_scale` is "log" (z_lo and z_hi
+   * are still linear values). `z_units` may be missing or "" on stores not yet rebuilt. */
+  zScale(row) {
+    if (!row || row.modes) return null;
+    const [lo, hi] = [row.z_lo, row.z_hi];
+    if (typeof lo !== "number" || typeof hi !== "number" || !Number.isFinite(lo) || !Number.isFinite(hi)) return null;
+    const log = row.z_scale === "log";
+    if (!(hi > lo) || (log && !(lo > 0))) return null;
+    return { lo, hi, units: typeof row.z_units === "string" ? row.z_units : "", log };
+  },
+
+  /** A byte (0–255) of a row with `scale`, mapped back to its value. */
+  zOf(scale, byte) {
+    const f = byte / 255;
+    if (!scale.log) return scale.lo + f * (scale.hi - scale.lo);
+    const [a, b] = [Math.log10(scale.lo), Math.log10(scale.hi)];
+    return 10 ** (a + f * (b - a));
+  },
+
+  /** A byte as the readouts show it: "−12.3 dB"; 255 is clipped at z_hi ("≥ 0 dB"), and 0 is
+   * z_lo or below or no data at all (the store writes 0 for both). */
+  zText(scale, byte) {
+    const units = scale.units ? ` ${scale.units}` : "";
+    if (!(byte > 0)) return `≤ ${Slice.number(scale.lo)}${units} or no data`;
+    if (byte >= 255) return `≥ ${Slice.number(scale.hi)}${units}`;
+    return `${Slice.number(Slice.zOf(scale, byte))}${units}`;
+  },
+
+  /** A scale as a label: "−40 to 0 dB", "0.5 to 100 eV, log". */
+  zRange(scale) {
+    return `${Slice.number(scale.lo)} to ${Slice.number(scale.hi)}${scale.units ? ` ${scale.units}` : ""}${scale.log ? ", log" : ""}`;
+  },
+
+  /** `traceRange` of a store trace row, kept per data array while the view and the row stay
+   * (review D2B M9: the readout asks for it three times a row on every hover frame). */
+  traceRange(row, values) {
+    const [v0, v1] = S.view || [];
+    const kept = Slice.ranges.get(values);
+    if (kept && kept.row === row && kept.v0 === v0 && kept.v1 === v1) return kept.range;
+    const range = traceRange(row, values);
+    Slice.ranges.set(values, { row, v0, v1, range });
+    return range;
+  },
 
   // -- the page
 
@@ -273,11 +320,15 @@ const Slice = {
   },
 
   /** A value as the readout shows it: {text, title}. A trace bucket wider than 1 % of its row's
-   * range reads "min–max"; an image "peak 8.1 kHz · 182" (the 0–255 level, not power). */
+   * range reads "min–max"; an image "peak 8.1 kHz · −12.3 dB" (its level mapped back through
+   * the row's z scale), or "peak 8.1 kHz · 182" (the 0–255 level) on a row without one. */
   valueText(value, c = 0) {
     if (!value) return { text: "–", title: "" };
     if (value.kind === "image") {
-      return { text: `peak ${Slice.number(value.y)} ${value.units} · ${value.level}`, title: "Brightest bin in the band, and its 0–255 level" };
+      const head = `peak ${Slice.number(value.y)} ${value.units}`;
+      if (!value.scale) return { text: `${head} · ${value.level}`, title: "Brightest bin in the band, and its 0–255 level" };
+      return { text: `${head} · ${Slice.zText(value.scale, value.level)}`,
+        title: `Brightest bin in the band, and its value (level ${value.level} of 255 over ${Slice.zRange(value.scale)})` };
     }
     if (value.kind === "modes") return { text: `n = ${String(value.n).replace("-", "−")}`, title: "" };
     const cell = value.cells[c];
@@ -349,7 +400,9 @@ const Slice = {
     if (item.kind === "map") scale = item.added?.range || [0, 1];
     g.fillStyle = T.muted;
     g.textAlign = "center";
-    if (h >= 40) g.fillText(item.kind === "map" ? (item.units || "value") : "8-bit level", x0 + width / 2, h - 4, span);
+    const z = item.kind === "image" ? Slice.zScale(item.row) : null;
+    const axis = item.kind === "map" ? (item.units || "value") : z ? Slice.zRange(z) : "8-bit level";
+    if (h >= 40) g.fillText(axis, x0 + width / 2, h - 4, span);
     for (const [t, name] of times) {
       const line = Slice.cutAt(item, t);
       if (!line) continue;
@@ -520,7 +573,7 @@ function placePinTabs() {
 /** A row's value at `t`: for a trace {kind: "trace", cells: [{lo, hi, mid} | null per channel],
  * range}; for an image {kind: "image", y, units, level}; for a modes row {kind: "modes", n,
  * level}; for a map {kind: "map", cells}; null when the row has no data at `t`. `item` is one
- * of `Slice.rows()`. Store rows read the min/max bucket of S.data (or the overview); added
+ * of `Slice.rows()`; an image also carries its row's z `scale` (or null). Store rows read the min/max bucket of S.data (or the overview); added
  * rows their own grid. */
 function valueAt(item, t) {
   if (!item || !Number.isFinite(t)) return null;
@@ -536,11 +589,12 @@ function valueAt(item, t) {
       const best = Slice.peak(values, data.n, j, first, stop, k);
       if (!best) return null;
       if (row.modes) return { kind: "modes", n: row.modes.n[best.mode], level: best.level };
-      return { kind: "image", y: row.y0 + best.bin * row.dy, units: row.y_units || "", level: best.level };
+      return { kind: "image", y: row.y0 + best.bin * row.dy, units: row.y_units || "", level: best.level,
+        scale: Slice.zScale(row) };
     }
     const cells = Array.from({ length: row.n_channels }, (_, c) => Slice.traceCell(values, data.n, row.n_channels, c, j));
     if (!cells.some(Boolean)) return null;
-    return { kind: "trace", cells, range: data === S.data ? traceRange(row, values) : null };
+    return { kind: "trace", cells, range: data === S.data ? Slice.traceRange(row, values) : null };
   }
   const data = item.entry?.data;
   const j = Slice.bucket(data, t);
@@ -568,6 +622,12 @@ async function copyValues() {
       const name = channels > 1 ? `${item.title} / ${legend[c] ?? `channel ${c + 1}`}` : item.title;
       lines.push([name, units, Slice.plain(va), Slice.plain(vb), Slice.plain(vb - va)].join("\t"));
     }
+    const scale = item.kind === "image" ? Slice.zScale(item.row) : null;
+    if (scale) {
+      // The peak's value, its level mapped back through the row's z scale.
+      const [za, zb] = [a, b].map((value) => (value ? Slice.zOf(scale, value.level) : NaN));
+      lines.push([`${item.title} / peak value`, scale.units, Slice.plain(za), Slice.plain(zb), Slice.plain(zb - za)].join("\t"));
+    }
   }
   const text = `${lines.join("\n")}\n`;
   try {
@@ -579,20 +639,20 @@ async function copyValues() {
 }
 
 /** Size the cut margin for the dock and the rows: 120 px on a time column at least 1,300 px
- * wide, else 96 px, while the dock is open and an image row shows; 0 otherwise and below
- * 1,100 px of window. Returns true when it changed (the caller refetches the rows once). */
+ * wide, else 96 px, while the dock is open and an image row shows; 0 otherwise and at or
+ * below 1,100 px of window (where the CSS lays the dock over the rows). Returns true when it changed (the caller refetches the rows once). */
 function cutMargin() {
   const open = typeof Dock !== "undefined" && Dock.open;
   const images = open && Slice.rows().some((item) => item.kind !== "trace");
   const wide = $("axis-row").clientWidth >= Slice.WIDE_PX;
-  const want = open && images && window.innerWidth >= Slice.NARROW_PX ? Slice.MARGIN_PX[wide ? 1 : 0] : 0;
+  const want = open && images && window.innerWidth > Slice.NARROW_PX ? Slice.MARGIN_PX[wide ? 1 : 0] : 0;
   if (want === Slice.margin) return false;
   Slice.margin = want;
   return true;
 }
 
 /** Draw every visible image row's cut in its margin, on the row's own y axis (horizontal: the
- * 8-bit level; a map row its own units): the slice time 1 px --muted, A 2 px --ink solid, B
+ * 8-bit level, labelled with the row's z scale when it has one; a map row its own units): the slice time 1 px --muted, A 2 px --ink solid, B
  * 2 px --ink dashed; a modes row says "n = 2 at 2,388". Then the probe's guides: a dotted
  * --muted line across each visible row of the probe's kind. A hover redraws only this. */
 function drawMargins() {

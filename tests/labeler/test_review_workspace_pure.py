@@ -8,6 +8,7 @@ in one node context with D1's status.js; the few page flows run against stubs of
 from __future__ import annotations
 
 import json
+import math
 import re
 import shutil
 import subprocess
@@ -277,8 +278,9 @@ def test_pins_set_a_then_b_then_move_the_nearer_and_undo():
         " const keepB = Slice.withoutNearest({ A: 100, B: 300 }, 120);"
         " const none = Slice.withoutNearest({ A: null, B: null }, 5);"
         " const clicks = [{ pins: { A: 1, B: null }, at: 100 }, { pins: { A: 2, B: null }, at: 400 }];"
-        " return { steps, tie, keepB, none, undo: Slice.undone(clicks, 550),"
-        "   late: Slice.undone(clicks, 650), stale: Slice.undone(clicks, 1000) };"
+        " return { steps, tie, keepB, none, undo: Slice.undone(clicks, 550, 500),"
+        "   late: Slice.undone(clicks, 650, 500), stale: Slice.undone(clicks, 1000, 500),"
+        "   window: Slice.UNDO_MS, slow: Slice.undone(clicks, 950) };"
         "})()"
     )
     assert got["steps"] == [
@@ -291,6 +293,8 @@ def test_pins_set_a_then_b_then_move_the_nearer_and_undo():
     assert got["undo"] == {"A": 1, "B": None}  # the oldest snapshot of the last 500 ms
     assert got["late"] == {"A": 2, "B": None}
     assert got["stale"] is None
+    # Review D2B M12: the default window takes a slow double-click (desktops allow ~900 ms).
+    assert got["window"] == 900 and got["slow"] == {"A": 1, "B": None}
 
 
 @needs_node
@@ -352,6 +356,68 @@ def test_readout_numbers_times_and_values():
     assert got["times"] == ["2,140", "−20", "+470 ms", "−20 ms", "–"]
     assert got["values"] == ["5.25", "5–7", "peak 8.12 kHz · 182", "n = −2", "–"]
     assert got["plain"] == ["0.333333", ""]
+
+
+@needs_node
+def test_an_image_byte_reads_back_through_the_rows_z_scale():
+    """D2C: the byte is linear in z from z_lo (0) to z_hi (255), or linear in log10 z for
+    `z_scale: "log"`; a modes row, or a row without a usable z_lo < z_hi, has no scale, and a
+    missing or null z_units reads as no units."""
+    got = _page(
+        "(() => {"
+        " const dB = { z_lo: -40, z_hi: 0, z_units: 'dB' };"
+        " const te = { z_lo: 0.5, z_hi: 100, z_units: 'eV', z_scale: 'log' };"
+        " const scales = [dB, te, { z_lo: -40, z_hi: 0 }, { z_lo: -40, z_hi: 0, z_units: null, z_scale: 'linear' },"
+        "   { z_hi: 0 }, { z_lo: 0, z_hi: 0 }, { z_lo: 0, z_hi: 100, z_scale: 'log' }, { z_lo: '1', z_hi: 2 },"
+        "   { ...dB, modes: { n: [1], colours: ['#fff'] } }, null].map(Slice.zScale);"
+        " const [lin, log] = scales;"
+        " return { scales,"
+        "   lin: [0, 51, 255].map((b) => Slice.zOf(lin, b)), log: [0, 128, 255].map((b) => Slice.zOf(log, b)),"
+        "   text: [0, 30, 239, 255].map((b) => Slice.zText(lin, b)).concat([Slice.zText(log, 128), Slice.zText(scales[2], 30)]),"
+        "   range: [Slice.zRange(lin), Slice.zRange(log)],"
+        "   value: Slice.valueText({ kind: 'image', y: 92, units: 'kHz', level: 239, scale: lin }),"
+        "   bare: Slice.valueText({ kind: 'image', y: 92, units: 'kHz', level: 239, scale: null }).text };"
+        "})()"
+    )
+    assert got["scales"] == [
+        {"lo": -40, "hi": 0, "units": "dB", "log": False},
+        {"lo": 0.5, "hi": 100, "units": "eV", "log": True},
+        {"lo": -40, "hi": 0, "units": "", "log": False},
+        {"lo": -40, "hi": 0, "units": "", "log": False},
+        None, None, None, None, None, None,
+    ]
+    assert got["lin"] == pytest.approx([-40, -32, 0])
+    mid = 10 ** (math.log10(0.5) + 128 / 255 * (math.log10(100) - math.log10(0.5)))
+    assert got["log"] == pytest.approx([0.5, mid, 100])
+    assert got["text"] == ["≤ −40 dB or no data", "−35.3 dB", "−2.51 dB", "≥ 0 dB", f"{mid:.3g} eV", "−35.3"]
+    assert got["range"] == ["−40 to 0 dB", "0.5 to 100 eV, log"]
+    assert got["value"] == {"text": "peak 92 kHz · −2.51 dB",
+                            "title": "Brightest bin in the band, and its value (level 239 of 255 over −40 to 0 dB)"}
+    assert got["bare"] == "peak 92 kHz · 239"
+
+
+@needs_node
+def test_copy_values_adds_the_peak_value_of_an_image_row_with_a_z_scale():
+    setup = r"""
+var copied = null;
+var navigator = { clipboard: { writeText: async (text) => { copied = text; } } };
+var S = { meta: { rows: [
+    { title: "Spec", kind: "image", y_units: "kHz", y0: 0, dy: 10, n_y: 3, z_lo: -40, z_hi: 0, z_units: "dB" },
+  ] },
+  data: { t0: 0, t1: 100, n: 4, rows: [new Uint8Array([0, 0, 0, 0,  9, 0, 0, 0,  0, 0, 0, 7])] } };
+var bandBins = (row) => [0, row.n_y];
+var rows = [{ style: { order: "" }, classList: { contains: () => false } }];
+var $ = (id) => (id === "rows" ? { children: rows } : null);
+"""
+    got = _page(
+        "(async () => { Slice.pins = { A: 10, B: 90 }; Views.added = []; await copyValues(); return copied; })()",
+        setup=setup,
+    )
+    za, zb = -40 + 9 * 40 / 255, -40 + 7 * 40 / 255
+    assert got.splitlines()[2:] == [
+        "Spec\tkHz\t10\t20\t10",
+        f"Spec / peak value\tdB\t{za:.6g}\t{zb:.6g}\t{zb - za:.6g}",
+    ]
 
 
 @pytest.mark.parametrize(

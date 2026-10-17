@@ -1,4 +1,5 @@
-// Plan D.8's twenty-one D2 checks and plan D.B's dock checks: views, the dock, pins and their
+// Plan D.8's twenty-one D2 checks, 22-24 (D2B's dock width, D2C's colour bar) and plan D.B's
+// dock checks: views, the dock, pins and their
 // tabs, the Values readout, the rest time, the cut margins and probe guides, added signals with
 // their fetch and error states, saved views, the narrow overlay; on detachment the dock that
 // opens with the TangTV inversion, the EFIT equilibrium and the cameras. Appended to
@@ -6,7 +7,8 @@
 // test_review_workspace_browser.py, and run as
 //   node <script> <base-url> <token> <headless-shell> <profile-dir> checks
 //   node <script> <base-url> <token> <headless-shell> <profile-dir> shots <out-dir>
-// "checks" prints one JSON line: [{name, ok, detail}] in the order 1-21, B1-B5, E. "shots"
+// "checks" prints one JSON line: [{name, ok, detail}] in the order 1-24, B1-B5, E (22-24 are
+// review D2B's dock width at 1280 and D2C's colour bar). "shots"
 // saves a "q and Te" view on mhd_n1 and writes d2_<w>x<h>.png at three window sizes into
 // <out-dir>, then prints what it saw.
 
@@ -14,7 +16,7 @@ const AE = "alfven_eigenmode", MHD = "mhd_n1", DET = "detachment", EMPTY = "disr
 const INVERSION_MS = [0, 50, 100, 150, 200, 240], EFIT_MS = [0, 30, 80, 110, 190, 240];
 const API10 = { version: { body: { api: 10 } } };
 const FORBIDDEN = ["views", "catalog", "signal", "profile", "slices", "slice", "fetch/status"];
-const ORDER = [...Array.from({ length: 21 }, (_, k) => String(k + 1)), "B1", "B2", "B3", "B4", "B5", "E"];
+const ORDER = [...Array.from({ length: 24 }, (_, k) => String(k + 1)), "B1", "B2", "B3", "B4", "B5", "E"];
 const results = new Map();
 const check = (n, name, ok, detail) => results.set(String(n), { name: `${n}. ${name}`, ok: Boolean(ok), detail });
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -243,8 +245,25 @@ async function checks() {
   await mouse("mouseReleased", dx, dy, { buttons: 0, clickCount: 2 });
   await frames();
   const doubled = { fitted, between, view: await js("S.view.slice()"), pins: await js("Slice.pins"), clicks: await js("window.axisClicks") };
-  check(5, "a double-click on the axis fits the view and puts the pins back as they were before its two clicks",
-    same(doubled.view, fitted) && same(doubled.pins, { A: 300, B: 1700 }) && doubled.clicks === 2, doubled);
+  // A double-click on a pin's tab fits too, and pins nothing: the tab takes its presses. The
+  // axis clicks above must be older than Slice.UNDO_MS first, or the fit takes them back.
+  await sleep(await js("Slice.UNDO_MS + 100"));
+  await js("Slice.setPins({ A: 1000, B: null }); setView(800, 1200); window.axisClicks = 0; void 0");
+  await frames();
+  const [px5, py5] = await js(`(() => {
+    const r = document.querySelector("#pins .pin-a .pin-text").getBoundingClientRect();
+    return [r.left + r.width / 2, r.top + r.height / 2];
+  })()`);
+  await mouse("mouseMoved", px5, py5, { button: "none" });
+  await mouse("mousePressed", px5, py5, { buttons: 1, clickCount: 1 });
+  await mouse("mouseReleased", px5, py5, { buttons: 0, clickCount: 1 });
+  await mouse("mousePressed", px5, py5, { buttons: 1, clickCount: 2 });
+  await mouse("mouseReleased", px5, py5, { buttons: 0, clickCount: 2 });
+  await frames();
+  doubled.tab = { view: await js("S.view.slice()"), pins: await js("Slice.pins"), clicks: await js("window.axisClicks") };
+  check(5, "a double-click on the axis fits the view and puts the pins back as they were before its two clicks; a double-click on a pin tab fits the view and leaves the pins",
+    same(doubled.view, fitted) && same(doubled.pins, { A: 300, B: 1700 }) && doubled.clicks === 2 &&
+      same(doubled.tab.view, fitted) && same(doubled.tab.pins, { A: 1000, B: null }) && doubled.tab.clicks === 0, doubled);
 
   // 6: the tabs: drag A, × removes B; an axis drag pans and a Shift-drag adds a span, pins kept;
   // Ctrl+Z undoes the span.
@@ -434,7 +453,9 @@ async function checks() {
       moved.rejected.length === 0 && moved.rejected1.length === 1 && moved.rejected2.length === 0,
     moved);
 
-  // 18: Save, reload (one GET), Rename, a conflict from another tab, Delete, Reset to default.
+  // 18: Save, reload (one GET), Rename, a conflict from another tab, Delete, Reset to default;
+  // the editor stays open through Delete and Reset (review D2B M1), and Done closes the dock
+  // Default has none of.
   await showBox("Density");
   await js(`$("view-name").value = "Mine"; void 0`);
   await footer("Save");
@@ -465,8 +486,10 @@ async function checks() {
   await until(`Views.current?.name === "Mine 2" && document.querySelector("#view-footer")`);
   await footer("Delete");
   await until("Views.current === null");
+  const editorShown = () => js(`({ dock: !$("dock").hidden, edit: !$("dock-edit").hidden, editing: Views.editing,
+    footer: Boolean(document.querySelector("#view-footer")) })`);
   views.deleted = { stored: await js(`stored(Views.storeKey("${AE}"))`), label: await js("Views.label()"),
-    list: await js("(Views.list || []).filter((v) => !v.preset).map((v) => v.name)") };
+    list: await js("(Views.list || []).filter((v) => !v.preset).map((v) => v.name)"), shown: await editorShown() };
   await js("openEditor(); void 0");
   await showBox("Density");
   views.hidden = await js("Views.label()");
@@ -474,14 +497,18 @@ async function checks() {
   await until("!Views.changed");
   views.reset = await js(`({ label: Views.label(), hidden: [...$("rows").children].some((c) => c.classList.contains("view-hidden")),
     value: $("view").value })`);
-  await js("Views.closeEditor(); void 0");
-  check(18, "Save remembers the view, a reload asks /api/views once and applies it, Rename keeps it, a save from another tab gives the conflict copy, Delete and Reset to default go back to Default",
+  views.reset.shown = await editorShown();
+  await footer("Done");
+  views.done = await js(`({ dock: !$("dock").hidden, open: Dock.open, editing: Views.editing })`);
+  check(18, "Save remembers the view, a reload asks /api/views once and applies it, Rename keeps it, a save from another tab gives the conflict copy, Delete and Reset to default go back to Default with the editor still open, and Done closes the dock",
     views.stored === "view:Mine" && views.reload.gets === 1 && views.reload.hidden && same(views.reload.order, ["1", "0"]) &&
       views.reload.dock && views.reload.current === "Mine" && views.reload.value === "view:Mine" &&
       views.renamed.stored === "view:Mine 2" && same(views.renamed.list, ["Mine 2"]) && views.otherTab === 200 &&
       views.conflict === "This view changed in another tab. Reload it, or save yours under a new name." &&
       views.deleted.stored === null && views.deleted.label === "Default" && same(views.deleted.list, []) &&
-      views.hidden === "Default (changed)" && views.reset.label === "Default" && !views.reset.hidden && views.reset.value === "",
+      views.hidden === "Default (changed)" && views.reset.label === "Default" && !views.reset.hidden && views.reset.value === "" &&
+      Object.values(views.deleted.shown).every(Boolean) && Object.values(views.reset.shown).every(Boolean) &&
+      !views.done.dock && !views.done.open && !views.done.editing,
     views);
 
   // 19: a view naming a row the store lacks, and lacking one it has.
@@ -582,6 +609,47 @@ async function checks() {
       probe.kind === "freq_khz" && probe.from === "margin" && probe.ink > 10 && probe.stray === 0 && nAtA === "n = 1",
     { cut, probe, nAtA });
 
+  // 24: an image row's colour bar in its 12 px right edge, labelled with z_lo, z_hi and z_units,
+  // the cut naming the scale, the value under the cursor in the cursor's label and the peak's
+  // value in Values; the modes row keeps its key and gets no bar. The store's power row is
+  // 30 (-35.3 dB) away from its line and about 240 (-2.4 dB) on it, near 92 kHz at 1,000 ms.
+  const bar = await js(`(() => {
+    const items = Slice.rows();
+    const power = items.find((item) => item.title === "MPI66M322D power");
+    const modes = items.find((item) => item.title === "toroidal n, MPI66M");
+    const texts = [], proto = CanvasRenderingContext2D.prototype, real = proto.fillText;
+    proto.fillText = function (text, ...rest) { texts.push(String(text)); return real.call(this, text, ...rest); };
+    try { drawRows(); drawMargins(); } finally { proto.fillText = real; }
+    const c = power.canvas, w = c.clientWidth, h = c.clientHeight;
+    const words = new Uint32Array(new Uint8ClampedArray(window.pixels(c, w - 6, 3, 1, h - 8)).buffer);
+    const levels = [...words].map((word) => S.lut.indexOf(word));
+    const known = levels.filter((v) => v >= 0);
+    const m = modes.canvas;
+    const blank = window.pixels(m, m.clientWidth - 6, 3, 1, m.clientHeight - 8).filter((v, k) => k % 4 === 3).every((a) => a === 0);
+    return { labels: ["0 dB", "−40 dB", "−40 to 0 dB"].map((text) => texts.includes(text)), top: known[0], bottom: known[known.length - 1],
+      inLut: known.length / levels.length, falling: known.every((v, k) => k === 0 || v <= known[k - 1]),
+      modes: Slice.zScale(modes.row), blank };
+  })()`);
+  const point24 = await js(`(() => {
+    const r = Slice.rows().find((item) => item.title === "MPI66M322D power").canvas.getBoundingClientRect();
+    return [Math.round($("axis-row").getBoundingClientRect().left + px(1000)), Math.round(r.top + r.height * 0.1)];
+  })()`);
+  await move(point24[0], point24[1]);
+  await frames();
+  Object.assign(bar, await js(`(() => {
+    const power = Slice.rows().find((item) => item.title === "MPI66M322D power");
+    const tr = document.querySelector('#dock tr[data-key="store:MPI66M322D power"]');
+    return { label: $("cursor-time").textContent, at: Math.round(timeAt(${point24[0]})), cell: tr?.children[2]?.textContent ?? null,
+      want: Slice.valueText(valueAt(power, 1000)).text };
+  })()`));
+  bar.read = /^(\d+) ms · ([\d.]+) kHz · (.+)$/.exec(bar.label)?.slice(1) ?? null;
+  bar.peak = /^peak ([\d.]+) kHz · −([\d.]+) dB$/.exec(bar.cell ?? "")?.slice(1).map(Number) ?? null;
+  check(24, "the power row has a colour bar of the page's colours at its right edge (bright on top) labelled 0 dB and −40 dB, its cut says −40 to 0 dB; the cursor reads −35.3 dB off the line and Values the peak near 92 kHz within 5 dB of the top; the modes row has no bar",
+    bar.labels.every(Boolean) && bar.inLut >= 0.95 && bar.top >= 230 && bar.bottom >= 0 && bar.bottom <= 25 && bar.falling &&
+      bar.read && Number(bar.read[0]) === bar.at && Number(bar.read[1]) > 200 && bar.read[2] === "−35.3 dB" &&
+      bar.peak && near(bar.peak[0], 92, 4) && bar.peak[1] < 5 && bar.want === bar.cell && bar.modes === null && bar.blank,
+    bar);
+
   // 14: a profile panel: one request, nearest slice, the q marks.
   const before14 = await mark();
   await js(`void openPicker("q")`);
@@ -611,8 +679,33 @@ async function checks() {
     try { drawDock(); } finally { proto.fillText = real; }
     return texts.filter((text) => text.startsWith("q ="));
   })()`);
-  check(14, "Add as panel on q asks /api/profile once and a hover asks nothing; the slice shown is the nearest one (the earlier on a tie); the q = 1, 3/2 and 2 marks are drawn",
+  // The slice the panel shows, read from its note with the panel following A at each time
+  // (review D2B M10): 305 and 1425 tie 300/310 and 1400/1450, so the earlier one is shown.
+  profile.shown = await js(`(() => {
+    const p = Signals.entry(Profiles.shots, "profile", S.shot, "q_profile").data;
+    const [follow, pins] = [Slice.follow, { ...Slice.pins }];
+    const note = () => [...document.querySelectorAll("#dock .dock-profile")]
+      .find((panel) => panel.querySelector(".dock-panel-title")?.textContent.startsWith("q"))?.querySelector(".dock-panel-note")?.textContent ?? "";
+    const out = [];
+    Slice.follow = "A";
+    try {
+      for (const t of ${JSON.stringify([305, 1425, 2000, 3990, 10, 4100, 1450])}) {
+        Slice.pins = { A: t, B: null };
+        drawDock();
+        out.push([t, note()]);
+      }
+    } finally {
+      [Slice.follow, Slice.pins] = [follow, pins];
+      drawDock();
+    }
+    return { notes: out, t: [...p.t] };
+  })()`);
+  const nearestEarlier = (list, t) => list.reduce((best, v) => (Math.abs(v - t) < Math.abs(best - t) ? v : best));
+  profile.read = profile.shown.notes.map(([t, text]) => [t, Number((/^[A-Za-z]+ ([\d,]+) ms/.exec(text)?.[1] ?? "NaN").replace(/,/g, "")),
+    Math.round(nearestEarlier(profile.shown.t, t))]);
+  check(14, "Add as panel on q asks /api/profile once and a hover asks nothing; the panel shows the nearest slice (the earlier on a tie: 300 at 305, 1,400 at 1,425); the q = 1, 3/2 and 2 marks are drawn",
     profile.asked === 1 && profile.later === 1 && same(profile.got, profile.want) && profile.x_kind === "psi_n" &&
+      profile.read.every(([, shown, want]) => shown === want) && profile.read[0][1] === 300 && profile.read[1][1] === 1400 &&
       ["q = 1", "q = 3/2", "q = 2"].every((text) => profile.texts.includes(text)),
     profile);
 
@@ -644,7 +737,9 @@ async function checks() {
   fetched.refusal = await js(`document.querySelector("#dock-edit p.error").textContent`);
   fetched.refusedAsked = (await requests(before15)).length;
   const queuedAt = fetched.texts.findIndex((text) => text.startsWith("Queued, 1st in line"));
-  const fetchingAt = fetched.texts.findIndex((text) => text.startsWith("Fetching from PTDATA"));
+  // The chip may show the page's own "Fetching" for a frame before the server's answer says the
+  // job is queued; the order checked is the server's: Queued, then Fetching.
+  const fetchingAt = fetched.texts.findIndex((text, k) => k > queuedAt && text.startsWith("Fetching from PTDATA"));
   check(15, "Add PTDATA DUSBRADIAL shows Queued, 1st in line, then Fetching from PTDATA, then the drawn row without a chip; 9BAD is refused before any request",
     queuedAt >= 0 && fetchingAt > queuedAt && !fetched.chip && fetched.ink > 20 && fetched.channels === 1 &&
       fetched.refusal === "9BAD is not a PTDATA point name: use a letter, then letters, digits or _, up to 12 characters." &&
@@ -719,6 +814,28 @@ async function checks() {
   check(21, "with the dock open image rows get a margin and lose it when hidden; ECE Te added from the picker draws as a 40-channel map in the page's colours and brings the margin back",
     mapped.open > 0 && mapped.hidden === 0 && mapped.draw === "map" && mapped.channels === 40 && mapped.share >= 0.8 && mapped.margin > 0,
     mapped);
+
+  // 22 and 23 (review D2B I1): at 1280×720 the "q and Te" preset keeps the plan's budget, and a
+  // dock width saved on a wider screen is capped by this window.
+  await send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false });
+  await sleep(300);
+  await js(`Views.choose("preset:q and Te")`);
+  await until(`Views.current?.name === "q and Te" && Dock.open`);
+  await quiet();
+  await frames();
+  const budget = await js(`({ dock: Math.round($("dock").getBoundingClientRect().width), plot: plotWidth(), width: Dock.width,
+    stored: Views.layout.dock.width ?? null, margin: Slice.margin, column: $("axis-row").clientWidth })`);
+  check(22, "at 1280×720 the q and Te preset opens the dock at the default width (at most 320 + 6 px) and the plot keeps at least 730 px",
+    budget.dock <= 326 && budget.dock >= 300 && budget.plot >= 730 && budget.width === null && budget.stored === null, budget);
+  await js(`applyView({ ...Views.clone(Views.layout), dock: { ...Views.layout.dock, width: 1100 } })`);
+  await quiet();
+  await frames();
+  const capped = await js(`({ dock: Math.round($("dock").getBoundingClientRect().width), plot: plotWidth(), width: Dock.width,
+    vw: window.innerWidth, most: Math.round(Dock.maxGridPx()), margin: Slice.margin })`);
+  await send("Emulation.clearDeviceMetricsOverride");
+  await sleep(300);
+  check(23, "a view with a 1,100 px dock opened at 1280 px is capped (at most 60vw and the window less 820 px): the plot keeps at least 400 px",
+    capped.width === 1100 && capped.dock <= 0.6 * capped.vw && Math.abs(capped.dock - capped.most) <= 1 && capped.plot >= 400, capped);
 
   // detachment: the dock opens with the inversion, EFIT and the cameras.
   const det = {};

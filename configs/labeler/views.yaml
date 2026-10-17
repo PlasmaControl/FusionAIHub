@@ -26,7 +26,6 @@ presets:
         other_store_rows: end
         dock:
           open: true
-          width: 461
           follow: cursor
           panels:
             - {kind: profile, id: q_profile, h: 200}

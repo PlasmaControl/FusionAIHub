@@ -254,7 +254,13 @@ const Views = {
     Views.fillSelect();
     applyView();
     Views.fetchAdded();
-    if (Views.editing) Views.renderEditor();
+    if (Views.editing) {
+      // Reset and Delete inside the editor keep it open (review D2B M1): the dock stays shown
+      // while editing, and Done leaves it as the chosen layout has it.
+      Object.assign(Views, { openBefore: Dock.open, panelsEdited: false });
+      if (!Dock.open) Dock.show(true);
+      Views.renderEditor();
+    }
   },
 
   /** The layout as it stands, in the stored form (D.3); pins are never in it. */
@@ -287,6 +293,7 @@ const Views = {
   /** Send a change to /api/views; the answer's views become the list. Returns the list, or null
    * after saying why it failed. */
   async post(body) {
+    const doing = { delete: "delete", rename: "rename" }[body.op] || "save";
     try {
       const response = await api("/api/views", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ event: S.event, reviewer: S.name, ...body }) });
@@ -301,7 +308,7 @@ const Views = {
         Views.loadList();
       }
       Views.say(conflict ? "This view changed in another tab. Reload it, or save yours under a new name."
-        : `Could not save the view: ${error.message.replace(/\.$/, "")}.`, true);
+        : `Could not ${doing} the view: ${error.message.replace(/\.$/, "")}.`, true);
       return null;
     }
   },
