@@ -278,10 +278,12 @@ def overview(paths: Paths, item: shotlists.Entry) -> dict:
     """`/api/overview?list`: the list's shots in its order, each with its columns and
     how many of the events it is open on it has saved (a child locked behind an
     unsaved parent is not counted), and the lists drawn from it."""
+    rows = records(shotlists.read(paths, item.name))
+    progress = silver.progress_many(paths, [row["shot"] for row in rows])
     shots = []
-    for row in records(shotlists.read(paths, item.name)):
-        progress = silver.progress(paths, row["shot"])
-        saved, total = len(progress["saved"]), progress["total"]
+    for row in rows:
+        found = progress[row["shot"]]
+        saved, total = len(found["saved"]), found["total"]
         shots.append({**columns(row), "saved": saved, "total": total,
                       "done": saved == total})
     sizes = shotlists.members(paths)

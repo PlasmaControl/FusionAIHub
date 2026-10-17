@@ -394,11 +394,65 @@ def warm(paths: Paths) -> None:
 
 
 def progress(paths: Paths, shot: int) -> dict:
+    """One shot's review progress: the events open on it (a subcategory is locked
+    until its parent is saved with something marked) and the ones among them with a
+    save. `progress_many` is the same for a whole list."""
     events = [event for event in review_events(paths)
               if not locked(paths, event, shot)]
     saved = [event for event in events
              if _read(labels.labels_path(event_dir(paths, event)), shot) is not None]
     return {"saved": saved, "total": len(events)}
+
+
+def _saved_labels(path: Path) -> dict[int, labels.Label]:
+    """The shots `_read(path, shot)` finds in one table, each with its label, from
+    one read of it. A missing or unreadable table has none (logged once). The labels
+    are the cached table's: never mutate them."""
+    try:
+        stat = Path(path).stat()
+    except OSError:
+        return {}
+    version = (str(path), stat.st_mtime_ns, stat.st_size)
+    try:
+        listed = _shots(*version)
+        table = (_crowd_table(*version) if _crowd_schema(*version)
+                 else labels.read_labels(path))
+    except Exception as error:  # noqa: BLE001 - one bad table cannot hide a shot
+        _warn_once(*version, str(error))
+        return {}
+    return {shot: label for shot, label in table.items() if shot in listed}
+
+
+def progress_many(paths: Paths, shots) -> dict[int, dict]:
+    """`progress(paths, shot)` for each of `shots`, as `{shot: progress}`, equal to
+    it shot for shot, from one read of every review event's saved table and of every
+    parent's (for the lock) instead of the per-shot lookups: a 28,000-shot list takes
+    about a second, not minutes."""
+    shots = [int(shot) for shot in shots]
+    wanted = set(shots)
+    tree = taxonomy.load(paths.events_manifest)
+    events = [(event, tree.parent(event)) for event in review_events(paths)]
+    saved = {event: _saved_labels(labels.labels_path(event_dir(paths, event)))
+             for event, _ in events}
+    opens = {}  # a parent: the shots where its saved label opens its subcategories
+    for _, parent in events:
+        if parent is None or parent in opens:
+            continue
+        table = (saved[parent] if parent in saved else
+                 _saved_labels(labels.labels_path(event_dir(paths, parent))))
+        opens[parent] = frozenset(
+            shot for shot in table.keys() & wanted
+            if (region := labels.region_of(
+                parent, labels.page_label(parent, table[shot]))) is not None
+            and region.spans
+        )
+    found = {}
+    for shot in shots:
+        eligible = [event for event, parent in events
+                    if parent is None or shot in opens[parent]]
+        found[shot] = {"saved": [event for event in eligible if shot in saved[event]],
+                       "total": len(eligible)}
+    return found
 
 
 def time_range(event_layers) -> tuple[int, int]:

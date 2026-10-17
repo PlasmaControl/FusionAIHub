@@ -252,6 +252,55 @@ def test_progress_counts_parents_and_only_eligible_children(paths):
     }
 
 
+def rows_table(path, saved, header="shot,category,t_start,t_end,confidence", tail=""):
+    """A saved table of several shots: `saved` maps a shot to its (a, b, category)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(header + "\n" + "".join(
+        f"{shot},{c},{a},{b},{tail}\n"
+        for shot, spans in saved.items() for a, b, c in spans
+    ))
+
+
+def test_progress_many_equals_progress_shot_for_shot(paths):
+    locked, saved, unsaved, open_, only, orphan = (
+        170001, 170002, 170003, 170004, 170005, 170006)
+    root = paths.label_tables
+    # A parent saved all absent opens nothing; saved with a span, it opens its children.
+    rows_table(root / "mhd_n1/review/labels.csv", {
+        locked: [(0, 100, 0)], saved: [(0, 20, 0), (20, 31, 1), (31, 100, 0)],
+        open_: [(0, 100, 1)],
+    })
+    rows_table(root / "mhd_n1/subcategories/m1/review/labels.csv", {
+        locked: [(0, 100, 2)], saved: [(20, 30, 2)], orphan: [(0, 100, 2)],
+    })
+    rows_table(root / "confinement/review/labels.csv", {only: [(0, 100, 1)]})
+    shots = [locked, saved, unsaved, open_, only, orphan, 999]  # 999 is on no table
+    found = silver.progress_many(paths, shots)
+    assert list(found) == shots
+    assert found == {shot: silver.progress(paths, shot) for shot in shots}
+    # Not vacuous: the three cases the lock rule tells apart.
+    assert found[saved] == {"saved": ["mhd_n1", "mhd_n1.m1"], "total": 4}
+    assert found[open_] == {"saved": ["mhd_n1"], "total": 4}
+    assert found[locked] == {"saved": ["mhd_n1"], "total": 3}  # child locked, not counted
+    assert found[orphan] == found[unsaved] == {"saved": [], "total": 3}
+    assert found[only] == {"saved": ["confinement"], "total": 3}
+    assert silver.progress_many(paths, []) == {}
+
+
+def test_progress_many_reads_tables_as_progress_does(paths):
+    root = paths.label_tables
+    # A crowd-schema table, where a sub-millisecond row saves nothing, and a table
+    # that cannot be read: each is what `progress` makes of it, shot by shot.
+    rows_table(root / "disruption/review/labels.csv",
+               {1: [(0, 100, 1)], 2: [(5, 5, 1)]},
+               header="shot,category,t_start,t_end,crowd", tail="true")
+    (root / "confinement/review").mkdir(parents=True)
+    (root / "confinement/review/labels.csv").write_text("shot,category\nx,y\n")
+    found = silver.progress_many(paths, [1, 2, 3])
+    assert found == {shot: silver.progress(paths, shot) for shot in (1, 2, 3)}
+    assert found[1]["saved"] == ["disruption"] and found[2]["saved"] == []
+
+
 def test_export_distinguishes_unassessed_absent_and_falls_through(paths, tmp_path):
     directory = paths.label_tables / "disruption"
     table(directory / "review/labels.csv", [(0, 30, 0)])

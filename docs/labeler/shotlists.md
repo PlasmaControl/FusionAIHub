@@ -157,9 +157,11 @@ child list holding shots that are not in its parent.
 - `GET /api/overview?list=N` returns `{list, title, grid_ms, events, shots: [{shot,
   ...columns, saved, total, done}], children: [{name, title, n}]}`. It is
   `/api/silver` for any list. Columns keep their file values, except that `classes`
-  is a list, split on `;` as `/api/silver` gives it. It is not paged: it reads every
-  shot's progress, which takes about 2 s cold for 572 shots and would take about 18 s
-  for a pool-sized list of about 5,000.
+  is a list, split on `;` as `/api/silver` gives it. It is not paged. Every shot's
+  progress comes from one read of each review event's saved table and of each parent's
+  (`silver.progress_many`; `silver.progress` is the same for one shot), so the cost is a
+  second or so for the tables and next to nothing per shot: about 1.4 s cold for the
+  28,488 shots of `n1_farre`, 0.1 s once the tables are read.
 - `GET /api/overview?list=N&shot=S` returns `/api/silver/shot`'s events and `t_range`
   for any shot on some list, plus that list's columns for the shot, with `classes` as a
   list.
@@ -223,5 +225,6 @@ not a third set. Seo's shots are nearly all in Farre's (8,499 of 8,505), and 1,6
 Seo's positives are also Farre's positives. A list holds every labelled shot, positive
 or not; the positive shots alone are 1,801 (Seo) and 4,820 (Farre). Only 824 (Seo) and
 2,236 (Farre) of the shots are in the catalog, 2,237 together (46 % of its 4,822), so the
-n=1 lists are `on_demand`. The by-shot overview (`/api/overview?list=`) reads every
-shot's progress and is not meant for `n1_farre`; its queue walks it fine.
+n=1 lists are `on_demand`. The by-shot overview (`/api/overview?list=`) answers for
+`n1_farre` in about a second and a half; its 1.4 MB of rows is what the page then has to
+draw.
