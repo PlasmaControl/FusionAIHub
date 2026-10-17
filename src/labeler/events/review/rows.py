@@ -45,6 +45,9 @@ class ImageRow:
     #: A modes row's `{"n", "colours", "levels"}`: its bytes are
     #: `verify.mode_bytes`' codes, not a scale.
     modes: dict | None = None
+    #: "log" when the byte scale is linear in log10 of the value (`z_lo`/`z_hi`
+    #: stay the linear values); "linear" otherwise.
+    z_scale: str = "linear"
     kind = "image"
 
     def meta(self) -> dict:
@@ -58,6 +61,7 @@ class ImageRow:
             "z_lo": float(self.z_lo),
             "z_hi": float(self.z_hi),
             "z_units": self.z_units,
+            "z_scale": self.z_scale,
         }
         if self.band is not None:
             meta["band"] = [float(v) for v in self.band]

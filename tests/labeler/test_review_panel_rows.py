@@ -121,12 +121,42 @@ def test_a_log_heatmap_is_scaled_in_log10_and_reports_its_limits_in_its_units():
     # 0 and nan are empty (byte 0), 1 is the floor, 10 half-way, 100 and 1000 the top.
     assert row.values.tolist() == [[0, 0, 128, 255, 255, 0]]
     assert (row.z_lo, row.z_hi) == pytest.approx((1.0, 100.0))
+    assert row.z_scale == "log" and row.meta()["z_scale"] == "log"
     # Without the flag the same panel is linear.
     linear = Panel("Te", x=np.arange(6.0), y=np.array([-1.0]), kind="heatmap", z=z,
                    zmin=1.0, zmax=100.0)
     row = panel_rows._image("p0", linear, linear.x, Grid(-0.5, 1.0, 6))
     assert row.values.tolist() == [[0, 0, 23, 255, 255, 0]]
     assert (row.z_lo, row.z_hi) == (1.0, 100.0)
+    assert row.z_scale == "linear" and row.z_units == ""
+
+
+def test_an_image_row_takes_its_units_from_the_panels_z_units_metadata():
+    base = {"x": np.arange(3.0), "y": np.array([1.0]), "kind": "heatmap",
+            "z": np.array([[1.0, 10.0, 100.0]])}
+    grid = Grid(-0.5, 1.0, 3)
+    plain = panel_rows._image("p0", Panel("T", **base), base["x"], grid)
+    assert (plain.z_units, plain.z_scale) == ("", "linear")
+    assert plain.meta()["z_units"] == "" and plain.meta()["z_scale"] == "linear"
+    other = {"caveat": "no units here"}
+    row = panel_rows._image("p0", Panel("T", metadata=other, **base), base["x"], grid)
+    assert (row.z_units, row.z_scale) == ("", "linear")
+    unit = panel_rows._image(
+        "p0", Panel("T", metadata={"z_units": "W/cm²"}, **base), base["x"], grid)
+    assert (unit.z_units, unit.z_scale) == ("W/cm²", "linear")
+    assert unit.meta()["z_units"] == "W/cm²" and unit.meta()["z_scale"] == "linear"
+    # A log row keeps its limits linear and says the byte scale is log; the unit rides along.
+    log = panel_rows._image(
+        "p0", Panel("T", zmin=1.0, zmax=100.0,
+                    metadata={"z_scale": "log", "z_units": "eV"}, **base),
+        base["x"], grid)
+    assert (log.z_units, log.z_scale) == ("eV", "log")
+    assert (log.meta()["z_lo"], log.meta()["z_hi"]) == pytest.approx((1.0, 100.0))
+    assert log.meta()["z_scale"] == "log"
+    # An unknown scale name is the linear scale.
+    odd = panel_rows._image(
+        "p0", Panel("T", metadata={"z_scale": "sqrt"}, **base), base["x"], grid)
+    assert odd.z_scale == "linear"
 
 
 def test_a_log_heatmap_needs_a_positive_floor_and_has_no_modes():

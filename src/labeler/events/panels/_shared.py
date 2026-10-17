@@ -180,6 +180,7 @@ def power_panel(
         bands=list(bands),
         zmin=Z_DB[0],
         zmax=Z_DB[1],
+        metadata={"z_units": "dB"},
     )
 
 

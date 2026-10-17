@@ -329,6 +329,7 @@ def ece_panels(shot, *, t_range=None, paths=None) -> list[Panel]:
                 y=r,
                 z=z,
                 ylabel="R (m)",
+                metadata={"z_units": "keV"},
             ),
             f"Te in keV, each channel's median over {MAP_BIN_MS:g} ms; "
             f"{placed.caveat()}; channels 38-40 are never the core",

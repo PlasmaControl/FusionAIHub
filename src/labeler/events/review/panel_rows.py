@@ -3,8 +3,9 @@
 Heatmaps become image rows, scaled over their 1st-99.5th percentile unless
 the panel pins `zmin`/`zmax`, or coded by `verify.mode_bytes` when the panel
 has `modes`; a heatmap whose metadata says `z_scale: "log"` is scaled in log10
-(`zmin`/`zmax` and the row's limits stay in the panel's own units); lines
-become trace rows. Every row goes onto
+(`zmin`/`zmax` and the row's limits stay in the panel's own units); the row's
+`z_units` is the panel's `metadata["z_units"]` ("" without one) and its `z_scale`
+"log" or "linear"; lines become trace rows. Every row goes onto
 one grid at the finest panel spacing, but no finer than 0.05 ms: finer data
 is min/max-binned, coarser data is interpolated (lines) or nearest-sampled
 (heatmaps). Explicit indicator bins remain steps over their full intervals,
@@ -185,5 +186,6 @@ def _image(name: str, panel, x, grid: Grid) -> ImageRow:
     if log:
         lo, hi = 10.0**lo, 10.0**hi
     return ImageRow(name, panel.title, values, y0=float(y[0]), dy=dy,
-                    y_units=panel.ylabel, z_lo=lo, z_hi=hi, z_units="", band=band,
-                    modes=modes)
+                    y_units=panel.ylabel, z_lo=lo, z_hi=hi,
+                    z_units=(panel.metadata or {}).get("z_units", ""), band=band,
+                    modes=modes, z_scale="log" if log else "linear")

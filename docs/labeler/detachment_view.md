@@ -6,9 +6,11 @@ the TangTV inversion; not the individual bolometer and D-alpha chords. IRTV hold
 temperature trace, so the IRTV rows are two maps: the heat flux and, since version 10
 (owner, 2026-10-17), the absolute surface temperature right after it; Afrac upper has no
 source. Also since version 10 the divertor Te row is the blessed Thomson fit as a Z x time
-map; the real-time `tssdivte` lines left the default.
+map; the real-time `tssdivte` lines left the default. Since version 11 every image row
+carries `z_units` (eV, W/cm², °C) and `z_scale` (`"log"` for the Te map, else `"linear"`) in its
+row meta, for the page's colour bar and value readout; `z_lo`/`z_hi` stay linear values.
 
-## Rows (`src/labeler/events/panels/detachment.py`, store `PANEL_VERSIONS` 10)
+## Rows (`src/labeler/events/panels/detachment.py`, store `PANEL_VERSIONS` 11)
 
 In this order; a row whose source is not verified is left out, never guessed.
 
@@ -65,7 +67,8 @@ across, Te as log10 colour pinned to 0.5-100 eV (black is no measurement or belo
 the top colour is 100 eV or more; fits above 100 eV occur and can be spurious). The pin
 keeps one colour scale across shots; `metadata.z_scale = "log"`, which `panel_rows`
 reads (its `_log` helper scales log10(Te) linearly into bytes between the pins and
-reports `z_lo`/`z_hi` back in eV: 0.5 and 100). The vertical axis is uniform 0.5 cm bins of Z
+reports `z_lo`/`z_hi` back in eV: 0.5 and 100; `metadata.z_units = "eV"` becomes the row's
+`z_units`). The vertical axis is uniform 0.5 cm bins of Z
 (`DTS_Z_BIN_M`); each live chord fills the bins within 1.5 cm of it (`DTS_REACH_M`,
 nearest chord wins), and wider gaps stay empty. A dead chord (all zeros in the window)
 is dropped; a window with fewer than two profiles has no row. Without a plasma window

@@ -148,6 +148,8 @@ def test_fishbone_draws_b1_power_and_the_b1_x_b5_cross_phase(monkeypatch):
     assert {panel.kind for panel in built} == {"heatmap"}
     assert all(panel.ylabel == "kHz" for panel in built)
     assert all(panel.bands == [(2.0, 30.0)] for panel in built)
+    # The cross-phase is np.angle, in radians; the log10 power has no named unit.
+    assert [(panel.metadata or {}).get("z_units") for panel in built] == [None, "rad"]
 
     # The probe PAIR is the diagnostic: a cross-phase over the wrong two
     # probes is a different measurement that looks identical on screen.

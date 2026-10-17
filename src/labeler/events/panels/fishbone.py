@@ -110,6 +110,7 @@ def panels(shot, *, t_range=None, paths=None):
                 z=cross_phase[keep],
                 ylabel="kHz",
                 bands=[FISHBONE_BAND],
+                metadata={"z_units": "rad"},
             ),
             caveat,
         ),

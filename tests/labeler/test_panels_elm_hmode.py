@@ -70,6 +70,7 @@ def test_elm_draws_dalpha_the_jump_pcphd03_density_and_co2_power(tmp_path, monke
     assert (power.title, power.kind, power.ylabel) == ("CO2 R0 power", "heatmap", "kHz")
     assert power.y[0] == 0 and 124 < power.y[-1] <= 125
     assert (power.zmin, power.zmax) == _shared.Z_DB
+    assert power.metadata["z_units"] == "dB"
     assert np.all(np.diff(power.x) > 0) and 0 < power.x[0] < power.x[-1] < 200
     burst = (power.x > 100) & (power.x < 102)
     assert power.z[:, burst].mean() > power.z[:, ~burst].mean() + 10, "the burst"

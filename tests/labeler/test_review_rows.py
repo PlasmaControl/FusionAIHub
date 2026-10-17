@@ -73,7 +73,7 @@ def test_meta_describes_the_grid_and_the_rows(store):
     assert meta["rows"] == [
         {"name": "R0", "kind": "image", "title": "R0", "n_y": 3, "y0": 0.0, "dy": 1.0,
          "y_units": "kHz", "z_lo": -3.0, "z_hi": 27.0, "z_units": "dB",
-         "band": [80.0, 250.0]},
+         "z_scale": "linear", "band": [80.0, 250.0]},
         {"name": "p1", "kind": "trace", "title": "Density", "n_channels": 2,
          "y_units": "1e19 m^-3", "legend": ["a", "b"], "hlines": [0.5]},
     ]

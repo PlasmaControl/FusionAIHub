@@ -138,6 +138,7 @@ def heatmaps(s: Spectra, modes) -> list[Panel]:
             ylabel="kHz",
             zmin=Z_DB[0],
             zmax=Z_DB[1],
+            metadata={"z_units": "dB"},
         ),
         Panel(
             title=N_TITLE,
@@ -150,6 +151,7 @@ def heatmaps(s: Spectra, modes) -> list[Panel]:
             zmax=Z_DB[1],
             modes=modes,
             mode_colours=N_COLOURS,
+            metadata={"z_units": "dB"},
         ),
     ]
 

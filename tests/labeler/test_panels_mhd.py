@@ -322,6 +322,7 @@ def test_the_mhd_page_is_the_magnetics_the_amplitude_q_and_beta_n(tmp_path):
         "beta_N",
     ] == list(mhd.TITLES)
     assert [b.kind for b in built][:2] == ["heatmap", "heatmap"]
+    assert [b.metadata["z_units"] for b in built[:2]] == ["dB", "dB"]
     assert panels.BUILDERS["mhd_n1"] is mhd
 
 
@@ -405,6 +406,7 @@ def test_the_1_1_page_marks_every_crash_and_draws_no_crash_score(tmp_path):
     assert all(300 <= t <= 400 for t in inside["t_ms"])
     built = panels.build("mhd_n1.m1", SHOT, paths=p)
     assert [(b.title, b.kind) for b in built] == [("ECE Te map", "heatmap")]
+    assert built[0].metadata["z_units"] == "keV"
     assert not any("crash" in title.lower() for title in mhd_1_1.TITLES)
     assert mhd_1_1.markers(SHOT + 3, paths=p) == []  # no ECE
     # No Bt0 or axis in the store: the hottest channel, and the caveat says so.

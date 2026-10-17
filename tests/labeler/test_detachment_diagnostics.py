@@ -11,6 +11,8 @@ import pytest
 
 from labeler.config import Paths
 from labeler.events.panels import detachment
+from labeler.events.review import panel_rows
+from labeler.events.review.rows import Grid
 
 
 @pytest.mark.parametrize(
@@ -473,6 +475,7 @@ def test_divertor_te_is_a_z_by_time_map_of_the_blessed_chords(tmp_path):
     np.testing.assert_allclose(np.diff(panel.y), 0.005)  # uniform for the image row
     assert panel.z.shape == (len(panel.y), 5)
     assert panel.metadata["z_scale"] == "log" and panel.metadata["units"] == "eV"
+    assert panel.metadata["z_units"] == "eV"
     # The dead chord (-1.24) is left out; the others keep their order in Z.
     assert panel.metadata["chords"] == 3
     assert panel.metadata["chord_z_m"] == pytest.approx([-1.22, -1.18, 0.99])
@@ -588,6 +591,7 @@ def test_irtv_heat_flux_is_an_r_by_time_map_without_the_centre_post(tmp_path):
     row[~finite.any(axis=1)] = np.nan  # bins without pixels stay empty
     assert np.isfinite(row[1:]).sum() >= 15 and np.nanmin(row[1:]) > 5
     assert panel.metadata["node"] == r"\IRTVQ2DR2" and panel.metadata["units"] == "W/cm²"
+    assert panel.metadata["z_units"] == "W/cm²" and "z_scale" not in panel.metadata
 
 
 def test_irtv_temperature_is_the_heat_flux_maps_twin(tmp_path):
@@ -609,6 +613,7 @@ def test_irtv_temperature_is_the_heat_flux_maps_twin(tmp_path):
     np.testing.assert_allclose((panel.z - flux.z)[both], 300.0, atol=0.3)
     assert panel.metadata["node"] == r"\IRTVAT2DR2"
     assert panel.metadata["units"] == "°C"
+    assert panel.metadata["z_units"] == "°C" and "z_scale" not in panel.metadata
     assert panel.metadata["quantity"] == "absolute surface temperature"
     assert "1st to 99.5th percentile" in panel.metadata["caveat"]
     assert detachment.irtv_panel(170815, _paths(tmp_path / "none"), None, "temperature") is None
@@ -631,6 +636,18 @@ def test_default_rows_put_the_blessed_te_then_both_irtv_maps_after_the_gas_total
         "Afrac lower", "Prad,div lower", "Prad,div upper", "Gas total (valve sum)",
         "Divertor Te (blessed)", "IRTV heat flux (W/cm²)", "IRTV temperature (°C)",
     ]
+    # The three maps' image rows say what the colour means and how it is scaled.
+    rows = {
+        p.title: panel_rows._image(f"p{i}", p, np.asarray(p.x), Grid(0.0, 10.0, 10))
+        for i, p in enumerate(built) if p.kind == "heatmap"
+    }
+    assert {t: (r.z_units, r.z_scale) for t, r in rows.items()} == {
+        "Divertor Te (blessed)": ("eV", "log"),
+        "IRTV heat flux (W/cm²)": ("W/cm²", "linear"),
+        "IRTV temperature (°C)": ("°C", "linear"),
+    }
+    te = rows["Divertor Te (blessed)"]
+    assert (te.z_lo, te.z_hi) == pytest.approx((0.5, 100.0))  # linear values, as pinned
     # The retired real-time tssdivte files, if present, add nothing.
     old = paths.root / "detach_default/dts/170815.npz"
     old.parent.mkdir(parents=True)

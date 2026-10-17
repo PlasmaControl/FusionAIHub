@@ -36,12 +36,13 @@ BANDS = {"alfven_eigenmode": alfven.BAND_KHZ}
 # invalid bins (second line), the divertor Te (DTS) and IRTV heat-flux rows, and a
 # gas total that needs every valve; 10: the divertor Te row is the blessed Thomson
 # fit as a Z x time map (the real-time tssdivte lines left) and the IRTV surface
-# temperature map follows the heat-flux row;
+# temperature map follows the heat-flux row, 11: the image rows carry `z_units`
+# (eV, W/cm², deg C) and `z_scale` (the Te map is log) for the page's colour bar;
 # `resistive_wall_mode` 1: its rows were retitled the same way, 2: RWM v5 added the
 # n=1 delta-Bp row (0c058984). The folded events
 # (sawtooth, fishbone, NTM) are stored under their own parent and are not here.
 PANEL_VERSIONS = {
-    "edge_localized_mode": 4, "sawtooth_oscillation": 1, "detachment": 10,
+    "edge_localized_mode": 4, "sawtooth_oscillation": 1, "detachment": 11,
     "high_confinement_mode": 1, "mhd_n1": 1, "mhd_n1.m1": 1,
     "resistive_wall_mode": 2,
 }
