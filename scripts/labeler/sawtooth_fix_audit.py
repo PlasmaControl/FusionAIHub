@@ -12,8 +12,8 @@ from itertools import pairwise
 import numpy as np
 import pandas as pd
 from sawtooth_physics import (
+    EVENTS,
     OUTPUT,
-    REPO,
     REVIEW,
     WORK,
     export_rows,
@@ -45,7 +45,7 @@ def population_audit(frozen):
     counters = Counter()
     policies, q_sources = Counter(), Counter()
     export_counts = Counter()
-    cohort = set(pd.read_csv(REPO / "data/events/catalog/cohort.csv").shot)
+    cohort = set(pd.read_csv(EVENTS / "catalog/cohort.csv").shot)
     cohort |= set(pd.read_csv(REVIEW).shot)
     for shot in shots:
         record_path = WORK / "shots" / f"{shot}.json"
@@ -132,7 +132,7 @@ def population_audit(frozen):
 
 
 def csv_audit(expected):
-    destination = REPO / "data/events/sawtooth_oscillation/extend_saw_physics"
+    destination = EVENTS / "sawtooth_oscillation/extend_saw_physics"
     counts = Counter()
     by_shot = Counter()
     files = []
@@ -179,7 +179,7 @@ def csv_audit(expected):
 
 def main():
     frozen = json.loads((WORK / "freeze.json").read_text())
-    cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
+    cohort = pd.read_csv(EVENTS / "catalog/cohort.csv")
     experts = set(pd.read_csv(REVIEW).shot)
     train = set(cohort[cohort.split == "train"].shot)
     dev = set(frozen["development_shots"])
@@ -296,7 +296,7 @@ def main():
                 for p in sorted(directory.glob("*.csv"))
             ]
             for directory in (
-                REPO / "data/events/sawtooth_oscillation/extend_saw_physics",
+                EVENTS / "sawtooth_oscillation/extend_saw_physics",
                 WORK / "labels",
             )
         },

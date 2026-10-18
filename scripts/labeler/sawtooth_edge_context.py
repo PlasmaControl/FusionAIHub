@@ -34,7 +34,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from sawtooth_physics import FS, OUTPUT, REPO, WORK, process_shot, save_json
+from sawtooth_physics import EVENTS, FS, OUTPUT, WORK, process_shot, save_json
 
 from labeler.sawtooth.metrics import spans_at
 from labeler.sawtooth.physics import apply_edge_context
@@ -61,12 +61,12 @@ PREVIOUS_EXPLORATION_SHOTS = (
 
 
 def split_map():
-    cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
+    cohort = pd.read_csv(EVENTS / "catalog/cohort.csv")
     return {int(s): str(p) for s, p in zip(cohort.shot, cohort.split, strict=True)}
 
 
 def run(args):
-    cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
+    cohort = pd.read_csv(EVENTS / "catalog/cohort.csv")
     train = cohort[cohort.split == "train"]
     jobs = [
         (

@@ -29,6 +29,8 @@ from labeler.config import Paths, git_dirty, git_sha, sha256_of
 from labeler.events.review import build, detachment, rows, video
 from labeler.events.ui.app import create_app
 
+EVENTS = Paths.from_env().label_tables
+
 REPO = Path(__file__).resolve().parents[2]
 TESTS = [
     f"tests/labeler/test_{name}.py"
@@ -193,7 +195,7 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     if args.verify:
         verify(out)
-    cohort_path = REPO / "data/events/catalog/cohort.csv"
+    cohort_path = EVENTS / "catalog/cohort.csv"
     cohort = pd.read_csv(cohort_path)
     match = cohort[cohort.shot == args.shot]
     if not match.empty and match.split.iloc[0] == "test":

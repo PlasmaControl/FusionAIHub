@@ -26,7 +26,7 @@ One non-blind cohort shot over a few seconds, in three groups on one time axis:
   blank (unassessed / unobservable), adjacent rows of one state drawn as one run,
   the confinement runs named in place (L, H, QH, WPQH). There is no key below the
   panels. Each event's rows are `--rows EVENT=CSV` where given, else its review
-  page's source table (`data/events/<event>/review/source.json`) where that holds
+  page's source table (`<events>/<event>/review/source.json`) where that holds
   the shot, else the tiers below (`labeler.paper.label_figure.TRACKS`). A table
   whose metadata names a model (threshold, evaluation, checkpoint) is that
   detector's output and keeps its threshold, held-out score and training check; a

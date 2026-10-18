@@ -52,13 +52,16 @@ for entry in (REPO / "src", Path(__file__).resolve().parent):
 
 from tm_cv_plan import load_plan
 
+from labeler.config import Paths, events_ref
 from labeler.tearing import magfeatures, scoring
+
+EVENTS = Paths.from_env().label_tables
 
 ROOT = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
 TM = ROOT / "round4/tm"
-CATALOG = REPO / "data/events/catalog"
+CATALOG = EVENTS / "catalog"
 LABELS = (
-    REPO / "data/events/neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
+    EVENTS / "neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
 )
 HYPER = {
     "hidden": 32,
@@ -356,7 +359,7 @@ def main(argv=None) -> int:
     dev = [s for s in dev_all if s in data]
     meta = {
         "git_sha": git_sha(),
-        "labels": str(LABELS.relative_to(REPO)),
+        "labels": events_ref(LABELS),
         "bin_ms": scoring.BIN_MS,
         "shots_without_features": skipped,
         "dev_shots": dev,

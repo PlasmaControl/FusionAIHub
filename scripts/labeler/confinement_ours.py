@@ -21,7 +21,7 @@ Stages (``--help`` of each)::
     select    the inner-validation scores of the variants, which chose between them
               -> outputs/labeler/confinement/ours/selection.json
     apply     segment every roster shot
-              -> data/events/confinement/extend_confine_ours/
+              -> <events>/confinement/extend_confine_ours/
 
 ``--variant`` names the recipe (``VARIANTS``): the 2026-10-03 networks (``run_day``,
 the roster labels' and the default), the first version's folds by shot (``shot``)
@@ -51,9 +51,12 @@ REPO = Path(__file__).resolve().parents[2]
 if str(REPO / "src") not in sys.path:
     sys.path.insert(0, str(REPO / "src"))
 
+from labeler.config import Paths
 from labeler.confinement import bes_protocol as bp
 from labeler.confinement import bes_windows as bw
 from labeler.confinement import scoring, segments, zerod
+
+EVENTS = Paths.from_env().label_tables
 
 LABELER = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
 WORK = LABELER / "round4/conf"
@@ -112,11 +115,11 @@ DATES = WORK / "dates.csv"
 CORPUS_BES = WORK / "bes500k"
 DALPHA_TABLE = LABELER / "suggestions/dalpha_lh/v1/confinement_suggest_dalpha_lh_v1.csv"
 OUT = REPO / "outputs/labeler/confinement/ours"
-EXTEND = REPO / "data/events/confinement/extend_confine_ours"
+EXTEND = EVENTS / "confinement/extend_confine_ours"
 ROSTER = Path(
     os.environ.get(
         "CONFINEMENT_ROSTER",
-        "/scratch/gpfs/nc1514/FusionAIHub/data/events/confinement/shots.csv",
+        str(EVENTS / "confinement/shots.csv"),
     )
 )
 SEED = 20261001

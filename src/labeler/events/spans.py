@@ -641,9 +641,8 @@ METHODS = {
 def cohort_path(paths: Paths) -> Path:
     """The frozen cohort, `catalog/cohort.csv` (v1 Task 5.2 copies it there).
 
-    The label tables' copy when they hold one, else this checkout's own. The
-    review page's label tables are the main checkout's `data/events/`, which
-    holds the cohort only once v1 is merged there; the two are one frozen file.
+    The label tables' copy when they hold one, else the default events folder's
+    (`DEFAULT_LABEL_TABLES`); the two are one frozen file.
     """
     path = paths.label_tables / "catalog" / "cohort.csv"
     return path if path.is_file() else DEFAULT_LABEL_TABLES / "catalog" / "cohort.csv"

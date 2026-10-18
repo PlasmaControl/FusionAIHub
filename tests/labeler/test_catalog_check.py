@@ -953,7 +953,7 @@ def test_cli_d19_context_and_precise_endpoint(tmp_path, capsys, with_windows, en
         assert "D19 needs the allowed windows" in message
         assert (
             "python -m labeler.events.catalog.check disruption "
-            "--windows data/events/catalog/cohort.csv"
+            "--windows $LABELER_LABEL_TABLES/catalog/cohort.csv"
         ) in message
     elif end == 5262:
         assert "0 finding(s)" in message

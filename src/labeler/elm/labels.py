@@ -1,6 +1,6 @@
 """The reviewed ELM spans as dense per-millisecond targets and as scored 50 ms bins.
 
-`data/events/edge_localized_mode/review/labels.csv` holds, per shot, spans in
+`<events>/edge_localized_mode/review/labels.csv` holds, per shot, spans in
 ms of the shot's clock in four states: absent (0), present (1), uncertain (2)
 and not observable (3). A present span is non-crowd (`iscrowd` 0) or a
 crowd (`iscrowd` 1), an ELMing period whose ELMs are not separated. Non-crowd
@@ -35,6 +35,7 @@ import numpy as np
 import pandas as pd
 from scipy.ndimage import uniform_filter1d
 
+from ..config import Paths
 from . import inputs
 
 BIN_MS = 50.0
@@ -42,8 +43,12 @@ IGNORE = -1
 ONSET_SIGMA_MS = 2.0
 KINDS = ("absent", "non_crowd", "crowd", "uncertain", "not_observable")
 SCORED_KINDS = ("absent", "non_crowd", "crowd")
-#: `review/labels.csv` in the repository (the owner's labels, 119 shots).
-REVIEW_CSV = Path("data/events/edge_localized_mode/review/labels.csv")
+
+
+def review_csv(paths: Paths | None = None) -> Path:
+    """`review/labels.csv` in the label tables (the owner's labels, 119 shots)."""
+    paths = Paths.from_env() if paths is None else paths
+    return paths.label_tables / "edge_localized_mode" / "review" / "labels.csv"
 
 
 def review_table(path: str | Path) -> pd.DataFrame:

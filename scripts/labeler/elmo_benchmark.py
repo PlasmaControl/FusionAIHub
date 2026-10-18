@@ -29,7 +29,7 @@ detected span that overlaps nothing marked is a false positive. The paper's tabl
 second file whose marked region overlaps one already taken are dropped as duplicates.
 
 **Our review labels** (``review``). The shots of
-``data/events/edge_localized_mode/review/labels.csv`` that the corpus holds BES for are
+``<events>/edge_localized_mode/review/labels.csv`` that the corpus holds BES for are
 run in consecutive 200 ms chunks (the paper's window) over the reviewed time. Spans of
 the review are scored in 50 ms bins that lie wholly inside one labelled span (a span of
 category 1 is present, category 0 absent; uncertain and not-observable time is left
@@ -71,12 +71,15 @@ import pandas as pd
 from scipy.fft import dct, idct
 from scipy.ndimage import maximum_filter1d
 
+from labeler.config import Paths
+
 REPO = Path(__file__).resolve().parents[2]
+EVENTS = Paths.from_env().label_tables
 LABELER = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
 CORPUS = Path("/scratch/gpfs/EKOLEMEN/foundation_model")
 SMITH_DIR = Path("/projects/EKOLEMEN/dsmith/data")
 SMITH_FILES = ("labeled-elm-events.hdf5", "labeled_elm_events_long_windows_20220921.hdf5")
-REVIEW = REPO / "data/events/edge_localized_mode/review/labels.csv"
+REVIEW = EVENTS / "edge_localized_mode/review/labels.csv"
 ELM_CLOCK = LABELER / "suggestions/elm_clock/v1/edge_localized_mode_suggest_elm_clock_v1.csv"
 DEFAULT_WORK = LABELER / "benchmarks/elm/elmo"
 DEFAULT_OUT = REPO / "outputs/labeler/elm/elmo"

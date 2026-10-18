@@ -88,9 +88,7 @@ def main(argv=None):
     parser.add_argument("--island-inventory-shot", type=int)
     parser.add_argument("--label-meta", type=Path)
     args = parser.parse_args(argv)
-    cohort = pd.read_csv(
-        Path(__file__).resolve().parents[2] / "data/events/catalog/cohort.csv"
-    )
+    cohort = pd.read_csv(Paths.from_env().label_tables / "catalog/cohort.csv")
     blind = set(cohort.loc[cohort.split.eq("test"), "shot"])
     args.shots = [shot for shot in args.shots if shot not in blind]
     if args.island_inventory_shot is not None:

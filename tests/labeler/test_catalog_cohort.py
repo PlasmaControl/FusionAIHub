@@ -12,14 +12,13 @@ import pandas as pd
 import pytest
 import yaml
 
-from labeler.config import sha256_of
+from labeler.config import Paths, sha256_of
 from labeler.events import databases
 from labeler.events.catalog import cohort, runaway, window
 from labeler.events.catalog import population as pop
 from labeler.events.catalog.check import CatalogError
 from labeler.literature.papers import papers_frame, write_papers
 
-REPO = Path(__file__).resolve().parents[2]
 #: N per cell of a made-up population: L small enough to take whole, G and R not.
 SIZES = {
     "L": {2021: 5, 2022: 40, 2023: 50, 2024: 45, 2025: 10},
@@ -190,7 +189,7 @@ def test_a_campaign_year_outside_the_cells_is_refused():
 
 @pytest.mark.label_tables
 def test_the_legacy_sets_are_the_registered_tables():
-    root = REPO / "data" / "events"
+    root = Paths.from_env().label_tables
     legacy, specs = cohort.legacy_sets(root)
     assert {s.dir for s in specs} == {s.dir for s in databases.load_manifest(root)}
     elm = next(s for s in specs if s.dir == "edge_localized_mode")
@@ -1326,7 +1325,7 @@ def test_command_refuses_extra_papers_field_names_the_file(
 
 @pytest.mark.label_tables
 def test_committed_release_hashes_and_exact_redraw():
-    root = REPO / "data/events/catalog"
+    root = Paths.from_env().label_tables / "catalog"
     doc = yaml.safe_load((root / "cohort_manifest.yaml").read_text())
     for name in ("cohort.csv", "population.csv"):
         assert doc["outputs"][name] == sha256_of(root / name)
@@ -1445,10 +1444,11 @@ def test_cohort_fingerprints_bytes_consumed_when_input_replaced(
 
 @pytest.mark.label_tables
 def test_legacy_membership_and_hash_use_same_bytes(tmp_path, monkeypatch):
-    spec = databases.load_manifest(REPO / "data/events")[0]
+    real = Paths.from_env().label_tables
+    spec = databases.load_manifest(real)[0]
     path = spec.path(tmp_path)
     path.parent.mkdir(parents=True)
-    path.write_bytes(spec.path(REPO / "data/events").read_bytes())
+    path.write_bytes(spec.path(real).read_bytes())
     digest = sha256_of(path)
     expected = databases.shots(spec, tmp_path)
     monkeypatch.setattr(databases, "load_manifest", lambda root: [spec])

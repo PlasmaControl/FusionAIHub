@@ -13,15 +13,18 @@ from pathlib import Path
 
 import pandas as pd
 
+from labeler.config import Paths
 from labeler.events.interval_tables import parse_attrs
 from labeler.tearing import rule, scoring
+
+EVENTS = Paths.from_env().label_tables
 
 REPO = Path(__file__).resolve().parents[2]
 TM = (
     Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
     / "round4/tm"
 )
-LOCAL = REPO / "data/events/neoclassical_tearing_mode/benchmark"
+LOCAL = EVENTS / "neoclassical_tearing_mode/benchmark"
 
 
 def read(path):
@@ -36,6 +39,15 @@ def git(*args, check=True):
     return subprocess.run(
         ["git", "-C", str(REPO), *args], capture_output=True, text=True, check=check
     )
+
+
+def source_path(text):
+    """A recorded source file: `<events>/...` (or the older `data/events/...`) names a
+    label table, anything else is relative to the repository."""
+    for prefix in ("<events>/", "data/events/"):
+        if text.startswith(prefix):
+            return EVENTS / text.removeprefix(prefix)
+    return REPO / text
 
 
 def committed(sha_text, what):
@@ -54,12 +66,12 @@ def committed(sha_text, what):
 
 
 def main():
-    cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
+    cohort = pd.read_csv(EVENTS / "catalog/cohort.csv")
     blind = set(cohort.query("split == 'test'").shot)
     dev = sorted(int(s) for s in cohort.query("split != 'test'").shot)
     labels = (
-        REPO
-        / "data/events/neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
+        EVENTS
+        / "neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
     )
     label_sha = sha(labels)
     assert set(pd.read_csv(labels).shot) == set(dev)
@@ -84,7 +96,7 @@ def main():
         assert not set(row["requested_shots"]) & blind
         assert not row["threshold_unestimable_folds"]
         assert row["metrics"]["replicates"] == 1000
-        record = read(REPO / row["source"])
+        record = read(source_path(row["source"]))
         if "labels_sha256" in record:
             assert record["labels_sha256"] == label_sha
         if "uncertain_negative" in row["source"]:

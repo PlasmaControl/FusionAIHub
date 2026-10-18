@@ -3,9 +3,9 @@
 
 Runs the published ``d3d_ae_activity_seldnet`` (``labeler.ae.model.AeSeldNet``) over
 the whole CO2 record of each listed shot, and writes the result as
-``data/events/alfven_eigenmode/extend_ae_seldnet/<name>.csv`` and its ``.meta.json``.
+``<events>/alfven_eigenmode/extend_ae_seldnet/<name>.csv`` and its ``.meta.json``.
 
-**Lists.** The default list is the gold set (``data/events/gold/gold_shots.csv``), taken
+**Lists.** The default list is the gold set (``<events>/gold/gold_shots.csv``), taken
 only where a gold shot has no row in any Alfven eigenmode table but this producer's own,
 and the default table is ``gold_shots.csv``. ``--shots-file`` names another list (one
 shot a line, or a CSV with a ``shot`` column). Every shot on that list is run, labelled
@@ -44,9 +44,9 @@ atomically) so the table can be rebuilt, or one shot added, without rerunning th
 others. ``--build-only`` builds the table from that cache and never loads the model.
 
     pixi run --frozen -e labeler python scripts/labeler/ae_gold_extend.py [--shots N ...]
-    python scripts/labeler/ae_gold_extend.py --shots-file data/events/silver/silver_shots.csv \\
+    python scripts/labeler/ae_gold_extend.py --shots-file $LABELER_LABEL_TABLES/silver/silver_shots.csv \\
         --work-dir DIR --chain gpu --device cuda --no-write       # the list, in one GPU job
-    python scripts/labeler/ae_gold_extend.py --shots-file data/events/silver/silver_shots.csv \\
+    python scripts/labeler/ae_gold_extend.py --shots-file $LABELER_LABEL_TABLES/silver/silver_shots.csv \\
         --work-dir DIR --build-only                                # then the table, from the cache
 
 The silver run's jobs: ``scripts/labeler/silver_ae_seldnet.sbatch``.
@@ -74,7 +74,7 @@ from labeler.ae import full, gpu
 from labeler.ae import transform as tr
 from labeler.ae.model import AeSeldNet, AeSeldNetConfig
 from labeler.ae.xpower.data import seldnet_split
-from labeler.config import Paths, atomic_path, git_dirty, git_sha, sha256_of
+from labeler.config import Paths, atomic_path, events_ref, git_dirty, git_sha, sha256_of
 from labeler.events import raw
 from labeler.events.catalog import window as win
 from labeler.events.interval_tables import validate_intervals, write_interval_table
@@ -528,7 +528,9 @@ def dirty_note():
 
 def list_note(shots_file, listed, shots):
     path = Path(shots_file).resolve()
-    name = str(path.relative_to(REPO)) if path.is_relative_to(REPO) else str(path)
+    name = events_ref(path, Paths.from_env().label_tables.resolve())
+    if name == str(path) and path.is_relative_to(REPO):
+        name = str(path.relative_to(REPO))
     note = (f"{name}: all {len(shots)} listed shots, whether or not another alfven_eigenmode table labels "
             "them (on the review page the owner's save, a format table and an extend table whose path sorts "
             "first outrank this one)")

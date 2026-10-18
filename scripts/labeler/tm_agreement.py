@@ -39,24 +39,20 @@ from labeler.config import Paths, git_sha
 from labeler.tearing import agreement, rule
 from labeler.tearing.agreement import Reference
 
+EVENTS = Paths.from_env().label_tables
+
 LABELER = Path(
     os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler")
 )
 OUT_ROOT = Path(os.environ.get("TM_OUT_ROOT", LABELER / "round4/tm"))
-CATALOG = REPO / "data/events/catalog"
-SURVIVAL_H5 = REPO / "data/events/neoclassical_tearing_mode/raw/tm_labels.h5"
-MAIN_CHECKOUT = Path("/scratch/gpfs/nc1514/FusionAIHub")
+CATALOG = EVENTS / "catalog"
+SURVIVAL_H5 = EVENTS / "neoclassical_tearing_mode/raw/tm_labels.h5"
 
 
 def survival_references(shots) -> tuple[list[Reference], list[int]]:
     """`(references, absent)`: the survival label's onset per shot it holds."""
-    path = (
-        SURVIVAL_H5
-        if SURVIVAL_H5.is_file()
-        else (MAIN_CHECKOUT / "data/events/neoclassical_tearing_mode/raw/tm_labels.h5")
-    )
     refs, absent = [], []
-    with h5py.File(path, "r") as f:
+    with h5py.File(SURVIVAL_H5, "r") as f:
         for shot in shots:
             key = str(int(shot))
             if key not in f:

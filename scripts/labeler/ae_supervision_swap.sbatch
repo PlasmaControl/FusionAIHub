@@ -18,7 +18,7 @@ REPO=${REPO:-/scratch/gpfs/nc1514/FusionAIHub}
 export TMPDIR=/scratch/gpfs/EKOLEMEN/nc1514/labeler/scratch/ae-sw
 mkdir -p "$TMPDIR"
 export LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labeler
-export LABELER_LABEL_TABLES=/scratch/gpfs/nc1514/FusionAIHub/data/events
+export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-/scratch/gpfs/EKOLEMEN/nc1514/events}"
 export LABELER_NO_FETCH=1
 export PYTHONPATH="$REPO/src"
 export OMP_NUM_THREADS=1

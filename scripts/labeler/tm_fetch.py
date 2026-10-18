@@ -36,14 +36,17 @@ REPO = Path(__file__).resolve().parents[2]
 if str(REPO / "src") not in sys.path:
     sys.path.insert(0, str(REPO / "src"))
 
+from labeler.config import Paths
 from labeler.events.verify import NoDataError, fdp_signal
 from labeler.tearing.rule import LOCK_INVALID_RANGE, valid_lock_shot
+
+EVENTS = Paths.from_env().label_tables
 
 LABELER = Path(
     os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler")
 )
 OUT_ROOT = LABELER / "round4/tm"
-CATALOG = REPO / "data/events/catalog"
+CATALOG = EVENTS / "catalog"
 #: Which records: the MDSplus nodes, the names they are saved under, the default folder.
 KINDS = {
     "rms": ((r"\MHD::N1RMS", r"\MHD::N2RMS"), ("n1rms", "n2rms"), "signals"),

@@ -317,9 +317,9 @@ def test_silver_windows_add_the_silver_shots_outside_the_population(cohort_env, 
     assert meta["skipped"] == {"7": "no catalog window"} and meta["windows"] == "silver"
 
 
-def test_with_no_cohort_in_the_tables_the_checkouts_is_read(tmp_path, monkeypatch):
+def test_with_no_cohort_in_the_tables_the_default_folders_is_read(tmp_path, monkeypatch):
     p = tree.paths(tmp_path)
-    own = tmp_path / "checkout" / "data" / "events"
+    own = tmp_path / "default" / "events"
     monkeypatch.setattr(spans, "DEFAULT_LABEL_TABLES", own)
     assert spans.cohort_path(p) == own / "catalog" / "cohort.csv"
     tree.cohort(p, [tree.queue_row(2, 1)])

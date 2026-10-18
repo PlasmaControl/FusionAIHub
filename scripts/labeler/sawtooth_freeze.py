@@ -10,8 +10,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from sawtooth_physics import (
+    EVENTS,
     OUTPUT,
-    REPO,
     REVIEW,
     WORK,
     process_shot,
@@ -28,7 +28,7 @@ def main():
     parser.add_argument("stage", choices=["freeze", "impact"])
     parser.add_argument("--work", type=Path, default=WORK)
     args = parser.parse_args()
-    cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
+    cohort = pd.read_csv(EVENTS / "catalog/cohort.csv")
     experts = set(pd.read_csv(REVIEW).shot)
     eligible = sorted(set(cohort[cohort.split == "train"].shot) - experts)
     shots = sorted(np.random.default_rng(20261004).choice(eligible, 16, False).tolist())

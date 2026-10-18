@@ -9,6 +9,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from labeler.config import Paths
+
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "scripts/labeler"))
 import sawtooth_edge_context as edge_context
@@ -96,7 +98,7 @@ def test_packaged_rule_and_derivation_record_agree_and_read_only_train():
     packaged = json.loads(setup.PACKAGED.read_text())
     assert derivation["chosen_ms"] == packaged["rule"]["isolated_edge_context_ms"]
     assert derivation["val_or_test_shots_read"] == 0
-    cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
+    cohort = pd.read_csv(Paths.from_env().label_tables / "catalog/cohort.csv")
     train = set(cohort.loc[cohort.split == "train", "shot"].astype(int))
     assert set(derivation["derivation_shots"]) <= train
     splits = derivation["previous_exploration"]["split_counts"]

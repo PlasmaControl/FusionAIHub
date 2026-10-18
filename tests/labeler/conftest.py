@@ -13,8 +13,8 @@ configuration: without it PTDATA fails with `getservbyname failed for task
     pixi run -e labeler fdp run python -m pytest tests/labeler \
         -q -W error --run-live
 
-A test that reads the real label tables under `data/events` is marked
-`label_tables`. `data/` is not in git, so a fresh clone has no tables until
+A test that reads the real label tables (the folder `LABELER_LABEL_TABLES` names)
+is marked `label_tables`. They are not in git, so a fresh clone has no tables until
 `scripts/labeler/hf_publish.py pull` restores them; until then those tests are
 skipped, not failed.
 
@@ -30,7 +30,7 @@ import warnings
 import numpy as np
 import pytest
 
-from labeler.config import DEFAULT_LABEL_TABLES
+from labeler.config import Paths
 from labeler.env import getenv
 
 # Starlette's test client still reads `anyio.abc.BlockingPortal`, an alias anyio 4.15
@@ -42,6 +42,24 @@ with warnings.catch_warnings():
 
 #: Environment switch, equivalent to `--run-live`.
 LIVE_ENV = "LABELER_FDP"
+
+#: The real label tables, the folder the caller's `LABELER_LABEL_TABLES` names (else
+#: the default events folder). Read here, at import, because the session fixture
+#: below clears every LABELER_* variable before the first test runs.
+REAL_LABEL_TABLES = Paths.from_env().label_tables
+
+
+@pytest.fixture(scope="session")
+def real_label_tables():
+    """The real label tables' folder, for a test that copies from or reads them."""
+    return REAL_LABEL_TABLES
+
+
+@pytest.fixture(autouse=True)
+def _marked_tests_read_the_real_tables(request, monkeypatch):
+    """A test marked `label_tables` sees the real folder through the setting."""
+    if request.node.get_closest_marker("label_tables"):
+        monkeypatch.setenv("LABELER_LABEL_TABLES", str(REAL_LABEL_TABLES))
 
 
 @pytest.fixture
@@ -79,7 +97,7 @@ def pytest_configure(config) -> None:
     )
     config.addinivalue_line(
         "markers",
-        "label_tables: reads the real label tables under data/events (not in git); "
+        "label_tables: reads the real label tables, the folder LABELER_LABEL_TABLES names (not in git); "
         "skipped until `scripts/labeler/hf_publish.py pull` restores them",
     )
 
@@ -89,11 +107,12 @@ def pytest_collection_modifyitems(config, items) -> None:
     skip_live = pytest.mark.skip(
         reason="live fdp fetch is opt-in: --run-live or LABELER_FDP=1"
     )
+    label_tables = REAL_LABEL_TABLES
     skip_tables = pytest.mark.skip(
-        reason=f"no label tables at {DEFAULT_LABEL_TABLES} (data/ is not in git): "
+        reason=f"no label tables at {label_tables} (not in git): "
         "restore them with scripts/labeler/hf_publish.py pull"
     )
-    tables = DEFAULT_LABEL_TABLES.is_dir()
+    tables = label_tables.is_dir()
     for item in items:
         if not live and "live" in item.keywords:
             item.add_marker(skip_live)

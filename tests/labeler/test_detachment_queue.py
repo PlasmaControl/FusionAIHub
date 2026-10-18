@@ -83,10 +83,11 @@ def test_reordering_frozen_queue_preserves_curation_and_does_not_read_producer(
 
     module = roster_module()
     repo = tmp_path / "repo"
-    cohort = repo / "data/events/catalog/cohort.csv"
+    cohort = repo / "events/catalog/cohort.csv"
     cohort.parent.mkdir(parents=True, exist_ok=True)
     cohort.write_text("shot,split\n190001,train\n200977,val\n")
     monkeypatch.setattr(module, "REPO", repo)
+    monkeypatch.setattr(module, "EVENTS", repo / "events")
     event = tmp_path / "out/tables/detachment"
     event.mkdir(parents=True, exist_ok=True)
     (event / "shots.csv").write_text(
@@ -393,7 +394,7 @@ def test_main_writes_overlay_without_changing_producer_roster(
 ):
     module = roster_module()
     repo = tmp_path / "repo"
-    cohort_path = repo / "data/events/catalog/cohort.csv"
+    cohort_path = repo / "events/catalog/cohort.csv"
     cohort_path.parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(
         {
@@ -434,6 +435,7 @@ def test_main_writes_overlay_without_changing_producer_roster(
     camera(paths, 190001)
     camera(paths, 190002, live=manual_holdout)
     monkeypatch.setattr(module, "REPO", repo)
+    monkeypatch.setattr(module, "EVENTS", repo / "events")
     monkeypatch.setattr(module.Paths, "from_env", lambda: paths)
     monkeypatch.setattr(module, "original_candidates", lambda *_: {"shots": []})
     out = tmp_path / "delivery"
@@ -472,7 +474,7 @@ def test_main_writes_overlay_without_changing_producer_roster(
         assert "UI curation" in overlay.iloc[0].notes
     assert "camera available" in overlay.iloc[0].notes
     assert "EFIT missing" in overlay.iloc[0].notes
-    assert not (repo / "data/events/detachment/shots.csv").exists()
+    assert not (repo / "events/detachment/shots.csv").exists()
     evidence = json.loads(record.read_text())
     assert evidence["summary"]["missing_efit"] == (1 if manual_holdout else 2)
     assert evidence["summary"]["no_video_excluded"] == (0 if manual_holdout else 1)

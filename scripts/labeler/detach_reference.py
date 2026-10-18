@@ -22,7 +22,10 @@ import numpy as np
 import pandas as pd
 from detach_json import dumps
 
+from labeler.config import Paths
 from labeler.events.detachment import core, thresholds
+
+EVENTS = Paths.from_env().label_tables
 
 REPO = Path(__file__).resolve().parents[2]
 RESULTS = REPO / "docs" / "labeler" / "results"
@@ -432,7 +435,7 @@ def main() -> None:
     source = json.loads(args.sources.read_text())
     labels = pd.read_csv(args.labels)
     rows = published_points(source, args.bins_dir, labels)
-    cohorts = pd.read_csv(REPO / "data" / "events" / "catalog" / "cohort.csv")
+    cohorts = pd.read_csv(EVENTS / "catalog" / "cohort.csv")
     split = dict(zip(cohorts.shot, cohorts.split, strict=True))
     for item in rows:
         item["cohort_split"] = split.get(item["shot"], "external_development")

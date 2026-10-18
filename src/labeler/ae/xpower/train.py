@@ -3,7 +3,7 @@
     python -m labeler.ae.xpower.train --candidate NAME [--out DIR] [--pilot N]
     python -m labeler.ae.xpower.train --from-cv --version v2 [--pilot N]  # or v3, v4
 
-The first (v1) reads the owner's labels (`data/events/alfven_eigenmode/review/
+The first (v1) reads the owner's labels (`<events>/alfven_eigenmode/review/
 labels.csv`), the review page's AE stores and TokEye's masks, and writes
 `model.pt`, `split.csv`, `training.json` and the labels it read
 (`review/labels.csv`) to `--out` (default

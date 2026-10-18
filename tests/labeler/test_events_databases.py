@@ -314,7 +314,7 @@ def test_the_per_table_sources_are_offered_as_documentation(table):
 
 
 def test_the_registered_outputs_include_rwm_ae_elm_and_tearing():
-    specs = db.load_manifest(Paths().label_tables)
+    specs = db.load_manifest(Paths.from_env().label_tables)
     assert {s.phenomenon for s in specs} == {"rwm", "ae", "elm", "tearing", "hmode", "lmode"}
     # the seventh is the ECE hand-drawn AE boxes (26 shots, dated 2022-01-24),
     # registered with the confinement-review commit 43279081 with its provenance;
@@ -340,7 +340,7 @@ def test_the_committed_tables_parse_and_every_time_is_a_plausible_shot_time():
     # generous: a DIII-D shot is ~5 s, and an onset time that arrived in
     # seconds instead of milliseconds would land at 2.6e-3 s, which the
     # lower bound catches.
-    root = Paths().label_tables
+    root = Paths.from_env().label_tables
     total, named = 0, set()
     for spec in (s for s in db.load_manifest(root) if s.phenomenon == "rwm"):
         frame = db.read_table(spec, root)
@@ -361,7 +361,7 @@ def test_the_rwm_tables_name_no_shot_the_corpus_holds():
     # starts at 185601, so a `--databases-only` run over any corpus shot
     # list writes nothing. That is the honest answer, and the reason the
     # loader had to land before a table that overlaps arrives.
-    root = Paths().label_tables
+    root = Paths.from_env().label_tables
     named: set[int] = set()
     for spec in (s for s in db.load_manifest(root) if s.phenomenon == "rwm"):
         named |= db.shots(spec, root)
@@ -424,7 +424,7 @@ def test_a_registration_that_is_not_a_list_of_names_is_refused(tmp_path, entry):
 
 @pytest.mark.label_tables
 def test_the_repository_registers_the_catalog_directory():
-    root = Paths().label_tables
+    root = Paths.from_env().label_tables
     names = [p.name for p in db.category_dirs(root)]
     assert (root / "catalog").is_dir() and "catalog" not in names
     assert "disruption" in names
@@ -438,7 +438,7 @@ def test_events_yaml_gives_each_catalog_category_the_four_states():
     classes = manifest["label_grid"]["classes"]
     for category in PHENOMENA:
         assert classes[category] == STATE_NAMES, category
-        assert (Paths().label_tables / category).is_dir(), category
+        assert (Paths.from_env().label_tables / category).is_dir(), category
 
 
 def test_catalog_category_names_agree_between_code_manifest_and_states():

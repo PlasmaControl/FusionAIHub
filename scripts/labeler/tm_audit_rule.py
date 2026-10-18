@@ -27,9 +27,11 @@ import numpy as np
 import pandas as pd
 from tm_label import line_evidence
 
-from labeler.config import git_sha
+from labeler.config import Paths, git_sha
 from labeler.events.interval_tables import parse_attrs
 from labeler.tearing import rule, scoring
+
+EVENTS = Paths.from_env().label_tables
 
 REPO = Path(__file__).resolve().parents[2]
 OUT = Path(os.environ["LABELER_ROOT"]) / "round4/tm"
@@ -268,7 +270,7 @@ def main(argv=None):
     )
     parser.add_argument("--fetch-log-dir", type=Path)
     args = parser.parse_args(argv)
-    cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
+    cohort = pd.read_csv(EVENTS / "catalog/cohort.csv")
     blind = set(cohort.loc[cohort.split.eq("test"), "shot"])
     audit = {
         "made_by": "scripts/labeler/tm_audit_rule.py",
@@ -341,12 +343,12 @@ def main(argv=None):
             ],
         }
     for name in args.sets:
-        shots = pd.read_csv(REPO / f"data/events/catalog/{name}.csv")
+        shots = pd.read_csv(EVENTS / f"catalog/{name}.csv")
         shots = shots[~shots.shot.isin(blind)]
         ip = OUT / f"labels/tm_intervals_full_{name}.csv"
         tp = (
-            REPO
-            / "data/events/neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
+            EVENTS
+            / "neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
             if name == "cohort"
             else OUT / "labels/tm_interval_population.csv"
         )

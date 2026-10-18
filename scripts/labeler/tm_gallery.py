@@ -44,20 +44,22 @@ from matplotlib import patheffects
 from matplotlib.patches import Patch
 from matplotlib.ticker import FixedLocator, FuncFormatter, NullFormatter
 
-from labeler.config import git_sha
+from labeler.config import Paths, git_sha
 from labeler.events.interval_tables import parse_attrs
 from labeler.events.panels._shared import above_floor_db, finite, plasma_columns, stft
 from labeler.events.verify import NoDataError, corpus_signal
 from labeler.paper import theme
 from labeler.tearing import rule
 
+EVENTS = Paths.from_env().label_tables
+
 LABELER = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
 SIGNALS = LABELER / "round4/tm/signals"
 LABELS = (
-    REPO / "data/events/neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
+    EVENTS / "neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
 )
 FULL = LABELER / "round4/tm/labels/tm_intervals_full_cohort.csv"
-COHORT = REPO / "data/events/catalog/cohort.csv"
+COHORT = EVENTS / "catalog/cohort.csv"
 #: The paper theme (`labeler.paper.theme`): n = 1 sea green, n = 2 coral; the traces use
 #: the same colours.
 COLOUR = {1: theme.SEA_GREEN, 2: theme.CORAL}

@@ -31,27 +31,30 @@ import tm_prior_published
 import tm_prior_retrain
 from tm_cv_plan import load_plan
 
-from labeler.config import Paths, git_sha
+from labeler.config import Paths, events_ref, git_sha
 from labeler.tearing import scoring
 from labeler.tearing import source as mhd_source
 from labeler.validate import archived_truth
 
+EVENTS = Paths.from_env().label_tables
+
 ROOT = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
 TM = ROOT / "round4/tm"
-LOCAL = REPO / "data/events/neoclassical_tearing_mode/benchmark"
+LOCAL = EVENTS / "neoclassical_tearing_mode/benchmark"
 DOCS = REPO / "docs/labeler"
 LABELS = (
-    REPO / "data/events/neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
+    EVENTS / "neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
 )
 #: The tearing-mode review source (`scripts/labeler/tm_source.py`, decision S5) whose
 #: present and absent resolve rule-uncertain time in the `mhd_resolved` view (S6): the
 #: `tm_mhd` version `--mhd-version` names, by default the one the event's review pointer
 #: names (`POINTER`). `main` sets `MHD_VERSION`; None (or no table) skips the view.
 MHD_METHOD = "tm_mhd"
-POINTER = REPO / "data/events/neoclassical_tearing_mode/review/source.json"
+POINTER = EVENTS / "neoclassical_tearing_mode/review/source.json"
 MHD_VERSION: str | None = None
-#: `--write-to`: every file the run writes goes under this folder instead (`repo/...` and
-#: `root/...` mirrors), and reads prefer what the run wrote there; None writes in place.
+#: `--write-to`: every file the run writes goes under this folder instead (`repo/...`,
+#: `root/...` and `events/...` mirrors), and reads prefer what the run wrote there; None
+#: writes in place.
 WRITE_TO: Path | None = None
 
 
@@ -60,10 +63,10 @@ def out_path(path) -> Path:
     path = Path(path)
     if WRITE_TO is None:
         return path
-    for base, name in ((REPO, "repo"), (ROOT, "root")):
+    for base, name in ((REPO, "repo"), (ROOT, "root"), (EVENTS, "events")):
         if path.is_relative_to(base):
             return WRITE_TO / name / path.relative_to(base)
-    raise ValueError(f"{path} is outside the repository and LABELER_ROOT")
+    raise ValueError(f"{path} is outside the repository, LABELER_ROOT and the label tables")
 
 
 def mhd_source_path(version: str) -> Path:
@@ -167,7 +170,7 @@ def rule_audit_bundle():
         if written.stat().st_size > 2_000_000:
             written.write_text(json.dumps(record, separators=(",", ":")) + "\n")
         assert written.stat().st_size <= 2_000_000
-        result["sources"][filename] = str(destination.relative_to(REPO))
+        result["sources"][filename] = events_ref(destination)
         result[filename.removesuffix(".json")] = {
             key: value for key, value in record.items() if key != "details"
         }
@@ -532,7 +535,7 @@ def coverage(cohort):
         catalog = "population" if "population" in name else "cohort"
         start_path = TM / f"labels/plasma_start_{catalog}.json"
         starts = read(start_path)
-        windows = pd.read_csv(REPO / f"data/events/catalog/{catalog}.csv")
+        windows = pd.read_csv(EVENTS / f"catalog/{catalog}.csv")
         windows = windows[~windows.shot.isin(blind)]
         by_shot = {int(s): g for s, g in table.groupby("shot")}
         bins = positive = observable = classifiable = plasma_bins = 0
@@ -637,12 +640,7 @@ def coverage(cohort):
         "per_shot": records,
         "skipped": skipped,
     }
-    path = REPO / "data/events/neoclassical_tearing_mode/raw/tm_labels.h5"
-    if not path.is_file():
-        path = (
-            Path("/scratch/gpfs/nc1514/FusionAIHub/data/events")
-            / "neoclassical_tearing_mode/raw/tm_labels.h5"
-        )
+    path = EVENTS / "neoclassical_tearing_mode/raw/tm_labels.h5"
     records = {}
     with h5py.File(path) as f:
         for shot in cohort.query("split != 'test'").shot:
@@ -976,7 +974,7 @@ def mhd_resolved_block(stems, find, uncertain_setting):
                 "setting": "Tokamak-SI, MHD-resolved",
                 "in_main_table": in_main,
                 "shot_set": SHOTS[shot_set],
-                "source": str(snapshot.relative_to(REPO)),
+                "source": events_ref(snapshot),
                 "original_source": str(source),
                 "metrics": metrics,
                 "shots": [s for s in record["shots"] if s not in empty],
@@ -1221,16 +1219,22 @@ def main(argv=None):
     ap.add_argument(
         "--write-to",
         type=Path,
-        help="write every output under this folder (repo/ and root/ mirrors) instead "
-        "of in place, for a dry run to diff",
+        help="write every output under this folder (repo/, root/ and events/ mirrors) "
+        "instead of in place, for a dry run to diff",
     )
     args = ap.parse_args(argv)
     global WRITE_TO, MHD_VERSION
     WRITE_TO = args.write_to
     MHD_VERSION = args.mhd_version or pointer_version()
     if WRITE_TO is not None:
-        print("dry run: writes go to", WRITE_TO / "repo", "and", WRITE_TO / "root")
-    cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
+        print(
+            "dry run: writes go to",
+            WRITE_TO / "repo",
+            WRITE_TO / "root",
+            "and",
+            WRITE_TO / "events",
+        )
+    cohort = pd.read_csv(EVENTS / "catalog/cohort.csv")
     blind = set(cohort.query("split == 'test'").shot)
     if args.rescore:
         for stem in (
@@ -1298,7 +1302,7 @@ def main(argv=None):
                 "model": model,
                 "setting": setting,
                 "variant": variant,
-                "source": str(snapshot.relative_to(REPO)),
+                "source": events_ref(snapshot),
                 "original_source": str(source),
                 "metrics": metrics,
                 "shots": scored,
@@ -1618,7 +1622,7 @@ def main(argv=None):
             if k not in ("definition", "reference_shots")
         },
         "inner_split_plan": (
-            "data/events/neoclassical_tearing_mode/benchmark/sources/"
+            "<events>/neoclassical_tearing_mode/benchmark/sources/"
             "inner_splits_fix4.json"
         ),
         "agreement": agreements,
@@ -1894,7 +1898,7 @@ def main(argv=None):
                 "like-for-like pair scores a published model and its retrained twin "
                 "on one target, one mask and one shot set. Null means no legacy model."
             ),
-            "source": str((LOCAL / "tm_benchmark.json").relative_to(REPO)),
+            "source": events_ref(LOCAL / "tm_benchmark.json"),
         },
     )
     print(

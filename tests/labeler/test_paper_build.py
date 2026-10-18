@@ -27,7 +27,7 @@ from labeler.paper import (
     shots,
 )
 
-from . import ae_tree
+from . import ae_tree, editor_tree
 from . import paper_tree as tree
 
 EXAMPLES = tuple(
@@ -47,6 +47,8 @@ def runs(tmp_path, monkeypatch):
     """The AE runs' records, and no roster candidate, so `fig_interpreter` is
     skipped (`NO_ROSTER`) unless a test gives it one (`_roster`)."""
     paths = ae_tree.build(tmp_path, {101: "train", 102: "valid", 103: "valid"})
+    # The frozen cohort the roster figure reads (its candidates are set by each test).
+    editor_tree.cohort(paths, [editor_tree.queue_row(101, 1)])
     models = ae_tree.chosen(paths, {101: "train", 102: "test", 103: "test"})
     (models / "evaluation.json").write_text(json.dumps(tree.ae_evaluation()))
     tree.record_labels(paths)

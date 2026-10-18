@@ -16,6 +16,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from ..config import Paths
 from . import bes_features as bf
 
 CLASSES = ("L", "H", "QH", "WP")
@@ -31,7 +32,7 @@ INTERVALS = Path(
 COHORT = Path(
     os.environ.get(
         "CONFINEMENT_COHORT",
-        "/scratch/gpfs/nc1514/FusionAIHub/data/events/catalog/cohort.csv",
+        str(Paths.from_env().label_tables / "catalog" / "cohort.csv"),
     )
 )
 

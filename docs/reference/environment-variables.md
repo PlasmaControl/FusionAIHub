@@ -39,7 +39,7 @@ for the paths-file convention itself.
 |---|---|
 | `LABELER_CORPUS`, `LABELER_LOGS_JSONL`, `LABELER_TEXT_ROOT` | narrower overrides of paths that would otherwise come from `LABELER_ROOT` / the paths file |
 | `LABELER_RAW_CACHE` | where fetched raw signals park (default `$LABELER_ROOT/raw`) |
-| `LABELER_LABEL_TABLES` | the label-table directory (default `data/events` in the checkout, which git ignores; `scripts/labeler/hf_publish.py pull` restores it): what `labeler` reads, and where the review page saves (`<event>/review/`) |
+| `LABELER_LABEL_TABLES` | the label-table directory (default `/scratch/gpfs/EKOLEMEN/nc1514/events`, outside the checkout; `scripts/labeler/hf_publish.py pull` restores it): what `labeler` reads, and where the review page saves (`<event>/review/`) |
 | `LABELER_CONFIG_DIR` | the labeler's tracked configuration (default `configs/labeler` in the checkout): `events.yaml` (taxonomy, label grid, dataset manifest) and `best_models.yaml` |
 | `SHOT_DESIGN_TEXT_ROOT` | overrides the text-corpus root independent of `SHOT_DESIGN_CORPUS` |
 

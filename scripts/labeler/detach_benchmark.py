@@ -34,15 +34,16 @@ import pandas as pd
 from detach_json import dumps
 from scipy.stats import rankdata
 
+from labeler.config import Paths
 from labeler.events.detachment import core, label_model
 from labeler.events.detachment.label_model import COMPATIBLE, LF_NAMES
+
+EVENTS = Paths.from_env().label_tables
 
 REPO = Path(__file__).resolve().parents[2]
 RESULT = REPO / "docs" / "labeler" / "results" / "detachment_benchmark.json"
 MODEL_RECORD = (
-    REPO
-    / "data"
-    / "events"
+    EVENTS
     / "detachment"
     / "extend_detach_vote"
     / "records"

@@ -28,8 +28,10 @@ from pathlib import Path
 import numpy as np
 from scipy.io import readsav
 
+from labeler.config import Paths
+
 SEARCH = (
-    "/scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/raw",
+    str(Paths.from_env().label_tables / "detachment/raw"),
     "/scratch/gpfs/nc1514/plasma_tv/data/raw/all",
     "/scratch/gpfs/nc1514/plasma_tv/data/raw/issues",
     "/scratch/gpfs/nc1514/plasma_tv/data/external/TangTV",

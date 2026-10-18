@@ -28,15 +28,18 @@ REPO = Path(__file__).resolve().parents[2]
 if str(REPO / "src") not in sys.path:
     sys.path.insert(0, str(REPO / "src"))
 
+from labeler.config import Paths
 from labeler.events.panels._shared import finite
 from labeler.events.verify import NoDataError, corpus_signal
 from labeler.tearing import magfeatures
+
+EVENTS = Paths.from_env().label_tables
 
 OUT = (
     Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
     / "round4/tm/magfeatures"
 )
-CATALOG = REPO / "data/events/catalog"
+CATALOG = EVENTS / "catalog"
 #: Samples either side of the window, so the first and last bins have STFT columns.
 MARGIN_MS = 300.0
 

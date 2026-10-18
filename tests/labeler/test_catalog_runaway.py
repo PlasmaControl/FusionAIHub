@@ -245,7 +245,7 @@ def test_apply_rule_names_every_uncorroborated_mark_without_changing_evidence():
 
 @pytest.mark.label_tables
 def test_committed_runaway_scan_has_the_exact_corroborated_d2e_marks():
-    path = Path(__file__).resolve().parents[2] / "data/events/catalog/runaway.csv"
+    path = Paths.from_env().label_tables / "catalog/runaway.csv"
     evidence = _module().read_runaway(path)
     meta = json.loads(path.with_suffix(".meta.json").read_bytes())
     assert (

@@ -34,8 +34,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from labeler.config import Paths
 from labeler.events.interval_tables import parse_attrs
 from labeler.tearing import scoring
+
+EVENTS = Paths.from_env().label_tables
 
 REPO = Path(__file__).resolve().parents[2]
 TM = (
@@ -43,14 +46,15 @@ TM = (
     / "round4/tm"
 )
 LABELS = (
-    REPO / "data/events/neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
+    EVENTS / "neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
 )
 #: The only attribute the change may touch.
 FLAG = "onset_window_degenerate"
 
 
 def previous_table(rev: str) -> bytes:
-    path = str(LABELS.relative_to(REPO))
+    # A revision keeps the table where the repository then held it: `data/events/...`.
+    path = f"data/events/{LABELS.relative_to(EVENTS).as_posix()}"
     return subprocess.run(
         ["git", "-C", str(REPO), "show", f"{rev}:{path}"],
         capture_output=True,
@@ -77,7 +81,7 @@ def assert_attrs_only(old: pd.DataFrame, new: pd.DataFrame) -> int:
 
 def assert_same_bins(old: pd.DataFrame, new: pd.DataFrame, shots) -> None:
     """Per-bin targets and masks of every shot, both scoring modes, are identical."""
-    cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv").set_index("shot")
+    cohort = pd.read_csv(EVENTS / "catalog/cohort.csv").set_index("shot")
     for shot in shots:
         row = cohort.loc[shot]
         centres = scoring.bin_centres((row.window_start_ms, row.window_end_ms))
@@ -107,7 +111,7 @@ def main(argv=None) -> int:
     old = pd.read_csv(io.BytesIO(old_bytes))
     new = pd.read_csv(io.BytesIO(new_bytes))
     changed = assert_attrs_only(old, new)
-    cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
+    cohort = pd.read_csv(EVENTS / "catalog/cohort.csv")
     dev = sorted(int(s) for s in cohort.query("split != 'test'").shot)
     assert_same_bins(old, new, dev)
     print(f"attrs-only change: {changed} rows; targets and masks identical")

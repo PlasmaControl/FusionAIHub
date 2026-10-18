@@ -12,6 +12,8 @@ from labeler.config import Paths
 from labeler.events import suggestions
 from labeler.events.detachment import source
 
+from . import editor_tree
+
 VOTE_CSV = (
     "shot,category,t_start,t_end,confidence,attrs\n"
     '7,1,0,100,,"{""tier"": ""certain""}"\n'
@@ -213,11 +215,11 @@ def test_v3_merge_lets_te_fill_only_the_vote_abstentions():
     assert (source.merge(vote, te)["from"] == "detach_vote").sum() == 7  # v2
 
 
-def test_write_never_overwrites_and_moves_the_pointer(tmp_path, monkeypatch):
+def test_write_never_overwrites_and_moves_the_pointer(tmp_path):
     event_dir = tmp_path / "events" / "detachment"
     event_dir.mkdir(parents=True)
-    monkeypatch.setattr(source, "EVENT_DIR", event_dir)
-    paths = Paths(root=tmp_path / "root")
+    paths = Paths(root=tmp_path / "root", label_tables=tmp_path / "events")
+    editor_tree.cohort(paths, [editor_tree.queue_row(1, 1)])  # no blind shot
     rows = bins([(7, 0.0, 1), (7, 100.0, 2)])
     out = source.write(paths, "detach_vote", "v9", rows, {"rule": "test"}, pointer=True)
     table = suggestions.table_path(paths, "detachment", "detach_vote", "v9")

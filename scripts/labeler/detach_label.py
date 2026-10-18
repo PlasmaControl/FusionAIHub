@@ -4,7 +4,7 @@
     python scripts/labeler/detach_label.py
 
 Inputs: the per-shot bins of `detach_bins.py` (`$LABELER_ROOT/round4/detach/bins`)
-and the cohort split (`data/events/catalog/cohort.csv`). A bin is ASSESSED when at
+and the cohort split (`<events>/catalog/cohort.csv`). A bin is ASSESSED when at
 least two indicators are valid on it; a shot is ELIGIBLE when at least two
 indicators are each valid on at least `MIN_VALID_MS` of bins (`MIN_VALID_BINS`
 at the exported width) and it has that much assessed time. The label model is
@@ -14,11 +14,11 @@ labelled with the fitted model like any other shot).
 
 Outputs:
 
-* `data/events/detachment/extend_detach_vote/<list>.csv` (+ `.meta.json` and one
+* `<events>/detachment/extend_detach_vote/<list>.csv` (+ `.meta.json` and one
   50 ms grid per shot): the chosen labeler's states as intervals, schema of
   `docs/labeler/events/README.md`; coding 0 absent, 1 attached, 2 detached, 3 marfe,
   4 uncertain; time that was not assessed has no row (unknown in the grids);
-* `data/events/detachment/extend_detach_vote/records/*.json`: coverage, indicator
+* `<events>/detachment/extend_detach_vote/records/*.json`: coverage, indicator
   agreement, learned parameters, structure selection, rule-versus-model matrix;
 * `$LABELER_ROOT/round4/detach/labels_bins.csv.gz`: every assessed bin with both
   labelers' states, the posterior, the votes and the values;
@@ -43,6 +43,7 @@ import numpy as np
 import pandas as pd
 from detach_json import dumps
 
+from labeler.config import Paths
 from labeler.events.detachment import core, label_model
 from labeler.events.detachment import thresholds as th
 from labeler.events.detachment.label_model import LF_NAMES
@@ -54,9 +55,11 @@ from labeler.events.interval_tables import (
 )
 from labeler.events.rosters import ROSTER_COLUMNS, validate_roster
 
+EVENTS = Paths.from_env().label_tables
+
 REPO = Path(__file__).resolve().parents[2]
-OUT = REPO / "data" / "events" / "detachment" / "extend_detach_vote"
-ROSTER = REPO / "data" / "events" / "detachment" / "shots.csv"
+OUT = EVENTS / "detachment" / "extend_detach_vote"
+ROSTER = EVENTS / "detachment" / "shots.csv"
 LIST_NAME = "detach_shots"
 #: Eligibility asks for this much valid time (ms), not a bin count: the exported
 #: 50 ms grid needs 20 bins, a different width the same second.
@@ -137,7 +140,7 @@ def load_all(bins_dir: Path) -> pd.DataFrame:
 
 
 def cohort_split(shots) -> dict[int, str]:
-    table = pd.read_csv(REPO / "data" / "events" / "catalog" / "cohort.csv")
+    table = pd.read_csv(EVENTS / "catalog" / "cohort.csv")
     split = dict(zip(table.shot.astype(int), table.split, strict=True))
     return {int(s): split.get(int(s), "outside") for s in shots}
 

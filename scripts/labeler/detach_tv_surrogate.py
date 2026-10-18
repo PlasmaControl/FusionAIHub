@@ -41,11 +41,14 @@ from detach_json import dumps
 from scipy.io import readsav
 from scipy.linalg import solve
 
+from labeler.config import Paths
 from labeler.events.detachment import core, signals, tangtv
+
+EVENTS = Paths.from_env().label_tables
 
 REPO = Path(__file__).resolve().parents[2]
 RESULT = REPO / "docs" / "labeler" / "results" / "detachment_tangtv_surrogate.json"
-COHORT = REPO / "data" / "events" / "catalog" / "cohort.csv"
+COHORT = EVENTS / "catalog" / "cohort.csv"
 CORPUS = signals.CORPUS
 #: Camera black level (counts) and the block size of the feature map (pixels).
 BLACK = 16.0

@@ -59,15 +59,12 @@ from labeler.ae.supervision import (
     validate_split,
     within_shot_scores,
 )
+from labeler.config import Paths
 from labeler.events.catalog.states import ABSENT, PRESENT
 from labeler.events.review.labels import read_labels
 
 ROOT = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
-TABLES = Path(
-    os.environ.get(
-        "LABELER_LABEL_TABLES", "/scratch/gpfs/nc1514/FusionAIHub/data/events"
-    )
-)
+TABLES = Paths.from_env().label_tables
 SUPERVISIONS = ("legacy", "dense", "threeway")
 #: The review table the paper's audit scored (the ae_xpower v2 test's snapshot).
 PAPER_SNAPSHOT = REVIEW
@@ -825,7 +822,7 @@ def band_change_provenance() -> dict:
     time supports it, and the commit that holds the 60 kHz band shows when it
     entered the history (the review pages read the file from the checkout).
     """
-    path = TABLES.parents[1] / ALFVEN_REVIEW
+    path = REPO / ALFVEN_REVIEW
     out: dict = {"file_modified_utc": None, "commit": None, "commit_utc": None}
     if not path.exists():
         return out

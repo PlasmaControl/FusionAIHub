@@ -1,10 +1,10 @@
 # The label tables' manifest: the interval schema, the label grid, the review
 # taxonomy, and the format and raw datasets. Source, so it is tracked here; the
-# tables themselves live under the label-tables root (`data/events/` by default,
-# `LABELER_LABEL_TABLES` otherwise), which git ignores. Every category name and
-# every `raw_datasets` path below is relative to that root. Read through
-# `labeler.config.Paths.events_manifest` (`LABELER_CONFIG_DIR` overrides the
-# directory). Docs: docs/labeler/events/README.md.
+# tables themselves live in the label-tables folder, outside the repository
+# (`LABELER_LABEL_TABLES`, `/scratch/gpfs/EKOLEMEN/nc1514/events` by default).
+# Every category name and every `raw_datasets` path below is relative to that
+# folder. Read through `labeler.config.Paths.events_manifest`
+# (`LABELER_CONFIG_DIR` overrides the directory). Docs: docs/labeler/events/README.md.
 version: 1
 
 interval_schema:

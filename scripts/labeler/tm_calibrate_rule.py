@@ -22,7 +22,10 @@ import numpy as np
 import pandas as pd
 from scipy.ndimage import median_filter
 
+from labeler.config import Paths
 from labeler.tearing.magfeatures import FEATURE_NAMES
+
+EVENTS = Paths.from_env().label_tables
 
 REPO = Path(__file__).resolve().parents[2]
 ROOT = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
@@ -62,7 +65,7 @@ def quantiles(values):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument(
-        "--cohort", type=Path, default=REPO / "data/events/catalog/cohort.csv"
+        "--cohort", type=Path, default=EVENTS / "catalog/cohort.csv"
     )
     parser.add_argument("--signals-dir", type=Path, default=OUT / "signals")
     parser.add_argument("--freq-dir", type=Path, default=OUT / "signals_freq")

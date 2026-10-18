@@ -51,15 +51,18 @@ for entry in (REPO / "src", Path(__file__).resolve().parent):
 
 from tm_cv_plan import load_plan
 
+from labeler.config import Paths, events_ref
 from labeler.tearing import detectors, scoring
+
+EVENTS = Paths.from_env().label_tables
 
 ROOT = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
 TM = ROOT / "round4/tm"
 INPUTS = TM / "detector_inputs"
 RESULTS = Path(os.environ.get("TM_RESULTS", TM / "results"))
-CATALOG = REPO / "data/events/catalog"
+CATALOG = EVENTS / "catalog"
 LABELS = (
-    REPO / "data/events/neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
+    EVENTS / "neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
 )
 MODELS = {
     "cnn": ("tm-onsetcnn", "d3d_tearing_onset_cnn1d"),
@@ -254,7 +257,7 @@ def main(argv=None) -> int:
         "slug": slug,
         "variant": "retrained from fresh weights, detection objective (horizon 0)",
         "git_sha": git_sha(),
-        "labels": str(LABELS.relative_to(REPO)),
+        "labels": events_ref(LABELS),
         "labels_sha256": hashlib.sha256(LABELS.read_bytes()).hexdigest(),
         "bin_ms": scoring.BIN_MS,
         "shots_without_inputs": missing,

@@ -21,7 +21,10 @@ import h5py
 import numpy as np
 import pandas as pd
 
+from labeler.config import Paths
+
 REPO = Path(__file__).resolve().parents[2]
+EVENTS = Paths.from_env().label_tables
 DEFAULT_WORK = Path("/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/saw/fix5")
 OUTPUT = REPO / "outputs/labeler/sawtooth/fix5"
 ARCHIVE = Path("/scratch/gpfs/nc1514/omnimode/data")
@@ -824,7 +827,7 @@ def fetch(args):
             )
     shots = args.shots
     if args.cohort:
-        shots += pd.read_csv(REPO / "data/events/catalog/cohort.csv").shot.tolist()
+        shots += pd.read_csv(EVENTS / "catalog/cohort.csv").shot.tolist()
     if args.population_efit or args.population_ece:
         for path in sorted((args.prior_work / "shots").glob("*.json")):
             record = json.loads(path.read_text())
@@ -967,7 +970,7 @@ def audit(args):
     paths = Paths.from_env()
     shots = args.shots
     if args.cohort:
-        shots += pd.read_csv(REPO / "data/events/catalog/cohort.csv").shot.tolist()
+        shots += pd.read_csv(EVENTS / "catalog/cohort.csv").shot.tolist()
     if not shots:
         shots = [int(path.stem) for path in (args.work / "geometry").glob("*.h5")]
     grid = audit_frequency_grid(args.archive)
@@ -1170,7 +1173,7 @@ def field_audit(args):
             print(f"inspected {len(rows)}/{len(shots)} local scalar stores", flush=True)
     progress["rows"] = rows
     save_json(progress_path, progress)
-    cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
+    cohort = pd.read_csv(EVENTS / "catalog/cohort.csv")
     train = set(cohort.loc[cohort.split == "train", "shot"])
     calibration = []
     for path in sorted((args.work / "geometry").glob("*.h5")):

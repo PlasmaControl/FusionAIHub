@@ -8,7 +8,7 @@ from concurrent.futures import ProcessPoolExecutor
 import h5py
 import numpy as np
 import pandas as pd
-from sawtooth_physics import OUTPUT, REPO, REVIEW, WORK, save_json
+from sawtooth_physics import EVENTS, OUTPUT, REVIEW, WORK, save_json
 
 from labeler.config import Paths
 from labeler.sawtooth.preprocessing import sample_native
@@ -46,7 +46,7 @@ def audit_shot(shot):
 
 
 def main():
-    cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
+    cohort = pd.read_csv(EVENTS / "catalog/cohort.csv")
     shots = sorted(set(cohort.shot) | set(pd.read_csv(REVIEW).shot))
     with ProcessPoolExecutor(max_workers=4) as pool:
         rows = list(pool.map(audit_shot, shots, chunksize=1))

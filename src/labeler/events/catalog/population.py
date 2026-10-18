@@ -27,7 +27,7 @@ Rule 5 (D2e) excludes `runaway_plateau`: Thomson core Te's median channel-p90
 over the assessed window below 60 eV, provided at least one window sample has
 ceil(n_channels / 2) finite, positive core channels. The median still uses all
 samples with any valid channel. `catalog.runaway` computes the evidence
-for every rule-4 shot into `data/events/catalog/runaway.csv`; `catalog.cohort`
+for every rule-4 shot into `<events>/catalog/runaway.csv`; `catalog.cohort`
 reads that committed input before drawing. `n_profile` counts usable profiles;
 shots with none remain eligible and are counted as `no_thomson`.
 

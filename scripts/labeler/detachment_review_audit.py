@@ -18,6 +18,8 @@ from labeler.config import Paths, git_sha, sha256_of
 from labeler.events.panels import detachment as detachment_panels
 from labeler.events.review import build, detachment, rows
 
+EVENTS = Paths.from_env().label_tables
+
 REPO = Path(__file__).resolve().parents[2]
 GAS_SHOTS = [190094, 190102, 190212, 190218, 190450, *range(190109, 190117), 190182]
 
@@ -29,7 +31,7 @@ def frozen_delivery(out, record_path, write_handoff=False):
     suggestions = pd.read_csv(event / "review/suggestions.csv")
     pointer = json.loads((event / "review/source.json").read_text())
     scan = json.loads((out / "corpus_scan.json").read_text())
-    cohort_path = REPO / "data/events/catalog/cohort.csv"
+    cohort_path = EVENTS / "catalog/cohort.csv"
     cohort = pd.read_csv(cohort_path)
     blind = set(cohort.query("split == 'test'").shot)
     ranks = cohort.set_index("shot").queue_rank.to_dict()
@@ -274,7 +276,7 @@ def main():
         "blind_overlap": sorted(
             queue
             & set(
-                pd.read_csv(REPO / "data/events/catalog/cohort.csv")
+                pd.read_csv(EVENTS / "catalog/cohort.csv")
                 .query("split == 'test'")
                 .shot
             )

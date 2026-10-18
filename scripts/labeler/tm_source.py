@@ -332,7 +332,7 @@ def build(args, paths: Paths) -> dict:
                 "freeze_sha": freeze.sha(),
             },
             "sets": {k: v for k, v in SETS.items() if sets[k]},
-            "blind": "data/events/catalog/cohort.csv blind shots, excluded",
+            "blind": "<events>/catalog/cohort.csv blind shots, excluded",
         },
         "rule": {
             "decision": "S5 as amended 2026-10-14 05:45 (tm review 8/10), EQ4",

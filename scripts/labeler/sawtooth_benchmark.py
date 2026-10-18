@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import torch
-from sawtooth_physics import OUTPUT, REPO, REVIEW, SEED, WORK, save_json
+from sawtooth_physics import EVENTS, OUTPUT, REVIEW, SEED, WORK, save_json
 from scipy.ndimage import gaussian_filter1d, maximum_filter1d
 from scipy.signal import find_peaks
 from torch.nn import functional as F
@@ -154,7 +154,7 @@ def usable_signal_shots(work):
 
 def manifest(work, out_dir=None):
     """The split; saved in `work` and the outputs, or only in `out_dir` (a dry run)."""
-    cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
+    cohort = pd.read_csv(EVENTS / "catalog/cohort.csv")
     reviewed = {int(s) for s in pd.read_csv(REVIEW).shot}
     usable = usable_signal_shots(work)
     requested_train = set(cohort[cohort.split == "train"].shot) - reviewed

@@ -11,7 +11,7 @@ not observable or unassessed are not labelled time, and a shot is labelled when
 it has any. Tokamak-SI counts every released tier and every split; the reviewed
 subset counts the shots whose labels a person reviewed (the review store's
 `history.jsonl` names the reviewer). Every count is computed here from the label
-CSV inventory (`data/events/<category>/...`, the committed tables), except where
+CSV inventory (`<events>/<category>/...`, the committed tables), except where
 a stream already wrote a record that carries it (`docs/labeler/figure2_tm.json`,
 the Smith evaluation, the detachment record): those are read, never retyped.
 
@@ -49,8 +49,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from labeler.config import Paths, events_ref
+
 REPO = Path(__file__).resolve().parents[3]
-TABLES = REPO / "data" / "events"
+TABLES = Paths.from_env().label_tables
 OUT = REPO / "docs" / "labeler" / "figure2_coverage.json"
 MAIN = "/scratch/gpfs/nc1514/FusionAIHub"
 #: the curated confinement intervals live in the main checkout's run directory
@@ -98,10 +100,12 @@ sources: dict[str, str] = {}
 
 
 def note_source(path: Path | str, digest: str | None = None) -> str:
-    """The path as the record names it (repo-relative when inside), with its
-    sha256 kept for the record."""
+    """The path as the record names it (`<events>/...` inside the label tables,
+    repo-relative inside the repo), with its sha256 kept for the record."""
     path = Path(path)
-    name = str(path.relative_to(REPO)) if REPO in path.parents else str(path)
+    name = events_ref(path, TABLES)
+    if name == str(path) and REPO in path.parents:
+        name = str(path.relative_to(REPO))
     if digest is None and path.is_file():
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
     sources[name] = digest or "not a file"
@@ -109,13 +113,9 @@ def note_source(path: Path | str, digest: str | None = None) -> str:
 
 
 def table(rel: str) -> Path:
-    """A committed label table: the checkout's own first, then the label tables
-    root of the environment."""
-    from labeler.config import Paths
-
-    for root in (TABLES, Paths.from_env().label_tables):
-        if (root / rel).is_file():
-            return root / rel
+    """A committed label table, from the label tables folder of the environment."""
+    if (TABLES / rel).is_file():
+        return TABLES / rel
     raise FileNotFoundError(f"label table {rel} not found")
 
 
@@ -404,8 +404,6 @@ def saw_shards() -> tuple[list[Path], dict]:
     """The released population label shards and the manifest that digests them.
     The checkout's integration copy is used when it holds the shards, else the
     label store the manifest names; each shard must match its digest."""
-    from labeler.config import Paths
-
     manifest = load_json(SAW_MANIFEST)
     entries = [f for f in manifest["files"] if f["file"].startswith("population-")]
     folders = (

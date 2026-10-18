@@ -8,13 +8,13 @@ import math
 import os
 from collections import Counter
 from itertools import product
-from pathlib import Path
 from time import perf_counter
 
 import numpy as np
 import pytest
 import yaml
 
+from labeler.config import Paths
 from labeler.scoring.frames import PRESENT, Assessment, frame_counts
 from labeler.scoring.stats import (
     cohen_cells,
@@ -562,7 +562,7 @@ def test_median_estimate_keeps_event_free_draws_undefined():
 
 
 def _frozen_release():
-    catalog = Path(__file__).resolve().parents[2] / "data/events/catalog"
+    catalog = Paths.from_env().label_tables / "catalog"
     with (catalog / "cohort.csv").open() as stream:
         cohort = list(csv.DictReader(stream))
     manifest = yaml.safe_load((catalog / "cohort_manifest.yaml").read_text())

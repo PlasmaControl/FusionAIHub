@@ -3,7 +3,7 @@
     pixi run -e labeler python -m labeler.events.catalog.runaway
 
 Reads the pool, Ip log and corpus through the package's configured paths. Only
-`data/events/catalog/{runaway.csv,runaway.meta.json}` is written by default.
+`<events>/catalog/{runaway.csv,runaway.meta.json}` is written by default.
 Every shot passing rules 1-4 is measured over its assessed Ip window, including
 both endpoints. A profile sample has at least ceil(n_channels / 2) finite,
 positive ts_core_temp channels. Rule 5 excludes a median Thomson channel-p90

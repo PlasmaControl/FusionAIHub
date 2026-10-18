@@ -142,8 +142,8 @@ def test_features_ignore_global_brightness_after_black_subtraction(surrogate):
     np.testing.assert_allclose(a, b, atol=1e-5)
 
 
-def test_confinement_uses_tracked_store_without_environment(bins, monkeypatch):
-    monkeypatch.delenv("LABELER_LABEL_TABLES", raising=False)
+@pytest.mark.label_tables
+def test_confinement_reads_the_label_tables_through_the_setting(bins):
     mode, _ = bins.confinement(149993, np.array([1000.0, 1050.0, 1100.0]))
     assert np.all(mode == 2)
 

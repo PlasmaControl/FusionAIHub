@@ -4,7 +4,7 @@
 Reads the fetched n = 1 / n = 2 RMS records (`tm_fetch.py`), applies the frozen rule
 (`labeler.tearing.rule`) inside each shot's catalog window, and writes
 
-* ``data/events/neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv`` (+ meta):
+* ``<events>/neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv`` (+ meta):
   the cohort's rows in the catalog's interval schema, small enough to commit;
 * ``$LABELER_ROOT/round4/tm/labels/`` the same for the population, and one row per
   interval with the amplitudes the catalog schema has no place for.
@@ -39,6 +39,8 @@ from labeler.events import spans
 from labeler.events.interval_tables import parse_attrs, write_interval_table
 from labeler.tearing import rule, scoring, surface
 
+EVENTS = Paths.from_env().label_tables
+
 LABELER = Path(
     os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler")
 )
@@ -47,8 +49,8 @@ SIGNALS = OUT_ROOT / "signals"
 FREQUENCIES = OUT_ROOT / "signals_freq"
 MAGFEATURES = OUT_ROOT / "magfeatures"
 LOCK_SIGNALS = OUT_ROOT / "signals_lock"
-CATALOG = REPO / "data/events/catalog"
-COHORT_OUT = REPO / "data/events/neoclassical_tearing_mode/extend_tm_interval"
+CATALOG = EVENTS / "catalog"
+COHORT_OUT = EVENTS / "neoclassical_tearing_mode/extend_tm_interval"
 
 
 def load_signals(shot: int, directory: Path):

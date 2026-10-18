@@ -45,15 +45,17 @@ for entry in (REPO / "src", Path(__file__).resolve().parent):
 
 from tm_calibrate_rule import continuous, quantiles
 
-from labeler.config import git_sha
+from labeler.config import Paths, git_sha
 from labeler.events.panels._shared import finite, stft
 from labeler.events.verify import NoDataError, corpus_signal
 from labeler.tearing import magfeatures
 
+EVENTS = Paths.from_env().label_tables
+
 ROOT = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
 OUT = ROOT / "round4/tm"
-CATALOG = REPO / "data/events/catalog"
-SOURCES = REPO / "data/events/neoclassical_tearing_mode/benchmark/sources"
+CATALOG = EVENTS / "catalog"
+SOURCES = EVENTS / "neoclassical_tearing_mode/benchmark/sources"
 #: The set of phase-coherent harmonic bins must hold at least this many bins and shots.
 MIN_BINS = 1000
 MIN_SHOTS = 10

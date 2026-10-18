@@ -44,9 +44,11 @@ from labeler.config import Paths
 from labeler.models import registry
 from labeler.models.runners import dsm_pickle
 
+EVENTS = Paths.from_env().label_tables
+
 TM_ROOT = Path("/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/tm")
 OUT = Path(os.environ.get("TM_ROOT", TM_ROOT)) / "detector_inputs"
-CATALOG = REPO / "data/events/catalog"
+CATALOG = EVENTS / "catalog"
 CNN = "d3d_tearing_onset_cnn1d"
 DSM = "d3d_tearing_time_to_event_dsm"
 #: How old a feature file must be (s) before it is read, so one still being written

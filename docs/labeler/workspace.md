@@ -7,6 +7,8 @@ at the cursor, and save layouts as named views. Code: `src/labeler/events/review
 `src/labeler/events/ui/workspace_routes.py`. Plan: section B of
 `.claude/superpowers/plans/2026-10-15-labeler-workspace.md`.
 
+The label tables live in an `events` folder outside the repository (`/scratch/gpfs/EKOLEMEN/nc1514/events` by default); the setting `LABELER_LABEL_TABLES` (`Paths.label_tables`) names it.
+
 ## The catalog: `configs/labeler/signals.yaml`
 
 ```yaml

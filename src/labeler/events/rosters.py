@@ -1,6 +1,6 @@
 """The per-category review roster: who has looked at which shot.
 
-`data/events/<category>/shots.csv` is a shot-level roster, not an interval
+`<events>/<category>/shots.csv` is a shot-level roster, not an interval
 table. A shot enters it when somebody puts it up for review; the interval
 tables under `format/` and `extend_*/` stay the record of what is labelled.
 

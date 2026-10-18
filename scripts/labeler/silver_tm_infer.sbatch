@@ -73,7 +73,7 @@ REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
 ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labeler
 PY="$ROOT/envs/phase3/bin/python"
 export LABELER_ROOT="$ROOT" PYTHONPATH="$REPO/src"
-export LABELER_LABEL_TABLES=/scratch/gpfs/nc1514/FusionAIHub/data/events
+export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-/scratch/gpfs/EKOLEMEN/nc1514/events}"
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 HDF5_USE_FILE_LOCKING=FALSE LABELER_NO_FETCH=1
 export XDG_CACHE_HOME="$ROOT/runs/slurm/cache/${SLURM_JOB_ID:-none}"
 mkdir -p "$XDG_CACHE_HOME"

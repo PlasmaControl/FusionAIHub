@@ -12,18 +12,21 @@ from pathlib import Path
 
 import pandas as pd
 
+from labeler.config import Paths
+
 REPO = Path(__file__).resolve().parents[2]
+EVENTS = Paths.from_env().label_tables
 TM = (
     Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
     / "round4/tm"
 )
-BENCH = REPO / "data/events/neoclassical_tearing_mode/benchmark/tm_benchmark.json"
+BENCH = EVENTS / "neoclassical_tearing_mode/benchmark/tm_benchmark.json"
 DOC = REPO / "docs/labeler/tearing_detection.md"
 LABELS = (
-    REPO / "data/events/neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
+    EVENTS / "neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
 )
 README = REPO / "docs/labeler/events/neoclassical_tearing_mode/README.md"
-SOURCES = "../../data/events/neoclassical_tearing_mode/benchmark/sources"
+SOURCES = "<events>/neoclassical_tearing_mode/benchmark/sources"
 LOCK_EXAMPLES = ("n = 1 decaying", "n = 1 locking")
 
 

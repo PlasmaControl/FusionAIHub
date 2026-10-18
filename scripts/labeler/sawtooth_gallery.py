@@ -25,6 +25,8 @@ from sawtooth_physics import REPO, REVIEW, SEED, WORK, local_scalar, save_json
 from labeler.config import Paths
 from labeler.sawtooth.physics import Rule
 
+EVENTS = Paths.from_env().label_tables
+
 BLUE = "#0072B2"
 VERMILION = "#D55E00"
 GREEN = "#009E73"
@@ -576,7 +578,7 @@ def main():
         }
         save_json(path, record)
         return
-    cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
+    cohort = pd.read_csv(EVENTS / "catalog/cohort.csv")
     expert = set(pd.read_csv(REVIEW).shot)
     train = set(cohort.loc[cohort.split == "train", "shot"]) - expert
     previous = json.loads(args.selection.read_text()) if args.selection.exists() else {}

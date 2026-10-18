@@ -72,7 +72,7 @@ events:
     # (ae_kaptanoglu), ae_co2_ece (ae_heidbrink_kaptanoglu); the lists were renamed on 2026-10-17.
     lists:
       record: outputs/labeler/ae/shotlists/evaluation.json (scripts/labeler/ae_evaluate.py --shotlist; dataset chain SLURM job 2966166, float32, the same numbers as 2965787; corpus block --chain corpus, job 2966167, caches from runs/ae_gold_extend, runs/silver_infer/ae_seldnet/work and GPU job 2965792, each checked to come from the shipped checkpoint f2d5314a)
-      reference: data/events/alfven_eigenmode/review/labels.csv (live owner-reviewed table, sha256 d23a4b018ea4b731d14c056a5f4321899fc634a90e07169468f7b8c020fee59e)
+      reference: <events>/alfven_eigenmode/review/labels.csv (live owner-reviewed table, sha256 d23a4b018ea4b731d14c056a5f4321899fc634a90e07169468f7b8c020fee59e)
       frames: 10 ms frames of 0-2 s with a present or absent reviewed state (the corpus chain only those inside the shot's window, so its frame counts can be lower)
       interval: 95 % shot bootstrap, 2,000 replicates
       corpus_chain_trained_on: every listed train-split shot, with or without a cache (the record's envelope files the ones without under no_input)
@@ -608,7 +608,7 @@ events:
       - With uncertain time scored as negative AUROC 0.948 [0.935, 0.960], F1 0.363 [0.290, 0.431].
       - "The review page's source, tm_mhd v2, is the tm_interval rule joined with the mhd_modes v5 mode tracks, not a model, and no one has reviewed it (606 shots, 4,943 rows: 1,728.8 s absent, 720.3 s present, 541.9 s uncertain, 368.3 s not observable). Beside the rule's own present time it counts co-rotating resonant 2/1, 3/1, 3/2, 4/3 and 4/2 tracks as present; a wider definition of the event than the rule's."
       - "Sensitivity view mhd_resolved (a rule-uncertain bin is positive where tm_mhd v2 is present and negative where absent; 49,068 of 83,961 rule-uncertain bins on the 450 development shots; the primary rows are unchanged): tm-ours AUROC 0.977 [0.970, 0.983], AUPRC 0.941 [0.923, 0.957], F1 0.843 [0.814, 0.870], segmental F1 0.603 [0.556, 0.649]; the two-line baseline 0.968, 0.923, 0.739, 0.514. The thresholds were tuned on the rule's targets, not on this view."
-    source: data/events/neoclassical_tearing_mode/benchmark/tm_benchmark.json; docs/labeler/events/neoclassical_tearing_mode/README.md; docs/labeler/tearing_detection.md
+    source: <events>/neoclassical_tearing_mode/benchmark/tm_benchmark.json; docs/labeler/events/neoclassical_tearing_mode/README.md; docs/labeler/tearing_detection.md
 
   fishbone:
     folded_into: mhd_n1

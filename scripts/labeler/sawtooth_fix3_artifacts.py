@@ -18,9 +18,11 @@ import numpy as np
 import pandas as pd
 from sawtooth_physics import REPO, REVIEW, SEED, records_at, save_json
 
-from labeler.config import Paths
+from labeler.config import Paths, events_ref
 from labeler.events import heuristics
 from labeler.sawtooth.metrics import event_cells, point_metrics, spans_at
+
+EVENTS = Paths.from_env().label_tables
 
 WORK4 = Paths.from_env().root / "round4/saw/fix5"
 PREVIOUS = WORK4.parent / "fix2"
@@ -140,7 +142,7 @@ def queue_base(args):
         raise ValueError("base already frozen; do not resample after predictions")
     if any((args.work / "predictions").rglob("*.npz")):
         raise ValueError("freeze the primary sample before any model predictions")
-    cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
+    cohort = pd.read_csv(EVENTS / "catalog/cohort.csv")
     experts = set(pd.read_csv(REVIEW).shot)
     eligible = sorted(set(cohort.loc[cohort.split == "val", "shot"]) - experts)
     records = {r["shot"]: r for r in records_at(args.work, eligible)}
@@ -583,7 +585,7 @@ def queue(args):
             ),
         },
     )
-    csv_path = REPO / "data/events/sawtooth_oscillation/review/crash_time_queue.csv"
+    csv_path = EVENTS / "sawtooth_oscillation/review/crash_time_queue.csv"
     csv_path.parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(
         [
@@ -631,7 +633,7 @@ def queue(args):
         "total_window_seconds": sum(row["end_s"] - row["start_s"] for row in rows),
         "strata": dict(Counter(row["stratum"] for row in rows)),
         "annotation_pack": str(pack),
-        "queue_csv": str(csv_path.relative_to(REPO)),
+        "queue_csv": events_ref(csv_path),
         "private_selection_audit": str(selection_path),
         "private_selection_sha256": digest(selection_path),
         "pack_has_no_predictions_candidates_or_states": True,
@@ -870,7 +872,7 @@ def paper_example(args):
 
     plt = style()
     shot = args.example_shot
-    cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv").set_index("shot")
+    cohort = pd.read_csv(EVENTS / "catalog/cohort.csv").set_index("shot")
     if cohort.loc[shot, "split"] != "train" or shot in set(pd.read_csv(REVIEW).shot):
         raise ValueError("paper example requires a nonexpert train shot")
     record = records_at(args.work, [shot])[0]
@@ -1130,7 +1132,7 @@ def legacy_comparison(args):
     from matplotlib.ticker import MaxNLocator
 
     plt = style()
-    cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv").set_index("shot")
+    cohort = pd.read_csv(EVENTS / "catalog/cohort.csv").set_index("shot")
     diagnostic_shots = args.diagnostic_shots or LEGACY_SHOTS
     records = {r["shot"]: r for r in records_at(args.work, diagnostic_shots)}
     rows = []

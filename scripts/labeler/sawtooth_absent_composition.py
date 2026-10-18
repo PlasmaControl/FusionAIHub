@@ -23,7 +23,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from sawtooth_edge_context import CANDIDATES_MS, tested_absence
-from sawtooth_physics import FS, OUTPUT, REPO, WORK, save_json
+from sawtooth_physics import EVENTS, FS, OUTPUT, WORK, save_json
 
 PREVIOUS_OUTPUT = OUTPUT.parent / "fix3"
 PREVIOUS_WORK = WORK.parent / "fix3"
@@ -119,7 +119,7 @@ def main():
     parser.add_argument("--previous-work", type=Path, default=PREVIOUS_WORK)
     parser.add_argument("--previous-output", type=Path, default=PREVIOUS_OUTPUT)
     args = parser.parse_args()
-    cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
+    cohort = pd.read_csv(EVENTS / "catalog/cohort.csv")
     previous = json.loads((args.previous_output / "data_summary.json").read_text())
     current = json.loads((OUTPUT / "data_summary.json").read_text())
     previous_records = {

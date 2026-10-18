@@ -6,7 +6,7 @@ the same file always gives the same numbers. The review page draws each region
 over the AE rows and a click rejects it (not the mode: a harmonic of an MHD
 mode, a line of pickup) or takes the rejection back.
 
-Each save appends one line to `data/events/alfven_eigenmode/review/masks.jsonl`:
+Each save appends one line to `<events>/alfven_eigenmode/review/masks.jsonl`:
 `{"shot", "pseudo", "pseudo_sha256", "rejected", "reviewer", "name", "saved_at"}`.
 The last
 line of a shot is its decision; the earlier ones are its history. A decision

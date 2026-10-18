@@ -55,7 +55,10 @@ for entry in (REPO / "src", Path(__file__).resolve().parent):
 
 from tm_cv_plan import load_plan
 
+from labeler.config import Paths, events_ref
 from labeler.tearing import detectors, scoring
+
+EVENTS = Paths.from_env().label_tables
 
 TM = (
     Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
@@ -63,12 +66,11 @@ TM = (
 )
 INPUTS = Path(os.environ.get("TM_ROOT", TM)) / "detector_inputs"
 RESULTS = Path(os.environ.get("TM_ROOT", TM)) / "results"
-CATALOG = REPO / "data/events/catalog"
+CATALOG = EVENTS / "catalog"
 LABELS = (
-    REPO / "data/events/neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
+    EVENTS / "neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
 )
-SURVIVAL = REPO / "data/events/neoclassical_tearing_mode/raw/tm_labels.h5"
-MAIN = Path("/scratch/gpfs/nc1514/FusionAIHub")
+SURVIVAL = EVENTS / "neoclassical_tearing_mode/raw/tm_labels.h5"
 CNN = "d3d_tearing_onset_cnn1d"
 DSM = "d3d_tearing_time_to_event_dsm"
 HORIZON_NAMES = ("250ms", "500ms", "1s")
@@ -210,7 +212,7 @@ def run_tokamak_si(args) -> None:
                 "setting": "tokamak-si, unretrained published outputs",
                 "split": args.split,
                 "git_sha": git_sha(),
-                "labels": str(LABELS.relative_to(REPO)),
+                "labels": events_ref(LABELS),
                 "labels_sha256": hashlib.sha256(LABELS.read_bytes()).hexdigest(),
                 "score": (
                     "tm_prob"
@@ -361,13 +363,8 @@ def survival_onsets(shots) -> dict[int, float]:
     """Seconds of each shot's first positive survival label (NaN: none), those held."""
     import h5py
 
-    path = (
-        SURVIVAL
-        if SURVIVAL.is_file()
-        else (MAIN / "data/events/neoclassical_tearing_mode/raw/tm_labels.h5")
-    )
     out = {}
-    with h5py.File(path, "r") as f:
+    with h5py.File(SURVIVAL, "r") as f:
         for shot in shots:
             if str(shot) not in f:
                 continue

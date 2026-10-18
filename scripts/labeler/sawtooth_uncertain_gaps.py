@@ -20,7 +20,7 @@ from collections import Counter
 from pathlib import Path
 
 import pandas as pd
-from sawtooth_physics import OUTPUT, REPO, WORK, save_json
+from sawtooth_physics import EVENTS, OUTPUT, WORK, save_json
 
 
 def blocks(record, max_gap):
@@ -106,7 +106,7 @@ def main():
     parser.add_argument("--population", action="store_true")
     parser.add_argument("--example", type=int, default=192148)
     args = parser.parse_args()
-    cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
+    cohort = pd.read_csv(EVENTS / "catalog/cohort.csv")
     if args.population:
         paths = sorted((args.work / "shots").glob("*.json"))
     else:

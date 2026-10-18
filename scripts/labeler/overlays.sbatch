@@ -40,7 +40,7 @@
 #   pilot:     sbatch --time=00:20:00 <this> --event mhd_n1 edge_localized_mode alfven_eigenmode \
 #                  --shots-file <20 shots of the list>
 #   full run:  sbatch <this> --event <every store event with spectrogram rows> \
-#                  --shots-file data/events/silver/silver_shots.csv   (then gold/gold_shots.csv)
+#                  --shots-file $LABELER_LABEL_TABLES/silver/silver_shots.csv   (then gold/gold_shots.csv)
 #   AE gate:   python -m labeler.events.review.overlays compare  (IoU against tokeye-full on its
 #              180 shots, the bar of ae/full.py: median >= 0.75, <= 10 % below 0.5, both bands)
 #   gate:      cd /scratch/gpfs/nc1514/FusionAIHub && PYTHONPATH=$PWD/src pixi run --frozen \
@@ -77,7 +77,7 @@ REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"  # the drain exports the server
 ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labeler
 PY="$ROOT/envs/phase3/bin/python"  # torch 2.14 + CUDA 12.6; the pixi env's torch is CPU-only
 export LABELER_ROOT="$("$PY" "$REPO/src/labeler/env.py" LABELER_ROOT "$ROOT")" PYTHONPATH="$REPO/src"
-export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-$REPO/data/events}"
+export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-/scratch/gpfs/EKOLEMEN/nc1514/events}"
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 HDF5_USE_FILE_LOCKING=FALSE LABELER_NO_FETCH=1
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True  # tiles of many shapes: less fragmentation
 export XDG_CACHE_HOME="$ROOT/runs/slurm/cache/${SLURM_JOB_ID:-none}"

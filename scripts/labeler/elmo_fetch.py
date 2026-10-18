@@ -36,13 +36,16 @@ REPO = Path(__file__).resolve().parents[2]
 if str(REPO / "src") not in sys.path:
     sys.path.insert(0, str(REPO / "src"))
 
+from labeler.config import Paths
 from labeler.events.verify import NoDataError, fdp_signal
+
+EVENTS = Paths.from_env().label_tables
 
 LABELER = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
 DEFAULT_OUT = LABELER / "benchmarks/elm/elmo/signals"
 SMITH_DIR = Path("/projects/EKOLEMEN/dsmith/data")
 SMITH_FILES = ("labeled-elm-events.hdf5", "labeled_elm_events_long_windows_20220921.hdf5")
-REVIEW_LABELS = REPO / "data/events/edge_localized_mode/review/labels.csv"
+REVIEW_LABELS = EVENTS / "edge_localized_mode/review/labels.csv"
 INTERFEROMETER = (r"\BCI::DENV2F", r"\BCI::DENV3F")
 FILTERSCOPES = tuple(rf"\SPECTROSCOPY::FS{i:02d}" for i in (2, 3, 4))
 #: What fdp says of a record the shot does not have, as against a fetch that failed.

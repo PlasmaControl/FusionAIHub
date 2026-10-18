@@ -119,7 +119,7 @@ lists:
     title: "Gill (confinement)"
     kind: dataset
     rule: "txt($LABELER_ROOT/raw_external/gill_confinement_database_shots.txt)"
-    description: "The shots of Kevin Gill's confinement database workbook (data/events/confinement/raw/confinement_mode_database.xlsx, read as the confinement source table's kevin_workbook rows), 426 shots, 424 after the 2 blind test shots. His BES-time clips (82 more shots, 20 not in the workbook) are not included"
+    description: "The shots of Kevin Gill's confinement database workbook (<events>/confinement/raw/confinement_mode_database.xlsx, read as the confinement source table's kevin_workbook rows), 426 shots, 424 after the 2 blind test shots. His BES-time clips (82 more shots, 20 not in the workbook) are not included"
   confine_butt_gill:
     title: "Butt + Gill (confinement)"
     kind: derived

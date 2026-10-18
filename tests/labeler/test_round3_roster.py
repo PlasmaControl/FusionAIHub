@@ -28,7 +28,7 @@ from labeler.ae.seg.model import SegNet, SegNetConfig
 from labeler.ae.seg.poi import ae_pixels
 from labeler.ae.xpower.data import FULL_BAND_KHZ
 from labeler.ae.xpower.evaluate import chosen_model
-from labeler.config import DEFAULT_LABEL_TABLES, sha256_of
+from labeler.config import sha256_of
 from labeler.events import masks, suggestions, unet
 from labeler.events.catalog.states import NOT_OBSERVABLE, PRESENT, UNCERTAIN
 from labeler.events.panels.neoclassical_tearing_mode import PROBES
@@ -176,14 +176,14 @@ def _tokeye(paths, monkeypatch, band_khz=BAND_KHZ) -> Path:
 
 
 @pytest.fixture
-def tree(tmp_path, monkeypatch):
+def tree(tmp_path, monkeypatch, real_label_tables):
     """The frozen cohort, SHOT's corpus CO2 to 1.1 s, a v2 frame model, SegNet v3
     (the paper's two), the ELM and sawtooth frame models' tables with SHOT,
     H-mode's without it, and none for NTM."""
     paths = ae_tree.build(tmp_path, {SHOT: "valid"})
     cohort = paths.label_tables / "catalog" / "cohort.csv"
     cohort.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy(DEFAULT_LABEL_TABLES / "catalog" / "cohort.csv", cohort)
+    shutil.copy(real_label_tables / "catalog" / "cohort.csv", cohort)
     ae_tree.corpus(tmp_path, [SHOT], seconds=(-0.1, 1.1), tone_s=(0.3, 0.9))
     ae_tree.chosen(paths, {SHOT: "test"}, "v2")
     _seg(paths)

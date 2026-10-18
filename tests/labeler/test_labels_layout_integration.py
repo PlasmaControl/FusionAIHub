@@ -10,6 +10,7 @@ import pytest
 import yaml
 
 from labeler import run
+from labeler.config import Paths
 from labeler.events import databases as db
 from labeler.events import schema
 
@@ -19,8 +20,7 @@ REPO = Path(__file__).resolve().parents[2]
 def test_databases_only_on_all_committed_rwm_shots_writes_56_events_33_sources(
     tmp_path, monkeypatch,
 ):
-    labels = REPO / "data/events"
-    monkeypatch.setenv("LABELER_LABEL_TABLES", str(labels))
+    labels = Paths.from_env().label_tables
     rwm = [s for s in db.load_manifest(labels) if s.dir == "resistive_wall_mode"]
     shots = sorted(set().union(*(db.shots(s, labels) for s in rwm)))
     assert run.main(["events", "--databases-only", "--root", str(tmp_path),
@@ -46,7 +46,6 @@ def test_databases_only_on_all_committed_rwm_shots_writes_56_events_33_sources(
 def test_rwm_500_scan_exports_empty_table_with_completed_run_provenance(
     tmp_path, monkeypatch,
 ):
-    monkeypatch.setenv("LABELER_LABEL_TABLES", str(REPO / "data/events"))
     shot_list = REPO / "configs/shot_design/shot_lists/recommender_v1.yaml"
     shots = [r["shot"] for r in yaml.safe_load(shot_list.read_text())["shots"]]
     assert len(shots) == 500
@@ -106,7 +105,7 @@ def test_gitignore_keeps_the_data_out_and_the_source_in():
 
 @pytest.mark.label_tables
 def test_discrete_label_inventory_has_the_roadmap_input_schema():
-    with (REPO / "data/events/discrete_labels.csv").open(newline="") as stream:
+    with (Paths.from_env().label_tables / "discrete_labels.csv").open(newline="") as stream:
         reader = csv.DictReader(stream)
         assert reader.fieldnames == [
             "Name", "Category", "Database Exists", "Auto Classification Exists",

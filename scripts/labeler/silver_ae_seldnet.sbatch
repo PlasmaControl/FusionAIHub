@@ -23,8 +23,8 @@
 # network on the GPU, rest on one CPU). Nothing is fetched (LABELER_NO_FETCH=1): a shot with no CO2 on the corpus or the raw
 # cache is skipped and named. The table is then built on the login node from $WORK alone
 # (--build-only never loads the model; seconds):
-#   ae_gold_extend.py --shots-file data/events/silver/silver_shots.csv --work-dir $WORK --build-only
-#   -> data/events/alfven_eigenmode/extend_ae_seldnet/silver_shots.{csv,meta.json}
+#   ae_gold_extend.py --shots-file $LABELER_LABEL_TABLES/silver/silver_shots.csv --work-dir $WORK --build-only
+#   -> $LABELER_LABEL_TABLES/alfven_eigenmode/extend_ae_seldnet/silver_shots.{csv,meta.json}
 # CHECK="<gold shots>" also runs those gold shots into $GOLD_WORK (default $WORK/../gold_check_gpu),
 # to compare with the gold table's CPU run (runs/ae_gold_extend) on the login node.
 # The job samples the GPU every 2 s (runs/slurm/<job>.nvsmi.csv, the GPU rule's sampler) and every
@@ -70,11 +70,11 @@ set -euo pipefail
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
 ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labeler
 PY="$ROOT/envs/phase3/bin/python"  # torch 2.14 + CUDA 12.6; the pixi env's torch is CPU-only
-LIST="${LIST:-$REPO/data/events/silver/silver_shots.csv}"
+LIST="${LIST:-${LABELER_LABEL_TABLES:-/scratch/gpfs/EKOLEMEN/nc1514/events}/silver/silver_shots.csv}"
 WORK="${WORK:-$ROOT/runs/silver_infer/ae_seldnet/work}"
 GOLD_WORK="${GOLD_WORK:-$(dirname "$WORK")/gold_check_gpu}"
 export LABELER_ROOT="$ROOT" PYTHONPATH="$REPO/src"
-export LABELER_LABEL_TABLES=/scratch/gpfs/nc1514/FusionAIHub/data/events
+export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-/scratch/gpfs/EKOLEMEN/nc1514/events}"
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 HDF5_USE_FILE_LOCKING=FALSE LABELER_NO_FETCH=1
 export XDG_CACHE_HOME="$ROOT/runs/slurm/cache/${SLURM_JOB_ID:-none}"
 mkdir -p "$XDG_CACHE_HOME" "$WORK"

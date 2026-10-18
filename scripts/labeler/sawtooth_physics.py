@@ -47,6 +47,8 @@ from labeler.sawtooth.preprocessing import (
     state_spans,
 )
 
+EVENTS = Paths.from_env().label_tables
+
 REPO = Path(__file__).resolve().parents[2]
 WORK = Paths.from_env().root / "round4/saw/fix5"
 OUTPUT = REPO / "outputs/labeler/sawtooth/fix5"
@@ -880,7 +882,7 @@ def export_csv(records, destination, *, compact=False, prefix="labels"):
 
 
 def labels(args):
-    cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
+    cohort = pd.read_csv(EVENTS / "catalog/cohort.csv")
     reviewed = pd.read_csv(REVIEW)
     shots = (
         sorted(
@@ -1084,7 +1086,7 @@ def labels(args):
     if not args.population:
         export_csv(
             records,
-            REPO / "data/events/sawtooth_oscillation/extend_saw_physics",
+            EVENTS / "sawtooth_oscillation/extend_saw_physics",
             compact=True,
             prefix="cohort",
         )
@@ -1098,7 +1100,7 @@ def labels(args):
             export_csv(records, args.work / "labels", compact=True, prefix="population")
             export_csv(
                 records,
-                REPO / "data/events/sawtooth_oscillation/extend_saw_physics",
+                EVENTS / "sawtooth_oscillation/extend_saw_physics",
                 compact=True,
                 prefix="population",
             )
@@ -1295,10 +1297,10 @@ def geometry_audit(args):
         ),
         "channel_join": "zero-based corpus row i joins TECEF{i+1:02d}/ECEVS{i+1:02d}",
     }
-    cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
+    cohort = pd.read_csv(EVENTS / "catalog/cohort.csv")
     archive_shots = {source["shot"] for source in archive_sources}
     report["external_archive"].update(
-        cohort_source=str(REPO / "data/events/catalog/cohort.csv"),
+        cohort_source=str(EVENTS / "catalog/cohort.csv"),
         cohort_overlap=sorted(archive_shots & set(cohort.shot)),
         corpus_overlap=sorted(
             archive_shots
@@ -1355,7 +1357,7 @@ def snapshot(args):
     from the fix2 shot records; labels and audits read only this file.
     """
     source = Paths.from_env().root / "round4/saw/fix2/shots"
-    cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
+    cohort = pd.read_csv(EVENTS / "catalog/cohort.csv")
     train = set(map(int, cohort.loc[cohort.split == "train", "shot"]))
     times, failed, conflicts, listed = {}, [], {}, 0
     for path in sorted(source.glob("*.json")):

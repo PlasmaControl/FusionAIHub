@@ -18,8 +18,8 @@ from .interval_tables import SAMPLE_MS, read_label_grid
 def load_shot(event: str, shot: int, *, source="format/shots", root=None) -> dict:
     """Open one formatted or extended NPZ, independently of the working directory.
 
-    By default the data root is LABELER_LABEL_TABLES or the checkout's
-    data/events directory. Only the selected NPZ is read.
+    By default the data root is the label tables folder, `LABELER_LABEL_TABLES`
+    (`Paths.label_tables`). Only the selected NPZ is read.
     """
     root = Paths.from_env().label_tables if root is None else Path(root)
     path = root / event / source / f"{int(shot)}.npz"

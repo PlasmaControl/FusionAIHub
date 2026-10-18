@@ -38,6 +38,8 @@ from labeler.events.review import (
 )
 from labeler.events.review import producer as producer_review
 
+EVENTS = Paths.from_env().label_tables
+
 REPO = Path(__file__).resolve().parents[2]
 SUMMARY = REPO / "docs/labeler/results/detachment_review_queue.json"
 
@@ -404,7 +406,7 @@ def original_candidates(out, original_roster=None):
         payload = original_roster.read_bytes()
         source = str(original_roster)
     else:
-        old_roster = REPO / "data/events/detachment/shots_review.csv"
+        old_roster = EVENTS / "detachment/shots_review.csv"
         if old_roster.is_file():
             payload, source = old_roster.read_bytes(), str(old_roster)
         else:
@@ -633,7 +635,7 @@ def reorder_frozen_queue(out, record_path):
     scan_path = out / "corpus_scan.json"
     roster_path = out / "tables/detachment/shots.csv"
     scan = json.loads(scan_path.read_text())
-    cohort_path = REPO / "data/events/catalog/cohort.csv"
+    cohort_path = EVENTS / "catalog/cohort.csv"
     if scan["cohort_sha256"] != sha256_of(cohort_path):
         raise ValueError("cohort changed since frozen scan")
     frame = rosters.read_roster(roster_path)
@@ -904,7 +906,7 @@ def main():
     original_camera = original_candidates(args.out, args.original_roster)
     original = Paths.from_env()
     producer_root = args.producer_root or original.root / "round4/detach"
-    producer_tables = args.producer_tables or REPO / "data/events/detachment"
+    producer_tables = args.producer_tables or EVENTS / "detachment"
     producer_roster = args.producer_roster or producer_tables / "shots.csv"
     producer_labels = args.producer_labels or producer_root / "labels_bins.csv.gz"
     producer_inputs = [
@@ -923,7 +925,7 @@ def main():
     os.environ["LABELER_DETACHMENT_CACHE_ROOT"] = str(producer_root / "cache")
     write_recipe_help(producer_labels, args.out)
     cohort_path, scan_path = (
-        REPO / "data/events/catalog/cohort.csv",
+        EVENTS / "catalog/cohort.csv",
         args.out / "corpus_scan.json",
     )
     cohort, previous = pd.read_csv(cohort_path), None

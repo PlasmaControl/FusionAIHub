@@ -580,7 +580,7 @@ def test_evaluation_exports_peer_baselines_fixed_holdout_and_excluded_picks(
 ):
     import pandas as pd
 
-    cohort = tmp_path / "data/events/catalog/cohort.csv"
+    cohort = tmp_path / "events/catalog/cohort.csv"
     cohort.parent.mkdir(parents=True)
     pd.DataFrame(
         {
@@ -597,7 +597,7 @@ def test_evaluation_exports_peer_baselines_fixed_holdout_and_excluded_picks(
             "category": [0, 1, 0],
         }
     ).to_csv(review, index=False)
-    monkeypatch.setattr(benchmark, "REPO", tmp_path)
+    monkeypatch.setattr(benchmark, "EVENTS", tmp_path / "events")
     monkeypatch.setattr(benchmark, "REVIEW", review)
     monkeypatch.setattr(benchmark, "OUTPUT", tmp_path / "output")
     # No q = 1 surface from 100 to 200 ms (EFIT02 q_min 2.0), past the assessed time.

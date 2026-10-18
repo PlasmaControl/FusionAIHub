@@ -178,7 +178,7 @@ def main():
             "the value is kept in tangtv_value for reference."
         ),
         (
-            "- Worktree intervals: data/events/detachment/extend_detach_vote/"
+            "- Worktree intervals: <events>/detachment/extend_detach_vote/"
             "detach_shots.csv; columns shot,category,t_start,t_end,confidence,attrs "
             "(JSON tier). Grids: extend_detach_vote/detach_shots/<shot>.npz."
         ),

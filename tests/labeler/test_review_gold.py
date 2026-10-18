@@ -4,7 +4,7 @@ spread over the shot-number decades."""
 import pandas as pd
 import pytest
 
-from labeler.config import DEFAULT_LABEL_TABLES
+from labeler.config import Paths
 from labeler.events.review import gold, silver
 
 HEADER = "shot,run_day,year,classes,sources,notes\n"
@@ -44,7 +44,7 @@ def test_a_blind_shot_may_not_be_gold(tmp_path):
 
 @pytest.mark.label_tables
 def test_the_shipped_gold_list_is_fifty_shots_from_few_run_days_and_not_silver():
-    got = gold.read_gold(DEFAULT_LABEL_TABLES)
+    got = gold.read_gold(Paths.from_env().label_tables)
     assert len(got) == 50 and got.shot.is_unique and (got.shot >= 170_000).all()
     assert got.run_day.nunique() <= 13
     assert got.groupby("run_day").size().max() >= 6, "several shots from the same run day"
@@ -52,20 +52,20 @@ def test_the_shipped_gold_list_is_fifty_shots_from_few_run_days_and_not_silver()
                or "added by the owner" in row.notes
                for row in got.itertuples()), "hand labels or a curated source, or the owner's pick"
     assert {199597, 199603, 199607} <= set(got.shot), "the owner's 2024-07-11 TM experiment shots"
-    assert not set(got.shot) & set(silver.read_silver(DEFAULT_LABEL_TABLES).shot)
+    assert not set(got.shot) & set(silver.read_silver(Paths.from_env().label_tables).shot)
 
 
 @pytest.mark.label_tables
 def test_the_shipped_gold_list_has_about_the_same_number_of_shots_from_each_shot_number_decade():
     """17xxxx, 18xxxx, 19xxxx and 20xxxx (no 21xxxx shot exists in the corpus) share the 50."""
-    per_decade = gold.read_gold(DEFAULT_LABEL_TABLES).shot.floordiv(10_000).value_counts()
+    per_decade = gold.read_gold(Paths.from_env().label_tables).shot.floordiv(10_000).value_counts()
     assert set(per_decade.index) == {17, 18, 19, 20}
     assert per_decade.max() - per_decade.min() <= 2
 
 
 @pytest.mark.label_tables
 def test_the_shipped_gold_list_covers_every_class_the_silver_list_does():
-    seen = {c for classes in gold.read_gold(DEFAULT_LABEL_TABLES).classes for c in classes.split(";") if c}
+    seen = {c for classes in gold.read_gold(Paths.from_env().label_tables).classes for c in classes.split(";") if c}
     assert "resistive_wall_mode:present" in seen and "confinement:imode" in seen
     assert {"alfven_eigenmode.tae:present", "alfven_eigenmode.rsae:present", "detachment:detached",
             "mhd_n1.m2:present", "mhd_n2.m3:present", "minimum_safety_factor:low"} <= seen

@@ -25,6 +25,8 @@ from labeler.config import Paths
 from labeler.sawtooth.physics import Rule
 from labeler.sawtooth.preprocessing import mask_spans, sample_native, state_spans
 
+EVENTS = Paths.from_env().label_tables
+
 REPO = Path(__file__).resolve().parents[2]
 WORK = Paths.from_env().root / "round4/saw/fix"
 OUTPUT = REPO / "outputs/labeler/sawtooth/fix"
@@ -372,7 +374,7 @@ def repair_shot(job):
 
 
 def cohort_shots():
-    with (REPO / "data/events/catalog/cohort.csv").open() as handle:
+    with (EVENTS / "catalog/cohort.csv").open() as handle:
         shots = {int(row["shot"]) for row in csv.DictReader(handle)}
     review = Paths.from_env().label_tables / "sawtooth_oscillation/review/labels.csv"
     if review.exists():

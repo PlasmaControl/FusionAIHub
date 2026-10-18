@@ -41,12 +41,14 @@ REPO = Path(__file__).resolve().parents[2]
 if str(REPO / "src") not in sys.path:
     sys.path.insert(0, str(REPO / "src"))
 
-from labeler.config import Paths
+from labeler.config import Paths, events_ref
 from labeler.events import raw, rwm
 from labeler.events.interval_tables import validate_intervals
 from labeler.rwm import data, features, labels, shots
 
-LABEL_DIR = REPO / "data" / "events" / "resistive_wall_mode" / "extend_rwm_onset_window"
+EVENTS = Paths.from_env().label_tables
+
+LABEL_DIR = EVENTS / "resistive_wall_mode" / "extend_rwm_onset_window"
 STEM = "rwm_windows"
 CAMPAIGN_SPLIT = 170000  # shots below are the 2014 campaign, above the 2018 one
 
@@ -291,8 +293,8 @@ def main() -> None:
             "meaning of Hanson's DIII-D ONSET_TIME."
         ),
         "sources_searched": [
-            "data/events/resistive_wall_mode/raw/rwm_onsets_2017.csv",
-            "data/events/resistive_wall_mode/raw/rwm_onsets_2024.csv",
+            "<events>/resistive_wall_mode/raw/rwm_onsets_2017.csv",
+            "<events>/resistive_wall_mode/raw/rwm_onsets_2024.csv",
             "main:docs/labeler/events/resistive_wall_mode/README.md",
             "main:.tmp/label_papers/Piccione_2022_Nucl._Fusion_62_036002.md",
             "main:.tmp/label_papers/outside/Piccione_tsdw2021_RWM_poster.md",
@@ -378,7 +380,7 @@ def main() -> None:
             "unlabelled_comparison_rows": int((slices.role == "comparison").sum()),
         },
         "windows": {
-            "csv": str((LABEL_DIR / f"{STEM}.csv").relative_to(REPO)),
+            "csv": events_ref(LABEL_DIR / f"{STEM}.csv"),
             "rows": len(windows),
             "minimal_present_windows": int(
                 (hanson_rows.category == labels.PRESENT).sum()
@@ -551,7 +553,7 @@ def main() -> None:
             "unassessed": "no assessed physical state or termination evidence",
         },
         "reader_contract": "review reader preserves all explicit rows and attrs; tier-less saves of tiered sources are rejected",
-        "source": "data/events/resistive_wall_mode/raw/rwm_onsets_{2017,2024}.csv",
+        "source": "<events>/resistive_wall_mode/raw/rwm_onsets_{2017,2024}.csv",
         "onset_interval_attributes": (
             "attrs.source_onsets preserves every contributing original NTOR, "
             "MODE_TYPE, ONSET_TIME (ms) and source, including merged duplicates"

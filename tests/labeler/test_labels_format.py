@@ -35,7 +35,7 @@ def test_rwm_raw_bytes_match_original_commit_and_format_regenerates(tmp_path):
     for row in manifest["raw_datasets"]:
         raw = root / row["path"]
         raw.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(Paths().label_tables / row["path"], raw)
+        shutil.copyfile(Paths.from_env().label_tables / row["path"], raw)
         original = subprocess.check_output([
             "git", "show", f"6de489d:data/labels/resistive_wall_mode/{raw.name}",
         ], cwd=REPO)

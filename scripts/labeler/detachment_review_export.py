@@ -25,13 +25,15 @@ import matplotlib
 import numpy as np
 import pandas as pd
 
-from labeler.config import git_dirty, git_sha, sha256_of
+from labeler.config import Paths, git_dirty, git_sha, sha256_of
 from labeler.events.review import producer, recipe
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch, Rectangle
 from matplotlib.text import Text
+
+EVENTS = Paths.from_env().label_tables
 
 REPO = Path(__file__).resolve().parents[2]
 LABELER_ROOT = Path(
@@ -574,7 +576,7 @@ def main():
         default=Path("/scratch/gpfs/EKOLEMEN/foundation_model"),
     )
     parser.add_argument(
-        "--cohort", type=Path, default=REPO / "data/events/catalog/cohort.csv"
+        "--cohort", type=Path, default=EVENTS / "catalog/cohort.csv"
     )
     parser.add_argument("--producer-worktree", type=Path, default=PRODUCER)
     parser.add_argument("--channel", type=int, default=2)

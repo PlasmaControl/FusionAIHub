@@ -8,7 +8,7 @@ blind review and never get a suggestion (`spans`).
     pixi run -e labeler python -m labeler.events.review.cohort_rosters \\
         --event high_confinement_mode --point
 
-writes `data/events/<event>/shots.csv`: the queue's shots in order, each keeping
+writes `<events>/<event>/shots.csv`: the queue's shots in order, each keeping
 the row the roster already had for it, then every other row the roster had, as
 it was (the v1 gold sawtooth shots), less the `EXAMPLE` placeholder rows. A new
 row is unverified and not held out. Run again, it writes the same file.

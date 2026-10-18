@@ -22,13 +22,15 @@ import pandas as pd
 from labeler.config import Paths
 from labeler.tearing import detectors, scoring
 
+EVENTS = Paths.from_env().label_tables
+
 REPO = Path(__file__).resolve().parents[2]
 TM = (
     Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
     / "round4/tm"
 )
 LABELS = (
-    REPO / "data/events/neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
+    EVENTS / "neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
 )
 PLAN = TM / "results/inner_splits_fix4.json"
 
@@ -45,7 +47,7 @@ def main():
     import tm_prior_published as published
     import tm_prior_retrain as retrained
 
-    cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
+    cohort = pd.read_csv(EVENTS / "catalog/cohort.csv")
     shots = sorted(int(s) for s in cohort.query("split != 'test'").shot)
     table = pd.read_csv(LABELS)
     assert set(table.shot) <= set(shots)

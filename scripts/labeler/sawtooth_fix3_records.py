@@ -25,6 +25,8 @@ from labeler.config import Paths
 from labeler.sawtooth.physics import DEFAULT_RULE
 from labeler.sawtooth.preprocessing import STATES
 
+EVENTS = Paths.from_env().label_tables
+
 OBSERVED_STATES = tuple(state for state in STATES if state != "unassessed")
 Q_PRIOR_STATES = ("q_prior_ece_contradicted", "q_prior_untested")
 
@@ -173,7 +175,7 @@ def absent_composition(records):
 def records(args):
     from dataclasses import asdict
 
-    cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
+    cohort = pd.read_csv(EVENTS / "catalog/cohort.csv")
     all_records = [
         json.loads(p.read_text()) for p in sorted((args.work / "shots").glob("*.json"))
     ]

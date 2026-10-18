@@ -1071,7 +1071,7 @@ def main(argv=None) -> int:
         type=Path,
         default=paths.label_tables,
         help="the label tables the raw paths are relative to "
-        "(default: LABELER_LABEL_TABLES or data/events)",
+        "(default: LABELER_LABEL_TABLES)",
     )
     parser.add_argument(
         "--manifest",

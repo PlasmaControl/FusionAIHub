@@ -88,7 +88,7 @@ def queue_row(shot: int, rank: int, *, blind=False, window=(0, 1000)) -> dict:
 
 
 def cohort(p: Paths, rows) -> None:
-    """A frozen cohort at `data/events/catalog/cohort.csv`; unnamed columns blank."""
+    """A frozen cohort at `<events>/catalog/cohort.csv`; unnamed columns blank."""
     blank = dict.fromkeys(COHORT_COLUMNS, "")
     frame = pd.DataFrame([blank | row for row in rows], columns=list(COHORT_COLUMNS))
     path = p.label_tables / "catalog" / "cohort.csv"

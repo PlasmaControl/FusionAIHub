@@ -71,7 +71,7 @@ PY="$ROOT/envs/phase3/bin/python"  # torch 2.14 + CUDA 12.6; the pixi env's torc
 SHOTLIST="${SHOTLIST:-ae_heidbrink,ae_kaptanoglu,ae_heidbrink_kaptanoglu,gold}"
 OUT="${OUT:-$REPO/outputs/labeler/ae/shotlists/evaluation.json}"
 export LABELER_ROOT="$ROOT" PYTHONPATH="$REPO/src"
-export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-$REPO/data/events}"
+export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-/scratch/gpfs/EKOLEMEN/nc1514/events}"
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 HDF5_USE_FILE_LOCKING=FALSE
 export MPLCONFIGDIR="$ROOT/runs/mplconfig"
 export XDG_CACHE_HOME="$ROOT/runs/slurm/cache/${SLURM_JOB_ID:-none}"

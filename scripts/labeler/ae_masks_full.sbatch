@@ -68,7 +68,7 @@ ENV=/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler
 PY=/scratch/gpfs/nc1514/tokeye/.venv/bin/python
 ROOT="$("$ENV/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labeler")"
 export LABELER_ROOT="$ROOT" PYTHONPATH="$ROOT/ae/pylibs:$REPO/src"
-export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-/scratch/gpfs/nc1514/FusionAIHub/data/events}"
+export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-/scratch/gpfs/EKOLEMEN/nc1514/events}"
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 HDF5_USE_FILE_LOCKING=FALSE LABELER_NO_FETCH=1
 export HF_HUB_OFFLINE=1  # the checkpoint is loaded from a local path
 cd "$REPO"

@@ -13,15 +13,16 @@ import numpy as np
 import pandas as pd
 from sawtooth_physics import (
     ECE_GEOMETRY_ARCHIVE,
+    EVENTS,
     OUTPUT,
     READER_POLICY,
-    REPO,
     REVIEW,
     WORK,
     records_at,
     save_json,
 )
 
+from labeler.config import Paths, events_ref
 from labeler.sawtooth.metrics import spans_at
 from labeler.sawtooth.physics import Rule, core_relaxation_phases
 from labeler.sawtooth.preprocessing import mask_spans, state_spans
@@ -82,7 +83,7 @@ def subtract_spans(spans, vetoes):
 
 def refine_records(args):
     """Apply the unbounded phase guard to saved edges without reading corpus."""
-    cohort = set(pd.read_csv(REPO / "data/events/catalog/cohort.csv").shot)
+    cohort = set(pd.read_csv(EVENTS / "catalog/cohort.csv").shot)
     paths = sorted((args.work / "shots").glob("*.json"))
     if args.cohort_only:
         paths = [p for p in paths if int(p.stem) in cohort]
@@ -259,7 +260,7 @@ def refine_records(args):
 
 
 def audit(args):
-    cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
+    cohort = pd.read_csv(EVENTS / "catalog/cohort.csv")
     current_shots = [int(p.stem) for p in (args.work / "shots").glob("*.json")]
     prior_shots = [int(p.stem) for p in (args.previous / "shots").glob("*.json")]
     if args.cohort_only:
@@ -386,7 +387,7 @@ def audit(args):
 
 
 def queue(args):
-    cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
+    cohort = pd.read_csv(EVENTS / "catalog/cohort.csv")
     experts = set(pd.read_csv(REVIEW).shot)
     eligible = set(cohort.loc[cohort.split == "val", "shot"]) - experts
     records = {r["shot"]: r for r in records_at(args.work, eligible)}
@@ -476,12 +477,12 @@ def queue(args):
                     break
         if not added:
             raise ValueError("fewer than 15 nonexpert val shots with regime/crashes")
-    destination = REPO / "data/events/sawtooth_oscillation/review/crash_time_queue.csv"
+    destination = EVENTS / "sawtooth_oscillation/review/crash_time_queue.csv"
     pd.DataFrame(chosen)[["shot", "window", "why"]].to_csv(destination, index=False)
     save_json(
         args.output / "crash_time_queue.json",
         {
-            "queue": str(destination.relative_to(REPO)),
+            "queue": events_ref(destination),
             "regime_source": str(regime_source),
             "regime_author": "Jalal Butt",
             "confinement_regime_coverage": (
@@ -513,7 +514,7 @@ def figure(args):
     from matplotlib.patches import Patch
     from matplotlib.ticker import MaxNLocator
 
-    cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
+    cohort = pd.read_csv(EVENTS / "catalog/cohort.csv")
     allowed = set(cohort.loc[cohort.split.isin(["train", "val"]), "shot"])
     experts = set(pd.read_csv(REVIEW).shot)
     if args.shot not in allowed - experts:
@@ -531,7 +532,6 @@ def figure(args):
     core = selected["attrs"]["central_channel"]
     attrs = selected["attrs"]
     outer = int(attrs["rise_start"])
-    from labeler.config import Paths
     from labeler.sawtooth.geometry import load_radius_geometry
 
     radius, geometry = load_radius_geometry(

@@ -32,14 +32,16 @@ for entry in (REPO / "src", Path(__file__).resolve().parent):
 from tm_agreement import survival_references
 from tm_label import LOCK_SIGNALS, line_evidence
 
-from labeler.config import git_sha
+from labeler.config import Paths, git_sha
 from labeler.tearing import agreement, rule, scoring
+
+EVENTS = Paths.from_env().label_tables
 
 OUT_ROOT = (
     Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
     / "round4/tm"
 )
-CATALOG = REPO / "data/events/catalog"
+CATALOG = EVENTS / "catalog"
 
 #: `(name, changes to N1_RULE)`; the first is the frozen rule.
 VARIANTS = (
@@ -151,8 +153,8 @@ def main(argv=None) -> int:
         ).hexdigest(),
         "frozen_label_sha256": hashlib.sha256(
             (
-                REPO
-                / "data/events/neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
+                EVENTS
+                / "neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
             ).read_bytes()
         ).hexdigest(),
         "caveat": "Survival shares N1RMS, 12 G / 50 ms and 10%-of-peak onset; "

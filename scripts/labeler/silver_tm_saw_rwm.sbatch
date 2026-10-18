@@ -24,7 +24,7 @@
 #                      (one process; JOBS_FILE names the stage jobs for the meta):
 #                      python scripts/labeler/silver_tm_saw_rwm.py table --jobs-file $JOBS_FILE
 #                      with LIMIT or SAMPLE (the pilot) under runs/.../pilot_tables,
-#                      never data/events
+#                      never $LABELER_LABEL_TABLES
 #
 #   pilot:      LIMIT=20 STAGE=saw-frames sbatch <this>   (the first 20 planned shots,
 #               the full run's workers and CPUs; single-file outputs get a _pilot suffix;
@@ -62,7 +62,7 @@ ENV=/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler
 ROOT="$("$ENV/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labeler")"
 export LD_LIBRARY_PATH="$ENV/lib:${LD_LIBRARY_PATH:-}"
 export LABELER_ROOT="$ROOT" PYTHONPATH="$REPO/src"
-export LABELER_LABEL_TABLES=/scratch/gpfs/nc1514/FusionAIHub/data/events
+export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-/scratch/gpfs/EKOLEMEN/nc1514/events}"
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 HDF5_USE_FILE_LOCKING=FALSE LABELER_NO_FETCH=1
 export XDG_CACHE_HOME="$ROOT/runs/slurm/cache/${SLURM_JOB_ID:-none}"
 mkdir -p "$XDG_CACHE_HOME"

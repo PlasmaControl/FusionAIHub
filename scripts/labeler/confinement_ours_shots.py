@@ -28,7 +28,7 @@ Stages::
            [--missing skip|mask] [--variant run_day|base3|...]
            [--workers N] [--batch N] [--check N]
            [--input-check FILE] [--out-dir DIR]
-           -> data/events/confinement/extend_confine_ours/<STEM>.csv + <STEM>.meta.json
+           -> <events>/confinement/extend_confine_ours/<STEM>.csv + <STEM>.meta.json
               (shot, category, t_start, t_end, confidence, attrs: the review page's
               table reader takes no other column, so the roster's predicted,
               source, tier and extrapolated go in the `attrs` JSON); another variant
@@ -1115,7 +1115,7 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         required=True,
         help="CSV with a shot column (a named shot list, such as "
-        "data/events/silver/silver_shots.csv)",
+        "<events>/silver/silver_shots.csv)",
     )
     lb.add_argument(
         "--name",

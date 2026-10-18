@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 from dataclasses import dataclass, replace
 from importlib.metadata import version
@@ -21,6 +20,7 @@ import numpy as np
 import pandas as pd
 
 from ..config import Paths, sha256_of
+from ..confinement import run_directory
 from ..events.catalog.states import ABSENT, NOT_OBSERVABLE, PRESENT, UNCERTAIN
 from ..events.interval_tables import INTERVAL_COLUMNS, validate_intervals
 from ..events.verify import corpus_path
@@ -259,8 +259,7 @@ def confinement_track(paths: Paths, shot: int, expert: bool = True) -> lf.Track:
             lf.SILVER, "curated four-class confinement review", lambda p: reviewed
         )
         return lf.Track(spec, source, reviewed, rows)
-    default = paths.label_tables.parents[1] / "runs/labeler/confinement/v1"
-    run = Path(os.environ.get("CONFINEMENT_RUN_DIR", str(default)))
+    run = run_directory()
     curated = run / "merged_intervals.csv"
     if not curated.is_file():
         raise FileNotFoundError(

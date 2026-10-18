@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 
 import pandas as pd
-from sawtooth_physics import REPO, WORK, records_at, save_json
+from sawtooth_physics import EVENTS, REPO, WORK, records_at, save_json
 
 
 def read(output, name):
@@ -472,7 +472,7 @@ def main():
         if args.output.is_relative_to(REPO)
         else str(args.output)
     )
-    cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
+    cohort = pd.read_csv(EVENTS / "catalog/cohort.csv")
     records = {r["shot"]: r for r in records_at(args.work, cohort.shot)}
     splits = {}
     for split in ("train", "val", "test"):
@@ -772,7 +772,7 @@ def main():
         "",
         (
             "The 15-shot nonexpert validation queue is in "
-            "`data/events/sawtooth_oscillation/review/crash_time_queue.csv`; its "
+            "`<events>/sawtooth_oscillation/review/crash_time_queue.csv`; its "
             "regime stratification and shot/window list are recorded in "
             f"`{relative}/crash_time_queue.json`. The owner is away; blind crash "
             "accuracy remains unvalidated. The README contains the blind protocol."

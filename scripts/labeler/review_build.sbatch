@@ -19,7 +19,7 @@
 # WORKERS is one a CPU unless set; more keep the CPUs busy through slow reads.
 #
 #   pilot:      the first 20 roster shots in the full run's shape, e.g.
-#               R=/scratch/gpfs/nc1514/FusionAIHub/data/events/neoclassical_tearing_mode
+#               R=$LABELER_LABEL_TABLES/neoclassical_tearing_mode
 #               SHOTS="$(sed -n 2,21p $R/shots.csv | cut -d, -f1 | xargs)" \
 #                 EVENT=neoclassical_tearing_mode sbatch <this>
 #   full run:   EVENT=neoclassical_tearing_mode sbatch <this>
@@ -71,7 +71,7 @@ ENV=/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler
 ROOT="$("$ENV/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labeler")"
 export LD_LIBRARY_PATH="$ENV/lib:${LD_LIBRARY_PATH:-}"
 export LABELER_ROOT="$ROOT" PYTHONPATH="$REPO/src"
-export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-/scratch/gpfs/nc1514/FusionAIHub/data/events}"
+export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-/scratch/gpfs/EKOLEMEN/nc1514/events}"
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 HDF5_USE_FILE_LOCKING=FALSE LABELER_NO_FETCH=1
 cd "$REPO"
 : "${EVENT:?set EVENT to the editor, e.g. EVENT=neoclassical_tearing_mode}"

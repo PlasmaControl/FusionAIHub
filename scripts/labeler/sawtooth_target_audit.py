@@ -20,14 +20,14 @@ from sawtooth_benchmark import (
     record,
     targets,
 )
-from sawtooth_physics import OUTPUT, REPO, WORK, save_json
+from sawtooth_physics import EVENTS, OUTPUT, WORK, save_json
 
 from labeler.sawtooth.metrics import spans_at
 from labeler.sawtooth.models import soft_crash_target
 
 
 def audit(work):
-    shots = sorted(pd.read_csv(REPO / "data/events/catalog/cohort.csv").shot)
+    shots = sorted(pd.read_csv(EVENTS / "catalog/cohort.csv").shot)
     counts, rows, changed_bins = Counter(), [], []
     for shot in shots:
         shot = int(shot)

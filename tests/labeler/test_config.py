@@ -97,25 +97,42 @@ def test_the_logbook_jsonl_is_a_read_only_file_and_the_cache_is_ours(
     assert p.text_cache.is_dir()
 
 
-def test_the_label_tables_root_is_the_repo_and_is_overridable(
+def test_the_label_tables_root_is_the_events_folder_and_is_overridable(
     monkeypatch,
     tmp_path,
 ):
-    # Curated label tables are DATA and live under `data/events/`, never
-    # under `src/`, and git ignores them (a clone restores them from the
-    # Hugging Face release). The default resolves relative to the package
-    # rather than to the caller's cwd, so a run from anywhere finds them; a
-    # table too large or too restricted to keep here lives on /scratch and
-    # the root moves with it.
-    default = Paths().label_tables
-    assert default.name == "events" and default.parent.name == "data"
-    assert default.parent.parent == Paths().config_dir.parents[1]
+    # Curated label tables are DATA, never under `src/` and never in git (a
+    # clone restores them from the Hugging Face release). They live in an
+    # `events` folder outside the repository, beside the data roots; the
+    # default is a fixed path like the root's, and `LABELER_LABEL_TABLES`
+    # moves it (on StellarAI, next to the raw-data folder).
+    assert config.DEFAULT_LABEL_TABLES == Path("/scratch/gpfs/EKOLEMEN/nc1514/events")
+    assert Paths().label_tables == config.DEFAULT_LABEL_TABLES
     tables = tmp_path / "elsewhere"
     monkeypatch.setenv("LABELER_LABEL_TABLES", str(tables))
     assert Paths.from_env().label_tables == tables
     # An input, like the corpus and the bundles: `mkdirs` does not make it.
     Paths(root=tmp_path, label_tables=tables).mkdirs()
     assert not tables.exists()
+
+
+def test_events_ref_names_a_path_relative_to_the_label_tables(tmp_path):
+    # Provenance text: `<events>/...`, so a record does not depend on where
+    # the folder was mounted when it was written.
+    tables = tmp_path / "events"
+    assert (
+        config.events_ref(tables / "catalog" / "cohort.csv", tables)
+        == "<events>/catalog/cohort.csv"
+    )
+    # A path outside the folder is kept whole.
+    elsewhere = tmp_path / "elsewhere" / "x.csv"
+    assert config.events_ref(elsewhere, tables) == str(elsewhere)
+
+
+def test_events_ref_follows_the_environment(monkeypatch, tmp_path):
+    monkeypatch.setenv("LABELER_LABEL_TABLES", str(tmp_path / "mounted"))
+    path = tmp_path / "mounted" / "silver" / "silver_shots.csv"
+    assert config.events_ref(path) == "<events>/silver/silver_shots.csv"
 
 
 def test_the_manifests_are_tracked_config_and_overridable(monkeypatch, tmp_path):

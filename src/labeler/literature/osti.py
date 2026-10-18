@@ -24,7 +24,7 @@ type}]}`, or `{"shot", "error"}`.
     pixi run -e labeler python -m labeler.literature.osti fetch
     pixi run -e labeler python -m labeler.literature.osti links
 
-Copying `papers.csv` and `papers.meta.json` into `data/events/catalog/` is the
+Copying `papers.csv` and `papers.meta.json` into `<events>/catalog/` is the
 owner's call.
 """
 

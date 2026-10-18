@@ -42,17 +42,19 @@ for entry in (REPO / "src", Path(__file__).resolve().parent):
 
 import tm_label
 
-from labeler.config import git_sha
+from labeler.config import Paths, git_sha
 from labeler.events.interval_tables import parse_attrs
 from labeler.tearing import rule, scoring
+
+EVENTS = Paths.from_env().label_tables
 
 ROOT = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
 OUT = ROOT / "round4/tm"
 BEFORE = OUT / "fix3_original"
-CATALOG = REPO / "data/events/catalog"
-SOURCES = REPO / "data/events/neoclassical_tearing_mode/benchmark/sources"
+CATALOG = EVENTS / "catalog"
+SOURCES = EVENTS / "neoclassical_tearing_mode/benchmark/sources"
 NEW_TABLE = (
-    REPO / "data/events/neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
+    EVENTS / "neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
 )
 #: Quiet-time pseudo-locks: the mode "begins" at a drawn time and the lock is tested
 #: `lag` later; the lags are these, then a draw from the cohort's interval durations.

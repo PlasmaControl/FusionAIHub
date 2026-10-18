@@ -10,7 +10,7 @@ The figure has no suggestions panel (the owner, 2026-09-29 23:51: "remove the
 suggestions by year graphs").
 
 AE's labels are the owner's live review
-(`data/events/alfven_eigenmode/review/labels.csv`), so its labelled shots are
+(`<events>/alfven_eigenmode/review/labels.csv`), so its labelled shots are
 its reviewed ones; its split is the chosen `ae_xpower` model's `split.csv`,
 with "no split" the reviewed shots in none of it (saved after the model was
 trained), so AE's labelled = train + val + test + no split; its suggestions are

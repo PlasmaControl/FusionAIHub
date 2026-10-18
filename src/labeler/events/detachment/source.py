@@ -8,7 +8,7 @@ leaves unmarked. Confidence is blank: neither rule has one. Te fills only this r
 source; the curated label set (`extend_detach_vote`) uses no Te.
 
 * `detach_vote` v1: the round-4 vote rows
-  (`data/events/detachment/extend_detach_vote/detach_shots.csv`, written by
+  (`<events>/detachment/extend_detach_vote/detach_shots.csv`, written by
   `scripts/labeler/detach_label.py`), each row's tier mapped by `vote_state`: the two
   state tiers (`certain`, TangTV + Afrac agreement, and `tangtv_only`) keep their
   attached or detached state, `candidate_marfe` is 3 and every other tier
@@ -60,16 +60,13 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from ...config import Paths, git_sha, sha256_of
+from ...config import Paths, events_ref, git_sha, sha256_of
 from .. import suggestions
 from ..review import labels
 from . import core, signals
 from . import thresholds as th
 
 EVENT = "detachment"
-REPO = Path(__file__).resolve().parents[4]
-EVENT_DIR = REPO / "data" / "events" / EVENT
-VOTE_TABLE = EVENT_DIR / "extend_detach_vote" / "detach_shots.csv"
 BIN_MS = core.BIN_MS
 GRID_MS = 10
 VOTE, TE = "detach_vote", "detach_te"
@@ -98,6 +95,16 @@ TE_ATTACHED_MIN_EV = 10.0
 EFIT_GAP_MS = 40.0
 
 
+def event_dir(paths: Paths) -> Path:
+    """The detachment folder of the label tables (`<events>/detachment`)."""
+    return paths.label_tables / EVENT
+
+
+def vote_table(paths: Paths) -> Path:
+    """The round-4 vote rows `scripts/labeler/detach_label.py` writes."""
+    return event_dir(paths) / "extend_detach_vote" / "detach_shots.csv"
+
+
 def data_root() -> Path:
     """Where the round-5 fetch parks divertor Thomson and EFIT01 maps."""
     return Path(os.environ["LABELER_ROOT"]) / "round5" / "detach"
@@ -115,8 +122,11 @@ def vote_state(category: int, tier: str) -> int:
     return core.MARFE if tier == MARFE_TIER else core.UNCERTAIN
 
 
-def vote_bins(path=VOTE_TABLE) -> pd.DataFrame:
-    """One row per 50 ms bin the vote assessed: shot, start, category, tier."""
+def vote_bins(path=None) -> pd.DataFrame:
+    """One row per 50 ms bin the vote assessed: shot, start, category, tier.
+
+    `path` defaults to `vote_table` of the environment's label tables."""
+    path = vote_table(Paths.from_env()) if path is None else path
     table = pd.read_csv(path)
     out = []
     for row in table.itertuples():
@@ -556,23 +566,24 @@ def write(
     out = {"table": str(path), "rows": len(frame), "coverage": meta["coverage"]}
     if pointer:
         out["pointer"] = labels.write_pointer(
-            EVENT_DIR, path, method=method, version=version
+            event_dir(paths), path, method=method, version=version
         )
     return out
 
 
-def vote_meta(bins: pd.DataFrame, path=VOTE_TABLE) -> dict:
+def vote_meta(bins: pd.DataFrame, path=None) -> dict:
+    path = vote_table(Paths.from_env()) if path is None else Path(path)
     return {
         "rule": {
             "input": "round-4 vote rows: the geometry-gated TangTV state with Afrac "
-            "as the second vote (README of data/events/detachment)",
+            "as the second vote (README of <events>/detachment)",
             "states": f"tiers {', '.join(STATE_TIERS)} keep their state (1 or 2)",
             "marfe": f"tier {MARFE_TIER} is 3, a candidate, never a MARFE state",
             "uncertain": "every other tier is 4",
             "unmarked": "time the vote did not assess is 0",
         },
         "input": {
-            "table": str(Path(path).relative_to(REPO)),
+            "table": events_ref(path),
             "sha256": sha256_of(path),
         },
         "bins_by_tier": {k: int(v) for k, v in Counter(bins.tier).most_common()},
@@ -630,12 +641,13 @@ def table_bins(path) -> pd.DataFrame:
 
 
 def vote_from_table(
-    paths: Paths, version: str = "v1", extend=VOTE_TABLE
+    paths: Paths, version: str = "v1", extend=None
 ) -> tuple[pd.DataFrame, dict]:
     """The vote's bins with their tiers, read from the written `detach_vote`
     `version` table: its categories, with the tiers of the extend table it was made
     from. Refused unless that table's sha256 is the one `version` recorded and its
-    bins give exactly the written table's."""
+    bins give exactly the written table's. `extend` defaults to `vote_table(paths)`."""
+    extend = vote_table(paths) if extend is None else extend
     path = suggestions.table_path(paths, EVENT, VOTE, version)
     recorded = json.loads(path.with_suffix(".meta.json").read_text())["input"]
     if sha256_of(extend) != recorded["sha256"]:
@@ -674,7 +686,7 @@ def main(argv=None) -> int:
         Path(os.environ["LABELER_ROOT"]) / "round4" / "detach" / "dts",
     )
     if args.step == "vote":
-        bins = vote_bins()
+        bins = vote_bins(vote_table(paths))
         meta, version, method = vote_meta(bins), args.version or "v1", VOTE
     elif args.step == "te":
         shots = (

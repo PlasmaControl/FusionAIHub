@@ -1,11 +1,11 @@
 """Structural guards at every frozen-table and pool reader."""
 
 import io
-from pathlib import Path
 
 import pandas as pd
 import pytest
 
+from labeler.config import Paths
 from labeler.events.catalog import cohort, population
 from labeler.literature import papers
 
@@ -15,7 +15,7 @@ READERS = [
     (population.read_pool, population.POOL_COLUMNS),
     (papers.read_papers, papers.PAPER_COLUMNS),
 ]
-ROOT = Path(__file__).resolve().parents[2] / "data/events/catalog"
+ROOT = Paths.from_env().label_tables / "catalog"
 
 
 @pytest.mark.parametrize("reader, columns", READERS)

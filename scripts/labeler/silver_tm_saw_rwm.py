@@ -2,7 +2,7 @@
 """Silver-list tables of three detectors: tm-ours, saw-ours v2 and rwm-ours.
 
 The owner's ask of 2026-10-15: run each event set's best model on the 450 silver
-shots (`data/events/silver/silver_shots.csv`), so the review page shows its output
+shots (`<events>/silver/silver_shots.csv`), so the review page shows its output
 as a layer. One extend table per model, `<event>/extend_<producer>/silver_shots.csv`
 with its `.meta.json`. Every stage runs as a SLURM job; nothing fetches.
 
@@ -909,7 +909,7 @@ def base_meta(event: str, producer: str, jobs: dict) -> dict:
         "git_sha": git_sha(full=True),
         "code_sha256": sha256(Path(__file__)),
         "jobs": jobs,
-        "shot_list": "silver: data/events/silver/silver_shots.csv",
+        "shot_list": "silver: <events>/silver/silver_shots.csv",
         "shot_list_sha256": sha256(PATHS.label_tables / "silver" / "silver_shots.csv"),
         "grid": "10 ms frames [10k, 10k+10) from t = 0 (events.grid); runs of one "
         "category merged into one row",

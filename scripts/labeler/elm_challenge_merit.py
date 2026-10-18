@@ -8,7 +8,7 @@ pandas and `uncertainties` and nothing of ours (`labeler` is not imported)::
 
     $LABELER_ROOT/envs/elm_challenge/bin/python scripts/labeler/elm_challenge_merit.py \\
         --clone $LABELER_ROOT/benchmarks/elm/challenge/elm_detection_challenge \\
-        --key data/events/edge_localized_mode/raw/elm_challenge_key_b71f991.json \\
+        --key $LABELER_LABEL_TABLES/edge_localized_mode/raw/elm_challenge_key_b71f991.json \\
         --folder name=DIR [--folder name=DIR ...] --out scores.json
 
 The key given must be byte-identical to the clone's own, so what is scored is the key at

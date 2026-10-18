@@ -37,16 +37,15 @@ DEFAULT_LOGS_JSONL = Path(
 )
 #: The curated label tables `events/databases.py` reads: one directory of
 #: CSVs per phenomenon (the manifest that names them is `events.yaml` under
-#: `config_dir`). Label DATA, so it lives under `data/events/`, which git
-#: ignores: a fresh clone restores it from the Hugging Face release with
-#: `scripts/labeler/hf_publish.py pull`. The default resolves relative to
-#: this FILE rather than to the caller's cwd - a run from a SLURM scratch
-#: directory finds the tables the same way a run from the repo does. That
-#: resolution is a SOURCE CHECKOUT's (which is every way labeler is run
-#: today: `PYTHONPATH=$PWD/src`, or an editable install); from a non-editable
-#: wheel the tables are outside the package and `LABELER_LABEL_TABLES` is the
-#: answer.
-DEFAULT_LABEL_TABLES = Path(__file__).resolve().parents[2] / "data" / "events"
+#: `config_dir`). Label DATA, so it lives in a folder of its own, `events`, beside
+#: the data roots and outside the repository: per event `raw/`, `format/`,
+#: `extend_*/`, `review/` and `shots.csv`, plus `catalog/` and `shotlists/`.
+#: `LABELER_LABEL_TABLES` (`Paths.label_tables`) is the one setting that names it
+#: - set it where the folder lives on another machine (StellarAI keeps it next to
+#: its raw-data folder) - and every reader and writer of a label table goes
+#: through it. A fresh machine restores the folder from the Hugging Face release
+#: with `scripts/labeler/hf_publish.py pull`.
+DEFAULT_LABEL_TABLES = Path("/scratch/gpfs/EKOLEMEN/nc1514/events")
 #: The labeler's hand-kept configuration: `events.yaml` (the taxonomy, the label
 #: grid and the dataset manifest) and `best_models.yaml` (event -> best model ->
 #: inputs -> score). Source, not data, so it is tracked under `configs/labeler/`
@@ -310,6 +309,20 @@ class Paths:
             self.text_cache,
         ):
             d.mkdir(parents=True, exist_ok=True)
+
+
+def events_ref(path, label_tables: Path | None = None) -> str:
+    """`path` as provenance text: `<events>/...` inside the label tables, else as given.
+
+    A record that names a label table must not carry the folder's absolute path, which
+    differs between machines (`LABELER_LABEL_TABLES`). `<events>` stands for
+    `Paths.label_tables`; `label_tables` defaults to the environment's.
+    """
+    root = Paths.from_env().label_tables if label_tables is None else Path(label_tables)
+    try:
+        return f"<events>/{Path(path).relative_to(root).as_posix()}"
+    except ValueError:
+        return str(path)
 
 
 class NamedBytes(io.BytesIO):

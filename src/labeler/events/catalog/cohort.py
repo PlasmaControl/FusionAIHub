@@ -30,12 +30,12 @@ key does not depend on which other shots are in the population.
 
     pixi run -e labeler python -m labeler.events.catalog.cohort
 
-reads `$LABELER_ROOT/catalog/{pool.csv, ip.jsonl}`, `data/events/catalog/papers.csv`,
-`data/events/catalog/runaway.csv`
+reads `$LABELER_ROOT/catalog/{pool.csv, ip.jsonl}`, `<events>/catalog/papers.csv`,
+`<events>/catalog/runaway.csv`
 and the legacy tables, and writes `cohort.csv`, `cohort_manifest.yaml` and
 `population.csv` to `$LABELER_ROOT/catalog/`. The freeze copies all three files,
 `cohort.csv`, `population.csv` and `cohort_manifest.yaml`, into
-`data/events/catalog/`, so anyone holding the release can rederive the draw (D20).
+`<events>/catalog/`, so anyone holding the release can rederive the draw (D20).
 Freezing the cohort is the owner's call.
 """
 

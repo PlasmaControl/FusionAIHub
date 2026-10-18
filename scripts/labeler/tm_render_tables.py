@@ -14,7 +14,10 @@ import os
 import subprocess
 from pathlib import Path
 
+from labeler.config import Paths
+
 REPO = Path(__file__).resolve().parents[2]
+EVENTS = Paths.from_env().label_tables
 TM = (
     Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
     / "round4/tm"
@@ -80,12 +83,12 @@ def main():
             "tex_source": str(source.relative_to(REPO)),
             "tex_sha256": sha(source),
             "benchmark_sha256": sha(
-                REPO
-                / "data/events/neoclassical_tearing_mode/benchmark/tm_benchmark.json"
+                EVENTS
+                / "neoclassical_tearing_mode/benchmark/tm_benchmark.json"
             ),
             "labels_sha256": sha(
-                REPO
-                / "data/events/neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
+                EVENTS
+                / "neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
             ),
             "png_sha256": sha(preview.with_suffix(".png")),
             "pdf_sha256": sha(pdf),

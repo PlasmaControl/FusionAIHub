@@ -238,8 +238,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--out-dir",
         type=Path,
-        default=Path(__file__).resolve().parents[3]
-        / f"data/events/{CATEGORY}/extend_elm_ours",
+        default=Paths.from_env().label_tables / CATEGORY / "extend_elm_ours",
     )
     ap.add_argument("--device", default="cpu")
     ap.add_argument(

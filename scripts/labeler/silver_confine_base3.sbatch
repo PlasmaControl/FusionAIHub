@@ -24,7 +24,7 @@
 # ahead of the GPU; the GPU takes to_input's clipping and masks and runs the 15 networks
 # over BATCH shots at a time, each shot as if alone (forward_alone); CHECK shots are
 # recomputed one at a time on the GPU and on the CPU and the difference goes in the meta.
-# The default writes data/events/confinement/extend_confine_base3/silver_shots.csv, whose
+# The default writes $LABELER_LABEL_TABLES/confinement/extend_confine_base3/silver_shots.csv, whose
 # directory sorts before extend_confine_ours, so on the review page it outranks the
 # 2026-10-03 roster_review.csv where both hold a shot. A curated shot is read by the
 # fold that never saw it, any other shot by the mean of the five folds.
@@ -38,7 +38,7 @@
 #   pilot:    SHOTS_FILE=<csv of at most 20 shots> NAME=pilot \
 #               OUT_DIR=$LABELER_ROOT/runs/silver_infer/confine_base3/pilot5 \
 #               sbatch --mem=12G <this>     (BATCH=16: 20 shots fill one batch)
-#   full run: sbatch <this>     (the 450 silver shots, data/events/silver/silver_shots.csv)
+#   full run: sbatch <this>     (the 450 silver shots, $LABELER_LABEL_TABLES/silver/silver_shots.csv)
 #   gate:     cd /scratch/gpfs/nc1514/FusionAIHub && PYTHONPATH=$PWD/src pixi run --frozen \
 #               --no-install -e labeler python -m labeler.jobstats --job-id <id> [--pilot]
 #
@@ -82,13 +82,13 @@ REPO=/scratch/gpfs/nc1514/FusionAIHub
 ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labeler
 PY=$ROOT/envs/phase3/bin/python   # torch 2.14 + CUDA 12.6
 export LABELER_ROOT=$ROOT PYTHONPATH=$REPO/src
-export LABELER_LABEL_TABLES=/scratch/gpfs/nc1514/FusionAIHub/data/events
+export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-/scratch/gpfs/EKOLEMEN/nc1514/events}"
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
 export HDF5_USE_FILE_LOCKING=FALSE LABELER_NO_FETCH=1
 export XDG_CACHE_HOME=$ROOT/runs/slurm/cache/${SLURM_JOB_ID:-none}
-SHOTS_FILE=${SHOTS_FILE:-$REPO/data/events/silver/silver_shots.csv}
+SHOTS_FILE=${SHOTS_FILE:-$LABELER_LABEL_TABLES/silver/silver_shots.csv}
 NAME=${NAME:-silver_shots}
-OUT_DIR=${OUT_DIR:-$REPO/data/events/confinement/extend_confine_base3}
+OUT_DIR=${OUT_DIR:-$LABELER_LABEL_TABLES/confinement/extend_confine_base3}
 VARIANT=${VARIANT:-base3}
 CPUS=${SLURM_CPUS_PER_TASK:-8}
 WORKERS=${WORKERS:-$CPUS}

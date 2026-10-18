@@ -43,6 +43,7 @@ REPO = Path(__file__).resolve().parents[2]
 if str(REPO / "src") not in sys.path:
     sys.path.insert(0, str(REPO / "src"))
 
+from labeler.config import Paths
 from labeler.confinement import bes_windows as bw
 
 LABELER = Path(
@@ -52,7 +53,7 @@ DEFAULT_OUT = LABELER / "round4/conf/zerod"
 ROSTER = Path(
     os.environ.get(
         "CONFINEMENT_ROSTER",
-        "/scratch/gpfs/nc1514/FusionAIHub/data/events/confinement/shots.csv",
+        str(Paths.from_env().label_tables / "confinement/shots.csv"),
     )
 )
 CORPUS = Path("/scratch/gpfs/EKOLEMEN/foundation_model")

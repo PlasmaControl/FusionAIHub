@@ -11,8 +11,8 @@ import h5py
 import numpy as np
 import pandas as pd
 from sawtooth_physics import (
+    EVENTS,
     OUTPUT,
-    REPO,
     REVIEW,
     WORK,
     frozen_rule,
@@ -180,7 +180,7 @@ def main():
     parser.add_argument("--work", type=Path, default=WORK)
     parser.add_argument("--workers", type=int, default=8)
     args = parser.parse_args()
-    cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
+    cohort = pd.read_csv(EVENTS / "catalog/cohort.csv")
     review = pd.read_csv(REVIEW)
     shots = sorted(set(cohort.shot) | set(review.shot))
     windows = {

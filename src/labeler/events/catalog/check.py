@@ -289,7 +289,7 @@ def points(
                 detail += (
                     "; D19 needs the allowed windows: "
                     "python -m labeler.events.catalog.check disruption "
-                    "--windows data/events/catalog/cohort.csv"
+                    "--windows $LABELER_LABEL_TABLES/catalog/cohort.csv"
                 )
             out.append(Finding("points", where, shot, detail))
         for problem in attr_problems(category, parse_attrs(r.attrs)):
