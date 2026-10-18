@@ -26,7 +26,9 @@
 set -euo pipefail
 PROJECT_DIR="${SLURM_SUBMIT_DIR:-$PWD}"
 cd "${PROJECT_DIR}"
-source scripts/slurm_frontier/_frontier_settings.sh
+# CLUSTER_ENV: environment hook of the cluster (default Frontier/ROCm; StellarAI sets
+# scripts/slurm_stellarai/_stellarai_common.sh).
+source "${CLUSTER_ENV:-scripts/slurm_frontier/_frontier_settings.sh}"
 
 # ============================================================================================
 # LOCKED PRODUCTION CONFIGURATION (user decision, 2026-08-19). Every value below stays env-
@@ -190,6 +192,7 @@ EXTRA=()
 [ -n "${SHOT_TIMEOUT_S:-}" ] && EXTRA+=(--shot_timeout_s "${SHOT_TIMEOUT_S}")
 [ -n "${TEST_N:-}" ] && EXTRA+=(--test_n "${TEST_N}")
 [ -n "${TEST_FRAC:-}" ] && EXTRA+=(--test_frac "${TEST_FRAC}")
+[ -n "${PIN_BOTH:-}" ] && EXTRA+=(--pin_both "${PIN_BOTH}")
 [ -n "${PIN_VAL:-}" ] && EXTRA+=(--pin_val "${PIN_VAL}")
 [ -n "${PIN_TRAIN:-}" ] && EXTRA+=(--pin_train "${PIN_TRAIN}")
 [ -n "${VAL_WINDOWS:-}" ] && EXTRA+=(--val_windows "${VAL_WINDOWS}")
@@ -246,7 +249,9 @@ cache=${CACHE_DIR} out=${OUT_DIR} depth=${DEPTH} d_model=${D_MODEL} n_heads=${N_
 k0=${K0} n_predict=${N_PREDICT} steps=${STEPS} bs=${BATCH_SIZE} accum=${ACCUM_STEPS} \
 grad_ckpt=${GRAD_CKPT} lr=${LR} warmup=${WARMUP_STEPS} min_lr_ratio=${MIN_LR_RATIO} \
 beta2=${BETA2} wd=${WEIGHT_DECAY} gen_mask_p=${GEN_MASK_P} ss_final=${SS_FINAL_FRAC:-config} \
-ss_ramp=${SS_RAMP_STEPS:-config} mask_absent=${MASK_ABSENT}"
+ss_ramp=${SS_RAMP_STEPS:-config} mask_absent=${MASK_ABSENT} block_forcing=${BLOCK_FORCING:-0} \
+seed_drop_p=${SEED_DROP_P:-0} seed_column_drop_p=${SEED_COLUMN_DROP_P:-0} \
+actuator_noise=${ACTUATOR_NOISE:-0} window_jitter=${WINDOW_JITTER:-0}"
   srun -N "$SLURM_JOB_NUM_NODES" -n "$SLURM_NTASKS" -c "$SLURM_CPUS_PER_TASK" \
        --gpus-per-task=1 --gpu-bind=closest \
        scripts/slurm_frontier/_srun_rank_wrapper.sh \
@@ -269,16 +274,24 @@ ss_ramp=${SS_RAMP_STEPS:-config} mask_absent=${MASK_ABSENT}"
        --gen_horizon_max "${GEN_HORIZON_MAX:-0}" \
        --act_cross_attn "${ACT_CROSS_ATTN:-0}" \
        --lag_embed_k "${LAG_EMBED_K:-0}" \
+       --latent_head "${LATENT_HEAD:-0}" \
        --window_stride "${WINDOW_STRIDE:-1}" \
        --windows_per_shot "${WINDOWS_PER_SHOT}" \
        --window_sample "${WINDOW_SAMPLE:-random}" \
        --val_window_sample "${VAL_WINDOW_SAMPLE:-}" \
        --mod_weight_pow "${MOD_WEIGHT_POW:-0}" \
+       --mod_weights_json "${MOD_WEIGHTS_JSON:-}" \
+       --live_end_json "${LIVE_END_JSON:-}" \
        --lr_decay_from "${LR_DECAY_FROM:-0}" \
        --wd_exclude_norms "${WD_EXCLUDE_NORMS:-0}" \
        --label_smoothing "${LABEL_SMOOTHING:-0}" \
        --val_windows_per_shot "${VAL_WINDOWS_PER_SHOT:-0}" \
        --grad_clip "${GRAD_CLIP:-0}" \
+       --block_forcing "${BLOCK_FORCING:-0}" \
+       --seed_drop_p "${SEED_DROP_P:-0}" \
+       --seed_column_drop_p "${SEED_COLUMN_DROP_P:-0}" \
+       --actuator_noise "${ACTUATOR_NOISE:-0}" \
+       --window_jitter "${WINDOW_JITTER:-0}" \
        --train_cap "${TRAIN_CAP}" \
        --val_n "${VAL_N}" "${EXTRA[@]}"
 fi

@@ -114,14 +114,14 @@ def _text_embeds():
     return {"158103": torch.randn(DS_DIM, generator=g)}
 
 
-def test_getitem_is_4tuple_covered_shot_gets_its_embedding(tmp_path):
+def test_getitem_is_5tuple_covered_shot_gets_its_embedding(tmp_path):
     cfg = _tiny_cfg()
     _write_ds_cache(tmp_path, "158103", cfg.max_frames + 1, cfg)
     embeds = _text_embeds()
     ds = FrameCodeDataset(tmp_path, ["158103"], cfg, text_embeds=embeds)
     item = ds[0]
-    assert len(item) == 4
-    codes, act, presence, text = item
+    assert len(item) == 5
+    codes, act, presence, _live, text = item
     assert text.shape == (DS_DIM,)
     assert torch.equal(text, embeds["158103"])
 
@@ -131,7 +131,7 @@ def test_getitem_missing_shot_gets_zeros(tmp_path):
     _write_ds_cache(tmp_path, "158104", cfg.max_frames + 1, cfg)
     embeds = _text_embeds()             # covers "158103", not "158104"
     ds = FrameCodeDataset(tmp_path, ["158104"], cfg, text_embeds=embeds)
-    _, _, _, text = ds[0]
+    _, _, _, _, text = ds[0]
     assert text.shape == (DS_DIM,)
     assert torch.equal(text, torch.zeros(DS_DIM))
 
@@ -150,7 +150,7 @@ def test_getitem_no_text_embeds_gives_zero_length_text(tmp_path):
     cfg = _tiny_cfg()
     _write_ds_cache(tmp_path, "158103", cfg.max_frames + 1, cfg)
     ds = FrameCodeDataset(tmp_path, ["158103"], cfg, text_embeds=None)
-    _, _, _, text = ds[0]
+    _, _, _, _, text = ds[0]
     assert text.shape == (0,)
 
 
@@ -159,7 +159,7 @@ def test_collate_stacks_text_to_batch_dim(tmp_path):
     _write_ds_cache(tmp_path, "158103", cfg.max_frames + 1, cfg)
     embeds = _text_embeds()
     ds = FrameCodeDataset(tmp_path, ["158103"], cfg, text_embeds=embeds)
-    codes, act, present, text = _collate_frames([ds[0], ds[1]])
+    codes, act, present, _live, text = _collate_frames([ds[0], ds[1]])
     assert text.shape == (2, DS_DIM)
     assert torch.equal(text[0], text[1])            # same shot, same window -> same embedding
 
@@ -168,7 +168,7 @@ def test_collate_stacks_text_zero_width_with_no_embeds(tmp_path):
     cfg = _tiny_cfg()
     _write_ds_cache(tmp_path, "158103", cfg.max_frames + 1, cfg)
     ds = FrameCodeDataset(tmp_path, ["158103"], cfg, text_embeds=None)
-    codes, act, present, text = _collate_frames([ds[0], ds[1]])
+    codes, act, present, _live, text = _collate_frames([ds[0], ds[1]])
     assert text.shape == (2, 0)
 
 

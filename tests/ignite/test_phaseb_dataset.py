@@ -1,5 +1,6 @@
-"""Phase-B production streaming dataset: window index + shapes + collate over a code cache,
-plus the ACTUATOR TIME-BASE guard (see the `actuator_frames` section at the bottom)."""
+"""Phase-B production streaming dataset: window index + shapes + collate over a code
+cache, plus the ACTUATOR TIME-BASE guard (see the `actuator_frames` section at the
+bottom)."""
 
 from pathlib import Path
 
@@ -7,152 +8,264 @@ import numpy as np
 import pytest
 import torch
 
-from tokamak_foundation_model.ignite.dynamics_config import DynamicsConfig, ModalitySpec
 import tokamak_foundation_model.ignite.train_dynamics as td
+from tokamak_foundation_model.ignite.dynamics_config import DynamicsConfig, ModalitySpec
 from tokamak_foundation_model.ignite.train_dynamics import (
-    FrameCodeDataset, _collate_frames, PLACEHOLDER_MODALITIES, load_frozen_codecs,
-    precompute_frame_codes)
+    PLACEHOLDER_MODALITIES,
+    FrameCodeDataset,
+    _collate_frames,
+    load_frozen_codecs,
+    precompute_frame_codes,
+)
 
 
 def _tiny():
     return DynamicsConfig(
-        modalities=(ModalitySpec("a", "spectro", 3, 5), ModalitySpec("b", "slowts", 2, 4)),
-        d_model=16, depth=1, n_heads=2, k0_seed=2, n_predict=2, actuator_dim=6,  # max_frames=4
+        modalities=(
+            ModalitySpec("a", "spectro", 3, 5),
+            ModalitySpec("b", "slowts", 2, 4),
+        ),
+        d_model=16,
+        depth=1,
+        n_heads=2,
+        k0_seed=2,
+        n_predict=2,
+        actuator_dim=6,  # max_frames=4
     )
 
 
 def _write_cache(dirpath, shot, n_frames, cfg, drop_last_modality=False):
     mods = cfg.modalities[:-1] if drop_last_modality else cfg.modalities
-    codes = {m.name: torch.randint(0, m.codebook_size, (n_frames, m.n_tok), dtype=torch.int16) for m in mods}
+    codes = {
+        m.name: torch.randint(
+            0, m.codebook_size, (n_frames, m.n_tok), dtype=torch.int16
+        )
+        for m in mods
+    }
     act = torch.randn(n_frames, cfg.actuator_dim, dtype=torch.float16)
-    torch.save({"codes": codes, "actuators": act, "n_frames": n_frames}, dirpath / f"{shot}.pt")
+    torch.save(
+        {"codes": codes, "actuators": act, "n_frames": n_frames}, dirpath / f"{shot}.pt"
+    )
 
 
 def test_window_index_counts(tmp_path):
-    cfg = _tiny()                                   # max_frames = 4
-    _write_cache(tmp_path, "s1", cfg.max_frames + 3, cfg)   # 3 extra frames -> 4 sliding windows
-    _write_cache(tmp_path, "s2", cfg.max_frames, cfg)       # exactly 1 window
+    cfg = _tiny()  # max_frames = 4
+    _write_cache(
+        tmp_path, "s1", cfg.max_frames + 3, cfg
+    )  # 3 extra frames -> 4 sliding windows
+    _write_cache(tmp_path, "s2", cfg.max_frames, cfg)  # exactly 1 window
     ds = FrameCodeDataset(tmp_path, ["s1", "s2", "does_not_exist"], cfg)
-    assert len(ds) == 4 + 1                          # s1:4, s2:1, missing shot skipped
+    assert len(ds) == 4 + 1  # s1:4, s2:1, missing shot skipped
 
 
 def test_item_and_collate_shapes(tmp_path):
     cfg = _tiny()
     _write_cache(tmp_path, "s1", cfg.max_frames + 1, cfg)
     ds = FrameCodeDataset(tmp_path, ["s1"], cfg)
-    codes, act, presence, text = ds[0]
+    codes, act, present, live, text = ds[0]
     for m in cfg.modalities:
         assert codes[m.name].shape == (cfg.max_frames, m.n_tok)
-        assert codes[m.name].dtype == torch.long           # decompressed from int16 cache
+        assert codes[m.name].dtype == torch.long  # decompressed from int16 cache
     assert act.shape == (cfg.max_frames, cfg.actuator_dim)
-    assert presence.shape == (len(cfg.modalities),)
-    assert text.shape == (0,)                              # no text_embeds -> zero-width
-    cb, ab, pb, tb = _collate_frames([ds[0], ds[1]])
+    assert present.shape == (len(cfg.modalities),)
+    assert text.shape == (0,)  # no text_embeds -> zero-width
+    # with no live_end table every frame is live, so the loss is bit-identical to the
+    # old path
+    assert live.shape == (cfg.max_frames,) and bool((live == 1.0).all())
+    cb, ab, pb, lb, tb = _collate_frames([ds[0], ds[1]])
     for m in cfg.modalities:
         assert cb[m.name].shape == (2, cfg.max_frames, m.n_tok)
     assert ab.shape == (2, cfg.max_frames, cfg.actuator_dim)
     assert pb.shape == (2, len(cfg.modalities))
-    assert tb.shape == (2, 0)                              # collated zero-width text
+    assert lb.shape == (2, cfg.max_frames)
+    assert tb.shape == (2, 0)  # collated zero-width text
+
+
+def test_live_end_masks_post_shot_frames(tmp_path):
+    """A measured plasma end time zero-weights the frames after it; absent shots stay
+    all-live."""
+    cfg = _tiny()
+    n = cfg.max_frames + 4
+    _write_cache(tmp_path, "s1", n, cfg)
+    _write_cache(tmp_path, "s2", n, cfg)
+    # frame f maps to t = t0 + frame_s*f, so f is live iff t <= t_end. Derive the
+    # expected count from cfg rather than hardcoding: n_frames here is small and would
+    # clamp it.
+    n_expect = max(1, n - 3)  # leave 3 dead frames at the end
+    t_end = 1.0 + 0.05 * (n_expect - 1)
+    ds = FrameCodeDataset(
+        tmp_path, ["s1", "s2"], cfg, live_end={"s1": t_end}, t0_start=1.0, frame_s=0.05
+    )
+    i1 = ds.shot_ids.index("s1")
+    i2 = ds.shot_ids.index("s2")
+    assert ds.n_live[i1] == n_expect  # measured -> truncated
+    assert ds.n_live[i2] == n  # NOT in the table -> fully live
+
+    w1 = next(k for k, (si, st) in enumerate(ds.index) if si == i1 and st == 0)
+    live = ds[w1][3]
+    assert bool((live[:n_expect] == 1.0).all()) and bool((live[n_expect:] == 0.0).all())
+    w2 = next(k for k, (si, st) in enumerate(ds.index) if si == i2 and st == 0)
+    assert bool((ds[w2][3] == 1.0).all())
+
+
+def test_live_window_sample_draws_only_live_starts(tmp_path):
+    """window_sample='live' draws from starts >=50% inside the plasma, plus the
+    deployment starts; a shot without a measured t_end keeps the deployment starts only.
+    """
+    cfg = _tiny()
+    win = cfg.max_frames
+    n = win + 40  # 41 legal start offsets
+    _write_cache(tmp_path, "s1", n, cfg)
+    _write_cache(tmp_path, "s2", n, cfg)
+    n_live = win + 10  # plasma ends 10 frames after a full window
+    t_end = 1.0 + 0.05 * (n_live - 1)
+    k = 3
+    ds = FrameCodeDataset(
+        tmp_path,
+        ["s1", "s2"],
+        cfg,
+        windows_per_shot=k,
+        window_sample="live",
+        live_end={"s1": t_end},
+        t0_start=1.0,
+        frame_s=0.05,
+    )
+    i1, i2 = ds.shot_ids.index("s1"), ds.shot_ids.index("s2")
+    assert ds.n_live[i1] == n_live
+    pool1 = ds._live_starts[i1]
+    assert pool1 == sorted(
+        set(st for st in range(n - win + 1) if st + win / 2.0 <= n_live) | {0, 1, 2}
+    )
+    assert max(pool1) == int(n_live - win / 2.0)  # last start still half live
+    assert ds._live_starts[i2] == [0, 1, 2]  # no t_end -> deployment starts only
+    seen1 = set()
+    for ep in range(20):
+        ds.set_epoch(ep)
+        per = {}
+        for si, st in ds.index:
+            per.setdefault(si, []).append(st)
+        assert all(len(v) == k for v in per.values())  # same COUNT per epoch as 'first'
+        assert set(per[i1]) <= set(pool1)
+        assert set(per[i2]) == {0, 1, 2}
+        seen1 |= set(per[i1])
+    assert len(seen1) > k  # draws really move beyond 0..k-1
 
 
 def test_incomplete_cache_skipped(tmp_path):
-    # a shot whose cache lacks a required modality is dropped (frame layout must be complete)
+    # a shot whose cache lacks a required modality is dropped (frame layout must be
+    # complete)
     cfg = _tiny()
     _write_cache(tmp_path, "bad", cfg.max_frames + 2, cfg, drop_last_modality=True)
     _write_cache(tmp_path, "good", cfg.max_frames + 2, cfg)
     ds = FrameCodeDataset(tmp_path, ["bad", "good"], cfg)
-    assert len(ds) == 3          # only "good" (3 windows); "bad" skipped entirely
+    assert len(ds) == 3  # only "good" (3 windows); "bad" skipped entirely
 
 
 def test_sliding_windows_are_offset(tmp_path):
     cfg = _tiny()
     _write_cache(tmp_path, "s1", cfg.max_frames + 2, cfg)
     ds = FrameCodeDataset(tmp_path, ["s1"], cfg)
-    c0, _, _, _ = ds[0]
-    c1, _, _, _ = ds[1]
+    c0 = ds[0][0]  # items are (codes, act, presence, live, text)
+    c1 = ds[1][0]
     # window 1 is window 0 shifted by one frame -> frame1 of w0 == frame0 of w1
     assert torch.equal(c0["a"][1], c1["a"][0])
 
 
-# --- reserved-slot placeholder (filterscopes codec pending redesign) -------------------------
+# --- reserved-slot placeholder (filterscopes codec pending redesign)
+# -------------------------
+
 
 def test_load_frozen_codecs_skips_placeholders():
-    # reserved-slot modalities have no codec to load -> load_frozen_codecs must skip them (never
-    # touch the non-existent ckpt path), so asking for a placeholder alone yields an empty dict.
+    # reserved-slot modalities have no codec to load -> load_frozen_codecs must skip
+    # them (never touch the non-existent ckpt path), so asking for a placeholder alone
+    # yields an empty dict.
     assert PLACEHOLDER_MODALITIES  # non-empty (filterscopes)
     assert load_frozen_codecs(list(PLACEHOLDER_MODALITIES)) == {}
 
 
 def test_precompute_emits_constant_placeholder(tmp_path, monkeypatch):
-    """precompute fills reserved-slot modalities with a constant code so the frame keeps full width."""
-    N = 12                                   # frames the fake real-codec dataset yields
+    """precompute fills reserved-slot modalities with a constant code so the frame keeps
+    full width."""
+    N = 12  # frames the fake real-codec dataset yields
 
-    class _FakeDS:                           # single-shot dataset stand-in
-        def __len__(self): return N
-        def __getitem__(self, t): return torch.zeros(1, 3)
+    class _FakeDS:  # single-shot dataset stand-in
+        def __len__(self):
+            return N
 
-    class _FakeFSQ:
-        codebook_size = 1000
+        def __getitem__(self, t):
+            return torch.zeros(1, 3)
 
-    class _FakeQuantizer:
-        fsq = _FakeFSQ()
+    monkeypatch.setattr(td, "_single_shot_dataset", lambda *a, **k: _FakeDS())
+    monkeypatch.setattr(
+        td, "encode_flat", lambda codec, x: torch.arange(4).view(1, 4)
+    )  # (1, n_tok=4)
+    monkeypatch.setattr(
+        td, "actuator_frames", lambda shot, n, dd, **kw: torch.zeros(n, 70)
+    )
 
-    class _FakeCodec:                        # precompute reads codec.quantizer.fsq.codebook_size
-        quantizer = _FakeQuantizer()
+    class _Codec:  # precompute records each codec's vocab size
+        class quantizer:
+            class fsq:
+                codebook_size = 1000
 
-    monkeypatch.setattr(td, "_single_shot_dataset", lambda *a, t0_start=1.0, **k: _FakeDS())
-    monkeypatch.setattr(td, "encode_flat", lambda codec, x: torch.arange(4).view(1, 4))  # (1, n_tok=4)
-    monkeypatch.setattr(td, "actuator_frames", lambda shot, n, dd, t0_start=1.0: torch.zeros(n, 70))
-
-    codecs = {"real": (_FakeCodec(), object(), "spectro")}
-    n = precompute_frame_codes(["77"], codecs, tmp_path, data_dir="/x",
-                               placeholder_specs={"filterscopes": 5})
+    codecs = {"real": (_Codec(), object(), "spectro")}
+    n = precompute_frame_codes(
+        ["77"], codecs, tmp_path, data_dir="/x", placeholder_specs={"filterscopes": 5}
+    )
     assert n == 1
     d = torch.load(tmp_path / "77.pt", weights_only=False)
-    assert d["codes"]["real"].shape == (N, 4)                 # real modality encoded
+    assert d["codes"]["real"].shape == (N, 4)  # real modality encoded
     ph = d["codes"]["filterscopes"]
-    assert ph.shape == (N, 5) and ph.dtype == torch.int32     # reserved slot, full width
-    assert int(ph.min()) == 0 and int(ph.max()) == 0          # constant placeholder code
+    assert ph.shape == (N, 5) and ph.dtype == torch.int32  # reserved slot, full width
+    assert d["vocabs"] == {"real": 1000}
+    assert int(ph.min()) == 0 and int(ph.max()) == 0  # constant placeholder code
 
 
-# --------------------------------------------------------------------------------------------- #
-# actuator_frames TIME BASE — regression guard for the 2026-08-11 misalignment
+# --------------------------------------------------------------------------------------
+# ------- # actuator_frames TIME BASE — regression guard for the 2026-08-11 misalignment
 #
-# The bug: actuator_frames indexed ydata by int(t * fs) from the ARRAY START, ignoring xdata[0],
-# while every diagnostic goes through data_loader._load_signal_raw, which uses
-# round((t - xdata_start_s) * actual_fs). The actuator groups do not start at t=0 (gas -10.0 s,
-# beam_voltage ~-6.3 s, rmp ~-1.04 s and shot-dependent), so the model was fed actuators from
-# seconds BEFORE the frame — ~83% of the actuator input variance was decorrelated from the true
-# trajectory. A second, independent half: xdata is float32, so 1/median(diff(x)) loses the sample
-# step to cancellation (off by up to +0.82%), a GROWING drift of ~1.8 frames over an 11 s window.
+# The bug: actuator_frames indexed ydata by int(t * fs) from the ARRAY START, ignoring
+# xdata[0], while every diagnostic goes through data_loader._load_signal_raw, which uses
+# round((t - xdata_start_s) * actual_fs). The actuator groups do not start at t=0 (gas
+# -10.0 s, beam_voltage ~-6.3 s, rmp ~-1.04 s and shot-dependent), so the model was fed
+# actuators from seconds BEFORE the frame — ~83% of the actuator input variance was
+# decorrelated from the true trajectory. A second, independent half: xdata is float32,
+# so 1/median(diff(x)) loses the sample step to cancellation (off by up to +0.82%), a
+# GROWING drift of ~1.8 frames over an 11 s window.
 #
 # WHY PULSES, NOT RAMPS: actuator_frames z-scores every channel across frames, so any
-# shift-invariant probe is blind to the offset — a ramp displaced by 10 s z-scores IDENTICALLY.
-# What survives the z-score is WHICH FRAME a localized feature lands in, so these fixtures plant
-# a pulse at a known absolute time and assert its frame index.
-# --------------------------------------------------------------------------------------------- #
+# shift-invariant probe is blind to the offset — a ramp displaced by 10 s z-scores
+# IDENTICALLY. What survives the z-score is WHICH FRAME a localized feature lands in, so
+# these fixtures plant a pulse at a known absolute time and assert its frame index. ----
+# --------------------------------------------------------------------------------------
+# --- #
 FS = 10_000.0
 FRAME_S = 0.05
-SAMPLES_PER_FRAME = int(FS * FRAME_S)          # 500
-# Agreement tolerance against the searchsorted oracle. Bounded BELOW by the +-1-sample boundary
-# difference between round() and searchsorted (measured ~5e-3 on smooth fixtures) and ABOVE by
-# what a misaligned implementation scores (~2.9 here) — i.e. this sits ~57x under the failure it
-# must catch, so it discriminates by a wide margin rather than by a hair.
+SAMPLES_PER_FRAME = int(FS * FRAME_S)  # 500
+# Agreement tolerance against the searchsorted oracle. Bounded BELOW by the +-1-sample
+# boundary difference between round() and searchsorted (measured ~5e-3 on smooth
+# fixtures) and ABOVE by what a misaligned implementation scores (~2.9 here) — i.e. this
+# sits ~57x under the failure it must catch, so it discriminates by a wide margin rather
+# than by a hair.
 _ALIGN_ATOL = 5e-2
 
 
 def _write_shot_h5(dirpath, shot, groups):
     """Minimal {shot}_processed.h5. ``groups``: {name: (ydata (C,T), xdata (T,))}."""
     import h5py
+
     with h5py.File(Path(dirpath) / f"{shot}_processed.h5", "w") as f:
         for name, (y, x) in groups.items():
             g = f.create_group(name)
             g.create_dataset("ydata", data=np.asarray(y, dtype=np.float32))
-            g.create_dataset("xdata", data=np.asarray(x, dtype=np.float32))   # float32, as in prod
+            g.create_dataset(
+                "xdata", data=np.asarray(x, dtype=np.float32)
+            )  # float32, as in prod
 
 
 def _grid(t_start, t_end, fs=FS):
-    """float32 timestamp grid — the dtype is deliberate: it is what breaks 1/median(diff(x))."""
+    """float32 timestamp grid — the dtype is deliberate: it is what breaks
+    1/median(diff(x))."""
     n = int(round((t_end - t_start) * fs)) + 1
     return (np.arange(n, dtype=np.float64) / fs + t_start).astype(np.float32)
 
@@ -176,11 +289,11 @@ def _col(group):
 
 def _reference_frames(shot, n_frames, data_dir, t0_start):
     """Independent oracle: window by ABSOLUTE shot time via searchsorted on xdata.
-
-    A different algorithm from the implementation (which converts time to an index), so agreement
-    is real evidence rather than a restatement of the code under test.
+    A different algorithm from the implementation (which converts time to an index), so
+    agreement is real evidence rather than a restatement of the code under test.
     """
     import h5py
+
     cols = []
     with h5py.File(Path(data_dir) / f"{shot}_processed.h5", "r") as f:
         for key, nch in td._ACT_SPEC:
@@ -206,55 +319,69 @@ def _reference_frames(shot, n_frames, data_dir, t0_start):
 
 
 def test_actuator_frames_windows_on_absolute_shot_time(tmp_path):
-    """A pulse at a known ABSOLUTE time must land in the frame that absolute time belongs to.
-
-    rmp's record starts at -1.2 s. Indexing from the array start (the old bug) shifts every
-    window by +1.2 s, i.e. 24 frames.
+    """A pulse at a known ABSOLUTE time must land in the frame that absolute time
+    belongs to.
+    rmp's record starts at -1.2 s. Indexing from the array start (the old bug) shifts
+    every window by +1.2 s, i.e. 24 frames.
     """
     x = _grid(-1.2, 5.0)
-    y = _pulse_channel(x, 1.30, 1.35, n_ch=12, ch=0)          # one frame wide, at abs 1.30 s
+    y = _pulse_channel(x, 1.30, 1.35, n_ch=12, ch=0)  # one frame wide, at abs 1.30 s
     _write_shot_h5(tmp_path, "1", {"rmp": (y, x)})
     act = td.actuator_frames("1", 60, tmp_path, t0_start=1.0).numpy()
     c = _col("rmp")
     got = int(act[:, c].argmax())
-    assert got == 6, f"pulse at abs 1.30 s with t0=1.0 belongs in frame 6, landed in {got}"
+    assert got == 6, (
+        f"pulse at abs 1.30 s with t0=1.0 belongs in frame 6, landed in {got}"
+    )
     # and it is a genuine single-frame spike, not a flat/degenerate column
     assert act[6, c] > 3.0 and np.all(act[:6, c] < 0.5) and np.all(act[7:, c] < 0.5)
 
 
 def test_actuator_frames_rate_comes_from_span_not_median_diff(tmp_path):
     """Sampling rate must come from the span, not from median(diff(xdata)).
-
     xdata is float32; with a -10 s origin the 1e-4 step is lost to cancellation, so
-    1/median(diff(x)) is wrong by ~0.8% — a DRIFT that grows with distance from the record start.
-
-    The grid MUST span the production gas record (-10 .. 94.8576 s): the cancellation is driven by
-    the timestamp magnitude / step ratio, i.e. by the sample count, and is non-monotonic in it —
-    shorter spans (-10..20, -10..50) reproduce only 0.1% and would not move the pulse a full frame.
-    One channel is enough (actuator_frames zero-pads a group to its declared width), which keeps
-    the fixture at ~4 MB.
+    1/median(diff(x)) is wrong by ~0.8% — a DRIFT that grows with distance from the
+    record start.
+    The grid MUST span the production gas record (-10 .. 94.8576 s): the cancellation is
+    driven by the timestamp magnitude / step ratio, i.e. by the sample count, and is
+    non-monotonic in it — shorter spans (-10..20, -10..50) reproduce only 0.1% and would
+    not move the pulse a full frame. One channel is enough (actuator_frames zero-pads a
+    group to its declared width), which keeps the fixture at ~4 MB.
     """
     x = _grid(-10.0, 94.8576)
     fs_span = (x.size - 1) / float(np.float64(x[-1]) - np.float64(x[0]))
     fs_median = 1.0 / np.median(np.diff(np.asarray(x, dtype=np.float64)))
-    # fixture precondition: the two estimators genuinely disagree (else the test proves nothing)
+    # fixture precondition: the two estimators genuinely disagree (else the test proves
+    # nothing)
     assert abs(fs_median - fs_span) / fs_span > 1e-3, (
-        f"fixture failed to reproduce the float32 cancellation: {fs_median} vs {fs_span}")
-    y = _pulse_channel(x, 1.00, 1.05, n_ch=1, ch=0)           # abs 1.00 s: 11 s after record start
+        f"fixture failed to reproduce the float32 cancellation: "
+        f"{fs_median} vs {fs_span}"
+    )
+    y = _pulse_channel(
+        x, 1.00, 1.05, n_ch=1, ch=0
+    )  # abs 1.00 s: 11 s after record start
     _write_shot_h5(tmp_path, "2", {"gas_flow": (y, x)})
     act = td.actuator_frames("2", 40, tmp_path, t0_start=0.0).numpy()
     c = _col("gas_flow")
     got = int(act[:, c].argmax())
-    assert got == 20, f"pulse at abs 1.00 s with t0=0.0 belongs in frame 20, landed in {got}"
+    assert got == 20, (
+        f"pulse at abs 1.00 s with t0=0.0 belongs in frame 20, landed in {got}"
+    )
     # the median-diff rate would have mis-placed it — confirms this test discriminates
     drift_frames = abs(fs_median - fs_span) * 11.0 / SAMPLES_PER_FRAME
-    assert drift_frames > 1.0, f"fixture drift {drift_frames:.2f} frames too small to detect"
+    assert drift_frames > 1.0, (
+        f"fixture drift {drift_frames:.2f} frames too small to detect"
+    )
 
 
 def test_actuator_frames_matches_absolute_time_reference(tmp_path):
-    """Full 70-wide vector agrees with the independent searchsorted oracle, across mixed offsets."""
-    specs = {                                     # group -> (record start, n_channels)
-        "rmp": (-1.05, 12), "gas_raw": (-10.0, 11), "beam_voltage": (-6.3, 8), "pinj": (0.0, 8),
+    """Full 70-wide vector agrees with the independent searchsorted oracle, across mixed
+    offsets."""
+    specs = {  # group -> (record start, n_channels)
+        "rmp": (-1.05, 12),
+        "gas_raw": (-10.0, 11),
+        "beam_voltage": (-6.3, 8),
+        "pinj": (0.0, 8),
     }
     groups = {}
     for i, (g, (x0, nch)) in enumerate(specs.items()):
@@ -262,41 +389,51 @@ def test_actuator_frames_matches_absolute_time_reference(tmp_path):
         # smooth, band-limited content: a +-1 sample difference at a window edge is then
         # negligible, so exact agreement is a meaningful assertion
         t = np.asarray(x, dtype=np.float64)
-        y = np.stack([np.sin(2 * np.pi * (0.7 + 0.3 * c + i) * t) for c in range(nch)], 0)
+        y = np.stack(
+            [np.sin(2 * np.pi * (0.7 + 0.3 * c + i) * t) for c in range(nch)], 0
+        )
         groups[g] = (y, x)
     _write_shot_h5(tmp_path, "3", groups)
     got = td.actuator_frames("3", 50, tmp_path, t0_start=1.0).numpy()
     exp = _reference_frames("3", 50, tmp_path, t0_start=1.0)
-    assert np.allclose(got, exp, atol=_ALIGN_ATOL), f"max deviation {np.abs(got - exp).max():.4g}"
+    assert np.allclose(got, exp, atol=_ALIGN_ATOL), (
+        f"max deviation {np.abs(got - exp).max():.4g}"
+    )
     # the sharp claim: alignment, not merely proximity. Boundary rounding cannot move a
     # correlation off 1.0, but a time shift of even one frame does.
     live = np.where(np.abs(exp).max(0) > 1e-6)[0]
     cors = np.array([np.corrcoef(got[:, j], exp[:, j])[0, 1] for j in live])
-    assert cors.min() > 0.999, f"worst channel corr {cors.min():.5f} (col {live[cors.argmin()]})"
+    assert cors.min() > 0.999, (
+        f"worst channel corr {cors.min():.5f} (col {live[cors.argmin()]})"
+    )
 
 
 def test_actuator_frames_clamps_record_starting_after_window(tmp_path):
-    """A record starting AFTER the window origin must zero-fill, never wrap to the array tail.
-
-    Unclamped, round((t - x0) * fs) is negative and numpy slices from the END of the record —
-    silently serving late-shot data as if it were the requested early frames.
+    """A record starting AFTER the window origin must zero-fill, never wrap to the array
+    tail.
+    Unclamped, round((t - x0) * fs) is negative and numpy slices from the END of the
+    record — silently serving late-shot data as if it were the requested early frames.
     """
-    x = _grid(2.0, 4.0)                                        # record starts 2 s AFTER t0=0
+    x = _grid(2.0, 4.0)  # record starts 2 s AFTER t0=0
     y = np.zeros((12, x.size), dtype=np.float64)
-    y[:, -12_000:] = 7.0                                       # distinctive tail marker
+    y[:, -12_000:] = 7.0  # distinctive tail marker
     _write_shot_h5(tmp_path, "4", {"rmp": (y, x)})
-    act = td.actuator_frames("4", 40, tmp_path, t0_start=0.0).numpy()   # window = abs [0, 2) s
+    act = td.actuator_frames(
+        "4", 40, tmp_path, t0_start=0.0
+    ).numpy()  # window = abs [0, 2) s
     c = _col("rmp")
-    block = act[:, c:c + 12]
+    block = act[:, c : c + 12]
     assert np.abs(block).max() == 0.0, (
-        "frames before the record start picked up data — negative index wrapped to the tail")
+        "frames before the record start picked up data — negative index wrapped to "
+        "the tail"
+    )
 
 
 def test_legacy_windowing_fails_the_guard(tmp_path):
     """The OLD implementation must FAIL these assertions.
-
-    Without this, the guard above could be passing vacuously. _legacy_actuator_frames is kept in
-    the module as the cache-patch integrity check, so the historical behaviour is testable.
+    Without this, the guard above could be passing vacuously. _legacy_actuator_frames is
+    kept in the module as the cache-patch integrity check, so the historical behaviour
+    is testable.
     """
     x = _grid(-1.2, 5.0)
     y = _pulse_channel(x, 1.30, 1.35, n_ch=12, ch=0)
@@ -304,26 +441,77 @@ def test_legacy_windowing_fails_the_guard(tmp_path):
     legacy = td._legacy_actuator_frames("5", 60, tmp_path, t0_start=1.0).numpy()
     c = _col("rmp")
     assert int(legacy[:, c].argmax()) != 6, (
-        "legacy windowing agreed with the fixed one — the fixture no longer exercises the bug")
+        "legacy windowing agreed with the fixed one — the fixture no longer exercises "
+        "the bug"
+    )
     exp = _reference_frames("5", 60, tmp_path, t0_start=1.0)
     assert not np.allclose(legacy, exp, atol=_ALIGN_ATOL), (
-        "legacy output matched the absolute-time oracle")
+        "legacy output matched the absolute-time oracle"
+    )
 
 
 _REAL_H5 = Path(td.spike.DEFAULT_DATA_DIR) / "200729_processed.h5"
 
 
-@pytest.mark.skipif(not _REAL_H5.exists(), reason=f"real-shot data not available: {_REAL_H5}")
+@pytest.mark.skipif(
+    not _REAL_H5.exists(), reason=f"real-shot data not available: {_REAL_H5}"
+)
 def test_actuator_frames_real_shot_matches_reference():
     """Real H5: every live channel tracks the absolute-time oracle.
-
-    Correlation, not equality: on noise-dominated channels (gas_raw) the one-sample difference
-    between round() and searchsorted at each window edge moves a 500-sample mean by ~1%, which is
-    boundary rounding rather than misalignment. A misaligned implementation scores ~0 here.
+    Correlation, not equality: on noise-dominated channels (gas_raw) the one-sample
+    difference between round() and searchsorted at each window edge moves a 500-sample
+    mean by ~1%, which is boundary rounding rather than misalignment. A misaligned
+    implementation scores ~0 here.
     """
-    got = td.actuator_frames("200729", 20, td.spike.DEFAULT_DATA_DIR, t0_start=1.0).numpy()
+    got = td.actuator_frames(
+        "200729", 20, td.spike.DEFAULT_DATA_DIR, t0_start=1.0
+    ).numpy()
     exp = _reference_frames("200729", 20, td.spike.DEFAULT_DATA_DIR, t0_start=1.0)
     live = np.where(np.abs(exp).max(0) > 1e-6)[0]
-    assert live.size >= 20, f"only {live.size} live actuator channels — fixture shot changed?"
+    assert live.size >= 20, (
+        f"only {live.size} live actuator channels — fixture shot changed?"
+    )
     cors = np.array([np.corrcoef(got[:, j], exp[:, j])[0, 1] for j in live])
-    assert cors.min() > 0.95, f"worst channel corr {cors.min():.4f} (col {live[cors.argmin()]})"
+    assert cors.min() > 0.95, (
+        f"worst channel corr {cors.min():.4f} (col {live[cors.argmin()]})"
+    )
+
+
+def test_window_jitter_widens_first_starts_and_keeps_the_count(tmp_path):
+    cfg = _tiny()
+    _write_cache(tmp_path, "s1", cfg.max_frames + 40, cfg)
+    k, jitter = 3, 5
+    plain = FrameCodeDataset(
+        tmp_path, ["s1"], cfg, windows_per_shot=k, window_sample="first"
+    )
+    jittered = FrameCodeDataset(
+        tmp_path,
+        ["s1"],
+        cfg,
+        windows_per_shot=k,
+        window_sample="first",
+        window_jitter=jitter,
+    )
+    seen = set()
+    for epoch in range(20):
+        plain.set_epoch(epoch)
+        jittered.set_epoch(epoch)
+        assert [start for _, start in plain.index] == [0, 1, 2]
+        starts = [start for _, start in jittered.index]
+        assert len(starts) == k and set(starts) <= set(range(k + jitter))
+        seen |= set(starts)
+    assert max(seen) >= k  # draws really move beyond 0..k-1
+
+
+def test_actuator_noise_spares_constant_channels():
+    trainer = object.__new__(td.Trainer)
+    trainer.config = td.TrainConfig(actuator_noise=0.5)
+    actuators = torch.randn(2, 6, 4)
+    actuators[:, :, 1] = 0.0  # dead channel
+    actuators[0, :, 2] = 3.0  # held in sample 0 only
+    noisy = trainer._noisy(actuators)
+    assert torch.equal(noisy[:, :, 1], actuators[:, :, 1])
+    assert torch.equal(noisy[0, :, 2], actuators[0, :, 2])
+    assert not torch.equal(noisy[:, :, 0], actuators[:, :, 0])
+    trainer.config = td.TrainConfig()
+    assert trainer._noisy(actuators) is actuators

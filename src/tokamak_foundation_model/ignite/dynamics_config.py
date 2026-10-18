@@ -1,36 +1,33 @@
-"""IGNITE Phase-B (MaskGIT dynamics) configuration + the frozen-codec frame layout.
+"""Configuration and frozen-codec frame layout of the IGNITE dynamics model.
 
-Phase B is a factorized ST-transformer that models DYNAMICS over the FROZEN Phase-A discrete
-codes — a "language model over plasma-state tokens". It does no perception (the codecs already
-encode/decode raw signals), so it is lighter than the 48L continuous FAITH model; depth is a
-first-class knob here (the point of the depth study).
-
-Frame layout (frozen codec set, 2026-07-27):
-    spectro  ece / bes / mhr / co2   192 tok each  -> 768
-    video    tangtv_lower / _upper   108 tok each  -> 216
-    slow-TS  7 signals                 4 tok each  ->  28
-    ------------------------------------------------------
-    TOTAL                                            1012 tokens / frame
-Each token is a single integer code in [0, codebook_size); MaskGIT predicts a categorical over
-each modality's own vocab. See docs/IGNITE_DESIGN.md §5.
+The dynamics model is a factorized spatio-temporal transformer over the discrete
+codes of the frozen IGNITE codecs: a language model over plasma-state tokens. It
+performs no perception (the codecs encode and decode the raw signals), so depth is
+a first-class knob. See ``docs/IGNITE_DESIGN.md`` section 5.
 """
 
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Tuple
 
 
 @dataclass(frozen=True)
 class ModalitySpec:
-    """One frozen codec's contribution to a frame's token layout.
+    """One frozen codec's contribution to the token layout of a frame.
 
-    name           : codec identifier (e.g. "ece", "tangtv_lower", "mse").
-    family         : "spectro" | "video" | "slowts" (drives within-modality position semantics).
-    n_tok          : number of tokens this modality contributes per frame.
-    codebook_size  : vocab size for this modality's tokens (= prod(fsq_levels), default 1000).
+    Parameters
+    ----------
+    name : str
+        Codec identifier, e.g. ``"ece"``, ``"tangtv_lower"`` or ``"mse"``.
+    family : str
+        Codec family: ``"spectro"``, ``"video"``, ``"slowts"`` or ``"fastts"``.
+    n_tok : int
+        Number of tokens the modality contributes per frame.
+    codebook_size : int, default=1000
+        Vocabulary size of the modality's tokens (product of the FSQ levels).
     """
 
     name: str
@@ -39,24 +36,16 @@ class ModalitySpec:
     codebook_size: int = 1000
 
 
-# The FROZEN Phase-A codec set that composes one plasma-state frame. Order is the canonical
-# token order within a frame. mse is INCLUDED here (part of the state); its codec must clear the
-# Phase-A gate before Phase-B TRAINING launches, but the layout/shape is fixed now.
+# Canonical token order within a frame. `cache_modality_specs` iterates this tuple
+# and skips any name a cache lacks, so a modality missing here is dropped silently.
 FROZEN_MODALITIES: Tuple[ModalitySpec, ...] = (
-    # spectro — 192 tokens each (patch_f=16 -> 32 freq, patch_t=16 -> 6 time)
     ModalitySpec("ece", "spectro", 192, 1000),
     ModalitySpec("bes", "spectro", 192, 1000),
     ModalitySpec("mhr", "spectro", 192, 1000),
     ModalitySpec("co2", "spectro", 192, 1000),
-    # mirnov joined with the band-power codecs. cache_modality_specs() iterates THIS tuple and
-    # skips any name the cache lacks, so a modality missing here is dropped SILENTLY: the
-    # all-spectrogram union cache (4000 tok/frame) built a 3072-token frame and trained on 4 of
-    # its 5 modalities with no warning. Caches without mirnov are unaffected by this entry.
     ModalitySpec("mirnov", "spectro", 192, 1000),
-    # video — 108 tokens each divertor
     ModalitySpec("tangtv_lower", "video", 108, 1000),
     ModalitySpec("tangtv_upper", "video", 108, 1000),
-    # slow-TS — 4 radial-zone tokens each (7 signals)
     ModalitySpec("ts_core_density", "slowts", 4, 1000),
     ModalitySpec("ts_core_temp", "slowts", 4, 1000),
     ModalitySpec("ts_tangential_density", "slowts", 4, 1000),
@@ -64,9 +53,6 @@ FROZEN_MODALITIES: Tuple[ModalitySpec, ...] = (
     ModalitySpec("cer_ti", "slowts", 4, 1000),
     ModalitySpec("cer_rot", "slowts", 4, 1000),
     ModalitySpec("mse", "slowts", 4, 1000),
-    # fast-TS (filterscopes) — the ELM ACTIVITY ENVELOPE codec (E=5). The 4th codec family; was
-    # ERRONEOUSLY omitted from the first layout. Codec is still PENDING (no passing best-ckpt yet —
-    # collapsed like co2/mse were pre-fix), but the STATE includes it, so the layout does too.
     ModalitySpec("filterscopes", "fastts", 5, 1000),
 )
 
@@ -88,122 +74,144 @@ def modalities_from_manifest(path: Path | str) -> Tuple[ModalitySpec, ...]:
 
 @dataclass
 class DynamicsConfig:
-    """Phase-B MaskGIT dynamics model config.
+    """Hyper-parameters of :class:`~.maskgit.MaskGITDynamics`.
 
-    DEPTH is deliberately a plain field (not derived) so the depth study is a one-line sweep:
-    ``DynamicsConfig(depth=k)`` for k in {12, 24, 36, 48}.
+    Parameters
+    ----------
+    modalities : tuple of ModalitySpec, default=FROZEN_MODALITIES
+        Frame layout, in canonical token order.
+    d_model : int, default=1024
+        Width of the transformer.
+    depth : int, default=24
+        Number of factorized blocks (spatial attention, temporal attention, FFN).
+    n_heads : int, default=16
+        Attention heads per attention layer.
+    ffn_mult : int, default=4
+        FFN hidden width as a multiple of ``d_model``.
+    dropout : float, default=0.0
+        Dropout on the attention outputs and inside the FFN.
+    grad_checkpointing : bool, default=True
+        Recompute each block in the backward pass (training only). Needed once
+        ``d_model * depth >= 4096`` for the activations to fit on one GCD.
+    k0_seed : int, default=20
+        Real seed frames before prediction starts (1 s at 50 ms per frame).
+    n_predict : int, default=80
+        Predicted frames (4 s).
+    maskgit_decode_steps : int, default=10
+        Iterative confidence-unmask steps when generating one frame.
+    maskgit_mask_schedule : str, default="cosine"
+        Unmasking schedule.
+    ss_ramp_final_frac : float, default=0.75
+        Final fraction of context frames replaced by the model's own samples
+        (scheduled sampling). 0.75 is the best single setting measured (CE 0.1053,
+        token accuracy 0.9792); it is a peak, not a monotone knob (1.0 collapses,
+        leaving no teacher signal). v4 trained with 0.
+    ss_ramp_steps : int, default=2000
+        Steps of the linear scheduled-sampling ramp; a ramp longer than the run only
+        ever reaches part of the final fraction.
+    ctf_frac : float, default=0.0
+        Fraction of training windows built like a rollout (complete-context
+        training, MAGI arXiv 2501.12389): a clean, fully visible prefix and a heavily
+        masked suffix, loss on the suffix only. ``0.0`` is off.
+    ctf_min_target_ratio : float, default=0.8
+        Minimum mask ratio at and after the CTF boundary.
+    sf_frames : int, default=0
+        Self-forcing (arXiv 2506.08009): frames the model rolls out from its own
+        output, under ``no_grad`` and detached, before the supervised frame. ``0`` is
+        off.
+    sf_decode_steps : int, default=4
+        MaskGIT steps of the training-time self-forcing rollout (inference uses
+        ``maskgit_decode_steps``).
+    sf_prob : float, default=1.0
+        Probability that a window uses the self-rollout context when
+        ``sf_frames > 0``.
+    modality_loss_weight : str, default="uniform"
+        Per-modality CE weight: ``"uniform"`` (every modality counts the same, so a
+        4-token slow-TS modality gets ~192x the per-token gradient of a 768-token
+        one), ``"tokens"`` (by ``n_tok``) or ``"sqrt_tokens"`` (by ``sqrt(n_tok)``).
+    actuator_dropout_p : float, default=0.0
+        Probability of zeroing a sample's actuator conditioning in training, which
+        trains the unconditional branch classifier-free guidance needs. No
+        parameters; ``0.0`` is off.
+    gen_mask_p : float, default=0.0
+        Fraction of samples masked like a rollout: frames before a split point stay
+        visible and unscored, later frames follow the reveal ladder. ``0.0`` keeps
+        the cosine-prior masking on every frame.
+    latent_head : bool, default=False
+        Replace each modality's codebook classifier by a Gaussian head over the
+        token's FSQ grid coordinate, so a miss by one grid cell is cheap.
+        Predictions are rounded back to codes.
+    fsq_levels : tuple of int, default=(8, 5, 5, 5)
+        FSQ levels of the codecs, used by the latent head to unpack codes.
+    lag_embed_k : int, default=0
+        Number of own-column history embeddings per token (0 adds no parameters).
+    gen_horizon_alpha : float, default=0.0
+        Generation-mode horizon exponent, ``p(h) ~ h**-alpha``. ``0.0`` draws the
+        split point uniformly.
+    gen_horizon_max : int, default=0
+        If positive, draw the generation-mode horizon uniformly in
+        ``[1, gen_horizon_max]``. Takes precedence over ``gen_horizon_alpha``.
+    act_cross_attn : bool, default=False
+        Add per-token cross-attention over the actuator channels.
+    actuator_dim : int, default=88
+        Number of actuator channels (``train_dynamics._ACT_SPEC``: 8 groups, 88
+        channels).
+    text_embed_dim : int, default=0
+        Width of the precomputed per-shot text embedding, added like the actuators.
+        ``0`` is off: no module is built and no RNG is drawn.
+    text_dropout_p : float, default=0.0
+        Per-sample probability of replacing the text embedding by a learned null
+        embedding (missing text, classifier-free guidance).
     """
 
-    # --- frame layout (from the frozen codec set) --------------------------------------------
     modalities: Tuple[ModalitySpec, ...] = FROZEN_MODALITIES
-
-    # --- backbone (confirmed 2026-07-27: d_model 1024, depth 24 start) -----------------------
     d_model: int = 1024
-    depth: int = 24                # factorized blocks; each = spatial attn + temporal attn + FFN
-    n_heads: int = 16              # d_model / 64
+    depth: int = 24
+    n_heads: int = 16
     ffn_mult: int = 4
     dropout: float = 0.0
-    grad_checkpointing: bool = True  # recompute each block in backward (training only). REQUIRED at
-    # d1024/depth24: one (B,F,N,d) activation is ~3 GB at bs8, ~24 blocks would exceed a 64 GB GCD.
-    # Checkpointing keeps only block INPUTS (~10 GB) + one block's live activations -> fits.
-
-    # --- temporal horizon --------------------------------------------------------------------
-    k0_seed: int = 20              # real seed frames (~1.0 s) before prediction begins
-    n_predict: int = 80            # predicted frames (80 * 50 ms = 4 s)
-
-    # --- MaskGIT ------------------------------------------------------------------------------
-    maskgit_decode_steps: int = 10         # iterative confidence-unmask steps at inference
-    maskgit_mask_schedule: str = "cosine"  # tokens-kept-per-step schedule
-
-    # --- scheduled sampling (rollout-drift mitigation; ramp over training) -------------------
-    # 0.75 is the best single setting measured (CE 0.1053, token acc 0.9792). It is a peak, not a
-    # monotone knob: 1.0 collapses, leaving no teacher signal. The 2,000-step ramp reaches it
-    # early; a ramp longer than the run only ever reaches part of it. (v4 trained with 0.)
-    ss_ramp_final_frac: float = 0.75       # final own-sampled-code substitution fraction
-    ss_ramp_steps: int = 2_000             # linear ramp 0 -> final over this many steps
-
-    # --- complete-context training (CTF; MAGI arXiv 2501.12389) -------------------------------
-    # Fraction of training windows that use the ROLLOUT's conditional structure: a clean
-    # (fully visible) prefix and a heavily-masked suffix, loss on the suffix only. The default
-    # random-mask objective masks ~64% of EVERY frame, so the model never trains on the
-    # "complete context -> fully masked next frame" conditional that rollout actually uses.
-    # 0.0 = off (original behaviour, bit-identical).
+    grad_checkpointing: bool = True
+    k0_seed: int = 20
+    n_predict: int = 80
+    maskgit_decode_steps: int = 10
+    maskgit_mask_schedule: str = "cosine"
+    ss_ramp_final_frac: float = 0.75
+    ss_ramp_steps: int = 2_000
     ctf_frac: float = 0.0
-    ctf_min_target_ratio: float = 0.8      # min mask ratio applied at/after the boundary
-
-    # --- self-forcing Stage A: rollout-context fine-tune ---------------------------------------
-    # Number of frames the model rolls out FROM ITS OWN OUTPUT before the supervised frame.
-    # Training otherwise conditions only on (masked) ground-truth context, while rollout
-    # conditions on complete self-generated context; Self-Forcing (arXiv 2506.08009) shows that
-    # gap — not the loss function — is what costs rollout quality. The rollout runs under
-    # no_grad and is detached, so there is no BPTT. 0 = off.
+    ctf_min_target_ratio: float = 0.8
     sf_frames: int = 0
-    sf_decode_steps: int = 4     # cheaper few-step decode for training rollouts (inference uses 10)
-    sf_prob: float = 1.0         # probability a window uses the self-rollout context when sf_frames>0
-
-    # --- per-modality loss weighting ----------------------------------------------------------
-    # "uniform" (default, original): every modality's masked CE counts the same, so a 4-token
-    # slow-TS modality gets ~192x the per-token gradient of 768-token ece. "tokens" weights by
-    # n_tok, "sqrt_tokens" by sqrt(n_tok) (a compromise that still protects small modalities).
+    sf_decode_steps: int = 4
+    sf_prob: float = 1.0
     modality_loss_weight: str = "uniform"
-
-    # --- actuator conditioning dropout (enables classifier-free guidance at rollout) ----------
-    # Probability of zeroing the actuator embedding for a training sample. Without it the model
-    # has no unconditional branch, so guidance cannot be applied at inference. Adds NO parameters.
-    # 0.0 = off (original behaviour, bit-identical).
     actuator_dropout_p: float = 0.0
-
-    # --- generation-mode masking (train the task rollout actually performs) ------------------
-    # Fraction of SAMPLES whose mask is built like rollout(): frames before a split point t
-    # (drawn in [k0_seed, F)) stay fully visible and unscored, frames from t on ride the reveal
-    # ladder including a full cold start. 0.0 = the historical cosine-prior-on-every-frame
-    # scheme, bit-for-bit. Motivation (measured 2026-08-15, bp128_big best): under the true
-    # rollout condition the model scores 1.5804 vs a model-free bigram's ~1.70, while its
-    # tracked val CE is 0.9228 — it interpolates inside a half-given frame instead of predicting
-    # the next one. 20% of val weight sits at mask ratio > 0.95 and carries a third of the loss.
     gen_mask_p: float = 0.0
-
-    # Lag-k own-column code embeddings added in FrameTokenizer.embed (0 = off, no new params).
-    # At the generation condition a per-column count table over a column's own last 3 codes beats
-    # the 270M model (1.5539 vs 1.6090), and the per-modality deficit tracks own-history value
-    # (co2 gains 0.188 nats from it and the model loses by 0.143; mhr gains 0.064 and the model
-    # already wins). k=3 hands the head that exact context so the table is representable rather
-    # than something optimization has to rediscover through 16 shared-parameter layers.
+    latent_head: bool = False
+    fsq_levels: Tuple[int, ...] = (8, 5, 5, 5)
     lag_embed_k: int = 0
-    # Horizon sampling for generation mode (see maskgit._mask). 0.0 = uniform split point (the
-    # historical behaviour, byte-identical). alpha > 0 draws horizon h ~ h^-alpha and sets
-    # t = Fr - h, so training matches the ONE-STEP task rollout() actually performs.
     gen_horizon_alpha: float = 0.0
-    # Horizon UNIFORM in [1, gen_horizon_max] (0 = off). Preferred over alpha: keeps the
-    # horizon short WITHOUT collapsing the scored-frame count to 1 (see maskgit._random_mask).
     gen_horizon_max: int = 0
-    # Per-token cross-attention from frame tokens to the 70 actuator channels, replacing the
-    # single additive vector. False = historical additive-only path, byte-identical.
     act_cross_attn: bool = False
-
-    # --- actuator conditioning (additive; causal) --------------------------------------------
-    actuator_dim: int = 88                 # train_dynamics._ACT_SPEC: 8 groups, 88 channels
-
-    # --- per-shot text conditioning (precomputed embedding; additive like actuators) ---
-    # 0 = off (original behaviour, bit-identical: no module constructed, no RNG draws).
+    actuator_dim: int = 88
     text_embed_dim: int = 0
-    text_dropout_p: float = 0.0  # per-SAMPLE zeroing; trains a null embedding (missing text / CFG)
+    text_dropout_p: float = 0.0
 
-    # --------------------------------------------------------------------------------------- #
     @property
     def n_modalities(self) -> int:
+        """Number of modalities in the frame."""
         return len(self.modalities)
 
     @property
     def tokens_per_frame(self) -> int:
+        """Total number of tokens in one frame."""
         return sum(m.n_tok for m in self.modalities)
 
     @property
     def max_frames(self) -> int:
+        """Window length: seed frames plus predicted frames."""
         return self.k0_seed + self.n_predict
 
     def modality_token_slices(self) -> List[Tuple[int, int]]:
-        """Contiguous [start, end) token index range per modality within a frame (canonical order)."""
+        """Return the ``[start, end)`` token range of each modality in a frame."""
         out, off = [], 0
         for m in self.modalities:
             out.append((off, off + m.n_tok))

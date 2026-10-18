@@ -231,6 +231,19 @@ HF_HUB_OFFLINE = "1"
 TOKENIZERS_PARALLELISM = "false"
 HDF5_USE_FILE_LOCKING = "FALSE"
 
+[tool.pixi.feature.stellarai]
+platforms = ["linux-64"]
+
+[tool.pixi.feature.stellarai.pypi-dependencies]
+# Princeton StellarAI, NVIDIA B200 (Blackwell, sm_100): needs CUDA >= 12.8 wheels
+# (torch >= 2.7). Verified on a B200 node: 2.11.0+cu128, NCCL 2.28.9.
+torch       = { version = ">=2.11,<2.12", index = "https://download.pytorch.org/whl/cu128" }
+torchvision = { version = ">=0.26,<0.27", index = "https://download.pytorch.org/whl/cu128" }
+# Same versions as the frontier env: every frozen codec is built on x-transformers,
+# so a newer release could change module layout and break checkpoint loading.
+x-transformers = "==2.23.5"
+vector-quantize-pytorch = "==1.31.0"
+
 # Dashes: pixi rejects underscores in an environment name.
 [tool.pixi.environments]
 default = ["cuda"]
@@ -241,6 +254,7 @@ shot-design = ["shot-design", "cuda"]
 shot-design-cpu = ["shot-design", "shot-design-cpu"]
 # First: the first feature listed wins the activation env.
 shot-design-frontier = ["shot-design-frontier", "shot-design"]
+stellarai = ["stellarai"]
 
 [tool.pytest.ini_options]
 markers = ["real_data: requires the read-only EKOLEMEN stores and/or local model weights"]
