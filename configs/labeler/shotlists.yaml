@@ -135,20 +135,20 @@ lists:
     title: "Seo (n=1 tearing)"
     kind: dataset
     on_demand: true
-    rule: "txt($LABELER_ROOT/raw_external/n1_seo_tm_data_shots.txt)"
-    description: "Every shot of Jaemin Seo's n=1 tearing archive (/projects/EKOLEMEN/tm_data, the CNN's training samples; 8,505 shots 147000-190997, 1,801 with a positive sample), less the 12 blind test shots: 8,493; 824 are in the catalog"
+    rule: "txt($LABELER_ROOT/raw_external/n1_seo_tm_data_positive_shots.txt)"
+    description: "The shots with a tearing mode in Jaemin Seo's n=1 tearing archive (/projects/EKOLEMEN/tm_data, the CNN's training samples; 1,801 of its 8,505 shots carry a positive sample), less the 3 blind test shots: 1,798, 147010-190997; 161 are in the catalog"
   n1_farre:
     title: "Farre (n=1 tearing)"
     kind: dataset
     on_demand: true
-    rule: "txt($LABELER_ROOT/raw_external/n1_farre_survival_tm_2_shots.txt)"
-    description: "Every shot of Hiro Farre Josep Kaga's n=1 tearing labels (/projects/EKOLEMEN/survival_tm_2 tm_labels.tar, 28,521 shots 140000-195501, 4,820 with a positive label; tm_labels.h5 is its 20 ms resample of 18,064), less the 33 blind test shots: 28,488; 2,236 are in the catalog"
+    rule: "table(neoclassical_tearing_mode/format/neoclassical_tearing_mode_format_2026_v1.csv)"
+    description: "The shots with a tearing mode in Hiro Farre Josep Kaga's n=1 tearing labels (/projects/EKOLEMEN/survival_tm_2 tm_labels.tar; 4,820 of its 28,521 shots carry a positive label, the shots of neoclassical_tearing_mode_format_2026_v1.csv), less the 6 blind test shots: 4,814, 140004-195299; 429 are in the catalog"
   n1_farre_seo:
     title: "Farre + Seo (n=1 tearing)"
     kind: derived
     on_demand: true
     rule: "union(n1_farre, n1_seo)"
-    description: "Both n=1 tearing sources, Farre's first: 28,494 shots (Seo's 8,493 less 6 that are not in Farre's tar); 2,237 are in the catalog"
+    description: "Both n=1 tearing sources, Farre's first: 4,943 shots with a tearing mode (1,669 in both; 129 positive in Seo's archive only); 436 are in the catalog"
   catalog:
     title: "All shots"
     kind: dataset

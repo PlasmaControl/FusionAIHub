@@ -161,7 +161,7 @@ child list holding shots that are not in its parent.
   progress comes from one read of each review event's saved table and of each parent's
   (`silver.progress_many`; `silver.progress` is the same for one shot), so the cost is a
   second or so for the tables and next to nothing per shot: about 1.4 s cold for the
-  28,488 shots of `n1_farre`, 0.1 s once the tables are read.
+  28,488 shots of the first `n1_farre` (every labelled shot), 0.1 s once the tables are read.
 - `GET /api/overview?list=N&shot=S` returns `/api/silver/shot`'s events and `t_range`
   for any shot on some list, plus that list's columns for the shot, with `classes` as a
   list.
@@ -208,9 +208,9 @@ Every listed shot that is not scored is named under `missing` or `trained_on`.
 | confine_gill (new) | 424 | Kevin Gill's confinement workbook (426 shots, 2 blind left out) |
 | confine_butt_gill (new) | 1,113 | union; every workbook shot is already in Butt's lists |
 | detach_chen (detach_tangtv) | 41 | the owner's plasma_tv TangTV inversions |
-| n1_seo (new) | 8,493 | Jaemin Seo's n=1 tearing archive `/projects/EKOLEMEN/tm_data` (8,505 shots, 12 blind left out) |
-| n1_farre (new) | 28,488 | Hiro Farre's n=1 tearing labels `survival_tm_2/tm_labels.tar` (28,521 shots, 33 blind left out) |
-| n1_farre_seo (new) | 28,494 | union (8,487 shots are in both) |
+| n1_seo (new) | 1,798 | Jaemin Seo's n=1 tearing archive `/projects/EKOLEMEN/tm_data`: the 1,801 of its 8,505 shots with a tearing mode, 3 blind left out |
+| n1_farre (new) | 4,814 | Hiro Farre's n=1 tearing labels `survival_tm_2/tm_labels.tar`: the 4,820 of its 28,521 shots with a tearing mode, 6 blind left out |
+| n1_farre_seo (new) | 4,943 | union (1,669 shots are in both) |
 
 `ae_valid` (60) and `ae_valid_fair` (19) were dropped 2026-10-17; the 19 fair shots
 stay in `outputs/labeler/ae/baselines/evaluation.json` `shots.fair`.
