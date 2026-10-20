@@ -9,7 +9,7 @@ sections 5.2 and 5.4.
 
 from __future__ import annotations
 
-from typing import Dict
+from typing import Dict, Optional
 
 import torch
 import torch.nn as nn
@@ -291,7 +291,10 @@ class DynamicsBackbone(nn.Module):
         self.out_norm = nn.LayerNorm(cfg.d_model)
 
     def encode(
-        self, codes: Dict[str, torch.Tensor], actuators: torch.Tensor
+        self,
+        codes: Dict[str, torch.Tensor],
+        actuators: torch.Tensor,
+        act_null: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Return hidden states of shape (B, F, tokens_per_frame, d_model).
 
@@ -301,8 +304,10 @@ class DynamicsBackbone(nn.Module):
             Input codes.
         actuators : torch.Tensor of shape (B, F, actuator_dim)
             Actuators of each frame.
+        act_null : torch.BoolTensor of shape (B,), default=None
+            Samples run unconditionally: no actuator term at all (see :meth:`_embed`).
         """
-        x = self._embed(codes, actuators)
+        x = self._embed(codes, actuators, act_null)
         recompute = self.training and self.cfg.grad_checkpointing and x.requires_grad
         for block in self.blocks:
             x = self._checkpointed(block, recompute, x)
@@ -313,6 +318,7 @@ class DynamicsBackbone(nn.Module):
         history_codes: Dict[str, torch.Tensor],
         query_codes: Dict[str, torch.Tensor],
         actuators: torch.Tensor,
+        act_null: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Return query-stream hidden states for block teacher forcing.
 
@@ -328,14 +334,16 @@ class DynamicsBackbone(nn.Module):
             The frames to predict, with masked positions set to ``[MASK]``.
         actuators : torch.Tensor of shape (B, F, actuator_dim)
             Actuators of each frame, shared by both streams.
+        act_null : torch.BoolTensor of shape (B,), default=None
+            Samples run unconditionally, in both streams.
 
         Returns
         -------
         hidden : torch.Tensor of shape (B, F, tokens_per_frame, d_model)
             Query-stream hidden states.
         """
-        history = self._embed(history_codes, actuators)
-        query = self._embed(query_codes, actuators)
+        history = self._embed(history_codes, actuators, act_null)
+        query = self._embed(query_codes, actuators, act_null)
         recompute = (
             self.training and self.cfg.grad_checkpointing and query.requires_grad
         )
@@ -345,7 +353,14 @@ class DynamicsBackbone(nn.Module):
             )
         return self.out_norm(query)
 
-    def _embed(self, codes, actuators) -> torch.Tensor:
+    def _embed(self, codes, actuators, act_null=None) -> torch.Tensor:
+        """Token embeddings plus the actuator term.
+
+        ``act_null`` (B,) drops the whole actuator term of those samples, the
+        unconditional branch of classifier-free guidance. That is distinct from
+        actuators at their normalised mean, which still add the projection bias, so
+        no new parameter is needed and older checkpoints load unchanged.
+        """
         x = self.tok.embed(codes)
         B, Fr, N, d = x.shape
         if actuators.shape != (B, Fr, self.cfg.actuator_dim):
@@ -353,10 +368,11 @@ class DynamicsBackbone(nn.Module):
                 f"actuators expected {(B, Fr, self.cfg.actuator_dim)}; "
                 f"got {tuple(actuators.shape)}"
             )
-        x = x + self.act_embed(actuators).unsqueeze(2)
+        keep = None if act_null is None else (~act_null).to(x.dtype).view(B, 1, 1, 1)
+        conditioning = self.act_embed(actuators).unsqueeze(2)
         if self.act_cross is not None:
-            x = x + self.act_cross(x, actuators)
-        return x
+            conditioning = conditioning + self.act_cross(x, actuators)
+        return x + (conditioning if keep is None else conditioning * keep)
 
     def _checkpointed(self, function, recompute: bool, *inputs):
         if not recompute:
@@ -372,6 +388,11 @@ class DynamicsBackbone(nn.Module):
             preserve_rng_state=float(self.cfg.dropout) > 0.0,
         )
 
-    def forward(self, codes: Dict[str, torch.Tensor], actuators: torch.Tensor):
+    def forward(
+        self,
+        codes: Dict[str, torch.Tensor],
+        actuators: torch.Tensor,
+        act_null: Optional[torch.Tensor] = None,
+    ):
         """Return per-modality head outputs for every position."""
-        return self.tok.logits(self.encode(codes, actuators))
+        return self.tok.logits(self.encode(codes, actuators, act_null))

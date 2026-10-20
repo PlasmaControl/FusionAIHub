@@ -232,6 +232,7 @@ k0=${K0} n_predict=${N_PREDICT} steps=${STEPS} bs=${BATCH_SIZE} accum=${ACCUM_ST
 grad_ckpt=${GRAD_CKPT} lr=${LR} warmup=${WARMUP_STEPS} min_lr_ratio=${MIN_LR_RATIO} \
 beta2=${BETA2} wd=${WEIGHT_DECAY} gen_mask_p=${GEN_MASK_P} ss_final=${SS_FINAL_FRAC} \
 ss_ramp=${SS_RAMP_STEPS} mask_absent=${MASK_ABSENT} block_forcing=${BLOCK_FORCING:-0} \
+forecast_depth=${FORECAST_DEPTH:-1} act_drop_p=${ACT_DROP_P:-0} \
 seed_drop_p=${SEED_DROP_P:-0} seed_column_drop_p=${SEED_COLUMN_DROP_P:-0} \
 actuator_noise=${ACTUATOR_NOISE:-0} window_jitter=${WINDOW_JITTER:-0}"
   srun -N "$SLURM_JOB_NUM_NODES" -n "$SLURM_NTASKS" -c "$SLURM_CPUS_PER_TASK" \
@@ -270,6 +271,8 @@ actuator_noise=${ACTUATOR_NOISE:-0} window_jitter=${WINDOW_JITTER:-0}"
        --val_windows_per_shot "${VAL_WINDOWS_PER_SHOT:-0}" \
        --grad_clip "${GRAD_CLIP:-0}" \
        --block_forcing "${BLOCK_FORCING:-0}" \
+       --forecast_depth "${FORECAST_DEPTH:-1}" \
+       --act_drop_p "${ACT_DROP_P:-0}" \
        --seed_drop_p "${SEED_DROP_P:-0}" \
        --seed_column_drop_p "${SEED_COLUMN_DROP_P:-0}" \
        --actuator_noise "${ACTUATOR_NOISE:-0}" \

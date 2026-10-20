@@ -1673,6 +1673,17 @@ class TrainConfig:
         cli_type=int,
         from_cli=bool,
     )
+    act_drop_p: float = _option(
+        0.0,
+        "probability of training a sample without any actuator term, the "
+        "unconditional branch classifier-free guidance needs (eval --guidance)",
+    )
+    forecast_depth: int = _option(
+        1,
+        "with --block_forcing 1: levels of the model's own forecasts in the history "
+        "(pushforward multi-step training); each extra level costs one no-grad "
+        "two-stream pass",
+    )
     seed_drop_p: float = _option(
         0.0,
         "augmentation: probability of hiding a whole modality from the input in the "
@@ -2180,6 +2191,7 @@ class Trainer:
             f"ss_ramp_steps={model_cfg.ss_ramp_steps} "
             f"dropout={model_cfg.dropout} mask_absent={int(self.use_presence)} "
             f"block_forcing={int(config.block_forcing)} "
+            f"forecast_depth={config.forecast_depth} act_drop_p={config.act_drop_p} "
             f"(val is ALWAYS scored at gen_mask_p=0 so arms stay comparable)"
         )
         jitter_note = (
@@ -2467,6 +2479,8 @@ class Trainer:
                 block_forcing=config.block_forcing,
                 seed_drop_p=config.seed_drop_p,
                 seed_column_drop_p=config.seed_column_drop_p,
+                act_drop_p=config.act_drop_p,
+                forecast_depth=config.forecast_depth,
             )
         if per_modality:
             self.equal_weight_losses.append(
@@ -2692,6 +2706,9 @@ class Trainer:
             "cfg_grad_checkpointing": bool(model_cfg.grad_checkpointing),
             "cfg_dropout": float(model_cfg.dropout),
             "cfg_block_forcing": bool(config.block_forcing),
+            "cfg_forecast_depth": int(config.forecast_depth),
+            # > 0: the unconditional branch is trained, so eval may use --guidance.
+            "cfg_act_drop_p": float(config.act_drop_p),
             # Training-only augmentation, kept for the record.
             "cfg_seed_drop_p": float(config.seed_drop_p),
             "cfg_seed_column_drop_p": float(config.seed_column_drop_p),

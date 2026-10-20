@@ -436,6 +436,7 @@ def rollout_shot(
     actuator_mode: str = "real",
     cache_dir=None,
     shot=None,
+    guidance: float = 1.0,
 ) -> Rollout:
     """Seed ``K0`` real frames of a shot and roll the model out.
 
@@ -465,6 +466,8 @@ def rollout_shot(
         Cache directory, for donor counterfactuals.
     shot : str, default=None
         Shot id; required when ``IGNITE_ACT_GLOBAL`` is set.
+    guidance : float, default=1.0
+        Classifier-free guidance weight (:meth:`MaskGITDynamics.generate_frame`).
 
     Returns
     -------
@@ -496,6 +499,7 @@ def rollout_shot(
         n_predict=n_frames - K0,
         temperature=temperature,
         generator=generator,
+        guidance=guidance,
     )
     return Rollout(
         gt_codes={name: codes[name][:n_frames].long().cpu() for name in names},
@@ -1748,6 +1752,7 @@ class _EvalContext:
     data_dir: object
     cache_t0: float
     log: object
+    guidance: float = 1.0
 
 
 def _rollouts(context: _EvalContext, cache, shot):
@@ -1768,6 +1773,7 @@ def _rollouts(context: _EvalContext, cache, shot):
             actuator_mode=actuator_mode,
             cache_dir=context.cache_dir,
             shot=shot,
+            guidance=context.guidance,
         )
 
     # bf16 rollouts measurably lower accuracy, so they are opt-in.
@@ -1790,6 +1796,7 @@ def _archive_codes(context: _EvalContext, shot, result: Rollout) -> None:
             step=np.int32(context.step),
             shot=str(shot),
             temperature=np.float32(context.temperature),
+            guidance=np.float32(context.guidance),
             **{
                 f"gt__{name}": codes.cpu().numpy().astype(np.int32)
                 for name, codes in result.gt_codes.items()
@@ -1964,6 +1971,7 @@ def run(
     split_seed: int = 0,
     actuator_mode: str = "real",
     log=print,
+    guidance: float = 1.0,
 ) -> Dict:
     """Evaluate a checkpoint on one or more shots and write ``eval_metrics.json``.
 
@@ -2001,6 +2009,8 @@ def run(
         the real-actuator rollout with the same seed and reports the divergence.
     log : callable, default=print
         Logger.
+    guidance : float, default=1.0
+        Classifier-free guidance weight on the actuators; ``1.0`` is off.
 
     Returns
     -------
@@ -2015,7 +2025,11 @@ def run(
         index = int(os.environ.get("LOCAL_RANK", "0")) if torch.cuda.device_count() > 1 else 0
         torch.cuda.set_device(index)
         device = torch.device("cuda", index)
-    log(f"[eval] device={device} ckpt={ckpt} actuator_mode={actuator_mode}", flush=True)
+    log(
+        f"[eval] device={device} ckpt={ckpt} actuator_mode={actuator_mode} "
+        f"guidance={guidance}",
+        flush=True,
+    )
     if val_tail:
         shot = _resolve_val_shots(ckpt, cache_dir, val_tail, val_n, split_seed, log)
     # Measured ground truth needs the cache's frame origin.
@@ -2068,6 +2082,7 @@ def run(
         use_raw_gt=use_raw_gt,
         data_dir=os.environ.get("IGNITE_DATA_DIR") or spike.DEFAULT_DATA_DIR,
         cache_t0=cache_t0,
+        guidance=guidance,
         log=log,
     )
 
@@ -2103,6 +2118,7 @@ def run(
     ):
         return {"per_shot": per_shot, "rank": rank}
     metrics = _summarise(per_shot, ckpt, step, temperature, seed, codec_tmpl)
+    metrics["guidance"] = float(guidance)
     with open(out / "eval_metrics.json", "w") as f:
         json.dump(metrics, f, indent=2)
     _log_summary(metrics, log)
@@ -2297,6 +2313,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     add("--cache_dir", default=_DEFAULT_CACHE, help="pre-encoded frame-code cache dir")
     add("--out_dir", required=True, help="output dir for figures and eval_metrics.json")
     add("--temperature", type=float, default=1.0, help="rollout sampling temperature")
+    add(
+        "--guidance",
+        type=float,
+        default=1.0,
+        help="classifier-free guidance weight on the actuators; 1 = off. Needs a "
+        "checkpoint trained with --act_drop_p > 0",
+    )
     add("--seed", type=int, default=0, help="rollout seed")
     add("--k0", type=int, default=0, help="seed frames; 0 = the checkpoint's k0_seed")
     add(
@@ -2398,6 +2421,7 @@ def main(argv=None):
         val_tail=args.val_tail,
         val_n=args.val_n,
         split_seed=args.split_seed,
+        guidance=args.guidance,
         actuator_mode=args.actuator_mode,
     )
 

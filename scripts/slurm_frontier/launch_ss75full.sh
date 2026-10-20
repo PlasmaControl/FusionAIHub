@@ -43,6 +43,9 @@ export MOD_WEIGHT_POW=${MOD_WEIGHT_POW:-0} GEN_MASK_P=${GEN_MASK_P:-0.0}
 export SS_FINAL_FRAC=${SS_FINAL_FRAC:-0.75} SS_RAMP_STEPS=${SS_RAMP_STEPS:-2000}
 # BLOCK_FORCING=1: every frame predicted from earlier frames only; SS then uses the model's own forecasts.
 export BLOCK_FORCING=${BLOCK_FORCING:-0}
+# FORECAST_DEPTH=k (with BLOCK_FORCING=1): history frames are the model's own k-deep forecasts.
+# ACT_DROP_P: share of samples trained without actuators, for classifier-free guidance at eval.
+export FORECAST_DEPTH=${FORECAST_DEPTH:-1} ACT_DROP_P=${ACT_DROP_P:-0}
 # --- augmentation (training only; 0 = off). SEED_DROP_P / SEED_COLUMN_DROP_P hide a whole modality /
 # a random share of its token positions from the input in the seed frames and SCORE them, so the
 # model learns to predict a modality missing from the seed. ACTUATOR_NOISE = std in normalised units

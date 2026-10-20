@@ -41,6 +41,8 @@ EXTRA=()
 # under real actuators with the same RNG and reports divergence_vs_real -- if that is ~0 the
 # forecast is unconditional, which no amount of tokenisation or capacity would fix.
 [ -n "${ACTUATOR_MODE:-}" ] && EXTRA+=(--actuator_mode "${ACTUATOR_MODE}")
+# GUIDANCE=w: classifier-free guidance on the actuators (checkpoint trained with ACT_DROP_P > 0).
+[ -n "${GUIDANCE:-}" ] && EXTRA+=(--guidance "${GUIDANCE}")
 # RENDER_ALL=1: a figure for every shot, not only the first shot of each rank.
 [ "${RENDER_ALL:-0}" = "1" ] && EXTRA+=(--render_all)
 if [ "${VAL_TAIL}" != "0" ]; then

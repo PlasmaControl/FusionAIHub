@@ -723,15 +723,15 @@ def test_dropped_seed_tokens_are_invisible_and_scored(monkeypatch, block_forcing
     encode, encode_bf = backbone.encode, backbone.encode_block_forcing
     masked_logits = tok.masked_logits
 
-    def spy_encode(inputs, actuators):
+    def spy_encode(inputs, actuators, act_null=None):
         if torch.is_grad_enabled():
             seen["inputs"] = [inputs]
-        return encode(inputs, actuators)
+        return encode(inputs, actuators, act_null)
 
-    def spy_encode_bf(history, query, actuators):
+    def spy_encode_bf(history, query, actuators, act_null=None):
         if torch.is_grad_enabled():
             seen["inputs"] = [history, query]
-        return encode_bf(history, query, actuators)
+        return encode_bf(history, query, actuators, act_null)
 
     def spy_logits(hidden, mask):
         if torch.is_grad_enabled():
@@ -775,3 +775,126 @@ def test_fused_earlier_and_self_attention_matches_explicit_with_gradients():
     assert torch.allclose(outputs[0], outputs[1], atol=1e-6)
     for fused, explicit in zip(*grads):
         assert torch.allclose(fused, explicit, atol=1e-6)
+
+
+# ------------------------------------------- classifier-free guidance, multi-step BTF
+
+
+def test_act_null_removes_every_actuator_effect_and_false_changes_nothing():
+    torch.manual_seed(0)
+    for cross in (False, True):
+        cfg = _btf_cfg(act_cross_attn=cross)
+        model = MaskGITDynamics(cfg).eval()
+        if cross:  # the cross-attention output is zero-initialised: make it bite
+            torch.nn.init.normal_(model.backbone.act_cross.o.weight, std=0.1)
+        codes = _codes(cfg, 2, cfg.max_frames, torch.Generator().manual_seed(1))
+        act = torch.randn(2, cfg.max_frames, 6)
+        other = torch.randn(2, cfg.max_frames, 6)
+        null = torch.tensor([True, False])
+        with torch.no_grad():
+            plain = model.backbone.encode(codes, act)
+            off = model.backbone.encode(codes, act, torch.tensor([False, False]))
+            a = model.backbone.encode(codes, act, null)
+            b = model.backbone.encode(codes, other, null)
+        assert torch.equal(plain, off)
+        assert torch.allclose(a[0], b[0])  # null sample ignores its actuators
+        assert torch.allclose(a[1], plain[1])  # the other sample is untouched
+        assert not torch.allclose(a[0], plain[0])  # and null really differs
+
+
+def test_cfg_and_depth_defaults_leave_the_loss_bit_identical():
+    torch.manual_seed(0)
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg).train()
+    codes = _codes(cfg, 2, cfg.max_frames, torch.Generator().manual_seed(3))
+    act = torch.randn(2, cfg.max_frames, 6)
+    losses = []
+    for options in ({}, {"act_drop_p": 0.0, "forecast_depth": 1}):
+        torch.manual_seed(5)
+        losses.append(
+            model.training_loss(
+                codes, act, generator=torch.Generator().manual_seed(4),
+                ss_frac=0.5, block_forcing=True, **options,
+            )
+        )
+    assert torch.equal(losses[0], losses[1])
+
+
+def test_actuator_dropout_and_deep_forecasts_train_every_parameter():
+    torch.manual_seed(0)
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg).train()
+    gen = torch.Generator().manual_seed(2)
+    codes = _codes(cfg, 4, cfg.max_frames, gen)
+    act = torch.randn(4, cfg.max_frames, 6, generator=gen)
+    loss = model.training_loss(
+        codes, act, generator=gen, ss_frac=0.75, block_forcing=True,
+        act_drop_p=0.5, forecast_depth=3,
+    )
+    assert torch.isfinite(loss)
+    loss.backward()
+    without_grad = [n for n, p in model.named_parameters() if p.grad is None]
+    assert not without_grad, without_grad
+
+
+@pytest.mark.parametrize("depth", [1, 3])
+def test_deep_forecast_context_never_sees_the_frame_it_replaces(depth):
+    torch.manual_seed(0)
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg).eval()
+    codes = _codes(cfg, 1, cfg.max_frames, torch.Generator().manual_seed(4))
+    act = torch.zeros(1, cfg.max_frames, 6)
+    altered = {n: c.clone() for n, c in codes.items()}
+    last = cfg.max_frames - 1
+    for n in altered:
+        altered[n][:, last] = (altered[n][:, last] + 1) % 4
+    first = model._forecast_context(
+        codes, act, 1.0, torch.Generator().manual_seed(5), depth=depth
+    )
+    second = model._forecast_context(
+        altered, act, 1.0, torch.Generator().manual_seed(5), depth=depth
+    )
+    for n in codes:
+        assert torch.equal(first[n][:, last], second[n][:, last])
+
+
+def test_deeper_forecasts_differ_from_one_step_forecasts():
+    torch.manual_seed(0)
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg).eval()
+    codes = _codes(cfg, 2, cfg.max_frames, torch.Generator().manual_seed(4))
+    act = torch.randn(2, cfg.max_frames, 6)
+    one = model._forecast_context(codes, act, 1.0, torch.Generator().manual_seed(5))
+    two = model._forecast_context(
+        codes, act, 1.0, torch.Generator().manual_seed(5), depth=2
+    )
+    assert any(not torch.equal(one[n], two[n]) for n in codes)
+
+
+def test_guidance_one_is_plain_conditioning_and_zero_ignores_actuators():
+    torch.manual_seed(0)
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg).eval()
+    past = _codes(cfg, 2, cfg.k0_seed, torch.Generator().manual_seed(1))
+    act = torch.randn(2, cfg.k0_seed + 1, 6)
+    other = torch.randn(2, cfg.k0_seed + 1, 6)
+    with torch.no_grad():
+        plain = model.generate_frame(past, act, generator=torch.Generator().manual_seed(3))
+        one = model.generate_frame(
+            past, act, generator=torch.Generator().manual_seed(3), guidance=1.0
+        )
+        zero_a = model.generate_frame(
+            past, act, generator=torch.Generator().manual_seed(3), guidance=0.0
+        )
+        zero_b = model.generate_frame(
+            past, other, generator=torch.Generator().manual_seed(3), guidance=0.0
+        )
+        guided = model.rollout(
+            past, torch.randn(2, cfg.max_frames, 6),
+            generator=torch.Generator().manual_seed(3), guidance=3.0,
+        )
+    for m in cfg.modalities:
+        assert torch.equal(plain[m.name], one[m.name])
+        assert torch.equal(zero_a[m.name], zero_b[m.name])
+        gen_part = guided[m.name][:, cfg.k0_seed :]
+        assert (gen_part >= 0).all() and (gen_part < m.codebook_size).all()

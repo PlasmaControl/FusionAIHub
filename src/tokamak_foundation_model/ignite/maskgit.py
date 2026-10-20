@@ -438,14 +438,20 @@ class MaskGITDynamics(nn.Module):
         return out
 
     @torch.no_grad()
-    def _forecast_context(self, codes, actuators, ss_frac, gen):
-        """Replace a fraction of history frames by the model's own one-step forecasts.
+    def _forecast_context(self, codes, actuators, ss_frac, gen, depth: int = 1):
+        """Replace a fraction of history frames by the model's own forecasts.
 
-        Every frame is forecast in one block-forcing pass from the real frames
-        before it, with nothing of the frame itself visible, and sampled at
-        temperature 1. Training on such a history scores forecasts made from the
-        model's own earlier forecasts. ``cache_enabled=False`` as in
+        Every frame is forecast in one block-forcing pass from the frames before
+        it, with nothing of the frame itself visible, and sampled at temperature 1.
+        Training on such a history scores forecasts made from the model's own
+        earlier forecasts. ``cache_enabled=False`` as in
         :meth:`_scheduled_sample_context`.
+
+        ``depth > 1`` repeats the pass on its own output for the same frames, so a
+        replaced frame is forecast from earlier frames that are themselves
+        forecasts, up to ``depth`` levels deep: the history a ``depth``-step rollout
+        produces (the pushforward trick). Gradients flow through the final
+        prediction only, as for ``depth == 1``.
         """
         if ss_frac <= 0.0:
             return codes
@@ -465,21 +471,24 @@ class MaskGITDynamics(nn.Module):
             m.name: torch.full_like(codes[m.name], self._mask_id(m.name))
             for m in self.cfg.modalities
         }
-        with torch.autocast(
-            device_type=reference.device.type,
-            dtype=torch.bfloat16,
-            enabled=torch.is_autocast_enabled(),
-            cache_enabled=False,
-        ):
-            hidden = self.backbone.encode_block_forcing(codes, blank, actuators)
-            selected_logits = self.backbone.tok.masked_logits(hidden, selection)
-        history = {}
-        for m in self.cfg.modalities:
-            frames = codes[m.name].clone()
-            frames[selection[m.name]] = self.output.sample_flat(
-                selected_logits[m.name], gen
-            ).to(frames.dtype)
-            history[m.name] = frames
+        history = codes
+        for _ in range(max(1, int(depth))):
+            with torch.autocast(
+                device_type=reference.device.type,
+                dtype=torch.bfloat16,
+                enabled=torch.is_autocast_enabled(),
+                cache_enabled=False,
+            ):
+                hidden = self.backbone.encode_block_forcing(history, blank, actuators)
+                selected_logits = self.backbone.tok.masked_logits(hidden, selection)
+            forecast = {}
+            for m in self.cfg.modalities:
+                frames = codes[m.name].clone()
+                frames[selection[m.name]] = self.output.sample_flat(
+                    selected_logits[m.name], gen
+                ).to(frames.dtype)
+                forecast[m.name] = frames
+            history = forecast
         return history
 
     def training_loss(
@@ -499,6 +508,8 @@ class MaskGITDynamics(nn.Module):
         block_forcing: bool = False,
         seed_drop_p: float = 0.0,
         seed_column_drop_p: float = 0.0,
+        act_drop_p: float = 0.0,
+        forecast_depth: int = 1,
     ) -> torch.Tensor:
         """Masked-token loss, averaged per modality and then across modalities.
 
@@ -543,6 +554,14 @@ class MaskGITDynamics(nn.Module):
         seed_column_drop_p : float, default=0.0
             Augmentation: probability of hiding a random fraction of a modality's
             token positions in the seed frames, scored likewise.
+        act_drop_p : float, default=0.0
+            Probability of training a sample without any actuator term, the
+            unconditional branch that classifier-free guidance
+            (:meth:`generate_frame` ``guidance``) needs. The own-forecast history
+            stays conditioned.
+        forecast_depth : int, default=1
+            With ``block_forcing``: levels of own forecasts in the history
+            (:meth:`_forecast_context`); ``1`` is one-step scheduled sampling.
 
         Returns
         -------
@@ -558,8 +577,18 @@ class MaskGITDynamics(nn.Module):
             codes, seed_drop_p, seed_column_drop_p, generator
         )
         inputs = codes if dropped is None else self._hide(codes, dropped)
+        act_null = None
+        if act_drop_p > 0.0:
+            act_null = (
+                torch.rand(
+                    (actuators.shape[0],), generator=generator, device=actuators.device
+                )
+                < act_drop_p
+            )
         if block_forcing:
-            history = self._forecast_context(inputs, actuators, ss_frac, generator)
+            history = self._forecast_context(
+                inputs, actuators, ss_frac, generator, depth=forecast_depth
+            )
             # The query stream reveals real codes, as MaskGIT decoding of the
             # target frame does; the history carries the model's forecasts.
             query, mask = self._random_mask(
@@ -571,7 +600,9 @@ class MaskGITDynamics(nn.Module):
             )
             if dropped is not None:
                 history, query = self._hide(history, dropped), self._hide(query, dropped)
-            hidden = self.backbone.encode_block_forcing(history, query, actuators)
+            hidden = self.backbone.encode_block_forcing(
+                history, query, actuators, act_null
+            )
         else:
             context = self._scheduled_sample_context(
                 inputs, actuators, ss_frac, generator
@@ -586,7 +617,7 @@ class MaskGITDynamics(nn.Module):
             if dropped is not None:
                 # Scheduled sampling may have refilled hidden positions.
                 masked = self._hide(masked, dropped)
-            hidden = self.backbone.encode(masked, actuators)
+            hidden = self.backbone.encode(masked, actuators, act_null)
         if dropped is not None:
             mask = {name: mask[name] | dropped[name] for name in mask}
         masked_logits = self.backbone.tok.masked_logits(hidden, mask)
@@ -644,6 +675,7 @@ class MaskGITDynamics(nn.Module):
         actuators: torch.Tensor,
         temperature: float = 1.0,
         generator: Optional[torch.Generator] = None,
+        guidance: float = 1.0,
     ) -> Dict[str, torch.Tensor]:
         """Generate the codes of the next frame by iterative unmasking.
 
@@ -657,6 +689,13 @@ class MaskGITDynamics(nn.Module):
             Sampling temperature.
         generator : torch.Generator, default=None
             Source of randomness.
+        guidance : float, default=1.0
+            Classifier-free guidance weight ``w``: the logits are
+            ``l_uncond + w * (l_cond - l_uncond)``, with the unconditional branch
+            run without any actuator term. ``1.0`` is plain conditioning and costs
+            one forward pass per step; any other value costs two. Needs a model
+            trained with ``act_drop_p > 0``, else the unconditional branch is
+            untrained.
 
         Returns
         -------
@@ -684,12 +723,30 @@ class MaskGITDynamics(nn.Module):
             for m in cfg.modalities
         }
 
+        guided = float(guidance) != 1.0
+        if guided and not isinstance(self.output, _CategoricalOutput):
+            raise ValueError("classifier-free guidance needs the categorical head")
+        if guided:
+            # One doubled batch: the first half conditioned, the second without
+            # any actuator term.
+            both_actuators = torch.cat([actuators, actuators], dim=0)
+            act_null = torch.arange(2 * batch, device=device) >= batch
+
         def _next_frame_logits():
             sequence = {
                 name: torch.cat([past_codes[name], frame[name].unsqueeze(1)], dim=1)
                 for name in frame
             }
-            return self.backbone(sequence, actuators)
+            if not guided:
+                return self.backbone(sequence, actuators)
+            doubled = {name: torch.cat([c, c], dim=0) for name, c in sequence.items()}
+            logits = self.backbone(doubled, both_actuators, act_null)
+            out = {}
+            for name, both in logits.items():
+                # Only the generated (last) frame is read; keep its axis.
+                cond, uncond = both[:batch, -1:].float(), both[batch:, -1:].float()
+                out[name] = uncond + float(guidance) * (cond - uncond)
+            return out
 
         keep_masked = _cosine_keep_fractions(cfg.maskgit_decode_steps)
         for step, masked_fraction in enumerate(keep_masked):
@@ -731,6 +788,7 @@ class MaskGITDynamics(nn.Module):
         n_predict: Optional[int] = None,
         temperature: float = 1.0,
         generator: Optional[torch.Generator] = None,
+        guidance: float = 1.0,
     ) -> Dict[str, torch.Tensor]:
         """Roll out ``n_predict`` frames autoregressively in code space.
 
@@ -746,6 +804,8 @@ class MaskGITDynamics(nn.Module):
             Sampling temperature.
         generator : torch.Generator, default=None
             Source of randomness.
+        guidance : float, default=1.0
+            Classifier-free guidance weight of every frame (:meth:`generate_frame`).
 
         Returns
         -------
@@ -767,6 +827,7 @@ class MaskGITDynamics(nn.Module):
                 actuators[:, : n_seed + t + 1],
                 temperature=temperature,
                 generator=generator,
+                guidance=guidance,
             )
             trajectory = {
                 name: torch.cat([codes, next_frame[name].unsqueeze(1)], dim=1)
