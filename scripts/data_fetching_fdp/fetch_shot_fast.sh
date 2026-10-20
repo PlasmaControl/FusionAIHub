@@ -25,7 +25,7 @@ OUTPUT_DIR="${2:?usage: fetch_shot_fast.sh <shot> <output_dir> [stage_parent]}"
 STAGE_PARENT="${3:-/dev/shm/fdp_stage_$$}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-FDP_PROJECT="${FDP_PROJECT:-/scratch/gpfs/ps9551/fdp-demo}"
+FDP_PROJECT="${FDP_PROJECT:-/scratch/gpfs/EKOLEMEN/ps9551/fdp-demo}"
 ENV_DIR="${FDP_PROJECT}/.pixi/envs/default"
 CONFIG="${CONFIG:-${SCRIPT_DIR}/config_fdp.yaml}"
 # Reads are independent, so they scale with processes. 8 is a safe default on a
