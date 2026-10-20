@@ -41,6 +41,8 @@ EXTRA=()
 # under real actuators with the same RNG and reports divergence_vs_real -- if that is ~0 the
 # forecast is unconditional, which no amount of tokenisation or capacity would fix.
 [ -n "${ACTUATOR_MODE:-}" ] && EXTRA+=(--actuator_mode "${ACTUATOR_MODE}")
+# RENDER_ALL=1: a figure for every shot, not only the first shot of each rank.
+[ "${RENDER_ALL:-0}" = "1" ] && EXTRA+=(--render_all)
 if [ "${VAL_TAIL}" != "0" ]; then
   # resolved at RUN time inside eval_dynamics (same split_shots as the trainer), so eval
   # jobs can be chained behind training before the cache/split exists.
@@ -49,7 +51,8 @@ fi
 
 echo "[ignite_dynamics_eval] host=$(hostname) ranks=${SLURM_NTASKS:-1} ckpt=${CKPT} shot=${SHOT} out=${OUT_DIR} T=${TEMPERATURE}"
 # multi-rank: submit with --ntasks-per-node=8 --gres=gpu:8 to shard shots across 8 GCDs
-srun -N "${SLURM_JOB_NUM_NODES:-1}" -n "${SLURM_NTASKS:-1}" --gpus-per-task=1 --gpu-bind=closest \
+# --wait=0: ranks own unequal shot counts; StellarAI kills a step 60 s after its first task exits.
+srun -N "${SLURM_JOB_NUM_NODES:-1}" -n "${SLURM_NTASKS:-1}" --gpus-per-task=1 --gpu-bind="${SRUN_GPU_BIND:-closest}" --wait=0 \
      scripts/slurm_frontier/_srun_rank_wrapper.sh \
      -m tokamak_foundation_model.ignite.eval_dynamics \
      --ckpt "${CKPT}" \

@@ -2908,6 +2908,12 @@ class _DDPState:
             self.world_size = ws
             visible = torch.cuda.device_count()
             self.device_index = self.local_rank if visible > 1 else 0
+            if visible > 1 and self.device_index >= visible:
+                raise RuntimeError(
+                    f"rank {self.rank}: LOCAL_RANK={self.local_rank} but only {visible} GPUs "
+                    f"visible (CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES')}); "
+                    "bind one GPU per task (srun --gpu-bind, see SRUN_GPU_BIND)"
+                )
             self.distributed = True
             if not dist.is_initialized():
                 dist.init_process_group(backend, rank=self.rank, world_size=self.world_size)

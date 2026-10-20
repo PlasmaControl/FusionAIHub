@@ -2008,7 +2008,13 @@ def run(
         Contents of ``eval_metrics.json``; on non-zero ranks only this rank's
         per-shot results.
     """
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cpu")
+    if torch.cuda.is_available():
+        # One GPU visible per rank (Frontier) -> cuda:0; all node GPUs visible (StellarAI,
+        # SRUN_GPU_BIND=none) -> cuda:LOCAL_RANK, matching train_codec._DDPState.
+        index = int(os.environ.get("LOCAL_RANK", "0")) if torch.cuda.device_count() > 1 else 0
+        torch.cuda.set_device(index)
+        device = torch.device("cuda", index)
     log(f"[eval] device={device} ckpt={ckpt} actuator_mode={actuator_mode}", flush=True)
     if val_tail:
         shot = _resolve_val_shots(ckpt, cache_dir, val_tail, val_n, split_seed, log)

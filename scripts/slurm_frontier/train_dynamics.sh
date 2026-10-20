@@ -209,7 +209,7 @@ elif [ "${PATCH_ACTUATORS:-0}" = "1" ]; then
 world_size=${SLURM_NTASKS} cache=${CACHE_DIR} dry_run=${DRY_RUN:-0}"
   [ "${DRY_RUN:-0}" = "1" ] && EXTRA+=(--dry_run)
   srun -N "$SLURM_JOB_NUM_NODES" -n "$SLURM_NTASKS" -c "$SLURM_CPUS_PER_TASK" \
-       --gpus-per-task=1 --gpu-bind=closest \
+       --gpus-per-task=1 --gpu-bind="${SRUN_GPU_BIND:-closest}" \
        scripts/slurm_frontier/_srun_rank_wrapper.sh \
        -m tokamak_foundation_model.ignite.train_dynamics \
        --cache_dir "${CACHE_DIR}" --patch_actuators "${EXTRA[@]}"
@@ -217,7 +217,7 @@ elif [ "${PRECOMPUTE}" = "1" ]; then
   echo "[ignite_dynamics] PRECOMPUTE host=$(hostname) nodes=${SLURM_JOB_NUM_NODES} \
 world_size=${SLURM_NTASKS} cache=${CACHE_DIR} max_shots=${MAX_SHOTS} codec_tmpl=${CODEC_TMPL:-manifest}"
   srun -N "$SLURM_JOB_NUM_NODES" -n "$SLURM_NTASKS" -c "$SLURM_CPUS_PER_TASK" \
-       --gpus-per-task=1 --gpu-bind=closest \
+       --gpus-per-task=1 --gpu-bind="${SRUN_GPU_BIND:-closest}" \
        scripts/slurm_frontier/_srun_rank_wrapper.sh \
        -m tokamak_foundation_model.ignite.train_dynamics \
        --cache_dir "${CACHE_DIR}" \
@@ -235,7 +235,7 @@ ss_ramp=${SS_RAMP_STEPS} mask_absent=${MASK_ABSENT} block_forcing=${BLOCK_FORCIN
 seed_drop_p=${SEED_DROP_P:-0} seed_column_drop_p=${SEED_COLUMN_DROP_P:-0} \
 actuator_noise=${ACTUATOR_NOISE:-0} window_jitter=${WINDOW_JITTER:-0}"
   srun -N "$SLURM_JOB_NUM_NODES" -n "$SLURM_NTASKS" -c "$SLURM_CPUS_PER_TASK" \
-       --gpus-per-task=1 --gpu-bind=closest \
+       --gpus-per-task=1 --gpu-bind="${SRUN_GPU_BIND:-closest}" \
        scripts/slurm_frontier/_srun_rank_wrapper.sh \
        -m tokamak_foundation_model.ignite.train_dynamics \
        --cache_dir "${CACHE_DIR}" \

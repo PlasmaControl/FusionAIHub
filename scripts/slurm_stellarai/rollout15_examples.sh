@@ -36,6 +36,9 @@ export OUT_DIR=${OUT_DIR:-$DATA_ROOT/ignite_prod_v4/runs/$RUN/rollout15_examples
 # ----------------------------------------------------------------------------------------
 
 export IGNITE_EVAL_RAW_GT=${IGNITE_EVAL_RAW_GT:-0}
+# One figure per shot: by default eval renders only the first shot of each rank, and
+# the 12 shots over 8 ranks then leave 4 without one.
+export RENDER_ALL=${RENDER_ALL:-1}
 export CLUSTER_ENV=${CLUSTER_ENV:-scripts/slurm_stellarai/_stellarai_common.sh}
 export SLURM_CPUS_PER_TASK=${SLURM_CPUS_PER_TASK:-8}
 
