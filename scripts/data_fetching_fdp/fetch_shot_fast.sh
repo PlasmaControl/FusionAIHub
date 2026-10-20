@@ -49,16 +49,17 @@ mkdir -p "${OUTPUT_DIR}" "${STAGE_DIR}"
 # them to pass 3 through this manifest instead, which has the index.
 RETRY_MANIFEST="${STAGE_DIR}/retry_pass2.json"
 
-# Prefer the Princeton Pelican cache. The d3d-cache module is just these three
-# variables, so set them directly if the module tree is unreachable (it lives
-# under /home/PPPL and needs live pppl group membership, which a session that
-# predates the grant will not have).
-export MODULEPATH="/home/PPPL/Modules/modulefiles-shared:${MODULEPATH:-}"
-module load d3d-cache/1.0 2>/dev/null || {
+# Pelican cache. FDP_PREFER_SHERPA=1 selects the Princeton cache, as the
+# d3d-cache module does. Off by default: since tokens come from the origin's own
+# issuer (fdp login, fdp >= 0.12), sherpa rejects them ("token appears valid
+# but was rejected by the server", 2026-10-19) and the director's cache works.
+export BEARER_TOKEN_FILE="${BEARER_TOKEN_FILE:-${HOME}/.fdp/token}"
+if [ "${FDP_PREFER_SHERPA:-0}" = "1" ]; then
     export PELICAN_CLIENT_PREFERREDCACHES="https://sherpa.princeton.edu:8443"
     export PELICAN_NEAREST_CACHE="https://sherpa.princeton.edu:8443"
-    export BEARER_TOKEN_FILE="${HOME}/.fdp/token"
-}
+else
+    unset PELICAN_CLIENT_PREFERREDCACHES PELICAN_NEAREST_CACHE
+fi
 
 cleanup() { rm -rf "${STAGE_PARENT}"; }
 trap cleanup EXIT
@@ -88,6 +89,10 @@ fi
 MDS_RC=$?
 
 # ---- pass 3: PTDATA pointnames, index present, staged objects reused -------
+# Bounded: through the director's cache its TDI retry phase stalled for >25 min on
+# shot 192945 (2026-10-19) after the pointnames had been merged into the file, so a
+# timeout loses at most retried signals, never the PTDATA already written.
+timeout "${PASS3_TIMEOUT:-1200}" \
 "${ENV_DIR}/bin/fdp" run "${ENV_DIR}/bin/python" -u "${SCRIPT_DIR}/fetch_shot.py" \
     --shot "${SHOT}" --config "${CONFIG}" \
     --output-dir "${OUTPUT_DIR}" \
