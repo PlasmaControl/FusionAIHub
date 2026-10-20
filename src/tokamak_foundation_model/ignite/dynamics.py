@@ -23,10 +23,42 @@ from .frame_layout import FrameTokenizer
 def _attend_earlier_and_self(q, history_k, history_v, self_k, self_v):
     """Attention of position ``i`` over history positions ``< i`` and its own key.
 
-    Computed explicitly rather than with a masked ``scaled_dot_product_attention``,
-    whose backward fails with "HIP error: invalid argument" on Frontier's ROCm
-    build. The own key enters as one extra column, so the scores are
-    ``(L, L + 1)`` instead of ``(L, 2L)``; the softmax runs in fp32.
+    One fused ``scaled_dot_product_attention`` over the keys ``[history | self]``
+    with the mask ``[earlier | diagonal]``, so the ``(L, 2L)`` scores are never
+    stored for backward. On ROCm the masked kernel's backward fails with "HIP
+    error: invalid argument" (Frontier), so there it falls back to
+    :func:`_attend_earlier_and_self_explicit`.
+
+    Parameters
+    ----------
+    q, self_k, self_v : torch.Tensor of shape (B, heads, L, head_dim)
+        Query-stream projections.
+    history_k, history_v : torch.Tensor of shape (B, heads, L, head_dim)
+        History-stream keys and values.
+
+    Returns
+    -------
+    attended : torch.Tensor of shape (B, heads, L, head_dim)
+    """
+    if torch.version.hip:
+        return _attend_earlier_and_self_explicit(q, history_k, history_v, self_k, self_v)
+    length = q.shape[-2]
+    position = torch.arange(length, device=q.device)
+    earlier = position.view(1, -1) < position.view(-1, 1)
+    mask = torch.cat([earlier, position.view(1, -1) == position.view(-1, 1)], dim=-1)
+    return F.scaled_dot_product_attention(
+        q,
+        torch.cat([history_k, self_k], dim=-2),
+        torch.cat([history_v, self_v], dim=-2),
+        attn_mask=mask,
+    )
+
+
+def _attend_earlier_and_self_explicit(q, history_k, history_v, self_k, self_v):
+    """:func:`_attend_earlier_and_self` without ``scaled_dot_product_attention``.
+
+    The own key enters as one extra column, so the scores are ``(L, L + 1)``
+    instead of ``(L, 2L)``; the softmax runs in fp32.
 
     Parameters
     ----------

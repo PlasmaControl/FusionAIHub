@@ -652,7 +652,9 @@ def test_forecast_context_never_sees_the_frame_it_replaces():
 def test_explicit_earlier_and_self_attention_matches_masked_sdpa():
     import torch.nn.functional as F
 
-    from tokamak_foundation_model.ignite.dynamics import _attend_earlier_and_self
+    from tokamak_foundation_model.ignite.dynamics import (
+        _attend_earlier_and_self_explicit,
+    )
 
     torch.manual_seed(0)
     q, hk, hv, sk, sv = (torch.randn(3, 2, 7, 4) for _ in range(5))
@@ -664,7 +666,7 @@ def test_explicit_earlier_and_self_attention_matches_masked_sdpa():
         q, torch.cat([hk, sk], 2), torch.cat([hv, sv], 2), attn_mask=mask
     )
     assert torch.allclose(
-        _attend_earlier_and_self(q, hk, hv, sk, sv), reference, atol=1e-6
+        _attend_earlier_and_self_explicit(q, hk, hv, sk, sv), reference, atol=1e-6
     )
 
 
@@ -753,3 +755,23 @@ def test_dropped_seed_tokens_are_invisible_and_scored(monkeypatch, block_forcing
         for stream in seen["inputs"]:
             assert (stream[m.name][:, :k0] == m.codebook_size).all()
         assert seen["mask"][m.name][:, :k0].all()
+
+
+def test_fused_earlier_and_self_attention_matches_explicit_with_gradients():
+    from tokamak_foundation_model.ignite.dynamics import (
+        _attend_earlier_and_self,
+        _attend_earlier_and_self_explicit,
+    )
+
+    torch.manual_seed(0)
+    inputs = [torch.randn(3, 2, 7, 4) for _ in range(5)]
+    outputs, grads = [], []
+    for attend in (_attend_earlier_and_self, _attend_earlier_and_self_explicit):
+        leaves = [x.clone().requires_grad_() for x in inputs]
+        out = attend(*leaves)
+        (out * torch.linspace(-1, 1, out.numel()).view_as(out)).sum().backward()
+        outputs.append(out.detach())
+        grads.append([leaf.grad for leaf in leaves])
+    assert torch.allclose(outputs[0], outputs[1], atol=1e-6)
+    for fused, explicit in zip(*grads):
+        assert torch.allclose(fused, explicit, atol=1e-6)
