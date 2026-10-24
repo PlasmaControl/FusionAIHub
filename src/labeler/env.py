@@ -28,7 +28,7 @@ CLUSTERS = {
         },
     },
     "stellarai": {
-        "hosts": ("stellarai", "stellar-ai"),
+        "hosts": ("stellarai", "sai-"),
         "env": {
             "LABELER_ROOT": "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler",
             "SHOT_DESIGN_DATA_ROOT": (

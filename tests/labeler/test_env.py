@@ -82,7 +82,8 @@ def _host(monkeypatch, name, *, cluster=None, slurm=None):
     ("stellar-i01n1", "stellar"),
     ("stellar-m03n2", "stellar"),
     ("stellarai-vis2.princeton.edu", "stellarai"),
-    ("stellar-ai-m01n3", "stellarai"),
+    ("sai-n08n18", "stellarai"),
+    ("sai-n02g6", "stellarai"),
     ("login01.frontier.olcf.ornl.gov", None),
 ])
 def test_cluster_follows_the_hostname_prefix_longest_first(host, expected, monkeypatch):

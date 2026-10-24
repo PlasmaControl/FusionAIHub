@@ -63,8 +63,8 @@ another name, so `prepare_data.py` needs no changes, only path overrides.
 ## Environment variables
 
 The package commands and the sbatch launchers need nothing exported for the three data roots.
-On `stellarai-*` and `stellar-ai-*` hosts the `stellarai` row of `labeler.env.CLUSTERS` applies, and the longest
-hostname prefix wins, so neither is taken for Stellar:
+On `stellarai-*` hosts (the login node) and `sai-*` hosts (the compute nodes) the `stellarai` row of
+`labeler.env.CLUSTERS` applies, and the longest hostname prefix wins, so neither is taken for Stellar:
 
 ```
 LABELER_ROOT          = /scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler
@@ -73,10 +73,10 @@ LABELER_LABEL_TABLES  = /scratch/gpfs/EKOLEMEN/D3D/events
 ```
 
 `SHOT_DESIGN_CORPUS` is not in the table: export `/scratch/gpfs/EKOLEMEN/D3D/signals`, since
-the pixi default names Stellar's corpus. The hostname prefixes in the row (`stellarai`, `stellar-ai`) were
-set from the login node and a guess at the compute nodes; a compute node's hostname and `SLURM_CLUSTER_NAME` here have not been
-checked. In a job, print `python src/labeler/env.py --cluster`; if it does not say `stellarai`,
-set `LABELER_CLUSTER=stellarai` for the job. The `scripts/labeler` launchers run `env.py` with
+the pixi default names Stellar's corpus. Checked 2026-10-24: `stellarai-vis2.princeton.edu`, a CPU
+node (`sai-n08n18`) and a GPU node (`sai-n02g6`) all print `stellarai` from
+`python src/labeler/env.py --cluster`, and jobs carry `SLURM_CLUSTER_NAME=stellarai` as well. If a new
+node type prints anything else, set `LABELER_CLUSTER=stellarai` for the job. The `scripts/labeler` launchers run `env.py` with
 Stellar's main-checkout `labeler` environment unless `LABELER_PIXI_ENV` names this checkout's. See
 [Environment variables](../reference/environment-variables.md#which-cluster).
 

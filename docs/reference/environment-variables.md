@@ -41,7 +41,8 @@ The table is picked by `labeler.env.cluster()`, in this order:
    name, means no cluster: the Python constants apply (`labeler.config`'s
    `DEFAULT_*`, `configs/shot_design/paths.yaml`). The test suites set it empty. A
    non-empty name that is not a row (`Stellar`, a typo) is noted once on stderr.
-2. The hostname's prefix, longest first (`stellarai-*` and `stellar-ai-*` before `stellar-*`).
+2. The hostname's prefix, longest first (`stellarai-*` before `stellar-*`; StellarAI's
+   compute nodes are `sai-*`).
 3. Slurm's `SLURM_CLUSTER_NAME`, when it is a table key.
 
 For one variable the order is: the exported value, else the cluster's row,
