@@ -152,10 +152,10 @@ def retrying(call: Callable, directory=None):
             time.sleep(0.1 * (attempt + 1))
 
 
-def read_text(path) -> str:
+def read_text(path, errors: str = "strict") -> str:
     """The file's text, read again when NFS says the handle went stale."""
     path = Path(path)
-    return retrying(lambda: path.read_text(encoding="utf-8"), path.parent)
+    return retrying(lambda: path.read_text(encoding="utf-8", errors=errors), path.parent)
 
 
 def _whole(shot) -> bool:
@@ -170,20 +170,24 @@ def read_lines(
     A canonical log is read `strict`: a line that does not parse raises, because a
     merge must not rewrite a file it cannot reproduce. A writer file is read
     tolerantly: a torn or non-JSON line is skipped and its `(path, line number)`
-    is added to `bad`. So is a line whose `shot` is not a whole number (`shots`),
-    which the merge could not file; `shots=False` reads a log of other lines
-    (`rejected.jsonl`).
+    is added to `bad`. So is a line with a byte that is not UTF-8, so one bad byte
+    costs its line and not the file, and a line whose `shot` is not a whole number
+    (`shots`), which the merge could not file; `shots=False` reads a log of other
+    lines (`rejected.jsonl`).
     """
     path = Path(path)
     if not path.is_file():
         return []
-    text = read_text(path)
+    # A tolerant read keeps a byte that is not UTF-8 as a lone surrogate, which
+    # `encode` below refuses, so that line alone is skipped.
+    text = read_text(path, errors="strict" if strict else "surrogateescape")
     found = []
     for number, line in enumerate(text.split("\n"), 1):
         line = line.rstrip("\r")
         if not line.strip():
             continue
         try:
+            line.encode("utf-8")
             entry = json.loads(line)
             if not isinstance(entry, dict):
                 raise ValueError("not a JSON object")  # noqa: TRY004 (caught below)
@@ -384,10 +388,41 @@ def holder(review) -> str | None:
     if age is None:
         return None
     try:
-        who = (Path(review) / LOCK / "holder").read_text().strip()
+        who = ((Path(review) / LOCK / "holder").read_text().splitlines() or ["unknown"])[0].strip()
     except OSError:
         who = "unknown"
     return f"{who} for {age:.0f} s"
+
+
+def _token_of(directory) -> str | None:
+    """The token a lock directory's `holder` file carries, or None when it has none."""
+    try:
+        lines = (Path(directory) / "holder").read_text().splitlines()
+    except OSError:
+        return None
+    return next((x.split(None, 1)[1].strip() for x in lines if x.startswith("token ")), None)
+
+
+def _release(path: Path, token: str | None) -> None:
+    """Remove the lock at `path` only if it is still the one that carries `token`. A
+    holder that outlives the stale age finds its lock broken, and maybe another process
+    inside a lock of its own: that one is not ours to remove. The lock is renamed aside
+    first, so what is checked is what is removed. One that was not ours goes back where it
+    was; if a third process has taken the name meanwhile, the old one is dropped (its owner
+    then finds a token that is not its own and leaves the new lock alone). `token` is None
+    when the holder file could not be written; then only a lock without a token is removed."""
+    done = path.with_name(f"{LOCK}.done.{token or uuid.uuid4().hex}")
+    try:
+        os.rename(path, done)
+    except OSError:  # gone (broken as stale and not retaken), or not ours to rename
+        return
+    if _token_of(done) != token:
+        try:
+            os.rename(done, path)
+            return
+        except OSError:
+            pass
+    shutil.rmtree(done, ignore_errors=True)
 
 
 def _break_stale(path: Path, stale: float) -> bool:
@@ -420,7 +455,8 @@ def _break_stale(path: Path, stale: float) -> bool:
 def lock(review, *, wait: float = 20.0, stale: float = STALE_LOCK_S):
     """Hold `review/.lock` (a `mkdir`) for the body; raise `StoreBusy` when it stays
     held for `wait` seconds. After it is taken both directory listings are
-    refreshed, so what the body reads is not older than the last holder's writes."""
+    refreshed, so what the body reads is not older than the last holder's writes. The
+    lock carries a token, and leaving removes it only while it is still this one's."""
     review = Path(review)
     path = review / LOCK
     deadline = time.monotonic() + wait
@@ -436,20 +472,21 @@ def lock(review, *, wait: float = 20.0, stale: float = STALE_LOCK_S):
             if time.monotonic() >= deadline:
                 raise StoreBusy(f"{path} is held by {holder(review)}") from None
             time.sleep(random.uniform(0.05, 0.25))
+    token: str | None = uuid.uuid4().hex
     try:
         _chmod(path, dir_mode(review))
         try:
             (path / "holder").write_text(
                 f"{writer_id()} pid {os.getpid()} at "
-                f"{datetime.now(UTC).isoformat(timespec='seconds')}\n"
+                f"{datetime.now(UTC).isoformat(timespec='seconds')}\ntoken {token}\n"
             )
         except OSError:
-            pass
+            token = None
         refresh(review)
         refresh(review / SAVES)
         yield
     finally:
-        shutil.rmtree(path, ignore_errors=True)
+        _release(path, token)
 
 
 # ---- the merge ----

@@ -6,6 +6,7 @@ folder's own `labeler-sync` commands are run through `sync.main`.
 
 from __future__ import annotations
 
+import contextlib
 import errno
 import importlib.util
 import itertools
@@ -461,6 +462,52 @@ def test_a_clock_running_fast_does_not_break_a_live_lock(event_dir, monkeypatch)
     old = real() - 600
     os.utime(review / saves.LOCK, (old, old))
     assert saves._break_stale(review / saves.LOCK, 120) is True
+
+
+def test_leaving_a_lock_never_removes_the_lock_of_the_process_that_broke_it(event_dir):
+    """A holder that outlives the stale age (suspended, a hard NFS mount) finds its lock
+    broken and taken by B. When A leaves, B's lock stays, so C cannot enter while B is in."""
+    review = saves.review_dir(event_dir)
+    a, b = contextlib.ExitStack(), contextlib.ExitStack()
+    a.enter_context(saves.lock(review))
+    old = time.time() - 600
+    os.utime(review / saves.LOCK, (old, old))
+    b.enter_context(saves.lock(review, wait=1))   # B breaks A's stale lock and takes its own
+    a.close()
+    assert (review / saves.LOCK).is_dir()
+    with pytest.raises(saves.StoreBusy), saves.lock(review, wait=0):  # C is refused
+        pass
+    b.close()
+    assert not (review / saves.LOCK).exists()
+    # a lock broken as stale that nobody took since is simply gone when its holder leaves
+    c = contextlib.ExitStack()
+    c.enter_context(saves.lock(review))
+    saves.shutil.rmtree(review / saves.LOCK)
+    c.close()
+    assert not [p.name for p in review.iterdir() if p.name.startswith(saves.LOCK)]
+
+
+def test_a_non_utf8_byte_in_a_writer_file_skips_that_line_and_stops_nothing(
+    events, event_dir, monkeypatch, clock, capsys
+):
+    labels.save(event_dir, 1, spans((100, 300, 1)), source=None)
+    torn = b'{"shot": 2, "sav\xff\n'                  # cut off, and not UTF-8
+    named = json.dumps(line(3, 3, name="caf@")).encode().replace(b"@", b"\xe9")  # JSON, bad byte
+    fine = json.dumps(line(4, 4)).encode()
+    mallory = event_dir / "review" / saves.SAVES / "history.mallory.n9.jsonl"
+    mallory.write_bytes(torn + named + b"\n" + fine + b"\n")
+    as_writer(monkeypatch, "bob", "n2")
+    outcome: dict = {}
+    labels.save(event_dir, 5, spans((100, 300, 1)), source=None, outcome=outcome)
+    assert outcome["pending"] is False
+    assert sorted(labels.read_saved(event_dir)) == [1, 4, 5]   # 2 and 3 were never filed
+    assert saves.pending(event_dir, "history") == 0
+    run = ["--events", str(events)]
+    capsys.readouterr()
+    assert sync.main(["status", *run]) == 0
+    assert "2 torn lines" in capsys.readouterr().out
+    assert sync.main(["check", *run]) == 0
+    assert "2 torn, non-JSON or shotless lines" in capsys.readouterr().out
 
 
 def test_init_applies_the_permission_table(events, event_dir):

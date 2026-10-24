@@ -8,9 +8,11 @@ contributor does and what the owner runs.
 ## Status
 
 The shared folder on `/projects` (`/projects/EKOLEMEN/fusionaihub_labels/events`) is
-not active. The label folder both clusters use today is still the one
-`LABELER_LABEL_TABLES` names (default `/scratch/gpfs/EKOLEMEN/nc1514/events`), and the
-code in this change only makes it safe for several accounts to save into one folder.
+not active. The two clusters use two separate label folders today, each a copy until
+the migration: on Stellar the owner exports `LABELER_LABEL_TABLES` as
+`/scratch/gpfs/EKOLEMEN/nc1514/events`, and StellarAI uses the default of this branch,
+`/scratch/gpfs/EKOLEMEN/D3D/events`. The code in this change only makes it safe for
+several accounts to save into one folder.
 Before the `/projects` folder is the default, in this order:
 
 1. The cluster defaults point both clusters at it (a separate change).
@@ -159,7 +161,7 @@ Every command takes `--events DIR` (default: the label folder of the environment
 | `merge [--dry-run] [--retry-rejected]` | Folds the writers' files into the merged files, for every event that has any. `--retry-rejected` tries the saves the label table refused once more, after the cause is fixed; a line an owner script took back is never retried. |
 | `import-tree SOURCE [--tag T] [--dry-run]` | Adds the review lines of another label folder that this one does not hold (by id) to a writer file `saves/<kind>.import.<tag>.jsonl`, then merges. Run it again any time; it adds only what is new, never overrides a newer save, and skips a line that was withdrawn or refused here, or that the source took back (below). The target must already hold the tables (below). |
 | `init [--dry-run]` | Applies the permission table, for the owner, once: makes `review/` and `review/saves/` and sets 2775 on them, on an existing `review/legacy/` and on an existing `<event>/subcategories/` (where the first save of a new subcategory makes its folder; an event with none needs the owner to make it); sets 0644 on the files in `review/` and `review/saves/`; sets 0600 on `raw/elm_challenge_key_*.json` (other copies of the key are not touched). Needs the owner's rights; nothing else changes. |
-| `check` | Writes nothing and exits 1 when something is wrong: an unreadable merged file, a lock older than 120 seconds, a file not readable by all, or a shot whose label is not what its last save made. It also prints notes: torn lines, saves the table refused (and the retry command), lines without a `save_id` after the first one that has it (an older writer), directories that are not group-writable, and shots that differ from a last save written before ids existed. |
+| `check` | Writes nothing and exits 1 when something is wrong: an unreadable merged file, a lock older than 120 seconds, a file not readable by all, or a shot whose label is not what its last save made. It also prints notes: torn lines (a line with a byte that is not UTF-8 counts as torn; the merge skips it), saves the table refused (and the retry command), lines without a `save_id` after the first one that has it (an older writer), directories that are not group-writable, and shots that differ from a last save written before ids existed. |
 | `repair [--shot N]` | Writes again the last save of the shots `check` reports, or of the shots named. It undoes an edit of `labels.csv` made on purpose (by hand, or by `regrid_saved_labels.py`, which leave the history alone), so use `--shot` only for a shot you mean to put back. |
 
 `import-tree` in detail:
@@ -178,7 +180,8 @@ Every command takes `--events DIR` (default: the label folder of the environment
   source's folder first, then import into the copy.
 - A subcategory the source has and this folder lacks is made, as a page save would make
   it. An event this folder lacks is not made (exit 2). Source lines that cannot be read
-  (torn, not JSON, a shot that is not a whole number) are skipped, counted and give exit 2.
+  (torn, not JSON, a byte that is not UTF-8, a shot that is not a whole number) are skipped,
+  counted and give exit 2.
 
 Scripts that rewrite the merged files take the same lock now:
 `scripts/labeler/regrid_saved_labels.py` (it also refuses a table that changed since
@@ -191,12 +194,19 @@ then report shots whose label differs from their last save (a dropped span, a se
 midpoint claim); do not `repair` those.
 
 Known limits: two processes that break the same stale lock at the same moment can both
-proceed (`check` is the net). A lock counts as stale when its age is more than 120
-seconds against the stamp of a file made just beside it. On NFS both stamps are the
-server's, so a machine whose own clock is wrong does not break a live lock; on GPFS
-(`/scratch/gpfs`, and `/projects` on Stellar) the node that makes a file stamps it, so
-the two are node clocks, which NTP keeps within about a second. A mask click that finds
-the lock held waits up to 20 seconds, once, and then returns with the save pending.
+proceed (`check` is the net). A holder that outlives the stale age (suspended, or stuck on
+a hard NFS mount) finds its lock broken and, it may be, another process inside a lock of
+its own. Each lock carries a token in its `holder` file and a process removes the lock
+only if the token is its own, so the late holder's exit does not open the new holder's
+lock to a third process; but until it exits, its work still overlaps the new holder's
+(the writer files are the source of truth, the next merge restores the table, and `check`
+is the net). A lock counts as stale when its age is more than 120 seconds against the
+stamp of a file made just beside it. `/projects` is NFSv3 through a gateway on Stellar (it
+is not GPFS), so the gateway stamps both the lock and the probe and a machine whose own
+clock is wrong does not break a live lock; on GPFS (`/scratch/gpfs`) the node that makes
+a file stamps it, so the two are node clocks, which NTP keeps within about a second. A
+mask click that finds the lock held waits up to 20 seconds, once, and then returns with
+the save pending.
 
 The migration itself (backups, folding the live folder into the shared one, the
 permissions, the probe) is not written here, because the shared folder is not active.
