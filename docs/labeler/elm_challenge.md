@@ -12,10 +12,15 @@ owner the repository may be used freely. We use it twice, without copying their 
   Dataset 4 of the ELM README (`edge_localized_mode_challenge_format_2026_v1`);
 - **as a held-out benchmark**: its 24 DIII-D shots are `holdout` rows of the ELM roster
   (`shots.csv`, tier `unverified`). None is one of the 119 reviewed shots the models trained
-  on, no method is trained or tuned on them (the key is public), and only 163518 is also in
-  Dataset 1. 23 of the 24 were reviewed afterwards (Ricardo Shousha, 2026-10-23, in the live
-  review table): they stay evaluation-only (`train.check_no_holdout` refuses them in every
-  training path) and are scored in [elm_heldout.md](elm_heldout.md).
+  on, no method of ours is trained or tuned on them (the key is public), and only 163518 is
+  also in Dataset 1. 23 of the 24 were reviewed afterwards (Ricardo Shousha, 2026-10-23, in
+  the live review table): they stay evaluation-only and are scored in
+  [elm_heldout.md](elm_heldout.md). No path that trains on the review table can take one
+  (`train.check_no_holdout`, called by `train.load` and `elm_inst.py prepare`).
+  `elm_dsm_train.py` does not read that table: it fits Hiro's fixed Dataset 1 split, whose
+  training shots include 163518
+  (`models/d3d_elm_time_to_event_dsm/training_membership.json`), so the DSM models have
+  seen that one key shot.
   The challenge's merit function runs unchanged from a pinned clone outside the repository.
 
 The numbers below are **scored with the challenge's merit function at commit b71f991**.

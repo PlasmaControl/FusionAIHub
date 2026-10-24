@@ -5,7 +5,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=1000M
+#SBATCH --mem=900M
 #SBATCH --time=00:30:00
 #SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/runs/slurm/%j.out
 #SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/runs/slurm/%j.out
@@ -31,12 +31,16 @@
 #   gate:       python -m labeler.jobstats --job-id <id> --cpu-only
 #
 # sizing (2026-10-24): the pilot (job 2977011, 4 of his shots and the old panel) 22 s,
-# 0.75 GB. The full run on 8 CPUs and 4G (job 2977012) took 1 min 36 s and failed the
-# jobstats gate (CPU 24.9 %, memory 22.9 % = 0.92 GB); on 2 CPUs and 1200M (job 2977014)
-# 1 min 44 s, CPU 63.1 %, memory 55.9 % (0.67 GB), still failing. The run is one
-# serial pass of file reads and small U-Nets, so one CPU: at --mem=900M (job 2977016) it
-# took 2 min 44 s, CPU 79.3 %, memory 98.1 % (the gate passed, with no margin), so the
-# request is 1000M.
+# 0.75 GB. The first full runs, 8 CPUs and 4G (job 2977012) and 2 CPUs and 1200M (job
+# 2977014), failed the jobstats gate (CPU 24.9 % and 63.1 %, memory 22.9 % and 55.9 %):
+# the run is one serial pass of file reads and small U-Nets, so it asks for one CPU. With the
+# input screen added (the reference levels of the 119 reviewed shots), jobs 2977028 (1000M,
+# cold file cache, 5 min 54 s: CPU 36.3 %, memory 69 %) and 2977032 (1100M: CPU 77.6 %,
+# memory 60.8 %) failed; job 2977033 at 900M took 2 min 43 s and passed (CPU 78.6 %, memory
+# 72.8 %). The memory the gate reads is a sampled mean, and sacct's MaxRSS follows the
+# allowance (894, 992 and 1065 MiB at 900, 1000 and 1100M) because it counts reclaimable file
+# pages, so a larger request only lowers the gate's figure: keep 900M, which has run twice
+# (jobs 2977016 and 2977033) without an OOM.
 set -euo pipefail
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
 ENV="${ENV:-/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler}"
