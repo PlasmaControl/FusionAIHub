@@ -5,8 +5,8 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=16G
-#SBATCH --time=01:00:00
+#SBATCH --mem=4G
+#SBATCH --time=00:30:00
 #SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/runs/slurm/%j.out
 #SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/runs/slurm/%j.out
 
@@ -25,8 +25,13 @@
 #
 #   pilot:      ARGS="--shots 192045 206709 --skip-old --no-run-days --out-dir <scratch>" \
 #                 sbatch --time=00:15:00 <this>
-#   full run:   sbatch <this>      (--mem reset to the pilot's MaxRSS x 1.2)
+#   full run:   sbatch <this>
 #   gate:       python -m labeler.jobstats --job-id <id> --cpu-only
+#
+# sizing (2026-10-24, login-node SLURM pilot job 2977011: 4 of his shots and the old
+# panel, 22 s, 0.75 GB MaxRSS): the full run adds 77 shots of ten small U-Nets on one
+# CPU thread each and ELM-O on the 34 with BES, so --mem=4G (pilot x 5) and a 30 minute
+# limit (the logs scan for the run days reads 0.6 GB once).
 set -euo pipefail
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
 ENV="${ENV:-/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler}"
