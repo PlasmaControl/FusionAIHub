@@ -554,8 +554,11 @@ below, so several accounts can save into one folder; see
   the intervals, also returned by the label/history API; null entries mean
   unspecified. Older history entries without it remain unspecified (the history view
   restores them as spans for the span events above).
-  Lines are only added, never changed (a save made earlier on another account that
-  reaches the merge late goes before the later ones): a shot's versions are its lines in
+  Saves add lines (a save made earlier on another account that reaches the merge late
+  goes before the later ones; only owner scripts, the Jalal import's rename and
+  withdrawal, ever rewrite one, under the folder's lock). Every process that saves into
+  a folder must run the code that writes `review/saves/`; an older server's append can be
+  lost (see [Shared label folder](shared_labels.md)). A shot's versions are its lines in
   order, numbered from 1, and `GET /api/history?event=&shot=` lists them. Lines
   written before names existed have no `name` and read as unnamed; lines
   written before the sha256 was recorded have no `source_sha256` and match the

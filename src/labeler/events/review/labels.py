@@ -467,8 +467,10 @@ def _table(path, *, grid_ms) -> dict[int, Label]:
 @lru_cache(maxsize=512)  # the silver view reads ~200 tables a shot
 def _read_table(path, _mtime_ns, _ino, _size, grid_ms) -> dict[int, Label]:
     """One label per shot of a format table; cached per file version, never mutate."""
-    validate_csv_fields(path)
-    frame = validate_intervals(pd.read_csv(path, index_col=False))
+    saves.retrying(lambda: validate_csv_fields(path), path.parent)
+    frame = validate_intervals(
+        saves.retrying(lambda: pd.read_csv(path, index_col=False), path.parent)
+    )
     found = {}
     for shot, rows in frame.groupby("shot", sort=False):
         if "attrs" in rows and any(
@@ -555,9 +557,9 @@ def _current(path) -> pd.DataFrame:
 
 
 def _check_editable(current: pd.DataFrame, shot: int, label: Label, crowd_edit: bool):
-    """Refuse a table, or a shot in it, that the page cannot edit without losing data."""
+    """Refuse a shot of the table that the page cannot edit without losing data.
+    The table as a whole is checked by the caller (`validate_intervals`)."""
     selected = pd.to_numeric(current.shot, errors="coerce") == int(shot)
-    validate_intervals(current)
     if "attrs" in current:
         for cell in current.loc[selected, "attrs"]:
             if not cell.strip():
@@ -592,13 +594,17 @@ def _replaced(current: pd.DataFrame, shot: int, label: Label) -> pd.DataFrame:
 
 def apply_labels(event_dir) -> saves.Apply:
     """The merge's step for `labels.csv`: the winning lines replace their shots'
-    rows, one rewrite for the batch; a line the table refuses comes back."""
+    rows, one rewrite for the batch. A line the table refuses for its own sake (a
+    malformed span, a shot with attrs the page cannot edit) comes back. A table that
+    is invalid as it stands is nobody's line to refuse: this raises, the merge stops
+    and every line stays pending until the table is fixed."""
 
     def apply(winners: list[dict]) -> list:
         path = labels_path(event_dir)
         if path.is_file():
             validate_csv_fields(path)
         frame, refused = _current(path), []
+        validate_intervals(frame)
         for entry in winners:
             try:
                 label = Label.from_entry(entry)
@@ -622,9 +628,11 @@ def diverged(
 
     Both are read on the grid, so a table regridded after the save agrees with it.
     Only a line with a `save_id` is held to its label unless `legacy`: older lines
-    were edited around by scripts. With `stale_only` only a shot the table has
-    lost is returned (no label, or an earlier save's): an update another client
-    overwrote, not a label somebody edited on purpose.
+    were edited around by scripts. A `legacy` line is held to the window and the
+    intervals only, since the span flags a later script wrote into the table are not
+    in the line and writing the line back would drop them. With `stale_only` only a
+    shot the table has lost is returned (no label, or an earlier save's): an update
+    another client overwrote, not a label somebody edited on purpose.
     """
     history = read_history(event_dir) if history is None else history
     saved = read_saved(event_dir)
@@ -642,6 +650,10 @@ def diverged(
             want = on_grid(Label.from_entry(entry))
             have = on_grid(saved.get(int(shot)))
             if have == want:
+                continue
+            if "save_id" not in entry and have is not None and (
+                (have.window, have.intervals) == (want.window, want.intervals)
+            ):
                 continue
             if stale_only and have is not None and not any(
                 on_grid(Label.from_entry(old)) == have for old in earlier.get(shot, ())
@@ -735,6 +747,7 @@ def save(
             except pd.errors.ParserError as error:
                 raise SaveRefused(str(error)) from error
         current = _current(path)
+        validate_intervals(current)
         _check_editable(current, shot, label, crowd_edit)
         _replaced(current, shot, label)  # the table this save makes must be valid
         reviewer = getpass.getuser()

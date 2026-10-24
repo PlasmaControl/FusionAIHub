@@ -12,7 +12,9 @@ import json
 import os
 import stat
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from labeler.ae.seg import regions
@@ -182,21 +184,40 @@ def test_a_torn_writer_line_is_skipped_and_the_next_save_ends_it(event_dir):
     merged = merge(event_dir)
     assert [e["shot"] for e in merged.added] == [1] and len(merged.bad) == 1
     saves.append_text(path, json.dumps(line(2, 2)))
+    saves.append_text(path, json.dumps(line([3], 3)))  # parses, but no merge could file it
     assert [e["shot"] for e, _ in saves.read_lines(path)] == [1, 2]
-    merge(event_dir)
-    assert [e["shot"] for e in labels.read_history(event_dir)] == [1, 2]
+    merged = merge(event_dir)  # no TypeError, so no later save fails either
+    assert [e["shot"] for e in labels.read_history(event_dir)] == [1, 2] and len(merged.bad) == 2
 
 
-def test_a_stale_file_handle_is_retried():
-    calls = []
+def test_a_stale_file_handle_is_retried_on_the_read_paths(event_dir, monkeypatch, clock):
+    labels.save(event_dir, 1, spans((100, 300, 1)), source=None, name="Ada")
+    regions.save_decision(event_dir, 170815, [1], pseudo_sha256="0" * 64, name="Ada")
+    stale = []
 
-    def read():
-        calls.append(1)
-        if len(calls) == 1:
+    def once(real, where):
+        def read(*args, **kwargs):
+            if where not in stale:
+                stale.append(where)
+                raise OSError(errno.ESTALE, "stale")
+            return real(*args, **kwargs)
+        return read
+
+    labels._read_table.cache_clear()
+    monkeypatch.setattr(labels.pd, "read_csv", once(pd.read_csv, "table"))
+    assert labels.read_saved(event_dir) == {1: spans((100, 300, 1))}
+    real_text = Path.read_text
+
+    def read_text(self, *args, **kwargs):
+        if self.name in ("masks.jsonl", "history.jsonl") and self.name not in stale:
+            stale.append(self.name)
             raise OSError(errno.ESTALE, "stale")
-        return "text"
+        return real_text(self, *args, **kwargs)
 
-    assert saves.retrying(read) == "text" and len(calls) == 2
+    monkeypatch.setattr(Path, "read_text", read_text)
+    assert [d["shot"] for d in regions.shot_history(event_dir)] == [170815]
+    assert reviewers.saved_names(event_dir.parent) == ["Ada"]
+    assert stale == ["table", "masks.jsonl", "history.jsonl"]
 
 
 def test_with_automerge_off_a_save_waits_for_labeler_sync_merge(
@@ -278,7 +299,9 @@ def test_old_lines_with_one_id_are_each_imported_once(events, event_dir, tmp_pat
     merge(event_dir)
     run = ["import-tree", str(other), "--events", str(events)]
     assert sync.main(run) == 0
-    assert [e["name"] for e in labels.read_history(event_dir)] == ["Alvin", "Nathaniel"]
+    imported = labels.read_history(event_dir)
+    assert [e["name"] for e in imported] == ["Alvin", "Nathaniel"]
+    assert "legacy_id" in imported[1] and not any("save_id" in e for e in imported)
     before = snapshot(events)
     assert sync.main(run) == 0 and snapshot(events) == before
     assert sync.main(["check", "--events", str(events)]) == 0
@@ -298,19 +321,27 @@ def test_a_line_the_table_refuses_is_rejected_once_and_does_not_block_the_rest(
     assert sync.main(["check", "--events", str(events)]) == 0
 
 
-def test_files_and_directories_get_their_modes_whatever_the_umask(event_dir, clock):
+def test_files_and_directories_get_their_modes_whatever_the_umask(events, event_dir, clock):
+    """Files are 0644 under any umask. A directory is made group-writable (2775) only
+    under a parent that is group-writable already, as `init` leaves a shared folder;
+    in a closed folder it is a plain 0755."""
+    shared = events / "confinement"
+    shared.mkdir()
+    shared.chmod(0o2775)
     old = os.umask(0o077)
     try:
         labels.save(event_dir, 1, spans((100, 300, 1)), source=None)
+        labels.save(shared, 1, spans((100, 300, 1)), source=None)
     finally:
         os.umask(old)
-    review = event_dir / "review"
-    for path in (review / "labels.csv", review / "history.jsonl",
-                 *(review / "saves").glob("*.jsonl")):
-        assert stat.S_IMODE(path.stat().st_mode) == 0o644, path
-    for path in (review, review / "saves"):
-        assert stat.S_IMODE(path.stat().st_mode) & 0o777 == 0o775, path
-    assert not [p for p in review.iterdir() if p.name.endswith(".tmp")]
+    for folder, mode in ((event_dir, 0o755), (shared, 0o775)):
+        review = folder / "review"
+        for path in (review / "labels.csv", review / "history.jsonl",
+                     *(review / "saves").glob("*.jsonl")):
+            assert stat.S_IMODE(path.stat().st_mode) == 0o644, path
+        for path in (review, review / "saves"):
+            assert stat.S_IMODE(path.stat().st_mode) & 0o777 == mode, path
+        assert not [p for p in review.iterdir() if p.name.endswith(".tmp")]
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root can write anywhere")
@@ -357,3 +388,116 @@ def test_a_missing_folder_is_never_made_but_a_subcategory_s_own_is(events, clock
     with pytest.raises(saves.StoreMissing):
         labels.save(missing, 1, spans((100, 300, 1)), source=None)
     assert not (events.parent / "no_events").exists()
+
+
+def test_a_bad_table_stops_the_merge_and_the_pending_saves_wait(events, event_dir, capsys):
+    """One invalid row (any shot) is nobody's save to refuse: nothing is rejected, the
+    lines stay pending, and the next merge after the table is fixed takes them."""
+    put(event_dir, "alice.n1", line(1, 1))
+    merge(event_dir)
+    table = labels.labels_path(event_dir)
+    good = table.read_text()
+    table.write_text(good + "1,1,900,800,\n")  # shot 1: the span ends before it starts
+    put(event_dir, "bob.n2", line(2, 2))
+    with pytest.raises(ValueError):
+        merge(event_dir)
+    assert not (event_dir / "review" / "saves" / "rejected.jsonl").exists()
+    assert saves.pending(event_dir, "history") == 1
+    assert sync.main(["merge", "--events", str(events)]) == 2
+    assert "not merged" in capsys.readouterr().out
+    table.write_text(good)
+    assert sync.main(["merge", "--events", str(events)]) == 0
+    assert sorted(labels.read_saved(event_dir)) == [1, 2]
+    assert [e["shot"] for e in labels.read_history(event_dir)] == [1, 2]
+
+
+def test_a_refused_line_is_noted_and_retried_when_asked(events, event_dir, capsys):
+    """A line the table refuses for its own sake is recorded once, `check` and `status`
+    say so, `merge --retry-rejected` takes it after the cause is fixed, and a line an
+    owner script took back is never retried."""
+    review = saves.review_dir(event_dir)
+    table = labels.labels_path(event_dir)
+    table.write_text(
+        'shot,category,t_start,t_end,confidence,attrs\n9,1,100,200,,"{""note"": 1}"\n')
+    put(event_dir, "alice.n1", line(9, 1))      # shot 9 has attrs the page cannot edit
+    put(event_dir, "alice.n1", line(1, 2))
+    taken_back = line(5, 3)
+    put(event_dir, "alice.n1", taken_back)
+    saves.reject(review, [(taken_back, "withdrawn")])
+    first = merge(event_dir)
+    assert [e["shot"] for e in first.added] == [1] and len(first.skipped) == 1
+    record = review / "saves" / "rejected.jsonl"
+    assert len(record.read_text().splitlines()) == 2
+    run = ["--events", str(events)]
+    assert sync.main(["check", *run]) == 0
+    out = capsys.readouterr().out
+    assert "1 saves the label table refused" in out and "shots 9" in out
+    assert sync.main(["status", *run]) == 0
+    assert "1 saves the table refused" in capsys.readouterr().out
+
+    again = saves.merge(event_dir, "history", labels.apply_labels(event_dir),
+                        labels.stale_labels(event_dir), retry_rejected=True)
+    assert len(again.skipped) == 1 and not again.released  # still refused, not recorded twice
+    assert len(record.read_text().splitlines()) == 2
+    table.write_text(table.read_text().replace('"{""note"": 1}"', ""))  # the owner clears it
+    assert sync.main(["merge", "--retry-rejected", *run]) == 0
+    assert sorted(labels.read_saved(event_dir)) == [1, 9]
+    assert [json.loads(t)["shot"] for t in record.read_text().splitlines()] == [5]
+    assert sync.main(["merge", "--retry-rejected", *run]) == 0
+    assert 5 not in labels.read_saved(event_dir)
+
+
+def test_a_clock_running_fast_does_not_break_a_live_lock(event_dir, monkeypatch):
+    review = saves.review_dir(event_dir)
+    (review / saves.LOCK).mkdir()
+    real = saves.time.time
+    monkeypatch.setattr(saves.time, "time", lambda: real() + 3600)
+    assert saves.lock_age(review) > 3000   # this machine's clock says it is an hour old
+    assert saves._break_stale(review / saves.LOCK, 120) is False
+    old = real() - 600
+    os.utime(review / saves.LOCK, (old, old))
+    assert saves._break_stale(review / saves.LOCK, 120) is True
+
+
+def test_init_applies_the_permission_table(events, event_dir):
+    review = saves.review_dir(event_dir)
+    (event_dir / "subcategories").mkdir()
+    (event_dir / "raw").mkdir()
+    key = event_dir / "raw" / "elm_challenge_key_b71f991.json"
+    key.write_text("{}")
+    table = review / "labels.csv"
+    table.write_text("shot\n")
+    table.chmod(0o600)
+    key.chmod(0o644)
+    assert sync.main(["init", "--events", str(events)]) == 0
+    modes = {p: stat.S_IMODE(p.stat().st_mode) for p in (
+        review, review / "saves", event_dir / "subcategories", table, key)}
+    assert modes == {
+        review: 0o2775, review / "saves": 0o2775, event_dir / "subcategories": 0o2775,
+        table: 0o644, key: 0o600,
+    }
+
+
+def test_check_notes_a_line_an_older_server_added_after_the_new_ones(events, event_dir, capsys):
+    put(event_dir, "alice.n1", line(1, 1, save_id="20261024120001000000-a1"))
+    merge(event_dir)
+    with (event_dir / "review" / "history.jsonl").open("a") as stream:  # old code appends
+        stream.write(json.dumps(line(2, 5)) + "\n")
+    assert sync.main(["check", "--events", str(events)]) == 0
+    assert "without a save_id come after" in capsys.readouterr().out
+
+
+def test_a_legacy_line_is_not_held_to_the_span_flags_a_script_added(event_dir, clock):
+    """`repair --shot` writes a save back; for an old line, whose history never had the
+    iscrowd flags the table has, only a real difference counts."""
+    crowd = normalise(WHOLE, [(100, 300, 1), (200, 400, 2)], iscrowd=[1, 1])
+    labels.save(event_dir, 1, crowd, source=None, crowd_edit=True)
+    path = event_dir / "review" / "history.jsonl"
+    saved = json.loads(path.read_text())
+    old = {k: v for k, v in saved.items() if k not in ("save_id", "writer", "iscrowd")}
+    path.write_text(json.dumps(old) + "\n")
+    assert labels.read_saved(event_dir)[1].iscrowd
+    assert labels.diverged(event_dir, legacy=True) == []
+    old["intervals"] = [[100, 350, 1]]
+    path.write_text(json.dumps(old) + "\n")
+    assert [e["shot"] for e in labels.diverged(event_dir, legacy=True)] == [1]

@@ -30,6 +30,22 @@ Before the `/projects` folder is the default, in this order:
 The review page shows nothing yet when a save is waiting for its merge: the reply of
 `POST /api/label` carries `merge.pending`, and showing it is a later change to the page.
 
+### Change-over: every process that saves must run this code
+
+Before this change a save appended to `history.jsonl` and rewrote `labels.csv` in place.
+The merge now replaces both files by rename, so a save made by older code in the same
+moment is in no writer's file and is lost from the history without any notice (an old
+server's rewrite of `labels.csv` can likewise drop merged rows). The first day is the
+risk: a review server that was not restarted, or a script from an old checkout that calls
+`labels.save`. So, before anyone saves into a folder with this code:
+
+- restart every review server that can reach the folder, on both clusters, from a
+  checkout that has this change;
+- run no script from an older checkout that saves labels (`labels.save`, the Jalal
+  import) against the folder;
+- afterwards run `labeler-sync check`: it notes any line without a `save_id` that comes
+  after the first line that has one, which is what an older writer leaves behind.
+
 ## How a save is stored
 
 A save is one line. It goes first into the account's own file, and only then into the
@@ -43,7 +59,10 @@ shared files.
 - Every line carries a `save_id` (the time to the microsecond and six random
   characters) and the `writer`. A line written before this change has neither; its id
   is computed from its `saved_at` and a hash of shot and reviewer, so it is the same
-  after a rename of the reviewer or a regrid.
+  after a rename of the reviewer or a regrid. Old lines of one file that share a
+  computed id (a script saved one shot twice in a second) are told apart by their
+  order, and `import-tree` writes that number into the copy as `legacy_id`; the line
+  stays an old one, not a `save_id` line.
 - The merge takes `review/.lock` (a directory made with `mkdir`, which is atomic on
   the server), reads the writers' files, and folds every line it does not hold yet
   into `review/history.jsonl` (or `masks.jsonl`). A shot's last line, ordered by
@@ -68,17 +87,27 @@ reported by `labeler-sync check`.
 
 Two saves of one shot by two people: both lines are kept, the later one is the label,
 and the earlier one stays in the history. Nothing is shown side by side and no
-conflict record is kept. A label the table refuses (a malformed span) is moved to
-`review/saves/rejected.jsonl`, once, with the reason, and the other lines still merge.
+conflict record is kept.
 
-Files the code creates are mode 0644 and the directories it creates are 2775
-(setgid, group-writable), set in code whatever the account's umask. A line in a
-writer's file that is torn or not JSON is skipped and reported; the next save by that
-writer ends it first.
+A label the table refuses for its own sake (a malformed span, a shot whose rows carry
+attrs the page cannot edit) is recorded in `review/saves/rejected.jsonl`, once, with
+the reason; the line stays in its writer's file and the other lines still merge. It is
+not tried again by itself: `check` and `status` report it, and after the cause is fixed
+`labeler-sync merge --retry-rejected` tries it again. A label table that is invalid as
+it stands (a bad row on any shot) is nobody's save to refuse: the merge stops with an
+error and every line stays pending until the table is fixed.
 
-`LABELER_AUTO_MERGE=0` makes a save append only: nothing is merged until someone runs
-`labeler-sync merge`. The owner can use it to read the writers' files before they
-count.
+Files the code creates are mode 0644, set in code whatever the account's umask. A
+directory it creates follows its parent: 2775 (setgid, group-writable) when the parent
+is group-writable already, which is how `init` leaves a shared folder, and a plain 0755
+otherwise, so making a directory never opens a closed folder to its group. A line in a
+writer's file that is torn, not JSON, or has no whole-number `shot` is skipped and
+reported; the next save by that writer ends a torn one first.
+
+`LABELER_AUTO_MERGE=0` makes the saves of that one process append only: its page saves
+wait for a merge. It is not a gate for the folder: AE mask clicks always merge, and any
+other account's saving process (its own switch left on) folds every writer's pending
+lines into the merged files at its next save. Use it to test, not to hold lines back.
 
 ## Reviewer names
 
@@ -107,8 +136,11 @@ unmerged.
 
 The page reads each shot's spectrogram rows from your `LABELER_ROOT`, not from the
 shared folder. Link the owner's row store read-only (the owner says where) or let the
-page fetch missing shots with fdp after `fdp login`. The page writes only your own
-`LABELER_ROOT` and the shared folder's `review/saves/`.
+page fetch missing shots with fdp after `fdp login`. The page writes your own
+`LABELER_ROOT` and, in the shared folder, your files under `review/saves/`. Its merge
+also replaces `review/labels.csv`, `history.jsonl`, `masks.jsonl` and `saves/rejected.jsonl`
+(by rename, under `review/.lock`), and the first save of a brand-new subcategory makes
+that subcategory's folder.
 
 A mistake of yours is not undone by deleting a line: open the shot, History, restore
 the earlier version as a draft and save. There is no command to withdraw a save.
@@ -124,18 +156,26 @@ Every command takes `--events DIR` (default: the label folder of the environment
 | Command | What it does |
 |---|---|
 | `status` | Lines held, writers' files, unmerged lines, refused lines and a held lock for each event. Writes nothing. |
-| `merge [--dry-run]` | Folds the writers' files into the merged files, for every event that has any. |
+| `merge [--dry-run] [--retry-rejected]` | Folds the writers' files into the merged files, for every event that has any. `--retry-rejected` tries the saves the label table refused once more, after the cause is fixed; a line an owner script took back is never retried. |
 | `import-tree SOURCE [--tag T] [--dry-run]` | Adds the review lines of another label folder that this one does not hold (by id) to a writer file `saves/<kind>.import.<tag>.jsonl`, then merges. Run it again any time; it adds only what is new, never overrides a newer save, and skips a line that was withdrawn or refused here. |
-| `init [--dry-run]` | Makes `review/` and `review/saves/` and sets mode 2775 on them. Needs the owner's rights; nothing else changes. |
-| `check` | Writes nothing and exits 1 when something is wrong: an unreadable merged file, a lock older than 120 seconds, a file not readable by all, or a shot whose label is not what its last save made. It also prints notes (torn lines, directories that are not group-writable, last saves written before ids existed). |
-| `repair [--shot N]` | Writes again the label of the shots `check` reports, or of the shots named. |
+| `init [--dry-run]` | Applies the permission table, for the owner, once: makes `review/` and `review/saves/` and sets 2775 on them, on an existing `review/legacy/` and on an existing `<event>/subcategories/` (where the first save of a new subcategory makes its folder; an event with none needs the owner to make it); sets 0644 on the files in `review/` and `review/saves/`; sets 0600 on `raw/elm_challenge_key_*.json` (other copies of the key are not touched). Needs the owner's rights; nothing else changes. |
+| `check` | Writes nothing and exits 1 when something is wrong: an unreadable merged file, a lock older than 120 seconds, a file not readable by all, or a shot whose label is not what its last save made. It also prints notes: torn lines, saves the table refused (and the retry command), lines without a `save_id` after the first one that has it (an older writer), directories that are not group-writable, and shots that differ from a last save written before ids existed. |
+| `repair [--shot N]` | Writes again the last save of the shots `check` reports, or of the shots named. It undoes an edit of `labels.csv` made on purpose (by hand, or by `regrid_saved_labels.py`, which leave the history alone), so use `--shot` only for a shot you mean to put back. |
 
 Scripts that rewrite the merged files take the same lock now:
 `scripts/labeler/regrid_saved_labels.py` (it also refuses a table that changed since
 it read it), and `scripts/labeler/jalal_wpqh_import.py` (the saved-name rename and the
 withdrawal of its own saves; the withdrawal records the lines in
 `saves/rejected.jsonl` so no merge or `import-tree` brings them back). Run
-`labeler-sync merge` before such a script and do not run it while anyone is saving.
+`labeler-sync merge` before such a script and do not run it while anyone is saving. A
+regrid changes `labels.csv` and not the history, so `check` may then report shots whose
+label differs from their last save (a dropped span, a settled midpoint claim); do not
+`repair` those.
+
+Known limits: two processes that break the same stale lock at the same moment can both
+proceed (`check` is the net). A lock counts as stale by the file server's clock, read
+from the mtime of a file just made beside it, so a machine whose own clock is wrong does
+not break a live lock.
 
 The migration itself (backups, folding the live folder into the shared one, the
 permissions, the probe) is not written here, because the shared folder is not active.

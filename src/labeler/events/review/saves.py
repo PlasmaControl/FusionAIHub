@@ -21,10 +21,14 @@ A line is known to the merge when its id is in the canonical log. The id is the
 line's `save_id`, or, for a line written before ids, `<saved_at>-<hash of shot and
 login>` (never the name or the intervals, so renaming a reviewer or regridding
 a label keeps ids; old lines of one file that share an id are told apart by their
-order in it, see `ids_of`). New lines go into the log in `(saved_at, id)` order and a
-shot's label is the last of its lines: last save wins, by time, whoever merges
-and in whatever batches. Running the merge again changes nothing. A line the
-label table refuses is moved to `saves/rejected.jsonl` and not retried.
+order in it, see `ids_of`, and `import-tree` writes that number into the copy as
+`legacy_id`, which is an id but does not make the line a new-style save). New lines go
+into the log in `(saved_at, id)` order and a shot's label is the last of its lines:
+last save wins, by time, whoever merges and in whatever batches. Running the merge again changes nothing. A line the
+label table refuses for its own sake (a malformed span) is recorded in
+`saves/rejected.jsonl`, stays in its writer's file, and is not tried again until
+`labeler-sync merge --retry-rejected`; a label table that is itself invalid stops the
+merge instead, and every line stays pending.
 """
 
 from __future__ import annotations
@@ -52,7 +56,8 @@ SUBDIR = "subcategories"  # the folder `events.taxonomy.SUBDIR` names
 KINDS = ("history", "masks")
 REJECTED = "rejected.jsonl"
 #: Modes are set in code, whatever the process's umask: a reader needs the files
-#: readable, a writer in the group needs the directories group-writable.
+#: readable, a writer in the group needs the directories group-writable (`dir_mode`
+#: gives that only under a parent that is group-writable already).
 FILE_MODE, DIR_MODE = 0o644, 0o2775
 STALE_LOCK_S = 120.0
 
@@ -87,10 +92,20 @@ def new_save(now: datetime | None = None) -> tuple[str, str]:
     )
 
 
+def _given_id(entry: dict) -> str | None:
+    """The id written into the line: its `save_id`, or the `legacy_id` that
+    `import-tree` gives a later one of several old lines that shared an id."""
+    for key in ("save_id", "legacy_id"):
+        given = entry.get(key)
+        if isinstance(given, str) and given:
+            return given
+    return None
+
+
 def line_id(entry: dict) -> str:
-    """The line's `save_id`, or one computed for a line written before ids."""
-    given = entry.get("save_id")
-    if isinstance(given, str) and given:
+    """The line's own id, or one computed for a line written before ids."""
+    given = _given_id(entry)
+    if given:
         return given
     stamp = re.sub(r"\D", "", str(entry.get("saved_at") or ""))[:14]
     who = f"{entry.get('shot')}|{entry.get('reviewer')}"
@@ -107,7 +122,7 @@ def ids_of(entries: Iterable[dict]) -> list[str]:
     found = []
     for entry in entries:
         base = line_id(entry)
-        if isinstance(entry.get("save_id"), str) and entry["save_id"]:
+        if _given_id(entry):
             found.append(base)
             continue
         seen[base] = seen.get(base, 0) + 1
@@ -136,18 +151,32 @@ def retrying(call: Callable, directory=None):
             time.sleep(0.1 * (attempt + 1))
 
 
-def read_lines(path, *, strict: bool = False, bad: list | None = None) -> list[tuple[dict, str]]:
+def read_text(path) -> str:
+    """The file's text, read again when NFS says the handle went stale."""
+    path = Path(path)
+    return retrying(lambda: path.read_text(encoding="utf-8"), path.parent)
+
+
+def _whole(shot) -> bool:
+    return isinstance(shot, int) and not isinstance(shot, bool)
+
+
+def read_lines(
+    path, *, strict: bool = False, bad: list | None = None, shots: bool = True
+) -> list[tuple[dict, str]]:
     """`(entry, original text)` of each JSON object line of the file, in order.
 
     A canonical log is read `strict`: a line that does not parse raises, because a
     merge must not rewrite a file it cannot reproduce. A writer file is read
     tolerantly: a torn or non-JSON line is skipped and its `(path, line number)`
-    is added to `bad`.
+    is added to `bad`. So is a line whose `shot` is not a whole number (`shots`),
+    which the merge could not file; `shots=False` reads a log of other lines
+    (`rejected.jsonl`).
     """
     path = Path(path)
     if not path.is_file():
         return []
-    text = retrying(lambda: path.read_text(encoding="utf-8"), path.parent)
+    text = read_text(path)
     found = []
     for number, line in enumerate(text.split("\n"), 1):
         line = line.rstrip("\r")
@@ -157,6 +186,8 @@ def read_lines(path, *, strict: bool = False, bad: list | None = None) -> list[t
             entry = json.loads(line)
             if not isinstance(entry, dict):
                 raise ValueError("not a JSON object")  # noqa: TRY004 (caught below)
+            if shots and not strict and not _whole(entry.get("shot")):
+                raise ValueError("shot is not a whole number")
         except ValueError as error:
             if strict:
                 raise ValueError(f"{path}: line {number} is not a JSON object") from error
@@ -185,17 +216,30 @@ def _fsync_dir(directory) -> None:
         pass
 
 
-def shared_mkdir(path, *, under) -> None:
-    """Make `path`, one level, with the shared directory mode. `under` must exist:
-    a missing folder fails here, loudly, instead of a new tree appearing."""
+def dir_mode(parent) -> int:
+    """The mode of a directory made under `parent`: the shared mode (2775) when the
+    parent is already group-writable, so a folder `init` opened to its group stays
+    open, and otherwise a plain 0755 that keeps the parent's setgid bit. Making a
+    directory never opens a closed folder to its group."""
+    mode = stat.S_IMODE(Path(parent).stat().st_mode)
+    if mode & stat.S_IWGRP:
+        return DIR_MODE
+    return 0o755 | (mode & stat.S_ISGID)
+
+
+def shared_mkdir(path, *, under, shared: bool = False) -> None:
+    """Make `path`, one level, with the mode `dir_mode(under)` gives (`shared`: the
+    shared mode whatever the parent's, for `init`). `under` must exist: a missing
+    folder fails here, loudly, instead of a new tree appearing."""
     path, under = Path(path), Path(under)
     if not under.is_dir():
         raise StoreMissing(f"{under} does not exist; nothing was created")
+    mode = DIR_MODE if shared else dir_mode(under)
     try:
         os.mkdir(path)
     except FileExistsError:
         return
-    _chmod(path, DIR_MODE)
+    _chmod(path, mode)
 
 
 def review_dir(event_dir) -> Path:
@@ -284,12 +328,29 @@ def refresh(directory) -> None:
 # ---- the lock ----
 
 
-def lock_age(review) -> float | None:
-    """Seconds since the merge lock was taken, or None when it is free."""
+def server_now(directory) -> float:
+    """The time by the file server's clock: the mtime of a file just made in
+    `directory` (it is removed at once). Falls back to this machine's clock."""
+    probe = Path(directory) / f".probe.{uuid.uuid4().hex[:8]}"
     try:
-        return time.time() - (Path(review) / LOCK).stat().st_mtime
+        fd = os.open(probe, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        try:
+            return os.fstat(fd).st_mtime
+        finally:
+            os.close(fd)
+            os.unlink(probe)
+    except OSError:
+        return time.time()
+
+
+def lock_age(review, *, now: float | None = None) -> float | None:
+    """Seconds since the merge lock was taken, or None when it is free. `now` is the
+    time to measure from (this machine's clock unless given)."""
+    try:
+        taken = (Path(review) / LOCK).stat().st_mtime
     except OSError:
         return None
+    return (time.time() if now is None else now) - taken
 
 
 def holder(review) -> str | None:
@@ -307,8 +368,15 @@ def holder(review) -> str | None:
 def _break_stale(path: Path, stale: float) -> bool:
     """Remove a lock older than `stale` seconds (its holder crashed); True when it
     is gone, by this call or another's. Two breakers racing on one stale lock are
-    the one accepted risk: `check` is the net."""
+    the one accepted risk: `check` is the net. The lock's mtime is the server's, so
+    when this machine's clock calls it stale the age is taken again by the server's
+    clock: a client whose clock runs fast does not break a live lock."""
     age = lock_age(path.parent)
+    if age is None:
+        return True
+    if age <= stale:
+        return False
+    age = lock_age(path.parent, now=server_now(path.parent))
     if age is None:
         return True
     if age <= stale:
@@ -343,7 +411,7 @@ def lock(review, *, wait: float = 20.0, stale: float = STALE_LOCK_S):
                 raise StoreBusy(f"{path} is held by {holder(review)}") from None
             time.sleep(random.uniform(0.05, 0.25))
     try:
-        _chmod(path, DIR_MODE)
+        _chmod(path, dir_mode(review))
         try:
             (path / "holder").write_text(
                 f"{writer_id()} pid {os.getpid()} at "
@@ -369,8 +437,10 @@ class Merged:
     applied: list = field(default_factory=list)     # changed the label table
     superseded: list = field(default_factory=list)  # added, but a later save of the shot won
     skipped: list = field(default_factory=list)     # (entry, why): refused, now rejected
+    released: list = field(default_factory=list)    # rejected before, merged by a retry
     repaired: list = field(default_factory=list)    # re-applied: the table had lost them
-    bad: list = field(default_factory=list)         # (path, line number) of torn writer lines
+    bad: list = field(default_factory=list)         # (path, line number) of lines not read
+    failed: list = field(default_factory=list)      # why the table could not be reconciled
     ids: set = field(default_factory=set)           # every id the canonical log holds now
 
     def outcome(self, save_id: str) -> dict:
@@ -389,8 +459,19 @@ Apply = Callable[[list], list]   # winners -> [(entry, why)] it could not apply
 Stale = Callable[[list], list]   # every entry in order -> those whose label the table lost
 
 
-def rejected_ids(review) -> set[str]:
-    return {e["id"] for e, _ in read_lines(Path(review) / SAVES / REJECTED) if "id" in e}
+def rejected(review) -> list[dict]:
+    """The records of `saves/rejected.jsonl`: `id`, `shot`, `why`, `at`, `writer`, and
+    `retry` (true for a line the label table refused, which `--retry-rejected` may
+    try again; false for one an owner script took back, which stays out)."""
+    return [e for e, _ in read_lines(Path(review) / SAVES / REJECTED, shots=False)]
+
+
+def rejected_ids(review, *, retryable: bool = False) -> set[str]:
+    """The ids of the rejected lines, or only the retryable ones."""
+    return {
+        e["id"] for e in rejected(review)
+        if isinstance(e.get("id"), str) and (e.get("retry") or not retryable)
+    }
 
 
 def merge(
@@ -402,14 +483,17 @@ def merge(
     extra: Iterable[dict] = (),
     wait: float = 20.0,
     dry_run: bool = False,
+    retry_rejected: bool = False,
 ) -> Merged:
     """Fold the writers' lines of `kind` into the canonical log (see the module).
 
     `apply(winners)` changes the label table for the lines that are the last of
-    their shot and returns the ones it refused. `stale(entries)` says which shots'
+    their shot and returns the ones it refused; if the table itself is invalid it
+    raises, and nothing is written or refused. `stale(entries)` says which shots'
     last save the table does not show (an update another client lost); they are
     applied again. `extra` are lines to consider besides the writers' (a dry run
-    of an import). A dry run takes no lock and writes nothing.
+    of an import). `retry_rejected` tries the lines the table refused once more. A
+    dry run takes no lock and writes nothing.
     """
     review = Path(event_dir) / REVIEW
     if not review.is_dir() and not extra:  # no save has been made here: nothing to fold
@@ -417,15 +501,17 @@ def merge(
     if dry_run:
         return _merge(review, kind, apply, stale, extra, dry_run=True)
     with lock(review, wait=wait):
-        return _merge(review, kind, apply, stale, extra, dry_run=False)
+        return _merge(review, kind, apply, stale, extra, dry_run=False,
+                      retry_rejected=retry_rejected)
 
 
-def _merge(review, kind, apply, stale, extra, *, dry_run) -> Merged:
+def _merge(review, kind, apply, stale, extra, *, dry_run, retry_rejected=False) -> Merged:
     result = Merged()
     canonical = review / f"{kind}.jsonl"
     lines = read_lines(canonical, strict=True)
     have = set(ids_of(e for e, _ in lines))
-    refused = rejected_ids(review)
+    retryable = rejected_ids(review, retryable=True)
+    refused = rejected_ids(review) - (retryable if retry_rejected else set())
     found: dict[str, tuple[dict, str]] = {}
     for path in sorted((review / SAVES).glob(f"{kind}.*.jsonl")):
         pairs = read_lines(path, bad=result.bad)
@@ -433,6 +519,7 @@ def _merge(review, kind, apply, stale, extra, *, dry_run) -> Merged:
             found.setdefault(i, pair)
     for entry in extra:
         found.setdefault(line_id(entry), (entry, json.dumps(entry)))
+    named = {id(pair[0]): i for i, pair in found.items()}
     incoming = sorted(
         (pair for i, pair in found.items() if i not in have and i not in refused),
         key=lambda pair: order_key(pair[0]),
@@ -462,39 +549,52 @@ def _merge(review, kind, apply, stale, extra, *, dry_run) -> Merged:
     result.applied = [e for e in added if id(e) in done]
     result.superseded = [e for e in added if id(e) not in done]
     if stale is not None and not dry_run:
-        try:  # a repair that cannot be made must not hold the saves back
+        try:  # a repair that cannot be made must not hold the saves back, but is told
             again = stale([e for e, _ in lines])
             if again and apply is not None:
                 refused_again = {id(e) for e, _ in apply(again)}
                 result.repaired = [e for e in again if id(e) not in refused_again]
-        except (OSError, ValueError):
-            pass
+        except (OSError, ValueError) as error:
+            result.failed.append(f"labels.csv was not compared with the history: {error}")
     result.ids = set(ids_of(e for e, _ in lines))
+    released = (retryable & result.ids) if retry_rejected else set()
+    result.released = [e for e in added if named.get(id(e)) in released]
     if not dry_run:
         if added:
             with replacing(canonical) as tmp:
                 tmp.write_text("".join(text + "\n" for _, text in lines), encoding="utf-8")
-        if result.skipped:
-            reject(review, result.skipped)
+        if result.skipped or released:
+            reject(review, result.skipped, retry=True, forget=released, ids=named)
     return result
 
 
-def reject(review: Path, skipped: list) -> None:
+def reject(
+    review: Path, skipped: list, *, retry: bool = False, forget: Iterable[str] = (),
+    ids: dict | None = None,
+) -> None:
     """Remember the lines `skipped` (pairs of line and reason) so no merge brings
-    them in again: the ones the label table refused, or an owner script took back.
-    The caller holds the folder's lock."""
+    them in again: the ones the label table refused (`retry`: `merge
+    --retry-rejected` may try them again), or an owner script took back (never
+    retried). A line recorded before is recorded again with the new reason, not
+    twice; the `forget` ids leave the file (a retry merged them). `ids` maps
+    `id(entry)` to the id the merge gave it. The caller holds the folder's lock."""
     review = Path(review)
     shared_mkdir(review / SAVES, under=review)
     path = review / SAVES / REJECTED
-    kept = [text for _, text in read_lines(path)]
     at = datetime.now(UTC).isoformat(timespec="seconds")
-    kept += [
-        json.dumps({"id": line_id(e), "shot": e.get("shot"), "why": why, "at": at,
-                    "writer": e.get("writer")})
-        for e, why in skipped
+    new = {}
+    for entry, why in skipped:
+        i = (ids or {}).get(id(entry)) or line_id(entry)
+        new[i] = json.dumps({"id": i, "shot": entry.get("shot"), "why": why, "at": at,
+                             "writer": entry.get("writer"), "retry": retry})
+    gone = {*forget, *new}
+    kept = [
+        text for entry, text in read_lines(path, shots=False)
+        if not (isinstance(entry.get("id"), str) and entry["id"] in gone)
     ]
     with replacing(path) as tmp:
-        tmp.write_text("".join(text + "\n" for text in kept), encoding="utf-8")
+        tmp.write_text("".join(text + "\n" for text in [*kept, *new.values()]),
+                       encoding="utf-8")
 
 
 def pending(event_dir, kind: str) -> int:

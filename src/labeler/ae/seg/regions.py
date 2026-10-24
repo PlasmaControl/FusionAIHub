@@ -103,7 +103,7 @@ def shot_history(event_dir, shot: int | None = None) -> list[dict]:
     if not path.is_file():
         return []
     found = []
-    for line in path.read_text().splitlines():
+    for line in saves.read_text(path).splitlines():
         if line.strip():
             entry = json.loads(line)
             if shot is None or int(entry["shot"]) == int(shot):

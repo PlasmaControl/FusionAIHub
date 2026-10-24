@@ -25,6 +25,7 @@ import os
 from pathlib import Path
 
 from ...config import atomic_path
+from . import saves
 from .labels import REVIEW
 from .versions import clean_name
 
@@ -61,7 +62,7 @@ def _log_lines(path: Path):
     """The log's entries; a line that does not parse is skipped."""
     if not path.is_file():
         return
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in saves.read_text(path).splitlines():
         try:
             entry = json.loads(line)
         except json.JSONDecodeError:
