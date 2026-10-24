@@ -8,12 +8,16 @@ Reads the fetched records of `scripts/labeler/elmo_fetch.py`
 review table, to `$LABELER_ROOT/round4/elm/inputs`.
 
 **Pinned labels.** `review_csv` is the table every ELM benchmark, training and
-evaluation script reads. By default it is the pinned copy `REVIEW_PIN`, the reviewed
-set of 2026-10-17 (119 scored shots and 189093), so the published numbers stay
-reproducible while the live `review/labels.csv` grows (Ricardo Shousha's 81 shots of
-2026-10-23 are a second pin, `2026-10-23`, which only `scripts/labeler/
-elm_heldout_evaluate.py` reads). A pin is a folder of `labels.csv`, `history.jsonl`
-and a `SHA256SUMS`, written once and never edited.
+evaluation script reads. By default it is the pinned copy `REVIEW_PIN`: the 119
+reviewed shots as they stood before the 10 ms regrid of 2026-10-10. Those bytes are
+what the `cv2` run trained on (its `run.json` records sha256 6ae3497e...) and what the
+README's Models lines were scored on (12,409 bins), and every shot of the pin has a
+prepared input, so an unfiltered `train.load` runs. The table of 2026-10-17 (the regridded
+set, 12,481 bins, plus 189093, which has no input) is a second pin, read by
+`labeler.elm.sources` only; Ricardo Shousha's 81 shots of 2026-10-23 are a third, read
+by `scripts/labeler/elm_heldout_evaluate.py`. A pin is a folder of `labels.csv`, a
+`SHA256SUMS` and, where the review kept one, `history.jsonl`, written once and never
+edited. A later review changes the live table, never a pin.
 """
 
 from __future__ import annotations
@@ -42,7 +46,7 @@ def inputs_dir(paths: Paths) -> Path:
 
 
 #: The pinned review labels the ELM scripts read unless they ask for another.
-REVIEW_PIN = "2026-10-17"
+REVIEW_PIN = "2026-10-10"
 
 
 def pins_dir(paths: Paths) -> Path:

@@ -6,8 +6,10 @@ A shot runs whole through the five fold models of the frozen run (`train.predict
 zero-pads it to the network's length multiple); its score is the mean of their event
 probabilities, and it is present where the 50 ms moving mean of that score reaches the
 mean of the five fold thresholds (`labels.runs_of`, the span rule of the evaluation).
-Both the ensemble and that threshold are unevaluated: every reviewed shot is in some
-fold's training set (`docs/labeler/elm_ours.md`, serving protocol).
+The ensemble and that threshold have no out-of-fold score on the reviewed shots, since
+every one is in some fold's training set (`docs/labeler/elm_ours.md`, serving
+protocol); `docs/labeler/elm_heldout.md` scores them on 81 shots a later review
+labelled, none in any fold.
 
 The inputs are the fetched records `$LABELER_ROOT/benchmarks/elm/elmo/signals/<shot>.npz`
 (filterscopes FS02-04 and the fast chords DENV2F and DENV3F, native rate), read by

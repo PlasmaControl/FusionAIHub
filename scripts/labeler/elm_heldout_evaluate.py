@@ -22,6 +22,11 @@ Models, all frozen:
   a fetched record, in memory (the benchmark's own work files are not touched);
 * the ELM clock (v1, v2) and `elm_jump` v2, the suggestion tables.
 
+**Servable shots.** `labeler.elm.serve` publishes a shot only if `serve.input_problems`
+finds nothing wrong with its input (a dead digitiser, a filterscope level outside the
+training range). Each shot's problems are recorded; the deployed `elm-ours` is the score
+on the `servable` shots, and the `all` scores are the model's unscreened output.
+
 Two scores. **Occupancy bins**: the benchmark's 50 ms bins from his crowd and absent
 rows (`labeler.elm.heldout`). **Onset agreement** with his individual 10 ms rows, which
 are the accepted `elm_jump` v2 prefill (17,109 of 17,128): circular for `elm_jump`, and
@@ -78,7 +83,10 @@ CLOCKS = {"elm-clock": "v1", "elm-clock-v2": "v2"}
 CLOCK_PEAKS = "elm-clock-peaks"
 JUMP = "elm-jump"
 SAVED_SERVE = ("silver_gold", "gold_shots")
-PUBLISHED = Path("/scratch/gpfs/nc1514/FusionAIHub/outputs/labeler/elm")
+#: The published records (`inst/evaluation.json` for the onset decoding, `sources/
+#: evaluation.json` for panel A's reproduction check); git-ignored, so a checkout that
+#: did not make them passes `--published`.
+PUBLISHED = REPO / "outputs/labeler/elm"
 
 
 def elmo_module():
@@ -132,7 +140,9 @@ def old_panel(paths: Paths, published: Path) -> dict:
         labels.review_table(prepare.review_csv(paths, PIN_OLD)).shot.astype(int)
     )
     have = {int(f.stem) for f in prepare.inputs_dir(paths).glob("*.npy")}
-    data = train.load(paths, shots=sorted(reviewed & have))
+    data = train.load(
+        paths, shots=sorted(reviewed & have), review=prepare.review_csv(paths, PIN_OLD)
+    )
     sets = compare.load_sets(paths, data)
     elmo_found, _ = compare.load_detected(paths)
     oof = methods.Oof(paths.root / "round4/elm/cv" / OURS_RUN)
@@ -255,9 +265,11 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     # ---- the inputs, in memory
-    valid, no_record = {}, {}
+    valid, no_record, problems = {}, {}, {}
     ours_dir = paths.root / "round4/elm/cv" / OURS_RUN
     ours_models, ours_thresholds = serve.load_models(ours_dir)
+    reference = serve.reference_levels(paths, ours_dir)
+    margin = serve.level_margin(ours_dir)
     ours_thr = float(np.mean(ours_thresholds))
     ours_onset_thr = float(
         np.mean(
@@ -271,6 +283,8 @@ def main(argv: list[str] | None = None) -> int:
     occ_thr = float(np.mean([f["occ_threshold"] for f in inst_folds]))
     onset_thr = float(np.mean([f["onset_threshold"] for f in inst_folds]))
     record_path = args.published / "inst/evaluation.json"
+    if not record_path.is_file():
+        raise SystemExit(f"no {record_path}: pass --published <outputs/labeler/elm>")
     primary = json.loads(record_path.read_text())["primary_decoding"]
     gated = primary == "gated"
     ours_trace, ours_onsets, inst_occ, inst_onsets = {}, {}, {}, {}
@@ -286,6 +300,7 @@ def main(argv: list[str] | None = None) -> int:
             continue
         x = inputs.read_channels(record)
         valid[shot] = x[inputs.VALID]
+        problems[shot] = serve.input_problems(x, reference, margin)
         heads = np.mean([train.predict(m, x, "cpu") for m in ours_models], axis=0)
         ours_trace[shot] = heads[0]  # the event head, as `serve.ensemble` returns it
         ours_onsets[shot] = inputs.GRID0_MS + onset.peaks(heads[1], ours_onset_thr) + 0.5
@@ -304,6 +319,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(json.dumps({"shot": shot, "scored": True}), flush=True)
     scored = sorted(valid)
+    servable = [s for s in scored if not problems[s]]
 
     # the traces `serve` saved before: the same ensemble, so the same numbers
     saved = {}
@@ -396,6 +412,8 @@ def main(argv: list[str] | None = None) -> int:
             ),
             "span_agreement_with_elm_jump_draft": agreement,  # present time: his crowd and individual rows
             "scored": shot in valid,
+            "input_problems": problems.get(shot),  # serve.input_problems; None: no record
+            "servable": shot in valid and not problems[shot],
             "elm_ours_saved_serve_trace": saved.get(shot),
             "has_bes": shot in elmo_out,
             "in_tables": [n for n in tables if shot in held[n]],
@@ -464,20 +482,29 @@ def main(argv: list[str] | None = None) -> int:
             "without_a_shared_run_day": clean,
         }
 
+    def scores(ok):
+        """Occupancy and onset scores of every method on the shots `ok`."""
+        if not ok:
+            return {"occupancy": None, "onset": {}, "onset_cells": {}}
+        covers = {s: panels[s].cover for s in ok}
+        return {
+            "occupancy": heldout.occupancy_set({s: panels[s] for s in ok}, called),
+            "onset": heldout.onset_set(ok, covers, truth, found),
+            "onset_cells": heldout.onset_set(ok, covers, truth, cells(found)),
+        }
+
     sets = {}
     for tag, shots in groups.items():
         ok = [s for s in shots if s in panels]
+        deployed = [s for s in ok if s in servable]
         sets[tag] = {
             "shots": shots,
             "shots_without_record": {str(s): no_record[s] for s in shots if s in no_record},
-            "all": {
-                "occupancy": heldout.occupancy_set({s: panels[s] for s in ok}, called),
-                "onset": heldout.onset_set(
-                    ok, {s: panels[s].cover for s in ok}, truth, found
-                ),
-                "onset_cells": heldout.onset_set(
-                    ok, {s: panels[s].cover for s in ok}, truth, cells(found)
-                ),
+            "all": scores(ok),
+            "servable": {
+                "shots": deployed,
+                "screened_out": {str(s): problems[s] for s in ok if s not in servable},
+                **scores(deployed),
             },
         }
         if clean is not None:
@@ -520,6 +547,24 @@ def main(argv: list[str] | None = None) -> int:
         "pins_agree_on_the_old_shots": pins_agree,
         "reviewer": heldout.REVIEWER,
         "history_sha256": sha256_of(history),
+        "input_screen": {
+            "rule": "serve.input_problems on each shot's input, as labeler.elm.serve applies "
+            "it before it publishes a shot: both density chords present and not a failed "
+            "digitiser, and each filterscope's median level inside the 5th-95th percentile "
+            "of the reviewed shots the folds trained on, widened by one sd of the training's "
+            "level shift; the servable shots are the deployed score, `all` is unscreened "
+            "model output",
+            "reference_shots": len(reference),
+            "range_percentiles": list(serve.LEVEL_RANGE_PERCENTILES),
+            "range": np.percentile(reference, serve.LEVEL_RANGE_PERCENTILES, axis=0)
+            .round(2)
+            .tolist(),
+            "margin_decades": margin,
+            "screened_out": {
+                tag: {str(s): problems[s] for s in shots if problems.get(s)}
+                for tag, shots in groups.items()
+            },
+        },
         "shots": {"B1": groups["B1"], "B2": groups["B2"], "without_record": no_record},
         "models": {
             OURS: {
@@ -581,8 +626,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     for tag in groups:
         block = sets[tag]
-        for view in ("all", "bes"):
+        for view in ("all", "servable", "bes"):
             occ = block[view]["occupancy"]
+            if occ is None:
+                continue
             print(tag, view, occ["n_shots"], "shots", occ["bins"], "bins", occ["bins_by_kind"])
             for name, res in occ["methods"].items():
                 p = res["point"]

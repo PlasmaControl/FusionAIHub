@@ -99,16 +99,26 @@ def check_no_holdout(shots, paths: Paths) -> None:
         raise ValueError(f"held-out challenge shots may not be used: {bad}")
 
 
-def load(paths: Paths, shots=None) -> dict[int, ShotData]:
-    """Every reviewed shot's inputs, dense targets and scored bins (the pinned review
-    labels, `prepare.review_csv`)."""
-    table = labels.review_table(prepare.review_csv(paths))
+def load(paths: Paths, shots=None, review=None) -> dict[int, ShotData]:
+    """Every reviewed shot's inputs, dense targets and scored bins.
+
+    The review labels are the pinned copy `prepare.review_csv(paths)` unless `review`
+    names another `labels.csv`. A shot of the table with no prepared input is an
+    error, named before any input is read; `shots` leaves such a shot out.
+    """
+    table = labels.review_table(prepare.review_csv(paths) if review is None else review)
     cohort = pd.read_csv(paths.catalog / "cohort.csv")
     wanted = sorted(int(s) for s in table.shot.unique())
     if shots is not None:
         wanted = [s for s in wanted if s in set(shots)]
     check_no_test(wanted, cohort)
     check_no_holdout(wanted, paths)
+    missing = [s for s in wanted if not (prepare.inputs_dir(paths) / f"{s}.npy").is_file()]
+    if missing:
+        raise FileNotFoundError(
+            f"no prepared input in {prepare.inputs_dir(paths)} for reviewed shots "
+            f"{missing}: prepare them, or name the shots to load"
+        )
     out = {}
     for shot in wanted:
         x = np.load(prepare.inputs_dir(paths) / f"{shot}.npy")

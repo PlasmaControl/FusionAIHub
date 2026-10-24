@@ -17,9 +17,10 @@ paired differences from `elm_jump`. A shot a table does not hold calls no bin.
 (`per_shot.side` of its meta: "lower", "upper", or "fallback" where the strike
 points could not be read), each part with its own resamples.
 
-**Reference.** The pinned review labels (`prepare.review_csv`: the table of 2026-10-17,
-regridded to 10 ms on 2026-10-11, which reproduces the published clock numbers);
-`--review` scores against another copy of them. Shots without fetched inputs
+**Reference.** The pinned review labels of 2026-10-17 (`SOURCES_PIN`: regridded to
+10 ms on 2026-10-11, 12,481 bins, which reproduces the published record of
+2026-10-14), not the default pin of the other ELM scripts (`prepare.REVIEW_PIN`, before
+the regrid); `--review` scores against another copy of them. Shots without fetched inputs
 (`round4/elm/inputs`) are left out, as the benchmark leaves them.
 
 Writes `<out-dir>/evaluation.json` (default `outputs/labeler/elm/sources`).
@@ -40,6 +41,8 @@ from . import compare, methods, prepare, score, train
 REPO = Path(__file__).resolve().parents[3]
 OUT = REPO / "outputs" / "labeler" / "elm" / "sources"
 RUN = "cv2"
+#: The review pin the published record scored (`prepare.review_csv(paths, SOURCES_PIN)`).
+SOURCES_PIN = "2026-10-17"
 JUMP = "elm-jump"
 #: The elm_jump version the ELM review source points to (v1 earlier on 2026-10-14).
 JUMP_VERSION = "v2"
@@ -133,12 +136,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out-dir", type=Path, default=OUT)
     args = ap.parse_args(argv)
     paths = Paths.from_env()
-    review = args.review or prepare.review_csv(paths)
-    if args.review:
-        prepare.review_csv = lambda _paths: args.review  # train.load reads it
+    review = args.review or prepare.review_csv(paths, SOURCES_PIN)
     reviewed = set(pd.read_csv(review, usecols=["shot"]).shot.astype(int))
     inputs = {int(p.stem) for p in prepare.inputs_dir(paths).glob("*.npy")}
-    data = train.load(paths, shots=sorted(reviewed & inputs))
+    data = train.load(paths, shots=sorted(reviewed & inputs), review=review)
     oof = methods.Oof(paths.root / "round4" / "elm" / "cv" / args.run)
     tables = {
         JUMP: table(paths, "elm_jump", args.jump),

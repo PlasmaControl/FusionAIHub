@@ -5,7 +5,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=900M
+#SBATCH --mem=1000M
 #SBATCH --time=00:30:00
 #SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/runs/slurm/%j.out
 #SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/runs/slurm/%j.out
@@ -21,20 +21,22 @@
 #   export LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labeler
 #   export SHOT_DESIGN_DATA_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/shot_design
 #   export LABELER_LABEL_TABLES=/scratch/gpfs/EKOLEMEN/nc1514/events
-#   sbatch --output=$LABELER_ROOT/runs/slurm/%j.out --error=$LABELER_ROOT/runs/slurm/%j.out <this>
+#   LOG="--output=$LABELER_ROOT/runs/slurm/%j.out --error=$LABELER_ROOT/runs/slurm/%j.out"
 #
+#   full run:   sbatch $LOG <this>
 #   pilot:      ARGS="--shots 192045 206709 --skip-old --no-run-days --out-dir <scratch>" \
-#                 sbatch --time=00:15:00 <this>
-#   full run:   sbatch <this>
+#                 sbatch $LOG --time=00:15:00 <this>
+#   a checkout without outputs/labeler/elm (the records are git-ignored) adds
+#                 REPO=<checkout> ARGS="--published <checkout with them>/outputs/labeler/elm"
 #   gate:       python -m labeler.jobstats --job-id <id> --cpu-only
 #
 # sizing (2026-10-24): the pilot (job 2977011, 4 of his shots and the old panel) 22 s,
 # 0.75 GB. The full run on 8 CPUs and 4G (job 2977012) took 1 min 36 s and failed the
 # jobstats gate (CPU 24.9 %, memory 22.9 % = 0.92 GB); on 2 CPUs and 1200M (job 2977014)
 # 1 min 44 s, CPU 63.1 %, memory 55.9 % (0.67 GB), still failing. The run is one
-# serial pass of file reads and small U-Nets, so one CPU and --mem=900M (0.67 GB x 1.3):
-# job 2977016, 2 min 44 s, CPU 79.3 %, memory 98.1 %, the gate passed. The memory is
-# tight; give a rerun --mem=1000M.
+# serial pass of file reads and small U-Nets, so one CPU: at --mem=900M (job 2977016) it
+# took 2 min 44 s, CPU 79.3 %, memory 98.1 % (the gate passed, with no margin), so the
+# request is 1000M.
 set -euo pipefail
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
 ENV="${ENV:-/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler}"

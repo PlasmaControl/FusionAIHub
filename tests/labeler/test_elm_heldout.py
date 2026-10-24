@@ -1,6 +1,8 @@
 """The frozen-model evaluation on a later review: pins, provenance, onsets and bins."""
 
+import importlib.util
 import json
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -8,6 +10,9 @@ import pytest
 
 from labeler.config import Paths, sha256_of
 from labeler.elm import heldout, inputs, onset, prepare, train
+
+SCRIPTS = Path(__file__).resolve().parents[2] / "scripts" / "labeler"
+HEADER = "shot,t_start,t_end,category,attrs\n"
 
 
 @pytest.fixture
@@ -54,6 +59,48 @@ def test_the_pin_is_the_default_the_live_table_is_asked_for_and_a_missing_pin_is
     assert prepare.review_csv(paths, None) == live
     with pytest.raises(FileNotFoundError):
         prepare.review_csv(paths, "2099-01-01")
+
+
+def _prepared(paths, shots):
+    """A prepared input (`round4/elm/inputs/<shot>.npy`) of 150 ms for each shot."""
+    folder = prepare.inputs_dir(paths)
+    folder.mkdir(parents=True, exist_ok=True)
+    for shot in shots:
+        x = np.zeros((inputs.N_CHANNELS, 1500), dtype=np.float32)
+        x[inputs.VALID] = 1
+        np.save(folder / f"{shot}.npy", x)
+
+
+def test_load_names_every_reviewed_shot_without_an_input_and_a_shot_filter_leaves_it_out(
+    paths,
+):
+    _pin(paths, prepare.REVIEW_PIN, HEADER + "".join(f"{s},0,100,0,\n" for s in (1, 2, 3)))
+    paths.catalog.mkdir(parents=True)
+    pd.DataFrame({"shot": [1, 2, 3], "split": ["train"] * 3}).to_csv(
+        paths.catalog / "cohort.csv", index=False
+    )
+    _prepared(paths, [1, 2])  # the table holds a shot no one has prepared an input for
+    with pytest.raises(FileNotFoundError, match=r"reviewed shots \[3\]"):
+        train.load(paths)
+    assert sorted(train.load(paths, shots=[1, 2])) == [1, 2]
+    other = _write(paths.root / "other.csv", HEADER + "1,0,100,0,\n")
+    assert sorted(train.load(paths, review=other)) == [1]
+
+
+def test_elm_inst_prepare_refuses_a_holdout_shot_before_it_reads_a_signal(paths, monkeypatch):
+    _pin(paths, prepare.REVIEW_PIN, HEADER + "1,0,100,0,\n7,0,100,0,\n")
+    _write(paths.shotlists_manifest, "lists:\n  key: {protect: holdout}\n")
+    _write(paths.shotlists / "key.txt", "7\n")
+    spec = importlib.util.spec_from_file_location("elm_inst", SCRIPTS / "elm_inst.py")
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+
+    def unread(*args, **kwargs):
+        raise AssertionError("a shot was read before the holdout check")
+
+    monkeypatch.setattr(script.challenge, "clock_spans", unread)
+    with pytest.raises(ValueError, match=r"held-out challenge shots may not be used: \[7\]"):
+        script.run_prepare(paths, None)
 
 
 def test_a_pin_is_checked_against_its_sums_and_a_changed_file_is_refused(paths):
