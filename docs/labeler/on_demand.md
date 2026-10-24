@@ -6,7 +6,7 @@ store. Opening one with no store builds it (`events.ondemand`, called from
 `ui.app.Builds`), fetching what the build lacks with fdp. Only labels are stored for
 good: whatever else a shot needs is rebuilt, or fetched again, when it is opened again.
 
-The label tables live in an `events` folder outside the repository (`/scratch/gpfs/EKOLEMEN/D3D/events` by default); the setting `LABELER_LABEL_TABLES` (`Paths.label_tables`) names it.
+The label tables live in an `events` folder outside the repository (by default the cluster's row of `labeler.env.CLUSTERS`: `/scratch/gpfs/EKOLEMEN/nc1514/events` on Stellar, `/scratch/gpfs/EKOLEMEN/D3D/events` on StellarAI); the setting `LABELER_LABEL_TABLES` (`Paths.label_tables`) names it.
 
 ## Which shots are protected
 

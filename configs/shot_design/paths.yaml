@@ -1,5 +1,7 @@
 # Every absolute path the project touches. ${var} refers to another key here or to an env var.
 # Override the root for tests/other users with SHOT_DESIGN_DATA_ROOT, or point SHOT_DESIGN_PATHS at another file.
+# The data_root below applies only with no cluster detected, or with SHOT_DESIGN_PATHS set: on Stellar and
+# StellarAI the cluster's row in labeler.env.CLUSTERS replaces it (an exported SHOT_DESIGN_DATA_ROOT replaces both).
 data_root: /scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/shot_design
 raw_dir: ${data_root}/raw                       # our fetched per-shot files (d3d_fusion_data layout)
 db_dir: ${data_root}/db
@@ -20,4 +22,6 @@ qh_database_csv: /scratch/gpfs/EKOLEMEN/big_d3d_data/0labeled_data/QH_Database.c
 foundation_model_processed_dir: /scratch/gpfs/EKOLEMEN/foundation_model   # <shot>_processed.h5 (IGNITE inputs)
 fdp_project_dir: /scratch/gpfs/nc1514/fdp
 sentence_transformers_model: sentence-transformers/all-MiniLM-L6-v2
-simulate_submit_cmd: sbatch scripts/shot_design/simulate.sbatch {ident}
+# --output/--error here override the script's own #SBATCH lines, which name the StellarAI log folder:
+# the job's log lands in the root it runs against, a folder that exists wherever that root does.
+simulate_submit_cmd: sbatch --output=${data_root}/runs/slurm/%j.out --error=${data_root}/runs/slurm/%j.out scripts/shot_design/simulate.sbatch {ident}

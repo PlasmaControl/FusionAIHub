@@ -19,6 +19,8 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict
 
+from labeler.env import cluster
+from labeler.env import default as cluster_default
 from labeler.env import getenv as labeler_getenv
 
 from .env import getenv
@@ -87,6 +89,16 @@ def using_paths(paths: Paths):
         _PATHS_OVERRIDE.reset(token)
 
 
+def _cluster_data_root() -> str | None:
+    """The cluster's `data_root`, unless `SHOT_DESIGN_PATHS` names a paths file, else None.
+
+    The caller has already ruled out `SHOT_DESIGN_DATA_ROOT`, which outranks both.
+    """
+    if getenv("SHOT_DESIGN_PATHS"):
+        return None
+    return cluster_default("SHOT_DESIGN_DATA_ROOT")
+
+
 def load_paths(path: Path | None = None) -> Paths:
     override = _PATHS_OVERRIDE.get()
     if path is None and override is not None:
@@ -98,11 +110,13 @@ def load_paths(path: Path | None = None) -> Paths:
     raw = yaml.safe_load(p.read_text(encoding="utf-8"))
     if root:
         raw["data_root"] = root
+    elif path is None and (named := _cluster_data_root()):
+        raw["data_root"] = named
     return Paths(**_interpolate(raw))
 
 
 def data_root_origin() -> str:
-    """Which of `load_paths`'s three sources settled `data_root`, phrased for a reader.
+    """Which of `load_paths`'s four sources settled `data_root`, phrased for a reader.
 
     The writing CLI commands print this beside the root before they write. The 2026-09-14
     incident was an exported `SHOT_DESIGN_DATA_ROOT` that pixi's `[activation.env]` had already
@@ -112,7 +126,10 @@ def data_root_origin() -> str:
     This is the environment precedence `load_paths` applies above, in its order. A per-request
     `using_paths` override is a server concern and no writing command runs under one.
 
-    The third label names the file in full rather than saying "configs/shot_design/paths.yaml":
+    The cluster label ("cluster stellar default") says the root came from the cluster's row in
+    `labeler.env.CLUSTERS`, which applies only when neither of the two variables is set.
+
+    The last label names the file in full rather than saying "configs/shot_design/paths.yaml":
     `CONFIG_DIR` follows `SHOT_DESIGN_CONFIG_DIR`, so the packaged path is not always the one that was
     read, and a label naming a file that settled nothing is the same failure as an unlabelled
     root one level up.
@@ -122,6 +139,8 @@ def data_root_origin() -> str:
     path = getenv("SHOT_DESIGN_PATHS")
     if path:
         return f"SHOT_DESIGN_PATHS={path}"
+    if _cluster_data_root():
+        return f"cluster {cluster()} default"
     return f"{CONFIG_DIR / 'paths.yaml'} default"
 
 

@@ -5,8 +5,8 @@ title: Adding a cluster
 The pattern used to port `shot_design`/`labeler` from Stellar to Frontier,
 generalised so a third cluster can follow it. It has three parts: a path
 map (know what has to move), a paths file (one file per cluster, selected
-by an environment variable), and three environment variables that a pixi
-activation block or a shell wrapper sets.
+by an environment variable), and three environment variables that a cluster
+row in `labeler.env.CLUSTERS`, a pixi activation block or a shell wrapper sets.
 
 ## The path map
 
@@ -42,6 +42,16 @@ cluster:
   labels, models, runs).
 - `SHOT_DESIGN_CORPUS` — the read-only DIII-D per-shot HDF5 corpus.
 
+Two of the three, `SHOT_DESIGN_DATA_ROOT` and `LABELER_ROOT`, and the label-table folder
+`LABELER_LABEL_TABLES` are per-cluster defaults held in one place, the `CLUSTERS` table in
+`src/labeler/env.py` (stdlib only, so shell launchers can call it). A row gives the hostname
+prefixes of the cluster (`hosts`, longest match wins) and the value of each variable
+(`env`); an exported variable always wins over the row. Stellar and StellarAI are the two
+rows. `src/shot_design/env.py`, run as a script, hands over to the same table, so a launcher
+gets one answer whichever of the two it asks. A shared label folder later, one both clusters
+mount, is a change to those rows only. A `#SBATCH --output` line cannot read the table: the
+log folder it names must exist on the cluster, or the job fails at launch without a log.
+
 A fourth, `SHOT_DESIGN_PATHS`, does not set a root directly — it points at
 the paths file (below) that resolves every other path the code needs,
 including the three roots above and the text-corpus locations. Whichever of
@@ -66,16 +76,20 @@ To wire a new cluster's file in:
    `labeler/{events,labels,models}`), idempotently, with group-writable
    permissions.
 2. Write `paths.<cluster>.yaml` from the template above.
-3. Add a pixi feature for the cluster (or a plain shell wrapper, if the
-   cluster has no pixi) whose activation environment defaults
-   `SHOT_DESIGN_PATHS`, `SHOT_DESIGN_DATA_ROOT`, `LABELER_ROOT` and
-   `SHOT_DESIGN_CORPUS` to that cluster's values (`"${VAR:-value}"`) — see
+3. Name the cluster's values. For a cluster with the repository checked out
+   on it, add a row to `CLUSTERS` in `src/labeler/env.py` (hostname prefixes
+   and the three variables); do not also set those variables in a pixi
+   activation block, because an activation entry outranks the row and would
+   shadow it. A cluster with its own pixi feature (Frontier) instead adds a
+   feature whose activation environment defaults `SHOT_DESIGN_PATHS`,
+   `SHOT_DESIGN_DATA_ROOT`, `LABELER_ROOT` and `SHOT_DESIGN_CORPUS` to that
+   cluster's values (`"${VAR:-value}"`) — see
    `[tool.pixi.feature.shot-design-frontier.target.unix.activation.env]` in
-   `pyproject.toml` for the Frontier version. List that feature **first**
-   among the environment's features in `[tool.pixi.environments]`: pixi
-   merges activation environments with the first-listed feature's values
-   winning, so a shared feature like `shot-design` (which carries the
-   Stellar roots) must not sort ahead of the cluster-specific one.
+   `pyproject.toml`. List that feature **first** among the environment's
+   features in `[tool.pixi.environments]`: pixi merges activation
+   environments with the first-listed feature's values winning, so a shared
+   feature like `shot-design` must not sort ahead of the cluster-specific one.
+   `SHOT_DESIGN_CORPUS` stays in the `shot-design` activation block for now.
 4. Give the cluster's SLURM wrappers a `_shot_design_common.sh`-style shared
    script that sources the site settings and exports the four variables
    again explicitly, rather than relying on pixi activation inside a batch

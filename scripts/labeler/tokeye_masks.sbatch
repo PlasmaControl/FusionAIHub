@@ -36,13 +36,13 @@
 
 set -euo pipefail
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
-ROOT="${ROOT:-$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler")}"
-RUNTIME_ROOT="${RUNTIME_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler}"
+ROOT="${ROOT:-$("${LABELER_PIXI_ENV:-/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler}/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler")}"
+RUNTIME_ROOT="${RUNTIME_ROOT:-$(env -u LABELER_ROOT "${LABELER_PIXI_ENV:-/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler}/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler")}"
 PHASE3_PYTHON="${PHASE3_PYTHON:-$RUNTIME_ROOT/envs/phase3/bin/python}"
 UNET="${UNET:-$RUNTIME_ROOT/models/tokeye/big_tf_unet_251210.pt}"
 ROOT="$(realpath -m -- "$ROOT")"
 printf 'Resolved root: %s\n' "$ROOT"
-CORPUS="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler/bin/python" "$REPO/src/labeler/env.py" LABELER_CORPUS "/scratch/gpfs/EKOLEMEN/foundation_model")"
+CORPUS="$("${LABELER_PIXI_ENV:-/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler}/bin/python" "$REPO/src/labeler/env.py" LABELER_CORPUS "/scratch/gpfs/EKOLEMEN/foundation_model")"
 SHOT_FILE="${SHOT_FILE:?set SHOT_FILE to the pilot or remaining-shot list}"
 N_CHUNKS="${N_CHUNKS:-1}"
 PREP_WORKERS="${PREP_WORKERS:-7}"

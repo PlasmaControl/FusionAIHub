@@ -70,13 +70,15 @@
 set -euo pipefail
 
 REPO=/scratch/gpfs/nc1514/FusionAIHub
-SHOT_DESIGN_DATA_ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler/bin/python" "$REPO/src/shot_design/env.py" SHOT_DESIGN_DATA_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/shot_design")"
+SHOT_DESIGN_DATA_ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler/bin/python" "$REPO/src/labeler/env.py" SHOT_DESIGN_DATA_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/shot_design")"
 
 cd "$REPO"
 echo "job ${SLURM_JOB_ID:-none} on $(hostname) at $(date -Is)"
 
-export HF_HUB_OFFLINE=1 TOKENIZERS_PARALLELISM=false SHOT_DESIGN_CORPUS="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler/bin/python" "$REPO/src/shot_design/env.py" SHOT_DESIGN_CORPUS "/scratch/gpfs/EKOLEMEN/foundation_model")"
-export LABELER_ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler")"
+SHOT_DESIGN_CORPUS="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler/bin/python" "$REPO/src/shot_design/env.py" SHOT_DESIGN_CORPUS "/scratch/gpfs/EKOLEMEN/foundation_model")"
+export HF_HUB_OFFLINE=1 TOKENIZERS_PARALLELISM=false SHOT_DESIGN_CORPUS
+LABELER_ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler")"
+export LABELER_ROOT
 srun "$REPO/.pixi/envs/shot-design-cpu/bin/python" -m shot_design corpus scan \
     --workers 96 \
     --out "$SHOT_DESIGN_DATA_ROOT/db/corpus_coverage.parquet"

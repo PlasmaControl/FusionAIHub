@@ -69,7 +69,7 @@ from pathlib import Path
 
 import numpy as np
 
-from labeler.env import getenv
+from labeler.env import resolve
 
 from ..config import CONFIG_DIR, CorpusActuator, Paths, SignalSpec, corpus_actuators
 from ..schema import Status
@@ -84,13 +84,15 @@ DTYPE = np.float32
 
 
 def default_features_dir(root: str | os.PathLike | None = None) -> Path | None:
-    """`$LABELER_ROOT/features`, or None when the variable is not set.
+    """`$LABELER_ROOT/features`, or None when no root is known.
 
+    The root is the exported `LABELER_ROOT`, else this cluster's row of `labeler.env.CLUSTERS`.
     None rather than labeler's own default root: a build that silently read another user's
-    feature store would report coverage this repo's environment cannot reproduce. With no root
-    set, every labeler-addressed signal is `pending`, which is true and is a work order.
+    feature store would report coverage this repo's environment cannot reproduce. With no
+    export and no cluster, every labeler-addressed signal is `pending`, which is true and is a
+    work order.
     """
-    root = root or getenv("LABELER_ROOT")
+    root = root or resolve("LABELER_ROOT")
     return Path(root) / "features" if root else None
 
 

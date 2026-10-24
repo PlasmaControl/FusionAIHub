@@ -872,10 +872,13 @@ def _isolate_package_environment():
 
     Module/function fixtures can then set values without later autouse deletion.
     Tests that need a new name absent must delete it explicitly.
+    LABELER_CLUSTER is set empty, which means no cluster: a test resolves the defaults
+    the same way on every host, never to the host's production roots.
     Restore the caller environment when the session ends.
     """
     with pytest.MonkeyPatch.context() as monkeypatch:
         for name in tuple(os.environ):
             if name.startswith(("SHOT_DESIGN_", "LABELER_")):
                 monkeypatch.delenv(name)
+        monkeypatch.setenv("LABELER_CLUSTER", "")
         yield

@@ -12,7 +12,9 @@
 #SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/shot_design/runs/slurm/%j.out
 # One design's ensemble of IGNITE v4 rollouts (real, proposed and null arms) on one A100:
 # what the UI's Simulate button submits on Stellar (paths.yaml: simulate_submit_cmd). The
-# Stellar twin of scripts/slurm_frontier/shot_design_simulate.sh.
+# Stellar twin of scripts/slurm_frontier/shot_design_simulate.sh. The --output/--error lines
+# above name the StellarAI log folder; the UI's submit command overrides them with the data
+# root's runs/slurm, and a submit by hand on Stellar should do the same (-o/-e).
 #   sbatch scripts/shot_design/simulate.sbatch <ident> [simulate args]
 # Sized from pilot 2939099 at the defaults (8 members x 3 arms, 80 frames x 10 passes, fp32,
 # two members per pass): 28:50 elapsed, MaxRSS 3.2 GiB; jobstats CPU 98.9 %, CPU-mem 72.5 %,
@@ -20,8 +22,10 @@
 set -euo pipefail
 REPO="${SLURM_SUBMIT_DIR:-/scratch/gpfs/nc1514/FusionAIHub}"
 ENV="$REPO/.pixi/envs/shot-design"
-export SHOT_DESIGN_DATA_ROOT="${SHOT_DESIGN_DATA_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/shot_design}"
-export LABELER_ROOT="${LABELER_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler}"
+SHOT_DESIGN_DATA_ROOT="$("$ENV/bin/python" "$REPO/src/labeler/env.py" SHOT_DESIGN_DATA_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/shot_design")"
+export SHOT_DESIGN_DATA_ROOT
+LABELER_ROOT="$("$ENV/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler")"
+export LABELER_ROOT
 export SHOT_DESIGN_CORPUS="${SHOT_DESIGN_CORPUS:-/scratch/gpfs/EKOLEMEN/foundation_model}"
 export HF_HUB_OFFLINE=1 OMP_NUM_THREADS=1 HDF5_USE_FILE_LOCKING=FALSE
 export LD_LIBRARY_PATH="$ENV/lib:${LD_LIBRARY_PATH:-}"

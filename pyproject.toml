@@ -73,10 +73,6 @@ platforms = ["linux-64", "win-64"]
 torch = { version = ">=2.5.1,<2.11", index = "https://download.pytorch.org/whl/cu124" }
 torchvision = { version = ">=0.20.1,<0.22", index = "https://download.pytorch.org/whl/cu124" }
 
-# The label tables' folder, outside the repository: a value the caller exports wins.
-[tool.pixi.feature.cuda.target.unix.activation.env]
-LABELER_LABEL_TABLES = "${LABELER_LABEL_TABLES:-/scratch/gpfs/EKOLEMEN/D3D/events}"
-
 [tool.ruff]
 line-length = 88
 
@@ -136,10 +132,6 @@ torchvision = { version = ">=0.20.1", index = "https://download.pytorch.org/whl/
 plotly = ">=6.9,<7"
 anywidget = ">=0.9,<1"
 
-# The label tables' folder, outside the repository: a value the caller exports wins.
-[tool.pixi.feature.labeler.target.unix.activation.env]
-LABELER_LABEL_TABLES = "${LABELER_LABEL_TABLES:-/scratch/gpfs/EKOLEMEN/D3D/events}"
-
 [tool.pixi.feature.shot-design]
 platforms = ["linux-64"]
 
@@ -175,10 +167,9 @@ duckdb = ">=1.1,<2"
 # From pypi, so that torch stays on the pypi side.
 sentence-transformers = ">=6,<7"
 
-# StellarAI roots as defaults: a root the caller exports wins. Offline, or the MiniLM load hangs.
+# The data roots are not set here: they differ per cluster and come from `labeler.env.CLUSTERS`
+# (an activation entry would shadow it). Offline, or the MiniLM load hangs.
 [tool.pixi.feature.shot-design.target.unix.activation.env]
-SHOT_DESIGN_DATA_ROOT = "${SHOT_DESIGN_DATA_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/shot_design}"
-LABELER_ROOT = "${LABELER_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler}"
 SHOT_DESIGN_CORPUS = "${SHOT_DESIGN_CORPUS:-/scratch/gpfs/EKOLEMEN/foundation_model}"
 HF_HUB_OFFLINE = "1"
 TOKENIZERS_PARALLELISM = "false"

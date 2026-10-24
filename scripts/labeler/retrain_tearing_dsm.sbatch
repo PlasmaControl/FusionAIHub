@@ -21,8 +21,11 @@ set -euo pipefail
 
 export OMP_NUM_THREADS=8
 export MKL_NUM_THREADS=8
-ROOT=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler
 REPO=/scratch/gpfs/nc1514/FusionAIHub
+ENV="${LABELER_PIXI_ENV:-/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler}"  # another cluster: export LABELER_PIXI_ENV
+# The cluster's production root (labeler.env.CLUSTERS), whatever LABELER_ROOT the caller
+# exports: the phase3 interpreter and this job's outputs live there.
+ROOT="$(env -u LABELER_ROOT "$ENV/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler")"
 export LABELER_GIT_SHA=$(git -C "$REPO" rev-parse HEAD)
 
 srun "$ROOT/envs/phase3/bin/python" -u "$REPO/scripts/labeler/retrain_tearing_dsm.py" \

@@ -89,6 +89,7 @@ import numpy as np
 import pandas as pd
 
 from ..config import DEFAULT_LABEL_TABLES, Paths, git_sha
+from ..env import default as cluster_default
 from ..scoring.frames import Assessment
 from . import coverage, equilibrium, heuristics, rwm, suggestions, transients
 from .catalog.cohort import read_cohort
@@ -641,11 +642,15 @@ METHODS = {
 def cohort_path(paths: Paths) -> Path:
     """The frozen cohort, `catalog/cohort.csv` (v1 Task 5.2 copies it there).
 
-    The label tables' copy when they hold one, else the default events folder's
-    (`DEFAULT_LABEL_TABLES`); the two are one frozen file.
+    The label tables' copy when they hold one, else the default events folder's (this
+    cluster's row in `labeler.env.CLUSTERS`, or `DEFAULT_LABEL_TABLES` with no cluster);
+    the two are one frozen file.
     """
     path = paths.label_tables / "catalog" / "cohort.csv"
-    return path if path.is_file() else DEFAULT_LABEL_TABLES / "catalog" / "cohort.csv"
+    if path.is_file():
+        return path
+    folder = cluster_default("LABELER_LABEL_TABLES") or DEFAULT_LABEL_TABLES
+    return Path(folder) / "catalog" / "cohort.csv"
 
 
 def queue(paths: Paths) -> pd.DataFrame:

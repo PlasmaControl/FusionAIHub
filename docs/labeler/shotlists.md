@@ -8,7 +8,7 @@ on lists. Code: `src/labeler/events/shotlists.py`. Routes:
 
 ## Files
 
-Below, `data/events/` stands for the label folder: the label tables live in an `events` folder outside the repository (`/scratch/gpfs/EKOLEMEN/D3D/events` by default), and the setting `LABELER_LABEL_TABLES` (`Paths.label_tables`) names it.
+Below, `data/events/` stands for the label folder: the label tables live in an `events` folder outside the repository (by default the cluster's row of `labeler.env.CLUSTERS`: `/scratch/gpfs/EKOLEMEN/nc1514/events` on Stellar, `/scratch/gpfs/EKOLEMEN/D3D/events` on StellarAI), and the setting `LABELER_LABEL_TABLES` (`Paths.label_tables`) names it.
 
 - `data/events/shotlists/<name>.csv` holds a `shot` column. Any other columns
   (batch, order, pool, classes, run_day, note...) are kept and served as they are.

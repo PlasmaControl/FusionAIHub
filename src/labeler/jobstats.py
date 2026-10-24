@@ -708,11 +708,13 @@ def parse_frontier(sacct_text: str, rocm_samples: str | None) -> JobStats:
 def gpu_samples_path(job_id: str) -> Path:
     """Where `_gpu_sampler.sh` left this job's samples.
 
-    Under the shot_design data root, beside the job's own `.out`, because that
-    is the directory the sbatch `--output` line already points at. The labeler
-    root is the fallback for a job submitted without the shot_design env.
+    Under the shot_design data root (exported, else this cluster's), beside the
+    job's own `.out`, because that is the directory the sbatch `--output` line
+    already points at. The labeler root is the fallback when no root is known.
     """
-    root = os.environ.get("SHOT_DESIGN_DATA_ROOT")
+    from labeler.env import resolve
+
+    root = resolve("SHOT_DESIGN_DATA_ROOT")
     base = Path(root) / "runs" / "slurm" if root else default_out().parent
     return base / f"{job_id}.gpu.csv"
 

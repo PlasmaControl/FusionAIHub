@@ -16,8 +16,10 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-from .env import getenv
+from .env import getenv, resolve
 
+#: What `Paths()` and a host that matches no cluster use; `Paths.from_env()` takes the
+#: cluster's row in `env.CLUSTERS` before it (Stellar's root is not this one).
 DEFAULT_ROOT = Path("/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler")
 DEFAULT_CORPUS = Path("/scratch/gpfs/EKOLEMEN/foundation_model")
 #: The per-shot operator-text bundles `events/text_weak.py` reads. A third
@@ -40,11 +42,13 @@ DEFAULT_LOGS_JSONL = Path(
 #: `config_dir`). Label DATA, so it lives in a folder of its own, `events`, beside
 #: the data roots and outside the repository: per event `raw/`, `format/`,
 #: `extend_*/`, `review/` and `shots.csv`, plus `catalog/` and `shotlists/`.
-#: `LABELER_LABEL_TABLES` (`Paths.label_tables`) is the one setting that names it
-#: - set it where the folder lives on another machine (StellarAI keeps it next to
-#: its raw-data folder) - and every reader and writer of a label table goes
-#: through it. A fresh machine restores the folder from the Hugging Face release
-#: with `scripts/labeler/hf_publish.py pull`.
+#: `LABELER_LABEL_TABLES` (`Paths.label_tables`) is the one setting that names it,
+#: and every reader and writer of a label table goes through it. `Paths.from_env()`
+#: takes it from the environment, else from the cluster's row in `env.CLUSTERS`
+#: (StellarAI keeps it next to its raw-data folder, Stellar beside its data roots);
+#: this constant is what `Paths()` and a host that matches no cluster use. A fresh
+#: machine restores the folder from the Hugging Face release with
+#: `scripts/labeler/hf_publish.py pull`.
 DEFAULT_LABEL_TABLES = Path("/scratch/gpfs/EKOLEMEN/D3D/events")
 #: The labeler's hand-kept configuration: `events.yaml` (the taxonomy, the label
 #: grid and the dataset manifest) and `best_models.yaml` (event -> best model ->
@@ -116,12 +120,12 @@ class Paths:
     def from_env(cls) -> Paths:
         raw_cache = getenv("LABELER_RAW_CACHE")
         return cls(
-            root=Path(getenv("LABELER_ROOT", str(DEFAULT_ROOT))),
+            root=Path(resolve("LABELER_ROOT", str(DEFAULT_ROOT))),
             corpus=Path(getenv("LABELER_CORPUS", str(DEFAULT_CORPUS))),
             text_root=Path(getenv("LABELER_TEXT_ROOT", str(DEFAULT_TEXT))),
             logs_jsonl=Path(getenv("LABELER_LOGS_JSONL", str(DEFAULT_LOGS_JSONL))),
             label_tables=Path(
-                getenv("LABELER_LABEL_TABLES", str(DEFAULT_LABEL_TABLES))
+                resolve("LABELER_LABEL_TABLES", str(DEFAULT_LABEL_TABLES))
             ),
             config_dir=Path(getenv("LABELER_CONFIG_DIR", str(DEFAULT_CONFIG_DIR))),
             raw_cache=Path(raw_cache) if raw_cache else None,

@@ -27,6 +27,18 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+from labeler.env import CLUSTERS
+
+
+def _production_roots() -> set[Path]:
+    """Every cluster's own SHOT_DESIGN_DATA_ROOT, resolved, from `labeler.env.CLUSTERS`.
+
+    Resolved so that a trailing slash, a `..` or a symlink names the same root.
+    """
+    return {
+        Path(row["env"]["SHOT_DESIGN_DATA_ROOT"]).resolve() for row in CLUSTERS.values()
+    }
+
 
 def _load_jsonl(path: Path) -> list[dict]:
     if not path.exists():
@@ -108,7 +120,7 @@ def main() -> int:
     args = ap.parse_args()
 
     root = os.environ.get("SHOT_DESIGN_DATA_ROOT", "")
-    if not root or root.rstrip("/") == "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/shot_design":
+    if not root or Path(root).resolve() in _production_roots():
         print(
             "SHOT_DESIGN_DATA_ROOT must name a batch root, not production",
             file=sys.stderr,

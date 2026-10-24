@@ -52,7 +52,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
@@ -107,7 +106,7 @@ def vote_table(paths: Paths) -> Path:
 
 def data_root() -> Path:
     """Where the round-5 fetch parks divertor Thomson and EFIT01 maps."""
-    return Path(os.environ["LABELER_ROOT"]) / "round5" / "detach"
+    return Paths.from_env().root / "round5" / "detach"
 
 
 # --- detach_vote v1 -----------------------------------------------------------------
@@ -233,7 +232,7 @@ def plasma_windows(paths: Paths, shots) -> tuple[dict, dict]:
 def load_maps(shot: int) -> list[tuple[str, dict]]:
     """The shot's EFIT flux maps, EFIT02 first: the round-5 EFIT02 park
     (`$LABELER_ROOT/mhd/efit02`), the round-4 detachment maps, the round-5 EFIT01."""
-    root = Path(os.environ["LABELER_ROOT"])
+    root = Paths.from_env().root
     found = []
     path = root / "mhd" / "efit02" / f"{int(shot)}.npz"
     if path.is_file():
@@ -683,7 +682,7 @@ def main(argv=None) -> int:
     paths = Paths.from_env()
     dts_roots = (
         data_root() / "dts",
-        Path(os.environ["LABELER_ROOT"]) / "round4" / "detach" / "dts",
+        paths.root / "round4" / "detach" / "dts",
     )
     if args.step == "vote":
         bins = vote_bins(vote_table(paths))

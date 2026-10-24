@@ -3,7 +3,7 @@
 Torch lives only in the phase-3 venv, so this module is skipped in the pixi
 test env. It is run once against the venv that trains:
 
-    /scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/envs/phase3/bin/python \
+    $LABELER_ROOT/envs/phase3/bin/python \
         -m pytest tests/labeler/test_ae_model.py -q -W error -p no:cacheprovider
 """
 from __future__ import annotations

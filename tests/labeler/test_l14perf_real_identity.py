@@ -39,14 +39,14 @@ def _digest_frame(frame):
     ).hexdigest()
 
 
-def test_real_shot_cpu_output_identity():
+def test_real_shot_cpu_output_identity(real_root):
     requested = os.environ.get("L14PERF_REAL_ROOT")
     if not requested:
         pytest.skip("set L14PERF_REAL_ROOT to an l14perf scratch directory")
     root = Path(requested).resolve()
-    assert root.is_relative_to("/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/runs/l14perf")
+    production = real_root
+    assert root.is_relative_to(production / "runs/l14perf")
     print(f"Resolved real identity root: {root}", flush=True)
-    production = Path("/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler")
     shot = 185786
     device = os.environ.get("L14PERF_REAL_DEVICE", "cpu")
     batch = int(os.environ.get("L14PERF_REAL_BATCH", "8"))

@@ -31,7 +31,7 @@ NEW_CPU = {
 FRAMES = tuple(sorted(name for name in NEW_CPU if name.startswith("frames_")))
 FRAMES_VARIABLES = {"METHOD", "PILOT", "LIMIT", "SHOTS", "FORCE", "SEED"}
 #: What every job reads besides: the checkout and the environment's own.
-SHARED_VARIABLES = {"REPO", "LABELER_LABEL_TABLES", "LD_LIBRARY_PATH"}
+SHARED_VARIABLES = {"REPO", "LABELER_LABEL_TABLES", "LABELER_PIXI_ENV", "LD_LIBRARY_PATH"}
 ARRAYS = ("frames_apply.sbatch", "frames_prepare.sbatch")
 #: Every existing script round three submits.
 EXISTING = (

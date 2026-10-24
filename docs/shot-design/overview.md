@@ -7,7 +7,7 @@ title: "shot_design"
 Environment settings use the `SHOT_DESIGN_*` prefix; the legacy `IDEATE_*` names are no longer read.
 The pixi environments are `shot-design` and `shot-design-cpu` (and `shot-design-frontier`
 on Frontier): pixi rejects underscores in an environment name. Tasks and Python modules use `shot_design`.
-The production data directory is `/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/shot_design` (called `ideate` until 2026-10-09).
+The production data directory is `/scratch/gpfs/EKOLEMEN/nc1514/shot_design` on Stellar and `/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/shot_design` on StellarAI (called `ideate` until 2026-10-09).
 
 A shot database and retrieval layer for DIII-D: build a queryable record of a set of discharges
 from the local raw stores, then find shots by what happened in them — a description, a reference
@@ -27,10 +27,12 @@ See also: [The command line](./cli.md), [The MCP server](./mcp.md),
 
 ## Scratch databases and the data root
 
-`pixi run -e shot-design` and `-e shot-design-cpu` give `SHOT_DESIGN_DATA_ROOT`, `LABELER_ROOT` and
-`SHOT_DESIGN_CORPUS` their production values only as defaults
-(`[tool.pixi.feature.shot-design.target.unix.activation.env]` in `pyproject.toml`). A root you
-export is the one the command writes under:
+On Stellar and StellarAI `SHOT_DESIGN_DATA_ROOT` and `LABELER_ROOT` are the cluster's production
+roots only as defaults: `pixi run -e shot-design` and `-e shot-design-cpu` set neither, and the
+code takes them from the cluster's row in `labeler.env.CLUSTERS` when nothing exports them (only
+`SHOT_DESIGN_CORPUS` is a default of the activation block, `[tool.pixi.feature.shot-design.target.unix.activation.env]`
+in `pyproject.toml`). On Frontier, which has no row, `-e shot-design-frontier` defaults all three the same
+way. A root you export is the one the command writes under:
 
 ```bash
 SHOT_DESIGN_DATA_ROOT=/tmp/scratch-db pixi run --frozen -e shot-design-cpu python -m shot_design build --shots 190000
@@ -58,9 +60,11 @@ shot_design build: data root /tmp/scratch-db (SHOT_DESIGN_DATA_ROOT env) -> db /
 ```
 
 The bracket is the source that won, and it is one of `SHOT_DESIGN_DATA_ROOT env`,
-`SHOT_DESIGN_PATHS=<file>` or `<repo>/configs/shot_design/paths.yaml default` — the third names the
-packaged paths file in full, because `SHOT_DESIGN_CONFIG_DIR` can move it and a label is only useful
-if it names the file that was actually read. If it names a root you did not mean, stop there.
+`SHOT_DESIGN_PATHS=<file>`, `cluster <name> default` (nothing exported, so the cluster's row in
+`labeler.env.CLUSTERS`: `cluster stellar default` on Stellar) or
+`<repo>/configs/shot_design/paths.yaml default` — the last names the packaged paths file in full,
+because `SHOT_DESIGN_CONFIG_DIR` can move it and a label is only useful if it names the file that
+was actually read. If it names a root you did not mean, stop there.
 
 **What the guard refuses.** Before publishing, `build` compares the existing
 `<db_dir>/manifest.json` with what it is about to write and refuses — nothing touched, exit 1,
@@ -411,8 +415,8 @@ updating it. Start it on Stellar from this worktree:
 ```bash
 cd /scratch/gpfs/nc1514/FusionAIHub
 export PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$PWD/src
-export HF_HUB_OFFLINE=1 SHOT_DESIGN_DATA_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/shot_design \
-       LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler \
+export HF_HUB_OFFLINE=1 SHOT_DESIGN_DATA_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/shot_design \
+       LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labeler \
        SHOT_DESIGN_CORPUS=/scratch/gpfs/EKOLEMEN/foundation_model
 pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \
   -e shot-design-cpu python -m shot_design serve --port 8765

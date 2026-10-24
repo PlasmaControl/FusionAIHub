@@ -77,21 +77,41 @@ in one; the package it installs is still `shot_design`.
 
 ## Environment variables
 
-Export these on Stellar; the pixi activation defaults name the [StellarAI](stellarai.md) layout:
+On a Stellar host (`stellar-*`, or a Slurm job whose cluster is `stellar`) the three roots come
+from the `stellar` row of `labeler.env.CLUSTERS`, so the package commands and the sbatch
+launchers need nothing exported
+([Environment variables](../reference/environment-variables.md#which-cluster)):
 
 ```
 SHOT_DESIGN_DATA_ROOT = /scratch/gpfs/EKOLEMEN/nc1514/shot_design
 LABELER_ROOT          = /scratch/gpfs/EKOLEMEN/nc1514/labeler
-SHOT_DESIGN_CORPUS    = /scratch/gpfs/EKOLEMEN/foundation_model
+LABELER_LABEL_TABLES  = /scratch/gpfs/EKOLEMEN/nc1514/events
+SHOT_DESIGN_CORPUS    = /scratch/gpfs/EKOLEMEN/foundation_model   (the pixi activation default)
 ```
 
 A root you export first wins: `SHOT_DESIGN_DATA_ROOT=/tmp/scratch-db pixi run --frozen -e
 shot-design-cpu python -m shot_design ...` writes under `/tmp/scratch-db`. A write command
-prints the root it resolved before its first write.
+prints the root it resolved before its first write; with nothing exported it reads
+`cluster stellar default`. The sbatch launchers resolve the same values through
+`python src/labeler/env.py NAME` (the cluster's row, unless exported), so a job run on
+Stellar and one run on StellarAI each get their own cluster's roots. `python src/labeler/env.py --cluster` prints which row applies.
+
+The row is read by the packages (`labeler.config.Paths.from_env`, `shot_design.config.load_paths`,
+the readers that call `labeler.env.resolve`) and by the sbatch launchers, not by every file.
+Export `LABELER_ROOT` for the rest: about 50 Python scripts under `scripts/` default it to the
+StellarAI `.cache/labeler` path, the model specs' `UPSTREAM` constants name the StellarAI tree,
+and `pixi run labeler-test` names a StellarAI scratch folder (absent on Stellar) for pytest's
+temporary files. Run the suite there with its temporary files on group storage, not in `/tmp`
+(a login node's `/tmp` is small and shared):
+`mkdir -p "${LABELER_ROOT:?export LABELER_ROOT}/scratch/pytest" && PYTEST_DEBUG_TEMPROOT="$LABELER_ROOT/scratch/pytest" pixi run -e labeler python -m pytest tests/labeler`.
+Run without the export, a script writes under `FusionAIHub/.cache/labeler`, a folder that exists
+on Stellar only because it holds the Slurm logs.
 
 Other variables the code reads: `SHOT_DESIGN_PATHS` (paths file overriding the
 root), `SHOT_DESIGN_CONFIG_DIR`, `SHOT_DESIGN_HF_ONLINE` (default offline),
-`LABELER_LABEL_TABLES`, `HF_HOME` (leave it alone; see below), and the
+`LABELER_CLUSTER` (pins the row: `stellar`, `stellarai`, or empty for none), `LABELER_PIXI_ENV` (the pixi
+`labeler` environment the launchers run `env.py` with; Stellar's main checkout by default), `HF_HOME`
+(leave it alone; see below), and the
 `OLLAMA_*` family set by `scripts/shot_design/serve_llm.sh`.
 
 ## IGNITE v4 on Stellar
@@ -111,9 +131,12 @@ through `paths.yaml`'s `simulate_submit_cmd`. See
 ## Tests
 
 Run suites through pixi, never the bare `.pixi` interpreter, and do not
-redirect `HF_HOME`:
+redirect `HF_HOME`. Keep pytest's temporary files on group storage, not in `/tmp`
+(a login node's `/tmp` is small and shared); `LABELER_ROOT` must be exported:
 
 ```bash
+mkdir -p "${LABELER_ROOT:?export LABELER_ROOT}/scratch/pytest"
+export PYTEST_DEBUG_TEMPROOT="$LABELER_ROOT/scratch/pytest"
 pixi run -e shot-design-cpu pytest tests/shot_design
 pixi run -e labeler pytest tests/labeler
 ```
@@ -122,7 +145,21 @@ pixi run -e labeler pytest tests/labeler
 
 - Scripts: `scripts/slurm_stellar/` (training), `scripts/labeler/*.sbatch`,
   `scripts/shot_design/*.sbatch`.
-- Logs go to `<data_root>/runs/slurm/%j.out` under EKOLEMEN, not the repo.
+- A `#SBATCH --output` line cannot expand a variable, so every launcher names the StellarAI log
+  folders, and a job whose log folder is missing fails at launch without a log. The data a job
+  writes goes to the resolved root (Stellar's here) whatever folder holds its log.
+  - Labeler launchers: `.../nc1514/FusionAIHub/.cache/labeler/runs/slurm`, created once on
+    Stellar (2026-10-24). So on Stellar the log is not in `$LABELER_ROOT/runs/slurm`, where
+    `labeler.ae.full`'s job-log reader, `jobstats --preserve-dir $LABELER_ROOT/runs/slurm` and the
+    overlay messages look: submit with `sbatch -o "$LABELER_ROOT/runs/slurm/%j.out" -e
+    "$LABELER_ROOT/runs/slurm/%j.out"` when one of them needs the log, or copy it over.
+  - `scripts/shot_design/*.sbatch`: `.../nc1514/FusionAIHub/.cache/shot_design/{runs,experiments}/slurm`,
+    which do not exist on Stellar. Create them once (`mkdir -p` both), or submit with
+    `sbatch -o "$SHOT_DESIGN_DATA_ROOT/runs/slurm/%j.out" -e "$SHOT_DESIGN_DATA_ROOT/runs/slurm/%j.out"`.
+    The UI's Simulate button does the second itself (`paths.yaml`'s `simulate_submit_cmd`).
+  - The round-4 one-offs (`sawtooth_*`, `ae_supervision_swap*`, `confinement_bes_ablation`) log under
+    `.cache/labeler/round4/...`, which exists only on StellarAI; they are not set up to run here
+    without `-o`.
 - Every job is gated afterwards with `python -m labeler.jobstats <jobid>`:
   CPU, CPU-mem, GPU, GPU-mem utilization all at or above 70 percent, CPU-only
   jobs judged on CPU/CPU-mem. Pilots of 20 shots or fewer are exempt but

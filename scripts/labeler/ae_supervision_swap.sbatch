@@ -13,12 +13,16 @@
 
 set -euo pipefail
 REPO=${REPO:-/scratch/gpfs/nc1514/FusionAIHub}
+ENV="${LABELER_PIXI_ENV:-/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler}"  # another cluster: export LABELER_PIXI_ENV
+# The cluster's production root (labeler.env.CLUSTERS), whatever LABELER_ROOT the caller
+# exports: the phase3 interpreter and round4/ live there.
+LABELER_ROOT="$(env -u LABELER_ROOT "$ENV/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler")"
+LABELER_LABEL_TABLES="$("$ENV/bin/python" "$REPO/src/labeler/env.py" LABELER_LABEL_TABLES "/scratch/gpfs/EKOLEMEN/D3D/events")"
+export LABELER_ROOT LABELER_LABEL_TABLES
 # Short on purpose: DataLoader workers add /pymp-*/listener-* to TMPDIR and an
 # AF_UNIX socket path must stay under 108 bytes.
-export TMPDIR=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/scratch/ae-sw
+export TMPDIR="$LABELER_ROOT/scratch/ae-sw"
 mkdir -p "$TMPDIR"
-export LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler
-export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-/scratch/gpfs/EKOLEMEN/D3D/events}"
 export LABELER_NO_FETCH=1
 export PYTHONPATH="$REPO/src"
 export OMP_NUM_THREADS=1
