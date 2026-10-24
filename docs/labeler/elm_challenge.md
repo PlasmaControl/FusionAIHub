@@ -11,8 +11,11 @@ owner the repository may be used freely. We use it twice, without copying their 
   `data/events/edge_localized_mode/raw/elm_challenge_key_b71f991.json` and formatted as
   Dataset 4 of the ELM README (`edge_localized_mode_challenge_format_2026_v1`);
 - **as a held-out benchmark**: its 24 DIII-D shots are `holdout` rows of the ELM roster
-  (`shots.csv`, tier `unverified`). None is one of the 119 reviewed shots, no method is
-  trained or tuned on them (the key is public), and only 163518 is also in Dataset 1.
+  (`shots.csv`, tier `unverified`). None is one of the 119 reviewed shots the models trained
+  on, no method is trained or tuned on them (the key is public), and only 163518 is also in
+  Dataset 1. 23 of the 24 were reviewed afterwards (Ricardo Shousha, 2026-10-23, in the live
+  review table): they stay evaluation-only (`train.check_no_holdout` refuses them in every
+  training path) and are scored in [elm_heldout.md](elm_heldout.md).
   The challenge's merit function runs unchanged from a pinned clone outside the repository.
 
 The numbers below are **scored with the challenge's merit function at commit b71f991**.
@@ -57,7 +60,7 @@ They are not official leaderboard results.
 
 The two onset heads are the baseline for the instance side of a later instance-plus-crowd
 model (as in instance segmentation's `is_crowd`); none of the key's shots is in any fold's
-test list or among the reviewed ones. Peaks are local maxima of the averaged trace at least
+test list or among the 119 reviewed ones. Peaks are local maxima of the averaged trace at least
 10 ms apart (`onset.peaks`), kept inside the shot's valid input and the key's window. The
 heads have no end output, so every peak is submitted as a 1 ms event, a choice made before
 scoring: their timing-mismatch terms are therefore not a measure of event width. Neither

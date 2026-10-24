@@ -17,9 +17,9 @@ paired differences from `elm_jump`. A shot a table does not hold calls no bin.
 (`per_shot.side` of its meta: "lower", "upper", or "fallback" where the strike
 points could not be read), each part with its own resamples.
 
-**Reference.** The live review labels (`review/labels.csv`, regridded to 10 ms on
-2026-10-11); `--review` scores against another copy of them (the committed one
-reproduces the published clock numbers). Shots without fetched inputs
+**Reference.** The pinned review labels (`prepare.review_csv`: the table of 2026-10-17,
+regridded to 10 ms on 2026-10-11, which reproduces the published clock numbers);
+`--review` scores against another copy of them. Shots without fetched inputs
 (`round4/elm/inputs`) are left out, as the benchmark leaves them.
 
 Writes `<out-dir>/evaluation.json` (default `outputs/labeler/elm/sources`).

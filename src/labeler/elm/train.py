@@ -8,7 +8,8 @@ hold). For each fold the model is trained on the other shots less
 `INNER_VAL` held out for early stopping and for the decision threshold, then
 predicts the fold's shots: every shot has one out-of-fold prediction, made by a
 model that never saw it. Nothing here reads a cohort test shot; `check_no_test`
-refuses one.
+refuses one, and `check_no_holdout` refuses a shot of the ELM challenge key
+(`protect: holdout`), which later review saves may also label.
 
 **Targets and loss.** Per 1 ms, ELMy time (present spans, crowds included) against
 absent time, uncertain and unlabelled time ignored; and the start of a
@@ -41,6 +42,7 @@ import torch
 from torch.nn import functional as F
 
 from ..config import Paths, git_sha
+from ..events import shotlists
 from . import inputs, labels, net, onset, prepare, provenance, score
 
 FOLDS = 5
@@ -85,14 +87,28 @@ def check_no_test(shots, cohort: pd.DataFrame) -> None:
         raise ValueError(f"cohort test shots may not be used: {bad}")
 
 
+def check_no_holdout(shots, paths: Paths) -> None:
+    """Refuse a shot of a `protect: holdout` shot list (the ELM challenge key's 24).
+
+    Whatever reads the review table to fit or tune a model goes through this, since
+    the table can hold a held-out shot once someone has reviewed it. Fails closed
+    (`shotlists.held_out`).
+    """
+    bad = [int(s) for s in shots if shotlists.held_out(paths, int(s))]
+    if bad:
+        raise ValueError(f"held-out challenge shots may not be used: {bad}")
+
+
 def load(paths: Paths, shots=None) -> dict[int, ShotData]:
-    """Every reviewed shot's inputs, dense targets and scored bins."""
+    """Every reviewed shot's inputs, dense targets and scored bins (the pinned review
+    labels, `prepare.review_csv`)."""
     table = labels.review_table(prepare.review_csv(paths))
     cohort = pd.read_csv(paths.catalog / "cohort.csv")
     wanted = sorted(int(s) for s in table.shot.unique())
     if shots is not None:
         wanted = [s for s in wanted if s in set(shots)]
     check_no_test(wanted, cohort)
+    check_no_holdout(wanted, paths)
     out = {}
     for shot in wanted:
         x = np.load(prepare.inputs_dir(paths) / f"{shot}.npy")

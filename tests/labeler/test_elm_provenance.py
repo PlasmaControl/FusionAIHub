@@ -10,13 +10,14 @@ import pandas as pd
 import pytest
 
 from labeler.config import Paths
-from labeler.elm import inputs, net, provenance, train
+from labeler.elm import inputs, net, prepare, provenance, train
 
 
 @pytest.fixture
 def training_run(tmp_path, monkeypatch):
     tables = tmp_path / "tables"
-    review = tables / "edge_localized_mode" / "review"
+    tables.mkdir()
+    review = tmp_path / "benchmarks" / "elm" / "review_pins" / prepare.REVIEW_PIN
     review.mkdir(parents=True)
     pd.DataFrame(
         [(s, 0, 100, 0, None) for s in range(1, 5)],
@@ -107,7 +108,7 @@ def test_only_refuses_changed_splits_or_data(training_run, changed):
     else:
         paths = Paths.from_env()
         path = (
-            paths.label_tables / "edge_localized_mode" / "review" / "labels.csv"
+            prepare.review_csv(paths)
             if changed == "labels"
             else paths.root / "round4" / "elm" / "inputs" / "1.npy"
         )

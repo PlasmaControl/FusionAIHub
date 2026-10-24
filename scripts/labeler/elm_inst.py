@@ -84,8 +84,10 @@ def smith_dir(paths: Paths) -> Path:
 def run_prepare(paths: Paths, args) -> None:
     """Clock pseudo-onsets (its half-prominence span starts) on every reviewed shot."""
     table = labels.review_table(prepare.review_csv(paths))
+    shots = sorted(int(s) for s in table.shot.unique())
+    train.check_no_holdout(shots, paths)
     out, failed = {}, {}
-    for shot in sorted(int(s) for s in table.shot.unique()):
+    for shot in shots:
         try:
             spans, info = challenge.clock_spans(shot, paths)
             out[str(shot)] = {

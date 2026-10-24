@@ -37,6 +37,7 @@ if str(REPO / "src") not in sys.path:
     sys.path.insert(0, str(REPO / "src"))
 
 from labeler.config import Paths
+from labeler.elm import prepare
 from labeler.events.verify import NoDataError, fdp_signal
 
 EVENTS = Paths.from_env().label_tables
@@ -45,7 +46,6 @@ LABELER = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/Fus
 DEFAULT_OUT = LABELER / "benchmarks/elm/elmo/signals"
 SMITH_DIR = Path("/projects/EKOLEMEN/dsmith/data")
 SMITH_FILES = ("labeled-elm-events.hdf5", "labeled_elm_events_long_windows_20220921.hdf5")
-REVIEW_LABELS = EVENTS / "edge_localized_mode/review/labels.csv"
 INTERFEROMETER = (r"\BCI::DENV2F", r"\BCI::DENV3F")
 FILTERSCOPES = tuple(rf"\SPECTROSCOPY::FS{i:02d}" for i in (2, 3, 4))
 #: What fdp says of a record the shot does not have, as against a fetch that failed.
@@ -63,9 +63,10 @@ def smith_shots() -> list[int]:
     return sorted(shots)
 
 
-def review_shots() -> list[int]:
-    """Shots of the ELM review labels."""
-    return sorted(int(s) for s in pd.read_csv(REVIEW_LABELS, usecols=["shot"]).shot.unique())
+def review_shots(pin: str | None = prepare.REVIEW_PIN) -> list[int]:
+    """Shots of the pinned ELM review labels (`pin` None: the live table)."""
+    table = prepare.review_csv(Paths.from_env(), pin)
+    return sorted(int(s) for s in pd.read_csv(table, usecols=["shot"]).shot.unique())
 
 
 def fetch_shot(shot: int) -> dict[str, np.ndarray]:
@@ -109,6 +110,8 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--from", dest="source", choices=("smith", "review", "both"), default="smith")
     ap.add_argument("--shots", type=int, nargs="+", help="these shots instead of --from")
+    ap.add_argument("--review-pin", default=prepare.REVIEW_PIN,
+                    help="the pinned review labels --from review reads; 'live' the live table")
     ap.add_argument("--part", default="0/1", help="k/n: this process takes every n-th shot, offset k")
     ap.add_argument("--out-dir", type=Path, default=DEFAULT_OUT)
     ap.add_argument("--pace", type=float, default=1.0, help="seconds between shots")
@@ -121,7 +124,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.source in ("smith", "both"):
             shots.update(smith_shots())
         if args.source in ("review", "both"):
-            shots.update(review_shots())
+            shots.update(review_shots(None if args.review_pin == "live" else args.review_pin))
         shots = sorted(shots)
     k, n = (int(v) for v in args.part.split("/"))
     shots = shots[k::n]

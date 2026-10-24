@@ -16,7 +16,10 @@ turns a method's output into their submission format and adds the views of our o
   matching and by 50 ms occupancy bins.
 
 The key is public: no method is trained or tuned on it, and the shots lie outside the
-119 reviewed ones.
+119 reviewed ones the models trained on. 23 of them were reviewed afterwards (Ricardo
+Shousha, 2026-10-23, in the live review table): they stay evaluation-only
+(`train.check_no_holdout`), and `docs/labeler/elm_heldout.md` scores the frozen models
+on those labels.
 """
 
 from __future__ import annotations

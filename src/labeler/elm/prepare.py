@@ -6,6 +6,14 @@ Reads the fetched records of `scripts/labeler/elmo_fetch.py`
 (`$LABELER_ROOT/benchmarks/elm/elmo/signals/<shot>.npz`) and writes the
 `(inputs.N_CHANNELS, n)` float32 array of `inputs.channels` for each shot of the
 review table, to `$LABELER_ROOT/round4/elm/inputs`.
+
+**Pinned labels.** `review_csv` is the table every ELM benchmark, training and
+evaluation script reads. By default it is the pinned copy `REVIEW_PIN`, the reviewed
+set of 2026-10-17 (119 scored shots and 189093), so the published numbers stay
+reproducible while the live `review/labels.csv` grows (Ricardo Shousha's 81 shots of
+2026-10-23 are a second pin, `2026-10-23`, which only `scripts/labeler/
+elm_heldout_evaluate.py` reads). A pin is a folder of `labels.csv`, `history.jsonl`
+and a `SHA256SUMS`, written once and never edited.
 """
 
 from __future__ import annotations
@@ -33,8 +41,32 @@ def inputs_dir(paths: Paths) -> Path:
     return work_dir(paths) / "inputs"
 
 
-def review_csv(paths: Paths) -> Path:
+#: The pinned review labels the ELM scripts read unless they ask for another.
+REVIEW_PIN = "2026-10-17"
+
+
+def pins_dir(paths: Paths) -> Path:
+    return paths.root / "benchmarks" / "elm" / "review_pins"
+
+
+def live_review_csv(paths: Paths) -> Path:
+    """The owner's live table: it changes with every save, so only a pin is evidence."""
     return paths.label_tables / "edge_localized_mode" / "review" / "labels.csv"
+
+
+def review_csv(paths: Paths, pin: str | None = REVIEW_PIN) -> Path:
+    """`labels.csv` of the pinned review `pin` (`REVIEW_PIN` unless named); `pin=None`
+    is the live table. A missing pin is an error, never a fall back to the live table:
+    that would put every reviewed shot since the pin into a benchmark."""
+    if pin is None:
+        return live_review_csv(paths)
+    path = pins_dir(paths) / pin / "labels.csv"
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"no pinned ELM review labels at {path}: copy the table, its history.jsonl "
+            "and a SHA256SUMS there once (docs/labeler/elm_heldout.md)"
+        )
+    return path
 
 
 def _one(job: tuple[int, Path, Path]) -> tuple[int, int]:
