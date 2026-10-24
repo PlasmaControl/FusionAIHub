@@ -197,7 +197,7 @@ def old_panel(paths: Paths, published: Path) -> dict:
                         "published": old["sets"][tag]["methods"][name]["point"]["f1"],
                         "here": out[tag]["methods"][name]["point"]["f1"],
                     }
-                    for name in (JUMP, "elm-clock", OURS)
+                    for name in (JUMP, "elm-clock", "elm-clock-v2", OURS)
                     if name in old["sets"][tag]["methods"]
                     and name in out[tag]["methods"]
                 }
@@ -429,6 +429,41 @@ def main(argv: list[str] | None = None) -> int:
             for n, by_shot in by_method.items()
         }
 
+    # ---- the run-day caveat: his shots that share a run day with a shot a model trained on
+    run_day_record, clean = None, None
+    if not args.no_run_days:
+        have = {int(f.stem) for f in prepare.inputs_dir(paths).glob("*.npy")}
+        reviewed = sorted(set(old.shot.astype(int)) & have)
+        smith = sorted(
+            int(f.stem) for f in (paths.root / "round4/elm/smith/targets").glob("*.npz")
+        )
+        days = heldout.run_days(paths, [*mine, *reviewed, *smith])
+        day_sets = {
+            "reviewed_119": {days[s] for s in reviewed if s in days},
+            "smith_windows": {days[s] for s in smith if s in days},
+        }
+        day_sets["either"] = day_sets["reviewed_119"] | day_sets["smith_windows"]
+        sharing = {
+            name: {
+                tag: sorted(s for s in shots if days.get(s) in trained_days)
+                for tag, shots in groups.items()
+            }
+            for name, trained_days in day_sets.items()
+        }
+        missing = sorted(set(mine) - set(days))
+        clean = {
+            tag: [s for s in shots if s in days and s not in sharing["either"][tag]]
+            for tag, shots in groups.items()
+        }
+        run_day_record = {
+            "rule": "the operator logs' run date of the shot, else the cohort's run_id; "
+            "fold models train on the reviewed shots (elm-inst also on Smith's windows' shots)",
+            "trained_shots": {"reviewed_119": len(reviewed), "smith_windows": len(smith)},
+            "shots_missing_a_day": missing,
+            "sharing_a_trained_run_day": sharing,
+            "without_a_shared_run_day": clean,
+        }
+
     sets = {}
     for tag, shots in groups.items():
         ok = [s for s in shots if s in panels]
@@ -445,6 +480,14 @@ def main(argv: list[str] | None = None) -> int:
                 ),
             },
         }
+        if clean is not None:
+            apart = [s for s in ok if s in clean[tag]]
+            sets[tag]["without_a_shared_run_day"] = {
+                "shots": apart,
+                "occupancy": heldout.occupancy_set({s: panels[s] for s in apart}, called)
+                if apart
+                else None,
+            }
         with_bes = [s for s in ok if s in bes]
         sets[tag]["bes"] = {
             "occupancy": heldout.occupancy_set({s: bes[s] for s in with_bes}, called_bes),
@@ -531,22 +574,13 @@ def main(argv: list[str] | None = None) -> int:
     }
     if not args.skip_old:
         record["panels"]["A"] = old_panel(paths, args.published)
-    if not args.no_run_days:
-        trained = sorted(set(old.shot))
-        days = heldout.run_days(paths, [*mine, *trained])
-        trained_days = {days[s] for s in trained if s in days}
-        record["run_days"] = {
-            "trained_shots": len(trained),
-            "shots_missing_a_day": sorted(set(mine) - set(days)),
-            "sharing_a_trained_run_day": {
-                tag: sorted(s for s in shots if days.get(s) in trained_days)
-                for tag, shots in groups.items()
-            },
-        }
+    if run_day_record is not None:
+        record["run_days"] = run_day_record
     (args.out_dir / "evaluation.json").write_text(
         json.dumps(heldout.finite(record), indent=1) + "\n"
     )
-    for tag, block in sets.items():
+    for tag in groups:
+        block = sets[tag]
         for view in ("all", "bes"):
             occ = block[view]["occupancy"]
             print(tag, view, occ["n_shots"], "shots", occ["bins"], "bins", occ["bins_by_kind"])
