@@ -381,7 +381,7 @@ def main(argv: list[str] | None = None) -> int:
             found_spans[JUMP].get(shot, methods.span_frame([], [])).rename(
                 columns={"t_start_ms": "t_start", "t_end_ms": "t_end"}
             ),
-            spans[shot][spans[shot].kind == "crowd"],
+            spans[shot][spans[shot].kind.isin(["crowd", "non_crowd"])],
         )
         per_shot[str(shot)] = {
             "panel": "B2" if shot in holdout else "B1",
@@ -394,7 +394,7 @@ def main(argv: list[str] | None = None) -> int:
             "uncertain_ms": float(
                 (spans[shot].t_end - spans[shot].t_start)[spans[shot].kind == "uncertain"].sum()
             ),
-            "span_agreement_with_elm_jump_draft": agreement,
+            "span_agreement_with_elm_jump_draft": agreement,  # present time: his crowd and individual rows
             "scored": shot in valid,
             "elm_ours_saved_serve_trace": saved.get(shot),
             "has_bes": shot in elmo_out,

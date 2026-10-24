@@ -108,22 +108,22 @@ def individual_provenance(rows: pd.DataFrame, onsets_ms, window) -> tuple[pd.Dat
     return out, int((~np.isin(inside, starts)).sum())
 
 
-def span_agreement(source: pd.DataFrame, crowd: pd.DataFrame) -> dict:
-    """Milliseconds of the source's present spans and of his crowd spans, and what
+def span_agreement(source: pd.DataFrame, his: pd.DataFrame) -> dict:
+    """Milliseconds of the source's present spans and of his present spans, and what
     they share: how much of the draft he kept (`precision`) and how much of his
     spans the draft had (`recall`). Both frames have `t_start`, `t_end`."""
     s0, s1 = labels.merge_intervals(source.t_start, source.t_end)
-    c0, c1 = labels.merge_intervals(crowd.t_start, crowd.t_end)
+    c0, c1 = labels.merge_intervals(his.t_start, his.t_end)
     both0, both1 = methods.intersect(s0, s1, c0, c1)
     total = float((s1 - s0).sum()) if len(s0) else 0.0
-    his = float((c1 - c0).sum()) if len(c0) else 0.0
+    his_ms = float((c1 - c0).sum()) if len(c0) else 0.0
     shared = float((both1 - both0).sum()) if len(both0) else 0.0
     return {
         "source_ms": total,
-        "his_crowd_ms": his,
+        "his_present_ms": his_ms,
         "shared_ms": shared,
         "precision": shared / total if total else float("nan"),
-        "recall": shared / his if his else float("nan"),
+        "recall": shared / his_ms if his_ms else float("nan"),
     }
 
 

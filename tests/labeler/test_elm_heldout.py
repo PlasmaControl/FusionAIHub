@@ -114,7 +114,7 @@ def test_span_agreement_is_what_two_sets_of_spans_share_and_nan_when_one_is_empt
     draft = pd.DataFrame({"t_start": [0.0, 100.0], "t_end": [50.0, 150.0]})
     his = pd.DataFrame({"t_start": [25.0], "t_end": [125.0]})
     both = heldout.span_agreement(draft, his)
-    assert both["source_ms"] == 100.0 and both["his_crowd_ms"] == 100.0
+    assert both["source_ms"] == 100.0 and both["his_present_ms"] == 100.0
     assert both["shared_ms"] == 50.0 and both["precision"] == both["recall"] == 0.5
     empty = heldout.span_agreement(draft.iloc[:0], his)
     assert empty["source_ms"] == 0.0 and np.isnan(empty["precision"])

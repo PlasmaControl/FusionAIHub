@@ -4,8 +4,8 @@
 #SBATCH --qos=pppl-short-stellar
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=2
-#SBATCH --mem=1200M
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=900M
 #SBATCH --time=00:30:00
 #SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/runs/slurm/%j.out
 #SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/runs/slurm/%j.out
@@ -28,11 +28,11 @@
 #   full run:   sbatch <this>
 #   gate:       python -m labeler.jobstats --job-id <id> --cpu-only
 #
-# sizing (2026-10-24, jobs 2977011 and 2977012): the pilot (4 of his shots and the old
-# panel) 22 s and 0.75 GB; the full run on 8 CPUs and 4G 1 min 36 s, jobstats CPU 24.9 %
-# and memory 22.9 % (0.92 GB), which failed the gate. The work is ten small U-Nets a shot
-# on the login-sized inputs and ELM-O on the 34 shots with BES: two CPUs, and --mem
-# 1200M (the 0.92 GB x 1.3).
+# sizing (2026-10-24): the pilot (job 2977011, 4 of his shots and the old panel) 22 s,
+# 0.75 GB. The full run on 8 CPUs and 4G (job 2977012) took 1 min 36 s and failed the
+# jobstats gate (CPU 24.9 %, memory 22.9 % = 0.92 GB); on 2 CPUs and 1200M (job 2977014)
+# 1 min 44 s, CPU 63.1 %, memory 55.9 % (0.67 GB), still failing. The run is one
+# serial pass of file reads and small U-Nets, so one CPU and --mem=900M (0.67 GB x 1.3).
 set -euo pipefail
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
 ENV="${ENV:-/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler}"
