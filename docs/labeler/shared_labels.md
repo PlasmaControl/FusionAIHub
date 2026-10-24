@@ -155,27 +155,48 @@ Every command takes `--events DIR` (default: the label folder of the environment
 
 | Command | What it does |
 |---|---|
-| `status` | Lines held, writers' files, unmerged lines, refused lines and a held lock for each event. Writes nothing. |
+| `status` | Lines held, writers' files, unmerged lines, refused lines and a held lock for each event. Writes nothing (on a stale file handle it lists the directory again; it makes no probe file). |
 | `merge [--dry-run] [--retry-rejected]` | Folds the writers' files into the merged files, for every event that has any. `--retry-rejected` tries the saves the label table refused once more, after the cause is fixed; a line an owner script took back is never retried. |
-| `import-tree SOURCE [--tag T] [--dry-run]` | Adds the review lines of another label folder that this one does not hold (by id) to a writer file `saves/<kind>.import.<tag>.jsonl`, then merges. Run it again any time; it adds only what is new, never overrides a newer save, and skips a line that was withdrawn or refused here. |
+| `import-tree SOURCE [--tag T] [--dry-run]` | Adds the review lines of another label folder that this one does not hold (by id) to a writer file `saves/<kind>.import.<tag>.jsonl`, then merges. Run it again any time; it adds only what is new, never overrides a newer save, and skips a line that was withdrawn or refused here, or that the source took back (below). The target must already hold the tables (below). |
 | `init [--dry-run]` | Applies the permission table, for the owner, once: makes `review/` and `review/saves/` and sets 2775 on them, on an existing `review/legacy/` and on an existing `<event>/subcategories/` (where the first save of a new subcategory makes its folder; an event with none needs the owner to make it); sets 0644 on the files in `review/` and `review/saves/`; sets 0600 on `raw/elm_challenge_key_*.json` (other copies of the key are not touched). Needs the owner's rights; nothing else changes. |
 | `check` | Writes nothing and exits 1 when something is wrong: an unreadable merged file, a lock older than 120 seconds, a file not readable by all, or a shot whose label is not what its last save made. It also prints notes: torn lines, saves the table refused (and the retry command), lines without a `save_id` after the first one that has it (an older writer), directories that are not group-writable, and shots that differ from a last save written before ids existed. |
 | `repair [--shot N]` | Writes again the last save of the shots `check` reports, or of the shots named. It undoes an edit of `labels.csv` made on purpose (by hand, or by `regrid_saved_labels.py`, which leave the history alone), so use `--shot` only for a shot you mean to put back. |
+
+`import-tree` in detail:
+
+- The source is only read: nothing is written into it, not even a probe file.
+- A line the *source* took back (an owner script such as the Jalal withdrawal leaves it in
+  a writer file there and records it in the source's `saves/rejected.jsonl`) is not
+  imported, and the record is copied into this folder's `rejected.jsonl`, so a copy of a
+  copy leaves it out too. A line imported *before* the source took it back stays in this
+  folder; withdraw it here as well.
+- **The target must already hold the tables.** A line's label is rebuilt from the history
+  alone, and the 10 ms regrid and the span flags exist only in `labels.csv`, so an import
+  into an empty folder gives different labels (about half of the ELM and AE ones on the
+  live folder) and `check` does not notice, because older lines are not held to their
+  labels. The command prints a note when the target has no `labels.csv`. Copy the
+  source's folder first, then import into the copy.
+- A subcategory the source has and this folder lacks is made, as a page save would make
+  it. An event this folder lacks is not made (exit 2). Source lines that cannot be read
+  (torn, not JSON, a shot that is not a whole number) are skipped, counted and give exit 2.
 
 Scripts that rewrite the merged files take the same lock now:
 `scripts/labeler/regrid_saved_labels.py` (it also refuses a table that changed since
 it read it), and `scripts/labeler/jalal_wpqh_import.py` (the saved-name rename and the
 withdrawal of its own saves; the withdrawal records the lines in
-`saves/rejected.jsonl` so no merge or `import-tree` brings them back). Run
-`labeler-sync merge` before such a script and do not run it while anyone is saving. A
-regrid changes `labels.csv` and not the history, so `check` may then report shots whose
-label differs from their last save (a dropped span, a settled midpoint claim); do not
-`repair` those.
+`saves/rejected.jsonl` so no merge, and no `import-tree` of this folder or of a copy of
+it, brings them back). Run `labeler-sync merge` before such a script and do not run it
+while anyone is saving. A regrid changes `labels.csv` and not the history, so `check` may
+then report shots whose label differs from their last save (a dropped span, a settled
+midpoint claim); do not `repair` those.
 
 Known limits: two processes that break the same stale lock at the same moment can both
-proceed (`check` is the net). A lock counts as stale by the file server's clock, read
-from the mtime of a file just made beside it, so a machine whose own clock is wrong does
-not break a live lock.
+proceed (`check` is the net). A lock counts as stale when its age is more than 120
+seconds against the stamp of a file made just beside it. On NFS both stamps are the
+server's, so a machine whose own clock is wrong does not break a live lock; on GPFS
+(`/scratch/gpfs`, and `/projects` on Stellar) the node that makes a file stamps it, so
+the two are node clocks, which NTP keeps within about a second. A mask click that finds
+the lock held waits up to 20 seconds, once, and then returns with the save pending.
 
 The migration itself (backups, folding the live folder into the shared one, the
 permissions, the probe) is not written here, because the shared folder is not active.

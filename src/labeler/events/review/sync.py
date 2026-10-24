@@ -10,7 +10,8 @@ COMMAND` or `pixi run -e labeler labeler-sync COMMAND`; every command takes
     status       what each event holds: lines, the writers' files, what is unmerged
     merge        fold the writers' files into labels.csv, history.jsonl, masks.jsonl
                  (--retry-rejected: try the saves the label table refused once more)
-    import-tree  fold another label folder's review logs into this one
+    import-tree  fold another label folder's review logs into this one (the target must
+                 already hold the tables; the source is only read)
     init         create `saves/` and apply the permission table (the owner, once)
     check        read-only invariants; exit 1 when one is broken
     repair       re-apply the last save of the shots `check` reports
@@ -22,11 +23,13 @@ event's lock; `import-tree` can be run again at any time, it adds only what is n
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import os
 import re
 import stat
 import sys
+from contextlib import nullcontext
 from pathlib import Path
 
 from ...config import Paths
@@ -76,9 +79,21 @@ def _rel(events, event_dir) -> str:
     return str(Path(event_dir).relative_to(events))
 
 
+def _read_only(command):
+    """The command writes nothing, not even the probe file a retried read makes."""
+
+    @functools.wraps(command)
+    def run(*args, **kwargs):
+        with saves.read_only():
+            return command(*args, **kwargs)
+
+    return run
+
+
 # ---- status ----
 
 
+@_read_only
 def status(events, rels) -> int:
     print(f"label folder {events}")
     total = 0
@@ -164,12 +179,13 @@ def _counts(merged: saves.Merged) -> str:
 # ---- import-tree ----
 
 
-def _lines_of(event_dir, kind: str) -> dict[str, tuple[dict, str]]:
-    """Every line of the event's canonical log and writer files, by id."""
+def _lines_of(event_dir, kind: str, bad: list | None = None) -> dict[str, tuple[dict, str]]:
+    """Every line of the event's canonical log and writer files, by id. Lines that
+    cannot be read are skipped and, given `bad`, listed there as `(path, line number)`."""
     review = Path(event_dir) / saves.REVIEW
     found: dict[str, tuple[dict, str]] = {}
     for path in [review / f"{kind}.jsonl", *writer_files(event_dir, kind).values()]:
-        pairs = saves.read_lines(path)
+        pairs = saves.read_lines(path, bad=bad)
         for i, pair in zip(saves.ids_of(e for e, _ in pairs), pairs, strict=True):
             found.setdefault(i, pair)
     return found
@@ -187,9 +203,78 @@ def _stamped(ident: str, pair: tuple[dict, str]) -> tuple[dict, str]:
     return entry, json.dumps(entry)
 
 
+def _taken_back(there) -> dict[str, dict]:
+    """The lines an owner script took back from the source folder, by id: the records
+    of its `saves/rejected.jsonl` with `retry` false. The lines themselves stay in a
+    writer file there; a line the table refused (`retry` true) is that folder's own
+    business and is imported like any other."""
+    return {
+        e["id"]: e for e in saves.rejected(Path(there) / saves.REVIEW)
+        if isinstance(e.get("id"), str) and not e.get("retry")
+    }
+
+
+def _import_event(there: Path, here: Path, rel: Path, *, tag: str, dry_run: bool) -> int:
+    code = 0
+    with saves.read_only():  # the source is only read: not even a probe file is made in it
+        taken_back = _taken_back(there)
+        bad: list = []
+        theirs = {kind: _lines_of(there, kind, bad) for kind in saves.KINDS}
+    if bad:
+        shown = ", ".join(f"{path.name}:{number}" for path, number in bad[:5])
+        print(f"{rel}: {len(bad)} unreadable lines in the source skipped ({shown}"
+              f"{', ...' if len(bad) > 5 else ''})")
+        code = 2
+    table = Path(saves.REVIEW) / "labels.csv"
+    if theirs["history"] and (there / table).is_file() and not (here / table).is_file():
+        print(f"{rel}: note: this folder has no labels.csv, so the labels are rebuilt from "
+              "the history alone, without the source's regrid and span flags; copy the "
+              "tables first")
+    try:
+        if taken_back and not dry_run:  # a later merge here, or an import from a third copy
+            saves.adopt_taken_back(saves.review_dir(here), taken_back.values())
+    except (saves.StoreBusy, saves.StoreMissing, OSError, ValueError) as error:
+        print(f"{rel}: the lines the source took back were not recorded: {error}")
+        return 2
+    for kind in saves.KINDS:
+        lines = {i: pair for i, pair in theirs[kind].items() if i not in taken_back}
+        if not lines:
+            continue
+        known = set(_lines_of(here, kind)) | saves.rejected_ids(here / saves.REVIEW)
+        new = [_stamped(i, pair) for i, pair in lines.items() if i not in known]
+        name = f"{rel} {kind}: {len(lines)} lines there, {len(new)} new"
+        try:
+            if dry_run:
+                merged = saves.merge(
+                    here, kind, *steps(here, kind), extra=[e for e, _ in new], dry_run=True
+                )
+                print(f"{name}; would add {len(merged.added)}, apply {len(merged.applied)}")
+                continue
+            if new:
+                review = saves.review_dir(here)
+                saves.shared_mkdir(review / saves.SAVES, under=review)
+                writer = re.sub(r"[^A-Za-z0-9_.-]", "_", f"import.{tag}")
+                saves.append_text(
+                    review / saves.SAVES / f"{kind}.{writer}.jsonl",
+                    "\n".join(text for _, text in new),
+                )
+            merged = saves.merge(here, kind, *steps(here, kind))
+        except (saves.StoreBusy, saves.StoreMissing, OSError, ValueError) as error:
+            print(f"{name}; not merged: {error}")
+            code = 2
+            continue
+        print(f"{name}; {_counts(merged)}")
+        if merged.skipped:
+            code = 2
+    return code
+
+
 def import_tree(source, events, rels, *, tag: str | None, dry_run: bool) -> int:
     """Add the lines of `source`'s review logs that this folder does not know to
-    a writer file, `saves/<kind>.import.<tag>.jsonl`, then merge them."""
+    a writer file, `saves/<kind>.import.<tag>.jsonl`, then merge them. Lines the
+    source's owner scripts took back are left out and recorded here as taken back.
+    A subcategory this folder lacks is made, as its first page save would; an event
+    it lacks is not (exit 2), nor is a source line that cannot be read."""
     source, events = Path(source).resolve(), Path(events).resolve()
     if not source.is_dir():
         raise SystemExit(f"{source} is not a folder")
@@ -197,42 +282,17 @@ def import_tree(source, events, rels, *, tag: str | None, dry_run: bool) -> int:
         raise SystemExit("the source is this folder")
     tag = re.sub(r"[^A-Za-z0-9_-]+", "_", tag or "_".join(source.parts[-2:]))
     code = 0
-    for there in select(source, rels):
-        rel = there.relative_to(source)
-        here = events / rel
-        if not here.is_dir():
-            print(f"{rel}: not in this folder, skipped")
-            continue
-        for kind in saves.KINDS:
-            theirs = _lines_of(there, kind)
-            if not theirs:
-                continue
-            known = set(_lines_of(here, kind)) | saves.rejected_ids(here / saves.REVIEW)
-            new = [_stamped(i, pair) for i, pair in theirs.items() if i not in known]
-            name = f"{rel} {kind}: {len(theirs)} lines there, {len(new)} new"
-            try:
-                if dry_run:
-                    merged = saves.merge(
-                        here, kind, *steps(here, kind), extra=[e for e, _ in new], dry_run=True
-                    )
-                    print(f"{name}; would add {len(merged.added)}, apply {len(merged.applied)}")
-                    continue
-                if new:
-                    review = saves.review_dir(here)
-                    saves.shared_mkdir(review / saves.SAVES, under=review)
-                    writer = re.sub(r"[^A-Za-z0-9_.-]", "_", f"import.{tag}")
-                    saves.append_text(
-                        review / saves.SAVES / f"{kind}.{writer}.jsonl",
-                        "\n".join(text for _, text in new),
-                    )
-                merged = saves.merge(here, kind, *steps(here, kind))
-            except (saves.StoreBusy, saves.StoreMissing, OSError, ValueError) as error:
-                print(f"{name}; not merged: {error}")
+    with saves.read_only() if dry_run else nullcontext():
+        for there in select(source, rels):
+            rel = there.relative_to(source)
+            here = events / rel
+            if not here.is_dir() and not (
+                rel.parent.name == saves.SUBDIR and here.parent.parent.is_dir()
+            ):
+                print(f"{rel}: not in this folder (an event is never made here), skipped")
                 code = 2
                 continue
-            print(f"{name}; {_counts(merged)}")
-            if merged.skipped:
-                code = 2
+            code |= _import_event(there, here, rel, tag=tag, dry_run=dry_run)
     return code
 
 
@@ -244,13 +304,18 @@ KEY_MODE = 0o600
 
 def _set_mode(path: Path, mode: int, dry_run: bool) -> int:
     """Give `path` `mode` and say so; 2 when it cannot be done (not the owner's)."""
-    if stat.S_IMODE(path.stat().st_mode) == mode:
+    try:
+        if stat.S_IMODE(path.stat().st_mode) == mode:
+            return 0
+    except FileNotFoundError:  # gone since it was listed
         return 0
     print(f"{'would set' if dry_run else 'set'} {path} to {mode:o}")
     if dry_run:
         return 0
     try:
         os.chmod(path, mode)
+    except FileNotFoundError:
+        return 0
     except OSError as error:
         print(f"cannot change {path}: {error}")
         return 2
@@ -286,7 +351,8 @@ def init(events, rels, *, dry_run: bool) -> int:
         found += [
             (path, saves.FILE_MODE)
             for folder in (review, review / saves.SAVES) if folder.is_dir()
-            for path in sorted(folder.iterdir()) if path.is_file()
+            for path in sorted(folder.iterdir())
+            if path.is_file() and not path.name.startswith(".")  # not a process's temporary file
         ]
         found += [
             (path, KEY_MODE) for path in sorted(event_dir.glob("raw/elm_challenge_key_*.json"))
@@ -299,6 +365,7 @@ def init(events, rels, *, dry_run: bool) -> int:
 # ---- check ----
 
 
+@_read_only
 def check(events, rels) -> int:
     problems, notes = [], []
     for event_dir in select(events, rels):
@@ -336,9 +403,15 @@ def check(events, rels) -> int:
             (problems if age > saves.STALE_LOCK_S else notes).append(
                 f"{rel}: lock held by {saves.holder(review)}")
         for path in [*review.glob("*"), *(review / saves.SAVES).glob("*")]:
-            if path.is_file() and stat.S_IMODE(path.stat().st_mode) & 0o044 != 0o044:
-                problems.append(f"{rel}: {path.name} is mode "
-                                f"{stat.S_IMODE(path.stat().st_mode):o}: not readable by all")
+            if path.name.startswith("."):  # a probe or a temporary file of a process at work
+                continue
+            try:
+                info = path.stat()
+            except FileNotFoundError:  # gone since the listing
+                continue
+            mode = stat.S_IMODE(info.st_mode)
+            if stat.S_ISREG(info.st_mode) and mode & 0o044 != 0o044:
+                problems.append(f"{rel}: {path.name} is mode {mode:o}: not readable by all")
         for path in (review, review / saves.SAVES):
             if path.is_dir() and not path.stat().st_mode & stat.S_IWGRP:
                 notes.append(f"{rel}: {path.relative_to(event_dir)} is not group-writable "

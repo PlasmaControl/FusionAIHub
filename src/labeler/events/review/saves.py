@@ -33,6 +33,7 @@ merge instead, and every line stays pending.
 
 from __future__ import annotations
 
+import contextvars
 import errno
 import getpass
 import hashlib
@@ -314,9 +315,31 @@ def replacing(path):
             tmp.unlink(missing_ok=True)
 
 
+_read_only = contextvars.ContextVar("labeler_sync_read_only", default=False)
+
+
+@contextmanager
+def read_only():
+    """For the body, nothing here writes to a folder, not even the probe file that
+    `refresh` makes: on a stale handle the directory is listed again instead. `status`,
+    `check`, dry runs and the reading of an import's source run in it."""
+    token = _read_only.set(True)
+    try:
+        yield
+    finally:
+        _read_only.reset(token)
+
+
 def refresh(directory) -> None:
     """Make this NFS client re-read `directory`: creating and removing an entry
-    updates its cached listing and attributes. Writes nothing that stays."""
+    updates its cached listing and attributes. Writes nothing that stays; in
+    `read_only` it only lists the directory, which makes the client revalidate it."""
+    if _read_only.get():
+        try:
+            os.listdir(directory)
+        except OSError:
+            pass
+        return
     probe = Path(directory) / f".probe.{uuid.uuid4().hex[:8]}"
     try:
         os.close(os.open(probe, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600))
@@ -329,8 +352,10 @@ def refresh(directory) -> None:
 
 
 def server_now(directory) -> float:
-    """The time by the file server's clock: the mtime of a file just made in
-    `directory` (it is removed at once). Falls back to this machine's clock."""
+    """The time as the file system stamps it: the mtime of a file just made in
+    `directory` (it is removed at once). On NFS that is the server's clock, the one that
+    stamped the lock; on GPFS the node that makes a file stamps it, so this is this
+    machine's clock there. Falls back to this machine's clock."""
     probe = Path(directory) / f".probe.{uuid.uuid4().hex[:8]}"
     try:
         fd = os.open(probe, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -368,9 +393,10 @@ def holder(review) -> str | None:
 def _break_stale(path: Path, stale: float) -> bool:
     """Remove a lock older than `stale` seconds (its holder crashed); True when it
     is gone, by this call or another's. Two breakers racing on one stale lock are
-    the one accepted risk: `check` is the net. The lock's mtime is the server's, so
-    when this machine's clock calls it stale the age is taken again by the server's
-    clock: a client whose clock runs fast does not break a live lock."""
+    the one accepted risk: `check` is the net. When this machine's clock calls the lock
+    stale the age is taken again against the stamp of a file made just now (`server_now`):
+    on NFS both stamps are the server's, so a client whose clock runs fast does not break
+    a live lock; on GPFS both are node clocks, which NTP keeps within a second or so."""
     age = lock_age(path.parent)
     if age is None:
         return True
@@ -474,6 +500,31 @@ def rejected_ids(review, *, retryable: bool = False) -> set[str]:
     }
 
 
+def adopt_taken_back(review, records: Iterable[dict], *, wait: float = 20.0) -> int:
+    """Record here the lines another folder's owner script took back (`records`: its
+    `rejected()` entries with `retry` false, copied as they are), so no merge here
+    brings them in either, nor an import from a third copy that still holds them. A
+    refused line of the same id stops being retryable: the take-back stays. Returns how
+    many records were added; nothing is written when all are here already. Takes the
+    folder's lock."""
+    review = Path(review)
+    with lock(review, wait=wait):
+        path = review / SAVES / REJECTED
+        have = read_lines(path, shots=False)
+        held = {e["id"] for e, _ in have if isinstance(e.get("id"), str) and not e.get("retry")}
+        new = {r["id"]: {**r, "retry": False} for r in records if r["id"] not in held}
+        if not new:
+            return 0
+        kept = [text for e, text in have if e.get("id") not in new]
+        shared_mkdir(review / SAVES, under=review)
+        with replacing(path) as tmp:
+            tmp.write_text(
+                "".join(text + "\n" for text in [*kept, *map(json.dumps, new.values())]),
+                encoding="utf-8",
+            )
+        return len(new)
+
+
 def merge(
     event_dir,
     kind: str,
@@ -499,7 +550,8 @@ def merge(
     if not review.is_dir() and not extra:  # no save has been made here: nothing to fold
         return Merged()
     if dry_run:
-        return _merge(review, kind, apply, stale, extra, dry_run=True)
+        with read_only():
+            return _merge(review, kind, apply, stale, extra, dry_run=True)
     with lock(review, wait=wait):
         return _merge(review, kind, apply, stale, extra, dry_run=False,
                       retry_rejected=retry_rejected)

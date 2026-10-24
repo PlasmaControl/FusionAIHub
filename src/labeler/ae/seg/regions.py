@@ -124,11 +124,13 @@ def save_decision(
     pseudo_sha256: str,
     name: str | None = None,
     pseudo: str = PSEUDO,
+    wait: float = 20.0,
 ) -> dict:
     """Save one decision, made on the masks named `pseudo`; the line written.
 
     The line is durable in the writer's own file once this returns; the merge into
-    `masks.jsonl` may be left to the next one when the folder's lock is busy."""
+    `masks.jsonl` may be left to the next one when the folder's lock stays busy for
+    `wait` seconds."""
     reviewer = getpass.getuser()
     saved_at, save_id = saves.new_save()
     entry = {
@@ -144,7 +146,7 @@ def save_decision(
     }
     saves.append(event_dir, "masks", entry)
     try:
-        saves.merge(event_dir, "masks")
+        saves.merge(event_dir, "masks", wait=wait)
     except (saves.StoreBusy, OSError, ValueError):
         pass
     return entry

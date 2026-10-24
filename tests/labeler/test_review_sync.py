@@ -7,10 +7,13 @@ folder's own `labeler-sync` commands are run through `sync.main`.
 from __future__ import annotations
 
 import errno
+import importlib.util
 import itertools
 import json
 import os
 import stat
+import sys
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -23,6 +26,7 @@ from labeler.events.review.labels import normalise
 
 EVENT = "alfven_eigenmode"
 WHOLE = (0, 2000)
+JALAL = Path(__file__).resolve().parents[2] / "scripts/labeler/jalal_wpqh_import.py"
 
 
 @pytest.fixture
@@ -501,3 +505,107 @@ def test_a_legacy_line_is_not_held_to_the_span_flags_a_script_added(event_dir, c
     old["intervals"] = [[100, 350, 1]]
     path.write_text(json.dumps(old) + "\n")
     assert [e["shot"] for e in labels.diverged(event_dir, legacy=True)] == [1]
+
+
+def jalal():
+    """The owner's import script, which takes saves back (`withdraw`)."""
+    spec = importlib.util.spec_from_file_location("jalal_for_sync_tests", JALAL)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module  # the script's dataclasses look their module up
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_import_tree_leaves_out_what_the_source_took_back(
+    events, event_dir, tmp_path, clock, capsys
+):
+    """A withdrawn save stays in its writer file in the source and is recorded in the
+    source's rejected.jsonl; importing that folder must not bring it back, and must
+    record the take-back here."""
+    jw = jalal()
+    there = tmp_path / "src" / EVENT
+    there.mkdir(parents=True)
+    labels.save(there, 1, spans((100, 300, 1)), source=None)
+    labels.save(there, 2, spans((100, 300, 1)), source=None, name=jw.NEW_NAME,
+                extra={"note": jw.SOURCE_NOTE})
+    jw.withdraw(there, 2)
+    assert sorted(labels.read_saved(there)) == [1]
+    run = ["import-tree", str(tmp_path / "src"), "--events", str(events)]
+    assert sync.main([*run, "--dry-run"]) == 0   # nothing recorded yet: the filter alone
+    assert "1 lines there, 1 new; would add 1" in capsys.readouterr().out
+    assert sync.main(run) == 0
+    assert sorted(labels.read_saved(event_dir)) == [1]
+    assert [e["shot"] for e in labels.read_history(event_dir)] == [1]
+    record = event_dir / "review" / "saves" / "rejected.jsonl"
+    assert [(r["shot"], r["retry"]) for r in map(json.loads, record.read_text().splitlines())] == [
+        (2, False)]
+    before = snapshot(events)
+    assert sync.main(run) == 0 and snapshot(events) == before
+    assert sync.main(["merge", "--retry-rejected", "--events", str(events)]) == 0
+    assert sorted(labels.read_saved(event_dir)) == [1]  # a take-back is never retried
+
+
+def test_import_tree_makes_a_subcategory_and_refuses_what_it_cannot_read_or_place(
+    events, event_dir, tmp_path, capsys
+):
+    other = tmp_path / "other"
+    (other / EVENT).mkdir(parents=True)
+    (other / "confinement").mkdir()
+    put(other / EVENT / "subcategories" / "tae", "carol.n1", line(1, 1))
+    put(other / "confinement", "carol.n1", line(2, 2))
+    (other / EVENT / "review").mkdir()
+    (other / EVENT / "review" / "history.jsonl").write_text(
+        '{"shot": 3, "sav\n' + json.dumps(line("x", 4)) + "\n" + json.dumps(line(5, 5)) + "\n")
+    run = ["import-tree", str(other), "--events", str(events)]
+    child = event_dir / "subcategories" / "tae"
+    assert sync.main([*run, "--event", f"{EVENT}/subcategories/tae", "--dry-run"]) == 0
+    assert not child.exists()
+    assert sync.main([*run, "--event", f"{EVENT}/subcategories/tae"]) == 0
+    assert sorted(labels.read_saved(child)) == [1]
+    capsys.readouterr()
+    assert sync.main([*run, "--event", "confinement"]) == 2
+    assert "never made" in capsys.readouterr().out and not (events / "confinement").exists()
+    assert sync.main([*run, "--event", EVENT]) == 2   # the good line is taken, the others counted
+    assert "2 unreadable lines" in capsys.readouterr().out
+    assert [e["shot"] for e in labels.read_history(event_dir)] == [5]
+
+
+def test_check_status_and_init_leave_a_busy_folder_alone(
+    events, event_dir, monkeypatch, clock, capsys
+):
+    """Another process's probe and temporary files (0600 for a moment) are not problems,
+    and a read that is retried on a stale handle makes no probe file in the folder."""
+    labels.save(event_dir, 1, spans((100, 300, 1)), source=None)
+    review = event_dir / "review"
+    for name in (".probe.1234abcd", ".labels.csv.n2.77.abcdef01.tmp"):
+        (review / name).write_text("")
+        (review / name).chmod(0o600)
+    run = ["--events", str(events)]
+    assert sync.main(["check", *run]) == 0
+    capsys.readouterr()
+    assert sync.main(["init", "--dry-run", *run]) == 0
+    assert ".probe" not in capsys.readouterr().out
+    real = Path.read_text
+    for command in ("status", "check"):
+        failed = []
+
+        def read_text(self, *args, failed=failed, **kwargs):
+            if self.name == "history.jsonl" and not failed:
+                failed.append(self)
+                raise OSError(errno.ESTALE, "stale")
+            return real(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "read_text", read_text)
+        before = [d.stat().st_mtime_ns for d in (review, review / "saves")]
+        assert sync.main([command, *run]) == 0 and failed
+        assert [d.stat().st_mtime_ns for d in (review, review / "saves")] == before
+        monkeypatch.setattr(Path, "read_text", real)
+
+
+def test_a_mask_decision_can_skip_the_wait_for_a_held_lock(event_dir):
+    review = saves.review_dir(event_dir)
+    (review / saves.LOCK).mkdir()
+    started = time.monotonic()
+    entry = regions.save_decision(event_dir, 170815, [1], pseudo_sha256="0" * 64, wait=0)
+    assert time.monotonic() - started < 5
+    assert saves.pending(event_dir, "masks") == 1 and entry["shot"] == 170815

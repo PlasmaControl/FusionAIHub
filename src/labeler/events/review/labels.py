@@ -559,8 +559,8 @@ def _current(path) -> pd.DataFrame:
 def _check_editable(current: pd.DataFrame, shot: int, label: Label, crowd_edit: bool):
     """Refuse a shot of the table that the page cannot edit without losing data.
     The table as a whole is checked by the caller (`validate_intervals`)."""
-    selected = pd.to_numeric(current.shot, errors="coerce") == int(shot)
     if "attrs" in current:
+        selected = pd.to_numeric(current.shot, errors="coerce") == int(shot)
         for cell in current.loc[selected, "attrs"]:
             if not cell.strip():
                 continue
@@ -576,20 +576,28 @@ def _check_editable(current: pd.DataFrame, shot: int, label: Label, crowd_edit: 
                 )
 
 
-def _replaced(current: pd.DataFrame, shot: int, label: Label) -> pd.DataFrame:
-    """`current` with the shot's rows replaced by `label`'s, sorted by shot."""
-    current = current.copy()
-    selected = pd.to_numeric(current.shot, errors="coerce") == int(shot)
+def _rows(shot: int, label: Label) -> pd.DataFrame:
+    """The rows `label` writes for `shot`, checked. Every check of a table is made row
+    by row, so the rows of a valid table with these in place of a shot's are valid
+    when these are: nothing needs the whole table again."""
     columns = WITH_ATTRS if label.iscrowd else INTERVAL_COLUMNS
-    replacement = pd.DataFrame(label.rows(shot), columns=list(columns))
-    if "attrs" in current and "attrs" not in replacement:
-        replacement["attrs"] = ""
-    elif "attrs" in replacement and "attrs" not in current:
-        current["attrs"] = ""
-    frame = pd.concat([current.loc[~selected], replacement], ignore_index=True)
-    frame = frame.sort_values("shot", key=pd.to_numeric, kind="stable")
-    validate_intervals(frame)
-    return frame
+    rows = pd.DataFrame(label.rows(shot), columns=list(columns))
+    validate_intervals(rows)
+    return rows
+
+
+def _replaced(current: pd.DataFrame, replacements: dict[int, pd.DataFrame]) -> pd.DataFrame:
+    """`current` with the rows of each shot in `replacements` (from `_rows`) in place
+    of that shot's, sorted by shot: one concat for any number of shots."""
+    shots = pd.to_numeric(current.shot, errors="coerce")
+    kept = current.loc[~shots.isin(list(replacements))]
+    attrs = "attrs" in kept or any("attrs" in rows for rows in replacements.values())
+    if attrs and "attrs" not in kept:
+        kept = kept.assign(attrs="")
+    frames = [rows if "attrs" in rows or not attrs else rows.assign(attrs="")
+              for rows in replacements.values()]
+    frame = pd.concat([kept, *frames], ignore_index=True)
+    return frame.sort_values("shot", key=pd.to_numeric, kind="stable")
 
 
 def apply_labels(event_dir) -> saves.Apply:
@@ -603,18 +611,21 @@ def apply_labels(event_dir) -> saves.Apply:
         path = labels_path(event_dir)
         if path.is_file():
             validate_csv_fields(path)
-        frame, refused = _current(path), []
+        frame, refused, rows = _current(path), [], {}
         validate_intervals(frame)
+        held = frame  # only the rows with attrs can make a shot uneditable
+        if "attrs" in frame:
+            held = frame.loc[frame["attrs"].str.strip() != ""]
         for entry in winners:
             try:
                 label = Label.from_entry(entry)
-                _check_editable(frame, entry["shot"], label, crowd_edit=True)
-                frame = _replaced(frame, entry["shot"], label)
+                _check_editable(held, entry["shot"], label, crowd_edit=True)
+                rows[int(entry["shot"])] = _rows(entry["shot"], label)
             except (ValueError, KeyError, TypeError) as error:
                 refused.append((entry, str(error)))
-        if len(refused) < len(winners):
+        if rows:
             with saves.replacing(path) as tmp:
-                frame.to_csv(tmp, index=False)
+                _replaced(frame, rows).to_csv(tmp, index=False)
         return refused
 
     return apply
@@ -749,7 +760,7 @@ def save(
         current = _current(path)
         validate_intervals(current)
         _check_editable(current, shot, label, crowd_edit)
-        _replaced(current, shot, label)  # the table this save makes must be valid
+        _rows(shot, label)  # the rows this save writes must be valid
         reviewer = getpass.getuser()
         saved_at, save_id = saves.new_save()
         entry = {

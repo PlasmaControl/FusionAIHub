@@ -825,9 +825,12 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
     def save_masks(body: MaskIn):
         directory, path = mask_file(body.event, body.shot, write=True)
         with mask_lock:
+            wait = 20.0
             try:  # this writer's earlier decisions count towards the revision
                 saves.merge(directory, "masks")
-            except (saves.StoreBusy, OSError, ValueError):
+            except saves.StoreBusy:
+                wait = 0.0  # held the whole wait: the save's own merge does not wait again
+            except (OSError, ValueError):
                 pass
             revision = len(regions.shot_history(directory, body.shot))
             if revision != body.revision:
@@ -860,6 +863,7 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
                 pseudo_sha256=body.pseudo_sha256,
                 name=name,
                 pseudo=whole.REVIEW,
+                wait=wait,
             )
         return {
             "rejected": entry["rejected"],
