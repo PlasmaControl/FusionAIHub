@@ -1,84 +1,89 @@
 # ELM models on Ricardo Shousha's review of 2026-10-23
 
-Status: **run 2026-10-24 as one SLURM CPU job (job 2977033, 900M, code at git 8d9339c4;
-jobstats gate passed, CPU 78.6 %, memory 72.8 %; the sizing runs are in the comment of
-`scripts/labeler/elm_heldout.sbatch`).** The frozen ELM models, scored
-without refitting anything on the 81 shots Ricardo Shousha reviewed on 2026-10-23.
-Record: `outputs/labeler/elm/heldout_2026_10_23/evaluation.json` (copy at
+Status: **run 2026-10-24 as one SLURM CPU job (job 2977052, 900M, code at git 85f85adf;
+jobstats gate passed, CPU 73.7 %, memory 74.1 %; the sizing runs are in the comment of
+`scripts/labeler/elm_heldout.sbatch`).** The frozen ELM models, scored without refitting
+anything on the 81 shots he reviewed. Record:
+`outputs/labeler/elm/heldout_2026_10_23/evaluation.json` (copy at
 `$LABELER_ROOT/round4/elm/heldout/2026-10-23/evaluation.json`). Code:
 `src/labeler/elm/heldout.py`, `scripts/labeler/elm_heldout_evaluate.py`,
 `scripts/labeler/elm_heldout.sbatch`.
 
 ## What this shows
 
-- **No model trained on any of his shots**: none is in a cross-validation fold, in Smith's
-  211, or in the cohort's blind test split. This is the first score of the `elm-ours`
-  serving ensemble (five `cv2` fold models at the mean threshold 0.417) outside its
-  training. It is not the blind split's score.
-- **The deployed score is the score on the servable shots.** `labeler.elm.serve` publishes
-  a shot only when `serve.input_problems` finds nothing wrong with its input. 15 of his 80
-  scored shots fail that screen (8 of the 23 challenge-key shots, 7 of 57 others), mostly a
-  filterscope with no signal. On the 15 servable key shots (B2) `elm-ours` has F1 0.922
-  [0.826, 0.982] and calls 0.3 % of the absent bins present; on all 23, unscreened, F1
-  0.856 and 10.3 %. Screened-out shots are not what the catalog would hold.
+- **None of the scored models trained on any of his shots**: none is in a cross-validation
+  fold, in Smith's 211, or in the cohort's blind test split. (`elm-dsm`, not scored here,
+  did train on two: 163518 in B2 and 190627 in B1, `training_membership.json`.) This is the
+  first score of the `elm-ours` serving ensemble (five `cv2` fold models at the mean
+  threshold 0.417) outside its training; it is not the blind split's score.
+- **Servable means input-screened, not published.** `labeler.elm.serve` has two rules: the
+  shot's input must pass `serve.input_problems`, and a shot under 5 % present is not
+  published (the owner's rule of 2026-10-11). **Servable** applies the first only (15 of his
+  80 scored shots fail it, mostly a filterscope with no signal) and is the basis of the
+  scores below. **Published** (also at least 5 % present: 9 of the 15 key shots, 38 of the
+  50 others) is given beside it. The near-empty shots stay in the servable scores because a
+  shot where the model finds nothing adds almost only true negatives; filtering on the
+  model's own output would hide those misses.
+- **The occupancy score does not see his isolated ELMs, and both models miss them.** A 50 ms
+  bin must lie wholly inside one crowd or absent row, so his individual rows outside his
+  crowd spans give no bin. On the servable shots `elm-ours`'s present runs touch 0.949 of
+  the 11,015 individual rows inside his crowd spans in B1 and 0.028 of the 1,826 outside
+  them (`elm-inst` 0.920 and 0.033); in B2 0.815 and 0.107 of 168. On 11 servable shots
+  whose only present labels are individual rows it touches none of 1,191. `elm-ours` is a
+  detector of ELMing periods, not of single ELMs. Whether it misses these ELMs or the rows
+  are prefill nobody checked is not known.
 - **His labels are not independent of `elm_jump`.** His review opened on the `elm_jump` v2
-  onsets as a prefill and he kept 17,109 of his 17,128 individual rows as they were. The
-  other-than-key shots (B1) score near ceiling for every method that behaves like
-  `elm_jump` (F1 0.955 to 0.972); his independent information is his added present time,
-  his absent calls and the key shots.
-- **Onset agreement is agreement with the accepted `elm_jump` prefill**, not onset
-  accuracy; `elm_jump` scores 1.000 on it by construction.
-- The old reviewed set reproduces the published `sources` record (below); the new numbers
-  are not comparable with it (other shots, another labelling procedure).
+  onsets as a prefill and he kept 17,109 of his 17,128 individual rows as they were. B1
+  scores near ceiling for every method that behaves like `elm_jump` (F1 0.955 to 0.972); his
+  independent information is his added present time, his absent calls and the key shots.
+  Onset agreement is agreement with the accepted prefill, not onset accuracy: `elm_jump`
+  scores 1.000 on it by construction.
+- On the 15 servable key shots (B2) `elm-ours` has F1 0.922 [0.826, 0.982] and calls 0.3 %
+  of the absent bins present; on all 23, unscreened, F1 0.856 and 10.3 % (the shots the
+  screen refuses). The old reviewed set reproduces the published `sources` record (below);
+  the new numbers are not comparable with it.
 
 ## Inputs and pinned labels
 
-| input | file | sha256 |
+| input | file under `$LABELER_ROOT/benchmarks/elm/review_pins/` | sha256 |
 |---|---|---|
-| old review labels, pin 2026-10-10 (default of the ELM scripts) | `$LABELER_ROOT/benchmarks/elm/review_pins/2026-10-10/labels.csv` (119 shots, no history kept) | `6ae3497e...e380` |
-| old review labels, pin 2026-10-17 (panel A, `labeler.elm.sources`) | `.../2026-10-17/labels.csv` (120 shots, regridded) | `d483fed8...6276` |
-| his review labels, pin 2026-10-23 | `.../2026-10-23/labels.csv` (19,079 rows, 201 shots) and `history.jsonl` | `b54c1a27...8e02`, `e95ceb0c...b5fd` |
+| old labels, pin 2026-10-10 (default of the ELM scripts) | `2026-10-10/labels.csv`: 119 shots, no history; file mtime 2026-10-01, before the regrid the pin is named for | `6ae3497e...e380` |
+| old labels, pin 2026-10-17 (panel A, `labeler.elm.sources`) | `2026-10-17/labels.csv`: 120 shots, regridded | `d483fed8...6276` |
+| his labels, pin 2026-10-23 | `2026-10-23/labels.csv` (19,079 rows, 201 shots) and `history.jsonl` | `b54c1a27...8e02`, `e95ceb0c...b5fd` |
 | `elm_jump` v2 table (his prefill) | `suggestions/elm_jump/v2/edge_localized_mode_suggest_elm_jump_v2.csv` | `aa936d3c...45c4`, the `source_sha256` of all 81 of his last saves |
-| `elm_jump` v2 onsets | the table's `_onsets.csv` | `d831967a...07ac`; his saves do not hash it, so it is assumed to be the prefill's source (the rows it explains support that: 17,109 of 17,128) |
+| `elm_jump` v2 onsets | the table's `_onsets.csv` | `d831967a...07ac`; not hashed by his saves, assumed to be the prefill's source (it explains 17,109 of 17,128 rows) |
 
-Every pin is a read-only copy with a `SHA256SUMS`; the script re-hashes them
-(`heldout.verify_pin`) before scoring. The 2026-10-23 table holds the same rows for the
-2026-10-17 pin's shots (`pins_agree_on_the_old_shots`).
-
-**Which pin is which.** `prepare.review_csv(paths)` returns the **2026-10-10 pin**, the
-119 shots as they stood before the 10 ms regrid of 2026-10-10. Those are the bytes the
-`cv2` run trained on (its `run.json` records the same sha256 and 13,783 bytes) and the
-ones the README's Models lines of 2026_10_03, 2026_10_01 and 2026_09_13 were scored on
-(12,409 bins; bes73 6,843), and every shot has a prepared input, so an unfiltered
-`train.load` runs. The **2026-10-17 pin** is the regridded table (12,481 bins) plus 189093,
-which has no input; `labeler.elm.sources` and panel A read it. `prepare.review_csv(paths,
-None)` is the live table. A pin that does not exist is an error, never a fallback.
+Every pin is a read-only copy (files and folder) with a `SHA256SUMS`, re-hashed by
+`heldout.verify_pin` before scoring; the 2026-10-23 table holds the 2026-10-17 pin's rows
+unchanged. `prepare.review_csv(paths)` returns the 2026-10-10 pin: the bytes the `cv2` run
+trained on (same sha256 and 13,783 bytes in its `run.json`) and the README Models lines of
+2026_10_03 and earlier were scored on (12,409 bins, bes73 6,843); every shot has a prepared
+input. The 2026-10-17 pin is the regridded table (12,481 bins) plus 189093, which has no
+input; `review_csv(paths, None)` is the live table, a missing pin is an error.
 `train.check_no_holdout` refuses any `protect: holdout` shot (the challenge key's 24) in
-`train.load` and in `elm_inst.py prepare`, failing closed when the registry cannot be read;
-`elm_dsm_train.py` reads neither (see `elm_challenge.md`).
+`train.load` and `elm_inst.py prepare`, failing closed (`elm_dsm_train.py` reads neither; see
+`elm_challenge.md`).
 
 ## His shots and labels
 
 | | B1 (58 shots) | B2 (23 shots) |
 |---|---|---|
 | what | not on a holdout list | 23 of the challenge key's 24 shots, evaluation only |
-| scored | 57 (203401 has no `\BCI::DENV2F`, `%TREE-E-NODATA`) | 23 |
-| servable (`serve.input_problems` empty) | 50 | 15 |
-| individual 10 ms rows | 14,104 | 3,024 |
-| of them the accepted prefill / edited | 14,104 / 0 | 3,005 / 19 (141474: 1, 161558: 1, 192855: 17) |
-| prefilled onsets he removed | 0 | 19 (all in 163518) |
-| crowd rows | 84 | 43 |
+| scored / servable / published | 57 (203401 has no `\BCI::DENV2F`) / 50 / 38 | 23 / 15 / 9 |
+| individual 10 ms rows: accepted prefill / edited | 14,104: 14,104 / 0 | 3,024: 3,005 / 19 (141474: 1, 161558: 1, 192855: 17) |
+| prefilled onsets he removed; crowd rows | 0; 84 | 19 (all in 163518); 43 |
+| servable shots with no crowd row (rows) | 8 (1,114) | 3 (77): 192048, 192855, 203788 |
 | uncertain time (ms; in no score) | 6,140 (10 shots) | 5,750 (141474, 163518) |
 | his present time against the draft's | 164,070 ms against 141,914 | 44,020 ms against 37,141 |
-| draft time he kept / his time the draft had | 0.976 / 0.844 | 0.969 / 0.818 |
 
-B1 and B2 are never pooled. The 11 shots whose inputs the corpus lacked were fetched on the
-login node with `elmo_fetch.py` (fdp exited 245 after fetching all 11, checked by counting
-the files); nothing is fetched inside the evaluation. A row is `prefill_accepted` when its
-10 ms cell holds an onset of the prefill table inside its save's window and `edited`
-otherwise (`heldout.individual_provenance`; every row with its provenance is in
-`individual_provenance.csv` next to the traces). The page flags only the save that wrote the
-prefill, so the per-row provenance, not the flag, is the evidence.
+B1 and B2 are never pooled: B2 is the key's shots by the vendored key, and the holdout
+registry must name the same shots or the run stops (`heldout.split_panels`). The 11 shots
+whose inputs the corpus lacked were fetched on the login node with `elmo_fetch.py` (fdp
+exited 245 after fetching all 11, checked by counting the files); nothing is fetched inside
+the evaluation. A row is `prefill_accepted` when its 10 ms cell holds an onset of the prefill
+table inside its save's window and `edited` otherwise (`heldout.individual_provenance`;
+every row with its provenance is in `individual_provenance.csv` beside the traces); the page
+flags only the save that wrote the prefill, so the per-row provenance is the evidence.
 
 ## Models (frozen; no refit, no threshold change)
 
@@ -92,18 +97,16 @@ prefill, so the per-row provenance, not the flag, is the evidence.
 | elm-clock-peaks | the clock's peaks on the first finite filterscope, each the span of its half-prominence width (`challenge.clock_spans`), run on every scored shot; defined here because the clock tables lack the key shots |
 | always present | every bin present (a floor) |
 
-**The input screen.** Each shot's input goes through `serve.input_problems` as `serve`
-applies it: both density chords present and not screened as a failed digitiser, and each
-filterscope's median level inside the 5th to 95th percentile of the 119 reviewed shots'
-levels, widened by 0.6 decade. The `servable` tables below are on the shots that pass; the
-`all` tables are the models' unscreened output. Every shot's problems are in the record
-(`per_shot`, `input_screen`). A median of exactly 10^12.00 is the input's clip floor, a
-channel with no signal above it.
-
-| set | screened-out shots (problem) |
-|---|---|
-| B2 (8) | 163518 (FS02 10^12.30, below the range), 165703 (FS02 and FS04 near the floor), 166828 (FS02 floor), 171322 (FS03 and FS04 floor), 180257 and 180264 (FS02 10^16.20 and 10^16.21, 0.01 decade above the limit), 194479 (both density chords empty), 207788 (FS02 floor) |
-| B1 (7) | 185953 (FS02 floor), 193802, 194025 and 194401 (both density chords empty), 196632, 199907 and 202205 (FS03 floor) |
+**The input screen** is `serve.input_problems` as `serve` applies it: both density chords
+present and not a failed digitiser, and each filterscope's median level inside the 5th to
+95th percentile of the 119 reviewed shots' levels, widened by 0.6 decade; `published` also
+needs `serve.present_fraction` of the shot at least 0.05. A median of exactly 10^12.00 is the
+input's clip floor, a channel with no signal. Screened out, B2 (8): 163518 (FS02 below the
+range), 165703 (FS02 and FS04 near the floor), 166828 (FS02 floor), 171322 (FS03 and FS04
+floor), 180257 and 180264 (FS02 0.01 decade above the limit), 194479 (both density chords
+empty), 207788 (FS02 floor); B1 (7): 185953 (FS02 floor), 193802, 194025 and 194401 (both
+density chords empty), 196632, 199907 and 202205 (FS03 floor). The `all` tables are the
+models' unscreened output, for diagnosis: a refused shot has no `elm-ours` row in the catalog.
 
 ## Scoring
 
@@ -113,6 +116,13 @@ channel with no signal above it.
   bin and uncertain rows are in no score. Intervals are 95 % shot bootstraps (1,000
   resamples, seed 20261003, `score.summarise`). The false alarm is the share of absent bins
   a method calls present.
+- **Individual-row presence** (`heldout.row_presence_set`): of his individual 10 ms rows
+  inside analysed time, the share a method's present runs overlap at all, split by whether
+  the row's centre lies inside one of his crowd rows. Present runs are the evaluation's
+  detection rule (the 50 ms moving mean of a trace at its threshold, `labels.runs_of`, or a
+  table's spans); `raw 1 ms` reads the trace itself, the most generous rule, and moves a
+  figure by at most 0.02. Intervals are 95 % shot bootstraps. It is the only score of an
+  isolated ELM; the rows outside his crowd spans give no occupancy bin.
 - **Onset agreement**: detections matched one to one, nearest first, to his rows. A
   detection is a false alarm in judged-present or absent time; none counts in uncertain
   time or outside his labelled window. Detections are collapsed to the 10 ms cells his rows
@@ -128,10 +138,9 @@ channel with no signal above it.
 
 **Reference, the old reviewed set** (pin 2026-10-17, out of fold: each shot's own fold model
 and threshold; 119 shots, 12,481 bins). The `elm-ours`, `elm-clock`, `elm-clock-v2` and
-`elm-jump` F1 and the bin counts (all119 12,481, bes73 6,881) equal
-`outputs/labeler/elm/sources/evaluation.json` (2026-10-14) to the last digit. They are not
-the README Models lines of 2026_10_03 and earlier (elm-ours 0.830, elm-clock 0.757, elm-elmo
-0.842), which were scored on the 2026-10-10 pin (12,409 and 6,843 bins).
+`elm-jump` F1 and the bin counts equal `outputs/labeler/elm/sources/evaluation.json`
+(2026-10-14) to the last digit. They are not the README Models lines of 2026_10_03 and
+earlier (elm-ours 0.830), which were scored on the 2026-10-10 pin (12,409 bins).
 
 | method | shots | F1 | crowd-bin recall | absent-bin false alarm | AUROC |
 |---|---|---|---|---|---|
@@ -146,25 +155,14 @@ the README Models lines of 2026_10_03 and earlier (elm-ours 0.830, elm-clock 0.7
 
 | method | shots | F1 | crowd-bin recall | absent-bin false alarm | AUROC |
 |---|---|---|---|---|---|
-| elm-ours (deployed) | 15 | 0.922 [0.826, 0.982] | 0.860 [0.705, 0.968] | 0.003 [0.000, 0.009] | 0.993 [0.982, 0.999] |
+| elm-ours | 15 | 0.922 [0.826, 0.982] | 0.860 [0.705, 0.968] | 0.003 [0.000, 0.009] | 0.993 [0.982, 0.999] |
 | elm-inst | 15 | 0.946 [0.889, 0.986] | 0.920 [0.827, 0.989] | 0.016 [0.003, 0.036] | 0.996 [0.989, 0.999] |
 | elm-jump | 13 | 0.910 [0.819, 0.989] | 0.837 [0.698, 0.984] | 0.003 [0.000, 0.007] | -- |
 | elm-clock-peaks | 15 | 0.730 [0.477, 0.926] | 0.922 [0.877, 0.962] | 0.389 [0.070, 0.642] | -- |
 | always present | 15 | 0.564 [0.374, 0.694] | 1.000 | 1.000 | 0.500 |
 
-**B2, all 23 scored shots, unscreened model output** (2,203 bins: 798 crowd, 1,405 absent;
-`elm-jump` 20 shots).
-
-| method | shots | F1 | crowd-bin recall | absent-bin false alarm | AUROC |
-|---|---|---|---|---|---|
-| elm-ours | 23 | 0.856 [0.673, 0.969] | 0.883 [0.761, 0.964] | 0.103 [0.001, 0.286] | 0.976 [0.929, 0.998] |
-| elm-inst | 23 | 0.916 [0.817, 0.975] | 0.926 [0.852, 0.980] | 0.055 [0.005, 0.131] | 0.991 [0.972, 0.999] |
-| elm-jump | 20 | 0.923 [0.848, 0.981] | 0.860 [0.738, 0.967] | 0.003 [0.000, 0.006] | -- |
-| elm-clock-peaks | 23 | 0.709 [0.497, 0.892] | 0.922 [0.881, 0.958] | 0.385 [0.123, 0.598] | -- |
-| always present | 23 | 0.532 [0.359, 0.671] | 1.000 | 1.000 | 0.500 |
-
 **B1, servable (50 shots, 4,942 bins: 2,646 crowd, 2,296 absent)** and all 57 scored
-(5,297 bins), F1 with the false alarm:
+(5,297 bins):
 
 | method | servable F1 | servable crowd recall | servable false alarm | all 57: F1 | all 57: false alarm |
 |---|---|---|---|---|---|
@@ -175,38 +173,73 @@ the README Models lines of 2026_10_03 and earlier (elm-ours 0.830, elm-clock 0.7
 | elm-clock-peaks | 0.810 [0.734, 0.878] | 0.892 | 0.358 | 0.800 [0.711, 0.866] | 0.324 |
 | always present | 0.697 | 1.000 | 1.000 | 0.683 | 1.000 |
 
+**Published** (B2 9 shots, 982 bins; B1 38 shots, 4,228 bins), F1: B2 `elm-ours` 0.947
+[0.878, 0.989], `elm-inst` 0.960 [0.910, 0.993], `elm-jump` 0.904; B1 `elm-ours` 0.971
+[0.956, 0.983], `elm-inst` 0.958 [0.923, 0.982], `elm-jump` 0.972. The shots this drops
+(6 of B2's servable, 12 of B1's; fractions in the record) hold 1,264 scored bins, 36 of
+them crowd. **Unscreened B2** (23 shots, 2,203 bins): `elm-ours` F1 0.856 [0.673, 0.969],
+false alarm 0.103; `elm-inst` 0.916 [0.817, 0.975], 0.055; `elm-jump` (20 shots) 0.923.
+
 On B1's 30 BES shots (2,263 bins) F1 is 0.963 for `elm-ours`, 0.976 for `elm-inst`, 0.966 for
 `elm-jump`, 0.862 [0.756, 0.928] for ELM-O (crowd recall 0.774, false alarm 0.034) and 0.618
 for the clock. On B1's 36 shots without a shared run day (3,123 bins) F1 is 0.965 for
 `elm-ours`, 0.968 for `elm-inst`, 0.975 for `elm-jump` and 0.652 for the clock. Both subsets
 are on all scored shots, not only the servable ones.
 
-What the numbers say, and do not:
-
-- **B1 is near ceiling because the labels are largely the `elm_jump` draft**; a high B1
+- **B1 is near ceiling because the labels are largely the `elm_jump` draft**: a high B1
   score is agreement with an accepted prefill, not evidence the models are right where the
-  prefill was wrong. Screening changes B1 little (0.966 to 0.970). It is also not a gain over
-  the old set's 0.828: other labels, other shots, the ensemble rather than out-of-fold models.
-- **B2 is the informative test, and on the servable shots `elm-ours` is a good detector.**
-  `elm-inst` is ahead by 0.02 and the intervals overlap fully; with 15 shots that is a
-  tendency, not a ranking.
-- **The unscreened B2 loss is the input screen at work.** `elm-ours` on 207788 (a single
-  absent row in his review, no ELMs) calls 140 of 150 bins present; its FS02 median is
-  10^12.00, the clip floor, a dead channel, and `serve` would not publish the shot. That one
-  shot is 140 of `elm-ours`'s 145 false-alarm bins on all 23 shots (the 15 servable shots
-  have 3), so the unscreened false alarm of 0.103 is that shot. 163518, 165703, 166828 and
-  171322 also have a channel at or near the floor; 180257 and 180264 fail by 0.01 decade, so
-  the screen's edge, not dead data, decides them.
-- **The screen is the deployed pipeline's, not a model result**: a shot refused here has no
-  `elm-ours` row in the catalog, so the all-shots rows are for diagnosis only. No B2 shot
-  shares a run day with a trained set; 180445, 192855 and 207788 have no run day on record.
-- **`elm_jump` has lower crowd-bin recall on B2 (0.860 on 20 shots) than on B1 (0.950)**,
-  consistent with his adding about 19 % more present time than the draft held there (16 %
-  on B1): the added time is where his edits show.
-- **ELM-O is lower than `elm-ours` and `elm-inst` on B1's 30 BES shots** (0.862 against
-  0.963 and 0.976) and higher on B2's three (0.881 against 0.596 and 0.738, point estimates
-  only; elm-jump 0.985 on two). On the old set the three are within noise (bes73: 0.841,
-  0.843, 0.847).
+  prefill was wrong, and no gain over the old set's 0.828 (other labels, other shots, the
+  ensemble rather than out-of-fold models).
+- **B2 is the informative test**, and on the servable shots `elm-ours` detects ELMing
+  periods well (F1 0.922, false alarm 0.003) but not isolated ELMs (next section).
+  `elm-inst` is ahead by 0.02 in F1 and the intervals overlap fully; with 15 shots that is
+  a tendency, not a ranking.
+- **The unscreened B2 loss is the input screen at work**: `elm-ours` on 207788 (a single
+  absent row, no ELMs) calls 140 of 150 bins present, its FS02 median is the 10^12.00 clip
+  floor (a dead channel), and `serve` would not publish it. That shot is 140 of the 145
+  false-alarm bins on all 23 shots (the 15 servable shots have 3). 180257 and 180264 fail the
+  screen by 0.01 decade, so its edge, not dead data, decides them.
+- **`elm_jump` has lower crowd-bin recall on B2 (0.860, 20 shots) than on B1 (0.950)**,
+  consistent with his adding about 19 % more present time than the draft held there (16 % in
+  B1): the added time is where his edits show.
+- **ELM-O is lower than `elm-ours` and `elm-inst` on B1's 30 BES shots** (0.862 against 0.963
+  and 0.976). B2's three BES shots (192855, 194479, 204116) are not a comparison: all 33 of
+  their crowd bins are in 204116, the other two hold absent bins only, and 194479 fails the
+  input screen. On the old set the three are within noise (bes73: 0.841, 0.843, 0.847).
+
+## Results: his individual rows, inside and outside his crowd spans
+
+The share of his individual rows a method's present runs touch (`heldout.row_presence_set`;
+rows inside analysed time, split by the row's centre in or out of one of his crowd rows).
+
+| set | method | shots | inside crowd spans (rows) | outside crowd spans [95 % CI] (rows hit of rows) |
+|---|---|---|---|---|
+| B1 servable | elm-ours | 50 | 0.949 (11,015) | 0.028 [0.001, 0.088] (52 of 1,826) |
+| B1 servable | elm-inst | 50 | 0.920 (11,015) | 0.033 [0.004, 0.096] (61 of 1,826) |
+| B1 servable | elm-jump | 50 | 0.984 (11,015) | 0.157 [0.049, 0.318] (287 of 1,826) |
+| B1 servable | elm-clock-peaks | 50 | 0.769 (11,015) | 0.359 [0.199, 0.509] (656 of 1,826) |
+| B1 published | elm-ours | 38 | 0.950 (10,998) | 0.080 [0.002, 0.254] (45 of 560) |
+| B1 published | elm-inst | 38 | 0.921 (10,998) | 0.102 [0.010, 0.300] (57 of 560) |
+| B2 servable | elm-ours | 15 | 0.815 (2,060) | 0.107 [0.000, 0.291] (18 of 168) |
+| B2 servable | elm-inst | 15 | 0.891 (2,060) | 0.179 [0.020, 0.444] (30 of 168) |
+| B2 servable | elm-jump | 13 | 0.950 (2,060) | 0.662 [0.349, 0.877] (100 of 151) |
+| B2 published | elm-ours | 9 | 0.873 (1,903) | 0.103 [0.000, 0.450] (6 of 58) |
+| B2 published | elm-inst | 9 | 0.928 (1,903) | 0.224 [0.026, 0.724] (13 of 58) |
+
+- **Both models touch almost none of the rows outside his crowd spans**, on the servable
+  shots and on those `serve` would publish, in B1 and B2. The occupancy tables do not show
+  it: a bin must lie wholly inside one crowd or absent row, so these rows give no bin.
+- **Eleven servable shots have no present label but individual rows** (B1: 192277, 196101,
+  200012, 202098, 203174, 203349, 203563, 204687; B2: 192048, 192855, 203788). `elm-ours`
+  touches 0 of their 1,191 rows (1,114 in B1, 77 in B2), `elm-inst` 1, and in each it calls
+  under 5 % of the shot present, so they add absent bins only to the occupancy score. On
+  192855 his 17 rows are his own additions (`edited`) and neither model touches one.
+- **Not known**: whether the models miss these ELMs or the rows are prefill nobody checked.
+  All 1,826 of B1's outside rows are the accepted `elm_jump` prefill, and the draft's own
+  table has present time at only 0.157 of them. Read isolated ELMs as not detected, not
+  as absent.
+- `elm-clock-peaks` touches more of them because it fires at every filterscope peak, absent
+  time included (false alarm 0.36 in B1).
 
 ## Results: onsets (agreement with the accepted `elm_jump` prefill)
 
@@ -220,31 +253,29 @@ scores differ from these by at most 0.02 except `elm-ours`'s precision (0.486 at
 | B1 | elm-ours (onset head) | 57 | 0.750 | 0.008 | 0.016 [0.008, 0.026] | 33 |
 | B1 | elm-inst | 57 | 0.966 | 0.344 | 0.507 [0.361, 0.621] | 4 |
 | B1 | elm-jump | 57 | 1.000 | 1.000 | 1.000 | 0 |
-| B1 | elm-clock-peaks | 57 | 0.642 | 0.658 | 0.650 [0.553, 0.727] | 4,154 |
 | B1 BES | ELM-O | 30 | 0.930 | 0.351 | 0.510 [0.406, 0.586] | 60 |
 | B2 | elm-ours (onset head) | 23 | 0.750 | 0.019 | 0.037 [0.015, 0.068] | 18 |
 | B2 | elm-inst | 23 | 0.995 | 0.357 | 0.526 [0.271, 0.725] | 0 |
 | B2 | elm-jump | 20 | 1.000 | 0.999 | 1.000 [0.999, 1.000] | 0 |
-| B2 | elm-clock-peaks | 23 | 0.443 | 0.752 | 0.557 [0.356, 0.764] | 2,827 |
 
 - **`elm_jump` is circular** here: the rows are its own onsets, accepted. Unreduced to his
   cells it fires about 2.3 times per cell and scores precision 0.434 (B1).
 - **`elm-ours`'s onset head scores near 0 recall**: it was trained on the starts of isolated
-  (non-crowd) reviewed spans and his rows sit mostly in dense trains. That says nothing
-  against its occupancy output, which is what the catalog uses.
+  (non-crowd) reviewed spans and his rows sit mostly in dense trains. Its occupancy output,
+  which the catalog uses, also misses the isolated rows (above).
 - **`elm-inst` finds about a third of the prefilled cells** (precision 0.97 to 0.99) with
-  almost no detections in absent time.
-- **His 19 edited B2 rows** are found 0 of 19 by `elm-ours` and `elm-inst` and 18 of 19 by
-  `elm-clock-peaks` (it fires at every filterscope peak, absent time included): too few rows,
-  in 3 shots, to rank methods on.
+  almost no detections in absent time. His 19 edited B2 rows are found 0 of 19 by `elm-ours`
+  and `elm-inst` and 18 of 19 by `elm-clock-peaks` (it fires at every filterscope peak: precision 0.64 in B1,
+  0.44 in B2, thousands of detections in absent time): too few rows, in 3 shots, to rank.
 
 ## Caveats
 
 - **Circularity** (above): read his rows as a reviewed `elm_jump` output with edits, whose
   spans carry his judgement and whose onsets carry the draft's.
 - **Run-day overlap.** 21 of his 58 B1 shots share a run day with the 119 reviewed shots (the
-  fold models' training shots), none with Smith's 211; no B2 shot shares one. The run date is
-  the operator log's, else the cohort's `run_id`. No effect shows in B1.
+  fold models' training shots), none with Smith's 211; no B2 shot shares one (180445, 192855
+  and 207788 have no run day on record). The run date is the operator log's, else the
+  cohort's `run_id`. No effect shows in B1.
 - Panel A uses each old shot's own fold model and threshold (the ensemble would be in
   sample); B1 and B2 use the ensemble. B2 has 23 shots (15 servable) and a 3-shot BES panel,
   so its intervals are wide. `elm-clock-peaks` is defined here, not a catalog table; `elm-clock`
@@ -265,11 +296,10 @@ sbatch --output=$LABELER_ROOT/runs/slurm/%j.out --error=$LABELER_ROOT/runs/slurm
 python -m labeler.jobstats --job-id <id> --cpu-only
 ```
 
-`--published` (default `outputs/labeler/elm` of the checkout) names the records the job reads:
-`inst/evaluation.json` for the onset decoding and `sources/evaluation.json` for panel A's
-check; a checkout without them passes the main checkout's. The job reads the pins and the
-tables and changes nothing else. `--skip-old` and `--shots` make a pilot. Repeated runs gave
-identical panels and per-shot records.
+`--published` (default `outputs/labeler/elm` of the checkout) names the records the job reads
+(`inst/evaluation.json`, `sources/evaluation.json`); a checkout without them passes the main
+checkout's. `--skip-old` and `--shots` make a pilot. Repeated runs gave identical panels
+and per-shot records.
 
 ## Suggested README lines (not applied)
 
@@ -277,14 +307,18 @@ identical panels and per-shot records.
 `scripts/labeler/elm_protocol.py`, which does not read this evaluation, and was not edited.
 For the owner to place:
 
-- elm-ours | 2026_10_24 | AUROC: 0.993 [0.982, 0.999] | AUPRC: -- | F1: 0.922 [0.826, 0.982]
-  (frozen serving ensemble at 0.417 on the 15 servable of the 23 ELM challenge-key shots,
-  which no model trained on, reviewed by Ricardo Shousha 2026-10-23, 1,532 bins; false alarm
-  0.003; on his 50 servable other shots, 4,942 bins, F1 0.970, near ceiling because his rows
-  are largely the accepted elm_jump prefill; elm_heldout.md)
-- elm-inst | 2026_10_24 | AUROC: 0.996 [0.989, 0.999] | AUPRC: -- | F1: 0.946 [0.889, 0.986]
-  (the same 15 key shots; his 50 other servable shots F1 0.957)
+- elm-ours | 2026_10_24 | AUROC: 0.993 [0.982, 0.999] | AUPRC: 0.991 [0.969, 0.998] | F1: 0.922 [0.826, 0.982]
+  (frozen serving ensemble at 0.417 on the 15 input-screened (servable) of the 23 ELM
+  challenge-key shots, which none of the scored models trained on, reviewed by Ricardo
+  Shousha 2026-10-23, 1,532 bins; false alarm 0.003; F1 0.947 [0.878, 0.989] on the 9 that
+  serve would publish; on his 50 servable other shots F1 0.970, near ceiling because his rows
+  are largely the accepted elm_jump prefill. An ELMing-period detector: its present runs
+  touch 0.107 of his individual rows outside his crowd spans, 0.815 inside; elm_heldout.md)
+- elm-inst | 2026_10_24 | AUROC: 0.996 [0.989, 0.999] | AUPRC: 0.994 [0.979, 0.999] | F1: 0.946 [0.889, 0.986]
+  (the same 15 key shots; 0.179 of the individual rows outside his crowd spans; his 50 other
+  servable shots F1 0.957)
 - the README's sentence "A frozen-model score on the blind split awaits review of those
-  shots" would read: "A frozen-model score on 65 servable shots outside every training set
-  (not the blind split) is in elm_heldout.md; his labels are largely the accepted elm_jump
-  prefill."
+  shots" would read: "A frozen-model score on 65 input-screened shots that none of the
+  scored models trained on (not the blind split) is in elm_heldout.md; his labels are
+  largely the accepted elm_jump prefill, and both models miss the isolated ELMs outside his
+  crowd spans."

@@ -39,8 +39,11 @@
 # memory 60.8 %) failed; job 2977033 at 900M took 2 min 43 s and passed (CPU 78.6 %, memory
 # 72.8 %). The memory the gate reads is a sampled mean, and sacct's MaxRSS follows the
 # allowance (894, 992 and 1065 MiB at 900, 1000 and 1100M) because it counts reclaimable file
-# pages, so a larger request only lowers the gate's figure: keep 900M, which has run twice
-# (jobs 2977016 and 2977033) without an OOM.
+# pages, so a larger request only lowers the gate's figure: keep 900M, which has run three
+# times (jobs 2977016, 2977033 and 2977052) without an OOM. With the individual-row scores and
+# the published view added (code 85f85adf), job 2977051 failed the gate on a cold file cache
+# (4 min 49 s, CPU 40.6 %, memory 74.2 %: the same CPU seconds over a longer wall) and its
+# rerun 2977052 passed (2 min 50 s, CPU 73.7 %, memory 74.1 %).
 set -euo pipefail
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
 ENV="${ENV:-/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler}"
