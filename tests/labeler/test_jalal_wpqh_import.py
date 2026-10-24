@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from labeler.events.review import labels, reviewers
+from labeler.events.review import labels, reviewers, saves
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/labeler/jalal_wpqh_import.py"
 spec = importlib.util.spec_from_file_location("jalal_wpqh_import", SCRIPT)
@@ -189,7 +189,9 @@ def test_the_saved_name_is_renamed_exactly(tmp_path):
     assert got[1:] == before[confinement].splitlines(keepends=True)[1:]
     assert other.read_text() == before[other]
     assert names.read_text() == "Alvin Garcia\nJalal Butt\nJalalvand\n"
-    assert reviewers.read(tables) == ["Alvin Garcia", "Jalal Butt", "Jalalvand"]
+    listed = reviewers.read(tables)  # the file's names and the saved ones
+    assert {"Alvin Garcia", "Jalal Butt", "Jalalvand"} <= set(listed)
+    assert "Jalal" not in listed
     assert jw.rename_saved_names(tables, apply=False) == {}  # nothing left to rename
 
 
@@ -412,6 +414,10 @@ def test_a_wpqh0_shot_with_only_a_model_start_loses_this_imports_save(tmp_path):
     assert [e["shot"] for e in labels.read_history(tmp_path)] == [300]
     assert (tmp_path / "review" / "history.jsonl").read_text().splitlines() == [kept]
     assert reviewers.shot_reviewers(tmp_path, 200) == []
+    # the lines are still in the writer's file: a later merge must not bring them back
+    saves.merge(tmp_path, "history", labels.apply_labels(tmp_path))
+    assert sorted(labels.read_saved(tmp_path)) == [300]
+    assert [e["shot"] for e in labels.read_history(tmp_path)] == [300]
 
 
 def test_a_withdrawal_refuses_a_shot_someone_else_saved(tmp_path):

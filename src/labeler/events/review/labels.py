@@ -3,7 +3,10 @@
 `review/labels.csv` holds the current label of every reviewed shot in the format
 schema (`shot, category, t_start, t_end, confidence`, ms): individual and crowd
 spans may overlap; their shared gaps are category 0. `history.jsonl`
-gets one line per save. A shot nobody has saved opens on its source label: the
+gets one line per save. A save is first written to its writer's own file under
+`review/saves/` and then merged into the two files (see `saves`), so several
+people may save into one folder: the last save of a shot, by time, is its label.
+A shot nobody has saved opens on its source label: the
 table `review/source.json` points at (a suggestion table), else the newest
 `format/*_format_*.csv`.
 """
@@ -23,6 +26,7 @@ import numpy as np
 import pandas as pd
 
 from ...config import atomic_path
+from ...env import getenv
 from ..catalog.points import validate_csv_fields
 from ..catalog.states import NOT_OBSERVABLE, STATE_NAMES
 from ..grid import GRID_MS, snap, snap_span, snap_window
@@ -36,9 +40,10 @@ from ..interval_tables import (
     validate_intervals,
 )
 from ..times import whole_ms
+from . import saves
+from .saves import REVIEW
 
 LONGEST_WINDOW_MS = 20_000
-REVIEW = "review"
 _write_lock = threading.Lock()
 EVIDENCE_ATTRS = {"evidence_tier", "coverage_verified"}
 
@@ -56,6 +61,15 @@ class Label:
     #: and its canonical JSON attrs. They require explicit unassessed gaps and
     #: cannot be edited by the category-only review page.
     attrs: tuple[str, ...] = ()
+
+    @classmethod
+    def from_entry(cls, entry: dict) -> Label:
+        """The label a history line saved."""
+        return cls(
+            tuple(int(v) for v in entry["window"]),
+            tuple((int(a), int(b), int(c)) for a, b, c in entry["intervals"]),
+            tuple(entry["iscrowd"]) if entry.get("iscrowd") else (),
+        )
 
     def as_json(self) -> dict:
         return {
@@ -453,8 +467,10 @@ def _table(path, *, grid_ms) -> dict[int, Label]:
 @lru_cache(maxsize=512)  # the silver view reads ~200 tables a shot
 def _read_table(path, _mtime_ns, _ino, _size, grid_ms) -> dict[int, Label]:
     """One label per shot of a format table; cached per file version, never mutate."""
-    validate_csv_fields(path)
-    frame = validate_intervals(pd.read_csv(path, index_col=False))
+    saves.retrying(lambda: validate_csv_fields(path), path.parent)
+    frame = validate_intervals(
+        saves.retrying(lambda: pd.read_csv(path, index_col=False), path.parent)
+    )
     found = {}
     for shot, rows in frame.groupby("shot", sort=False):
         if "attrs" in rows and any(
@@ -522,11 +538,160 @@ def read_history(event_dir) -> list[dict]:
     path = history_path(event_dir)
     if not path.is_file():
         return []
-    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+    text = saves.retrying(lambda: path.read_text(), path.parent)
+    return [json.loads(line) for line in text.splitlines() if line.strip()]
 
 
 class SaveRefused(ValueError):
     """The page cannot save safely over the existing table."""
+
+
+def _current(path) -> pd.DataFrame:
+    """The table as written: other shots keep their precision and attrs text."""
+    if not path.is_file():
+        return pd.DataFrame(columns=list(INTERVAL_COLUMNS))
+    return saves.retrying(
+        lambda: pd.read_csv(path, dtype=str, keep_default_na=False, index_col=False),
+        path.parent,
+    )
+
+
+def _check_editable(current: pd.DataFrame, shot: int, label: Label, crowd_edit: bool):
+    """Refuse a shot of the table that the page cannot edit without losing data.
+    The table as a whole is checked by the caller (`validate_intervals`)."""
+    if "attrs" in current:
+        selected = pd.to_numeric(current.shot, errors="coerce") == int(shot)
+        for cell in current.loc[selected, "attrs"]:
+            if not cell.strip():
+                continue
+            if set(parse_attrs(cell)) != {"iscrowd"}:
+                raise SaveRefused(
+                    f"shot {shot} has attrs that the review page cannot edit; "
+                    "save refused"
+                )
+            if not label.iscrowd and not crowd_edit:
+                raise SaveRefused(
+                    f"shot {shot} has iscrowd metadata; restart the review "
+                    "server before editing its annotation resolution"
+                )
+
+
+def _rows(shot: int, label: Label) -> pd.DataFrame:
+    """The rows `label` writes for `shot`, checked. Every check of a table is made row
+    by row, so the rows of a valid table with these in place of a shot's are valid
+    when these are: nothing needs the whole table again."""
+    columns = WITH_ATTRS if label.iscrowd else INTERVAL_COLUMNS
+    rows = pd.DataFrame(label.rows(shot), columns=list(columns))
+    validate_intervals(rows)
+    return rows
+
+
+def _replaced(current: pd.DataFrame, replacements: dict[int, pd.DataFrame]) -> pd.DataFrame:
+    """`current` with the rows of each shot in `replacements` (from `_rows`) in place
+    of that shot's, sorted by shot: one concat for any number of shots."""
+    shots = pd.to_numeric(current.shot, errors="coerce")
+    kept = current.loc[~shots.isin(list(replacements))]
+    attrs = "attrs" in kept or any("attrs" in rows for rows in replacements.values())
+    if attrs and "attrs" not in kept:
+        kept = kept.assign(attrs="")
+    frames = [rows if "attrs" in rows or not attrs else rows.assign(attrs="")
+              for rows in replacements.values()]
+    frame = pd.concat([kept, *frames], ignore_index=True)
+    return frame.sort_values("shot", key=pd.to_numeric, kind="stable")
+
+
+def apply_labels(event_dir) -> saves.Apply:
+    """The merge's step for `labels.csv`: the winning lines replace their shots'
+    rows, one rewrite for the batch. A line the table refuses for its own sake (a
+    malformed span, a shot with attrs the page cannot edit) comes back. A table that
+    is invalid as it stands is nobody's line to refuse: this raises, the merge stops
+    and every line stays pending until the table is fixed."""
+
+    def apply(winners: list[dict]) -> list:
+        path = labels_path(event_dir)
+        if path.is_file():
+            validate_csv_fields(path)
+        frame, refused, rows = _current(path), [], {}
+        validate_intervals(frame)
+        held = frame  # only the rows with attrs can make a shot uneditable
+        if "attrs" in frame:
+            held = frame.loc[frame["attrs"].str.strip() != ""]
+        for entry in winners:
+            try:
+                label = Label.from_entry(entry)
+                _check_editable(held, entry["shot"], label, crowd_edit=True)
+                rows[int(entry["shot"])] = _rows(entry["shot"], label)
+            except (ValueError, KeyError, TypeError) as error:
+                refused.append((entry, str(error)))
+        if rows:
+            with saves.replacing(path) as tmp:
+                _replaced(frame, rows).to_csv(tmp, index=False)
+        return refused
+
+    return apply
+
+
+def diverged(
+    event_dir, history: list[dict] | None = None, *, stale_only: bool = False,
+    legacy: bool = False,
+) -> list[dict]:
+    """The last save of each shot whose label in `labels.csv` is not that save's.
+
+    Both are read on the grid, so a table regridded after the save agrees with it.
+    Only a line with a `save_id` is held to its label unless `legacy`: older lines
+    were edited around by scripts. A `legacy` line is held to the window and the
+    intervals only, since the span flags a later script wrote into the table are not
+    in the line and writing the line back would drop them. With `stale_only` only a
+    shot the table has lost is returned (no label, or an earlier save's): an update
+    another client overwrote, not a label somebody edited on purpose.
+    """
+    history = read_history(event_dir) if history is None else history
+    saved = read_saved(event_dir)
+    last, earlier = {}, {}
+    for entry in history:
+        shot = entry.get("shot")
+        if shot in last:
+            earlier.setdefault(shot, []).append(last[shot])
+        last[shot] = entry
+    found = []
+    for shot, entry in last.items():
+        if "save_id" not in entry and not legacy:
+            continue
+        try:
+            want = on_grid(Label.from_entry(entry))
+            have = on_grid(saved.get(int(shot)))
+            if have == want:
+                continue
+            if "save_id" not in entry and have is not None and (
+                (have.window, have.intervals) == (want.window, want.intervals)
+            ):
+                continue
+            if stale_only and have is not None and not any(
+                on_grid(Label.from_entry(old)) == have for old in earlier.get(shot, ())
+            ):
+                continue
+        except (ValueError, KeyError, TypeError):
+            continue
+        found.append(entry)
+    return found
+
+
+def stale_labels(event_dir) -> saves.Stale:
+    return lambda history: diverged(event_dir, history, stale_only=True)
+
+
+def _merge_history(event_dir, save_id: str) -> dict:
+    """Merge the writers' saves into `labels.csv` and `history.jsonl`, and say what
+    became of `save_id`. `LABELER_AUTO_MERGE=0` leaves the merge to `labeler-sync`."""
+    if getenv("LABELER_AUTO_MERGE", "1") == "0":
+        return {"pending": True, "why": "LABELER_AUTO_MERGE=0"}
+    try:
+        merged = saves.merge(
+            event_dir, "history", apply_labels(event_dir), stale_labels(event_dir)
+        )
+    except (saves.StoreBusy, SaveRefused, OSError, ValueError) as error:
+        return {"pending": True, "why": str(error)}
+    return merged.outcome(save_id)
 
 
 def save(
@@ -541,8 +706,10 @@ def save(
     suggestions_shown: bool | None = None,
     prefilled: bool | None = None,
     extra: dict | None = None,
+    outcome: dict | None = None,
 ) -> dict:
-    """Replace one shot's rows in `labels.csv` and append the save to history.
+    """Save one shot's label: write it to the caller's own file under `review/saves/`,
+    then merge the writers' files into `labels.csv` and `history.jsonl`.
 
     Refuse malformed CSV records, ragged rows or duplicate headers, and any
     unsupported attrs on the selected shot (the page can edit `iscrowd`), or an
@@ -556,7 +723,8 @@ def save(
     are checked separately by the catalog checker.
 
     `reviewer` is the server's login; `name` is the reviewer's name, or None
-    (see `versions`). `source` names the table the save was made against and
+    (see `versions`). The line also carries `save_id` and `writer` (the login and
+    node; see `saves`). `source` names the table the save was made against and
     `source_sha256` is that table's sha256 when it was made, kept in the history
     line when given (see `agreement`: a save without one is matched to the table
     by name).
@@ -567,6 +735,11 @@ def save(
 
     `extra` is more provenance for the history line (a subcategory save names the
     parent version it was clipped to; see `parent_stamp`).
+
+    Once the line is in the writer's file the save is durable. If the merge cannot
+    run (the folder's lock stays busy, `LABELER_AUTO_MERGE=0`), the save is still
+    returned and the next merge completes it; `outcome`, when given, is filled with
+    `pending` (and `why`) and `superseded` (a later save of the shot already stands).
     """
     with _write_lock:
         try:
@@ -584,44 +757,17 @@ def save(
                 validate_csv_fields(path)
             except pd.errors.ParserError as error:
                 raise SaveRefused(str(error)) from error
-        # Read cells as written: other shots keep their precision and attrs text.
-        current = (
-            pd.read_csv(path, dtype=str, keep_default_na=False, index_col=False)
-            if path.is_file()
-            else pd.DataFrame(columns=list(INTERVAL_COLUMNS))
-        )
-        selected = pd.to_numeric(current.shot, errors="coerce") == int(shot)
+        current = _current(path)
         validate_intervals(current)
-        if "attrs" in current:
-            for cell in current.loc[selected, "attrs"]:
-                if not cell.strip():
-                    continue
-                if set(parse_attrs(cell)) != {"iscrowd"}:
-                    raise SaveRefused(
-                        f"shot {shot} has attrs that the review page cannot edit; "
-                        "save refused"
-                    )
-                if not label.iscrowd and not crowd_edit:
-                    raise SaveRefused(
-                        f"shot {shot} has iscrowd metadata; restart the review "
-                        "server before editing its annotation resolution"
-                    )
-        columns = WITH_ATTRS if label.iscrowd else INTERVAL_COLUMNS
-        replacement = pd.DataFrame(label.rows(shot), columns=list(columns))
-        if "attrs" in current and "attrs" not in replacement:
-            replacement["attrs"] = ""
-        elif "attrs" in replacement and "attrs" not in current:
-            current["attrs"] = ""
-        frame = pd.concat([current.loc[~selected], replacement], ignore_index=True)
-        frame = frame.sort_values("shot", key=pd.to_numeric, kind="stable")
-        validate_intervals(frame)
-        with atomic_path(path) as tmp:
-            frame.to_csv(tmp, index=False)
+        _check_editable(current, shot, label, crowd_edit)
+        _rows(shot, label)  # the rows this save writes must be valid
+        reviewer = getpass.getuser()
+        saved_at, save_id = saves.new_save()
         entry = {
             "shot": int(shot),
-            "reviewer": getpass.getuser(),
+            "reviewer": reviewer,
             "name": name,
-            "saved_at": datetime.now(UTC).isoformat(timespec="seconds"),
+            "saved_at": saved_at,
             **label.as_json(),
             "source": source,
             "suggestions_shown": suggestions_shown,
@@ -631,8 +777,11 @@ def save(
             entry["source_sha256"] = source_sha256
         if extra:
             entry.update(extra)
-        with history_path(event_dir).open("a") as stream:
-            stream.write(json.dumps(entry) + "\n")
+        entry.update(save_id=save_id, writer=saves.writer_id(reviewer))
+        saves.append(event_dir, "history", entry)
+        result = _merge_history(event_dir, save_id)
+    if outcome is not None:
+        outcome.update(result)
     return entry
 
 

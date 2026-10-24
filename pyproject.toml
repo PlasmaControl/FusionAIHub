@@ -104,6 +104,7 @@ platforms = ["linux-64"]
 [tool.pixi.feature.labeler.tasks]
 label = { cmd = "bash scripts/labeler/label_shot.sh", description = "Every labeler model on the given shots: labels, a summary and a figure per shot" }
 labeler-verify = { cmd = "fdp run python -m labeler.events.ui", description = "The label review page, under the fdp wrapper so any shot can be fetched" }
+labeler-sync = { cmd = "python -m labeler.events.review.sync", description = "Several accounts saving into one label folder: status, merge, import-tree, init, check, repair (see docs/labeler/shared_labels.md)" }
 labeler-spectrograms = { cmd = "python -m labeler.events.review.build", description = "Build the review page's row store: --event EVENT [--shots ...] [--force]" }
 # pytest's temporary files go to GPFS scratch, not the head node's shared /tmp, and each
 # test's folder is removed when the test ends.

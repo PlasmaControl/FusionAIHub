@@ -3,10 +3,12 @@
 Loopback only, behind a token: `?token=` sets two cookies and redirects to
 the same URL without it. The server reads `shots.csv` and never writes it;
 its writes are `POST /api/label` and `POST /api/masks`, both into the event's
-`review/` directory, and `POST /api/names`, which adds a reviewer's name to
-`reviewers.txt` beside the events (`GET /api/names` lists them; see
-`review.reviewers`). `GET /api/history` lists a shot's saved versions (see
-`review.versions`), and `GET /api/shot` and both saves name everyone who has
+`review/` directory (first the account's own file under `review/saves/`, then merged
+into the canonical files so several accounts can save into one folder; see
+`review.saves`; the reply's `merge.pending` says the merge is still to come), and
+`POST /api/names`, which adds a reviewer's name to `reviewers.txt` beside the events
+when the account may write it (`GET /api/names` lists them; see `review.reviewers`).
+`GET /api/history` lists a shot's saved versions (see `review.versions`), and `GET /api/shot` and both saves name everyone who has
 saved the shot (see `review.reviewers.shot_reviewers`); `GET /api/masks` gives
 an AE shot's pseudo-mask regions (pseudo-v1-full: pseudo-v1's rules over the
 whole window, 60-250 kHz) and the reviewer's last
@@ -47,7 +49,7 @@ from ...ae.seg.pseudo import PseudoMask
 from ...config import Paths, sha256_of, store_event
 from .. import grid, ondemand, raw, rosters, rwm, shotlists, taxonomy
 from ..review import build as review_build
-from ..review import gold, labels, reviewers, rows, silver, versions, video
+from ..review import gold, labels, reviewers, rows, saves, silver, versions, video
 from . import overlay_routes, shotlist_routes, slice_routes, workspace_routes
 
 STATIC = Path(__file__).parent / "static"
@@ -742,6 +744,7 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
             raise HTTPException(
                 409, "Reload the review page before editing overlapping annotations"
             )
+        outcome: dict = {}
         try:
             entry = labels.save(
                 directory,
@@ -754,6 +757,7 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
                 suggestions_shown=body.suggestions_shown,
                 prefilled=body.prefilled,
                 extra=extra,
+                outcome=outcome,
             )
         except labels.SaveRefused as error:
             raise HTTPException(409, str(error)) from None
@@ -770,6 +774,7 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
             "saved": label.as_json(),
             "last_save": entry,
             "reviewers": reviewers.shot_reviewers(directory, body.shot),
+            "merge": outcome,
         }
 
     @app.get("/api/history")
@@ -820,6 +825,13 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
     def save_masks(body: MaskIn):
         directory, path = mask_file(body.event, body.shot, write=True)
         with mask_lock:
+            wait = 20.0
+            try:  # this writer's earlier decisions count towards the revision
+                saves.merge(directory, "masks")
+            except saves.StoreBusy:
+                wait = 0.0  # held the whole wait: the save's own merge does not wait again
+            except (OSError, ValueError):
+                pass
             revision = len(regions.shot_history(directory, body.shot))
             if revision != body.revision:
                 return JSONResponse(
@@ -851,6 +863,7 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
                 pseudo_sha256=body.pseudo_sha256,
                 name=name,
                 pseudo=whole.REVIEW,
+                wait=wait,
             )
         return {
             "rejected": entry["rejected"],

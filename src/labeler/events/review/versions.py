@@ -1,10 +1,12 @@
 """Every saved version of a shot's label, and the name a reviewer types.
 
-`review/history.jsonl` is append-only: one line per save, never rewritten. A
-shot's versions are its lines in order, numbered from 1. Restoring a version
-in the page loads it as a draft; a save appends a version and never rewrites
-one, but a crash between writing the label and its history line can leave
-the current label without its version line.
+`review/history.jsonl` has one line per save, kept in time order by the merge
+that folds each writer's saves into it (see `saves`); a line is never changed or
+dropped. A shot's versions are its lines in order, numbered from 1, so a save made
+earlier than a line already there but merged later takes its place in time and
+renumbers the shot's later versions. Restoring a version in the page loads it as a
+draft; a save adds a version and never rewrites one. The save is durable in its
+writer's file first, so a crash before the merge leaves the line unmerged, not lost.
 
 Each line keeps two identities. `reviewer` is the login of the process that
 served the page (`getpass.getuser()`): the checker's blind-read integrity
