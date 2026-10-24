@@ -293,6 +293,71 @@ def test_detections_collapse_to_the_10_ms_cells_his_rows_are_on():
     assert raw[:3].tolist() == [1, 2, 0] and grid[:3].tolist() == [1, 0, 0]
 
 
+def _rows(*pairs):
+    return pd.DataFrame(pairs, columns=["t_start", "t_end"])
+
+
+def test_row_presence_splits_his_rows_by_crowd_row_and_counts_a_touching_run_as_a_hit():
+    rows = _rows((110.0, 120.0), (140.0, 150.0), (300.0, 310.0), (330.0, 340.0), (900.0, 910.0))
+    crowd = _rows((100.0, 200.0))
+    cover = pd.DataFrame({"t_start_ms": [0.0], "t_end_ms": [500.0]})  # 900 is outside it
+    run0, run1 = np.array([115.0, 305.0]), np.array([118.0, 350.0])
+    counts = heldout.row_presence_counts(rows, crowd, run0, run1, cover)
+    # inside the crowd row: 110-120 is touched, 140-150 is not; outside it: 300-310 and
+    # 330-340 are touched by the run from 305; the row at 900 is not analysed
+    assert dict(zip(heldout.ROW_COLUMNS, counts.tolist())) == {
+        "inside": 2,
+        "inside_hit": 1,
+        "outside": 2,
+        "outside_hit": 2,
+    }
+    none = heldout.row_presence_counts(rows, crowd.iloc[:0], np.zeros(0), np.zeros(0), cover)
+    assert none.tolist() == [0, 0, 4, 0]  # no crowd row: every row is outside, no run: no hit
+
+
+def test_row_presence_set_pools_shots_by_method_and_a_trace_is_smoothed_unless_raw():
+    n = 400
+    trace = np.zeros(n)
+    trace[int(115 - inputs.GRID0_MS) : int(120 - inputs.GRID0_MS)] = 1.0  # 5 ms, one row
+    called = heldout.Called(trace, 0.5)
+    # a 5 ms blip never lifts the 50 ms moving mean to 0.5: no smoothed run, one raw run
+    assert len(heldout.detected_runs(called)[0]) == 0
+    raw0, raw1 = heldout.detected_runs(called, 1)
+    assert raw0.tolist() == [115.0] and raw1.tolist() == [120.0]
+    spans = pd.DataFrame({"t_start_ms": [300.0, 100.0], "t_end_ms": [310.0, 112.0]})
+    merged = heldout.detected_runs(heldout.Called(spans=spans))
+    assert merged[0].tolist() == [100.0, 300.0] and merged[1].tolist() == [112.0, 310.0]
+    rows = {1: _rows((110.0, 120.0)), 2: _rows((300.0, 310.0))}
+    crowds = {1: _rows(), 2: _rows()}
+    covers = {s: pd.DataFrame({"t_start_ms": [0.0], "t_end_ms": [500.0]}) for s in (1, 2)}
+    runs = {
+        "smoothed": {1: heldout.detected_runs(called), 2: (np.zeros(0), np.zeros(0))},
+        "raw": {1: (raw0, raw1)},
+    }
+    out = heldout.row_presence_set([1, 2], rows, crowds, covers, runs)
+    assert out["smoothed"]["outside_crowd"]["point"] == 0.0
+    assert out["smoothed"]["outside_crowd"]["denominator"] == 2
+    assert out["raw"]["shots_scored"] == [1]  # a method is scored on the shots it has runs for
+    assert out["raw"]["outside_crowd"]["point"] == 1.0
+    assert np.isnan(out["raw"]["inside_crowd"]["point"])  # no row inside a crowd row
+
+
+def test_a_shot_whose_only_present_labels_are_individual_rows_is_individual_only():
+    assert heldout.individual_only(_spans([(0.0, 10.0, "non_crowd"), (20.0, 90.0, "absent")]))
+    assert not heldout.individual_only(_spans([(0.0, 10.0, "non_crowd"), (20.0, 90.0, "crowd")]))
+    assert not heldout.individual_only(_spans([(0.0, 90.0, "absent")]))
+
+
+def test_the_panels_split_on_the_key_and_a_registry_that_disagrees_stops_the_run():
+    shots = [1, 7, 9, 12]
+    assert heldout.split_panels(shots, [7, 12, 99], [12, 7]) == ([1, 9], [7, 12])
+    # an unreadable registry holds every shot: all of his would land in B2 unnoticed
+    with pytest.raises(ValueError, match="holdout registry holds"):
+        heldout.split_panels(shots, [7, 12], shots)
+    with pytest.raises(ValueError, match="challenge key holds"):
+        heldout.split_panels(shots, [], [7])
+
+
 def test_finite_turns_nan_into_null_and_numpy_into_plain_values():
     value = {1: np.float32(0.5), "a": [np.nan, np.int64(3)], "b": np.array([1.0, np.nan])}
     assert heldout.finite(value) == {"1": 0.5, "a": [None, 3], "b": [1.0, None]}

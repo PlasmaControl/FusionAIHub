@@ -9,13 +9,14 @@ review table, to `$LABELER_ROOT/round4/elm/inputs`.
 
 **Pinned labels.** `review_csv` is the table every ELM benchmark, training and
 evaluation script reads. By default it is the pinned copy `REVIEW_PIN`: the 119
-reviewed shots as they stood before the 10 ms regrid of 2026-10-10. Those bytes are
+reviewed shots as they stood before the 10 ms regrid (the file dates from 2026-10-01,
+the pin is named for the regrid). Those bytes are
 what the `cv2` run trained on (its `run.json` records sha256 6ae3497e...) and what the
 README's Models lines were scored on (12,409 bins), and every shot of the pin has a
 prepared input, so an unfiltered `train.load` runs. The table of 2026-10-17 (the regridded
 set, 12,481 bins, plus 189093, which has no input) is a second pin, read by
-`labeler.elm.sources` only; Ricardo Shousha's 81 shots of 2026-10-23 are a third, read
-by `scripts/labeler/elm_heldout_evaluate.py`. A pin is a folder of `labels.csv`, a
+`labeler.elm.sources` and by panel A of `scripts/labeler/elm_heldout_evaluate.py`; Ricardo
+Shousha's 81 shots of 2026-10-23 are a third, read by that script too. A pin is a folder of `labels.csv`, a
 `SHA256SUMS` and, where the review kept one, `history.jsonl`, written once and never
 edited. A later review changes the live table, never a pin.
 """

@@ -27,11 +27,18 @@ finds nothing wrong with its input (a dead digitiser, a filterscope level outsid
 training range). Each shot's problems are recorded; the deployed `elm-ours` is the score
 on the `servable` shots, and the `all` scores are the model's unscreened output.
 
-Two scores. **Occupancy bins**: the benchmark's 50 ms bins from his crowd and absent
-rows (`labeler.elm.heldout`). **Onset agreement** with his individual 10 ms rows, which
-are the accepted `elm_jump` v2 prefill (17,109 of 17,128): circular for `elm_jump`, and
-generous to anything that behaves like it. Each row carries its provenance,
-`prefill_accepted` or `edited`.
+Three scores. **Occupancy bins**: the benchmark's 50 ms bins from his crowd and absent
+rows (`labeler.elm.heldout`); a bin lies wholly inside one crowd or absent row, so his
+individual rows that lie outside his crowd rows give none. **Individual-row presence**:
+the share of those rows a method's present runs touch, inside and outside his crowd rows
+apart, which is the only score of an isolated ELM. **Onset agreement** with his individual
+10 ms rows, which are the accepted `elm_jump` v2 prefill (17,109 of 17,128): circular for
+`elm_jump`, and generous to anything that behaves like it. Each row carries its
+provenance, `prefill_accepted` or `edited`.
+
+**B1 and B2** are split by the challenge key's shots; the holdout registry must name the
+same shots (`heldout.split_panels`), else the run stops. A third view, `published`, keeps
+the servable shots `serve` would publish (at least 5 % present, serve's second rule).
 
 Inputs are the fetched records `$LABELER_ROOT/benchmarks/elm/elmo/signals/<shot>.npz`,
 read into memory (never into `round4/elm/inputs`); nothing is fetched. Writes
@@ -71,10 +78,15 @@ from labeler.elm import (
     train,
 )
 from labeler.events import shotlists
+from labeler.events.source_formatters import read_elm_challenge
 
 REPO = Path(__file__).resolve().parents[2]
 OUT = REPO / "outputs/labeler/elm/heldout_2026_10_23"
 PIN_OLD, PIN_NEW = "2026-10-17", "2026-10-23"
+KEY = "edge_localized_mode/raw/elm_challenge_key_b71f991.json"
+#: serve's second publishing rule: a shot under this fraction present is scored, not
+#: published (the owner's rule of 2026-10-11, `serve --min-present 0.05`).
+MIN_PRESENT = 0.05
 OURS_RUN = "cv2"
 INST_RUN = "round4/elm/inst/inst1"
 FOLDS = 5
@@ -253,8 +265,16 @@ def main(argv: list[str] | None = None) -> int:
     pins_agree = bool(shared.equals(old))
     if args.shots:
         mine = [s for s in mine if s in set(args.shots)]
-    holdout = [s for s in mine if shotlists.held_out(paths, s)]
-    groups = {"B1": [s for s in mine if s not in holdout], "B2": holdout}
+    # B2 is the challenge key's shots, and the holdout registry must name the same ones
+    # (it fails closed: an unreadable one would put every shot in B2)
+    key = [c["shot"] for c in read_elm_challenge(paths.label_tables / KEY)]
+    try:
+        b1, holdout = heldout.split_panels(
+            mine, key, [s for s in mine if shotlists.held_out(paths, s)]
+        )
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
+    groups = {"B1": b1, "B2": holdout}
     spans = {s: new[new.shot == s].reset_index(drop=True) for s in mine}
 
     # ---- ELM-O first: its worker processes fork before torch starts its threads
@@ -265,7 +285,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     # ---- the inputs, in memory
-    valid, no_record, problems = {}, {}, {}
+    valid, no_record, problems, present = {}, {}, {}, {}
     ours_dir = paths.root / "round4/elm/cv" / OURS_RUN
     ours_models, ours_thresholds = serve.load_models(ours_dir)
     reference = serve.reference_levels(paths, ours_dir)
@@ -303,6 +323,7 @@ def main(argv: list[str] | None = None) -> int:
         problems[shot] = serve.input_problems(x, reference, margin)
         heads = np.mean([train.predict(m, x, "cpu") for m in ours_models], axis=0)
         ours_trace[shot] = heads[0]  # the event head, as `serve.ensemble` returns it
+        present[shot] = serve.present_fraction(serve.shot_rows(shot, heads[0], x, ours_thr))
         ours_onsets[shot] = inputs.GRID0_MS + onset.peaks(heads[1], ours_onset_thr) + 0.5
         outs = [inst.predict(m, x, "cpu") for m in inst_nets]
         occ = np.mean([o[0] for o in outs], axis=0)
@@ -320,6 +341,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"shot": shot, "scored": True}), flush=True)
     scored = sorted(valid)
     servable = [s for s in scored if not problems[s]]
+    published = [s for s in servable if present[s] >= MIN_PRESENT]
 
     # the traces `serve` saved before: the same ensemble, so the same numbers
     saved = {}
@@ -380,11 +402,25 @@ def main(argv: list[str] | None = None) -> int:
         ELMO: {s: heldout.Called(spans=elmo_spans(elmo_out[s])) for s in elmo_out},
     }
 
+    # the present runs of each method, for the share of his individual rows they touch;
+    # the raw 1 ms runs of the two trace methods are the most generous reading of a trace
+    runs = {
+        name: {s: heldout.detected_runs(c) for s, c in by_shot.items()}
+        for name, by_shot in called.items()
+    }
+    for name in (OURS, INST):
+        runs[f"{name} (raw 1 ms)"] = {
+            s: heldout.detected_runs(c, 1) for s, c in called[name].items()
+        }
+
     # ---- the individual rows: provenance and onset truth
     provenance, truth, per_shot = [], {}, {}
+    row_frames, crowd_frames = {}, {}
     totals = {"prefill_accepted": 0, "edited": 0, "onsets_removed": 0}
     for shot in mine:
         rows = spans[shot][spans[shot].kind == "non_crowd"]
+        row_frames[shot] = rows
+        crowd_frames[shot] = spans[shot][spans[shot].kind == "crowd"]
         shown = onsets_of.get(shot, np.zeros(0))
         window = saves[shot]["window"]
         marked, removed = heldout.individual_provenance(rows, shown, window)
@@ -414,6 +450,9 @@ def main(argv: list[str] | None = None) -> int:
             "scored": shot in valid,
             "input_problems": problems.get(shot),  # serve.input_problems; None: no record
             "servable": shot in valid and not problems[shot],
+            "elm_ours_present_fraction": present.get(shot),
+            "published": shot in published,  # servable and at least MIN_PRESENT present
+            "individual_only": heldout.individual_only(spans[shot]),
             "elm_ours_saved_serve_trace": saved.get(shot),
             "has_bes": shot in elmo_out,
             "in_tables": [n for n in tables if shot in held[n]],
@@ -485,10 +524,13 @@ def main(argv: list[str] | None = None) -> int:
     def scores(ok):
         """Occupancy and onset scores of every method on the shots `ok`."""
         if not ok:
-            return {"occupancy": None, "onset": {}, "onset_cells": {}}
+            return {"occupancy": None, "individual_rows": {}, "onset": {}, "onset_cells": {}}
         covers = {s: panels[s].cover for s in ok}
         return {
             "occupancy": heldout.occupancy_set({s: panels[s] for s in ok}, called),
+            "individual_rows": heldout.row_presence_set(
+                ok, row_frames, crowd_frames, covers, runs
+            ),
             "onset": heldout.onset_set(ok, covers, truth, found),
             "onset_cells": heldout.onset_set(ok, covers, truth, cells(found)),
         }
@@ -497,6 +539,9 @@ def main(argv: list[str] | None = None) -> int:
     for tag, shots in groups.items():
         ok = [s for s in shots if s in panels]
         deployed = [s for s in ok if s in servable]
+        kept = [s for s in deployed if s in published]
+        only = [s for s in ok if per_shot[str(s)]["individual_only"]]
+        only_deployed = [s for s in only if s in servable]
         sets[tag] = {
             "shots": shots,
             "shots_without_record": {str(s): no_record[s] for s in shots if s in no_record},
@@ -505,6 +550,25 @@ def main(argv: list[str] | None = None) -> int:
                 "shots": deployed,
                 "screened_out": {str(s): problems[s] for s in ok if s not in servable},
                 **scores(deployed),
+            },
+            # serve's second rule: a shot under MIN_PRESENT present is not published;
+            # the servable score keeps them (a filter on the model's own output hides
+            # its misses), this view is what the catalog would hold
+            "published": {
+                "shots": kept,
+                "under_min_present": {
+                    str(s): present[s] for s in deployed if s not in published
+                },
+                **scores(kept),
+            },
+            # shots whose only present labels are individual rows: the occupancy bins
+            # hold nothing of them but absent time
+            "individual_only_shots": {
+                "all": only,
+                "servable": only_deployed,
+                "rows_servable": heldout.row_presence_set(
+                    only_deployed, row_frames, crowd_frames, {s: panels[s].cover for s in only_deployed}, runs
+                ),
             },
         }
         if clean is not None:
@@ -531,6 +595,13 @@ def main(argv: list[str] | None = None) -> int:
         "created": datetime.now(UTC).isoformat(timespec="seconds"),
         "git": git_sha(full=True),
         "pilot_shots": args.shots,
+        "individual_rows_rule": "the share of his individual 10 ms rows (inside analysed time) "
+        "that a method's present runs overlap at all, split by whether the row's centre is "
+        "inside one of his crowd rows; present runs are the detected-span rule of the "
+        "evaluation (50 ms moving mean at the threshold; `(raw 1 ms)` is the trace itself) "
+        "or the table's spans; the occupancy bins hold none of the rows outside his crowd "
+        "rows, so these are the only score of isolated ELMs; whether a miss is the model's "
+        "or a prefill row nobody checked is not known",
         "protocol": "frozen models, no refit, no threshold change; B1 and B2 are never "
         "pooled; his individual 10 ms rows are the accepted elm_jump v2 prefill, so "
         "onset agreement is circular for elm_jump and generous to jump-like methods; "
@@ -626,7 +697,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     for tag in groups:
         block = sets[tag]
-        for view in ("all", "servable", "bes"):
+        for view in ("all", "servable", "published", "bes"):
             occ = block[view]["occupancy"]
             if occ is None:
                 continue
@@ -637,6 +708,12 @@ def main(argv: list[str] | None = None) -> int:
                     f"  {name:13s} n {len(res['shots_scored']):3d} F1 {p['f1']:.3f}",
                     f"crowd recall {p['crowd_bin_recall']:.3f}",
                     f"false alarm {p['false_alarm_bin_rate']:.3f}",
+                )
+            for name, res in block[view].get("individual_rows", {}).items():
+                inside, outside = res["inside_crowd"], res["outside_crowd"]
+                print(
+                    f"  rows {name:22s} inside crowd {inside['point']:.3f} of {inside['denominator']}",
+                    f"outside {outside['point']:.3f} of {outside['denominator']}",
                 )
             for name, res in block[view]["onset_cells"].items():
                 p = res["tolerances_ms"]["10.0"]["point"]

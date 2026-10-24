@@ -4,12 +4,14 @@
 the pins, the provenance of his individual labels, the onset agreement and the scoring
 of each method on his panels. No model is refit here.
 
-**Panels.** `A` is the old reviewed set (pin `2026-10-17`, 119 scored shots); `B1` is
+**Panels.** `A` is the old reviewed set (pin `2026-10-17`: 120 shots, 119 with an input); `B1` is
 the shots of his that are not on a `protect: holdout` list and `B2` the ones that are
 (the ELM challenge key's shots, evaluation only). A panel's shots are scored as the
 benchmark scores them: the 50 ms bins of `labels.scored_bins`, so a bin counts only when
 it lies wholly inside one crowd or absent row. His individual 10 ms rows hold no bin;
-they are scored by onset agreement. Uncertain rows (class 2) are in no score.
+they are scored by onset agreement and by `row_presence_set`, the share of them a
+method's present runs touch, which is the only score of the rows that lie outside his
+crowd rows. Uncertain rows (class 2) are in no score.
 
 **What his individual rows are.** 17,109 of his 17,128 individual rows are the `elm_jump`
 v2 onsets the page prefilled, floored to the 10 ms grid and accepted (`prefill_accepted`);
@@ -66,6 +68,24 @@ def verify_pin(directory: Path) -> dict[str, str]:
             raise ValueError(f"{directory / name} is not what {directory}/SHA256SUMS says")
         out[name] = digest
     return out
+
+
+def split_panels(shots, key_shots, registry_holds) -> tuple[list[int], list[int]]:
+    """`(B1, B2)` of `shots`: B2 are the shots on the challenge key (evaluation only), B1
+    the rest.
+
+    `registry_holds` are the shots the `protect: holdout` lists hold. That registry fails
+    closed (one that cannot be read holds every shot), so on its own it would put every
+    shot in B2 and leave B1 empty without an error; the two must name the same shots.
+    """
+    key, held = set(map(int, key_shots)), set(map(int, registry_holds))
+    b2 = [s for s in shots if s in key]
+    if b2 != [s for s in shots if s in held]:
+        raise ValueError(
+            f"the challenge key holds {sorted(key & set(shots))} of these shots but the "
+            f"holdout registry holds {sorted(held & set(shots))}"
+        )
+    return [s for s in shots if s not in key], b2
 
 
 def last_saves(history: Path, name: str = REVIEWER) -> dict[int, dict]:
@@ -394,6 +414,101 @@ def occupancy_set(panels: dict[int, Panel], called: dict[str, dict[int, Called]]
     block = score.summarise(rule, score.draws(len(rule)))
     block["shots_scored"] = shots
     out["methods"]["always present"] = block
+    return out
+
+
+# ------------------------------------------------------------ individual rows
+
+
+#: Per shot: his individual rows inside analysed time whose centre is inside one of his
+#: crowd rows, how many of them a present run touches, then the same for the rows outside
+#: every crowd row.
+ROW_COLUMNS = ("inside", "inside_hit", "outside", "outside_hit")
+
+
+def individual_only(spans: pd.DataFrame) -> bool:
+    """Whether the shot's only present labels are individual rows: he drew at least one
+    and no crowd row."""
+    kinds = set(spans.kind)
+    return "non_crowd" in kinds and "crowd" not in kinds
+
+
+def detected_runs(called: Called, width_ms: int = int(labels.BIN_MS)):
+    """`(starts, stops)` in ms of the sorted disjoint stretches a method calls present.
+
+    A trace is present where its `width_ms` moving mean reaches the threshold
+    (`labels.runs_of`, the evaluation's detected-span rule at its 50 ms default; 1 is the
+    raw trace); detected spans are merged as they stand.
+    """
+    if called.trace is not None:
+        trace = np.nan_to_num(called.trace, nan=0.0, posinf=0.0, neginf=0.0)
+        return labels.runs_of(trace, called.threshold, width_ms)
+    spans = called.spans if called.spans is not None else methods.span_frame([], [])
+    return labels.merge_intervals(spans.t_start_ms, spans.t_end_ms, tol=0.0)
+
+
+def row_presence_counts(rows, crowd, run0, run1, cover) -> np.ndarray:
+    """`ROW_COLUMNS` of one shot.
+
+    `rows` are his individual rows and `crowd` his crowd rows (`t_start`, `t_end`),
+    `(run0, run1)` the method's present runs and `cover` the analysed time. A row is
+    counted when its centre lies in analysed time, is inside when its centre lies in a
+    crowd row, and is hit when a present run overlaps it at all.
+    """
+    start, stop = (rows[c].to_numpy(float) for c in ("t_start", "t_end"))
+    mid = (start + stop) / 2
+    keep = methods.inside(mid, cover.t_start_ms.to_numpy(float), cover.t_end_ms.to_numpy(float))
+    start, stop, mid = start[keep], stop[keep], mid[keep]
+    in_crowd = np.zeros(mid.size, dtype=bool)
+    if len(crowd):
+        c0, c1 = labels.merge_intervals(crowd.t_start, crowd.t_end, tol=0.0)
+        in_crowd = methods.inside(mid, c0, c1)
+    hit = np.zeros(mid.size, dtype=bool)
+    if len(run0):
+        i = np.minimum(np.searchsorted(run1, start, side="right"), len(run0) - 1)
+        hit = (run1[i] > start) & (run0[i] < stop)
+    return np.array(
+        [
+            in_crowd.sum(),
+            (in_crowd & hit).sum(),
+            (~in_crowd).sum(),
+            (~in_crowd & hit).sum(),
+        ],
+        dtype=np.int64,
+    )
+
+
+def row_presence_set(
+    shots: list[int],
+    rows: dict[int, pd.DataFrame],
+    crowds: dict[int, pd.DataFrame],
+    covers: dict[int, pd.DataFrame],
+    runs: dict[str, dict[int, tuple]],
+) -> dict:
+    """The share of his individual rows each method's present runs touch, on `shots`.
+
+    The occupancy bins hold none of these rows that lie outside his crowd rows (a bin
+    lies wholly inside one crowd or absent row), so this is where a method's miss of an
+    isolated ELM shows. `runs` is `{method: {shot: (starts, stops)}}`; a method is scored
+    on the shots it has runs for. Each recall pools the shots' rows and carries a 95 %
+    shot bootstrap, as `ratio_summary` does.
+    """
+    out = {}
+    for name, by_shot in runs.items():
+        scored = [s for s in shots if s in by_shot]
+        if not scored:
+            continue
+        per = np.stack(
+            [row_presence_counts(rows[s], crowds[s], *by_shot[s], covers[s]) for s in scored]
+        )
+        boot = score.draws(len(scored))
+        inside, inside_hit, outside, outside_hit = per.T
+        out[name] = {
+            "shots_scored": scored,
+            "inside_crowd": ratio_summary(inside_hit, inside, boot),
+            "outside_crowd": ratio_summary(outside_hit, outside, boot),
+            "all_rows": ratio_summary(inside_hit + outside_hit, inside + outside, boot),
+        }
     return out
 
 
