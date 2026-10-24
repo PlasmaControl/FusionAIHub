@@ -52,12 +52,14 @@ import torch
 
 from labeler.config import Paths, git_sha, sha256_of
 from labeler.elm import (
+    challenge,
     compare,
     heldout,
     inputs,
     inst,
     labels,
     methods,
+    onset,
     prepare,
     serve,
     sources,
@@ -73,6 +75,7 @@ INST_RUN = "round4/elm/inst/inst1"
 FOLDS = 5
 OURS, INST, ELMO = "elm-ours", "elm-inst", "elm-elmo"
 CLOCKS = {"elm-clock": "v1", "elm-clock-v2": "v2"}
+CLOCK_PEAKS = "elm-clock-peaks"
 JUMP = "elm-jump"
 SAVED_SERVE = ("silver_gold", "gold_shots")
 PUBLISHED = Path("/scratch/gpfs/nc1514/FusionAIHub/outputs/labeler/elm")
@@ -253,15 +256,24 @@ def main(argv: list[str] | None = None) -> int:
 
     # ---- the inputs, in memory
     valid, no_record = {}, {}
-    ours_models, ours_thresholds = serve.load_models(paths.root / "round4/elm/cv" / OURS_RUN)
+    ours_dir = paths.root / "round4/elm/cv" / OURS_RUN
+    ours_models, ours_thresholds = serve.load_models(ours_dir)
     ours_thr = float(np.mean(ours_thresholds))
+    ours_onset_thr = float(
+        np.mean(
+            [
+                json.loads((ours_dir / f"fold{k}/fold.json").read_text())["onset_threshold"]
+                for k in range(FOLDS)
+            ]
+        )
+    )
     inst_nets, inst_folds = inst_models(paths.root / INST_RUN)
     occ_thr = float(np.mean([f["occ_threshold"] for f in inst_folds]))
     onset_thr = float(np.mean([f["onset_threshold"] for f in inst_folds]))
     record_path = args.published / "inst/evaluation.json"
     primary = json.loads(record_path.read_text())["primary_decoding"]
     gated = primary == "gated"
-    ours_trace, inst_occ, inst_onsets = {}, {}, {}
+    ours_trace, ours_onsets, inst_occ, inst_onsets = {}, {}, {}, {}
     for shot in mine:
         record = signals / f"{shot}.npz"
         if not record.is_file():
@@ -274,7 +286,9 @@ def main(argv: list[str] | None = None) -> int:
             continue
         x = inputs.read_channels(record)
         valid[shot] = x[inputs.VALID]
-        ours_trace[shot] = serve.ensemble(ours_models, x)
+        heads = np.mean([train.predict(m, x, "cpu") for m in ours_models], axis=0)
+        ours_trace[shot] = heads[0]  # the event head, as `serve.ensemble` returns it
+        ours_onsets[shot] = inputs.GRID0_MS + onset.peaks(heads[1], ours_onset_thr) + 0.5
         outs = [inst.predict(m, x, "cpu") for m in inst_nets]
         occ = np.mean([o[0] for o in outs], axis=0)
         heat = np.mean([o[1] for o in outs], axis=0).astype(np.float32)
@@ -284,7 +298,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         np.savez_compressed(
             work / "traces" / f"{shot}.npz",
-            ours=ours_trace[shot].astype(np.float32),
+            ours=heads.astype(np.float32),
             inst_occ=occ.astype(np.float32),
             inst_heat=heat.astype(np.float16),
         )
@@ -318,6 +332,18 @@ def main(argv: list[str] | None = None) -> int:
         for s, g in onsets_all[onsets_all.shot.isin(mine)].groupby("shot")
     }
 
+    # the clock's own per-ELM detections (the challenge evaluation's `elm-clock`): the
+    # published tables hold none of the 23 key shots
+    clock_peaks, clock_info, clock_failed = {}, {}, {}
+    for shot in scored:
+        try:
+            found_ms, clock_info[shot] = challenge.clock_spans(shot, paths)
+        except Exception as error:  # noqa: BLE001 - recorded in the evaluation, never hidden
+            clock_failed[shot] = f"{type(error).__name__}: {str(error)[:160]}"
+            continue
+        found_ms = np.asarray(found_ms, dtype=float).reshape(-1, 2)
+        clock_peaks[shot] = methods.span_frame(found_ms[:, 0], found_ms[:, 1])
+
     # ---- panels and what each method called
     panels = {s: heldout.panel_of(s, spans[s], valid[s]) for s in scored}
     elmo_out = {s: out for s, out in elmo_out.items() if out["cover"]}
@@ -332,6 +358,7 @@ def main(argv: list[str] | None = None) -> int:
             for s in scored
             if s in held[name]
         }
+    called[CLOCK_PEAKS] = {s: heldout.Called(spans=f) for s, f in clock_peaks.items()}
     called_bes = {
         **called,
         ELMO: {s: heldout.Called(spans=elmo_spans(elmo_out[s])) for s in elmo_out},
@@ -345,7 +372,6 @@ def main(argv: list[str] | None = None) -> int:
         shown = onsets_of.get(shot, np.zeros(0))
         window = saves[shot]["window"]
         marked, removed = heldout.individual_provenance(rows, shown, window)
-        marked.insert(0, "shot", shot)
         provenance.append(marked)
         accepted = (marked.provenance == "prefill_accepted").to_numpy()
         totals["prefill_accepted"] += int(accepted.sum())
@@ -372,6 +398,8 @@ def main(argv: list[str] | None = None) -> int:
             "scored": shot in valid,
             "elm_ours_saved_serve_trace": saved.get(shot),
             "has_bes": shot in elmo_out,
+            "in_tables": [n for n in tables if shot in held[n]],
+            "clock_peaks": clock_info.get(shot) or {"failed": clock_failed.get(shot)},
             "crowd_bins": int((panels[shot].bins.kind == "crowd").sum()) if shot in panels else None,
             "absent_bins": int((panels[shot].bins.kind == "absent").sum()) if shot in panels else None,
         }
@@ -385,19 +413,21 @@ def main(argv: list[str] | None = None) -> int:
     provenance.to_csv(work / "individual_provenance.csv", index=False)
 
     found = {
-        JUMP: {s: onsets_of.get(s, np.zeros(0)) for s in scored if s in held[JUMP]},
+        OURS: {s: ours_onsets[s] for s in scored},
         INST: {s: inst_onsets[s] for s in scored},
+        JUMP: {s: onsets_of.get(s, np.zeros(0)) for s in scored if s in held[JUMP]},
+        CLOCK_PEAKS: {s: f.t_start_ms.to_numpy(float) for s, f in clock_peaks.items()},
     }
-    for name in CLOCKS:
-        found[name] = {
-            s: found_spans[name].get(s, methods.span_frame([], [])).t_start_ms.to_numpy(float)
-            for s in scored
-            if s in held[name]
-        }
     found_bes = {
         **found,
         ELMO: {s: elmo_spans(elmo_out[s]).t_start_ms.to_numpy(float) for s in elmo_out},
     }
+
+    def cells(by_method):
+        return {
+            n: {s: heldout.to_grid(v) for s, v in by_shot.items()}
+            for n, by_shot in by_method.items()
+        }
 
     sets = {}
     for tag, shots in groups.items():
@@ -410,6 +440,9 @@ def main(argv: list[str] | None = None) -> int:
                 "onset": heldout.onset_set(
                     ok, {s: panels[s].cover for s in ok}, truth, found
                 ),
+                "onset_cells": heldout.onset_set(
+                    ok, {s: panels[s].cover for s in ok}, truth, cells(found)
+                ),
             },
         }
         with_bes = [s for s in ok if s in bes]
@@ -417,6 +450,9 @@ def main(argv: list[str] | None = None) -> int:
             "occupancy": heldout.occupancy_set({s: bes[s] for s in with_bes}, called_bes),
             "onset": heldout.onset_set(
                 with_bes, {s: bes[s].cover for s in with_bes}, truth, found_bes
+            ),
+            "onset_cells": heldout.onset_set(
+                with_bes, {s: bes[s].cover for s in with_bes}, truth, cells(found_bes)
             ),
         }
 
@@ -447,6 +483,7 @@ def main(argv: list[str] | None = None) -> int:
                 "run": OURS_RUN,
                 "threshold": ours_thr,
                 "fold_thresholds": ours_thresholds,
+                "onset_threshold": ours_onset_thr,
                 "checkpoints_sha256": [
                     sha256_of(paths.root / f"round4/elm/cv/{OURS_RUN}/fold{k}/model.pt")
                     for k in range(FOLDS)
@@ -467,6 +504,12 @@ def main(argv: list[str] | None = None) -> int:
                 "checkpoints_sha256": [f["checkpoint_sha256"] for f in inst_folds],
             },
             ELMO: {"shots_run": sorted(elmo_out), "setting": "published (eta 0.997)"},
+        },
+        "elm_clock_peaks": {
+            "rule": "challenge.clock_spans: the ELM clock's peaks on the first finite "
+            "filterscope, each the span of its half-prominence width",
+            "shots": len(clock_peaks),
+            "failed": {str(s): v for s, v in clock_failed.items()},
         },
         "suggestion_tables": {n: {"path": str(p), "sha256": sha256_of(p)} for n, p in tables.items()},
         "jump_onsets_sha256": sha256_of(jump_table.with_name(jump_table.stem + "_onsets.csv")),
@@ -513,6 +556,12 @@ def main(argv: list[str] | None = None) -> int:
                     f"  {name:13s} n {len(res['shots_scored']):3d} F1 {p['f1']:.3f}",
                     f"crowd recall {p['crowd_bin_recall']:.3f}",
                     f"false alarm {p['false_alarm_bin_rate']:.3f}",
+                )
+            for name, res in block[view]["onset_cells"].items():
+                p = res["tolerances_ms"]["10.0"]["point"]
+                print(
+                    f"  onsets {name:15s} n {len(res['shots_scored']):3d} @10 ms cells",
+                    f"P {p['precision']:.3f} R {p['recall']:.3f} F1 {p['f1']:.3f}",
                 )
     return 0
 

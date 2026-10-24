@@ -232,6 +232,20 @@ def test_onset_sets_report_recall_of_accepted_and_edited_rows_apart():
     assert out["m"]["shots_scored"] == [1]
 
 
+def test_detections_collapse_to_the_10_ms_cells_his_rows_are_on():
+    cells = heldout.to_grid([103.2, 101.0, 109.9, 250.0, 119.99])
+    assert cells.tolist() == [105.0, 115.0, 255.0]
+    assert heldout.to_grid([]).size == 0
+    # a method that fires three times in one cell no longer has two false alarms there
+    truth = heldout.OnsetTruth(
+        np.array([105.0]), np.array([True]), np.ones(400, bool), np.zeros(400, bool)
+    )
+    cover = pd.DataFrame({"t_start_ms": [-50.0], "t_end_ms": [300.0]})
+    raw = heldout.onset_counts([101.0, 103.0, 107.0], truth, cover, 5.0)
+    grid = heldout.onset_counts(heldout.to_grid([101.0, 103.0, 107.0]), truth, cover, 5.0)
+    assert raw[:3].tolist() == [1, 2, 0] and grid[:3].tolist() == [1, 0, 0]
+
+
 def test_finite_turns_nan_into_null_and_numpy_into_plain_values():
     value = {1: np.float32(0.5), "a": [np.nan, np.int64(3)], "b": np.array([1.0, np.nan])}
     assert heldout.finite(value) == {"1": 0.5, "a": [None, 3], "b": [1.0, None]}

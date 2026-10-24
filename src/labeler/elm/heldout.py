@@ -182,6 +182,17 @@ def match_onsets(found_ms, truth_ms, tol: float) -> tuple[np.ndarray, np.ndarray
     return hit, matched
 
 
+def to_grid(found_ms) -> np.ndarray:
+    """Detections as the centres of the distinct 10 ms cells they fall in.
+
+    His individual rows hold one row a 10 ms cell, so a method that fires several times
+    inside one cell has only its first agreement to find: the extra detections are
+    below the labels' resolution, and counted one to one they would all be false.
+    """
+    cells = np.unique(np.floor(np.asarray(found_ms, dtype=float) / GRID_MS))
+    return (cells + 0.5) * GRID_MS
+
+
 def onset_counts(found_ms, truth: OnsetTruth, cover: pd.DataFrame, tol: float) -> np.ndarray:
     """`ONSET_COLUMNS` of one shot's detections against its individual rows, inside the
     analysed time `cover` (`t_start_ms`, `t_end_ms`, merged)."""
