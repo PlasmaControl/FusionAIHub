@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from labeler import env
 from labeler.events import heuristics, pipeline, spans, suggestions
 from labeler.events.catalog.states import ABSENT, NOT_OBSERVABLE, PRESENT, UNCERTAIN
 from labeler.events.verify import NoDataError
@@ -324,6 +325,12 @@ def test_with_no_cohort_in_the_tables_the_default_folders_is_read(tmp_path, monk
     assert spans.cohort_path(p) == own / "catalog" / "cohort.csv"
     tree.cohort(p, [tree.queue_row(2, 1)])
     assert spans.cohort_path(p) == p.label_tables / "catalog" / "cohort.csv"
+
+
+def test_with_no_cohort_the_clusters_own_folder_is_read(tmp_path, monkeypatch):
+    monkeypatch.setenv("LABELER_CLUSTER", "stellar")
+    folder = env.CLUSTERS["stellar"]["env"]["LABELER_LABEL_TABLES"]
+    assert str(spans.cohort_path(tree.paths(tmp_path))) == f"{folder}/catalog/cohort.csv"
 
 
 def _ip_ramp(p, *, full_at_ms=300.0, t1_ms=800.0):

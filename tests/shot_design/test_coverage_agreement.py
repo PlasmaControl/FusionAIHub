@@ -95,7 +95,7 @@ def test_real_stdio_mcp_preserves_the_pipeline_dropout(gap_chain):
     repo = Path(__file__).resolve().parents[2]
     env = get_default_environment()
     env.update(SHOT_DESIGN_DATA_ROOT=str(root), LABELER_ROOT=str(root.parent / "products"),
-               HF_HUB_OFFLINE="1", PYTHONDONTWRITEBYTECODE="1",
+               LABELER_CLUSTER="", HF_HUB_OFFLINE="1", PYTHONDONTWRITEBYTECODE="1",
                PYTHONPATH=os.pathsep.join([str(repo / "src"), env.get("PYTHONPATH", "")]))
     env.pop("SHOT_DESIGN_PATHS", None)
     params = StdioServerParameters(command=sys.executable, args=["-m", "shot_design.mcp"],

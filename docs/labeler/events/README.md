@@ -6,7 +6,7 @@ lists the raw sources, output filenames, formatters, and shared storage
 conventions; `labeler.config.Paths.events_manifest` finds it
 (`LABELER_CONFIG_DIR` overrides the directory).
 
-Below, `data/events/` stands for the label folder: the label tables live in an `events` folder outside the repository (`/scratch/gpfs/EKOLEMEN/D3D/events` by default), and the setting `LABELER_LABEL_TABLES` (`Paths.label_tables`) names it.
+Below, `data/events/` stands for the label folder: the label tables live in an `events` folder outside the repository (by default the cluster's row of `labeler.env.CLUSTERS`: `/scratch/gpfs/EKOLEMEN/nc1514/events` on Stellar, `/scratch/gpfs/EKOLEMEN/D3D/events` on StellarAI), and the setting `LABELER_LABEL_TABLES` (`Paths.label_tables`) names it.
 
 The tables are data, not source: `data/` is ignored by git, and a fresh clone
 restores the label tables under `data/events/` from the Hugging Face release with

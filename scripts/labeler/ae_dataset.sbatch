@@ -21,7 +21,11 @@ set -euo pipefail
 
 REPO=/scratch/gpfs/nc1514/FusionAIHub
 PY=/scratch/gpfs/nc1514/tokeye/.venv/bin/python
-export PYTHONPATH=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/ae/pylibs:$REPO/src
+ENV="${LABELER_PIXI_ENV:-/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler}"  # another cluster: export LABELER_PIXI_ENV
+# The cluster's production root (labeler.env.CLUSTERS), whatever LABELER_ROOT the caller
+# exports: the pyarrow --target directory ($ROOT/ae/pylibs) lives there.
+ROOT="$(env -u LABELER_ROOT "$ENV/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler")"
+export PYTHONPATH="$ROOT/ae/pylibs:$REPO/src"
 export OMP_NUM_THREADS=4
 export HF_HUB_OFFLINE=1   # the checkpoint is loaded from a local path
 
@@ -32,7 +36,7 @@ srun "$PY" "$REPO/scripts/labeler/ae_dataset.py" \
     --stage all \
     --device cuda \
     --batch 4 \
-    --root /scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/ae \
+    --root "$ROOT/ae" \
     --out-dir "$REPO/outputs/labeler/ae/dataset"
 
 echo "finished at $(date -Is)"

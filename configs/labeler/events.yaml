@@ -1,7 +1,7 @@
 # The label tables' manifest: the interval schema, the label grid, the review
 # taxonomy, and the format and raw datasets. Source, so it is tracked here; the
 # tables themselves live in the label-tables folder, outside the repository
-# (`LABELER_LABEL_TABLES`, `/scratch/gpfs/EKOLEMEN/D3D/events` by default).
+# (`LABELER_LABEL_TABLES`; each cluster's default is a row of `labeler.env.CLUSTERS`).
 # Every category name and every `raw_datasets` path below is relative to that
 # folder. Read through `labeler.config.Paths.events_manifest`
 # (`LABELER_CONFIG_DIR` overrides the directory). Docs: docs/labeler/events/README.md.
@@ -68,6 +68,11 @@ non_category_dirs:
   - gold
   # Named shot lists (`labeler.events.shotlists`; registry configs/labeler/shotlists.yaml).
   - shotlists
+  # Folders the shared label store keeps beside the categories: published suggestion
+  # tables, reviewer names, and the store's write probe.
+  - suggestions
+  - names
+  - .probe
 
 # What the review page calls each event, how its dropdown groups them, and the
 # subcategories nested under one (read by `labeler.events.taxonomy`). A

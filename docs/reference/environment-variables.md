@@ -3,25 +3,63 @@ title: Environment variables
 ---
 
 Every environment variable `shot_design`, `labeler` and the Frontier SLURM
-wrappers read, gathered in one place. Most get their value from a pixi
-activation block (`shot-design`, `shot-design-cpu`, `shot-design-frontier` in
-`pyproject.toml`) rather than by hand. The roots there are defaults, so a value
-you export wins ([Pixi environments](./pixi-environments.md)). See
+wrappers read, gathered in one place. The three data roots differ per cluster
+and come from the cluster table `labeler.env.CLUSTERS` (below); the rest get
+their value from a pixi activation block (`shot-design`, `shot-design-cpu`,
+`shot-design-frontier` in `pyproject.toml`) or by hand. A value you export
+always wins ([Pixi environments](./pixi-environments.md)). See
 [Adding a cluster](../clusters/adding-a-cluster.md) for how a new cluster
 wires its own values in.
 
 ## The three roots (`shot_design` / `labeler`)
 
-| Variable | Purpose | Stellar / StellarAI default | Frontier value |
-|---|---|---|---|
-| `SHOT_DESIGN_DATA_ROOT` | the `shot_design` workstream root (database, frame codes, caches, outputs) | `/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/shot_design` | `/lustre/orion/fus187/proj-shared/nchen/shot_design` |
-| `LABELER_ROOT` | the `labeler` workstream root (detector features, masks, labels, models, the review page's rows in `spectrograms/`, the fetch cache in `raw/`) | `/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler` | `/lustre/orion/fus187/proj-shared/nchen/labeler` |
-| `SHOT_DESIGN_CORPUS` | the read-only DIII-D per-shot HDF5 corpus | `/scratch/gpfs/EKOLEMEN/foundation_model` | `/lustre/orion/fus187/proj-shared/foundation_model` |
+| Variable | Purpose | Stellar | StellarAI | Frontier |
+|---|---|---|---|---|
+| `SHOT_DESIGN_DATA_ROOT` | the `shot_design` workstream root (database, frame codes, caches, outputs) | `/scratch/gpfs/EKOLEMEN/nc1514/shot_design` | `/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/shot_design` | `/lustre/orion/fus187/proj-shared/nchen/shot_design` |
+| `LABELER_ROOT` | the `labeler` workstream root (detector features, masks, labels, models, the review page's rows in `spectrograms/`, the fetch cache in `raw/`) | `/scratch/gpfs/EKOLEMEN/nc1514/labeler` | `/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler` | `/lustre/orion/fus187/proj-shared/nchen/labeler` |
+| `LABELER_LABEL_TABLES` | the label-table directory (see below) | `/scratch/gpfs/EKOLEMEN/nc1514/events` | `/scratch/gpfs/EKOLEMEN/D3D/events` | not set; export it |
+| `SHOT_DESIGN_CORPUS` | the read-only DIII-D per-shot HDF5 corpus | `/scratch/gpfs/EKOLEMEN/foundation_model` | `/scratch/gpfs/EKOLEMEN/D3D/signals` | `/lustre/orion/fus187/proj-shared/foundation_model` |
+
+The Stellar and StellarAI values of the first three are the two rows of
+`labeler.env.CLUSTERS`; the packages and the sbatch launchers need nothing exported on either
+(some scripts do: see [Stellar](../clusters/stellar.md#environment-variables)). Frontier's come from
+its pixi activation block. `SHOT_DESIGN_CORPUS` is not in the table: the
+`shot-design` pixi activation defaults it to Stellar's value, so on StellarAI
+export the path above.
 
 An explicit `SHOT_DESIGN_DATA_ROOT` always wins over whatever a paths file
-(below) would resolve `data_root` to — this is what lets a scratch build
-never touch production by accident. `pixi run` keeps a root you exported: the
-activation blocks set the roots only as defaults (`${SHOT_DESIGN_DATA_ROOT:-...}`).
+(below) or the cluster table would resolve `data_root` to — this is what lets a
+scratch build never touch production by accident. `pixi run` keeps a root you
+exported: the activation blocks that still set one (Frontier's) do so only as
+defaults (`${SHOT_DESIGN_DATA_ROOT:-...}`).
+
+## Which cluster
+
+The table is picked by `labeler.env.cluster()`, in this order:
+
+1. `LABELER_CLUSTER` (`stellar` or `stellarai`). Set but empty, or any other
+   name, means no cluster: the Python constants apply (`labeler.config`'s
+   `DEFAULT_*`, `configs/shot_design/paths.yaml`). The test suites set it empty. A
+   non-empty name that is not a row (`Stellar`, a typo) is noted once on stderr.
+2. The hostname's prefix, longest first (`stellarai-*` and `stellar-ai-*` before `stellar-*`).
+3. Slurm's `SLURM_CLUSTER_NAME`, when it is a table key.
+
+For one variable the order is: the exported value, else the cluster's row,
+else the constant. `python src/labeler/env.py NAME [DEFAULT]` (which the sbatch
+scripts call) prints it in that order, with the argument last, and
+`python src/labeler/env.py --cluster` prints the cluster. For
+`shot_design`, the row applies only when neither `SHOT_DESIGN_DATA_ROOT` nor
+`SHOT_DESIGN_PATHS` is set, and the origin line a write command prints then reads
+`cluster stellar default`.
+
+The labeler launchers under `scripts/labeler/` run that command with the pixi `labeler`
+environment of the Stellar main checkout, `/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler`;
+`LABELER_PIXI_ENV` names another checkout's environment (on StellarAI, export it).
+
+The command line does not read `SHOT_DESIGN_PATHS`. A launcher that resolves
+`SHOT_DESIGN_DATA_ROOT` through it (`simulate.sbatch`, `build.sbatch`) exports the cluster's
+root even when only `SHOT_DESIGN_PATHS` is set, and an exported root outranks the paths
+file. To run such a launcher against a paths file's root, export `SHOT_DESIGN_DATA_ROOT` too.
 
 ## Paths file selection
 
@@ -39,7 +77,7 @@ for the paths-file convention itself.
 |---|---|
 | `LABELER_CORPUS`, `LABELER_LOGS_JSONL`, `LABELER_TEXT_ROOT` | narrower overrides of paths that would otherwise come from `LABELER_ROOT` / the paths file |
 | `LABELER_RAW_CACHE` | where fetched raw signals park (default `$LABELER_ROOT/raw`) |
-| `LABELER_LABEL_TABLES` | the label-table directory (default `/scratch/gpfs/EKOLEMEN/D3D/events`, outside the checkout; `scripts/labeler/hf_publish.py pull` restores it): what `labeler` reads, and where the review page saves (`<event>/review/`) |
+| `LABELER_LABEL_TABLES` | the label-table directory (the cluster's row above, outside the checkout; `scripts/labeler/hf_publish.py pull` restores it): what `labeler` reads, and where the review page saves (`<event>/review/`) |
 | `LABELER_CONFIG_DIR` | the labeler's tracked configuration (default `configs/labeler` in the checkout): `events.yaml` (taxonomy, label grid, dataset manifest) and `best_models.yaml` |
 | `SHOT_DESIGN_TEXT_ROOT` | overrides the text-corpus root independent of `SHOT_DESIGN_CORPUS` |
 

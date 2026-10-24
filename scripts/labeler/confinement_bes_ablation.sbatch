@@ -28,8 +28,11 @@
 
 set -euo pipefail
 
-ROOT=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler
 REPO=${REPO:-/scratch/gpfs/nc1514/FusionAIHub}
+ENV="${LABELER_PIXI_ENV:-/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler}"  # another cluster: export LABELER_PIXI_ENV
+# The cluster's production root (labeler.env.CLUSTERS), whatever LABELER_ROOT the caller
+# exports: the phase3 interpreter and this job's outputs live there.
+ROOT="$(env -u LABELER_ROOT "$ENV/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler")"
 export PYTHONPATH=$REPO/src
 export LABELER_ROOT=$ROOT
 

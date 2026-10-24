@@ -90,3 +90,77 @@ def test_shell_entrypoint_resolves_settings_without_importing_the_package(monkey
     )
     assert result.stdout == "a path with spaces\n"
     assert result.stderr == ""
+
+
+# ------------------------------------------------------------------ cluster defaults
+
+
+def test_data_root_is_the_clusters_when_nothing_else_names_one(monkeypatch):
+    from labeler import env
+
+    monkeypatch.delenv("SHOT_DESIGN_DATA_ROOT", raising=False)
+    monkeypatch.delenv("SHOT_DESIGN_PATHS", raising=False)
+    for name, row in env.CLUSTERS.items():
+        monkeypatch.setenv("LABELER_CLUSTER", name)
+        root = row["env"]["SHOT_DESIGN_DATA_ROOT"]
+        assert str(config.load_paths().data_root) == root
+        assert config.data_root_origin() == f"cluster {name} default"
+
+
+def test_an_export_or_a_paths_file_outranks_the_clusters_root(monkeypatch, tmp_path):
+    import yaml
+
+    monkeypatch.setenv("LABELER_CLUSTER", "stellar")
+    paths_file = tmp_path / "paths.yaml"
+    raw = config.load_yaml("paths.yaml")
+    raw["data_root"] = str(tmp_path / "database")
+    paths_file.write_text(yaml.safe_dump(raw))
+    monkeypatch.setenv("SHOT_DESIGN_PATHS", str(paths_file))
+    assert config.load_paths().data_root == tmp_path / "database"
+    assert config.data_root_origin() == f"SHOT_DESIGN_PATHS={paths_file}"
+    monkeypatch.setenv("SHOT_DESIGN_DATA_ROOT", str(tmp_path / "root"))
+    assert config.load_paths().data_root == tmp_path / "root"
+    assert config.data_root_origin() == "SHOT_DESIGN_DATA_ROOT env"
+
+
+@pytest.mark.parametrize("name", ["stellar", "stellarai"])
+def test_shell_entrypoint_answers_with_the_clusters_root(name, monkeypatch):
+    """Launchers ask this file as well as labeler's; both read the one table, so neither
+    can send a Stellar job to the StellarAI root (or the reverse)."""
+    import subprocess
+    import sys
+
+    from labeler import env as labeler_env
+    from shot_design import env
+
+    monkeypatch.delenv("SHOT_DESIGN_DATA_ROOT", raising=False)
+    monkeypatch.setenv("LABELER_CLUSTER", name)
+    result = subprocess.run(
+        [sys.executable, env.__file__, "SHOT_DESIGN_DATA_ROOT", "default"],
+        capture_output=True, text=True, check=True,
+    )
+    assert result.stdout == labeler_env.CLUSTERS[name]["env"]["SHOT_DESIGN_DATA_ROOT"] + "\n"
+
+
+def test_labeler_addressed_readers_use_the_export_then_the_clusters_root(monkeypatch):
+    """The shot-design pixi environment no longer exports LABELER_ROOT, so the readers that
+    used to see it there resolve it the way `labeler.config.Paths.from_env` does."""
+    import argparse
+    from pathlib import Path
+
+    from labeler import env
+    from shot_design import cli
+    from shot_design.shotdb import corpus_signals
+
+    args = argparse.Namespace(pending_out=None, name="shots")
+    monkeypatch.delenv("LABELER_ROOT", raising=False)
+    monkeypatch.setenv("LABELER_CLUSTER", "")
+    assert corpus_signals.default_features_dir() is None
+    assert cli._pending_path(args) is None
+    monkeypatch.setenv("LABELER_CLUSTER", "stellar")
+    root = Path(env.CLUSTERS["stellar"]["env"]["LABELER_ROOT"])
+    assert corpus_signals.default_features_dir() == root / "features"
+    assert cli._pending_path(args) == root / "shots_pending_features.txt"
+    monkeypatch.setenv("LABELER_ROOT", "/exported")
+    assert corpus_signals.default_features_dir() == Path("/exported/features")
+    assert cli._pending_path(args) == Path("/exported/shots_pending_features.txt")

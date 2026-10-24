@@ -74,10 +74,15 @@
 #   for 8 AE shots).
 set -euo pipefail
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"  # the drain exports the server's own worktree
-ROOT=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler
+ENV="${LABELER_PIXI_ENV:-/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler}"  # another cluster: export LABELER_PIXI_ENV
+# The cluster's production root (labeler.env.CLUSTERS), whatever LABELER_ROOT the caller
+# exports: the logs and the phase3 interpreter live there.
+ROOT="$(env -u LABELER_ROOT "$ENV/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler")"
 PY="$ROOT/envs/phase3/bin/python"  # torch 2.14 + CUDA 12.6; the pixi env's torch is CPU-only
-export LABELER_ROOT="$("$PY" "$REPO/src/labeler/env.py" LABELER_ROOT "$ROOT")" PYTHONPATH="$REPO/src"
-export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-/scratch/gpfs/EKOLEMEN/D3D/events}"
+LABELER_ROOT="$("$PY" "$REPO/src/labeler/env.py" LABELER_ROOT "$ROOT")"
+export LABELER_ROOT PYTHONPATH="$REPO/src"
+LABELER_LABEL_TABLES="$("$ENV/bin/python" "$REPO/src/labeler/env.py" LABELER_LABEL_TABLES "/scratch/gpfs/EKOLEMEN/D3D/events")"
+export LABELER_LABEL_TABLES
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 HDF5_USE_FILE_LOCKING=FALSE LABELER_NO_FETCH=1
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True  # tiles of many shapes: less fragmentation
 export XDG_CACHE_HOME="$ROOT/runs/slurm/cache/${SLURM_JOB_ID:-none}"

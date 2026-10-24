@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import os
-import sys
+import runpy
+from pathlib import Path
 
 
 def getenv(name: str, default: str | None = None) -> str | None:
@@ -15,4 +16,7 @@ def getenv(name: str, default: str | None = None) -> str | None:
 
 
 if __name__ == "__main__":
-    print(getenv(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else ""))
+    # The cluster table lives in labeler/env.py, so a launcher that asks here for
+    # SHOT_DESIGN_DATA_ROOT gets the same answer as one that asks there.
+    table = Path(__file__).resolve().parents[1] / "labeler" / "env.py"
+    runpy.run_path(str(table), run_name="__main__")

@@ -48,6 +48,25 @@ def test_submit_returns_job_id_and_status_url(client):
     }
 
 
+def test_submit_makes_the_log_folder_before_it_submits(paths):
+    """The submit command names `<data_root>/runs/slurm` for the job's log, and Slurm cannot open
+    a log in a folder that is missing: the job would fail at launch with no log to read."""
+    logs = paths.data_root / "runs" / "slurm"
+    assert not logs.exists()
+    seen = {}
+
+    def fake_submit(cmd):
+        seen["folder_existed"] = logs.is_dir()
+        return "Submitted batch job 4242"
+
+    application = create_app(paths=paths, token="secret")
+    application.state.submit = fake_submit
+    with TestClient(application) as client:
+        client.cookies.set(COOKIE, "secret")
+        assert client.post(f"/api/design/{IDENT}/simulate").status_code == 202
+    assert seen == {"folder_existed": True}
+
+
 @pytest.mark.parametrize("submit_cmd", [
     "sbatch scripts/shot_design/simulate.sbatch {ident}",
     "sbatch scripts/slurm_frontier/shot_design_simulate.sh {ident}",
@@ -232,7 +251,16 @@ def test_default_submit_runs_subprocess_from_the_repo_root(monkeypatch):
 ])
 def test_cluster_paths_select_the_simulate_script(name, script):
     paths = sd_config.load_paths(sd_config.CONFIG_DIR / name)
-    assert paths.simulate_submit_cmd == f"sbatch {script} {{ident}}"
+    assert paths.simulate_submit_cmd.endswith(f"{script} {{ident}}")
+
+
+def test_stellar_simulate_log_goes_to_the_root_the_job_runs_against(tmp_path):
+    """The script's #SBATCH lines name a folder that is absent on Stellar; the submit overrides them."""
+    raw = sd_config.load_yaml("paths.yaml")
+    raw["data_root"] = str(tmp_path / "root")
+    paths = sd_config.Paths(**sd_config._interpolate(raw))
+    logs = tmp_path / "root" / "runs" / "slurm" / "%j.out"
+    assert f"--output={logs} --error={logs} " in paths.simulate_submit_cmd
 
 
 def test_metrics_returns_exact_f6_schema(client, paths):

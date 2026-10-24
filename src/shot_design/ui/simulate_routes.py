@@ -57,6 +57,9 @@ def submit(ident: str, request: Request):
     cmd = request.app.state.paths.simulate_submit_cmd.format(ident=ident)
     submitted = datetime.now(UTC).isoformat()
     try:
+        # The job's log folder (paths.yaml simulate_submit_cmd): Slurm cannot open a log in a
+        # folder that does not exist, and the job would fail at launch with no log.
+        (request.app.state.paths.data_root / "runs" / "slurm").mkdir(parents=True, exist_ok=True)
         output = request.app.state.submit(cmd)
     except subprocess.CalledProcessError as exc:
         raise HTTPException(502, exc.stderr or exc.stdout or str(exc)) from exc

@@ -11,16 +11,17 @@ All times returned are milliseconds, all powers watts.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import numpy as np
+
+from ...config import Paths
 
 CORPUS = Path("/scratch/gpfs/EKOLEMEN/foundation_model")
 
 
 def labeler_root() -> Path:
-    return Path(os.environ["LABELER_ROOT"])
+    return Paths.from_env().root
 
 
 def cache_file(shot: int) -> Path:

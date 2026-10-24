@@ -5,10 +5,14 @@ set -euo pipefail
 JOB_ID=${1:?array job ID required}
 DEADLINE=$(( $(date -d "${2:?submit timestamp required}" +%s) + 1800 ))
 REPO=${REPO:-/scratch/gpfs/nc1514/FusionAIHub}
-export TMPDIR=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/scratch/ae-sw  # short: AF_UNIX
+ENV="${LABELER_PIXI_ENV:-/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler}"  # another cluster: export LABELER_PIXI_ENV
+# The cluster's production root (labeler.env.CLUSTERS), whatever LABELER_ROOT the caller
+# exports: the phase3 interpreter and round4/ live there.
+LABELER_ROOT="$(env -u LABELER_ROOT "$ENV/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler")"
+LABELER_LABEL_TABLES="$("$ENV/bin/python" "$REPO/src/labeler/env.py" LABELER_LABEL_TABLES "/scratch/gpfs/EKOLEMEN/D3D/events")"
+export LABELER_ROOT LABELER_LABEL_TABLES
+export TMPDIR="$LABELER_ROOT/scratch/ae-sw"  # short: AF_UNIX
 mkdir -p "$TMPDIR"
-export LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler
-export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-/scratch/gpfs/EKOLEMEN/D3D/events}"
 export LABELER_NO_FETCH=1 PYTHONPATH="$REPO/src" OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
 OUT="$LABELER_ROOT/round4/aeswap"
 PYTHON=${AESWAP_PYTHON:-$LABELER_ROOT/envs/phase3/bin/python}

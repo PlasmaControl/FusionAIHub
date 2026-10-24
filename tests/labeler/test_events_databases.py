@@ -422,6 +422,13 @@ def test_a_registration_that_is_not_a_list_of_names_is_refused(tmp_path, entry):
         db.category_dirs(tmp_path, tmp_path / "events.yaml")
 
 
+def test_events_yaml_skips_the_shared_stores_own_folders(tmp_path):
+    for name in ("disruption", "suggestions", "names", ".probe", "catalog"):
+        (tmp_path / name).mkdir()
+    got = [p.name for p in db.category_dirs(tmp_path, Paths().events_manifest)]
+    assert got == ["disruption"]
+
+
 @pytest.mark.label_tables
 def test_the_repository_registers_the_catalog_directory():
     root = Paths.from_env().label_tables

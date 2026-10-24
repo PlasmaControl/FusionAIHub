@@ -122,7 +122,9 @@ The UI uses `paths.yaml`'s `simulate_submit_cmd` to submit a single design:
 sbatch scripts/shot_design/simulate.sbatch <ident>
 ```
 
-This wrapper requests one A100, 4 GB host memory and one hour. It runs
+The submit command also passes `--output` and `--error` under `<data_root>/runs/slurm`, which
+override the script's own `#SBATCH` lines (those name the StellarAI log folder, absent on
+Stellar). This wrapper requests one A100, 4 GB host memory and one hour. It runs
 against the configured data root and does not source `_stellar_common.sh`.
 At the defaults (8 members × 3 arms, 80 frames, 10 passes, fp32) the pilot,
 job 2939099, took 29 minutes at a 3.2 GiB host peak and passed all four
@@ -131,17 +133,17 @@ utilisation gates. Time grows about linearly with `--members` and
 
 The Stellar batch scripts under `scripts/shot_design/` run the interpreter
 directly and REQUIRE `SHOT_DESIGN_DATA_ROOT` to name a batch root such as
-`/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/shot_design/experiments/<name>`; the production
+`/scratch/gpfs/EKOLEMEN/nc1514/shot_design/experiments/<name>`; the production
 root is refused (`_stellar_common.sh`). A full batch, from a shot list to a
 summary table:
 
 ```bash
-export SHOT_DESIGN_DATA_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/shot_design/experiments/stellar_v4_batch
+export SHOT_DESIGN_DATA_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/shot_design/experiments/stellar_v4_batch
 PY=.pixi/envs/shot-design/bin/python
 # 1. a diverse list (login node, ~20 s); §5.7's per-run-day/per-mpid caps set the ceiling
 $PY -m shot_design corpus select --n 1000 --name stellar_v4_batch --seed 20260920 \
-    --census /scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/shot_design/db/corpus_coverage.parquet \
-    --frame-codes /scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/shot_design/frame_codes
+    --census /scratch/gpfs/EKOLEMEN/nc1514/shot_design/db/corpus_coverage.parquet \
+    --frame-codes /scratch/gpfs/EKOLEMEN/nc1514/shot_design/frame_codes
 # 2. database + labels join into the batch root (CPU job)
 LIST=stellar_v4_batch sbatch scripts/shot_design/build_batch.sbatch
 # 3. frame codes for the shots that have none (4 GPUs, one job)

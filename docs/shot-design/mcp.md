@@ -30,7 +30,7 @@ that convention picks it up for a session started in this checkout.
 ```
 
 `cwd` is absolute because the server is started by whatever directory the client happens to be
-in. `SHOT_DESIGN_DATA_ROOT` comes from the `shot_design-cpu` environment's own activation, so the config
+in. `SHOT_DESIGN_DATA_ROOT` comes from the cluster's row of `labeler.env.CLUSTERS` (no activation block sets it), so the config
 names no data path; add an `"env"` block to point one session at a different database.
 
 The transport is stdio and the command above is the whole contract — any MCP client that speaks

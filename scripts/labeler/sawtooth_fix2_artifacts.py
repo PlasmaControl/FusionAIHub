@@ -392,7 +392,7 @@ def queue(args):
     eligible = set(cohort.loc[cohort.split == "val", "shot"]) - experts
     records = {r["shot"]: r for r in records_at(args.work, eligible)}
     regime_source = (
-        Path(__import__("os").environ["LABELER_LABEL_TABLES"])
+        Paths.from_env().label_tables
         / "confinement/raw/Jalal_28042024_confinement_regime_shotlist.csv"
     )
     regimes = pd.read_csv(regime_source)

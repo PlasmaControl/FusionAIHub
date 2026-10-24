@@ -68,13 +68,17 @@
 #   before: the cpu-chain array (pilot 2965454, 1 CPU a task) took 2-8 s a shot at GPU 0 %.
 set -euo pipefail
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
-ROOT=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler
+ENV="${LABELER_PIXI_ENV:-/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler}"  # another cluster: export LABELER_PIXI_ENV
+# The cluster's production root (labeler.env.CLUSTERS), whatever LABELER_ROOT the caller
+# exports: the phase3 interpreter and this job's outputs live there.
+ROOT="$(env -u LABELER_ROOT "$ENV/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler")"
 PY="$ROOT/envs/phase3/bin/python"  # torch 2.14 + CUDA 12.6; the pixi env's torch is CPU-only
-LIST="${LIST:-${LABELER_LABEL_TABLES:-/scratch/gpfs/EKOLEMEN/D3D/events}/silver/silver_shots.csv}"
+LABELER_LABEL_TABLES="$("$ENV/bin/python" "$REPO/src/labeler/env.py" LABELER_LABEL_TABLES "/scratch/gpfs/EKOLEMEN/D3D/events")"
+export LABELER_LABEL_TABLES
+LIST="${LIST:-$LABELER_LABEL_TABLES/silver/silver_shots.csv}"
 WORK="${WORK:-$ROOT/runs/silver_infer/ae_seldnet/work}"
 GOLD_WORK="${GOLD_WORK:-$(dirname "$WORK")/gold_check_gpu}"
 export LABELER_ROOT="$ROOT" PYTHONPATH="$REPO/src"
-export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-/scratch/gpfs/EKOLEMEN/D3D/events}"
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 HDF5_USE_FILE_LOCKING=FALSE LABELER_NO_FETCH=1
 export XDG_CACHE_HOME="$ROOT/runs/slurm/cache/${SLURM_JOB_ID:-none}"
 mkdir -p "$XDG_CACHE_HOME" "$WORK"

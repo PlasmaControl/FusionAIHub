@@ -23,8 +23,8 @@ V1_SCRIPTS = (
     "ae_xpower_extend.sbatch",
 )
 TABLES = (
-    'export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-'
-    '/scratch/gpfs/EKOLEMEN/D3D/events}"'
+    'LABELER_LABEL_TABLES="$("$ENV/bin/python" "$REPO/src/labeler/env.py" '
+    'LABELER_LABEL_TABLES "/scratch/gpfs/EKOLEMEN/D3D/events")"\nexport LABELER_LABEL_TABLES\n'
 )
 
 

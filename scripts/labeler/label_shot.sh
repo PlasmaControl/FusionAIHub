@@ -21,9 +21,9 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler")"
-OUT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler/bin/python" "$REPO/src/labeler/env.py" LABELER_DEMO_OUT "$REPO/outputs/labeler/analysis")"
-CONFIG="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler/bin/python" "$REPO/src/labeler/env.py" LABELER_DEMO_CONFIG "$REPO/src/labeler/analyze_default.yaml")"
+ROOT="$("${LABELER_PIXI_ENV:-/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler}/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler")"
+OUT="$("${LABELER_PIXI_ENV:-/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler}/bin/python" "$REPO/src/labeler/env.py" LABELER_DEMO_OUT "$REPO/outputs/labeler/analysis")"
+CONFIG="$("${LABELER_PIXI_ENV:-/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler}/bin/python" "$REPO/src/labeler/env.py" LABELER_DEMO_CONFIG "$REPO/src/labeler/analyze_default.yaml")"
 
 if [ "$#" -lt 1 ]; then
     echo "usage: $(basename "$0") SHOT [SHOT ...]" >&2
@@ -36,7 +36,7 @@ for shot in "$@"; do
 done
 
 cd "$REPO"
-FORCE="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler/bin/python" "$REPO/src/labeler/env.py" LABELER_DEMO_FORCE)"
+FORCE="$("${LABELER_PIXI_ENV:-/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler}/bin/python" "$REPO/src/labeler/env.py" LABELER_DEMO_FORCE)"
 export LABELER_ROOT="$ROOT"
 pixi run -q -e labeler fdp run python -m labeler.run analyze \
     --shots "$@" --config "$CONFIG" --out "$OUT" ${FORCE:+--force}

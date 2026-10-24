@@ -21,7 +21,7 @@ from typing import get_args
 
 import yaml
 
-from labeler.env import getenv as labeler_getenv
+from labeler.env import resolve as labeler_resolve
 
 from . import config
 from .env import getenv
@@ -1427,13 +1427,14 @@ def _pending_path(args) -> Path | None:
 
     `$LABELER_ROOT/<name>_pending_features.txt` by default: the file is a work order for
     labeler's features stage, so it belongs next to the feature store that stage writes into
-    and not in this repo. None when neither `--pending-out` nor `$LABELER_ROOT` says where --
-    in which case the count is still printed and the list is still refused, because not knowing
-    where to file the work order is not a reason to publish an unverified list.
+    and not in this repo. None when neither `--pending-out` nor `$LABELER_ROOT` (exported, or
+    this cluster's) says where -- in which case the count is still printed and the list is
+    still refused, because not knowing where to file the work order is not a reason to
+    publish an unverified list.
     """
     if args.pending_out:
         return Path(args.pending_out)
-    root = labeler_getenv("LABELER_ROOT")
+    root = labeler_resolve("LABELER_ROOT")
     return Path(root) / f"{args.name}_pending_features.txt" if root else None
 
 

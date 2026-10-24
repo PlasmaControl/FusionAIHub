@@ -25,7 +25,9 @@ def module_root(tmp_path_factory, caller_package_variables):
 
 
 def test_caller_package_exports_are_isolated(caller_package_variables):
-    assert caller_package_variables == []
+    # LABELER_CLUSTER is the one name the session sets: empty, so no cluster.
+    assert caller_package_variables == ["LABELER_CLUSTER"]
+    assert os.environ["LABELER_CLUSTER"] == ""
 
 
 def test_module_scoped_new_root_survives_environment_isolation(module_root):

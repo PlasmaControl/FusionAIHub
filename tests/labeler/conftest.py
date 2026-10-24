@@ -44,15 +44,23 @@ with warnings.catch_warnings():
 LIVE_ENV = "LABELER_FDP"
 
 #: The real label tables, the folder the caller's `LABELER_LABEL_TABLES` names (else
-#: the default events folder). Read here, at import, because the session fixture
+#: the cluster's events folder). Read here, at import, because the session fixture
 #: below clears every LABELER_* variable before the first test runs.
 REAL_LABEL_TABLES = Paths.from_env().label_tables
+#: The real data root, resolved the same way (the caller's export, else the cluster's).
+REAL_ROOT = Paths.from_env().root
 
 
 @pytest.fixture(scope="session")
 def real_label_tables():
     """The real label tables' folder, for a test that copies from or reads them."""
     return REAL_LABEL_TABLES
+
+
+@pytest.fixture(scope="session")
+def real_root():
+    """The real data root, for an opt-in test that reads production models and caches."""
+    return REAL_ROOT
 
 
 @pytest.fixture(autouse=True)
@@ -449,12 +457,15 @@ def _isolate_package_environment():
 
     Module/function fixtures can then set values without later autouse deletion.
     Tests that need a new name absent must delete it explicitly.
+    LABELER_CLUSTER is set empty, which means no cluster: a test resolves the defaults
+    the same way on every host, never to the host's production roots.
     Restore the caller environment when the session ends.
     """
     with pytest.MonkeyPatch.context() as monkeypatch:
         for name in tuple(os.environ):
             if name.startswith(("SHOT_DESIGN_", "LABELER_")):
                 monkeypatch.delenv(name)
+        monkeypatch.setenv("LABELER_CLUSTER", "")
         yield
 
 

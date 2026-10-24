@@ -43,10 +43,14 @@ every environment, so it waits for its own change.
 
 ## Roots are defaults
 
-The activation blocks set the roots as `${VAR:-value}`: `SHOT_DESIGN_DATA_ROOT`,
-`LABELER_ROOT` and `SHOT_DESIGN_CORPUS`, plus `SHOT_DESIGN_PATHS` on Frontier.
-A root you export before `pixi run` is the one the command sees. Unset, the
-cluster's production root applies. Measured 2026-09-22 with pixi 0.76.1: `pixi run`
+The activation blocks set what they set as `${VAR:-value}`: `SHOT_DESIGN_CORPUS` in
+`shot-design`, and `SHOT_DESIGN_DATA_ROOT`, `LABELER_ROOT`, `SHOT_DESIGN_CORPUS` and
+`SHOT_DESIGN_PATHS` in `shot-design-frontier`. A root you export before `pixi run` is the one
+the command sees. Unset, the cluster's production root applies. On Stellar and StellarAI
+the three data roots and `LABELER_LABEL_TABLES` are not in any activation block: they come
+from `labeler.env.CLUSTERS` ([Environment variables](./environment-variables.md#which-cluster)),
+because an activation entry outranks everything the code resolves afterwards and would give
+one cluster's value to both. Measured 2026-09-22 with pixi 0.76.1: `pixi run`
 and `pixi shell-hook` both leave the default to the shell (`shell-hook` prints
 `export SHOT_DESIGN_DATA_ROOT="${SHOT_DESIGN_DATA_ROOT:-...}"`). So
 
@@ -81,13 +85,15 @@ deadlock warning and the fast tokenizer disables its own threads anyway.
 
 ## Activation order on Frontier
 
-feature.shot-design's own activation block sets the three roots to their STELLAR
-values, so one of the two blocks has to win. MEASURED 2026-09-19 with pixi 0.73:
-the FIRST feature listed for the environment wins, not the last -- with
-`shot-design-frontier = ["shot-design", "shot-design-frontier"]` the environment
-came up with `/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/shot_design`, the Stellar root. That is why
+feature.shot-design's own activation block sets `SHOT_DESIGN_CORPUS` to its STELLAR
+value (it set the two data roots too, until the cluster table took them over), so one
+of the two blocks has to win. MEASURED 2026-09-19 with pixi 0.73, when the block still
+set all three roots: the FIRST feature listed for the environment wins, not the last --
+with `shot-design-frontier = ["shot-design", "shot-design-frontier"]` the environment
+came up with `/scratch/gpfs/EKOLEMEN/nc1514/shot_design`, the Stellar root. That is why
 [tool.pixi.environments] lists `shot-design-frontier` FIRST; reordering it
-silently sends every job at the Stellar paths, which do not exist there.
+silently sends every job at the Stellar paths, which do not exist there (today that
+means the corpus path).
 Measured again 2026-09-22 with pixi 0.76.1 on a two-feature manifest: still the
 first, and with defaults the first feature's default is the one used.
 

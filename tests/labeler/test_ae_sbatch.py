@@ -25,7 +25,11 @@ JOBS = {
 }
 EXPORTS = (
     'export LABELER_ROOT="$ROOT" PYTHONPATH="$REPO/src"',
-    'export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-',
+    (
+        'LABELER_LABEL_TABLES="$("$ENV/bin/python" "$REPO/src/labeler/env.py" '
+        "LABELER_LABEL_TABLES "
+    ),
+    "\nexport LABELER_LABEL_TABLES\n",
     "OMP_NUM_THREADS=1",
     "HDF5_USE_FILE_LOCKING=FALSE",
 )

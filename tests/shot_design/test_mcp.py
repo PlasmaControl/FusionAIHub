@@ -1068,7 +1068,9 @@ def test_a_stdio_client_can_list_the_tools_and_call_one(tmp_path):
     (root / "db").mkdir(parents=True)
     (root / "db" / "manifest.json").write_text(json.dumps({"n_shots": 4}), encoding="utf-8")
     env = get_default_environment()
-    env.update(SHOT_DESIGN_DATA_ROOT=str(root), HF_HUB_OFFLINE="1",
+    # LABELER_CLUSTER="" is no cluster: the subprocess does not inherit the suite's own pin, and
+    # with the variable unset it would take this host's cluster row (the production roots).
+    env.update(SHOT_DESIGN_DATA_ROOT=str(root), HF_HUB_OFFLINE="1", LABELER_CLUSTER="",
                PYTHONUNBUFFERED="1", PYTHONDONTWRITEBYTECODE="1")
     env.pop("SHOT_DESIGN_PATHS", None)
     # THIS checkout's src first, exactly as the suite is run. Without it the subprocess imports

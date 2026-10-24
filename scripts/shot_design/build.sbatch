@@ -91,7 +91,7 @@ set -euo pipefail
 # the main checkout); SHOT_DESIGN_PY is the interpreter, which always lives in the main checkout.
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
 SHOT_DESIGN_PY="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler/bin/python" "$REPO/src/shot_design/env.py" SHOT_DESIGN_PY "/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/shot-design-cpu/bin/python")"
-SHOT_DESIGN_DATA_ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler/bin/python" "$REPO/src/shot_design/env.py" SHOT_DESIGN_DATA_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/shot_design")"
+SHOT_DESIGN_DATA_ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler/bin/python" "$REPO/src/labeler/env.py" SHOT_DESIGN_DATA_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/shot_design")"
 LIST="${LIST:-recommender_v1}"
 
 cd "$REPO"
@@ -102,7 +102,8 @@ echo "job ${SLURM_JOB_ID:-none} on $(hostname) at $(date -Is)"
 # with the build's own pool otherwise and warns on every shot.
 export HF_HUB_OFFLINE=1 TOKENIZERS_PARALLELISM=false
 export SHOT_DESIGN_DATA_ROOT="$SHOT_DESIGN_DATA_ROOT"
-export LABELER_ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler")"
+LABELER_ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler")"
+export LABELER_ROOT
 # One thread per worker: the work is numpy over one shot's arrays, and 8 workers x 6 OpenMP
 # threads on 6 allocated cpus is pure contention.
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1

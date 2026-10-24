@@ -80,8 +80,8 @@
 
 set -euo pipefail
 REPO=/scratch/gpfs/nc1514/FusionAIHub
-ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler")"
-ENV="$REPO/.pixi/envs/labeler"
+ROOT="$("${LABELER_PIXI_ENV:-/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler}/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler")"
+ENV="${LABELER_PIXI_ENV:-$REPO/.pixi/envs/labeler}"  # another cluster: export LABELER_PIXI_ENV
 MODELS="d3d_tearing_onset_cnn1d d3d_tearing_time_to_event_dsm d3d_elm_time_to_event_dsm d3d_ae_activity_seldnet"
 
 # The activation variable the fdp feature needs (GLIBCXX_3.4.29 for toksearch's pyxrootd), set

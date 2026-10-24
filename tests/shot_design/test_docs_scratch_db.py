@@ -3,7 +3,8 @@
 A documented escape hatch that has drifted from the code is worse than none: it reads as
 authority. So each assertion here is tied to the thing it documents -- the origin labels
 `config.data_root_origin` actually returns, the roots `pyproject.toml` actually defaults, and
-the flag the guard actually names.
+the flag the guard actually names. The data roots of Stellar and StellarAI are not in the manifest
+at all: they come from `labeler.env.CLUSTERS`, and only Frontier's activation block sets them.
 """
 
 from __future__ import annotations
@@ -32,6 +33,38 @@ def activation(feature: str) -> dict[str, str]:
     return manifest["tool"]["pixi"]["feature"][feature]["target"]["unix"]["activation"]["env"]
 
 
+def activation_blocks() -> dict[str, dict[str, str]]:
+    """Every activation env table in the manifest, keyed by where it sits, e.g.
+    `pixi.feature.fdp.target.unix`, whichever feature or platform it belongs to."""
+    manifest = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))
+    found: dict[str, dict[str, str]] = {}
+
+    def walk(node: dict, path: tuple[str, ...]) -> None:
+        for key, value in node.items():
+            if not isinstance(value, dict):
+                continue
+            if key == "activation":
+                found[".".join(path)] = value.get("env", {})
+            else:
+                walk(value, (*path, key))
+
+    walk(manifest["tool"]["pixi"], ("pixi",))
+    return found
+
+
+def test_only_frontiers_blocks_set_a_root_the_cluster_table_owns():
+    """An activation entry for a table variable shadows `labeler.env.CLUSTERS` on every cluster
+    that has a row: the label tables, the labeler root and the shot-design root come from the
+    table, and only Frontier, which has no row, sets them in its manifest block."""
+    blocks = activation_blocks()
+    assert {"pixi.feature.fdp.target.unix", "pixi.feature.shot-design.target.unix"} <= set(blocks)
+    assert "pixi.feature.shot-design-frontier.target.unix" in blocks
+    owned = {"LABELER_LABEL_TABLES", "LABELER_ROOT", "SHOT_DESIGN_DATA_ROOT"}
+    for where, env in blocks.items():
+        if "frontier" not in where:
+            assert not owned & set(env), (where, sorted(owned & set(env)))
+
+
 def test_every_root_the_manifest_sets_is_a_default():
     """A plain value would replace a root the caller exported, which is what once replaced the
     production database with a one-shot one."""
@@ -40,7 +73,11 @@ def test_every_root_the_manifest_sets_is_a_default():
         for name in (*ROOTS, "SHOT_DESIGN_PATHS"):
             if name in env:
                 assert env[name].startswith("${" + name + ":-"), (feature, name, env[name])
-    assert set(ROOTS) <= set(activation("shot-design"))
+    # The two data roots are the cluster table's on Stellar and StellarAI: a default here would
+    # shadow it. Frontier has no row, so its block sets them.
+    assert not {"SHOT_DESIGN_DATA_ROOT", "LABELER_ROOT"} & set(activation("shot-design"))
+    assert set(ROOTS) <= set(activation("shot-design-frontier"))
+    assert "SHOT_DESIGN_CORPUS" in activation("shot-design")
 
 
 def test_the_section_names_every_root_the_shot_design_features_default():
@@ -63,7 +100,12 @@ def test_the_section_quotes_the_origin_labels_the_code_prints(monkeypatch):
     assert config.data_root_origin() in text
     monkeypatch.delenv("SHOT_DESIGN_DATA_ROOT")
     monkeypatch.delenv("SHOT_DESIGN_PATHS", raising=False)
-    # The third label names the resolved paths file in full -- an absolute path, and so specific
+    # With a cluster detected and nothing exported, the cluster's row settles the root.
+    monkeypatch.setenv("LABELER_CLUSTER", "stellar")
+    assert config.data_root_origin() == "cluster stellar default"
+    assert "cluster <name> default" in text
+    monkeypatch.setenv("LABELER_CLUSTER", "")
+    # The last label names the resolved paths file in full -- an absolute path, and so specific
     # to the checkout -- because `SHOT_DESIGN_CONFIG_DIR` can move it. The docs quote the repo-relative
     # path it is in a plain checkout, which is that label minus the repo root.
     label = config.data_root_origin()
