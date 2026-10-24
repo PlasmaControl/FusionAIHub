@@ -15,15 +15,18 @@ anything on the 81 shots he reviewed. Record:
   fold, in Smith's 211, or in the cohort's blind test split. (`elm-dsm`, not scored here,
   did train on two: 163518 in B2 and 190627 in B1, `training_membership.json`.) This is the
   first score of the `elm-ours` serving ensemble (five `cv2` fold models at the mean
-  threshold 0.417) outside its training; it is not the blind split's score.
-- **Servable means input-screened, not published.** `labeler.elm.serve` has two rules: the
-  shot's input must pass `serve.input_problems`, and a shot under 5 % present is not
-  published (the owner's rule of 2026-10-11). **Servable** applies the first only (15 of his
-  80 scored shots fail it, mostly a filterscope with no signal) and is the basis of the
-  scores below. **Published** (also at least 5 % present: 9 of the 15 key shots, 38 of the
-  50 others) is given beside it. The near-empty shots stay in the servable scores because a
-  shot where the model finds nothing adds almost only true negatives; filtering on the
-  model's own output would hide those misses.
+  threshold 0.417) on review labels of shots outside its training; it is not the blind
+  split's score. `elm_challenge.md` had scored the same ensemble at the same threshold on
+  the 24 key windows against Eldon's key: F1 0.827 [0.660, 0.926] on 934 touch bins
+  (`outputs/labeler/elm/challenge/evaluation.json`).
+- **Servable means input-screened, not published.** `labeler.elm.serve` publishes a shot
+  only if its input passes `serve.input_problems` (15 of his 80 scored shots fail it,
+  mostly a filterscope with no signal) and, the owner's rule of 2026-10-11, it is at least
+  5 % present. **Servable** applies the first rule only and is the basis of the scores
+  below; **published** (9 of the 15 key shots, 38 of the 50 others) is given beside it. The
+  near-empty shots stay in the servable scores: a shot where the model finds nothing adds
+  almost only true negatives, and filtering on the model's own output would hide those
+  misses.
 - **The occupancy score does not see his isolated ELMs, and both models miss them.** A 50 ms
   bin must lie wholly inside one crowd or absent row, so his individual rows outside his
   crowd spans give no bin. On the servable shots `elm-ours`'s present runs touch 0.949 of
@@ -39,9 +42,10 @@ anything on the 81 shots he reviewed. Record:
   Onset agreement is agreement with the accepted prefill, not onset accuracy: `elm_jump`
   scores 1.000 on it by construction.
 - On the 15 servable key shots (B2) `elm-ours` has F1 0.922 [0.826, 0.982] and calls 0.3 %
-  of the absent bins present; on all 23, unscreened, F1 0.856 and 10.3 % (the shots the
-  screen refuses). The old reviewed set reproduces the published `sources` record (below);
-  the new numbers are not comparable with it.
+  of the absent bins present (all 23, unscreened: 0.856 and 10.3 %, the shots the screen
+  refuses), and F1 0.908 [0.782, 0.969] on the key's own bins (below). The old reviewed set
+  reproduces the published `sources` record (below); the new numbers are not comparable
+  with it.
 
 ## Inputs and pinned labels
 
@@ -74,7 +78,7 @@ input; `review_csv(paths, None)` is the live table, a missing pin is an error.
 | prefilled onsets he removed; crowd rows | 0; 84 | 19 (all in 163518); 43 |
 | servable shots with no crowd row (rows) | 8 (1,114) | 3 (77): 192048, 192855, 203788 |
 | uncertain time (ms; in no score) | 6,140 (10 shots) | 5,750 (141474, 163518) |
-| his present time against the draft's | 164,070 ms against 141,914 | 44,020 ms against 37,141 |
+| his present time against the draft's (B1: the 57 scored) | 164,070 ms against 141,914 | 44,020 ms against 37,141 |
 
 B1 and B2 are never pooled: B2 is the key's shots by the vendored key, and the holdout
 registry must name the same shots or the run stops (`heldout.split_panels`). The 11 shots
@@ -120,9 +124,10 @@ models' unscreened output, for diagnosis: a refused shot has no `elm-ours` row i
   inside analysed time, the share a method's present runs overlap at all, split by whether
   the row's centre lies inside one of his crowd rows. Present runs are the evaluation's
   detection rule (the 50 ms moving mean of a trace at its threshold, `labels.runs_of`, or a
-  table's spans); `raw 1 ms` reads the trace itself, the most generous rule, and moves a
-  figure by at most 0.02. Intervals are 95 % shot bootstraps. It is the only score of an
-  isolated ELM; the rows outside his crowd spans give no occupancy bin.
+  table's spans); `raw 1 ms` reads the trace itself, a second reading that moves each
+  figure by at most 0.02, up or down (the largest move in the record is 0.017). Intervals
+  are 95 % shot bootstraps. It is the only score of an isolated ELM; the rows outside his
+  crowd spans give no occupancy bin.
 - **Onset agreement**: detections matched one to one, nearest first, to his rows. A
   detection is a false alarm in judged-present or absent time; none counts in uncertain
   time or outside his labelled window. Detections are collapsed to the 10 ms cells his rows
@@ -174,8 +179,12 @@ earlier (elm-ours 0.830), which were scored on the 2026-10-10 pin (12,409 bins).
 | always present | 0.697 | 1.000 | 1.000 | 0.683 | 1.000 |
 
 **Published** (B2 9 shots, 982 bins; B1 38 shots, 4,228 bins), F1: B2 `elm-ours` 0.947
-[0.878, 0.989], `elm-inst` 0.960 [0.910, 0.993], `elm-jump` 0.904; B1 `elm-ours` 0.971
-[0.956, 0.983], `elm-inst` 0.958 [0.923, 0.982], `elm-jump` 0.972. The shots this drops
+[0.878, 0.989], `elm-inst` 0.960 [0.910, 0.993], `elm-jump` 0.904, **`elm-clock-peaks`
+0.949 [0.924, 0.972]** (false alarm 0.022); B1 `elm-ours` 0.971 [0.956, 0.983], `elm-inst`
+0.958 [0.923, 0.982], `elm-jump` 0.972, `elm-clock-peaks` 0.851 [0.787, 0.899]. On B2's 9
+the clock ties `elm-ours`: there is no margin over it there. The view is chosen by
+`elm-ours`'s own present fraction, and the 6 B2 shots it drops hold 353 of the clock's 362
+false-alarm bins on the servable set (F1 0.730, false alarm 0.389). The 18 shots it drops
 (6 of B2's servable, 12 of B1's; fractions in the record) hold 1,264 scored bins, 36 of
 them crowd. **Unscreened B2** (23 shots, 2,203 bins): `elm-ours` F1 0.856 [0.673, 0.969],
 false alarm 0.103; `elm-inst` 0.916 [0.817, 0.975], 0.055; `elm-jump` (20 shots) 0.923.
@@ -190,10 +199,22 @@ are on all scored shots, not only the servable ones.
   score is agreement with an accepted prefill, not evidence the models are right where the
   prefill was wrong, and no gain over the old set's 0.828 (other labels, other shots, the
   ensemble rather than out-of-fold models).
-- **B2 is the informative test**, and on the servable shots `elm-ours` detects ELMing
-  periods well (F1 0.922, false alarm 0.003) but not isolated ELMs (next section).
-  `elm-inst` is ahead by 0.02 in F1 and the intervals overlap fully; with 15 shots that is
-  a tendency, not a ranking.
+- **B2 is the better test, not an independent one.** B1 saturates, but his B2 spans keep
+  0.969 of the draft's present time (35,995 of 37,141 ms) and 0.818 of his present time is
+  the draft's (35,995 of 44,020 ms; `span_agreement_with_elm_jump_draft` in `per_shot`).
+  The independent check is the challenge key, the one B2 annotation that is not the draft.
+  On the key's own bins `elm-ours` has F1 0.908 [0.782, 0.969] on the 15 servable shots
+  (433 bins, 72 present: tp 64, fp 5, fn 8), 0.928 [0.838, 0.977] on the 9 published (145
+  bins) and 0.701 on the 8 screened out (499 bins; tp 27, fp 11, fn 12), which agrees with
+  0.922 on his labels within the intervals. The bin rule differs: a key bin is present when
+  an ELM touches it, and the key holds short hand-timed windows, not whole shots. The 23
+  shots give tp 91, fp 16, fn 20 against that record's 91, 16, 22 on 24 (161202 holds the
+  other 2 fn bins). Recomputed in memory from the saved traces and the key grids with
+  `elm_challenge_evaluate.ours_bins` (95 % shot bootstrap as in `pooled_with_ci`); it is
+  not in `evaluation.json`.
+- On the servable shots `elm-ours` detects ELMing periods well (F1 0.922, false alarm
+  0.003) but not isolated ELMs (next section). `elm-inst` is ahead by 0.02 in F1 and the
+  intervals overlap fully; with 15 shots that is a tendency, not a ranking.
 - **The unscreened B2 loss is the input screen at work**: `elm-ours` on 207788 (a single
   absent row, no ELMs) calls 140 of 150 bins present, its FS02 median is the 10^12.00 clip
   floor (a dead channel), and `serve` would not publish it. That shot is 140 of the 145
@@ -231,9 +252,9 @@ rows inside analysed time, split by the row's centre in or out of one of his cro
   it: a bin must lie wholly inside one crowd or absent row, so these rows give no bin.
 - **Eleven servable shots have no present label but individual rows** (B1: 192277, 196101,
   200012, 202098, 203174, 203349, 203563, 204687; B2: 192048, 192855, 203788). `elm-ours`
-  touches 0 of their 1,191 rows (1,114 in B1, 77 in B2), `elm-inst` 1, and in each it calls
-  under 5 % of the shot present, so they add absent bins only to the occupancy score. On
-  192855 his 17 rows are his own additions (`edited`) and neither model touches one.
+  touches 0 of their 1,191 rows (1,114 in B1, 77 in B2), `elm-inst` 1. He drew no crowd row
+  on any of them, so they add absent bins only to the occupancy score. On 192855 his 17
+  rows are his own additions (`edited`) and neither model touches one.
 - **Not known**: whether the models miss these ELMs or the rows are prefill nobody checked.
   All 1,826 of B1's outside rows are the accepted `elm_jump` prefill, and the draft's own
   table has present time at only 0.157 of them. Read isolated ELMs as not detected, not
@@ -261,8 +282,7 @@ scores differ from these by at most 0.02 except `elm-ours`'s precision (0.486 at
 - **`elm_jump` is circular** here: the rows are its own onsets, accepted. Unreduced to his
   cells it fires about 2.3 times per cell and scores precision 0.434 (B1).
 - **`elm-ours`'s onset head scores near 0 recall**: it was trained on the starts of isolated
-  (non-crowd) reviewed spans and his rows sit mostly in dense trains. Its occupancy output,
-  which the catalog uses, also misses the isolated rows (above).
+  (non-crowd) reviewed spans and his rows sit mostly in dense trains.
 - **`elm-inst` finds about a third of the prefilled cells** (precision 0.97 to 0.99) with
   almost no detections in absent time. His 19 edited B2 rows are found 0 of 19 by `elm-ours`
   and `elm-inst` and 18 of 19 by `elm-clock-peaks` (it fires at every filterscope peak: precision 0.64 in B1,
@@ -270,8 +290,6 @@ scores differ from these by at most 0.02 except `elm-ours`'s precision (0.486 at
 
 ## Caveats
 
-- **Circularity** (above): read his rows as a reviewed `elm_jump` output with edits, whose
-  spans carry his judgement and whose onsets carry the draft's.
 - **Run-day overlap.** 21 of his 58 B1 shots share a run day with the 119 reviewed shots (the
   fold models' training shots), none with Smith's 211; no B2 shot shares one (180445, 192855
   and 207788 have no run day on record). The run date is the operator log's, else the
@@ -305,15 +323,17 @@ and per-shot records.
 
 `docs/labeler/events/edge_localized_mode/README.md`'s Models block is generated by
 `scripts/labeler/elm_protocol.py`, which does not read this evaluation, and was not edited.
-For the owner to place:
+The F1 on the 9 published shots (0.947) is left out of the lines: `elm-clock-peaks` scores
+0.949 on them. For the owner to place:
 
 - elm-ours | 2026_10_24 | AUROC: 0.993 [0.982, 0.999] | AUPRC: 0.991 [0.969, 0.998] | F1: 0.922 [0.826, 0.982]
   (frozen serving ensemble at 0.417 on the 15 input-screened (servable) of the 23 ELM
   challenge-key shots, which none of the scored models trained on, reviewed by Ricardo
-  Shousha 2026-10-23, 1,532 bins; false alarm 0.003; F1 0.947 [0.878, 0.989] on the 9 that
-  serve would publish; on his 50 servable other shots F1 0.970, near ceiling because his rows
-  are largely the accepted elm_jump prefill. An ELMing-period detector: its present runs
-  touch 0.107 of his individual rows outside his crowd spans, 0.815 inside; elm_heldout.md)
+  Shousha 2026-10-23, 1,532 bins; false alarm 0.003; his B2 spans are mostly the elm_jump
+  draft, and on the challenge key's own bins the 15 score F1 0.908 [0.782, 0.969]; on his
+  50 servable other shots F1 0.970, near ceiling because his rows are largely the accepted
+  elm_jump prefill. An ELMing-period detector: its present runs touch 0.107 of his
+  individual rows outside his crowd spans, 0.815 inside; elm_heldout.md)
 - elm-inst | 2026_10_24 | AUROC: 0.996 [0.989, 0.999] | AUPRC: 0.994 [0.979, 0.999] | F1: 0.946 [0.889, 0.986]
   (the same 15 key shots; 0.179 of the individual rows outside his crowd spans; his 50 other
   servable shots F1 0.957)
