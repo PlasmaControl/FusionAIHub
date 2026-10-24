@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import shutil
 import sys
@@ -26,7 +27,7 @@ from labeler.events.interval_tables import (
     parse_attrs,
     validate_intervals,
 )
-from labeler.events.review import labels
+from labeler.events.review import labels, saves
 
 BACKUP_ROOT = Path(
     "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/backups/regrid_2026-10-10"
@@ -167,6 +168,7 @@ def regrid(
     }
     replacements = []
     for path in paths:
+        read_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
         found = labels.read_labels(path, grid_ms=GRID_MS)
         before = validate_intervals(pd.read_csv(path, index_col=False))
         columns = WITH_ATTRS if "attrs" in before or any(
@@ -194,16 +196,22 @@ def regrid(
             "shots_changed": changed, "midpoint_claims": claims,
             "spans_dropped": dropped, "child_violations": _child_violations(path, found),
         })
-        replacements.append((path, frame))
+        replacements.append((path, frame, read_sha256))
     if apply:
-        for path, frame in replacements:
+        for path, frame, read_sha256 in replacements:
             backup = backups / path.relative_to(root)
             backup.parent.mkdir(parents=True, exist_ok=True)
-            # A rerun keeps the first backup: it is the only pre-grid copy.
-            if not backup.exists():
-                shutil.copy2(path, backup)
-            with atomic_path(path) as tmp:
-                frame.to_csv(tmp, index=False)
+            # The folder's merge lock keeps a save's merge from rewriting the table
+            # under this write; a table that changed since it was read is not
+            # overwritten (a rerun reads it again).
+            with saves.lock(path.parent):
+                if hashlib.sha256(path.read_bytes()).hexdigest() != read_sha256:
+                    raise RuntimeError(f"{path} changed since it was read; rerun")
+                # A rerun keeps the first backup: it is the only pre-grid copy.
+                if not backup.exists():
+                    shutil.copy2(path, backup)
+                with saves.replacing(path) as tmp:
+                    frame.to_csv(tmp, index=False)
         # A rerun's report goes beside the first, which lists what the grid changed.
         name = "report.json"
         if (backups / name).exists():

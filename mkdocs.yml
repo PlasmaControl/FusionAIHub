@@ -103,6 +103,7 @@ nav:
   - Labeler:
       - labeler/overview.md
       - labeler/review.md
+      - labeler/shared_labels.md
       - labeler/ae_xpower.md
   - Examples:
       - examples/index.md

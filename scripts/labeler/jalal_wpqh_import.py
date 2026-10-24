@@ -47,6 +47,7 @@ import json
 import re
 import shutil
 import sys
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -58,7 +59,7 @@ if str(REPO / "src") not in sys.path:
 
 from labeler.config import Paths, atomic_path, sha256_of
 from labeler.events import grid, rosters, shotlists
-from labeler.events.review import labels, reviewers
+from labeler.events.review import labels, reviewers, saves
 
 EVENT = "confinement"
 WPQH = 4
@@ -105,22 +106,25 @@ def rename_saved_names(
     tables = Path(tables)
     changed: dict[str, int] = {}
     for path in _logs(tables):
-        out, count = [], 0
-        for line in path.read_text(encoding="utf-8").splitlines(keepends=True):
-            try:
-                entry = json.loads(line)
-            except json.JSONDecodeError:
-                entry = None
-            if isinstance(entry, dict) and entry.get("name") == old:
-                tail = line[len(line.rstrip("\r\n")) :]
-                line = json.dumps({**entry, "name": new}) + tail
-                count += 1
-            out.append(line)
-        if count:
-            changed[path.relative_to(tables).as_posix()] = count
-            if apply:
-                with atomic_path(path) as tmp:
-                    tmp.write_text("".join(out), encoding="utf-8")
+        # The folder's merge lock is held from the read to the rename (as a save's
+        # merge holds it), so a merge cannot write the log in between.
+        with saves.lock(path.parent) if apply else nullcontext():
+            out, count = [], 0
+            for line in path.read_text(encoding="utf-8").splitlines(keepends=True):
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    entry = None
+                if isinstance(entry, dict) and entry.get("name") == old:
+                    tail = line[len(line.rstrip("\r\n")) :]
+                    line = json.dumps({**entry, "name": new}) + tail
+                    count += 1
+                out.append(line)
+            if count:
+                changed[path.relative_to(tables).as_posix()] = count
+                if apply:
+                    with saves.replacing(path) as tmp:
+                        tmp.write_text("".join(out), encoding="utf-8")
     names = reviewers.names_path(tables)
     if names.is_file():
         text = names.read_text(encoding="utf-8-sig")
@@ -419,27 +423,34 @@ def human_draft(origin: str | None, shot: int, curated: set[int] | None) -> bool
 def withdraw(directory, shot: int) -> None:
     """Take this import's saves of `shot` back: its rows leave `labels.csv` and its
     lines leave `history.jsonl`, as if it had not been saved. Refuses a shot with any
-    other save in its history."""
+    other save in its history.
+
+    The lines' ids go into `review/saves/rejected.jsonl`, so no later merge brings
+    the copies in the writers' files (or in a tree `labeler-sync import-tree` reads)
+    back."""
     shot = int(shot)
-    with labels._write_lock:  # the page's lock: its saves rewrite the same files
+    directory = Path(directory)
+    # The page's locks, in its order: the thread lock, then the folder's merge lock.
+    with labels._write_lock, saves.lock(directory / labels.REVIEW):
         history = labels.history_path(directory)
         lines = history.read_text().splitlines(keepends=True) if history.is_file() else []
-        kept, own = [], 0
+        kept, own = [], []
         for line in lines:
             entry = json.loads(line) if line.strip() else {}
             if entry.get("shot") != shot:
                 kept.append(line)
             elif _own(entry):
-                own += 1
+                own.append((entry, "withdrawn by jalal_wpqh_import"))
             else:
                 raise ValueError(f"shot {shot} has a save that is not this import's")
         path = labels.labels_path(directory)
         frame = pd.read_csv(path, dtype=str, keep_default_na=False, index_col=False)
         rows = pd.to_numeric(frame.shot, errors="coerce") == shot
-        with atomic_path(path) as tmp:
+        with saves.replacing(path) as tmp:
             frame.loc[~rows].to_csv(tmp, index=False)
-        with atomic_path(history) as tmp:
+        with saves.replacing(history) as tmp:
             tmp.write_text("".join(kept))
+        saves.reject(directory / labels.REVIEW, own)
 
 
 def import_shot(

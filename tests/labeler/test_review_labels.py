@@ -323,7 +323,10 @@ def test_saving_replaces_one_shots_rows_and_appends_the_history(event_dir, monke
     assert sorted(p.name for p in (event_dir / "review").iterdir()) == [
         "history.jsonl",
         "labels.csv",
+        "saves",
     ]
+    [mine] = (event_dir / "review" / "saves").iterdir()
+    assert mine.name == f"history.{entry['writer']}.jsonl"
 
 
 def test_saving_another_shot_refuses_a_ragged_table_without_changes(event_dir):

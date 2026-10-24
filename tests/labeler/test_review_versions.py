@@ -248,7 +248,8 @@ def test_the_list_is_the_saved_names_until_the_first_name_is_added(client, event
     assert added == {"names": ["ada", "Barbara", "Grace", "Linus"], "name": "Barbara"}
     assert names_file.read_text() == "ada\nGrace\nLinus\nBarbara\n"
     labels.save(event_dir, 170815, label, source=TABLE, name="Zed")
-    assert client.get("/api/names").json() == {"names": added["names"]}
+    # a name saved by an account that cannot write the file is listed from its save
+    assert client.get("/api/names").json() == {"names": [*added["names"], "Zed"]}
 
 
 def test_the_owner_s_edits_to_the_file_are_read_once_each_and_kept(client, event_dir):

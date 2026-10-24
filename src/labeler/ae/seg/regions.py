@@ -6,9 +6,11 @@ the same file always gives the same numbers. The review page draws each region
 over the AE rows and a click rejects it (not the mode: a harmonic of an MHD
 mode, a line of pickup) or takes the rejection back.
 
-Each save appends one line to `<events>/alfven_eigenmode/review/masks.jsonl`:
-`{"shot", "pseudo", "pseudo_sha256", "rejected", "reviewer", "name", "saved_at"}`.
-The last
+Each save writes one line,
+`{"shot", "pseudo", "pseudo_sha256", "rejected", "reviewer", "name", "saved_at",
+"save_id", "writer"}`, to its writer's own file `review/saves/masks.<writer>.jsonl`
+and merges the writers' files into `<events>/alfven_eigenmode/review/masks.jsonl`
+(see `review.saves`). The last
 line of a shot is its decision; the earlier ones are its history. A decision
 made on another version of the pseudo-mask (another sha256) is stale: the page
 says so and training ignores it.
@@ -30,12 +32,12 @@ from __future__ import annotations
 import getpass
 import hashlib
 import json
-from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
 from scipy import ndimage
 
+from ...events.review import saves
 from ...events.review.labels import REVIEW
 from . import PSEUDO, SEG_VERSIONS, VERSION, pseudo_dir, whole
 from .pseudo import EIGHT, IGNORE, PseudoMask
@@ -123,20 +125,28 @@ def save_decision(
     name: str | None = None,
     pseudo: str = PSEUDO,
 ) -> dict:
-    """Append one decision, made on the masks named `pseudo`; the line written."""
+    """Save one decision, made on the masks named `pseudo`; the line written.
+
+    The line is durable in the writer's own file once this returns; the merge into
+    `masks.jsonl` may be left to the next one when the folder's lock is busy."""
+    reviewer = getpass.getuser()
+    saved_at, save_id = saves.new_save()
     entry = {
         "shot": int(shot),
         "pseudo": pseudo,
         "pseudo_sha256": pseudo_sha256,
         "rejected": sorted({int(k) for k in rejected}),
         "name": name,
-        "reviewer": getpass.getuser(),
-        "saved_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "reviewer": reviewer,
+        "saved_at": saved_at,
+        "save_id": save_id,
+        "writer": saves.writer_id(reviewer),
     }
-    path = log_path(event_dir)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a") as f:
-        f.write(json.dumps(entry) + "\n")
+    saves.append(event_dir, "masks", entry)
+    try:
+        saves.merge(event_dir, "masks")
+    except (saves.StoreBusy, OSError, ValueError):
+        pass
     return entry
 
 

@@ -528,7 +528,11 @@ Silver and gold share no shot.
 ## What a save writes
 
 Saves go under the event's directory in the label tables
-(`data/events/<event>/` unless `LABELER_LABEL_TABLES` says otherwise):
+(`data/events/<event>/` unless `LABELER_LABEL_TABLES` says otherwise). Each save is
+first one line in the account's own file, `review/saves/history.<login>.<host>.jsonl`
+(`masks.<login>.<host>.jsonl` for a mask click), and is then merged into the files
+below, so several accounts can save into one folder; see
+[Shared label folder](shared_labels.md). The files below are what everything reads:
 
 - `review/labels.csv` holds the current label of every reviewed shot, in the
   format-table schema (`shot, category, t_start, t_end, confidence`, on the
@@ -550,8 +554,9 @@ Saves go under the event's directory in the label tables
   the intervals, also returned by the label/history API; null entries mean
   unspecified. Older history entries without it remain unspecified (the history view
   restores them as spans for the span events above).
-  It is only ever appended to: a shot's versions are its lines in order,
-  numbered from 1, and `GET /api/history?event=&shot=` lists them. Lines
+  Lines are only added, never changed (a save made earlier on another account that
+  reaches the merge late goes before the later ones): a shot's versions are its lines in
+  order, numbered from 1, and `GET /api/history?event=&shot=` lists them. Lines
   written before names existed have no `name` and read as unnamed; lines
   written before the sha256 was recorded have no `source_sha256` and match the
   source table by name.
