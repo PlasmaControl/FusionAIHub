@@ -45,7 +45,7 @@ import pandas as pd
 import torch
 
 from labeler.config import Paths, git_sha, sha256_of
-from labeler.elm import compare, dsm, methods, score, train
+from labeler.elm import compare, dsm, methods, prepare, score, train
 from labeler.models.d3d_elm_time_to_event_dsm import spec
 from labeler.models.runners import dsm_pickle
 
@@ -298,7 +298,7 @@ def provenance(paths, work, oof, rows):
         "compare_library": REPO / "src/labeler/elm/compare.py",
         "methods_library": REPO / "src/labeler/elm/methods.py",
         "score_library": REPO / "src/labeler/elm/score.py",
-        "review_labels": paths.label_tables / "edge_localized_mode/review/labels.csv",
+        "review_labels": prepare.review_csv(paths),
         "cohort": paths.catalog / "cohort.csv",
         "refit_checkpoint": paths.models / dsm.SLUG / spec.ARTIFACTS[0],
         "normalization": paths.models / dsm.SLUG / spec.ARTIFACTS[1],

@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 
 from ..config import Paths
+from ..elm import prepare
 from ..events.source_formatters import read_elm
 from .labels import MODES, digest
 
@@ -285,7 +286,7 @@ def main(argv=None):
     parser.add_argument(
         "--elm-review",
         type=Path,
-        default=paths.label_tables / "edge_localized_mode/review/labels.csv",
+        help="the ELM review labels; default the pinned copy (`prepare.review_csv`)",
     )
     parser.add_argument(
         "--legacy",
@@ -301,7 +302,8 @@ def main(argv=None):
         if args.legacy
         else []
     )
-    result = build(args.run_dir, args.elm_review, legacy_paths=legacy)
+    review = args.elm_review or prepare.review_csv(paths)
+    result = build(args.run_dir, review, legacy_paths=legacy)
     print(
         json.dumps(
             {

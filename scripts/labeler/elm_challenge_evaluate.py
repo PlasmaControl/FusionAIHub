@@ -3,7 +3,9 @@
 
 The key (24 DIII-D hand-timed windows, `elm_challenge_key_b71f991.json`, commit b71f991
 of D. Eldon's `elm_detection_challenge`) is held out: none of its shots is one of the 119
-reviewed ones and no method is trained or tuned on it. Three views, on the same shots:
+reviewed ones the models trained on and no method is trained or tuned on it (23 of the 24
+shots were reviewed on 2026-10-23; they are evaluation-only, `docs/labeler/elm_heldout.md`).
+Three views, on the same shots:
 
 * the challenge's own **merit function** (lower is better, unnormalised), run unchanged
   from a pinned clone outside the repository by `elm_challenge_merit.py` in a separate
@@ -630,7 +632,8 @@ def main(argv=None) -> int:
             "clone_commit": merit["clone_commit"],
         },
         "protocol": "Held out: no method trained or tuned on the key; its shots are not "
-        "among the 119 reviewed. Merit scores are the challenge's own, lower is better, "
+        "among the 119 reviewed that the models trained on (23 were reviewed on "
+        "2026-10-23, evaluation only). Merit scores are the challenge's own, lower is better, "
         "run from the pinned clone; not official leaderboard results.",
         "shots": shots,
         "shots_clock_failed": clock_missing,
@@ -657,7 +660,7 @@ def main(argv=None) -> int:
         "onset_heads": {
             "span_ms": ONSET_SPAN_MS,
             "note": "the onset heads have no end head: each peak is a fixed-length event; "
-            "none of the key's shots is in any fold's test list or in the reviewed set; "
+            "none of the key's shots is in any fold's test list or in the 119 reviewed shots; "
             "min peak separation 10 ms (`onset.MIN_SEP_MS`); no crowd handling",
             "methods": onset_thresholds,
             "n_detections": {

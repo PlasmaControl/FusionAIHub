@@ -165,8 +165,8 @@ the format table as 50 ms bins) and the review labels, where a span is one ELM
   the long file). The paper's rule scores a window: true positive when a detected span overlaps the marked
   region, false negative when none does, and one false positive for each span that
   overlaps nothing. Confidence intervals resample shots, 1,000 times.
-- **Review labels.** The 73 shots of `data/events/edge_localized_mode/review/labels.csv`
-  (119 shots) that have BES in the corpus: on the other 46 the `bes` group is a
+- **Review labels.** The 73 shots of the pinned review labels (`prepare.review_csv`, the
+  2026-10-10 copy of `edge_localized_mode/review/labels.csv`; 119 shots) that have BES in the corpus: on the other 46 the `bes` group is a
   one-sample stub, so ELM-O cannot run and they are not scored. ELM-O runs in consecutive
   200 ms chunks over each scored shot's reviewed time (387 s; 2 chunks skipped for missing signals). A 50 ms bin that lies wholly inside one
   labelled span, and inside analysed time, is positive when an ELM-O span overlaps it. Spans of

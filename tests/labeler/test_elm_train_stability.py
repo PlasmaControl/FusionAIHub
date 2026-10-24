@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 import torch
 
-from labeler.elm import inputs, labels, net, train
+from labeler.elm import inputs, labels, net, prepare, train
 
 
 def test_smoothed_selection_excludes_warmup_and_uses_trailing_three():
@@ -68,7 +68,7 @@ def test_finite_validation_selects_a_usable_checkpoint():
 def test_training_seed_changes_model_seed_without_changing_shot_splits(
     tmp_path, monkeypatch
 ):
-    tables = tmp_path / "tables" / "edge_localized_mode" / "review"
+    tables = tmp_path / "benchmarks" / "elm" / "review_pins" / prepare.REVIEW_PIN
     tables.mkdir(parents=True)
     rows = [(s, 0.0, 100.0, 0, None) for s in range(1, 7)]
     pd.DataFrame(

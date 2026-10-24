@@ -8,7 +8,8 @@ hold). For each fold the model is trained on the other shots less
 `INNER_VAL` held out for early stopping and for the decision threshold, then
 predicts the fold's shots: every shot has one out-of-fold prediction, made by a
 model that never saw it. Nothing here reads a cohort test shot; `check_no_test`
-refuses one.
+refuses one, and `check_no_holdout` refuses a shot of the ELM challenge key
+(`protect: holdout`), which later review saves may also label.
 
 **Targets and loss.** Per 1 ms, ELMy time (present spans, crowds included) against
 absent time, uncertain and unlabelled time ignored; and the start of a
@@ -41,6 +42,7 @@ import torch
 from torch.nn import functional as F
 
 from ..config import Paths, git_sha
+from ..events import shotlists
 from . import inputs, labels, net, onset, prepare, provenance, score
 
 FOLDS = 5
@@ -85,14 +87,38 @@ def check_no_test(shots, cohort: pd.DataFrame) -> None:
         raise ValueError(f"cohort test shots may not be used: {bad}")
 
 
-def load(paths: Paths, shots=None) -> dict[int, ShotData]:
-    """Every reviewed shot's inputs, dense targets and scored bins."""
-    table = labels.review_table(prepare.review_csv(paths))
+def check_no_holdout(shots, paths: Paths) -> None:
+    """Refuse a shot of a `protect: holdout` shot list (the ELM challenge key's 24).
+
+    Whatever reads the review table to fit or tune a model goes through this, since
+    the table can hold a held-out shot once someone has reviewed it. Fails closed
+    (`shotlists.held_out`).
+    """
+    bad = [int(s) for s in shots if shotlists.held_out(paths, int(s))]
+    if bad:
+        raise ValueError(f"held-out challenge shots may not be used: {bad}")
+
+
+def load(paths: Paths, shots=None, review=None) -> dict[int, ShotData]:
+    """Every reviewed shot's inputs, dense targets and scored bins.
+
+    The review labels are the pinned copy `prepare.review_csv(paths)` unless `review`
+    names another `labels.csv`. A shot of the table with no prepared input is an
+    error, named before any input is read; `shots` leaves such a shot out.
+    """
+    table = labels.review_table(prepare.review_csv(paths) if review is None else review)
     cohort = pd.read_csv(paths.catalog / "cohort.csv")
     wanted = sorted(int(s) for s in table.shot.unique())
     if shots is not None:
         wanted = [s for s in wanted if s in set(shots)]
     check_no_test(wanted, cohort)
+    check_no_holdout(wanted, paths)
+    missing = [s for s in wanted if not (prepare.inputs_dir(paths) / f"{s}.npy").is_file()]
+    if missing:
+        raise FileNotFoundError(
+            f"no prepared input in {prepare.inputs_dir(paths)} for reviewed shots "
+            f"{missing}: prepare them, or name the shots to load"
+        )
     out = {}
     for shot in wanted:
         x = np.load(prepare.inputs_dir(paths) / f"{shot}.npy")
