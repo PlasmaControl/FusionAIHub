@@ -32,7 +32,9 @@
 # 0.75 GB. The full run on 8 CPUs and 4G (job 2977012) took 1 min 36 s and failed the
 # jobstats gate (CPU 24.9 %, memory 22.9 % = 0.92 GB); on 2 CPUs and 1200M (job 2977014)
 # 1 min 44 s, CPU 63.1 %, memory 55.9 % (0.67 GB), still failing. The run is one
-# serial pass of file reads and small U-Nets, so one CPU and --mem=900M (0.67 GB x 1.3).
+# serial pass of file reads and small U-Nets, so one CPU and --mem=900M (0.67 GB x 1.3):
+# job 2977016, 2 min 44 s, CPU 79.3 %, memory 98.1 %, the gate passed. The memory is
+# tight; give a rerun --mem=1000M.
 set -euo pipefail
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
 ENV="${ENV:-/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler}"
