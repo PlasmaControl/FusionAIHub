@@ -59,7 +59,7 @@ from labeler.events.catalog.states import ABSENT, PRESENT
 from labeler.events.review import labels as review_labels
 from labeler.scoring.frames import FRAME_MS
 
-LABELER = Path("/scratch/gpfs/EKOLEMEN/nc1514/labeler")
+LABELER = Path("/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler")
 DF2 = Path("/projects/EKOLEMEN/agarcia/df2")
 REVIEW = LABELER / "models/ae_xpower/v2/review/labels.csv"
 SELDNET_PROBS = LABELER / "benchmarks/ae/seldnet_threeway_sce_valid_probs.npz"

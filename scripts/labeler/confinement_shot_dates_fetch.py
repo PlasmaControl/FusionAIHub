@@ -39,7 +39,7 @@ if str(REPO / "src") not in sys.path:
 from labeler.confinement import bes_windows as bw
 
 LABELER = Path(
-    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler")
+    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler")
 )
 DEFAULT_OUT = LABELER / "round4/conf/dates.csv"
 VMS_EPOCH = datetime(1858, 11, 17)  # noqa: DTZ001 (server local time, no zone)

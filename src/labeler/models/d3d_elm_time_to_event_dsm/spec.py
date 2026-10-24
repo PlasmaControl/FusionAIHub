@@ -91,7 +91,7 @@ from ..runners import dsm_pickle
 
 SLUG = "d3d_elm_time_to_event_dsm"
 CARD_ID = "plasmacontrol/d3d-elm-time-to-event-dsm"
-UPSTREAM = Path("/scratch/gpfs/EKOLEMEN/nc1514/labeler/models/d3d_elm_time_to_event_dsm")
+UPSTREAM = Path("/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/models/d3d_elm_time_to_event_dsm")
 ARTIFACTS = ("elm_dsm_no_bes.pkl", "normalization.json")
 COLUMN_SET = "no_bes"
 COLUMNS: tuple[str, ...] = COLUMN_SETS[COLUMN_SET]

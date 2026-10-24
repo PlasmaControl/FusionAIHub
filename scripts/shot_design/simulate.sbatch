@@ -8,8 +8,8 @@
 #SBATCH --mem=4G
 #SBATCH --gres=gpu:1
 #SBATCH --time=01:00:00
-#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/shot_design/runs/slurm/%j.out
-#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/shot_design/runs/slurm/%j.out
+#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/shot_design/runs/slurm/%j.out
+#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/shot_design/runs/slurm/%j.out
 # One design's ensemble of IGNITE v4 rollouts (real, proposed and null arms) on one A100:
 # what the UI's Simulate button submits on Stellar (paths.yaml: simulate_submit_cmd). The
 # Stellar twin of scripts/slurm_frontier/shot_design_simulate.sh.
@@ -20,8 +20,8 @@
 set -euo pipefail
 REPO="${SLURM_SUBMIT_DIR:-/scratch/gpfs/nc1514/FusionAIHub}"
 ENV="$REPO/.pixi/envs/shot-design"
-export SHOT_DESIGN_DATA_ROOT="${SHOT_DESIGN_DATA_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/shot_design}"
-export LABELER_ROOT="${LABELER_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/labeler}"
+export SHOT_DESIGN_DATA_ROOT="${SHOT_DESIGN_DATA_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/shot_design}"
+export LABELER_ROOT="${LABELER_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler}"
 export SHOT_DESIGN_CORPUS="${SHOT_DESIGN_CORPUS:-/scratch/gpfs/EKOLEMEN/foundation_model}"
 export HF_HUB_OFFLINE=1 OMP_NUM_THREADS=1 HDF5_USE_FILE_LOCKING=FALSE
 export LD_LIBRARY_PATH="$ENV/lib:${LD_LIBRARY_PATH:-}"

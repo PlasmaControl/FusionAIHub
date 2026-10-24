@@ -8,8 +8,8 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=3G
 #SBATCH --time=00:10:00
-#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labeler/runs/slurm/%j.out
-#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labeler/runs/slurm/%j.out
+#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/runs/slurm/%j.out
+#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/runs/slurm/%j.out
 
 # The AE SELDnet checkpoints (d3d_ae_activity_seldnet, every ae_seldnet_*.pt; threeway_sce is the
 # shipped one) scored on named shot lists in ONE GPU job (docs/labeler/shotlists.md):
@@ -66,12 +66,12 @@
 #   about a minute, under 5 min). The loop lasts seconds, so start-up weighs on its mean.
 set -euo pipefail
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
-ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labeler
+ROOT=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler
 PY="$ROOT/envs/phase3/bin/python"  # torch 2.14 + CUDA 12.6; the pixi env's torch is CPU-only
 SHOTLIST="${SHOTLIST:-ae_heidbrink,ae_kaptanoglu,ae_heidbrink_kaptanoglu,gold}"
 OUT="${OUT:-$REPO/outputs/labeler/ae/shotlists/evaluation.json}"
 export LABELER_ROOT="$ROOT" PYTHONPATH="$REPO/src"
-export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-/scratch/gpfs/EKOLEMEN/nc1514/events}"
+export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-/scratch/gpfs/EKOLEMEN/D3D/events}"
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 HDF5_USE_FILE_LOCKING=FALSE
 export MPLCONFIGDIR="$ROOT/runs/mplconfig"
 export XDG_CACHE_HOME="$ROOT/runs/slurm/cache/${SLURM_JOB_ID:-none}"

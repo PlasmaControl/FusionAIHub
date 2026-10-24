@@ -75,7 +75,7 @@ torchvision = { version = ">=0.20.1,<0.22", index = "https://download.pytorch.or
 
 # The label tables' folder, outside the repository: a value the caller exports wins.
 [tool.pixi.feature.cuda.target.unix.activation.env]
-LABELER_LABEL_TABLES = "${LABELER_LABEL_TABLES:-/scratch/gpfs/EKOLEMEN/nc1514/events}"
+LABELER_LABEL_TABLES = "${LABELER_LABEL_TABLES:-/scratch/gpfs/EKOLEMEN/D3D/events}"
 
 [tool.ruff]
 line-length = 88
@@ -111,7 +111,7 @@ labeler-verify = { cmd = "fdp run python -m labeler.events.ui", description = "T
 labeler-spectrograms = { cmd = "python -m labeler.events.review.build", description = "Build the review page's row store: --event EVENT [--shots ...] [--force]" }
 # pytest's temporary files go to GPFS scratch, not the head node's shared /tmp, and each
 # test's folder is removed when the test ends.
-labeler-test = { cmd = "python -m pytest tests/labeler -q -W error -o tmp_path_retention_policy=none", env = { PYTEST_DEBUG_TEMPROOT = "/scratch/gpfs/EKOLEMEN/nc1514/labeler/scratch/pytest" }, description = "The labeler suite, in the checkout that holds this manifest" }
+labeler-test = { cmd = "python -m pytest tests/labeler -q -W error -o tmp_path_retention_policy=none", env = { PYTEST_DEBUG_TEMPROOT = "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/scratch/pytest" }, description = "The labeler suite, in the checkout that holds this manifest" }
 
 [tool.pixi.feature.labeler.dependencies]
 # pandas 3 writes parquet only through pyarrow.
@@ -138,7 +138,7 @@ anywidget = ">=0.9,<1"
 
 # The label tables' folder, outside the repository: a value the caller exports wins.
 [tool.pixi.feature.labeler.target.unix.activation.env]
-LABELER_LABEL_TABLES = "${LABELER_LABEL_TABLES:-/scratch/gpfs/EKOLEMEN/nc1514/events}"
+LABELER_LABEL_TABLES = "${LABELER_LABEL_TABLES:-/scratch/gpfs/EKOLEMEN/D3D/events}"
 
 [tool.pixi.feature.shot-design]
 platforms = ["linux-64"]
@@ -175,10 +175,10 @@ duckdb = ">=1.1,<2"
 # From pypi, so that torch stays on the pypi side.
 sentence-transformers = ">=6,<7"
 
-# Stellar roots as defaults: a root the caller exports wins. Offline, or the MiniLM load hangs.
+# StellarAI roots as defaults: a root the caller exports wins. Offline, or the MiniLM load hangs.
 [tool.pixi.feature.shot-design.target.unix.activation.env]
-SHOT_DESIGN_DATA_ROOT = "${SHOT_DESIGN_DATA_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/shot_design}"
-LABELER_ROOT = "${LABELER_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/labeler}"
+SHOT_DESIGN_DATA_ROOT = "${SHOT_DESIGN_DATA_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/shot_design}"
+LABELER_ROOT = "${LABELER_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler}"
 SHOT_DESIGN_CORPUS = "${SHOT_DESIGN_CORPUS:-/scratch/gpfs/EKOLEMEN/foundation_model}"
 HF_HUB_OFFLINE = "1"
 TOKENIZERS_PARALLELISM = "false"

@@ -4,7 +4,7 @@
 > below are relative to it. It is not in git. `scripts/labeler/hf_publish.py pull`
 > restores the label tables (`format/`, `review/`, `extend_*/`), but not `raw/`: the
 > third-party originals are not in the Hugging Face release; they are on the Stellar
-> checkout's disk and archived in `/scratch/gpfs/EKOLEMEN/nc1514/labeler/raw_archive/`.
+> checkout's disk and archived in `/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/raw_archive/`.
 
 ## Description
 The safety factor q is the number of toroidal turns a field line makes per poloidal

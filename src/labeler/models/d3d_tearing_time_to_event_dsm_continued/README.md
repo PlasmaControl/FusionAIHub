@@ -25,7 +25,7 @@ labeler:
   time_step_ms: 25.0
   ensemble_n: 1
   upstream:
-    path: /scratch/gpfs/EKOLEMEN/nc1514/labeler/models/d3d_tearing_time_to_event_dsm_continued
+    path: /scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/models/d3d_tearing_time_to_event_dsm_continued
     trained: 2026-09-05
     training_code: scripts/labeler/retrain_tearing_dsm.py
     reference_harness: /projects/EKOLEMEN/survival_tm/get_survival_from_shot.py

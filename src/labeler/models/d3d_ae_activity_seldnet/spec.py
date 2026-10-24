@@ -60,7 +60,7 @@ from ..runners import torch_pt
 
 SLUG = "d3d_ae_activity_seldnet"
 CARD_ID = "plasmacontrol/d3d-ae-activity-seldnet"
-UPSTREAM = Path("/scratch/gpfs/EKOLEMEN/nc1514/labeler/models/d3d_ae_activity_seldnet")
+UPSTREAM = Path("/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/models/d3d_ae_activity_seldnet")
 ARTIFACTS = ("ae_seldnet_threeway_sce.pt",)
 DT_S = ns.STEP_S
 

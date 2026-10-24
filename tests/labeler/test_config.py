@@ -12,7 +12,7 @@ from labeler.events.catalog.points import validate_csv_fields
 
 def test_default_root_is_group_storage():
     p = Paths()
-    assert p.root == Path("/scratch/gpfs/EKOLEMEN/nc1514/labeler")
+    assert p.root == Path("/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler")
     assert p.corpus == Path("/scratch/gpfs/EKOLEMEN/foundation_model")
 
 
@@ -106,7 +106,7 @@ def test_the_label_tables_root_is_the_events_folder_and_is_overridable(
     # `events` folder outside the repository, beside the data roots; the
     # default is a fixed path like the root's, and `LABELER_LABEL_TABLES`
     # moves it (on StellarAI, next to the raw-data folder).
-    assert config.DEFAULT_LABEL_TABLES == Path("/scratch/gpfs/EKOLEMEN/nc1514/events")
+    assert config.DEFAULT_LABEL_TABLES == Path("/scratch/gpfs/EKOLEMEN/D3D/events")
     assert Paths().label_tables == config.DEFAULT_LABEL_TABLES
     tables = tmp_path / "elsewhere"
     monkeypatch.setenv("LABELER_LABEL_TABLES", str(tables))

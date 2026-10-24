@@ -14,7 +14,7 @@ artifacts at that scope.
 I read `confinement_analysis.md`, `src/labeler/confinement/labels.py`, its focused
 tests, and the saved `labels.json`, source/merged/conflict intervals, targets,
 split, and per-shot comparisons under
-`/scratch/gpfs/EKOLEMEN/nc1514/labeler/confinement/v1`.
+`/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/confinement/v1`.
 I independently recomputed CSV hashes, source counts, workbook containment,
 merged interval non-overlap, coverage/conflict constraints, split support,
 reserved-shot membership, and training-weight totals from those outputs.

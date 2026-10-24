@@ -124,12 +124,12 @@ cd /scratch/gpfs/nc1514/FusionAIHub
 export PYTHONPATH="$PWD/src${PYTHONPATH:+:$PYTHONPATH}"
 
 # 1. Create the Slurm log directory, then submit the model server.
-mkdir -p /scratch/gpfs/EKOLEMEN/nc1514/shot_design/llm
+mkdir -p /scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/shot_design/llm
 sbatch scripts/shot_design/serve_llm.sbatch
 
 # 2. Wait for readiness; check the job/log if this does not appear.
-until test -s /scratch/gpfs/EKOLEMEN/nc1514/shot_design/llm/endpoint.json; do sleep 2; done
-cat /scratch/gpfs/EKOLEMEN/nc1514/shot_design/llm/endpoint.json
+until test -s /scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/shot_design/llm/endpoint.json; do sleep 2; done
+cat /scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/shot_design/llm/endpoint.json
 pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e shot-design-cpu python -m shot_design llm
 
 # 3. Inspect five candidates, gate verdicts and final summaries without writing.

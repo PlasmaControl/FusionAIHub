@@ -19,7 +19,7 @@ fail when somebody removed it.
     PYTHONPATH=$PWD/src \\
         pixi run --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \\
         -e labeler python scripts/labeler/qmin_regime_census.py \\
-        --shot-file /scratch/gpfs/EKOLEMEN/nc1514/labeler/recommender_v1.txt \\
+        --shot-file /scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/recommender_v1.txt \\
         --write
 
 Without `--write` it prints and compares against the committed record,
@@ -52,7 +52,7 @@ RECORD = REPO / "tests" / "labeler" / "data" / "qmin_regimes_recommender_v1.json
 
 #: The shot list the shipped record was measured over.
 DEFAULT_SHOT_FILE = Path(
-    "/scratch/gpfs/EKOLEMEN/nc1514/labeler/recommender_v1.txt"
+    "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/recommender_v1.txt"
 )
 
 

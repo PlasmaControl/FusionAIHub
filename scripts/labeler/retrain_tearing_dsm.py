@@ -93,7 +93,7 @@ CFG = Path("/projects/EKOLEMEN/survival_tm/outputs/rt_fixed_rotconfig")
 # This is the matching filtered list for that x file (same 914,898 rows).
 SHOTS_NAME = "rt_filtered_shots_pcb_rot"
 CHECKPOINT = Path(
-    "/scratch/gpfs/EKOLEMEN/nc1514/labeler/models/"
+    "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/models/"
     "d3d_tearing_time_to_event_dsm/rt_fixed_rot.pkl"
 )
 NORMALIZATIONS = CHECKPOINT.with_name("rt_normalizations_dict.pkl")

@@ -7,7 +7,7 @@ title: "shot_design"
 Environment settings use the `SHOT_DESIGN_*` prefix; the legacy `IDEATE_*` names are no longer read.
 The pixi environments are `shot-design` and `shot-design-cpu` (and `shot-design-frontier`
 on Frontier): pixi rejects underscores in an environment name. Tasks and Python modules use `shot_design`.
-The production data directory is `/scratch/gpfs/EKOLEMEN/nc1514/shot_design` (called `ideate` until 2026-10-09).
+The production data directory is `/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/shot_design` (called `ideate` until 2026-10-09).
 
 A shot database and retrieval layer for DIII-D: build a queryable record of a set of discharges
 from the local raw stores, then find shots by what happened in them — a description, a reference
@@ -411,8 +411,8 @@ updating it. Start it on Stellar from this worktree:
 ```bash
 cd /scratch/gpfs/nc1514/FusionAIHub
 export PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$PWD/src
-export HF_HUB_OFFLINE=1 SHOT_DESIGN_DATA_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/shot_design \
-       LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labeler \
+export HF_HUB_OFFLINE=1 SHOT_DESIGN_DATA_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/shot_design \
+       LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler \
        SHOT_DESIGN_CORPUS=/scratch/gpfs/EKOLEMEN/foundation_model
 pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \
   -e shot-design-cpu python -m shot_design serve --port 8765

@@ -8,8 +8,8 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=7300M
 #SBATCH --time=00:06:00
-#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labeler/runs/slurm/%j.out
-#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labeler/runs/slurm/%j.out
+#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/runs/slurm/%j.out
+#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/runs/slurm/%j.out
 
 # confine-ours base3 (2026-10-14: five run-day folds, three seeds each averaged; macro F1
 # 0.909 on confine-cnn's protocol, outputs/labeler/confinement/ours/protocol_base3.json)
@@ -79,10 +79,10 @@
 # branch, a tiny model with the whole list in one batched job of at most 5 minutes.
 set -euo pipefail
 REPO=/scratch/gpfs/nc1514/FusionAIHub
-ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labeler
+ROOT=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler
 PY=$ROOT/envs/phase3/bin/python   # torch 2.14 + CUDA 12.6
 export LABELER_ROOT=$ROOT PYTHONPATH=$REPO/src
-export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-/scratch/gpfs/EKOLEMEN/nc1514/events}"
+export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-/scratch/gpfs/EKOLEMEN/D3D/events}"
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
 export HDF5_USE_FILE_LOCKING=FALSE LABELER_NO_FETCH=1
 export XDG_CACHE_HOME=$ROOT/runs/slurm/cache/${SLURM_JOB_ID:-none}

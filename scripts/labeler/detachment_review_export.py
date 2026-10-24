@@ -37,7 +37,7 @@ EVENTS = Paths.from_env().label_tables
 
 REPO = Path(__file__).resolve().parents[2]
 LABELER_ROOT = Path(
-    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler")
+    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler")
 )
 PRODUCER = REPO
 STATE_NAMES = {

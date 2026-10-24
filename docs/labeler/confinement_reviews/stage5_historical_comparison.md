@@ -20,7 +20,7 @@ I inspected `src/labeler/confinement/comparison.py`, its tests, the historical
 frame probability/observability code, `legacy_comparison/comparison.json`,
 `matched_predictions.csv`, the existing freeze/evaluation, measured report,
 manuscript appendix and generated confinement table. Artifacts are under
-`/scratch/gpfs/EKOLEMEN/nc1514/labeler/confinement/v1`.
+`/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/confinement/v1`.
 
 All comparison input hashes match, including old/new model records, thresholds,
 evaluation, predictions and historical feature files. Matched-output and

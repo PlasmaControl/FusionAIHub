@@ -318,13 +318,13 @@ To repeat it after a producer change, run this one command from the integrated
 repository (replace `$PWD` only if using a different checkout):
 
 ```bash
-TMPDIR=/scratch/gpfs/EKOLEMEN/nc1514/labeler/scratch/claude-89242e53/r4/tmp/detach-ui \
-LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labeler \
+TMPDIR=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/scratch/claude-89242e53/r4/tmp/detach-ui \
+LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler \
 LABELER_LABEL_TABLES=/scratch/gpfs/nc1514/FusionAIHub/data/events \
 LABELER_NO_FETCH=1 PYTHONPATH="$PWD/src" OMP_NUM_THREADS=4 \
 pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \
   -e labeler python scripts/labeler/detachment_review_roster.py \
-  --out /scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach-ui \
+  --out /scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/round4/detach-ui \
   --producer-roster /scratch/gpfs/nc1514/FusionAIHub/data/events/detachment/shots.csv \
   --build --rebuild-existing --resume-build --workers 4 \
   --record docs/labeler/results/detachment_review_queue.json
@@ -358,8 +358,8 @@ For UI-only verification while the producer changes, copy and serve the existing
 frozen example. This prohibits every store build and preserves its bytes:
 
 ```bash
-export TMPDIR=/scratch/gpfs/EKOLEMEN/nc1514/labeler/scratch/claude-89242e53/r4/tmp/detach-ui
-export LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labeler
+export TMPDIR=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/scratch/claude-89242e53/r4/tmp/detach-ui
+export LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler
 export LABELER_LABEL_TABLES=/scratch/gpfs/nc1514/FusionAIHub/data/events
 export LABELER_NO_FETCH=1 PYTHONPATH="$PWD/src" OMP_NUM_THREADS=4
 pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \
@@ -381,12 +381,12 @@ f_div > 1 footnote only when valid plotted bins actually exceed one.
 After the resume build, launch on a free port:
 
 ```bash
-LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach-ui \
-LABELER_LABEL_TABLES=/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach-ui/tables \
-LABELER_DETACHMENT_LABELS=/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/labels_bins.csv.gz \
-LABELER_DETACHMENT_INDICATORS=/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/bins \
-LABELER_DETACHMENT_GEOMETRY_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/cache \
-LABELER_DETACHMENT_CACHE_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/detach/cache \
+LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/round4/detach-ui \
+LABELER_LABEL_TABLES=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/round4/detach-ui/tables \
+LABELER_DETACHMENT_LABELS=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/round4/detach/labels_bins.csv.gz \
+LABELER_DETACHMENT_INDICATORS=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/round4/detach/bins \
+LABELER_DETACHMENT_GEOMETRY_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/round4/detach/cache \
+LABELER_DETACHMENT_CACHE_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/round4/detach/cache \
 LABELER_NO_FETCH=1 PYTHONPATH="$PWD/src" pixi run --frozen --no-install \
   --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e labeler \
   python -m labeler.events.ui --port 8812

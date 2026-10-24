@@ -47,7 +47,7 @@ if str(REPO / "src") not in sys.path:
 
 from labeler.events.verify import NoDataError, fdp_signal
 
-LABELER = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
+LABELER = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler"))
 SHOTS = LABELER / "round4/rwm/shots.csv"
 OUT = LABELER / "round5/rwm/sensor/onsbradial"
 POINT = "ONSBRADIAL"

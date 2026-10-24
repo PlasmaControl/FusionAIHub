@@ -4,7 +4,7 @@
 > below are relative to it. It is not in git. `scripts/labeler/hf_publish.py pull`
 > restores the label tables (`format/`, `review/`, `extend_*/`), but not `raw/`: the
 > third-party originals are not in the Hugging Face release; they are on the Stellar
-> checkout's disk and archived in `/scratch/gpfs/EKOLEMEN/nc1514/labeler/raw_archive/`.
+> checkout's disk and archived in `/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/raw_archive/`.
 
 Untouched labels attributed to **Kevin Gill** (the XLSX workbook and BES-time
 HDF5 files) and **Jalal Butt** (the April 2024 CSV). This directory is a shared

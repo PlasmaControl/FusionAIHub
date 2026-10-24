@@ -108,7 +108,7 @@ def main() -> int:
     args = ap.parse_args()
 
     root = os.environ.get("SHOT_DESIGN_DATA_ROOT", "")
-    if not root or root.rstrip("/") == "/scratch/gpfs/EKOLEMEN/nc1514/shot_design":
+    if not root or root.rstrip("/") == "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/shot_design":
         print(
             "SHOT_DESIGN_DATA_ROOT must name a batch root, not production",
             file=sys.stderr,

@@ -7,7 +7,7 @@
 #SBATCH --mem=32G
 #SBATCH --time=06:00:00
 #SBATCH --array=0-1
-#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labeler/runs/slurm/%A_%a.out
+#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/runs/slurm/%A_%a.out
 # CPU only. The graph is 124 -> 128 -> three (128, 3) heads in float64; the fork's
 # loop is dense matmuls that thread well and never needed a GPU. The 32 GB is for
 # the 1.57 GB split pickle plus the float64 copies of it, not for the model.
@@ -20,7 +20,7 @@ set -euo pipefail
 
 export OMP_NUM_THREADS=8
 export MKL_NUM_THREADS=8
-ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labeler
+ROOT=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler
 REPO=/scratch/gpfs/nc1514/FusionAIHub
 export LABELER_GIT_SHA=$(git -C "$REPO" rev-parse HEAD)
 export PYTHONPATH="$REPO/src"

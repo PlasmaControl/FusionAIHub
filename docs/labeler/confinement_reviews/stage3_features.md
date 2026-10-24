@@ -14,7 +14,7 @@ I inspected `src/labeler/confinement/data.py`, data tests, the prospective train
 and inference implementation and tests, `features.json`, `features/all.csv`,
 `extraction.log`, the added diagnostic-eligibility documentation, and
 `feature_support.csv` under
-`/scratch/gpfs/EKOLEMEN/nc1514/labeler/confinement/v1`.
+`/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/confinement/v1`.
 
 Independent checks confirm the generated feature hash, extractor hash, and
 four input-artifact hashes. I recomputed eligibility, diagnostic patterns,

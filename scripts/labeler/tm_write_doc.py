@@ -17,7 +17,7 @@ from labeler.config import Paths
 REPO = Path(__file__).resolve().parents[2]
 EVENTS = Paths.from_env().label_tables
 TM = (
-    Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
+    Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler"))
     / "round4/tm"
 )
 BENCH = EVENTS / "neoclassical_tearing_mode/benchmark/tm_benchmark.json"

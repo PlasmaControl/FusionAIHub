@@ -4,7 +4,7 @@
 > below are relative to it. It is not in git. `scripts/labeler/hf_publish.py pull`
 > restores the label tables (`format/`, `review/`, `extend_*/`), but not `raw/`: the
 > third-party originals are not in the Hugging Face release; they are on the Stellar
-> checkout's disk and archived in `/scratch/gpfs/EKOLEMEN/nc1514/labeler/raw_archive/`.
+> checkout's disk and archived in `/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/raw_archive/`.
 
 ## Description
 Edge localized modes (ELMs) are quasi-periodic relaxations of the H-mode pedestal where the steep edge pressure gradient and the bootstrap current it drives cross the coupled peeling-ballooning stability boundary causing rapid filamentary bursts to expel stored energy in ~1 ms.

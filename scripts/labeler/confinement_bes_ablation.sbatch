@@ -8,8 +8,8 @@
 #SBATCH --mem=64G
 #SBATCH --time=06:00:00
 #SBATCH --array=0-19%4
-#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/conf/logs/slurm_%A_%a.out
-#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/conf/logs/slurm_%A_%a.out
+#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/round4/conf/logs/slurm_%A_%a.out
+#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/round4/conf/logs/slurm_%A_%a.out
 
 # The BES confinement ablation's paper-training rows (`full_*`: no padding in the
 # convolution, 60,000 steps with no early stopping, best validation-F1 checkpoint, the
@@ -28,7 +28,7 @@
 
 set -euo pipefail
 
-ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labeler
+ROOT=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler
 REPO=${REPO:-/scratch/gpfs/nc1514/FusionAIHub}
 export PYTHONPATH=$REPO/src
 export LABELER_ROOT=$ROOT

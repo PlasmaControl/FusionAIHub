@@ -1069,7 +1069,7 @@ def main() -> None:
     p.add_argument(
         "--stage", choices=("probs", "dataset", "all", "jobstats"), default="all"
     )
-    p.add_argument("--root", default="/scratch/gpfs/EKOLEMEN/nc1514/labeler/ae")
+    p.add_argument("--root", default="/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/ae")
     p.add_argument(
         "--out-dir",
         default="/scratch/gpfs/nc1514/FusionAIHub/outputs/labeler/ae/dataset",

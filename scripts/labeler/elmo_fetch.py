@@ -41,7 +41,7 @@ from labeler.events.verify import NoDataError, fdp_signal
 
 EVENTS = Paths.from_env().label_tables
 
-LABELER = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
+LABELER = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler"))
 DEFAULT_OUT = LABELER / "benchmarks/elm/elmo/signals"
 SMITH_DIR = Path("/projects/EKOLEMEN/dsmith/data")
 SMITH_FILES = ("labeled-elm-events.hdf5", "labeled_elm_events_long_windows_20220921.hdf5")

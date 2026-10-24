@@ -12,10 +12,10 @@ wires its own values in.
 
 ## The three roots (`shot_design` / `labeler`)
 
-| Variable | Purpose | Stellar value | Frontier value |
+| Variable | Purpose | Stellar / StellarAI default | Frontier value |
 |---|---|---|---|
-| `SHOT_DESIGN_DATA_ROOT` | the `shot_design` workstream root (database, frame codes, caches, outputs) | `/scratch/gpfs/EKOLEMEN/nc1514/shot_design` | `/lustre/orion/fus187/proj-shared/nchen/shot_design` |
-| `LABELER_ROOT` | the `labeler` workstream root (detector features, masks, labels, models, the review page's rows in `spectrograms/`, the fetch cache in `raw/`) | `/scratch/gpfs/EKOLEMEN/nc1514/labeler` | `/lustre/orion/fus187/proj-shared/nchen/labeler` |
+| `SHOT_DESIGN_DATA_ROOT` | the `shot_design` workstream root (database, frame codes, caches, outputs) | `/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/shot_design` | `/lustre/orion/fus187/proj-shared/nchen/shot_design` |
+| `LABELER_ROOT` | the `labeler` workstream root (detector features, masks, labels, models, the review page's rows in `spectrograms/`, the fetch cache in `raw/`) | `/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler` | `/lustre/orion/fus187/proj-shared/nchen/labeler` |
 | `SHOT_DESIGN_CORPUS` | the read-only DIII-D per-shot HDF5 corpus | `/scratch/gpfs/EKOLEMEN/foundation_model` | `/lustre/orion/fus187/proj-shared/foundation_model` |
 
 An explicit `SHOT_DESIGN_DATA_ROOT` always wins over whatever a paths file
@@ -39,7 +39,7 @@ for the paths-file convention itself.
 |---|---|
 | `LABELER_CORPUS`, `LABELER_LOGS_JSONL`, `LABELER_TEXT_ROOT` | narrower overrides of paths that would otherwise come from `LABELER_ROOT` / the paths file |
 | `LABELER_RAW_CACHE` | where fetched raw signals park (default `$LABELER_ROOT/raw`) |
-| `LABELER_LABEL_TABLES` | the label-table directory (default `/scratch/gpfs/EKOLEMEN/nc1514/events`, outside the checkout; `scripts/labeler/hf_publish.py pull` restores it): what `labeler` reads, and where the review page saves (`<event>/review/`) |
+| `LABELER_LABEL_TABLES` | the label-table directory (default `/scratch/gpfs/EKOLEMEN/D3D/events`, outside the checkout; `scripts/labeler/hf_publish.py pull` restores it): what `labeler` reads, and where the review page saves (`<event>/review/`) |
 | `LABELER_CONFIG_DIR` | the labeler's tracked configuration (default `configs/labeler` in the checkout): `events.yaml` (taxonomy, label grid, dataset manifest) and `best_models.yaml` |
 | `SHOT_DESIGN_TEXT_ROOT` | overrides the text-corpus root independent of `SHOT_DESIGN_CORPUS` |
 

@@ -23,7 +23,7 @@ from labeler.config import Paths
 from labeler.tearing import rule
 from labeler.tearing.magfeatures import FEATURE_NAMES
 
-ROOT = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
+ROOT = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler"))
 TM = ROOT / "round4/tm"
 
 

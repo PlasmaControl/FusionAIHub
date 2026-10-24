@@ -28,7 +28,7 @@ from labeler.tearing.magfeatures import FEATURE_NAMES
 EVENTS = Paths.from_env().label_tables
 
 REPO = Path(__file__).resolve().parents[2]
-ROOT = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
+ROOT = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler"))
 OUT = ROOT / "round4/tm"
 
 

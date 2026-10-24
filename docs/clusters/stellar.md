@@ -77,7 +77,7 @@ in one; the package it installs is still `shot_design`.
 
 ## Environment variables
 
-The `shot-design`/`shot-design-cpu` envs default these on activation:
+Export these on Stellar; the pixi activation defaults name the [StellarAI](stellarai.md) layout:
 
 ```
 SHOT_DESIGN_DATA_ROOT = /scratch/gpfs/EKOLEMEN/nc1514/shot_design

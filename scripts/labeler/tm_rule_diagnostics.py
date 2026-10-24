@@ -48,7 +48,7 @@ from labeler.tearing import rule, scoring
 
 EVENTS = Paths.from_env().label_tables
 
-ROOT = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
+ROOT = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler"))
 OUT = ROOT / "round4/tm"
 BEFORE = OUT / "fix3_original"
 CATALOG = EVENTS / "catalog"

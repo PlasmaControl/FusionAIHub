@@ -23,7 +23,7 @@ import numpy as np
 
 REPO = Path(__file__).resolve().parents[2]
 LABELER = Path(
-    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler")
+    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler")
 )
 ZEROD = LABELER / "round4/conf/zerod"
 CORPUS = Path("/scratch/gpfs/EKOLEMEN/foundation_model")

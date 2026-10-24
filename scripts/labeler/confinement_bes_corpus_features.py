@@ -31,7 +31,7 @@ from labeler.confinement import bes_features as bf
 from labeler.confinement import bes_windows as bw
 
 LABELER = Path(
-    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler")
+    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler")
 )
 CORPUS = Path("/scratch/gpfs/EKOLEMEN/foundation_model")
 DEFAULT_OUT = LABELER / "round4/conf/bes500k"

@@ -4,7 +4,7 @@
 > below are relative to it. It is not in git. `scripts/labeler/hf_publish.py pull`
 > restores the label tables (`format/`, `review/`, `extend_*/`), but not `raw/`: the
 > third-party originals are not in the Hugging Face release; they are on the Stellar
-> checkout's disk and archived in `/scratch/gpfs/EKOLEMEN/nc1514/labeler/raw_archive/`.
+> checkout's disk and archived in `/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/raw_archive/`.
 
 ## Description
 50 DIII-D shots meant for evaluation. Each is 170000 or later and is not one of the
@@ -45,7 +45,7 @@ The edge localized mode table `../edge_localized_mode/extend_elm_ours/gold_shots
 **Dataset File(s)**: `gold_shots.csv`, picked 2026-10-11 (`pick_gold.py`) and rebalanced by shot-number decade on
 2026-10-12 (`pick_gold_v2.py`; the first list is kept there as `gold_shots_v1.csv`). The picking scripts
 and their inputs are kept in
-`/scratch/gpfs/EKOLEMEN/nc1514/labeler/gold/v1/selection/`; the sha256 of each is
+`/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/gold/v1/selection/`; the sha256 of each is
 in `gold_shots.meta.json`.
 
 The columns are `shot, run_day, year, classes, sources, notes`:

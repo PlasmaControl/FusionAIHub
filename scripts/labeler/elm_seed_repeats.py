@@ -137,7 +137,7 @@ def train_repeats(args, root, source_dir, source):
         subprocess.run(
             [
                 "bash",
-                "/scratch/gpfs/EKOLEMEN/nc1514/labeler/scratch/bin/tmpsweep.sh",
+                "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/scratch/bin/tmpsweep.sh",
             ],
             check=True,
         )

@@ -59,7 +59,7 @@ labeler:
     epochs_per_fold: 40
     folds: 5
   upstream:
-    path: /scratch/gpfs/EKOLEMEN/nc1514/labeler/models/d3d_elm_time_to_event_dsm
+    path: /scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/models/d3d_elm_time_to_event_dsm
     artifacts:
       - elm_dsm_no_bes.pkl
       - normalization.json
@@ -569,7 +569,7 @@ also why a corpus shot far from wide-pedestal QH will show a mostly-grey panel.
 
 Artifacts, with `training_no_bes.json`, `PROVENANCE_no_bes.json`,
 `ablation.json`, `normalization.json` and the loss curves:
-`/scratch/gpfs/EKOLEMEN/nc1514/labeler/models/d3d_elm_time_to_event_dsm/`.
+`/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/models/d3d_elm_time_to_event_dsm/`.
 The refit ran on `stellar-vis2` (`sbatch` was unavailable to the session; the
 original 8-CPU SLURM run of the same script is job 2924069): 82 s wall, 350% of
 4 threads, 4.33 GB peak RSS, deterministic at seed 0.

@@ -42,7 +42,7 @@ EVENTS = Paths.from_env().label_tables
 
 REPO = Path(__file__).resolve().parents[2]
 TM = (
-    Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
+    Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler"))
     / "round4/tm"
 )
 LABELS = (

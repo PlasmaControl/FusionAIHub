@@ -36,7 +36,7 @@ from labeler.events.raw import FetchSpec
 from labeler.features.resolve_fdp import _fetch_mds
 
 MAIN = Path("/scratch/gpfs/nc1514/FusionAIHub")
-SCRATCH = Path("/scratch/gpfs/EKOLEMEN/nc1514/labeler/scratch/claude-89242e53/r4")
+SCRATCH = Path("/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/scratch/claude-89242e53/r4")
 INVENTORY = SCRATCH / "tmp/detach/d3d_nodes_199166.txt"
 REPORT = REPO / "outputs/labeler/rwm/sensor_probe.json"
 SHOTS = (156785, 158021, 176068)

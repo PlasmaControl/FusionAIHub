@@ -16,7 +16,7 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=512M
 #SBATCH --time=00:06:00
-#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labeler/runs/slurm/%j.out
+#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/runs/slurm/%j.out
 
 set -euo pipefail
 JOBID="${1:?pass the completed GPU array job id}"
@@ -28,7 +28,7 @@ elif [[ $# != 1 ]]; then
     exit 2
 fi
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
-ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labeler")"
+ROOT="$("/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labeler/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler")"
 if [[ ! -x "$ROOT/runs/slurm/jobstats-client/jobstats" ]]; then
     echo "run tokeye_text_subset.sh on the login node first to stage jobstats" >&2
     exit 2

@@ -24,7 +24,7 @@ V1_SCRIPTS = (
 )
 TABLES = (
     'export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-'
-    '/scratch/gpfs/EKOLEMEN/nc1514/events}"'
+    '/scratch/gpfs/EKOLEMEN/D3D/events}"'
 )
 
 

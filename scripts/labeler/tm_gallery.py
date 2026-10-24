@@ -53,7 +53,7 @@ from labeler.tearing import rule
 
 EVENTS = Paths.from_env().label_tables
 
-LABELER = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
+LABELER = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler"))
 SIGNALS = LABELER / "round4/tm/signals"
 LABELS = (
     EVENTS / "neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"

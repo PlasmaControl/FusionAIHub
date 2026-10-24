@@ -1,5 +1,5 @@
 {
-  "features_root": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/features",
+  "features_root": "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/features",
   "gated": {
     "qmin_elevated": 60,
     "qmin_high": 50,
@@ -1234,7 +1234,7 @@
     ]
   },
   "seconds": 41.3,
-  "shot_file": "/scratch/gpfs/EKOLEMEN/nc1514/labeler/recommender_v1.txt",
+  "shot_file": "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/recommender_v1.txt",
   "skipped": {},
   "thresholds": {
     "bands": [

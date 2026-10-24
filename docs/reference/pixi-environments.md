@@ -85,7 +85,7 @@ feature.shot-design's own activation block sets the three roots to their STELLAR
 values, so one of the two blocks has to win. MEASURED 2026-09-19 with pixi 0.73:
 the FIRST feature listed for the environment wins, not the last -- with
 `shot-design-frontier = ["shot-design", "shot-design-frontier"]` the environment
-came up with `/scratch/gpfs/EKOLEMEN/nc1514/shot_design`, the Stellar root. That is why
+came up with `/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/shot_design`, the Stellar root. That is why
 [tool.pixi.environments] lists `shot-design-frontier` FIRST; reordering it
 silently sends every job at the Stellar paths, which do not exist there.
 Measured again 2026-09-22 with pixi 0.76.1 on a two-feature manifest: still the

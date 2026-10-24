@@ -8,8 +8,8 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=9G
 #SBATCH --time=00:10:00
-#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labeler/runs/slurm/%j.out
-#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labeler/runs/slurm/%j.out
+#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/runs/slurm/%j.out
+#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/runs/slurm/%j.out
 
 # The best AE model, d3d_ae_activity_seldnet 2026_09_06 (configs/labeler/best_models.yaml), over
 # the 450 silver shots in ONE GPU job, the whole chain on the GPU (--chain gpu, labeler.ae.gpu):
@@ -68,13 +68,13 @@
 #   before: the cpu-chain array (pilot 2965454, 1 CPU a task) took 2-8 s a shot at GPU 0 %.
 set -euo pipefail
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
-ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labeler
+ROOT=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler
 PY="$ROOT/envs/phase3/bin/python"  # torch 2.14 + CUDA 12.6; the pixi env's torch is CPU-only
-LIST="${LIST:-${LABELER_LABEL_TABLES:-/scratch/gpfs/EKOLEMEN/nc1514/events}/silver/silver_shots.csv}"
+LIST="${LIST:-${LABELER_LABEL_TABLES:-/scratch/gpfs/EKOLEMEN/D3D/events}/silver/silver_shots.csv}"
 WORK="${WORK:-$ROOT/runs/silver_infer/ae_seldnet/work}"
 GOLD_WORK="${GOLD_WORK:-$(dirname "$WORK")/gold_check_gpu}"
 export LABELER_ROOT="$ROOT" PYTHONPATH="$REPO/src"
-export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-/scratch/gpfs/EKOLEMEN/nc1514/events}"
+export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-/scratch/gpfs/EKOLEMEN/D3D/events}"
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 HDF5_USE_FILE_LOCKING=FALSE LABELER_NO_FETCH=1
 export XDG_CACHE_HOME="$ROOT/runs/slurm/cache/${SLURM_JOB_ID:-none}"
 mkdir -p "$XDG_CACHE_HOME" "$WORK"

@@ -58,7 +58,7 @@ from labeler.confinement import scoring, segments, zerod
 
 EVENTS = Paths.from_env().label_tables
 
-LABELER = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
+LABELER = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler"))
 WORK = LABELER / "round4/conf"
 RAW = LABELER / "raw"
 ZEROD = WORK / "zerod"

@@ -8,8 +8,8 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem-per-cpu=4G
 #SBATCH --time=04:00:00
-#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/shot_design/experiments/slurm/%j.out
-#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/shot_design/experiments/slurm/%j.out
+#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/shot_design/experiments/slurm/%j.out
+#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/shot_design/experiments/slurm/%j.out
 # IGNITE frame codes for every shot of a list that has none yet, 4 GPUs on one node, each
 # task taking a contiguous quarter of the list (`encode --chunk i --n-chunks 4`).
 #   SHOT_DESIGN_DATA_ROOT=.../experiments/<name> LIST=<shot list name, e.g. stellar_1k> sbatch scripts/shot_design/encode_batch.sbatch

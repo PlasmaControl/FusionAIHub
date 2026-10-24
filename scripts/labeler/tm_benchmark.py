@@ -38,7 +38,7 @@ from labeler.validate import archived_truth
 
 EVENTS = Paths.from_env().label_tables
 
-ROOT = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
+ROOT = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler"))
 TM = ROOT / "round4/tm"
 LOCAL = EVENTS / "neoclassical_tearing_mode/benchmark"
 DOCS = REPO / "docs/labeler"

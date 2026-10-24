@@ -74,9 +74,9 @@ REGIME_TABLE = "high_confinement_mode/raw/Jalal_28042024_confinement_regime_shot
 #: The detector looked at 1000-5000 ms of every shot (`t0_ms`, `tf_ms` in the pkl inputs).
 ANALYSIS_WINDOW = (1000, 5000)
 ARCHIVE = Path(
-    "/scratch/gpfs/EKOLEMEN/nc1514/labeler/raw_external/jalal_wpqh_2026-05-26"
+    "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/raw_external/jalal_wpqh_2026-05-26"
 )
-BACKUP_ROOT = Path("/scratch/gpfs/EKOLEMEN/nc1514/labeler/backups/jalal_2026-10-17")
+BACKUP_ROOT = Path("/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/backups/jalal_2026-10-17")
 FINAL = "postprocessed_2"
 _DAT = re.compile(r"(\d+)-wpqh([01])(?:-pp)?\.dat\Z")
 

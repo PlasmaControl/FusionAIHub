@@ -46,7 +46,7 @@ from labeler.models.runners import dsm_pickle
 
 EVENTS = Paths.from_env().label_tables
 
-TM_ROOT = Path("/scratch/gpfs/EKOLEMEN/nc1514/labeler/round4/tm")
+TM_ROOT = Path("/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/round4/tm")
 OUT = Path(os.environ.get("TM_ROOT", TM_ROOT)) / "detector_inputs"
 CATALOG = EVENTS / "catalog"
 CNN = "d3d_tearing_onset_cnn1d"

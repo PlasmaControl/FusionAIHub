@@ -42,7 +42,7 @@ from labeler.tearing import rule, scoring, surface
 EVENTS = Paths.from_env().label_tables
 
 LABELER = Path(
-    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler")
+    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler")
 )
 OUT_ROOT = LABELER / "round4/tm"
 SIGNALS = OUT_ROOT / "signals"

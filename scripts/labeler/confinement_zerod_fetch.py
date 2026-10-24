@@ -47,7 +47,7 @@ from labeler.config import Paths
 from labeler.confinement import bes_windows as bw
 
 LABELER = Path(
-    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler")
+    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler")
 )
 DEFAULT_OUT = LABELER / "round4/conf/zerod"
 ROSTER = Path(

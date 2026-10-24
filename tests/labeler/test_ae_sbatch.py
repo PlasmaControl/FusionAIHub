@@ -29,7 +29,7 @@ EXPORTS = (
     "OMP_NUM_THREADS=1",
     "HDF5_USE_FILE_LOCKING=FALSE",
 )
-OUT = "/scratch/gpfs/EKOLEMEN/nc1514/labeler/runs/slurm/"
+OUT = "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/runs/slurm/"
 FLAG = r"(?<![\w-])--[a-z][\w-]*"
 
 

@@ -13,7 +13,7 @@ result. A readiness score must not pressure the experiment into a passing result
 I inspected the current training/evaluation code, `training.json`, model and
 training-weight artifacts, `evaluation.json`, `predictions.csv`, measured report,
 model card, and real/missing inference smoke outputs under
-`/scratch/gpfs/EKOLEMEN/nc1514/labeler/confinement/v1`.
+`/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/confinement/v1`.
 
 All feature/input/pipeline/model/weight hashes match the freeze. The freeze was
 written at 2026-10-01T20:14:50.889992Z; recorded test opening follows at

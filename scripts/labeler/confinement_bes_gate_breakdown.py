@@ -31,7 +31,7 @@ from labeler.confinement import bes_protocol as bp
 from labeler.confinement import bes_windows as bw
 
 LABELER = Path(
-    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler")
+    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler")
 )
 WORK = LABELER / "round4/conf"
 DEFAULT_OUT = REPO / "outputs/labeler/confinement/bes/gate_breakdown.json"

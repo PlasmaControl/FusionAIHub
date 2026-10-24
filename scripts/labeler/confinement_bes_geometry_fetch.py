@@ -36,7 +36,7 @@ if str(REPO / "src") not in sys.path:
 from labeler.confinement import bes_geometry as geo
 
 LABELER = Path(
-    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler")
+    os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler")
 )
 WORK = LABELER / "round4/conf"
 DEFAULT_OUT = WORK / "geometry"

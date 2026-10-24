@@ -25,7 +25,7 @@ labeler:
   time_step_ms: 25.0
   ensemble_n: 1
   upstream:
-    path: /scratch/gpfs/EKOLEMEN/nc1514/labeler/models/d3d_ae_activity_seldnet
+    path: /scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/models/d3d_ae_activity_seldnet
     trained: 2026-09-06
     training_code: scripts/labeler/ae_train.py
     reference_harness: scripts/labeler/ae_evaluate.py

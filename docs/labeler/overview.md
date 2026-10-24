@@ -5,7 +5,7 @@ title: "labeler"
 # labeler
 
 Environment settings use `LABELER_*`. The pixi environment, the Python
-modules and the data root (`/scratch/gpfs/EKOLEMEN/nc1514/labeler`, including
+modules and the data root (`/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler`, including
 `envs/phase3` and `models/tokeye`) are all named `labeler`. The package was
 called `labelmaker` before 2026-09-15 and its data root kept that name until
 2026-10-09. The stored version key is `labeler_version`; label, feature and
@@ -163,7 +163,7 @@ it.
 ## What it writes
 
 Everything under `$LABELER_ROOT` (default
-`/scratch/gpfs/EKOLEMEN/nc1514/labeler`; `$LABELER_CORPUS` overrides the
+`/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler`; `$LABELER_CORPUS` overrides the
 corpus location):
 
 | path | contents |
@@ -520,7 +520,7 @@ queued inferred tail payloads when workers restart.
 `tokeye_masks.sbatch` uses a plain `ROOT` override before activated
 `LABELER_ROOT`. It resolves and prints that destination before running any
 writer. Read-only inputs are independent: `RUNTIME_ROOT` defaults to
-`/scratch/gpfs/EKOLEMEN/nc1514/labeler`, while `PHASE3_PYTHON` and `UNET` can
+`/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler`, while `PHASE3_PYTHON` and `UNET` can
 override its Python/checkpoint paths. A scratch output root therefore does not
 need copies of the environment or checkpoint. The corpus remains read-only.
 The script requires `PREP_WORKERS + TAIL_WORKERS + 1` CPUs and accepts `REPO`
@@ -554,9 +554,9 @@ its single GPU pilot and gates it manually, without a companion submission.
 ```bash
 cd /scratch/gpfs/nc1514/FusionAIHub-L14perf
 export REPO=$PWD
-export ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labeler/runs/l14perf/pilot-example
+export ROOT=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/runs/l14perf/pilot-example
 export LABELER_ROOT="$ROOT"
-export SHOT_FILE=/scratch/gpfs/EKOLEMEN/nc1514/labeler/runs/slurm/l12/pilot20.txt
+export SHOT_FILE=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/runs/slurm/l12/pilot20.txt
 export PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$PWD/src HF_HUB_OFFLINE=1
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
 export TMPDIR=/tmp/l14perf PIXI_CACHE_DIR=/tmp/l14perf/pixi-cache

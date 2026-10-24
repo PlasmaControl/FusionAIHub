@@ -18,7 +18,7 @@ from pathlib import Path
 
 from .env import getenv
 
-DEFAULT_ROOT = Path("/scratch/gpfs/EKOLEMEN/nc1514/labeler")
+DEFAULT_ROOT = Path("/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler")
 DEFAULT_CORPUS = Path("/scratch/gpfs/EKOLEMEN/foundation_model")
 #: The per-shot operator-text bundles `events/text_weak.py` reads. A third
 #: read-only input root beside the corpus, and separate from it because it
@@ -45,7 +45,7 @@ DEFAULT_LOGS_JSONL = Path(
 #: its raw-data folder) - and every reader and writer of a label table goes
 #: through it. A fresh machine restores the folder from the Hugging Face release
 #: with `scripts/labeler/hf_publish.py pull`.
-DEFAULT_LABEL_TABLES = Path("/scratch/gpfs/EKOLEMEN/nc1514/events")
+DEFAULT_LABEL_TABLES = Path("/scratch/gpfs/EKOLEMEN/D3D/events")
 #: The labeler's hand-kept configuration: `events.yaml` (the taxonomy, the label
 #: grid and the dataset manifest) and `best_models.yaml` (event -> best model ->
 #: inputs -> score). Source, not data, so it is tracked under `configs/labeler/`

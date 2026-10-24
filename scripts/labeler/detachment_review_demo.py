@@ -115,7 +115,7 @@ def provenance():
 
 def verify(out):
     """Run only covering files and persist commands/results as JSON evidence."""
-    runner = Path("/scratch/gpfs/EKOLEMEN/nc1514/labeler/scratch/bin/pt.sh")
+    runner = Path("/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/scratch/bin/pt.sh")
     pixi = [
         "pixi",
         "run",

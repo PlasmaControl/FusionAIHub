@@ -78,6 +78,7 @@ nav:
   - Clusters:
       - clusters/stellar.md
       - clusters/frontier.md
+      - clusters/stellarai.md
       - clusters/adding-a-cluster.md
   - Data:
       - data/corpus.md

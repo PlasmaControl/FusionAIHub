@@ -52,7 +52,7 @@ from labeler.tearing import magfeatures
 
 EVENTS = Paths.from_env().label_tables
 
-ROOT = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
+ROOT = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler"))
 OUT = ROOT / "round4/tm"
 CATALOG = EVENTS / "catalog"
 SOURCES = EVENTS / "neoclassical_tearing_mode/benchmark/sources"

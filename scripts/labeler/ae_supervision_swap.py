@@ -63,7 +63,7 @@ from labeler.config import Paths
 from labeler.events.catalog.states import ABSENT, PRESENT
 from labeler.events.review.labels import read_labels
 
-ROOT = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
+ROOT = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler"))
 TABLES = Paths.from_env().label_tables
 SUPERVISIONS = ("legacy", "dense", "threeway")
 #: The review table the paper's audit scored (the ae_xpower v2 test's snapshot).

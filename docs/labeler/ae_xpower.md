@@ -14,7 +14,7 @@ last record.
 Code: `src/labeler/ae/xpower/` (`data`, `model`, `train`, `cv`, `evaluate`,
 `gallery`, `extend`, `posthoc`). Tests: `tests/labeler/test_ae_xpower_*.py`.
 Jobs: `scripts/labeler/ae_xpower_*.sbatch`. `$LABELER_ROOT` is
-`/scratch/gpfs/EKOLEMEN/nc1514/labeler`.
+`/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler`.
 
 There are four versions. **v1** trained three candidates, chose one on its
 validation shots and was tested once (A2 failed: it mistook MHD for AE). **v2**

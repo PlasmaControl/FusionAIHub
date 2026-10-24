@@ -64,7 +64,7 @@ from scipy.signal import butter, sosfilt
 from scipy.stats import rankdata
 
 REPO = Path(__file__).resolve().parents[2]
-LABELER = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labeler"))
+LABELER = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler"))
 CORPUS = Path("/scratch/gpfs/EKOLEMEN/foundation_model")
 RUN = REPO / "runs/labeler/confinement/v1"
 DEFAULT_WORK = LABELER / "benchmarks/confinement/bes"

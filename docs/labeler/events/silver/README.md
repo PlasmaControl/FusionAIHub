@@ -4,7 +4,7 @@
 > below are relative to it. It is not in git. `scripts/labeler/hf_publish.py pull`
 > restores the label tables (`format/`, `review/`, `extend_*/`), but not `raw/`: the
 > third-party originals are not in the Hugging Face release; they are on the Stellar
-> checkout's disk and archived in `/scratch/gpfs/EKOLEMEN/nc1514/labeler/raw_archive/`.
+> checkout's disk and archived in `/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/raw_archive/`.
 
 ## Description
 450 DIII-D shots to review for EVERY event, not one roster per phenomenon. The
@@ -23,7 +23,7 @@ Every label sits on one 10 ms grid: frame k is [10k, 10k + 10) ms, and
 
 **Dataset File(s)**: `silver_shots.csv`, picked 2026-10-10, redone 2026-10-11 without the gold set's 50 shots (500 → 450). The picking
 scripts and their inputs are kept in
-`/scratch/gpfs/EKOLEMEN/nc1514/labeler/silver/v1/selection/`; the sha256 of
+`/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler/silver/v1/selection/`; the sha256 of
 each is in `silver_shots.meta.json`.
 
 The columns are `shot, batch, order, pool, classes, sources, notes`:
