@@ -168,19 +168,72 @@ FIG_PT = FIGURE_OPTIONS.font_pt
 FIG_SERIF = ["Times New Roman", "Liberation Serif", "STIXGeneral", "DejaVu Serif"]
 
 
+_COORD_MAPS: Dict[int, Tuple[torch.Tensor, torch.Tensor]] = {}
+
+
+def _coords_to_quant(codec, coords: torch.Tensor) -> torch.Tensor:
+    """Map [0, 1] FSQ grid coordinates (..., n_levels) to the codec's decoder input.
+
+    ``indices_to_codes`` is affine in the level indices (scale and shift, optional
+    rotation, linear projection), so the map is fitted once per codec on its own code
+    table and checked to be exact. The expected coordinates of a token therefore decode
+    from exactly the expected decoder input.
+    """
+    fsq = codec.quantizer.fsq
+    key = id(codec)
+    if key not in _COORD_MAPS:
+        levels = fsq._levels.to(coords.device)
+        index = torch.arange(int(levels.prod()), device=coords.device)
+        level_index = fsq.indices_to_level_indices(index).float()
+        target = fsq.indices_to_codes(index).float()
+        design = torch.cat([level_index, torch.ones_like(level_index[:, :1])], dim=1)
+        weight = torch.linalg.lstsq(design.double(), target.double()).solution.float()
+        error = float((design @ weight - target).abs().max())
+        if error > 1e-4:
+            raise RuntimeError(f"FSQ code map is not affine (max error {error:.2e})")
+        _COORD_MAPS[key] = (levels, weight)
+    levels, weight = _COORD_MAPS[key]
+    if coords.shape[-1] != levels.numel():
+        raise ValueError(f"coords have {coords.shape[-1]} levels, codec has {levels.numel()}")
+    level_index = coords.float() * (levels.float() - 1.0)
+    return torch.cat([level_index, torch.ones_like(level_index[..., :1])], dim=-1) @ weight
+
+
 @torch.no_grad()
 def decode_flat(codec, flat: torch.Tensor) -> torch.Tensor:
-    """Decode flat FSQ codes of shape (T, n_tok) into the codec's normalised space."""
+    """Decode flat FSQ codes (T, n_tok) into the codec's normalised space.
+
+    A floating-point ``flat`` of shape (T, n_tok, n_levels) is read as grid coordinates
+    in ``[0, 1]`` (an expected frame, see ``MaskGITDynamics.rollout(return_mean=True)``)
+    and decoded without rounding to a code.
+    """
+    if flat.is_floating_point():
+        return codec.decode(_coords_to_quant(codec, flat))
     return codec.decode(codec.quantizer.fsq.indices_to_codes(flat))
+
+
+def archived(codes, key: str) -> torch.Tensor:
+    """One array of a ``codes_<shot>_step<N>.npz`` archive as a tensor for decode_flat.
+
+    Code arrays (``gt__``, ``pred__``, ``real__``) come back as longs, expected frames
+    (``mean__``, ``realmean__``) as float coordinates.
+    """
+    value = torch.from_numpy(np.asarray(codes[key]))
+    return value.float() if value.is_floating_point() else value.long()
 
 
 @torch.no_grad()
 def decode_flat_chunked(
     codec, flat: torch.Tensor, device, chunk: int = _DECODE_CHUNK
 ) -> np.ndarray:
-    """Decode (T, n_tok) codes in chunks of frames; same result, bounded memory."""
+    """Decode (T, n_tok) codes in chunks of frames; same result, bounded memory.
+
+    Also takes (T, n_tok, n_levels) float coordinates (see :func:`decode_flat`).
+    """
+    if not flat.is_floating_point():
+        flat = flat.long()
     decoded = [
-        decode_flat(codec, flat[start : start + chunk].to(device).long()).float().cpu()
+        decode_flat(codec, flat[start : start + chunk].to(device)).float().cpu()
         for start in range(0, flat.shape[0], chunk)
     ]
     return torch.cat(decoded, dim=0).numpy()
@@ -445,12 +498,17 @@ def apply_actuator_mode(
 
 
 class Rollout(NamedTuple):
-    """Ground-truth and predicted codes of one rollout, ``(F, n_tok)`` each."""
+    """Ground-truth and predicted codes of one rollout, ``(F, n_tok)`` each.
+
+    ``pred_mean`` holds the expected frames ``(F, n_tok, n_levels)`` in ``[0, 1]``
+    coordinates when the rollout could produce them (categorical head, no consensus).
+    """
 
     gt_codes: Dict[str, torch.Tensor]
     pred_codes: Dict[str, torch.Tensor]
     k0: int
     n_frames: int
+    pred_mean: Optional[Dict[str, torch.Tensor]] = None
 
 
 def _load_global_actuators(cache: Dict, shot) -> None:
@@ -582,8 +640,9 @@ def rollout_shot(
     Returns
     -------
     rollout : Rollout
-        Codes over the whole window ``[0, F)`` on the CPU, ``K0`` and the window
-        length ``F = min(cfg.max_frames, n_frames)``; unpacks as a 4-tuple.
+        Codes over the whole window ``[0, F)`` on the CPU, ``K0``, the window
+        length ``F = min(cfg.max_frames, n_frames)`` and, where possible, the
+        expected frames.
     """
     n_frames = min(cfg.max_frames, int(cache["n_frames"]))
     if n_frames <= K0:
@@ -603,6 +662,7 @@ def rollout_shot(
         cache_dir=cache_dir,
         F=n_frames,
     )
+    with_mean = model.can_return_mean and int((decode or {}).get("consensus_n", 1)) <= 1
     trajectory = model.rollout(
         seed_codes,
         actuators.unsqueeze(0).to(device),
@@ -610,8 +670,13 @@ def rollout_shot(
         temperature=temperature,
         generator=generator,
         guidance=guidance,
+        return_mean=with_mean,
         **(decode or {}),
     )
+    mean = None
+    if with_mean:
+        trajectory, mean = trajectory
+        mean = {name: mean[name][0, :n_frames].float().cpu() for name in names}
     return Rollout(
         gt_codes={name: codes[name][:n_frames].long().cpu() for name in names},
         pred_codes={
@@ -619,6 +684,7 @@ def rollout_shot(
         },
         k0=K0,
         n_frames=n_frames,
+        pred_mean=mean,
     )
 
 
@@ -1908,7 +1974,18 @@ def _archive_codes(context: _EvalContext, shot, result: Rollout, baseline: Optio
 
     A counterfactual also keeps its real-actuator baseline (same random stream) as
     ``real__<modality>``, so the actuator response can be scored from the archive alone.
+    Expected frames, where the rollout has them, go in as ``mean__`` / ``realmean__``
+    (float16 coordinates in ``[0, 1]``; read them back with :func:`archived`).
     """
+
+    def means(rollout, prefix):
+        if rollout is None or rollout.pred_mean is None:
+            return {}
+        return {
+            f"{prefix}__{name}": value.numpy().astype(np.float16)
+            for name, value in rollout.pred_mean.items()
+        }
+
     try:
         np.savez_compressed(
             Path(context.out_dir) / f"codes_{shot}_step{context.step}.npz",
@@ -1931,6 +2008,8 @@ def _archive_codes(context: _EvalContext, shot, result: Rollout, baseline: Optio
                 f"real__{name}": codes.cpu().numpy().astype(np.int32)
                 for name, codes in (baseline.pred_codes.items() if baseline is not None else ())
             },
+            **means(result, "mean"),
+            **means(baseline, "realmean"),
         )
     except Exception as e:
         context.log(

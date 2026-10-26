@@ -11,6 +11,10 @@ Per checkpoint, from finished evaluation folders (no new rollouts):
                       shots where T_i falls by more than 5 %
   * ECH response   -- the same for core T_e with the ECH off
 
+Archives that also hold expected frames (``mean__*`` / ``realmean__*``, from rollouts
+since 2026-10-26) get a second row ``<label>+mean`` scored on those instead of the
+sampled codes, with the hallucination from ``hallucination_mean.json``.
+
 Usage::
 
     python analysis/checkpoint_scorecard.py --codec_tmpl '<codecs>/{m}/codec_best.pt' \
@@ -34,29 +38,29 @@ PROFILES = ("ts_core_temp", "ts_core_density", "cer_ti", "cer_rot")
 SPECTRO = ("ece", "mhr", "mirnov")
 
 
-def _profile_skill(folder, codecs, conv, device):
+def _profile_skill(folder, codecs, conv, device, pred="pred"):
     """Median over shots of the mean RMSE skill against persistence of the core profiles.
 
     Scored from the archived codes in physical units (core average of the 3 strongest
     channels), so every checkpoint is scored by the same code regardless of the
     eval_dynamics version that produced the rollout. Unrecorded (flat) signals are skipped.
     """
-    import torch
-
     from tokamak_foundation_model.ignite import eval_dynamics as ev
 
     skills = []
     for path in sorted(glob.glob(f"{folder}/codes_*_step*.npz")):
         codes = np.load(path, allow_pickle=True)
+        if f"{pred}__{PROFILES[0]}" not in codes.files:
+            continue
         K0, F = int(codes["K0"]), int(codes["F"])
         per_signal = []
         for name in PROFILES:
-            gt, pred = (np.nanmean(conv[name](ev.decode_flat_chunked(
-                codecs[name][0], torch.from_numpy(codes[f"{w}__{name}"]).long()[:F], device)), axis=-1)
-                for w in ("gt", "pred"))
+            gt, predicted = (np.nanmean(conv[name](ev.decode_flat_chunked(
+                codecs[name][0], ev.archived(codes, f"{w}__{name}")[:F], device)), axis=-1)
+                for w in ("gt", pred))
             channels = dm._core(gt, K0, 3)
             with np.errstate(invalid="ignore"):
-                g, p_ = np.nanmean(gt[:, channels], 1), np.nanmean(pred[:, channels], 1)
+                g, p_ = np.nanmean(gt[:, channels], 1), np.nanmean(predicted[:, channels], 1)
             truth = g[K0:F]
             if np.isfinite(truth).sum() < 10 or np.nanstd(truth) < 1e-6 * max(1.0, abs(np.nanmean(truth))):
                 continue
@@ -69,8 +73,8 @@ def _profile_skill(folder, codecs, conv, device):
     return (float(np.median(skills)) if skills else np.nan), len(skills)
 
 
-def _hallucination(folder):
-    path = Path(folder) / "hallucination.json"
+def _hallucination(folder, name="hallucination.json"):
+    path = Path(folder) / name
     if not path.exists():
         return np.nan, np.nan
     rows = [r for r in json.load(open(path)) if r["modality"] in SPECTRO]
@@ -78,21 +82,19 @@ def _hallucination(folder):
             float(np.nanmean([r["missed"] for r in rows])))
 
 
-def _response(folder, name, codecs, conv, switch, window, device):
-    import torch
-
+def _response(folder, name, codecs, conv, switch, window, device, pred="pred", real="real"):
     from tokamak_foundation_model.ignite import eval_dynamics as ev
 
     deltas, relative = [], []
     for path in sorted(glob.glob(f"{folder}/codes_*_step*.npz")):
         codes = np.load(path, allow_pickle=True)
-        if f"real__{name}" not in codes.files:
+        if f"{real}__{name}" not in codes.files or f"{pred}__{name}" not in codes.files:
             continue
         K0, F = int(codes["K0"]), int(codes["F"])
         decoded = {
-            w: np.nanmean(conv[name](ev.decode_flat_chunked(
-                codecs[name][0], torch.from_numpy(codes[f"{w}__{name}"]).long()[:F], device)), axis=-1)
-            for w in ("gt", "pred", "real")
+            role: np.nanmean(conv[name](ev.decode_flat_chunked(
+                codecs[name][0], ev.archived(codes, f"{key}__{name}")[:F], device)), axis=-1)
+            for role, key in (("gt", "gt"), ("pred", pred), ("real", real))
         }
         channels = dm._core(decoded["gt"], K0, 3)
         scored = slice(switch + 3, min(F, switch + window))
@@ -126,13 +128,20 @@ def main():
     for item in a.entry:
         label, _, dirs = item.partition("=")
         val_dir, nbi_dir, ech_dir = (dirs.split(",") + ["", "", ""])[:3]
-        skill, n_val = _profile_skill(val_dir, codecs, conv, device)
-        hal, miss = _hallucination(val_dir)
-        nbi = _response(nbi_dir, "cer_ti", codecs, conv, a.switch_frame, a.window, device) if nbi_dir else (np.nan, np.nan, 0)
-        ech = _response(ech_dir, "ts_core_temp", codecs, conv, a.switch_frame, a.window, device) if ech_dir else (np.nan, np.nan, 0)
-        rows.append({"label": label, "profile_skill": skill, "n_val": n_val, "hallucinated": hal, "missed": miss,
-                     "nbi_dTi_keV": nbi[0], "nbi_frac_down": nbi[1], "n_nbi": nbi[2],
-                     "ech_dTe_keV": ech[0], "ech_frac_down": ech[1], "n_ech": ech[2]})
+        for suffix, pred, real, hal_file in (("", "pred", "real", "hallucination.json"),
+                                             ("+mean", "mean", "realmean", "hallucination_mean.json")):
+            skill, n_val = _profile_skill(val_dir, codecs, conv, device, pred)
+            if suffix and not n_val:
+                continue  # no expected frames archived
+            hal, miss = _hallucination(val_dir, hal_file)
+            response = dict(codecs=codecs, conv=conv, switch=a.switch_frame, window=a.window,
+                            device=device, pred=pred, real=real)
+            nbi = _response(nbi_dir, "cer_ti", **response) if nbi_dir else (np.nan, np.nan, 0)
+            ech = _response(ech_dir, "ts_core_temp", **response) if ech_dir else (np.nan, np.nan, 0)
+            rows.append({"label": label + suffix, "profile_skill": skill, "n_val": n_val,
+                         "hallucinated": hal, "missed": miss,
+                         "nbi_dTi_keV": nbi[0], "nbi_frac_down": nbi[1], "n_nbi": nbi[2],
+                         "ech_dTe_keV": ech[0], "ech_frac_down": ech[1], "n_ech": ech[2]})
     print(f"{'checkpoint':18s} {'skill':>7s} {'halluc':>7s} {'missed':>7s} | {'NBI off: dTi':>13s} {'Ti down':>8s} | "
           f"{'ECH off: dTe':>13s} {'Te down':>8s}")
     for r in rows:

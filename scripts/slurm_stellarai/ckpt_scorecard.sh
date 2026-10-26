@@ -8,6 +8,8 @@
 #SBATCH --time=04:00:00
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
+# sai-n01g4: GPU 2 reports "busy or unavailable" at set_device (6 of 6 jobs there failed, 2026-10-24/26)
+#SBATCH --exclude=sai-n01g4
 # =====================================================================================
 # Rollout scorecard of ONE frozen checkpoint (what the masked validation loss misses), on
 # one node (~10 min per rollout and GPU), in one or two jobs (STAGE):
@@ -62,6 +64,11 @@ if [ "$STAGE" != resp ]; then
   if [ ! -f "$VAL/hallucination.json" ]; then
     srun -N1 -n1 --gpus-per-task=1 --gpu-bind=none python analysis/rollout_hallucination.py --split "$PINNED" \
       --cache_dir "$CACHE_DIR" --codec_tmpl "$CODEC_TMPL" "$VAL"
+  fi
+  # Expected frames (archived by rollouts since 2026-10-26; older archives have none).
+  if [ ! -f "$VAL/hallucination_mean.json" ]; then
+    srun -N1 -n1 --gpus-per-task=1 --gpu-bind=none python analysis/rollout_hallucination.py --split "$PINNED" \
+      --cache_dir "$CACHE_DIR" --codec_tmpl "$CODEC_TMPL" --mean "$VAL"
   fi
 fi
 if [ "$STAGE" != val ]; then

@@ -27,13 +27,15 @@ def main():
         run = Path(path).parents[1].name
         step = int(re.search(r"scorecard_(\d+)", path).group(1))
         for row in json.load(open(path)):
-            rows.append({"run": run, "step": step, **row})
+            # Expected-frame rows (label "<run>@<step>+mean") sort next to their sampled row.
+            tag = "+mean" if row.get("label", "").endswith("+mean") else ""
+            rows.append({"run": run + tag, "step": step, **row})
     rows.sort(key=lambda r: (r["run"], r["step"]))
     json.dump(rows, open(Path(a.runs_dir) / "scorecard_all.json", "w"), indent=1)
-    print(f"{'run':16s} {'step':>6s} {'skill':>7s} {'halluc':>7s} {'missed':>7s} | "
+    print(f"{'run':22s} {'step':>6s} {'skill':>7s} {'halluc':>7s} {'missed':>7s} | "
           f"{'NBI off dTi':>11s} {'Ti down':>7s} | {'ECH off dTe':>11s} {'Te down':>7s}")
     for r in rows:
-        print(f"{r['run']:16s} {r['step']:6d} {r['profile_skill']:+7.3f} {r['hallucinated']:7.3f} "
+        print(f"{r['run']:22s} {r['step']:6d} {r['profile_skill']:+7.3f} {r['hallucinated']:7.3f} "
               f"{r['missed']:7.3f} | {r['nbi_dTi_keV']:+7.2f} keV {r['nbi_frac_down']:7.0%} | "
               f"{r['ech_dTe_keV']:+7.2f} keV {r['ech_frac_down']:7.0%}")
 

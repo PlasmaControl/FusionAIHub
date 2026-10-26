@@ -11,7 +11,9 @@ the decoded spectrograms of a finished evaluation (its ``codes_<shot>_step<N>.np
     missed       = sum relu(E_gt - E_pred) / sum E_gt
 
 so 0 is perfect and 1 means no overlap at all. Persistence (the last seed frame held)
-is scored the same way as the reference a forecast has to beat.
+is scored the same way as the reference a forecast has to beat. ``--mean`` scores the
+archived expected frames (``mean__*``) instead of the sampled codes and writes
+``hallucination_mean.json``.
 
 Usage::
 
@@ -50,14 +52,21 @@ def _rates(gt, pred, K0):
     return hallucinated, missed
 
 
-def score_dir(eval_dir, codecs, device, pinned):
-    """Per-shot, per-modality rates of every archive in ``eval_dir``."""
+def score_dir(eval_dir, codecs, device, pinned, prefix="pred"):
+    """Per-shot, per-modality rates of every archive in ``eval_dir``.
+
+    ``prefix`` picks the prediction: ``pred`` (sampled codes) or ``mean`` (expected
+    frames); archives without it are skipped.
+    """
     rows = []
     for archive in sorted(Path(eval_dir).glob("codes_*_step*.npz")):
         codes = np.load(archive, allow_pickle=True)
         shot, K0, F = str(codes["shot"]), int(codes["K0"]), int(codes["F"])
         gt = {k[4:]: torch.from_numpy(codes[k]).long() for k in codes.files if k.startswith("gt__")}
-        pred = {k[6:]: torch.from_numpy(codes[k]).long() for k in codes.files if k.startswith("pred__")}
+        tag = prefix + "__"
+        pred = {k[len(tag):]: ev.archived(codes, k) for k in codes.files if k.startswith(tag)}
+        if not pred:
+            continue
         decoded = ev.decode_all(codecs, gt, pred, K0, F, device, raw_gt=None)
         for name, entry in decoded.items():
             if entry.get("family") != "spectro" or ev._is_static(entry["gt"]):
@@ -85,7 +94,9 @@ def main():
     parser.add_argument("--split", default="", help="comma-separated pinned (train) shots")
     parser.add_argument("--cache_dir", required=True, help="frame-code cache of the evaluation")
     parser.add_argument("--codec_tmpl", default=None, help="codec checkpoint template")
+    parser.add_argument("--mean", action="store_true", help="score the expected frames")
     args = parser.parse_args()
+    prefix, out_name = ("mean", "hallucination_mean.json") if args.mean else ("pred", "hallucination.json")
     pinned = {s for s in args.split.split(",") if s}
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     manifest, manifest_error = ev._read_manifest(args.cache_dir)
@@ -97,8 +108,12 @@ def main():
     for codec, _cfg, _family in codecs.values():
         codec.to(device)
     for d in args.dirs:
-        rows = score_dir(d, codecs, device, pinned)
-        Path(d, "hallucination.json").write_text(json.dumps(rows, indent=1))
+        rows = score_dir(d, codecs, device, pinned, prefix)
+        if not rows:
+            # No file: ckpt_scorecard.sh reads an existing one as "already scored".
+            print(f"=== {d}: no {'expected frames' if args.mean else 'archives'} to score")
+            continue
+        Path(d, out_name).write_text(json.dumps(rows, indent=1))
         print(f"=== {Path(d).parent.name}/{Path(d).name}   (lower is better; 0 = perfect)")
         for name in sorted({r["modality"] for r in rows}):
             print(_summary([r for r in rows if r["modality"] == name], name))

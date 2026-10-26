@@ -226,6 +226,15 @@ class MaskGITDynamics(nn.Module):
             else _CategoricalOutput()
         )
 
+    @property
+    def can_return_mean(self) -> bool:
+        """Whether :meth:`rollout` can return expected frames: categorical head and
+        every vocabulary the FSQ grid ``prod(fsq_levels)``."""
+        grid = math.prod(self.cfg.fsq_levels)
+        return isinstance(self.output, _CategoricalOutput) and all(
+            m.codebook_size == grid for m in self.cfg.modalities
+        )
+
     def _mask_id(self, name: str) -> int:
         return self.backbone.tok.mask_ids[name]
 
@@ -870,7 +879,8 @@ class MaskGITDynamics(nn.Module):
         generator: Optional[torch.Generator] = None,
         guidance: float = 1.0,
         gate: float = 0.0,
-    ) -> Dict[str, torch.Tensor]:
+        return_mean: bool = False,
+    ):
         """Generate the codes of the next frame by iterative unmasking.
 
         Parameters
@@ -894,11 +904,18 @@ class MaskGITDynamics(nn.Module):
             Confidence gate: a token whose sampled code had probability below
             ``gate`` when it was revealed keeps the code of the previous frame,
             so the frame changes only where the model is sure. ``0.0`` is off.
+        return_mean : bool, default=False
+            Also return the expected FSQ coordinates of every token under the
+            model's distribution given the history (the first, fully masked step,
+            at temperature 1). Categorical head only.
 
         Returns
         -------
         codes : dict of str to torch.LongTensor of shape (B, n_tok)
             Committed codes of the new frame.
+        mean : dict of str to torch.FloatTensor of shape (B, n_tok, n_levels)
+            Only with ``return_mean``: expected coordinates in ``[0, 1]``
+            (:func:`code_to_coords`).
 
         Notes
         -----
@@ -926,6 +943,9 @@ class MaskGITDynamics(nn.Module):
             raise ValueError("classifier-free guidance needs the categorical head")
         if gate > 0.0 and not isinstance(self.output, _CategoricalOutput):
             raise ValueError("the confidence gate needs the categorical head")
+        if return_mean and not isinstance(self.output, _CategoricalOutput):
+            raise ValueError("the expected frame needs the categorical head")
+        mean = {}
         # Probability of each committed code when it was revealed (for the gate).
         committed_p = {
             m.name: torch.ones((batch, m.n_tok), device=device) for m in cfg.modalities
@@ -955,6 +975,11 @@ class MaskGITDynamics(nn.Module):
         keep_masked = _cosine_keep_fractions(cfg.maskgit_decode_steps)
         for step, masked_fraction in enumerate(keep_masked):
             logits = _next_frame_logits()
+            if return_mean and step == 0:
+                mean = {
+                    m.name: self._expected_coords(logits[m.name][:, -1])
+                    for m in cfg.modalities
+                }
             for m in cfg.modalities:
                 samples, confidence = self.output.sample(
                     logits[m.name][:, -1], temperature, generator
@@ -992,7 +1017,18 @@ class MaskGITDynamics(nn.Module):
                 frame[m.name] = torch.where(
                     unsure, past_codes[m.name][:, -1], frame[m.name]
                 )
+        if return_mean:
+            return frame, mean
         return frame
+
+    def _expected_coords(self, logits: torch.Tensor) -> torch.Tensor:
+        """Expected FSQ coordinates (B, n_tok, n_levels) of (B, n_tok, vocab) logits."""
+        levels = list(self.cfg.fsq_levels)
+        vocab = logits.shape[-1]
+        if vocab != math.prod(levels):
+            raise ValueError(f"vocabulary {vocab} != prod(fsq_levels {levels})")
+        grid = code_to_coords(torch.arange(vocab, device=logits.device), levels)
+        return logits.float().softmax(-1) @ grid
 
     def _consensus(
         self, candidates, previous, n_candidates: int, quorum: float, mode: str = "majority"
@@ -1036,7 +1072,8 @@ class MaskGITDynamics(nn.Module):
         consensus_q: float = 0.5,
         consensus_mode: str = "majority",
         consensus_shared: bool = True,
-    ) -> Dict[str, torch.Tensor]:
+        return_mean: bool = False,
+    ):
         """Roll out ``n_predict`` frames autoregressively in code space.
 
         Parameters
@@ -1072,11 +1109,19 @@ class MaskGITDynamics(nn.Module):
             ensemble of ``consensus_n`` independent rollouts, combined frame by frame
             only at the end, so a mode one member commits by chance does not carry
             into the others.
+        return_mean : bool, default=False
+            Also return the expected frame of every step (see
+            :meth:`generate_frame`): the model's mean given the sampled history,
+            which drops the sampling noise of the frame itself. Needs
+            ``consensus_n == 1``.
 
         Returns
         -------
         trajectory : dict of str to torch.LongTensor of shape (B, K0 + n_predict, n_tok)
             Seed followed by the committed predictions.
+        mean : dict of str to torch.FloatTensor of shape (B, K0 + n_predict, n_tok, n_levels)
+            Only with ``return_mean``: coordinates in ``[0, 1]``, the seed frames'
+            own followed by the expected predicted frames.
         """
         cfg = self.cfg
         n_predict = cfg.n_predict if n_predict is None else n_predict
@@ -1088,6 +1133,13 @@ class MaskGITDynamics(nn.Module):
                 f"need K0+n_predict={n_seed + n_predict}"
             )
         n_candidates = max(1, int(consensus_n))
+        if return_mean and n_candidates > 1:
+            raise ValueError("return_mean needs consensus_n == 1")
+        levels = list(cfg.fsq_levels)
+        means = {
+            name: [code_to_coords(codes, levels)]
+            for name, codes in (seed_codes.items() if return_mean else ())
+        }
         if n_candidates > 1 and not consensus_shared:
             members = self.rollout(
                 {name: c.repeat_interleave(n_candidates, dim=0) for name, c in seed_codes.items()},
@@ -1131,7 +1183,12 @@ class MaskGITDynamics(nn.Module):
                 generator=generator,
                 guidance=guidance,
                 gate=gate,
+                return_mean=return_mean,
             )
+            if return_mean:
+                next_frame, frame_mean = next_frame
+                for name, value in frame_mean.items():
+                    means[name].append(value.unsqueeze(1))
             if n_candidates > 1:
                 next_frame = {
                     name: self._consensus(
@@ -1147,4 +1204,6 @@ class MaskGITDynamics(nn.Module):
                 name: torch.cat([codes, next_frame[name].unsqueeze(1)], dim=1)
                 for name, codes in trajectory.items()
             }
+        if return_mean:
+            return trajectory, {name: torch.cat(v, dim=1) for name, v in means.items()}
         return trajectory

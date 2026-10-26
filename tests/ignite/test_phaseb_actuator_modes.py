@@ -132,7 +132,7 @@ def _tiny_setup():
 
 def _roll(cfg, model, cache, mode, seed=0, cache_dir=None):
     gen = torch.Generator().manual_seed(seed)
-    _gt, pred, _k, _f = ed.rollout_shot(
+    pred = ed.rollout_shot(
         model,
         cfg,
         cache,
@@ -142,7 +142,7 @@ def _roll(cfg, model, cache, mode, seed=0, cache_dir=None):
         torch.device("cpu"),
         actuator_mode=mode,
         cache_dir=cache_dir,
-    )
+    ).pred_codes
     return pred
 
 
@@ -211,9 +211,9 @@ def test_rollout_reads_global_actuators_by_shot(tmp_path, monkeypatch):
     monkeypatch.setenv("IGNITE_ACT_GLOBAL", str(tmp_path))
     gen = torch.Generator().manual_seed(0)
     c = dict(cache)
-    _gt, pred, _k, _f = ed.rollout_shot(
+    pred = ed.rollout_shot(
         model, cfg, c, cfg.k0_seed, 0.9, gen, torch.device("cpu"), shot="123"
-    )
+    ).pred_codes
     assert torch.equal(c["actuators"], glob.half()[:, :70])  # side cache was used
     assert not _same(pred, per_shot)  # and it drives the rollout
     with pytest.raises(ValueError, match="shot id"):

@@ -1168,3 +1168,78 @@ def test_rollout_loss_rejects_a_horizon_past_the_window():
     codes = _codes(cfg, 1, cfg.max_frames)
     with pytest.raises(ValueError, match="outside"):
         model.rollout_loss(codes, torch.randn(1, cfg.max_frames, 6), cfg.n_predict + 1)
+
+
+def _fsq_cfg():
+    # Vocabularies equal to prod(fsq_levels), as in production, so codes map to coordinates.
+    return DynamicsConfig(
+        modalities=(ModalitySpec("a", "spectro", 3), ModalitySpec("b", "slowts", 2)),
+        d_model=16,
+        depth=2,
+        n_heads=2,
+        ffn_mult=2,
+        k0_seed=2,
+        n_predict=3,
+        actuator_dim=6,
+        grad_checkpointing=False,
+    )
+
+
+def test_rollout_mean_leaves_the_sampled_rollout_unchanged():
+    torch.manual_seed(0)
+    cfg = _fsq_cfg()
+    model = MaskGITDynamics(cfg).eval()
+    seed, act = _rollout_inputs(cfg)
+    with torch.no_grad():
+        plain = model.rollout(seed, act, generator=torch.Generator().manual_seed(3))
+        codes, mean = model.rollout(
+            seed, act, generator=torch.Generator().manual_seed(3), return_mean=True
+        )
+    levels = list(cfg.fsq_levels)
+    for m in cfg.modalities:
+        assert torch.equal(plain[m.name], codes[m.name])
+        assert mean[m.name].shape == (*codes[m.name].shape, len(levels))
+        # Seed frames: the coordinates of the real codes; predictions: inside the grid.
+        assert torch.allclose(mean[m.name][:, : cfg.k0_seed], code_to_coords(seed[m.name], levels))
+        assert (mean[m.name] >= 0).all() and (mean[m.name] <= 1).all()
+
+
+def test_expected_coords_weigh_the_grid_by_probability():
+    cfg = _fsq_cfg()
+    model = MaskGITDynamics(cfg)
+    levels = list(cfg.fsq_levels)
+    logits = torch.full((1, 2, 1000), -1e4)
+    logits[0, 0, 7] = 0.0  # certain: code 7
+    logits[0, 1, 0] = logits[0, 1, 999] = 0.0  # half and half: grid corners
+    mean = model._expected_coords(logits)
+    assert torch.allclose(mean[0, 0], code_to_coords(torch.tensor(7), levels))
+    assert torch.allclose(mean[0, 1], torch.full((4,), 0.5))
+
+
+def test_rollout_mean_needs_a_single_candidate():
+    cfg = _fsq_cfg()
+    model = MaskGITDynamics(cfg).eval()
+    seed, act = _rollout_inputs(cfg)
+    with pytest.raises(ValueError, match="consensus_n"):
+        model.rollout(seed, act, consensus_n=2, return_mean=True)
+
+
+def test_decode_flat_reads_coordinates_as_the_expected_decoder_input():
+    from types import SimpleNamespace
+
+    from vector_quantize_pytorch import FSQ
+
+    from tokamak_foundation_model.ignite import eval_dynamics as ed
+
+    levels = [8, 5, 5, 5]
+    fsq = FSQ(levels=levels, dim=6)  # with a projection, as the codecs have
+    codec = SimpleNamespace(quantizer=SimpleNamespace(fsq=fsq), decode=lambda q: q)
+    codes = torch.randint(0, 1000, (4, 3), generator=torch.Generator().manual_seed(0))
+    with torch.no_grad():
+        exact = ed.decode_flat(codec, codes)
+        on_grid = ed.decode_flat(codec, code_to_coords(codes, levels))
+        halfway = ed.decode_flat(
+            codec, 0.5 * (code_to_coords(codes, levels) + code_to_coords(codes.flip(0), levels))
+        )
+    assert torch.allclose(on_grid, exact, atol=1e-5)
+    assert torch.allclose(halfway, 0.5 * (exact + exact.flip(0)), atol=1e-5)
