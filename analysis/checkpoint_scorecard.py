@@ -100,10 +100,10 @@ def _response(folder, name, codecs, conv, switch, window, device, pred="pred", r
         scored = slice(switch + 3, min(F, switch + window))
         with np.errstate(invalid="ignore"):
             scen = np.nanmean(decoded["pred"][scored][:, channels])
-            real = np.nanmean(decoded["real"][scored][:, channels])
-        if np.isfinite(scen) and np.isfinite(real) and real > 0:
-            deltas.append((scen - real) * 1e-3)
-            relative.append((scen - real) / real)
+            baseline = np.nanmean(decoded["real"][scored][:, channels])
+        if np.isfinite(scen) and np.isfinite(baseline) and baseline > 0:
+            deltas.append((scen - baseline) * 1e-3)
+            relative.append((scen - baseline) / baseline)
     if not deltas:
         return np.nan, np.nan, 0
     return float(np.median(deltas)), float(np.mean(np.asarray(relative) < -0.05)), len(deltas)
