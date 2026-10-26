@@ -212,9 +212,6 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-# Claude
-CLAUDE.md
-
 # Marimo
 marimo/_static/
 marimo/_lsp/

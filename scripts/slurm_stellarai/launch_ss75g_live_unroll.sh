@@ -17,11 +17,8 @@
 # Validation adds rollout_ce (same unroll from k0, fixed noise): the number to compare
 # with ss75g_live's dynamics_latest.pt. Effective batch 128 = micro-batch 2 x 64 GPUs.
 #
-# Before the first leg, from the repository root on a login node:
-#   pixi install -e stellarai
-#   copy dynamics_latest.pt and split_shots.json of the Frontier run
-#     /lustre/orion/fus187/proj-shared/models/ignite_prod_v4/runs/ss75g_live/
-#   into WARM_FROM (below), then
+# WARM_FROM (below) already holds dynamics_latest.pt and split_shots.json of the Frontier
+# ss75g_live run. From the repository root on a login node:
 #   sbatch scripts/slurm_stellarai/launch_ss75g_live_unroll.sh
 # The first leg copies both files into OUT_DIR and resumes from that step. Next legs
 # resume from OUT_DIR/dynamics_latest.pt:
@@ -30,15 +27,13 @@
 # =====================================================================================
 set -uo pipefail
 
-# --- EDIT THESE PATHS -------------------------------------------------------------------
-export REPO_DIR=${REPO_DIR:-$HOME/FusionAIHub}                 # the cloned repository
-DATA_ROOT=${DATA_ROOT:-/scratch/gpfs/$USER/ignite}             # where the archives were unpacked
+export REPO_DIR=${REPO_DIR:-/scratch/gpfs/EKOLEMEN/ps9551/FusionAIHub}
+DATA_ROOT=${DATA_ROOT:-/scratch/gpfs/EKOLEMEN/ps9551/ignite/models}
 export CACHE_DIR=${CACHE_DIR:-$DATA_ROOT/ignite_prod_v4/frame_codes}
 export IGNITE_ACT_GLOBAL=${IGNITE_ACT_GLOBAL:-$DATA_ROOT/ignite_prod_v4/act_global}
-export LIVE_END_JSON=${LIVE_END_JSON:-$DATA_ROOT/tend_all.json}
+export LIVE_END_JSON=${LIVE_END_JSON:-/scratch/gpfs/EKOLEMEN/ps9551/ignite/tend_all.json}
 export WARM_FROM=${WARM_FROM:-$DATA_ROOT/ignite_prod_v4/runs/ss75g_live}
 export OUT_DIR=${OUT_DIR:-$DATA_ROOT/ignite_prod_v4/runs/ss75g_live_unroll}
-# ----------------------------------------------------------------------------------------
 
 # The ss75g_live recipe: live training windows, deployment windows for validation.
 export WINDOW_SAMPLE=live VAL_WINDOW_SAMPLE=first BLOCK_FORCING=0

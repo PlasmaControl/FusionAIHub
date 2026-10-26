@@ -13,7 +13,7 @@ set -uo pipefail
 
 REPO_DIR=${REPO_DIR:-/scratch/gpfs/EKOLEMEN/ps9551/FusionAIHub}
 RUNS_DIR=${RUNS_DIR:-/scratch/gpfs/EKOLEMEN/ps9551/ignite/models/ignite_prod_v4/runs}
-RUNS=${RUNS:-"ss75g_evt ss75g_gap ss75g_btf_cfg ss75g_btf ss75g_live_aug"}
+RUNS=${RUNS:-"ss75g_l48 ss75g_live_unroll ss75g_evt ss75g_gap ss75g_btf_cfg ss75g_btf ss75g_live_aug"}
 MAX_JOBS=${MAX_JOBS:-6}
 POLL_S=${POLL_S:-1800}
 MIN_AGE_S=${MIN_AGE_S:-300}   # a snapshot younger than this may still be being written
