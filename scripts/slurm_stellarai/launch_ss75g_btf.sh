@@ -24,11 +24,11 @@
 set -uo pipefail
 
 # --- EDIT THESE PATHS -------------------------------------------------------------------
-export REPO_DIR=${REPO_DIR:-$HOME/FusionAIHub}                 # the cloned repository
-DATA_ROOT=${DATA_ROOT:-/scratch/gpfs/$USER/ignite}             # where the archives were unpacked
+export REPO_DIR=${REPO_DIR:-/scratch/gpfs/EKOLEMEN/ps9551/FusionAIHub}  # the cloned repository
+DATA_ROOT=${DATA_ROOT:-/scratch/gpfs/EKOLEMEN/ps9551/ignite/models}             # where the archives were unpacked
 export CACHE_DIR=${CACHE_DIR:-$DATA_ROOT/ignite_prod_v4/frame_codes}
 export IGNITE_ACT_GLOBAL=${IGNITE_ACT_GLOBAL:-$DATA_ROOT/ignite_prod_v4/act_global}
-export LIVE_END_JSON=${LIVE_END_JSON:-$DATA_ROOT/tend_all.json}
+export LIVE_END_JSON=${LIVE_END_JSON:-/scratch/gpfs/EKOLEMEN/ps9551/ignite/tend_all.json}
 export OUT_DIR=${OUT_DIR:-$DATA_ROOT/ignite_prod_v4/runs/ss75g_btf}
 # ----------------------------------------------------------------------------------------
 

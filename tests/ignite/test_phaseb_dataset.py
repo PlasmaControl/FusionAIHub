@@ -512,3 +512,48 @@ def test_actuator_noise_spares_constant_channels():
     assert not torch.equal(noisy[:, :, 0], actuators[:, :, 0])
     trainer.config = td.TrainConfig()
     assert trainer._noisy(actuators) is actuators
+
+
+def test_actuator_events_detects_nbi_and_ech_steps():
+    """Steps of the total NBI / ECH power are found, merged within the gap, and only
+    before the plasma end."""
+    raw = np.zeros((60, 88), dtype=np.float32)
+    raw[20:, 12] = 2.5e6  # one beam on at frame 20
+    raw[40:, 0] = 1.0e6  # ECH on at frame 40
+    raw[55:, 13] = 3.0e6  # a beam after the plasma end
+    assert td.actuator_events(raw, n_live=50) == [20, 40]
+    assert td.actuator_events(raw, n_live=50, ech_mw=2.0) == [20]
+    assert td.actuator_events(np.zeros((60, 88)), n_live=60) == []
+
+
+def test_event_windows_and_weights(tmp_path, monkeypatch):
+    """Event oversampling adds windows whose predicted frames hold a step, and the
+    frames after a step get the event weight in ``live``."""
+    cfg = _tiny()  # max_frames 4, k0 2
+    n = 30
+    _write_cache(tmp_path, "s1", n, cfg)
+    side = tmp_path / "act"
+    side.mkdir()
+    raw = np.zeros((n, 88), dtype=np.float32)
+    raw[15:, 12] = 5e6
+    torch.save({"actuators_global": torch.zeros(n, 88), "actuators_raw": raw}, side / "s1.pt")
+    monkeypatch.setattr(td, "_ACT_GLOBAL_DIR", str(side))
+    events = td.actuator_events(raw, n)
+    assert events
+    ds = FrameCodeDataset(
+        tmp_path, ["s1"], cfg, windows_per_shot=2, window_sample="random",
+        event_windows_per_shot=3, event_weight=4.0, event_frames=2,
+    )
+    pool = ds._event_starts[0]
+    assert pool and all(any(s + cfg.k0_seed < e <= s + cfg.max_frames - 1 for e in events) for s in pool)
+    ds.set_epoch(0)
+    assert len(ds.index) == 2 + min(3, len(pool))
+    start = pool[0]
+    ds.index = [(0, start)]
+    live = ds[0][3]
+    frames = torch.arange(start, start + cfg.max_frames)
+    hit = torch.zeros_like(live, dtype=torch.bool)
+    for e in events:
+        hit |= (frames >= e) & (frames < e + 2)
+    assert bool(hit.any())
+    assert torch.equal(live, torch.where(hit, torch.tensor(4.0), torch.tensor(1.0)))

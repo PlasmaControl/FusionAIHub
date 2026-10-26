@@ -43,6 +43,12 @@ EXTRA=()
 [ -n "${ACTUATOR_MODE:-}" ] && EXTRA+=(--actuator_mode "${ACTUATOR_MODE}")
 # GUIDANCE=w: classifier-free guidance on the actuators (checkpoint trained with ACT_DROP_P > 0).
 [ -n "${GUIDANCE:-}" ] && EXTRA+=(--guidance "${GUIDANCE}")
+# GATE=tau, CONSENSUS_N=n, CONSENSUS_Q=q: confidence gate / consensus rollout (no retraining).
+[ -n "${GATE:-}" ] && EXTRA+=(--gate "${GATE}")
+[ -n "${CONSENSUS_N:-}" ] && EXTRA+=(--consensus_n "${CONSENSUS_N}")
+[ -n "${CONSENSUS_Q:-}" ] && EXTRA+=(--consensus_q "${CONSENSUS_Q}")
+[ -n "${CONSENSUS_MODE:-}" ] && EXTRA+=(--consensus_mode "${CONSENSUS_MODE}")
+[ "${CONSENSUS_INDEPENDENT:-0}" = "1" ] && EXTRA+=(--consensus_independent)
 # RENDER_ALL=1: a figure for every shot, not only the first shot of each rank.
 [ "${RENDER_ALL:-0}" = "1" ] && EXTRA+=(--render_all)
 if [ "${VAL_TAIL}" != "0" ]; then

@@ -327,7 +327,49 @@ ACTUATOR_MODES = (
     "shuffle",
     "donor:<shot>",
     "group_zero:<group>",
+    "scale:<group>=<factor>[@<frame>][+<group>=<factor>[@<frame>]...]",
 )
+
+
+def _global_actuator_stats():
+    """Per-channel ``mu``, ``sd`` of the ``IGNITE_ACT_GLOBAL`` normalisation, or None."""
+    side_cache = os.environ.get("IGNITE_ACT_GLOBAL", "").strip()
+    stats = Path(side_cache) / "act_global_stats.npz" if side_cache else None
+    if stats is None or not stats.exists():
+        return None
+    loaded = np.load(stats, allow_pickle=True)
+    return (
+        torch.as_tensor(loaded["mu"], dtype=torch.float32),
+        torch.as_tensor(loaded["sd"], dtype=torch.float32),
+    )
+
+
+def _scale_actuators(edited, spec: str, K0: int, n_frames: int) -> None:
+    """Scale actuator groups in physical units, in place, for ``scale:`` modes.
+
+    ``spec`` is ``<group>=<factor>[@<frame>]`` terms joined by ``+``; each scales
+    that group's physical value by ``factor`` from ``frame`` (default ``K0``, the
+    first predicted frame) to the end of the window. ``factor`` 0 switches the
+    actuator off. Needs the dataset-wide normalisation (``IGNITE_ACT_GLOBAL``):
+    a normalised value g maps to physical ``g * sd + mu``.
+    """
+    stats = _global_actuator_stats()
+    if stats is None:
+        raise ValueError("scale: actuator modes need IGNITE_ACT_GLOBAL with its stats")
+    mu, sd = stats
+    for term in spec.split("+"):
+        target, _, start = term.partition("@")
+        group, _, factor = target.partition("=")
+        columns = _actuator_group_columns(group.strip())
+        first = int(start) if start else K0
+        if not K0 <= first < n_frames:
+            raise ValueError(f"scale start frame {first} outside [{K0}, {n_frames})")
+        frames = slice(first, n_frames)
+        m, d = mu[columns], sd[columns]
+        varies = d > 0
+        physical = edited[frames, columns] * d + m
+        rescaled = (physical * float(factor) - m) / torch.where(varies, d, torch.ones_like(d))
+        edited[frames, columns] = torch.where(varies, rescaled, edited[frames, columns])
 
 
 def _actuator_group_columns(group: str) -> slice:
@@ -353,8 +395,10 @@ def apply_actuator_mode(
     mode : str
         ``"real"`` (unchanged), ``"zero"``, ``"freeze"`` (hold the last seed
         frame), ``"shuffle"`` (seeded permutation of the predicted frames),
-        ``"donor:<shot>"`` (another shot's actuators) or ``"group_zero:<group>"``
-        (zero one :data:`~.train_dynamics._ACT_SPEC` group).
+        ``"donor:<shot>"`` (another shot's actuators), ``"group_zero:<group>"``
+        (zero one :data:`~.train_dynamics._ACT_SPEC` group) or
+        ``"scale:<group>=<factor>[@<frame>]"`` (scale a group in physical units
+        from ``frame`` on, :func:`_scale_actuators`).
     K0 : int
         First predicted frame; the seed frames stay real.
     cache_dir : path-like, default=None
@@ -391,6 +435,8 @@ def apply_actuator_mode(
         edited[predicted] = donor[predicted]
     elif kind == "group_zero" and has_argument:
         edited[predicted, _actuator_group_columns(argument)] = 0.0
+    elif kind == "scale" and has_argument:
+        _scale_actuators(edited, argument, K0, n_frames)
     else:
         raise ValueError(
             f"unknown actuator_mode {mode!r}; expected one of {ACTUATOR_MODES}"
@@ -424,6 +470,65 @@ def _load_global_actuators(cache: Dict, shot) -> None:
     cache["actuators"] = loaded["actuators_global"][:, :width]
 
 
+def _rank_device() -> torch.device:
+    """This rank's GPU: ``cuda:LOCAL_RANK`` when it sees all node GPUs, else ``cuda:0``."""
+    if not torch.cuda.is_available():
+        return torch.device("cpu")
+    # One GPU visible per rank (Frontier) -> cuda:0; all node GPUs visible (StellarAI,
+    # SRUN_GPU_BIND=none) -> cuda:LOCAL_RANK, matching train_codec._DDPState.
+    index = int(os.environ.get("LOCAL_RANK", "0")) if torch.cuda.device_count() > 1 else 0
+    torch.cuda.set_device(index)
+    return torch.device("cuda", index)
+
+
+def slowts_denorm(codecs) -> Dict:
+    """Map decoded slow time series back to physical units, from the codecs' own stats.
+
+    Each slow-TS codec standardises its input per channel with the global
+    ``channel_mean`` / ``channel_std`` of its configuration, after
+    ``log10(x + 1)`` for the Thomson signals (:data:`config.SLOWTS_PREPROCESS_METHOD`).
+    The returned callables invert that on arrays of shape (F, C_pad, T) and drop the
+    padded channels. Only the modalities of :data:`_SLOWTS_UNITS` (n_e, T_e, T_i) are
+    converted; the others stay normalised.
+
+    Parameters
+    ----------
+    codecs : dict
+        ``{name: (codec, codec_cfg, family)}`` as from ``load_frozen_codecs``.
+
+    Returns
+    -------
+    denorm : dict of str to callable
+    """
+    from .config import SLOWTS_PREPROCESS_METHOD
+
+    denorm = {}
+    for name, (_codec, codec_cfg, family) in codecs.items():
+        method = SLOWTS_PREPROCESS_METHOD.get(name)
+        mean = getattr(codec_cfg, "channel_mean", None)
+        std = getattr(codec_cfg, "channel_std", None)
+        if family != "slowts" or method not in ("standardize", "log_standardize"):
+            continue
+        # Only n_e, T_e and T_i: their figure rows carry units (_SLOWTS_UNITS). cer_rot's
+        # stats are broken on some channels (inverts to ~1e27) and mse has no unit row.
+        if name not in _SLOWTS_UNITS:
+            continue
+        if mean is None or std is None:
+            continue
+        mean = np.asarray(mean, dtype=np.float64)
+        std = np.clip(np.asarray(std, dtype=np.float64), 1e-3, None)
+
+        def invert(x, mean=mean, std=std, log=method == "log_standardize"):
+            x = np.asarray(x, dtype=np.float64)[:, : mean.size]
+            shape = [1] * x.ndim
+            shape[1] = -1
+            y = x * std.reshape(shape) + mean.reshape(shape)
+            return (np.power(10.0, y) - 1.0) if log else y
+
+        denorm[name] = invert
+    return denorm
+
+
 @torch.no_grad()
 def rollout_shot(
     model: MaskGITDynamics,
@@ -437,6 +542,7 @@ def rollout_shot(
     cache_dir=None,
     shot=None,
     guidance: float = 1.0,
+    decode: Optional[Dict] = None,
 ) -> Rollout:
     """Seed ``K0`` real frames of a shot and roll the model out.
 
@@ -468,6 +574,10 @@ def rollout_shot(
         Shot id; required when ``IGNITE_ACT_GLOBAL`` is set.
     guidance : float, default=1.0
         Classifier-free guidance weight (:meth:`MaskGITDynamics.generate_frame`).
+    decode : dict, default=None
+        Further rollout options: ``gate``, ``consensus_n``, ``consensus_q``,
+        ``consensus_mode``
+        (:meth:`MaskGITDynamics.rollout`).
 
     Returns
     -------
@@ -500,6 +610,7 @@ def rollout_shot(
         temperature=temperature,
         generator=generator,
         guidance=guidance,
+        **(decode or {}),
     )
     return Rollout(
         gt_codes={name: codes[name][:n_frames].long().cpu() for name in names},
@@ -1753,6 +1864,8 @@ class _EvalContext:
     cache_t0: float
     log: object
     guidance: float = 1.0
+    decode: Optional[Dict] = None
+    denorm: Optional[Dict] = None
 
 
 def _rollouts(context: _EvalContext, cache, shot):
@@ -1774,6 +1887,7 @@ def _rollouts(context: _EvalContext, cache, shot):
             cache_dir=context.cache_dir,
             shot=shot,
             guidance=context.guidance,
+            decode=context.decode,
         )
 
     # bf16 rollouts measurably lower accuracy, so they are opt-in.
@@ -1782,12 +1896,19 @@ def _rollouts(context: _EvalContext, cache, shot):
         result = rollout(context.actuator_mode)
         # A counterfactual is measured against the same rollout under the real
         # actuators, with an identical random stream.
-        baseline = None if context.actuator_mode == "real" else rollout("real")
+        # IGNITE_EVAL_NO_BASELINE=1 skips it (half the cost) when the real-actuator
+        # rollout is evaluated separately anyway.
+        skip = os.environ.get("IGNITE_EVAL_NO_BASELINE") == "1"
+        baseline = None if context.actuator_mode == "real" or skip else rollout("real")
     return result, baseline
 
 
-def _archive_codes(context: _EvalContext, shot, result: Rollout) -> None:
-    """Save the codes, so a figure can be re-rendered without a new rollout."""
+def _archive_codes(context: _EvalContext, shot, result: Rollout, baseline: Optional[Rollout] = None) -> None:
+    """Save the codes, so a figure can be re-rendered without a new rollout.
+
+    A counterfactual also keeps its real-actuator baseline (same random stream) as
+    ``real__<modality>``, so the actuator response can be scored from the archive alone.
+    """
     try:
         np.savez_compressed(
             Path(context.out_dir) / f"codes_{shot}_step{context.step}.npz",
@@ -1797,6 +1918,7 @@ def _archive_codes(context: _EvalContext, shot, result: Rollout) -> None:
             shot=str(shot),
             temperature=np.float32(context.temperature),
             guidance=np.float32(context.guidance),
+            decode=json.dumps(context.decode or {}),
             **{
                 f"gt__{name}": codes.cpu().numpy().astype(np.int32)
                 for name, codes in result.gt_codes.items()
@@ -1804,6 +1926,10 @@ def _archive_codes(context: _EvalContext, shot, result: Rollout) -> None:
             **{
                 f"pred__{name}": codes.cpu().numpy().astype(np.int32)
                 for name, codes in result.pred_codes.items()
+            },
+            **{
+                f"real__{name}": codes.cpu().numpy().astype(np.int32)
+                for name, codes in (baseline.pred_codes.items() if baseline is not None else ())
             },
         )
     except Exception as e:
@@ -1823,7 +1949,7 @@ def _evaluate_shot(context: _EvalContext, shot, is_first: bool, render: bool) ->
     token_accuracy = _fraction(gt, lambda n: pred[n][predicted] == gt[n][predicted])
     # Codes are highly persistent, so accuracy only means something as skill.
     persistence = _fraction(gt, lambda n: gt[n][predicted] == gt[n][K0 - 1 : K0])
-    _archive_codes(context, shot, result)
+    _archive_codes(context, shot, result, baseline)
     measured = (
         load_raw_gt(
             shot,
@@ -1845,6 +1971,7 @@ def _evaluate_shot(context: _EvalContext, shot, is_first: bool, render: bool) ->
         context.device,
         raw_gt=measured,
         bandpower=context.bandpower,
+        denorm=context.denorm,
     )
     if is_first:
         self_check(decoded)
@@ -1972,6 +2099,7 @@ def run(
     actuator_mode: str = "real",
     log=print,
     guidance: float = 1.0,
+    decode: Optional[Dict] = None,
 ) -> Dict:
     """Evaluate a checkpoint on one or more shots and write ``eval_metrics.json``.
 
@@ -2011,6 +2139,9 @@ def run(
         Logger.
     guidance : float, default=1.0
         Classifier-free guidance weight on the actuators; ``1.0`` is off.
+    decode : dict, default=None
+        Confidence gate and consensus options of the rollout
+        (``gate``, ``consensus_n``, ``consensus_q``); ``None`` is the plain rollout.
 
     Returns
     -------
@@ -2018,16 +2149,10 @@ def run(
         Contents of ``eval_metrics.json``; on non-zero ranks only this rank's
         per-shot results.
     """
-    device = torch.device("cpu")
-    if torch.cuda.is_available():
-        # One GPU visible per rank (Frontier) -> cuda:0; all node GPUs visible (StellarAI,
-        # SRUN_GPU_BIND=none) -> cuda:LOCAL_RANK, matching train_codec._DDPState.
-        index = int(os.environ.get("LOCAL_RANK", "0")) if torch.cuda.device_count() > 1 else 0
-        torch.cuda.set_device(index)
-        device = torch.device("cuda", index)
+    device = _rank_device()
     log(
         f"[eval] device={device} ckpt={ckpt} actuator_mode={actuator_mode} "
-        f"guidance={guidance}",
+        f"guidance={guidance} decode={decode or {}}",
         flush=True,
     )
     if val_tail:
@@ -2083,6 +2208,8 @@ def run(
         data_dir=os.environ.get("IGNITE_DATA_DIR") or spike.DEFAULT_DATA_DIR,
         cache_t0=cache_t0,
         guidance=guidance,
+        decode=decode,
+        denorm=slowts_denorm(codecs),
         log=log,
     )
 
@@ -2119,6 +2246,7 @@ def run(
         return {"per_shot": per_shot, "rank": rank}
     metrics = _summarise(per_shot, ckpt, step, temperature, seed, codec_tmpl)
     metrics["guidance"] = float(guidance)
+    metrics["decode"] = dict(decode or {})
     with open(out / "eval_metrics.json", "w") as f:
         json.dump(metrics, f, indent=2)
     _log_summary(metrics, log)
@@ -2153,7 +2281,7 @@ def rerender(eval_dir: str, cache_dir: str, codec_tmpl: str = None, log=print) -
     figures : list of str
         PNG paths written by this rank.
     """
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = _rank_device()
     manifest, manifest_error = _read_manifest(cache_dir)
     cache_t0 = float(manifest.get("t0_start", 1.0)) if manifest else 1.0
     codec_tmpl = _codec_template(codec_tmpl, manifest, manifest_error, log)
@@ -2162,6 +2290,7 @@ def rerender(eval_dir: str, cache_dir: str, codec_tmpl: str = None, log=print) -
     )
     for codec, _codec_cfg, _family in codecs.values():
         codec.to(device)
+    denorm = slowts_denorm(codecs)
     use_raw_gt = os.environ.get("IGNITE_EVAL_RAW_GT", "1") != "0"
     data_dir = os.environ.get("IGNITE_DATA_DIR") or spike.DEFAULT_DATA_DIR
     archives = sorted(Path(eval_dir).glob("codes_*_step*.npz"))
@@ -2187,7 +2316,9 @@ def rerender(eval_dir: str, cache_dir: str, codec_tmpl: str = None, log=print) -
             if use_raw_gt
             else None
         )
-        decoded = decode_all(codecs, gt, pred, K0, F, device, raw_gt=measured)
+        decoded = decode_all(
+            codecs, gt, pred, K0, F, device, raw_gt=measured, denorm=denorm
+        )
         png, _pdf = render_figure(
             decoded, shot, step, float(codes["temperature"]), K0, F, Path(eval_dir)
         )
@@ -2320,6 +2451,38 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="classifier-free guidance weight on the actuators; 1 = off. Needs a "
         "checkpoint trained with --act_drop_p > 0",
     )
+    add(
+        "--gate",
+        type=float,
+        default=0.0,
+        help="confidence gate: tokens sampled with probability below it keep the "
+        "previous frame's code; 0 = off",
+    )
+    add(
+        "--consensus_n",
+        type=int,
+        default=1,
+        help="consensus rollout: candidates per frame; 1 = off",
+    )
+    add(
+        "--consensus_q",
+        type=float,
+        default=0.5,
+        help="share of candidates that must agree (within one FSQ cell) to change a "
+        "token",
+    )
+    add(
+        "--consensus_mode",
+        choices=("majority", "mean"),
+        default="majority",
+        help="combine the candidates by near-1 majority or by their mean FSQ coordinates",
+    )
+    add(
+        "--consensus_independent",
+        action="store_true",
+        help="consensus over independent rollouts (an ensemble) instead of candidates "
+        "that share the committed history",
+    )
     add("--seed", type=int, default=0, help="rollout seed")
     add("--k0", type=int, default=0, help="seed frames; 0 = the checkpoint's k0_seed")
     add(
@@ -2345,7 +2508,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--actuator_mode",
         default="real",
         help="actuator counterfactual over the predicted frames: real | zero | "
-        "freeze | shuffle | donor:<shot> | group_zero:<group>",
+        "freeze | shuffle | donor:<shot> | group_zero:<group> | "
+        "scale:<group>=<factor>[@<frame>] (physical units, e.g. scale:pinj=0@50 "
+        "turns the beams off from frame 50)",
     )
     add(
         "--rerender",
@@ -2422,6 +2587,13 @@ def main(argv=None):
         val_n=args.val_n,
         split_seed=args.split_seed,
         guidance=args.guidance,
+        decode={
+            "gate": args.gate,
+            "consensus_n": args.consensus_n,
+            "consensus_q": args.consensus_q,
+            "consensus_mode": args.consensus_mode,
+            "consensus_shared": not args.consensus_independent,
+        },
         actuator_mode=args.actuator_mode,
     )
 

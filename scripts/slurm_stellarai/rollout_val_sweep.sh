@@ -11,7 +11,7 @@
 # =====================================================================================
 # Held-out rollout sweep on StellarAI: the last VAL_TAIL shots of the frozen validation
 # split (not the 12-shot protocol, whose 9 held-out shots are too few to separate +-0.01),
-# for each RUN:TEMPERATURE[:GUIDANCE] in SWEEP, one after another on one node (8 GPUs, ~10 min per
+# for each RUN:TEMPERATURE[:GUIDANCE[:OPTIONS]] in SWEEP, one after another on one node (8 GPUs, ~10 min per
 # shot and GPU). Each point is scored right away, in code space (rollout_npz_score.py)
 # and for hallucinated / missed spectrogram activity (rollout_hallucination.py), so a
 # point that finishes is never lost to the time limit.
@@ -19,7 +19,13 @@
 #   sbatch --export=ALL,SWEEP="ss75g_btf:1.0",VAL_TAIL=32 scripts/slurm_stellarai/rollout_val_sweep.sh
 #   sbatch --export=ALL,SWEEP="ss75g_btf_cfg:1.0:1 ss75g_btf_cfg:1.0:2" scripts/slurm_stellarai/rollout_val_sweep.sh
 # GUIDANCE is classifier-free guidance on the actuators; it needs a checkpoint trained with
-# ACT_DROP_P > 0 (launch_ss75g_btf_cfg.sh). Output: runs/<RUN>/rollout_val<N>_T<T>[_g<G>]_<jobid>/
+# ACT_DROP_P > 0 (launch_ss75g_btf_cfg.sh). OPTIONS set decoding without retraining:
+#   ss75g_btf_cfg:1.0:1:GATE=0.4                      confidence gate
+#   ss75g_btf_cfg:1.0:1:CONSENSUS_N=8,CONSENSUS_Q=0.6 consensus rollout
+# Output: runs/<RUN>/rollout_val<N>_T<T>[_g<G>]_<jobid>/
+# CKPT_NAME (default dynamics_latest.pt) picks another file in the run folder, e.g. a frozen
+# snapshot: a running trainer rewrites dynamics_latest.pt, so points run hours apart
+# would otherwise score different checkpoints.
 # =====================================================================================
 set -uo pipefail
 
@@ -43,10 +49,14 @@ cd "$REPO_DIR"
 # network, so `pixi run` cannot re-solve the environment there).
 source "$CLUSTER_ENV"
 for point in $SWEEP; do
-  IFS=: read -r RUN T G <<< "$point"
-  export CKPT=$DATA_ROOT/ignite_prod_v4/runs/$RUN/dynamics_latest.pt TEMPERATURE=$T GUIDANCE=${G:-1}
-  export OUT_DIR=$DATA_ROOT/ignite_prod_v4/runs/$RUN/rollout_val${VAL_TAIL}_T${T}${G:+_g$G}_${SLURM_JOB_ID:-local}
-  echo "[sweep] $(date '+%H:%M') $RUN T=$T guidance=${G:-1} -> $OUT_DIR"
+  IFS=: read -r RUN T G OPTS <<< "$point"
+  # OPTS: comma-separated decoding options, e.g. GATE=0.4 or CONSENSUS_N=8,CONSENSUS_Q=0.6
+  unset GATE CONSENSUS_N CONSENSUS_Q
+  for kv in ${OPTS//,/ }; do export "$kv"; done
+  tag=${OPTS//,/_}; tag=${tag//=/}
+  export CKPT=$DATA_ROOT/ignite_prod_v4/runs/$RUN/${CKPT_NAME:-dynamics_latest.pt} TEMPERATURE=$T GUIDANCE=${G:-1}
+  export OUT_DIR=$DATA_ROOT/ignite_prod_v4/runs/$RUN/rollout_val${VAL_TAIL}_T${T}${G:+_g$G}${tag:+_$tag}_${SLURM_JOB_ID:-local}
+  echo "[sweep] $(date '+%H:%M') $RUN T=$T guidance=${G:-1} ${OPTS} -> $OUT_DIR"
   bash scripts/slurm_frontier/eval_dynamics.sh
   python analysis/rollout_npz_score.py --split "$PINNED" "$OUT_DIR"
   srun -N1 -n1 --gpus-per-task=1 --gpu-bind=none \

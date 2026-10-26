@@ -69,6 +69,8 @@ export SPLIT_SEED=${SPLIT_SEED:-42} TEST_FRAC=${TEST_FRAC:-0.05} VAL_N=${VAL_N:-
 export TRAIN_CAP=${TRAIN_CAP:-0} MASK_ABSENT=${MASK_ABSENT:-0} NUM_WORKERS=${NUM_WORKERS:-2}
 # --- checkpointing: BEST_METRIC is kept for the record only; rollout uses dynamics_latest.pt ---
 export BEST_METRIC=${BEST_METRIC:-masked} CKPT_EVERY=${CKPT_EVERY:-200}
+# SNAPSHOT_EVERY: frozen dynamics_step<N>.pt every N steps, scored by scorecard_watch.sh.
+export SNAPSHOT_EVERY=${SNAPSHOT_EVERY:-2000}
 export OUT_DIR=${OUT_DIR:-/lustre/orion/fus187/proj-shared/models/ignite_prod_v4/runs/ss75full}
 # --- the standing example shots: in BOTH train and val (--pin_val would EXCLUDE them from training) ---
 export PIN_BOTH="190729,190735,190736"

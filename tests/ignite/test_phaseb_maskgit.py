@@ -809,7 +809,7 @@ def test_cfg_and_depth_defaults_leave_the_loss_bit_identical():
     codes = _codes(cfg, 2, cfg.max_frames, torch.Generator().manual_seed(3))
     act = torch.randn(2, cfg.max_frames, 6)
     losses = []
-    for options in ({}, {"act_drop_p": 0.0, "forecast_depth": 1}):
+    for options in ({}, {"act_drop_p": 0.0, "forecast_depth": 1, "hist_gap_p": 0.0}):
         torch.manual_seed(5)
         losses.append(
             model.training_loss(
@@ -898,3 +898,156 @@ def test_guidance_one_is_plain_conditioning_and_zero_ignores_actuators():
         assert torch.equal(zero_a[m.name], zero_b[m.name])
         gen_part = guided[m.name][:, cfg.k0_seed :]
         assert (gen_part >= 0).all() and (gen_part < m.codebook_size).all()
+
+
+# ---------------------------------------------- confidence gate, consensus rollout
+
+
+def _rollout_inputs(cfg, n_predict=3):
+    seed = _codes(cfg, 2, cfg.k0_seed, torch.Generator().manual_seed(1))
+    act = torch.randn(2, cfg.k0_seed + n_predict, 6, generator=torch.Generator().manual_seed(2))
+    return seed, act
+
+
+def test_gate_and_consensus_off_are_the_plain_rollout():
+    torch.manual_seed(0)
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg).eval()
+    seed, act = _rollout_inputs(cfg)
+    with torch.no_grad():
+        plain = model.rollout(seed, act, generator=torch.Generator().manual_seed(3))
+        off = model.rollout(
+            seed, act, generator=torch.Generator().manual_seed(3),
+            gate=0.0, consensus_n=1, consensus_q=0.9,
+        )
+    for m in cfg.modalities:
+        assert torch.equal(plain[m.name], off[m.name])
+
+
+@pytest.mark.parametrize("option", [{"gate": 1.01}, {"consensus_n": 4, "consensus_q": 1.01}])
+def test_impossible_threshold_freezes_the_last_seed_frame(option):
+    torch.manual_seed(0)
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg).eval()
+    seed, act = _rollout_inputs(cfg)
+    with torch.no_grad():
+        out = model.rollout(seed, act, generator=torch.Generator().manual_seed(3), **option)
+    for m in cfg.modalities:
+        last = seed[m.name][:, -1:]
+        assert torch.equal(out[m.name][:, cfg.k0_seed :], last.expand_as(out[m.name][:, cfg.k0_seed :]))
+
+
+def test_consensus_commits_the_near_one_majority():
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg)
+    # One token, FSQ (8,5,5,5): codes 0 and 1 are one cell apart, 999 far from both.
+    candidates = torch.tensor([[0], [1], [0], [999]])  # B=1, N=4
+    previous = torch.tensor([[500]])
+    assert model._consensus(candidates, previous, 4, 0.75).item() in (0, 1)
+    assert model._consensus(candidates, previous, 4, 0.76).item() == 500
+    lonely = torch.tensor([[0], [999], [500], [250]])
+    assert model._consensus(lonely, previous, 4, 0.5).item() == 500
+
+
+def test_consensus_rollout_gives_valid_codes_and_is_deterministic():
+    torch.manual_seed(0)
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg).eval()
+    seed, act = _rollout_inputs(cfg)
+    with torch.no_grad():
+        a = model.rollout(seed, act, generator=torch.Generator().manual_seed(3), consensus_n=4, gate=0.05)
+        b = model.rollout(seed, act, generator=torch.Generator().manual_seed(3), consensus_n=4, gate=0.05)
+    for m in cfg.modalities:
+        assert torch.equal(a[m.name], b[m.name])
+        part = a[m.name][:, cfg.k0_seed :]
+        assert a[m.name].shape == (2, cfg.k0_seed + 3, m.n_tok)
+        assert (part >= 0).all() and (part < m.codebook_size).all()
+
+
+def test_mean_consensus_rounds_the_mean_coordinates():
+    from tokamak_foundation_model.ignite.frame_layout import code_to_coords, coords_to_code
+
+    model = MaskGITDynamics(_btf_cfg())
+    levels = list(model.cfg.fsq_levels)
+    same = torch.tensor([[7], [7], [7], [7]])
+    assert model._consensus(same, torch.tensor([[0]]), 4, 0.5, "mean").item() == 7
+    mixed = torch.tensor([[0], [999], [123], [456]])
+    expected = coords_to_code(code_to_coords(mixed.view(1, 4, 1), levels).mean(1), levels)
+    assert torch.equal(model._consensus(mixed, torch.tensor([[0]]), 4, 0.5, "mean"), expected)
+
+
+def test_mean_consensus_rollout_gives_valid_codes():
+    torch.manual_seed(0)
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg).eval()
+    seed, act = _rollout_inputs(cfg)
+    with torch.no_grad():
+        out = model.rollout(
+            seed, act, generator=torch.Generator().manual_seed(3),
+            consensus_n=4, consensus_mode="mean",
+        )
+    for m in cfg.modalities:
+        part = out[m.name][:, cfg.k0_seed :]
+        assert (part >= 0).all() and (part < m.codebook_size).all()
+
+
+@pytest.mark.parametrize("mode", ["majority", "mean"])
+def test_independent_ensemble_is_valid_deterministic_and_keeps_the_seed(mode):
+    torch.manual_seed(0)
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg).eval()
+    seed, act = _rollout_inputs(cfg)
+    runs = []
+    with torch.no_grad():
+        for _ in range(2):
+            runs.append(model.rollout(
+                seed, act, generator=torch.Generator().manual_seed(3),
+                consensus_n=4, consensus_mode=mode, consensus_shared=False,
+            ))
+    for m in cfg.modalities:
+        assert torch.equal(runs[0][m.name], runs[1][m.name])
+        assert torch.equal(runs[0][m.name][:, : cfg.k0_seed], seed[m.name])
+        part = runs[0][m.name][:, cfg.k0_seed :]
+        assert part.shape == (2, 3, m.n_tok)
+        assert (part >= 0).all() and (part < m.codebook_size).all()
+
+
+def test_independent_ensemble_of_one_equals_the_plain_rollout():
+    torch.manual_seed(0)
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg).eval()
+    seed, act = _rollout_inputs(cfg)
+    with torch.no_grad():
+        plain = model.rollout(seed, act, generator=torch.Generator().manual_seed(3))
+        one = model.rollout(
+            seed, act, generator=torch.Generator().manual_seed(3),
+            consensus_n=1, consensus_shared=False,
+        )
+    for m in cfg.modalities:
+        assert torch.equal(plain[m.name], one[m.name])
+
+
+def test_history_gap_hides_a_stretch_and_trains_every_parameter():
+    torch.manual_seed(0)
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg).train()
+    gen = torch.Generator().manual_seed(6)
+    codes = _codes(cfg, 4, cfg.max_frames, gen)
+    gapped = model._history_gap(codes, 1.0, 3, torch.Generator().manual_seed(7))
+    name = cfg.modalities[0].name
+    hidden = (gapped[name] == model._mask_id(name)).all(-1)
+    assert not hidden[:, 0].any()  # the first frame always stays visible
+    lengths = hidden.sum(1)
+    assert ((lengths >= 1) & (lengths <= 3)).all()
+    for n in codes:  # one stretch, the same for every modality
+        assert torch.equal((gapped[n] == model._mask_id(n)).all(-1), hidden)
+    assert model._history_gap(codes, 0.0, 3, gen) is codes
+    act = torch.randn(4, cfg.max_frames, 6, generator=gen)
+    loss = model.training_loss(
+        codes, act, generator=gen, ss_frac=0.5, block_forcing=True, hist_gap_p=1.0,
+        hist_gap_max=3,
+    )
+    assert torch.isfinite(loss)
+    loss.backward()
+    without_grad = [n for n, p in model.named_parameters() if p.grad is None]
+    assert not without_grad, without_grad

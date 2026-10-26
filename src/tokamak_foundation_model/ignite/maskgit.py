@@ -491,6 +491,39 @@ class MaskGITDynamics(nn.Module):
             history = forecast
         return history
 
+    def _history_gap(self, history, gap_p: float, gap_max: int, gen):
+        """Hide a stretch of history frames, per sample with probability ``gap_p``.
+
+        The gap starts at a random frame after the first and spans 1 to ``gap_max``
+        frames; every modality is set to ``[MASK]`` there. Frames in and just after
+        the gap are then predicted without their recent state, so the earlier state
+        and the actuators over the gap must carry the forecast instead of
+        persistence. Only the history changes; the query stream and the loss
+        targets keep the real codes.
+        """
+        if gap_p <= 0.0 or gap_max < 1:
+            return history
+        reference = history[self.cfg.modalities[0].name]
+        batch, n_frames, _ = reference.shape
+        device = reference.device
+        on = torch.rand((batch,), generator=gen, device=device) < gap_p
+        if n_frames < 2 or not bool(on.any()):
+            return history
+        start = 1 + (
+            torch.rand((batch,), generator=gen, device=device) * (n_frames - 1)
+        ).long()
+        length = 1 + (torch.rand((batch,), generator=gen, device=device) * gap_max).long()
+        frames = torch.arange(n_frames, device=device).view(1, -1)
+        gap = on.view(-1, 1) & (frames >= start.view(-1, 1)) & (
+            frames < (start + length).view(-1, 1)
+        )
+        return {
+            name: torch.where(
+                gap.unsqueeze(-1), torch.full_like(frames_, self._mask_id(name)), frames_
+            )
+            for name, frames_ in history.items()
+        }
+
     def training_loss(
         self,
         codes: Dict[str, torch.Tensor],
@@ -510,6 +543,8 @@ class MaskGITDynamics(nn.Module):
         seed_column_drop_p: float = 0.0,
         act_drop_p: float = 0.0,
         forecast_depth: int = 1,
+        hist_gap_p: float = 0.0,
+        hist_gap_max: int = 10,
     ) -> torch.Tensor:
         """Masked-token loss, averaged per modality and then across modalities.
 
@@ -562,6 +597,12 @@ class MaskGITDynamics(nn.Module):
         forecast_depth : int, default=1
             With ``block_forcing``: levels of own forecasts in the history
             (:meth:`_forecast_context`); ``1`` is one-step scheduled sampling.
+        hist_gap_p : float, default=0.0
+            With ``block_forcing``: probability per sample of hiding a stretch of up
+            to ``hist_gap_max`` history frames (:meth:`_history_gap`), so the
+            forecast across the gap has to come from the actuators.
+        hist_gap_max : int, default=10
+            Longest hidden stretch, in frames.
 
         Returns
         -------
@@ -600,6 +641,7 @@ class MaskGITDynamics(nn.Module):
             )
             if dropped is not None:
                 history, query = self._hide(history, dropped), self._hide(query, dropped)
+            history = self._history_gap(history, hist_gap_p, hist_gap_max, generator)
             hidden = self.backbone.encode_block_forcing(
                 history, query, actuators, act_null
             )
@@ -676,6 +718,7 @@ class MaskGITDynamics(nn.Module):
         temperature: float = 1.0,
         generator: Optional[torch.Generator] = None,
         guidance: float = 1.0,
+        gate: float = 0.0,
     ) -> Dict[str, torch.Tensor]:
         """Generate the codes of the next frame by iterative unmasking.
 
@@ -696,6 +739,10 @@ class MaskGITDynamics(nn.Module):
             one forward pass per step; any other value costs two. Needs a model
             trained with ``act_drop_p > 0``, else the unconditional branch is
             untrained.
+        gate : float, default=0.0
+            Confidence gate: a token whose sampled code had probability below
+            ``gate`` when it was revealed keeps the code of the previous frame,
+            so the frame changes only where the model is sure. ``0.0`` is off.
 
         Returns
         -------
@@ -726,6 +773,12 @@ class MaskGITDynamics(nn.Module):
         guided = float(guidance) != 1.0
         if guided and not isinstance(self.output, _CategoricalOutput):
             raise ValueError("classifier-free guidance needs the categorical head")
+        if gate > 0.0 and not isinstance(self.output, _CategoricalOutput):
+            raise ValueError("the confidence gate needs the categorical head")
+        # Probability of each committed code when it was revealed (for the gate).
+        committed_p = {
+            m.name: torch.ones((batch, m.n_tok), device=device) for m in cfg.modalities
+        }
         if guided:
             # One doubled batch: the first half conditioned, the second without
             # any actuator term.
@@ -755,6 +808,7 @@ class MaskGITDynamics(nn.Module):
                 samples, confidence = self.output.sample(
                     logits[m.name][:, -1], temperature, generator
                 )
+                probability = confidence.float()
                 if _GUMBEL_SCALE > 0.0:
                     uniform = torch.rand(
                         confidence.shape, generator=generator, device=device
@@ -770,6 +824,9 @@ class MaskGITDynamics(nn.Module):
                 newly_revealed.scatter_(1, reveal_index, True)
                 take = newly_revealed & ~revealed[m.name]
                 frame[m.name] = torch.where(take, samples, frame[m.name])
+                committed_p[m.name] = torch.where(
+                    take, probability, committed_p[m.name]
+                )
                 revealed[m.name] = revealed[m.name] | newly_revealed
         # Fill anything still masked (rounding edge cases) with the mode.
         for m in cfg.modalities:
@@ -778,7 +835,41 @@ class MaskGITDynamics(nn.Module):
                 logits = _next_frame_logits()[m.name][:, -1]
                 fill = self.output.mode(logits, generator)
                 frame[m.name] = torch.where(still_masked, fill, frame[m.name])
+        if gate > 0.0:
+            for m in cfg.modalities:
+                unsure = committed_p[m.name] < gate
+                frame[m.name] = torch.where(
+                    unsure, past_codes[m.name][:, -1], frame[m.name]
+                )
         return frame
+
+    def _consensus(
+        self, candidates, previous, n_candidates: int, quorum: float, mode: str = "majority"
+    ):
+        """Commit one code per token from ``n_candidates`` candidate frames.
+
+        ``candidates`` is (B * n_candidates, n_tok), candidates of a sample
+        adjacent; ``previous`` (B, n_tok) is the last committed frame. ``majority``
+        commits the near-1 majority where at least ``quorum`` of the candidates
+        agree, else ``previous``. ``mean`` commits the code nearest to the mean FSQ
+        coordinates of the candidates, so activity drawn at random times averages
+        out while changes common to all candidates remain.
+        """
+        levels = list(self.cfg.fsq_levels)
+        batch = previous.shape[0]
+        codes = candidates.view(batch, n_candidates, -1)
+        if mode == "mean":
+            return coords_to_code(code_to_coords(codes, levels).mean(dim=1), levels)
+        if mode != "majority":
+            raise ValueError(f"consensus mode {mode!r}: expected 'majority' or 'mean'")
+        scale = torch.tensor([level - 1 for level in levels], device=codes.device)
+        digits = torch.round(code_to_coords(codes, levels) * scale)  # (B, N, n, D)
+        near = (digits.unsqueeze(2) - digits.unsqueeze(1)).abs().le(1).all(-1)
+        support = near.sum(dim=2)  # (B, N, n): candidates within one cell, self too
+        best_support, best = support.max(dim=1)  # (B, n)
+        majority = codes.gather(1, best.unsqueeze(1)).squeeze(1)
+        agreed = best_support.float() >= quorum * n_candidates
+        return torch.where(agreed, majority, previous)
 
     @torch.no_grad()
     def rollout(
@@ -789,6 +880,11 @@ class MaskGITDynamics(nn.Module):
         temperature: float = 1.0,
         generator: Optional[torch.Generator] = None,
         guidance: float = 1.0,
+        gate: float = 0.0,
+        consensus_n: int = 1,
+        consensus_q: float = 0.5,
+        consensus_mode: str = "majority",
+        consensus_shared: bool = True,
     ) -> Dict[str, torch.Tensor]:
         """Roll out ``n_predict`` frames autoregressively in code space.
 
@@ -806,6 +902,25 @@ class MaskGITDynamics(nn.Module):
             Source of randomness.
         guidance : float, default=1.0
             Classifier-free guidance weight of every frame (:meth:`generate_frame`).
+        gate : float, default=0.0
+            Confidence gate of every frame (:meth:`generate_frame`).
+        consensus_n : int, default=1
+            Consensus rollout: draw ``consensus_n`` candidates of each frame from
+            the same committed history and commit, per token, the candidate with
+            the most others within one FSQ grid cell in every dimension, if at
+            least ``consensus_q`` of all candidates agree with it; otherwise the
+            token keeps the previous frame's code. ``1`` is the plain rollout.
+        consensus_q : float, default=0.5
+            Share of candidates that must agree.
+        consensus_mode : {"majority", "mean"}, default="majority"
+            How the candidates are combined (:meth:`_consensus`); ``mean`` ignores
+            ``consensus_q``.
+        consensus_shared : bool, default=True
+            ``True``: every frame's candidates continue the one committed history,
+            so a mode committed once is continued by all of them. ``False``: an
+            ensemble of ``consensus_n`` independent rollouts, combined frame by frame
+            only at the end, so a mode one member commits by chance does not carry
+            into the others.
 
         Returns
         -------
@@ -821,14 +936,62 @@ class MaskGITDynamics(nn.Module):
                 f"actuators has {actuators.shape[1]} frames; "
                 f"need K0+n_predict={n_seed + n_predict}"
             )
-        for t in range(n_predict):
-            next_frame = self.generate_frame(
-                trajectory,
-                actuators[:, : n_seed + t + 1],
+        n_candidates = max(1, int(consensus_n))
+        if n_candidates > 1 and not consensus_shared:
+            members = self.rollout(
+                {name: c.repeat_interleave(n_candidates, dim=0) for name, c in seed_codes.items()},
+                actuators.repeat_interleave(n_candidates, dim=0),
+                n_predict=n_predict,
                 temperature=temperature,
                 generator=generator,
                 guidance=guidance,
+                gate=gate,
             )
+            combined = {name: codes.clone() for name, codes in seed_codes.items()}
+            for t in range(n_seed, n_seed + n_predict):
+                frame = {
+                    name: self._consensus(
+                        members[name][:, t],
+                        combined[name][:, -1],
+                        n_candidates,
+                        consensus_q,
+                        consensus_mode,
+                    )
+                    for name in combined
+                }
+                combined = {
+                    name: torch.cat([codes, frame[name].unsqueeze(1)], dim=1)
+                    for name, codes in combined.items()
+                }
+            return combined
+        for t in range(n_predict):
+            history = trajectory
+            frame_actuators = actuators[:, : n_seed + t + 1]
+            if n_candidates > 1:
+                history = {
+                    name: codes.repeat_interleave(n_candidates, dim=0)
+                    for name, codes in trajectory.items()
+                }
+                frame_actuators = frame_actuators.repeat_interleave(n_candidates, dim=0)
+            next_frame = self.generate_frame(
+                history,
+                frame_actuators,
+                temperature=temperature,
+                generator=generator,
+                guidance=guidance,
+                gate=gate,
+            )
+            if n_candidates > 1:
+                next_frame = {
+                    name: self._consensus(
+                        candidates,
+                        trajectory[name][:, -1],
+                        n_candidates,
+                        consensus_q,
+                        consensus_mode,
+                    )
+                    for name, candidates in next_frame.items()
+                }
             trajectory = {
                 name: torch.cat([codes, next_frame[name].unsqueeze(1)], dim=1)
                 for name, codes in trajectory.items()

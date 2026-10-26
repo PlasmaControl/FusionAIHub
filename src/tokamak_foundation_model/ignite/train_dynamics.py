@@ -1104,6 +1104,54 @@ def _global_actuators(shot, cached: torch.Tensor) -> torch.Tensor:
     return loaded["actuators_global"][:, :width].to(cached.dtype)
 
 
+# Columns of the raw actuator side cache (_ACT_SPEC order), in W.
+_ECH_COLUMNS, _PINJ_COLUMNS = slice(0, 12), slice(12, 20)
+
+
+def actuator_events(raw, n_live: int, nbi_mw: float = 1.0, ech_mw: float = 0.5, gap: int = 5):
+    """Frames where the total NBI or ECH power steps, from the raw actuators (W).
+
+    The change at frame ``e`` is the mean total power over frames ``e..e+2`` minus
+    that over ``e-3..e-1``; frames where it reaches ``nbi_mw`` (NBI) or ``ech_mw``
+    (ECH) form a step, and each run of such frames (split at gaps of ``gap`` frames)
+    is reported at its largest change. Only frames before ``n_live`` count.
+
+    Returns
+    -------
+    events : list of int
+    """
+    raw = np.asarray(raw, dtype=np.float64)
+    power = {
+        "nbi": np.nan_to_num(raw[:, _PINJ_COLUMNS].sum(1)) / 1e6,
+        "ech": np.nan_to_num(raw[:, _ECH_COLUMNS].sum(1)) / 1e6,
+    }
+    threshold = {"nbi": nbi_mw, "ech": ech_mw}
+    change = {}
+    stop = min(int(n_live), raw.shape[0] - 2)
+    for name, p in power.items():
+        for e in range(3, stop):
+            size = abs(p[e:e + 3].mean() - p[e - 3:e].mean()) / threshold[name]
+            if size >= 1.0:
+                change[e] = max(change.get(e, 0.0), size)
+    events, run = [], []
+    for e in sorted(change):
+        if run and e - run[-1] >= gap:
+            events.append(max(run, key=change.get))
+            run = []
+        run.append(e)
+    if run:
+        events.append(max(run, key=change.get))
+    return events
+
+
+def _side_cache_raw_actuators(shot):
+    """Physical actuators (W, V, N m, ...) of a shot from the side cache, or None."""
+    side_entry = Path(_ACT_GLOBAL_DIR) / f"{shot}.pt"
+    loaded = torch.load(side_entry, map_location="cpu", weights_only=False)
+    raw = loaded.get("actuators_raw")
+    return None if raw is None else np.asarray(raw, dtype=np.float32)
+
+
 class FrameCodeDataset(torch.utils.data.Dataset):
     """Windows of ``cfg.max_frames`` frames from the frame-code cache.
 
@@ -1142,6 +1190,17 @@ class FrameCodeDataset(torch.utils.data.Dataset):
         Shot time of frame 0 of the cache.
     frame_s : float, default=0.05
         Frame duration in seconds.
+    event_windows_per_shot : int, default=0
+        Extra windows each shot contributes per epoch, drawn from the starts whose
+        predicted frames contain an actuator step (:func:`actuator_events`), so the
+        model sees more examples of the plasma responding to its actuators.
+    event_weight : float, default=1.0
+        Loss weight of the ``event_frames`` frames from each actuator step on
+        (relative to 1 elsewhere); applied through the ``live`` weights.
+    event_frames : int, default=15
+        Frames after a step that get ``event_weight``.
+    event_nbi_mw, event_ech_mw : float, default=1.0, 0.5
+        Step sizes that count as an actuator event.
 
     Notes
     -----
@@ -1162,8 +1221,18 @@ class FrameCodeDataset(torch.utils.data.Dataset):
         window_jitter: int = 0,
         t0_start: float = 1.0,
         frame_s: float = 0.05,
+        event_windows_per_shot: int = 0,
+        event_weight: float = 1.0,
+        event_frames: int = 15,
+        event_nbi_mw: float = 1.0,
+        event_ech_mw: float = 0.5,
     ):
         self.cfg = cfg
+        self.event_windows_per_shot = max(int(event_windows_per_shot), 0)
+        self.event_weight = float(event_weight)
+        self.event_frames = max(int(event_frames), 1)
+        use_events = self.event_windows_per_shot > 0 or self.event_weight != 1.0
+        self.events, self._event_starts = [], []
         self.window_jitter = max(int(window_jitter), 0)
         self.win = cfg.max_frames
         self.stride = max(int(stride), 1)
@@ -1206,6 +1275,19 @@ class FrameCodeDataset(torch.utils.data.Dataset):
                 else []
             )
             self._live_starts.append(sorted(set(live_starts) | set(deployment_starts)))
+            events = (
+                actuator_events(entry["actuators_raw"], n_live, event_nbi_mw, event_ech_mw)
+                if use_events and entry.get("actuators_raw") is not None
+                else []
+            )
+            self.events.append(torch.tensor(events, dtype=torch.long))
+            k0 = int(getattr(cfg, "k0_seed", 0))
+            # Starts whose predicted frames hold a step with frames left to respond
+            # (10, or what a short window allows).
+            margin = max(1, min(10, self.win - k0 - 1))
+            self._event_starts.append(
+                [s for s in starts if any(s + k0 < e <= s + self.win - margin for e in events)]
+            )
             if not self.windows_per_shot:
                 self.index.extend((shot_index, start) for start in starts)
         if self.windows_per_shot:
@@ -1225,6 +1307,7 @@ class FrameCodeDataset(torch.utils.data.Dataset):
         }
         if _ACT_GLOBAL_DIR:
             entry["actuators"] = _global_actuators(path.stem, entry["actuators"])
+            entry["actuators_raw"] = _side_cache_raw_actuators(path.stem)
         return entry
 
     def set_epoch(self, epoch: int) -> None:
@@ -1237,6 +1320,14 @@ class FrameCodeDataset(torch.utils.data.Dataset):
         if not self.windows_per_shot:
             return
         rng = random.Random(_WINDOW_SEED_BASE + int(epoch))
+        self._draw_windows(rng)
+        if self.event_windows_per_shot:
+            for shot_index, starts in enumerate(self._event_starts):
+                n_drawn = min(self.event_windows_per_shot, len(starts))
+                self.index.extend((shot_index, s) for s in sorted(rng.sample(starts, n_drawn)))
+
+    def _draw_windows(self, rng) -> None:
+        """The ``windows_per_shot`` windows of every shot for one epoch."""
         if self.window_sample is WindowSample.FIRST:
             n, pool = self.windows_per_shot, self.windows_per_shot + self.window_jitter
             self.index = [
@@ -1273,7 +1364,13 @@ class FrameCodeDataset(torch.utils.data.Dataset):
             for m in self.cfg.modalities
         }
         actuators = entry["actuators"][start:stop].float()
-        live = (torch.arange(start, stop) < self.n_live[shot_index]).float()
+        frames = torch.arange(start, stop)
+        live = (frames < self.n_live[shot_index]).float()
+        events = self.events[shot_index] if self.events else None
+        if self.event_weight != 1.0 and events is not None and events.numel():
+            after = frames[:, None] - events[None, :]
+            responding = ((after >= 0) & (after < self.event_frames)).any(1)
+            live = torch.where(responding, live * self.event_weight, live)
         return codes, actuators, self.presence[shot_index], live
 
 
@@ -1684,6 +1781,13 @@ class TrainConfig:
         "(pushforward multi-step training); each extra level costs one no-grad "
         "two-stream pass",
     )
+    hist_gap_p: float = _option(
+        0.0,
+        "with --block_forcing 1: probability per sample of hiding a stretch of up to "
+        "--hist_gap_max history frames, so forecasts across it must follow the "
+        "actuators rather than persistence",
+    )
+    hist_gap_max: int = _option(10, "longest hidden history stretch, in frames")
     seed_drop_p: float = _option(
         0.0,
         "augmentation: probability of hiding a whole modality from the input in the "
@@ -1775,6 +1879,22 @@ class TrainConfig:
         choices=["", "random", "first"],
     )
     val_windows: int = _option(32, "fixed validation windows")
+    snapshot_every: int = _option(
+        0,
+        "also keep dynamics_step<N>.pt every N optimizer steps (a multiple of "
+        "--ckpt_every), for rollout scoring; 0 = off",
+    )
+    event_windows_per_shot: int = _option(
+        0,
+        "extra training windows per shot and epoch whose predicted frames hold an "
+        "NBI/ECH power step (actuator-response oversampling); 0 = off",
+    )
+    event_weight: float = _option(
+        1.0, "training loss weight of the --event_frames frames after an NBI/ECH step"
+    )
+    event_frames: int = _option(15, "frames after an actuator step weighted by --event_weight")
+    event_nbi_mw: float = _option(1.0, "NBI power step (MW) that counts as an actuator event")
+    event_ech_mw: float = _option(0.5, "ECH power step (MW) that counts as an actuator event")
     val_windows_per_shot: int = _option(
         0, "windows per validation shot; 0 = all starts. Redefines val CE"
     )
@@ -2103,7 +2223,23 @@ class Trainer:
             windows_per_shot=config.windows_per_shot,
             window_sample=config.window_sample,
             window_jitter=config.window_jitter,
+            event_windows_per_shot=config.event_windows_per_shot,
+            event_weight=config.event_weight,
+            event_frames=config.event_frames,
+            event_nbi_mw=config.event_nbi_mw,
+            event_ech_mw=config.event_ech_mw,
         )
+        if self.is_main and (config.event_windows_per_shot or config.event_weight != 1.0):
+            dataset = self.train_ds
+            n_events = sum(len(e) for e in dataset.events)
+            n_shots = sum(1 for e in dataset.events if len(e))
+            self.log(
+                f"[dynamics] ACTUATOR EVENTS: {n_events} NBI/ECH steps in {n_shots}/"
+                f"{len(dataset.shot_ids)} train shots (>= {config.event_nbi_mw} MW NBI, "
+                f">= {config.event_ech_mw} MW ECH); +{config.event_windows_per_shot} "
+                f"event windows per shot, weight {config.event_weight} on "
+                f"{config.event_frames} frames after a step (train only; val unchanged)"
+            )
         if self.use_live and self.is_main:
             dataset = self.train_ds
             n_measured = sum(1 for shot in dataset.shot_ids if shot in self.live_end)
@@ -2192,6 +2328,7 @@ class Trainer:
             f"dropout={model_cfg.dropout} mask_absent={int(self.use_presence)} "
             f"block_forcing={int(config.block_forcing)} "
             f"forecast_depth={config.forecast_depth} act_drop_p={config.act_drop_p} "
+            f"hist_gap_p={config.hist_gap_p} hist_gap_max={config.hist_gap_max} "
             f"(val is ALWAYS scored at gen_mask_p=0 so arms stay comparable)"
         )
         jitter_note = (
@@ -2326,6 +2463,18 @@ class Trainer:
                 f"{restored_lr:.3e}, requested base lr={lr:.3e} -> {current_lr:.3e} "
                 f"at step {start_step}"
             )
+        # The requested weight decay wins too, on the decayed groups only (norms and
+        # biases stay at 0): a fine-tune that raises it must not inherit the old value.
+        restored_wd = [float(g.get("weight_decay", 0.0)) for g in self.optimizer.param_groups]
+        for group in self.optimizer.param_groups:
+            if float(group.get("weight_decay", 0.0)) > 0.0:
+                group["weight_decay"] = float(self.config.weight_decay)
+        current_wd = [float(g.get("weight_decay", 0.0)) for g in self.optimizer.param_groups]
+        if self.is_main and checkpoint is not None and restored_wd != current_wd:
+            self.log(
+                f"[dynamics] WEIGHT DECAY OVERRIDE on resume: {restored_wd} -> "
+                f"{current_wd} at step {start_step}"
+            )
 
     def _setup_history(self):
         Path(self.out_dir).mkdir(parents=True, exist_ok=True)
@@ -2456,7 +2605,8 @@ class Trainer:
         codes = {name: c.to(self.device) for name, c in codes.items()}
         actuators = self._noisy(actuators.to(self.device))
         present = present.to(self.device) if self.use_presence else None
-        live = live.to(self.device) if self.use_live else None
+        weighted = self.use_live or self.config.event_weight != 1.0
+        live = live.to(self.device) if weighted else None
         if profile:
             timer.lap("h2d", sync=True)
         if self.micro_step == 0:
@@ -2481,6 +2631,8 @@ class Trainer:
                 seed_column_drop_p=config.seed_column_drop_p,
                 act_drop_p=config.act_drop_p,
                 forecast_depth=config.forecast_depth,
+                hist_gap_p=config.hist_gap_p,
+                hist_gap_max=config.hist_gap_max,
             )
         if per_modality:
             self.equal_weight_losses.append(
@@ -2729,6 +2881,11 @@ class Trainer:
         """Save the rolling and best checkpoints; True when early stopping fires."""
         payload = self._checkpoint_payload()
         _save_atomically(payload, self.latest_path)
+        snapshot_every = int(self.config.snapshot_every)
+        if snapshot_every > 0 and self.step % snapshot_every == 0:
+            # A frozen copy the rolling latest never overwrites, for offline scoring
+            # (scripts/slurm_stellarai/scorecard_watch.sh).
+            _save_atomically(payload, Path(self.out_dir) / f"dynamics_step{self.step}.pt")
         selected = (generation if self.best_metric is BestMetric.GEN else masked).loss
         if not math.isfinite(selected):
             return False
