@@ -235,7 +235,9 @@ ss_ramp=${SS_RAMP_STEPS} mask_absent=${MASK_ABSENT} block_forcing=${BLOCK_FORCIN
 forecast_depth=${FORECAST_DEPTH:-1} act_drop_p=${ACT_DROP_P:-0} hist_gap_p=${HIST_GAP_P:-0} hist_gap_max=${HIST_GAP_MAX:-10} \
 event_windows=${EVENT_WINDOWS_PER_SHOT:-0} event_weight=${EVENT_WEIGHT:-1} event_frames=${EVENT_FRAMES:-15} \
 seed_drop_p=${SEED_DROP_P:-0} seed_column_drop_p=${SEED_COLUMN_DROP_P:-0} \
-actuator_noise=${ACTUATOR_NOISE:-0} window_jitter=${WINDOW_JITTER:-0}"
+actuator_noise=${ACTUATOR_NOISE:-0} window_jitter=${WINDOW_JITTER:-0} \
+rollout_horizon=${ROLLOUT_HORIZON:-0} rollout_weight=${ROLLOUT_WEIGHT:-1.0} \
+rollout_start_jitter=${ROLLOUT_START_JITTER:-0} rollout_temperature=${ROLLOUT_TEMPERATURE:-1.0}"
   srun -N "$SLURM_JOB_NUM_NODES" -n "$SLURM_NTASKS" -c "$SLURM_CPUS_PER_TASK" \
        --gpus-per-task=1 --gpu-bind="${SRUN_GPU_BIND:-closest}" \
        scripts/slurm_frontier/_srun_rank_wrapper.sh \
@@ -284,6 +286,10 @@ actuator_noise=${ACTUATOR_NOISE:-0} window_jitter=${WINDOW_JITTER:-0}"
        --seed_column_drop_p "${SEED_COLUMN_DROP_P:-0}" \
        --actuator_noise "${ACTUATOR_NOISE:-0}" \
        --window_jitter "${WINDOW_JITTER:-0}" \
+       --rollout_horizon "${ROLLOUT_HORIZON:-0}" \
+       --rollout_weight "${ROLLOUT_WEIGHT:-1.0}" \
+       --rollout_start_jitter "${ROLLOUT_START_JITTER:-0}" \
+       --rollout_temperature "${ROLLOUT_TEMPERATURE:-1.0}" \
        --train_cap "${TRAIN_CAP}" \
        --val_n "${VAL_N}" "${EXTRA[@]}"
 fi

@@ -1804,6 +1804,24 @@ class TrainConfig:
         "augmentation: std of Gaussian noise added to the normalised actuators, on "
         "channels that vary within the window; training only",
     )
+    rollout_horizon: int = _option(
+        0,
+        "frames of an autoregressive rollout trained end to end after the masked "
+        "loss: each frame predicted in one pass from the real seed and the frames "
+        "already generated, fed back as straight-through Gumbel samples, scored "
+        "against the truth. 0 = off. Also adds val rollout_ce",
+    )
+    rollout_weight: float = _option(
+        1.0, "weight of the rollout loss relative to the masked loss"
+    )
+    rollout_start_jitter: int = _option(
+        0,
+        "first rollout frame drawn uniformly in k0..k0+J per micro-batch (J=0: k0, "
+        "where the deployment rollout starts); later starts cost longer prefixes",
+    )
+    rollout_temperature: float = _option(
+        1.0, "temperature of the rollout loss's samples and their softmax"
+    )
     mask_absent: bool = _option(
         False,
         "exclude absent diagnostics from the loss (they stay in the input); builds "
@@ -1935,7 +1953,7 @@ class ValScore(NamedTuple):
 class _PhaseTimer:
     """Wall time per training phase, accumulated on profiled steps only."""
 
-    PHASES = ("data", "h2d", "fb", "sync", "gn", "opt")
+    PHASES = ("data", "h2d", "fb", "rollout", "sync", "gn", "opt")
 
     def __init__(self, device):
         self.cuda = device.type == "cuda"
@@ -1964,7 +1982,9 @@ class _PhaseTimer:
         s = self.seconds
         return (
             f" t={self.total():.1f}s(data {s['data']:.1f} h2d {s['h2d']:.2f} "
-            f"fb {s['fb']:.1f} sync {s['sync']:.2f} gn {s['gn']:.2f} "
+            f"fb {s['fb']:.1f}"
+            + (f" rollout {s['rollout']:.1f}" if s["rollout"] else "")
+            + f" sync {s['sync']:.2f} gn {s['gn']:.2f} "
             f"opt {s['opt']:.2f})"
         )
 
@@ -2342,6 +2362,14 @@ class Trainer:
             f"actuator_noise={config.actuator_noise} "
             f"window_jitter={config.window_jitter}{jitter_note}"
         )
+        if config.rollout_horizon:
+            log(
+                f"[dynamics] ROLLOUT LOSS ON: horizon={config.rollout_horizon} "
+                f"weight={config.rollout_weight} start=k0..k0+"
+                f"{config.rollout_start_jitter} temperature="
+                f"{config.rollout_temperature} (straight-through Gumbel, gradients "
+                f"through the chain); val adds rollout_ce from k0"
+            )
         world_size, accum = self.ddp.world_size, config.accum_steps
         log(
             f"[dynamics] batch: micro={config.batch_size} x ranks={world_size} "
@@ -2569,7 +2597,9 @@ class Trainer:
         # accum_steps.
         self.micro_step = 0
         self.accumulated_loss = 0.0
+        self.accumulated_rollout = 0.0
         self.equal_weight_losses = []
+        self.val_rollout = None
         # Profiling only on logged steps, which already synchronise for the norm.
         self.timer = _PhaseTimer(self.device)
         self.model.train()
@@ -2642,6 +2672,23 @@ class Trainer:
         self.accumulated_loss += float(loss.item())
         if profile:
             timer.lap("fb")
+        if config.rollout_horizon:
+            # A separate backward, so the two graphs never coexist in memory.
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                rollout = self.model.rollout_loss(
+                    codes,
+                    actuators,
+                    config.rollout_horizon,
+                    start=self._rollout_start(codes),
+                    temperature=config.rollout_temperature,
+                    present=present,
+                    live=live,
+                    mod_weights=self.mod_weights,
+                )
+            (config.rollout_weight * rollout / config.accum_steps).backward()
+            self.accumulated_rollout += float(rollout.item())
+            if profile:
+                timer.lap("rollout")
         self.micro_step += 1
         if self.micro_step < config.accum_steps:
             timer.mark()
@@ -2650,6 +2697,16 @@ class Trainer:
         grad_norm = self._optimizer_step(profile)
         self.step += 1
         return self._after_step(grad_norm)
+
+    def _rollout_start(self, codes) -> int:
+        """First generated frame of this micro-batch's rollout loss."""
+        k0 = self.model_cfg.k0_seed
+        n_frames = codes[self.model_cfg.modalities[0].name].shape[1]
+        config = self.config
+        latest = min(
+            k0 + config.rollout_start_jitter, n_frames - config.rollout_horizon
+        )
+        return random.randint(k0, max(k0, latest))
 
     def _noisy(self, actuators: torch.Tensor) -> torch.Tensor:
         """Add the actuator-noise augmentation to channels varying in the window.
@@ -2710,7 +2767,15 @@ class Trainer:
             generation = self._validate(
                 mask_ratio=1.0, history_frames=self.model_cfg.k0_seed
             )
+            if config.rollout_horizon:
+                self.val_rollout = self._validate_rollout()
         train_loss = self.accumulated_loss / max(1, config.accum_steps)
+        self.train_rollout = (
+            self.accumulated_rollout / max(1, config.accum_steps)
+            if config.rollout_horizon
+            else None
+        )
+        self.accumulated_rollout = 0.0
         equal_weight = (
             sum(self.equal_weight_losses) / len(self.equal_weight_losses)
             if self.equal_weight_losses
@@ -2781,6 +2846,49 @@ class Trainer:
             {name: sums[name] / counts[name] for name in sorted(sums)},
         )
 
+    def _validate_rollout(self) -> ValScore:
+        """Equal-weight rollout cross-entropy from ``k0`` over the fixed windows.
+
+        Same windows and fixed noise at every evaluation; unlike gen_ce, every
+        frame after the first is conditioned on the model's own samples.
+        """
+        if not self.val_batches:
+            return ValScore(float("nan"), {})
+        self.model.eval()
+        generator = torch.Generator(device=self.device)
+        generator.manual_seed(_VALIDATION_SEED)
+        total, sums = 0.0, {}
+        with (
+            torch.no_grad(),
+            torch.autocast(
+                device_type="cuda",
+                dtype=torch.bfloat16,
+                enabled=self.device.type == "cuda",
+                cache_enabled=False,
+            ),
+        ):
+            for codes, actuators, present, live in self.val_batches:
+                per_modality: Dict[str, float] = {}
+                total += float(
+                    self.model.rollout_loss(
+                        {name: c.to(self.device) for name, c in codes.items()},
+                        actuators.to(self.device),
+                        self.config.rollout_horizon,
+                        generator=generator,
+                        temperature=self.config.rollout_temperature,
+                        present=present.to(self.device) if self.use_presence else None,
+                        live=live.to(self.device) if self.use_live else None,
+                        per_modality=per_modality,
+                    )
+                )
+                for name, value in per_modality.items():
+                    sums.setdefault(name, []).append(value)
+        self.model.train()
+        return ValScore(
+            total / len(self.val_batches),
+            {name: sum(v) / len(v) for name, v in sorted(sums.items())},
+        )
+
     def _log_train_step(self, train_loss, equal_weight, grad_norm):
         memory = ""
         if self.device.type == "cuda":
@@ -2794,13 +2902,20 @@ class Trainer:
         lr = self.scheduler.get_last_lr()[0]
         self.log(
             f"[dynamics] step {self.step}/{self.config.steps}{norm} "
-            f"loss={train_loss:.4f} ss={self.ss_fraction:.3f} lr={lr:.2e}{memory}"
+            f"loss={train_loss:.4f}"
+            + (
+                f" rollout={self.train_rollout:.4f}"
+                if self.train_rollout is not None
+                else ""
+            )
+            + f" ss={self.ss_fraction:.3f} lr={lr:.2e}{memory}"
             f"{self.timer.summary()}"
         )
         record = {
             "step": self.step,
             "loss": train_loss,
             "loss_eqw": equal_weight,
+            "rollout_loss": self.train_rollout,
             "ss": self.ss_fraction,
             "grad_norm": grad_norm,
             "t_total": round(self.timer.total(), 3),
@@ -2817,6 +2932,11 @@ class Trainer:
             f"gen_ce={generation.loss:.4f} (gap {generation.loss - masked.loss:+.4f}; "
             f"selecting on {self.best_metric}; EQUAL-WEIGHT metric)"
         )
+        if self.val_rollout is not None:
+            self.log(
+                f"[dynamics] step {self.step} VAL "
+                f"rollout_ce={self.val_rollout.loss:.4f} (horizon {self.config.rollout_horizon} from k0, own samples)"
+            )
         per_modality = generation.per_modality
         if per_modality:
             worst_first = sorted(per_modality, key=lambda name: -per_modality[name])
@@ -2832,6 +2952,14 @@ class Trainer:
                 "gen_loss": generation.loss,
                 "val_permod": masked.per_modality,
                 "gen_permod": generation.per_modality,
+                **(
+                    {
+                        "rollout_val_loss": self.val_rollout.loss,
+                        "rollout_val_permod": self.val_rollout.per_modality,
+                    }
+                    if self.val_rollout is not None
+                    else {}
+                ),
             },
         )
         _render_loss_curve(self.history_path, Path(self.out_dir) / "loss_curve.png")
@@ -2866,6 +2994,10 @@ class Trainer:
             "cfg_seed_column_drop_p": float(config.seed_column_drop_p),
             "cfg_actuator_noise": float(config.actuator_noise),
             "cfg_window_jitter": int(config.window_jitter),
+            "cfg_rollout_horizon": int(config.rollout_horizon),
+            "cfg_rollout_weight": float(config.rollout_weight),
+            "cfg_rollout_start_jitter": int(config.rollout_start_jitter),
+            "cfg_rollout_temperature": float(config.rollout_temperature),
             "cfg_depth": config.depth,
             "cfg_d_model": config.d_model,
             "cfg_n_heads": model_cfg.n_heads,

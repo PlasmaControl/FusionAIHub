@@ -832,6 +832,115 @@ def test_actuator_dropout_and_deep_forecasts_train_every_parameter():
         act_drop_p=0.5, forecast_depth=3,
     )
     assert torch.isfinite(loss)
+
+
+def test_straight_through_sample_is_one_hot_with_a_softmax_gradient():
+    from tokamak_foundation_model.ignite.maskgit import _straight_through_sample
+
+    logits = torch.randn(4, 7, requires_grad=True)
+    weights = _straight_through_sample(logits, 1.0, torch.Generator().manual_seed(0))
+    assert torch.allclose(weights.sum(-1), torch.ones(4))
+    assert torch.equal(weights.detach(), (weights.detach() > 0.5).float())
+    (weights * torch.randn(4, 7)).sum().backward()
+    assert logits.grad.abs().sum() > 0
+
+
+def test_embedded_codes_match_the_code_lookup():
+    cfg = _btf_cfg()
+    tok = MaskGITDynamics(cfg).backbone.tok
+    codes = _codes(cfg, 2, cfg.max_frames, torch.Generator().manual_seed(0))
+    vectors = {
+        m.name: tok.soft_code_vectors(
+            m.name, torch.nn.functional.one_hot(codes[m.name], m.codebook_size).float()
+        )
+        for m in cfg.modalities
+    }
+    assert torch.allclose(tok.embed(vectors), tok.embed(codes), atol=1e-6)
+
+
+def _spy_rollout(monkeypatch, model):
+    """Record the per-step logits and the sampled codes of a rollout loss."""
+    import tokamak_foundation_model.ignite.maskgit as maskgit_module
+
+    tok, seen = model.backbone.tok, {"logits": [], "samples": []}
+    logits, sample = tok.logits, maskgit_module._straight_through_sample
+
+    def spy_logits(hidden):
+        out = logits(hidden)
+        seen["logits"].append(out)
+        return out
+
+    def spy_sample(frame_logits, temperature, generator):
+        weights = sample(frame_logits, temperature, generator)
+        seen["samples"].append(weights.argmax(-1))
+        return weights
+
+    monkeypatch.setattr(tok, "logits", spy_logits)
+    monkeypatch.setattr(maskgit_module, "_straight_through_sample", spy_sample)
+    return seen
+
+
+def test_rollout_loss_forward_is_an_exact_rollout(monkeypatch):
+    """Step j must see the real seed, the hard codes sampled at steps < j and an
+    all-[MASK] frame: the condition of generate_frame's first decoding step."""
+    torch.manual_seed(0)
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg).eval()
+    codes = _codes(cfg, 2, cfg.max_frames, torch.Generator().manual_seed(1))
+    act = torch.randn(2, cfg.max_frames, 6)
+    seen = _spy_rollout(monkeypatch, model)
+    k0, horizon = cfg.k0_seed, 3
+    with torch.no_grad():
+        model.rollout_loss(
+            codes, act, horizon, generator=torch.Generator().manual_seed(2)
+        )
+    order = [m.name for m in cfg.modalities]
+    sampled = [
+        dict(zip(order, seen["samples"][j * len(order) : (j + 1) * len(order)]))
+        for j in range(horizon - 1)
+    ]
+    for j in range(horizon):
+        prefix = {
+            m.name: torch.cat(
+                [codes[m.name][:, :k0]]
+                + [sampled[i][m.name] for i in range(j)]
+                + [torch.full((2, 1, m.n_tok), m.codebook_size)],
+                dim=1,
+            )
+            for m in cfg.modalities
+        }
+        with torch.no_grad():
+            heads = model.backbone.tok.heads
+            hidden = model.backbone.encode(prefix, act[:, : k0 + j + 1])[:, -1:]
+            for m, (s, e) in zip(cfg.modalities, cfg.modality_token_slices()):
+                expected = heads[m.name](hidden[:, :, s:e])
+                assert torch.allclose(
+                    seen["logits"][j][m.name], expected, atol=1e-5
+                ), (j, m.name)
+
+
+def test_rollout_loss_trains_earlier_steps_through_the_chain(monkeypatch):
+    torch.manual_seed(0)
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg).train()
+    codes = _codes(cfg, 2, cfg.max_frames, torch.Generator().manual_seed(1))
+    act = torch.randn(2, cfg.max_frames, 6)
+    seen = _spy_rollout(monkeypatch, model)
+    loss = model.rollout_loss(codes, act, 2, generator=torch.Generator().manual_seed(2))
+    assert torch.isfinite(loss)
+    first, second = seen["logits"]
+    k0 = cfg.k0_seed
+    second_ce = sum(
+        torch.nn.functional.cross_entropy(
+            second[m.name].reshape(-1, m.codebook_size),
+            codes[m.name][:, k0 + 1].reshape(-1),
+        )
+        for m in cfg.modalities
+    )
+    grads = torch.autograd.grad(
+        second_ce, [first[m.name] for m in cfg.modalities], retain_graph=True
+    )
+    assert all(g.abs().sum() > 0 for g in grads)  # step 2's error reaches step 1
     loss.backward()
     without_grad = [n for n, p in model.named_parameters() if p.grad is None]
     assert not without_grad, without_grad
@@ -1051,3 +1160,11 @@ def test_history_gap_hides_a_stretch_and_trains_every_parameter():
     loss.backward()
     without_grad = [n for n, p in model.named_parameters() if p.grad is None]
     assert not without_grad, without_grad
+
+
+def test_rollout_loss_rejects_a_horizon_past_the_window():
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg)
+    codes = _codes(cfg, 1, cfg.max_frames)
+    with pytest.raises(ValueError, match="outside"):
+        model.rollout_loss(codes, torch.randn(1, cfg.max_frames, 6), cfg.n_predict + 1)

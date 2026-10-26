@@ -21,6 +21,9 @@
 #   next leg: add  -d afterany:$J
 # Any variable below can be overridden with --export=ALL,VAR=value (NO commas in values --
 # sbatch --export splits on commas; comma-bearing pins therefore live in this file).
+# Fork arm, e.g. the rollout loss on top of ss75g_live (first leg copies WARM_FROM, later legs resume):
+#   --export=ALL,OUT_DIR=<runs>/ss75g_live_unroll,WARM_FROM=<runs>/ss75g_live,IGNITE_ACT_GLOBAL=<act_global>,
+#            WINDOW_SAMPLE=live,VAL_WINDOW_SAMPLE=first,ROLLOUT_HORIZON=8
 # Rollout curve point: sbatch -N 1 --ntasks-per-node=8 --gres=gpu:8 -t 02:00:00 -p batch \
 #   --export=ALL,RUN=ss75full scripts/slurm_frontier/rollout15_examples.sh
 # =====================================================================================
@@ -52,6 +55,12 @@ export FORECAST_DEPTH=${FORECAST_DEPTH:-1} ACT_DROP_P=${ACT_DROP_P:-0}
 # on channels that vary in the window. WINDOW_JITTER widens WINDOW_SAMPLE=first to starts 0..9+J.
 export SEED_DROP_P=${SEED_DROP_P:-0} SEED_COLUMN_DROP_P=${SEED_COLUMN_DROP_P:-0}
 export ACTUATOR_NOISE=${ACTUATOR_NOISE:-0} WINDOW_JITTER=${WINDOW_JITTER:-0}
+# --- rollout loss (0 = off): after the masked loss, unroll ROLLOUT_HORIZON frames from the real seed,
+# each predicted in one pass from the seed + the frames already generated, fed back as straight-through
+# Gumbel samples (gradients through the chain), each scored against the truth. Starts at k0, or
+# uniformly in k0..k0+ROLLOUT_START_JITTER. Adds val rollout_ce. ROLLOUT_WEIGHT scales it vs masked.
+export ROLLOUT_HORIZON=${ROLLOUT_HORIZON:-0} ROLLOUT_WEIGHT=${ROLLOUT_WEIGHT:-1.0}
+export ROLLOUT_START_JITTER=${ROLLOUT_START_JITTER:-0} ROLLOUT_TEMPERATURE=${ROLLOUT_TEMPERATURE:-1.0}
 # --- data / windows / split ---
 export CACHE_DIR=${CACHE_DIR:-/lustre/orion/fus187/proj-shared/models/ignite_prod_v4/frame_codes}
 export LIVE_END_JSON=${LIVE_END_JSON:-/lustre/orion/fus187/proj-shared/ps9551/Flow/FusionAIHub/eval_runs/tend_all.json}
@@ -75,5 +84,19 @@ export OUT_DIR=${OUT_DIR:-/lustre/orion/fus187/proj-shared/models/ignite_prod_v4
 # --- the standing example shots: in BOTH train and val (--pin_val would EXCLUDE them from training) ---
 export PIN_BOTH="190729,190735,190736"
 export PIN_TRAIN="190726,190727,190728,190730,190731,190732,190733,190734,190737,190738,190739"
+
+# --- warm start (fork): WARM_FROM = a run dir; its dynamics_latest.pt and split_shots.json seed OUT_DIR
+# once. Later legs find OUT_DIR/dynamics_latest.pt and resume from it; WARM_FROM is then ignored.
+WARM_FROM=${WARM_FROM:-}
+if [ -n "$WARM_FROM" ] && [ ! -f "$OUT_DIR/dynamics_latest.pt" ]; then
+  for name in dynamics_latest.pt split_shots.json; do
+    [ -f "$WARM_FROM/$name" ] || { echo "[launch] WARM_FROM=$WARM_FROM has no $name" >&2; exit 1; }
+  done
+  mkdir -p "$OUT_DIR"
+  cp "$WARM_FROM/split_shots.json" "$OUT_DIR/"
+  cp "$WARM_FROM/dynamics_latest.pt" "$OUT_DIR/dynamics_latest.pt.tmp" \
+    && mv "$OUT_DIR/dynamics_latest.pt.tmp" "$OUT_DIR/dynamics_latest.pt"
+  echo "[launch] warm start: $WARM_FROM -> $OUT_DIR"
+fi
 
 exec bash scripts/slurm_frontier/train_dynamics.sh

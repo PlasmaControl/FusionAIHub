@@ -110,6 +110,34 @@ def _cosine_keep_fractions(n_steps: int) -> list:
     return [math.cos(math.pi / 2 * (i + 1) / n_steps) for i in range(n_steps)]
 
 
+def _straight_through_sample(logits, temperature: float, generator):
+    """One-hot Gumbel-max samples with the gradient of the Gumbel softmax.
+
+    Parameters
+    ----------
+    logits : torch.Tensor of shape (..., codebook)
+        Unnormalised log-probabilities.
+    temperature : float
+        Temperature of both the sample and the softmax; must be positive.
+    generator : torch.Generator or None
+        Source of randomness.
+
+    Returns
+    -------
+    weights : torch.Tensor of shape (..., codebook)
+        Exactly one-hot in value; differentiable through the softmax.
+    """
+    if temperature <= 0.0:
+        raise ValueError("straight-through sampling needs a positive temperature")
+    uniform = torch.rand(
+        logits.shape, generator=generator, device=logits.device
+    ).clamp_(1e-9, 1.0 - 1e-9)
+    perturbed = (logits.float() - torch.log(-torch.log(uniform))) / temperature
+    soft = perturbed.softmax(dim=-1)
+    hard = F.one_hot(perturbed.argmax(dim=-1), logits.shape[-1]).to(soft.dtype)
+    return hard - soft.detach() + soft
+
+
 class _CategoricalOutput:
     """Codebook classifier head: logits over the modality's codes."""
 
@@ -640,7 +668,8 @@ class MaskGITDynamics(nn.Module):
                 gen_mask_p=gen_mask_p,
             )
             if dropped is not None:
-                history, query = self._hide(history, dropped), self._hide(query, dropped)
+                history = self._hide(history, dropped)
+                query = self._hide(query, dropped)
             history = self._history_gap(history, hist_gap_p, hist_gap_max, generator)
             hidden = self.backbone.encode_block_forcing(
                 history, query, actuators, act_null
@@ -681,6 +710,128 @@ class MaskGITDynamics(nn.Module):
                     total = total + 0.0 * logits.sum()
                     continue
                 losses = self.output.loss(logits, target, label_smoothing, "none")
+                term = (losses * token_weight).sum() / weight_sum
+            weight = 1.0 if mod_weights is None else float(mod_weights.get(m.name, 1.0))
+            total = total + weight * term
+            total_weight += weight
+            if per_modality is not None:
+                per_modality[m.name] = float(term.detach())
+        return total / max(total_weight, 1e-8)
+
+    def rollout_loss(
+        self,
+        codes: Dict[str, torch.Tensor],
+        actuators: torch.Tensor,
+        horizon: int,
+        start: Optional[int] = None,
+        generator: Optional[torch.Generator] = None,
+        temperature: float = 1.0,
+        present: Optional[torch.Tensor] = None,
+        live: Optional[torch.Tensor] = None,
+        mod_weights: Optional[Dict[str, float]] = None,
+        per_modality: Optional[Dict[str, float]] = None,
+    ) -> torch.Tensor:
+        """Cross-entropy of an autoregressive rollout, differentiable through the chain.
+
+        The frames before ``start`` are real. Each of the next ``horizon`` frames is
+        predicted in one pass from all-``[MASK]`` input, conditioned on the real
+        frames and on the frames already generated, as a rollout is. Each
+        prediction is scored against the real frame. The generated frame is a
+        straight-through Gumbel sample: the forward pass feeds back the embedding
+        of a hard code, sampled at ``temperature``, and the backward pass uses the
+        gradient of the softmax, so later errors train earlier predictions.
+
+        Parameters
+        ----------
+        codes : dict of str to torch.LongTensor of shape (B, F, n_tok)
+            Real codes, the seed and the targets.
+        actuators : torch.Tensor of shape (B, F, actuator_dim)
+            Actuators of each frame.
+        horizon : int
+            Frames generated and scored.
+        start : int, default=None
+            First generated frame; ``None`` uses ``cfg.k0_seed``.
+        generator : torch.Generator, default=None
+            Source of the Gumbel noise.
+        temperature : float, default=1.0
+            Temperature of the samples and of their softmax.
+        present, live, mod_weights, per_modality
+            As in :meth:`training_loss`; ``live`` covers the whole window.
+
+        Returns
+        -------
+        loss : torch.Tensor of shape ()
+            Weighted mean over modalities of the per-modality mean cross-entropy.
+
+        Notes
+        -----
+        Every step re-encodes the whole prefix, so a step costs a forward pass over
+        ``start + j + 1`` frames; there is no key-value cache to differentiate
+        through.
+        """
+        if self.backbone.tok.latent_head:
+            raise ValueError("rollout_loss supports the categorical head only")
+        cfg, tok = self.cfg, self.backbone.tok
+        reference = codes[cfg.modalities[0].name]
+        batch, n_frames, _ = reference.shape
+        start = int(cfg.k0_seed if start is None else start)
+        if not (0 < start and start + int(horizon) <= n_frames):
+            raise ValueError(
+                f"rollout start {start} + horizon {horizon} outside {n_frames} frames"
+            )
+        device = reference.device
+        history = {
+            m.name: tok.code_vectors(m.name, codes[m.name][:, :start])
+            for m in cfg.modalities
+        }
+        query = {
+            m.name: tok.code_vectors(
+                m.name,
+                torch.full(
+                    (batch, 1, m.n_tok), self._mask_id(m.name), device=device
+                ),
+            )
+            for m in cfg.modalities
+        }
+        step_logits = {m.name: [] for m in cfg.modalities}
+        for offset in range(int(horizon)):
+            frame = start + offset
+            inputs = {
+                name: torch.cat([history[name], query[name]], dim=1) for name in history
+            }
+            hidden = self.backbone.encode(inputs, actuators[:, : frame + 1])
+            logits = tok.logits(hidden[:, -1:])
+            for m in cfg.modalities:
+                frame_logits = logits[m.name]
+                step_logits[m.name].append(frame_logits)
+                if offset + 1 < horizon:
+                    vectors = tok.soft_code_vectors(
+                        m.name,
+                        _straight_through_sample(frame_logits, temperature, generator),
+                    )
+                    history[m.name] = torch.cat([history[m.name], vectors], dim=1)
+        stop = start + int(horizon)
+        window_live = None if live is None else live[:, start:stop]
+        total = reference.new_zeros((), dtype=torch.float32)
+        total_weight = 0.0
+        for index, m in enumerate(cfg.modalities):
+            logits = torch.cat(step_logits[m.name], dim=1)
+            target = codes[m.name][:, start:stop]
+            every = torch.ones_like(target, dtype=torch.bool)
+            losses = F.cross_entropy(
+                logits.reshape(-1, logits.shape[-1]).float(),
+                target.reshape(-1),
+                reduction="none",
+            )
+            token_weight = self._token_weights(every, index, present, window_live)
+            if token_weight is None:
+                term = losses.mean()
+            else:
+                token_weight = token_weight.to(losses.dtype)
+                weight_sum = token_weight.sum()
+                if not bool(weight_sum > 0):
+                    total = total + 0.0 * logits.sum()
+                    continue
                 term = (losses * token_weight).sum() / weight_sum
             weight = 1.0 if mod_weights is None else float(mod_weights.get(m.name, 1.0))
             total = total + weight * term

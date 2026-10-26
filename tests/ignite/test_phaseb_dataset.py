@@ -557,3 +557,15 @@ def test_event_windows_and_weights(tmp_path, monkeypatch):
         hit |= (frames >= e) & (frames < e + 2)
     assert bool(hit.any())
     assert torch.equal(live, torch.where(hit, torch.tensor(4.0), torch.tensor(1.0)))
+
+
+def test_phase_timer_knows_every_phase_the_trainer_laps():
+    """A lap on an unknown phase raises KeyError on the first profiled step."""
+    import inspect
+    import re
+
+    lapped = set(re.findall(r'lap\("(\w+)"', inspect.getsource(td.Trainer)))
+    assert lapped <= set(td._PhaseTimer.PHASES), lapped - set(td._PhaseTimer.PHASES)
+    timer = td._PhaseTimer(torch.device("cpu"))
+    timer.lap("rollout")
+    assert "rollout" in timer.summary()
