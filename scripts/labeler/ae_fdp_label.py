@@ -554,7 +554,7 @@ def cmd_infer(args) -> None:
 
     sys.path.insert(0, str(REPO / "src"))
     sys.path.insert(0, str(REPO / "scripts/labeler"))
-    from labeler.ae import full, gpu
+    from labeler.ae import full, gpu, lines
     from labeler.models.d3d_ae_activity_seldnet import spec as S
     import ae_gold_extend as G
 
@@ -605,6 +605,8 @@ def cmd_infer(args) -> None:
         module.load_state_dict(blob["state_dict"])
         module = module.to(device).eval()
         run_on += f"; checkpoint {args.checkpoint}"
+    if args.notch:
+        run_on += "; fixed-frequency lines notched (labeler.ae.lines.notch_shot_torch)"
     spec_dir = Path(args.spec_dir) if args.spec_dir else None
     if spec_dir:
         spec_dir.mkdir(parents=True, exist_ok=True)
@@ -646,7 +648,10 @@ def cmd_infer(args) -> None:
             t = time.perf_counter()
             sig, t0_ms, fs_hz = gpu.input_signals(co2, device=device)
             spec = gpu.model_input(sig)
-            out = gpu.run_windows(module, spec.transpose(1, 2).contiguous(),
+            net_in = spec
+            if args.notch:  # (chords, bins, columns) -> (columns, chords, bins) and back
+                net_in = lines.notch_shot_torch(spec.permute(2, 0, 1))[0].permute(1, 2, 0)
+            out = gpu.run_windows(module, net_in.transpose(1, 2).contiguous(),
                                   window=S.WINDOW_FRAMES, context=S.CONTEXT_FRAMES)
             logit = out[:, 0].float().cpu().numpy()
             # (columns, chords, bins) float16: a training window is one contiguous block
@@ -658,7 +663,7 @@ def cmd_infer(args) -> None:
             continue
         t = time.perf_counter()
         n = int(sig.shape[1])
-        del sig, spec, out
+        del sig, spec, net_in, out
         t_ms = full.frame_times(n, t0_ms, fs_hz)
         if spec_dir is not None:
             meta = dict(t_ms=t_ms, end_ms=float(item["end_ms"]), plasma_end_ms=float(item["plasma_end_ms"]),
@@ -681,7 +686,8 @@ def cmd_infer(args) -> None:
             np.savez(fh, t_first_ms=float(t_ms[0]), hop_ms=hop, n_columns=t_ms.size,
                      prob=prob.astype(np.float32), end_ms=co2["end_ms"], plasma_end_ms=float(item["plasma_end_ms"]),
                      fs_hz=fs_hz, fs_native_hz=float(item["fs_hz"]), window_ms=np.array([w0, w1]),
-                     spans_ms=np.array(spans, dtype=np.int32).reshape(-1, 2), run_on=run_on, job=tag)
+                     spans_ms=np.array(spans, dtype=np.int32).reshape(-1, 2), run_on=run_on, job=tag,
+                     notch=bool(args.notch))
         os.replace(tmp, work / f"{shot}.npz")
         for a, b in spans:
             fs_spans.write(f"{shot},{a},{b}\n")
@@ -720,10 +726,10 @@ def cmd_infer(args) -> None:
 # ------------------------------------------------------------------ publish (login node)
 
 
-def read_results():
+def read_results(root: Path | None = None):
     import pandas as pd
 
-    res_dir = Path(ROOT) / "results"
+    res_dir = Path(root or ROOT) / "results"
     shots, spans = [], []
     for f in sorted(res_dir.glob("*.shots.csv")):
         shots.append(pd.read_csv(f, on_bad_lines="skip", dtype={"error": str, "job": str}))
@@ -738,18 +744,25 @@ def read_results():
     return shots, spans
 
 
-def shot_statuses():
-    """(lab, spans, status_of) for the run under ROOT: the labeled rows, their spans, and
-    shot -> (status, note) as ``shots.parquet`` records it ("pending" = not reached yet)."""
-    stage = last_status("stage")
-    extract = last_status("extract")
-    shots, spans = read_results()
+def labeled_results(root: Path | None = None):
+    """(shots, lab, spans) of the run under ``root`` (ROOT): one results row per shot, the labeled
+    ones indexed by shot, and their spans."""
+    shots, spans = read_results(root)
     # The latest labeled row per shot wins; an infer failure counts only where no label exists.
     shots["labeled"] = shots.status.eq("labeled")
     shots = shots.sort_values(["shot", "labeled"]).drop_duplicates("shot", keep="last")
     lab = shots[shots.labeled].set_index("shot")
     spans = spans.merge(lab[["job"]].reset_index(), on=["shot", "job"], how="inner")
     spans = spans[["shot", "t_start_ms", "t_end_ms"]].astype("int32").sort_values(["shot", "t_start_ms"])
+    return shots, lab, spans
+
+
+def shot_statuses():
+    """(lab, spans, status_of) for the run under ROOT: the labeled rows, their spans, and
+    shot -> (status, note) as ``shots.parquet`` records it ("pending" = not reached yet)."""
+    stage = last_status("stage")
+    extract = last_status("extract")
+    shots, lab, spans = labeled_results()
 
     failed = dict(zip(shots.shot[~shots.labeled].astype(int), shots.error[~shots.labeled].astype(str)))
     labeled = set(lab.index.astype(int))
@@ -793,11 +806,19 @@ def cmd_publish(args) -> None:
     cands = pd.read_csv(Path(ROOT) / "candidates.csv")
     lab, spans, status_of = shot_statuses()
     labeled = set(lab.index.astype(int))
+    notched: set[int] = set()
+    if getattr(args, "notch_root", None):  # the relabel with the line notch replaces those shots' labels
+        _, lab2, spans2 = labeled_results(Path(args.notch_root))
+        notched = set(lab2.index.astype(int)) & labeled
+        lab = pd.concat([lab.drop(index=sorted(notched)), lab2.loc[sorted(notched)]]).sort_index()
+        spans = pd.concat([spans[~spans.shot.isin(notched)], spans2[spans2.shot.isin(notched)]],
+                          ignore_index=True).sort_values(["shot", "t_start_ms"], ignore_index=True)
     out_rows = []
     for c in cands.itertuples(index=False):
         st, note = status_of(int(c.shot))
         r = {"shot": int(c.shot), "status": st, "plasma_end_ms": int(c.end_ms),
-             "pbeam": float(c.pbeam) if pd.notna(c.pbeam) else np.nan, "note": note}
+             "pbeam": float(c.pbeam) if pd.notna(c.pbeam) else np.nan, "note": note,
+             "notch": int(c.shot) in notched}
         if st == "labeled":
             L = lab.loc[int(c.shot)]
             r.update(window_start_ms=int(L.window_start_ms), window_end_ms=int(L.window_end_ms),
@@ -1028,7 +1049,8 @@ def meta_json(table, spans, counts) -> dict:
         git = None
     lab = table[table.status == "labeled"]
     assessed = int((lab.window_end_ms - lab.window_start_ms).sum()) if len(lab) else 0
-    return {
+    notched = lab.shot[lab.notch] if "notch" in lab else lab.shot[:0]
+    meta = {
         "name": "ae_seldnet_fdp_1ms",
         "category": "alfven_eigenmode",
         "made_at": now(),
@@ -1038,9 +1060,10 @@ def meta_json(table, spans, counts) -> dict:
         "files": {
             "spans.parquet": "present spans: shot (int32), t_start_ms, t_end_ms (int32, half-open [start, end) on "
                              "the 1 ms grid). Every 1 ms frame of a labeled shot's window not in a span is absent.",
-            "shots.parquet": "one row per candidate shot: status, plasma_end_ms (d3drdb pulse_length), pbeam, and for "
-                             "labeled shots window_start_ms, window_end_ms (the assessed window, half-open), "
-                             "present_ms, n_spans, fs_native_hz, dead_chords, mean_prob",
+            "shots.parquet": "one row per candidate shot: status, plasma_end_ms (d3drdb pulse_length), pbeam, notch "
+                             "(true when the line notch was applied, method.line_notch), and for labeled shots "
+                             "window_start_ms, window_end_ms (the assessed window, half-open), present_ms, n_spans, "
+                             "fs_native_hz, dead_chords, mean_prob",
             f"{GRID_DIR}/<shot // 1000>/<shot>.bin": "the same labels dense, one file a labeled shot: only the "
                                                     "labels, one bit a 1 ms frame (1 present), 8 to a byte, first "
                                                     "frame in the top bit (numpy packbits, big bit order), bit i the "
@@ -1096,17 +1119,33 @@ def meta_json(table, spans, counts) -> dict:
             "Shots after the snapshot's last shot (209026) have no pulse_length and are not candidates.",
         ],
     }
+    if len(notched):
+        meta["method"]["line_notch"] = (
+            f"{len(notched)} shots ({int(notched.min())}-{int(notched.max())}; shots.parquet notch) were labeled "
+            "with fixed-frequency pickup lines notched out of the model input first (labeler.ae.lines: narrow "
+            "runs standing out of the per-chord median spectrum over the whole shot in some chord, retested per "
+            "500 ms block in every chord, interpolated over frame by frame). Before 145000 such lines are common "
+            "and the network reads them as AE: AE called with the beams off for 50 ms or more fell from .3-.7 to "
+            ".01-.14 of that time by era on 15 shots an era, while gold F1 (.857) and silver held-out F1 "
+            "(.913 -> .912) did not move (dev/ae_notch, 2026-11-06)")
+        meta["counts"]["notched"] = len(notched)
+        meta["caveats"].append(
+            "On shots with notch true, a real mode that holds one frequency where a line was found is notched "
+            "with it; lines the detector misses (broad banding, a dead chord's carrier tone) can still read as AE.")
+    return meta
 
 
 def readme(meta: dict) -> str:
     c = meta["counts"]
+    notch_note = (f"\nShots with `notch` true in `shots.parquet` ({c['notched']}) were labeled with pickup lines "
+                  "notched out of the input first (`meta.json` method.line_notch).") if c.get("notched") else ""
     return f"""# AE activity, 1 ms grid, every FDP plasma shot
 
 Model output of `{meta['model']['name']}` ({meta['model']['role']}), thresholded to
 present/absent on a 1 ms grid. Unreviewed. Built {meta['made_at']} by `{meta['made_by']}` (git {meta['git_sha']}).
 
 Candidates {c['candidates']}; labeled {c.get('labeled', 0)}; spans {c['spans']};
-present {c['present_ms'] / 3.6e6:.1f} h of {c['assessed_ms'] / 3.6e6:.1f} h assessed.
+present {c['present_ms'] / 3.6e6:.1f} h of {c['assessed_ms'] / 3.6e6:.1f} h assessed.{notch_note}
 Status counts and caveats: `meta.json`.
 
 ```python
@@ -1175,10 +1214,14 @@ def main(argv=None) -> None:
     i.add_argument("--parts", type=int, default=1, help="processes sharing the GPU (the sbatch runs PARTS)")
     i.add_argument("--spec-dir", default=None,
                    help="also save each shot's model input here (ae_tiers: silver, gold, bronze)")
+    i.add_argument("--notch", action="store_true",
+                   help="notch fixed-frequency pickup lines in the model input first (labeler.ae.lines)")
     i.add_argument("--checkpoint", default=None,
                    help="an AeSeldNet checkpoint to run instead of the stable model (the ae_tiers student)")
     u = sub.add_parser("publish")
     u.add_argument("--out", type=Path, default=OUT)
+    u.add_argument("--notch-root", type=Path, default=None,
+                   help="a relabel run with --notch (NOTCH=1) whose labeled shots replace this root's")
     c = sub.add_parser("coverage")
     c.add_argument("--out", type=Path, required=True, help="the listing (tokamaksi's coverage/processed.txt)")
     c.add_argument("--roots", nargs="+", required=True, help="run roots whose statuses count")

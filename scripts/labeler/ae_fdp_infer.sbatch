@@ -17,7 +17,7 @@
 # Seven DataLoader workers read the next shots' compact CO2 files while the GPU resamples,
 # transforms and runs the network. Writes <root>/work/<shot>.npz and <root>/results/<job>.*.csv,
 # then deletes each shot's CO2 file (KEEP=1 keeps it).
-#   LIST=<root>/batches/bNNNN.csv [KEEP=1] sbatch scripts/labeler/ae_fdp_infer.sbatch
+#   LIST=<root>/batches/bNNNN.csv [KEEP=1] [NOTCH=1] sbatch scripts/labeler/ae_fdp_infer.sbatch
 # GPU rule: inputs are staged by the CPU extract job; the log prints GPU utilisation over the
 # shot loop (nvidia-smi every 0.2 s), gated with python -m labeler.jobstats --job-id <id>.
 set -euo pipefail
@@ -46,6 +46,7 @@ ARGS=(--root "$AE_FDP_ROOT" infer --workers $(( (${SLURM_CPUS_PER_TASK:-16} - PA
 [ -n "${KEEP:-}" ] && ARGS+=(--keep-inputs)
 [ -n "${SPEC_DIR:-}" ] && ARGS+=(--spec-dir "$SPEC_DIR")   # ae_tiers: keep the model input
 [ -n "${CKPT:-}" ] && ARGS+=(--checkpoint "$CKPT")         # ae_tiers student instead of the stable model
+[ -n "${NOTCH:-}" ] && ARGS+=(--notch)                    # pickup lines notched (labeler.ae.lines)
 PIDS=()
 for (( p = 0; p < PARTS; p++ )); do
     "$PY" -u scripts/labeler/ae_fdp_label.py "${ARGS[@]}" --part "$p" &

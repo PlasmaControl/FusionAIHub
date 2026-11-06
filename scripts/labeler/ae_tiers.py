@@ -662,12 +662,20 @@ def cmd_predict(args) -> None:
     todo = [s for s in shots if not (out / f"{s}.npz").exists()]
     print(f"predict {len(todo)} of {len(shots)} shots with {len(models)} models x {len(views)} views "
           f"({', '.join(p.parent.name for p in paths)}) at {now()}", flush=True)
-    atomic_json(out / "meta.json", {"models": [str(p) for p in paths], "views": views, "made_at": now()})
+    atomic_json(out / "meta.json", {"models": [str(p) for p in paths], "views": views, "notch": bool(args.notch),
+                                    "made_at": now()})
     print("LOOP_START", stamp(), flush=True)
     t0 = time.time()
 
+    if args.notch:
+        sys.path.insert(0, str(REPO / "src"))
+        from labeler.ae import lines
+
     def load(s):  # read the next shots while the GPU works on this one
-        return torch.from_numpy(np.load(ROOT / "specs" / f"{s}.npy")).pin_memory()
+        x = np.load(ROOT / "specs" / f"{s}.npy")
+        if args.notch:  # fixed-frequency lines notched (labeler.ae.lines)
+            x = lines.notch_shot(x)[0]
+        return torch.from_numpy(x).pin_memory()
 
     pool = ThreadPoolExecutor(max_workers=4)
     ahead = [pool.submit(load, s) for s in todo[:4]]
@@ -1005,6 +1013,7 @@ def main(argv=None) -> None:
     r.add_argument("--list", default=None)
     r.add_argument("--views", default="id,f-3,f3,c0,c1,c2,c3")
     r.add_argument("--device", default="cuda")
+    r.add_argument("--notch", action="store_true", help="notch fixed-frequency lines first (labeler.ae.lines)")
     f = sub.add_parser("refine")
     f.add_argument("--pred", required=True, help="preds/<name> of the teacher ensemble")
     f.add_argument("--oof", nargs="+", required=True, help="oof dir globs, e.g. teacher_f*")
