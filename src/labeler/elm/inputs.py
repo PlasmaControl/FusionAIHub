@@ -160,9 +160,35 @@ def channels(
     `screen_density=False` retains rejected chords for inference sensitivity;
     scaling, clipping, baselines and coverage remain unchanged.
     """
+    return channels_from_cells(
+        *cells(t_fs_ms, fs, t_int_ms, density), screen_density=screen_density
+    )
+
+
+def cells(
+    t_fs_ms: np.ndarray, fs: np.ndarray, t_int_ms: np.ndarray, density: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """The two records on the 0.1 ms grid: `(fmax, fcount, dmean, dcount)`.
+
+    The compact form `scripts/labeler/elm_fdp_label.py` keeps for every shot;
+    `channels_from_cells` turns it into the model input.
+    """
     n = grid_length(t_fs_ms, t_int_ms)
     fmax, fcount = block_reduce(t_fs_ms, fs, n, "max")
     dmean, dcount = block_reduce(t_int_ms, density, n, "mean")
+    return fmax, fcount, dmean, dcount
+
+
+def channels_from_cells(
+    fmax: np.ndarray,
+    fcount: np.ndarray,
+    dmean: np.ndarray,
+    dcount: np.ndarray,
+    *,
+    screen_density: bool = True,
+) -> np.ndarray:
+    """`channels` of a shot already reduced to the grid by `cells`."""
+    n = fmax.shape[1]
     out = np.zeros((N_CHANNELS, n), dtype=np.float32)
     covered = (fcount > 0) & (dcount > 0)
     level = np.log10(np.maximum(fmax, FS_FLOOR))
