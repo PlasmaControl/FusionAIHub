@@ -16,9 +16,11 @@
 # (scripts/labeler/elm_fdp_label.py infer). DataLoader workers build the next shots' channels
 # while the GPU runs the folds; PARTS processes share the GPU on disjoint shares of the shots.
 #   MODELS=<run dir> [LIST=<root>/batches/bNNNN.csv] sbatch scripts/labeler/elm_fdp_infer.sbatch
+# REPO runs another checkout (a worktree) with the main checkout's pixi env, or LABELER_PIXI_ENV's;
+# INFER_ARGS adds infer arguments (e.g. --keep-heat for an instance run).
 # GPU rule: the log prints GPU utilisation over the shot loop (nvidia-smi every 0.2 s).
 set -euo pipefail
-REPO=/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub
+REPO="${REPO:-/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub}"
 export LABELER_ROOT="${LABELER_ROOT:-$REPO/.cache/labeler}"
 export ELM_FDP_ROOT="${ELM_FDP_ROOT:-$LABELER_ROOT/elm_fdp_1ms}"
 export PYTHONPATH="$REPO/src" LABELER_NO_FETCH=1 PYTHONUNBUFFERED=1
@@ -27,7 +29,7 @@ JOB="${SLURM_JOB_ID:-none}"
 export XDG_CACHE_HOME="$LABELER_ROOT/runs/slurm/cache/$JOB"
 mkdir -p "$XDG_CACHE_HOME"
 cd "$REPO"
-PY="$REPO/.pixi/envs/stellarai/bin/python"
+PY="${LABELER_PIXI_ENV:-/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.pixi/envs/stellarai}/bin/python"
 OUT="$LABELER_ROOT/runs/slurm/elm-fdp-infer_$JOB.out"
 FINE="$LABELER_ROOT/runs/slurm/$JOB.nvsmi_fine.csv"
 echo "job $JOB on $(hostname) at $(date -Is): models $MODELS, list ${LIST:-all}, root $ELM_FDP_ROOT"
@@ -39,6 +41,7 @@ PARTS="${PARTS:-2}"
 ARGS=(--root "$ELM_FDP_ROOT" infer --models "$MODELS" --parts "$PARTS"
       --workers $(( (${SLURM_CPUS_PER_TASK:-16} - PARTS) / PARTS )))
 [ -n "${LIST:-}" ] && ARGS+=(--list "$LIST")
+[ -n "${INFER_ARGS:-}" ] && read -ra EXTRA <<< "$INFER_ARGS" && ARGS+=("${EXTRA[@]}")
 PIDS=()
 for (( p = 0; p < PARTS; p++ )); do
     "$PY" -u scripts/labeler/elm_fdp_label.py "${ARGS[@]}" --part "$p" &

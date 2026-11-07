@@ -24,6 +24,9 @@ Subcommands, each resumable (a shot already done is skipped):
     models of ``--models`` (a run folder in the ``labeler.elm.serve.load_models`` layout:
     ``fold<k>/model.pt``, ``fold<k>/fold.json`` with its threshold, ``run.json``). One shot at
     a time on its whole record: the network's GroupNorm sees the whole input, as in serving.
+    An instance run (``labeler.elm.inst.InstNet`` folds, e.g. ``round4/elm/inst/inst2``) takes
+    presence from its occupancy head at the mean ``occ_threshold`` and also writes the onsets of
+    the decoding its key record served (``results/<job>.onsets.csv``, ``onsets_ms`` in ``work/``).
 ``publish`` (login node): the label folder ``--out``, as ``ae_fdp_label.py publish`` (the
     deployment for the all-shot root, ``dev/edge_localized_mode/<root name>`` for any other).
 Coverage: ``ae_fdp_label.py coverage`` reads the published folder, not this root.
@@ -404,11 +407,46 @@ def window_calls(prob: np.ndarray, valid_ms: np.ndarray, end_ms: float, threshol
     return w0, w1, call
 
 
+def load_inst_models(run_dir: Path, device) -> tuple[list, list[float], dict]:
+    """An instance run's five fold models (`labeler.elm.inst.InstNet`, eval mode), their
+    occupancy thresholds and the decoding its key record served (`key2_record.json`'s
+    primary, else `key_record.json`'s): the onset threshold of the five-model mean
+    heatmap, the peaks' separation and each event's length."""
+    import torch
+
+    from labeler.elm import inst
+
+    run_dir = Path(run_dir)
+    models, occ = [], []
+    for k in range(5):
+        info = json.loads((run_dir / f"fold{k}/fold.json").read_text())
+        model = inst.InstNet(dropout=info["config"]["dropout"])
+        state = torch.load(run_dir / f"fold{k}/model.pt", map_location="cpu", weights_only=True)
+        model.load_state_dict(state)
+        models.append(model.to(device).eval())
+        occ.append(float(info["occ_threshold"]))
+    for name in ("key2_record.json", "key_record.json"):
+        if (run_dir / name).is_file():
+            record = json.loads((run_dir / name).read_text())
+            served = dict(record["decodings"][record["primary"]], name=record["primary"], record=name)
+            break
+    else:
+        raise SystemExit(f"{run_dir} has no key record naming the decoding it served")
+    if served.get("gate") is not None:
+        raise SystemExit(f"{served['name']} is gated by occupancy; infer decodes only ungated runs")
+    return models, occ, served
+
+
+def is_inst_run(run_dir: Path) -> bool:
+    """An instance run (`InstNet` folds with an onset threshold), not an `ElmUNet` one."""
+    return "onset_threshold" in json.loads((Path(run_dir) / "fold0/fold.json").read_text())
+
+
 def cmd_infer(args) -> None:
     import torch
     from torch.utils.data import DataLoader, Dataset
 
-    from labeler.elm import inputs, net, serve
+    from labeler.elm import inputs, inst, net, serve
 
     in_dir, work, res_dir = ROOT / "inputs", ROOT / "work", ROOT / "results"
     work.mkdir(parents=True, exist_ok=True)
@@ -449,13 +487,27 @@ def cmd_infer(args) -> None:
                     "valid_ms": torch.from_numpy(valid_ms), **meta}  # the loader would make it a tensor anyway
 
     device = torch.device(args.device)
-    models, thresholds = serve.load_models(Path(args.models), device)
+    served = None
+    if is_inst_run(Path(args.models)):
+        models, thresholds, served = load_inst_models(Path(args.models), device)
+        print(f"instance run: presence from the occupancy head; onsets by {served['name']} "
+              f"({served['record']}): heatmap >= {served['onset_threshold']}, "
+              f"{served['min_sep_ms']} ms apart", flush=True)
+    else:
+        models, thresholds = serve.load_models(Path(args.models), device)
     threshold = float(np.mean(thresholds))
     loader = DataLoader(Inputs(), batch_size=None, num_workers=args.workers,
                         prefetch_factor=4 if args.workers else None, pin_memory=device.type == "cuda")
     spans_csv, shots_csv = res_dir / f"{tag}.spans.csv", res_dir / f"{tag}.shots.csv"
     new = not shots_csv.exists()
     f_spans, f_shots = open(spans_csv, "a"), open(shots_csv, "a")
+    f_onsets = None
+    if served is not None:
+        onsets_csv = res_dir / f"{tag}.onsets.csv"
+        new_onsets = not onsets_csv.exists()
+        f_onsets = open(onsets_csv, "a")
+        if new_onsets:
+            f_onsets.write("shot,t_ms\n")
     if new:
         f_spans.write("shot,t_start_ms,t_end_ms\n")
         f_shots.write("shot,status,window_start_ms,window_end_ms,present_ms,n_spans,plasma_end_ms,"
@@ -470,7 +522,14 @@ def cmd_infer(args) -> None:
                 continue
             try:
                 xb = item["x"].to(device, non_blocking=True)[None]
-                prob = torch.stack([torch.sigmoid(m(xb))[0, 0] for m in models]).mean(0)
+                heat = None
+                if served is None:
+                    prob = torch.stack([torch.sigmoid(m(xb))[0, 0] for m in models]).mean(0)
+                else:
+                    outs = [m(xb) for m in models]
+                    prob = torch.stack([torch.sigmoid(o[0][0]) for o in outs]).mean(0)
+                    heat = torch.stack([torch.sigmoid(o[1][0]) for o in outs]).mean(0)
+                    heat = heat[: item["n_ms"] * inputs.CELLS_PER_MS].float().cpu().numpy()
                 prob = prob[: item["n_ms"]].float().cpu().numpy()
             except (RuntimeError, ValueError) as error:
                 f_shots.write(f"{shot},infer_failed,,,,,,,,,{tag},"
@@ -481,15 +540,33 @@ def cmd_infer(args) -> None:
             spans = [(w0 + a, w0 + b) for a, b in ae.runs(call)]
             off = int(-inputs.GRID0_MS)
             mean_prob = float(prob[off + w0:off + w1].mean()) if w1 > w0 else float("nan")
+            extra = {}
+            if served is not None:
+                # Onsets in the assessed window, each in a millisecond whose input is valid.
+                t = inst.time_of(inst.peaks(heat, served["onset_threshold"], served["min_sep_ms"]))
+                k = np.floor(t).astype(int)
+                valid = item["valid_ms"].numpy()
+                inside = (k >= w0) & (k < w1)
+                inside[inside] = valid[off + k[inside]]
+                extra = {"onsets_ms": t[inside].astype(np.float32),
+                         "onset_threshold": served["onset_threshold"],
+                         "min_sep_ms": served["min_sep_ms"],
+                         "event_duration_ms": served["event_duration_ms"],
+                         "decoding": served["name"]}
+                if args.keep_heat:
+                    extra["heat"] = heat.astype(np.float16)
             tmp = work / f".{shot}.{os.getpid()}.npz.tmp"
             with open(tmp, "wb") as fh:
                 np.savez(fh, prob=prob.astype(np.float16), t_first_ms=inputs.GRID0_MS, hop_ms=1.0,
                          threshold=threshold, window_ms=np.array([w0, w1]),
                          spans_ms=np.array(spans, dtype=np.int32).reshape(-1, 2),
-                         plasma_end_ms=end, models=str(args.models), job=tag)
+                         plasma_end_ms=end, models=str(args.models), job=tag, **extra)
             os.replace(tmp, work / f"{shot}.npz")
             for a, b in spans:
                 f_spans.write(f"{shot},{a},{b}\n")
+            if f_onsets is not None:
+                f_onsets.writelines(f"{shot},{v:.1f}\n" for v in extra["onsets_ms"])
+                f_onsets.flush()
             present = int(call.sum())
             f_shots.write(f"{shot},labeled,{w0},{w1},{present},{len(spans)},{end:g},{item['fs_hz']:.1f},"
                           f"{item['density_hz']:.1f},{mean_prob:.4f},{tag},\n")
@@ -506,6 +583,8 @@ def cmd_infer(args) -> None:
     print("LOOP_END", stamp(), flush=True)
     f_spans.close()
     f_shots.close()
+    if f_onsets is not None:
+        f_onsets.close()
     wall = time.perf_counter() - t_loop
     print(f"{ran} shots in {wall:.1f} s ({wall / max(ran, 1):.3f} s a shot); threshold {threshold:.3f}",
           flush=True)
@@ -721,6 +800,8 @@ def main(argv=None) -> None:
     i.add_argument("--parts", type=int, default=1)
     i.add_argument("--part", type=int, default=0)
     i.add_argument("--device", default="cuda")
+    i.add_argument("--keep-heat", action="store_true",
+                   help="an instance run: also keep the 0.1 ms onset heatmap in work/<shot>.npz")
     u = sub.add_parser("publish")
     u.add_argument("--candidates", default=str(CANDIDATES))
     u.add_argument("--models", default=None, help="the run folder the labels came from (meta.json)")
