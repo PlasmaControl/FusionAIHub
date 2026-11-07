@@ -26,9 +26,11 @@ Subcommands, each resumable (a shot already done is skipped):
     extracted shot): ``inputs/`` -> ``work/<shot>.npz`` (class probabilities, float16) and
     ``results/<job>.{shots,spans}.csv``, as ``confinement_ours.py apply`` does: the mean softmax
     of the fifteen networks (a curated shot: the three of the fold that held it out), the
-    beam-on mask (total power >= 200 kW, gaps <= 50 ms bridged) cut at the plasma end, the mode
-    filter (21 bins), segments of 20 ms or more, and category 5 (uncertain) under a mean class
-    probability of 0.7.
+    beam-on mask (total power >= 200 kW, gaps <= 50 ms bridged) cut at the plasma end, the ELM gate
+    (``labeler.confinement.elm_gate``: QH or WPQH -> H inside a train of the ELM pipeline's onsets,
+    ``--elm-root``; ``--no-elm-gate`` turns it off), the mode filter (21 bins), segments of 20 ms or
+    more, and category 5 (uncertain) under a mean class probability of 0.7. ``work/<shot>.npz``
+    ``prob`` stays the networks' output; ``elm_flip`` marks the bins the gate flipped.
 ``publish`` (login node): the label folder ``--out`` (the deployment for the all-shot root,
     ``dev/confinement/<root name>`` for any other).
 
@@ -63,6 +65,7 @@ ALL_SHOT_ROOT = LABELER_ROOT / "conf_fdp_1ms"
 ROOT = Path(os.environ.get("CONF_FDP_ROOT", ALL_SHOT_ROOT))
 OUT = ae.DEPLOYMENT / "confinement" / "confine_ours_fdp_1ms"
 CANDIDATES = LABELER_ROOT / "ae_fdp_1ms/candidates.csv"
+ELM_ROOT = LABELER_ROOT / "elm_inst2_fdp_1ms"  # the ELM pipeline's run whose onsets gate QH and WPQH
 VARIANT = "base3"
 
 FS_TAGS = [rf"\SPECTROSCOPY::FS{i:02d}" for i in range(1, 9)]  # the corpus' filterscopes rows 0-7
@@ -556,7 +559,7 @@ def cmd_infer(args) -> None:
     import torch
     from torch.utils.data import DataLoader, Dataset
 
-    from labeler.confinement import unet, zerod
+    from labeler.confinement import elm_gate, unet, zerod
 
     assert (co.BEAM_ON_W, co.BEAM_GAP_MS, co.MIN_SEGMENT_MS) == (BEAM_ON_W, BEAM_GAP_MS, MIN_ON_MS)
     torch.backends.cudnn.allow_tf32 = False  # the networks were trained and scored in float32 on CPU
@@ -597,7 +600,8 @@ def cmd_infer(args) -> None:
             except Exception as error:  # noqa: BLE001
                 return {"shot": shot, "skip": f"input unreadable: {type(error).__name__}: {error}"}
             power = grid[zerod.CHANNELS.index("pinj")] * zerod.SCALES["pinj"]
-            return {"shot": shot, "x": x, "power": power, "meta": meta}
+            gate = elm_gate.shot_masks(Path(args.elm_root), shot, x.shape[1]) if args.elm_gate else (None, None, "off")
+            return {"shot": shot, "x": x, "power": power, "meta": meta, "gate": gate}
 
     loader = DataLoader(Inputs(), batch_size=None, num_workers=args.workers, collate_fn=_as_is,
                         prefetch_factor=8 if args.workers else None)
@@ -607,25 +611,28 @@ def cmd_infer(args) -> None:
     if new:
         f_spans.write("shot,t_start_ms,t_end_ms,category,predicted,confidence,tier\n")
         f_shots.write("shot,status,window_start_ms,window_end_ms,h_ms,l_ms,qh_ms,wpqh_ms,uncertain_ms,n_spans,"
-                      "n_ms,plasma_end_ms,beam_on_ms,source,extrapolated,da_source,fs_hz,lacks,beam_source,job,error\n")
+                      "n_ms,plasma_end_ms,beam_on_ms,source,extrapolated,da_source,fs_hz,lacks,beam_source,job,error,"
+                      "elm_gate,gated_ms\n")
 
     def finish(item: dict, prob: np.ndarray) -> None:
         shot, meta, power = item["shot"], item["meta"], item["power"]
         end = float(meta["plasma_end_ms"])
         curated = shot in test_of
         extrapolated = shot < first_trained or shot > last_trained
+        qh, wp, gate = item["gate"]
         common = (f"{item['x'].shape[1]},{end:g},{{on}},{'held_out' if curated else 'ensemble'},"
                   f"{int(extrapolated)},{meta['da_source']},{meta['fs_hz']},{'|'.join(meta['lacks'])},"
                   f"{meta.get('beam_source', 'beams')},{tag}")
         if not np.isfinite(power).any():
-            f_shots.write(f"{shot},no_beam_record,,,,,,,,,{common.format(on=0)},\n")
+            f_shots.write(f"{shot},no_beam_record,,,,,,,,,{common.format(on=0)},,{gate},\n")
             return
         active = beam_on(power, end)
         on = int(active.sum())
         if on < co.MIN_SEGMENT_MS:
-            f_shots.write(f"{shot},no_beam,,,,,,,,,{common.format(on=on)},\n")
+            f_shots.write(f"{shot},no_beam,,,,,,,,,{common.format(on=on)},,{gate},\n")
             return
-        found = co.segment_shot(prob, active)
+        flip = elm_gate.flips(prob, qh, wp) if gate == "on" else np.zeros(prob.shape[1], bool)
+        found = co.segment_shot(elm_gate.move(prob, flip), active)
         idx = np.flatnonzero(active)
         w0, w1 = int(idx[0]), int(idx[-1]) + 1
         rows = co.roster_rows(shot, found, curated=curated, last_curated=last_trained)
@@ -639,9 +646,11 @@ def cmd_infer(args) -> None:
         tmp = work / f".{shot}.{os.getpid()}.npz.tmp"
         with open(tmp, "wb") as fh:
             np.savez(fh, prob=prob.astype(np.float16), t_first_ms=0.0, hop_ms=1.0, window_ms=np.array([w0, w1]),
-                     codes=codes, plasma_end_ms=end, source="held_out" if curated else "ensemble", job=tag)
+                     codes=codes, plasma_end_ms=end, source="held_out" if curated else "ensemble", job=tag,
+                     elm_flip=flip, elm_gate=gate)
         os.replace(tmp, work / f"{shot}.npz")
-        f_shots.write(f"{shot},{status},{w0},{w1},{','.join(map(str, ms))},{len(rows)},{common.format(on=on)},\n")
+        f_shots.write(f"{shot},{status},{w0},{w1},{','.join(map(str, ms))},{len(rows)},{common.format(on=on)},,{gate},"
+                      f"{int((flip & active).sum())}\n")
 
     buckets: dict[int, list] = {}
 
@@ -663,7 +672,7 @@ def cmd_infer(args) -> None:
     with torch.inference_mode():
         for item in loader:
             if "skip" in item:
-                f_shots.write(f"{item['shot']},infer_failed,,,,,,,,,,,,,,,,,,{tag},\"{ae.clean(item['skip'])}\"\n")
+                f_shots.write(f"{item['shot']},infer_failed,,,,,,,,,,,,,,,,,,{tag},\"{ae.clean(item['skip'])}\",,\n")
                 continue
             n = item["x"].shape[1]
             key = n + (-n) % unet.STRIDE  # equal padded length: each shot sees exactly predict_shot's padding
@@ -793,6 +802,9 @@ Candidates {sum(c.values())}; labeled {c.get('labeled', 0)}; spans {meta['n_span
 Hours: H {h['1']:.0f}, L {h['2']:.0f}, QH {h['3']:.0f}, WPQH {h['4']:.0f}, uncertain {h['5']:.0f}.
 Status counts and caveats: `meta.json`.
 
+QH and WPQH calls inside ELM trains (elm-inst2 onsets; `src/labeler/confinement/elm_gate.py`) are
+turned into H before segmenting: `shots.parquet` `elm_gate` (on, no_elm, ...) and `gated_ms`.
+
 Categories: 1 H, 2 L, 3 QH, 4 WPQH, 5 uncertain (the segment's mean class probability is under
 0.7; `predicted` keeps its class). 0 in the grid: not in a segment.
 
@@ -829,6 +841,8 @@ Frame `k` is `[k, k + 1)` ms. Outside `[window_start_ms, window_end_ms)` nothing
 def cmd_publish(args) -> None:
     import confinement_ours as co
 
+    from labeler.confinement import elm_gate
+
     lab, spans, status_of, pd = statuses()
     cands = pd.read_csv(args.candidates)
     extract = ae.last_status("extract")
@@ -843,7 +857,9 @@ def cmd_publish(args) -> None:
                      uncertain_ms=int(L.uncertain_ms), n_spans=int(L.n_spans), beam_on_ms=int(L.beam_on_ms),
                      source=str(L.source), extrapolated=bool(L.extrapolated), da_source=str(L.da_source),
                      fs_hz=float(L.fs_hz), lacks="" if pd.isna(L.lacks) else str(L.lacks),
-                     beam_source=str(L.beam_source))
+                     beam_source=str(L.beam_source),
+                     elm_gate=str(L.get("elm_gate")) if pd.notna(L.get("elm_gate")) else "",
+                     gated_ms=int(L.gated_ms) if pd.notna(L.get("gated_ms")) else pd.NA)
         elif int(c.shot) in extract and extract[int(c.shot)].get("status") == "ok":
             e = extract[int(c.shot)]
             r.update(da_source=e.get("da_source"), fs_hz=e.get("fs_hz"), lacks="|".join(e.get("lacks", [])),
@@ -851,7 +867,7 @@ def cmd_publish(args) -> None:
         rows.append(r)
     table = pd.DataFrame(rows)
     for col in ("window_start_ms", "window_end_ms", "h_ms", "l_ms", "qh_ms", "wpqh_ms", "uncertain_ms",
-                "n_spans", "beam_on_ms"):
+                "n_spans", "beam_on_ms", "gated_ms"):
         if col not in table:
             table[col] = pd.NA
         table[col] = table[col].astype("Int32")
@@ -862,6 +878,7 @@ def cmd_publish(args) -> None:
     valid["valid"] = valid.shot.isin(set(lab.index.astype(int))).astype(np.uint8)
     variant = co.VARIANTS[VARIANT]
     test_of = co.recorded_test_folds(variant)
+    gates = {str(k): int(v) for k, v in table.elm_gate.value_counts().items()} if "elm_gate" in table else {}
     ms_by = {str(k): int((spans.t_end_ms - spans.t_start_ms)[spans.category == k].sum()) for k in CATEGORIES}
     meta = {
         "event": "confinement",
@@ -874,9 +891,20 @@ def cmd_publish(args) -> None:
                   "folds": co.FOLDS, "seeds_per_fold": variant.seeds,
                   "curated_shots": len(test_of), "trained_shot_range": [min(test_of), max(test_of)],
                   "rule": ("mean softmax of the fifteen networks (a curated shot: the three of the fold that held "
-                           "it out); beam-on mask; mode filter of 21 ms; segments of 20 ms or more (a shorter run "
-                           "joins the segment before it); category 5 under a mean class probability of 0.7"),
+                           "it out); beam-on mask; ELM gate (elm_gate); mode filter of 21 ms; segments of 20 ms or "
+                           "more (a shorter run joins the segment before it); category 5 under a mean class "
+                           "probability of 0.7"),
                   "scores": "docs/labeler/confinement_ours.md (scores_base3.json)"},
+        "elm_gate": {"rule": elm_gate.RULE.describe(), "params": elm_gate.RULE.as_dict(),
+                     "onsets": (f"{ELM_ROOT.name} work/<shot>.npz onsets_ms (decoding {elm_gate.DECODING}); "
+                                "filterscopes from its inputs/<shot>.npz fmax"),
+                     "code": "src/labeler/confinement/elm_gate.py", "counts": gates,
+                     "statuses": {"on": "gated (shots.parquet gated_ms: beam-on ms flipped to H)",
+                                  "no_elm": "no ELM labels for the shot: the networks' calls as they are",
+                                  "elm_decoding": "the shot's ELM labels predate elm-inst2-sized: not gated",
+                                  "elm_unreadable": "the ELM files did not read: not gated",
+                                  "off": "run with --no-elm-gate",
+                                  "": "labelled before the gate existed"}},
         "inputs": {"d_alpha": "the first live of " + ", ".join(t.rsplit("::", 1)[1] for t in FS_TAGS)
                               + " (over half its samples finite, not constant), at its native rate",
                    "density": DENSITY_TAG, "efit": list(EFIT_TAGS.values()), "beams": NB_TAGS,
@@ -919,6 +947,13 @@ def cmd_publish(args) -> None:
             ("D-alpha is read at its native rate (20-50 kHz); training mixed native records (270 shots) "
              "with the corpus' 10 kHz resampling (146)."),
             "Curated shots are labelled by the fold that held them out, every other shot by all fifteen networks.",
+            ("The ELM gate turns QH and WPQH calls into H inside trains of elm-inst2 onsets (meta elm_gate). "
+             "It is only as good as those onsets: it can fire on a small periodic D-alpha modulation in a "
+             "quiescent phase (onset sizes 1.4-1.6, e.g. 163522), it turns QH calls into H where breakthrough "
+             "ELMs come at ~20 Hz, and WPQH into H during a long burst of them (e.g. 175523), more so where "
+             "the networks call a WPQH phase QH (in the wpqh_elm_hiro WPQH windows 5% of QH calls flip, "
+             "0.7% of WPQH calls); isolated "
+             "breakthrough ELMs do not trigger it. Shots without ELM labels are not gated (shots.parquet elm_gate)."),
             "The window end is the d3drdb pulse_length; shots after the snapshot's last shot are not candidates.",
         ],
         "files": {
@@ -981,6 +1016,9 @@ def main(argv=None) -> None:
     i.add_argument("--batch", type=int, default=64, help="shots of one padded length a forward pass")
     i.add_argument("--device", default="cuda")
     i.add_argument("--redo", action="store_true", help="also shots that already have work/<shot>.npz")
+    i.add_argument("--elm-root", default=str(ELM_ROOT), help="the ELM pipeline's run (default %(default)s)")
+    i.add_argument("--no-elm-gate", dest="elm_gate", action="store_false",
+                   help="label from the networks alone (no QH/WPQH -> H in ELM trains)")
     u = sub.add_parser("publish")
     u.add_argument("--candidates", default=str(CANDIDATES))
     u.add_argument("--out", default=None, help=ae.OUT_HELP)
