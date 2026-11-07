@@ -29,7 +29,7 @@ catalog's states, 0 absent, 1 present, 2 uncertain, 3 not observable, beside a
   say what was inspected, so a time with no box of the type is unknown: the
   table's window is where any box of the shot lies, and what is not a box of the
   type is uncertain.
-- `mhd_modes` (all eight MHD events, version v5): `labeler.mhd`'s mode tracks, rules
+- `mhd_modes` (all eight MHD events, version v6): `labeler.mhd`'s mode tracks, rules
   1-4, the frozen label model and the rotating-resonance gate, run once per shot and
   cached under `$LABELER_ROOT/mhd/labeler/<pipeline.CACHE_VERSION>/`, so the eight events
   share one run; `labeler.mhd.rows` turns a shot's tracks into each event's rows. A parent
@@ -40,9 +40,9 @@ catalog's states, 0 absent, 1 present, 2 uncertain, 3 not observable, beside a
   `mhd_n1.m1` also holds the crash's present spans inside mhd_n1 (a resonant 1/1 track's
   confidence kept where both are), and time with no q = 1 surface
   (`labeler.sawtooth.qgate`) is absent where m1 is observable; 2/1 and 3/1 are set against
-  the n = 1 tracks alone (the crash is 1/1 evidence only). The equilibrium is EFIT02, else
-  the EFIT02ER or EFIT01 fallback (`labeler.mhd.equilibrium`; the meta records each shot's
-  tree); only a shot with no tree makes the children not observable, no Mirnov all eight
+  the n = 1 tracks alone (the crash is 1/1 evidence only). The equilibrium is EFIT02ER, else
+  EFIT02, else the EFIT02ER or EFIT01 fallback (`labeler.mhd.equilibrium`; the meta
+  records each shot's tree); only a shot with no tree makes the children not observable, no Mirnov all eight
   (bar crash time for the n = 1 pair). On EFIT01 a q_min-above track is uncertain for its
   class, never absent. Earlier tables and caches stay on disk. Its roster is the `mhd_n*`
   rosters with the silver and gold lists (`mhd_roster`), never a blind cohort shot (the
@@ -55,7 +55,7 @@ catalog's states, 0 absent, 1 present, 2 uncertain, 3 not observable, beside a
         [--shots S ...] [--limit N] [--version v1] [--workers N] [--force]
     python -m labeler.events.candidates --method mhd_modes --event all --workers 16
     python -m labeler.events.candidates --method mhd_modes --event all --cached \\
-        --version v5
+        --version v6
 
 The roster of `mhd_n*` events is `mhd_n1/shots.csv` under the label tables. Without
 `--fetch` nothing is fetched (`LABELER_NO_FETCH` is set): a shot with an input
@@ -135,7 +135,7 @@ MHD_EVENTS = (
     "mhd_n2.m3",
     "mhd_n3.m4",
 )
-METHOD_VERSION = {"mhd_modes": "v5"}
+METHOD_VERSION = {"mhd_modes": "v6"}
 MHD_CRASH = ("crash", "v3")
 MHD_LISTS = ("silver/silver_shots.csv", "gold/gold_shots.csv")
 
@@ -748,7 +748,8 @@ def _mhd_rule(event) -> dict:
 
     crash = f"{MHD_CRASH[0]} {MHD_CRASH[1]}"
     equilibrium = (
-        "EFIT02, else the EFIT02ER or EFIT01 fallback file (labeler.mhd.equilibrium), "
+        "EFIT02ER, else EFIT02, else the EFIT02ER or EFIT01 fallback file "
+        "(labeler.mhd.equilibrium), "
         "each with >= 2 time slices; the per-shot meta records the tree"
     )
     if event in rows.PARENTS:

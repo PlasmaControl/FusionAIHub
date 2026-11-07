@@ -2,7 +2,8 @@
 
 The pieces run on synthetic inputs: a Mirnov n = 2 mode (also on a record that is NaN
 over part of the window), rules 1-4 and the harmonic names, the resonance statuses, the
-equilibrium tree a shot is labelled with (EFIT02, else the EFIT02ER/EFIT01 fallback), and
+equilibrium tree a shot is labelled with (EFIT02ER, else EFIT02, else the EFIT02ER/EFIT01
+fallback), and
 the rows the eight events take from a shot's labelled tracks. The frozen label model and
 resonance gate run on five of dev's case tracks stored in `data/mhd_frozen_golden.npz`
 (made by `data/make_mhd_frozen_golden.py`). Nothing is read from the corpus or fetched.
@@ -401,6 +402,27 @@ def test_the_equilibrium_is_efit02_else_the_fallback_tree_each_with_two_slices(
     assert path == str(equilibrium.efit02_path(p, SHOT)) and used == "efit02"
     assert size == equilibrium.efit02_path(p, SHOT).stat().st_size
     assert "efit02er" in equilibrium.TRUSTED and "efit01" not in equilibrium.TRUSTED
+
+
+def test_efit02er_comes_first_then_efit02_then_the_fallback_each_with_two_slices(
+    tmp_path,
+):
+    p = tree.paths(tmp_path)
+    _eq_file(equilibrium.fallback_path(p, SHOT), 3, "EFIT01")
+    _eq_file(equilibrium.efit02_path(p, SHOT), 4)
+    _eq_file(equilibrium.efit02er_path(p, SHOT), 3, "EFIT02ER")
+    got = equilibrium.equilibrium(p, SHOT)
+    assert got.tree == "efit02er" and len(got.t) == 3
+    assert got.path == str(equilibrium.efit02er_path(p, SHOT))
+    assert pipeline._eq_key(p, SHOT)[0] == str(equilibrium.efit02er_path(p, SHOT))
+    # a one-slice EFIT02ER (202000 has one) is no tree: EFIT02 is next
+    _eq_file(equilibrium.efit02er_path(p, SHOT), 1, "EFIT02ER")
+    assert equilibrium.equilibrium(p, SHOT).tree == "efit02"
+    assert pipeline._eq_key(p, SHOT)[0] == str(equilibrium.efit02_path(p, SHOT))
+    equilibrium.efit02_path(p, SHOT).unlink()
+    assert equilibrium.equilibrium(p, SHOT).tree == "efit01"
+    assert pipeline._eq_key(p, SHOT)[0] == str(equilibrium.fallback_path(p, SHOT))
+    assert equilibrium.TREES == ("efit02er", "efit02", "efit01")
 
 
 def test_mhd_modes_writes_all_eight_tables_from_one_pipeline_run(tmp_path, monkeypatch):

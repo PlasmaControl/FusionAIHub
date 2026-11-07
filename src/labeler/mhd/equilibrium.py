@@ -1,15 +1,17 @@
 """The method's parked inputs: the equilibrium with the ECE setup, ZIPFIT rotation, TS geometry.
 
-All under `$LABELER_ROOT/mhd` (`root`): `efit02/<shot>.npz` (dev/mhd/corpus/fetch_eq.py:
-the G-EQDSK profiles and flux map, the A-EQDSK q_min and q95, ECE FREQ and ECEZH),
+All under `$LABELER_ROOT/mhd` (`root`): `efit02er/<shot>.npz` and `efit02/<shot>.npz`
+(dev/mhd/corpus/fetch_eq.py, `MHD_EQ_TREES=efit02er` for the first: the G-EQDSK profiles and
+flux map, the A-EQDSK q_min and q95, ECE FREQ and ECEZH),
 `efit_fallback/<shot>.npz` (the same keys plus `tree`, EFIT02ER or EFIT01, for shots with
 no usable EFIT02), `fusion/rot/<shot>.npz` (dev/mhd/fusion/fetch_rot.py: ZIPFIT01/02
 TROTFIT, krad/s) and `fusion/ts_geom.csv` (dev/mhd/fusion/fetch_geom.py: the core Thomson
 chords' R, Z). Nothing here fetches; a shot without a file has no such input.
 
-`equilibrium` is the one reader the method labels with (owner 2026-10-14: "if efit02
-doesnt exist, use efit01 or efit02er"): the EFIT02 file, else the fallback file, each only
-with at least `MIN_SLICES` time slices; the `Equilibrium` carries its `tree` and `path`.
+`equilibrium` is the one reader the method labels with: the EFIT02ER file (owner 2026-10-19:
+EFIT02ER is the better equilibrium, "default to that"), else the EFIT02 file, else the fallback
+file (owner 2026-10-14: "if efit02 doesnt exist, use efit01 or efit02er"), each only with at
+least `MIN_SLICES` time slices; the `Equilibrium` carries its `tree` and `path`.
 EFIT02ER is MSE-constrained like EFIT02 (`TRUSTED`); EFIT01 is magnetics-only and its q_min
 reads about 0.1 high at the median and 0.5 at the 90th percentile against EFIT02, which
 `labeler.mhd.rows` allows for. `efit02` stays EFIT02-only: the freeze was fit on it.
@@ -40,9 +42,9 @@ SURFACES = (("q1", 1.0), ("q43", 4 / 3), ("q32", 1.5), ("q2", 2.0), ("q3", 3.0))
 ROT_DIVERGED = 500.0
 #: A shot with no TS geometry of its own borrows the nearest shot's within this.
 TS_NEAREST = 2000
-#: The trees in the order they are taken (EFIT02 in `efit02/`, the others in
-#: `efit_fallback/` under the file's `tree`), and those with an MSE-constrained q.
-TREES = ("efit02", "efit02er", "efit01")
+#: The trees in the order they are taken (EFIT02ER in `efit02er/`, EFIT02 in `efit02/`, the
+#: others in `efit_fallback/` under the file's `tree`), and those with an MSE-constrained q.
+TREES = ("efit02er", "efit02", "efit01")
 TRUSTED = ("efit02", "efit02er")
 #: A tree counts only with at least this many time slices (some EFIT02 files hold one).
 MIN_SLICES = 2
@@ -50,6 +52,10 @@ MIN_SLICES = 2
 
 def root(paths: Paths) -> Path:
     return paths.root / "mhd"
+
+
+def efit02er_path(paths: Paths, shot: int) -> Path:
+    return root(paths) / "efit02er" / f"{int(shot)}.npz"
 
 
 def efit02_path(paths: Paths, shot: int) -> Path:
@@ -187,9 +193,9 @@ def _probe(key) -> tuple[str, int]:
 
 def equilibrium_file(paths: Paths, shot: int) -> tuple[tuple, str] | None:
     """`((path, mtime_ns, size), tree)` of the file the shot's equilibrium comes from: the
-    EFIT02 file, else the fallback file, each only with at least `MIN_SLICES` slices; None
-    when neither has them (no tree)."""
-    for path in (efit02_path(paths, shot), fallback_path(paths, shot)):
+    EFIT02ER file, else the EFIT02 file, else the fallback file, each only with at least
+    `MIN_SLICES` slices; None when none has them (no tree)."""
+    for path in (efit02er_path(paths, shot), efit02_path(paths, shot), fallback_path(paths, shot)):
         key = _stamp(path)
         if key is None:
             continue

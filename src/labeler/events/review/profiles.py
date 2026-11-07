@@ -7,8 +7,8 @@ coordinate, at every time the shot has it; the page slices it at the cursor.
 
 The readers (`recipe` sources in configs/labeler/signals.yaml):
 
-- `park_q`: |q|(psi_N) from the MHD park's EFIT02 file (else its fallback tree), 65
-  points, one psi_N axis.
+- `park_q`: |q|(psi_N) from the MHD park's EFIT02ER file (else EFIT02, else its fallback
+  tree), 65 points, one psi_N axis.
 - `efit01_q`: the same from EFIT01 through the fetch worker (`fetch_worker`), cached
   in the signals cache.
 - `thomson_te`, `thomson_ne`: the corpus' core Thomson chords (`ts_core_temp` eV ->

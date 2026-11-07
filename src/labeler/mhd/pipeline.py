@@ -7,8 +7,8 @@
    `views` (cross-spectra summed over the track, ECE locators), the frozen label model's
    posterior inside the rules 1-4 set (`labelmodel.posterior`) and the resonance gate
    (`resonance.decide`) with the frozen law.
-The equilibrium is `equilibrium.equilibrium`'s: EFIT02, else the EFIT02ER or EFIT01 fallback
-file; the info record names its tree (`inputs.tree`, None without one) and file.
+The equilibrium is `equilibrium.equilibrium`'s: EFIT02ER, else EFIT02, else the EFIT02ER or
+EFIT01 fallback file; the info record names its tree (`inputs.tree`, None without one) and file.
 The result is a track table, the frames (time, frequency, track) and an info record, written
 under `$LABELER_ROOT/mhd/labeler/<CACHE_VERSION>/` as `<shot>.tracks.parquet`,
 `<shot>.frames.parquet`, `<shot>.feat.npz` (the track-level views) and `<shot>.json`. The
@@ -41,13 +41,15 @@ from . import rules, tracks, views
 
 log = logging.getLogger(__name__)
 
+#: 4 (mhd_modes v6): the equilibrium is EFIT02ER, else EFIT02, else the EFIT02ER/EFIT01
+#: fallback file (owner 2026-10-19); the freeze stays the EFIT02 fit. The v5 cache stays on disk.
 #: 3 (mhd_modes v4, v5): the equilibrium is EFIT02, else the EFIT02ER or EFIT01 fallback,
 #: each with >= 2 slices. 2 (v3): a Mirnov record NaN over part of the window is used where
 #: it is finite. The v5 cache began as a copy of v4's (same pipeline: a shot whose key still
 #: holds is not rerun; the one-slice EFIT02 shots' new fallback files change theirs). The
 #: v2, v3 and v4 caches (`.../labeler/v2/` ...) stay on disk; RWM reads v4's.
-PIPELINE_VERSION = 3
-CACHE_VERSION = "v5"
+PIPELINE_VERSION = 4
+CACHE_VERSION = "v6"
 #: Statuses whose classes in the 90% credible set are uncertain for a child (decision M3).
 UNSURE = ("uncertain", "no rotation", "q_min above")
 #: frames() reasons that still mean the Mirnov was read: no mode, not no data.

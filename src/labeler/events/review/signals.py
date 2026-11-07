@@ -16,7 +16,8 @@ An entry's sources are tried in order, local first:
   rows that are NaN wherever probed fall through to the next source.
 - `feature`: `events.equilibrium.signal` (features store, corpus, raw cache; the
   archive's 25 ms stamp lag removed).
-- `park`: the MHD park's A-EQDSK q95 or q_min (EFIT02, else the fallback tree).
+- `park`: the MHD park's A-EQDSK q95 or q_min (EFIT02ER, else EFIT02, else the fallback
+  tree).
 - `ptdata`/`mds`: the signals cache, else the fetch worker (`review.fetch_worker`):
   the answer is then 202 `{state, stage, elapsed_s, queue_position}` until the
   record is cached; the page asks again.

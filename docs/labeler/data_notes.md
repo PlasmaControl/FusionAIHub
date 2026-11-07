@@ -6,8 +6,9 @@ look at. Add to the list as issues turn up; remove an item once it is settled.
 
 ## Equilibrium (q = 1 gate and MHD m/n)
 
-The equilibrium order is EFIT02, else EFIT02ER, else EFIT01, and a tree counts only
-with at least 2 time slices (owner, 2026-10-14). The q = 1 gate is described in
+The q = 1 gate's order is EFIT02, else EFIT02ER, else EFIT01, and a tree counts only
+with at least 2 time slices (owner, 2026-10-14). MHD m/n (`labeler.mhd`, mhd_modes v6) is
+EFIT02ER first, then EFIT02, then the fallback file (owner, 2026-10-19). The q = 1 gate is described in
 `docs/labeler/events/sawtooth_oscillation/README.md` ("q = 1 gate").
 
 - **199166 (silver): a sparse EFIT02ER cuts a sawtooth train.** EFIT02 has one
