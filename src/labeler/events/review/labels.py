@@ -7,7 +7,8 @@ gets one line per save. A save is first written to its writer's own file under
 `review/saves/` and then merged into the two files (see `saves`), so several
 people may save into one folder: the last save of a shot, by time, is its label.
 A shot nobody has saved opens on its source label: the
-table `review/source.json` points at (a suggestion table), else the newest
+table `review/source.json` points at (a suggestion table, copied into
+`review/sources/` so the folder can move between machines), else the newest
 `format/*_format_*.csv`.
 """
 
@@ -16,6 +17,7 @@ from __future__ import annotations
 import getpass
 import hashlib
 import json
+import re
 import threading
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -401,6 +403,24 @@ def pointer_path(event_dir) -> Path:
     return Path(event_dir) / REVIEW / "source.json"
 
 
+#: Where a pointer's table is copied, under the event's `review/`:
+#: `sources/<method>/<version>/<file>`, the layout of the data root's `suggestions/`.
+#: A copy inside the label folder moves with it (the shared folder on /projects, each
+#: cluster's mirror, a compute node), where a path into one machine's data root does not.
+SOURCES = "sources"
+#: Files beside a suggestion table that travel with it, `<stem><suffix>`: its sidecar
+#: and ELM's per-onset drafts.
+SIBLINGS = (".meta.json", "_onsets.csv")
+_PART = re.compile(r"[A-Za-z0-9_.-]+")
+
+
+def pointed_table(event_dir, table) -> Path:
+    """A pointer's `table` as a path: a relative one lies under the event's `review/`;
+    an absolute one (a pointer written before copies) is as given."""
+    table = Path(table)
+    return table if table.is_absolute() else Path(event_dir) / REVIEW / table
+
+
 def source_path(event_dir) -> Path | None:
     """The table a shot nobody has saved opens on.
 
@@ -411,7 +431,7 @@ def source_path(event_dir) -> Path | None:
     """
     pointer = pointer_path(event_dir)
     if pointer.is_file():
-        table = Path(json.loads(pointer.read_text())["table"])
+        table = pointed_table(event_dir, json.loads(pointer.read_text())["table"])
         if not table.is_file():
             raise FileNotFoundError(f"{pointer} names {table}, which does not exist")
         return table
@@ -419,18 +439,51 @@ def source_path(event_dir) -> Path | None:
     return max(tables, key=lambda path: path.name, default=None)
 
 
+def copy_source(event_dir, table, *, method: str, version: str) -> str:
+    """Copy `table` and its `SIBLINGS` to `review/sources/<method>/<version>/` and
+    return the copy's path relative to `review/` (what a pointer names). A table
+    already under the event's `review/` is not copied. An older copy of the same name
+    is replaced: pointing again after a suggestion is rebuilt picks up the rebuild, as
+    it did when pointers named the table itself."""
+    for part in (method, version):
+        if not _PART.fullmatch(part) or part in {".", ".."}:
+            raise ValueError(f"{part!r}: a method or version is letters, digits, _ . -")
+    review = (Path(event_dir) / REVIEW).resolve()
+    table = Path(table).resolve()
+    if table.is_relative_to(review):
+        return table.relative_to(review).as_posix()
+    folder = review / SOURCES / method / version
+    for path in [table, *(table.with_name(table.stem + suffix) for suffix in SIBLINGS)]:
+        if not path.is_file():
+            continue
+        dest, data = folder / path.name, path.read_bytes()
+        if dest.is_file() and dest.read_bytes() == data:
+            continue
+        with atomic_path(dest) as tmp:
+            tmp.write_bytes(data)
+    return f"{SOURCES}/{method}/{version}/{table.name}"
+
+
 def write_pointer(event_dir, table, *, method: str, version: str) -> dict:
-    """Point the event's review page at `table`, a suggestion table."""
+    """Point the event's review page at `table`, a suggestion table.
+
+    The table is copied into the event's `review/sources/` (`copy_source`) and the
+    pointer names the copy relative to `review/`, so the label folder can be read
+    from any machine that has it; `copied_from` keeps where the table came from."""
     table = Path(table).resolve()
     if not table.is_file():
         raise FileNotFoundError(f"no suggestion table at {table}")
+    saves.refuse_mirror(event_dir)
+    relative = copy_source(event_dir, table, method=method, version=version)
     entry = {
-        "table": str(table),
+        "table": relative,
         "method": method,
         "version": version,
         "set_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "set_by": getpass.getuser(),
     }
+    if pointed_table(event_dir, relative).resolve() != table:
+        entry["copied_from"] = str(table)
     with atomic_path(pointer_path(event_dir)) as tmp:
         tmp.write_text(json.dumps(entry, indent=1) + "\n")
     return entry

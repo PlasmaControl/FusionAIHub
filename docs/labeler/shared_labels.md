@@ -15,15 +15,17 @@ the migration: on Stellar the owner exports `LABELER_LABEL_TABLES` as
 several accounts to save into one folder.
 Before the `/projects` folder is the default, in this order:
 
-1. The cluster defaults point both clusters at it (a separate change).
+1. The cluster defaults point both clusters at it once it is switched on, and StellarAI's
+   compute nodes, which do not mount `/projects`, read a mirror refreshed before each
+   batch of label jobs (done in code: see
+   [shared_folder.md](shared_folder.md), which also has the switch-on steps).
 2. The owner runs `labeler-sync init` on it, once, so the group may write
    `review/` and `review/saves/` (see below).
-3. The suggestion tables are published somewhere both clusters read. The page's
-   pointer (`review/source.json`) names a table file, and today those files live
-   under each cluster's own `LABELER_ROOT`, so a contributor on the other cluster
-   would not find the table a pointer names.
-4. The mkdir lock and the rename are probed across the two clusters (the design
-   relies on both being atomic on the NFS server; that is not yet measured).
+3. The suggestion tables are readable from both clusters. Pointing at a table now
+   copies it into `<event>/review/sources/` and the pointer names the copy relative
+   to `review/`; `labeler-sync localize` converts the older pointers.
+4. The mkdir lock and the rename hold across the two clusters: measured with
+   `labeler-sync probe` on 2026-11-07, no update lost (shared_folder.md).
 5. A release build (`hf_publish.py build`) does not check for unmerged saves yet. The
    export reads only the merged files, so a save still waiting in a writer's file is
    not in a release: the owner runs `labeler-sync merge` and `labeler-sync check`
@@ -126,8 +128,7 @@ folder's group; `id` shows it.
 
 ```bash
 git clone <repo> && cd FusionAIHub && git checkout nathan_dev
-export LABELER_LABEL_TABLES=<the shared folder the owner names>
-pixi run --frozen -e labeler labeler-sync status
+pixi run --frozen -e labeler labeler-sync status   # "shared folder, switched on"
 pixi run --frozen -e labeler labeler-verify
 ```
 

@@ -30,6 +30,7 @@ import warnings
 import numpy as np
 import pytest
 
+from labeler import env as _env
 from labeler.config import Paths
 from labeler.env import getenv
 
@@ -458,7 +459,9 @@ def _isolate_package_environment():
     Module/function fixtures can then set values without later autouse deletion.
     Tests that need a new name absent must delete it explicitly.
     LABELER_CLUSTER is set empty, which means no cluster: a test resolves the defaults
-    the same way on every host, never to the host's production roots.
+    the same way on every host, never to the host's production roots. No folder is
+    shared either (`env.SHARED`), so a test that names a cluster gets its row, not
+    /projects where that is mounted and switched on.
     Restore the caller environment when the session ends.
     """
     with pytest.MonkeyPatch.context() as monkeypatch:
@@ -466,6 +469,7 @@ def _isolate_package_environment():
             if name.startswith(("SHOT_DESIGN_", "LABELER_")):
                 monkeypatch.delenv(name)
         monkeypatch.setenv("LABELER_CLUSTER", "")
+        monkeypatch.setattr(_env, "SHARED", {})
         yield
 
 

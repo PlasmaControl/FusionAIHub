@@ -43,18 +43,22 @@ def test_a_pointer_names_the_table_and_what_made_it(event_dir, table, monkeypatc
     monkeypatch.setattr(labels.getpass, "getuser", lambda: "nc1514")
     entry = labels.write_pointer(event_dir, table, method="elm_clock", version="v1")
     assert json.loads(labels.pointer_path(event_dir).read_text()) == entry
-    assert (entry["table"], entry["set_by"]) == (str(table.resolve()), "nc1514")
+    copy = event_dir / "review" / "sources" / "elm_clock" / "v1" / "t.csv"
+    assert (entry["table"], entry["set_by"]) == ("sources/elm_clock/v1/t.csv", "nc1514")
+    assert entry["copied_from"] == str(table.resolve())
     assert (entry["method"], entry["version"]) == ("elm_clock", "v1")
-    assert labels.source_path(event_dir) == table.resolve()
+    assert labels.source_path(event_dir) == copy
+    assert copy.read_bytes() == table.read_bytes()
     source = labels.read_source(event_dir)[7]
     assert source.window == (100, 400) and source.intervals == ((300, 400, 1),)
 
 
 def test_a_pointer_to_a_missing_table_is_refused(event_dir, table):
     labels.write_pointer(event_dir, table, method="elm_clock", version="v1")
-    table.unlink()
+    (event_dir / "review" / "sources" / "elm_clock" / "v1" / "t.csv").unlink()
     with pytest.raises(FileNotFoundError, match="source.json names"):
         labels.source_path(event_dir)
+    table.unlink()
     with pytest.raises(FileNotFoundError, match="no suggestion table"):
         labels.write_pointer(event_dir, table, method="elm_clock", version="v1")
 

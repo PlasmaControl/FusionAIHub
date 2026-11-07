@@ -519,8 +519,16 @@ def events(paths: Paths) -> list[str]:
 
 def dataset_id(paths: Paths, path) -> str:
     """A table's name in a release: its path under the label tables, or under
-    `suggestions/`, without the suffix."""
+    `suggestions/`, without the suffix. A review pointer's copy of a suggestion
+    (`<event>/review/sources/<method>/<version>/<file>`, `labels.copy_source`) is
+    the suggestion it was copied from: `suggestions/<method>/<version>/<file>`."""
     path = Path(path).resolve()
+    tables_dir = Path(paths.label_tables).resolve()
+    if path.is_relative_to(tables_dir):
+        parts = path.relative_to(tables_dir).parts
+        for i in range(len(parts) - 2):
+            if parts[i : i + 2] == (labels.REVIEW, labels.SOURCES):
+                return "suggestions/" + Path(*parts[i + 2 :]).with_suffix("").as_posix()
     for base, prefix in (
         (Path(paths.label_tables).resolve(), ""),
         ((paths.root / "suggestions").resolve(), "suggestions/"),
@@ -581,6 +589,8 @@ def tables(paths: Paths, *, exclude=(), include=()) -> tuple[list[Table], list[d
                 continue
             seen.add(path.resolve())
             name = dataset_id(paths, path)
+            if name in known:  # a pointer's copy, then the suggestion it was copied from
+                continue
             known.add(name)
             sidecar = path.with_suffix(".meta.json")
             if name in held:
@@ -907,7 +917,9 @@ def mirror(out: Path, found: list[Table], ctx: Context) -> dict:
     for pointer in sorted(tables_dir.glob("**/review/source.json")):
         entry = json.loads(pointer.read_text())
         try:
-            target = dataset_id(ctx.paths, entry["table"])
+            target = dataset_id(
+                ctx.paths, labels.pointed_table(pointer.parent.parent, entry["table"])
+            )
         except ReleaseError:
             continue
         if not (out / _mirror_path(target)).is_file():
@@ -1027,8 +1039,13 @@ def restore(folder, paths: Paths) -> dict:
         event_dir = tables_dir / pointer.parent.parent.relative_to(folder / "tables")
         local = labels.pointer_path(event_dir)
         if local.is_file():
-            current = Path(json.loads(local.read_text())["table"])
-            if current.resolve() != target.resolve():
+            current = labels.pointed_table(event_dir, json.loads(local.read_text())["table"])
+            # The same table: the very file, or the pointer's copy of it.
+            same = current.resolve() == target.resolve() or (
+                current.is_file()
+                and current.read_bytes() == (folder / entry["table"]).read_bytes()
+            )
+            if not same:
                 conflicts.append(str(local))
             continue
         pointers.append((event_dir, target, entry))
@@ -1170,6 +1187,8 @@ def pointers(paths: Paths) -> dict[str, str]:
     found = {}
     for pointer in sorted(tables_dir.glob("**/review/source.json")):
         table = str(json.loads(pointer.read_text()).get("table") or "")
+        if table:
+            table = str(labels.pointed_table(pointer.parent.parent, table))
         where = pointer.parent.parent.relative_to(tables_dir).as_posix()
         try:
             found[where] = dataset_id(paths, table)

@@ -196,8 +196,10 @@ def test_shell_entrypoint_resolves_the_export_then_the_cluster_then_the_argument
     assert _cli("LABELER_ROOT", "arg", LABELER_CLUSTER="stellar", LABELER_ROOT="/mine") == "/mine\n"
     assert _cli("LABELER_ROOT", "arg", LABELER_CLUSTER="stellar") == (
         "/scratch/gpfs/EKOLEMEN/nc1514/labeler\n")
-    assert _cli("LABELER_LABEL_TABLES", "arg", LABELER_CLUSTER="stellarai") == (
-        "/scratch/gpfs/EKOLEMEN/D3D/events\n")
+    # The cluster's folder, or the shared one on a node that mounts it once it is
+    # switched on: a new process sees the real `env.SHARED`, not the session's.
+    assert _cli("LABELER_LABEL_TABLES", "arg", LABELER_CLUSTER="stellarai") in (
+        "/scratch/gpfs/EKOLEMEN/D3D/events\n", "/projects/EKOLEMEN/tokamaksi/diiid/events\n")
     assert _cli("LABELER_ROOT", "arg", LABELER_CLUSTER="") == "arg\n"
     assert _cli("LABELER_DEMO_FORCE", LABELER_CLUSTER="stellar") == "\n"
 

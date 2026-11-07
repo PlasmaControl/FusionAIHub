@@ -71,6 +71,42 @@ class StoreMissing(RuntimeError):
     """The folder or the event is not there; nothing is created."""
 
 
+#: The file at the top of a read-only mirror of the shared label folder
+#: (`labeler-sync mirror` writes it). Nothing saves into a mirror: its next refresh
+#: would move the save aside.
+MIRROR = ".mirror"
+
+
+class MirrorReadOnly(PermissionError):
+    """The folder is a read-only mirror of the shared label folder."""
+
+
+def mirror_root(path) -> Path | None:
+    """The mirror `path` lies in (the folder holding `MIRROR`), or None. `path` and
+    its five nearest parents are looked at: deep enough for a subcategory's
+    `review/saves/` (`<folder>/<event>/subcategories/<key>/review/saves`)."""
+    path = Path(path)
+    for folder in [path, *path.parents][:6]:
+        if (folder / MIRROR).is_file():
+            return folder
+    return None
+
+
+def refuse_mirror(path) -> None:
+    """Raise `MirrorReadOnly` when `path` lies in a mirror, naming what it mirrors."""
+    root = mirror_root(path)
+    if root is None:
+        return
+    try:
+        source = json.loads((root / MIRROR).read_text()).get("source") or "the shared folder"
+    except (OSError, ValueError):
+        source = "the shared folder"
+    raise MirrorReadOnly(
+        f"{root} is a read-only mirror of {source}: save there instead (a review server "
+        "on a login node, where /projects is mounted, saves there by default)"
+    )
+
+
 # ---- identities and ids ----
 
 
@@ -251,8 +287,10 @@ def review_dir(event_dir) -> Path:
     """The event's `review/` folder, made when it is not there yet.
 
     The event's own folder is never made, except a subcategory's
-    (`<parent>/subcategories/<key>`), which its first save makes under the parent."""
+    (`<parent>/subcategories/<key>`), which its first save makes under the parent.
+    Nothing is made in a mirror (`MirrorReadOnly`)."""
     event_dir = Path(event_dir)
+    refuse_mirror(event_dir)
     if event_dir.parent.name == SUBDIR and not event_dir.is_dir():
         if not event_dir.parent.is_dir():
             shared_mkdir(event_dir.parent, under=event_dir.parent.parent)
@@ -456,8 +494,10 @@ def lock(review, *, wait: float = 20.0, stale: float = STALE_LOCK_S):
     """Hold `review/.lock` (a `mkdir`) for the body; raise `StoreBusy` when it stays
     held for `wait` seconds. After it is taken both directory listings are
     refreshed, so what the body reads is not older than the last holder's writes. The
-    lock carries a token, and leaving removes it only while it is still this one's."""
+    lock carries a token, and leaving removes it only while it is still this one's.
+    A mirror's lock is never taken (`MirrorReadOnly`): whatever holds it would write."""
     review = Path(review)
+    refuse_mirror(review)
     path = review / LOCK
     deadline = time.monotonic() + wait
     while True:

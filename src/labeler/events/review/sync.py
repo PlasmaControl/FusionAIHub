@@ -15,9 +15,14 @@ COMMAND` or `pixi run -e labeler labeler-sync COMMAND`; every command takes
     init         create `saves/` and apply the permission table (the owner, once)
     check        read-only invariants; exit 1 when one is broken
     repair       re-apply the last save of the shots `check` reports
+    localize     copy each review pointer's table into the folder, point at the copy
+    activate     switch the shared folder on /projects on (the owner, once)
+    mirror       refresh this cluster's folder from the shared one (a login node)
+    probe DIR    count under DIR's lock from several machines at once; --verify
 
-`status` and `check` write nothing. `merge`, `import-tree` and `repair` take the
-event's lock; `import-tree` can be run again at any time, it adds only what is new.
+`status` and `check` write nothing. `merge`, `import-tree`, `repair` and `localize`
+take the event's lock; `import-tree` can be run again at any time, it adds only what
+is new. The last four are the shared folder's (`shared`, docs/labeler/shared_folder.md).
 """
 
 from __future__ import annotations
@@ -95,7 +100,10 @@ def _read_only(command):
 
 @_read_only
 def status(events, rels) -> int:
-    print(f"label folder {events}")
+    from .shared import describe
+
+    what = describe(events)
+    print(f"label folder {events}" + (f" ({what})" if what else ""))
     total = 0
     for event_dir in select(events, rels):
         review = event_dir / saves.REVIEW
@@ -402,6 +410,17 @@ def check(events, rels) -> int:
         if age is not None:
             (problems if age > saves.STALE_LOCK_S else notes).append(
                 f"{rel}: lock held by {saves.holder(review)}")
+        if labels.pointer_path(event_dir).is_file():
+            try:
+                table = labels.source_path(event_dir)
+                named = json.loads(labels.pointer_path(event_dir).read_text())["table"]
+            except (OSError, ValueError, KeyError) as error:
+                problems.append(f"{rel}: review pointer: {error}")
+            else:
+                if Path(named).is_absolute():
+                    notes.append(f"{rel}: source.json names {table}, outside the label "
+                                 "folder: another machine cannot open it (labeler-sync "
+                                 "localize copies it in)")
         for path in [*review.glob("*"), *(review / saves.SAVES).glob("*")]:
             if path.name.startswith("."):  # a probe or a temporary file of a process at work
                 continue
@@ -500,7 +519,41 @@ def main(argv=None) -> int:
     fixed.add_argument("--shot", type=int, action="append", default=[],
                        help="only this shot, also one whose last save has no id; the save is "
                        "written back as it was, undoing a regrid or an edit of that shot")
+    local = commands.add_parser("localize", parents=[common],
+                                help="copy pointer tables into review/sources/, point at them")
+    local.add_argument("--dry-run", action="store_true")
+    on = commands.add_parser("activate", parents=[common],
+                             help="switch the shared folder on (default --events: it)")
+    on.add_argument("--dry-run", action="store_true")
+    mirrored = commands.add_parser("mirror", help="refresh this cluster's folder from the "
+                                   "shared one (on a login node)")
+    mirrored.add_argument("--from", dest="source", type=Path,
+                          help="the shared folder (default: env.SHARED)")
+    mirrored.add_argument("--to", dest="target", type=Path,
+                          help="the mirror (default: this cluster's folder)")
+    mirrored.add_argument("--dry-run", action="store_true")
+    probed = commands.add_parser("probe", help="count under DIR's lock; run from several "
+                                 "machines at once, then --verify")
+    probed.add_argument("folder", type=Path, help="a scratch folder on the file system to test")
+    probed.add_argument("--rounds", type=int, default=200)
+    probed.add_argument("--wait", type=float, default=60.0,
+                        help="seconds a round waits for the lock")
+    probed.add_argument("--pause", type=float, default=0.05,
+                        help="up to this many seconds between rounds")
+    probed.add_argument("--verify", action="store_true", help="check the counts, write nothing")
     args = parser.parse_args(argv)
+    if args.command in ("mirror", "probe"):
+        from . import shared
+
+        if args.command == "mirror":
+            return shared.mirror(args.source, args.target, dry_run=args.dry_run)
+        if args.verify:
+            return shared.verify(args.folder)
+        return shared.probe(args.folder, rounds=args.rounds, wait=args.wait, pause=args.pause)
+    if args.command == "activate" and args.events is None:
+        from ...env import SHARED
+
+        args.events = Path(SHARED["LABELER_LABEL_TABLES"])
     events = (args.events or Paths.from_env().label_tables).resolve()
     if not events.is_dir():
         print(f"{events} is not a folder", file=sys.stderr)
@@ -517,6 +570,14 @@ def main(argv=None) -> int:
             return init(events, args.event, dry_run=args.dry_run)
         case "check":
             return check(events, args.event)
+        case "localize":
+            from .shared import localize
+
+            return localize(events, select(events, args.event), dry_run=args.dry_run)
+        case "activate":
+            from .shared import activate
+
+            return activate(events, select(events, []), check, dry_run=args.dry_run)
         case _:
             return repair(events, args.event, set(args.shot))
 

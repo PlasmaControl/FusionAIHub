@@ -552,16 +552,17 @@ def test_pull_restores_tables_and_pointer_and_never_replaces(paths, tmp_path):
         restored.read_bytes()
         == (out / "tables" / restored.relative_to(clone.label_tables)).read_bytes()
     )
-    assert (
-        labels.source_path(clone.label_tables / "disruption")
-        == (
-            clone.root
-            / "suggestions"
-            / "rule"
-            / "v1"
-            / "disruption_suggest_rule_v1.csv"
-        ).resolve()
+    # The pointer names its copy of the restored suggestion, under the event's review/.
+    suggestion = (
+        clone.root / "suggestions" / "rule" / "v1" / "disruption_suggest_rule_v1.csv"
+    ).resolve()
+    event = clone.label_tables / "disruption"
+    pointer = json.loads(labels.pointer_path(event).read_text())
+    assert pointer["copied_from"] == str(suggestion)
+    assert labels.source_path(event) == (
+        event / "review" / "sources" / "rule" / "v1" / suggestion.name
     )
+    assert labels.source_path(event).read_bytes() == suggestion.read_bytes()
     assert hf_export.restore(out, clone)["copied"] == 0
     restored.write_text(HEADER)
     with pytest.raises(hf_export.ReleaseError, match="differ"):
