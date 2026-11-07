@@ -4,6 +4,7 @@
     python scripts/labeler/hf_publish.py build  [--out DIR] [--release v1] [--silver-grid DIR]
                                                 [--gold-grid DIR] [--exclude DATASET ...]
                                                 [--include DATASET ...] [--allow-unshipped]
+                                                [--fdp-1ms DIR]
     python scripts/labeler/hf_publish.py verify [--dir DIR]
     python scripts/labeler/hf_publish.py upload [--dir DIR] [--repo nc1/tokamak-si] --yes
     python scripts/labeler/hf_publish.py pull   [--repo nc1/tokamak-si] [--revision v1] [--into DIR]
@@ -11,7 +12,12 @@
 `build` writes release `--release` (default v1; `labeler.events.hf_export`) from the
 current label tables into `$LABELER_ROOT/hf/release` by default, exporting the silver
 and gold 10 ms grids into `<out>.work/` unless given, and writes the build report to
-`<out>.build.json`. `--out` must be new, empty or a previous release (never the label
+`<out>.build.json`. `--fdp-1ms DIR` adds the all-shot 1 ms model labels. DIR is the
+deployment (`/projects/EKOLEMEN/fusionaihub_labels`, login node only) or a verbatim copy
+of it on GPFS for a SLURM build, never a run root (docs/labeler/fdp_labels.md). It holds
+one `<event>/` folder per event with one database (`<name>/meta.json`); `dev/` and
+`events/` hold none and are skipped. Each database goes to `fdp_1ms/<event>/` without
+`grid_1ms/` or blind cohort shots. `--out` must be new, empty or a previous release (never the label
 tables, the labeler root or anything holding them); the release is built in a hidden
 sibling and swapped in once it verifies. It fails if the built directory names a blind
 cohort shot, an absolute or home path, a login, a reviewer or a roster placeholder,
@@ -64,6 +70,7 @@ def build(args) -> int:
             include=args.include,
             allow_unshipped=args.allow_unshipped,
             release=args.release,
+            fdp_root=args.fdp_1ms,
         )
     except hf_export.ReleaseError as error:
         print(f"build failed: {error}", file=sys.stderr)
@@ -91,6 +98,7 @@ def build(args) -> int:
                 "dropped_attrs": report["dropped_attrs"],
                 "skipped": len(report["skipped"]),
                 "mirror": report["mirror"],
+                "fdp_1ms": report["fdp_1ms"],
                 "pending": sorted(report["pending"]),
             },
             indent=1,
@@ -187,6 +195,13 @@ def main(argv=None) -> int:
         "--allow-unshipped",
         action="store_true",
         help="build although the grid or a pointer uses tables the release lacks",
+    )
+    command.add_argument(
+        "--fdp-1ms",
+        type=Path,
+        metavar="DIR",
+        help="add the all-shot 1 ms model labels from the deployment or a verbatim copy: "
+        "DIR/<event>/<name>/ -> fdp_1ms/<event>/",
     )
     command.set_defaults(run=build)
     command = commands.add_parser("verify", help="check a built release")

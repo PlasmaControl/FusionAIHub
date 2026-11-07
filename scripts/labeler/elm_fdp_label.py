@@ -24,8 +24,9 @@ Subcommands, each resumable (a shot already done is skipped):
     models of ``--models`` (a run folder in the ``labeler.elm.serve.load_models`` layout:
     ``fold<k>/model.pt``, ``fold<k>/fold.json`` with its threshold, ``run.json``). One shot at
     a time on its whole record: the network's GroupNorm sees the whole input, as in serving.
-``publish`` (login node): the label folder ``--out``, as ``ae_fdp_label.py publish``.
-Coverage: ``ae_fdp_label.py coverage --roots ... <this root>``.
+``publish`` (login node): the label folder ``--out``, as ``ae_fdp_label.py publish`` (the
+    deployment for the all-shot root, ``dev/edge_localized_mode/<root name>`` for any other).
+Coverage: ``ae_fdp_label.py coverage`` reads the published folder, not this root.
 
 **1 ms calls.** Millisecond ``k`` (``[k, k + 1)`` ms) is present when the models' mean event
 probability is at least the mean of their thresholds. The assessed window ``[window_start_ms,
@@ -55,8 +56,9 @@ import elm_mds_ranges as R
 REPO = ae.REPO
 sys.path.insert(0, str(REPO / "src"))
 LABELER_ROOT = ae.LABELER_ROOT
-ROOT = Path(os.environ.get("ELM_FDP_ROOT", LABELER_ROOT / "elm_fdp_1ms"))
-OUT = Path("/projects/EKOLEMEN/fusionaihub_labels/edge_localized_mode/elm_fdp_1ms")
+ALL_SHOT_ROOT = LABELER_ROOT / "elm_fdp_1ms"
+ROOT = Path(os.environ.get("ELM_FDP_ROOT", ALL_SHOT_ROOT))
+OUT = ae.DEPLOYMENT / "edge_localized_mode" / "elm_fdp_1ms"
 CANDIDATES = LABELER_ROOT / "ae_fdp_1ms/candidates.csv"
 
 FS_TAGS = [r"\SPECTROSCOPY::FS02", r"\SPECTROSCOPY::FS03", r"\SPECTROSCOPY::FS04"]
@@ -703,7 +705,7 @@ def main(argv=None) -> None:
     s.add_argument("--models", default=None, help="a model run folder: also submit infer per batch")
     s.add_argument("--publish", action="store_true",
                    help="publish to --out after each batch (login node; with --models)")
-    s.add_argument("--out", default=str(OUT))
+    s.add_argument("--out", default=None, help=ae.OUT_HELP)
     s.add_argument("--whole", action="store_true",
                    help="restage the shots whose sparse read failed, with whole datafiles")
     e = sub.add_parser("extract")
@@ -722,9 +724,11 @@ def main(argv=None) -> None:
     u = sub.add_parser("publish")
     u.add_argument("--candidates", default=str(CANDIDATES))
     u.add_argument("--models", default=None, help="the run folder the labels came from (meta.json)")
-    u.add_argument("--out", default=str(OUT))
+    u.add_argument("--out", default=None, help=ae.OUT_HELP)
     args = p.parse_args(argv)
     _set_root(args.root)
+    if args.cmd in ("stage", "publish"):
+        args.out = ae.publish_out(args.out, ROOT, ALL_SHOT_ROOT, OUT)
     {"stage": cmd_stage, "extract": cmd_extract, "infer": cmd_infer, "publish": cmd_publish}[args.cmd](args)
 
 

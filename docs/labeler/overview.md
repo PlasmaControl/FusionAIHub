@@ -19,6 +19,8 @@ Code: `src/labeler/`. Tests: `tests/labeler/`.
 
 The AE frame model trained on the owner's reviewed labels, from its inputs to its post-hoc record: [AE from cross-power](ae_xpower.md).
 
+The all-shot 1 ms labels are made in scratch run roots, then published to `/projects`. Development runs go to `dev/<event>/<run>/` and the all-shot databases to `<event>/<name>/`. Readers outside the run read only those databases: [All-shot 1 ms labels](fdp_labels.md).
+
 ## Running it
 
 ```bash

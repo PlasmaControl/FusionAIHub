@@ -823,3 +823,66 @@ def test_card_names_the_review_source_and_checks_the_tables_an_entry_reads():
             hf_export.check_reads_tables(
                 {"events": {"a": {"reads_tables": [bad]}}}, provenance
             )
+
+
+def test_a_build_carries_the_1ms_model_labels_without_blind_shots_or_paths(
+    paths, tmp_path
+):
+    root = tmp_path / "fdp"
+    db = root / "disruption" / "disruption_fdp_1ms"
+    (db / "grid_1ms" / "170").mkdir(parents=True)
+    (db / "grid_1ms" / "170" / f"{SHOT}.bin").write_bytes(b"\xff")
+    int32 = {"shot": "int32", "window_start_ms": "int32", "window_end_ms": "int32"}
+    pd.DataFrame(
+        {
+            "shot": [SHOT, BLIND, GOLD],
+            "status": ["labeled", "labeled", "no_view"],
+            "window_start_ms": [0, 0, 0],
+            "window_end_ms": [100, 100, 0],
+            "note": ["", "", "getservbyname failed: not in /etc/services"],
+        }
+    ).astype(int32).to_parquet(db / "shots.parquet")
+    pd.DataFrame(
+        {"shot": [SHOT, BLIND], "t_start_ms": [10, 10], "t_end_ms": [20, 20]}
+    ).astype("int32").to_parquet(db / "spans.parquet")
+    pd.DataFrame({"shot": [SHOT, BLIND, GOLD], "valid": [1, 1, 0]}).to_csv(
+        db / "valid.csv", index=False
+    )
+    (db / "meta.json").write_text(
+        json.dumps({"model": {"checkpoint": f"{tmp_path}/models/m.pt"}, "caveats": []})
+    )
+    (db / "README.md").write_text(f"made from {tmp_path}/models\n")
+    (root / "events" / "disruption").mkdir(parents=True)  # curated tables: no database
+    # A development run (dev/<run>/) is never shipped, even one level down.
+    shutil.copytree(db, root / "dev" / "pilot_fdp_1ms")
+
+    out = tmp_path / "release"
+    report = hf_export.build(paths, out, fdp_root=root)
+    assert report["problems"] == []
+    folder = out / "fdp_1ms" / "disruption"
+    assert sorted(p.name for p in folder.iterdir()) == sorted(hf_export.FDP_FILES)
+    shots = pd.read_parquet(folder / "shots.parquet")
+    assert shots.shot.tolist() == [SHOT, GOLD]
+    assert shots.note.tolist() == ["", "getservbyname failed: not in <path>/services"]
+    assert pd.read_parquet(folder / "spans.parquet").shot.tolist() == [SHOT]
+    assert pd.read_csv(folder / "valid.csv").shot.tolist() == [SHOT, GOLD]
+    meta = json.loads((folder / "meta.json").read_text())
+    assert meta["model"]["checkpoint"] == "<group storage>/m.pt"
+    assert meta["release_copy"]["withheld_shots"] == 1
+    assert str(tmp_path) not in (folder / "README.md").read_text()
+    release = json.loads((out / "release.json").read_text())
+    assert release["fdp_1ms"]["disruption"] == {
+        "from": "disruption_fdp_1ms",
+        "candidates": 2,
+        "labeled": 1,
+        "spans": 1,
+        "withheld_shots": 1,
+    }
+    assert {f"fdp_1ms/disruption/{n}" for n in hf_export.FDP_FILES} <= set(
+        release["files"]
+    )
+    assert "## All-shot model labels (1 ms)" in (out / "README.md").read_text()
+
+    shutil.copytree(db, root / "disruption" / "other")
+    with pytest.raises(hf_export.ReleaseError, match="2 1 ms databases"):
+        hf_export.build(paths, tmp_path / "again", fdp_root=root)

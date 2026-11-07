@@ -29,7 +29,8 @@ Subcommands, each resumable (a shot already done is skipped):
     beam-on mask (total power >= 200 kW, gaps <= 50 ms bridged) cut at the plasma end, the mode
     filter (21 bins), segments of 20 ms or more, and category 5 (uncertain) under a mean class
     probability of 0.7.
-``publish`` (login node): the label folder ``--out``.
+``publish`` (login node): the label folder ``--out`` (the deployment for the all-shot root,
+    ``dev/confinement/<root name>`` for any other).
 
 **1 ms codes.** Millisecond ``k`` is ``[k, k + 1)`` ms of the shot clock. Inside the assessed
 window ``[window_start_ms, window_end_ms)`` (first to last beam-on millisecond) a millisecond is
@@ -58,8 +59,9 @@ import elm_mds_ranges as R
 REPO = ae.REPO
 sys.path.insert(0, str(REPO / "src"))
 LABELER_ROOT = ae.LABELER_ROOT
-ROOT = Path(os.environ.get("CONF_FDP_ROOT", LABELER_ROOT / "conf_fdp_1ms"))
-OUT = Path("/projects/EKOLEMEN/fusionaihub_labels/confinement/confine_ours_fdp_1ms")
+ALL_SHOT_ROOT = LABELER_ROOT / "conf_fdp_1ms"
+ROOT = Path(os.environ.get("CONF_FDP_ROOT", ALL_SHOT_ROOT))
+OUT = ae.DEPLOYMENT / "confinement" / "confine_ours_fdp_1ms"
 CANDIDATES = LABELER_ROOT / "ae_fdp_1ms/candidates.csv"
 VARIANT = "base3"
 
@@ -981,9 +983,11 @@ def main(argv=None) -> None:
     i.add_argument("--redo", action="store_true", help="also shots that already have work/<shot>.npz")
     u = sub.add_parser("publish")
     u.add_argument("--candidates", default=str(CANDIDATES))
-    u.add_argument("--out", default=str(OUT))
+    u.add_argument("--out", default=None, help=ae.OUT_HELP)
     args = p.parse_args(argv)
     _set_root(args.root)
+    if args.cmd == "publish":
+        args.out = ae.publish_out(args.out, ROOT, ALL_SHOT_ROOT, OUT)
     {"stage": cmd_stage, "extract": cmd_extract, "infer": cmd_infer, "publish": cmd_publish}[args.cmd](args)
 
 

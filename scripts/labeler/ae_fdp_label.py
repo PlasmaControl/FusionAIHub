@@ -25,12 +25,13 @@ Seven subcommands, each resumable (a shot already done is skipped):
 ``infer`` (GPU job, stellarai env): ``co2/<shot>.npz`` -> ``work/<shot>.npz`` (the STFT
     column probabilities, float32) and the 1 ms calls appended to ``results/<job>.*.csv``; then
     deletes the co2 file (only files under ``<root>/co2``).
-``publish`` (login node, fdp env): the results and logs -> ``--out`` (``/projects``):
+``publish`` (login node, fdp env): the results and logs -> ``--out`` (``/projects``: the
+    deployment for the all-shot root, ``dev/alfven_eigenmode/<root name>`` for any other root):
     ``spans.parquet`` (present spans), ``shots.parquet`` (one row per candidate, with its
     status and assessed window), ``meta.json`` and ``README.md``.
 ``coverage`` (login node, fdp env): the public listing of processed shot numbers (tokamaksi's
-    ``coverage/processed.txt``) from the statuses of one or more roots; re-runs the
-    ``coverage.ipynb`` beside it.
+    ``coverage/processed.txt``) from the statuses of the published databases on ``/projects``
+    (never a run root); re-runs the ``coverage.ipynb`` beside it.
 ``view`` (login node, fdp env under ``fdp -D d3d run``): the CO2 spectrogram of a few shots for
     ``examples/labeler/fdp_labels_view.ipynb`` -> ``$LABELER_ROOT/ae_view/<shot>.npy``.
 
@@ -63,8 +64,16 @@ import numpy as np
 REPO = Path(__file__).resolve().parents[2]
 LABELER_ROOT = Path(os.environ.get("LABELER_ROOT",
                                    "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler"))
-ROOT = Path(os.environ.get("AE_FDP_ROOT", LABELER_ROOT / "ae_fdp_1ms"))
-OUT = Path("/projects/EKOLEMEN/fusionaihub_labels/alfven_eigenmode/ae_seldnet_fdp_1ms")
+ALL_SHOT_ROOT = LABELER_ROOT / "ae_fdp_1ms"
+ROOT = Path(os.environ.get("AE_FDP_ROOT", ALL_SHOT_ROOT))
+#: The deployment: every published all-shot 1 ms database, one ``<event>/<name>/`` folder each
+#: (docs/labeler/fdp_labels.md). Readers outside the run read only these, never a run root.
+DEPLOYMENT = Path("/projects/EKOLEMEN/fusionaihub_labels")
+OUT = DEPLOYMENT / "alfven_eigenmode" / "ae_seldnet_fdp_1ms"
+#: Development runs (samples, pilots, checks, relabel trials) publish to ``DEV/<event>/<run>/``.
+DEV = DEPLOYMENT / "dev"
+OUT_HELP = ("the label folder; default the deployment for the all-shot run root, else "
+            "dev/<event>/<root name> beside it (publish_out)")
 D3DRDB = Path("/scratch/gpfs/EKOLEMEN/D3D/text/d3drdb_20261006T135944Z")
 SLURM_LOGS = LABELER_ROOT / "runs/slurm"
 
@@ -787,8 +796,19 @@ def shot_statuses():
 
 #: Statuses a rerun would retry (a passing fault); every other status is final.
 #: read_failed is elm_fdp_label.py's (a sparse read that a whole-datafile restage may fix);
-#: coverage reads both pipelines' roots with this set.
+#: the ELM and confinement pipelines and coverage use this set too.
 RETRY = {"pending", "failed", "infer_failed", "extract_error", "no_staged_file", "read_failed"}
+
+
+def publish_out(out, root: Path, all_shot_root: Path, final: Path) -> Path:
+    """Where ``publish`` writes: ``--out`` when given; the deployment folder ``final`` for the
+    all-shot run root; for any other root (a sample, pilot or check run) ``DEV/<event>/<root
+    name>``, so a development run never overwrites the deployment."""
+    if out is not None:
+        return Path(out)
+    if Path(root).resolve() == Path(all_shot_root).resolve():
+        return Path(final)
+    return DEV / Path(final).parent.name / Path(root).name
 
 
 def snapshot_range(cands) -> tuple[int, int]:
@@ -908,24 +928,42 @@ def cmd_view(args) -> None:
         print(f"{shot}: {spec.shape[0]} columns in {time.monotonic() - t_start:.0f} s -> {ROOT}")
 
 
+def deployed(deployment: Path) -> dict[str, Path]:
+    """The published all-shot 1 ms databases, by event: ``<event>/`` itself when it holds
+    ``meta.json``, else its one subfolder that does (tokamaksi.fdp reads them by the same rule).
+    ``dev/`` (the development runs) is skipped; the curated ``events/`` folder holds none."""
+    found = {}
+    for event in sorted(p for p in Path(deployment).iterdir() if p.is_dir() and p.name != DEV.name):
+        dbs = [event] if (event / "meta.json").is_file() else sorted(m.parent for m in event.glob("*/meta.json"))
+        if len(dbs) > 1:
+            raise SystemExit(f"{event} holds {len(dbs)} databases ({', '.join(d.name for d in dbs)}): keep one")
+        if dbs:
+            found[event.name] = dbs[0]
+    if not found:
+        raise SystemExit(f"no published 1 ms database under {deployment} (is /projects mounted on this node?)")
+    return found
+
+
 def cmd_coverage(args) -> None:
-    """The public listing (the tokamaksi repo's ``coverage/processed.txt``): every shot number
-    from ``--first`` to the snapshot's last, as inclusive ranges of processed shots. Processed
-    = a final status in any of ``--roots`` (labeled, or skipped for no FDP view, no CO2 file
-    or an unusable record), or not a plasma candidate at all (skipped on purpose: no d3drdb
-    row, pulse_length <= 0.1 s or |ipmax| <= 100 kA). Pending and passing faults are not."""
-    global ROOT
+    """The public listing (the tokamaksi repo's ``coverage/processed.txt``) from the published
+    databases only (``--deployment``), never a run root: every shot number from ``--first`` to
+    the end of their ``valid.csv`` range (the d3drdb snapshot's last), as inclusive ranges of
+    processed shots. Processed = a final status in any database's ``shots.parquet`` (labeled,
+    or skipped for no FDP view, no usable record, ...), or not a plasma candidate at all
+    (skipped on purpose: no d3drdb row, pulse_length <= 0.1 s or |ipmax| <= 100 kA). Statuses
+    in ``RETRY`` (not run yet, passing faults) are not."""
     import pandas as pd
 
-    cands = pd.read_csv(args.candidates)
-    first, last = args.first, snapshot_range(cands)[1]
-    done = set()
-    for root in args.roots:
-        ROOT = Path(root)
-        _, _, status_of = shot_statuses()
-        done |= {int(c) for c in cands.shot if status_of(int(c))[0] not in RETRY}
+    dbs = deployed(args.deployment)
+    cands, done, last = set(), set(), 0
+    for db in dbs.values():
+        s = pd.read_parquet(db / "shots.parquet", columns=["shot", "status"])
+        cands |= set(s.shot.astype(int))
+        done |= set(s.shot[~s.status.isin(RETRY)].astype(int))
+        last = max(last, int(pd.read_csv(db / "valid.csv", usecols=["shot"]).shot.max()))
+    first = args.first
     shots = np.arange(first, last + 1)
-    ok = ~np.isin(shots, cands.shot.to_numpy()) | np.isin(shots, np.fromiter(done, int, len(done)))
+    ok = ~np.isin(shots, np.fromiter(cands, int, len(cands))) | np.isin(shots, np.fromiter(done, int, len(done)))
     edge = np.flatnonzero(np.diff(np.r_[0, ok.astype(np.int8), 0]))
     runs = [(int(shots[a]), int(shots[b - 1])) for a, b in zip(edge[::2], edge[1::2], strict=True)]
     lines = [
@@ -941,7 +979,8 @@ def cmd_coverage(args) -> None:
     tmp.write_text("\n".join(lines) + "\n")
     os.replace(tmp, out)
     print(f"{out}: {int(ok.sum())} of {len(shots)} shots ({first}-{last}) processed "
-          f"({100 * ok.mean():.1f} %), {len(runs)} ranges; plasma candidates done {len(done)}")
+          f"({100 * ok.mean():.1f} %), {len(runs)} ranges; plasma candidates done {len(done)} of "
+          f"{len(cands)}, from {', '.join(f'{e}/{d.name}' for e, d in dbs.items())}")
     nb = out.with_name("coverage.ipynb")
     if nb.exists():
         run_notebook(nb)
@@ -1199,7 +1238,7 @@ def main(argv=None) -> None:
     s.add_argument("--submit", action="store_true")
     s.add_argument("--wait", action="store_true")
     s.add_argument("--publish", action="store_true")
-    s.add_argument("--out", type=Path, default=OUT)
+    s.add_argument("--out", type=Path, default=None, help=OUT_HELP)
     e = sub.add_parser("extract")
     e.add_argument("--list", required=True)
     e.add_argument("--stage-dir", default=None)
@@ -1219,19 +1258,21 @@ def main(argv=None) -> None:
     i.add_argument("--checkpoint", default=None,
                    help="an AeSeldNet checkpoint to run instead of the stable model (the ae_tiers student)")
     u = sub.add_parser("publish")
-    u.add_argument("--out", type=Path, default=OUT)
+    u.add_argument("--out", type=Path, default=None, help=OUT_HELP)
     u.add_argument("--notch-root", type=Path, default=None,
                    help="a relabel run with --notch (NOTCH=1) whose labeled shots replace this root's")
     c = sub.add_parser("coverage")
     c.add_argument("--out", type=Path, required=True, help="the listing (tokamaksi's coverage/processed.txt)")
-    c.add_argument("--roots", nargs="+", required=True, help="run roots whose statuses count")
-    c.add_argument("--candidates", default=str(LABELER_ROOT / "ae_fdp_1ms" / "candidates.csv"))
+    c.add_argument("--deployment", type=Path, default=DEPLOYMENT,
+                   help="the published databases, one <event>/<name>/ folder each (default %(default)s)")
     c.add_argument("--first", type=int, default=100000)
     v = sub.add_parser("view", help="CO2 spectrograms of a few shots for the viewer notebook")
     v.add_argument("shots", type=int, nargs="+")
     v.add_argument("--dir", type=Path, default=LABELER_ROOT / "ae_view", help="where they go (default %(default)s)")
     args = p.parse_args(argv)
     ROOT = args.dir if args.cmd == "view" else args.root
+    if args.cmd in ("stage", "publish"):
+        args.out = publish_out(args.out, ROOT, ALL_SHOT_ROOT, OUT)
     if args.cmd == "candidates":
         cmd_candidates(args)
     elif args.cmd == "stage":

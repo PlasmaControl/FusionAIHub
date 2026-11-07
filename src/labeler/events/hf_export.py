@@ -16,6 +16,8 @@ spectrograms, checkpoints or third-party raw files. A release directory holds
     tables/...                        a scrubbed mirror of the label tables, for `pull`
                                       (and configs/labeler's events.yaml and
                                       best_models.yaml, for reference: `pull` skips them)
+    fdp_1ms/<event>/                  only with `build(fdp_root=...)`: the all-shot 1 ms
+                                      model labels (`FDP_FILES`; `grid_1ms/` stays out)
 
 The tiers follow the silver precedence: `reviewed` (review/labels.csv saves),
 `original` (format/: third-party tables in the interval schema), `derived`
@@ -58,6 +60,8 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import yaml
 
@@ -137,6 +141,11 @@ TIER_TEXT = {
 SPLITS = ("train", "holdout", "test")
 #: The grid file each split's shots go to.
 GRID_FILES = {"train": "silver", "holdout": "holdout", "test": "gold"}
+#: The all-shot 1 ms model labels a release may carry (`build(fdp_root=...)`): per
+#: event, these files of its one database folder under the root. The dense
+#: `grid_1ms/` copy stays out: it holds nothing the spans and windows do not.
+FDP_DIR = "fdp_1ms"
+FDP_FILES = ("spans.parquet", "shots.parquet", "valid.csv", "meta.json", "README.md")
 #: What a release directory holds at its top level: `build` replaces only such a one.
 RELEASE_ENTRIES = frozenset(
     {
@@ -150,6 +159,7 @@ RELEASE_ENTRIES = frozenset(
         "grid",
         "shots",
         "tables",
+        FDP_DIR,
     }
 )
 #: The attrs keys a release keeps, and what each says: scalar values only (a number,
@@ -404,6 +414,39 @@ def scrub_text(text: str) -> str:
         return f"<group storage>/{last}" if last else "<group storage>"
 
     return ABSOLUTE.sub(short, text)
+
+
+#: Any other absolute path of two parts or more (`FORBIDDEN_PATH`'s last form), such as
+#: a system file a producer's note names.
+OTHER_PATH = re.compile(r"(?<![\w.<>/:~-])/[A-Za-z][\w.-]*(?:/[\w.@-]+)+")
+
+
+def scrub_all(text: str) -> str:
+    """`scrub_text`, then every other absolute path cut to `<path>/<its last part>`:
+    for model output, whose notes can name any file (`/etc/services`)."""
+    return OTHER_PATH.sub(
+        lambda m: f"<path>/{m.group(0).rsplit('/', 1)[-1]}", scrub_text(text)
+    )
+
+
+def scrub_columns(table: pa.Table) -> pa.Table:
+    """`table` with `scrub_all` applied to every text column."""
+    for i, column in enumerate(table.schema):
+        values = table.column(i).to_pylist()
+        if not isinstance(next((v for v in values if v is not None), None), str):
+            continue
+        clean = [v if v is None else scrub_all(v) for v in values]
+        if clean != values:
+            kind = column.type
+            text = (
+                kind
+                if pa.types.is_string(kind) or pa.types.is_large_string(kind)
+                else pa.string()
+            )
+            table = table.set_column(
+                i, column.with_type(text), pa.array(clean, type=text)
+            )
+    return table
 
 
 def _scalar(value) -> bool:
@@ -1393,6 +1436,7 @@ def build(
     include=(),
     allow_unshipped: bool = False,
     release: str = RELEASE,
+    fdp_root=None,
 ) -> dict:
     """Write release `release` into `out` and verify it; return the report.
 
@@ -1405,10 +1449,13 @@ def build(
     the grid takes frames from, or a review pointer names, that the release does not
     hold fails the build unless `allow_unshipped`, which flags it instead. `WITHHELD`
     tables stay out unless `include` names them; `exclude` leaves others out (an id
-    that is no table of the labeler raises).
+    that is no table of the labeler raises). `fdp_root` (a folder of `<event>/`
+    folders, each holding one all-shot 1 ms database) adds `fdp_1ms/<event>/`
+    (`write_fdp`); without it the release has none.
     """
     if not RELEASE_NAME.match(str(release)):
         raise ReleaseError(f"release {release!r} is not a name like v1 or v2.1")
+    databases = fdp_databases(fdp_root) if fdp_root is not None else {}
     ctx = context(paths)
     out = _check_target(out, paths, "out")
     work = _check_target(
@@ -1443,6 +1490,7 @@ def build(
             work,
             release=release,
             held=withheld(include),
+            fdp=databases,
         )
     except NotClean:
         raise
@@ -1483,6 +1531,7 @@ def _write(
     *,
     release: str = RELEASE,
     held: dict | None = None,
+    fdp: dict[str, Path] | None = None,
 ) -> dict:
     """The release, written into the (empty) `out`."""
     paths = ctx.paths
@@ -1616,6 +1665,7 @@ def _write(
     )
 
     report["shots"] = _write_shots(out / "shots", ctx)
+    report["fdp_1ms"] = write_fdp(out, fdp or {}, ctx)
 
     signals = _signals(paths)
     check_reads_tables(signals, provenance)
@@ -1668,6 +1718,7 @@ def _write(
                 },
                 "unshipped": sorted(missing),
                 "withheld": sorted(report["withheld"]),
+                **({FDP_DIR: report["fdp_1ms"]} if report["fdp_1ms"] else {}),
                 "files": files,
             },
             indent=1,
@@ -1734,6 +1785,88 @@ def _write_shots(shots_dir: Path, ctx: Context) -> dict:
     written["cohort_split"].update(
         splits=split.split.value_counts().to_dict(), gold=int(split.gold.sum())
     )
+    return written
+
+
+def fdp_databases(root) -> dict[str, Path]:
+    """Event -> its one all-shot 1 ms database under `root`: `<root>/<event>/` when it
+    holds `meta.json`, else its one subfolder that does. `dev/` (the development
+    runs, docs/labeler/fdp_labels.md) and folders with none (the curated `events/`
+    copy) are skipped; two for one event, a database lacking one of `FDP_FILES`, or
+    none at all raise."""
+    root = Path(root)
+    if not root.is_dir():
+        raise ReleaseError(f"fdp_root {root} is not a folder")
+    found = {}
+    for folder in sorted(p for p in root.iterdir() if p.is_dir() and p.name != "dev"):
+        databases = (
+            [folder]
+            if (folder / "meta.json").is_file()
+            else sorted(p.parent for p in folder.glob("*/meta.json"))
+        )
+        if len(databases) > 1:
+            names = ", ".join(p.name for p in databases)
+            raise ReleaseError(
+                f"{folder} holds {len(databases)} 1 ms databases ({names}); keep one"
+            )
+        if databases:
+            missing = [n for n in FDP_FILES if not (databases[0] / n).is_file()]
+            if missing:
+                raise ReleaseError(f"{databases[0]} lacks {', '.join(missing)}")
+            found[folder.name] = databases[0]
+    if not found:
+        raise ReleaseError(f"no 1 ms database (no <event>/<name>/meta.json) in {root}")
+    return found
+
+
+def write_fdp(out: Path, databases: dict[str, Path], ctx: Context) -> dict:
+    """Copy each event's 1 ms database into `out/fdp_1ms/<event>/`: `FDP_FILES` only
+    (`grid_1ms/` stays out), blind cohort shots dropped from every table, absolute
+    paths cut from the text cells, `meta.json` and `README.md` (`scrub_all`). Gold
+    and holdout shots stay: the card says the gold shots are for evaluation only.
+    `databases` come from the deployment or a verbatim copy of it
+    (docs/labeler/fdp_labels.md), never a run root. Returns per event the source
+    folder's name and the counts written."""
+    written = {}
+    blind = pa.array(sorted(ctx.blind), type=pa.int64())
+    for event, source in sorted(databases.items()):
+        dest = out / FDP_DIR / event
+        dest.mkdir(parents=True)
+        kept = {}
+        for name in ("shots.parquet", "spans.parquet"):
+            table = pq.read_table(source / name)
+            shots = pc.cast(table.column("shot"), pa.int64())
+            kept[name] = scrub_columns(
+                table.filter(pc.invert(pc.is_in(shots, value_set=blind)))
+            )
+            pq.write_table(kept[name], dest / name)
+        candidates = pq.read_table(source / "shots.parquet", columns=["shot"]).num_rows
+        withheld = candidates - kept["shots.parquet"].num_rows
+        valid = pd.read_csv(source / "valid.csv")
+        valid[~valid.shot.isin(ctx.blind)].to_csv(dest / "valid.csv", index=False)
+        meta = json.loads(scrub_all((source / "meta.json").read_text()))
+        meta["release_copy"] = {
+            "from": source.name,
+            "left_out": "grid_1ms/: decode from spans.parquet and the windows in "
+            "shots.parquet",
+            "withheld_shots": withheld,
+        }
+        (dest / "meta.json").write_text(json.dumps(meta, indent=1) + "\n")
+        (dest / "README.md").write_text(
+            scrub_all((source / "README.md").read_text()).rstrip()
+            + "\n\n## In this release\n\n"
+            "`grid_1ms/` is left out: decode from `spans.parquet` and the windows in "
+            f"`shots.parquet`. {withheld} blind cohort shots are withheld from every "
+            "table.\n"
+        )
+        status = kept["shots.parquet"].column("status").to_pylist()
+        written[event] = {
+            "from": source.name,
+            "candidates": len(status),
+            "labeled": status.count("labeled"),
+            "spans": kept["spans.parquet"].num_rows,
+            "withheld_shots": withheld,
+        }
     return written
 
 
@@ -2090,6 +2223,11 @@ def card(report: dict, signals: dict, tax: dict) -> str:
     add(
         "| `tables/` | the label tables themselves, scrubbed, for `hf_publish.py pull` |"
     )
+    if report.get("fdp_1ms"):
+        add(
+            "| `fdp_1ms/<event>/` | the all-shot 1 ms model labels: spans, shots, "
+            "valid, meta (model output, unreviewed) |"
+        )
     add("| `release.json` | counts and the sha256 of every file |")
     add("")
     add("## Tiers")
@@ -2186,6 +2324,31 @@ def card(report: dict, signals: dict, tax: dict) -> str:
     )
     add("```")
     add("")
+    if report.get("fdp_1ms"):
+        add("## All-shot model labels (1 ms)")
+        add("")
+        add(
+            "Model output, not labels (tier `derived`, unreviewed): one model per "
+            "event, run on every DIII-D plasma shot it could read, on a 1 ms grid "
+            "where the rest of this release is 10 ms. Per event, `fdp_1ms/<event>/` "
+            "holds `spans.parquet` (`shot, t_start_ms, t_end_ms`, half-open ms where "
+            "the event is present; confinement adds `category` 1 H, 2 L, 3 QH, "
+            "4 WPQH, 5 uncertain, `predicted`, `confidence`, `tier`), `shots.parquet` "
+            "(one row per plasma candidate: `status`, and for labeled shots the "
+            "assessed window `window_start_ms, window_end_ms`), `valid.csv`, "
+            "`meta.json` (model, method, counts, statuses, caveats) and `README.md`. "
+            "Inside a labeled shot's window, a ms that no span covers is absent "
+            "(confinement: in no segment); outside it nothing was assessed. Blind "
+            "cohort shots are withheld; gold shots (split `test`) are included and "
+            "are for evaluation only. Read them with `tokamaksi.fdp.open(event)`."
+        )
+        add("")
+        for event, item in report["fdp_1ms"].items():
+            add(
+                f"- `{event}` (`{item['from']}`): {item['labeled']:,} labeled shots of "
+                f"{item['candidates']:,} candidates, {item['spans']:,} spans."
+            )
+        add("")
     if report["unshipped"]:
         add("### Not in this release")
         add("")
