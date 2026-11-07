@@ -1790,9 +1790,9 @@ def _write_shots(shots_dir: Path, ctx: Context) -> dict:
 
 def fdp_databases(root) -> dict[str, Path]:
     """Event -> its one all-shot 1 ms database under `root`: `<root>/<event>/` when it
-    holds `meta.json`, else its one subfolder that does. `dev/` (the development
-    runs, docs/labeler/fdp_labels.md) and folders with none (the curated `events/`
-    copy) are skipped; two for one event, a database lacking one of `FDP_FILES`, or
+    holds `meta.json`, else its one subfolder that does. A `dev/` folder (development
+    runs, docs/labeler/fdp_labels.md: they live beside the deployment) and folders
+    with none are skipped; two for one event, a database lacking one of `FDP_FILES`, or
     none at all raise."""
     root = Path(root)
     if not root.is_dir():

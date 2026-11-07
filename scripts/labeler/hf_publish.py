@@ -13,12 +13,12 @@
 current label tables into `$LABELER_ROOT/hf/release` by default, exporting the silver
 and gold 10 ms grids into `<out>.work/` unless given, and writes the build report to
 `<out>.build.json`. `--fdp-1ms DIR` adds the all-shot 1 ms model labels. DIR is the
-deployment (`/projects/EKOLEMEN/fusionaihub_labels`, login node only) or a verbatim copy
+deployment (`/projects/EKOLEMEN/tokamaksi/diiid/release`, login node only) or a verbatim copy
 of it on GPFS for a SLURM build, never a run root (docs/labeler/fdp_labels.md). It holds
-one `<event>/` folder per event with one database (`<name>/meta.json`); `dev/` and
-`events/` hold none and are skipped. Each database goes to `fdp_1ms/<event>/` without
-`grid_1ms/` or blind cohort shots. `--out` must be new, empty or a previous release (never the label
-tables, the labeler root or anything holding them); the release is built in a hidden
+one `<event>/` folder per event with one database (`<name>/meta.json`). Each database
+goes to `fdp_1ms/<event>/` without `grid_1ms/` or blind cohort shots. `--out` must be
+new, empty or a previous release (never the label tables, the labeler root or anything
+holding them); the release is built in a hidden
 sibling and swapped in once it verifies. It fails if the built directory names a blind
 cohort shot, an absolute or home path, a login, a reviewer or a roster placeholder,
 or puts a gold or holdout shot in another split, and when the grid or a review pointer

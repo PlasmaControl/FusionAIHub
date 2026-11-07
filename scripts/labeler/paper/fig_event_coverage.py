@@ -105,7 +105,7 @@ D3DRDB = Path("/scratch/gpfs/EKOLEMEN/D3D/text/d3drdb_20261006T135944Z/SUMMARIES
 #: ae_fdp_label.py's candidate rule (MIN_PULSE_S, MIN_IP_A)
 MIN_PULSE_S, MIN_IP_A = 0.1, 1e5
 AE_PUBLISHED = Path(
-    "/projects/EKOLEMEN/fusionaihub_labels/alfven_eigenmode/ae_seldnet_fdp_1ms/shots.parquet"
+    "/projects/EKOLEMEN/tokamaksi/diiid/release/alfven_eigenmode/ae_seldnet_fdp_1ms/shots.parquet"
 )
 AE_CANDIDATES = PATHS.root / "ae_fdp_1ms" / "candidates.csv"
 AE_SILVER = TABLES / "alfven_eigenmode" / "extend_ae_seldnet" / "silver_shots.csv"

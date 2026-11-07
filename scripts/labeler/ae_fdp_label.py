@@ -26,7 +26,8 @@ Seven subcommands, each resumable (a shot already done is skipped):
     column probabilities, float32) and the 1 ms calls appended to ``results/<job>.*.csv``; then
     deletes the co2 file (only files under ``<root>/co2``).
 ``publish`` (login node, fdp env): the results and logs -> ``--out`` (``/projects``: the
-    deployment for the all-shot root, ``dev/alfven_eigenmode/<root name>`` for any other root):
+    deployment ``release/alfven_eigenmode/ae_seldnet_fdp_1ms`` for the all-shot root,
+    ``dev/alfven_eigenmode/<root name>`` for any other root):
     ``spans.parquet`` (present spans), ``shots.parquet`` (one row per candidate, with its
     status and assessed window), ``meta.json`` and ``README.md``.
 ``coverage`` (login node, fdp env): the public listing of processed shot numbers (tokamaksi's
@@ -66,14 +67,17 @@ LABELER_ROOT = Path(os.environ.get("LABELER_ROOT",
                                    "/scratch/gpfs/EKOLEMEN/nc1514/FusionAIHub/.cache/labeler"))
 ALL_SHOT_ROOT = LABELER_ROOT / "ae_fdp_1ms"
 ROOT = Path(os.environ.get("AE_FDP_ROOT", ALL_SHOT_ROOT))
-#: The deployment: every published all-shot 1 ms database, one ``<event>/<name>/`` folder each
-#: (docs/labeler/fdp_labels.md). Readers outside the run read only these, never a run root.
-DEPLOYMENT = Path("/projects/EKOLEMEN/fusionaihub_labels")
+#: The DIII-D labels on /projects: ``release/``, ``dev/`` and ``events/`` side by side
+#: (docs/labeler/fdp_labels.md); another machine gets its own ``tokamaksi/<machine>/``.
+LABELS = Path("/projects/EKOLEMEN/tokamaksi/diiid")
+#: The deployment: every published all-shot 1 ms database, one ``<event>/<name>/`` folder each.
+#: Readers outside the run read only these, never a run root or ``DEV``.
+DEPLOYMENT = LABELS / "release"
 OUT = DEPLOYMENT / "alfven_eigenmode" / "ae_seldnet_fdp_1ms"
 #: Development runs (samples, pilots, checks, relabel trials) publish to ``DEV/<event>/<run>/``.
-DEV = DEPLOYMENT / "dev"
-OUT_HELP = ("the label folder; default the deployment for the all-shot run root, else "
-            "dev/<event>/<root name> beside it (publish_out)")
+DEV = LABELS / "dev"
+OUT_HELP = ("the label folder; default release/<event>/<name> for the all-shot run root, else "
+            "dev/<event>/<root name> (publish_out)")
 D3DRDB = Path("/scratch/gpfs/EKOLEMEN/D3D/text/d3drdb_20261006T135944Z")
 SLURM_LOGS = LABELER_ROOT / "runs/slurm"
 
@@ -931,7 +935,7 @@ def cmd_view(args) -> None:
 def deployed(deployment: Path) -> dict[str, Path]:
     """The published all-shot 1 ms databases, by event: ``<event>/`` itself when it holds
     ``meta.json``, else its one subfolder that does (tokamaksi.fdp reads them by the same rule).
-    ``dev/`` (the development runs) is skipped; the curated ``events/`` folder holds none."""
+    A ``dev/`` folder inside is skipped (development runs live in ``DEV``, beside it)."""
     found = {}
     for event in sorted(p for p in Path(deployment).iterdir() if p.is_dir() and p.name != DEV.name):
         dbs = [event] if (event / "meta.json").is_file() else sorted(m.parent for m in event.glob("*/meta.json"))

@@ -7,7 +7,7 @@ contributor does and what the owner runs.
 
 ## Status
 
-The shared folder on `/projects` (`/projects/EKOLEMEN/fusionaihub_labels/events`) is
+The shared folder on `/projects` (`/projects/EKOLEMEN/tokamaksi/diiid/events`) is
 not active. The two clusters use two separate label folders today, each a copy until
 the migration: on Stellar the owner exports `LABELER_LABEL_TABLES` as
 `/scratch/gpfs/EKOLEMEN/nc1514/events`, and StellarAI uses the default of this branch,

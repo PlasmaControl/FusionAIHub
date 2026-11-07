@@ -256,7 +256,7 @@ raw_datasets:
   - stem: wpqh_phases
     path: wide_pedestal_quiescent_high_confinement_mode/raw/WPQHphases-tau_min500-tau_inter250-pewid_max4.0-pewid_min3.0-tinj_wpqh2.1
     formatter:
-    provenance: "Original phase-table directory copied unchanged from /projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/; possibly Jalal Butt's newer WPQH tables (attribution unconfirmed)"
+    provenance: "Jalal's WPQH phase tables (the author of the 28 April 2024 confinement regime table): the original phase-table directory, copied unchanged from /projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/"
     citation:
 
   - stem: tm_labels_archive
