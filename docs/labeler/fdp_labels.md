@@ -101,5 +101,16 @@ mode, and the grid byte has the parent in bit 0, the subcategories in bits 1 to 
 `meta.json`) and not observable in bit 7. A listed shot with no labels, no window or a failed run
 stays listed in `shots.parquet` with its `status`.
 
+The tokamaksi proposal run (2026-11-08) used a 489-shot list (the 460-shot MHD roster, the gold
+set's other 29 shots and 199597):
+- `suggest --version v7` wrote 14 tables (three parents, 11 subcategories) to
+  `$LABELER_ROOT/suggestions/mhd_modes/v7/`. 469 shots are labelled (468 with modes, 1 with no
+  |n| 1-3 mode); 20 have no label (14 `no corpus record`, 6 `no window: no Ip`) and are in no table.
+- The 11 subcategories are every class a labelled mode carried: 1/1, 2/1, 3/1, 4/1, 2/2, 3/2,
+  4/2, 5/2, 4/3, 5/3 and 7/3. The `events.yaml` taxonomy names all of them.
+- `roster` replaced `mhd_n1`, `mhd_n2` and `mhd_n3` `shots.csv` with the list: tier `unverified`
+  except 199597 (`silver`, audited by Nathaniel Chen, 2026-11-07); a shot with no label or no mode
+  has a note saying why. Each file was backed up first, to a gitignored folder.
+
 The development run of `publish` has not been made. When it is, give `--out-root` as
 `/projects/EKOLEMEN/tokamaksi/diiid/dev` on the login node.
