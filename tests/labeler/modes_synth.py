@@ -23,7 +23,7 @@ import pandas as pd
 
 from labeler.mhd import pipeline
 
-SHOT = 199597
+SHOT = 100000  # synthetic: no test reads a real shot
 WINDOW = (0.0, 1000.0)
 
 SPEC = [

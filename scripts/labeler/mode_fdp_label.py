@@ -13,10 +13,12 @@ m (a later redesign adds the "n>3" and "n=0" classes); only labelled modes are w
 Every command takes ``--shots FILE``, one shot a line (``#`` starts a comment): only those shots
 are read, so the list is the seal. Four subcommands:
 
-``status``: which listed shots have port-v6 files; counts, and the listed shots that have none.
+``status``: how many listed shots have port-v6 labels and how many do not (counts only: no shot
+    number is printed, as the list may hold held-out shots).
 ``suggest``: the ``mhd_modes`` suggestion tables (v5's format and semantics: ``shot, category,
     t_start, t_end, confidence``, 0 absent, 1 present, 2 uncertain, 3 not observable) into
-    ``<root>/suggestions/mhd_modes/<version>/``; a version is never written into twice. With
+    ``<root>/suggestions/mhd_modes/<version>/``; a version is never written into twice, and a
+    class with no entry in ``--manifest``'s taxonomy is refused before anything is written. With
     ``--events`` it also points each event's ``review/source.json`` at its table
     (``labeler.events.review.labels.write_pointer``) and makes the ``m<m>`` folders it needs.
 ``roster``: replace the ``shots.csv`` of ``mhd_n1``, ``mhd_n2`` and ``mhd_n3`` under ``--events``
@@ -75,29 +77,39 @@ def audited_args(args) -> dict[int, dict]:
 
 
 def cmd_status(args) -> None:
-    from labeler.modes import tracks
+    """Counts only: no shot number is printed (the list may hold held-out shots)."""
+    from collections import Counter
+
+    from labeler.modes import suggest
 
     shots = read_shots(args.shots)
-    missing = [s for s in shots if not tracks.has_labels(args.labels, s)]
+    ready, skipped, _ = suggest.load(args.labels, shots)
+    why = Counter(reason.split(":")[0] for reason in skipped.values())
     print(
-        f"{len(shots)} listed; {len(shots) - len(missing)} with port-v6 files; "
-        f"{len(missing)} without"
+        f"{len(shots)} listed; {len(ready)} labeled; {len(skipped)} without a label "
+        f"{dict(why)}"
     )
-    if missing:
-        print("without:", " ".join(map(str, missing)))
 
 
 def cmd_suggest(args) -> None:
+    from collections import Counter
+
+    from labeler.events import taxonomy
     from labeler.modes import suggest
 
     shots = read_shots(args.shots)
     summary = suggest.write(
-        args.labels, shots, args.root, version=args.version, repo=REPO
+        args.labels,
+        shots,
+        args.root,
+        version=args.version,
+        repo=REPO,
+        taxonomy=taxonomy.load(args.manifest),
     )
     print(
         f"{summary['shots']} of {len(shots)} listed shots written; "
-        f"{len(summary['skipped'])} skipped: "
-        f"{json.dumps({k: v.split(':')[0] for k, v in summary['skipped'].items()})}"
+        f"{len(summary['skipped'])} skipped "
+        f"{dict(Counter(v.split(':')[0] for v in summary['skipped'].values()))}"
     )
     for event, row in summary["events"].items():
         print(
@@ -115,7 +127,7 @@ def cmd_suggest(args) -> None:
 
 
 def cmd_roster(args) -> None:
-    from labeler.modes import roster, suggest, tracks
+    from labeler.modes import roster, tracks
 
     shots = read_shots(args.shots)
     notes = {}
@@ -152,11 +164,9 @@ def cmd_roster(args) -> None:
         roster.write(path, new)
         again = roster.read(path)
         assert len(again) == counts["new"], event
-    del suggest
 
 
 def cmd_publish(args) -> None:
-    from labeler.modes import cells as C
     from labeler.modes import fdp, suggest
 
     shots = read_shots(args.shots)
@@ -212,7 +222,6 @@ def cmd_publish(args) -> None:
             f"{event}: {c['labeled']} of {c['listed']} shots labeled, {c['parent_spans']} parent "
             f"spans, {c['subcategory_spans']} subcategory spans {c['by_subcategory']} -> {out}"
         )
-    del C
 
 
 def main(argv=None) -> None:
@@ -249,6 +258,12 @@ def main(argv=None) -> None:
         help="the labeler root holding suggestions/ (default %(default)s)",
     )
     s.add_argument("--version", default="v6port")
+    s.add_argument(
+        "--manifest",
+        type=Path,
+        default=REPO / "configs" / "labeler" / "events.yaml",
+        help="the events.yaml whose taxonomy must name every subcategory (default %(default)s)",
+    )
     s.add_argument(
         "--events",
         type=Path,

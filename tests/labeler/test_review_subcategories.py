@@ -199,9 +199,17 @@ def test_the_shipped_taxonomy_defaults_detachment_to_attached_and_confinement_to
 
 def test_the_shipped_taxonomy_lists_the_mhd_modes_and_ae_children():
     tree = taxonomy.load(Paths().events_manifest)
-    assert tree.children("mhd_n1") == ["mhd_n1.m1", "mhd_n1.m2", "mhd_n1.m3"]
-    assert tree.children("mhd_n2") == ["mhd_n2.m3"]
-    assert tree.children("mhd_n3") == ["mhd_n3.m4"]
+    # v5's five (1/1 2/1 3/1 3/2 4/3) and the other classes of the mode labels
+    # (`labeler.modes`, omnimode port-v6): every (n, m) it labels
+    assert tree.children("mhd_n1") == [f"mhd_n1.m{m}" for m in (1, 2, 3, 4)]
+    assert tree.children("mhd_n2") == [f"mhd_n2.m{m}" for m in (2, 3, 4, 5)]
+    assert tree.children("mhd_n3") == [f"mhd_n3.m{m}" for m in (4, 5, 7)]
+    for event in ("mhd_n1", "mhd_n2", "mhd_n3"):
+        for child in tree.children(event):
+            assert (tree.child(child).m, tree.child(child).n) == (
+                int(child.split(".m")[1]),
+                int(event[-1]),
+            )
     assert tree.children("alfven_eigenmode") == [
         "alfven_eigenmode.tae", "alfven_eigenmode.rsae",
     ]

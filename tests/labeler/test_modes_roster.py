@@ -6,6 +6,7 @@ Everything runs on a temporary tree. The shot numbers are synthetic.
 from __future__ import annotations
 
 import importlib
+import subprocess
 from pathlib import Path
 
 import pandas as pd
@@ -142,6 +143,22 @@ def test_a_backup_mirrors_the_path_keeps_the_first_copy_and_refuses_a_git_tree(
     assert not (tree / "backup").exists()
 
 
+def test_a_backup_inside_a_git_tree_is_allowed_only_where_git_ignores_it(tmp_path):
+    base = tmp_path / "tokamaksi"
+    shots = base / "shots.csv"
+    base.mkdir()
+    shots.write_text("original")
+    tree = tmp_path / "work"
+    tree.mkdir()
+    subprocess.run(["git", "init", "-q", str(tree)], check=True)
+    (tree / ".gitignore").write_text("/data/\n")
+    with pytest.raises(ValueError):
+        roster.backup(shots, base, tree / "tracked")  # a real tree, not ignored
+    assert not (tree / "tracked").exists()
+    copy = roster.backup(shots, base, tree / "data" / "backup")
+    assert copy.read_text() == "original" and (tree / "data").is_dir()
+
+
 @pytest.fixture
 def script(monkeypatch):
     monkeypatch.syspath_prepend(str(SCRIPTS))
@@ -218,3 +235,47 @@ def test_the_roster_command_prints_counts_only_and_changes_nothing_on_a_dry_run(
         assert roster.read(tmp_path / "backup" / "events" / event / "shots.csv").equals(
             OLD
         )
+
+
+def test_status_prints_counts_only_and_never_a_shot_number(script, tmp_path, capsys):
+    labels = tmp_path / "labels"
+    write_shot(labels, make_shot(shot=123456))
+    write_shot(labels, make_shot(shot=234567, model_error="boom"))
+    shots = tmp_path / "shots.txt"
+    shots.write_text("123456\n234567\n345678\n")
+    script.main(["--labels", str(labels), "--shots", str(shots), "status"])
+    out = capsys.readouterr().out
+    assert "3 listed; 1 labeled; 2 without a label" in out
+    assert not any(str(shot) in out for shot in (123456, 234567, 345678))
+
+
+def test_suggest_points_every_event_and_refuses_a_class_the_taxonomy_lacks(
+    script, tmp_path, capsys
+):
+    labels, events, root = (
+        tmp_path / "labels",
+        tmp_path / "events",
+        tmp_path / "root",
+    )
+    write_shot(labels, make_shot(shot=123456))
+    shots = tmp_path / "shots.txt"
+    shots.write_text("123456\n234567\n")
+    argv = ["--labels", str(labels), "--shots", str(shots), "suggest"]
+    short = tmp_path / "short.yaml"
+    short.write_text(
+        "taxonomy:\n  mhd_n1:\n    subcategories:\n      m1: {m: 1, n: 1}\n"
+    )
+    with pytest.raises(ValueError, match="not in events.yaml"):
+        script.main([*argv, "--root", str(root), "--manifest", str(short)])
+    assert not root.exists()  # refused before anything was written
+    script.main(
+        [*argv, "--root", str(root), "--version", "v7", "--events", str(events)]
+    )
+    out = capsys.readouterr().out
+    assert "1 of 2 listed shots written; 1 skipped" in out
+    assert "pointer mhd_n2.m4: mhd_modes v7" in out
+    assert not any(str(shot) in out for shot in (123456, 234567))
+    for event in (*script.EVENTS, "mhd_n1.m2", "mhd_n3.m4"):
+        parent, _, key = event.partition(".")
+        base = events / parent / "subcategories" / key if key else events / parent
+        assert (base / "review" / "source.json").is_file(), event

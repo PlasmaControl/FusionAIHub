@@ -12,6 +12,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from labeler.events import taxonomy
 from labeler.events.review import labels as review_labels
 from labeler.modes import cells as C
 from labeler.modes import suggest
@@ -20,6 +21,7 @@ from labeler.modes import tracks as T
 from .modes_synth import SHOT, make_shot, write_shot
 
 REPO = Path(__file__).resolve().parents[2]
+MANIFEST = REPO / "configs" / "labeler" / "events.yaml"
 COLUMNS = ["shot", "category", "t_start", "t_end", "confidence"]
 
 
@@ -121,3 +123,39 @@ def test_point_writes_a_review_source_for_each_event_and_makes_subcategory_folde
         assert pointer["table"].endswith(f"{event}_suggest_mhd_modes_v6port.csv")
         # the review page reads the table the pointer names, 1 ms cells
         assert review_labels.read_source(base)
+
+
+def test_the_sidecar_names_the_source_the_scope_and_that_harmonics_are_hidden(
+    labels, tmp_path
+):
+    suggest.write(labels, [SHOT], tmp_path / "root", version="v7", repo=REPO)
+    folder = tmp_path / "root" / "suggestions" / "mhd_modes" / "v7"
+    names = sorted(p.name for p in folder.iterdir())
+    assert "mhd_n1_suggest_mhd_modes_v7.csv" in names
+    assert "mhd_n1.m2_suggest_mhd_modes_v7.meta.json" in names
+    meta = json.loads((folder / "mhd_n1.m2_suggest_mhd_modes_v7.meta.json").read_text())
+    source = meta["source"]
+    assert "labeler.mhd v6" in source["port_of"]
+    assert "hidden" in source["harmonics"] and source["n_scope"] == "|n| = 1, 2, 3"
+    assert "proposed, not checked" in source["status"]
+
+
+def test_every_class_the_repo_taxonomy_must_hold_is_a_subcategory_there(
+    labels, tmp_path
+):
+    """The classes of a labelled shot all have an events.yaml entry (so the page offers them),
+    and a class without one is refused before any table is written."""
+    tree = taxonomy.load(MANIFEST)
+    ready, _, _ = suggest.load(labels, [SHOT])
+    kids = suggest.subcategories(ready)
+    assert suggest.outside_taxonomy(kids, tree) == []
+    for event, name in kids.items():
+        child = tree.child(event)
+        assert (child.m, child.n) == T.parse_class(name), event
+    suggest.write(labels, [SHOT], tmp_path / "ok", repo=REPO, taxonomy=tree)
+
+    missing = taxonomy.parse({"mhd_n1": {"subcategories": {"m1": {"m": 1, "n": 1}}}})
+    assert "mhd_n2.m4" in suggest.outside_taxonomy(kids, missing)
+    with pytest.raises(ValueError, match="mhd_n2.m4"):
+        suggest.write(labels, [SHOT], tmp_path / "refused", repo=REPO, taxonomy=missing)
+    assert not (tmp_path / "refused").exists()  # nothing was written

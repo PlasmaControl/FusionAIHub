@@ -88,8 +88,8 @@ Commands (all take `--labels DIR --shots FILE` first):
 
 | Command | Writes |
 |---|---|
-| `status` | nothing; counts the listed shots with and without port-v6 files |
-| `suggest` | the `mhd_modes` suggestion tables, in v5's format (`shot, category, t_start, t_end, confidence`, 0 absent, 1 present, 2 uncertain, 3 not observable), into `<root>/suggestions/mhd_modes/<version>/`, default version `v6port`. A version is never written into twice. `--events DIR` also points each event's `review/source.json` at its table, with `labels.write_pointer`, and makes the `m<m>` folders |
+| `status` | nothing; counts the listed shots with and without a port-v6 label (counts only, no shot number is printed) |
+| `suggest` | the `mhd_modes` suggestion tables, in v5's format (`shot, category, t_start, t_end, confidence`, 0 absent, 1 present, 2 uncertain, 3 not observable), into `<root>/suggestions/mhd_modes/<version>/`, default version `v6port`. A version is never written into twice, and a class with no entry in `--manifest`'s taxonomy (default `configs/labeler/events.yaml`) is refused before anything is written. `--events DIR` also points each event's `review/source.json` at its table, with `labels.write_pointer`, and makes the `m<m>` folders |
 | `roster` | `shots.csv` of `mhd_n1`, `mhd_n2` and `mhd_n3` replaced by the listed shots, each file backed up first; prints counts only |
 | `publish` | the 1 ms databases (`spans.parquet`, `shots.parquet`, `valid.csv`, `meta.json`, `README.md`, `grid_1ms/`), one a parent event, at `<out-root>/<event>/<run>/`. `--out-root` has no default, and nothing here writes `release/` or the Hugging Face export |
 

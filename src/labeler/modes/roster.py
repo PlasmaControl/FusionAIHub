@@ -9,12 +9,13 @@ with no label (the labeller failed on it) stays listed, unverified, with a note 
 
 Every function returns counts and never the shots: the old roster may hold held-out shots, which
 nothing here prints or logs. `backup` copies a file before it is changed, and refuses a folder
-inside a git working tree.
+inside a git working tree unless the tree ignores it.
 """
 
 from __future__ import annotations
 
 import shutil
+import subprocess
 from pathlib import Path
 
 import pandas as pd
@@ -113,18 +114,34 @@ def write(path, frame: pd.DataFrame) -> None:
         frame[COLUMNS].to_csv(tmp, index=False, lineterminator="\n")
 
 
+def _git_ignores(tree: Path, path: Path) -> bool:
+    """Whether the git working tree `tree` ignores `path` (false when git cannot say)."""
+    try:
+        return (
+            subprocess.run(
+                ["git", "-C", str(tree), "check-ignore", "-q", str(path)],
+                capture_output=True,
+                check=False,
+            ).returncode
+            == 0
+        )
+    except OSError:
+        return False
+
+
 def backup(path, base, destination) -> Path:
     """Copy `path` to `destination/<path relative to base>` before it is changed.
 
-    An existing copy is kept (the first backup is the original); a `destination` inside a git
-    working tree is refused, since a roster may hold held-out shot numbers."""
+    An existing copy is kept (the first backup is the original). A `destination` inside a git
+    working tree is refused, since a roster may hold held-out shot numbers and a commit could
+    carry the copy, unless that tree's `.gitignore` ignores the folder."""
     path, base, destination = (
         Path(path).resolve(),
         Path(base).resolve(),
         Path(destination).resolve(),
     )
     for folder in (destination, *destination.parents):
-        if (folder / ".git").exists():
+        if (folder / ".git").exists() and not _git_ignores(folder, destination):
             raise ValueError(f"{destination} is inside the git working tree {folder}")
     target = destination / path.relative_to(base)
     if target.exists():

@@ -297,7 +297,7 @@ The same labels dense, one byte a ms (bits in `meta.json` `grid_bits`):
 
 ```python
 grid = pd.read_csv("{GRID_DIR}/index.csv").set_index("shot")
-b = np.fromfile(f"{GRID_DIR}/{{shot // 1000}}/{{shot}}.bin", np.uint8)   # e.g. 199/199597.bin
+b = np.fromfile(f"{GRID_DIR}/{{shot // 1000}}/{{shot}}.bin", np.uint8)   # e.g. 123/123456.bin
 parent, not_observable = b & 1, (b >> 7) & 1
 sub = lambda i: (b >> i) & 1      # i from grid_bits, e.g. m2
 t_ms = grid.start_ms[shot] + np.arange(len(b))                           # frame [t, t + 1) ms

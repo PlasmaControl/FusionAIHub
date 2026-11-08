@@ -172,8 +172,11 @@ def sidecar(
         "rule": rule_text(event, kids),
         "source": {
             "labels": "omnimode port-v6 (<shot>.json, .tracks.parquet, .frames.parquet)",
+            "port_of": "labeler.mhd v6 (omnimode's port; same label model and rules)",
             "labels_dir": str(labels_dir),
             "freeze": dict(freeze),
+            "harmonics": "hidden (tracks with harm true are not in any table)",
+            "n_scope": "|n| = 1, 2, 3",
             "status": "proposed, not checked; to be superseded by the labeller redesign",
         },
         "totals_ms": states,
@@ -193,10 +196,26 @@ def sidecar(
     }
 
 
-def write(labels_dir, shots, root, *, version: str = VERSION, repo: Path) -> dict:
+def outside_taxonomy(kids: dict[str, str], taxonomy) -> list[str]:
+    """The subcategories of `kids` that `taxonomy` (a `labeler.events.taxonomy.Taxonomy`) does
+    not name: the review page would not offer them, so they need an `events.yaml` entry."""
+    return [event for event in kids if not taxonomy.is_child(event)]
+
+
+def write(
+    labels_dir,
+    shots,
+    root,
+    *,
+    version: str = VERSION,
+    repo: Path,
+    taxonomy=None,
+) -> dict:
     """Write every event's table and sidecar under `root`; returns the summary.
 
-    Refuses when the version folder already holds a table. `shots` is the caller's list."""
+    Refuses when the version folder already holds a table. `shots` is the caller's list.
+    With `taxonomy` given, a class the labelled modes carry that it does not name is refused
+    before anything is written (`ValueError`, naming the events)."""
     folder = Path(root) / "suggestions" / METHOD / version
     held = (
         sorted(folder.glob(f"*_suggest_{METHOD}_{version}.csv"))
@@ -209,6 +228,10 @@ def write(labels_dir, shots, root, *, version: str = VERSION, repo: Path) -> dic
         )
     ready, skipped, dropped = load(labels_dir, shots)
     kids = subcategories(ready)
+    if taxonomy is not None and (unnamed := outside_taxonomy(kids, taxonomy)):
+        raise ValueError(
+            f"subcategories {unnamed} are not in events.yaml's taxonomy: add them first"
+        )
     summary = {"events": {}, "shots": len(ready), "skipped": skipped, "classes": kids}
     for event, record in tables(ready, kids).items():
         path = table_file(root, event, version)
