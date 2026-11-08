@@ -159,3 +159,33 @@ def test_every_class_the_repo_taxonomy_must_hold_is_a_subcategory_there(
     with pytest.raises(ValueError, match="mhd_n2.m4"):
         suggest.write(labels, [SHOT], tmp_path / "refused", repo=REPO, taxonomy=missing)
     assert not (tmp_path / "refused").exists()  # nothing was written
+
+
+def test_only_the_port_statuses_that_label_a_shot_are_written(tmp_path):
+    folder = tmp_path / "labels"
+    # the port's records for a shot labelled with no |n| 1-3 mode, one with no corpus record
+    # (no magnetics: not an all-absent shot) and one with no Ip (no window)
+    write_shot(folder, make_shot(shot=100010, spec=[], status="no n=1-3 tracks"))
+    write_shot(folder, make_shot(shot=100011, spec=[], status="no corpus record"))
+    write_shot(
+        folder,
+        make_shot(shot=100012, spec=[], window=None, status="no window: no Ip"),
+    )
+    write_shot(folder, make_shot(shot=100013))
+    listed = [100010, 100011, 100012, 100013]
+    ready, skipped, _ = suggest.load(folder, listed)
+    assert [s for s, _ in ready] == [100010, 100013]
+    assert skipped[100011] == f"{suggest.NOT_LABELLED}: no corpus record"
+    assert skipped[100012] == "no window: no Ip"
+    summary = suggest.write(folder, listed, tmp_path / "root", repo=REPO)
+    table = pd.read_csv(
+        tmp_path
+        / "root"
+        / "suggestions"
+        / "mhd_modes"
+        / "v6port"
+        / "mhd_n1_suggest_mhd_modes_v6port.csv"
+    )
+    assert set(table.shot) == {100010, 100013} and summary["shots"] == 2
+    empty = table[table.shot == 100010]
+    assert list(empty.category) == [0]  # labelled, and no mode in it: absent throughout

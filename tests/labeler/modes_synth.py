@@ -61,7 +61,7 @@ def make_shot(
         "freeze": "f1",
     } | info_extra
     frame = pd.DataFrame(frames, columns=["shot", "family_id", "t_ms", "f0", "n"])
-    tracks = pd.DataFrame(T)[pipeline.TRACK_COLUMNS]
+    tracks = pd.DataFrame(T).reindex(columns=pipeline.TRACK_COLUMNS)
     return pipeline.Shot(shot, info, tracks, frame)
 
 

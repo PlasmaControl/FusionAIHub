@@ -49,6 +49,7 @@ EVENTS = ("mhd_n1", "mhd_n2", "mhd_n3")
 FAILED_NOTE = "no label (labeller failed)"
 NO_DATA_NOTE = "no label (no magnetics data on disk)"
 NO_WINDOW_NOTE = "no label (no assessed window)"
+NO_MODES_NOTE = "no n=1-3 modes"
 
 
 def read_shots(path) -> list[int]:
@@ -126,30 +127,47 @@ def cmd_suggest(args) -> None:
             )
 
 
+def note_for(got) -> str | None:
+    """The roster note of a shot read by `tracks.read_shot` (None when it is labelled with modes).
+
+    A shot with no label says why (``no label (<port status>)``); a labelled shot with no
+    |n| 1-3 mode says so. The notes hold no shot number."""
+    from labeler.modes import suggest
+
+    if got is None:
+        return NO_DATA_NOTE
+    status = str(got.info.get("status", ""))
+    if got.info.get("model_error") or status.startswith("read error"):
+        return FAILED_NOTE
+    if not got.info.get("window"):
+        return (
+            f"no label ({status})" if status.startswith("no window") else NO_WINDOW_NOTE
+        )
+    if status == "no n=1-3 tracks":
+        return NO_MODES_NOTE
+    if status not in suggest.LABELLED:
+        return f"no label ({status})"
+    return None
+
+
 def cmd_roster(args) -> None:
+    from collections import Counter
+
     from labeler.modes import roster, tracks
 
     shots = read_shots(args.shots)
     notes = {}
     for shot in shots:
-        got = tracks.read_shot(args.labels, shot)
-        if got is None:
-            notes[shot] = NO_DATA_NOTE
-        elif got.info.get("model_error") or str(got.info.get("status", "")).startswith(
-            "read error"
-        ):
-            notes[shot] = FAILED_NOTE
-        elif not got.info.get("window"):
-            notes[shot] = NO_WINDOW_NOTE
+        note = note_for(tracks.read_shot(args.labels, shot))
+        if note:
+            notes[shot] = note
     audited = audited_args(args)
     missing = sorted(set(audited) - set(shots))
     if missing:
         raise SystemExit("an audited shot is not in the listed shots")
     print(
-        f"{len(shots)} listed; {len(notes)} without a label: "
-        f"{sum(v == NO_DATA_NOTE for v in notes.values())} no label JSON, "
-        f"{sum(v == FAILED_NOTE for v in notes.values())} labeller failed, "
-        f"{sum(v == NO_WINDOW_NOTE for v in notes.values())} no assessed window"
+        f"{len(shots)} listed; {len(notes)} with a note: "
+        f"{dict(Counter(notes.values()))}"
     )
     old = {
         event: roster.read(Path(args.events) / event / "shots.csv") for event in EVENTS

@@ -215,12 +215,8 @@ def test_the_roster_command_prints_counts_only_and_changes_nothing_on_a_dry_run(
     ]
     script.main([*argv, "--dry-run"])
     out = capsys.readouterr().out
-    assert (
-        "removed" in out
-        and '"kept": 2' in out
-        and "1 no label JSON" in out
-        and "1 labeller failed" in out
-    )
+    assert "removed" in out and '"kept": 2' in out
+    assert f"'{script.NO_DATA_NOTE}': 1" in out and f"'{script.FAILED_NOTE}': 1" in out
     assert roster.read(events / "mhd_n1" / "shots.csv").equals(OLD)
     assert not (tmp_path / "backup").exists()
     script.main(argv)
@@ -279,3 +275,27 @@ def test_suggest_points_every_event_and_refuses_a_class_the_taxonomy_lacks(
         parent, _, key = event.partition(".")
         base = events / parent / "subcategories" / key if key else events / parent
         assert (base / "review" / "source.json").is_file(), event
+
+
+def test_the_roster_note_says_why_a_shot_has_no_label_or_no_mode(script, tmp_path):
+    labels = tmp_path / "labels"
+    write_shot(labels, make_shot(shot=100001))
+    write_shot(labels, make_shot(shot=100002, spec=[], status="no n=1-3 tracks"))
+    write_shot(labels, make_shot(shot=100003, spec=[], status="no corpus record"))
+    write_shot(
+        labels, make_shot(shot=100004, spec=[], window=None, status="no window: no Ip")
+    )
+    write_shot(labels, make_shot(shot=100005, model_error="boom"))
+    from labeler.modes import tracks
+
+    notes = {
+        s: script.note_for(tracks.read_shot(labels, s)) for s in range(100001, 100007)
+    }
+    assert notes == {
+        100001: None,
+        100002: "no n=1-3 modes",
+        100003: "no label (no corpus record)",
+        100004: "no label (no window: no Ip)",
+        100005: script.FAILED_NOTE,
+        100006: script.NO_DATA_NOTE,  # no files at all
+    }

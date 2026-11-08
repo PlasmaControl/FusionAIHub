@@ -39,6 +39,11 @@ CATEGORIES = {0: "absent", 1: "present", 2: "uncertain", 3: "not_observable"}
 NO_LABELS = "no labels computed (no port-v6 files)"
 FAILED = "labeller failed"
 NO_WINDOW = "no window"
+NOT_LABELLED = "not labelled"
+#: The info record's `status` of a shot the port labelled: with modes ("ok"), or with no
+#: |n| 1-3 track to find (a label of no mode). Any other status ("no corpus record", "no window:
+#: no Ip") is a shot with no label: it is not written as an all-absent shot.
+LABELLED = ("ok", "no n=1-3 tracks")
 
 
 def table_file(root, event: str, version: str = VERSION) -> Path:
@@ -62,8 +67,9 @@ def git_sha(repo: Path) -> str | None:
 def load(labels_dir, shots) -> tuple[list, dict[int, str], dict]:
     """Read every listed shot; `(ready, skipped, dropped)`.
 
-    `ready` is `[(shot, rule-applied Shot)]` for the shots with files and a window; `skipped`
-    maps the others to why (`NO_LABELS`, `FAILED`, `NO_WINDOW`); `dropped` is `{shot: apply_rules counts}`.
+    `ready` is `[(shot, rule-applied Shot)]` for the shots with files, a window and a labelled
+    status (`LABELLED`); `skipped` maps the others to why (`NO_LABELS`, `FAILED`, `NO_WINDOW`,
+    `NOT_LABELLED`); `dropped` is `{shot: apply_rules counts}`.
     A shot is read only when it is listed: the caller's list is the seal."""
     ready, skipped, dropped = [], {}, {}
     for shot in sorted({int(s) for s in shots}):
@@ -77,7 +83,12 @@ def load(labels_dir, shots) -> tuple[list, dict[int, str], dict]:
                 f"{FAILED}: {got.info.get('model_error') or got.info.get('status')}"
             )
         elif not got.info.get("window"):
-            skipped[shot] = f"{NO_WINDOW}: {got.info.get('status')}"
+            status = str(got.info.get("status"))
+            skipped[shot] = (
+                status if status.startswith(NO_WINDOW) else f"{NO_WINDOW}: {status}"
+            )
+        elif str(got.info.get("status")) not in LABELLED:
+            skipped[shot] = f"{NOT_LABELLED}: {got.info.get('status')}"
         else:
             ruled, counts = T.apply_rules(got)
             ready.append((shot, ruled))
