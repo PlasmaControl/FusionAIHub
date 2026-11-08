@@ -59,3 +59,47 @@ beside the ELMy-period spans. To rerun all shots with a new ELM model, see
 their results are still in their run roots. Those runs are `ae_fdp_pilot`, `ae_fdp_preview`,
 `ae_fdp_1ms_check`, `ae_notch`, `ae_fdp_notch`, `ae_tiers`, `elm_tiers` and `round5`. The notch
 relabel (`ae_fdp_notch`) is merged into the AE release by `publish --notch-root`.
+
+## MHD mode labels (`mode_fdp_label.py`, proposed)
+
+`scripts/labeler/mode_fdp_label.py` converts omnimode's port-v6 labels into the labeler's
+formats. It computes nothing and fetches nothing: it reads one set of files a shot
+(`<shot>.json`, `.tracks.parquet`, `.frames.parquet`) and a shot list, and reads no shot that is
+not on the list. The code is `labeler.modes`; the tests are `tests/labeler/test_modes_*.py`.
+
+Status: PROPOSED, NOT CHECKED. The rows are model output with the labeller's own confidence.
+They are to be superseded by the labeller redesign, which also adds the "n>3" and "n=0" classes
+that this version does not have.
+
+- Source: omnimode port-v6. The equilibrium is the shot's own tree in omnimode's info record,
+  EFIT02ER first, else EFIT02 or EFIT01.
+- Rules (owner, 2026-11-07):
+  1. Harmonics are not labelled. A track with `harm` true (a 4/2 locked at 2f of a 2/1) is
+     dropped with its frames. An independent 4/2 stays.
+  2. The scope is |n| = 1, 2, 3 with their m.
+  3. Only labelled modes are written: resonance status "m/n", the class held at P >= 0.9.
+  4. Amplitudes are uncalibrated and carry no value.
+- Events: `mhd_n1`, `mhd_n2`, `mhd_n3`. Each has an `m<m>` subcategory a class, so a 2/1 mode
+  is `mhd_n1` / `m2` and a 4/2 mode is `mhd_n2` / `m4`.
+- Not applied: the crash table and the q = 1 gate of the v5 tables are FusionAIHub inputs, not
+  omnimode's.
+
+Commands (all take `--labels DIR --shots FILE` first):
+
+| Command | Writes |
+|---|---|
+| `status` | nothing; counts the listed shots with and without port-v6 files |
+| `suggest` | the `mhd_modes` suggestion tables, in v5's format (`shot, category, t_start, t_end, confidence`, 0 absent, 1 present, 2 uncertain, 3 not observable), into `<root>/suggestions/mhd_modes/<version>/`, default version `v6port`. A version is never written into twice. `--events DIR` also points each event's `review/source.json` at its table, with `labels.write_pointer`, and makes the `m<m>` folders |
+| `roster` | `shots.csv` of `mhd_n1`, `mhd_n2` and `mhd_n3` replaced by the listed shots, each file backed up first; prints counts only |
+| `publish` | the 1 ms databases (`spans.parquet`, `shots.parquet`, `valid.csv`, `meta.json`, `README.md`, `grid_1ms/`), one a parent event, at `<out-root>/<event>/<run>/`. `--out-root` has no default, and nothing here writes `release/` or the Hugging Face export |
+
+The suggestion tables show the v5 semantics: `mhd_n<K>` is present over every non-line track of
+that n, labelled or not, and a subcategory is present over its labelled tracks and uncertain over
+the abstentions whose 90% credible set holds its class. The `publish` databases show only the
+labelled modes: a parent span is some labelled n = K mode, a subcategory span is a labelled m/K
+mode, and the grid byte has the parent in bit 0, the subcategories in bits 1 to 6 (`grid_bits` in
+`meta.json`) and not observable in bit 7. A listed shot with no labels, no window or a failed run
+stays listed in `shots.parquet` with its `status`.
+
+The development run of `publish` has not been made. When it is, give `--out-root` as
+`/projects/EKOLEMEN/tokamaksi/diiid/dev` on the login node.
