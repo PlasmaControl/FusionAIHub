@@ -93,6 +93,9 @@ _PROFILED_FIRST_STEPS = 5
 # Seeds of the per-epoch window draw and of the fixed validation masks.
 _WINDOW_SEED_BASE = 0x16117E * 1000003
 _VALIDATION_SEED = 1234
+# --skill_every: ranks without a shot wait at the gather while the others roll out
+# (about 35 min per shot at 48 layers), far past NCCL's default 10 min timeout.
+_SKILL_TIMEOUT_MIN = 180
 
 
 class FrozenCodec(NamedTuple):
@@ -1918,9 +1921,29 @@ class TrainConfig:
     )
     best_metric: str = _option(
         "masked",
-        "metric ranking dynamics_best.pt: 'masked' (cosine-prior infilling) or "
-        "'gen' (whole frame unknown, real history: the rollout condition)",
-        choices=("masked", "gen"),
+        "metric ranking dynamics_best.pt: 'masked' (cosine-prior infilling), "
+        "'gen' (whole frame unknown, real history) or 'skill' (rollout profile skill "
+        "of --skill_every, the only one that tracks rollout quality)",
+        choices=("masked", "gen", "skill"),
+    )
+    val_rollout_horizon: int = _option(
+        0,
+        "frames of the validation rollout cross-entropy (rollout_ce: each frame "
+        "predicted from the real seed and the model's own samples); 0 = "
+        "--rollout_horizon, off when that is 0",
+    )
+    skill_every: int = _option(
+        0,
+        "every N optimizer steps (a multiple of --ckpt_every), roll out the last "
+        "--skill_shots validation shots as the scorecard's val stage does (real "
+        "actuators, T=1, seed 0, fp32, whole window) and log the median profile "
+        "skill against persistence; 0 = off",
+    )
+    skill_shots: int = _option(32, "validation shots of --skill_every (the last N)")
+    skill_codec_tmpl: str = _option(
+        "",
+        "codec checkpoint template ({m} = modality) of the profile decoders of "
+        "--skill_every; '' = the cache's frozen manifest",
     )
 
     @classmethod
@@ -1941,6 +1964,7 @@ class BestMetric(enum.StrEnum):
 
     MASKED = "masked"
     GEN = "gen"
+    SKILL = "skill"
 
 
 class ValScore(NamedTuple):
@@ -1948,6 +1972,14 @@ class ValScore(NamedTuple):
 
     loss: float
     per_modality: Dict[str, float]
+
+
+class SkillScore(NamedTuple):
+    """Rollout profile skill of the skill shots (``--skill_every``)."""
+
+    median: float
+    median_mean: float  # on the expected frames; NaN without them
+    per_shot: Dict[str, float]
 
 
 class _PhaseTimer:
@@ -2137,7 +2169,9 @@ class Trainer:
         self.out_dir = out_dir
         self.config = config
         self.log = log
-        self.ddp = tc._DDPState()
+        self.ddp = tc._DDPState(
+            timeout_minutes=_SKILL_TIMEOUT_MIN if config.skill_every else None
+        )
         self.device = self.ddp.device
         self.is_main = self.ddp.is_main
 
@@ -2558,6 +2592,47 @@ class Trainer:
                 f"[dynamics] loss history -> {self.history_path} (+ loss_curve.png "
                 f"each ckpt); val: {n_fixed} fixed windows"
             )
+        self.val_rollout_horizon = int(
+            config.val_rollout_horizon or config.rollout_horizon
+        )
+        self._setup_skill()
+
+    def _setup_skill(self):
+        """Shots and profile decoders of ``--skill_every``."""
+        config = self.config
+        if config.best_metric == BestMetric.SKILL and not config.skill_every:
+            raise ValueError("--best_metric skill needs --skill_every")
+        self.skill_shots, self.my_skill_shots, self.skill_codecs = [], [], {}
+        if not config.skill_every:
+            return
+        if config.skill_every % config.ckpt_every:
+            raise ValueError(
+                f"--skill_every {config.skill_every} is not a multiple of "
+                f"--ckpt_every {config.ckpt_every}"
+            )
+        from . import eval_dynamics as ev
+
+        # The scorecard's held-out rollout: the last N validation shots, in split order.
+        self.skill_shots = list(self.val_shots)[-int(config.skill_shots) :]
+        self.my_skill_shots = self.skill_shots[self.ddp.rank :: self.ddp.world_size]
+        if self.my_skill_shots:
+            codecs = load_frozen_codecs(
+                list(ev.PROFILE_SIGNALS), tmpl=config.skill_codec_tmpl or None
+            )
+            missing = set(ev.PROFILE_SIGNALS) - set(codecs)
+            if missing:
+                raise FileNotFoundError(
+                    f"--skill_every: no codec for {sorted(missing)} "
+                    f"(--skill_codec_tmpl {config.skill_codec_tmpl!r})"
+                )
+            self.skill_codecs = codecs
+            self.skill_convert = ev.profile_converters(codecs)
+        if self.is_main:
+            self.log(
+                f"[dynamics] rollout skill every {config.skill_every} steps on the "
+                f"last {len(self.skill_shots)} val shots, "
+                f"{len(self.my_skill_shots)} per rank on rank 0"
+            )
 
     def _restore_best(self):
         self.best_metric = BestMetric(str(self.config.best_metric).lower())
@@ -2580,8 +2655,8 @@ class Trainer:
                 self.best_step = int(best.get("step", -1))
                 if self.is_main:
                     self.log(
-                        f"[dynamics] resumed BEST {self.best_metric}_ce="
-                        f"{self.best_loss:.4f} @ step {self.best_step}"
+                        f"[dynamics] resumed BEST {self._describe_score(self.best_loss)}"
+                        f" @ step {self.best_step}"
                     )
         except Exception as e:
             self.log(
@@ -2615,7 +2690,7 @@ class Trainer:
                     break
         if self.is_main:
             best = (
-                f" | best val {self.best_metric}_ce {self.best_loss:.4f} @ step "
+                f" | best val {self._describe_score(self.best_loss)} @ step "
                 f"{self.best_step} -> dynamics_best.pt"
                 if math.isfinite(self.best_loss)
                 else ""
@@ -2760,15 +2835,17 @@ class Trainer:
     def _after_step(self, grad_norm) -> bool:
         """Validate, log and checkpoint after an optimizer step. True = stop."""
         config, step = self.config, self.step
-        masked = generation = None
+        masked = generation = skill = None
         if step % config.ckpt_every == 0:
             # Validation runs on every rank to keep them in lockstep.
             masked = self._validate()
             generation = self._validate(
                 mask_ratio=1.0, history_frames=self.model_cfg.k0_seed
             )
-            if config.rollout_horizon:
+            if self.val_rollout_horizon:
                 self.val_rollout = self._validate_rollout()
+            if config.skill_every and step % config.skill_every == 0:
+                skill = self._validate_skill()
         train_loss = self.accumulated_loss / max(1, config.accum_steps)
         self.train_rollout = (
             self.accumulated_rollout / max(1, config.accum_steps)
@@ -2786,11 +2863,11 @@ class Trainer:
         if self.is_main and step % _LOG_EVERY == 0:
             self._log_train_step(train_loss, equal_weight, grad_norm)
         if self.is_main and masked is not None:
-            self._log_validation(masked, generation)
+            self._log_validation(masked, generation, skill)
         self.timer.reset()
         stop = False
         if self.is_main and step % config.ckpt_every == 0:
-            stop = self._save_checkpoints(masked, generation)
+            stop = self._save_checkpoints(masked, generation, skill)
         # Re-arm after validation and checkpointing, so they are not charged to
         # the next step's data time.
         self.timer.mark()
@@ -2873,7 +2950,7 @@ class Trainer:
                     self.model.rollout_loss(
                         {name: c.to(self.device) for name, c in codes.items()},
                         actuators.to(self.device),
-                        self.config.rollout_horizon,
+                        self.val_rollout_horizon,
                         generator=generator,
                         temperature=self.config.rollout_temperature,
                         present=present.to(self.device) if self.use_presence else None,
@@ -2887,6 +2964,63 @@ class Trainer:
         return ValScore(
             total / len(self.val_batches),
             {name: sum(v) / len(v) for name, v in sorted(sums.items())},
+        )
+
+    def _validate_skill(self) -> SkillScore:
+        """Median profile skill of free-running rollouts of the skill shots.
+
+        The protocol of the scorecard's val stage (``eval_dynamics.rollout_shot``:
+        whole window from ``k0``, real actuators, T=1, seed 0, fp32), scored by
+        ``eval_dynamics.profile_skill``, so it matches the scorecard's ``skill``
+        column. Each rank rolls out its share of the shots; every rank gets the
+        merged result.
+        """
+        from . import eval_dynamics as ev
+
+        self.model.eval()
+        results = {}
+        for shot in self.my_skill_shots:
+            cache = ev.load_shot_cache(self.cache_dir, shot)
+            generator = torch.Generator(device=self.device).manual_seed(0)
+            rollout = ev.rollout_shot(
+                self.model,
+                self.model_cfg,
+                cache,
+                int(self.model_cfg.k0_seed),
+                1.0,
+                generator,
+                self.device,
+                shot=shot,
+            )
+            score = {
+                kind: ev.profile_skill(
+                    rollout.gt_codes,
+                    predicted,
+                    rollout.k0,
+                    rollout.n_frames,
+                    self.skill_codecs,
+                    self.skill_convert,
+                    torch.device("cpu"),
+                )
+                for kind, predicted in (
+                    ("sampled", rollout.pred_codes),
+                    ("mean", rollout.pred_mean),
+                )
+                if predicted is not None
+            }
+            results[shot] = (score["sampled"], score.get("mean", float("nan")))
+        self.model.train()
+        if self.ddp.distributed:
+            gathered = [None] * self.ddp.world_size
+            dist.all_gather_object(gathered, results)
+            results = {shot: v for part in gathered for shot, v in part.items()}
+
+        def median(index):
+            values = [v[index] for v in results.values() if math.isfinite(v[index])]
+            return float(np.median(values)) if values else float("nan")
+
+        return SkillScore(
+            median(0), median(1), {shot: v[0] for shot, v in sorted(results.items())}
         )
 
     def _log_train_step(self, train_loss, equal_weight, grad_norm):
@@ -2926,7 +3060,9 @@ class Trainer:
         record["lr"] = lr
         _append_jsonl(self.history_path, record)
 
-    def _log_validation(self, masked: ValScore, generation: ValScore):
+    def _log_validation(
+        self, masked: ValScore, generation: ValScore, skill: Optional[SkillScore]
+    ):
         self.log(
             f"[dynamics] step {self.step} VAL masked_ce={masked.loss:.4f} "
             f"gen_ce={generation.loss:.4f} (gap {generation.loss - masked.loss:+.4f}; "
@@ -2935,7 +3071,15 @@ class Trainer:
         if self.val_rollout is not None:
             self.log(
                 f"[dynamics] step {self.step} VAL "
-                f"rollout_ce={self.val_rollout.loss:.4f} (horizon {self.config.rollout_horizon} from k0, own samples)"
+                f"rollout_ce={self.val_rollout.loss:.4f} (horizon "
+                f"{self.val_rollout_horizon} from k0, own samples)"
+            )
+        if skill is not None:
+            scored = sum(math.isfinite(v) for v in skill.per_shot.values())
+            self.log(
+                f"[dynamics] step {self.step} VAL skill={skill.median:+.4f} "
+                f"(expected frames {skill.median_mean:+.4f}; median of {scored} "
+                f"shots, rollout from k0 vs persistence)"
             )
         per_modality = generation.per_modality
         if per_modality:
@@ -2958,6 +3102,15 @@ class Trainer:
                         "rollout_val_permod": self.val_rollout.per_modality,
                     }
                     if self.val_rollout is not None
+                    else {}
+                ),
+                **(
+                    {
+                        "val_skill": skill.median,
+                        "val_skill_mean": skill.median_mean,
+                        "val_skill_shots": skill.per_shot,
+                    }
+                    if skill is not None
                     else {}
                 ),
             },
@@ -3009,7 +3162,23 @@ class Trainer:
             ],
         }
 
-    def _save_checkpoints(self, masked: ValScore, generation: ValScore) -> bool:
+    def _selection_score(self, masked, generation, skill) -> Optional[float]:
+        """The ``--best_metric`` score of this evaluation, lower is better.
+
+        Skill is negated; it is None on evaluations without a skill rollout.
+        """
+        if self.best_metric is BestMetric.SKILL:
+            return None if skill is None else -skill.median
+        return (generation if self.best_metric is BestMetric.GEN else masked).loss
+
+    def _describe_score(self, score: float) -> str:
+        if self.best_metric is BestMetric.SKILL:
+            return f"skill={-score:+.4f}"
+        return f"{self.best_metric}_ce={score:.4f}"
+
+    def _save_checkpoints(
+        self, masked: ValScore, generation: ValScore, skill: Optional[SkillScore]
+    ) -> bool:
         """Save the rolling and best checkpoints; True when early stopping fires."""
         payload = self._checkpoint_payload()
         _save_atomically(payload, self.latest_path)
@@ -3018,8 +3187,8 @@ class Trainer:
             # A frozen copy the rolling latest never overwrites, for offline scoring
             # (scripts/slurm_stellarai/scorecard_watch.sh).
             _save_atomically(payload, Path(self.out_dir) / f"dynamics_step{self.step}.pt")
-        selected = (generation if self.best_metric is BestMetric.GEN else masked).loss
-        if not math.isfinite(selected):
+        selected = self._selection_score(masked, generation, skill)
+        if selected is None or not math.isfinite(selected):
             return False
         if selected < self.best_loss - 1e-6:
             self.best_loss, self.best_step = selected, self.step
@@ -3029,6 +3198,7 @@ class Trainer:
                 "val_loss": selected,
                 "masked_ce": masked.loss,
                 "gen_ce": generation.loss,
+                **({"skill": skill.median} if skill is not None else {}),
                 "best_metric": str(self.best_metric),
             }
             _save_atomically(best, self.best_path)
@@ -3041,7 +3211,7 @@ class Trainer:
                 },
             )
             self.log(
-                f"[dynamics] new BEST {self.best_metric}_ce={selected:.4f} @ step "
+                f"[dynamics] new BEST {self._describe_score(selected)} @ step "
                 f"{self.step} (masked {masked.loss:.4f} / gen {generation.loss:.4f})"
             )
             return False
@@ -3050,7 +3220,8 @@ class Trainer:
         if patience and self.evals_since_best >= patience:
             self.log(
                 f"[dynamics] EARLY STOP: {self.evals_since_best} evals without "
-                f"improvement (best {self.best_loss:.4f} @ step {self.best_step}); "
+                f"improvement (best {self._describe_score(self.best_loss)} @ step "
+                f"{self.best_step}); "
                 f"stopping at step {self.step}"
             )
             return True

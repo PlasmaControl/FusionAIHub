@@ -78,33 +78,57 @@ if [ ${STAGE_RC} -ne 0 ]; then
     exit 1
 fi
 
+# From 2026-11-09 ~20:00 read-pool workers of passes 2 and 3 were intermittently
+# SIGKILLed from outside the process tree (no OOM kill recorded; cause unknown),
+# failing about a third of shots with BrokenProcessPool. The stage is still in
+# place, so such a pass is read once more in a single process, which never showed
+# the crash; signals already written are skipped (no --overwrite).
+pool_died() { [ "$1" -ne 0 ] && grep -q "BrokenProcessPool" "$2"; }
+
 # ---- pass 2: MDSplus, index removed so TDI nodes read staged objects -------
-"${ENV_DIR}/bin/fdp" run "${SCRIPT_DIR}/_without_index.sh" \
-    "${ENV_DIR}/bin/python" -u "${SCRIPT_DIR}/fetch_shot.py" \
-    --shot "${SHOT}" --config "${CONFIG}" \
-    --output-dir "${OUTPUT_DIR}" \
-    --stage-dir "${STAGE_PARENT}" --keep-stage --reuse-stage --no-scan \
-    --workers "${WORKERS}" --skip-tree ptdata --no-retry \
-    --write-retry-manifest "${RETRY_MANIFEST}"
-MDS_RC=$?
+mds_pass() {
+    "${ENV_DIR}/bin/fdp" run "${SCRIPT_DIR}/_without_index.sh" \
+        "${ENV_DIR}/bin/python" -u "${SCRIPT_DIR}/fetch_shot.py" \
+        --shot "${SHOT}" --config "${CONFIG}" \
+        --output-dir "${OUTPUT_DIR}" \
+        --stage-dir "${STAGE_PARENT}" --keep-stage --reuse-stage --no-scan \
+        --workers "$1" --skip-tree ptdata --no-retry \
+        --write-retry-manifest "${RETRY_MANIFEST}"
+}
+mds_pass "${WORKERS}" 2>&1 | tee "${STAGE_PARENT}/pass2.log"
+MDS_RC=${PIPESTATUS[0]}
+if pool_died ${MDS_RC} "${STAGE_PARENT}/pass2.log"; then
+    echo "shot ${SHOT}: MDSplus worker pool died; retrying pass 2 with one worker"
+    mds_pass 1
+    MDS_RC=$?
+fi
 
 # ---- pass 3: PTDATA pointnames, index present, staged objects reused -------
 # Bounded: through the director's cache its TDI retry phase stalled for >25 min on
 # shot 192945 (2026-10-19) after the pointnames had been merged into the file, so a
 # timeout loses at most retried signals, never the PTDATA already written.
-timeout "${PASS3_TIMEOUT:-1200}" \
-"${ENV_DIR}/bin/fdp" run "${ENV_DIR}/bin/python" -u "${SCRIPT_DIR}/fetch_shot.py" \
-    --shot "${SHOT}" --config "${CONFIG}" \
-    --output-dir "${OUTPUT_DIR}" \
-    --stage-dir "${STAGE_PARENT}" --keep-stage --reuse-stage --no-scan \
-    --workers "${WORKERS}" --only-tree ptdata \
-    --retry-manifest "${RETRY_MANIFEST}"
-PT_RC=$?
+pt_pass() {
+    timeout "${PASS3_TIMEOUT:-1200}" \
+    "${ENV_DIR}/bin/fdp" run "${ENV_DIR}/bin/python" -u "${SCRIPT_DIR}/fetch_shot.py" \
+        --shot "${SHOT}" --config "${CONFIG}" \
+        --output-dir "${OUTPUT_DIR}" \
+        --stage-dir "${STAGE_PARENT}" --keep-stage --reuse-stage --no-scan \
+        --workers "$1" --only-tree ptdata \
+        --retry-manifest "${RETRY_MANIFEST}"
+}
+pt_pass "${WORKERS}" 2>&1 | tee "${STAGE_PARENT}/pass3.log"
+PT_RC=${PIPESTATUS[0]}
+if pool_died ${PT_RC} "${STAGE_PARENT}/pass3.log"; then
+    echo "shot ${SHOT}: PTDATA worker pool died; retrying pass 3 with one worker"
+    pt_pass 1
+    PT_RC=$?
+fi
 
 ELAPSED=$(( $(date +%s) - START ))
 echo "shot ${SHOT}: both passes done in ${ELAPSED}s (mds rc=${MDS_RC}, ptdata rc=${PT_RC})"
 
-if [ -s "${OUTPUT_DIR}/${SHOT}.h5" ]; then
+# A partial H5 is useful for diagnosis, but must not authorize downstream cleanup.
+if [ "${MDS_RC}" -eq 0 ] && [ "${PT_RC}" -eq 0 ] && [ -s "${OUTPUT_DIR}/${SHOT}.h5" ]; then
     exit 0
 fi
 exit 1

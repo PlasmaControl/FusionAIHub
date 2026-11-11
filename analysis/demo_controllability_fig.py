@@ -41,7 +41,25 @@ SCENARIOS = {
     "nbi_off": ("scale:pinj=0@{f}+beam_voltage=0@{f}+tinj=0@{f}", "NBI off"),
     "ech_off": ("scale:ech_power=0@{f}", "ECH off"),
     "torque0": ("scale:tinj=0@{f}", "No beam torque"),
+    # Zero net torque with sources of equal size: two co sources, 30L and 330L (channels 4, 6,
+    # the CER beams), against the two counter sources 210L/R (2, 3), which cancel the co
+    # torque frame by frame at the torque per MW of 201240's 210R. 150L/R and 30R/330R
+    # (0, 1, 5, 7) are off, so NBI power drops to about four sources.
+    "balanced": ("balance:off=0,1,5,7;counter=2,3;nm_per_mw=-0.979;kv=72@{f}",
+                 "Balanced injection"),
+    # Ramps over 1 s (20 frames) from the switch: every channel moves linearly from its
+    # measured value to the target setting and then follows the target, so the measured
+    # waveforms (later beam or gyrotron turn-offs) carry on. All four gyrotrons in use already
+    # run near their limit, so ECH can only go down. Torque changes at fixed hardware
+    # use the balanced mix above; half way is every source at half its duty cycle.
+    "ech_lin_off": ("linear:20:scale:ech_power=0@{f}", "ECH ramped off"),
+    "ech_lin_half": ("linear:20:scale:ech_power=0.5@{f}", "ECH ramped to half"),
+    "tq_lin_zero": ("linear:20:balance:off=0,1,5,7;counter=2,3;nm_per_mw=-0.979;kv=72@{f}",
+                    "Torque ramped to zero"),
+    "tq_lin_half": ("linear:20/0.5:balance:off=0,1,5,7;counter=2,3;nm_per_mw=-0.979;kv=72@{f}",
+                    "Torque ramped to half"),
 }
+OPTIONAL_RUNS = ("balanced", "ech_lin_off", "ech_lin_half", "tq_lin_zero", "tq_lin_half")
 RUNS = ("real", *SCENARIOS)
 # Fixed scheme for talks and the paper: measurement blue, prediction orange, and a changed
 # actuator shares its colour with the prediction it produces.
@@ -49,8 +67,18 @@ COLORS = {"truth": "#1f5c9e", "real": "#e07b1a", "scenario": "#7b3294"}
 CMAPS = {"truth": "Blues", "real": "Oranges", "scenario": "Purples"}
 SLOW = ("ts_core_temp", "ts_core_density", "cer_ti", "cer_rot")
 LABELS = {"ts_core_temp": (r"$T_e$ (keV)", 1e-3), "ts_core_density": (r"$n_e$ ($10^{19}$ m$^{-3}$)", 1e-19),
-          "cer_ti": (r"$T_i$ (keV)", 1e-3), "cer_rot": (r"$v_{tor}$ (km/s)", 1.0)}
+          "cer_ti": (r"$T_i$ (keV)", 1e-3), "cer_rot": (r"$|v_{tor}|$ (km/s)", 1.0)}
+# Plotted as magnitudes: the sign of v_tor is a CER convention and confuses talk audiences.
+ABSOLUTE = ("cer_rot",)
+# Temperatures are drawn from 0 keV, so a drop reads as its true fraction.
+ZERO_BASED = ("ts_core_temp", "cer_ti")
+# Momentum confinement time: the rotation answers a torque change within about this time.
+TAU_PHI_S = 0.1
+TORQUE_SCENARIOS = ("torque0", "balanced", "tq_lin_zero", "tq_lin_half")
 ACTUATORS = {"NBI (MW)": ("pinj", 1e-6), "ECH (MW)": ("ech_power", 1e-6), "torque (N m)": ("tinj", 1.0)}
+# Axis labels of the actuators (the ACTUATORS keys name them in the data files).
+ACT_SHOWN = {"NBI (MW)": r"$P_\mathrm{inj}$ (MW)", "torque (N m)": r"$T_\mathrm{inj}$ (N m)",
+             "ECH (MW)": r"$P_\mathrm{ECH}$ (MW)"}
 CAMERAS = ("tangtv_lower", "tangtv_upper")
 CAMERA_NAMES = {"tangtv_lower": "lower divertor camera", "tangtv_upper": "upper divertor camera"}
 
@@ -104,33 +132,21 @@ def spectro_label(d, name):
     return shown
 
 
-def _label_trace(ax, ctx, n, font):
-    ax.text(0.01, 0.98, trace_label(n, ctx["channels"][n]), transform=ax.transAxes, ha="left", va="top",
+def label_box(ax, text, font):
+    """The grey channel label in the top-left corner of a trace panel."""
+    ax.text(0.01, 0.98, text, transform=ax.transAxes, ha="left", va="top",
             fontsize=font - 3, color="0.35", bbox={"facecolor": "white", "alpha": 0.7, "lw": 0, "pad": 1})
+
+
+def _label_trace(ax, ctx, n, font):
+    label_box(ax, trace_label(n, ctx["channels"][n]), font)
 
 
 def _physical(codecs):
     """Per-signal converters to physical units; channels with broken stats become NaN."""
-    from tokamak_foundation_model.ignite.config import SLOWTS_PREPROCESS_METHOD
+    from tokamak_foundation_model.ignite.eval_dynamics import profile_converters
 
-    conv = {}
-    for name in SLOW:
-        cfg = codecs[name][1]
-        mean = np.asarray(cfg.channel_mean, dtype=np.float64)
-        raw_std = np.asarray(cfg.channel_std, dtype=np.float64)
-        std = np.clip(raw_std, 1e-3, None)
-        broken = (np.abs(mean) > 1e4) | (raw_std > 1e4) | (raw_std <= 1e-3)
-        log = SLOWTS_PREPROCESS_METHOD[name] == "log_standardize"
-
-        def f(x, mean=mean, std=std, broken=broken, log=log):
-            x = np.asarray(x, dtype=np.float64)[:, : mean.size]
-            y = x * std[None, :, None] + mean[None, :, None]
-            y = np.power(10.0, y) - 1.0 if log else y
-            y[:, broken] = np.nan
-            return y
-
-        conv[name] = f
-    return conv
+    return profile_converters(codecs, SLOW)
 
 
 def extract(a):
@@ -147,29 +163,43 @@ def extract(a):
         codec.to(device)
     conv = _physical(codecs)
     out = {"shot": a.shot, "spectro": a.spectro, "switch_frame": a.switch_frame}
-    for key in RUNS:
+    runs = [key for key in RUNS if getattr(a, key)]
+    for key in runs:
         out[f"dir__{key}"] = str(getattr(a, key))
     spec_ch = {}
+    member = None  # ensemble member shown in the spectrograms (--spectro_member medoid)
     forced = {k: int(v) for k, v in (x.split("=") for x in a.spectro_channel.split(",") if x)}
-    for key in RUNS:
-        codes = np.load(Path(getattr(a, key)) / f"codes_{a.shot}_step{a.step}.npz", allow_pickle=True)
+    for key in runs:
+        # A rollout folder, or several joined by "+": an ensemble whose members are
+        # averaged after decoding (independent seeds of the same scenario).
+        members = [
+            np.load(Path(d) / f"codes_{a.shot}_step{a.step}.npz", allow_pickle=True)
+            for d in str(getattr(a, key)).split("+")
+        ]
+        codes = members[0]
         K0, F = int(codes["K0"]), int(codes["F"])
         out.update(k0=K0, n_frames=F)
         for name in names:
             codec = codecs[name][0]
+            each = [np.asarray(ev.decode_flat_chunked(codec, ev.archived(z, f"{a.pred}__{name}")[:F], device))
+                    for z in members]
             decoded = {
-                which: ev.decode_flat_chunked(codec, torch.from_numpy(codes[f"{which}__{name}"]).long()[:F], device)
-                for which in ("gt", "pred")
+                "gt": ev.decode_flat_chunked(codec, ev.archived(codes, f"gt__{name}")[:F], device),
+                "pred": np.mean(each, axis=0),
             }
             if name in CAMERAS:
                 gt_codes = codes[f"gt__{name}"][K0:F]
                 if (gt_codes == gt_codes[:1]).all():
                     continue  # constant code over the window: camera not recorded
+                # The camera has two views and some shots record only one: show the view
+                # whose measured image has structure (the other decodes to a flat field).
+                gt_mean = np.nanmean(np.asarray(decoded["gt"])[K0:F], axis=(0, 2))
+                view = int(np.argmax([np.nanstd(v) for v in gt_mean]))
                 for which, x in decoded.items():
                     if which == "gt" and f"camera_gt__{name}" in out:
                         continue
-                    # (F, H, W): first view, averaged over the frame's sub-frames.
-                    frames = np.nanmean(np.asarray(x)[:, 0], axis=1).astype(np.float16)
+                    # (F, H, W): the recorded view, averaged over the frame's sub-frames.
+                    frames = np.nanmean(np.asarray(x)[:, view], axis=1).astype(np.float16)
                     out[f"camera_gt__{name}" if which == "gt" else f"camera_pred__{key}__{name}"] = frames
                 continue
             if name in spectros:
@@ -185,6 +215,17 @@ def extract(a):
                     if first:
                         out["spectro_fmax_khz"], out["spectro_gt"] = fmax, gt_img
                 img = ev._stitch(decoded["pred"], spec_ch[name]).astype(np.float32)
+                if a.spectro_member == "medoid" and len(each) > 1:
+                    # Averaging seeds halves the spectrogram's texture and flattens the mode
+                    # lines' wander, so show one sampled rollout: the seed closest to the mean
+                    # over the predicted window. It is chosen once, on the measured-actuator
+                    # run, so every scenario shows the same seed and matches before the switch.
+                    if member is None:
+                        mean = ev._stitch(decoded["pred"][K0:], spec_ch[name])
+                        member = int(np.argmin([np.mean((ev._stitch(x[K0:], spec_ch[name]) - mean) ** 2)
+                                                for x in each]))
+                        out["spectro_member"] = member
+                    img = ev._stitch(each[member], spec_ch[name]).astype(np.float32)
                 out[f"spectro_pred__{key}__{name}"] = img
                 if first:
                     out[f"spectro_pred__{key}"] = img
@@ -208,11 +249,9 @@ def extract(a):
 # ------------------------------------------------------------------------------ plot
 def _core(gt, k0, n_core):
     """The ``n_core`` channels with the largest mean |value| over the predicted window."""
-    with np.errstate(invalid="ignore"):
-        level = np.nanmean(np.abs(gt[k0:]), axis=0)
-    finite = np.isfinite(level)
-    order = [int(c) for c in np.argsort(np.where(finite, level, -np.inf))[::-1] if finite[c]]
-    return order[: max(1, n_core)]
+    from tokamak_foundation_model.ignite.eval_dynamics import core_channels
+
+    return core_channels(gt, k0, n_core)
 
 
 def _trace(x, channels, smooth):
@@ -244,18 +283,83 @@ def _setup(a):
     finite = d["spectro_gt"][np.isfinite(d["spectro_gt"])]
     ctx["spec_lim"] = (float(np.percentile(finite, 1.0)), float(np.percentile(finite, 99.5)))
     ctx["camera"] = next((c for c in ([a.camera] if getattr(a, "camera", "") else CAMERAS) if f"camera_gt__{c}" in d.files), None)
-    plt.rcParams.update({"font.size": a.font, "axes.spines.top": False, "axes.spines.right": False})
+    _style(a)
     return ctx
 
 
+def _style(a):
+    """Presentation figures use seaborn's talk theme; ``--style paper`` keeps the plain look."""
+    if a.style == "talk":
+        import seaborn as sns
+
+        # A half-slide figure is drawn at about the size it is shown, so the theme is scaled down.
+        sns.set_theme(context="talk", font_scale=0.7 if getattr(a, "layout", "") == "half" else 1.0)
+        a.font = int(round(plt.rcParams["font.size"]))
+    else:
+        plt.rcParams.update({"font.size": a.font, "axes.spines.top": False, "axes.spines.right": False})
+
+
+def shared_legend(fig, a, extra=()):
+    """One legend for the whole figure, above it: every labelled artist once, plus ``extra``."""
+    handles, labels = [], []
+    stack = [fig]
+    while stack:
+        f = stack.pop(0)
+        for ax in f.axes:
+            for h, lab in zip(*ax.get_legend_handles_labels()):
+                if lab not in labels:
+                    handles.append(h)
+                    labels.append(lab)
+        stack.extend(getattr(f, "subfigs", []))
+    for h, lab in extra:
+        handles.append(h)
+        labels.append(lab)
+    ncol = 2 if getattr(a, "layout", "") == "half" else 3
+    if ncol == 2 and len(labels) > 2:
+        # Two columns, filled column by column: inputs on the left, predictions on the right.
+        pairs = list(zip(handles, labels))
+        first = [x for x in pairs if not x[1].startswith("prediction")]
+        second = [x for x in pairs if x[1].startswith("prediction")]
+        rows = max(len(first), len(second))
+        blank = (plt.Line2D([], [], lw=0), "")
+        pairs = first + [blank] * (rows - len(first)) + second + [blank] * (rows - len(second))
+        handles, labels = [h for h, _ in pairs], [lab for _, lab in pairs]
+    fig.legend(handles, labels, loc="outside upper center", ncol=min(len(labels), ncol), frameon=False,
+               fontsize=a.font - 2)
+
+
+def _tau_box(ax, ctx):
+    """Mark the ~100 ms after a torque change, in which the rotation should respond, as a bar on
+    the time axis (not over the data)."""
+    from matplotlib.transforms import blended_transform_factory
+
+    t0 = ctx["t_switch"]
+    ax.plot([t0, t0 + TAU_PHI_S], [0, 0], transform=blended_transform_factory(ax.transData, ax.transAxes),
+            color="0.25", lw=7, solid_capstyle="butt", clip_on=False, zorder=5)
+
+
+def _tau_handle():
+    return (plt.Line2D([], [], color="0.25", lw=7, solid_capstyle="butt"),
+            rf"$\tau_\phi \approx$ {TAU_PHI_S * 1e3:.0f} ms after torque change")
+
+
 def _tr(ctx, a, which, key, n):
-    return _trace(ctx["d"][f"{which}__{key}__{n}"], ctx["channels"][n], a.smooth) * LABELS[n][1]
+    trace = _trace(ctx["d"][f"{which}__{key}__{n}"], ctx["channels"][n], a.smooth) * LABELS[n][1]
+    return np.abs(trace) if n in ABSOLUTE else trace
 
 
-def _spec(ctx, ax, img, role="truth"):
+def _spec(ctx, ax, img, role="truth", name=None):
+    """One spectrogram; ``name`` selects its own range and colour limits in a multi-spectrogram file."""
+    d = ctx["d"]
     vmin, vmax = ctx["spec_lim"]
+    extent = ctx["extent"]
+    if name and f"spectro_gt__{name}" in d.files:
+        finite = d[f"spectro_gt__{name}"][np.isfinite(d[f"spectro_gt__{name}"])]
+        vmin, vmax = float(np.percentile(finite, 1.0)), float(np.percentile(finite, 99.5))
+        extent = (*extent[:3], float(d[f"spectro_fmax_khz__{name}"]))
     ax.imshow(img, aspect="auto", origin="lower", cmap=CMAPS[role], vmin=vmin, vmax=vmax,
-              extent=ctx["extent"], interpolation="none")
+              extent=extent, interpolation="none")
+    ax.grid(False)
 
 
 def _note(a, ctx=None):
@@ -274,17 +378,28 @@ def _draw_validation(ctx, a, sub, title):
     if title:
         sub.suptitle(title, fontsize=a.font + 3, x=0.01, ha="left")
     spectros = [x for x in ctx["spectros"] if f"spectro_gt__{x}" in d.files] or [ctx["spectro"]]
-    axes = sub.subplots(2, 2 + len(spectros), gridspec_kw={"width_ratios": [1, 1] + [1.4 if len(spectros) == 1 else 1.1] * len(spectros)})
-    for ax, n in zip(axes[:, :2].ravel(), SLOW):
+    if a.style == "talk":
+        # Slide-shaped: the four profiles 2 x 2 on top, the spectrograms below (measured row,
+        # predicted row, one column per spectrogram).
+        top, bottom = sub.subfigures(2, 1, height_ratios=[1.0, 0.9])
+        trace_axes = top.subplots(2, 2, sharex=True)
+        spec_axes = np.asarray(bottom.subplots(2, len(spectros), sharex=True)).reshape(2, len(spectros))
+    else:
+        axes = sub.subplots(2, 2 + len(spectros),
+                            gridspec_kw={"width_ratios": [1, 1] + [1.4 if len(spectros) == 1 else 1.1] * len(spectros)})
+        trace_axes, spec_axes = axes[:, :2], axes[:, 2:]
+    for ax, n in zip(trace_axes.ravel(), SLOW):
         ax.plot(t, _tr(ctx, a, "gt", "real", n), color=COLORS["truth"], lw=2, label="measured")
-        ax.plot(t[k0 - 1:], _tr(ctx, a, "pred", "real", n)[k0 - 1:], color=COLORS["real"], lw=2, ls="--",
-                label="prediction")
+        ax.plot(t[k0 - 1:], _tr(ctx, a, "pred", "real", n)[k0 - 1:], color=COLORS["real"], lw=2,
+                label="prediction, measured actuators")
         ax.axvline(T0 + FRAME_S * k0, color="0.6", lw=1, ls=":")
         ax.set_ylabel(LABELS[n][0])
-        ax.set_xlim(t[0], t[-1])
+        ax.set_xlim(t[0], a.tmax or t[-1])
+        ax.xaxis.set_major_locator(plt.MultipleLocator(1))
+        if n in ZERO_BASED:
+            ax.set_ylim(bottom=0)
         _label_trace(ax, ctx, n, a.font)
-    axes[0, 0].legend(frameon=False, loc="lower left")
-    for ax in axes[1, :2]:
+    for ax in trace_axes[1]:
         ax.set_xlabel("time (s)")
     ylim = {k: float(v) for k, v in (x.split("=") for x in a.spectro_ylim.split(",") if x)}
     for j, name in enumerate(spectros):
@@ -295,16 +410,18 @@ def _draw_validation(ctx, a, sub, title):
         lim = (float(np.percentile(finite, 1.0)), float(np.percentile(finite, 99.5)))
         extent = (t[0], t[-1] + FRAME_S, 0, float(d[fmax_key]))
         shown = spectro_label(d, name)
-        for ax, img, label, role in ((axes[0, 2 + j], d[gt_key], f"{shown} measured", "truth"),
-                                     (axes[1, 2 + j], d[pred_key], f"{shown} prediction", "real")):
+        for ax, img, label, role in ((spec_axes[0, j], d[gt_key], f"{shown} measured", "truth"),
+                                     (spec_axes[1, j], d[pred_key], f"{shown} prediction", "real")):
             ax.imshow(img, aspect="auto", origin="lower", cmap=CMAPS[role], vmin=lim[0], vmax=lim[1],
                       extent=extent, interpolation="none")
+            ax.grid(False)
             ax.axvline(T0 + FRAME_S * k0, color="w", lw=1, ls=":")
             ax.set_title(label, fontsize=a.font)
             ax.set_ylabel("freq (kHz)")
             if name in ylim:
                 ax.set_ylim(0, ylim[name])
-        axes[1, 2 + j].set_xlabel("time (s)")
+            ax.set_xlim(t[0], a.tmax or t[-1] + FRAME_S)
+        spec_axes[1, j].set_xlabel("time (s)")
 
 
 def _draw_scenarios(ctx, a, sub, title, with_truth):
@@ -313,25 +430,39 @@ def _draw_scenarios(ctx, a, sub, title, with_truth):
     if title:
         sub.suptitle(title, fontsize=a.font + 3, x=0.01, ha="left")
     plan = {"nbi_off": ("NBI (MW)", ["cer_ti", "cer_rot"]), "ech_off": ("ECH (MW)", ["ts_core_temp"]),
-            "torque0": ("torque (N m)", ["cer_rot", spectro])}
+            # Torque changes: every spectrogram in the file, so mode frequencies can be compared.
+            "torque0": (("torque (N m)", "NBI (MW)"), ["cer_ti", "cer_rot", *ctx["spectros"]]),
+            "balanced": (("torque (N m)", "NBI (MW)"), ["cer_ti", "cer_rot", *ctx["spectros"]])}
+    for key in ("ech_lin_off", "ech_lin_half"):
+        plan[key] = ("ECH (MW)", ["ts_core_temp", *ctx["spectros"]])
+    for key in ("tq_lin_zero", "tq_lin_half"):
+        plan[key] = (("torque (N m)", "NBI (MW)"), ["cer_ti", "cer_rot", *ctx["spectros"]])
+    ylim = {k: float(v) for k, v in (x.split("=") for x in a.spectro_ylim.split(",") if x)}
     columns = [c for c in a.columns.split(",") if c]
     for col, key in zip(list(np.atleast_1d(sub.subfigures(1, len(columns)))), columns):
-        act_label, shown = plan[key]
+        act_labels, shown = plan[key]
+        act_labels = (act_labels,) if isinstance(act_labels, str) else act_labels
         label = SCENARIOS[key][1]
         col.suptitle(label, fontsize=a.font + 2)
-        n_rows = 1 + len(shown) + (1 if spectro in shown else 0)
+        n_rows = len(act_labels) + len(shown) + sum(1 for n in shown if n in ctx["spectros"])
         ax_all = np.atleast_1d(col.subplots(n_rows, 1, sharex=True))
-        ax_all[0].plot(t, d[f"act__real__{act_label}"], color=COLORS["truth"], lw=2, label="measured actuators")
-        ax_all[0].plot(t, d[f"act__{key}__{act_label}"], color=COLORS["scenario"], lw=2, ls="--", label=label)
-        ax_all[0].set_ylabel(act_label)
-        ax_all[0].legend(frameon=False, fontsize=a.font - 2, loc="upper left", bbox_to_anchor=(0.0, 1.32), ncol=2)
-        row = 1
+        for ax, act_label in zip(ax_all, act_labels):
+            ax.plot(t, d[f"act__real__{act_label}"], color=COLORS["truth"], lw=2, label="measured actuators")
+            ax.plot(t, d[f"act__{key}__{act_label}"], color=COLORS["scenario"], lw=2, ls="--",
+                    label="changed actuator")
+            ax.set_ylabel(ACT_SHOWN.get(act_label, act_label))
+        row = len(act_labels)
         for n in shown:
-            if n == spectro:
-                for img, which, role in ((d["spectro_pred__real"], "measured actuators", "real"),
-                                         (d[f"spectro_pred__{key}"], label, "scenario")):
-                    _spec(ctx, ax_all[row], img, role)
-                    ax_all[row].set_ylabel(f"{spectro_label(d, spectro)} (kHz)\n{which}", fontsize=a.font - 2)
+            if n in ctx["spectros"]:
+                real_key = f"spectro_pred__real__{n}" if f"spectro_pred__real__{n}" in d.files else "spectro_pred__real"
+                key_key = f"spectro_pred__{key}__{n}" if f"spectro_pred__{key}__{n}" in d.files else f"spectro_pred__{key}"
+                for img, which, role in ((d[real_key], "measured actuators", "real"),
+                                         (d[key_key], label, "scenario")):
+                    _spec(ctx, ax_all[row], img, role, name=n)
+                    if n in ylim:
+                        ax_all[row].set_ylim(0, ylim[n])
+                    ax_all[row].set_ylabel("freq (kHz)")
+                    label_box(ax_all[row], f"{spectro_label(d, n)}, prediction, {which}", a.font)
                     row += 1
                 continue
             ax = ax_all[row]
@@ -341,21 +472,28 @@ def _draw_scenarios(ctx, a, sub, title, with_truth):
             ax.plot(t[k0 - 1:], _tr(ctx, a, "pred", "real", n)[k0 - 1:], color=COLORS["real"], lw=2,
                     label="prediction, measured actuators")
             ax.plot(t[k0 - 1:], _tr(ctx, a, "pred", key, n)[k0 - 1:], color=COLORS["scenario"], lw=2, ls="--",
-                    label="prediction, " + label)
+                    label="prediction, changed actuator")
             ax.set_ylabel(LABELS[n][0])
+            if n in ZERO_BASED:
+                ax.set_ylim(bottom=0)
             _label_trace(ax, ctx, n, a.font)
+        if key in TORQUE_SCENARIOS:
+            _tau_box(ax_all[-1], ctx)
         for ax in ax_all:
             ax.axvline(ctx["t_switch"], color=COLORS["scenario"], lw=1.2, ls=":")
             ax.set_xlim(t[0], t[-1])
-        if len(ax_all) > 1 and ax_all[1].get_lines():
-            ax_all[1].legend(frameon=False, fontsize=a.font - 3, loc="upper left", bbox_to_anchor=(0.0, 1.38), ncol=2)
         ax_all[-1].set_xlabel("time (s)")
 
 
 def _save(fig, a, ctx):
+    if a.kind != "camera":
+        columns = [c for c in a.columns.split(",") if c]
+        extra = ([_tau_handle()] if a.kind != "validation" and set(columns) & set(TORQUE_SCENARIOS)
+                 else [])
+        shared_legend(fig, a, extra)
     fig.savefig(a.out, dpi=a.dpi)
     fig.savefig(Path(a.out).with_suffix(".pdf"))
-    caption = f"DIII-D #{ctx['shot']} (held-out)"
+    caption = f"DIII-D #{ctx['shot']}"
     note = _note(a, ctx)
     if a.kind != "camera":
         caption += f"; prediction from {T0 + FRAME_S * ctx['k0']:.0f} s; scenarios switch at {ctx['t_switch']:.2f} s"
@@ -366,7 +504,7 @@ def _validation_title(ctx, a):
     note = _note(a, ctx)
     if not a.with_title:
         return ""
-    return a.title or (f"DIII-D #{ctx['shot']} (held-out): prediction from {T0 + FRAME_S * ctx['k0']:.0f} s "
+    return a.title or (f"DIII-D #{ctx['shot']}: prediction from {T0 + FRAME_S * ctx['k0']:.0f} s "
                        "under the measured actuators" + (f"\n{note}" if note else ""))
 
 
@@ -391,13 +529,84 @@ def plot_combined(a):
 
 def plot_validation(a):
     ctx = _setup(a)
-    fig = plt.figure(figsize=(a.width, a.height * 0.45), constrained_layout=True)
+    size = ((a.width, a.height) if a.layout == "half" else (16, 13) if a.style == "talk"
+            else (a.width, a.height * 0.45))
+    fig = plt.figure(figsize=size, constrained_layout=True)
     _draw_validation(ctx, a, fig, _validation_title(ctx, a))
     _save(fig, a, ctx)
 
 
+def _draw_scenario_half(ctx, a, fig, key):
+    """One scenario on half a slide, two panels per row: the actuators, then the responding
+    profiles, then each spectrogram's prediction under the measured and the changed actuators."""
+    d, t, k0 = ctx["d"], ctx["t"], ctx["k0"]
+    torque = (("torque (N m)", "NBI (MW)"), ["cer_ti", "cer_rot"])
+    ech = (("ECH (MW)", "NBI (MW)"), ["ts_core_temp", "ts_core_density"])
+    act_labels, shown = {"torque0": torque, "balanced": torque, "tq_lin_zero": torque, "tq_lin_half": torque,
+                         "nbi_off": (("NBI (MW)",), ["cer_ti", "cer_rot"]),
+                         "ech_off": ech, "ech_lin_off": ech, "ech_lin_half": ech}[key]
+    label = SCENARIOS[key][1]
+    spectros = [n for n in (a.sim_spectro.split(",") if a.sim_spectro else ctx["spectros"])
+                if f"spectro_pred__{key}__{n}" in d.files]
+    ylim = {k: float(v) for k, v in (x.split("=") for x in a.spectro_ylim.split(",") if x)}
+    # Each group starts a new row of two panels.
+    groups = [[("act", x) for x in act_labels], [("trace", n) for n in shown]]
+    groups += [[("spec", (n, "real")), ("spec", (n, key))] for n in spectros]
+    rows = [g[i:i + 2] for g in groups for i in range(0, len(g), 2)]
+    axes = fig.subplots(len(rows), 2, sharex=True, squeeze=False)
+    for r, row in enumerate(rows):
+        if len(row) == 1:
+            axes[r, 1].set_visible(False)
+        for c, (kind, what) in enumerate(row):
+            ax = axes[r, c]
+            if kind == "act":
+                ax.plot(t, d[f"act__real__{what}"], color=COLORS["truth"], lw=1.8, label="measured")
+                ax.plot(t, d[f"act__{key}__{what}"], color=COLORS["scenario"], lw=1.8, ls="--",
+                        label="changed actuator")
+                ax.set_ylabel(ACT_SHOWN.get(what, what))
+            elif kind == "trace":
+                ax.plot(t, _tr(ctx, a, "gt", "real", what), color=COLORS["truth"], lw=1.5, label="measured")
+                ax.plot(t[k0 - 1:], _tr(ctx, a, "pred", "real", what)[k0 - 1:], color=COLORS["real"], lw=1.8,
+                        label="prediction, measured actuators")
+                ax.plot(t[k0 - 1:], _tr(ctx, a, "pred", key, what)[k0 - 1:], color=COLORS["scenario"], lw=1.8,
+                        ls="--", label="prediction, changed actuator")
+                ax.set_ylabel(LABELS[what][0])
+                _label_trace(ax, ctx, what, a.font)
+            else:
+                n, which = what
+                _spec(ctx, ax, d[f"spectro_pred__{which}__{n}"], "real" if which == "real" else "scenario", name=n)
+                if n in ylim:
+                    ax.set_ylim(0, ylim[n])
+                ax.set_ylabel("freq (kHz)" if c == 0 else "")
+                # "Balanced injection" -> "balanced injection", but "ECH off" keeps its acronym.
+                tag = ("measured actuators" if which == "real"
+                       else label if label.split()[0].isupper() else label.lower())
+                label_box(ax, f"{spectro_label(d, n)}, {tag}", a.font)
+            ax.axvline(ctx["t_switch"], color=COLORS["scenario"], lw=1.0, ls=":")
+            ax.set_xlim(t[0], a.tmax or t[-1])
+            ax.xaxis.set_major_locator(plt.MultipleLocator(1))
+            if kind != "spec":
+                # Scale y to the shown window, not to data cut off by --tmax.
+                t_end = a.tmax or t[-1]
+                ys = np.concatenate([np.asarray(ln.get_ydata(), float)[np.asarray(ln.get_xdata(), float) <= t_end]
+                                     for ln in ax.get_lines() if len(ln.get_ydata()) > 2])
+                lo, hi = np.nanmin(ys), np.nanmax(ys)
+                pad = 0.08 * (hi - lo + 1e-9)
+                floor = kind == "act" or what in ZERO_BASED
+                ax.set_ylim(min(lo - pad, 0) if floor else lo - pad, hi + pad)
+    for ax in axes[-1]:
+        ax.set_xlabel("time (s)")
+        if key in TORQUE_SCENARIOS:
+            _tau_box(ax, ctx)
+
+
 def plot_scenarios(a):
     ctx = _setup(a)
+    if a.layout == "half":
+        fig = plt.figure(figsize=(a.width, a.height), constrained_layout=True)
+        _draw_scenario_half(ctx, a, fig, [c for c in a.columns.split(",") if c][0])
+        _save(fig, a, ctx)
+        return
     fig = plt.figure(figsize=(a.width, a.height * 0.58), constrained_layout=True)
     _draw_scenarios(ctx, a, fig, _scenario_title(ctx, a, False), with_truth=False)
     _save(fig, a, ctx)
@@ -462,11 +671,18 @@ def main():
     e.add_argument("--step", type=int, default=20600)
     e.add_argument("--switch_frame", type=int, default=50)
     for key in RUNS:
-        e.add_argument(f"--{key}", required=True, help=f"evaluation folder of the {key} rollout")
+        optional = key in OPTIONAL_RUNS
+        e.add_argument(f"--{key}", required=not optional, default="",
+                       help=f"evaluation folder of the {key} rollout" + (" (optional)" if optional else ""))
     e.add_argument("--spectro", default="ece", help="spectrograms, comma-separated (ece, mhr, bes, co2, mirnov); "
                    "the first is the one in the scenario panels")
     e.add_argument("--spectro_channel", default="", help="channel per spectrogram, e.g. co2=1,bes=11 "
                    "(default: the channel whose frame means vary most; see analysis/demo_spectro_channels.py)")
+    e.add_argument("--pred", choices=("pred", "mean"), default="pred",
+                   help="prediction to show: sampled codes, or the expected frames (mean__*)")
+    e.add_argument("--spectro_member", choices=("mean", "medoid"), default="mean",
+                   help="spectrograms of an ensemble: the decoded mean, or the one member closest to it "
+                   "(keeps the measured texture and mode-line wander; traces stay the mean)")
     e.add_argument("--cache_dir", required=True)
     e.add_argument("--codec_tmpl", required=True)
     e.add_argument("--data", required=True, help="output .npz")
@@ -486,11 +702,22 @@ def main():
     q.add_argument("--camera_cmap", default="auto", help="'auto': measured Blues, prediction Oranges, scenario Purples")
     q.add_argument("--title", default="")
     q.add_argument("--with_title", action="store_true", help="draw the figure titles (off by default)")
-    q.add_argument("--font", type=int, default=11)
+    q.add_argument("--style", choices=("talk", "paper"), default="talk",
+                   help="talk: seaborn talk theme (presentation); paper: the plain small-font look")
+    q.add_argument("--font", type=int, default=11, help="font size of --style paper")
     q.add_argument("--width", type=float, default=16)
     q.add_argument("--height", type=float, default=13)
     q.add_argument("--dpi", type=int, default=200)
+    q.add_argument("--layout", choices=("full", "half"), default="full",
+                   help="half: compact figure for half a 16:9 slide (validation, or one scenario column)")
+    q.add_argument("--sim_spectro", default="", help="spectrograms in the scenario panels of --layout half, "
+                   "e.g. mhr; default: every spectrogram in the data file")
+    q.add_argument("--tmax", type=float, default=0.0, help="end of the time axis (s); 0: end of the data")
     a = p.parse_args()
+    if a.stage == "plot" and a.layout == "half" and (a.width, a.height) == (16, 13):
+        a.width, a.height = 6.4, 6.8  # inches: shown at about this size on half a slide
+    elif a.stage == "plot" and a.style == "talk" and (a.width, a.height) == (16, 13):
+        a.width, a.height = 24, 20  # room for the talk theme's 18 pt text
     if a.stage == "extract":
         extract(a)
     else:

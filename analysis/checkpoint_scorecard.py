@@ -34,16 +34,16 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import demo_controllability_fig as dm  # noqa: E402
 
-PROFILES = ("ts_core_temp", "ts_core_density", "cer_ti", "cer_rot")
+PROFILES = ("ts_core_temp", "ts_core_density", "cer_ti", "cer_rot")  # = eval_dynamics.PROFILE_SIGNALS
 SPECTRO = ("ece", "mhr", "mirnov")
 
 
 def _profile_skill(folder, codecs, conv, device, pred="pred"):
-    """Median over shots of the mean RMSE skill against persistence of the core profiles.
+    """Median over shots of ``eval_dynamics.profile_skill`` from the archived codes.
 
-    Scored from the archived codes in physical units (core average of the 3 strongest
-    channels), so every checkpoint is scored by the same code regardless of the
-    eval_dynamics version that produced the rollout. Unrecorded (flat) signals are skipped.
+    Scored from the archives in physical units, so every checkpoint is scored by the
+    same code regardless of the eval_dynamics version that produced the rollout; the
+    trainer's --skill_every computes the same quantity during training.
     """
     from tokamak_foundation_model.ignite import eval_dynamics as ev
 
@@ -52,24 +52,12 @@ def _profile_skill(folder, codecs, conv, device, pred="pred"):
         codes = np.load(path, allow_pickle=True)
         if f"{pred}__{PROFILES[0]}" not in codes.files:
             continue
-        K0, F = int(codes["K0"]), int(codes["F"])
-        per_signal = []
-        for name in PROFILES:
-            gt, predicted = (np.nanmean(conv[name](ev.decode_flat_chunked(
-                codecs[name][0], ev.archived(codes, f"{w}__{name}")[:F], device)), axis=-1)
-                for w in ("gt", pred))
-            channels = dm._core(gt, K0, 3)
-            with np.errstate(invalid="ignore"):
-                g, p_ = np.nanmean(gt[:, channels], 1), np.nanmean(predicted[:, channels], 1)
-            truth = g[K0:F]
-            if np.isfinite(truth).sum() < 10 or np.nanstd(truth) < 1e-6 * max(1.0, abs(np.nanmean(truth))):
-                continue
-            rmse = np.sqrt(np.nanmean((p_[K0:F] - truth) ** 2))
-            rmse_p = np.sqrt(np.nanmean((g[K0 - 1] - truth) ** 2))
-            if np.isfinite(rmse) and rmse_p > 0:
-                per_signal.append(1.0 - rmse / rmse_p)
-        if len(per_signal) >= 2:
-            skills.append(np.mean(per_signal))
+        gt, predicted = ({name: ev.archived(codes, f"{w}__{name}") for name in PROFILES}
+                         for w in ("gt", pred))
+        skill = ev.profile_skill(gt, predicted, int(codes["K0"]), int(codes["F"]),
+                                 codecs, conv, device)
+        if np.isfinite(skill):
+            skills.append(skill)
     return (float(np.median(skills)) if skills else np.nan), len(skills)
 
 

@@ -30,6 +30,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
 import yaml
 
 import fdp_stage
@@ -136,6 +137,14 @@ def _repair_ptdata(pointname: str, payload: dict, defect: str, shot: int) -> tup
         return payload, None
     if original is not None and replacement.size < original.size:
         return payload, None
+    # TDI returns all zeros for the fast CO2 pointnames (DEN*UF) on every shot
+    # checked from 186000 on, while the staged read matches the BCI MDSplus
+    # density (r >= 0.985, shot 206030) and the line-averaged density (r >= 0.96,
+    # shot 188500). An all-zero TDI read therefore never overrides real data, and
+    # the staged read counts as checked (a "defect:" note would fail the shot).
+    if (defect == "unverifiable_bulk" and original is not None
+            and not np.any(replacement) and np.any(original)):
+        return payload, "staged_kept_over_zero_tdi"
 
     if defect == "timebase":
         axis = fixed.get("dim0")
@@ -511,6 +520,9 @@ def fetch_shot(
     else:
         staged = fdp_stage.stage_shot(shot, mds_trees, pointnames, shot_stage,
                                       workers=stage_workers)
+    snapshot_root = fdp_stage.pin_staged_index(shot_stage)
+    if snapshot_root:
+        print(f"  PTDATA index snapshot: {snapshot_root}", flush=True)
     print(f"  staged: {staged['bytes']/1e9:.2f} GB in {staged['seconds']:.0f}s "
           f"({len(staged['available_trees'])}/{len(mds_trees)} trees, "
           f"{len(set(staged['ptdata_sources'].values()))} PTDATA objects) "

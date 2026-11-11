@@ -381,6 +381,10 @@ ACTUATOR_MODES = (
     "donor:<shot>",
     "group_zero:<group>",
     "scale:<group>=<factor>[@<frame>][+<group>=<factor>[@<frame>]...]",
+    "ramp:<group>=<factor>@<frame>/<ramp_frames>",
+    "set:<group>[<i>,...]=<value>@<frame>[-<end>][+...]",
+    "balance:off=<i>,..;counter=<j>,..;nm_per_mw=<rate>;kv=<kV>@<frame>",
+    "linear:<ramp_frames>[/<amount>]:<mode>",
 )
 
 
@@ -425,6 +429,113 @@ def _scale_actuators(edited, spec: str, K0: int, n_frames: int) -> None:
         edited[frames, columns] = torch.where(varies, rescaled, edited[frames, columns])
 
 
+def _set_actuators(edited, spec: str, K0: int, n_frames: int) -> None:
+    """Set single actuator channels to physical values, in place, for ``set:`` modes.
+
+    ``spec`` is ``<group>[<i>,<j>...]=<value>@<frame>[-<end>]`` terms joined by ``+``: the
+    listed channels of the group (indices into its :data:`~.train_dynamics._ACT_SPEC`
+    columns, e.g. the 8 beam lines 15L, 15R, 21L, 21R, 30L, 30R, 33L, 33R) take ``value``
+    in physical units from ``frame`` to ``end`` (exclusive; default the end of the
+    window). Needs ``IGNITE_ACT_GLOBAL``, as :func:`_scale_actuators`.
+    """
+    stats = _global_actuator_stats()
+    if stats is None:
+        raise ValueError("set: actuator modes need IGNITE_ACT_GLOBAL with its stats")
+    mu, sd = stats
+    for term in spec.split("+"):
+        target, _, timing = term.partition("@")
+        group_part, _, value = target.partition("=")
+        group, _, index_text = group_part.partition("[")
+        columns = _actuator_group_columns(group.strip())
+        indices = [int(i) for i in index_text.rstrip("]").split(",")] if index_text else \
+            list(range(columns.stop - columns.start))
+        start, _, end = timing.partition("-")
+        first = int(start) if start else K0
+        last = int(end) if end else n_frames
+        if not K0 <= first < last <= n_frames:
+            raise ValueError(f"set frames {first}-{last} outside [{K0}, {n_frames}]")
+        for i in indices:
+            c = columns.start + i
+            if sd[c] > 0:
+                edited[first:last, c] = (float(value) - mu[c]) / sd[c]
+
+
+def _balance_actuators(edited, spec: str, K0: int, n_frames: int) -> None:
+    """Zero the net NBI torque by swapping co beams for counter beams, in place, for ``balance:``.
+
+    ``spec`` is ``off=<i>,..;counter=<j>,..;nm_per_mw=<rate>;kv=<voltage>@<frame>`` with beam
+    indices into the 8 beam lines (15L, 15R, 21L, 21R, 30L, 30R, 33L, 33R) of the ``pinj``,
+    ``beam_voltage`` and ``tinj`` groups. From ``frame`` on, the ``off`` beams are switched
+    off and, frame by frame, the ``counter`` beams share the torque that cancels the remaining
+    beams' torque: power ``torque / |nm_per_mw|``, voltage ``kv`` while on. The torque of
+    the other beams, and so the counter power, follows their recorded waveform, including the
+    ramp-down. Needs ``IGNITE_ACT_GLOBAL``.
+    """
+    stats = _global_actuator_stats()
+    if stats is None:
+        raise ValueError("balance: actuator modes need IGNITE_ACT_GLOBAL with its stats")
+    mu, sd = stats
+    options, _, start = spec.partition("@")
+    fields = dict(term.split("=", 1) for term in options.split(";") if term)
+    off = [int(i) for i in fields["off"].split(",")]
+    counter = [int(i) for i in fields["counter"].split(",")]
+    rate = abs(float(fields["nm_per_mw"]))
+    volts = float(fields["kv"]) * 1e3
+    first = int(start) if start else K0
+    if not K0 <= first < n_frames:
+        raise ValueError(f"balance start frame {first} outside [{K0}, {n_frames})")
+    frames = slice(first, n_frames)
+    groups = {name: _actuator_group_columns(name) for name in ("pinj", "beam_voltage", "tinj")}
+    physical = {
+        name: edited[frames, cols] * sd[cols] + mu[cols] for name, cols in groups.items()
+    }
+    kept = [i for i in range(physical["tinj"].shape[1]) if i not in off and i not in counter]
+    share = (physical["tinj"][:, kept].sum(1).clamp_min(0.0) / len(counter)).unsqueeze(1)
+    for name in groups:
+        physical[name][:, off] = 0.0
+    on = (share > 0).float()
+    physical["tinj"][:, counter] = -share
+    physical["pinj"][:, counter] = share / rate * 1e6
+    physical["beam_voltage"][:, counter] = volts * on
+    for name, cols in groups.items():
+        d = sd[cols]
+        varies = d > 0
+        normed = (physical[name] - mu[cols]) / torch.where(varies, d, torch.ones_like(d))
+        edited[frames, cols] = torch.where(varies, normed, edited[frames, cols])
+
+
+def _ramp_actuators(edited, spec: str, K0: int, n_frames: int) -> None:
+    """Hold an actuator group at its value at ``frame`` and ramp it, in place, for ``ramp:``.
+
+    ``spec`` is ``<group>=<factor>@<frame>/<ramp_frames>``. From ``frame`` (default ``K0``)
+    each channel follows ``I0 + (factor * I0 - I0) * clip((t - frame) / ramp_frames, 0, 1)``
+    in physical units, ``I0`` being its value at ``frame``: factor 1 holds ``I0``, factor
+    0.5 ramps to half of it over ``ramp_frames`` frames and holds. Needs the dataset-wide
+    normalisation (``IGNITE_ACT_GLOBAL``), as :func:`_scale_actuators`.
+    """
+    stats = _global_actuator_stats()
+    if stats is None:
+        raise ValueError("ramp: actuator modes need IGNITE_ACT_GLOBAL with its stats")
+    mu, sd = stats
+    target, _, timing = spec.partition("@")
+    group, _, factor = target.partition("=")
+    start, _, ramp = timing.partition("/")
+    columns = _actuator_group_columns(group.strip())
+    first = int(start) if start else K0
+    if not K0 <= first < n_frames:
+        raise ValueError(f"ramp start frame {first} outside [{K0}, {n_frames})")
+    m, d = mu[columns], sd[columns]
+    varies = d > 0
+    scale = torch.where(varies, d, torch.ones_like(d))
+    initial = edited[first, columns] * d + m
+    steps = torch.arange(n_frames - first, dtype=edited.dtype)
+    weight = (steps / max(1, int(ramp or 0))).clamp(0, 1).unsqueeze(1)
+    physical = initial + (initial * float(factor) - initial) * weight
+    edited[first:n_frames, columns] = torch.where(
+        varies, (physical - m) / scale, edited[first:n_frames, columns]
+    )
+
+
 def _actuator_group_columns(group: str) -> slice:
     """Columns of one :data:`~.train_dynamics._ACT_SPEC` group."""
     offset = 0
@@ -451,7 +562,10 @@ def apply_actuator_mode(
         ``"donor:<shot>"`` (another shot's actuators), ``"group_zero:<group>"``
         (zero one :data:`~.train_dynamics._ACT_SPEC` group) or
         ``"scale:<group>=<factor>[@<frame>]"`` (scale a group in physical units
-        from ``frame`` on, :func:`_scale_actuators`).
+        from ``frame`` on, :func:`_scale_actuators`) or
+        ``"ramp:<group>=<factor>@<frame>/<ramp_frames>"`` (hold a group at its value at
+        ``frame``, then ramp it linearly to ``factor`` times that value,
+        :func:`_ramp_actuators`).
     K0 : int
         First predicted frame; the seed frames stay real.
     cache_dir : path-like, default=None
@@ -490,6 +604,29 @@ def apply_actuator_mode(
         edited[predicted, _actuator_group_columns(argument)] = 0.0
     elif kind == "scale" and has_argument:
         _scale_actuators(edited, argument, K0, n_frames)
+    elif kind == "ramp" and has_argument:
+        _ramp_actuators(edited, argument, K0, n_frames)
+    elif kind == "set" and has_argument:
+        _set_actuators(edited, argument, K0, n_frames)
+    elif kind == "balance" and has_argument:
+        _balance_actuators(edited, argument, K0, n_frames)
+    elif kind == "linear" and has_argument:
+        # Ramp from the measured actuators into another mode's: every channel moves
+        # linearly, frame by frame, from its measured value to the target mode's value
+        # over ramp_frames, starting where the target first differs, and stays at
+        # ``amount`` of the way (default 1) after. Beam power, voltage and torque of a
+        # balance target ramp together, as a modulated beam's frame averages do.
+        timing, _, inner = argument.partition(":")
+        ramp_text, _, amount = timing.partition("/")
+        target = apply_actuator_mode(act, inner, K0, cache_dir, n_frames)
+        changed = (target[:n_frames] != act[:n_frames]).any(dim=1).nonzero()
+        if len(changed):
+            first = int(changed[0])
+            steps = torch.arange(n_frames - first, dtype=edited.dtype)
+            weight = (steps / max(1, int(ramp_text))).clamp(0, 1) * float(amount or 1)
+            edited[first:n_frames] = act[first:n_frames] + weight.unsqueeze(1) * (
+                target[first:n_frames] - act[first:n_frames]
+            )
     else:
         raise ValueError(
             f"unknown actuator_mode {mode!r}; expected one of {ACTUATOR_MODES}"
@@ -601,6 +738,7 @@ def rollout_shot(
     shot=None,
     guidance: float = 1.0,
     decode: Optional[Dict] = None,
+    start: int = 0,
 ) -> Rollout:
     """Seed ``K0`` real frames of a shot and roll the model out.
 
@@ -636,27 +774,30 @@ def rollout_shot(
         Further rollout options: ``gate``, ``consensus_n``, ``consensus_q``,
         ``consensus_mode``
         (:meth:`MaskGITDynamics.rollout`).
+    start : int, default=0
+        First frame of the window in the shot: the seed is frames
+        ``start..start+K0``. Frame indices of ``actuator_mode`` count from it.
 
     Returns
     -------
     rollout : Rollout
-        Codes over the whole window ``[0, F)`` on the CPU, ``K0``, the window
-        length ``F = min(cfg.max_frames, n_frames)`` and, where possible, the
+        Codes over the whole window on the CPU, ``K0``, the window length
+        ``F = min(cfg.max_frames, n_frames - start)`` and, where possible, the
         expected frames.
     """
-    n_frames = min(cfg.max_frames, int(cache["n_frames"]))
+    n_frames = min(cfg.max_frames, int(cache["n_frames"]) - int(start))
     if n_frames <= K0:
         raise RuntimeError(
             f"shot has F={n_frames} frames <= K0={K0}; nothing to predict"
         )
     names = [m.name for m in cfg.modalities]
-    codes = cache["codes"]
+    codes = {name: cache["codes"][name][start : start + n_frames] for name in names}
     seed_codes = {
         name: codes[name][:K0].long().unsqueeze(0).to(device) for name in names
     }
     _load_global_actuators(cache, shot)
     actuators = apply_actuator_mode(
-        cache["actuators"][:n_frames].float(),
+        cache["actuators"][start : start + n_frames].float(),
         actuator_mode,
         K0,
         cache_dir=cache_dir,
@@ -686,6 +827,120 @@ def rollout_shot(
         n_frames=n_frames,
         pred_mean=mean,
     )
+
+
+# Core profiles of the rollout skill (analysis/checkpoint_scorecard.py and the
+# trainer's --skill_every): T_e, n_e, T_i, v_tor.
+PROFILE_SIGNALS = ("ts_core_temp", "ts_core_density", "cer_ti", "cer_rot")
+
+
+def profile_converters(codecs, names=PROFILE_SIGNALS) -> Dict:
+    """Per-signal converters of decoded slow time series to physical units.
+
+    Unlike :func:`slowts_denorm` this covers cer_rot too: channels whose stats are
+    broken (``|mean|`` or ``std`` above 1e4, or ``std`` at most 1e-3) become NaN.
+
+    Parameters
+    ----------
+    codecs : dict
+        ``{name: (codec, codec_cfg, family)}`` as from ``load_frozen_codecs``.
+    names : sequence of str
+        Slow-TS modalities to convert.
+
+    Returns
+    -------
+    convert : dict of str to callable
+        Each maps (F, C_pad, T) to (F, C, T) float64.
+    """
+    from .config import SLOWTS_PREPROCESS_METHOD
+
+    convert = {}
+    for name in names:
+        cfg = codecs[name][1]
+        mean = np.asarray(cfg.channel_mean, dtype=np.float64)
+        raw_std = np.asarray(cfg.channel_std, dtype=np.float64)
+        std = np.clip(raw_std, 1e-3, None)
+        broken = (np.abs(mean) > 1e4) | (raw_std > 1e4) | (raw_std <= 1e-3)
+        log = SLOWTS_PREPROCESS_METHOD[name] == "log_standardize"
+
+        def invert(x, mean=mean, std=std, broken=broken, log=log):
+            x = np.asarray(x, dtype=np.float64)[:, : mean.size]
+            y = x * std[None, :, None] + mean[None, :, None]
+            y = np.power(10.0, y) - 1.0 if log else y
+            y[:, broken] = np.nan
+            return y
+
+        convert[name] = invert
+    return convert
+
+
+def core_channels(gt: np.ndarray, k0: int, n_core: int) -> list:
+    """The ``n_core`` channels of (F, C) ``gt`` with the largest mean |value| after ``k0``."""
+    with np.errstate(invalid="ignore"):
+        level = np.nanmean(np.abs(gt[k0:]), axis=0)
+    finite = np.isfinite(level)
+    order = [
+        int(c) for c in np.argsort(np.where(finite, level, -np.inf))[::-1] if finite[c]
+    ]
+    return order[: max(1, n_core)]
+
+
+def profile_skill(
+    gt_codes, pred_codes, k0: int, n_frames: int, codecs, convert, device
+) -> float:
+    """RMSE skill against persistence of one rollout's core profiles.
+
+    Each signal of :data:`PROFILE_SIGNALS` is decoded, converted to physical units,
+    averaged over time within the frame and over its 3 strongest channels, and
+    scored over frames ``k0..n_frames``: ``1 - rmse(prediction) / rmse(persistence)``,
+    persistence holding the last seed frame. Unrecorded (flat) signals are skipped.
+
+    Parameters
+    ----------
+    gt_codes, pred_codes : dict of str to torch.Tensor
+        Real and predicted frames of each signal: codes ``(F, n_tok)`` or expected
+        coordinates ``(F, n_tok, n_levels)``.
+    k0 : int
+        Seed frames.
+    n_frames : int
+        Frames of the rollout window.
+    codecs : dict
+        The signals' codecs, from ``load_frozen_codecs``.
+    convert : dict
+        From :func:`profile_converters`.
+    device : torch.device
+        Where to decode.
+
+    Returns
+    -------
+    skill : float
+        Mean over the scored signals; NaN when fewer than 2 could be scored.
+    """
+    per_signal = []
+    for name in PROFILE_SIGNALS:
+        gt, predicted = (
+            np.nanmean(
+                convert[name](
+                    decode_flat_chunked(codecs[name][0], codes[name][:n_frames], device)
+                ),
+                axis=-1,
+            )
+            for codes in (gt_codes, pred_codes)
+        )
+        channels = core_channels(gt, k0, 3)
+        with np.errstate(invalid="ignore"):
+            real = np.nanmean(gt[:, channels], 1)
+            model = np.nanmean(predicted[:, channels], 1)
+        truth = real[k0:n_frames]
+        if np.isfinite(truth).sum() < 10 or np.nanstd(truth) < 1e-6 * max(
+            1.0, abs(np.nanmean(truth))
+        ):
+            continue
+        rmse = np.sqrt(np.nanmean((model[k0:n_frames] - truth) ** 2))
+        rmse_persistence = np.sqrt(np.nanmean((real[k0 - 1] - truth) ** 2))
+        if np.isfinite(rmse) and rmse_persistence > 0:
+            per_signal.append(1.0 - rmse / rmse_persistence)
+    return float(np.mean(per_signal)) if len(per_signal) >= 2 else float("nan")
 
 
 def _nrmse(pred: np.ndarray, gt: np.ndarray) -> float:
@@ -2589,7 +2844,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="actuator counterfactual over the predicted frames: real | zero | "
         "freeze | shuffle | donor:<shot> | group_zero:<group> | "
         "scale:<group>=<factor>[@<frame>] (physical units, e.g. scale:pinj=0@50 "
-        "turns the beams off from frame 50)",
+        "turns the beams off from frame 50) | ramp:<group>=<factor>@<frame>/<frames> "
+        "(hold the value at frame, ramp to factor times it over frames)",
     )
     add(
         "--rerender",

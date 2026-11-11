@@ -257,7 +257,41 @@ def fetch_shot_index(shot: int, dest_dir: Path,
             f"Could not stage the PTDATA index for {shot}: {url} ({detail})")
 
     with open(target) as handle:
-        return json.load(handle)
+        index = json.load(handle)
+    # Native PTDATA resolves <root>/<shot-prefix>/<shot>.json. Preserve the
+    # snapshot we selected so the read pass does not use the unversioned root.
+    (dest_dir / '_index_source.json').write_text(json.dumps({
+        'snapshot_root': f'{root.rstrip("/")}/{snapshot}', 'url': url,
+    }))
+    return index
+
+
+def pin_staged_index(stage_dir: Path) -> Optional[str]:
+    """Route native PTDATA through the staged snapshot and local shot objects.
+
+    The MDSplus pass deliberately unsets the index, so never re-enable it here.
+    Older staging directories without provenance keep their existing routing.
+    """
+    source = Path(stage_dir) / '_index_source.json'
+    if not os.environ.get('PTDATA_JSON_INDEX_DIR') or not source.is_file():
+        return None
+    metadata = json.loads(source.read_text())
+    snapshot_root = metadata['snapshot_root']
+    shot = Path(metadata['url']).stem
+    index = load_cached_index(int(shot), stage_dir)
+    # The native plugin cannot reliably open pelican:// JSON indexes in the
+    # current FDP stack. Mirror its expected <prefix>/<shot>.json layout and
+    # point at objects already staged, avoiding that network path altogether.
+    for extension, url in index.get('ext_location', {}).items():
+        candidate = Path(stage_dir) / url.rsplit('/', 1)[-1]
+        if candidate.is_file():
+            index['ext_location'][extension] = str(candidate.resolve())
+    local_root = Path(stage_dir) / '_ptdata_index'
+    target = local_root / shot[:4] / f'{shot}.json'
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(index))
+    os.environ['PTDATA_JSON_INDEX_DIR'] = str(local_root.resolve())
+    return snapshot_root
 
 
 def _newest_snapshot(root: str) -> str:

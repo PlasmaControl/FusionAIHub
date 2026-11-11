@@ -42,6 +42,7 @@ pipeline (``data.data_loader`` / ``data.multi_file_dataset``). No FAITH *model* 
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import math
 import os
@@ -2900,7 +2901,7 @@ class _DDPState:
     index 0). Single-process when ``WORLD_SIZE`` is unset or 1 (the CPU smoke path).
     """
 
-    def __init__(self, backend: str = "nccl") -> None:
+    def __init__(self, backend: str = "nccl", timeout_minutes: Optional[float] = None) -> None:
         ws = int(os.environ.get("WORLD_SIZE", "1"))
         if ws > 1:
             self.rank = int(os.environ.get("RANK", os.environ.get("SLURM_PROCID", 0)))
@@ -2916,7 +2917,15 @@ class _DDPState:
                 )
             self.distributed = True
             if not dist.is_initialized():
-                dist.init_process_group(backend, rank=self.rank, world_size=self.world_size)
+                # timeout_minutes: how long a collective may wait for a lagging rank
+                # (torch's NCCL default is 10 min); None keeps the default.
+                timeout = (
+                    None if timeout_minutes is None
+                    else datetime.timedelta(minutes=timeout_minutes)
+                )
+                dist.init_process_group(
+                    backend, rank=self.rank, world_size=self.world_size, timeout=timeout
+                )
             if torch.cuda.is_available():
                 torch.cuda.set_device(self.device_index)
         else:

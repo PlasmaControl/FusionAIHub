@@ -49,6 +49,8 @@ EXTRA=()
 [ -n "${CONSENSUS_Q:-}" ] && EXTRA+=(--consensus_q "${CONSENSUS_Q}")
 [ -n "${CONSENSUS_MODE:-}" ] && EXTRA+=(--consensus_mode "${CONSENSUS_MODE}")
 [ "${CONSENSUS_INDEPENDENT:-0}" = "1" ] && EXTRA+=(--consensus_independent)
+# SEED=s: rollout seed (default 0); independent seeds of one checkpoint form an ensemble.
+[ -n "${SEED:-}" ] && EXTRA+=(--seed "${SEED}")
 # RENDER_ALL=1: a figure for every shot, not only the first shot of each rank.
 [ "${RENDER_ALL:-0}" = "1" ] && EXTRA+=(--render_all)
 if [ "${VAL_TAIL}" != "0" ]; then

@@ -76,10 +76,22 @@ export VAL_WINDOW_SAMPLE=${VAL_WINDOW_SAMPLE:-}
 export VAL_WINDOWS_PER_SHOT=${VAL_WINDOWS_PER_SHOT:-10} VAL_WINDOWS=${VAL_WINDOWS:-256}
 export SPLIT_SEED=${SPLIT_SEED:-42} TEST_FRAC=${TEST_FRAC:-0.05} VAL_N=${VAL_N:-438}
 export TRAIN_CAP=${TRAIN_CAP:-0} MASK_ABSENT=${MASK_ABSENT:-0} NUM_WORKERS=${NUM_WORKERS:-2}
-# --- checkpointing: BEST_METRIC is kept for the record only; rollout uses dynamics_latest.pt ---
-export BEST_METRIC=${BEST_METRIC:-masked} CKPT_EVERY=${CKPT_EVERY:-200}
+# --- checkpointing ---
+export CKPT_EVERY=${CKPT_EVERY:-200}
 # SNAPSHOT_EVERY: frozen dynamics_step<N>.pt every N steps, scored by scorecard_watch.sh.
 export SNAPSHOT_EVERY=${SNAPSHOT_EVERY:-2000}
+# --- validation that tracks rollouts (2026-10-28). Masked and gen CE rank checkpoints the wrong
+# way round (Spearman +0.41 / +0.47 with scorecard skill over 24 checkpoints). Every SKILL_EVERY
+# steps the last SKILL_SHOTS val shots are rolled out as the scorecard's val stage does (one shot
+# per GPU, ~35 min per shot at 48 layers) and val_skill is logged; BEST_METRIC=skill picks
+# dynamics_best.pt on it. VAL_ROLLOUT_HORIZON adds the cheap rollout_ce (frames from k0 on the
+# model's own samples) at every validation. SKILL_CODEC_TMPL: the frozen codecs next to the cache.
+_skill_codecs="${CACHE_DIR%/*/*}/ignite_codecs_v4/{m}/codec_best.pt"
+export SKILL_EVERY=${SKILL_EVERY:-$SNAPSHOT_EVERY} SKILL_SHOTS=${SKILL_SHOTS:-32}
+export SKILL_CODEC_TMPL=${SKILL_CODEC_TMPL:-$_skill_codecs}
+export VAL_ROLLOUT_HORIZON=${VAL_ROLLOUT_HORIZON:-8}
+if [ "$SKILL_EVERY" -gt 0 ]; then _best=skill; else _best=masked; fi
+export BEST_METRIC=${BEST_METRIC:-$_best}
 export OUT_DIR=${OUT_DIR:-/lustre/orion/fus187/proj-shared/models/ignite_prod_v4/runs/ss75full}
 # --- the standing example shots: in BOTH train and val (--pin_val would EXCLUDE them from training) ---
 export PIN_BOTH="190729,190735,190736"

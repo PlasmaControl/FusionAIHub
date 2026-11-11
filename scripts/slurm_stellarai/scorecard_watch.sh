@@ -17,6 +17,8 @@ RUNS=${RUNS:-"ss75g_l48 ss75g_live_unroll ss75g_evt ss75g_gap ss75g_btf_cfg ss75
 MAX_JOBS=${MAX_JOBS:-6}
 POLL_S=${POLL_S:-1800}
 MIN_AGE_S=${MIN_AGE_S:-300}   # a snapshot younger than this may still be being written
+# Runs whose rollouts outlast gpu-short's 4 h: 48 layers take ~2.5 h for val, ~6 h for resp.
+LONG_RUNS=${LONG_RUNS:-"ss75g_l48"}
 
 cd "$REPO_DIR"
 while true; do
@@ -25,16 +27,30 @@ while true; do
       [ -f "$ckpt" ] || continue
       step=$(basename "$ckpt" .pt); step=${step#dynamics_step}
       out="$RUNS_DIR/$run/scorecard_$step"
-      [ -e "$out" ] && continue
+      # A stage whose sbatch was rejected (e.g. the QOS's 10-job submit limit) leaves
+      # .unsubmitted_<stage> and is retried on the next poll.
+      if [ -e "$out" ]; then
+        stages=$(ls -A "$out" 2>/dev/null | sed -n 's/^\.unsubmitted_//p')
+        [ -n "$stages" ] || continue
+      else
+        stages="val resp"
+      fi
       [ $(( $(date +%s) - $(stat -c %Y "$ckpt") )) -ge "$MIN_AGE_S" ] || continue
       running=$(squeue -h -u "$USER" -o %j | grep -c '^sc_')
       [ "$running" -lt "$MAX_JOBS" ] || continue 3
       mkdir -p "$out"
       ids=""
-      for stage in val resp; do
-        ids+=" $(sbatch --qos=gpu-short --job-name="sc_${run#ss75g_}_${step}_$stage" \
+      limit=(--qos=gpu-short)
+      [[ " $LONG_RUNS " == *" $run "* ]] && limit=(--time=12:00:00)
+      for stage in $stages; do
+        id=$(sbatch --parsable "${limit[@]}" --job-name="sc_${run#ss75g_}_${step}_$stage" \
           --export=ALL,RUN="$run",CKPT_NAME="dynamics_step$step.pt",STAGE=$stage \
-          scripts/slurm_stellarai/ckpt_scorecard.sh | awk '{print $4}')"
+          scripts/slurm_stellarai/ckpt_scorecard.sh)
+        if [ -n "$id" ]; then
+          rm -f "$out/.unsubmitted_$stage"; ids+=" $id"
+        else
+          touch "$out/.unsubmitted_$stage"; ids+=" ($stage rejected, will retry)"
+        fi
       done
       echo "[watch] $(date '+%m-%d %H:%M') $run step $step -> jobs$ids"
     done
